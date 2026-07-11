@@ -94,6 +94,8 @@ Deno.test("T-12d shapes compile: RPC-payload-identical objects typecheck", () =>
     displayName: "A",
     username: "a",
     avatarUrl: null,
+    // ORCH-1359 — location is NAMED-rows-only; present here.
+    location: "London, England, United Kingdom",
     isMinglaUser: true,
     isAnonymous: false,
     partySize: 3,
@@ -103,6 +105,8 @@ Deno.test("T-12d shapes compile: RPC-payload-identical objects typecheck", () =>
     displayName: null,
     username: null,
     avatarUrl: null,
+    // ORCH-1359 — anonymous rows carry NULL location.
+    location: null,
     isMinglaUser: false,
     isAnonymous: true,
     partySize: 1,
