@@ -364,6 +364,17 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
     }
   }, [liveDraft.id, liveDraft.timezone, updateDraft]);
 
+  // ORCH-1355 F-1/F-3 — handleUpdate MUST be STABLE and build the autosave
+  // payload from the store's FRESH post-write state, never from a captured
+  // `liveDraft`. Two sequential writes in one handler (e.g. capacity-OFF
+  // clearing waitlist) previously both closed over the SAME stale `liveDraft`,
+  // so the second write's `{...liveDraft, ...patch}` re-introduced the first
+  // write's old value and the debounced autosave dropped it — the server echoed
+  // the stale value back and the toggle snapped ON. Reading getState() after the
+  // synchronous store merge makes sequential writes COMPOUND. Deps hold only
+  // stable references (initialDraft.id + Zustand setters) so the callback keeps
+  // one identity across keystrokes/taps. See I-PROPOSED-1355-WIZARD-UPDATE-CALLBACK-STABLE.
+  const draftId = initialDraft.id;
   const handleUpdate = useCallback(
     (patch: Partial<Omit<DraftEvent, "id" | "brandId" | "createdAt">>): void => {
       const nextRevision = clientRevisionRef.current + 1;
@@ -372,17 +383,18 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
         ...patch,
         clientRevision: nextRevision,
       };
-      markDraftDirty(liveDraft.id, nextRevision);
-      updateDraft(liveDraft.id, revisionedPatch);
-      const nextDraft = {
-        ...liveDraft,
-        ...revisionedPatch,
+      markDraftDirty(draftId, nextRevision);
+      updateDraft(draftId, revisionedPatch);
+      const fresh =
+        useDraftEventStore.getState().getDraft(draftId) ?? latestDraftRef.current;
+      const nextDraft: DraftEvent = {
+        ...fresh,
         updatedAt: new Date().toISOString(),
       };
       latestDraftRef.current = nextDraft;
       queueAutosave(nextDraft);
     },
-    [liveDraft, markDraftDirty, queueAutosave, updateDraft],
+    [draftId, markDraftDirty, queueAutosave, updateDraft],
   );
 
   const handleShowToast = useCallback((message: string): void => {

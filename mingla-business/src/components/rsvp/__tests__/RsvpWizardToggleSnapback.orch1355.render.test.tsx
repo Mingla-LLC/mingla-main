@@ -1,27 +1,33 @@
 /**
- * ORCH-1355 — RSVP wizard capacity toggle SNAP-BACK repro (symptom 2).
+ * ORCH-1355 — RSVP wizard capacity toggle SNAP-BACK regression guard (symptom 2).
  *
  * Seth: "STEP 5 (guest limit): when you select 'limit guest', you CANNOT
  * deselect it — it keeps reselecting (the toggle snaps back ON)."
  *
- * This is a DETERMINISTIC runtime proof (source theory is capped at "suspected").
+ * [TEST-MOD-APPROVED ORCH-1355] — this is ORCH-1355's own bug-proving repro,
+ * flipped from the failing bug-fingerprint assertions to the FIXED expectations
+ * now that C-1/C-2/C-3 landed. It is the runtime fails-on-revert guard.
+ *
  * It mounts the REAL production `RsvpStep5Setup` wired to the REAL
- * `draftEventStore` and a VERBATIM copy of `RsvpCreatorWizard`'s parent
- * `handleUpdate` + `queueAutosave` wiring (RsvpCreatorWizard.tsx:194-386) — the
- * `updateDraft`/`onAutosaveDraft` props the real wizard hands the step.
+ * `draftEventStore` and a mirror of `RsvpCreatorWizard`'s FIXED parent
+ * `handleUpdate` + `queueAutosave` wiring (RsvpCreatorWizard.tsx:367-397):
+ * a STABLE callback that builds the autosave payload from the store's FRESH
+ * post-write state (`getState().getDraft(id)`), never a captured `liveDraft`.
  *
- * PROVEN MECHANISM: `toggleCapacity` (RsvpStep5Setup.tsx:175-179) fires TWO
- * sequential `updateDraft` calls when turning capacity OFF (rsvpCapacity:null,
- * then rsvpWaitlistEnabled:false). Both run against the SAME captured `liveDraft`
- * closure inside `handleUpdate`, which rebuilds the autosave payload as
- * `{ ...liveDraft, ...patch }`. The SECOND call's payload spreads the STALE
- * captured `liveDraft` (rsvpCapacity still = the old number) and its patch does
- * NOT re-include rsvpCapacity — so the `rsvpCapacity:null` write from the first
- * call is DROPPED from the debounced autosave payload. The persisted/echoed
- * draft keeps the old capacity → the toggle snaps back ON.
+ * FIXED MECHANISM under guard:
+ *   - C-2: `toggleCapacity`-OFF now issues ONE combined patch
+ *     ({ rsvpCapacity: null, rsvpWaitlistEnabled: false }).
+ *   - C-3: the visibility "private" pick issues ONE combined patch
+ *     ({ visibility: "private", rsvpDiscoverable: false }).
+ *   - C-1: even when a handler fires TWO sequential dependent writes, the
+ *     fresh-read `handleUpdate` COMPOUNDS them so the autosave payload carries
+ *     both — the OFF write is never dropped, so the server never echoes a stale
+ *     capacity back and the toggle stays OFF.
  *
- * The client store is momentarily correct (cap=null); the AUTOSAVE PAYLOAD is
- * stale (cap=old). That payload is what reaches the server and echoes back.
+ * Fails-on-revert: delete the fresh-read lines in the harness `handleUpdate`
+ * (revert to `{ ...liveDraft, ...patch }`) → the "C-1 isolation" test FAILS.
+ * Revert BOTH C-1 (harness) AND C-2 (RsvpStep5Setup) → the real-toggle snap-back
+ * tests FAIL.
  *
  * Run: npx jest --config jest.orch1355.render.cjs --runInBand
  */
@@ -59,16 +65,21 @@ import {
   type DraftEvent,
 } from "../../../store/draftEventStore";
 
+type UpdatePatch = Partial<Omit<DraftEvent, "id" | "brandId" | "createdAt">>;
+
 // ---------------------------------------------------------------------------
-// VERBATIM parent wiring from RsvpCreatorWizard.tsx:194-386. This is the exact
-// updateDraft (handleUpdate) + queueAutosave the real wizard threads into the
-// step's `updateDraft` prop and its onAutosaveDraft. Copied — not adapted — so
-// the repro exercises the production reconciliation, not a simplification.
+// Parent wiring mirroring RsvpCreatorWizard.tsx:367-397 AFTER the ORCH-1355 fix:
+// a STABLE handleUpdate (deps hold only stable refs — draftId + store setters)
+// that reads the FRESH post-write draft from the store for the autosave payload,
+// so two sequential writes in one handler COMPOUND instead of clobbering. This
+// is the exact updateDraft the real wizard threads into the step's `updateDraft`
+// prop + its onAutosaveDraft.
 // ---------------------------------------------------------------------------
 const WizardHarness: React.FC<{
   draftId: string;
   onAutosaveDraft: (draft: DraftEvent) => void;
-}> = ({ draftId, onAutosaveDraft }) => {
+  exposeUpdate?: (fn: (patch: UpdatePatch) => void) => void;
+}> = ({ draftId, onAutosaveDraft, exposeUpdate }) => {
   const liveDraft =
     useDraftEventStore((s) => s.drafts.find((d) => d.id === draftId)) ?? null;
   const updateDraft = useDraftEventStore((s) => s.updateDraft);
@@ -102,25 +113,35 @@ const WizardHarness: React.FC<{
     [onAutosaveDraft],
   );
 
-  // handleUpdate — RsvpCreatorWizard.tsx:367-386, deps INCLUDE liveDraft.
+  // handleUpdate — ORCH-1355 FIXED shape (RsvpCreatorWizard.tsx:367-397): STABLE
+  // deps + FRESH post-write read from the store. NO captured `liveDraft` in the
+  // autosave payload.
   const handleUpdate = React.useCallback(
-    (patch: Partial<Omit<DraftEvent, "id" | "brandId" | "createdAt">>): void => {
-      if (liveDraft === null) return;
+    (patch: UpdatePatch): void => {
       const nextRevision = clientRevisionRef.current + 1;
       clientRevisionRef.current = nextRevision;
       const revisionedPatch = { ...patch, clientRevision: nextRevision };
-      markDraftDirty(liveDraft.id, nextRevision);
-      updateDraft(liveDraft.id, revisionedPatch);
-      const nextDraft = {
-        ...liveDraft,
-        ...revisionedPatch,
+      markDraftDirty(draftId, nextRevision);
+      updateDraft(draftId, revisionedPatch);
+      const fresh =
+        useDraftEventStore.getState().getDraft(draftId) ?? latestDraftRef.current;
+      if (fresh === null) return;
+      const nextDraft: DraftEvent = {
+        ...fresh,
         updatedAt: new Date().toISOString(),
       };
       latestDraftRef.current = nextDraft;
       queueAutosave(nextDraft);
     },
-    [liveDraft, markDraftDirty, queueAutosave, updateDraft],
+    [draftId, markDraftDirty, queueAutosave, updateDraft],
   );
+
+  // Expose the current handleUpdate so the C-1 isolation test can fire two raw
+  // sequential dependent writes (the double-write shape the container fix must
+  // compound). handleUpdate is stable so this runs once.
+  React.useEffect(() => {
+    exposeUpdate?.(handleUpdate);
+  }, [exposeUpdate, handleUpdate]);
 
   if (liveDraft === null) return null;
   return (
@@ -142,7 +163,7 @@ const seedRsvpDraft = (): string => {
   return draft.id;
 };
 
-describe("ORCH-1355 — capacity toggle snap-back (autosave drops the OFF write)", () => {
+describe("ORCH-1355 — capacity toggle snap-back (autosave must NOT drop the OFF write)", () => {
   beforeEach(() => {
     useDraftEventStore.getState().reset();
   });
@@ -150,7 +171,7 @@ describe("ORCH-1355 — capacity toggle snap-back (autosave drops the OFF write)
     jest.useRealTimers();
   });
 
-  test("turning capacity OFF autosaves a STALE rsvpCapacity (the snap-back seed)", async () => {
+  test("turning capacity OFF autosaves rsvpCapacity=null + rsvpWaitlistEnabled=false (no stale drop)", async () => {
     jest.useFakeTimers(); // capture the 700ms autosave setTimeout from the start
     const id = seedRsvpDraft();
     const autosaved: DraftEvent[] = [];
@@ -174,12 +195,12 @@ describe("ORCH-1355 — capacity toggle snap-back (autosave drops the OFF write)
     });
     expect(getCap()).toBe(1);
 
-    // Tap again → OFF. This is the double-updateDraft path (cap:null, then
+    // Tap again → OFF. C-2 makes this ONE combined write (cap:null +
     // waitlist:false). The client store MUST end at cap=null.
     await act(async () => {
       fireEvent.press(screen.getByTestId("rsvp-capacity-toggle"));
     });
-    expect(getCap()).toBeNull(); // client store is momentarily correct
+    expect(getCap()).toBeNull();
 
     // Flush the 700ms autosave debounce.
     await act(async () => {
@@ -187,26 +208,23 @@ describe("ORCH-1355 — capacity toggle snap-back (autosave drops the OFF write)
     });
 
     // The autosave that actually fired is the payload the server persists +
-    // echoes. THE BUG: it carries the STALE capacity (1), not null — so the
-    // OFF write never reaches the server and the toggle snaps back ON.
+    // echoes. FIXED: it carries the OFF write, not the stale capacity.
     const lastAutosave = autosaved[autosaved.length - 1];
     expect(lastAutosave).toBeDefined();
 
-    // --- The assertion that documents the defect (current: BUG) ------------
-    // Fails-on-fix seed: after ORCH-1355 makes handleUpdate stable/ref-based,
-    // this payload will carry rsvpCapacity === null and this expectation flips.
-    expect(lastAutosave.rsvpCapacity).toBe(1); // STALE — bug fingerprint
-    expect(lastAutosave.rsvpCapacity).not.toBeNull();
+    // --- FIXED expectations (were `=== 1` bug fingerprint pre-ORCH-1355) ------
+    expect(lastAutosave.rsvpCapacity).toBeNull();
+    expect(lastAutosave.rsvpWaitlistEnabled).toBe(false);
 
-    // Divergence proof: client store says OFF, autosave payload says ON.
+    // Store and autosave payload AGREE (both OFF) — the divergence is gone.
     expect(getCap()).toBeNull();
   });
 
-  test("the stale autosave, once echoed by the server, SNAPS THE TOGGLE BACK ON", async () => {
-    // End-to-end closure: the stale payload reaches the server, is persisted +
-    // echoed, and the real upsertServerDraft/shouldApplyServerDraft path
-    // re-applies it → draft.rsvpCapacity flips back to a number → the toggle
-    // (capacityOn = rsvpCapacity !== null) re-selects.
+  test("the OFF autosave, once echoed by the server, does NOT snap the toggle back ON", async () => {
+    // End-to-end closure: the (now correct) payload reaches the server, is
+    // persisted + echoed, and the real upsertServerDraft/shouldApplyServerDraft
+    // path re-applies it → draft.rsvpCapacity stays null → the toggle
+    // (capacityOn = rsvpCapacity !== null) stays OFF.
     jest.useFakeTimers();
     const id = seedRsvpDraft();
     const autosaved: DraftEvent[] = [];
@@ -227,23 +245,101 @@ describe("ORCH-1355 — capacity toggle snap-back (autosave drops the OFF write)
       jest.advanceTimersByTime(800);
     });
 
-    const stalePayload = autosaved[autosaved.length - 1];
-    expect(stalePayload.rsvpCapacity).toBe(1); // stale payload leaves the client
+    const payload = autosaved[autosaved.length - 1];
+    expect(payload.rsvpCapacity).toBeNull(); // correct payload leaves the client
 
     // Client is OFF right now…
     expect(
       useDraftEventStore.getState().getDraft(id)?.rsvpCapacity,
     ).toBeNull();
 
-    // …server echoes the stale payload back (same clientRevision).
+    // …server echoes the payload back (same clientRevision).
     await act(async () => {
-      useDraftEventStore.getState().upsertServerDraft(stalePayload);
+      useDraftEventStore.getState().upsertServerDraft(payload);
     });
 
-    // SNAP-BACK: capacity is a number again → the toggle re-selects.
+    // NO SNAP-BACK: capacity is still null → the toggle stays OFF.
     const echoed = useDraftEventStore.getState().getDraft(id);
-    expect(echoed?.rsvpCapacity).toBe(1);
-    expect(echoed?.rsvpCapacity !== null).toBe(true); // capacityOn === true
+    expect(echoed?.rsvpCapacity).toBeNull();
+    expect(echoed?.rsvpCapacity !== null).toBe(false); // capacityOn === false
+  });
+
+  test("C-1 isolation — handleUpdate COMPOUNDS two sequential dependent writes into the autosave payload (fresh-read, not a stale closure)", async () => {
+    // This bypasses RsvpStep5Setup and drives the container's handleUpdate raw,
+    // firing the exact double-write a multi-field handler issues. It isolates
+    // C-1: reverting the fresh-read lines to `{ ...liveDraft, ...patch }` drops
+    // the first write → this FAILS (the handleUpdate fails-on-revert vector).
+    jest.useFakeTimers();
+    const id = seedRsvpDraft();
+    // Precondition: capacity is a real number (mirrors 'capacity ON').
+    await act(async () => {
+      useDraftEventStore.getState().updateDraft(id, { rsvpCapacity: 5 });
+    });
+
+    const autosaved: DraftEvent[] = [];
+    // No-op default so `update` is always callable; the harness effect replaces
+    // it with the real handleUpdate on mount. If exposure ever failed, no write
+    // fires → `last` is undefined → the assertions below fail loudly.
+    let update: (patch: UpdatePatch) => void = () => {};
+    await render(
+      <WizardHarness
+        draftId={id}
+        onAutosaveDraft={(d) => autosaved.push(d)}
+        exposeUpdate={(fn) => {
+          update = fn;
+        }}
+      />,
+    );
+
+    // Two sequential DEPENDENT writes in one synchronous batch. The SECOND patch
+    // does NOT re-include rsvpCapacity; a stale-closure handleUpdate rebuilds the
+    // payload from the pre-write draft (cap=5) and DROPS the null. The fresh-read
+    // handleUpdate reads the post-write store each call, so they compound.
+    await act(async () => {
+      update({ rsvpCapacity: null });
+      update({ rsvpWaitlistEnabled: false });
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(800);
+    });
+
+    const last = autosaved[autosaved.length - 1];
+    expect(last).toBeDefined();
+    // FIXED expectation — the OFF write is NOT dropped.
+    expect(last.rsvpCapacity).toBeNull();
+    expect(last.rsvpWaitlistEnabled).toBe(false);
+  });
+
+  test("picking Private persists visibility=private AND rsvpDiscoverable=false in one write (C-3)", async () => {
+    jest.useFakeTimers();
+    const id = seedRsvpDraft();
+    // Precondition: discovery ON + visibility public, so the forced OFF is real.
+    await act(async () => {
+      useDraftEventStore
+        .getState()
+        .updateDraft(id, { visibility: "public", rsvpDiscoverable: true });
+    });
+    const autosaved: DraftEvent[] = [];
+    const screen = await render(
+      <WizardHarness draftId={id} onAutosaveDraft={(d) => autosaved.push(d)} />,
+    );
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId("rsvp-visibility-private"));
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(800);
+    });
+
+    const last = autosaved[autosaved.length - 1];
+    expect(last).toBeDefined();
+    // Autosave payload carries BOTH (the forced discover-OFF is not dropped).
+    expect(last.visibility).toBe("private");
+    expect(last.rsvpDiscoverable).toBe(false);
+    // Store agrees.
+    const d = useDraftEventStore.getState().getDraft(id);
+    expect(d?.visibility).toBe("private");
+    expect(d?.rsvpDiscoverable).toBe(false);
   });
 
   test("CONTROL — a single-write toggle (plus-ones) autosaves the CORRECT value", async () => {
@@ -270,5 +366,36 @@ describe("ORCH-1355 — capacity toggle snap-back (autosave drops the OFF write)
     const last = autosaved[autosaved.length - 1];
     expect(last.rsvpAllowPlusOnes).toBe(true); // single-write path is correct
     expect(last.rsvpPlusOnesMax).toBe(1);
+  });
+
+  test("clientRevision increases strictly monotonically across writes (autosave payloads)", async () => {
+    // Guards SC-5: the fresh-read handleUpdate keeps clientRevision monotonic
+    // (+1 per write) — the stability fix does not break the revision counter.
+    jest.useFakeTimers();
+    const id = seedRsvpDraft();
+    const autosaved: DraftEvent[] = [];
+    const screen = await render(
+      <WizardHarness draftId={id} onAutosaveDraft={(d) => autosaved.push(d)} />,
+    );
+
+    const revs: number[] = [];
+    for (const testId of [
+      "rsvp-plusones-toggle",
+      "rsvp-contribution-toggle",
+      "rsvp-private-guestlist",
+      "rsvp-hide-count",
+    ]) {
+      await act(async () => {
+        fireEvent.press(screen.getByTestId(testId));
+      });
+      await act(async () => {
+        jest.advanceTimersByTime(800);
+      });
+      revs.push(autosaved[autosaved.length - 1].clientRevision ?? 0);
+    }
+
+    for (let i = 1; i < revs.length; i++) {
+      expect(revs[i]).toBeGreaterThan(revs[i - 1]);
+    }
   });
 });

@@ -4344,3 +4344,29 @@ jobs:
         run: node .github/scripts/strict-grep/orch-1336-notifications-top-align.mjs --self-test
       - name: Run ORCH-1336 notifications-top-align gate
         run: node .github/scripts/strict-grep/orch-1336-notifications-top-align.mjs
+
+  orch-1355-wizard-update-callback-stable:
+    name: "ORCH-1355: RsvpCreatorWizard handleUpdate is STABLE (no liveDraft in deps) and builds the autosave payload from fresh store state (getState().getDraft), never a captured liveDraft — sequential writes compound, no dropped OFF write (I-PROPOSED-1355-WIZARD-UPDATE-CALLBACK-STABLE)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1355 wizard-update-callback-stable gate
+        run: node .github/scripts/strict-grep/orch-1355-wizard-update-callback-stable.mjs --self-test
+      - name: Run ORCH-1355 wizard-update-callback-stable gate
+        run: node .github/scripts/strict-grep/orch-1355-wizard-update-callback-stable.mjs
+
+  orch-1355-toggle-single-patch:
+    name: "ORCH-1355: RsvpStep5Setup capacity toggle + visibility pick each persist via ONE combined updateDraft patch (no sequential dependent write the wizard autosave can drop) (I-PROPOSED-1355-TOGGLE-SINGLE-PATCH)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1355 toggle-single-patch gate
+        run: node .github/scripts/strict-grep/orch-1355-toggle-single-patch.mjs --self-test
+      - name: Run ORCH-1355 toggle-single-patch gate
+        run: node .github/scripts/strict-grep/orch-1355-toggle-single-patch.mjs
