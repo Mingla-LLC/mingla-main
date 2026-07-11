@@ -97,6 +97,11 @@ jobs:
             # ORCH-1359 — SQL contract: identity-gated location on peer_list_event_guests
             # (named rows only, guard/whitelist preserved).
             supabase/migrations/__tests__/orch_1359_peer_guest_location.test.ts
+            # ORCH-1359 — TESTER adversarial (mingla-tester): location is WELDED to
+            # the identity gate (its CASE predicate === display_name's; isAnonymous
+            # derives from the same predicate) so a private/blocked row can never
+            # leak a city. Proven live on prod gqnoajqerqhnvulmnyvv 2026-07-11.
+            supabase/migrations/__tests__/orch_1359_location_identity_weld.adversarial.test.ts
             # ORCH-1341 — consumer guest-list sheet (pinned header, no raw RN Modal) +
             # tester adversarial.
             app-mobile/src/components/__tests__/orch_1341_guest_list_sheet.test.ts
