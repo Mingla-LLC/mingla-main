@@ -172,10 +172,17 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
     draft.rsvpContributionSuggestedCents !== null &&
     draft.rsvpContributionMinCents > draft.rsvpContributionSuggestedCents;
 
+  // ORCH-1355 C-2 — ONE combined patch. Turning capacity OFF also clears the
+  // waitlist (no "full" → no waitlist) in the SAME write. A prior two-write
+  // version dropped the second field from the autosave payload via the wizard's
+  // stale closure (see RsvpCreatorWizard handleUpdate). One patch per user
+  // action — see I-PROPOSED-1355-TOGGLE-SINGLE-PATCH.
   const toggleCapacity = useCallback(() => {
-    updateDraft({ rsvpCapacity: capacityOn ? null : Math.max(draft.rsvpCapacity ?? 1, 1) });
-    // Turning capacity OFF also disables waitlist (no "full" → no waitlist).
-    if (capacityOn) updateDraft({ rsvpWaitlistEnabled: false });
+    updateDraft(
+      capacityOn
+        ? { rsvpCapacity: null, rsvpWaitlistEnabled: false }
+        : { rsvpCapacity: Math.max(draft.rsvpCapacity ?? 1, 1) },
+    );
   }, [capacityOn, draft.rsvpCapacity, updateDraft]);
 
   const togglePlusOnes = useCallback(() => {
@@ -367,11 +374,18 @@ export const RsvpStep5Setup: React.FC<StepBodyProps> = ({
             return (
               <Pressable
                 key={opt.id}
-                onPress={() => {
-                  updateDraft({ visibility: opt.id });
-                  // A private RSVP can't be on a public feed — force discover OFF.
-                  if (opt.id === "private") updateDraft({ rsvpDiscoverable: false });
-                }}
+                onPress={() =>
+                  // ORCH-1355 C-3 — ONE combined patch. A private RSVP can't be
+                  // on a public feed, so "private" forces rsvpDiscoverable OFF in
+                  // the SAME write (a prior two-write version dropped the forced
+                  // discover-OFF from autosave via the wizard's stale closure).
+                  // One patch per user action — see I-PROPOSED-1355-TOGGLE-SINGLE-PATCH.
+                  updateDraft(
+                    opt.id === "private"
+                      ? { visibility: opt.id, rsvpDiscoverable: false }
+                      : { visibility: opt.id },
+                  )
+                }
                 accessibilityRole="button"
                 accessibilityState={{ selected: active }}
                 accessibilityLabel={opt.label}
