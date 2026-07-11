@@ -33,6 +33,13 @@ import {
   verifyPaystackSignature,
 } from "../_shared/paystack.ts";
 import { handlePaystackChargeSuccess } from "../_shared/paystackWebhookRouter.ts";
+// ORCH-1331 — partner Paystack payout rail: fail-soft split fan-out on
+// charge.success + transfer.*/refund.processed lifecycle routing.
+import {
+  handlePaystackPartnerSplit,
+  handlePaystackRefundProcessed,
+  handlePaystackTransferEvent,
+} from "../_shared/paystackPartnerSplits.ts";
 import { writeAudit } from "../_shared/audit.ts";
 import { dispatchTicketConfirmation } from "../_shared/ticketCheckout.ts";
 // META-ORCH-1161 §7.1 — buyer purchase-confirmation push (the Paystack-equivalent
@@ -163,6 +170,10 @@ serve(async (req) => {
   // ---- Route on top-level event ----
   let processingError: string | null = null;
   let finalizedOrderId: string | null = null;
+  // ORCH-1331 — captured for the post-confirmation partner-split fan-out.
+  let splitFanOut:
+    | { reference: string; orderId: string; paidAtIso: string | null }
+    | null = null;
   try {
     if (eventName === "charge.success") {
       const result = await handlePaystackChargeSuccess(
@@ -172,7 +183,39 @@ serve(async (req) => {
       );
       if (result.status === "finalized" || result.status === "replayed") {
         finalizedOrderId = result.orderId ?? null;
+        if (finalizedOrderId) {
+          splitFanOut = {
+            reference,
+            orderId: finalizedOrderId,
+            paidAtIso: result.paidAtIso ?? null,
+          };
+        }
       }
+    } else if (
+      eventName === "transfer.success" || eventName === "transfer.failed" ||
+      eventName === "transfer.reversed"
+    ) {
+      // ORCH-1331 — partner-split transfer lifecycle. These events have no
+      // ticketing consequence, so the inbox retry semantics (processingError)
+      // are safe and desirable here.
+      await handlePaystackTransferEvent(supabase, eventName, data);
+    } else if (eventName === "refund.processed") {
+      // ORCH-1331 — dashboard-issued NGN refunds: reverse the pending split /
+      // stamp reversal_owed_at on an already-paid one.
+      await handlePaystackRefundProcessed(supabase, data);
+    } else if (
+      eventName === "refund.failed" || eventName === "refund.pending" ||
+      eventName === "refund.processing"
+    ) {
+      // ORCH-1331 — audited no-op (only refund.processed moves the ledger).
+      await writeAudit(supabase, {
+        user_id: null,
+        brand_id: null,
+        action: "paystack.webhook_unhandled_refund_state",
+        target_type: "paystack_webhook_event",
+        target_id: idempotencyKey,
+        after: { event: eventName, reference },
+      });
     } else {
       // Unhandled event — audit + no-op (Phase 1 only routes charge.success).
       await writeAudit(supabase, {
@@ -228,6 +271,22 @@ serve(async (req) => {
       console.warn(
         "[paystack-webhook] purchase-confirmation push failed (non-fatal):",
         pushErr instanceof Error ? pushErr.message : String(pushErr),
+      );
+    }
+  }
+
+  // ORCH-1331 — partner-split fan-out (AFTER finalize + confirmation dispatch).
+  // I-PROPOSED-1331-PARTNER-SPLIT-FAIL-SOFT — a split failure must NEVER break
+  // ticketing (constitutional): this dedicated try/catch ONLY logs. It MUST NOT
+  // set processingError, MUST NOT change the ack status, and runs strictly
+  // after dispatchTicketConfirmation.
+  if (splitFanOut) {
+    try {
+      await handlePaystackPartnerSplit(supabase, splitFanOut);
+    } catch (splitErr) {
+      console.error(
+        "[paystack-webhook] partner split fan-out failed (non-fatal)",
+        splitErr instanceof Error ? splitErr.message : String(splitErr),
       );
     }
   }

@@ -37,6 +37,9 @@ export interface PaystackChargeResult {
     | "currency_mismatch"
     | "verify_not_success";
   orderId?: string;
+  /** ORCH-1331 — verified txn paid_at (ISO), plumbed to the partner-split
+   * fan-out so the partner relationship pins at sale time. Additive/optional. */
+  paidAtIso?: string;
 }
 
 /**
@@ -157,10 +160,14 @@ export async function handlePaystackChargeSuccess(
     return { status: "orphan" };
   }
 
+  // ORCH-1331 — the verified txn's paid_at pins the partner relationship for
+  // the split fan-out. Additive; absent on malformed payloads.
+  const paidAtIso = typeof txn?.paid_at === "string" ? txn.paid_at : undefined;
+
   // Idempotent fast-path: already finalized → return the order (mirrors the
   // finalize RPC's order_id early-return; cheap short-circuit).
   if (session.order_id) {
-    return { status: "replayed", orderId: String(session.order_id) };
+    return { status: "replayed", orderId: String(session.order_id), paidAtIso };
   }
 
   // 4. Amount + currency must match (§1.2 step 2 — "if the amount doesn't
@@ -223,7 +230,7 @@ export async function handlePaystackChargeSuccess(
   }
 
   const orderId = String((finalized as Record<string, unknown>).orderId ?? "");
-  return { status: "finalized", orderId };
+  return { status: "finalized", orderId, paidAtIso };
 }
 
 async function markSessionFailed(
