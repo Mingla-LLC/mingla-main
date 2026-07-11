@@ -87,6 +87,19 @@ export default function EventEditRoute(): React.ReactElement {
     typeof idParam === "string" && idParam.startsWith("d_");
   const { isAuthReady } = useAuth();
 
+  // ORCH-1355 (symptom 1) — route-state activeDraftId. On the d_*→server draft
+  // promotion (first dirty edit) we set this to the server id so the wizard
+  // resolves the SERVER draft immediately, DECOUPLED from the URL [id], and we
+  // reconcile the URL in place via router.setParams (NOT router.replace). A
+  // screen-replacing router.replace to the new [id] remounts the wizard and
+  // drops the keyboard mid-type — the exact symptom-1 bug (create-flow-wide;
+  // byte-identical to the RSVP route). See I-PROPOSED-1355-DRAFT-PROMOTION-NO-
+  // REMOUNT. Resets to null on unmount, so deep-link cold-open is unaffected.
+  const [promotedServerId, setPromotedServerId] = React.useState<string | null>(
+    null,
+  );
+  const effectiveDraftId = promotedServerId ?? idParam;
+
   const initialStep = useMemo<number | undefined>(() => {
     if (stepParam === undefined || stepParam.length === 0) return undefined;
     const n = parseInt(stepParam, 10);
@@ -99,9 +112,14 @@ export default function EventEditRoute(): React.ReactElement {
     if (typeof idParam !== "string" || idParam.length === 0) return null;
     return s.events.find((e) => e.id === idParam) ?? null;
   });
-  // Create/draft path: resolve DraftEvent.
+  // Create/draft path: resolve DraftEvent. ORCH-1355 — resolve against the
+  // route-state activeDraftId (effectiveDraftId), which points at the server id
+  // the instant the draft is promoted, so the wizard never depends on the URL
+  // [id] catching up (no null-draft flash, no remount) during promotion.
   const draft = useDraftById(
-    !isEditPublished && typeof idParam === "string" ? idParam : null,
+    !isEditPublished && typeof effectiveDraftId === "string"
+      ? effectiveDraftId
+      : null,
   );
   const serverDraftQuery = useServerDraftById(
     !isEditPublished && typeof idParam === "string" && !isLegacyLocalDraftId
@@ -451,9 +469,18 @@ export default function EventEditRoute(): React.ReactElement {
             eventDraftKeys.detail(mergedServerDraft.id),
             mergedServerDraft,
           );
-          router.replace(
-            `/event/${mergedServerDraft.id}/edit?step=${initialStep ?? 0}` as never,
-          );
+          // ORCH-1355 (symptom 1) — resolve the wizard against the server id via
+          // route state, then reconcile the URL IN PLACE with setParams. A
+          // router.replace here would change the [id] segment → expo-router
+          // replaces the screen → the name TextInput remounts → the keyboard
+          // drops mid-type. setParams updates the focused route's params without
+          // a screen replace, so the input keeps focus AND the URL/route params
+          // land on the server id immediately (resume/kill lands on the real id).
+          setPromotedServerId(mergedServerDraft.id);
+          router.setParams({
+            id: mergedServerDraft.id,
+            step: String(initialStep ?? 0),
+          });
         })
         .catch((error) => {
           migratingLegacyIdRef.current = null;

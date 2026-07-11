@@ -4370,3 +4370,16 @@ jobs:
         run: node .github/scripts/strict-grep/orch-1355-toggle-single-patch.mjs --self-test
       - name: Run ORCH-1355 toggle-single-patch gate
         run: node .github/scripts/strict-grep/orch-1355-toggle-single-patch.mjs
+
+  orch-1355-draft-promotion-no-remount:
+    name: "ORCH-1355: both create routes (app/rsvp/[id]/edit.tsx + app/event/[id]/edit.tsx) reconcile the d_*→server draft promotion IN PLACE (route-state activeDraftId + router.setParams) — no eager router.replace to the new [id] that remounts the wizard and drops the keyboard mid-type (I-PROPOSED-1355-DRAFT-PROMOTION-NO-REMOUNT)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1355 draft-promotion-no-remount gate
+        run: node .github/scripts/strict-grep/orch-1355-draft-promotion-no-remount.mjs --self-test
+      - name: Run ORCH-1355 draft-promotion-no-remount gate
+        run: node .github/scripts/strict-grep/orch-1355-draft-promotion-no-remount.mjs

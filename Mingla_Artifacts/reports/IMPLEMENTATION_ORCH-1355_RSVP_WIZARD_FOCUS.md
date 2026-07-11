@@ -133,5 +133,69 @@ Runtime proof is the RTL render suite (deterministic, mounts the real `RsvpStep5
 ## 11. Discoveries for Orchestrator
 
 - **D-1 / OQ-2 (portability of the C-1 fix to `EventCreatorWizard`):** `EventCreatorWizard.tsx` carries the byte-identical unstable `handleUpdate` (captured `liveDraft` + `liveDraft` in deps). The C-1 fix pattern here — `const draftId = initialDraft.id` + `getState().getDraft(draftId)` fresh-read + drop `liveDraft` from deps — is **directly portable** to it (same store, same `getDraft`, same `latestDraftRef`/`clientRevisionRef` shape). It was NOT applied here (out of scope per SPEC §2 / DO-NOT-TOUCH). Recommend a follow-on ORCH to apply the identical fix to the event wizard (any event-wizard step issuing >1 `updateDraft` per action has the same latent stale-autosave drop). The `orch-1355-wizard-update-callback-stable.mjs` gate is trivially extendable to also scan `EventCreatorWizard.tsx` when that ORCH lands.
-- **D-2 (symptom 1):** unconfirmed at root cause; needs the sim/device drive (candidates: `keyboardDismissMode="on-drag"` × KAS auto-scroll; per-keystroke re-render churn). The C-1 stability fix reduces per-keystroke churn (handleUpdate is now stable), which MAY incidentally help symptom 1 — but this is unproven and must be confirmed on device, not assumed.
+- **D-2 (symptom 1):** unconfirmed at root cause; needs the sim/device drive (candidates: `keyboardDismissMode="on-drag"` × KAS auto-scroll; per-keystroke re-render churn). The C-1 stability fix reduces per-keystroke churn (handleUpdate is now stable), which MAY incidentally help symptom 1 — but this is unproven and must be confirmed on device, not assumed. **[SUPERSEDED by §12 below — symptom 1 is now JS-level PROVEN + FIXED.]**
 - **CI note:** the ORCH-1355 render suite (like the orch1335/orch1143/orch1147r2/orch1152 render suites) is a worktree-local runtime guard resolved via the gitignored `.orch1118-testdeps` overlay; CI runs jest only for explicitly-named per-ORCH paths and never the default full suite, so it does not execute these render tests. The CI-enforced ORCH-1355 guards are the two registered strict-grep gates.
+
+---
+
+## 12. SYMPTOM 1 (name-field keyboard drop) — PROVE + IMPLEMENT (2026-07-11)
+
+**Status:** implemented and verified (JS-level runtime proof + fails-on-revert both routes; strict-grep gate self-tested + live-green; product-file tsc clean). Device eyeball (keyboard visibly stays up on iOS; whether event also dropped pre-fix) is Seth's TestFlight verification — this dispatch delivers the JS-level remount proof + the fix.
+
+### 12.1 What changed for the user
+On the business RSVP (and Event) create wizard, typing the FIRST character of the event name no longer drops the keyboard. Previously the first keystroke silently promoted the client draft to a server draft and navigated the URL to the new id — which replaced the screen and remounted the name input, dismissing the keyboard ~700 ms in. Now the promotion reconciles the URL IN PLACE (no screen replace), so the field keeps focus.
+
+### 12.2 STEP 1 — the remount, PROVEN at the JS level (what the investigation was blocked on)
+Router-mock integration tests mount the REAL routes and model expo-router faithfully: `router.replace` to a new `[id]` → new route key → screen REMOUNT; `router.setParams` → in-place `SET_PARAMS`, same key → NO remount. A mount-counting probe occupies the wizard/name-input slot; the test seeds a real `draftEventStore` client draft, fires the real first-edit autosave → real `handleAutosaveDraft` promotion.
+
+- **Did I need `npm ci`?** NO. The investigation's blocker was the REAL `expo-router/testing-library` harness under the worktree's symlinked `node_modules` + jest-expo overlay dup. MOCKING expo-router (not `renderRouter`) sidesteps it entirely; the existing `.orch1118-testdeps` RTL overlay renders the real routes fine.
+- **PRE-FIX proof (both routes, captured on `325ffb3e9`):**
+  - RSVP: `wizardMounts=2 router.replace calls=["/rsvp/srv_ORCH1355/edit?step=0"] router.setParams calls=[]` — remount 1→2 + eager `router.replace`.
+  - EVENT: `wizardMounts=2 router.replace calls=["/event/srv_ORCH1355/edit?step=0"] router.setParams calls=[]` — identical (create-flow-wide, confirming investigation §11.3).
+- **Note:** the two routes are in SEPARATE test files (`RsvpPromotionRemount.*` in `src/components/rsvp/__tests__/`, `EventPromotionRemount.*` in `src/components/event/__tests__/`) because this RTL build does not tear a react-test-renderer tree down between two mounts in one file (a second mount's effects never fire). Jest isolates module registry + globals per file, so one mount per file is reliable — proven by both passing.
+
+### 12.3 STEP 2 — the fix (both routes; `app/rsvp/[id]/edit.tsx` + `app/event/[id]/edit.tsx`)
+Chosen approach: **route-state `activeDraftId` decoupling + in-place `router.setParams`** (SPEC §12.2's "resolve from activeDraftId, reconcile the URL", realized with `setParams` — an in-place param update — instead of a deferred `router.replace`, because `setParams` is a React-Navigation `SET_PARAMS` that never replaces the screen, so it both prevents the remount AND reconciles the URL immediately, which makes resume/kill trivially correct). Per route:
+1. `const [promotedServerId, setPromotedServerId] = React.useState<string | null>(null);` + `const effectiveDraftId = promotedServerId ?? idParam;`
+2. the rendered draft resolves from `useDraftById(effectiveDraftId)` (decoupled from the URL `[id]`), so promotion never depends on the URL catching up (no null-draft flash → no remount).
+3. in `handleAutosaveDraft`'s promotion `.then`, `router.replace('/…/<serverId>/edit?step=…')` → `setPromotedServerId(mergedServerDraft.id)` + `router.setParams({ id, step })`. `replaceDraft` + `queryClient.setQueryData` + `createServerDraft` are UNCHANGED.
+
+Why not the smaller variants: (a) a stable `getId`/screen key is expo-router-internal + version-fragile; (b) bare `setParams` alone still risked a 1-frame null-draft flash on the D-1-less event route — the `effectiveDraftId` decoupling closes that on BOTH routes without porting D-1. The RSVP ORCH-1150 D-1 retention is KEPT intact (now belt-and-suspenders).
+
+Constraints honored: deep-link cold-open (`/…/<serverId>/edit`) unaffected (promotedServerId starts null; effectiveDraftId=idParam=serverId); autosave timing / `createServerDraft` unchanged; resume/kill — the URL/route params land on the server id immediately via `setParams`, and `createServerDraft` still persists `legacyLocalDraftId` so the ORCH-0893 recovery belt (untouched) catches a killed `d_*` URL.
+
+### 12.4 STEP 3 — proof it's fixed + fails-on-revert
+- **POST-FIX (both routes):** `wizardMounts=1 router.replace calls=[] router.setParams calls=[{"id":"srv_ORCH1355","step":"0"}]` — NO remount, NO `router.replace`, URL reconciled in place. Store swap verified (`getDraft(SERVER_ID)` present, `getDraft(d_*)` null).
+- **Fails-on-revert (true line deletion):** restoring the eager `router.replace` in `app/rsvp/[id]/edit.tsx`'s `handleAutosaveDraft` → RSVP test RED: `wizardMounts=2 router.replace calls=["/rsvp/srv_ORCH1355/edit?step=0"]` (`replacedToServer` expected false, received true). Restored → PASS. `fails-on-revert verified at 325ffb3e9`.
+- **Strict-grep gate** `orch-1355-draft-promotion-no-remount.mjs` (scans BOTH routes): bans `router.replace(` inside `handleAutosaveDraft`; requires `router.setParams(` + `setPromotedServerId(` there + `useDraftById(effectiveDraftId)`. `--self-test` PASS 4/4 (good shape passes; eager-replace, missing-setParams, URL-coupled-draft each fail); live scan of both routes PASS. Registered in `.github/workflows/strict-grep-mingla-business.yml` (job `orch-1355-draft-promotion-no-remount`) + README.
+
+### 12.5 New invariant
+`I-PROPOSED-1355-DRAFT-PROMOTION-NO-REMOUNT` (DRAFT — orchestrator flips ACTIVE at CLOSE), registered in `Mingla_Artifacts/INVARIANT_REGISTRY.md`.
+
+### 12.6 Files changed (symptom 1)
+| File | Δ | Change |
+|------|---|--------|
+| `mingla-business/app/rsvp/[id]/edit.tsx` | ~+30/−5 | route-state `promotedServerId`/`effectiveDraftId`; `useDraftById(effectiveDraftId)`; promotion `router.replace`→`setPromotedServerId`+`router.setParams` |
+| `mingla-business/app/event/[id]/edit.tsx` | ~+30/−5 | same (create-flow-wide) |
+| `mingla-business/src/components/rsvp/__tests__/RsvpPromotionRemount.orch1355.router.test.tsx` | NEW ~290 | RSVP router-mock remount proof |
+| `mingla-business/src/components/event/__tests__/EventPromotionRemount.orch1355.router.test.tsx` | NEW ~270 | EVENT router-mock remount proof |
+| `mingla-business/jest.orch1355.promotion.cjs` | NEW 55 | worktree-local config for the two proofs |
+| `.github/scripts/strict-grep/orch-1355-draft-promotion-no-remount.mjs` | NEW ~250 | the gate |
+| `.github/workflows/strict-grep-mingla-business.yml` | +14 | register the gate |
+| `.github/scripts/strict-grep/README.md` | +1 | registry row |
+| `Mingla_Artifacts/INVARIANT_REGISTRY.md` | +~12 | DRAFT section + invariant |
+
+DO-NOT-TOUCH honored: the symptom-2 fix files (`RsvpStep5Setup.tsx` + `RsvpCreatorWizard.tsx` handleUpdate, commit `5d7c8320b`) NOT touched.
+
+### 12.7 Gate/suite results (symptom 1)
+- `jest.orch1355.promotion.cjs` → **2 suites, 2 tests PASS** (RSVP + EVENT, no remount + no eager replace).
+- `jest.orch1355.render.cjs` (symptom-2, unchanged) → **2 suites, 7 tests PASS** (confirms symptom-2 untouched).
+- All THREE `orch-1355-*` strict-grep gates → self-test + live PASS.
+- `tsc --noEmit` → the two route files have ZERO errors; the two new test files carry only the shared `TS2307 @testing-library/react-native` overlay-baseline noise (identical to all 17 render tests; not a regression).
+
+### 12.8 Discoveries for Orchestrator (symptom 1)
+- **D-6 (pre-existing failing tests — NOT caused by this change):** three source-grep suites are RED on `main` independent of ORCH-1355 (verified base==fix, 5 failed/16 passed identical on `serverDraftLifecycleGuards.test.ts` with base and fixed route files):
+  1. `src/utils/__tests__/serverDraftLifecycleGuards.test.ts` — 5 stale assertions (expects `router.replace("/(tabs)/events"` and cover-media `disableLocalSaveReason …` strings a prior route refactor changed — the bounce now uses `safeEventsExitRoute()` → `/(tabs)/hub/events`).
+  2. `src/utils/__tests__/orch_0893_cycle2_legacy_loop_skips_untouched.test.ts` — 1 stale assertion (expects `router.replace("/(tabs)/home"`).
+  3. `src/utils/__tests__/orch_0893_cycle2_adversarial_safety_belt.test.ts` — TS2322 compile failure in its OWN fixture (`isRsvp: boolean | undefined` not assignable to `boolean` — a `DraftEvent` shape drift). Recommend a follow-on ORCH to refresh these stale route-source guards (append-only or `[TEST-MOD-APPROVED]`).
+- **D-7 (device gate):** whether the EVENT create flow ALSO dropped the keyboard pre-fix (investigation §11.3 could not resolve the "event fine / RSVP broken" asymmetry from code) is a device question. Source + JS proof show both routes had the identical remount; the fix covers both. Seth's TestFlight drive confirms the visible keyboard behavior.
