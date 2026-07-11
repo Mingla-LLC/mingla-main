@@ -106,12 +106,33 @@ describe("ORCH-1331 · T-16 — picker extraOptions + NG fork (design §1.4)", (
     );
   });
 
-  it("the earnings scroll body is KAV-hosted (react-native-keyboard-controller) with persistTaps", () => {
+  it("the earnings scroll body is KAV-hosted via the ORCH-1296 lazy loader with persistTaps", () => {
+    // [TEST-MOD-APPROVED ORCH-1331] CI conformance rework: the ORCH-1296 gate
+    // forbids top-level static react-native-keyboard-controller imports in NEW
+    // files (OTA splash brick — COMMS-0051/0052). The KAV now loads lazily via
+    // useLazyKeyboardAvoidingView; this assertion pins the NEW contract.
     expect(earnings).toMatch(
-      /import \{ KeyboardAvoidingView \} from "react-native-keyboard-controller"/,
+      /import \{ useLazyKeyboardAvoidingView \} from "[^"]*lazyKeyboardAvoidingView"/,
+    );
+    expect(earnings).not.toMatch(
+      /import[^;]*from\s+"react-native-keyboard-controller"/,
     );
     expect(earnings).toContain('keyboardShouldPersistTaps="handled"');
     expect(earnings).toContain('keyboardDismissMode="on-drag"');
+  });
+
+  it("the lazy KAV loader uses the guarded await-import pattern with the RN fallback (ORCH-1296)", () => {
+    const lazy = read("src/components/partner/lazyKeyboardAvoidingView.tsx");
+    expect(lazy).toContain('await import("react-native-keyboard-controller")');
+    expect(lazy).toMatch(/KeyboardAvoidingView as RNKeyboardAvoidingView/);
+    expect(lazy).toContain("LibKav ?? RNKeyboardAvoidingView");
+    // The form consumes the same loader (no static import there either).
+    expect(form).toMatch(
+      /import \{ useLazyKeyboardAvoidingView \} from "\.\/lazyKeyboardAvoidingView"/,
+    );
+    expect(form).not.toMatch(
+      /import[^;]*from\s+"react-native-keyboard-controller"/,
+    );
   });
 });
 

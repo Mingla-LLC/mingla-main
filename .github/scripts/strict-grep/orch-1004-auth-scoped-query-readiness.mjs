@@ -118,6 +118,11 @@ const AUTH_SCOPED_HOOK_FILES = [
   "useVenueReservations.ts",
   "useVenueTables.ts",
   "useVenueWaitlist.ts",
+  // ── ORCH-1331 [partner Paystack payout rail] — reads the caller's OWN
+  //    partner_paystack_accounts (auth.uid()-scoped via the partner-gated
+  //    edge fn); the status hook folds isAuthReady into enabled
+  //    (usePartnerStripe mirror).
+  "usePartnerPaystack.ts",
 ];
 
 // ── Public / dual-use hooks. These MUST NOT be gated — buyer-web anon reads

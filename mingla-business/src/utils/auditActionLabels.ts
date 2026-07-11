@@ -133,6 +133,13 @@ export const KNOWN_STATIC_SLUGS: readonly string[] = [
   "paystack.subaccount_disconnected",
   "paystack.provider_selected",
   "paystack.provider_cleared",
+  // ORCH-1331 [partner Paystack payout rail] — partner recipient lifecycle
+  // (partner-paystack-onboard) + split reversal/refund-state audits
+  // (_shared/paystackPartnerSplits + paystack-webhook routing).
+  "partner_paystack.recipient_created",
+  "partner_paystack.recipient_detached",
+  "paystack.partner_split_reversal_owed",
+  "paystack.webhook_unhandled_refund_state",
 ];
 
 const humanizeSlug = (slug: string): string => {
@@ -235,6 +242,36 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
       return {
         title: "Nigeria payouts cancelled",
         detail: "The brand backed out of Nigeria payouts before connecting a bank; reverted to the default payout rail.",
+        category: "ops",
+        iconHint: "flag",
+      };
+    // ORCH-1331 [partner Paystack payout rail] — partner recipient lifecycle
+    // + split reversal/refund-state audits.
+    case "partner_paystack.recipient_created":
+      return {
+        title: "Partner payout bank connected (Nigeria)",
+        detail: "A partner connected their Nigerian bank account; partner splits can now be paid out via Paystack.",
+        category: "ops",
+        iconHint: "shield",
+      };
+    case "partner_paystack.recipient_detached":
+      return {
+        title: "Partner payout bank disconnected (Nigeria)",
+        detail: "A partner unlinked their Nigerian bank; their splits pause until a bank is reconnected.",
+        category: "ops",
+        iconHint: "flag",
+      };
+    case "paystack.partner_split_reversal_owed":
+      return {
+        title: "Partner split owed back after refund",
+        detail: "An NGN refund landed after the partner share was already paid out; the amount is owed back to Mingla and is recovered manually.",
+        category: "payouts_refunds",
+        iconHint: "pound",
+      };
+    case "paystack.webhook_unhandled_refund_state":
+      return {
+        title: "Paystack refund not final yet",
+        detail: "A refund webhook arrived in a non-final state (pending, processing, or failed); only refund.processed moves the ledger.",
         category: "ops",
         iconHint: "flag",
       };

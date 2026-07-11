@@ -30,9 +30,11 @@ import {
   Text,
   View,
 } from "react-native";
-// ORCH-0892: KeyboardAvoidingView must come from react-native-keyboard-controller
-// (frame-perfect native animation; drop-in for the RN one).
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+// ORCH-0892 KAV semantics via the ORCH-1296-conformant LAZY loader:
+// react-native-keyboard-controller is boot-fragile (OTA splash brick —
+// COMMS-0051/0052), so it is resolved with a guarded await import() after
+// mount; RN's own KeyboardAvoidingView is the prop-compatible fallback.
+import { useLazyKeyboardAvoidingView } from "./lazyKeyboardAvoidingView";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -127,6 +129,8 @@ export const PartnerPaystackOnboardForm: React.FC<Props> = ({
   const banksQuery = usePartnerPaystackBanks();
   const resolveMutation = useResolvePartnerPaystackAccount();
   const submitMutation = useCreatePartnerPaystackRecipient();
+  // ORCH-1296 — lazy KAV (library on native once loaded; RN fallback until/unless).
+  const KeyboardAvoidingView = useLazyKeyboardAvoidingView();
 
   const [pickerOpen, setPickerOpen] = useState(false);
   // ORCH-1165 DISC-1165-T3 pattern (verbatim from BrandPaystackOnboardView):

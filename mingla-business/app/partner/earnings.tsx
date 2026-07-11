@@ -31,9 +31,10 @@ import * as WebBrowser from "expo-web-browser";
 // ORCH-1081 — AsyncStorage for the one-time welcome-to-portfolio toast.
 import AsyncStorage from "@react-native-async-storage/async-storage";
 // ORCH-1331 — the screen gains its first text input (the NG bank form), so the
-// scroll body rides the house KAV (ORCH-0892 primitive: react-native-keyboard-
-// controller, NOT the RN one) — the account input + CTA are never covered.
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+// scroll body rides a KAV host; the keyboard-controller library is BOOT-FRAGILE
+// (ORCH-1296 / COMMS-0051/0052 — OTA splash brick), so it loads lazily after
+// mount with RN's own KeyboardAvoidingView as the prop-compatible fallback.
+import { useLazyKeyboardAvoidingView } from "../../src/components/partner/lazyKeyboardAvoidingView";
 // ORCH-1331 — success haptic on Paystack connect (native only).
 import * as Haptics from "expo-haptics";
 
@@ -87,6 +88,8 @@ export default function PartnerEarningsScreen(): React.ReactElement {
   // ORCH-1331 — Paystack rail status + detach (Nigeria).
   const paystackQuery = usePartnerPaystackStatus();
   const disconnectPaystack = useDisconnectPartnerPaystack();
+  // ORCH-1296 — lazy KAV (library on native once loaded; RN fallback until/unless).
+  const KeyboardAvoidingView = useLazyKeyboardAvoidingView();
 
   // Country selection — pre-onboarding. Hydrates from persisted
   // partner_country if set, else null so the user MUST pick explicitly.
