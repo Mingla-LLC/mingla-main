@@ -173,6 +173,8 @@ on:
 #   - I-PROPOSED-1327-LINKS-TAB-PERSISTENT-PILL (orch-1327-links-tab-switcher-persistent-pill.mjs) — the usemingla.com/links Explorer/Business segmented switcher (components/marketing/links-experience.tsx, comment-stripped) renders its active-tab highlight as ONE persistent, absolutely-positioned bg-warm pill that animates its horizontal `x` between the two equal-width slots (initial={false} + animate={{ x: … }}), with NO `layoutId` and NO motion element conditionally mounted inside a `selected ?` ternary — killing the framer-motion cross-instance layout-projection ARC (the swing); reduced motion → a { duration: 0 } transition tied to `reduced`; the WAI-ARIA roving-tabindex tablist (role="tablist"/"tab", aria-selected, tabIndex={selected ? 0 : -1}, ArrowRight/ArrowLeft via onTabKeyDown) and the text-white/text-white/60 color states survive; self-tested 8/8 + fails-on-revert (ORCH-1327 — DRAFT until CLOSE)
 #   - I-PROPOSED-1326-LINKS-BUSINESS-DOWNLOAD-DEVICE-AWARE (orch-1326-links-business-download-route.mjs) — the /links Business tab CTA targets the device-smart server route /business/download (LINKS_BUSINESS_DOWNLOAD_PATH, destination 'business_download') NOT the bare /business page; app/business/download/page.tsx (comment-stripped) reads the UA via headers()+resolvePlatformFromUa, references BOTH BUSINESS_APP_STORE_URL and BUSINESS_WEB_URL (from lib/store-links, never hardcoded), performs a redirect( and branches on `platform ===` (iOS→BUSINESS_APP_STORE_URL, else→BUSINESS_WEB_URL); adversarial: FAIL if BUSINESS_WEB_URL absent (non-iOS stranded) or no `platform ===`; BANS apps.apple.com/business.usemingla.com literals, navigator/window (SSR-safe), DownloadQr/AppStoreBadges/<QRCode (NO QR — the difference vs /download), <form/type="email", testflight, PLAY_STORE_URL (business Android→web); lib/links-config.ts references LINKS_BUSINESS_DOWNLOAD_PATH + '/business/download' + destination 'business_download'; self-tested 11/11 + fails-on-revert (ORCH-1326 — DRAFT until CLOSE)
 #   - I-PROPOSED-1328-LINKS-CTA-OPENS-STORE-CLIENT-SIDE (orch-1328-links-cta-opens-store-clientside.mjs) — the usemingla.com/links per-tab CTA (components/marketing/links-experience.tsx, comment-stripped) opens the store/web app DIRECTLY on the tap (client-side, device-aware, store-links SSOT) so /links stays mounted, and NEVER soft-navigates into the /download|/business/download external-redirect route (which stranded the tab on a blank Explorer / footer-only Business shell — INVESTIGATION_ORCH-1328): REQUIRES imports detectClientPlatform + references ALL FOUR store consts (APP_STORE_URL, PLAY_STORE_URL, BUSINESS_APP_STORE_URL, BUSINESS_WEB_URL) + a real `<button` control bound to onClick={() => onCtaClick( + `window.open(` AND the `window.location.assign(` popup-block fallback (no silent failure) + fires links_page_cta_clicked + branches on `platform ===` (device-driven, not a single hardcode); BANS a next/link import AND the `<Link` element (no soft-nav), `<a href="/download"`/`<a href="/business/download"` anchors, and hardcoded apps.apple.com/play.google.com store literals; self-tested 10/10 + fails-on-revert (ORCH-1328 — DRAFT until CLOSE)
+#   - I-PROPOSED-1342-LANDING-SINGLE-PARSE (orch-1342-landing-single-parse.mjs) — the OneLink landing discriminator `deep_link_sub3` is parsed in exactly ONE place, app-mobile/src/services/oneLinkResolver.ts (the I-ONELINK-SINGLE-RESOLVER dispatch point, extended in place by ORCH-1342), and travels app-internally ONLY as the `?landing=guest-list` query param composed by dispatchOneLinkDestination (app-mobile/app/index.tsx): REQUIRES (comment-stripped) (1) the resolver parses `deep_link_sub3` and maps the exact 'guest-list' token to the typed `landing` field, (2) the dispatcher composes `landing=guest-list` onto the entity path at its ONE composition point (line-deleting the append fails the gate); BANS the token `deep_link_sub3` anywhere OUTSIDE oneLinkResolver.ts across app-mobile/src/** + app-mobile/app/** (__tests__ excluded — suites quote the payload as fixtures; a second payload parser is the exact divergence class the ONE-resolver invariant exists to kill); self-tested 7/7 + fails-on-revert (ORCH-1342, Leg 5 of META-ORCH-1337 — DRAFT until CLOSE; registered by the META-ORCH-1337 CI-guard pass)
+#   - I-PROPOSED-1342-STORE-LINKS-SSOT (orch-1342-store-links-ssot.mjs) — mingla-business store/download URLs live ONLY in mingla-business/src/constants/storeLinks.ts, byte-matched to the marketing SSOT mingla-marketing/lib/store-links.ts (kills the F-12 class forever — a component-local apps.apple.com/app/mingla literal shipped a DEAD App Store link on the post-checkout CTA — and enforces the ORCH-1346 one-branded-domain-one-template constraint): REQUIRES storeLinks.ts exists and exports APP_STORE_URL / PLAY_STORE_URL whose string values BYTE-EQUAL the marketing SSOT's; BANS (comment-stripped, over mingla-business/src/** + mingla-business/app/**, excluding the SSOT file itself and __tests__ fixtures) any apps.apple.com literal, any play.google.com/store literal, and any go.usemingla.com literal outside the SSOT file (go.usemingla.com is consumer-owned OneLink territory — never scattered as a literal); self-tested 10/10 + fails-on-revert (ORCH-1342, Leg 5 of META-ORCH-1337 — DRAFT until CLOSE; registered by the META-ORCH-1337 CI-guard pass)
 #
 # Future gates to register (proposed but not yet implemented):
 #   - I-32 rank parity (Cycle 13a proposal)
@@ -4274,3 +4276,29 @@ jobs:
         run: node .github/scripts/strict-grep/i-proposed-1313-appsflyer-key-fail-loud.mjs --self-test
       - name: Run ORCH-1313 appsflyer-key-fail-loud gate
         run: node .github/scripts/strict-grep/i-proposed-1313-appsflyer-key-fail-loud.mjs
+
+  orch-1342-landing-single-parse:
+    name: "ORCH-1342: OneLink deep_link_sub3 parsed ONLY in oneLinkResolver.ts ('guest-list' → typed landing field) + dispatcher composes ?landing=guest-list at its ONE composition point; no second payload parser anywhere in app-mobile (I-PROPOSED-1342-LANDING-SINGLE-PARSE)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1342 landing-single-parse gate
+        run: node .github/scripts/strict-grep/orch-1342-landing-single-parse.mjs --self-test
+      - name: Run ORCH-1342 landing-single-parse gate
+        run: node .github/scripts/strict-grep/orch-1342-landing-single-parse.mjs
+
+  orch-1342-store-links-ssot:
+    name: "ORCH-1342: mingla-business store links SSOT'd in src/constants/storeLinks.ts, byte-equal to the marketing SSOT; no apps.apple.com / play.google.com/store / go.usemingla.com literal outside it (F-12 dead-link class + ORCH-1346 one-domain-one-template) (I-PROPOSED-1342-STORE-LINKS-SSOT)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1342 store-links-ssot gate
+        run: node .github/scripts/strict-grep/orch-1342-store-links-ssot.mjs --self-test
+      - name: Run ORCH-1342 store-links-ssot gate
+        run: node .github/scripts/strict-grep/orch-1342-store-links-ssot.mjs
