@@ -161,3 +161,54 @@ Both the implementor's suites and the tester's suites are visible in `git diff o
 ## 10. Routing
 
 **FAIL → REWORK (mingla-implementor):** fix P1-1331-STALE-TRANSFER-CODE (clear `stripe_transfer_id`/`payout_reference` on definitive `transfer.failed` bumps — webhook handler branch + sweep reconcile-failed branch, mirroring the reconcile-reversed clear). Optionally fold in the P2 duplicate-reference retryable classification. DO NOT touch DP-7 — it is the acceptance test and goes green with the fix. Then RETEST here: full doublePay suite 14/14 + implementor engine/sweep suites + both gates. Retest ceiling remains **PASS (mocked)**; the post-deploy live smoke (SPEC §11 + the new same-reference probe) stays with Seth after CLOSE.
+
+---
+
+# RETEST 1 — after REWORK `7af859c48` (P1-1331-STALE-TRANSFER-CODE)
+
+- **Date:** 2026-07-11 · implementation HEAD `33b163fcf` (fix `7af859c48`); tester seam suite at `fef30bfc6`
+- **Rework scope verified:** `git diff 7320cf351..7af859c48` touches exactly 2 files — `_shared/paystackPartnerSplits.ts` (+59) and the NEW implementor suite `paystackPartnerSplits.failClear.orch1331.test.ts` (+353). **ZERO tester files modified.**
+
+## RETEST VERDICT
+
+**PASS (mocked)** — 0×P0, 0×P1. Verdict issued AT the SPEC's verification-cap ceiling: all Paystack surfaces mocked, no live calls, no migration apply, no deploys; the post-deploy live smoke (SPEC §11, now including the same-reference-twice probe) remains Seth's. Finding counts this cycle: 0×P1 · 1×P3 (note) · 2×P4 (observations). Prior P2/P3 registry items stand as routed.
+
+## P1 resolution — verified, not trusted
+
+1. **DP-7 (the acceptance test) is GREEN by product-code change alone** — doublePay suite 14/14 with zero tester-file edits.
+2. **Fix mechanics read line-by-line:** below-cap definitive `transfer.failed` now bumps AND clears `stripe_transfer_id`+`payout_reference` (guarded `id` + `status='pending'`), so the sweep's reconcile-first branch takes the INITIATE path with `psplit_<id>_a<n+1>`. At-cap finalize unchanged (dead code kept for forensics — implementor R-5). Idempotency guard: no-code → no-op; event-code ≠ row-code → no-op; reference-attempt ≠ attempt_count → no-op.
+3. **Tester re-proof of THEIR fails-on-revert (item f):** deleted the clear block by true line-deletion → **DP-7 RED + RS-1 RED** → `git checkout --` restore → **18/18 GREEN**, worktree clean.
+
+## New-seam hunt (item g) — NEW tester suite, sequence-level
+
+`supabase/functions/_shared/__tests__/paystackPartnerSplits.retestSeams.tester.orch1331.test.ts` (**4/4 green**, stateful-ledger sequences — different harness class than the implementor's static failClear pins):
+
+- **RS-1** end-to-end recovery: a0 pending → definitive fail (ONE burned attempt, code cleared) → sweep initiates a1 → success → `transferred`. Exactly 2 distinct references ever reach Paystack; one payment.
+- **RS-2** the coordinator's race: late duplicate `transfer.failed` for the DEAD a0 arriving while a1 is IN FLIGHT → live `TRF_1` never cleared, nothing bumped; a1 completes normally. Double-initiate seam stays closed.
+- **RS-3** duplicate-reference 4xx across charge replays AND sweeps → the SAME a0 reference every time, ZERO bumps (never a silent cap-march to `failed`), stall visible in `error_message`. HP-3 unchanged (14/14) — the new classification cannot mint a reference and therefore cannot open a double-pay direction; its failure mode is a stalled visible pending row.
+- **RS-4** hostile `transfer.failed` with a foreign `transfer_code` but matching attempt → no-op (code precedence holds in sequence).
+
+Clear-on-NON-definitive check: the clear lives ONLY in the webhook `transfer.failed` branch; retryable classifications (balance/5xx/429/network/duplicate-reference) still route through `noteSplitError` — no bump, no clear (HP-3 + RS-3 prove it at runtime).
+
+## Suite counts (all re-run this cycle)
+
+| Set | Result |
+|---|---|
+| Implementor Deno (engine 24 + **failClear 6** + onboard 16 + sweep 7 + SQL 10 + T-8 1) | **64/64 PASS** |
+| Tester adversarial (doublePay **14/14** + hostile 5 + exclusivity 6 + SQL 6 + **retestSeams 4**) | **35/35 PASS** |
+| Stripe-rail regression set | **48/48 PASS** |
+| Client (implementor 20 + tester RTL 10) | **30/30 PASS** |
+| Gates: fail-soft (5/5 self + live) · share-single-source (4/4 + live) | PASS |
+| `deno check` `_shared/paystackPartnerSplits.ts` | OK |
+
+Pre-existing red set: unchanged (not re-attributed; KeyboardRoot ENOENT class untouched by this rework — zero client files in the fix diff).
+
+## New findings this cycle
+
+- **P3 (note, registry):** a genuinely-different 4xx whose message happens to contain "duplicate" now stalls the row `pending` below the cap indefinitely with NO ops alert (alerts fire only on OTP and cap). Money-safe and ledger-visible; acceptable over-matching per the fix's own comment. Candidate polish: a sweep-side "stalled > N cycles" ops note.
+- **P4 (observation):** bump→clear is two non-atomic writes; if the clear write failed post-bump, the guarded replay no-ops and the SWEEP self-heals via reconcile-failed at the cost of one extra burned attempt in that double-fault window. Money-safe; no action required.
+- **P4 (praise):** the idempotency guard (code match + attempt match + no-code no-op) is exactly the right shape — it closed the P1 without reopening any double-pay seam under sequence-level attack.
+
+## Routing
+
+**PASS (mocked) → CLOSE (orchestrator).** P2-1331-DUPLICATE-REFERENCE-SHAPE is now code-mitigated (RS-3); the live-smoke same-reference probe remains recommended in the SPEC §11 plan. P2-1331-REFUND-INFLIGHT-RACE and the P3s stand as registry follow-ups.
