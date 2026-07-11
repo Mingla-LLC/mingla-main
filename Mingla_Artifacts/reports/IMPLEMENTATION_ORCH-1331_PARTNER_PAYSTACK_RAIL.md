@@ -212,3 +212,53 @@ Note on CORS: SPEC §4.4 said "same literal object as brand-paystack-onboard"; t
 ## Invariant preservation (Pre-Flight §6 / Post-Flight re-check)
 
 I-PROPOSED-PARTNER-TRANSFER-SOURCE-CURRENCY ✓ (NGN-only, `transfer_currency='ngn'` pinned in the RPC, defensive order-currency guard) · I-PROPOSED-T ✓ (gate PASS) · RSVP chip-in invariants ✓ (contribution path untouched; T-8 stub exercises the lookup unchanged) · I-38/I-39 ✓ (gates PASS; all new Pressables labeled ≥44pt effective) · ORCH-1188 finalize contract ✓ (zero diff) · ANDROID_GLASS_USES_OPAQUE_FALLBACK ✓ (opaque `#14110f` sheet) · I-KEYBOARD-NEVER-BLOCKS-INPUT ✓ (KAV + persistTaps + 42dp clearance) · Zustand/query-key rules ✓ (factories only; no server state in Zustand) · tests-append-only ✓ (new files only). New DRAFT invariants I-PROPOSED-1331-{PARTNER-SPLIT-FAIL-SOFT, PARTNER-SHARE-FROM-PLATFORM-FEE, PARTNER-PAYOUT-RAIL-EXCLUSIVE, NUBAN-NEVER-PERSISTED, LINK-COLUMNS-FROZEN} implemented + enforced (gates/tests) — orchestrator flips ACTIVE at CLOSE.
+
+---
+
+## REWORK — P1-1331-STALE-TRANSFER-CODE (2026-07-11, commit `7af859c48`)
+
+**Dispatch:** tester FAIL → REWORK. One P1 blocked CLOSE: the `transfer.failed` handler bumped `attempt_count` but never cleared `stripe_transfer_id`, so the reconcile-first sweep re-reconciled the dead transfer every cycle and the `_a1` retry was permanently shadowed — one real transfer attempt, then a reconcile-loop to hard `failed` with a misleading "exhausted 5 attempts" alert (SC-9 broken end-to-end; tester test DP-7 RED). Acceptance criterion: DP-7 green by product-code change alone (tester files untouched).
+
+### What changed (1 product file + 1 new test file; nothing else)
+
+**`supabase/functions/_shared/paystackPartnerSplits.ts`** (+70/−2 vs `7320cf351`):
+
+1. **The P1 fix — clear-on-definitive-failure** (`transfer.failed` branch, now lines 614–690):
+   - After a **below-cap** definitive bump, the handler clears `stripe_transfer_id` AND `payout_reference` via a direct service-role update guarded `.eq("id", splitId).eq("status", "pending")` (lines 677–686) — the exact mirror of the sweep's reconcile-**reversed** clear (`partner-paystack-split-retry/index.ts:162-173`). The sweep's `if (row.stripe_transfer_id)` reconcile gate now falls through to `attemptTransferForSplit`, which initiates with the bumped `psplit_<id>_a<n+1>` reference (SC-9 / SPEC §4.5.3 "row stays pending — sweep retries with new reference").
+   - **At the cap** the finalize-`failed` + single-ops-alert logic is byte-identical to before (per the tester's "keep the below-cap/at-cap logic unchanged") and the dead transfer code is intentionally KEPT on the terminal row for forensics.
+2. **Idempotency guard** (lines 618–645) so the clear cannot open new seams — bump+clear fire ONLY for a definitive failure of the row's **current in-flight transfer**:
+   - row has no `stripe_transfer_id` → prior bump already cleared it (or it was never stamped) → **no-op**: a replayed/duplicate `transfer.failed` can never double-bump;
+   - event `transfer_code` present but ≠ row's current code → stale event for an OLDER attempt → **no-op**: never bumps for, or clears, a DIFFERENT in-flight transfer (would re-open the double-initiate seam);
+   - event reference attempt (`_a<n>`) ≠ row `attempt_count` → same staleness for payloads that omit `transfer_code` → **no-op**. (The in-flight reference is always `_a<attempt_count>` — `attempt_count` only moves on definitive bumps, so this equality holds for every legit webhook and for the sweep's reconcile-failed call, which passes both fields by construction.)
+   - `transfer.success` handling is UNCHANGED: a transfer that definitively failed can never emit `success` for the same code (failed is terminal at Paystack), so the lost-webhook reconcile of a SUCCEEDED old transfer is untouched — the sweep still reconciles a stamped code before ever re-initiating (tester DP-4/DP-5 still green).
+3. **Optional P2-2 classification — INCLUDED** (`classifyTransferError`, lines 280–289): messages matching `/duplicate/i` or `/reference.*(exists|already)/i` now classify **retryable** (same reference, no bump). Rationale: the rail's double-pay defense rests on Paystack's documented re-used-reference-returns-original behavior; if live Paystack instead answers a 4xx "duplicate/exists" the old DEFINITIVE classification would mint `_a1` while `_a0` may be in flight — the one mock-unclosable double-pay hole. Over-matching errs toward a stalled-pending row (visible in `error_message`, recoverable by ops/live-smoke), never toward double payment. Included because it is 3 lines, fully tested (R-6, two message shapes), and money-safe in its failure direction. The SPEC §11 live-smoke same-reference probe (tester P2-2 required action) remains with Seth post-deploy.
+
+**NEW `supabase/functions/_shared/__tests__/paystackPartnerSplits.failClear.orch1331.test.ts`** (+342, append-only; no existing test touched): R-1 clear-on-failure happy path (bump ×1 + guarded clear of both columns) · R-2 replay-after-clear no-op (no double-bump) · R-3 stale-event code-mismatch no-op (in-flight transfer never cleared) · R-4 stale-event attempt-mismatch no-op (no `transfer_code` payloads) · R-5 at-cap finalize + ONE alert + code KEPT (at-cap logic pinned unchanged) · R-6 duplicate-reference 4xx retryable (both message shapes; same `_a2` reference, no bump, error noted).
+
+### Suite counts (all re-run on this machine at `7af859c48`)
+
+| Set | Result |
+|---|---|
+| **Tester doublePay (DP-7 = the acceptance test)** | **14/14 PASS** (was 13/14, DP-7 red at `7320cf351` — re-proven red at baseline before the fix) |
+| Tester Deno adversarial (doublePay 14 + hostile 5 + exclusivity 6 + SQL-armor 6) | **31/31 PASS** (was 30/31) |
+| Implementor Deno (engine 24 + onboard 16 + sweep 7 + fail-soft T-8 1 + SQL 10 + **NEW failClear 6**) | **64/64 PASS** (58 pre-rework + 6 new) |
+| Stripe-rail regression (orch_1054 happy 8 + adversarial 8) | **16/16 PASS** |
+| strict-grep `orch-1331-partner-split-fail-soft.mjs` | live PASS + self-test 5/5 |
+| strict-grep `orch-1331-share-single-source.mjs` | live PASS + self-test 4/4 |
+| `deno check` `paystack-webhook/index.ts` + `partner-paystack-split-retry/index.ts` (→ `_shared/paystackPartnerSplits.ts` transitively) | OK |
+| Client suites | **UNTOUCHED by the rework** — `git diff 7320cf351..HEAD --name-only` = exactly the 2 supabase files above; prior 20/20 jest + 10/10 tester RTL stand |
+
+### Regression test — fails-on-revert (true line deletion)
+
+At `7af859c48`: deleted the 59 fix lines (idempotency guard + clear block + duplicate-reference classification) from `paystackPartnerSplits.ts` — a real deletion, not a comment-out — and re-ran: **R-1, R-2, R-3, R-4, R-6 and tester DP-7 ALL FAILED** (`14 passed | 6 failed`; R-5 stayed green as designed — at-cap logic is unchanged by the fix). Restored via `git checkout --`; full re-run green (64/64 + 31/31). **fails-on-revert verified at `7af859c48`.**
+
+### Invariant re-check (rework scope)
+
+Transfer-idempotency contract (reference IS the key; bump ONLY on definitive failure) ✓ preserved and STRENGTHENED (replay no-double-bump) · I-PROPOSED-1331-PARTNER-SPLIT-FAIL-SOFT ✓ (webhook wiring untouched; gate green) · PARTNER-SHARE-FROM-PLATFORM-FEE ✓ (money math untouched; gate green) · tests-append-only ✓ (1 new file; zero existing tests modified — DP-7 and all tester files byte-identical).
+
+### Residual risk / notes for orchestrator
+
+- **P2-1331-REFUND-INFLIGHT-RACE is NOT addressed** (out of dispatch scope — registry follow-up per the tester).
+- The duplicate-reference retryable classification means a persistent live "duplicate" 4xx would hold a row `pending` with the error noted rather than burning attempts toward `failed` — intentional money-safe direction; the SPEC §11 post-deploy same-reference live probe pins the real response shape (unchanged ops action for Seth).
+- Between the definitive failure and the next sweep cycle, a row now shows `payout_reference = NULL` (partner ledger shows no reference for that window) — honest state: that reference is dead; the next initiate re-stamps.
+- No migrations, no deploys, no live Paystack calls in this rework. Edge deploy list unchanged from the original report (deploy from merged main: `paystack-webhook` verify_jwt=false, `partner-paystack-onboard` verify_jwt=true, `partner-paystack-split-retry` verify_jwt=false).
