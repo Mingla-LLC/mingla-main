@@ -12,8 +12,11 @@
 //   - The EventAudienceSheet posture: wrapInRNModal + theme="dark" + fixed
 //     GUEST_LIST_SNAP ['70%'] + stock motion (no animationConfigs) + no
 //     dynamic sizing (ORCH-1138) + no TextInput (ORCH-1171 N/A by design).
-//   - I-PROPOSED-1341-GUEST-SHEET-ACTIONS-ONLY: rows are never pressable —
-//     the only Pressables are the sanctioned action controls.
+//   - I-PROPOSED-1341-GUEST-SHEET-ACTIONS-ONLY (row-CONTAINER half) + its
+//     ORCH-1359 (d) supersession I-PROPOSED-1359-GUEST-NAME-OPENS-PROFILE: the
+//     row CONTAINER is never pressable (T-09); the only Pressables are the
+//     sanctioned action controls PLUS the NAMED-row name-open target (T-10).
+//     [TEST-MOD-APPROVED ORCH-1359]
 //   - Constitution #4: the hook keys from the central guestListKeys factory,
 //     never a literal key string.
 //   - ORCH-1303: every Animated.timing in the sheet carries isInteraction:false.
@@ -196,8 +199,17 @@ Deno.test("T-10 every <Pressable> is one of the sanctioned action controls", () 
     assert(
       /testID=\{`orch-1341-guest-sheet-(add-friend|message)-\$\{item\.key\}`\}/.test(
         window,
-      ) || /testID="orch-1341-guest-sheet-error-retry"/.test(window),
-      `Pressable #${i} must be a sanctioned action control (rows are not pressable)`,
+      ) ||
+        /testID="orch-1341-guest-sheet-error-retry"/.test(window) ||
+        // [TEST-MOD-APPROVED ORCH-1359] — ORCH-1359 (d): the guest NAME is now a
+        // sanctioned profile-open target (I-PROPOSED-1359-GUEST-NAME-OPENS-PROFILE
+        // supersedes I-PROPOSED-1341-GUEST-SHEET-ACTIONS-ONLY). The row CONTAINER
+        // still is never pressable (asserted by T-09); only NAMED, non-You rows
+        // carry this name target.
+        /testID=\{`orch-1359-guest-sheet-open-profile-\$\{item\.key\}`\}/.test(
+          window,
+        ),
+      `Pressable #${i} must be a sanctioned action control or the ORCH-1359 name-open target (the row container is never pressable)`,
     );
   }
 });

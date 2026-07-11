@@ -105,6 +105,15 @@ export interface EventGuestListSheetProps {
    * sink riding the Discover-map Message idiom (P1-2: never Linking.openURL).
    */
   onOpenConversation?: (conversationId: string) => void;
+  /**
+   * ORCH-1359 (d) — tap a NAMED guest's name → open that peer's public profile.
+   * The host (each Consumer*DetailScreen) sets a local `profileUserId` and
+   * renders <ViewFriendProfileScreen> as a DETAIL-LOCAL overlay (D-B): Back
+   * returns to THIS event/trip/experience detail, never the app shell. Absent ⇒
+   * the name stays inert (no dead tap). Anonymous/unlinked rows carry no
+   * profileId (D8) and are never pressable regardless of this seam.
+   */
+  onOpenProfile?: (userId: string) => void;
 }
 
 type GuestDisplayRow = {
@@ -145,6 +154,7 @@ export function EventGuestListSheet({
   eventId,
   goingCount,
   onOpenConversation,
+  onOpenProfile,
 }: EventGuestListSheetProps): React.ReactElement {
   const viewerId = useAppStore((s) => s.user?.id);
   const { page, isLoading, isError, error, refetch } = useEventGuestList(
@@ -419,6 +429,28 @@ export function EventGuestListSheet({
     [viewerId, onClose, onOpenConversation, showHint],
   );
 
+  // ORCH-1359 (d) — tap a NAMED guest's name → open their peer profile as a
+  // detail-local overlay (D-B). SEALED close-before-NAVIGATE
+  // (I-PROPOSED-1341-MESSAGE-CLOSE-BEFORE-NAVIGATE, extended by
+  // I-PROPOSED-1359-GUEST-NAME-OPENS-PROFILE): dismiss the wrapInRNModal sheet
+  // FIRST so the host's <ViewFriendProfileScreen> overlay is never z-covered by
+  // this RN Modal (COMMS-0084 — never a modal-over-modal, never a second RN
+  // <Modal>). Anonymous/unlinked rows carry no profileId (D8) and never reach
+  // here; a host that did not wire onOpenProfile leaves the name inert (the
+  // sheet does NOT close on a no-op — no dead close, mirroring the Message
+  // no-sink guard above). NEVER Linking.openURL (`mingla://` is unregistered —
+  // COMMS-0093): this is pure in-app overlay rendering.
+  const handleOpenProfilePress = useCallback(
+    (row: GuestDisplayRow): void => {
+      const profileId = row.guest.profileId;
+      if (profileId === null || onOpenProfile === undefined) return;
+      HapticFeedback.selection();
+      onClose();
+      onOpenProfile(profileId);
+    },
+    [onClose, onOpenProfile],
+  );
+
   // ── row rendering ──────────────────────────────────────────────────────────
   const [photoErrorKeys, setPhotoErrorKeys] = useState<Record<string, boolean>>(
     {},
@@ -494,6 +526,19 @@ export function EventGuestListSheet({
       const showAddFriend = showActions && !isFriendRow;
       const msgInflight = messageInflight[item.key] === true;
 
+      // ORCH-1359 (d) — the NAME opens the peer profile ONLY on NAMED, non-You
+      // rows that carry a profileId, and only when the host wired the overlay
+      // seam. Anonymous/unlinked/You rows keep a plain, NON-pressable name
+      // (no dead tap, no affordance — the deanonymization guard is intact:
+      // anon/unlinked rows have profileId === null). The row CONTAINER itself
+      // stays a non-pressable Animated.View (T-09 SEALED) — only the name is
+      // the target.
+      const canOpenProfile =
+        item.isNamed &&
+        !item.isYou &&
+        guest.profileId !== null &&
+        onOpenProfile !== undefined;
+
       const a11yLabel = item.isYou
         ? `${name}, you`
         : item.isNamed
@@ -516,9 +561,30 @@ export function EventGuestListSheet({
         >
           {renderAvatar(item)}
           <View style={styles.rowCopy}>
-            <Text style={styles.rowName} numberOfLines={1} ellipsizeMode="tail">
-              {line1}
-            </Text>
+            {canOpenProfile ? (
+              <Pressable
+                onPress={() => handleOpenProfilePress(item)}
+                hitSlop={4}
+                accessibilityRole="button"
+                accessibilityLabel={`View ${name}'s profile`}
+                testID={`orch-1359-guest-sheet-open-profile-${item.key}`}
+                style={({ pressed }) =>
+                  pressed ? styles.namePressed : undefined
+                }
+              >
+                <Text
+                  style={styles.rowName}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
+                  {line1}
+                </Text>
+              </Pressable>
+            ) : (
+              <Text style={styles.rowName} numberOfLines={1} ellipsizeMode="tail">
+                {line1}
+              </Text>
+            )}
             {rowHint !== null ? (
               <Animated.Text
                 style={[styles.rowHint, { opacity: hintOpacity }]}
@@ -613,6 +679,8 @@ export function EventGuestListSheet({
       bodyOpacity,
       handleAddFriendPress,
       handleMessagePress,
+      onOpenProfile,
+      handleOpenProfilePress,
     ],
   );
 
@@ -844,6 +912,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
     color: "#f8fafc",
+  },
+  // ORCH-1359 (d) — pressed feedback on the tappable NAME (named rows only).
+  namePressed: {
+    opacity: 0.55,
   },
   rowSub: {
     marginTop: 3,

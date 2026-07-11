@@ -101,6 +101,14 @@ import TicketCartSheet, {
 // ORCH-1341 [guest-list-sheet-consumer] — the "Who's going" roster sheet, the
 // destination of the ORCH-1340 onSeeWhosGoing affordance on BOTH branches.
 import EventGuestListSheet from "../../components/EventGuestListSheet";
+// ORCH-1359 (d) — detail-local peer-profile overlay opened by tapping a named
+// guest's name in the sheet (D-B). Reuses the existing ViewFriendProfileScreen
+// + the sanctioned in-app open-DM rail (never Linking.openURL — COMMS-0093).
+import ViewFriendProfileScreen from "../../components/profile/ViewFriendProfileScreen";
+import {
+  hasOpenDirectMessageSink,
+  openDirectMessageInApp,
+} from "../../services/deepLinkService";
 import {
   fetchRsvpMomentum,
   submitDeckRsvp,
@@ -280,6 +288,12 @@ export default function ConsumerEventDetailScreen({
   // ORCH-1341 — "Who's going" guest-list sheet visibility. Both branches share
   // the ONE sheet mount below; the momentum cluster/link opens it.
   const [guestSheetVisible, setGuestSheetVisible] = useState<boolean>(false);
+  // ORCH-1359 (d) — the guest whose profile is open as a detail-local overlay
+  // (null ⇒ none). Set by the sheet's onOpenProfile (named-name tap); cleared
+  // by the overlay's Back → returns to THIS event detail, never the app shell.
+  const [guestProfileUserId, setGuestProfileUserId] = useState<string | null>(
+    null,
+  );
   const handleSeeWhosGoing = useCallback(
     (): void => setGuestSheetVisible(true),
     [],
@@ -1190,7 +1204,26 @@ export default function ConsumerEventDetailScreen({
             ? (rsvpMomentum?.goingCount ?? 0)
             : (socialProofQuery.data?.goingCount ?? 0)
         }
+        onOpenProfile={setGuestProfileUserId}
       />
+
+      {/* ORCH-1359 (d) — detail-local peer-profile overlay (D-B). The sheet
+          closes BEFORE this mounts (close-before-navigate), so this is NOT a
+          modal-over-modal — it renders in the detail tree, absolute-fill above
+          the chrome (zIndex 100). Back clears it → the user is right back on
+          this event detail, never the home shell. */}
+      {guestProfileUserId !== null ? (
+        <View style={styles.guestProfileOverlay}>
+          <ViewFriendProfileScreen
+            userId={guestProfileUserId}
+            onBack={() => setGuestProfileUserId(null)}
+            onMessage={(userId) => {
+              setGuestProfileUserId(null);
+              if (hasOpenDirectMessageSink()) openDirectMessageInApp(userId);
+            }}
+          />
+        </View>
+      ) : null}
     </>
   );
 }
@@ -1198,6 +1231,14 @@ export default function ConsumerEventDetailScreen({
 const SEAM = 28;
 
 const styles = StyleSheet.create({
+  // ORCH-1359 (d) — the detail-local peer-profile overlay wrapper: absolute-fill
+  // above the detail chrome (zIndex 100 > chrome 70) so the profile fully covers
+  // the event detail while it is open. Opaque so nothing bleeds through.
+  guestProfileOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 100,
+    backgroundColor: "#ffffff",
+  },
   nativeCover: {
     position: "absolute",
     top: 0,

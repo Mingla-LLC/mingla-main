@@ -103,6 +103,8 @@ jobs:
             app-mobile/src/components/__tests__/orch_1341_guest_list_sheet_adversarial.test.ts
             # ORCH-1359 — guest-row identity display: name-only + city + "Not on Mingla".
             app-mobile/src/components/__tests__/orch_1359_guest_sheet_identity.test.ts
+            # ORCH-1359 (d) — tap-name → peer profile as a detail-local overlay (D-B).
+            app-mobile/src/components/__tests__/orch_1359_guest_sheet_open_profile.test.ts
             # ORCH-1342 — OneLink guest-funnel app side: cold /e/ seed landing, single
             # resolver parse, public event seed mapping.
             app-mobile/src/screens/Event/__tests__/orch_1342_cold_seed_landing.test.ts
