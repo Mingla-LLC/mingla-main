@@ -3,7 +3,7 @@
 - **Surface:** mingla-business — RSVP creator wizard (shared RN; business iOS / Android / web).
 - **Worktree:** `~/Desktop/mingla-orchs/orch-1355-[rsvp-wizard-focus-bug]/` on branch `orch-1355-rsvp-wizard-focus-bug` (rebased on `origin/main`, clean).
 - **Phase:** INVESTIGATE (no fix proposed here; the SPEC defines the fix).
-- **Confidence:** Symptom 2 = **root cause PROVEN** (deterministic RTL repro, 4/4 green). Symptom 1 = **leading hypothesis REFUTED**; actual cause **inconclusive** (native keyboard-layer, not reproducible at component level; needs a sim drive).
+- **Confidence:** Symptom 2 = **root cause PROVEN** (deterministic RTL repro, 4/4 green) — SHIPPED (`5d7c8320b`). Symptom 1 = **REOPENED** (see §11 addendum): the component-level "no remount" verdict was correct but too narrow; the remount happens at the **route/navigator level** via the `d_*`→server draft-promotion `router.replace`. Root cause **CONFIRMED at the trigger level (source-proven) + strongly corroborated by an in-code prior-engineer observation**; the remount→focus-drop link is **PROBABLE** (runtime proof blocked; needs a sim drive).
 
 ---
 
@@ -159,3 +159,52 @@ For symptom 1: Docs/Schema/Code show no remount or blur; Runtime (native) could 
 - **Symptom 2:** root cause PROVEN (deterministic repro). Ready for SPEC → IMPLEMENT.
 - **Symptom 1:** leading hypothesis REFUTED; actual cause inconclusive — needs a sim drive. The SPEC fixes symptom 2 bindingly and scopes symptom 1 as a confirm-then-fix gate (no blind code change).
 - **Recommended next phase:** SPEC (this dispatch's IA mode). Scope: mingla-business RSVP wizard + steps only; no backend, no migration. Symptom-1 code changes gated on device confirmation.
+
+---
+
+## 11. ADDENDUM — Symptom 1 REOPENED: `d_*`→server draft-promotion route remount
+
+Reopened on the orchestrator's traced lead (`app/rsvp/[id]/edit.tsx` promotion). The §4 F-2 verdict ("no component remount") stands but was scoped too narrowly: the remount is at the **route/navigator** level, not inside `CreatorStep1Basics`. My isolated RTL mount could not catch it because it had no route/`edit.tsx` wrapper.
+
+### 11.1 The trigger — CONFIRMED (source-proven, deterministic)
+
+The RSVP **create** flow starts on a client `d_<ts36>` draft:
+- `app/rsvp/create.tsx:192-193` — `createRsvpDraft(brandId)` (mints `d_*`) → `router.replace('/rsvp/{d_id}/edit?step=0')`.
+
+On the **first edit**, the draft promotes to a server draft (lazy, ORCH-0893). Path:
+- First keystroke → `RsvpCreatorWizard.handleUpdate` → `queueAutosave` (700ms debounce) → `onAutosaveDraft` = `handleAutosaveDraft`.
+- `app/rsvp/[id]/edit.tsx:450-533` `handleAutosaveDraft`: `if (incoming.id.startsWith("d_"))` and `isDraftDirty(incoming)` → `createServerDraft(...)` → on resolve: **`replaceDraft(d_*→serverDraft)` + `router.replace('/rsvp/<serverId>/edit?step=…')`** (lines 526-533).
+
+`isDraftDirty` (`src/utils/draftDirtyCheck.ts`) returns `true` as soon as `name.trim().length > 0` → the promotion fires after the **first character** (＋ the 700ms debounce). `router.replace` changes the `[id]` dynamic segment — a real expo-router (6.0.23) navigation. Changing a dynamic route instance replaces the screen (new route key) → the screen component (and its name `TextInput`) **remounts** → keyboard drops. This matches all three of Seth's facts: first-character (promotion fires on first dirty edit), create-flow (the `d_*`→server promotion), and unreproducible in the isolated RTL mount (no navigator).
+
+**Timing reconciliation:** the promotion is 700ms-debounced after the *first keystroke burst*. "After the first character" fits a user who types the name a character at a time / pauses (~700ms) — the drop lands while still focused in the name field.
+
+### 11.2 In-code corroboration (the prior engineer saw this exact symptom)
+
+`app/rsvp/[id]/edit.tsx:153-159` (ORCH-1150 D-1), verbatim: *"retain the last resolved draft so the `d_*`→server migration swap does NOT flash the `draft===null` Spinner (which **remounts the wizard, perceived as a 'refresh' while typing the name**). During an in-flight migration the resolved `draft` momentarily goes null between `replaceDraft(d_*→server) + router.replace(newId)` and `useDraftById(newId)` resolving."*
+
+A prior engineer OBSERVED the identical symptom ("refresh while typing the name") from this exact swap and added the D-1 retention (`lastResolvedDraftRef` / `migrationInFlight` / `renderDraft`, lines 353-361) to mitigate it. **Seth still sees it** → D-1 is INCOMPLETE: it suppresses the intra-instance `draft===null` Spinner flash, but a `lastResolvedDraftRef` on the *unmounting* screen instance cannot survive a React-Navigation screen remount driven by `router.replace(newId)`.
+
+### 11.3 The event-vs-RSVP asymmetry — NOT explained by code (create flow is byte-identical)
+
+The orchestrator's must-answer question. Result: **the promotion path is symmetric between the event and RSVP create flows** — I could NOT find a code-level RSVP-only difference:
+- `app/event/create.tsx:192-193` — `createDraft(brandId)` (`d_*`) → `router.replace('/event/{d_id}/edit?step=0')`. Identical shape to RSVP.
+- `app/event/[id]/edit.tsx:388-478` `handleAutosaveDraft` — same `createServerDraft` → `replaceDraft` + `router.replace('/event/<serverId>/edit')` (lines 449-456).
+- `isDraftDirty` + the 700ms `queueAutosave` debounce are shared/identical (both wizards, `src/utils/draftDirtyCheck.ts`).
+- Structural diff of the two routes: the **only** create-path difference is the RSVP-only **D-1 retention** — which makes RSVP *strictly better* at focus-preservation, not worse.
+
+Because the promotion is symmetric and the only difference protects RSVP, the promotion-remount **cannot, by code alone, explain "event fine, RSVP broken."** The most likely reconciliations (to confirm on-device):
+1. **The event create wizard has the SAME latent focus-drop**, and "event is fine" reflects a different *test condition* — e.g. Seth resumed an existing **server-backed** event draft (id already a server uuid → NO promotion → no remount), or typed the event name in a continuous burst so the 700ms promotion fired *after* he left the name field.
+2. A native-only factor outside these code paths that I could not isolate statically.
+
+Either way, the bug is best characterized as **create-flow-wide (both event and RSVP fresh creates), not RSVP-specific** — so the fix must cover both routes.
+
+### 11.4 Repro + honest cap
+
+- **Trigger:** source-proven (deterministic code path above) + corroborated by the D-1 comment. This is not theory — it is the literal `replaceDraft` + `router.replace(newId)` call on first dirty edit.
+- **Remount → focus-drop:** **PROBABLE, NOT runtime-proven here.** I attempted the decisive `expo-router/testing-library` `renderRouter` proof (`jest.orch1355.router.cjs` + `RsvpPromotionRemount.orch1355.router.test.tsx`) to show `router.replace` to a new `[id]` remounts the screen subtree. **Blocked** by a named environment issue: the worktree's **symlinked `node_modules`** (resolves to the anchor, outside `rootDir`) + jest-expo's overlay dependency duplication (expo/react/react-native) makes the full expo-router harness unstable (Flow-transform + duplicate-`expo` `Super expression must … be a function`). Fully resolving it needs a real `npm ci` in the worktree — disproportionate, and it would not resolve the §11.3 symmetry question anyway. The blocked config/test were removed.
+- **DECISIVE proof = iOS sim drive** into the authed RSVP (and event) create wizard, instrumenting screen mount count on promotion. Blocked here by business auth (Seth credential/login). Confidence therefore capped at **PROBABLE**.
+
+### 11.5 Discoveries update
+- **D-4:** Symptom 1 is **create-flow-wide** — `app/event/[id]/edit.tsx` shares the identical `d_*`→server promotion `router.replace(newId)`; the fix should cover BOTH routes (event as a fast-follow if the sim confirms it there too).
+- **D-5:** The ORCH-1150 D-1 retention is a **partial fix** for this exact symptom — it addresses the Spinner-flash but not the navigator remount. Do not delete it; the real fix supersedes its purpose.

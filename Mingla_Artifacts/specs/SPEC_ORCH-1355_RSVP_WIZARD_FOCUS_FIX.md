@@ -186,3 +186,38 @@ If and only if the device drive (OQ-1) confirms the keyboard drop AND identifies
 - `draftEventStore.ts`, `serverDraftAutosaveGuards.ts`, `app/rsvp/[id]/edit.tsx`.
 - `CreatorStep1Basics.tsx` / `Input.tsx` (no symptom-1 change until OQ-1).
 - Any backend / migration / edge / RPC.
+
+---
+
+## 12. Symptom 1 — draft-promotion route remount (ADDENDUM, supersedes §4.3/OQ-1)
+
+Investigation §11 reopened symptom 1. The component-level "no remount" verdict stands; the remount is at the **route/navigator** level: on the first edit, the `d_*`→server draft promotion calls `router.replace('/rsvp/<serverId>/edit')`, changing the `[id]` dynamic segment → expo-router (6.0.23) replaces the screen instance → the wizard + name `TextInput` remount → keyboard drops. Trigger is source-proven + corroborated by the ORCH-1150 D-1 in-code comment (a prior engineer observed this exact "refresh while typing the name"). Confirmed **create-flow-wide** (event create is byte-identical) — NOT RSVP-specific.
+
+### 12.1 Fix goal
+The `d_*`→server promotion MUST NOT change the mounted screen (and thus MUST NOT remount the name input) while the user is editing. Preserve: deep-linking to a draft, lazy server-draft creation (autosave), resume semantics, the ORCH-1150 D-1 retention, and the event route.
+
+### 12.2 Candidate fixes (evaluate on the sim; recommend one)
+- **(A) RECOMMENDED — decouple the rendered draft id from the URL param (defer/omit the URL swap).** On promotion, keep `replaceDraft(d_*→server)` (store swap) but **do not** `router.replace` during the active session. Resolve the wizard's draft from a route-state `activeDraftId` (init from `idParam`; set to `serverId` on promotion) rather than directly from `idParam`, so the URL stays `/rsvp/d_xxx/edit` and the screen instance is preserved (no remount). Reconcile the URL to the server id only on wizard **exit** (or via `navigation.setParams` if it can update params without a screen replace — verify it does not re-key). Deep-link/resume to `/rsvp/<serverId>/edit` still resolves normally (idParam=serverId → activeDraftId=serverId). Size: **M** (route-state refactor, contained to the two edit routes).
+- **(B) Stable screen identity (`getId`).** Give the `[id]/edit` screen a stable navigation id across the swap so React-Navigation reuses the instance. Verify expo-router 6 actually honors a stable `getId` on a dynamic route via `_layout.tsx` `<Stack.Screen>`; if unsupported/leaky (deep-link to a *different* draft while one is open reuses the instance), reject in favor of (A). Size: **S** if supported.
+- **(C) `navigation.setParams` instead of `router.replace`.** Update the `id` param in place if expo-router exposes a param update that does not replace the route. Verify no re-key. Size: **S** if it works.
+
+Recommendation: prototype **(B)/(C)** first (smallest); if either cannot be proven to avoid the re-key on the sim, ship **(A)**.
+
+### 12.3 Files
+- `mingla-business/app/rsvp/[id]/edit.tsx` (promotion + draft resolution).
+- `mingla-business/app/event/[id]/edit.tsx` — **same latent bug (create-flow-wide)**; apply the same fix (fast-follow, gated on the sim confirming event also drops focus).
+- Optionally `mingla-business/app/rsvp/_layout.tsx` / `app/event/_layout.tsx` (only for candidate B).
+- Do NOT delete the ORCH-1150 D-1 retention; the fix supersedes its purpose but removing it risks the Spinner-flash regression.
+
+### 12.4 Invariant
+- `I-PROPOSED-1355-DRAFT-PROMOTION-NO-REMOUNT` (DRAFT) — the `d_*`→server draft promotion MUST NOT change the mounted wizard screen instance mid-session (no `[id]`-segment `router.replace` while editing); the name input must survive promotion with focus intact.
+
+### 12.5 Regression test + fails-on-revert
+- **Router-mock integration test** (expo-router mocked): mount the edit route (or the promotion unit), simulate a first dirty edit, and assert that promotion does NOT change the routed `[id]` mid-session (candidate A/C) OR that a mount-counting child under the screen does NOT remount across promotion (candidate B). Fails-on-revert: restoring the `router.replace('/…/<serverId>/edit')` mid-session re-introduces the `[id]` change / remount and the test FAILS.
+- **Decisive acceptance = iOS sim drive:** type in the RSVP (and event) create name field, let the promotion fire, and confirm the keyboard stays up. This is REQUIRED before shipping (§12.6).
+
+### 12.6 Sim gate (BLOCKING before App Store)
+The remount→focus-drop link is PROBABLE, not runtime-proven (the `renderRouter` proof was blocked by the worktree's symlinked `node_modules` + jest-expo overlay duplication; the sim drive needs business auth). Before shipping symptom 1: (1) sim-confirm the remount drops focus on RSVP create, (2) sim-confirm whether **event create** also drops focus (expected yes — resolves the §11.3 asymmetry: "event fine" is most likely a resume-vs-create or typing-cadence artifact), (3) sim-confirm the chosen fix keeps the keyboard up on BOTH flows. Do not ship on source theory alone.
+
+### 12.7 Allowlist delta (symptom 1)
+Add to the allowlist: `app/rsvp/[id]/edit.tsx`, `app/event/[id]/edit.tsx`, optional `app/rsvp/_layout.tsx` + `app/event/_layout.tsx`, and the router-mock regression test + its config. Keep `RsvpStep5Setup.tsx` and the shipped `handleUpdate` (symptom-2, `5d7c8320b`) on the **DO-NOT-TOUCH** list.
