@@ -247,14 +247,20 @@ function rsvpSection(rsvps, cb) {
   const rowFields =
     rsvps.rows.length === 0
       ? [noneField("Guest list")]
-      : rsvps.rows.map((r) =>
-          field(r.guest_name || r.guest_email || r.rsvp_id, r, (g) => (
+      : rsvps.rows.map((r) => {
+          // ORCH-1334 — read-time identity: prefer the resolved profile name over
+          // the stored 'Guest' sentinel; a source badge answers "where from"; the
+          // resolved profile email surfaces for app members.
+          const isApp = r.source ? r.source === "app" : Boolean(r.user_id);
+          const rowLabel = r.display_name || r.guest_name || r.guest_email || r.rsvp_id;
+          const rowEmail = r.email || r.guest_email;
+          return field(rowLabel, r, (g) => (
             <span className="flex flex-col gap-0.5">
               <span className="flex flex-wrap items-center gap-1.5">
                 <Badge variant={RSVP_VARIANT[g.rsvp_status] || "default"} dot>{g.rsvp_status}</Badge>
                 <Badge variant={APPROVAL_VARIANT[g.approval_status] || "default"}>{g.approval_status}</Badge>
                 {g.plus_count > 0 && <span className="text-xs text-[var(--color-text-tertiary)]">+{g.plus_count}</span>}
-                {!g.user_id && <Badge variant="outline">guest</Badge>}
+                <Badge variant={isApp ? "info" : "outline"}>{isApp ? "On Mingla" : "RSVP'd on web"}</Badge>
                 {cb?.dispatch && (
                   <>
                     {g.approval_status !== "approved" && (
@@ -266,7 +272,7 @@ function rsvpSection(rsvps, cb) {
                       <RowAction
                         danger
                         onClick={() =>
-                          cb.dispatch({ kind: "rsvpDeny", targetId: g.rsvp_id, label: g.guest_name || g.guest_email || g.rsvp_id })
+                          cb.dispatch({ kind: "rsvpDeny", targetId: g.rsvp_id, label: rowLabel })
                         }
                       >
                         Deny
@@ -275,7 +281,7 @@ function rsvpSection(rsvps, cb) {
                     <RowAction
                       danger
                       onClick={() =>
-                        cb.dispatch({ kind: "rsvpRemove", targetId: g.rsvp_id, label: g.guest_name || g.guest_email || g.rsvp_id })
+                        cb.dispatch({ kind: "rsvpRemove", targetId: g.rsvp_id, label: rowLabel })
                       }
                     >
                       Remove
@@ -283,15 +289,15 @@ function rsvpSection(rsvps, cb) {
                   </>
                 )}
               </span>
-              {g.guest_email && <span className="text-xs text-[var(--color-text-tertiary)]">{g.guest_email}</span>}
+              {rowEmail && <span className="text-xs text-[var(--color-text-tertiary)]">{rowEmail}</span>}
               {Array.isArray(g.plus_guests) && g.plus_guests.length > 0 && (
                 <span className="text-xs text-[var(--color-text-tertiary)]">
                   {g.plus_guests.map((pg) => pg.name || pg.email).filter(Boolean).join(", ")}
                 </span>
               )}
             </span>
-          )),
-        );
+          ));
+        });
   return [
     { label: "RSVP counts", fields: countFields },
     { label: `Guest list (${rsvps.total})`, fields: rowFields },

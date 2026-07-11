@@ -30,6 +30,7 @@ import {
 } from '../services/betaFeedbackService';
 import { getDeviceInfo } from '../services/deviceInfoService';
 import { getSessionDurationMs } from '../services/sessionTracker';
+import { requestGalleryPermission } from '../utils/mediaLibraryPermission';
 import { useSubmitFeedback } from '../hooks/useBetaFeedback';
 import { useAppStore } from '../store/appStore';
 import { useTranslation } from 'react-i18next';
@@ -285,7 +286,7 @@ export default function BetaFeedbackModal({
     const remaining = MAX_SCREENSHOTS - selectedScreenshots.length;
     if (remaining <= 0) return;
 
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    const { status } = await requestGalleryPermission();
     if (status !== 'granted') {
       setPermissionMessage(t('feedback:modal.permission_photos'));
       return;

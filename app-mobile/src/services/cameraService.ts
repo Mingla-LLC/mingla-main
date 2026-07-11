@@ -2,6 +2,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { Alert, Platform } from 'react-native';
 import { supabase } from './supabase';
+import { requestGalleryPermission } from '../utils/mediaLibraryPermission';
 
 export interface ImageResult {
   uri: string;
@@ -36,8 +37,8 @@ class CameraService {
       }
 
       // Request media library permissions
-      const { status: mediaStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      
+      const { status: mediaStatus } = await requestGalleryPermission();
+
       if (mediaStatus !== 'granted') {
         console.warn('Media library permission not granted');
       }

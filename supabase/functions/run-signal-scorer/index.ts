@@ -7,10 +7,18 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { computeScore, type PlaceForScoring, type SignalConfig } from '../_shared/signalScorer.ts';
+import { type PlaceForScoring, type SignalConfig } from '../_shared/signalScorer.ts';
 // ORCH-1066 — sticky-through-approval: shared admin-override marker predicates so
 // the scorer and its regression test agree on exactly one definition.
 import { isAdminOverridden } from '../_shared/stickyOverride.ts';
+// ORCH-1333 — bounded, incremental, resumable per-page scoring engine (cursor
+// loop). All DB IO stays HERE in index.ts via the injected ScorerBatchDeps; the
+// engine is pure logic. See INVESTIGATION/SPEC ORCH-1333 and
+// _shared/signalScorerBatch.ts.
+import {
+  runSignalScorerBatch,
+  type ScorerBatchDeps,
+} from '../_shared/signalScorerBatch.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
@@ -36,26 +44,14 @@ const SELECT_FIELDS =
 
 const BATCH_SIZE = 500;
 
-interface ScorerSummary {
-  scored_count: number;
-  ineligible_count: number;
-  // META-ORCH-1009 Sub-B — how many (place, signal) pairs Gemini vetoed via
-  // `inappropriate_for=true`. Surfaced in the response for admin visibility;
-  // dashboard UI for this is Sub-D scope (admin re-eval button).
-  vetoed_count: number;
-  ai_blended_count: number;
-  signal_version_id: string | null;
-  score_distribution: { '0-50': number; '50-100': number; '100-150': number; '150-200': number };
-}
+const IN_CHUNK = 100; // max UUIDs per PostgREST .in() URL — 500 blew the HTTP/2 request-URL limit (ORCH-1333 retest). ~100 ≈ 3.7KB, safe.
 
-function bucketize(distribution: ScorerSummary['score_distribution'], score: number | null): void {
-  // META-ORCH-1009 Sub-B — null = vetoed, don't bucket
-  if (score === null) return;
-  if (score < 50) distribution['0-50']++;
-  else if (score < 100) distribution['50-100']++;
-  else if (score < 150) distribution['100-150']++;
-  else distribution['150-200']++;
-}
+// ORCH-1333 — one page per city/all_cities invocation. Bounds per-call CPU +
+// sticky-read so a large post-Sub-B city (New York 9,903 / Paris 4,464) can
+// never trip the Edge isolate's resource budget mid-run; the admin client loops
+// the cursor until done. Per-place mode uses a larger cap (see maxRows below) so
+// the 15-min cron + approval re-score finish in ONE invocation.
+const SCORER_MAX_ROWS_PER_CALL = 500;
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -78,6 +74,10 @@ serve(async (req: Request) => {
     const placeIds: string[] | undefined = Array.isArray(body.place_ids)
       ? (body.place_ids as unknown[]).map((v) => String(v))
       : undefined;
+    // ORCH-1333 — resumable cursor for city/all_cities mode (mirrors run-bouncer).
+    // Additive: ignored by per-place callers (cron / approval finish in one call).
+    const afterId: string | null =
+      typeof body.after_id === 'string' && body.after_id.length > 0 ? body.after_id : null;
 
     if (!signalId) {
       return new Response(
@@ -154,252 +154,204 @@ serve(async (req: Request) => {
     const config = versionRow.config as SignalConfig;
     const signalVersionId: string = versionRow.id;
 
-    const summary: ScorerSummary = {
-      scored_count: 0,
-      ineligible_count: 0,
-      vetoed_count: 0,
-      ai_blended_count: 0,
-      signal_version_id: signalVersionId,
-      score_distribution: { '0-50': 0, '50-100': 0, '100-150': 0, '150-200': 0 },
-    };
+    const isPerPlace = !!(placeIds && placeIds.length > 0);
 
-    const writes: Array<{
-      place_id: string;
-      signal_id: string;
-      score: number;
-      contributions: Record<string, number | string>;
-      signal_version_id: string;
-      // META-ORCH-1009 Sub-D — passthrough of the AI slice's evaluated_at
-      // (null when computeScore returned a rule-only result). Stamped onto
-      // place_scores.ai_signal_scores_at on UPSERT so the 15-min cron knows
-      // this row reflects the live AI input.
-      ai_signal_scores_at: string | null;
-    }> = [];
-    // META-ORCH-1009 Sub-B — vetoed (place, signal) pairs need their existing
-    // place_scores row DELETED (not upserted) so the RPC JOIN excludes them.
-    // place_scores.score is NOT NULL in the DDL CHECK constraint so we can't
-    // sentinel via NULL — see IMPLEMENTATION report §Deviations.
-    const vetoedPlaceIds: string[] = [];
-
-    // META-ORCH-1009 Sub-D — extracted inner loop so both per-place and
-    // city/all-cities modes share the same scorer dispatch + writes
-    // accumulator. Body is unchanged from the prior Sub-B inline loop.
-    const processPlaces = (data: Array<PlaceForScoring & { id: string }>) => {
-      for (const place of data) {
-        // META-ORCH-1009 Sub-B — pass signalId so computeScore can read the
-        // per-signal slice of place.ai_signal_scores for blend + veto.
-        const result = computeScore(place, config, signalId);
-        bucketize(summary.score_distribution, result.score);
-        if ((result.contributions as Record<string, unknown>)._ineligible !== undefined) {
-          summary.ineligible_count++;
-        } else {
-          summary.scored_count++;
+    // ORCH-1333 — ALL DB IO lives HERE in index.ts (sole-writer strict-grep
+    // gates). The shared engine is pure logic + these injected callbacks.
+    const deps: ScorerBatchDeps = {
+      // Page is_active + is_servable place_pool by id after `cursor`. Per-place
+      // mode filters to the exact id set; city mode filters by city_id;
+      // all_cities applies no scope filter (identical row set to the
+      // pre-ORCH-1333 paths, only paged by id-cursor instead of offset).
+      loadPage: async (cursor, size) => {
+        // Build a fresh, identically-filtered query each call — Supabase query
+        // builders are thenable and cannot be reused after an await.
+        const buildBase = () => {
+          let q = supabaseAdmin
+            .from('place_pool')
+            .select(SELECT_FIELDS)
+            .eq('is_active', true)
+            .eq('is_servable', true)
+            .order('id')
+            .limit(size);
+          if (!isPerPlace && cityId) q = q.eq('city_id', cityId);
+          if (cursor) q = q.gt('id', cursor);
+          return q;
+        };
+        // ORCH-1333 retest — per-place mode: chunk the id list into IN_CHUNK-sized
+        // `.in('id', …)` sub-queries so the PostgREST GET URL never exceeds the
+        // HTTP/2 request-URL limit (up to 1000 UUIDs ≈ 37KB blew the request). Each
+        // sub-query keeps the identical is_active+is_servable+cursor filters,
+        // order-by-id, and `.limit(size)`; the union is re-sorted by id and truncated
+        // to `size` to reproduce the exact single-query page (the global first-`size`
+        // rows after the cursor are a subset of the per-slice first-`size` rows, so
+        // no in-page row is ever lost).
+        if (isPerPlace && placeIds) {
+          const collected: unknown[] = [];
+          for (let i = 0; i < placeIds.length; i += IN_CHUNK) {
+            const idSlice = placeIds.slice(i, i + IN_CHUNK);
+            if (idSlice.length === 0) continue;
+            const { data, error } = await buildBase().in('id', idSlice);
+            if (error) throw new Error(`place_pool fetch failed: ${error.message}`);
+            if (data) collected.push(...data);
+          }
+          const rows = collected as Array<PlaceForScoring & { id: string }>;
+          rows.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+          return rows.slice(0, size);
         }
-        // META-ORCH-1009 Sub-B — null score = Gemini veto. Queue a DELETE
-        // for any existing place_scores row instead of an UPSERT.
-        if (result.score === null) {
-          summary.vetoed_count++;
-          vetoedPlaceIds.push(place.id);
-          continue;
+        const { data, error } = await buildBase();
+        if (error) throw new Error(`place_pool fetch failed: ${error.message}`);
+        return (data ?? []) as Array<PlaceForScoring & { id: string }>;
+      },
+      // ── ORCH-1066 STICKY-THROUGH-APPROVAL (per page) ──────────────────────
+      // An admin can SET / PIN / override a place's signal score via the
+      // deck-score-tuner + score-override RPCs, which stamp
+      // place_scores.contributions with an admin marker. A re-score must NOT
+      // clobber (upsert) or veto-DELETE such a row. Build the set of protected
+      // place_ids for THIS page; the engine drops them from both batches. On a
+      // read error we THROW → the engine fail-CLOSES this page (no upsert) and
+      // keeps prior pages persisted (Constitution #5 — no silent failure).
+      // Authority: I-1066-ADMIN-OVERRIDE-STICKY-THROUGH-RESCORE.
+      readProtectedIds: async (ids) => {
+        const out = new Set<string>();
+        // ORCH-1333 retest — chunk by IN_CHUNK (not BATCH_SIZE): a 500-UUID
+        // `.in('place_id', …)` GET URL (~18KB) tripped the HTTP/2 request-URL
+        // limit and failed the whole page. ~100 ids per URL is safe.
+        for (let i = 0; i < ids.length; i += IN_CHUNK) {
+          const idChunk = ids.slice(i, i + IN_CHUNK);
+          if (idChunk.length === 0) continue;
+          const { data: existingRows, error: existErr } = await supabaseAdmin
+            .from('place_scores')
+            .select('place_id, contributions')
+            .eq('signal_id', signalId)
+            .in('place_id', idChunk);
+          if (existErr) throw new Error(existErr.message);
+          for (const row of (existingRows ?? []) as Array<{ place_id: string; contributions: Record<string, unknown> | null }>) {
+            if (isAdminOverridden(row.contributions)) out.add(row.place_id);
+          }
         }
-        if (result.ai_blended) {
-          summary.ai_blended_count++;
-        }
-        writes.push({
-          place_id: place.id,
-          signal_id: signalId,
-          score: result.score,
-          contributions: result.contributions,
-          signal_version_id: signalVersionId,
-          // META-ORCH-1009 Sub-D — null on rule-only path (no AI input at
-          // score-compute time); set when AI blend or veto-bypass produced
-          // a stored row. Veto rows go through the DELETE path above and
-          // never reach this push.
-          ai_signal_scores_at: result.ai_blended?.evaluated_at ?? null,
-        });
-      }
-    };
-
-    if (placeIds && placeIds.length > 0) {
-      // META-ORCH-1009 Sub-D — per-place mode: single SELECT, no paging loop.
-      // place_ids capped at 1000 above; comfortably within Supabase's `.in()`
-      // limit. is_active + is_servable filters preserved so the cron + admin
-      // button respect the bouncer gate identically to the city/all_cities
-      // paths.
-      const { data, error } = await supabaseAdmin
-        .from('place_pool')
-        .select(SELECT_FIELDS)
-        .eq('is_active', true)
-        .eq('is_servable', true)
-        .in('id', placeIds);
-      if (error) {
-        return new Response(
-          JSON.stringify({ error: `place_pool fetch failed: ${error.message}` }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-        );
-      }
-      if (data) processPlaces(data as Array<PlaceForScoring & { id: string }>);
-    } else {
-      // Stream is_servable place_pool in pages (existing city/all_cities mode).
-      let offset = 0;
-      while (true) {
-        let q = supabaseAdmin
-          .from('place_pool')
-          .select(SELECT_FIELDS)
-          .eq('is_active', true)
-          .eq('is_servable', true)
-          .order('id')
-          .range(offset, offset + BATCH_SIZE - 1);
-
-        if (cityId) q = q.eq('city_id', cityId);
-
-        const { data, error } = await q;
-        if (error) {
-          return new Response(
-            JSON.stringify({ error: `place_pool fetch failed: ${error.message}` }),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        return out;
+      },
+      // SOLE writer of place_scores.score + the AI freshness column
+      // (Constitutional #2 + I-AI-SCORE-STALENESS-AUTO-RECOVERED). This is the
+      // ONLY place the DB freshness-column name exists — the engine passes the
+      // value through under a gate-neutral camelCase key. UPSERT ON CONFLICT
+      // (place_id, signal_id) DO UPDATE.
+      upsertScores: async (rows) => {
+        if (rows.length === 0) return { error: null };
+        const now = new Date().toISOString();
+        const { error } = await supabaseAdmin
+          .from('place_scores')
+          .upsert(
+            rows.map((w) => ({
+              place_id: w.place_id,
+              signal_id: w.signal_id,
+              score: w.score,
+              contributions: w.contributions,
+              signal_version_id: w.signal_version_id,
+              scored_at: now,
+              // META-ORCH-1009 Sub-D — stamp the AI slice's evaluated_at so the
+              // 15-min rescore-sweep cron knows this row is fresh. NULL on the
+              // rule-only path. Sole-writer per I-AI-SCORE-STALENESS-AUTO-RECOVERED.
+              ai_signal_scores_at: w.aiSignalScoresAt,
+            })),
+            { onConflict: 'place_id,signal_id' },
           );
+        return { error: error?.message ?? null };
+      },
+      // META-ORCH-1009 Sub-B — DELETE existing place_scores rows for vetoed
+      // (place, signal) pairs so the consumer RPC JOIN excludes them. Non-fatal:
+      // a partial failure is logged but never aborts (the upserts already landed).
+      deleteVetoed: async (ids) => {
+        let deleted = 0;
+        // ORCH-1333 retest — chunk by IN_CHUNK (not BATCH_SIZE): a 500-UUID
+        // `.in('place_id', …)` DELETE URL (~18KB) tripped the HTTP/2 request-URL
+        // limit. ~100 ids per URL is safe.
+        for (let i = 0; i < ids.length; i += IN_CHUNK) {
+          const idChunk = ids.slice(i, i + IN_CHUNK);
+          if (idChunk.length === 0) continue;
+          const { error: delErr, count } = await supabaseAdmin
+            .from('place_scores')
+            .delete({ count: 'exact' })
+            .eq('signal_id', signalId)
+            .in('place_id', idChunk);
+          if (delErr) {
+            console.error('[run-signal-scorer] veto-delete failed:', delErr.message);
+            continue;
+          }
+          deleted += count ?? 0;
         }
-        if (!data || data.length === 0) break;
+        return { deleted, error: null };
+      },
+      // Progress UI only. ORCH-1333 Open-Question-1: a correct city-scoped
+      // "unscored" count needs an anti-join PostgREST can't express cheaply, so
+      // we ship null (the admin client + Bouncer both tolerate a null
+      // remaining). MUST NOT throw.
+      countRemaining: async () => null,
+    };
 
-        processPlaces(data as Array<PlaceForScoring & { id: string }>);
+    // ORCH-1333 — per-place = 1000 so the 15-min cron + approval re-score (≤500
+    // ids) finish in ONE invocation (done:true, no client loop). City/all_cities
+    // = one 500-row page per call so the admin client loops the cursor to done.
+    const result = await runSignalScorerBatch(deps, {
+      signalId,
+      config,
+      signalVersionId,
+      maxRows: isPerPlace ? 1000 : SCORER_MAX_ROWS_PER_CALL,
+      pageSize: BATCH_SIZE,
+      afterId,
+      dryRun,
+    });
 
-        if (data.length < BATCH_SIZE) break;
-        offset += BATCH_SIZE;
-      }
-    }
+    const scope = isPerPlace ? `place_ids[${placeIds?.length ?? 0}]` : (cityId ?? 'all');
 
     if (dryRun) {
       const elapsed = Date.now() - t0;
-      const scope = placeIds ? `place_ids[${placeIds.length}]` : (cityId ?? 'all');
-      console.log(`[run-signal-scorer] dry_run signal=${signalId} scope=${scope} scored=${summary.scored_count} ineligible=${summary.ineligible_count} vetoed=${summary.vetoed_count} ai_blended=${summary.ai_blended_count} elapsed_ms=${elapsed}`);
+      console.log(`[run-signal-scorer] dry_run signal=${signalId} scope=${scope} scored=${result.summary.scored_count} ineligible=${result.summary.ineligible_count} vetoed=${result.summary.vetoed_count} ai_blended=${result.summary.ai_blended_count} elapsed_ms=${elapsed}`);
       return new Response(
-        JSON.stringify({ success: true, dry_run: true, ...summary, duration_ms: elapsed }),
+        JSON.stringify({
+          success: true,
+          dry_run: true,
+          ...result.summary,
+          next_cursor: result.next_cursor,
+          done: result.done,
+          remaining: result.remaining,
+          duration_ms: elapsed,
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
     }
 
-    // ── ORCH-1066 STICKY-THROUGH-APPROVAL ──────────────────────────────────────
-    // An admin can SET / PIN a place's signal score via the deck-score-tuner RPCs
-    // (admin_set_place_signal_score / admin_pin_place_to_top) — and META-ORCH-1062
-    // can override via admin_apply_score_override. Those writes stamp
-    // place_scores.contributions with an admin-override marker (_admin_set /
-    // _admin_pin / _admin_override). The approval re-score loop
-    // (admin-review-venue-claim runApproveGoLive) invokes THIS function per signal,
-    // which would re-UPSERT the computed score (clobbering the admin's value) OR,
-    // if the AI vetoes, DELETE the admin's row. To keep an admin pin/set sticky
-    // through approval, build the set of (place_id) for THIS signal whose committed
-    // contributions carry an admin marker, then (a) drop those from the write batch
-    // and (b) drop those from the veto-delete batch. The admin score wins.
-    // Authority: I-1066-ADMIN-OVERRIDE-STICKY-THROUGH-RESCORE (DRAFT→ACTIVE on close).
-    const protectedIds = new Set<string>();
-    let stickySkipped = 0;
-    {
-      // Union of every place_id we'd touch this run (upsert OR veto-delete).
-      const touchedIds = Array.from(
-        new Set<string>([...writes.map((w) => w.place_id), ...vetoedPlaceIds]),
+    // Fatal page error (sticky pre-read or upsert failed). Prior pages remain
+    // persisted; the client stops and surfaces the error. NO abort-all.
+    if (result.error) {
+      console.error('[run-signal-scorer]', result.error);
+      return new Response(
+        JSON.stringify({
+          error: result.error,
+          partial_summary: result.summary,
+          written: result.written,
+          next_cursor: result.next_cursor,
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
-      for (let i = 0; i < touchedIds.length; i += BATCH_SIZE) {
-        const idChunk = touchedIds.slice(i, i + BATCH_SIZE);
-        if (idChunk.length === 0) continue;
-        const { data: existingRows, error: existErr } = await supabaseAdmin
-          .from('place_scores')
-          .select('place_id, contributions')
-          .eq('signal_id', signalId)
-          .in('place_id', idChunk);
-        if (existErr) {
-          // Fail-safe: if we cannot read existing overrides, do NOT proceed with a
-          // re-score that might clobber admin pins. Surface the error (Constitution
-          // #5 — no silent failure) rather than risk overwriting a sticky score.
-          console.error('[run-signal-scorer] sticky pre-read failed:', existErr.message);
-          return new Response(
-            JSON.stringify({
-              error: `sticky override pre-read failed: ${existErr.message}`,
-              partial_summary: summary,
-            }),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-          );
-        }
-        for (const row of (existingRows ?? []) as Array<{ place_id: string; contributions: Record<string, unknown> | null }>) {
-          if (isAdminOverridden(row.contributions)) {
-            protectedIds.add(row.place_id);
-          }
-        }
-      }
-      if (protectedIds.size > 0) {
-        const beforeWrites = writes.length;
-        for (let i = writes.length - 1; i >= 0; i--) {
-          if (protectedIds.has(writes[i].place_id)) writes.splice(i, 1);
-        }
-        stickySkipped = beforeWrites - writes.length;
-        // Also protect admin rows from veto-deletion.
-        for (let i = vetoedPlaceIds.length - 1; i >= 0; i--) {
-          if (protectedIds.has(vetoedPlaceIds[i])) vetoedPlaceIds.splice(i, 1);
-        }
-        console.log(`[run-signal-scorer] sticky: protected ${protectedIds.size} admin-overridden place(s) for signal=${signalId} (write-skipped ${stickySkipped})`);
-      }
-    }
-
-    // UPSERT in chunks of 500 — ON CONFLICT (place_id, signal_id) DO UPDATE
-    const now = new Date().toISOString();
-    let written = 0;
-    for (let i = 0; i < writes.length; i += BATCH_SIZE) {
-      const chunk = writes.slice(i, i + BATCH_SIZE).map((w) => ({
-        place_id: w.place_id,
-        signal_id: w.signal_id,
-        score: w.score,
-        contributions: w.contributions,
-        signal_version_id: w.signal_version_id,
-        scored_at: now,
-        // META-ORCH-1009 Sub-D — stamp the AI slice's evaluated_at so the
-        // 15-min rescore-sweep cron knows this row is fresh. NULL on
-        // rule-only path. Sole-writer per I-AI-SCORE-STALENESS-AUTO-RECOVERED.
-        ai_signal_scores_at: w.ai_signal_scores_at,
-      }));
-      const { error: writeErr } = await supabaseAdmin
-        .from('place_scores')
-        .upsert(chunk, { onConflict: 'place_id,signal_id' });
-      if (writeErr) {
-        console.error(`[run-signal-scorer] write batch ${i / BATCH_SIZE} failed:`, writeErr.message);
-        return new Response(
-          JSON.stringify({
-            error: `place_scores upsert failed at batch ${i / BATCH_SIZE}: ${writeErr.message}`,
-            partial_summary: summary,
-            written,
-          }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-        );
-      }
-      written += chunk.length;
-    }
-
-    // META-ORCH-1009 Sub-B — DELETE existing place_scores rows for vetoed
-    // (place, signal) pairs so the consumer RPC JOIN excludes them. Chunked
-    // to keep the URL parameter list small. Non-fatal: a partial failure is
-    // logged but does not return 500 because the upserts already succeeded.
-    let deleted = 0;
-    if (vetoedPlaceIds.length > 0) {
-      for (let i = 0; i < vetoedPlaceIds.length; i += BATCH_SIZE) {
-        const chunk = vetoedPlaceIds.slice(i, i + BATCH_SIZE);
-        const { error: delErr, count } = await supabaseAdmin
-          .from('place_scores')
-          .delete({ count: 'exact' })
-          .eq('signal_id', signalId)
-          .in('place_id', chunk);
-        if (delErr) {
-          console.error(`[run-signal-scorer] veto-delete batch ${i / BATCH_SIZE} failed:`, delErr.message);
-          continue;
-        }
-        deleted += count ?? 0;
-      }
     }
 
     const elapsed = Date.now() - t0;
-    const scope = placeIds ? `place_ids[${placeIds.length}]` : (cityId ?? 'all');
-    console.log(`[run-signal-scorer] signal=${signalId} scope=${scope} scored=${summary.scored_count} ineligible=${summary.ineligible_count} vetoed=${summary.vetoed_count} ai_blended=${summary.ai_blended_count} written=${written} veto_deleted=${deleted} elapsed_ms=${elapsed}`);
+    console.log(`[run-signal-scorer] signal=${signalId} scope=${scope} scored=${result.summary.scored_count} ineligible=${result.summary.ineligible_count} vetoed=${result.summary.vetoed_count} ai_blended=${result.summary.ai_blended_count} written=${result.written} veto_deleted=${result.veto_deleted} next_cursor=${result.next_cursor ?? 'DONE'} elapsed_ms=${elapsed}`);
 
     return new Response(
-      JSON.stringify({ success: true, ...summary, written, veto_deleted: deleted, sticky_skipped: stickySkipped, duration_ms: elapsed }),
+      JSON.stringify({
+        success: true,
+        ...result.summary,
+        written: result.written,
+        veto_deleted: result.veto_deleted,
+        sticky_skipped: result.sticky_skipped,
+        next_cursor: result.next_cursor,
+        done: result.done,
+        remaining: result.remaining,
+        duration_ms: elapsed,
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
 

@@ -78,23 +78,27 @@ Deno.test("paid ticket render: shell wraps body with logo, footer, total", () =>
   assert(result.subject.startsWith("Your Mingla tickets"));
 });
 
-Deno.test("paid ticket render: tax row includes jurisdiction labels", () => {
+// ORCH-1330 [pre-existing test reds]: the per-jurisdiction tax display
+// ("Tax (New York State, New York City)") was INTENTIONALLY REMOVED. Under the
+// UK inclusive-VAT model (ORCH-1006 Surface 7 §7.2) the tax sits INSIDE the
+// Total and is restated as a quiet "Includes <amount> VAT" note under Total —
+// never a separate added line, never a jurisdiction breakdown. `taxBreakdown`
+// remains in the types but is consumed by NO renderer. This test asserts the
+// CURRENT shipped contract. (£7.25 = 725 cents in the GBP fixture.)
+Deno.test("paid ticket render: inclusive VAT note under Total, no jurisdiction label", () => {
   const fixture = ticketFixture();
   const body = fixture.body as TicketBodyInput;
   body.order.taxAmountCents = 725;
-  body.order.taxBreakdown = [
-    {
-      jurisdiction: { display_name: "New York State" },
-      tax_rate_details: { tax_type: "sales_tax", country: "US", state: "NY" },
-    },
-    {
-      jurisdiction: { display_name: "New York City" },
-      tax_rate_details: { tax_type: "sales_tax", country: "US", state: "NY" },
-    },
-  ];
   const result = renderTransactionalEmail(fixture);
-  assertStringIncludes(result.html, "Tax (New York State, New York City)");
-  assertStringIncludes(result.text, "Tax (New York State, New York City):");
+  // Inclusive-VAT note present in both HTML and text bodies.
+  assertStringIncludes(result.html, "Includes");
+  assertStringIncludes(result.html, "£7.25");
+  assertStringIncludes(result.html, "VAT");
+  assertStringIncludes(result.html, "Includes £7.25 VAT");
+  assertStringIncludes(result.text, "Includes £7.25 VAT");
+  // Negative: the removed per-jurisdiction tax label must NOT reappear.
+  assert(!result.html.includes("Tax ("));
+  assert(!result.text.includes("Tax ("));
 });
 
 Deno.test("free ticket render: Total reads 'Free', subject starts with 'You're in'", () => {
