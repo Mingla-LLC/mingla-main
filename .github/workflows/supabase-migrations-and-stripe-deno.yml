@@ -59,6 +59,9 @@ on:
       - "app-mobile/src/components/location/MapboxAddressInput.tsx"
       - "app-mobile/src/components/discover/CityPickerSheet.tsx"
       - "app-mobile/src/components/__tests__/orch-1361-preferences-location-multirow-bias.test.tsx"
+      # ORCH-1363 — take-a-stroll reachable-first-stop fix + its curated deno tests
+      # (the guarded SOURCE tree, not just the tests — docs-only-CLOSE hazard).
+      - "supabase/functions/generate-curated-experiences/**"
       - ".github/workflows/supabase-migrations-and-stripe-deno.yml"
   pull_request:
     paths:
@@ -94,6 +97,8 @@ on:
       - "app-mobile/src/components/location/MapboxAddressInput.tsx"
       - "app-mobile/src/components/discover/CityPickerSheet.tsx"
       - "app-mobile/src/components/__tests__/orch-1361-preferences-location-multirow-bias.test.tsx"
+      # ORCH-1363 — take-a-stroll reachable-first-stop fix + its curated deno tests.
+      - "supabase/functions/generate-curated-experiences/**"
       - ".github/workflows/supabase-migrations-and-stripe-deno.yml"
 
 jobs:
@@ -530,5 +535,47 @@ jobs:
               exit 1
             fi
             echo "ORCH-1361 Deno tests failed (attempt ${attempt}), retrying in 10s..."
+            sleep 10
+          done
+
+  orch-1363-curated-stroll-deno-tests:
+    name: "Deno unit tests for ORCH-1363 take-a-stroll reachable-first-stop (I-PROPOSED-1363-STANDARD-FIRST-STOP-REACHABLE)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: Run ORCH-1363 curated take-a-stroll Deno tests
+        env:
+          # Inert defaults — the tests import generate-curated-experiences/index.ts
+          # (its serve() is guarded by import.meta.main, so importing starts NO
+          # server and reaches NO DB) and exercise the PURE pickReachableFirstStop
+          # helper. These keep env-presence guards in the shared imports from throwing.
+          SUPABASE_URL: "https://example-test.supabase.co"
+          SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key-not-real"
+        run: |
+          set -euo pipefail
+          # ORCH-1363 §7 — the load-bearing regression guard (CLOSE HARD MUST,
+          # I-CLOSE regression-protection): these curated deno tests run in NO other
+          # workflow, so THIS job is the sole CI enforcement of the reachable-first-
+          # stop fix + I-PROPOSED-1363-STANDARD-FIRST-STOP-REACHABLE. T-1363-01 is
+          # fails-on-revert of the reachability filter.
+          DENO_TEST_FILES=(
+            # Implementor happy-path (T-1363-01..06) — T-1363-01 fails-on-revert.
+            supabase/functions/generate-curated-experiences/__tests__/orch_1363_reachable_first_stop.test.ts
+            # Tester adversarial (DIFFERENT angle) — gate-boundary precision +
+            # no-fabrication honesty; also fails-on-revert.
+            supabase/functions/generate-curated-experiences/__tests__/orch_1363_tester_adversarial.test.ts
+          )
+          for attempt in 1 2 3; do
+            if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "ORCH-1363 curated Deno tests failed after 3 attempts (esm.sh flake?)"
+              exit 1
+            fi
+            echo "ORCH-1363 curated Deno tests failed (attempt ${attempt}), retrying in 10s..."
             sleep 10
           done
