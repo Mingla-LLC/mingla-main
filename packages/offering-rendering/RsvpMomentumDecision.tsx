@@ -684,6 +684,9 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     padding: 18,
+    // ORCH-1358 — momentum card needs top breathing room from the pill
+    // cluster; do not remove marginTop.
+    marginTop: 16,
     marginBottom: 16,
     overflow: "hidden",
   },

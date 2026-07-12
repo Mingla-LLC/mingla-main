@@ -54,6 +54,7 @@ import React, {
 import {
   AccessibilityInfo,
   ActivityIndicator,
+  Alert,
   Animated,
   Easing,
   Pressable,
@@ -105,6 +106,15 @@ export interface EventGuestListSheetProps {
    * sink riding the Discover-map Message idiom (P1-2: never Linking.openURL).
    */
   onOpenConversation?: (conversationId: string) => void;
+  /**
+   * ORCH-1359 (d) — tap a NAMED guest's name → open that peer's public profile.
+   * The host (each Consumer*DetailScreen) sets a local `profileUserId` and
+   * renders <ViewFriendProfileScreen> as a DETAIL-LOCAL overlay (D-B): Back
+   * returns to THIS event/trip/experience detail, never the app shell. Absent ⇒
+   * the name stays inert (no dead tap). Anonymous/unlinked rows carry no
+   * profileId (D8) and are never pressable regardless of this seam.
+   */
+  onOpenProfile?: (userId: string) => void;
 }
 
 type GuestDisplayRow = {
@@ -128,12 +138,24 @@ const initialsFor = (name: string): string => {
   return joined.length > 0 ? joined : "?";
 };
 
+// ORCH-1359 — the guest's public CITY (first comma-segment of profiles.location,
+// mirroring ViewFriendProfileScreen:638). Returns null when there is no
+// location — the row then renders name-only (Constitution #9: missing is hidden,
+// never faked). `location` is server-gated to NAMED rows (null on
+// anonymous/private/unlinked), so this only ever runs against a public string.
+const cityFor = (loc: string | null): string | null => {
+  if (loc === null) return null;
+  const city = loc.split(",")[0]?.trim() ?? "";
+  return city.length > 0 ? city : null;
+};
+
 export function EventGuestListSheet({
   visible,
   onClose,
   eventId,
   goingCount,
   onOpenConversation,
+  onOpenProfile,
 }: EventGuestListSheetProps): React.ReactElement {
   const viewerId = useAppStore((s) => s.user?.id);
   const { page, isLoading, isError, error, refetch } = useEventGuestList(
@@ -145,9 +167,11 @@ export function EventGuestListSheet({
   // no extra cache work here. blocked-users auto-fetch is skipped: the server
   // owns ALL block exclusion (SPEC §4.4) and this sheet must never hold block
   // data it is forbidden to act on.
-  const { friends, friendRequests, addFriend } = useFriends({
-    autoFetchBlockedUsers: false,
-  });
+  const { friends, friendRequests, addFriend, cancelFriendRequest } = useFriends(
+    {
+      autoFetchBlockedUsers: false,
+    },
+  );
 
   // ── reduce-motion (OS setting — trip-screen idiom) ─────────────────────────
   const [reduceMotion, setReduceMotion] = useState<boolean>(false);
@@ -173,6 +197,11 @@ export function EventGuestListSheet({
   const [messageInflight, setMessageInflight] = useState<
     Record<string, boolean>
   >({});
+  // ORCH-1360 — a sent request is withdrawable; this tracks the in-flight
+  // cancel per row (spinner in the "Requested" chip while the withdraw runs).
+  const [cancelInflight, setCancelInflight] = useState<Record<string, boolean>>(
+    {},
+  );
 
   // ── transient line-2 hint (DESIGN §2.5 microcopy mechanism — no toasts) ────
   const [hint, setHint] = useState<{ key: string; text: string } | null>(null);
@@ -227,6 +256,7 @@ export function EventGuestListSheet({
     if (!visible) {
       setAddStates({});
       setMessageInflight({});
+      setCancelInflight({});
       setHint(null);
       hintOpacity.setValue(0);
       clearHintTimer();
@@ -332,7 +362,14 @@ export function EventGuestListSheet({
   }, [visible, phase, reduceMotion, bodyOpacity]);
 
   // ── actions ────────────────────────────────────────────────────────────────
-  const handleAddFriendPress = useCallback(
+  // ORCH-1360: send is confirm-gated (Alert.alert — NOT an RN <Modal>,
+  // COMMS-0084) and a sent request is always withdrawable (cancelFriendRequest);
+  // the "Requested" state must never be a dead end.
+  //
+  // The unchanged send body — fires ONLY after the user confirms the dialog in
+  // handleAddFriendPress. Preserves the exact useFriends().addFriend signature
+  // (T-11b) and the anon guard.
+  const doSendFriendRequest = useCallback(
     async (row: GuestDisplayRow): Promise<void> => {
       const profileId = row.guest.profileId;
       if (profileId === null) return; // anonymous rows expose no actions (D8)
@@ -353,6 +390,25 @@ export function EventGuestListSheet({
       }
     },
     [addFriend, showHint],
+  );
+
+  // ORCH-1360 Part 1 — CONFIRM-BEFORE-ADD. Tapping the add-friend button no
+  // longer fires a request on a (possibly mis-)tap: it opens a native
+  // Alert.alert naming the guest; the request fires ONLY on "Send request".
+  // Native Alert (not a second RN <Modal>, not the overlay slot) keeps the
+  // sheet's sealed z-index/COMMS-0084 contract intact.
+  const handleAddFriendPress = useCallback(
+    (row: GuestDisplayRow): void => {
+      const profileId = row.guest.profileId;
+      if (profileId === null) return; // anonymous rows expose no actions (D8)
+      const name = row.guest.displayName ?? row.guest.username ?? "Guest";
+      HapticFeedback.selection();
+      Alert.alert("Send friend request?", `Send a friend request to ${name}?`, [
+        { text: "Cancel", style: "cancel" },
+        { text: "Send request", onPress: () => void doSendFriendRequest(row) },
+      ]);
+    },
+    [doSendFriendRequest],
   );
 
   const handleMessagePress = useCallback(
@@ -408,6 +464,92 @@ export function EventGuestListSheet({
     [viewerId, onClose, onOpenConversation, showHint],
   );
 
+  // ORCH-1360 Part 2 — WITHDRAW-AFTER-SENT. The withdraw body: deletes the
+  // friend_requests row via useFriends().cancelFriendRequest(requestId) (a
+  // REQUEST id, NOT a profileId) and clears the optimistic addStates[row.key].
+  // Both the optimistic source AND the server hasPendingOutgoing source clear
+  // (cancelFriendRequest invalidates friendsKeys.requests), so the row reverts
+  // to the "Add friend" button. No success toast — DESIGN §2.5 no-toasts holds.
+  const doWithdrawRequest = useCallback(
+    async (
+      row: GuestDisplayRow,
+      requestId: string | undefined,
+    ): Promise<void> => {
+      HapticFeedback.medium();
+      setCancelInflight((prev) => ({ ...prev, [row.key]: true }));
+      try {
+        if (requestId !== undefined) {
+          await cancelFriendRequest(requestId);
+        }
+        setAddStates((prev) => {
+          const next = { ...prev };
+          delete next[row.key];
+          return next;
+        });
+      } catch {
+        showHint(row.key, "Couldn't withdraw — try again");
+      } finally {
+        setCancelInflight((prev) => {
+          const next = { ...prev };
+          delete next[row.key];
+          return next;
+        });
+      }
+    },
+    [cancelFriendRequest, showHint],
+  );
+
+  // The confirm wrapper for the withdraw: opens a native Alert.alert (confirm-
+  // on-withdraw = yes, misfire symmetry with the pre-add confirm) and derives
+  // the requestId from friendRequests using the SAME predicate as the row's
+  // hasPendingOutgoing scan (outgoing pending row whose receiver_id === the
+  // guest's profileId — ViewFriendProfileScreen precedent). Anon guard for D8.
+  const handleCancelRequestPress = useCallback(
+    (row: GuestDisplayRow): void => {
+      const profileId = row.guest.profileId;
+      if (profileId === null) return; // anonymous rows expose no actions (D8)
+      const name = row.guest.displayName ?? row.guest.username ?? "Guest";
+      const pendingReq = friendRequests.find(
+        (r) =>
+          r.status === "pending" &&
+          r.sender_id === viewerId &&
+          r.receiver_id === profileId,
+      );
+      HapticFeedback.selection();
+      Alert.alert("Cancel friend request?", `${name} won't be notified.`, [
+        { text: "Keep", style: "cancel" },
+        {
+          text: "Cancel request",
+          style: "destructive",
+          onPress: () => void doWithdrawRequest(row, pendingReq?.id),
+        },
+      ]);
+    },
+    [friendRequests, viewerId, doWithdrawRequest],
+  );
+
+  // ORCH-1359 (d) — tap a NAMED guest's name → open their peer profile as a
+  // detail-local overlay (D-B). SEALED close-before-NAVIGATE
+  // (I-PROPOSED-1341-MESSAGE-CLOSE-BEFORE-NAVIGATE, extended by
+  // I-PROPOSED-1359-GUEST-NAME-OPENS-PROFILE): dismiss the wrapInRNModal sheet
+  // FIRST so the host's <ViewFriendProfileScreen> overlay is never z-covered by
+  // this RN Modal (COMMS-0084 — never a modal-over-modal, never a second RN
+  // <Modal>). Anonymous/unlinked rows carry no profileId (D8) and never reach
+  // here; a host that did not wire onOpenProfile leaves the name inert (the
+  // sheet does NOT close on a no-op — no dead close, mirroring the Message
+  // no-sink guard above). NEVER Linking.openURL (`mingla://` is unregistered —
+  // COMMS-0093): this is pure in-app overlay rendering.
+  const handleOpenProfilePress = useCallback(
+    (row: GuestDisplayRow): void => {
+      const profileId = row.guest.profileId;
+      if (profileId === null || onOpenProfile === undefined) return;
+      HapticFeedback.selection();
+      onClose();
+      onOpenProfile(profileId);
+    },
+    [onClose, onOpenProfile],
+  );
+
   // ── row rendering ──────────────────────────────────────────────────────────
   const [photoErrorKeys, setPhotoErrorKeys] = useState<Record<string, boolean>>(
     {},
@@ -450,15 +592,16 @@ export function EventGuestListSheet({
       const { guest } = item;
       const name = guest.displayName ?? guest.username ?? "Guest";
       const line1 = item.isNamed ? name : guest.isMinglaUser ? "Someone" : "Guest";
+      // ORCH-1359 city (named rows only; null → name-only row). Computed once
+      // and reused by line2 + the a11y label.
+      const city = item.isNamed ? cityFor(guest.location) : null;
       const line2 = item.isYou
-        ? "You"
+        ? "You" // self unchanged
         : item.isNamed
-          ? guest.username !== null
-            ? `@${guest.username}`
-            : "On Mingla"
+          ? city // (b) drop @username → (c) public city, or null if absent (rule 9)
           : guest.isMinglaUser
-            ? "Keeping it low-key"
-            : null;
+            ? "Keeping it low-key" // anon-Mingla-private UNCHANGED
+            : "Not on Mingla"; // (e) unlinked no-app indicator
       const rowHint = hint !== null && hint.key === item.key ? hint.text : null;
 
       const isFriendRow =
@@ -482,15 +625,28 @@ export function EventGuestListSheet({
       const showAddFriend = showActions && !isFriendRow;
       const msgInflight = messageInflight[item.key] === true;
 
+      // ORCH-1359 (d) — the NAME opens the peer profile ONLY on NAMED, non-You
+      // rows that carry a profileId, and only when the host wired the overlay
+      // seam. Anonymous/unlinked/You rows keep a plain, NON-pressable name
+      // (no dead tap, no affordance — the deanonymization guard is intact:
+      // anon/unlinked rows have profileId === null). The row CONTAINER itself
+      // stays a non-pressable Animated.View (T-09 SEALED) — only the name is
+      // the target.
+      const canOpenProfile =
+        item.isNamed &&
+        !item.isYou &&
+        guest.profileId !== null &&
+        onOpenProfile !== undefined;
+
       const a11yLabel = item.isYou
         ? `${name}, you`
         : item.isNamed
-          ? guest.username !== null
-            ? `${name}, at-${guest.username}, on Mingla`
-            : `${name}, on Mingla`
+          ? city !== null
+            ? `${name}, ${city}`
+            : name
           : guest.isMinglaUser
             ? "Someone, keeping it low-key"
-            : "Guest";
+            : "Guest, not on Mingla";
 
       return (
         // Rows are NOT pressable (SEALED) — a plain View group; the only
@@ -504,9 +660,30 @@ export function EventGuestListSheet({
         >
           {renderAvatar(item)}
           <View style={styles.rowCopy}>
-            <Text style={styles.rowName} numberOfLines={1} ellipsizeMode="tail">
-              {line1}
-            </Text>
+            {canOpenProfile ? (
+              <Pressable
+                onPress={() => handleOpenProfilePress(item)}
+                hitSlop={4}
+                accessibilityRole="button"
+                accessibilityLabel={`View ${name}'s profile`}
+                testID={`orch-1359-guest-sheet-open-profile-${item.key}`}
+                style={({ pressed }) =>
+                  pressed ? styles.namePressed : undefined
+                }
+              >
+                <Text
+                  style={styles.rowName}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
+                  {line1}
+                </Text>
+              </Pressable>
+            ) : (
+              <Text style={styles.rowName} numberOfLines={1} ellipsizeMode="tail">
+                {line1}
+              </Text>
+            )}
             {rowHint !== null ? (
               <Animated.Text
                 style={[styles.rowHint, { opacity: hintOpacity }]}
@@ -524,14 +701,40 @@ export function EventGuestListSheet({
             <View style={styles.actionZone}>
               {showAddFriend ? (
                 showRequestedChip ? (
-                  <View
-                    style={styles.requestedChip}
-                    accessibilityLabel={`Friend request sent to ${name}`}
-                    accessibilityState={{ disabled: true }}
-                    testID={`orch-1341-guest-sheet-requested-${item.key}`}
-                  >
-                    <Text style={styles.requestedChipText}>Requested</Text>
-                  </View>
+                  cancelInflight[item.key] === true ? (
+                    // Withdraw in flight — the chip is a non-interactive busy
+                    // state (keeps the disabled a11y contract; T-17).
+                    <View
+                      style={styles.requestedChip}
+                      accessibilityLabel={`Friend request sent to ${name}`}
+                      accessibilityState={{ disabled: true }}
+                      testID={`orch-1341-guest-sheet-requested-${item.key}`}
+                    >
+                      <ActivityIndicator
+                        size="small"
+                        color="rgba(255, 255, 255, 0.55)"
+                      />
+                    </View>
+                  ) : (
+                    // ORCH-1360 Part 2 — the "Requested" chip is now a
+                    // sanctioned Pressable: tap → confirm → withdraw. The row
+                    // CONTAINER stays non-pressable (T-09); only this control is
+                    // interactive (I-PROPOSED-1341-GUEST-SHEET-ACTIONS-ONLY).
+                    <Pressable
+                      onPress={() => void handleCancelRequestPress(item)}
+                      hitSlop={4}
+                      style={({ pressed }) => [
+                        styles.requestedChip,
+                        pressed ? styles.actionPressed : null,
+                      ]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Cancel friend request to ${name}`}
+                      accessibilityHint="Withdraws your request"
+                      testID={`orch-1360-guest-sheet-cancel-request-${item.key}`}
+                    >
+                      <Text style={styles.requestedChipText}>Requested</Text>
+                    </Pressable>
+                  )
                 ) : addState === "inflight" ? (
                   <View style={[styles.actionButton, styles.actionButtonAccent]}>
                     <ActivityIndicator size="small" color="#f97316" />
@@ -597,10 +800,14 @@ export function EventGuestListSheet({
       viewerId,
       addStates,
       messageInflight,
+      cancelInflight,
       photoErrorKeys,
       bodyOpacity,
       handleAddFriendPress,
       handleMessagePress,
+      handleCancelRequestPress,
+      onOpenProfile,
+      handleOpenProfilePress,
     ],
   );
 
@@ -832,6 +1039,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
     color: "#f8fafc",
+  },
+  // ORCH-1359 (d) — pressed feedback on the tappable NAME (named rows only).
+  namePressed: {
+    opacity: 0.55,
   },
   rowSub: {
     marginTop: 3,

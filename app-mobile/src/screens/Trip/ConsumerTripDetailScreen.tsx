@@ -127,6 +127,14 @@ import {
 // ORCH-1341 [guest-list-sheet-consumer] — the "Who's going" roster sheet, the
 // destination of the ORCH-1340 onSeeWhosGoing affordance on the trip body.
 import EventGuestListSheet from "../../components/EventGuestListSheet";
+// ORCH-1359 (d) — detail-local peer-profile overlay opened by tapping a named
+// guest's name in the sheet (D-B). Reuses the existing ViewFriendProfileScreen
+// + the sanctioned in-app open-DM rail (never Linking.openURL — COMMS-0093).
+import ViewFriendProfileScreen from "../../components/profile/ViewFriendProfileScreen";
+import {
+  hasOpenDirectMessageSink,
+  openDirectMessageInApp,
+} from "../../services/deepLinkService";
 import TicketCartSheet, {
   type TicketCartCheckoutPayload,
 } from "../../components/expandedCard/TicketCartSheet";
@@ -413,6 +421,12 @@ export default function ConsumerTripDetailScreen({
   // ORCH-1341 — "Who's going" guest-list sheet visibility (declared before the
   // loading/error early returns per the Rules of Hooks).
   const [guestSheetVisible, setGuestSheetVisible] = useState<boolean>(false);
+  // ORCH-1359 (d) — the guest whose profile is open as a detail-local overlay
+  // (null ⇒ none). Set by the sheet's onOpenProfile (named-name tap); cleared
+  // by the overlay's Back → returns to THIS trip detail, never the app shell.
+  const [guestProfileUserId, setGuestProfileUserId] = useState<string | null>(
+    null,
+  );
   const handleSeeWhosGoing = useCallback(
     (): void => setGuestSheetVisible(true),
     [],
@@ -1110,7 +1124,26 @@ export default function ConsumerTripDetailScreen({
         onClose={handleGuestSheetClose}
         eventId={detail.tripId}
         goingCount={socialProofQuery.data?.goingCount ?? 0}
+        onOpenProfile={setGuestProfileUserId}
       />
+
+      {/* ORCH-1359 (d) — detail-local peer-profile overlay (D-B). The sheet
+          closes BEFORE this mounts (close-before-navigate), so this is NOT a
+          modal-over-modal — it renders in the detail tree, absolute-fill above
+          the chrome (zIndex 100). Back clears it → the user is right back on
+          this trip detail, never the home shell. */}
+      {guestProfileUserId !== null ? (
+        <View style={styles.guestProfileOverlay}>
+          <ViewFriendProfileScreen
+            userId={guestProfileUserId}
+            onBack={() => setGuestProfileUserId(null)}
+            onMessage={(userId) => {
+              setGuestProfileUserId(null);
+              if (hasOpenDirectMessageSink()) openDirectMessageInApp(userId);
+            }}
+          />
+        </View>
+      ) : null}
     </>,
   );
 }
@@ -1118,6 +1151,13 @@ export default function ConsumerTripDetailScreen({
 const SEAM = 28;
 
 const styles = StyleSheet.create({
+  // ORCH-1359 (d) — detail-local peer-profile overlay wrapper: absolute-fill
+  // above the detail chrome (zIndex 100 > chrome 70), opaque so nothing bleeds.
+  guestProfileOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 100,
+    backgroundColor: "#ffffff",
+  },
   // META-ORCH-1174 Leg A — the native Direction-A composition styles. The forked
   // body styles (leadBlock / metaChip / brand / route / day / band / payMock /
   // about) were RETIRED with the hand-mirrored body — the shared TripOfferingBody

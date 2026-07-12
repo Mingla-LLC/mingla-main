@@ -62,13 +62,18 @@ export type SocialProofSummary = {
  * all-null identity; unlinked guests are `{ isMinglaUser: false,
  * isAnonymous: true }`. `profileId` is non-null ONLY on named rows (feeds
  * ORCH-1341 add-friend / message actions). `partySize` = 1 + plus-ones (RSVP)
- * or the order's live-ticket count (ticketed).
+ * or the order's live-ticket count (ticketed). `location` (ORCH-1359) is the
+ * guest's public "City, Region, Country" string, emitted on NAMED rows ONLY
+ * (same identity gate as the other fields) — null on anonymous/private/unlinked
+ * rows; the sheet renders the city (first comma-segment) or nothing when null.
  */
 export type PeerGuestRow = {
   profileId: string | null;
   displayName: string | null;
   username: string | null;
   avatarUrl: string | null;
+  /** Public city/location from profiles.location — NAMED rows only (null otherwise). */
+  location: string | null;
   isMinglaUser: boolean;
   isAnonymous: boolean;
   partySize: number;

@@ -77,6 +77,8 @@ jobs:
             # ORCH-1339 — momentum cross-entity (event/experience/trip) + tester adversarial.
             packages/offering-rendering/__tests__/orch_1339_momentum_cross_entity.test.ts
             packages/offering-rendering/__tests__/orch_1339_momentum_adversarial.test.ts
+            # ORCH-1358 — momentum card top breathing room (marginTop:16 both twins).
+            packages/offering-rendering/__tests__/orch_1358_card_spacing.test.ts
             # ORCH-1340 — guest identity privacy (card-real-avatars) + tester adversarial.
             packages/offering-rendering/__tests__/orch_1340_guest_identity_privacy.test.ts
             packages/offering-rendering/__tests__/orch_1340_guest_identity_privacy_adversarial.test.ts
@@ -92,10 +94,26 @@ jobs:
             # ORCH-1339 — SQL contract: set_event_guest_privacy RPC (host gate, leaf-write
             # only, grants).
             supabase/migrations/__tests__/orch_1339_set_event_guest_privacy.test.ts
+            # ORCH-1359 — SQL contract: identity-gated location on peer_list_event_guests
+            # (named rows only, guard/whitelist preserved).
+            supabase/migrations/__tests__/orch_1359_peer_guest_location.test.ts
+            # ORCH-1359 — TESTER adversarial (mingla-tester): location is WELDED to
+            # the identity gate (its CASE predicate === display_name's; isAnonymous
+            # derives from the same predicate) so a private/blocked row can never
+            # leak a city. Proven live on prod gqnoajqerqhnvulmnyvv 2026-07-11.
+            supabase/migrations/__tests__/orch_1359_location_identity_weld.adversarial.test.ts
             # ORCH-1341 — consumer guest-list sheet (pinned header, no raw RN Modal) +
             # tester adversarial.
             app-mobile/src/components/__tests__/orch_1341_guest_list_sheet.test.ts
             app-mobile/src/components/__tests__/orch_1341_guest_list_sheet_adversarial.test.ts
+            # ORCH-1359 — guest-row identity display: name-only + city + "Not on Mingla".
+            app-mobile/src/components/__tests__/orch_1359_guest_sheet_identity.test.ts
+            # ORCH-1359 (d) — tap-name → peer profile as a detail-local overlay (D-B).
+            app-mobile/src/components/__tests__/orch_1359_guest_sheet_open_profile.test.ts
+            # ORCH-1360 — guest-sheet friend-request lifecycle: confirm-before-add +
+            # withdraw-a-sent-request + adversarial requestId targeting (multi-pending).
+            app-mobile/src/components/__tests__/orch_1360_guest_sheet_friend_request_lifecycle.test.ts
+            app-mobile/src/components/__tests__/orch_1360_friend_request_withdraw_targeting.adversarial.test.ts
             # ORCH-1342 — OneLink guest-funnel app side: cold /e/ seed landing, single
             # resolver parse, public event seed mapping.
             app-mobile/src/screens/Event/__tests__/orch_1342_cold_seed_landing.test.ts
