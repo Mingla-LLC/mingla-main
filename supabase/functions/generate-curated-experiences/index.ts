@@ -992,6 +992,14 @@ async function generateCardsForType(
     ? (categoryPlaces[typeDef.combos[0][typeDef.stops.findIndex(s => s.reverseAnchor)]] || []).length
     : 0;
 
+  // ORCH-1363: first-stop candidate count for the STANDARD branch's honest empty
+  // verdict (pool_empty vs no_viable_anchor). Mirrors initialAnchorCount: the
+  // number of fetched candidates for the first non-optional slot of combo 0.
+  const firstStopIdx = typeDef.stops.findIndex(s => !s.optional);
+  const initialFirstStopCount = !hasReverseAnchor && firstStopIdx >= 0
+    ? (categoryPlaces[typeDef.combos[0][firstStopIdx]] || []).length
+    : 0;
+
   for (const combo of comboList) {
     // ORCH-0677: per-iteration anchor identity, set once anchor is picked.
     // Used by post-anchor gates to mark the anchor as failed.
@@ -1116,11 +1124,16 @@ async function generateCardsForType(
           break;
         }
 
-        // Stop 1 (first non-optional): highest quality (UNCHANGED — vibe rank top).
+        // Stop 1 (first non-optional): highest-RANKED park that is REACHABLE
+        // within the gate. ORCH-1363: constant `nature` anchor + a bare
+        // `available[0]` pin means every combo re-picks the same top park; if
+        // it's out-of-gate the deck empties despite healthy supply. Pre-filter to
+        // reachable-first so a gate-failing top park never blocks the whole deck.
+        // Do not revert to a bare `available[0]`.
         // Stop 2+: ORCH-1061 PART 1A quality+proximity blend within the fetch radius.
         const isFirstMainStop = stops.filter(s => !s.optional).length === 0;
         const place = isFirstMainStop
-          ? available[0]
+          ? pickReachableFirstStop(available, lat, lng, travelMode, travelConstraintValue)
           : selectBlendedStop(available, prevLat, prevLng, clampedRadius);
 
         if (!place) {
@@ -1226,11 +1239,14 @@ async function generateCardsForType(
         failedAnchorCount: failedAnchorIds.size,
       };
     } else {
-      // Standard branch: empty means none of the categories had viable picks.
+      // ORCH-1363: honest verdict — if the first-stop category had candidates but
+      // none assembled a gate-passing card, say no_viable_anchor (matches the
+      // reverse-anchor branch + the mobile CuratedEmptyReason contract); pool_empty
+      // only when the first-stop category had zero candidates.
       summary = {
-        emptyReason: 'pool_empty',
-        candidateAnchorCount: 0,
-        failedAnchorCount: 0,
+        emptyReason: initialFirstStopCount === 0 ? 'pool_empty' : 'no_viable_anchor',
+        candidateAnchorCount: initialFirstStopCount,
+        failedAnchorCount: 0, // standard branch has no per-anchor failed set (see §4.A)
       };
     }
   }
@@ -1401,6 +1417,33 @@ export function selectBlendedStop(
     }
   }
   return best;
+}
+
+// ORCH-1363: constant `nature` anchor + standard-branch `available[0]` pin means
+// every combo re-picks the same top park; if it's out-of-gate the deck empties
+// despite healthy supply. Pre-filter to reachable-first so a gate-failing top
+// park never blocks the whole deck. Do not revert to a bare `available[0]`.
+//
+// Pick the highest-RANKED first stop that is REACHABLE from the user within the
+// same gate the post-assembly travel check enforces (travelConstraintValue*1.5).
+// `available` MUST already be rank-descending + deduped (caller passes the
+// filtered list). If NONE are reachable, returns available[0] (today's behavior)
+// so a genuinely-impossible request still ends honestly via the post-assembly
+// gate + no_viable_anchor.
+// PURE: local haversine + travel-estimate math only. No Math.random. No I/O.
+export function pickReachableFirstStop(
+  available: any[],
+  userLat: number,
+  userLng: number,
+  travelMode: string,
+  travelConstraintValue: number,
+): any | null {
+  if (available.length === 0) return null;
+  const gateMin = travelConstraintValue * 1.5;
+  const reachable = available.filter((p) =>
+    estimateTravelMinutes(haversineKm(userLat, userLng, p.lat ?? 0, p.lng ?? 0), travelMode) <= gateMin
+  );
+  return (reachable.length > 0 ? reachable : available)[0];
 }
 
 // ORCH-1061 PART 1A — deterministic tie-break: does `a` beat `b`? (pure)
