@@ -4,12 +4,17 @@ import {
   TouchableOpacity,
   Text,
   StyleSheet,
-  ActivityIndicator,
   Switch,
 } from "react-native";
 import { useTranslation } from 'react-i18next';
 import { Icon } from '../ui/Icon';
 import { TRAVEL_TIME_PRESETS } from "../../types/onboarding";
+// ORCH-1361 [location-suggestions] — the custom starting-point field is now the
+// shared multi-row Mapbox suggest→retrieve picker (the exact field CityPicker
+// uses), replacing the old forward/limit=1 single-row adapter. This kills the
+// "one wrong-country result" bug and lets the host thread the user's device
+// proximity + country so results rank to the user's area.
+import { MapboxAddressInput, type PlaceDetails } from "../location/MapboxAddressInput";
 // META-ORCH-0991 Wave C — PreferencesSheet body now scrolls inside a gorhom
 // BaseBottomSheet. The two text fields here must be gorhom's
 // BottomSheetTextInput (so a focused field coordinates with the sheet position
@@ -19,7 +24,6 @@ import { TRAVEL_TIME_PRESETS } from "../../types/onboarding";
 // the sole-gorhom-consumer gate forbids importing @gorhom/bottom-sheet directly.
 import {
   BottomSheetTextInput,
-  BottomSheetScrollView,
 } from "../ui/BaseBottomSheet";
 
 export const TravelLimitSection = memo(
@@ -131,14 +135,11 @@ export const LocationInputSection = memo(
   ({
     searchLocation,
     onLocationInputChange,
-    onFocus,
-    onBlur,
-    showSuggestions,
-    suggestions,
-    isLoadingSuggestions,
-    onSuggestionSelect,
     onClearLocation,
-    isInputFocused,
+    onPickLocation,
+    hasSelected,
+    proximity,
+    country,
     useGpsLocation,
     onToggleGps,
     isLocked,
@@ -146,14 +147,17 @@ export const LocationInputSection = memo(
   }: {
     searchLocation: string;
     onLocationInputChange: (text: string) => void;
-    onFocus: () => void;
-    onBlur: () => void;
-    showSuggestions: boolean;
-    suggestions: any[];
-    isLoadingSuggestions: boolean;
-    onSuggestionSelect: (suggestion: any) => void;
     onClearLocation?: () => void;
-    isInputFocused: boolean;
+    // ORCH-1361 — fires when the user picks a suggestion AND retrieve resolves
+    // coords; the host stores custom_lat/custom_lng from details.location.
+    onPickLocation: (details: PlaceDetails) => void;
+    // ORCH-1361 — a resolved location exists (selectedCoords != null) → show the
+    // chip; otherwise show the editable multi-row search field.
+    hasSelected: boolean;
+    // ORCH-1361 — user device bias, threaded into the shared field's suggest
+    // call. Undefined when no device anchor is available → today's behavior.
+    proximity?: string;
+    country?: string;
     useGpsLocation: boolean;
     onToggleGps: (value: boolean) => void;
     isLocked?: boolean;
@@ -213,8 +217,10 @@ export const LocationInputSection = memo(
 
       {!useGpsLocation && !isLocked && (
         <>
-          {/* Show chip when location is selected and not editing */}
-          {searchLocation.length > 0 && !isInputFocused ? (
+          {/* ORCH-1361 — chip when a location is resolved; otherwise the shared
+              multi-row Mapbox suggest→retrieve field, biased to the user's
+              device proximity/country (OQ-2 suggestLimit 8, OQ-3 types filter). */}
+          {hasSelected ? (
             <View style={styles.locationChip}>
               <Icon name="location" size={14} color="#ffffff" />
               <Text style={styles.locationChipText} numberOfLines={1}>{searchLocation}</Text>
@@ -227,30 +233,23 @@ export const LocationInputSection = memo(
               </TouchableOpacity>
             </View>
           ) : (
-          <View
-            style={[
-              styles.locationInputContainer,
-              isInputFocused && styles.locationInputContainerFocused,
-            ]}
-          >
-            <Icon
-              name="location"
-              size={16}
-              color="#6b7280"
-              style={styles.locationInputIcon}
-            />
-            <BottomSheetTextInput
-              style={styles.locationTextInput}
-              placeholder={t('preferences:location.search_placeholder')}
-              placeholderTextColor="#9ca3af"
-              value={searchLocation}
-              onChangeText={onLocationInputChange}
-              onFocus={onFocus}
-              onBlur={onBlur}
-              autoCapitalize="words"
-              returnKeyType="done"
-            />
-          </View>
+            <View style={styles.locationFieldWrap}>
+              <MapboxAddressInput
+                variant="light"
+                value={searchLocation}
+                onChangeText={onLocationInputChange}
+                onPick={onPickLocation}
+                onClear={onClearLocation ?? (() => {})}
+                placeholder={t('preferences:location.search_placeholder')}
+                accessibilityLabel="Search for a starting point"
+                leadingIcon="location"
+                minQueryLength={4}
+                proximity={proximity}
+                country={country}
+                types="place,locality,neighborhood,address,region,district"
+                suggestLimit={8}
+              />
+            </View>
           )}
         </>
       )}
@@ -267,52 +266,9 @@ export const LocationInputSection = memo(
         </TouchableOpacity>
       )}
 
-      {/* Suggestions Dropdown */}
-      {showSuggestions &&
-        (suggestions.length > 0 || isLoadingSuggestions) && (
-          <BottomSheetScrollView
-            style={styles.suggestionsContainer}
-            nestedScrollEnabled={true}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={true}
-          >
-            {isLoadingSuggestions ? (
-              <View style={styles.suggestionItem}>
-                <ActivityIndicator size="small" color="#eb7825" />
-                <Text style={styles.suggestionText}>{t('preferences:location.searching')}</Text>
-              </View>
-            ) : (
-              suggestions.map((suggestion, index) => (
-                <TouchableOpacity
-                  key={index}
-                  style={styles.suggestionItem}
-                  onPress={() => onSuggestionSelect(suggestion)}
-                  activeOpacity={0.7}
-                  delayPressIn={0}
-                >
-                  <Icon
-                    name="location-outline"
-                    size={16}
-                    color="#6b7280"
-                  />
-                  <View style={styles.suggestionTextContainer}>
-                    <Text style={styles.suggestionText}>
-                      {suggestion.displayName}
-                    </Text>
-                    {suggestion.fullAddress !== suggestion.displayName && (
-                      <Text
-                        style={styles.suggestionSubtext}
-                        numberOfLines={1}
-                      >
-                        {suggestion.fullAddress}
-                      </Text>
-                    )}
-                  </View>
-                </TouchableOpacity>
-              ))
-            )}
-          </BottomSheetScrollView>
-        )}
+      {/* ORCH-1361 — the old hand-rolled suggestions dropdown is REMOVED; the
+          shared MapboxAddressInput owns its own multi-row list + all states
+          (searching / no-results / offline-retry / fetching-details / picked). */}
     </View>
     );
   }
@@ -460,65 +416,12 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '600',
   },
-  locationInputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: 'rgba(255, 255, 255, 0.55)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.35)',
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    marginBottom: 6,
-  },
-  locationInputContainerFocused: {
-    borderColor: "#eb7825",
-    borderWidth: 1.5,
-  },
-  locationInputIcon: {
-    marginRight: 12,
-  },
-  locationTextInput: {
-    flex: 1,
-    fontSize: 14,
-    color: "#111827",
-    padding: 0,
-  },
-  suggestionsContainer: {
-    backgroundColor: "white",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
+  // ORCH-1361 — wrapper around the shared multi-row Mapbox field (replaces the
+  // old locationInputContainer + hand-rolled suggestionsContainer dropdown; the
+  // shared field owns its own field chrome, row list, and states).
+  locationFieldWrap: {
     marginTop: 4,
-    marginBottom: 8,
-    maxHeight: 200,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  suggestionItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f3f4f6",
-  },
-  suggestionTextContainer: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  suggestionText: {
-    fontSize: 13,
-    color: "#111827",
-    fontWeight: "500",
-  },
-  suggestionSubtext: {
-    fontSize: 11,
-    color: "#6b7280",
-    marginTop: 2,
+    marginBottom: 6,
   },
   lockedHintContainer: {
     flexDirection: 'row',

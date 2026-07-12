@@ -65,6 +65,24 @@ export type InvokeFn = (
   options: { body: Record<string, unknown> },
 ) => Promise<{ data: any; error: { message?: string } | null }>;
 
+/**
+ * ORCH-1361 [location-suggestions] — OPTIONAL Mapbox Search Box bias, threaded
+ * from the consumer host's device location. ADDITIVE: every field is optional
+ * and each is forwarded to the edge fn ONLY when present, so a caller that omits
+ * `bias` (business pickers, consumer geocodingService adapter) produces a
+ * BYTE-IDENTICAL request to the pre-1361 behavior. Without proximity, Mapbox
+ * defaults to IP proximity (the edge datacenter) and mis-ranks results.
+ * Doc-verified formats (https://docs.mapbox.com/api/search/search-box/):
+ *   proximity "longitude,latitude"; country ISO-3166-1 alpha-2 CSV; types CSV;
+ *   limit ≤ 10 (suggest only — forward stays single-result).
+ */
+export interface LocationBias {
+  proximity?: string;
+  country?: string;
+  types?: string;
+  limit?: number;
+}
+
 const MIN_QUERY_LENGTH = 3;
 
 /** Generate one Mapbox session token (UUID) per autocomplete session. Reuse
@@ -88,13 +106,23 @@ export async function autocompleteMapbox(
   query: string,
   sessionToken: string,
   deps: { invoke: InvokeFn },
+  bias?: LocationBias,
 ): Promise<PlaceAutocompleteSuggestion[]> {
   const q = query.trim();
   if (q.length < MIN_QUERY_LENGTH) return [];
 
   try {
     const { data, error } = await deps.invoke("mapbox-geocode", {
-      body: { action: "suggest", query: q, session_token: sessionToken },
+      // ORCH-1361 — bias fields merged ONLY when present; omitted → byte-identical.
+      body: {
+        action: "suggest",
+        query: q,
+        session_token: sessionToken,
+        ...(bias?.proximity ? { proximity: bias.proximity } : {}),
+        ...(bias?.country ? { country: bias.country } : {}),
+        ...(bias?.types ? { types: bias.types } : {}),
+        ...(bias?.limit ? { limit: bias.limit } : {}),
+      },
     });
     if (error) {
       console.warn("[mapboxGeocodeService] suggest error:", error.message);
@@ -166,12 +194,21 @@ export async function reverseGeocodeMapbox(
 export async function forwardGeocodeMapbox(
   query: string,
   deps: { invoke: InvokeFn },
+  bias?: LocationBias,
 ): Promise<PlaceDetails> {
   const q = query.trim();
   if (q.length === 0) throw new Error("query_required");
 
   const { data, error } = await deps.invoke("mapbox-geocode", {
-    body: { action: "forward", query: q },
+    // ORCH-1361 — forward is single-result (no `limit`); proximity/country/types
+    // merged ONLY when present so an unbiased caller is byte-identical.
+    body: {
+      action: "forward",
+      query: q,
+      ...(bias?.proximity ? { proximity: bias.proximity } : {}),
+      ...(bias?.country ? { country: bias.country } : {}),
+      ...(bias?.types ? { types: bias.types } : {}),
+    },
   });
   if (error) {
     throw new Error(error.message ?? "mapbox_forward_failed");

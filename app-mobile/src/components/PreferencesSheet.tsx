@@ -35,6 +35,10 @@ import {
   geocodingService,
   AutocompleteSuggestion,
 } from "../services/geocodingService";
+// ORCH-1361 [location-suggestions] — PlaceDetails is the shared Mapbox
+// retrieve shape the multi-row field emits on pick; the host stores
+// custom_lat/custom_lng from details.location.
+import { type PlaceDetails } from "./location/MapboxAddressInput";
 import { useQueryClient } from "@tanstack/react-query";
 import { mixpanelService } from "../services/mixpanelService";
 import { useAppStore } from "../store/appStore";
@@ -298,13 +302,49 @@ export default function PreferencesSheet({
     }
   }, [canAccess, useGpsLocation]);
 
-  // Location autocomplete suggestions
-  const [suggestions, setSuggestions] = useState<AutocompleteSuggestion[]>([]);
-  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [isInputFocused, setIsInputFocused] = useState(false);
-  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const isSelectingSuggestion = useRef(false);
+  // ORCH-1361 [location-suggestions] — resolve the user's device anchor ONCE
+  // per sheet open and thread it as proximity (+country) into the custom-location
+  // search, so Mapbox ranks results to the user's area instead of the edge
+  // datacenter IP (the "lekki → London" bug). Independent of the use_gps_location
+  // deck toggle — the user is physically in Lagos even with GPS-for-deck off.
+  // getLastKnownLocation is fast and does NOT trigger a new permission prompt;
+  // when no device location is available we leave BOTH proximity and country
+  // undefined (OQ-1 ruling — never a hardcoded default) → identical to today.
+  useEffect(() => {
+    if (!visible) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const loc = await enhancedLocationService.getLastKnownLocation();
+        if (cancelled || !loc) return;
+        // Mapbox proximity is "longitude,latitude".
+        setProximity(`${loc.longitude},${loc.latitude}`);
+        try {
+          const geo = await geocodingService.reverseGeocode(loc.latitude, loc.longitude);
+          if (!cancelled && geo?.countryCode) {
+            // ISO 3166-1 alpha-2, lowercased for the Mapbox country param.
+            setCountry(geo.countryCode.toLowerCase());
+          }
+        } catch {
+          // country is a refinement; proximity alone fixes ranking.
+        }
+      } catch {
+        // no device location → omit proximity + country (today's behavior).
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [visible]);
+
+  // ORCH-1361 [location-suggestions] — the custom-location field is now the
+  // shared multi-row Mapbox field, which owns its own suggest→retrieve state
+  // machine (the old suggestions / showSuggestions / isLoadingSuggestions /
+  // isInputFocused / debounce / isSelectingSuggestion host state is GONE).
+  // The host now only resolves the user's device anchor once per open and
+  // threads it as proximity/country so results rank to the user's area.
+  const [proximity, setProximity] = useState<string | undefined>(undefined);
+  const [country, setCountry] = useState<string | undefined>(undefined);
   const locationSectionRef = useRef<View>(null);
   const locationSectionY = useRef<number>(0);
   const categoriesSectionRef = useRef<View>(null);
@@ -643,72 +683,34 @@ export default function PreferencesSheet({
     setCategoryToggle(newValue);
   }, [intentToggle, isEditable, t]);
 
+  // ORCH-1361 — plain setter. The shared MapboxAddressInput owns the
+  // suggest→retrieve list + debounce; while the user types there is no resolved
+  // location, so selectedCoords is cleared (a pick re-sets it via onPick).
   const handleLocationInputChange = useCallback((text: string) => {
     if (!isEditable) return;
     setSearchLocation(text);
     setSelectedCoords(null);
-
-    if (debounceTimeoutRef.current) {
-      clearTimeout(debounceTimeoutRef.current);
-    }
-
-    if (text.trim().length >= 4) {
-      debounceTimeoutRef.current = setTimeout(async () => {
-        setIsLoadingSuggestions(true);
-        try {
-          const results = await geocodingService.autocomplete(text);
-          setSuggestions(results);
-          setShowSuggestions(results.length > 0);
-        } catch (error) {
-          console.error("Error fetching suggestions:", error);
-          setSuggestions([]);
-          setShowSuggestions(false);
-        } finally {
-          setIsLoadingSuggestions(false);
-        }
-      }, 300);
-    } else {
-      setSuggestions([]);
-      setShowSuggestions(false);
-    }
   }, [isEditable]);
 
   const handleClearLocation = useCallback(() => {
     if (!isEditable) return;
     setSearchLocation('');
     setSelectedCoords(null);
-    setSuggestions([]);
-    setShowSuggestions(false);
   }, [isEditable]);
 
-  const handleSuggestionSelect = useCallback(async (suggestion: AutocompleteSuggestion) => {
+  // ORCH-1361 — the shared field fires onPick with the retrieved PlaceDetails
+  // (structured coords + formatted address); store them as the custom starting
+  // point. The field's own retrieve step already validated the feature.
+  const handlePickLocation = useCallback((details: PlaceDetails) => {
     if (!isEditable) return;
-    if (isSelectingSuggestion.current) return;
-    isSelectingSuggestion.current = true;
-    setSearchLocation(suggestion.fullAddress || suggestion.displayName);
-    setShowSuggestions(false);
-    setIsInputFocused(false);
-
-    const coords = suggestion.location ?? null;
-    if (coords && Math.abs(coords.lat) <= 90 && Math.abs(coords.lng) <= 180) {
-      setSelectedCoords(coords);
+    setSearchLocation(details.formattedAddress);
+    const loc = details.location;
+    if (loc && Math.abs(loc.lat) <= 90 && Math.abs(loc.lng) <= 180) {
+      setSelectedCoords({ lat: loc.lat, lng: loc.lng });
     } else {
       setSelectedCoords(null);
     }
-
-    setTimeout(() => {
-      isSelectingSuggestion.current = false;
-    }, 300);
-  }, [isEditable, user?.id, setProfile]);
-
-  const handleInputBlur = useCallback(() => {
-    setTimeout(() => {
-      if (!isSelectingSuggestion.current) {
-        setIsInputFocused(false);
-        setShowSuggestions(false);
-      }
-    }, 200);
-  }, []);
+  }, [isEditable]);
 
   const handleGpsToggle = useCallback((value: boolean) => {
     if (!isEditable) return;
@@ -1199,20 +1201,11 @@ export default function PreferencesSheet({
             <LocationInputSection
               searchLocation={searchLocation}
               onLocationInputChange={handleLocationInputChange}
-              onFocus={() => {
-                if (!isEditable) return;
-                setIsInputFocused(true);
-                if (suggestions.length > 0) {
-                  setShowSuggestions(true);
-                }
-              }}
-              onBlur={handleInputBlur}
-              showSuggestions={showSuggestions}
-              suggestions={suggestions}
-              isLoadingSuggestions={isLoadingSuggestions}
-              onSuggestionSelect={handleSuggestionSelect}
               onClearLocation={handleClearLocation}
-              isInputFocused={isInputFocused}
+              onPickLocation={handlePickLocation}
+              hasSelected={selectedCoords != null}
+              proximity={proximity}
+              country={country}
               useGpsLocation={useGpsLocation}
               onToggleGps={handleGpsToggle}
               isLocked={!canAccess('custom_starting_point')}

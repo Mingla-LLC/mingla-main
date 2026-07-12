@@ -112,6 +112,94 @@ interface RequestBody {
   session_token?: string;
   latitude?: number;
   longitude?: number;
+  // ── ORCH-1361 [location-suggestions] · ADDITIVE (backward-compatible) ──────
+  // Optional Mapbox Search Box bias params for suggest/forward. When ANY is
+  // omitted the emitted upstream URL is BYTE-IDENTICAL to the pre-1361 request
+  // (the no-regression contract, SC-6) — Mapbox otherwise defaults proximity to
+  // the caller IP (the Supabase edge datacenter), which mis-ranks results (a
+  // Nigerian "lekki" resolved to a London POI). Consumer callers thread the
+  // user's device proximity + country so results rank to the user; business
+  // pickers omit them and are unchanged. retrieve/reverse ignore these.
+  // Doc-verified formats (https://docs.mapbox.com/api/search/search-box/):
+  //   proximity "longitude,latitude" (or "ip"); country ISO-3166-1 alpha-2 CSV;
+  //   types CSV of Search Box types; limit ≤ 10.
+  proximity?: string;
+  country?: string;
+  types?: string;
+  limit?: number;
+}
+
+/**
+ * ORCH-1361 — optional Mapbox bias, threaded from the consumer's device into
+ * suggest/forward. All fields optional; an empty object yields a byte-identical
+ * upstream URL (SC-6 no-regression contract).
+ */
+export interface SearchOpts {
+  proximity?: string;
+  country?: string;
+  types?: string;
+  limit?: number;
+}
+
+/**
+ * ORCH-1361 — clamp the suggest `limit` to Mapbox's documented [1,10] range.
+ * An omitted/undefined limit resolves to the pre-1361 default of 5 (so the
+ * business pickers + CityPicker stay byte-identical); the consumer Preferences
+ * list opts into 8. https://docs.mapbox.com/api/search/search-box/
+ */
+export function clampSuggestLimit(limit: number | undefined): number {
+  const n = typeof limit === "number" && Number.isFinite(limit)
+    ? Math.trunc(limit)
+    : 5;
+  return Math.min(Math.max(n, 1), 10);
+}
+
+/**
+ * ORCH-1361 — build the Search Box `/suggest` URL. Bias params are appended
+ * ONLY when present and non-empty; `limit` resolves to `opts.limit ?? 5`
+ * (clamped). With an empty `opts` the string is byte-identical to the pre-1361
+ * builder: `?q&session_token&access_token&limit=5` (SC-6).
+ */
+export function buildSuggestUrl(
+  base: string,
+  token: string,
+  trimmedQuery: string,
+  sessionToken: string,
+  opts: SearchOpts = {},
+): string {
+  let url =
+    `${base}/suggest` +
+    `?q=${encodeURIComponent(trimmedQuery)}` +
+    `&session_token=${encodeURIComponent(sessionToken)}` +
+    `&access_token=${encodeURIComponent(token)}`;
+  if (opts.proximity) url += `&proximity=${encodeURIComponent(opts.proximity)}`;
+  if (opts.country) url += `&country=${encodeURIComponent(opts.country)}`;
+  if (opts.types) url += `&types=${encodeURIComponent(opts.types)}`;
+  url += `&limit=${clampSuggestLimit(opts.limit)}`;
+  return url;
+}
+
+/**
+ * ORCH-1361 — build the Search Box `/forward` URL. Bias params appended ONLY
+ * when present; `limit` stays 1 (forward is single-result — Mapbox `limit>1`
+ * on /forward requires a single `types`, out of scope). Empty `opts` →
+ * byte-identical to the pre-1361 builder: `?q&access_token&limit=1` (SC-6).
+ */
+export function buildForwardUrl(
+  base: string,
+  token: string,
+  trimmedQuery: string,
+  opts: SearchOpts = {},
+): string {
+  let url =
+    `${base}/forward` +
+    `?q=${encodeURIComponent(trimmedQuery)}` +
+    `&access_token=${encodeURIComponent(token)}`;
+  if (opts.proximity) url += `&proximity=${encodeURIComponent(opts.proximity)}`;
+  if (opts.country) url += `&country=${encodeURIComponent(opts.country)}`;
+  if (opts.types) url += `&types=${encodeURIComponent(opts.types)}`;
+  url += `&limit=1`;
+  return url;
 }
 
 // ── Mapbox Search Box raw response shapes (docs §get-suggestions / §retrieve) ──
@@ -165,18 +253,22 @@ async function handleSuggest(
   token: string,
   query: string,
   sessionToken: string,
+  opts: SearchOpts = {},
 ): Promise<Response> {
   const trimmed = query.trim();
   if (trimmed.length < 3) {
     return jsonResponse({ error: "query_too_short" }, 400);
   }
 
-  const url =
-    `${MAPBOX_SEARCHBOX_BASE}/suggest` +
-    `?q=${encodeURIComponent(trimmed)}` +
-    `&session_token=${encodeURIComponent(sessionToken)}` +
-    `&access_token=${encodeURIComponent(token)}` +
-    `&limit=5`;
+  // ORCH-1361 — additive bias (proximity/country/types) + limit (default 5 →
+  // byte-identical when omitted). URL built via the pure, unit-tested builder.
+  const url = buildSuggestUrl(
+    MAPBOX_SEARCHBOX_BASE,
+    token,
+    trimmed,
+    sessionToken,
+    opts,
+  );
 
   let upstream: Response;
   try {
@@ -195,6 +287,10 @@ async function handleSuggest(
   }
 
   const data = (await upstream.json()) as SuggestRawResponse;
+  // ORCH-1361 — cap to the SAME effective limit sent upstream (default 5 →
+  // byte-identical to the pre-1361 `.slice(0, 5)`; consumer opts into 8) so the
+  // requested row count actually reaches the caller instead of a hardcoded 5.
+  const effectiveLimit = clampSuggestLimit(opts.limit);
   const suggestions = (data.suggestions ?? [])
     .map((s) => {
       if (!s.mapbox_id || !s.name) return null;
@@ -205,7 +301,7 @@ async function handleSuggest(
       };
     })
     .filter((s): s is NonNullable<typeof s> => s !== null)
-    .slice(0, 5);
+    .slice(0, effectiveLimit);
 
   return jsonResponse({ suggestions });
 }
@@ -397,17 +493,19 @@ async function handleReverse(
  * GET /search/searchbox/v1/forward?q=&access_token=
  * Single-call forward geocode — no session_token, per-request billing.
  */
-async function handleForward(token: string, query: string): Promise<Response> {
+async function handleForward(
+  token: string,
+  query: string,
+  opts: SearchOpts = {},
+): Promise<Response> {
   const trimmed = query.trim();
   if (trimmed.length === 0) {
     return jsonResponse({ error: "query_required" }, 400);
   }
 
-  const url =
-    `${MAPBOX_SEARCHBOX_BASE}/forward` +
-    `?q=${encodeURIComponent(trimmed)}` +
-    `&access_token=${encodeURIComponent(token)}` +
-    `&limit=1`;
+  // ORCH-1361 — additive bias (proximity/country/types); limit stays 1. URL
+  // built via the pure, unit-tested builder (byte-identical when opts empty).
+  const url = buildForwardUrl(MAPBOX_SEARCHBOX_BASE, token, trimmed, opts);
 
   let upstream: Response;
   try {
@@ -467,9 +565,29 @@ export async function handler(req: Request): Promise<Response> {
       ? body.session_token
       : crypto.randomUUID();
 
+  // ORCH-1361 — collect the ADDITIVE bias params (suggest/forward only). Each
+  // is threaded only when it's a non-empty value of the right type; anything
+  // omitted stays undefined → the URL builders skip it → byte-identical request
+  // (SC-6). retrieve/reverse never read these.
+  const searchOpts: SearchOpts = {
+    proximity:
+      typeof body.proximity === "string" && body.proximity.length > 0
+        ? body.proximity
+        : undefined,
+    country:
+      typeof body.country === "string" && body.country.length > 0
+        ? body.country
+        : undefined,
+    types:
+      typeof body.types === "string" && body.types.length > 0
+        ? body.types
+        : undefined,
+    limit: typeof body.limit === "number" ? body.limit : undefined,
+  };
+
   switch (body.action) {
     case "suggest":
-      return handleSuggest(token, body.query ?? "", sessionToken);
+      return handleSuggest(token, body.query ?? "", sessionToken, searchOpts);
     case "retrieve":
       return handleRetrieve(token, body.mapbox_id ?? "", sessionToken);
     case "reverse":
@@ -479,7 +597,7 @@ export async function handler(req: Request): Promise<Response> {
         typeof body.longitude === "number" ? body.longitude : NaN,
       );
     case "forward":
-      return handleForward(token, body.query ?? "");
+      return handleForward(token, body.query ?? "", searchOpts);
     default:
       return jsonResponse({ error: "invalid_request" }, 400);
   }
