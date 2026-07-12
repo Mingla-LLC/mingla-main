@@ -108,7 +108,12 @@ Deno.test("T-03 wrapInRNModal + dark theme + fixed ['70%'] snap + PINNED header 
     !/scrollMode="flatlist"/.test(SHEET),
     "flatlist folds the header into ListHeaderComponent (title scrolls away) — pinned-header ruling",
   );
-  assertStringIncludes(SHEET, "header={header}");
+  // [TEST-MOD-APPROVED ORCH-1358] the pinned header is hidden while the in-sheet
+  // profile peek is open (the peek owns its own back-button top area).
+  assertStringIncludes(
+    SHEET,
+    "header={overlayProfile !== null ? undefined : header}",
+  );
   assertStringIncludes(SHEET, 'accessibilityLabel="Who\'s going"');
   // #111418 canvas — exemplar parity (design §2.2).
   assertStringIncludes(SHEET, '"#111418"');
@@ -176,28 +181,45 @@ Deno.test("T-08 every Animated.timing in the sheet carries isInteraction: false"
   assert(/Animated\.loop\(/.test(SHEET), "skeleton pulse is a loop");
 });
 
-// ── T-09/T-10 — rows are NEVER pressable; only sanctioned Pressables ────────
+// ── T-09/T-10 — ORCH-1358: NAMED rows tap to the in-sheet profile peek; anon
+//     rows stay non-pressable; every <Pressable> is sanctioned ───────────────
+// [TEST-MOD-APPROVED ORCH-1358] — the META-ORCH-1337 "rows are NEVER pressable"
+// contract is DELIBERATELY overturned: a named guest row now opens their public
+// profile (in-sheet peek, no second modal). Anonymous/private rows still have no
+// profileId and stay non-pressable (deanonymization guard preserved).
 
-Deno.test("T-09 no TouchableOpacity; row container is a plain accessible group", () => {
+Deno.test("T-09 no TouchableOpacity; named rows open a profile-peek Pressable, anon rows a View", () => {
   assert(!/TouchableOpacity/.test(SHEET), "no TouchableOpacity anywhere");
-  // Mapped rows (scroll-mode body) carry their own key; the container stays a
-  // non-pressable Animated.View group.
+  // The row container stays a keyed Animated.View; ORCH-1358 wraps its content
+  // in a profile-open Pressable for openable (named) rows, a plain View for anon.
   assert(
     /<Animated\.View\s+key=\{item\.key\}\s+style=\{\[styles\.row/.test(SHEET),
-    "row container renders as a keyed, non-pressable Animated.View group",
+    "row container renders as a keyed Animated.View group",
+  );
+  assertStringIncludes(SHEET, "orch-1358-guest-sheet-open-profile-");
+  assert(
+    /openable\s*\?\s*\(\s*<Pressable/.test(SHEET),
+    "openable (named) rows branch to a Pressable; anon rows to a non-pressable View",
   );
 });
 
-Deno.test("T-10 every <Pressable> is one of the sanctioned action controls", () => {
+Deno.test("T-10 every <Pressable> is one of the sanctioned controls", () => {
   const segments = SHEET.split("<Pressable");
-  assert(segments.length >= 3, "add-friend + message + retry Pressables exist");
+  assert(
+    segments.length >= 3,
+    "add-friend + message + retry + profile-open Pressables exist",
+  );
   for (let i = 1; i < segments.length; i++) {
     const window = segments[i].slice(0, 1200);
     assert(
       /testID=\{`orch-1341-guest-sheet-(add-friend|message)-\$\{item\.key\}`\}/.test(
         window,
-      ) || /testID="orch-1341-guest-sheet-error-retry"/.test(window),
-      `Pressable #${i} must be a sanctioned action control (rows are not pressable)`,
+      ) ||
+        /testID="orch-1341-guest-sheet-error-retry"/.test(window) ||
+        /testID=\{`orch-1358-guest-sheet-open-profile-\$\{item\.key\}`\}/.test(
+          window,
+        ),
+      `Pressable #${i} must be a sanctioned control (action button or ORCH-1358 profile-open row)`,
     );
   }
 });
@@ -268,11 +290,11 @@ Deno.test("T-13 all five states render the design's copy", () => {
   // capped tail
   assertStringIncludes(SHEET, "orch-1341-guest-sheet-footer-more");
   assertStringIncludes(SHEET, "and ${moreCount} more");
-  // row variants
+  // row variants — [TEST-MOD-APPROVED ORCH-1358] the persistent per-row subtitle
+  // (@username / "On Mingla" / "Keeping it low-key" / "You") was REMOVED: rows
+  // are now name-only and a named row taps to the profile peek. Only line1's
+  // anonymous label survives.
   assertStringIncludes(SHEET, '"Someone"');
-  assertStringIncludes(SHEET, '"Keeping it low-key"');
-  assertStringIncludes(SHEET, '"On Mingla"');
-  assertStringIncludes(SHEET, '"You"');
   assertStringIncludes(SHEET, "Requested");
   assertStringIncludes(SHEET, "Couldn't send — try again");
 });
