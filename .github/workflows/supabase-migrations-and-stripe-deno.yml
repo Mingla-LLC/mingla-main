@@ -510,8 +510,15 @@ jobs:
           # device proximity/country, and the old forward/limit=1 dropdown + host
           # suggestion state are GONE. These are the load-bearing fails-on-revert
           # guards (no unit test can catch the client swap otherwise).
+          # TESTER-owned adversarial suite (ORCH-1361 QA) — a DIFFERENT angle
+          # than the happy-path: SERVICE-LAYER invoke-body byte-identical under a
+          # populated-but-FALSY bias object (the GPS-denied host shape), clamp
+          # boundary hardening (negative/NaN/Infinity/fraction), and proximity
+          # url-injection defense. Fails-on-revert of the service `bias?.x ?`
+          # merge guards, clampSuggestLimit, or the edge append guards.
           DENO_TEST_FILES=(
             supabase/functions/mapbox-geocode/__tests__/mapboxGeocodeBias.orch1361.test.ts
+            supabase/functions/mapbox-geocode/__tests__/mapboxGeocodeBias.orch1361.adversarial.test.ts
             app-mobile/src/components/__tests__/orch-1361-preferences-location-multirow-bias.test.tsx
           )
           for attempt in 1 2 3; do
