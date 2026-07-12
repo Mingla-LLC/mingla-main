@@ -65,7 +65,6 @@ import {
 import type { PeerGuestRow } from "@mingla/offering-rendering";
 
 import { BaseBottomSheet } from "./ui/BaseBottomSheet";
-import GuestProfilePeek from "./GuestProfilePeek";
 import { Icon } from "./ui/Icon";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { colors } from "../constants/designSystem";
@@ -166,20 +165,6 @@ export function EventGuestListSheet({
       sub.remove();
     };
   }, []);
-
-  // ORCH-1358 — the in-sheet profile peek. Tapping a NAMED row swaps the sheet
-  // body (guest list ⇄ GuestProfilePeek) inside the SAME RN Modal — never a
-  // second modal (the META-ORCH-1337 overlay-slot resolution). Holds the target
-  // profileId + a fallback name for the peek's loading state; null = list shown.
-  const [overlayProfile, setOverlayProfile] = useState<{
-    id: string;
-    name: string;
-  } | null>(null);
-  // ORCH-1358 — reset the peek whenever the sheet is dismissed, so a reopen
-  // always lands on the guest list (never a stale profile from last time).
-  useEffect(() => {
-    if (!visible) setOverlayProfile(null);
-  }, [visible]);
 
   // ── per-row action state ───────────────────────────────────────────────────
   const [addStates, setAddStates] = useState<
@@ -465,13 +450,16 @@ export function EventGuestListSheet({
       const { guest } = item;
       const name = guest.displayName ?? guest.username ?? "Guest";
       const line1 = item.isNamed ? name : guest.isMinglaUser ? "Someone" : "Guest";
-      // ORCH-1358 — the persistent @username / "On Mingla" subtitle is REMOVED
-      // (name only). The transient rowHint keeps line 2's slot for action errors.
+      const line2 = item.isYou
+        ? "You"
+        : item.isNamed
+          ? guest.username !== null
+            ? `@${guest.username}`
+            : "On Mingla"
+          : guest.isMinglaUser
+            ? "Keeping it low-key"
+            : null;
       const rowHint = hint !== null && hint.key === item.key ? hint.text : null;
-      // ORCH-1358 — a NAMED row (has a real profileId) taps to its public-profile
-      // peek; anonymous/private rows have no profileId and stay non-pressable
-      // (deanonymization guard preserved).
-      const openable = item.isNamed && guest.profileId !== null;
 
       const isFriendRow =
         item.isNamed &&
@@ -494,18 +482,26 @@ export function EventGuestListSheet({
       const showAddFriend = showActions && !isFriendRow;
       const msgInflight = messageInflight[item.key] === true;
 
-      const a11yLabel = openable
-        ? `${name}, view profile`
-        : item.isYou
-          ? `${name}, you`
-          : item.isNamed
-            ? `${name}, on Mingla`
-            : guest.isMinglaUser
-              ? "Someone"
-              : "Guest";
+      const a11yLabel = item.isYou
+        ? `${name}, you`
+        : item.isNamed
+          ? guest.username !== null
+            ? `${name}, at-${guest.username}, on Mingla`
+            : `${name}, on Mingla`
+          : guest.isMinglaUser
+            ? "Someone, keeping it low-key"
+            : "Guest";
 
-      const tapZoneInner = (
-        <>
+      return (
+        // Rows are NOT pressable (SEALED) — a plain View group; the only
+        // interactive elements are the trailing action buttons.
+        <Animated.View
+          key={item.key}
+          style={[styles.row, { opacity: bodyOpacity }]}
+          accessible
+          accessibilityLabel={a11yLabel}
+          testID={`orch-1341-guest-sheet-row-${item.key}`}
+        >
           {renderAvatar(item)}
           <View style={styles.rowCopy}>
             <Text style={styles.rowName} numberOfLines={1} ellipsizeMode="tail">
@@ -518,44 +514,12 @@ export function EventGuestListSheet({
               >
                 {rowHint}
               </Animated.Text>
+            ) : line2 !== null ? (
+              <Text style={styles.rowSub} numberOfLines={1}>
+                {line2}
+              </Text>
             ) : null}
           </View>
-        </>
-      );
-
-      return (
-        // ORCH-1358 — a NAMED row is a Pressable tap-zone that opens the in-sheet
-        // public-profile peek (swaps the sheet body — NEVER a second RN Modal).
-        // The trailing action buttons live OUTSIDE the tap-zone so they still
-        // fire independently. Anonymous/private rows stay a plain, non-pressable
-        // View (deanonymization guard).
-        <Animated.View
-          key={item.key}
-          style={[styles.row, { opacity: bodyOpacity }]}
-          testID={`orch-1341-guest-sheet-row-${item.key}`}
-        >
-          {openable ? (
-            <Pressable
-              style={styles.rowTapZone}
-              onPress={() => {
-                HapticFeedback.light();
-                setOverlayProfile({ id: guest.profileId as string, name });
-              }}
-              accessibilityRole="button"
-              accessibilityLabel={a11yLabel}
-              testID={`orch-1358-guest-sheet-open-profile-${item.key}`}
-            >
-              {tapZoneInner}
-            </Pressable>
-          ) : (
-            <View
-              style={styles.rowTapZone}
-              accessible
-              accessibilityLabel={a11yLabel}
-            >
-              {tapZoneInner}
-            </View>
-          )}
           {showActions ? (
             <View style={styles.actionZone}>
               {showAddFriend ? (
@@ -754,21 +718,13 @@ export function EventGuestListSheet({
       scrollMode="scroll"
       backgroundStyle={styles.guestSheetBackground}
       accessibilityLabel="Who's going"
-      // ORCH-1358 — the peek owns its own top area (a "Guest list" back button),
-      // so hide the "Who's going" header while a profile is open.
-      header={overlayProfile !== null ? undefined : header}
+      header={header}
       scrollProps={{
         contentContainerStyle: styles.listContent,
         showsVerticalScrollIndicator: false,
       }}
     >
-      {overlayProfile !== null ? (
-        <GuestProfilePeek
-          userId={overlayProfile.id}
-          fallbackName={overlayProfile.name}
-          onBack={() => setOverlayProfile(null)}
-        />
-      ) : phase === "content" ? (
+      {phase === "content" ? (
         <>
           {rows.map((item) => renderGuestRow({ item }))}
           {listFooter}
@@ -837,14 +793,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255, 255, 255, 0.06)",
-  },
-  // ORCH-1358 — the tappable zone (avatar + name + the empty space up to the
-  // action buttons). Flexes so the WHOLE row minus the trailing actions opens
-  // the profile; the action buttons sit outside it and keep their own taps.
-  rowTapZone: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
   },
   avatarPhoto: {
     width: 46,
