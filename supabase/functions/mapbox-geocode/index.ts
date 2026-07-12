@@ -113,31 +113,37 @@ interface RequestBody {
   latitude?: number;
   longitude?: number;
   // ── ORCH-1361 [location-suggestions] · ADDITIVE (backward-compatible) ──────
-  // Optional Mapbox Search Box bias params for suggest/forward. When ANY is
+  // Optional Mapbox Search Box RANKING BIAS for suggest/forward. When ANY is
   // omitted the emitted upstream URL is BYTE-IDENTICAL to the pre-1361 request
   // (the no-regression contract, SC-6) — Mapbox otherwise defaults proximity to
   // the caller IP (the Supabase edge datacenter), which mis-ranks results (a
   // Nigerian "lekki" resolved to a London POI). Consumer callers thread the
-  // user's device proximity + country so results rank to the user; business
-  // pickers omit them and are unchanged. retrieve/reverse ignore these.
+  // user's device proximity so results RANK to the user; business pickers omit
+  // it and are unchanged. retrieve/reverse ignore these.
+  //
+  // FILTER-FREE by design (INV-3 / ORCH-1079 gate
+  // `i-mapbox-suggest-no-types-filter.mjs`): this shared suggest handler ALSO
+  // serves BUSINESS venue-name search, which must return POIs, so NO `types`
+  // filter is ever added here. `country` is likewise omitted — a `country`
+  // filter would over-restrict an "explore anywhere" field (someone in Lagos
+  // typing "london" must still get London). `proximity` biases ranking WITHOUT
+  // excluding any result, which is the actual fix.
   // Doc-verified formats (https://docs.mapbox.com/api/search/search-box/):
-  //   proximity "longitude,latitude" (or "ip"); country ISO-3166-1 alpha-2 CSV;
-  //   types CSV of Search Box types; limit ≤ 10.
+  //   proximity "longitude,latitude" (or "ip"); limit ≤ 10.
   proximity?: string;
-  country?: string;
-  types?: string;
   limit?: number;
 }
 
 /**
- * ORCH-1361 — optional Mapbox bias, threaded from the consumer's device into
- * suggest/forward. All fields optional; an empty object yields a byte-identical
- * upstream URL (SC-6 no-regression contract).
+ * ORCH-1361 — optional Mapbox RANKING bias, threaded from the consumer's device
+ * into suggest/forward. All fields optional; an empty object yields a
+ * byte-identical upstream URL (SC-6 no-regression contract). NO `types`/`country`
+ * FILTER — the shared suggest handler must stay filter-free so BUSINESS
+ * venue-name search still returns POIs (INV-3 / ORCH-1079). Only `proximity`
+ * (rank-only bias) + `limit` (pagination).
  */
 export interface SearchOpts {
   proximity?: string;
-  country?: string;
-  types?: string;
   limit?: number;
 }
 
@@ -155,10 +161,12 @@ export function clampSuggestLimit(limit: number | undefined): number {
 }
 
 /**
- * ORCH-1361 — build the Search Box `/suggest` URL. Bias params are appended
- * ONLY when present and non-empty; `limit` resolves to `opts.limit ?? 5`
- * (clamped). With an empty `opts` the string is byte-identical to the pre-1361
- * builder: `?q&session_token&access_token&limit=5` (SC-6).
+ * ORCH-1361 — build the Search Box `/suggest` URL. The `proximity` rank bias is
+ * appended ONLY when present and non-empty; `limit` resolves to `opts.limit ?? 5`
+ * (clamped). NO `types`/`country` filter — the suggest handler stays filter-free
+ * so business venue-name search still returns POIs (INV-3 / ORCH-1079). With an
+ * empty `opts` the string is byte-identical to the pre-1361 builder:
+ * `?q&session_token&access_token&limit=5` (SC-6).
  */
 export function buildSuggestUrl(
   base: string,
@@ -172,18 +180,17 @@ export function buildSuggestUrl(
     `?q=${encodeURIComponent(trimmedQuery)}` +
     `&session_token=${encodeURIComponent(sessionToken)}` +
     `&access_token=${encodeURIComponent(token)}`;
+  // Rank-only bias — proximity does NOT exclude any result (INV-3 / ORCH-1079).
   if (opts.proximity) url += `&proximity=${encodeURIComponent(opts.proximity)}`;
-  if (opts.country) url += `&country=${encodeURIComponent(opts.country)}`;
-  if (opts.types) url += `&types=${encodeURIComponent(opts.types)}`;
   url += `&limit=${clampSuggestLimit(opts.limit)}`;
   return url;
 }
 
 /**
- * ORCH-1361 — build the Search Box `/forward` URL. Bias params appended ONLY
- * when present; `limit` stays 1 (forward is single-result — Mapbox `limit>1`
- * on /forward requires a single `types`, out of scope). Empty `opts` →
- * byte-identical to the pre-1361 builder: `?q&access_token&limit=1` (SC-6).
+ * ORCH-1361 — build the Search Box `/forward` URL. The `proximity` rank bias is
+ * appended ONLY when present; `limit` stays 1 (forward is single-result). NO
+ * `types`/`country` filter (INV-3 / ORCH-1079). Empty `opts` → byte-identical to
+ * the pre-1361 builder: `?q&access_token&limit=1` (SC-6).
  */
 export function buildForwardUrl(
   base: string,
@@ -195,9 +202,8 @@ export function buildForwardUrl(
     `${base}/forward` +
     `?q=${encodeURIComponent(trimmedQuery)}` +
     `&access_token=${encodeURIComponent(token)}`;
+  // Rank-only bias — proximity does NOT exclude any result (INV-3 / ORCH-1079).
   if (opts.proximity) url += `&proximity=${encodeURIComponent(opts.proximity)}`;
-  if (opts.country) url += `&country=${encodeURIComponent(opts.country)}`;
-  if (opts.types) url += `&types=${encodeURIComponent(opts.types)}`;
   url += `&limit=1`;
   return url;
 }
@@ -260,7 +266,7 @@ async function handleSuggest(
     return jsonResponse({ error: "query_too_short" }, 400);
   }
 
-  // ORCH-1361 — additive bias (proximity/country/types) + limit (default 5 →
+  // ORCH-1361 — additive proximity rank bias + limit (default 5 →
   // byte-identical when omitted). URL built via the pure, unit-tested builder.
   const url = buildSuggestUrl(
     MAPBOX_SEARCHBOX_BASE,
@@ -503,8 +509,8 @@ async function handleForward(
     return jsonResponse({ error: "query_required" }, 400);
   }
 
-  // ORCH-1361 — additive bias (proximity/country/types); limit stays 1. URL
-  // built via the pure, unit-tested builder (byte-identical when opts empty).
+  // ORCH-1361 — additive proximity rank bias; limit stays 1. URL built via the
+  // pure, unit-tested builder (byte-identical when opts empty).
   const url = buildForwardUrl(MAPBOX_SEARCHBOX_BASE, token, trimmed, opts);
 
   let upstream: Response;
@@ -565,22 +571,16 @@ export async function handler(req: Request): Promise<Response> {
       ? body.session_token
       : crypto.randomUUID();
 
-  // ORCH-1361 — collect the ADDITIVE bias params (suggest/forward only). Each
-  // is threaded only when it's a non-empty value of the right type; anything
-  // omitted stays undefined → the URL builders skip it → byte-identical request
-  // (SC-6). retrieve/reverse never read these.
+  // ORCH-1361 — collect the ADDITIVE rank bias (suggest/forward only). Each is
+  // threaded only when it's a non-empty value of the right type; anything omitted
+  // stays undefined → the URL builders skip it → byte-identical request (SC-6).
+  // NO `types`/`country` filter — the suggest handler stays filter-free so
+  // business venue-name search still returns POIs (INV-3 / ORCH-1079).
+  // retrieve/reverse never read these.
   const searchOpts: SearchOpts = {
     proximity:
       typeof body.proximity === "string" && body.proximity.length > 0
         ? body.proximity
-        : undefined,
-    country:
-      typeof body.country === "string" && body.country.length > 0
-        ? body.country
-        : undefined,
-    types:
-      typeof body.types === "string" && body.types.length > 0
-        ? body.types
         : undefined,
     limit: typeof body.limit === "number" ? body.limit : undefined,
   };

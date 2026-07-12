@@ -103,18 +103,16 @@ export interface MapboxAddressInputProps {
   /** autoFocus the field on mount (City does). */
   autoFocus?: boolean;
 
-  // ── ORCH-1361 [location-suggestions] · OPTIONAL Mapbox bias (ADDITIVE) ─────
-  // Threaded to the suggest call so results rank to the user's area instead of
+  // ── ORCH-1361 [location-suggestions] · OPTIONAL Mapbox rank bias (ADDITIVE) ─
+  // Threaded to the suggest call so results RANK to the user's area instead of
   // the edge datacenter IP. All optional — when every one is absent the request
   // is byte-identical to the pre-1361 behavior (business pickers + CityPicker
-  // callers that pass none are unchanged). Doc formats: proximity
-  // "longitude,latitude"; country ISO-3166-1 alpha-2 CSV; types CSV; limit ≤ 10.
-  /** User-proximity bias "longitude,latitude" (Mapbox order). */
+  // callers that pass none are unchanged). NO types/country FILTER — the suggest
+  // handler must stay filter-free so business venue-name search returns POIs
+  // (INV-3 / ORCH-1079); proximity biases ranking without excluding results.
+  // Doc format: proximity "longitude,latitude"; limit ≤ 10.
+  /** User-proximity rank bias "longitude,latitude" (Mapbox order). */
   proximity?: string;
-  /** Country restrict — ISO 3166-1 alpha-2 CSV (e.g. "ng"). */
-  country?: string;
-  /** Search Box feature types CSV (e.g. "place,locality,address"). */
-  types?: string;
   /** suggest `limit` override (≤10). Default (omitted) → edge default 5. */
   suggestLimit?: number;
 }
@@ -146,8 +144,6 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
   haptics,
   autoFocus = false,
   proximity,
-  country,
-  types,
   suggestLimit,
 }) => {
   const [status, setStatus] = useState<Status>({ kind: "idle" });
@@ -212,13 +208,13 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
       setStatus({ kind: "loading_suggestions" });
       debounceTimer.current = setTimeout(async (): Promise<void> => {
         try {
-          // ORCH-1361 — thread the optional device bias. When all four are
-          // undefined the service omits them → byte-identical request.
+          // ORCH-1361 — thread the optional device proximity rank bias. When
+          // both are undefined the service omits them → byte-identical request.
           const results = await autocompleteMapbox(
             next,
             sessionToken.current,
             { invoke },
-            { proximity, country, types, limit: suggestLimit },
+            { proximity, limit: suggestLimit },
           );
           if (results.length === 0) {
             setStatus({ kind: "no_results" });
@@ -233,7 +229,7 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
         }
       }, AUTOCOMPLETE_DEBOUNCE_MS);
     },
-    [announce, clearDebounceTimer, copy.noResults, copy.offline, invoke, minQueryLength, onChangeText, proximity, country, types, suggestLimit],
+    [announce, clearDebounceTimer, copy.noResults, copy.offline, invoke, minQueryLength, onChangeText, proximity, suggestLimit],
   );
 
   const handlePickSuggestion = useCallback(

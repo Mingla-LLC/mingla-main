@@ -9,13 +9,15 @@
 //   ANGLE 1 — SERVICE-LAYER invoke body (the ACTUAL request the client sends),
 //   which the implementor's suite never touches (it only tests the pure edge
 //   URL builders). The load-bearing real-world case: the consumer host builds
-//   `{ proximity, country, types, limit }` where EVERY field is falsy when GPS
-//   is denied (`{ proximity: undefined, country: "", types: undefined,
-//   limit: 0 }`). This MUST merge to a byte-identical `{action,query,
-//   session_token}` body — a bias OBJECT being present must NOT leak empty
-//   params. If the `...(bias?.x ? {x} : {})` guards regress to an unconditional
-//   spread, this suite goes RED (business pickers + CityPicker would silently
-//   send `country:""`/`limit:0`).
+//   `{ proximity, limit }` where EVERY field is falsy when GPS is denied
+//   (`{ proximity: undefined, limit: 0 }`). This MUST merge to a byte-identical
+//   `{action,query,session_token}` body — a bias OBJECT being present must NOT
+//   leak empty params. If the `...(bias?.x ? {x} : {})` guards regress to an
+//   unconditional spread, this suite goes RED (business pickers + CityPicker
+//   would silently send `limit:0`). The suite ALSO asserts the FILTER-FREE
+//   contract: NO `types`/`country` key is EVER sent (INV-3 / ORCH-1079) — the
+//   shared suggest handler serves business venue-name search (POIs must resolve)
+//   and a country filter would over-restrict "explore anywhere".
 //
 //   ANGLE 2 — clampSuggestLimit hardening: negative, NaN, Infinity, and
 //   fractional inputs (the happy-path only tested 0/8/50/undefined). Guards the
@@ -26,17 +28,21 @@
 //   pass through raw into the upstream Mapbox URL.
 //
 // PROTECTIVE COMMENT — consumer location search must be multi-row +
-// user-proximity-biased, never server-IP; and an UNBIASED / falsy-bias caller
-// must be byte-identical to pre-1361 (SC-6). See SPEC_ORCH-1361.
+// user-proximity-biased (RANK-only), never server-IP; the shared suggest handler
+// must stay FILTER-FREE (no types/country); and an UNBIASED / falsy-bias caller
+// must be byte-identical to pre-1361 (SC-6). See SPEC_ORCH-1361 + the ORCH-1079
+// INV-3 gate.
 //
 // FAILS-ON-REVERT (tester-verified by true line deletion):
-//   - revert the service `...(bias?.country ? {country} : {})` guard to an
-//     unconditional `country: bias?.country` spread → A2/A5 FAIL (empty key
+//   - revert the service `...(bias?.limit ? {limit} : {})` guard to an
+//     unconditional `limit: bias?.limit` spread → A2/A5 FAIL (empty key
 //     leaks into the body);
 //   - revert `clampSuggestLimit` to drop `Number.isFinite`/`Math.trunc`
 //     → B1 FAILS;
 //   - revert the edge builder `if (opts.proximity)` guard to unconditional
-//     append → B2 FAILS (populated-falsy opts leaks `&proximity=`).
+//     append → B2 FAILS (populated-falsy opts leaks `&proximity=`);
+//   - re-add a `types`/`country` param to the service body or edge URL → A2/A4
+//     filter-free assertions FAIL (guards INV-3 / ORCH-1079).
 //
 // Run: deno test --allow-read --no-check \
 //   supabase/functions/mapbox-geocode/__tests__/mapboxGeocodeBias.orch1361.adversarial.test.ts
@@ -83,40 +89,35 @@ Deno.test("A1: suggest with NO bias arg → body is EXACTLY {action,query,sessio
 Deno.test("A2: suggest with a bias OBJECT of all-FALSY fields (GPS-denied host shape) → byte-identical, NO leaked keys", async () => {
   const { bodies, invoke } = capturingInvoke();
   // This is precisely what PreferencesSheet/CityPicker pass when getLastKnownLocation()
-  // returns null and reverseGeocode yields no country: proximity undefined,
-  // country "" , types undefined, limit 0 (all falsy).
+  // returns null: proximity undefined, limit 0 (all falsy).
   await autocompleteMapbox("lekki", SESSION, { invoke }, {
     proximity: undefined,
-    country: "",
-    types: undefined,
     limit: 0,
   });
   assertEquals(Object.keys(bodies[0]).sort(), ["action", "query", "session_token"]);
   assert(!("proximity" in bodies[0]), "no empty proximity leaks");
-  assert(!("country" in bodies[0]), "no empty country leaks");
-  assert(!("types" in bodies[0]), "no empty types leaks");
   assert(!("limit" in bodies[0]), "no zero limit leaks");
+  // FILTER-FREE contract (INV-3 / ORCH-1079): the service must NEVER send a
+  // types/country param, even if a caller tries to.
+  assert(!("country" in bodies[0]), "service must never send a country filter");
+  assert(!("types" in bodies[0]), "service must never send a types filter");
 });
 
 Deno.test("A3: forward with a falsy bias object → body is EXACTLY {action,query}", async () => {
   const { bodies, invoke } = capturingInvoke();
   await forwardGeocodeMapbox("lekki", { invoke }, {
     proximity: undefined,
-    country: "",
-    types: "",
   }).catch(() => {/* PlaceDetails parse not under test */});
   assertEquals(Object.keys(bodies[0]).sort(), ["action", "query"]);
   assertEquals(bodies[0], { action: "forward", query: "lekki" });
 });
 
-Deno.test("A4: a PRESENT bias is forwarded verbatim (service does not mangle casing/whitespace — caller owns normalization)", async () => {
+Deno.test("A4: a PRESENT proximity is forwarded verbatim + NO types/country key leaks (filter-free)", async () => {
   const { bodies, invoke } = capturingInvoke();
-  // Uppercase + whitespace CSV — the service must forward exactly what it is
-  // given (the host lowercases; the service is a faithful pass-through).
+  // The service is a faithful pass-through for the rank bias (the host owns
+  // normalization) and must NEVER add a types/country filter.
   await autocompleteMapbox("lekki", SESSION, { invoke }, {
     proximity: "3.4,6.45",
-    country: "NG, GH",
-    types: "place,locality",
     limit: 8,
   });
   assertEquals(bodies[0], {
@@ -124,10 +125,10 @@ Deno.test("A4: a PRESENT bias is forwarded verbatim (service does not mangle cas
     query: "lekki",
     session_token: SESSION,
     proximity: "3.4,6.45",
-    country: "NG, GH",
-    types: "place,locality",
     limit: 8,
   });
+  assert(!("country" in bodies[0]), "service must never send a country filter (INV-3 / ORCH-1079)");
+  assert(!("types" in bodies[0]), "service must never send a types filter (INV-3 / ORCH-1079)");
 });
 
 Deno.test("A5: limit=0 is dropped by the service (invalid → never reaches the edge)", async () => {
@@ -154,11 +155,12 @@ Deno.test("B1: clampSuggestLimit rejects negative / NaN / Infinity and truncates
 Deno.test("B2: buildSuggestUrl with a populated-but-FALSY opts object → byte-identical to pre-1361", () => {
   const url = buildSuggestUrl(BASE, TOKEN, "lekki", SESSION, {
     proximity: "",
-    country: undefined,
-    types: "",
     limit: undefined,
   });
   assertEquals(url, PRE_1361_SUGGEST);
+  // filter-free even under a populated opts object.
+  assert(!url.includes("&types="), "no types filter");
+  assert(!url.includes("&country="), "no country filter");
 });
 
 Deno.test("B3: an injection payload embedded in proximity is url-encoded (never raw &/= into the upstream URL)", () => {

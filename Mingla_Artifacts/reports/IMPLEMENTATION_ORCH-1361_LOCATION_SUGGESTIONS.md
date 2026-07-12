@@ -168,3 +168,32 @@ Static/unit gates only (no device drive this pass — that is the tester's live-
 1. **OQ-5 / F-7 OnboardingFlow** — `OnboardingFlow.tsx:~991` has the identical forward/limit=1 + no-bias bug with its own hand-rolled dropdown. OUT OF SCOPE here (per OQ-5 ruling, tracked as ORCH-1362). Same multi-row + bias treatment recommended.
 2. **geocodingService.autocomplete bias follow-on** — to also bias the Preferences save-path fallback (and any other `geocodingService.autocomplete` caller), `geocodingService.ts` would need an optional bias arg (it's not in the 1361 allowlist). Small, low-risk; register if desired.
 3. **Invariant flip owed at CLOSE:** `I-PROPOSED-1361-CONSUMER-LOCATION-PROXIMITY-BIASED` → ACTIVE (orchestrator owns the flip). Now genuinely holds for Preferences + CityPicker; OnboardingFlow remains the one consumer location surface not yet biased (ORCH-1362).
+
+---
+
+## 13. REWORK 2026-07-12 — ORCH-1079 / INV-3 conflict resolution (NEEDS-REWORK loop)
+
+**What failed:** CI gate `ORCH-1079: mapbox-geocode suggest stays filter-free for POI/name search (INV-3)` — strict-grep `.github/scripts/strict-grep/i-mapbox-suggest-no-types-filter.mjs` — went RED. The prior pass added a `types` FILTER (`&types=` in `buildSuggestUrl`/`buildForwardUrl`) to the shared `suggest` handler. That handler ALSO serves BUSINESS venue-name search, which MUST return POIs, so the gate (correct, must stay) forbids any `types` filter there.
+
+**Root-cause resolution (no gate weakening):** removed the `types` FILTER entirely and dropped `country` from everything the consumer passes; kept ONLY the `proximity` RANKING bias + `limit` pagination. Proximity biases ranking WITHOUT excluding any result, so it still fixes "lekki → London" (a Lagos device ranks Lekki Lagos first) while the suggest handler stays filter-free (INV-3 preserved). `country` was dropped because a country filter would over-restrict an "explore anywhere" field (Lagos → "london" must still return London).
+
+**Files changed in this rework (vs the prior `f80cbf729` state):**
+- `supabase/functions/mapbox-geocode/index.ts` — removed `country`/`types` from `RequestBody`, `SearchOpts`, both URL builders (`buildSuggestUrl`/`buildForwardUrl`), and the `handler()` `searchOpts` collection. Kept `proximity` + `limit` (+ `clampSuggestLimit`). Suggest builder is now byte-identical to pre-1361 except the optional `proximity` + `limit` additions. **ORCH-1079 gate PASSES.**
+- `packages/location-input/src/mapboxGeocodeService.ts` — dropped `country`/`types` from `LocationBias` + the `autocompleteMapbox`/`forwardGeocodeMapbox` body spreads. Kept `proximity` + `limit`.
+- `packages/location-input/src/MapboxAddressInput.tsx` — dropped `country`/`types` props + destructure + `autocompleteMapbox` args + deps. Kept `proximity` + `suggestLimit`.
+- `app-mobile/src/components/location/MapboxAddressInput.tsx` — dropped `country`/`types` pass-through props. Kept `proximity` + `suggestLimit`.
+- `app-mobile/src/components/PreferencesSheet/PreferencesSectionsAdvanced.tsx` — removed `country` prop from `LocationInputSection` + removed `country={country}` and `types="place,locality,neighborhood,address,region,district"` from `<MapboxAddressInput>`. Kept `proximity` + `suggestLimit={8}` + `minQueryLength={4}`.
+- `app-mobile/src/components/PreferencesSheet.tsx` — removed the `country` state and the `geocodingService.reverseGeocode → setCountry` derivation in the device-anchor effect; removed `country={country}` from `<LocationInputSection>`. Kept `proximity` resolution + threading. (`geocodingService` import retained — still used by the save-path fallback.)
+- `app-mobile/src/components/discover/CityPickerSheet.tsx` — removed the `country` state + the `geocodingService.reverseGeocode → setCountry` block + the now-unused `geocodingService` import; removed `country={country}` from `<MapboxAddressInput>`. Kept `proximity`.
+- **Tests (all net-new in-branch → append-only SAFE):** `mapboxGeocodeBias.orch1361.test.ts`, `mapboxGeocodeBias.orch1361.adversarial.test.ts`, `orch-1361-preferences-location-multirow-bias.test.tsx` — rewritten to the NEW contract (proximity+limit appended when present; byte-identical when unbiased; explicit filter-free assertions that NO `&types=`/`&country=` ever appears + no `types`/`country` prop on the field/host/CityPicker). Fails-on-revert preserved.
+
+**Gates (this rework):**
+- `node .github/scripts/strict-grep/i-mapbox-suggest-no-types-filter.mjs` → `OK`, exit 0. `--self-test` → OK, exit 0.
+- `deno test --allow-read --no-check` (all 3 ORCH-1361 suites) → **25 passed, 0 failed**.
+- `deno check supabase/functions/mapbox-geocode/index.ts` → OK, exit 0.
+- **Fails-on-revert (true line deletion):** deleted the `if (opts.proximity) url += …` line in `buildSuggestUrl` → 3 tests RED (suggest-proximity-appended, injection-safe, adversarial B3); restored → 25 green. Fails-on-revert verified at commit `ed2ef5c5c` (rework commit; the restored/committed code is byte-identical to the tested state).
+- ORCH-1315 paywall tests (`orch-1315-preferences-custom-location-paywall.test.tsx`, `orch-1315-1314-paywall-inline-closed-null.test.tsx`, run via `tsx`) → both **PASS** (I-1315 preserved).
+- app-mobile tsc → **0 errors in the 4 touched app-mobile files**; no dangling `country`/`types` references (the `packages/location-input` `Cannot find module 'react'` output is a pre-existing cross-package resolution cascade affecting every prop, not this change).
+- eslint (4 touched app-mobile files) → **no NEW problems**; the 2 errors (`PreferencesSheet.tsx` unescaped apostrophe; `location/MapboxAddressInput.tsx` `@mingla/location-input` import/no-unresolved) are pre-existing (present on HEAD, outside this diff).
+
+**Nothing else changed:** `handleRetrieve`/`handleReverse`, session-billing, `verify_jwt=true`, the multi-row swap, business pickers, and the `mingla-business` wrapper are untouched. No gate/workflow logic edited.

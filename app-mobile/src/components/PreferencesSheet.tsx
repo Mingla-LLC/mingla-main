@@ -303,13 +303,15 @@ export default function PreferencesSheet({
   }, [canAccess, useGpsLocation]);
 
   // ORCH-1361 [location-suggestions] — resolve the user's device anchor ONCE
-  // per sheet open and thread it as proximity (+country) into the custom-location
-  // search, so Mapbox ranks results to the user's area instead of the edge
-  // datacenter IP (the "lekki → London" bug). Independent of the use_gps_location
-  // deck toggle — the user is physically in Lagos even with GPS-for-deck off.
-  // getLastKnownLocation is fast and does NOT trigger a new permission prompt;
-  // when no device location is available we leave BOTH proximity and country
-  // undefined (OQ-1 ruling — never a hardcoded default) → identical to today.
+  // per sheet open and thread it as `proximity` into the custom-location search,
+  // so Mapbox RANKS results to the user's area instead of the edge datacenter IP
+  // (the "lekki → London" bug). Independent of the use_gps_location deck toggle —
+  // the user is physically in Lagos even with GPS-for-deck off. getLastKnownLocation
+  // is fast and does NOT trigger a new permission prompt; when no device location
+  // is available we leave proximity undefined (OQ-1 ruling — never a hardcoded
+  // default) → identical to today. NO country filter — proximity biases ranking
+  // WITHOUT excluding results, so an "explore anywhere" search (Lagos → "london")
+  // still works and the shared suggest handler stays filter-free (INV-3 / ORCH-1079).
   useEffect(() => {
     if (!visible) return;
     let cancelled = false;
@@ -319,17 +321,8 @@ export default function PreferencesSheet({
         if (cancelled || !loc) return;
         // Mapbox proximity is "longitude,latitude".
         setProximity(`${loc.longitude},${loc.latitude}`);
-        try {
-          const geo = await geocodingService.reverseGeocode(loc.latitude, loc.longitude);
-          if (!cancelled && geo?.countryCode) {
-            // ISO 3166-1 alpha-2, lowercased for the Mapbox country param.
-            setCountry(geo.countryCode.toLowerCase());
-          }
-        } catch {
-          // country is a refinement; proximity alone fixes ranking.
-        }
       } catch {
-        // no device location → omit proximity + country (today's behavior).
+        // no device location → omit proximity (today's behavior).
       }
     })();
     return () => {
@@ -342,9 +335,8 @@ export default function PreferencesSheet({
   // machine (the old suggestions / showSuggestions / isLoadingSuggestions /
   // isInputFocused / debounce / isSelectingSuggestion host state is GONE).
   // The host now only resolves the user's device anchor once per open and
-  // threads it as proximity/country so results rank to the user's area.
+  // threads it as `proximity` so results RANK to the user's area.
   const [proximity, setProximity] = useState<string | undefined>(undefined);
-  const [country, setCountry] = useState<string | undefined>(undefined);
   const locationSectionRef = useRef<View>(null);
   const locationSectionY = useRef<number>(0);
   const categoriesSectionRef = useRef<View>(null);
@@ -1205,7 +1197,6 @@ export default function PreferencesSheet({
               onPickLocation={handlePickLocation}
               hasSelected={selectedCoords != null}
               proximity={proximity}
-              country={country}
               useGpsLocation={useGpsLocation}
               onToggleGps={handleGpsToggle}
               isLocked={!canAccess('custom_starting_point')}

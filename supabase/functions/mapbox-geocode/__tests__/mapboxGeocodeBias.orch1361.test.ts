@@ -3,27 +3,35 @@
 // builders are pure (no network, no env).
 //
 // Proves the ADDITIVE + backward-compatible contract for the Mapbox Search Box
-// proxy's suggest/forward URL builders:
+// proxy's suggest/forward URL builders. The bias is a RANK-ONLY proximity (+
+// limit) — there is NO `types`/`country` FILTER, because the shared suggest
+// handler also serves BUSINESS venue-name search (POIs must resolve) and a
+// `country` filter would over-restrict an "explore anywhere" field
+// (INV-3 / ORCH-1079 gate `i-mapbox-suggest-no-types-filter.mjs`):
 //   - BYTE-IDENTICAL when no bias is passed (SC-6 no-regression): the emitted
 //     URL equals the pre-1361 string exactly — this guards the 7 business
 //     pickers + CityPicker callers that pass nothing.
-//   - proximity/country/types are appended ONLY when present and non-empty, in
-//     the doc-verified formats (proximity "lng,lat" url-encoded, country ISO
-//     alpha-2 CSV, types CSV).
+//   - proximity is appended ONLY when present and non-empty, in the doc-verified
+//     format (proximity "lng,lat" url-encoded).
+//   - NO `&types=` / `&country=` param is EVER appended (filter-free contract).
 //   - suggest `limit` defaults to 5 (business unchanged) and honors the
 //     consumer's 8; clamped to Mapbox's [1,10] range; forward stays limit=1.
 //
 // PROTECTIVE COMMENT — consumer location search must be multi-row +
-// user-proximity-biased, never server-IP; see SPEC_ORCH-1361.
+// user-proximity-biased (RANK-only), never server-IP, and the shared suggest
+// handler must stay FILTER-FREE (no types/country); see SPEC_ORCH-1361 + the
+// ORCH-1079 INV-3 gate.
 //
 // FAILS-ON-REVERT (verified by true line deletion in the implementation report):
-//   - delete the `if (opts.proximity) url += …` / country / types append lines
-//     from buildSuggestUrl / buildForwardUrl → the "appends when present"
+//   - delete the `if (opts.proximity) url += …` append line from
+//     buildSuggestUrl / buildForwardUrl → the "appends when present"
 //     assertions FAIL;
 //   - revert the suggest limit to a hardcoded `&limit=5` → the suggestLimit=8
 //     assertion FAILS;
-//   - re-introduce any bias param unconditionally → the byte-identical
-//     no-regression assertions FAIL (dual-direction guard).
+//   - re-introduce proximity unconditionally → the byte-identical no-regression
+//     assertions FAIL (dual-direction guard);
+//   - re-add a `&types=`/`&country=` filter → the filter-free assertions FAIL
+//     (guards INV-3 / ORCH-1079).
 //
 // Run: deno test --allow-none \
 //   supabase/functions/mapbox-geocode/__tests__/mapboxGeocodeBias.orch1361.test.ts
@@ -60,19 +68,18 @@ Deno.test("suggest: empty-object opts → still byte-identical (SC-6)", () => {
   assertEquals(buildSuggestUrl(BASE, TOKEN, "lekki", SESSION, {}), PRE_1361_SUGGEST);
 });
 
-Deno.test("suggest: proximity + country + types appended when present (the fix)", () => {
+Deno.test("suggest: proximity appended when present + NO types/country filter (the fix)", () => {
   const url = buildSuggestUrl(BASE, TOKEN, "lekki", SESSION, {
     proximity: "3.4,6.45",
-    country: "ng",
-    types: "place,locality,neighborhood,address,region,district",
     limit: 8,
   });
-  // proximity "lng,lat" url-encoded (comma → %2C).
+  // proximity "lng,lat" url-encoded (comma → %2C) — RANK-only bias.
   assertStringIncludes(url, "&proximity=3.4%2C6.45");
-  assertStringIncludes(url, "&country=ng");
-  assertStringIncludes(url, "&types=place%2Clocality%2Cneighborhood%2Caddress%2Cregion%2Cdistrict");
   // consumer opts into 8 rows.
   assertStringIncludes(url, "&limit=8");
+  // FILTER-FREE contract (INV-3 / ORCH-1079): no types/country param ever.
+  assert(!url.includes("&types="), "suggest must never add a types filter (POIs must resolve)");
+  assert(!url.includes("&country="), "suggest must never add a country filter (explore-anywhere)");
 });
 
 Deno.test("suggest: limit defaults to 5 and is clamped to [1,10]", () => {
@@ -93,25 +100,24 @@ Deno.test("forward: no bias → BYTE-IDENTICAL to the pre-1361 URL (SC-6)", () =
   assert(!url.includes("country="), "no country when unbiased");
 });
 
-Deno.test("forward: proximity/country/types appended when present; limit stays 1", () => {
+Deno.test("forward: proximity appended when present; limit stays 1; NO types/country filter", () => {
   const url = buildForwardUrl(BASE, TOKEN, "lekki", {
     proximity: "3.4,6.45",
-    country: "ng",
-    types: "place",
   });
   assertStringIncludes(url, "&proximity=3.4%2C6.45");
-  assertStringIncludes(url, "&country=ng");
-  assertStringIncludes(url, "&types=place");
   // forward is single-result — limit is never widened.
   assertStringIncludes(url, "&limit=1");
+  // FILTER-FREE contract (INV-3 / ORCH-1079).
+  assert(!url.includes("&types="), "forward must never add a types filter");
+  assert(!url.includes("&country="), "forward must never add a country filter");
 });
 
 Deno.test("bias params are url-encoded (injection-safe)", () => {
   const url = buildSuggestUrl(BASE, TOKEN, "a b", SESSION, {
     proximity: "3.4,6.45",
-    country: "ng,gh",
   });
-  assertStringIncludes(url, "&country=ng%2Cgh");
+  // proximity CSV is encoded (comma → %2C).
+  assertStringIncludes(url, "&proximity=3.4%2C6.45");
   // query is encoded too (space → %20).
   assertStringIncludes(url, "?q=a%20b");
 });

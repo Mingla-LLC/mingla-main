@@ -13,7 +13,9 @@ import { TRAVEL_TIME_PRESETS } from "../../types/onboarding";
 // shared multi-row Mapbox suggest→retrieve picker (the exact field CityPicker
 // uses), replacing the old forward/limit=1 single-row adapter. This kills the
 // "one wrong-country result" bug and lets the host thread the user's device
-// proximity + country so results rank to the user's area.
+// proximity so results RANK to the user's area. Proximity biases ranking without
+// excluding any result, so the shared suggest handler stays filter-free (no
+// types/country filter — INV-3 / ORCH-1079).
 import { MapboxAddressInput, type PlaceDetails } from "../location/MapboxAddressInput";
 // META-ORCH-0991 Wave C — PreferencesSheet body now scrolls inside a gorhom
 // BaseBottomSheet. The two text fields here must be gorhom's
@@ -139,7 +141,6 @@ export const LocationInputSection = memo(
     onPickLocation,
     hasSelected,
     proximity,
-    country,
     useGpsLocation,
     onToggleGps,
     isLocked,
@@ -154,10 +155,10 @@ export const LocationInputSection = memo(
     // ORCH-1361 — a resolved location exists (selectedCoords != null) → show the
     // chip; otherwise show the editable multi-row search field.
     hasSelected: boolean;
-    // ORCH-1361 — user device bias, threaded into the shared field's suggest
-    // call. Undefined when no device anchor is available → today's behavior.
+    // ORCH-1361 — user device proximity rank bias, threaded into the shared
+    // field's suggest call. Undefined when no device anchor is available →
+    // today's behavior. NO types/country filter (INV-3 / ORCH-1079).
     proximity?: string;
-    country?: string;
     useGpsLocation: boolean;
     onToggleGps: (value: boolean) => void;
     isLocked?: boolean;
@@ -218,8 +219,9 @@ export const LocationInputSection = memo(
       {!useGpsLocation && !isLocked && (
         <>
           {/* ORCH-1361 — chip when a location is resolved; otherwise the shared
-              multi-row Mapbox suggest→retrieve field, biased to the user's
-              device proximity/country (OQ-2 suggestLimit 8, OQ-3 types filter). */}
+              multi-row Mapbox suggest→retrieve field, RANK-biased to the user's
+              device proximity (suggestLimit 8). No types/country filter — the
+              shared suggest handler stays filter-free (INV-3 / ORCH-1079). */}
           {hasSelected ? (
             <View style={styles.locationChip}>
               <Icon name="location" size={14} color="#ffffff" />
@@ -245,8 +247,6 @@ export const LocationInputSection = memo(
                 leadingIcon="location"
                 minQueryLength={4}
                 proximity={proximity}
-                country={country}
-                types="place,locality,neighborhood,address,region,district"
                 suggestLimit={8}
               />
             </View>

@@ -56,26 +56,34 @@ Shared code touched by this SPEC (`supabase/functions/mapbox-geocode`, `packages
 
 ### 4.1 Edge function — `supabase/functions/mapbox-geocode/index.ts` (ADDITIVE ONLY)
 
+> **REWORK 2026-07-12 (NEEDS-REWORK → ORCH-1079 conflict resolution):** the bias is
+> **proximity + limit ONLY — NO `types`/`country` FILTER.** The shared `suggest`
+> handler ALSO serves BUSINESS venue-name search (POIs must resolve), so it MUST
+> stay filter-free per **INV-3 / ORCH-1079** (strict-grep gate
+> `.github/scripts/strict-grep/i-mapbox-suggest-no-types-filter.mjs`). A `types`
+> filter would exclude POIs; a `country` filter would over-restrict an
+> "explore anywhere" field (someone in Lagos typing "london" must still get
+> London). **`proximity` biases RANKING without excluding any result — that is the
+> actual fix** for the "lekki → London" bug (a Lagos device ranks Lekki Lagos
+> first). `country`/`types` were REMOVED from `RequestBody`, `SearchOpts`, both URL
+> builders, and everything the CONSUMER passes.
+
 Add to `RequestBody`:
 ```ts
-proximity?: string; // "lng,lat" (Mapbox longitude,latitude order) OR "ip"
-country?: string;   // ISO 3166-1 alpha-2, comma-separated (e.g. "ng" or "ng,gh")
-types?: string;     // comma-separated Search Box types (e.g. "place,locality,address")
+proximity?: string; // "lng,lat" (Mapbox longitude,latitude order) OR "ip" — RANK bias
 limit?: number;     // suggest override; default 5 (byte-identical when omitted)
 ```
 
-`handleSuggest(token, query, sessionToken, opts)` and `handleForward(token, query, opts)` gain an `opts` object carrying `{ proximity?, country?, types?, limit? }`. Build the URL by APPENDING each param **only when present and non-empty**:
+`handleSuggest(token, query, sessionToken, opts)` and `handleForward(token, query, opts)` gain an `opts` object carrying `{ proximity?, limit? }`. Build the URL by APPENDING the proximity rank bias **only when present and non-empty** — NO `types`/`country` param is EVER appended (filter-free, INV-3 / ORCH-1079):
 ```ts
 if (opts.proximity) url += `&proximity=${encodeURIComponent(opts.proximity)}`;
-if (opts.country)   url += `&country=${encodeURIComponent(opts.country)}`;
-if (opts.types)     url += `&types=${encodeURIComponent(opts.types)}`;
 ```
-- `handleSuggest` limit: `&limit=${opts.limit ?? 5}` (keep default 5 → business unchanged).
-- `handleForward` limit: unchanged `&limit=1` (forward stays single-result; forward `limit>1` requires a single `types`, out of scope).
+- `handleSuggest` limit: `&limit=${clampSuggestLimit(opts.limit)}` (default 5 → business unchanged; clamp to [1,10]).
+- `handleForward` limit: unchanged `&limit=1` (forward stays single-result).
 - **When `opts` is empty, the emitted URL is byte-identical to today** (this is the no-regression contract; SC-6).
-- Thread `body.proximity`/`body.country`/`body.types`/`body.limit` in `handler()` `switch` into `opts` for the `suggest`/`forward` cases only. `retrieve`/`reverse` unchanged.
+- Thread `body.proximity`/`body.limit` in `handler()` `switch` into `opts` for the `suggest`/`forward` cases only. `retrieve`/`reverse` unchanged.
 - Preserve `verify_jwt = true` (config.toml:174-175 unchanged).
-- **Mapbox param formats (verified against `https://docs.mapbox.com/api/search/search-box/`, COMMS-0003):** `proximity` default `"ip"`, value `"longitude,latitude"`; `country` = ISO 3166 alpha-2 CSV; `types` ∈ {country,region,postcode,district,place,city,locality,neighborhood,street,address,poi,category}; `limit` ≤ 10.
+- **Mapbox param formats (verified against `https://docs.mapbox.com/api/search/search-box/`, COMMS-0003):** `proximity` default `"ip"`, value `"longitude,latitude"`; `limit` ≤ 10. (`country`/`types` intentionally UNUSED — filter-free suggest handler.)
 
 ### 4.2 Shared service — `packages/location-input/src/mapboxGeocodeService.ts` (ADDITIVE ONLY)
 
@@ -174,10 +182,15 @@ None. No schema, RLS, migration, or realtime change.
 
 ## 6. Invariants
 
+> **REWORK 2026-07-12:** proximity is a **RANK-ONLY** bias — NO `types`/`country`
+> FILTER — so INV-3 / ORCH-1079 (below) is preserved and the shared suggest
+> handler stays filter-free for BUSINESS venue-name search.
+
 - **Preserve — `I-1315-PAYWALL-PRESENTS-FROM-SHEET` (ACTIVE):** the swap keeps the T-A4 GPS-row `TouchableOpacity`/labels and the `overlay={paywall}`/`presentInline` wiring untouched; verified by the existing `orch-1315-…paywall.test.tsx` (must still PASS).
 - **Preserve — INV-3 (structured codes never parsed):** the shared field's `retrieve` already reads structured `regionCode`/`countryCode`; the swap introduces no name-parsing.
+- **Preserve — INV-3 / ORCH-1079 `I-MAPBOX-SUGGEST-NO-TYPES-FILTER` (ACTIVE, PR-blocking gate):** the shared `suggest` (and `forward`) handler MUST stay **filter-free** — NO `types` filter (would exclude POIs and regress business venue-name search) and NO `country` filter (would over-restrict explore-anywhere). Only the `proximity` rank bias + `limit` pagination are added. Enforced by `.github/scripts/strict-grep/i-mapbox-suggest-no-types-filter.mjs` (must PASS) + the ORCH-1361 Deno suites' filter-free assertions.
 - **Preserve — Mapbox session billing:** one `session_token` across suggest→retrieve, rotated after each pair (shared field, unchanged); `forward`/`reverse` per-request.
-- **NEW (DRAFT) — `I-PROPOSED-1361-CONSUMER-LOCATION-PROXIMITY-BIASED`:** consumer location search MUST bias by the user's device proximity (and/or country) and MUST NOT silently rely on server-IP proximity. Enforced by the regression test in §9. Flips ACTIVE at CLOSE (orchestrator owns the flip).
+- **NEW (DRAFT) — `I-PROPOSED-1361-CONSUMER-LOCATION-PROXIMITY-BIASED`:** consumer location search MUST bias by the user's device **proximity** (RANK-only, never a filter) and MUST NOT silently rely on server-IP proximity. Enforced by the regression test in §9. Flips ACTIVE at CLOSE (orchestrator owns the flip).
 
 ---
 

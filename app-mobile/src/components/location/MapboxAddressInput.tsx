@@ -50,16 +50,14 @@ interface ConsumerMapboxAddressInputProps {
   /** Leading glyph (DESIGN §4): "search" (City) | "location" (Prefs/Onboarding). */
   leadingIcon?: string;
   autoFocus?: boolean;
-  // ── ORCH-1361 [location-suggestions] · OPTIONAL device bias (ADDITIVE) ─────
+  // ── ORCH-1361 [location-suggestions] · OPTIONAL device rank bias (ADDITIVE) ─
   // Forwarded verbatim to the shared field's suggest call so consumer location
-  // search ranks to the user's area (fixes the server-IP wrong-country bug).
-  // Omitted by callers that don't resolve a device anchor → byte-identical.
-  /** User-proximity bias "longitude,latitude" (Mapbox order). */
+  // search RANKS to the user's area (fixes the server-IP wrong-country bug).
+  // Omitted by callers that don't resolve a device anchor → byte-identical. NO
+  // types/country filter — proximity biases ranking without excluding results,
+  // keeping the shared suggest handler filter-free (INV-3 / ORCH-1079).
+  /** User-proximity rank bias "longitude,latitude" (Mapbox order). */
   proximity?: string;
-  /** Country restrict — ISO 3166-1 alpha-2 CSV (e.g. "ng"). */
-  country?: string;
-  /** Search Box feature types CSV (e.g. "place,locality,address"). */
-  types?: string;
   /** suggest `limit` override (≤10). Omitted → edge default 5. */
   suggestLimit?: number;
 }
@@ -203,8 +201,6 @@ export const MapboxAddressInput: React.FC<ConsumerMapboxAddressInputProps> = ({
   leadingIcon,
   autoFocus = false,
   proximity,
-  country,
-  types,
   suggestLimit,
 }) => {
   const tokens = useMemo(
@@ -233,8 +229,6 @@ export const MapboxAddressInput: React.FC<ConsumerMapboxAddressInputProps> = ({
       haptics={Haptics}
       autoFocus={autoFocus}
       proximity={proximity}
-      country={country}
-      types={types}
       suggestLimit={suggestLimit}
     />
   );

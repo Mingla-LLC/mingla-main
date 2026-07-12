@@ -66,20 +66,23 @@ export type InvokeFn = (
 ) => Promise<{ data: any; error: { message?: string } | null }>;
 
 /**
- * ORCH-1361 [location-suggestions] — OPTIONAL Mapbox Search Box bias, threaded
- * from the consumer host's device location. ADDITIVE: every field is optional
- * and each is forwarded to the edge fn ONLY when present, so a caller that omits
- * `bias` (business pickers, consumer geocodingService adapter) produces a
- * BYTE-IDENTICAL request to the pre-1361 behavior. Without proximity, Mapbox
- * defaults to IP proximity (the edge datacenter) and mis-ranks results.
+ * ORCH-1361 [location-suggestions] — OPTIONAL Mapbox Search Box RANKING bias,
+ * threaded from the consumer host's device location. ADDITIVE: every field is
+ * optional and each is forwarded to the edge fn ONLY when present, so a caller
+ * that omits `bias` (business pickers, consumer geocodingService adapter)
+ * produces a BYTE-IDENTICAL request to the pre-1361 behavior. Without proximity,
+ * Mapbox defaults to IP proximity (the edge datacenter) and mis-ranks results.
+ *
+ * NO `types`/`country` FILTER (INV-3 / ORCH-1079): the shared suggest handler
+ * also serves BUSINESS venue-name search (POIs must resolve), and a `country`
+ * filter would over-restrict an "explore anywhere" field. `proximity` biases
+ * RANKING without excluding any result — that is the fix.
  * Doc-verified formats (https://docs.mapbox.com/api/search/search-box/):
- *   proximity "longitude,latitude"; country ISO-3166-1 alpha-2 CSV; types CSV;
- *   limit ≤ 10 (suggest only — forward stays single-result).
+ *   proximity "longitude,latitude"; limit ≤ 10 (suggest only — forward stays
+ *   single-result).
  */
 export interface LocationBias {
   proximity?: string;
-  country?: string;
-  types?: string;
   limit?: number;
 }
 
@@ -113,14 +116,13 @@ export async function autocompleteMapbox(
 
   try {
     const { data, error } = await deps.invoke("mapbox-geocode", {
-      // ORCH-1361 — bias fields merged ONLY when present; omitted → byte-identical.
+      // ORCH-1361 — proximity rank bias + limit merged ONLY when present;
+      // omitted → byte-identical. NO types/country filter (INV-3 / ORCH-1079).
       body: {
         action: "suggest",
         query: q,
         session_token: sessionToken,
         ...(bias?.proximity ? { proximity: bias.proximity } : {}),
-        ...(bias?.country ? { country: bias.country } : {}),
-        ...(bias?.types ? { types: bias.types } : {}),
         ...(bias?.limit ? { limit: bias.limit } : {}),
       },
     });
@@ -200,14 +202,13 @@ export async function forwardGeocodeMapbox(
   if (q.length === 0) throw new Error("query_required");
 
   const { data, error } = await deps.invoke("mapbox-geocode", {
-    // ORCH-1361 — forward is single-result (no `limit`); proximity/country/types
-    // merged ONLY when present so an unbiased caller is byte-identical.
+    // ORCH-1361 — forward is single-result (no `limit`); the proximity rank bias
+    // is merged ONLY when present so an unbiased caller is byte-identical. NO
+    // types/country filter (INV-3 / ORCH-1079).
     body: {
       action: "forward",
       query: q,
       ...(bias?.proximity ? { proximity: bias.proximity } : {}),
-      ...(bias?.country ? { country: bias.country } : {}),
-      ...(bias?.types ? { types: bias.types } : {}),
     },
   });
   if (error) {
