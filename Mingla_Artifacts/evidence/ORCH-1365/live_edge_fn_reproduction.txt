@@ -1,0 +1,134 @@
+ORCH-1365 — live reproduction against DEPLOYED mapbox-geocode (post-ORCH-1361), 2026-07-12
+Project gqnoajqerqhnvulmnyvv. Authed with anon JWT. Query = Seth's screenshot + variants.
+
+=== (1) Seth's EXACT query "lekki nigeria", NO proximity — reproduces the screenshot ===
+  1. Lekki London Nigerian Restaurant, Bar & Lounge — 123 Rushey Grn, London, SE6 4AA, UK
+  2. Nigeria Ferick — Mandoul, Chad
+  3. Nigeriare — North, Cameroon
+  4. Nigeria — 4340, Mawothi, KwaZulu-Natal, South Africa
+  5. Nigeria — Alto Hospicio, Tarapacá, Chile
+  => NO Lekki, Lagos. Two-word "lekki nigeria" fuzzy-matches POIs + literal "Nigeria" places.
+
+=== (2) "lekki" alone, NO proximity — Lekki Lagos DOES rank #1 ===
+  1. Lekki Phase 2 — Lagos, Lagos, Nigeria       <-- correct place, unbiased
+  2. Lekki Dubai — Dubai, UAE
+  3. Lekki Phase 1 — Lagos, Lagos, Nigeria
+  4. Lekki STYL Catering Dietetyczny — Poland
+  5. Lekki Kitchen — Edgware, UK
+  => POI noise mixed in, but Lagos is #1/#3 WITHOUT proximity.
+
+=== (3) "lekki" with LONDON proximity (-0.1278,51.5074) — simulates Seth's real device ===
+  1. Lekki Kitchen — Edgware, UK
+  2. Lekki London Nigerian Restaurant — London, UK
+  3. Khayat Homes - The Lekki — London, UK
+  4. Leaking Roof — London, UK
+  5. Lekki Royal Investment Management — Harrow, UK
+  6. Lekkimedia — London, UK
+  7. Lekki Dubai — UAE
+  8. Lekki STYL — Poland
+  => PROXIMITY BIAS BURIES LEKKI LAGOS ENTIRELY. The ORCH-1361 proximity lever is
+     counterproductive for a "search a place you are NOT at" field.
+
+=== (4) forward "Lekki, Lagos, Nigeria" — the place exists in Mapbox ===
+  => Lagos, Nigeria | city=Lagos region=Lagos country=NG {lat:6.453928, lng:3.38975}
+
+CONCLUSION: correct fix = (a) DROP proximity for the consumer explore field;
+(b) add place-type filtering (drop POIs) via a business-safe path (new action or scoped gate);
+(c) handle the trailing-country-word case. Plus UI: scrollable list + field text clip.
+
+============================================================================
+ORCH-1365 — DIRECT Mapbox Search Box /suggest probes (token from master-keys),
+2026-07-12. Proves the PROPOSED fix (types filter + trailing-country handling).
+Endpoint: GET https://api.mapbox.com/search/searchbox/v1/suggest
+Params verified vs live docs https://docs.mapbox.com/api/search/search-box/ :
+  types = comma list of {country,region,postcode,district,place,city,locality,
+          neighborhood,street,address,poi,category};
+  country = ISO 3166-1 alpha-2 comma list; proximity = "lng,lat" or "ip";
+  limit ≤ 10; session_token REQUIRED.
+TYPES set under test = place,locality,neighborhood,region,district
+Scripts: /tmp/orch-1365/probe.sh + probe2.sh
+============================================================================
+
+--- BATCH 1 (the core question: does types filter fix it?) ---
+
+A. "lekki" | NO types | NO prox (baseline, matches deployed-fn evidence #2):
+   1. Lekki Phase 2      — Lagos, Lagos, Nigeria   ft=locality
+   2. Lekki Dubai        — Dubai, UAE              ft=poi   <- POI noise
+   3. Lekki Phase 1      — Lagos, Lagos, Nigeria   ft=locality
+   4. Lekki STYL Catering— Poland                  ft=poi   <- POI noise
+   5. Lekki Kitchen      — Edgware, UK             ft=poi   <- POI noise
+
+B. "lekki" | TYPES | NO prox:   *** FIXED ***
+   1. Lekki Phase 2      — Lagos, Lagos, Nigeria   ft=locality
+   2. Lekki Phase 1      — Lagos, Lagos, Nigeria   ft=locality
+   3. Liekiai — Lithuania | 4. Летки — Russia | 5. لکی مروت — Pakistan
+   => ALL POIs GONE. Lekki Lagos #1 AND #2. Types filter alone fixes "lekki".
+
+C. "lekki nigeria" | NO types | NO prox (baseline = Seth's screenshot repro):
+   1. Lekki London Nigerian Restaurant — London, UK   ft=poi
+   2. Nigeria Ferick — Chad | 3. Nigeriare — Cameroon
+   4. Nigeria — South Africa | 5. Nigeria — Chile
+   => NO Lekki Lagos (the reported bug).
+
+D. "lekki nigeria" | TYPES | NO prox:   *** STILL BROKEN ***
+   1. Nigeria Ferick — Chad          ft=place
+   2. Nigeriare — Cameroon           ft=place
+   3. Nigerian Air Force Base — Kano, Nigeria  ft=locality
+   4. Nigeria — South Africa | 5. حجاج نيجيريا — Saudi Arabia
+   => TYPES FILTER ALONE DOES NOT FIX THE TWO-WORD CASE. The trailing
+      country word "nigeria" fuzzy-dominates; Lekki is dropped entirely.
+
+E. "lekki" | TYPES | LONDON prox (-0.1278,51.5074):   *** still Lagos #1 ***
+   1. Lekki Phase 2 — Lagos, NG | 2. Lekki Phase 1 — Lagos, NG
+   => Types filter makes proximity HARMLESS for "lekki": Lagos wins even with
+      a London bias. => proximity is neither needed nor harmful here for 1-word.
+
+F. "lekki nigeria" | TYPES | LONDON prox:  1. Nigeria Ferick — Chad (still broken)
+
+--- BATCH 2 (two-word remediation: what fixes "lekki nigeria"?) ---
+
+G. "lekki" | TYPES | country=ng   (strip trailing country word -> ISO filter):
+   1. Lekki Phase 2 — Lagos, NG   2. Lekki Phase 1 — Lagos, NG   *** FIXED ***
+
+J. "lekki nigeria" (FULL q) | TYPES | country=ng   (keep word + country):
+   1. Nigerian Air Force Base — Kano | 2. Niger — region   => STILL BROKEN.
+   => Must STRIP the trailing country token from q; a country filter alone
+      (without stripping) does not rescue it.
+
+K. "lekki, nigeria" (comma inserted) | TYPES:
+   1. Nigeria Ferick — Chad ... => comma does NOT help.
+
+H. forward "lekki nigeria" (no types):  1. Lekki London Restaurant — London (POI). BROKEN.
+I. forward "lekki nigeria" (types):     1. Nigeria — S.Africa ...            BROKEN.
+   => Search Box /forward is NOT a viable fallback for this query.
+
+N. "lekki" | TYPES | country=ng | LONDON prox:
+   1. Lekki Phase 2 — Lagos, NG | 2. Lekki Phase 1 — Lagos, NG  (robust under prox)
+
+--- SAFETY (the strip-trailing-country heuristic must not over-fire) ---
+L. "lekki london" | TYPES  ("london" is NOT a country -> NOT stripped):
+   1. London — Greater London, UK | 2. Gatwick | 3. Londonderry | 4. London, Ontario
+   => trailing CITY word preserved; Mapbox resolves London. Acceptable (user
+      typed london). Heuristic is country-name-scoped, so "london" is safe.
+M. "lekki phase" | TYPES  ("phase" not a country -> NOT stripped):
+   1. Lekki Phase 2 — Lagos, NG | 2. Lekki Phase 1 — Lagos, NG
+   => multi-word non-country queries still resolve Lekki Lagos.
+
+============================================================================
+CONCLUSIONS (all runtime-proven against the authoritative Mapbox upstream):
+ 1. types=place,locality,neighborhood,region,district DROPS the POI noise and
+    surfaces Lekki Lagos #1 for "lekki" (B), even under London proximity (E).
+ 2. types filter ALONE does NOT fix "lekki nigeria" (D/F) — REQUIRES stripping
+    the trailing country token, then re-querying "lekki" + types (+country=ng)
+    -> Lekki Lagos #1 (G/N). Comma (K) and /forward (H/I) do NOT work.
+ 3. proximity is UNNECESSARY once types-filtered (Lagos wins with or without a
+    London bias) and architecturally wrong for a "search a place you're NOT at"
+    field -> DROP it for the Preferences custom-location field.
+ 4. Heuristic safety: only strip a trailing token that is a recognized COUNTRY
+    name/alias; cities ("london", L) and non-geographic words ("phase", M) are
+    left intact and still resolve correctly.
+NON-LAGOS-USER PROOF: every probe above ran from this machine (London-region /
+non-Lagos IP, and explicitly re-tested with London proximity in E/F/N). The
+proposed fix returns Lekki, Lagos, Nigeria as #1 for BOTH "lekki" and
+"lekki nigeria" — the exact scenario ORCH-1361 failed.
+============================================================================
