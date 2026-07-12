@@ -102,6 +102,19 @@ export interface MapboxAddressInputProps {
   haptics?: HapticsLike;
   /** autoFocus the field on mount (City does). */
   autoFocus?: boolean;
+
+  // ── ORCH-1361 [location-suggestions] · OPTIONAL Mapbox rank bias (ADDITIVE) ─
+  // Threaded to the suggest call so results RANK to the user's area instead of
+  // the edge datacenter IP. All optional — when every one is absent the request
+  // is byte-identical to the pre-1361 behavior (business pickers + CityPicker
+  // callers that pass none are unchanged). NO types/country FILTER — the suggest
+  // handler must stay filter-free so business venue-name search returns POIs
+  // (INV-3 / ORCH-1079); proximity biases ranking without excluding results.
+  // Doc format: proximity "longitude,latitude"; limit ≤ 10.
+  /** User-proximity rank bias "longitude,latitude" (Mapbox order). */
+  proximity?: string;
+  /** suggest `limit` override (≤10). Default (omitted) → edge default 5. */
+  suggestLimit?: number;
 }
 
 type Status =
@@ -130,6 +143,8 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
   TextInputComponent,
   haptics,
   autoFocus = false,
+  proximity,
+  suggestLimit,
 }) => {
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const [focused, setFocused] = useState(false);
@@ -193,9 +208,14 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
       setStatus({ kind: "loading_suggestions" });
       debounceTimer.current = setTimeout(async (): Promise<void> => {
         try {
-          const results = await autocompleteMapbox(next, sessionToken.current, {
-            invoke,
-          });
+          // ORCH-1361 — thread the optional device proximity rank bias. When
+          // both are undefined the service omits them → byte-identical request.
+          const results = await autocompleteMapbox(
+            next,
+            sessionToken.current,
+            { invoke },
+            { proximity, limit: suggestLimit },
+          );
           if (results.length === 0) {
             setStatus({ kind: "no_results" });
             announce(copy.noResults);
@@ -209,7 +229,7 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
         }
       }, AUTOCOMPLETE_DEBOUNCE_MS);
     },
-    [announce, clearDebounceTimer, copy.noResults, copy.offline, invoke, minQueryLength, onChangeText],
+    [announce, clearDebounceTimer, copy.noResults, copy.offline, invoke, minQueryLength, onChangeText, proximity, suggestLimit],
   );
 
   const handlePickSuggestion = useCallback(

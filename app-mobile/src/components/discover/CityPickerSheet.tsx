@@ -27,6 +27,14 @@ import { MapboxAddressInput, type PlaceDetails } from "../location/MapboxAddress
 import { PreferencesService } from "../../services/preferencesService";
 import type { DiscoverCity } from "../../types/discoverFilters";
 import { Icon } from "../ui/Icon";
+// ORCH-1361 [location-suggestions] (OQ-4) — the city picker shares the same
+// shared field and had the identical server-IP mis-ranking bias. Resolve the
+// user's device anchor and thread `proximity` so the city list RANKS to the
+// user's area. When no device location is available, proximity stays undefined →
+// byte-identical to today (no regression). NO country filter — proximity biases
+// ranking without excluding results, keeping the shared suggest handler
+// filter-free (INV-3 / ORCH-1079).
+import { enhancedLocationService } from "../../services/enhancedLocationService";
 
 const SNAP_POINTS = ["90%"];
 const SHEET_BACKGROUND = {
@@ -53,6 +61,8 @@ export const CityPickerSheet: React.FC<CityPickerSheetProps> = ({
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [persisting, setPersisting] = useState(false);
+  // ORCH-1361 (OQ-4) — user device proximity rank bias for the city search.
+  const [proximity, setProximity] = useState<string | undefined>(undefined);
 
   // Reset state when sheet opens
   useEffect(() => {
@@ -61,6 +71,27 @@ export const CityPickerSheet: React.FC<CityPickerSheetProps> = ({
       setError(null);
       setPersisting(false);
     }
+  }, [visible]);
+
+  // ORCH-1361 (OQ-4) — resolve the device anchor once per open and thread it as
+  // `proximity` into the shared field. getLastKnownLocation is fast and never
+  // prompts; if unavailable, proximity stays undefined → today's behavior.
+  useEffect(() => {
+    if (!visible) return;
+    let cancelled = false;
+    setProximity(undefined);
+    (async () => {
+      try {
+        const loc = await enhancedLocationService.getLastKnownLocation();
+        if (cancelled || !loc) return;
+        setProximity(`${loc.longitude},${loc.latitude}`);
+      } catch {
+        // no device location → omit proximity (no regression).
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [visible]);
 
   const handlePick = useCallback(
@@ -175,6 +206,7 @@ export const CityPickerSheet: React.FC<CityPickerSheetProps> = ({
           accessibilityLabel="Search for a city"
           leadingIcon="search"
           minQueryLength={2}
+          proximity={proximity}
           autoFocus
         />
       </View>
