@@ -1,0 +1,168 @@
+ORCH-1361 LIVE mapbox-geocode edge-fn probes — 2026-07-12T19:17:32Z
+Endpoint: https://gqnoajqerqhnvulmnyvv.supabase.co/functions/v1/mapbox-geocode (verify_jwt=true, authed with anon JWT)
+=================================================================
+
+>>> A1 forward q=lekki
+REQUEST BODY: {"action":"forward","query":"lekki"}
+RESPONSE:
+{
+    "details": {
+        "placeId": "dXJuOm1ieHBvaTplNDAzNzUwYS01MjAyLTQ4YzktYTcwYy1lZmFiYzJiM2EzNjY",
+        "formattedAddress": "Oude Rijnsburgerweg 77, 2342 BA Oegstgeest, Netherlands",
+        "city": "Oegstgeest",
+        "region": null,
+        "regionCode": null,
+        "regionCodeFull": null,
+        "countryCode": "NL",
+        "location": {
+            "lat": 52.17385,
+            "lng": 4.45392
+        }
+    }
+}
+
+>>> A2 forward q=lekki, Nigeria
+REQUEST BODY: {"action":"forward","query":"lekki, Nigeria"}
+RESPONSE:
+{
+    "details": {
+        "placeId": "dXJuOm1ieHBvaTo5NzcyM2U5NS0zMTBiLTQ2NmMtODYwNy00MzYyZGFkNjJkMjM",
+        "formattedAddress": "123 Rushey Grn, London, SE6 4AA, United Kingdom",
+        "city": "London",
+        "region": null,
+        "regionCode": null,
+        "regionCodeFull": null,
+        "countryCode": "GB",
+        "location": {
+            "lat": 51.446455,
+            "lng": -0.018595
+        }
+    }
+}
+
+>>> A3 forward q=Lekki Lagos
+REQUEST BODY: {"action":"forward","query":"lekki lagos"}
+RESPONSE:
+{
+    "details": {
+        "placeId": "dXJuOm1ieHBvaTplMzA0YmRhYS03YTAwLTQwZWEtYjNkYS0yMzUyMDg1YzNmZTY",
+        "formattedAddress": "1830 S Texas 6, Houston, Texas 77077, United States",
+        "city": "Houston",
+        "region": "Texas",
+        "regionCode": "TX",
+        "regionCodeFull": "US-TX",
+        "countryCode": "US",
+        "location": {
+            "lat": 29.74956338,
+            "lng": -95.64493042
+        }
+    }
+}
+
+>>> A4 suggest q=lekki
+REQUEST BODY: {"action":"suggest","query":"lekki","session_token":"probe-sess-0001"}
+RESPONSE:
+{
+    "suggestions": [
+        {
+            "placeId": "dXJuOm1ieHBsYzpBWVhLcGc",
+            "displayName": "Lekki Phase 2",
+            "fullAddress": "Lagos, Lagos, Nigeria"
+        },
+        {
+            "placeId": "dXJuOm1ieHBvaTphYTcyYTUyNy1lY2RlLTQ0MTYtODIzMi0xZjFhYzVhMzJjODI",
+            "displayName": "Lekki Dubai",
+            "fullAddress": "Millennium Central Downtown - Al Asayel St, Dubai, P. O. BOX 123234, United Arab Emirates"
+        },
+        {
+            "placeId": "dXJuOm1ieHBsYzpBWVdxcGc",
+            "displayName": "Lekki Phase 1",
+            "fullAddress": "Lagos, Lagos, Nigeria"
+        },
+        {
+            "placeId": "dXJuOm1ieHBvaTplMmQ0ZWEyZS1hNDFkLTRiYmYtODhkMS05MjY5OWM1NDQxMTg",
+            "displayName": "Lekki STYL Catering Dietetyczny",
+            "fullAddress": "Rzeczna 28, 05-600 G\u0142uch\u00f3w, Poland"
+        },
+        {
+            "placeId": "dXJuOm1ieHBvaTowYmYyMjA3NC1lMmIxLTRkNDAtYTYyMi03ZDM5ZDY1Njc2YWE",
+            "displayName": "Lekki Kitchen",
+            "fullAddress": "86 Watling Ave, Edgware, HA8 0LU, United Kingdom"
+        }
+    ]
+}
+
+>>> A5 suggest q=lekki, Nigeria
+REQUEST BODY: {"action":"suggest","query":"lekki, Nigeria","session_token":"probe-sess-0002"}
+RESPONSE:
+{
+    "suggestions": [
+        {
+            "placeId": "dXJuOm1ieHBvaTo5NzcyM2U5NS0zMTBiLTQ2NmMtODYwNy00MzYyZGFkNjJkMjM",
+            "displayName": "Lekki London Nigerian Restaurant, Bar & Lounge",
+            "fullAddress": "123 Rushey Grn, London, SE6 4AA, United Kingdom"
+        },
+        {
+            "placeId": "dXJuOm1ieHBsYzpBOVNvMmc",
+            "displayName": "Nigeria Ferick",
+            "fullAddress": "Mandoul, Chad"
+        },
+        {
+            "placeId": "dXJuOm1ieHBsYzpBL0tJTUE",
+            "displayName": "Nigeriare",
+            "fullAddress": "North, Cameroon"
+        },
+        {
+            "placeId": "dXJuOm1ieHBsYzpBZ2FNL2c",
+            "displayName": "Nigeria",
+            "fullAddress": "4340, Mawothi, KwaZulu-Natal, South Africa"
+        },
+        {
+            "placeId": "dXJuOm1ieHJldDo2cEhuX1ItODhRTlIwSEEzREtMdVctdmlVeGxfVjFDN1BvSzhsdEVsVE5rMkZLbkx1RzZva043dzJ3LXlQdGY4SG9jaG9oTTdEdWMxandjMzRXVmhZdWZ4VkdGckdIZHg1dEpSWlo3Q09ObVZvZmZPWmlCdm5pRFMtSGE0V2RlQ0FaaDRrb0hNdmJNRDZVN1NwdFRPOVJOMG8yZXR3ZGdSVFJBWEJUR21yRkM4NVlOVjR0V0NxNk4ySkJoN0ZlWGZ0R1VkNnZ6dE5mX1ZVTnBKMmdGcFBqMkpSY3EzU1hXTUVNM3ZRc1NTUXVWOGdLei1ZaFVVTkFHYWVEOEFYVWFJVGlCUjlMWGRiaDZuMi1sRURSekJ1SThqZ3hleVh5elUwTmFPdDRaTDRqaHdLTzcxdmk1MGNKcEx3akd1NmRQQjcwUU1nbmpXQXhTbmo3ZkRWNGhpdWlpeGhGNDNIVGNNaE42OVRTYkRtV1pVQ0UyNVNMTnhYeko2TEZ2YVFQd281VHY2WUlCTDZkS2ZmTkRORGFaRU5QLXduRDhvMENoQTgzTWowWURkSDhyZ1BxeFFjSlY4QUZMZDJtaEtVcUZCR3pVQmMwT0VNOEI1WFBIZ0Y2d0dtcTJoSURBVzhMalN0RHVnSE83eDJqTElmQ25KQ0JPamRMR0J2YVJxdnpOeWU5ckFhUHJIdEp4WFZYYjJ0UHdDMWgxZmdMR3ZlU2xKaTJ1V3ZzaXluUG1uYTkxN3lKX3A0R3ozYlVKVG9KVzRRUU1mOWtXTHl6MTQ0dzNZc21BTnptUFhrY0RuX3JUcXdNcmVDR1huT1NITWVBSk9vTjV4YUNWNEdnSDUzQ0NjeEtkdVJFN2x2YnZ4WnRya19jaUszMGNpN1VDWDBtOGswRjNfRWUwLUVNLTZPVHVXTzh4cDFWcUgzc3MxTXlzdWhjb1lZSF9jc3VWY3g4Q2tzWGZMOUZ3Z2tMSlBVMDRqZGZOSFBrcE54dnpDV25POTQ5ejlxZGNFbWZKWmxPVmg0Nm9oZVk5XzRBdDRPYkdHWjUwN1NYMVc0N0pjTnFRT3JMRVBsZi1SenRmTTRfdDZ6WlJpa2xwWlR2QjRHcnpEMlBrYmJlRXlHYkVxVkpBcWROS2xaMnMtNWlkeVhEUjhOMmRFZUJ6MzRoTzZ5SEZpdnM3QXFETGV2NGJFdUV1ajJvNGNscm53VGs4THh4dkhNblNOYXVlVGZrb1BjQmZTdHRCZk0tdG5rLTV2Vkczcllhcm93S080VTJXdzR3dDJmZDRBVExhX05fZGV2SDVpZUFIWGx3cEZsSUpDS19UXzdmY3dDbDMxdnpJYWNRdnF0ZGRCclpCaE5oT3VBOXNza1NURW83cWIwMUZRd3BFRGMxUjFlNWhkYzV6NlVDNlJXTzBGVTc1a3k5YnNFNGFYekRrYUoyNktWblZTS0xHTHdPU0d2aFEzdk9oNUxhcTlDbnc4TGFac0ZZb21tX1dzTExFM1dmcnJVWkxCMjQ0d1lhNDVlZTUzUkxwVEVmd3Noa05CTjk2aGRnVE9uWHVEbzFHS0dJSExMc2ZXcnI0cnVoTUFrelVTRkJUb0dTTHgtZXJIb05GS1dRbkRxZmlaRl9uVDFyOGdnd21tZFN0ZVpNakZLV2tabW84X056VmVUUXZNeHVHaXpyTVAzbkJEdl8xTThOTF9UNkxlUGtLNnVtM3Fpc2YwVm02TFlUajFiUUhCMWluYTVGMlNvYWtCTlZSMEMzX2g2dkIwX2FENmVlM083aGRUbWE5M1Y4bDlVVkZDenY5aU5kWDQ1bThxUUJkakRjUElObUNub2JYdGFDUWZOOExTN3pDb2p0NUJkT25iOXBiSFFvVTl3WWlDbVlyUnpMMzYweUlUSFoxbS11QWVvZ2dPWEVhU2xlNGZCc1MxSHdEZEdYR28wcFYzVV9IdTR1TFV2aGpwXzA1NEpJbVJPeFdRV3BMcTBZb3B6OVp5eDdNeWREZktmLUFjTEFqdHBwbElfM1FrYWs3ZzdWRkVZQmVPWUVNMGRpbEtta3BpTE9KYjYzSzVMb0hYVEdESXFWM1ZWLVVvVmdzbi1yaXA2NF9mR0szTEd4bUswclVnRFhjUHlERUdaWkJaRXNkYkpKUGN1ZFhYb2JjMkZXOUR2V0NhOTI3MFJXdDUzT3JLb084Y29qS1RrblhqaEE4TVNFTlR0aTV5bkhaUThJQk1xTHh4aUZqQTNBT0tfUFFsVWxfYVh1LXVqOVlXQ0pySk9xN3dlMUhPZmZQUTdXaVIxa3N6Yk1Ja2Z3OWZqbTJYR3F6STBDVERlUVRhTmlvWm5Dc3NNelM0Vk4wNlg3VUZSeVB6azlvRXo0RTdzVzhwbWQwMTEzaE1NX2tqMDRFVEZzQmI5czR0T1JGZW1uS3lTNmwyVTdMNG5LSkdYVkF5dXFmZHRXaTZ4MkJfM2N5UzM5WlpxMWR4ZjNmTF9LdDNFcENCeDd6dUFwTkM1TEwtVl9OUl8waXRRLThxck43dElYZU9Zem5feWx6YzZQMkl3Q1ltMTBGUV85UFhOUDRfNldjTGdxWkRzQ19nQnc3clpRUDBhdDRfLTA2RUhvdVZweUNRdzVCenFudmpSVWJsWmN6a2p6WTRkbElCNFdUVlpfN211R0xoZDZmS010dFlNRE42OXZkS09NRFZYT2I5X3lQTnRUSVlEZ3JnUmlMU2daQXV1bWNsT0VuT0xmbXBHVXJfUXg1QVhHUnVfbERGZ2JLeGZ5MFpJTUpRMkNhaUJJQkFXamNEaGRUVzZpNlJzRkZnODhvOGFTVTByRWdGU082TVZDeU5aWHM1b2hqbGl4cE85SmNmckFjNkRqa3lNd0JNTUFvTW1hRW9INndJOHc2SkYyTmtjV2J0RTlDUnRPNF94OFJkSEt5eUQ3RWNUZTdlWVoxQm5zZkVGLVdaOWF3Q3AwUDZIWTl3WjcyN2hzTkJDbDRtYTN5aWMyb3I0RzZ5djZlRUp4WFRaU1liNWl6NmJTU3BZbGhzQ3VZRncyYVZlaUROQnYyaHcxSmg3cTRkTThXbktLR3Q5VzliYm9lLVlWY1lCN0xFdUQwS3MwQmhpcHVONUJ3WVB0TmlFeFhzZkEwbTJSZnpZZkEtelJOM3J4cF9BLXBXY1JDMmxWLUdCenhVcE0xU1d0d0xtWUdsdk52TGFVWWkyY0hoM3dRNWkyMHhNa0RnS3FzVF9RX09kclg1T3hZY0xPRWxpVGx6SjBDcjBPVHlycU95UjV6YVRBcHhHeGpMQkIwUWJkcno5ZE1SZXFkcmtRUmh3dFBrSjJERFJSaFhFOXpiUlpKWEtPaHIzb3FUN1lWdVh6UjRienNaMWI2X203aWRhemRTMm1sVmpxZ3E2UFN5dlRkR2ZfYzNYOXYxVWlCaHFBVS1tOF8zRjdGaHhvX1VNNjA1OW5UQkpDMEFpcDhhUmdGZnlwU3hNNURtRkVIVDdING9kOXBJVm1BejVHckdpVUlSZWJEZlUtRWFhdzM4Ymd1TXM1cnlKbHU1aVBKLXRWY1NuamVmaEdUN0tUNFdoM1QwaERIS1VwNWhVd3M2c2NUTFhaZi14MEN6MFJJUFp4WGtySWxPeWtMY2R2eWNpMTdEZlJtUmxfN1dnaHlhQlV4UHozWFA1ajVRV1NiOWdWdEw5WHUxRVBTOTYzZndBNFU9",
+            "displayName": "Nigeria",
+            "fullAddress": "Alto Hospicio, Tarapac\u00e1 1130000, Chile"
+        }
+    ]
+}
+
+=================================================================
+ANALYSIS (forensics, ORCH-1361)
+=================================================================
+THREAD 2 — WRONG COUNTRY (proximity=ip bias) — CONFIRMED AT RUNTIME:
+  forward "lekki"          -> Oegstgeest, NETHERLANDS (NL)   [wrong country]
+  forward "lekki, Nigeria" -> "Lekki London Nigerian Restaurant", London, GB
+                              == EXACT reproduction of Seth's London symptom
+  forward "lekki lagos"    -> Houston, Texas, US             [wrong country]
+  => Three phrasings of the same place resolve to THREE different wrong
+     countries (NL / GB / US). The geocoder is NOT anchored to the user's
+     location; it scatters on global POI name matches biased by the caller IP.
+     Mapbox Search Box /forward + /suggest DEFAULT proximity=ip (doc-confirmed,
+     below) and the IP is the Supabase edge datacenter, not the device.
+
+THREAD 1 — TOO FEW SUGGESTIONS — CONFIRMED:
+  The Preferences field routes through geocodingService.autocomplete() which
+  calls forward (limit=1) and wraps the single feature into a 1-element array
+  (geocodingService.ts:216-223). forward returns exactly ONE feature (see A1/A2/A3).
+  A list is structurally impossible on this path.
+
+(b) PROXIMITY/COUNTRY FIX — PROVEN-BY-PROXY (live) + doc-confirmed mechanism:
+  suggest "lekki" (multi-row, A4) ALREADY returns the CORRECT place:
+     #1 "Lekki Phase 2" — Lagos, Lagos, Nigeria
+     #3 "Lekki Phase 1" — Lagos, Lagos, Nigeria
+  mixed with noise (#2 Lekki Dubai UAE, #4 Poland, #5 UK). This proves Mapbox
+  RETURNS Lekki, Lagos NG when not constrained to the single IP-biased result.
+  Adding country=ng would restrict to Nigeria (drop Dubai/Poland/UK); adding
+  proximity=<Lagos lng,lat> would rank Lekki Lagos first. The exact direct
+  "&proximity=3.4,6.45&country=ng" Mapbox call was NOT executed because
+  MAPBOX_ACCESS_TOKEN is a Supabase secret (NOT API-readable) and no public
+  Mapbox token is provisioned (per INVESTIGATE_ORCH-1162R). This caps ONLY the
+  direct-param sub-proof; the root cause and fix mechanism are otherwise proven.
+
+MAPBOX SEARCH BOX DOC VERIFICATION (https://docs.mapbox.com/api/search/search-box/):
+  proximity : DEFAULT "ip" when omitted; format "longitude,latitude" (or "ip").
+              "If not provided, the default is IP proximity."
+  country   : comma-separated ISO 3166 alpha-2 codes.
+  types     : country|region|postcode|district|place|city|locality|neighborhood|
+              street|address|poi|category (comma-separated).
+  limit     : up to 10 (both /suggest and /forward).
+  session_token : /suggest + /retrieve only (NOT /forward); UUIDv4 recommended.
