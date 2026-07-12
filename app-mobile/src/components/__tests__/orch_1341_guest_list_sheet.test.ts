@@ -208,8 +208,16 @@ Deno.test("T-10 every <Pressable> is one of the sanctioned action controls", () 
         // carry this name target.
         /testID=\{`orch-1359-guest-sheet-open-profile-\$\{item\.key\}`\}/.test(
           window,
+        ) ||
+        // [TEST-MOD-APPROVED ORCH-1360] — ORCH-1360 Part 2: the "Requested" chip
+        // is now a sanctioned WITHDRAW target (I-PROPOSED-1360-FRIEND-REQUEST-
+        // CONFIRM-AND-CANCEL). Tapping it opens a native Alert.alert to cancel
+        // the sent request. The row CONTAINER stays non-pressable (T-09); only
+        // NAMED, non-You rows in the "Requested" state carry this chip target.
+        /testID=\{`orch-1360-guest-sheet-cancel-request-\$\{item\.key\}`\}/.test(
+          window,
         ),
-      `Pressable #${i} must be a sanctioned action control or the ORCH-1359 name-open target (the row container is never pressable)`,
+      `Pressable #${i} must be a sanctioned action control or the ORCH-1359 name-open / ORCH-1360 withdraw target (the row container is never pressable)`,
     );
   }
 });
