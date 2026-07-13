@@ -111,7 +111,11 @@ Deno.test("T-9a: shared MapboxAddressInput routes by searchMode (places vs venue
 // ── T-9b: the consumer wrapper forwards searchMode + injects the scroll container
 Deno.test("T-9b: consumer wrapper forwards searchMode + injects BottomSheetScrollView (F-5)", () => {
   assertStringIncludes(WRAPPER, "searchMode={searchMode}", "wrapper forwards searchMode");
-  assertStringIncludes(WRAPPER, "ScrollComponent={BottomSheetScrollView}", "wrapper injects the gorhom scroll container");
+  // [TEST-MOD-APPROVED ORCH-1362] — the gorhom scroll injection is now GATED by
+  // `inBottomSheet` (default true) so the shared field can fall back to a plain
+  // RN ScrollView on non-sheet hosts (Onboarding). Preferences/CityPicker pass
+  // no flag → default true → still inject BottomSheetScrollView (F-5 preserved).
+  assertStringIncludes(WRAPPER, "ScrollComponent={inBottomSheet ? BottomSheetScrollView : undefined}", "wrapper injects the gorhom scroll container when in a sheet (default)");
   assertStringIncludes(WRAPPER, "BottomSheetScrollView", "wrapper imports BottomSheetScrollView");
   // the shared field actually consumes the injected scroll container.
   assertStringIncludes(SHARED, "ScrollComponent", "shared field accepts a ScrollComponent");

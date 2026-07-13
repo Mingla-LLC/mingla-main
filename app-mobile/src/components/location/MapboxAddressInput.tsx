@@ -75,6 +75,18 @@ interface ConsumerMapboxAddressInputProps {
   proximity?: string;
   /** suggest `limit` override (≤10). Omitted → edge default 5. */
   suggestLimit?: number;
+  // ── ORCH-1362 [onboarding-location] ───────────────────────────────────────
+  /**
+   * True (default) = gorhom sheet host (Preferences / CityPicker) → inject
+   * `BottomSheetTextInput` + `BottomSheetScrollView` so the field + its card
+   * list behave correctly INSIDE a `<BottomSheet>`. False = plain-screen host
+   * (e.g. Onboarding's SafeAreaView + ScrollView) → OMIT both so the shared
+   * field falls back to RN `TextInput` + `ScrollView`. gorhom's
+   * `BottomSheetScrollView`/`BottomSheetTextInput` THROW when rendered outside a
+   * `<BottomSheet>` provider, so a plain screen MUST pass `inBottomSheet={false}`.
+   * Default preserves Preferences/CityPicker behavior byte-for-byte.
+   */
+  inBottomSheet?: boolean;
 }
 
 const invoke = (fn: string, options: { body: Record<string, unknown> }) =>
@@ -218,6 +230,7 @@ export const MapboxAddressInput: React.FC<ConsumerMapboxAddressInputProps> = ({
   searchMode = "venue",
   proximity,
   suggestLimit,
+  inBottomSheet = true,
 }) => {
   const tokens = useMemo(
     () => (variant === "dark" ? DARK_TOKENS : LIGHT_TOKENS),
@@ -241,9 +254,9 @@ export const MapboxAddressInput: React.FC<ConsumerMapboxAddressInputProps> = ({
       copy={CONSUMER_COPY}
       minQueryLength={minQueryLength}
       leadingIcon={resolvedLeadingIcon}
-      TextInputComponent={BottomSheetTextInput}
+      TextInputComponent={inBottomSheet ? BottomSheetTextInput : undefined}
       searchMode={searchMode}
-      ScrollComponent={BottomSheetScrollView}
+      ScrollComponent={inBottomSheet ? BottomSheetScrollView : undefined}
       haptics={Haptics}
       autoFocus={autoFocus}
       proximity={proximity}

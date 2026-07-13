@@ -29,7 +29,13 @@ import { supabase } from '../services/supabase'
 import { PreferencesService } from '../services/preferencesService'
 import { locationService } from '../services/locationService'
 import { throttledReverseGeocode, clearGeocodeCache } from '../utils/throttledGeocode'
-import { geocodingService } from '../services/geocodingService'
+// ORCH-1362 [onboarding-location] — the no-GPS "Choose your city" manual field
+// now routes through the SHARED @mingla/location-input place-search engine
+// (searchMode="places": POIs dropped + trailing-country strip + country bias +
+// zero-result fallback), replacing the hand-rolled geocodingService.autocomplete
+// forward/limit=1 single-shot. inBottomSheet={false} because onboarding is a
+// plain SafeAreaView+ScrollView, not a gorhom <BottomSheet>.
+import { MapboxAddressInput, type PlaceDetails } from './location/MapboxAddressInput'
 import { sendOtp, verifyOtp, OtpChannel } from '../services/otpService'
 // META-ORCH-1161 Sub-A.2 (DEC-186) — bundled-mandatory consent writer + verbatim disclosure.
 import { recordConsent } from '../services/consentService'
@@ -920,15 +926,14 @@ const OnboardingFlow = ({
   // Location-Services-off user is never stranded on an un-runnable retry.
   const [launchCheckFailures, setLaunchCheckFailures] = useState(0)
   const [manualLocationText, setManualLocationText] = useState(initialData.manualLocation ?? '')
-  const [locationSuggestions, setLocationSuggestions] = useState<import('../services/geocodingService').AutocompleteSuggestion[]>([])
+  // ORCH-1362: the picked place. Suggestion-list state (loading / show / has-
+  // searched / suggestions / debounce timer) is GONE — the shared
+  // MapboxAddressInput now owns the suggest→retrieve state machine internally.
   const [selectedLocation, setSelectedLocation] = useState<import('../services/geocodingService').AutocompleteSuggestion | null>(
     initialData.manualLocation
       ? { displayName: initialData.manualLocation, fullAddress: initialData.manualLocation }
       : null
   )
-  const [locationSearchLoading, setLocationSearchLoading] = useState(false)
-  const [showLocationSuggestions, setShowLocationSuggestions] = useState(false)
-  const [locationHasSearched, setLocationHasSearched] = useState(false)
   // ─── ORCH-1230 (Apple Guideline 5.1.5) ───
   // The app MUST be fully functional with Location Services OFF / permission denied.
   // This flag reveals the manual "Choose your city" picker INLINE on the location
@@ -937,7 +942,6 @@ const OnboardingFlow = ({
   // here writes data.coordinates + data.manualLocation and advances into a fully
   // working app (use_gps_location=false → runtime reads custom_lat/lng, no GPS).
   const [manualLocationOpen, setManualLocationOpen] = useState(false)
-  const locationSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [savingPrefs, setSavingPrefs] = useState(false)
   const [prefsSaveError, setPrefsSaveError] = useState(false)
   const [showDatePicker, setShowDatePicker] = useState(false)
@@ -972,37 +976,9 @@ const OnboardingFlow = ({
     }
   }, [navState.subStep])
 
-  // ─── Location Autocomplete Debounced Search ───
-  useEffect(() => {
-    // Only search when user is typing (not when a selection was made)
-    if (selectedLocation) return
-    if (manualLocationText.trim().length < 3) {
-      setLocationSuggestions([])
-      setShowLocationSuggestions(false)
-      setLocationHasSearched(false)
-      return
-    }
-
-    if (locationSearchTimer.current) clearTimeout(locationSearchTimer.current)
-
-    locationSearchTimer.current = setTimeout(async () => {
-      setLocationSearchLoading(true)
-      try {
-        const results = await geocodingService.autocomplete(manualLocationText.trim())
-        setLocationSuggestions(results)
-        setShowLocationSuggestions(results.length > 0)
-      } catch {
-        setLocationSuggestions([])
-        setShowLocationSuggestions(false)
-      }
-      setLocationSearchLoading(false)
-      setLocationHasSearched(true)
-    }, 350)
-
-    return () => {
-      if (locationSearchTimer.current) clearTimeout(locationSearchTimer.current)
-    }
-  }, [manualLocationText, selectedLocation])
+  // ORCH-1362: the debounced geocodingService.autocomplete() search effect is
+  // REMOVED — the shared MapboxAddressInput (searchMode="places") owns debounce,
+  // suggest→retrieve, and all list states internally.
 
   // ─── Animations ───
   const fadeAnim = useRef(new Animated.Value(1)).current
@@ -1746,22 +1722,25 @@ const OnboardingFlow = ({
   }, [captureLocation])
 
   // ─── Location Suggestion Selection ───
-  const handleSelectLocationSuggestion = useCallback(async (suggestion: import('../services/geocodingService').AutocompleteSuggestion) => {
+  // ─── Pick a place from the shared MapboxAddressInput (ORCH-1362) ───
+  // The shared field resolves the full PlaceDetails (via `retrieve`) before
+  // calling onPick, so coords are always present here. Map PlaceDetails → the
+  // existing `selectedLocation` shape so handleManualLocation stays UNCHANGED.
+  const handlePickLocationDetails = useCallback((details: PlaceDetails) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
-    setSelectedLocation(suggestion)
-    setManualLocationText(suggestion.displayName)
-    setShowLocationSuggestions(false)
-    setLocationSuggestions([])
-    logger.action('Location suggestion selected', { displayName: suggestion.displayName })
+    setSelectedLocation({
+      displayName: details.city || details.formattedAddress,
+      fullAddress: details.formattedAddress,
+      location: { lat: details.location.lat, lng: details.location.lng },
+    })
+    setManualLocationText(details.city || details.formattedAddress)
+    logger.action('Onboarding location picked', { displayName: details.city || details.formattedAddress })
   }, [])
 
   // ─── Clear Location Selection (user wants to search again) ───
   const handleClearLocationSelection = useCallback(() => {
     setSelectedLocation(null)
     setManualLocationText('')
-    setLocationSuggestions([])
-    setShowLocationSuggestions(false)
-    setLocationHasSearched(false)
   }, [])
 
   // ─── Manual Location Submit (uses pre-selected suggestion) ───
@@ -2808,53 +2787,27 @@ const OnboardingFlow = ({
             </View>
           ) : (
             <View style={styles.locationSearchContainer}>
-              <View style={[styles.locationSearchInputWrap, showLocationSuggestions && styles.locationSearchInputWrapFocused]}>
-                <Icon name="search" size={20} color={colors.text.tertiary} style={styles.locationSearchIcon} />
-                <TextInput
-                  value={manualLocationText}
-                  onChangeText={setManualLocationText}
-                  style={styles.locationSearchInput}
-                  placeholder={t('onboarding:location.manual_placeholder')}
-                  placeholderTextColor={colors.text.tertiary}
-                  autoCorrect={false}
-                  returnKeyType="search"
-                  accessibilityLabel={t('onboarding:location.manual_placeholder')}
-                />
-                {locationSearchLoading && (
-                  <ActivityIndicator size="small" color={colors.primary[500]} style={styles.locationSearchSpinner} />
-                )}
-              </View>
-              {showLocationSuggestions && locationSuggestions.length > 0 && (
-                <View style={styles.locationDropdown}>
-                  <ScrollView style={styles.locationDropdownScroll} keyboardShouldPersistTaps="handled">
-                    {locationSuggestions.map((s, i) => (
-                      <Pressable
-                        key={`${s.displayName}-${i}`}
-                        style={({ pressed }) => [styles.locationSuggestionRow, pressed && styles.locationSuggestionRowPressed]}
-                        onPress={() => handleSelectLocationSuggestion(s)}
-                        accessibilityRole="button"
-                        accessibilityLabel={s.displayName}
-                      >
-                        <View style={styles.locationSuggestionIconWrap}>
-                          <Icon name="location-outline" size={18} color={colors.primary[500]} style={styles.locationSuggestionIcon} />
-                        </View>
-                        <View style={styles.locationSuggestionTextWrap}>
-                          <Text style={styles.locationSuggestionName} numberOfLines={1}>{s.displayName}</Text>
-                          {!!s.fullAddress && s.fullAddress !== s.displayName && (
-                            <Text style={styles.locationSuggestionAddress} numberOfLines={1}>{s.fullAddress}</Text>
-                          )}
-                        </View>
-                      </Pressable>
-                    ))}
-                  </ScrollView>
-                </View>
-              )}
-              {locationHasSearched && !locationSearchLoading && locationSuggestions.length === 0 && manualLocationText.trim().length >= 3 && (
-                <View style={styles.locationNoResults}>
-                  <Icon name="information-circle-outline" size={16} color={colors.text.tertiary} />
-                  <Text style={styles.locationNoResultsText}>{t('onboarding:location.manual_no_results')}</Text>
-                </View>
-              )}
+              {/* ORCH-1362 — shared @mingla/location-input place-search field.
+                  inBottomSheet={false}: onboarding is a plain screen, so the
+                  shared field falls back to RN TextInput + ScrollView (gorhom's
+                  BottomSheet* throw outside a <BottomSheet>). searchMode="places"
+                  gives the multi-row, POI-free, trailing-country-aware list. NO
+                  proximity (§6/SC-4). The field owns loading / no-results /
+                  offline / pick states internally (CONSUMER_COPY). */}
+              <MapboxAddressInput
+                variant="light"
+                inBottomSheet={false}
+                searchMode="places"
+                value={manualLocationText}
+                onChangeText={setManualLocationText}
+                onPick={handlePickLocationDetails}
+                onClear={handleClearLocationSelection}
+                placeholder={t('onboarding:location.manual_placeholder')}
+                accessibilityLabel={t('onboarding:location.manual_placeholder')}
+                leadingIcon="location"
+                minQueryLength={3}
+                suggestLimit={8}
+              />
             </View>
           )}
           <Animated.View style={{ marginTop: spacing.md }}>
@@ -4343,83 +4296,9 @@ const styles = StyleSheet.create({
   locationSearchContainer: {
     zIndex: 10,
   },
-  locationSearchInputWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: 56,
-    borderRadius: radius.md,
-    borderWidth: 1.5,
-    borderColor: colors.gray[300],
-    paddingHorizontal: spacing.lg,
-    backgroundColor: colors.background.primary,
-    gap: 12,
-  },
-  locationSearchInputWrapFocused: {
-    borderColor: colors.primary[500],
-  },
-  locationSearchIcon: {},
-  locationSearchInput: {
-    flex: 1,
-    ...typography.md,
-    color: colors.text.primary,
-    height: '100%' as any,
-  },
-  locationSearchSpinner: {
-    marginLeft: spacing.sm,
-  },
-  locationDropdown: {
-    marginTop: 6,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.gray[100],
-    backgroundColor: colors.background.primary,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 24,
-    elevation: 12,
-    overflow: 'hidden',
-    paddingVertical: spacing.sm,
-  },
-  locationDropdownScroll: {
-    maxHeight: 280,
-  },
-  locationSuggestionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    marginHorizontal: spacing.sm,
-    borderRadius: radius.md,
-    gap: 14,
-  },
-  locationSuggestionRowPressed: {
-    backgroundColor: colors.primary[50],
-  },
-  locationSuggestionBorder: {},
-  locationSuggestionIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: radius.full,
-    backgroundColor: colors.gray[50],
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  locationSuggestionIcon: {},
-  locationSuggestionTextWrap: {
-    flex: 1,
-  },
-  locationSuggestionName: {
-    ...typography.md,
-    fontWeight: fontWeights.semibold,
-    color: colors.text.primary,
-  },
-  locationSuggestionAddress: {
-    ...typography.sm,
-    color: colors.text.tertiary,
-    marginTop: 1,
-  },
+  // ORCH-1362: the hand-rolled search-input + dropdown + suggestion-row + no-
+  // results styles were deleted — the shared MapboxAddressInput owns its own
+  // field, card list, and status styling (LIGHT_TOKENS / CONSUMER_COPY).
   locationSelectedCard: {
     borderRadius: radius.md,
     borderWidth: 1.5,
@@ -4448,18 +4327,6 @@ const styles = StyleSheet.create({
     ...typography.xs,
     color: colors.text.tertiary,
     marginTop: 2,
-  },
-  locationNoResults: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.sm,
-  },
-  locationNoResultsText: {
-    ...typography.sm,
-    color: colors.text.tertiary,
-    marginLeft: spacing.sm,
-    flex: 1,
   },
   locationHelperText: {
     ...typography.xs,
