@@ -9,13 +9,14 @@ import {
 import { useTranslation } from 'react-i18next';
 import { Icon } from '../ui/Icon';
 import { TRAVEL_TIME_PRESETS } from "../../types/onboarding";
-// ORCH-1361 [location-suggestions] — the custom starting-point field is now the
-// shared multi-row Mapbox suggest→retrieve picker (the exact field CityPicker
-// uses), replacing the old forward/limit=1 single-row adapter. This kills the
-// "one wrong-country result" bug and lets the host thread the user's device
-// proximity so results RANK to the user's area. Proximity biases ranking without
-// excluding any result, so the shared suggest handler stays filter-free (no
-// types/country filter — INV-3 / ORCH-1079).
+// ORCH-1361 → ORCH-1365 [location-search-relevance] — the custom starting-point
+// field is the shared multi-row Mapbox suggest→retrieve picker (replacing the old
+// forward/limit=1 single-row adapter). ORCH-1365 routes it through the `places`
+// search mode (edge `suggest_places`: place-type filter drops POI noise +
+// trailing-country strip + country ISO bias) and DROPS device proximity (OQ-4) —
+// it is a "search a place you are NOT at" field, so the device bias buried the
+// target place for a non-local user (evidence/ORCH-1365 §3). Business venue-name
+// search stays on the SEPARATE filter-free `suggest` path (INV-3 / ORCH-1079).
 import { MapboxAddressInput, type PlaceDetails } from "../location/MapboxAddressInput";
 // META-ORCH-0991 Wave C — PreferencesSheet body now scrolls inside a gorhom
 // BaseBottomSheet. The two text fields here must be gorhom's
@@ -140,7 +141,6 @@ export const LocationInputSection = memo(
     onClearLocation,
     onPickLocation,
     hasSelected,
-    proximity,
     useGpsLocation,
     onToggleGps,
     isLocked,
@@ -155,10 +155,11 @@ export const LocationInputSection = memo(
     // ORCH-1361 — a resolved location exists (selectedCoords != null) → show the
     // chip; otherwise show the editable multi-row search field.
     hasSelected: boolean;
-    // ORCH-1361 — user device proximity rank bias, threaded into the shared
-    // field's suggest call. Undefined when no device anchor is available →
-    // today's behavior. NO types/country filter (INV-3 / ORCH-1079).
-    proximity?: string;
+    // ORCH-1365 — the device-proximity prop is RETIRED for this field: it is a
+    // "search a place you are NOT at" field (separate GPS toggle), so biasing to
+    // the current device buried the target place (evidence §3). The field now
+    // routes through the `places` search mode (types filter + trailing-country
+    // strip + country bias), which ranks the real place #1 without proximity.
     useGpsLocation: boolean;
     onToggleGps: (value: boolean) => void;
     isLocked?: boolean;
@@ -218,10 +219,13 @@ export const LocationInputSection = memo(
 
       {!useGpsLocation && !isLocked && (
         <>
-          {/* ORCH-1361 — chip when a location is resolved; otherwise the shared
-              multi-row Mapbox suggest→retrieve field, RANK-biased to the user's
-              device proximity (suggestLimit 8). No types/country filter — the
-              shared suggest handler stays filter-free (INV-3 / ORCH-1079). */}
+          {/* ORCH-1365 — chip when a location is resolved; otherwise the shared
+              multi-row Mapbox suggest→retrieve field in `places` search mode
+              (POIs dropped + trailing-country strip + country bias). Proximity is
+              DROPPED for this field (OQ-4): it is a "search a place you are NOT
+              at" field, so device bias buried the target place. suggestLimit 8.
+              Business venue-name search stays on the separate filter-free
+              `suggest` path (INV-3 / ORCH-1079). */}
           {hasSelected ? (
             <View style={styles.locationChip}>
               <Icon name="location" size={14} color="#ffffff" />
@@ -245,8 +249,8 @@ export const LocationInputSection = memo(
                 placeholder={t('preferences:location.search_placeholder')}
                 accessibilityLabel="Search for a starting point"
                 leadingIcon="location"
+                searchMode="places"
                 minQueryLength={4}
-                proximity={proximity}
                 suggestLimit={8}
               />
             </View>

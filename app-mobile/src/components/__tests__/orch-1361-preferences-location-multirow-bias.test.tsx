@@ -6,6 +6,17 @@
 // (SPEC §9 P-1/P-2). Source-structure suite in the 1315/1341 house style
 // (read the source files → strip comments → assert).
 //
+// ── [TEST-MOD-APPROVED ORCH-1365] — CORRECTIVE UPDATE ─────────────────────────
+// ORCH-1365 [location-search-relevance] RETIRED the device-proximity lever for
+// the Preferences custom-location field (it is a "search a place you are NOT at"
+// field — biasing to the device buried the target place for a non-local user).
+// The Preferences P-1c/P-2a/P-2b assertions below are UPDATED from "must thread
+// proximity" to the new contract: the field routes through `searchMode="places"`
+// and the host threads NO proximity (the getLastKnownLocation proximity effect is
+// removed). The affirmative ORCH-1365 contract lives in
+// `orch-1365-preferences-places-no-proximity.test.tsx`. CityPicker is UNCHANGED
+// (orchestrator OQ-2 declined) so the OQ-4 CityPicker proximity assertion stays.
+//
 // PROTECTIVE COMMENT — consumer location search must be multi-row +
 // user-proximity-biased (RANK-only), never server-IP; and the shared suggest
 // handler must stay FILTER-FREE (no types/country — INV-3 / ORCH-1079); see
@@ -19,11 +30,12 @@
 //        field (INV-3 / ORCH-1079) — and the old forward/limit=1 single-row
 //        dropdown (BottomSheetScrollView + onSuggestionSelect +
 //        suggestionsContainer) is GONE.
-//   P-2: PreferencesSheet resolves the device anchor (getLastKnownLocation →
-//        setProximity "lng,lat") and threads proximity/onPickLocation/
-//        hasSelected to LocationInputSection (NO country prop); the removed host
+//   P-2: [ORCH-1365] PreferencesSheet wires onPickLocation/hasSelected and threads
+//        NO proximity (the getLastKnownLocation → setProximity device-anchor
+//        effect is REMOVED — OQ-4) and NO country prop; the removed host
 //        suggestion state (setShowSuggestions / handleSuggestionSelect) is GONE.
-//   OQ-4: CityPickerSheet threads the same proximity rank bias (NO country).
+//   OQ-4: CityPickerSheet (UNCHANGED — orchestrator OQ-2 declined) still threads
+//        the proximity rank bias (NO country).
 //   OQ-1: the omit-when-absent contract — device present → proximity;
 //         no device location → no param (never a hardcoded default).
 //   Co-guard for I-1315: the `!useGpsLocation && !isLocked` guard is preserved.
@@ -31,7 +43,8 @@
 // FAILS-ON-REVERT (proven by true line deletion in the implementation report):
 //   - revert LocationInputSection to the raw BottomSheetTextInput +
 //     geocodingService.autocomplete dropdown → P-1 tests FAIL;
-//   - stop threading proximity / onPickLocation from the host → P-2 tests FAIL;
+//   - [ORCH-1365] re-introduce proximity threading / the getLastKnownLocation
+//     proximity effect in the host → P-2 tests FAIL (device-bias is retired);
 //   - drop the CityPicker proximity prop → OQ-4 test FAILS;
 //   - re-add a types/country FILTER to the field → the filter-free P-1 assertion
 //     FAILS (guards INV-3 / ORCH-1079).
@@ -84,16 +97,18 @@ Deno.test("P-1b: the shared field renders INSIDE the `!useGpsLocation && !isLock
   );
 });
 
-Deno.test("P-1c: field config — suggestLimit 8, ≥4-char gate, FILTER-FREE (no types/country — INV-3 / ORCH-1079)", () => {
+Deno.test("P-1c: field config — suggestLimit 8, ≥4-char gate, places-mode, NO proximity [TEST-MOD-APPROVED ORCH-1365]", () => {
   assertStringIncludes(ADVANCED, "suggestLimit={8}", "consumer multi-row limit");
   assertStringIncludes(ADVANCED, "minQueryLength={4}", "preserve today's ≥4-char gate");
   assertStringIncludes(ADVANCED, "onPick={onPickLocation}", "pick routes to the host");
   assertStringIncludes(ADVANCED, "hasSelected ?", "chip shows on a resolved location");
-  assertStringIncludes(ADVANCED, "proximity={proximity}", "rank-only proximity bias is threaded");
-  // FILTER-FREE contract: the field must NOT pass a types or country filter —
-  // the shared suggest handler serves business venue-name search (POIs must
-  // resolve) and country would over-restrict explore-anywhere (INV-3 / ORCH-1079).
-  assert(!ADVANCED.includes("types="), "no types filter on the field");
+  // ORCH-1365 — the field now routes through the `places` search mode (POIs
+  // dropped + trailing-country strip + country bias) and threads NO proximity
+  // (OQ-4). The device-bias lever is retired for this "search a place you are NOT
+  // at" field. The business `suggest` path stays byte-identical + filter-free.
+  assertStringIncludes(ADVANCED, 'searchMode="places"', "field uses the places search mode");
+  assert(!ADVANCED.includes("proximity"), "proximity is no longer threaded to the field (ORCH-1365 / OQ-4)");
+  assert(!ADVANCED.includes("types="), "no types filter leaked into the host");
   assert(!ADVANCED.includes("country={country}"), "no country filter on the field");
 });
 
@@ -112,24 +127,21 @@ Deno.test("P-1d: the old forward/limit=1 single-row dropdown is GONE", () => {
   );
 });
 
-// ── P-2: the host resolves + threads the device bias ──────────────────────────
-Deno.test("P-2a: PreferencesSheet threads proximity/onPickLocation/hasSelected (NO country)", () => {
+// ── P-2: the host wires the field (device-proximity path RETIRED by ORCH-1365) ─
+Deno.test("P-2a: PreferencesSheet wires onPick/hasSelected + threads NO proximity/country [TEST-MOD-APPROVED ORCH-1365]", () => {
   assertStringIncludes(PREFS, "onPickLocation={handlePickLocation}", "wire onPick");
-  assertStringIncludes(PREFS, "proximity={proximity}", "thread proximity");
   assertStringIncludes(PREFS, "hasSelected={selectedCoords != null}", "drive the chip");
-  // FILTER-FREE contract (INV-3 / ORCH-1079): the host must NOT thread a country
-  // filter into the field.
+  // ORCH-1365 — the host no longer threads proximity to the field (OQ-4), and
+  // still never threads a country filter (business path filter-free).
+  assert(!PREFS.includes("proximity"), "host must not thread proximity (ORCH-1365 / OQ-4)");
   assert(!PREFS.includes("country={country}"), "host must not thread a country filter");
 });
 
-Deno.test("P-2b: the host resolves the device anchor (getLastKnownLocation → proximity 'lng,lat')", () => {
-  assertStringIncludes(PREFS, "getLastKnownLocation", "resolve the device anchor");
-  assertStringIncludes(PREFS, "setProximity(", "set proximity state");
-  assertStringIncludes(
-    PREFS,
-    "${loc.longitude},${loc.latitude}",
-    "proximity is Mapbox 'longitude,latitude' order",
-  );
+Deno.test("P-2b: the device-anchor proximity effect is REMOVED from the host [TEST-MOD-APPROVED ORCH-1365]", () => {
+  // ORCH-1365 — the getLastKnownLocation → setProximity effect is retired. The
+  // field ranks the real place #1 via the `places` search mode without proximity.
+  assert(!PREFS.includes("getLastKnownLocation"), "the device-anchor proximity effect is removed");
+  assert(!PREFS.includes("setProximity"), "the proximity state setter is removed");
 });
 
 Deno.test("P-2c: the removed host suggestion state is GONE (dead forward path deleted)", () => {

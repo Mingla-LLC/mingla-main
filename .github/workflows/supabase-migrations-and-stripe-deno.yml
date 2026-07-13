@@ -59,6 +59,13 @@ on:
       - "app-mobile/src/components/location/MapboxAddressInput.tsx"
       - "app-mobile/src/components/discover/CityPickerSheet.tsx"
       - "app-mobile/src/components/__tests__/orch-1361-preferences-location-multirow-bias.test.tsx"
+      # ORCH-1365 [location-search-relevance] — consumer place-search corrective:
+      # `suggest_places` action + countryNames module + the new source-structure
+      # guard. Same guarded SOURCE trees as ORCH-1361 (mapbox-geocode +
+      # location-input + the Preferences hosts already listed above); ADD the new
+      # app-mobile source-structure test so a client-side revert re-triggers it.
+      - "supabase/functions/mapbox-geocode/countryNames.ts"
+      - "app-mobile/src/components/__tests__/orch-1365-preferences-places-no-proximity.test.tsx"
       # ORCH-1363 — take-a-stroll reachable-first-stop fix + its curated deno tests
       # (the guarded SOURCE tree, not just the tests — docs-only-CLOSE hazard).
       - "supabase/functions/generate-curated-experiences/**"
@@ -97,6 +104,9 @@ on:
       - "app-mobile/src/components/location/MapboxAddressInput.tsx"
       - "app-mobile/src/components/discover/CityPickerSheet.tsx"
       - "app-mobile/src/components/__tests__/orch-1361-preferences-location-multirow-bias.test.tsx"
+      # ORCH-1365 [location-search-relevance] — same guarded trees as the push filter.
+      - "supabase/functions/mapbox-geocode/countryNames.ts"
+      - "app-mobile/src/components/__tests__/orch-1365-preferences-places-no-proximity.test.tsx"
       # ORCH-1363 — take-a-stroll reachable-first-stop fix + its curated deno tests.
       - "supabase/functions/generate-curated-experiences/**"
       - ".github/workflows/supabase-migrations-and-stripe-deno.yml"
@@ -577,5 +587,73 @@ jobs:
               exit 1
             fi
             echo "ORCH-1363 curated Deno tests failed (attempt ${attempt}), retrying in 10s..."
+            sleep 10
+          done
+
+  orch-1365-location-search-relevance-deno-tests:
+    name: "ORCH-1365: consumer place-search (suggest_places types filter + trailing-country strip + NO proximity) + BUSINESS byte-identical (I-PROPOSED-1365-CONSUMER-PLACE-SEARCH-TYPE-FILTERED)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: Run ORCH-1365 Deno suites
+        run: |
+          set -euo pipefail
+          # ORCH-1365 §7/§9 — the load-bearing regression guards (CLOSE HARD MUST,
+          # I-CLOSE regression-protection): these run in NO other workflow, so THIS
+          # job is the sole CI enforcement of the corrective fix.
+          #  - countryNames: trailing-country strip (T-3/T-4) — fails-on-revert of
+          #    the strip / ≥2-token safety guard.
+          #  - mapboxPlaceSuggest: the consumer place builder (T-1/T-2) + the
+          #    BUSINESS byte-identical + isolation guard (T-5) — fails-on-revert if
+          #    a types/country leaks into buildSuggestUrl or handleSuggest borrows
+          #    the filtered place builder (protects ORCH-1079 INV-3 + SC-5).
+          #  - mapboxPlacesService: the shared service posts action "suggest_places"
+          #    (T-7) while the business autocompleteMapbox still posts "suggest".
+          #  - orch-1365 app-mobile source-structure (T-8/T-9): Preferences uses
+          #    places mode + threads NO proximity (the exact "non-Lagos user finds
+          #    Lekki Lagos" gap that let ORCH-1361 through) — fails-on-revert if
+          #    proximity is reintroduced or the places routing is reverted.
+          #  - orch1365-collision-and-switch-isolation.adversarial (TESTER-owned):
+          #    country/state-name COLLISION matrix (over-strip locked + non-country
+          #    trailing-word guards + casing/diacritics/whitespace) AND the
+          #    SWITCH-level isolation the static gate + T-5 both miss (a reroute of
+          #    `case "suggest" → handleSuggestPlaces` regresses ORCH-1079 INV-3 but
+          #    is invisible to the body-scoped gate/T-5). Fails-on-revert proven by
+          #    the tester (QA report Step 5). Append-only; no gate logic modified.
+          #  - orch1365-inc1-collision-fallback (INC-1, implementor-owned, §12.6):
+          #    drives the exported `handler` with a stubbed fetch/Deno.env to prove
+          #    the ZERO-RESULT FALLBACK (T-14 "atlanta georgia" → 2 calls, full-query
+          #    fallback recovers Atlanta, session_token reused) AND the one-call
+          #    guard (T-15 "lekki nigeria" → 1 call, no retry) + genuine-country/
+          #    non-stripped single-call (T-16) + non-OK-not-masked (T-17). Needs
+          #    --allow-env (the handler reads MAPBOX_ACCESS_TOKEN).
+          #  - orch1365-inc1-fallback-failuremodes.adversarial (INC-1, TESTER-owned):
+          #    attacks the fallback's UNtested failure modes on angles T-14..T-17
+          #    miss — ADV-INC1-1 the `country &&` conjunct (no-strip EMPTY must NOT
+          #    retry; UNIQUELY red when the `country` guard is dropped while all of
+          #    T-14..T-17 stay green), ADV-INC1-2 both-empty graceful terminal, and
+          #    ADV-INC1-3 the FALLBACK's own 5xx swallowed to 200-empty (§12.4; T-17
+          #    only covers the BIASED error). Fails-on-revert proven in the QA report.
+          DENO_TEST_FILES=(
+            supabase/functions/mapbox-geocode/__tests__/countryNames.orch1365.test.ts
+            supabase/functions/mapbox-geocode/__tests__/mapboxPlaceSuggest.orch1365.test.ts
+            supabase/functions/mapbox-geocode/__tests__/mapboxPlacesService.orch1365.test.ts
+            supabase/functions/mapbox-geocode/__tests__/orch1365-collision-and-switch-isolation.adversarial.test.ts
+            supabase/functions/mapbox-geocode/__tests__/orch1365-inc1-collision-fallback.test.ts
+            supabase/functions/mapbox-geocode/__tests__/orch1365-inc1-fallback-failuremodes.adversarial.test.ts
+            app-mobile/src/components/__tests__/orch-1365-preferences-places-no-proximity.test.tsx
+          )
+          for attempt in 1 2 3; do
+            if deno test --allow-read --allow-net --allow-env --no-check "${DENO_TEST_FILES[@]}"; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "ORCH-1365 Deno tests failed after 3 attempts (esm.sh flake?)"
+              exit 1
+            fi
+            echo "ORCH-1365 Deno tests failed (attempt ${attempt}), retrying in 10s..."
             sleep 10
           done

@@ -1,0 +1,142 @@
+ORCH-1365 INCREMENT — ambiguous country / US-state collision ("atlanta georgia" → 0 results)
+Live Mapbox Search Box /suggest probes, 2026-07-12. Non-Lagos / non-US origin (this machine).
+Token from master-keys. Endpoint: GET https://api.mapbox.com/search/searchbox/v1/suggest
+Params re-verified vs live docs (WebFetch https://docs.mapbox.com/api/search/search-box/ 2026-07-12):
+  types   = comma list of {country,region,postcode,district,place,city,locality,neighborhood,
+            street,address,poi,category}
+  country = comma-separated ISO 3166 alpha-2 codes
+  proximity = "ip" OR "longitude,latitude"
+  limit   = up to 10 (max 10)
+  session_token = REQUIRED
+SESSION BILLING (quoted from live docs): "A Search Session is a series of Search API calls
+  bundled together for billing purposes." A session ends+bills on: /suggest→/retrieve with a
+  common session_token, OR /suggest with no /retrieve within 180s, OR 50 successive /suggest
+  with a common token. => MULTIPLE /suggest calls sharing one session_token = ONE billable
+  session. THE FALLBACK RETRY REUSES THE SAME session_token => NO EXTRA BILLING, only latency.
+TYPES set under test (unchanged from the shipped core) = place,locality,neighborhood,region,district
+Script: scratchpad/probe_ambiguous.sh
+============================================================================================
+
+CONTEXT — the bug (already captured by tester in tester_e2e_edge_handler_live_mapbox.txt line 44):
+  handleSuggestPlaces("atlanta georgia") → parseTrailingCountry strips "georgia" → country=ge
+  (Georgia the COUNTRY) → q=atlanta&country=ge → Mapbox returns EMPTY → user sees zero results.
+
+STRATEGIES EVALUATED (task):
+  A — ZERO-RESULT FALLBACK: run the strip+country-biased call; if it returns 0 suggestions,
+      RETRY with the FULL original query (no strip, no country), reusing the session_token.
+  B — US-STATE EXCLUSION SET: never strip a token that is also a US state (georgia, ...).
+  C — HYBRID (exclusion set + fallback for the long tail).
+
+COLLISION-SET AUDIT (node intersect of the 227-key COUNTRY_NAME_TO_ISO map vs 50 US states):
+  Country-map keys that are ALSO US state names: ["georgia"]   <-- the ONLY US-state collision.
+  "jordan" is a country key but NOT a US state (given-name/country; single token → never stripped).
+  => An exclusion set (B) would carry exactly ONE entry today (georgia) but see R5-tbilisi below.
+
+============================================================================================
+REQUIREMENT 1 — "atlanta georgia" → Atlanta, Georgia, USA #1
+============================================================================================
+R1-a  STRIP first-call: q='atlanta' country='ge' (Georgia the country) + types
+      count=0                                          <-- EMPTY. Clean fallback trigger.
+
+R1-b  FALLBACK: full query 'atlanta georgia', NO strip, NO country, + types
+      count=8
+        1. Atlanta [place] — Georgia, United States       <-- REQUIREMENT 1 MET (#1)
+        2. Georgia Tech [neighborhood] — Atlanta, Georgia, United States
+        3. North Atlanta [neighborhood] — Atlanta, Georgia, United States
+        4. West Atlanta [neighborhood] — Atlanta, Georgia, United States
+        5. Georgian Acres [neighborhood] — Austin, Texas, United States
+        6. Georgian Drive [neighborhood] — Barrie, Ontario, Canada
+        7. Georgia Avenue [neighborhood] — Mobile, Alabama, United States
+        8. Georgian Forest [neighborhood] — Silver Spring, Maryland, United States
+      => Keeping "georgia" IN the fallback query ranks Atlanta-GA above Atlanta-TX (cf. A-plain
+         below). A plain-"atlanta" re-query would NOT be as good; the FULL query is the right retry.
+
+============================================================================================
+REQUIREMENT 2 — "lekki nigeria" MUST NOT regress (existing win preserved)
+============================================================================================
+R2-a  STRIP first-call: q='lekki' country='ng' + types
+      count=2
+        1. Lekki Phase 2 [locality] — Lagos, Lagos, Nigeria   <-- #1, NON-empty
+        2. Lekki Phase 1 [locality] — Lagos, Lagos, Nigeria
+      => first call is NON-EMPTY → fallback NEVER fires → identical to the shipped core.
+         REQUIREMENT 2 MET (no regression, and no second Mapbox call for the common case).
+
+============================================================================================
+REQUIREMENT 3 — "lekki" (single token, never stripped) unchanged
+============================================================================================
+R3-a  q='lekki' no country + types
+      count=8
+        1. Lekki Phase 2 [locality] — Lagos, Lagos, Nigeria   <-- #1 (unchanged)
+        2. Lekki Phase 1 [locality] — Lagos, Lagos, Nigeria
+        3..8 international "lekki"-likes (Lithuania/Russia/Pakistan/Ukraine/Poland)
+      => single-token path has no strip and no fallback → byte-identical to shipped core.
+
+============================================================================================
+REQUIREMENT 4 — non-country trailing words unaffected
+============================================================================================
+R4-a  q='lekki phase' no country + types (parseTrailingCountry does NOT strip "phase")
+      count=8:  1. Lekki Phase 2 — Lagos, NG   2. Lekki Phase 1 — Lagos, NG  <-- correct, #1/#2
+R4-b  q='lekki london' no country + types ("london" is a city, NOT a country → not stripped)
+      count=8:  1. London — Greater London, England, UK  <-- London resolves, correct
+      => Both are single-call (no country parsed) → fallback never involved. UNCHANGED.
+
+============================================================================================
+REQUIREMENT 5 — other collisions
+============================================================================================
+5.1  "jordan" (country + given name; SINGLE token → strip never fires)
+     q='jordan' no country + types  count=8:
+        1. Jordanów — Poland  2. Jordan — Minnesota, US  3. Jordán — Colombia ...
+     => single-token → plain text search (same as today). No strip, no fallback. Reasonable.
+        (The country Jordan is not #1, but that is inherent Mapbox ranking of a bare ambiguous
+         word — not the collision bug, and not in this increment's remit.)
+
+5.2  "paris texas" (texas is NOT a country → NOT stripped; already works)
+     q='paris texas' no country + types  count=8:
+        1. Paris [place] — Texas, United States   <-- #1, correct. Confirmed already-working.
+
+5.3  "cordoba argentina" vs "cordoba spain" (real strips; first call NON-empty → no fallback)
+     q='cordoba' country='ar':  count=2  1. Córdoba — Córdoba, Argentina  2. Córdoba [region] — AR
+     q='cordoba' country='es':  count=2  1. Córdoba — Córdoba, Spain      2. Córdoba [region] — ES
+     => both biased first-calls return results → correct country disambiguation, no fallback.
+
+5.4  ** THE KILLER CASE ** GENUINE Georgia-COUNTRY user: "tbilisi georgia"
+     q='tbilisi' country='ge' + types:  count=3
+        1. Tbilisi [place] — Georgia               <-- correct: user meant the COUNTRY
+        2. თბილისის ზღვის ახალი ქალაქი [locality] — Tbilisi, Georgia
+        3. Лиса [place] — South Ossetia, Georgia
+     => first call NON-EMPTY → fallback NEVER fires → the real Georgia-country intent is served.
+        STRATEGY B (exclude "georgia" from stripping) would BREAK this user: it would refuse the
+        country bias and treat "georgia" as a US-state word, degrading the genuine Tbilisi query.
+        STRATEGY A serves BOTH "atlanta georgia" (US) and "tbilisi georgia" (country) with ONE
+        rule and NO maintained list. This is the decisive evidence for A over B/C.
+
+REFERENCE — plain "atlanta" (why the FULL-query fallback beats a plain re-query):
+  q='atlanta' no country + types  count=8:
+     1. Atlanta — Georgia, US  2. Atlanta — Texas, US  3. Atlanta University Center — GA
+     4. Atlanta — Michigan  5. Atlanta — Idaho  6. Atlanta — Illinois ...
+  => plain "atlanta" still ranks GA #1 but surfaces Atlanta-TX at #2; the FULL "atlanta georgia"
+     fallback (R1-b) suppresses the TX collision. Retry with the FULL original query, not a strip.
+
+============================================================================================
+DECISION — STRATEGY A (zero-result fallback with the FULL original query), justified by evidence:
+  1. REQUIREMENT 1: R1-a empty → R1-b Atlanta,Georgia,USA #1. MET.
+  2. REQUIREMENT 2: R2-a non-empty → no fallback → lekki-nigeria win preserved byte-for-byte. MET.
+  3. REQUIREMENT 3/4: single-call paths unchanged (R3/R4). MET.
+  4. REQUIREMENT 5: paris-texas already works (5.2); cordoba disambiguates (5.3); jordan reasonable
+     (5.1); AND R5-tbilisi (5.4) proves A serves the genuine-Georgia-country user that B/C cannot.
+  5. GENERAL — no exhaustive collision list to maintain: ANY "<place> <country-word>" where the
+     place is not in that country (future-proof beyond Georgia) self-corrects.
+  6. BUSINESS-SAFE + BILLING-SAFE: fallback lives ONLY inside handleSuggestPlaces (consumer). The
+     retry reuses the SAME session_token → Mapbox bills ONE session (docs quoted above). Cost = one
+     extra HTTP round-trip, ONLY when the biased first call is empty (rare: over-strip + place-not-
+     in-country). The hot path (lekki nigeria, cordoba, single tokens, non-stripped) = ONE call.
+
+WHY NOT B: needs a maintained US-state list (only "georgia" today, but brittle) AND wrongly
+  overrides the genuine Georgia-COUNTRY user (R5-tbilisi). WHY NOT C: A already covers B's one case
+  AND the long tail with no list; the exclusion set in C is dead weight that reintroduces the
+  Tbilisi regression. A is strictly simpler AND strictly more correct.
+
+TRIGGER CONDITION (exact): fallback fires IFF parseTrailingCountry returned a `country` (a strip
+  happened) AND the biased first call returned HTTP-ok with ZERO mapped suggestions. On a non-OK
+  first call, return the error unchanged (today's contract). Single-call otherwise.
+============================================================================================

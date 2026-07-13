@@ -302,41 +302,19 @@ export default function PreferencesSheet({
     }
   }, [canAccess, useGpsLocation]);
 
-  // ORCH-1361 [location-suggestions] — resolve the user's device anchor ONCE
-  // per sheet open and thread it as `proximity` into the custom-location search,
-  // so Mapbox RANKS results to the user's area instead of the edge datacenter IP
-  // (the "lekki → London" bug). Independent of the use_gps_location deck toggle —
-  // the user is physically in Lagos even with GPS-for-deck off. getLastKnownLocation
-  // is fast and does NOT trigger a new permission prompt; when no device location
-  // is available we leave proximity undefined (OQ-1 ruling — never a hardcoded
-  // default) → identical to today. NO country filter — proximity biases ranking
-  // WITHOUT excluding results, so an "explore anywhere" search (Lagos → "london")
-  // still works and the shared suggest handler stays filter-free (INV-3 / ORCH-1079).
-  useEffect(() => {
-    if (!visible) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const loc = await enhancedLocationService.getLastKnownLocation();
-        if (cancelled || !loc) return;
-        // Mapbox proximity is "longitude,latitude".
-        setProximity(`${loc.longitude},${loc.latitude}`);
-      } catch {
-        // no device location → omit proximity (today's behavior).
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [visible]);
-
-  // ORCH-1361 [location-suggestions] — the custom-location field is now the
-  // shared multi-row Mapbox field, which owns its own suggest→retrieve state
-  // machine (the old suggestions / showSuggestions / isLoadingSuggestions /
-  // isInputFocused / debounce / isSelectingSuggestion host state is GONE).
-  // The host now only resolves the user's device anchor once per open and
-  // threads it as `proximity` so results RANK to the user's area.
-  const [proximity, setProximity] = useState<string | undefined>(undefined);
+  // ORCH-1365 [location-search-relevance] — the device-proximity path for the
+  // custom-location field is RETIRED (corrective to ORCH-1361). The field is
+  // explicitly a "search a place you are NOT at" field (separate GPS toggle), so
+  // resolving the device anchor and biasing Mapbox toward it BURIED the target
+  // place for a non-local user (a London-region user searching "lekki nigeria"
+  // got London POIs, not Lekki, Lagos — evidence/ORCH-1365 §3). The field now
+  // routes through the `places` search mode (place-type filter + trailing-country
+  // strip + country ISO bias) which ranks the real place #1 WITHOUT proximity, so
+  // the `getLastKnownLocation` effect + `proximity` state are removed. The shared
+  // multi-row field still owns its own suggest→retrieve state machine (the old
+  // host suggestion state remains GONE). Business venue-name search is untouched
+  // (INV-3 / ORCH-1079). enhancedLocationService is still used elsewhere (the GPS
+  // deck toggle at handleGpsToggle), so its import stays.
   const locationSectionRef = useRef<View>(null);
   const locationSectionY = useRef<number>(0);
   const categoriesSectionRef = useRef<View>(null);
@@ -1196,7 +1174,6 @@ export default function PreferencesSheet({
               onClearLocation={handleClearLocation}
               onPickLocation={handlePickLocation}
               hasSelected={selectedCoords != null}
-              proximity={proximity}
               useGpsLocation={useGpsLocation}
               onToggleGps={handleGpsToggle}
               isLocked={!canAccess('custom_starting_point')}
