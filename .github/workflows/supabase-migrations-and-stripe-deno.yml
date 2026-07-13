@@ -616,10 +616,18 @@ jobs:
           #    places mode + threads NO proximity (the exact "non-Lagos user finds
           #    Lekki Lagos" gap that let ORCH-1361 through) — fails-on-revert if
           #    proximity is reintroduced or the places routing is reverted.
+          #  - orch1365-collision-and-switch-isolation.adversarial (TESTER-owned):
+          #    country/state-name COLLISION matrix (over-strip locked + non-country
+          #    trailing-word guards + casing/diacritics/whitespace) AND the
+          #    SWITCH-level isolation the static gate + T-5 both miss (a reroute of
+          #    `case "suggest" → handleSuggestPlaces` regresses ORCH-1079 INV-3 but
+          #    is invisible to the body-scoped gate/T-5). Fails-on-revert proven by
+          #    the tester (QA report Step 5). Append-only; no gate logic modified.
           DENO_TEST_FILES=(
             supabase/functions/mapbox-geocode/__tests__/countryNames.orch1365.test.ts
             supabase/functions/mapbox-geocode/__tests__/mapboxPlaceSuggest.orch1365.test.ts
             supabase/functions/mapbox-geocode/__tests__/mapboxPlacesService.orch1365.test.ts
+            supabase/functions/mapbox-geocode/__tests__/orch1365-collision-and-switch-isolation.adversarial.test.ts
             app-mobile/src/components/__tests__/orch-1365-preferences-places-no-proximity.test.tsx
           )
           for attempt in 1 2 3; do
