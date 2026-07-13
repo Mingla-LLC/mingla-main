@@ -258,3 +258,146 @@ export async function autocompletePlacesMapbox(
 - `retrieve`/`reverse`/`forward` actions and Mapbox session billing.
 
 Any change outside the allowlist → **stop-and-amend** (append here or `SPEC_AMENDMENT_ORCH-1365_*.md`).
+
+---
+
+## 12. INCREMENT ORCH-1365-INC-1 — ambiguous country / US-state collision (zero-result fallback)
+
+**Status: ADDITIVE to the tester-PASSED core (§§1–11).** This increment does NOT modify
+`parseTrailingCountry`, `countryNames.ts`, `buildPlaceSuggestUrl`, `PLACE_SUGGEST_TYPES`, the
+business `suggest` path, the service, the component, the Preferences host, or any UI. The core
+place-filter + drop-proximity + strip + scrollable-list + text-clip fixes are **untouched**. The
+entire change is a **server-side fallback inside `handleSuggestPlaces`** in
+`supabase/functions/mapbox-geocode/index.ts`.
+
+### 12.1 The gap
+`parseTrailingCountry("atlanta georgia")` → `{ query:"atlanta", country:"ge" }` (Georgia the
+COUNTRY). `handleSuggestPlaces` then queries `q=atlanta&country=ge` → live Mapbox returns **zero**
+suggestions (Atlanta is not in Georgia the country) → the user sees an empty list. Georgia is the
+**only** US-state name that is also a country in the 227-key map (node-verified — evidence
+`ambiguous_name_probes.txt`, "COLLISION-SET AUDIT"); the generic fix below also self-corrects any
+future `<place> <country-word>` where the place is not in that country.
+
+### 12.2 Chosen strategy — A (zero-result fallback with the FULL original query)
+Evaluated A (zero-result fallback), B (US-state exclusion set), C (hybrid) against LIVE Mapbox
+(evidence `ambiguous_name_probes.txt`). **A wins, decisively:**
+- **Requirement 1** — R1-a: biased `q=atlanta&country=ge` → **count=0**; R1-b: full-query fallback
+  `atlanta georgia` (types, no country) → **Atlanta, Georgia, United States #1**. MET.
+- **Requirement 2** — R2-a: biased `q=lekki&country=ng` → Lekki Phase 2 (Lagos) #1, **non-empty →
+  fallback never fires → the shipped win is byte-identical**, and no second Mapbox call. MET.
+- **Requirement 5 killer case** — R5-tbilisi: `q=tbilisi&country=ge` → **Tbilisi, Georgia** (the
+  country) #1, non-empty → no fallback → the **genuine Georgia-country user is served**. Strategy B
+  (refuse to strip "georgia") would BREAK this user; A serves both "atlanta georgia" (US) and
+  "tbilisi georgia" (country) with ONE rule and NO maintained list. This is why B/C are rejected.
+- **General / low-maintenance** — no exhaustive collision list; the hot path stays one call.
+
+### 12.3 Exact algorithm (inside `handleSuggestPlaces`, after the strip, replacing the single fetch)
+Let `trimmed` = the trimmed raw query, `parsed = parseTrailingCountry(trimmed)`, `query`/`country`
+computed exactly as today (§4.1). Factor the existing "build URL → fetch → check upstream.ok →
+parse JSON → map to `{placeId,displayName,fullAddress}` → slice(effectiveLimit)" block into one
+internal helper (e.g. `placeSuggestOnce(token, q, sessionToken, opts) → { suggestions } |
+{ errorResponse }`); this is a pure refactor of the current body, no behavior change to the biased
+call. Then:
+
+```
+const first = await placeSuggestOnce(token, query, sessionToken, { ...opts, country });
+if ("errorResponse" in first) return first.errorResponse;                 // non-OK → today's contract
+if (country && first.suggestions.length === 0) {                          // over-strip / place-not-in-country
+  const fb = await placeSuggestOnce(token, trimmed, sessionToken, { ...opts, country: undefined });
+  return jsonResponse({ suggestions: "errorResponse" in fb ? [] : fb.suggestions });
+}
+return jsonResponse({ suggestions: first.suggestions });
+```
+
+- **Trigger (exact):** fallback fires **iff** a `country` was applied (a strip happened) AND the
+  biased first call returned **HTTP-ok with zero mapped suggestions**.
+- **Fallback query = the FULL `trimmed` original**, no strip, no country. Keeping "georgia" in the
+  query ranks Atlanta-GA above Atlanta-TX (evidence: R1-b vs plain-"atlanta" reference); a
+  strip-and-plain re-query is inferior — use the full original.
+- **Session token is REUSED** on the retry (already in scope). Both `/suggest` calls share one
+  `session_token` → Mapbox bills **one session** (docs quoted in evidence). No new billing surface.
+- **`limit`/`proximity`/`types`** on the fallback are unchanged (`{ ...opts, country: undefined }`);
+  the fallback still applies `types=PLACE_SUGGEST_TYPES` (it goes through `buildPlaceSuggestUrl`), so
+  POIs stay dropped.
+
+### 12.4 Edge cases
+- **Non-OK biased first call** (network/5xx): return its error Response unchanged (no fallback) —
+  preserves the existing `suggest_exception`/`mapbox_<status>` contract; do NOT mask a transport
+  error as empty.
+- **Fallback also errors or returns empty:** return `{ suggestions: [] }` (HTTP 200) — the user sees
+  "no results", same terminal state as an empty biased call today. Do not surface a fresh 5xx.
+- **No country parsed** (single token, non-country trailing word, bare country name): unchanged —
+  exactly one call with the full/trimmed query (R3/R4/§4.1 fallback all single-call). No retry.
+- **Genuine-country intent** (tbilisi georgia, cordoba argentina, cordoba spain): biased call is
+  non-empty → no fallback → correct country disambiguation preserved (R5.3/R5.4).
+- **`parseTrailingCountry` is unchanged**, so the tester's ADV-A1 rows (`"atlanta georgia" →
+  {query:"atlanta",country:"ge"}`) STAY GREEN as-is — the over-strip still happens at the parse
+  layer and is now *recovered* at the handler layer. Implementor MAY refresh the ADV-A1 comment to
+  note "recovered by the INC-1 fallback" (comment-only; the assertions do not change, so **no
+  `[TEST-MOD-APPROVED]` token is required**).
+
+### 12.5 Additional success criteria (additive to §5)
+- **SC-11 (atlanta georgia):** `suggest_places("atlanta georgia")` returns **Atlanta, Georgia,
+  United States** as row #1 (biased call empty → full-query fallback). *(Runtime-proven: R1-a/R1-b.)*
+- **SC-12 (no-regression, no extra call):** `suggest_places("lekki nigeria")` returns **Lekki,
+  Lagos, Nigeria** #1 via exactly **one** upstream call (biased call non-empty → no fallback).
+  *(Proven: R2-a.)* Same for "cordoba argentina"/"cordoba spain"/"tbilisi georgia" (one call, correct
+  country).
+- **SC-13 (single-call for non-stripped):** `suggest_places("lekki")`, `("lekki phase")`,
+  `("lekki london")`, `("paris texas")`, `("jordan")` each make exactly **one** upstream call and are
+  behaviorally identical to the shipped core. *(Proven: R3/R4/R5.1/R5.2.)*
+
+### 12.6 New tests the implementor MUST add (fails-on-revert)
+Append to a new file `supabase/functions/mapbox-geocode/__tests__/orch1365-inc1-collision-fallback.test.ts`
+(Deno; stub `globalThis.fetch` + `Deno.env.set("MAPBOX_ACCESS_TOKEN", ...)`, drive the exported
+`handler`; run with `--allow-env --allow-read`). Register it in the ORCH-1365 Deno CI job.
+
+| Test | Scenario | Setup | Expected | Fails-on-revert |
+|------|----------|-------|----------|-----------------|
+| T-14 | **atlanta georgia → fallback** | stub fetch: URL containing `country=ge` → `{suggestions:[]}`; the full-query URL (`q=atlanta%20georgia`, **no** `country=`) → `[{mapbox_id,name:"Atlanta",place_formatted:"Georgia, United States"}]` | `handler({action:"suggest_places",query:"atlanta georgia"})` → 200, `suggestions[0].displayName==="Atlanta"`; **exactly 2** fetch calls; call[0] has `&country=ge`, call[1] has **no** `&country=`; both share the same `session_token` | Remove the fallback → returns empty → **RED** (encodes SC-11) |
+| T-15 | **lekki nigeria → NO fallback** | stub fetch: `country=ng` URL → `[{name:"Lekki Phase 2",...}]` | 200, `suggestions[0].displayName==="Lekki Phase 2"`; **exactly 1** fetch call (no retry) | Make the fallback fire unconditionally / drop the `first.suggestions.length===0` guard → 2 calls → **RED** (encodes SC-12, guards latency+billing) |
+| T-16 | **non-stripped → single call; genuine-country → no fallback** | stub fetch returning ≥1 result | `suggest_places("lekki")` and `("tbilisi georgia")` each make **exactly 1** fetch call | Regressing either into a double-call → **RED** (encodes SC-13; locks tbilisi-Georgia country intent) |
+| T-17 | **biased non-OK error not masked** | stub fetch: `country=ge` URL → HTTP 502 | handler returns the 502/`mapbox_502` error (no fallback, no silent empty) | Adding a fallback on the error branch → the error becomes a 200 empty → **RED** |
+
+Non-regression asserts that MUST stay green (unchanged from the core): the existing
+`mapboxPlaceSuggest.orch1365.test.ts` T-5 (business `buildSuggestUrl` byte-identical),
+`orch1365-collision-and-switch-isolation.adversarial.test.ts` ADV-A1 (parse still strips georgia→ge)
+and ADV-B (switch routing), and the "lekki nigeria"/"lekki phase"/"lekki london" strip rows.
+
+### 12.7 Invariants (INC-1)
+- **Extend the DRAFT `I-PROPOSED-1365-CONSUMER-PLACE-SEARCH-TYPE-FILTERED`** with clause (d): *when a
+  trailing-country strip is applied and the biased Mapbox `suggest_places` call returns zero results,
+  the handler MUST retry once with the full original query (no country), reusing the session_token,
+  and return that result.* (Orchestrator flips ACTIVE at CLOSE, per §6.) Enforcement: T-14/T-15.
+- **Preserved:** ORCH-1079/INV-3 (business `suggest`/`buildSuggestUrl` untouched — the fallback lives
+  only in `handleSuggestPlaces` and still routes through `buildPlaceSuggestUrl`), `verify_jwt=true`,
+  I-1315 paywall, and Mapbox session billing (same-token reuse = one session).
+
+### 12.8 Business-safety, billing & latency
+- **Business-safe:** zero change to `handleSuggest`, `buildSuggestUrl`, `autocompleteMapbox`, or any
+  `mingla-business/**` path. The switch still routes `action:"suggest"` → `handleSuggest` (ADV-B).
+  The ORCH-1079 gate is unaffected (no edit; the fallback uses `buildPlaceSuggestUrl`, which the gate
+  already excludes from the business-clean assertion).
+- **Billing:** the retry reuses the request's `session_token`; per live docs multiple `/suggest`
+  under one token = **one billable session** → **no new billing surface**.
+- **Latency:** one extra Mapbox round-trip **only** when the biased first call is empty (over-strip
+  or place-not-in-country — rare). The common paths (lekki nigeria, cordoba, single tokens,
+  non-stripped queries) make **exactly one** call, unchanged.
+
+### 12.9 Allowlist delta (INC-1)
+- **MODIFY:** `supabase/functions/mapbox-geocode/index.ts` — `handleSuggestPlaces` only (extract the
+  fetch/parse helper + add the zero-result fallback). Already in the §Allowlist.
+- **NEW:** `supabase/functions/mapbox-geocode/__tests__/orch1365-inc1-collision-fallback.test.ts`.
+- **REGISTER:** the new test file in the ORCH-1365 Deno CI job (`.github/workflows/…`, already
+  allowlisted).
+- **DO-NOT-TOUCH (reaffirmed):** `parseTrailingCountry`/`countryNames.ts`, `buildPlaceSuggestUrl`,
+  `PLACE_SUGGEST_TYPES`, `handleSuggest`, `buildSuggestUrl`, the service, the component, the
+  Preferences/CityPicker hosts, and all UI. INC-1 is edge-fn-only.
+
+### 12.10 Downstream routing (INC-1)
+Next = **mingla-implementor** on the same worktree/branch: implement §12.3 + tests §12.6, run the
+Deno suite (new + existing green), prove T-14/T-15 fail-on-revert. Then = **mingla-tester**:
+runtime-prove SC-11 ("atlanta georgia" → Atlanta GA #1) and SC-12 ("lekki nigeria" one-call, still
+Lekki Lagos #1) against the deployed `suggest_places`, plus the SC-5 business byte-identical
+re-check. Then = **orchestrator CLOSE**: deploy the edge fn + curl-verify both cases, flip the
+extended invariant ACTIVE.
