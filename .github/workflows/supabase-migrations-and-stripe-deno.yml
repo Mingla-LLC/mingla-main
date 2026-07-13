@@ -630,12 +630,20 @@ jobs:
           #    guard (T-15 "lekki nigeria" → 1 call, no retry) + genuine-country/
           #    non-stripped single-call (T-16) + non-OK-not-masked (T-17). Needs
           #    --allow-env (the handler reads MAPBOX_ACCESS_TOKEN).
+          #  - orch1365-inc1-fallback-failuremodes.adversarial (INC-1, TESTER-owned):
+          #    attacks the fallback's UNtested failure modes on angles T-14..T-17
+          #    miss — ADV-INC1-1 the `country &&` conjunct (no-strip EMPTY must NOT
+          #    retry; UNIQUELY red when the `country` guard is dropped while all of
+          #    T-14..T-17 stay green), ADV-INC1-2 both-empty graceful terminal, and
+          #    ADV-INC1-3 the FALLBACK's own 5xx swallowed to 200-empty (§12.4; T-17
+          #    only covers the BIASED error). Fails-on-revert proven in the QA report.
           DENO_TEST_FILES=(
             supabase/functions/mapbox-geocode/__tests__/countryNames.orch1365.test.ts
             supabase/functions/mapbox-geocode/__tests__/mapboxPlaceSuggest.orch1365.test.ts
             supabase/functions/mapbox-geocode/__tests__/mapboxPlacesService.orch1365.test.ts
             supabase/functions/mapbox-geocode/__tests__/orch1365-collision-and-switch-isolation.adversarial.test.ts
             supabase/functions/mapbox-geocode/__tests__/orch1365-inc1-collision-fallback.test.ts
+            supabase/functions/mapbox-geocode/__tests__/orch1365-inc1-fallback-failuremodes.adversarial.test.ts
             app-mobile/src/components/__tests__/orch-1365-preferences-places-no-proximity.test.tsx
           )
           for attempt in 1 2 3; do
