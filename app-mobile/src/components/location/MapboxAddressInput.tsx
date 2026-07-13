@@ -29,7 +29,14 @@ import * as Haptics from "expo-haptics";
 
 import { colors, radius } from "../../constants/designSystem";
 import { Icon } from "../ui/Icon";
-import { BottomSheetTextInput } from "../ui/BaseBottomSheet";
+// ORCH-1365 — BottomSheetScrollView makes the card-mode suggestion list scroll
+// correctly inside the gorhom bottom sheet (re-exported from BaseBottomSheet
+// because the sole-gorhom-consumer gate forbids importing @gorhom/bottom-sheet
+// directly — mirrors the existing BottomSheetTextInput injection).
+import {
+  BottomSheetScrollView,
+  BottomSheetTextInput,
+} from "../ui/BaseBottomSheet";
 import { supabase } from "../../services/supabase";
 
 export type { PlaceDetails };
@@ -50,6 +57,14 @@ interface ConsumerMapboxAddressInputProps {
   /** Leading glyph (DESIGN §4): "search" (City) | "location" (Prefs/Onboarding). */
   leadingIcon?: string;
   autoFocus?: boolean;
+  // ── ORCH-1365 [location-search-relevance] ─────────────────────────────────
+  /**
+   * Autocomplete backend. Default `"venue"` = today's business-parity venue
+   * search. `"places"` (Preferences custom-location) routes the consumer place
+   * search (POIs dropped + trailing-country strip + country bias). See the
+   * shared field's `searchMode`.
+   */
+  searchMode?: "venue" | "places";
   // ── ORCH-1361 [location-suggestions] · OPTIONAL device rank bias (ADDITIVE) ─
   // Forwarded verbatim to the shared field's suggest call so consumer location
   // search RANKS to the user's area (fixes the server-IP wrong-country bug).
@@ -200,6 +215,7 @@ export const MapboxAddressInput: React.FC<ConsumerMapboxAddressInputProps> = ({
   minQueryLength = 3,
   leadingIcon,
   autoFocus = false,
+  searchMode = "venue",
   proximity,
   suggestLimit,
 }) => {
@@ -226,6 +242,8 @@ export const MapboxAddressInput: React.FC<ConsumerMapboxAddressInputProps> = ({
       minQueryLength={minQueryLength}
       leadingIcon={resolvedLeadingIcon}
       TextInputComponent={BottomSheetTextInput}
+      searchMode={searchMode}
+      ScrollComponent={BottomSheetScrollView}
       haptics={Haptics}
       autoFocus={autoFocus}
       proximity={proximity}

@@ -139,6 +139,53 @@ export async function autocompleteMapbox(
 }
 
 /**
+ * ORCH-1365 [location-search-relevance] — CONSUMER place-search type-ahead.
+ * Same shape + silent-[]-on-failure contract as `autocompleteMapbox`, but posts
+ * the ADDITIVE `action: "suggest_places"` so the edge fn applies its place-type
+ * filter + trailing-country strip + `country` ISO bias (POIs dropped; the real
+ * PLACE surfaces for a non-Lagos user — evidence/ORCH-1365). The business
+ * `autocompleteMapbox` (venue-name search) is UNCHANGED and filter-free
+ * (INV-3 / ORCH-1079).
+ *
+ * NO proximity for the Preferences field (OQ-4) — a "search a place you are NOT
+ * at" field must not bias to the device. `bias.proximity` is kept optional +
+ * forwarded ONLY when a caller passes it (Preferences passes none); `limit` is
+ * merged when present. `country` is DERIVED server-side from the query, never
+ * client-supplied.
+ * https://docs.mapbox.com/api/search/search-box/#get-suggestions
+ */
+export async function autocompletePlacesMapbox(
+  query: string,
+  sessionToken: string,
+  deps: { invoke: InvokeFn },
+  bias?: LocationBias,
+): Promise<PlaceAutocompleteSuggestion[]> {
+  const q = query.trim();
+  if (q.length < MIN_QUERY_LENGTH) return [];
+
+  try {
+    const { data, error } = await deps.invoke("mapbox-geocode", {
+      body: {
+        action: "suggest_places",
+        query: q,
+        session_token: sessionToken,
+        ...(bias?.proximity ? { proximity: bias.proximity } : {}),
+        ...(bias?.limit ? { limit: bias.limit } : {}),
+      },
+    });
+    if (error) {
+      console.warn("[mapboxGeocodeService] suggest_places error:", error.message);
+      return [];
+    }
+    if (!data || !Array.isArray(data.suggestions)) return [];
+    return data.suggestions as PlaceAutocompleteSuggestion[];
+  } catch (e) {
+    console.warn("[mapboxGeocodeService] suggest_places throw:", e);
+    return [];
+  }
+}
+
+/**
  * Retrieve full place details after the user picks a suggestion. Extracts
  * structured city + region + regionCode + countryCode + lat/lng. THROWS on any
  * failure (callers must surface the error to the user).

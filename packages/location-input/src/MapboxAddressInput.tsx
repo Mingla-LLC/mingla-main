@@ -40,15 +40,18 @@ import {
   ActivityIndicator,
   Platform,
   Pressable,
+  ScrollView as RNScrollView,
   StyleSheet,
   Text,
   TextInput as RNTextInput,
   View,
+  type ScrollViewProps,
   type TextInputProps,
 } from "react-native";
 
 import {
   autocompleteMapbox,
+  autocompletePlacesMapbox,
   newMapboxSessionToken,
   retrieveMapboxPlace,
   type InvokeFn,
@@ -98,6 +101,23 @@ export interface MapboxAddressInputProps {
   leadingIcon?: string;
   /** Gorhom-aware TextInput (BottomSheetTextInput). Falls back to RN TextInput. */
   TextInputComponent?: React.ComponentType<TextInputProps>;
+  // ── ORCH-1365 [location-search-relevance] ─────────────────────────────────
+  /**
+   * Which autocomplete backend the field queries. Default `"venue"` keeps the
+   * BUSINESS venue-name search (edge `suggest`, filter-free, POIs resolve —
+   * byte-identical, INV-3 / ORCH-1079). `"places"` routes the CONSUMER place
+   * search (edge `suggest_places`: place-type filter + trailing-country strip +
+   * `country` ISO bias, POIs dropped). This is the ONLY behavioral switch;
+   * omitting it preserves business behavior exactly.
+   */
+  searchMode?: "venue" | "places";
+  /**
+   * Gorhom-aware scroll container for the card-mode suggestion list (consumer
+   * hosts inject `BottomSheetScrollView` so the list scrolls inside a gorhom
+   * bottom sheet). Falls back to RN `ScrollView`. Only used in `dropdown.mode:
+   * "card"`; inline mode is unaffected.
+   */
+  ScrollComponent?: React.ComponentType<ScrollViewProps>;
   /** Host's expo-haptics module (optional; haptics no-op if absent). */
   haptics?: HapticsLike;
   /** autoFocus the field on mount (City does). */
@@ -141,6 +161,8 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
   minQueryLength = 3,
   leadingIcon = "location",
   TextInputComponent,
+  searchMode = "venue",
+  ScrollComponent,
   haptics,
   autoFocus = false,
   proximity,
@@ -208,14 +230,26 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
       setStatus({ kind: "loading_suggestions" });
       debounceTimer.current = setTimeout(async (): Promise<void> => {
         try {
-          // ORCH-1361 — thread the optional device proximity rank bias. When
-          // both are undefined the service omits them → byte-identical request.
-          const results = await autocompleteMapbox(
-            next,
-            sessionToken.current,
-            { invoke },
-            { proximity, limit: suggestLimit },
-          );
+          // ORCH-1365 — route by searchMode. "places" (consumer) → the edge
+          // `suggest_places` action (place-type filter + trailing-country strip +
+          // country bias, POIs dropped). "venue" (business, DEFAULT) → the
+          // filter-free `suggest` action, BYTE-IDENTICAL to pre-1365
+          // (INV-3 / ORCH-1079). ORCH-1361 — the optional proximity/limit bias is
+          // merged only when present → byte-identical request when omitted.
+          const results =
+            searchMode === "places"
+              ? await autocompletePlacesMapbox(
+                  next,
+                  sessionToken.current,
+                  { invoke },
+                  { proximity, limit: suggestLimit },
+                )
+              : await autocompleteMapbox(
+                  next,
+                  sessionToken.current,
+                  { invoke },
+                  { proximity, limit: suggestLimit },
+                );
           if (results.length === 0) {
             setStatus({ kind: "no_results" });
             announce(copy.noResults);
@@ -229,7 +263,7 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
         }
       }, AUTOCOMPLETE_DEBOUNCE_MS);
     },
-    [announce, clearDebounceTimer, copy.noResults, copy.offline, invoke, minQueryLength, onChangeText, proximity, suggestLimit],
+    [announce, clearDebounceTimer, copy.noResults, copy.offline, invoke, minQueryLength, onChangeText, proximity, searchMode, suggestLimit],
   );
 
   const handlePickSuggestion = useCallback(
@@ -378,9 +412,9 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
     </View>
   );
 
-  // List content rendered into the host-chosen slot. For "card" mode the host
-  // gets a bordered card; for "inline" the rows flow directly on the canvas.
-  const listContent = (
+  // Single-row status blocks (loading / no-results / offline). ORCH-1365 — kept
+  // OUTSIDE the scrollable row list so they never scroll; shared by card + inline.
+  const statusContent = (
     <>
       {status.kind === "loading_suggestions" ? (
         <View
@@ -436,14 +470,27 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
           </Text>
         </Pressable>
       ) : null}
-
-      {status.kind === "suggestions_open" || status.kind === "fetching_details" ? (
-        status.kind === "suggestions_open" ? (
-          renderRows(status.results)
-        ) : null
-      ) : null}
     </>
   );
+
+  const rowsOpen = status.kind === "suggestions_open" ? status.results : null;
+
+  // Inline mode content — UNCHANGED (rows flow directly on the host canvas, no
+  // scroll wrapper; the dark CityPicker sheet already scrolls its own body).
+  const inlineContent = (
+    <>
+      {statusContent}
+      {rowsOpen ? renderRows(rowsOpen) : null}
+    </>
+  );
+
+  // ORCH-1365 (F-5) — gorhom-aware scroll container so the card-mode suggestion
+  // list is actually scrollable (was `overflow:hidden` + a maxHeight that CLIPPED
+  // rows 6-8). The host injects `BottomSheetScrollView`; falls back to RN
+  // ScrollView. maxHeight now BOUNDS the scroll viewport instead of clipping the
+  // card; the outer card keeps border/bg/shadow/radius with `overflow:hidden`
+  // (radius clip). Status rows stay above the scroll (single-row).
+  const Scroll = ScrollComponent ?? RNScrollView;
 
   const wrappedList =
     tokens.dropdown.mode === "card" ? (
@@ -460,17 +507,26 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
               borderColor: tokens.dropdown.border,
               backgroundColor: tokens.dropdown.bg,
               overflow: "hidden",
-              maxHeight: tokens.dropdown.maxHeight,
             },
             tokens.dropdown.hasShadow ? styles.cardShadow : null,
           ]}
         >
-          {listContent}
+          {statusContent}
+          {rowsOpen ? (
+            <Scroll
+              style={{ maxHeight: tokens.dropdown.maxHeight }}
+              keyboardShouldPersistTaps="handled"
+              nestedScrollEnabled
+              showsVerticalScrollIndicator
+            >
+              {renderRows(rowsOpen)}
+            </Scroll>
+          ) : null}
         </View>
       ) : null
     ) : (
-      // inline mode — rows flow directly on the host canvas
-      listContent
+      // inline mode — rows flow directly on the host canvas (UNCHANGED)
+      inlineContent
     );
 
   return (
@@ -491,13 +547,20 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
           autoCorrect={false}
           autoCapitalize="words"
           autoFocus={autoFocus}
+          // ORCH-1365 (F-6) — text-clip fix. Removed the forced `lineHeight:24`
+          // (it capped the single-line box so descenders like g/y/p clipped at
+          // the bottom); the platform now computes the line box and reserves
+          // descender space. Android: `textAlignVertical:"center"` (keeps default
+          // includeFontPadding so descenders are reserved) replaces the old
+          // `paddingVertical:0` that squeezed them.
           style={{
             flex: 1,
             fontSize: 16,
-            lineHeight: 24,
             color: tokens.text.input,
             padding: 0,
-            ...(Platform.OS === "android" ? { paddingVertical: 0 } : null),
+            ...(Platform.OS === "android"
+              ? { textAlignVertical: "center" as const }
+              : null),
           }}
           accessibilityRole="combobox"
           accessibilityLabel={accessibilityLabel}

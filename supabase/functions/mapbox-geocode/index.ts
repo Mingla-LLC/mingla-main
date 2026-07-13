@@ -87,6 +87,9 @@
  */
 
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+// ORCH-1365 [location-search-relevance] — trailing-country parser for the
+// CONSUMER place-search action ONLY. NEVER used by the business `suggest` path.
+import { parseTrailingCountry } from "./countryNames.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -106,7 +109,11 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 interface RequestBody {
-  action?: "suggest" | "retrieve" | "reverse" | "forward";
+  // ORCH-1365 — `suggest_places` is an ADDITIVE consumer place-search action
+  // (place-type filter + trailing-country strip + `country` ISO bias, NO
+  // proximity for the Preferences field). The business `suggest` action is
+  // UNCHANGED and byte-identical (INV-3 / ORCH-1079).
+  action?: "suggest" | "suggest_places" | "retrieve" | "reverse" | "forward";
   query?: string;
   mapbox_id?: string;
   session_token?: string;
@@ -181,6 +188,64 @@ export function buildSuggestUrl(
     `&session_token=${encodeURIComponent(sessionToken)}` +
     `&access_token=${encodeURIComponent(token)}`;
   // Rank-only bias — proximity does NOT exclude any result (INV-3 / ORCH-1079).
+  if (opts.proximity) url += `&proximity=${encodeURIComponent(opts.proximity)}`;
+  url += `&limit=${clampSuggestLimit(opts.limit)}`;
+  return url;
+}
+
+// ─── ORCH-1365 [location-search-relevance] — CONSUMER place-search ONLY ───────
+// This block is the DELIBERATE code-level wall between the business venue-name
+// search (`suggest`/`buildSuggestUrl`, filter-free, POIs resolve — INV-3 /
+// ORCH-1079) and the consumer place search. The place types filter + `country`
+// bias live HERE and NOWHERE in the business builder. `handleSuggest` (business)
+// NEVER calls `buildPlaceSuggestUrl`. The scoped ORCH-1079 gate
+// (`i-mapbox-suggest-no-types-filter.mjs`) enforces exactly this separation.
+
+/**
+ * ORCH-1365 — place-type filter for consumer place search. Drops POIs
+ * (restaurants/apartments named "Lekki") so the real PLACE surfaces
+ * (runtime-proven, evidence probe B). Doc-verified `types` values
+ * (https://docs.mapbox.com/api/search/search-box/#get-suggestions): comma list.
+ */
+export const PLACE_SUGGEST_TYPES = "place,locality,neighborhood,region,district";
+
+/** ORCH-1365 — options for the consumer place builder. `country` is a Mapbox
+ *  ISO 3166-1 alpha-2 bias (DERIVED server-side from the trailing-country strip,
+ *  never client-trusted). `proximity` stays optional/forward-compatible but the
+ *  Preferences field sends none. */
+export interface PlaceSearchOpts {
+  proximity?: string;
+  limit?: number;
+  country?: string;
+}
+
+/**
+ * ORCH-1365 — build the Search Box `/suggest` URL for CONSUMER place search.
+ * Sibling to `buildSuggestUrl`, kept SEPARATE so the ORCH-1079 gate can prove the
+ * business builder is filter-free. Appends `q`, `session_token`, `access_token`
+ * (same as `buildSuggestUrl`), then ALWAYS `&types=${PLACE_SUGGEST_TYPES}`, then
+ * `&country=${opts.country}` ONLY when a non-empty ISO code is present, then a
+ * (forward-compat, Preferences-omitted) `&proximity=`, then `&limit=` (clamped).
+ * https://docs.mapbox.com/api/search/search-box/#get-suggestions
+ */
+export function buildPlaceSuggestUrl(
+  base: string,
+  token: string,
+  trimmedQuery: string,
+  sessionToken: string,
+  opts: PlaceSearchOpts = {},
+): string {
+  let url =
+    `${base}/suggest` +
+    `?q=${encodeURIComponent(trimmedQuery)}` +
+    `&session_token=${encodeURIComponent(sessionToken)}` +
+    `&access_token=${encodeURIComponent(token)}` +
+    `&types=${PLACE_SUGGEST_TYPES}`;
+  // country = ISO alpha-2 bias, derived from the trailing-country strip. Only
+  // appended when non-empty (a bare/unrecognized query yields no country).
+  if (opts.country) url += `&country=${encodeURIComponent(opts.country)}`;
+  // proximity stays supported for forward-compat; the Preferences field omits it
+  // (OQ-4 — device proximity buries a place the user is NOT at; evidence §3).
   if (opts.proximity) url += `&proximity=${encodeURIComponent(opts.proximity)}`;
   url += `&limit=${clampSuggestLimit(opts.limit)}`;
   return url;
@@ -296,6 +361,81 @@ async function handleSuggest(
   // ORCH-1361 — cap to the SAME effective limit sent upstream (default 5 →
   // byte-identical to the pre-1361 `.slice(0, 5)`; consumer opts into 8) so the
   // requested row count actually reaches the caller instead of a hardcoded 5.
+  const effectiveLimit = clampSuggestLimit(opts.limit);
+  const suggestions = (data.suggestions ?? [])
+    .map((s) => {
+      if (!s.mapbox_id || !s.name) return null;
+      return {
+        placeId: s.mapbox_id,
+        displayName: s.name,
+        fullAddress: s.full_address ?? s.place_formatted ?? s.name,
+      };
+    })
+    .filter((s): s is NonNullable<typeof s> => s !== null)
+    .slice(0, effectiveLimit);
+
+  return jsonResponse({ suggestions });
+}
+
+/**
+ * ORCH-1365 [location-search-relevance] — CONSUMER place search.
+ * https://docs.mapbox.com/api/search/search-box/#get-suggestions
+ *
+ * Distinct from `handleSuggest` (business venue-name search) in exactly three
+ * ways, ALL isolated to this handler + `buildPlaceSuggestUrl`:
+ *   1. `types=place,locality,neighborhood,region,district` → drops POI noise so
+ *      the real PLACE surfaces (evidence probe B).
+ *   2. a recognized TRAILING COUNTRY token is stripped from `q` and re-applied as
+ *      a Mapbox `country` ISO bias — the fix for "lekki nigeria" (probe G/N; a
+ *      country filter WITHOUT stripping does not work — probe J).
+ *   3. NO proximity for the Preferences field (OQ-4) — a "search a place you are
+ *      NOT at" field must not bias to the device (evidence §3).
+ * Normalization + error contract are IDENTICAL to `handleSuggest`.
+ */
+async function handleSuggestPlaces(
+  token: string,
+  rawQuery: string,
+  sessionToken: string,
+  opts: SearchOpts = {},
+): Promise<Response> {
+  const trimmed = rawQuery.trim();
+  if (trimmed.length < 3) {
+    return jsonResponse({ error: "query_too_short" }, 400);
+  }
+
+  // Strip a recognized trailing country name → { query, country }. The parser
+  // guards single-token + bare-country queries (never returns an empty query).
+  const parsed = parseTrailingCountry(trimmed);
+  // OQ-3 defensive fallback — if a strip somehow left an empty query, search the
+  // un-stripped text (a bare country name still resolves the country/region).
+  const query = parsed.query.length > 0 ? parsed.query : trimmed;
+  const country = parsed.query.length > 0 ? parsed.country : undefined;
+
+  const url = buildPlaceSuggestUrl(
+    MAPBOX_SEARCHBOX_BASE,
+    token,
+    query,
+    sessionToken,
+    { ...opts, country },
+  );
+
+  let upstream: Response;
+  try {
+    upstream = await fetch(url, { method: "GET" });
+  } catch (e) {
+    console.error("[mapbox-geocode] suggest_places fetch error:", e);
+    return jsonResponse({ error: "suggest_exception", suggestions: [] }, 502);
+  }
+
+  if (!upstream.ok) {
+    console.warn("[mapbox-geocode] suggest_places non-OK:", upstream.status);
+    return jsonResponse(
+      { error: `mapbox_${upstream.status}`, suggestions: [] },
+      upstream.status >= 500 ? 502 : upstream.status,
+    );
+  }
+
+  const data = (await upstream.json()) as SuggestRawResponse;
   const effectiveLimit = clampSuggestLimit(opts.limit);
   const suggestions = (data.suggestions ?? [])
     .map((s) => {
@@ -588,6 +728,15 @@ export async function handler(req: Request): Promise<Response> {
   switch (body.action) {
     case "suggest":
       return handleSuggest(token, body.query ?? "", sessionToken, searchOpts);
+    case "suggest_places":
+      // ORCH-1365 — consumer place search (types filter + trailing-country strip
+      // + country bias, no proximity). Business `suggest` above is untouched.
+      return handleSuggestPlaces(
+        token,
+        body.query ?? "",
+        sessionToken,
+        searchOpts,
+      );
     case "retrieve":
       return handleRetrieve(token, body.mapbox_id ?? "", sessionToken);
     case "reverse":
