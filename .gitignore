@@ -134,3 +134,10 @@ vercel-token.md
 TokensNeeded.md
 *.token.json
 *session.token*
+
+# === Local-only tooling & working artifacts (repo-hygiene clean slate 2026-07-13) ===
+# Agent/skills tooling and the ad-production working library are local-only
+# (ads consolidated to ~/Desktop/Mingla Ads/; PLAN_THE_DATE stays local like evidence/).
+.agents/
+skills-lock.json
+Mingla_Artifacts/ads/
