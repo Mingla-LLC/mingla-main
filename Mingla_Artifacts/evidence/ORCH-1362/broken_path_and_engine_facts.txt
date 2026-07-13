@@ -1,0 +1,116 @@
+ORCH-1362 [onboarding-location] — evidence: broken path + shipped engine reuse facts
+Captured 2026-07-13 on branch 1362-onboarding-location (rebased onto origin/main; contains ORCH-1361 + ORCH-1365).
+
+════════════════════════════════════════════════════════════════════════
+1. THE ONBOARDING BROKEN FIELD (the "type your city" manual-location search)
+════════════════════════════════════════════════════════════════════════
+HOST FILE: app-mobile/src/components/OnboardingFlow.tsx
+  - This is the ORCH-1230 (Apple 5.1.5) no-GPS "Choose your city" manual picker, rendered
+    INLINE in the `location` substep when Location Services are off / permission denied / idle.
+  - It is DISTINCT from LaunchCityPicker (ORCH-1028 launch-city GATE, which filters a FROZEN
+    live-cities list — never free-text geocode — DEC-1028-6). LaunchCityPicker is OUT OF SCOPE.
+
+State (OnboardingFlow.tsx):
+  :922  manualLocationText            — text input value
+  :923  locationSuggestions           — AutocompleteSuggestion[] (can only ever be 0 or 1 item)
+  :924  selectedLocation              — the picked suggestion {displayName, fullAddress, location:{lat,lng}}
+  :929  locationSearchLoading
+  :930  showLocationSuggestions
+  :931  locationHasSearched
+  :939  manualLocationOpen            — reveals the panel
+  :940  locationSearchTimer (ref)
+
+Debounced search effect (:976-1005):
+  :991  const results = await geocodingService.autocomplete(manualLocationText.trim())
+        → 350ms debounce, min 3 chars.
+
+BROKEN CALL PATH (F-7 from ORCH-1361, proven):
+  OnboardingFlow.tsx:991  geocodingService.autocomplete(query)
+    → app-mobile/src/services/geocodingService.ts:203-234  async autocomplete()
+      :216  const details = await forwardGeocodeMapbox(query, { invoke });
+      :217-223  wraps the SINGLE best match into a ONE-ELEMENT array.
+      → packages/location-input/src/mapboxGeocodeService.ts:243 forwardGeocodeMapbox
+        → edge action `forward` (limit=1), NO types filter, NO country, proximity defaults to
+          edge-datacenter IP (server-IP wrong-country).
+  RESULT: the manual dropdown can render at most ONE row, and that row is the forward best
+  match — POIs outrank real places, and a trailing country word (e.g. "lagos nigeria") is not
+  understood. Identical class to the ORCH-1361 Preferences bug.
+
+ORCH-1361 investigation, F-7 (Discovery, OUT OF SCOPE for 1361):
+  Mingla_Artifacts/reports/INVESTIGATION_ORCH-1361_LOCATION_SUGGESTIONS.md:127-129
+  "OnboardingFlow.tsx:991 also calls geocodingService.autocomplete() (forward/limit=1) with its
+   own manual dropdown — identical too-few + wrong-country failure. Not fixed by ORCH-1361
+   (Preferences-scoped)... Register as a follow-on ORCH (Onboarding location field → same
+   multi-row + bias treatment)."   ← ORCH-1362 IS this follow-on.
+
+Handlers to rewire / retire:
+  :1749 handleSelectLocationSuggestion  — sets selectedLocation from a forward suggestion (RETIRE)
+  :1759 handleClearLocationSelection    — KEEP (reused by onClear + the selected-card X)
+  :1768 handleManualLocation (confirm)  — reads selectedLocation.location.lat/lng → writes
+        data.manualLocation + data.coordinates → goNext() → background locale detect. KEEP;
+        it consumes selectedLocation.location.{lat,lng}. THIS IS THE PICK SEMANTIC TO PRESERVE.
+
+Render (:2784-2877 renderManualLocationPanel), mounted at :3052, :3101, :3146 (idle/settings/error):
+  :2787-2808  selectedLocation card (chip) — KEEP.
+  :2810-2858  custom search TextInput + hand-rolled dropdown + no-results  — REPLACE with the
+              shared MapboxAddressInput.
+  :2860-2875  confirm button (arrow-forward → handleManualLocation)  — KEEP.
+
+════════════════════════════════════════════════════════════════════════
+2. THE SHIPPED ENGINE (ORCH-1365) — reuse targets, NO edge change needed
+════════════════════════════════════════════════════════════════════════
+Edge (ALREADY DEPLOYED — do NOT touch):
+  supabase/functions/mapbox-geocode/index.ts:116  action union includes "suggest_places"
+  :231 buildPlaceSuggestUrl   :411 handleSuggestPlaces   :92 import parseTrailingCountry
+  → types=place,locality,neighborhood,region,district + trailing-country strip + country ISO bias
+    + zero-result fallback (INC-1). NO proximity for Preferences.
+
+Shared service: packages/location-input/src/mapboxGeocodeService.ts:157 autocompletePlacesMapbox()
+Shared component: packages/location-input/src/MapboxAddressInput.tsx
+  :113 searchMode?: "venue" | "places"  (default "venue")
+  :103 TextInputComponent?  — gorhom-aware; FALLS BACK to RN TextInput when omitted (:177)
+  :120 ScrollComponent?     — gorhom-aware; FALLS BACK to RN ScrollView when omitted (:493)
+  :278 onPick(details: PlaceDetails)  — fires after suggest→retrieve; details carries coords.
+
+PlaceDetails (packages/location-input/src/mapboxGeocodeService.ts:42-60):
+  formattedAddress:string; city:string; region:string|null; regionCode; countryCode;
+  location:{lat:number; lng:number}   ← coords come from the retrieve round-trip, NOT the suggestion.
+
+Consumer wrapper: app-mobile/src/components/location/MapboxAddressInput.tsx
+  - Carries LIGHT_TOKENS (Preferences/Onboarding light variant) + DARK_TOKENS + CONSUMER_COPY +
+    Icon + invoke + haptics.
+  - :244 TextInputComponent={BottomSheetTextInput}  ← HARDCODED gorhom
+  - :246 ScrollComponent={BottomSheetScrollView}    ← HARDCODED gorhom
+  - Forwards searchMode / proximity / suggestLimit / minQueryLength / variant.
+
+Reference host wiring (Preferences — the template):
+  app-mobile/src/components/PreferencesSheet/PreferencesSectionsAdvanced.tsx:243-255
+    <MapboxAddressInput variant="light" searchMode="places" minQueryLength={4} suggestLimit={8}
+      value onChangeText onPick={onPickLocation} onClear ... />   ← NO proximity.
+
+════════════════════════════════════════════════════════════════════════
+3. THE GORHOM BLOCKER (why onboarding CANNOT reuse the wrapper as-is)
+════════════════════════════════════════════════════════════════════════
+Onboarding host chrome: app-mobile/src/components/onboarding/OnboardingShell.tsx
+  :271 SafeAreaView → :272 KeyboardAwareView → :287 plain RN <ScrollView>.  NO @gorhom/bottom-sheet.
+gorhom version: @gorhom/bottom-sheet ^5.2.8 (package.json).
+  - BottomSheetScrollView (v5) consumes the sheet's internal scroll-gesture context via
+    useBottomSheetInternal() → THROWS ("BottomSheetInternalContext not found") when rendered
+    OUTSIDE a <BottomSheet>. The consumer wrapper hardcodes it (:246), so dropping the wrapper
+    into the onboarding screen (LIGHT_TOKENS → dropdown.mode "card" → the field wraps rows in
+    ScrollComponent, shared component :516) would HARD-CRASH.
+  - Precedent for the correct pattern: the shared component's own doc (:24) — "The business host
+    OMITS TextInputComponent → falls back to RN TextInput." Non-sheet hosts OMIT the gorhom
+    injections. Onboarding = same situation.
+  ⇒ The consumer wrapper must gain an optional `inBottomSheet` flag (default true) that, when
+    false, OMITS both gorhom injections so the shared field uses plain RN TextInput + ScrollView.
+
+════════════════════════════════════════════════════════════════════════
+4. GATING / SCOPE
+════════════════════════════════════════════════════════════════════════
+  - NO Mingla+ paywall in the onboarding manual-location render (no isLocked/onLockedTap). Onboarding
+    is pre-account; the I-1315 paywall is Preferences-only. Confirmed absent in :2784-2877.
+  - Downstream of a pick: data.manualLocation (city name) + data.coordinates {lat,lng},
+    use_gps_location=false at final save (:1866/:1887/:1915 resolvedCustomLocation).
+  - suggest_places is DEPLOYED → CLIENT-ONLY change → OTA-able. Consumer OTA is currently LIVE at
+    runtime 1.1.1 (COMMS-0095, 2026-07-12) — the earlier ORCH-1171 consumer-OTA block is superseded.
