@@ -391,6 +391,22 @@ async function handleSuggest(
  *   3. NO proximity for the Preferences field (OQ-4) — a "search a place you are
  *      NOT at" field must not bias to the device (evidence §3).
  * Normalization + error contract are IDENTICAL to `handleSuggest`.
+ *
+ * ── ORCH-1365-INC-1 [ambiguous country / US-state collision] · SPEC §12.3 ─────
+ *   4. ZERO-RESULT FALLBACK. `parseTrailingCountry` is a blunt English
+ *      country-name map, so a US-state name that is also a country ("atlanta
+ *      georgia" → country=ge, Georgia the COUNTRY) over-strips and the biased
+ *      first call returns EMPTY (Atlanta is not in Georgia the country —
+ *      evidence R1-a). The strip is NOT modified (the tester's ADV-A1 rows stay
+ *      green); it is RECOVERED here: iff a `country` was applied AND the biased
+ *      call is HTTP-ok with zero mapped suggestions, retry ONCE with the FULL
+ *      original query (no strip, no country), REUSING the session_token (Mapbox
+ *      bills one session → no new billing surface). Keeping "georgia" in the
+ *      fallback query ranks Atlanta-GA #1 (evidence R1-b) and self-corrects any
+ *      "<place> <country-word>" where the place is not in that country. The
+ *      common paths ("lekki nigeria" non-empty, single tokens, non-stripped
+ *      queries, and the genuine "tbilisi georgia" country intent) make EXACTLY
+ *      one upstream call (the biased call is non-empty → no fallback).
  */
 async function handleSuggestPlaces(
   token: string,
@@ -411,12 +427,70 @@ async function handleSuggestPlaces(
   const query = parsed.query.length > 0 ? parsed.query : trimmed;
   const country = parsed.query.length > 0 ? parsed.country : undefined;
 
+  // Biased first call — strip + `country` ISO bias (today's behavior, unchanged).
+  const first = await placeSuggestOnce(token, query, sessionToken, {
+    ...opts,
+    country,
+  });
+  // Non-OK upstream (network/5xx) → return today's error contract UNCHANGED. Do
+  // NOT mask a transport error as an empty fallback (SPEC §12.4). This preserves
+  // the existing suggest_exception / mapbox_<status> contract.
+  if ("errorResponse" in first) return first.errorResponse;
+
+  // ORCH-1365-INC-1 zero-result fallback (SPEC §12.3). Fires IFF a `country` was
+  // applied (a strip happened) AND the biased call returned HTTP-ok with zero
+  // mapped suggestions (over-strip / place-not-in-country). Retry ONCE with the
+  // FULL `trimmed` original query, no strip + no country, reusing the same
+  // session_token. `{ ...opts, country: undefined }` keeps limit/proximity and
+  // still routes through `buildPlaceSuggestUrl` (types filter stays applied →
+  // POIs still dropped).
+  if (country && first.suggestions.length === 0) {
+    const fb = await placeSuggestOnce(token, trimmed, sessionToken, {
+      ...opts,
+      country: undefined,
+    });
+    // A fallback that itself errors or empties → terminal { suggestions: [] }
+    // (HTTP 200) — the same "no results" state as an empty biased call today. Do
+    // NOT surface a fresh 5xx from the retry (SPEC §12.4).
+    return jsonResponse({
+      suggestions: "errorResponse" in fb ? [] : fb.suggestions,
+    });
+  }
+
+  return jsonResponse({ suggestions: first.suggestions });
+}
+
+/**
+ * ORCH-1365-INC-1 (SPEC §12.3) — ONE consumer place `/suggest` round-trip:
+ * build URL (via `buildPlaceSuggestUrl` → types filter + optional country bias)
+ * → fetch → check `upstream.ok` → parse JSON → map to
+ * `{ placeId, displayName, fullAddress }` → slice to the effective limit. A pure
+ * refactor of the previous `handleSuggestPlaces` body — behavior of the biased
+ * call is unchanged. Returns `{ suggestions }` on HTTP-ok, or `{ errorResponse }`
+ * (the exact `suggest_exception` / `mapbox_<status>` Response the handler used to
+ * return inline) so the caller can decide whether to fall back. Defined AFTER
+ * `handleSuggestPlaces` so the `buildPlaceSuggestUrl` call site stays on the
+ * consumer side of the isolation wall (never inside `handleSuggest`).
+ */
+async function placeSuggestOnce(
+  token: string,
+  query: string,
+  sessionToken: string,
+  opts: PlaceSearchOpts = {},
+): Promise<
+  | {
+    suggestions: Array<
+      { placeId: string; displayName: string; fullAddress: string }
+    >;
+  }
+  | { errorResponse: Response }
+> {
   const url = buildPlaceSuggestUrl(
     MAPBOX_SEARCHBOX_BASE,
     token,
     query,
     sessionToken,
-    { ...opts, country },
+    opts,
   );
 
   let upstream: Response;
@@ -424,15 +498,22 @@ async function handleSuggestPlaces(
     upstream = await fetch(url, { method: "GET" });
   } catch (e) {
     console.error("[mapbox-geocode] suggest_places fetch error:", e);
-    return jsonResponse({ error: "suggest_exception", suggestions: [] }, 502);
+    return {
+      errorResponse: jsonResponse(
+        { error: "suggest_exception", suggestions: [] },
+        502,
+      ),
+    };
   }
 
   if (!upstream.ok) {
     console.warn("[mapbox-geocode] suggest_places non-OK:", upstream.status);
-    return jsonResponse(
-      { error: `mapbox_${upstream.status}`, suggestions: [] },
-      upstream.status >= 500 ? 502 : upstream.status,
-    );
+    return {
+      errorResponse: jsonResponse(
+        { error: `mapbox_${upstream.status}`, suggestions: [] },
+        upstream.status >= 500 ? 502 : upstream.status,
+      ),
+    };
   }
 
   const data = (await upstream.json()) as SuggestRawResponse;
@@ -449,7 +530,7 @@ async function handleSuggestPlaces(
     .filter((s): s is NonNullable<typeof s> => s !== null)
     .slice(0, effectiveLimit);
 
-  return jsonResponse({ suggestions });
+  return { suggestions };
 }
 
 type PlaceDetails = {
