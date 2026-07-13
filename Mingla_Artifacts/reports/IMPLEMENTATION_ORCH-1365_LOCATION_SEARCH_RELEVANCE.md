@@ -216,4 +216,53 @@ change); they are strict improvements to the business card UI with no behavior c
 ## 12. Discoveries for Orchestrator
 
 - **Package react-resolution quirk (pre-existing):** `packages/location-input` source cannot resolve `react` under either app's tsc/eslint (out-of-root path). Not introduced here and not blocking (ORCH-1361 shipped the same file), but the package has no isolated typecheck — a future ORCH could add one (its own `node_modules`/project references) so the shared package is type-gated on its own.
-- **Country/place collision** (see §10) — registerable as a low-priority follow-on if a user reports it.
+- **Country/place collision** — CLOSED by INC-1 below (was §10's documented limitation; the fallback now recovers it generically).
+
+---
+
+## 13. INCREMENT ORCH-1365-INC-1 — ambiguous country / US-state collision (zero-result fallback)
+
+**Status:** implemented and self-verified (edge-fn-only; Deno battery + gate + self-test + `deno check` GREEN; fails-on-revert proven for T-14 + T-15). Runtime curl of the deployed `suggest_places` deferred to tester.
+**Fix commit:** `240e089d1` · same branch/worktree.
+**SPEC:** §12 of `SPEC_ORCH-1365_LOCATION_SEARCH_RELEVANCE.md` (§12.3 algorithm, §12.6 tests, §12.9 allowlist).
+
+### 13.1 What changed (plain English)
+
+The §10 "documented limitation" is now fixed. Typing **"atlanta georgia"** used to return an empty list: the trailing-country parser stripped "georgia" and biased the search to Georgia the *country*, where Atlanta does not exist. The handler now notices that biased search came back empty and **retries once with the full "atlanta georgia" query and no country filter** — surfacing **Atlanta, Georgia, United States** as row #1. The common cases are untouched and cost nothing extra: "lekki nigeria" (biased search has results), single words, non-country trailing words, and the genuine country query "tbilisi georgia" all still make **exactly one** search call. The retry reuses the same Mapbox session, so there is **no extra billing** — only one extra round-trip, and only on the rare empty-biased case.
+
+### 13.2 How it was built (SPEC §12.3, edge-fn-only)
+
+Inside `supabase/functions/mapbox-geocode/index.ts`, `handleSuggestPlaces` ONLY:
+
+- Extracted the existing "build URL → fetch → check `upstream.ok` → parse → map → slice" body into a new internal helper **`placeSuggestOnce(token, query, sessionToken, opts) → { suggestions } | { errorResponse }`** — a pure refactor; the biased call's behavior is byte-identical to before.
+- `handleSuggestPlaces` now: `first = placeSuggestOnce(query, {...opts, country})`; if `"errorResponse" in first` → return it unchanged (non-OK/5xx is **never** masked as empty); **if `country && first.suggestions.length === 0`** → `fb = placeSuggestOnce(trimmed, {...opts, country: undefined})` (FULL original query, no country, **same `session_token`**) and return `{ suggestions: "errorResponse" in fb ? [] : fb.suggestions }`; else return `{ suggestions: first.suggestions }`.
+- **Placement:** `placeSuggestOnce` is defined *after* `handleSuggestPlaces` so its `buildPlaceSuggestUrl` call site stays on the consumer side of the T-5 / gate isolation wall (the business `handleSuggest`→`handleSuggestPlaces` source region has **no** `buildPlaceSuggestUrl`).
+
+### 13.3 One-call-when-non-empty proof
+
+`placeSuggestOnce` runs once for the biased call; the second call is guarded by `country && first.suggestions.length === 0`. T-15 (biased "lekki nigeria" non-empty → **1** fetch call) and T-16 ("lekki" no-strip and "tbilisi georgia" genuine-country → **1** call each) prove the hot path never doubles. T-14 (biased empty → **2** calls, call[1] drops `&country=`, both share the `session_token`) proves the fallback only fires on empty. Dropping the `length === 0` guard (retry unconditionally) turns T-15 RED — verified.
+
+### 13.4 Business-untouched restatement
+
+INC-1 is **edge-fn-only**. `parseTrailingCountry`/`countryNames.ts`, `buildPlaceSuggestUrl`, `PLACE_SUGGEST_TYPES`, `handleSuggest`, `buildSuggestUrl`, `buildForwardUrl`, `autocompleteMapbox`, the shared service, the component, the Preferences/CityPicker hosts, and all UI are **byte-identical**. Commit `240e089d1` touches exactly 3 files (`index.ts`, the new test, the CI job); `git diff` of `index.ts` parent→HEAD adds/removes **no** business-fn line (`buildSuggestUrl`/`handleSuggest`/`handleForward`/`case "suggest"` unchanged). The scoped ORCH-1079 gate + its `--self-test` both exit 0; ADV-B (switch routing) + T-5 (source isolation) stay green. `verify_jwt=true` (`config.toml` untouched), I-1315 paywall (no `mingla-business/**` touch), and Mapbox session billing (same-token reuse = one session) all preserved. The over-strip stays visible at the parse layer (ADV-A1 rows green, no `[TEST-MOD-APPROVED]` needed) and is recovered at the handler layer.
+
+### 13.5 Tests added (§12.6) + fails-on-revert
+
+- **NEW** `supabase/functions/mapbox-geocode/__tests__/orch1365-inc1-collision-fallback.test.ts` — T-14..T-17, drive the exported `handler` with a stubbed `globalThis.fetch` + `Deno.env`. Registered in the `orch-1365-location-search-relevance-deno-tests` CI job (added the file to `DENO_TEST_FILES` and `--allow-env` to the `deno test` flags — the handler reads `MAPBOX_ACCESS_TOKEN`).
+- **fails-on-revert verified at commit `240e089d1`** (true line deletion, restored after):
+  - **T-14** — delete the §12.3 fallback block → "atlanta georgia" returns the empty biased result → `suggestions[0].displayName !== "Atlanta"` → RED. Restored → GREEN.
+  - **T-15** — change the guard `if (country && first.suggestions.length === 0)` → `if (country)` → "lekki nigeria" fires the fallback → 2 calls → RED. Restored → GREEN.
+- Full ORCH-1365 edge battery (5 files) = **46 passed / 0 failed**; `deno check` clean; gate + self-test exit 0.
+
+### 13.6 Additional SC coverage (§12.5)
+
+| SC | Assertion | Verified by | Result |
+|----|-----------|-------------|--------|
+| SC-11 | "atlanta georgia" → Atlanta, Georgia, US #1 (biased empty → full-query fallback) | T-14 (handler-level, stubbed fetch) | PASS (source); runtime curl → tester |
+| SC-12 | "lekki nigeria" → Lekki #1 via exactly ONE call | T-15 | PASS |
+| SC-13 | "lekki" / "tbilisi georgia" single-call, no fallback | T-16 | PASS |
+| §12.4 | biased non-OK (5xx) surfaced as error, not masked | T-17 | PASS |
+
+### 13.7 Operator action (INC-1)
+
+No migration. Deploy `mapbox-geocode` from MERGED main (preserve `verify_jwt=true`); curl-verify `suggest_places("atlanta georgia")` → Atlanta GA #1 AND `suggest_places("lekki nigeria")` → Lekki, Lagos #1. Extend `I-PROPOSED-1365-CONSUMER-PLACE-SEARCH-TYPE-FILTERED` with clause (d) (§12.7) and flip ACTIVE at CLOSE.
