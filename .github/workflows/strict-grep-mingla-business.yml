@@ -4383,3 +4383,16 @@ jobs:
         run: node .github/scripts/strict-grep/orch-1355-draft-promotion-no-remount.mjs --self-test
       - name: Run ORCH-1355 draft-promotion-no-remount gate
         run: node .github/scripts/strict-grep/orch-1355-draft-promotion-no-remount.mjs
+
+  orch-1367-release-version-parity:
+    name: "ORCH-1367: app-mobile/app.json and mingla-business/app.json carry the SAME expo.version — the two apps ship a matched release version; divergence (e.g. consumer 1.1.1 vs business 1.1.0) fails the build (I-RELEASE-VERSION-PARITY)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1367 release-version-parity gate
+        run: node .github/scripts/strict-grep/orch-1367-release-version-parity.mjs --self-test
+      - name: Run ORCH-1367 release-version-parity gate
+        run: node .github/scripts/strict-grep/orch-1367-release-version-parity.mjs
