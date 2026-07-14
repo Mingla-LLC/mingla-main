@@ -11,6 +11,17 @@
 
 ---
 
+## Amendment A1 (2026-07-14) — consumer-lane pixel/CAPI PROVISIONED + two-lane tracking
+
+**Consumer tracking assets are provisioned + verified (2026-07-14):** Meta pixel **Mingla Web `1949011972638955`** (created; NOT yet installed on the site — this spec installs it) and a **Conversions-API token** (**verified valid**). Real values → `MINGLA_MASTER_KEYS.md` → "Meta Ads Engine". Secrets: `META_DATASET_ID=1949011972638955`, `META_CAPI_ACCESS_TOKEN` (verified), `EXPO_PUBLIC_META_PIXEL_ID=1949011972638955`. So §4's "Meta Pixel/CAPI = greenfield" updates to **"provisioned but not yet wired into code"** — this spec wires it. (TikTok pixel/Events token remain greenfield/pending.)
+
+**TWO-LANE tracking (per #862/#864 Amendment A2).** Attribution is per-lane:
+- **Consumer lane** — conversion = a reservation/purchase on a public page; uses the Mingla Web pixel + `META_CAPI_ACCESS_TOKEN`. Active now.
+- **Business lane** — conversion = a business signs up / claims; uses a SEPARATE Mingla Business pixel + `META_MINGLABIZ_CAPI_ACCESS_TOKEN` (later).
+`ad_attribution_touches` + `ad_conversions` carry the lane (or `connection_id` → #862 `meta_ad_connections`); rollups + retargeting audiences are per-lane.
+
+---
+
 ## 1. Executive summary
 
 Close the loop: connect an **ad click** → **public page visit** (web or in‑app) → **reservation/purchase**, so Mingla can (a) **prove ROI to venues** (per‑campaign, per‑page rollups), (b) **feed conversions back to Meta & TikTok** so they optimize delivery, and (c) **build retargeting audiences**. This is the measurement engine the whole "Full Rooms" thesis runs on.
