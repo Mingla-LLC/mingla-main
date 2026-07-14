@@ -3,7 +3,7 @@
 **Status:** implemented and verified (config + CI gate; no runtime UI).
 **Worktree:** `~/Desktop/mingla-orchs/ORCH-1367-[unified-release-version]/` on branch `ORCH-1367-unified-release-version`.
 **Date:** 2026-07-14.
-**Commit:** `022d965be` (single IMPLEMENT commit — all SCs below satisfied by it).
+**Commit:** `84249d09a` (single IMPLEMENT commit — all SCs below satisfied by it).
 
 ---
 
@@ -17,7 +17,7 @@ Nothing user-facing changes at runtime. This is a release-hygiene + CI-guard cha
 
 ## 2. SPEC success-criteria coverage
 
-| SC | Criterion | Status | Satisfied by (commit `022d965be`) |
+| SC | Criterion | Status | Satisfied by (commit `84249d09a`) |
 |----|-----------|--------|------------------------------------------|
 | SC-1 | `app-mobile/app.json` `expo.version` = "1.1.2" (was "1.1.1"); only that field changed | ✓ | `app-mobile/app.json` line 5 |
 | SC-2 | `mingla-business/app.json` `expo.version` = "1.1.2" (was "1.1.0"); only that field changed | ✓ | `mingla-business/app.json` line 5 |
@@ -92,7 +92,7 @@ GATE_EXIT=0
 ```
 `git diff` after restore confirmed the only net change to `mingla-business/app.json` is the intended `1.1.0 → 1.1.2` bump (clean restore, no residue).
 
-**fails-on-revert verified at `022d965be`** (test path `.github/scripts/strict-grep/orch-1367-release-version-parity.mjs`; live-gate exit 1 on divergence, exit 0 on parity; `--self-test` 6/6).
+**fails-on-revert verified at `84249d09a`** (test path `.github/scripts/strict-grep/orch-1367-release-version-parity.mjs`; live-gate exit 1 on divergence, exit 0 on parity; `--self-test` 6/6).
 
 ---
 
