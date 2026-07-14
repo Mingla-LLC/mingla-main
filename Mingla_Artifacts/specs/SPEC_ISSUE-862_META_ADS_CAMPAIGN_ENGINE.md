@@ -10,6 +10,22 @@
 
 ---
 
+## Amendment A1 (2026-07-14) — ad destination is a **smart link**, not a raw URL
+
+**Correction (supersedes the "dest_url = plain public URL" assumption below).** The ad's creative `link_url` MUST be an **AppsFlyer OneLink smart link** that (a) deep-links into the Mingla app if installed, (b) falls back to the public web page otherwise, and (c) carries campaign attribution params (+ passes through `fbclid`/`ttclid` as OneLink `af_sub*` params — the hook the #865 Conversions-API loop reads back).
+
+**Live evidence (AppsFlyer MCP probe, 2026-07-14):**
+- Consumer OneLink template `redirection_profile` (ID `w36m`), branded domain **`go.usemingla.com`** (custom domain over `mingla.onelink.me`), **LIVE** — platforms consumer iOS `id6760440898` + Android `com.mingla.app.v2`.
+- Business OneLink template `business_profile` (ID `ZSCW`), `minglabiz.onelink.me`, **0 links / version 0 = NOT production-ready** (pending the business native build). → **Use `go.usemingla.com` (consumer) as the smart-link host now; business-app-open is blocked on the business OneLink going live** (Open Decision OD‑9 + §7 action item).
+
+**Construction (reuse the existing convention):** build the smart link **server-side** in `admin-meta-create-campaign` following `app-mobile/src/services/oneLinkShare.ts` (`generateInviteLink`; `deep_link_value ∈ {brand,event,trip,experience}`, `deep_link_sub1 = brandSlug`, `deep_link_sub2 = entitySlug`) with attribution params `af_c_id = <our meta_campaign_id>`, `af_ad = <ad name>`, `pid = meta_ads|tiktok_ads`, and pass-through slots reserved for `fbclid`/`ttclid`. Web fallback URL = the resolved `dest_url` (`{BUSINESS_WEB_ORIGIN}/e/{brandSlug}/{eventSlug}` etc.).
+
+**Data-model change:** add `dest_smart_link text NOT NULL` to `meta_campaigns` (the OneLink used as the creative `link_url`); **keep `dest_url`** as the canonical public web page (reference/fallback). Store BOTH.
+
+**Create-step change (§4.4b step 3):** the creative `link_data.link` / `call_to_action.value.link` = **`dest_smart_link`**, not `dest_url`.
+
+---
+
 ## 1. Executive summary
 
 Build the **first channel** of Mingla's internal Ad Engine: a Meta (Facebook/Instagram) Marketing‑API integration, driven entirely from **Admin Web** (`mingla-admin`) and backed by Supabase **edge functions + DB**. An admin can (1) connect Mingla's Meta ad account, (2) create a campaign → ad set → ad in one atomic action, (3) set budget & audience, (4) launch and pause it, and (5) have the campaign's Meta IDs, live status, and **destination public‑page reference** persisted in our DB.
@@ -175,7 +191,8 @@ dest_page_type      text NOT NULL CHECK (dest_page_type IN ('event','trip','bran
 dest_brand_slug     text NOT NULL
 dest_entity_slug    text NULL                     -- event/trip/venue slug; NULL for brand pages
 dest_event_id       uuid NULL REFERENCES public.events(id) ON DELETE SET NULL
-dest_url            text NOT NULL                 -- resolved public URL == creative link_url
+dest_url            text NOT NULL                 -- canonical public web page (fallback/reference), e.g. /e/{brandSlug}/{eventSlug}
+dest_smart_link     text NOT NULL                 -- [Amendment A1] AppsFlyer OneLink used as the creative link_url (opens app if installed, else dest_url) + attribution params
 created_by          uuid NULL REFERENCES auth.users(id)
 created_at          timestamptz NOT NULL DEFAULT now()
 updated_at          timestamptz NOT NULL DEFAULT now()
