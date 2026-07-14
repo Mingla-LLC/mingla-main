@@ -26,6 +26,20 @@
 
 ---
 
+## Amendment A2 (2026-07-14) — consumer lane PROVISIONED + two-lane multi-connection model
+
+**The Meta consumer lane is fully provisioned and token-verified (2026-07-14).** §7 consumer-lane prerequisites are DONE. Real IDs (also in `MINGLA_MASTER_KEYS.md` → "Meta Ads Engine"):
+- Portfolio **Mingla** `830733900115504` · Ad account **Use Mingla** `2393570861066813` (USD, **ACTIVE**, billing on, min daily $1.00) · Page **Mingla** `797406353459597` · Pixel **Mingla Web** `1949011972638955` · App **Mingla Ads Engine** `1270281948368169` · System User **Mingla-server** `61592024996570`.
+- Supabase Function Secrets (set at build): `META_SYSTEM_USER_TOKEN` (**verified valid** — `GET /me/adaccounts` returns Use Mingla ACTIVE + the pixel), `META_CAPI_ACCESS_TOKEN` (**verified valid**), `META_APP_SECRET`, `META_APP_ID=1270281948368169`, `META_BUSINESS_ID=830733900115504`, `META_AD_ACCOUNT_ID=2393570861066813`, `META_PAGE_ID=797406353459597`, `META_DATASET_ID=1949011972638955`, `META_API_VERSION=v21.0`. No App Review needed — a dev-mode system-user token manages the app owner's own account (confirmed live).
+
+**TWO-LANE MODEL (supersedes the single-connection assumption).** `meta_ad_connections` is **multi-row — one per lane/portfolio**:
+- Add `lane text NOT NULL UNIQUE CHECK (lane IN ('consumer','business'))`, `token_env_var text NOT NULL` (Supabase secret name for that lane's System User token), and `capi_env_var text` (secret name for its CAPI token).
+- `resolveMetaToken(connection)` reads `Deno.env.get(connection.token_env_var)` — NOT one hardcoded env. Consumer → `META_SYSTEM_USER_TOKEN` / `META_CAPI_ACCESS_TOKEN`; business → `META_MINGLABIZ_SYSTEM_USER_TOKEN` / `META_MINGLABIZ_CAPI_ACCESS_TOKEN`.
+- **Seed the consumer connection now** (IDs above, `lane='consumer'`). The **business** connection (Mingla Business portfolio) lands when that lane is provisioned. Everywhere below that says "the Mingla account" generalizes to "the connection's account/Page/pixel/token".
+- `admin-meta-connect` binds/verifies per-lane; the builder (#864) selects the lane.
+
+---
+
 ## 1. Executive summary
 
 Build the **first channel** of Mingla's internal Ad Engine: a Meta (Facebook/Instagram) Marketing‑API integration, driven entirely from **Admin Web** (`mingla-admin`) and backed by Supabase **edge functions + DB**. An admin can (1) connect Mingla's Meta ad account, (2) create a campaign → ad set → ad in one atomic action, (3) set budget & audience, (4) launch and pause it, and (5) have the campaign's Meta IDs, live status, and **destination public‑page reference** persisted in our DB.
