@@ -16,7 +16,7 @@ On the consumer app (iOS), tapping the flag/dial-code chip in **Add friend** (Fr
 
 ## 2. SPEC success-criteria coverage
 
-All code satisfied at commit `<FIX_COMMIT>` (single fix commit — hash filled in §11 after commit).
+All code satisfied at commit `0241d813e` (single fix commit — hash filled in §11 after commit).
 
 | SC | Criterion | Status | How verified |
 |----|-----------|--------|--------------|
@@ -164,7 +164,7 @@ Parity is automatic (single shared RN codebase; no per-platform path).
 - **No migration; no edge deploy; no `db push`.** Pure client-side RN JS.
 - **Next → orchestrator REVIEW**, then `mingla-tester`.
 - **At CLOSE:** flip `I-PROPOSED-1371-PICKER-NOT-COPRESENT-WITH-SHEET-MODAL` DRAFT→ACTIVE; **bless the WaveCBatch3 AF-2 append-only amendment** (`[TEST-MOD-APPROVED ORCH-1371]` in the fix commit); per-platform consumer OTA (never `--platform all`); COMMS entry; registry/World-Map sync; reap worktree.
-- **Fix commit hash:** `<FIX_COMMIT>` (this branch — filled below after commit).
+- **Fix commit hash:** `0241d813e` (this branch — filled below after commit).
 
 ---
 
