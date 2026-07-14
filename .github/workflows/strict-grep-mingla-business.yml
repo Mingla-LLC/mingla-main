@@ -4409,3 +4409,16 @@ jobs:
         run: node .github/scripts/strict-grep/orch-1369-release-submit-config.mjs --self-test
       - name: Run ORCH-1369 release-submit-config gate
         run: node .github/scripts/strict-grep/orch-1369-release-submit-config.mjs
+
+  orch-1371-1372-picker-not-copresent:
+    name: "ORCH-1371/1372: the consumer country picker (CountryPickerModal) is never co-present with a wrapInRNModal sheet's RN <Modal> on iOS — AddFriendView hoists the picker+state to ConnectionsPage (gated sibling in anyFriendsChildOpen; visible={showFriendsModal && !anyFriendsChildOpen}) and PairRequestModal self-gates visible={visible && !showCountryPicker} (I-PROPOSED-1371-PICKER-NOT-COPRESENT-WITH-SHEET-MODAL)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1371-1372 picker-not-copresent gate
+        run: node .github/scripts/strict-grep/orch-1371-1372-picker-not-copresent-with-sheet-modal.mjs --self-test
+      - name: Run ORCH-1371-1372 picker-not-copresent gate
+        run: node .github/scripts/strict-grep/orch-1371-1372-picker-not-copresent-with-sheet-modal.mjs
