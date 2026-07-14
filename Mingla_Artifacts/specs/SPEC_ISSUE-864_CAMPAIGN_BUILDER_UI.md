@@ -30,6 +30,16 @@ Any power-user knobs (exact objective, optimization goal, bid) hide behind an **
 
 ---
 
+## Amendment A2 (2026-07-14) — audience/lane selector (consumer vs business)
+
+Per #862 Amendment A2, the engine holds **one connection per lane**. The builder's **first decision** is "**Who are you advertising to?**" → **Consumers** (Mingla lane → ads drive to live public pages) or **Businesses** (Mingla Business lane → ads drive businesses to the Mingla Business signup/claim flow). This selection picks the `meta_ad_connections` row and thereby the ad account, Page, pixel, destination source, and token — everything downstream keys off it.
+- **Consumers** lane = **active now** (provisioned): destination picker reads `business_public_events_view` (as specced).
+- **Businesses** lane = **shown, disabled** until the business lane is provisioned (same forward-compatible pattern as the locked goals in A1): destination = Mingla Business signup/claim URL (TBD).
+
+Order: **audience/lane → goal (A1) → destination → media → budget → copy → review**. The lane selector sits above the goal-first step.
+
+---
+
 ## 1. Executive summary
 
 Build the **Campaign Builder** — a dedicated multi-step admin screen (`#/campaign-builder` in `mingla-admin`) that lets an admin assemble a Meta ad campaign visually: pick the **channel**, pick a **live public page** as the destination, **upload the ad image**, set **budget & audience**, write **ad copy**, then **review** against a live Facebook-style preview and **create it (paused)**. Submit calls #862's `admin-meta-create-campaign` endpoint; the created campaign lands PAUSED in #862's campaign surface with the Launch control.
