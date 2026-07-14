@@ -11,6 +11,23 @@
 
 ---
 
+## Amendment A1 (2026-07-14) — goal-first objectives + smart-link destination
+
+**Two corrections from the "complex formats, simple screen" direction:**
+
+**(1) Goal-first objective step (replaces the plain "objective select" in Step 4).** Step 1 (or a lead sub-step) asks in plain language **"What's the goal of this campaign?"** with four cards, each silently mapping to the Meta objective + optimization + audience underneath — so an admin never touches Meta jargon:
+- **Send people to a page** → `OUTCOME_TRAFFIC` + `LANDING_PAGE_VIEWS`. **Active now.**
+- **Build awareness** → `OUTCOME_AWARENESS` + `REACH`. **Active now.**
+- **Get purchases / reservations** → `OUTCOME_SALES` + `OFFSITE_CONVERSIONS`. **Shown but DISABLED** with a "Available once conversion tracking ships (#865)" badge — it needs the Pixel/CAPI from #865.
+- **Bring back past visitors (retargeting)** → a retargeting **custom audience** + Traffic/Sales. **Shown but DISABLED** ("Available with #865") — retargeting audiences are built by #865.
+Any power-user knobs (exact objective, optimization goal, bid) hide behind an **"Advanced"** disclosure. This is how the builder supports complex formats without a complex screen.
+
+**(2) The destination is a SMART LINK, not a raw URL.** Per #862 Amendment A1, the ad points at an AppsFlyer OneLink (`go.usemingla.com`) that opens the Mingla app if installed, else the public web page, carrying attribution. The Step 2 destination preview therefore shows the smart link with a plain-language note: **"Opens the Mingla app if installed, otherwise the web page."** The builder still lets the admin pick the public page; #862 builds the smart link server-side. (Business-app-open is pending the business OneLink going live — surfaced as an info note, not a blocker; consumer app-open + web fallback work now.)
+
+**Dependency note:** the two disabled goals above unlock when **#865** (attribution/retargeting) ships. #864 builds them **forward-compatible** (present, disabled, labeled), not omitted.
+
+---
+
 ## 1. Executive summary
 
 Build the **Campaign Builder** — a dedicated multi-step admin screen (`#/campaign-builder` in `mingla-admin`) that lets an admin assemble a Meta ad campaign visually: pick the **channel**, pick a **live public page** as the destination, **upload the ad image**, set **budget & audience**, write **ad copy**, then **review** against a live Facebook-style preview and **create it (paused)**. Submit calls #862's `admin-meta-create-campaign` endpoint; the created campaign lands PAUSED in #862's campaign surface with the Launch control.
