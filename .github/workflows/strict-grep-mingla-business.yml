@@ -4396,3 +4396,16 @@ jobs:
         run: node .github/scripts/strict-grep/orch-1367-release-version-parity.mjs --self-test
       - name: Run ORCH-1367 release-version-parity gate
         run: node .github/scripts/strict-grep/orch-1367-release-version-parity.mjs
+
+  orch-1369-release-submit-config:
+    name: "ORCH-1369: both apps' eas.json submit.production.android.releaseStatus is \"completed\" (not \"draft\" — a draft internal-track upload is non-installable) and mingla-business/eas.json submit.production.ios carries the ASC API-key credentials (ascApiKeyPath + ascApiKeyId + ascApiKeyIssuerId) for unattended eas submit (I-RELEASE-SUBMIT-CONFIG)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1369 release-submit-config gate
+        run: node .github/scripts/strict-grep/orch-1369-release-submit-config.mjs --self-test
+      - name: Run ORCH-1369 release-submit-config gate
+        run: node .github/scripts/strict-grep/orch-1369-release-submit-config.mjs

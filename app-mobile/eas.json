@@ -56,7 +56,7 @@
       "android": {
         "serviceAccountKeyPath": "/Users/sethogieva/.mingla-secrets/playstore-mingla.json",
         "track": "internal",
-        "releaseStatus": "draft"
+        "releaseStatus": "completed"
       },
       "ios": {
         "ascAppId": "6760440898",
