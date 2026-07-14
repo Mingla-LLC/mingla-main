@@ -293,6 +293,17 @@ export default function PairRequestModal({
     onClose();
   }, [onClose]);
 
+  // ORCH-1372 [pair-request-country-picker-hidden]: while the country picker is
+  // open the sheet's RN <Modal> window is dropped (visible gated below). Dropping
+  // it fires BaseBottomSheet's onClose on the suppress transition — swallow it so
+  // suppressing for the picker does NOT tear down the whole pair flow or clear the
+  // typed phone/search. Only a genuine user dismiss (header X → handleClose) fully
+  // closes. Mirror of AccountSettings.handleRootClose (:658-677).
+  const handleSheetClose = useCallback(() => {
+    if (showCountryPicker) return;
+    handleClose();
+  }, [showCountryPicker, handleClose]);
+
   const header = (
     <View style={styles.header}>
       <Text style={styles.headerTitle}>{t('social:pairWithSomeone')}</Text>
@@ -309,8 +320,10 @@ export default function PairRequestModal({
   return (
     <>
       <BaseBottomSheet
-        visible={visible}
-        onClose={handleClose}
+        // ORCH-1372: gate the sheet closed while the country picker is open so the
+        // two RN <Modal> windows never co-present on iOS (mirror AccountSettings:683).
+        visible={visible && !showCountryPicker}
+        onClose={handleSheetClose}
         snapPoints={PAIR_REQUEST_SNAP_POINTS}
         wrapInRNModal
         keyboardBehavior="interactive"

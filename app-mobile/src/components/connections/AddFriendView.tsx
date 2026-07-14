@@ -12,23 +12,14 @@ import {
 import { useTranslation } from 'react-i18next';
 import { Icon } from "../ui/Icon";
 import * as Haptics from "expo-haptics";
-// META-ORCH-0991 Wave C: AddFriendView is rendered ONLY inside the ConnectionsPage
-// friends modal, which is now a BaseBottomSheet. The phone field uses
-// BottomSheetTextInput so it coordinates with the sheet (the keyboard never
-// covers it). The country picker stays CountryPickerModal (its own fullScreen
-// RN <Modal>, sibling fragment) — the SAME proven Batch-4 PairRequestModal
-// pattern: a fullScreen RN <Modal> sub-picker opened by a user tap stacks above
-// the wrapInRNModal sheet (it escapes the sheet's scroll context so it does NOT
-// trip the "VirtualizedLists nested in a ScrollView" warning that a
-// CountryPickerOverlay-in-sheet would). Its FlatList rows are virtualized
-// correctly because the Modal is a separate window.
+// ORCH-1371 [add-friend-country-picker-hidden]: the country/dial-code picker is
+// HOISTED to ConnectionsPage and rendered as a SIBLING of the friends sheet,
+// gated closed via `anyFriendsChildOpen`. iOS presents only ONE RN <Modal> at a
+// time, so a `wrapInRNModal` sheet cannot co-present a second picker modal — the
+// parent sheet drops before the picker presents, then restores (subtract before
+// adding). Proven pattern: AccountSettings.tsx:638-683.
 import { BottomSheetTextInput } from "../ui/BaseBottomSheet";
-import {
-  getDefaultCountryCode,
-  getCountryByCode,
-} from "../../constants/countries";
 import { CountryData } from "../../types/onboarding";
-import { CountryPickerModal } from "../onboarding/CountryPickerModal";
 import { PendingInvite } from "../../services/phoneLookupService";
 import { FriendRequest } from "../../hooks/useFriends";
 import { usePhoneLookup, useDebouncedValue } from "../../hooks/usePhoneLookup";
@@ -63,6 +54,14 @@ interface AddFriendViewProps {
     receiverEmail: string,
     receiverUsername?: string
   ) => Promise<void>;
+  /** ORCH-1371: hoisted country picker state (owned by ConnectionsPage). */
+  selectedCountry: CountryData;
+  /** ORCH-1371: hoisted phone-field value (survives the sheet drop). */
+  phoneNumber: string;
+  /** ORCH-1371: replaces the local setPhoneNumber. */
+  onPhoneNumberChange: (text: string) => void;
+  /** ORCH-1371: opens the hoisted country picker (sibling of the friends sheet). */
+  onOpenCountryPicker: () => void;
 }
 
 export function AddFriendView({
@@ -72,6 +71,10 @@ export function AddFriendView({
   outgoingRequestsLoading,
   onCancelRequest,
   onAddFriend,
+  selectedCountry,
+  phoneNumber,
+  onPhoneNumberChange,
+  onOpenCountryPicker,
 }: AddFriendViewProps) {
   const { t } = useTranslation(['social', 'common']);
   const { user } = useAppStore();
@@ -99,18 +102,9 @@ export function AddFriendView({
   const sentTabLoading = outgoingRequestsLoading || invitesLoading;
   const sentTabCount = sentItems.length;
 
-  // Phone input state
-  const [phoneNumber, setPhoneNumber] = useState("");
-  const [selectedCountry, setSelectedCountry] = useState<CountryData>(
-    () =>
-      getCountryByCode(getDefaultCountryCode()) ?? {
-        code: "US",
-        name: "United States",
-        dialCode: "+1",
-        flag: "\u{1F1FA}\u{1F1F8}",
-      }
-  );
-  const [showCountryPicker, setShowCountryPicker] = useState(false);
+  // ORCH-1371: phoneNumber + selectedCountry + the picker flag are HOISTED to
+  // ConnectionsPage (they must survive the friends-sheet RN <Modal> drop, which
+  // unmounts this child). Only the ephemeral action status stays local.
   const [actionStatus, setActionStatus] = useState<
     "idle" | "sending" | "sent" | "error"
   >("idle");
@@ -163,7 +157,7 @@ export function AddFriendView({
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           onRequestSent();
           setTimeout(() => {
-            setPhoneNumber("");
+            onPhoneNumberChange("");
             setActionStatus("idle");
           }, 2000);
         } else if (phoneLookupResult.friendship_status === "friends") {
@@ -196,7 +190,7 @@ export function AddFriendView({
         setActionStatus("sent");
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setTimeout(() => {
-          setPhoneNumber("");
+          onPhoneNumberChange("");
           setActionStatus("idle");
         }, 2000);
       }
@@ -216,6 +210,7 @@ export function AddFriendView({
     currentUserId,
     queryClient,
     onRequestSent,
+    onPhoneNumberChange,
   ]);
 
   // True when phone input has changed but debounced lookup hasn't fired yet
@@ -241,13 +236,6 @@ export function AddFriendView({
     actionStatus === "sent" ||
     (phoneLookupResult?.found &&
       phoneLookupResult.friendship_status !== "none");
-
-  const handleCountrySelect = useCallback((code: string) => {
-    const country = getCountryByCode(code);
-    if (country) {
-      setSelectedCountry(country);
-    }
-  }, []);
 
   const handleCancelRequest = useCallback(
     (requestId: string, displayName: string) => {
@@ -396,7 +384,7 @@ export function AddFriendView({
           <View style={styles.phoneRow}>
             <TouchableOpacity
               style={styles.countryPicker}
-              onPress={() => setShowCountryPicker(true)}
+              onPress={onOpenCountryPicker}
               activeOpacity={0.6}
             >
               <Text style={styles.countryPickerFlag}>
@@ -414,7 +402,7 @@ export function AddFriendView({
               style={styles.phoneInput}
               value={phoneNumber}
               onChangeText={(text) => {
-                setPhoneNumber(text);
+                onPhoneNumberChange(text);
                 if (
                   actionStatus !== "idle" &&
                   actionStatus !== "sending"
@@ -519,16 +507,6 @@ export function AddFriendView({
             )}
           </TouchableOpacity>
       </View>
-
-      {/* Country picker modal — fullScreen RN <Modal> sibling fragment, opened by
-          a user tap (Batch-4 PairRequestModal precedent). Stacks above the friends
-          BaseBottomSheet and virtualizes its country FlatList in its own window. */}
-      <CountryPickerModal
-        visible={showCountryPicker}
-        selectedCode={selectedCountry.code}
-        onSelect={handleCountrySelect}
-        onClose={() => setShowCountryPicker(false)}
-      />
     </View>
   );
 }

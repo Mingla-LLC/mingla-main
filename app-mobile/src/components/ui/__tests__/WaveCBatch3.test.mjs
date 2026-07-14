@@ -34,12 +34,13 @@
  *      `visible={showFriendsModal && !anyFriendsChildOpen}` + handleFriendsModalClose
  *      so two RN-Modal-backed surfaces never co-present on iOS. AddFriendView (the
  *      friends-list tab's only TextInput owner, used ONLY in this modal) swaps its
- *      <TextInput> → <BottomSheetTextInput> and its CountryPickerModal (a fullScreen
- *      RN <Modal>) stays CountryPickerModal — the same proven Batch-4 PairRequestModal
- *      pattern where a fullScreen RN <Modal> sub-picker, opened by a user tap, stacks
- *      above the wrapInRNModal sheet and virtualizes its country list in its own window
- *      (a CountryPickerOverlay nested in the sheet's scroll body trips the
- *      "VirtualizedLists nested in a ScrollView" warning — rejected, sim-confirmed).
+ *      <TextInput> → <BottomSheetTextInput>. Its country picker is NO LONGER
+ *      rendered here: per ORCH-1371 it is HOISTED to ConnectionsPage and rendered
+ *      as a SIBLING of the friends sheet, gated closed via anyFriendsChildOpen —
+ *      because iOS presents only ONE RN <Modal> at a time, so a picker co-present
+ *      with the wrapInRNModal sheet never appears (proven; the earlier "Batch-4
+ *      sub-picker stacks above the sheet" claim was FALSE on iOS). Mirror
+ *      AccountSettings.tsx:638-683.
  *
  * Structural/contract test (the @gorhom/bottom-sheet host is NOT mountable in this
  * harness — same approach as the locked Wave-A/Batch-1..5/Wave-C-1/Wave-C-2 suites;
@@ -215,7 +216,8 @@ function run() {
     assert.ok(!/visible=\{showFriendsModal\}/.test(c), "CP-A1: friends sheet must NOT use ungated visible={showFriendsModal} — reintroduces the co-present crash");
   }
 
-  // AddFriendView (the friends-list tab's TextInput owner) — keyboard-aware + §13-safe country picker.
+  // AddFriendView (the friends-list tab's TextInput owner) — keyboard-aware; its
+  // country picker is HOISTED to ConnectionsPage (ORCH-1371), no longer rendered here.
   {
     const src = read(ADD_FRIEND_VIEW);
     const c = code(src);
@@ -225,9 +227,11 @@ function run() {
     assert.ok(!importsGorhom(src), "AF-1: must NOT import @gorhom/bottom-sheet directly");
     // The raw RN <TextInput> on the phone field must be gone (it is now BottomSheetTextInput).
     assert.ok(!/<TextInput\b/.test(c), "AF-1: raw RN <TextInput> must be replaced by <BottomSheetTextInput>");
-    // The country picker stays CountryPickerModal (fullScreen RN <Modal>, Batch-4 precedent) —
-    // a CountryPickerOverlay nested in the sheet scroll body trips the VirtualizedList warning.
-    assert.match(c, /<CountryPickerModal\b/, "AF-2: country picker must stay CountryPickerModal (fullScreen RN Modal, Batch-4 precedent; virtualizes its list in its own window)");
+    // ORCH-1371: the country picker is HOISTED to ConnectionsPage and rendered as a
+    // SIBLING of the friends sheet — AddFriendView must NOT render it. iOS presents
+    // only one RN <Modal> at a time, so a picker co-present with the wrapInRNModal
+    // sheet never appears (mirror AccountSettings.tsx:638-683).
+    assert.ok(!/<CountryPickerModal\b/.test(c), "AF-2 (ORCH-1371): picker HOISTED to ConnectionsPage — AddFriendView must NOT render <CountryPickerModal> (iOS co-present-with-sheet fix)");
     assert.ok(!/<CountryPickerOverlay\b/.test(c), "AF-2: CountryPickerOverlay (nested-in-sheet) must NOT be used — it nests a FlatList in the sheet's ScrollView (VirtualizedList warning)");
   }
 

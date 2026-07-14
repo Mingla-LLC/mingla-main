@@ -1,0 +1,47 @@
+name: ORCH-1371/1372 Tester Adversarial — country-picker round-trip behavior
+
+# ORCH-1371 [add-friend-country-picker-hidden] + ORCH-1372
+# [pair-request-country-picker-hidden] — mingla-tester adversarial regression.
+#
+# DIFFERENT ANGLE from the implementor's structural strict-grep gate
+# (orch-1371-1372-picker-not-copresent, which asserts picker HOIST/RENDER/GATE
+# presence/absence). This suite locks the BEHAVIOR that makes the round-trip
+# correct — the reset effect is keyed on `showFriendsModal` (not the child-open
+# gate, which would wipe the typed phone), AddFriendView's phone is fully
+# prop-controlled, and PairRequestModal SWALLOWS the suppress-for-child close so
+# the picker drop does not tear the flow down. Fails-on-revert of the fix
+# (verified: pre-fix tree fails ADV-B1/B2/B3/B4).
+#
+# House pattern (per meta-orch-1337-social-proof-tests.yml): pinned Deno, an
+# EXPLICIT file (never a glob), path-triggered on the guarded SOURCE + the test.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app-mobile/src/components/ConnectionsPage.tsx"
+      - "app-mobile/src/components/connections/AddFriendView.tsx"
+      - "app-mobile/src/components/PairRequestModal.tsx"
+      - "app-mobile/src/components/__tests__/orch_1371_1372_picker_behavior.adversarial.test.ts"
+      - ".github/workflows/orch-1371-1372-tester-adversarial.yml"
+  pull_request:
+    paths:
+      - "app-mobile/src/components/ConnectionsPage.tsx"
+      - "app-mobile/src/components/connections/AddFriendView.tsx"
+      - "app-mobile/src/components/PairRequestModal.tsx"
+      - "app-mobile/src/components/__tests__/orch_1371_1372_picker_behavior.adversarial.test.ts"
+      - ".github/workflows/orch-1371-1372-tester-adversarial.yml"
+
+jobs:
+  orch-1371-1372-tester-adversarial:
+    name: "ORCH-1371/1372 tester adversarial — picker round-trip behavior (reset-dep, prop-controlled phone, PairRequest no-teardown swallow)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: Run ORCH-1371/1372 tester adversarial behavior suite
+        run: |
+          deno test --allow-read --no-check \
+            app-mobile/src/components/__tests__/orch_1371_1372_picker_behavior.adversarial.test.ts

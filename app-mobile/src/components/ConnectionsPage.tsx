@@ -60,6 +60,12 @@ import { BaseBottomSheet } from "./ui/BaseBottomSheet";
 import { ChatListItem } from "./connections/ChatListItem";
 import { FriendPickerSheet } from "./connections/FriendPickerSheet";
 import { AddFriendView } from "./connections/AddFriendView";
+// ORCH-1371 [add-friend-country-picker-hidden]: the add-friend country picker is
+// hoisted here (owner of the transient phone/country/flag state) and rendered as
+// a sibling of the friends sheet — iOS presents only one RN <Modal> at a time.
+import { CountryPickerModal } from "./onboarding/CountryPickerModal";
+import type { CountryData } from "../types/onboarding";
+import { getDefaultCountryCode, getCountryByCode } from "../constants/countries";
 import { RequestsView } from "./connections/RequestsView";
 import { FriendsManagementList } from "./connections/FriendsManagementList";
 import { BlockedUsersView } from "./connections/BlockedUsersView";
@@ -618,6 +624,20 @@ function ConnectionsPageRefactored({
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [friendsModalTab, setFriendsModalTab] = useState<FriendsModalTab>("friend-list");
+  // ORCH-1371 [add-friend-country-picker-hidden]: hoisted add-friend country
+  // picker state — must survive the friends sheet's RN <Modal> drop (which
+  // unmounts AddFriendView). Mirrors AddFriendView's old local defaults.
+  const [addFriendCountry, setAddFriendCountry] = useState<CountryData>(
+    () =>
+      getCountryByCode(getDefaultCountryCode()) ?? {
+        code: "US",
+        name: "United States",
+        dialCode: "+1",
+        flag: "\u{1F1FA}\u{1F1F8}",
+      }
+  );
+  const [addFriendPhone, setAddFriendPhone] = useState("");
+  const [addFriendPickerOpen, setAddFriendPickerOpen] = useState(false);
   const queryClient = useQueryClient();
   const { showToast } = useToast();
 
@@ -793,6 +813,7 @@ function ConnectionsPageRefactored({
   // tear down the whole friends flow — only a genuine user dismiss propagates.
   const anyFriendsChildOpen =
     friendPickerVisible ||
+    addFriendPickerOpen ||
     actionsSheetVisible ||
     showPairRequestModal ||
     showFriendsActionChooser ||
@@ -808,6 +829,34 @@ function ConnectionsPageRefactored({
     dismissKeyboard();
     setShowFriendsModal(false);
   }, [anyFriendsChildOpen, dismissKeyboard]);
+
+  // ORCH-1371: apply a picked country to the hoisted add-friend state
+  // (mirrors AddFriendView's deleted handleCountrySelect).
+  const handleAddFriendCountrySelect = useCallback((code: string) => {
+    const c = getCountryByCode(code);
+    if (c) setAddFriendCountry(c);
+  }, []);
+
+  // ORCH-1371: preserve pre-1371 reopen semantics. Before the hoist,
+  // AddFriendView unmounted on modal close, so reopening showed an empty field +
+  // the default country. `showFriendsModal` stays true across a picker
+  // round-trip (only `anyFriendsChildOpen` gates the sheet's `visible`), so this
+  // effect does NOT fire mid-round-trip → the typed value survives the picker;
+  // it fires only on a genuine reopen → matches the old empty-on-reopen behavior.
+  useEffect(() => {
+    if (showFriendsModal) {
+      setAddFriendPhone("");
+      setAddFriendCountry(
+        getCountryByCode(getDefaultCountryCode()) ?? {
+          code: "US",
+          name: "United States",
+          dialCode: "+1",
+          flag: "\u{1F1FA}\u{1F1F8}",
+        }
+      );
+      setAddFriendPickerOpen(false);
+    }
+  }, [showFriendsModal]);
 
   const activePairedPeople: PairedPillPerson[] = useMemo(() => {
     const active = pairingPills
@@ -3745,6 +3794,10 @@ function ConnectionsPageRefactored({
                     outgoingRequestsLoading={requestsLoading}
                     onCancelRequest={cancelFriendRequest}
                     onAddFriend={addFriend}
+                    selectedCountry={addFriendCountry}
+                    phoneNumber={addFriendPhone}
+                    onPhoneNumberChange={setAddFriendPhone}
+                    onOpenCountryPicker={() => setAddFriendPickerOpen(true)}
                   />
                   <View style={styles.friendListDivider} />
                   <FriendsManagementList
@@ -3908,6 +3961,17 @@ function ConnectionsPageRefactored({
               )}
         </View>
       </BaseBottomSheet>
+
+      {/* ORCH-1371 [add-friend-country-picker-hidden]: the add-friend country
+          picker — SIBLING of the friends sheet (not a descendant), so it survives
+          the §13 sheet drop and presents into the freed iOS slot. iOS presents
+          only one RN <Modal> at a time; mirror of AccountSettings.tsx:638-683. */}
+      <CountryPickerModal
+        visible={addFriendPickerOpen}
+        selectedCode={addFriendCountry.code}
+        onSelect={handleAddFriendCountrySelect}
+        onClose={() => setAddFriendPickerOpen(false)}
+      />
 
       {/* Friend Picker Sheet */}
       <FriendPickerSheet
