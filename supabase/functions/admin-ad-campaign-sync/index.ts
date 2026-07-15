@@ -12,6 +12,19 @@
  * optimization tips, NOT rejection reasons — it is NEVER requested and NEVER
  * stored in review_detail (buildMetaReviewDetail strips it defensively).
  *
+ * GOOGLE (ISSUE-867 WP2, G-3): the ad-level sync persists BOTH review
+ * vocabularies — policy_summary.approval_status (the delivery gate →
+ * ads.review_status) AND policy_summary.review_status, plus
+ * policy_topic_entries[] — into ads.review_detail via buildGoogleReviewDetail.
+ *
+ * GR-52 destination re-checker (ISSUE-867 WP2, channel-generic): every sweep
+ * re-asserts each campaign's destination is still public + live (the same
+ * read-only gate as create). On failure, an ACTIVE campaign is auto-PAUSED on
+ * the platform + in the DB, with an ad_status_events audit row
+ * (action='pause', provider_response.reason='destination_not_public'). Google
+ * polices "unavailable offers"/"destination not working" for the ad's whole
+ * life — this protects the ACCOUNT, not just the campaign; Meta benefits too.
+ *
  * NO attribution / insights here — that is #865.
  * verify_jwt = true + in-code admin_users active gate; service-role DB writes.
  */
@@ -24,9 +37,12 @@ import {
   AdApiError,
   AdNotConnectedError,
   type AdConnectionRow,
+  type DestinationQueryClient,
+  destinationStillPublicLive,
   getAdapter,
 } from "../_shared/adChannel.ts";
 import { buildMetaReviewDetail } from "../_shared/meta.ts";
+import { buildGoogleReviewDetail } from "../_shared/google.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -166,15 +182,23 @@ serve(async (req: Request): Promise<Response> => {
       for (const ad of ads ?? []) {
         try {
           const s = await adapter.getStatus(connection, "ad", String(ad.external_ad_id));
+          // Per-platform review payload: Google splits what Meta merges (G-3) —
+          // BOTH approval_status and review_status + policy_topic_entries[].
+          const reviewDetail = campaign.platform === "google"
+            ? buildGoogleReviewDetail({
+              issuesInfo: s.issuesInfo,
+              adReviewFeedback: s.adReviewFeedback,
+            })
+            : buildMetaReviewDetail({
+              issuesInfo: s.issuesInfo,
+              adReviewFeedback: s.adReviewFeedback,
+            });
           await supabase
             .from("ads")
             .update({
               status: s.status ?? ad.status,
               review_status: s.effectiveStatus,
-              review_detail: buildMetaReviewDetail({
-                issuesInfo: s.issuesInfo,
-                adReviewFeedback: s.adReviewFeedback,
-              }),
+              review_detail: reviewDetail,
             })
             .eq("id", ad.id);
         } catch {
@@ -195,7 +219,67 @@ serve(async (req: Request): Promise<Response> => {
           : null,
       });
 
-      synced.push(updatedCampaign ?? campaign);
+      // ── GR-52 destination re-checker (channel-generic — ISSUE-867 WP2). ─────
+      // Re-assert the destination is still public + live (same read-only gate
+      // as create). A read failure is fail-OPEN here (never pause a live
+      // campaign on a transient view hiccup — the next sweep retries); a
+      // definitive "not public" auto-pauses an ACTIVE campaign + audits.
+      let campaignRowForOutput = updatedCampaign ?? campaign;
+      let destinationOk = true;
+      try {
+        // Narrowing cast — the supabase-js client generics are too deep for a
+        // direct structural check (TS2589); same house idiom as the WP1
+        // `as unknown as AdConnectionRow` row narrowing above.
+        const destinationDb = supabase as unknown as DestinationQueryClient;
+        destinationOk = await destinationStillPublicLive(destinationDb, {
+          dest_page_type: String(campaign.dest_page_type),
+          dest_brand_slug: String(campaign.dest_brand_slug),
+          dest_entity_slug: campaign.dest_entity_slug ? String(campaign.dest_entity_slug) : null,
+        });
+      } catch {
+        destinationOk = true;
+      }
+      const statusAfterSync = String(campaignRowForOutput.status ?? campaign.status);
+      if (!destinationOk && statusAfterSync === "ACTIVE") {
+        try {
+          await adapter.setStatus(
+            connection,
+            "campaign",
+            String(campaign.external_campaign_id),
+            "PAUSED",
+          );
+          const { data: pausedRow } = await supabase
+            .from("ad_campaigns")
+            .update({ status: "PAUSED", status_synced_at: new Date().toISOString() })
+            .eq("id", campaign.id)
+            .select("*")
+            .maybeSingle();
+          if (pausedRow) campaignRowForOutput = pausedRow;
+          await supabase.from("ad_status_events").insert({
+            campaign_id: campaign.id,
+            platform: campaign.platform,
+            entity: "campaign",
+            action: "pause",
+            actor: user.id,
+            from_status: statusAfterSync,
+            to_status: "PAUSED",
+            external_ids: { external_campaign_id: campaign.external_campaign_id },
+            provider_response: { reason: "destination_not_public" },
+          });
+        } catch (pauseErr) {
+          errors.push({
+            campaign_id: campaign.id,
+            error: "destination_pause_failed",
+            detail: pauseErr instanceof AdApiError
+              ? pauseErr.toJSON()
+              : pauseErr instanceof Error
+              ? pauseErr.message
+              : String(pauseErr),
+          });
+        }
+      }
+
+      synced.push({ ...campaignRowForOutput, destination_ok: destinationOk });
     } catch (err) {
       if (err instanceof AdNotConnectedError) {
         errors.push({ campaign_id: campaign.id, error: `${campaign.platform}_not_connected` });

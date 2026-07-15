@@ -18,6 +18,15 @@
  *   P6 market     — Targeting Search GET /search?type=adgeolocation callable
  *                   (A4.e.6 / PROOF M-P9)
  *
+ * Google (ISSUE-867 WP2 — A1.3/G-P1):
+ *   P1 token      — OAuth mint from the refresh token + the GAQL
+ *                   SELECT customer succeeding (proves the developer token
+ *                   works on the real account — BASIC tier)
+ *   P2 billing    — customer.status ENABLED + test_account=false
+ *   P4 pixel      — n/a (Google conversion tracking is #865)
+ *   P5 tier       — pass via the P1 read (BASIC proven live G-P1)
+ *   P6 market     — geoTargetConstants:suggest London/GB resolves (G-P2)
+ *
  * Other channels are fail-closed stubs: single-platform request → 424
  * <platform>_not_connected; all-platform sweep → per-row not_connected entries.
  *
@@ -46,6 +55,11 @@ import {
   metaValidateOnlyCreativeProbe,
   resolveMetaClient,
 } from "../_shared/meta.ts";
+import {
+  googleFetchCustomer,
+  resolveGoogleClient,
+  suggestGeoTargetConstants,
+} from "../_shared/google.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -91,8 +105,113 @@ function stubRow(platform: Platform, lane: string): PreflightRow {
       label: "Token valid",
       status: "fail",
       detail:
-        `${platform}_not_connected — adapter ships in a later WP (WP2 google / WP5 snapchat / WP6 reddit / WP7 tiktok); fail-close until then.`,
+        `${platform}_not_connected — adapter ships in a later WP (WP5 snapchat / WP6 reddit / WP7 tiktok); fail-close until then.`,
     }],
+    checked_at: new Date().toISOString(),
+  };
+}
+
+/**
+ * Google preflight (ISSUE-867 WP2 — A1.3/G-P1): one cheap GAQL SELECT on the
+ * customer resource answers P1 (the refresh token mints AND the developer
+ * token works on this account — BASIC tier) + P2 (customer ENABLED, real
+ * account, billed); P6 proves the GR-37 geo resolver path (the G-P2
+ * countryCode-scoped suggest). P4 is n/a — Google conversion tracking is #865.
+ */
+async function googlePreflight(
+  conn: AdConnectionRow | null,
+  lane: string,
+): Promise<PreflightRow> {
+  const checks: PreflightCheck[] = [];
+  const push = (id: string, label: string, status: CheckStatus, detail: string | null = null) =>
+    checks.push({ id, label, status, detail });
+
+  let client;
+  try {
+    client = await resolveGoogleClient(conn ?? null, lane as "consumer" | "business");
+  } catch (err) {
+    const detail = err instanceof AdNotConnectedError
+      ? err.detail === "google_not_provisioned"
+        ? "google_not_provisioned — set the GOOGLE_ADS_* Supabase Edge Function secrets (SPEC §7 Google 5–6), then connect."
+        : "google_not_connected — the refresh token could not mint an access token; re-provision GOOGLE_ADS_REFRESH_TOKEN."
+      : err instanceof Error
+      ? err.message
+      : String(err);
+    push("P1", "Token mints + developer token", "fail", detail);
+    return {
+      platform: "google",
+      lane,
+      overall: "not_connected",
+      checks,
+      checked_at: new Date().toISOString(),
+    };
+  }
+
+  // P1 + P2 — one GAQL SELECT customer proves mint + dev token + account state.
+  try {
+    const customer = await googleFetchCustomer(client);
+    push("P1", "Token mints + developer token", "pass", null);
+    const enabled = customer.status === "ENABLED" && !customer.testAccount;
+    push(
+      "P2",
+      "Customer ENABLED (real, billed account)",
+      enabled ? "pass" : "fail",
+      enabled
+        ? null
+        : `customer.status=${customer.status ?? "unknown"}, test_account=${customer.testAccount} — an ENABLED, non-test, billed account is required (G-P1).`,
+    );
+  } catch (err) {
+    push(
+      "P1",
+      "Token mints + developer token",
+      "fail",
+      err instanceof AdApiError ? err.message : err instanceof Error ? err.message : String(err),
+    );
+    return {
+      platform: "google",
+      lane,
+      overall: "red",
+      checks,
+      checked_at: new Date().toISOString(),
+    };
+  }
+
+  // P4 — conversion signal: n/a here (Google conversion tracking is #865).
+  push("P4", "Conversion signal", "n/a", "Google conversion tracking lands with #865 — targetSpend (maximize clicks) is the honest strategy until then (GR-55).");
+
+  // P5 — access tier: reaching the customer at all proves BASIC (G-P1).
+  push("P5", "Review / access tier", "pass", "BASIC tier approved 2026-07-15 — the GAQL read above ran against the real account.");
+
+  // P6 — market reachable: the GR-37 geo resolver (G-P2 disambiguation path).
+  try {
+    const london = await suggestGeoTargetConstants(client, {
+      name: "London",
+      countryCode: "GB",
+    });
+    push(
+      "P6",
+      "Market reachable (geo suggest)",
+      london ? "pass" : "fail",
+      london
+        ? null
+        : "geoTargetConstants:suggest returned no ENABLED GB match for London — the geo resolver path is broken (GR-37).",
+    );
+  } catch (err) {
+    push(
+      "P6",
+      "Market reachable (geo suggest)",
+      "fail",
+      err instanceof AdApiError ? err.message : err instanceof Error ? err.message : String(err),
+    );
+  }
+
+  const anyHardFail = checks.some((c) => c.status === "fail");
+  const anyWarn = checks.some((c) => c.status === "warn");
+  return {
+    platform: "google",
+    lane,
+    overall: anyHardFail ? "red" : anyWarn ? "amber" : "green",
+    checks,
     checked_at: new Date().toISOString(),
   };
 }
@@ -273,32 +392,40 @@ serve(async (req: Request): Promise<Response> => {
     .maybeSingle();
   if (!adminRow) return json({ error: "forbidden" }, 403);
 
-  // Single non-meta platform → fail-close 424 (stub until its WP lands).
-  if (platform !== undefined && platform !== "meta") {
+  // Single unbuilt platform → fail-close 424 (stub until its WP lands).
+  if (platform !== undefined && platform !== "meta" && platform !== "google") {
     return json({
       error: `${platform}_not_connected`,
       detail: stubRow(platform, lane).checks[0].detail,
     }, 424);
   }
 
-  const { data: metaConn } = await supabase
-    .from("ad_connections")
-    .select("*")
-    .eq("platform", "meta")
-    .eq("lane", lane)
-    .maybeSingle();
-  const metaConnection = (metaConn ?? null) as AdConnectionRow | null;
+  const loadConnection = async (p: Platform): Promise<AdConnectionRow | null> => {
+    const { data } = await supabase
+      .from("ad_connections")
+      .select("*")
+      .eq("platform", p)
+      .eq("lane", lane)
+      .maybeSingle();
+    return (data ?? null) as AdConnectionRow | null;
+  };
 
   if (platform === "meta") {
-    const row = await metaPreflight(metaConnection, lane);
+    const row = await metaPreflight(await loadConnection("meta"), lane);
+    return json({ rows: [row] });
+  }
+  if (platform === "google") {
+    const row = await googlePreflight(await loadConnection("google"), lane);
     return json({ rows: [row] });
   }
 
   // All five channels.
   const rows: PreflightRow[] = [];
   for (const p of PLATFORMS) {
-    if (p === "meta") rows.push(await metaPreflight(metaConnection, lane));
-    else rows.push(stubRow(p, lane));
+    if (p === "meta") rows.push(await metaPreflight(await loadConnection("meta"), lane));
+    else if (p === "google") {
+      rows.push(await googlePreflight(await loadConnection("google"), lane));
+    } else rows.push(stubRow(p, lane));
   }
   return json({ rows });
 });

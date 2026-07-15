@@ -25,6 +25,15 @@
  * execution_options:['validate_only'] on the campaign + creative shapes —
  * zero objects created, zero DB writes.
  *
+ * GOOGLE (ISSUE-867 WP2 — AC-G-2): a self-contained branch issues ONE atomic
+ * `googleAds:mutate` (`partialFailure:false` — native no-orphan atomicity,
+ * A1.1(4)) matching the PROVEN G-P3 reference body: budget → campaign (PAUSED,
+ * SEARCH, targetSpend, G-14 containsEuPoliticalAdvertising, PRESENCE geo
+ * type) → geo criteria (GR-37 resolver) → ad group → RSA (3–15×≤30 / 2–4×≤90,
+ * validated pre-call) → PHRASE keywords (required — GR-15). finalUrls carry
+ * the canonical dest_url; the OneLink rides ONLY in tracking_url_template
+ * (A1.1(5)). validate_only=true maps to googleAds:mutate validateOnly.
+ *
  * verify_jwt = true + in-code admin_users active gate; service-role DB writes.
  */
 
@@ -52,6 +61,17 @@ import {
   resolveMetaClient,
   validateSpecialAdCategories,
 } from "../_shared/meta.ts";
+import {
+  GOOGLE_GEO_COUNTRY_CONSTANTS,
+  googleCreateFullCampaign,
+  type GoogleKeywordInput,
+  normalizeGoogleKeywords,
+  type ResolvedGeoTarget,
+  resolveGoogleClient,
+  suggestGeoTargetConstants,
+  validateGoogleFinalUrl,
+  validateGoogleRsa,
+} from "../_shared/google.ts";
 import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "../_shared/businessWebOrigin.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -111,6 +131,35 @@ function buildDestSmartLink(input: {
   params.set("deep_link_sub1", input.brandSlug);
   if (input.entitySlug) params.set("deep_link_sub2", input.entitySlug);
   return `${ONELINK_BASE}?${params.toString()}`;
+}
+
+/**
+ * ISSUE-867 A1.1(5) (PROOF D-P1): the OneLink rides ONLY in Google's
+ * `tracking_url_template` — the platform-sanctioned slot. `{campaignid}`,
+ * `{creative}` and `{lpurl}` are Google ValueTrack macros expanded at serve
+ * time (so no chicken-and-egg on the campaign id); `af_r={lpurl}` makes the
+ * AppsFlyer OneLink redirect land on the ad's real final URL, as Google's
+ * tracking-template policy requires. Stored as ad_campaigns.dest_smart_link
+ * (the column's A4.f-demoted role: tracking-template source, never the
+ * creative link).
+ */
+function buildGoogleTrackingUrlTemplate(input: {
+  pageType: string;
+  brandSlug: string;
+  entitySlug: string | null;
+}): string {
+  const params: string[] = [
+    "pid=google_ads",
+    "af_c_id={campaignid}",
+    "af_ad={creative}",
+    `deep_link_value=${encodeURIComponent(input.pageType)}`,
+    `deep_link_sub1=${encodeURIComponent(input.brandSlug)}`,
+  ];
+  if (input.entitySlug) {
+    params.push(`deep_link_sub2=${encodeURIComponent(input.entitySlug)}`);
+  }
+  params.push("af_r={lpurl}");
+  return `${ONELINK_BASE}?${params.join("&")}`;
 }
 
 interface DestinationInput {
@@ -185,6 +234,405 @@ serve(async (req: Request): Promise<Response> => {
         `Daily budget ${amountCents}¢ exceeds the ${MAX_DAILY_BUDGET_CENTS}¢ ($1,000,000/day) ceiling.`,
       max_cents: MAX_DAILY_BUDGET_CENTS,
     }, 422);
+  }
+
+  // ══ GOOGLE branch (ISSUE-867 WP2 — AC-G-2) ══════════════════════════════════
+  // ONE atomic googleAds:mutate (partialFailure:false — native no-orphan
+  // atomicity, A1.1(4)); SEARCH+RSA only (PMax DEFERRED — A1.1(2)); everything
+  // below the budget checks is google-shaped, so the branch is self-contained
+  // and the Meta path below stays byte-identical.
+  if (platform === "google") {
+    const requestIdG = typeof body.request_id === "string" && body.request_id.trim()
+      ? body.request_id.trim()
+      : null;
+    const validateOnlyG = body.validate_only === true;
+
+    // (1) Pure input validation — all 422s BEFORE any provider call.
+    const creativeG = (body.creative ?? {}) as Record<string, unknown>;
+    const rsa = validateGoogleRsa(creativeG.headlines, creativeG.descriptions);
+    if (!rsa.ok) return json({ error: rsa.detail, detail: rsa.message }, 422);
+    const headlines = (creativeG.headlines as string[]).map((h) => h.trim());
+    const descriptions = (creativeG.descriptions as string[]).map((d) => d.trim());
+
+    // Keywords REQUIRED for SEARCH (GR-15); PHRASE default; ≤80 chars/≤10 words (GR-73).
+    const keywordsResult = normalizeGoogleKeywords(body.keywords, { required: true });
+    if (!keywordsResult.ok) {
+      return json({ error: keywordsResult.detail, detail: keywordsResult.message }, 422);
+    }
+    const negativesResult = normalizeGoogleKeywords(body.negative_keywords, {
+      required: false,
+      field: "negative_keywords",
+    });
+    if (!negativesResult.ok) {
+      return json({ error: negativesResult.detail, detail: negativesResult.message }, 422);
+    }
+    const keywords: GoogleKeywordInput[] = keywordsResult.keywords;
+    const negativeKeywords: GoogleKeywordInput[] = negativesResult.keywords;
+
+    const cpcBidCentsRaw = budget.cpc_bid_cents;
+    if (
+      cpcBidCentsRaw !== undefined &&
+      (!Number.isInteger(cpcBidCentsRaw) || (cpcBidCentsRaw as number) <= 0)
+    ) {
+      return json({ error: "validation_error", detail: "cpc_bid_cents_invalid" }, 400);
+    }
+    const cpcBidCents = cpcBidCentsRaw as number | undefined;
+
+    const targetingG = (body.targeting ?? {}) as Record<string, unknown>;
+    const countriesG = targetingG.countries;
+    if (
+      !Array.isArray(countriesG) || countriesG.length === 0 ||
+      countriesG.some((c) => typeof c !== "string" || !c.trim())
+    ) {
+      return json({ error: "validation_error", detail: "targeting_countries_required" }, 400);
+    }
+    const countryCodes = (countriesG as string[]).map((c) => c.trim().toUpperCase());
+    const locationsG = Array.isArray(targetingG.locations)
+      ? targetingG.locations as Record<string, unknown>[]
+      : [];
+    for (const location of locationsG) {
+      if (
+        typeof location.name !== "string" || !location.name.trim() ||
+        typeof location.country_code !== "string" || !location.country_code.trim()
+      ) {
+        return json({
+          error: "validation_error",
+          detail: "targeting_location_invalid — each location needs { name, country_code }",
+        }, 400);
+      }
+    }
+
+    const destinationG = (body.destination ?? {}) as DestinationInput;
+    const pageTypeG = destinationG.page_type ?? "";
+    const brandSlugG = typeof destinationG.brand_slug === "string"
+      ? destinationG.brand_slug.trim()
+      : "";
+    const entitySlugG = typeof destinationG.entity_slug === "string"
+      ? destinationG.entity_slug.trim()
+      : "";
+    if (!["event", "trip", "brand", "venue"].includes(pageTypeG)) {
+      return json({ error: "validation_error", detail: "destination_page_type_invalid" }, 400);
+    }
+    if (!brandSlugG) {
+      return json({ error: "validation_error", detail: "destination_brand_slug_required" }, 400);
+    }
+
+    // (2) Connection (fail-close): an absent/broken google connection is a
+    //     provisioning state → 409 google_not_provisioned (SPEC §4.4b — the
+    //     google exception to the 424 rule), zero Google calls.
+    const { data: gconnRow } = await supabase
+      .from("ad_connections")
+      .select("*")
+      .eq("platform", "google")
+      .eq("lane", lane)
+      .maybeSingle();
+    if (!gconnRow || !gconnRow.connected || gconnRow.status !== "connected") {
+      return json({ error: "google_not_provisioned" }, 409);
+    }
+    const gconn = gconnRow as unknown as AdConnectionRow;
+
+    // Idempotency (A3 §A request_id): replay returns the existing row.
+    if (requestIdG && !validateOnlyG) {
+      const { data: existingG } = await supabase
+        .from("ad_campaigns")
+        .select("*")
+        .eq("connection_id", gconn.id)
+        .eq("request_id", requestIdG)
+        .maybeSingle();
+      if (existingG) return json({ campaign: existingG, idempotent_replay: true });
+    }
+
+    // (3) Destination resolve — READ-ONLY, public + live only (§4.4b; the
+    //     GR-52 sync re-checker re-asserts this same gate for the ad's life).
+    let destUrlG: string;
+    let destEventIdG: string | null = null;
+    if (pageTypeG === "event") {
+      if (!entitySlugG) {
+        return json({ error: "validation_error", detail: "destination_entity_slug_required" }, 400);
+      }
+      const { data: eventRow } = await supabase
+        .from("business_public_events_view")
+        .select("id, brand_slug, slug, status")
+        .eq("brand_slug", brandSlugG)
+        .eq("slug", entitySlugG)
+        .in("status", ["scheduled", "live"])
+        .maybeSingle();
+      if (!eventRow) return json({ error: "destination_not_public" }, 422);
+      destUrlG = `${BUSINESS_WEB_ORIGIN}/e/${brandSlugG}/${entitySlugG}`;
+      destEventIdG = String(eventRow.id);
+    } else if (pageTypeG === "brand") {
+      const { data: brandRow } = await supabase
+        .from("business_public_brands_view")
+        .select("id, slug")
+        .eq("slug", brandSlugG)
+        .maybeSingle();
+      if (!brandRow) return json({ error: "destination_not_public" }, 422);
+      destUrlG = `${BUSINESS_WEB_ORIGIN}/b/${brandSlugG}`;
+    } else {
+      return json({ error: "destination_not_public", detail: "dest_page_type_not_supported_wp1" }, 422);
+    }
+
+    // A4.f/GR-73: finalUrls = [canonical dest_url] — https, ≤2,084 bytes.
+    const finalUrlCheck = validateGoogleFinalUrl(destUrlG);
+    if (!finalUrlCheck.ok) {
+      return json({ error: finalUrlCheck.detail, detail: finalUrlCheck.message }, 422);
+    }
+
+    // (4) Geo resolution (GR-37/G-P2 — numeric criterion IDs, never names).
+    //     Named locations resolve via the countryCode-scoped suggest (the
+    //     London/Ontario disambiguation path); with none, the verified country
+    //     seed constants target the whole country. Resolved id + canonical
+    //     name are PERSISTED in targeting jsonb.
+    const resolvedLocations: ResolvedGeoTarget[] = [];
+    try {
+      if (locationsG.length > 0) {
+        const gclient = await resolveGoogleClient(gconn);
+        for (const location of locationsG) {
+          const name = (location.name as string).trim();
+          const countryCode = (location.country_code as string).trim().toUpperCase();
+          const resolved = await suggestGeoTargetConstants(gclient, { name, countryCode });
+          if (!resolved) {
+            return json({
+              error: "geo_not_resolvable",
+              detail:
+                `"${name}" did not resolve to an ENABLED geo target constant in ${countryCode} (countryCode-scoped suggest — GR-37).`,
+            }, 422);
+          }
+          resolvedLocations.push(resolved);
+        }
+      }
+    } catch (err) {
+      if (err instanceof AdNotConnectedError) {
+        return json(
+          { error: err.detail === "google_not_provisioned" ? "google_not_provisioned" : "google_not_connected" },
+          err.detail === "google_not_provisioned" ? 409 : 424,
+        );
+      }
+      if (err instanceof AdApiError) {
+        return json({ error: "geo_not_resolvable", detail: err.toJSON() }, 422);
+      }
+      throw err;
+    }
+    let geoTargetCriterionIds: string[];
+    const geoTargetingRecord: Record<string, unknown> = {
+      countries: countryCodes,
+      // GR-37: PRESENCE always — recorded so the persisted targeting states it.
+      positive_geo_target_type: "PRESENCE",
+    };
+    if (resolvedLocations.length > 0) {
+      geoTargetCriterionIds = resolvedLocations.map((l) => l.criterionId);
+      geoTargetingRecord.locations = resolvedLocations.map((l) => ({
+        criterion_id: l.criterionId,
+        name: l.name,
+        canonical_name: l.canonicalName,
+        country_code: l.countryCode,
+        target_type: l.targetType,
+      }));
+    } else {
+      const unresolved = countryCodes.filter((code) => !GOOGLE_GEO_COUNTRY_CONSTANTS[code]);
+      if (unresolved.length > 0) {
+        return json({
+          error: "geo_not_resolvable",
+          detail:
+            `Country code(s) ${unresolved.join(", ")} are not in the verified seed constants (US/GB/NG — A1.3 GR-37). Add a CSV-verified constant or target a named location instead.`,
+        }, 422);
+      }
+      geoTargetCriterionIds = countryCodes.map(
+        (code) => GOOGLE_GEO_COUNTRY_CONSTANTS[code].criterionId,
+      );
+      geoTargetingRecord.country_criterion_ids = geoTargetCriterionIds;
+    }
+
+    const trackingUrlTemplate = buildGoogleTrackingUrlTemplate({
+      pageType: pageTypeG,
+      brandSlug: brandSlugG,
+      entitySlug: entitySlugG || null,
+    });
+
+    const createInput = {
+      name,
+      dailyBudgetCents: amountCents as number,
+      cpcBidCents,
+      finalUrl: destUrlG,
+      trackingUrlTemplate,
+      headlines,
+      descriptions,
+      keywords,
+      negativeKeywords,
+      geoTargetCriterionIds,
+      validateOnly: validateOnlyG,
+    };
+
+    // (5) The atomic mutate — validateOnly passthrough validates the EXACT
+    //     same body with zero objects created (PROVEN clean — G-P3).
+    try {
+      const created = await googleCreateFullCampaign(gconn, createInput);
+      if (validateOnlyG) {
+        return json({
+          validated: true,
+          validated_layers: ["campaign_budget", "campaign", "geo_criteria", "ad_group", "ad", "keywords"],
+          skipped_layers: [],
+          request_id: created.requestId,
+          detail: "validate_only — nothing created on the platform, nothing persisted.",
+        });
+      }
+
+      // Best-effort delivery read-back (sync repairs it).
+      let deliveryStatusG: string | null = null;
+      try {
+        const adapterG = getAdapter("google");
+        const statusG = await adapterG.getStatus(gconn, "campaign", created.externalCampaignId);
+        deliveryStatusG = statusG.effectiveStatus;
+      } catch {
+        deliveryStatusG = null;
+      }
+
+      // (6) Persist ONE campaign+ad_set+ad row set (only now that all IDs exist).
+      const { data: campaignRowG, error: campaignErrG } = await supabase
+        .from("ad_campaigns")
+        .insert({
+          connection_id: gconn.id,
+          platform: "google",
+          external_campaign_id: created.externalCampaignId,
+          name,
+          objective: "SEARCH", // normalized-per-platform: the advertising channel type
+          status: "PAUSED",
+          daily_budget_cents: amountCents,
+          delivery_status: deliveryStatusG,
+          status_synced_at: new Date().toISOString(),
+          targeting: geoTargetingRecord,
+          dest_page_type: pageTypeG,
+          dest_brand_slug: brandSlugG,
+          dest_entity_slug: entitySlugG || null,
+          dest_event_id: destEventIdG,
+          dest_url: destUrlG,
+          dest_smart_link: trackingUrlTemplate, // A4.f-demoted slot: tracking template, never the creative link
+          request_id: requestIdG,
+          created_by: user.id,
+        })
+        .select("*")
+        .single();
+
+      let adSetRowG: Record<string, unknown> | null = null;
+      let adRowG: Record<string, unknown> | null = null;
+      let persistErrG = campaignErrG;
+      if (!persistErrG && campaignRowG) {
+        const { data, error } = await supabase
+          .from("ad_sets")
+          .insert({
+            campaign_id: campaignRowG.id,
+            external_adset_id: created.externalAdSetId,
+            name: `${name} — ad group`,
+            targeting: geoTargetingRecord,
+            budget_cents: null, // budget lives on the campaign budget resource
+            optimization_goal: "MAXIMIZE_CLICKS", // targetSpend = maximize clicks (GR-55)
+            bid_strategy: "TARGET_SPEND",
+            billing_event: null,
+            // The PROVEN shape (G-P3): PAUSED parent + ENABLED ad group — the
+            // paused campaign gates delivery; the row mirrors platform truth.
+            status: "ACTIVE",
+          })
+          .select("*")
+          .single();
+        adSetRowG = data;
+        persistErrG = error;
+      }
+      if (!persistErrG && adSetRowG) {
+        const { data, error } = await supabase
+          .from("ads")
+          .insert({
+            ad_set_id: adSetRowG.id,
+            // The `{ad_group_id}~{ad_id}` composite IS the external ad id.
+            external_ad_id: created.externalAdId,
+            external_creative_id: null, // RSA text is inline — no creative object
+            name: `${name} — ad`,
+            status: "PAUSED",
+            review_status: null, // sync fills approval_status + review_detail (G-3)
+          })
+          .select("*")
+          .single();
+        adRowG = data;
+        persistErrG = error;
+      }
+
+      if (persistErrG) {
+        // Never a half-written DB row set. Everything on Google is PAUSED
+        // (zero spend risk) and natively consistent; there is no delete path
+        // (REMOVED is permanent — A1.1(4)), so the audit row carries the IDs
+        // for manual reconciliation.
+        if (campaignRowG) await supabase.from("ad_campaigns").delete().eq("id", campaignRowG.id);
+        await supabase.from("ad_status_events").insert({
+          campaign_id: null,
+          platform: "google",
+          entity: "campaign",
+          action: "create_failed",
+          actor: user.id,
+          to_status: null,
+          external_ids: {
+            external_campaign_id: created.externalCampaignId,
+            external_adset_id: created.externalAdSetId,
+            external_ad_id: created.externalAdId,
+            budget_resource_name: created.budgetResourceName,
+          },
+          provider_response: {
+            db_error: persistErrG.message,
+            request_id: created.requestId,
+            note: "google objects exist PAUSED (atomic create succeeded; DB persist failed) — reconcile manually",
+          },
+        });
+        console.error("[admin-ad-create-campaign] google persist failed:", persistErrG.message);
+        return json({ error: "internal_error", detail: "db_persist_failed_google_objects_paused" }, 500);
+      }
+
+      await supabase.from("ad_status_events").insert({
+        campaign_id: campaignRowG.id,
+        platform: "google",
+        entity: "campaign",
+        action: "create",
+        actor: user.id,
+        from_status: null,
+        to_status: "PAUSED",
+        external_ids: {
+          external_campaign_id: created.externalCampaignId,
+          external_adset_id: created.externalAdSetId,
+          external_ad_id: created.externalAdId,
+          budget_resource_name: created.budgetResourceName,
+        },
+        // A1.1(4): the Google request_id is what Google support requires.
+        provider_response: created.requestId ? { request_id: created.requestId } : null,
+      });
+
+      return json({ campaign: campaignRowG, ad_set: adSetRowG, ad: adRowG });
+    } catch (err) {
+      if (err instanceof AdNotConnectedError) {
+        return json(
+          { error: err.detail === "google_not_provisioned" ? "google_not_provisioned" : "google_not_connected" },
+          err.detail === "google_not_provisioned" ? 409 : 424,
+        );
+      }
+      if (err instanceof AdApiError) {
+        // partialFailure:false — the WHOLE request failed; nothing exists on
+        // Google (native atomicity), so there are no partial IDs to reconcile.
+        await supabase.from("ad_status_events").insert({
+          campaign_id: null,
+          platform: "google",
+          entity: "campaign",
+          action: "create_failed",
+          actor: user.id,
+          external_ids: null,
+          provider_response: { step: "atomic_mutate", ...err.toJSON() },
+        });
+        return json({
+          error: "google_create_failed",
+          detail: err.toJSON(),
+          step: "atomic_mutate",
+          rolled_back: null, // nothing to roll back — the mutate is all-or-nothing
+        }, 502);
+      }
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error("[admin-ad-create-campaign] google unexpected:", detail);
+      return json({ error: "internal_error" }, 500);
+    }
   }
 
   // QA P1-1: WP1 accepts ONLY the §4.4b default bid strategy — cap strategies
