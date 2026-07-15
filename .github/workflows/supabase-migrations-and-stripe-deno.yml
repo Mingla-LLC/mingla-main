@@ -749,10 +749,16 @@ jobs:
           #    boundary, floor-category conservatism, special-ad-category
           #    adversarial shapes, A4.f destSmartLink source trap
           #    (needs --allow-read), atomic step-4 + missing-rollback-hook.
+          #  - issue862_wp1_rework.test.ts — QA-FAIL rework regressions
+          #    (2026-07-15): P1-1 bid_strategy explicit on BOTH branches
+          #    (subcode 1815857, fails-on-revert), P2-3 lane-correct token
+          #    resolution, P2-5 creative rollback + residue honesty, P3-8 EAA
+          #    scrub, P3-9 MAX_BUDGET_CENTS bound (T-1 boundary preserved).
           DENO_TEST_FILES=(
             supabase/functions/_shared/__tests__/adChannel.test.ts
             supabase/functions/_shared/__tests__/meta.test.ts
             supabase/functions/_shared/__tests__/issue862_wp1_tester_adversarial.test.ts
+            supabase/functions/_shared/__tests__/issue862_wp1_rework.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-read --no-check "${DENO_TEST_FILES[@]}"; then
