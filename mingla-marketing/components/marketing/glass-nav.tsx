@@ -9,15 +9,15 @@ import { cn } from '@/lib/cn'
 import { captureMarketing } from '@/components/marketing/posthog-provider'
 // ORCH-1319 — the explorer "Get the app" CTA is now a device-aware DIRECT action:
 // iOS → App Store, Android → Play, desktop/other → the QR panel. No lead form.
-// ORCH-1324 — the organiser "Get the app" CTA is likewise device-aware:
-// iOS → the live business App Store, Android/desktop/other → the business web app.
-import { detectClientPlatform } from '@/lib/device-platform'
+// ORCH-1381 — the organiser surface no longer guesses: it presents an explicit
+// inline CHOICE (Download the app / Use on web). The platform→destination decision
+// comes from the shared lib/business-app-target.ts helper — never re-derived here.
+import { detectClientPlatform, type Platform } from '@/lib/device-platform'
+import { APP_STORE_URL, PLAY_STORE_URL } from '@/lib/store-links'
 import {
-  APP_STORE_URL,
-  PLAY_STORE_URL,
-  BUSINESS_APP_STORE_URL,
-  BUSINESS_WEB_URL,
-} from '@/lib/store-links'
+  BUSINESS_APP_CHOICE_COPY,
+  resolveBusinessAppTarget,
+} from '@/lib/business-app-target'
 
 export function GlassNav() {
   const pathname = usePathname()
@@ -42,6 +42,19 @@ export function GlassNav() {
   // ORCH-1319 — explorer-only "Get the app" CTA. Phones go straight to their
   // store; desktop/other opens this QR panel (no more lead form / beta gate).
   const [qrOpen, setQrOpen] = useState(false)
+
+  // ORCH-1381 — the RENDERED business choice is device-aware, so it must resolve
+  // AFTER mount: `detectClientPlatform()` reads navigator, which does not exist
+  // during SSR. Seeding 'other' means the server HTML and the first client render
+  // agree (web-action-only — the safe treatment), then the effect swaps in the real
+  // platform. Rendering the platform directly would hydration-mismatch.
+  // NOTE: the click HANDLERS deliberately re-read detectClientPlatform() fresh
+  // rather than trust this state, so a tap can never resolve a stale platform.
+  const [businessPlatform, setBusinessPlatform] = useState<Platform>('other')
+  useEffect(() => {
+    setBusinessPlatform(detectClientPlatform())
+  }, [])
+  const businessTarget = resolveBusinessAppTarget(businessPlatform)
 
   // ORCH-1319 — device-aware "Get the app" action. Runs only on a real browser
   // click (detectClientPlatform is SSR-safe → 'other' when navigator is absent).
@@ -68,23 +81,46 @@ export function GlassNav() {
     setQrOpen(true)
   }
 
-  // ORCH-1324 — the business "Get the app" CTA is a device-aware DIRECT action:
-  // iOS → the live business App Store, Android/desktop/other → the business web
-  // app (business.usemingla.com root = owner get-started). No QR panel, no beta
-  // funnel. Runs only on a real browser click (SSR-safe: detectClientPlatform
-  // returns 'other' when navigator is absent).
-  const handleGetTheBusinessApp = (): void => {
-    const platform = detectClientPlatform()
-    const dest = platform === 'ios' ? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL
-    captureMarketing('get_the_app_clicked', {
-      platform,
-      store: platform === 'ios' ? 'app_store' : 'business_web',
-      surface: 'organiser',
-      location: 'nav',
-    })
+  // ORCH-1381 — the business surface presents an explicit inline CHOICE instead of
+  // guessing: "Download the app" (iOS → the live business App Store, Android → the
+  // LIVE business Play listing) and "Use on web". Desktop/other has nothing to
+  // install, so only the web action renders (no dead button). No QR panel, no beta
+  // funnel. Both actions run only on a real browser click (SSR-safe:
+  // detectClientPlatform returns 'other' when navigator is absent).
+  //
+  // The `action` prop is REQUIRED: without it an Android owner who CHOOSES web is
+  // indistinguishable from ORCH-1324's forced-web, and the fix is unmeasurable.
+  const openBusinessDest = (dest: string): void => {
     // Popup-blocked (window.open → null) → same-tab navigation fallback.
     const win = window.open(dest, '_blank', 'noopener,noreferrer')
     if (!win) window.location.assign(dest)
+  }
+
+  const handleDownloadTheBusinessApp = (): void => {
+    const platform = detectClientPlatform()
+    const target = resolveBusinessAppTarget(platform)
+    if (target.installHref === null) return
+    captureMarketing('get_the_app_clicked', {
+      action: 'download',
+      platform,
+      store: target.installStore,
+      surface: 'organiser',
+      location: 'nav',
+    })
+    openBusinessDest(target.installHref)
+  }
+
+  const handleUseBusinessOnWeb = (): void => {
+    const platform = detectClientPlatform()
+    const target = resolveBusinessAppTarget(platform)
+    captureMarketing('get_the_app_clicked', {
+      action: 'use_web',
+      platform,
+      store: 'business_web',
+      surface: 'organiser',
+      location: 'nav',
+    })
+    openBusinessDest(target.webHref)
   }
 
   return (
@@ -142,18 +178,33 @@ export function GlassNav() {
           </div>
 
           {/* CTA — branches by surface.
-              organiser: "Get the app" is a device-aware direct action (ORCH-1324):
-                iOS → the live business App Store, Android/desktop/other → the
-                business web app. It NAVIGATES (no dialog) so no aria-haspopup.
+              organiser (ORCH-1381): an explicit inline CHOICE — "Download the app"
+                (iOS → business App Store, Android → business Play) + "Use on web".
+                Desktop/other can install nothing, so ONLY the web action renders —
+                never a dead install button. Both NAVIGATE (no dialog) so no
+                aria-haspopup. The app-does-more note is deliberately omitted here:
+                the nav is a shortcut with no room for it; the hero, /links and
+                /business/download surfaces carry it.
               explorer: "Get the app" is a device-aware direct store action (ORCH-1319). */}
           {surface === 'organiser' ? (
-            <Button
-              variant="glass"
-              size="sm"
-              onClick={handleGetTheBusinessApp}
-            >
-              Get the app
-            </Button>
+            <div className="flex items-center gap-2">
+              {businessTarget.canInstall ? (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleDownloadTheBusinessApp}
+                >
+                  {BUSINESS_APP_CHOICE_COPY.download}
+                </Button>
+              ) : null}
+              <Button
+                variant="glass"
+                size="sm"
+                onClick={handleUseBusinessOnWeb}
+              >
+                {BUSINESS_APP_CHOICE_COPY.useWeb}
+              </Button>
+            </div>
           ) : (
             // ORCH-1319 — explorer "Get the app" is a device-aware DIRECT action:
             // iOS → App Store, Android → Play, desktop/other → QR panel. The

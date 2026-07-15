@@ -272,14 +272,19 @@ export function buildInviteEmail(input: {
   // --- Secondary CTA — "Get the Mingla Business app" (both variants) ---
   // Outlined ghost button inside a quiet card so it never competes with the
   // filled primary (hierarchy rule: exactly ONE filled-orange button). The
-  // href is a STATIC LITERAL → the /business/download route 307-redirects by
-  // User-Agent (iPhone → business App Store, else → business web dashboard).
+  // href is a STATIC LITERAL → the /business/download route renders an explicit
+  // choice (Download the app: iPhone → business App Store / Android → business
+  // Play; or Use on web). ORCH-1381 retired the old 307 redirect, so this copy no
+  // longer promises "everywhere else opens the web" — that became FALSE the moment
+  // the business Play listing went live (2026-07-15, COMMS-0101).
+  // HARD: the href is BYTE-FROZEN — no query string, no token, no UTM
+  // (orch-1329-invite-email.tester.test.ts pins it exactly).
   const secondaryHeading = partnerSetup
     ? `Prefer to run ${sharedEscapeHtml(input.brandName)} from your phone?`
     : "Get the app to manage on the go";
   const secondarySub = partnerSetup
-    ? "Get the Mingla Business app — iPhone opens the App Store, everywhere else opens your dashboard on the web."
-    : "The Mingla Business app is where you'll do the work — scan guests in, check sales, run events. iPhone opens the App Store, everywhere else opens the web.";
+    ? "Get the Mingla Business app on iPhone or Android — or open your dashboard on the web."
+    : "The Mingla Business app is where you'll do the work — scan guests in, check sales, run events. Get it on iPhone or Android, or open the web dashboard.";
   const secondaryCta = `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;margin:0 0 6px 0;"><tr><td style="padding:18px 20px;background:#FFFFFF;border:1px solid #ECECEE;border-radius:12px;"><p style="margin:0 0 3px 0;font-size:14px;font-weight:600;color:#0F1115;line-height:1.4;">${secondaryHeading}</p><p style="margin:0 0 14px 0;font-size:13px;color:#5B6172;line-height:1.5;">${secondarySub}</p><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" style="background:#FFFFFF;border:1.5px solid #FF6B2C;border-radius:8px;"><a href="https://usemingla.com/business/download" style="display:inline-block;padding:12px 22px;color:#B23E12;text-decoration:none;font-weight:600;font-size:15px;line-height:20px;font-family:${FONT_STACK};">Get the Mingla Business app</a></td></tr></table></td></tr></table>`;
 
   // --- Fine print (both, tightened: expiry + paste-URL only) ---

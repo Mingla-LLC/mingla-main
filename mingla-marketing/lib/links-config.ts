@@ -71,7 +71,11 @@ export const LINKS_TABS: readonly LinksTab[] = [
     label: 'For Business',
     eyebrow: 'For venues & organizers',
     heading: 'Run a venue, event, or trip?',
-    body: 'Put your experiences in front of people planning their next outing. Now on iPhone — or get started on the web.',
+    // ORCH-1381 — the trailing "Now on iPhone — or get started on the web." was
+    // FALSE once the business Play listing went live (2026-07-15, COMMS-0101), and
+    // the platform story now lives in the CTA choice + its note below. Trimming it
+    // here also buys the vertical room that note needs (§1 no-scroll contract).
+    body: 'Put your experiences in front of people planning their next outing.',
     cta: {
       label: 'Get the app',
       href: LINKS_BUSINESS_DOWNLOAD_PATH,
