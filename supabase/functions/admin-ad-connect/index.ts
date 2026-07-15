@@ -44,6 +44,7 @@ import {
   metaFetchPixelLastFired,
   metaValidateOnlyCreativeProbe,
   resolveMetaClient,
+  resolveMetaEnvConfig,
 } from "../_shared/meta.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -93,16 +94,8 @@ serve(async (req: Request): Promise<Response> => {
     return json({ error: "invalid_json" }, 400);
   }
 
-  const platform = body.platform;
-  const lane = body.lane ?? "consumer";
-  const action = body.action ?? "connect";
-  if (!isPlatform(platform)) return json({ error: "validation_error", detail: "platform_invalid" }, 400);
-  if (!isLane(lane)) return json({ error: "validation_error", detail: "lane_invalid" }, 400);
-  if (action !== "connect" && action !== "status") {
-    return json({ error: "validation_error", detail: "action_invalid" }, 400);
-  }
-
-  // ── ADMIN GATE (SPEC §4.4 — mirrors admin-stripe-connect-action). ───────────
+  // ── ADMIN GATE FIRST (QA P3-7: auth precedes input validation — no pre-auth
+  //    probe surface; mirrors admin-ad-preflight/create/sync ordering). ────────
   const authHeader = req.headers.get("authorization");
   if (!authHeader) return json({ error: "unauthorized" }, 401);
   const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
@@ -119,6 +112,15 @@ serve(async (req: Request): Promise<Response> => {
     .maybeSingle();
   if (!adminRow) return json({ error: "forbidden" }, 403);
 
+  const platform = body.platform;
+  const lane = body.lane ?? "consumer";
+  const action = body.action ?? "connect";
+  if (!isPlatform(platform)) return json({ error: "validation_error", detail: "platform_invalid" }, 400);
+  if (!isLane(lane)) return json({ error: "validation_error", detail: "lane_invalid" }, 400);
+  if (action !== "connect" && action !== "status") {
+    return json({ error: "validation_error", detail: "action_invalid" }, 400);
+  }
+
   // ── Fail-close stubs for the four unbuilt channels. ─────────────────────────
   if (platform !== "meta") {
     return json({
@@ -134,18 +136,42 @@ serve(async (req: Request): Promise<Response> => {
     .eq("lane", lane)
     .maybeSingle();
 
+  // QA P2-4 (AC-1): a connect failure must PERSIST an `invalid` row even on a
+  // FIRST connect (no existing row) — SC-2's "invalid" state must be renderable
+  // before the first success. UPSERT, not update-if-exists.
   const markInvalid = async (): Promise<void> => {
-    if (existing) {
-      await supabase
-        .from("ad_connections")
-        .update({ status: "invalid", connected: false })
-        .eq("id", existing.id);
+    let accountId = existing?.external_account_id ?? "";
+    if (!accountId) {
+      try {
+        accountId = resolveMetaEnvConfig(lane).adAccountId;
+      } catch {
+        // Env IDs unset — no fabricated id; 'unconfigured' is an explicit
+        // sentinel (documented in the WP1 rework report), not fake data.
+        accountId = "unconfigured";
+      }
     }
+    await supabase
+      .from("ad_connections")
+      .upsert({
+        platform,
+        lane,
+        display_name: existing?.display_name ??
+          `Meta · ${lane === "business" ? "Business" : "Consumer"}`,
+        external_account_id: accountId,
+        external_org_id: existing?.external_org_id ?? null,
+        auth_kind: "system_user_token",
+        token_env_var: existing?.token_env_var ?? defaultTokenEnvVar(platform, lane),
+        extra: existing?.extra ?? {},
+        status: "invalid",
+        connected: false,
+      }, { onConflict: "platform,lane" });
   };
 
   try {
-    // 1–2: token + account (fail-close throws AdNotConnectedError / AdApiError).
-    const client = resolveMetaClient(existing ?? null);
+    // 1–2: token + account, LANE-CORRECT (QA P2-3): with no persisted row the
+    // credential and IDs verified are the LANE's own env names — a business
+    // first-connect never validates the consumer credential.
+    const client = resolveMetaClient(existing ?? null, lane);
     const account = await metaFetchAccount(client);
 
     if (action === "status") {

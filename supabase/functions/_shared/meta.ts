@@ -41,7 +41,22 @@ import {
 
 export const META_DEFAULT_API_VERSION = "v25.0"; // A4.b M-1 — NOT v21.0
 export const META_DEFAULT_GRAPH_BASE = "https://graph.facebook.com";
-const META_DEFAULT_TOKEN_ENV_VAR = "META_SYSTEM_USER_TOKEN";
+
+export type MetaLane = "consumer" | "business";
+
+/**
+ * QA P2-3: env-var NAMES are LANE-CORRECT — a business-lane resolution must
+ * never fall back to the consumer credential/IDs (A2 pins the business token
+ * names; the ID names follow the same META_MINGLABIZ_ prefix convention,
+ * flagged in the WP1 rework report pending a spec amendment blessing).
+ */
+function laneEnvName(base: string, lane: MetaLane): string {
+  return lane === "business" ? base.replace(/^META_/, "META_MINGLABIZ_") : base;
+}
+
+export function metaDefaultTokenEnvVar(lane: MetaLane): string {
+  return laneEnvName("META_SYSTEM_USER_TOKEN", lane);
+}
 
 export interface MetaEnvConfig {
   apiVersion: string;
@@ -53,38 +68,44 @@ export interface MetaEnvConfig {
 }
 
 /**
- * Reads the non-secret Meta IDs from env (META_AD_ACCOUNT_ID, META_PAGE_ID,
- * META_BUSINESS_ID, META_DATASET_ID, META_API_VERSION, META_GRAPH_BASE).
- * IDs live in env/config, never as literals in this public repo.
- * Fail-CLOSE when the required IDs are unset.
+ * Reads the non-secret Meta IDs from env, lane-correct (QA P2-3): consumer →
+ * META_AD_ACCOUNT_ID / META_PAGE_ID / META_BUSINESS_ID / META_DATASET_ID;
+ * business → the META_MINGLABIZ_-prefixed names. IDs live in env/config,
+ * never as literals in this public repo. Fail-CLOSE when the lane's required
+ * IDs are unset — a business connect must NOT silently verify consumer IDs.
  */
-export function resolveMetaEnvConfig(): MetaEnvConfig {
-  const adAccountId = (Deno.env.get("META_AD_ACCOUNT_ID") ?? "").trim();
-  const pageId = (Deno.env.get("META_PAGE_ID") ?? "").trim();
+export function resolveMetaEnvConfig(lane: MetaLane = "consumer"): MetaEnvConfig {
+  const adAccountId = (Deno.env.get(laneEnvName("META_AD_ACCOUNT_ID", lane)) ?? "").trim();
+  const pageId = (Deno.env.get(laneEnvName("META_PAGE_ID", lane)) ?? "").trim();
   if (!adAccountId) throw new AdNotConnectedError("meta", "meta_not_connected");
   if (!pageId) throw new AdNotConnectedError("meta", "meta_not_connected");
   return {
     apiVersion: (Deno.env.get("META_API_VERSION") ?? META_DEFAULT_API_VERSION).trim(),
     graphBase: (Deno.env.get("META_GRAPH_BASE") ?? META_DEFAULT_GRAPH_BASE).trim(),
     adAccountId,
-    businessId: (Deno.env.get("META_BUSINESS_ID") ?? "").trim() || null,
+    businessId: (Deno.env.get(laneEnvName("META_BUSINESS_ID", lane)) ?? "").trim() || null,
     pageId,
-    datasetId: (Deno.env.get("META_DATASET_ID") ?? "").trim() || null,
+    datasetId: (Deno.env.get(laneEnvName("META_DATASET_ID", lane)) ?? "").trim() || null,
   };
 }
 
 /**
  * Resolves the System User token from Deno.env[connection.token_env_var] (A2 —
  * per-lane env names, e.g. META_SYSTEM_USER_TOKEN consumer /
- * META_MINGLABIZ_SYSTEM_USER_TOKEN business).
+ * META_MINGLABIZ_SYSTEM_USER_TOKEN business). With no persisted row, the
+ * default env-var NAME is the LANE's (QA P2-3) — a first business connect
+ * must verify the credential the row will claim, not the consumer's.
  *
  * FAIL-CLOSE (RT-1): a missing token throws AdNotConnectedError BEFORE any
  * Graph call — connect/create/launch must return 424 meta_not_connected and
  * never proceed to spend on a broken connection. Do NOT soften this throw.
  */
-export function resolveMetaToken(conn?: Pick<AdConnectionRow, "token_env_var"> | null): string {
-  const envVarName = (conn?.token_env_var ?? META_DEFAULT_TOKEN_ENV_VAR).trim() ||
-    META_DEFAULT_TOKEN_ENV_VAR;
+export function resolveMetaToken(
+  conn?: Pick<AdConnectionRow, "token_env_var"> | null,
+  lane: MetaLane = "consumer",
+): string {
+  const envVarName = (conn?.token_env_var ?? metaDefaultTokenEnvVar(lane)).trim() ||
+    metaDefaultTokenEnvVar(lane);
   const value = Deno.env.get(envVarName);
   if (!value || value.trim().length === 0) {
     throw new AdNotConnectedError("meta", "meta_not_connected");
@@ -98,9 +119,13 @@ export interface MetaClient extends AuthedClient {
   config: MetaEnvConfig;
 }
 
-export function resolveMetaClient(conn?: AdConnectionRow | null): MetaClient {
-  const token = resolveMetaToken(conn ?? null);
-  const config = resolveMetaEnvConfig();
+export function resolveMetaClient(
+  conn?: AdConnectionRow | null,
+  lane?: MetaLane,
+): MetaClient {
+  const effectiveLane: MetaLane = conn?.lane ?? lane ?? "consumer";
+  const token = resolveMetaToken(conn ?? null, effectiveLane);
+  const config = resolveMetaEnvConfig(effectiveLane);
   return { platform: "meta", token, config };
 }
 
@@ -111,6 +136,14 @@ export interface NormalizedMetaError {
   subcode: string | number | null;
   message: string;
   fbtrace_id: string | null;
+}
+
+/**
+ * QA P3-8 defense-in-depth: scrub anything shaped like a Meta user/system
+ * token (EAA…) out of provider text before it can reach the admin client.
+ */
+export function scrubMetaTokens(text: string): string {
+  return text.replace(/EAA[A-Za-z0-9]{16,}/g, "[redacted]");
 }
 
 /** Client-safe error shape. The raw token is NEVER present in Graph error bodies we surface. */
@@ -124,7 +157,7 @@ export function normalizeMetaError(payload: unknown): NormalizedMetaError {
   return {
     code: (err.code as string | number | undefined) ?? null,
     subcode: (err.error_subcode as string | number | undefined) ?? null,
-    message,
+    message: scrubMetaTokens(message),
     fbtrace_id: (err.fbtrace_id as string | undefined) ?? null,
   };
 }
@@ -275,6 +308,9 @@ export function applySpecialAdCategoryRestrictions(
 export const META_URL_TAGS =
   "utm_source=facebook&utm_medium=paid&utm_campaign={{campaign.name}}&utm_content={{ad.name}}&placement={{placement}}";
 
+/** §4.4b default bid strategy — the only value WP1 accepts (cap strategies need bid_amount). */
+export const META_DEFAULT_BID_STRATEGY = "LOWEST_COST_WITHOUT_CAP";
+
 export function buildMetaCampaignBody(input: CreateCampaignInput): Record<string, unknown> {
   const isCbo = typeof input.dailyBudgetCents === "number" && input.dailyBudgetCents > 0;
   const body: Record<string, unknown> = {
@@ -282,6 +318,12 @@ export function buildMetaCampaignBody(input: CreateCampaignInput): Record<string
     objective: input.objective,
     buying_type: "AUCTION",
     special_ad_categories: input.specialAdCategories ?? [],
+    // QA P1-1 (subcode 1815857, proven live BOTH directions): without an
+    // explicit campaign bid_strategy every real ad-set create fails with
+    // "Bid amount required"; with LOWEST_COST_WITHOUT_CAP the exact builder
+    // shape validates clean. Sent explicitly on BOTH the CBO and non-CBO
+    // branches — never rely on a Meta default (§4.0/§4.4b).
+    bid_strategy: input.bidStrategy ?? META_DEFAULT_BID_STRATEGY,
     // GR-11: PAUSED explicitly at every level on every channel — never a default.
     status: "PAUSED",
   };
@@ -696,10 +738,19 @@ export const metaAdapter: ChannelAdapter = {
     });
   },
 
-  // §4.4b compensating cleanup: DELETE /{campaign_id} — Meta cascades the
-  // child ad set / creative-linked ad on campaign delete.
+  // §4.4b compensating cleanup: DELETE /{campaign_id} — live-proven to cascade
+  // the child ad set. NOTE (QA P2-5): it does NOT cascade the AdCreative — that
+  // is an ACCOUNT-level object, cleaned by rollbackCreative below.
   rollbackCampaign: async (conn, campaignExternalId) => {
     const client = resolveMetaClient(conn);
     await metaGraph(client, "DELETE", campaignExternalId);
+  },
+
+  // QA P2-5 (proven live): the AdCreative survives campaign deletion. On a
+  // post-creative-step failure the ad never existed, so the creative is
+  // unreferenced and safely deletable.
+  rollbackCreative: async (conn, creativeExternalId) => {
+    const client = resolveMetaClient(conn);
+    await metaGraph(client, "DELETE", creativeExternalId);
   },
 };

@@ -123,12 +123,26 @@ export const PLATFORM_BUDGET_UNIT: Record<Platform, PlatformBudgetUnit> = {
 };
 
 /**
+ * QA P3-9 upper bound: the micro conversion (×10,000) must never leave
+ * Number.MAX_SAFE_INTEGER — beyond it the converted budget silently loses
+ * integer precision. Applied uniformly across platforms (conservative).
+ * Math.floor(MAX_SAFE_INTEGER / 10_000) = 900,719,925,474¢ (~$9.0B) — the
+ * tester's T-1 exactness boundary sits exactly AT this bound and must pass.
+ */
+export const MAX_BUDGET_CENTS = Math.floor(Number.MAX_SAFE_INTEGER / 10_000);
+
+/**
  * THE single cents→platform-unit conversion (A4.a). Mandatory unit tests:
  * $5.00 (500¢) → 5,000,000 micro and $20.00 (2,000¢) → 20,000,000 micro.
  */
 export function centsToPlatformBudget(platform: Platform, cents: number): number {
   if (!Number.isInteger(cents) || cents <= 0) {
     throw new Error(`centsToPlatformBudget: cents must be a positive integer; got ${cents}`);
+  }
+  if (cents > MAX_BUDGET_CENTS) {
+    throw new Error(
+      `centsToPlatformBudget: ${cents}¢ exceeds MAX_BUDGET_CENTS (${MAX_BUDGET_CENTS}) — micro conversion would lose integer precision (QA P3-9)`,
+    );
   }
   switch (platform) {
     case "meta":
@@ -338,6 +352,12 @@ export interface CreateCampaignInput {
   objective: string;
   /** Minor units (cents). Present ⇒ CBO (budget on the campaign). */
   dailyBudgetCents?: number;
+  /**
+   * QA P1-1 (subcode 1815857, proven live): Meta REQUIRES an explicit bid
+   * strategy or the ad-set create dies with "Bid amount required". Adapters
+   * must send their default explicitly; §4.4b names LOWEST_COST_WITHOUT_CAP.
+   */
+  bidStrategy?: string;
   specialAdCategories?: string[];
   specialAdCategoryCountry?: string[];
   /** Meta execution_options:['validate_only'] passthrough — zero objects created. */
@@ -454,10 +474,19 @@ export interface ChannelAdapter {
 
   /**
    * §4.4b compensating-cleanup hook (optional — Google's atomic mutate never
-   * needs it). meta → DELETE /{campaign_id} (cascades children); reddit →
+   * needs it). meta → DELETE /{campaign_id} (cascades the ad set); reddit →
    * PATCH configured_status:"DELETED" (no DELETE verb exists — R-5).
    */
   rollbackCampaign?(conn: AdConnectionRow, campaignExternalId: string): Promise<void>;
+
+  /**
+   * QA P2-5 (proven live): a platform creative can be an ACCOUNT-level object
+   * that campaign deletion does NOT cascade (Meta AdCreative). When a create
+   * fails AFTER the creative step, this hook removes the residue. Optional —
+   * platforms whose creative is campaign-scoped or inline (TikTok) omit it;
+   * when absent/failing, the residue id is surfaced for the audit row.
+   */
+  rollbackCreative?(conn: AdConnectionRow, creativeExternalId: string): Promise<void>;
 }
 
 /** Opaque per-platform authed client (Meta: token + resolved env config). */
@@ -537,6 +566,13 @@ export interface AtomicCreateFailure {
   step: "campaign" | "ad_set" | "creative" | "ad";
   partialExternalIds: Record<string, string>;
   rollbackSucceeded: boolean | null; // null = no rollback needed (nothing created)
+  /**
+   * QA P2-5: account-level creative cleanup outcome. null = no creative was
+   * created (nothing to clean); true = deleted; false = RESIDUE REMAINS — the
+   * id (partialExternalIds.external_creative_id) must land in the audit row
+   * for manual reconciliation.
+   */
+  creativeRollbackSucceeded: boolean | null;
   cause: unknown;
 }
 
@@ -569,6 +605,24 @@ export async function createFullCampaignAtomic(
     step: AtomicCreateFailure["step"],
     cause: unknown,
   ): Promise<never> => {
+    // QA P2-5 (proven live): the creative is an ACCOUNT-level object — campaign
+    // deletion does NOT cascade it. Clean it FIRST (the failed chain's ad never
+    // existed, so the creative is unreferenced and deletable), then the campaign.
+    let creativeRollbackSucceeded: boolean | null = null;
+    const creativeId = partial.external_creative_id;
+    if (creativeId) {
+      if (adapter.rollbackCreative) {
+        try {
+          await adapter.rollbackCreative(conn, creativeId);
+          creativeRollbackSucceeded = true;
+        } catch {
+          creativeRollbackSucceeded = false; // residue — audit row carries the id
+        }
+      } else {
+        creativeRollbackSucceeded = false; // no hook — residue, reconcile from audit
+      }
+    }
+
     let rollbackSucceeded: boolean | null = null;
     const campaignId = partial.external_campaign_id;
     if (campaignId && adapter.rollbackCampaign) {
@@ -587,6 +641,7 @@ export async function createFullCampaignAtomic(
       step,
       partialExternalIds: { ...partial },
       rollbackSucceeded,
+      creativeRollbackSucceeded,
       cause,
     });
   };

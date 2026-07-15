@@ -175,6 +175,30 @@ serve(async (req: Request): Promise<Response> => {
   if (!Number.isInteger(amountCents) || (amountCents as number) <= 0) {
     return json({ error: "validation_error", detail: "budget_amount_cents_invalid" }, 400);
   }
+  // QA P3-9: sane business ceiling — $1M/day. A typo'd budget must die here,
+  // not at Meta (the conversion layer separately guards integer-precision).
+  const MAX_DAILY_BUDGET_CENTS = 100_000_000;
+  if ((amountCents as number) > MAX_DAILY_BUDGET_CENTS) {
+    return json({
+      error: "budget_above_maximum",
+      detail:
+        `Daily budget ${amountCents}¢ exceeds the ${MAX_DAILY_BUDGET_CENTS}¢ ($1,000,000/day) ceiling.`,
+      max_cents: MAX_DAILY_BUDGET_CENTS,
+    }, 422);
+  }
+
+  // QA P1-1: WP1 accepts ONLY the §4.4b default bid strategy — cap strategies
+  // require a bid_amount WP1 does not collect. The builder sends it EXPLICITLY.
+  const bidStrategy = typeof body.bid_strategy === "string"
+    ? body.bid_strategy
+    : "LOWEST_COST_WITHOUT_CAP";
+  if (bidStrategy !== "LOWEST_COST_WITHOUT_CAP") {
+    return json({
+      error: "validation_error",
+      detail:
+        "bid_strategy_unsupported_wp1 — only LOWEST_COST_WITHOUT_CAP ships in WP1 (cap strategies need bid_amount; #864).",
+    }, 422);
+  }
 
   const targetingInput = (body.targeting ?? {}) as Record<string, unknown>;
   const countries = targetingInput.countries;
@@ -313,11 +337,14 @@ serve(async (req: Request): Promise<Response> => {
     if (!entitySlug) {
       return json({ error: "validation_error", detail: "destination_entity_slug_required" }, 400);
     }
+    // QA P3-6 (AC-4 "public + LIVE"): the view also exposes ended/cancelled
+    // events — paid traffic must never point at one.
     const { data: eventRow } = await supabase
       .from("business_public_events_view")
       .select("id, brand_slug, slug, status")
       .eq("brand_slug", brandSlug)
       .eq("slug", entitySlug)
+      .in("status", ["scheduled", "live"])
       .maybeSingle();
     if (!eventRow) return json({ error: "destination_not_public" }, 422);
     destUrl = `${BUSINESS_WEB_ORIGIN}/e/${brandSlug}/${entitySlug}`;
@@ -343,6 +370,7 @@ serve(async (req: Request): Promise<Response> => {
     name,
     objective,
     dailyBudgetCents: amountCents as number, // CBO (OD-3) — budget on the campaign
+    bidStrategy, // QA P1-1 — explicit LOWEST_COST_WITHOUT_CAP, never a Meta default
     specialAdCategories,
     specialAdCategoryCountry: Array.isArray(body.special_ad_category_country)
       ? body.special_ad_category_country as string[]
@@ -384,14 +412,59 @@ serve(async (req: Request): Promise<Response> => {
   };
 
   // ── VALIDATE-ONLY passthrough: zero objects created, zero DB writes. ─────────
+  // QA P2-2: the ad-set layer is validated too (this is exactly where P1-1
+  // hid), and the response NAMES which layers were validated. Meta's ad-set
+  // validate-only requires a campaign_id, so the ad set is validated against
+  // the connection's most recent persisted campaign; with none yet, the layer
+  // is reported as skipped with the reason — never silently.
   if (validateOnly) {
+    const validatedLayers: string[] = [];
+    const skippedLayers: { layer: string; reason: string }[] = [];
     try {
       await adapter.createCampaign(connection, campaignInput);
-      if (adapter.createCreative) await adapter.createCreative(connection, creativeInput);
-      return json({ validated: true, detail: "validate_only — nothing created on the platform, nothing persisted." });
+      validatedLayers.push("campaign");
+
+      const { data: referenceCampaign } = await supabase
+        .from("ad_campaigns")
+        .select("external_campaign_id")
+        .eq("connection_id", connection.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (referenceCampaign?.external_campaign_id) {
+        await adapter.createAdSet(
+          connection,
+          String(referenceCampaign.external_campaign_id),
+          { ...adSetInput, validateOnly: true },
+        );
+        validatedLayers.push("ad_set");
+      } else {
+        skippedLayers.push({
+          layer: "ad_set",
+          reason:
+            "no_reference_campaign — Meta ad-set validation needs a campaign_id; the first real create exercises this layer live (client-side goal/matrix/floor checks already passed).",
+        });
+      }
+
+      if (adapter.createCreative) {
+        await adapter.createCreative(connection, creativeInput);
+        validatedLayers.push("creative");
+      }
+      return json({
+        validated: true,
+        validated_layers: validatedLayers,
+        skipped_layers: skippedLayers,
+        detail: "validate_only — nothing created on the platform, nothing persisted.",
+      });
     } catch (err) {
       if (err instanceof AdNotConnectedError) return json({ error: err.detail }, 424);
-      if (err instanceof AdApiError) return json({ error: "validation_failed", detail: err.toJSON() }, 422);
+      if (err instanceof AdApiError) {
+        return json({
+          error: "validation_failed",
+          detail: err.toJSON(),
+          validated_layers: validatedLayers,
+        }, 422);
+      }
       const detail = err instanceof Error ? err.message : String(err);
       console.error("[admin-ad-create-campaign] validate-only unexpected:", detail);
       return json({ error: "internal_error" }, 500);
@@ -494,6 +567,18 @@ serve(async (req: Request): Promise<Response> => {
       // Never a half-written DB row set: delete the campaign row (cascades) and
       // roll back the platform campaign, then audit for reconciliation.
       if (campaignRow) await supabase.from("ad_campaigns").delete().eq("id", campaignRow.id);
+      // QA P2-5: the account-level creative does NOT cascade with the campaign.
+      let creativeRollbackOk: boolean | null = null;
+      if (created.externalCreativeId && adapter.rollbackCreative) {
+        try {
+          await adapter.rollbackCreative(connection, created.externalCreativeId);
+          creativeRollbackOk = true;
+        } catch {
+          creativeRollbackOk = false; // residue — id recorded below
+        }
+      } else if (created.externalCreativeId) {
+        creativeRollbackOk = false;
+      }
       let rollbackOk = false;
       try {
         if (adapter.rollbackCampaign) {
@@ -507,7 +592,7 @@ serve(async (req: Request): Promise<Response> => {
         campaign_id: null,
         platform,
         entity: "campaign",
-        action: rollbackOk ? "rollback" : "create_failed",
+        action: rollbackOk && creativeRollbackOk !== false ? "rollback" : "create_failed",
         actor: user.id,
         to_status: null,
         external_ids: {
@@ -516,7 +601,12 @@ serve(async (req: Request): Promise<Response> => {
           external_creative_id: created.externalCreativeId,
           external_ad_id: created.externalAdId,
         },
-        provider_response: { db_error: persistError.message },
+        provider_response: {
+          db_error: persistError.message,
+          ...(creativeRollbackOk === false
+            ? { creative_residue_id: created.externalCreativeId }
+            : {}),
+        },
       });
       console.error("[admin-ad-create-campaign] persist failed:", persistError.message);
       return json({ error: "internal_error", detail: "db_persist_failed_platform_rolled_back" }, 500);
@@ -551,20 +641,29 @@ serve(async (req: Request): Promise<Response> => {
       const providerResponse = failure.cause instanceof AdApiError
         ? failure.cause.toJSON()
         : { message: failure.cause instanceof Error ? failure.cause.message : String(failure.cause) };
+      // QA P2-5: any surviving account-level creative is named in the audit row.
+      const creativeResidue = failure.creativeRollbackSucceeded === false
+        ? { creative_residue_id: failure.partialExternalIds.external_creative_id ?? null }
+        : {};
+      const fullyRolledBack = failure.rollbackSucceeded !== false &&
+        failure.creativeRollbackSucceeded !== false;
       await supabase.from("ad_status_events").insert({
         campaign_id: null,
         platform,
         entity: "campaign",
-        action: failure.rollbackSucceeded === true ? "rollback" : "create_failed",
+        action: fullyRolledBack && failure.rollbackSucceeded === true
+          ? "rollback"
+          : "create_failed",
         actor: user.id,
         external_ids: failure.partialExternalIds,
-        provider_response: { step: failure.step, ...providerResponse },
+        provider_response: { step: failure.step, ...providerResponse, ...creativeResidue },
       });
       return json({
         error: `${platform}_create_failed`,
         detail: providerResponse,
         step: failure.step,
         rolled_back: failure.rollbackSucceeded,
+        creative_rolled_back: failure.creativeRollbackSucceeded,
       }, 502);
     }
     const detail = err instanceof Error ? err.message : String(err);
