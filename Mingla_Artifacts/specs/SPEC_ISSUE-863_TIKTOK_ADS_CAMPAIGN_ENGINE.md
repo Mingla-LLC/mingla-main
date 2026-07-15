@@ -488,3 +488,111 @@ Anything outside the allowlist → request a `SPEC_AMENDMENT_ISSUE-863_*` before
 ## Downstream routing
 **Next:** `mingla-implementor` (build from this SPEC in the worktree below) → `mingla-tester` (RLS + fail-close + idempotency + no-orphan + live-fire once §7 prereqs are done) → orchestrator CLOSE. **Coordinate OD-2 with #862/#864** (shared generalized model) before implementation starts.
 **Working tree:** `~/Desktop/mingla-orchs/issue-863-tiktok-ads-api/` on branch `issue-863-tiktok-ads-api`.
+
+---
+
+# Amendment A1 — battle-test corrections (2026-07-15, evidence-backed)
+
+**Status: BINDING. Where this amendment conflicts with the body above, the amendment wins.** The body is preserved un-rewritten for audit history; the implementor reads body + A1 together, A1 last.
+**Evidence base** (research folder = `issue-862-meta-ads-api/Mingla_Artifacts/research/ad-pipeline-2026-07-15/`): `GAP_REGISTER.md` §4 TikTok rows **T-1…T-9** + gaps **GR-04, GR-05, GR-16, GR-20, GR-24, GR-25, GR-26, GR-27, GR-40, GR-42, GR-49, GR-50, GR-58, GR-66, GR-67, GR-68**; `PROOF_LOG.md` live probes **T-P1…T-P7** + **D-P1** (2026-07-15, engine token); `tiktok.md` (949-line channel research; line cites below); `PIPELINE_BLUEPRINT.md` §1.4 (budget/schedule), §1.5 (identity/Spark/AIGC), §2.2 (TikTok creative matrix).
+
+**Probe update superseding §7 item 1 (GR-04 is STALE):** the TikTok developer **app is APPROVED and the engine token is LIVE** — `tool/region` and `app/list` return `code:0` on 2026-07-15 (PROOF_LOG T-P1). §7 item 1's "HARD BLOCKER — the #863 credential does not yet exist" no longer holds. Remaining ops step: set the Supabase Function Secrets (env-var **names** unchanged: `TIKTOK_ACCESS_TOKEN`, `TIKTOK_APP_ID`, `TIKTOK_APP_SECRET`, `TIKTOK_ADVERTISER_ID`, `TIKTOK_API_VERSION`, `TIKTOK_GRAPH_BASE`). Fail-close behavior until they are set is unchanged.
+
+## A1.0 Conductor-fixed canonical decisions (identical block across all parallel #862/#863/#866/#867 amendments)
+
+1. **Budget units:** budgets are **cents at rest** everywhere; the TikTok boundary conversion is **cents ÷ 100 → dollars (double)**. Floors: **$20/day per ad group**, **$50/day per campaign (CBO)**, **lifetime = $20 × scheduled days**. **Min-checks run AFTER conversion**, in the platform's unit — never in cents before it. `BALANCE_EXCEED` is surfaced as an **actionable warning (HTTP 200 + `warning`)**, never a silent clamp and never a hard error. *(Evidence: GR-05; PROOF_LOG T-P3 — API `balance: 0.0`, $10 portfolio < $20/day floor; PIPELINE_BLUEPRINT §1.4 floor table + Discovery 3.)*
+2. **Adapter contract:** this adapter implements the **A4-widened `ChannelAdapter` being filed in #862**: **`createCreative` is a NO-OP for TikTok** (the creative is inline in `ad_create` — TikTok has no standalone creative entity, `tiktok.md` L101) and **`setBudget(conn, level, externalId, cents)` is added** to the interface. §4.3's interface sketch reads as widened accordingly.
+3. **Naming reconciled to #862 A3 §F:** table **`ad_status_events`** (not `ad_campaign_status_events`); edge functions **`admin-ad-*`** (not `admin-ads-*`); platform enum **`('meta','tiktok','snapchat','google','reddit')`**. See item (i).
+4. **Everything created PAUSED:** `operation_status='DISABLE'` at **ALL THREE levels** — campaign, ad group, **and ad**. §4.4(b) step 5's `operation_status:'ENABLE'` is an internal contradiction and is corrected. See item (h).
+5. **Destination policy v1 (PROVEN):** AppsFlyer serves crawlers an **app-install interstitial**, not the destination page — `curl -A "facebookexternalhit/1.1" go.usemingla.com/w36m` → 302 to an `af-preview` stub with `af_robot_sig` (PROOF_LOG D-P1; GR-32). The cloaking-pattern risk is real, not theoretical. Therefore v1: **`landing_page_url` = the canonical `https://usemingla.com/e/…` public page (`dest_url`), NOT the OneLink.** Attribution rides on **`utm_params`** instead: **≤14 entries**, keys **case-sensitive** (`utm_source`/`utm_medium`/`utm_content`/`utm_campaign` or custom ≤100 chars), values may use TikTok macros **`__CAMPAIGN_ID__` / `__AID__` / `__CID__` / `__PLACEMENT__`** (`tiktok.md` L470). `dest_smart_link` is still built and persisted (the column stays) but is **not** the ad-visible URL in v1. **`minglabiz.onelink.me` is never used anywhere** (dead on Android — COMMS-0100/0101). This supersedes §4.0's `landing_page_url=<smart link>`, §4.4(b) step 5, and AC-4's "used as the ad `landing_page_url`" clause.
+6. **No conversion optimization until #865** (pixel `7662469356818858002` has **zero events** — PROOF_LOG T-P4): the default is **objective `TRAFFIC` + `optimization_goal=TRAFFIC_LANDING_PAGE_VIEW`**; **`objective_type` becomes a PARAMETER** with the client-side enum **`REACH, TRAFFIC, VIDEO_VIEWS, ENGAGEMENT, APP_PROMOTION, LEAD_GENERATION, WEB_CONVERSIONS, PRODUCT_SALES`** (the MCP declares a bare string — **we own the enum client-side**, `tiktok.md` L138–155). **`APP_PROMOTION` + `INSTALL` is viable TODAY and is the likely first real campaign** (GR-49). See item (g).
+
+## A1.1 Itemized corrections (old → new → evidence)
+
+**(a) T-1 — `schedule_start_time` timezone + bounds + dayparting.**
+- **Old (§4.0 ad-group contract, §4.4(b) step 4):** `schedule_start_time` `"YYYY-MM-DD HH:MM:SS"` *"in the advertiser timezone"*.
+- **New:** `schedule_start_time` / `schedule_end_time` are **UTC+0**. The advertiser is `Etc/GMT+5` (`America/New_York`) — the body as written is a **5-hour scheduling error** on every campaign. Validate before create: start **≤12 h in the past** and **≤ `2028-01-01 00:00:00`**; end **≤ `2038-01-01 00:00:00`**. If `dayparting` is ever sent: **exactly 336 chars of `0`/`1`** (48 half-hours × 7 days; char 1 = Mon 00:01–00:30; all-`0`/all-`1`/omitted = full-time). **No shared date helper across adapters** — TikTok = UTC+0 string; Meta/Snap = ISO-8601; Google = `YYYY-MM-DD HH:MM:SS`.
+- **Evidence:** GAP_REGISTER T-1 + GR-40; `tiktok.md` L228–232, L880–882, L926–927; PIPELINE_BLUEPRINT §1.4 "Schedule".
+
+**(b) T-2 / GR-16 — bidding specified (the body has none).**
+- **Old:** no `bid_type`/`bid_price` anywhere in §4.0/§4.4; a CBO campaign built to the body as written **fails TikTok validation**.
+- **New:** **`bid_type` is REQUIRED when `budget_optimize_on=true` (CBO).** The MCP declares `bid_type` as a bare string — the adapter owns the enum: **`BID_TYPE_NO_BID`** (lowest cost / max delivery — the **default** and correct start) | **`BID_TYPE_CUSTOM`** (cost cap; requires `bid_price` when `billing_event ∈ {CPC, CPM, CPV}`). Pre-flight validations: **`bid_price` must be lower than BOTH the campaign budget and the ad-group budget**; under one CBO campaign, **`bid_type` + `optimization_event` must match the first ad group**. Campaign-level `bid_type` is **deprecated in v1.3** — set bidding at the ad group only.
+- **Evidence:** GAP_REGISTER T-2/GR-16; `tiktok.md` L167–169, L240–245, L743; PIPELINE_BLUEPRINT §1.4 validation table ("TikTok CBO" / "TikTok `bid_price`" rows).
+
+**(c) T-3 / GR-27 — hard text validators (the body has none).**
+- **Old:** no character limits anywhere; `ad_text` passes through unvalidated. (Channel research had recorded "Character limits: NONE stated" — wrong.)
+- **New:** hard validators, enforced **before any TikTok call**: **`ad_text` ≤100 chars, NO emoji** (CJK/JP characters count **×2**); **`ad_name`/`campaign_name`/`adgroup_name` ≤512, no emoji**; **`display_name` 1–40 Latin / 1–20 CJK**; **`app_name` 1–40**. **Per-channel caps, never shared** — Meta's ~125-char soft hint exceeds TikTok's hard 100 (#864 must not reuse one cap across channels). Pre-check copy with **`blockedword_check`** (API-callable, free). **Emoji reach TikTok ONLY via a Spark ad's organic caption** (4 lines, emoji allowed) — relevant because `mingla-content-engine` copy is emoji-native: strip for non-Spark, or route via Spark (item j).
+- **Evidence:** GAP_REGISTER T-3/GR-27; `tiktok.md` L418–420, L699; PIPELINE_BLUEPRINT §2.2 copy rows + §1.6.
+
+**(d) T-4 / GR-24 — video duration is a POLICY bound, not the technical one (for the OD-6 video fast-follow).**
+- **Old:** body defers video with no constraints; the technical spec's 10-minute bound is the only figure in circulation.
+- **New:** validate **duration 5–60 s (advertising POLICY)**, not the 10-minute technical bound — a 3-minute video **uploads fine, creates fine, then is rejected in review** while a $20/day minimum burns. Spark is the documented exception (**10 min** — the organic post *is* the ad). **Audio is REQUIRED**; **static images ≤50% of the video**; **watermarks (incl. blurred/masked third-party) prohibited**; **letterbox/black bars = the #1 practical auto-reject** (16:9 into 9:16). Enable the free partial mitigations: `file_video_ad_upload` with **`flaw_detect=true` + `auto_fix_enabled=true`** (auto-fixes only `LOW_RESOLUTION`→1280×720 and `ILLEGAL_VIDEO_SIZE`→1:1/9:16/16:9, since 2025-04-24) and **`creative_auto_enhancement_strategy_list=[IMAGE_RESIZE, IMAGE_QUALITY, VIDEO_QUALITY]`**. **Neither touches duration, watermarks, black bars, or safe zones — those checks are ours.**
+- **Evidence:** GAP_REGISTER T-4/GR-24; `tiktok.md` L526 (the 10-min-vs-60-s trap, verbatim policy), L489, L707; PIPELINE_BLUEPRINT §2.2 + §1.5 auto-fix tiers.
+
+**(e) T-5 / GR-26 — geo resolved LIVE; the build-time map recommendation is REVERSED; GB is not targetable.**
+- **Old (§4.3 `resolveGeo`, §7 item 3, OD-7):** country → `location_id` via a **cached build-time map** seeded for launch countries "US, UK, NG"; OD-7 RECOMMENDS build-time.
+- **New:** **OD-7's recommendation is REVERSED — unsafe.** `resolveGeo` resolves **LIVE against `tool_region_get`** (per objective) at create time. **PROVEN 2026-07-15: GB is ABSENT from `tool_region_get` for BOTH `TRAFFIC` and `APP_PROMOTION`** — 2,831 regions across **33 country codes**, no GB. **Advertising to London on TikTok is impossible today**; escalation to TikTok filed (reads as an allowlist/entity-registration gate, not a product limit). US `6252001` ✓, NG `2328926` ✓. When a requested country is unavailable → **fail LOUDLY** (422 naming the unavailable country) — **never drop it silently**. `location_ids` are **numeric only** (never ISO codes), **≤3,000** combined with `zipcode_ids`, **no overlapping locations** (no US + California together).
+- **Evidence:** GAP_REGISTER T-5/GR-26; PROOF_LOG **T-P2** (proven-negative); `tiktok.md` L277, L870–871.
+
+**(f) T-6 / GR-25 — `CUSTOMIZED_USER` is illegal for this account; hard-fail it in the adapter.**
+- **Old (§4.0 ad contract):** `identity_type ∈ {CUSTOMIZED_USER, AUTH_CODE, TT_USER, BC_AUTH_TT}` presented unconstrained; `TT_USER` reads as a preference.
+- **New:** our advertiser was created **2026-04-12** (`create_time 1776026274`) — **after TikTok's 2026-01-15 cutoff**: new accounts **cannot create non-Spark ads with Custom Identities** on TikTok/Automatic placements. The adapter **hard-fails `CUSTOMIZED_USER` with an explanatory error** before any TikTok call. Legal options are exactly two: **`TT_USER`** (`@usemingla`, `AVAILABLE`, `identity_id b3f0f8f4-1beb-5c23-8a2c-9f440cec58a5`) or **`AUTH_CODE`** (Spark). `TT_USER` is **the only viable non-Spark path — a constraint, not a preference**. Consequence: **`aigc_disclosure_type` is `CUSTOMIZED_USER`-only ⇒ AI-content self-disclosure is impossible on TikTok via the API** — escalated separately (our creative pipeline is Higgsfield/AI-generative).
+- **Evidence:** GAP_REGISTER T-6/GR-25; PROOF_LOG **T-P5**, **T-P6**; `tiktok.md` L372–376, L386 (live `ad_create` description, verbatim); PIPELINE_BLUEPRINT §1.5.
+
+**(g) T-7 — `objective_type` parameterized (canonical decision 6).**
+- **Old (§4.4(b)):** `objective='TRAFFIC'` default, effectively hardcoded in the create sequence.
+- **New:** `objective_type` is a **parameter** with the client-side enum `REACH, TRAFFIC, VIDEO_VIEWS, ENGAGEMENT, APP_PROMOTION, LEAD_GENERATION, WEB_CONVERSIONS, PRODUCT_SALES` (MCP schema declares a bare string — the adapter owns the enum or ships runtime 400s). Default stays **`TRAFFIC` + `TRAFFIC_LANDING_PAGE_VIEW`** (no conversion optimization until #865: pixel zero events). **`APP_PROMOTION` + `optimization_goal=INSTALL` is documented VIABLE TODAY and is the likely first real campaign**: both apps are registered and AppsFlyer-linked (`partner_id: 1`, `self_attribution_enabled: true`, `skan_allowed: ALLOWED`, `enable_retargeting: RETARGETING`). Caveats: `app_optimization_event_get` → `[]` ⇒ **`INSTALL` only, no `IN_APP_EVENT`** until AppsFlyer postbacks flow; `click_tracking_url`/`impression_tracking_url` are only ignored for partner_id 44/49 — we are **1**, so they are live for us.
+- **Evidence:** GAP_REGISTER T-7 + GR-49 + GR-20; PROOF_LOG **T-P4**, **T-P7**; `tiktok.md` L138–155, L887, L912.
+
+**(h) T-8 / GR-67 — the PAUSED contradiction fixed (canonical decision 4).**
+- **Old (§4.4(b) step 5):** the ad creative is sent with `operation_status:'ENABLE'` — contradicting §2 item 2, §4.0 ("create `DISABLE` = paused"), and AC-2 ("all `operation_status=DISABLE`/paused").
+- **New:** **`operation_status='DISABLE'` at all three levels — campaign, ad group, AND ad.** §4.4(b) step 5 reads `operation_status:'DISABLE'`. Everything is created paused; activation is only ever the explicit top-down launch of §4.4(c).
+- **Evidence:** GAP_REGISTER T-8/GR-67 (#863-internal contradiction).
+
+**(i) T-9 / GR-42 — naming reconciled to #862 A3 §F (canonical decision 3).**
+- **Old:** table `ad_campaign_status_events`; edge functions `admin-ads-connect` / `admin-ads-create-campaign` / `admin-ads-campaign-action` / `admin-ads-campaign-sync`; platform CHECK `('meta','tiktok','snapchat','google')`.
+- **New:** table **`ad_status_events`**; edge functions **`admin-ad-connect`**, **`admin-ad-create-campaign`**, **`admin-ad-campaign-action`**, **`admin-ad-campaign-sync`**; platform CHECK **`('meta','tiktok','snapchat','google','reddit')`**. Every body occurrence (§4.1 diagram, §4.2 tables, §4.4 headers, §4.5 service, §5, §8 ACs/tests, §10 order + allowlist, `supabase/config.toml` blocks) reads accordingly. This is documentation drift, not a design disagreement — A3 §F pins these as canonical.
+- **Evidence:** GAP_REGISTER T-9/GR-42; #862 A3 §F.
+
+**(j) GR-50 — Spark Ads section (the body mentions Spark zero times).**
+- **Old:** absent.
+- **New:** Spark is one of only **two legal identity paths** for this account (item f), the highest-performing TikTok format (10+ creatives → 2.6× ad recall; inherits real social proof), and the only emoji + 10-min-video path. Status today: **Push is viable from zero posts** — publish-as-ad with **`dark_post_status=ON`**, accepts `image_ids` + `ad_text`. **Pull is impossible** — `identity_video_get` → `[]` (`@usemingla` has zero organic posts; nothing to pull). **Creator-code Spark is an ops flow, not an API** — the creator generates a **7/30/60/365-day** code in-app (not automatable; **batch ≤20** in Ads Manager; redeem via `tt_video_authorize_apply`) — **pair it with the existing influencer-intake pipeline**. When building Spark ads, set **`dark_post_status` / `promotional_music_disabled` / `item_duet_status` / `item_stitch_status` deliberately** (duet/stitch require `promotional_music_disabled=false`). Scope note: Spark creation support in the adapter is a fast-follow; this amendment makes the design hole explicit so #866/#864 don't build around its absence.
+- **Evidence:** GAP_REGISTER GR-50 + GR-25; `tiktok.md` L479–481, L740–741, L831, L896; PIPELINE_BLUEPRINT §1.5.
+
+**(k) GR-58 — asset upload contract hardened.**
+- **Old (§4.3 `uploadImage`):** `UPLOAD_BY_URL` with no timeout/size/name/`material_id` handling.
+- **New:** the MCP schemas expose **`UPLOAD_BY_URL` / `UPLOAD_BY_FILE_ID` only** (no multipart binary param). TikTok's URL fetcher has a **10-second timeout**; `video_url` **recommended ≤10 MB**. **File names must be unique per advertiser** — pre-check with **`file_name_check`** and append a **timestamp suffix**. Capture **both** `image_id`/`video_id` **AND `material_id`** (persist both; #866 keys `external_ref = material_id`). **Bunny reachability by TikTok's fetcher is UNVERIFIED** (no hotlink/geo/allowlist analysis exists) — flag as a **pre-build check** before the video path relies on it.
+- **Evidence:** GAP_REGISTER GR-58; `tiktok.md` L94–95, L800–801.
+
+**(l) GR-68 — placement gates.**
+- **Old (§4.0 placement bullet, OD-5):** `PLACEMENT_GLOBAL_APP_BUNDLE` listed as a valid enum value with no gate; `creative_authorized` unaddressed; immutability unstated.
+- **New:** **gate `PLACEMENT_GLOBAL_APP_BUNDLE`** — geo-locked to BR/ID/VN/PH/TH/MY/MX/SA/JP and **does NOT support `optimization_goal=TRAFFIC_LANDING_PAGE_VIEW`** (our default): never expose it in a picker for our markets; the combination silently fails. **`creative_authorized` is unusable** (non-US advertisers only — we are US): remove from consideration. **`PLACEMENT_TOPBUZZ` / `PLACEMENT_HELO` are deprecated — do not use.** **`placements` are immutable after create** — the adapter treats placement as create-time-only (no update path).
+- **Evidence:** GAP_REGISTER GR-68; `tiktok.md` L310, L316, L490, L638–641.
+
+**(m) GR-66 — free intelligence to wire opportunistically (read-only, no gate for MVP).**
+- **`creative_fatigue_get`** — TikTok's own fatigue signal; use it, don't eyeball it (TikTok creative fatigues faster than Meta).
+- **`blockedword_check`** — pre-flight copy check (drives item c).
+- **`tool_url_validate`** — landing-page pre-check before create (pairs with destination policy A1.0-5).
+- **`ad_audience_size_estimate`** — targeting sanity for #864's builder.
+- **`tool_bid_recommend`** — bid suggestions when `BID_TYPE_CUSTOM` is used (item b).
+- **Evidence:** GAP_REGISTER GR-66; `tiktok.md` L699, L703, L811–812.
+
+## A1.2 Contradictions flagged
+
+1. **GR-67 (body-internal):** §4.4(b) step 5 `ENABLE` vs §2/§4.0/AC-2 "everything created PAUSED" — resolved by item (h): `DISABLE` everywhere.
+2. **GR-04 (body vs live probe):** §7 item 1 declares the Marketing-API token a "HARD BLOCKER — does not yet exist"; PROOF_LOG T-P1 proves the app APPROVED and the token LIVE on 2026-07-15 — resolved by the probe-update note above (ops secret-provisioning remains).
+3. **AC-4 / §4.0 vs canonical decision 5:** the body makes `dest_smart_link` the ad `landing_page_url`; D-P1 proves the OneLink serves crawlers an app-install interstitial (cloaking-pattern risk) — resolved by A1.0-5: canonical `dest_url` is the ad-visible URL in v1; the smart link is persisted but not shipped in the ad.
+4. **OD-7 vs T-P2:** the body RECOMMENDS a build-time geo map; the live probe proves GB absent (the map would silently ship a 400ing id) — resolved by item (e): live resolution, loud failure.
+5. **#862 OD-3 (CBO) vs body's missing bidding:** #862 recommends CBO while the body sets no `bid_type` — a CBO campaign built to the body fails validation; resolved by item (b).
+
+## A1.3 Acceptance-criteria deltas (additive; renumber nothing)
+
+- **AC-3 (amended):** min-budget checks run **after** cents→dollars conversion, against the **$20/day ad-group / $50/day CBO-campaign / $20×days lifetime** floors; TikTok's own validation error is still surfaced verbatim; `BALANCE_EXCEED` → 200 + warning (never silent clamp) — per A1.0-1.
+- **AC-4 (amended):** the ad `landing_page_url` is the **canonical `dest_url`**, with `utm_params` (≤14, case-sensitive keys, `__CAMPAIGN_ID__`/`__AID__`/`__CID__`/`__PLACEMENT__` macros); `dest_smart_link` is persisted but not sent as the ad-visible URL — per A1.0-5.
+- **AC-12 (new):** a create request with `identity_type='CUSTOMIZED_USER'` is rejected by the adapter with an explanatory error **before any TikTok call** (item f).
+- **AC-13 (new):** a create request targeting a country absent from live `tool_region_get` (e.g. GB today) fails **422 naming the country** — never a silent drop (item e).
+- **AC-14 (new):** `ad_text` >100 chars, or containing emoji, or names >512 chars are rejected client-side + edge-side before any TikTok call (item c).
+- **AC-15 (new):** a CBO create without `bid_type` is rejected pre-flight; `bid_price ≥` either budget is rejected pre-flight (item b).
+- **AC-16 (new):** `schedule_start_time` sent to TikTok is UTC+0 and within bounds (≤12 h past, ≤2028-01-01; end ≤2038-01-01) (item a).
+
+*Filed by mingla-forensics (SPEC mode, docs-only) · 2026-07-15 · evidence: GAP_REGISTER + PROOF_LOG + tiktok.md + PIPELINE_BLUEPRINT, ad-pipeline-2026-07-15.*
