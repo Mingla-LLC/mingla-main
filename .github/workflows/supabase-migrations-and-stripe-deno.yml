@@ -742,12 +742,20 @@ jobs:
           #    is_adset_budget_sharing_enabled, GR-11 PAUSED-everywhere, A4.f
           #    creative link = dest_url (never the OneLink), M-4 CREDIT reject,
           #    GR-18 review_detail never stores `recommendations`.
+          #  - issue862_wp1_tester_adversarial.test.ts — mingla-tester QA suite
+          #    (2026-07-15): money boundary attacks, Reddit-CTA exact pin,
+          #    PAUSED-invariant fuzz incl. hostile injected keys
+          #    (fails-on-revert vs the meta.ts PAUSED line), pixel-gate
+          #    boundary, floor-category conservatism, special-ad-category
+          #    adversarial shapes, A4.f destSmartLink source trap
+          #    (needs --allow-read), atomic step-4 + missing-rollback-hook.
           DENO_TEST_FILES=(
             supabase/functions/_shared/__tests__/adChannel.test.ts
             supabase/functions/_shared/__tests__/meta.test.ts
+            supabase/functions/_shared/__tests__/issue862_wp1_tester_adversarial.test.ts
           )
           for attempt in 1 2 3; do
-            if deno test --allow-env --no-check "${DENO_TEST_FILES[@]}"; then
+            if deno test --allow-env --allow-read --no-check "${DENO_TEST_FILES[@]}"; then
               exit 0
             fi
             if [ "$attempt" -eq 3 ]; then
