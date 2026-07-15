@@ -759,6 +759,7 @@ jobs:
             supabase/functions/_shared/__tests__/meta.test.ts
             supabase/functions/_shared/__tests__/issue862_wp1_tester_adversarial.test.ts
             supabase/functions/_shared/__tests__/issue862_wp1_rework.test.ts
+            supabase/functions/_shared/__tests__/issue862_wp1_retest_adversarial.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-read --no-check "${DENO_TEST_FILES[@]}"; then
