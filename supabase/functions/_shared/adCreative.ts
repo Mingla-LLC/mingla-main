@@ -110,6 +110,14 @@ export interface CreativeRefRow {
   status: "pending" | "uploading" | "ready" | "failed";
   error: string | null;
   uploaded_at: string | null;
+  /**
+   * QA F-2: the lock-staleness signal — a row parked at status='uploading'
+   * whose updated_at is older than STALE_LOCK_TAKEOVER_MS is acquirable
+   * (crashed holder). Optional so pre-rework in-memory fakes stay valid;
+   * absent/undefined reads as FRESH (never silently take over an unknown-age
+   * lock).
+   */
+  updated_at?: string | null;
 }
 
 /** §4.3 UploadedRef — what resolveCreativeRef hands the channel engine. */
@@ -1381,6 +1389,16 @@ export const CREATIVE_UPLOAD_ADAPTERS: Record<Platform, CreativeUploadAdapter> =
 
 // ── The resolver — cache-first, content-hash keyed, fail-close (§4.3 + A1-1) ──
 
+/** The lock-row shape both acquisition seams take. */
+export interface AcquireRefLockRow {
+  creative_id: string;
+  platform: Platform;
+  lane: Lane;
+  external_account_id: string;
+  external_kind: "image" | "video";
+  content_hash: string;
+}
+
 /** The minimal DB seam resolveCreativeRef needs (structurally satisfied by supabase-js). */
 export interface CreativeRefDb {
   getConnection(platform: Platform, lane: Lane): Promise<AdConnectionRow | null>;
@@ -1391,14 +1409,24 @@ export interface CreativeRefDb {
     lane: Lane,
     externalAccountId: string,
   ): Promise<CreativeRefRow | null>;
-  upsertRefUploading(row: {
-    creative_id: string;
-    platform: Platform;
-    lane: Lane;
-    external_account_id: string;
-    external_kind: "image" | "video";
-    content_hash: string;
-  }): Promise<void>;
+  /**
+   * QA F-1: THE atomic, CHECKED lock acquisition. Returns true ⇔ THIS caller
+   * won the status='uploading' lock; false ⇔ another resolver holds it (the
+   * caller routes into the waiter path — it must NOT upload). The winning
+   * condition (evaluated atomically against the UNIQUE
+   * (creative_id, platform, lane, external_account_id) row) is: the row is
+   * absent, OR status ∈ (pending, failed), OR status='uploading' with
+   * updated_at older than `staleBefore` (F-2 crashed-holder takeover), OR
+   * status='ready' with a content_hash ≠ row.content_hash (A1-1 stale bytes).
+   *
+   * OPTIONAL only for legacy single-writer in-memory fakes (the pre-rework
+   * test seam): when absent, the resolver falls back to upsertRefUploading
+   * and assumes the win — which is NOT concurrency-safe. Every REAL
+   * implementation (createSupabaseCreativeRefDb) MUST provide this.
+   */
+  tryAcquireRefLock?(row: AcquireRefLockRow, staleBefore: string): Promise<boolean>;
+  /** Legacy unchecked acquisition — single-writer fallback ONLY (see tryAcquireRefLock). */
+  upsertRefUploading(row: AcquireRefLockRow): Promise<void>;
   markRefReady(
     creativeId: string,
     platform: Platform,
@@ -1418,6 +1446,24 @@ export interface CreativeRefDb {
 
 export const RESOLVE_LOCK_MAX_REREADS = 5;
 export const RESOLVE_LOCK_REREAD_INTERVAL_MS = 1_500;
+
+/**
+ * QA F-2: a status='uploading' lock older than this is considered a crashed
+ * holder and becomes acquirable. Sizing: the longest LEGITIMATE holder is the
+ * chunked Snap path (fetch up to 1 GB + 32 ADD chunks × 3 retries + FINALIZE +
+ * a 120 s READY poll); on top of that, Supabase edge functions carry a hard
+ * wall-clock cap (~400 s), so ANY legitimate holder is finished or dead well
+ * inside this bound. updated_at is touched once at acquisition (no heartbeat),
+ * so the bound must exceed the WHOLE upload, not an interval — 15 minutes.
+ */
+export const STALE_LOCK_TAKEOVER_MS = 15 * 60_000;
+
+function refLockIsStale(ref: CreativeRefRow, nowMs: number): boolean {
+  if (ref.updated_at === undefined || ref.updated_at === null) return false; // unknown age = fresh (fail-safe)
+  const parsed = Date.parse(ref.updated_at);
+  if (Number.isNaN(parsed)) return false;
+  return parsed < nowMs - STALE_LOCK_TAKEOVER_MS;
+}
 
 export interface ResolveCreativeRefOptions extends CreativeUploadDeps {
   adapters?: Record<Platform, CreativeUploadAdapter>;
@@ -1470,8 +1516,13 @@ export async function resolveCreativeRef(
   //    channel BEFORE any platform call.
   if (!opts.skipValidation) {
     const result = validateCreativeForChannel(platform, factsFromRow(creative));
-    if (!result.ok || result.needsTranscode) {
-      const firstBlock = result.checks.find((c) => c.level === "reject" || c.level === "needs_transcode");
+    // QA F-3 fail-safe: a not_evaluable check flagged failSafe (audio-required
+    // when hasAudio is UNKNOWN) blocks the channel exactly like a reject —
+    // unknown must never soften into a pass on an audio-mandatory platform.
+    const failSafeBlock = result.checks.find((c) => c.level === "not_evaluable" && c.failSafe === true);
+    if (!result.ok || result.needsTranscode || failSafeBlock) {
+      const firstBlock = result.checks.find((c) => c.level === "reject" || c.level === "needs_transcode") ??
+        failSafeBlock;
       throw new CreativeValidationError(
         platform,
         result,
@@ -1481,57 +1532,70 @@ export async function resolveCreativeRef(
   }
 
   const accountId = conn.external_account_id;
-
-  // 4. Cache read — the idempotency win (AC-4). PROTECTED GUARD: reverting this
-  //    SELECT-ready-ref-before-upload makes RT-1 fail — without it every ad
-  //    re-uploads the asset (double storage spend + Google immutable-asset churn).
-  const cached = await db.getRef(creativeId, platform, lane, accountId);
-  if (cached && cached.status === "ready" && cached.external_ref) {
-    if (cached.content_hash === creative.content_hash) {
-      return {
-        external_kind: cached.external_kind,
-        external_ref: cached.external_ref,
-        external_ref_extra: cached.external_ref_extra ?? {},
-        external_account_id: cached.external_account_id,
-      };
-    }
-    // A1-1: hash mismatch ⇒ the cached platform object holds STALE bytes —
-    // fall through to a fresh upload (on Google necessarily a fresh asset).
-  }
-  if (cached && cached.status === "uploading") {
-    for (let attempt = 0; attempt < RESOLVE_LOCK_MAX_REREADS; attempt++) {
-      await sleep(RESOLVE_LOCK_REREAD_INTERVAL_MS);
-      const reread = await db.getRef(creativeId, platform, lane, accountId);
-      if (
-        reread && reread.status === "ready" && reread.external_ref &&
-        reread.content_hash === creative.content_hash
-      ) {
-        return {
-          external_kind: reread.external_kind,
-          external_ref: reread.external_ref,
-          external_ref_extra: reread.external_ref_extra ?? {},
-          external_account_id: reread.external_account_id,
-        };
-      }
-      if (reread && reread.status !== "uploading") break; // failed/pending → take over
-    }
-    const final = await db.getRef(creativeId, platform, lane, accountId);
-    if (final && final.status === "uploading") {
-      throw new CreativeRefLockedError(
-        `A concurrent create is uploading creative ${creativeId} to ${platform}/${lane} — retry shortly.`,
-      );
-    }
-  }
-
-  // 5. Upload — upsert the lock row, run the adapter, cache or fail-close.
-  await db.upsertRefUploading({
+  const lockRow: AcquireRefLockRow = {
     creative_id: creativeId,
     platform,
     lane,
     external_account_id: accountId,
     external_kind: creative.kind,
     content_hash: creative.content_hash,
-  });
+  };
+
+  // 4./5. Cache read + ATOMIC CHECKED lock acquisition (QA F-1/F-2). One loop:
+  //   - a `ready` ref with a MATCHING content hash returns from cache — the
+  //     idempotency win (AC-4). PROTECTED GUARD: reverting this
+  //     SELECT-ready-ref-before-upload makes RT-1 fail — without it every ad
+  //     re-uploads the asset (double storage spend + Google immutable-asset churn).
+  //   - a FRESH `uploading` ref means another resolver holds the lock → wait.
+  //   - anything acquirable (absent / pending / failed / STALE uploading /
+  //     ready-with-mismatched-hash) → tryAcquireRefLock. ONLY the winner
+  //     uploads; losers loop back into the waiter and end up returning the
+  //     winner's ref — two concurrent resolves = exactly ONE platform upload.
+  let acquired = false;
+  for (let attempt = 0; attempt <= RESOLVE_LOCK_MAX_REREADS; attempt++) {
+    const observed = await db.getRef(creativeId, platform, lane, accountId);
+    if (observed && observed.status === "ready" && observed.external_ref) {
+      if (observed.content_hash === creative.content_hash) {
+        return {
+          external_kind: observed.external_kind,
+          external_ref: observed.external_ref,
+          external_ref_extra: observed.external_ref_extra ?? {},
+          external_account_id: observed.external_account_id,
+        };
+      }
+      // A1-1: hash mismatch ⇒ the cached platform object holds STALE bytes —
+      // acquirable below for a fresh upload (on Google necessarily a fresh asset).
+    }
+
+    const freshUploading = observed !== null && observed.status === "uploading" &&
+      !refLockIsStale(observed, Date.now());
+    if (!freshUploading) {
+      // Acquirable state observed — try to take the lock ATOMICALLY. The SQL
+      // predicate re-checks the state, so a racer that beat us since the read
+      // simply makes us lose (won=false) and we fall through to waiting.
+      const staleBefore = new Date(Date.now() - STALE_LOCK_TAKEOVER_MS).toISOString();
+      if (db.tryAcquireRefLock) {
+        acquired = await db.tryAcquireRefLock(lockRow, staleBefore);
+      } else {
+        // Legacy single-writer fallback (in-memory fakes only — see the seam
+        // doc). NOT concurrency-safe; every real DB impl provides tryAcquireRefLock.
+        await db.upsertRefUploading(lockRow);
+        acquired = true;
+      }
+      if (acquired) break;
+    }
+    if (attempt === RESOLVE_LOCK_MAX_REREADS) {
+      throw new CreativeRefLockedError(
+        `A concurrent create is uploading creative ${creativeId} to ${platform}/${lane} — retry shortly.`,
+      );
+    }
+    await sleep(RESOLVE_LOCK_REREAD_INTERVAL_MS);
+  }
+  if (!acquired) {
+    throw new CreativeRefLockedError(
+      `A concurrent create is uploading creative ${creativeId} to ${platform}/${lane} — retry shortly.`,
+    );
+  }
 
   const ctx: LaneContext = {
     lane,
@@ -1571,6 +1635,8 @@ interface DbResult<T> {
 
 interface SupabaseFilterLike extends PromiseLike<DbResult<Record<string, unknown>[]>> {
   eq(column: string, value: unknown): SupabaseFilterLike;
+  or(filters: string): SupabaseFilterLike;
+  select(columns: string): SupabaseFilterLike;
   maybeSingle(): Promise<DbResult<Record<string, unknown>>>;
 }
 
@@ -1578,7 +1644,7 @@ interface SupabaseTableLike {
   select(columns: string): SupabaseFilterLike;
   upsert(
     values: Record<string, unknown>,
-    opts?: { onConflict?: string },
+    opts?: { onConflict?: string; ignoreDuplicates?: boolean },
   ): SupabaseFilterLike;
   update(values: Record<string, unknown>): SupabaseFilterLike;
 }
@@ -1629,6 +1695,58 @@ export function createSupabaseCreativeRefDb(client: SupabaseLike): CreativeRefDb
         externalAccountId,
       ).maybeSingle();
       return data as unknown as CreativeRefRow | null;
+    },
+    /**
+     * QA F-1/F-2: the ATOMIC, CHECKED acquisition, in two atomic statements —
+     * exactly one concurrent caller can win:
+     *   1. INSERT … ON CONFLICT DO NOTHING (upsert + ignoreDuplicates) with
+     *      RETURNING — a returned row means WE created the lock row ⇒ won.
+     *   2. On conflict (row exists): a GUARDED UPDATE … RETURNING whose
+     *      predicate is the acquirable-state condition. Postgres re-evaluates
+     *      the predicate on the latest committed row version under row lock
+     *      (READ COMMITTED update re-check), so of two racers exactly one
+     *      matches; the loser gets zero rows ⇒ lost ⇒ waiter path.
+     * The updated_at trigger stamps the takeover time; a crashed holder's row
+     * becomes acquirable once updated_at < staleBefore (F-2).
+     */
+    tryAcquireRefLock: async (row, staleBefore) => {
+      const insertResult = await client.from("ad_creative_platform_refs").upsert({
+        ...row,
+        status: "uploading",
+        error: null,
+      }, {
+        onConflict: "creative_id,platform,lane,external_account_id",
+        ignoreDuplicates: true,
+      }).select("id");
+      if (insertResult.error) {
+        throw new Error(`ad_creative_platform_refs lock insert failed: ${insertResult.error.message}`);
+      }
+      if ((insertResult.data ?? []).length > 0) return true; // we created the row — lock is ours
+
+      const updateResult = await refKeyFilter(
+        client.from("ad_creative_platform_refs").update({
+          status: "uploading",
+          external_kind: row.external_kind,
+          content_hash: row.content_hash,
+          error: null,
+        }),
+        row.creative_id,
+        row.platform,
+        row.lane,
+        row.external_account_id,
+      ).or(
+        // Acquirable states (kept in lockstep with the resolver's loop + the
+        // seam doc): pending/failed retry, stale-uploading takeover (F-2),
+        // ready-with-stale-bytes re-upload (A1-1). A FRESH 'uploading' or a
+        // ready-with-matching-hash row matches nothing ⇒ zero rows ⇒ lost.
+        `status.in.(pending,failed),` +
+          `and(status.eq.uploading,updated_at.lt."${staleBefore}"),` +
+          `and(status.eq.ready,content_hash.neq.${row.content_hash})`,
+      ).select("id");
+      if (updateResult.error) {
+        throw new Error(`ad_creative_platform_refs lock update failed: ${updateResult.error.message}`);
+      }
+      return (updateResult.data ?? []).length > 0;
     },
     upsertRefUploading: async (row) => {
       const { error } = await client.from("ad_creative_platform_refs").upsert({

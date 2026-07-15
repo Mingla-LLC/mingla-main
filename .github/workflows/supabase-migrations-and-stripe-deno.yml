@@ -847,6 +847,14 @@ jobs:
           #    (A1-4), TikTok dual-id capture + name-collision suffix (A1-9),
           #    Reddit fail-close stub (A1-1), COMMS-0102 crawler-UA URL check,
           #    RT-4 + A1-1 migration schema pins, AC-8 token-scrub.
+          #  - issue866_wp3_rework.test.ts — QA-FAIL rework regressions
+          #    (2026-07-15): F-1 atomic checked lock acquisition (controlled-
+          #    interleaving race => at-most-once upload + same-ref-for-both,
+          #    fails-on-revert vs the checked-acquisition branch), F-2
+          #    stale-lock takeover (15-min bound) + fresh-lock guard, the
+          #    supabase guarded-acquisition wire shape (insert-ignore-dup +
+          #    guarded update predicate), F-3 hasAudio=null honesty + the
+          #    failSafe resolve-time block.
           #  - issue866_wp3_tester_adversarial.test.ts — mingla-tester QA suite
           #    (registered 2026-07-15): REAL-encoder embedded fixtures (ffmpeg
           #    x264+AAC MP4s, cwebp VP8L), corrupt/truncated headers, box-size
@@ -862,6 +870,7 @@ jobs:
             supabase/functions/_shared/__tests__/adCreativeMatrix.test.ts
             supabase/functions/_shared/__tests__/adCreative.test.ts
             supabase/functions/_shared/__tests__/issue866_wp3_tester_adversarial.test.ts
+            supabase/functions/_shared/__tests__/issue866_wp3_rework.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-read --no-check "${DENO_TEST_FILES[@]}"; then

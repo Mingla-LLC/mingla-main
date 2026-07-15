@@ -336,6 +336,12 @@ export async function probeCreativeBytes(bytes: Uint8Array): Promise<CreativePro
     const overallBitrateKbps = durationSeconds && durationSeconds > 0
       ? Math.round((byteSize * 8) / durationSeconds / 1000)
       : null;
+    // QA F-3: hasAudio=false is a POSITIVE claim ("a moov was walked and no
+    // 'soun' trak exists"). A truncated/moov-less file where NO trak of either
+    // kind was parsed yields null (unknown) — the matrix surfaces null as a
+    // failSafe not_evaluable that still hard-blocks audio-required channels;
+    // certainty is never fabricated from absence.
+    const trakParsed = bmff.hasVideo || bmff.hasAudio;
     return {
       kind: "video",
       mimeType: isMov ? "video/quicktime" : "video/mp4",
@@ -344,7 +350,7 @@ export async function probeCreativeBytes(bytes: Uint8Array): Promise<CreativePro
       height: bmff.height,
       aspectRatio: ratioOf(bmff.width, bmff.height),
       durationSeconds,
-      hasAudio: bmff.hasAudio,
+      hasAudio: trakParsed ? bmff.hasAudio : null,
       videoCodecFourcc: bmff.videoCodecFourcc,
       overallBitrateKbps,
       byteSize,

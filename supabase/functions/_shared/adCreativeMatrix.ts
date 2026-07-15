@@ -51,6 +51,14 @@ export interface CreativeCheck {
   level: CheckLevel;
   confidence: Confidence;
   message: string;
+  /**
+   * QA F-3 fail-safe marker: a not_evaluable check that must BLOCK the channel
+   * at resolve time (audio-required when audio presence is UNKNOWN — silent
+   * video is an auto-reject on TikTok/Snap, so unknown must never soften into
+   * a pass). resolveCreativeRef treats level='not_evaluable' + failSafe=true
+   * exactly like a reject.
+   */
+  failSafe?: boolean;
 }
 
 /** The probe-derived facts the matrix judges (never admin-supplied — A1-6a). */
@@ -129,13 +137,21 @@ function emit(
   level: CheckLevel,
   confidence: Confidence,
   message: string,
+  opts: { failSafe?: boolean } = {},
 ): void {
   let effective = level;
   if (level === "reject" && !HARD_REJECT_CONFIDENCES.includes(confidence)) {
     // Blueprint §0 rule 3 / A1-6b: a non-[SPEC]/[OFFICIAL] number NEVER blocks.
     effective = "warn";
   }
-  checks.push({ platform, rule, level: effective, confidence, message });
+  checks.push({
+    platform,
+    rule,
+    level: effective,
+    confidence,
+    message,
+    ...(opts.failSafe ? { failSafe: true } : {}),
+  });
 }
 
 function fmtMb(bytes: number): string {
@@ -249,8 +265,11 @@ function validateTiktok(f: CreativeMediaFacts): CreativeCheck[] {
         "This video has no sound. Snapchat auto-rejects silent video as low-quality, and TikTok requires audio. " +
           "Add a soundtrack or a voiceover — a trending sound beats stock music on both.");
     } else if (f.hasAudio === null) {
+      // QA F-3: unknown audio presence BLOCKS at resolve time (failSafe) —
+      // TikTok mandates audio, so "could not derive" must never pass.
       emit(checks, p, "video.audio_required", "not_evaluable", "OFFICIAL",
-        "Audio-track presence could not be derived from the container — TikTok requires audio; verify manually.");
+        "Audio-track presence could not be derived from the container — TikTok requires audio; verify manually.",
+        { failSafe: true });
     }
     // duration — POLICY 5–60 s (NOT the 10-minute technical limit — THE TRAP).
     if (f.durationSeconds !== null && (f.durationSeconds < 5 || f.durationSeconds > 60)) {
@@ -394,8 +413,11 @@ function validateSnapchat(f: CreativeMediaFacts): CreativeCheck[] {
         "missing_audio: This video has no sound. Snapchat auto-rejects silent video as low-quality, and TikTok requires audio. " +
           "Add a soundtrack or a voiceover — a trending sound beats stock music on both.");
     } else if (f.hasAudio === null) {
+      // QA F-3: unknown audio presence BLOCKS at resolve time (failSafe) —
+      // Snap auto-rejects silent video, so "could not derive" must never pass.
       emit(checks, p, "video.audio_required", "not_evaluable", "OFFICIAL",
-        "Audio-track presence could not be derived — Snap auto-rejects silent video; verify manually.");
+        "Audio-track presence could not be derived — Snap auto-rejects silent video; verify manually.",
+        { failSafe: true });
     } else {
       // Presence provable; balance/−16 LUFS loudness is not probe-able here.
       emit(checks, p, "video.audio_loudness", "not_evaluable", "OFFICIAL",
