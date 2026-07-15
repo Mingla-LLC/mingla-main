@@ -34,6 +34,11 @@ import {
   BUSINESS_APP_CHOICE_COPY,
   resolveBusinessAppTarget,
 } from '@/lib/business-app-target'
+// ORCH-1381 ADDENDUM D-B — external opens go through the ONE owner. Never inline
+// window.open here: a 'noopener'/'noreferrer' feature string makes it return null
+// even on success, so the popup-block fallback fires on every tap — which navigated
+// /links away and violated this page's own "stays mounted" contract (ORCH-1328).
+import { openExternal } from '@/lib/open-external'
 import {
   LINKS_SOCIALS,
   LINKS_TABS,
@@ -167,15 +172,13 @@ export function LinksExperience({
     [selectTab],
   )
 
-  // ORCH-1328 — open the destination DIRECTLY on the tap gesture so /links stays
+  // ORCH-1328 — the destination opens DIRECTLY on the tap gesture so /links stays
   // mounted (the CTA no longer soft-navigates into the /download or /business/download
   // route, whose external redirect stranded the tab on a blank / footer-only shell —
-  // INVESTIGATION_ORCH-1328). Popup-blocked (window.open → null) → same-tab
-  // navigation fallback (no silent failure).
-  const openExternal = useCallback((dest: string) => {
-    const win = window.open(dest, '_blank', 'noopener,noreferrer')
-    if (!win) window.location.assign(dest)
-  }, [])
+  // INVESTIGATION_ORCH-1328). ORCH-1381 ADDENDUM D-B: the local helper that did this
+  // is DELETED — it opened with 'noopener,noreferrer', which returns null even on
+  // success, so its "popup-blocked" fallback fired on EVERY tap and navigated /links
+  // away regardless. The imported openExternal is the one owner of that decision.
 
   // §7 — consent-gated tap analytics (kept), enriched with the resolved platform +
   // store. Device map reuses the ORCH-1319 store-links SSOT for the explorer tab;
@@ -230,7 +233,8 @@ export function LinksExperience({
       })
       openExternal(tab.cta.href)
     },
-    [openExternal],
+    // openExternal is a module import (stable identity) — not a dependency.
+    [],
   )
 
   const onSocialClick = useCallback(
@@ -380,12 +384,22 @@ export function LinksExperience({
             <div className="mt-5">
               {activeTab.id === 'business' ? (
                 <>
+                  {/* ORCH-1381 ADDENDUM D-A — px-4 (not CTA_BASE's px-7) ONLY on the
+                      business pair. Two w-full pills share this row, so flex shrinks
+                      each to ~130px at 360px; px-7 left "Use on web" a 59px content
+                      box → 3-line wrap → 9px spill past the fixed h-14. px-4 restores
+                      a 98px box. h-14 is deliberately UNCHANGED: SC-6's 375x667
+                      no-scroll budget was measured against it, and a min-h + grow
+                      breaks the same-row contract (items-center centres unequal-height
+                      boxes → tops 386 vs 385). CTA_BASE itself is NOT touched — the
+                      explorer tab's single CTA at the bottom shares it and renders
+                      correctly today. Copy is pinned — never shorten it. */}
                   <div className="flex items-center justify-center gap-2">
                     {businessTarget.canInstall ? (
                       <button
                         type="button"
                         onClick={() => onCtaClick(activeTab, 'download')}
-                        className={cn(CTA_BASE, CTA_INTENT.primary)}
+                        className={cn(CTA_BASE, CTA_INTENT.primary, 'px-4')}
                       >
                         {BUSINESS_APP_CHOICE_COPY.download}
                       </button>
@@ -393,7 +407,7 @@ export function LinksExperience({
                     <button
                       type="button"
                       onClick={() => onCtaClick(activeTab, 'use_web')}
-                      className={cn(CTA_BASE, CTA_INTENT.glass)}
+                      className={cn(CTA_BASE, CTA_INTENT.glass, 'px-4')}
                     >
                       {BUSINESS_APP_CHOICE_COPY.useWeb}
                     </button>

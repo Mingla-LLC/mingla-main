@@ -23,8 +23,16 @@
  *      (lib/store-links SSOT), AND delegates the business decision to
  *      resolveBusinessAppTarget( (ORCH-1381).
  *   3. the CTA is a real control: a `<button` AND `onClick={() => onCtaClick(`.
- *   4. opens the store client-side: `window.open(` present AND the
- *      `window.location.assign(` popup-block fallback present (no silent failure).
+ *   4. opens the store client-side on the tap gesture via openExternal( from
+ *      lib/open-external (so /links stays mounted).
+ *      AMENDED BY ORCH-1381 ADDENDUM D-B: this check previously required the tokens
+ *      `window.open(` + `window.location.assign(`. It was BLIND — the shipped code
+ *      satisfied it while VIOLATING this gate's own invariant. window.open with a
+ *      noopener/noreferrer feature string returns null EVEN ON SUCCESS, so the
+ *      "popup-blocked" fallback fired on every tap and /links did NOT stay mounted:
+ *      a tab opened AND the page navigated away. The fallback guard now lives in the
+ *      module that owns it (orch-1381-open-external-no-double-nav.mjs); here we
+ *      require DELEGATION and BAN inlining window.open.
  *   5. fires `links_page_cta_clicked`.
  *   6. device-driven: branches on `platform ===` (not a single hardcode).
  *
@@ -76,6 +84,10 @@ const BANNED = [
   { re: /<a\s+href="\/business\/download"/, why: 'anchors <a href="/business/download"> into the external-redirect route' },
   { re: /apps\.apple\.com/, why: "hardcodes an apps.apple.com store literal (use the store-links consts)" },
   { re: /play\.google\.com/, why: "hardcodes a play.google.com store literal (use the store-links consts)" },
+  // ORCH-1381 ADDENDUM D-B — the double-navigation teeth.
+  { re: /window\.open\(/, why: "inlines window.open — must delegate to openExternal( from lib/open-external (ORCH-1381 ADDENDUM D-B)" },
+  // The half-fix trap: 'noreferrer' ALONE also nulls the return.
+  { re: /\.open\([^)\n]*\bno(?:opener|referrer)\b[^)\n]*\)/, why: "noopener/noreferrer makes window.open return null even on success → the fallback always fires → /links does NOT stay mounted, violating this gate's own invariant (ORCH-1381 ADDENDUM D-B)" },
 ];
 
 function checkCta(rawSrc, failures) {
@@ -117,12 +129,14 @@ function checkCta(rawSrc, failures) {
     failures.push(`${TARGET}: the CTA <button> must bind onClick={() => onCtaClick(…)} (the device-aware tap action).`);
   }
 
-  // 4. opens the store client-side with the popup-block fallback.
-  if (!/window\.open\(/.test(src)) {
-    failures.push(`${TARGET}: must open the destination via window.open( on the tap gesture (so /links stays mounted).`);
-  }
-  if (!/window\.location\.assign\(/.test(src)) {
-    failures.push(`${TARGET}: missing the window.location.assign( popup-blocked fallback (no silent failure).`);
+  // 4. ORCH-1381 ADDENDUM D-B — /links still must open on the tap gesture, but via
+  // the ONE owner (which is where the popup-block fallback is now guarded).
+  if (!/openExternal\(/.test(src)) {
+    failures.push(
+      `${TARGET}: must open the destination via openExternal( from lib/open-external on ` +
+        `the tap gesture (so /links stays mounted) — the popup-block decision lives in ` +
+        `ONE module.`,
+    );
   }
 
   // 5. analytics preserved.
@@ -157,10 +171,7 @@ if (process.argv.includes("--self-test")) {
 import { detectClientPlatform } from '@/lib/device-platform'
 import { APP_STORE_URL, PLAY_STORE_URL } from '@/lib/store-links'
 import { BUSINESS_APP_CHOICE_COPY, resolveBusinessAppTarget } from '@/lib/business-app-target'
-const openExternal = (dest) => {
-  const win = window.open(dest, '_blank', 'noopener,noreferrer')
-  if (!win) window.location.assign(dest)
-}
+import { openExternal } from '@/lib/open-external'
 const onCtaClick = (tab, action) => {
   const platform = detectClientPlatform()
   if (tab.id === 'business') {
@@ -210,9 +221,26 @@ const onCtaClick = (tab, action) => {
   const hardcoded = good + "\nconst x = 'https://apps.apple.com/app/id6760440898'\n";
   if (run(hardcoded).length === 0) selfFailures.push("hardcoded apps.apple.com literal not flagged");
 
-  // Missing window.location.assign fallback → fire.
-  const noFallback = good.replace("if (!win) window.location.assign(dest)", "");
-  if (run(noFallback).length === 0) selfFailures.push("missing window.location.assign fallback not flagged");
+  // ORCH-1381 ADDENDUM D-B — stopped delegating to openExternal( → fire.
+  // (Replaces the old "missing window.location.assign fallback" case: that guard now
+  // lives in orch-1381-open-external-no-double-nav.mjs, on the module that owns it.)
+  const noDelegate = good.replace(/openExternal\(/g, "someLocalOpen(");
+  if (run(noDelegate).length === 0) selfFailures.push("missing openExternal( delegation not flagged");
+
+  // ORCH-1381 ADDENDUM D-B — re-inlined the SHIPPED double-nav bug → fire.
+  const inlinedBug = good.replace(
+    "import { openExternal } from '@/lib/open-external'",
+    "const openExternal = (dest) => {\n  const win = window.open(dest, '_blank', 'noopener,noreferrer')\n  if (!win) window.location.assign(dest)\n}",
+  );
+  if (run(inlinedBug).length === 0) selfFailures.push("re-inlined window.open(…,'noopener,noreferrer') double-nav bug not flagged");
+
+  // ORCH-1381 ADDENDUM D-B — THE HALF-FIX TRAP: 'noreferrer' alone still returns
+  // null → identical bug → must fire.
+  const halfFix = good.replace(
+    "import { openExternal } from '@/lib/open-external'",
+    "const openExternal = (dest) => {\n  const win = window.open(dest, '_blank', 'noreferrer')\n  if (win) { win.opener = null } else { window.location.assign(dest) }\n}",
+  );
+  if (run(halfFix).length === 0) selfFailures.push("HALF-FIX TRAP ('noreferrer' only, still returns null) not flagged");
 
   // No `platform ===` (device branch removed) → fire.
   const noBranch = good.replace(/platform ===/g, "platform ==");
@@ -237,7 +265,7 @@ const onCtaClick = (tab, action) => {
     selfFailures.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
-  console.log("ORCH-1328 links-cta-opens-store-clientside self-test PASS (11/11 cases, ORCH-1381-amended).");
+  console.log("ORCH-1328 links-cta-opens-store-clientside self-test PASS (13/13 cases, ORCH-1381-ADDENDUM-amended).");
   process.exit(0);
 }
 

@@ -18,6 +18,11 @@ import {
   BUSINESS_APP_CHOICE_COPY,
   resolveBusinessAppTarget,
 } from '@/lib/business-app-target'
+// ORCH-1381 ADDENDUM D-B — external opens go through the ONE owner. Never inline
+// window.open here: a 'noopener'/'noreferrer' feature string makes it return null
+// even on success, so the popup-block fallback fires on every tap and the page
+// double-navigates.
+import { openExternal } from '@/lib/open-external'
 
 export function GlassNav() {
   const pathname = usePathname()
@@ -67,9 +72,7 @@ export function GlassNav() {
         store: platform === 'ios' ? 'app_store' : 'play',
         location: 'nav',
       })
-      // Popup-blocked (window.open → null) → same-tab navigation fallback.
-      const win = window.open(store, '_blank', 'noopener,noreferrer')
-      if (!win) window.location.assign(store)
+      openExternal(store)
       return
     }
     // Desktop / other → the QR panel.
@@ -90,12 +93,6 @@ export function GlassNav() {
   //
   // The `action` prop is REQUIRED: without it an Android owner who CHOOSES web is
   // indistinguishable from ORCH-1324's forced-web, and the fix is unmeasurable.
-  const openBusinessDest = (dest: string): void => {
-    // Popup-blocked (window.open → null) → same-tab navigation fallback.
-    const win = window.open(dest, '_blank', 'noopener,noreferrer')
-    if (!win) window.location.assign(dest)
-  }
-
   const handleDownloadTheBusinessApp = (): void => {
     const platform = detectClientPlatform()
     const target = resolveBusinessAppTarget(platform)
@@ -107,7 +104,7 @@ export function GlassNav() {
       surface: 'organiser',
       location: 'nav',
     })
-    openBusinessDest(target.installHref)
+    openExternal(target.installHref)
   }
 
   const handleUseBusinessOnWeb = (): void => {
@@ -120,7 +117,7 @@ export function GlassNav() {
       surface: 'organiser',
       location: 'nav',
     })
-    openBusinessDest(target.webHref)
+    openExternal(target.webHref)
   }
 
   return (
@@ -149,11 +146,21 @@ export function GlassNav() {
       >
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
           {/* Logo — official Mingla Business lockup on the business surface,
-              plain Mingla wordmark on the explorer surface. */}
+              plain Mingla wordmark on the explorer surface.
+
+              ORCH-1381 ADDENDUM D-A-2 — `shrink-0` is LOAD-BEARING, not cosmetic.
+              Without it the logo is a shrinkable flex item, so it silently absorbed
+              every bit of nav overcrowding by squashing itself (84px → 30px at
+              `text-sm`, → ~0 and INVISIBLE under plain nowrap). That is why no
+              automated width check ever caught the nav overflow: the bar could not
+              fail a width check, it just destroyed the brand instead. Pinned, the
+              bar's real width demand becomes measurable — which is what proved the
+              logo + BOTH pinned-copy pills cannot fit at 360px (hence the
+              one-action mobile nav below). */}
           <Link
             href={homeHref}
             aria-label={surface === 'organiser' ? 'Mingla Business home' : 'Mingla home'}
-            className="inline-flex items-center gap-2 rounded-md px-0.5 transition-all duration-200 ease-out-quart hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 active:brightness-100 focus-ring"
+            className="inline-flex shrink-0 items-center gap-2 rounded-md px-0.5 transition-all duration-200 ease-out-quart hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 active:brightness-100 focus-ring"
           >
             {surface === 'organiser' ? (
               <img
@@ -178,32 +185,65 @@ export function GlassNav() {
           </div>
 
           {/* CTA — branches by surface.
-              organiser (ORCH-1381): an explicit inline CHOICE — "Download the app"
-                (iOS → business App Store, Android → business Play) + "Use on web".
-                Desktop/other can install nothing, so ONLY the web action renders —
-                never a dead install button. Both NAVIGATE (no dialog) so no
-                aria-haspopup. The app-does-more note is deliberately omitted here:
-                the nav is a shortcut with no room for it; the hero, /links and
-                /business/download surfaces carry it.
+              organiser (ORCH-1381): "Download the app" (iOS → business App Store,
+                Android → business Play) + "Use on web". Desktop/other can install
+                nothing, so ONLY the web action renders — never a dead install
+                button. Both NAVIGATE (no dialog) so no aria-haspopup. The
+                app-does-more note is deliberately omitted here: the nav is a
+                shortcut with no room for it; the hero, /links and /business/download
+                surfaces carry it.
+
+              ORCH-1381 ADDENDUM D-A-2 (Seth's OQ-1 ruling = option B) — on a PHONE
+                the nav shows exactly ONE action. PROVEN geometrically: with the logo
+                pinned at its natural 84px (see `shrink-0` above), the 328px bar at
+                360px CANNOT hold the logo + both pinned-copy pills at ANY text size —
+                not even 12px text with 8px padding (measured: 334px, still 6px over).
+                Both labels wrapped to 2 lines and spilled past the pill edges at 360,
+                375 AND 412 — every Android width. One action + nowrap fits in exactly
+                328/328 at full 16px text with the brand intact.
+                This EXTENDS the nav's own stated intent (the comment above: "the nav
+                is a shortcut with no room for it") from the note to the second
+                action — it is consistent, not a new concession. The HERO keeps the
+                full two-action choice + the note, so nothing is lost.
+                The copy is CI-pinned and code-verified: we fix the container, never
+                the words.
               explorer: "Get the app" is a device-aware direct store action (ORCH-1319). */}
           {surface === 'organiser' ? (
             <div className="flex items-center gap-2">
               {businessTarget.canInstall ? (
+                <>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    className="whitespace-nowrap"
+                    onClick={handleDownloadTheBusinessApp}
+                  >
+                    {BUSINESS_APP_CHOICE_COPY.download}
+                  </Button>
+                  {/* The second action is the one that does not fit next to the logo
+                      on a phone. It returns at `sm` (640px), where there is room —
+                      so desktop/tablet keep the full inline choice. */}
+                  <Button
+                    variant="glass"
+                    size="sm"
+                    className="hidden whitespace-nowrap sm:inline-flex"
+                    onClick={handleUseBusinessOnWeb}
+                  >
+                    {BUSINESS_APP_CHOICE_COPY.useWeb}
+                  </Button>
+                </>
+              ) : (
+                // Nothing to install (desktop/unknown) → the web action is the ONLY
+                // action, so it always renders. This branch is unchanged by D-A-2.
                 <Button
-                  variant="primary"
+                  variant="glass"
                   size="sm"
-                  onClick={handleDownloadTheBusinessApp}
+                  className="whitespace-nowrap"
+                  onClick={handleUseBusinessOnWeb}
                 >
-                  {BUSINESS_APP_CHOICE_COPY.download}
+                  {BUSINESS_APP_CHOICE_COPY.useWeb}
                 </Button>
-              ) : null}
-              <Button
-                variant="glass"
-                size="sm"
-                onClick={handleUseBusinessOnWeb}
-              >
-                {BUSINESS_APP_CHOICE_COPY.useWeb}
-              </Button>
+              )}
             </div>
           ) : (
             // ORCH-1319 — explorer "Get the app" is a device-aware DIRECT action:

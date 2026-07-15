@@ -10,6 +10,11 @@ import {
   BUSINESS_APP_CHOICE_COPY,
   resolveBusinessAppTarget,
 } from '@/lib/business-app-target'
+// ORCH-1381 ADDENDUM D-B — external opens go through the ONE owner. Never inline
+// window.open here: a 'noopener'/'noreferrer' feature string makes it return null
+// even on success, so the popup-block fallback fires on every tap and the page
+// double-navigates.
+import { openExternal } from '@/lib/open-external'
 import { captureMarketing } from '@/components/marketing/posthog-provider'
 
 // ORCH-1010 — business hero. A full-bleed 3D "booking wall" (vibe-themed booking
@@ -39,12 +44,6 @@ export function OrganiserHero() {
   }, [])
   const target = resolveBusinessAppTarget(platform)
 
-  // Popup-blocked (window.open → null) → same-tab navigation fallback.
-  const openDest = (dest: string): void => {
-    const win = window.open(dest, '_blank', 'noopener,noreferrer')
-    if (!win) window.location.assign(dest)
-  }
-
   // The `action` prop is REQUIRED: without it an Android owner who CHOOSES web is
   // indistinguishable from ORCH-1324's forced-web, and the fix is unmeasurable.
   const handleDownloadTheBusinessApp = (): void => {
@@ -57,7 +56,7 @@ export function OrganiserHero() {
       surface: 'organiser',
       location: 'hero',
     })
-    openDest(live.installHref)
+    openExternal(live.installHref)
   }
 
   const handleUseBusinessOnWeb = (): void => {
@@ -69,7 +68,7 @@ export function OrganiserHero() {
       surface: 'organiser',
       location: 'hero',
     })
-    openDest(live.webHref)
+    openExternal(live.webHref)
   }
 
   return (

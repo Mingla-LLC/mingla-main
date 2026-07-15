@@ -10,8 +10,15 @@
  * CHOICE rather than guessing one destination: "Download the app" (iOS → the live
  * business App Store, Android → the LIVE business Play listing) AND "Use on web",
  * driven by detectClientPlatform() through the shared lib/business-app-target.ts
- * decision helper, with a popup-blocked window.location.assign fallback. There is
- * NO beta/lead-capture funnel and NO desktop QR panel on the business surface.
+ * decision helper, opening every destination through the shared lib/open-external
+ * owner (which carries the popup-block fallback). There is NO beta/lead-capture
+ * funnel and NO desktop QR panel on the business surface.
+ *
+ * NOTE (ORCH-1381 ADDENDUM D-A-2, Seth's OQ-1 ruling = option B): on a PHONE the nav
+ * renders exactly ONE action — the logo + both pinned-copy pills provably cannot fit
+ * at 360px at any text size. BOTH handlers (and therefore both `action:` captures)
+ * still exist on the surface, which is what check (c) pins; the second action simply
+ * returns at `sm`. The HERO always carries the full two-action choice.
  *
  * ORCH-1324's original clause "Android + desktop/other → the business web app" is
  * SUPERSEDED: the business Play listing went live 2026-07-15 (COMMS-0101), so
@@ -27,7 +34,17 @@
  *       unmeasurable.  [G-b]
  *   (d) fires a `get_the_app_clicked` capture AND carries a `surface: 'organiser'`
  *       prop (distinguishes the business event from the explorer one).
- *   (e) carries the popup-blocked fallback window.location.assign(.
+ *   (e) delegates every external open to openExternal( from lib/open-external.
+ *       AMENDED BY ORCH-1381 ADDENDUM D-B: this check previously required the token
+ *       `window.location.assign(` as a "no silent failure" guard. That check was
+ *       BLIND — it was satisfied by code whose fallback fired 100% of the time
+ *       (window.open with a noopener/noreferrer feature string returns null EVEN ON
+ *       SUCCESS, so every tap opened a tab AND navigated the page away). A presence
+ *       check for an error path cannot distinguish "handles the error" from "is
+ *       permanently in the error path". The guard now lives in the module that owns
+ *       the decision (orch-1381-open-external-no-double-nav.mjs, which asserts the
+ *       fallback is in the else-branch); here we require DELEGATION to it, and BAN
+ *       inlining window.open so the bug cannot come back on these surfaces.
  *
  * G-b (adversarial, INVERTED by ORCH-1381): FAIL if a surface carries the collapsed
  * ternary `platform === 'ios' ? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL`. That
@@ -76,6 +93,13 @@ const BANNED = [
   // ORCH-1381 B3 — the fails-on-revert teeth. This ternary WAS the ORCH-1324
   // contract and is now THE BUG.
   { re: /platform === 'ios' \? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL/, why: "the ORCH-1324 collapsed ternary — sends every Android owner to the web app instead of the LIVE business Play listing (ORCH-1381)" },
+  // ORCH-1381 ADDENDUM D-B — the double-navigation teeth. These surfaces must
+  // DELEGATE to openExternal(; inlining window.open is how the bug shipped to four
+  // call sites at once.
+  { re: /window\.open\(/, why: "inlines window.open — must delegate to openExternal( from lib/open-external (ORCH-1381 ADDENDUM D-B)" },
+  // The half-fix trap: 'noreferrer' ALONE also nulls the return, so banning only
+  // 'noopener' would let the identical bug back in.
+  { re: /\.open\([^)\n]*\bno(?:opener|referrer)\b[^)\n]*\)/, why: "passes noopener/noreferrer to window.open — per the HTML spec it then returns null EVEN ON SUCCESS, so the popup-block fallback fires unconditionally and the page double-navigates (ORCH-1381 ADDENDUM D-B)" },
 ];
 
 function checkTarget(label, rawSrc, failures) {
@@ -129,11 +153,12 @@ function checkTarget(label, rawSrc, failures) {
     );
   }
 
-  // (e) popup-blocked fallback.
-  if (!/window\.location\.assign\(/.test(src)) {
+  // (e) ORCH-1381 ADDENDUM D-B — delegation to the ONE owner of the open decision.
+  if (!/openExternal\(/.test(src)) {
     failures.push(
-      `${label}: missing the \`window.location.assign(\` popup-blocked fallback — a ` +
-        `blocked window.open must still navigate the owner (no dead tap).`,
+      `${label}: must open destinations via openExternal( from lib/open-external — the ` +
+        `popup-block decision lives in exactly ONE module. Inlining window.open ` +
+        `re-introduces the double-navigation bug (ORCH-1381 ADDENDUM D-B).`,
     );
   }
 
@@ -154,10 +179,12 @@ if (process.argv.includes("--self-test")) {
     return f;
   };
 
-  // ORCH-1381 — the compliant surface offers TWO actions via the shared helper.
+  // ORCH-1381 — the compliant surface offers TWO actions via the shared helper and
+  // delegates every open to the ONE owner (ADDENDUM D-B).
   const good = `
 import { detectClientPlatform } from '@/lib/device-platform'
 import { BUSINESS_APP_CHOICE_COPY, resolveBusinessAppTarget } from '@/lib/business-app-target'
+import { openExternal } from '@/lib/open-external'
 const handleDownloadTheBusinessApp = () => {
   const platform = detectClientPlatform()
   const target = resolveBusinessAppTarget(platform)
@@ -169,8 +196,7 @@ const handleDownloadTheBusinessApp = () => {
     surface: 'organiser',
     location: 'nav',
   })
-  const win = window.open(target.installHref, '_blank', 'noopener,noreferrer')
-  if (!win) window.location.assign(target.installHref)
+  openExternal(target.installHref)
 }
 const handleUseBusinessOnWeb = () => {
   const platform = detectClientPlatform()
@@ -182,8 +208,7 @@ const handleUseBusinessOnWeb = () => {
     surface: 'organiser',
     location: 'nav',
   })
-  const win = window.open(target.webHref, '_blank', 'noopener,noreferrer')
-  if (!win) window.location.assign(target.webHref)
+  openExternal(target.webHref)
 }
 const jsx = <>{BUSINESS_APP_CHOICE_COPY.download}{BUSINESS_APP_CHOICE_COPY.useWeb}</>
 `;
@@ -219,9 +244,33 @@ const jsx = <>{BUSINESS_APP_CHOICE_COPY.download}{BUSINESS_APP_CHOICE_COPY.useWe
   const noSurface = good.replace(/\s*surface: 'organiser',/g, "");
   if (run(noSurface).length === 0) selfFailures.push("missing surface:'organiser' not flagged");
 
-  // Missing popup fallback → fire.
-  const noFallback = good.replace(/\s*if \(!win\) window\.location\.assign\([^)]*\)/g, "");
-  if (run(noFallback).length === 0) selfFailures.push("missing window.location.assign fallback not flagged");
+  // ORCH-1381 ADDENDUM D-B — stopped delegating to openExternal( → fire.
+  const noDelegate = good.replace(/openExternal\(/g, "someLocalOpen(");
+  if (run(noDelegate).length === 0) selfFailures.push("missing openExternal( delegation not flagged");
+
+  // ORCH-1381 ADDENDUM D-B — inlined the SHIPPED bug back in → fire (both the
+  // window.open ban and the noopener/noreferrer ban).
+  const inlinedBug = good.replace(
+    "openExternal(target.installHref)",
+    "const win = window.open(target.installHref, '_blank', 'noopener,noreferrer')\n  if (!win) window.location.assign(target.installHref)",
+  );
+  if (run(inlinedBug).length === 0) selfFailures.push("inlined window.open(…,'noopener,noreferrer') double-nav bug not flagged");
+
+  // ORCH-1381 ADDENDUM D-B — THE HALF-FIX TRAP: 'noreferrer' alone also returns
+  // null, so this ships the IDENTICAL bug. It must fire.
+  const halfFix = good.replace(
+    "openExternal(target.installHref)",
+    "const win = window.open(target.installHref, '_blank', 'noreferrer')\n  if (win) { win.opener = null } else { window.location.assign(target.installHref) }",
+  );
+  if (run(halfFix).length === 0) selfFailures.push("HALF-FIX TRAP ('noreferrer' only, still returns null) not flagged");
+
+  // ORCH-1381 ADDENDUM D-B — even a BARE inlined window.open must fire: the
+  // decision belongs in one module, not re-inlined per surface.
+  const bareInline = good.replace(
+    "openExternal(target.installHref)",
+    "const win = window.open(target.installHref, '_blank')\n  if (win) { win.opener = null } else { window.location.assign(target.installHref) }",
+  );
+  if (run(bareInline).length === 0) selfFailures.push("bare inlined window.open (not delegating) not flagged");
 
   // Re-added BetaAccessModal → fire.
   const beta = good + "\nimport { BetaAccessModal } from '@/components/marketing/beta-access-modal'\n";
@@ -244,7 +293,7 @@ const jsx = <>{BUSINESS_APP_CHOICE_COPY.download}{BUSINESS_APP_CHOICE_COPY.useWe
     selfFailures.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
-  console.log("ORCH-1324 business-getapp-device-aware self-test PASS (12/12 cases, ORCH-1381-amended).");
+  console.log("ORCH-1324 business-getapp-device-aware self-test PASS (15/15 cases, ORCH-1381-ADDENDUM-amended).");
   process.exit(0);
 }
 
