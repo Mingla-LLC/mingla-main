@@ -1,18 +1,25 @@
 // ---------------------------------------------------------------
 // ORCH-1324 [business "Get the app" → device-aware] — TESTER-ADVERSARIAL test.
+// REWRITTEN BY ORCH-1381 [business-getapp-android-choice].
+//
+// WHAT CHANGED AND WHY. Block (b) used to REQUIRE the ternary
+// `? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL` and the non-iOS store label
+// 'business_web'. That was the ORCH-1324 contract — it is now THE BUG. The
+// business Play listing went live 2026-07-15 (COMMS-0101), so routing every
+// non-iOS owner to the web app silently denies Android owners the app. Block (b)
+// is INVERTED: the ternary is now asserted ABSENT.
 //
 // Different angle than the happy-path (which proves PRESENCE). This proves the
-// ABSENCE of the three failure modes:
+// ABSENCE of the failure modes:
 //   (a) the retired beta funnel is gone — neither glass-nav's business branch nor
 //       the hero imports the beta lead modal or its transport, nor renders the
 //       beta CTA label / email input / beta subcopy / open-state setter (the token
 //       list below is built from fragments so this file itself is grep-clean).
-//   (b) the non-iOS destination is BUSINESS_WEB_URL — the handler must NOT strand
-//       Android/desktop owners on the App Store (guards an "everyone → App Store"
-//       regression): the ternary is `? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL`
-//       and the non-iOS store label is 'business_web', never the reversed mapping.
+//   (b) the ORCH-1324 collapsed ternary is GONE from both surfaces, and neither
+//       re-derives a destination locally: both delegate to resolveBusinessAppTarget
+//       and offer BOTH actions. No surface may hand-write the note.
 //   (c) the BUSINESS surface opens NO desktop QR panel — AppQrPanel / setQrOpen
-//       never appears in the ORGANISER handler / CTA branch or the hero. (Scoped:
+//       never appears in the ORGANISER handlers / CTA branch or the hero. (Scoped:
 //       the glass-nav EXPLORER branch legitimately KEEPS AppQrPanel/setQrOpen, so
 //       this is NOT a whole-file grep of glass-nav.)
 //
@@ -41,20 +48,24 @@ const stripComments = (src: string): string =>
 const nav = stripComments(fs.readFileSync(NAV, 'utf8'))
 const hero = stripComments(fs.readFileSync(HERO, 'utf8'))
 
-// The business handler body only (never the explorer handler).
-const navHandler = (() => {
-  const i = nav.indexOf('handleGetTheBusinessApp = ')
+// The business handler bodies only (never the explorer handler). ORCH-1381 split
+// the single business handler into one per action.
+const scopeHandler = (src: string, name: string): string => {
+  const i = src.indexOf(`${name} = `)
   if (i === -1) return ''
-  const rest = nav.slice(i)
+  const rest = src.slice(i)
   const end = rest.indexOf('\n  }')
   return end === -1 ? rest.slice(0, 700) : rest.slice(0, end)
-})()
+}
+const navDownloadHandler = scopeHandler(nav, 'handleDownloadTheBusinessApp')
+const navWebHandler = scopeHandler(nav, 'handleUseBusinessOnWeb')
+const navHandler = navDownloadHandler + '\n' + navWebHandler
 
 // The organiser CTA JSX branch only (from its `surface === 'organiser'` marker to
 // the `) : (` that opens the explorer branch) — so the explorer AppQrPanel wiring
 // is never in scope.
 const navOrganiserCtaBranch = (() => {
-  const btn = nav.indexOf('onClick={handleGetTheBusinessApp}')
+  const btn = nav.indexOf('onClick={handleDownloadTheBusinessApp}')
   if (btn === -1) return ''
   const start = nav.lastIndexOf("surface === 'organiser'", btn)
   const end = nav.indexOf(') : (', btn)
@@ -100,39 +111,76 @@ const cases: ReadonlyArray<[string, () => void]> = [
       }
     },
   ],
-  // ── (b) non-iOS lands on BUSINESS_WEB_URL, not the App Store ─────────────────
+  // ── (b) INVERTED by ORCH-1381 — the collapsed ternary is now THE BUG ─────────
   [
-    'nav: non-iOS destination is BUSINESS_WEB_URL (no everyone→App Store regression)',
+    'nav: the ORCH-1324 collapsed ternary is ABSENT and the decision is delegated',
     () => {
+      assert(navDownloadHandler.length > 0, 'handleDownloadTheBusinessApp handler not found in nav')
+      assert(navWebHandler.length > 0, 'handleUseBusinessOnWeb handler not found in nav')
       assert(
-        /platform === 'ios' \? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL/.test(navHandler),
-        'nav handler ternary is not `? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL`',
+        !/platform === 'ios' \? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL/.test(nav),
+        'nav still carries the ORCH-1324 collapsed ternary — it sends every Android owner to the web app instead of the LIVE business Play listing (COMMS-0101)',
+      )
+      // The destination must not be re-derived locally at all.
+      assert(
+        !/BUSINESS_APP_STORE_URL/.test(nav) && !/BUSINESS_WEB_URL/.test(nav),
+        'nav re-derives a business destination locally — the decision belongs ONLY to lib/business-app-target (that triplication is what left 4 surfaces stale when the Play listing went live)',
       )
       assert(
-        /store: platform === 'ios' \? 'app_store' : 'business_web'/.test(navHandler),
-        "nav handler non-iOS store label is not 'business_web'",
+        /resolveBusinessAppTarget\(/.test(navDownloadHandler) &&
+          /resolveBusinessAppTarget\(/.test(navWebHandler),
+        'a nav business handler does not delegate to resolveBusinessAppTarget',
       )
-      assert(
-        !/\? BUSINESS_WEB_URL : BUSINESS_APP_STORE_URL/.test(navHandler),
-        'nav handler has the REVERSED ternary (would send iOS to the web, non-iOS to the App Store)',
-      )
+      assert(/action: 'download'/.test(navDownloadHandler), "nav download handler missing action: 'download'")
+      assert(/action: 'use_web'/.test(navWebHandler), "nav web handler missing action: 'use_web'")
     },
   ],
   [
-    'hero: non-iOS destination is BUSINESS_WEB_URL (no everyone→App Store regression)',
+    'hero: the ORCH-1324 collapsed ternary is ABSENT and the decision is delegated',
     () => {
       assert(
-        /platform === 'ios' \? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL/.test(hero),
-        'hero ternary is not `? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL`',
+        !/platform === 'ios' \? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL/.test(hero),
+        'hero still carries the ORCH-1324 collapsed ternary — it sends every Android owner to the web app instead of the LIVE business Play listing (COMMS-0101)',
       )
       assert(
-        /store: platform === 'ios' \? 'app_store' : 'business_web'/.test(hero),
-        "hero non-iOS store label is not 'business_web'",
+        !/BUSINESS_APP_STORE_URL/.test(hero) && !/BUSINESS_WEB_URL/.test(hero),
+        'hero re-derives a business destination locally — the decision belongs ONLY to lib/business-app-target',
       )
-      assert(
-        !/\? BUSINESS_WEB_URL : BUSINESS_APP_STORE_URL/.test(hero),
-        'hero has the REVERSED ternary (would strand Android/desktop owners on the App Store)',
-      )
+      assert(/resolveBusinessAppTarget\(/.test(hero), 'hero does not delegate to resolveBusinessAppTarget')
+      assert(/action: 'download'/.test(hero), "hero missing action: 'download'")
+      assert(/action: 'use_web'/.test(hero), "hero missing action: 'use_web'")
+    },
+  ],
+  // ── (b2) the note is a shared CLAIM, never hand-written ─────────────────────
+  [
+    'nav + hero render the note/labels from BUSINESS_APP_CHOICE_COPY only',
+    () => {
+      assert(/BUSINESS_APP_CHOICE_COPY/.test(nav), 'nav hand-writes its CTA labels instead of using BUSINESS_APP_CHOICE_COPY')
+      assert(/BUSINESS_APP_CHOICE_COPY/.test(hero), 'hero hand-writes its CTA labels/note instead of using BUSINESS_APP_CHOICE_COPY')
+      // The claim must not be widened. "check guests in" would be FALSE — manual
+      // check-in is NOT platform-gated (it exists on web, device-local).
+      for (const [label, src] of [['nav', nav], ['hero', hero]] as const) {
+        assert(
+          !/check guests in/i.test(src),
+          `${label} claims the app is needed to "check guests in" — FALSE: manual check-in exists on web (it is device-local only). The verified claim is "scan tickets at the door".`,
+        )
+      }
+    },
+  ],
+  // ── (b3) no dead / consumer-owned OneLink on either surface ─────────────────
+  [
+    'nav + hero route through NO dead or consumer-owned OneLink',
+    () => {
+      for (const [label, src] of [['nav', nav], ['hero', hero]] as const) {
+        assert(
+          !/minglabiz\.onelink\.me/.test(src),
+          `${label} references minglabiz.onelink.me — DEAD on Android (AppsFlyer Pending, COMMS-0101)`,
+        )
+        assert(
+          !/go\.usemingla\.com/.test(src),
+          `${label} references go.usemingla.com — consumer-owned (ORCH-1346: 1 domain = 1 template)`,
+        )
+      }
     },
   ],
   // ── (c) NO QR panel on the business surface (scoped, not whole-file) ─────────

@@ -6,9 +6,12 @@
 // device binding in links-experience.tsx:
 //   (a) NO `from 'next/link'`, NO `<Link` element (no soft-navigation).
 //   (b) NO hardcoded store literal (apps.apple.com / play.google.com) — SSOT only.
-//   (c) the Business branch is `platform === 'ios' ? BUSINESS_APP_STORE_URL :
-//       BUSINESS_WEB_URL` and NOT the reversed order (no everyone→App Store / no
-//       stranded non-iOS).
+//   (c) INVERTED BY ORCH-1381 [business-getapp-android-choice]: the Business branch
+//       used to be REQUIRED to carry `platform === 'ios' ? BUSINESS_APP_STORE_URL :
+//       BUSINESS_WEB_URL`. That was the ORCH-1324 contract and is now THE BUG — it
+//       denies every Android owner the business Play listing, live since 2026-07-15
+//       (COMMS-0101). The ternary is now asserted ABSENT; the branch must delegate
+//       to resolveBusinessAppTarget and offer both actions.
 //   (d) the Explorer phone branch is `platform === 'ios' ? APP_STORE_URL :
 //       PLAY_STORE_URL` and NOT reversed (Android must land on Play).
 //   (e) Desktop-Explorer still reaches the QR: the handler opens `tab.cta.href`
@@ -63,17 +66,31 @@ const cases: ReadonlyArray<[string, () => void]> = [
       assert(!/play\.google\.com/.test(src), 'hardcodes a play.google.com literal (must use the store-links consts)')
     },
   ],
-  // ── (c) Business branch correct, not reversed ───────────────────────────────
+  // ── (c) INVERTED by ORCH-1381 — the collapsed ternary is now THE BUG ─────────
   [
-    "Business branch is platform === 'ios' ? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL (not reversed)",
+    'Business branch delegates to resolveBusinessAppTarget and carries NO collapsed ternary',
     () => {
       assert(
-        /platform === 'ios' \? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL/.test(src),
-        'Business branch is missing/altered (iOS must → BUSINESS_APP_STORE_URL, else → BUSINESS_WEB_URL)',
+        !/platform === 'ios' \? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL/.test(src),
+        'Business branch still carries the ORCH-1324 collapsed ternary — it sends every Android owner to the web app instead of the LIVE business Play listing (COMMS-0101)',
       )
       assert(
-        !/platform === 'ios' \? BUSINESS_WEB_URL : BUSINESS_APP_STORE_URL/.test(src),
-        'Business branch is REVERSED (iOS → web, non-iOS → App Store) — strands users',
+        /resolveBusinessAppTarget\(/.test(src),
+        'Business branch does not delegate to resolveBusinessAppTarget — the platform→destination decision lives in exactly ONE module (ORCH-1381)',
+      )
+      // The business destinations must not be re-derived here at all.
+      assert(
+        !/BUSINESS_APP_STORE_URL/.test(src) && !/BUSINESS_WEB_URL/.test(src),
+        'links-experience re-derives a business destination locally — that triplication is exactly what left 4 surfaces stale when the business Play listing went live',
+      )
+      // Both actions must exist, discriminated for analytics.
+      assert(
+        /'download'/.test(src) && /'use_web'/.test(src),
+        "the Business tab must offer BOTH actions ('download' | 'use_web') — without the discriminator an Android owner who CHOOSES web is indistinguishable from the old forced-web",
+      )
+      assert(
+        /BUSINESS_APP_CHOICE_COPY/.test(src),
+        'the Business tab hand-writes its labels/note instead of using BUSINESS_APP_CHOICE_COPY',
       )
     },
   ],

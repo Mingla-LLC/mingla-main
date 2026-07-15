@@ -236,6 +236,55 @@ for (const partnerSetup of [true, false]) {
     assertStringIncludes(p.text, "SECRET_TOKEN_9f3a");
     assertStringIncludes(p.text, DOWNLOAD_URL);
   });
+
+  // T-11 (ORCH-1381) — COPY TRUTHFULNESS. Both variants used to promise that
+  // "iPhone opens the App Store, everywhere else opens the web". That became FALSE
+  // on 2026-07-15, when the business Play listing went live (production versionCode
+  // 33 / 1.1.2 — COMMS-0101): an Android owner reading it was told the app was not
+  // for them. /business/download now renders a real choice on every device.
+  //
+  // This test guards the CLAIM, not the layout. Copy is the one thing here with no
+  // compiler — nothing else fails if it silently reverts to a falsehood.
+  Deno.test(`ORCH-1381 tester — ${variant}: secondary CTA copy names iPhone AND Android, never "everywhere else opens the web"`, () => {
+    const p = buildInviteEmail({
+      inviteeName: "Amara",
+      inviteeEmail: "amara@example.com",
+      brandName: "Zuri Kitchen",
+      inviterName: "David Okon",
+      role: partnerSetup ? "brand_owner" : "scanner",
+      acceptUrl: ACCEPT_URL,
+      from: "Mingla <noreply@usemingla.com>",
+      partnerSetup,
+    });
+
+    // The falsehood, in both of its shipped shapes.
+    for (
+      const falsehood of [
+        "everywhere else opens",
+        "everywhere else opens the web",
+        "everywhere else opens your dashboard on the web",
+      ]
+    ) {
+      assert(
+        !p.html.includes(falsehood),
+        `invite email still claims "${falsehood}" — FALSE since the business Play listing went live (COMMS-0101); an Android owner is told the app is not for them`,
+      );
+    }
+
+    // The truthful replacement must name BOTH phone platforms.
+    assertStringIncludes(p.html, "iPhone or Android");
+
+    // The href stays byte-frozen — the copy fix must never smuggle in a query
+    // string (the route resolves the device itself, server-side).
+    assertStringIncludes(
+      p.html,
+      `<a href="https://usemingla.com/business/download"`,
+    );
+    assert(
+      !p.html.includes("business/download?"),
+      "the ORCH-1381 copy fix leaked a query string into the byte-frozen download href",
+    );
+  });
 }
 
 // ===========================================================================

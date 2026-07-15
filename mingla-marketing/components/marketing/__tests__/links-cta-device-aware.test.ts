@@ -46,22 +46,37 @@ const cases: ReadonlyArray<[string, () => void]> = [
     },
   ],
   [
-    'all four store-links consts are referenced (SSOT)',
+    'the EXPLORER store consts are referenced (SSOT) and the BUSINESS decision is delegated',
     () => {
       assert(/\bAPP_STORE_URL\b/.test(src), 'missing APP_STORE_URL')
       assert(/\bPLAY_STORE_URL\b/.test(src), 'missing PLAY_STORE_URL')
-      assert(/\bBUSINESS_APP_STORE_URL\b/.test(src), 'missing BUSINESS_APP_STORE_URL')
-      assert(/\bBUSINESS_WEB_URL\b/.test(src), 'missing BUSINESS_WEB_URL')
+      // ORCH-1381 — the BUSINESS_* consts moved behind lib/business-app-target.
+      // Requiring them here would force back the very triplication that let one
+      // store going live leave four surfaces stale.
+      assert(
+        /resolveBusinessAppTarget\(/.test(src),
+        'the business branch does not delegate to resolveBusinessAppTarget (the ONE decision module)',
+      )
     },
   ],
   [
-    'the CTA is a <button type="button"> bound to onCtaClick(activeTab)',
+    'the CTA is a <button type="button"> bound to onCtaClick(...)',
     () => {
       assert(/<button/.test(src), 'CTA is no longer a <button> (soft-nav <Link>/<a> regressed)')
       assert(/type="button"/.test(src), 'CTA <button> missing type="button"')
+      // The explorer CTA still calls onCtaClick(activeTab); the business tab passes
+      // an action discriminator — onCtaClick(activeTab, 'download'|'use_web').
       assert(
         /onClick=\{\(\) => onCtaClick\(activeTab\)\}/.test(src),
-        'CTA <button> no longer binds onClick={() => onCtaClick(activeTab)}',
+        'the explorer CTA <button> no longer binds onClick={() => onCtaClick(activeTab)}',
+      )
+      assert(
+        /onClick=\{\(\) => onCtaClick\(activeTab, 'download'\)\}/.test(src),
+        "the business Download action is not bound to onCtaClick(activeTab, 'download')",
+      )
+      assert(
+        /onClick=\{\(\) => onCtaClick\(activeTab, 'use_web'\)\}/.test(src),
+        "the business Use-on-web action is not bound to onCtaClick(activeTab, 'use_web')",
       )
     },
   ],
