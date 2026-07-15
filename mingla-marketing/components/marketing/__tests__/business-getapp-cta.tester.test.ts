@@ -126,10 +126,28 @@ const cases: ReadonlyArray<[string, () => void]> = [
         !/BUSINESS_APP_STORE_URL/.test(nav) && !/BUSINESS_WEB_URL/.test(nav),
         'nav re-derives a business destination locally — the decision belongs ONLY to lib/business-app-target (that triplication is what left 4 surfaces stale when the Play listing went live)',
       )
+      // RETARGETED BY ORCH-1382 [TEST-MOD-APPROVED ORCH-1382]. WAS: BOTH handlers
+      // must call resolveBusinessAppTarget(. Since ORCH-1382 the handlers no longer
+      // NAVIGATE — the anchors do — so the use-on-web handler has no destination left
+      // to resolve (its href={target.webHref} is resolved once at render). Requiring a
+      // now-purposeless call would mandate dead code.
+      //
+      // THE ANGLE IS PRESERVED EXACTLY: the destination decision must come from the ONE
+      // module and never be re-derived on this surface. It is simply asserted where the
+      // decision now lives — at the render-level resolve, plus the download handler,
+      // which still resolves fresh so its analytics `store` label cannot go stale.
       assert(
-        /resolveBusinessAppTarget\(/.test(navDownloadHandler) &&
-          /resolveBusinessAppTarget\(/.test(navWebHandler),
-        'a nav business handler does not delegate to resolveBusinessAppTarget',
+        /const businessTarget = resolveBusinessAppTarget\(/.test(nav),
+        'nav does not resolve its business destinations via resolveBusinessAppTarget( at render — the anchors would have no href from the ONE decision module',
+      )
+      assert(
+        /resolveBusinessAppTarget\(/.test(navDownloadHandler),
+        'the nav download handler does not re-resolve via resolveBusinessAppTarget( — its analytics `store` label would go stale against the real device',
+      )
+      // And the decision must carry attribution wherever it is made.
+      assert(
+        /resolveBusinessAppTarget\(\s*[^),]+,\s*[^)]+\)/.test(nav),
+        'nav calls resolveBusinessAppTarget( with a bare 1-arg call — an unattributed OneLink works perfectly and reports nothing (ORCH-1382 §5.2.4)',
       )
       assert(/action: 'download'/.test(navDownloadHandler), "nav download handler missing action: 'download'")
       assert(/action: 'use_web'/.test(navWebHandler), "nav web handler missing action: 'use_web'")

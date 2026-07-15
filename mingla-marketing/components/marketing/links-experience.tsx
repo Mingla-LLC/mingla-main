@@ -29,20 +29,25 @@ import { captureMarketing } from '@/components/marketing/posthog-provider'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 import { cn } from '@/lib/cn'
 import { detectClientPlatform, type Platform } from '@/lib/device-platform'
-import { APP_STORE_URL, PLAY_STORE_URL } from '@/lib/store-links'
 import {
   BUSINESS_APP_CHOICE_COPY,
   resolveBusinessAppTarget,
 } from '@/lib/business-app-target'
+import { resolveExplorerAppTarget } from '@/lib/explorer-app-target'
+import { LINKS_SRC_FALLBACK, linksAttribution } from '@/lib/links-src'
 // ORCH-1381 ADDENDUM D-B — external opens go through the ONE owner. Never inline
 // window.open here: a 'noopener'/'noreferrer' feature string makes it return null
 // even on success, so the popup-block fallback fires on every tap — which navigated
 // /links away and violated this page's own "stays mounted" contract (ORCH-1328).
+// ORCH-1382 — openExternal now has exactly ONE caller on this page: the Explorer
+// DESKTOP branch, which opens the /download QR page. That is a genuinely different
+// action (a page, not a store hand-off), so it stays a <button>. Every STORE/web
+// destination is now a real <a href> — see the CTA block below.
 import { openExternal } from '@/lib/open-external'
 import {
-  LINKS_SOCIALS,
   LINKS_TABS,
   socialHref,
+  socialsForTab,
   type LinksTab,
   type LinksTabId,
 } from '@/lib/links-config'
@@ -88,6 +93,15 @@ function SocialIcon({ label }: { label: string }) {
           <path d="M16.5 11.1c-.11-.05-.22-.1-.34-.15-.2-3.7-2.22-5.82-5.62-5.84h-.05c-2.03 0-3.72.87-4.76 2.45l1.87 1.28c.77-1.17 1.99-1.42 2.9-1.42h.03c1.13.01 1.99.34 2.54 .99 .4 .47 .67 1.12 .8 1.94-1-.17-2.08-.22-3.24-.15-3.24.19-5.33 2.08-5.19 4.7 .07 1.33 .73 2.47 1.86 3.22 .96 .63 2.19 .94 3.47 .87 1.69-.09 3.02-.74 3.94-1.92 .7-.9 1.15-2.06 1.35-3.53 .81 .49 1.41 1.13 1.74 1.91 .57 1.32 .6 3.49-1.17 5.26-1.55 1.55-3.42 2.22-6.24 2.24-3.13-.02-5.5-1.03-7.04-2.99C2.7 17.44 1.96 15.15 1.93 12v-.01c.03-3.15 .77-5.44 2.21-6.82C5.68 3.21 8.05 2.2 11.18 2.18c3.15 .02 5.55 1.03 7.14 3 .78 .97 1.37 2.19 1.75 3.6l1.95-.52c-.47-1.75-1.22-3.27-2.24-4.54C17.75 1.28 14.79 .02 11.19 0h-.02C7.57 .02 4.6 1.29 2.72 3.68 1.05 5.81 .18 8.75 .15 12.24v.02c.03 3.49 .9 6.43 2.57 8.55C4.6 23.2 7.57 24.47 11.17 24.49h.02c3.28-.02 5.6-.88 7.5-2.78 2.49-2.49 2.41-5.6 1.59-7.53-.59-1.38-1.71-2.5-3.24-3.24zM11.5 16.68c-1.42 .08-2.9-.56-2.97-1.92-.05-1.01 .72-2.13 3.06-2.27 .27-.02 .53-.02 .79-.02 .85 0 1.64 .08 2.36 .24-.27 3.36-1.85 3.9-3.24 3.97z" />
         </svg>
       )
+    // ORCH-1382 (D) — lucide-react ^0.460.0 ships NO Snapchat glyph, so it follows
+    // the same inline brand-SVG convention as TikTok / Threads / X above. No new
+    // asset file, no new dependency, no icon-library change.
+    case 'Snapchat':
+      return (
+        <svg className={cls} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M12.206.793c.99 0 4.347.276 5.93 3.821.529 1.193.403 3.219.299 4.847l-.003.06c-.012.18-.022.345-.03.51.075.045.203.09.401.09.3-.016.659-.12 1.033-.301.165-.088.344-.104.464-.104.182 0 .359.029.509.09.45.149.734.479.734.838.015.449-.39.839-1.213 1.168-.089.029-.209.075-.344.119-.45.135-1.139.36-1.333.81-.09.225-.061.524.12.868l.015.015c.06.136 1.526 3.475 4.791 4.014.255.044.435.269.42.523 0 .075-.015.15-.045.225-.24.569-1.273.988-3.146 1.271-.059.09-.12.404-.18.658-.045.225-.09.435-.15.703-.045.194-.164.404-.54.404h-.015c-.135 0-.313-.031-.539-.076-.315-.06-.734-.135-1.273-.135-.315 0-.645.03-.99.089-.674.12-1.242.524-1.898.988-.945.674-2.008 1.428-3.611 1.428-.075 0-.135-.015-.196-.015-.06.015-.135.015-.21.015-1.603 0-2.653-.754-3.598-1.428-.66-.464-1.224-.869-1.898-.988-.345-.06-.675-.089-.99-.089-.554 0-.958.09-1.273.135-.226.045-.404.074-.539.074-.196 0-.42-.075-.54-.404-.06-.27-.104-.494-.15-.703-.06-.254-.12-.569-.18-.658-1.873-.284-2.906-.703-3.146-1.271-.03-.075-.045-.15-.045-.225-.015-.254.165-.479.42-.523 3.264-.539 4.73-3.878 4.791-4.014l.015-.015c.18-.344.21-.643.12-.868-.194-.45-.883-.675-1.333-.81-.135-.044-.255-.09-.344-.119-.823-.329-1.228-.719-1.213-1.168 0-.359.284-.689.734-.838.15-.061.327-.09.509-.09.12 0 .299.016.464.104.374.181.733.285 1.033.301.198 0 .326-.045.401-.09-.008-.165-.018-.33-.03-.51l-.003-.06c-.104-1.628-.23-3.654.299-4.847C7.859 1.069 11.216.793 12.206.793z" />
+        </svg>
+      )
     case 'X':
     default:
       return (
@@ -102,10 +116,18 @@ interface LinksExperienceProps {
   /** Tagline under the wordmark. Passed from the (server) page so the copy is
    *  editable in one place; defaults to the brand line if omitted. */
   tagline?: string
+  /**
+   * ORCH-1382 — the SANITISED `?src=` bio source (already through
+   * sanitizeLinksSrc on the server; defaults to the fail-safe). It is a PAGE-level
+   * value passed as a prop, NOT tab state — which is what makes it structurally
+   * impossible for a tab switch to lose it (§4.4).
+   */
+  src?: string
 }
 
 export function LinksExperience({
   tagline = 'Find a vibe, not a venue.',
+  src = LINKS_SRC_FALLBACK,
 }: LinksExperienceProps) {
   const reduced = useMinglaReducedMotion()
   const [activeId, setActiveId] = useState<LinksTabId>(LINKS_TABS[0].id)
@@ -125,7 +147,18 @@ export function LinksExperience({
   useEffect(() => {
     setBusinessPlatform(detectClientPlatform())
   }, [])
-  const businessTarget = resolveBusinessAppTarget(businessPlatform)
+  // ORCH-1382 — both targets now resolve an ATTRIBUTED OneLink href that is rendered
+  // into a real <a href>, so they must be resolved during render (not on the tap).
+  // `src` is a page-level prop, so switching tabs re-renders both with the SAME pid —
+  // only the campaign differs. That is SC-3 (persistence) satisfied by structure.
+  const businessTarget = resolveBusinessAppTarget(
+    businessPlatform,
+    linksAttribution(src, 'business_bio'),
+  )
+  const explorerTarget = resolveExplorerAppTarget(
+    businessPlatform,
+    linksAttribution(src, 'explorer_bio'),
+  )
 
   const tabDomId = (id: LinksTabId) => `${idBase}-tab-${id}`
   const panelDomId = (id: LinksTabId) => `${idBase}-panel-${id}`
@@ -172,69 +205,97 @@ export function LinksExperience({
     [selectTab],
   )
 
-  // ORCH-1328 — the destination opens DIRECTLY on the tap gesture so /links stays
-  // mounted (the CTA no longer soft-navigates into the /download or /business/download
-  // route, whose external redirect stranded the tab on a blank / footer-only shell —
-  // INVESTIGATION_ORCH-1328). ORCH-1381 ADDENDUM D-B: the local helper that did this
-  // is DELETED — it opened with 'noopener,noreferrer', which returns null even on
-  // success, so its "popup-blocked" fallback fired on EVERY tap and navigated /links
-  // away regardless. The imported openExternal is the one owner of that decision.
-
-  // §7 — consent-gated tap analytics (kept), enriched with the resolved platform +
-  // store. Device map reuses the ORCH-1319 store-links SSOT for the explorer tab;
-  // the business tab delegates to the shared ORCH-1381 decision helper.
+  // ORCH-1382 — THE STORE CTAs ARE NOW REAL <a href> ANCHORS, not buttons.
   //
-  // `action` discriminates the business tab's TWO actions ('download' | 'use_web').
-  // The explorer tab passes none — it still has a single CTA.
-  const onCtaClick = useCallback(
+  // WHY (and NOT for the reason you might assume). Anchors do NOT fix the "Android
+  // shows the Play website first" complaint — the DESTINATION does. A plain store URL
+  // returns HTTP 200 text/html and Chrome renders it, whether it is reached by
+  // window.open, an <a href>, or a typed URL; the OneLink 301s to market:// and that,
+  // alone, removes the intermediate page. Anchors are adopted on stronger grounds:
+  //
+  //  1. IN-APP BROWSERS — the decisive one. /links is a link-in-bio page: its traffic
+  //     is overwhelmingly Instagram / TikTok / LinkedIn / Snapchat in-app webviews,
+  //     where window.open is routinely blocked, ignored or silently no-op'd. A plain
+  //     anchor is the one navigation primitive that always works. This page's most
+  //     important audience was the one most likely to have the CTA fail.
+  //  2. CORRECT SEMANTICS, FREE PLATFORM BEHAVIOUR — long-press → "Open in new tab",
+  //     middle-click, "Copy link address", and real screen-reader link semantics, all
+  //     of which a <button> destroys. It also removes the popup-blocker dependency.
+  //  3. THE FILE'S OWN PRECEDENT — the socials row below has always been <a href
+  //     target="_blank" rel="noopener noreferrer">. The CTA was the odd one out.
+  //
+  // target="_blank" keeps ORCH-1328's "/links stays mounted" invariant literally
+  // true, AND keeps captureMarketing alive: a same-tab anchor races the unload and
+  // the capture can be silently lost.
+  //
+  // ⚠ rel="noopener" IS REQUIRED HERE AND IS **NOT** THE ORCH-1381 PATHOLOGY.
+  // open-external.ts's docblock bans noopener/noreferrer in the loudest possible
+  // terms — that ban is scoped to window.open FEATURE STRINGS, where either token
+  // makes open() return null even on success. On an <a> element, rel="noopener" has
+  // no such behaviour and is a mandatory anti-reverse-tabnabbing property. Stripping
+  // it "to comply with ORCH-1381" would ship a real security regression. (Verified:
+  // the ORCH-1381 ban regex is anchored to `.open(` and does not match rel=.)
+
+  // §7 — consent-gated tap analytics. ORCH-1382: this NO LONGER navigates — the
+  // anchor does. It fires the capture and returns, so analytics cannot be silently
+  // dropped when the anchor takes over the navigation.
+  const onCtaTrack = useCallback(
     (tab: LinksTab, action?: 'download' | 'use_web') => {
       const platform = detectClientPlatform()
 
-      // Business tab (ORCH-1381): an explicit choice — "Download the app"
-      // (iOS → business App Store, Android → the LIVE business Play listing) or
-      // "Use on web". The destination is NEVER re-derived here.
       if (tab.id === 'business') {
-        const target = resolveBusinessAppTarget(platform)
+        const target = resolveBusinessAppTarget(platform, linksAttribution(src, 'business_bio'))
         const useWeb = action === 'use_web' || target.installHref === null
-        const dest = useWeb ? target.webHref : target.installHref
-        if (dest === null) return
         captureMarketing('links_page_cta_clicked', {
           tab: tab.id,
           destination: tab.cta.destination,
           action: useWeb ? 'use_web' : 'download',
           platform,
           store: useWeb ? 'business_web' : target.installStore,
+          src,
         })
-        openExternal(dest)
         return
       }
 
-      // Explorer tab (ORCH-1319): iOS → App Store, Android → Play.
+      // Explorer phones → the attributed Explorer OneLink (the anchor navigates).
       if (platform === 'ios' || platform === 'android') {
-        const store = platform === 'ios' ? APP_STORE_URL : PLAY_STORE_URL
+        const target = resolveExplorerAppTarget(platform, linksAttribution(src, 'explorer_bio'))
         captureMarketing('links_page_cta_clicked', {
           tab: tab.id,
           destination: tab.cta.destination,
           platform,
-          store: platform === 'ios' ? 'app_store' : 'play',
+          store: target.installStore,
+          src,
         })
-        openExternal(store)
         return
       }
 
-      // Explorer desktop / other → the device-smart /download QR page (tab.cta.href
-      // = '/download', UNCHANGED route). Opened in a new tab so /links stays; the
-      // popup-blocked fallback navigates same-tab (parity with today's desktop path).
+      // Explorer desktop / other → the /download QR page. Analytics only; the
+      // onCtaDesktop handler below performs the open.
       captureMarketing('links_page_cta_clicked', {
         tab: tab.id,
         destination: tab.cta.destination,
         platform: 'other',
         store: 'qr_page',
+        src,
       })
+    },
+    [src],
+  )
+
+  // ORCH-1382 — the LAST surviving openExternal call site on this page.
+  //
+  // Explorer DESKTOP has no store app to hand off to, so this opens the device-smart
+  // /download QR page in a new tab while /links stays mounted. That is a genuinely
+  // different action from a store hand-off — a page, not an app — so it correctly
+  // stays a <button>, and openExternal (the ONE owner of the popup-block decision,
+  // ORCH-1381 ADDENDUM D-B) remains the right delegate.
+  const onCtaDesktop = useCallback(
+    (tab: LinksTab) => {
+      onCtaTrack(tab)
       openExternal(tab.cta.href)
     },
-    // openExternal is a module import (stable identity) — not a dependency.
-    [],
+    [onCtaTrack],
   )
 
   const onSocialClick = useCallback(
@@ -295,7 +356,7 @@ export function LinksExperience({
             role="tablist"
             aria-label="Choose Mingla for you or your business"
             aria-orientation="horizontal"
-            className="relative glass-soft mt-6 flex gap-1 rounded-full p-1"
+            className="relative glass-soft mt-5 flex gap-1 rounded-full p-1"
           >
             {/* ORCH-1327 — the active-tab highlight is ONE PERSISTENT, absolutely-
                 positioned pill that slides its horizontal position between the two
@@ -358,7 +419,7 @@ export function LinksExperience({
             initial={reduced ? false : { opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: reduced ? 0 : 0.2, ease: [0.4, 0, 0.2, 1] }}
-            className="mt-5 rounded-[28px] border border-white/10 bg-white/[0.03] p-6 text-center focus-ring"
+            className="mt-5 rounded-[28px] border border-white/10 bg-white/[0.03] p-5 text-center focus-ring"
           >
             <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-warm">
               {activeTab.eyebrow}
@@ -370,58 +431,79 @@ export function LinksExperience({
               {activeTab.body}
             </p>
 
-            {/* §4 — the smart CTA. ORCH-1328: a <button> that opens the right
-                destination DIRECTLY on the tap (from the store-links single source
-                of truth) so /links stays mounted — Explorer iPhone → App Store,
-                Android → Play, desktop/other → the `/download` QR page.
-                ORCH-1381: the Business tab is no longer a single guessing CTA — it
-                offers an explicit choice (Download the app → iOS App Store /
-                Android Play, or Use on web) plus the app-does-more note. Desktop
-                can install nothing → the web action only, never a dead button.
-                §1 NO-SCROLL: the two business actions sit SIDE-BY-SIDE in ONE row
-                and the note REPLACES the tab body's old trailing sentence, so the
-                socials row is not pushed off a 667px phone. */}
-            <div className="mt-5">
+            {/* §4 — the smart CTA. ORCH-1382: every STORE/web destination is a real
+                <a href> pointing at the ATTRIBUTED OneLink, which 301s straight to
+                market:// (Android) / apps.apple.com (iOS) — so the store app opens
+                with NO intermediate web page, and the install carries pid/c. Explorer
+                desktop/other has no store app to hand off to and still opens the
+                `/download` QR page via openExternal (a page, not an app → a button).
+                ORCH-1381: the Business tab offers an explicit choice (Get the app /
+                Use on web) plus the app-does-more note; desktop can install nothing →
+                the web action only, never a dead button.
+                ORCH-1382 §1 NO-SCROLL: the two business actions now STACK vertically
+                (see below), which is why the ADDENDUM D-A px-4 override is gone. */}
+            <div className="mt-4">
               {activeTab.id === 'business' ? (
                 <>
-                  {/* ORCH-1381 ADDENDUM D-A — px-4 (not CTA_BASE's px-7) ONLY on the
-                      business pair. Two w-full pills share this row, so flex shrinks
-                      each to ~130px at 360px; px-7 left "Use on web" a 59px content
-                      box → 3-line wrap → 9px spill past the fixed h-14. px-4 restores
-                      a 98px box. h-14 is deliberately UNCHANGED: SC-6's 375x667
-                      no-scroll budget was measured against it, and a min-h + grow
-                      breaks the same-row contract (items-center centres unequal-height
-                      boxes → tops 386 vs 385). CTA_BASE itself is NOT touched — the
-                      explorer tab's single CTA at the bottom shares it and renders
-                      correctly today. Copy is pinned — never shorten it. */}
-                  <div className="flex items-center justify-center gap-2">
-                    {businessTarget.canInstall ? (
-                      <button
-                        type="button"
-                        onClick={() => onCtaClick(activeTab, 'download')}
-                        className={cn(CTA_BASE, CTA_INTENT.primary, 'px-4')}
+                  {/* ORCH-1382 — STACKED, not side-by-side.
+                      The ORCH-1381 ADDENDUM D-A `px-4` override is REMOVED, and its
+                      comment block with it, because the constraint that forced it no
+                      longer exists. D-A's own recorded reason was: "Two w-full pills
+                      share this row, so flex shrinks each to ~130px at 360px; px-7
+                      left 'Use on web' a 59px content box → 3-line wrap → 9px spill
+                      past the fixed h-14." Stacking DELETES that precondition — each
+                      pill is now full-width (~320px at 360px), so CTA_BASE's px-7 fits
+                      with room to spare and visual parity with the Explorer CTA is
+                      restored. Do not reintroduce px-4 here (pinned by T-10).
+                      Vertical budget: stacking costs ~64px against the ~20px measured
+                      headroom at 375x667, reclaimed by the panel/spacing trims marked
+                      "ORCH-1382 budget" in this file. The copy is a code-verified
+                      CLAIM and is NEVER shortened to buy space. */}
+                  <div className="flex flex-col items-center justify-center gap-2">
+                    {businessTarget.canInstall && businessTarget.installHref !== null ? (
+                      <a
+                        href={businessTarget.installHref}
+                        target="_blank"
+                        rel="noopener"
+                        onClick={() => onCtaTrack(activeTab, 'download')}
+                        className={cn(CTA_BASE, CTA_INTENT.primary)}
                       >
                         {BUSINESS_APP_CHOICE_COPY.download}
-                      </button>
+                      </a>
                     ) : null}
-                    <button
-                      type="button"
-                      onClick={() => onCtaClick(activeTab, 'use_web')}
-                      className={cn(CTA_BASE, CTA_INTENT.glass, 'px-4')}
+                    <a
+                      href={businessTarget.webHref}
+                      target="_blank"
+                      rel="noopener"
+                      onClick={() => onCtaTrack(activeTab, 'use_web')}
+                      className={cn(CTA_BASE, CTA_INTENT.glass)}
                     >
                       {BUSINESS_APP_CHOICE_COPY.useWeb}
-                    </button>
+                    </a>
                   </div>
-                  <p className="mx-auto mt-3 max-w-sm text-[12px] leading-snug text-white/60">
+                  <p className="mx-auto mt-2 max-w-sm text-[12px] leading-snug text-white/60">
                     {businessTarget.canInstall
                       ? BUSINESS_APP_CHOICE_COPY.moreNote
                       : BUSINESS_APP_CHOICE_COPY.desktopNote}
                   </p>
                 </>
+              ) : explorerTarget.canInstall && explorerTarget.installHref !== null ? (
+                // Explorer PHONE → a real anchor to the attributed Explorer OneLink.
+                <a
+                  href={explorerTarget.installHref}
+                  target="_blank"
+                  rel="noopener"
+                  onClick={() => onCtaTrack(activeTab)}
+                  className={cn(CTA_BASE, CTA_INTENT[activeTab.cta.intent])}
+                >
+                  {activeTab.cta.label}
+                </a>
               ) : (
+                // Explorer DESKTOP → the /download QR page. A page, not a store
+                // hand-off, so it stays a real <button> + openExternal.
                 <button
                   type="button"
-                  onClick={() => onCtaClick(activeTab)}
+                  onClick={() => onCtaDesktop(activeTab)}
                   className={cn(CTA_BASE, CTA_INTENT[activeTab.cta.intent])}
                 >
                   {activeTab.cta.label}
@@ -432,12 +514,15 @@ export function LinksExperience({
         </motion.div>
       </div>
 
-      {/* Socials — pinned to the bottom of the viewport (§3, all 7 accounts).
-          The row is SURFACE-AWARE: on the Business tab the five business-branded
-          networks swap to @minglabusiness, while YouTube & LinkedIn stay universal
-          (resolved by `socialHref`). `flex-wrap` + a tight gap keep all seven 44px
-          tap targets on one tidy row on standard phones (≥390px) and wrap them
-          cleanly on narrower/very short devices — never forcing a scroll (§1). */}
+      {/* Socials — pinned to the bottom of the viewport (§3).
+          The row is SURFACE-AWARE in TWO ways now (ORCH-1382):
+           - the five business-branded networks swap to @minglabusiness, while the
+             NEUTRAL YouTube & LinkedIn stay universal (resolved by `socialHref`);
+           - `socialsForTab` FILTERS the row: Snapchat is explorer_only (there is no
+             business Snapchat account), so Explorer shows 8 and Business shows 7.
+          `flex-wrap` + a tight gap keep every 44px tap target on one tidy row on
+          standard phones (≥390px) and wrap them cleanly on narrower/very short
+          devices — never forcing a scroll (§1). */}
       <motion.nav
         aria-label={
           activeId === 'business' ? 'Mingla Business on social media' : 'Mingla on social media'
@@ -445,9 +530,9 @@ export function LinksExperience({
         initial={reduced ? false : { opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.6, delay: reduced ? 0 : 0.25, ease: EASE }}
-        className="relative z-10 mt-5 flex flex-wrap items-center justify-center gap-1.5"
+        className="relative z-10 mt-4 flex flex-wrap items-center justify-center gap-1.5"
       >
-        {LINKS_SOCIALS.map((s) => (
+        {socialsForTab(activeId).map((s) => (
           <a
             key={s.label}
             href={socialHref(s, activeId)}

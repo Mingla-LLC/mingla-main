@@ -17,6 +17,19 @@
 // The platform→destination decision comes from lib/business-app-target.ts — the
 // single source of truth — and store URLs from lib/store-links.ts. NEVER hardcode
 // either here.
+//
+// ORCH-1382 — the install action now points at the ATTRIBUTED business OneLink
+// (which 301s straight to market:// / the App Store, so no intermediate store web
+// page renders and the install carries pid/c).
+//
+// ⚠ THIS ROUTE SELF-ATTRIBUTES, SERVER-SIDE, WITH NO QUERY PARAM — AND MUST.
+// It is the landing surface for the partner-invite email's CTA, whose href is
+// BYTE-FROZEN to exactly `https://usemingla.com/business/download` with NO query
+// string (pinned by orch-1329-invite-email.tester.test.ts). So attribution CANNOT
+// ride in on the URL: it is composed here, from this surface's own identity, via
+// siteAttribution('business_download'). NEVER append a query param to the invite
+// email href to carry attribution — that breaks the byte-frozen pin and is the
+// single easiest way to fail this ORCH's CI.
 
 import type { Metadata } from 'next'
 import { headers } from 'next/headers'
@@ -25,6 +38,7 @@ import {
   BUSINESS_APP_CHOICE_COPY,
   resolveBusinessAppTarget,
 } from '@/lib/business-app-target'
+import { siteAttribution } from '@/lib/links-src'
 
 // Reads request headers → must not be statically cached.
 export const dynamic = 'force-dynamic'
@@ -38,7 +52,9 @@ export const metadata: Metadata = {
 export default async function BusinessDownloadPage() {
   const ua = (await headers()).get('user-agent') ?? ''
   const platform = resolvePlatformFromUa(ua)
-  const target = resolveBusinessAppTarget(platform)
+  // Attribution is derived from THIS SURFACE, not from the request URL — see the
+  // byte-frozen invite-email note in the header.
+  const target = resolveBusinessAppTarget(platform, siteAttribution('business_download'))
 
   return (
     <main

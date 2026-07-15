@@ -34,6 +34,41 @@ const sizes: Record<Size, string> = {
   lg: 'h-14 px-7 text-base',
 }
 
+/**
+ * ORCH-1382 — the Button's class recipe, WITHOUT the element.
+ *
+ * WHY THIS EXISTS. ORCH-1382 turns the store CTAs into real `<a href>` anchors (they
+ * navigate, and `window.open` is routinely blocked in the Instagram/TikTok in-app
+ * webviews that dominate /links traffic). Those anchors must look identical to a
+ * `<Button>` — but `Button` is a `<button>`-only component with site-wide blast
+ * radius, and adding `asChild`/`as` polymorphism to it would be a far larger change
+ * than this ORCH earns.
+ *
+ * Exporting the recipe instead lets an anchor consume the exact same tokens, while
+ * `Button` below consumes the SAME function — so the two can never drift.
+ *
+ * PURELY ADDITIVE: Button's props, DOM and behaviour are unchanged.
+ */
+export function buttonClasses({
+  variant = 'primary',
+  size = 'md',
+  className,
+}: {
+  variant?: Variant
+  size?: Size
+  className?: string
+} = {}): string {
+  return cn(
+    'inline-flex items-center justify-center gap-2 rounded-full font-display font-medium tracking-[-0.005em]',
+    'transition-all duration-200 ease-out-quart',
+    'cursor-pointer focus-ring',
+    'disabled:cursor-not-allowed disabled:opacity-60',
+    variants[variant],
+    sizes[size],
+    className,
+  )
+}
+
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant = 'primary', size = 'md', loading, disabled, children, ...rest }, ref) => {
     return (
@@ -41,15 +76,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         disabled={disabled || loading}
         aria-busy={loading || undefined}
-        className={cn(
-          'inline-flex items-center justify-center gap-2 rounded-full font-display font-medium tracking-[-0.005em]',
-          'transition-all duration-200 ease-out-quart',
-          'cursor-pointer focus-ring',
-          'disabled:cursor-not-allowed disabled:opacity-60',
-          variants[variant],
-          sizes[size],
-          className,
-        )}
+        className={buttonClasses({ variant, size, className })}
         {...rest}
       >
         {loading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}

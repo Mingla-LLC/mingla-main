@@ -221,44 +221,82 @@ const cases: ReadonlyArray<[string, () => void]> = [
   //   Link 2  openExternal is DRIVEN against a fake Window, not grepped.
   // Fails both ways: delete the fallback in lib/open-external.ts → Link 2 red;
   // drop either handler's delegation or inline window.open( → Link 1 red.
+  // ── RETARGETED BY ORCH-1382 [TEST-MOD-APPROVED ORCH-1382] ───────────────────
+  // WAS: both handlers must route through openExternal(. ORCH-1382 turns every
+  // business destination on this surface into a real <a href> pointing at the
+  // ATTRIBUTED OneLink, so openExternal LEGITIMATELY disappears from glass-nav —
+  // these greps went red against a CORRECT implementation, pinning WHERE the code
+  // lived rather than WHAT it guaranteed.
+  //
+  // The guarantee — a business action can never dead-tap — is not merely preserved,
+  // it is STRONGER: an anchor cannot be popup-blocked at all, and it works inside the
+  // in-app webviews where window.open is routinely blocked. So the guard follows the
+  // guarantee to where it now lives:
+  //   Link 1  both destinations are real anchors carrying href + target + rel.
+  //   Link 2  the nav still hand-rolls NEITHER window.open( nor .location.assign(
+  //           (re-inlining is exactly how the D-B double-nav bug reached 4 surfaces).
+  // Fails both ways: drop an anchor/rel → Link 1 red; inline window.open → Link 2 red.
   [
-    'nav: both business actions navigate through openExternal — neither can dead-tap',
+    'nav: both business actions are real anchors — an anchor cannot be popup-blocked or dead-tap',
     () => {
-      // Link 1 — both handlers delegate to the ONE owner.
+      // Link 1 — real links to the attributed OneLink / web app.
       assert(
-        /openExternal\(/.test(navDownloadHandler),
-        'nav download handler does not navigate via openExternal( from lib/open-external — ' +
-          'a blocked popup on the Download action would be a dead tap',
+        /<a\s+[^>]*href=\{[^}]*installHref[^}]*\}/.test(nav),
+        'nav download action is not a real <a href={…installHref…}> anchor — a <button>+window.open is routinely blocked in the in-app webviews this CTA is opened from (ORCH-1382)',
       )
       assert(
-        /openExternal\(/.test(navWebHandler),
-        'nav web handler does not navigate via openExternal( from lib/open-external — ' +
-          'a blocked popup on the Use-on-web action would be a dead tap',
+        /<a\s+[^>]*href=\{[^}]*webHref[^}]*\}/.test(nav),
+        'nav use-on-web action is not a real <a href={…webHref…}> anchor',
       )
+      assert(/target="_blank"/.test(navNoComments), 'nav business anchors lost target="_blank"')
+      // ⚠ THE §5.1 TRAP: rel="noopener" on an <a> is REQUIRED and is NOT the
+      // ORCH-1381 window.open pathology (that ban is scoped to .open( FEATURE
+      // STRINGS). Stripping it "to comply with ORCH-1381" is a security regression.
+      assert(
+        /rel="noopener/.test(navNoComments),
+        'nav business anchors lost rel="noopener" — reverse-tabnabbing. The ORCH-1381 noopener ban applies ONLY to window.open feature strings; on an <a> rel="noopener" is MANDATORY',
+      )
+      // Link 2 — the D-B bug must not be re-inlined here.
       assert(
         !/window\.open\(/.test(navNoComments),
-        'nav inlines window.open( instead of delegating to openExternal( — the inlined ' +
-          'twin is exactly what carried the double-navigation bug (ORCH-1381 ADDENDUM D-B)',
+        'nav inlines window.open( — the inlined twin is exactly what carried the double-navigation bug (ORCH-1381 ADDENDUM D-B)',
       )
       assert(
         !/\.location\.assign\(/.test(navNoComments),
-        'nav inlines a .location.assign( fallback instead of delegating to openExternal( — ' +
-          'the popup-block decision must live in exactly ONE module',
+        'nav inlines a .location.assign( fallback — anchors need no popup-block fallback at all',
       )
-      // Link 2 — the delegated behaviour itself.
-      assertDelegatedTapIsStillGuarded()
+    },
+  ],
+  // ── ORCH-1382 — the nav's OneLink must be ATTRIBUTED and never crossed ──────
+  [
+    'nav: the business OneLink is attributed and never crossed to the consumer domain',
+    () => {
+      assert(
+        /siteAttribution\(\s*'business_nav'\s*\)/.test(navNoComments),
+        "nav does not compose siteAttribution('business_nav') — a bare OneLink attributes to the template default and is indistinguishable from organic",
+      )
+      assert(
+        !/go\.usemingla\.com/.test(navNoComments),
+        'nav references the CONSUMER branded OneLink domain on a business surface — owners would install the Explorer app (ORCH-1346, H-2)',
+      )
+      assert(
+        !/onelink\.me/.test(navNoComments),
+        'nav references a RAW *.onelink.me domain — branded domains only (ORCH-1346)',
+      )
     },
   ],
   [
     'nav: organiser CTA renders BOTH actions from the shared copy constants',
     () => {
+      // ORCH-1382 — the handlers now TRACK; the anchors navigate. The binding must
+      // survive, or the tap analytics are silently dropped.
       assert(
         /onClick=\{handleDownloadTheBusinessApp\}/.test(nav),
-        'nav organiser download button is not wired to handleDownloadTheBusinessApp',
+        'nav organiser download anchor is not wired to handleDownloadTheBusinessApp — the tap analytics would be silently dropped when the anchor navigates',
       )
       assert(
         /onClick=\{handleUseBusinessOnWeb\}/.test(nav),
-        'nav organiser web button is not wired to handleUseBusinessOnWeb',
+        'nav organiser web anchor is not wired to handleUseBusinessOnWeb',
       )
       assert(
         /BUSINESS_APP_CHOICE_COPY\.download/.test(nav),
@@ -314,26 +352,47 @@ const cases: ReadonlyArray<[string, () => void]> = [
   // into lib/open-external.ts, so the grep went red against correct code — it
   // asserted WHERE the fallback lived, not that a blocked popup still navigates.
   // Same two-link chain as the nav case above; both directions covered.
+  // ── RETARGETED BY ORCH-1382 [TEST-MOD-APPROVED ORCH-1382] — same reasoning as
+  // the nav case above: hero's business destinations are real anchors now, so
+  // openExternal legitimately disappears. Angle preserved and strengthened.
   [
-    'hero: delegates the tap to openExternal — a blocked popup is never a dead tap',
+    'hero: both business actions are real anchors — an anchor cannot be popup-blocked or dead-tap',
     () => {
-      // Link 1 — delegation, and no hand-rolled open on this surface.
       assert(
-        /openExternal\(/.test(hero),
-        'hero does not navigate via openExternal( from lib/open-external — the tap must ' +
-          'route through the ONE owner of the open+popup-block decision',
+        /<a\s+[^>]*href=\{[^}]*installHref[^}]*\}/.test(hero),
+        'hero download action is not a real <a href={…installHref…}> anchor (ORCH-1382)',
+      )
+      assert(
+        /<a\s+[^>]*href=\{[^}]*webHref[^}]*\}/.test(hero),
+        'hero use-on-web action is not a real <a href={…webHref…}> anchor',
+      )
+      assert(/target="_blank"/.test(heroNoComments), 'hero business anchors lost target="_blank"')
+      assert(
+        /rel="noopener/.test(heroNoComments),
+        'hero business anchors lost rel="noopener" — reverse-tabnabbing. The ORCH-1381 noopener ban applies ONLY to window.open feature strings; on an <a> rel="noopener" is MANDATORY (ORCH-1382 §5.1)',
       )
       assert(
         !/window\.open\(/.test(heroNoComments),
-        'hero inlines window.open( instead of delegating to openExternal( — hero.tsx was ' +
-          'the 4th call site carrying this exact bug (ORCH-1381 ADDENDUM D-B)',
+        'hero inlines window.open( — hero.tsx was the 4th call site carrying this exact bug (ORCH-1381 ADDENDUM D-B)',
       )
       assert(
         !/\.location\.assign\(/.test(heroNoComments),
-        'hero inlines a .location.assign( fallback instead of delegating to openExternal(',
+        'hero inlines a .location.assign( fallback — anchors need no popup-block fallback',
       )
-      // Link 2 — the delegated behaviour itself.
-      assertDelegatedTapIsStillGuarded()
+    },
+  ],
+  [
+    'hero: the business OneLink is attributed and never crossed to the consumer domain',
+    () => {
+      assert(
+        /siteAttribution\(\s*'business_hero'\s*\)/.test(heroNoComments),
+        "hero does not compose siteAttribution('business_hero') — a bare OneLink attributes to the template default",
+      )
+      assert(
+        !/go\.usemingla\.com/.test(heroNoComments),
+        'hero references the CONSUMER branded OneLink domain on a business surface (ORCH-1346, H-2)',
+      )
+      assert(!/onelink\.me/.test(heroNoComments), 'hero references a RAW *.onelink.me domain (ORCH-1346)')
     },
   ],
   [
@@ -341,11 +400,11 @@ const cases: ReadonlyArray<[string, () => void]> = [
     () => {
       assert(
         /onClick=\{handleDownloadTheBusinessApp\}/.test(hero),
-        'hero download button is not wired to handleDownloadTheBusinessApp',
+        'hero download anchor is not wired to handleDownloadTheBusinessApp — the tap analytics would be silently dropped',
       )
       assert(
         /onClick=\{handleUseBusinessOnWeb\}/.test(hero),
-        'hero web button is not wired to handleUseBusinessOnWeb',
+        'hero web anchor is not wired to handleUseBusinessOnWeb',
       )
       assert(
         /BUSINESS_APP_CHOICE_COPY\.download/.test(hero),

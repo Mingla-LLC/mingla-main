@@ -1026,6 +1026,49 @@ interpolation passes every presence check while violating H-1.
 surface with a hardcoded `go.usemingla.com` (R6); `page.tsx` passing `searchParams.src` straight through
 (R7); **compliant → pass**; banned token **inside a comment → must pass** (comment-strip proof).
 
+### 10.8 **ADDED BY THE IMPLEMENTOR** — the OneLink health probe (OQ-3 mitigation)
+
+> **This section did not exist in the SPEC as written, and is added here per the orchestrator's
+> explicit instruction.** §11 OQ-3 recommended the probe but deferred it: *"The probe is a follow-on
+> ORCH, not this one."* Seth **accepted OQ-3** (*"everything works now and it's fixed… I want to track
+> where people are coming from"*) and the orchestrator ruled the probe **in scope for ORCH-1382** as
+> cheap insurance for the risk that acceptance creates. Flagging the addition explicitly, per the
+> dispatch: *"If the spec has no section for this, add one and say so."*
+
+**The risk being mitigated (restating OQ-3 honestly).** Before ORCH-1382 every install CTA pointed at
+a plain store URL, which cannot go Pending — the CTAs had **no third-party runtime dependency**. After
+ORCH-1382 **every install CTA, both apps, all platforms** depends on AppsFlyer serving a `301`. This is
+not theoretical: COMMS-0101 recorded exactly that failure in the same week. And it fails **silently** —
+the link resolves, the page renders, nothing throws; installs just stop.
+
+**Home: a scheduled GitHub Actions workflow.** `.github/workflows/onelink-health-probe.yml` +
+`scripts/probe-onelink-health.mjs`.
+
+| | GitHub Actions cron (**chosen**) | Supabase edge fn + pg_cron (rejected) |
+|---|---|---|
+| Precedent | `rotate-apple-jwt.yml` — the repo's one scheduled operational check, which opens a GitHub Issue on failure | pg_cron precedents (`async_trial_runs`, deck refresh, api-health-hub) all exist to touch **DATA** |
+| What it needs | curl two **public** URLs — no DB, no RLS, no secrets, no product data | a migration + an edge fn + a deploy, to make an HTTP request |
+| Alert channel | already exists (failed run + auto-opened issue with a triage runbook) | none without building one |
+| Ownership | sits beside the strict-grep gates that guard the same CTAs | would put marketing-site monitoring in the product backend |
+| Deploy | none | orchestrator/operator-owned from merged `main` |
+
+**Contract.**
+- Curls **both** OneLinks under an Android UA; healthy ⇔ `301` → `market://` **carrying that app's own
+  package id**.
+- **RETRY — the whole design.** Alerts only if **all 5** attempts fail. At the measured ~1-in-8 flake
+  rate: 1 attempt → **12.5%** false-alarm; 3 → 0.195%; **5 → 0.0031%**. An alert that cries wolf gets
+  muted, and a muted alert is worse than none — it is the *illusion* of monitoring. A real outage fails
+  5/5 deterministically and is still caught on the first run.
+- **Also catches a CROSSED OneLink in production** (`biz.*` resolving to `com.mingla.app.v2`). Treated
+  as **CRITICAL** and **never retried away** — CI checks our source; only this checks what AppsFlyer
+  actually serves.
+- Every 6 hours + `workflow_dispatch`; de-dupes onto one open `onelink-outage` issue.
+
+> **⚠ BORN DARK (COMMS-0103).** GitHub Actions is **dead repo-wide** (the repo went private; Actions are
+> billable and payment has failed). The probe **cannot fire** until Seth fixes org billing, so the
+> OneLinks are **unmonitored** until then. Trigger it once manually after the billing fix to confirm
+> green before trusting its silence.
+
 ### 10.6 Known gate hole (NOT fixed here) — issue #904
 
 Every gate regex above is **case-sensitive**; browsers are not. `rel="NOOPENER"` /

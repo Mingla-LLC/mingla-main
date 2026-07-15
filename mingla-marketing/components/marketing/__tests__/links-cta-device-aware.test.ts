@@ -136,38 +136,124 @@ const cases: ReadonlyArray<[string, () => void]> = [
       assert(/detectClientPlatform/.test(src), 'CTA no longer imports/calls detectClientPlatform')
     },
   ],
+  // RETARGETED BY ORCH-1382 [TEST-MOD-APPROVED ORCH-1382]. WAS: requires the raw
+  // APP_STORE_URL/PLAY_STORE_URL consts. The explorer CTA now resolves an ATTRIBUTED
+  // OneLink through resolveExplorerAppTarget (the ORCH-1381 decision-module pattern,
+  // extended to explorer — the same ternary was duplicated in glass-nav AND here), so
+  // requiring the raw consts would fail the CORRECT implementation. Angle preserved:
+  // BOTH decisions must be delegated, never re-derived on this surface.
   [
-    'the EXPLORER store consts are referenced (SSOT) and the BUSINESS decision is delegated',
+    'BOTH decisions are delegated to their ONE module (explorer + business)',
     () => {
-      assert(/\bAPP_STORE_URL\b/.test(src), 'missing APP_STORE_URL')
-      assert(/\bPLAY_STORE_URL\b/.test(src), 'missing PLAY_STORE_URL')
-      // ORCH-1381 — the BUSINESS_* consts moved behind lib/business-app-target.
-      // Requiring them here would force back the very triplication that let one
-      // store going live leave four surfaces stale.
+      assert(
+        /resolveExplorerAppTarget\(/.test(src),
+        'the explorer branch does not delegate to resolveExplorerAppTarget (the ONE explorer decision module)',
+      )
       assert(
         /resolveBusinessAppTarget\(/.test(src),
         'the business branch does not delegate to resolveBusinessAppTarget (the ONE decision module)',
       )
+      // The destinations must not be re-derived here at all.
+      assert(
+        !/\bAPP_STORE_URL\b/.test(srcNoComments) && !/\bPLAY_STORE_URL\b/.test(srcNoComments),
+        'links-experience re-derives an explorer store const locally — that duplication is exactly what ORCH-1382 removed, and a raw store URL also re-introduces the intermediate Play web page + drops attribution',
+      )
     },
   ],
+  // ── ORCH-1382 T-9 ⭐ THE ANCHOR CONTRACT ────────────────────────────────────
   [
-    'the CTA is a <button type="button"> bound to onCtaClick(...)',
+    'T-9: the store/web CTAs are real <a href> anchors with target=_blank and rel=noopener',
     () => {
-      assert(/<button/.test(src), 'CTA is no longer a <button> (soft-nav <Link>/<a> regressed)')
-      assert(/type="button"/.test(src), 'CTA <button> missing type="button"')
-      // The explorer CTA still calls onCtaClick(activeTab); the business tab passes
-      // an action discriminator — onCtaClick(activeTab, 'download'|'use_web').
+      // A real link is the ONE navigation primitive that survives the Instagram /
+      // TikTok in-app webviews that dominate /links traffic — window.open is
+      // routinely blocked there, which is why the CTA became an anchor.
       assert(
-        /onClick=\{\(\) => onCtaClick\(activeTab\)\}/.test(src),
-        'the explorer CTA <button> no longer binds onClick={() => onCtaClick(activeTab)}',
+        /<a\s+[^>]*href=\{[^}]*installHref[^}]*\}/.test(srcNoComments),
+        'the install CTA is not a real <a href={…installHref…}> anchor',
       )
       assert(
-        /onClick=\{\(\) => onCtaClick\(activeTab, 'download'\)\}/.test(src),
-        "the business Download action is not bound to onCtaClick(activeTab, 'download')",
+        /<a\s+[^>]*href=\{[^}]*webHref[^}]*\}/.test(srcNoComments),
+        'the use-on-web CTA is not a real <a href={…webHref…}> anchor',
+      )
+      assert(/target="_blank"/.test(srcNoComments), 'the CTA anchors lost target="_blank" — /links must stay mounted and the analytics capture must survive the tap')
+      // ⚠ THE §5.1 TRAP: rel="noopener" on an <a> is REQUIRED and is NOT the
+      // ORCH-1381 window.open pathology (that ban is scoped to .open( FEATURE
+      // STRINGS). An implementor "complying" with ORCH-1381 by stripping rel here
+      // would ship a real reverse-tabnabbing regression.
+      assert(
+        /rel="noopener/.test(srcNoComments),
+        'the CTA anchors lost rel="noopener" — reverse-tabnabbing. The ORCH-1381 noopener ban is scoped to window.open FEATURE STRINGS; on an <a> element rel="noopener" is MANDATORY',
+      )
+    },
+  ],
+  // ── ORCH-1382 T-9 — attribution actually rides ─────────────────────────────
+  [
+    'T-9: the CTA hrefs carry attribution (a bare OneLink reports nothing)',
+    () => {
+      assert(
+        /linksAttribution\(/.test(srcNoComments),
+        'links-experience does not build a linksAttribution( — the OneLink would fall back to the template default and every bio install stays anonymous, which is the entire bug ORCH-1382 fixes',
       )
       assert(
-        /onClick=\{\(\) => onCtaClick\(activeTab, 'use_web'\)\}/.test(src),
-        "the business Use-on-web action is not bound to onCtaClick(activeTab, 'use_web')",
+        /'explorer_bio'/.test(srcNoComments) && /'business_bio'/.test(srcNoComments),
+        "both tab campaigns ('explorer_bio' | 'business_bio') must be set from the TAB, not from src",
+      )
+    },
+  ],
+  // ── ORCH-1382 T-9 — `src` is a PAGE-level prop, not tab state ──────────────
+  [
+    'T-9: src is a component PROP (so a tab switch cannot structurally lose it)',
+    () => {
+      assert(
+        /src\?:\s*string/.test(srcNoComments) || /src = LINKS_SRC_FALLBACK/.test(srcNoComments),
+        'src is not a prop with a fail-safe default — if it were tab state, switching tabs could silently drop the attribution (SPEC §4.4)',
+      )
+      assert(
+        !/useSearchParams/.test(srcNoComments),
+        'links-experience reads useSearchParams() — src must be resolved ONCE on the server and passed down (SPEC §4.5): a client-only read needs a Suspense boundary and flickers on first paint',
+      )
+    },
+  ],
+  // ── ORCH-1382 T-10 — the px-4 patch must not creep back ────────────────────
+  [
+    'T-10: the ORCH-1381 D-A px-4 override is GONE and the pills are STACKED',
+    () => {
+      // D-A's px-4 existed ONLY because two w-full pills shared one row. Stacking
+      // deleted that precondition, so px-7 (CTA_BASE) fits with room to spare.
+      // Re-adding px-4 would silently shrink the pills for no reason.
+      assert(
+        !/'px-4'/.test(srcNoComments),
+        "the business pills carry a 'px-4' override again — the ORCH-1381 ADDENDUM D-A patch is redundant once the pills stack full-width (they must render CTA_BASE's px-7)",
+      )
+      // The pills must be a COLUMN, not a row.
+      assert(
+        /flex flex-col items-center justify-center gap-2/.test(srcNoComments),
+        'the two business actions are not stacked in a flex column — reverting to a side-by-side row re-creates the 360px overflow that forced the px-4 patch',
+      )
+    },
+  ],
+  // RETARGETED BY ORCH-1382 [TEST-MOD-APPROVED ORCH-1382]. WAS: the CTA must be a
+  // <button type="button"> bound to onCtaClick. The store/web CTAs are anchors now
+  // (see the T-9 anchor-contract case above); the DESKTOP QR CTA is still a real
+  // <button>, because opening a PAGE is a genuinely different action from handing off
+  // to a store app. Angle preserved: every CTA is a real control, correctly bound.
+  [
+    'the desktop QR CTA is still a native <button> and every action is bound',
+    () => {
+      assert(/<button/.test(srcNoComments), 'the desktop QR CTA is no longer a <button>')
+      assert(/type="button"/.test(srcNoComments), 'the desktop QR CTA lacks type="button"')
+      assert(!/role="button"/.test(srcNoComments), 'a role="button" (non-native) control is used — must be a real <button>')
+      assert(
+        /onClick=\{\(\) => onCtaDesktop\(activeTab\)\}/.test(srcNoComments),
+        'the desktop CTA no longer binds onClick={() => onCtaDesktop(activeTab)} (the /download QR page is unreachable)',
+      )
+      assert(
+        /onClick=\{\(\) => onCtaTrack\(activeTab, 'download'\)\}/.test(srcNoComments),
+        "the business Download anchor is not bound to onCtaTrack(activeTab, 'download')",
+      )
+      assert(
+        /onClick=\{\(\) => onCtaTrack\(activeTab, 'use_web'\)\}/.test(srcNoComments),
+        "the business Use-on-web anchor is not bound to onCtaTrack(activeTab, 'use_web')",
       )
     },
   ],
@@ -224,7 +310,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
     },
   ],
   [
-    'the button keeps the CTA token recipe cn(CTA_BASE, CTA_INTENT[activeTab.cta.intent])',
+    'the CTA keeps the token recipe cn(CTA_BASE, CTA_INTENT[activeTab.cta.intent])',
     () => {
       assert(
         /cn\(CTA_BASE, CTA_INTENT\[activeTab\.cta\.intent\]\)/.test(src),

@@ -2,7 +2,7 @@
 // ORCH-1381 [business-getapp-android-choice] — TESTER ADVERSARIAL regression test.
 //
 // DIFFERENT ANGLE FROM T-1 (business-app-target.test.ts), deliberately.
-// T-1 is the happy path: it pins `resolveBusinessAppTarget('android').installHref`
+// T-1 is the happy path: it pins `resolveBusinessAppTarget('android', ATTR).installHref`
 // to the one correct literal. That catches the ONE revert we already know about.
 // This file attacks the decision helper as a STATE MACHINE instead, and asserts the
 // invariants that must hold for EVERY input — including inputs the type system
@@ -35,13 +35,20 @@
 
 import { resolveBusinessAppTarget } from '../business-app-target'
 import type { Platform } from '../device-platform'
+import { linksAttribution } from '../links-src'
 import {
   APP_STORE_URL,
   BUSINESS_APP_STORE_URL,
+  BUSINESS_ONELINK_URL,
   BUSINESS_PLAY_STORE_URL,
   BUSINESS_WEB_URL,
+  EXPLORER_ONELINK_URL,
   PLAY_STORE_URL,
 } from '../store-links'
+
+// ORCH-1382 [TEST-MOD-APPROVED ORCH-1382] — resolveBusinessAppTarget now takes a
+// REQUIRED attribution argument (SPEC §5.2.4), so every call below gains one.
+const ATTR = linksAttribution('youtube', 'business_bio')
 
 function assert(cond: boolean, msg: string): void {
   if (!cond) throw new Error(msg)
@@ -60,7 +67,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
     'A-1: wherever an install action exists, it must NOT lead to the web app (no fake choice)',
     () => {
       for (const platform of INSTALLABLE) {
-        const t = resolveBusinessAppTarget(platform)
+        const t = resolveBusinessAppTarget(platform, ATTR)
         assert(
           t.canInstall === true,
           `${platform} is an installable platform but canInstall is ${String(t.canInstall)}`,
@@ -85,7 +92,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
     'A-2: canInstall, installHref and installStore can never disagree (no dead install button)',
     () => {
       for (const platform of REAL_PLATFORMS) {
-        const t = resolveBusinessAppTarget(platform)
+        const t = resolveBusinessAppTarget(platform, ATTR)
         const hasHref = t.installHref !== null
         const hasStore = t.installStore !== null
         assert(
@@ -140,7 +147,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
         [],
       ]
       for (const bad of garbage) {
-        const t = resolveBusinessAppTarget(bad as unknown as Platform)
+        const t = resolveBusinessAppTarget(bad as unknown as Platform, ATTR)
         assert(
           t.canInstall === false,
           `platform ${JSON.stringify(bad)} produced canInstall=true — an unrecognised device was offered an install action.`,
@@ -170,7 +177,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
     'A-4: a business surface can never resolve to a CONSUMER store listing',
     () => {
       for (const platform of INSTALLABLE) {
-        const { installHref } = resolveBusinessAppTarget(platform)
+        const { installHref } = resolveBusinessAppTarget(platform, ATTR)
         assert(
           installHref !== PLAY_STORE_URL,
           `${platform}: business install target IS the consumer Play listing (${PLAY_STORE_URL}) — owners would install the Explorer app.`,
@@ -181,14 +188,15 @@ const cases: ReadonlyArray<[string, () => void]> = [
         )
       }
       // And the two business constants must not be swapped with each other.
-      assert(
-        resolveBusinessAppTarget('ios').installHref === BUSINESS_APP_STORE_URL,
-        'ios resolves to something other than the business App Store listing',
-      )
-      assert(
-        resolveBusinessAppTarget('android').installHref === BUSINESS_PLAY_STORE_URL,
-        'android resolves to something other than the business Play listing',
-      )
+      // ORCH-1382 — both phones now resolve to the attributed BUSINESS OneLink,
+      // which 301s per device. The angle is unchanged: each must land on the
+      // BUSINESS-owned base, never a consumer one.
+      for (const platform of INSTALLABLE) {
+        assert(
+          (resolveBusinessAppTarget(platform, ATTR).installHref ?? '').startsWith(`${BUSINESS_ONELINK_URL}?`),
+          `${platform} resolves to something other than the business OneLink: ${resolveBusinessAppTarget(platform, ATTR).installHref}`,
+        )
+      }
       // Widened to `string` so the literal-type checker does not flag the
       // comparison as "no overlap" (mirrors the ORCH-1329 email tester pattern).
       // The check must survive a future edit that repoints either constant.
@@ -210,11 +218,11 @@ const cases: ReadonlyArray<[string, () => void]> = [
   [
     'A-5: the decision is pure — call order and repetition cannot change an answer',
     () => {
-      const androidFirst = resolveBusinessAppTarget('android')
-      resolveBusinessAppTarget('ios')
-      resolveBusinessAppTarget('other')
-      resolveBusinessAppTarget('ios')
-      const androidAgain = resolveBusinessAppTarget('android')
+      const androidFirst = resolveBusinessAppTarget('android', ATTR)
+      resolveBusinessAppTarget('ios', ATTR)
+      resolveBusinessAppTarget('other', ATTR)
+      resolveBusinessAppTarget('ios', ATTR)
+      const androidAgain = resolveBusinessAppTarget('android', ATTR)
       assert(
         androidFirst.installHref === androidAgain.installHref &&
           androidFirst.installStore === androidAgain.installStore &&
@@ -223,9 +231,57 @@ const cases: ReadonlyArray<[string, () => void]> = [
         `IMPURE — android resolved differently after interleaved calls: ${JSON.stringify(androidFirst)} vs ${JSON.stringify(androidAgain)}. On the server this leaks one request's device into another's HTML.`,
       )
       // Returned objects must not be a shared singleton a caller could mutate.
-      const a = resolveBusinessAppTarget('android')
-      const b = resolveBusinessAppTarget('android')
+      const a = resolveBusinessAppTarget('android', ATTR)
+      const b = resolveBusinessAppTarget('android', ATTR)
       assert(a !== b, 'resolveBusinessAppTarget returns a SHARED object — one caller mutating it corrupts every other surface.')
+    },
+  ],
+
+  // ── A-6 ⭐ NEW (ORCH-1382) — CROSS-APP ONELINK CONTAMINATION ────────────────
+  // A NEW vector that did not exist before ORCH-1382. Until now the business install
+  // target was a plain Play/App Store URL and the only way to ship owners the wrong
+  // app was to paste the wrong package id — visible, and already covered by A-4.
+  // Now BOTH apps install through near-identical branded OneLinks that differ by a
+  // few characters (`go.usemingla.com/w36m` vs `biz.usemingla.com/ZSCW`), declared
+  // four lines apart in the same file. Cross them and NOTHING looks broken: the CTA
+  // works, the link 301s, a store opens — it is simply the WRONG APP, and both apps'
+  // attribution is silently poisoned. No error, no crash, nothing to eyeball.
+  //
+  // A-4 compares against the consumer STORE constants. This compares against the
+  // consumer ONELINK — the thing that now actually decides which app installs.
+  [
+    'A-6: a business surface can NEVER resolve to the CONSUMER OneLink (cross-app contamination)',
+    () => {
+      for (const platform of REAL_PLATFORMS) {
+        const { installHref } = resolveBusinessAppTarget(platform, ATTR)
+        const href = installHref ?? ''
+        assert(
+          !href.includes('go.usemingla.com'),
+          `${platform}: the business install target carries the CONSUMER branded OneLink domain (go.usemingla.com) — every business owner who taps "Get the app" installs the consumer Explorer app instead, and BOTH apps' attribution is corrupted: ${href}`,
+        )
+        assert(
+          !href.startsWith(EXPLORER_ONELINK_URL),
+          `${platform}: the business install target IS the Explorer OneLink: ${href}`,
+        )
+        assert(
+          !href.includes('w36m'),
+          `${platform}: the business install target carries the CONSUMER OneLink template id (w36m) — one branded domain = one template (ORCH-1346), so this resolves to the consumer app: ${href}`,
+        )
+        // Raw OneLink domains are banned on routing policy (branded only) — NOT
+        // because they are dead. Both OneLinks were curl-proven ALIVE (301 →
+        // market://) 5/5 at ORCH-1382 SPEC time.
+        assert(
+          !/onelink\.me/.test(href),
+          `${platform}: the business install target uses a RAW *.onelink.me domain — branded domains only (ORCH-1346): ${href}`,
+        )
+      }
+      // And the two branded bases must never be byte-identical.
+      const explorerBase: string = EXPLORER_ONELINK_URL
+      const businessBase: string = BUSINESS_ONELINK_URL
+      assert(
+        explorerBase !== businessBase,
+        'the EXPLORER and BUSINESS OneLink bases are byte-identical — the SSOT has been cross-wired and one app is unreachable.',
+      )
     },
   ],
 ]

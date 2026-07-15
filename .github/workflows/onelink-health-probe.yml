@@ -1,0 +1,154 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# ORCH-1382 [links-src-tracking-getapp-stack] — OneLink health probe.
+#
+# WHY THIS EXISTS. ORCH-1382 routes EVERY install CTA on the marketing site (both
+# apps, all platforms — /links, nav, organiser hero, /business/download) through an
+# AppsFlyer OneLink, because that is the only way to attribute an install to the bio
+# it came from, and it is what removes Android's intermediate Play web page.
+#
+# The cost of that trade, stated plainly: every install CTA now depends on AppsFlyer
+# serving a 301. Before ORCH-1382 the CTAs pointed at plain store URLs, which cannot
+# go Pending. This failure mode is REAL (COMMS-0101 recorded an app going Pending and
+# its OneLink serving `200 "app unavailable"` in the same week) and it fails SILENTLY:
+# the link resolves, the page renders, nothing throws — installs just quietly stop.
+# This workflow is the smoke detector.
+#
+# WHY A CI CRON AND NOT A SUPABASE EDGE FUNCTION (the repo has both patterns):
+#  - The probe curls two PUBLIC URLs. It needs no database, no RLS, no secrets, and
+#    no product data. The repo's pg_cron precedents (async trial runs, deck refresh,
+#    api-health-hub) all exist to touch DATA — this touches none, so an edge fn +
+#    pg_cron schedule + deploy would be three moving parts to make an HTTP request.
+#  - What it guards is a MARKETING-SITE dependency, and its natural owner is the same
+#    CI that guards those CTAs — the strict-grep gates live one directory away.
+#  - The alert channel already exists here: `rotate-apple-jwt.yml` establishes the
+#    repo's pattern for a scheduled operational check that opens a GitHub Issue on
+#    failure. An edge function would have no alert channel without building one.
+#  - Edge deploys are orchestrator/operator-owned from merged main; a workflow needs
+#    no deploy step at all.
+#
+# THE RETRY IS THE DESIGN. These endpoints have a measured ~1-in-8 false-failure rate,
+# so a single-shot probe would false-alarm ~12.5% of runs — and an alert that cries
+# wolf gets muted, which is worse than no alert because it is the ILLUSION of
+# monitoring. The script alerts ONLY if ALL 5 attempts fail (~0.003% false-alarm
+# rate), while a real outage still fails 5/5 deterministically and is caught on the
+# first run. Full reasoning + the probability table: scripts/probe-onelink-health.mjs.
+#
+# ⚠ BORN DARK (COMMS-0103): GitHub Actions is currently DEAD repo-wide — the repo went
+# private and Actions are billable ("recent account payments have failed or your
+# spending limit needs to be increased"). This workflow CANNOT fire until Seth fixes
+# org billing (Settings → Billing & plans). Until then the OneLinks are UNMONITORED.
+# After the billing fix, trigger this once manually (workflow_dispatch) to confirm it
+# is green before trusting its silence.
+#
+# Manual trigger: workflow_dispatch on the Actions tab. Use it after any AppsFlyer
+# dashboard change (especially a "Refresh Status"), or to verify a fix.
+#
+# Per ORCH-1382 §10.8 (probe section added by the implementor — the SPEC deferred this
+# to a follow-on ORCH in OQ-3; the orchestrator ordered it built here instead).
+# Spec: Mingla_Artifacts/specs/SPEC_ORCH-1382_LINKS_SRC_TRACKING_GETAPP_STACK.md
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: OneLink Health Probe
+
+on:
+  schedule:
+    # Every 6 hours. The OneLinks are the install path for BOTH apps, so a silent
+    # outage is a total funnel loss; 6h bounds the blind window without being noisy.
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+# A second run while one is in flight tells us nothing new.
+concurrency:
+  group: onelink-health-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write # to open an onelink-outage issue
+      contents: read # to checkout the probe script
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Probe both OneLinks under an Android UA
+        id: probe
+        run: node scripts/probe-onelink-health.mjs
+
+      - name: Open issue on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const today = new Date().toISOString().split("T")[0];
+            let detail = '(probe produced no detail file — read the run log; the probe itself may have errored)';
+            try { detail = fs.readFileSync('/tmp/onelink-probe-failure.md', 'utf8'); } catch {}
+
+            // Don't stack duplicate issues — one open outage issue is enough.
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'open', labels: 'onelink-outage',
+            });
+            const body = [
+              `A Mingla AppsFlyer OneLink is not returning \`301 -> market://\` under an Android UA.`,
+              ``,
+              `**Run:** ${runUrl}`,
+              `**Date:** ${today}`,
+              ``,
+              `## What failed`,
+              ``,
+              detail,
+              ``,
+              `## Why this matters`,
+              ``,
+              `Since ORCH-1382, EVERY install CTA on the marketing site routes through a OneLink`,
+              `(both apps, all platforms — /links, nav, organiser hero, /business/download). If a`,
+              `OneLink stops serving its 301, the store app no longer opens directly and installs`,
+              `stop being attributed. It fails SILENTLY: the link still resolves and the page still`,
+              `renders, so nothing else will tell you.`,
+              ``,
+              `## Triage`,
+              ``,
+              `1. Re-run this workflow (\`workflow_dispatch\`). The probe already retried 5× —`,
+              `   at the observed ~1-in-8 flake rate, 5 consecutive failures is a ~0.003% false`,
+              `   alarm — so a second failure confirms it is real.`,
+              `2. Check AppsFlyer → My Apps. If the app shows 🟡 Pending, click **Refresh Status**.`,
+              `   This is the exact failure recorded in COMMS-0101, and the fix is that one click.`,
+              `3. If the probe reported **CROSSED**, this is worse than an outage: the OneLink is`,
+              `   resolving to the WRONG APP, so users are installing the other app right now and`,
+              `   both apps' attribution is being corrupted. Check the OneLink template mapping`,
+              `   (ORCH-1346: one branded domain = one template — go.usemingla.com→w36m→consumer,`,
+              `   biz.usemingla.com→ZSCW→business). Treat as a P0.`,
+              `4. Re-run the workflow to confirm green, then close this issue.`,
+              ``,
+              `## Reference`,
+              ``,
+              `- Probe: \`scripts/probe-onelink-health.mjs\``,
+              `- Workflow: \`.github/workflows/onelink-health-probe.yml\``,
+              `- Spec: \`Mingla_Artifacts/specs/SPEC_ORCH-1382_LINKS_SRC_TRACKING_GETAPP_STACK.md\` (§10.8, OQ-3)`,
+            ].join("\n");
+
+            if (existing.data.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: existing.data[0].number,
+                body: `### Still failing — ${today}\n\n${body}`,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                title: `🔴 OneLink outage — install CTAs degraded (${today})`,
+                body,
+                labels: ["onelink-outage", "urgent"],
+              });
+            }

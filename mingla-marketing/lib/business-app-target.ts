@@ -10,24 +10,34 @@
 // four surfaces silently stayed stale and every Android owner was denied the app.
 // The decision now lives HERE and nowhere else — one store going live is one edit.
 //
+// ORCH-1382 [links-src-tracking-getapp-stack] — the install destination is now the
+// BUSINESS ONELINK, not the plain store URLs. WHY: a plain store URL returns HTTP 200
+// text/html, so Android renders the Play WEBSITE first (the "intermediate page"
+// complaint) and the install arrives ANONYMOUS. The OneLink 301s straight to
+// market:// and carries pid/c into the Play install referrer. The plain store consts
+// remain the SSOT record of the listings and are what the OneLink itself resolves to.
+//
 // HARD CONSTRAINTS (do not relax):
-//  - Android resolves to the PLAIN Play URL. NEVER minglabiz.onelink.me — that
-//    OneLink is DEAD on Android (AppsFlyer app status Pending, COMMS-0101) and
-//    would ship a broken install path. NEVER go.usemingla.com — it is
-//    consumer-owned (1 branded domain = 1 template, ORCH-1346).
+//  - Business installs resolve to BUSINESS_ONELINK_URL (biz.usemingla.com).
+//    NEVER go.usemingla.com — that is the CONSUMER-owned branded domain (1 branded
+//    domain = 1 template, ORCH-1346); crossing them ships business owners the
+//    consumer Explorer app and poisons both apps' attribution. NEVER a raw
+//    *.onelink.me domain — banned on ROUTING POLICY (branded domains only).
+//    NOTE: the raw ban is NOT because the OneLink is dead. The old "minglabiz
+//    OneLink is DEAD on Android (AppsFlyer Pending, COMMS-0101)" claim is STALE and
+//    was re-proven false by execution 2026-07-15: 5/5 Android-UA attempts returned
+//    301 -> market://details/?id=com.sethogieva.minglabusiness, and AppsFlyer reports
+//    all 4 apps Active. Do not re-derive a "dead OneLink" narrative from old comments.
 //  - Android must NEVER resolve `installHref` to BUSINESS_WEB_URL. That is the
-//    exact bug this ORCH kills (guarded by the fails-on-revert test T-1 and the
+//    exact bug ORCH-1381 killed (guarded by the fails-on-revert test T-1 and the
 //    orch-1381 strict-grep gate).
 //
 // React-free and pure, so it is importable by the /business/download Server
 // Component, the three Client Components, and a plain tsc+node test alike.
 
 import type { Platform } from './device-platform'
-import {
-  BUSINESS_APP_STORE_URL,
-  BUSINESS_PLAY_STORE_URL,
-  BUSINESS_WEB_URL,
-} from './store-links'
+import { buildOneLinkHref, type OneLinkAttribution } from './links-src'
+import { BUSINESS_ONELINK_URL, BUSINESS_WEB_URL } from './store-links'
 
 /** A native store a business owner can install the app from. */
 export type BusinessInstallStore = 'app_store' | 'play'
@@ -36,9 +46,20 @@ export type BusinessInstallStore = 'app_store' | 'play'
 export type BusinessActionStore = BusinessInstallStore | 'business_web'
 
 export interface BusinessAppTarget {
-  /** Where "Download the app" points. `null` on desktop/unknown — nothing to install. */
+  /**
+   * Where "Get the app" points — the BUSINESS OneLink, which 301s per device
+   * (Android → market://, iOS → apps.apple.com) with attribution attached.
+   * `null` on desktop/unknown — nothing to install.
+   */
   installHref: string | null
-  /** Analytics label for the install action; `null` when there is no install action. */
+  /**
+   * Analytics label for the install action; `null` when there is no install action.
+   *
+   * DELIBERATELY PLATFORM-DERIVED even though `installHref` is now shared across
+   * ios/android. It is a LABEL, not a destination — and keeping it derived is what
+   * keeps each surface's `platform ===` branching genuinely load-bearing, so the
+   * orch-1324 device-aware checks stay meaningful rather than becoming decorative.
+   */
   installStore: BusinessInstallStore | null
   /** Where "Use on web" points. ALWAYS present — every device can use the web. */
   webHref: string
@@ -49,14 +70,25 @@ export interface BusinessAppTarget {
 /**
  * Resolve the business get-app destinations for a device.
  *
- * ios     → the LIVE business App Store listing  + web fallback
- * android → the LIVE business Play listing       + web fallback
+ * ios     → the business OneLink (301s to the business App Store) + web fallback
+ * android → the business OneLink (301s to market://)              + web fallback
  * other   → web only (desktop has nothing to install; no dead install button)
+ *
+ * WHY `attribution` IS REQUIRED AND NOT OPTIONAL (ORCH-1382). An optional param — or
+ * a separate decorator the 4 surfaces must remember to call — makes "forgot
+ * attribution" SILENT: the CTA still works, the install still lands, and only the
+ * attribution is gone. Invisible in QA, invisible in CI, discovered months later as a
+ * hole in reporting that cannot be backfilled. A required parameter makes it a
+ * COMPILE ERROR at every call site. That is a stronger guard than any regex gate
+ * here, and it costs one signature.
  */
-export function resolveBusinessAppTarget(platform: Platform): BusinessAppTarget {
+export function resolveBusinessAppTarget(
+  platform: Platform,
+  attribution: OneLinkAttribution,
+): BusinessAppTarget {
   if (platform === 'ios') {
     return {
-      installHref: BUSINESS_APP_STORE_URL,
+      installHref: buildOneLinkHref(BUSINESS_ONELINK_URL, attribution),
       installStore: 'app_store',
       webHref: BUSINESS_WEB_URL,
       canInstall: true,
@@ -64,7 +96,7 @@ export function resolveBusinessAppTarget(platform: Platform): BusinessAppTarget 
   }
   if (platform === 'android') {
     return {
-      installHref: BUSINESS_PLAY_STORE_URL,
+      installHref: buildOneLinkHref(BUSINESS_ONELINK_URL, attribution),
       installStore: 'play',
       webHref: BUSINESS_WEB_URL,
       canInstall: true,
@@ -95,7 +127,11 @@ export function resolveBusinessAppTarget(platform: Platform): BusinessAppTarget 
  *    into app-superiority.
  */
 export const BUSINESS_APP_CHOICE_COPY = {
-  download: 'Download the app',
+  // ORCH-1382 — "Download the app" → "Get the app": matches the nav's existing
+  // wording and its get_the_app_clicked event name. All 4 surfaces render this
+  // constant, so all 4 update from this ONE line — the structural pin working as
+  // designed. Never hand-write the label at a surface.
+  download: 'Get the app',
   useWeb: 'Use on web',
   // Phone (ios | android) — both actions are live.
   moreNote:

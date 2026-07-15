@@ -7,6 +7,7 @@
 
 import type { Metadata } from 'next'
 import { LinksExperience } from '@/components/marketing/links-experience'
+import { sanitizeLinksSrc } from '@/lib/links-src'
 
 // Shipped default tagline (see the ORCH-1317 report for the alternates). It's the
 // canonical brand line, so /links reads consistently with the rest of the site.
@@ -26,6 +27,30 @@ export const metadata: Metadata = {
   },
 }
 
-export default function LinksPage() {
-  return <LinksExperience tagline={LINKS_TAGLINE} />
+// ORCH-1382 [links-src-tracking-getapp-stack] — `?src=` SOURCE TRACKING.
+//
+// `usemingla.com/links?src=youtube` carries the source into the OneLink as
+// `pid=bio_youtube`, so an install from Seth's YouTube bio is attributable whichever
+// app the visitor picks. Today every bio install is anonymous.
+//
+// WHY THE SERVER `searchParams` PROP AND NOT `useSearchParams()`:
+//  - no Suspense boundary needed (useSearchParams() requires one, or the build errors)
+//  - the value is present in the FIRST PAINT — no client-only flicker / hydration risk
+//  - it stays a pure function, testable with the repo's plain tsc+node pattern
+// Reading searchParams opts this route into dynamic rendering — correct and intended.
+// `alternates.canonical: '/links'` above means `?src=` variants do NOT fragment SEO.
+//
+// `src` is UNTRUSTED INPUT that reaches an OUTBOUND URL. It is sanitised HERE, once,
+// at the boundary — never passed raw. Next hands repeated params (`?src=a&src=b`) as
+// `string[]`, which sanitizeLinksSrc treats as ambiguous and fails safe on.
+//
+// Resolved ONCE here and passed DOWN as a prop, so it is a page-level value that
+// switching Explorer↔Business cannot lose — by structure, not by discipline (§4.4).
+export default async function LinksPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ src?: string | string[] }>
+}) {
+  const { src } = await searchParams
+  return <LinksExperience tagline={LINKS_TAGLINE} src={sanitizeLinksSrc(src)} />
 }

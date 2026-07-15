@@ -153,6 +153,11 @@ const cases: ReadonlyArray<[string, () => void]> = [
         !/BUSINESS_APP_STORE_URL/.test(src) && !/BUSINESS_WEB_URL/.test(src),
         'links-experience re-derives a business destination locally — that triplication is exactly what left 4 surfaces stale when the business Play listing went live',
       )
+      // ORCH-1382 — the same rule now applies to the EXPLORER destinations.
+      assert(
+        /resolveExplorerAppTarget\(/.test(src),
+        'the explorer branch does not delegate to resolveExplorerAppTarget — the explorer ternary was duplicated across glass-nav AND here, the identical bug class ORCH-1381 killed for business (ORCH-1382)',
+      )
       // Both actions must exist, discriminated for analytics.
       assert(
         /'download'/.test(src) && /'use_web'/.test(src),
@@ -164,17 +169,36 @@ const cases: ReadonlyArray<[string, () => void]> = [
       )
     },
   ],
-  // ── (d) Explorer phone branch correct, not reversed ─────────────────────────
+  // ── (d) INVERTED BY ORCH-1382 [TEST-MOD-APPROVED ORCH-1382] ─────────────────
+  // WAS: the Explorer phone branch is REQUIRED to carry
+  // `platform === 'ios' ? APP_STORE_URL : PLAY_STORE_URL`. That was the ORCH-1319
+  // contract and is now THE BUG — a plain store URL returns HTTP 200 text/html, so
+  // Android renders the Play WEBSITE first (the intermediate-page complaint) and the
+  // install arrives ANONYMOUS. Exactly the inversion ORCH-1381 applied to business.
+  // The ternary is now asserted ABSENT; the branch must delegate + attribute.
   [
-    "Explorer phone branch is platform === 'ios' ? APP_STORE_URL : PLAY_STORE_URL (not reversed)",
+    'Explorer branch carries NO raw store ternary and resolves the ATTRIBUTED OneLink',
     () => {
       assert(
-        /platform === 'ios' \? APP_STORE_URL : PLAY_STORE_URL/.test(src),
-        'Explorer phone branch is missing/altered (iOS → App Store, Android → Play)',
+        !/platform === 'ios' \? APP_STORE_URL : PLAY_STORE_URL/.test(src),
+        'Explorer phone branch still carries the raw store ternary — a plain store URL renders the Play WEBSITE first on Android and drops attribution (ORCH-1382)',
       )
       assert(
         !/platform === 'ios' \? PLAY_STORE_URL : APP_STORE_URL/.test(src),
-        'Explorer phone branch is REVERSED (iOS → Play, Android → App Store)',
+        'Explorer phone branch carries a REVERSED raw store ternary (iOS → Play, Android → App Store)',
+      )
+      assert(
+        !/\bAPP_STORE_URL\b/.test(src) && !/\bPLAY_STORE_URL\b/.test(src),
+        'Explorer branch still references a raw store const — the destination must come from resolveExplorerAppTarget (ORCH-1382)',
+      )
+      // ⭐ NEVER CROSSED (H-2) — the highest-damage bug available on this surface.
+      assert(
+        !/biz\.usemingla\.com/.test(src),
+        'links-experience hardcodes the BUSINESS branded domain — never crossed, and never a literal (the base lives in store-links.ts)',
+      )
+      assert(
+        !/onelink\.me/.test(src),
+        'links-experience references a RAW *.onelink.me domain — branded domains only (ORCH-1346)',
       )
     },
   ],
@@ -185,6 +209,14 @@ const cases: ReadonlyArray<[string, () => void]> = [
       assert(
         /openExternal\(tab\.cta\.href\)/.test(src),
         'the desktop/other Explorer branch no longer opens tab.cta.href (the /download QR page is lost)',
+      )
+      // ORCH-1382 — openExternal survives for EXACTLY this one non-store destination.
+      // Deleting the module because its last store caller moved is how the D-B
+      // double-nav bug comes back (COMMS-0101 records the `if (!win)` idiom as still
+      // unswept in mingla-admin/ + the RN webviews).
+      assert(
+        /openExternal\(/.test(src),
+        'openExternal is gone entirely — it must survive for the desktop /download QR page (its ONE remaining call site)',
       )
     },
   ],
@@ -224,13 +256,35 @@ const cases: ReadonlyArray<[string, () => void]> = [
       assertDelegatedTapIsStillGuarded()
     },
   ],
-  // ── (g) keyboard-activatable native button ──────────────────────────────────
+  // ── (g) RETARGETED BY ORCH-1382 [TEST-MOD-APPROVED ORCH-1382] ───────────────
+  // WAS: the CTA must be a native <button type="button">. The store/web CTAs are now
+  // real <a href> anchors — which are ALSO natively keyboard-activatable, and unlike
+  // a <button> they additionally survive in-app webviews and restore long-press /
+  // middle-click / copy-link / screen-reader link semantics. The ANGLE is unchanged:
+  // every CTA must be a real, natively-activatable control — never a div.
   [
-    'the CTA is a native <button type="button"> (not a role="button" div)',
+    'every CTA is a real, natively keyboard-activatable control (never a div)',
     () => {
-      assert(/<button/.test(src), 'the CTA is not a <button>')
-      assert(/type="button"/.test(src), 'the CTA <button> lacks type="button"')
-      assert(!/role="button"/.test(src), 'a role="button" (non-native) control is used — must be a real <button>')
+      // The store/web CTAs: real anchors with real hrefs.
+      assert(
+        /<a\s+[^>]*href=\{[^}]*(?:installHref|webHref)[^}]*\}/.test(src),
+        'the store/web CTA is not a real <a href={…}> anchor',
+      )
+      // The desktop QR CTA: still a real button (it opens a page, not a store).
+      assert(/<button/.test(src), 'the desktop QR CTA is not a <button>')
+      assert(/type="button"/.test(src), 'the desktop QR CTA lacks type="button"')
+      // Neither may be faked.
+      assert(!/role="button"/.test(src), 'a role="button" (non-native) control is used — must be a real <button> or <a>')
+      assert(
+        !/<div[^>]*onClick=\{\(\) => onCta/.test(src),
+        'a CTA is a <div onClick> — dead for keyboard users, and invisible to assistive tech (Constitution #1)',
+      )
+      // ⚠ THE §5.1 TRAP — rel must NOT have been stripped while "complying" with the
+      // ORCH-1381 noopener ban (which is scoped to window.open FEATURE STRINGS).
+      assert(
+        /rel="noopener/.test(src),
+        'the CTA anchors lost rel="noopener" — reverse-tabnabbing regression. On an <a>, rel="noopener" is MANDATORY; the ORCH-1381 ban applies only to window.open feature strings',
+      )
     },
   ],
 ]

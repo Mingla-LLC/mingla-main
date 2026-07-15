@@ -21,6 +21,8 @@ import {
   LINKS_BUSINESS_PATH,
   LINKS_BUSINESS_DOWNLOAD_PATH,
   socialHref,
+  socialsForTab,
+  type LinksSocial,
 } from './links-config'
 import { BUSINESS_PATH } from './subdomain'
 import { APP_STORE_URL, PLAY_STORE_URL } from './store-links'
@@ -85,9 +87,9 @@ const cases: ReadonlyArray<[string, () => void]> = [
     },
   ],
 
-  // ── Socials: the full seven @usemingla profiles ─────────────────────────────
+  // ── Socials: the full EIGHT @usemingla profiles (ORCH-1382 added Snapchat) ──
   [
-    'exposes the seven usemingla social profiles with exact URLs',
+    'exposes the eight usemingla social profiles with exact URLs',
     () => {
       const byLabel = Object.fromEntries(LINKS_SOCIALS.map((s) => [s.label, s.href]))
       assert(byLabel['Instagram'] === 'https://www.instagram.com/usemingla', `IG: ${byLabel['Instagram']}`)
@@ -97,7 +99,8 @@ const cases: ReadonlyArray<[string, () => void]> = [
       assert(byLabel['LinkedIn'] === 'https://www.linkedin.com/company/usemingla', `LinkedIn: ${byLabel['LinkedIn']}`)
       assert(byLabel['Facebook'] === 'https://www.facebook.com/usemingla', `Facebook: ${byLabel['Facebook']}`)
       assert(byLabel['Threads'] === 'https://www.threads.com/@usemingla', `Threads: ${byLabel['Threads']}`)
-      assert(LINKS_SOCIALS.length === 7, `expected 7 socials, got ${LINKS_SOCIALS.length}`)
+      assert(byLabel['Snapchat'] === 'https://www.snapchat.com/add/usemingla', `Snapchat: ${byLabel['Snapchat']}`)
+      assert(LINKS_SOCIALS.length === 8, `expected 8 socials, got ${LINKS_SOCIALS.length}`)
     },
   ],
   [
@@ -123,16 +126,109 @@ const cases: ReadonlyArray<[string, () => void]> = [
       assert(biz('Threads') === 'https://www.threads.com/@minglabusiness', `Threads biz: ${biz('Threads')}`)
     },
   ],
+  // ── T-8 NEUTRAL — investor & education, neither explorer nor business ───────
+  // RETARGETED BY ORCH-1382 [TEST-MOD-APPROVED ORCH-1382]: neutrality is no longer
+  // modelled by the ABSENCE of businessHref (which was indistinguishable from
+  // explorer_only) but by an explicit scope. Same angle, now unambiguous.
   [
-    'YouTube & LinkedIn stay @usemingla on BOTH tabs (no business variant)',
+    'T-8: YouTube & LinkedIn are scope:neutral — same @usemingla href on BOTH tabs',
     () => {
       const byLabel = Object.fromEntries(LINKS_SOCIALS.map((s) => [s.label, s]))
       for (const label of ['YouTube', 'LinkedIn']) {
         const s = byLabel[label]
-        assert(s.businessHref === undefined, `${label} must not define a businessHref`)
+        assert(s.scope === 'neutral', `${label} must be scope:'neutral', got '${s.scope}'`)
         assert(socialHref(s, 'business') === s.href, `${label} must stay universal on business tab`)
         assert(socialHref(s, 'explorer') === s.href, `${label} must be universal on explorer tab`)
+        assert(
+          socialHref(s, 'business') === socialHref(s, 'explorer'),
+          `${label} is neutral — it must resolve to the SAME href on both tabs`,
+        )
       }
+    },
+  ],
+  // ── T-8 ⭐ THE D+E COUPLING BUG — Snapchat must NOT leak onto Business ──────
+  // THE defect this ORCH exists to prevent. Under the old optional-field model,
+  // Snapchat (explorer_only) and YouTube (neutral) were byte-identical in the data,
+  // so Snapchat would have rendered on the BUSINESS tab pointing at the CONSUMER
+  // handle — a silent bug that looks exactly like correct data entry.
+  [
+    'T-8: Snapchat is explorer_only — present on Explorer, ABSENT from Business',
+    () => {
+      const explorer = socialsForTab('explorer')
+      const business = socialsForTab('business')
+      const snapExplorer = explorer.find((s) => s.label === 'Snapchat')
+      assert(snapExplorer !== undefined, 'Snapchat is missing from the Explorer socials')
+      assert(snapExplorer!.scope === 'explorer_only', `Snapchat must be scope:'explorer_only', got '${snapExplorer!.scope}'`)
+      assert(
+        snapExplorer!.href === 'https://www.snapchat.com/add/usemingla',
+        `Snapchat href drifted: ${snapExplorer!.href}`,
+      )
+      assert(
+        business.find((s) => s.label === 'Snapchat') === undefined,
+        'SNAPCHAT LEAKED ONTO THE BUSINESS TAB — there is NO business Snapchat account, so this links owners at the consumer handle. This is the exact D+E coupling defect the scope discriminator exists to prevent.',
+      )
+      // No explorer_only member may EVER survive the business filter.
+      for (const s of business) {
+        assert(
+          s.scope !== 'explorer_only',
+          `${s.label} is explorer_only but renders on the Business tab — socialsForTab is not filtering`,
+        )
+      }
+    },
+  ],
+  // ── T-8 the counts: Explorer 8, Business 7 ─────────────────────────────────
+  [
+    'T-8: socialsForTab returns 8 on Explorer and 7 on Business',
+    () => {
+      assert(socialsForTab('explorer').length === 8, `explorer socials = ${socialsForTab('explorer').length}, expected 8`)
+      assert(socialsForTab('business').length === 7, `business socials = ${socialsForTab('business').length}, expected 7`)
+      assert(
+        socialsForTab('explorer').length === socialsForTab('business').length + 1,
+        'the explorer/business social counts no longer differ by exactly one (Snapchat)',
+      )
+    },
+  ],
+  // ── T-8 per_surface entries always carry a real business handle ─────────────
+  [
+    'T-8: every per_surface social has a business handle that actually differs',
+    () => {
+      for (const s of LINKS_SOCIALS) {
+        if (s.scope === 'per_surface') {
+          assert(/^https:\/\//.test(s.businessHref), `${s.label} businessHref is not https: ${s.businessHref}`)
+          assert(
+            s.businessHref !== s.href,
+            `${s.label} is per_surface but its business handle EQUALS the consumer one — it should be scope:'neutral' instead`,
+          )
+          assert(
+            socialHref(s, 'business') === s.businessHref,
+            `${s.label} does not swap to its business handle on the business tab`,
+          )
+        }
+      }
+    },
+  ],
+  // ── T-8 COMPILE-TIME — the union is what makes the invariant structural ────
+  // These are deliberate NEGATIVE checks: each @ts-expect-error FAILS THE BUILD if
+  // the union ever stops rejecting the shape it names. That is the difference
+  // between a rule someone remembers and one the compiler enforces.
+  [
+    'T-8: the LinksSocial union rejects malformed entries at COMPILE time',
+    () => {
+      // @ts-expect-error — a per_surface social MUST carry a businessHref.
+      const missingBusinessHref: LinksSocial = { scope: 'per_surface', label: 'X', href: 'https://x.com/a' }
+      // @ts-expect-error — a neutral social must NOT carry a businessHref.
+      const neutralWithBusiness: LinksSocial = { scope: 'neutral', label: 'Y', href: 'https://y.com/a', businessHref: 'https://y.com/b' }
+      // @ts-expect-error — an explorer_only social must NOT carry a businessHref.
+      const explorerOnlyWithBusiness: LinksSocial = { scope: 'explorer_only', label: 'Z', href: 'https://z.com/a', businessHref: 'https://z.com/b' }
+      // @ts-expect-error — scope is required; modelling-by-omission is gone.
+      const noScope: LinksSocial = { label: 'W', href: 'https://w.com/a' }
+      // @ts-expect-error — an unknown scope is not assignable.
+      const badScope: LinksSocial = { scope: 'business_only', label: 'V', href: 'https://v.com/a' }
+      void missingBusinessHref
+      void neutralWithBusiness
+      void explorerOnlyWithBusiness
+      void noScope
+      void badScope
     },
   ],
   [
@@ -143,16 +239,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
       }
     },
   ],
-  [
-    'every business handle is also an absolute https:// link',
-    () => {
-      for (const s of LINKS_SOCIALS) {
-        if (s.businessHref !== undefined) {
-          assert(/^https:\/\//.test(s.businessHref), `${s.label} business is not https: ${s.businessHref}`)
-        }
-      }
-    },
-  ],
+
 ]
 
 declare const describe: undefined | ((name: string, fn: () => void) => void)
