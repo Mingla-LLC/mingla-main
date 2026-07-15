@@ -847,10 +847,21 @@ jobs:
           #    (A1-4), TikTok dual-id capture + name-collision suffix (A1-9),
           #    Reddit fail-close stub (A1-1), COMMS-0102 crawler-UA URL check,
           #    RT-4 + A1-1 migration schema pins, AC-8 token-scrub.
+          #  - issue866_wp3_tester_adversarial.test.ts — mingla-tester QA suite
+          #    (registered 2026-07-15): REAL-encoder embedded fixtures (ffmpeg
+          #    x264+AAC MP4s, cwebp VP8L), corrupt/truncated headers, box-size
+          #    overflow, zero-duration mvhd, magic-vs-extension masquerade,
+          #    >64MB fetch-guard attacks, byte-cap/duration boundaries,
+          #    same-length hash-collision cache attacks (fails-on-revert anchor
+          #    at the resolveCreativeRef content-hash guard), waiter hash
+          #    defenses, token-scrub on the failed-row write, unicode file
+          #    names, Snap chunked INIT/ADD-retry/FINALIZE wire shape, Google
+          #    magic-byte gate + duplicate-name suffix + resumable headers.
           DENO_TEST_FILES=(
             supabase/functions/_shared/__tests__/adCreativeProbe.test.ts
             supabase/functions/_shared/__tests__/adCreativeMatrix.test.ts
             supabase/functions/_shared/__tests__/adCreative.test.ts
+            supabase/functions/_shared/__tests__/issue866_wp3_tester_adversarial.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-read --no-check "${DENO_TEST_FILES[@]}"; then
