@@ -809,3 +809,57 @@ jobs:
             echo "ISSUE-862 ad-engine Deno tests failed (attempt ${attempt}), retrying in 10s..."
             sleep 10
           done
+
+  ad-creative-library-deno-tests:
+    name: "ISSUE-866 WP3: Creative Library byte-probe + matrix + resolver Deno tests"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: Run ISSUE-866 creative-library Deno tests
+        env:
+          # Deliberately UNSET credentials: every platform call in these suites
+          # runs against an injected fetch stub (deps.fetchImpl) or a scoped
+          # globalThis.fetch stub — ZERO live platform calls; secrets that the
+          # tests need are set/reset inside the tests themselves.
+          META_SYSTEM_USER_TOKEN: ""
+        run: |
+          set -euo pipefail
+          # ISSUE-866 WP3 (registered 2026-07-15):
+          #  - adCreativeProbe.test.ts — A1-6a byte-probe: PNG/JPEG/GIF/WebP
+          #    header parsing, MP4/MOV box walk (duration/dims/audio-presence/
+          #    codec fourcc), sha256 content-hash stability (A1-1), fail-close
+          #    on unknown bytes.
+          #  - adCreativeMatrix.test.ts — blueprint §2 tier tests per channel:
+          #    hard-reject rows BITE only at [SPEC]/[OFFICIAL] (audio-required,
+          #    TikTok 5-60s policy, Snap 3-180s + 5MB image, Google GIF/WEBP +
+          #    5,120KB); [3P] Reddit rows WARN via the central downgrade; typed
+          #    needs_transcode outcomes; A1-7 DO-NOT-BUILD absences pinned.
+          #    FAILS-ON-REVERT anchor: deleting the audio-required reject block
+          #    in adCreativeMatrix.ts fails this suite.
+          #  - adCreative.test.ts — resolveCreativeRef content-hash cache
+          #    keying (cached ready + hash match => ZERO uploads; mismatch =>
+          #    fresh upload), fail-close legs, Snap envelope double-assert
+          #    (request_status AND every sub_request_status), Snap mint (A1-2),
+          #    Google unique-name auto-suffix (A1-5) + resumable YouTube video
+          #    (A1-4), TikTok dual-id capture + name-collision suffix (A1-9),
+          #    Reddit fail-close stub (A1-1), COMMS-0102 crawler-UA URL check,
+          #    RT-4 + A1-1 migration schema pins, AC-8 token-scrub.
+          DENO_TEST_FILES=(
+            supabase/functions/_shared/__tests__/adCreativeProbe.test.ts
+            supabase/functions/_shared/__tests__/adCreativeMatrix.test.ts
+            supabase/functions/_shared/__tests__/adCreative.test.ts
+          )
+          for attempt in 1 2 3; do
+            if deno test --allow-env --allow-read --no-check "${DENO_TEST_FILES[@]}"; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "ISSUE-866 creative-library Deno tests failed after 3 attempts"
+              exit 1
+            fi
+            echo "ISSUE-866 creative-library Deno tests failed (attempt ${attempt}), retrying in 10s..."
+            sleep 10
+          done
