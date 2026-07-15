@@ -237,12 +237,28 @@ open(APP_STORE_URL);
   };
   if (run(grandfatheredNarrow).length === 0) selfFailures.push("non-grandfathered class in a grandfathered file not flagged");
 
+  // 11. ORCH-1381 — BUSINESS_PLAY_STORE_URL in the marketing SSOT must not shadow
+  // PLAY_STORE_URL's byte-compare. parseConst needs whitespace + a literal
+  // `PLAY_STORE_URL` after `const`; inside `BUSINESS_PLAY_STORE_URL` it gets
+  // `BUSINESS_…` → no match, so exec still returns the REAL PLAY_STORE_URL. The
+  // marketing SSOT is also skipped by the literal BAN scan (mingla-business/ only),
+  // so the new play.google.com literal there is out of scan scope. This gate needs
+  // NO amendment for ORCH-1381 — this case pins that and prevents a future footgun.
+  const withBusiness = {
+    ...good,
+    [MARKETING_SSOT]: marketingFix +
+      "\nexport const BUSINESS_PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.sethogieva.minglabusiness'\n",
+  };
+  if (run(withBusiness).length !== 0) {
+    selfFailures.push("BUSINESS_PLAY_STORE_URL wrongly broke the PLAY_STORE_URL byte-compare: " + JSON.stringify(run(withBusiness)));
+  }
+
   if (selfFailures.length) {
     console.error("ORCH-1342 store-links-ssot self-test FAIL:");
     selfFailures.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
-  console.log("ORCH-1342 store-links-ssot self-test PASS (10/10 cases).");
+  console.log("ORCH-1342 store-links-ssot self-test PASS (11/11 cases, incl. the ORCH-1381 BUSINESS_PLAY_STORE_URL non-shadow case).");
   process.exit(0);
 }
 

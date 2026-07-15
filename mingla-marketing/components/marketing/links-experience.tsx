@@ -22,19 +22,23 @@
 // ANALYTICS (§7): consent-gated captureMarketing (no-op until PostHog opt-in) on
 // tab switch + every CTA / store-badge / social click.
 
-import { useCallback, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Instagram, Linkedin, Facebook, Youtube } from 'lucide-react'
 import { captureMarketing } from '@/components/marketing/posthog-provider'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 import { cn } from '@/lib/cn'
-import { detectClientPlatform } from '@/lib/device-platform'
+import { detectClientPlatform, type Platform } from '@/lib/device-platform'
+import { APP_STORE_URL, PLAY_STORE_URL } from '@/lib/store-links'
 import {
-  APP_STORE_URL,
-  PLAY_STORE_URL,
-  BUSINESS_APP_STORE_URL,
-  BUSINESS_WEB_URL,
-} from '@/lib/store-links'
+  BUSINESS_APP_CHOICE_COPY,
+  resolveBusinessAppTarget,
+} from '@/lib/business-app-target'
+// ORCH-1381 ADDENDUM D-B — external opens go through the ONE owner. Never inline
+// window.open here: a 'noopener'/'noreferrer' feature string makes it return null
+// even on success, so the popup-block fallback fires on every tap — which navigated
+// /links away and violated this page's own "stays mounted" contract (ORCH-1328).
+import { openExternal } from '@/lib/open-external'
 import {
   LINKS_SOCIALS,
   LINKS_TABS,
@@ -111,6 +115,18 @@ export function LinksExperience({
   const activeIndex = LINKS_TABS.findIndex((t) => t.id === activeId)
   const activeTab = LINKS_TABS[activeIndex] ?? LINKS_TABS[0]
 
+  // ORCH-1381 — the RENDERED business choice is device-aware, so it must resolve
+  // AFTER mount: detectClientPlatform() reads navigator, absent during SSR.
+  // Seeding 'other' keeps the server HTML and the first client render in agreement
+  // (web-action-only — the safe treatment); the effect then swaps in the real
+  // platform. onCtaClick re-reads the platform fresh, so a tap never uses a stale
+  // value.
+  const [businessPlatform, setBusinessPlatform] = useState<Platform>('other')
+  useEffect(() => {
+    setBusinessPlatform(detectClientPlatform())
+  }, [])
+  const businessTarget = resolveBusinessAppTarget(businessPlatform)
+
   const tabDomId = (id: LinksTabId) => `${idBase}-tab-${id}`
   const panelDomId = (id: LinksTabId) => `${idBase}-panel-${id}`
 
@@ -156,31 +172,38 @@ export function LinksExperience({
     [selectTab],
   )
 
-  // ORCH-1328 — open the destination DIRECTLY on the tap gesture so /links stays
+  // ORCH-1328 — the destination opens DIRECTLY on the tap gesture so /links stays
   // mounted (the CTA no longer soft-navigates into the /download or /business/download
   // route, whose external redirect stranded the tab on a blank / footer-only shell —
-  // INVESTIGATION_ORCH-1328). Popup-blocked (window.open → null) → same-tab
-  // navigation fallback (no silent failure).
-  const openExternal = useCallback((dest: string) => {
-    const win = window.open(dest, '_blank', 'noopener,noreferrer')
-    if (!win) window.location.assign(dest)
-  }, [])
+  // INVESTIGATION_ORCH-1328). ORCH-1381 ADDENDUM D-B: the local helper that did this
+  // is DELETED — it opened with 'noopener,noreferrer', which returns null even on
+  // success, so its "popup-blocked" fallback fired on EVERY tap and navigated /links
+  // away regardless. The imported openExternal is the one owner of that decision.
 
   // §7 — consent-gated tap analytics (kept), enriched with the resolved platform +
-  // store. Device map reuses the ORCH-1319/1324 store-links SSOT.
+  // store. Device map reuses the ORCH-1319 store-links SSOT for the explorer tab;
+  // the business tab delegates to the shared ORCH-1381 decision helper.
+  //
+  // `action` discriminates the business tab's TWO actions ('download' | 'use_web').
+  // The explorer tab passes none — it still has a single CTA.
   const onCtaClick = useCallback(
-    (tab: LinksTab) => {
+    (tab: LinksTab, action?: 'download' | 'use_web') => {
       const platform = detectClientPlatform()
 
-      // Business tab (ORCH-1324): iOS → the live business App Store, else → the
-      // business web app (business.usemingla.com owner get-started).
+      // Business tab (ORCH-1381): an explicit choice — "Download the app"
+      // (iOS → business App Store, Android → the LIVE business Play listing) or
+      // "Use on web". The destination is NEVER re-derived here.
       if (tab.id === 'business') {
-        const dest = platform === 'ios' ? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL
+        const target = resolveBusinessAppTarget(platform)
+        const useWeb = action === 'use_web' || target.installHref === null
+        const dest = useWeb ? target.webHref : target.installHref
+        if (dest === null) return
         captureMarketing('links_page_cta_clicked', {
           tab: tab.id,
           destination: tab.cta.destination,
+          action: useWeb ? 'use_web' : 'download',
           platform,
-          store: platform === 'ios' ? 'app_store' : 'business_web',
+          store: useWeb ? 'business_web' : target.installStore,
         })
         openExternal(dest)
         return
@@ -210,7 +233,8 @@ export function LinksExperience({
       })
       openExternal(tab.cta.href)
     },
-    [openExternal],
+    // openExternal is a module import (stable identity) — not a dependency.
+    [],
   )
 
   const onSocialClick = useCallback(
@@ -346,20 +370,63 @@ export function LinksExperience({
               {activeTab.body}
             </p>
 
-            {/* §4 — a single smart CTA. ORCH-1328: it is a <button> that opens the
-                right destination DIRECTLY on the tap (from the store-links single
-                source of truth) so /links stays mounted — Explorer iPhone → App
-                Store, Android → Play, desktop/other → the `/download` QR page;
-                Business iPhone → the business App Store, else → the business web app.
-                No store badges are needed. */}
+            {/* §4 — the smart CTA. ORCH-1328: a <button> that opens the right
+                destination DIRECTLY on the tap (from the store-links single source
+                of truth) so /links stays mounted — Explorer iPhone → App Store,
+                Android → Play, desktop/other → the `/download` QR page.
+                ORCH-1381: the Business tab is no longer a single guessing CTA — it
+                offers an explicit choice (Download the app → iOS App Store /
+                Android Play, or Use on web) plus the app-does-more note. Desktop
+                can install nothing → the web action only, never a dead button.
+                §1 NO-SCROLL: the two business actions sit SIDE-BY-SIDE in ONE row
+                and the note REPLACES the tab body's old trailing sentence, so the
+                socials row is not pushed off a 667px phone. */}
             <div className="mt-5">
-              <button
-                type="button"
-                onClick={() => onCtaClick(activeTab)}
-                className={cn(CTA_BASE, CTA_INTENT[activeTab.cta.intent])}
-              >
-                {activeTab.cta.label}
-              </button>
+              {activeTab.id === 'business' ? (
+                <>
+                  {/* ORCH-1381 ADDENDUM D-A — px-4 (not CTA_BASE's px-7) ONLY on the
+                      business pair. Two w-full pills share this row, so flex shrinks
+                      each to ~130px at 360px; px-7 left "Use on web" a 59px content
+                      box → 3-line wrap → 9px spill past the fixed h-14. px-4 restores
+                      a 98px box. h-14 is deliberately UNCHANGED: SC-6's 375x667
+                      no-scroll budget was measured against it, and a min-h + grow
+                      breaks the same-row contract (items-center centres unequal-height
+                      boxes → tops 386 vs 385). CTA_BASE itself is NOT touched — the
+                      explorer tab's single CTA at the bottom shares it and renders
+                      correctly today. Copy is pinned — never shorten it. */}
+                  <div className="flex items-center justify-center gap-2">
+                    {businessTarget.canInstall ? (
+                      <button
+                        type="button"
+                        onClick={() => onCtaClick(activeTab, 'download')}
+                        className={cn(CTA_BASE, CTA_INTENT.primary, 'px-4')}
+                      >
+                        {BUSINESS_APP_CHOICE_COPY.download}
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => onCtaClick(activeTab, 'use_web')}
+                      className={cn(CTA_BASE, CTA_INTENT.glass, 'px-4')}
+                    >
+                      {BUSINESS_APP_CHOICE_COPY.useWeb}
+                    </button>
+                  </div>
+                  <p className="mx-auto mt-3 max-w-sm text-[12px] leading-snug text-white/60">
+                    {businessTarget.canInstall
+                      ? BUSINESS_APP_CHOICE_COPY.moreNote
+                      : BUSINESS_APP_CHOICE_COPY.desktopNote}
+                  </p>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onCtaClick(activeTab)}
+                  className={cn(CTA_BASE, CTA_INTENT[activeTab.cta.intent])}
+                >
+                  {activeTab.cta.label}
+                </button>
+              )}
             </div>
           </motion.div>
         </motion.div>

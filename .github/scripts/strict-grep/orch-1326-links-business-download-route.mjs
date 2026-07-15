@@ -1,18 +1,24 @@
 #!/usr/bin/env node
 /**
- * ORCH-1326 [links business tab reflects the live app].
+ * ORCH-1326 [links business tab reflects the live app], AMENDED BY ORCH-1381
+ * [business-getapp-android-choice].
  * Invariant: I-PROPOSED-1326-LINKS-BUSINESS-DOWNLOAD-DEVICE-AWARE.
  *
- * The /links Business tab CTA now targets a device-smart server route
- * `/business/download` (the business app is live on the App Store — ORCH-1324).
- * This gate pins BOTH sides of that:
+ * The /links Business tab CTA targets `/business/download`. ORCH-1381 changed what
+ * that route IS: it no longer REDIRECTS — it renders an explicit inline choice
+ * ("Download the app": iOS → business App Store, Android → the LIVE business Play
+ * listing; plus "Use on web"). The old redirect requirement and the blanket
+ * "never a Play listing" ban are SUPERSEDED (the business Play listing went live
+ * 2026-07-15 — COMMS-0101).
  *
  * Over mingla-marketing/app/business/download/page.tsx (comment-stripped) REQUIRE:
  *   (a) reads the request UA via headers() and resolves it with
  *       resolvePlatformFromUa (SSR-safe, UA-only).
- *   (b) references BOTH BUSINESS_APP_STORE_URL and BUSINESS_WEB_URL (the business
- *       store/web constants from lib/store-links — never hardcoded).
- *   (c) performs a redirect( call and branches on `platform ===` (device-driven).
+ *   (b) delegates the destination decision to resolveBusinessAppTarget( — the
+ *       consts now live in lib/business-app-target.ts; requiring them HERE would
+ *       re-create the very triplication ORCH-1381 removed.
+ *   (c) renders the choice as plain <a> anchors and branches on `canInstall`
+ *       (desktop has no install action).
  *
  * Route BAN (the deliberate business differences + SSOT):
  *   - apps.apple.com / business.usemingla.com literals (must use the consts).
@@ -21,11 +27,17 @@
  *     business owners on desktop go straight to the web app).
  *   - <form / type="email" (no PII capture).
  *   - testflight (the beta link is retired).
- *   - PLAY_STORE_URL (business Android → the web app, NEVER a Play listing).
+ *   - \bPLAY_STORE_URL\b — the CONSUMER Play const. The business route must use
+ *     BUSINESS_PLAY_STORE_URL via resolveBusinessAppTarget. NOTE the word
+ *     boundaries: the pre-ORCH-1381 regex was UNANCHORED, so it substring-matched
+ *     `BUSINESS_PLAY_STORE_URL` and failed any PR that added the business const.
+ *     `\b` does not match between `_` and `P` (both word chars), so
+ *     `\bPLAY_STORE_URL\b` correctly ignores BUSINESS_PLAY_STORE_URL while still
+ *     catching a bare consumer PLAY_STORE_URL.
  *
- * G-b (adversarial): the destination must be PLATFORM-DRIVEN. FAIL if
- * BUSINESS_WEB_URL is absent (non-iOS stranded / everyone → App Store) or the
- * route lacks `platform ===` (a single hardcoded destination).
+ * G-b (adversarial): FAIL if the route carries the ORCH-1324 collapsed ternary
+ * `platform === 'ios' ? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL` — that is the
+ * exact bug ORCH-1381 killed (it sends every Android owner to the web app).
  *
  * Over mingla-marketing/lib/links-config.ts (comment-stripped) REQUIRE:
  *   references LINKS_BUSINESS_DOWNLOAD_PATH AND the string '/business/download'
@@ -60,7 +72,11 @@ const ROUTE_BANNED = [
   { re: /<form/i, why: "renders a form on the business download route (no PII capture)" },
   { re: /type="email"/, why: "renders an email input on the business download route" },
   { re: /testflight/i, why: "contains a testflight token (the beta link is retired)" },
-  { re: /PLAY_STORE_URL/, why: "references PLAY_STORE_URL — business Android goes to the web app, never a Play listing" },
+  // ORCH-1381 A1 — WORD-ANCHORED. The old unanchored /PLAY_STORE_URL/ substring-
+  // matched BUSINESS_PLAY_STORE_URL and failed any PR adding the business const.
+  { re: /\bPLAY_STORE_URL\b/, why: "references the CONSUMER PLAY_STORE_URL — the business route must use BUSINESS_PLAY_STORE_URL via resolveBusinessAppTarget" },
+  // ORCH-1381 G-b — the collapsed ternary IS the bug (every Android owner → web).
+  { re: /platform === 'ios' \? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL/, why: "carries the ORCH-1324 collapsed ternary — sends every Android owner to the web app instead of the LIVE business Play listing (ORCH-1381 G-b)" },
 ];
 
 function checkRoute(rawSrc, failures) {
@@ -74,33 +90,24 @@ function checkRoute(rawSrc, failures) {
     failures.push(`${ROUTE}: must resolve the platform with resolvePlatformFromUa (server, UA-only).`);
   }
 
-  // (b) both business constants present.
-  const hasStore = /BUSINESS_APP_STORE_URL/.test(src);
-  const hasWeb = /BUSINESS_WEB_URL/.test(src);
-  if (!hasStore || !hasWeb) {
+  // (b) ORCH-1381 A3 — the decision is DELEGATED to the shared helper. The
+  // BUSINESS_* consts deliberately no longer appear here: requiring them would
+  // re-create the 5-call-site triplication ORCH-1381 removed.
+  if (!/resolveBusinessAppTarget\(/.test(src)) {
     failures.push(
-      `${ROUTE}: must reference BOTH BUSINESS_APP_STORE_URL and BUSINESS_WEB_URL ` +
-        `(business store/web links from lib/store-links) — got store=${hasStore}, web=${hasWeb}.`,
-    );
-  }
-  // G-b — BUSINESS_WEB_URL is the non-iOS destination; its absence strands
-  // Android + desktop owners (everyone → the App Store).
-  if (!hasWeb) {
-    failures.push(
-      `${ROUTE}: BUSINESS_WEB_URL is absent — non-iOS (Android/desktop) has nowhere ` +
-        `to go; the destination must not collapse to everyone → the App Store (G-b).`,
+      `${ROUTE}: must resolve its destinations via resolveBusinessAppTarget( from ` +
+        `lib/business-app-target — the platform→destination decision lives in exactly ` +
+        `ONE module (ORCH-1381).`,
     );
   }
 
-  // (c) a redirect + a device-driven branch.
-  if (!/redirect\(/.test(src)) {
-    failures.push(`${ROUTE}: must perform a redirect( to the resolved destination.`);
+  // (c) ORCH-1381 A2 — the route RENDERS the choice; it no longer redirects.
+  if (!/<a[\s>]/.test(src)) {
+    failures.push(`${ROUTE}: must render the choice as plain <a> anchors (no redirect, no client JS).`);
   }
-  if (!/platform ===/.test(src)) {
-    failures.push(
-      `${ROUTE}: does not branch on \`platform ===\` — the destination must be chosen ` +
-        `from the DETECTED platform, not a single hardcode (G-b).`,
-    );
+  // ORCH-1381 A4 — desktop has no install action, so the render must branch on it.
+  if (!/canInstall/.test(src)) {
+    failures.push(`${ROUTE}: must branch on target.canInstall — desktop has no install action (G-b).`);
   }
 
   // Route bans.
@@ -132,17 +139,25 @@ if (process.argv.includes("--self-test")) {
   const runRoute = (s) => { const f = []; checkRoute(s, f); return f; };
   const runConfig = (s) => { const f = []; checkConfig(s, f); return f; };
 
+  // ORCH-1381 — the compliant route RENDERS the inline choice (no redirect).
   const goodRoute = `
 import { headers } from 'next/headers'
-import { redirect } from 'next/navigation'
 import { resolvePlatformFromUa } from '@/lib/device-platform'
-import { BUSINESS_APP_STORE_URL, BUSINESS_WEB_URL } from '@/lib/store-links'
+import { BUSINESS_APP_CHOICE_COPY, resolveBusinessAppTarget } from '@/lib/business-app-target'
 export const dynamic = 'force-dynamic'
 export default async function BusinessDownloadPage() {
   const ua = (await headers()).get('user-agent') ?? ''
   const platform = resolvePlatformFromUa(ua)
-  if (platform === 'ios') redirect(BUSINESS_APP_STORE_URL)
-  redirect(BUSINESS_WEB_URL)
+  const target = resolveBusinessAppTarget(platform)
+  return (
+    <main>
+      {target.canInstall && target.installHref !== null ? (
+        <a href={target.installHref}>{BUSINESS_APP_CHOICE_COPY.download}</a>
+      ) : null}
+      <a href={target.webHref}>{BUSINESS_APP_CHOICE_COPY.useWeb}</a>
+      <p>{target.canInstall ? BUSINESS_APP_CHOICE_COPY.moreNote : BUSINESS_APP_CHOICE_COPY.desktopNote}</p>
+    </main>
+  )
 }
 `;
   if (runRoute(goodRoute).length !== 0) selfFailures.push("compliant route wrongly flagged: " + JSON.stringify(runRoute(goodRoute)));
@@ -160,7 +175,7 @@ export const LINKS_TABS = [
   if (runRoute(noResolver).length === 0) selfFailures.push("route missing resolvePlatformFromUa not flagged");
 
   // Route inlines apps.apple.com literal → fire.
-  const literal = goodRoute.replace("redirect(BUSINESS_APP_STORE_URL)", "redirect('https://apps.apple.com/app/id6768737367')");
+  const literal = goodRoute.replace("href={target.installHref}", "href=\"https://apps.apple.com/app/id6768737367\"");
   if (runRoute(literal).length === 0) selfFailures.push("route inline App Store literal not flagged");
 
   // Route reads window (SSR-unsafe) → fire.
@@ -169,18 +184,38 @@ export const LINKS_TABS = [
 
   // Route imports DownloadQr → fire.
   const qr = goodRoute.replace(
-    "import { redirect } from 'next/navigation'",
-    "import { redirect } from 'next/navigation'\nimport { DownloadQr } from '@/components/marketing/download-qr'",
+    "import { headers } from 'next/headers'",
+    "import { headers } from 'next/headers'\nimport { DownloadQr } from '@/components/marketing/download-qr'",
   );
   if (runRoute(qr).length === 0) selfFailures.push("route DownloadQr import not flagged");
 
-  // Route missing BUSINESS_WEB_URL (everyone → App Store) → fire.
-  const noWeb = goodRoute.replace(/BUSINESS_WEB_URL/g, "BUSINESS_APP_STORE_URL");
-  if (runRoute(noWeb).length === 0) selfFailures.push("route missing BUSINESS_WEB_URL not flagged");
+  // ORCH-1381 — the route reverted to the collapsed ternary (android → web) → fire.
+  const ternary = goodRoute.replace(
+    "const target = resolveBusinessAppTarget(platform)",
+    "const target = resolveBusinessAppTarget(platform)\n  const dest = platform === 'ios' ? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL",
+  );
+  if (runRoute(ternary).length === 0) selfFailures.push("route ORCH-1324 collapsed ternary (android→web) not flagged");
 
-  // Route references PLAY_STORE_URL → fire.
-  const play = goodRoute.replace("redirect(BUSINESS_WEB_URL)", "if (platform === 'android') redirect(PLAY_STORE_URL)\n  redirect(BUSINESS_WEB_URL)");
-  if (runRoute(play).length === 0) selfFailures.push("route PLAY_STORE_URL not flagged");
+  // ORCH-1381 — the route stopped delegating to the shared helper → fire.
+  const noHelper = goodRoute.replace(/resolveBusinessAppTarget/g, "someLocalGuess");
+  if (runRoute(noHelper).length === 0) selfFailures.push("route missing resolveBusinessAppTarget not flagged");
+
+  // ORCH-1381 A1 — BUSINESS_PLAY_STORE_URL must NOT trip the consumer-Play ban.
+  // (The pre-1381 unanchored /PLAY_STORE_URL/ substring-matched it and failed the PR.)
+  const businessPlay = goodRoute.replace(
+    "const target = resolveBusinessAppTarget(platform)",
+    "const target = resolveBusinessAppTarget(platform) // BUSINESS_PLAY_STORE_URL rides inside the helper\n  const note = BUSINESS_PLAY_STORE_URL",
+  );
+  if (runRoute(businessPlay).length !== 0) {
+    selfFailures.push("BUSINESS_PLAY_STORE_URL wrongly flagged by the consumer PLAY_STORE_URL ban (the \\b anchor is broken): " + JSON.stringify(runRoute(businessPlay)));
+  }
+
+  // …but the bare CONSUMER PLAY_STORE_URL still fires.
+  const play = goodRoute.replace(
+    "const target = resolveBusinessAppTarget(platform)",
+    "const target = resolveBusinessAppTarget(platform)\n  const wrong = PLAY_STORE_URL",
+  );
+  if (runRoute(play).length === 0) selfFailures.push("bare consumer PLAY_STORE_URL not flagged");
 
   // Config missing '/business/download' → fire.
   const noPath = goodConfig.replace(/'\/business\/download'/g, "'/business'");
@@ -199,7 +234,7 @@ export const LINKS_TABS = [
     selfFailures.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
-  console.log("ORCH-1326 links-business-download-route self-test PASS (11/11 cases).");
+  console.log("ORCH-1326 links-business-download-route self-test PASS (12/12 cases, ORCH-1381-amended).");
   process.exit(0);
 }
 
@@ -222,18 +257,23 @@ checkConfig(fs.readFileSync(configAbs, "utf8"), failures);
 
 if (failures.length > 0) {
   console.error(
-    "ORCH-1326 (I-PROPOSED-1326-LINKS-BUSINESS-DOWNLOAD-DEVICE-AWARE) FAIL — the\n" +
-      "/business/download route must UA-redirect iOS → BUSINESS_APP_STORE_URL, else →\n" +
-      "BUSINESS_WEB_URL (both from lib/store-links, never hardcoded), SSR-safe, with NO\n" +
-      "QR/badges/form/Play; and the /links business CTA must target LINKS_BUSINESS_\n" +
-      "DOWNLOAD_PATH ('/business/download', destination 'business_download').\n\nFailures:\n  " +
+    "ORCH-1326 (I-PROPOSED-1326-LINKS-BUSINESS-DOWNLOAD-DEVICE-AWARE, ORCH-1381-amended)\n" +
+      "FAIL — the /business/download route must READ the UA via headers()+\n" +
+      "resolvePlatformFromUa, resolve its destinations through resolveBusinessAppTarget(\n" +
+      "(the ONE decision module), and RENDER the inline choice as plain <a> anchors\n" +
+      "branching on canInstall — SSR-safe, no redirect, no QR/badges/form, no consumer\n" +
+      "PLAY_STORE_URL, and never the ORCH-1324 collapsed ternary; the /links business CTA\n" +
+      "must target LINKS_BUSINESS_DOWNLOAD_PATH ('/business/download', destination\n" +
+      "'business_download').\n\nFailures:\n  " +
       failures.join("\n  "),
   );
   process.exit(1);
 }
 console.log(
-  "ORCH-1326 PASS — /business/download resolves the UA via resolvePlatformFromUa and\n" +
-    "redirects iOS → BUSINESS_APP_STORE_URL, else → BUSINESS_WEB_URL (shared consts),\n" +
-    "SSR-safe, no QR/badges/form/Play; the /links business CTA targets\n" +
+  "ORCH-1326 PASS (ORCH-1381-amended) — /business/download resolves the UA via\n" +
+    "resolvePlatformFromUa, delegates to resolveBusinessAppTarget, and renders the inline\n" +
+    "choice as plain <a> anchors branching on canInstall (iOS → business App Store,\n" +
+    "Android → business Play, desktop → web only); SSR-safe, no redirect/QR/badges/form,\n" +
+    "no consumer PLAY_STORE_URL, no collapsed ternary; the /links business CTA targets\n" +
     "'/business/download' (destination 'business_download').",
 );

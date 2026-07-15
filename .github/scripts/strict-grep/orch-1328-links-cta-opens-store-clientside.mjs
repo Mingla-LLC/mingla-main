@@ -10,14 +10,29 @@
  * stranded the tab on a blank (Explorer) / footer-only (Business) route shell
  * (INVESTIGATION_ORCH-1328).
  *
+ * ORCH-1381 AMENDMENT: the BUSINESS branch no longer resolves BUSINESS_APP_STORE_URL
+ * / BUSINESS_WEB_URL locally — it delegates to resolveBusinessAppTarget( (the single
+ * decision module) and offers an explicit two-action choice. Those two consts were
+ * therefore dropped from REQUIRED_CONSTS and replaced by a helper-delegation check.
+ * The EXPLORER tab is untouched by ORCH-1381 and still resolves its own consts.
+ *
  * Over mingla-marketing/components/marketing/links-experience.tsx
  * (comment-stripped) REQUIRE:
  *   1. imports detectClientPlatform (from @/lib/device-platform).
- *   2. references ALL FOUR store consts: APP_STORE_URL, PLAY_STORE_URL,
- *      BUSINESS_APP_STORE_URL, BUSINESS_WEB_URL (lib/store-links SSOT).
+ *   2. references the EXPLORER store consts APP_STORE_URL + PLAY_STORE_URL
+ *      (lib/store-links SSOT), AND delegates the business decision to
+ *      resolveBusinessAppTarget( (ORCH-1381).
  *   3. the CTA is a real control: a `<button` AND `onClick={() => onCtaClick(`.
- *   4. opens the store client-side: `window.open(` present AND the
- *      `window.location.assign(` popup-block fallback present (no silent failure).
+ *   4. opens the store client-side on the tap gesture via openExternal( from
+ *      lib/open-external (so /links stays mounted).
+ *      AMENDED BY ORCH-1381 ADDENDUM D-B: this check previously required the tokens
+ *      `window.open(` + `window.location.assign(`. It was BLIND — the shipped code
+ *      satisfied it while VIOLATING this gate's own invariant. window.open with a
+ *      noopener/noreferrer feature string returns null EVEN ON SUCCESS, so the
+ *      "popup-blocked" fallback fired on every tap and /links did NOT stay mounted:
+ *      a tab opened AND the page navigated away. The fallback guard now lives in the
+ *      module that owns it (orch-1381-open-external-no-double-nav.mjs); here we
+ *      require DELEGATION and BAN inlining window.open.
  *   5. fires `links_page_cta_clicked`.
  *   6. device-driven: branches on `platform ===` (not a single hardcode).
  *
@@ -48,12 +63,17 @@ const stripComments = (src) =>
 
 // Word-boundary anchored so `\bAPP_STORE_URL\b` does NOT match inside
 // `BUSINESS_APP_STORE_URL` (preceded by `_`, a word char → no boundary), i.e.
-// each of the four consts must be referenced in its own right.
+// each const must be referenced in its own right.
+//
+// ORCH-1381 C1 — the BUSINESS_* consts were DROPPED from this list. The business
+// tab no longer resolves them locally: it delegates to resolveBusinessAppTarget(
+// (checked separately below), which is where the BUSINESS_* consts now live.
+// Requiring them here would force the very triplication ORCH-1381 removed. The
+// EXPLORER tab still resolves APP_STORE_URL / PLAY_STORE_URL locally and is out of
+// ORCH-1381's scope, so those two stay REQUIRED.
 const REQUIRED_CONSTS = [
   "\\bAPP_STORE_URL\\b",
   "\\bPLAY_STORE_URL\\b",
-  "\\bBUSINESS_APP_STORE_URL\\b",
-  "\\bBUSINESS_WEB_URL\\b",
 ];
 
 // Banned tokens — the soft-nav / hardcoded-store regression this ORCH kills.
@@ -64,6 +84,10 @@ const BANNED = [
   { re: /<a\s+href="\/business\/download"/, why: 'anchors <a href="/business/download"> into the external-redirect route' },
   { re: /apps\.apple\.com/, why: "hardcodes an apps.apple.com store literal (use the store-links consts)" },
   { re: /play\.google\.com/, why: "hardcodes a play.google.com store literal (use the store-links consts)" },
+  // ORCH-1381 ADDENDUM D-B — the double-navigation teeth.
+  { re: /window\.open\(/, why: "inlines window.open — must delegate to openExternal( from lib/open-external (ORCH-1381 ADDENDUM D-B)" },
+  // The half-fix trap: 'noreferrer' ALONE also nulls the return.
+  { re: /\.open\([^)\n]*\bno(?:opener|referrer)\b[^)\n]*\)/, why: "noopener/noreferrer makes window.open return null even on success → the fallback always fires → /links does NOT stay mounted, violating this gate's own invariant (ORCH-1381 ADDENDUM D-B)" },
 ];
 
 function checkCta(rawSrc, failures) {
@@ -77,15 +101,24 @@ function checkCta(rawSrc, failures) {
     );
   }
 
-  // 2. all four live store consts referenced (store-links SSOT).
+  // 2. the EXPLORER store consts referenced (store-links SSOT).
   for (const token of REQUIRED_CONSTS) {
     if (!new RegExp(token).test(src)) {
       failures.push(
         `${TARGET}: must reference the store-links const ${token.replace(/\\b/g, "")} ` +
-          `(all four of APP_STORE_URL / PLAY_STORE_URL / BUSINESS_APP_STORE_URL / ` +
-          `BUSINESS_WEB_URL are required).`,
+          `(the explorer tab resolves APP_STORE_URL / PLAY_STORE_URL locally).`,
       );
     }
+  }
+
+  // 2b. ORCH-1381 C2 — the BUSINESS branch must DELEGATE its decision to the one
+  // shared module rather than re-deriving a destination locally.
+  if (!/resolveBusinessAppTarget\(/.test(src)) {
+    failures.push(
+      `${TARGET}: the business branch must resolve via resolveBusinessAppTarget( from ` +
+        `lib/business-app-target — the platform→destination decision lives in exactly ONE ` +
+        `module (ORCH-1381), never re-derived here.`,
+    );
   }
 
   // 3. the CTA is a real, keyboard-activatable control bound to onCtaClick.
@@ -96,12 +129,14 @@ function checkCta(rawSrc, failures) {
     failures.push(`${TARGET}: the CTA <button> must bind onClick={() => onCtaClick(…)} (the device-aware tap action).`);
   }
 
-  // 4. opens the store client-side with the popup-block fallback.
-  if (!/window\.open\(/.test(src)) {
-    failures.push(`${TARGET}: must open the destination via window.open( on the tap gesture (so /links stays mounted).`);
-  }
-  if (!/window\.location\.assign\(/.test(src)) {
-    failures.push(`${TARGET}: missing the window.location.assign( popup-blocked fallback (no silent failure).`);
+  // 4. ORCH-1381 ADDENDUM D-B — /links still must open on the tap gesture, but via
+  // the ONE owner (which is where the popup-block fallback is now guarded).
+  if (!/openExternal\(/.test(src)) {
+    failures.push(
+      `${TARGET}: must open the destination via openExternal( from lib/open-external on ` +
+        `the tap gesture (so /links stays mounted) — the popup-block decision lives in ` +
+        `ONE module.`,
+    );
   }
 
   // 5. analytics preserved.
@@ -130,18 +165,21 @@ if (process.argv.includes("--self-test")) {
   const selfFailures = [];
   const run = (s) => { const f = []; checkCta(s, f); return f; };
 
+  // ORCH-1381 — the business branch delegates to the shared decision helper and
+  // offers two actions; the explorer branch is unchanged.
   const good = `
 import { detectClientPlatform } from '@/lib/device-platform'
-import { APP_STORE_URL, PLAY_STORE_URL, BUSINESS_APP_STORE_URL, BUSINESS_WEB_URL } from '@/lib/store-links'
-const openExternal = (dest) => {
-  const win = window.open(dest, '_blank', 'noopener,noreferrer')
-  if (!win) window.location.assign(dest)
-}
-const onCtaClick = (tab) => {
+import { APP_STORE_URL, PLAY_STORE_URL } from '@/lib/store-links'
+import { BUSINESS_APP_CHOICE_COPY, resolveBusinessAppTarget } from '@/lib/business-app-target'
+import { openExternal } from '@/lib/open-external'
+const onCtaClick = (tab, action) => {
   const platform = detectClientPlatform()
   if (tab.id === 'business') {
-    const dest = platform === 'ios' ? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL
-    captureMarketing('links_page_cta_clicked', { tab: tab.id, destination: tab.cta.destination, platform, store: platform === 'ios' ? 'app_store' : 'business_web' })
+    const target = resolveBusinessAppTarget(platform)
+    const useWeb = action === 'use_web' || target.installHref === null
+    const dest = useWeb ? target.webHref : target.installHref
+    if (dest === null) return
+    captureMarketing('links_page_cta_clicked', { tab: tab.id, destination: tab.cta.destination, action: useWeb ? 'use_web' : 'download', platform, store: useWeb ? 'business_web' : target.installStore })
     openExternal(dest)
     return
   }
@@ -166,9 +204,13 @@ const onCtaClick = (tab) => {
     .replace("import { detectClientPlatform } from '@/lib/device-platform'", "");
   if (run(noDetect).length === 0) selfFailures.push("missing detectClientPlatform not flagged");
 
-  // Missing one of the four consts (BUSINESS_WEB_URL) → fire.
-  const missingConst = good.replace(/BUSINESS_WEB_URL/g, "BUSINESS_APP_STORE_URL");
-  if (run(missingConst).length === 0) selfFailures.push("missing BUSINESS_WEB_URL const not flagged");
+  // Missing an EXPLORER const (PLAY_STORE_URL) → fire.
+  const missingConst = good.replace(/\bPLAY_STORE_URL\b/g, "APP_STORE_URL");
+  if (run(missingConst).length === 0) selfFailures.push("missing PLAY_STORE_URL const not flagged");
+
+  // ORCH-1381 — the business branch stopped delegating to the shared helper → fire.
+  const noHelper = good.replace(/resolveBusinessAppTarget/g, "someLocalGuess");
+  if (run(noHelper).length === 0) selfFailures.push("business branch missing resolveBusinessAppTarget not flagged");
 
   // Re-added next/link import + <Link> element → fire.
   const softNav = good +
@@ -179,9 +221,26 @@ const onCtaClick = (tab) => {
   const hardcoded = good + "\nconst x = 'https://apps.apple.com/app/id6760440898'\n";
   if (run(hardcoded).length === 0) selfFailures.push("hardcoded apps.apple.com literal not flagged");
 
-  // Missing window.location.assign fallback → fire.
-  const noFallback = good.replace("if (!win) window.location.assign(dest)", "");
-  if (run(noFallback).length === 0) selfFailures.push("missing window.location.assign fallback not flagged");
+  // ORCH-1381 ADDENDUM D-B — stopped delegating to openExternal( → fire.
+  // (Replaces the old "missing window.location.assign fallback" case: that guard now
+  // lives in orch-1381-open-external-no-double-nav.mjs, on the module that owns it.)
+  const noDelegate = good.replace(/openExternal\(/g, "someLocalOpen(");
+  if (run(noDelegate).length === 0) selfFailures.push("missing openExternal( delegation not flagged");
+
+  // ORCH-1381 ADDENDUM D-B — re-inlined the SHIPPED double-nav bug → fire.
+  const inlinedBug = good.replace(
+    "import { openExternal } from '@/lib/open-external'",
+    "const openExternal = (dest) => {\n  const win = window.open(dest, '_blank', 'noopener,noreferrer')\n  if (!win) window.location.assign(dest)\n}",
+  );
+  if (run(inlinedBug).length === 0) selfFailures.push("re-inlined window.open(…,'noopener,noreferrer') double-nav bug not flagged");
+
+  // ORCH-1381 ADDENDUM D-B — THE HALF-FIX TRAP: 'noreferrer' alone still returns
+  // null → identical bug → must fire.
+  const halfFix = good.replace(
+    "import { openExternal } from '@/lib/open-external'",
+    "const openExternal = (dest) => {\n  const win = window.open(dest, '_blank', 'noreferrer')\n  if (win) { win.opener = null } else { window.location.assign(dest) }\n}",
+  );
+  if (run(halfFix).length === 0) selfFailures.push("HALF-FIX TRAP ('noreferrer' only, still returns null) not flagged");
 
   // No `platform ===` (device branch removed) → fire.
   const noBranch = good.replace(/platform ===/g, "platform ==");
@@ -206,7 +265,7 @@ const onCtaClick = (tab) => {
     selfFailures.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
-  console.log("ORCH-1328 links-cta-opens-store-clientside self-test PASS (10/10 cases).");
+  console.log("ORCH-1328 links-cta-opens-store-clientside self-test PASS (13/13 cases, ORCH-1381-ADDENDUM-amended).");
   process.exit(0);
 }
 
@@ -230,8 +289,10 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "ORCH-1328 PASS — the /links CTA is a device-aware <button> that opens the store/web\n" +
-    "client-side (window.open + location.assign fallback, all four store-links consts via\n" +
-    "detectClientPlatform), fires links_page_cta_clicked, and never soft-navigates into the\n" +
-    "/download|/business/download external-redirect route.",
+  "ORCH-1328 PASS (ORCH-1381-amended) — the /links CTA is a device-aware <button> that\n" +
+    "opens the store/web client-side (window.open + location.assign fallback) via\n" +
+    "detectClientPlatform: the explorer tab resolves APP_STORE_URL / PLAY_STORE_URL from the\n" +
+    "store-links SSOT and the business tab delegates to resolveBusinessAppTarget; it fires\n" +
+    "links_page_cta_clicked and never soft-navigates into the /download|/business/download\n" +
+    "route.",
 );

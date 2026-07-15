@@ -1,11 +1,20 @@
 'use client'
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { HeroBookingWall } from '@/components/sections/organiser-home/hero-booking-wall'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
-import { detectClientPlatform } from '@/lib/device-platform'
-import { BUSINESS_APP_STORE_URL, BUSINESS_WEB_URL } from '@/lib/store-links'
+import { detectClientPlatform, type Platform } from '@/lib/device-platform'
+import {
+  BUSINESS_APP_CHOICE_COPY,
+  resolveBusinessAppTarget,
+} from '@/lib/business-app-target'
+// ORCH-1381 ADDENDUM D-B — external opens go through the ONE owner. Never inline
+// window.open here: a 'noopener'/'noreferrer' feature string makes it return null
+// even on success, so the popup-block fallback fires on every tap and the page
+// double-navigates.
+import { openExternal } from '@/lib/open-external'
 import { captureMarketing } from '@/components/marketing/posthog-provider'
 
 // ORCH-1010 — business hero. A full-bleed 3D "booking wall" (vibe-themed booking
@@ -13,33 +22,53 @@ import { captureMarketing } from '@/components/marketing/posthog-provider'
 // background behind a dark overlay; the headline sits on top in high contrast.
 // Shows the DEMAND Mingla creates. Illustrative content, no stock art.
 //
-// ORCH-1324 — the hero CTA is now a device-aware "Get the app" action (iOS → the
-// live business App Store, Android/desktop/other → the business web app),
-// replacing the retired business beta lead modal. The hero stays video-free
-// (I-1045-HERO-NO-VIDEO): no demo-clip tile / video modal is added.
+// ORCH-1381 — the hero presents an explicit inline CHOICE (Download the app / Use
+// on web) instead of guessing a single destination, replacing the retired business
+// beta lead modal. The hero stays video-free (I-1045-HERO-NO-VIDEO): no demo-clip
+// tile / video modal is added.
 
 const EASE = [0.16, 1, 0.3, 1] as const
 
 export function OrganiserHero() {
   const reduced = useMinglaReducedMotion()
 
-  // ORCH-1324 — the business "Get the app" CTA is a device-aware DIRECT action:
-  // iOS → the live business App Store, Android/desktop/other → the business web
-  // app (business.usemingla.com root = owner get-started). No beta funnel. Runs
-  // only on a real browser click (detectClientPlatform is SSR-safe → 'other'
-  // when navigator is absent).
-  const handleGetTheBusinessApp = (): void => {
-    const platform = detectClientPlatform()
-    const dest = platform === 'ios' ? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL
+  // ORCH-1381 — the RENDERED choice is device-aware, so it must resolve AFTER
+  // mount: detectClientPlatform() reads navigator, absent during SSR. Seeding
+  // 'other' keeps the server HTML and the first client render in agreement
+  // (web-action-only — the safe treatment); the effect then swaps in the real
+  // platform. The click HANDLERS re-read the platform fresh, so a tap never
+  // resolves a stale value.
+  const [platform, setPlatform] = useState<Platform>('other')
+  useEffect(() => {
+    setPlatform(detectClientPlatform())
+  }, [])
+  const target = resolveBusinessAppTarget(platform)
+
+  // The `action` prop is REQUIRED: without it an Android owner who CHOOSES web is
+  // indistinguishable from ORCH-1324's forced-web, and the fix is unmeasurable.
+  const handleDownloadTheBusinessApp = (): void => {
+    const live = resolveBusinessAppTarget(detectClientPlatform())
+    if (live.installHref === null) return
     captureMarketing('get_the_app_clicked', {
-      platform,
-      store: platform === 'ios' ? 'app_store' : 'business_web',
+      action: 'download',
+      platform: detectClientPlatform(),
+      store: live.installStore,
       surface: 'organiser',
       location: 'hero',
     })
-    // Popup-blocked (window.open → null) → same-tab navigation fallback.
-    const win = window.open(dest, '_blank', 'noopener,noreferrer')
-    if (!win) window.location.assign(dest)
+    openExternal(live.installHref)
+  }
+
+  const handleUseBusinessOnWeb = (): void => {
+    const live = resolveBusinessAppTarget(detectClientPlatform())
+    captureMarketing('get_the_app_clicked', {
+      action: 'use_web',
+      platform: detectClientPlatform(),
+      store: 'business_web',
+      surface: 'organiser',
+      location: 'hero',
+    })
+    openExternal(live.webHref)
   }
 
   return (
@@ -101,12 +130,23 @@ export function OrganiserHero() {
               transition={{ duration: 0.6, delay: reduced ? 0 : 0.5, ease: EASE }}
               className="mt-10"
             >
-              <Button variant="primary" size="lg" onClick={handleGetTheBusinessApp}>
-                Get the app
-                <ArrowRight className="h-4 w-4" aria-hidden="true" />
-              </Button>
+              {/* ORCH-1381 — two actions in a row (stacking to a column below sm).
+                  Desktop/other can install nothing → ONLY the web action renders. */}
+              <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
+                {target.canInstall ? (
+                  <Button variant="primary" size="lg" onClick={handleDownloadTheBusinessApp}>
+                    {BUSINESS_APP_CHOICE_COPY.download}
+                    <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                  </Button>
+                ) : null}
+                <Button variant="glass" size="lg" onClick={handleUseBusinessOnWeb}>
+                  {BUSINESS_APP_CHOICE_COPY.useWeb}
+                </Button>
+              </div>
               <p className="mt-4 text-sm text-white/70">
-                On iPhone now — or get started on the web.
+                {target.canInstall
+                  ? BUSINESS_APP_CHOICE_COPY.moreNote
+                  : BUSINESS_APP_CHOICE_COPY.desktopNote}
               </p>
             </motion.div>
           </div>

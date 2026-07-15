@@ -1,30 +1,56 @@
 #!/usr/bin/env node
 /**
- * ORCH-1324 [business "Get the app" → device-aware live-store link + business web].
+ * ORCH-1324 [business "Get the app" → device-aware live-store link + business web],
+ * AMENDED BY ORCH-1381 [business-getapp-android-choice].
  * Invariant: I-PROPOSED-1324-BUSINESS-GETAPP-DEVICE-AWARE.
  *
  * The business (organiser / usemingla.com/business) marketing CTAs — the
  * glass-nav.tsx `surface === 'organiser'` branch AND the organiser hero
- * (components/sections/organiser-home/hero.tsx) — must resolve DEVICE-AWARE:
- * iOS → the live business App Store (BUSINESS_APP_STORE_URL), Android + desktop/
- * other → the business web app (BUSINESS_WEB_URL), driven by detectClientPlatform()
- * with a popup-blocked window.location.assign fallback. There is NO beta/lead-
- * capture funnel and NO desktop QR panel on the business surface.
+ * (components/sections/organiser-home/hero.tsx) — must present an explicit inline
+ * CHOICE rather than guessing one destination: "Download the app" (iOS → the live
+ * business App Store, Android → the LIVE business Play listing) AND "Use on web",
+ * driven by detectClientPlatform() through the shared lib/business-app-target.ts
+ * decision helper, opening every destination through the shared lib/open-external
+ * owner (which carries the popup-block fallback). There is NO beta/lead-capture
+ * funnel and NO desktop QR panel on the business surface.
+ *
+ * NOTE (ORCH-1381 ADDENDUM D-A-2, Seth's OQ-1 ruling = option B): on a PHONE the nav
+ * renders exactly ONE action — the logo + both pinned-copy pills provably cannot fit
+ * at 360px at any text size. BOTH handlers (and therefore both `action:` captures)
+ * still exist on the surface, which is what check (c) pins; the second action simply
+ * returns at `sm`. The HERO always carries the full two-action choice.
+ *
+ * ORCH-1324's original clause "Android + desktop/other → the business web app" is
+ * SUPERSEDED: the business Play listing went live 2026-07-15 (COMMS-0101), so
+ * Android → Play and only desktop/other → web.
  *
  * Over each target (comment-stripped) REQUIRE:
- *   (a) references BOTH BUSINESS_APP_STORE_URL and BUSINESS_WEB_URL (the business
- *       store/web constants from lib/store-links — not hardcoded URLs).
+ *   (a) delegates to resolveBusinessAppTarget( AND renders BUSINESS_APP_CHOICE_COPY
+ *       (proves the inline choice is wired from the shared module, not re-derived).
  *   (b) calls detectClientPlatform().
- *   (c) branches on `platform ===` (device-driven, not a single hardcode).  [G-b]
+ *   (c) carries BOTH `action: 'download'` and `action: 'use_web'` — two actions
+ *       exist, not one. Without the discriminator an Android owner who CHOOSES web
+ *       is indistinguishable from ORCH-1324's forced-web and the fix is
+ *       unmeasurable.  [G-b]
  *   (d) fires a `get_the_app_clicked` capture AND carries a `surface: 'organiser'`
  *       prop (distinguishes the business event from the explorer one).
- *   (e) carries the popup-blocked fallback window.location.assign(.
+ *   (e) delegates every external open to openExternal( from lib/open-external.
+ *       AMENDED BY ORCH-1381 ADDENDUM D-B: this check previously required the token
+ *       `window.location.assign(` as a "no silent failure" guard. That check was
+ *       BLIND — it was satisfied by code whose fallback fired 100% of the time
+ *       (window.open with a noopener/noreferrer feature string returns null EVEN ON
+ *       SUCCESS, so every tap opened a tab AND navigated the page away). A presence
+ *       check for an error path cannot distinguish "handles the error" from "is
+ *       permanently in the error path". The guard now lives in the module that owns
+ *       the decision (orch-1381-open-external-no-double-nav.mjs, which asserts the
+ *       fallback is in the else-branch); here we require DELEGATION to it, and BAN
+ *       inlining window.open so the bug cannot come back on these surfaces.
  *
- * G-b (adversarial): the destination must be PLATFORM-DRIVEN. FAIL if
- * BUSINESS_WEB_URL is absent (non-iOS would have nowhere to go / everyone →
- * App Store, stranding Android + desktop owners) or if the file lacks
- * `platform ===` (a single hardcoded destination). This is the different-angle
- * assertion vs. the happy-path presence check.
+ * G-b (adversarial, INVERTED by ORCH-1381): FAIL if a surface carries the collapsed
+ * ternary `platform === 'ios' ? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL`. That
+ * ternary WAS the ORCH-1324 contract; it is now THE BUG — it sends every Android
+ * owner to the web app instead of the live Play listing. This is the
+ * different-angle assertion vs. the happy-path presence check.
  *
  * BAN (the retired beta funnel must never come back to either surface):
  *   BetaAccessModal, beta-access-modal, beta-access-submit, Get Beta Access,
@@ -64,26 +90,31 @@ const BANNED = [
   { re: /Free during beta/, why: "renders the retired \"Free during beta\" beta subcopy" },
   { re: /type="email"/, why: "re-adds an email-lead form input (beta funnel)" },
   { re: /testflight/i, why: "contains a testflight token (the beta link is retired)" },
+  // ORCH-1381 B3 — the fails-on-revert teeth. This ternary WAS the ORCH-1324
+  // contract and is now THE BUG.
+  { re: /platform === 'ios' \? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL/, why: "the ORCH-1324 collapsed ternary — sends every Android owner to the web app instead of the LIVE business Play listing (ORCH-1381)" },
+  // ORCH-1381 ADDENDUM D-B — the double-navigation teeth. These surfaces must
+  // DELEGATE to openExternal(; inlining window.open is how the bug shipped to four
+  // call sites at once.
+  { re: /window\.open\(/, why: "inlines window.open — must delegate to openExternal( from lib/open-external (ORCH-1381 ADDENDUM D-B)" },
+  // The half-fix trap: 'noreferrer' ALONE also nulls the return, so banning only
+  // 'noopener' would let the identical bug back in.
+  { re: /\.open\([^)\n]*\bno(?:opener|referrer)\b[^)\n]*\)/, why: "passes noopener/noreferrer to window.open — per the HTML spec it then returns null EVEN ON SUCCESS, so the popup-block fallback fires unconditionally and the page double-navigates (ORCH-1381 ADDENDUM D-B)" },
 ];
 
 function checkTarget(label, rawSrc, failures) {
   const src = stripComments(rawSrc);
 
-  // (a) both business constants present.
-  const hasStore = /BUSINESS_APP_STORE_URL/.test(src);
-  const hasWeb = /BUSINESS_WEB_URL/.test(src);
-  if (!hasStore || !hasWeb) {
+  // (a) ORCH-1381 B1 — the choice is wired from the shared decision module. The
+  // BUSINESS_* consts deliberately no longer appear on these surfaces: requiring
+  // them would re-create the 5-call-site triplication ORCH-1381 removed.
+  const hasHelper = /resolveBusinessAppTarget\(/.test(src);
+  const hasCopy = /BUSINESS_APP_CHOICE_COPY/.test(src);
+  if (!hasHelper || !hasCopy) {
     failures.push(
-      `${label}: must reference BOTH BUSINESS_APP_STORE_URL and BUSINESS_WEB_URL ` +
-        `(business store/web links from lib/store-links) — got store=${hasStore}, web=${hasWeb}.`,
-    );
-  }
-  // G-b — BUSINESS_WEB_URL is the non-iOS destination; its absence strands
-  // Android + desktop owners (everyone → App Store).
-  if (!hasWeb) {
-    failures.push(
-      `${label}: BUSINESS_WEB_URL is absent — non-iOS (Android/desktop) has nowhere ` +
-        `to go; the destination must not collapse to everyone → the App Store (G-b).`,
+      `${label}: must resolve via resolveBusinessAppTarget( AND render ` +
+        `BUSINESS_APP_CHOICE_COPY (the shared ORCH-1381 decision + copy module) — ` +
+        `got helper=${hasHelper}, copy=${hasCopy}.`,
     );
   }
 
@@ -95,11 +126,16 @@ function checkTarget(label, rawSrc, failures) {
     );
   }
 
-  // (c) G-b adversarial — destination branches on the resolved platform.
-  if (!/platform ===/.test(src)) {
+  // (c) ORCH-1381 B2 / G-b adversarial — TWO actions must exist, not one. The
+  // `action` discriminator is what makes an Android owner CHOOSING web
+  // distinguishable from ORCH-1324's forced-web.
+  const hasDownload = /action: 'download'/.test(src);
+  const hasUseWeb = /action: 'use_web'/.test(src);
+  if (!hasDownload || !hasUseWeb) {
     failures.push(
-      `${label}: the handler does not branch on \`platform ===\` — the destination ` +
-        `must be chosen from the DETECTED platform, not a single hardcode (G-b).`,
+      `${label}: must fire BOTH \`action: 'download'\` and \`action: 'use_web'\` — the ` +
+        `business surface presents an explicit CHOICE, and without the discriminator an ` +
+        `Android owner who chooses web is indistinguishable from the old forced-web (G-b).`,
     );
   }
 
@@ -117,11 +153,12 @@ function checkTarget(label, rawSrc, failures) {
     );
   }
 
-  // (e) popup-blocked fallback.
-  if (!/window\.location\.assign\(/.test(src)) {
+  // (e) ORCH-1381 ADDENDUM D-B — delegation to the ONE owner of the open decision.
+  if (!/openExternal\(/.test(src)) {
     failures.push(
-      `${label}: missing the \`window.location.assign(\` popup-blocked fallback — a ` +
-        `blocked window.open must still navigate the owner (no dead tap).`,
+      `${label}: must open destinations via openExternal( from lib/open-external — the ` +
+        `popup-block decision lives in exactly ONE module. Inlining window.open ` +
+        `re-introduces the double-navigation bug (ORCH-1381 ADDENDUM D-B).`,
     );
   }
 
@@ -142,52 +179,98 @@ if (process.argv.includes("--self-test")) {
     return f;
   };
 
+  // ORCH-1381 — the compliant surface offers TWO actions via the shared helper and
+  // delegates every open to the ONE owner (ADDENDUM D-B).
   const good = `
 import { detectClientPlatform } from '@/lib/device-platform'
-import { BUSINESS_APP_STORE_URL, BUSINESS_WEB_URL } from '@/lib/store-links'
-const handleGetTheBusinessApp = () => {
+import { BUSINESS_APP_CHOICE_COPY, resolveBusinessAppTarget } from '@/lib/business-app-target'
+import { openExternal } from '@/lib/open-external'
+const handleDownloadTheBusinessApp = () => {
   const platform = detectClientPlatform()
-  const dest = platform === 'ios' ? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL
+  const target = resolveBusinessAppTarget(platform)
+  if (target.installHref === null) return
   captureMarketing('get_the_app_clicked', {
+    action: 'download',
     platform,
-    store: platform === 'ios' ? 'app_store' : 'business_web',
+    store: target.installStore,
     surface: 'organiser',
     location: 'nav',
   })
-  const win = window.open(dest, '_blank', 'noopener,noreferrer')
-  if (!win) window.location.assign(dest)
+  openExternal(target.installHref)
 }
+const handleUseBusinessOnWeb = () => {
+  const platform = detectClientPlatform()
+  const target = resolveBusinessAppTarget(platform)
+  captureMarketing('get_the_app_clicked', {
+    action: 'use_web',
+    platform,
+    store: 'business_web',
+    surface: 'organiser',
+    location: 'nav',
+  })
+  openExternal(target.webHref)
+}
+const jsx = <>{BUSINESS_APP_CHOICE_COPY.download}{BUSINESS_APP_CHOICE_COPY.useWeb}</>
 `;
-  if (run(good).length !== 0) selfFailures.push("compliant business CTA wrongly flagged");
+  if (run(good).length !== 0) selfFailures.push("compliant business CTA wrongly flagged: " + JSON.stringify(run(good)));
 
-  // Missing BUSINESS_WEB_URL (everyone → App Store) → fire.
-  const noWeb = good.replace(/BUSINESS_WEB_URL/g, "BUSINESS_APP_STORE_URL");
-  if (run(noWeb).length === 0) selfFailures.push("missing BUSINESS_WEB_URL not flagged");
+  // ORCH-1381 — reverted to the collapsed ternary (android → web) → fire.
+  const ternary = good.replace(
+    "const target = resolveBusinessAppTarget(platform)",
+    "const dest = platform === 'ios' ? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL\n  const target = resolveBusinessAppTarget(platform)",
+  );
+  if (run(ternary).length === 0) selfFailures.push("ORCH-1324 collapsed ternary (android→web) not flagged");
+
+  // ORCH-1381 — stopped delegating to the shared helper → fire.
+  const noHelper = good.replace(/resolveBusinessAppTarget/g, "someLocalGuess");
+  if (run(noHelper).length === 0) selfFailures.push("missing resolveBusinessAppTarget not flagged");
+
+  // ORCH-1381 — collapsed back to ONE action (no use_web) → fire.
+  const oneAction = good.replace(/action: 'use_web'/g, "action: 'download'");
+  if (run(oneAction).length === 0) selfFailures.push("missing the second action (use_web) not flagged");
 
   // No detectClientPlatform → fire.
   const noDetect = good
-    .replace("const platform = detectClientPlatform()", "const platform = 'ios'")
+    .replace(/const platform = detectClientPlatform\(\)/g, "const platform = 'ios'")
     .replace("import { detectClientPlatform } from '@/lib/device-platform'", "");
   if (run(noDetect).length === 0) selfFailures.push("missing detectClientPlatform not flagged");
-
-  // No `platform ===` branch (single hardcode) → fire.
-  const noBranch = good
-    .replace("const platform = detectClientPlatform()", "const platform = detectClientPlatform() /* p */")
-    .replace(/platform === 'ios' \? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL/, "BUSINESS_APP_STORE_URL")
-    .replace(/platform === 'ios' \? 'app_store' : 'business_web'/, "'app_store'");
-  if (run(noBranch).length === 0) selfFailures.push("missing `platform ===` branch not flagged");
 
   // Removed analytics → fire.
   const noAnalytics = good.replace(/get_the_app_clicked/g, "some_other_event");
   if (run(noAnalytics).length === 0) selfFailures.push("missing get_the_app_clicked not flagged");
 
-  // Missing surface:'organiser' → fire.
-  const noSurface = good.replace(/\s*surface: 'organiser',/, "");
+  // Missing surface:'organiser' → fire. (/g: BOTH handlers must lose it, else the
+  // surviving one keeps the file-level check green and the case is a no-op.)
+  const noSurface = good.replace(/\s*surface: 'organiser',/g, "");
   if (run(noSurface).length === 0) selfFailures.push("missing surface:'organiser' not flagged");
 
-  // Missing popup fallback → fire.
-  const noFallback = good.replace(/\s*if \(!win\) window\.location\.assign\(dest\)/, "");
-  if (run(noFallback).length === 0) selfFailures.push("missing window.location.assign fallback not flagged");
+  // ORCH-1381 ADDENDUM D-B — stopped delegating to openExternal( → fire.
+  const noDelegate = good.replace(/openExternal\(/g, "someLocalOpen(");
+  if (run(noDelegate).length === 0) selfFailures.push("missing openExternal( delegation not flagged");
+
+  // ORCH-1381 ADDENDUM D-B — inlined the SHIPPED bug back in → fire (both the
+  // window.open ban and the noopener/noreferrer ban).
+  const inlinedBug = good.replace(
+    "openExternal(target.installHref)",
+    "const win = window.open(target.installHref, '_blank', 'noopener,noreferrer')\n  if (!win) window.location.assign(target.installHref)",
+  );
+  if (run(inlinedBug).length === 0) selfFailures.push("inlined window.open(…,'noopener,noreferrer') double-nav bug not flagged");
+
+  // ORCH-1381 ADDENDUM D-B — THE HALF-FIX TRAP: 'noreferrer' alone also returns
+  // null, so this ships the IDENTICAL bug. It must fire.
+  const halfFix = good.replace(
+    "openExternal(target.installHref)",
+    "const win = window.open(target.installHref, '_blank', 'noreferrer')\n  if (win) { win.opener = null } else { window.location.assign(target.installHref) }",
+  );
+  if (run(halfFix).length === 0) selfFailures.push("HALF-FIX TRAP ('noreferrer' only, still returns null) not flagged");
+
+  // ORCH-1381 ADDENDUM D-B — even a BARE inlined window.open must fire: the
+  // decision belongs in one module, not re-inlined per surface.
+  const bareInline = good.replace(
+    "openExternal(target.installHref)",
+    "const win = window.open(target.installHref, '_blank')\n  if (win) { win.opener = null } else { window.location.assign(target.installHref) }",
+  );
+  if (run(bareInline).length === 0) selfFailures.push("bare inlined window.open (not delegating) not flagged");
 
   // Re-added BetaAccessModal → fire.
   const beta = good + "\nimport { BetaAccessModal } from '@/components/marketing/beta-access-modal'\n";
@@ -210,7 +293,7 @@ const handleGetTheBusinessApp = () => {
     selfFailures.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
-  console.log("ORCH-1324 business-getapp-device-aware self-test PASS (11/11 cases).");
+  console.log("ORCH-1324 business-getapp-device-aware self-test PASS (15/15 cases, ORCH-1381-ADDENDUM-amended).");
   process.exit(0);
 }
 
@@ -227,18 +310,22 @@ for (const rel of TARGETS) {
 
 if (failures.length > 0) {
   console.error(
-    "ORCH-1324 (I-PROPOSED-1324-BUSINESS-GETAPP-DEVICE-AWARE) FAIL — the business\n" +
-      "nav + hero CTAs must resolve device-aware to the live business App Store /\n" +
-      "business web app (BUSINESS_APP_STORE_URL / BUSINESS_WEB_URL via\n" +
-      "detectClientPlatform), fire get_the_app_clicked { surface:'organiser' } with a\n" +
-      "window.location.assign fallback, and carry NO beta funnel / QR token.\n\nFailures:\n  " +
+    "ORCH-1324 (I-PROPOSED-1324-BUSINESS-GETAPP-DEVICE-AWARE, ORCH-1381-amended) FAIL —\n" +
+      "the business nav + hero CTAs must present an explicit inline CHOICE via the shared\n" +
+      "decision module: resolveBusinessAppTarget( + BUSINESS_APP_CHOICE_COPY, driven by\n" +
+      "detectClientPlatform, firing get_the_app_clicked { surface:'organiser' } with BOTH\n" +
+      "action:'download' and action:'use_web', a window.location.assign fallback, NO beta\n" +
+      "funnel / QR token, and NEVER the ORCH-1324 collapsed ternary (which sends every\n" +
+      "Android owner to the web app).\n\nFailures:\n  " +
       failures.join("\n  "),
   );
   process.exit(1);
 }
 console.log(
-  "ORCH-1324 PASS — the business nav + hero CTAs are device-driven to the live\n" +
-    "business App Store / business web (BUSINESS_APP_STORE_URL / BUSINESS_WEB_URL via\n" +
-    "detectClientPlatform), fire get_the_app_clicked { surface:'organiser' } with a\n" +
-    "window.location.assign fallback, and carry no beta-funnel / TestFlight token.",
+  "ORCH-1324 PASS (ORCH-1381-amended) — the business nav + hero CTAs present the inline\n" +
+    "choice via resolveBusinessAppTarget + BUSINESS_APP_CHOICE_COPY (iOS → business App\n" +
+    "Store, Android → business Play, desktop → web only), fire get_the_app_clicked\n" +
+    "{ surface:'organiser' } with both action:'download' and action:'use_web', keep the\n" +
+    "window.location.assign fallback, and carry no beta-funnel / TestFlight token nor the\n" +
+    "collapsed ternary.",
 );

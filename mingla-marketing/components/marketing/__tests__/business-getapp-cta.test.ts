@@ -1,26 +1,51 @@
 // ---------------------------------------------------------------
 // ORCH-1324 [business "Get the app" → device-aware] — HAPPY-PATH regression test.
+// REWRITTEN BY ORCH-1381 [business-getapp-android-choice].
+//
+// WHAT CHANGED AND WHY. This file used to REQUIRE the ternary
+// `platform === 'ios' ? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL` on both
+// surfaces. That was the ORCH-1324 contract; it is now THE BUG — it sends every
+// Android owner to the web app instead of the business Play listing, which went
+// live 2026-07-15 (COMMS-0101). The ternary asserts are therefore INVERTED to
+// asserted-ABSENT, and replaced with the shared-helper + two-action contract.
 //
 // Proves BOTH business CTAs (glass-nav.tsx organiser branch + the organiser hero)
-// are wired to the device-aware "Get the app" action: each resolves
-// `platform === 'ios' ? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL` via
-// detectClientPlatform(), fires get_the_app_clicked { surface:'organiser' } with
-// the right `location`, and carries the window.location.assign popup fallback.
+// present the inline CHOICE: each delegates to resolveBusinessAppTarget() via
+// detectClientPlatform(), renders BUSINESS_APP_CHOICE_COPY, fires
+// get_the_app_clicked { surface:'organiser' } with the right `location` AND both
+// `action: 'download'` / `action: 'use_web'`, and routes the tap through
+// openExternal( so a blocked popup can never be a dead tap.
 //
 // The marketing package has NO jest/vitest runner wired — this is a SOURCE-level
-// pin run via the repo's tsc+node pattern (mirrors lib/device-platform.test.ts).
-// Run from mingla-marketing/:
+// pin run via the repo's tsc+node pattern (mirrors lib/device-platform.test.ts),
+// EXCEPT the two openExternal fallback cases, which are genuinely behavioural:
+// they drive the imported helper against a fake Window (it is React-free and takes
+// an injectable window precisely so this is possible with no DOM test infra).
+//
+// Comment-stripped ONLY for the absence assertions (`navNoComments` /
+// `heroNoComments`) — both components' docblocks legitimately NAME window.open, so
+// a raw-source absence check would trip on prose.
+//
+// Run from mingla-marketing/ (the openExternal import roots the emit at the
+// package, so the runnable JS lands under components/marketing/__tests__/):
 //   npx tsc components/marketing/__tests__/business-getapp-cta.test.ts \
 //     --outDir /tmp/o --module commonjs --target es2020 --moduleResolution node \
-//     && node /tmp/o/business-getapp-cta.test.js
+//     --skipLibCheck \
+//     && node /tmp/o/components/marketing/__tests__/business-getapp-cta.test.js
 //
-// Fails-on-revert: reverting either CTA back to the beta lead-modal open-state
-// handler removes handleGetTheBusinessApp + `surface: 'organiser'` + the
-// BUSINESS_* ternary, so the corresponding assertions throw.
+// Fails-on-revert: reverting either CTA to the ORCH-1324 single-action ternary
+// removes the helper call + BUSINESS_APP_CHOICE_COPY + the action discriminators
+// and re-introduces the banned ternary, so those assertions throw. Deleting the
+// popup-block fallback inside lib/open-external.ts turns the two behavioural cases
+// red. (The RUNTIME guard for the decision itself is
+// lib/__tests__/business-app-target.test.ts T-1 — this file pins the wiring plus
+// the delegated open behaviour.)
 // ---------------------------------------------------------------
 
 import * as fs from 'node:fs'
 import * as path from 'node:path'
+
+import { openExternal } from '../../../lib/open-external'
 
 const NAV = path.resolve(process.cwd(), 'components/marketing/glass-nav.tsx')
 const HERO = path.resolve(
@@ -31,116 +56,324 @@ const HERO = path.resolve(
 const nav = fs.readFileSync(NAV, 'utf8')
 const hero = fs.readFileSync(HERO, 'utf8')
 
-// The business handler body in glass-nav, scoped so we never match the EXPLORER
-// handler (which also fires get_the_app_clicked / location:'nav').
-const navHandler = (() => {
-  const i = nav.indexOf('handleGetTheBusinessApp = ')
+const stripComments = (s: string): string =>
+  s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
+
+// Absence assertions read THESE, never the raw source — both components' docblocks
+// name window.open in prose, which would trip a raw-source absence check.
+const navNoComments = stripComments(nav)
+const heroNoComments = stripComments(hero)
+
+// The business handler bodies in glass-nav, scoped so we never match the EXPLORER
+// handler (which also fires get_the_app_clicked / location:'nav'). ORCH-1381 split
+// the single business handler into two — one per action.
+const scopeHandler = (src: string, name: string): string => {
+  const i = src.indexOf(`${name} = `)
   if (i === -1) return ''
-  const rest = nav.slice(i)
+  const rest = src.slice(i)
   const end = rest.indexOf('\n  }')
   return end === -1 ? rest.slice(0, 700) : rest.slice(0, end)
-})()
+}
+
+const navDownloadHandler = scopeHandler(nav, 'handleDownloadTheBusinessApp')
+const navWebHandler = scopeHandler(nav, 'handleUseBusinessOnWeb')
+// Both business handlers together — for file-scoped business assertions that must
+// not see the explorer handler.
+const navHandler = navDownloadHandler + '\n' + navWebHandler
 
 function assert(cond: boolean, msg: string): void {
   if (!cond) throw new Error(msg)
 }
 
+// ── behavioural harness for the delegated open+fallback ──────────────────────
+// The nav's local `openBusinessDest` helper NO LONGER EXISTS: ORCH-1381 ADDENDUM
+// D-B replaced it (and the three other copy-pasted twins) with the single
+// lib/open-external.ts owner, because every one of those local copies carried the
+// same double-navigation bug. The assertions that pinned `openBusinessDest` are
+// therefore re-pointed at openExternal — the real delegate — and, crucially, they
+// now DRIVE it rather than grep it.
+//
+// The fake Window models the browser-verified HTML rule (ADDENDUM §4.2, Chromium):
+// a feature string containing noopener OR noreferrer makes open() return null EVEN
+// ON SUCCESS. That null is what made the "popup-blocked fallback" fire on every
+// tap. Modelling it is what lets this catch the half-fix that drops only 'noopener'
+// and keeps 'noreferrer' (which alone also returns null — ADDENDUM C-4).
+const DEST = 'https://play.google.com/store/apps/details?id=com.sethogieva.minglabusiness'
+
+interface DriveResult {
+  opened: number
+  assigned: string[]
+  features: string
+}
+
+function driveOpenExternal({ popupBlocked }: { popupBlocked: boolean }): DriveResult {
+  const opened: string[] = []
+  const assigned: string[] = []
+  let features = ''
+  const w = {
+    open(url: string, _target?: string, f = ''): unknown {
+      opened.push(url)
+      features = f
+      if (popupBlocked) return null
+      if (/\bnoopener\b|\bnoreferrer\b/.test(f)) return null
+      return { opener: {} as unknown }
+    },
+    location: {
+      assign: (u: string): void => {
+        assigned.push(u)
+      },
+    },
+  }
+  openExternal(DEST, w as unknown as Window)
+  return { opened: opened.length, assigned, features }
+}
+
+/**
+ * The behavioural half of the re-pointed fallback guards: the tap these business
+ * CTAs delegate cannot become a dead tap, and cannot double-navigate.
+ */
+function assertDelegatedTapIsStillGuarded(): void {
+  // NO DEAD TAP (Constitution #1) — precisely what the old
+  // `window.location.assign(` presence greps existed to protect.
+  const blocked = driveOpenExternal({ popupBlocked: true })
+  assert(
+    blocked.assigned.length === 1 && blocked.assigned[0] === DEST,
+    `openExternal does not fall back when the popup is genuinely blocked ` +
+      `(assigned=${JSON.stringify(blocked.assigned)}) — the business CTA would be a DEAD TAP. ` +
+      `The fallback moved into lib/open-external.ts; the requirement did not move with it.`,
+  )
+  // NO DOUBLE-NAV — a successful open must not also destroy the marketing page.
+  const ok = driveOpenExternal({ popupBlocked: false })
+  assert(ok.opened === 1, `expected exactly 1 window.open call, got ${ok.opened}`)
+  assert(
+    ok.assigned.length === 0,
+    `DOUBLE NAVIGATION — a successful open ALSO navigated the current tab to ` +
+      `"${ok.assigned[0]}" (features="${ok.features}"). A noopener/noreferrer feature ` +
+      `string makes open() return null even on success, firing the fallback ` +
+      `unconditionally (ORCH-1381 ADDENDUM D-B).`,
+  )
+}
+
 const cases: ReadonlyArray<[string, () => void]> = [
   // ── glass-nav organiser branch ──────────────────────────────────────────────
   [
-    'nav: references BOTH BUSINESS_APP_STORE_URL and BUSINESS_WEB_URL',
+    'nav: delegates to the shared decision helper + renders the shared copy',
     () => {
-      assert(/BUSINESS_APP_STORE_URL/.test(nav), 'nav missing BUSINESS_APP_STORE_URL')
-      assert(/BUSINESS_WEB_URL/.test(nav), 'nav missing BUSINESS_WEB_URL')
-    },
-  ],
-  [
-    'nav: business handler resolves the device-aware ternary via detectClientPlatform()',
-    () => {
-      assert(navHandler.length > 0, 'handleGetTheBusinessApp handler not found in nav')
       assert(
-        /platform === 'ios' \? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL/.test(navHandler),
-        'nav handler missing the `platform === ios ? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL` ternary',
+        /resolveBusinessAppTarget\(/.test(nav),
+        'nav does not call resolveBusinessAppTarget — the decision must come from the ONE module',
       )
       assert(
-        /detectClientPlatform\(\)/.test(navHandler),
-        'nav handler does not call detectClientPlatform()',
+        /BUSINESS_APP_CHOICE_COPY/.test(nav),
+        'nav does not render BUSINESS_APP_CHOICE_COPY (labels must not be hand-written)',
       )
     },
   ],
   [
-    "nav: fires get_the_app_clicked with surface:'organiser' and location:'nav'",
-    () => {
-      assert(/get_the_app_clicked/.test(navHandler), 'nav handler missing get_the_app_clicked')
-      assert(/surface: 'organiser'/.test(navHandler), "nav handler missing surface: 'organiser'")
-      assert(/location: 'nav'/.test(navHandler), "nav handler missing location: 'nav'")
-    },
-  ],
-  [
-    'nav: has the window.location.assign popup fallback',
+    'nav: the ORCH-1324 collapsed ternary is GONE (it denied Android owners the app)',
     () => {
       assert(
-        /window\.location\.assign\(/.test(navHandler),
-        'nav handler missing window.location.assign popup fallback',
+        !/platform === 'ios' \? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL/.test(nav),
+        'nav still carries the ORCH-1324 collapsed ternary — every Android owner would be sent to the web app instead of the LIVE business Play listing',
       )
     },
   ],
   [
-    'nav: organiser CTA is wired to handleGetTheBusinessApp and labelled "Get the app"',
+    'nav: both business handlers resolve the platform via detectClientPlatform()',
+    () => {
+      assert(navDownloadHandler.length > 0, 'handleDownloadTheBusinessApp handler not found in nav')
+      assert(navWebHandler.length > 0, 'handleUseBusinessOnWeb handler not found in nav')
+      assert(
+        /detectClientPlatform\(\)/.test(navDownloadHandler),
+        'nav download handler does not call detectClientPlatform()',
+      )
+      assert(
+        /resolveBusinessAppTarget\(/.test(navDownloadHandler),
+        'nav download handler does not resolve via resolveBusinessAppTarget',
+      )
+    },
+  ],
+  [
+    "nav: fires get_the_app_clicked with surface:'organiser', location:'nav' and BOTH actions",
+    () => {
+      assert(/get_the_app_clicked/.test(navHandler), 'nav handlers missing get_the_app_clicked')
+      assert(/surface: 'organiser'/.test(navHandler), "nav handlers missing surface: 'organiser'")
+      assert(/location: 'nav'/.test(navHandler), "nav handlers missing location: 'nav'")
+      // Without the discriminator, an Android owner who CHOOSES web is
+      // indistinguishable from ORCH-1324's forced-web → the fix is unmeasurable.
+      assert(/action: 'download'/.test(navDownloadHandler), "nav download handler missing action: 'download'")
+      assert(/action: 'use_web'/.test(navWebHandler), "nav web handler missing action: 'use_web'")
+    },
+  ],
+  // ── RE-POINTED by ORCH-1381 ADDENDUM D-B. [TEST-MOD-APPROVED ORCH-1381] ──────
+  // WAS: both handlers must call `openBusinessDest(`, and that LOCAL helper must
+  // carry `window.open(` + `window.location.assign(`. openBusinessDest no longer
+  // exists — it was one of four copy-pasted twins, every one of which carried the
+  // double-navigation bug, and D-B replaced them all with lib/open-external.ts.
+  // The old assertions pinned WHERE the code lived, so they went red against the
+  // CORRECT implementation.
+  //
+  // The guarantee — neither business action can dead-tap on a blocked popup — is
+  // unchanged and still guarded, as the chain it actually is:
+  //   Link 1  BOTH handlers route through openExternal(, and the nav hand-rolls
+  //           neither window.open( nor .location.assign( (re-inlining the helper is
+  //           how this bug reached four surfaces in the first place).
+  //   Link 2  openExternal is DRIVEN against a fake Window, not grepped.
+  // Fails both ways: delete the fallback in lib/open-external.ts → Link 2 red;
+  // drop either handler's delegation or inline window.open( → Link 1 red.
+  [
+    'nav: both business actions navigate through openExternal — neither can dead-tap',
+    () => {
+      // Link 1 — both handlers delegate to the ONE owner.
+      assert(
+        /openExternal\(/.test(navDownloadHandler),
+        'nav download handler does not navigate via openExternal( from lib/open-external — ' +
+          'a blocked popup on the Download action would be a dead tap',
+      )
+      assert(
+        /openExternal\(/.test(navWebHandler),
+        'nav web handler does not navigate via openExternal( from lib/open-external — ' +
+          'a blocked popup on the Use-on-web action would be a dead tap',
+      )
+      assert(
+        !/window\.open\(/.test(navNoComments),
+        'nav inlines window.open( instead of delegating to openExternal( — the inlined ' +
+          'twin is exactly what carried the double-navigation bug (ORCH-1381 ADDENDUM D-B)',
+      )
+      assert(
+        !/\.location\.assign\(/.test(navNoComments),
+        'nav inlines a .location.assign( fallback instead of delegating to openExternal( — ' +
+          'the popup-block decision must live in exactly ONE module',
+      )
+      // Link 2 — the delegated behaviour itself.
+      assertDelegatedTapIsStillGuarded()
+    },
+  ],
+  [
+    'nav: organiser CTA renders BOTH actions from the shared copy constants',
     () => {
       assert(
-        /onClick=\{handleGetTheBusinessApp\}/.test(nav),
-        'nav organiser button is not wired to handleGetTheBusinessApp',
+        /onClick=\{handleDownloadTheBusinessApp\}/.test(nav),
+        'nav organiser download button is not wired to handleDownloadTheBusinessApp',
       )
-      assert(/Get the app/.test(nav), 'nav CTA label is not "Get the app"')
+      assert(
+        /onClick=\{handleUseBusinessOnWeb\}/.test(nav),
+        'nav organiser web button is not wired to handleUseBusinessOnWeb',
+      )
+      assert(
+        /BUSINESS_APP_CHOICE_COPY\.download/.test(nav),
+        'nav download CTA label is not BUSINESS_APP_CHOICE_COPY.download',
+      )
+      assert(
+        /BUSINESS_APP_CHOICE_COPY\.useWeb/.test(nav),
+        'nav web CTA label is not BUSINESS_APP_CHOICE_COPY.useWeb',
+      )
+      // Desktop can install nothing → the install button must be canInstall-gated.
+      assert(
+        /canInstall/.test(nav),
+        'nav does not gate the install button on canInstall — desktop would get a dead button',
+      )
     },
   ],
   // ── organiser hero ──────────────────────────────────────────────────────────
   [
-    'hero: references BOTH BUSINESS_APP_STORE_URL and BUSINESS_WEB_URL',
-    () => {
-      assert(/BUSINESS_APP_STORE_URL/.test(hero), 'hero missing BUSINESS_APP_STORE_URL')
-      assert(/BUSINESS_WEB_URL/.test(hero), 'hero missing BUSINESS_WEB_URL')
-    },
-  ],
-  [
-    'hero: resolves the device-aware ternary via detectClientPlatform()',
+    'hero: delegates to the shared decision helper + renders the shared copy',
     () => {
       assert(
-        /platform === 'ios' \? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL/.test(hero),
-        'hero missing the `platform === ios ? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL` ternary',
+        /resolveBusinessAppTarget\(/.test(hero),
+        'hero does not call resolveBusinessAppTarget — the decision must come from the ONE module',
+      )
+      assert(
+        /BUSINESS_APP_CHOICE_COPY/.test(hero),
+        'hero does not render BUSINESS_APP_CHOICE_COPY (labels/note must not be hand-written)',
       )
       assert(/detectClientPlatform\(\)/.test(hero), 'hero does not call detectClientPlatform()')
     },
   ],
   [
-    "hero: fires get_the_app_clicked with surface:'organiser' and location:'hero'",
+    'hero: the ORCH-1324 collapsed ternary is GONE (it denied Android owners the app)',
+    () => {
+      assert(
+        !/platform === 'ios' \? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL/.test(hero),
+        'hero still carries the ORCH-1324 collapsed ternary — every Android owner would be sent to the web app instead of the LIVE business Play listing',
+      )
+    },
+  ],
+  [
+    "hero: fires get_the_app_clicked with surface:'organiser', location:'hero' and BOTH actions",
     () => {
       assert(/get_the_app_clicked/.test(hero), 'hero missing get_the_app_clicked')
       assert(/surface: 'organiser'/.test(hero), "hero missing surface: 'organiser'")
       assert(/location: 'hero'/.test(hero), "hero missing location: 'hero'")
+      assert(/action: 'download'/.test(hero), "hero missing action: 'download'")
+      assert(/action: 'use_web'/.test(hero), "hero missing action: 'use_web'")
+    },
+  ],
+  // ── RE-POINTED by ORCH-1381 ADDENDUM D-B. [TEST-MOD-APPROVED ORCH-1381] ──────
+  // WAS: assert(/window\.location\.assign\(/.test(hero)). §5.3 moved the fallback
+  // into lib/open-external.ts, so the grep went red against correct code — it
+  // asserted WHERE the fallback lived, not that a blocked popup still navigates.
+  // Same two-link chain as the nav case above; both directions covered.
+  [
+    'hero: delegates the tap to openExternal — a blocked popup is never a dead tap',
+    () => {
+      // Link 1 — delegation, and no hand-rolled open on this surface.
+      assert(
+        /openExternal\(/.test(hero),
+        'hero does not navigate via openExternal( from lib/open-external — the tap must ' +
+          'route through the ONE owner of the open+popup-block decision',
+      )
+      assert(
+        !/window\.open\(/.test(heroNoComments),
+        'hero inlines window.open( instead of delegating to openExternal( — hero.tsx was ' +
+          'the 4th call site carrying this exact bug (ORCH-1381 ADDENDUM D-B)',
+      )
+      assert(
+        !/\.location\.assign\(/.test(heroNoComments),
+        'hero inlines a .location.assign( fallback instead of delegating to openExternal(',
+      )
+      // Link 2 — the delegated behaviour itself.
+      assertDelegatedTapIsStillGuarded()
     },
   ],
   [
-    'hero: has the window.location.assign popup fallback',
+    'hero: CTA renders BOTH actions + the shared note (NOT the retired iPhone-only subcopy)',
     () => {
       assert(
-        /window\.location\.assign\(/.test(hero),
-        'hero missing window.location.assign popup fallback',
+        /onClick=\{handleDownloadTheBusinessApp\}/.test(hero),
+        'hero download button is not wired to handleDownloadTheBusinessApp',
+      )
+      assert(
+        /onClick=\{handleUseBusinessOnWeb\}/.test(hero),
+        'hero web button is not wired to handleUseBusinessOnWeb',
+      )
+      assert(
+        /BUSINESS_APP_CHOICE_COPY\.download/.test(hero),
+        'hero download CTA label is not BUSINESS_APP_CHOICE_COPY.download',
+      )
+      assert(
+        /BUSINESS_APP_CHOICE_COPY\.useWeb/.test(hero),
+        'hero web CTA label is not BUSINESS_APP_CHOICE_COPY.useWeb',
+      )
+      // The old subcopy was the same falsehood as the email's: it told Android
+      // owners the app was iPhone-only. It must NOT come back.
+      assert(
+        !/On iPhone now — or get started on the web\./.test(hero),
+        'hero still renders the retired ORCH-1324 subcopy ("On iPhone now — or get started on the web.") — FALSE since the business Play listing went live (COMMS-0101)',
+      )
+      assert(
+        /BUSINESS_APP_CHOICE_COPY\.moreNote/.test(hero) &&
+          /BUSINESS_APP_CHOICE_COPY\.desktopNote/.test(hero),
+        'hero does not render both the phone (moreNote) and desktop (desktopNote) notes from the shared copy constant',
       )
     },
   ],
   [
-    'hero: CTA is wired to handleGetTheBusinessApp with the locked label + subcopy',
+    'hero: gates the install button on canInstall (no dead desktop button)',
     () => {
       assert(
-        /onClick=\{handleGetTheBusinessApp\}/.test(hero),
-        'hero button is not wired to handleGetTheBusinessApp',
-      )
-      assert(/Get the app/.test(hero), 'hero CTA label is not "Get the app"')
-      assert(
-        /On iPhone now — or get started on the web\./.test(hero),
-        'hero subcopy is not the locked ORCH-1324 copy ("On iPhone now — or get started on the web.")',
+        /canInstall/.test(hero),
+        'hero does not gate the install button on canInstall — desktop would get a dead install button',
       )
     },
   ],

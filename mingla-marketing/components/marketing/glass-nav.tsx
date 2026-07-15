@@ -9,15 +9,20 @@ import { cn } from '@/lib/cn'
 import { captureMarketing } from '@/components/marketing/posthog-provider'
 // ORCH-1319 — the explorer "Get the app" CTA is now a device-aware DIRECT action:
 // iOS → App Store, Android → Play, desktop/other → the QR panel. No lead form.
-// ORCH-1324 — the organiser "Get the app" CTA is likewise device-aware:
-// iOS → the live business App Store, Android/desktop/other → the business web app.
-import { detectClientPlatform } from '@/lib/device-platform'
+// ORCH-1381 — the organiser surface no longer guesses: it presents an explicit
+// inline CHOICE (Download the app / Use on web). The platform→destination decision
+// comes from the shared lib/business-app-target.ts helper — never re-derived here.
+import { detectClientPlatform, type Platform } from '@/lib/device-platform'
+import { APP_STORE_URL, PLAY_STORE_URL } from '@/lib/store-links'
 import {
-  APP_STORE_URL,
-  PLAY_STORE_URL,
-  BUSINESS_APP_STORE_URL,
-  BUSINESS_WEB_URL,
-} from '@/lib/store-links'
+  BUSINESS_APP_CHOICE_COPY,
+  resolveBusinessAppTarget,
+} from '@/lib/business-app-target'
+// ORCH-1381 ADDENDUM D-B — external opens go through the ONE owner. Never inline
+// window.open here: a 'noopener'/'noreferrer' feature string makes it return null
+// even on success, so the popup-block fallback fires on every tap and the page
+// double-navigates.
+import { openExternal } from '@/lib/open-external'
 
 export function GlassNav() {
   const pathname = usePathname()
@@ -43,6 +48,19 @@ export function GlassNav() {
   // store; desktop/other opens this QR panel (no more lead form / beta gate).
   const [qrOpen, setQrOpen] = useState(false)
 
+  // ORCH-1381 — the RENDERED business choice is device-aware, so it must resolve
+  // AFTER mount: `detectClientPlatform()` reads navigator, which does not exist
+  // during SSR. Seeding 'other' means the server HTML and the first client render
+  // agree (web-action-only — the safe treatment), then the effect swaps in the real
+  // platform. Rendering the platform directly would hydration-mismatch.
+  // NOTE: the click HANDLERS deliberately re-read detectClientPlatform() fresh
+  // rather than trust this state, so a tap can never resolve a stale platform.
+  const [businessPlatform, setBusinessPlatform] = useState<Platform>('other')
+  useEffect(() => {
+    setBusinessPlatform(detectClientPlatform())
+  }, [])
+  const businessTarget = resolveBusinessAppTarget(businessPlatform)
+
   // ORCH-1319 — device-aware "Get the app" action. Runs only on a real browser
   // click (detectClientPlatform is SSR-safe → 'other' when navigator is absent).
   const handleGetTheApp = (): void => {
@@ -54,9 +72,7 @@ export function GlassNav() {
         store: platform === 'ios' ? 'app_store' : 'play',
         location: 'nav',
       })
-      // Popup-blocked (window.open → null) → same-tab navigation fallback.
-      const win = window.open(store, '_blank', 'noopener,noreferrer')
-      if (!win) window.location.assign(store)
+      openExternal(store)
       return
     }
     // Desktop / other → the QR panel.
@@ -68,23 +84,40 @@ export function GlassNav() {
     setQrOpen(true)
   }
 
-  // ORCH-1324 — the business "Get the app" CTA is a device-aware DIRECT action:
-  // iOS → the live business App Store, Android/desktop/other → the business web
-  // app (business.usemingla.com root = owner get-started). No QR panel, no beta
-  // funnel. Runs only on a real browser click (SSR-safe: detectClientPlatform
-  // returns 'other' when navigator is absent).
-  const handleGetTheBusinessApp = (): void => {
+  // ORCH-1381 — the business surface presents an explicit inline CHOICE instead of
+  // guessing: "Download the app" (iOS → the live business App Store, Android → the
+  // LIVE business Play listing) and "Use on web". Desktop/other has nothing to
+  // install, so only the web action renders (no dead button). No QR panel, no beta
+  // funnel. Both actions run only on a real browser click (SSR-safe:
+  // detectClientPlatform returns 'other' when navigator is absent).
+  //
+  // The `action` prop is REQUIRED: without it an Android owner who CHOOSES web is
+  // indistinguishable from ORCH-1324's forced-web, and the fix is unmeasurable.
+  const handleDownloadTheBusinessApp = (): void => {
     const platform = detectClientPlatform()
-    const dest = platform === 'ios' ? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL
+    const target = resolveBusinessAppTarget(platform)
+    if (target.installHref === null) return
     captureMarketing('get_the_app_clicked', {
+      action: 'download',
       platform,
-      store: platform === 'ios' ? 'app_store' : 'business_web',
+      store: target.installStore,
       surface: 'organiser',
       location: 'nav',
     })
-    // Popup-blocked (window.open → null) → same-tab navigation fallback.
-    const win = window.open(dest, '_blank', 'noopener,noreferrer')
-    if (!win) window.location.assign(dest)
+    openExternal(target.installHref)
+  }
+
+  const handleUseBusinessOnWeb = (): void => {
+    const platform = detectClientPlatform()
+    const target = resolveBusinessAppTarget(platform)
+    captureMarketing('get_the_app_clicked', {
+      action: 'use_web',
+      platform,
+      store: 'business_web',
+      surface: 'organiser',
+      location: 'nav',
+    })
+    openExternal(target.webHref)
   }
 
   return (
@@ -113,11 +146,21 @@ export function GlassNav() {
       >
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
           {/* Logo — official Mingla Business lockup on the business surface,
-              plain Mingla wordmark on the explorer surface. */}
+              plain Mingla wordmark on the explorer surface.
+
+              ORCH-1381 ADDENDUM D-A-2 — `shrink-0` is LOAD-BEARING, not cosmetic.
+              Without it the logo is a shrinkable flex item, so it silently absorbed
+              every bit of nav overcrowding by squashing itself (84px → 30px at
+              `text-sm`, → ~0 and INVISIBLE under plain nowrap). That is why no
+              automated width check ever caught the nav overflow: the bar could not
+              fail a width check, it just destroyed the brand instead. Pinned, the
+              bar's real width demand becomes measurable — which is what proved the
+              logo + BOTH pinned-copy pills cannot fit at 360px (hence the
+              one-action mobile nav below). */}
           <Link
             href={homeHref}
             aria-label={surface === 'organiser' ? 'Mingla Business home' : 'Mingla home'}
-            className="inline-flex items-center gap-2 rounded-md px-0.5 transition-all duration-200 ease-out-quart hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 active:brightness-100 focus-ring"
+            className="inline-flex shrink-0 items-center gap-2 rounded-md px-0.5 transition-all duration-200 ease-out-quart hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 active:brightness-100 focus-ring"
           >
             {surface === 'organiser' ? (
               <img
@@ -142,18 +185,66 @@ export function GlassNav() {
           </div>
 
           {/* CTA — branches by surface.
-              organiser: "Get the app" is a device-aware direct action (ORCH-1324):
-                iOS → the live business App Store, Android/desktop/other → the
-                business web app. It NAVIGATES (no dialog) so no aria-haspopup.
+              organiser (ORCH-1381): "Download the app" (iOS → business App Store,
+                Android → business Play) + "Use on web". Desktop/other can install
+                nothing, so ONLY the web action renders — never a dead install
+                button. Both NAVIGATE (no dialog) so no aria-haspopup. The
+                app-does-more note is deliberately omitted here: the nav is a
+                shortcut with no room for it; the hero, /links and /business/download
+                surfaces carry it.
+
+              ORCH-1381 ADDENDUM D-A-2 (Seth's OQ-1 ruling = option B) — on a PHONE
+                the nav shows exactly ONE action. PROVEN geometrically: with the logo
+                pinned at its natural 84px (see `shrink-0` above), the 328px bar at
+                360px CANNOT hold the logo + both pinned-copy pills at ANY text size —
+                not even 12px text with 8px padding (measured: 334px, still 6px over).
+                Both labels wrapped to 2 lines and spilled past the pill edges at 360,
+                375 AND 412 — every Android width. One action + nowrap fits in exactly
+                328/328 at full 16px text with the brand intact.
+                This EXTENDS the nav's own stated intent (the comment above: "the nav
+                is a shortcut with no room for it") from the note to the second
+                action — it is consistent, not a new concession. The HERO keeps the
+                full two-action choice + the note, so nothing is lost.
+                The copy is CI-pinned and code-verified: we fix the container, never
+                the words.
               explorer: "Get the app" is a device-aware direct store action (ORCH-1319). */}
           {surface === 'organiser' ? (
-            <Button
-              variant="glass"
-              size="sm"
-              onClick={handleGetTheBusinessApp}
-            >
-              Get the app
-            </Button>
+            <div className="flex items-center gap-2">
+              {businessTarget.canInstall ? (
+                <>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    className="whitespace-nowrap"
+                    onClick={handleDownloadTheBusinessApp}
+                  >
+                    {BUSINESS_APP_CHOICE_COPY.download}
+                  </Button>
+                  {/* The second action is the one that does not fit next to the logo
+                      on a phone. It returns at `sm` (640px), where there is room —
+                      so desktop/tablet keep the full inline choice. */}
+                  <Button
+                    variant="glass"
+                    size="sm"
+                    className="hidden whitespace-nowrap sm:inline-flex"
+                    onClick={handleUseBusinessOnWeb}
+                  >
+                    {BUSINESS_APP_CHOICE_COPY.useWeb}
+                  </Button>
+                </>
+              ) : (
+                // Nothing to install (desktop/unknown) → the web action is the ONLY
+                // action, so it always renders. This branch is unchanged by D-A-2.
+                <Button
+                  variant="glass"
+                  size="sm"
+                  className="whitespace-nowrap"
+                  onClick={handleUseBusinessOnWeb}
+                >
+                  {BUSINESS_APP_CHOICE_COPY.useWeb}
+                </Button>
+              )}
+            </div>
           ) : (
             // ORCH-1319 — explorer "Get the app" is a device-aware DIRECT action:
             // iOS → App Store, Android → Play, desktop/other → QR panel. The

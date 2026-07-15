@@ -1,20 +1,30 @@
 // ---------------------------------------------------------------
 // ORCH-1326 [links business tab reflects the live app] — TESTER-ADVERSARIAL test.
+// REWRITTEN BY ORCH-1381 [business-getapp-android-choice].
+//
+// WHAT CHANGED AND WHY. This file used to pin the route as a REDIRECT and to
+// forbid Play entirely ("business Android → the web app, never a Play listing").
+// Both were correct under ORCH-1324 and are now FALSE: the business Play listing
+// went live 2026-07-15 (production versionCode 33 / 1.1.2 — COMMS-0101), and the
+// route now renders an inline CHOICE instead of redirecting. The old asserts would
+// have locked the bug in place, so they are inverted here.
 //
 // Different angle than the links-config happy-path (which pins the CTA href). This
-// proves the /business/download ROUTE's negative space + correct destination:
+// proves the /business/download ROUTE's negative space + correct shape:
 //   (a) NO QR/badges — the route does NOT import DownloadQr / AppStoreBadges nor
 //       render a <QRCode (the deliberate difference from the explorer /download).
-//   (b) SSOT — NO `apps.apple.com` / `business.usemingla.com` literal (the
-//       destinations come from lib/store-links consts, never hardcoded).
-//   (c) NO `PLAY_STORE_URL` (business Android → the web app, never a Play listing).
+//   (b) SSOT — NO `apps.apple.com` / `business.usemingla.com` / `play.google.com`
+//       literal (destinations come from the shared helper, never hardcoded).
+//   (c) NO bare CONSUMER `PLAY_STORE_URL` (owners must never be shipped the
+//       consumer app) — but BUSINESS_PLAY_STORE_URL via the helper is REQUIRED.
 //   (d) SSR-safe — NO `navigator` / `window` (Server Component, UA header only).
-//   (e) the NON-iOS redirect target is BUSINESS_WEB_URL, and the App Store target
-//       is gated behind `platform === 'ios'` (no everyone → App Store; no reversed
-//       mapping that would strand Android/desktop owners).
+//   (e) the route RENDERS the choice: no `redirect(`, real <a> anchors, both
+//       install + web destinations referenced, and it branches on `canInstall`
+//       (desktop gets no dead install button).
 //
 // Comment-stripped (mirrors the ORCH-1326 strict-grep guard) so the informative
-// header comment naming apps.apple.com / QR never trips the ABSENCE assertions.
+// header comment naming apps.apple.com / QR / PLAY_STORE_URL never trips the
+// ABSENCE assertions.
 //
 // Run from mingla-marketing/ via the repo tsc+node pattern:
 //   npx tsc app/business/download/__tests__/business-download-route.tester.test.ts \
@@ -48,19 +58,31 @@ const cases: ReadonlyArray<[string, () => void]> = [
   ],
   // ── (b) SSOT — no hardcoded store/web literals ──────────────────────────────
   [
-    'the route hardcodes NO apps.apple.com / business.usemingla.com literal (consts only)',
+    'the route hardcodes NO store/web literal and delegates to the shared helper',
     () => {
-      assert(!/apps\.apple\.com/.test(src), 'route inlines a literal App Store URL (use BUSINESS_APP_STORE_URL)')
-      assert(!/business\.usemingla\.com/.test(src), 'route inlines the literal business web URL (use BUSINESS_WEB_URL)')
-      assert(/BUSINESS_APP_STORE_URL/.test(src), 'route does not reference BUSINESS_APP_STORE_URL')
-      assert(/BUSINESS_WEB_URL/.test(src), 'route does not reference BUSINESS_WEB_URL')
+      assert(!/apps\.apple\.com/.test(src), 'route inlines a literal App Store URL (must come from the shared helper)')
+      assert(!/business\.usemingla\.com/.test(src), 'route inlines the literal business web URL (must come from the shared helper)')
+      assert(!/play\.google\.com/.test(src), 'route inlines a literal Play URL (must come from the shared helper)')
+      // ORCH-1381: the BUSINESS_* consts moved behind lib/business-app-target.
+      // Requiring them HERE would re-create the 5-call-site triplication that let
+      // one store going live leave four surfaces stale.
+      assert(
+        /resolveBusinessAppTarget/.test(src),
+        'route does not resolve via resolveBusinessAppTarget (the ONE decision module)',
+      )
     },
   ],
-  // ── (c) NO Play listing (business Android → web) ────────────────────────────
+  // ── (c) never the CONSUMER Play const (owners must not get the consumer app) ─
   [
-    'the route references NO PLAY_STORE_URL (business Android → the web app)',
+    'the route references NO bare consumer PLAY_STORE_URL (the business package is a different app)',
     () => {
-      assert(!/PLAY_STORE_URL/.test(src), 'route references PLAY_STORE_URL (business Android must go to the web app, not Play)')
+      // Word-anchored: BUSINESS_PLAY_STORE_URL is CORRECT and must not trip this.
+      // (The pre-ORCH-1381 gate used an unanchored /PLAY_STORE_URL/ here and in CI,
+      // which substring-matched the business const and failed the PR.)
+      assert(
+        !/\bPLAY_STORE_URL\b/.test(src),
+        'route references the CONSUMER PLAY_STORE_URL — business Android must go to the BUSINESS Play listing (com.sethogieva.minglabusiness), not the consumer app',
+      )
     },
   ],
   // ── (d) SSR-safe (no client globals) ────────────────────────────────────────
@@ -71,21 +93,50 @@ const cases: ReadonlyArray<[string, () => void]> = [
       assert(!/\bwindow\b/.test(src), 'route reads `window` (SSR-unsafe)')
     },
   ],
-  // ── (e) correct device mapping (non-iOS → BUSINESS_WEB_URL) ──────────────────
+  // ── (e) the route RENDERS the choice — it no longer redirects ────────────────
   [
-    'non-iOS lands on BUSINESS_WEB_URL; the App Store is gated behind platform === ios',
+    'the route renders an inline choice (no redirect) with both destinations + canInstall',
     () => {
       assert(
-        /platform === 'ios'\)\s*redirect\(BUSINESS_APP_STORE_URL\)/.test(src),
-        'the App Store redirect is not gated behind `platform === ios`',
+        !/redirect\(/.test(src),
+        'route still calls redirect( — ORCH-1381 replaced the 307 with an inline choice; an auto-redirect denies the choice (and on iOS would strand invite-email arrivals straight into the App Store)',
+      )
+      assert(/<a[\s>]/.test(src), 'route renders no <a> anchor — the choice must be plain anchors (no client JS)')
+      assert(
+        /target\.installHref/.test(src),
+        'route never references target.installHref — the Download action is missing',
       )
       assert(
-        /redirect\(BUSINESS_WEB_URL\)/.test(src),
-        'the route has no `redirect(BUSINESS_WEB_URL)` (non-iOS default destination)',
+        /target\.webHref/.test(src),
+        'route never references target.webHref — the Use-on-web action is missing',
       )
       assert(
-        !/platform === 'ios'\)\s*redirect\(BUSINESS_WEB_URL\)/.test(src),
-        'REVERSED mapping — iOS would go to the web app instead of the App Store',
+        /canInstall/.test(src),
+        'route does not branch on canInstall — desktop would get a dead install button',
+      )
+    },
+  ],
+  // ── (f) the note is the shared, code-verified constant ──────────────────────
+  [
+    'the note comes from BUSINESS_APP_CHOICE_COPY (a claim, not decoration)',
+    () => {
+      assert(
+        /BUSINESS_APP_CHOICE_COPY/.test(src),
+        'route hand-writes its labels/note instead of using BUSINESS_APP_CHOICE_COPY — that is how a code-verified claim silently becomes an invented one',
+      )
+    },
+  ],
+  // ── (g) no dead OneLink / consumer-owned domain ─────────────────────────────
+  [
+    'the route routes through NO dead or consumer-owned OneLink',
+    () => {
+      assert(
+        !/minglabiz\.onelink\.me/.test(src),
+        'route references minglabiz.onelink.me — DEAD on Android (AppsFlyer Pending, COMMS-0101)',
+      )
+      assert(
+        !/go\.usemingla\.com/.test(src),
+        'route references go.usemingla.com — consumer-owned (ORCH-1346: 1 domain = 1 template)',
       )
     },
   ],
