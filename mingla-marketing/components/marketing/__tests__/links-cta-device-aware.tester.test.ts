@@ -16,22 +16,32 @@
 //       PLAY_STORE_URL` and NOT reversed (Android must land on Play).
 //   (e) Desktop-Explorer still reaches the QR: the handler opens `tab.cta.href`
 //       (the /download QR page is preserved).
-//   (f) the window.location.assign( popup-block fallback exists (no silent failure).
+//   (f) RE-POINTED BY ORCH-1381 ADDENDUM D-B: this used to require the TOKENS
+//       `window.open(` + `window.location.assign(` in this component. §5.3 moved
+//       both into lib/open-external.ts (the ONE owner), so the greps went red
+//       against correct code. The no-silent-failure guarantee now guards the real
+//       path: the component must DELEGATE to openExternal( and must NOT inline
+//       window.open(, and openExternal is DRIVEN against a fake Window to prove a
+//       blocked popup still navigates and a successful open does not double-nav.
 //   (g) the CTA is keyboard-activatable: a <button type="button"> (native
 //       Enter/Space) — NOT a role="button" div.
 //
 // Comment-stripped (mirrors the ORCH-1328 strict-grep guard) so the informative
-// code comments that legitimately NAME the removed <Link>/soft-nav route never
-// trip the ABSENCE assertions.
+// code comments that legitimately NAME the removed <Link>/soft-nav route — and
+// window.open itself — never trip the ABSENCE assertions.
 //
-// Run from mingla-marketing/ via the repo tsc+node pattern:
+// Run from mingla-marketing/ (the openExternal import roots the emit at the
+// package, so the runnable JS lands under components/marketing/__tests__/):
 //   npx tsc components/marketing/__tests__/links-cta-device-aware.tester.test.ts \
 //     --outDir /tmp/o --module commonjs --target es2020 --moduleResolution node \
-//     && node /tmp/o/links-cta-device-aware.tester.test.js
+//     --skipLibCheck \
+//     && node /tmp/o/components/marketing/__tests__/links-cta-device-aware.tester.test.js
 // ---------------------------------------------------------------
 
 import * as fs from 'node:fs'
 import * as path from 'node:path'
+
+import { openExternal } from '../../../lib/open-external'
 
 const CTA = path.resolve(
   process.cwd(),
@@ -45,6 +55,66 @@ const src = stripComments(fs.readFileSync(CTA, 'utf8'))
 
 function assert(cond: boolean, msg: string): void {
   if (!cond) throw new Error(msg)
+}
+
+// ── behavioural harness for the delegated open+fallback (case f) ─────────────
+// The fake Window models the browser-verified HTML rule (ORCH-1381 ADDENDUM §4.2,
+// Chromium): a feature string containing noopener OR noreferrer makes open()
+// return null EVEN ON SUCCESS. That null is what made the "popup-blocked fallback"
+// fire on every tap. Modelling it is what lets this catch the half-fix that drops
+// only 'noopener' and keeps 'noreferrer' (which alone also returns null — C-4).
+const DEST = 'https://play.google.com/store/apps/details?id=com.sethogieva.minglabusiness'
+
+interface DriveResult {
+  opened: number
+  assigned: string[]
+  features: string
+}
+
+function driveOpenExternal({ popupBlocked }: { popupBlocked: boolean }): DriveResult {
+  const opened: string[] = []
+  const assigned: string[] = []
+  let features = ''
+  const w = {
+    open(url: string, _target?: string, f = ''): unknown {
+      opened.push(url)
+      features = f
+      if (popupBlocked) return null
+      if (/\bnoopener\b|\bnoreferrer\b/.test(f)) return null
+      return { opener: {} as unknown }
+    },
+    location: {
+      assign: (u: string): void => {
+        assigned.push(u)
+      },
+    },
+  }
+  openExternal(DEST, w as unknown as Window)
+  return { opened: opened.length, assigned, features }
+}
+
+/**
+ * The behavioural half of the re-pointed (f) guard: the tap this component
+ * delegates cannot fail silently, and cannot double-navigate.
+ */
+function assertDelegatedTapIsStillGuarded(): void {
+  // NO SILENT FAILURE / NO DEAD TAP — what the old assign( grep protected.
+  const blocked = driveOpenExternal({ popupBlocked: true })
+  assert(
+    blocked.assigned.length === 1 && blocked.assigned[0] === DEST,
+    `openExternal does not fall back when the popup is genuinely blocked ` +
+      `(assigned=${JSON.stringify(blocked.assigned)}) — the tap SILENTLY does nothing. ` +
+      `The fallback moved to lib/open-external.ts; the requirement did not.`,
+  )
+  // NO DOUBLE-NAV — ORCH-1328's own "/links stays mounted" contract.
+  const ok = driveOpenExternal({ popupBlocked: false })
+  assert(ok.opened === 1, `expected exactly 1 window.open call, got ${ok.opened}`)
+  assert(
+    ok.assigned.length === 0,
+    `DOUBLE NAVIGATION — a successful open ALSO navigated the current tab to ` +
+      `"${ok.assigned[0]}" (features="${ok.features}"), so /links does NOT stay mounted — ` +
+      `this gate's own invariant, violated by the code it used to pass (ADDENDUM D-B).`,
+  )
 }
 
 const cases: ReadonlyArray<[string, () => void]> = [
@@ -118,12 +188,40 @@ const cases: ReadonlyArray<[string, () => void]> = [
       )
     },
   ],
-  // ── (f) popup-block fallback present ────────────────────────────────────────
+  // ── (f) the tap is delegated, and the delegate cannot fail silently ─────────
+  // RE-POINTED by ORCH-1381 ADDENDUM D-B. [TEST-MOD-APPROVED ORCH-1381]
+  // WAS: assert(/window\.open\(/.test(src)) + assert(/window\.location\.assign\(/.test(src)).
+  // §5.3 relocated both tokens into lib/open-external.ts, so these greps went red
+  // against a CORRECT implementation — they pinned WHERE the code lived, not WHAT
+  // it did. The no-silent-failure guarantee is unchanged and still guarded, now
+  // where the behaviour actually lives:
+  //   Link 1  this component delegates and does NOT hand-roll the open (an inlined
+  //           window.open( is precisely the shipped bug — banned, matching this
+  //           ORCH's own CI gate orch-1328-links-cta-opens-store-clientside.mjs).
+  //   Link 2  openExternal is DRIVEN against a fake Window, not grepped.
+  // Fails both ways: delete the fallback in lib/open-external.ts → Link 2 red;
+  // inline window.open( back here → Link 1 red.
   [
-    'the window.location.assign( popup-block fallback exists (no silent failure)',
+    'the tap is delegated to openExternal, which cannot dead-tap or double-navigate',
     () => {
-      assert(/window\.open\(/.test(src), 'no window.open( — the store is not opened on the gesture')
-      assert(/window\.location\.assign\(/.test(src), 'missing the window.location.assign( popup-block fallback')
+      // Link 1 — delegation only; no inlined open/fallback on this surface.
+      assert(
+        /openExternal\(/.test(src),
+        'no openExternal( — the store is not opened on the gesture through the ONE owner ' +
+          'of the open+popup-block decision (lib/open-external)',
+      )
+      assert(
+        !/window\.open\(/.test(src),
+        'inlines window.open( instead of delegating to openExternal( — the inlined pattern ' +
+          'carried a noopener/noreferrer feature string and double-navigated on every tap ' +
+          '(ORCH-1381 ADDENDUM D-B)',
+      )
+      assert(
+        !/\.location\.assign\(/.test(src),
+        'inlines a .location.assign( fallback instead of delegating to openExternal(',
+      )
+      // Link 2 — the delegated behaviour itself.
+      assertDelegatedTapIsStillGuarded()
     },
   ],
   // ── (g) keyboard-activatable native button ──────────────────────────────────

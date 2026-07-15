@@ -13,25 +13,39 @@
 // present the inline CHOICE: each delegates to resolveBusinessAppTarget() via
 // detectClientPlatform(), renders BUSINESS_APP_CHOICE_COPY, fires
 // get_the_app_clicked { surface:'organiser' } with the right `location` AND both
-// `action: 'download'` / `action: 'use_web'`, and carries the
-// window.location.assign popup fallback.
+// `action: 'download'` / `action: 'use_web'`, and routes the tap through
+// openExternal( so a blocked popup can never be a dead tap.
 //
 // The marketing package has NO jest/vitest runner wired — this is a SOURCE-level
-// pin run via the repo's tsc+node pattern (mirrors lib/device-platform.test.ts).
-// Run from mingla-marketing/:
+// pin run via the repo's tsc+node pattern (mirrors lib/device-platform.test.ts),
+// EXCEPT the two openExternal fallback cases, which are genuinely behavioural:
+// they drive the imported helper against a fake Window (it is React-free and takes
+// an injectable window precisely so this is possible with no DOM test infra).
+//
+// Comment-stripped ONLY for the absence assertions (`navNoComments` /
+// `heroNoComments`) — both components' docblocks legitimately NAME window.open, so
+// a raw-source absence check would trip on prose.
+//
+// Run from mingla-marketing/ (the openExternal import roots the emit at the
+// package, so the runnable JS lands under components/marketing/__tests__/):
 //   npx tsc components/marketing/__tests__/business-getapp-cta.test.ts \
 //     --outDir /tmp/o --module commonjs --target es2020 --moduleResolution node \
-//     && node /tmp/o/business-getapp-cta.test.js
+//     --skipLibCheck \
+//     && node /tmp/o/components/marketing/__tests__/business-getapp-cta.test.js
 //
 // Fails-on-revert: reverting either CTA to the ORCH-1324 single-action ternary
 // removes the helper call + BUSINESS_APP_CHOICE_COPY + the action discriminators
-// and re-introduces the banned ternary, so those assertions throw. (The RUNTIME
-// guard for the decision itself is lib/__tests__/business-app-target.test.ts T-1 —
-// this file is a source-level pin on the wiring.)
+// and re-introduces the banned ternary, so those assertions throw. Deleting the
+// popup-block fallback inside lib/open-external.ts turns the two behavioural cases
+// red. (The RUNTIME guard for the decision itself is
+// lib/__tests__/business-app-target.test.ts T-1 — this file pins the wiring plus
+// the delegated open behaviour.)
 // ---------------------------------------------------------------
 
 import * as fs from 'node:fs'
 import * as path from 'node:path'
+
+import { openExternal } from '../../../lib/open-external'
 
 const NAV = path.resolve(process.cwd(), 'components/marketing/glass-nav.tsx')
 const HERO = path.resolve(
@@ -41,6 +55,14 @@ const HERO = path.resolve(
 
 const nav = fs.readFileSync(NAV, 'utf8')
 const hero = fs.readFileSync(HERO, 'utf8')
+
+const stripComments = (s: string): string =>
+  s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
+
+// Absence assertions read THESE, never the raw source — both components' docblocks
+// name window.open in prose, which would trip a raw-source absence check.
+const navNoComments = stripComments(nav)
+const heroNoComments = stripComments(hero)
 
 // The business handler bodies in glass-nav, scoped so we never match the EXPLORER
 // handler (which also fires get_the_app_clicked / location:'nav'). ORCH-1381 split
@@ -55,14 +77,81 @@ const scopeHandler = (src: string, name: string): string => {
 
 const navDownloadHandler = scopeHandler(nav, 'handleDownloadTheBusinessApp')
 const navWebHandler = scopeHandler(nav, 'handleUseBusinessOnWeb')
-// The shared open+popup-fallback helper both business actions route through.
-const navOpenHelper = scopeHandler(nav, 'openBusinessDest')
 // Both business handlers together — for file-scoped business assertions that must
 // not see the explorer handler.
 const navHandler = navDownloadHandler + '\n' + navWebHandler
 
 function assert(cond: boolean, msg: string): void {
   if (!cond) throw new Error(msg)
+}
+
+// ── behavioural harness for the delegated open+fallback ──────────────────────
+// The nav's local `openBusinessDest` helper NO LONGER EXISTS: ORCH-1381 ADDENDUM
+// D-B replaced it (and the three other copy-pasted twins) with the single
+// lib/open-external.ts owner, because every one of those local copies carried the
+// same double-navigation bug. The assertions that pinned `openBusinessDest` are
+// therefore re-pointed at openExternal — the real delegate — and, crucially, they
+// now DRIVE it rather than grep it.
+//
+// The fake Window models the browser-verified HTML rule (ADDENDUM §4.2, Chromium):
+// a feature string containing noopener OR noreferrer makes open() return null EVEN
+// ON SUCCESS. That null is what made the "popup-blocked fallback" fire on every
+// tap. Modelling it is what lets this catch the half-fix that drops only 'noopener'
+// and keeps 'noreferrer' (which alone also returns null — ADDENDUM C-4).
+const DEST = 'https://play.google.com/store/apps/details?id=com.sethogieva.minglabusiness'
+
+interface DriveResult {
+  opened: number
+  assigned: string[]
+  features: string
+}
+
+function driveOpenExternal({ popupBlocked }: { popupBlocked: boolean }): DriveResult {
+  const opened: string[] = []
+  const assigned: string[] = []
+  let features = ''
+  const w = {
+    open(url: string, _target?: string, f = ''): unknown {
+      opened.push(url)
+      features = f
+      if (popupBlocked) return null
+      if (/\bnoopener\b|\bnoreferrer\b/.test(f)) return null
+      return { opener: {} as unknown }
+    },
+    location: {
+      assign: (u: string): void => {
+        assigned.push(u)
+      },
+    },
+  }
+  openExternal(DEST, w as unknown as Window)
+  return { opened: opened.length, assigned, features }
+}
+
+/**
+ * The behavioural half of the re-pointed fallback guards: the tap these business
+ * CTAs delegate cannot become a dead tap, and cannot double-navigate.
+ */
+function assertDelegatedTapIsStillGuarded(): void {
+  // NO DEAD TAP (Constitution #1) — precisely what the old
+  // `window.location.assign(` presence greps existed to protect.
+  const blocked = driveOpenExternal({ popupBlocked: true })
+  assert(
+    blocked.assigned.length === 1 && blocked.assigned[0] === DEST,
+    `openExternal does not fall back when the popup is genuinely blocked ` +
+      `(assigned=${JSON.stringify(blocked.assigned)}) — the business CTA would be a DEAD TAP. ` +
+      `The fallback moved into lib/open-external.ts; the requirement did not move with it.`,
+  )
+  // NO DOUBLE-NAV — a successful open must not also destroy the marketing page.
+  const ok = driveOpenExternal({ popupBlocked: false })
+  assert(ok.opened === 1, `expected exactly 1 window.open call, got ${ok.opened}`)
+  assert(
+    ok.assigned.length === 0,
+    `DOUBLE NAVIGATION — a successful open ALSO navigated the current tab to ` +
+      `"${ok.assigned[0]}" (features="${ok.features}"). A noopener/noreferrer feature ` +
+      `string makes open() return null even on success, firing the fallback ` +
+      `unconditionally (ORCH-1381 ADDENDUM D-B).`,
+  )
 }
 
 const cases: ReadonlyArray<[string, () => void]> = [
@@ -116,29 +205,48 @@ const cases: ReadonlyArray<[string, () => void]> = [
       assert(/action: 'use_web'/.test(navWebHandler), "nav web handler missing action: 'use_web'")
     },
   ],
+  // ── RE-POINTED by ORCH-1381 ADDENDUM D-B. [TEST-MOD-APPROVED ORCH-1381] ──────
+  // WAS: both handlers must call `openBusinessDest(`, and that LOCAL helper must
+  // carry `window.open(` + `window.location.assign(`. openBusinessDest no longer
+  // exists — it was one of four copy-pasted twins, every one of which carried the
+  // double-navigation bug, and D-B replaced them all with lib/open-external.ts.
+  // The old assertions pinned WHERE the code lived, so they went red against the
+  // CORRECT implementation.
+  //
+  // The guarantee — neither business action can dead-tap on a blocked popup — is
+  // unchanged and still guarded, as the chain it actually is:
+  //   Link 1  BOTH handlers route through openExternal(, and the nav hand-rolls
+  //           neither window.open( nor .location.assign( (re-inlining the helper is
+  //           how this bug reached four surfaces in the first place).
+  //   Link 2  openExternal is DRIVEN against a fake Window, not grepped.
+  // Fails both ways: delete the fallback in lib/open-external.ts → Link 2 red;
+  // drop either handler's delegation or inline window.open( → Link 1 red.
   [
-    'nav: both business actions navigate through the popup-blocked fallback',
+    'nav: both business actions navigate through openExternal — neither can dead-tap',
     () => {
-      // The nav factors the open+fallback into a shared `openBusinessDest` helper,
-      // so assert the REAL path: both handlers route through it, and it carries
-      // window.open + the window.location.assign fallback (no dead tap on either
-      // action when a popup is blocked).
+      // Link 1 — both handlers delegate to the ONE owner.
       assert(
-        /openBusinessDest\(/.test(navDownloadHandler),
-        'nav download handler does not navigate via openBusinessDest',
+        /openExternal\(/.test(navDownloadHandler),
+        'nav download handler does not navigate via openExternal( from lib/open-external — ' +
+          'a blocked popup on the Download action would be a dead tap',
       )
       assert(
-        /openBusinessDest\(/.test(navWebHandler),
-        'nav web handler does not navigate via openBusinessDest',
+        /openExternal\(/.test(navWebHandler),
+        'nav web handler does not navigate via openExternal( from lib/open-external — ' +
+          'a blocked popup on the Use-on-web action would be a dead tap',
       )
       assert(
-        /window\.open\(/.test(navOpenHelper),
-        'nav openBusinessDest does not open via window.open(',
+        !/window\.open\(/.test(navNoComments),
+        'nav inlines window.open( instead of delegating to openExternal( — the inlined ' +
+          'twin is exactly what carried the double-navigation bug (ORCH-1381 ADDENDUM D-B)',
       )
       assert(
-        /window\.location\.assign\(/.test(navOpenHelper),
-        'nav openBusinessDest missing the window.location.assign popup-blocked fallback (a blocked popup would be a dead tap)',
+        !/\.location\.assign\(/.test(navNoComments),
+        'nav inlines a .location.assign( fallback instead of delegating to openExternal( — ' +
+          'the popup-block decision must live in exactly ONE module',
       )
+      // Link 2 — the delegated behaviour itself.
+      assertDelegatedTapIsStillGuarded()
     },
   ],
   [
@@ -201,13 +309,31 @@ const cases: ReadonlyArray<[string, () => void]> = [
       assert(/action: 'use_web'/.test(hero), "hero missing action: 'use_web'")
     },
   ],
+  // ── RE-POINTED by ORCH-1381 ADDENDUM D-B. [TEST-MOD-APPROVED ORCH-1381] ──────
+  // WAS: assert(/window\.location\.assign\(/.test(hero)). §5.3 moved the fallback
+  // into lib/open-external.ts, so the grep went red against correct code — it
+  // asserted WHERE the fallback lived, not that a blocked popup still navigates.
+  // Same two-link chain as the nav case above; both directions covered.
   [
-    'hero: has the window.location.assign popup fallback',
+    'hero: delegates the tap to openExternal — a blocked popup is never a dead tap',
     () => {
+      // Link 1 — delegation, and no hand-rolled open on this surface.
       assert(
-        /window\.location\.assign\(/.test(hero),
-        'hero missing window.location.assign popup fallback',
+        /openExternal\(/.test(hero),
+        'hero does not navigate via openExternal( from lib/open-external — the tap must ' +
+          'route through the ONE owner of the open+popup-block decision',
       )
+      assert(
+        !/window\.open\(/.test(heroNoComments),
+        'hero inlines window.open( instead of delegating to openExternal( — hero.tsx was ' +
+          'the 4th call site carrying this exact bug (ORCH-1381 ADDENDUM D-B)',
+      )
+      assert(
+        !/\.location\.assign\(/.test(heroNoComments),
+        'hero inlines a .location.assign( fallback instead of delegating to openExternal(',
+      )
+      // Link 2 — the delegated behaviour itself.
+      assertDelegatedTapIsStillGuarded()
     },
   ],
   [
