@@ -212,6 +212,142 @@ This amendment **generalizes** #862's `meta_*` schema + `_shared/meta.ts` + `adm
 
 ---
 
+## Amendment A4 — battle-test corrections (2026-07-15, evidence-backed)
+
+**Sources (all local to `Mingla_Artifacts/research/ad-pipeline-2026-07-15/`):** `GAP_REGISTER.md` (74 gaps, §4 spec-correction tables), `PROOF_LOG.md` (live probes with the **engine's own credentials**, 2026-07-15 session — proof-grade, **overrides the gap register wherever they conflict**), `PIPELINE_BLUEPRINT.md` (§1.0 preflight, §3.5 objective→goal matrix, §4.12/§4.13 interface widening). Evidence keys: `GR-nn` = gap-register row · `M-n`/`R-n`/`G-n` = §4 correction-table rows · `M-Pn`/`T-Pn`/`S-Pn`/`G-Pn`/`R-Pn`/`D-P1` = PROOF_LOG probe ids.
+
+**A4 supersedes conflicting text in A1–A3 and the body below; it does not rewrite them.** The same conductor-fixed canonical decision block is being encoded into every sibling spec amendment filed 2026-07-15 — this A4 is its expression for #862/A3. Unchanged and reaffirmed as canon: the platform enum `('meta','tiktok','snapchat','google','reddit')` and A3 §F naming (`ad_status_events`, `admin-ad-*`, `external_campaign_id`/`external_adset_id`/`external_ad_id`).
+
+### A4.a — `ChannelAdapter` widening (this IS the A4 interface — the ONE coordinated change all five adapters build against)
+
+Supersedes A3 §B's interface as written. Final shape:
+
+```
+type Platform = 'meta' | 'tiktok' | 'snapchat' | 'google' | 'reddit';
+
+interface ChannelAdapter {
+  platform: Platform;
+  connect(conn): AuthedClient;                       // unchanged (fail-CLOSE on missing secret)
+
+  createCampaign(conn, input): { externalId, status };
+  createAdSet(conn, campaignExternalId, input): { externalId };
+
+  // NEW — OPTIONAL creative step (GR-17: three of five channels have nowhere to put
+  // their creative step in A3's shape; GR-10: Reddit's ad points at a post, not media):
+  createCreative?(conn, input): { externalCreativeId?, postId?, profileId? };
+  //   meta     → AdCreative        (POST /act_{id}/adcreatives)                → externalCreativeId
+  //   snapchat → Media → Creative  (upload bytes, poll media READY, create)    → externalCreativeId
+  //   google   → assets via assets:mutate (linked at ad-create)                → externalCreativeId (asset resource)
+  //   reddit   → structured-post job (POST /profiles/{t2_}/structured_posts/jobs
+  //              → poll QUEUED/PROCESSING → SUCCESS|CLIENT_ERROR|SERVER_ERROR,
+  //              bounded backoff; CLIENT_ERROR ⇒ new job, not a retry)          → { postId: t3_…, profileId: t2_… }
+  //   tiktok   → NO-OP (creative is inline in ad create)
+  // The Reddit poll makes the create long-running and non-atomic — it sits inside the
+  // §4.4b compensating-rollback envelope; Reddit rollback = PATCH configured_status:"DELETED"
+  // (no DELETE verb exists — R-5).
+
+  createAd(conn, adSetExternalId, input): { externalId, reviewStatus };
+  setStatus(conn, level, externalId, status): void;
+  getStatus(conn, level, externalId): status;
+
+  // NEW — folds in #884's coordinated change (BLUEPRINT §4.12); the Brain's reallocation
+  // loop needs a budget mutator. `cents` is the at-rest unit; conversion below.
+  setBudget(conn, level, externalId, cents): void;
+}
+```
+
+**Create-ad input widening (GR-15):** the create input gains `headlines[]`, `descriptions[]`, `keywords[]`, `negative_keywords[]`. Google RSA requires **3–15 headlines × ≤30 chars and 2–4 descriptions × ≤90** (GAP §4 G-4); a SEARCH campaign without keywords cannot meaningfully serve. **PMax is explicitly DEFERRED — MVP = Google SEARCH + RSA only** (PMax has no ad groups/ads and requires a single bulk `googleAds:mutate` with temp IDs — not expressible as sequential `createX` calls; BLUEPRINT §4.13). This decision is recorded here because #864 currently advertises "Google = Search / Display" — superseded.
+
+**Budgets — cents at rest, one conversion point per adapter (GR-01, the 10,000× money bug):** the at-rest column is **`budget_cents bigint`** (widens A3 §A's `integer`; applies to `ad_campaigns.daily_budget_cents` and `ad_sets.budget_cents`). Conversion happens at **exactly one place per adapter**: Meta cents→cents (identity) · TikTok cents ÷ 100 → dollars · Snapchat/Google/Reddit cents × 10,000 → micro. **Minimum-budget checks run in the platform unit AFTER conversion.** Mandatory unit test: **$5.00 → 5,000,000 micro** and **$20.00 → 20,000,000 micro**.
+
+**Targeting passthrough (GR-31 / R-8):** `ad_sets.targeting` gains a per-platform **`passthrough` jsonb**. Reddit's goes here: `communities[]`, `excluded_communities[]`, `view_modes[]`, `locations[]`. **Reddit has NO age field** — the normalized `age_min`/`age_max` apply to Meta/TikTok/Snapchat/Google **only**; Reddit's `targeting` object is `additionalProperties: false`, so any unknown key (including an age field) is an outright **400**.
+
+**CTA maps are per-platform — never a shared normalizer (GR-29):** Reddit's CTA enum is **Title-Case display strings** (`"Buy Tickets"`, `"Book Now"`, `"See Menu"`), unlike every other channel. **Mandatory unit test: the Reddit CTA is never uppercased.**
+
+**PAUSED invariant (GR-11 / R-7):** everything is created **PAUSED explicitly at every level on every channel** — never rely on a platform default. Reddit's schema default is `ACTIVE`, so the adapter always sends `configured_status: "PAUSED"` at campaign, ad-group and ad level, guarded by a **strict-grep CI gate** (house pattern) asserting `_shared/reddit.ts` never constructs a create body without an explicit `configured_status`.
+
+**Versions:** `META_API_VERSION=v25.0` (M-1) · `GOOGLE_ADS_API_VERSION=v24` — **v25 does not exist**; current is v24.x (GAP §4 G-1 / GR-44).
+
+### A4.b — Meta field corrections M-1…M-13 (old → new → evidence)
+
+| # | Location | Old (body/A2) | New (canonical) | Evidence |
+|---|---|---|---|---|
+| **M-1** | `META_API_VERSION` | `v21.0` (A2, §7.6) | **`v25.0`** (shipped 2026-02-18; `7d_view`/`28d_view` attribution windows already dropped 2026-01-12) | GAP §4 M-1 / GR-43; v25 changelog |
+| **M-2** | `optimization_goal` enum | the 19 values from `ads_get_field_context` (§4.0) | the create contract accepts **26** (adds `ENGAGED_PAGE_VIEWS`, `MESSAGING_PURCHASE_CONVERSION`, `MEANINGFUL_CALL_ATTEMPT`, `IN_APP_VALUE`, `PROFILE_VISIT`, `PROFILE_AND_PAGE_ENGAGEMENT`, `VIDEO_VIEWS`; several account-gated). **Validate off the objective→goal matrix (BLUEPRINT §3.5), not a flat list** | GAP §4 M-2; `ads_create_ad_set` schema |
+| **M-3** | objective→goal validation | absent (relies on Meta server-side auto-correct) | an invalid goal is **silently auto-corrected** to the recommended default — a silent-wrong-config hazard; validate client-side against the §3.5 matrix | GAP §4 M-3 |
+| **M-4** | `special_ad_categories` | `CREDIT` implicitly valid | **`CREDIT` RETIRED 2025-01-14 → `FINANCIAL_PRODUCTS_SERVICES`**; there is no `ONLINE_GAMBLING_AND_GAMING` category (see A4.g) | GAP §4 M-4 / GR-56 |
+| **M-5** | Lookalike ratio | 1%–10% assumed | **1%–20%** (`0.01`–`0.20`, `0.01` steps); min seed ≥100; geography automatic | GAP §4 M-5 |
+| **M-6** | Pacing | "2× daily budget" | **175%** of daily, averaged over a **calendar week (Sun–Sat)**, **7×** hard ceiling | GAP §4 M-6; help/190490051321426 |
+| **M-7** | Text limits | per-placement figures treated as hard | only official hard maxes: **primary/body 1024, headline/description 255**; per-placement figures (125/40/27…) are "recommended for full display" → **warn, never reject** | GAP §4 M-7 |
+| **M-8** | `frequency_control_specs` | ungated | writable **ONLY on REACH/THRUPLAY** ad sets — 400s on our LINK_CLICKS/LPV sets | GAP §4 M-8 |
+| **M-9** | Min budget | flat `100`¢ (A2/§4.2, AC-3) | **per-optimization-category** via `GET /act_{id}/minimum_budgets` — see A4.g for the live values | GAP §4 M-9 / GR-41; **PROOF M-P8** |
+| **M-10** | Creative body | image-only `link_data` | needs a **`video_data` branch** — see A4.g | GAP §4 M-10 / GR-57 |
+| **M-11** | CTA map | `GET_TICKETS → BUY_TICKETS` | **correct — keep** (`GET_TICKETS` is not a real enum value) | GAP §4 M-11 |
+| **M-12** | Reels duration | 60s/90s caps assumed | **IG Reels = 15 min; FB Reels = no maximum** — do not hardcode 60/90 | GAP §4 M-12 |
+| **M-13** | **campaign create — NEW REQUIRED FIELD** | absent from every spec | v25 campaign create **REQUIRES `is_adset_budget_sharing_enabled`** when not using CBO (subcode 4834011) — **send explicit `false` unless CBO**. Proven by validate-only: first run failed on the missing field; with it, `{"success":true}` and nothing created | **PROOF M-P5 [VALIDATE-ONLY]** |
+
+> **Sibling correction G-14 (Google), recorded here because it was proven in the same validate-only session:** Google v24 campaign create **REQUIRES `contains_eu_political_advertising`** (send `DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING`) — a required field in no spec; without it the mutate fails, with it the full SEARCH+RSA chain validates clean (**PROOF G-P3 [VALIDATE-ONLY]**).
+
+### A4.c — §D registry re-baseline (per PROOF_LOG channel scoreboard; supersedes A3 §D statuses and IDs)
+
+| platform / lane | Status (2026-07-15, proof-grade) | Evidence + registry-row corrections |
+|---|---|---|
+| **meta / consumer** | **GREEN — validation-complete** | Token authenticates (M-P1); account **ACTIVE + payment method** (M-P2 — GR-03 is STALE); campaign shape validates with M-13 (M-P5); creative with our `page_id` validates after the app was flipped to **Live** (M-P6, B6 resolved); exactly one canonical pixel (M-P11). **IG account NOT linked to Page `797406353459597`** (M-P10) → **Facebook-only until a human links IG** (see A4.e). |
+| **tiktok / consumer** | **AMBER** | Token LIVE, app approved 2026-07-15 (T-P1 — A3's "app in review" and GR-04 are STALE). Remaining gates: **balance $0 vs the $20/day ad-group floor** (T-P3); **GB ABSENT from `tool_region_get`** for TRAFFIC and APP_PROMOTION — London untargetable, US/NG/CA viable (T-P2); pixel zero events (T-P4); identity `@usemingla` TT_USER AVAILABLE (T-P5). |
+| **snapchat / consumer** | **AMBER-GREEN** | Mint works, `expires_in: 3600`, both scopes (S-P1); account ACTIVE (S-P2); funding servable, $15k/day limit (S-P3); pixel ACTIVE (S-P5). **Public Profile = trusted config `SNAPCHAT_PROFILE_ID`** — the profile lookup **403s on our token class** (S-P4), so it is config-trusted, verified at first creative create (Snap has no validate-only). |
+| **google / consumer** | **GREEN** | **BASIC tier approved 2026-07-15** (G-P1 — GR-06's TEST-tier framing is STALE). **Account `3623860476` (ENABLED, `testAccount:false`, USD, billed) REPLACES the dead `5083048929` EVERYWHERE** — including A3 §D's `external_account_id`. London geo constant `1006886` resolved via country-scoped suggest (G-P2); full SEARCH+RSA chain validate-only clean with G-14 (G-P3). |
+| **reddit / consumer** | **GREEN-provisioned** | All captured live: business **`950c8eac-da26-45e6-942e-645ed657e43f`** (R-P2 — replaces A3's truncated `950c8eac…`); ad account **`a2_jcfwvnfcfqcs`** SELF_SERVE, USD, `admin_approval: VALID` (R-P3 — replaces A3's "a2_ id TBD"); profile **`t2_2ikkjswp3a`** (R-P4); funding **`is_servable: true`** after the 2026-07-15 billing fix (R-P5). **Note: the Reddit pixel id == the ad-account id** (`a2_jcfwvnfcfqcs`) — consistent across both pixel endpoints (R-P3). No validate-only exists on Reddit — the first create is the proof. |
+
+### A4.d — A3 Reddit corrections R-1…R-11 (supersede A3's registry line and §A/§B Reddit semantics)
+
+| # | Location | Old (A3/brief) | New (canonical) | Evidence |
+|---|---|---|---|---|
+| **R-1** | A3 §D registry | "a2_ id TBD", GREEN asserted | id can be `t2_` or `a2_` (`pattern: ^(t2|a2)_.*`) — never assume; **now CAPTURED: `a2_jcfwvnfcfqcs`** (see A4.c) | GAP §4 R-1; **PROOF R-P3** |
+| **R-2** | A3 §B token mint | 3600 s implied | **`expires_in` is 3600 OR 86400** ("whichever is listed") — do not hardcode 3600; **ours proven 86400** | GAP §4 R-2; **PROOF R-P1** |
+| **R-3** | A3 §A `ads.review_status` | "Reddit review" | **no such field** — it is **`ad.effective_status`** ∈ `{PENDING_APPROVAL, REJECTED, ACTIVE, PENDING_BILLING_INFO, PENDING_ID_VERIFICATION, PROCESSING, MISSING_PERMISSIONS, INVALID_DATA_SOURCE, …}` + **`rejection_reason`** (100+ enum) | GAP §4 R-3; OpenAPI spec |
+| **R-4** | A3 §A creative ref | "Reddit media id" via `resolveCreativeRef` | **there is no media id on a Reddit ad** — the ad is `{ad_group_id, post_id: t3_…, profile_id: t2_…}`; the **post must exist first** (async structured-post job, A4.a) | GAP §4 R-4 / GR-10 |
+| **R-5** | A3 §B rollback | "compensating **delete**" | **no DELETE verb exists** for campaign/ad_group/ad → rollback = **`PATCH configured_status: "DELETED"`** | GAP §4 R-5 |
+| **R-6** | objective enum | brief's `BRAND_AWARENESS/REACH/TRAFFIC/…` | real enum: `APP_INSTALLS, CATALOG_SALES, CLICKS, CONVERSIONS, IMPRESSIONS, LEAD_GENERATION, VIDEO_VIEWABLE_IMPRESSIONS` — no REACH/TRAFFIC/BRAND_AWARENESS. **A3's "traffic → CLICKS" mapping is correct — keep** | GAP §4 R-6 |
+| **R-7** | `configured_status` | omitted from create bodies | **`default: ACTIVE`** — omission publishes a **live, spending campaign**; send `"PAUSED"` explicitly at all three levels + strict-grep CI gate (A4.a) | GAP §4 R-7 / GR-11 |
+| **R-8** | A3 normalized targeting | `{countries, age_min, age_max, genders}` | **Reddit has NO age field**; `gender ∈ {FEMALE, MALE, null}`; `targeting` is **`additionalProperties: false`** ⇒ any unknown key is a 400 → use the A4.a `passthrough` | GAP §4 R-8 / GR-31 |
+| **R-9** | coverage | #867 registry omits Reddit (`grep -i reddit` → 0 hits) | Reddit lives **only** in this spec's A3/A4 — its full adapter spec must still be written from scratch | GAP §4 R-9 |
+| **R-10** | carousel | guide says 2–7 creatives | **schema says `minItems: 1, maxItems: 6`** — schema and guide conflict; **trust the schema**, let the API 400 decide (flagged, unresolved by live proof) | GAP §4 R-10 |
+| **R-11** | `profile_username` | listed in the brief | deprecated — "never populated… removed in the next API version" | GAP §4 R-11 |
+
+> **Spec-grade addendum (proven live):** the community-search param is **`query=`, NOT `q=`** — `q=` silently no-ops and returns the popular list (**PROOF R-P6**: `/targeting/communities/search?query=london` → r/london 1.56M, LondonPics, MovingToLondon, LondonTravel…).
+
+### A4.e — Preflight / connect contract (re-based on PROOF_LOG) + targeting extensions
+
+1. **Meta Page check = `GET /me/accounts` contains Page `797406353459597` with an `ADVERTISE` task.** PROVEN sufficient: `promote_pages` is empty (`{"data":[]}`, M-P3) **and creative create with our `page_id` still validates clean** (M-P6). **GR-02's hard-blocker framing and BLUEPRINT §1.0 B1 (keying preflight on `promote_pages` with `424 meta_page_not_assigned`) are both corrected** — preflight keys on `/me/accounts` + ADVERTISE task; fail connect `424 meta_page_not_assigned` only when THAT is absent. Evidence: **PROOF M-P4 + M-P6**.
+2. **NEW connect-time precondition B6 — the Meta developer app must be in Live mode.** A dev-mode app hard-fails creative create with **error 1885183** ("app in development mode") — proven live (first M-P6 run), then proven resolved after the app was flipped to Live 2026-07-15 (M-P6 re-run: `{"success":true}`). Connect performs a validate-only `adcreatives` probe and maps 1885183 → **`424 meta_app_not_live`**. Evidence: **PROOF M-P6 [VALIDATE-ONLY]**.
+3. **Snapchat Public Profile is trusted config** (`SNAPCHAT_PROFILE_ID`): the public-profiles lookup returns **HTTP 403 on our token class** (S-P4), so BLUEPRINT §1.0 P3's Snap check is **NOT buildable** — the profile is config-trusted and verified at the first creative create (accepted residual risk; Snap has no validate-only). Evidence: **PROOF S-P4**.
+4. **Market eligibility comes from live sources, never build-time maps:** TikTok `tool_region_get` live — **GB proven ABSENT** (33 country codes, both TRAFFIC and APP_PROMOTION; US/NG/CA present). Fail loudly on an unavailable country. Evidence: **PROOF T-P2**.
+5. **The `422 pixel_no_signal` gate:** until the pixel fires, Meta `optimization_goal = LINK_CLICKS` (default) and Snap `= SWIPES`; `admin-ad-create-campaign` **rejects `LANDING_PAGE_VIEWS`/`OFFSITE_CONVERSIONS`/`VALUE` with `422 pixel_no_signal`** while `last_fired_time` is epoch-0/null (both browser and server `last_fired_time` are epoch-0 today — **PROOF M-P7**; GR-19/GR-21). This supersedes OD-4's `LANDING_PAGE_VIEWS` recommendation. Goal validity is checked against the objective→goal matrix (BLUEPRINT §3.5), per M-2/M-3.
+6. **City/radius targeting extension (GR-35):** the Meta Targeting Search API is **PROVEN callable with our token** (`GET /search?type=adgeolocation`, **PROOF M-P9**) — §4.0's "not exposed" claim was an MCP artifact (GR-74). Extend `targeting` with `cities[{key, radius, distance_unit}]` (+ the wider GR-35 shape) and add an admin-gated `admin-ad-targeting-search` edge fn proxying `GET /search`. **Hazard (proven):** Meta's own city search sorts **London, Canada (key `294545`) BEFORE London, GB (`812057`)**; Lagos NG = `1630653` (PT Lagos second) — **always disambiguate by `country_code`**, exactly like Google's London problem.
+7. **IG resolution via Graph (GR-34 — reverses OD-8's posture):** resolve via `GET /{page_id}?fields=instagram_business_account` (proven callable — **PROOF M-P10**); the field is **currently absent** (no IG account linked to the Page) → **Facebook-only is the fallback until a human links IG, not the target**. Store the resolved IG user id in `ad_connections.extra` when it appears; IG delivery unlocks Feed/Stories/Reels/Explore.
+
+### A4.f — Destination policy v1 (supersedes A1's "creative `link_url` = `dest_smart_link`")
+
+**PROVEN by PROOF D-P1 [ENGINE-LIVE]:** fetching `go.usemingla.com/w36m` as `facebookexternalhit/1.1` returns a 302 to an **`af-preview` app-install interstitial** (`af_robot_sig`, app-store meta tags only — not the destination page; HEAD → 404), while canonical `usemingla.com` serves 200 to the same UA. **The cloaking-pattern risk (GR-32) is real, not theoretical.** Policy v1, mandatory on all channels:
+
+- The **ad-visible destination is the canonical `https://usemingla.com/e/…` page on ALL channels** — creative `link_url` (Meta), landing URL (TikTok/Snap), `final_urls` (Google), `click_url` (Reddit) all carry `dest_url`, never the OneLink.
+- The **OneLink rides ONLY in Google `tracking_url_template`** (the platform-sanctioned slot). No other channel carries it in v1.
+- **`minglabiz.onelink.me` is NEVER used anywhere** — dead on Android (COMMS-0100/0101).
+- `ad_campaigns.dest_smart_link` is **retained** (A1's column stands) but demoted: it is the Google tracking-template value / future re-enable slot, **not** the creative link. A1's create-step change (§4.4b step 3 `link = dest_smart_link`) is **reverted to `link = dest_url`** until AppsFlyer's crawler behavior is reconfigured and re-proven against a real crawler UA.
+
+### A4.g — Budget floors + creative-body corrections
+
+- **Meta budget floors are per-optimization-category** via `GET /act_{id}/minimum_budgets`. Live USD values (**PROOF M-P8**): **imp 100¢ · video_views 100¢ · high_freq 500¢ · low_freq 4000¢** ($1/$1/$5/$40). **`LINK_CLICKS` is high-frequency ⇒ the floor is $5/day, not $1** — A2/§4.2's flat `min_daily_budget_cents = 100` and AC-3's check against it are superseded; validate against the floor for the chosen goal's category. **Never hardcode the table — fetch at connect and store all four values in `ad_connections.extra`.** (Consequence: §8's "$1.00/day live-fire" reads as **$5.00/day** under LINK_CLICKS.) Evidence: GR-41 / M-9 / **PROOF M-P8**.
+- **Creative `video_data` branch (GR-57 / M-10):** `object_story_spec.video_data = { video_id, image_hash:<thumbnail>, title, message, link_description, call_to_action }` — #866 already produces the `video_id` via `POST /act_{id}/advideos` + poll `video_status === 'ready'`. The async poll gets a timeout + typed error; a video stuck in transcoding **fails closed and rolls back** per the no-orphan contract. Without this branch, Reels/Stories are unreachable.
+- **`special_ad_categories` validation (M-4 / GR-56):** whitelist `HOUSING | EMPLOYMENT | FINANCIAL_PRODUCTS_SERVICES | ISSUES_ELECTIONS_POLITICS | NONE`; **reject `CREDIT`** (retired 2025-01-14 → `FINANCIAL_PRODUCTS_SERVICES`) with a migration message; there is no `ONLINE_GAMBLING_AND_GAMING` value. When non-empty, enforce the restriction cascade **before** the Meta call (force age 18–65, strip `genders`, forbid `zips`/`excluded_geo_locations`, radius floors, strip behavior/demographic `flexible_spec`, forbid lookalikes) and require `special_ad_category_country`.
+- **`self_ai_disclosure` (GR-61):** add `ad_creatives.ai_generated boolean`; **default `OPT_IN` for anything from the Higgsfield/Remotion pipeline** — our creative pipeline is AI-generative and non-disclosure is a compliance exposure we are actively creating.
+- **`url_tags` UTM template (GR-61):** `utm_source=facebook&utm_medium=paid&utm_campaign={{campaign.name}}&utm_content={{ad.name}}&placement={{placement}}` (per-platform `utm_source` in the other adapters) — without it PostHog/GA are blind to paid traffic.
+- **`conversion_domain = usemingla.com`** on the ad (Meta AEM) — pairs with A4.f: the conversion domain is the canonical destination domain.
+
+**A4 supersession map (governs on conflict):** A1 §4.4b-step-3 (`link_url` → A4.f) · A2/§7.6 `META_API_VERSION` (→ v25.0) · A3 §A `budget_cents`/`daily_budget_cents` type (→ `bigint`) and `ads.review_status` Reddit semantics (→ R-3) · A3 §B interface (→ A4.a) · A3 §D statuses + Google/Reddit account ids (→ A4.c) · §4.0 optimization-goal sourcing (→ M-2/GR-74) · §4.2/AC-3 min-budget (→ A4.g) · OD-4 (→ A4.e.5) · OD-8 (→ A4.e.7).
+
+---
+
 ## 1. Executive summary
 
 Build the **first channel** of Mingla's internal Ad Engine: a Meta (Facebook/Instagram) Marketing‑API integration, driven entirely from **Admin Web** (`mingla-admin`) and backed by Supabase **edge functions + DB**. An admin can (1) connect Mingla's Meta ad account, (2) create a campaign → ad set → ad in one atomic action, (3) set budget & audience, (4) launch and pause it, and (5) have the campaign's Meta IDs, live status, and **destination public‑page reference** persisted in our DB.
