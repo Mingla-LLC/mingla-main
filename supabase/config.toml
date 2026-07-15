@@ -402,3 +402,25 @@ verify_jwt = true
 
 [functions.admin-stripe-connect-action]
 verify_jwt = true
+
+# ISSUE-862 WP1 [Full Rooms Ad Engine] — admin-ad-* edge fns (Meta channel +
+# 4 fail-close stubs). verify_jwt=true: the gateway rejects no-JWT callers (401);
+# each fn then re-verifies the JWT is a real user AND an active admin
+# (admin_users status='active' → else 403) before any platform call or DB write.
+# All platform tokens live ONLY in Edge Function Secrets, resolved via
+# ad_connections.token_env_var (env-var NAMES in the DB, never values).
+# Everything is created PAUSED; launch is an explicit admin action.
+[functions.admin-ad-connect]
+verify_jwt = true
+
+[functions.admin-ad-preflight]
+verify_jwt = true
+
+[functions.admin-ad-create-campaign]
+verify_jwt = true
+
+[functions.admin-ad-campaign-action]
+verify_jwt = true
+
+[functions.admin-ad-campaign-sync]
+verify_jwt = true
