@@ -572,6 +572,38 @@ function statusFieldsForLevel(level: EntityLevel): string {
   return "id,status,effective_status,issues_info";
 }
 
+/**
+ * GR-18: the ads.review_detail jsonb payload — issues_info + ad_review_feedback
+ * (.global / .placement_specific) ONLY. Meta's `recommendations` feed is
+ * optimization tips, NOT rejection reasons; it must NEVER be stored here.
+ * Defensively strips a `recommendations` key even if a caller passes one.
+ */
+export function buildMetaReviewDetail(input: {
+  issuesInfo?: unknown[] | null;
+  adReviewFeedback?: Record<string, unknown> | null;
+}): Record<string, unknown> | null {
+  const feedback = input.adReviewFeedback ?? null;
+  const detail: Record<string, unknown> = {};
+  if (Array.isArray(input.issuesInfo) && input.issuesInfo.length > 0) {
+    detail.issues_info = input.issuesInfo.map((item) => {
+      if (item && typeof item === "object") {
+        const clean = { ...(item as Record<string, unknown>) };
+        delete clean.recommendations;
+        return clean;
+      }
+      return item;
+    });
+  }
+  if (feedback) {
+    if (feedback.global !== undefined) detail.ad_review_feedback_global = feedback.global;
+    if (feedback.placement_specific !== undefined) {
+      detail.ad_review_feedback_placement_specific = feedback.placement_specific;
+    }
+  }
+  delete detail.recommendations;
+  return Object.keys(detail).length > 0 ? detail : null;
+}
+
 // ── The adapter ───────────────────────────────────────────────────────────────
 
 export const metaAdapter: ChannelAdapter = {
