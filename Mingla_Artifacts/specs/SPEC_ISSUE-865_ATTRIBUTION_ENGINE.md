@@ -241,3 +241,85 @@ config.toml: `attribution-capture` `verify_jwt=false` (with in‑fn rate‑limit
 ## Downstream routing
 **Next:** `mingla-implementor` (Phase A first; Phase B unlocks #864). → `mingla-tester` (idempotency + fail‑open + consent + live‑fire dedup). → orchestrator CLOSE.
 **Working tree:** `~/Desktop/mingla-orchs/issue-865-attribution-engine/` on branch `issue-865-attribution-engine` (stacked on `issue-864` → `issue-862`).
+
+---
+
+## Amendment A2 — battle-test corrections (2026-07-15, evidence-backed)
+
+**Provenance:** Phase‑V1 battle-test of the full ad pipeline — `issue-862-meta-ads-api/Mingla_Artifacts/research/ad-pipeline-2026-07-15/` (`GAP_REGISTER.md`, `PROOF_LOG.md`, `PIPELINE_BLUEPRINT.md`, `meta.md`, `reddit.md`) — plus one fresh official-docs verification (A2‑7, Reddit). Items A2‑3…A2‑6 and A2‑8/A2‑9 encode **conductor-fixed canonical decisions**, identical across the parallel channel-spec amendments. Append-only: nothing above this line is edited; where a delta below contradicts earlier text, **the delta wins**. Env-var **names** only — real values live in `MINGLA_MASTER_KEYS.md`.
+
+### A2-1 · Meta pixel-state ground truth — PROVEN never-fired; "duplicate dataset" CLOSED (single canonical)
+- **Old:** A1: pixel `1949011972638955` "created; NOT yet installed"; §4: Pixel/CAPI "greenfield". Open blocker: `ads_get_datasets` showed two rows with the same `dataset_id` 1 s apart — "resolve the duplicate dataset rows before wiring CAPI".
+- **New:** Engine-live-proven ground truth: the pixel has **NEVER fired** — `last_fired_time` **and** `server_last_fired_time` are both **Unix epoch‑0** (browser AND server), `openbridge.gateway_status: NOT_ONBOARDED`, ad-account custom audiences `[]`. The "duplicate dataset" is **CLOSED as an MCP artifact**: engine-credential `GET /act_…/adspixels` returns **exactly ONE** pixel `1949011972638955`. There is a **single canonical dataset** — wire Pixel + CAPI against it directly; the "resolve duplicates first" pre-step is deleted.
+- **Evidence:** PROOF_LOG M‑P7 + M‑P11 `[ENGINE-LIVE]`; GAP_REGISTER GR‑19; `meta.md` live probe `ads_get_dataset_details(1949011972638955)`.
+
+### A2-2 · TikTok pixel ground truth — zero events, otherwise correctly configured
+- **Old:** A1 records the TikTok pixel as "provisioned + verified … NOT yet installed".
+- **New (confirmed + sharpened):** pixel `7662469356818858002` has **zero events** (`events: []`, `NO_RECENT_ACTIVITY`) and **0 custom conversions** — but is otherwise correctly configured (`DEVELOPER` mode, first-party cookies ON, advanced matching email+phone ON). TikTok `WEB_CONVERSIONS` (and therefore Smart+ for web) is **structurally unavailable** until this spec makes the pixel fire; `optimization_event` is **required** whenever `pixel_id` is set on an ad group.
+- **Evidence:** PROOF_LOG T‑P4 `[MCP-LIVE]`; GAP_REGISTER GR‑20.
+
+### A2-3 · Canonical pixel install targets + canonical tracking IDs (all channels)
+- **Old:** §5.3 wires pixels via "public route hooks (`app/e/…`, `/b/…`, `/t/…`)" + checkout; A1 names Meta/TikTok/Snap assets; Reddit and Google absent.
+- **New (canonical decision):** the pixel install-target set is **`/e/`, `/t/`, `/b/`, `/checkout/`** on the canonical web surfaces — all four are MANDATORY (checkout included: it is where `Purchase`/`CompletePayment` fires and what WCA URL rules key on). Canonical tracking IDs:
+  - **Meta:** pixel/dataset `1949011972638955` (single canonical dataset — A2‑1).
+  - **TikTok:** pixel `7662469356818858002`.
+  - **Snapchat:** pixel `af5f8fc4-1ef6-41e7-81c5-042b7be7df38` (ACTIVE; note `automatic_event_opt_in: OPT_OUT`).
+  - **Reddit:** pixel id **= the ad-account id `a2_jcfwvnfcfqcs`** — proven: on Reddit the pixel id IS the ad-account id (consistent across `/businesses/…/pixels` and `/ad_accounts/…/pixels`).
+  - **Google:** **no conversion tracking exists — it must be created** (conversion actions + site tag/Enhanced Conversions). Until it exists **and** accrues volume, **tCPA/tROAS stay un-offered** (≥15 conversions/30 days before offering them).
+- **Evidence:** GAP_REGISTER GR‑19 (install-target list) + GR‑51; PROOF_LOG R‑P3 + "New discoveries" #5 (Reddit pixel id == account id); PROOF_LOG S‑P5 (Snap pixel ACTIVE); PIPELINE_BLUEPRINT §5 (Google gaps).
+
+### A2-4 · Until the pixels fire: LINK_CLICKS / SWIPES only — and every downstream gate keys on LIVE SIGNAL, not "#865 shipped"
+- **Old:** the spec treats #865's ship as the unlock for #864's Purchases/Retargeting goals ("Phase B … unlock #864's disabled goals").
+- **New (canonical decision):** while `last_fired_time` is epoch‑0/null the ad engine runs **`LINK_CLICKS` (Meta)** and **`SWIPES` (Snap)** — the only honest optimization goals; pixel-fed goals (`LANDING_PAGE_VIEWS`, `OFFSITE_CONVERSIONS`, `VALUE`, Snap `LANDING_PAGE_VIEW`/`PIXEL_*`, TikTok `WEB_CONVERSIONS`) are rejected with `422 pixel_no_signal`. **#865 is the unlock for LPV/conversions/retargeting/lookalikes everywhere — but the gate condition downstream systems MUST test is live signal (`last_fired_time ≠ epoch-0` on the channel's pixel), never the boolean "#865 shipped".** Shipping this spec's code does not flip any gate; the first real fired event does. `promoted_object:{pixel_id}` must be sent once pixel goals are offered.
+- **Evidence:** GAP_REGISTER GR‑19 (Meta gate + 422), GR‑21 (Snap default flipped to `SWIPES`), GR‑20 (TikTok dependency); PIPELINE_BLUEPRINT golden rule #5.
+
+### A2-5 · Dedup contracts hardened (Meta exact-match pair · TikTok · Snap)
+- **Old:** §5.2/§5.3/SC‑5 say "shared `event_id`" and "deduplicated by Meta via the shared `event_id`".
+- **New (canonical decision — hard AC):**
+  - **Meta:** browser Pixel `eventID` (4th arg of `fbq('track', …)`) **MUST equal** CAPI `event_id` **AND** Pixel `event` **MUST equal** CAPI `event_name` — **exact string match on BOTH**, else dedup fails and the conversion double-counts. **Dedup window = 48 hours.** Generate **one deterministic `event_id` per real-world conversion** (the Mingla order/reservation id). **`fbc`/`fbp` are passed UNHASHED on both sides**, exact formats `fbc = fb.1.{creationTimeMs}.{fbclid}` and `fbp = fb.1.{creationTimeMs}.{randomNumber}` (subdomainIndex 1 for `usemingla.com`); if no `_fbc` cookie exists, use the timestamp when the `fbclid` was first observed.
+  - **TikTok:** same shared-`event_id` discipline on Pixel + Events API.
+  - **Snapchat:** server sends authenticate with the CAPI token (env `SNAPCHAT_CAPI_TOKEN`), deduped against the Snap pixel with the shared event id.
+  - SC‑5 is upgraded accordingly: the live-fire dedup test must assert the **event_name/eventID exact-match pair**, not just a shared id.
+- **Evidence:** `meta.md` §"Pixel + CAPI signal + dedup" (`[OFFICIAL]` verbatim: 48‑hour window; fbc/fbp formats; unhashed both sides); GAP_REGISTER §5 capability-matrix row "Conversion signal / CAPI".
+
+### A2-6 · HARD AC — never request deprecated attribution windows; pin `META_API_VERSION=v25.0`
+- **Old:** no constraint on Insights attribution windows; #862's version pin predates v25.
+- **New (canonical decision — hard AC, strict-grep guarded):** **NEVER request `7d_view` or `28d_view` as `action_attribution_windows`** in any Insights call (rollups §5.5 spend sync included) — Meta deprecated them as queryable from **2026‑01‑12**; requesting them is a live 4xx/garbage-data bug, not a style issue. 28‑day click has been reporting-only since 2021‑04. All Meta calls in #865 pin **`META_API_VERSION=v25.0`** (v21.0 is stale; v25.0 shipped 2026‑02‑18). **RT‑4 (new):** CI strict-grep asserts no `7d_view`/`28d_view` literal appears in any Insights request payload; reverting the version pin or adding the windows fails RT‑4.
+- **Evidence:** GAP_REGISTER GR‑43; PIPELINE_BLUEPRINT §5 row 18.
+
+### A2-7 · Reddit CAPI — VERDICT: token-first CONFIRMED (Events-Manager Conversions access token suffices; NO OAuth re-consent needed); GR‑30 corrected
+- **Old (GR‑30):** "We hold `adsread`+`adsedit`; CAPI needs `adsconversions`. That's a re-consent, not a config change. … Reddit CAPI is unreachable."
+- **New (verified against Reddit's OFFICIAL docs, 2026‑07‑15):** **CONFIRMED — the handoff brief is right; GR‑30 is overstated as the only path.** Reddit's official CAPI **direct-integration guide** authenticates with an **Events-Manager-generated "conversion access token"** — its setup flow is exactly: (1) retrieve Pixel ID in Events Manager, (2) **"Generate a conversion access token"** (Generate Access Token → shown once, cannot be retrieved later), (3) POST to `https://ads-api.reddit.com/api/v3/pixels/{pixel_id}/conversion_events`. **No OAuth authorize step and no `adsconversions` consent appears anywhere in the guide**; prerequisites are only an Ads account + admin/creator membership + Pixel ID. Reddit's help center adds: the conversion access token is a **non-expiring** key (max 5 per business, deletable to revoke) and **"Reddit recommends using a conversion access token over a developer access token for Conversions API."**
+  - **Both paths, ranked:** **token-first** (env `REDDIT_ADS_CAPI_TOKEN` — **still TODO: generate in Events Manager**) is primary; the **`adsconversions` OAuth re-consent remains the documented FALLBACK** — the live OpenAPI (`https://ads-api.reddit.com/api/v3/openapi.json`, fetched 2026‑07‑15) still declares `security: [{"RedditAPIKey": ["adsconversions"]}]` on `POST /pixels/{pixel_id}/conversion_events` for developer-OAuth callers. If the token path fails live-fire, re-run the authorize URL with `adsread,adsedit,adsconversions,adsmeasurement:read,adsmeasurement:write` + `duration=permanent` per GR‑30.
+  - **Official CAPI operating limits captured for the sender:** rate limit **1,000 requests/s, 10,000 events/s, 1,000 events/request**; events **must be sent within 7 days** of occurring; **dedup is REQUIRED when Pixel + CAPI are both used** (conversion-id dedup recommended; session-based is the default; dedup applies **only within the same channel**); **CAPI v3 field values differ from v2** (e.g. `tracking_type`) — build against v3, not v2 snippets; success envelope `{"data":{"message":"Successfully processed N conversion events."}}`. CAPI emits **no** standard rate-limit headers (GR‑71).
+  - **AC (new, SC‑12):** with `REDDIT_ADS_CAPI_TOKEN` set, an attributed conversion is POSTed to `pixels/a2_jcfwvnfcfqcs/conversion_events` (Reddit pixel id = ad-account id, A2‑3) with the shared dedup id; `reddit_capi_status` recorded like the other channels; **conditional on token generation** — until the token exists this AC is PENDING‑CONFIG, not failed. Fallback path (scope re-consent) only if token-path live-fire fails.
+- **Evidence:** **[OFFICIAL]** `https://ads-api.reddit.com/docs/v3/guides/programs/capi/direct-integration` (fetched live 2026‑07‑15; steps + limits + 7‑day window + dedup requirement verbatim); **[OFFICIAL]** `https://business.reddithelp.com/s/article/conversion-access-token` (non-expiring, max 5, "recommends … over a developer access token"; page is a JS-gated SPA — content confirmed via search index of the official article, direct fetch renders the shell only, consistent with PIPELINE_BLUEPRINT §5 row 12); **[OFFICIAL]** `https://ads-api.reddit.com/api/v3/openapi.json` (endpoint security = `adsconversions` for the OAuth path); GAP_REGISTER GR‑30 + GR‑71; `reddit.md` §1.4/§1.6; PROOF_LOG R‑P3.
+
+### A2-8 · Google measurement lane (canonical decision) — Enhanced Conversions + GCLID import, budgeted honestly
+- **Old:** §2 non-goals: "Google/Snapchat → #867" (A1 already pulled Snapchat in; Google remained unaddressed).
+- **New (canonical decision):** Google conversion tracking is **created as part of the measurement fan-out** (nothing exists today — A2‑3): **Enhanced Conversions** (SHA‑256 **normalized** email) + **GCLID offline conversion import**, with the **90‑day GCLID retention budgeted** — uploads referencing older GCLIDs **silently fail**, so the import job must run well inside the window and alert on silent-zero batches. **Consent Mode v2 is MANDATORY for EEA traffic — directly relevant to London**, one of our live markets: the web consent gate (§5.3) must emit Consent Mode v2 signals for Google tags. tCPA/tROAS remain un-offered until ≥15 conversions/30 days (A2‑3).
+- **Evidence:** PIPELINE_BLUEPRINT §5 row 18; GAP_REGISTER §5 capability-matrix row "Conversion signal / CAPI" (Google column); GAP_REGISTER GR‑51 (Consent Mode v2 / London).
+
+### A2-9 · Phase B audiences re-specced (GR‑51) — sequenced AFTER pixel signal; retargeting growth stages + honest operator messages
+- **Old:** §5.2 Phase B `admin-meta-audience-create` builds WEBSITE/ENGAGEMENT/MOBILE_APP audiences; SC‑10 requires a real audience id. No sequencing, sizes, or ratios.
+- **New (canonical decision):** the audience phase is **sequenced strictly AFTER pixel signal exists** (per A2‑4's live-signal gate — zero audiences exist on ANY channel today):
+  - **Meta WCA:** URL rules on `/e/` + `/checkout/` at **30d/180d retention, MINUS converters** — exclusions are what make the funnel work (exclude purchasers from prospecting; exclude retargeting from prospecting). The Mingla-shaped BOF audience: *"viewed an event page in the last 14 days, did not reserve."*
+  - **ENGAGEMENT audiences (IG/Page, 730‑day retention) are the ONLY no-pixel retargeting play** — available before any pixel fires. **Constraint: no IG account is linked to Page `797406353459597`** (engine-live: `instagram_business_account` absent) — **Facebook-only until a human links IG** (Human-unblock #3).
+  - **Lookalikes:** seed **≥100** (quality bar 300–500+); **Meta ratio range is 1–20%** — Snap's is **1–10%; do not cross the wires**. **Customer Match needs 100 users (1,000 for Search + YouTube).**
+  - **Retargeting growth stages + operator messages (verbatim from blueprint §1.9f — use these, they are the honest ones):**
+    | Stage | Trigger | Operator message |
+    |---|---|---|
+    | Seeding | pixel firing, audience < 100 | *"Building your retargeting audience — {n} people so far. At 100 we can start showing ads to people who looked and didn't book. Meta needs 100 to build a lookalike too."* |
+    | Live | audience ≥ 100 | *"Retargeting is live — {n} people who viewed this page in the last 14 days and didn't book."* |
+    | Lookalike | seed ≥ 100 (quality bar 300–500+) | *"We can now build a lookalike from your {n} bookers. Starting at 1% — the closest match. (Meta's range is 1–20%.)"* |
+  - Do **not** put TOF/MOF/BOF in any UI — not Meta terminology (blueprint §1.9f).
+  - SC‑10 is amended: audience create must respect the sequencing gate (refuse WCA create while the pixel is signal-dead, with the Seeding message) and the size floors above.
+- **Evidence:** GAP_REGISTER GR‑51; PROOF_LOG M‑P10 `[ENGINE-LIVE]` (IG not linked) + M‑P7 (no signal); PIPELINE_BLUEPRINT §1.9f (stages + messages, verbatim) + §5 row 4.
+
+### A2 — new/changed acceptance criteria (delta summary)
+- **SC‑5 (upgraded):** Meta dedup asserts the **`eventID`==`event_id` AND `event`==`event_name` exact-match pair**, 48h window, `fbc`/`fbp` unhashed both sides (A2‑5).
+- **SC‑11 (new, HARD):** no Insights request anywhere in #865 contains `7d_view`/`28d_view`; `META_API_VERSION=v25.0` — CI RT‑4 strict-grep (A2‑6).
+- **SC‑12 (new, conditional):** Reddit conversion send via `REDDIT_ADS_CAPI_TOKEN` (token-first; PENDING‑CONFIG until the Events-Manager token is generated; OAuth `adsconversions` re-consent = fallback only) (A2‑7).
+- **SC‑13 (new):** every downstream goal/audience gate reads **live pixel signal** (`last_fired_time ≠ epoch‑0`), never a "#865 shipped" flag (A2‑4).
+- **SC‑14 (new, Phase B):** audience creation enforces the sequencing gate + size floors + per-channel lookalike ratios of A2‑9.
+- **§7 action items (amended):** add **"Generate the Reddit Conversions access token in Events Manager → `REDDIT_ADS_CAPI_TOKEN`"** and **"Link IG to Page `797406353459597`"**; delete the "resolve duplicate dataset" item (closed, A2‑1).
