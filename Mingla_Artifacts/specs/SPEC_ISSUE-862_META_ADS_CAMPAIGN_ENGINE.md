@@ -40,6 +40,178 @@
 
 ---
 
+## Amendment A3 (2026-07-14) — generalization to the platform-agnostic, lane-aware, 5-channel engine
+
+**Correction (supersedes the Meta-only shape of §1–§10 below).** This story is no longer "the Meta channel with `meta_*` tables"; it is **the engine** — one platform-agnostic, lane-aware table set + one `ChannelAdapter` interface + one `admin-ad-*` edge surface that serves **five** provisioned ad channels (Meta, TikTok, Snapchat, Google, Reddit). Meta is simply the **first adapter**. A2 established multi-connection across **lanes** (consumer/business); A3 extends that same model across **platforms**. Every sibling spec (#863 TikTok, #866 creative library, #867 Snap+Google) independently converged on exactly this generalization; **A3 is the canonical definition they all depend on.**
+
+**This is a spec-level rename, NOT a data migration.** #862 is unbuilt — the implementor builds the generalized version **from the start**. There is no `meta_*` table to migrate; every `meta_*` name in §4.2–§10 below reads as its generalized equivalent (mapping in **F**). Where §4.2–§10 still say `meta_ad_connections`/`meta_campaigns`/`_shared/meta.ts`/`admin-meta-*`, A3 governs.
+
+### A. Generalized schema (replaces the `meta_*` tables)
+
+Budgets are stored in **minor units (cents)** everywhere; each adapter converts at its API boundary (TikTok cents → dollars ÷100; Snapchat/Google/Reddit cents → micro ×10,000). No token column exists on any table — ever.
+
+**`public.ad_connections`** — one row per `(platform, lane)`.
+```
+id                  uuid PK default gen_random_uuid()
+platform            text NOT NULL CHECK (platform IN ('meta','tiktok','snapchat','google','reddit'))
+lane                text NOT NULL CHECK (lane IN ('consumer','business'))
+display_name        text NOT NULL                 -- human label, e.g. 'Meta · Consumer (Use Mingla)'
+external_account_id text NOT NULL                 -- the ad-account id (Meta ad account / TikTok advertiser / Snap adaccount / Google customer / Reddit ad account)
+external_org_id     text NULL                     -- Snap org / TikTok Business Center / Google MCC login-customer-id / Reddit business id / Meta business id
+auth_kind           text NOT NULL CHECK (auth_kind IN ('system_user_token','refresh_token','dev_token_oauth'))
+token_env_var       text NOT NULL                 -- NAME of the Supabase Edge secret holding the token/refresh token — NEVER the value
+extra               jsonb NOT NULL DEFAULT '{}'   -- pixel_id, page_id, capi_env_var, client-id/secret env-var NAMES, cloud project, identity id, etc.
+status              text NOT NULL DEFAULT 'unknown' CHECK (status IN ('connected','invalid','unknown'))
+created_at          timestamptz NOT NULL DEFAULT now()
+updated_at          timestamptz NOT NULL DEFAULT now()
+UNIQUE (platform, lane)
+-- COMMENT: 'Ad-platform credentials live ONLY in Supabase Edge Function Secrets (Deno.env, resolved via token_env_var / the *_env_var NAMES in extra). This table stores env-var NAMES, never a token value. Refresh-token platforms (snapchat/reddit) mint a short-lived access token in edge memory per call; it is never persisted.'
+```
+> Operational status columns established by A2/§4.2 and the siblings — `currency`, `timezone`, `min_daily_budget_cents`, `account_status`, `token_last_verified_at`, `connected`, `connected_by` — are **retained** on `ad_connections` (folded from the `meta_*` shape); `extra` absorbs the per-platform miscellany (pixel/page/identity/capi env-var names). `status` is the coarse connect state the UI badges.
+
+**`public.ad_campaigns`** — one row per campaign, written only when the full campaign→ad-set→ad set is created.
+```
+id                  uuid PK default gen_random_uuid()
+connection_id       uuid NOT NULL REFERENCES public.ad_connections(id) ON DELETE RESTRICT
+platform            text NOT NULL                 -- denormalized (= connection.platform) for query/index
+external_campaign_id text NOT NULL                -- Meta campaign / TikTok campaign / Snap campaign / Google campaign resource / Reddit campaign id
+name                text NOT NULL
+objective           text NOT NULL                 -- normalized-per-platform ('OUTCOME_TRAFFIC' Meta / 'TRAFFIC' TikTok+Snap / channel type Google / traffic Reddit)
+status              text NOT NULL DEFAULT 'PAUSED' CHECK (status IN ('PAUSED','ACTIVE','ARCHIVED','DELETED'))
+daily_budget_cents  integer NULL CHECK (daily_budget_cents IS NULL OR daily_budget_cents > 0)  -- minor units; NULL when budget lives on the ad set (ABO)
+dest_url            text NOT NULL                 -- canonical public web page (fallback/reference), e.g. /e/{brandSlug}/{eventSlug}  [A1]
+dest_smart_link     text NOT NULL                 -- AppsFlyer OneLink used as the creative link/landing/final URL (opens app if installed, else dest_url) + attribution  [A1]
+created_by          uuid NULL REFERENCES auth.users(id)
+created_at          timestamptz NOT NULL DEFAULT now()
+updated_at          timestamptz NOT NULL DEFAULT now()
+UNIQUE (platform, external_campaign_id)
+```
+> Retained from the `meta_*`/sibling shape: `delivery_status` (Meta `effective_status` / TikTok secondary / Snap ad-review rollup / Google approval), `status_synced_at`, `targeting jsonb`, the destination reference columns (`dest_page_type`, `dest_brand_slug`, `dest_entity_slug`, `dest_event_id`), and (#863) a `request_id` idempotency key `UNIQUE (connection_id, request_id)`.
+
+**`public.ad_sets`** — one row per ad set (Meta ad set / TikTok ad group / Snap ad squad / Google ad group / Reddit ad group).
+```
+id                  uuid PK default gen_random_uuid()
+campaign_id         uuid NOT NULL REFERENCES public.ad_campaigns(id) ON DELETE CASCADE
+external_adset_id   text NOT NULL
+name                text NOT NULL
+targeting           jsonb NOT NULL DEFAULT '{}'   -- normalized {countries, age_min, age_max, genders, …}
+budget_cents        integer NULL CHECK (budget_cents IS NULL OR budget_cents > 0)   -- minor units; NULL under CBO (budget on campaign)
+optimization_goal   text NOT NULL                 -- Meta 'LANDING_PAGE_VIEWS' / TikTok 'TRAFFIC_LANDING_PAGE_VIEW' / Snap 'LANDING_PAGE_VIEW'|'SWIPES' / Google maximize_clicks / Reddit CLICKS
+status              text NOT NULL DEFAULT 'PAUSED' CHECK (status IN ('PAUSED','ACTIVE','ARCHIVED','DELETED'))
+created_at          timestamptz NOT NULL DEFAULT now()
+updated_at          timestamptz NOT NULL DEFAULT now()
+UNIQUE (campaign_id, external_adset_id)
+```
+> Retained: `billing_event`, `bid_strategy`, `placement jsonb`, `schedule_start_at`/`schedule_end_at`, `external_status` where a platform exposes them (per §4.0 / #863 / #867).
+
+**`public.ads`** — one row per ad.
+```
+id                  uuid PK default gen_random_uuid()
+ad_set_id           uuid NOT NULL REFERENCES public.ad_sets(id) ON DELETE CASCADE
+external_ad_id      text NOT NULL
+creative_id         uuid NULL REFERENCES public.ad_creatives(id) ON DELETE SET NULL   -- → #866 ad_creatives.id (the canonical creative)
+name                text NOT NULL
+status              text NOT NULL DEFAULT 'PAUSED' CHECK (status IN ('PAUSED','ACTIVE','ARCHIVED','DELETED'))
+review_status       text NULL                     -- Meta ad review / TikTok audit / Snap 'PENDING'|'APPROVED'|'REJECTED' / Google approval_status / Reddit review
+created_at          timestamptz NOT NULL DEFAULT now()
+updated_at          timestamptz NOT NULL DEFAULT now()
+UNIQUE (ad_set_id, external_ad_id)
+```
+> `creative_id` is the FK to #866's `ad_creatives`; the platform-specific uploaded ref (Meta `image_hash`, TikTok `material_id`, Snap `media_id`, Google asset resource, Reddit media id) is resolved at ad-create by #866's `resolveCreativeRef(creative_id, platform, lane)` and cached in #866's `ad_creative_platform_refs` — it is NOT a column here. The MVP `image_url` path from §4.4b remains as a backward-compatible alternative until #864 adopts the #866 picker.
+
+**`public.ad_status_events`** — append-only audit (`entity`, `from_status`→`to_status`, `actor`, `ts`).
+```
+id            uuid PK default gen_random_uuid()
+campaign_id   uuid NULL REFERENCES public.ad_campaigns(id) ON DELETE CASCADE  -- NULL if create failed before a row existed
+platform      text NULL
+entity        text NULL CHECK (entity IS NULL OR entity IN ('campaign','ad_set','ad'))
+action        text NOT NULL CHECK (action IN ('create','launch','pause','sync','create_failed','rollback'))
+actor         uuid NULL REFERENCES auth.users(id)
+from_status   text NULL
+to_status     text NULL
+external_ids  jsonb NULL         -- partial IDs captured on failure for manual reconciliation
+provider_response jsonb NULL     -- normalized provider response (NEVER contains a token)
+created_at    timestamptz NOT NULL DEFAULT now()
+```
+
+**RLS (all five tables):** `ENABLE ROW LEVEL SECURITY`. `SELECT USING ( public.is_admin_user() )` for `authenticated`; **no** INSERT/UPDATE/DELETE policy (service-role — the admin-gated edge functions — writes only; matches `payment_webhook_events`). `GRANT SELECT` to `authenticated`. **Admin-only today**; the forward path for a **brand reading only its own attributed rows** is scoping by `dest_event_id → events.brand_id` — deferred (no brand-facing read path ships in this engine). **Indexes:** `ad_campaigns (connection_id)`, `ad_campaigns (platform, status)`, `ad_campaigns (dest_event_id)`, `ad_sets (campaign_id)`, `ads (ad_set_id)`, `ad_status_events (campaign_id, created_at DESC)`.
+
+### B. `ChannelAdapter` interface — new `_shared/adChannel.ts`
+
+One interface; per-platform modules `_shared/{meta,tiktok,snapchat,google,reddit}.ts` each implement it. Atomic create with **compensating rollback** (no orphaned partial writes) is carried from §4.4b unchanged, now per-adapter.
+
+```
+type Platform = 'meta' | 'tiktok' | 'snapchat' | 'google' | 'reddit';
+
+interface ChannelAdapter {
+  platform: Platform;
+  connect(conn): AuthedClient;                               // resolves the token from Deno.env[conn.token_env_var];
+                                                             // for refresh_token / dev_token_oauth, MINTS a short-lived access token in memory;
+                                                             // fail-CLOSE (throw AdNotConnectedError) if the secret is missing/expired
+  createCampaign(conn, input): { externalId, status };
+  createAdSet(conn, campaignExternalId, input): { externalId };
+  createAd(conn, adSetExternalId, input): { externalId, reviewStatus };
+  setStatus(conn, level, externalId, status): void;          // level ∈ {'campaign','ad_set','ad'}; status = pause | activate (top-down launch)
+  getStatus(conn, level, externalId): status;
+}
+
+function getAdapter(platform: Platform): ChannelAdapter;     // registry { meta, tiktok, snapchat, google, reddit }
+class AdNotConnectedError extends Error {}                    // → 424 <platform>_not_connected  (google provisioning gap → 409 google_not_provisioned)
+class AdApiError extends Error {}                             // normalized { platform, code, message, trace_id/request_id }  (NEVER echoes a token)
+```
+
+Each adapter translates the common shape to its API:
+- **Meta** — Graph API `https://graph.facebook.com/v{ver}` (§4.0); `system_user_token`.
+- **TikTok** — Marketing API `https://business-api.tiktok.com/open_api/v1.3`, **standard** campaign API (`campaign/create` → `adgroup/create` → `ad/create`), header `Access-Token`, `code===0`=success; Smart+ deferred (#863 §4.0).
+- **Snapchat** — Marketing API `https://adsapi.snapchat.com/v1`; `refresh_token` → 60-min access token minted server-side (`_shared/snapAuth.ts`) and cached; batch envelope (`request_status` + per-entity `sub_request_status`); budgets micro; update = **PUT to parent collection** (#867 §4.0).
+- **Google** — `POST customers/{id}/googleAds:mutate` (or the combined atomic `googleAds:mutate`) + GAQL `searchStream` for status; headers `developer-token` + `login-customer-id` + `Authorization: Bearer`; `dev_token_oauth`; budgets micros (#867 §4.0b).
+- **Reddit** — Ads API v3 `https://ads-api.reddit.com/api/v3`, **HTTP-Basic** client-id/secret token refresh, **`User-Agent` header required**; `refresh_token`.
+
+`_shared/meta.ts` (§4.3) is written to **implement `ChannelAdapter`** from the start (its `resolveMetaToken`/`metaGraph`/`normalizeMetaError` become the Meta adapter internals).
+
+### C. Edge functions — generalize `admin-meta-*` → `admin-ad-*`
+
+All POST, `verify_jwt=true`, in-code `admin_users` active gate (§4.4), service-role DB writes. Each reads `{ platform, lane, … }`, loads the `ad_connections` row for `(platform, lane)`, and dispatches via `getAdapter(platform)`:
+- **`admin-ad-connect`** — `{ platform, lane, action:'connect'|'status' }`; verifies the credential, upserts the connection (`status='connected'|'invalid'`); missing/invalid token → **424** `<platform>_not_connected`; Google provisioning gap → **409** `google_not_provisioned`.
+- **`admin-ad-create-campaign`** — the atomic create (destination resolve → budget-min → per-adapter campaign→ad-set→ad, all PAUSED → persist one `ad_campaigns`+`ad_sets`+`ads` set; no-orphan compensating rollback).
+- **`admin-ad-set-status`** (a.k.a. `admin-ad-campaign-action` in the siblings) — `{ campaign_id, action:'launch'|'pause' }`; top-down `setStatus`.
+- **`admin-ad-report`** (a.k.a. `admin-ad-campaign-sync` in the siblings) — status read-back (`status`/`delivery_status`/`review_status`); **no attribution/insights** (that is #865).
+
+### D. The 5-channel connection registry (seed rows — real IDs; tokens by ENV-VAR NAME only, NEVER values)
+
+| platform / lane | external_account_id | external_org_id | auth_kind | token_env_var | extra (env-var NAMES + non-secret ids) | status |
+|---|---|---|---|---|---|---|
+| **meta / consumer** | `2393570861066813` | `830733900115504` (business) | `system_user_token` | `META_SYSTEM_USER_TOKEN` | page `797406353459597`, pixel `1949011972638955`, capi_env_var `META_CAPI_ACCESS_TOKEN` | **GREEN** |
+| **tiktok / consumer** | `7627974536397766673` (advertiser) | `7627974686760009729` (Business Center) | `system_user_token` | `TIKTOK_ACCESS_TOKEN` | pixel `7662469356818858002`, events_env_var `TIKTOK_EVENTS_ACCESS_TOKEN`, identity `@usemingla` | **app in review** (token pending TikTok app review) |
+| **snapchat / consumer** | `6421cc96-dcaf-4a09-a7fa-b24199dcb391` | `9389df65-3fa2-4a79-9593-479eee8d67bb` (org) | `refresh_token` | `SNAPCHAT_REFRESH_TOKEN` | client-id env `SNAPCHAT_CLIENT_ID`, client-secret env `SNAPCHAT_CLIENT_SECRET`, pixel `af5f8fc4-1ef6-41e7-81c5-042b7be7df38`, capi_env_var `SNAPCHAT_CAPI_TOKEN` | **GREEN** |
+| **google / consumer** | `5083048929` (customer) | `8284700017` (MCC login-customer-id) | `dev_token_oauth` | `GOOGLE_ADS_REFRESH_TOKEN` | dev-token env `GOOGLE_ADS_DEVELOPER_TOKEN`, oauth-client env `GOOGLE_ADS_OAUTH_CLIENT_ID`/`GOOGLE_ADS_OAUTH_CLIENT_SECRET`, cloud project `mingla-ads-engine` | **GREEN** (server verified; prod Basic-access approval pending) |
+| **reddit / consumer** | "Mingla Ad Account 0" (a2_ id TBD) | `950c8eac…` (business) | `refresh_token` | `REDDIT_ADS_REFRESH_TOKEN` | client-id env `REDDIT_ADS_CLIENT_ID`, client-secret env `REDDIT_ADS_CLIENT_SECRET`, pixel `a2_jcfwvnfcfqcs`, capi_env_var `REDDIT_ADS_CAPI_TOKEN` (TBD) | **GREEN** (own-account Ads-API verified, no allow-list) |
+
+Four of the five are verified live (Meta, Snapchat, Google, Reddit); TikTok delivery waits on TikTok app review. Seed all five as `consumer`-lane rows.
+
+**Business lane (future work):** a parallel set of `lane='business'` connections (the Mingla Business B2B portfolio) is **not yet provisioned** — most business-lane accounts/tokens don't exist. The `UNIQUE (platform, lane)` schema already supports them; **consumer lane ships first**, business lands per-platform as it is provisioned (the builder shows business as a disabled option until then — #864 A2).
+
+### E. Secrets invariant
+
+All tokens live **ONLY** in Supabase Edge Function Secrets (`Deno.env`), resolved via `token_env_var` (and the `*_env_var` NAMES inside `extra`). The DB stores only the env-var **NAME**, never a token. Refresh-token platforms (Snapchat, Reddit) and `dev_token_oauth` (Google) mint a short-lived access token **in edge memory** per call and never persist it. **No at-rest DB token encryption** — this matches the Stripe / Paystack / AppsFlyer precedent (and §6/OD-2 below). The strict-grep CI gate (RT-3, §9) is widened to assert **every** platform token/refresh-secret name appears only under `supabase/functions/**` and never in any client bundle.
+
+### F. Migration / coordination note (governs §4.2, §4.3, §4.4, §10)
+
+This amendment **generalizes** #862's `meta_*` schema + `_shared/meta.ts` + `admin-meta-*` functions. Because #862 is **unbuilt**, the implementor builds the generalized version **directly — no live data migration**. Name mapping (A3 wins wherever §4.2–§10 still use the old names):
+
+| §4.2–§10 (Meta-only) | A3 canonical |
+|---|---|
+| `meta_ad_connections` | `ad_connections` |
+| `meta_campaigns` | `ad_campaigns` (+ child `ad_sets`, `ads`) |
+| `meta_campaign_status_events` | `ad_status_events` |
+| `_shared/meta.ts` (sole module) | `_shared/adChannel.ts` (interface) + `_shared/meta.ts` (one adapter of five) |
+| `admin-meta-connect` / `-create-campaign` / `-campaign-action` / `-campaign-sync` | `admin-ad-connect` / `admin-ad-create-campaign` / `admin-ad-set-status` / `admin-ad-report` |
+| `META_*` only in the §10 allowlist / strict-grep | all five platforms' env-var names (Meta/TikTok/Snapchat/Google/Reddit) |
+
+**Sibling coherence (this A3 is the canonical source they depend on):** #863 (TikTok), #866 (creative library) and #867 (Snapchat+Google) already reference `ad_connections`/`ad_campaigns`/`ad_sets`/`ads`/`ad_creatives`. Reconciliations A3 pins as canonical: (1) the audit table is **`ad_status_events`** (not #863's `ad_campaign_status_events`); (2) edge functions are **`admin-ad-*`** without a trailing "s" (not #863's `admin-ads-*`); (3) external IDs are **`external_campaign_id`/`external_adset_id`/`external_ad_id`** (not #867's `provider_*`); (4) budgets are stored in **cents** (adapters convert to micro/dollars at the boundary — not #867's `budget_micro`); (5) the platform enum is **`('meta','tiktok','snapchat','google','reddit')`** — adds `reddit` and uses full `snapchat` (not #866's `'snap'`); (6) `auth_kind ∈ ('system_user_token','refresh_token','dev_token_oauth')` (folds #867's `'bearer_token'`→`system_user_token`, `'oauth_service'`→`dev_token_oauth`). **#866's `ad_creatives.id` is the `ads.creative_id` FK** — the creative library is the canonical creative source; `resolveCreativeRef` produces the per-platform uploaded ref at ad-create.
+
+---
+
 ## 1. Executive summary
 
 Build the **first channel** of Mingla's internal Ad Engine: a Meta (Facebook/Instagram) Marketing‑API integration, driven entirely from **Admin Web** (`mingla-admin`) and backed by Supabase **edge functions + DB**. An admin can (1) connect Mingla's Meta ad account, (2) create a campaign → ad set → ad in one atomic action, (3) set budget & audience, (4) launch and pause it, and (5) have the campaign's Meta IDs, live status, and **destination public‑page reference** persisted in our DB.
