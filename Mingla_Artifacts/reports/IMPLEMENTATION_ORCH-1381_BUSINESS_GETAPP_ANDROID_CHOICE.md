@@ -427,3 +427,110 @@ The addendum caught this hazard for **gates** (§6.1: "once the components deleg
 | `54b7a8692` | ADDENDUM D-A + D-A-2 + D-B: the one owner, 4 call sites, 2 gate amendments + 1 new gate, behavioural fails-on-revert test (**fails-on-revert proven at this hash**) |
 
 **No PR opened, nothing merged, nothing deployed.** The CLOSE commit must carry `[deploy]` (addendum §10) — D-B is live on `usemingla.com` today.
+
+---
+
+# ADDENDUM B — the 4 false-failing assertions, re-pointed (final step)
+
+**Commit `69431e43b`** · authorization `[TEST-MOD-APPROVED ORCH-1381]` (granted by the orchestrator, which independently reproduced the blocker and confirmed the failures were FALSE) · scope: **exactly 3 test files**, no product code.
+
+This closes **A6** ("CI is RED on those 3 suites, and this ORCH is not closeable") and **AD-1**.
+
+## B1. What was actually wrong
+
+Four assertions grepped the **CTA component source** for `/window\.open\(/` and `/window\.location\.assign\(/`. The §5.3 (D-B) extraction legitimately relocated both tokens into `lib/open-external.ts` — the ONE owner. The assertions pinned **WHERE the code lived, not WHAT it did**, so they went red against a *correct* implementation while the behaviour they existed to protect was fully intact.
+
+| # | File | Red assertion (verbatim) |
+|---|---|---|
+| 1 | `links-cta-device-aware.test.ts` | `CTA no longer opens via window.open( on the tap gesture` |
+| 2 | `business-getapp-cta.test.ts` | `nav download handler does not navigate via openBusinessDest` |
+| 3 | `business-getapp-cta.test.ts` | `hero missing window.location.assign popup fallback` |
+| 4 | `links-cta-device-aware.tester.test.ts` | `no window.open( — the store is not opened on the gesture` |
+
+\#2 is the starkest: `openBusinessDest` **no longer exists**. It was one of four copy-pasted twins, every one carrying the double-navigation bug; D-B replaced them all with `lib/open-external.ts`.
+
+## B2. The protection MOVED — it did not vanish
+
+**Zero assertions deleted.** Counts went **UP**; every case survives:
+
+| File | assert() HEAD → now | cases HEAD → now |
+|---|---|---|
+| `business-getapp-cta.test.ts` | 38 → **43** | 12 → **12** |
+| `links-cta-device-aware.test.ts` | 14 → **18** | 7 → **7** |
+| `links-cta-device-aware.tester.test.ts` | 17 → **21** | 7 → **7** |
+
+Each assertion is re-pointed at where the behaviour now lives, as the **two-link chain** it actually is:
+
+- **Link 1 — delegation + anti-bypass (source).** The surface routes the tap through `openExternal(` **and hand-rolls neither** `window.open(` nor `.location.assign(`. Inlining is *exactly* how this bug reached four surfaces, so bypassing the helper must fail. This mirrors the pattern **this ORCH's own CI gates already adopted** (`orch-1324` / `orch-1328`: *require delegation, BAN inlining*) — the gates were re-pointed correctly in D-B; these 3 suites were the last artifacts still grepping moved tokens.
+- **Link 2 — the delegated behaviour (driven, not grepped).** `openExternal` is **imported and DRIVEN against a fake `Window`**. The helper is React-free with an injectable window *precisely* so this is possible with no DOM test infra in the marketing package.
+
+## B3. Both-direction proof, per assertion
+
+Every rewritten assertion PASSES on the correct implementation **and** goes RED in **four** independent defect directions. Product code was restored **byte-clean** after each (`git diff` empty).
+
+### Direction 1 — PASS on the current correct implementation
+
+```
+business-getapp-cta:            All 12 business-getapp happy-path tests passed
+links-cta-device-aware:         All 7 links-cta-device-aware happy-path tests passed
+links-cta-device-aware.tester:  All 7 links-cta-device-aware adversarial tests passed
+```
+
+### Direction 2 — RED on defect reintroduction
+
+**Defect A — delete the fallback** (true line deletion of `w.location.assign(dest)`; the direction the orchestrator named):
+
+```
+FAIL nav: both business actions navigate through openExternal — neither can dead-tap:
+  openExternal does not fall back when the popup is genuinely blocked (assigned=[]) —
+  the business CTA would be a DEAD TAP.
+FAIL hero: delegates the tap to openExternal — a blocked popup is never a dead tap: (same)
+FAIL opens the store client-side via openExternal — no dead tap, no double-nav: (same)
+FAIL the tap is delegated to openExternal, which cannot dead-tap or double-navigate: (same)
+→ 4/4 RED
+```
+
+**Defect B — reintroduce the SHIPPED bug** (`open(dest,'_blank','noopener,noreferrer')` + `if(!win) assign(dest)`):
+
+```
+FAIL … DOUBLE NAVIGATION — a successful open ALSO navigated the current tab to
+  "https://play.google.com/…" (features="noopener,noreferrer").
+→ 4/4 RED
+```
+
+> **This is the decorative-guard failure being fixed.** The **OLD** assertions **PASSED** on this exact code — both tokens are present. That is precisely why the gates stayed green while the double-nav bug shipped to production.
+
+**Defect C — the C-4 half-fix trap** (`'noreferrer'` alone, which also returns `null`): **4/4 RED** (2 + 1 + 1).
+
+**Defect D — inline `window.open(` back into each component** (bypass the helper): **4/4 RED** via the Link 1 anti-bypass assertion.
+
+The fake `Window` models the browser-verified HTML rule (*noopener OR noreferrer ⇒ null even on success*). **That model is the load-bearing part** — weaken it and Defects B and C stop being caught.
+
+## B4. Verification
+
+| Gate | Result |
+|---|---|
+| 3 target suites | **GREEN** — 12 / 7 / 7 |
+| Full marketing tsc+node suite | **18/19**. The one failure, `lib/city-decks.test.ts`, is a pre-existing `@/` path-alias resolution artifact of the ad-hoc tsc runner — untouched by and unrelated to this change |
+| All 382 strict-grep gates | 22 failures, **IDENTICAL to the stashed baseline** (pre-existing/environmental) — **this change introduces zero** |
+| 8 ORCH-relevant gates | **ALL PASS** (1381-android-choice, 1381-open-external, 1324, 1328, 1326, 1319, 1342, 1327) |
+| `tests-append-only` | **PASS** 9/9 — marker recognized, self-test 6/6 |
+| `tsc --noEmit` | **exit 0** |
+| `next build` | **GREEN** |
+| Product-code diff | **EMPTY** — only the 3 authorized test files changed |
+
+## B5. Scope discipline
+
+Only the 3 authorized files. No product code touched (no test revealed a real defect). `lib/device-platform.ts`, `app-mobile/**`, `mingla-business/**`, `mingla-admin/**` untouched. `BUSINESS_APP_CHOICE_COPY` byte-frozen. No PR, no merge, no deploy.
+
+Docblocks updated to describe the new contract and the **corrected run commands** — the `openExternal` import roots the tsc emit at the package, so the runnable JS now lands under `components/marketing/__tests__/` (the old documented paths were stale).
+
+## B6. Rebase note (not a code change)
+
+`git rebase origin/main` conflicted on `COMMS_LEDGER.md`: the **same** COMMS-0101 row had accumulated **different acks** on each side — origin/main carried the implementor `ADDENDUM BUILD` ack (committed direct-to-main), the branch carried the forensics `SPEC ADDENDUM` ack. Resolved as a **union of all 6 acks** (columns compared field-by-field; only `acked_by` differed). Picking either side would have silently erased a real ack — the exact fragility recorded in `feedback_comms_ledger_direct_main_commits_fragile.md`.
+
+## B7. Addendum-B commits
+
+| Hash | Subject |
+|---|---|
+| `69431e43b` | Re-point the 4 open/fallback assertions at the shared helper — behavioural, not token-presence (**both-direction proof: PASS on correct impl; RED on defects A/B/C/D**) |
