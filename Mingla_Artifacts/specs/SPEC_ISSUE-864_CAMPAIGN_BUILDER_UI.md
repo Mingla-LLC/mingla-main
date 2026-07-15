@@ -40,6 +40,24 @@ Order: **audience/lane → goal (A1) → destination → media → budget → co
 
 ---
 
+## Amendment A3 (2026-07-14) — the builder targets the generalized 5-channel engine
+
+Per **#862 Amendment A3**, the backend is no longer Meta-only: it is one platform-agnostic, lane-aware engine (`ad_connections`/`ad_campaigns`/`ad_sets`/`ads` + a `ChannelAdapter`) with **five provisioned channels** — Meta, TikTok, Snapchat, Google, Reddit. The builder is amended to target it. This is an amendment, not a rewrite: the wizard shape, steps, states, a11y and design contract (§4) stand; only the create path is generalized and Step 1 becomes a real multi-channel picker.
+
+**(1) ONE create flow, parameterized by `platform` + `lane`.** The builder assembles a single request and posts it to the generalized **`admin-ad-create-campaign`** endpoint (#862 A3 §C) — replacing the Meta-only `admin-meta-create-campaign` in §4.3/§4.4. The payload gains `platform` + `lane` (the lane already comes from A2); the rest of §4.4's body is unchanged. `getConnectionStatus()` calls **`admin-ad-connect` `{platform, lane, action:'status'}`**. The service file (§4.3 `metaAdsCampaigns.js`) generalizes to an `adEngine.js` wrapper over `admin-ad-*`.
+
+**(2) Channel picker (replaces the Meta-active / TikTok-"coming-soon" Step 1).** Step 1 becomes "**Which network?**" showing only the channels whose `ad_connections` row is **GREEN (connected)** for the selected lane: **Meta, Snapchat, Google, Reddit** are selectable now; **TikTok** shows **"Coming soon"** (disabled) until its app review clears and the token lands. The picker reads live connection state per `(platform, lane)` and fail-closes exactly as SC-2 already specifies — a channel that isn't connected can't be built on (Next disabled + Connect CTA). Same forward-compatible, config-driven pattern as A1's goals and A2's lanes: a channels array, not hardcoded branches, so a channel flips from disabled→active when its connection turns GREEN, with no new dead UI.
+
+**(3) Per-platform capability flags.** Objectives, optimization goals, and placements differ per network — the builder keys the goal step (A1) and any placement/format controls off a **per-platform capability map** (e.g. Meta = `OUTCOME_TRAFFIC`/`OUTCOME_AWARENESS`; TikTok = `TRAFFIC`; Snapchat = `TRAFFIC` (Swipes / Landing-page views); **Google = Search / Display** channel types with maximize-clicks; **Reddit = ad groups**, CLICKS). Only the goals a channel can actually fulfil render for it; the A1 "no half-built placeholders" rule holds per channel. Advanced (exact objective/optimization/bid) stays behind the A1 "Advanced" disclosure, scoped to the picked platform.
+
+**(4) Reuse A2's audience/lane selector, unchanged.** Order becomes **audience/lane → channel → goal → destination → media → budget → copy → review**. The lane selector (A2) still picks the `ad_connections` family; the channel picker then narrows to a platform within that lane.
+
+**(5) Destination stays the smart link (A1 / #862 A1).** Every channel's ad points at the AppsFlyer OneLink (`go.usemingla.com`) built server-side by `admin-ad-create-campaign`; the builder still lets the admin pick the public page and shows the "Opens the Mingla app if installed, otherwise the web page" note. Media continues through the `meta-ad-creatives` bucket (§4.5); when #866's picker lands, the payload carries `creative_id` (→ `ads.creative_id`) instead of a raw `image_url`, resolved per-platform at create — additive, no builder rewrite.
+
+**Coherence:** the §4.4 payload, §4.5 storage bucket, §5 success criteria, §6 invariants (create-PAUSED, admin-write bucket, token isolation) and §11 allowlist all carry over; only the endpoint names (`admin-meta-*` → `admin-ad-*`) and the Step-1 channel set change. The strict-grep RT-3 gate widens to forbid **any** platform token/Graph host in `mingla-admin/src/**`, not just Meta's.
+
+---
+
 ## 1. Executive summary
 
 Build the **Campaign Builder** — a dedicated multi-step admin screen (`#/campaign-builder` in `mingla-admin`) that lets an admin assemble a Meta ad campaign visually: pick the **channel**, pick a **live public page** as the destination, **upload the ad image**, set **budget & audience**, write **ad copy**, then **review** against a live Facebook-style preview and **create it (paused)**. Submit calls #862's `admin-meta-create-campaign` endpoint; the created campaign lands PAUSED in #862's campaign surface with the Launch control.
