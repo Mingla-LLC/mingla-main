@@ -498,6 +498,7 @@ export interface AuthedClient {
 // ── Registry (A3 §B getAdapter) ───────────────────────────────────────────────
 
 import { metaAdapter } from "./meta.ts";
+import { googleAdapter } from "./google.ts";
 
 function failCloseStub(platform: Platform): ChannelAdapter {
   const notConnected = (): never => {
@@ -526,7 +527,7 @@ const ADAPTER_REGISTRY: Record<Platform, ChannelAdapter> = {
   meta: metaAdapter,
   tiktok: failCloseStub("tiktok"), // WP7 (#863)
   snapchat: failCloseStub("snapchat"), // WP5 (#867)
-  google: failCloseStub("google"), // WP2 (#867)
+  google: googleAdapter, // WP2 (#867) — live adapter (A1.3-0 provisioning flip)
   reddit: failCloseStub("reddit"), // WP6 (SPEC_ISSUE-REDDIT)
 };
 
@@ -542,6 +543,77 @@ export function isPlatform(value: unknown): value is Platform {
 
 export function isLane(value: unknown): value is Lane {
   return value === "consumer" || value === "business";
+}
+
+// ── GR-52 destination re-checker (ISSUE-867 A1.3 — channel-generic) ───────────
+// Google polices "unavailable offers" / "destination not working" for the ad's
+// WHOLE life, and every Mingla ad promotes a dated, finite event. The sync fn
+// re-asserts the destination is public + live on every sweep and auto-pauses
+// (+ audits) on failure — protecting the ACCOUNT, not just the campaign. The
+// same check runs for every channel (Meta benefits too).
+
+interface DestinationMaybeSingleResult {
+  data: unknown;
+}
+
+interface DestinationEventChain {
+  // PromiseLike, not Promise — supabase-js query builders are thenables.
+  maybeSingle(): PromiseLike<DestinationMaybeSingleResult>;
+}
+
+interface DestinationEqChain {
+  eq(column: string, value: string): DestinationEqChain;
+  in(column: string, values: string[]): DestinationEventChain;
+  maybeSingle(): PromiseLike<DestinationMaybeSingleResult>;
+}
+
+interface DestinationSelectChain {
+  eq(column: string, value: string): DestinationEqChain;
+}
+
+/** Minimal structural view of the supabase client the checker needs. */
+export interface DestinationQueryClient {
+  from(table: string): { select(columns: string): DestinationSelectChain };
+}
+
+export interface DestinationRef {
+  dest_page_type: string;
+  dest_brand_slug: string;
+  dest_entity_slug: string | null;
+}
+
+/**
+ * Mirrors the create-time destination gate (§4.4b): an event destination must
+ * still resolve in business_public_events_view with status scheduled|live
+ * (the view also exposes ended/cancelled — paid traffic must never point at
+ * one); a brand destination must still resolve in business_public_brands_view.
+ * Unknown/uncreatable page types are NOT public (fail-close).
+ */
+export async function destinationStillPublicLive(
+  db: DestinationQueryClient,
+  dest: DestinationRef,
+): Promise<boolean> {
+  if (dest.dest_page_type === "event") {
+    if (!dest.dest_entity_slug) return false;
+    const { data } = await db
+      .from("business_public_events_view")
+      .select("id")
+      .eq("brand_slug", dest.dest_brand_slug)
+      .eq("slug", dest.dest_entity_slug)
+      .in("status", ["scheduled", "live"])
+      .maybeSingle();
+    return Boolean(data);
+  }
+  if (dest.dest_page_type === "brand") {
+    const { data } = await db
+      .from("business_public_brands_view")
+      .select("id")
+      .eq("slug", dest.dest_brand_slug)
+      .maybeSingle();
+    return Boolean(data);
+  }
+  // trip/venue have no public read model yet (create fails-close on them too).
+  return false;
 }
 
 // ── Atomic create with compensating rollback (§4.4b — no orphans) ─────────────

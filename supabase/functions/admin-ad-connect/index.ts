@@ -16,6 +16,14 @@
  *      ad_connections.extra.minimum_budgets (A4.g — never hardcoded; PROOF M-P8)
  *   6. pixel last_fired + IG business account → extra (A4.e.5 / A4.e.7)
  *
+ * Google connect (ISSUE-867 WP2, A1.3 / AC-G-1 / AC-G-2):
+ *   1. secrets resolve (all six GOOGLE_ADS_* names)      → 409 google_not_provisioned
+ *   2. OAuth mint from the refresh token (in-memory)     → 424 google_not_connected
+ *   3. GAQL SELECT customer (proves the dev token works
+ *      on the real account — BASIC tier, PROOF G-P1)     → 424 on failure
+ *   4. customer.status must be ENABLED                   → 424 google_not_connected
+ *   5. upsert the connection row (auth_kind dev_token_oauth; MCC → external_org_id)
+ *
  * Other platforms are fail-close stubs until their WPs land:
  *   → 424 <platform>_not_connected.
  *
@@ -46,6 +54,13 @@ import {
   resolveMetaClient,
   resolveMetaEnvConfig,
 } from "../_shared/meta.ts";
+import {
+  GOOGLE_ADS_DEFAULT_API_VERSION,
+  googleDefaultTokenEnvVar,
+  googleFetchCustomer,
+  resolveGoogleClient,
+  resolveGoogleEnvConfig,
+} from "../_shared/google.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -68,6 +83,10 @@ function json(body: unknown, status = 200): Response {
 function defaultTokenEnvVar(platform: Platform, lane: Lane): string {
   if (platform === "meta") {
     return lane === "business" ? "META_MINGLABIZ_SYSTEM_USER_TOKEN" : "META_SYSTEM_USER_TOKEN";
+  }
+  if (platform === "google") {
+    // Lane-correct (QA P2-3) — the business lane never claims the consumer secret.
+    return googleDefaultTokenEnvVar(lane);
   }
   const byPlatform: Record<Platform, string> = {
     meta: "META_SYSTEM_USER_TOKEN",
@@ -121,11 +140,11 @@ serve(async (req: Request): Promise<Response> => {
     return json({ error: "validation_error", detail: "action_invalid" }, 400);
   }
 
-  // ── Fail-close stubs for the four unbuilt channels. ─────────────────────────
-  if (platform !== "meta") {
+  // ── Fail-close stubs for the three unbuilt channels. ────────────────────────
+  if (platform !== "meta" && platform !== "google") {
     return json({
       error: `${platform}_not_connected`,
-      detail: `${platform} adapter ships in a later WP (WP2 google / WP5 snapchat / WP6 reddit / WP7 tiktok); fail-close until then.`,
+      detail: `${platform} adapter ships in a later WP (WP5 snapchat / WP6 reddit / WP7 tiktok); fail-close until then.`,
     }, 424);
   }
 
@@ -135,6 +154,120 @@ serve(async (req: Request): Promise<Response> => {
     .eq("platform", platform)
     .eq("lane", lane)
     .maybeSingle();
+
+  // ── GOOGLE (ISSUE-867 WP2, AC-G-1/AC-G-2) ────────────────────────────────────
+  // Secrets unset → 409 google_not_provisioned (a provisioning gap — the SC-7
+  // checklist state, NO row write). Mint/permission failure with secrets set →
+  // 424 google_not_connected + an `invalid` row (QA P2-4 parity with Meta).
+  if (platform === "google") {
+    const markGoogleInvalid = async (): Promise<void> => {
+      let accountId = existing?.external_account_id ?? "";
+      if (!accountId) {
+        try {
+          accountId = resolveGoogleEnvConfig(existing ?? null, lane).customerId;
+        } catch {
+          accountId = "unconfigured"; // explicit sentinel — never fabricated data
+        }
+      }
+      await supabase
+        .from("ad_connections")
+        .upsert({
+          platform,
+          lane,
+          display_name: existing?.display_name ??
+            `Google Ads · ${lane === "business" ? "Business" : "Consumer"}`,
+          external_account_id: accountId,
+          external_org_id: existing?.external_org_id ?? null,
+          auth_kind: "dev_token_oauth",
+          token_env_var: existing?.token_env_var ?? defaultTokenEnvVar(platform, lane),
+          extra: existing?.extra ?? {},
+          status: "invalid",
+          connected: false,
+        }, { onConflict: "platform,lane" });
+    };
+
+    try {
+      // Mint + config resolve (fail-close: unset → google_not_provisioned;
+      // mint failure → google_not_connected). Then the AC-G-2 GAQL validation.
+      const client = await resolveGoogleClient(existing ?? null, lane);
+      const customer = await googleFetchCustomer(client);
+
+      if (customer.status !== "ENABLED") {
+        await markGoogleInvalid();
+        return json({
+          error: "google_not_connected",
+          detail:
+            `Google Ads customer ${client.customerId} is ${customer.status ?? "in an unknown state"} — an ENABLED, billed account is required (G-P1).`,
+        }, 424);
+      }
+
+      if (action === "status" && !existing) {
+        return json({ connection: null, google: customer });
+      }
+
+      const priorExtra = (existing?.extra ?? {}) as Record<string, unknown>;
+      const row = {
+        platform,
+        lane,
+        display_name: `Google Ads · ${lane === "business" ? "Business" : "Consumer"}${
+          customer.descriptiveName ? ` (${customer.descriptiveName})` : ""
+        }`,
+        external_account_id: client.customerId,
+        // The MCC (login-customer-id) is the org-level id (A1.3 G-11).
+        external_org_id: client.loginCustomerId,
+        auth_kind: "dev_token_oauth",
+        token_env_var: existing?.token_env_var ?? defaultTokenEnvVar(platform, lane),
+        extra: {
+          ...priorExtra,
+          api_version: client.apiVersion,
+          login_customer_id: client.loginCustomerId,
+          test_account: customer.testAccount,
+        },
+        status: "connected",
+        currency: customer.currency,
+        timezone: customer.timezone,
+        account_status: customer.status,
+        token_last_verified_at: new Date().toISOString(),
+        connected: true,
+        connected_by: user.id,
+      };
+      const { data: upserted, error: upsertError } = await supabase
+        .from("ad_connections")
+        .upsert(row, { onConflict: "platform,lane" })
+        .select("*")
+        .maybeSingle();
+      if (upsertError) {
+        console.error("[admin-ad-connect] google upsert failed:", upsertError.message);
+        return json({ error: "internal_error" }, 500);
+      }
+      return json({ connection: upserted, google: customer });
+    } catch (err) {
+      if (err instanceof AdNotConnectedError) {
+        if (err.detail === "google_not_provisioned") {
+          // AC-G-1: provisioning gap → 409, zero Google calls beyond env reads.
+          return json({
+            error: "google_not_provisioned",
+            detail:
+              `Set the Google Ads Function Secrets (GOOGLE_ADS_DEVELOPER_TOKEN, GOOGLE_ADS_REFRESH_TOKEN, GOOGLE_ADS_OAUTH_CLIENT_ID, GOOGLE_ADS_OAUTH_CLIENT_SECRET, GOOGLE_ADS_LOGIN_CUSTOMER_ID, GOOGLE_ADS_CUSTOMER_ID, GOOGLE_ADS_API_VERSION=${GOOGLE_ADS_DEFAULT_API_VERSION}), then reconnect (SPEC §7 Google 5–6).`,
+          }, 409);
+        }
+        await markGoogleInvalid();
+        return json({
+          error: "google_not_connected",
+          detail:
+            "The Google OAuth refresh token could not mint an access token — re-provision GOOGLE_ADS_REFRESH_TOKEN, then reconnect.",
+        }, 424);
+      }
+      if (err instanceof AdApiError) {
+        await markGoogleInvalid();
+        // Normalized error only — no token ever appears here (SC-SEC-1).
+        return json({ error: "google_not_connected", detail: err.toJSON() }, 424);
+      }
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error("[admin-ad-connect] google unexpected:", detail);
+      return json({ error: "internal_error" }, 500);
+    }
+  }
 
   // QA P2-4 (AC-1): a connect failure must PERSIST an `invalid` row even on a
   // FIRST connect (no existing row) — SC-2's "invalid" state must be renderable
