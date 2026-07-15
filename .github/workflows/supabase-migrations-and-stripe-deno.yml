@@ -728,8 +728,16 @@ jobs:
         env:
           # Deliberately UNSET credentials: the RT-1 fail-close tests assert
           # token-absent → AdNotConnectedError with ZERO Graph calls. No test
-          # in these suites performs a network call.
+          # in these suites performs a network call. (ISSUE-867 WP2: the
+          # AC-G-1 tests likewise assert GOOGLE_ADS_* absent →
+          # google_not_provisioned with zero network calls.)
           META_SYSTEM_USER_TOKEN: ""
+          GOOGLE_ADS_DEVELOPER_TOKEN: ""
+          GOOGLE_ADS_REFRESH_TOKEN: ""
+          GOOGLE_ADS_OAUTH_CLIENT_ID: ""
+          GOOGLE_ADS_OAUTH_CLIENT_SECRET: ""
+          GOOGLE_ADS_LOGIN_CUSTOMER_ID: ""
+          GOOGLE_ADS_CUSTOMER_ID: ""
         run: |
           set -euo pipefail
           # ISSUE-862 WP1 (registered 2026-07-15):
@@ -754,12 +762,28 @@ jobs:
           #    (subcode 1815857, fails-on-revert), P2-3 lane-correct token
           #    resolution, P2-5 creative rollback + residue honesty, P3-8 EAA
           #    scrub, P3-9 MAX_BUDGET_CENTS bound (T-1 boundary preserved).
+          # ISSUE-867 WP2 (Google lane, 2026-07-15):
+          #  - google.test.ts — AC-G-1 fail-close (google_not_provisioned, zero
+          #    network calls), the PROVEN G-P3 mutate body (temp-ID
+          #    defined-before-referenced, G-14 containsEuPoliticalAdvertising,
+          #    PRESENCE, PAUSED, search-only networks, targetSpend,
+          #    partialFailure:false), RT-5 cents×10,000→micros, AC-G-4
+          #    REMOVED-never status writer, finalUrls-vs-trackingUrlTemplate
+          #    split (A4.f/A1.1(5)), G-4 RSA validators, GR-15/GR-73 keyword
+          #    rules, GR-37 London/Ontario geo disambiguation, G-3 dual review
+          #    vocabularies, ya29./1// secret scrubbing, mint cache.
+          #  - issue867_wp2_google_flow.test.ts — atomic-create wire flow
+          #    (headers + ~composite id + request-id capture), validateOnly
+          #    zero-fabrication, GR-52 destination re-checker gate (exact view
+          #    names + scheduled|live status filter; fail-close page types).
           DENO_TEST_FILES=(
             supabase/functions/_shared/__tests__/adChannel.test.ts
             supabase/functions/_shared/__tests__/meta.test.ts
             supabase/functions/_shared/__tests__/issue862_wp1_tester_adversarial.test.ts
             supabase/functions/_shared/__tests__/issue862_wp1_rework.test.ts
             supabase/functions/_shared/__tests__/issue862_wp1_retest_adversarial.test.ts
+            supabase/functions/_shared/__tests__/google.test.ts
+            supabase/functions/_shared/__tests__/issue867_wp2_google_flow.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-read --no-check "${DENO_TEST_FILES[@]}"; then
