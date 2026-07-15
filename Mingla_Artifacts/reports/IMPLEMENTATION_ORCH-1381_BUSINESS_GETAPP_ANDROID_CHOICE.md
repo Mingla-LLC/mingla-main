@@ -357,7 +357,7 @@ Run: `npx tsc lib/__tests__/open-external.test.ts --outDir /tmp/oe --module comm
 | REVERT D — `opener` not severed | **1 FAIL** (T-D — tabnabbing) |
 | **RESTORED** | **All 4 pass** |
 
-**`fails-on-revert verified at commit `<ADDENDUM_HASH>`** — by **true line deletion** of the fix body (not comment-out), across **4** distinct revert shapes, each caught by an independent angle. **T-A is the real tooth: it asserts the fallback does NOT fire on a successful open.** The addendum predicted 2 failures for REVERT A; the actual result is **3** (T-D also catches that the shipped bug never severed `opener`) — stronger than specified, not a contradiction.
+**`fails-on-revert verified at commit `54b7a8692`** — by **true line deletion** of the fix body (not comment-out), across **4** distinct revert shapes, each caught by an independent angle. **T-A is the real tooth: it asserts the fallback does NOT fire on a successful open.** The addendum predicted 2 failures for REVERT A; the actual result is **3** (T-D also catches that the shipped bug never severed `opener`) — stronger than specified, not a contradiction.
 
 ## A5. Verification matrix
 
@@ -419,3 +419,11 @@ The addendum caught this hazard for **gates** (§6.1: "once the components deleg
 | **AD-3** | **D-A2 (repo-wide `window.open` sweep) is now higher-value than stated.** `mingla-marketing` is clean, but nothing has swept `mingla-admin/` or the RN webviews for the `if (!win) fallback` idiom. The addendum's own trap-verification proves this is a general HTML-spec trap, not a marketing-web quirk. |
 | **AD-4** | **The `shrink-0`-less-logo failure mode is systemic** (addendum D-A1): any `justify-between` bar with a shrinkable logo **cannot fail a width check** — it silently destroys the brand instead. Worth a global audit; the business nav had been shipping a 30px logo. |
 | **AD-5** | **My own test caught my own test bug.** T-D initially failed because I destructured `lastPopup` before the call (capturing `null` by value). Worth noting that the fake-Window pattern's mutable-handle semantics are a live footgun for anyone copying it. |
+
+## A9. Addendum commits
+
+| Hash | Subject |
+|---|---|
+| `54b7a8692` | ADDENDUM D-A + D-A-2 + D-B: the one owner, 4 call sites, 2 gate amendments + 1 new gate, behavioural fails-on-revert test (**fails-on-revert proven at this hash**) |
+
+**No PR opened, nothing merged, nothing deployed.** The CLOSE commit must carry `[deploy]` (addendum §10) — D-B is live on `usemingla.com` today.
