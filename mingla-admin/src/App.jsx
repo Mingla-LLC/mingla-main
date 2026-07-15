@@ -43,6 +43,9 @@ import { VenuesConsolePage } from "./pages/VenuesConsolePage";
 import { BusinessPaymentsPage } from "./pages/BusinessPaymentsPage";
 import { BusinessOrdersPage } from "./pages/BusinessOrdersPage";
 import { BusinessMoneyLedgerPage } from "./pages/BusinessMoneyLedgerPage";
+// ISSUE-862 WP1 — Full Rooms Ad Engine (Meta channel + 4 fail-close stubs;
+// hash route #/ad-engine). Minimal functional surface; #864 owns the builder.
+import { AdEnginePage } from "./pages/AdEnginePage";
 // ORCH-1008: 6 pages deleted (Seed, ContentModeration, Analytics, Reports,
 //   BetaFeedback, TableBrowser). Sidebar flattened; System dropdown removed.
 //   See SPEC_ORCH-1008_ADMIN_SHELL_PRUNE_INTELLIGENCE_OVERVIEW.md §2 + §3.
@@ -90,6 +93,8 @@ const PAGES = {
   "business-payments": BusinessPaymentsPage,
   "business-orders": BusinessOrdersPage,
   "business-money-ledger": BusinessMoneyLedgerPage,
+  // ISSUE-862 WP1: Full Rooms Ad Engine (hash route #/ad-engine).
+  "ad-engine": AdEnginePage,
 };
 
 function getTabFromHash() {

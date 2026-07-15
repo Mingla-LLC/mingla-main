@@ -35,6 +35,7 @@ import {
   Store,
   Receipt,
   Landmark,
+  Megaphone,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { NAV_GROUPS } from "../../lib/constants";
@@ -62,6 +63,9 @@ const ICON_MAP = {
   // the Receipt / Landmark icons silently fall back to LayoutDashboard.
   Receipt,
   Landmark,
+  // ISSUE-862 WP1 — Ad Engine nav (Growth group). Same ICON_MAP registration
+  // requirement as Careers/Support.
+  Megaphone,
 };
 
 export function Sidebar({
