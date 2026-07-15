@@ -52,7 +52,7 @@ Live `AuthContext` values were read by walking the React fiber tree (`__reactCon
 
 **Probe harnesses (scratch):** `/tmp/orch-1373/cdp.mjs`, `/tmp/orch-1373/armB.mjs`, `/tmp/orch-1373/armB-fast.mjs`, `/tmp/orch-1373/mutual-exclusivity-proof.mts`
 **Captures (scratch):** `/tmp/orch-1373/capture-*.json`
-**Evidence (committed):** `Mingla_Artifacts/evidence/ORCH-1373/armA-loggedout-infinite-spinner-samsung.png`
+**Evidence (LOCAL-ONLY — deliberately NOT committed):** `Mingla_Artifacts/evidence/ORCH-1373/armA-loggedout-infinite-spinner-samsung.png`. `Mingla_Artifacts/evidence/` is gitignored by standing repo policy (`.gitignore:122` — "the text reports referencing this evidence ARE committed; the raw evidence stays on disk for local reference, never git history"). The file exists on disk (78 KB, verified) and was viewed and confirmed by the orchestrator at REVIEW: Samsung Chrome on `…ess.usemingla.com`, orange spinner over "Accepting your invitation…". Policy respected; not force-added.
 
 > **Test-URL note.** Both arms deliberately used a **garbage token** (`ORCH1373PROBETOKEN`). This is a feature of the design, not a shortcut: the hypothesis predicts the auth gate fires *before* any token handling, so a garbage token must produce the *same* infinite spinner as a real one — and it did. It also means **no production token was needed and no production row was touched**. The URL shape tested is byte-identical to the one real invitees receive, built at `supabase/functions/invite-brand-member/index.ts:578` (`https://business.usemingla.com/accept-brand-invitation?token=…`), confirmed by `orch-1050-invite-happy.test.ts:110`.
 
