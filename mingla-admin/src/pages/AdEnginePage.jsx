@@ -216,7 +216,15 @@ export function AdEnginePage() {
         trace: parsed?.body?.detail?.trace_id ?? null,
       });
     } else if (data?.validated) {
-      addToast({ variant: "success", title: "Validated", description: "Shapes are valid — nothing was created (validate-only)." });
+      const layers = Array.isArray(data.validated_layers) ? data.validated_layers.join(", ") : "";
+      const skipped = Array.isArray(data.skipped_layers) && data.skipped_layers.length > 0
+        ? ` (skipped: ${data.skipped_layers.map((s) => s.layer).join(", ")})`
+        : "";
+      addToast({
+        variant: "success",
+        title: "Validated",
+        description: `Validated layers: ${layers}${skipped} — nothing was created.`,
+      });
     } else {
       addToast({
         variant: "success",

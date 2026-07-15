@@ -81,13 +81,19 @@ serve(async (req: Request): Promise<Response> => {
   if (!adminRow) return json({ error: "forbidden" }, 403);
 
   // ── Load target campaigns. ───────────────────────────────────────────────────
+  // QA P3-10: the all-campaign sweep is BOUNDED — oldest-synced first, capped,
+  // with `truncated` reported so a cron/UI caller knows to sweep again.
+  const SYNC_SWEEP_LIMIT = 50;
   const campaignQuery = supabase.from("ad_campaigns").select("*");
   const { data: campaigns } = campaignId
     ? await campaignQuery.eq("id", campaignId)
-    : await campaignQuery;
+    : await campaignQuery
+      .order("status_synced_at", { ascending: true, nullsFirst: true })
+      .limit(SYNC_SWEEP_LIMIT);
   if (!campaigns || campaigns.length === 0) {
-    return json(campaignId ? { error: "not_found", detail: "campaign_not_found" } : { synced: [], errors: [] }, campaignId ? 404 : 200);
+    return json(campaignId ? { error: "not_found", detail: "campaign_not_found" } : { synced: [], errors: [], truncated: false }, campaignId ? 404 : 200);
   }
+  const truncated = !campaignId && campaigns.length === SYNC_SWEEP_LIMIT;
 
   const connectionCache = new Map<string, AdConnectionRow | null>();
   const synced: Record<string, unknown>[] = [];
@@ -205,5 +211,5 @@ serve(async (req: Request): Promise<Response> => {
     }
   }
 
-  return json({ synced, errors });
+  return json({ synced, errors, truncated });
 });

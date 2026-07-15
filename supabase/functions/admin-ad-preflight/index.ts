@@ -107,7 +107,9 @@ async function metaPreflight(
 
   let client;
   try {
-    client = resolveMetaClient(conn ?? null);
+    // Lane-correct resolution (QA P2-3): with no persisted row, the credential
+    // probed is the LANE's env name, never a consumer fallback.
+    client = resolveMetaClient(conn ?? null, lane as "consumer" | "business");
   } catch (err) {
     const detail = err instanceof AdNotConnectedError
       ? "Token secret unset — set the Supabase Edge Function secret and connect."

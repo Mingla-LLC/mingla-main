@@ -60,16 +60,8 @@ serve(async (req: Request): Promise<Response> => {
   } catch {
     return json({ error: "invalid_json" }, 400);
   }
-  const campaignId = typeof body.campaign_id === "string" ? body.campaign_id : "";
-  const action = body.action;
-  if (!UUID_REGEX.test(campaignId)) {
-    return json({ error: "validation_error", detail: "campaign_id_invalid_uuid" }, 400);
-  }
-  if (action !== "launch" && action !== "pause") {
-    return json({ error: "validation_error", detail: "action_invalid" }, 400);
-  }
 
-  // ── ADMIN GATE (SPEC §4.4). ──────────────────────────────────────────────────
+  // ── ADMIN GATE FIRST (QA P3-7: auth precedes input validation). ─────────────
   const authHeader = req.headers.get("authorization");
   if (!authHeader) return json({ error: "unauthorized" }, 401);
   const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
@@ -85,6 +77,15 @@ serve(async (req: Request): Promise<Response> => {
     .eq("status", "active")
     .maybeSingle();
   if (!adminRow) return json({ error: "forbidden" }, 403);
+
+  const campaignId = typeof body.campaign_id === "string" ? body.campaign_id : "";
+  const action = body.action;
+  if (!UUID_REGEX.test(campaignId)) {
+    return json({ error: "validation_error", detail: "campaign_id_invalid_uuid" }, 400);
+  }
+  if (action !== "launch" && action !== "pause") {
+    return json({ error: "validation_error", detail: "action_invalid" }, 400);
+  }
 
   // ── Load campaign + connection + children. ───────────────────────────────────
   const { data: campaign } = await supabase
