@@ -498,3 +498,388 @@ Anything outside the allowlist → request a `SPEC_AMENDMENT_ISSUE-867_*` before
 ## Downstream routing
 **Next:** `mingla-implementor` — build the **Snapchat lane end-to-end from this SPEC now** (it is live-fireable: real IDs, verified token, live-probe evidence). The **Google lane** ships to the same `ChannelAdapter` interface but stays fail-closed (`google_not_provisioned`) until §7 Google provisioning lands — implement its `mutate` bodies as a fast-follow once the developer token is approved. → `mingla-tester` (RLS + fail-close + token-mint cache + no-orphan + Snapchat live-fire; Google `AC-G-1` now, `AC-G-2` post-provisioning). → orchestrator CLOSE.
 **Working tree:** `~/Desktop/mingla-orchs/issue-867-snapchat-google-channels/` on branch `issue-867-snapchat-google-channels`.
+
+---
+---
+
+# Amendment A1 — battle-test corrections (2026-07-15, evidence-backed)
+
+**Author:** mingla-forensics (SPEC mode, docs-only) · **Date:** 2026-07-15
+**Evidence base:** `GAP_REGISTER.md` §2–§6 (consolidated 5-channel register, 2026-07-14) + `PROOF_LOG.md` (2026-07-15 live probes with the **engine's own credentials** — S-P1…S-P5, G-P1…G-P3, D-P1) + `snapchat.md`/`google.md` full field research + `PIPELINE_BLUEPRINT.md` §1.8/§2.3/§2.4/§3 — all in `~/Desktop/mingla-orchs/issue-862-meta-ads-api/Mingla_Artifacts/research/ad-pipeline-2026-07-15/`.
+**Precedence:** this amendment is **append-only**; where it conflicts with the body above, **the amendment wins**. Where the GAP register and the PROOF LOG conflict, **the PROOF LOG wins** (it is newer and probe-grade).
+**Why this amendment exists:** the register proved this spec carries the most field-level errors of any channel spec — its Snapchat create sequence **cannot succeed as written** (four field-level errors across all four levels, GR-08), and its budget schema carries the **10,000× money bug** (GR-01) behind a **$15,000/day** live funding limit. The Google lane's "PROVISION-BLOCKED" premise is now **stale** — BASIC-tier access was approved 2026-07-15 and the full SEARCH+RSA chain validated clean against the real, billed account (G-P1/G-P3).
+
+Every item below is stated as **old → new → evidence**.
+
+---
+
+## A1.0 Headline state changes (read before the diffs)
+
+1. **Google is NO LONGER provision-blocked.** `[ENGINE-LIVE, G-P1]` Developer token **BASIC tier approved 2026-07-15**; `listAccessibleCustomers` → 200; `googleAds:search` on customer **`3623860476`** → `status: ENABLED`, `testAccount: false`, USD, **billed**. MCC (login-customer-id) = **`8284700017`**. **The old customer `5083048929` is dead — replace it everywhere; never reference it again.** The Asymmetry banner's Google column, §4.0b's "PROVISION-BLOCKED" framing, §7 Google items 1–4, and AC-G-2's gate are all superseded (details in A1.3). A3 §D registry `google/consumer`: AMBER → **GREEN** on account `3623860476`.
+2. **The full Google SEARCH+RSA chain is PROVEN.** `[VALIDATE-ONLY, G-P3]` `googleAds:mutate` with `validateOnly:true, partialFailure:false` validated **clean** (`{}`): budget → campaign (PAUSED, SEARCH, targetSpend, PRESENCE geo type) → campaignCriterion (London `1006886`) → adGroup (SEARCH_STANDARD) → RSA (3 headlines ≤30 × 2 descriptions ≤90) → PHRASE keyword. Zero objects created (verified by list-after). It exposed **one NEW REQUIRED field in no spec** — see **G-14**.
+3. **The Snapchat Public Profile preflight lookup specced at §7 Snap-3 is UNBUILDABLE.** `[ENGINE-LIVE, S-P4]` `GET https://businessapi.snapchat.com/v1/organizations/{org}/public_profiles` → **HTTP 403 "unauthorized"** on our token class (the `businessapi` host is not authorized for marketing-scoped tokens). The profile id is **UI-captured TRUSTED CONFIG**: `2cfbdc85-890c-43af-b393-10c0adbbad67`. See A1.2 item 8.
+4. **Snap remains fully funded and live:** `[ENGINE-LIVE, S-P1/S-P2/S-P3/S-P5]` token mints (3600 s, both scopes), account "Mingla Ads" ACTIVE, funding ACTIVE at **$15,000/day**, pixel `af5f8fc4-…` ACTIVE. The envelope's `request_status` + per-item `sub_request_status` double structure was observed live (S-9 double-assert confirmed real).
+5. **The A1-OneLink-as-destination design is VETOED by live evidence.** `[ENGINE-LIVE, D-P1]` `curl -A "facebookexternalhit/1.1" -L go.usemingla.com/w36m` → 302 to an **AppsFlyer app-install interstitial** (`/af-preview/…&af_robot_sig=…`, app-store meta tags only; HEAD → 404) — NOT the destination page. The cloaking-pattern risk is **real, not theoretical**. Destination policy v1 in A1.1(5).
+
+---
+
+## A1.1 Conductor-fixed canonical decisions (identical across the parallel #862/#863/#866/#867 amendments)
+
+### (1) THE MONEY FIX — budgets in CENTS at rest (GR-01) 🔴
+
+**Old (this spec):** `ad_campaigns.budget_micro bigint` / `ad_sets.budget_micro bigint` (§4.2); request body `budget:{ …, amount_micro:int }` (§4.4b); AC-S-3 asserts budgets "stored/sent in **micro**".
+**Why it's a blocker:** A3 (the canonical engine model) pins budgets **in cents** at rest. Two specs disagreeing on the money unit is a classic 10,000× failure: $5.00 stored as `500` cents sent raw as micro = **$0.0005** (below every floor → reject — the loud case); `5000000` micro read as cents = **$50,000** (the silent case) — behind a **$15,000/day** funding limit. (GAP_REGISTER GR-01.)
+**New (binding):**
+- **At rest:** `budget_cents bigint` replaces `budget_micro` on `ad_campaigns` and `ad_sets` (same NULL/positivity CHECKs). Admin UI collects dollars, stores cents.
+- **Conversion happens at exactly ONE boundary per adapter, nowhere else:** Snapchat `micro = cents × 10_000`; Google `micros = cents × 10_000`. No other layer converts; no layer stores micro.
+- **Min-checks run in micro, AFTER conversion:** `cents × 10_000 ≥ min_budget_micro` (ad-squad floor `5_000_000`, campaign floor `20_000_000`). `ad_connections.min_budget_micro` is **retained in micro** as the platform-native floor constant (it is a provider constant, not a stored budget).
+- **Mandatory unit tests (regression contract RT-5):** `$5.00 (500 cents) → 5_000_000 micro` and `$20.00 (2000 cents) → 20_000_000 micro`. A conversion in any other layer, or a min-check in cents, fails RT-5.
+- **All ACs restated in cents** — see A1.4.
+
+### (2) The A4-widened `ChannelAdapter` (being filed in #862 in parallel — this spec consumes it, does not redefine it)
+
+**Old:** §4.3's interface is `connect/createCampaign/createAdSet/createAd/setStatus/getStatus` with one creative inline — a Meta cast that neither Snap nor Google fits (GR-15, GR-17).
+**New (from #862 A4):**
+- **`createCreative(conn, input)` — optional adapter method.** Snapchat: Media create → upload bytes → **poll `media_status` → `READY`** → Creative (→ poll creative `packaging_status` → `SUCCESS`). Google: assets created via `assets:mutate` first, then linked (only `TextAsset` is inline on the ad).
+- **Create-ad input carries `headlines[]` / `descriptions[]` / `keywords[]` / `negative_keywords[]`** (Google RSA needs 3–15 headlines + 2–4 descriptions; a SEARCH campaign without keywords cannot meaningfully serve — GR-15).
+- **`setBudget(conn, level, externalId, cents)`** — cents in, converted at the adapter boundary per (1).
+- **Per-platform CTA maps** — never a shared normalizer (Snap's enum is per-creative-type; Reddit's is Title-Case strings; GR-29).
+- **MVP = Google SEARCH+RSA ONLY.** **PMax is explicitly DEFERRED** — an asset group **plus all minimum-required assets must be created in a single bulk mutate with temp IDs** (`AssetGroupError.NOT_ENOUGH_*` otherwise); it is **not expressible as sequential `createX` calls** (GR-15). Recorded as a standing decision so nobody "adds PMax" through the sequential interface. §4.0b's `advertising_channel_type:SEARCH|DISPLAY|…` claim is **narrowed to `SEARCH`** for this story; DISPLAY leaves MVP scope.
+
+### (3) Versions
+
+**Old:** §4.0b — "e.g. `v25` current at time of writing".
+**New:** **`GOOGLE_ADS_API_VERSION=v24`** — **v25 DOES NOT EXIST** (G-1; current is v24.2, 2026-06-24; v24 GA 2026-04-22). ~1-year support ⇒ **calendar the ~April-2027 v24 sunset**; add a **quarterly version checkpoint** for both channels to the ops calendar. (Snap's Marketing API is unversioned-in-path `v1` — no change.)
+
+### (4) Create-PAUSED + atomicity + status semantics (blueprint §1.8)
+
+- Everything is created **PAUSED** at every level, on both channels (unchanged from the body — re-affirmed).
+- **Google `REMOVED` is PERMANENT** — there is no un-remove. Our `ARCHIVED`/`DELETED` statuses have **no Google equivalent**. The Google adapter's pause/launch paths send **only `ENABLED|PAUSED` in `updateMask:"status"` mutates and may NEVER emit `REMOVED`** (guarded by unit test — new AC-G-4).
+- **Google is the ONLY channel with native atomicity:** `googleAds:mutate` with **`partialFailure:false`** rolls back the entire request if any op fails — it satisfies `I-PROPOSED-AD-NO-ORPHAN-WRITE` at the provider level, so the Google adapter needs **no compensating-delete path at all**. Capture `request_id` into `ad_status_events.provider_response` (it is what Google support requires).
+- **Snapchat's compensating delete is NOT sufficient as specced** (§4.3 "Snapchat cascades child squad/ad/creative" — **unverified and probably false for creatives/media**, which are **ad-account-scoped** and almost certainly survive `DELETE /campaigns/{id}`; GR-48). The rollback path must **track every created creative id and media id**, attempt explicit deletes, verify the cascade live during live-fire, and on any residue append them to `ad_status_events.external_ids` for reconciliation.
+
+### (5) Destination policy v1 (PROVEN by D-P1) — supersedes every `dest_smart_link`-as-URL usage in the body
+
+**Old:** §4.0 creative `web_view_properties.url` (= the `dest_smart_link`); §4.3 `web_view_properties:{url:dest_smart_link}`; §4.0b `AdGroupAd.ad.final_urls:[dest_smart_link]`.
+**New (binding, v1):**
+- **Google:** `final_urls = [canonical usemingla.com page]` (= `dest_url`) + the OneLink **ONLY in `tracking_url_template`** — Google's sanctioned pattern (tracking template redirects; final URL is the real page).
+- **Snapchat:** `web_view_properties.url` = the **canonical page** (`dest_url`) too for v1 (≤2048 chars, SSL/https required).
+- **`minglabiz.onelink.me` is NEVER used anywhere** (dead on Android; COMMS-0100/0101).
+- `ad_campaigns.dest_smart_link` **column is retained** (attribution reference + Google tracking template source) but is **demoted from ad-visible destination to tracking-only**.
+**Evidence:** D-P1 — AppsFlyer serves ad-review crawlers an app-install interstitial, which reads as cloaking (Meta "Circumventing Systems" — account-level; Google "destination mismatch"; GR-32).
+
+### (6) Snapchat optimization-goal default — OD-4 REVERSED (GR-21)
+
+**Old:** §4.4(b) default `optimization_goal='LANDING_PAGE_VIEW'`; OD-4 recommends `LANDING_PAGE_VIEW`; SC-5 defaults Landing-page views.
+**New:** **default `SWIPES`** until #865's pixel is live and firing. `LANDING_PAGE_VIEW` and every `PIXEL_*` goal are **gated in the UI and the edge fn on `pixel_installed`** (a #865 signal). When a pixel goal IS chosen, the adapter **must pass `pixel_id`** (`af5f8fc4-1ef6-41e7-81c5-042b7be7df38`) on the ad squad — it is required for those goals.
+**Evidence:** GR-21 — optimizing to an event we don't send = no/erratic delivery; the Snap pixel is ACTIVE but `automatic_event_opt_in: OPT_OUT` and pixel install is #865, not #867.
+
+### (7) Naming — reconciled to A3 §F (GR-42)
+
+**Old (this spec §4.2):** `auth_kind IN ('bearer_token','refresh_token','oauth_service')`; columns `provider_campaign_id`, `provider_adset_id`, `provider_ad_id`, `provider_creative_id`, `provider_media_id`; `ad_status_events.provider_ids`.
+**New (A3 §F is canonical):**
+- `auth_kind IN ('system_user_token','refresh_token','dev_token_oauth')` — meta = `'system_user_token'`, **snapchat = `'refresh_token'`, google = `'dev_token_oauth'`** (tiktok's value is #863's to state).
+- `external_campaign_id` / `external_adset_id` / `external_ad_id` / `external_creative_id` / `external_media_id` replace the `provider_*` id columns (UNIQUE constraints follow the rename, e.g. `UNIQUE (platform, external_campaign_id)`).
+- `ad_status_events.provider_ids` → **`external_ids`** (`provider_response` keeps its name — it is not an id column).
+- Platform value is **`'snapchat'`**, never `'snap'`; there is **no static `SNAP_ACCESS_TOKEN`** (S-8 — #866's drift, corrected there; recorded here so the RT-4 strict-grep covers the real names only).
+
+---
+
+## A1.2 SNAPCHAT SECTION — create-sequence fixes + hardening (all evidence-backed)
+
+> The body's §4.0/§4.3/§4.4 Snap create sequence contains **four field-level errors across all four levels** (GR-08). As written: campaign, ad squad, and creative each 400 — and the ad-level error is worse: it can **succeed** and create an ad that can never reach the destination. Each fix below is an exact body diff.
+
+### S-1 — campaign objective key is `objective_v2_type`, not `objective_v2` 🔴
+
+- **Old (§4.0 campaign bullet + §4.3 `createCampaign`):** `objective_v2_properties.objective_v2` / `objective_v2_properties:{objective_v2:'TRAFFIC'}`.
+- **New:** `objective_v2_properties: { objective_v2_type: 'TRAFFIC', promotion_type?: <enum> }`. The 5-value `objective_v2_type` enum in the body (`AWARENESS_AND_ENGAGEMENT | TRAFFIC | SALES | APP_PROMOTION | LEADS`) was correct — only the **key name** was wrong. `promotion_type` enum: `PROMOTE_PLACES | PROMOTE_SHOWS | APP_INSTALL | APP_REENGAGEMENT` (see item 12).
+- **Evidence:** GAP_REGISTER §4 S-1; `snapchat.md` §2 field table (`{ "objective_v2_type": <enum>, "promotion_type": <enum> }`); https://developers.snap.com/marketing-api/Ads-API/campaigns
+
+### S-2 — ad `type` for a `WEB_VIEW` creative is `REMOTE_WEBPAGE`, not `SNAP_AD` 🔴
+
+- **Old (§4.0 Ad bullet + §4.3 `createAd`):** `type` (`SNAP_AD`) / `{name, creative_id, type:'SNAP_AD', status:'PAUSED'}`.
+- **New:** ad `type` is **derived from a creative-type→ad-type map, never hardcoded**: `WEB_VIEW → REMOTE_WEBPAGE` (also `APP_INSTALL→APP_INSTALL`, `DEEP_LINK→DEEP_LINK`, `COLLECTION→COLLECTION`, `LEAD_GENERATION→LEAD_GENERATION`). Assert the map in a unit test.
+- **Why it matters:** `SNAP_AD` is the **attachment-less top snap**. Best case the create 400s (loud); worst case it **succeeds and we pay for impressions that can never reach the destination page** — the entire point of the engine, silently defeated.
+- **Evidence:** GAP_REGISTER §4 S-2; `snapchat.md` §4c ("the `optimization_goal`+`conversion_window` combos *'can be used with the Creative type WEB_VIEW and the **Ad type REMOTE_WEBPAGE**'*"; full 16-value ad-type enum); https://developers.snap.com/marketing-api/Ads-API/ads
+
+### S-3 — CTA `VIEW_MORE` does not exist, on any creative type 🔴
+
+- **Old (§4.0 creative bullet, §4.3 creative helper, §4.4b `call_to_action?='VIEW_MORE'`, SC-5):** default CTA `VIEW_MORE`.
+- **New:** **per-creative-type CTA allowlist validated BEFORE the provider call → `422 invalid_cta`.** The `WEB_VIEW` allowlist (exact 23 values): `APPLY_NOW, MORE, ORDER_NOW, PLAY, READ, SHOP_NOW, SHOW, SIGN_UP, VIEW, WATCH, DONATE, DOWNLOAD, RESPOND, BUY_TICKETS, SHOWTIMES, BOOK_NOW, GET_NOW, LISTEN, TRY, VOTE, VIEW_MENU, PRE_REGISTER, PLAY_GAME`. **Default `BOOK_NOW` (bookable) / `BUY_TICKETS` (ticketed)** for reservation traffic — far higher intent than `MORE`/`VIEW`. Expose as an admin select, never a free string. Per A1.1(2), the CTA map is per-platform.
+- **Evidence:** GAP_REGISTER §4 S-3; `snapchat.md` "FULL `call_to_action` enum BY creative type" table + "**`VIEW_MORE` IS NOT A VALID CTA — on any type**"; https://developers.snap.com/marketing-api/Ads-API/creatives
+
+### S-4 — `delivery_constraint` is REQUIRED on the ad squad and absent from the body 🔴
+
+- **Old (§4.0 Ad Squad bullet + §4.3 `createAdSet`):** no `delivery_constraint`.
+- **New:** `delivery_constraint` is **REQUIRED**: `DAILY_BUDGET | LIFETIME_BUDGET | REACH_AND_FREQUENCY` — **derived from the budget field used** (`daily_budget_micro` ⇒ `DAILY_BUDGET`; `lifetime_budget_micro` ⇒ `LIFETIME_BUDGET`; R&F only with `buy_model=RESERVED`, out of MVP). The adapter derives it; it is not admin input.
+- **Evidence:** GAP_REGISTER §4 S-4; `snapchat.md` §3 field table (`delivery_constraint` marked **R**, "must match the budget field used"); https://developers.snap.com/marketing-api/Ads-API/ad-squads
+
+### S-6 — never send the legacy `objective` field
+
+- **Old:** the body never sends it, but nothing forbids it.
+- **New (guard):** campaign create bodies **must never contain the key `objective`** — it is **DEPRECATED**, auto-translated by a translator service since **21 Mar 2025**; sending it invites the translator's default instead of our intent. Unit-test the constructed body for key absence.
+- **Evidence:** GAP_REGISTER §4 S-6; `snapchat.md` §2 (`objective` — "**DEPRECATED** … Do not use").
+
+### S-7 — `MIN_ROAS` bid strategy is deprecated
+
+- **Old (§4.0):** `bid_strategy` (`AUTO_BID` | `LOWEST_COST_WITH_MAX_BID` + `bid_micro` | `TARGET_COST`) — already omits `MIN_ROAS`, correctly.
+- **New (lock it):** `MIN_ROAS` was **deprecated 10 Feb 2025** — the allowlist is exactly the three values above and `MIN_ROAS` must be rejected if ever submitted. (`bid_micro`: required for `LOWEST_COST_WITH_MAX_BID`/`TARGET_COST`, omit for `AUTO_BID`; min `10_000` micro.)
+- **Evidence:** GAP_REGISTER §4 S-7; `snapchat.md` §3 (`MIN_ROAS` "**deprecated 10 Feb 2025**").
+
+### S-9 — keep the `request_status` AND `sub_request_status` double-assert (re-affirmed, now probe-proven)
+
+- **Old (§4.0 envelope + §4.3 `snapGraph` + RT-3):** correct as written — **preserve unchanged**.
+- **New evidence strengthens it:** the live S-P5 probe observed the envelope carrying `request_status` + per-item `sub_request_status` on a real response. An HTTP 200 with `request_status:"SUCCESS"` can still carry a per-entity `sub_request_status:"FAILURE"`; both must be asserted. RT-3 protects this.
+- **Evidence:** PROOF_LOG S-P5; GAP_REGISTER §4 S-9.
+
+### 8. GR-07 corrected per PROOF_LOG — Public Profile is TRUSTED CONFIG; the specced preflight lookup is UNBUILDABLE 🔴
+
+- **Old (§7 Snap-3 / OD-5):** "confirm the Public Profile id … the implementor reads it during connect". The register's own fix (resolve `profile_id` during `connect()` via `GET businessapi.snapchat.com/v1/organizations/{org}/public_profiles`) is ALSO dead.
+- **New (PROOF_LOG wins):** that lookup returns **HTTP 403 "unauthorized" on our token class** (S-P4 — the `businessapi` host is not authorized for the marketing-scoped token; the Public Profile API is read-only and, for us, unreachable). Therefore:
+  - `SNAPCHAT_PROFILE_ID` = **`2cfbdc85-890c-43af-b393-10c0adbbad67`** (UI-captured 2026-07-15) is **TRUSTED CONFIG**, seeded into `ad_connections.profile_or_page_id`.
+  - **Preflight = config-presence only:** `connect()` checks the value is non-null (no API verification is possible pre-create; Snap has no validate-only).
+  - **Fail-close at create:** `admin-ad-create-campaign` pre-flight returns **`424 snapchat_profile_missing`** if `profile_or_page_id` is null — before ANY provider write.
+  - **The first creative create is the verification** — an invalid profile id surfaces there. Accepted residual risk, recorded.
+- **Evidence:** PROOF_LOG S-P4 (**overrides** GAP_REGISTER GR-07's connect-time-lookup fix); GR-07 for the underlying mandatory-profile fact (Public Profiles mandatory for all Snap advertisers since June 2022).
+
+### 9. GR-38 — review polling + both review vocabularies + reasons persisted
+
+- **Old (§4.0 status model / §4.2 `ads.review_status` / §4.4d sync):** persists ad `review_status` only; sync is manual/admin-triggered; `review_status_reasons` and `delivery_status` are dropped.
+- **New:**
+  - **Schema:** `ads.review_status_reasons jsonb NULL` (array of strings — the **only** machine-readable Snap rejection signal); `delivery_status jsonb NULL` on **all three** of `ad_campaigns`/`ad_sets`/`ads` (Snap returns it as an array at every level; the campaign-level text rollup in the body is replaced by this jsonb).
+  - **Two review vocabularies, BOTH persisted:** the **creative** enum is `PENDING_REVIEW | APPROVED` — **different from the ad** enum `PENDING | APPROVED | REJECTED`. Add `ads.creative_review_status text NULL`. Mapping one onto the other loses the distinction; don't.
+  - **Cron-driven sync (upgrade of §4.4d's "MAY accept a service-role Bearer for a future cron" → MUST):** poll every **30–60 min while any ad is PENDING/PENDING_REVIEW, then daily** — Snap **re-reviews post-launch** and can pause a live campaign; review is 3–5 business days standard (5–10 restricted), no published SLA — treat as unbounded and poll. Surface `review_status_reasons` verbatim; alert on `REJECTED`.
+- **Evidence:** GAP_REGISTER GR-38; `snapchat.md` §4c read-only fields (`review_status`, `review_status_reasons`, `delivery_status`).
+
+### 10. GR-39 — default demographics `min_age: "18"` (strings)
+
+- **Old (§4.0/§4.3 targeting):** geos-only (`{geos:[{country_code}]}`).
+- **New:** targeting input widens to accept `demographics` and the adapter **defaults `demographics:[{min_age:'18'}]`** when the admin sets none. **`min_age`/`max_age` are STRINGS** (`"18"`, not `18`); `genders ∈ MALE|FEMALE` (no non-binary value exists); `languages` (e.g. `ENGLISH`). Reason: Snapchat skews **13–34**; an untargeted geos-only squad serves heavily to minors — a real problem for a venue/reservation product and a policy risk for anything alcohol-adjacent. Full interests/devices/SAM/lookalike targeting stays out of MVP (High before meaningful spend).
+- **Evidence:** GAP_REGISTER GR-39; `snapchat.md` targeting section (`min_age`/`max_age` as **strings**; example `{ "min_age": "18", … }`).
+
+### 11. GR-54 — server-side length validators (the body has UI hints only)
+
+- **Old (SC-5):** "headline ≤34, brand name ≤32" as form hints; the edge fn enforces nothing.
+- **New (server-side 422s, before any provider call):** `headline` ≤ **34** → `422 headline_too_long`; `brand_name` ≤ **32** → `422 brand_name_too_long`; `name` ≤ **375** (campaign/squad/ad/creative) → `422 name_too_long`; `web_view_properties.url` ≤ **2048** chars **and https/SSL** → `422 invalid_destination_url`. Note: `brand_name` **defaults to the Public Profile's brand name** when omitted — leaving it null is often *safer* (guaranteed policy match); the form should present it as optional.
+- **Evidence:** GAP_REGISTER GR-54; `snapchat.md` §4b limits table; PIPELINE_BLUEPRINT §2.3.
+
+### 12. GR-64 — early safety rail: `lifetime_spend_cap_micro` + `paging.next_link`
+
+- **New (a):** set **`lifetime_spend_cap_micro`** on every campaign create as a hard ceiling on the $15k/day-limit account — admin input in **cents** (`spend_cap_cents`, converted ×10,000 at the adapter boundary per A1.1(1)); provider min **`20_000_000`** micro ($20.00); **reducible only if the new cap > 1.1× already-spent** (encode that rule in `setBudget`).
+- **New (b):** every Snap list read handles **`paging.next_link`** — without it, reads **silently truncate at page 1** the moment >1 page of entities exists (sync would quietly miss campaigns). Batch reads (`get_*_by_ids`, ≤2,000 ids) are the preferred sync path.
+- **Evidence:** GAP_REGISTER GR-64; `snapchat.md` §2 (`lifetime_spend_cap_micro` min/reduction rule), envelope section (`paging.next_link`).
+
+### 13. GR-65 — evaluate `promotion_type: PROMOTE_PLACES` during live-fire
+
+- **New:** Snap has a promotion type **literally named for our product shape** (venues/places); it changes Ads-Manager business logic and the available optimization goals. During the §8 live-fire, run `TRAFFIC` + `promotion_type:'PROMOTE_PLACES'` vs bare `TRAFFIC` and record the delta. Not a default until evaluated.
+- **Evidence:** GAP_REGISTER GR-65; `snapchat.md` §2 (`promotion_type` enum + Mingla note).
+
+### 14. Top Snap video duration — validate 3–180 s
+
+- **New:** validate Top Snap video duration to **3–180 s** → `422 invalid_duration`. Snap's media doc table renders max as **1800 s** — that figure most likely covers `LONGFORM_VIDEO`, not the Top Snap. **Confirm live during live-fire** and record the outcome. (Companion constraints for the MVP media path: 9:16 exact, 1080×1920, ≤32 MB standard upload, MP4/MOV H.264, **audio required** — silent video auto-rejects as "Low-Quality Creative".)
+- **Evidence:** GAP_REGISTER appendix open-Q4; `snapchat.md` duration-discrepancy note; PIPELINE_BLUEPRINT §2.3.
+
+*(Item 15 — the OD-4/GR-21 goal-default flip — is canonical decision A1.1(6). Item S-5/S-8 — the media `upload_from_url` fiction and the `'snap'`/`SNAP_ACCESS_TOKEN` drift — are **#866's** rows, corrected in #866's amendment; recorded here only so the implementor knows `POST /media/{id}/upload` (multipart ≤32 MB) / `multipart-upload-v2` (>32 MB) is the real path this spec's "media upload if needed" step must use.)*
+
+---
+
+## A1.3 GOOGLE SECTION — provisioning flip + G-1…G-14 + the proven reference body + operating rules
+
+### 0. The provisioning flip (supersedes the Asymmetry banner, §4.0b's premise, §7 Google 1–4, SC-7, and AC-G-2's gate)
+
+- **Old:** "PROVISION-BLOCKED — no Google Ads account, no MCC, no developer token, no OAuth client"; §7 Google 1–5 all outstanding; AC-G-2 gated indefinitely.
+- **New:** `[ENGINE-LIVE, G-P1 2026-07-15]` — **MCC `8284700017`** exists (login-customer-id); **customer `3623860476`** is **ENABLED, billed, `testAccount:false`, USD**; developer token **BASIC tier approved 2026-07-15** and **works on v24 against the real account** (`listAccessibleCustomers` 200; `googleAds:search` 200). OAuth client + refresh token exist and mint. **The old customer `5083048929` no longer exists — purge it from every doc/config; never target it.**
+- **Remaining §7 Google work is only item 5–6 (seed secrets + connection row):** `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_REFRESH_TOKEN`, `GOOGLE_ADS_OAUTH_CLIENT_ID`, `GOOGLE_ADS_OAUTH_CLIENT_SECRET`, `GOOGLE_ADS_LOGIN_CUSTOMER_ID` (=`8284700017`), `GOOGLE_ADS_CUSTOMER_ID` (=`3623860476`), `GOOGLE_ADS_API_VERSION` (=`v24`). The `google_not_provisioned` (409) fail-close **remains** as the behavior when secrets are unset — but it is now a deploy-config step, not an external blocker. SC-7's blocked panel applies only until the secrets are seeded. **A3 §D registry: `google/consumer` AMBER → GREEN on account `3623860476`.**
+- **Build consequence:** the Google adapter is **no longer a stub** — the implementor builds it live in this story, to the PROVEN shape below. **AC-G-2 is ungated** (A1.4).
+
+### G-1 — API version 🔴
+
+- **Old (§4.0b):** "e.g. `v25` current at time of writing".
+- **New:** **`v24`** — v25 does not exist; an unsupported version is a **hard `UNSUPPORTED_VERSION` fail**, not a warning. Quarterly version checkpoint; v24 sunset ~2027-04. **Confirm the v24 date-field spelling before the first non-validate mutate** (`start_date_time` `YYYY-MM-DD[ HH:MM:SS]` vs legacy `start_date` `YYYYMMDD` — both circulate; the PROVEN G-P3 body used `startDate: "YYYYMMDD"` successfully in validate-only).
+- **Evidence:** GAP_REGISTER §4 G-1 + GR-44; PROOF_LOG G-P1/G-P3 (probes ran on v24).
+
+### G-14 — NEW REQUIRED FIELD: `contains_eu_political_advertising` on EVERY v24 campaign create 🔴
+
+- **Old:** in **no spec, no research doc, no brief**.
+- **New:** v24 **REQUIRES `contains_eu_political_advertising`** on campaign create. For our traffic campaigns the value is **`DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING`** — set it on every campaign create, unconditionally.
+- **Evidence:** PROOF_LOG G-P3 — the validate-only mutate **failed without it, then validated clean (`{}`) with it**. Proof-grade, discovered only by running the probe.
+
+### The PROVEN reference create body (G-P3) — the Google adapter's `mutate` contract
+
+Recorded as the canonical create shape; the implementor builds **exactly this**, with values parameterized:
+
+```jsonc
+POST https://googleads.googleapis.com/v24/customers/3623860476/googleAds:mutate
+// headers: Authorization: Bearer <minted>, developer-token: <GOOGLE_ADS_DEVELOPER_TOKEN>,
+//          login-customer-id: 8284700017   (digits only, no dashes)
+{
+  "mutateOperations": [
+    { "campaignBudgetOperation": { "create": {
+        "resourceName": "customers/3623860476/campaignBudgets/-1",     // temp id (negative)
+        "name": "<name> — budget", "amountMicros": "<cents × 10000>",  // A1.1(1)
+        "deliveryMethod": "STANDARD", "explicitlyShared": false } } },
+    { "campaignOperation": { "create": {
+        "resourceName": "customers/3623860476/campaigns/-2",
+        "name": "<name>", "status": "PAUSED",
+        "advertisingChannelType": "SEARCH",
+        "campaignBudget": "customers/3623860476/campaignBudgets/-1",
+        "targetSpend": {},                                             // maximize_clicks; see GR-55
+        "containsEuPoliticalAdvertising": "DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING",  // G-14
+        "geoTargetTypeSetting": { "positiveGeoTargetType": "PRESENCE" },                // GR-37
+        "networkSettings": { "targetGoogleSearch": true, "targetSearchNetwork": false,
+                             "targetContentNetwork": false, "targetPartnerSearchNetwork": false } } } },
+    { "campaignCriterionOperation": { "create": {
+        "campaign": "customers/3623860476/campaigns/-2",
+        "location": { "geoTargetConstant": "geoTargetConstants/1006886" } } } },        // London (UK)
+    { "adGroupOperation": { "create": {
+        "resourceName": "customers/3623860476/adGroups/-3",
+        "name": "<name>", "campaign": "customers/3623860476/campaigns/-2",
+        "status": "ENABLED", "type": "SEARCH_STANDARD", "cpcBidMicros": "<cents × 10000>" } } },
+    { "adGroupAdOperation": { "create": {
+        "adGroup": "customers/3623860476/adGroups/-3", "status": "PAUSED",
+        "ad": { "finalUrls": ["<dest_url — canonical usemingla.com page, A1.1(5)>"],
+                "responsiveSearchAd": { "headlines": [/* 3–15 × ≤30 */],
+                                        "descriptions": [/* 2–4 × ≤90 */] } } } } },
+    { "adGroupCriterionOperation": { "create": {
+        "adGroup": "customers/3623860476/adGroups/-3", "status": "ENABLED",
+        "keyword": { "text": "<keyword>", "matchType": "PHRASE" } } } }
+  ],
+  "partialFailure": false,      // all-or-nothing — the native no-orphan guarantee (A1.1(4))
+  "validateOnly": false
+}
+```
+
+**Temp-ID rules (hard):** negative integers, **unique within the request**, **defined before referenced** (declaration order matters — budget before campaign before ad group). `tracking_url_template` (campaign level) carries the OneLink per A1.1(5). A paused parent + `ENABLED` ad group matches the proven shape; the ad itself is `PAUSED`.
+**Evidence:** PROOF_LOG G-P3 — this exact chain validated clean on the real account; `google.md` §1.3 (temp-ID rules, atomicity, limits: ≤10,000 ops/request).
+
+### G-2 — URL expansion field name
+
+- **Old (register-cited engine claim):** `url_expansion_opt_out`.
+- **New:** **not a v24 field.** The mechanism is `asset_automation_settings[]` → `{ asset_automation_type: FINAL_URL_EXPANSION_TEXT_ASSET_AUTOMATION, asset_automation_status: OPTED_OUT }`. Matters chiefly for PMax (deferred) and any future expansion feature — since our whole product is "this ad promotes THIS event page," URL expansion must be **opted out** wherever the surface exists.
+- **Evidence:** GAP_REGISTER §4 G-2; `google.md` §2.2 (`AssetAutomationType` list).
+
+### G-3 — policy-topic enum names
+
+- **Old:** `LIMITS_SERVING` / `FULLY_LIMITS_SERVING`.
+- **New:** **`LIMITED` / `FULLY_LIMITED`** (`PolicyTopicEntryType`: `PROHIBITED=2, LIMITED=4, DESCRIPTIVE=5, BROADENING=6, AREA_OF_INTEREST_ONLY=7, FULLY_LIMITED=8`). For OD-8's `delivery_status`: persist **BOTH** `policy_summary.approval_status` (`DISAPPROVED=2, APPROVED_LIMITED=3, APPROVED=4, AREA_OF_INTEREST_ONLY=5`) **and** `ad_group_ad.review_status` (`REVIEW_IN_PROGRESS / REVIEWED / UNDER_APPEAL / ELIGIBLE_MAY_SERVE`) — Google splits what Snap merges; plus `policy_topic_entries[]` into `ads.review_status_reasons` (same column as Snap's reasons, per-platform payload).
+- **Evidence:** GAP_REGISTER §4 G-3 + GR-18; `google.md` policy section (proto-verbatim enums).
+
+### G-4 — RSA description count
+
+- **Old:** 5 descriptions.
+- **New:** **RSA = 2–4 descriptions (max 4)** × ≤90; headlines **3–15 × ≤30**; path1/path2 ≤15. (**PMax = 5 descriptions, and ≥1 must be ≤60** else `AssetGroupError.SHORT_DESCRIPTION_REQUIRED` — recorded for the deferred PMax lane; **key the limit off the ad type**, the two are routinely conflated.)
+- **Evidence:** GAP_REGISTER §4 G-4; `google.md` RSA/PMax tables; PIPELINE_BLUEPRINT §2.4.
+
+### G-5 — channel-type enum corrections
+
+- **Old:** `DISCOVERY`; an `APP` channel type.
+- **New:** **`DEMAND_GEN=14`** superseded `DISCOVERY` (=12 is absent from v24). There is **no `APP` value** — App campaigns are `MULTI_CHANNEL=7` + `advertising_channel_sub_type=APP_CAMPAIGN=12`. Neither is in MVP; recorded so nobody writes stale enums into the adapter's types.
+- **Evidence:** GAP_REGISTER §4 G-5; `google.md` §2.1 (`AdvertisingChannelType` verbatim).
+
+### G-6 — policy exemption parameter
+
+- **Old:** `policy_violation_key` / `exempt_policy_violation_keys`.
+- **New:** legacy AdWords SOAP names. The v24 mechanism is **`PolicyValidationParameter.ignorable_policy_topics`**: catch the policy error → read `policy_topic_entries[].topic` → set `ignorable_policy_topics` → **resubmit the same mutate** (only exemptible findings). This is Google's "appeal" — there is no appeal button in the API.
+- **Evidence:** GAP_REGISTER §4 G-6; `google.md` appeals section.
+
+### G-7 — video upload path (cross-ref #866)
+
+- **Old (#866 OD-2, referenced by this spec's creative scope):** "Bunny video cannot upload → YouTube dependency (channel + Data API)".
+- **New:** **wrong conclusion.** `YouTubeVideoUploadService.CreateYouTubeVideoUpload` accepts **raw bytes over resumable REST**; with `channel_id` omitted it uploads to a **Google-managed channel** (forced UNLISTED). No YouTube channel, no YouTube Data API. Poll `PENDING→UPLOADED→PROCESSED` → `youtube_video_id` → `YoutubeVideoAsset`. Video stays **out of this story's MVP** (SEARCH+RSA is text-only); the corrected path is #866's to implement — recorded here so this spec stops carrying the phantom blocker.
+- **Evidence:** GAP_REGISTER §4 G-7 + §6 DO-NOT-BUILD #5; `google.md` video section.
+
+### G-8 — brand safety field
+
+- **Old:** `video_brand_safety_suitability` as a campaign field.
+- **New:** **not a top-level v24 Campaign field.** Content exclusions are applied via **`CampaignCriterion`**. Out of MVP; recorded for the adapter's types.
+- **Evidence:** GAP_REGISTER §4 G-8; `google.md` §2.2.
+
+### G-9 — asset "types" that are actually field types
+
+- **Old:** `BusinessNameAsset` / `BusinessLogoAsset` / `WhatsappBusinessMessageAsset` as message types.
+- **New:** **not message types.** `BUSINESS_NAME=18`, `BUSINESS_LOGO=27`, `LOGO=21` are **`AssetFieldType` values** applied to plain `TextAsset`/`ImageAsset` when linking; WhatsApp is a nested variant inside `BusinessMessageAsset`. Matters the moment `createCreative` links assets (PMax/RDA lanes).
+- **Evidence:** GAP_REGISTER §4 G-9; `google.md` `AssetFieldType` proto-verbatim list.
+
+### G-10 — PMax search themes
+
+- **Old:** 25 per asset group.
+- **New:** **50** per asset group (SA360 still 25). PMax is deferred (A1.1(2)); recorded so the deferred lane starts from the right constant.
+- **Evidence:** GAP_REGISTER §4 G-10; `google.md` `AssetGroupSignal` section.
+
+### G-11 — registry status
+
+- **Old:** A3 §D `google/consumer` GREEN (then GR-06/GR-44 downgraded it to AMBER on the TEST-tier 403).
+- **New:** **GREEN — on account `3623860476`** (BASIC tier proven live, G-P1). Both the original GREEN (wrong reason: "token mints" ≠ "API answers") and the register's AMBER (stale: tier since approved) are superseded. The registry row must also carry `external_account_id=3623860476`, `external_org_id=8284700017`, `auth_kind='dev_token_oauth'`.
+- **Evidence:** PROOF_LOG G-P1 (**overrides** GAP_REGISTER GR-06/G-11).
+
+### G-12 — image assets: bytes-only, ≤5120 KB, pre-cropped, JPG/PNG only
+
+- **Old (#866, referenced here):** `ImageAsset` "(bytes/URL)".
+- **New:** **URL is not an option — Google never fetches remote URLs.** Bytes only, base64 into `assets:mutate`; **≤5120 KB**; **JPG/PNG only** (GIF/WEBP are rejected for marketing/logo assets despite existing in the `MimeType` enum — the enum is broader than the policy); **the API has NO crop parameter** (DO-NOT-BUILD #12) — **pre-crop server-side** to 1200×628 (1.91:1) / 1200×1200 (1:1) / 960×1200 (4:5), minimums 600×314 / 300×300 / 480×600. **Assets are immutable** — an "edit" = new asset + relink, which **restarts review**; asset names must be **unique per account**; the platform-ref cache must key on **content, not name**. Image assets are out of the SEARCH+RSA MVP (text-only) but the `createCreative` contract records this now.
+- **Evidence:** GAP_REGISTER §4 G-12 + GR-53 + §6 DO-NOT-BUILD #12; `google.md` §2.4/image tables; PIPELINE_BLUEPRINT §2.4.
+
+### G-13 — live deprecations to not build against
+
+- **New:** **`CallAdInfo` was removed from the `Ad` oneof in v23** (no new call ads; existing stop serving Feb 2027) → phone CTAs are RSA + `CallAsset`. **Smart Campaigns are deprecated for new creation 2026-08-03 — do not build toward `SMART`.** **`ACCELERATED` budget delivery is sunset for Search/Shopping** → `delivery_method: STANDARD` only (the proven body already does this).
+- **Evidence:** GAP_REGISTER §4 G-13; `google.md` release-notes section.
+
+### Geo-resolver rules (GR-37) — mandatory, not nice-to-have
+
+- **Old (§4.0b):** targeting shape undefined beyond "network_settings"; the engine elsewhere collects Meta-style country codes.
+- **New:** Google needs **numeric criterion IDs**. **"London" matches 5+ constants and `London,Ontario,Canada` sorts FIRST** — a naive name lookup targets the wrong continent. Rules:
+  - Resolve via `geoTargetConstants:suggest` **scoped by `countryCode`** (the disambiguation path proven by G-P2: locale `en` + `countryCode:GB` → **`1006886` London,England,United Kingdom ENABLED, first result**), or the published CSV. **Disambiguate on `Country Code` + `Canonical Name`, never `Name`.**
+  - **Verified IDs (seed constants):** US **2840** · UK **2826** · NG **2566** · **London (UK) 1006886** · Lagos city **1010294**.
+  - **IDs rot:** 2,916 constants are `Removal Planned` (2,212 in GB/US/NG). **Refresh quarterly; alert on `Removal Planned`.**
+  - **`positive_geo_target_type = PRESENCE`** always (the default `PRESENCE_OR_INTEREST` shows a London campaign to people merely *interested in* London, from anywhere — wrong for local events). Proven in the G-P3 body.
+- **Evidence:** PROOF_LOG G-P2; GAP_REGISTER GR-37; `google.md` geo section (verified-ID table + suggest transcript).
+
+### GR-52 — the destination re-checker (our highest live Google risk)
+
+- **Old (§4.4b/§4.4d):** destination validated **once** at create (`422 destination_not_public`); sync reads status only.
+- **New:** Google polices *unavailable offers* / *destination not working* for the ad's **whole life**, and every Mingla ad promotes a **dated, finite event**. Extend `admin-ad-campaign-sync` (the A1.2-item-9 cron): on every sync, **re-assert the destination is public + live + future-dated** (same read-only `business_public_events_view` check as create). On failure: **auto-pause the campaign** (adapter `setStatus PAUSED`) + append `ad_status_events` (`action='pause'`, `provider_response.reason='destination_not_public'`). Cheap; protects the **account**, not just the campaign. Applies to Snap too (same cron, same check).
+- **Evidence:** GAP_REGISTER GR-52.
+
+### GR-55 — Smart-Bidding gate + spend semantics + status mapping
+
+- **New:**
+  - **Do not offer tCPA/tROAS until ≥15 conversions/30 days exist** (we have zero Google conversion tracking today). The only honest strategies now: **`targetSpend` (maximize clicks — the proven default)** and `maximizeConversions`. The builder must not render tCPA/tROAS options until the volume gate passes.
+  - **Spend semantics surfaced in the UI:** Google may spend **up to 2× the daily budget on any single day**; monthly charges cap at **daily × 30.4**. "$20/day" is not a daily hard cap — say so next to the budget field (mirror of Meta's 175% note).
+  - **Status mapping:** our `ARCHIVED`/`DELETED` have **no Google equivalent**; `REMOVED` is permanent and is **never** emitted by launch/pause paths (A1.1(4), AC-G-4).
+- **Evidence:** GAP_REGISTER GR-55; `google.md` spend-mechanics + status sections.
+
+### GR-73 — hard caps to encode in validators
+
+- **New (server-side, pre-call):** **≤3 enabled RSAs per ad group** (hard cap); keyword **≤80 chars / ≤10 words**; negatives **≤5,000/ad group, ≤10,000/campaign**; final URL **≤2,084 bytes**; **`AdGroupCriterion.negative` is IMMUTABLE** — a keyword can never be flipped positive↔negative; any "toggle negative" affordance = **remove + create**, never update.
+- **Evidence:** GAP_REGISTER GR-73; `google.md` limits table + criteria section.
+
+---
+
+## A1.4 Acceptance criteria — restated and extended
+
+**Restated (cents, per A1.1(1)):**
+- **AC-S-3 (replaces the body's):** budgets are stored in **cents** (`budget_cents`); the Snapchat adapter converts `cents × 10_000 → micro` at its single boundary; min-checks run **in micro after conversion** — an ad-squad budget whose converted value is `< 5_000_000` micro (i.e. < $5.00 = 500 cents), or campaign `< 20_000_000` micro (< $20.00 = 2,000 cents), is rejected **`422 budget_below_minimum` before any provider write**. **RT-5 unit tests:** `$5.00 (500¢) → 5_000_000` and `$20.00 (2000¢) → 20_000_000`.
+- **AC-S-2 (tightened):** the created sequence uses `objective_v2_properties.objective_v2_type` (S-1), ad `type='REMOTE_WEBPAGE'` via the creative-type map (S-2), a CTA from the WEB_VIEW allowlist (S-3), and an adapter-derived `delivery_constraint` (S-4); the persisted `ads` row carries `review_status`, `creative_review_status`, and `review_status_reasons`.
+- **AC-S-5 (unchanged in shape)** — plus the launch warning path keys off BOTH review vocabularies.
+
+**New:**
+- **AC-S-11 (profile fail-close):** with `ad_connections.profile_or_page_id` null, `admin-ad-create-campaign{platform:'snapchat'}` returns **`424 snapchat_profile_missing`** and makes **zero** provider calls. With it set (trusted config `2cfbdc85-…`), create proceeds; an invalid profile surfaces at the first creative create (accepted residual risk).
+- **AC-S-12 (review cron):** while any Snap ad is `PENDING`/`PENDING_REVIEW`, the sync cron polls every 30–60 min and persists `review_status` + `creative_review_status` + `review_status_reasons` + `delivery_status` at all three levels; after approval it degrades to daily (post-launch re-review).
+- **AC-S-13 (goal gating):** with no pixel signal, the create form/edge fn defaults `optimization_goal='SWIPES'` and rejects `LANDING_PAGE_VIEW`/`PIXEL_*` (`422 pixel_goal_unavailable`); when a pixel goal is permitted, the ad-squad body carries `pixel_id`.
+- **AC-G-1 (unchanged):** secrets unset → **409 `google_not_provisioned`**, zero Google calls.
+- **AC-G-2 (UNGATED — replaces the body's):** with the §A1.3-0 secrets seeded, `admin-ad-connect{platform:'google'}` validates via GAQL against customer `3623860476` (login-customer-id `8284700017`) and persists the connection; `admin-ad-create-campaign` issues **one atomic `googleAds:mutate` (`partialFailure:false`)** matching the G-P3 reference body — including `containsEuPoliticalAdvertising` (G-14), `PRESENCE` geo type, a country-scoped geo criterion, RSA 3×2 minima, and a keyword — everything PAUSED; budgets in cents (`$20.00 = 2000¢ → 20_000_000` micros).
+- **AC-G-3 (destination re-checker):** a campaign whose destination stops being public/live/future is auto-paused by the next sync with an `ad_status_events` audit row.
+- **AC-G-4 (REMOVED guard):** no launch/pause/sync path can emit `status: REMOVED`; unit test asserts the adapter's status writer only produces `ENABLED|PAUSED`.
+
+---
+
+## A1.5 Flagged contradictions (for the conductor / downstream agents)
+
+1. **PROOF_LOG vs GAP_REGISTER — Google tier guidance.** GR-06, §6 DO-NOT-BUILD #13 ("use a test manager hierarchy; validate_only can't dry-run") and #14 ("don't apply — Explorer suffices") are **stale**: BASIC was approved 2026-07-15 and validate-only ran clean on the **real** account (G-P1/G-P3). **PROOF_LOG wins**; the test-manager-hierarchy advice is no longer needed for this story.
+2. **PROOF_LOG vs GAP_REGISTER — Snap profile resolution.** GR-07's fix ("resolve `profile_id` during `connect()` via the businessapi host") is **unbuildable** on our token class (S-P4 403). **PROOF_LOG wins**: trusted config + create-time verification (A1.2 item 8).
+3. **D-P1 vs google.md option (b).** `google.md` offered "rely on `go.usemingla.com` being a subdomain of the same registrable domain" as a possible destination pattern; **D-P1's proven interstitial vetoes it** — canonical-page-only v1, OneLink in `tracking_url_template` (A1.1(5)).
+4. **Floor-unit seam.** `ad_connections.min_budget_micro` stays **micro** (platform-native constant; checks run in micro post-conversion) while budgets at rest are **cents** — deliberate, but #884's floor table is written in cents; the conductor should confirm #884 reads floors per-platform-native or converts once, not both.
+5. **Snap Top Snap duration.** Snap's own docs conflict (3–180 s vs a rendered 1800 s max — likely `LONGFORM_VIDEO`). We validate 3–180 s and **confirm live** (A1.2 item 14).
+6. **OD overturns recorded:** OD-4 reversed (SWIPES default — A1.1(6)); OD-5 resolved as trusted config (A1.2 item 8); OD-7 resolved — BASIC approved, Standard/Explorer discussion moot; OD-8 widened — Google needs BOTH `approval_status` and `review_status` persisted (G-3).
+7. **Old Google customer id.** Any artifact still carrying `5083048929` (including `google.md`'s §1 examples and A3 §D's registry seed) is stale — **`3623860476`** is the only valid customer id (G-P1).
+
+**End of Amendment A1.**
