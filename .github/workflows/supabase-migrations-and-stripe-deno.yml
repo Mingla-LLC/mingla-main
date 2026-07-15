@@ -715,3 +715,45 @@ jobs:
             echo "ORCH-1362 Deno tests failed (attempt ${attempt}), retrying in 10s..."
             sleep 10
           done
+
+  ad-engine-deno-tests:
+    name: "ISSUE-862 WP1: Ad Engine channel-layer Deno tests"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: Run ISSUE-862 ad-engine Deno tests
+        env:
+          # Deliberately UNSET credentials: the RT-1 fail-close tests assert
+          # token-absent → AdNotConnectedError with ZERO Graph calls. No test
+          # in these suites performs a network call.
+          META_SYSTEM_USER_TOKEN: ""
+        run: |
+          set -euo pipefail
+          # ISSUE-862 WP1 (registered 2026-07-15):
+          #  - adChannel.test.ts — A4.a mandatory money tests ($5.00→5,000,000
+          #    micro / $20.00→20,000,000 micro; TikTok ÷100; Meta identity),
+          #    Reddit-CTA-never-uppercased (GR-29), objective→goal matrix
+          #    (M-2/M-3), per-category floor mapping (A4.g), fail-close stubs,
+          #    and the §4.4b no-orphan atomic-create contract (RT-2).
+          #  - meta.test.ts — RT-1 fail-close (zero Graph calls), M-13
+          #    is_adset_budget_sharing_enabled, GR-11 PAUSED-everywhere, A4.f
+          #    creative link = dest_url (never the OneLink), M-4 CREDIT reject,
+          #    GR-18 review_detail never stores `recommendations`.
+          DENO_TEST_FILES=(
+            supabase/functions/_shared/__tests__/adChannel.test.ts
+            supabase/functions/_shared/__tests__/meta.test.ts
+          )
+          for attempt in 1 2 3; do
+            if deno test --allow-env --no-check "${DENO_TEST_FILES[@]}"; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "ISSUE-862 ad-engine Deno tests failed after 3 attempts"
+              exit 1
+            fi
+            echo "ISSUE-862 ad-engine Deno tests failed (attempt ${attempt}), retrying in 10s..."
+            sleep 10
+          done
