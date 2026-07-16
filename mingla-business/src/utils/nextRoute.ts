@@ -76,6 +76,44 @@ const pathSegmentOf = (value: string): string => {
 };
 
 /**
+ * DOT-SEGMENT (path-traversal) REJECTION — ORCH-1373 P2-1.
+ *
+ * THE DEFECT THIS CLOSES: `isAllowlistedPath` matches on the PRE-RESOLUTION
+ * string, but `remove_dot_segments` (RFC 3986 §5.2.4) runs LATER — inside the
+ * router / URL parser. So the string the validator JUDGES and the path the
+ * browser LANDS ON were different strings:
+ *
+ *   "/brand/123/payments"                            -> REJECTED (not allowlisted)
+ *   "/accept-brand-invitation/../brand/123/payments" -> ACCEPTED, then resolves
+ *                                                       to "/brand/123/payments"
+ *
+ * i.e. traversal walked straight through the allowlist to the EXACT path the
+ * allowlist exists to refuse.
+ *
+ * ⚠️ SCOPE — DO NOT OVER-CLAIM THIS. It is NOT an open redirect: every accepted
+ * value stays same-origin and scheme-less (`isStructurallyRelative` already
+ * guarantees that, and the tester independently confirmed it against the real
+ * WHATWG URL parser, 39/39). This defeats the ALLOWLIST'S STATED INTENT — the
+ * "enumerate, don't generalise" promise in this file's header — which is a real
+ * defect worth closing on its own terms, not a cross-origin escape.
+ *
+ * `%2e` is handled case-insensitively because the WHATWG URL spec's
+ * "double-dot path segment" includes the percent-encoded spellings — a browser
+ * resolves `/a/%2e%2e/b` to `/b` exactly like `/a/../b`. Double-encoded
+ * (`%252e%252e`) is NOT traversal: it survives one decode as the literal text
+ * `%2e%2e`, which a browser treats as an ordinary segment, and the allowlist
+ * then judges the same string the router receives — no divergence, no bug.
+ *
+ * Applied to the PATH SEGMENT only (query/fragment stripped first), so a token
+ * that legitimately contains dots is never touched.
+ */
+const hasDotSegment = (path: string): boolean =>
+  path.split("/").some((segment) => {
+    const decodedSegment = segment.replace(/%2e/gi, ".");
+    return decodedSegment === "." || decodedSegment === "..";
+  });
+
+/**
  * Segment-safe allowlist match. `/accept-brand-invitation-evil` MUST NOT match
  * `/accept-brand-invitation` — that is the whole point of the `+ "/"`.
  * Mirrors `isSelfAuthenticatedExemptRoute` (coldLoadAuthGates.ts:283-300).
@@ -127,6 +165,13 @@ export const sanitizeNextRoute = (
     return null;
   }
   if (!isStructurallyRelative(decoded)) return null;
+
+  // 4b. Dot-segment rejection (ORCH-1373 P2-1) — MUST precede the allowlist.
+  // The allowlist judges the pre-resolution string; the browser resolves `..`
+  // afterwards. Reject traversal on BOTH forms so neither the raw nor the
+  // decoded spelling can smuggle a segment past the enumeration below.
+  if (hasDotSegment(pathSegmentOf(value))) return null;
+  if (hasDotSegment(pathSegmentOf(decoded))) return null;
 
   // 5. Path allowlist — enforced on BOTH forms so no encoding trick can present
   // one path to the validator and another to the router.

@@ -127,6 +127,59 @@ export const shouldRedirectToSignIn = ({
  */
 export const SIGN_IN_ROUTE = "/";
 
+/**
+ * THE APP'S OTHER SIGN-IN ROUTES — ORCH-1373 [accept-invite-infinite-loader] P0-1.
+ *
+ * ─── WHY THIS EXISTS (the two-layer dead-code discovery) ────────────────────
+ * `SIGN_IN_ROUTE` above is the redirect TARGET (`/` → BusinessWelcomeScreen).
+ * `isSignInRoute` answers a DIFFERENT question: "is the pathname I am ON a
+ * sign-in route, so that redirecting to sign-in would be pointless or
+ * destructive?" Those are not the same thing, and conflating them was the bug:
+ * the predicate matched ONLY `""`/`"/"`, so THE APP'S OWN SIGN-IN PAGE
+ * (`app/auth/index.tsx`, served at `/auth`) was NOT recognised as a sign-in
+ * route. A logged-out visitor at `/auth` therefore satisfied
+ * `shouldRedirectToSignInFromRoute` and the root layout bounced them to `/`
+ * BEFORE `AuthIndex` could mount.
+ *
+ * THE CONSEQUENCE THAT MAKES THIS A P0, NOT A TIDINESS FIX: `/auth` is reached
+ * as `/auth?next=<invite-token>`. The bounce does not merely lose the page — it
+ * DESTROYS the out-of-band credential in the query string, silently, and lands
+ * the invitee on marketing home looking like a successful navigation. Every
+ * logged-out invitee — i.e. EVERY invitee — lost their token here.
+ *
+ * ORCH-1375 found `?next=` had "4 writers, 0 readers" and called the param
+ * vestigial. The real explanation is worse and is recorded here so the next
+ * reader does not re-derive it: A READER COULD NOT HAVE EXISTED. The route the
+ * reader would have to live on has never been reachable while logged out —
+ * anyone navigating to `/auth` was bounced before any of its code ran. A dead
+ * redirect pointed at a dead route: TWO LAYERS OF DEAD CODE STACKED. That is
+ * also why the `/rsvp/create` and `/event/create` sign-in-resume legs have been
+ * broken on `main` this whole time — same bounce, same cause. Fixing this
+ * predicate fixes all three at once.
+ *
+ * ─── WHY HERE AND NOT IN THE SELF-AUTHENTICATING / INVITE-ACCEPT LISTS ──────
+ * Because `/auth` semantically IS a sign-in route — that is exactly what
+ * `isSignInRoute` means, and the predicate was simply WRONG about the app's own
+ * sign-in page. The `SELF_AUTHENTICATING_*` / `INVITE_ACCEPT_*` lists below
+ * carry an explicit CONSTITUTIONAL CAVEAT: every member authenticates via an
+ * out-of-band URL credential (a Stripe `client_secret`, an invite token) and
+ * renders nothing without it. `/auth` carries NO such credential — it is the
+ * page that MINTS a session. Filing it there would silently corrupt that list's
+ * security reasoning for the next reader, who is entitled to assume every entry
+ * is credential-bearing. Keep the classes honest.
+ *
+ * Matching is SEGMENT-SAFE (`=== base || startsWith(base + "/")`), the same
+ * discipline as `isPublicBuyerRoute` / `isSelfAuthenticatedExemptRoute`:
+ * `/auth` and `/auth/callback` match; `/authorize` does NOT.
+ *
+ * `/auth/callback` is included deliberately: it is the OAuth return leg and it
+ * carries the session in a URL fragment. Bouncing it to `/` destroys the
+ * round-trip at the last hop.
+ */
+export const SIGN_IN_ROUTE_PREFIXES = [
+  "/auth", // app/auth/index.tsx — the real sign-in page (+ /auth/callback, the OAuth return leg)
+] as const;
+
 export const isSignInRoute = (pathname: string | null | undefined): boolean => {
   if (pathname === null || pathname === undefined) return true;
   const trimmed = pathname.trim();
@@ -136,7 +189,13 @@ export const isSignInRoute = (pathname: string | null | undefined): boolean => {
     trimmed.length > 1 && trimmed.endsWith("/")
       ? trimmed.slice(0, -1)
       : trimmed;
-  return normalized === "" || normalized === SIGN_IN_ROUTE;
+  if (normalized === "" || normalized === SIGN_IN_ROUTE) return true;
+  // The app's OTHER sign-in routes (`/auth`, `/auth/callback`) — segment-safe so
+  // a lookalike (`/authorize`) can never be swept in.
+  return SIGN_IN_ROUTE_PREFIXES.some((prefix) => {
+    const base = prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
+    return normalized === base || normalized.startsWith(`${base}/`);
+  });
 };
 
 /**

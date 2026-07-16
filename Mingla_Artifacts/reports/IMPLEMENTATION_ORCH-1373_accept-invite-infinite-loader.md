@@ -300,3 +300,181 @@ Both measured by stashing my work and re-running the identical command. **My cha
 
 **mingla-tester** — verify §5 on the physical Samsung `R58R54YV7JT` against a **preview** deploy.
 **Priority: SC-4** (the OAuth resume leg — the one a naive fix silently breaks) and **OQ-2** (the never-once-observed authed happy path). **Drive a REAL invite end-to-end** — that is the only thing that closes OQ-2, and I explicitly have not.
+
+---
+
+# 16. REWORK PASS — QA FAIL (P0-1) + ride-along P2-1 / P2-2
+
+**Dispatched by:** mingla-orchestrator, against `QA_ORCH-1373_accept-invite-infinite-loader.md` (FAIL, P0:1).
+**Verdict of the previous pass, restated honestly:** the machinery was right and **unreachable**. The spinner fix was real (707 ms to a truthful "You're invited / Sign in"), but the only button on that screen destroyed the invite token. **The funnel stayed 0%.** An infinite spinner had become a silent token drop that looked like success — the exact trade the SPEC exists to forbid.
+
+## 16.1 What was actually broken (plain English)
+
+A logged-out invitee taps **Sign in**. That sends them to `/auth?next=<invite-token>`. The root layout looked at `/auth`, decided "this is not a sign-in route, and you are logged out, so I will send you to the sign-in screen" — and redirected to `/`. The redirect threw away the whole URL, **including the invite token in the query string**. The invitee landed on marketing home with nothing, and it looked like a normal navigation.
+
+The app's own sign-in page was not recognised as a sign-in page.
+
+## 16.2 THE DEEPER ROOT CAUSE (recorded — it explains the whole ORCH)
+
+ORCH-1375 found `?next=` had **4 writers, 0 readers** and concluded the param was vestigial. The real explanation is worse: **a reader could not have existed.** The route `next` points at — `/auth` — **has never been reachable for a logged-out user.** Anyone navigating there was bounced before any of its code ran. **A dead redirect pointed at a dead route: two layers of dead code stacked.** Nobody could have written a working reader on `main`, because the page hosting it never mounted.
+
+That is also why **`/rsvp/create` and `/event/create` sign-in-resume are broken on `main` today** — same bounce, same cause. This one predicate fix repairs all three legs at once. Both are covered by tests (§16.6).
+
+**Provenance:** the predicate is untouched by this PR; the defect is **latent-on-`main`** and was **armed** by the previous pass, which made the `router.replace('/auth?next=…')` call reachable for the first time.
+
+## 16.3 THE FIX — and why I took the orchestrator's recommendation
+
+**Taken as recommended: taught `isSignInRoute` about `/auth`.** `mingla-business/src/utils/coldLoadAuthGates.ts`.
+
+```
+export const SIGN_IN_ROUTE_PREFIXES = ["/auth"] as const;   // + /auth/callback via segment-safe base + "/"
+```
+
+`isSignInRoute` now returns true for `""`/`"/"` (unchanged) **plus** `/auth` and `/auth/callback`, matched **segment-safe** (`=== base || startsWith(base + "/")`) so `/authorize` is NOT swept in.
+
+**Why not `SELF_AUTHENTICATING_*` / `INVITE_ACCEPT_*` (the rejected alternative):**
+1. `/auth` **semantically IS a sign-in route.** That is exactly what `isSignInRoute` means, and the predicate was simply **wrong** about the app's own sign-in page. `SIGN_IN_ROUTE` (`"/"`) is the redirect **TARGET**; `isSignInRoute` answers **"am I ON a sign-in route"**. Conflating the two was the bug.
+2. The self-authenticating list carries an explicit **constitutional caveat** (`:216-228`): every member authenticates via an **out-of-band URL credential** (Stripe `client_secret` / invite token) and renders nothing without it. **`/auth` carries no such credential — it MINTS the session.** Filing it there would corrupt that list's security reasoning for the next reader, who is entitled to assume every entry is credential-bearing. A test pins this (`isSelfAuthenticatedExemptRoute("/auth") === false`).
+
+### ⚠️ 16.3.1 SPEC DEVIATION — DECLARED, NOT SILENT (needs a SPEC amendment)
+
+**SPEC §11.2 lists `coldLoadAuthGates.ts` as DO-NOT-TOUCH / read-only** ("Constant #2's rename is the **only** permitted edit here — if that proves to have a wide blast radius, **stop-and-amend rather than widen**").
+
+I edited it anyway, because **the REWORK dispatch explicitly directs and justifies this exact edit** ("teach `isSignInRoute` about `/auth`"), and the orchestrator owns the spec lifecycle. Flagging loudly rather than burying it:
+- The DO-NOT-TOUCH existed to stop ORCH-1376 from **widening** the exemption lists. The P0 proves the file itself carried the defect — the thing the caveat was protecting is the thing that was broken.
+- **Blast radius measured, not assumed:** `isSignInRoute` has exactly **3 consumers** (`_layout.tsx:399`, `:750`, `coldLoadAuthGates.ts:344`). All three analysed in §16.5; all three verified.
+- **Action for the orchestrator: SPEC §11.2 needs amending** to record that `coldLoadAuthGates.ts` was opened for `isSignInRoute` under this dispatch.
+
+`_layout.tsx` was **NOT** touched in this pass (SPEC permits line 737 only) — the fix needed no layout change. Verified byte-identical.
+
+## 16.4 P2-1 — `sanitizeNextRoute` traversal (ride-along)
+
+`mingla-business/src/utils/nextRoute.ts` — added `hasDotSegment()`, applied to the **path segment** of BOTH the raw and decoded forms, **before** the allowlist.
+
+**The defect:** `isAllowlistedPath` judged the **pre-resolution** string; `remove_dot_segments` (RFC 3986 §5.2.4) runs later in the router/URL parser. Validator and browser saw **different strings**:
+
+```
+REJECT  "/brand/123/payments"                            -> null
+ACCEPT  "/accept-brand-invitation/../brand/123/payments" -> returned verbatim  (resolves to /brand/123/payments)
+```
+
+Traversal walked through the allowlist to the exact path the allowlist exists to refuse.
+
+**NOT over-claimed:** this is **NOT an open redirect** — every accepted value stays same-origin and scheme-less (`isStructurallyRelative` guarantees it; the tester confirmed 39/39 against the real WHATWG URL parser). It defeats the allowlist's **stated intent** ("enumerate, don't generalise"). That is the claim, and no more.
+
+`%2e` handled case-insensitively (WHATWG treats `%2e%2e` as a double-dot segment). **Double-encoded `%252e%252e` is NOT traversal** and is documented as such: it survives one decode as literal text, so validator and router judge the same string — no divergence, no bug. Query strings are untouched (path-only), so a token containing dots survives verbatim.
+
+## 16.5 The `atSignInRoute` ceiling-guard interaction (asked for explicitly — verified, not assumed)
+
+`isSignInRoute` feeds **three** call sites. All three were analysed and are covered by tests:
+
+| # | Site | Before (`/auth`) | After (`/auth`) | Verdict |
+|---|------|------------------|-----------------|---------|
+| 1 | `coldLoadAuthGates.ts:344` `shouldRedirectToSignInFromRoute` | redirect **fires** → token destroyed | **suppressed** | **THE FIX** |
+| 2 | `_layout.tsx:752` ceiling redirect (`authResolutionExpired && !atSignInRoute && !atSelfAuthRoute`) | would redirect | **suppressed** | Correct — ORCH-1376's own docblock says redirecting a credential-bearing URL is *"strictly worse"* |
+| 3 | `_layout.tsx:760` spinner (`authResolving && !(atSignInRoute && authResolutionExpired)`) | past ceiling → **spinner** | past ceiling → **renders Stack** (AuthIndex → BusinessWelcomeScreen) | Correct — `/auth` now behaves exactly like `/`: **never an infinite spinner on the sign-in page** (Seth's hard rule). Can only ever REMOVE a spinner, never add one. |
+
+Before the ceiling, a warming `/auth` **still shows the spinner** (no false sign-in flash) — pinned by a test.
+
+**Native (`_layout.tsx:399` `nativeRedirectToSignIn`):** a logged-out native user on `/auth` is no longer redirected to `/`. **No functional change** — `/auth` renders `BusinessWelcomeScreen` via AuthIndex, and `/` renders the same screen via `index.tsx`. Strict improvement: `?next=` now survives on native too.
+
+## 16.6 THE NEW ROUTE TEST — and why it is not another predicate unit test
+
+**`mingla-business/src/utils/__tests__/orch_1373_auth_route_gate.test.ts` (21 tests).**
+
+The hard constraint was: *a unit test of a predicate is not a test of the route.* The P0 shipped past a **fully green suite** — `nextRoute.test.ts` 33/33, `authNextHandoff.test.ts`, `orch_1103_signout_redirect_loop.test.ts` all passed while the funnel sat at 0%, because every one of them exercised the utils **in isolation** and **simulated** the round-trip.
+
+This test does **not** describe the layout — **it executes it**:
+1. **Predicates are the REAL shipped exports**, imported from `../coldLoadAuthGates`. Never reimplemented.
+2. **The wiring is the REAL shipped text**: the `redirectToSignIn` declaration is **sliced out of `app/_layout.tsx`** and **EXECUTED** via `new Function` with the real predicates injected. Rewire the layout and this test evaluates the **new** wiring.
+
+That second property is what separates it from the P2-2 disease, and it is proven by **Mutation 3** below — the test fails when the **layout** is rewired even though the **predicate** is untouched. A replica cannot do that.
+
+**Why not a react-test-renderer mount of `_layout`?** Measured, not assumed: **CI runs only the default node/ts-jest config** (`jest.config.cjs`). All 28 `jest.orch*.render.cjs` harnesses are **local-only**, referenced by **zero** workflows, and need an **uncommitted** `.orch1118-testdeps` overlay. A mount test would have guarded **nothing in CI** — which is precisely how this P0 shipped. This runs in CI on every PR.
+
+## 16.7 Both-directions proofs — every gate, exact mutation, real output
+
+**Method: TRUE LINE DELETION** (never comment-out, never `git stash` — COMMS-0105). Backups via `cp` to `/tmp/orch-1373/`. Every file restored and verified byte-identical afterwards.
+
+| # | Mutation (true line deletion / rewire) | Target | Result | Proves |
+|---|---|---|---|---|
+| **1** | Delete the `/auth` arm from `isSignInRoute` | `coldLoadAuthGates.ts` | **5 failed / 16 passed** — incl. `✕ THE BUG: a logged-out invitee at /auth is NOT bounced` | The fix is load-bearing |
+| **2** | Delete both `hasDotSegment(...)` guards | `nextRoute.ts` | **8 failed / 16 passed** — all 7 traversal shapes + the equivalence proof | P2-1 guard is load-bearing |
+| **3** | **Rewire the REAL layout**: `pathname` → `pathname: "/account"` (predicate untouched) | `app/_layout.tsx` | **5 failed** — incl. the ORCH-1103/1115/1139 preservation tests | **The test EXECUTES the real wiring — it is NOT a replica** |
+| **3b** | Same rewire, vs the tightened structural assertion | `app/_layout.tsx` | **6 failed** (was 5) | The shorthand pin catches a hardcoded-literal regression |
+| **4** | Delete the REAL `if (bootstrapResolvedRef.current) return;` | `AuthContext.tsx` | **5 failed** — incl. **`✕ T-11 (behavioral)`**, which **stayed GREEN before this rework** | **P2-2 replica disease CURED** |
+| **5** | Delete the ENTIRE `hardCeilingTimer` backstop | `AuthContext.tsx` | **10 failed** | T-12's anti-over-correction still holds |
+
+**Restore verified after every mutation** (`Tests: 16/16`, `21/21`, `24/24`; `git diff --stat` empty for `_layout.tsx` + `AuthContext.tsx`).
+
+**Direction 2 (the fix must not punch a hole)** — all green, unmodified:
+- **ORCH-1103 loop guard HOLDS** — `/`, `""`, `null` → **no redirect** (React #185 white screen cannot return). Existing suite `orch_1103_signout_redirect_loop.test.ts` passes **unmodified**; its `false`-case list (`/home`, `/account`, `/(tabs)/home`, `/brand/123`, `/hub/events`) never contained `/auth`, so **no test deletion was required**.
+- **ORCH-1115 buyer allowlist HOLDS** — `orch_1115_anon_buyer_route_allowlist.test.ts` passes unmodified.
+- **ORCH-1139 self-auth exemptions HOLD**.
+- **Segment-safety** — `/authorize` still redirects.
+- **ORCH-1375 attack corpus** — all 7 pre-existing attacks still rejected.
+
+## 16.8 P2-2 — the decorative guard inside my own test
+
+The tester was right, and the finding is worse than reported. The ORCH-1377 T-11/T-12 "behavioural" block imported only `fs`/`path` and **hand-rolled** `armBackstop` — so **deleting the real guard left it GREEN**. It tested a **copy** of the fix. **SC-14 survived review only because it was proven at RUNTIME**; the unit test contributed nothing to the verdict it appeared to support.
+
+**It had also silently DRIFTED:** the replica guarded on `mountedRef.current` while the shipped code closes over a bare `let mounted`. A replica that diverges from what it mirrors reports on **code that does not exist**.
+
+**Fix:** section (B) now **slices the REAL `setTimeout` callback body** out of `AuthContext.tsx` and **runs it** via `new Function` with real collaborators injected. Proven by **Mutation 4**: T-11 behavioral now **fails** on deletion of the real guard.
+
+`AuthContext.tsx` itself was **not modified** in this pass.
+
+## 16.9 Files changed (rework pass only)
+
+| File | Δ | What |
+|---|---|---|
+| `mingla-business/src/utils/coldLoadAuthGates.ts` | +61/-1 | **THE P0 FIX** — `SIGN_IN_ROUTE_PREFIXES` + segment-safe `isSignInRoute` (**SPEC deviation, §16.3.1**) |
+| `mingla-business/src/utils/nextRoute.ts` | +45 | **P2-1** — `hasDotSegment` traversal rejection |
+| `mingla-business/src/context/__tests__/AuthContext.diagnosticTruth.orch1377.test.ts` | +124/-30 | **P2-2** — replica → real-source executor |
+| `mingla-business/src/utils/__tests__/orch_1373_auth_route_gate.test.ts` | **NEW** (21 tests) | **The real-`_layout` route gate test** |
+| `mingla-business/src/utils/__tests__/orch_1373_next_route_traversal.test.ts` | **NEW** (24 tests) | **P2-1** both directions |
+
+**NOT touched:** `app/_layout.tsx`, `src/context/AuthContext.tsx`, `authReadiness.ts`, `supabase/**`, `packages/**`. All mutations restored; verified byte-identical.
+
+## 16.10 Gates
+
+```
+Touched + adjacent suites .............. 9 suites, 262/262 PASS
+  orch_1373_auth_route_gate .............. 21/21   (NEW — the real route gate)
+  orch_1373_next_route_traversal ......... 24/24   (NEW — P2-1)
+  AuthContext.diagnosticTruth.orch1377 ... 16/16   (P2-2 rewritten)
+  nextRoute .............................. 33/33   (unmodified, still green)
+  orch_1103_signout_redirect_loop ........ PASS    (unmodified — loop guard holds)
+  orch_1115_anon_buyer_route_allowlist ... PASS    (unmodified)
+  orch_1375_adversarial_next_url_resolution PASS
+  authNextHandoff / orch_1373_mutual_exclusivity  PASS
+
+tests-append-only ...................... 12 passed, 0 failed  (self-test 6/6)
+i-1378-web-shim-export-parity .......... PASS both directions (self-test 11/11; 28 pairs)
+orch-1381-open-external-no-double-nav .. PASS both directions
+orch-1342-store-links-ssot ............. PASS both directions
+tsc --noEmit ........................... 0 errors in ANY file touched
+```
+
+**Baseline honesty (attributing no red to this branch without measuring):**
+- `tsc`: **796 pre-existing errors**, all under `packages/phone-input/**`. **This branch touches zero files under `packages/`** (`git diff origin/main...HEAD --name-only | grep ^packages/` → empty). Not mine.
+- 3 adjacent auth suites fail (`bootSessionProbe.orch_1106`, `orch_1092_business_web_restoration_wave`, `AuthContext.timeout`). **Measured, not assumed:** I reverted my 3 files to HEAD and hid my 2 new tests (via `cp`/`mv` — **never `git stash`**) and re-ran: **identical `3 failed / 4 failed tests`**. They are source-text assertions on `_layout.tsx` / `AuthContext.tsx`, neither of which this pass modified; none import `coldLoadAuthGates` or `nextRoute`. **Pre-existing relative to this rework.**
+
+## 16.11 Rebase
+
+`git fetch origin && git rebase origin/main` — **one conflict**, `.github/workflows/strict-grep-mingla-business.yml`: `main` appended `issue-866-creative-guards` (ORCH-1371/1372 lane) while this branch appended `i-1378-web-shim-export-parity`, both at EOF. **Resolved by keeping BOTH jobs** (not picking one). Verified: YAML parses, **342 jobs**, both present, both gate scripts exist on disk.
+
+## 16.12 Constraints honoured
+
+- **`[TEST-MOD-APPROVED ORCH-1377]` re-added to the new HEAD commit body** (COMMS-0098 / PR #883 trap). Verified: the gate reads `git log -1 --pretty=%B` while diffing `origin/main...HEAD` — the **whole branch's** test mutations are judged against the **latest** commit body, so the token must ride every amend.
+- **NEVER `git stash`** — COMMS-0105 (my own prior entry). The foreign `stash@{0}` is **INTACT**; all baselining used `cp`/`mv` + `git checkout HEAD --`. Untracked `SPEC_ORCH-1318_APPSFLYER_ONELINK.md` is that incident's residue — **left untracked, not committed** (it belongs to another session).
+- **No production DB writes. No `supabase/**`. `authReadiness.ts` untouched.**
+- **OTA FORBIDDEN** (COMMS-0063) — business fixes ship in a native build only. **`[deploy]` REQUIRED** on the PR title.
+
+## 16.13 Discoveries for Orchestrator
+
+1. **SPEC §11.2 needs amending** — `coldLoadAuthGates.ts` was opened under this dispatch (§16.3.1).
+2. **`/rsvp/create` + `/event/create` resume are fixed for free** — same bounce, same cause; covered by tests. Worth a WORLD_MAP note: these were broken on `main` and nobody had reported them, because a silent token drop generates no bug report.
+3. **The render-harness gap is systemic and is a P0 factory.** 28 `jest.orch*.render.cjs` configs exist; **zero are wired into CI** and they need an uncommitted dep overlay. Every "render proof" in this repo is a **local, one-shot** artifact that never guards a future regression. That is a standing invariant gap worth its own ORCH.
+4. **The replica-test pattern is repo convention, not a one-off.** `AuthContext.authLockDeadlock.orch1254.test.ts` is cited *by the ORCH-1377 test itself* as the precedent for hand-rolling. If it shares the disease, its guard is decorative too — **worth a sweep**.
+5. **`isSignInRoute` / `SIGN_IN_ROUTE` naming still conflates** "the redirect target" with "am I on a sign-in route". Fixed in behaviour + documented, but the names remain a trap.

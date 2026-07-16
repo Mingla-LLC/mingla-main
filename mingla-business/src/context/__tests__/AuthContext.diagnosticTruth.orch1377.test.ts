@@ -25,15 +25,35 @@
  * (true), so it would NEVER guard and the "fix" would silently do nothing while
  * looking correct. Only a REF is read at fire time.
  *
- * ─── TEST STYLE (repo convention — see AuthContext.authLockDeadlock.orch1254) ─
+ * ─── TEST STYLE ────────────────────────────────────────────────────────────
  * AuthContext.tsx contains JSX that the node/ts-jest harness does not transform
- * from a `.test.ts`, and there is no RTL here, so <AuthProvider> CANNOT be
- * mounted. The convention is:
+ * from a `.test.ts`, and there is no RTL installed under the default config, so
+ * <AuthProvider> cannot be MOUNTED here. That constrains HOW we reach the
+ * backstop — it does NOT license testing a copy of it.
  *   (A) STRUCTURAL — slice the REAL shipped source and assert the guard exists
  *       AND is ordered before everything it guards. Fails-on-revert by
  *       construction: line-delete the guard → these fail.
- *   (B) BEHAVIORAL — replicate the EXACT production timer shape driving injected
- *       spies, proving the guard's semantics in both directions.
+ *   (B) BEHAVIORAL — slice the REAL shipped timer body out of AuthContext.tsx
+ *       and EXECUTE it against injected spies.
+ *
+ * ─── ORCH-1373 P2-2 — WHY (B) WAS REWRITTEN (read before you touch it) ──────
+ * (B) used to hand-roll a local `armBackstop()` that RE-TYPED the production
+ * timer shape. The ORCH-1373 tester proved it was DECORATIVE: because it imported
+ * only `fs`/`path` and never executed AuthContext.tsx, DELETING THE REAL GUARD
+ * FROM THE REAL FILE LEFT T-11/T-12 GREEN. It tested a copy of the fix, not the
+ * fix. SC-14 survived that review only because it was independently proven at
+ * RUNTIME (real Chrome, 9s hold, zero backstop logs) — the unit test contributed
+ * nothing to the verdict it appeared to support.
+ *
+ * The replica had also silently DRIFTED from production: it guarded on
+ * `mountedRef.current` while the shipped code closes over a bare `mounted`
+ * variable. A replica that diverges from the thing it mirrors is worse than no
+ * test — it reports on code that does not exist.
+ *
+ * (B) now slices the REAL `setTimeout` callback body out of the shipped source
+ * and runs it via `new Function` with the real collaborators injected. The test
+ * no longer DESCRIBES the backstop; it RUNS it. Line-delete the guard from
+ * AuthContext.tsx and T-11 FAILS, which is the whole point of a guard.
  */
 
 import fs from "node:fs";
@@ -150,49 +170,95 @@ describe("ORCH-1377 (A) structural — the backstop reads the state it describes
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Replicates the EXACT shipped backstop shape (repo convention (A) in
- * AuthContext.authLockDeadlock.orch1254.test.ts). Kept deliberately literal so a
- * divergence from production is visible in review.
+ * ORCH-1373 P2-2 — arm the REAL backstop.
+ *
+ * Slices the shipped `setTimeout` CALLBACK BODY out of AuthContext.tsx and
+ * compiles it with the real collaborators injected. Nothing here re-types
+ * production logic: if the shipped body changes, THIS RUNS THE CHANGED BODY.
+ *
+ * `mounted` is injected as a bare value (not a ref) because the shipped code
+ * closes over a bare `let mounted` — matching production exactly is the point.
+ * It is read through a getter so a test can flip it after arming, which is what
+ * the real closure does.
  */
+const realBackstopBody = (): string => {
+  const m = AUTH_CONTEXT_SOURCE.match(
+    /hardCeilingTimer = setTimeout\(\(\) => \{([\s\S]*?)\}, AUTH_LOADING_GATE_RELEASE_BACKSTOP_MS\);/,
+  );
+  expect(m).not.toBeNull();
+  return m![1];
+};
+
 function armBackstop({
-  mountedRef,
+  isMounted,
   bootstrapResolvedRef,
   bootstrapTimedOutRef,
   setLoading,
   warn,
   backstopMs,
 }: {
-  mountedRef: { current: boolean };
+  isMounted: () => boolean;
   bootstrapResolvedRef: { current: boolean };
   bootstrapTimedOutRef: { current: boolean };
   setLoading: (v: boolean) => void;
   warn: (msg: string) => void;
   backstopMs: number;
 }): ReturnType<typeof setTimeout> {
-  return setTimeout(() => {
-    if (!mountedRef.current) return;
-    if (bootstrapResolvedRef.current) return; // ← THE GUARD
-    warn(
-      `[auth] loading-gate-backstop: bootstrap did not resolve within ${backstopMs}ms — releasing the loading gate`,
-    );
-    bootstrapTimedOutRef.current = true;
-    setLoading(false);
-  }, backstopMs);
+  // Compile the REAL body. `mounted` is a getter-backed local so the injected
+  // closure variable behaves like the production `let mounted`.
+  // eslint-disable-next-line no-new-func
+  const compiled = new Function(
+    "__isMounted",
+    "bootstrapResolvedRef",
+    "bootstrapTimedOutRef",
+    "setLoading",
+    "console",
+    "AUTH_LOADING_GATE_RELEASE_BACKSTOP_MS",
+    `"use strict";
+     return function () {
+       const mounted = __isMounted();
+       ${realBackstopBody()}
+     };`,
+  ) as (
+    isMountedFn: () => boolean,
+    resolvedRef: { current: boolean },
+    timedOutRef: { current: boolean },
+    setLoadingFn: (v: boolean) => void,
+    consoleLike: { warn: (msg: string) => void },
+    backstopMsValue: number,
+  ) => () => void;
+
+  const callback = compiled(
+    isMounted,
+    bootstrapResolvedRef,
+    bootstrapTimedOutRef,
+    setLoading,
+    { warn },
+    backstopMs,
+  );
+
+  return setTimeout(callback, backstopMs);
 }
 
-describe("ORCH-1377 (B) behavioral — T-11 / T-12 in both directions", () => {
+describe("ORCH-1377 (B) behavioral — T-11 / T-12 against the REAL shipped body", () => {
   const BACKSTOP_MS = 7000;
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => jest.useRealTimers());
 
-  const harness = () => ({
-    mountedRef: { current: true },
-    bootstrapResolvedRef: { current: false },
-    bootstrapTimedOutRef: { current: false },
-    setLoading: jest.fn(),
-    warn: jest.fn(),
-    backstopMs: BACKSTOP_MS,
-  });
+  const harness = () => {
+    let mounted = true;
+    return {
+      isMounted: () => mounted,
+      setMounted: (v: boolean) => {
+        mounted = v;
+      },
+      bootstrapResolvedRef: { current: false },
+      bootstrapTimedOutRef: { current: false },
+      setLoading: jest.fn(),
+      warn: jest.fn(),
+      backstopMs: BACKSTOP_MS,
+    };
+  };
 
   it("T-11 — RESOLVED boot (getSession → {session:null} fast): NO log, ref NOT armed, past 7s", () => {
     const h = harness();
@@ -240,7 +306,7 @@ describe("ORCH-1377 (B) behavioral — T-11 / T-12 in both directions", () => {
   it("unmount still short-circuits BEFORE the resolved check (ordering preserved)", () => {
     const h = harness();
     armBackstop(h);
-    h.mountedRef.current = false;
+    h.setMounted(false);
     jest.advanceTimersByTime(BACKSTOP_MS + 1);
     expect(h.warn).not.toHaveBeenCalled();
     expect(h.bootstrapTimedOutRef.current).toBe(false);
