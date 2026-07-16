@@ -83,3 +83,34 @@ export async function syncCampaigns(campaignId) {
     body: campaignId ? { campaign_id: campaignId } : {},
   });
 }
+
+// ── ISSUE-864 WP4 [Campaign Builder] — additive extensions ────────────────────
+
+/** Connection row for any (platform, lane) — generalizes getMetaConnection. */
+export async function getConnection(platform, lane = "consumer") {
+  return supabase
+    .from("ad_connections")
+    .select("*")
+    .eq("platform", platform)
+    .eq("lane", lane)
+    .maybeSingle();
+}
+
+/** ONE campaign with its nested ad sets + ads (review_status + review_detail). */
+export async function getCampaignDetail(campaignId) {
+  return supabase
+    .from("ad_campaigns")
+    .select("*, ad_sets(*, ads(*))")
+    .eq("id", campaignId)
+    .maybeSingle();
+}
+
+/**
+ * admin-ad-creative-upload (#866): action='validate' returns the byte-probe +
+ * per-channel matrix report WITHOUT writing; action='record' persists the
+ * ad_creatives row. The client must have already put the bytes in storage
+ * (image → meta-ad-creatives bucket via mediaUpload.js).
+ */
+export async function creativeUpload(payload) {
+  return invokeWithRefresh("admin-ad-creative-upload", { body: payload });
+}
