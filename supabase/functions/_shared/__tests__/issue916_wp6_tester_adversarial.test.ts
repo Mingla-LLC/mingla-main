@@ -710,7 +710,6 @@ Deno.test("ADV-A11: a 429 with NO RateLimit header still backs off (5s default) 
 Deno.test({
   name:
     "ADV-A12 [P1 QA-916-1, ignore until REWORK]: reconnect after an invalid-row upsert must succeed",
-  ignore: true,
   fn: async () => {
     await withRedditEnv(BASE_ENV, async () => {
       const happyApi = (req: CapturedRequest): Response => {

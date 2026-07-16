@@ -75,6 +75,7 @@ import {
   resolveGoogleEnvConfig,
 } from "../_shared/google.ts";
 import {
+  REDDIT_AD_ACCOUNT_ID_REGEX,
   redditConnectPreflight,
   redditDefaultTokenEnvVar,
   RedditPreflightError,
@@ -183,7 +184,13 @@ serve(async (req: Request): Promise<Response> => {
   // past a failed step — "created fine, never spends" is the silent failure
   // this pre-flight exists to kill (GR-13).
   if (platform === "reddit") {
-    const markRedditInvalid = async (): Promise<void> => {
+    const markRedditInvalid = async (reason: string): Promise<void> => {
+      // QA-916-1 (P1) belt-and-braces: only a real ^(t2|a2)_ id survives the
+      // invalid-row upsert — junk collapses to the explicit 'unconfigured'
+      // sentinel, and redditConnectPreflight independently refuses to pin on
+      // any non-matching persisted id, so a failed connect can never brick
+      // the reconnect path.
+      const priorAccountId = existing?.external_account_id ?? "";
       await supabase
         .from("ad_connections")
         .upsert({
@@ -191,11 +198,18 @@ serve(async (req: Request): Promise<Response> => {
           lane,
           display_name: existing?.display_name ??
             `Reddit · ${lane === "business" ? "Business" : "Consumer"}`,
-          external_account_id: existing?.external_account_id ?? "unconfigured",
+          external_account_id: REDDIT_AD_ACCOUNT_ID_REGEX.test(priorAccountId)
+            ? priorAccountId
+            : "unconfigured",
           external_org_id: existing?.external_org_id ?? null,
           auth_kind: "refresh_token",
           token_env_var: existing?.token_env_var ?? defaultTokenEnvVar(platform, lane),
-          extra: existing?.extra ?? {},
+          // QA-916-3 (P3): the failure cause is PERSISTED, not response-only —
+          // an admin reloading later sees why the row is invalid.
+          extra: {
+            ...((existing?.extra ?? {}) as Record<string, unknown>),
+            last_error: reason,
+          },
           status: "invalid",
           connected: false,
         }, { onConflict: "platform,lane" });
@@ -252,7 +266,7 @@ serve(async (req: Request): Promise<Response> => {
       return json({ connection: upserted, reddit: snapshot });
     } catch (err) {
       if (err instanceof RedditPreflightError) {
-        await markRedditInvalid();
+        await markRedditInvalid(err.message);
         // Per-step 424 codes (AC-R-4/AC-R-6); reasons_not_servable[] verbatim.
         return json({
           error: err.errorCode === "reddit_currency_unsupported"
@@ -263,16 +277,14 @@ serve(async (req: Request): Promise<Response> => {
         }, 424);
       }
       if (err instanceof AdNotConnectedError) {
-        await markRedditInvalid();
-        return json({
-          error: "reddit_not_connected",
-          detail:
-            "REDDIT_ADS_CLIENT_ID / REDDIT_ADS_CLIENT_SECRET / REDDIT_ADS_REFRESH_TOKEN (or the lane's secrets) are not set, or the refresh token could not mint — set the Supabase Edge Function secrets (duration=permanent at consent), then reconnect (SPEC §1.1–§1.2).",
-        }, 424);
+        const secretsDetail =
+          "REDDIT_ADS_CLIENT_ID / REDDIT_ADS_CLIENT_SECRET / REDDIT_ADS_REFRESH_TOKEN (or the lane's secrets) are not set, or the refresh token could not mint — set the Supabase Edge Function secrets (duration=permanent at consent), then reconnect (SPEC §1.1–§1.2).";
+        await markRedditInvalid(secretsDetail);
+        return json({ error: "reddit_not_connected", detail: secretsDetail }, 424);
       }
       if (err instanceof AdApiError) {
-        await markRedditInvalid();
         // Normalized error only — no token ever appears here (SC-SEC-1).
+        await markRedditInvalid(err.message);
         return json({ error: "reddit_not_connected", detail: err.toJSON() }, 424);
       }
       const detail = err instanceof Error ? err.message : String(err);

@@ -2323,7 +2323,16 @@ export async function redditConnectPreflight(
   const accounts = dataArray(
     await redditRequest(client, "GET", `/businesses/${businessId}/ad_accounts`),
   );
-  const wantedAccountId = env.expectedAccountId ?? conn?.external_account_id ?? null;
+  // QA-916-1 (P1): a failed connect persists the explicit 'unconfigured'
+  // sentinel as external_account_id (admin-ad-connect markRedditInvalid). A
+  // persisted id may pin discovery ONLY when it is a real ^(t2|a2)_ account
+  // id — otherwise one transient failure would wedge every reconnect at this
+  // step forever (fail-close must never become fail-forever). The guard line
+  // below is the ADV-A12 fails-on-revert target: deleting it reproduces the
+  // bricked-reconnect bug exactly.
+  let persistedAccountId: string | null = conn?.external_account_id ?? null;
+  if (persistedAccountId && !REDDIT_AD_ACCOUNT_ID_REGEX.test(persistedAccountId)) persistedAccountId = null;
+  const wantedAccountId = env.expectedAccountId ?? persistedAccountId;
   const accountRow = wantedAccountId
     ? accounts.find((a) => String(a.id) === wantedAccountId)
     : accounts.find((a) =>
