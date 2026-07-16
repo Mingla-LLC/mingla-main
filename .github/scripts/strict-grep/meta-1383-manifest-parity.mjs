@@ -34,13 +34,19 @@ import { expectedForClass, CLASSES } from "./run-batch.mjs";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "../../..");
 const SG_REL = ".github/scripts/strict-grep";
-// enforcement states (SPEC §5.1 three-state model, plus "infrastructure"):
+// enforcement states (SPEC §5.1 three-state model, plus "infrastructure" and "job:"):
 //   batch:A..E          run by run-batch.mjs in that dependency class
+//   job:<jobKey>        run by its OWN preserved job in strict-grep-mingla-business.yml.
+//                       ORCH-1383 AMENDMENT (Seth, at REVIEW — Option 2): 4 gates assert
+//                       their own job key exists in that workflow; batching would delete the
+//                       key and fail them, and SC-16 forbids editing them. Their jobs are
+//                       preserved verbatim so the assertions stay TRUE. P9 keeps them honest.
 //   external:<workflow> run by a workflow other than strict-grep-mingla-business.yml
 //   fixture             a .test.mjs on disk that no CI workflow invokes
 //   unenforced          a REAL gate with an exit contract that no CI workflow runs (the 21)
 //   infrastructure      not a gate — the batching machinery itself (run-batch.mjs)
-const VALID_ENFORCEMENT = /^(batch:[A-E]|external:.+|fixture|unenforced|infrastructure)$/;
+const VALID_ENFORCEMENT = /^(batch:[A-E]|job:[A-Za-z0-9._-]+|external:.+|fixture|unenforced|infrastructure)$/;
+const SG_WORKFLOW = "strict-grep-mingla-business.yml";
 
 export function walkMjs(dir, base = "") {
   const out = [];
@@ -62,9 +68,11 @@ export function walkMjs(dir, base = "") {
  * @param {(p:string)=>string|null} a.readSource   source text, or null if absent
  * @param {(p:string)=>boolean} a.fileExists
  * @param {Record<string,Set<string>>} a.workflowInvocations  wf name -> set of invoked script paths
+ * @param {Record<string,Record<string,{script:string,mode:string}[]>>} [a.jobInvocations]
+ *        wf name -> jobKey -> invocations (for P9, the carve-out check)
  * @returns {string[]} failures
  */
-export function runChecks({ manifest, diskFiles, readSource, fileExists, workflowInvocations }) {
+export function runChecks({ manifest, diskFiles, readSource, fileExists, workflowInvocations, jobInvocations }) {
   const failures = [];
   const gates = manifest.gates ?? [];
 
@@ -140,6 +148,32 @@ export function runChecks({ manifest, diskFiles, readSource, fileExists, workflo
     }
   }
 
+  // P9 — a carve-out gate must ACTUALLY be invoked by the job it names, in that job, with
+  // every mode the manifest records. This is the carve-outs' R4: without it, deleting a
+  // carve-out job (or one of its steps) would silently un-run the gate, and no batch-class
+  // assertion would notice because the gate is not in any class.
+  for (const g of gates) {
+    if (!g.enforcement?.startsWith("job:")) continue;
+    const jobKey = g.enforcement.slice(4);
+    const byJob = jobInvocations?.[SG_WORKFLOW]?.[jobKey];
+    if (!byJob) {
+      failures.push(
+        `P9: "${g.script}" is declared ${g.enforcement} but ${SG_WORKFLOW} has no job "${jobKey}". ` +
+        `The carve-out job is gone — the gate is now enforced by nothing.`
+      );
+      continue;
+    }
+    for (const mode of g.modes ?? []) {
+      const want = mode === "self-test" ? `${g.script} --self-test` : g.script;
+      if (!byJob.some((inv) => inv.script === g.script && inv.mode === mode)) {
+        failures.push(
+          `P9: job "${jobKey}" does not run "${want}" [${mode}], but the manifest says it does. ` +
+          `Restore the step or move the gate into a batch class.`
+        );
+      }
+    }
+  }
+
   // P5 — the runner's view must equal the manifest's view.
   for (const cls of CLASSES) {
     const runnerSet = new Set(expectedForClass(manifest, cls).map((g) => g.script));
@@ -199,21 +233,33 @@ async function collectWorkflowInvocations() {
   const YAML = (await import("yaml")).default;
   const wfDir = path.join(REPO_ROOT, ".github/workflows");
   const out = {};
+  const perJob = {};
   for (const f of fs.readdirSync(wfDir)) {
     if (!f.endsWith(".yml") && !f.endsWith(".yaml")) continue;
     const doc = YAML.parse(fs.readFileSync(path.join(wfDir, f), "utf8"));
     const set = new Set();
-    for (const job of Object.values(doc?.jobs ?? {})) {
+    perJob[f] = {};
+    for (const [jobKey, job] of Object.entries(doc?.jobs ?? {})) {
+      perJob[f][jobKey] = [];
       for (const step of job?.steps ?? []) {
         if (typeof step?.run !== "string") continue;
-        for (const tok of stripComments(step.run).split(/\s+/)) {
+        const clean = stripComments(step.run);
+        for (const tok of clean.split(/\s+/)) {
           if (/\.(mjs|js|cjs|sh)$/.test(tok)) set.add(tok);
+        }
+        // per-command, so P9 can tell `X --self-test` from a plain `X`
+        for (const cmd of clean.replace(/\\\s*\n/g, " ").split(/\n|&&|\|\||;/)) {
+          const t = cmd.trim();
+          if (!t) continue;
+          const target = t.split(/\s+/).find((x) => /\.(mjs|js|cjs|sh)$/.test(x));
+          if (!target) continue;
+          perJob[f][jobKey].push({ script: target, mode: /(^|\s)--self-test(\s|$)/.test(t) ? "self-test" : "plain" });
         }
       }
     }
     out[f] = set;
   }
-  return out;
+  return { workflowInvocations: out, jobInvocations: perJob };
 }
 
 export function stripComments(script) {
@@ -235,6 +281,7 @@ export function stripComments(script) {
 async function realRun() {
   const manifest = JSON.parse(fs.readFileSync(path.join(HERE, "MANIFEST.json"), "utf8"));
   const diskFiles = walkMjs(path.join(REPO_ROOT, SG_REL));
+  const { workflowInvocations, jobInvocations } = await collectWorkflowInvocations();
   const failures = runChecks({
     manifest,
     diskFiles,
@@ -242,7 +289,8 @@ async function realRun() {
       try { return fs.readFileSync(path.join(REPO_ROOT, p), "utf8"); } catch { return null; }
     },
     fileExists: (p) => fs.existsSync(path.join(REPO_ROOT, p)),
-    workflowInvocations: await collectWorkflowInvocations(),
+    workflowInvocations,
+    jobInvocations,
   });
 
   console.log(`META-1383 manifest parity: ${diskFiles.length} on-disk .mjs, ${manifest.gates.length} manifest entries.`);
@@ -271,6 +319,7 @@ function baseFixture() {
     readSource: (p) => (p.endsWith("alpha.mjs") ? "if (process.argv.includes('--self-test')) {}" : "no capability here"),
     fileExists: () => true,
     workflowInvocations: {},
+    jobInvocations: {},
   };
 }
 
@@ -350,6 +399,37 @@ function selfTest() {
     f.manifest.expectedStrictGrepMjsFiles = 3;
     f.readSource = (p) => (p.endsWith("alpha.mjs") ? "--self-test" : "x");
     check("P8: 22nd unenforced gate exceeds cap fails", f, true, "P8:");
+  }
+  // P9 — carve-out job deleted entirely
+  {
+    const f = baseFixture();
+    f.manifest.gates[0].enforcement = "job:my-carve-out";
+    f.jobInvocations = { [SG_WORKFLOW]: {} };
+    check("P9: carve-out job deleted from the workflow fails", f, true, "has no job");
+  }
+  // P9 — carve-out job exists but no longer runs the gate
+  {
+    const f = baseFixture();
+    f.manifest.gates[0].enforcement = "job:my-carve-out";
+    f.jobInvocations = { [SG_WORKFLOW]: { "my-carve-out": [] } };
+    check("P9: carve-out job no longer runs its gate fails", f, true, "does not run");
+  }
+  // P9 — carve-out job runs the gate but DROPPED its --self-test mode
+  {
+    const f = baseFixture();
+    f.manifest.gates[0].enforcement = "job:my-carve-out";
+    f.jobInvocations = { [SG_WORKFLOW]: { "my-carve-out": [{ script: `${SG_REL}/alpha.mjs`, mode: "plain" }] } };
+    check("P9: carve-out job dropped a mode (--self-test) fails", f, true, "[self-test]");
+  }
+  // P9 — happy path: carve-out fully covered
+  {
+    const f = baseFixture();
+    f.manifest.gates[0].enforcement = "job:my-carve-out";
+    f.jobInvocations = { [SG_WORKFLOW]: { "my-carve-out": [
+      { script: `${SG_REL}/alpha.mjs`, mode: "self-test" },
+      { script: `${SG_REL}/alpha.mjs`, mode: "plain" },
+    ] } };
+    check("P9: fully-covered carve-out passes", f, false);
   }
   // (d) vacuous run -> exit 1, NEVER exit 0
   {

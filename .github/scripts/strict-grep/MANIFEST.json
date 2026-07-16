@@ -80,7 +80,7 @@
     {
       "script": ".github/scripts/strict-grep/__tests__/i-offerings-read-only.test.mjs",
       "kind": "file",
-      "enforcement": "batch:A",
+      "enforcement": "job:orch-1273-offerings-read-only",
       "invocation": "node --test",
       "modes": [
         "plain"
@@ -170,7 +170,7 @@
     {
       "script": ".github/scripts/strict-grep/i-admin-gate-first-statement.mjs",
       "kind": "file",
-      "enforcement": "batch:A",
+      "enforcement": "job:orch-1271-admin-authz-foundation",
       "invocation": "node",
       "modes": [
         "self-test",
@@ -201,7 +201,7 @@
     {
       "script": ".github/scripts/strict-grep/i-admin-single-gate.mjs",
       "kind": "file",
-      "enforcement": "batch:A",
+      "enforcement": "job:orch-1271-admin-authz-foundation",
       "invocation": "node",
       "modes": [
         "self-test",
@@ -215,7 +215,7 @@
     {
       "script": ".github/scripts/strict-grep/i-admin-write-audited.mjs",
       "kind": "file",
-      "enforcement": "batch:A",
+      "enforcement": "job:orch-1271-admin-authz-foundation",
       "invocation": "node",
       "modes": [
         "self-test",
@@ -580,7 +580,7 @@
     {
       "script": ".github/scripts/strict-grep/i-offerings-read-only.mjs",
       "kind": "file",
-      "enforcement": "batch:A",
+      "enforcement": "job:orch-1273-offerings-read-only",
       "invocation": "node",
       "modes": [
         "self-test",
@@ -2541,7 +2541,7 @@
     {
       "script": ".github/scripts/strict-grep/orch-0778-web-stripe-native-import-gate.mjs",
       "kind": "file",
-      "enforcement": "batch:A",
+      "enforcement": "job:orch-0778-web-stripe-native-import-gate",
       "invocation": "node",
       "modes": [
         "plain"
@@ -3141,7 +3141,7 @@
     {
       "script": ".github/scripts/strict-grep/orch-0885-a-no-bottomnav-on-wide-desktop.mjs",
       "kind": "file",
-      "enforcement": "batch:A",
+      "enforcement": "job:orch-0885-a-no-bottomnav-on-wide-desktop",
       "invocation": "node",
       "modes": [
         "plain"
@@ -5426,7 +5426,7 @@
     {
       "script": "mingla-admin/src/__tests__/orch1273_offerings_console_read.test.js",
       "kind": "file",
-      "enforcement": "batch:A",
+      "enforcement": "job:orch-1273-offerings-read-only",
       "invocation": "node --test",
       "modes": [
         "plain"
