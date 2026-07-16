@@ -4476,3 +4476,16 @@ jobs:
         run: node .github/scripts/strict-grep/issue-862-reddit-configured-status-explicit.mjs --self-test
       - name: Run ISSUE-862 reddit-configured-status gate
         run: node .github/scripts/strict-grep/issue-862-reddit-configured-status-explicit.mjs
+
+  issue-866-creative-guards:
+    name: "ISSUE-866: (G1/A1-2) the invented static Snap token env NAME appears NOWHERE — no static Snap token exists; the adapter mints per call from SNAPCHAT_REFRESH_TOKEN/_CLIENT_ID/_CLIENT_SECRET, and reading the never-provisioned name fails closed forever. (G2/A1-1) no bare-'snap' platform literal in ad-engine modules/migrations — the canon enum is 'snapchat' and 'snap' silently breaks the ad_creative_platform_refs cache key (I-PROPOSED-866-CREATIVE-GUARDS)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ISSUE-866 creative-guards gate
+        run: node .github/scripts/strict-grep/issue-866-creative-guards.mjs --self-test
+      - name: Run ISSUE-866 creative-guards gate
+        run: node .github/scripts/strict-grep/issue-866-creative-guards.mjs

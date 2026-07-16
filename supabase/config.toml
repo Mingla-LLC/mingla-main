@@ -424,3 +424,12 @@ verify_jwt = true
 
 [functions.admin-ad-campaign-sync]
 verify_jwt = true
+
+# ISSUE-866 WP3 [Full Rooms Ad Engine — Creative Library] — records a canonical
+# creative row behind the A1-6 server-side byte-probe + the §2 validation matrix
+# + the COMMS-0102 crawler-permissiveness check. Same gate as the WP1 fns:
+# verify_jwt=true, then the in-code admin_users active gate (403). This fn never
+# calls an ad platform and never reads a platform token — platform upload is
+# lazy, at ad-create, via _shared/adCreative.ts resolveCreativeRef.
+[functions.admin-ad-creative-upload]
+verify_jwt = true
