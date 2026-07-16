@@ -376,14 +376,27 @@ export const isWebAuthResolving = ({
 };
 
 /**
- * BOUNDED-LOADING hard ceiling — ORCH-1102 Wave 2.
+ * BOUNDED-LOADING UI-gate expiry — ORCH-1102 Wave 2.
+ *
+ * ─── WHAT THIS GATES / WHAT THIS LOGS (ORCH-1377 C-1377-N4) ────────────────
+ *   GATES:  THE UI. This is the REAL one — `isAuthResolutionExpired` feeds
+ *           `_layout.tsx:437/737` (redirect) and `app/index.tsx` (sign-in).
+ *   LOGS:   `[_layout] auth-resolution-deadline…` / `[index]
+ *           boot-loading-deadline…`
+ *   Renamed from `AUTH_UI_GATE_EXPIRY_MS`. It shares the value 7000 with TWO
+ *   other auth constants that had near-identical names, and that collision cost a
+ *   full investigation cycle: ORCH-1373 quoted the AuthContext backstop's log
+ *   (`AUTH_LOADING_GATE_RELEASE_BACKSTOP_MS`, which gates NOTHING) while
+ *   reasoning about THIS constant's semantics, and reported a "7-second stall"
+ *   that did not exist. If you add another auth timing constant, its docblock
+ *   MUST name what it gates and what it logs.
  *
  * Seth's hard rule: a user must NEVER be left hanging on an infinite spinner.
  * The ORCH-1100 web GoTrue lock can DEADLOCK (orphaned-lock thrash / microtask
  * starvation), and a deadlock can hold the loading gate true even though the
- * ORCH-0887-A 3s race + the AuthContext hard-ceiling normally release it. This
- * predicate is the LAST-RESORT backstop at the UI gate: once auth has been
- * resolving for longer than the ceiling, treat an unresolvable session as
+ * ORCH-0887-A 3s race + the AuthContext loading-gate backstop normally release
+ * it. This predicate is the LAST-RESORT backstop at the UI gate: once auth has
+ * been resolving for longer than the expiry, treat an unresolvable session as
  * logged-out and route to sign-in instead of spinning forever.
  *
  * `elapsedMs` is measured from first mount of the auth gate; `ceilingMs` is the
@@ -391,16 +404,18 @@ export const isWebAuthResolving = ({
  * the 2.3s lock self-heal so it never pre-empts a real, merely-slow session and
  * never causes a false logged-out flash). Fires ONLY while still resolving and
  * with no user — a present user always wins (render the app), and a resolved
- * (non-spinning) state never trips it.
+ * (non-spinning) state never trips it. UNLIKE the AuthContext backstop this
+ * predicate was ALREADY correctly conditional (`if (!stillResolving) return
+ * false;`) and measured 0/4 firings — it was never the bug.
  */
-export const AUTH_RESOLUTION_CEILING_MS = 7000;
+export const AUTH_UI_GATE_EXPIRY_MS = 7000;
 
 export const isAuthResolutionExpired = ({
   isWeb,
   hasUser,
   stillResolving,
   elapsedMs,
-  ceilingMs = AUTH_RESOLUTION_CEILING_MS,
+  ceilingMs = AUTH_UI_GATE_EXPIRY_MS,
 }: {
   isWeb: boolean;
   hasUser: boolean;

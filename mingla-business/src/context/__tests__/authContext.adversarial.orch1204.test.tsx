@@ -226,7 +226,7 @@ describe("ORCH-1204 A1 — server-revoked hydrated session still signs out (SC-2
 describe("ORCH-1204 A3 — 7s hard ceiling does not clobber a hydrated user (SC-4)", () => {
   it("the ceiling setTimeout body sets loading=false + bootstrapTimedOutRef but contains NO setUser(null)/setSession(null)", () => {
     const ceiling = AUTH_CONTEXT_SOURCE.match(
-      /hardCeilingTimer = setTimeout\(\(\) => \{[\s\S]*?\}, AUTH_RESOLUTION_HARD_CEILING_MS\);/,
+      /hardCeilingTimer = setTimeout\(\(\) => \{[\s\S]*?\}, AUTH_LOADING_GATE_RELEASE_BACKSTOP_MS\);/,
     );
     expect(ceiling).not.toBeNull();
     if (ceiling) {

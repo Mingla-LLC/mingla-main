@@ -17,7 +17,7 @@
  * and move the entire signed-in post-getSession chain — the ref-guarded
  * getUser() probe, ensureCreatorAccount, tryRecoverAccountIfDeleted, and the
  * analytics/identity binds — into a NON-AWAITED background IIFE. The 7s
- * AUTH_RESOLUTION_HARD_CEILING_MS timer remains as defense-in-depth.
+ * AUTH_LOADING_GATE_RELEASE_BACKSTOP_MS timer remains as defense-in-depth.
  *
  * ─────────────────────────────────────────────────────────────────────
  * Test-style note (mirrors AuthContext.timeout.test.ts /

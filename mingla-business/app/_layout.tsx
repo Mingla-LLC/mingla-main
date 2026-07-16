@@ -92,7 +92,7 @@ import { verifyStripeModeAlignment } from "../src/services/stripeModeHandshake";
 // sign-in screen; while auth is still resolving we show a LOADING state. These
 // supersede the ORCH-1092 `shouldShowSignedOutRecovery` route-list gate.
 import {
-  AUTH_RESOLUTION_CEILING_MS,
+  AUTH_UI_GATE_EXPIRY_MS,
   isAuthResolutionExpired,
   isPublicBuyerRoute,
   isSelfAuthenticatedExemptRoute,
@@ -199,7 +199,7 @@ function clearAuthResolveStart(): void {
 }
 function hasAuthResolutionDeadlinePassed(): boolean {
   if (authResolveStartedAt === null) return false;
-  return Date.now() - authResolveStartedAt >= AUTH_RESOLUTION_CEILING_MS;
+  return Date.now() - authResolveStartedAt >= AUTH_UI_GATE_EXPIRY_MS;
 }
 
 // META-ORCH-1235 (§5.2) — delegate to the ONE canonical strict predicate
@@ -401,7 +401,7 @@ function RootLayoutInner(): React.ReactElement {
     !isSelfAuthenticatedExemptRoute(pathname);
 
   // ORCH-1102 Wave 2 — BOUNDED-LOADING backstop at the UI gate. The AuthContext
-  // hard ceiling (AUTH_RESOLUTION_HARD_CEILING_MS) releases `loading` if the
+  // loading-gate backstop (AUTH_LOADING_GATE_RELEASE_BACKSTOP_MS) releases `loading` if the
   // GoTrue web-lock deadlocks; this is the belt-and-suspenders companion for the
   // residual case where a stale stored web session lingers (so `authResolving`
   // would otherwise keep the spinner up even after `loading` flips). Once auth
@@ -452,7 +452,7 @@ function RootLayoutInner(): React.ReactElement {
     const interval = setInterval(() => {
       if (hasAuthResolutionDeadlinePassed()) {
         console.warn(
-          `[_layout] auth-resolution-deadline: still resolving after ${AUTH_RESOLUTION_CEILING_MS}ms — routing to sign-in (no infinite spinner)`,
+          `[_layout] auth-resolution-deadline: still resolving after ${AUTH_UI_GATE_EXPIRY_MS}ms — routing to sign-in (no infinite spinner)`,
         );
         forceDeadlineTick((n) => n + 1);
       }
@@ -733,8 +733,23 @@ function RootLayoutInner(): React.ReactElement {
   // same already-at-sign-in check so a deadlocked session that resolves to "no
   // user" while sitting on `/` does not enter the `/` → `/` self-redirect loop.
   // When already at `/`, fall through to render the Stack (welcome screen).
+  // ORCH-1376 [self-auth-route-credential-destruction] — DEFENSIVE HARDENING.
+  // LATENT, NOT CURRENTLY FIRING: proven inert 0/4. `authResolutionExpired`
+  // requires `stillResolving`, and `isWebAuthResolving` is false for a
+  // logged-out visitor with no stored session — so today no self-authenticating
+  // route can reach this redirect. This is NOT claimed as an active bug.
+  //
+  // WHY FIX IT ANYWAY: a self-authenticating route carries its credential IN THE
+  // URL (an invite token, a Stripe `client_secret`). Redirecting it to "/" does
+  // not just lose the page — it DESTROYS the out-of-band credential, silently.
+  // That trades a visible spinner for invisible data loss, which is strictly
+  // worse. ORCH-1373's fix is exactly the kind of change to this area that could
+  // arm it. `shouldRedirectToSignInFromRoute` (coldLoadAuthGates.ts:346) ALREADY
+  // consults this same predicate — the inconsistency between the two gates was
+  // the whole defect.
   const atSignInRoute = isSignInRoute(pathname);
-  if (authResolutionExpired && !atSignInRoute) {
+  const atSelfAuthRoute = isSelfAuthenticatedExemptRoute(pathname);
+  if (authResolutionExpired && !atSignInRoute && !atSelfAuthRoute) {
     return <Redirect href="/" />;
   }
   // ORCH-1103 — never spin (or self-redirect) ON the sign-in route once the
