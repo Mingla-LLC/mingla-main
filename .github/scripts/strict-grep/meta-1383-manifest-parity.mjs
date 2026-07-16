@@ -299,7 +299,7 @@ async function realRun() {
     for (const f of failures) console.error("  - " + f);
     process.exit(1);
   }
-  console.log("META-1383 manifest parity: PASS (P1–P8 + P-vacuous).");
+  console.log("META-1383 manifest parity: PASS (P1–P9 + P-vacuous).");
 }
 
 // ---------------------------------------------------------------- self-test

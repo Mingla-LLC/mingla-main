@@ -129,6 +129,17 @@ node .github/scripts/strict-grep/run-batch.mjs --class A
    yourself editing `jobs:` in `strict-grep-mingla-business.yml`, you are doing it
    the pre-1383 way.
 
+   **The one exception — `job:<jobKey>` (4 carve-out jobs).** Four gates assert that
+   *their own job key exists in the workflow file*, so batching them would make them
+   fail; SC-16 forbids editing them, so their jobs are preserved byte-for-byte:
+   `orch-0778-web-stripe-native-import-gate`, `orch-0885-a-no-bottomnav-on-wide-desktop`,
+   `orch-1271-admin-authz-foundation`, `orch-1273-offerings-read-only`. **Do not copy
+   this pattern for a new gate** — do not write a gate that asserts its own CI job
+   exists. Assert against `MANIFEST.json` instead; that is where registration lives
+   now. Carve-out gates are NOT covered by `run-batch`'s `executed === expected`, so
+   parity gate **P9** covers them instead: it fails the PR if a carve-out job is
+   deleted, stops running its gate, or drops one of its invocation modes.
+
    `modes` is not decoration: it is the exact set of invocation forms CI runs.
    2 gates in this repo are `--self-test`-ONLY and must never gain a plain run.
    Changing `modes` changes **what CI asserts**.

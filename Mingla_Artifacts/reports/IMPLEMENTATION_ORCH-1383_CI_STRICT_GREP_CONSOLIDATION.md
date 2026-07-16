@@ -1,34 +1,62 @@
 # IMPLEMENTATION — ORCH-1383 [ci-strict-grep-consolidation]
 
-**Status: `implemented and verified` for §12 steps 0–5, 8, 9, 10. Step 6 (the 340→5 workflow batch) is BLOCKED and NOT shipped — it is impossible under SC-16 as written. Step 7 depends on 6.**
+**Status: `implemented and verified` — §12 steps 0–10 COMPLETE.**
+**The workflow ships BATCHED: 340 jobs → 9 (5 dependency classes + 4 carve-out jobs), per the amendment in §0.**
 
 **Worktree:** `~/Desktop/mingla-orchs/ORCH-1383-[ci-strict-grep-consolidation]`
 **Branch:** `ORCH-1383-ci-strict-grep-consolidation`
 **SPEC:** `Mingla_Artifacts/specs/SPEC_ORCH-1383_CI_STRICT_GREP_CONSOLIDATION.md` (`f09c26219`)
-**Commits:** **`aff993707`** — all code: manifest + runner + parity gate + concurrency + ratchet. **Branch tip** — differential proof + this report + README (a doc cannot carry its own hash; `git log --oneline -1`).
+**Commits (4, in order):**
+
+| Hash | Contents |
+|---|---|
+| **`aff993707`** | `MANIFEST.json` + `run-batch.mjs` + `meta-1383-manifest-parity.mjs` + `concurrency` on 8 workflows + the `tests-append-only.yml` MANIFEST ratchet |
+| **`9d94dd317`** | first differential proof + report + README source-of-truth |
+| **`0171a6203`** | **step 6 — the batch: 340 jobs → 9** (5 dependency classes + 4 carve-outs) + parity **P9** |
+| **`ae2192c76`** | **step 7 — differential proof RE-RUN against the shipped 9-job workflow** + this report |
+
 *(Rebased onto `origin/main` `d344de987` after COMMS-0104/0105 landed mid-session; both touched only `COMMS_LEDGER.md`, so the rebase was conflict-free and every gate re-verified green afterwards. Pre-rebase code hash was `eac8b97b9`.)*
+
+---
+
+## 0. 🟡 SPEC AMENDMENT — 5 jobs → 9 (authorised, not assumed)
+
+| Field | Value |
+|---|---|
+| **What changed** | SPEC SC-1 ("`strict-grep-mingla-business.yml` defines **exactly 5 jobs**") is superseded. The workflow ships **9 jobs: the 5 dependency classes + 4 carve-out jobs preserved byte-for-byte.** SC-13's "all 5 batched jobs carry `timeout-minutes: 10`" applies to the 5 batch jobs; the 4 carve-outs are verbatim copies and carry none, exactly as before. |
+| **Why** | Four gates assert **their own job key exists in that workflow**. Batching deletes every per-gate job key, so all four fail — proven, with real output, in §4. SC-16 and §15 forbid editing all four (2 are strict-grep gate scripts, 2 are `mingla-admin` product tests). §9 of the spec mandates the registry model change while SC-16 forbids touching the gates that hard-code the old model: the spec contradicts itself. |
+| **Why THIS option** | Under carve-outs those 4 assertions stay **TRUE** — the jobs really do exist. That removes the only argument for Option 1 (retargeting them at `MANIFEST.json`), which would have required editing 4 guards, including 2 product tests needing a `[TEST-MOD-APPROVED ORCH-1383]` token. **SC-16 is preserved absolutely: zero gate edits, zero test-mod tokens, no amendment to SC-16 itself.** In a codebase that produced seven classes of never-failing guard, spending ~4 billed minutes to avoid editing four guards is the right trade. |
+| **Who authorised** | **Seth, at REVIEW** — choosing **Option 2** from the two options this implementor costed in the blocker report. Not an implementor decision, and not routed to forensics: Seth picked a pre-costed option. |
+| **Cost vs the spec's projection** | Spec projected **~10** billed min for 5 jobs. Measured-input projection for 9 jobs: **~15** billed min (4 carve-outs ≈ +4, each a ~25s job). **Wall clock is identical** — the 4 carve-outs are ~25s each and run in parallel behind class A's ~3–4 min. So the amendment costs ~4–5 billed minutes and **zero** user-visible feedback time, against a **344 billed min / 9.68 min** baseline. |
+| **Blast radius** | Zero gates changed class semantics. 12 of 548 executions moved out of class A into their original jobs. Differential proof re-run against the 9-job build: **0 dark gates** (§3.1). |
+| **New guard this forced** | Carve-out gates are in **no** batch class, so `run-batch`'s R4 does not cover them. Parity assertion **P9** now requires each `job:<jobKey>` gate to be invoked *by that job*, in *every* recorded mode. Proven to fail on job-deleted / gate-dropped / mode-dropped (§3.3). |
 
 ---
 
 ## 1. Summary — plain English
 
-The 340 CI gates now have a **machine-checked registry** (`MANIFEST.json`), a **batch runner**
-that can run them 5 jobs instead of 340, a **parity gate** that fails the PR the moment a gate
-file exists without being registered, and an **append-only ratchet** so nobody can quietly
-shrink the registry. All of it is proven against GitHub's own recorded 340-job result set:
-**every gate that ran before still runs, in the same form, with the same verdict — zero dark
-gates.**
+**CI now runs 9 jobs instead of 340, and no gate stopped running.** The 340 gates have a
+**machine-checked registry** (`MANIFEST.json`), a **batch runner** that executes them in 5
+dependency-class jobs, **4 preserved carve-out jobs** for gates that check their own CI wiring,
+a **parity gate** that fails the PR the moment a gate file exists without being registered, and
+an **append-only ratchet** so nobody can quietly shrink the registry.
 
-**What did NOT ship: the actual 340→5 collapse.** Building it revealed that **4 gates assert
-their own job key exists in the workflow file**. Batching deletes those job keys, so those 4
-gates fail — and SC-16 plus §15 forbid editing any of them. The speed/cost win is therefore
-**not yet realized**; it needs a spec amendment (§4 below). Everything the batch *depends on*
-is landed, proven, and safe, so the amendment is a small, well-defined follow-up rather than a
-restart.
+Proven against GitHub's own recorded 340-job result set: **every one of the 378 gates that ran
+before still runs, in the same invocation form, with the same verdict. Zero dark gates.** The
+only addition is the parity gate itself, declared.
+
+**The measured prize:** the baseline burns **344 billed minutes and 9.68 minutes of wall clock**
+to perform **69 seconds** of actual gate work — **91.4% of the machine time is duplicated setup**
+(measured across 100 real jobs; the spec estimated 92%). The 9-job build pays that setup 9 times
+instead of 340.
 
 **One number to hold on to:** dropping 5 gates from the manifest leaves the **runner green
 (524/524 passed, exit 0)** while the **differential proof FAILS**, naming all 5. Green alone
 proves nothing. That is the whole ORCH.
+
+**Read §0 first:** this ships as **9 jobs, not the spec's 5** — an amendment Seth authorised at
+REVIEW after building the 5-job version proved it silently breaks 4 gates that SC-16 forbids
+fixing.
 
 ---
 
@@ -36,39 +64,43 @@ proves nothing. That is the whole ORCH.
 
 | ID | Criterion | Status | Evidence |
 |---|---|:--:|---|
-| **SC-1** | workflow defines exactly 5 jobs | 🔴 **BLOCKED** | Built and verified (5 jobs, 4478→528 lines) but **reverted** — breaks 4 gates. §4. |
-| **SC-2** | billed minutes ≤ 12 (today ~345) | ⚠️ **NOT REALIZED** | Baseline **measured: 344**. Projected ~10–11 batched, unrealized pending SC-1. §6. |
-| **SC-3** | wall clock ≤ 5 min (today 6.4–11.8) | ⚠️ **NOT REALIZED** | Baseline **measured: 9.68 min**. Projected ~4, unrealized pending SC-1. §6. |
-| **SC-4** | **§6 differential proof passes D1–D5, artifact committed** | ✅ **PASS** | `ORCH-1383_DIFFERENTIAL_PROOF.md`. 0 dark gates. `eac8b97b9` |
+| **SC-1** | workflow defines exactly 5 jobs | 🟡 **AMENDED → 9** | **5 batch classes + 4 carve-outs** (§0, Seth-authorised). 340 → 9. `0171a6203` |
+| **SC-2** | billed minutes ≤ 12 (today ~345) | ⚠️ **UNMEASURABLE HERE** | Baseline **measured: 344**. After ≈ **15** (9 jobs) — cannot be CI-measured without a PR run, which is forbidden. §6. |
+| **SC-3** | wall clock ≤ 5 min (today 6.4–11.8) | ⚠️ **UNMEASURABLE HERE** | Baseline **measured: 9.68 min**. After ≈ **4 min** — same constraint. §6. |
+| **SC-4** | **§6 differential proof passes D1–D5, artifact committed** | ✅ **PASS** | **Re-run against the 9-job build.** 0 dark gates. §3.1 |
 | **SC-5** | manifest accounts for all on-disk `.mjs`, one enforcement each | ✅ **PASS** | **394** accounted (spec said 384 — §5-A). Parity P1/P3 green. |
-| **SC-6** | parity P1–P8 fire under `--self-test`, incl. vacuous | ✅ **PASS** | **12/12**, both vacuous cases. §3.2 |
+| **SC-6** | parity P1–P8 fire under `--self-test`, incl. vacuous | ✅ **PASS** | **16/16** (12 + 4 new P9 carve-out cases), both vacuous. §3.2 |
 | **SC-7** | deleting a gate file → run FAILS, log names it | ✅ **PASS** | T-1 output §3.3 |
 | **SC-8** | adding a gate without manifest entry → parity FAILS | ✅ **PASS** | T-3 output §3.3 |
 | **SC-9** | a mid-class failure doesn't stop later gates | ✅ **PASS** | T-7: 532/532 ran; 523 after the failing gate. §3.3 |
 | **SC-10** | every failure names the exact gate | ✅ **PASS** | R6; all outputs in §3.3 |
 | **SC-11** | `concurrency` on the §4.3 workflows, expression form | ✅ **PASS** | **8** workflows (spec prose says 7, enumerates 8 — §5-D) |
 | **SC-12** | `deploy-functions.yml` has NO `concurrency` | ✅ **PASS** | Verified across all 12 workflows |
-| **SC-13** | all 5 batched jobs carry `timeout-minutes: 10` | 🔴 **BLOCKED** | Built + verified; reverted with SC-1 |
-| **SC-14** | class C expo step order + stderr path byte-identical | ✅ **PASS** | Verified live: gate reads `/tmp/expo-export-web.stderr`, exit 2 when absent |
-| **SC-15** | class E keeps `fetch-depth: 0`; A–D do not | ✅ **PASS** | Verified in built workflow + proven live (class E fails without git history) |
-| **SC-16** | **no gate script's assertion logic modified** | ✅ **PASS** | `git diff` vs `60533968e`: **3 files added, 0 modified**. §3.5 |
+| **SC-13** | all 5 batched jobs carry `timeout-minutes: 10` | ✅ **PASS** | All 5 batch jobs = 10. The 4 carve-outs are verbatim copies and carry none, as before. |
+| **SC-14** | class C expo step order + stderr path byte-identical | ✅ **PASS** | Real `expo export` run in the proof; gate exit 0. Exit 2 when the side-effect is absent. |
+| **SC-15** | class E keeps `fetch-depth: 0`; A–D do not | ✅ **PASS** | Verified structurally + live (class E fails without git history) |
+| **SC-16** | **no gate script's assertion logic modified** | ✅ **PASS** | **The whole point of the amendment.** `git diff` vs `60533968e`: **3 files added, 0 modified**. §3.5 |
 
 ---
 
 ## 3. Evidence
 
-### 3.1 Differential proof (§6) — the hard stop, cleared
+### 3.1 Differential proof (§6) — RE-RUN against the shipped 9-job workflow
 
 Baseline **independently re-verified**: run `29453557478`, `Strict Grep Gates (Mingla Business)`,
 `push`/`main`, `head_sha 60533968e`, **340 jobs, 340 success**. The trap ID `29444719767` was
 re-confirmed as **Web Build Check with 1 job** — using it would have made the proof decorative.
+
+**This proof covers the 9-job build that ships.** The earlier revision certified the 5-job build,
+which was reverted — a proof of something that does not exist certifies nothing. Re-run at
+`0171a6203`:
 
 ```
 D5 baseline run 29453557478 @ 60533968e: 340 rows, 0 non-success
 OLD: workflow at 60533968e declares 340 jobs
 OLD: 378 distinct gate scripts, 546 (script,mode) executions
 Job-name reconciliation: 340 YAML jobs -> 340 API rows; unmatched: 0
-NEW: 379 distinct gate scripts, 548 executions recorded across 5 classes
+NEW: 379 distinct gate scripts, 548 executions (536 batched across 5 classes + 12 in 4 carve-out jobs)
 
 D1 OLD ⊆ NEW — gates present before and absent after: 0
 D1b (script,mode) present before and absent after: 0
@@ -82,10 +114,25 @@ DIFFERENTIAL PROOF: PASS — D1, D1b, D2, D2b, D3, D4, D5 all satisfied.
   OLD gates : 378   NEW gates : 379   executions: 548   dark gates: 0
 ```
 
-Runner proven in isolation (step 4), all 5 classes, one clean environment:
-**548 expected / 548 executed / 548 passed / 0 failed / 0 missing.**
+All 9 jobs executed in one clean environment (real `expo export` for class C):
 
-### 3.2 Parity gate self-test — 12/12 (SC-6)
+| Job | Kind | Executions | Passed | Failed | Exit |
+|---|---|---:|---:|---:|:--:|
+| `static-gates` | batch A | 520 | 520 | 0 | 0 |
+| `dep-gates` | batch B | 10 | 10 | 0 | 0 |
+| `expo-export-gate` | batch C | 1 | 1 | 0 | 0 |
+| `jest-suites` | batch D | 2 | 2 | 0 | 0 |
+| `full-clone-gates` | batch E | 3 | 3 | 0 | 0 |
+| `orch-0778-web-stripe-native-import-gate` | carve-out | 1 | 1 | 0 | 0 |
+| `orch-0885-a-no-bottomnav-on-wide-desktop` | carve-out | 1 | 1 | 0 | 0 |
+| `orch-1271-admin-authz-foundation` | carve-out | 6 | 6 | 0 | 0 |
+| `orch-1273-offerings-read-only` | carve-out | 4 | 4 | 0 | 0 |
+| **Total** | **9** | **548** | **548** | **0** | **0** |
+
+**548 before, 548 after.** The carve-out split moved 12 executions out of class A (532 → 520)
+into their original jobs; nothing was added or lost. All 4 gates that broke the 5-job build pass.
+
+### 3.2 Parity gate self-test — 16/16 (SC-6)
 
 ```
 ok    control: clean manifest passes
@@ -98,14 +145,19 @@ ok    P5/enforcement: invalid class fails
 ok    P7: dropping below selfTestWiredFloor fails
 ok    P6: source has --self-test but manifest says none fails
 ok    P8: 22nd unenforced gate exceeds cap fails
+ok    P9: carve-out job deleted from the workflow fails
+ok    P9: carve-out job no longer runs its gate fails
+ok    P9: carve-out job dropped a mode (--self-test) fails
+ok    P9: fully-covered carve-out passes
 ok    P-vacuous: zero files discovered FAILS (never green)
 ok    P-vacuous: empty gates[] FAILS (never green)
 
-META-1383 parity self-test: 12/12 PASS.
+META-1383 parity self-test: 16/16 PASS.
 ```
 
-A **control case** is included deliberately: without it, a gate that failed everything would
-score 11/11 and look perfect.
+Two **control cases** are included deliberately (`control: clean manifest passes`, `P9:
+fully-covered carve-out passes`): without them, a checker that failed *everything* would score
+14/14 and look perfect. A self-test with no passing case proves nothing.
 
 ### 3.3 Fails-on-revert — every guard, with real output (§13, step 10)
 
@@ -177,6 +229,34 @@ control (no change):
   ORCH-1383 ratchet: PASS — registry did not shrink.   EXIT=0
 ```
 
+**P9 — the carve-outs' own dark-gate guard (NEW, forced by the amendment).** The 8 carve-out
+gates are in no batch class, so R4 does not cover them. Deleting the
+`orch-1271-admin-authz-foundation` job:
+
+```
+META-1383 manifest parity FAILED — 3 violation(s):
+  - P9: ".../i-admin-gate-first-statement.mjs" is declared job:orch-1271-admin-authz-foundation
+        but strict-grep-mingla-business.yml has no job "orch-1271-admin-authz-foundation".
+        The carve-out job is gone — the gate is now enforced by nothing.
+  - P9: ".../i-admin-single-gate.mjs"    ... (same)
+  - P9: ".../i-admin-write-audited.mjs"  ... (same)
+```
+
+And the differential proof independently names all 8:
+
+```
+D1 OLD ⊆ NEW — gates present before and absent after: 8
+   DARK: orch-0778-web-stripe-native-import-gate.mjs
+   DARK: orch-0885-a-no-bottomnav-on-wide-desktop.mjs
+   DARK: i-admin-single-gate.mjs
+   DARK: i-admin-write-audited.mjs
+   DARK: i-admin-gate-first-statement.mjs
+   DARK: i-offerings-read-only.mjs
+   DARK: __tests__/i-offerings-read-only.test.mjs
+```
+
+Restored → both PASS.
+
 **T-16 — exit-code passthrough (R9), observed live.** Class C with its stderr side-effect absent:
 ```
 FAIL  i-proposed-x-web-deprecation.mjs [plain] -> exit 2
@@ -184,6 +264,39 @@ FAIL  i-proposed-x-web-deprecation.mjs [plain] -> exit 2
 ```
 `2` recorded as `2`, not collapsed to `1`/`0`. This simultaneously proves **SC-14** — the gate
 really does read the side-effect a prior step writes, and the runner passes its arg intact.
+
+### 3.4b What the 9-job build surfaced that the 5-job build did not
+
+Three things, none of them cosmetic:
+
+**1. A stale-evidence hole — in my own proof harness.** Testing the carve-out dark-gate case, I
+deleted a carve-out job. P9 correctly failed. **The differential proof reported PASS.** Cause:
+`run-carveouts.mjs` aborted before rewriting its results file, so the proof read the *previous*
+run's `gate-results-CARVE.json` and certified a set of gates that had not run. A proof that can
+read results it did not just produce is not a proof — it is the batching lie one level up.
+Fixed: results files are deleted **before** any work, so an aborted run leaves nothing to read
+and the proof fails closed. Re-tested: **8 dark gates named, PASS on restore.** *This never
+affected shipped code* — in CI each job writes its own artifact fresh — but it did mean my first
+carve-out test result was worthless, and I would have shipped a proof method with a hole in it.
+
+**2. Three carve-out gates are also invoked by jobs that get batched away.**
+`i-admin-write-audited.mjs`, `i-admin-gate-first-statement.mjs` and `i-offerings-read-only.mjs`
+appear in `orch-1276` / `orch-1277` / `orch-1278` (batched) as well as their carve-out jobs. Had
+a carve-out job run only *some* of a gate's modes, the rest would have disappeared with those
+jobs — a mode going dark while the gate still "ran". The generator now hard-fails unless every
+carve-out gate's **full mode union is covered by its own job**; it passes, and D1b (`0` dropped
+`(script,mode)`) confirms it independently. **The 5-job build could not have surfaced this** —
+with everything in one class the union was trivially covered.
+
+**3. Two gates now pass on documentation rather than a job — disclosed, not smoothed.**
+`orch-0784-event-list-sales-summary-visibility.mjs` and
+`orch-0786-creator-avatar-upload-integrity.mjs` check `workflow.includes("<their job key>")` — a
+plain substring, not an anchored YAML key. They are satisfied by the **pre-batch job-key registry
+comment** I generate into the workflow, not by a live job. Both gates still *run* (class A,
+R4-proven), and the comment is a genuine audit trail mirroring `MANIFEST.json`'s `jobKeys` — but
+their *wiring* assertion is now weaker than it reads. They did not qualify for carve-outs because
+they never failed. **The orchestrator may want them retargeted at `MANIFEST.json` in the same
+follow-up that triages the other wiring assertions.** I did not touch them (SC-16).
 
 ### 3.4 A real bug the runner caught in itself
 
@@ -212,12 +325,12 @@ $ git diff --cached --name-only -- app-mobile/ mingla-business/ mingla-admin/ su
 
 ---
 
-## 4. 🔴 BLOCKER — step 6 is impossible under SC-16 (needs a spec amendment)
+## 4. ✅ RESOLVED — the blocker, and how the amendment closes it
 
-**This is the one thing that needs a decision.**
+**Status: closed by the §0 amendment (Seth, Option 2). Kept as the evidence record.**
 
-Four gates assert **their own job key exists in `strict-grep-mingla-business.yml`**. The 340→5
-collapse deletes every per-gate job key, so all four fail. **Empirically proven** — the batched
+Four gates assert **their own job key exists in `strict-grep-mingla-business.yml`**. The 340→**5**
+collapse deletes every per-gate job key, so all four failed. **Empirically proven** — the 5-job
 workflow was built, run, and reverted:
 
 ```
@@ -253,18 +366,32 @@ comment cannot provide.
 *"'one script + one workflow job' becomes 'one script + one manifest entry'"* — while SC-16
 forbids touching the gates that hard-code the old model. Both cannot hold.
 
-### Options (orchestrator/forensics to choose — I did not pick one)
+### The ruling — Option 2, and why it is the better call
 
-| # | Option | Cost | Preserves |
-|---|---|---|---|
-| **1 — recommended** | Amend SC-16 to permit editing **only the CI-wiring assertion** in these 4 gates: `workflow registers job X` → `MANIFEST.json registers script X`. Their real assertions are untouched. | 4 surgical edits; the 2 admin files need `[TEST-MOD-APPROVED ORCH-1383]` (append-only). | Full 5-job batch; SC-1/2/3/13. Semantically **correct** — the registry genuinely moved, and these assertions are now checking an obsolete fact. |
-| **2** | Hybrid: 5 batched jobs + keep these 4 as their own jobs. | 9 jobs ≈ 14 billed min vs 10; wall clock unchanged (parallel). Violates SC-1's "exactly 5". | SC-16 absolutely. ~96% of the win. |
-| **3** | Do nothing. | Keeps 344 billed min / 9.68 min wall. | Everything, including the problem. |
+**Seth chose Option 2 at REVIEW.** The reasoning that decided it, which I had underweighted when
+I labelled Option 1 "recommended":
 
-**Option 1 is the honest fix**: the 4 assertions exist to guarantee "this gate is enforced in
-CI". After 1383 that fact is guaranteed by `MANIFEST.json` + R4 + the parity gate — *more*
-strongly than a job key ever did. Leaving them asserting a job key would make them assert a
-fiction. **Option 2 is the zero-risk fallback** if the amendment is unwelcome.
+> Under carve-outs, those 4 gates keep their own job entries, so their assertion *"my job exists
+> in the workflow"* **stays true**. They are **not** asserting a fiction — which was the entire
+> argument for Option 1. So Option 1 buys nothing and costs 4 gate edits.
+
+| # | Option | Cost | Preserves | Verdict |
+|---|---|---|---|---|
+| 1 | Retarget the 4 CI-wiring assertions at `MANIFEST.json` | 4 gate edits; 2 admin tests need `[TEST-MOD-APPROVED ORCH-1383]` | 5-job batch, SC-1 | ❌ **Rejected.** Its premise — "they now assert a fiction" — is false under Option 2. |
+| **2** | **5 batch classes + keep those 4 as their own jobs** | **~4 billed min (≈15 vs ≈10); wall clock identical** | **SC-16 absolutely — zero gate edits, zero test-mod tokens, no SC-16 amendment** | ✅ **CHOSEN** |
+| 3 | Do nothing | 344 billed min / 9.68 min wall, forever | Everything, including the problem | ❌ |
+
+**Why this is right, not just authorised:** in a codebase that produced **seven** classes of
+never-failing guard — five historical, the 21 never-run, and (found today) three that cannot run
+in any per-ORCH worktree — the cheapest thing on the table is 4 billed minutes and the most
+expensive is touching four working guards. Option 2 spends the cheap thing. The wall-clock cost,
+the only number a developer actually feels, is **zero**: the 4 carve-outs are ~25s jobs running
+in parallel behind class A's ~3–4 min.
+
+**The one thing Option 2 costs, stated plainly:** the 8 carve-out gates sit in no batch class, so
+`run-batch`'s R4 coverage assertion does not reach them. That is a real new dark-gate surface,
+and it is why **P9** exists (§0, §3.3). Without P9, Option 2 would have traded an editing risk
+for a coverage hole — a bad trade. With it, both are closed.
 
 ---
 
@@ -299,25 +426,81 @@ the multi-line/non-`node` invocations grep misses); and "67 seconds of real work
 
 ---
 
-## 6. Measured before / after
+## 6. Before / after — and an honest note on "measured"
 
-| Metric | **Before (measured)** | **After (projected — NOT realized)** |
-|---|---:|---:|
-| Jobs | **340** | 5 |
-| **Billed minutes** | **344** | ~10–11 |
-| **Wall clock** | **9.68 min** | ~4 min |
-| Total job-seconds | **9,270** | ~600 |
-| Median job | 26.0s | — |
-| Actual gate work | **69.3s** | 69.3s |
+### BEFORE — fully measured, from GitHub's own job records
 
-Baseline from run `29453557478`'s real job timings (`sum ceil(sec/60)`; first-start→last-finish).
-**9,270 job-seconds of billing to perform 69 seconds of work — 92% duplicated setup**, which
-confirms the spec's premise precisely.
+| Metric | Baseline run `29453557478` |
+|---|---:|
+| Jobs | **340** |
+| **Billed minutes** (`Σ ceil(job_seconds/60)`) | **344** |
+| **Wall clock** (first start → last finish) | **9.68 min** |
+| Total job-seconds | **9,270** |
+| Median job / max job | **26.0s** / 185.0s |
+| **Setup + teardown share** | **91.4%** |
+| **Real gate work share** | **8.6%** |
+| Actual gate work (local, all 548 executions) | **69.3s** |
 
-**The "after" column is a projection, not a measurement, and must not be quoted as achieved.**
-The batched workflow is reverted (§4), so no batched CI run exists. Measured inputs: class A
-61.4s, B 6.7s, C 0.1s (+ its ~73s expo export), D 0.7s, E 0.4s local; CI adds ~17.3s
-checkout+node per job.
+The per-step breakdown is measured across a 100-job sample of the real run:
+
+```
+BASELINE per-step measured (sample of 100 jobs):
+  checkout/setup-job   n= 301  avg=5.39s  total=1622s
+  setup-node           n= 196  avg=3.44s  total=674s
+  gate --self-test     n=  39  avg=0.05s  total=2s
+  gate run             n= 102  avg=1.47s  total=150s
+  teardown             n= 100  avg=0.05s  total=5s
+  ---
+  SETUP+TEARDOWN total: 2301s  (91.4% of measured job time)
+  REAL GATE WORK      : 217s  (8.6%)
+```
+
+**9,270 job-seconds of billing to perform ~69 seconds of work.** The spec claimed "92% of the
+machine time is duplicated setup"; measured, it is **91.4%**. The premise is sound.
+
+### AFTER — cannot be CI-measured under this dispatch's own constraints. Saying so plainly.
+
+**I was asked for measured, not projected. For "after" that is not achievable here, and I will
+not present a projection as a measurement.** The reason is structural, not effort:
+
+- `strict-grep-mingla-business.yml` triggers only on `pull_request` → `[main, Seth]` and
+  `push` → `[main, Seth]`. My branch is neither.
+- **"No PR, no merge"** is an explicit constraint of this dispatch — and a PR is the only thing
+  that would fire the workflow.
+- There is no `workflow_dispatch` trigger, so `gh workflow run` cannot start it. Adding one
+  would change shipped CI config to serve a measurement.
+- Pushing to `Seth` is not available (branch retired) and would be a shared-branch push.
+
+**A real "after" number therefore requires the first PR run — which is the very next step after
+this ORCH.** That run measures it for free.
+
+What I *can* give is a projection built from **measured** inputs, clearly labelled:
+
+| Job | Setup (measured baseline avg) | Work (measured local) | Billed |
+|---|---:|---:|---:|
+| `static-gates` (A) | ~23s | 61.4s local → ~3 min CI | **4** |
+| `dep-gates` (B) | ~23s + ~15s install | 6.7s | **1** |
+| `expo-export-gate` (C) | ~23s + ~60s install + ~73s export | 0.1s | **3** |
+| `jest-suites` (D) | ~23s | 0.7s | **1** |
+| `full-clone-gates` (E) | ~60s full clone | 0.4s | **2** |
+| 4 × carve-out jobs | ~23s each | ~2s each | **4** |
+| | | **Total** | **≈15** |
+
+**Projected: ≈15 billed min (from 344 — a ~23× reduction) and ≈4 min wall clock (from 9.68 —
+~2.4× faster).** The amendment's cost is the 4 carve-out billed minutes; wall clock is unchanged
+by them because they run in parallel and finish in ~25s.
+
+⚠️ **One risk this projection carries, flagged rather than buried:** `timeout-minutes: 10` on
+`static-gates` is **unvalidated**. Class A is 520 executions; locally 61.4s, but the baseline's
+measured per-gate CI cost (1.47s avg, cold-cache, fresh job) would imply far worse if it did not
+amortise across a batch. I expect ~3–4 min once the page cache is warm after the first gate, but
+**the first PR run is what proves it.** If class A ever approaches 10 min, raise the timeout —
+do **not** split the class, which would re-introduce duplicated setup.
+
+**Cost framing (per the dispatch, against the research):** the repo is **PUBLIC → Actions are
+free → today's cost is $0.00.** **Do not quote `$51/mo` as live** — it is a private-repo number.
+This is justified on **speed now** and on cost **only when the repo goes private**. COMMS-0103
+records that Actions-working and account-IDs-hidden are currently mutually exclusive.
 
 **Cost framing (per the dispatch, against the research):** the repo is **PUBLIC → Actions are
 free → today's cost is $0.00.** **Do not quote `$51/mo` as live** — it is a private-repo number.
@@ -332,8 +515,8 @@ COMMS-0103 records that Actions-working and account-IDs-hidden are currently mut
 |---|---:|---|
 | `.github/scripts/strict-grep/MANIFEST.json` | +5552 **new** | Registry. 418 entries; 394 on-disk `.mjs` each with one enforcement state. |
 | `.github/scripts/strict-grep/run-batch.mjs` | +188 **new** | R1–R9 batch runner. |
-| `.github/scripts/strict-grep/meta-1383-manifest-parity.mjs` | +382 **new** | P1–P8 + P-vacuous, 12/12 self-test. |
-| `.github/workflows/strict-grep-mingla-business.yml` | +30 | `concurrency` + the parity-gate job. **NOT batched.** |
+| `.github/scripts/strict-grep/meta-1383-manifest-parity.mjs` | +~430 **new** | P1–P9 + P-vacuous, 16/16 self-test. |
+| `.github/workflows/strict-grep-mingla-business.yml` | **4478 → 614** | **BATCHED: 340 jobs → 9** (5 classes + 4 carve-outs) + `concurrency` + `timeout-minutes: 10` + the 340-key pre-batch registry comment. |
 | `.github/workflows/tests-append-only.yml` | +72 | `concurrency` + MANIFEST ratchet. **No `paths:` filter added.** |
 | `web-build-check` · `docs-artifact-regression` · `production-readiness-audit` · `supabase-migrations-and-stripe-deno` · `meta-orch-1337-social-proof-tests` · `orch-1371-1372-tester-adversarial` | +8 each | `concurrency` only. **No `paths:` filter added.** |
 | `.github/scripts/strict-grep/README.md` | ~+70 | `MANIFEST.json` is the source of truth; new add-a-gate flow (discovery D3). |
@@ -411,11 +594,13 @@ control, and it reports **0 dark gates**.
 | P1 totality | T-3 | ✅ §3.3 |
 | P-vacuous | self-test | ✅ §3.2 — both cases |
 | P7/P8 ratchets | self-test | ✅ §3.2 |
+| **P9 carve-out coverage** | **job-deleted + self-test** | ✅ §3.3 — **3 gates named; proof independently names 8** |
 | Append-only ratchet | T-11 a–d + token + control | ✅ §3.3 |
 | **The proof itself** | **T-15** | ✅ §3.3 — **runner green, proof FAILS naming 5** |
 
-Fails-on-revert verified at **`aff993707`** (pre-rebase `eac8b97b9`). Every guard was reverted by
-**true line deletion / value mutation**, never a comment-out, and restored to green afterwards.
+Fails-on-revert verified at **`aff993707`** (guards) and **`0171a6203`** (P9 / the 9-job build).
+Every guard was reverted by **true line deletion / value mutation or real workflow surgery**,
+never a comment-out, and restored to green afterwards.
 
 The parity gate's `--self-test` is registered in CI (`meta-1383-manifest-parity` job, both
 `--self-test` and plain), so it ships **wired**, raising `selfTestWiredFloor` 177 → **178**.
@@ -424,9 +609,19 @@ The parity gate's `--self-test` is registered in CI (`meta-1383-manifest-parity`
 
 ## 11. Known issues / deferred
 
-1. **Step 6/7 blocked** (§4) — the headline. Needs a spec amendment.
-2. **Class D's 5-class rationale is wrong** but its *structure* is kept (SC-1 demands 5). Class D
-   needs no install; it could fold into A. Worth ~1 billed min. Flagged, not acted on.
+1. ⚠️ **`timeout-minutes: 10` on `static-gates` is unvalidated** (§6). Class A runs 520
+   executions. Locally 61.4s; the first PR run is what proves the CI number. If it ever nears 10
+   min, **raise the timeout — do not split the class**, which would re-introduce the duplicated
+   setup this ORCH exists to remove.
+2. **Class D's rationale in the spec is wrong** but its *structure* is kept. Class D needs no
+   install at all (`node ./scripts/ci/*.mjs`, `node:` builtins only) and could fold into class A
+   for ~1 billed min. Flagged, not acted on — out of scope, and folding it would change the
+   class model the proof certifies.
+3. **The 4 carve-out jobs are a standing invitation to drift.** They are byte-identical copies of
+   pre-batch jobs. If someone edits a gate's invocation there without updating `MANIFEST.json`,
+   P9 catches it — but the carve-outs remain the one place where "add a job" is still the pattern.
+   The follow-up that retargets those 4 wiring assertions can delete them and fold the 8 gates
+   into class A, reclaiming the ~4 billed min.
 3. **`gate-results-*.json` are untracked at repo root** after a local run. CI uploads them as
    artifacts. `.gitignore` is outside the allowlist — suggest adding `gate-results-*.json` in a
    follow-up.
@@ -453,9 +648,11 @@ The parity gate's `--self-test` is registered in CI (`meta-1383-manifest-parity`
 
 ## 13. Discoveries for the orchestrator
 
+**The four the coordinator asked me to carry forward are D2, D3, D10 and D6. None are fixed here.**
+
 | # | Discovery | Suggested action |
 |---|---|---|
-| **D1** | 🔴 **Step 6 is impossible under SC-16** — 4 gates assert their own workflow job key; batching deletes it; all 4 are DO-NOT-TOUCH. Proven with real failure output (§4). | **Spec amendment. Blocking.** Option 1 (retarget the 4 wiring assertions at `MANIFEST.json`) or Option 2 (hybrid 9 jobs). |
+| **D1** | ✅ **RESOLVED — 4 gates assert their own workflow job key**; batching deletes it; all 4 are DO-NOT-TOUCH. Proven with real failure output (§4). | **Closed by the §0 amendment** (Seth, Option 2 — 4 carve-out jobs). A follow-up may retarget those 4 wiring assertions at `MANIFEST.json` and reclaim ~4 billed min by folding the carve-outs into class A. |
 | **D2** | 🔴 **3 gates cannot run from ANY per-ORCH worktree.** `i-proposed-orch-0931`, `-0939`, `-0943` `.test.mjs` resolve a sibling via `new URL().pathname`, so the `[` `]` in `ORCH-NNNN-[label]` percent-encode → `MODULE_NOT_FOUND`. Green in CI only because the runner path has no brackets. **Every implementor/tester who ran these locally got a false red.** | **New ORCH** — one-line fix each (`fileURLToPath()`). SC-16 blocked me. |
 | **D3** | 🔴 **Confirmed: 21 real gates are enforced by nothing** — including `orch-1369-release-submit-config.adversarial.mjs`, dark **one day after ORCH-1369 closed**. My independent derivation reproduced the spec's list **exactly**. Now frozen + tracked at `unenforcedCap: 21` (can only shrink). | **New ORCH** (spec Q1). Triage all 21: wire, or delete with a reason. |
 | **D4** | ✅ **The 29-vs-21 question is resolved, no design change.** 29 = 21 real gates + 8 top-level `.test.mjs` fixtures. Both counts correct; three-state model absorbs both. | Close the question. |
@@ -464,15 +661,24 @@ The parity gate's `--self-test` is registered in CI (`meta-1383-manifest-parity`
 | **D7** | ⚠️ **The spec hand-typed 5 counts that its own Correction B warns against** (384/345/169/7/7-vs-8). All off for one root cause: `__tests__/` excluded from measurement while §5.1 mandates recursive. | Note for future specs: derive, don't type. |
 | **D8** | ⚠️ **GitHub truncates job display names at 100 UTF-8 _bytes_, not characters.** 25 of 340 names contain a multi-byte em-dash/arrow. Any future job-name↔API reconciliation must be byte-accurate. | Reference note. |
 | **D9** | ⚠️ **`orch-0839-b-mingla-business-no-native-stripe.mjs` is referenced in 4 comments; the file does not exist.** My comment-stripped parse correctly reported **0 phantoms** — confirming Correction D's trap is live. | Housekeeping; fold into D3's triage. |
+| **D10** | 🔴 **168 of 345 gates (48.7%) have NO `--self-test`** and cannot be shown to fail on the defect they exist to catch. All five historical dark-gate failures live in this group. Now measured precisely and ratcheted: `selfTestWiredFloor: 178` can only go **up**. | **New ORCH — the real work.** Explicitly out of scope here (§15). Until it lands, ~half the suite is unproven and this ORCH's green means only "they ran". |
+| **D11** | ⚠️ **2 gates now pass their CI-wiring check on a comment, not a job** — `orch-0784-…` and `orch-0786-…` substring-match the pre-batch job-key registry comment (§3.4b-3). They still run; their *wiring* assertion is weaker than it reads. Not carved out because they never failed. | Fold into the same follow-up as D1: retarget wiring assertions at `MANIFEST.json`. |
+| **D12** | ⚠️ **A verification harness can certify stale evidence** (§3.4b-1). My proof read a previous run's results file after an aborted step and reported PASS while P9 screamed. Fixed here (delete-before-write). Worth remembering as a *class*: the two worst bugs this ORCH produced were both **the checking machinery silently doing nothing** (this, and the `pathToFileURL` no-op runner, §3.4). | Reference note for any future proof/gate harness: fail closed, never read what you did not just write. |
 
 ---
 
 ## 14. Scope discipline
 
 Every changed file is inside §15's allowlist. Nothing outside it was touched. **No gate script's
-assertion logic was modified** (SC-16, verified §3.5). **`COMMS_LEDGER.md` was never staged.**
-The step-6 blocker was **reported, not worked around** — no gate was edited, no assertion weakened,
-no job faked to satisfy a check.
+assertion logic was modified** (SC-16, verified §3.5) — preserving that is precisely what the §0
+amendment buys. **`COMMS_LEDGER.md` was never staged.**
+
+The step-6 blocker was **reported, not worked around**: no gate edited, no assertion weakened, no
+job faked to satisfy a check. It was then resolved by **Seth's ruling on an option I had already
+costed** — not by an implementor decision and not by a forensics round-trip. The 21 unenforced
+gates and the 7 capable-unwired self-tests remain **unwired**, as scope requires: wiring either
+would add assertions the baseline lacks and break §6 set equality at the exact moment it must be
+clean.
 
 **Comms ledger.** Read on entry. **COMMS-0103** (BLOCK — Actions dead repo-wide) is already
 `RESOLVED` (Actions alive; proven by rerun `29458895739`), which the dispatch confirmed; no action

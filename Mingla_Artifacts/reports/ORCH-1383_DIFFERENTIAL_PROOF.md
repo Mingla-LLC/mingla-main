@@ -2,9 +2,23 @@
 
 **Verdict: PASS — D1, D1b, D2, D2b, D3, D4, D5 all satisfied. 0 dark gates.**
 
-**Status of what this proves:** the batch runner executes **every** gate the 340-job
+**Re-run against the SHIPPED 9-job workflow** (5 dependency classes + 4 carve-out jobs), not
+the 5-job build that was reverted. An earlier revision of this document certified the 5-job
+design; that design does not ship, so that proof certified nothing that exists. This one
+covers what is actually on the branch.
+
+**Status of what this proves:** the 9-job workflow executes **every** gate the 340-job
 workflow executed, in the **same invocation form**, and produces the **same verdicts**.
 It is the merge-blocking artifact §6 requires.
+
+**Why 9 jobs and not 5** — ORCH-1383 AMENDMENT, authorised by Seth at REVIEW (Option 2 of the
+implementor's costed blocker; supersedes SC-1's "exactly 5 jobs"). Four gates assert that
+**their own job key exists in `strict-grep-mingla-business.yml`**; batching deletes the key and
+fails them, and SC-16/§15 forbid editing all four. Their jobs are preserved **byte-for-byte**,
+so those assertions remain **true** rather than being retargeted at a comment. The 8 gates in
+those 4 jobs are `enforcement: job:<jobKey>` in the manifest and are **not** in any batch class —
+so this proof must, and does, execute them from the shipped workflow and merge their results
+(see §3.1). Cost: ~4 billed minutes; wall clock unchanged.
 
 > **Read this first.** The baseline is **340/340 green**. Therefore every gate's baseline
 > verdict is "pass", and **D3 (verdict equality) is satisfied automatically by any green
@@ -82,8 +96,13 @@ phantom gates, and line-anchored patterns miss gates invoked on continuation lin
 and non-`node` invocations a grep would have missed (2 `bash` `.sh` gates, 2 `npm run`
 suites, 18 `node --test` targets).
 
-`NEW` is read from the `gate-results-{A..E}.json` the runner writes — i.e. what **actually
-executed**, not what was intended to execute.
+`NEW` is read from the `gate-results-{A..E}.json` the runner writes **plus
+`gate-results-CARVE.json`** — i.e. what **actually executed**, not what was intended to execute.
+
+**The carve-out half is not optional.** The 8 gates in the 4 carve-out jobs are in no batch
+class, so a batch-only `NEW` would report all 8 as dark. `run-carveouts.mjs` therefore
+**YAML-parses the SHIPPED workflow** and executes those 4 jobs' steps verbatim — proving what
+ships, not what the manifest hopes ships.
 
 **Environment.** Run from a bracket-free `git clone` at
 `/private/tmp/.../scratchpad/proof-clone`, with the exact dependency set the class-B job
@@ -92,14 +111,14 @@ is **required** — see §5.
 
 ---
 
-## 3. The assertions
+## 3. The assertions — against the shipped 9-job workflow
 
 ```
 D5 baseline run 29453557478 @ 60533968e: 340 rows, 0 non-success
 OLD: workflow at 60533968e declares 340 jobs
 OLD: 378 distinct gate scripts, 546 (script,mode) executions
 Job-name reconciliation: 340 YAML jobs -> 340 API rows; unmatched: 0
-NEW: 379 distinct gate scripts, 548 executions recorded across 5 classes
+NEW: 379 distinct gate scripts, 548 executions (536 batched across 5 classes + 12 in 4 carve-out jobs)
 
 D1 OLD ⊆ NEW — gates present before and absent after: 0
 D1b (script,mode) present before and absent after: 0
@@ -120,6 +139,11 @@ DIFFERENTIAL PROOF: PASS — D1, D1b, D2, D2b, D3, D4, D5 all satisfied.
   dark gates: 0
 ```
 
+**548 = 548.** The 340-job workflow performed 546 `(script, mode)` executions; the 9-job
+workflow performs 548 (546 + the parity gate's 2 modes) — 536 batched, 12 in carve-out jobs.
+The carve-out split moved 12 executions out of class A (532 → 520); **nothing was added or
+lost**, which is exactly what D1b/D2b assert.
+
 | # | Assertion | Result |
 |---|---|---|
 | **D1** | `OLD ⊆ NEW` — every gate that ran before, runs after | ✅ **0 dark gates** |
@@ -137,16 +161,24 @@ This required discovering that **GitHub truncates job display names at 100 UTF-8
 truncate at fewer characters. A char-based rule leaves 25 unmatched; the byte-accurate rule
 leaves **0**.
 
-**Runner proven in isolation (§12 step 4)** — all 5 classes, one clean environment:
+**All 9 jobs executed (§12 steps 4 + 7)** — one clean environment, real `expo export` for class C:
 
-| Class | Gates | Executions | Executed | Passed | Failed | Missing | Exit |
-|---|---:|---:|---:|---:|---:|---:|:--:|
-| A `static-gates` | 364 | 532 | 532 | 532 | 0 | 0 | 0 |
-| B `dep-gates` | 9 | 10 | 10 | 10 | 0 | 0 | 0 |
-| C `expo-export-gate` | 1 | 1 | 1 | 1 | 0 | 0 | 0 |
-| D `jest-suites` | 2 | 2 | 2 | 2 | 0 | 0 | 0 |
-| E `full-clone-gates` | 3 | 3 | 3 | 3 | 0 | 0 | 0 |
-| **Total** | **379** | **548** | **548** | **548** | **0** | **0** | **0** |
+| Job | Kind | Gates | Executions | Executed | Passed | Failed | Missing | Exit |
+|---|---|---:|---:|---:|---:|---:|---:|:--:|
+| `static-gates` | batch A | 356 | 520 | 520 | 520 | 0 | 0 | 0 |
+| `dep-gates` | batch B | 9 | 10 | 10 | 10 | 0 | 0 | 0 |
+| `expo-export-gate` | batch C | 1 | 1 | 1 | 1 | 0 | 0 | 0 |
+| `jest-suites` | batch D | 2 | 2 | 2 | 2 | 0 | 0 | 0 |
+| `full-clone-gates` | batch E | 3 | 3 | 3 | 3 | 0 | 0 | 0 |
+| `orch-0778-web-stripe-native-import-gate` | carve-out | 1 | 1 | 1 | 1 | 0 | 0 | 0 |
+| `orch-0885-a-no-bottomnav-on-wide-desktop` | carve-out | 1 | 1 | 1 | 1 | 0 | 0 | 0 |
+| `orch-1271-admin-authz-foundation` | carve-out | 3 | 6 | 6 | 6 | 0 | 0 | 0 |
+| `orch-1273-offerings-read-only` | carve-out | 3 | 4 | 4 | 4 | 0 | 0 | 0 |
+| **Total** | **9 jobs** | **379** | **548** | **548** | **548** | **0** | **0** | **0** |
+
+The 4 gates that **failed** the reverted 5-job build — `orch-0778-web-stripe-native-import-gate.mjs`,
+`orch-0885-a-no-bottomnav-on-wide-desktop.mjs`, `orch1271_admin_authz_foundation.test.js`,
+`orch1273_offerings_console_read.test.js` — all **pass** here, because their job keys exist again.
 
 ---
 
@@ -214,6 +246,69 @@ DIFFERENTIAL PROOF: FAIL
 entire argument for §6 in one screen: the batch went green while 5 gates had silently stopped
 running, and only the external set-equality check noticed. Restoring the manifest returns the
 proof to PASS (verified).
+
+---
+
+## 5b. The carve-outs' own dark-gate risk — closed, and proven closed
+
+The 9-job design introduces a failure mode the 5-job design did not have: **the 8 carve-out
+gates are in no batch class**, so `run-batch`'s R4 (`executed === expected`) does not cover
+them. Delete a carve-out job and its gates run nowhere, with no coverage assertion to notice.
+Two independent guards close it.
+
+**Guard 1 — parity gate P9 (ships).** A `job:<jobKey>` gate must actually be invoked *by that
+job*, with *every mode* the manifest records. Deleting the `orch-1271-admin-authz-foundation`
+job:
+
+```
+META-1383 manifest parity FAILED — 3 violation(s):
+  - P9: ".../i-admin-gate-first-statement.mjs" is declared job:orch-1271-admin-authz-foundation
+        but strict-grep-mingla-business.yml has no job "orch-1271-admin-authz-foundation".
+        The carve-out job is gone — the gate is now enforced by nothing.
+  - P9: ".../i-admin-single-gate.mjs"        ... (same)
+  - P9: ".../i-admin-write-audited.mjs"      ... (same)
+```
+
+P9's `--self-test` proves all three of its failure modes fire — job deleted, job no longer runs
+the gate, and job **dropped one mode** (e.g. kept the plain run, lost `--self-test`) — plus a
+fully-covered happy path. Self-test is now **16/16**.
+
+**Guard 2 — the differential proof.** With the carve-out job gone, `NEW` loses those gates and
+D1 names every one:
+
+```
+D1 OLD ⊆ NEW — gates present before and absent after: 8
+   DARK: .github/scripts/strict-grep/orch-0778-web-stripe-native-import-gate.mjs
+   DARK: .github/scripts/strict-grep/orch-0885-a-no-bottomnav-on-wide-desktop.mjs
+   DARK: .github/scripts/strict-grep/i-admin-single-gate.mjs
+   DARK: .github/scripts/strict-grep/i-admin-write-audited.mjs
+   DARK: .github/scripts/strict-grep/i-admin-gate-first-statement.mjs
+   DARK: .github/scripts/strict-grep/i-offerings-read-only.mjs
+   DARK: .github/scripts/strict-grep/__tests__/i-offerings-read-only.test.mjs
+```
+
+Restoring the job returns both to PASS (verified).
+
+**A third danger, found while testing guard 2 — and it was in the proof harness itself.** On the
+first attempt, deleting the carve-out job made `run-carveouts.mjs` abort *before* rewriting its
+results file, so the proof read the **previous run's** `gate-results-CARVE.json` and reported
+**PASS on stale evidence** — while P9 was correctly screaming. A proof that can certify results
+it did not just produce is not a proof. Fixed: the results file is now deleted **before** any
+work, so an aborted run leaves nothing to read and the proof fails closed. This is the same
+family of defect as the runner's own `pathToFileURL` bug (§6 of the report) — *the verification
+machinery lying by omission* — and it is exactly why "the batch went green" is never sufficient.
+
+**Generator-side check.** 3 of the 8 carve-out gates (`i-admin-write-audited.mjs`,
+`i-admin-gate-first-statement.mjs`, `i-offerings-read-only.mjs`) are **also** invoked by jobs
+that *do* get batched away (`orch-1276`, `orch-1277`, `orch-1278`). Had a carve-out job run only
+a subset of a gate's modes, the rest would have vanished with those jobs. The manifest generator
+hard-fails unless every carve-out gate's **full mode union is covered by its own job**:
+
+```
+carve-out mode coverage: OK — every carve-out gate's full mode union is run by its own job
+```
+
+D1b (`0` dropped `(script, mode)`) is the independent confirmation.
 
 ---
 
@@ -289,13 +384,22 @@ git clone <repo> /tmp/proof-clone && cd /tmp/proof-clone
 git checkout ORCH-1383-ci-strict-grep-consolidation
 npm install --no-save @babel/parser @babel/traverse madge typescript@~5.9.2 yaml
 
-# 3. run every class
+# 3. class C's prior step — its gate reads this stderr side-effect (SC-14)
+(cd mingla-business && npm install --no-save \
+  && EXPO_PUBLIC_SUPABASE_URL=https://stub.supabase.co \
+     EXPO_PUBLIC_SUPABASE_ANON_KEY=stub_key_for_ci_export \
+     npx expo export -p web 2>/tmp/expo-export-web.stderr || true)
+
+# 4. the 5 batch classes  -> gate-results-{A..E}.json
 for c in A B C D E; do node .github/scripts/strict-grep/run-batch.mjs --class $c; done
 
-# 4. assert (OLD YAML-parsed at 60533968e; NEW from gate-results-*.json)
+# 5. the 4 carve-out jobs -> gate-results-CARVE.json   (REQUIRED — these 8 gates are in no
+#    batch class; omit this and the proof correctly reports 8 dark gates)
+node run-carveouts.mjs /tmp/proof-clone
+
+# 6. assert (OLD YAML-parsed at 60533968e; NEW from all 6 results files)
 node diffproof.mjs /tmp/proof-clone baseline-jobs.tsv
 ```
 
-Class C additionally requires its job's prior step —
-`cd mingla-business && npx expo export -p web 2>/tmp/expo-export-web.stderr || true` — because
-its gate reads that stderr side-effect (SC-14).
+The proof reads only results files produced by *this* run — each runner deletes its output
+before starting, so an aborted step fails the proof closed rather than certifying stale data.
