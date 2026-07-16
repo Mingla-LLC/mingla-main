@@ -612,7 +612,7 @@ The funnel is **0 of 1** lifetime. No one has ever watched an invite succeed.
 | Business **Web** preview | **PASS** — same run |
 | Consumer iOS / Android | **N/A** — `mingla-business` only; ships nowhere near consumer |
 | Business **iOS** / **Android** | **NOT COVERED** — web-only routes (`/accept-brand-invitation`, `/auth`) are not served by business native; the predicate's native consumer (`nativeRedirectToSignIn`) is source-verified + unit-covered |
-| **Physical Samsung `R58R54YV7JT`** | **ABSENT** — `adb devices` empty this run. **I claim no device coverage.** Local Chrome used, as last time. |
+| **Physical Samsung `R58R54YV7JT`** | **PASS — COVERED (ANDROID DEVICE LEG, 2026-07-16).** The prior "no device coverage" claim is now CLOSED. See §A. |
 | Physical iPhone (HITL) | **NOT REQUESTED** — no native surface in this change |
 | Admin web | **N/A** — untouched |
 
@@ -645,3 +645,184 @@ The funnel is **0 of 1** lifetime. No one has ever watched an invite succeed.
 ## R12. Accepted conditions
 
 **None.** Both P1s are unaccepted → per the skill's rule this is **BLOCKED, not CONDITIONAL** → surfaced to Seth rather than routed to CLOSE. P1-2 is merge-blocking and trivially fixable (token on HEAD). P1-1 is already closed by my §R5b guard.
+
+---
+
+# §A. ANDROID DEVICE LEG — real hardware, 2026-07-16
+
+**Dispatched by:** mingla-orchestrator (conductor) · **Skill:** mingla-tester
+**Purpose:** convert the RETEST-1 "**I claim no device coverage**" into device-backed evidence — or find what only a real Android phone reveals.
+**Branch under test:** `ORCH-1373-accept-invite-infinite-loader` @ **`4c7947000`** (was `1e700c4a4`; rebased onto `origin/main` `2a822710e` at leg start — clean, 21 commits replayed, `[TEST-MOD-APPROVED ORCH-1377]` preserved on HEAD).
+
+### A.0 Device fingerprint (orchestrator-confirmed, re-verified by me)
+
+| | |
+|---|---|
+| Model | **SM-A725F** (Galaxy A72) |
+| Serial | **R58R54YV7JT** |
+| OS | **Android 14** (SDK 34) |
+| Browser | **Chrome 150.0.7871.114** (real Chrome, not a WebView) |
+| Transport | USB, `device` state; CDP via `adb forward tcp:9376 localabstract:chrome_devtools_remote` |
+| CDP port | **9376 only.** `9222` verified **alive and untouched** before, during, and after (other session's Chrome, PID 40505). No global `pkill`. |
+
+**Artifact under test:** the production-shaped web export at `mingla-business/dist`, **proven to contain the fix** before any measurement (`SIGN_IN_ROUTE_PREFIXES` + `sanitizeNextRoute` present in `__common-*.js`; bundle mtime `00:24:48` **newer** than rework commit `5339baa24` `00:14:24`). The 7 commits the rebase pulled from `main` are **dependabot lockfile bumps only** (`undici`, `tar`, `esbuild`/`vite`) — zero `mingla-business` product source — so a rebuild was unnecessary and the COMMS-0106 D-3 `expo export` fail-close trap was side-stepped entirely.
+
+**Serving:** `/tmp/orch-1373/android_spa_server.mjs` → `adb reverse tcp:8176` (and a real-WiFi control on `172.20.5.78:8176`).
+
+---
+
+## A.1 — P0-1 on real Android Chrome · **PASS (holds — I attacked it and it did not break)**
+
+Logged out (`Storage.clearDataForOrigin` on the local origin), `/accept-brand-invitation?token=ANDROID_GARBAGE_a9f3c1`:
+
+- **"You're invited" + a working "Sign in"** rendered. **The old infinite `Accepting your invitation…` spinner: ABSENT** (asserted explicitly, `false`).
+- Tapped **Sign in** → the URL is **RETAINED**, never rewritten to `/`:
+  ```
+  @~150ms  {"url":".../auth?next=%2Faccept-brand-invitation%3Ftoken%3D…","ss":null}
+  @~400ms  {"url":".../auth?next=%2Faccept-brand-invitation%3Ftoken%3D…","ss":"/accept-brand-invitation?token=…"}
+  @~4000ms {"url":".../auth?next=…","ss":"/accept-brand-invitation?token=…"}   <- stable
+  ```
+- `sessionStorage['mingla.biz.auth.next']` — **non-null from ~400 ms, stable through 4 s**.
+- Navigation trace: **SPA nav only, zero bounce to `/`**. **Zero exceptions.**
+- **Reproduced twice**, independently, both runs identical.
+
+**Evidence:** `Mingla_Artifacts/evidence/ORCH-1373/AND_P0-1_invited_screen.png` (the invited screen on the Samsung) · probe `evidence/ORCH-1373/and_p0_1.mjs`.
+**Before/after on the SAME phone:** `armA-loggedout-infinite-spinner-samsung.png` (2026-07-14, the original infinite spinner) → `AND_P0-1_invited_screen.png` (today, "You're invited / Sign in").
+
+**A-1 amendment, verified visually on device:** `/auth?next=…` renders the Business welcome ("List experiences, reach guests, and grow — simply.") — **never spins** → `AND_A1_auth_screen.png`.
+
+> **Honesty note:** `AND_P0-1_after_signin.png` is a **stale duplicate** of the invited screen (`adb screencap` captures the *physical* screen, which was not the tab I drove). I caught it via an md5 match and **do not cite it as proof**; the CDP URL + `sessionStorage` trace above is the authoritative evidence, and `AND_A1_auth_screen.png` is a clean, separately-captured `/auth` render.
+
+## A.2 — Download CTA → Play Store · **PASS (correct listing) + one Android-only discovery**
+
+**Redirect (curl, Android UA, `biz.usemingla.com/ZSCW?pid=business_web&c=brand_invite_accept`) — 5/5 attempts, no retries needed:**
+`HTTP/2 301 → market://details?id=`**`com.sethogieva.minglabusiness`**`&referrer=af_tranid%3D…%26pid%3Dbusiness_web%26c%3Dbrand_invite_accept`
+→ correct package (**business**, *not* Explorer); `pid`/`c` preserved; `af_tranid` attribution present.
+
+**On the device — the real tap, not just curl:** the CTA on `/accept-brand-invitation/success` (the **real shipped `BusinessAppDownloadCta`**, anon-reachable) was tapped with a **trusted** touch gesture. Result: **Google Play opens on the correct listing — "Mingla: Host, Sell & Grow" by Mingla Development Team** (orange *Mingla BUSINESS* icon, `com.android.vending` foreground).
+**Evidence:** `AND_SC10_success_cta.png` (CTA renders) · `AND_cta_play_listing.png` (the listing).
+
+**🔎 ANDROID-ONLY DISCOVERY (P3-A1) — a Samsung "Open with" chooser sits between the tap and Play.**
+`market://` has **two** handlers on this phone, so the tap raises **"Open with — Galaxy Store | Google Play Store — Just once / Always"** *before* Play. **Reproduced from a genuine in-page tap on the shipped CTA** (not merely from my `am start`): `AND_1382_realtap.png` shows the chooser over the still-mounted invite page. Choosing **Google Play Store** lands on the correct listing.
+- **Not branch-caused; not blocking** — it is standard Android implicit-intent resolution, and the AppsFlyer OneLink `market://` target is conventional.
+- **Risk (UNVERIFIED — I did not prove it):** a user tapping **Galaxy Store** may hit a dead end (Mingla Business is published to Play + App Store). My attempt to drive that branch **missed the sheet and merely resumed the earlier Play task (`t1061`)** — so I make **no claim** about it. Needs a deliberate run.
+- **Candidate mitigation for the orchestrator (not verified):** target `https://play.google.com/store/apps/details?id=…` instead of `market://` — Play holds a verified App Link for that host, so Android resolves it directly with **no chooser**. AppsFlyer-dashboard-side.
+
+## A.3 — ORCH-1382 `openExternal` on mobile Chrome · **PASS (the invariant HOLDS where a desktop pass could have lied)**
+
+This is the leg the dispatch flagged as most likely to differ, because mobile Chrome's popup policy is not desktop's. Tested against the **real shipped code path** with a **trusted** `Input.dispatchTouchEvent` gesture (a synthetic `.click()` would NOT satisfy Chrome's user-gesture requirement and would have produced a false FAIL). Results recorded **synchronously into `sessionStorage`** so they survive the tab being backgrounded by the popup — the first attempt hung precisely because the popup backgrounded (throttled) the driving tab.
+
+```json
+{"tapSeen":true,"isTrusted":true,
+ "openCalled":{"url":"https://biz.usemingla.com/ZSCW?pid=business_web&c=brand_invite_accept",
+               "target":"_blank","features":""},
+ "openReturned":"WINDOW",
+ "assignCalled":null,
+ "startUrl":"http://127.0.0.1:8176/accept-brand-invitation/success"}
+```
+
+- `window.open(dest,"_blank")` returned a **real `WINDOW`, not `NULL`**, under a genuine mobile gesture → the `w.location.assign(dest)` fallback (the ORCH-1381 redirect trap) is **unreachable**.
+- **`features:""`** — confirms the fix's "NO feature string" contract byte-for-byte on device (either `noopener`/`noreferrer` token would have nulled the return and forced the redirect).
+- **The page STAYS MOUNTED** — final URL still `/accept-brand-invitation/success`; visually confirmed in `AND_1382_realtap.png` (the "Welcome to your brand" page fully intact *behind* the store chooser, URL bar unchanged).
+- **`I-PROPOSED-1342-GATE-NEVER-NAMES-NEVER-REDIRECTS` HOLDS on real mobile Chrome.**
+
+> **Scope honesty:** I proved `openExternal` via **`BusinessAppDownloadCta`**, which calls the *same* `openExternal` owner in `guestFunnelLink.ts`. The **`SeeWhosGoingGate`** ("see who's going") caller was **not** driven end-to-end: it is a modal on `/t/…` + `/exp/…` gated on guest-list state, and the only live public event (`/e/mingla-demo-party-block/mingla-demo-summer-rooftop`) renders "Not on sale yet" with **no gate** (`AND_1382_event_page.png`). Since both callers delegate to the one `openExternal`, the **owner** is proven on mobile; the gate's own render path is **not** claimed.
+
+## A.4 — ORCH-1380 / 1378 · **PASS (backgrounding PROVEN, not assumed)**
+
+A first pass sampled visibility only *before* and *after* and read `visible` both times — which would have made "zero errors" **vacuous** (no transition ⇒ trivially no errors). I rejected that and re-ran with an **in-page recorder** capturing every `visibilitychange`:
+
+```json
+{"transitions":[{"state":"hidden","t":5998},{"state":"visible","t":12176}],"errors":[],"start":"visible"}
+```
+
+- **Real Android backgrounding PROVEN** — `KEYCODE_HOME` put `com.sec.android.app.launcher` in the foreground; the page recorded **`hidden` @ 5998 ms → `visible` @ 12176 ms** on relaunch. A genuine OS-level background/refocus, not a synthetic visibility event.
+- **ORCH-1380:** `syncPushPermissionTag` TypeErrors across that real cycle → **ZERO**. All errors → **zero**.
+- **ORCH-1378:** `subscribeOneLinkDeepLink` TypeErrors on load → **ZERO**.
+
+## A.5 — ORCH-1377 ceiling · **PASS** · and the honest mobile load number
+
+**Ceiling:** auth resolved (Sign in rendered) at **1372 ms**; observed a **full 12 s** window (the backstop arms at 7 s — my first 6 s window could not have falsified it, so I re-ran longer). `[auth] resolution-hard-ceiling` / `loading-gate-backstop` → **NOT EMITTED**. It no longer lies on a resolved load.
+
+### Cold-load-to-actionable on real mobile hardware — **~3.3 s median** (desktop was 652 ms)
+
+**I found and removed two artifacts in my own harness before trusting any number** (full log: `evidence/ORCH-1373/AND_load_timing.log`):
+1. my server sent **uncompressed** JS (3435 KB) while prod serves `content-encoding: br` → fixed (brotli, **710 KB**);
+2. brotli **q11 per-request** added ~700 ms of *server* CPU — Vercel serves **pre**-compressed → fixed (cached).
+
+| Scenario | Result |
+|---|---|
+| **First visit, empty cache (= the real invitee tapping an email link)** | **min 3272 · median 3282 · max 3293 ms** |
+| Real-WiFi control (`172.20.5.78`, removes any USB/adb confound) | min 2960 · **median 3273** · max 4238 ms |
+| Independent cross-check (wall-clock vs in-page `performance.now`, stale-DOM guarded) | 2518–3515 ms — **two methods agree** |
+| Warm **reload** of an already-open tab | ~1.37 s |
+| Desktop Chrome (prior leg) | 652 ms |
+
+**Attribution — this is NOT this branch's cost:**
+`domContentLoaded` **737 ms** → but JS keeps arriving until **2891 ms** (**18 serial lazy route chunks**) → Sign-in actionable **3108 ms**. The gap **JS-downloaded → actionable is only 217 ms**, and *that* is where all auth-resolution work lives. **The branch's auth path costs ~217 ms; the remaining ~2.9 s is the app's pre-existing 18-chunk lazy-import waterfall.**
+
+> **Against Seth's "lightning fast" bar:** on a real mid-range Android, a first-time invitee waits **~3.3 s** to see "You're invited". **SC-1's ≤1.5 s clause is MET on desktop and MISSED on this device** (**P2-A1**). SC-1's *functional* clause — "never a spinner that outlives auth resolution" — **PASSES**. USB and WiFi medians agree within 9 ms, so this is device-bound; **a real 4G network would be slower still** (18 serial fetches × higher RTT). This is a **payload-architecture** problem (code-splitting / route-chunk waterfall), **not** an ORCH-1373 defect — it does **not** block this CLOSE, but it is real and I am not going to round it down.
+
+## A.6 — ORCH-1374 scanner invite on device · **PASS**
+
+`/accept-scanner-invitation?token=ANDROID_SCANNER_GARBAGE_7c1`, logged out → **"You're invited / Sign in to accept this scanner invitation. We'll bring you right back."** + working **Sign in**; **spinner absent** (`spinner:false`). Parity with A.1. → `AND_1374_scanner_logged_out.png`.
+
+---
+
+## A.7 — Android-only findings
+
+### P2-A1 — SC-1's ≤1.5 s bar is missed on real mid-range Android (~3.3 s) · *not branch-caused, does not block CLOSE*
+- **Evidence:** §A.5; `evidence/ORCH-1373/AND_load_timing.log`. USB median 3282 ms / WiFi median 3273 ms; two independent timing methods agree.
+- **Impact:** a first-time invitee on a Galaxy A72 waits ~3.3 s for "You're invited". Desktop (652 ms) hid this completely.
+- **Required fix:** NOT here. Route-chunk/code-splitting work on `mingla-business` web (18 serial lazy chunks; 710 KB brotli). → orchestrator, new ORCH.
+- **Retest:** re-run `evidence/ORCH-1373/and_coldload.mjs` + `and_load_breakdown.mjs` on `R58R54YV7JT`; target median ≤1.5 s.
+
+### P3-A1 — Samsung raises an "Open with: Galaxy Store / Google Play Store" chooser before Play
+- **Evidence:** §A.2; `AND_1382_realtap.png`, `AND_cta_resolver.png` (proven from a real in-page tap on the shipped CTA).
+- **Impact:** one extra tap in the download funnel on Samsung (a large share of NG/UK devices); a user choosing Galaxy Store may dead-end (**unverified — I did not prove it**).
+- **Required fix:** none in this branch. Consider a `https://play.google.com/store/apps/details?id=…` OneLink target (verified App Link ⇒ no chooser). → orchestrator.
+- **Retest:** clear the `market://` default, tap the CTA, observe.
+
+### P3-A2 — the cookie-consent card COVERS all three sign-in CTAs on a mobile viewport
+- **Evidence:** hit-tested with `document.elementFromPoint` at each CTA's centre (384×718 viewport), not eyeballed:
+  ```
+  BEFORE dismiss: Continue with Apple/Google/Email -> reachable:false  (coveredBy: COOKIE BANNER)
+  AFTER  dismiss: Continue with Apple/Google/Email -> reachable:true
+  ```
+  `AND_A1_auth_screen.png` shows the CTAs faintly behind the consent card. Probe: `/tmp/orch-1373/and_cookie_overlap.mjs`.
+- **Impact:** the invitee's **very next action** after "Sign in" is obscured until consent is dismissed. Real friction inside the exact funnel ORCH-1373 exists to fix. Desktop's taller viewport never overlaps.
+- **NOT a dead tap** (Constitution rule 1 holds) — the banner is dismissible and the CTAs then hit-test clean. **P3, pre-existing, not branch-caused.** → orchestrator.
+- **Retest:** `/tmp/orch-1373/and_cookie_after_dismiss.mjs`.
+
+### P4-A1 — praise: the fix behaves identically on real mobile Chrome, including the popup path
+`openExternal`'s no-feature-string shape is exactly what makes `window.open` return a live `WINDOW` on mobile Chrome — the one place a `noopener` token would have silently degraded into a redirect. That was reasoned correctly in the source docblock and **holds on hardware**.
+
+---
+
+## A.8 — What this leg STILL cannot close (unchanged; I did not manufacture a pass)
+
+**SC-4 (real Google/Apple OAuth round-trip)** and **OQ-2 (the authed happy path — 0 of 1 invites ever accepted)** remain **OPEN — Seth's**. §8 holds the exact steps.
+
+The device **does** carry Seth's live Chrome session (`business.usemingla.com` tabs were open). Per the dispatch I **observed only**:
+- I did **NOT** authenticate as Seth; I never interacted with his prod tabs.
+- All my testing ran against the **`127.0.0.1:8176` local origin**, which is **storage-isolated** from `business.usemingla.com` — clearing storage there cannot touch his session.
+- Accepting a real invite would be a **production write** ⇒ forbidden. **SC-4/OQ-2 stay OPEN.** Third refusal to manufacture this pass; the line holds.
+
+**Backend:** read-only `SELECT`s only (schema + one live public event slug). **Zero production writes.** I verified column names first (`events.status` is `draft|scheduled|live` — my initial `published` guess returned empty and I corrected it rather than assume).
+
+## A.9 — Device left clean
+
+- All **17** of my test tabs closed; **Seth's 5 tabs restored untouched** (`minglabiz.onelink.me/ch/ZSCW`, `business.usemingla.com` ×2, `usemingla.com/business`, ClickUp).
+- Store chooser answered **"Just once"**, never **"Always"** → **no default handler written** to the device.
+- Consent accepted only on the throwaway `127.0.0.1:8176` origin. **No session I created is stored.**
+- `adb reverse`/`forward` removed at leg end. **CDP 9222 left alive** (verified 200 after the run). **No global `pkill`.**
+- **COMMS-0105 honoured: `git stash` was NEVER used.** The foreign `stash@{0}: On main: anchor-uncommitted-pre-ORCH1318-build` is verified **still present and untouched**.
+
+## A.10 — Verdict folding this leg in
+
+**ANDROID DEVICE LEG: PASS** — P0: 0 · P1: 0 (new) · **P2: 1** (P2-A1) · **P3: 2** (P3-A1, P3-A2) · P4: 1.
+
+The RETEST-1 verdict is **otherwise unchanged**, with one improvement: **P1-2 (CI red — token off HEAD) is RESOLVED** — the rebase + this commit carry `[TEST-MOD-APPROVED ORCH-1377]` on the branch HEAD body.
+
+**Programme verdict → CONDITIONAL PASS, still gated on Seth for SC-4 + OQ-2.**
+Nothing this leg found blocks CLOSE: the three Android findings are all **pre-existing and not branch-caused** (payload waterfall, Android intent resolution, cookie-consent z-order). **P0-1 is dead on real hardware, the download CTA reaches the correct Play listing, and ORCH-1382 holds on mobile Chrome — the three things only a real phone could answer.**
