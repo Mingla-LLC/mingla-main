@@ -1,15 +1,51 @@
 # Strict-Grep Hardening Registry — Mingla Business
 
 This directory holds the modular CI gate scripts that enforce Mingla
-Business invariants. Each script enforces ONE invariant. Each script is
-registered as ONE job in
-`.github/workflows/strict-grep-mingla-business.yml`.
+Business invariants. Each script enforces ONE invariant.
 
-Per **DEC-101 D-17b-5** (Cycle 17b), this is a **registry pattern**:
-every future invariant CI gate adds one script + one workflow job. No
-scaffold rewrite needed.
+## 🔴 `MANIFEST.json` is the single source of truth (ORCH-1383)
 
-## Active gates registered
+**The authoritative list of gates is [`MANIFEST.json`](./MANIFEST.json), not this
+README and not the workflow file.** Every `.mjs` in this directory (recursive,
+including `__tests__/`) has **exactly one** manifest entry with an explicit
+`enforcement` state — `batch:A..E`, `external:<workflow>`, `fixture`,
+`unenforced`, or `infrastructure`. A gate file may never exist unaccounted-for
+(**I-PROPOSED-1383-GATE-MANIFEST-TOTALITY**), and that is machine-checked by
+`meta-1383-manifest-parity.mjs` on every PR.
+
+Per **DEC-101 D-17b-5** this remains a **registry pattern**. ORCH-1383 changed
+only *where the registry lives*: **"one script + one workflow job" became "one
+script + one manifest entry."** The registry survives; its enforcement became
+machine-checked instead of hand-maintained.
+
+**Why:** the hand-maintained table below drifted to ~32 rows against 379 real
+gates — a >90% drift — and 21 real gates ended up on disk, carrying
+`process.exit(1)` contracts, executed by **no CI workflow at all** (one of them
+went dark *one day after its own ORCH closed*). A registry a human must remember
+to update is a registry that silently rots. See
+`Mingla_Artifacts/reports/ORCH-1383_DIFFERENTIAL_PROOF.md`.
+
+### Useful queries
+
+```bash
+# every gate and how it is enforced
+node -e 'for (const g of require("./.github/scripts/strict-grep/MANIFEST.json").gates)
+           console.log(g.enforcement.padEnd(12), g.script)'
+
+# the 21 gates CI never runs (frozen + tracked, NOT fixed — see SPEC_ORCH-1383 §5.5)
+node -e 'console.log(require("./.github/scripts/strict-grep/MANIFEST.json")
+           .gates.filter(g => g.enforcement === "unenforced").map(g => g.script).join("\n"))'
+
+# run a whole dependency class exactly as CI does
+node .github/scripts/strict-grep/run-batch.mjs --class A
+```
+
+## Active gates — HISTORICAL, DO NOT EXTEND
+
+> ⚠️ **This table is a partial historical record (~32 of 379 gates) and is NOT
+> authoritative.** It is retained because several gates cross-reference it. **Do
+> not add rows here** — add a `MANIFEST.json` entry instead. Ignore this table
+> when answering "is gate X enforced?"; ask `MANIFEST.json`.
 
 | Invariant | Script | Cycle | Cross-reference |
 |---|---|---|---|
@@ -65,32 +101,65 @@ scaffold rewrite needed.
    - Output rich error format on violation (file + line + suggested fix + cross-reference)
    - Exit `0` (clean), `1` (violation), `2` (inconclusive — script error)
 
-2. **Register the job** in `.github/workflows/strict-grep-mingla-business.yml`:
-   ```yaml
-   jobs:
-     iN-name:
-       name: "I-N: <description>"
-       runs-on: ubuntu-latest
-       steps:
-         - uses: actions/checkout@v4
-         - uses: actions/setup-node@v4
-           with:
-             node-version: "20"
-         - name: Install dependencies
-           run: npm install --no-save <parser-deps>
-         - name: Run I-N gate
-           run: node .github/scripts/strict-grep/iN-name.mjs
+2. **Register ONE `MANIFEST.json` entry** (ORCH-1383 — this replaces "add a job"):
+   ```jsonc
+   {
+     "script": ".github/scripts/strict-grep/iN-name.mjs",
+     "kind": "file",
+     "enforcement": "batch:A",     // A = pure node. Use B if you need an npm dep.
+     "invocation": "node",         // "node" | "node --test" | "bash" | "npm run"
+     "modes": ["self-test", "plain"],  // EXACTLY what CI should run. Order matters.
+     "selfTest": "wired",          // "wired" | "capable-unwired" | "none"
+     "jobKeys": []
+   }
    ```
+   Pick the class by **what the gate needs installed**, which is the only thing
+   the batching separates:
+
+   | Class | Job | Use when your gate… |
+   |---|---|---|
+   | **A** | `static-gates` | needs nothing but node + a checkout ← almost always |
+   | **B** | `dep-gates` | needs an npm package (`@babel/parser`, `madge`, `typescript`, `yaml`) |
+   | **C** | `expo-export-gate` | reads the `expo export -p web` stderr side-effect |
+   | **D** | `jest-suites` | is an `app-mobile` `npm run` structural suite |
+   | **E** | `full-clone-gates` | reads **git history** (needs `fetch-depth: 0`) |
+
+   If you add a class-B gate, add its dependency to that job's
+   `npm install --no-save` line. **Do NOT add a job for your gate** — if you find
+   yourself editing `jobs:` in `strict-grep-mingla-business.yml`, you are doing it
+   the pre-1383 way.
+
+   `modes` is not decoration: it is the exact set of invocation forms CI runs.
+   2 gates in this repo are `--self-test`-ONLY and must never gain a plain run.
+   Changing `modes` changes **what CI asserts**.
+
+   `meta-1383-manifest-parity.mjs` fails the PR if you add the script and forget
+   the entry (P1), or add an entry with no script (P2), or let the counts drift (P3).
 
 3. **Cross-reference in `Mingla_Artifacts/INVARIANT_REGISTRY.md`** — add a
-   "CI enforcement" line in the I-N entry pointing to the script + this
-   README. Update the "Active gates registered" table above with the new
-   row, and remove from "Future gates" table.
+   "CI enforcement" line in the I-N entry pointing to the script.
+   **Do NOT add a row to the historical table above** — `MANIFEST.json` is the
+   registry now.
 
-4. **Test locally** — run `node .github/scripts/strict-grep/iN-name.mjs`
-   from the repo root with synthetic violation fixtures + clean fixtures.
-   Verify exit codes + error message clarity. Document the test in the
-   IMPL report.
+4. **Test locally** — run the gate from the repo root against synthetic violation
+   fixtures + clean fixtures; verify exit codes (`0` clean / `1` violation /
+   `2` inconclusive) and error clarity. Then run its whole class the way CI will:
+   ```bash
+   node .github/scripts/strict-grep/run-batch.mjs --class A
+   node .github/scripts/strict-grep/meta-1383-manifest-parity.mjs   # needs: npm i --no-save yaml
+   ```
+   ⚠️ **Run from a path with no `[` `]` in it.** 3 gates resolve a sibling script
+   via a `file://` URL and break on the percent-encoded brackets in the standard
+   per-ORCH worktree name (`ORCH-NNNN-[label]`), failing with `MODULE_NOT_FOUND`
+   on a `%5B`-mangled path. That is a pre-existing bug in those gates, not your
+   change — see `Mingla_Artifacts/reports/ORCH-1383_DIFFERENTIAL_PROOF.md` §6.
+
+**Give your gate a `--self-test`.** 168 of the gates here have none: they can be
+proven to *execute* and to exit 0, but **nothing proves that exit 0 means
+anything** — they have never been shown to fail on the defect they exist to catch.
+Every historical dark-gate failure in this repo lives in that group. A gate
+without a `--self-test` is a decoration until demonstrated otherwise. The
+`selfTestWiredFloor` ratchet in `MANIFEST.json` only ever goes up.
 
 ## Allowlist comment pattern
 
