@@ -4489,3 +4489,14 @@ jobs:
         run: node .github/scripts/strict-grep/issue-866-creative-guards.mjs --self-test
       - name: Run ISSUE-866 creative-guards gate
         run: node .github/scripts/strict-grep/issue-866-creative-guards.mjs
+
+  issue-864-campaign-builder-node-tests:
+    name: "ISSUE-864 WP4: campaign-builder happy-path suite — per-channel copy caps (TikTok 100-hard+emoji-strip, Meta warn-not-reject-125, Google 3–15/2–4+keywords+NO-CTA, Reddit 300/CAPS), 4-pattern policy linter + CREDIT-retired, channel plan = preflight ∩ goal ∩ market ∩ budget with create-wired={meta,google}, hidden #865 goals, §1.8 launch summary, §1.9b review_detail cause→fix, SC-10 builder-never-launches (I-PROPOSED-864-CREATE-PAUSED)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ISSUE-864 campaign-builder happy-path node:test suite
+        run: node --test mingla-admin/src/__tests__/issue864_campaign_builder_happy.test.js
