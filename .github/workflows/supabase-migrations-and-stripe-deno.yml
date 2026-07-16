@@ -810,6 +810,17 @@ jobs:
           #    orphaned t3_ recording (no DELETE verb — source trap),
           #    AC-R-23/24/25 copy/destination/creative validation, AC-R-26
           #    verbatim rejection_reason incl. the FACILIATE typo.
+          #  - issue916_wp6_tester_adversarial.test.ts (mingla-tester, 2026-07-15):
+          #    hostile job-poll payloads (4 id-key shapes + none + junk),
+          #    CLIENT_ERROR terminality (1 submission, zero post-verdict polls),
+          #    PAUSED fuzz with hostile status injection at all three levels,
+          #    CTA case/Unicode-lookalike attacks, age-key smuggling via the
+          #    passthrough, display_url/userinfo/uppercase-OneLink attacks,
+          #    the ALL-CAPS 2-vs-3 consecutive-shouted-words boundary
+          #    (fails-on-revert vs reddit.ts `if (run >= 3) return "block"` —
+          #    a different line than the implementor's three), bid-band edges
+          #    in cents through the builder, r=0-on-200 + headerless-429
+          #    backoff. ADV-A12 is ignore:true until the P1 QA-916-1 rework.
           DENO_TEST_FILES=(
             supabase/functions/_shared/__tests__/adChannel.test.ts
             supabase/functions/_shared/__tests__/meta.test.ts
@@ -820,6 +831,7 @@ jobs:
             supabase/functions/_shared/__tests__/issue867_wp2_google_flow.test.ts
             supabase/functions/_shared/__tests__/issue867_wp2_tester_adversarial.test.ts
             supabase/functions/_shared/__tests__/reddit.test.ts
+            supabase/functions/_shared/__tests__/issue916_wp6_tester_adversarial.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-read --no-check "${DENO_TEST_FILES[@]}"; then
