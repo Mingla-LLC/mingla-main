@@ -738,6 +738,12 @@ jobs:
           GOOGLE_ADS_OAUTH_CLIENT_SECRET: ""
           GOOGLE_ADS_LOGIN_CUSTOMER_ID: ""
           GOOGLE_ADS_CUSTOMER_ID: ""
+          # ISSUE-916 WP6: the Reddit fail-close tests likewise assert
+          # secrets-absent → reddit_not_connected with ZERO network calls;
+          # every networked reddit test stubs globalThis.fetch.
+          REDDIT_ADS_CLIENT_ID: ""
+          REDDIT_ADS_CLIENT_SECRET: ""
+          REDDIT_ADS_REFRESH_TOKEN: ""
         run: |
           set -euo pipefail
           # ISSUE-862 WP1 (registered 2026-07-15):
@@ -788,6 +794,33 @@ jobs:
           #    source trap, RSA/keyword exact-boundary passes, mutate-response
           #    zero-fabrication, composite-id GAQL-injection guard,
           #    normalizeGoogleError resilience.
+          # ISSUE-916 WP6 (Reddit lane, 2026-07-15):
+          #  - reddit.test.ts — SPEC §8 gates G-2 (Title-Case CTA never
+          #    uppercased/snake-cased), G-3 (toMicro ×10,000; CPC band edges;
+          #    NO invented daily floor — a $2.00/day goal_value passes), G-4
+          #    (targeting-allowlist property sweep, age unrepresentable,
+          #    r/ strip, community search query= never q=), plus AC-R-2 TTL
+          #    read-from-expires_in (no 3600 literal — source trap), AC-R-3
+          #    UA-on-every-call incl. the mint, AC-R-4 fail-close (zero
+          #    fetches), AC-R-7/8/9 PAUSED-explicit builders + unconditional
+          #    conversion_pixel_id + CBO cross-rule 422s (fails-on-revert vs
+          #    the reddit.ts PAUSED + pixel lines), AC-R-11 job state machine
+          #    (CLIENT_ERROR never resubmits; SERVER_ERROR bounded NEW jobs;
+          #    30s poll cap), AC-R-14 reverse-order PATCH-DELETED rollback +
+          #    orphaned t3_ recording (no DELETE verb — source trap),
+          #    AC-R-23/24/25 copy/destination/creative validation, AC-R-26
+          #    verbatim rejection_reason incl. the FACILIATE typo.
+          #  - issue916_wp6_tester_adversarial.test.ts (mingla-tester, 2026-07-15):
+          #    hostile job-poll payloads (4 id-key shapes + none + junk),
+          #    CLIENT_ERROR terminality (1 submission, zero post-verdict polls),
+          #    PAUSED fuzz with hostile status injection at all three levels,
+          #    CTA case/Unicode-lookalike attacks, age-key smuggling via the
+          #    passthrough, display_url/userinfo/uppercase-OneLink attacks,
+          #    the ALL-CAPS 2-vs-3 consecutive-shouted-words boundary
+          #    (fails-on-revert vs reddit.ts `if (run >= 3) return "block"` —
+          #    a different line than the implementor's three), bid-band edges
+          #    in cents through the builder, r=0-on-200 + headerless-429
+          #    backoff. ADV-A12 is ignore:true until the P1 QA-916-1 rework.
           DENO_TEST_FILES=(
             supabase/functions/_shared/__tests__/adChannel.test.ts
             supabase/functions/_shared/__tests__/meta.test.ts
@@ -797,6 +830,8 @@ jobs:
             supabase/functions/_shared/__tests__/google.test.ts
             supabase/functions/_shared/__tests__/issue867_wp2_google_flow.test.ts
             supabase/functions/_shared/__tests__/issue867_wp2_tester_adversarial.test.ts
+            supabase/functions/_shared/__tests__/reddit.test.ts
+            supabase/functions/_shared/__tests__/issue916_wp6_tester_adversarial.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-read --no-check "${DENO_TEST_FILES[@]}"; then

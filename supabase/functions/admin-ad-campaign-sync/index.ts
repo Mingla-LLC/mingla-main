@@ -17,6 +17,14 @@
  * ads.review_status) AND policy_summary.review_status, plus
  * policy_topic_entries[] — into ads.review_detail via buildGoogleReviewDetail.
  *
+ * REDDIT (ISSUE-916 WP6, R-3/§6.1): Reddit has NO review_status field —
+ * ads.review_status is DERIVED from ad.effective_status (PENDING_APPROVAL/
+ * PROCESSING→PENDING, REJECTED→REJECTED, ACTIVE→APPROVED); billing/identity/
+ * permission states leave review_status UNCHANGED and land in review_detail
+ * (rejection_reason VERBATIM incl. Reddit's own FACILIATE_… typo). Poll-only:
+ * no webhooks exist — cron drives this fn on a 30–60 min cadence while any
+ * Reddit ad is PENDING, then daily (§6.3; the sweep is already oldest-first).
+ *
  * GR-52 destination re-checker (ISSUE-867 WP2, channel-generic): every sweep
  * re-asserts each campaign's destination is still public + live (the same
  * read-only gate as create). On failure, an ACTIVE campaign is auto-PAUSED on
@@ -43,6 +51,10 @@ import {
 } from "../_shared/adChannel.ts";
 import { buildMetaReviewDetail } from "../_shared/meta.ts";
 import { buildGoogleReviewDetail } from "../_shared/google.ts";
+import {
+  buildRedditReviewDetail,
+  redditReviewStatusFromEffectiveStatus,
+} from "../_shared/reddit.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -182,10 +194,17 @@ serve(async (req: Request): Promise<Response> => {
       for (const ad of ads ?? []) {
         try {
           const s = await adapter.getStatus(connection, "ad", String(ad.external_ad_id));
-          // Per-platform review payload: Google splits what Meta merges (G-3) —
-          // BOTH approval_status and review_status + policy_topic_entries[].
+          // Per-platform review payload: Google splits what Meta merges (G-3);
+          // Reddit has NO review_status field at all (R-3) — review state is
+          // DERIVED from ad.effective_status, and rejection_reason +
+          // delivery_status[] persist VERBATIM into review_detail (§6.1–§6.2).
           const reviewDetail = campaign.platform === "google"
             ? buildGoogleReviewDetail({
+              issuesInfo: s.issuesInfo,
+              adReviewFeedback: s.adReviewFeedback,
+            })
+            : campaign.platform === "reddit"
+            ? buildRedditReviewDetail({
               issuesInfo: s.issuesInfo,
               adReviewFeedback: s.adReviewFeedback,
             })
@@ -193,13 +212,22 @@ serve(async (req: Request): Promise<Response> => {
               issuesInfo: s.issuesInfo,
               adReviewFeedback: s.adReviewFeedback,
             });
+          const updates: Record<string, unknown> = {
+            status: s.status ?? ad.status,
+            review_detail: reviewDetail,
+          };
+          if (campaign.platform === "reddit") {
+            // §6.1: only PENDING_APPROVAL/PROCESSING/REJECTED/ACTIVE map into
+            // review_status; billing/identity/permission/paused states leave
+            // it UNCHANGED (they are delivery warnings, not review verdicts).
+            const mapped = redditReviewStatusFromEffectiveStatus(s.effectiveStatus);
+            if (mapped !== null) updates.review_status = mapped;
+          } else {
+            updates.review_status = s.effectiveStatus;
+          }
           await supabase
             .from("ads")
-            .update({
-              status: s.status ?? ad.status,
-              review_status: s.effectiveStatus,
-              review_detail: reviewDetail,
-            })
+            .update(updates)
             .eq("id", ad.id);
         } catch {
           // per-entity read failure is non-fatal for the sweep

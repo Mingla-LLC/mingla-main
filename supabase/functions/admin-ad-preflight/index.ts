@@ -27,6 +27,17 @@
  *   P5 tier       — pass via the P1 read (BASIC proven live G-P1)
  *   P6 market     — geoTargetConstants:suggest London/GB resolves (G-P2)
  *
+ * Reddit (ISSUE-916 WP6 — SPEC §1.3):
+ *   P1 token      — refresh-token mint + /me + business + ad account
+ *                   (^(t2|a2)_ — both prefixes legal, R-1)
+ *   P2 billing    — funding instrument is_servable:true (reasons_not_servable
+ *                   verbatim — GR-13) + currency ∈ the 8-value enum (no NGN)
+ *   P3 identity   — ≥1 t2_ profile (a Reddit ad IS a post; no author = no ad)
+ *   P4 pixel      — pixel present: a HARD gate (conversion_pixel_id required
+ *                   on every ad group since 2026-07-13 — GR-12)
+ *   P5 tier       — n/a (own-account refresh token)
+ *   P6 market     — community search callable with `query=` (R-P6)
+ *
  * Other channels are fail-closed stubs: single-platform request → 424
  * <platform>_not_connected; all-platform sweep → per-row not_connected entries.
  *
@@ -60,6 +71,12 @@ import {
   resolveGoogleClient,
   suggestGeoTargetConstants,
 } from "../_shared/google.ts";
+import {
+  redditConnectPreflight,
+  RedditPreflightError,
+  redditSearchCommunities,
+  resolveRedditClient,
+} from "../_shared/reddit.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -105,9 +122,101 @@ function stubRow(platform: Platform, lane: string): PreflightRow {
       label: "Token valid",
       status: "fail",
       detail:
-        `${platform}_not_connected — adapter ships in a later WP (WP5 snapchat / WP6 reddit / WP7 tiktok); fail-close until then.`,
+        `${platform}_not_connected — adapter ships in a later WP (WP5 snapchat / WP7 tiktok); fail-close until then.`,
     }],
     checked_at: new Date().toISOString(),
+  };
+}
+
+/**
+ * Reddit preflight (ISSUE-916 WP6 — SPEC §1.3): the same 7-step fail-close
+ * probe as connect answers P1 (mint + /me + business + account) · P2 (funding
+ * is_servable + 8-currency enum — reasons_not_servable VERBATIM) · P3
+ * (identity = a t2_ profile exists: a Reddit ad IS a post and needs an
+ * author) · P4 (pixel present — a HARD gate, not a warn: conversion_pixel_id
+ * is required on every ad group since 2026-07-13, GR-12) · P5 n/a (own-account
+ * refresh token) · P6 (community search via `query=` — R-P6 — the reason to do
+ * Reddit at all, under the tightest 100 req/60 s pool).
+ */
+async function redditPreflight(
+  conn: AdConnectionRow | null,
+  lane: string,
+): Promise<PreflightRow> {
+  const checks: PreflightCheck[] = [];
+  const push = (id: string, label: string, status: CheckStatus, detail: string | null = null) =>
+    checks.push({ id, label, status, detail });
+  const now = (): string => new Date().toISOString();
+
+  try {
+    const snapshot = await redditConnectPreflight(
+      conn,
+      lane as "consumer" | "business",
+    );
+    push("P1", "Token mints + account reachable", "pass", null);
+    push(
+      "P2",
+      "Funding instrument servable",
+      "pass",
+      `funding_instrument ${snapshot.fundingInstrumentId} is_servable; currency ${
+        snapshot.account.currency ?? "unknown"
+      }.`,
+    );
+    push("P3", "Post-author profile exists", "pass", `profile ${snapshot.profileId}.`);
+    push("P4", "Conversion pixel present", "pass", `pixel ${snapshot.pixelId} (GR-12).`);
+    push("P5", "Review / access tier", "n/a", "Own-account refresh token — no tier gate.");
+
+    // P6 — market reachable: the community picker path (query=, NEVER q= — R-P6).
+    try {
+      const client = await resolveRedditClient(conn, lane as "consumer" | "business");
+      await redditSearchCommunities(client, "london");
+      push("P6", "Market reachable (community search)", "pass", null);
+    } catch (err) {
+      push(
+        "P6",
+        "Market reachable (community search)",
+        "fail",
+        err instanceof AdApiError ? err.message : err instanceof Error ? err.message : String(err),
+      );
+    }
+  } catch (err) {
+    if (err instanceof AdNotConnectedError) {
+      push(
+        "P1",
+        "Token mints + account reachable",
+        "fail",
+        "reddit_not_connected — set REDDIT_ADS_CLIENT_ID / REDDIT_ADS_CLIENT_SECRET / REDDIT_ADS_REFRESH_TOKEN (duration=permanent), then connect (SPEC §1.1–§1.2).",
+      );
+      return { platform: "reddit", lane, overall: "not_connected", checks, checked_at: now() };
+    }
+    if (err instanceof RedditPreflightError) {
+      if (err.errorCode === "reddit_profile_missing") {
+        push("P1", "Token mints + account reachable", "pass", null);
+        push("P3", "Post-author profile exists", "fail", err.message);
+      } else if (err.errorCode === "reddit_funding_not_servable") {
+        push("P1", "Token mints + account reachable", "pass", null);
+        push("P2", "Funding instrument servable", "fail", err.message);
+      } else {
+        push("P1", "Token mints + account reachable", "fail", err.message);
+      }
+      return { platform: "reddit", lane, overall: "red", checks, checked_at: now() };
+    }
+    push(
+      "P1",
+      "Token mints + account reachable",
+      "fail",
+      err instanceof AdApiError ? err.message : err instanceof Error ? err.message : String(err),
+    );
+    return { platform: "reddit", lane, overall: "red", checks, checked_at: now() };
+  }
+
+  const anyHardFail = checks.some((c) => c.status === "fail");
+  const anyWarn = checks.some((c) => c.status === "warn");
+  return {
+    platform: "reddit",
+    lane,
+    overall: anyHardFail ? "red" : anyWarn ? "amber" : "green",
+    checks,
+    checked_at: now(),
   };
 }
 
@@ -393,7 +502,10 @@ serve(async (req: Request): Promise<Response> => {
   if (!adminRow) return json({ error: "forbidden" }, 403);
 
   // Single unbuilt platform → fail-close 424 (stub until its WP lands).
-  if (platform !== undefined && platform !== "meta" && platform !== "google") {
+  if (
+    platform !== undefined && platform !== "meta" && platform !== "google" &&
+    platform !== "reddit"
+  ) {
     return json({
       error: `${platform}_not_connected`,
       detail: stubRow(platform, lane).checks[0].detail,
@@ -418,6 +530,10 @@ serve(async (req: Request): Promise<Response> => {
     const row = await googlePreflight(await loadConnection("google"), lane);
     return json({ rows: [row] });
   }
+  if (platform === "reddit") {
+    const row = await redditPreflight(await loadConnection("reddit"), lane);
+    return json({ rows: [row] });
+  }
 
   // All five channels.
   const rows: PreflightRow[] = [];
@@ -425,6 +541,8 @@ serve(async (req: Request): Promise<Response> => {
     if (p === "meta") rows.push(await metaPreflight(await loadConnection("meta"), lane));
     else if (p === "google") {
       rows.push(await googlePreflight(await loadConnection("google"), lane));
+    } else if (p === "reddit") {
+      rows.push(await redditPreflight(await loadConnection("reddit"), lane));
     } else rows.push(stubRow(p, lane));
   }
   return json({ rows });
