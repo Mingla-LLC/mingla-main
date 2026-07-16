@@ -143,7 +143,16 @@ export function resolveTikTokClient(
   const token = resolveTikTokToken(conn ?? null, effectiveLane);
   const envAdvertiserId = (Deno.env.get(laneEnvName("TIKTOK_ADVERTISER_ID", effectiveLane)) ?? "")
     .trim();
-  const connAdvertiserId = (conn?.external_account_id ?? "").trim();
+  let connAdvertiserId = (conn?.external_account_id ?? "").trim();
+  // QA WP7 F-1 (P1, runtime-proven): a failed pre-secrets connect persists the
+  // 'unconfigured' SENTINEL into external_account_id (the column is NOT NULL),
+  // and treating it as a real advertiser id turned the mismatch guard into a
+  // permanent brick — the lane could never reconnect after the secrets landed
+  // (DB-surgery-only recovery). A sentinel — or ANY persisted value that is
+  // not a real numeric advertiser id — is ABSENCE, never a pin. Cross-adapter
+  // bug CLASS: the WP6 reddit lane carries the identical fix idiom. Deleting
+  // the guard line below is the fails-on-revert target of the rework F-1 test.
+  if (!NUMERIC_ID_REGEX.test(connAdvertiserId)) connAdvertiserId = "";
   if (envAdvertiserId && connAdvertiserId && envAdvertiserId !== connAdvertiserId) {
     throw new AdApiError({
       platform: "tiktok",
@@ -289,34 +298,45 @@ const EXTENDED_PICTOGRAPHIC_REGEX = /\p{Extended_Pictographic}/u;
 const REGIONAL_INDICATOR_REGEX = /[\u{1F1E6}-\u{1F1FF}]/u;
 /** Emoji plumbing: variation selector-16, ZWJ, combining keycap. */
 const EMOJI_PLUMBING = new Set(["\uFE0F", "\u200D", "\u20E3"]);
+/**
+ * QA WP7 F-2/F-4: skin-tone modifiers (U+1F3FB–FF) and TAG characters
+ * (U+E0020–E007F) are emoji plumbing that V8's Extended_Pictographic data
+ * does NOT cover — a lone skin-tone swatch passed the validator, and
+ * stripEmoji stranded skin tones / invisible tag junk (England tag-flag)
+ * into "clean" output. Checked by BOTH containsEmoji and stripEmoji so the
+ * strip→validate round trip is airtight: strip output must never still
+ * "contain".
+ */
+const EMOJI_MODIFIER_OR_TAG_REGEX = /[\u{1F3FB}-\u{1F3FF}\u{E0020}-\u{E007F}]/u;
+
+/** True when the character is emoji or emoji plumbing (shared by contains/strip — F-2/F-4). */
+function isEmojiChar(ch: string): boolean {
+  if (TEXT_SYMBOL_ALLOWLIST.has(ch)) return false;
+  return EMOJI_PLUMBING.has(ch) ||
+    EMOJI_MODIFIER_OR_TAG_REGEX.test(ch) ||
+    REGIONAL_INDICATOR_REGEX.test(ch) ||
+    EXTENDED_PICTOGRAPHIC_REGEX.test(ch);
+}
 
 /** TikTok non-Spark ad copy forbids emoji (emoji-in-ads is Spark-only — A1.1(c)/(j)). */
 export function containsEmoji(text: string): boolean {
   for (const ch of text) {
-    if (TEXT_SYMBOL_ALLOWLIST.has(ch)) continue;
-    if (EMOJI_PLUMBING.has(ch)) return true;
-    if (REGIONAL_INDICATOR_REGEX.test(ch)) return true;
-    if (EXTENDED_PICTOGRAPHIC_REGEX.test(ch)) return true;
+    if (isEmojiChar(ch)) return true;
   }
   return false;
 }
 
 /**
- * Strips emoji (incl. ZWJ sequences, flags, keycaps) for the emoji-native
- * mingla-content-engine copy pipeline: strip for non-Spark, or route the
- * emoji version via Spark (A1.1(c)). Collapses the whitespace the strip
- * leaves behind.
+ * Strips emoji (incl. ZWJ sequences, flags, keycaps, skin-tone modifiers and
+ * tag characters — F-2/F-4) for the emoji-native mingla-content-engine copy
+ * pipeline: strip for non-Spark, or route the emoji version via Spark
+ * (A1.1(c)). Shares isEmojiChar with containsEmoji so stripped output can
+ * never still "contain". Collapses the whitespace the strip leaves behind.
  */
 export function stripEmoji(text: string): string {
   let out = "";
   for (const ch of text) {
-    if (
-      !TEXT_SYMBOL_ALLOWLIST.has(ch) &&
-      (EMOJI_PLUMBING.has(ch) || REGIONAL_INDICATOR_REGEX.test(ch) ||
-        EXTENDED_PICTOGRAPHIC_REGEX.test(ch))
-    ) {
-      continue;
-    }
+    if (isEmojiChar(ch)) continue;
     out += ch;
   }
   return out.replace(/[ \t]{2,}/g, " ").trim();
@@ -926,6 +946,10 @@ export function parseTikTokRegions(payload: unknown): TikTokRegion[] {
     : []) as Record<string, unknown>[];
   const regions: TikTokRegion[] = [];
   for (const entry of raw) {
+    // QA WP7 F-3: honor the tolerant-parser contract — a null / non-object
+    // element in a malformed live payload is SKIPPED, never a raw TypeError
+    // (which would surface as a wrong-shaped 500 instead of a normalized error).
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) continue;
     const idRaw = entry.location_id ?? entry.region_id ?? entry.id;
     const locationId = typeof idRaw === "string"
       ? idRaw
