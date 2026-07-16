@@ -7,9 +7,10 @@
  *   Mingla_Artifacts/research/ad-pipeline-2026-07-15/PROOF_LOG.md.
  *
  * One interface; per-platform modules _shared/{meta,tiktok,snapchat,google,
- * reddit}.ts each implement it. WP1 ships the Meta adapter; the other four are
- * fail-close stubs (AdNotConnectedError → 424 <platform>_not_connected) until
- * their WPs land (WP2 google, WP5 snapchat, WP6 reddit, WP7 tiktok).
+ * reddit}.ts each implement it. Meta (WP1), Google (WP2) and Reddit (WP6 #916)
+ * are live adapters; the remaining two are fail-close stubs
+ * (AdNotConnectedError → 424 <platform>_not_connected) until their WPs land
+ * (WP5 snapchat, WP7 tiktok).
  *
  * MONEY (A4.a / GR-01 — the 10,000x bug): budgets are stored in MINOR UNITS
  * (cents, bigint) everywhere; conversion to the platform unit happens at
@@ -398,6 +399,15 @@ export interface CreateAdInput {
   externalCreativeId: string;
   /** A4.g — conversion_domain = the canonical destination domain (Meta AEM). */
   conversionDomain?: string;
+  /**
+   * WP6 (SPEC_ISSUE-REDDIT §3.5, additive-optional): Reddit ads carry
+   * click_url = the canonical public page (NEVER the OneLink — D-P1) plus
+   * ≤14 click_url_query_parameters including the {{AD_ID}} macro. Other
+   * adapters ignore both fields.
+   */
+  clickUrl?: string;
+  /** utm_campaign value for the Reddit click_url UTMs (ad_campaigns.id). */
+  utmCampaign?: string;
   validateOnly?: boolean;
 }
 
@@ -499,6 +509,7 @@ export interface AuthedClient {
 
 import { metaAdapter } from "./meta.ts";
 import { googleAdapter } from "./google.ts";
+import { redditAdapter } from "./reddit.ts";
 
 function failCloseStub(platform: Platform): ChannelAdapter {
   const notConnected = (): never => {
@@ -528,7 +539,7 @@ const ADAPTER_REGISTRY: Record<Platform, ChannelAdapter> = {
   tiktok: failCloseStub("tiktok"), // WP7 (#863)
   snapchat: failCloseStub("snapchat"), // WP5 (#867)
   google: googleAdapter, // WP2 (#867) — live adapter (A1.3-0 provisioning flip)
-  reddit: failCloseStub("reddit"), // WP6 (SPEC_ISSUE-REDDIT)
+  reddit: redditAdapter, // WP6 (#916) — live adapter (SPEC_ISSUE-REDDIT §3)
 };
 
 export function getAdapter(platform: Platform): ChannelAdapter {
