@@ -175,15 +175,32 @@ const cases: ReadonlyArray<[string, () => void]> = [
         /<a\s+[^>]*href=\{[^}]*webHref[^}]*\}/.test(srcNoComments),
         'the use-on-web CTA is not a real <a href={…webHref…}> anchor',
       )
-      assert(/target="_blank"/.test(srcNoComments), 'the CTA anchors lost target="_blank" — /links must stay mounted and the analytics capture must survive the tap')
-      // ⚠ THE §5.1 TRAP: rel="noopener" on an <a> is REQUIRED and is NOT the
-      // ORCH-1381 window.open pathology (that ban is scoped to .open( FEATURE
-      // STRINGS). An implementor "complying" with ORCH-1381 by stripping rel here
-      // would ship a real reverse-tabnabbing regression.
-      assert(
-        /rel="noopener/.test(srcNoComments),
-        'the CTA anchors lost rel="noopener" — reverse-tabnabbing. The ORCH-1381 noopener ban is scoped to window.open FEATURE STRINGS; on an <a> element rel="noopener" is MANDATORY',
-      )
+      // ⚠ PER-ANCHOR, NOT FILE-LEVEL — this distinction is load-bearing.
+      // A file-level `/rel="noopener/` assertion on THIS file is DECORATIVE: the
+      // socials row has carried rel="noopener noreferrer" since ORCH-1317, so it
+      // passes even when EVERY CTA anchor has lost its rel. (Found by actually
+      // running the fails-on-revert proof — the assertion did not fail when all
+      // three CTA rels were stripped. Same bug class as orch-1328's /<button/
+      // matching the tablist.) So each CTA anchor is extracted and checked alone.
+      const ctaAnchors = [...srcNoComments.matchAll(/<a\s[\s\S]*?>/g)]
+        .map((m) => m[0])
+        .filter((a) => /installHref|webHref/.test(a))
+      assert(ctaAnchors.length >= 3, `expected >=3 CTA anchors (business install + business web + explorer install), found ${ctaAnchors.length}`)
+      for (const a of ctaAnchors) {
+        const shape = a.replace(/\s+/g, ' ').slice(0, 64)
+        assert(
+          /target="_blank"/.test(a),
+          `a CTA anchor lost target="_blank" — /links must stay mounted and the analytics capture must survive the tap. Anchor: ${shape}…`,
+        )
+        // ⚠ THE §5.1 TRAP: rel="noopener" on an <a> is REQUIRED and is NOT the
+        // ORCH-1381 window.open pathology (that ban is scoped to .open( FEATURE
+        // STRINGS). An implementor "complying" with ORCH-1381 by stripping rel here
+        // would ship a real reverse-tabnabbing regression.
+        assert(
+          /rel="noopener/.test(a),
+          `a CTA anchor lost rel="noopener" — reverse-tabnabbing. The ORCH-1381 noopener ban is scoped to window.open FEATURE STRINGS; on an <a> element rel="noopener" is MANDATORY. Anchor: ${shape}…`,
+        )
+      }
     },
   ],
   // ── ORCH-1382 T-9 — attribution actually rides ─────────────────────────────

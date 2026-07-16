@@ -161,6 +161,15 @@ function checkCta(rawSrc, failures) {
   // After ORCH-1382 the store/web CTA is a real <a href={…}> (an anchor is natively
   // keyboard-activatable and, unlike window.open, actually works inside the
   // Instagram/TikTok in-app webviews that dominate /links traffic).
+  //
+  // ⚠ PER-ANCHOR, NOT FILE-LEVEL. A file-level `/rel="noopener/` check on THIS file is
+  // itself DECORATIVE: the socials row has carried rel="noopener noreferrer" since
+  // ORCH-1317, so a file-level check passes even when EVERY CTA anchor has lost its
+  // rel. That is the exact same bug class as the /<button/ check this replaced —
+  // caught by running the fails-on-revert proof, which is the only reason it was
+  // found. Each CTA anchor is therefore extracted and checked on its own.
+  const anchors = [...src.matchAll(/<a\s[\s\S]*?>/g)].map((m) => m[0]);
+  const ctaAnchors = anchors.filter((a) => /(?:installHref|oneLinkHref|webHref)/.test(a));
   const CTA_ANCHOR = /<a\s+[^>]*href=\{[^}]*(?:installHref|oneLinkHref|webHref)[^}]*\}/;
   if (!CTA_ANCHOR.test(src)) {
     failures.push(
@@ -171,23 +180,27 @@ function checkCta(rawSrc, failures) {
         `check that only ever matched the TABLIST buttons and could never fail — ORCH-1382 §0.4.)`,
     );
   }
-  if (!/target="_blank"/.test(src)) {
-    failures.push(
-      `${TARGET}: the CTA anchor must carry target="_blank" — /links must stay mounted ` +
-        `(ORCH-1328's own invariant) and a same-tab navigation races the analytics flush.`,
-    );
-  }
-  // SECURITY — rel="noopener" on an ANCHOR is REQUIRED and is NOT the ORCH-1381
-  // window.open pathology. That ban is scoped to `.open(` FEATURE STRINGS, where
-  // either token makes open() return null even on success. On an <a>, rel="noopener"
-  // has no such behaviour and is mandatory anti-reverse-tabnabbing. An implementor
-  // "complying" with ORCH-1381 by stripping it would ship a real security regression.
-  if (!/rel="noopener/.test(src)) {
-    failures.push(
-      `${TARGET}: the CTA anchor must carry rel="noopener" — reverse-tabnabbing. NOTE: the ` +
-        `ORCH-1381 noopener BAN is scoped to window.open FEATURE STRINGS only; on an <a> ` +
-        `element rel="noopener" is MANDATORY, not forbidden.`,
-    );
+  for (const a of ctaAnchors) {
+    const shape = a.replace(/\s+/g, " ").slice(0, 72);
+    if (!/target="_blank"/.test(a)) {
+      failures.push(
+        `${TARGET}: a CTA anchor is missing target="_blank" — /links must stay mounted ` +
+          `(ORCH-1328's own invariant) and a same-tab navigation races the analytics flush. ` +
+          `Offending anchor: ${shape}…`,
+      );
+    }
+    // SECURITY — rel="noopener" on an ANCHOR is REQUIRED and is NOT the ORCH-1381
+    // window.open pathology. That ban is scoped to `.open(` FEATURE STRINGS, where
+    // either token makes open() return null even on success. On an <a>, rel="noopener"
+    // has no such behaviour and is mandatory anti-reverse-tabnabbing. An implementor
+    // "complying" with ORCH-1381 by stripping it would ship a real security regression.
+    if (!/rel="noopener/.test(a)) {
+      failures.push(
+        `${TARGET}: a CTA anchor is missing rel="noopener" — reverse-tabnabbing. NOTE: the ` +
+          `ORCH-1381 noopener BAN is scoped to window.open FEATURE STRINGS only; on an <a> ` +
+          `element rel="noopener" is MANDATORY, not forbidden. Offending anchor: ${shape}…`,
+      );
+    }
   }
   // 3b. ORCH-1382 — the store path no longer routes through onCtaClick (the anchor
   // navigates); the ANALYTICS call does. Without this, a correct-looking anchor could
@@ -363,6 +376,20 @@ const cta = (<div onClick={() => onCtaTrack(activeTab)}>{activeTab.cta.label}</d
   const noTarget = good.replace(/ target="_blank"/g, "");
   if (run(noTarget).length === 0) selfFailures.push('CTA anchor missing target="_blank" not flagged');
 
+  // ⭐ THE DECORATIVE-REL CASE. The CTA anchors lose their rel/target but the SOCIALS
+  // row keeps `rel="noopener noreferrer"` — which is how this file really looks
+  // (ORCH-1317). A FILE-LEVEL /rel="noopener/ check PASSES here, which is exactly the
+  // /<button/-matches-the-tablist bug in a new costume. The per-anchor check must FIRE.
+  const relOnlyOnSocials = good.replace(/ rel="noopener"/g, "").replace(/ target="_blank"/g, "") +
+    '\nconst socials = LINKS_SOCIALS.map((s) => (<a key={s.label} href={socialHref(s, activeId)} target="_blank" rel="noopener noreferrer">{s.label}</a>))\n';
+  const relFailures = run(relOnlyOnSocials);
+  if (!relFailures.some((f) => /missing rel="noopener"/.test(f))) {
+    selfFailures.push('DECORATIVE-REL REGRESSION: CTA anchors stripped of rel were NOT flagged because the SOCIALS row still carries rel="noopener noreferrer" — the rel check has gone file-level and is decorative (ORCH-1382)');
+  }
+  if (!relFailures.some((f) => /missing target="_blank"/.test(f))) {
+    selfFailures.push('DECORATIVE-TARGET REGRESSION: CTA anchors stripped of target were NOT flagged because the socials row still carries it');
+  }
+
   // The CTA reverted to a <button onClick={() => onCtaClick(  → fire.
   const revertedToButton = good
     .replace(/<a href=\{explorerTarget\.installHref\}[^>]*>/, "<button type=\"button\" onClick={() => onCtaClick(activeTab)}>")
@@ -387,7 +414,7 @@ const cta = (<div onClick={() => onCtaTrack(activeTab)}>{activeTab.cta.label}</d
     selfFailures.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
-  console.log("ORCH-1328 links-cta-opens-store-clientside self-test PASS (16/16 cases, ORCH-1382-amended: incl. the §0.4 decorative-repair proof + the §5.1 rel-on-anchor pin).");
+  console.log("ORCH-1328 links-cta-opens-store-clientside self-test PASS (18/18 cases, ORCH-1382-amended: incl. the §0.4 decorative-repair proof + the §5.1 rel-on-anchor pin).");
   process.exit(0);
 }
 

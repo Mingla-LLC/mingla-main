@@ -154,6 +154,30 @@ function assertDelegatedTapIsStillGuarded(): void {
   )
 }
 
+// ORCH-1382 — extract each CTA anchor and check it ON ITS OWN.
+// A file-level /rel="noopener/ assertion silently becomes DECORATIVE the moment any
+// other rel-carrying anchor exists in the file — exactly what happened to
+// links-experience.tsx, whose socials row made a file-level rel check pass while
+// every CTA anchor had lost its rel. glass-nav/hero contain only CTA anchors today,
+// but the trap is one footer link away, so the assertion is bound per anchor.
+const ctaAnchorsOf = (src: string): string[] =>
+  [...src.matchAll(/<a\s[\s\S]*?>/g)].map((m) => m[0]).filter((a) => /installHref|webHref/.test(a))
+
+function assertAnchorSafety(src: string, label: string): void {
+  const anchors = ctaAnchorsOf(src)
+  assert(anchors.length >= 2, `${label}: expected >=2 CTA anchors (install + web), found ${anchors.length}`)
+  for (const a of anchors) {
+    const shape = a.replace(/\s+/g, ' ').slice(0, 60)
+    assert(/target="_blank"/.test(a), `${label}: a CTA anchor lost target="_blank". Anchor: ${shape}…`)
+    // ⚠ THE §5.1 TRAP — rel="noopener" on an <a> is REQUIRED and is NOT the ORCH-1381
+    // window.open pathology (that ban is scoped to .open( FEATURE STRINGS).
+    assert(
+      /rel="noopener/.test(a),
+      `${label}: a CTA anchor lost rel="noopener" — reverse-tabnabbing. The ORCH-1381 noopener ban applies ONLY to window.open feature strings; on an <a> it is MANDATORY. Anchor: ${shape}…`,
+    )
+  }
+}
+
 const cases: ReadonlyArray<[string, () => void]> = [
   // ── glass-nav organiser branch ──────────────────────────────────────────────
   [
@@ -248,14 +272,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
         /<a\s+[^>]*href=\{[^}]*webHref[^}]*\}/.test(nav),
         'nav use-on-web action is not a real <a href={…webHref…}> anchor',
       )
-      assert(/target="_blank"/.test(navNoComments), 'nav business anchors lost target="_blank"')
-      // ⚠ THE §5.1 TRAP: rel="noopener" on an <a> is REQUIRED and is NOT the
-      // ORCH-1381 window.open pathology (that ban is scoped to .open( FEATURE
-      // STRINGS). Stripping it "to comply with ORCH-1381" is a security regression.
-      assert(
-        /rel="noopener/.test(navNoComments),
-        'nav business anchors lost rel="noopener" — reverse-tabnabbing. The ORCH-1381 noopener ban applies ONLY to window.open feature strings; on an <a> rel="noopener" is MANDATORY',
-      )
+      assertAnchorSafety(navNoComments, 'nav')
       // Link 2 — the D-B bug must not be re-inlined here.
       assert(
         !/window\.open\(/.test(navNoComments),
@@ -366,11 +383,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
         /<a\s+[^>]*href=\{[^}]*webHref[^}]*\}/.test(hero),
         'hero use-on-web action is not a real <a href={…webHref…}> anchor',
       )
-      assert(/target="_blank"/.test(heroNoComments), 'hero business anchors lost target="_blank"')
-      assert(
-        /rel="noopener/.test(heroNoComments),
-        'hero business anchors lost rel="noopener" — reverse-tabnabbing. The ORCH-1381 noopener ban applies ONLY to window.open feature strings; on an <a> rel="noopener" is MANDATORY (ORCH-1382 §5.1)',
-      )
+      assertAnchorSafety(heroNoComments, 'hero')
       assert(
         !/window\.open\(/.test(heroNoComments),
         'hero inlines window.open( — hero.tsx was the 4th call site carrying this exact bug (ORCH-1381 ADDENDUM D-B)',

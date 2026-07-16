@@ -167,12 +167,28 @@ function checkTarget(label, rawSrc, failures) {
         `the OneLink it points at 301s straight to the store app (ORCH-1382).`,
     );
   }
-  if (!/rel="noopener/.test(src)) {
-    failures.push(
-      `${label}: business anchors must carry rel="noopener" — reverse-tabnabbing. NOTE: the ` +
-        `ORCH-1381 noopener BAN below is scoped to window.open FEATURE STRINGS; on an <a> ` +
-        `element rel="noopener" is MANDATORY, not forbidden.`,
-    );
+  // ⚠ PER-ANCHOR, NOT FILE-LEVEL — deliberately, and this matters even though these
+  // two files happen to contain ONLY CTA anchors today. A file-level /rel="noopener/
+  // check silently becomes DECORATIVE the moment ANY other rel-carrying anchor is
+  // added to the file (a footer link, a social icon, anything). That is not
+  // hypothetical: it is exactly what happened to links-experience.tsx, whose socials
+  // row made its file-level rel check pass while every CTA anchor had lost its rel.
+  // Checking each CTA anchor on its own removes the trap permanently.
+  const ctaAnchors = [...src.matchAll(/<a\s[\s\S]*?>/g)]
+    .map((m) => m[0])
+    .filter((a) => /installHref|webHref/.test(a));
+  for (const a of ctaAnchors) {
+    const shape = a.replace(/\s+/g, " ").slice(0, 72);
+    if (!/rel="noopener/.test(a)) {
+      failures.push(
+        `${label}: a business anchor is missing rel="noopener" — reverse-tabnabbing. NOTE: the ` +
+          `ORCH-1381 noopener BAN below is scoped to window.open FEATURE STRINGS; on an <a> ` +
+          `element rel="noopener" is MANDATORY, not forbidden. Offending anchor: ${shape}…`,
+      );
+    }
+    if (!/target="_blank"/.test(a)) {
+      failures.push(`${label}: a business anchor is missing target="_blank". Offending anchor: ${shape}…`);
+    }
   }
 
   // BAN — no dead-funnel tokens.
@@ -270,6 +286,16 @@ const jsx = (
   const noRel = good.replace(/ rel="noopener"/g, "");
   if (run(noRel).length === 0) selfFailures.push('business anchor missing rel="noopener" not flagged (the §5.1 trap)');
 
+  // ⭐ THE DECORATIVE-REL CASE (the trap that bit links-experience.tsx). The CTA
+  // anchors lose their rel, but an unrelated rel-carrying anchor remains in the file.
+  // A FILE-LEVEL check would PASS here. The per-anchor check must FIRE.
+  const relOnlyOnNonCta = good.replace(/ rel="noopener"/g, "") +
+    '\nconst social = (<a href="https://instagram.com/usemingla" target="_blank" rel="noopener noreferrer">IG</a>)\n';
+  const relOnlyFailures = run(relOnlyOnNonCta);
+  if (!relOnlyFailures.some((f) => /missing rel="noopener"/.test(f))) {
+    selfFailures.push('DECORATIVE-REL REGRESSION: CTA anchors stripped of rel were NOT flagged because an unrelated anchor still carries rel="noopener" — the check has gone file-level (ORCH-1382)');
+  }
+
   // ⭐ ORCH-1382 §5.1 PIN — a file carrying rel="noopener" on an ANCHOR *and* a bare
   // window.open elsewhere must still fire ONLY for the window.open, never for the rel.
   // A future author who "simplifies" the .open( trap regex to a bare /noopener/ would
@@ -328,7 +354,7 @@ const jsx = (
     selfFailures.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
-  console.log("ORCH-1324 business-getapp-device-aware self-test PASS (18/18 cases, ORCH-1382-amended: incl. the §5.1 rel-on-anchor pin).");
+  console.log("ORCH-1324 business-getapp-device-aware self-test PASS (19/19 cases, ORCH-1382-amended: incl. the §5.1 rel-on-anchor pin).");
   process.exit(0);
 }
 
