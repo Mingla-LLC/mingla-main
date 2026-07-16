@@ -27,6 +27,7 @@ import {
   type AdConnectionRow,
   getAdapter,
 } from "../_shared/adChannel.ts";
+import { redditLaunchWarning } from "../_shared/reddit.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -170,13 +171,34 @@ serve(async (req: Request): Promise<Response> => {
       provider_response: effectiveStatus ? { effective_status: effectiveStatus } : null,
     });
 
-    const warning = action === "launch" && effectiveStatus &&
-        WARNING_STATUSES.includes(effectiveStatus)
-      ? `Launched, but delivery is blocked upstream: effective_status=${effectiveStatus}. ` +
+    let warning: string | undefined;
+    if (action === "launch" && campaign.platform === "reddit") {
+      // ISSUE-916 WP6 (§3.6/#867 precedent): Reddit's review state lives on
+      // the AD's effective_status (R-3) — read it back and return 200 +
+      // `warning` while review/billing gates delivery (launch is accepted).
+      let adEffectiveStatus: string | null = null;
+      const firstAd = (ads ?? [])[0];
+      if (firstAd) {
+        try {
+          const adStatus = await adapter.getStatus(
+            connection,
+            "ad",
+            String(firstAd.external_ad_id),
+          );
+          adEffectiveStatus = adStatus.effectiveStatus;
+        } catch {
+          adEffectiveStatus = null; // best-effort; sync repairs it
+        }
+      }
+      warning = redditLaunchWarning(adEffectiveStatus ?? effectiveStatus) ?? undefined;
+    } else if (
+      action === "launch" && effectiveStatus && WARNING_STATUSES.includes(effectiveStatus)
+    ) {
+      warning = `Launched, but delivery is blocked upstream: effective_status=${effectiveStatus}. ` +
         (effectiveStatus === "PENDING_BILLING_INFO"
           ? "Add a payment method in Meta Ads Manager."
-          : "Check Meta Ads Manager for review detail.")
-      : undefined;
+          : "Check Meta Ads Manager for review detail.");
+    }
 
     return json({ campaign: updated ?? campaign, ...(warning ? { warning } : {}) });
   } catch (err) {

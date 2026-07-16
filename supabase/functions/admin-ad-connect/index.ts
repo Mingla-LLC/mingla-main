@@ -24,6 +24,19 @@
  *   4. customer.status must be ENABLED                   → 424 google_not_connected
  *   5. upsert the connection row (auth_kind dev_token_oauth; MCC → external_org_id)
  *
+ * Reddit connect (ISSUE-916 WP6, SPEC §1.3 — fail-close, in order):
+ *   1. refresh-token mint (Basic auth, expires_in READ    → 424 reddit_not_connected
+ *      from the response, UA on the mint — GR-71)
+ *   2. GET /me (200 + t2_ user)                           → 424 reddit_not_connected
+ *   3. GET /me/businesses contains the business           → 424 reddit_not_connected
+ *   4. ad account ^(t2|a2)_ + currency ∈ 8-enum (no NGN)  → 424 (currency ⇒ invalid row)
+ *   5. ≥1 t2_ profile (no profile ⇒ no post ⇒ no ad)      → 424 reddit_profile_missing
+ *   6. funding instrument is_servable: true               → 424 reddit_funding_not_servable
+ *      (reasons_not_servable[] surfaced VERBATIM — GR-13)
+ *   7. pixel present (mandatory on every ad group          → 424 reddit_not_connected
+ *      since 2026-07-13 — GR-12)
+ *   On success the row caches profile/funding/pixel ids into extra (SPEC §1.4).
+ *
  * Other platforms are fail-close stubs until their WPs land:
  *   → 424 <platform>_not_connected.
  *
@@ -61,6 +74,11 @@ import {
   resolveGoogleClient,
   resolveGoogleEnvConfig,
 } from "../_shared/google.ts";
+import {
+  redditConnectPreflight,
+  redditDefaultTokenEnvVar,
+  RedditPreflightError,
+} from "../_shared/reddit.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -87,6 +105,9 @@ function defaultTokenEnvVar(platform: Platform, lane: Lane): string {
   if (platform === "google") {
     // Lane-correct (QA P2-3) — the business lane never claims the consumer secret.
     return googleDefaultTokenEnvVar(lane);
+  }
+  if (platform === "reddit") {
+    return redditDefaultTokenEnvVar(lane);
   }
   const byPlatform: Record<Platform, string> = {
     meta: "META_SYSTEM_USER_TOKEN",
@@ -140,11 +161,11 @@ serve(async (req: Request): Promise<Response> => {
     return json({ error: "validation_error", detail: "action_invalid" }, 400);
   }
 
-  // ── Fail-close stubs for the three unbuilt channels. ────────────────────────
-  if (platform !== "meta" && platform !== "google") {
+  // ── Fail-close stubs for the two unbuilt channels. ──────────────────────────
+  if (platform !== "meta" && platform !== "google" && platform !== "reddit") {
     return json({
       error: `${platform}_not_connected`,
-      detail: `${platform} adapter ships in a later WP (WP5 snapchat / WP6 reddit / WP7 tiktok); fail-close until then.`,
+      detail: `${platform} adapter ships in a later WP (WP5 snapchat / WP7 tiktok); fail-close until then.`,
     }, 424);
   }
 
@@ -154,6 +175,111 @@ serve(async (req: Request): Promise<Response> => {
     .eq("platform", platform)
     .eq("lane", lane)
     .maybeSingle();
+
+  // ── REDDIT (ISSUE-916 WP6 — SPEC §1.3/§1.4) ──────────────────────────────────
+  // The 7-step fail-close pre-flight: mint → /me → business → ad account
+  // (^(t2|a2)_, 8-currency enum) → ≥1 t2_ profile → servable funding
+  // instrument (reasons_not_servable verbatim) → pixel. NEVER connected=true
+  // past a failed step — "created fine, never spends" is the silent failure
+  // this pre-flight exists to kill (GR-13).
+  if (platform === "reddit") {
+    const markRedditInvalid = async (): Promise<void> => {
+      await supabase
+        .from("ad_connections")
+        .upsert({
+          platform,
+          lane,
+          display_name: existing?.display_name ??
+            `Reddit · ${lane === "business" ? "Business" : "Consumer"}`,
+          external_account_id: existing?.external_account_id ?? "unconfigured",
+          external_org_id: existing?.external_org_id ?? null,
+          auth_kind: "refresh_token",
+          token_env_var: existing?.token_env_var ?? defaultTokenEnvVar(platform, lane),
+          extra: existing?.extra ?? {},
+          status: "invalid",
+          connected: false,
+        }, { onConflict: "platform,lane" });
+    };
+
+    try {
+      const snapshot = await redditConnectPreflight(existing ?? null, lane);
+
+      if (action === "status" && !existing) {
+        return json({ connection: null, reddit: snapshot });
+      }
+
+      const priorExtra = (existing?.extra ?? {}) as Record<string, unknown>;
+      const row = {
+        platform,
+        lane,
+        display_name: `Reddit · ${lane === "business" ? "Business" : "Consumer"}${
+          snapshot.account.name ? ` (${snapshot.account.name})` : ""
+        }`,
+        external_account_id: snapshot.account.id,
+        external_org_id: snapshot.businessId,
+        auth_kind: "refresh_token",
+        token_env_var: existing?.token_env_var ?? defaultTokenEnvVar(platform, lane),
+        // §1.4: env-var NAMES + captured platform ids only — never a secret value.
+        extra: {
+          ...priorExtra,
+          client_id_env_var: lane === "business"
+            ? "REDDIT_ADS_MINGLABIZ_CLIENT_ID"
+            : "REDDIT_ADS_CLIENT_ID",
+          client_secret_env_var: lane === "business"
+            ? "REDDIT_ADS_MINGLABIZ_CLIENT_SECRET"
+            : "REDDIT_ADS_CLIENT_SECRET",
+          reddit_profile_id: snapshot.profileId,
+          reddit_funding_instrument_id: snapshot.fundingInstrumentId,
+          reddit_pixel_id: snapshot.pixelId,
+          ...(snapshot.scope ? { scopes: snapshot.scope } : {}),
+        },
+        status: "connected",
+        currency: snapshot.account.currency,
+        account_status: null,
+        token_last_verified_at: new Date().toISOString(),
+        connected: true,
+        connected_by: user.id,
+      };
+      const { data: upserted, error: upsertError } = await supabase
+        .from("ad_connections")
+        .upsert(row, { onConflict: "platform,lane" })
+        .select("*")
+        .maybeSingle();
+      if (upsertError) {
+        console.error("[admin-ad-connect] reddit upsert failed:", upsertError.message);
+        return json({ error: "internal_error" }, 500);
+      }
+      return json({ connection: upserted, reddit: snapshot });
+    } catch (err) {
+      if (err instanceof RedditPreflightError) {
+        await markRedditInvalid();
+        // Per-step 424 codes (AC-R-4/AC-R-6); reasons_not_servable[] verbatim.
+        return json({
+          error: err.errorCode === "reddit_currency_unsupported"
+            ? "reddit_not_connected"
+            : err.errorCode,
+          detail: err.message,
+          ...(err.reasons ? { reasons_not_servable: err.reasons } : {}),
+        }, 424);
+      }
+      if (err instanceof AdNotConnectedError) {
+        await markRedditInvalid();
+        return json({
+          error: "reddit_not_connected",
+          detail:
+            "REDDIT_ADS_CLIENT_ID / REDDIT_ADS_CLIENT_SECRET / REDDIT_ADS_REFRESH_TOKEN (or the lane's secrets) are not set, or the refresh token could not mint — set the Supabase Edge Function secrets (duration=permanent at consent), then reconnect (SPEC §1.1–§1.2).",
+        }, 424);
+      }
+      if (err instanceof AdApiError) {
+        await markRedditInvalid();
+        // Normalized error only — no token ever appears here (SC-SEC-1).
+        return json({ error: "reddit_not_connected", detail: err.toJSON() }, 424);
+      }
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error("[admin-ad-connect] reddit unexpected:", detail);
+      return json({ error: "internal_error" }, 500);
+    }
+  }
 
   // ── GOOGLE (ISSUE-867 WP2, AC-G-1/AC-G-2) ────────────────────────────────────
   // Secrets unset → 409 google_not_provisioned (a provisioning gap — the SC-7
