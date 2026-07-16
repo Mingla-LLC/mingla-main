@@ -1,14 +1,67 @@
 # QA — ORCH-1373 [accept-invite-infinite-loader] + 1374 / 1375 / 1376 / 1377 / 1378 / 1380 / 1382
 
 **Skill:** mingla-tester · **Dispatched by:** mingla-orchestrator
-**Date:** 2026-07-15
-**Contract:** `Mingla_Artifacts/specs/SPEC_ORCH-1373_accept-invite-infinite-loader.md` (§5)
-**Under test:** `ORCH-1373-accept-invite-infinite-loader` @ `2a7151bab` (rebased onto `origin/main` `d344de987`); QA commit `4c7668004`
+**Date:** 2026-07-15 (RETEST-1: 2026-07-16)
+**Contract:** `Mingla_Artifacts/specs/SPEC_ORCH-1373_accept-invite-infinite-loader.md` (§5 + **AMENDMENT A-1**)
+**Under test (RETEST-1):** `ORCH-1373-accept-invite-infinite-loader` @ `eeba4b792` (rework `5339baa24` + A-1 `eeba4b792`); rebase vs `origin/main` = already up to date
 **Worktree:** `~/Desktop/mingla-orchs/ORCH-1373-[accept-invite-infinite-loader]/`
+**Retest cycle:** 1 of 2 (not stuck-in-loop)
 
 ---
 
-## 1. VERDICT — **FAIL**
+## 0. RETEST-1 VERDICT — **CONDITIONAL PASS → treat as BLOCKED pending Seth**
+
+**P0: 0 · P1: 2 · P2: 0 · P3: 0 · P4: 3**
+
+> **P0-1 IS DEAD. I attacked it exactly as I did when I falsified it, and it held.**
+> A logged-out invitee tapping "Sign in" now keeps the URL `/auth?next=<token>` (**retained, never rewritten to `/`**) and `sessionStorage['mingla.biz.auth.next']` is **non-null within 400 ms and stable through 4 s**. Last run: URL → `/`, token → `null`. SC-3 closes end-to-end. The ORCH-1103 white-screen loop guard survives every shape I threw at it.
+>
+> **But I could ORPHAN the new test — twice.** The `slice-and-execute` guard stays at a full green **21/21** while the shipped layout re-introduces **P0-1 verbatim**. It executes ONE EXPRESSION in isolation and is structurally blind to (a) the control flow around it and (b) whether the text it sliced is even the code that ships. This is the **fourth decorative-check instance** in this ORCH's lifetime and the orchestrator's question was the right one. I wrote the guard that closes both holes (§5b) — it catches both mutations that the implementor's test survives.
+>
+> **And the branch will go RED in CI right now** (P1-2): the `[TEST-MOD-APPROVED ORCH-1377]` token sits on `5339baa24` = **HEAD~1**; the A-1 amendment commit `eeba4b792` knocked it off HEAD. The append-only gate reads **HEAD only** → **4 failures**. This is precisely the COMMS-0098 / PR #883 trap the dispatch named. My QA commit carries the token forward and re-greens the gate — but **every future commit on this branch must carry it too**.
+>
+> **Why not PASS:** two P1s, neither accepted by Seth in the dispatch. Per the skill's CONDITIONAL-PASS rule, absent affirmative documented acceptance this is **BLOCKED, not CONDITIONAL** → surface to Seth. Neither P1 is a code defect in the shipped fix — the fix itself is correct and runtime-proven.
+>
+> **SC-4 (real OAuth round-trip) and OQ-2 (the authed happy path) remain OPEN — no agent has the credentials. §8 has the exact steps for Seth. An honest OPEN beats a manufactured PASS.**
+
+### RETEST-1 findings
+
+| ID | Sev | One line | Blocks CLOSE? |
+|---|---|---|---|
+| **P1-1** | P1 | The new `orch_1373_auth_route_gate.test.ts` can be **silently orphaned** — 2 proven mutations keep it 21/21 green while P0-1 is live in the shipped layout. | No (my §5b guard closes it) |
+| **P1-2** | P1 | **CI is red now:** `[TEST-MOD-APPROVED ORCH-1377]` is on HEAD~1, not HEAD → append-only gate = 4 failures. | **Yes — merge-blocking** |
+| P4-1 | P4 | The P0-1 fix is correct, minimal, segment-safe, and the reasoning for `isSignInRoute` over the self-auth list is right. | — |
+| P4-2 | P4 | P2-2 replica cure is **real**: deleting the REAL guard now kills 5 tests incl. behavioural T-11 (was green). | — |
+| P4-3 | P4 | `sanitizeNextRoute` is **deny-by-default** (4-entry allowlist) — traversal + open-redirect fully closed. | — |
+
+### RETEST-1 SC matrix (SPEC §5 + Amendment A-1)
+
+| SC | Result | Evidence |
+|---|---|---|
+| SC-1-Web | **PASS** | `652 ms` to "You're invited" + working "Sign in" (was 707 ms). Never a spinner. |
+| SC-2-Web | **PASS** | 192/192 across 7 touched+adjacent suites. |
+| SC-3-Web | **PASS (was FAIL)** | `sc3_trace.mjs`: URL **retained**; `ss` = `/accept-brand-invitation?token=TRACE1` @400 ms → stable @4000 ms. |
+| **SC-4-Web** | **OPEN — cannot test** | Real Google/Apple OAuth needs credentials no agent has. §8. |
+| SC-5-Web | **PASS** | 12/12 off-origin + scheme payloads → `null`. |
+| SC-6-Web | PASS (carried) | Unchanged by rework. |
+| SC-7-Web | PASS (carried) | Unchanged by rework. |
+| SC-8-Web | PASS (carried) | Unchanged by rework. |
+| SC-9-Web | **PASS** | Scanner: "You're invited" + Sign in; parity with SC-1. |
+| SC-10-Web | PASS (carried) | Unchanged by rework. |
+| SC-11-Web | **PASS** | Real Chrome 150: page **stays mounted**, no double-navigation. |
+| SC-12/13-Web | **PASS** | Zero TypeErrors across the run. |
+| SC-14-Web | **PASS** | No `loading-gate-backstop` log after 9 s. |
+| SC-15/16-Web | **PASS** | Ceiling redirect suppressed on `/auth`, `/accept-brand-invitation`, `/connect-onboarding`. |
+| SC-17/18/19-CI | PASS (carried) | Implementor gates; re-verified indirectly. |
+| **A-1: `/auth` reachable** | **PASS** | Runtime: `/auth?next=` retained + captured. |
+| **A-1: ORCH-1103 holds** | **PASS** | `/`, `""`, `null`, `undefined`, `"  "`, `"/ "`, `" /"` → **no redirect**. No React #185 path. |
+| **A-1: `:750` ceiling** | **PASS** | `/auth` @8 s → renders welcome, **never spins**. |
+| **A-1: segment-safe** | **PASS** | `/authorize`, `/auth-settings`, `/AUTH` **not** swept in; `/auth/`, `/auth/callback/` are. |
+| **A-1: classes honest** | **PASS** | `isSelfAuthenticatedExemptRoute("/auth") === false`. |
+| **OQ-2 (authed accept)** | **OPEN — never observed** | 0-of-1 funnel; needs a real invite round-trip. §8. |
+
+---
+## 1. ORIGINAL RUN (2026-07-15) — VERDICT: **FAIL** — superseded by §0 above
 
 **P0: 1 · P1: 0 · P2: 2 · P3: 2 · P4: 2**
 
@@ -342,3 +395,253 @@ The dispatch authorised a minimal real invite round-trip **iff** Seth-controlled
 **Blocking CLOSE:** **P0-1** only. P2-1 and P2-2 should ride the same rework (both are small and both are invariant-integrity issues the SPEC itself is about). P3-1/P3-2 are cleanup.
 
 **Not blocking:** the Samsung and OAuth blockers are **environmental**, not code defects — but SC-4, SC-6-render, SC-10 and OQ-2 **cannot be signed off** until they are resolved, so this ORCH cannot reach PASS on evidence alone even after P0-1 is fixed. The post-rework retest needs: (a) the Samsung connected, (b) a real Google sign-in, (c) Seth's §9 live-fire.
+
+---
+
+# RETEST-1 DETAIL (2026-07-16) — mingla-tester
+
+## R1. PRIORITY 1 — is P0-1 dead at runtime? **YES.**
+
+Re-ran the exact probes that falsified the claim last time, against a **freshly built** web export (the `dist` on disk was **32 minutes older than the rework commit** — testing it would have proven nothing; rebuilt with `--clear`).
+
+**`auth_direct.mjs` + `retest_auth_trace.mjs` — `/auth?next=<invite>`:**
+```
+URL   : http://127.0.0.1:8176/auth?next=%2Faccept-brand-invitation%3Ftoken%3DDIRECT1   <- RETAINED
+ss    : "/accept-brand-invitation?token=DIRECT1"                                        <- NON-NULL
+NAVS  : NAV /auth?next=… | SPA /auth?next=… | SPA /auth?next=… | SPA /auth?next=…       <- NEVER bounced to /
+screen: "Continue with Apple / Continue with Google / Continue with Email"              <- real sign-in UI
+errors: none
+```
+
+**`sc3_trace.mjs` — the BUTTON path (SC-3 end-to-end):**
+```
+click result: CLICKED
+  @~150ms : url=/auth?next=…TRACE1   ss=null            <- capture effect not yet run
+  @~400ms : url=/auth?next=…TRACE1   ss=/accept-brand-invitation?token=TRACE1
+  @~1000ms: url=/auth?next=…TRACE1   ss=/accept-brand-invitation?token=TRACE1
+  @~2500ms: url=/auth?next=…TRACE1   ss=/accept-brand-invitation?token=TRACE1
+  @~4000ms: url=/auth?next=…TRACE1   ss=/accept-brand-invitation?token=TRACE1   <- STABLE
+```
+Both dispatch criteria met: **URL retained** + **sessionStorage non-null**. Prior run: URL → `/`, `ss` → `null`. **SC-3 closes.**
+
+### R1.1 A false alarm I chased down rather than reported (method note)
+
+My first clean-build run showed the URL rewritten to `/` and the body reading **"Something broke. We're on it."** That looks exactly like P0-1 surviving. It is not.
+
+The **control** (`/`, which cannot be "bounced" anywhere) showed the **identical** error screen. Cause, from the console: `StripeModeMismatchError` — `app.config.ts:199` falls back to a **`pk_test_` sandbox key** when `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` is unset, while the live backend reports `pk_live_`, so the app **correctly fail-closes** (`feedback_mingla_business_pk_live_in_production.md`). This is **my local build's env, not the branch** — a global error boundary was masking every route.
+
+Rebuilt with a **dummy** `pk_live_` string (prefix-only comparison; no real credential, local-only, never committed). The boundary cleared, the control rendered the welcome screen, and the real behaviour became observable. **Reporting the first run as a P0 would have been a fabricated finding.**
+
+## R2. PRIORITY 2 — ORCH-1103 loop guard + `:750` ceiling. **HOLDS.**
+
+The failure mode being defended: `isSignInRoute` returning **false** for `/` → the layout redirects `/` → `/` → re-render → React #185 → **white screen on sign-out**, which is worse than the bug fixed. Probe: `/tmp/orch-1373/retest_p2_loopguard.mts`, executed against the **real shipped module**.
+
+```
+--- ORCH-1103: self-redirect loop guard ---
+PASS  redirect at pathname="/"          got=false
+PASS  redirect at pathname=""           got=false
+PASS  redirect at pathname=null         got=false
+PASS  redirect at pathname=undefined    got=false
+PASS  redirect at pathname="  "         got=false
+PASS  redirect at pathname="/ "         got=false
+PASS  redirect at pathname=" /"         got=false
+--- trailing-slash / lookalike ---
+PASS  isSignInRoute("/auth")=true   ("/auth/")=true   ("/auth/callback")=true   ("/auth/callback/")=true   (" /auth ")=true
+PASS  isSignInRoute("/authorize")=false   ("/auth-settings")=false   ("/authorize/x")=false   ("/AUTH")=false
+--- sign-out from a DEEP route must STILL redirect ---
+PASS  /account, /hub/events, /brand/123/settings, /(tabs)/home, /analytics -> all true
+--- :750 ceiling on /auth past 7s ---
+PASS  spinner still up on /auth @8s = false   (renders welcome, never spins)
+PASS  spinner still up on /    @8s = false
+PASS  ceiling redirect suppressed on /auth, /accept-brand-invitation, /connect-onboarding
+===== ALL LOOP-GUARD/CEILING CHECKS PASS =====
+```
+No white-screen path. The widened predicate can only ever **remove** a spinner, never add one — confirmed independently.
+
+## R3. PRIORITY 3 — **I ORPHANED THE TEST. TWICE.** (P1-1)
+
+The technique: `orch_1373_auth_route_gate.test.ts` reads `_layout.tsx`, regex-slices the `redirectToSignIn` declaration, and executes it via `new Function`. The orchestrator had already killed the two obvious mutations (empty `SIGN_IN_ROUTE_PREFIXES`; short-circuit the wiring). **Both shapes below are ones it did not try, and both work.**
+
+### ORPHAN-1 — control-flow blindness (the realistic accidental regression)
+A future dev adds a guard **above** the gate. The sliced expression is untouched:
+```tsx
+if (user === null && pathname != null && pathname.startsWith("/auth")) {
+  return <Redirect href="/" />;      // P0-1 IS BACK: ?next= destroyed
+}
+if (redirectToSignIn) { … }          // <- the sliced expression, never reached for /auth
+```
+**Result: `Tests: 21 passed, 21 total`.** Green suite, dead funnel — the exact signature of the bug this ORCH exists to kill.
+
+### ORPHAN-2 — slice integrity (`match()` cannot tell code from a comment)
+`String.match()` returns the **first** occurrence:
+```tsx
+/* Historical reference (pre-ORCH-1373 shape), kept for context:
+const redirectToSignIn = shouldRedirectToSignInFromRoute({ … pathname, });   <- the test slices THIS
+*/
+const redirectToSignIn = shouldRedirectToSignInFromRoute({
+  … pathname: "/account",                                                     <- the REAL shipped gate: route-blind
+});
+```
+**Result: `Tests: 21 passed, 21 total`.** The test executes a comment. The real gate evaluates every route as `/account` — `/auth` bounced (P0-1 back) **and** `/` would self-redirect (ORCH-1103 React #185 white screen).
+
+### Verdict on the technique
+Slice-and-execute is a genuine improvement over predicate-unit-testing — it caught what nothing else did. **But on its own it is orphanable**, because it verifies **the value of one expression**, not **that the expression governs the route**. Renaming the binding IS caught (`expect(m).not.toBeNull()`). Control flow and slice provenance are **not**. Closed by §5b.
+
+## R4. PRIORITY 4 — the rest
+
+### `/rsvp/create` + `/event/create` resume — the orchestrator's caution, resolved honestly
+Both legs measured at runtime (`retest_p4_resume.mjs`):
+
+| Leg | Result |
+|---|---|
+| **A — BUTTON path** `/auth?next=/rsvp/create` | URL **retained**, `ss` = `/rsvp/create` ✓ **FIXED** (same for `/event/create`) |
+| **B — DIRECT sessionless visit** `/rsvp/create` | bounced → `/`, `ss` = `null` — **not fixed** |
+
+**Which one matters: A. The implementor's "all three legs fixed" claim is CORRECT.** Proven, not assumed — **all four `?next=` writers are in-page buttons** (`accept-brand-invitation.tsx:138`, `accept-scanner-invitation.tsx:129`, `rsvp/create.tsx:221`, `event/create.tsx:221`), each doing `router.replace('/auth?next=X')`. That is Leg A.
+
+Leg B is not the resume path at all. The `rsvp/create.tsx:221` button only renders when `terminalState === "signed_out" | "auth_timeout"`, which requires the page to **mount** — measured:
+```
+/rsvp/create  cold sessionless (hasStoredWebSession=false) -> bounced=true   => page never mounts, button unreachable
+/rsvp/create  stale/expiring   (hasStoredWebSession=true)  -> bounced=false  => page mounts -> button reachable -> FIXED
+```
+So Leg B bounces a **cold, sessionless** visitor off an **authed** route — which is correct behaviour, destroys **no credential** (unlike `/auth?next=<token>`), and is unchanged from `main`. **Not a defect, not a regression, not attributable to this branch.** No finding raised.
+
+### P2-1 traversal + SC-5 open redirect — **CLOSED**
+22/22 payloads rejected: `//evil.com`, `https://evil.com`, `javascript:alert(1)`, `/\evil.com`, `%2f%2fevil.com`, `data:`, `vbscript:`, `\\evil.com`, `/accept-brand-invitation-evil` · traversal `/..`, `/../`, `/a/../../b`, `/./../x`, `/%2e%2e/admin`, `/%2E%2E/admin`, `/%2e%2E/admin`, `/auth/..%2fadmin`.
+
+**A red in my own probe that was MY error, not a defect:** I expected `/hub/events` to be accepted; it returns `null`. `NEXT_ROUTE_ALLOWLIST` (`nextRoute.ts:42`) is exactly the 4 resume targets — **deny-by-default**. Correct behaviour. **Not a finding** (P4-3).
+
+### P2-2 replica cure — **CONFIRMED REAL**
+True line-deletion of the **REAL** guard `AuthContext.tsx:348` (`if (bootstrapResolvedRef.current) return;`):
+```
+✕ T-11a — the backstop body carries the bootstrapResolvedRef early-return guard
+✕ T-11b — the guard is ordered BEFORE the log
+✕ T-11c — the guard is ordered BEFORE the bootstrapTimedOutRef write
+✕ T-11d — the guard sits AFTER the mounted check
+✕ T-11 — RESOLVED boot: NO log, ref NOT armed, past 7s          <- the BEHAVIORAL one
+Tests: 5 failed, 11 passed, 16 total
+```
+As a replica these stayed **green**. The tests now die when the real guard dies. Restored byte-identical (`3ba7eedc…`).
+
+### Prior runtime passes — no regression
+SC-1 **652 ms** (was 707 ms) · SC-9 scanner parity · SC-11 page **stays mounted** (Chrome 150) · SC-12/13 **zero** TypeErrors · SC-14 **no** backstop log after 9 s.
+
+## R5. Step 0.5 — I re-ran the implementor's fails-on-revert proof myself
+
+**Their claim (commit `5339baa24`):** *"M1 delete /auth arm → 5 fail incl 'THE BUG: invitee at /auth is NOT bounced'."*
+
+**Run A — literal deletion** (`SIGN_IN_ROUTE_PREFIXES = [] as const`): suite fails, but at **COMPILE time** — `TS2339: Property 'endsWith' does not exist on type 'never'` (emptying an `as const` array makes `prefix: never`). Red in CI, but **not** the semantic proof.
+
+**Run B — semantic equivalent** (`SIGN_IN_ROUTE_PREFIXES: readonly string[] = []`, compiles):
+```
+✕ THE BUG: a logged-out invitee at /auth is NOT bounced (the ?next= token survives)   Expected: false  Received: true
+✕ THE OAUTH LEG: /auth/callback is NOT bounced                                        Expected: false  Received: true
+✕ the predicate itself now recognises the app's OWN sign-in page                      Expected: true   Received: false
+✕ ORCH-1292/1102-W2 PRESERVED: past the ceiling, /auth renders the Stack              Expected: false  Received: true
+✕ ORCH-1376 PRESERVED: the ceiling redirect cannot destroy a self-auth credential     Expected: true   Received: false
+Tests: 5 failed, 16 passed, 21 total
+```
+**Exactly 5 failures, including the named assertion. The implementor's proof is REAL** — independently reproduced at `eeba4b792`. Gates restored (`e8407898…`), suite back to 21/21.
+
+## R5b. My adversarial test — a DIFFERENT angle (not a renamed copy)
+
+**Path:** `mingla-business/src/utils/__tests__/orch_1373_layout_gate_control_flow.tester.test.ts` (**NEW** file; append-only respected).
+
+**Their angle:** the **value** of the gate expression. **My angle:** the **control flow around it** + the **provenance of the slice** — i.e. the two properties that make their value mean anything. It asserts nothing about the expression's value.
+
+| Mutation | Implementor's test | **My test** |
+|---|---|---|
+| ORPHAN-1 (early return above the gate) | **21/21 PASS** (blind) | **FAILS** — names the branch: `if (user === null && pathname != null && pathname.startsWith("/auth")) => return <Redirect href="/" />;` |
+| ORPHAN-2 (comment shadow) | **21/21 PASS** (blind) | **FAILS** — `redirectToSignIn` declared twice |
+| Pristine | 21/21 PASS | **5/5 PASS** |
+
+`fails-on-revert verified at eeba4b792` — both directions, by re-injecting each mutation and restoring. Both tests appear in `git diff origin/main...HEAD --name-only` for the closing PR. `tsc`: **0** errors from this file.
+
+## R6. Findings
+
+### P1-1 — the ORCH-1373 route-gate test can be silently orphaned
+- **Evidence:** §R3. Two mutations, each re-introducing P0-1 in the shipped `_layout.tsx`, both leaving `orch_1373_auth_route_gate.test.ts` at **21/21 green**.
+- **Impact:** the regression contract for a P0 that already shipped past a fully green suite can itself go decorative. **Fourth decorative-check instance in this ORCH's lifetime.** The next dev to add a guard above the gate silently restores a 0%-funnel bug with CI green.
+- **Required fix:** none from the implementor — **already closed** by §R5b, which fails on both shapes.
+- **Retest:** re-inject ORPHAN-1/ORPHAN-2; `orch_1373_layout_gate_control_flow.tester.test.ts` must fail on each.
+
+### P1-2 — **CI is red right now:** the TEST-MOD token is on HEAD~1, not HEAD (merge-blocking)
+- **Evidence:** `.github/scripts/test-append-only-check.js` → **`Append-only check: 10 passed, 4 failed`**. The gate reads the token from **the commit at HEAD** (its own docstring: *"The 'latest commit body' is the commit at HEAD"*). `git log -1 --format=%B | grep -c TEST-MOD-APPROVED` → **0**. The token lives on `5339baa24` (**HEAD~1**); the A-1 amendment `eeba4b792` was committed on top and knocked it off.
+- Files flagged: `orch1102Wave2LoadingTimeout.test.ts` (16 deleted), `AuthContext.bootPaintDecouple.orch1294.test.ts` (1), `authContext.adversarial.orch1204.test.tsx` (1), `authContext.sync-hydration.orch1204.test.tsx` (1).
+- **The deletions themselves are LEGITIMATE — I verified rather than assumed:** a pure **16-for-16** rename from ORCH-1377's "names that lie" work (`AUTH_RESOLUTION_HARD_CEILING_MS` → `AUTH_LOADING_GATE_RELEASE_BACKSTOP_MS`, `AUTH_RESOLUTION_CEILING_MS` → `AUTH_UI_GATE_EXPIRY_MS`). Every assertion is re-asserted under the new name; suite passes **19/19**. **No test was weakened.**
+- **Impact:** the PR cannot merge — this is exactly the **COMMS-0098 / PR #883 trap** the dispatch named.
+- **Required fix:** `[TEST-MOD-APPROVED ORCH-1377]` must be in the body of **whatever commit is HEAD**. **My QA commit carries it forward and re-greens the gate** — but **any later commit (including the CLOSE commit) must carry it too**, or CI goes red again.
+- **Retest:** `node .github/scripts/test-append-only-check.js` → must report `14 passed, 0 failed`.
+
+## R7. Baseline — MEASURED, not assumed
+
+| Metric | Branch @ `eeba4b792` | Branch changes REVERTED (≈`origin/main`) | Attributable? |
+|---|---|---|---|
+| `tsc` errors (mingla-business) | **796** | 796 (claimed) | **NO** — matches the stated baseline exactly; **0** from my new test |
+| 3 adjacent auth suites | **3 failed / 4 tests / 37 passed / 41 total** | **3 failed / 4 tests / 37 passed / 41 total** | **NO — identical** |
+| 7 touched + adjacent suites | **192/192 PASS** | — | — |
+
+Baseline method (**no `git stash` — COMMS-0105**): reverted all **16** changed product files via `git show origin/main:<f> > <f>`, re-ran, then restored with `git checkout HEAD -- <f>`. Verified byte-identical afterwards: `_layout.tsx` `1f812f25…`, `AuthContext.tsx` `3ba7eedc…`, `coldLoadAuthGates.ts` `e8407898…`.
+
+I did **not** re-measure the ~149 failing suites repo-wide (the correction is already tracked on ORCH-1383 / #920); the three named adjacent suites are the ones this branch could plausibly touch, and they are provably identical with the branch reverted.
+
+## R8. What I CANNOT close — Seth's action required
+
+### SC-4 — real Google/Apple OAuth round-trip · **OPEN**
+No agent has the credentials. The `/auth/callback` leg is **structurally** proven (`isSignInRoute("/auth/callback") === true`, not bounced, `consumeNextRoute()` wired at `callback.tsx:53`) but the **real round-trip is unobserved**.
+1. Open `https://business.usemingla.com/accept-brand-invitation?token=<a real pending invite>` in a **logged-out** browser.
+2. Confirm "You're invited" + a "Sign in" button (not a spinner).
+3. Tap **Sign in** → confirm the URL is `/auth?next=%2Faccept-brand-invitation%3Ftoken%3D…` — **it must NOT become `/`**.
+4. Tap **Continue with Google** (or Apple), complete the real OAuth round-trip.
+5. **Expected:** you land back on `/accept-brand-invitation?token=…` and it states an outcome. **Fail:** you land on home/`/` with the invite silently gone.
+
+### OQ-2 — the authed happy path · **OPEN — never once observed by anyone**
+The funnel is **0 of 1** lifetime. No one has ever watched an invite succeed.
+1. From a Seth-controlled brand, send a **`staff`** invite (**never `brand_owner`** — that transfers the brand) to a Seth-controlled invitee address.
+2. Open the emailed link **already signed in as the invitee**.
+3. **Expected:** the accept resolves, states the outcome, and a "Download the app" CTA renders → `biz.usemingla.com/ZSCW?pid=business_web&c=brand_invite_accept`.
+4. Confirm the invitee now appears on the brand's team.
+
+**I performed NO production DB writes.** The narrow reversible round-trip needs a Seth-controlled brand + invitee; without certainty on both, I did not do it.
+
+## R9. Device / parity matrix
+
+| Surface | Result |
+|---|---|
+| Buyer/anonymous **Web** (the surface the invite email opens) | **PASS** — real Chrome 150 via CDP **9376**, freshly built export |
+| Business **Web** preview | **PASS** — same run |
+| Consumer iOS / Android | **N/A** — `mingla-business` only; ships nowhere near consumer |
+| Business **iOS** / **Android** | **NOT COVERED** — web-only routes (`/accept-brand-invitation`, `/auth`) are not served by business native; the predicate's native consumer (`nativeRedirectToSignIn`) is source-verified + unit-covered |
+| **Physical Samsung `R58R54YV7JT`** | **ABSENT** — `adb devices` empty this run. **I claim no device coverage.** Local Chrome used, as last time. |
+| Physical iPhone (HITL) | **NOT REQUESTED** — no native surface in this change |
+| Admin web | **N/A** — untouched |
+
+## R10. Constitution — 14 rules vs the rework diff
+
+| # | Rule | Result |
+|---|---|---|
+| 1 | No dead taps | **PASS** — the "Sign in" button was a dead trap; now runtime-proven to work |
+| 2 | One owner per truth | **PASS** — `isSignInRoute` is the single predicate; 3 consumers all route through it |
+| 3 | No silent failures | **PASS** — the silent token drop is the thing fixed |
+| 4 | One query key per entity | N/A |
+| 5 | Server state server-side | N/A |
+| 6 | Logout clears everything | **PASS** — sign-out from deep routes still redirects |
+| 7 | `[TRANSITIONAL]` labelled | N/A |
+| 8 | Subtract before adding | **PASS** — one predicate arm fixed 3 legs; no new machinery |
+| 9 | No fabricated data | **PASS** |
+| 10 | Currency-aware | N/A |
+| 11 | One auth instance | **PASS** — untouched |
+| 12 | Validate at the right time | **PASS** |
+| 13 | Exclusion consistency | **PASS** — segment-safe; `/authorize` not swept in |
+| 14 | Persisted-state startup | **PASS** — `_hasHydrated` untouched |
+
+## R11. Discoveries for the orchestrator (not fixed here)
+
+- **D-1 (method, repo-wide):** slice-and-execute tests are **orphanable by default**. This repo now has **at least two** (`orch_1373_auth_route_gate.test.ts`, `AuthContext.diagnosticTruth.orch1377.test.ts`). Every one needs a companion asserting **(a)** the sliced declaration appears exactly once and **(b)** no earlier control-flow path pre-empts it. Worth an invariant (`I-SLICE-EXECUTE-NEEDS-PROVENANCE`) + a generic gate.
+- **D-2:** the append-only gate's **HEAD-only** token read is a **rebase/amend footgun by design** — any commit landing on top of an approved test-mod silently re-reds CI. Third+ recurrence (COMMS-0098, PR #883, now here). Consider reading the token across `origin/main..HEAD` instead of HEAD only.
+- **D-3:** a local `npx expo export` of `mingla-business` **fail-closes into a global error boundary** (`StripeModeMismatchError`) because `app.config.ts:199` defaults to a `pk_test_` sandbox key against the live backend. Every route shows "Something broke." This will mislead the next agent into reporting a phantom P0. Worth documenting the dummy-`pk_live_` export recipe in the sim/test reference.
+- **D-4:** the foreign stash `anchor-uncommitted-pre-ORCH1318-build` (COMMS-0105) is still live; the untracked `Mingla_Artifacts/specs/SPEC_ORCH-1318_APPSFLYER_ONELINK.md` from that incident is still sitting in this worktree. Not mine; not committed. Owner should claim or drop it.
+
+## R12. Accepted conditions
+
+**None.** Both P1s are unaccepted → per the skill's rule this is **BLOCKED, not CONDITIONAL** → surfaced to Seth rather than routed to CLOSE. P1-2 is merge-blocking and trivially fixable (token on HEAD). P1-1 is already closed by my §R5b guard.
