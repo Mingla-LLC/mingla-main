@@ -4489,3 +4489,16 @@ jobs:
         run: node .github/scripts/strict-grep/issue-866-creative-guards.mjs --self-test
       - name: Run ISSUE-866 creative-guards gate
         run: node .github/scripts/strict-grep/issue-866-creative-guards.mjs
+
+  i-1378-web-shim-export-parity:
+    name: "ORCH-1378/1380: every .web.* shim exports a SUPERSET of its native twin's value exports — TypeScript is blind here (tsc resolves the native module; Metro substitutes the .web.* override), so a missing export is a GREEN typecheck and a live production TypeError (I-PROPOSED-1378-WEB-SHIM-EXPORT-PARITY)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the I-1378 web-shim-export-parity gate
+        run: node .github/scripts/strict-grep/i-1378-web-shim-export-parity.mjs --self-test
+      - name: Run I-1378 web-shim-export-parity gate
+        run: node .github/scripts/strict-grep/i-1378-web-shim-export-parity.mjs
