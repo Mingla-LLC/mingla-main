@@ -191,6 +191,15 @@ on:
 # When adding a new gate, follow the 4 steps in
 # .github/scripts/strict-grep/README.md.
 
+# ORCH-1383 — cancel a superseded PR run instead of letting it finish.
+# Measured: 28 of 260 July strict-grep runs (10.8%) were superseded before finishing.
+# The expression (not a bare `true`) is deliberate: cancelling a `push` to main would
+# abandon the post-merge verification run for that commit. Guarding on pull_request
+# recovers the PR-side waste while main runs always complete.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   orch-1321-no-android-media-permissions:
     name: "ORCH-1321: mingla-business/app.json declares no READ_MEDIA_*/READ_EXTERNAL_STORAGE android permission and blocks the full media/storage set (Google Play Photo & Video Permissions policy) (I-PROPOSED-1321-NO-ANDROID-MEDIA-PERMISSIONS)"
@@ -4609,3 +4618,25 @@ jobs:
         run: node .github/scripts/strict-grep/orch-1398-expo-pinned-54.mjs --self-test
       - name: Run ORCH-1398 expo-pinned-54 gate
         run: node .github/scripts/strict-grep/orch-1398-expo-pinned-54.mjs
+
+  # META-1383: the gate registry's own guard. Enforces I-PROPOSED-1383-GATE-MANIFEST-TOTALITY —
+  # every .mjs under .github/scripts/strict-grep/ has exactly one MANIFEST.json entry with an
+  # explicit enforcement state, plus the selfTestWiredFloor / unenforcedCap ratchets (P1-P8).
+  # Registered here under the CURRENT one-job-per-gate model. ORCH-1383 step 6 (the 340->5 batch)
+  # folds this into class B; it is `batch:B` in MANIFEST.json because P4 YAML-parses the workflows
+  # and therefore needs the `yaml` package. See SPEC_ORCH-1383 §5.3 and the DEVIATION note in
+  # Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-1383_CI_STRICT_GREP_CONSOLIDATION.md.
+  meta-1383-manifest-parity:
+    name: "META-1383: every strict-grep .mjs has exactly one MANIFEST.json entry (no gate may exist unaccounted-for) + self-test/dark-gate ratchets (I-PROPOSED-1383-GATE-MANIFEST-TOTALITY)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install parity gate dependency
+        run: npm install --no-save yaml
+      - name: Self-test the META-1383 manifest-parity gate
+        run: node .github/scripts/strict-grep/meta-1383-manifest-parity.mjs --self-test
+      - name: Run META-1383 manifest-parity gate
+        run: node .github/scripts/strict-grep/meta-1383-manifest-parity.mjs

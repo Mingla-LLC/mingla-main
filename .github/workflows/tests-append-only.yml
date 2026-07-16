@@ -17,6 +17,15 @@ on:
   push:
     branches: [Seth]
 
+# ORCH-1383 — cancel a superseded PR run instead of letting it finish.
+# Measured: 28 of 260 July strict-grep runs (10.8%) were superseded before finishing.
+# The expression (not a bare `true`) is deliberate: cancelling a `push` to main would
+# abandon the post-merge verification run for that commit. Guarding on pull_request
+# recovers the PR-side waste while main runs always complete.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   append-only-check:
     name: "Test files: append-only"
@@ -41,3 +50,69 @@ jobs:
           node-version: "20"
       - name: Run append-only check
         run: node .github/scripts/test-append-only-check.js
+
+      # ORCH-1383 — MANIFEST.json ratchet (I-PROPOSED-1383-NO-SILENT-SHRINK).
+      #
+      # This lives HERE, in a DIFFERENT workflow from the parity gate it protects, on
+      # purpose. meta-1383-manifest-parity.mjs enforces that every gate is registered;
+      # run-batch.mjs's R4 proves the parity gate itself ran. But R4 is satisfied if you
+      # delete the parity gate from BOTH the manifest AND the runner. That circularity is
+      # closed only by an external guard — this one. Disabling the parity gate does not
+      # disable its guard.
+      #
+      # Shrinking gates[], lowering selfTestWiredFloor, or raising unenforcedCap requires
+      # an explicit [GATE-REMOVAL: <reason>] token in the latest commit body. You cannot
+      # quietly shrink the gate registry.
+      - name: ORCH-1383 — MANIFEST.json append-only ratchet
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          cat > /tmp/manifest-ratchet.mjs <<'RATCHET'
+          import { execFileSync } from "node:child_process";
+          import fs from "node:fs";
+
+          const PATH = ".github/scripts/strict-grep/MANIFEST.json";
+          const TOKEN = /\[GATE-REMOVAL:[^\]]+\]/;
+          const git = (a) => execFileSync("git", a, { encoding: "utf8", maxBuffer: 64e6 });
+
+          const base = process.env.BASE_SHA?.trim() || (() => {
+            try { return git(["rev-parse", "HEAD~1"]).trim(); } catch { return ""; }
+          })();
+          if (!base) { console.log("ORCH-1383 ratchet: no base ref to compare against — skipping."); process.exit(0); }
+
+          let before;
+          try { before = JSON.parse(git(["show", `${base}:${PATH}`])); }
+          catch { console.log("ORCH-1383 ratchet: MANIFEST.json absent at base — first landing, nothing to ratchet."); process.exit(0); }
+
+          if (!fs.existsSync(PATH)) {
+            console.error(`ORCH-1383 ratchet FAIL — ${PATH} existed at base and is now DELETED.`);
+            console.error("Deleting the gate registry is exactly the silent-shrink this ratchet exists to block.");
+            process.exit(1);
+          }
+          const after = JSON.parse(fs.readFileSync(PATH, "utf8"));
+
+          const body = git(["log", "-1", "--pretty=%B"]);
+          const violations = [];
+          const beforeScripts = new Set(before.gates.map((g) => g.script));
+          const afterScripts = new Set(after.gates.map((g) => g.script));
+          const removed = [...beforeScripts].filter((s) => !afterScripts.has(s));
+
+          if (removed.length) violations.push(`gates[] SHRANK — ${removed.length} entr(ies) removed:\n    ` + removed.join("\n    "));
+          if (after.selfTestWiredFloor < before.selfTestWiredFloor)
+            violations.push(`selfTestWiredFloor LOWERED ${before.selfTestWiredFloor} -> ${after.selfTestWiredFloor}. Self-test coverage may only ratchet UP.`);
+          if (after.unenforcedCap > before.unenforcedCap)
+            violations.push(`unenforcedCap RAISED ${before.unenforcedCap} -> ${after.unenforcedCap}. The dark-gate count may only shrink — wire the gate instead of parking it.`);
+
+          if (!violations.length) { console.log("ORCH-1383 ratchet: PASS — registry did not shrink."); process.exit(0); }
+          if (TOKEN.test(body)) {
+            console.log("ORCH-1383 ratchet: ALLOWED by [GATE-REMOVAL: ...] token in the commit body.");
+            for (const v of violations) console.log("  - " + v);
+            process.exit(0);
+          }
+          console.error("ORCH-1383 ratchet FAIL — the gate registry shrank with no [GATE-REMOVAL: <reason>] token.\n");
+          for (const v of violations) console.error("  - " + v);
+          console.error("\nAdd [GATE-REMOVAL: <why this gate is genuinely gone>] to the latest commit body,");
+          console.error("or restore the entries. A gate must never leave the registry silently.");
+          process.exit(1);
+          RATCHET
+          node /tmp/manifest-ratchet.mjs
