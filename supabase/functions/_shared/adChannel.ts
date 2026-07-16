@@ -510,6 +510,7 @@ export interface AuthedClient {
 import { metaAdapter } from "./meta.ts";
 import { googleAdapter } from "./google.ts";
 import { redditAdapter } from "./reddit.ts";
+import { tiktokAdapter } from "./tiktok.ts";
 
 function failCloseStub(platform: Platform): ChannelAdapter {
   const notConnected = (): never => {
@@ -536,7 +537,7 @@ function failCloseStub(platform: Platform): ChannelAdapter {
 
 const ADAPTER_REGISTRY: Record<Platform, ChannelAdapter> = {
   meta: metaAdapter,
-  tiktok: failCloseStub("tiktok"), // WP7 (#863)
+  tiktok: tiktokAdapter, // WP7 (#863) — live adapter (fail-close until TIKTOK_* secrets are set)
   snapchat: failCloseStub("snapchat"), // WP5 (#867)
   google: googleAdapter, // WP2 (#867) — live adapter (A1.3-0 provisioning flip)
   reddit: redditAdapter, // WP6 (#916) — live adapter (SPEC_ISSUE-REDDIT §3)

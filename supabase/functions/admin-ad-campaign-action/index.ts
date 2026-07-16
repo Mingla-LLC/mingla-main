@@ -6,7 +6,10 @@
  *     ad sets → ads (a paused parent blocks a child's delivery). Re-read
  *     effective_status; if it lands in {PENDING_BILLING_INFO, DISAPPROVED,
  *     WITH_ISSUES} the launch still returns 200 with a `warning` (that is
- *     Meta's delivery state, not our error).
+ *     Meta's delivery state, not our error). TikTok (ISSUE-863 WP7 / A1.0-1):
+ *     the read-back secondary status maps through tiktokLaunchWarning —
+ *     BALANCE_EXCEED / NO_BUDGET / audit states are surfaced as the same
+ *     200 + `warning`, NEVER a silent clamp and never a hard error.
  *   - pause: campaign level PAUSED (children stay as-is; the parent blocks them).
  *
  * The adapter interface can only express PAUSED|ACTIVE (AdvertiserStatus) —
@@ -28,6 +31,7 @@ import {
   getAdapter,
 } from "../_shared/adChannel.ts";
 import { redditLaunchWarning } from "../_shared/reddit.ts";
+import { tiktokLaunchWarning } from "../_shared/tiktok.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -171,6 +175,11 @@ serve(async (req: Request): Promise<Response> => {
       provider_response: effectiveStatus ? { effective_status: effectiveStatus } : null,
     });
 
+    // Per-platform delivery-warning vocabularies — the Meta branch is
+    // byte-identical to WP1; Reddit (WP6) reads the AD's effective_status;
+    // TikTok (WP7, A1.0-1) maps its prefixed secondary statuses —
+    // BALANCE_EXCEED is the analog of PENDING_BILLING_INFO; always
+    // 200 + warning, never a silent clamp.
     let warning: string | undefined;
     if (action === "launch" && campaign.platform === "reddit") {
       // ISSUE-916 WP6 (§3.6/#867 precedent): Reddit's review state lives on
@@ -191,6 +200,8 @@ serve(async (req: Request): Promise<Response> => {
         }
       }
       warning = redditLaunchWarning(adEffectiveStatus ?? effectiveStatus) ?? undefined;
+    } else if (action === "launch" && campaign.platform === "tiktok" && effectiveStatus) {
+      warning = tiktokLaunchWarning(effectiveStatus) ?? undefined;
     } else if (
       action === "launch" && effectiveStatus && WARNING_STATUSES.includes(effectiveStatus)
     ) {
