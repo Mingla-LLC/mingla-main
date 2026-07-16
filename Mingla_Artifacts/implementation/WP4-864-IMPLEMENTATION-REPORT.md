@@ -176,3 +176,17 @@ migration genuinely needed; #866's row schema references it by name only);
 ## Route back
 
 → orchestrator for REVIEW, then `mingla-tester` (adversarial suite + authed admin-web live-fire: drive the wizard against a real live event page, upload a real image, create paused on Meta + Google, launch/pause from `#/campaigns`, verify review_detail rendering after sync).
+
+---
+
+## 14. SPEC erratum (appended at REWORK, 2026-07-16)
+
+**A4.0(3)'s destination literal carries the wrong host.** The amendment (and
+blueprint §1.2) write the canonical ad-visible destination as
+`https://usemingla.com/e/{brand_slug}/{slug}` — that host returns a live 404
+for event paths; the server of record (`_shared/businessWebOrigin.ts` →
+`PRODUCTION_BUSINESS_WEB_ORIGIN`) resolves and persists
+`https://business.usemingla.com/...` (curl-proven 200; the QA-created Google
+ad's `finalUrls` carried it). The client now mirrors the server literal
+(QA P1-1 rework). **The spec text correction rides the next amendment — flagged
+here, not edited.**

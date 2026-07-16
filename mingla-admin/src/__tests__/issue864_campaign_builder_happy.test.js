@@ -553,3 +553,96 @@ describe("SC-10 create-paused (source assertions)", () => {
     assert.ok(flags.includes("FREQUENCY_CAP_CONTROL_ENABLED = false"));
   });
 });
+
+// ── WP4 REWORK (QA_ISSUE-864_WP4) — appended, append-only ─────────────────────
+// P1-1: the builder-displayed destination host MUST equal the server of
+// record (PRODUCTION_BUSINESS_WEB_ORIGIN — the host the deployed create fn
+// persists into dest_url/finalUrls; usemingla.com/e/* is a live 404).
+// P2-1: the NG/Reddit billing exclusion is ENCODED in the plan, provable
+// through a create-wired Reddit (not dead code behind CREATE_WIRED).
+
+describe("REWORK P1-1 — destination display host parity (implementor guard)", () => {
+  it("PUBLIC_WEB_ORIGIN literal equals the server's PRODUCTION_BUSINESS_WEB_ORIGIN literal", () => {
+    const serverConst = read(path.join(REPO_ROOT, "supabase/functions/_shared/businessWebOrigin.ts"))
+      .match(/PRODUCTION_BUSINESS_WEB_ORIGIN\s*=\s*\n?\s*["']([^"']+)["']/);
+    const clientConst = read(path.join(ADMIN_SRC, "services/adDestinationsService.js"))
+      .match(/PUBLIC_WEB_ORIGIN\s*=\s*["']([^"']+)["']/);
+    assert.ok(serverConst, "server constant must exist");
+    assert.ok(clientConst, "client constant must exist (a literal — the parity pins regex it)");
+    assert.equal(clientConst[1], serverConst[1], "one owner per truth: the wizard must display the host the ad will actually carry (QA P1-1)");
+    assert.equal(clientConst[1], "https://business.usemingla.com", "the live-proven 200 host");
+  });
+
+  it("no divergent public-host literal survives anywhere in the wizard trees", () => {
+    const trees = [
+      "services/adDestinationsService.js",
+      "services/mediaUpload.js",
+      "pages/CampaignBuilderPage.jsx",
+      "pages/CampaignsPage.jsx",
+      ...fs.readdirSync(path.join(ADMIN_SRC, "components/campaign-builder")).map((f) => `components/campaign-builder/${f}`),
+      ...fs.readdirSync(path.join(ADMIN_SRC, "lib/adBuilder")).map((f) => `lib/adBuilder/${f}`),
+    ];
+    for (const file of trees) {
+      const source = read(path.join(ADMIN_SRC, file));
+      // Any usemingla.com literal must be the business host (comments citing
+      // the SPEC erratum name the bad literal — allow the word 'erratum' on
+      // the same line).
+      for (const line of source.split("\n")) {
+        if (line.includes("usemingla.com") && !line.includes("business.usemingla.com") && !/erratum/i.test(line)) {
+          assert.fail(`${file} carries a non-business usemingla.com literal: ${line.trim()}`);
+        }
+      }
+    }
+  });
+
+  it("AdPreview's placeholder host derives from PUBLIC_WEB_ORIGIN, not a literal", () => {
+    const source = read(path.join(ADMIN_SRC, "components/campaign-builder/AdPreview.jsx"));
+    assert.ok(source.includes("PUBLIC_WEB_ORIGIN"), "fallback host must derive from the shared origin constant");
+    assert.ok(!source.includes('"USEMINGLA.COM"'), "the old hardcoded fallback literal must be gone");
+  });
+});
+
+describe("REWORK P2-1 — Nigeria never routes to Reddit (blueprint §1.3)", () => {
+  const greenRow = (platform) => ({ platform, overall: "green", checks: [] });
+  const metaConn = { extra: { minimum_budgets: { imp: 100, video_views: 100, high_freq: 500, low_freq: 4000 } } };
+  const base = {
+    preflightRows: ["meta", "tiktok", "snapchat", "google", "reddit"].map(greenRow),
+    goalIds: ["traffic"],
+    totalDailyCents: 2000,
+    connections: { meta: metaConn },
+    metaGoal: "LINK_CLICKS",
+  };
+
+  it("MARKET_GAPS encodes the NGN billing exclusion for Reddit", () => {
+    assert.deepEqual(MARKET_GAPS.reddit.unavailable, ["NG"]);
+    assert.ok(/naira|NGN/i.test(MARKET_GAPS.reddit.reason), "the reason names the billing-currency gap");
+  });
+
+  it("with Reddit create-wired, an NG plan excludes Reddit with the no-NGN reason", () => {
+    const rows = planChannels({
+      ...base,
+      countries: ["NG"],
+      createWired: ["meta", "google", "reddit"],
+    });
+    const reddit = rows.find((r) => r.platform === "reddit");
+    assert.equal(reddit.eligible, false, "the day the Reddit create branch lands, Lagos must NOT silently route to Reddit");
+    assert.ok(/naira|NGN/i.test(reddit.excludedReason));
+  });
+
+  it("with Reddit create-wired, a US plan keeps Reddit eligible (the gate is the market, nothing else)", () => {
+    const rows = planChannels({
+      ...base,
+      countries: ["US"],
+      createWired: ["meta", "google", "reddit"],
+    });
+    const reddit = rows.find((r) => r.platform === "reddit");
+    assert.equal(reddit.eligible, true);
+  });
+
+  it("today's default precedence is unchanged: the endpoint gap still excludes Reddit first", () => {
+    const rows = planChannels({ ...base, countries: ["NG"] });
+    const reddit = rows.find((r) => r.platform === "reddit");
+    assert.equal(reddit.eligible, false);
+    assert.ok(reddit.excludedReason.includes("no Reddit create branch"), "CREATE_WIRED wins the precedence today");
+  });
+});
