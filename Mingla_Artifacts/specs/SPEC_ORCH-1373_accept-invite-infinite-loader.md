@@ -713,3 +713,30 @@ Each fix carries a short **why**, not a what: the dead-gate ordering (`accept-*.
 ---
 
 **Confidence:** the root cause is **PROVEN** (device + exhaustive mechanical proof + data corroboration). Every contract above is anchored to a file:line I read in this worktree. The two places I refused to write a contract are named in §10.2 (OQ-2, OQ-3) rather than papered over.
+
+---
+
+## AMENDMENT A-1 — §11.2 `coldLoadAuthGates.ts` DO-NOT-TOUCH is LIFTED (orchestrator, 2026-07-16)
+
+**Authorised by:** mingla-orchestrator (conductor). **Raised by:** the implementor, who made the edit under explicit orchestrator dispatch and **declared it loudly rather than burying it** — correct behaviour, and the reason this amendment exists.
+
+**What changed:** §11.2 listed `mingla-business/src/utils/coldLoadAuthGates.ts` as DO-NOT-TOUCH. That fence was written before QA P0-1 was known and is **superseded**. The file is now IN SCOPE for exactly one change: `SIGN_IN_ROUTE_PREFIXES` + `isSignInRoute` learning about `/auth` (+ `/auth/callback`).
+
+**Why the fence was wrong, not merely inconvenient.** The fence assumed the file was correct and only its *callers* were at fault. QA P0-1 proved the opposite: `isSignInRoute` was **wrong about the app's own sign-in page** — it matched only `""|"/"`, so `shouldRedirectToSignInFromRoute({pathname:"/auth"})` returned `true` and `_layout.tsx` bounced `/auth` → `/`, destroying `?next=` before any capture code could run. **Orchestrator-verified against the real shipped module, before and after:**
+
+```
+BEFORE                                   AFTER
+/auth            bounced = true   <-- token destroyed        /auth            bounced = false  ok
+/auth/callback   bounced = true   <-- token destroyed        /auth/callback   bounced = false  ok
+isSignInRoute("/auth") = false                               isSignInRoute("/auth") = true
+```
+
+**The deeper root cause this exposed (record it — it explains the whole ORCH).** ORCH-1375 found `?next=` had **4 writers, 0 readers** and called it vestigial. The real reason is worse: **the route `next` points at has never been reachable for a logged-out user**, so a reader *could not* have existed. The dead redirect pointed at a dead route — **two layers of dead code stacked**. No fix confined to the callers could ever have worked; the fence would have forced a fake fix.
+
+**Why `isSignInRoute` and NOT the self-authenticating exempt list** (orchestrator-recommended, implementor-agreed): `/auth` semantically **IS** a sign-in route — that is precisely what the predicate means. The `SELF_AUTHENTICATING_*` / `INVITE_ACCEPT_*` lists carry an explicit constitutional caveat (`coldLoadAuthGates.ts:216-228`) that **every member authenticates via an out-of-band URL credential** (Stripe `client_secret` / invite token). `/auth` carries no such credential — it **mints** the session. Filing it there would corrupt that list's security reasoning for the next reader. A test now pins `isSelfAuthenticatedExemptRoute("/auth") === false`.
+
+**Blast radius — measured, not assumed:** `isSignInRoute` has exactly **3 consumers**, all analysed and tested. **ORCH-1103's `/` → `/` self-redirect loop guard HOLDS** (`/`, `""`, `null` still produce no redirect → React #185 white-screen cannot return); the existing suite passes **unmodified** — its false-case list never contained `/auth`, so no test deletion was forced (a deletion would itself have been a red flag). ORCH-1115 (public-buyer allowlist) and ORCH-1139 (self-authenticating exemptions) verified green and unmodified. The `:750` ceiling guard now renders the Stack on `/auth` past the ceiling instead of spinning — **it can only ever remove a spinner, never add one.**
+
+**Regression contract (orchestrator-verified in both directions, 2026-07-16):** `src/utils/__tests__/orch_1373_auth_route_gate.test.ts` (21 tests) reads `app/_layout.tsx`, **slices out the real `redirectToSignIn` wiring, and executes it via `new Function`** with the real predicates injected — so it tests the *route*, not the predicate in isolation. **This is the specific gap that let P0-1 ship past a fully green suite: every prior test exercised the predicates in isolation and not one loaded the route through the real gate.** Orchestrator mutations: emptying `SIGN_IN_ROUTE_PREFIXES` → **FAILS** ✓ (fails-on-revert); short-circuiting the layout's gate wiring → **FAILS** ✓ (it really does track the layout, not a replica).
+
+**Scope fence otherwise UNCHANGED and still binding:** `supabase/**`, `mingla-marketing/**`, `authReadiness.ts`, `app.json` remain DO-NOT-TOUCH (all verified ZERO).
