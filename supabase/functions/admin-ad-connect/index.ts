@@ -36,6 +36,18 @@
  *   7. pixel present (mandatory on every ad group          → 424 reddit_not_connected
  *      since 2026-07-13 — GR-12)
  *   On success the row caches profile/funding/pixel ids into extra (SPEC §1.4).
+ * TikTok connect (ISSUE-863 WP7, SPEC §4.4a + A1 — fail-CLOSE, all 424s):
+ *   1. token + advertiser id resolve (TIKTOK_ACCESS_TOKEN
+ *      / TIKTOK_ADVERTISER_ID, lane-correct)             → 424 tiktok_not_connected
+ *   2. advertiser/info read; status must be STATUS_ENABLE → 424 tiktok_not_connected
+ *   3. identity/get — a TT_USER identity must exist
+ *      (REQUIRED by ad_create; CUSTOMIZED_USER is illegal
+ *      for this post-2026-01-15 account — T-6)           → 424 tiktok_identity_unavailable
+ *   4. pixel/list — informational for #865 (zero events
+ *      today, T-P4); NEVER a connect blocker
+ *   5. upsert the connection row (auth_kind system_user_token; BC → external_org_id;
+ *      identity/pixel refs in extra; min_daily_budget_cents stays NULL — TikTok
+ *      exposes no minimum via any read API; floors are validated at create)
  *
  * Other platforms are fail-close stubs until their WPs land:
  *   → 424 <platform>_not_connected.
@@ -80,6 +92,14 @@ import {
   redditDefaultTokenEnvVar,
   RedditPreflightError,
 } from "../_shared/reddit.ts";
+import {
+  resolveTikTokClient,
+  tiktokDefaultTokenEnvVar,
+  tiktokFetchAdvertiser,
+  tiktokFetchIdentity,
+  tiktokFetchPixels,
+  type TikTokPixelSnapshot,
+} from "../_shared/tiktok.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -109,6 +129,10 @@ function defaultTokenEnvVar(platform: Platform, lane: Lane): string {
   }
   if (platform === "reddit") {
     return redditDefaultTokenEnvVar(lane);
+  }
+  if (platform === "tiktok") {
+    // Lane-correct (QA P2-3) — TIKTOK_MINGLABIZ_* for the business lane.
+    return tiktokDefaultTokenEnvVar(lane);
   }
   const byPlatform: Record<Platform, string> = {
     meta: "META_SYSTEM_USER_TOKEN",
@@ -162,11 +186,14 @@ serve(async (req: Request): Promise<Response> => {
     return json({ error: "validation_error", detail: "action_invalid" }, 400);
   }
 
-  // ── Fail-close stubs for the two unbuilt channels. ──────────────────────────
-  if (platform !== "meta" && platform !== "google" && platform !== "reddit") {
+  // ── Fail-close stub for the one unbuilt channel. ─────────────────────────────
+  if (
+    platform !== "meta" && platform !== "google" && platform !== "reddit" &&
+    platform !== "tiktok"
+  ) {
     return json({
       error: `${platform}_not_connected`,
-      detail: `${platform} adapter ships in a later WP (WP5 snapchat / WP7 tiktok); fail-close until then.`,
+      detail: `${platform} adapter ships in a later WP (WP5 snapchat); fail-close until then.`,
     }, 424);
   }
 
@@ -403,6 +430,169 @@ serve(async (req: Request): Promise<Response> => {
       }
       const detail = err instanceof Error ? err.message : String(err);
       console.error("[admin-ad-connect] google unexpected:", detail);
+      return json({ error: "internal_error" }, 500);
+    }
+  }
+
+  // ── TIKTOK (ISSUE-863 WP7, SPEC §4.4a + A1) ─────────────────────────────────
+  // Fail-CLOSE: an unset TIKTOK_ACCESS_TOKEN / TIKTOK_ADVERTISER_ID → 424
+  // tiktok_not_connected + an `invalid` row (QA P2-4 parity with Meta — SC-2's
+  // "invalid" state must be renderable before the first success).
+  if (platform === "tiktok") {
+    const markTikTokInvalid = async (): Promise<void> => {
+      const accountId = existing?.external_account_id ||
+        (Deno.env.get(lane === "business" ? "TIKTOK_MINGLABIZ_ADVERTISER_ID" : "TIKTOK_ADVERTISER_ID") ?? "")
+          .trim() ||
+        "unconfigured"; // explicit sentinel — never fabricated data
+      await supabase
+        .from("ad_connections")
+        .upsert({
+          platform,
+          lane,
+          display_name: existing?.display_name ??
+            `TikTok · ${lane === "business" ? "Business" : "Consumer"}`,
+          external_account_id: accountId,
+          external_org_id: existing?.external_org_id ?? null,
+          auth_kind: "system_user_token",
+          token_env_var: existing?.token_env_var ?? defaultTokenEnvVar(platform, lane),
+          extra: existing?.extra ?? {},
+          status: "invalid",
+          connected: false,
+        }, { onConflict: "platform,lane" });
+    };
+
+    try {
+      // 1–2: token + advertiser id resolve (fail-close), then the live
+      //      advertiser read — the account must be STATUS_ENABLE (T-P1 shape).
+      const client = resolveTikTokClient(existing ?? null, lane);
+      const advertiser = await tiktokFetchAdvertiser(client);
+
+      if (advertiser.status !== "STATUS_ENABLE") {
+        await markTikTokInvalid();
+        return json({
+          error: "tiktok_not_connected",
+          detail:
+            `TikTok advertiser ${client.advertiserId} is ${advertiser.status ?? "in an unknown state"} — a STATUS_ENABLE (active) advertiser is required.`,
+        }, 424);
+      }
+
+      if (action === "status" && !existing) {
+        return json({ connection: null, tiktok: advertiser });
+      }
+
+      // 3: identity — REQUIRED by ad_create (no identity, no ad); TT_USER is
+      //    the ONLY viable non-Spark path for this post-2026-01-15 account
+      //    (A1.1(f)/T-6). Persisted on the connection for the ad builder.
+      const identity = await tiktokFetchIdentity(client);
+      if (!identity || identity.availableStatus !== "AVAILABLE") {
+        await markTikTokInvalid();
+        return json({
+          error: "tiktok_identity_unavailable",
+          detail:
+            "No AVAILABLE TT_USER identity on the advertiser — ad_create requires identity_type+identity_id, and TT_USER (@usemingla) is the only viable non-Spark identity for this account (created after TikTok's 2026-01-15 CUSTOMIZED_USER cutoff). Re-authorize the @usemingla TikTok account for ads, then reconnect.",
+        }, 424);
+      }
+
+      // 4: pixel — informational for #865 (zero events today, T-P4); traffic
+      //    campaigns never use it, so a pixel failure is NEVER a connect blocker.
+      let pixels: TikTokPixelSnapshot[] = [];
+      try {
+        pixels = await tiktokFetchPixels(client);
+      } catch {
+        pixels = [];
+      }
+      const pixel = pixels[0] ?? null;
+
+      const priorExtra = (existing?.extra ?? {}) as Record<string, unknown>;
+      const row = {
+        platform,
+        lane,
+        display_name: `TikTok · ${lane === "business" ? "Business" : "Consumer"}${
+          advertiser.name ? ` (${advertiser.name})` : ""
+        }`,
+        external_account_id: client.advertiserId,
+        // The Business Center is the org-level id (A3 registry row).
+        external_org_id: advertiser.ownerBcId,
+        auth_kind: "system_user_token",
+        token_env_var: existing?.token_env_var ?? defaultTokenEnvVar(platform, lane),
+        extra: {
+          ...priorExtra,
+          api_version: client.apiVersion,
+          identity_id: identity.identityId,
+          identity_type: identity.identityType,
+          identity_username: identity.username,
+          identity_available_status: identity.availableStatus,
+          pixel_id: pixel?.pixelId ?? null,
+          pixel_activity_status: pixel?.activityStatus ?? null,
+          pixel_events_count: pixel?.eventsCount ?? 0,
+          // The API balance is BLIND to the Advanced Payment Portfolio (T-P3)
+          // — recorded verbatim; the Ads Manager UI is the funding source of truth.
+          api_balance: advertiser.balance,
+          // #865's SEPARATE Events-API credential name — never used by this story.
+          events_env_var: (priorExtra.events_env_var as string | undefined) ??
+            "TIKTOK_EVENTS_ACCESS_TOKEN",
+        },
+        status: "connected",
+        currency: advertiser.currency,
+        timezone: advertiser.displayTimezone ?? advertiser.timezone,
+        // TikTok exposes NO minimum via any read API — the $20/$50 floors are
+        // validated at create, AFTER cents→dollars conversion (A1.0-1).
+        min_daily_budget_cents: null,
+        account_status: advertiser.status,
+        token_last_verified_at: new Date().toISOString(),
+        connected: true,
+        connected_by: user.id,
+      };
+      const { data: upserted, error: upsertError } = await supabase
+        .from("ad_connections")
+        .upsert(row, { onConflict: "platform,lane" })
+        .select("*")
+        .maybeSingle();
+      if (upsertError) {
+        console.error("[admin-ad-connect] tiktok upsert failed:", upsertError.message);
+        return json({ error: "internal_error" }, 500);
+      }
+      return json({
+        connection: upserted,
+        tiktok: {
+          advertiser: {
+            id: advertiser.advertiserId,
+            name: advertiser.name,
+            currency: advertiser.currency,
+            status: advertiser.status,
+            api_balance: advertiser.balance,
+          },
+          identity: {
+            id: identity.identityId,
+            type: identity.identityType,
+            username: identity.username,
+            available_status: identity.availableStatus,
+          },
+          pixel: pixel
+            ? {
+              id: pixel.pixelId,
+              activity_status: pixel.activityStatus,
+              events_count: pixel.eventsCount,
+            }
+            : null,
+        },
+      });
+    } catch (err) {
+      if (err instanceof AdNotConnectedError) {
+        await markTikTokInvalid();
+        return json({
+          error: "tiktok_not_connected",
+          detail:
+            "TIKTOK_ACCESS_TOKEN / TIKTOK_ADVERTISER_ID (or the lane's TIKTOK_MINGLABIZ_* secrets) are not set — set the Supabase Edge Function secrets (SPEC §7: TIKTOK_ACCESS_TOKEN, TIKTOK_APP_ID, TIKTOK_APP_SECRET, TIKTOK_ADVERTISER_ID, TIKTOK_API_VERSION=v1.3, TIKTOK_GRAPH_BASE), then reconnect.",
+        }, 424);
+      }
+      if (err instanceof AdApiError) {
+        await markTikTokInvalid();
+        // Normalized error only — the token never appears here (SC-SEC-1).
+        return json({ error: "tiktok_not_connected", detail: err.toJSON() }, 424);
+      }
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error("[admin-ad-connect] tiktok unexpected:", detail);
       return json({ error: "internal_error" }, 500);
     }
   }

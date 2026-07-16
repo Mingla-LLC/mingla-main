@@ -38,6 +38,21 @@
  *   P5 tier       — n/a (own-account refresh token)
  *   P6 market     — community search callable with `query=` (R-P6)
  *
+ * TikTok (ISSUE-863 WP7 — SPEC A1, PROOF T-P1…T-P5):
+ *   P1 token      — advertiser/info read succeeds + STATUS_ENABLE
+ *   P2 funding    — API balance vs the $20/day ad-group floor → WARN, never
+ *                   a hard fail (the API is BLIND to the Advanced Payment
+ *                   Portfolio — T-P3; the Ads Manager UI is source of truth)
+ *   P3 identity   — a TT_USER identity with available_status=AVAILABLE
+ *                   (REQUIRED by ad_create; the only viable non-Spark path
+ *                   for this post-2026-01-15 account — T-6)
+ *   P4 pixel      — pixel has events? zero events ⇒ WARN (conversion
+ *                   objectives stay gated until #865 — T-P4; not a blocker)
+ *   P5 tier       — own-app long-lived token; app APPROVED 2026-07-15 (T-P1)
+ *   P6 market     — LIVE tool/region read (the resolveGeo path): US must
+ *                   resolve; a live Mingla market absent (GB today — T-P2)
+ *                   ⇒ WARN naming the market (TikTok-side gate, escalated)
+ *
  * Other channels are fail-closed stubs: single-platform request → 424
  * <platform>_not_connected; all-platform sweep → per-row not_connected entries.
  *
@@ -77,6 +92,15 @@ import {
   redditSearchCommunities,
   resolveRedditClient,
 } from "../_shared/reddit.ts";
+import {
+  pickTikTokLocationIdsForCountries,
+  resolveTikTokClient,
+  TIKTOK_MIN_ADGROUP_DAILY_BUDGET_DOLLARS,
+  tiktokFetchAdvertiser,
+  tiktokFetchIdentity,
+  tiktokFetchPixels,
+  tiktokFetchRegions,
+} from "../_shared/tiktok.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -122,8 +146,188 @@ function stubRow(platform: Platform, lane: string): PreflightRow {
       label: "Token valid",
       status: "fail",
       detail:
-        `${platform}_not_connected — adapter ships in a later WP (WP5 snapchat / WP7 tiktok); fail-close until then.`,
+        `${platform}_not_connected — adapter ships in a later WP (WP5 snapchat); fail-close until then.`,
     }],
+    checked_at: new Date().toISOString(),
+  };
+}
+
+/** Live Mingla markets the P6 geo check asserts against (GB proven absent — T-P2). */
+const TIKTOK_P6_MARKETS = ["US", "GB", "NG"] as const;
+
+/**
+ * TikTok preflight (ISSUE-863 WP7 — SPEC A1, PROOF T-P1…T-P5): P1 advertiser
+ * STATUS_ENABLE · P2 API balance vs the $20/day floor as a WARN (the API is
+ * blind to the Advanced Payment Portfolio — UI is source of truth, T-P3) ·
+ * P3 TT_USER identity AVAILABLE · P4 pixel events as a WARN (#865 owns the
+ * pixel) · P6 the LIVE tool/region resolveGeo path (GB absent ⇒ WARN — T-P2).
+ */
+async function tiktokPreflight(
+  conn: AdConnectionRow | null,
+  lane: string,
+): Promise<PreflightRow> {
+  const checks: PreflightCheck[] = [];
+  const push = (id: string, label: string, status: CheckStatus, detail: string | null = null) =>
+    checks.push({ id, label, status, detail });
+
+  let client;
+  try {
+    // Lane-correct resolution (QA P2-3): with no persisted row, the credential
+    // probed is the LANE's env name, never a consumer fallback.
+    client = resolveTikTokClient(conn ?? null, lane as "consumer" | "business");
+  } catch (err) {
+    const detail = err instanceof AdNotConnectedError
+      ? "tiktok_not_connected — set the TIKTOK_ACCESS_TOKEN / TIKTOK_ADVERTISER_ID Supabase Edge Function secrets (SPEC §7), then connect."
+      : err instanceof Error
+      ? err.message
+      : String(err);
+    push("P1", "Token valid + advertiser active", "fail", detail);
+    return {
+      platform: "tiktok",
+      lane,
+      overall: "not_connected",
+      checks,
+      checked_at: new Date().toISOString(),
+    };
+  }
+
+  // P1 — the token reads the configured advertiser AND it is STATUS_ENABLE.
+  let apiBalance: number | null = null;
+  try {
+    const advertiser = await tiktokFetchAdvertiser(client);
+    apiBalance = advertiser.balance;
+    const enabled = advertiser.status === "STATUS_ENABLE";
+    push(
+      "P1",
+      "Token valid + advertiser active",
+      enabled ? "pass" : "fail",
+      enabled
+        ? null
+        : `advertiser status=${advertiser.status ?? "unknown"} — a STATUS_ENABLE advertiser is required.`,
+    );
+    if (!enabled) {
+      return {
+        platform: "tiktok",
+        lane,
+        overall: "red",
+        checks,
+        checked_at: new Date().toISOString(),
+      };
+    }
+  } catch (err) {
+    push(
+      "P1",
+      "Token valid + advertiser active",
+      "fail",
+      err instanceof AdApiError ? err.message : err instanceof Error ? err.message : String(err),
+    );
+    return {
+      platform: "tiktok",
+      lane,
+      overall: "red",
+      checks,
+      checked_at: new Date().toISOString(),
+    };
+  }
+
+  // P2 — funding vs the $20/day ad-group floor: a WARN, never a hard fail —
+  // the Marketing API balance is BLIND to the Advanced Payment Portfolio
+  // (T-P3: API 0.0 while $10 prepaid sits in the portfolio; $10 < $20 anyway).
+  const balanceKnownSufficient = typeof apiBalance === "number" &&
+    apiBalance >= TIKTOK_MIN_ADGROUP_DAILY_BUDGET_DOLLARS;
+  push(
+    "P2",
+    "Funding vs $20/day floor",
+    balanceKnownSufficient ? "pass" : "warn",
+    balanceKnownSufficient
+      ? null
+      : `API balance ${apiBalance ?? "unknown"} is below the $${TIKTOK_MIN_ADGROUP_DAILY_BUDGET_DOLLARS}/day ad-group floor — BUT the API cannot see the Advanced Payment Portfolio (UI is source of truth). Launched campaigns park at BALANCE_EXCEED until the portfolio covers one day's minimum.`,
+  );
+
+  // P3 — identity: ad_create REQUIRES identity_type+identity_id; TT_USER is
+  // the ONLY viable non-Spark identity for this post-2026-01-15 account (T-6).
+  try {
+    const identity = await tiktokFetchIdentity(client);
+    const ok = Boolean(identity && identity.availableStatus === "AVAILABLE");
+    push(
+      "P3",
+      "TT_USER identity AVAILABLE",
+      ok ? "pass" : "fail",
+      ok
+        ? null
+        : "No AVAILABLE TT_USER identity — ad create is blocked (no identity, no ad). Re-authorize @usemingla for ads.",
+    );
+  } catch (err) {
+    push("P3", "TT_USER identity AVAILABLE", "fail", err instanceof Error ? err.message : String(err));
+  }
+
+  // P4 — pixel signal: zero events ⇒ WARN (conversion objectives stay gated
+  // until #865 wires the pixel — T-P4; TRAFFIC never uses it).
+  try {
+    const pixels = await tiktokFetchPixels(client);
+    const withEvents = pixels.find((p) => p.eventsCount > 0);
+    push(
+      "P4",
+      "Pixel firing",
+      withEvents ? "pass" : "warn",
+      withEvents
+        ? null
+        : "Pixel has zero events (NO_RECENT_ACTIVITY) — WEB_CONVERSIONS/PRODUCT_SALES and Smart+ stay gated until #865 installs the pixel; TRAFFIC and APP_PROMOTION+INSTALL are the honest objectives today.",
+    );
+  } catch (err) {
+    push("P4", "Pixel firing", "warn", err instanceof Error ? err.message : String(err));
+  }
+
+  // P5 — access tier: own-app long-lived token; the developer app was
+  // APPROVED and the engine token proven live on 2026-07-15 (T-P1).
+  push(
+    "P5",
+    "Review / access tier",
+    "pass",
+    "Own-app long-lived Marketing-API token — app approved 2026-07-15 (T-P1); the reads above ran against the real advertiser.",
+  );
+
+  // P6 — market reachability: the LIVE tool/region resolveGeo path (OD-7
+  // reversed — never a build-time map). US must resolve; a live Mingla market
+  // absent (GB today — T-P2, escalated to TikTok) ⇒ WARN naming it.
+  try {
+    const regions = await tiktokFetchRegions(client, { objective: "TRAFFIC" });
+    const picked = pickTikTokLocationIdsForCountries(regions, TIKTOK_P6_MARKETS, {
+      objective: "TRAFFIC",
+    });
+    if (picked.ok) {
+      push("P6", "Markets reachable (live tool/region)", "pass", null);
+    } else if (picked.missing.includes("US")) {
+      push(
+        "P6",
+        "Markets reachable (live tool/region)",
+        "fail",
+        `tool/region did not resolve ${picked.missing.join(", ")} — the primary market (US) is unreachable; the geo resolver path is broken.`,
+      );
+    } else {
+      push(
+        "P6",
+        "Markets reachable (live tool/region)",
+        "warn",
+        `tool/region does not offer ${picked.missing.join(", ")} for this advertiser (GB was proven absent for BOTH TRAFFIC and APP_PROMOTION on 2026-07-15 — T-P2; escalated to TikTok as an entity-registration gate). Campaigns targeting these markets fail loudly at create.`,
+      );
+    }
+  } catch (err) {
+    push(
+      "P6",
+      "Markets reachable (live tool/region)",
+      "fail",
+      err instanceof AdApiError ? err.message : err instanceof Error ? err.message : String(err),
+    );
+  }
+
+  const anyHardFail = checks.some((c) => c.status === "fail");
+  const anyWarn = checks.some((c) => c.status === "warn");
+  return {
+    platform: "tiktok",
+    lane,
+    overall: anyHardFail ? "red" : anyWarn ? "amber" : "green",
+    checks,
     checked_at: new Date().toISOString(),
   };
 }
@@ -504,7 +708,7 @@ serve(async (req: Request): Promise<Response> => {
   // Single unbuilt platform → fail-close 424 (stub until its WP lands).
   if (
     platform !== undefined && platform !== "meta" && platform !== "google" &&
-    platform !== "reddit"
+    platform !== "reddit" && platform !== "tiktok"
   ) {
     return json({
       error: `${platform}_not_connected`,
@@ -534,6 +738,10 @@ serve(async (req: Request): Promise<Response> => {
     const row = await redditPreflight(await loadConnection("reddit"), lane);
     return json({ rows: [row] });
   }
+  if (platform === "tiktok") {
+    const row = await tiktokPreflight(await loadConnection("tiktok"), lane);
+    return json({ rows: [row] });
+  }
 
   // All five channels.
   const rows: PreflightRow[] = [];
@@ -543,6 +751,8 @@ serve(async (req: Request): Promise<Response> => {
       rows.push(await googlePreflight(await loadConnection("google"), lane));
     } else if (p === "reddit") {
       rows.push(await redditPreflight(await loadConnection("reddit"), lane));
+    } else if (p === "tiktok") {
+      rows.push(await tiktokPreflight(await loadConnection("tiktok"), lane));
     } else rows.push(stubRow(p, lane));
   }
   return json({ rows });
