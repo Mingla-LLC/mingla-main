@@ -57,8 +57,12 @@ export const CREATE_GAP_REASONS = {
  */
 export const MARKET_GAPS = {
   tiktok: { unavailable: ["GB"], reason: "TikTok can't target the UK from our ad account (live tool/region proof — escalated to TikTok)." },
-  // Reddit can't BILL NGN (8-currency enum, no NGN) — Lagos is geo-targetable,
-  // billed USD; the Nigeria LANE never routes to Reddit. Countries stay OK.
+  // QA P2-1 (blueprint §1.3): Reddit can't BILL NGN — funding currencies are
+  // an 8-value enum with no NGN, and the languages enum has no Nigerian
+  // language. "Don't route the Nigeria lane to Reddit." Encoded HERE (not
+  // just prose) so the rule is already live the day Reddit's create branch
+  // lands — today it sits behind the CREATE_WIRED gate.
+  reddit: { unavailable: ["NG"], reason: "Reddit can't bill in naira (its funding-currency enum has no NGN) — Nigeria campaigns don't route to Reddit." },
 };
 
 /**
@@ -72,6 +76,11 @@ export const MARKET_GAPS = {
  * @param {Array}  [input.allowlist]    Advanced channel allowlist (narrow-only)
  * @param {object} [input.connections]  platform → connection row (extra.minimum_budgets for Meta)
  * @param {string} [input.metaGoal]     Meta optimization_goal (drives the per-category floor)
+ * @param {Array}  [input.createWired]  TEST-INJECTION ONLY (defaults to CREATE_WIRED) —
+ *                                      lets the suite prove the downstream gates
+ *                                      (market/floor) fire when a channel's create
+ *                                      branch lands (QA P2-1: the NG/Reddit rule must
+ *                                      not be dead code behind the endpoint gap).
  */
 export function planChannels(input) {
   const {
@@ -82,6 +91,7 @@ export function planChannels(input) {
     allowlist = null,
     connections = {},
     metaGoal = "LINK_CLICKS",
+    createWired = CREATE_WIRED,
   } = input;
 
   const preflightByPlatform = new Map(preflightRows.map((r) => [r.platform, r]));
@@ -104,7 +114,7 @@ export function planChannels(input) {
     };
 
     // 1. Create-endpoint gap — the most structural gate.
-    if (!CREATE_WIRED.includes(platform)) {
+    if (!createWired.includes(platform)) {
       row.excludedReason = CREATE_GAP_REASONS[platform] ??
         `${PLATFORM_LABELS[platform]} create is not wired yet.`;
       return row;
