@@ -193,6 +193,11 @@ export const NAV_GROUPS = [
     label: "Growth",
     items: [
       { id: "ad-engine",                 label: "Ad Engine",          icon: "Megaphone" },
+      // ISSUE-864 WP4 — the builder wizard + the campaign surface (launch/
+      // pause/review live on Campaigns, never in the builder). Rocket +
+      // ClipboardList are already registered in Sidebar.jsx ICON_MAP.
+      { id: "campaign-builder",          label: "Campaign Builder",   icon: "Rocket" },
+      { id: "campaigns",                 label: "Campaigns",          icon: "ClipboardList" },
     ],
   },
 ];
