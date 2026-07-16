@@ -48,18 +48,36 @@ const root = process.cwd().endsWith("mingla-marketing")
   ? path.resolve(process.cwd(), "..")
   : process.cwd();
 
-const TARGET = "mingla-marketing/lib/open-external.ts";
+/**
+ * ORCH-1382 (#917) — TWO owners, not one.
+ *
+ * ORCH-1381 scoped this gate to the marketing module alone. That was the gap:
+ * `mingla-business` has NO import path to `mingla-marketing` (its tsconfig
+ * `paths` map only `@/*` and `@mingla/*` -> packages/*), so it carries its OWN
+ * `openExternal` — which still shipped the IDENTICAL null-return bug, LIVE,
+ * behind `SeeWhosGoingGate.tsx:273`. That violated the ACTIVE contract
+ * I-PROPOSED-1342-GATE-NEVER-NAMES-NEVER-REDIRECTS ("the page STAYS MOUNTED,
+ * never a redirect") while this very gate reported GREEN.
+ *
+ * A single-owner invariant that only guards ONE of the two owners is not a
+ * single-owner invariant. Both are listed here; adding a third copy of this
+ * idiom anywhere means adding it here too.
+ */
+const TARGETS = [
+  "mingla-marketing/lib/open-external.ts",
+  "mingla-business/src/services/guestFunnelLink.ts",
+];
 
 const stripComments = (src) =>
   src
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/(^|[^:])\/\/.*$/gm, "$1");
 
-function checkModule(rawSrc, failures) {
+function checkModule(rawSrc, failures, TARGET = "mingla-marketing/lib/open-external.ts") {
   const src = stripComments(rawSrc);
 
   // R4 — no silent failure: a genuinely blocked popup must still navigate.
-  if (!/\.location\.assign\(/.test(src)) {
+  if (!/\.location\.assign\(/i.test(src)) {
     failures.push(
       `${TARGET}: missing the .location.assign( popup-block fallback — a blocked popup ` +
         `would be a dead tap.`,
@@ -68,7 +86,7 @@ function checkModule(rawSrc, failures) {
 
   // R1 — BAN the null-returning feature string (the D-B bug itself, incl. the
   // noreferrer-only half-fix trap).
-  if (/\.open\([^)\n]*\bno(?:opener|referrer)\b[^)\n]*\)/.test(src)) {
+  if (/\.open\([^)\n]*\bno(?:opener|referrer)\b[^)\n]*\)/i.test(src)) {
     failures.push(
       `${TARGET}: window.open( carries noopener/noreferrer — per the HTML spec it then ` +
         `returns null EVEN ON SUCCESS, so the fallback fires unconditionally and every ` +
@@ -79,7 +97,7 @@ function checkModule(rawSrc, failures) {
   }
 
   // R2 — the noopener SECURITY property must be preserved another way.
-  if (!/\.opener\s*=\s*null/.test(src)) {
+  if (!/\.opener\s*=\s*null/i.test(src)) {
     failures.push(
       `${TARGET}: win.opener is not severed — dropping noopener without setting ` +
         `opener = null exposes the origin to reverse tabnabbing.`,
@@ -88,7 +106,7 @@ function checkModule(rawSrc, failures) {
 
   // R3 — STRUCTURAL: assign must be the NEGATIVE branch of a successful open, not an
   // unconditional sibling. This is what makes the guard non-decorative.
-  if (!/else\s*\{[^}]*\.location\.assign\(/.test(src)) {
+  if (!/else\s*\{[^}]*\.location\.assign\(/i.test(src)) {
     failures.push(
       `${TARGET}: .location.assign( is not in the else-branch of a successful open — the ` +
         `fallback must fire ONLY when open() returned null. An unconditional assign( is ` +
@@ -148,6 +166,51 @@ export function openExternal(dest: string, w: Window = window): void {
 `;
   if (run(noopenerOnly).length === 0) selfFailures.push("'noopener'-only (also returns null) not flagged");
 
+  // REVERT 2c — ORCH-1382 / SPEC §9.0: BROWSERS ARE CASE-INSENSITIVE. A
+  // case-sensitive regex let 'NOOPENER' slip through GREEN while shipping the
+  // identical null-return bug. This case pins the /i flags.
+  const upperCase = `
+export function openExternal(dest: string, w: Window = window): void {
+  const win = w.open(dest, '_blank', 'NOOPENER,NOREFERRER')
+  if (win) { win.opener = null } else { w.location.assign(dest) }
+}
+`;
+  if (run(upperCase).length === 0) selfFailures.push("UPPERCASE 'NOOPENER,NOREFERRER' not flagged (gate is case-SENSITIVE — browsers are not)");
+
+  // REVERT 2d — MixedCase noreferrer alone → fire.
+  const mixedCase = `
+export function openExternal(dest: string, w: Window = window): void {
+  const win = w.open(dest, '_blank', 'NoReferrer')
+  if (win) { win.opener = null } else { w.location.assign(dest) }
+}
+`;
+  if (run(mixedCase).length === 0) selfFailures.push("MixedCase 'NoReferrer' alone not flagged");
+
+  // ORCH-1382 — the EXACT shape mingla-business shipped, live, behind
+  // SeeWhosGoingGate. It must fire (it is the marketing bug, second copy).
+  const businessShipped = `
+export function openExternal(dest: string): void {
+  if (typeof window === "undefined") return;
+  const win = window.open(dest, "_blank", "noopener,noreferrer");
+  if (!win) window.location.assign(dest);
+}
+`;
+  if (run(businessShipped).length === 0) selfFailures.push("the LIVE mingla-business openExternal shape (ORCH-1382) not flagged");
+
+  // ORCH-1382 — the business module's FIXED shape (with its SSR guard + injectable w) must PASS.
+  const businessFixed = `
+export function openExternal(dest: string, w: Window | undefined = typeof window === "undefined" ? undefined : window): void {
+  if (w === undefined) return;
+  const win = w.open(dest, "_blank");
+  if (win) {
+    win.opener = null;
+  } else {
+    w.location.assign(dest);
+  }
+}
+`;
+  if (run(businessFixed).length !== 0) selfFailures.push("the FIXED mingla-business openExternal wrongly flagged: " + JSON.stringify(run(businessFixed)));
+
   // REVERT 3 — popup-block fallback deleted → fire (R4 + R3).
   const noFallback = `
 export function openExternal(dest: string, w: Window = window): void {
@@ -195,23 +258,27 @@ export function openExternal(dest: string, w: Window = window): void {
     selfFailures.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
-  console.log("ORCH-1381 open-external-no-double-nav self-test PASS (8/8 cases).");
+  console.log("ORCH-1381/1382 open-external-no-double-nav self-test PASS (12/12 cases,\n  incl. the noreferrer-only trap, the UPPERCASE case-insensitivity case, an\n  unconditional-sibling case only R3 catches, and BOTH the live mingla-business\n  broken shape and its fixed shape).");
   process.exit(0);
 }
 
-// ---- Live mode
-const abs = path.join(root, TARGET);
-if (!fs.existsSync(abs)) {
-  console.error(`ORCH-1381 FAIL — target not found at ${TARGET} (gate path out of sync).`);
-  process.exit(1);
-}
+// ---- Live mode (ORCH-1382 — BOTH owners)
 const failures = [];
-checkModule(fs.readFileSync(abs, "utf8"), failures);
+for (const TARGET of TARGETS) {
+  const abs = path.join(root, TARGET);
+  if (!fs.existsSync(abs)) {
+    console.error(`ORCH-1381/1382 FAIL — target not found at ${TARGET} (gate path out of sync).`);
+    process.exit(1);
+  }
+  checkModule(fs.readFileSync(abs, "utf8"), failures, TARGET);
+}
 
 if (failures.length > 0) {
   console.error(
-    "ORCH-1381 (I-PROPOSED-1381-OPEN-EXTERNAL-SINGLE-OWNER) FAIL — lib/open-external.ts is\n" +
-      "the ONE owner of opening an external destination. It must open with a BARE\n" +
+    "ORCH-1381/1382 (I-PROPOSED-1381-OPEN-EXTERNAL-SINGLE-OWNER, extended to mingla-business)\n" +
+      "FAIL — each package's openExternal is the ONE owner of opening an external\n" +
+      "destination for that package (mingla-business has NO import path to mingla-marketing,\n" +
+      "so there are legitimately TWO owners and BOTH are guarded). It must open with a BARE\n" +
       "window.open(dest,'_blank') (NEVER noopener/noreferrer — either token makes open()\n" +
       "return null even on success, firing the fallback on every tap and double-navigating\n" +
       "the page), sever win.opener = null to keep the noopener security property, and fall\n" +
@@ -221,7 +288,8 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "ORCH-1381 PASS — lib/open-external.ts opens with a bare window.open(dest,'_blank'),\n" +
+  `ORCH-1381/1382 PASS — both openExternal owners (${TARGETS.join(", ")})\n` +
+    "open with a bare window.open(dest,'_blank'),\n" +
     "carries no noopener/noreferrer feature string (which would null the return even on\n" +
     "success and double-navigate), severs win.opener = null for tabnabbing safety, and\n" +
     "keeps the location.assign( popup-block fallback strictly in the else-branch.",

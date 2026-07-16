@@ -161,14 +161,55 @@ export function resolveGuestFunnelTarget(
 }
 
 /**
- * ORCH-1328 client-side open byte-pattern (links-experience.tsx precedent):
- * open in a NEW context on the tap gesture so the event page stays mounted;
- * popup-blocked (window.open → null) → same-tab location.assign fallback (no
- * dead tap, T-A8). Never `location.href=` as the primary. No-op outside a
- * browser (the gate only ever opens on web).
+ * THE ONE OWNER of "open an external destination" inside mingla-business —
+ * ORCH-1382 (#917), extending ORCH-1381's single-owner invariant to this package.
+ *
+ * ⚠️ THE BUG THIS SHIPPED WITH, LIVE ON PRODUCTION:
+ *
+ *     const win = window.open(dest, '_blank', 'noopener,noreferrer')
+ *     if (!win) window.location.assign(dest)   // "popup-blocked fallback"
+ *
+ * Per the HTML spec, `noopener` — and `noreferrer`, which IMPLIES `noopener` —
+ * force window.open to return `null` EVEN ON SUCCESS. So `!win` was ALWAYS true
+ * and the "fallback" fired on EVERY tap: a new tab opened AND the origin page
+ * navigated away. Every single tap double-navigated.
+ *
+ * WHY IT MATTERED HERE SPECIFICALLY. This is the opener behind
+ * `SeeWhosGoingGate.tsx:273`, whose contract
+ * I-PROPOSED-1342-GATE-NEVER-NAMES-NEVER-REDIRECTS says the page "STAYS
+ * MOUNTED, never a redirect". The bug VIOLATED that live invariant while the
+ * invariant read GREEN — because ORCH-1381 fixed only the marketing copy and
+ * scoped its gate to `mingla-marketing/lib/open-external.ts`. mingla-business has
+ * NO import path to mingla-marketing (tsconfig `paths` maps only `@/*` and
+ * `@mingla/*` → packages/*), so it kept its own broken twin. ORCH-1381's
+ * single-owner invariant was, in this package, fiction.
+ *
+ * ⚠️ THE HALF-FIX TRAP (browser-verified, ORCH-1381 ADDENDUM C-4): `noreferrer`
+ * ALONE also returns null. Dropping only `noopener` reships the IDENTICAL bug
+ * with no visible difference. BOTH tokens must stay absent — the gate
+ * `.github/scripts/strict-grep/orch-1381-open-external-no-double-nav.mjs` now
+ * covers THIS file too and bans both, case-insensitively.
+ *
+ * SECURITY: dropping `noopener` loses nothing — `win.opener = null` severs the
+ * reference synchronously, before any script in the popup can run, so reverse
+ * tabnabbing remains impossible.
+ *
+ * REFERRER: dropping `noreferrer` lets the `Referer` header reach the
+ * destination. ACCEPTED (Seth, ORCH-1381 OQ-2, 2026-07-15): these are Mingla's
+ * own store listings, no PII, useful attribution.
+ *
+ * `w` is injectable so the behaviour is testable with a fake Window that
+ * reproduces the null-on-success contract. No-op outside a browser.
  */
-export function openExternal(dest: string): void {
-  if (typeof window === "undefined") return;
-  const win = window.open(dest, "_blank", "noopener,noreferrer");
-  if (!win) window.location.assign(dest);
+export function openExternal(dest: string, w: Window | undefined = typeof window === "undefined" ? undefined : window): void {
+  if (w === undefined) return;
+  // NO feature string — see the docblock. Either token nulls the return.
+  const win = w.open(dest, "_blank");
+  if (win) {
+    // Preserve the noopener SECURITY property without the null-return side effect.
+    win.opener = null;
+  } else {
+    // Genuine popup block → no silent failure, no dead tap.
+    w.location.assign(dest);
+  }
 }
