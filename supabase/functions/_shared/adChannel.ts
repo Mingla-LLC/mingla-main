@@ -7,10 +7,10 @@
  *   Mingla_Artifacts/research/ad-pipeline-2026-07-15/PROOF_LOG.md.
  *
  * One interface; per-platform modules _shared/{meta,tiktok,snapchat,google,
- * reddit}.ts each implement it. Meta (WP1), Google (WP2) and Reddit (WP6 #916)
- * are live adapters; the remaining two are fail-close stubs
- * (AdNotConnectedError → 424 <platform>_not_connected) until their WPs land
- * (WP5 snapchat, WP7 tiktok).
+ * reddit}.ts each implement it. All five are live adapters — Meta (WP1),
+ * Google (WP2), Reddit (WP6 #916), TikTok (WP7 #863) and Snapchat (WP5 #867)
+ * — each fail-closing (AdNotConnectedError → 424 <platform>_not_connected)
+ * while its secrets are unset.
  *
  * MONEY (A4.a / GR-01 — the 10,000x bug): budgets are stored in MINOR UNITS
  * (cents, bigint) everywhere; conversion to the platform unit happens at
@@ -510,35 +510,13 @@ export interface AuthedClient {
 import { metaAdapter } from "./meta.ts";
 import { googleAdapter } from "./google.ts";
 import { redditAdapter } from "./reddit.ts";
+import { snapchatAdapter } from "./snapchat.ts";
 import { tiktokAdapter } from "./tiktok.ts";
-
-function failCloseStub(platform: Platform): ChannelAdapter {
-  const notConnected = (): never => {
-    throw new AdNotConnectedError(platform);
-  };
-  return {
-    platform,
-    // deno-lint-ignore require-await
-    connect: async () => notConnected(),
-    // deno-lint-ignore require-await
-    createCampaign: async () => notConnected(),
-    // deno-lint-ignore require-await
-    createAdSet: async () => notConnected(),
-    // deno-lint-ignore require-await
-    createAd: async () => notConnected(),
-    // deno-lint-ignore require-await
-    setStatus: async () => notConnected(),
-    // deno-lint-ignore require-await
-    getStatus: async () => notConnected(),
-    // deno-lint-ignore require-await
-    setBudget: async () => notConnected(),
-  };
-}
 
 const ADAPTER_REGISTRY: Record<Platform, ChannelAdapter> = {
   meta: metaAdapter,
   tiktok: tiktokAdapter, // WP7 (#863) — live adapter (fail-close until TIKTOK_* secrets are set)
-  snapchat: failCloseStub("snapchat"), // WP5 (#867)
+  snapchat: snapchatAdapter, // WP5 (#867) — live adapter (fail-close until SNAPCHAT_* secrets are set)
   google: googleAdapter, // WP2 (#867) — live adapter (A1.3-0 provisioning flip)
   reddit: redditAdapter, // WP6 (#916) — live adapter (SPEC_ISSUE-REDDIT §3)
 };

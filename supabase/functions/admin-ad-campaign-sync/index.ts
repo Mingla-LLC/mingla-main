@@ -17,6 +17,16 @@
  * ads.review_status) AND policy_summary.review_status, plus
  * policy_topic_entries[] — into ads.review_detail via buildGoogleReviewDetail.
  *
+ * SNAPCHAT (ISSUE-867 WP5, GR-38): TWO review vocabularies — the AD enum
+ * (PENDING|APPROVED|REJECTED → ads.review_status, the delivery gate) and the
+ * CREATIVE enum (PENDING_REVIEW|APPROVED) — BOTH persisted, plus
+ * review_status_reasons[] (verbatim — the only machine-readable rejection
+ * signal) and delivery_status, into ads.review_detail via
+ * buildSnapchatReviewDetail; campaign/squad delivery_status arrays land as
+ * text on ad_campaigns.delivery_status / ad_sets.external_status. Poll-only:
+ * review is 3–5 business days with no SLA and Snap RE-REVIEWS post-launch —
+ * the same 30–60 min-while-PENDING cron cadence as Reddit drives this fn.
+ *
  * REDDIT (ISSUE-916 WP6, R-3/§6.1): Reddit has NO review_status field —
  * ads.review_status is DERIVED from ad.effective_status (PENDING_APPROVAL/
  * PROCESSING→PENDING, REJECTED→REJECTED, ACTIVE→APPROVED); billing/identity/
@@ -55,6 +65,7 @@ import {
   buildRedditReviewDetail,
   redditReviewStatusFromEffectiveStatus,
 } from "../_shared/reddit.ts";
+import { buildSnapchatReviewDetail } from "../_shared/snapchat.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -205,6 +216,17 @@ serve(async (req: Request): Promise<Response> => {
             })
             : campaign.platform === "reddit"
             ? buildRedditReviewDetail({
+              issuesInfo: s.issuesInfo,
+              adReviewFeedback: s.adReviewFeedback,
+            })
+            : campaign.platform === "snapchat"
+            // ISSUE-867 WP5 (GR-38): BOTH Snap review vocabularies — the AD
+            // enum (PENDING|APPROVED|REJECTED) and the CREATIVE enum
+            // (PENDING_REVIEW|APPROVED) — plus review_status_reasons (the only
+            // machine-readable rejection signal) and delivery_status, all into
+            // review_detail. Mapping one vocabulary onto the other loses the
+            // distinction; don't.
+            ? buildSnapchatReviewDetail({
               issuesInfo: s.issuesInfo,
               adReviewFeedback: s.adReviewFeedback,
             })

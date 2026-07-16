@@ -31,6 +31,7 @@ import {
   getAdapter,
 } from "../_shared/adChannel.ts";
 import { redditLaunchWarning } from "../_shared/reddit.ts";
+import { snapchatLaunchWarning } from "../_shared/snapchat.ts";
 import { tiktokLaunchWarning } from "../_shared/tiktok.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -200,6 +201,32 @@ serve(async (req: Request): Promise<Response> => {
         }
       }
       warning = redditLaunchWarning(adEffectiveStatus ?? effectiveStatus) ?? undefined;
+    } else if (action === "launch" && campaign.platform === "snapchat") {
+      // ISSUE-867 WP5 (AC-S-5 as tightened by A1.4): the warning keys off BOTH
+      // review vocabularies — the AD enum (PENDING|APPROVED|REJECTED) AND the
+      // CREATIVE enum (PENDING_REVIEW|APPROVED). Launch stays 200; review is
+      // Snap's delivery state, not our error (3–5 business days, no SLA; Snap
+      // re-reviews post-launch — the GR-38 sync cron keeps both fresh).
+      let adReviewStatus: string | null = null;
+      let creativeReviewStatus: string | null = null;
+      const firstAd = (ads ?? [])[0];
+      if (firstAd) {
+        try {
+          const adStatus = await adapter.getStatus(
+            connection,
+            "ad",
+            String(firstAd.external_ad_id),
+          );
+          adReviewStatus = adStatus.effectiveStatus;
+          const feedback = adStatus.adReviewFeedback ?? null;
+          creativeReviewStatus = feedback && typeof feedback.creative_review_status === "string"
+            ? feedback.creative_review_status
+            : null;
+        } catch {
+          adReviewStatus = null; // best-effort; sync repairs it
+        }
+      }
+      warning = snapchatLaunchWarning(adReviewStatus, creativeReviewStatus) ?? undefined;
     } else if (action === "launch" && campaign.platform === "tiktok" && effectiveStatus) {
       warning = tiktokLaunchWarning(effectiveStatus) ?? undefined;
     } else if (
