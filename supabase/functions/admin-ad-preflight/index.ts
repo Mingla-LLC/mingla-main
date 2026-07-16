@@ -53,8 +53,20 @@
  *                   resolve; a live Mingla market absent (GB today — T-P2)
  *                   ⇒ WARN naming the market (TikTok-side gate, escalated)
  *
- * Other channels are fail-closed stubs: single-platform request → 424
- * <platform>_not_connected; all-platform sweep → per-row not_connected entries.
+ * Snapchat (ISSUE-867 WP5 — SPEC §4.3 + A1.2, PROOF S-P1…S-P5):
+ *   P1 token      — refresh-token MINT (no static token — S-P1) + ad account
+ *                   ACTIVE (S-P2)
+ *   P2 funding    — ≥1 ACTIVE org funding source (S-P3: VISA, $15k/day)
+ *   P3 identity   — Public Profile id present as TRUSTED CONFIG (A1.2-8; the
+ *                   API lookup 403s on our token class — S-P4; the first
+ *                   creative create is the verification)
+ *   P4 pixel      — ACTIVE pixel ⇒ pass w/ gating note; pixel EVENTS are #865
+ *                   (LANDING_PAGE_VIEW / PIXEL_* stay gated); never a blocker
+ *   P5 tier       — n/a (own-OAuth-app refresh token)
+ *   P6 market     — n/a (Snap geos take ISO country codes directly)
+ *
+ * All five channels are live adapters — each fail-closes while its secrets
+ * are unset.
  *
  * Body: { platform?, lane?='consumer' } — omit platform for all five.
  * verify_jwt = true + in-code admin_users active gate. READ-ONLY (writes nothing).
@@ -101,6 +113,12 @@ import {
   tiktokFetchPixels,
   tiktokFetchRegions,
 } from "../_shared/tiktok.ts";
+import {
+  resolveSnapchatClient,
+  snapchatFetchAdAccount,
+  snapchatFetchFundingSources,
+  snapchatFetchPixels,
+} from "../_shared/snapchat.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -136,19 +154,147 @@ interface PreflightRow {
   checked_at: string;
 }
 
-function stubRow(platform: Platform, lane: string): PreflightRow {
+/**
+ * Snapchat preflight (ISSUE-867 WP5 — SPEC §4.3 + A1.2, PROOF S-P1…S-P5):
+ * P1 mint + ad account ACTIVE (there is NO static token — S-P1) · P2 funding
+ * source ACTIVE on the org (S-P3: VISA $15k/day) · P3 identity = the Public
+ * Profile TRUSTED CONFIG present (A1.2-8 — the API lookup 403s on our token
+ * class, S-P4; presence is ALL that can be checked pre-create) · P4 pixel
+ * ACTIVE as a WARN gate signal (#865 owns pixel EVENTS; LANDING_PAGE_VIEW /
+ * PIXEL_* goals stay gated until it fires) · P5 own-OAuth-app refresh token —
+ * no tier gate · P6 n/a (Snap targeting takes ISO country codes directly —
+ * {geos:[{country_code}]}; no resolver exists to break).
+ */
+async function snapchatPreflight(
+  conn: AdConnectionRow | null,
+  lane: string,
+): Promise<PreflightRow> {
+  const checks: PreflightCheck[] = [];
+  const push = (id: string, label: string, status: CheckStatus, detail: string | null = null) =>
+    checks.push({ id, label, status, detail });
+  const now = (): string => new Date().toISOString();
+
+  let client;
+  try {
+    // Lane-correct resolution (QA P2-3) + the refresh-token mint (fail-close).
+    client = await resolveSnapchatClient(conn ?? null, lane as "consumer" | "business");
+  } catch (err) {
+    const detail = err instanceof AdNotConnectedError
+      ? "snapchat_not_connected — set SNAPCHAT_REFRESH_TOKEN / SNAPCHAT_CLIENT_ID / SNAPCHAT_CLIENT_SECRET / SNAPCHAT_AD_ACCOUNT_ID (there is NO static token — S-P1), then connect."
+      : err instanceof Error
+      ? err.message
+      : String(err);
+    push("P1", "Token mints + ad account active", "fail", detail);
+    return { platform: "snapchat", lane, overall: "not_connected", checks, checked_at: now() };
+  }
+
+  // P1 — the minted token reads the configured ad account AND it is ACTIVE.
+  let organizationId: string | null = client.organizationId;
+  try {
+    const account = await snapchatFetchAdAccount(client);
+    organizationId = account.organizationId ?? organizationId;
+    const active = account.status === "ACTIVE";
+    push(
+      "P1",
+      "Token mints + ad account active",
+      active ? "pass" : "fail",
+      active
+        ? null
+        : `ad account status=${account.status ?? "unknown"} — an ACTIVE account is required (S-P2).`,
+    );
+    if (!active) {
+      return { platform: "snapchat", lane, overall: "red", checks, checked_at: now() };
+    }
+  } catch (err) {
+    push(
+      "P1",
+      "Token mints + ad account active",
+      "fail",
+      err instanceof AdApiError ? err.message : err instanceof Error ? err.message : String(err),
+    );
+    return { platform: "snapchat", lane, overall: "red", checks, checked_at: now() };
+  }
+
+  // P2 — funding servable: ≥1 ACTIVE funding source on the org (S-P3).
+  try {
+    const sources = organizationId
+      ? await snapchatFetchFundingSources(client, organizationId)
+      : [];
+    const active = sources.find((s) => s.status === "ACTIVE") ?? null;
+    push(
+      "P2",
+      "Funding source ACTIVE",
+      active ? "pass" : "fail",
+      active
+        ? `funding source ${active.id} (${active.type ?? "unknown"}) ACTIVE${
+          typeof active.dailySpendLimitMicro === "number"
+            ? `, daily limit ${active.dailySpendLimitMicro} micro`
+            : ""
+        }.`
+        : organizationId
+        ? "No ACTIVE funding source — a launched campaign would never spend (S-P3)."
+        : "Organization id unresolved (SNAPCHAT_ORG_ID unset and the account read carried none) — funding cannot be verified; fail-close.",
+    );
+  } catch (err) {
+    push("P2", "Funding source ACTIVE", "fail", err instanceof Error ? err.message : String(err));
+  }
+
+  // P3 — identity: the Public Profile id, TRUSTED CONFIG (A1.2-8). The
+  // businessapi lookup 403s on our marketing-scoped token (S-P4) — presence
+  // is the ONLY buildable check; the first creative create is the verification.
+  push(
+    "P3",
+    "Public Profile configured (trusted config)",
+    client.profileId ? "pass" : "fail",
+    client.profileId
+      ? `profile ${client.profileId} — UI-captured trusted config; unverifiable pre-create (the Public Profile API 403s on our token class, S-P4); the first creative create verifies it (accepted residual risk).`
+      : "SNAPCHAT_PROFILE_ID missing — creative create is impossible without profile_properties.profile_id (fail-close; A1.2-8).",
+  );
+
+  // P4 — pixel: exists+ACTIVE ⇒ pass with the goal-gating note; else WARN
+  // (SWIPES never uses it; #865 owns pixel EVENTS — A1.1(6)).
+  try {
+    const pixels = await snapchatFetchPixels(client);
+    const active = pixels.find((p) => p.status === "ACTIVE") ?? null;
+    push(
+      "P4",
+      "Pixel present",
+      active ? "pass" : "warn",
+      active
+        ? `pixel ${active.id} ACTIVE — but pixel EVENTS are #865's; LANDING_PAGE_VIEW / PIXEL_* goals stay gated (422 pixel_goal_unavailable) until it fires; SWIPES is the honest goal today (A1.1(6)).`
+        : "No ACTIVE pixel on the ad account — SWIPES campaigns are unaffected; pixel goals stay gated until #865.",
+    );
+  } catch (err) {
+    push("P4", "Pixel present", "warn", err instanceof Error ? err.message : String(err));
+  }
+
+  // P5 — access tier: own-OAuth-app refresh token (Mingla Ads Engine) — no
+  // tier gate; the reads above ran against the real account.
+  push(
+    "P5",
+    "Review / access tier",
+    "pass",
+    "Own-OAuth-app refresh token (marketing scope proven live, S-P1) — no tier gate.",
+  );
+
+  // P6 — market reachability: n/a — Snap targeting accepts ISO country codes
+  // directly ({geos:[{country_code}]}); there is no geo resolver to break
+  // (unlike Google criterion IDs / TikTok location_ids).
+  push(
+    "P6",
+    "Market reachable",
+    "n/a",
+    "Snap geo targeting takes ISO country codes directly — no resolver path exists to verify.",
+  );
+
+  const anyHardFail = checks.some((c) => c.status === "fail");
+  const anyWarn = checks.some((c) => c.status === "warn");
   return {
-    platform,
+    platform: "snapchat",
     lane,
-    overall: "not_connected",
-    checks: [{
-      id: "P1",
-      label: "Token valid",
-      status: "fail",
-      detail:
-        `${platform}_not_connected — adapter ships in a later WP (WP5 snapchat); fail-close until then.`,
-    }],
-    checked_at: new Date().toISOString(),
+    overall: anyHardFail ? "red" : anyWarn ? "amber" : "green",
+    checks,
+    checked_at: now(),
   };
 }
 
@@ -705,17 +851,6 @@ serve(async (req: Request): Promise<Response> => {
     .maybeSingle();
   if (!adminRow) return json({ error: "forbidden" }, 403);
 
-  // Single unbuilt platform → fail-close 424 (stub until its WP lands).
-  if (
-    platform !== undefined && platform !== "meta" && platform !== "google" &&
-    platform !== "reddit" && platform !== "tiktok"
-  ) {
-    return json({
-      error: `${platform}_not_connected`,
-      detail: stubRow(platform, lane).checks[0].detail,
-    }, 424);
-  }
-
   const loadConnection = async (p: Platform): Promise<AdConnectionRow | null> => {
     const { data } = await supabase
       .from("ad_connections")
@@ -742,8 +877,12 @@ serve(async (req: Request): Promise<Response> => {
     const row = await tiktokPreflight(await loadConnection("tiktok"), lane);
     return json({ rows: [row] });
   }
+  if (platform === "snapchat") {
+    const row = await snapchatPreflight(await loadConnection("snapchat"), lane);
+    return json({ rows: [row] });
+  }
 
-  // All five channels.
+  // All five channels (every adapter is live — WP5 closed the last stub).
   const rows: PreflightRow[] = [];
   for (const p of PLATFORMS) {
     if (p === "meta") rows.push(await metaPreflight(await loadConnection("meta"), lane));
@@ -753,7 +892,7 @@ serve(async (req: Request): Promise<Response> => {
       rows.push(await redditPreflight(await loadConnection("reddit"), lane));
     } else if (p === "tiktok") {
       rows.push(await tiktokPreflight(await loadConnection("tiktok"), lane));
-    } else rows.push(stubRow(p, lane));
+    } else rows.push(await snapchatPreflight(await loadConnection("snapchat"), lane));
   }
   return json({ rows });
 });

@@ -25,6 +25,18 @@
  * execution_options:['validate_only'] on the campaign + creative shapes —
  * zero objects created, zero DB writes.
  *
+ * SNAPCHAT (ISSUE-867 WP5 — AC-S-2/3/4/11/13): a self-contained branch runs
+ * the A1.2-corrected sequential create — campaign (objective_v2_type, S-1) →
+ * ad squad (delivery_constraint derived, S-4; demographics min_age "18"
+ * default, GR-39) → creative (WEB_VIEW; CTA allowlist, S-3; headline ≤34 /
+ * brand ≤32 / URL https ≤2048, GR-54; profile trusted config, A1.2-8) → ad
+ * (type REMOTE_WEBPAGE via the creative-type map, S-2) — ALL PAUSED, floors
+ * checked in MICRO after the ×10,000 conversion (AC-S-3), media consumed from
+ * the #866 library (never uploaded inline). Snap has NO validate-only:
+ * validate_only=true returns an explicit named-skipped-layers response with
+ * ZERO adapter calls (WP2 §10 — the generic block would create a REAL
+ * creative).
+ *
  * GOOGLE (ISSUE-867 WP2 — AC-G-2): a self-contained branch issues ONE atomic
  * `googleAds:mutate` (`partialFailure:false` — native no-orphan atomicity,
  * A1.1(4)) matching the PROVEN G-P3 reference body: budget → campaign (PAUSED,
@@ -46,6 +58,10 @@ import {
   AdNotConnectedError,
   type AdConnectionRow,
   AtomicCreateError,
+  type CreateAdInput,
+  type CreateAdSetInput,
+  type CreateCampaignInput,
+  type CreateCreativeInput,
   createFullCampaignAtomic,
   getAdapter,
   isLane,
@@ -72,6 +88,29 @@ import {
   validateGoogleFinalUrl,
   validateGoogleRsa,
 } from "../_shared/google.ts";
+import {
+  buildSnapchatReviewDetail,
+  SNAPCHAT_BID_STRATEGIES,
+  SNAPCHAT_DEFAULT_BID_STRATEGY,
+  SNAPCHAT_DEFAULT_OPTIMIZATION_GOAL,
+  SNAPCHAT_MIN_ADSQUAD_BUDGET_MICRO,
+  SNAPCHAT_MIN_CAMPAIGN_BUDGET_MICRO,
+  SNAPCHAT_MIN_SPEND_CAP_MICRO,
+  SNAPCHAT_PIXEL_GATED_GOALS,
+  type SnapchatCreateAdExtensions,
+  type SnapchatCreateCampaignExtensions,
+  type SnapchatCreateCreativeExtensions,
+  snapchatDemographicsWithDefault,
+  validateSnapchatBrandName,
+  validateSnapchatCta,
+  validateSnapchatDemographics,
+  validateSnapchatHeadline,
+  validateSnapchatName,
+  validateSnapchatObjective,
+  validateSnapchatOptimizationGoal,
+  validateSnapchatVideoDuration,
+  validateSnapchatWebViewUrl,
+} from "../_shared/snapchat.ts";
 import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "../_shared/businessWebOrigin.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -631,6 +670,628 @@ serve(async (req: Request): Promise<Response> => {
       }
       const detail = err instanceof Error ? err.message : String(err);
       console.error("[admin-ad-create-campaign] google unexpected:", detail);
+      return json({ error: "internal_error" }, 500);
+    }
+  }
+
+  // ══ SNAPCHAT branch (ISSUE-867 WP5 — AC-S-2/3/4/11/13, A1.2) ═══════════════
+  // Self-contained (like google's) so the Meta path stays byte-identical:
+  // validators (422s) → connection (424) → profile trusted-config gate (424
+  // snapchat_profile_missing — AC-S-11) → idempotent replay → destination
+  // resolve → media resolve (#866 library ref or explicit top_snap_media_id)
+  // → the VALIDATE GATE (Snap has NO validate-only — WP2 §10: the generic
+  // block would create a REAL creative; this branch returns named-skipped
+  // layers instead) → sequential atomic create (campaign → squad → creative →
+  // ad, ALL PAUSED) with compensating rollback → persist → audit.
+  if (platform === "snapchat") {
+    const requestIdS = typeof body.request_id === "string" && body.request_id.trim()
+      ? body.request_id.trim()
+      : null;
+    const validateOnlyS = body.validate_only === true;
+
+    // (1) Pure input validation — all 422s BEFORE any provider call.
+    const nameCheck = validateSnapchatName(name, "campaign name");
+    if (!nameCheck.ok) return json({ error: nameCheck.detail, detail: nameCheck.message }, 422);
+
+    const objectiveS = typeof body.objective === "string" ? body.objective : "TRAFFIC";
+    const objectiveCheck = validateSnapchatObjective(objectiveS);
+    if (!objectiveCheck.ok) {
+      return json({ error: objectiveCheck.detail, detail: objectiveCheck.message }, 422);
+    }
+
+    // A1.1(6) (OD-4 REVERSED): SWIPES default until #865's pixel fires.
+    const optimizationGoalS = typeof body.optimization_goal === "string"
+      ? body.optimization_goal
+      : SNAPCHAT_DEFAULT_OPTIMIZATION_GOAL;
+    const goalCheck = validateSnapchatOptimizationGoal(optimizationGoalS);
+    if (!goalCheck.ok) return json({ error: goalCheck.detail, detail: goalCheck.message }, 422);
+
+    // Budget level (OD-3): ABO (squad, ≥$5/day) default; CBO (campaign, ≥$20/day).
+    const budgetLevelS = budget.level === "campaign" ? "campaign" : "adset";
+    const budgetMicroS = (amountCents as number) * 10_000; // display-math only; the adapter owns THE conversion
+    const floorMicroS = budgetLevelS === "campaign"
+      ? SNAPCHAT_MIN_CAMPAIGN_BUDGET_MICRO
+      : SNAPCHAT_MIN_ADSQUAD_BUDGET_MICRO;
+    if (budgetMicroS < floorMicroS) {
+      // AC-S-3: min-check in MICRO after conversion, BEFORE any provider write.
+      return json({
+        error: "budget_below_minimum",
+        detail:
+          `Daily budget ${amountCents}¢ converts to ${budgetMicroS} micro — below Snap's ${floorMicroS} micro ${
+            budgetLevelS === "campaign" ? "($20.00 campaign)" : "($5.00 ad-squad)"
+          } floor (AC-S-3).`,
+        floor_micro: floorMicroS,
+        level: budgetLevelS,
+      }, 422);
+    }
+
+    // GR-64(a): the lifetime spend cap — the early safety rail on the
+    // $15k/day-limit account (S-P3). Optional; cents → micro ×10,000; min $20.
+    const spendCapCentsRaw = budget.spend_cap_cents;
+    if (
+      spendCapCentsRaw !== undefined &&
+      (!Number.isInteger(spendCapCentsRaw) || (spendCapCentsRaw as number) <= 0)
+    ) {
+      return json({ error: "validation_error", detail: "spend_cap_cents_invalid" }, 400);
+    }
+    const spendCapCentsS = spendCapCentsRaw as number | undefined;
+    if (
+      typeof spendCapCentsS === "number" &&
+      spendCapCentsS * 10_000 < SNAPCHAT_MIN_SPEND_CAP_MICRO
+    ) {
+      return json({
+        error: "spend_cap_below_minimum",
+        detail:
+          `spend_cap_cents ${spendCapCentsS}¢ converts below Snap's ${SNAPCHAT_MIN_SPEND_CAP_MICRO} micro ($20.00) minimum (GR-64).`,
+      }, 422);
+    }
+
+    // S-7 pre-call: bid strategy allowlist (MIN_ROAS deprecated) + bid_cents.
+    const bidStrategyS = typeof body.bid_strategy === "string"
+      ? body.bid_strategy
+      : SNAPCHAT_DEFAULT_BID_STRATEGY;
+    if (!(SNAPCHAT_BID_STRATEGIES as readonly string[]).includes(bidStrategyS)) {
+      return json({
+        error: "bid_strategy_invalid",
+        detail: `bid_strategy "${bidStrategyS}" is invalid — valid: ${
+          SNAPCHAT_BID_STRATEGIES.join(" | ")
+        } (MIN_ROAS was deprecated 10 Feb 2025 — S-7).`,
+      }, 422);
+    }
+    const bidCentsRaw = budget.bid_cents;
+    if (
+      bidCentsRaw !== undefined && (!Number.isInteger(bidCentsRaw) || (bidCentsRaw as number) <= 0)
+    ) {
+      return json({ error: "validation_error", detail: "bid_cents_invalid" }, 400);
+    }
+    const bidCentsS = bidCentsRaw as number | undefined;
+    if (bidStrategyS !== "AUTO_BID" && typeof bidCentsS !== "number") {
+      return json({
+        error: "bid_micro_required",
+        detail: `bid_strategy ${bidStrategyS} requires budget.bid_cents (converted ×10,000 to bid_micro).`,
+      }, 422);
+    }
+
+    const targetingS = (body.targeting ?? {}) as Record<string, unknown>;
+    const countriesS = targetingS.countries;
+    if (
+      !Array.isArray(countriesS) || countriesS.length === 0 ||
+      countriesS.some((c) => typeof c !== "string" || !c.trim())
+    ) {
+      return json({ error: "validation_error", detail: "targeting_countries_required" }, 400);
+    }
+    const countryCodesS = (countriesS as string[]).map((c) => c.trim().toUpperCase());
+    // GR-39: demographics default [{min_age:"18"}]; STRINGS, validated pre-call.
+    const demographicsS = snapchatDemographicsWithDefault(
+      Array.isArray(targetingS.demographics)
+        ? targetingS.demographics as Record<string, unknown>[]
+        : null,
+    );
+    const demographicsCheck = validateSnapchatDemographics(demographicsS);
+    if (!demographicsCheck.ok) {
+      return json({ error: demographicsCheck.detail, detail: demographicsCheck.message }, 422);
+    }
+
+    const creativeS = (body.creative ?? {}) as Record<string, unknown>;
+    const headlineCheck = validateSnapchatHeadline(creativeS.headline);
+    if (!headlineCheck.ok) {
+      return json({ error: headlineCheck.detail, detail: headlineCheck.message }, 422);
+    }
+    const headlineS = (creativeS.headline as string).trim();
+    const brandNameCheck = validateSnapchatBrandName(creativeS.brand_name);
+    if (!brandNameCheck.ok) {
+      return json({ error: brandNameCheck.detail, detail: brandNameCheck.message }, 422);
+    }
+    const brandNameS = typeof creativeS.brand_name === "string"
+      ? creativeS.brand_name.trim()
+      : undefined;
+
+    const destinationS = (body.destination ?? {}) as DestinationInput;
+    const pageTypeS = destinationS.page_type ?? "";
+    const brandSlugS = typeof destinationS.brand_slug === "string"
+      ? destinationS.brand_slug.trim()
+      : "";
+    const entitySlugS = typeof destinationS.entity_slug === "string"
+      ? destinationS.entity_slug.trim()
+      : "";
+    if (!["event", "trip", "brand", "venue"].includes(pageTypeS)) {
+      return json({ error: "validation_error", detail: "destination_page_type_invalid" }, 400);
+    }
+    if (!brandSlugS) {
+      return json({ error: "validation_error", detail: "destination_brand_slug_required" }, 400);
+    }
+
+    // S-3: CTA from the WEB_VIEW allowlist (VIEW_MORE does not exist) — defaults
+    // for reservation traffic: BUY_TICKETS (ticketed events) / BOOK_NOW (else).
+    const ctaS = typeof creativeS.call_to_action === "string"
+      ? creativeS.call_to_action
+      : pageTypeS === "event"
+      ? "BUY_TICKETS"
+      : "BOOK_NOW";
+    const ctaCheck = validateSnapchatCta("WEB_VIEW", ctaS);
+    if (!ctaCheck.ok) return json({ error: ctaCheck.detail, detail: ctaCheck.message }, 422);
+
+    // (2) Connection (fail-close) — 424 snapchat_not_connected.
+    const { data: sconnRow } = await supabase
+      .from("ad_connections")
+      .select("*")
+      .eq("platform", "snapchat")
+      .eq("lane", lane)
+      .maybeSingle();
+    if (!sconnRow || !sconnRow.connected || sconnRow.status !== "connected") {
+      return json({ error: "snapchat_not_connected" }, 424);
+    }
+    const sconn = sconnRow as unknown as AdConnectionRow;
+    const sconnExtra = (sconn.extra ?? {}) as Record<string, unknown>;
+
+    // (3) AC-S-11: Public Profile TRUSTED CONFIG gate — 424
+    //     snapchat_profile_missing with ZERO provider calls (A1.2-8; the API
+    //     lookup 403s on our token class, S-P4).
+    const profileIdS =
+      (typeof sconnExtra.profile_id === "string" && sconnExtra.profile_id.trim()) ||
+      (Deno.env.get(
+        lane === "business" ? "SNAPCHAT_MINGLABIZ_PROFILE_ID" : "SNAPCHAT_PROFILE_ID",
+      ) ?? "").trim();
+    if (!profileIdS) {
+      return json({
+        error: "snapchat_profile_missing",
+        detail:
+          "Snap creatives require profile_properties.profile_id (mandatory for all Snap advertisers). Set the SNAPCHAT_PROFILE_ID Function Secret (UI-captured trusted config — the Public Profile API 403s on our token class, S-P4), then reconnect.",
+      }, 424);
+    }
+
+    // A1.1(6)/AC-S-13: pixel-measured goals are gated on the #865 signal; a
+    // permitted pixel goal must carry pixel_id on the squad.
+    let pixelIdS: string | null = null;
+    if (SNAPCHAT_PIXEL_GATED_GOALS.includes(optimizationGoalS)) {
+      if (sconnExtra.pixel_installed !== true) {
+        return json({
+          error: "pixel_goal_unavailable",
+          detail:
+            `${optimizationGoalS} is pixel-measured and the Snap pixel sends no events yet (#865 owns the install) — optimizing to an event we don't send means no/erratic delivery (GR-21). Use SWIPES until the pixel fires.`,
+        }, 422);
+      }
+      pixelIdS = typeof sconnExtra.pixel_id === "string" && sconnExtra.pixel_id.trim()
+        ? sconnExtra.pixel_id.trim()
+        : null;
+      if (!pixelIdS) {
+        return json({
+          error: "pixel_goal_unavailable",
+          detail:
+            "The connection carries no pixel_id — a pixel-measured goal requires pixel_id on the ad squad (A1.1(6)). Reconnect to capture it.",
+        }, 422);
+      }
+    }
+
+    // Idempotency (A3 §A request_id): replay returns the existing row.
+    if (requestIdS && !validateOnlyS) {
+      const { data: existingS } = await supabase
+        .from("ad_campaigns")
+        .select("*")
+        .eq("connection_id", sconn.id)
+        .eq("request_id", requestIdS)
+        .maybeSingle();
+      if (existingS) return json({ campaign: existingS, idempotent_replay: true });
+    }
+
+    // (4) Destination resolve — READ-ONLY, public + live only (§4.4b; the
+    //     GR-52 sync re-checker re-asserts this same gate for the ad's life).
+    let destUrlS: string;
+    let destEventIdS: string | null = null;
+    if (pageTypeS === "event") {
+      if (!entitySlugS) {
+        return json({ error: "validation_error", detail: "destination_entity_slug_required" }, 400);
+      }
+      const { data: eventRow } = await supabase
+        .from("business_public_events_view")
+        .select("id, brand_slug, slug, status")
+        .eq("brand_slug", brandSlugS)
+        .eq("slug", entitySlugS)
+        .in("status", ["scheduled", "live"])
+        .maybeSingle();
+      if (!eventRow) return json({ error: "destination_not_public" }, 422);
+      destUrlS = `${BUSINESS_WEB_ORIGIN}/e/${brandSlugS}/${entitySlugS}`;
+      destEventIdS = String(eventRow.id);
+    } else if (pageTypeS === "brand") {
+      const { data: brandRow } = await supabase
+        .from("business_public_brands_view")
+        .select("id, slug")
+        .eq("slug", brandSlugS)
+        .maybeSingle();
+      if (!brandRow) return json({ error: "destination_not_public" }, 422);
+      destUrlS = `${BUSINESS_WEB_ORIGIN}/b/${brandSlugS}`;
+    } else {
+      return json({ error: "destination_not_public", detail: "dest_page_type_not_supported_wp1" }, 422);
+    }
+    // GR-54 + destination policy v1: the web-view URL is the canonical page
+    // (https, ≤2048) — NEVER the OneLink (D-P1).
+    const webViewUrlCheck = validateSnapchatWebViewUrl(destUrlS);
+    if (!webViewUrlCheck.ok) {
+      return json({ error: webViewUrlCheck.detail, detail: webViewUrlCheck.message }, 422);
+    }
+
+    // (5) Media resolve — the adapter NEVER uploads; media comes from the #866
+    //     creative library (uploadToSnap) or an explicit top_snap_media_id.
+    let topSnapMediaIdS = typeof creativeS.top_snap_media_id === "string"
+      ? creativeS.top_snap_media_id.trim()
+      : "";
+    const creativeLibraryIdS = typeof creativeS.creative_library_id === "string"
+      ? creativeS.creative_library_id.trim()
+      : "";
+    let creativeLibraryRowIdS: string | null = null;
+    if (!topSnapMediaIdS && creativeLibraryIdS) {
+      const { data: libCreative } = await supabase
+        .from("ad_creatives")
+        .select("id, kind, content_hash, duration_seconds")
+        .eq("id", creativeLibraryIdS)
+        .maybeSingle();
+      if (!libCreative) {
+        return json({ error: "creative_not_found", detail: "creative_library_id does not resolve" }, 422);
+      }
+      const { data: ref } = await supabase
+        .from("ad_creative_platform_refs")
+        .select("external_ref, status, content_hash")
+        .eq("creative_id", creativeLibraryIdS)
+        .eq("platform", "snapchat")
+        .eq("lane", lane)
+        .eq("external_account_id", sconn.external_account_id)
+        .maybeSingle();
+      if (!ref || ref.status !== "ready" || !ref.external_ref) {
+        return json({
+          error: "creative_not_uploaded",
+          detail:
+            "No READY snapchat platform ref for this creative on this ad account — upload it through the #866 creative library (admin-ad-creative-upload) first; create never uploads inline.",
+        }, 422);
+      }
+      if (ref.content_hash && libCreative.content_hash && ref.content_hash !== libCreative.content_hash) {
+        // A1-1 (#866): cache validity keys on CONTENT — a stale ref must never serve.
+        return json({
+          error: "creative_ref_stale",
+          detail:
+            "The snapchat platform ref was uploaded from different bytes than the creative's current content_hash — re-upload through the creative library.",
+        }, 422);
+      }
+      if (libCreative.kind === "video" && typeof libCreative.duration_seconds === "number") {
+        const durationCheck = validateSnapchatVideoDuration(libCreative.duration_seconds);
+        if (!durationCheck.ok) {
+          return json({ error: durationCheck.detail, detail: durationCheck.message }, 422);
+        }
+      }
+      topSnapMediaIdS = String(ref.external_ref);
+      creativeLibraryRowIdS = String(libCreative.id);
+    }
+    if (!topSnapMediaIdS) {
+      return json({
+        error: "validation_error",
+        detail:
+          "creative_media_required — pass creative.top_snap_media_id (an already-READY Snap media id) or creative.creative_library_id (#866 library).",
+      }, 400);
+    }
+
+    // ── THE VALIDATE GATE (WP2 report §10, binding): Snapchat has NO
+    //    validate-only — the generic validate block calls createCreative
+    //    unconditionally, which here would create a REAL media-backed
+    //    creative. Return the explicit named-skipped-layers response instead;
+    //    ZERO adapter calls. Deleting this gate re-opens the real-object
+    //    creation path during "validation". ──────────────────────────────────
+    if (validateOnlyS) {
+      const reason =
+        "snapchat_no_validate_only — the Snap Marketing API has no validate-only mode; attempting to validate would CREATE a real object (WP2 §10). Client-side validators (name/headline/brand/CTA/budget-floor/demographics/destination/media) all passed.";
+      return json({
+        validated: false,
+        validated_layers: [],
+        skipped_layers: [
+          { layer: "campaign", reason },
+          { layer: "ad_squad", reason },
+          { layer: "creative", reason },
+          { layer: "ad", reason },
+        ],
+        detail:
+          "validate_only — nothing was validated on Snapchat (no validate-only exists), nothing created, nothing persisted. The first real create is the platform-side validation.",
+      });
+    }
+
+    // (6) The sequential atomic create (§4.4b): campaign → squad → creative →
+    //     ad, ALL PAUSED, with compensating rollback (campaign delete does NOT
+    //     cascade the ad-account-scoped creative — GR-48; the runner tracks +
+    //     attempts both and audits residue).
+    const adapterS = getAdapter("snapchat");
+    const campaignInputS: CreateCampaignInput & SnapchatCreateCampaignExtensions = {
+      name,
+      objective: objectiveS,
+      ...(budgetLevelS === "campaign" ? { dailyBudgetCents: amountCents as number } : {}),
+      ...(typeof spendCapCentsS === "number" ? { spendCapCents: spendCapCentsS } : {}),
+      ...(typeof body.promotion_type === "string" ? { promotionType: body.promotion_type } : {}),
+    };
+    const adSetInputS: CreateAdSetInput = {
+      name: `${name} — ad squad`,
+      optimizationGoal: optimizationGoalS,
+      billingEvent: "IMPRESSION",
+      ...(budgetLevelS === "adset" ? { budgetCents: amountCents as number } : {}),
+      targeting: {
+        countries: countryCodesS,
+        demographics: demographicsS,
+        budget_mode: "daily",
+        bid_strategy: bidStrategyS,
+        ...(typeof bidCentsS === "number" ? { bid_cents: bidCentsS } : {}),
+        ...(pixelIdS ? { pixel_id: pixelIdS } : {}),
+      },
+    };
+    const creativeInputS: CreateCreativeInput & SnapchatCreateCreativeExtensions = {
+      destUrl: destUrlS, // A4.f/A1.1(5): the AD-VISIBLE destination — never the OneLink
+      message: headlineS, // interface-required; Snap creatives carry headline, not message
+      headline: headlineS,
+      callToActionType: ctaS,
+      campaignName: name,
+      adName: `${name} — ad`,
+      topSnapMediaId: topSnapMediaIdS,
+      brandName: brandNameS,
+      creativeType: "WEB_VIEW",
+    };
+    const adInputS: Omit<CreateAdInput, "externalCreativeId"> & SnapchatCreateAdExtensions = {
+      name: `${name} — ad`,
+      creativeType: "WEB_VIEW", // S-2: the map derives type REMOTE_WEBPAGE from this
+    };
+
+    try {
+      const created = await createFullCampaignAtomic(adapterS, sconn, {
+        campaign: campaignInputS,
+        adSet: adSetInputS,
+        creative: creativeInputS,
+        ad: adInputS,
+      });
+
+      // Read back BOTH review vocabularies + delivery state (best-effort;
+      // the GR-38 sync cron repairs/refreshes them).
+      let deliveryStatusS: string | null = null;
+      let adReviewStatusS: string | null = created.reviewStatus;
+      let reviewDetailS: Record<string, unknown> | null = null;
+      try {
+        const campaignStatus = await adapterS.getStatus(
+          sconn,
+          "campaign",
+          created.externalCampaignId,
+        );
+        deliveryStatusS = campaignStatus.effectiveStatus;
+      } catch {
+        deliveryStatusS = null;
+      }
+      try {
+        const adStatus = await adapterS.getStatus(sconn, "ad", created.externalAdId);
+        adReviewStatusS = adStatus.effectiveStatus ?? adReviewStatusS;
+        reviewDetailS = buildSnapchatReviewDetail({
+          issuesInfo: adStatus.issuesInfo,
+          adReviewFeedback: adStatus.adReviewFeedback,
+        });
+      } catch {
+        reviewDetailS = null;
+      }
+
+      const snapSmartLink = buildDestSmartLink({
+        pageType: pageTypeS,
+        brandSlug: brandSlugS,
+        entitySlug: entitySlugS || null,
+        externalCampaignId: created.externalCampaignId,
+        adName: `${name} — ad`,
+        platform: "snapchat",
+      });
+      const targetingRecordS: Record<string, unknown> = {
+        countries: countryCodesS,
+        demographics: demographicsS, // GR-39: min_age "18" default, strings
+      };
+
+      // (7) Persist ONE campaign+ad_set+ad row set (only now that all IDs exist).
+      const { data: campaignRowS, error: campaignErrS } = await supabase
+        .from("ad_campaigns")
+        .insert({
+          connection_id: sconn.id,
+          platform: "snapchat",
+          external_campaign_id: created.externalCampaignId,
+          name,
+          objective: objectiveS, // the objective_v2_type value (S-1)
+          status: "PAUSED",
+          daily_budget_cents: budgetLevelS === "campaign" ? amountCents : null,
+          delivery_status: deliveryStatusS,
+          status_synced_at: new Date().toISOString(),
+          targeting: targetingRecordS,
+          dest_page_type: pageTypeS,
+          dest_brand_slug: brandSlugS,
+          dest_entity_slug: entitySlugS || null,
+          dest_event_id: destEventIdS,
+          dest_url: destUrlS,
+          // A4.f-demoted slot: stored for attribution reference, never sent to Snap.
+          dest_smart_link: snapSmartLink,
+          request_id: requestIdS,
+          created_by: user.id,
+        })
+        .select("*")
+        .single();
+
+      let adSetRowS: Record<string, unknown> | null = null;
+      let adRowS: Record<string, unknown> | null = null;
+      let persistErrS = campaignErrS;
+      if (!persistErrS && campaignRowS) {
+        const { data, error } = await supabase
+          .from("ad_sets")
+          .insert({
+            campaign_id: campaignRowS.id,
+            external_adset_id: created.externalAdSetId,
+            name: `${name} — ad squad`,
+            targeting: targetingRecordS,
+            budget_cents: budgetLevelS === "adset" ? amountCents : null,
+            optimization_goal: optimizationGoalS,
+            billing_event: "IMPRESSION",
+            bid_strategy: bidStrategyS,
+            status: "PAUSED",
+          })
+          .select("*")
+          .single();
+        adSetRowS = data;
+        persistErrS = error;
+      }
+      if (!persistErrS && adSetRowS) {
+        const { data, error } = await supabase
+          .from("ads")
+          .insert({
+            ad_set_id: adSetRowS.id,
+            external_ad_id: created.externalAdId,
+            external_creative_id: created.externalCreativeId,
+            ...(creativeLibraryRowIdS ? { creative_id: creativeLibraryRowIdS } : {}),
+            name: `${name} — ad`,
+            status: "PAUSED",
+            // GR-38: the AD vocabulary (PENDING|APPROVED|REJECTED); the creative
+            // vocabulary + reasons + delivery_status live in review_detail.
+            review_status: adReviewStatusS,
+            review_detail: reviewDetailS,
+          })
+          .select("*")
+          .single();
+        adRowS = data;
+        persistErrS = error;
+      }
+
+      if (persistErrS) {
+        // Never a half-written DB row set: delete the campaign row (cascades),
+        // roll back the platform chain (creative FIRST — campaign delete does
+        // NOT cascade the ad-account-scoped creative, GR-48), then audit.
+        if (campaignRowS) await supabase.from("ad_campaigns").delete().eq("id", campaignRowS.id);
+        let creativeRollbackOkS: boolean | null = null;
+        if (created.externalCreativeId && adapterS.rollbackCreative) {
+          try {
+            await adapterS.rollbackCreative(sconn, created.externalCreativeId);
+            creativeRollbackOkS = true;
+          } catch {
+            creativeRollbackOkS = false; // residue — id recorded below
+          }
+        } else if (created.externalCreativeId) {
+          creativeRollbackOkS = false;
+        }
+        let rollbackOkS = false;
+        try {
+          if (adapterS.rollbackCampaign) {
+            await adapterS.rollbackCampaign(sconn, created.externalCampaignId);
+            rollbackOkS = true;
+          }
+        } catch {
+          rollbackOkS = false;
+        }
+        await supabase.from("ad_status_events").insert({
+          campaign_id: null,
+          platform: "snapchat",
+          entity: "campaign",
+          action: rollbackOkS && creativeRollbackOkS !== false ? "rollback" : "create_failed",
+          actor: user.id,
+          to_status: null,
+          external_ids: {
+            external_campaign_id: created.externalCampaignId,
+            external_adset_id: created.externalAdSetId,
+            external_creative_id: created.externalCreativeId,
+            external_ad_id: created.externalAdId,
+            // GR-48: the media id is tracked for reconciliation too (library
+            // media is a durable #866 asset — recorded, never deleted here).
+            external_media_id: topSnapMediaIdS,
+          },
+          provider_response: {
+            db_error: persistErrS.message,
+            ...(creativeRollbackOkS === false
+              ? { creative_residue_id: created.externalCreativeId }
+              : {}),
+          },
+        });
+        console.error("[admin-ad-create-campaign] snapchat persist failed:", persistErrS.message);
+        return json({ error: "internal_error", detail: "db_persist_failed_platform_rolled_back" }, 500);
+      }
+
+      await supabase.from("ad_status_events").insert({
+        campaign_id: campaignRowS.id,
+        platform: "snapchat",
+        entity: "campaign",
+        action: "create",
+        actor: user.id,
+        from_status: null,
+        to_status: "PAUSED",
+        external_ids: {
+          external_campaign_id: created.externalCampaignId,
+          external_adset_id: created.externalAdSetId,
+          external_creative_id: created.externalCreativeId,
+          external_ad_id: created.externalAdId,
+          external_media_id: topSnapMediaIdS,
+        },
+        provider_response: null,
+      });
+
+      return json({ campaign: campaignRowS, ad_set: adSetRowS, ad: adRowS });
+    } catch (err) {
+      if (err instanceof AdNotConnectedError) {
+        // A1.2-8 defense-in-depth: the adapter re-checks the profile config.
+        return json(
+          { error: err.detail === "snapchat_profile_missing" ? "snapchat_profile_missing" : "snapchat_not_connected" },
+          424,
+        );
+      }
+      if (err instanceof AtomicCreateError) {
+        // §4.4b partial-failure contract: NO ad_* rows; compensating cleanup
+        // already attempted (creative first — GR-48); audit for reconciliation.
+        const failure = err.failure;
+        const providerResponseS = failure.cause instanceof AdApiError
+          ? failure.cause.toJSON()
+          : {
+            message: failure.cause instanceof Error
+              ? failure.cause.message
+              : String(failure.cause),
+          };
+        const creativeResidueS = failure.creativeRollbackSucceeded === false
+          ? { creative_residue_id: failure.partialExternalIds.external_creative_id ?? null }
+          : {};
+        const fullyRolledBackS = failure.rollbackSucceeded !== false &&
+          failure.creativeRollbackSucceeded !== false;
+        await supabase.from("ad_status_events").insert({
+          campaign_id: null,
+          platform: "snapchat",
+          entity: "campaign",
+          action: fullyRolledBackS && failure.rollbackSucceeded === true
+            ? "rollback"
+            : "create_failed",
+          actor: user.id,
+          external_ids: {
+            ...failure.partialExternalIds,
+            external_media_id: topSnapMediaIdS,
+          },
+          provider_response: { step: failure.step, ...providerResponseS, ...creativeResidueS },
+        });
+        return json({
+          error: "snapchat_create_failed",
+          detail: providerResponseS,
+          step: failure.step,
+          rolled_back: failure.rollbackSucceeded,
+          creative_rolled_back: failure.creativeRollbackSucceeded,
+        }, 502);
+      }
+      if (err instanceof AdApiError) {
+        return json({ error: "snapchat_create_failed", detail: err.toJSON() }, 502);
+      }
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error("[admin-ad-create-campaign] snapchat unexpected:", detail);
       return json({ error: "internal_error" }, 500);
     }
   }

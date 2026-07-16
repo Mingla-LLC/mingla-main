@@ -49,8 +49,19 @@
  *      identity/pixel refs in extra; min_daily_budget_cents stays NULL — TikTok
  *      exposes no minimum via any read API; floors are validated at create)
  *
- * Other platforms are fail-close stubs until their WPs land:
- *   → 424 <platform>_not_connected.
+ * Snapchat connect (ISSUE-867 WP5, SPEC §4.3 + A1.2 — fail-CLOSE, in order):
+ *   1. secrets + refresh-token MINT (NO static token
+ *      exists — S-P1; 3600 s, cached with a 60 s margin) → 424 snapchat_not_connected
+ *   2. ad account read; status must be ACTIVE (S-P2)     → 424 snapchat_not_connected
+ *   3. org funding source ACTIVE (S-P3 — $15k/day VISA)  → 424 snapchat_funding_not_servable
+ *   4. Public Profile TRUSTED CONFIG present (A1.2-8 —
+ *      the API lookup 403s on our token class, S-P4;
+ *      verified only at the first creative create)       → 424 snapchat_profile_missing
+ *   5. pixel read (S-P5) — informational (#865 owns pixel
+ *      EVENTS; pixel goals stay gated); NEVER a blocker
+ *
+ * All five channels are live adapters — each fail-closes while its own
+ * secrets are unset.
  *
  * verify_jwt = true (config.toml) + in-code admin_users active gate (§4.4).
  * Writes via service-role only (RLS has no write policy for authenticated).
@@ -100,6 +111,17 @@ import {
   tiktokFetchPixels,
   type TikTokPixelSnapshot,
 } from "../_shared/tiktok.ts";
+import {
+  resolveSnapchatClient,
+  SNAPCHAT_AD_ACCOUNT_ID_REGEX,
+  SNAPCHAT_MIN_ADSQUAD_BUDGET_MICRO,
+  snapchatDefaultTokenEnvVar,
+  snapchatFetchAdAccount,
+  snapchatFetchFundingSources,
+  snapchatFetchPixels,
+  type SnapchatFundingSnapshot,
+  type SnapchatPixelSnapshot,
+} from "../_shared/snapchat.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -133,6 +155,10 @@ function defaultTokenEnvVar(platform: Platform, lane: Lane): string {
   if (platform === "tiktok") {
     // Lane-correct (QA P2-3) — TIKTOK_MINGLABIZ_* for the business lane.
     return tiktokDefaultTokenEnvVar(lane);
+  }
+  if (platform === "snapchat") {
+    // Lane-correct (QA P2-3) — SNAPCHAT_MINGLABIZ_* for the business lane.
+    return snapchatDefaultTokenEnvVar(lane);
   }
   const byPlatform: Record<Platform, string> = {
     meta: "META_SYSTEM_USER_TOKEN",
@@ -186,23 +212,222 @@ serve(async (req: Request): Promise<Response> => {
     return json({ error: "validation_error", detail: "action_invalid" }, 400);
   }
 
-  // ── Fail-close stub for the one unbuilt channel. ─────────────────────────────
-  if (
-    platform !== "meta" && platform !== "google" && platform !== "reddit" &&
-    platform !== "tiktok"
-  ) {
-    return json({
-      error: `${platform}_not_connected`,
-      detail: `${platform} adapter ships in a later WP (WP5 snapchat); fail-close until then.`,
-    }, 424);
-  }
-
   const { data: existing } = await supabase
     .from("ad_connections")
     .select("*")
     .eq("platform", platform)
     .eq("lane", lane)
     .maybeSingle();
+
+  // ── SNAPCHAT (ISSUE-867 WP5 — SPEC §4.3/§4.4a + A1.2, PROOF S-P1…S-P5) ───────
+  // Fail-CLOSE, in order (7-step style, mirrors reddit):
+  //   1. secrets + refresh-token MINT (there is NO static token — S-P1;
+  //      mint per call, cached 60 min)                → 424 snapchat_not_connected
+  //   2. ad account read; status must be ACTIVE (S-P2) → 424 snapchat_not_connected
+  //   3. funding source ACTIVE (S-P3: VISA $15k/day)  → 424 snapchat_funding_not_servable
+  //   4. Public Profile TRUSTED CONFIG present (A1.2-8:
+  //      the API lookup 403s on our token class — S-P4;
+  //      presence-only; first creative create verifies) → 424 snapchat_profile_missing
+  //   5. pixel read (S-P5) — informational for #865; pixel EVENTS don't flow
+  //      yet, so pixel goals stay gated (A1.1(6)); NEVER a connect blocker
+  if (platform === "snapchat") {
+    const markSnapchatInvalid = async (reason: string): Promise<void> => {
+      // QA WP7 F-1 sentinel class: only a real UUID-v4 ad-account id survives
+      // the invalid-row upsert — junk collapses to the explicit 'unconfigured'
+      // sentinel, and resolveSnapchatClient independently refuses to pin on a
+      // non-matching persisted id, so a failed connect can never brick the
+      // reconnect path.
+      const priorAccountId = (existing?.external_account_id ?? "").trim();
+      const envAccountId =
+        (Deno.env.get(
+          lane === "business" ? "SNAPCHAT_MINGLABIZ_AD_ACCOUNT_ID" : "SNAPCHAT_AD_ACCOUNT_ID",
+        ) ?? "").trim().toLowerCase();
+      await supabase
+        .from("ad_connections")
+        .upsert({
+          platform,
+          lane,
+          display_name: existing?.display_name ??
+            `Snapchat · ${lane === "business" ? "Business" : "Consumer"}`,
+          external_account_id: SNAPCHAT_AD_ACCOUNT_ID_REGEX.test(priorAccountId)
+            ? priorAccountId
+            : SNAPCHAT_AD_ACCOUNT_ID_REGEX.test(envAccountId)
+            ? envAccountId
+            : "unconfigured", // explicit sentinel — never fabricated data
+          external_org_id: existing?.external_org_id ?? null,
+          auth_kind: "refresh_token",
+          token_env_var: existing?.token_env_var ?? defaultTokenEnvVar(platform, lane),
+          // The failure cause is PERSISTED, not response-only (QA-916-3 parity).
+          extra: {
+            ...((existing?.extra ?? {}) as Record<string, unknown>),
+            last_error: reason,
+          },
+          status: "invalid",
+          connected: false,
+        }, { onConflict: "platform,lane" });
+    };
+
+    try {
+      // 1. Secrets + mint (fail-close — RT-1/AC-S-1) + account-id resolution.
+      const client = await resolveSnapchatClient(existing ?? null, lane);
+
+      // 2. Ad account must be ACTIVE (S-P2 shape).
+      const account = await snapchatFetchAdAccount(client);
+      if (account.status !== "ACTIVE") {
+        await markSnapchatInvalid(
+          `ad account ${client.adAccountId} is ${account.status ?? "in an unknown state"}`,
+        );
+        return json({
+          error: "snapchat_not_connected",
+          detail:
+            `Snap ad account ${client.adAccountId} is ${account.status ?? "in an unknown state"} — an ACTIVE account is required (S-P2).`,
+        }, 424);
+      }
+
+      // 3. Funding servable: ≥1 ACTIVE funding source on the org (S-P3).
+      const organizationId = account.organizationId ?? client.organizationId;
+      let fundingSources: SnapchatFundingSnapshot[] = [];
+      if (organizationId) {
+        fundingSources = await snapchatFetchFundingSources(client, organizationId);
+      }
+      const activeFunding = fundingSources.find((s) => s.status === "ACTIVE") ?? null;
+      if (!activeFunding) {
+        await markSnapchatInvalid("no ACTIVE funding source on the organization");
+        return json({
+          error: "snapchat_funding_not_servable",
+          detail: organizationId
+            ? "No ACTIVE funding source on the Snap organization — a launched campaign would never spend. Add/repair the payment method in Snap Ads Manager, then reconnect (S-P3)."
+            : "The organization id could not be resolved (SNAPCHAT_ORG_ID unset and the account read carried none) — funding cannot be verified; fail-close.",
+        }, 424);
+      }
+
+      // 4. Public Profile — TRUSTED CONFIG presence (A1.2-8; S-P4: the lookup
+      //    403s on our token class, so presence is ALL that can be checked;
+      //    the first creative create is the verification).
+      if (!client.profileId) {
+        await markSnapchatInvalid("SNAPCHAT_PROFILE_ID missing (trusted config — A1.2-8)");
+        return json({
+          error: "snapchat_profile_missing",
+          detail:
+            "Snap creatives require profile_properties.profile_id, and the Public Profile API is unreachable on our token class (403 — S-P4). Set the SNAPCHAT_PROFILE_ID Function Secret (UI-captured trusted config), then reconnect. Without it, creative create is impossible (fail-close).",
+        }, 424);
+      }
+
+      // 5. Pixel — informational (S-P5); events are #865's; never a blocker.
+      let pixels: SnapchatPixelSnapshot[] = [];
+      try {
+        pixels = await snapchatFetchPixels(client);
+      } catch {
+        pixels = [];
+      }
+      const pixel = pixels.find((p) => p.status === "ACTIVE") ?? pixels[0] ?? null;
+
+      if (action === "status" && !existing) {
+        return json({
+          connection: null,
+          snapchat: { account, funding: activeFunding, pixel },
+        });
+      }
+
+      const priorExtra = (existing?.extra ?? {}) as Record<string, unknown>;
+      const row = {
+        platform,
+        lane,
+        display_name: `Snapchat · ${lane === "business" ? "Business" : "Consumer"}${
+          account.name ? ` (${account.name})` : ""
+        }`,
+        external_account_id: client.adAccountId,
+        external_org_id: organizationId,
+        auth_kind: "refresh_token",
+        token_env_var: existing?.token_env_var ?? defaultTokenEnvVar(platform, lane),
+        // Env-var NAMES + captured platform ids only — never a secret value.
+        extra: {
+          ...priorExtra,
+          client_id_env_var: lane === "business"
+            ? "SNAPCHAT_MINGLABIZ_CLIENT_ID"
+            : "SNAPCHAT_CLIENT_ID",
+          client_secret_env_var: lane === "business"
+            ? "SNAPCHAT_MINGLABIZ_CLIENT_SECRET"
+            : "SNAPCHAT_CLIENT_SECRET",
+          profile_id_env_var: lane === "business"
+            ? "SNAPCHAT_MINGLABIZ_PROFILE_ID"
+            : "SNAPCHAT_PROFILE_ID",
+          // A1.2-8: UI-captured TRUSTED CONFIG — verified at first creative create.
+          profile_id: client.profileId,
+          pixel_id: pixel?.id ?? null,
+          pixel_status: pixel?.status ?? null,
+          // A1.1(6): the #865 signal gating LANDING_PAGE_VIEW / PIXEL_* goals.
+          // Preserved if #865 already flipped it; defaults false (SWIPES-only).
+          pixel_installed: priorExtra.pixel_installed === true,
+          funding_source_id: activeFunding.id,
+          funding_daily_spend_limit_micro: activeFunding.dailySpendLimitMicro,
+          last_error: null,
+        },
+        status: "connected",
+        currency: account.currency,
+        timezone: account.timezone,
+        // The ad-squad daily floor in cents ($5.00) — informational; the
+        // binding floor checks run in MICRO after conversion (A1.1(1)).
+        min_daily_budget_cents: SNAPCHAT_MIN_ADSQUAD_BUDGET_MICRO / 10_000,
+        account_status: account.status,
+        token_last_verified_at: new Date().toISOString(),
+        connected: true,
+        connected_by: user.id,
+      };
+      const { data: upserted, error: upsertError } = await supabase
+        .from("ad_connections")
+        .upsert(row, { onConflict: "platform,lane" })
+        .select("*")
+        .maybeSingle();
+      if (upsertError) {
+        console.error("[admin-ad-connect] snapchat upsert failed:", upsertError.message);
+        return json({ error: "internal_error" }, 500);
+      }
+      return json({
+        connection: upserted,
+        snapchat: {
+          account: {
+            id: account.id,
+            name: account.name,
+            status: account.status,
+            currency: account.currency,
+            timezone: account.timezone,
+          },
+          funding: {
+            id: activeFunding.id,
+            type: activeFunding.type,
+            status: activeFunding.status,
+            daily_spend_limit_micro: activeFunding.dailySpendLimitMicro,
+          },
+          profile_id: client.profileId,
+          pixel: pixel ? { id: pixel.id, name: pixel.name, status: pixel.status } : null,
+        },
+      });
+    } catch (err) {
+      if (err instanceof AdNotConnectedError) {
+        if (err.detail === "snapchat_profile_missing") {
+          await markSnapchatInvalid("SNAPCHAT_PROFILE_ID missing (trusted config — A1.2-8)");
+          return json({
+            error: "snapchat_profile_missing",
+            detail:
+              "Set the SNAPCHAT_PROFILE_ID Function Secret (UI-captured trusted config — the Public Profile API 403s on our token class, S-P4), then reconnect.",
+          }, 424);
+        }
+        const secretsDetail =
+          "SNAPCHAT_REFRESH_TOKEN / SNAPCHAT_CLIENT_ID / SNAPCHAT_CLIENT_SECRET (or the lane's SNAPCHAT_MINGLABIZ_* secrets) are not set, or the refresh token could not mint an access token (there is NO static token — S-P1). Set the Supabase Edge Function secrets, then reconnect.";
+        await markSnapchatInvalid(secretsDetail);
+        return json({ error: "snapchat_not_connected", detail: secretsDetail }, 424);
+      }
+      if (err instanceof AdApiError) {
+        await markSnapchatInvalid(err.message);
+        // Normalized error only — no token ever appears here (SC-SEC-1).
+        return json({ error: "snapchat_not_connected", detail: err.toJSON() }, 424);
+      }
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error("[admin-ad-connect] snapchat unexpected:", detail);
+      return json({ error: "internal_error" }, 500);
+    }
+  }
 
   // ── REDDIT (ISSUE-916 WP6 — SPEC §1.3/§1.4) ──────────────────────────────────
   // The 7-step fail-close pre-flight: mint → /me → business → ad account
