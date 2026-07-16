@@ -41,6 +41,7 @@
 
 import {
   APP_STORE_URL,
+  BUSINESS_INVITE_ONELINK_URL,
   DOWNLOAD_PAGE_URL,
   GUEST_FUNNEL_ONELINK_URL,
   PLAY_STORE_URL,
@@ -131,6 +132,28 @@ export function buildGuestFunnelOneLinkUrl(e: GuestFunnelEntity): string | null 
     "c=see_whos_going",
   ].join("&");
   return `${GUEST_FUNNEL_ONELINK_URL}?${params}`;
+}
+
+/**
+ * Compose the BUSINESS-APP invite download target — ORCH-1378.
+ *
+ * ONE URL for every platform: the OneLink's own 301 IS the device-awareness
+ * (curl-verified 2026-07-15 — Android → `market://…&referrer=af_tranid…`,
+ * iOS → `apps.apple.com/US/app/id6768737367`). Branching client-side to a store
+ * URL would DESTROY the `af_tranid` install attribution the OneLink exists to
+ * carry — which is exactly the defect in `success.tsx`'s hand-rolled iOS/Android
+ * button pair that ORCH-1378 replaces.
+ *
+ * Params mirror the `buildGuestFunnelOneLinkUrl` grammar above (the proven
+ * precedent): the SSOT constant stays clean, the channel is minted here.
+ *
+ * Lives in THIS pure module (no react, no react-native) so it is unit-testable
+ * under the node/ts-jest harness — the component that renders it cannot be
+ * imported there.
+ */
+export function buildBusinessInviteDownloadUrl(): string {
+  const params = ["pid=business_web", "c=brand_invite_accept"].join("&");
+  return `${BUSINESS_INVITE_ONELINK_URL}?${params}`;
 }
 
 /**
