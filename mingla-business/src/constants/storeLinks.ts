@@ -45,3 +45,41 @@ export const DOWNLOAD_PAGE_URL = "https://usemingla.com/download";
  * auditable and unit-testable (SPEC §4.1 rationale).
  */
 export const GUEST_FUNNEL_ONELINK_URL: string | null = null;
+
+/**
+ * THE BUSINESS-APP OneLink — ORCH-1378 [business invite download CTA].
+ *
+ * Live-verified by curl on 2026-07-15 (BOTH platforms, 301 on both):
+ *   Android → market://details?id=com.sethogieva.minglabusiness
+ *             &referrer=af_tranid%3D…      ← the `referrer` IS the attribution
+ *                                            (it rides the Play Install Referrer
+ *                                            into the install)
+ *   iOS     → https://apps.apple.com/US/app/id6768737367?mt=8
+ *
+ * ⚠️ FOUR THINGS THIS MUST NEVER BECOME — each is a real, specific failure:
+ *
+ *  1. NEVER `go.usemingla.com` — that branded domain is EXPLORER/CONSUMER-owned.
+ *     One AppsFlyer branded domain maps to exactly ONE OneLink template
+ *     (ORCH-1346), so a business link minted on go.* redirects per the CONSUMER
+ *     template → the WRONG STORE LISTING.
+ *  2. NEVER `minglabiz.onelink.me` — the raw vendor base. It works, but it is not
+ *     the branded domain and it is not what we measure on.
+ *  3. NEVER reuse `GUEST_FUNNEL_ONELINK_URL` above — that is the CONSUMER
+ *     guest-funnel flip constant and it is still `null` (dark).
+ *  4. NEVER `usemingla.com/business/download` — that page carries a PLAIN store
+ *     link, so the install arrives with NO ATTRIBUTION. The whole point of the
+ *     OneLink is the `af_tranid` referrer.
+ *
+ * Per-channel params (`?pid=…&c=…`) are minted AT THE CALL SITE, mirroring the
+ * proven `guestFunnelLink.ts:122-134` grammar — the base stays clean here.
+ *
+ * A CODE constant, not an env var: EXPO_PUBLIC_* web-export inlining is
+ * non-deterministic across build paths (COMMS-0028 class); a code constant is
+ * auditable and unit-testable.
+ *
+ * SSOT-ENFORCED (ORCH-1378): `.github/scripts/strict-grep/orch-1342-store-links-ssot.mjs`
+ * now BANS a `biz.usemingla.com` literal anywhere in mingla-business outside this
+ * file. That ban did NOT exist before — the gate was proven decorative for this
+ * domain (a raw literal injected outside the SSOT PASSED it).
+ */
+export const BUSINESS_INVITE_ONELINK_URL = "https://biz.usemingla.com/ZSCW";
