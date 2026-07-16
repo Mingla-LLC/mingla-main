@@ -186,6 +186,15 @@ export const NAV_GROUPS = [
       { id: "business-money-ledger",     label: "Money ledger",       icon: "Landmark" },
     ],
   },
+  // ISSUE-862 WP1: "Growth" nav group — the Full Rooms Ad Engine (5-channel,
+  // Meta first). The Megaphone icon MUST be registered in Sidebar.jsx ICON_MAP
+  // or the nav item silently falls back to LayoutDashboard (documented footgun).
+  {
+    label: "Growth",
+    items: [
+      { id: "ad-engine",                 label: "Ad Engine",          icon: "Megaphone" },
+    ],
+  },
 ];
 
 // Backward-compatible flat list (used by AppShell.currentTitle)

@@ -402,3 +402,34 @@ verify_jwt = true
 
 [functions.admin-stripe-connect-action]
 verify_jwt = true
+
+# ISSUE-862 WP1 [Full Rooms Ad Engine] — admin-ad-* edge fns (Meta channel +
+# 4 fail-close stubs). verify_jwt=true: the gateway rejects no-JWT callers (401);
+# each fn then re-verifies the JWT is a real user AND an active admin
+# (admin_users status='active' → else 403) before any platform call or DB write.
+# All platform tokens live ONLY in Edge Function Secrets, resolved via
+# ad_connections.token_env_var (env-var NAMES in the DB, never values).
+# Everything is created PAUSED; launch is an explicit admin action.
+[functions.admin-ad-connect]
+verify_jwt = true
+
+[functions.admin-ad-preflight]
+verify_jwt = true
+
+[functions.admin-ad-create-campaign]
+verify_jwt = true
+
+[functions.admin-ad-campaign-action]
+verify_jwt = true
+
+[functions.admin-ad-campaign-sync]
+verify_jwt = true
+
+# ISSUE-866 WP3 [Full Rooms Ad Engine — Creative Library] — records a canonical
+# creative row behind the A1-6 server-side byte-probe + the §2 validation matrix
+# + the COMMS-0102 crawler-permissiveness check. Same gate as the WP1 fns:
+# verify_jwt=true, then the in-code admin_users active gate (403). This fn never
+# calls an ad platform and never reads a platform token — platform upload is
+# lazy, at ad-create, via _shared/adCreative.ts resolveCreativeRef.
+[functions.admin-ad-creative-upload]
+verify_jwt = true

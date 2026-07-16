@@ -715,3 +715,206 @@ jobs:
             echo "ORCH-1362 Deno tests failed (attempt ${attempt}), retrying in 10s..."
             sleep 10
           done
+
+  ad-engine-deno-tests:
+    name: "ISSUE-862 WP1: Ad Engine channel-layer Deno tests"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: Run ISSUE-862 ad-engine Deno tests
+        env:
+          # Deliberately UNSET credentials: the RT-1 fail-close tests assert
+          # token-absent → AdNotConnectedError with ZERO Graph calls. No test
+          # in these suites performs a network call. (ISSUE-867 WP2: the
+          # AC-G-1 tests likewise assert GOOGLE_ADS_* absent →
+          # google_not_provisioned with zero network calls.)
+          META_SYSTEM_USER_TOKEN: ""
+          GOOGLE_ADS_DEVELOPER_TOKEN: ""
+          GOOGLE_ADS_REFRESH_TOKEN: ""
+          GOOGLE_ADS_OAUTH_CLIENT_ID: ""
+          GOOGLE_ADS_OAUTH_CLIENT_SECRET: ""
+          GOOGLE_ADS_LOGIN_CUSTOMER_ID: ""
+          GOOGLE_ADS_CUSTOMER_ID: ""
+          # ISSUE-916 WP6: the Reddit fail-close tests likewise assert
+          # secrets-absent → reddit_not_connected with ZERO network calls;
+          # every networked reddit test stubs globalThis.fetch.
+          REDDIT_ADS_CLIENT_ID: ""
+          REDDIT_ADS_CLIENT_SECRET: ""
+          REDDIT_ADS_REFRESH_TOKEN: ""
+        run: |
+          set -euo pipefail
+          # ISSUE-862 WP1 (registered 2026-07-15):
+          #  - adChannel.test.ts — A4.a mandatory money tests ($5.00→5,000,000
+          #    micro / $20.00→20,000,000 micro; TikTok ÷100; Meta identity),
+          #    Reddit-CTA-never-uppercased (GR-29), objective→goal matrix
+          #    (M-2/M-3), per-category floor mapping (A4.g), fail-close stubs,
+          #    and the §4.4b no-orphan atomic-create contract (RT-2).
+          #  - meta.test.ts — RT-1 fail-close (zero Graph calls), M-13
+          #    is_adset_budget_sharing_enabled, GR-11 PAUSED-everywhere, A4.f
+          #    creative link = dest_url (never the OneLink), M-4 CREDIT reject,
+          #    GR-18 review_detail never stores `recommendations`.
+          #  - issue862_wp1_tester_adversarial.test.ts — mingla-tester QA suite
+          #    (2026-07-15): money boundary attacks, Reddit-CTA exact pin,
+          #    PAUSED-invariant fuzz incl. hostile injected keys
+          #    (fails-on-revert vs the meta.ts PAUSED line), pixel-gate
+          #    boundary, floor-category conservatism, special-ad-category
+          #    adversarial shapes, A4.f destSmartLink source trap
+          #    (needs --allow-read), atomic step-4 + missing-rollback-hook.
+          #  - issue862_wp1_rework.test.ts — QA-FAIL rework regressions
+          #    (2026-07-15): P1-1 bid_strategy explicit on BOTH branches
+          #    (subcode 1815857, fails-on-revert), P2-3 lane-correct token
+          #    resolution, P2-5 creative rollback + residue honesty, P3-8 EAA
+          #    scrub, P3-9 MAX_BUDGET_CENTS bound (T-1 boundary preserved).
+          # ISSUE-867 WP2 (Google lane, 2026-07-15):
+          #  - google.test.ts — AC-G-1 fail-close (google_not_provisioned, zero
+          #    network calls), the PROVEN G-P3 mutate body (temp-ID
+          #    defined-before-referenced, G-14 containsEuPoliticalAdvertising,
+          #    PRESENCE, PAUSED, search-only networks, targetSpend,
+          #    partialFailure:false), RT-5 cents×10,000→micros, AC-G-4
+          #    REMOVED-never status writer, finalUrls-vs-trackingUrlTemplate
+          #    split (A4.f/A1.1(5)), G-4 RSA validators, GR-15/GR-73 keyword
+          #    rules, GR-37 London/Ontario geo disambiguation, G-3 dual review
+          #    vocabularies, ya29./1// secret scrubbing, mint cache.
+          #  - issue867_wp2_google_flow.test.ts — atomic-create wire flow
+          #    (headers + ~composite id + request-id capture), validateOnly
+          #    zero-fabrication, GR-52 destination re-checker gate (exact view
+          #    names + scheduled|live status filter; fail-close page types).
+          #  - issue867_wp2_tester_adversarial.test.ts — mingla-tester QA suite
+          #    (2026-07-15): header trio on EVERY Google Ads call
+          #    (fails-on-revert vs the login-customer-id header line),
+          #    mixed-lane env fail-close (no consumer↔business bleed), micros
+          #    overflow through the builder (QA P3-9 bound), finalUrls/
+          #    tracking-template swap traps + 2,084-BYTE boundary + source
+          #    trap (needs --allow-read), REMOVED-never hostile strings +
+          #    zero-wire-call proof + create-ops-only blast, GR-52 checker
+          #    throw-propagation + exact page-type matching + channel-generic
+          #    source trap, RSA/keyword exact-boundary passes, mutate-response
+          #    zero-fabrication, composite-id GAQL-injection guard,
+          #    normalizeGoogleError resilience.
+          # ISSUE-916 WP6 (Reddit lane, 2026-07-15):
+          #  - reddit.test.ts — SPEC §8 gates G-2 (Title-Case CTA never
+          #    uppercased/snake-cased), G-3 (toMicro ×10,000; CPC band edges;
+          #    NO invented daily floor — a $2.00/day goal_value passes), G-4
+          #    (targeting-allowlist property sweep, age unrepresentable,
+          #    r/ strip, community search query= never q=), plus AC-R-2 TTL
+          #    read-from-expires_in (no 3600 literal — source trap), AC-R-3
+          #    UA-on-every-call incl. the mint, AC-R-4 fail-close (zero
+          #    fetches), AC-R-7/8/9 PAUSED-explicit builders + unconditional
+          #    conversion_pixel_id + CBO cross-rule 422s (fails-on-revert vs
+          #    the reddit.ts PAUSED + pixel lines), AC-R-11 job state machine
+          #    (CLIENT_ERROR never resubmits; SERVER_ERROR bounded NEW jobs;
+          #    30s poll cap), AC-R-14 reverse-order PATCH-DELETED rollback +
+          #    orphaned t3_ recording (no DELETE verb — source trap),
+          #    AC-R-23/24/25 copy/destination/creative validation, AC-R-26
+          #    verbatim rejection_reason incl. the FACILIATE typo.
+          #  - issue916_wp6_tester_adversarial.test.ts (mingla-tester, 2026-07-15):
+          #    hostile job-poll payloads (4 id-key shapes + none + junk),
+          #    CLIENT_ERROR terminality (1 submission, zero post-verdict polls),
+          #    PAUSED fuzz with hostile status injection at all three levels,
+          #    CTA case/Unicode-lookalike attacks, age-key smuggling via the
+          #    passthrough, display_url/userinfo/uppercase-OneLink attacks,
+          #    the ALL-CAPS 2-vs-3 consecutive-shouted-words boundary
+          #    (fails-on-revert vs reddit.ts `if (run >= 3) return "block"` —
+          #    a different line than the implementor's three), bid-band edges
+          #    in cents through the builder, r=0-on-200 + headerless-429
+          #    backoff. ADV-A12 is ignore:true until the P1 QA-916-1 rework.
+          DENO_TEST_FILES=(
+            supabase/functions/_shared/__tests__/adChannel.test.ts
+            supabase/functions/_shared/__tests__/meta.test.ts
+            supabase/functions/_shared/__tests__/issue862_wp1_tester_adversarial.test.ts
+            supabase/functions/_shared/__tests__/issue862_wp1_rework.test.ts
+            supabase/functions/_shared/__tests__/issue862_wp1_retest_adversarial.test.ts
+            supabase/functions/_shared/__tests__/google.test.ts
+            supabase/functions/_shared/__tests__/issue867_wp2_google_flow.test.ts
+            supabase/functions/_shared/__tests__/issue867_wp2_tester_adversarial.test.ts
+            supabase/functions/_shared/__tests__/reddit.test.ts
+            supabase/functions/_shared/__tests__/issue916_wp6_tester_adversarial.test.ts
+          )
+          for attempt in 1 2 3; do
+            if deno test --allow-env --allow-read --no-check "${DENO_TEST_FILES[@]}"; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "ISSUE-862 ad-engine Deno tests failed after 3 attempts"
+              exit 1
+            fi
+            echo "ISSUE-862 ad-engine Deno tests failed (attempt ${attempt}), retrying in 10s..."
+            sleep 10
+          done
+
+  ad-creative-library-deno-tests:
+    name: "ISSUE-866 WP3: Creative Library byte-probe + matrix + resolver Deno tests"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: Run ISSUE-866 creative-library Deno tests
+        env:
+          # Deliberately UNSET credentials: every platform call in these suites
+          # runs against an injected fetch stub (deps.fetchImpl) or a scoped
+          # globalThis.fetch stub — ZERO live platform calls; secrets that the
+          # tests need are set/reset inside the tests themselves.
+          META_SYSTEM_USER_TOKEN: ""
+        run: |
+          set -euo pipefail
+          # ISSUE-866 WP3 (registered 2026-07-15):
+          #  - adCreativeProbe.test.ts — A1-6a byte-probe: PNG/JPEG/GIF/WebP
+          #    header parsing, MP4/MOV box walk (duration/dims/audio-presence/
+          #    codec fourcc), sha256 content-hash stability (A1-1), fail-close
+          #    on unknown bytes.
+          #  - adCreativeMatrix.test.ts — blueprint §2 tier tests per channel:
+          #    hard-reject rows BITE only at [SPEC]/[OFFICIAL] (audio-required,
+          #    TikTok 5-60s policy, Snap 3-180s + 5MB image, Google GIF/WEBP +
+          #    5,120KB); [3P] Reddit rows WARN via the central downgrade; typed
+          #    needs_transcode outcomes; A1-7 DO-NOT-BUILD absences pinned.
+          #    FAILS-ON-REVERT anchor: deleting the audio-required reject block
+          #    in adCreativeMatrix.ts fails this suite.
+          #  - adCreative.test.ts — resolveCreativeRef content-hash cache
+          #    keying (cached ready + hash match => ZERO uploads; mismatch =>
+          #    fresh upload), fail-close legs, Snap envelope double-assert
+          #    (request_status AND every sub_request_status), Snap mint (A1-2),
+          #    Google unique-name auto-suffix (A1-5) + resumable YouTube video
+          #    (A1-4), TikTok dual-id capture + name-collision suffix (A1-9),
+          #    Reddit fail-close stub (A1-1), COMMS-0102 crawler-UA URL check,
+          #    RT-4 + A1-1 migration schema pins, AC-8 token-scrub.
+          #  - issue866_wp3_rework.test.ts — QA-FAIL rework regressions
+          #    (2026-07-15): F-1 atomic checked lock acquisition (controlled-
+          #    interleaving race => at-most-once upload + same-ref-for-both,
+          #    fails-on-revert vs the checked-acquisition branch), F-2
+          #    stale-lock takeover (15-min bound) + fresh-lock guard, the
+          #    supabase guarded-acquisition wire shape (insert-ignore-dup +
+          #    guarded update predicate), F-3 hasAudio=null honesty + the
+          #    failSafe resolve-time block.
+          #  - issue866_wp3_tester_adversarial.test.ts — mingla-tester QA suite
+          #    (registered 2026-07-15): REAL-encoder embedded fixtures (ffmpeg
+          #    x264+AAC MP4s, cwebp VP8L), corrupt/truncated headers, box-size
+          #    overflow, zero-duration mvhd, magic-vs-extension masquerade,
+          #    >64MB fetch-guard attacks, byte-cap/duration boundaries,
+          #    same-length hash-collision cache attacks (fails-on-revert anchor
+          #    at the resolveCreativeRef content-hash guard), waiter hash
+          #    defenses, token-scrub on the failed-row write, unicode file
+          #    names, Snap chunked INIT/ADD-retry/FINALIZE wire shape, Google
+          #    magic-byte gate + duplicate-name suffix + resumable headers.
+          DENO_TEST_FILES=(
+            supabase/functions/_shared/__tests__/adCreativeProbe.test.ts
+            supabase/functions/_shared/__tests__/adCreativeMatrix.test.ts
+            supabase/functions/_shared/__tests__/adCreative.test.ts
+            supabase/functions/_shared/__tests__/issue866_wp3_tester_adversarial.test.ts
+            supabase/functions/_shared/__tests__/issue866_wp3_rework.test.ts
+          )
+          for attempt in 1 2 3; do
+            if deno test --allow-env --allow-read --no-check "${DENO_TEST_FILES[@]}"; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "ISSUE-866 creative-library Deno tests failed after 3 attempts"
+              exit 1
+            fi
+            echo "ISSUE-866 creative-library Deno tests failed (attempt ${attempt}), retrying in 10s..."
+            sleep 10
+          done
