@@ -2,7 +2,8 @@
  * ISSUE-864 WP4 — Step: Destination (SPEC §2.3 + A4.0(3) destination policy
  * v1, blueprint §1.2). Searchable card grid of LIVE PUBLIC pages only
  * (public + status ∈ {scheduled, live} + future start). The ad-visible link
- * is the CANONICAL usemingla.com URL on ALL channels — the OneLink is built
+ * is the CANONICAL public-web URL (PUBLIC_WEB_ORIGIN — the server-of-record
+ * host, QA P1-1) on ALL channels — the OneLink is built
  * server-side and rides only in Google's tracking template (PROOF D-P1: the
  * OneLink serves crawlers an app-install interstitial).
  */

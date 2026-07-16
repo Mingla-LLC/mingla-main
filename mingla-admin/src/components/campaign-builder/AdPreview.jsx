@@ -6,12 +6,17 @@
  * doesn't exist yet (flags.API_AD_PREVIEWS_ENABLED).
  */
 
+import { PUBLIC_WEB_ORIGIN } from "../../services/adDestinationsService";
+
 export function AdPreview({ brandName, primary, headline, cta, imageUrl, destUrl }) {
+  // QA P1-1: the placeholder host derives from the SAME origin constant the
+  // destination URLs are built from — never a divergent literal.
+  const fallbackHost = new URL(PUBLIC_WEB_ORIGIN).hostname.toUpperCase();
   const host = (() => {
     try {
-      return destUrl ? new URL(destUrl).hostname.toUpperCase() : "USEMINGLA.COM";
+      return destUrl ? new URL(destUrl).hostname.toUpperCase() : fallbackHost;
     } catch {
-      return "USEMINGLA.COM";
+      return fallbackHost;
     }
   })();
 

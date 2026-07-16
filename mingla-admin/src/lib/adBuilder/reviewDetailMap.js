@@ -91,7 +91,7 @@ function redditCards(detail) {
         severity: "error",
         title: "Reddit rejected the link as a bridge page.",
         body:
-          "A redirecting link reads as a bridge page. Point Reddit at the canonical usemingla.com page instead (destination policy v1 already does this — check the campaign's dest_url).",
+          "A redirecting link reads as a bridge page. Point Reddit at the canonical public event page instead (destination policy v1 already does this — check the campaign's dest_url).",
         action: "Switch to direct link",
       });
     } else if (/^ALCOHOL/.test(reason)) {
