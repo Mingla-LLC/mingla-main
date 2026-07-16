@@ -15,6 +15,30 @@
  *      back to /event/<id>/scanner when scope=event so the camera is one tap
  *      away; for scope=brand send them to the Home tab.
  *   5. On error → friendly error state per mapped status code (404/410/403).
+ *
+ * ─── ORCH-1374 [accept-scanner-invite-infinite-loader] ─────────────────────
+ * This route was a LINE-FOR-LINE CLONE of accept-brand-invitation.tsx's dead
+ * auth gate: `if (!isAuthReady) return;` sitting ABOVE `if (user === null) {
+ * router.replace('/auth?next=…') }`. Those are MUTUALLY EXCLUSIVE
+ * (`isBusinessAuthReady` is true ONLY for authStatus === "signed_in_ready";
+ * a logged-out visitor is terminally `signed_out`), so the redirect was DEAD
+ * CODE and a logged-out scanner would have spun forever.
+ *
+ * A LOADED LANDMINE, NOT A LIVE FIRE: production `scanner_invitations` = 0 rows,
+ * so this has never actually burned anyone. Fixed now because the shared-module
+ * fix makes it nearly free — and because the day the first scanner invite is
+ * sent is a bad day to discover it.
+ *
+ * ⚠️ `!isAuthReady` is NOT "still loading" — for a logged-out user it is
+ * TERMINAL. Branch on `authStatus`. (I-PROPOSED-1373-AUTH-TERMINAL-STATE-IS-ACTIONABLE)
+ *
+ * DELIBERATE DIFFERENCES from the brand route (all three are binding):
+ *  - No getSession() retry loop to remove — this route never had one.
+ *  - No `invite_declined` / `invite_currency_mismatch` copy: the scanner edge fn
+ *    (accept-scanner-invitation/index.ts:57-65) returns only FIVE codes and
+ *    neither of those. Adding them here would be DEAD COPY.
+ *  - No download CTA: a scanner accepting at a door is not a business-app
+ *    install target.
  */
 
 import React, { useCallback, useEffect, useState } from "react";
@@ -53,25 +77,22 @@ export default function AcceptScannerInvitationRoute(): React.ReactElement {
   const rawToken = Array.isArray(params.token) ? params.token[0] : params.token;
   const token = typeof rawToken === "string" ? rawToken.trim() : "";
 
-  const { isAuthReady, user } = useAuth();
+  // ORCH-1374 — branch on authStatus, never on the isAuthReady boolean.
+  const { authStatus } = useAuth();
   const { mutateAsync: acceptAsync } = useAcceptScannerInvitation();
 
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
   const [hasRun, setHasRun] = useState<boolean>(false);
 
   useEffect(() => {
-    if (!isAuthReady) return;
+    // The ONLY legitimate wait: auth genuinely transient.
+    if (authStatus === "bootstrapping" || authStatus === "refreshing") return;
     if (token.length === 0) {
       setPhase({ kind: "error", code: "validation", status: 400 });
       return;
     }
-    if (user === null) {
-      const next = encodeURIComponent(
-        `/accept-scanner-invitation?token=${token}`,
-      );
-      router.replace(`/auth?next=${next}` as never);
-      return;
-    }
+    // Terminal, actionable auth states render screens — they do NOT accept.
+    if (authStatus === "signed_out" || authStatus === "error") return;
     if (hasRun) return;
     setHasRun(true);
     void (async () => {
@@ -86,7 +107,7 @@ export default function AcceptScannerInvitationRoute(): React.ReactElement {
         }
       }
     })();
-  }, [isAuthReady, user, token, hasRun, acceptAsync, router]);
+  }, [authStatus, token, hasRun, acceptAsync]);
 
   const handleGoToScanner = useCallback((): void => {
     if (phase.kind !== "success") return;
@@ -101,14 +122,25 @@ export default function AcceptScannerInvitationRoute(): React.ReactElement {
     router.replace("/(tabs)/home" as never);
   }, [router]);
 
-  if (!isAuthReady || phase.kind === "loading") {
-    return (
-      <View style={styles.host}>
-        <ActivityIndicator size="large" color={accent.warm} />
-        <Text style={styles.copy}>Accepting your invitation…</Text>
-      </View>
-    );
-  }
+  const handleSignIn = useCallback((): void => {
+    // ORCH-1375 — /auth now READS this and the sessionStorage handoff carries it
+    // across the OAuth round-trip that destroys the URL.
+    const next = encodeURIComponent(`/accept-scanner-invitation?token=${token}`);
+    router.replace(`/auth?next=${next}` as never);
+  }, [router, token]);
+
+  const handleRetryAuth = useCallback((): void => {
+    if (typeof window !== "undefined") {
+      window.location.reload();
+      return;
+    }
+    router.replace(`/accept-scanner-invitation?token=${token}` as never);
+  }, [router, token]);
+
+  // ─── RENDER ──────────────────────────────────────────────────────────────
+  // ORCH-1374 (C-1373-C) — PRECEDENCE: resolved `phase` > auth axis. Once the
+  // outcome resolves, rendering is a pure function of `phase` and must never be
+  // re-masked by a later auth change.
 
   if (phase.kind === "success") {
     const isBrand = phase.result.scope === "brand";
@@ -135,20 +167,78 @@ export default function AcceptScannerInvitationRoute(): React.ReactElement {
     );
   }
 
-  const { title, body } = errorCopyFor(phase.code, phase.status);
+  if (phase.kind === "error") {
+    const { title, body } = errorCopyFor(phase.code, phase.status);
+    return (
+      <View style={styles.host}>
+        <View style={styles.card}>
+          <Text style={styles.title}>{title}</Text>
+          <Text style={styles.copy}>{body}</Text>
+          <Button
+            label="Back to Mingla"
+            onPress={handleGoHome}
+            variant="primary"
+            size="lg"
+            fullWidth
+          />
+        </View>
+      </View>
+    );
+  }
+
+  // `phase` unresolved → the auth axis decides.
+
+  // THE FIX — provably reachable for authStatus === "signed_out" (the branch the
+  // old `if (!isAuthReady) return;` made unreachable).
+  if (authStatus === "signed_out") {
+    return (
+      <View style={styles.host}>
+        <View style={styles.card}>
+          <Text style={styles.title}>You're invited</Text>
+          <Text style={styles.copy}>
+            Sign in to accept this scanner invitation. We'll bring you right back.
+          </Text>
+          <Button
+            label="Sign in"
+            onPress={handleSignIn}
+            variant="primary"
+            size="lg"
+            fullWidth
+          />
+        </View>
+      </View>
+    );
+  }
+
+  if (authStatus === "error") {
+    return (
+      <View style={styles.host}>
+        <View style={styles.card}>
+          <Text style={styles.title}>Something went wrong</Text>
+          <Text style={styles.copy}>
+            We couldn't check your sign-in. Try again in a moment.
+          </Text>
+          <Button
+            label="Try again"
+            onPress={handleRetryAuth}
+            variant="primary"
+            size="lg"
+            fullWidth
+          />
+        </View>
+      </View>
+    );
+  }
+
+  // The ONLY legitimate spinners.
   return (
     <View style={styles.host}>
-      <View style={styles.card}>
-        <Text style={styles.title}>{title}</Text>
-        <Text style={styles.copy}>{body}</Text>
-        <Button
-          label="Back to Mingla"
-          onPress={handleGoHome}
-          variant="primary"
-          size="lg"
-          fullWidth
-        />
-      </View>
+      <ActivityIndicator size="large" color={accent.warm} />
+      <Text style={styles.copy}>
+        {authStatus === "signed_in_ready"
+          ? "Accepting your invitation…"
+          : "Checking your invitation…"}
+      </Text>
     </View>
   );
 }

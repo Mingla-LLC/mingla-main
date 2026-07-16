@@ -73,15 +73,23 @@ const BANNED = [
  * GRANDFATHERED pre-existing debt (registered as ORCH-1342 discoveries — the
  * exceptions are FILE+PATTERN narrow, so any NEW literal class in these files
  * still fires):
- * - accept-brand-invitation/success.tsx carries the BUSINESS store listing
- *   URLs (id6768737367 / com.sethogieva.minglabusiness) inline — predates this
- *   gate; needs BUSINESS_* SSOT entries in a follow-up ORCH.
  * - appsFlyerService.ts (business) still sets go.usemingla.com as its branded
- *   domain — the ORCH-1346 business swap to minglabiz.onelink.me is bound to
- *   the next business NATIVE build (COMMS-0052/0063: no business OTA).
+ *   domain — the ORCH-1346 business swap is bound to the next business NATIVE
+ *   build (COMMS-0052/0063: no business OTA).
+ *
+ * ─── ORCH-1378 — accept-brand-invitation/success.tsx REMOVED from this map ──
+ * Its entry read: "carries the BUSINESS store listing URLs inline — predates
+ * this gate; NEEDS BUSINESS_* SSOT ENTRIES IN A FOLLOW-UP ORCH." ORCH-1378 IS
+ * that follow-up: the hardcoded, non-attributed, non-device-aware iOS/Android
+ * button pair is gone, replaced by the shared BusinessAppDownloadCta which
+ * imports BUSINESS_INVITE_ONELINK_URL from the SSOT. The debt is PAID, so the
+ * exemption is DELETED and the gate now polices that file like any other.
+ *
+ * A grandfather entry left behind after its debt is paid is a decorative guard:
+ * it silently re-authorises the exact literal class the gate exists to ban. If
+ * you pay off a debt here, delete the entry in the same commit.
  */
 const GRANDFATHERED = {
-  "mingla-business/app/accept-brand-invitation/success.tsx": new Set(["apple", "play"]),
   "mingla-business/src/services/appsFlyerService.ts": new Set(["onelink"]),
 };
 

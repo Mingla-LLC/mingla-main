@@ -7,8 +7,26 @@
  *   - 🎉 hero
  *   - "Welcome to {BrandName}" + partner attribution line
  *   - Primary: "Set up {BrandName} on the web →" → /brand/{id}/payments
- *   - Secondary: App Store + Play Store CTA pair (HARDCODED URLs per spec)
+ *   - Secondary: the shared BusinessAppDownloadCta (ORCH-1378)
  *   - Footer: "Or come back to your email anytime."
+ *
+ * ─── ORCH-1378 — what the store CTA used to be, and why it was wrong ───────
+ * This screen shipped a HARDCODED, NON-ATTRIBUTED, NON-DEVICE-AWARE pair of
+ * buttons ("Download for iOS" / "Download for Android"), shown to EVERYONE
+ * regardless of platform, opened via `window.location.href = url` — which
+ * DESTROYS the page rather than opening a tab.
+ *
+ * Three separate defects in one control:
+ *  1. NO ATTRIBUTION — plain store listings carry no `af_tranid`, so every
+ *     install from this screen was invisible to AppsFlyer.
+ *  2. The user had to self-identify their own platform.
+ *  3. location.href killed the celebration page on the way out.
+ *
+ * It is now the shared, OneLink-attributed, device-aware CTA. Because the URLs
+ * are gone, this file has ALSO been REMOVED from the ORCH-1342 gate's
+ * GRANDFATHERED map (the gate's own entry named this as debt "needing BUSINESS_*
+ * SSOT entries in a follow-up ORCH" — this is that follow-up). A grandfather
+ * entry left behind after the debt is paid is a decorative guard.
  *
  * Query params (all optional except brand_id):
  *   - brand_id      — UUID of the now-owned brand. Required.
@@ -24,8 +42,6 @@
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Linking,
-  Platform,
   StyleSheet,
   Text,
   View,
@@ -33,6 +49,7 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { Button } from "../../src/components/ui/Button";
+import { BusinessAppDownloadCta } from "../../src/components/invite/BusinessAppDownloadCta";
 import {
   accent,
   canvas,
@@ -43,12 +60,6 @@ import {
   typography,
 } from "../../src/constants/designSystem";
 import { supabase } from "../../src/services/supabase";
-
-// HARDCODED per spec — App Store records exist; URLs 404 pre-launch but
-// become live the moment Mingla Business ships. NO feature flag.
-const IOS_STORE_URL = "https://apps.apple.com/app/id6768737367";
-const ANDROID_STORE_URL =
-  "https://play.google.com/store/apps/details?id=com.sethogieva.minglabusiness";
 
 export default function AcceptBrandInvitationSuccess(): React.ReactElement {
   const router = useRouter();
@@ -103,14 +114,6 @@ export default function AcceptBrandInvitationSuccess(): React.ReactElement {
     router.replace(`/brand/${brandId}/payments` as never);
   };
 
-  const handleOpenStore = (url: string): void => {
-    if (Platform.OS === "web") {
-      if (typeof window !== "undefined") window.location.href = url;
-      return;
-    }
-    void Linking.openURL(url).catch(() => undefined);
-  };
-
   const displayName = brandName ?? brandSlug ?? "your brand";
   const partnerLine = ownerName
     ? `Hey ${ownerName} — Mingla has built it out for you.`
@@ -138,22 +141,7 @@ export default function AcceptBrandInvitationSuccess(): React.ReactElement {
           size="lg"
           fullWidth
         />
-        <View style={styles.storeStack}>
-          <Button
-            label="Download for iOS"
-            onPress={() => handleOpenStore(IOS_STORE_URL)}
-            variant="secondary"
-            size="lg"
-            fullWidth
-          />
-          <Button
-            label="Download for Android"
-            onPress={() => handleOpenStore(ANDROID_STORE_URL)}
-            variant="secondary"
-            size="lg"
-            fullWidth
-          />
-        </View>
+        <BusinessAppDownloadCta />
         <Text style={styles.footnote}>
           Or come back to your email anytime.
         </Text>
@@ -207,14 +195,6 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: textTokens.secondary,
     textAlign: "center",
-  },
-  // ORCH-1081 hotfix: stack the store buttons vertically full-width
-  // (was side-by-side row, which cramped "Download for Android" past the
-  // button edge on phone widths).
-  storeStack: {
-    flexDirection: "column",
-    gap: spacing.sm,
-    marginTop: spacing.sm,
   },
   footnote: {
     ...typography.caption,
