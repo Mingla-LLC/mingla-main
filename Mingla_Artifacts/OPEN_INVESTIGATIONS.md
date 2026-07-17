@@ -783,3 +783,5 @@
 > **2026-06-10 — ORCH-1081 [Partner workflow polish] no longer open.** Resolved + closed Grade A. Investigation surfaced 3 pre-existing bugs (immutability trigger, RPC schema, getBrands membership filter) that are now fixed + regression-tested. Full close banner in WORLD_MAP.
 
 - **2026-07-10 META-ORCH-1337 [social-proof-guest-list]:** investigation + all specs + build + test COMPLETE (see WORLD_MAP entry); no open investigation. Follow-ups live as ORCH-1350/1351/1352 (registered, not dispatched).
+
+> **2026-07-17 — ORCH-1385 [red-main phone-input dep] CLOSED ✅** (merged `d4f0996df` PR #929, tester PASS; repo-wide merge blockade lifted; guard `orch-1385-workspace-deps-declared` live; residue ORCH-1386 [native builds HELD] + ORCH-1387). ORCH-1384 [partner brand mgmt] implemented+DB-live, awaiting OQ-8 login for TEST.
