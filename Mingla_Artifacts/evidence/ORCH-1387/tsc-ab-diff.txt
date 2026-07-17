@@ -1,0 +1,12 @@
+< src/payments/StripeProviderWrapper.native.tsx(9,38): error TS2307: Cannot find module '@mingla/payments-native' or its corresponding type declarations.
+< src/payments/nativeCheckoutFlow.native.ts(33,39): error TS2307: Cannot find module '@mingla/payments-native' or its corresponding type declarations.
+> ../packages/payments-native/StripeNativeProvider.tsx(25,19): error TS2307: Cannot find module 'react' or its corresponding type declarations.
+> ../packages/payments-native/StripeNativeProvider.tsx(26,23): error TS2307: Cannot find module 'expo-constants' or its corresponding type declarations.
+> ../packages/payments-native/StripeNativeProvider.tsx(27,32): error TS2307: Cannot find module '@stripe/stripe-react-native' or its corresponding type declarations.
+> ../packages/payments-native/StripeNativeProvider.tsx(76,3): error TS7031: Binding element 'children' implicitly has an 'any' type.
+> ../packages/payments-native/StripeNativeProvider.tsx(77,3): error TS7031: Binding element 'publishableKey' implicitly has an 'any' type.
+> ../packages/payments-native/StripeNativeProvider.tsx(78,3): error TS7031: Binding element 'merchantIdentifier' implicitly has an 'any' type.
+> ../packages/payments-native/StripeNativeProvider.tsx(79,3): error TS7031: Binding element 'urlScheme' implicitly has an 'any' type.
+> ../packages/payments-native/useStripePaymentSheet.ts(47,24): error TS2307: Cannot find module 'react' or its corresponding type declarations.
+> ../packages/payments-native/useStripePaymentSheet.ts(48,27): error TS2307: Cannot find module '@stripe/stripe-react-native' or its corresponding type declarations.
+> src/payments/nativeCheckoutFlow.native.ts(351,9): error TS2353: Object literal may only specify known properties, and 'applePay' does not exist in type 'PaymentSheetInitInput'.
