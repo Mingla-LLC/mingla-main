@@ -85,7 +85,8 @@
     "test:orch-1163-guest-notify-match": "node ./scripts/ci/orch-1163-rsvp-guest-notify-match-check.mjs",
     "test:orch-1171": "node ./scripts/ci/orch-1171-keyboard-done-bar-check.mjs && node --test src/wrappers/__tests__/orch_1171_keyboard_toolbar_mount_coverage.test.mjs",
     "test:orch-1190": "node ./src/components/ui/__tests__/orch_1190_consumer_sheet_bottom_fill.test.mjs",
-    "test:orch-1322": "node ../.github/scripts/strict-grep/orch-1322-no-android-media-permissions.mjs --self-test && node ../.github/scripts/strict-grep/orch-1322-no-android-media-permissions.mjs && node ../.github/scripts/strict-grep/orch-1322-gallery-permission-wrapper-routed.mjs --self-test && node ../.github/scripts/strict-grep/orch-1322-gallery-permission-wrapper-routed.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ./src/utils/__tests__/orch1322MediaLibraryPermission.test.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ./src/utils/__tests__/orch1322DeadTapGuard.test.mjs"
+    "test:orch-1322": "node ../.github/scripts/strict-grep/orch-1322-no-android-media-permissions.mjs --self-test && node ../.github/scripts/strict-grep/orch-1322-no-android-media-permissions.mjs && node ../.github/scripts/strict-grep/orch-1322-gallery-permission-wrapper-routed.mjs --self-test && node ../.github/scripts/strict-grep/orch-1322-gallery-permission-wrapper-routed.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ./src/utils/__tests__/orch1322MediaLibraryPermission.test.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ./src/utils/__tests__/orch1322DeadTapGuard.test.mjs",
+    "test:orch-1387": "node --test src/payments/__tests__/wallet_config_threading.orch1387.test.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/anton": "^0.4.2",
