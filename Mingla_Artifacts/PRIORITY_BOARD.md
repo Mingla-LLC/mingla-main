@@ -765,3 +765,5 @@ On PASS → Post-PASS protocol → ORCH-0489 closes A, ORCH-0481 promotes D→A,
 
 
 > **2026-06-10 — ORCH-1081 [Partner workflow polish] off the board (CLOSED PASS Grade A).** See WORLD_MAP + MASTER_BUG_LIST for the close banner. Three pre-existing bugs caught + regression-tested with fails-on-revert hashes.
+
+> **2026-07-17 — ORCH-1385 [red-main phone-input dep] CLOSED ✅** (merged `d4f0996df` PR #929, tester PASS; repo-wide merge blockade lifted; guard `orch-1385-workspace-deps-declared` live; residue ORCH-1386 [native builds HELD] + ORCH-1387). ORCH-1384 [partner brand mgmt] implemented+DB-live, awaiting OQ-8 login for TEST.
