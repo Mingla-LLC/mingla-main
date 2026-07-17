@@ -109,6 +109,7 @@
     "@mingla/offering-rendering": "file:../packages/offering-rendering",
     "@mingla/payments-native": "file:../packages/payments-native",
     "@mingla/phone-input": "file:../packages/phone-input",
+    "@mingla/theme-animations": "file:../packages/theme-animations",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-native-community/datetimepicker": "8.4.4",
     "@react-native-community/netinfo": "11.4.1",
