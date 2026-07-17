@@ -1,0 +1,24 @@
+{
+  // ORCH-1387 — TESTER-ADVERSARIAL scoped lane (TEST phase, SPEC §9 A-3).
+  // Mirrors tsconfig.orch1387.typetest.json but includes ONLY the tester
+  // breadth typetest. Run from mingla-business:
+  //   npx tsc --noEmit -p ../packages/payments-native/tsconfig.orch1387.tester-adversarial.typetest.json
+  // Driven in-suite by walletConfigAdversarial.orch1387.tester.test.mjs.
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "types": [],
+    "paths": {
+      "@stripe/stripe-react-native": [
+        "../../mingla-business/node_modules/@stripe/stripe-react-native"
+      ]
+    }
+  },
+  "include": [
+    "types.ts",
+    "__typetests__/paymentSheetInitInput.orch1387.tester-adversarial.typetest.ts"
+  ]
+}
