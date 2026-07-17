@@ -4511,3 +4511,18 @@ jobs:
           node-version: "20"
       - name: Run ISSUE-864 campaign-builder tester adversarial node:test suite
         run: node --test mingla-admin/src/__tests__/issue864_campaign_builder_tester_adversarial.test.js
+
+  orch-1385-workspace-deps-declared:
+    name: "ORCH-1385: every @mingla/* workspace package imported by mingla-business or app-mobile is DECLARED in that app's own package.json as file:../packages/* — resolution must never lean on metro extraNodeModules aliasing alone, which is exactly what Dependabot #925's disguised expo 54→57 bump broke (@mingla/phone-input dead on web, @mingla/payments-native dead on the app-mobile native bundle, every PR red via the merged-result web-build check) (I-PROPOSED-1385-WORKSPACE-DEPS-DECLARED)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1385 workspace-deps-declared gate
+        run: node .github/scripts/strict-grep/orch-1385-workspace-deps-declared.mjs --self-test
+      - name: Run ORCH-1385 workspace-deps-declared gate
+        run: node .github/scripts/strict-grep/orch-1385-workspace-deps-declared.mjs
+      - name: Run ORCH-1385 adversarial companion node:test suite
+        run: node --test .github/scripts/strict-grep/orch-1385-workspace-deps-declared.test.mjs
