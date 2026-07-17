@@ -11,6 +11,8 @@
       "@mingla/offering-rendering/*": ["../packages/offering-rendering/*"],
       "@mingla/theme-animations": ["../packages/theme-animations"],
       "@mingla/theme-animations/*": ["../packages/theme-animations/*"],
+      "@mingla/payments-native": ["../packages/payments-native"],
+      "@mingla/payments-native/*": ["../packages/payments-native/*"],
       "@mingla/phone-input": ["../packages/phone-input"],
       "@mingla/phone-input/*": ["../packages/phone-input/*"],
       "@mingla/location-input": ["../packages/location-input"],

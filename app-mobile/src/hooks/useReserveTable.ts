@@ -1,5 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useStripePaymentSheet } from "@mingla/payments-native";
+import type { PaymentSheetInitInput } from "@mingla/payments-native";
 import { initStripe } from "@stripe/stripe-react-native";
 import * as WebBrowser from "expo-web-browser";
 
@@ -109,12 +110,14 @@ export const useReserveTable = (
       }
 
       // The wallet config (applePay/googlePay) is required for the wallet
-      // buttons to render in PaymentSheet (ORCH-0849), but it is not on the
-      // shared @mingla/payments-native PaymentSheetInitInput type (the package
-      // type predates the wallet config; the native SDK accepts it at runtime —
-      // exactly as nativeCheckoutFlow does). Pass it via a typed extension so
-      // the keys reach the SDK without forking the package type.
-      const walletConfig = {
+      // buttons to render in PaymentSheet (ORCH-0849). Since ORCH-1387 both
+      // keys are first-class, vendor-typed members of the shared
+      // @mingla/payments-native PaymentSheetInitInput, so the config is typed
+      // against the real contract — no cast needed to reach the SDK.
+      const walletConfig: Pick<
+        PaymentSheetInitInput,
+        "applePay" | "googlePay"
+      > = {
         // ORCH-1244 (Apple 4.9): explicit cartItems whose label is the venue/
         // reservation name so the Apple Pay summary line shows the reservation,
         // not the bare company name "Mingla". Empty title → "Reservation"
@@ -143,7 +146,7 @@ export const useReserveTable = (
               customerEphemeralKeySecret: created.customerEphemeralKeySecret,
             }
           : {}),
-        ...(walletConfig as Record<string, unknown>),
+        ...walletConfig,
       });
       if (initResult.error) {
         return {
