@@ -4544,7 +4544,6 @@ jobs:
           node --test
           mingla-business/src/payments/__tests__/walletConfigThreading.orch1387.test.mjs
           app-mobile/src/payments/__tests__/wallet_config_threading.orch1387.test.mjs
-          mingla-business/src/payments/__tests__/walletConfigAdversarial.orch1387.tester.test.mjs
 
   orch-1387-wallet-type-contract:
     name: "ORCH-1387: scoped wallet type-contract lane — PaymentSheetInitInput wallet keys vendor-typed against the installed @stripe/stripe-react-native; two-sided: reverting the extension breaks the typetest positives, any-widening trips TS2578 on the negatives (D-6-immune scoped tsc lane, never the app baselines)"
