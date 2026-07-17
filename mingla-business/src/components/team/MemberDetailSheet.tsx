@@ -8,6 +8,15 @@
  * disabled-with-caption when below threshold).
  *
  * Per Cycle 13a SPEC §4.11.
+ *
+ * ORCH-1384: the EXACT member row matching an accepted, non-cancelled
+ * partner_brand_links row (partnerLink prop non-null) gains a "Mingla
+ * Partner" badge, and — for the brand OWNER only — the destructive slot
+ * becomes "Disconnect partner", wired to useDisconnectLink through this
+ * component's own shipped ConfirmDialog pattern (DESIGN §2.4 —
+ * minimal-diff over uniformity for a live component; custom in-app confirm,
+ * never native Alert). Every OTHER member's remove stays byte-identical
+ * (`handleRemove` no-op preserved — ORCH-1051 untouched, SC-9).
  */
 
 import React, { useCallback, useState } from "react";
@@ -27,10 +36,19 @@ import {
 } from "../../utils/permissionGates";
 import { type BrandTeamEntry } from "../../store/brandTeamStore";
 import { formatRelativeTime } from "../../utils/relativeTime";
+import { useDisconnectLink } from "../../hooks/usePartnerBrandLinkMutations";
+import { errorCopyFor } from "../partner/PartnerLinkDetailSheet";
 
 import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { Icon } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
+
+/** ORCH-1384 — identifies the matched partner row (accepted, non-cancelled link). */
+export interface MemberDetailPartnerLink {
+  linkId: string;
+  brandId: string;
+}
 
 export interface MemberDetailSheetProps {
   visible: boolean;
@@ -40,6 +58,15 @@ export interface MemberDetailSheetProps {
   onClose: () => void;
   onRevoke: (entry: BrandTeamEntry) => void;
   onRemove: (entry: BrandTeamEntry) => void;
+  /**
+   * ORCH-1384 — non-null EXACTLY when this entry is the member row whose
+   * user_id matches an accepted, non-cancelled link's partner_account_id.
+   */
+  partnerLink?: MemberDetailPartnerLink | null;
+  /** ORCH-1384 — true when the viewer is the brand_owner (gates the verb). */
+  viewerIsOwner?: boolean;
+  /** ORCH-1384 — fires after a successful disconnect (sheet already closed). */
+  onPartnerDisconnected?: () => void;
 }
 
 export const MemberDetailSheet: React.FC<MemberDetailSheetProps> = ({
@@ -49,8 +76,15 @@ export const MemberDetailSheet: React.FC<MemberDetailSheetProps> = ({
   onClose,
   onRevoke,
   onRemove,
+  partnerLink = null,
+  viewerIsOwner = false,
+  onPartnerDisconnected,
 }) => {
   const [confirmVisible, setConfirmVisible] = useState<boolean>(false);
+  const [disconnectConfirmVisible, setDisconnectConfirmVisible] =
+    useState<boolean>(false);
+  const [disconnectError, setDisconnectError] = useState<string | null>(null);
+  const disconnectMutation = useDisconnectLink();
 
   const handleConfirm = useCallback((): void => {
     if (entry === null) return;
@@ -62,12 +96,34 @@ export const MemberDetailSheet: React.FC<MemberDetailSheetProps> = ({
     setConfirmVisible(false);
   }, [entry, onRevoke, onRemove]);
 
+  const handleDisconnectConfirm = useCallback(async (): Promise<void> => {
+    if (partnerLink === null) return;
+    setDisconnectError(null);
+    try {
+      await disconnectMutation.mutateAsync({
+        linkId: partnerLink.linkId,
+        brandId: partnerLink.brandId,
+      });
+      setDisconnectConfirmVisible(false);
+      onClose();
+      onPartnerDisconnected?.();
+    } catch (error) {
+      setDisconnectError(
+        errorCopyFor(error instanceof Error ? error.message : "server"),
+      );
+    }
+  }, [partnerLink, disconnectMutation, onClose, onPartnerDisconnected]);
+
   if (entry === null) {
     return null;
   }
 
   const isPending = entry.status === "pending";
   const isAccepted = entry.status === "accepted";
+
+  // ORCH-1384 — the matched partner row (badge always; verb owner-only).
+  const isPartnerRow = isAccepted && partnerLink !== null;
+  const showPartnerDisconnect = isPartnerRow && viewerIsOwner === true;
 
   const action = isPending ? "REVOKE_INVITATION" : "REMOVE_TEAM_MEMBER";
   const canAct = canPerformAction(currentRank, action);
@@ -103,6 +159,12 @@ export const MemberDetailSheet: React.FC<MemberDetailSheetProps> = ({
                 {roleDisplayName(entry.role)}
               </Text>
             </View>
+            {isPartnerRow ? (
+              <View style={styles.partnerBadge}>
+                <Icon name="award" size={10} color={accent.warm} />
+                <Text style={styles.partnerBadgeText}>Mingla Partner</Text>
+              </View>
+            ) : null}
           </View>
 
           <Text style={styles.statusText}>{statusText}</Text>
@@ -114,7 +176,31 @@ export const MemberDetailSheet: React.FC<MemberDetailSheetProps> = ({
             </Text>
           </View>
 
-          {(isPending || isAccepted) ? (
+          {showPartnerDisconnect ? (
+            <View style={styles.actions}>
+              <Button
+                label="Disconnect partner"
+                onPress={() => {
+                  setDisconnectError(null);
+                  setDisconnectConfirmVisible(true);
+                }}
+                variant="destructive"
+                size="lg"
+                fullWidth
+                testID="member-detail-disconnect-partner"
+                accessibilityLabel="Disconnect partner"
+              />
+              <View style={styles.actionSpacer} />
+              <Button
+                label="Cancel"
+                onPress={onClose}
+                variant="ghost"
+                size="md"
+                fullWidth
+                accessibilityLabel="Close member detail"
+              />
+            </View>
+          ) : (isPending || isAccepted) ? (
             <View style={styles.actions}>
               <Button
                 label={actionLabel}
@@ -164,6 +250,28 @@ export const MemberDetailSheet: React.FC<MemberDetailSheetProps> = ({
         confirmLabel={isPending ? "Revoke" : "Remove"}
         destructive
       />
+
+      {/* ORCH-1384 — owner-only partner disconnect (dual stamp: link
+          cancelled_at + team removed_at in ONE RPC transaction). The money
+          truth rides the description verbatim (DESIGN §9.2). Scrim/close
+          disable while the mutation is in flight (§5.5). */}
+      <ConfirmDialog
+        visible={disconnectConfirmVisible}
+        onClose={() => {
+          if (disconnectMutation.isPending) return;
+          setDisconnectConfirmVisible(false);
+          setDisconnectError(null);
+        }}
+        onConfirm={handleDisconnectConfirm}
+        title="Disconnect this partner?"
+        description="They'll lose team access and stop earning from future sales for this brand. Money already earned still pays out."
+        confirmLabel="Disconnect"
+        destructive
+        confirmLoading={disconnectMutation.isPending}
+        closeDisabled={disconnectMutation.isPending}
+        errorMessage={disconnectError}
+        confirmTestID="member-detail-disconnect-confirm"
+      />
     </>
   );
 };
@@ -187,6 +295,11 @@ const styles = StyleSheet.create({
   },
   rolePillRow: {
     flexDirection: "row",
+    alignItems: "center",
+    // ORCH-1384 — chips wrap on narrow screens (badge appended after the
+    // role pill; DESIGN §2.4).
+    flexWrap: "wrap",
+    rowGap: 4,
     marginTop: spacing.sm + 2,
   },
   rolePill: {
@@ -201,6 +314,27 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     color: accent.warm,
+  },
+  // ORCH-1384 — "Mingla Partner" badge. Text is text.primary on accent.tint
+  // (10.66:1/9.41:1 measured, DESIGN §4.3) — deliberately NOT the role pill's
+  // warm-on-tint (4.27:1 marginal): two different facts, two treatments.
+  partnerBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: radiusTokens.full,
+    backgroundColor: accent.tint,
+    borderWidth: 1,
+    borderColor: accent.border,
+    marginLeft: spacing.xs + 2,
+  },
+  partnerBadgeText: {
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 0.2,
+    color: textTokens.primary,
   },
   statusText: {
     fontSize: 13,

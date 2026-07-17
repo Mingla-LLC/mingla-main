@@ -59,6 +59,11 @@ import type {
   BrandTeamMemberRow,
 } from "../../../src/services/brandInvitationsService";
 import { useBrand } from "../../../src/hooks/useBrands";
+// ORCH-1384 — owner-side partner-link read: the member row whose user_id
+// matches an accepted, non-cancelled link's partner_account_id is the
+// PARTNER row (badge + owner-initiated disconnect).
+import { useBrandPartnerLinks } from "../../../src/hooks/usePartnerBrandLinks";
+import { Toast } from "../../../src/components/ui/Toast";
 import {
   BRAND_RESOLVE_AUTH_CEILING_MS,
   isBrandRouteResolving,
@@ -83,6 +88,12 @@ interface DisplayEntry {
   timestampIso: string;
   /** Optional reference to the underlying store entry — synthetic self-row has none. */
   storeEntry: BrandTeamEntry | null;
+  /**
+   * ORCH-1384 — the accepted, non-cancelled partner_brand_links id when this
+   * member IS the Mingla partner (user_id ↔ partner_account_id). Null for
+   * every other row.
+   */
+  partnerLinkId: string | null;
 }
 
 export default function BrandTeamRoute(): React.ReactElement {
@@ -130,6 +141,8 @@ export default function BrandTeamRoute(): React.ReactElement {
   const { data: invitationRows = [] } = useBrandInvitations(brandIdResolved);
   const { data: memberRows = [] } = useBrandTeamMembers(brandIdResolved);
   const { mutateAsync: revokeAsync } = useRevokeBrandInvitation(brandIdResolved);
+  // ORCH-1384 — accepted, non-cancelled links keyed by partner_account_id.
+  const { data: partnerLinkRows = [] } = useBrandPartnerLinks(brandIdResolved);
 
   const { role: currentRole, rank: currentRank } = useCurrentBrandRole(
     brandIdResolved,
@@ -137,6 +150,19 @@ export default function BrandTeamRoute(): React.ReactElement {
 
   const [inviteVisible, setInviteVisible] = useState<boolean>(false);
   const [detailEntry, setDetailEntry] = useState<DisplayEntry | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+
+  // ORCH-1384 — partner_account_id → link id for accepted, non-cancelled
+  // links (the badge/disconnect matcher; SPEC §4.6).
+  const partnerLinkByUserId = useMemo<Map<string, string>>(() => {
+    const map = new Map<string, string>();
+    for (const link of partnerLinkRows) {
+      if (link.accepted_at !== null && link.cancelled_at === null) {
+        map.set(link.partner_account_id, link.id);
+      }
+    }
+    return map;
+  }, [partnerLinkRows]);
 
   const pendingEntries = useMemo<DisplayEntry[]>(() => {
     const nowMs = Date.now();
@@ -161,6 +187,7 @@ export default function BrandTeamRoute(): React.ReactElement {
           new Date(row.expires_at).getTime() - 7 * 24 * 60 * 60 * 1000,
         ).toISOString(),
         storeEntry: invitationRowToEntry(row),
+        partnerLinkId: null,
       }));
   }, [invitationRows]);
 
@@ -191,6 +218,8 @@ export default function BrandTeamRoute(): React.ReactElement {
         status: "accepted",
         timestampIso: row.accepted_at ?? row.invited_at,
         storeEntry: memberRowToEntry(row),
+        // ORCH-1384 — the Mingla-partner member row (badge + owner disconnect).
+        partnerLinkId: partnerLinkByUserId.get(row.user_id) ?? null,
       }));
     // Synthesize self-row at top — solo operator falls back here.
     const selfRow: DisplayEntry | null =
@@ -203,10 +232,11 @@ export default function BrandTeamRoute(): React.ReactElement {
             status: "self",
             timestampIso: new Date().toISOString(),
             storeEntry: null,
+            partnerLinkId: null,
           }
         : null;
     return selfRow !== null ? [selfRow, ...fromServer] : fromServer;
-  }, [memberRows, currentRole, user, userId]);
+  }, [memberRows, currentRole, user, userId, partnerLinkByUserId]);
 
   const canInvite = canPerformAction(currentRank, "INVITE_TEAM_MEMBER");
 
@@ -384,6 +414,23 @@ export default function BrandTeamRoute(): React.ReactElement {
         onClose={() => setDetailEntry(null)}
         onRevoke={handleRevoke}
         onRemove={handleRemove}
+        // ORCH-1384 — partner identity + owner-only disconnect. The pending-
+        // invite revoke path above is UNCHANGED; the DB invite-kill trigger
+        // stamps the link server-side for every writer (F-6 closed, SC-10).
+        partnerLink={
+          detailEntry?.partnerLinkId != null && brandIdResolved !== null
+            ? { linkId: detailEntry.partnerLinkId, brandId: brandIdResolved }
+            : null
+        }
+        viewerIsOwner={currentRole === "brand_owner"}
+        onPartnerDisconnected={() => setToast("Partner disconnected")}
+      />
+
+      <Toast
+        visible={toast !== null}
+        kind="success"
+        message={toast ?? ""}
+        onDismiss={() => setToast(null)}
       />
     </View>
   );
@@ -433,6 +480,17 @@ const SectionList: React.FC<SectionListProps> = ({
                 {roleDisplayName(row.role)}
               </Text>
             </View>
+            {row.partnerLinkId !== null ? (
+              // ORCH-1384 — "Mingla Partner" badge, directly below the role
+              // pill for EXACTLY the matched partner row. Non-interactive
+              // label inside an already-tappable row (no dead tap). Text is
+              // text.primary on accent.tint (10.66:1, DESIGN §4.3) —
+              // deliberately NOT the role pill's warm-on-tint.
+              <View style={styles.partnerBadge} testID="team-partner-badge">
+                <Icon name="award" size={10} color={accent.warm} />
+                <Text style={styles.partnerBadgeText}>Mingla Partner</Text>
+              </View>
+            ) : null}
             {row.status === "pending" ? (
               <Text style={styles.rowSubText}>
                 {formatRelativeTime(row.timestampIso)}
@@ -580,6 +638,25 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "600",
     color: accent.warm,
+  },
+  // ORCH-1384 — "Mingla Partner" badge (DESIGN §2.4). accent.tint fill +
+  // accent.border border are real tokens; text.primary text (10.66:1).
+  partnerBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: radiusTokens.full,
+    backgroundColor: accent.tint,
+    borderWidth: 1,
+    borderColor: accent.border,
+  },
+  partnerBadgeText: {
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 0.2,
+    color: textTokens.primary,
   },
   rowSubText: {
     fontSize: 11,
