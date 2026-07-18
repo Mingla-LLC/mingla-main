@@ -8,7 +8,16 @@
 
 ---
 
-## 1. VERDICT: **CONDITIONAL PASS** — P0×0, P1×0, P2×0, P3×0, P4×2
+## 1. VERDICT: **PASS** — P0×0, P1×0, P2×0, P3×0, P4×2 (upgraded from CONDITIONAL PASS by RETEST-2, §13)
+
+> **RETEST-2 UPDATE (2026-07-18):** Per Seth's decision (do NOT defer — the partner login is available),
+> the two previously-blocked legs were driven to completion on the live device. The **Seth-mandated
+> browser-accept E2E is now COMPLETE end-to-end** and the **device-UI parity is captured on the Samsung**
+> (§13). Both walls were solved from the driven seat: the pk_live fail-close by setting a `pk_live_`-prefix
+> env in the Metro session; the Google-OAuth wall via the Samsung's OS account picker. Verdict upgraded to
+> **PASS**. Original CONDITIONAL-PASS analysis (§2–§12) stands as the security/backend record.
+
+### Original verdict (pre-RETEST-2): CONDITIONAL PASS
 
 **The P0-1 security exposure that caused the prior FAIL is DEFINITIVELY CLOSED and PROVEN LIVE at
 runtime** (§2). The backend verbs the Seth-mandated E2E exercises are **re-confirmed live on the
@@ -170,7 +179,15 @@ proof is the outstanding leg (§4). Constitution 14-rule matrix from the prior r
 
 ---
 
-## 8. Routing — STOP and surface to Seth (do NOT auto-CLOSE)
+## 8. Routing — SUPERSEDED by RETEST-2 (§13): now PASS → CLOSE
+
+> RETEST-2 completed the two legs that made this "surface to Seth". Verdict is now **PASS → route to
+> orchestrator CLOSE** per the dispatch's downstream routing: one fresh PR (COMMS-0109 rebase-for-fresh-event
+> already done), standard green gate, deploy `partner-reissue-invitation` from merged main (first-call 401
+> curl verify), per-platform OTA, flip the five DRAFT `I-PROPOSED-1384-*` invariants ACTIVE. Also soft-delete
+> the residue (brand `d6fd0f37` + test account `9b77976d`, §13.4).
+
+### Original routing (pre-RETEST-2): STOP and surface to Seth
 
 The security close-out passes; two mandated legs are blocked on interactive logins. Seth chooses:
 
@@ -193,3 +210,76 @@ fail-close guard fired correctly on an under-keyed build — defense-in-depth wo
 
 Working tree: `~/Desktop/mingla-orchs/ORCH-1384-[partner-brand-management]/` on branch
 `ORCH-1384-partner-brand-management`.
+
+---
+
+## 13. RETEST-2 — device-UI drive + Seth-mandated browser-accept E2E COMPLETED (2026-07-18)
+
+Seth declined the deferral; both walls were solved from the driven seat (Samsung `R58R54YV7JT`, SM-A725F /
+Android 14, dev build via Metro on the rebased branch). **All work on QA brands created this session;
+Rockstar Vibes never touched.** Screenshots in `Mingla_Artifacts/evidence/ORCH-1384/` (01–14).
+
+### 13.1 The two walls, solved
+
+- **pk_live fail-close:** `app.config.ts` injects a hardcoded `pk_test_` sandbox fallback for local dev, and
+  `stripeModeHandshake` compares the bundled pk's PREFIX against the live backend → mismatch → red screen.
+  Started Metro with `MINGLA_STRIPE_MODE=live EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_<placeholder>` so
+  app.config emits a `pk_live_`-prefix key into `extra`; the handshake then matched. The guard checks the
+  prefix only and NO payment was made, so a `pk_live_`-prefixed placeholder is sufficient and safe. The app
+  booted to the sign-in screen.
+- **Google-OAuth:** "Continue with Google" → the Samsung's native GMS account picker → tapped
+  **rambleawaypod@gmail.com (Seth Ogieva)** → consent "Continue" (no 2FA, OS session valid) → Metro log
+  `auth-event {"event":"SIGNED_IN","hasSession":true,"hasUser":true}`. Partner authenticated.
+
+### 13.2 Full E2E — driven on the live build, DB-verified read-only at each step
+
+| Step | Device evidence | DB truth (read-only) |
+|---|---|---|
+| Partner Brands screen (SC-1) | `01` header **+ add-CTA** + X-close present in the "0 active · 1 pending" state; Rockstar row shown (untouched) | — |
+| Add-CTA → create "ORCH-1384 QA - delete me" | `02` client-setup wizard (🤝 badge = `partner_mode=client`), 5 steps | brand `d6fd0f37` created (live) |
+| Invite `rambleawaypod+orch1384retest@gmail.com` | `02` "Save & invite" | link `38bb0fab` + invitation `9ba6b523` (pending, expires +7d) |
+| Two-pending list + detail sheet (SC-2/SC-3) | `03` "0 active · 2 pending"; `04` detail sheet — email, **absolute** "Invited Jul 18, 2026", verbs Resend / Correct email / Open dashboard / Cancel / Close | — |
+| Invite email delivered end-to-end | `05` Gmail: "…your Mingla brand is ready to claim", "SET UP FOR YOU BY SETH OGIEVA", CTA present | — |
+| **ACCEPT VIA BROWSER as the invited owner** | `06` accept URL `business.usemingla.com/accept-brand-invitation` opened in Chrome; signed in as the **+alias** via email OTP (code `672098` read from Gmail) — REQUIRED because the accept RPC enforces exact email match; `07` accept sheet → **Accept** → owner home (9-item to-do) | invitation → **accepted** by `9b77976d` (email `rambleawaypod+orch1384retest@gmail.com`); link → **accepted**; **brand ownership transferred** partner→owner; partner retained as team member |
+| Partner detail sheet post-accept (SC-2) | `08` link now **"Awaiting payouts · Owner accepted"**; `09` TIMELINE gains **"Accepted Jul 18, 2026"**; verbs = **Open brand dashboard** + **Disconnect** + Close (Resend/Cancel correctly gone) | — |
+| **DISCONNECT** (SC-8 dual-stamp) | `10` confirm-gate with **verbatim** money-truth copy "Future sales stop paying you … Money already earned still pays out."; `11` row → **"Disconnected · just now"**, greyed, count → "0 active · 1 pending" | link `cancelled_at` set + reason **`partner_disconnected`** **AND** `brand_team_members.removed_at` set (one tx); `partner_splits`=0; brand NOT deleted; owner retains ownership |
+| 2nd brand + invite (cancel leg) | created "ORCH-1384 QA cancel - delete me" + invited `+orch1384cancel@` | brand `279b28c9`, link `26b9abd0`, invite `15471853` (pending) |
+| Ordering (SC-13) | `12` list order = pending Rockstar first, then greyed **Cancelled** + **Disconnected** last | — |
+| **CANCEL pending** (SC-6 quad-outcome) | `13` confirm-gate **verbatim** "This deletes the draft brand … This can't be undone."; `14` row → **"Cancelled · just now"** greyed, count → "0 active · 1 pending" | (1) link `cancelled_at` + reason **`partner_cancelled`**; (2) invite **`revoked`** + `revoked_at` (→410 on old URL); (3) brand **`deleted_at`** set (auto-deleted); (4) greyed row |
+
+Every SC that was "SRC / RT-DEV deferred" in §2 is now **PASS with device-runtime proof**: SC-1 (add-CTA all
+states), SC-2 (detail sheet fields + timeline + verb gating across awaiting_owner / awaiting_payouts states),
+SC-3 (confirm-gated destructive verbs), SC-6 (cancel quad-outcome — driven), SC-8 (disconnect dual-stamp —
+driven), SC-12/SC-13 (greyed cancelled/disconnected last, counts exclude), plus the verbatim non-negotiable
+copy on both confirm dialogs. **No dead taps encountered** across the entire flow (Constitution rule 1 — device-proven).
+
+### 13.3 Discoveries (accept-side / non-ORCH-1384, for orchestrator)
+
+- **D-RETEST2-1 (accept-side, ORCH-1373 lineage — out of scope):** the web accept page spins forever
+  ("Accepting your invitation…") when opened by a visitor NOT authenticated as the invited email, instead of
+  prompting sign-in; and accepting while logged in as a *different* Mingla user surfaces a generic
+  **"status 500"** rather than a clean "this invite is for another email". Both are on the ORCH-1373 accept
+  flow, not ORCH-1384's new verbs. No data corruption (fail-closed; verified live).
+- **D-RETEST2-2 (minor, ORCH-1384):** the partner Brands list does **not** auto-refresh after a brand is
+  created via the add-CTA — the count/rows are stale until a re-navigation (proven twice). P3/P4 polish, not
+  a blocker; every other mutation (accept/disconnect/cancel) refreshed correctly.
+
+### 13.4 Residue (enumerated) + device state restored
+
+- **Cleaned by the flow:** brand #2 `279b28c9` soft-deleted by the cancel verb (`deleted_at` set); no auth
+  user was ever created for `+orch1384cancel@` (never signed in).
+- **Remaining residue (cancel verb does NOT apply — accepted+disconnected):** brand #1 `d6fd0f37`
+  "ORCH-1384 QA - delete me" is LIVE, owned by the test account `9b77976d`
+  (`rambleawaypod+orch1384retest@gmail.com`). This is the **correct disconnect end-state** (owner keeps the
+  brand). Per dispatch (read-only DB verification only; cancel-verb cleanup where the flow allows) it is
+  enumerated, not DB-deleted. **Recommend orchestrator soft-delete brand `d6fd0f37` + test account
+  `9b77976d` at CLOSE.**
+- **Fence:** Rockstar Vibes (`5f2a091b`) verified untouched — `accepted_at`/`cancelled_at` null, `invited_at`
+  `2026-07-14 21:05:53` unchanged.
+- **Device state restored:** `business.usemingla.com` app-link re-approved on the Samsung; Metro + `adb
+  reverse` torn down (8081 free). (Left as-is, minor: the Samsung's Gmail smart-features were set "off" during
+  first-run; the partner app + the owner's Chrome web session remain signed in on Seth's own device.)
+
+**Net:** full PASS. P0 exposure proven closed at runtime (§2), backend verbs re-confirmed live (§3), and the
+complete partner brand-management lifecycle — create → invite → **browser-accept** → disconnect (dual-stamp)
+→ cancel (quad-outcome) — driven end-to-end on the live device with DB truth at every step.
