@@ -58,6 +58,7 @@ import {
   AdNotConnectedError,
   type AdConnectionRow,
   AtomicCreateError,
+  centsToPlatformBudget,
   type CreateAdInput,
   type CreateAdSetInput,
   type CreateCampaignInput,
@@ -70,6 +71,8 @@ import {
   META_PIXEL_GATED_GOALS,
   isMetaGoalValidForObjective,
   metaBudgetCategoryForGoal,
+  REDDIT_CTA_MAP,
+  TIKTOK_CTA_MAP,
 } from "../_shared/adChannel.ts";
 import {
   applySpecialAdCategoryRestrictions,
@@ -88,6 +91,31 @@ import {
   validateGoogleFinalUrl,
   validateGoogleRsa,
 } from "../_shared/google.ts";
+import {
+  assertTikTokIdentityAllowed,
+  resolveTikTokGeo,
+  TIKTOK_BILLING_EVENTS,
+  TIKTOK_GENDERS,
+  TIKTOK_OPTIMIZATION_GOALS,
+  TIKTOK_PIXEL_GATED_OBJECTIVES,
+  type TikTokCreateAdExtensions,
+  tiktokUploadImage,
+  validateTikTokAdText,
+  validateTikTokBudgetFloor,
+  validateTikTokLandingPageUrl,
+  validateTikTokName,
+  validateTikTokObjective,
+} from "../_shared/tiktok.ts";
+import {
+  normalizeRedditObjective,
+  REDDIT_NAME_MAX,
+  REDDIT_NAME_MIN,
+  redditConnExtras,
+  redditCreateFullChain,
+  RedditChainError,
+  type RedditCreativeBuildInput,
+  validateRedditCreative,
+} from "../_shared/reddit.ts";
 import {
   buildSnapchatReviewDetail,
   SNAPCHAT_BID_STRATEGIES,
@@ -1292,6 +1320,1001 @@ serve(async (req: Request): Promise<Response> => {
       }
       const detail = err instanceof Error ? err.message : String(err);
       console.error("[admin-ad-create-campaign] snapchat unexpected:", detail);
+      return json({ error: "internal_error" }, 500);
+    }
+  }
+
+  // ══ TIKTOK branch (ISSUE-927; SPEC_ISSUE-863 §4.4(b) as corrected by A1) ═══
+  // Self-contained (house pattern) so the Meta path stays byte-identical:
+  // validators (422s) → connection + identity fail-close (424) → idempotent
+  // replay → destination resolve → media resolve → THE VALIDATE GATE (TikTok
+  // has NO validate-only mode — the generic block would create REAL objects;
+  // named-skipped-layers instead, zero adapter calls) → LIVE geo resolve
+  // (A1.1(e): tool/region per objective, fail LOUD on unavailable countries —
+  // GB is live-proven absent, T-P2) → image upload (GR-58) → the atomic
+  // create (campaign → ad group → no-op creative → ad, operation_status=
+  // DISABLE at ALL THREE levels — A1.0-4) → persist → audit. Budget floors
+  // run in DOLLARS after the ÷100 conversion (A1.0-1: $20/day ad group,
+  // $50/day CBO campaign); bid_type under CBO defaults in the builder
+  // (A1.1(b)); schedule_start_time defaults to now in UTC+0 (A1.1(a)).
+  if (platform === "tiktok") {
+    const requestIdT = typeof body.request_id === "string" && body.request_id.trim()
+      ? body.request_id.trim()
+      : null;
+    const validateOnlyT = body.validate_only === true;
+
+    // (1) Pure input validation — all 400/422s BEFORE any provider call.
+    const nameCheckT = validateTikTokName(name, "campaign_name");
+    if (!nameCheckT.ok) return json({ error: nameCheckT.detail, detail: nameCheckT.message }, 422);
+
+    const objectiveT = typeof body.objective === "string" ? body.objective : "TRAFFIC";
+    const objectiveCheckT = validateTikTokObjective(objectiveT);
+    if (!objectiveCheckT.ok) {
+      return json({ error: objectiveCheckT.detail, detail: objectiveCheckT.message }, 422);
+    }
+    // A1.0-6: no conversion optimization until #865 — the pixel has ZERO
+    // events (T-P4); optimizing to an event we don't send means no delivery.
+    if (TIKTOK_PIXEL_GATED_OBJECTIVES.includes(objectiveT)) {
+      return json({
+        error: "pixel_goal_unavailable",
+        detail:
+          `${objectiveT} is pixel-measured and the TikTok pixel sends no events yet (#865 owns the install — T-P4). Use TRAFFIC until the pixel fires.`,
+      }, 422);
+    }
+
+    const optimizationGoalT = typeof body.optimization_goal === "string"
+      ? body.optimization_goal
+      : "TRAFFIC_LANDING_PAGE_VIEW"; // A1.0-6 default
+    if (!(TIKTOK_OPTIMIZATION_GOALS as readonly string[]).includes(optimizationGoalT)) {
+      return json({
+        error: "invalid_optimization_goal",
+        detail: `optimization_goal "${optimizationGoalT}" is invalid — valid: ${
+          TIKTOK_OPTIMIZATION_GOALS.join(" | ")
+        }.`,
+      }, 422);
+    }
+    const billingEventT = typeof body.billing_event === "string" ? body.billing_event : "CPC";
+    if (!(TIKTOK_BILLING_EVENTS as readonly string[]).includes(billingEventT)) {
+      return json({
+        error: "validation_error",
+        detail: `billing_event "${billingEventT}" is invalid — valid: ${
+          TIKTOK_BILLING_EVENTS.join(" | ")
+        }.`,
+      }, 422);
+    }
+
+    // Budget level (OD-3 analog): ABO (ad group, ≥$20/day) default; CBO
+    // (campaign, ≥$50/day) on budget.level === "campaign". THE one cents→
+    // dollars conversion is centsToPlatformBudget; floors AFTER it (A1.0-1).
+    const budgetLevelT = budget.level === "campaign" ? "campaign" : "adset";
+    const dollarsT = centsToPlatformBudget("tiktok", amountCents as number);
+    const floorCheckT = validateTikTokBudgetFloor({
+      level: budgetLevelT === "campaign" ? "campaign" : "ad_group",
+      mode: "daily",
+      dollars: dollarsT,
+    });
+    if (!floorCheckT.ok) {
+      // AC-3 (amended): min-check after conversion, before any provider write.
+      return json({ error: floorCheckT.detail, detail: floorCheckT.message }, 422);
+    }
+
+    // Bidding (A1.1(b)): bid_type is optional here — under CBO the builder
+    // defaults BID_TYPE_NO_BID; bid_price rides only with BID_TYPE_CUSTOM.
+    const bidTypeT = typeof budget.bid_type === "string" ? budget.bid_type : undefined;
+    const bidPriceCentsRawT = budget.bid_price_cents;
+    if (
+      bidPriceCentsRawT !== undefined &&
+      (!Number.isInteger(bidPriceCentsRawT) || (bidPriceCentsRawT as number) <= 0)
+    ) {
+      return json({ error: "validation_error", detail: "bid_price_cents_invalid" }, 400);
+    }
+    const bidPriceCentsT = bidPriceCentsRawT as number | undefined;
+
+    const creativeT = (body.creative ?? {}) as Record<string, unknown>;
+    const adTextT = typeof creativeT.ad_text === "string"
+      ? creativeT.ad_text.trim()
+      : typeof creativeT.message === "string"
+      ? creativeT.message.trim()
+      : "";
+    const adTextCheckT = validateTikTokAdText(adTextT);
+    if (!adTextCheckT.ok) {
+      // AC-14: >100 weighted chars / emoji rejected edge-side, pre-call.
+      return json({ error: adTextCheckT.detail, detail: adTextCheckT.message }, 422);
+    }
+
+    const targetingT = (body.targeting ?? {}) as Record<string, unknown>;
+    const countriesT = targetingT.countries;
+    if (
+      !Array.isArray(countriesT) || countriesT.length === 0 ||
+      countriesT.some((c) => typeof c !== "string" || !c.trim())
+    ) {
+      return json({ error: "validation_error", detail: "targeting_countries_required" }, 400);
+    }
+    const countryCodesT = (countriesT as string[]).map((c) => c.trim().toUpperCase());
+    const genderT = typeof targetingT.gender === "string" ? targetingT.gender : undefined;
+    if (genderT !== undefined && !(TIKTOK_GENDERS as readonly string[]).includes(genderT)) {
+      return json({
+        error: "validation_error",
+        detail: `gender "${genderT}" is invalid — valid: ${TIKTOK_GENDERS.join(" | ")}.`,
+      }, 422);
+    }
+    const ageMinT = typeof targetingT.age_min === "number" ? targetingT.age_min : undefined;
+    const ageMaxT = typeof targetingT.age_max === "number" ? targetingT.age_max : undefined;
+
+    const destinationT = (body.destination ?? {}) as DestinationInput;
+    const pageTypeT = destinationT.page_type ?? "";
+    const brandSlugT = typeof destinationT.brand_slug === "string"
+      ? destinationT.brand_slug.trim()
+      : "";
+    const entitySlugT = typeof destinationT.entity_slug === "string"
+      ? destinationT.entity_slug.trim()
+      : "";
+    if (!["event", "trip", "brand", "venue"].includes(pageTypeT)) {
+      return json({ error: "validation_error", detail: "destination_page_type_invalid" }, 400);
+    }
+    if (!brandSlugT) {
+      return json({ error: "validation_error", detail: "destination_brand_slug_required" }, 400);
+    }
+
+    // CTA: TikTok CTAs are bare display strings (never a shared normalizer —
+    // GR-29); reservation-traffic defaults from the per-platform map.
+    const ctaT = typeof creativeT.call_to_action === "string"
+      ? creativeT.call_to_action
+      : pageTypeT === "event"
+      ? TIKTOK_CTA_MAP.ticketed_event
+      : TIKTOK_CTA_MAP.default;
+
+    // (2) Connection (fail-close) — 424 tiktok_not_connected.
+    const { data: tconnRow } = await supabase
+      .from("ad_connections")
+      .select("*")
+      .eq("platform", "tiktok")
+      .eq("lane", lane)
+      .maybeSingle();
+    if (!tconnRow || !tconnRow.connected || tconnRow.status !== "connected") {
+      return json({ error: "tiktok_not_connected" }, 424);
+    }
+    const tconn = tconnRow as unknown as AdConnectionRow;
+    const tconnExtra = (tconn.extra ?? {}) as Record<string, unknown>;
+
+    // (3) Identity fail-close BEFORE any create (T-6/AC-12): the adapter only
+    // asserts identity at the AD step — post-campaign, mid-chain. Gate here so
+    // a broken identity config never creates-then-rolls-back.
+    const identityTypeT = typeof tconnExtra.identity_type === "string"
+      ? tconnExtra.identity_type
+      : "TT_USER";
+    try {
+      assertTikTokIdentityAllowed(identityTypeT);
+    } catch (err) {
+      if (err instanceof AdApiError) {
+        return json({ error: err.code ?? "identity_forbidden", detail: err.message }, 422);
+      }
+      throw err;
+    }
+    const identityIdT = typeof tconnExtra.identity_id === "string"
+      ? tconnExtra.identity_id.trim()
+      : "";
+    if (!identityIdT) {
+      return json({
+        error: "tiktok_identity_missing",
+        detail:
+          "The connection carries no identity_id (extra.identity_id) — TikTok ad create requires an identity (TT_USER @usemingla — T-6). Re-run admin-ad-connect to capture it.",
+      }, 424);
+    }
+
+    // Idempotency (A3 §A request_id): replay returns the existing row.
+    if (requestIdT && !validateOnlyT) {
+      const { data: existingT } = await supabase
+        .from("ad_campaigns")
+        .select("*")
+        .eq("connection_id", tconn.id)
+        .eq("request_id", requestIdT)
+        .maybeSingle();
+      if (existingT) return json({ campaign: existingT, idempotent_replay: true });
+    }
+
+    // (4) Destination resolve — READ-ONLY, public + live only (§4.4b).
+    let destUrlT: string;
+    let destEventIdT: string | null = null;
+    if (pageTypeT === "event") {
+      if (!entitySlugT) {
+        return json({ error: "validation_error", detail: "destination_entity_slug_required" }, 400);
+      }
+      const { data: eventRow } = await supabase
+        .from("business_public_events_view")
+        .select("id, brand_slug, slug, status")
+        .eq("brand_slug", brandSlugT)
+        .eq("slug", entitySlugT)
+        .in("status", ["scheduled", "live"])
+        .maybeSingle();
+      if (!eventRow) return json({ error: "destination_not_public" }, 422);
+      destUrlT = `${BUSINESS_WEB_ORIGIN}/e/${brandSlugT}/${entitySlugT}`;
+      destEventIdT = String(eventRow.id);
+    } else if (pageTypeT === "brand") {
+      const { data: brandRow } = await supabase
+        .from("business_public_brands_view")
+        .select("id, slug")
+        .eq("slug", brandSlugT)
+        .maybeSingle();
+      if (!brandRow) return json({ error: "destination_not_public" }, 422);
+      destUrlT = `${BUSINESS_WEB_ORIGIN}/b/${brandSlugT}`;
+    } else {
+      return json({ error: "destination_not_public", detail: "dest_page_type_not_supported_wp1" }, 422);
+    }
+    // A1.0-5 (PROOF D-P1): the ad-visible landing_page_url is the canonical
+    // page — NEVER the OneLink; attribution rides in utm_params.
+    const landingCheckT = validateTikTokLandingPageUrl(destUrlT);
+    if (!landingCheckT.ok) {
+      return json({ error: landingCheckT.detail, detail: landingCheckT.message }, 422);
+    }
+
+    // (5) Media resolve — an explicit Asset-Library image_id, a #866 library
+    // ref (external_ref_extra.image_id), or an image_url to upload AFTER the
+    // validate gate (UPLOAD_BY_URL — GR-58).
+    let imageIdT = typeof creativeT.image_id === "string" ? creativeT.image_id.trim() : "";
+    const creativeLibraryIdT = typeof creativeT.creative_library_id === "string"
+      ? creativeT.creative_library_id.trim()
+      : "";
+    const imageUrlT = typeof creativeT.image_url === "string" ? creativeT.image_url.trim() : "";
+    let creativeLibraryRowIdT: string | null = null;
+    if (!imageIdT && creativeLibraryIdT) {
+      const { data: libCreativeT } = await supabase
+        .from("ad_creatives")
+        .select("id, kind, content_hash")
+        .eq("id", creativeLibraryIdT)
+        .maybeSingle();
+      if (!libCreativeT) {
+        return json({ error: "creative_not_found", detail: "creative_library_id does not resolve" }, 422);
+      }
+      const { data: refT } = await supabase
+        .from("ad_creative_platform_refs")
+        .select("external_ref, external_ref_extra, status, content_hash")
+        .eq("creative_id", creativeLibraryIdT)
+        .eq("platform", "tiktok")
+        .eq("lane", lane)
+        .eq("external_account_id", tconn.external_account_id)
+        .maybeSingle();
+      if (!refT || refT.status !== "ready" || !refT.external_ref) {
+        return json({
+          error: "creative_not_uploaded",
+          detail:
+            "No READY tiktok platform ref for this creative on this advertiser — upload it through the #866 creative library (admin-ad-creative-upload) first, or pass creative.image_url for a create-time UPLOAD_BY_URL.",
+        }, 422);
+      }
+      if (refT.content_hash && libCreativeT.content_hash && refT.content_hash !== libCreativeT.content_hash) {
+        return json({
+          error: "creative_ref_stale",
+          detail:
+            "The tiktok platform ref was uploaded from different bytes than the creative's current content_hash — re-upload through the creative library.",
+        }, 422);
+      }
+      // #866 keys external_ref = material_id; ad/create needs the image_id
+      // secondary ref (A1-9 captures BOTH).
+      const refExtraT = (refT.external_ref_extra ?? {}) as Record<string, unknown>;
+      const refImageIdT = typeof refExtraT.image_id === "string" ? refExtraT.image_id : "";
+      if (!refImageIdT) {
+        return json({
+          error: "creative_ref_incomplete",
+          detail:
+            "The tiktok platform ref carries no external_ref_extra.image_id (ad/create needs the image_id, not the material_id) — re-upload through the creative library.",
+        }, 422);
+      }
+      imageIdT = refImageIdT;
+      creativeLibraryRowIdT = String(libCreativeT.id);
+    }
+    if (!imageIdT && !imageUrlT) {
+      return json({
+        error: "validation_error",
+        detail:
+          "creative_media_required — pass creative.image_id (Asset-Library id), creative.creative_library_id (#866 library), or creative.image_url (create-time UPLOAD_BY_URL).",
+      }, 400);
+    }
+
+    // ── THE VALIDATE GATE: TikTok has NO validate-only / dry-run mode — the
+    //    generic validate block calls createCampaign unconditionally, which
+    //    here would create a REAL (paused) campaign. Return the explicit
+    //    named-skipped-layers response instead; ZERO adapter calls, ZERO
+    //    uploads. (Snapchat precedent: WP2 §10.) ────────────────────────────
+    if (validateOnlyT) {
+      const reasonT =
+        "tiktok_no_validate_only — the TikTok Marketing API has no validate-only mode; attempting to validate would CREATE real objects. Client-side validators (name/objective/goal/billing/budget-floor/ad-text/gender/destination/media/identity) all passed.";
+      return json({
+        validated: false,
+        validated_layers: [],
+        skipped_layers: [
+          { layer: "campaign", reason: reasonT },
+          { layer: "ad_group", reason: reasonT },
+          { layer: "ad", reason: reasonT },
+        ],
+        detail:
+          "validate_only — nothing was validated on TikTok (no validate-only exists), nothing created, nothing persisted. The first real create is the platform-side validation.",
+      });
+    }
+
+    const adapterT = getAdapter("tiktok");
+    try {
+      // (6) LIVE geo resolve (A1.1(e)/T-5 — OD-7 REVERSED): tool/region per
+      // objective; an unavailable country (GB today — T-P2) fails LOUD 422.
+      let locationIdsT: string[];
+      try {
+        locationIdsT = await resolveTikTokGeo(tconn, countryCodesT, objectiveT);
+      } catch (err) {
+        if (err instanceof AdApiError && err.code === "geo_unavailable") {
+          // AC-13: 422 naming the unavailable countries — never a silent drop.
+          return json({ error: "geo_unavailable", detail: err.message }, 422);
+        }
+        throw err;
+      }
+
+      // (7) Image upload when the create-time URL path is used (GR-58:
+      // UPLOAD_BY_URL, unique per-advertiser file name, both ids captured).
+      if (!imageIdT) {
+        const uploaded = await tiktokUploadImage(tconn, imageUrlT);
+        imageIdT = uploaded.imageId;
+      }
+
+      // (8) The atomic create (§4.4b): campaign → ad group → creative (the
+      // documented NO-OP — TikTok creatives are inline in ad/create) → ad,
+      // operation_status=DISABLE at ALL THREE levels (A1.0-4), with
+      // compensating rollback (campaign DELETE cascades — §4.4b).
+      const campaignInputT: CreateCampaignInput = {
+        name,
+        objective: objectiveT,
+        // CBO ⇒ budget on the campaign ($50/day floor in the builder).
+        ...(budgetLevelT === "campaign" ? { dailyBudgetCents: amountCents as number } : {}),
+      };
+      const adSetInputT: CreateAdSetInput = {
+        name: `${name} — ad group`,
+        optimizationGoal: optimizationGoalT,
+        billingEvent: billingEventT,
+        ...(budgetLevelT === "adset" ? { budgetCents: amountCents as number } : {}),
+        targeting: {
+          location_ids: locationIdsT,
+          ...(ageMinT !== undefined ? { age_min: ageMinT } : {}),
+          ...(ageMaxT !== undefined ? { age_max: ageMaxT } : {}),
+          ...(genderT ? { gender: genderT } : {}),
+          budget_mode: "daily",
+          // A1.1(b): bid_type REQUIRED under CBO — the builder defaults
+          // BID_TYPE_NO_BID; campaign-level bid_type is deprecated in v1.3.
+          campaign_budget_optimize_on: budgetLevelT === "campaign",
+          ...(budgetLevelT === "campaign" ? { campaign_budget_cents: amountCents as number } : {}),
+          ...(bidTypeT ? { bid_type: bidTypeT } : {}),
+          ...(typeof bidPriceCentsT === "number" ? { bid_price_cents: bidPriceCentsT } : {}),
+          ...(requestIdT ? { request_id: requestIdT } : {}),
+          // schedule_start_time defaults to NOW in UTC+0 inside the builder
+          // (A1.1(a): TikTok schedule strings are UTC+0, never advertiser-tz).
+        },
+      };
+      const creativeInputT: CreateCreativeInput = {
+        destUrl: destUrlT, // interface-required; TikTok's createCreative is a documented no-op
+        message: adTextT,
+      };
+      const adInputT: Omit<CreateAdInput, "externalCreativeId"> & TikTokCreateAdExtensions = {
+        name: `${name} — ad`,
+        adText: adTextT,
+        imageIds: [imageIdT],
+        // A1.0-5: the canonical page is the ad-visible URL; attribution rides
+        // utm_params (≤14, case-sensitive keys, TikTok serve-time macros).
+        landingPageUrl: destUrlT,
+        identityType: identityTypeT,
+        identityId: identityIdT,
+        callToAction: ctaT,
+        utmParams: [
+          { key: "utm_source", value: "tiktok" },
+          { key: "utm_medium", value: "paid" },
+          { key: "utm_campaign", value: "__CAMPAIGN_ID__" },
+          { key: "utm_content", value: "__CID__" },
+        ],
+      };
+
+      const createdT = await createFullCampaignAtomic(adapterT, tconn, {
+        campaign: campaignInputT,
+        adSet: adSetInputT,
+        creative: creativeInputT,
+        ad: adInputT,
+      });
+
+      // Best-effort delivery read-back (the two-status rule: the SECONDARY
+      // status is the real state; the GR-38 sync cron repairs/refreshes).
+      let deliveryStatusT: string | null = null;
+      try {
+        const statusT = await adapterT.getStatus(tconn, "campaign", createdT.externalCampaignId);
+        deliveryStatusT = statusT.effectiveStatus;
+      } catch {
+        deliveryStatusT = null;
+      }
+
+      const tiktokSmartLink = buildDestSmartLink({
+        pageType: pageTypeT,
+        brandSlug: brandSlugT,
+        entitySlug: entitySlugT || null,
+        externalCampaignId: createdT.externalCampaignId,
+        adName: `${name} — ad`,
+        platform: "tiktok",
+      });
+      const targetingRecordT: Record<string, unknown> = {
+        countries: countryCodesT,
+        location_ids: locationIdsT, // resolved numeric ids persisted (T-5)
+        ...(ageMinT !== undefined ? { age_min: ageMinT } : {}),
+        ...(ageMaxT !== undefined ? { age_max: ageMaxT } : {}),
+        ...(genderT ? { gender: genderT } : {}),
+      };
+
+      // (9) Persist ONE campaign+ad_set+ad row set (only now that all IDs exist).
+      const { data: campaignRowT, error: campaignErrT } = await supabase
+        .from("ad_campaigns")
+        .insert({
+          connection_id: tconn.id,
+          platform: "tiktok",
+          external_campaign_id: createdT.externalCampaignId,
+          name,
+          objective: objectiveT,
+          status: "PAUSED",
+          daily_budget_cents: budgetLevelT === "campaign" ? amountCents : null,
+          delivery_status: deliveryStatusT,
+          status_synced_at: new Date().toISOString(),
+          targeting: targetingRecordT,
+          dest_page_type: pageTypeT,
+          dest_brand_slug: brandSlugT,
+          dest_entity_slug: entitySlugT || null,
+          dest_event_id: destEventIdT,
+          dest_url: destUrlT,
+          // A4.f-demoted slot: stored for attribution reference, never sent to TikTok.
+          dest_smart_link: tiktokSmartLink,
+          request_id: requestIdT,
+          created_by: user.id,
+        })
+        .select("*")
+        .single();
+
+      let adSetRowT: Record<string, unknown> | null = null;
+      let adRowT: Record<string, unknown> | null = null;
+      let persistErrT = campaignErrT;
+      if (!persistErrT && campaignRowT) {
+        const { data, error } = await supabase
+          .from("ad_sets")
+          .insert({
+            campaign_id: campaignRowT.id,
+            external_adset_id: createdT.externalAdSetId,
+            name: `${name} — ad group`,
+            targeting: targetingRecordT,
+            budget_cents: budgetLevelT === "adset" ? amountCents : null,
+            optimization_goal: optimizationGoalT,
+            billing_event: billingEventT,
+            ...(bidTypeT ? { bid_strategy: bidTypeT } : {}),
+            status: "PAUSED",
+          })
+          .select("*")
+          .single();
+        adSetRowT = data;
+        persistErrT = error;
+      }
+      if (!persistErrT && adSetRowT) {
+        const { data, error } = await supabase
+          .from("ads")
+          .insert({
+            ad_set_id: adSetRowT.id,
+            external_ad_id: createdT.externalAdId,
+            external_creative_id: null, // TikTok creatives are inline — no standalone object
+            ...(creativeLibraryRowIdT ? { creative_id: creativeLibraryRowIdT } : {}),
+            name: `${name} — ad`,
+            status: "PAUSED",
+            review_status: createdT.reviewStatus, // null — sync ingests review states (fast-follow)
+          })
+          .select("*")
+          .single();
+        adRowT = data;
+        persistErrT = error;
+      }
+
+      if (persistErrT) {
+        // Never a half-written DB row set: delete the campaign row (cascades)
+        // and roll back the platform campaign (DELETE cascades adgroup/ad; no
+        // account-level creative residue exists — TikTok inlines it), then audit.
+        if (campaignRowT) await supabase.from("ad_campaigns").delete().eq("id", campaignRowT.id);
+        let rollbackOkT = false;
+        try {
+          if (adapterT.rollbackCampaign) {
+            await adapterT.rollbackCampaign(tconn, createdT.externalCampaignId);
+            rollbackOkT = true;
+          }
+        } catch {
+          rollbackOkT = false;
+        }
+        await supabase.from("ad_status_events").insert({
+          campaign_id: null,
+          platform: "tiktok",
+          entity: "campaign",
+          action: rollbackOkT ? "rollback" : "create_failed",
+          actor: user.id,
+          to_status: null,
+          external_ids: {
+            external_campaign_id: createdT.externalCampaignId,
+            external_adset_id: createdT.externalAdSetId,
+            external_ad_id: createdT.externalAdId,
+            external_image_id: imageIdT, // Asset-Library media is durable — recorded, never deleted here
+          },
+          provider_response: { db_error: persistErrT.message },
+        });
+        console.error("[admin-ad-create-campaign] tiktok persist failed:", persistErrT.message);
+        return json({ error: "internal_error", detail: "db_persist_failed_platform_rolled_back" }, 500);
+      }
+
+      await supabase.from("ad_status_events").insert({
+        campaign_id: campaignRowT.id,
+        platform: "tiktok",
+        entity: "campaign",
+        action: "create",
+        actor: user.id,
+        from_status: null,
+        to_status: "PAUSED",
+        external_ids: {
+          external_campaign_id: createdT.externalCampaignId,
+          external_adset_id: createdT.externalAdSetId,
+          external_ad_id: createdT.externalAdId,
+          external_image_id: imageIdT,
+        },
+        provider_response: null,
+      });
+
+      return json({ campaign: campaignRowT, ad_set: adSetRowT, ad: adRowT });
+    } catch (err) {
+      if (err instanceof AdNotConnectedError) {
+        return json({ error: "tiktok_not_connected" }, 424);
+      }
+      if (err instanceof AtomicCreateError) {
+        // §4.4b partial-failure contract: NO ad_* rows; compensating cleanup
+        // already attempted (campaign DELETE cascades); audit for reconciliation.
+        const failureT = err.failure;
+        const providerResponseT = failureT.cause instanceof AdApiError
+          ? failureT.cause.toJSON()
+          : {
+            message: failureT.cause instanceof Error
+              ? failureT.cause.message
+              : String(failureT.cause),
+          };
+        await supabase.from("ad_status_events").insert({
+          campaign_id: null,
+          platform: "tiktok",
+          entity: "campaign",
+          action: failureT.rollbackSucceeded === true ? "rollback" : "create_failed",
+          actor: user.id,
+          external_ids: {
+            ...failureT.partialExternalIds,
+            ...(imageIdT ? { external_image_id: imageIdT } : {}),
+          },
+          provider_response: { step: failureT.step, ...providerResponseT },
+        });
+        return json({
+          error: "tiktok_create_failed",
+          detail: providerResponseT,
+          step: failureT.step,
+          rolled_back: failureT.rollbackSucceeded,
+        }, 502);
+      }
+      if (err instanceof AdApiError) {
+        // Pre-chain provider failure (geo read / image upload) — nothing created.
+        return json({ error: "tiktok_create_failed", detail: err.toJSON() }, 502);
+      }
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error("[admin-ad-create-campaign] tiktok unexpected:", detail);
+      return json({ error: "internal_error" }, 500);
+    }
+  }
+
+  // ══ REDDIT branch (ISSUE-927; SPEC_ISSUE-REDDIT_CHANNEL §3 / §7) ═══════════
+  // Self-contained (house pattern): validators (422s — copy caps, Title-Case
+  // CTA enum, destination policy incl. the OneLink/bridge-page ban) →
+  // connection + extras fail-close (424) → idempotent replay → destination
+  // resolve → THE VALIDATE GATE (Reddit has NO validate-only — §9: the first
+  // real create is the platform-side proof; named-skipped-layers, zero
+  // adapter calls) → redditCreateFullChain (campaign → ad group → structured-
+  // post job → ad; configured_status:"PAUSED" EXPLICIT at all three levels —
+  // G-1, Reddit's schema default is ACTIVE = live spend; conversion_pixel_id
+  // injected UNCONDITIONALLY on the ad group — GR-12) → persist → audit. A
+  // mid-chain failure PATCHes configured_status:"DELETED" in reverse order
+  // and records any orphaned t3_ post (§7.1/§7.2).
+  if (platform === "reddit") {
+    const requestIdR = typeof body.request_id === "string" && body.request_id.trim()
+      ? body.request_id.trim()
+      : null;
+    const validateOnlyR = body.validate_only === true;
+
+    // (1) Pure input validation — all 422s BEFORE any provider call.
+    if (name.length < REDDIT_NAME_MIN || name.length > REDDIT_NAME_MAX) {
+      return json({
+        error: "name_out_of_range",
+        detail: `Campaign name must be ${REDDIT_NAME_MIN}–${REDDIT_NAME_MAX} chars [SPEC].`,
+      }, 422);
+    }
+    const objectiveInputR = typeof body.objective === "string" ? body.objective : "TRAFFIC";
+    const objectiveR = normalizeRedditObjective(objectiveInputR);
+    if (!objectiveR.ok) {
+      return json({ error: objectiveR.detail, detail: objectiveR.message }, 422);
+    }
+
+    const targetingR = (body.targeting ?? {}) as Record<string, unknown>;
+    const countriesR = targetingR.countries;
+    if (
+      !Array.isArray(countriesR) || countriesR.length === 0 ||
+      countriesR.some((c) => typeof c !== "string" || !c.trim())
+    ) {
+      return json({ error: "validation_error", detail: "targeting_countries_required" }, 400);
+    }
+    const countryCodesR = (countriesR as string[]).map((c) => c.trim().toUpperCase());
+    const passthroughRootR = (targetingR.passthrough ?? {}) as Record<string, unknown>;
+    const redditPassthroughR = (passthroughRootR.reddit ?? null) as
+      | Record<string, unknown>
+      | null;
+
+    const destinationR = (body.destination ?? {}) as DestinationInput;
+    const pageTypeR = destinationR.page_type ?? "";
+    const brandSlugR = typeof destinationR.brand_slug === "string"
+      ? destinationR.brand_slug.trim()
+      : "";
+    const entitySlugR = typeof destinationR.entity_slug === "string"
+      ? destinationR.entity_slug.trim()
+      : "";
+    if (!["event", "trip", "brand", "venue"].includes(pageTypeR)) {
+      return json({ error: "validation_error", detail: "destination_page_type_invalid" }, 400);
+    }
+    if (!brandSlugR) {
+      return json({ error: "validation_error", detail: "destination_brand_slug_required" }, 400);
+    }
+
+    const creativeR = (body.creative ?? {}) as Record<string, unknown>;
+    const headlineR = typeof creativeR.headline === "string"
+      ? creativeR.headline.trim()
+      : typeof creativeR.message === "string"
+      ? creativeR.message.trim()
+      : "";
+    if (!headlineR) {
+      return json({ error: "validation_error", detail: "creative_headline_required" }, 400);
+    }
+    const imageUrlR = typeof creativeR.image_url === "string" ? creativeR.image_url.trim() : "";
+    if (!imageUrlR) {
+      return json({
+        error: "validation_error",
+        detail:
+          "creative_media_required — Reddit v1 is the IMAGE structured-post variant; pass creative.image_url (a public master URL — Reddit downloads and rehosts, §5.5).",
+      }, 400);
+    }
+    // §5.1 (GR-29): Reddit CTAs are Title-Case display strings, VERBATIM —
+    // never uppercased, never shared with another channel's normalizer.
+    const ctaR = typeof creativeR.call_to_action === "string"
+      ? creativeR.call_to_action
+      : pageTypeR === "event"
+      ? REDDIT_CTA_MAP.ticketed_event
+      : REDDIT_CTA_MAP.default;
+
+    // (2) Connection (fail-close) — 424 reddit_not_connected; the chain also
+    // requires the §1.4 extras (profile / funding instrument / pixel).
+    const { data: rconnRow } = await supabase
+      .from("ad_connections")
+      .select("*")
+      .eq("platform", "reddit")
+      .eq("lane", lane)
+      .maybeSingle();
+    if (!rconnRow || !rconnRow.connected || rconnRow.status !== "connected") {
+      return json({ error: "reddit_not_connected" }, 424);
+    }
+    const rconn = rconnRow as unknown as AdConnectionRow;
+    try {
+      redditConnExtras(rconn); // fail-close: 424 with the re-connect instruction
+    } catch (err) {
+      if (err instanceof AdApiError) {
+        return json({ error: "reddit_connection_incomplete", detail: err.message }, 424);
+      }
+      throw err;
+    }
+
+    // Idempotency (A3 §A request_id): replay returns the existing row.
+    if (requestIdR && !validateOnlyR) {
+      const { data: existingR } = await supabase
+        .from("ad_campaigns")
+        .select("*")
+        .eq("connection_id", rconn.id)
+        .eq("request_id", requestIdR)
+        .maybeSingle();
+      if (existingR) return json({ campaign: existingR, idempotent_replay: true });
+    }
+
+    // (3) Destination resolve — READ-ONLY, public + live only (§4.4b).
+    let destUrlR: string;
+    let destEventIdR: string | null = null;
+    if (pageTypeR === "event") {
+      if (!entitySlugR) {
+        return json({ error: "validation_error", detail: "destination_entity_slug_required" }, 400);
+      }
+      const { data: eventRow } = await supabase
+        .from("business_public_events_view")
+        .select("id, brand_slug, slug, status")
+        .eq("brand_slug", brandSlugR)
+        .eq("slug", entitySlugR)
+        .in("status", ["scheduled", "live"])
+        .maybeSingle();
+      if (!eventRow) return json({ error: "destination_not_public" }, 422);
+      destUrlR = `${BUSINESS_WEB_ORIGIN}/e/${brandSlugR}/${entitySlugR}`;
+      destEventIdR = String(eventRow.id);
+    } else if (pageTypeR === "brand") {
+      const { data: brandRow } = await supabase
+        .from("business_public_brands_view")
+        .select("id, slug")
+        .eq("slug", brandSlugR)
+        .maybeSingle();
+      if (!brandRow) return json({ error: "destination_not_public" }, 422);
+      destUrlR = `${BUSINESS_WEB_ORIGIN}/b/${brandSlugR}`;
+    } else {
+      return json({ error: "destination_not_public", detail: "dest_page_type_not_supported_wp1" }, 422);
+    }
+
+    // (4) Creative validation (§5 — copy caps, Title-Case CTA enum, and the
+    // §5.4 destination policy: display_url must match; NO OneLink can reach a
+    // Reddit create body — D-P1 bridge-page rejection class).
+    const creativeInputR: RedditCreativeBuildInput = {
+      type: "IMAGE",
+      headline: headlineR,
+      destinationUrl: destUrlR,
+      callToAction: ctaR,
+      imageUrl: imageUrlR,
+    };
+    const creativeCheckR = validateRedditCreative(creativeInputR);
+    if (!creativeCheckR.ok) {
+      return json({ error: creativeCheckR.detail, detail: creativeCheckR.message }, 422);
+    }
+    const creativeWarningsR = creativeCheckR.warnings;
+
+    // ── THE VALIDATE GATE: Reddit has NO validate-only (§9 — the first real
+    //    create, executed PAUSED, is the platform-side proof). The generic
+    //    validate block would run the structured-post job and create a REAL
+    //    t3_ post on the profile. Named-skipped-layers; ZERO adapter calls. ──
+    if (validateOnlyR) {
+      const reasonR =
+        "reddit_no_validate_only — the Reddit Ads API has no validate-only mode; attempting to validate would CREATE a real t3_ post via the structured-post job (§3.4). Client-side validators (name/objective/copy/CTA/destination-policy/targeting/media) all passed.";
+      return json({
+        validated: false,
+        validated_layers: [],
+        skipped_layers: [
+          { layer: "campaign", reason: reasonR },
+          { layer: "ad_group", reason: reasonR },
+          { layer: "creative", reason: reasonR },
+          { layer: "ad", reason: reasonR },
+        ],
+        detail:
+          "validate_only — nothing was validated on Reddit (no validate-only exists), nothing created, nothing persisted. The first real create (everything PAUSED) is the platform-side validation.",
+        ...(creativeWarningsR.length > 0 ? { warnings: creativeWarningsR } : {}),
+      });
+    }
+
+    // (5) The full §3 chain: campaign → ad group → structured-post job → ad,
+    // ALL PAUSED (G-1 explicit ×3), conversion_pixel_id injected
+    // UNCONDITIONALLY (GR-12), §7 compensating rollback inside the runner.
+    // The ad_campaigns row id is minted UP FRONT so utm_campaign carries the
+    // eventual DB id (§3.5) with no chicken-and-egg on the insert.
+    const campaignRowIdR = crypto.randomUUID();
+    try {
+      const createdR = await redditCreateFullChain(rconn, {
+        campaign: {
+          name,
+          objective: objectiveInputR, // normalized inside the builder (TRAFFIC → CLICKS)
+          isCbo: false, // v1 default: non-CBO — the budget lives on the ad group (§3.1)
+        },
+        adGroup: {
+          name: `${name} — ad group`,
+          budgetCents: amountCents as number, // → goal_value micro in the builder; NO floor of ours (GR-59)
+          optimizationGoal: "CLICKS", // pixel-independent safe default (§3.2)
+          startTime: new Date().toISOString(),
+          normalizedTargeting: {
+            countries: countryCodesR,
+            ...(Array.isArray(targetingR.genders) ? { genders: targetingR.genders } : {}),
+            // age_min/age_max are deliberately NEVER forwarded — Reddit has no
+            // age targeting (R-8); the serializer warns if they appear.
+          },
+          redditPassthrough: redditPassthroughR,
+        },
+        creative: creativeInputR,
+        ad: {
+          name: `${name} — ad`,
+          clickUrl: destUrlR, // canonical page — never the OneLink (D-P1)
+          utmCampaign: campaignRowIdR,
+        },
+      });
+
+      const redditSmartLink = buildDestSmartLink({
+        pageType: pageTypeR,
+        brandSlug: brandSlugR,
+        entitySlug: entitySlugR || null,
+        externalCampaignId: createdR.externalCampaignId,
+        adName: `${name} — ad`,
+        platform: "reddit",
+      });
+      const targetingRecordR: Record<string, unknown> = {
+        countries: countryCodesR,
+        ...(redditPassthroughR ? { passthrough: { reddit: redditPassthroughR } } : {}),
+      };
+      const allWarningsR = [...creativeWarningsR, ...createdR.targetingWarnings];
+
+      // (6) Persist ONE campaign+ad_set+ad row set (only now that all IDs exist).
+      const { data: campaignRowR, error: campaignErrR } = await supabase
+        .from("ad_campaigns")
+        .insert({
+          id: campaignRowIdR, // pre-minted — it is already riding in click_url utm_campaign
+          connection_id: rconn.id,
+          platform: "reddit",
+          external_campaign_id: createdR.externalCampaignId,
+          name,
+          objective: objectiveR.objective, // the normalized enum value (CLICKS)
+          status: "PAUSED",
+          daily_budget_cents: null, // non-CBO: the budget lives on the ad group
+          delivery_status: createdR.effectiveStatus,
+          status_synced_at: new Date().toISOString(),
+          targeting: targetingRecordR,
+          dest_page_type: pageTypeR,
+          dest_brand_slug: brandSlugR,
+          dest_entity_slug: entitySlugR || null,
+          dest_event_id: destEventIdR,
+          dest_url: destUrlR,
+          // A4.f-demoted slot: stored for attribution reference, never sent to Reddit.
+          dest_smart_link: redditSmartLink,
+          request_id: requestIdR,
+          created_by: user.id,
+        })
+        .select("*")
+        .single();
+
+      let adSetRowR: Record<string, unknown> | null = null;
+      let adRowR: Record<string, unknown> | null = null;
+      let persistErrR = campaignErrR;
+      if (!persistErrR && campaignRowR) {
+        const { data, error } = await supabase
+          .from("ad_sets")
+          .insert({
+            campaign_id: campaignRowR.id,
+            external_adset_id: createdR.externalAdSetId,
+            name: `${name} — ad group`,
+            targeting: targetingRecordR,
+            budget_cents: amountCents, // goal_value source (cents at rest)
+            optimization_goal: "CLICKS",
+            bid_strategy: "MAXIMIZE_VOLUME", // §3.2 default start
+            billing_event: null,
+            status: "PAUSED",
+          })
+          .select("*")
+          .single();
+        adSetRowR = data;
+        persistErrR = error;
+      }
+      if (!persistErrR && adSetRowR) {
+        const { data, error } = await supabase
+          .from("ads")
+          .insert({
+            ad_set_id: adSetRowR.id,
+            external_ad_id: createdR.externalAdId,
+            // GR-10: the t3_ post IS the creative reference on Reddit.
+            external_creative_id: createdR.postId,
+            name: `${name} — ad`,
+            status: "PAUSED",
+            review_status: createdR.reviewStatus,
+            review_detail: {
+              effective_status: createdR.effectiveStatus,
+              // §3.5/GR-33: the cheapest pre-launch QA lever on the channel.
+              preview_url: createdR.previewUrl,
+              profile_id: createdR.profileId,
+            },
+          })
+          .select("*")
+          .single();
+        adRowR = data;
+        persistErrR = error;
+      }
+
+      if (persistErrR) {
+        // Never a half-written DB row set: delete the campaign row (cascades)
+        // and roll back the platform tree (PATCH configured_status:"DELETED" —
+        // R-5; the t3_ post is profile-scoped residue, recorded not deleted).
+        if (campaignRowR) await supabase.from("ad_campaigns").delete().eq("id", campaignRowR.id);
+        let rollbackOkR = false;
+        try {
+          if (getAdapter("reddit").rollbackCampaign) {
+            await getAdapter("reddit").rollbackCampaign!(rconn, createdR.externalCampaignId);
+            rollbackOkR = true;
+          }
+        } catch {
+          rollbackOkR = false;
+        }
+        await supabase.from("ad_status_events").insert({
+          campaign_id: null,
+          platform: "reddit",
+          entity: "campaign",
+          action: rollbackOkR ? "rollback" : "create_failed",
+          actor: user.id,
+          to_status: null,
+          external_ids: {
+            external_campaign_id: createdR.externalCampaignId,
+            external_adset_id: createdR.externalAdSetId,
+            external_ad_id: createdR.externalAdId,
+            // §7.2: a post with no ad attached is safe residue — but recorded.
+            orphaned_post_id: createdR.postId,
+            profile_id: createdR.profileId,
+          },
+          provider_response: { db_error: persistErrR.message },
+        });
+        console.error("[admin-ad-create-campaign] reddit persist failed:", persistErrR.message);
+        return json({ error: "internal_error", detail: "db_persist_failed_platform_rolled_back" }, 500);
+      }
+
+      await supabase.from("ad_status_events").insert({
+        campaign_id: campaignRowR.id,
+        platform: "reddit",
+        entity: "campaign",
+        action: "create",
+        actor: user.id,
+        from_status: null,
+        to_status: "PAUSED",
+        external_ids: {
+          external_campaign_id: createdR.externalCampaignId,
+          external_adset_id: createdR.externalAdSetId,
+          external_ad_id: createdR.externalAdId,
+          post_id: createdR.postId,
+          profile_id: createdR.profileId,
+        },
+        provider_response: null,
+      });
+
+      return json({
+        campaign: campaignRowR,
+        ad_set: adSetRowR,
+        ad: adRowR,
+        preview_url: createdR.previewUrl,
+        ...(allWarningsR.length > 0 ? { warnings: allWarningsR } : {}),
+      });
+    } catch (err) {
+      if (err instanceof AdNotConnectedError) {
+        return json({ error: "reddit_not_connected" }, 424);
+      }
+      if (err instanceof RedditChainError) {
+        // §7 partial-failure contract: NO ad_* rows; the runner already
+        // PATCHed configured_status:"DELETED" in reverse order; any orphaned
+        // t3_ post is in partialExternalIds.orphaned_post_id (§7.2) — audit.
+        const failureR = err.failure;
+        const providerResponseR = failureR.cause instanceof AdApiError
+          ? failureR.cause.toJSON()
+          : {
+            message: failureR.cause instanceof Error
+              ? failureR.cause.message
+              : String(failureR.cause),
+          };
+        // §7.1 rollback outcome: attempted levels minus any whose PATCH failed.
+        const rollbackCleanR = failureR.rollback.failed.length === 0;
+        await supabase.from("ad_status_events").insert({
+          campaign_id: null,
+          platform: "reddit",
+          entity: "campaign",
+          action: rollbackCleanR && failureR.rollback.attempted.length > 0
+            ? "rollback"
+            : "create_failed",
+          actor: user.id,
+          external_ids: failureR.partialExternalIds,
+          provider_response: {
+            step: failureR.step,
+            ...providerResponseR,
+            ...(failureR.rollback.failed.length > 0
+              ? { rollback_failed_levels: failureR.rollback.failed }
+              : {}),
+          },
+        });
+        return json({
+          error: "reddit_create_failed",
+          detail: providerResponseR,
+          step: failureR.step,
+          rolled_back: rollbackCleanR,
+        }, 502);
+      }
+      if (err instanceof AdApiError) {
+        return json({ error: "reddit_create_failed", detail: err.toJSON() }, 502);
+      }
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error("[admin-ad-create-campaign] reddit unexpected:", detail);
       return json({ error: "internal_error" }, 500);
     }
   }

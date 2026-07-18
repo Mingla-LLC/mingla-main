@@ -166,15 +166,27 @@ const green = (platform) => ({ platform, overall: "green", checks: [] });
 const METACONN = { extra: { minimum_budgets: { imp: 100, video_views: 100, high_freq: 500, low_freq: 4000 } } };
 
 describe("channel plan — exclusion precedence + market gate", () => {
+  // [TEST-MOD ISSUE-927] TikTok is create-wired now, so the precedence rule is
+  // proven through the createWired injection seam instead of the (retired)
+  // default gap — the semantics pinned are IDENTICAL: gate 1 outranks gate 2.
   it("create-endpoint gap outranks a red preflight (most structural reason wins)", () => {
     const rows = planChannels({
       preflightRows: [{ platform: "tiktok", overall: "red", checks: [{ status: "fail", detail: "token dead" }] }],
       goalIds: ["traffic"],
       countries: ["US"],
       totalDailyCents: 2000,
+      createWired: ["meta", "google"], // TEST-INJECTION: re-open the endpoint gap
     });
     const tiktok = rows.find((r) => r.platform === "tiktok");
-    assert.ok(tiktok.excludedReason.includes("no TikTok create branch"), "endpoint gap must outrank preflight red");
+    assert.equal(tiktok.eligible, false);
+    assert.ok(
+      !tiktok.excludedReason.includes("token dead"),
+      "endpoint gap must outrank preflight red — the red detail may not surface",
+    );
+    assert.ok(
+      /create/.test(tiktok.excludedReason),
+      "the exclusion names the create-endpoint gap (generic fallback copy since CREATE_GAP_REASONS emptied)",
+    );
   });
 
   it("a create-wired platform with NO preflight row is excluded loudly, never assumed green", () => {
@@ -184,26 +196,29 @@ describe("channel plan — exclusion precedence + market gate", () => {
     assert.ok(google.excludedReason.includes("Preflight hasn't run"));
   });
 
-  it("the GB market gate FIRES once a gapped channel becomes create-wired (London plan excludes TikTok)", () => {
+  // [TEST-MOD ISSUE-927] TikTok is create-wired BY DEFAULT now — the push/pop
+  // injection scaffold is gone and this test pins the stronger truth it was
+  // built to anticipate: the GB gate fires in the DEFAULT plan.
+  it("the GB market gate FIRES now that TikTok is create-wired (London plan excludes TikTok, DEFAULT config)", () => {
     assert.deepEqual(MARKET_GAPS.tiktok.unavailable, ["GB"]);
-    CREATE_WIRED.push("tiktok");
-    try {
-      const rows = planChannels({
-        preflightRows: [green("tiktok")],
-        goalIds: ["traffic"],
-        countries: ["US", "GB", "NG"],
-        totalDailyCents: 5000,
-      });
-      const tiktok = rows.find((r) => r.platform === "tiktok");
-      assert.equal(tiktok.eligible, false);
-      assert.ok(tiktok.excludedReason.includes("can't target the UK"), "GB in the plan must exclude TikTok with the live-proof reason");
-      // and WITHOUT GB the same setup is eligible — the gate is the market, nothing else
-      const usOnly = planChannels({ preflightRows: [green("tiktok")], goalIds: ["traffic"], countries: ["US"], totalDailyCents: 5000 });
-      assert.equal(usOnly.find((r) => r.platform === "tiktok").eligible, true);
-    } finally {
-      CREATE_WIRED.pop();
-    }
-    assert.deepEqual([...CREATE_WIRED].sort(), ["google", "meta"], "restored");
+    assert.ok(CREATE_WIRED.includes("tiktok"), "tiktok is create-wired by default since ISSUE-927");
+    const rows = planChannels({
+      preflightRows: [green("tiktok")],
+      goalIds: ["traffic"],
+      countries: ["US", "GB", "NG"],
+      totalDailyCents: 5000,
+    });
+    const tiktok = rows.find((r) => r.platform === "tiktok");
+    assert.equal(tiktok.eligible, false);
+    assert.ok(tiktok.excludedReason.includes("can't target the UK"), "GB in the plan must exclude TikTok with the live-proof reason");
+    // and WITHOUT GB the same setup is eligible — the gate is the market, nothing else
+    const usOnly = planChannels({ preflightRows: [green("tiktok")], goalIds: ["traffic"], countries: ["US"], totalDailyCents: 5000 });
+    assert.equal(usOnly.find((r) => r.platform === "tiktok").eligible, true);
+    assert.deepEqual(
+      [...CREATE_WIRED].sort(),
+      ["google", "meta", "reddit", "snapchat", "tiktok"],
+      "the module constant is untouched by planning",
+    );
   });
 
   it("hidden goals are unreachable through the plan: 'conversions'/'retargeting' admit ZERO channels", () => {

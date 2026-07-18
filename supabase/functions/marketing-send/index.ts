@@ -1376,7 +1376,10 @@ function getUnsubscribeOrigin(): string {
 }
 
 function getPublicAppOrigin(): string {
-  return Deno.env.get("MINGLA_PUBLIC_APP_ORIGIN") ?? "https://mingla.app";
+  // ISSUE-927: BUSINESS_WEB_ORIGIN is the canonical secret; the old name is
+  // a fallback so its deletion is safely decoupled (same digest, audited).
+  return Deno.env.get("BUSINESS_WEB_ORIGIN") ??
+    Deno.env.get("MINGLA_PUBLIC_APP_ORIGIN") ?? "https://mingla.app";
 }
 
 interface ResendOutcome {

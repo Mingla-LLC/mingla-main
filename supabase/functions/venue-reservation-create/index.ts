@@ -603,7 +603,10 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
 
   // ── WEB → hosted Stripe Checkout Session. ────────────────────────────────────
   if (surface === "web") {
-    const baseUrl = Deno.env.get("MINGLA_PUBLIC_WEB_BASE_URL");
+    // ISSUE-927: BUSINESS_WEB_ORIGIN is the canonical secret; the old name
+    // is a fallback so its deletion is safely decoupled (same digest).
+    const baseUrl = Deno.env.get("BUSINESS_WEB_ORIGIN") ??
+      Deno.env.get("MINGLA_PUBLIC_WEB_BASE_URL");
     if (!baseUrl || !/^https:\/\/[^\s]+$/.test(baseUrl)) {
       return jsonResponse({ error: "web_base_url_missing" }, 500);
     }
