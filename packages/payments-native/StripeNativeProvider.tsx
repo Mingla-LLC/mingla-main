@@ -77,7 +77,13 @@ export const StripeNativeProvider: React.FC<StripeNativeProviderProps> = ({
   publishableKey,
   merchantIdentifier,
   urlScheme,
-}) => {
+  // ORCH-1387 (SC-11 triage, type-annotation-only + runtime-inert): explicit
+  // props annotation. In the app tsc programs this package resolves at its
+  // realpath (packages/payments-native/), where `react` cannot resolve —
+  // React.FC degrades to an error type and the four binding elements went
+  // implicitly-any (TS7031). Annotating the param binds them to the local
+  // interface regardless of react resolution. Erased at transpile.
+}: StripeNativeProviderProps) => {
   const key = publishableKey ?? resolvePublishableKey();
   const mid = merchantIdentifier ?? resolveMerchantIdentifier();
   const scheme = urlScheme ?? resolveUrlScheme();

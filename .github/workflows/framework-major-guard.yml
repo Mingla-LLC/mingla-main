@@ -1,0 +1,68 @@
+name: Framework Major Guard
+
+# ORCH-1386 [PR #925 residue — native bundling of BOTH apps broken
+# (`buffer`/react-native-svg) + disguised unvetted expo 54→57 major bump with
+# unsupported RN pairing].
+#
+# Dependabot PR #925 smuggled a framework MAJOR (expo 54→57) into a "security
+# batch", was merged red, and broke every native bundle. This workflow runs
+# the registry-pinned framework-major gate so that NO PR — Dependabot, human,
+# or disguised batch — can move a framework-family major (manifest OR
+# lockfile-transitive) without deliberately regenerating the committed
+# registry in the same PR (see the gate header for the deliberate-upgrade
+# path). Lives in its OWN workflow file (not strict-grep-mingla-business.yml)
+# to avoid registration collisions with in-flight ORCH branches editing that
+# file.
+#
+# NOTE for branch protection: this workflow is paths-filtered, so only PRs
+# touching a manifest/lockfile (or the guard itself) run it. If it is ever
+# marked a REQUIRED check, the paths filter must be removed (a skipped
+# required check hangs the merge).
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "app-mobile/package.json"
+      - "app-mobile/package-lock.json"
+      - "mingla-business/package.json"
+      - "mingla-business/package-lock.json"
+      - "mingla-admin/package.json"
+      - "mingla-admin/package-lock.json"
+      - "mingla-marketing/package.json"
+      - "mingla-marketing/package-lock.json"
+      - ".github/scripts/strict-grep/orch-1386-framework-major-guard.mjs"
+      - ".github/scripts/strict-grep/orch-1386-framework-major-guard.test.mjs"
+      - ".github/scripts/strict-grep/orch-1386-framework-major-registry.json"
+      - ".github/workflows/framework-major-guard.yml"
+  push:
+    branches: [main]
+    paths:
+      - "app-mobile/package.json"
+      - "app-mobile/package-lock.json"
+      - "mingla-business/package.json"
+      - "mingla-business/package-lock.json"
+      - "mingla-admin/package.json"
+      - "mingla-admin/package-lock.json"
+      - "mingla-marketing/package.json"
+      - "mingla-marketing/package-lock.json"
+      - ".github/scripts/strict-grep/orch-1386-framework-major-guard.mjs"
+      - ".github/scripts/strict-grep/orch-1386-framework-major-guard.test.mjs"
+      - ".github/scripts/strict-grep/orch-1386-framework-major-registry.json"
+      - ".github/workflows/framework-major-guard.yml"
+
+jobs:
+  orch-1386-framework-major-guard:
+    name: "ORCH-1386: framework-family majors (expo, @expo/*, react-native, @react-native/*, react, react-dom, next, vite, metro*) are registry-pinned across all four apps — manifest AND lockfile-resolved (the #925 transitive disguise) — plus expo↔react-native pairing must be a supported SDK pairing and both mobile apps must share the same expo major. Majors move ONLY via a deliberate upgrade PR that regenerates orch-1386-framework-major-registry.json (I-PROPOSED-1386-FRAMEWORK-MAJOR-GUARD)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1386 framework-major guard
+        run: node .github/scripts/strict-grep/orch-1386-framework-major-guard.mjs --self-test
+      - name: Run ORCH-1386 framework-major guard
+        run: node .github/scripts/strict-grep/orch-1386-framework-major-guard.mjs
+      - name: Run ORCH-1386 companion node:test suite
+        run: node --test .github/scripts/strict-grep/orch-1386-framework-major-guard.test.mjs

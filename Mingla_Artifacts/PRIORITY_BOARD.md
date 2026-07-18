@@ -765,3 +765,13 @@ On PASS → Post-PASS protocol → ORCH-0489 closes A, ORCH-0481 promotes D→A,
 
 
 > **2026-06-10 — ORCH-1081 [Partner workflow polish] off the board (CLOSED PASS Grade A).** See WORLD_MAP + MASTER_BUG_LIST for the close banner. Three pre-existing bugs caught + regression-tested with fails-on-revert hashes.
+
+> **2026-07-17 — ORCH-1385 [red-main phone-input dep] CLOSED ✅** (merged `d4f0996df` PR #929, tester PASS; repo-wide merge blockade lifted; guard `orch-1385-workspace-deps-declared` live; residue ORCH-1386 [native builds HELD] + ORCH-1387). ORCH-1384 [partner brand mgmt] implemented+DB-live, awaiting OQ-8 login for TEST.
+
+> **2026-07-17 — ORCH-1387 [wallet type contract + Apple-4.9 net] CLOSED ✅** (tester PASS 0xP0/P1; zero runtime delta proven; 4.9 wiring now fails-on-revert-guarded; I-PROPOSED-1387 ACTIVE). Open: ORCH-1386 [native-build hold], ORCH-1388 [stuck PIs — Stripe fact owed], ORCH-1384 [awaiting OQ-8 login for TEST].
+> **2026-07-17 — ORCH-1386 [expo-57 revert] CLOSED ✅** (native builds restored both apps; framework-major guard ACTIVE; EAS/[deploy]/OTA HOLD LIFTED at merge; residuals → ORCH-1389 backlog). Open: ORCH-1387 close PR #931 blocked on GitGuardian (Seth dashboard), ORCH-1388 [stuck PIs — Stripe fact owed], ORCH-1384 [awaiting OQ-8 login].
+
+> **2026-07-18 — ORCH-1388 [checkout honest expiry] CLOSED ✅** (tester PASS 0xP0/P1; abandoned checkouts now expire honestly, no money strandable; deploy CLOSE-owned, first run backfills 5 stuck rows; I-PROPOSED-1388 ACTIVE). Open: ORCH-1384 in RETEST, ORCH-1387 on GitGuardian, ORCH-1390/1392 recommended.
+> **2026-07-18 — ORCH-1384 [partner brand-management verbs] CLOSED ✅** (Seth original request SHIPPED: invite-multiple/detail/cancel/disconnect; P0 auth-bypass caught+fixed+runtime-verified; browser-accept E2E device-proven; 5 invariants ACTIVE). Edge-fn deploy + OTA CLOSE-owned. Accept-flow UX → ORCH-1393.
+
+> **2026-07-18 — ORCH-1392 [SECURITY DEFINER grant sweep] CLOSED ✅** (5 HIGH live anon holes hot-patched same-day + 45 fns durably hardened + class-killing CI gate; tester CONDITIONAL PASS; 2 invariants ACTIVE). Condition → ORCH-1394 (admin pre-login gate, zero impact today).

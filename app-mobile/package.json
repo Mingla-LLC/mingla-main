@@ -85,7 +85,8 @@
     "test:orch-1163-guest-notify-match": "node ./scripts/ci/orch-1163-rsvp-guest-notify-match-check.mjs",
     "test:orch-1171": "node ./scripts/ci/orch-1171-keyboard-done-bar-check.mjs && node --test src/wrappers/__tests__/orch_1171_keyboard_toolbar_mount_coverage.test.mjs",
     "test:orch-1190": "node ./src/components/ui/__tests__/orch_1190_consumer_sheet_bottom_fill.test.mjs",
-    "test:orch-1322": "node ../.github/scripts/strict-grep/orch-1322-no-android-media-permissions.mjs --self-test && node ../.github/scripts/strict-grep/orch-1322-no-android-media-permissions.mjs && node ../.github/scripts/strict-grep/orch-1322-gallery-permission-wrapper-routed.mjs --self-test && node ../.github/scripts/strict-grep/orch-1322-gallery-permission-wrapper-routed.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ./src/utils/__tests__/orch1322MediaLibraryPermission.test.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ./src/utils/__tests__/orch1322DeadTapGuard.test.mjs"
+    "test:orch-1322": "node ../.github/scripts/strict-grep/orch-1322-no-android-media-permissions.mjs --self-test && node ../.github/scripts/strict-grep/orch-1322-no-android-media-permissions.mjs && node ../.github/scripts/strict-grep/orch-1322-gallery-permission-wrapper-routed.mjs --self-test && node ../.github/scripts/strict-grep/orch-1322-gallery-permission-wrapper-routed.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ./src/utils/__tests__/orch1322MediaLibraryPermission.test.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ./src/utils/__tests__/orch1322DeadTapGuard.test.mjs",
+    "test:orch-1387": "node --test src/payments/__tests__/wallet_config_threading.orch1387.test.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/anton": "^0.4.2",
@@ -104,6 +105,12 @@
     "@expo-google-fonts/unbounded": "^0.4.1",
     "@expo/vector-icons": "^15.0.2",
     "@gorhom/bottom-sheet": "^5.2.8",
+    "@mingla/brand-rendering": "file:../packages/brand-rendering",
+    "@mingla/location-input": "file:../packages/location-input",
+    "@mingla/offering-rendering": "file:../packages/offering-rendering",
+    "@mingla/payments-native": "file:../packages/payments-native",
+    "@mingla/phone-input": "file:../packages/phone-input",
+    "@mingla/theme-animations": "file:../packages/theme-animations",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-native-community/datetimepicker": "8.4.4",
     "@react-native-community/netinfo": "11.4.1",
@@ -179,6 +186,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
+    "babel-preset-expo": "~54.0.12",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
     "patch-package": "^8.0.1",

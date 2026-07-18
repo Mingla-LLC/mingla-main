@@ -98,6 +98,15 @@ verify_jwt = false
 [functions.ticket-checkout-confirm]
 verify_jwt = false
 
+# ORCH-1388 (fold-in D-C) — reconcile-stuck-checkouts sweep, cron-invoked via
+# pg_cron → net.http_post with the service-role bearer (a valid JWT, so
+# platform verification passes); the function additionally enforces its own
+# service-role check at entry. verify_jwt = true documents the CURRENT live
+# posture explicitly with ZERO behavior delta (the fn previously ran on the
+# platform default).
+[functions.reconcile-stuck-checkouts]
+verify_jwt = true
+
 # ORCH-0948 — anon buyer waitlist signup. Function validates ticket/event
 # eligibility and writes via service-role; no direct anon table INSERT policy.
 [functions.waitlist-signup]
@@ -195,6 +204,15 @@ verify_jwt = false
 verify_jwt = true
 
 [functions.accept-brand-invitation]
+verify_jwt = true
+
+# ORCH-1384 [partner brand-management verbs]
+# Resend / correct-email reissue for a pending partner_brand_links row.
+# Requires an authenticated caller — the fn reads auth.uid() to verify link
+# ownership, then drives the service_role-only
+# partner_reissue_brand_invitation RPC (expire-now + fresh invitation +
+# link email/invited_at update, atomically).
+[functions.partner-reissue-invitation]
 verify_jwt = true
 
 # ORCH-1111 [Surface pending invites in-app]

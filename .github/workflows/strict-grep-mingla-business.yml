@@ -4502,3 +4502,75 @@ jobs:
         run: node .github/scripts/strict-grep/i-1378-web-shim-export-parity.mjs --self-test
       - name: Run I-1378 web-shim-export-parity gate
         run: node .github/scripts/strict-grep/i-1378-web-shim-export-parity.mjs
+
+  issue-864-campaign-builder-node-tests:
+    name: "ISSUE-864 WP4: campaign-builder happy-path suite — per-channel copy caps (TikTok 100-hard+emoji-strip, Meta warn-not-reject-125, Google 3–15/2–4+keywords+NO-CTA, Reddit 300/CAPS), 4-pattern policy linter + CREDIT-retired, channel plan = preflight ∩ goal ∩ market ∩ budget with create-wired={meta,google}, hidden #865 goals, §1.8 launch summary, §1.9b review_detail cause→fix, SC-10 builder-never-launches (I-PROPOSED-864-CREATE-PAUSED)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ISSUE-864 campaign-builder happy-path node:test suite
+        run: node --test mingla-admin/src/__tests__/issue864_campaign_builder_happy.test.js
+
+  issue-864-campaign-builder-tester-adversarial:
+    name: "ISSUE-864 WP4 QA: tester adversarial suite — exact cap boundaries (100/101, 1024/1025, 300/301, 30/31, 90/91, CJK×2 at the caps, emoji-stripped semantics), exclusion precedence + the GB market gate through a create-wired channel, hidden-goal unreachability, $4.99/$5.00 floor framings + odd-cent split conservation, linter pattern-2 window + false-positive guard, payload negative-space, review-detail hostile shapes, launch-summary blocked-reason inline (tester fails-on-revert anchor), and the P1-1 destination-host-parity pin (RED until the usemingla.com→business.usemingla.com display fix lands)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ISSUE-864 campaign-builder tester adversarial node:test suite
+        run: node --test mingla-admin/src/__tests__/issue864_campaign_builder_tester_adversarial.test.js
+
+  orch-1385-workspace-deps-declared:
+    name: "ORCH-1385: every @mingla/* workspace package imported by mingla-business or app-mobile is DECLARED in that app's own package.json as file:../packages/* — resolution must never lean on metro extraNodeModules aliasing alone, which is exactly what Dependabot #925's disguised expo 54→57 bump broke (@mingla/phone-input dead on web, @mingla/payments-native dead on the app-mobile native bundle, every PR red via the merged-result web-build check) (I-PROPOSED-1385-WORKSPACE-DEPS-DECLARED)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1385 workspace-deps-declared gate
+        run: node .github/scripts/strict-grep/orch-1385-workspace-deps-declared.mjs --self-test
+      - name: Run ORCH-1385 workspace-deps-declared gate
+        run: node .github/scripts/strict-grep/orch-1385-workspace-deps-declared.mjs
+      - name: Run ORCH-1385 adversarial companion node:test suite
+        run: node --test .github/scripts/strict-grep/orch-1385-workspace-deps-declared.test.mjs
+
+  orch-1387-wallet-config-threaded:
+    name: "ORCH-1387: wallet config threaded — the Apple-4.9 cart line (cartItems via buildApplePayCartItems: label = product title, fallback Ticket/Reservation, NEVER the company) + googlePay analog present inside the SINGLE initPaymentSheet call at all three callsites, the shared hook forwards the whole object, the F-5 `as Record<string, unknown>` cast is banned, and the wallet keys stay first-class vendor-typed members of PaymentSheetInitInput (I-PROPOSED-1387-WALLET-CONFIG-THREADED; gate W-1..W-11 + both structural node:test suites, block+line comment-stripped per COMMS-0106)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1387 wallet-config-threaded gate
+        run: node .github/scripts/strict-grep/orch-1387-wallet-config-threaded.mjs --self-test
+      - name: Run ORCH-1387 wallet-config-threaded gate
+        run: node .github/scripts/strict-grep/orch-1387-wallet-config-threaded.mjs
+      - name: Run ORCH-1387 structural node:test suites (business + consumer)
+        run: >-
+          node --test
+          mingla-business/src/payments/__tests__/walletConfigThreading.orch1387.test.mjs
+          app-mobile/src/payments/__tests__/wallet_config_threading.orch1387.test.mjs
+
+  orch-1387-wallet-type-contract:
+    name: "ORCH-1387: scoped wallet type-contract lane — PaymentSheetInitInput wallet keys vendor-typed against the installed @stripe/stripe-react-native; two-sided: reverting the extension breaks the typetest positives, any-widening trips TS2578 on the negatives (D-6-immune scoped tsc lane, never the app baselines)"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      - name: Run the ORCH-1387 scoped type-contract lane
+        run: npx tsc --noEmit -p ../packages/payments-native/tsconfig.orch1387.typetest.json

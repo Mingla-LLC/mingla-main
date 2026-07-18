@@ -1,0 +1,19 @@
+[0m[38;5;245mrunning 3 tests from ./qd_invite_handler_probe.test.ts[0m
+P1 — 2nd invite, DIFFERENT brand → 201; invitation + link INSERTs fire ...
+[0m[38;5;245m------- output -------[0m
+P1 PROOF: 201 + {"invPayload":{"brand_id":"99999999-9999-4999-8999-999999999999","email":"newowner@example.com","invitee_name":"New Owner","role":"brand_owner","invited_by":"6c61590c-4e8e-4040-bd7c-29870ba6d736","token_hash":"f37f31dc2b4f2d7c621932e29136d877bc4aa6ba6401172a99acc66f140e3331","expires_at":"2026-07-23T19:52:44.082Z","status":"pending"},"linkPayload":{"partner_account_id":"6c61590c-4e8e-4040-bd7c-29870ba6d736","brand_id":"99999999-9999-4999-8999-999999999999","invited_owner_email":"newowner@example.com","personal_note":"Built this for you"}}
+[0m[38;5;245m----- output end -----[0m
+P1 — 2nd invite, DIFFERENT brand → 201; invitation + link INSERTs fire ... [0m[32mok[0m [0m[38;5;245m(2ms)[0m
+P2 — re-send SAME brand+email while pending+unexpired → 409 already_invited, no INSERT ...
+[0m[38;5;245m------- output -------[0m
+P2 PROOF: 409 already_invited; zero inserts
+[0m[38;5;245m----- output end -----[0m
+P2 — re-send SAME brand+email while pending+unexpired → 409 already_invited, no INSERT ... [0m[32mok[0m [0m[38;5;245m(0ms)[0m
+P3 — SAME brand, DIFFERENT email; link INSERT 23505 swallowed → 201, invitation has NEW email, link row untouched (stale) ...
+[0m[38;5;245m------- output -------[0m
+P3 PROOF: 201 with link INSERT conflicted+swallowed — invitation email is corrected-owner@example.com while the active link keeps the ORIGINAL email
+[0m[38;5;245m----- output end -----[0m
+P3 — SAME brand, DIFFERENT email; link INSERT 23505 swallowed → 201, invitation has NEW email, link row untouched (stale) ... [0m[32mok[0m [0m[38;5;245m(0ms)[0m
+
+[0m[32mok[0m | 3 passed | 0 failed [0m[38;5;245m(5ms)[0m
+

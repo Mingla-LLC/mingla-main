@@ -3,6 +3,14 @@
 // NOT shipped for web — web buyers use Stripe Checkout Sessions per
 // ORCH-0790; the consumer app has no web target.
 
+// ORCH-1387: type-only namespace import of the INSTALLED vendor types.
+// `import type` is erased syntax — zero runtime/bundle impact; the package
+// stays RN-free at runtime for the normalizePaymentSheetResult unit tests.
+// The `PaymentSheet` namespace is an explicit named export in the installed
+// @stripe/stripe-react-native 0.65.1 (types/index.d.ts:5,16) — immune to
+// `export *` collision-drop.
+import type { PaymentSheet } from "@stripe/stripe-react-native";
+
 export type PaymentSheetErrorCode = "Canceled" | "Failed" | "Timeout";
 
 export interface PaymentSheetError {
@@ -48,6 +56,28 @@ export interface PaymentSheetInitInput {
    * connected account. Paired-or-absent with customerId.
    */
   customerEphemeralKeySecret?: string;
+  /**
+   * ORCH-1387: first-classing of the ORCH-0849-HOTFIX wallet config — wallet
+   * exposure is per-sheet, HERE (the provider/initStripe `merchantIdentifier`
+   * only registers the binding). Carries the ORCH-1244/1246 Apple Guideline
+   * 4.9 contract: `cartItems[…].label` MUST be the product/event/trip/
+   * experience/venue title — fallback "Ticket"/"Reservation" — NEVER the
+   * company/merchantDisplayName. Typed against the INSTALLED vendor params
+   * because the SDK receives this object verbatim (whole-object forward,
+   * INVESTIGATION_ORCH-1387 F-1).
+   * Enforced by I-PROPOSED-1387-WALLET-CONFIG-THREADED via
+   * .github/scripts/strict-grep/orch-1387-wallet-config-threaded.mjs (W-11)
+   * + the scoped type lane tsconfig.orch1387.typetest.json.
+   */
+  applePay?: PaymentSheet.ApplePayParams;
+  /**
+   * ORCH-1387: same ORCH lineage as `applePay` — the Android analog
+   * (INVESTIGATION_ORCH-1387 Q7): `googlePay` rides the identical
+   * whole-object forward into the native PaymentSheet config.
+   * Enforced by I-PROPOSED-1387-WALLET-CONFIG-THREADED via
+   * orch-1387-wallet-config-threaded.mjs (W-11) + the scoped type lane.
+   */
+  googlePay?: PaymentSheet.GooglePayParams;
 }
 
 export interface StripePaymentSheetController {

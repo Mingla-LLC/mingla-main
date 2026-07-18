@@ -1,0 +1,11 @@
+[orch-1387-wallet-config-threaded] SELF-TEST PASS — every W-rule fires on its violation shape (incl. ORPHAN-2 block-comment decoys, duplicate-call uniqueness, spread-deleted-declaration-kept, cast re-introduction, hook rebuild, type revert).
+[orch-1387-wallet-config-threaded] PASS — W-1..W-11 hold: all three callsites thread applePay (cartItems via buildApplePayCartItems) + googlePay inside their single initPaymentSheet call, the hook forwards the whole object, the F-5 cast is gone, and the wallet keys are first-class vendor-typed members of PaymentSheetInitInput.
+# tests 20
+# suites 0
+# pass 20
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 134.067542
+typetest lane: GREEN (exit 0)

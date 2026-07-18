@@ -1,0 +1,155 @@
+
+═══════════════════════════════════════════════════════════
+T-2 — delete applePay: block from B (expect gate W-4 + biz suite RED)
+═══════════════════════════════════════════════════════════
+gate exit: 1
+  - W-4: mingla-business/src/payments/nativeCheckoutFlow.native.ts call span is missing the applePay config block (Apple Pay dark + 4.9 net gone).
+  - W-4: mingla-business/src/payments/nativeCheckoutFlow.native.ts call span is missing `cartItems: buildApplePayCartItems(…)` — the Apple-4.9 product line (label = product title, fallback "Ticket"/"Reservation", NEVER the company).
+biz suite exit: 1
+not ok 4 - W-4: call span threads applePay
+not ok 6 - W-4: call span threads the Apple-4.9 cart line (buildApplePayCartItems)
+VERDICT: T-2 — PASS (net(s) went red as specified, restored green)
+
+═══════════════════════════════════════════════════════════
+T-3 — delete cartItems: line from B (expect gate W-4 + biz suite RED)
+═══════════════════════════════════════════════════════════
+gate exit: 1
+  - W-4: mingla-business/src/payments/nativeCheckoutFlow.native.ts call span is missing `cartItems: buildApplePayCartItems(…)` — the Apple-4.9 product line (label = product title, fallback "Ticket"/"Reservation", NEVER the company).
+biz suite exit: 1
+not ok 6 - W-4: call span threads the Apple-4.9 cart line (buildApplePayCartItems)
+VERDICT: T-3 — PASS (net(s) went red as specified, restored green)
+
+═══════════════════════════════════════════════════════════
+T-4 — delete googlePay: block from B (expect gate W-6 + biz suite RED)
+═══════════════════════════════════════════════════════════
+gate exit: 1
+  - W-6: mingla-business/src/payments/nativeCheckoutFlow.native.ts call span is missing the googlePay config block (Android analog).
+biz suite exit: 1
+not ok 7 - W-6: call span threads a googlePay block carrying merchantCountryCode
+VERDICT: T-4 — PASS (net(s) went red as specified, restored green)
+
+═══════════════════════════════════════════════════════════
+T-5a — delete applePay: block from C (expect gate W-5 + consumer suite RED)
+═══════════════════════════════════════════════════════════
+gate exit: 1
+  - W-5: app-mobile/src/payments/nativeCheckoutFlow.ts call span is missing the applePay config block (Apple Pay dark + 4.9 net gone).
+  - W-5: app-mobile/src/payments/nativeCheckoutFlow.ts call span is missing `cartItems: buildApplePayCartItems(…)` — the Apple-4.9 product line (label = product title, fallback "Ticket"/"Reservation", NEVER the company).
+consumer suite exit: 1
+not ok 3 - W-5: call span threads applePay
+not ok 5 - W-5: call span threads the Apple-4.9 cart line (buildApplePayCartItems)
+VERDICT: T-5a — PASS (net(s) went red as specified, restored green)
+
+═══════════════════════════════════════════════════════════
+T-5b — delete cartItems: line from C (expect gate W-5 + consumer suite RED)
+═══════════════════════════════════════════════════════════
+gate exit: 1
+  - W-5: app-mobile/src/payments/nativeCheckoutFlow.ts call span is missing `cartItems: buildApplePayCartItems(…)` — the Apple-4.9 product line (label = product title, fallback "Ticket"/"Reservation", NEVER the company).
+consumer suite exit: 1
+not ok 5 - W-5: call span threads the Apple-4.9 cart line (buildApplePayCartItems)
+VERDICT: T-5b — PASS (net(s) went red as specified, restored green)
+
+═══════════════════════════════════════════════════════════
+T-5c — delete googlePay: block from C (expect gate W-7 + consumer suite RED)
+═══════════════════════════════════════════════════════════
+gate exit: 1
+  - W-7: app-mobile/src/payments/nativeCheckoutFlow.ts call span is missing the googlePay config block (Android analog).
+consumer suite exit: 1
+not ok 6 - W-7: call span threads a googlePay block carrying merchantCountryCode
+VERDICT: T-5c — PASS (net(s) went red as specified, restored green)
+
+═══════════════════════════════════════════════════════════
+T-6 — delete applePay from R walletConfig (expect gate W-8 + consumer suite RED)
+═══════════════════════════════════════════════════════════
+gate exit: 1
+  - W-8: app-mobile/src/hooks/useReserveTable.ts walletConfig body is missing applePay.
+  - W-8: app-mobile/src/hooks/useReserveTable.ts walletConfig body is missing `cartItems: buildApplePayCartItems(…)` — the Apple-4.9 product line.
+consumer suite exit: 1
+not ok 8 - W-8: walletConfig body carries applePay + the 4.9 cart line + googlePay
+VERDICT: T-6 — PASS (net(s) went red as specified, restored green)
+
+═══════════════════════════════════════════════════════════
+T-7 — delete ...walletConfig spread, keep declaration (expect gate W-8 RED)
+═══════════════════════════════════════════════════════════
+gate exit: 1
+  - W-8: app-mobile/src/hooks/useReserveTable.ts initPaymentSheet call span is missing the `...walletConfig` spread (config declared but never passed).
+consumer suite exit: 1
+not ok 9 - W-8: the initPaymentSheet call span spreads ...walletConfig
+VERDICT: T-7 — PASS (net(s) went red as specified, restored green)
+
+═══════════════════════════════════════════════════════════
+T-8 — hook picks/rebuilds instead of forwarding (expect gate W-10 + biz suite RED)
+═══════════════════════════════════════════════════════════
+gate exit: 1
+  - W-10: packages/payments-native/useStripePaymentSheet.ts must forward the WHOLE input object — `initPaymentSheet(input)` not found (no destructure/pick/rebuild).
+  - W-10: packages/payments-native/useStripePaymentSheet.ts must not mention applePay — the hook forwards, it never rebuilds the wallet config.
+  - W-10: packages/payments-native/useStripePaymentSheet.ts must not mention merchantDisplayName — the hook forwards, it never rebuilds the sheet config.
+biz suite exit: 1
+not ok 8 - W-10: useStripePaymentSheet forwards the WHOLE input object
+not ok 9 - W-10: the hook never mentions applePay or merchantDisplayName
+VERDICT: T-8 — PASS (net(s) went red as specified, restored green)
+
+═══════════════════════════════════════════════════════════
+T-9 — remove wallet keys from types.ts (expect gate W-11 + biz suite + typetest lane RED)
+═══════════════════════════════════════════════════════════
+gate exit: 1
+  - W-11: packages/payments-native/types.ts must declare `applePay?: PaymentSheet.ApplePayParams` (vendor-typed first-class wallet key, ORCH-1387).
+  - W-11: packages/payments-native/types.ts must declare `googlePay?: PaymentSheet.GooglePayParams` (vendor-typed first-class wallet key, ORCH-1387).
+biz suite exit: 1
+not ok 10 - W-11: PaymentSheetInitInput declares vendor-typed applePay + googlePay
+typetest lane exit: 2
+../packages/payments-native/__typetests__/paymentSheetInitInput.orch1387.typetest.ts(42,3): error TS2353: Object literal may only specify known properties, and 'applePay' does not exist in type 'PaymentSheetInitInput'.
+../packages/payments-native/__typetests__/paymentSheetInitInput.orch1387.typetest.ts(63,3): error TS2344: Type '"applePay" | "googlePay"' does not satisfy the constraint 'keyof PaymentSheetInitInput'.
+../packages/payments-native/__typetests__/paymentSheetInitInput.orch1387.typetest.ts(111,3): error TS2353: Object literal may only specify known properties, and 'applePay' does not exist in type 'PaymentSheetInitInput'.
+VERDICT: T-9 — PASS (net(s) went red as specified, restored green)
+
+═══════════════════════════════════════════════════════════
+T-10 — widen applePay?: any (expect typetest lane TS2578 RED; gate W-11 also fires on the non-vendor type)
+═══════════════════════════════════════════════════════════
+typetest lane exit: 2
+../packages/payments-native/__typetests__/paymentSheetInitInput.orch1387.typetest.ts(116,9): error TS2578: Unused '@ts-expect-error' directive.
+../packages/payments-native/__typetests__/paymentSheetInitInput.orch1387.typetest.ts(131,7): error TS2578: Unused '@ts-expect-error' directive.
+../packages/payments-native/__typetests__/paymentSheetInitInput.orch1387.typetest.ts(144,7): error TS2578: Unused '@ts-expect-error' directive.
+../packages/payments-native/__typetests__/paymentSheetInitInput.orch1387.typetest.ts(154,3): error TS2578: Unused '@ts-expect-error' directive.
+VERDICT: T-10 — PASS (net(s) went red as specified, restored green)
+
+═══════════════════════════════════════════════════════════
+T-11 — re-introduce as Record<string, unknown> in R (expect gate W-9 RED)
+═══════════════════════════════════════════════════════════
+gate exit: 1
+  - W-9: app-mobile/src/hooks/useReserveTable.ts contains `as Record<string, unknown>` — the F-5 cast suppresses all type checking of the wallet payload and must never return.
+consumer suite exit: 1
+not ok 9 - W-8: the initPaymentSheet call span spreads ...walletConfig
+not ok 10 - W-9: useReserveTable contains no `as Record<string, unknown>` cast
+VERDICT: T-11 — PASS (net(s) went red as specified, restored green)
+
+═══════════════════════════════════════════════════════════
+T-12 — applePay block only inside /* */ comment in B (ORPHAN-2; expect gate W-4 STILL RED)
+═══════════════════════════════════════════════════════════
+gate exit: 1
+  - W-4: mingla-business/src/payments/nativeCheckoutFlow.native.ts call span is missing the applePay config block (Apple Pay dark + 4.9 net gone).
+  - W-4: mingla-business/src/payments/nativeCheckoutFlow.native.ts call span is missing `cartItems: buildApplePayCartItems(…)` — the Apple-4.9 product line (label = product title, fallback "Ticket"/"Reservation", NEVER the company).
+biz suite exit: 1
+not ok 4 - W-4: call span threads applePay
+not ok 6 - W-4: call span threads the Apple-4.9 cart line (buildApplePayCartItems)
+VERDICT: T-12 — PASS (net(s) went red as specified, restored green)
+
+═══════════════════════════════════════════════════════════
+T-13 — second initPaymentSheet( call added to B (expect gate W-1 RED)
+═══════════════════════════════════════════════════════════
+gate exit: 1
+  - W-1: mingla-business/src/payments/nativeCheckoutFlow.native.ts must contain exactly ONE initPaymentSheet( call (found 2) — uniqueness companion.
+biz suite exit: 1
+not ok 3 - W-1: business flow file has exactly ONE initPaymentSheet( call
+VERDICT: T-13 — PASS (net(s) went red as specified, restored green)
+
+═══════════════════════════════════════════════════════════
+FINAL — pristine sweep after all restores (expect ALL GREEN + clean worktree)
+═══════════════════════════════════════════════════════════
+gate exit: 0
+biz suite exit: 0
+consumer suite exit: 0
+typetest lane exit: 0
+git status of the five scanned files (must be empty for B/C/H after restores):
+VERDICT: FINAL SWEEP — ALL GREEN
+
+MATRIX RESULT: ALL 12 CASES (T-2..T-13 incl. T-5a/b/c) PASSED — every revert made the named net(s) red and every restore returned green.

@@ -69,7 +69,8 @@
     "test:orch-431": "node ../scripts/audit/hub-grade-a-contract.mjs",
     "test:orch-432": "node ../scripts/audit/marketing-grade-a-contract.mjs",
     "test:orch-433": "node ../scripts/audit/trip-checkout-grade-a-contract.mjs",
-    "test:g3-sentry": "node ../scripts/audit/g3-sentry-contract.mjs"
+    "test:g3-sentry": "node ../scripts/audit/g3-sentry-contract.mjs",
+    "test:orch-1387": "node ../.github/scripts/strict-grep/orch-1387-wallet-config-threaded.mjs --self-test && node ../.github/scripts/strict-grep/orch-1387-wallet-config-threaded.mjs && node --test src/payments/__tests__/walletConfigThreading.orch1387.test.mjs && npx tsc --noEmit -p ../packages/payments-native/tsconfig.orch1387.typetest.json"
   },
   "dependencies": {
     "@expo-google-fonts/anton": "^0.4.2",
@@ -88,6 +89,12 @@
     "@expo-google-fonts/unbounded": "^0.4.1",
     "@expo/vector-icons": "^15.0.3",
     "@lottiefiles/dotlottie-react": "^0.13.5",
+    "@mingla/brand-rendering": "file:../packages/brand-rendering",
+    "@mingla/location-input": "file:../packages/location-input",
+    "@mingla/offering-rendering": "file:../packages/offering-rendering",
+    "@mingla/payments-native": "file:../packages/payments-native",
+    "@mingla/phone-input": "file:../packages/phone-input",
+    "@mingla/theme-animations": "file:../packages/theme-animations",
     "@radix-ui/react-dialog": "^1.1.15",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-native-community/datetimepicker": "8.4.4",

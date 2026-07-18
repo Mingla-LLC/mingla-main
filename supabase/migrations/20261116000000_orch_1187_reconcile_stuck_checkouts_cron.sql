@@ -3,10 +3,15 @@
 -- The P0 (paid ticket_checkout_sessions left at `processing_payment`, never
 -- finalized) was ROOT-fixed by re-subscribing the Connect webhook to
 -- payment_intent.succeeded. This cron is the defense-in-depth net: it runs the
--- existing `reconcile-stuck-checkouts` edge function every 15 minutes so ANY
--- future stuck session auto-recovers within minutes rather than waiting on a
--- manual re-run. The edge function is idempotent (biz_ticket_checkout_finalize
--- skips already-completed sessions), so repeated runs are safe.
+-- existing `reconcile-stuck-checkouts` edge function every 15 minutes.
+-- Scope of the net (comment corrected by ORCH-1388 — the original wording here
+-- overpromised blanket auto-recovery): the function FINALIZES sessions whose
+-- PaymentIntent succeeded (webhook-lost payments), and EXPIRES genuinely-unpaid
+-- past-expiry in-flight sessions (status='expired' + failed_at, ORCH-1388);
+-- mid-flight/ambiguous/unverifiable rows are skipped fail-safe, never expired.
+-- The edge function is idempotent (biz_ticket_checkout_finalize skips
+-- already-completed sessions; the expiry write is a rowcount-verified
+-- compare-and-swap), so repeated runs are safe.
 --
 -- Auth — the service-role bearer is sourced SECURELY from Supabase Vault
 -- (vault.decrypted_secrets), the established pattern in THIS repo:
