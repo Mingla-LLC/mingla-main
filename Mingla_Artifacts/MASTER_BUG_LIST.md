@@ -1,4 +1,6 @@
 # Master Bug List
+> **2026-07-17 — ORCH-1392 [proactive SECURITY DEFINER grant-hygiene sweep + CI gate] REGISTERED — OPEN.** S1 (the anon-EXECUTE default-privilege leak shipped TWICE: 1338 P2-1, 1384 P0-1). Sweep every definer RPC's effective anon/authenticated grant vs its internal auth.uid() gate; harden leakers; add a class-killing CI gate. **Status: OPEN — recommend dispatch soon.**
+
 > **2026-07-17 — ORCH-1390 [process-booking-deadlines + keep-warm crons 401 every cycle, crons report green] REGISTERED — OPEN.** S1 pending forensics (deadline enforcement possibly dead; silent-failure class). Source: 1388 D-B. **Status: OPEN.**
 
 > **2026-07-17 — ORCH-1391 [capacity predicate omits awaiting_web_redirect — oversell at scale] REGISTERED — OPEN.** S2 (no live impact yet). Source: 1388 D-A. **Status: OPEN — backlog.**
