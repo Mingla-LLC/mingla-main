@@ -329,3 +329,153 @@ Deno.test("frozen surfaces: no accept-RPC redefinition; column names untouched (
   // No RENAME of any frozen link column.
   assertEquals(countOf("RENAME COLUMN"), 0, "no renames (I-1331)");
 });
+
+// ---------------------------------------------------------------------------
+// REWORK additions (TEST FAIL P0-1 / P2-2) — effective-grant discipline.
+//
+// The original T-4 grant test above was a proven FALSE-GREEN (TEST report
+// §3 P2-2): it asserted the file TEXT contained `REVOKE ALL ... FROM PUBLIC`
+// + `GRANT ... TO service_role` and called that "service_role ONLY", while at
+// RUNTIME Supabase's default per-ROLE ACL left anon + authenticated with
+// EXECUTE (the ORCH-1338 P2-1 class). The tests below encode the remediation
+// shape: the revoke must EXPLICITLY name anon AND authenticated, and the
+// hardening migration 20270103000000 must re-assert the full end-state with
+// effective-privilege (has_function_privilege) DO-block probes.
+//
+// Append-only: nothing above this banner was modified.
+// ---------------------------------------------------------------------------
+
+const HARDENING_SRC = await Deno.readTextFile(
+  new URL(
+    "../20270103000000_orch_1384_p0_reissue_grant_hardening.sql",
+    import.meta.url,
+  ),
+);
+
+/** Comment-stripped SQL (COMMS-0106: prose can never satisfy an assertion). */
+function stripComments(sql: string): string {
+  return sql.replace(/--[^\n]*/g, "");
+}
+const LIFECYCLE_SQL = stripComments(SRC);
+const HARDENING_SQL = stripComments(HARDENING_SRC);
+
+const REISSUE_SIG_SPACED =
+  "public.partner_reissue_brand_invitation(uuid, uuid, text, text, timestamptz)";
+const CANCEL_SIG = "public.partner_cancel_pending_link(uuid)";
+const DISCONNECT_SIG = "public.partner_disconnect_link(uuid)";
+
+/** REVOKE ... ON FUNCTION <sig> ... ; statements in `sql` (provenance-isolated
+ *  by the exact signature, matching the tester-guard technique). */
+function revokesFor(sql: string, sig: string): string[] {
+  return [...sql.matchAll(/REVOKE\s+[\s\S]*?ON\s+FUNCTION[\s\S]*?;/gi)]
+    .map((m) => m[0])
+    .filter((s) => s.includes(sig));
+}
+
+/** The grantee list (text after FROM) of a REVOKE statement. */
+function fromList(revoke: string): string {
+  return revoke.replace(/^[\s\S]*\bFROM\b/i, "");
+}
+
+Deno.test("T-4b (REWORK P0-1): lifecycle reissue REVOKE explicitly strips anon AND authenticated — FROM PUBLIC alone is a proven runtime leak", () => {
+  const revokes = revokesFor(LIFECYCLE_SQL, REISSUE_SIG_SPACED);
+  assert(
+    revokes.length >= 1,
+    "lifecycle migration must carry a REVOKE ... ON FUNCTION <reissue> statement",
+  );
+  const ok = revokes.some((r) => {
+    const from = fromList(r);
+    return /\banon\b/i.test(from) && /\bauthenticated\b/i.test(from);
+  });
+  assert(
+    ok,
+    "reissue is service_role-ONLY (SPEC §4.4 RPC-3 / §7 A-6): the REVOKE must " +
+      "name anon AND authenticated explicitly — `REVOKE ... FROM PUBLIC` does " +
+      "NOT strip Supabase's default per-ROLE EXECUTE grants (P0-1, ORCH-1338 " +
+      "P2-1 class; proven live 2026-07-17).",
+  );
+});
+
+Deno.test("T-4c (REWORK P0-1/P2-2): hardening migration 20270103000000 revokes per-role and re-grants exactly the intended end-state", () => {
+  // Reissue: explicit anon + authenticated + PUBLIC revoke; service_role-only grant.
+  const reissueRevokes = revokesFor(HARDENING_SQL, REISSUE_SIG_SPACED);
+  assert(reissueRevokes.length >= 1, "hardening must REVOKE on the reissue fn");
+  assert(
+    reissueRevokes.some((r) => {
+      const from = fromList(r);
+      return /\bPUBLIC\b/i.test(from) && /\banon\b/i.test(from) &&
+        /\bauthenticated\b/i.test(from);
+    }),
+    "hardening reissue REVOKE must strip PUBLIC, anon AND authenticated",
+  );
+  const reissueGrants = [
+    ...HARDENING_SQL.matchAll(/GRANT\s+EXECUTE\s+ON\s+FUNCTION[\s\S]*?;/gi),
+  ].map((m) => m[0]).filter((g) => g.includes(REISSUE_SIG_SPACED));
+  assertEquals(reissueGrants.length, 1, "exactly one reissue GRANT expected");
+  const reissueGrantees = reissueGrants[0].replace(/^[\s\S]*\bTO\b/i, "");
+  assertStringIncludes(reissueGrantees, "service_role");
+  assert(
+    !/\banon\b/i.test(reissueGrantees) &&
+      !/\bauthenticated\b/i.test(reissueGrantees),
+    "reissue GRANT must target service_role ONLY",
+  );
+
+  // Cancel + disconnect: anon + PUBLIC revoked, authenticated KEPT (in-body
+  // auth.uid() forbidden-gate) — the REVOKE must NOT name authenticated.
+  for (const sig of [CANCEL_SIG, DISCONNECT_SIG]) {
+    const revokes = revokesFor(HARDENING_SQL, sig);
+    assert(revokes.length >= 1, `hardening must REVOKE on ${sig}`);
+    assert(
+      revokes.some((r) => {
+        const from = fromList(r);
+        return /\bPUBLIC\b/i.test(from) && /\banon\b/i.test(from) &&
+          !/\bauthenticated\b/i.test(from);
+      }),
+      `${sig}: REVOKE must strip PUBLIC + anon and must NOT strip authenticated`,
+    );
+    const grants = [
+      ...HARDENING_SQL.matchAll(/GRANT\s+EXECUTE\s+ON\s+FUNCTION[\s\S]*?;/gi),
+    ].map((m) => m[0]).filter((g) => g.includes(sig));
+    assert(
+      grants.some((g) =>
+        /\bauthenticated\b/i.test(g.replace(/^[\s\S]*\bTO\b/i, ""))
+      ),
+      `${sig}: authenticated grant must be (re-)asserted`,
+    );
+  }
+});
+
+Deno.test("T-4d (REWORK P2-2): hardening migration carries effective-privilege DO-block asserts + pgrst reload — grants are probed, never assumed", () => {
+  // The DO-block must probe has_function_privilege for every role×fn cell of
+  // the end-state matrix (9 probes), not just assert file text.
+  const probes = [...HARDENING_SQL.matchAll(/has_function_privilege\s*\(/gi)];
+  assert(
+    probes.length >= 9,
+    `expected >= 9 has_function_privilege probes (3 fns x 3 roles), found ${probes.length}`,
+  );
+  // Fail-loud: a mismatch must abort the migration.
+  assert(
+    /RAISE\s+EXCEPTION/i.test(HARDENING_SQL),
+    "DO-block asserts must RAISE EXCEPTION on drift",
+  );
+  // Each function's signature must appear in the assert block's probe targets.
+  for (
+    const compact of [
+      "partner_reissue_brand_invitation(uuid,uuid,text,text,timestamptz)",
+      "partner_cancel_pending_link(uuid)",
+      "partner_disconnect_link(uuid)",
+    ]
+  ) {
+    assertStringIncludes(
+      HARDENING_SQL.replace(/\s+/g, ""),
+      compact.replace(/\s+/g, ""),
+      `assert block must probe ${compact}`,
+    );
+  }
+  // PostgREST schema-cache reload after the grant change (house pattern,
+  // 20261227000000).
+  assert(
+    /NOTIFY\s+pgrst\s*,\s*'reload schema'/i.test(HARDENING_SQL),
+    "hardening must NOTIFY pgrst, 'reload schema'",
+  );
+});

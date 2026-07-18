@@ -471,7 +471,12 @@ BEGIN
 END;
 $function$;
 
-REVOKE ALL ON FUNCTION public.partner_reissue_brand_invitation(uuid, uuid, text, text, timestamptz) FROM PUBLIC;
+-- P0-1 REWORK amendment: the original `REVOKE ALL ... FROM PUBLIC;` here was a
+-- proven false-green (TEST §3 P0-1 / ORCH-1338 P2-1 class) — Supabase's default
+-- per-ROLE ACL leaves anon+authenticated with EXECUTE, and a PUBLIC revoke does
+-- not strip a per-role grant. Explicit per-role revoke below; environments that
+-- already applied the original text are converged by 20270103000000.
+REVOKE EXECUTE ON FUNCTION public.partner_reissue_brand_invitation(uuid, uuid, text, text, timestamptz) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.partner_reissue_brand_invitation(uuid, uuid, text, text, timestamptz) TO service_role;
 
 COMMENT ON FUNCTION public.partner_reissue_brand_invitation(uuid, uuid, text, text, timestamptz) IS
