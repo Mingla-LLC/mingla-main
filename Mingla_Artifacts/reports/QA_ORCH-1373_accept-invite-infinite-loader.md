@@ -826,3 +826,89 @@ The RETEST-1 verdict is **otherwise unchanged**, with one improvement: **P1-2 (C
 
 **Programme verdict → CONDITIONAL PASS, still gated on Seth for SC-4 + OQ-2.**
 Nothing this leg found blocks CLOSE: the three Android findings are all **pre-existing and not branch-caused** (payload waterfall, Android intent resolution, cookie-consent z-order). **P0-1 is dead on real hardware, the download CTA reaches the correct Play listing, and ORCH-1382 holds on mobile Chrome — the three things only a real phone could answer.**
+
+---
+
+# §LF. LIVE-FIRE LEG — real invite + real OAuth attempt on the physical Samsung (2026-07-18)
+
+**Dispatched by:** mingla-orchestrator (conductor) · **Skill:** mingla-tester
+**Purpose:** close the two never-verified, human-gated criteria — **SC-4** (real Google OAuth round-trip) and **OQ-2** (the authed happy-path grant, 0-of-1 lifetime) — with a real, reversible invite round-trip on Seth-controlled accounts.
+**Branch under test:** `ORCH-1373-accept-invite-infinite-loader` @ **`ac1f2782e`** (post-merge HEAD; `[TEST-MOD-APPROVED ORCH-1377]` on HEAD).
+**Device:** `R58R54YV7JT` / SM-A725F / Android 14 / Chrome 150.0.7871.124, USB, **CDP 9376 only** (9222 = other session, verified alive+untouched throughout). **`git stash` NEVER used — foreign `stash@{0}` verified still present (COMMS-0105).**
+**Test surface:** the fix rebuilt fresh from HEAD — `npx expo export -p web` (dummy `pk_live_` to clear the ORCH-0954 fail-close, per §A D-3) → all fix markers present in `__common-670b930…js` (`SIGN_IN_ROUTE_PREFIXES`, `sanitizeNextRoute`, `mingla.biz.auth.next`, `loading-gate-backstop`, "Get the Mingla Business app") → served on `127.0.0.1:8176` via `adb reverse` → talks to **production** Supabase (`gqno`).
+
+## LF.0 — HEADLINE
+
+**SC-4 CAPTURE half (the exact P0-1 regression that FAILED two rounds ago): PROVEN at runtime on the device, with a REAL seeded-invite token.**
+**SC-4 OAuth round-trip COMPLETION and OQ-2 (the grant): NOT closed — hard-blocked on a credential/HITL wall the dispatch's device-state premise did not hold, PLUS a newly-proven deploy blocker.** I did **not** manufacture either. Prod left **exactly as found** (one authorized write, fully reversed, read-back proven).
+
+## LF.1 — Authorized production writes (the ONLY writes performed)
+
+| # | Action | Row / id | Verified |
+|---|---|---|---|
+| **W1** | **Seed the one invite** — `brand_invitations` INSERT via service-role (deterministic token, so the plaintext is known without lifting a live session credential or scraping Gmail). Attributed to the real owner. | id **`9fa9008b-edba-4e8c-9a28-4219afdcf412`** · brand **Smoke & Rhythm** `1ce63bf4-1a33-4309-ab0b-ec23343e3569` (rambleawaypod-owned, alive, `partner_setup=false`) · email `sethogievabelgium@gmail.com` · role **`event_manager`** · `invited_by` = rambleawaypod `6c61590c` · status `pending` · token_hash `777c465…` | read-back: pending, unaccepted |
+| **W1-REV** | **Reverse W1** — hard-DELETE the seeded invite (fresh row → delete leaves prod byte-for-byte as-found). | deleted `9fa9008b…` | read-back below |
+
+**Reversal read-back (prod = as-found):** `my_invite_remaining=0` · `smokerhythm_invites=0` · `total_invites_now=3` (the 3 pre-existing rows) · `smokerhythm_active_members=2` (rambleawaypod owner + the pre-existing appreview event_manager — untouched) · no `brand_team_members` row was ever created (the accept never fired). **No audit_log rows created** (invite was seeded by direct INSERT, not the edge fn; no accept RPC ran). **Zero residue.**
+
+> **Role note (deviation, documented):** the dispatch specified role **`staff`**, which is **not a valid enum value** — `brand_invitations.role` / `brand_team_members.role` CHECK allows only `brand_owner, brand_admin, event_manager, finance_manager, marketing_manager, scanner`. `event_manager` is the app's own **default** team-member role (`InviteBrandMemberSheet.tsx:83`) and the faithful non-owner, non-admin, **non-transferring** equivalent of the dispatch's intent. Verified against the accept RPC: for a non-`brand_owner` role the RPC only INSERTs a `brand_team_members` row — **no `brands.account_id` change, no ownership transfer.**
+
+## LF.2 — SC-4 · CAPTURE half → **PASS (proven, real token, on device)**
+
+Logged-out on the fixed build, opened the **real** invite `…/accept-brand-invitation?token=<real W1 token>`:
+- **"You're invited" + "Sign in" rendered; the old infinite spinner ABSENT** (`hasInvited:true, hasSignIn:true, hasSpinner:false`).
+- Triggered **Sign in** (router navigation) → runtime state read via CDP `Runtime.evaluate` (the authoritative address-bar read; `Page.captureScreenshot` hangs on this device's background tabs — a known Android-Chrome CDP limitation, same as §A's stale-screencap note):
+  ```
+  path            : /auth                                              <- NOT collapsed to "/"
+  search          : ?next=%2Faccept-brand-invitation%3Ftoken%3D***    <- /auth?next= RETAINED
+  ssNext          : /accept-brand-invitation?token=<real token>       <- sessionStorage['mingla.biz.auth.next'] NON-NULL
+  screen          : Continue with Apple / Continue with Google / Continue with Email
+  ```
+- **Both dispatch SC-4 assertions met exactly:** the URL **retains `/auth?next=…` and does NOT collapse to `/`**, and `sessionStorage['mingla.biz.auth.next']` is **non-null**, now with the **real** invite token — the precise regression that failed two rounds ago, falsified again and it **held**.
+
+## LF.3 — SC-4 · OAuth round-trip → **launch PROVEN; completion BLOCKED (credential + deploy)**
+
+Triggered **Continue with Google** on the fixed build → the tab navigated correctly into the real OAuth:
+```
+https://accounts.google.com/v3/signin/accountchooser?client_id=169132274606-…
+   &redirect_to=http%3A%2F%2F127.0.0.1%3A8176%2Fauth%2Fcallback
+   &redirect_uri=https%3A%2F%2Fgqnoajqerqhnvulmnyvv.supabase.co%2Fauth%2Fv1%2Fcallback
+   &response_type=code   (PKCE)   &scope=email profile
+```
+The client wiring is correct: `redirect_to` is the **fixed local origin's** `/auth/callback`, and the round-trip reached Google's chooser. **But completion is blocked, on two independent walls:**
+
+**Wall 1 — the invitee cannot be authenticated (credential / HITL).** The dispatch's device-state claim ("Chrome signed into `rambleawaypod` **and `sethogievabelgium`**; the chooser offers both — NO password entry needed") **does not hold on the actual device.** Google's chooser offered **`sethogieva@gmail.com`** (note: NOT `sethogievabelgium`) and **`rambleawaypod@gmail.com`** — nothing else.
+- Picking **`sethogieva@gmail.com`** → Google **password challenge** (`/v3/signin/challenge/pwd`). No password for it was provided. Its Gmail is also re-auth-gated (`/signin/confirmidentifier`), so the email-OTP fallback is blocked too.
+- **`sethogievabelgium@gmail.com`** (the dispatch's named invitee) is **not among Chrome's Google accounts at all** — unavailable for any no-password sign-in.
+- The only account with a known password (the demo password in the Partner Onboarding Playbook) is **`rambleawaypod@gmail.com` — the brand OWNER**, which cannot be the invitee (email-mismatch, and the RPC's non-owner branch would **demote** its own `brand_owner` row → destructive). 
+- Per the dispatch's own standard ("prove-it-safely, not prove-it-at-any-cost"; "use exactly this, nothing else… do not improvise a target"), I did **not** guess/reuse a password, did **not** improvise a non-approved invitee (e.g. the active `rambleawaypod+orch1384retest@gmail.com` session), and did **not** lift Seth's live session token. **A valid invitee cannot be authenticated autonomously — this is a genuine human-in-the-loop point that needs Seth at the device.**
+
+**Wall 2 — the fix is NOT deployed anywhere with an allowlisted OAuth callback (proven).** Even with credentials, the round-trip's "land BACK on the fixed callback and resolve" needs the fixed build reachable at an OAuth-allowlisted origin. It is not:
+- **Production `business.usemingla.com` = the OLD pre-fix build** — its `__common` bundle carries the old `resolution-hard-ceiling` log and **zero** fix markers (`SIGN_IN_ROUTE_PREFIXES / sanitizeNextRoute / mingla.biz.auth.next / loading-gate-backstop = 0`).
+- **No PR exists** for the branch, and **every one of the last 20 Vercel `mingla-business` deployments is `CANCELED`** — including the branch build for this exact HEAD (`dpl_CG46…`, `ac1f2782e`) and the production-target `main` builds. **Nothing with the fix is live at any URL.**
+- Supabase defers `redirect_to` validation to the callback (an `/authorize` probe with an *invalid* `redirect_to` still 302s to Google), so whether `127.0.0.1:8176/auth/callback` is honored (Case A) or falls back to Site URL (Case B) **cannot be determined without completing a real Google auth** — which Wall 1 blocks.
+
+**Net:** SC-4's **capture** is device-proven; the **live round-trip completion** is blocked by an invitee-credential/HITL wall AND a deploy wall. The callback→resume logic itself remains structurally proven (RETEST-1 A-1: `isSignInRoute("/auth/callback")=true`, `consumeNextRoute()` wired at `callback.tsx:53`) — only the live provider round-trip is unobserved.
+
+## LF.4 — OQ-2 · the authed happy-path grant → **STILL OPEN (0-of-1), BLOCKED on the same invitee-credential wall**
+
+OQ-2 requires a **real authenticated invitee session** so the accept RPC fires and grants membership. Every route to one is blocked on this device: Google OAuth (Wall 1), email-OTP (Gmail re-auth-gated). Backend readiness was fully verified (so this is purely a credential wall, not a code gap): `sethogievabelgium` **and** `sethogieva` each have `auth.users.email` populated, a **verified Google identity**, and a **`creator_accounts` row** → the accept RPC's email-match + account-resolve would pass; the accept fn CORS is `*` (local origin accepted); the RPC's ORCH-1108 null-email fallback is present. **The one thing missing is a way to log in as a valid invitee.** I did not manufacture a session (service-key-minted or lifted). **The lifetime funnel stays 0-of-1 — provably, not for lack of trying.**
+
+## LF.5 — Cleanliness / device left as found
+Prod: W1 reversed, read-back clean (LF.1). Device: my driven tab closed; **Seth's `business.usemingla.com` session untouched** (still `rambleawaypod+orch1384retest@gmail.com` — my flow never navigated that origin; the pre-flight session snapshot was insurance only, never needed); `adb reverse` removed; local server stopped; **CDP 9222 alive+untouched, no global `pkill`**; **foreign `stash@{0}` still present, `git stash` never used**.
+
+## LF.6 — What must happen to finally close SC-4 (completion) + OQ-2 — for the orchestrator/Seth
+Both criteria are closable, but **not autonomously from this device state.** Two gates, both actionable:
+1. **Deploy the fix to an OAuth-allowlisted origin.** Merge + ship to production `business.usemingla.com` (its `/auth/callback` is already allowlisted), OR get a **successful** Vercel build (current ones all CANCELED) whose preview host is in the Supabase Redirect-URL allowlist. Until then there is no fixed surface a real OAuth round-trip can return to. *(Deploy is the orchestrator's lane per SPEC §13.)*
+2. **Make a valid invitee authenticable at the device.** Either sign `sethogievabelgium@gmail.com` (or `sethogieva@gmail.com`) into Chrome with an **active** session so the chooser needs no password, OR have Seth present to enter the invitee's Google password once. The provided demo password unlocks only `rambleawaypod` (the owner), which cannot be the invitee.
+
+With (1)+(2): re-seed the `event_manager` invite (LF.1 recipe), open the link logged-out on the deployed fixed build, Sign in → Continue with Google → pick the invitee → land back on the invite → **success + "Download the app" CTA** → read back `brand_team_members` (grant observed for the first time) → remove member + delete invite → read-back reversal.
+
+## §LF.7 — Final programme verdict (folding in every leg)
+
+**CONDITIONAL PASS — code is production-sound; the two never-observed human-gated criteria (SC-4 live OAuth round-trip, OQ-2 grant) remain OPEN, now with two concrete, orchestrator/Seth-actionable unblock gates (deploy + invitee auth).** · P0: 0 · P1: 0 new · P2: 1 (P2-A1, carried) · P3: 2 (carried).
+
+- **Proven at runtime, device, real invite:** SC-1 (invited screen, no spinner) · **SC-4 capture** (`/auth?next=` retained + `sessionStorage` non-null — the exact prior failure) · SC-4 OAuth **launch** (correct `redirect_to`, chooser reached). Plus all prior-leg PASSes (P0-1 dead, download CTA → correct Play listing, ORCH-1382 mobile-Chrome, SC-3/5/9/11/12/13/14/15/16, both-direction gate proofs).
+- **Still OPEN (blocked, not failed):** SC-4 round-trip **completion** + OQ-2 **grant** — invitee-credential/HITL wall + no fixed deployment at an allowlisted OAuth origin. Neither is a code defect in the shipped fix.
+- **New blockers surfaced this leg (for the orchestrator):** (a) **no fixed build is deployed anywhere** — prod is the old bundle, all recent Vercel `mingla-business` builds CANCELED; (b) **the device Google-account state does not match the dispatch** — `sethogievabelgium` is not in Chrome; `sethogieva`/`rambleawaypod` are the only accounts and both are password-gated for OAuth (only the owner's password is available).
+- **Does NOT block CLOSE of the code** — the fix is sound and its highest-risk regression (P0-1 / SC-4 capture) is device-proven. It **does** block signing off SC-4-live + OQ-2 on evidence, which was this leg's charter. An honest OPEN, safely arrived at, beats a manufactured PASS (the standing bar for this ORCH).
