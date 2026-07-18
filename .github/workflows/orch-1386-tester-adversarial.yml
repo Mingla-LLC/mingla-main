@@ -1,0 +1,61 @@
+name: ORCH-1386 Tester Adversarial
+
+# ORCH-1386 [expo-57 revert — native builds restored + framework-major guard]
+# — mingla-tester adversarial regression net (own workflow file per the
+# ORCH-1371/1372 precedent: NEW file, zero edits to the shipped
+# framework-major-guard.yml or any other existing workflow).
+#
+# Runs the tester-authored adversarial suite, which imports the REAL shipped
+# gate module (COMMS-0106 provenance rule) and attacks it from angles the
+# implementor's companion does not cover: the ROOT framework package moving
+# lockfile-only, nested-only paths, the mingla-business lockfile, npm-alias
+# specs, exotic/prerelease parser contracts, a FULL registry tamper dying on
+# the pairing wall, the pairing table pin, cross-app parity on real
+# manifests, and the runAll() aggregator end-to-end.
+#
+# fails-on-revert (tester-verified at a634b9d71): reverting the expo fix in a
+# manifest reds T9; line-deleting the gate's transitive wall reds T1/T2/T9.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "app-mobile/package.json"
+      - "app-mobile/package-lock.json"
+      - "mingla-business/package.json"
+      - "mingla-business/package-lock.json"
+      - "mingla-admin/package.json"
+      - "mingla-admin/package-lock.json"
+      - "mingla-marketing/package.json"
+      - "mingla-marketing/package-lock.json"
+      - ".github/scripts/strict-grep/orch-1386-framework-major-guard.mjs"
+      - ".github/scripts/strict-grep/orch-1386-framework-major-guard.adversarial.test.mjs"
+      - ".github/scripts/strict-grep/orch-1386-framework-major-registry.json"
+      - ".github/workflows/orch-1386-tester-adversarial.yml"
+  push:
+    branches: [main]
+    paths:
+      - "app-mobile/package.json"
+      - "app-mobile/package-lock.json"
+      - "mingla-business/package.json"
+      - "mingla-business/package-lock.json"
+      - "mingla-admin/package.json"
+      - "mingla-admin/package-lock.json"
+      - "mingla-marketing/package.json"
+      - "mingla-marketing/package-lock.json"
+      - ".github/scripts/strict-grep/orch-1386-framework-major-guard.mjs"
+      - ".github/scripts/strict-grep/orch-1386-framework-major-guard.adversarial.test.mjs"
+      - ".github/scripts/strict-grep/orch-1386-framework-major-registry.json"
+      - ".github/workflows/orch-1386-tester-adversarial.yml"
+
+jobs:
+  orch-1386-tester-adversarial:
+    name: "ORCH-1386 tester adversarial — framework-major guard attacked via the real module: root-package lockfile-only major, nested-only paths, business lockfile, npm-alias specs, prerelease parser pins, full-registry-tamper vs the pairing wall, pairing-table pin, cross-app parity, runAll end-to-end"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ORCH-1386 tester adversarial suite
+        run: node --test .github/scripts/strict-grep/orch-1386-framework-major-guard.adversarial.test.mjs
