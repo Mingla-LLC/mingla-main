@@ -98,6 +98,15 @@ verify_jwt = false
 [functions.ticket-checkout-confirm]
 verify_jwt = false
 
+# ORCH-1388 (fold-in D-C) — reconcile-stuck-checkouts sweep, cron-invoked via
+# pg_cron → net.http_post with the service-role bearer (a valid JWT, so
+# platform verification passes); the function additionally enforces its own
+# service-role check at entry. verify_jwt = true documents the CURRENT live
+# posture explicitly with ZERO behavior delta (the fn previously ran on the
+# platform default).
+[functions.reconcile-stuck-checkouts]
+verify_jwt = true
+
 # ORCH-0948 — anon buyer waitlist signup. Function validates ticket/event
 # eligibility and writes via service-role; no direct anon table INSERT policy.
 [functions.waitlist-signup]
