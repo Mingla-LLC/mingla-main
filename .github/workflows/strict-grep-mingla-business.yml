@@ -4491,7 +4491,7 @@ jobs:
         run: node .github/scripts/strict-grep/issue-866-creative-guards.mjs
 
   issue-864-campaign-builder-node-tests:
-    name: "ISSUE-864 WP4: campaign-builder happy-path suite — per-channel copy caps (TikTok 100-hard+emoji-strip, Meta warn-not-reject-125, Google 3–15/2–4+keywords+NO-CTA, Reddit 300/CAPS), 4-pattern policy linter + CREDIT-retired, channel plan = preflight ∩ goal ∩ market ∩ budget with create-wired={meta,google}, hidden #865 goals, §1.8 launch summary, §1.9b review_detail cause→fix, SC-10 builder-never-launches (I-PROPOSED-864-CREATE-PAUSED)"
+    name: "ISSUE-864 WP4: campaign-builder happy-path suite — per-channel copy caps (TikTok 100-hard+emoji-strip, Meta warn-not-reject-125, Google 3–15/2–4+keywords+NO-CTA, Reddit 300/CAPS), 4-pattern policy linter + CREDIT-retired, channel plan = preflight ∩ goal ∩ market ∩ budget with create-wired=all-five (ISSUE-927 closed the WP4 endpoint gap), hidden #865 goals, §1.8 launch summary, §1.9b review_detail cause→fix, SC-10 builder-never-launches (I-PROPOSED-864-CREATE-PAUSED)"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -4561,3 +4561,25 @@ jobs:
       - run: npm ci
       - name: Run the ORCH-1387 scoped type-contract lane
         run: npx tsc --noEmit -p ../packages/payments-native/tsconfig.orch1387.typetest.json
+
+  issue-927-create-wired-widened:
+    name: "ISSUE-927: CREATE_WIRED widened to all five + the payload-builder cascade — every payload carries its OWN platform literal (the pre-927 tiktok→platform:'meta' mislabeling class is dead), TikTok native objective + (goal,billing) pairs + no client CTA (GR-29 server-owned maps), Reddit headline=primary + no age keys (R-8), Snapchat SWIPES default + #866 library id, Meta/Google payloads leak none of the new state keys, NG-excludes-Reddit + GB-excludes-TikTok fire in the DEFAULT plan"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ISSUE-927 create-wired-widened node:test suite
+        run: node --test mingla-admin/src/__tests__/issue927_create_wired_widened.test.js
+
+  issue-927-qa-tester-adversarial:
+    name: "ISSUE-927 QA: tester adversarial suite — the D-1 mislabeling class pinned at the CREATE_WIRED boundary (every wired member labels itself; a 6th channel without a payload branch reds), eligible-plan-row reachability, hostile goal shapes (absent/null/prototype-only platforms), no client status key at any depth, cross-channel field-leak fuzz, NG+GB combined-market double exclusion + US positive control"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ISSUE-927 QA tester adversarial node:test suite
+        run: node --test mingla-admin/src/__tests__/issue927_tester_adversarial.test.js

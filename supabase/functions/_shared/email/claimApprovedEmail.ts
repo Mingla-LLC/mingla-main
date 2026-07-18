@@ -21,7 +21,10 @@ export function buildClaimApprovedEmail(input: {
 }
 
 export function defaultVenuePublicUrl(slug: string): string {
-  const base = (Deno.env.get("MINGLA_BUSINESS_WEB_URL") ??
+  // ISSUE-927: BUSINESS_WEB_ORIGIN is the canonical secret; the old name is
+  // a fallback so its deletion is safely decoupled (same digest, audited).
+  const base = (Deno.env.get("BUSINESS_WEB_ORIGIN") ??
+    Deno.env.get("MINGLA_BUSINESS_WEB_URL") ??
     "https://business.usemingla.com").replace(/\/+$/, "");
   const safeSlug = encodeURIComponent(slug.trim());
   return `${base}/b/${safeSlug}`;

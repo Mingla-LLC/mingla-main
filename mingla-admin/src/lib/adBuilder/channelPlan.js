@@ -7,7 +7,8 @@
  *
  * Exclusion-reason precedence (most structural first):
  *   1. create endpoint gap  — admin-ad-create-campaign has NO branch for the
- *      platform today (deployed truth: Meta generic + Google dedicated only)
+ *      platform (EMPTY since ISSUE-927 — all five channels are create-wired;
+ *      the gate stays first for any future adapter-first channel)
  *   2. preflight red / not_connected (hard blockers B1–B5)
  *   3. goal unsupported on the platform
  *   4. market unreachable (TikTok can't target GB — live-proven T-P2)
@@ -34,21 +35,22 @@ export const PLATFORM_LABELS = {
 
 /**
  * The deployed-endpoint truth (read from supabase/functions/admin-ad-create-
- * campaign on main): ONLY these platforms have a create branch. TikTok (#863)
- * and Reddit (#916) shipped live ADAPTERS + preflight + connect, but the
- * create endpoint routes them through Meta-shaped validations that
- * structurally 422/424 them. FLAGGED as an endpoint gap in the WP4 report —
- * do not widen this set until admin-ad-create-campaign gains their branches.
+ * campaign): every platform now has a self-contained create branch — Meta
+ * (WP1 generic path), Google (WP2), Snapchat (WP5), and TikTok + Reddit
+ * (ISSUE-927 closed the WP4 endpoint gap). Downstream gates (preflight /
+ * goal / market / budget) do the real narrowing; Snapchat additionally
+ * fail-closes server-side (424 snapchat_profile_missing) until the
+ * SNAPCHAT_PROFILE_ID secret is seeded — the slot ISSUE-927's secret
+ * consolidation frees.
  */
-export const CREATE_WIRED = ["meta", "google"];
+export const CREATE_WIRED = ["meta", "google", "tiktok", "reddit", "snapchat"];
 
-export const CREATE_GAP_REASONS = {
-  tiktok:
-    "TikTok's adapter is live but admin-ad-create-campaign has no TikTok create branch yet — creating would fail. (Endpoint gap, flagged.)",
-  reddit:
-    "Reddit's adapter is live but admin-ad-create-campaign has no Reddit create branch yet — creating would fail. (Endpoint gap, flagged.)",
-  snapchat: "Snapchat ships in WP5 (#867) — the adapter is a fail-close stub today.",
-};
+/**
+ * Empty since ISSUE-927 — no platform sits behind the endpoint gap. Kept (with
+ * planChannels' generic fallback copy) for the day a sixth channel lands
+ * adapter-first again; StepPreflight renders these only for un-wired rows.
+ */
+export const CREATE_GAP_REASONS = {};
 
 /**
  * TikTok cannot target GB — live tool_region_get returned 33 countries for
@@ -60,8 +62,8 @@ export const MARKET_GAPS = {
   // QA P2-1 (blueprint §1.3): Reddit can't BILL NGN — funding currencies are
   // an 8-value enum with no NGN, and the languages enum has no Nigerian
   // language. "Don't route the Nigeria lane to Reddit." Encoded HERE (not
-  // just prose) so the rule is already live the day Reddit's create branch
-  // lands — today it sits behind the CREATE_WIRED gate.
+  // just prose) — LIVE in the default plan since ISSUE-927 wired Reddit's
+  // create branch (the endpoint gap no longer pre-empts this rule).
   reddit: { unavailable: ["NG"], reason: "Reddit can't bill in naira (its funding-currency enum has no NGN) — Nigeria campaigns don't route to Reddit." },
 };
 
