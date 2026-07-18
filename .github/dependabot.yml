@@ -1,0 +1,147 @@
+# ORCH-1386 [PR #925 residue] — Dependabot guard: a framework MAJOR must
+# never ride in as part of a dependency batch.
+#
+# WHY: Dependabot PR #925 ("bump the npm_and_yarn group across 4 directories,
+# 15 updates" — presented as a security batch) smuggled `expo ~54.0.34 →
+# ~57.0.6` into BOTH mobile apps with react-native left at 0.81.5 (an
+# unsupported Expo-SDK/react-native pairing), FAILED the required
+# `mingla-business: web build (expo export)` check, and was merged red anyway.
+# Native bundling of both apps then failed (`Unable to resolve module buffer
+# from node_modules/react-native-svg/src/utils/fetchData.ts`), freezing EAS
+# builds / OTA / business-web deploys until ORCH-1386 reverted the bump.
+#
+# THE RULE: any MAJOR update of the framework family (expo, @expo/*,
+# react-native, @react-native/*, react, react-dom, next, vite, metro,
+# metro-*) is a deliberate human project — pairing research, native rebuild,
+# full QA — never a batch rider. The `ignore` rules below stop Dependabot
+# from PROPOSING such updates (ignore conditions apply to BOTH scheduled
+# version updates and security updates). `open-pull-requests-limit: 0` keeps
+# scheduled version-update PRs OFF, preserving this repo's pre-existing
+# security-updates-only posture (security updates are exempt from that limit
+# and keep flowing for everything outside these ignore rules).
+#
+# react-native (and @react-native/*) is 0.x — its breaking line moves on
+# MINOR — so minors are human-only there too.
+#
+# NOTE: the ignore block is copied verbatim per directory because Dependabot's
+# config parser does not support YAML anchors/aliases.
+#
+# The enforcement backstop (catches humans and disguised transitive bumps as
+# well, regardless of who authors the PR) is the CI gate:
+# .github/scripts/strict-grep/orch-1386-framework-major-guard.mjs
+# (+ orch-1386-framework-major-registry.json, the deliberate-upgrade ledger).
+
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/app-mobile"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    ignore:
+      - dependency-name: "expo"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@expo/*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-native"
+        update-types:
+          ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "@react-native/*"
+        update-types:
+          ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "next"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "vite"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "metro"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "metro-*"
+        update-types: ["version-update:semver-major"]
+  - package-ecosystem: "npm"
+    directory: "/mingla-business"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    ignore:
+      - dependency-name: "expo"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@expo/*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-native"
+        update-types:
+          ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "@react-native/*"
+        update-types:
+          ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "next"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "vite"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "metro"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "metro-*"
+        update-types: ["version-update:semver-major"]
+  - package-ecosystem: "npm"
+    directory: "/mingla-admin"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    ignore:
+      - dependency-name: "expo"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@expo/*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-native"
+        update-types:
+          ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "@react-native/*"
+        update-types:
+          ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "next"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "vite"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "metro"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "metro-*"
+        update-types: ["version-update:semver-major"]
+  - package-ecosystem: "npm"
+    directory: "/mingla-marketing"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    ignore:
+      - dependency-name: "expo"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@expo/*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-native"
+        update-types:
+          ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "@react-native/*"
+        update-types:
+          ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "next"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "vite"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "metro"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "metro-*"
+        update-types: ["version-update:semver-major"]

@@ -1,0 +1,441 @@
+{
+  "apps": {
+    "app-mobile": {
+      "manifest": {
+        "@expo/vector-icons": "15",
+        "expo": "54",
+        "react": "19",
+        "react-dom": "19",
+        "react-native": "0.81"
+      },
+      "lockfile": {
+        "@expo/cli": [
+          "54"
+        ],
+        "@expo/code-signing-certificates": [
+          "0.0"
+        ],
+        "@expo/config": [
+          "12"
+        ],
+        "@expo/config-plugins": [
+          "54"
+        ],
+        "@expo/config-types": [
+          "54"
+        ],
+        "@expo/devcert": [
+          "1"
+        ],
+        "@expo/devtools": [
+          "0.1"
+        ],
+        "@expo/env": [
+          "2"
+        ],
+        "@expo/fingerprint": [
+          "0.15"
+        ],
+        "@expo/image-utils": [
+          "0.8"
+        ],
+        "@expo/json-file": [
+          "10",
+          "11"
+        ],
+        "@expo/metro": [
+          "54"
+        ],
+        "@expo/metro-config": [
+          "54"
+        ],
+        "@expo/metro-runtime": [
+          "6"
+        ],
+        "@expo/osascript": [
+          "2"
+        ],
+        "@expo/package-manager": [
+          "1"
+        ],
+        "@expo/plist": [
+          "0.4"
+        ],
+        "@expo/prebuild-config": [
+          "54"
+        ],
+        "@expo/schema-utils": [
+          "0.1"
+        ],
+        "@expo/sdk-runtime-versions": [
+          "1"
+        ],
+        "@expo/spawn-async": [
+          "1"
+        ],
+        "@expo/sudo-prompt": [
+          "9"
+        ],
+        "@expo/vector-icons": [
+          "15"
+        ],
+        "@expo/ws-tunnel": [
+          "1"
+        ],
+        "@expo/xcpretty": [
+          "4"
+        ],
+        "@react-native/assets-registry": [
+          "0.81"
+        ],
+        "@react-native/babel-plugin-codegen": [
+          "0.81",
+          "0.86"
+        ],
+        "@react-native/babel-preset": [
+          "0.81",
+          "0.86"
+        ],
+        "@react-native/codegen": [
+          "0.81",
+          "0.86"
+        ],
+        "@react-native/community-cli-plugin": [
+          "0.81"
+        ],
+        "@react-native/debugger-frontend": [
+          "0.81"
+        ],
+        "@react-native/dev-middleware": [
+          "0.81"
+        ],
+        "@react-native/gradle-plugin": [
+          "0.81"
+        ],
+        "@react-native/js-polyfills": [
+          "0.81",
+          "0.86"
+        ],
+        "@react-native/metro-babel-transformer": [
+          "0.86"
+        ],
+        "@react-native/metro-config": [
+          "0.86"
+        ],
+        "@react-native/normalize-colors": [
+          "0.74",
+          "0.81"
+        ],
+        "@react-native/virtualized-lists": [
+          "0.81"
+        ],
+        "expo": [
+          "54"
+        ],
+        "metro": [
+          "0.83",
+          "0.84"
+        ],
+        "metro-babel-transformer": [
+          "0.83",
+          "0.84"
+        ],
+        "metro-cache": [
+          "0.83",
+          "0.84"
+        ],
+        "metro-cache-key": [
+          "0.83",
+          "0.84"
+        ],
+        "metro-config": [
+          "0.83",
+          "0.84"
+        ],
+        "metro-core": [
+          "0.83",
+          "0.84"
+        ],
+        "metro-file-map": [
+          "0.83",
+          "0.84"
+        ],
+        "metro-minify-terser": [
+          "0.83",
+          "0.84"
+        ],
+        "metro-resolver": [
+          "0.83",
+          "0.84"
+        ],
+        "metro-runtime": [
+          "0.83",
+          "0.84"
+        ],
+        "metro-source-map": [
+          "0.83",
+          "0.84"
+        ],
+        "metro-symbolicate": [
+          "0.83",
+          "0.84"
+        ],
+        "metro-transform-plugins": [
+          "0.83",
+          "0.84"
+        ],
+        "metro-transform-worker": [
+          "0.83",
+          "0.84"
+        ],
+        "react": [
+          "19"
+        ],
+        "react-dom": [
+          "19"
+        ],
+        "react-native": [
+          "0.81"
+        ]
+      }
+    },
+    "mingla-business": {
+      "manifest": {
+        "@expo/vector-icons": "15",
+        "expo": "54",
+        "react": "19",
+        "react-dom": "19",
+        "react-native": "0.81"
+      },
+      "lockfile": {
+        "@expo/cli": [
+          "54"
+        ],
+        "@expo/code-signing-certificates": [
+          "0.0"
+        ],
+        "@expo/config": [
+          "12"
+        ],
+        "@expo/config-plugins": [
+          "54"
+        ],
+        "@expo/config-types": [
+          "54"
+        ],
+        "@expo/devcert": [
+          "1"
+        ],
+        "@expo/devtools": [
+          "0.1"
+        ],
+        "@expo/env": [
+          "2"
+        ],
+        "@expo/fingerprint": [
+          "0.15"
+        ],
+        "@expo/image-utils": [
+          "0.8"
+        ],
+        "@expo/json-file": [
+          "10",
+          "11"
+        ],
+        "@expo/metro": [
+          "54"
+        ],
+        "@expo/metro-config": [
+          "54"
+        ],
+        "@expo/metro-runtime": [
+          "6"
+        ],
+        "@expo/osascript": [
+          "2"
+        ],
+        "@expo/package-manager": [
+          "1"
+        ],
+        "@expo/plist": [
+          "0.4"
+        ],
+        "@expo/prebuild-config": [
+          "54"
+        ],
+        "@expo/require-utils": [
+          "55"
+        ],
+        "@expo/schema-utils": [
+          "0.1"
+        ],
+        "@expo/sdk-runtime-versions": [
+          "1"
+        ],
+        "@expo/spawn-async": [
+          "1"
+        ],
+        "@expo/sudo-prompt": [
+          "9"
+        ],
+        "@expo/vector-icons": [
+          "15"
+        ],
+        "@expo/ws-tunnel": [
+          "1"
+        ],
+        "@expo/xcpretty": [
+          "4"
+        ],
+        "@react-native/assets-registry": [
+          "0.81"
+        ],
+        "@react-native/babel-plugin-codegen": [
+          "0.81",
+          "0.86"
+        ],
+        "@react-native/babel-preset": [
+          "0.81",
+          "0.86"
+        ],
+        "@react-native/codegen": [
+          "0.81",
+          "0.86"
+        ],
+        "@react-native/community-cli-plugin": [
+          "0.81"
+        ],
+        "@react-native/debugger-frontend": [
+          "0.81"
+        ],
+        "@react-native/dev-middleware": [
+          "0.81"
+        ],
+        "@react-native/gradle-plugin": [
+          "0.81"
+        ],
+        "@react-native/js-polyfills": [
+          "0.81",
+          "0.86"
+        ],
+        "@react-native/metro-babel-transformer": [
+          "0.86"
+        ],
+        "@react-native/metro-config": [
+          "0.86"
+        ],
+        "@react-native/normalize-colors": [
+          "0.74",
+          "0.81"
+        ],
+        "@react-native/virtualized-lists": [
+          "0.81"
+        ],
+        "expo": [
+          "54"
+        ],
+        "metro": [
+          "0.83",
+          "0.84"
+        ],
+        "metro-babel-transformer": [
+          "0.83",
+          "0.84"
+        ],
+        "metro-cache": [
+          "0.83",
+          "0.84"
+        ],
+        "metro-cache-key": [
+          "0.83",
+          "0.84"
+        ],
+        "metro-config": [
+          "0.83",
+          "0.84"
+        ],
+        "metro-core": [
+          "0.83",
+          "0.84"
+        ],
+        "metro-file-map": [
+          "0.83",
+          "0.84"
+        ],
+        "metro-minify-terser": [
+          "0.83",
+          "0.84"
+        ],
+        "metro-resolver": [
+          "0.83",
+          "0.84"
+        ],
+        "metro-runtime": [
+          "0.83",
+          "0.84"
+        ],
+        "metro-source-map": [
+          "0.83",
+          "0.84"
+        ],
+        "metro-symbolicate": [
+          "0.83",
+          "0.84"
+        ],
+        "metro-transform-plugins": [
+          "0.83",
+          "0.84"
+        ],
+        "metro-transform-worker": [
+          "0.83",
+          "0.84"
+        ],
+        "react": [
+          "19"
+        ],
+        "react-dom": [
+          "19"
+        ],
+        "react-native": [
+          "0.81"
+        ]
+      }
+    },
+    "mingla-admin": {
+      "manifest": {
+        "react": "19",
+        "react-dom": "19",
+        "vite": "8"
+      },
+      "lockfile": {
+        "react": [
+          "19"
+        ],
+        "react-dom": [
+          "19"
+        ],
+        "vite": [
+          "8"
+        ]
+      }
+    },
+    "mingla-marketing": {
+      "manifest": {
+        "next": "15",
+        "react": "19",
+        "react-dom": "19"
+      },
+      "lockfile": {
+        "next": [
+          "15"
+        ],
+        "react": [
+          "19"
+        ],
+        "react-dom": [
+          "19"
+        ]
+      }
+    }
+  }
+}

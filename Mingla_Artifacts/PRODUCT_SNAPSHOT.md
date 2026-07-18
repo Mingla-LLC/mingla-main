@@ -387,3 +387,5 @@
 > **2026-06-10 — Partner workflow Grade A.** Mingla partners can now (a) set up brands in 'client mode' for owners, (b) invite the real owner via branded email + celebration screen, (c) keep ongoing access to the brand as brand_admin in the main switcher after handoff so they can keep creating events that earn the 0.15% split. Closes ORCH-1081.
 
 > **2026-07-17 — ORCH-1385 [red-main phone-input dep] CLOSED ✅** (merged `d4f0996df` PR #929, tester PASS; repo-wide merge blockade lifted; guard `orch-1385-workspace-deps-declared` live; residue ORCH-1386 [native builds HELD] + ORCH-1387). ORCH-1384 [partner brand mgmt] implemented+DB-live, awaiting OQ-8 login for TEST.
+
+> **2026-07-17 — ORCH-1386 [expo-57 revert] CLOSED ✅** (native builds restored both apps; framework-major guard ACTIVE; EAS/[deploy]/OTA HOLD LIFTED at merge; residuals → ORCH-1389 backlog). Open: ORCH-1387 close PR #931 blocked on GitGuardian (Seth dashboard), ORCH-1388 [stuck PIs — Stripe fact owed], ORCH-1384 [awaiting OQ-8 login].
