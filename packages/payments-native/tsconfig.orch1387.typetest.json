@@ -1,0 +1,29 @@
+{
+  // ORCH-1387 — scoped type-contract lane (SPEC §4.5.3, D-6-immune).
+  // Includes ONLY the package type contract + its typetest — NEVER either
+  // app's baseline. Run from mingla-business (typescript devDep + installed
+  // vendor types):
+  //   npx tsc --noEmit -p ../packages/payments-native/tsconfig.orch1387.typetest.json
+  // CI: .github/workflows/strict-grep-mingla-business.yml job
+  // `orch-1387-wallet-type-contract`.
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "types": [],
+    // Deterministic vendor resolution: packages/ has no node_modules of its
+    // own, so pin the installed SDK inside mingla-business (paths are
+    // resolved relative to this tsconfig; baseUrl-less paths per TS 4.1+).
+    "paths": {
+      "@stripe/stripe-react-native": [
+        "../../mingla-business/node_modules/@stripe/stripe-react-native"
+      ]
+    }
+  },
+  "include": [
+    "types.ts",
+    "__typetests__/paymentSheetInitInput.orch1387.typetest.ts"
+  ]
+}

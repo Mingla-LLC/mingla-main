@@ -69,7 +69,8 @@
     "test:orch-431": "node ../scripts/audit/hub-grade-a-contract.mjs",
     "test:orch-432": "node ../scripts/audit/marketing-grade-a-contract.mjs",
     "test:orch-433": "node ../scripts/audit/trip-checkout-grade-a-contract.mjs",
-    "test:g3-sentry": "node ../scripts/audit/g3-sentry-contract.mjs"
+    "test:g3-sentry": "node ../scripts/audit/g3-sentry-contract.mjs",
+    "test:orch-1387": "node ../.github/scripts/strict-grep/orch-1387-wallet-config-threaded.mjs --self-test && node ../.github/scripts/strict-grep/orch-1387-wallet-config-threaded.mjs && node --test src/payments/__tests__/walletConfigThreading.orch1387.test.mjs && npx tsc --noEmit -p ../packages/payments-native/tsconfig.orch1387.typetest.json"
   },
   "dependencies": {
     "@expo-google-fonts/anton": "^0.4.2",
