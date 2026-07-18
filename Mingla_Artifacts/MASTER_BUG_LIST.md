@@ -1,4 +1,8 @@
 # Master Bug List
+> **2026-07-17 — ORCH-1390 [process-booking-deadlines + keep-warm crons 401 every cycle, crons report green] REGISTERED — OPEN.** S1 pending forensics (deadline enforcement possibly dead; silent-failure class). Source: 1388 D-B. **Status: OPEN.**
+
+> **2026-07-17 — ORCH-1391 [capacity predicate omits awaiting_web_redirect — oversell at scale] REGISTERED — OPEN.** S2 (no live impact yet). Source: 1388 D-A. **Status: OPEN — backlog.**
+
 > **2026-07-17 — ORCH-1389 [framework-guard hardening + missing CI native-bundle lane] REGISTERED — OPEN.** `quality-gap` S3 (guard gaps backstopped by the lockfile wall; native-bundle lane = the real want, ~4-6 min/app cost). Sources: 1386 TEST F-1..F-3/TD-1/TD-3 + IMPLEMENT D-1. **Status: OPEN — backlog.**
 
 > **2026-07-17 — ORCH-1388 [2 live checkout sessions stuck processing_payment 2+ weeks; reconciler never closed them] REGISTERED — OPEN.** `bug`+`data-integrity` S1-high (live money: PIs pi_3ToXuJ… $10 Jul-1 + pi_3TooOQ… $20 Jul-2, failure_reason NULL; 5 of 9 all-time sessions share the state). FACTS (2026-07-17, live Stripe API): both PIs requires_payment_method, zero charges — abandoned checkouts, NO money stuck, no refunds owed. RE-GRADED S1→S2 (reconciler/state honesty: never-paid sessions stuck in processing_payment forever). Bonus: both 06-27 succeeded payments = wallet apple_pay (first live Apple Pay proof — closes 1387 OQ-2a). **Status: OPEN — awaiting dispatch order.**
