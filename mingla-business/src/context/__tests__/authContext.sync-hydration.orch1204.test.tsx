@@ -319,7 +319,7 @@ describe("ORCH-1204 — AuthContext.tsx source-text structural assertions (fails
       // The ceiling body must NOT clear user/session: assert no setUser(null)
       // / setSession(null) appears inside the hard-ceiling setTimeout callback.
       const ceilingMatch = AUTH_CONTEXT_SOURCE.match(
-        /hardCeilingTimer = setTimeout\(\(\) => \{[\s\S]*?\}, AUTH_RESOLUTION_HARD_CEILING_MS\);/,
+        /hardCeilingTimer = setTimeout\(\(\) => \{[\s\S]*?\}, AUTH_LOADING_GATE_RELEASE_BACKSTOP_MS\);/,
       );
       expect(ceilingMatch).not.toBeNull();
       if (ceilingMatch) {

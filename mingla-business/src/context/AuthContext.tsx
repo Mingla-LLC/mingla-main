@@ -85,24 +85,48 @@ import { withTimeout, AUTH_PROBE_TIMEOUT_MS } from "../utils/withTimeout";
 // worst case; catches stalled promises without false-positives on slow
 // networks). I-AUTH-BOOTSTRAP-TIMEOUT (NEW invariant per ORCH-0887-A).
 export const AUTH_BOOTSTRAP_TIMEOUT_MS = 3000;
-// ORCH-1102 Wave 2 [bounded loading — never an infinite spinner] — hard
-// wall-clock CEILING on the loading gate. The ORCH-0887-A Promise.race above
-// normally flips `loading` false within 3s, but the ORCH-1100 web GoTrue lock
-// (`navigatorLock`) can DEADLOCK in pathological contexts (orphaned-lock
-// thrash / microtask starvation / a StrictMode unmount-bail that skips the
-// race's setLoading(false)), leaving `loading` stuck true → an INFINITE
-// spinner at `_layout`/`index`. Seth's hard rule: a user must NEVER be left
-// hanging. This backstop is an INDEPENDENT setTimeout (NOT a Promise.race arm
-// living inside the locked auth subsystem, so it can't be starved by the lock)
-// that force-resolves `loading` false if bootstrap has not resolved by the
-// ceiling. An unresolvable session is then treated as logged-out and the
-// route gates send the user to the real sign-in screen — somewhere actionable,
-// never a permanent spinner. The ceiling is deliberately well ABOVE the normal
-// warm path + the 3s race + the 2.3s lock self-heal budget so it is a true
-// LAST-RESORT backstop that NEVER pre-empts a real (slow) session and never
-// causes a false logged-out flash. Web-only (native already resolves; the
-// splash covers native boot — do not regress native).
-export const AUTH_RESOLUTION_HARD_CEILING_MS = 7000;
+// ORCH-1102 Wave 2 [bounded loading — never an infinite spinner] — the
+// LOADING-GATE RELEASE BACKSTOP.
+//
+// ─── WHAT THIS GATES / WHAT THIS LOGS (ORCH-1377 C-1377-N4) ────────────────
+//   GATES:  nothing user-visible. It releases the `loading` flag ONLY.
+//   LOGS:   `[auth] loading-gate-backstop: …`
+//   NOT the UI gate. The constant that actually gates the UI is
+//   AUTH_UI_GATE_EXPIRY_MS (coldLoadAuthGates.ts) → isAuthResolutionExpired →
+//   _layout.tsx. THREE 7000ms auth constants used to carry near-identical names
+//   ("…HARD_CEILING_MS" / "…CEILING_MS" / "BRAND_RESOLVE_AUTH_CEILING_MS"), and
+//   that collision IS why ORCH-1373 quoted THIS timer's log while reasoning
+//   about the OTHER one's semantics — a full investigation cycle spent on a
+//   "7-second stall" that never existed. Names now state the job.
+//
+// ─── WHY IT EXISTS ─────────────────────────────────────────────────────────
+// The ORCH-0887-A Promise.race normally flips `loading` false within 3s, but the
+// ORCH-1100 web GoTrue lock (`navigatorLock`) can DEADLOCK in pathological
+// contexts (orphaned-lock thrash / microtask starvation / a StrictMode
+// unmount-bail that skips the race's setLoading(false)), leaving `loading` stuck
+// true → an INFINITE spinner at `_layout`/`index`. Seth's hard rule: a user must
+// NEVER be left hanging. This backstop is an INDEPENDENT setTimeout (NOT a
+// Promise.race arm living inside the locked auth subsystem, so it can't be
+// starved by the lock) that force-releases `loading` if bootstrap has not
+// resolved by the backstop. An unresolvable session is then treated as
+// logged-out and the route gates send the user to the real sign-in screen —
+// somewhere actionable, never a permanent spinner. It sits deliberately well
+// ABOVE the normal warm path + the 3s race + the 2.3s lock self-heal budget so
+// it is a true LAST-RESORT backstop that NEVER pre-empts a real (slow) session
+// and never causes a false logged-out flash.
+// ORCH-1292 (Apple 2.1a): armed on native too — NOT web-only (see the arming
+// site below).
+//
+// ─── ⚠️ IT FIRES ONLY WHEN BOOTSTRAP DID NOT RESOLVE — see bootstrapResolvedRef ─
+// ORCH-1377 F-1: this comment previously described a conditional last-resort
+// backstop, and THAT WAS NOT TRUE OF THE CODE. The timer read no state at all,
+// so it fired on EVERY load where the tab stayed open ~7.5s — including loads
+// where auth resolved in 604ms (measured 4/4, with zero observable state
+// change). The log asserted a failure that had not occurred, and the ref-write
+// below it corrupted `bootstrapTimedOutRef` on every healthy boot (F-3).
+// `bootstrapResolvedRef` now guards it, so this description is true BY
+// CONSTRUCTION rather than by intent. Do not remove that guard.
+export const AUTH_LOADING_GATE_RELEASE_BACKSTOP_MS = 7000;
 const WEB_AUTH_STORAGE_KEY = "sb-gqnoajqerqhnvulmnyvv-auth-token";
 
 // ORCH-1220 [business-reviewer-bypass] — the ONE email routed through the
@@ -244,6 +268,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // analytics-identities. Any subsequent non-INITIAL_SESSION event clears
   // the gate so the listener resumes normal processing.
   const bootstrapTimedOutRef = useRef(false);
+  // ORCH-1377 [auth-7s-log-lies] — set true the moment bootstrap RESOLVES, by
+  // any route. Read ONLY by the loading-gate release backstop, to answer the one
+  // question that timer never asked: "did bootstrap actually fail?"
+  //
+  // ⚠️ WHY A REF AND NOT `loading` — THE STALE-CLOSURE TRAP. The bootstrap
+  // effect below is `useEffect(…, [])`: it runs ONCE. A naive `if (!loading)
+  // return;` inside the timer callback closes over `loading` FROM MOUNT, when it
+  // is `true` — so it would NEVER guard, and the fix would silently do nothing
+  // while looking correct. A ref is not captured by value; `.current` is read at
+  // fire time. Every resolution point in the effect sets it (all three are
+  // enumerated and marked "ORCH-1377 resolution point" below) — miss one and the
+  // log lies again on that path.
+  const bootstrapResolvedRef = useRef(false);
   // ORCH-1106 [native authenticated, no-brand degraded shell] — run the
   // boot-time authenticated probe AT MOST ONCE per cold start. `getSession()`
   // trusts the cached token without server validation, so a server-revoked
@@ -286,7 +323,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // on Apple's throttled review network — could leave `loading` true forever
     // and hang the NATIVE boot spinner with no escape (Apple's "activity
     // indicator spins indefinitely"). Arming the ceiling on native too GUARANTEES
-    // `setLoading(false)` within AUTH_RESOLUTION_HARD_CEILING_MS. The happy path
+    // `setLoading(false)` within AUTH_LOADING_GATE_RELEASE_BACKSTOP_MS. The happy path
     // is unchanged: a normal cold start resolves in well under the ceiling and
     // the timer is cleared on unmount. When it fires, session/user (already set
     // from the resolved getSession above) are preserved — an authed user simply
@@ -296,8 +333,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // `user`/`session` — a synchronously-hydrated valid session must survive it.
     const hardCeilingTimer = setTimeout(() => {
       if (!mounted) return;
+      // ORCH-1377 C-1377-LOG + C-1377-F3 — THE GUARD. Everything below this line
+      // asserts "bootstrap did not resolve". Before this early return existed,
+      // NONE of it was conditional: the log fired on every load where the tab
+      // stayed open ~7.5s (4/4, including a 604ms resolve) and
+      // `bootstrapTimedOutRef` — a flag whose NAME MEANS "bootstrap FAILED" —
+      // was armed on every healthy boot. That corrupted the listener at :540,
+      // which uses the ref to discard stale echoes of a FAILED bootstrap: with
+      // it wrongly armed, a later passive event carrying an unusable session was
+      // silently dropped instead of clearing session/user, leaving the app
+      // rendering an authed shell under a dead token.
+      // ONE guard kills both: the lying log AND the ref corruption.
+      // A diagnostic that lies is worse than no diagnostic.
+      if (bootstrapResolvedRef.current) return;
       console.warn(
-        `[auth] resolution-hard-ceiling: auth did not resolve within ${AUTH_RESOLUTION_HARD_CEILING_MS}ms — releasing the loading gate (treating as logged-out so the user lands on sign-in, never an infinite spinner)`,
+        `[auth] loading-gate-backstop: bootstrap did not resolve within ${AUTH_LOADING_GATE_RELEASE_BACKSTOP_MS}ms — releasing the loading gate (treating as logged-out so the user lands on sign-in, never an infinite spinner)`,
       );
       // Preserve any stored session so a genuinely slow-but-valid session still
       // warms via a late SIGNED_IN/TOKEN_REFRESHED event; only the spinner is
@@ -305,7 +355,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // send the user to the real sign-in screen.
       bootstrapTimedOutRef.current = true;
       setLoading(false);
-    }, AUTH_RESOLUTION_HARD_CEILING_MS);
+    }, AUTH_LOADING_GATE_RELEASE_BACKSTOP_MS);
 
     const bootstrap = async () => {
       if (__DEV__) {
@@ -340,6 +390,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // the timeout path. Do NOT add a probe here (would risk signing out a
         // valid user on a slow network — out of scope, dangerous).
         const storedWebSession = readStoredWebSession();
+        // ORCH-1377 resolution point 1/3 — the ORCH-0887-A race-timeout branch.
+        // Bootstrap has RESOLVED (as a genuine timeout): the backstop has
+        // nothing left to release, so it must stay silent.
+        // NOTE the asymmetry, and keep it: `bootstrapTimedOutRef` is set here
+        // LEGITIMATELY — this IS a real bootstrap failure, so the flag's name is
+        // true at this site. That is exactly why it must NOT also be set by the
+        // backstop on a HEALTHY boot (ORCH-1377 F-3).
+        bootstrapResolvedRef.current = true;
         bootstrapTimedOutRef.current = true;
         setAuthError(null);
         setSession(storedWebSession);
@@ -354,6 +412,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!mounted) return;
       if (error) {
         console.warn("[auth] getSession", error.message);
+        // ORCH-1377 resolution point 2/3 — the getSession() ERROR branch.
+        // Bootstrap resolved to an error; `authStatus` becomes "error" and the
+        // UI has an actionable state. The backstop must not claim a timeout.
+        bootstrapResolvedRef.current = true;
         setAuthError(error);
         setLoading(false);
         return;
@@ -379,10 +441,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // stalled/proxied request kept `loading` true → deriveBusinessAuthStatus
       // never reached signed_in_ready → isAuthReady stayed false → the
       // brand-profile spinner (isBrandRouteResolving) froze and the brand list
-      // stayed disabled until the 7s AUTH_RESOLUTION_HARD_CEILING_MS backstop
+      // stayed disabled until the 7s AUTH_LOADING_GATE_RELEASE_BACKSTOP_MS backstop
       // fired. We now paint within that one local read and run the whole chain as
       // a NON-AWAITED background task. The 7s ceiling remains armed as
       // defense-in-depth; it is no longer the primary escape from the spinner.
+      //
+      // ORCH-1377 resolution point 3/3 — THE NORMAL PATH (the ORCH-1294 main
+      // success release). This is the one that fires on essentially every real
+      // load, signed-in AND signed-out alike, which is why the unguarded
+      // backstop lied on 100% of them. Set BEFORE setLoading(false) so there is
+      // no window in which the timer could fire against a resolved bootstrap.
+      bootstrapResolvedRef.current = true;
       setLoading(false);
       const bootUser = s?.user ?? null;
       if (bootUser) {

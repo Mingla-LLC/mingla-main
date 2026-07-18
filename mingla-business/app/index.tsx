@@ -5,7 +5,7 @@ import { Redirect } from "expo-router";
 import AppRoutes from "../src/config/routes";
 import { useAuth } from "../src/context/AuthContext";
 import BusinessWelcomeScreen from "../src/components/auth/BusinessWelcomeScreen";
-import { AUTH_RESOLUTION_CEILING_MS } from "../src/utils/coldLoadAuthGates";
+import { AUTH_UI_GATE_EXPIRY_MS } from "../src/utils/coldLoadAuthGates";
 
 // ORCH-1102 Wave 2 — REMOUNT-IMMUNE boot-loading deadline anchor (mirrors the
 // _layout backstop). A deadlock can remount this route faster than the ceiling,
@@ -22,7 +22,7 @@ function clearBootLoadingStart(): void {
 }
 function hasBootDeadlinePassed(): boolean {
   if (bootLoadingStartedAt === null) return false;
-  return Date.now() - bootLoadingStartedAt >= AUTH_RESOLUTION_CEILING_MS;
+  return Date.now() - bootLoadingStartedAt >= AUTH_UI_GATE_EXPIRY_MS;
 }
 
 // ORCH-1098 Stage 3: the mobile→static-home redirect is GONE. The BottomNav
@@ -68,7 +68,7 @@ export default function Index() {
     const interval = setInterval(() => {
       if (hasBootDeadlinePassed()) {
         console.warn(
-          `[index] boot-loading-deadline: still loading after ${AUTH_RESOLUTION_CEILING_MS}ms — showing sign-in (no infinite spinner)`,
+          `[index] boot-loading-deadline: still loading after ${AUTH_UI_GATE_EXPIRY_MS}ms — showing sign-in (no infinite spinner)`,
         );
         forceBootTick((n) => n + 1);
       }

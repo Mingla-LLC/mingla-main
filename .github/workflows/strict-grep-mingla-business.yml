@@ -4490,6 +4490,19 @@ jobs:
       - name: Run ISSUE-866 creative-guards gate
         run: node .github/scripts/strict-grep/issue-866-creative-guards.mjs
 
+  i-1378-web-shim-export-parity:
+    name: "ORCH-1378/1380: every .web.* shim exports a SUPERSET of its native twin's value exports — TypeScript is blind here (tsc resolves the native module; Metro substitutes the .web.* override), so a missing export is a GREEN typecheck and a live production TypeError (I-PROPOSED-1378-WEB-SHIM-EXPORT-PARITY)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the I-1378 web-shim-export-parity gate
+        run: node .github/scripts/strict-grep/i-1378-web-shim-export-parity.mjs --self-test
+      - name: Run I-1378 web-shim-export-parity gate
+        run: node .github/scripts/strict-grep/i-1378-web-shim-export-parity.mjs
+
   issue-864-campaign-builder-node-tests:
     name: "ISSUE-864 WP4: campaign-builder happy-path suite — per-channel copy caps (TikTok 100-hard+emoji-strip, Meta warn-not-reject-125, Google 3–15/2–4+keywords+NO-CTA, Reddit 300/CAPS), 4-pattern policy linter + CREDIT-retired, channel plan = preflight ∩ goal ∩ market ∩ budget with create-wired=all-five (ISSUE-927 closed the WP4 endpoint gap), hidden #865 goals, §1.8 launch summary, §1.9b review_detail cause→fix, SC-10 builder-never-launches (I-PROPOSED-864-CREATE-PAUSED)"
     runs-on: ubuntu-latest

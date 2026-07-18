@@ -174,18 +174,27 @@ describe("ORCH-1342 T-5 — openExternal (ORCH-1328 byte-pattern)", () => {
   });
 
   test("opens a new context on the tap; page stays (no location.assign)", () => {
-    const open = jest.fn(() => ({}) as Window);
+    // ORCH-1382 [TEST-MOD-APPROVED ORCH-1382]: openExternal no longer passes a
+    // "noopener,noreferrer" feature string. Per the HTML spec that string makes
+    // window.open() return null EVEN ON SUCCESS, which fired the location.assign
+    // fallback on EVERY tap and double-navigated (the page did NOT stay —
+    // violating this very test's I-1342 "page stays" contract while the old
+    // assertion read green). The fix opens with NO feature string and nulls
+    // `opener` afterward to preserve the security property noopener gave us.
+    const ctx = {} as Window;
+    const open = jest.fn(() => ctx);
     const assign = jest.fn();
     (globalThis as Record<string, unknown>).window = {
       open,
       location: { assign },
     };
     openExternal("https://example.com/x");
-    expect(open).toHaveBeenCalledWith(
-      "https://example.com/x",
-      "_blank",
-      "noopener,noreferrer",
-    );
+    // fixed signature: "_blank" WITHOUT a null-returning feature string
+    expect(open).toHaveBeenCalledWith("https://example.com/x", "_blank");
+    // security property preserved without the null-return side effect
+    expect(ctx.opener).toBeNull();
+    // THE CONTRACT (I-1342): the page STAYS — the assign fallback never fires
+    // on a successful open.
     expect(assign).not.toHaveBeenCalled();
   });
 

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import {
-  AUTH_RESOLUTION_CEILING_MS,
+  AUTH_UI_GATE_EXPIRY_MS,
   isAuthResolutionExpired,
   isWebAuthResolving,
   shouldRedirectToSignIn,
@@ -58,7 +58,7 @@ describe("ORCH-1102 Wave 2 — isAuthResolutionExpired routes a deadlocked sessi
       isWeb: true,
       hasUser: false,
       stillResolving: true,
-      elapsedMs: AUTH_RESOLUTION_CEILING_MS, // ceiling reached
+      elapsedMs: AUTH_UI_GATE_EXPIRY_MS, // ceiling reached
     });
     expect(expired).toBe(true);
 
@@ -83,7 +83,7 @@ describe("ORCH-1102 Wave 2 — isAuthResolutionExpired routes a deadlocked sessi
       isWeb: true,
       hasUser: false,
       stillResolving: true,
-      elapsedMs: AUTH_RESOLUTION_CEILING_MS - 1, // just under the ceiling
+      elapsedMs: AUTH_UI_GATE_EXPIRY_MS - 1, // just under the ceiling
     });
     expect(expiredEarly).toBe(false);
 
@@ -104,7 +104,7 @@ describe("ORCH-1102 Wave 2 — isAuthResolutionExpired routes a deadlocked sessi
         isWeb: true,
         hasUser: true, // session resolved with a user
         stillResolving: true,
-        elapsedMs: AUTH_RESOLUTION_CEILING_MS * 10, // long past ceiling
+        elapsedMs: AUTH_UI_GATE_EXPIRY_MS * 10, // long past ceiling
       }),
     ).toBe(false);
   });
@@ -115,7 +115,7 @@ describe("ORCH-1102 Wave 2 — isAuthResolutionExpired routes a deadlocked sessi
         isWeb: true,
         hasUser: false,
         stillResolving: false, // already resolved (e.g. shouldRedirectToSignIn handles it)
-        elapsedMs: AUTH_RESOLUTION_CEILING_MS * 10,
+        elapsedMs: AUTH_UI_GATE_EXPIRY_MS * 10,
       }),
     ).toBe(false);
   });
@@ -126,7 +126,7 @@ describe("ORCH-1102 Wave 2 — isAuthResolutionExpired routes a deadlocked sessi
         isWeb: false,
         hasUser: false,
         stillResolving: true,
-        elapsedMs: AUTH_RESOLUTION_CEILING_MS * 10,
+        elapsedMs: AUTH_UI_GATE_EXPIRY_MS * 10,
       }),
     ).toBe(false);
   });
@@ -134,8 +134,8 @@ describe("ORCH-1102 Wave 2 — isAuthResolutionExpired routes a deadlocked sessi
   test("the ceiling is well ABOVE the 3s ORCH-0887-A race + the 2.3s ORCH-1100 lock self-heal so it is a true last-resort backstop", () => {
     // 3000 (race) + 2300 (lock) = 5300; ceiling must exceed that with margin so
     // it never pre-empts a real slow session.
-    expect(AUTH_RESOLUTION_CEILING_MS).toBeGreaterThan(5300);
-    expect(AUTH_RESOLUTION_CEILING_MS).toBeLessThanOrEqual(8000);
+    expect(AUTH_UI_GATE_EXPIRY_MS).toBeGreaterThan(5300);
+    expect(AUTH_UI_GATE_EXPIRY_MS).toBeLessThanOrEqual(8000);
   });
 
   test("the plain resolving + redirect gates are unchanged (Wave 1 contract preserved)", () => {
@@ -168,9 +168,9 @@ describe("ORCH-1102 Wave 2 — AuthContext.tsx hard-ceiling backstop", () => {
   const auth = businessFile("src/context/AuthContext.tsx");
   const authNoComments = stripComments(auth);
 
-  test("exports AUTH_RESOLUTION_HARD_CEILING_MS in the 6-8s last-resort band", () => {
+  test("exports AUTH_LOADING_GATE_RELEASE_BACKSTOP_MS in the 6-8s last-resort band", () => {
     const match = auth.match(
-      /export const AUTH_RESOLUTION_HARD_CEILING_MS = (\d+);/,
+      /export const AUTH_LOADING_GATE_RELEASE_BACKSTOP_MS = (\d+);/,
     );
     expect(match).not.toBeNull();
     if (match) {
@@ -185,7 +185,7 @@ describe("ORCH-1102 Wave 2 — AuthContext.tsx hard-ceiling backstop", () => {
   // native AND web so a stalled post-getSession chain can never hang the iPad
   // boot spinner forever. These two source-pinned assertions are updated to the
   // new contract (unconditional arming + unconditional clear). The spinner is
-  // STILL guaranteed to release at AUTH_RESOLUTION_HARD_CEILING_MS.
+  // STILL guaranteed to release at AUTH_LOADING_GATE_RELEASE_BACKSTOP_MS.
   test("arms an independent setTimeout on native AND web that force-releases the loading gate (NOT a Promise.race arm the lock can starve)", () => {
     // Unconditional arming — no Platform gate around the timer (ORCH-1292).
     expect(authNoComments).not.toMatch(
@@ -193,7 +193,7 @@ describe("ORCH-1102 Wave 2 — AuthContext.tsx hard-ceiling backstop", () => {
     );
     // Fires setLoading(false) at the ceiling — the spinner can never be permanent.
     expect(authNoComments).toMatch(
-      /hardCeilingTimer = setTimeout\([\s\S]{0,600}?setLoading\(false\);[\s\S]{0,200}?\}, AUTH_RESOLUTION_HARD_CEILING_MS\);/,
+      /hardCeilingTimer = setTimeout\([\s\S]{0,600}?setLoading\(false\);[\s\S]{0,200}?\}, AUTH_LOADING_GATE_RELEASE_BACKSTOP_MS\);/,
     );
   });
 
@@ -220,7 +220,7 @@ describe("ORCH-1102 Wave 2 — _layout.tsx routes a deadlocked gate to sign-in b
 
   test("imports the pure backstop predicate", () => {
     expect(layoutNoComments).toMatch(/isAuthResolutionExpired/);
-    expect(layoutNoComments).toMatch(/AUTH_RESOLUTION_CEILING_MS/);
+    expect(layoutNoComments).toMatch(/AUTH_UI_GATE_EXPIRY_MS/);
   });
 
   test("computes authResolutionExpired and returns <Redirect href=\"/\"/> for it BEFORE the AuthResolvingScreen spinner", () => {
@@ -257,7 +257,7 @@ describe("ORCH-1102 Wave 2 — _layout.tsx routes a deadlocked gate to sign-in b
     );
     // Elapsed check compares wall-clock against the ceiling.
     expect(layoutNoComments).toMatch(
-      /Date\.now\(\) - authResolveStartedAt >= AUTH_RESOLUTION_CEILING_MS/,
+      /Date\.now\(\) - authResolveStartedAt >= AUTH_UI_GATE_EXPIRY_MS/,
     );
   });
 
@@ -281,7 +281,7 @@ describe("ORCH-1102 Wave 2 — index.tsx boot spinner is bounded", () => {
   const indexNoComments = stripComments(index);
 
   test("imports the shared ceiling", () => {
-    expect(indexNoComments).toMatch(/AUTH_RESOLUTION_CEILING_MS/);
+    expect(indexNoComments).toMatch(/AUTH_UI_GATE_EXPIRY_MS/);
   });
 
   test("the boot spinner is gated on (loading && !bootDeadlineExpired) so it can never be permanent", () => {
@@ -297,7 +297,7 @@ describe("ORCH-1102 Wave 2 — index.tsx boot spinner is bounded", () => {
     expect(indexNoComments).toMatch(/const bootDeadlineExpired = isWeb && hasBootDeadlinePassed\(\);/);
     expect(indexNoComments).toMatch(/setInterval\(/);
     expect(indexNoComments).toMatch(
-      /Date\.now\(\) - bootLoadingStartedAt >= AUTH_RESOLUTION_CEILING_MS/,
+      /Date\.now\(\) - bootLoadingStartedAt >= AUTH_UI_GATE_EXPIRY_MS/,
     );
   });
 });

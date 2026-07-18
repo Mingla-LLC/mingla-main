@@ -49,25 +49,47 @@ function parseConst(src, name) {
   return m ? m[1] : null;
 }
 
+/**
+ * ⚠️ ALL PATTERNS ARE CASE-INSENSITIVE (`/i`) — ORCH-1373 SPEC §9.0.
+ * Hostnames are case-insensitive to a browser: `BIZ.USEMINGLA.COM/ZSCW` resolves
+ * identically to the lowercase form. A case-sensitive gate would report GREEN on
+ * an uppercase literal while the drift it exists to prevent shipped. Every
+ * self-test below carries a case case.
+ */
 const BANNED = [
-  { id: "apple", re: /apps\.apple\.com/, why: "hardcodes an apps.apple.com store literal (import APP_STORE_URL from src/constants/storeLinks — the F-12 class)" },
-  { id: "play", re: /play\.google\.com\/store/, why: "hardcodes a play.google.com/store literal (import PLAY_STORE_URL from src/constants/storeLinks)" },
-  { id: "onelink", re: /go\.usemingla\.com/, why: "hardcodes the go.usemingla.com branded OneLink domain (ORCH-1346: one domain = one template; only the storeLinks SSOT flip constant may carry it)" },
+  { id: "apple", re: /apps\.apple\.com/i, why: "hardcodes an apps.apple.com store literal (import APP_STORE_URL from src/constants/storeLinks — the F-12 class)" },
+  { id: "play", re: /play\.google\.com\/store/i, why: "hardcodes a play.google.com/store literal (import PLAY_STORE_URL from src/constants/storeLinks)" },
+  { id: "onelink", re: /go\.usemingla\.com/i, why: "hardcodes the go.usemingla.com branded OneLink domain (ORCH-1346: one domain = one template; only the storeLinks SSOT flip constant may carry it)" },
+  // ─── ORCH-1378: the business OneLink SSOT rule was previously UNENFORCED ───
+  // The gate credited with enforcing "the business OneLink constant must live in
+  // storeLinks.ts" did NOT check for it at all: a raw `biz.usemingla.com` literal
+  // injected OUTSIDE the SSOT PASSED (proven empirically during the ORCH-1373
+  // SPEC). It was a decorative guard. These two entries give it teeth.
+  { id: "bizonelink", re: /biz\.usemingla\.com/i, why: "hardcodes the biz.usemingla.com branded BUSINESS OneLink domain (import BUSINESS_INVITE_ONELINK_URL from src/constants/storeLinks — scattering it re-opens the F-12 class on the one link that carries install ATTRIBUTION via af_tranid)" },
+  { id: "rawonelink", re: /minglabiz\.onelink\.me/i, why: "hardcodes the raw AppsFlyer vendor OneLink base (minglabiz.onelink.me). The BRANDED domain biz.usemingla.com is the only supported business OneLink host — import BUSINESS_INVITE_ONELINK_URL from src/constants/storeLinks" },
 ];
 
 /**
  * GRANDFATHERED pre-existing debt (registered as ORCH-1342 discoveries — the
  * exceptions are FILE+PATTERN narrow, so any NEW literal class in these files
  * still fires):
- * - accept-brand-invitation/success.tsx carries the BUSINESS store listing
- *   URLs (id6768737367 / com.sethogieva.minglabusiness) inline — predates this
- *   gate; needs BUSINESS_* SSOT entries in a follow-up ORCH.
  * - appsFlyerService.ts (business) still sets go.usemingla.com as its branded
- *   domain — the ORCH-1346 business swap to minglabiz.onelink.me is bound to
- *   the next business NATIVE build (COMMS-0052/0063: no business OTA).
+ *   domain — the ORCH-1346 business swap is bound to the next business NATIVE
+ *   build (COMMS-0052/0063: no business OTA).
+ *
+ * ─── ORCH-1378 — accept-brand-invitation/success.tsx REMOVED from this map ──
+ * Its entry read: "carries the BUSINESS store listing URLs inline — predates
+ * this gate; NEEDS BUSINESS_* SSOT ENTRIES IN A FOLLOW-UP ORCH." ORCH-1378 IS
+ * that follow-up: the hardcoded, non-attributed, non-device-aware iOS/Android
+ * button pair is gone, replaced by the shared BusinessAppDownloadCta which
+ * imports BUSINESS_INVITE_ONELINK_URL from the SSOT. The debt is PAID, so the
+ * exemption is DELETED and the gate now polices that file like any other.
+ *
+ * A grandfather entry left behind after its debt is paid is a decorative guard:
+ * it silently re-authorises the exact literal class the gate exists to ban. If
+ * you pay off a debt here, delete the entry in the same commit.
  */
 const GRANDFATHERED = {
-  "mingla-business/app/accept-brand-invitation/success.tsx": new Set(["apple", "play"]),
   "mingla-business/src/services/appsFlyerService.ts": new Set(["onelink"]),
 };
 
@@ -253,12 +275,69 @@ open(APP_STORE_URL);
     selfFailures.push("BUSINESS_PLAY_STORE_URL wrongly broke the PLAY_STORE_URL byte-compare: " + JSON.stringify(run(withBusiness)));
   }
 
+  // ─── ORCH-1378: the bans that make the business-OneLink SSOT rule real ───
+  // 12. THE PROVEN-DECORATIVE CASE. Before this PR, this exact fixture PASSED —
+  // the gate was credited with enforcing the business-OneLink SSOT and enforced
+  // nothing. This case is the regression guard for that hole.
+  const bizLiteral = {
+    ...good,
+    "mingla-business/src/components/invite/BusinessAppDownloadCta.tsx":
+      'const CTA = "https://biz.usemingla.com/ZSCW?pid=business_web";\n',
+  };
+  if (run(bizLiteral).length === 0) {
+    selfFailures.push("biz.usemingla.com literal outside the SSOT not flagged (the PROVEN-decorative hole)");
+  }
+
+  // 13. Case-insensitivity — hostnames are case-insensitive to a browser.
+  const bizUpper = {
+    ...good,
+    "mingla-business/src/components/invite/BusinessAppDownloadCta.tsx":
+      'const CTA = "https://BIZ.USEMINGLA.COM/ZSCW";\n',
+  };
+  if (run(bizUpper).length === 0) {
+    selfFailures.push("UPPERCASE BIZ.USEMINGLA.COM not flagged (gate is case-SENSITIVE — browsers are not)");
+  }
+
+  // 14. The raw vendor OneLink base is banned too (branded domain only).
+  const rawOneLink = {
+    ...good,
+    "mingla-business/src/services/someService.ts":
+      'const u = "https://minglabiz.onelink.me/ZSCW";\n',
+  };
+  if (run(rawOneLink).length === 0) selfFailures.push("minglabiz.onelink.me literal not flagged");
+
+  // 15. Case-insensitivity on the existing bans too (they were case-SENSITIVE).
+  const appleUpper = {
+    ...good,
+    "mingla-business/app/some-route.tsx": 'const x = "https://APPS.APPLE.COM/app/id1";\n',
+  };
+  if (run(appleUpper).length === 0) selfFailures.push("UPPERCASE APPS.APPLE.COM not flagged");
+
+  // 16. The SSOT file itself may (and must) carry the business OneLink.
+  const ssotCarriesBiz = {
+    ...good,
+    [SSOT]: ssotFix + '\nexport const BUSINESS_INVITE_ONELINK_URL = "https://biz.usemingla.com/ZSCW";\n',
+  };
+  if (run(ssotCarriesBiz).length !== 0) {
+    selfFailures.push("the SSOT file was wrongly flagged for carrying the business OneLink: " + JSON.stringify(run(ssotCarriesBiz)));
+  }
+
+  // 17. A commented biz.usemingla.com is stripped → passes (docblocks explain it).
+  const bizCommented = {
+    ...good,
+    "mingla-business/src/services/guestFunnelLink.ts":
+      cleanComponent + "\n// NEVER biz.usemingla.com outside the SSOT — see storeLinks.ts\n",
+  };
+  if (run(bizCommented).length !== 0) {
+    selfFailures.push("commented biz.usemingla.com wrongly flagged: " + JSON.stringify(run(bizCommented)));
+  }
+
   if (selfFailures.length) {
     console.error("ORCH-1342 store-links-ssot self-test FAIL:");
     selfFailures.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
-  console.log("ORCH-1342 store-links-ssot self-test PASS (11/11 cases, incl. the ORCH-1381 BUSINESS_PLAY_STORE_URL non-shadow case).");
+  console.log("ORCH-1342 store-links-ssot self-test PASS (17/17 cases, incl. the ORCH-1381\n  BUSINESS_PLAY_STORE_URL non-shadow case + the ORCH-1378 business-OneLink bans\n  (biz.usemingla.com / minglabiz.onelink.me) and their case-insensitivity cases —\n  the biz.usemingla.com hole was PROVEN decorative before this PR).");
   process.exit(0);
 }
 
