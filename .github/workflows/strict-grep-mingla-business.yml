@@ -4596,3 +4596,16 @@ jobs:
           node-version: "20"
       - name: Run ISSUE-927 QA tester adversarial node:test suite
         run: node --test mingla-admin/src/__tests__/issue927_tester_adversarial.test.js
+
+  orch-1398-expo-pinned-54:
+    name: "ORCH-1398: expo stays pinned to SDK 54 in BOTH apps — Expo 57 was INTENTIONALLY reverted (ORCH-1386, it broke native builds); a stale Dependabot postcss PR re-pinned expo to 57 and desynced the lockfile ('Missing @expo/metro-runtime@57.0.6'), breaking npm ci REPO-WIDE and blocking every merge. This gate FAILS any re-bump to 55+ so no PR (Dependabot, human, or agent) can re-break it — the dependabot.yml ignore alone did not, a stale already-open PR bypassed it (I-PROPOSED-1398-EXPO-PINNED-54)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the ORCH-1398 expo-pinned-54 gate (54 passes, 57 fails)
+        run: node .github/scripts/strict-grep/orch-1398-expo-pinned-54.mjs --self-test
+      - name: Run ORCH-1398 expo-pinned-54 gate
+        run: node .github/scripts/strict-grep/orch-1398-expo-pinned-54.mjs

@@ -89,16 +89,13 @@
           "0.81"
         ],
         "@react-native/babel-plugin-codegen": [
-          "0.81",
-          "0.86"
+          "0.81"
         ],
         "@react-native/babel-preset": [
-          "0.81",
-          "0.86"
+          "0.81"
         ],
         "@react-native/codegen": [
-          "0.81",
-          "0.86"
+          "0.81"
         ],
         "@react-native/community-cli-plugin": [
           "0.81"
@@ -113,14 +110,7 @@
           "0.81"
         ],
         "@react-native/js-polyfills": [
-          "0.81",
-          "0.86"
-        ],
-        "@react-native/metro-babel-transformer": [
-          "0.86"
-        ],
-        "@react-native/metro-config": [
-          "0.86"
+          "0.81"
         ],
         "@react-native/normalize-colors": [
           "0.74",
@@ -133,60 +123,46 @@
           "54"
         ],
         "metro": [
-          "0.83",
-          "0.84"
+          "0.83"
         ],
         "metro-babel-transformer": [
-          "0.83",
-          "0.84"
+          "0.83"
         ],
         "metro-cache": [
-          "0.83",
-          "0.84"
+          "0.83"
         ],
         "metro-cache-key": [
-          "0.83",
-          "0.84"
+          "0.83"
         ],
         "metro-config": [
-          "0.83",
-          "0.84"
+          "0.83"
         ],
         "metro-core": [
-          "0.83",
-          "0.84"
+          "0.83"
         ],
         "metro-file-map": [
-          "0.83",
-          "0.84"
+          "0.83"
         ],
         "metro-minify-terser": [
-          "0.83",
-          "0.84"
+          "0.83"
         ],
         "metro-resolver": [
-          "0.83",
-          "0.84"
+          "0.83"
         ],
         "metro-runtime": [
-          "0.83",
-          "0.84"
+          "0.83"
         ],
         "metro-source-map": [
-          "0.83",
-          "0.84"
+          "0.83"
         ],
         "metro-symbolicate": [
-          "0.83",
-          "0.84"
+          "0.83"
         ],
         "metro-transform-plugins": [
-          "0.83",
-          "0.84"
+          "0.83"
         ],
         "metro-transform-worker": [
-          "0.83",
-          "0.84"
+          "0.83"
         ],
         "react": [
           "19"
