@@ -64,15 +64,23 @@ export interface MetaEnvConfig {
   adAccountId: string;
   businessId: string | null;
   pageId: string;
+  /**
+   * ISSUE-939: the Page-linked Instagram identity used to turn ON Instagram
+   * delivery in the ad creative. OPTIONAL — null when the lane's IG env var is
+   * unset/empty, in which case the creative omits instagram_user_id entirely
+   * and delivers Facebook-only (exactly as before).
+   */
+  igUserId: string | null;
   datasetId: string | null;
 }
 
 /**
  * Reads the non-secret Meta IDs from env, lane-correct (QA P2-3): consumer →
- * META_AD_ACCOUNT_ID / META_PAGE_ID / META_BUSINESS_ID / META_DATASET_ID;
- * business → the META_MINGLABIZ_-prefixed names. IDs live in env/config,
- * never as literals in this public repo. Fail-CLOSE when the lane's required
- * IDs are unset — a business connect must NOT silently verify consumer IDs.
+ * META_AD_ACCOUNT_ID / META_PAGE_ID / META_BUSINESS_ID / META_IG_USER_ID /
+ * META_DATASET_ID; business → the META_MINGLABIZ_-prefixed names. IDs live in
+ * env/config, never as literals in this public repo. Fail-CLOSE when the lane's
+ * required IDs are unset — a business connect must NOT silently verify consumer
+ * IDs. The IG user id (ISSUE-939) is OPTIONAL: unset/empty → null (Facebook-only).
  */
 export function resolveMetaEnvConfig(lane: MetaLane = "consumer"): MetaEnvConfig {
   const adAccountId = (Deno.env.get(laneEnvName("META_AD_ACCOUNT_ID", lane)) ?? "").trim();
@@ -85,6 +93,11 @@ export function resolveMetaEnvConfig(lane: MetaLane = "consumer"): MetaEnvConfig
     adAccountId,
     businessId: (Deno.env.get(laneEnvName("META_BUSINESS_ID", lane)) ?? "").trim() || null,
     pageId,
+    // ISSUE-939: lane-correct IG identity (consumer META_IG_USER_ID / business
+    // META_MINGLABIZ_IG_USER_ID). OPTIONAL — unset/empty resolves to null so the
+    // creative omits instagram_user_id and stays Facebook-only. The business
+    // lane has no IG configured yet, so it naturally resolves to null.
+    igUserId: (Deno.env.get(laneEnvName("META_IG_USER_ID", lane)) ?? "").trim() || null,
     datasetId: (Deno.env.get(laneEnvName("META_DATASET_ID", lane)) ?? "").trim() || null,
   };
 }
@@ -371,6 +384,7 @@ export function buildMetaAdSetBody(
 export function buildMetaCreativeBody(
   pageId: string,
   input: CreateCreativeInput,
+  igUserId?: string | null,
 ): Record<string, unknown> {
   const callToAction = {
     type: input.callToActionType ?? "LEARN_MORE",
@@ -381,7 +395,17 @@ export function buildMetaCreativeBody(
     },
   };
 
+  // ISSUE-939: the Page-linked Instagram identity that switches ON Instagram
+  // delivery. When configured (consumer META_IG_USER_ID / business
+  // META_MINGLABIZ_IG_USER_ID, threaded via client.config.igUserId) the creative
+  // sets instagram_user_id in BOTH object_story_spec AND at the adcreatives top
+  // level — matching the validate-only proof that returned {"success":true}.
+  // Unset/empty ⇒ OMITTED from both placements (Facebook-only, exactly as
+  // before). Never emit an empty/undefined instagram_user_id.
+  const igIdentity = typeof igUserId === "string" ? igUserId.trim() : "";
+
   const objectStorySpec: Record<string, unknown> = { page_id: pageId };
+  if (igIdentity) objectStorySpec.instagram_user_id = igIdentity;
   if (input.videoId) {
     // A4.g video_data branch (GR-57/M-10) — #866 produces video_id via
     // POST /act_{id}/advideos + poll video_status === 'ready'.
@@ -412,6 +436,9 @@ export function buildMetaCreativeBody(
     // A4.g url_tags UTM template.
     url_tags: META_URL_TAGS,
   };
+  // ISSUE-939: mirror the IG identity at the adcreatives top level (per the
+  // validate-only proof). Only present when configured — see igIdentity above.
+  if (igIdentity) body.instagram_user_id = igIdentity;
   if (input.aiGenerated) {
     // GR-61 self_ai_disclosure — default OPT_IN for the Higgsfield/Remotion
     // pipeline output; non-disclosure is a compliance exposure we create.
@@ -528,7 +555,7 @@ export async function metaValidateOnlyCreativeProbe(
     message: "connect-probe (validate-only; never created)",
     campaignName: "connect-probe",
     validateOnly: true,
-  });
+  }, client.config.igUserId);
   try {
     await metaGraph(client, "POST", `act_${client.config.adAccountId}/adcreatives`, body);
     return { appLive: true, ok: true, detail: null };
@@ -685,7 +712,7 @@ export const metaAdapter: ChannelAdapter = {
 
   createCreative: async (conn, input) => {
     const client = resolveMetaClient(conn);
-    const body = buildMetaCreativeBody(client.config.pageId, input);
+    const body = buildMetaCreativeBody(client.config.pageId, input, client.config.igUserId);
     const payload = await metaGraph(
       client,
       "POST",
