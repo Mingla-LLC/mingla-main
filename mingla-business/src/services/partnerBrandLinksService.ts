@@ -127,7 +127,10 @@ export function isInviteExpired(row: PartnerBrandLinkWithStatus): boolean {
 // can select own brands", qual account_id = auth.uid(), NO deleted_at gate —
 // ORCH-0734 by design) admits the tombstone through the embed. Do NOT add
 // `.is("deleted_at", null)` to this select string.
-const LINK_SELECT =
+// Exported for the team-only useBrandPartnerLinks module (ORCH-1384 bundle-
+// budget split — the owner-side read is team-only; the eager service keeps only
+// the partner self-read).
+export const LINK_SELECT =
   "id, partner_account_id, brand_id, invited_owner_email, personal_note, invited_at, accepted_at, owner_stripe_connected_at, first_split_at, cancelled_at, cancelled_reason, brand:brands(id, name, slug, cover_media_url, cover_media_type, default_currency)";
 
 export interface ListPartnerBrandLinksOptions {
@@ -171,26 +174,10 @@ export async function listPartnerBrandLinks(
   return rows.map((row) => ({ ...row, status: deriveLinkStatus(row) }));
 }
 
-/**
- * ORCH-1384 — owner-side read of a brand's links (served by the new
- * partner_brand_links_owner_select RLS policy). The Team screen uses this to
- * identify the partner member row (user_id ↔ partner_account_id on an
- * accepted, non-cancelled link). No cancelled filter — callers decide.
- */
-export async function listBrandPartnerLinks(
-  brandId: string,
-): Promise<PartnerBrandLinkWithStatus[]> {
-  const { data, error } = await supabase
-    .from("partner_brand_links")
-    .select(LINK_SELECT)
-    .eq("brand_id", brandId)
-    .order("invited_at", { ascending: false });
-
-  if (error) throw new Error(error.message);
-
-  const rows = (data ?? []) as unknown as PartnerBrandLinkRow[];
-  return rows.map((row) => ({ ...row, status: deriveLinkStatus(row) }));
-}
+// listBrandPartnerLinks moved to ../hooks/useBrandPartnerLinks (ORCH-1384
+// bundle-budget split — the owner-side read is used ONLY by the Team screen, so
+// keeping it out of this eager service keeps it out of the web boot __common
+// chunk).
 
 // ---------------------------------------------------------------------------
 // ORCH-1384 — verbs. Typed error mapping: every failure surfaces as a thrown
@@ -209,23 +196,13 @@ export type PartnerLinkVerbErrorCode =
   | "validation"
   | "server";
 
-export interface CancelPendingRejection {
-  rejected: true;
-  reason: "has_upcoming_events";
-  upcomingEventCount: number;
-}
-export interface CancelPendingSuccess {
-  rejected: false;
-  linkId: string;
-  brandId: string;
-  brandDeleted: boolean;
-  invitationRevoked: boolean;
-}
-export type CancelPendingResult =
-  | CancelPendingSuccess
-  | CancelPendingRejection;
+// CancelPendingResult / CancelPendingSuccess / CancelPendingRejection moved to
+// ./partnerLinkVerbs (ORCH-1384 bundle-budget split — cancel is a sheet-only
+// verb).
 
-interface RpcErrorShape {
+// Exported for the sheet-only partnerLinkVerbs module (ORCH-1384 bundle-budget
+// split) — cancelPendingLink reuses this shape + rpcErrorCode below.
+export interface RpcErrorShape {
   message?: string;
   details?: string;
 }
@@ -239,7 +216,7 @@ const KNOWN_RPC_CODES: readonly string[] = [
   "validation",
 ];
 
-function rpcErrorCode(error: RpcErrorShape): string {
+export function rpcErrorCode(error: RpcErrorShape): string {
   const message = error.message ?? "";
   for (const code of KNOWN_RPC_CODES) {
     if (message.includes(code)) return code;
@@ -247,44 +224,8 @@ function rpcErrorCode(error: RpcErrorShape): string {
   return "server";
 }
 
-/**
- * Cancel a PENDING link — atomic quad-outcome via partner_cancel_pending_link
- * (link stamp + invitation revoke + pre-accept brand soft-delete +
- * default-brand clear; I-PROPOSED-1384-CANCEL-IS-MULTI-OBJECT).
- * `has_upcoming_events` maps to a workflow rejection (count from DETAIL).
- */
-export async function cancelPendingLink(
-  linkId: string,
-): Promise<CancelPendingResult> {
-  const { data, error } = await supabase.rpc("partner_cancel_pending_link", {
-    p_link_id: linkId,
-  });
-  if (error !== null) {
-    const shape = error as RpcErrorShape;
-    if ((shape.message ?? "").includes("has_upcoming_events")) {
-      const parsed = parseInt(shape.details ?? "", 10);
-      return {
-        rejected: true,
-        reason: "has_upcoming_events",
-        upcomingEventCount: Number.isFinite(parsed) && parsed > 0 ? parsed : 1,
-      };
-    }
-    throw new Error(rpcErrorCode(shape));
-  }
-  const result = (data ?? {}) as {
-    link_id?: string;
-    brand_id?: string;
-    brand_deleted?: boolean;
-    invitation_revoked?: boolean;
-  };
-  return {
-    rejected: false,
-    linkId: result.link_id ?? linkId,
-    brandId: result.brand_id ?? "",
-    brandDeleted: result.brand_deleted === true,
-    invitationRevoked: result.invitation_revoked === true,
-  };
-}
+// cancelPendingLink moved to ./partnerLinkVerbs (ORCH-1384 bundle-budget split
+// — sheet-only verb; it reuses the exported rpcErrorCode + RpcErrorShape).
 
 /**
  * Disconnect an ACTIVE (accepted) link — dual stamp via
@@ -302,57 +243,5 @@ export async function disconnectLink(linkId: string): Promise<void> {
   }
 }
 
-interface FunctionsInvokeErrorShape {
-  message?: string;
-  context?: { body?: unknown };
-}
-
-/**
- * Resolve the typed `{ error }` code from a functions-invoke failure
- * (FunctionsHttpError carries the response body on context.body — same
- * pattern as rsvpErrorCodes.parseRsvpErrorCode).
- */
-function parseInvokeErrorCode(error: FunctionsInvokeErrorShape): string {
-  let code = "server";
-  const body = error.context?.body;
-  if (body !== undefined && body !== null) {
-    try {
-      const parsed =
-        typeof body === "string"
-          ? (JSON.parse(body) as { error?: string })
-          : (body as { error?: string });
-      if (typeof parsed.error === "string" && parsed.error.length > 0) {
-        code = parsed.error;
-      }
-    } catch {
-      // malformed body → keep the default code
-    }
-  }
-  return code;
-}
-
-/**
- * Resend (same email) or correct-email reissue via the
- * partner-reissue-invitation edge fn: old tokens expire-now (NEVER revoked —
- * I-PROPOSED-1384-REISSUE-EXPIRES-NEVER-REVOKES), a fresh invitation is
- * minted, and the link's email VALUE + invited_at refresh atomically.
- */
-export async function reissueInvitation(
-  linkId: string,
-  newEmail?: string,
-): Promise<{ invitationId: string }> {
-  const { data, error } = await supabase.functions.invoke(
-    "partner-reissue-invitation",
-    {
-      body: {
-        link_id: linkId,
-        ...(newEmail !== undefined ? { new_email: newEmail } : {}),
-      },
-    },
-  );
-  if (error !== null) {
-    throw new Error(parseInvokeErrorCode(error as FunctionsInvokeErrorShape));
-  }
-  const result = (data ?? {}) as { invitation_id?: string };
-  return { invitationId: result.invitation_id ?? "" };
-}
+// reissueInvitation (+ parseInvokeErrorCode / FunctionsInvokeErrorShape) moved
+// to ./partnerLinkVerbs (ORCH-1384 bundle-budget split — sheet-only verb).

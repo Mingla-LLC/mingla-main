@@ -20,8 +20,40 @@ const SRC = fs.readFileSync(
 /** JSX collapses run-on whitespace — normalize for copy asserts. */
 const FLAT = SRC.replace(/\s+/g, " ");
 
+// ORCH-1384 web eager-bundle budget fix: reasonLabelFor / terminalEventNameFor
+// / errorCopyFor were relocated to the zero-dependency partnerLinkLabels module
+// so the eager list surfaces (brands rows, team MemberDetailSheet) stop
+// dragging this heavy native-first sheet into the web boot __common chunk. The
+// executed-value contracts for those three now slice the labels module; every
+// other slice (verbSetFor, styles, JSX) still reads the sheet source.
+const LABELS_SRC = fs.readFileSync(
+  path.resolve(__dirname, "../partnerLinkLabels.ts"),
+  "utf8",
+);
+
 function countOf(haystack: string, needle: string): number {
   return haystack.split(needle).length - 1;
+}
+
+/** Balanced-brace slice from an arbitrary source string. */
+function sliceIn(src: string, marker: string): string {
+  expect(countOf(src, marker)).toBe(1);
+  const start = src.indexOf(marker);
+  const braceStart = src.indexOf("{", start);
+  let depth = 0;
+  for (let i = braceStart; i < src.length; i++) {
+    if (src[i] === "{") depth++;
+    if (src[i] === "}") {
+      depth--;
+      if (depth === 0) {
+        let j = i + 1;
+        while (j < src.length && /\s/.test(src[j])) j++;
+        if (src[j] === "{") continue;
+        return src.slice(start, i + 1);
+      }
+    }
+  }
+  throw new Error(`unbalanced slice for ${marker}`);
 }
 
 function slice(marker: string): string {
@@ -184,7 +216,7 @@ describe("BINDING copy blocks (DESIGN §9.2 — verbatim)", () => {
 
   test("§5.6 typed error copy table (executed)", () => {
     const fn = evalSlice<{ (code: string): string }>(
-      slice("export function errorCopyFor"),
+      sliceIn(LABELS_SRC, "export function errorCopyFor"),
       "errorCopyFor",
     );
     expect(fn("link_not_pending")).toBe(
@@ -207,7 +239,7 @@ describe("BINDING copy blocks (DESIGN §9.2 — verbatim)", () => {
 
   test("§9.1 reason labels + terminal timeline verbs (executed)", () => {
     const labelFn = evalSlice<{ (r: string | null): string }>(
-      slice("export function reasonLabelFor"),
+      sliceIn(LABELS_SRC, "export function reasonLabelFor"),
       "reasonLabelFor",
     );
     expect(labelFn("partner_cancelled")).toBe("Cancelled");
@@ -218,7 +250,7 @@ describe("BINDING copy blocks (DESIGN §9.2 — verbatim)", () => {
     expect(labelFn(null)).toBe("Cancelled");
 
     const eventFn = evalSlice<{ (r: string | null): string }>(
-      slice("export function terminalEventNameFor"),
+      sliceIn(LABELS_SRC, "export function terminalEventNameFor"),
       "terminalEventNameFor",
     );
     expect(eventFn("partner_cancelled")).toBe("Cancelled");

@@ -78,15 +78,16 @@ jest.mock("../supabase", () => ({
 }));
 
 import {
-  cancelPendingLink,
   disconnectLink,
   INVITE_EXPIRY_DAYS,
   isInviteExpired,
   listPartnerBrandLinks,
   partnerBrandLinksKeys,
-  reissueInvitation,
   type PartnerBrandLinkWithStatus,
 } from "../partnerBrandLinksService";
+// ORCH-1384 bundle-budget split: cancel + reissue are sheet-only verbs, moved
+// out of the eager service into partnerLinkVerbs.
+import { cancelPendingLink, reissueInvitation } from "../partnerLinkVerbs";
 
 beforeEach(() => {
   captured.table = null;

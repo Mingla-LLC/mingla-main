@@ -62,7 +62,7 @@ import { useBrand } from "../../../src/hooks/useBrands";
 // ORCH-1384 — owner-side partner-link read: the member row whose user_id
 // matches an accepted, non-cancelled link's partner_account_id is the
 // PARTNER row (badge + owner-initiated disconnect).
-import { useBrandPartnerLinks } from "../../../src/hooks/usePartnerBrandLinks";
+import { useBrandPartnerLinks } from "../../../src/hooks/useBrandPartnerLinks";
 import { Toast } from "../../../src/components/ui/Toast";
 import {
   BRAND_RESOLVE_AUTH_CEILING_MS,

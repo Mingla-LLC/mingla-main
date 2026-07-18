@@ -37,12 +37,38 @@ import {
 import { type BrandTeamEntry } from "../../store/brandTeamStore";
 import { formatRelativeTime } from "../../utils/relativeTime";
 import { useDisconnectLink } from "../../hooks/usePartnerBrandLinkMutations";
-import { errorCopyFor } from "../partner/PartnerLinkDetailSheet";
 
 import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { Icon } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
+
+// ORCH-1384 web eager-bundle budget fix — INLINE error-copy copy.
+//
+// Mirrors partnerLinkLabels.errorCopyFor VERBATIM (the canonical, unit-tested
+// source used by the lazy PartnerLinkDetailSheet). Deliberately duplicated here
+// rather than imported so partnerLinkLabels is pulled ONLY by the lazy sheet,
+// keeping the sheet's native-first graph out of the shared web boot `__common`
+// chunk (scripts/ci/orch-1083-initial-bundle-budget.mjs). Pure spec-frozen copy
+// — NOT a Const #2 data-ownership split;
+// partnerLinkLabels.driftguard.orch1384.source.test.ts guards against drift.
+/** §5.6 — typed service error code → user copy. */
+function errorCopyFor(code: string): string {
+  switch (code) {
+    case "link_not_pending":
+      return "This invite already changed state. Close this and check the list.";
+    case "link_not_active":
+      return "This connection isn't active anymore. Close this and check the list.";
+    case "link_not_found":
+      return "This link no longer exists. Close this and refresh.";
+    case "forbidden":
+      return "You don't have permission to manage this link.";
+    case "email_send_failed":
+      return "We couldn't send the email. Tap Resend invite to try again.";
+    default:
+      return "Something broke on our side. Try again.";
+  }
+}
 
 /** ORCH-1384 — identifies the matched partner row (accepted, non-cancelled link). */
 export interface MemberDetailPartnerLink {

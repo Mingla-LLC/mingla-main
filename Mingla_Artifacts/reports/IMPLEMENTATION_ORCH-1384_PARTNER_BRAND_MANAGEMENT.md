@@ -240,3 +240,86 @@ The dispatch said "do NOT touch migration `20270102000000` itself". **One line o
 3. **RETEST hooks:** runtime grant re-probe must return the R3 matrix; anon REST call to the reissue RPC must now be a permission error (`42501`-class), NOT a body-execution `P0001 link_not_found`; tester guard 3/3; then the deferred device-UI legs + Seth-mandated create→invite→browser-accept→disconnect E2E (Samsung `R58R54YV7JT`).
 
 *Rework labels: implemented and verified (static suites + live end-state probe + live assert-block execution); migration APPLY itself is orchestrator-owned per dispatch.*
+
+---
+
+## B1. Web eager-bundle budget regression fix (CLOSE-PR #934 blocker) — 2026-07-18
+
+**Blocker:** the CLOSE PR's required check `mingla-business: web build (expo export)` FAILED the
+ORCH-1083 initial-bundle budget guard (`mingla-business/scripts/ci/orch-1083-initial-bundle-budget.mjs`):
+`eager __common chunk is 2270143 bytes, over the 2250000-byte cap`. The web bundle BUILDS fine — this
+is purely the eager `__common` boot chunk being over the ORCH-1083 cap. It is ORCH-1384's own delta:
+the new native-first partner UI leaked into the shared web boot path.
+
+**Root cause (instrumented, not theorized).** `__common` is Metro's chunk of modules shared by ≥2
+output chunks. The partner brand-management UI is native-first but its code entered `__common`:
+1. `app/partner/brands.tsx` statically imported the heavy `PartnerLinkDetailSheet` (reanimated sheet
+   + verb mutations + `Input`/`Sheet`), and `src/components/team/MemberDetailSheet.tsx` statically
+   imported a pure helper (`errorCopyFor`) FROM that same sheet module — so two route chunks (brands
+   + team) shared the whole sheet graph → Metro hoisted it into `__common`. Confirmed: every
+   sheet-only copy string (`"This deletes the draft brand"`, `"Future sales stop paying you"`, …) was
+   present in `__common`.
+2. The sheet-only write verbs (`cancelPendingLink`, `reissueInvitation`) + their cache-surgery hooks
+   lived in the always-eager `partnerBrandLinksService` / `usePartnerBrandLinkMutations` (shared with
+   the Team screen via `useDisconnectLink`), so their bulk sat in `__common`.
+3. The Team-only owner read (`listBrandPartnerLinks` / `useBrandPartnerLinks`) sat in the eager
+   service / shared hook.
+4. The pure label module `partnerLinkLabels` was shared by brands + team + sheet chunks → `__common`.
+
+Baseline: `origin/main` `__common` = **2,248,024 B** (only 1,976 B under the 2,250,000 cap — the cap
+sits right at main's level). Pre-fix branch `__common` = **2,270,199 B** (+22,175 B over main).
+
+**Deferral applied (no cap change; established React.lazy + code-split-module pattern):**
+- **Lazy-load the sheet.** `brands.tsx` now `React.lazy(() => import(PartnerLinkDetailSheet))` inside
+  `<Suspense fallback={null}>` — the tap-only native-first sheet loads off the boot path. Its pure
+  label/error helpers moved to a new zero-dependency module `partnerLinkLabels.ts`.
+- **Sheet-only verbs → sheet-only modules.** `cancelPendingLink` + `reissueInvitation` → new
+  `services/partnerLinkVerbs.ts`; `useCancelPendingLink` + `useReissueInvitation` → new
+  `hooks/usePartnerLinkInviteMutations.ts`. `usePartnerBrandLinkMutations` keeps only the genuinely
+  shared `useDisconnectLink`; `disconnectLink` stays in the service (shared with Team → `__common`
+  regardless).
+- **Team-only read → team-only module.** `listBrandPartnerLinks` + `useBrandPartnerLinks` → new
+  `hooks/useBrandPartnerLinks.ts` (imported only by the lazy Team route).
+- **Labels off `__common`.** `partnerLinkLabels` is now imported ONLY by the lazy sheet (rides the
+  sheet chunk). The two tiny eager list surfaces carry a VERBATIM inline copy of the label they need
+  (`brands.tsx` → reasonLabelFor/terminalEventNameFor; `MemberDetailSheet` → errorCopyFor). This is a
+  pure-formatting duplication (spec-frozen copy, no state — NOT a Const #2 data-ownership split);
+  `__tests__/partnerLinkLabels.driftguard.orch1384.source.test.ts` executes every copy and asserts
+  byte-identical output vs the canonical module, so drift is impossible.
+
+**Before / after `__common` (bytes), all measured via the CI command + guard locally:**
+
+| Build | `__common` bytes | vs 2,250,000 cap | Guard |
+|-------|------------------|------------------|-------|
+| origin/main baseline | 2,248,024 | −1,976 (under) | PASS |
+| ORCH-1384 pre-fix | 2,270,199 | +20,199 (over) | FAIL |
+| + sheet lazy-loaded | 2,253,160 | +3,160 (over) | FAIL |
+| + cancel/reissue verbs+hooks split | 2,250,989 | +989 (over) | FAIL |
+| + team-only read split | 2,250,561 | +561 (over) | FAIL |
+| **+ labels off `__common` (final)** | **2,249,445** | **−555 (UNDER)** | **PASS** |
+
+Net ORCH-1384 add to `__common` = **+1,421 B** vs main (the genuinely-shared `disconnectLink` verb +
+`rpcErrorCode` + the expanded eager list-read path), comfortably within main's 1,976 B slack.
+
+**Files (all ORCH-1384's own):** modified — `app/partner/brands.tsx`, `app/brand/[id]/team.tsx`,
+`src/components/partner/PartnerLinkDetailSheet.tsx`, `src/components/team/MemberDetailSheet.tsx`,
+`src/hooks/usePartnerBrandLinkMutations.ts`, `src/hooks/usePartnerBrandLinks.ts`,
+`src/services/partnerBrandLinksService.ts`, + two ORCH-1384 test imports repointed
+(`PartnerLinkDetailSheet.orch1384.source.test.ts`, `partnerBrandLinksService.orch1384.test.ts`).
+New — `src/components/partner/partnerLinkLabels.ts`, `src/services/partnerLinkVerbs.ts`,
+`src/hooks/usePartnerLinkInviteMutations.ts`, `src/hooks/useBrandPartnerLinks.ts`,
+`src/components/partner/__tests__/partnerLinkLabels.driftguard.orch1384.source.test.ts`.
+
+**Verification:** ORCH-1083 guard PASS (`__common` 2,249,445 < 2,250,000; 149 chunks; 0 deferred
+specifiers in the entry; all 4 checks green). Partner jest suites 71/71 pass (incl. the new drift
+guard). `tsc --noEmit` = 794 errors = unchanged monorepo baseline, **zero in any touched file**.
+Partner Brands screen renders + detail sheet opens: source-verified; runtime behavior UNCHANGED
+(load boundary + module boundaries only — no logic change) on top of the RETEST-2 device pass.
+
+**Fails-on-revert:** the ORCH-1083 budget guard IS the regression test — reverting any of these
+deferrals re-bloats `__common` past 2,250,000 and turns the guard red (proven empirically by the
+progression above: pre-fix FAIL 2,270,199 → final PASS 2,249,445). The added
+`partnerLinkLabels.driftguard` test is a second guard: editing one inline label copy without the
+canonical turns it red.
+
+**No behavior/verb/UX change, no cap change, no migration, no edge-fn change.**

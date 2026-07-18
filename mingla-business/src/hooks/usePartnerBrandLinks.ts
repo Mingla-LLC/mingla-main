@@ -12,7 +12,6 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
 import {
-  listBrandPartnerLinks,
   listPartnerBrandLinks,
   partnerBrandLinksKeys,
   type PartnerBrandLinkWithStatus,
@@ -43,23 +42,6 @@ export function usePartnerBrandLinks(
   });
 }
 
-/**
- * ORCH-1384 — owner-side read of a brand's partner links. The Team screen
- * matches member rows' user_id against accepted, non-cancelled links'
- * partner_account_id to badge + gate the owner-initiated disconnect.
- */
-export function useBrandPartnerLinks(
-  brandId: string | null,
-): UseQueryResult<PartnerBrandLinkWithStatus[], Error> {
-  const { isAuthReady } = useAuth();
-  const enabled = isAuthReady && brandId !== null;
-  return useQuery<PartnerBrandLinkWithStatus[], Error>({
-    queryKey: enabled
-      ? partnerBrandLinksKeys.brand(brandId as string)
-      : DISABLED_KEY,
-    queryFn: () => listBrandPartnerLinks(brandId as string),
-    enabled,
-    staleTime: 30_000,
-    refetchOnWindowFocus: true,
-  });
-}
+// useBrandPartnerLinks (owner-side, Team-only) moved to ./useBrandPartnerLinks
+// (ORCH-1384 bundle-budget split — keeps the Team-only read out of this shared,
+// eager hook module and thus out of the web boot __common chunk).

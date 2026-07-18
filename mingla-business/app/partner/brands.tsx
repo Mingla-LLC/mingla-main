@@ -21,7 +21,7 @@
  * content, dark canvas, GlassCard rows).
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { Suspense, lazy, useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -41,11 +41,6 @@ import {
   type PartnerBrandLinkStatus,
   type PartnerBrandLinkWithStatus,
 } from "../../src/services/partnerBrandLinksService";
-import {
-  PartnerLinkDetailSheet,
-  reasonLabelFor,
-  terminalEventNameFor,
-} from "../../src/components/partner/PartnerLinkDetailSheet";
 import { useAuth } from "../../src/context/AuthContext";
 import {
   accent,
@@ -60,6 +55,19 @@ import { Button } from "../../src/components/ui/Button";
 import { GlassCard } from "../../src/components/ui/GlassCard";
 import { IconChrome } from "../../src/components/ui/IconChrome";
 import { Toast } from "../../src/components/ui/Toast";
+
+// ORCH-1384 web eager-bundle budget fix: PartnerLinkDetailSheet is native-first
+// and heavy (reanimated sheet, the verb mutations, Input). It opens only on a
+// row tap, so it is lazily loaded off the boot path — keeping it and its whole
+// dependency graph OUT of the eager web `__common` chunk guarded by
+// scripts/ci/orch-1083-initial-bundle-budget.mjs (the guard IS this fix's
+// regression test — reverting to a static import re-bloats __common and turns
+// it red). On native the single bundle resolves it with no visual delay.
+const PartnerLinkDetailSheet = lazy(() =>
+  import("../../src/components/partner/PartnerLinkDetailSheet").then((m) => ({
+    default: m.PartnerLinkDetailSheet,
+  })),
+);
 
 const STATUS_RANK: Record<PartnerBrandLinkStatus, number> = {
   awaiting_owner: 0,
@@ -115,6 +123,51 @@ export function headerCounts(rows: PartnerBrandLinkWithStatus[]): {
       (r) => r.status === "awaiting_owner" || r.status === "awaiting_stripe",
     ).length,
   };
+}
+
+// ORCH-1384 web eager-bundle budget fix — INLINE label copies.
+//
+// These mirror partnerLinkLabels.reasonLabelFor / terminalEventNameFor VERBATIM
+// (the canonical, unit-tested source used by the lazy PartnerLinkDetailSheet).
+// They are deliberately duplicated here rather than imported so that
+// partnerLinkLabels is pulled ONLY by the lazy sheet — keeping it (and the
+// sheet's whole native-first graph) out of the shared web boot `__common`
+// chunk guarded by scripts/ci/orch-1083-initial-bundle-budget.mjs. This is a
+// pure-formatting duplication (spec-frozen copy, no state — NOT a Const #2
+// data-ownership split); partnerLinkLabels.driftguard.orch1384.source.test.ts
+// asserts these copies never drift from the canonical module.
+
+/** §9.1 — cancelled_reason → row status label. NULL (legacy) → "Cancelled". */
+function reasonLabelFor(reason: string | null): string {
+  switch (reason) {
+    case "owner_declined":
+      return "Declined by owner";
+    case "invitation_revoked":
+      return "Invite revoked";
+    case "partner_disconnected":
+      return "Disconnected";
+    case "owner_removed":
+      return "Disconnected by owner";
+    case "partner_cancelled":
+    default:
+      return "Cancelled";
+  }
+}
+
+/** §2.2 Group C — terminal timeline event name per reason. */
+function terminalEventNameFor(reason: string | null): string {
+  switch (reason) {
+    case "owner_declined":
+      return "Declined";
+    case "invitation_revoked":
+      return "Revoked";
+    case "partner_disconnected":
+    case "owner_removed":
+      return "Disconnected";
+    case "partner_cancelled":
+    default:
+      return "Cancelled";
+  }
 }
 
 /** §4.2 status→label matrix (reason-aware for cancelled; honest expired). */
@@ -298,13 +351,19 @@ export default function PartnerBrandsScreen(): React.ReactElement {
         )}
       </ScrollView>
 
-      <PartnerLinkDetailSheet
-        visible={detailVisible}
-        link={detailLink}
-        accountId={accountId}
-        onClose={() => setDetailVisible(false)}
-        onVerbSuccess={handleVerbSuccess}
-      />
+      {/* Lazy sheet: the fallback is null because the sheet itself renders
+          nothing until a row snapshot is set (link === null → null), so the
+          async chunk resolving in the background is invisible; the open
+          animation still rides the visible=false→true transition as before. */}
+      <Suspense fallback={null}>
+        <PartnerLinkDetailSheet
+          visible={detailVisible}
+          link={detailLink}
+          accountId={accountId}
+          onClose={() => setDetailVisible(false)}
+          onVerbSuccess={handleVerbSuccess}
+        />
+      </Suspense>
 
       <Toast
         visible={toast !== null}

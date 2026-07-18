@@ -55,11 +55,23 @@ import {
   type PartnerBrandLinkStatus,
   type PartnerBrandLinkWithStatus,
 } from "../../services/partnerBrandLinksService";
+import { useDisconnectLink } from "../../hooks/usePartnerBrandLinkMutations";
+// ORCH-1384 bundle-budget split: the PENDING-invite verb hooks live in a
+// sheet-only module so their bulk stays out of the shared web boot __common
+// chunk (this sheet is lazy-loaded; the Team screen only pulls useDisconnectLink).
 import {
   useCancelPendingLink,
-  useDisconnectLink,
   useReissueInvitation,
-} from "../../hooks/usePartnerBrandLinkMutations";
+} from "../../hooks/usePartnerLinkInviteMutations";
+// ORCH-1384 web eager-bundle budget fix: the pure label/error maps live in a
+// zero-dependency module so the eager list surfaces (brands rows, team
+// MemberDetailSheet) can import them WITHOUT dragging this heavy native-first
+// sheet into the web boot `__common` chunk. See partnerLinkLabels.ts.
+import {
+  errorCopyFor,
+  reasonLabelFor,
+  terminalEventNameFor,
+} from "./partnerLinkLabels";
 
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
@@ -76,56 +88,11 @@ export type PartnerLinkSheetStep =
   | "confirmDisconnect"
   | "rejected";
 
-/** §9.1 — cancelled_reason → row/sheet status label. NULL (legacy) → "Cancelled". */
-export function reasonLabelFor(reason: string | null): string {
-  switch (reason) {
-    case "owner_declined":
-      return "Declined by owner";
-    case "invitation_revoked":
-      return "Invite revoked";
-    case "partner_disconnected":
-      return "Disconnected";
-    case "owner_removed":
-      return "Disconnected by owner";
-    case "partner_cancelled":
-    default:
-      return "Cancelled";
-  }
-}
-
-/** §2.2 Group C — terminal timeline event name per reason. */
-export function terminalEventNameFor(reason: string | null): string {
-  switch (reason) {
-    case "owner_declined":
-      return "Declined";
-    case "invitation_revoked":
-      return "Revoked";
-    case "partner_disconnected":
-    case "owner_removed":
-      return "Disconnected";
-    case "partner_cancelled":
-    default:
-      return "Cancelled";
-  }
-}
-
-/** §5.6 — typed service error code → user copy (shared by both sheets). */
-export function errorCopyFor(code: string): string {
-  switch (code) {
-    case "link_not_pending":
-      return "This invite already changed state. Close this and check the list.";
-    case "link_not_active":
-      return "This connection isn't active anymore. Close this and check the list.";
-    case "link_not_found":
-      return "This link no longer exists. Close this and refresh.";
-    case "forbidden":
-      return "You don't have permission to manage this link.";
-    case "email_send_failed":
-      return "We couldn't send the email. Tap Resend invite to try again.";
-    default:
-      return "Something broke on our side. Try again.";
-  }
-}
+// reasonLabelFor (§9.1), terminalEventNameFor (§2.2 Group C), and errorCopyFor
+// (§5.6) moved to ./partnerLinkLabels — imported above — so the eager list
+// surfaces can consume them without pulling this heavy sheet into the web boot
+// `__common` chunk (ORCH-1384 bundle-budget fix). Their executed-value
+// contract tests now slice the labels module.
 
 /**
  * §4.6 verb-set contract by status (expired shares the awaiting_owner set —
