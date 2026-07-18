@@ -89,6 +89,7 @@ const AUTH_SCOPED_HOOK_FILES = [
   "useConversationList.ts",
   "usePartnerSplits.ts",
   "usePartnerBrandLinks.ts",
+  "useBrandPartnerLinks.ts",
   "usePartnerStripe.ts",
   "useTripEditLog.ts",
   "useTripHasWebPurchases.ts",
