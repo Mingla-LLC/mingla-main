@@ -337,13 +337,33 @@ describe("channel plan", () => {
     metaGoal: "LINK_CLICKS",
   };
 
-  it("create-wired set is exactly {meta, google} (deployed endpoint truth)", () => {
-    assert.deepEqual([...CREATE_WIRED].sort(), ["google", "meta"]);
+  // [TEST-MOD ISSUE-927] This test pinned the WP4 endpoint truth (meta+google
+  // only). ISSUE-927 added the tiktok/reddit/snapchat create branches, so the
+  // pin moves to the NEW deployed truth: all five — and the downstream gates
+  // (preflight/goal/market/budget) are now the real narrowing, proven below.
+  it("create-wired set is all five channels (ISSUE-927 deployed endpoint truth)", () => {
+    assert.deepEqual(
+      [...CREATE_WIRED].sort(),
+      ["google", "meta", "reddit", "snapchat", "tiktok"],
+    );
     const rows = planChannels(base);
-    const eligible = rows.filter((r) => r.eligible).map((r) => r.platform).sort();
-    assert.deepEqual(eligible, ["google", "meta"]);
     const tiktok = rows.find((r) => r.platform === "tiktok");
-    assert.ok(tiktok.excludedReason.includes("no TikTok create branch"), "endpoint gap named, never silent");
+    // No channel is excluded for an endpoint gap anymore — any exclusion in
+    // the all-green US base plan can only be a downstream gate (e.g. budget).
+    for (const row of rows) {
+      if (row.excludedReason) {
+        assert.ok(
+          !row.excludedReason.includes("create branch") &&
+            !row.excludedReason.includes("not wired"),
+          `${row.platform} must not cite the retired endpoint gap: ${row.excludedReason}`,
+        );
+      }
+    }
+    assert.ok(tiktok, "tiktok row present");
+    const meta = rows.find((r) => r.platform === "meta");
+    const google = rows.find((r) => r.platform === "google");
+    assert.equal(meta.eligible, true, "meta stays eligible in the base plan");
+    assert.equal(google.eligible, true, "google stays eligible in the base plan");
   });
 
   it("preflight red/not_connected excludes; amber annotates but stays eligible", () => {
@@ -639,10 +659,14 @@ describe("REWORK P2-1 — Nigeria never routes to Reddit (blueprint §1.3)", () 
     assert.equal(reddit.eligible, true);
   });
 
-  it("today's default precedence is unchanged: the endpoint gap still excludes Reddit first", () => {
+  // [TEST-MOD ISSUE-927] Reddit's create branch is wired now, so the endpoint
+  // gap no longer pre-empts the NG rule — the STRONGER truth this test always
+  // wanted: the naira billing gate fires in the DEFAULT plan, no injection.
+  it("since ISSUE-927 the NG billing gate excludes Reddit in the DEFAULT plan (live rule, not dead code)", () => {
     const rows = planChannels({ ...base, countries: ["NG"] });
     const reddit = rows.find((r) => r.platform === "reddit");
-    assert.equal(reddit.eligible, false);
-    assert.ok(reddit.excludedReason.includes("no Reddit create branch"), "CREATE_WIRED wins the precedence today");
+    assert.equal(reddit.eligible, false, "Lagos must NOT route to Reddit — no NGN funding currency");
+    assert.ok(/naira|NGN/i.test(reddit.excludedReason), "the reason names the billing-currency gap");
+    assert.ok(!reddit.excludedReason.includes("no Reddit create branch"), "the endpoint gap is retired");
   });
 });

@@ -295,6 +295,9 @@ export function CampaignBuilderPage() {
         goal: {
           metaObjective: goal?.platforms?.meta?.objective ?? "OUTCOME_TRAFFIC",
           metaOptimizationGoal: metaGoal,
+          // ISSUE-927: the tiktok/reddit/snapchat payload branches read their
+          // native objective from the goal's per-platform map (goals.js).
+          platforms: goal?.platforms ?? {},
         },
         destination: {
           page_type: destination.page_type,
@@ -303,7 +306,15 @@ export function CampaignBuilderPage() {
         },
         audience,
         budget: { dailyCentsForChannel: allocation.dailyCents },
-        creative: { imageUrl: creative.publicUrl, aiGenerated: creative.aiGenerated },
+        creative: {
+          imageUrl: creative.publicUrl,
+          aiGenerated: creative.aiGenerated,
+          // ISSUE-927: the #866 library row (recorded in StepCreative) —
+          // snapchat consumes media ONLY through the library; tiktok reuses a
+          // READY ref when one exists.
+          creativeLibraryId: creative.creativeRow?.id ?? null,
+          brandName: destination?.brand_name ?? null,
+        },
         copy,
         specialAdCategory,
         requestId: requestIdFor(platform),

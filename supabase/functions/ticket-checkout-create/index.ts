@@ -1010,10 +1010,13 @@ serve(wrapEdgeHandler("ticket-checkout-create", async (req) => {
     let successUrl: string;
     let cancelUrl: string;
     if (surface === "web") {
-      const baseUrl = Deno.env.get("MINGLA_PUBLIC_WEB_BASE_URL");
+      // ISSUE-927: BUSINESS_WEB_ORIGIN is the canonical secret; the old name
+      // is a fallback so its deletion is safely decoupled (same digest).
+      const baseUrl = Deno.env.get("BUSINESS_WEB_ORIGIN") ??
+        Deno.env.get("MINGLA_PUBLIC_WEB_BASE_URL");
       if (!baseUrl || !/^https:\/\/[^\s]+$/.test(baseUrl)) {
         console.error(
-          "[ticket-checkout-create] MINGLA_PUBLIC_WEB_BASE_URL not set or invalid",
+          "[ticket-checkout-create] BUSINESS_WEB_ORIGIN (or the legacy MINGLA_PUBLIC_WEB_BASE_URL) not set or invalid",
         );
         return jsonResponse({ error: "web_base_url_missing" }, 500);
       }

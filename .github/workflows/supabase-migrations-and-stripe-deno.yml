@@ -821,6 +821,20 @@ jobs:
           #    a different line than the implementor's three), bid-band edges
           #    in cents through the builder, r=0-on-200 + headerless-429
           #    backoff. ADV-A12 is ignore:true until the P1 QA-916-1 rework.
+          # ISSUE-927 (registered 2026-07-16):
+          #  - issue927_origin_secret_consolidation.test.ts — the 4→1 origin
+          #    secret consolidation: BUSINESS_WEB_ORIGIN-first resolution order
+          #    (runtime on defaultVenuePublicUrl + source pins per reader) and
+          #    the sweep banning any bare old-name read (deletion decoupling).
+          #  - issue927_wp5_hasown_guards.test.ts — QA-867-WP5 F-1/F-2
+          #    Object.hasOwn fail-closed guards (prototype-chain creative
+          #    types) + F-4 legacy `objective` on the Snap strip list.
+          #  - issue927_create_fn_tiktok_reddit_branches.test.ts — the create
+          #    fn's TikTok + Reddit branches: no-validate-only gates
+          #    (named-skipped-layers BEFORE any adapter call), T-7 identifier
+          #    non-collision, canonical dest_url as the ad-visible URL,
+          #    reddit PAUSED-persist fails-on-revert target, TikTok identity
+          #    fail-close ordering + live-geo 422 + floors-after-conversion.
           DENO_TEST_FILES=(
             supabase/functions/_shared/__tests__/adChannel.test.ts
             supabase/functions/_shared/__tests__/meta.test.ts
@@ -832,6 +846,10 @@ jobs:
             supabase/functions/_shared/__tests__/issue867_wp2_tester_adversarial.test.ts
             supabase/functions/_shared/__tests__/reddit.test.ts
             supabase/functions/_shared/__tests__/issue916_wp6_tester_adversarial.test.ts
+            supabase/functions/_shared/__tests__/issue927_origin_secret_consolidation.test.ts
+            supabase/functions/_shared/__tests__/issue927_wp5_hasown_guards.test.ts
+            supabase/functions/_shared/__tests__/issue927_create_fn_tiktok_reddit_branches.test.ts
+            supabase/functions/_shared/__tests__/issue927_tester_origin_runtime.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-read --no-check "${DENO_TEST_FILES[@]}"; then
@@ -844,6 +862,19 @@ jobs:
             echo "ISSUE-862 ad-engine Deno tests failed (attempt ${attempt}), retrying in 10s..."
             sleep 10
           done
+      - name: Run ISSUE-927 QA tester adversarial RUNTIME suite (edge fn in-process + mock Supabase/Reddit/TikTok — needs net)
+        run: |
+          # QA_ISSUE-927 tester adversarial runtime harness: executes the REAL
+          # admin-ad-create-campaign function (std/http serve on :8000) against
+          # local mock servers — reddit full-chain wire order + PAUSED ×3 +
+          # reverse-order PATCH-DELETED rollback at every step + hostile
+          # injections; tiktok DISABLE ×3 + UTC+0 schedule + CBO bid_type +
+          # rollback + geo 422; snapchat hasOwn fail-closes + profile 424 +
+          # the honest creative_not_uploaded 422; validate gates = ZERO
+          # adapter calls, ZERO DB writes. Local sockets only — no live
+          # platform, no real DB.
+          deno test --allow-env --allow-net --allow-read --no-check \
+            supabase/functions/_shared/__tests__/issue927_tester_adversarial_runtime.test.ts
 
   ad-creative-library-deno-tests:
     name: "ISSUE-866 WP3: Creative Library byte-probe + matrix + resolver Deno tests"

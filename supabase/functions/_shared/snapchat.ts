@@ -676,7 +676,12 @@ export const SNAPCHAT_CTA_ALLOWLIST_BY_CREATIVE_TYPE: Record<string, readonly st
  * (ticketed) / BOOK_NOW (bookable) — far higher intent than MORE/VIEW.
  */
 export function validateSnapchatCta(creativeType: string, cta: unknown): SnapchatValidation {
-  const allowlist = SNAPCHAT_CTA_ALLOWLIST_BY_CREATIVE_TYPE[creativeType];
+  // QA-867-WP5 F-2: own-key lookup — a prototype-chain key ("toString",
+  // "constructor", …) must fail CLOSED as invalid_cta, never surface the
+  // inherited function and TypeError on .includes.
+  const allowlist = Object.hasOwn(SNAPCHAT_CTA_ALLOWLIST_BY_CREATIVE_TYPE, creativeType)
+    ? SNAPCHAT_CTA_ALLOWLIST_BY_CREATIVE_TYPE[creativeType]
+    : undefined;
   if (!allowlist) {
     return {
       ok: false,
@@ -717,7 +722,12 @@ export const SNAPCHAT_CREATIVE_TO_AD_TYPE: Record<string, string> = {
 };
 
 export function snapchatAdTypeForCreativeType(creativeType: string): string {
-  const adType = SNAPCHAT_CREATIVE_TO_AD_TYPE[creativeType];
+  // QA-867-WP5 F-1: own-key lookup — a prototype-chain key ("toString", …)
+  // returned the inherited function (truthy), JSON.stringify then DROPPED the
+  // `type` key and the ad went onto the wire TYPELESS. Must fail CLOSED.
+  const adType = Object.hasOwn(SNAPCHAT_CREATIVE_TO_AD_TYPE, creativeType)
+    ? SNAPCHAT_CREATIVE_TO_AD_TYPE[creativeType]
+    : undefined;
   if (!adType) {
     throw new AdApiError({
       platform: "snapchat",
@@ -1425,6 +1435,10 @@ export const SNAPCHAT_READ_ONLY_ENTITY_FIELDS: readonly string[] = [
   "review_status_reasons",
   "delivery_status",
   "packaging_status",
+  // QA-867-WP5 F-4: Snap's read-back echoes the DEPRECATED legacy `objective`
+  // key (server-added — we never send it, S-6). Echoing it back on the RMW
+  // PUT invites the exact translator behavior S-6 exists to avoid — strip it.
+  "objective",
 ];
 
 export function snapchatStripReadOnlyFields(

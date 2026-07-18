@@ -229,7 +229,12 @@ function shortId(id: string): string {
 }
 
 function publicBuyerBaseUrl(): string {
+  // ISSUE-927: PUBLIC_BUYER_BASE_URL stays the deliberate per-surface override;
+  // BUSINESS_WEB_ORIGIN is the canonical origin secret and the old
+  // MINGLA_BUSINESS_WEB_URL name is a fallback so its deletion is safely
+  // decoupled (same digest, audited).
   const raw = Deno.env.get("PUBLIC_BUYER_BASE_URL") ??
+    Deno.env.get("BUSINESS_WEB_ORIGIN") ??
     Deno.env.get("MINGLA_BUSINESS_WEB_URL") ??
     "https://business.usemingla.com";
   return raw.replace(/\/+$/, "");
