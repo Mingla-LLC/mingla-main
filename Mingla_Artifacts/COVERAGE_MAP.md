@@ -328,3 +328,5 @@ State Persistence: 4 closed (ORCH-0209 F→A, ORCH-0240 B→A, ORCH-0270 new→A
 
 > **2026-07-18 — ORCH-1388 [checkout honest expiry] CLOSED ✅** (tester PASS 0xP0/P1; abandoned checkouts now expire honestly, no money strandable; deploy CLOSE-owned, first run backfills 5 stuck rows; I-PROPOSED-1388 ACTIVE). Open: ORCH-1384 in RETEST, ORCH-1387 on GitGuardian, ORCH-1390/1392 recommended.
 > **2026-07-18 — ORCH-1384 [partner brand-management verbs] CLOSED ✅** (Seth original request SHIPPED: invite-multiple/detail/cancel/disconnect; P0 auth-bypass caught+fixed+runtime-verified; browser-accept E2E device-proven; 5 invariants ACTIVE). Edge-fn deploy + OTA CLOSE-owned. Accept-flow UX → ORCH-1393.
+
+> **2026-07-18 — ORCH-1392 [SECURITY DEFINER grant sweep] CLOSED ✅** (5 HIGH live anon holes hot-patched same-day + 45 fns durably hardened + class-killing CI gate; tester CONDITIONAL PASS; 2 invariants ACTIVE). Condition → ORCH-1394 (admin pre-login gate, zero impact today).
