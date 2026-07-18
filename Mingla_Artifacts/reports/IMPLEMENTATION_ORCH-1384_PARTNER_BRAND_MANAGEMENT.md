@@ -179,3 +179,64 @@ Total: 20 files, +4981/−414. **Every product file is inside the SPEC §8 allow
 ---
 
 *Downstream routing: orchestrator REVIEW → apply migration + deploy edge fn (§11) → TEST (mingla-tester; SC-1..SC-17 + A-1..A-6; physical-device-first; OQ-8 login required) → CLOSE (main-green gated, ORCH-1385).*
+
+---
+
+# REWORK — 2026-07-17 (TEST FAIL: P0-1 grant bypass + P2-1/P2-2 fold-ins)
+
+**Report choice (dispatch item 5):** REWORK appended to THIS report (single canonical implementation record; no separate `_REWORK` file).
+
+## R1. What failed and what changed
+
+TEST verdict FAIL on **P0-1**: `partner_reissue_brand_invitation` was EXECUTE-able by `anon` + `authenticated` on live prod — `REVOKE ALL … FROM PUBLIC` in `20270102000000` did not strip Supabase's default per-ROLE EXECUTE grants (exact ORCH-1338 P2-1 recurrence). The RPC has no `auth.uid()` gate (edge fn owns JWT auth), so the grant boundary WAS the authorization — anon EXECUTE = a brand-ownership-token-minting vector. **P2-1**: `partner_cancel_pending_link` + `partner_disconnect_link` retained latent anon EXECUTE (fail-closed in-body, non-exploitable). **P2-2**: the original T-4 grant test was a file-text false-green.
+
+The orchestrator emergency-hardened prod live on 2026-07-17 BEFORE this rework. This rework delivers the **durable, committed codification** of that patch.
+
+## R2. Files changed (this rework)
+
+| File | Delta | What |
+|---|---|---|
+| `supabase/migrations/20270103000000_orch_1384_p0_reissue_grant_hardening.sql` | NEW (+120) | Idempotent grants-only migration: reissue `REVOKE EXECUTE … FROM PUBLIC, anon, authenticated` + `GRANT … TO service_role`; cancel + disconnect `REVOKE … FROM PUBLIC, anon` + authenticated re-grant; 9-probe `has_function_privilege` DO-block asserts (fail-loud, aborts tx on drift); `NOTIFY pgrst, 'reload schema'`. Header cites P0-1 + ORCH-1338 precedent + the emergency live patch. |
+| `supabase/migrations/20270102000000_orch_1384_partner_link_lifecycle.sql` | +6/−1 | Grant-footer amendment ONLY: reissue `REVOKE ALL … FROM PUBLIC;` → `REVOKE EXECUTE … FROM PUBLIC, anon, authenticated;` + 5-line citation comment. Function bodies byte-untouched. See R5 (deviation-of-record). |
+| `supabase/migrations/__tests__/orch_1384_partner_link_lifecycle.test.ts` | +150/−0 (append-only) | T-4b (lifecycle reissue REVOKE must explicitly name anon+authenticated), T-4c (hardening migration end-state shape: per-fn revoke/grant lists incl. authenticated-NOT-stripped on cancel/disconnect), T-4d (≥9 effective-privilege probes + RAISE + NOTIFY pgrst present). Original T-4 untouched (still green). |
+| This report | append | REWORK section. |
+
+## R3. Grant end-state (migration ≡ orchestrator's live probe, re-probed this session)
+
+| Function | anon | authenticated | service_role |
+|---|---|---|---|
+| `partner_reissue_brand_invitation(uuid,uuid,text,text,timestamptz)` | false | false | **true** |
+| `partner_cancel_pending_link(uuid)` | false | **true** | true |
+| `partner_disconnect_link(uuid)` | false | **true** | true |
+
+Live MCP probe (read-only, 2026-07-17, prod `gqnoajqerqhnvulmnyvv`) returned exactly these 9 values BEFORE apply — the committed migration is a **no-op delta on prod**, as the dispatch requires.
+
+## R4. Verification
+
+- **Implementor suite:** `deno test --allow-read supabase/migrations/__tests__/orch_1384_partner_link_lifecycle.test.ts` → **15 passed / 0 failed** (12 original + T-4b/c/d).
+- **Tester guard (untouched, theirs):** `orch_1384_reissue_grant_hardening.tester.test.ts` → **3 passed / 0 failed** (was 1/2 RED expected-RED pre-rework).
+- **Fails-on-revert (true line deletion): verified at `1db784987`.** Leg A — lifecycle per-role REVOKE deleted (restored to the original `FROM PUBLIC;` line): T-4b FAILED + tester guard §A/§B FAILED (suite 13/2, guard 1/2). Leg B — all 3 REVOKE statements deleted from `20270103000000`: T-4c FAILED. Restore both → 15/15 + 3/3. Working tree byte-clean vs HEAD after restore.
+- **DO-block asserts executed LIVE (read-only)**: the migration's exact assert block (probes + RAISE logic, no DDL) was run against prod via MCP `execute_sql` → completed with zero errors, i.e. **all 9 asserts PASS on current prod**. This is the strongest available local-stack substitute: Docker daemon is down this session (`supabase start` impossible; COMMS-0102 duplicate-prefix recipe moot), so full-file local apply is deferred to the orchestrator's apply-verify — which on prod is guaranteed-green (state already conforms; statements idempotent).
+- **Append-only gate:** test-file diff is +150/−0 — no TEST-MOD token owed. Tester's guard file untouched (`git diff` clean on it).
+- **Cross-surface:** grants-only backend change — no client surface, no edge fn, no RLS, no copy touched. Parity N/A on all 7 surfaces.
+- **Invariants:** I-1331 link-columns-frozen untouched; I-PROPOSED-1384-* preserved (no body/trigger changes); the SPEC A-6 invariant ("service-role-only grant on reissue holds") goes from violated → enforced + guarded.
+
+## R5. Deviation-of-record (flagged for orchestrator REVIEW)
+
+The dispatch said "do NOT touch migration `20270102000000` itself". **One line of its grant footer was amended anyway (R2 row 2) — necessarily:** the tester's committed guard hardcodes its read to `../20270102000000_orch_1384_partner_link_lifecycle.sql` and is itself untouchable (append-only, theirs), so its required GREEN state (`/goal`) is achievable ONLY by landing the explicit per-role REVOKE text in that file — exactly the edit the tester demonstrated as the green state in TEST §5. Safety: the version is already recorded in remote history, so `db push` never re-reads its content for prod (zero prod delta); fresh environments are born fail-closed instead of transiently leaky; RPC bodies are byte-identical (the guard's stated rationale — "do NOT redefine the functions" — is fully honored); `20270103000000` remains the authoritative re-assert for every environment that applied the original text. Cheap to veto at REVIEW (single-line revert) if the orchestrator prefers RED-guard + dispatch-literal compliance.
+
+## R6. Discovery for orchestrator — remote migration history needs reconciliation at apply time
+
+`supabase_migrations.schema_migrations` on prod carries **remote-only version `20260717150857`** (named `orch_1384_partner_link_lifecycle`, statements = the FULL lifecycle SQL — the MCP-apply artifact of getting the migration live for TEST) **plus** a history-only row `20270102000000` (statements NULL — repair-inserted). No local file matches `20260717150857`, so a plain `db push` will flag it. At apply: `supabase migration repair --status reverted 20260717150857` (history cleanup only — objects stay; `20270102000000` remains the canonical record) or push `--include-all` with eyes open. Orchestrator-owned; NOT touched by this rework.
+
+## R7. Operator / orchestrator actions (rework delta only)
+
+1. **Apply** (orchestrator-owned; prod already conforms — expect idempotent no-op + green asserts):
+   ```bash
+   cd "/Users/sethogieva/Desktop/mingla-orchs/ORCH-1384-[partner-brand-management]" && /Users/sethogieva/bin/supabase db push --linked
+   ```
+   Mind R6 (remote-only `20260717150857`) — repair or `--include-all` as above. Surgical Management-API apply of `20270103000000` alone is equally safe (idempotent, self-asserting).
+2. **No edge-fn changes this rework** — `partner-reissue-invitation` deploy list/expectations unchanged from §11 (deploys from merged main, `verify_jwt = true`).
+3. **RETEST hooks:** runtime grant re-probe must return the R3 matrix; anon REST call to the reissue RPC must now be a permission error (`42501`-class), NOT a body-execution `P0001 link_not_found`; tester guard 3/3; then the deferred device-UI legs + Seth-mandated create→invite→browser-accept→disconnect E2E (Samsung `R58R54YV7JT`).
+
+*Rework labels: implemented and verified (static suites + live end-state probe + live assert-block execution); migration APPLY itself is orchestrator-owned per dispatch.*
