@@ -1,0 +1,116 @@
+name: SECURITY DEFINER anon-grant gate (ORCH-1392)
+
+# ORCH-1392 [SECURITY DEFINER grant-hygiene sweep]. The class-killing CI gate:
+# boots the Supabase-flavored Postgres, seeds prod's default-privileges
+# behavior, applies all migrations, then runs a LIVE has_function_privilege
+# probe (scripts/ci/security_definer_anon_gate.sh) that FAILS the build if any
+# non-trigger SECURITY DEFINER function in `public` is anon-EXECUTE-able and NOT
+# in supabase/security/anon_executable_definer_allowlist.txt.
+#
+# INVESTIGATION_ORCH-1392 F-6 proved a source-regex / migration-grep is
+# unreliable (the anon grant is an implicit default-privilege, never written in
+# a migration; helper/auth.email() gates + TRUNCATE/REFRESH/net.http_post side-
+# effects defeat body parsing). The live effective-privilege ACL is the only
+# authoritative signal. Enforces I-PROPOSED-1392-NO-UNALLOWLISTED-ANON-DEFINER.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/security/anon_executable_definer_allowlist.txt"
+      - "scripts/ci/security_definer_anon_gate.sh"
+      - ".github/workflows/security-definer-anon-grant-gate.yml"
+  pull_request:
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/security/anon_executable_definer_allowlist.txt"
+      - "scripts/ci/security_definer_anon_gate.sh"
+      - ".github/workflows/security-definer-anon-grant-gate.yml"
+
+jobs:
+  anon-definer-gate:
+    name: "No unallowlisted anon-executable SECURITY DEFINER function"
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # Supabase-flavored Postgres — provides the anon/authenticated/
+        # service_role roles + pg_cron/pgsodium the baseline migration needs.
+        # Same image + env contract as supabase-migrations-and-stripe-deno.yml:
+        # do NOT override POSTGRES_USER/POSTGRES_DB (migrate.sh needs
+        # supabase_admin + the default `postgres` DB for CREATE EXTENSION).
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 30s
+    env:
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGDATABASE: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Wait for postgres
+        run: |
+          for i in {1..90}; do
+            if psql -c "SELECT 1" >/dev/null 2>&1; then
+              echo "postgres ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "postgres did not become ready in 90s"
+          exit 1
+
+      - name: Seed prod default-privileges faithfulness (BEFORE migrations)
+        # Guarantees the CI DB reproduces prod's "every new function auto-gets
+        # anon EXECUTE" behavior, so a future leaky fn is caught even if it
+        # carries no explicit anon grant. Run as the connecting role (postgres)
+        # so functions CREATEd by the migrations inherit it. Idempotent no-op if
+        # the image already does this (it does, on 17.4.1.075 — but this stays
+        # load-bearing for image-version drift; see SPEC OQ-2).
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -c \
+            "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role;"
+
+      - name: Apply migrations in timestamp order
+        run: |
+          set -euo pipefail
+          for f in $(ls supabase/migrations/*.sql | sort); do
+            echo "::group::Applying $f"
+            psql -v ON_ERROR_STOP=1 -f "$f"
+            echo "::endgroup::"
+          done
+
+      - name: Run the anon-definer gate (must be GREEN)
+        run: bash scripts/ci/security_definer_anon_gate.sh
+
+      - name: Negative control — gate must FAIL on an injected leaker
+        # Proves the gate is not a no-op: create a throwaway anon-granted definer
+        # fn (inherits the seeded anon default-priv), assert the gate now exits
+        # non-zero, then drop it. If the gate stays green with a leaker present,
+        # fail the job.
+        run: |
+          set -uo pipefail
+          psql -v ON_ERROR_STOP=1 -c \
+            "CREATE FUNCTION public._orch1392_gate_selftest() RETURNS int LANGUAGE sql SECURITY DEFINER AS 'SELECT 1';"
+          if bash scripts/ci/security_definer_anon_gate.sh; then
+            echo "NEGATIVE CONTROL FAILED: gate passed while an unallowlisted anon-exec leaker was present."
+            psql -c "DROP FUNCTION IF EXISTS public._orch1392_gate_selftest();" || true
+            exit 1
+          fi
+          echo "Negative control OK: gate correctly failed (exit non-zero) on the injected leaker."
+          psql -v ON_ERROR_STOP=1 -c "DROP FUNCTION public._orch1392_gate_selftest();"
+
+      - name: Re-run the gate after cleanup (must be GREEN again)
+        run: bash scripts/ci/security_definer_anon_gate.sh

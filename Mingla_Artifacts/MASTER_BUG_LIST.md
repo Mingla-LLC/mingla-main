@@ -1,7 +1,9 @@
 # Master Bug List
+> **2026-07-18 — ORCH-1394 [admin pre-login is_admin_email gate breaks for DB-only admins post-ORCH-1392] REGISTERED — OPEN.** S2 latent, zero impact today (sole admin hardcoded); MUST fix before onboarding a DB-only admin (move check post-auth, or re-allowlist is_admin_email for anon). Source: ORCH-1392 TEST P2. **Status: OPEN.**
+
 > **2026-07-18 — ORCH-1393 [accept web flow: spins forever for wrong visitor + 500 on email-mismatch] REGISTERED — OPEN.** S2 (real owners accept fine; wrong-visitor error path only). Source: ORCH-1384 RETEST-2. Fix = typed email-mismatch state + 4xx not 500. **Status: OPEN.**
 
-> **2026-07-17 — ORCH-1392 [proactive SECURITY DEFINER grant-hygiene sweep + CI gate] REGISTERED — OPEN.** S1 (the anon-EXECUTE default-privilege leak shipped TWICE: 1338 P2-1, 1384 P0-1). Sweep every definer RPC's effective anon/authenticated grant vs its internal auth.uid() gate; harden leakers; add a class-killing CI gate. **Status: OPEN — recommend dispatch soon.**
+> **2026-07-17 — ORCH-1392 [proactive SECURITY DEFINER grant-hygiene sweep + CI gate] REGISTERED — OPEN.** S1 (the anon-EXECUTE default-privilege leak shipped TWICE: 1338 P2-1, 1384 P0-1). FIXED + SEALED: 5 HIGH live anon holes hot-patched same-day (forge-refund/forge-contribution/audit-wipe/QR-exfil/admin-email); durable migration 20270104000000 hardened 45 definer fns (26 svc-only/19 authed-anon-revoked) + 2 internal auth gates + 4 residual leakers (Section B2) + a class-killing live-probe CI gate. Tester CONDITIONAL PASS (0xP0/P1; throwaway-apply + 45 live probes). 2 I-PROPOSED-1392-* invariants ACTIVE. P2 condition (is_admin_email pre-login gate for DB-only admins) → ORCH-1394. **Status: CLOSED ✅ 2026-07-18.**
 
 > **2026-07-17 — ORCH-1390 [process-booking-deadlines + keep-warm crons 401 every cycle, crons report green] REGISTERED — OPEN.** S1 pending forensics (deadline enforcement possibly dead; silent-failure class). Source: 1388 D-B. **Status: OPEN.**
 

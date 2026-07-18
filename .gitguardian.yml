@@ -40,6 +40,10 @@ secret:
     # well-known default for ephemeral test databases). They never reach a
     # production system. Standard pattern across the GitHub Actions ecosystem.
     - .github/workflows/supabase-migrations-and-stripe-deno.yml
+    # ORCH-1392 security-definer gate job — same ephemeral CI Postgres service
+    # container (POSTGRES_PASSWORD: postgres) for the live has_function_privilege
+    # probe; identical throwaway-credential pattern as the workflow above.
+    - .github/workflows/security-definer-anon-grant-gate.yml
 
   # Path-based ignores for fixture / test / build-config files that
   # legitimately contain non-secret values matching common secret regexes.
