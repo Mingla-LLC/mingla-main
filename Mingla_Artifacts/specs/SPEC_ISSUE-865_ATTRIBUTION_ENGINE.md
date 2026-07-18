@@ -323,3 +323,55 @@ config.toml: `attribution-capture` `verify_jwt=false` (with in‑fn rate‑limit
 - **SC‑13 (new):** every downstream goal/audience gate reads **live pixel signal** (`last_fired_time ≠ epoch‑0`), never a "#865 shipped" flag (A2‑4).
 - **SC‑14 (new, Phase B):** audience creation enforces the sequencing gate + size floors + per-channel lookalike ratios of A2‑9.
 - **§7 action items (amended):** add **"Generate the Reddit Conversions access token in Events Manager → `REDDIT_ADS_CAPI_TOKEN`"** and **"Link IG to Page `797406353459597`"**; delete the "resolve duplicate dataset" item (closed, A2‑1).
+
+---
+
+## Amendment A3 — re-validation against the SHIPPED 5-channel engine (2026-07-18, evidence-backed)
+
+**Provenance:** full re-read of `origin/main` after the #862/#863/#866 ad-engine merges (this worktree rebased onto main, 0 behind). Evidence file: `Mingla_Artifacts/investigations/INVESTIGATION_ISSUE-865_ENGINE_REVALIDATION.md` (findings F-1…F-8, each with a file+line on main). The spec body + A1 predate the generalized engine; A2 recorded the multi-channel canonical decisions but still referenced Meta-only table/fn names. A3 re-bases the "what exists" claims onto the merged reality. Append-only: nothing above is edited; where A3 conflicts with earlier text, **A3 wins**. Env-var NAMES only.
+
+### A3-1 · Schema names are generalized — `meta_campaigns`/`meta_ad_connections` DO NOT EXIST on main
+- **Old (§4/§5.1/§5.5):** `campaign_id … REFERENCES public.meta_campaigns(id)`; `meta_ad_connections`; spend from `meta-campaign-sync`.
+- **New (PROVEN, F-1):** the shipped engine is `public.ad_connections` / `ad_campaigns` / `ad_sets` / `ads` / `ad_status_events` (+ `ad_creatives`, #866). `ad_connections` has `platform CHECK IN (meta,tiktok,snapchat,google,reddit)`, `lane CHECK IN (consumer,business)`, `UNIQUE (platform, lane)`. **All `campaign_id` FKs in #865 target `public.ad_campaigns(id)`**; the sync fn is `admin-ad-campaign-sync`; the audience fn is `admin-ad-audience-create` (NOT `admin-meta-*`).
+- **Evidence:** `supabase/migrations/20261230000000_issue_862_ad_engine_foundation.sql` L33-137; `supabase/config.toml` L424-453.
+
+### A3-2 · Pixel IDs + CAPI token env-var NAMES live in `ad_connections.extra` / `token_env_var` — senders resolve PER-CONNECTION, per-lane
+- **Old (§5.2/§5.3):** new standalone `EXPO_PUBLIC_*_PIXEL_ID` + per-platform CAPI secrets.
+- **New (PROVEN, F-5):** `ad_connections.token_env_var` + `extra.{pixel_id, capi_env_var, page_id, minimum_budgets}` already carry these. The server senders MUST resolve `{pixel_id, capi_env_var}` from the lane's `ad_connections` row then `Deno.env.get(capi_env_var)` — the engine's established `ChannelAdapter` token pattern (`adChannel.ts` L414-418) — NOT parallel hardcoded secrets. Two-lane correctness (consumer vs business) is automatic via `(platform, lane)`. Client pixel IDs come from app-config `extra` (the existing `readEnv` COMMS-0028 pattern), not new dynamic secrets.
+- **Evidence:** foundation migration COMMENT L57-58; `adChannel.ts` L50-58/L414-418; `admin-ad-connect/index.ts:924` (`pixel_last_fired_time` captured at connect).
+
+### A3-3 · Web install surface = THREE checkout flows + `/e/`,`/t/`,`/b/` (spec undercounted)
+- **Old (§3/§5.3/§10):** pixels/threading on `app/checkout/[eventId]` only.
+- **New (PROVEN, F-3):** there are three parallel checkout flows — `app/checkout/[eventId]/`, `app/checkout-trip/[tripEventId]/`, `app/checkout-experience/[experienceEventId]/` — each with `index/payment/confirm`, and each `confirm.tsx` already fires `gaEvent("purchase")` + `web_purchase_completed`. Public pages are `app/e/[brandSlug]/[eventSlug].tsx`, `app/t/[brandSlug]/[tripSlug].tsx`, `app/b/[brandSlug]/index.tsx` (both /e/ and /t/ already fire `web_public_offering_viewed`). **The browser Purchase/CompletePayment pixel + `attribution_click_id` threading MUST be added to ALL THREE checkout flows; PageView/ViewContent to `/e/`, `/t/`, `/b/`** — otherwise trip + experience conversions are silently dropped.
+- **Evidence:** `checkout/[eventId]/confirm.tsx:351`, `checkout-trip/[tripEventId]/confirm.tsx:336-343`, `checkout-experience/[experienceEventId]/confirm.tsx:296-303`, `e/[brandSlug]/[eventSlug].tsx:50`.
+
+### A3-4 · `webAnalytics.web.ts` already carries the consent gate + GA4 Consent-Mode-v2 + purchase scaffolding — #865 EXTENDS it
+- **Old (§5.3):** "add Meta Pixel + TikTok Pixel to the existing web analytics init."
+- **New (PROVEN, F-4):** `webAnalytics.web.ts` is the correct target and already has: consent-gated PostHog (`opt_out_capturing_by_default:true`) + GA4; **GA4 Consent-Mode-v2 emitted default-denied before load** (satisfies the GA4 half of A2-8); `grantConsent()`/`denyConsent()` gate flips; `gaEvent()` firing GA4 purchase "for the Ads conversion link"; env via a `readEnv` switch (no dynamic bracket access — COMMS-0028). #865 adds `fbq`/`ttq`/`snaptr`/`rdt` into `initWebAnalytics` (dynamic import, no-op when id absent), gates them in `grantConsent`/`denyConsent`, and adds ids to `readEnv`. **HARD: the existing consent gate is load-bearing — the 4 new pixels must not fire pre-consent.**
+- **Evidence:** `mingla-business/src/analytics/webAnalytics.web.ts` L136-303.
+
+### A3-5 · Conversion fire = ONE shared helper at the post-finalize point across 6 callers + venue-confirm (not 4)
+- **Old (§5.2/§10):** hook after finalize in stripe/paystack/free/venue (4 sites).
+- **New (PROVEN, F-8):** `biz_ticket_checkout_finalize` is called from **six** sites — `_shared/stripeWebhookRouter.ts:1165`, `_shared/paystackWebhookRouter.ts`, `ticket-checkout-create`, `ticket-checkout-confirm`, `reconcile-stuck-checkouts`, `ticket-confirmation-dispatch` — plus `venue-reservation-confirm`. `_shared/businessNotifyTriggers.ts` is the existing post-order-paid hook and the precedent: add ONE shared `_shared/adConversionFire.ts` (idempotent on `event_id`, fail-open) invoked at the same post-paid point, rather than N ad-hoc edits.
+- **Evidence:** `grep -rln biz_ticket_checkout_finalize supabase/functions/`; `_shared/__tests__/meta_orch_1074_order_paid_payload.test.ts`.
+
+### A3-6 · WP-D reality: the `422 pixel_no_signal` gate has THREE designs; TikTok CANNOT open today — SC-13 conflict
+- **Old (SC-13 / A2-4):** "every downstream gate reads live pixel signal, never a '#865 shipped' flag"; spec treats the gate as uniform and self-opening.
+- **New (PROVEN, F-6):** the shipped gates differ by channel in `admin-ad-create-campaign/index.ts`:
+  - **Meta** (L2445-2463): reads LIVE `metaFetchPixelLastFired().hasSignal` → **self-opens** when the pixel fires. SC-13-compliant; no #865 code needed to open it.
+  - **Snapchat** (L894-901): keys on a STORED flag `ad_connections.extra.pixel_installed === true` — opens only when something SETS the flag. NOT live signal.
+  - **TikTok** (L1357-1363): **UNCONDITIONAL reject** — `if (TIKTOK_PIXEL_GATED_OBJECTIVES.includes(objectiveT)) return 422` — there is NO opening condition; TikTok web-conversion objectives can never be offered until this code is edited.
+- **Consequence — allowlist expansion (HARD):** WP-D MUST edit `supabase/functions/admin-ad-create-campaign/index.ts` (implicitly DO-NOT-TOUCH under the original allowlist). **SC-13 is reconciled as follows [RECOMMEND]:** upgrade Snap + TikTok gates to a live-signal read (a `fetchPixelLastFired` equivalent in `_shared/{snapchat,tiktok}.ts`, mirroring Meta) so all channels self-open; if a channel exposes no cheap last-fired read, the stored `extra.pixel_installed` flag is an ACCEPTED per-channel exception that MUST be set only after a verified live-fire, documented against SC-13. Reddit uses CLICKS (no create-path gate); Google has no conversion action (no gate) — both no-op for WP-D.
+- **Evidence:** `admin-ad-create-campaign/index.ts` L2445-2463, L894-901, L1357-1363; `adChannel.ts` L307-312.
+
+### A3-7 · Allowlist + DO-NOT-TOUCH — amended
+- **ADD to allowlist:** `supabase/functions/admin-ad-create-campaign/index.ts` (WP-D gate opening ONLY — the TikTok/Snap gate branches; do not touch create logic); `_shared/{snapchat,tiktok}.ts` (add a `fetchPixelLastFired` reader if upgrading gates); `app/checkout-trip/[tripEventId]/**` + `app/checkout-experience/[experienceEventId]/**` (pixel Purchase + threading — parity with the event flow); `app/t/[brandSlug]/**` + `app/b/[brandSlug]/**` (PageView/ViewContent); `_shared/adConversionFire.ts` (new shared fire helper); the 6 finalize callers at the post-finalize hook point ONLY; new `_shared/{metaCapi,tiktokEvents,snapCapi,redditCapi}.ts`; new `supabase/functions/{attribution-capture,admin-ad-rollups,admin-ad-audience-create}/**`.
+- **DO-NOT-TOUCH (unchanged):** `biz_ticket_checkout_finalize` internals; the #862/#863 create/adapter logic beyond the named gate branches; existing milestone AppsFlyer logic (extend); payment/refund paths beyond the hook. Outside allowlist → `SPEC_AMENDMENT_ISSUE-865_*` first.
+- **Migration hygiene (COMMS-0102):** the #865 migration filename must use a UNIQUE version prefix later than all existing (no duplicate-prefix collision).
+- **Shim parity (COMMS-0112):** new native `appsFlyerService.ts` exports MUST be mirrored as no-op stubs in `appsFlyerService.web.ts` or the `i-1378-web-shim-export-parity` gate fails.
+
+### A3 — delta acceptance criteria
+- **SC-2/SC-3 (widened):** attribution threading + conversion fire cover event, trip, AND experience flows (A3-3/A3-5).
+- **SC-13 (clarified):** Meta self-opens (live); Snap/TikTok gates upgraded to live-signal reads OR the `extra.pixel_installed` flag is an explicitly-documented per-channel exception set only post-live-fire (A3-6).
+- **SC-15 (new):** the browser Purchase pixel is deduped with server CAPI on the shared `event_id` at EACH of the three confirm pages (extends SC-5).
+
