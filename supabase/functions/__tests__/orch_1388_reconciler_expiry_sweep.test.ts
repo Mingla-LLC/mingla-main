@@ -224,8 +224,12 @@ Deno.test("R-7 — config.toml carries the explicit reconcile stanza (D-C)", () 
 });
 
 Deno.test("R-7b — the 1187 cron migration no longer overpromises, SQL probes intact (D-D)", () => {
+  // SQL comment prose wraps across `-- ` line prefixes, which plain \s+ does
+  // not cross (proven in the ORCH-1388 revert drill) — normalize the comment
+  // continuation before testing so the needle bites regardless of wrapping.
+  const cronMigrationProse = cronMigration.replace(/\n-- ?/g, " ");
   assert(
-    !/ANY\s+future\s+stuck\s+session/.test(cronMigration),
+    !/ANY\s+future\s+stuck\s+session/i.test(cronMigrationProse),
     "the 'ANY future stuck session auto-recovers' overpromise misled monitoring for weeks (F-6) — it must stay gone",
   );
   has(
