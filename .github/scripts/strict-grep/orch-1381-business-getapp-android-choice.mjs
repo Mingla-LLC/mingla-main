@@ -3,7 +3,7 @@
  * ORCH-1381 [business-getapp-android-choice].
  * Invariant: I-PROPOSED-1381-BUSINESS-GETAPP-ANDROID-CHOICE (DRAFT until CLOSE).
  *
- * ORCH-1382 AMENDMENT. The install DESTINATION changed (plain store URLs -> the
+ * ORCH-1399 AMENDMENT. The install DESTINATION changed (plain store URLs -> the
  * ATTRIBUTED business OneLink) and the helper gained a REQUIRED attribution param, so
  * three checks were re-pointed. The CONTRACT is unchanged: Android must never be
  * denied the app.
@@ -20,7 +20,7 @@
  *      argument. A bare 1-arg call is a tsc error, but the contract is stated here
  *      because an unattributed OneLink still WORKS and simply reports nothing.
  *
- * BAN RATIONALE CORRECTED (ORCH-1382 §0.1): minglabiz.onelink.me is BANNED on ROUTING
+ * BAN RATIONALE CORRECTED (ORCH-1399 §0.1): minglabiz.onelink.me is BANNED on ROUTING
  * POLICY (branded domains only, ORCH-1346) — NOT because it is dead. COMMS-0101's
  * "DEAD on Android / AppsFlyer Pending" claim is STALE: re-proven false by execution
  * 2026-07-15 (5/5 Android-UA curls -> 301 market://details/?id=com.sethogieva.
@@ -101,7 +101,7 @@ const BANNED = [
     why: "carries the ORCH-1324 collapsed ternary — sends every Android owner to the web app instead of the LIVE business Play listing (THE bug ORCH-1381 kills)",
   },
   {
-    // ORCH-1382 — RATIONALE CORRECTED. This ban is NOT because the OneLink is dead.
+    // ORCH-1399 — RATIONALE CORRECTED. This ban is NOT because the OneLink is dead.
     // The COMMS-0101 claim ("minglabiz.onelink.me is DEAD on Android — AppsFlyer app
     // status Pending") is STALE and was re-proven FALSE by execution 2026-07-15:
     // 5/5 Android-UA attempts returned 301 -> market://details/?id=com.sethogieva.
@@ -115,24 +115,24 @@ const BANNED = [
   },
   {
     re: /mingla\.onelink\.me/,
-    why: "routes through the RAW consumer OneLink domain — branded domains only (ORCH-1346); added by ORCH-1382 for symmetry with the minglabiz ban",
+    why: "routes through the RAW consumer OneLink domain — branded domains only (ORCH-1346); added by ORCH-1399 for symmetry with the minglabiz ban",
   },
   {
     re: /go\.usemingla\.com/,
     why: "references the CONSUMER-owned branded OneLink domain (ORCH-1346: one branded domain = one template) — the business surface must never use it, or owners install the Explorer app and BOTH apps' attribution is poisoned",
   },
   {
-    // ORCH-1382 SSOT — the OneLink base lives in lib/store-links.ts and surfaces
+    // ORCH-1399 SSOT — the OneLink base lives in lib/store-links.ts and surfaces
     // reference the IDENTIFIER. A branded-domain LITERAL on a surface is drift.
     re: /['"`]https:\/\/biz\.usemingla\.com/,
-    why: "hardcodes the biz.usemingla.com OneLink LITERAL — the base lives in lib/store-links.ts (BUSINESS_ONELINK_URL) and surfaces must reference the identifier (ORCH-1382 SSOT)",
+    why: "hardcodes the biz.usemingla.com OneLink LITERAL — the base lives in lib/store-links.ts (BUSINESS_ONELINK_URL) and surfaces must reference the identifier (ORCH-1399 SSOT)",
   },
 ];
 
 function checkHelper(rawSrc, failures) {
   const src = stripComments(rawSrc);
 
-  // 1. ORCH-1382 — the helper's destination consts. WAS: BUSINESS_APP_STORE_URL +
+  // 1. ORCH-1399 — the helper's destination consts. WAS: BUSINESS_APP_STORE_URL +
   // BUSINESS_PLAY_STORE_URL + BUSINESS_WEB_URL. The install destination is now the
   // ATTRIBUTED business OneLink (a plain store URL returns HTTP 200 text/html, so
   // Android renders the Play WEBSITE first and the install arrives unattributed), so
@@ -176,7 +176,7 @@ function checkHelper(rawSrc, failures) {
         `would be denied the app. Android must resolve to BUSINESS_PLAY_STORE_URL (G-b).`,
     );
   }
-  // ORCH-1382 — RE-POINTED to the new shape. The property is UNCHANGED and still the
+  // ORCH-1399 — RE-POINTED to the new shape. The property is UNCHANGED and still the
   // whole point: android must resolve to a REAL INSTALL destination, never the web
   // app. Only the destination's form changed (plain Play URL -> the attributed
   // business OneLink, which 301s to market://). Still STRUCTURAL — it reads the
@@ -230,7 +230,7 @@ function checkSurface(label, rawSrc, failures) {
     );
   }
 
-  // ORCH-1382 — resolveBusinessAppTarget( now takes a REQUIRED attribution argument.
+  // ORCH-1399 — resolveBusinessAppTarget( now takes a REQUIRED attribution argument.
   // A bare 1-arg call is a tsc error, but the gate states the contract explicitly:
   // an unattributed OneLink still WORKS and still installs, so "forgot attribution"
   // is otherwise SILENT — invisible in QA, and only discovered months later as a hole
@@ -239,7 +239,7 @@ function checkSurface(label, rawSrc, failures) {
     failures.push(
       `${label}: resolveBusinessAppTarget( must be called WITH an attribution argument — a ` +
         `bare 1-arg call ships an unattributed OneLink, which works perfectly and reports ` +
-        `nothing (ORCH-1382 §5.2.4).`,
+        `nothing (ORCH-1399 §5.2.4).`,
     );
   }
 
@@ -283,7 +283,7 @@ const jsx = <>{BUSINESS_APP_CHOICE_COPY.download}{BUSINESS_APP_CHOICE_COPY.useWe
     selfFailures.push("compliant surface wrongly flagged: " + JSON.stringify(runSurface(goodSurface)));
   }
 
-  // 1. ORCH-1382 — helper missing BUSINESS_ONELINK_URL → fire.
+  // 1. ORCH-1399 — helper missing BUSINESS_ONELINK_URL → fire.
   const noOneLink = goodHelper.replace(/BUSINESS_ONELINK_URL/g, "BUSINESS_WEB_URL");
   if (runHelper(noOneLink).length === 0) selfFailures.push("helper missing BUSINESS_ONELINK_URL not flagged");
 
@@ -310,7 +310,7 @@ const jsx = <>{BUSINESS_APP_CHOICE_COPY.download}{BUSINESS_APP_CHOICE_COPY.useWe
   const androidTernary = goodHelper + "\nconst d = platform === 'android' ? BUSINESS_WEB_URL : BUSINESS_ONELINK_URL\n";
   if (runHelper(androidTernary).length === 0) selfFailures.push("G-b: same-line android → BUSINESS_WEB_URL ternary not flagged");
 
-  // 4c. ORCH-1382 G-b — android reverted to the PLAIN Play URL (re-introduces the
+  // 4c. ORCH-1399 G-b — android reverted to the PLAIN Play URL (re-introduces the
   // intermediate Play web page AND drops attribution) → fire.
   const androidToPlainStore = goodHelper.replace(
     "return { installHref: buildOneLinkHref(BUSINESS_ONELINK_URL, attribution), installStore: 'play',",
@@ -319,20 +319,20 @@ const jsx = <>{BUSINESS_APP_CHOICE_COPY.download}{BUSINESS_APP_CHOICE_COPY.useWe
   if (androidToPlainStore === goodHelper) selfFailures.push("4c fixture is a NO-OP (replace matched nothing)");
   if (runHelper(androidToPlainStore).length === 0) selfFailures.push("G-b: android reverted to the PLAIN Play URL (no OneLink → intermediate page + no attribution) not flagged");
 
-  // 4d. ORCH-1382 G-b — android CROSSED to the consumer OneLink → fire.
+  // 4d. ORCH-1399 G-b — android CROSSED to the consumer OneLink → fire.
   const androidCrossed = goodHelper.replace(/BUSINESS_ONELINK_URL/g, "EXPLORER_ONELINK_URL");
   if (runHelper(androidCrossed).length === 0) selfFailures.push("G-b: android crossed to the EXPLORER OneLink not flagged");
 
-  // 4e. ORCH-1382 — a surface calling the helper with a BARE 1-arg call (attribution
+  // 4e. ORCH-1399 — a surface calling the helper with a BARE 1-arg call (attribution
   // forgotten → the OneLink still works and reports nothing) → fire.
   const oneArgCall = goodSurface.replace("resolveBusinessAppTarget(platform, siteAttribution('business_nav'))", "resolveBusinessAppTarget(platform)");
   if (runSurface(oneArgCall).length === 0) selfFailures.push("surface calling resolveBusinessAppTarget( with a bare 1-arg call not flagged");
 
-  // 4f. ORCH-1382 — a surface hardcoding the branded-domain LITERAL (SSOT drift) → fire.
+  // 4f. ORCH-1399 — a surface hardcoding the branded-domain LITERAL (SSOT drift) → fire.
   const literalDomain = goodSurface + "\nconst u = 'https://biz.usemingla.com/ZSCW'\n";
   if (runSurface(literalDomain).length === 0) selfFailures.push("surface hardcoding the biz.usemingla.com literal not flagged");
 
-  // 4g. ORCH-1382 — the RAW consumer OneLink domain → fire (symmetry with minglabiz).
+  // 4g. ORCH-1399 — the RAW consumer OneLink domain → fire (symmetry with minglabiz).
   const rawConsumer = goodHelper + "\nconst u = 'https://mingla.onelink.me/abcd'\n";
   if (runHelper(rawConsumer).length === 0) selfFailures.push("raw mingla.onelink.me domain not flagged");
 
@@ -373,7 +373,7 @@ const jsx = <>{BUSINESS_APP_CHOICE_COPY.download}{BUSINESS_APP_CHOICE_COPY.useWe
     selfFailures.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
-  console.log("ORCH-1381 business-getapp-android-choice self-test PASS (20/20 cases, ORCH-1382-amended: OneLink destination + required attribution + branded-SSOT bans).");
+  console.log("ORCH-1381 business-getapp-android-choice self-test PASS (20/20 cases, ORCH-1399-amended: OneLink destination + required attribution + branded-SSOT bans).");
   process.exit(0);
 }
 
@@ -413,7 +413,7 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "ORCH-1381 PASS (ORCH-1382-amended) — the business get-app decision lives in ONE module\n" +
+  "ORCH-1381 PASS (ORCH-1399-amended) — the business get-app decision lives in ONE module\n" +
     "(lib/business-app-target.ts: both phones → the ATTRIBUTED business OneLink, which 301s\n" +
     "per device; desktop → web only, canInstall-gated), all 4 CTA surfaces delegate to it\n" +
     "WITH an attribution argument and render BUSINESS_APP_CHOICE_COPY, and no surface\n" +

@@ -46,7 +46,7 @@ import {
   PLAY_STORE_URL,
 } from '../store-links'
 
-// ORCH-1382 [TEST-MOD-APPROVED ORCH-1382] — resolveBusinessAppTarget now takes a
+// ORCH-1399 [TEST-MOD-APPROVED ORCH-1399] — resolveBusinessAppTarget now takes a
 // REQUIRED attribution argument (SPEC §5.2.4), so every call below gains one.
 const ATTR = linksAttribution('youtube', 'business_bio')
 
@@ -188,7 +188,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
         )
       }
       // And the two business constants must not be swapped with each other.
-      // ORCH-1382 — both phones now resolve to the attributed BUSINESS OneLink,
+      // ORCH-1399 — both phones now resolve to the attributed BUSINESS OneLink,
       // which 301s per device. The angle is unchanged: each must land on the
       // BUSINESS-owned base, never a consumer one.
       for (const platform of INSTALLABLE) {
@@ -237,8 +237,8 @@ const cases: ReadonlyArray<[string, () => void]> = [
     },
   ],
 
-  // ── A-6 ⭐ NEW (ORCH-1382) — CROSS-APP ONELINK CONTAMINATION ────────────────
-  // A NEW vector that did not exist before ORCH-1382. Until now the business install
+  // ── A-6 ⭐ NEW (ORCH-1399) — CROSS-APP ONELINK CONTAMINATION ────────────────
+  // A NEW vector that did not exist before ORCH-1399. Until now the business install
   // target was a plain Play/App Store URL and the only way to ship owners the wrong
   // app was to paste the wrong package id — visible, and already covered by A-4.
   // Now BOTH apps install through near-identical branded OneLinks that differ by a
@@ -269,7 +269,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
         )
         // Raw OneLink domains are banned on routing policy (branded only) — NOT
         // because they are dead. Both OneLinks were curl-proven ALIVE (301 →
-        // market://) 5/5 at ORCH-1382 SPEC time.
+        // market://) 5/5 at ORCH-1399 SPEC time.
         assert(
           !/onelink\.me/.test(href),
           `${platform}: the business install target uses a RAW *.onelink.me domain — branded domains only (ORCH-1346): ${href}`,

@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * ORCH-1382 [links-src-tracking-getapp-stack] — OneLink health probe.
+ * ORCH-1399 [links-src-tracking-getapp-stack] — OneLink health probe.
  *
- * ── WHY THIS EXISTS (the risk ORCH-1382 introduced, stated honestly) ─────────────
- * Before ORCH-1382 every install CTA on the marketing site pointed at a PLAIN store
+ * ── WHY THIS EXISTS (the risk ORCH-1399 introduced, stated honestly) ─────────────
+ * Before ORCH-1399 every install CTA on the marketing site pointed at a PLAIN store
  * URL. A plain store URL cannot go "Pending" — Apple and Google serve it forever. The
  * CTAs had no third-party runtime dependency.
  *
- * ORCH-1382 routes EVERY install CTA (both apps, all platforms, /links + nav + hero +
+ * ORCH-1399 routes EVERY install CTA (both apps, all platforms, /links + nav + hero +
  * /business/download) through an AppsFlyer OneLink, because that is the only way to
  * attribute an install to the bio it came from — and it is also what removes the
  * intermediate Play web page. Seth accepted that trade explicitly: "everything works
@@ -67,7 +67,7 @@ const TIMEOUT_MS = 15000;
 
 /**
  * The contract each OneLink must satisfy, per ORCH-1346 (one branded domain = one
- * template) and ORCH-1382 H-2 (never crossed).
+ * template) and ORCH-1399 H-2 (never crossed).
  */
 const TARGETS = [
   {
@@ -142,7 +142,7 @@ async function probe(target) {
 }
 
 async function main() {
-  console.log('ORCH-1382 OneLink health probe — Android UA, alert only if ALL attempts fail.\n');
+  console.log('ORCH-1399 OneLink health probe — Android UA, alert only if ALL attempts fail.\n');
   const failures = [];
 
   for (const target of TARGETS) {

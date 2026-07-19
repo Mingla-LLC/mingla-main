@@ -3,7 +3,7 @@
  * ORCH-1319 [Explorer "Get the app" → direct live-store links] — G-1.
  * Invariant: I-1319-GETAPP-CTA-LINKS-LIVE-STORES-NOT-TESTFLIGHT (+ I-1319-NO-DOWNLOAD-GATE).
  *
- * ORCH-1382 AMENDMENT (check (a)). The explorer nav CTA now resolves an ATTRIBUTED
+ * ORCH-1399 AMENDMENT (check (a)). The explorer nav CTA now resolves an ATTRIBUTED
  * OneLink via resolveExplorerAppTarget( instead of referencing APP_STORE_URL /
  * PLAY_STORE_URL locally — the OneLink 301s straight to market:// / the App Store, so
  * no intermediate store WEB page renders and the install carries pid/c. Requiring the
@@ -55,22 +55,22 @@ const BANNED = [
 function checkNav(rawSrc, failures) {
   const src = stripComments(rawSrc);
 
-  // (a) ORCH-1382 — the explorer CTA delegates to the ONE explorer decision module
+  // (a) ORCH-1399 — the explorer CTA delegates to the ONE explorer decision module
   // and targets the attributed OneLink. (WAS: references APP_STORE_URL +
   // PLAY_STORE_URL. Those moved behind resolveExplorerAppTarget — requiring them here
-  // would re-create the glass-nav/links-experience triplication ORCH-1382 removed.)
+  // would re-create the glass-nav/links-experience triplication ORCH-1399 removed.)
   if (!/resolveExplorerAppTarget\(/.test(src)) {
     failures.push(
       `${NAV}: the explorer "Get the app" CTA must resolve via resolveExplorerAppTarget( ` +
         `from lib/explorer-app-target — the platform→destination decision lives in exactly ` +
-        `ONE module (ORCH-1382), never re-derived here.`,
+        `ONE module (ORCH-1399), never re-derived here.`,
     );
   }
   if (!/EXPLORER_ONELINK_URL|oneLinkHref|installHref/.test(src)) {
     failures.push(
       `${NAV}: the CTA must target the Explorer OneLink (via the helper's installHref) — a ` +
         `plain store URL returns HTTP 200 text/html, so Android renders the Play WEBSITE ` +
-        `first and the install arrives unattributed (ORCH-1382).`,
+        `first and the install arrives unattributed (ORCH-1399).`,
     );
   }
   if (!/detectClientPlatform\(/.test(src)) {
@@ -127,11 +127,11 @@ const cta = (<a href={explorerTarget.installHref} target="_blank" rel="noopener"
 `;
   if (run(good).length !== 0) selfFailures.push("compliant nav wrongly flagged: " + JSON.stringify(run(good)));
 
-  // ORCH-1382 — the explorer CTA stopped delegating to its decision module → fire.
+  // ORCH-1399 — the explorer CTA stopped delegating to its decision module → fire.
   const noHelper = good.replace(/resolveExplorerAppTarget/g, "someLocalGuess");
   if (run(noHelper).length === 0) selfFailures.push("nav missing resolveExplorerAppTarget not flagged");
 
-  // ORCH-1382 — the CTA lost its OneLink target (bypassed → attribution dead) → fire.
+  // ORCH-1399 — the CTA lost its OneLink target (bypassed → attribution dead) → fire.
   const noOneLink = good.replace(/installHref/g, "somethingElse").replace(/resolveExplorerAppTarget\(/g, "resolveExplorerAppTarget(");
   if (run(noOneLink).length === 0) selfFailures.push("nav CTA not targeting the Explorer OneLink not flagged");
 
@@ -166,7 +166,7 @@ const cta = (<a href={explorerTarget.installHref} target="_blank" rel="noopener"
     selfFailures.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
-  console.log("ORCH-1319 G-1 getapp-cta-direct-store self-test PASS (9/9 cases, ORCH-1382-amended).");
+  console.log("ORCH-1319 G-1 getapp-cta-direct-store self-test PASS (9/9 cases, ORCH-1399-amended).");
   process.exit(0);
 }
 
@@ -181,7 +181,7 @@ checkNav(fs.readFileSync(abs, "utf8"), failures);
 
 if (failures.length > 0) {
   console.error(
-    "ORCH-1319 G-1 (I-1319-GETAPP-CTA-LINKS-LIVE-STORES-NOT-TESTFLIGHT, ORCH-1382-amended)\n" +
+    "ORCH-1319 G-1 (I-1319-GETAPP-CTA-LINKS-LIVE-STORES-NOT-TESTFLIGHT, ORCH-1399-amended)\n" +
       "FAIL — the explorer nav CTA must resolve via resolveExplorerAppTarget( to the\n" +
       "attributed Explorer OneLink (which 301s to the LIVE store listings), branch on the\n" +
       "detected platform, fire get_the_app_clicked, and carry no lead-form / TestFlight\n" +
@@ -191,7 +191,7 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "ORCH-1319 G-1 PASS (ORCH-1382-amended) — nav CTA is device-driven via\n" +
+  "ORCH-1319 G-1 PASS (ORCH-1399-amended) — nav CTA is device-driven via\n" +
     "detectClientPlatform and resolves the attributed Explorer OneLink through\n" +
     "resolveExplorerAppTarget (which 301s to the LIVE store listings — never TestFlight),\n" +
     "fires get_the_app_clicked, and carries no lead-form / TestFlight token.",

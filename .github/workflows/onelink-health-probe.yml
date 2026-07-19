@@ -1,13 +1,13 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# ORCH-1382 [links-src-tracking-getapp-stack] — OneLink health probe.
+# ORCH-1399 [links-src-tracking-getapp-stack] — OneLink health probe.
 #
-# WHY THIS EXISTS. ORCH-1382 routes EVERY install CTA on the marketing site (both
+# WHY THIS EXISTS. ORCH-1399 routes EVERY install CTA on the marketing site (both
 # apps, all platforms — /links, nav, organiser hero, /business/download) through an
 # AppsFlyer OneLink, because that is the only way to attribute an install to the bio
 # it came from, and it is what removes Android's intermediate Play web page.
 #
 # The cost of that trade, stated plainly: every install CTA now depends on AppsFlyer
-# serving a 301. Before ORCH-1382 the CTAs pointed at plain store URLs, which cannot
+# serving a 301. Before ORCH-1399 the CTAs pointed at plain store URLs, which cannot
 # go Pending. This failure mode is REAL (COMMS-0101 recorded an app going Pending and
 # its OneLink serving `200 "app unavailable"` in the same week) and it fails SILENTLY:
 # the link resolves, the page renders, nothing throws — installs just quietly stop.
@@ -33,19 +33,18 @@
 # rate), while a real outage still fails 5/5 deterministically and is caught on the
 # first run. Full reasoning + the probability table: scripts/probe-onelink-health.mjs.
 #
-# ⚠ BORN DARK (COMMS-0103): GitHub Actions is currently DEAD repo-wide — the repo went
-# private and Actions are billable ("recent account payments have failed or your
-# spending limit needs to be increased"). This workflow CANNOT fire until Seth fixes
-# org billing (Settings → Billing & plans). Until then the OneLinks are UNMONITORED.
-# After the billing fix, trigger this once manually (workflow_dispatch) to confirm it
-# is green before trusting its silence.
+# NOTE (ORCH-1399 rebuild): this workflow was born during the COMMS-0103 Actions
+# billing outage. That outage is RESOLVED — Actions run repo-wide again (COMMS-0111;
+# 362 checks green on PR #938). The schedule only arms once this file lands on the
+# default branch, so after merge trigger it once manually (workflow_dispatch) to
+# confirm it is green before trusting its silence.
 #
 # Manual trigger: workflow_dispatch on the Actions tab. Use it after any AppsFlyer
 # dashboard change (especially a "Refresh Status"), or to verify a fix.
 #
-# Per ORCH-1382 §10.8 (probe section added by the implementor — the SPEC deferred this
+# Per ORCH-1399 §10.8 (probe section added by the implementor — the SPEC deferred this
 # to a follow-on ORCH in OQ-3; the orchestrator ordered it built here instead).
-# Spec: Mingla_Artifacts/specs/SPEC_ORCH-1382_LINKS_SRC_TRACKING_GETAPP_STACK.md
+# Spec: Mingla_Artifacts/specs/SPEC_ORCH-1399_LINKS_SRC_TRACKING_GETAPP_STACK.md
 # ─────────────────────────────────────────────────────────────────────────────
 
 name: OneLink Health Probe
@@ -111,7 +110,7 @@ jobs:
               ``,
               `## Why this matters`,
               ``,
-              `Since ORCH-1382, EVERY install CTA on the marketing site routes through a OneLink`,
+              `Since ORCH-1399, EVERY install CTA on the marketing site routes through a OneLink`,
               `(both apps, all platforms — /links, nav, organiser hero, /business/download). If a`,
               `OneLink stops serving its 301, the store app no longer opens directly and installs`,
               `stop being attributed. It fails SILENTLY: the link still resolves and the page still`,
@@ -135,7 +134,7 @@ jobs:
               ``,
               `- Probe: \`scripts/probe-onelink-health.mjs\``,
               `- Workflow: \`.github/workflows/onelink-health-probe.yml\``,
-              `- Spec: \`Mingla_Artifacts/specs/SPEC_ORCH-1382_LINKS_SRC_TRACKING_GETAPP_STACK.md\` (§10.8, OQ-3)`,
+              `- Spec: \`Mingla_Artifacts/specs/SPEC_ORCH-1399_LINKS_SRC_TRACKING_GETAPP_STACK.md\` (§10.8, OQ-3)`,
             ].join("\n");
 
             if (existing.data.length > 0) {

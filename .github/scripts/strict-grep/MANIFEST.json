@@ -11,8 +11,8 @@
     "Ratchets (selfTestWiredFloor, unenforcedCap, gates[]) are append-only — enforced by",
     "meta-1383-manifest-parity.mjs P7/P8 and by tests-append-only.yml. Shrinking needs a GATE-REMOVAL: token."
   ],
-  "expectedStrictGrepMjsFiles": 404,
-  "selfTestWiredFloor": 184,
+  "expectedStrictGrepMjsFiles": 405,
+  "selfTestWiredFloor": 185,
   "unenforcedCap": 21,
   "gates": [
     {
@@ -5362,6 +5362,20 @@
       "selfTest": "wired",
       "jobKeys": [
         "orch-1398-expo-pinned-54"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/orch-1399-links-src-onelink-attribution.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "orch-1399-links-src-onelink-attribution"
       ]
     },
     {

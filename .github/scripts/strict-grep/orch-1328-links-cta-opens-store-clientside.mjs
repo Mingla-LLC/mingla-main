@@ -3,7 +3,7 @@
  * ORCH-1328 [links-cta-soft-nav-blank-page].
  * Invariant: I-PROPOSED-1328-LINKS-CTA-OPENS-STORE-CLIENT-SIDE (DRAFT until CLOSE).
  *
- * ORCH-1382 AMENDMENT (three checks). The INVARIANT is unchanged — the CTA opens the
+ * ORCH-1399 AMENDMENT (three checks). The INVARIANT is unchanged — the CTA opens the
  * destination on the tap and /links stays mounted — but the MECHANISM changed, so the
  * checks that pinned the old mechanism were re-pointed:
  *   1. REQUIRED_CONSTS: APP_STORE_URL/PLAY_STORE_URL -> resolveExplorerAppTarget /
@@ -13,7 +13,7 @@
  *      the triplication both ORCHs removed.
  *   2. `/<button/` -> a CTA-BOUND anchor check. The old token was DECORATIVE: it
  *      matched the TABLIST's `<button role="tab">` and therefore passed
- *      unconditionally, forever, having never once tested the CTA (ORCH-1382 §0.4 —
+ *      unconditionally, forever, having never once tested the CTA (ORCH-1399 §0.4 —
  *      the FOURTH decorative guard found in this repo). Now bound to the CTA's own
  *      `<a href={…installHref|webHref…}>` + target + rel.
  *   3. `onCtaClick(` -> `onCtaTrack(`. The anchor navigates; the handler only fires
@@ -89,7 +89,7 @@ const stripComments = (src) =>
 // Requiring them here would force the very triplication ORCH-1381 removed. The
 // EXPLORER tab still resolves APP_STORE_URL / PLAY_STORE_URL locally and is out of
 // ORCH-1381's scope, so those two stay REQUIRED.
-// ORCH-1382 C1 — the EXPLORER consts were DROPPED from this list too. The explorer
+// ORCH-1399 C1 — the EXPLORER consts were DROPPED from this list too. The explorer
 // CTA now resolves the attributed OneLink via resolveExplorerAppTarget( (the same
 // decision-module pattern ORCH-1381 established for business, extended to explorer:
 // the `platform === 'ios' ? APP_STORE_URL : PLAY_STORE_URL` ternary was copy-pasted
@@ -127,13 +127,13 @@ function checkCta(rawSrc, failures) {
     );
   }
 
-  // 2. BOTH decision helpers delegated to (ORCH-1382).
+  // 2. BOTH decision helpers delegated to (ORCH-1399).
   for (const token of REQUIRED_CONSTS) {
     if (!new RegExp(token).test(src)) {
       failures.push(
         `${TARGET}: must resolve via ${token.replace(/\\b/g, "")}( — the ` +
           `platform→destination decision lives in exactly ONE module per surface ` +
-          `(ORCH-1381 for business, ORCH-1382 for explorer), never re-derived here.`,
+          `(ORCH-1381 for business, ORCH-1399 for explorer), never re-derived here.`,
       );
     }
   }
@@ -148,7 +148,7 @@ function checkCta(rawSrc, failures) {
     );
   }
 
-  // 3. ORCH-1382 — DECORATIVE-CHECK REPAIR (the fourth in this repo).
+  // 3. ORCH-1399 — DECORATIVE-CHECK REPAIR (the fourth in this repo).
   //
   // WAS: `if (!/<button/.test(src))`. That check was DECORATIVE and had NEVER tested
   // the CTA: links-experience.tsx renders its TABLIST with `<button role="tab">`, so
@@ -158,7 +158,7 @@ function checkCta(rawSrc, failures) {
   //
   // The underlying property is real and worth keeping — "the CTA is a real,
   // keyboard-activatable control" — so it is RE-EXPRESSED to bind to the CTA itself.
-  // After ORCH-1382 the store/web CTA is a real <a href={…}> (an anchor is natively
+  // After ORCH-1399 the store/web CTA is a real <a href={…}> (an anchor is natively
   // keyboard-activatable and, unlike window.open, actually works inside the
   // Instagram/TikTok in-app webviews that dominate /links traffic).
   //
@@ -177,7 +177,7 @@ function checkCta(rawSrc, failures) {
         `a real link survives in-app webviews (where window.open is routinely blocked), ` +
         `restores long-press/middle-click/copy-link + screen-reader link semantics, and is ` +
         `natively keyboard-activatable. (This check REPLACES a decorative /<button/ token ` +
-        `check that only ever matched the TABLIST buttons and could never fail — ORCH-1382 §0.4.)`,
+        `check that only ever matched the TABLIST buttons and could never fail — ORCH-1399 §0.4.)`,
     );
   }
   for (const a of ctaAnchors) {
@@ -202,14 +202,14 @@ function checkCta(rawSrc, failures) {
       );
     }
   }
-  // 3b. ORCH-1382 — the store path no longer routes through onCtaClick (the anchor
+  // 3b. ORCH-1399 — the store path no longer routes through onCtaClick (the anchor
   // navigates); the ANALYTICS call does. Without this, a correct-looking anchor could
   // silently drop the tap capture.
   if (!/onClick=\{\(\) => onCtaTrack\(/.test(src)) {
     failures.push(`${TARGET}: the CTA must fire onCtaTrack(…) on click — the tap analytics must not be silently dropped when the anchor navigates.`);
   }
 
-  // 4. ORCH-1381 ADDENDUM D-B / ORCH-1382 — openExternal( survives here for exactly
+  // 4. ORCH-1381 ADDENDUM D-B / ORCH-1399 — openExternal( survives here for exactly
   // ONE genuine non-store destination: the Explorer DESKTOP /download QR page (a
   // page, not a store hand-off). Every STORE/web destination is now an anchor.
   if (!/openExternal\(/.test(src)) {
@@ -298,11 +298,11 @@ const desktopCta = (<button type="button" onClick={() => onCtaDesktop(activeTab)
     .replace("import { detectClientPlatform } from '@/lib/device-platform'", "");
   if (run(noDetect).length === 0) selfFailures.push("missing detectClientPlatform not flagged");
 
-  // ORCH-1382 — the EXPLORER branch stopped delegating to its helper → fire.
+  // ORCH-1399 — the EXPLORER branch stopped delegating to its helper → fire.
   const noExplorerHelper = good.replace(/resolveExplorerAppTarget/g, "someLocalGuess");
   if (run(noExplorerHelper).length === 0) selfFailures.push("explorer branch missing resolveExplorerAppTarget not flagged");
 
-  // ORCH-1382 — re-introducing a raw store const means the OneLink was bypassed and
+  // ORCH-1399 — re-introducing a raw store const means the OneLink was bypassed and
   // attribution is dead → the hardcoded-literal BAN must fire.
   const reAddedConst = good + "\nconst store = platform === 'ios' ? 'https://apps.apple.com/app/id6760440898' : PLAY_STORE_URL\n";
   if (run(reAddedConst).length === 0) selfFailures.push("re-introduced raw store literal not flagged");
@@ -349,7 +349,7 @@ const desktopCta = (<button type="button" onClick={() => onCtaDesktop(activeTab)
   const anchorDownload = good + "\nconst y = <a href=\"/download\">z</a>\n";
   if (run(anchorDownload).length === 0) selfFailures.push('<a href="/download"> not flagged');
 
-  // ── ORCH-1382 §0.4 — THE DECORATIVE-CHECK REPAIR, PROVEN ────────────────────
+  // ── ORCH-1399 §0.4 — THE DECORATIVE-CHECK REPAIR, PROVEN ────────────────────
   // THE case that proves the old /<button/ check is genuinely repaired. This file's
   // CTA is a plain <div> (dead for keyboard, no href) but it STILL has the tablist
   // <button role="tab"> elements. Under the OLD check this PASSED unconditionally.
@@ -364,7 +364,7 @@ const tabs = LINKS_TABS.map((tab) => (<button role="tab" onClick={() => selectTa
 const cta = (<div onClick={() => onCtaTrack(activeTab)}>{activeTab.cta.label}</div>)
 `;
   if (run(ctaIsADivButTabsAreButtons).length === 0) {
-    selfFailures.push("DECORATIVE-REPAIR REGRESSION: a <div> CTA in a file that still has tablist <button>s was NOT flagged — the check is decorative again (ORCH-1382 §0.4)");
+    selfFailures.push("DECORATIVE-REPAIR REGRESSION: a <div> CTA in a file that still has tablist <button>s was NOT flagged — the check is decorative again (ORCH-1399 §0.4)");
   }
 
   // The CTA anchor lost its rel → fire (the §5.1 trap: an implementor 'complying'
@@ -384,7 +384,7 @@ const cta = (<div onClick={() => onCtaTrack(activeTab)}>{activeTab.cta.label}</d
     '\nconst socials = LINKS_SOCIALS.map((s) => (<a key={s.label} href={socialHref(s, activeId)} target="_blank" rel="noopener noreferrer">{s.label}</a>))\n';
   const relFailures = run(relOnlyOnSocials);
   if (!relFailures.some((f) => /missing rel="noopener"/.test(f))) {
-    selfFailures.push('DECORATIVE-REL REGRESSION: CTA anchors stripped of rel were NOT flagged because the SOCIALS row still carries rel="noopener noreferrer" — the rel check has gone file-level and is decorative (ORCH-1382)');
+    selfFailures.push('DECORATIVE-REL REGRESSION: CTA anchors stripped of rel were NOT flagged because the SOCIALS row still carries rel="noopener noreferrer" — the rel check has gone file-level and is decorative (ORCH-1399)');
   }
   if (!relFailures.some((f) => /missing target="_blank"/.test(f))) {
     selfFailures.push('DECORATIVE-TARGET REGRESSION: CTA anchors stripped of target were NOT flagged because the socials row still carries it');
@@ -400,7 +400,7 @@ const cta = (<div onClick={() => onCtaTrack(activeTab)}>{activeTab.cta.label}</d
   // "helpfully" re-bans the token on anchors (pattern-matching the ORCH-1381 ban)
   // would break this case, which is exactly the point.
   if (run(good).some((f) => /noopener/.test(f) && /banned/i.test(f))) {
-    selfFailures.push('anchor rel="noopener" was WRONGLY flagged as banned — the ORCH-1381 ban is scoped to window.open FEATURE STRINGS; on an <a> rel="noopener" is REQUIRED (ORCH-1382 §5.1)');
+    selfFailures.push('anchor rel="noopener" was WRONGLY flagged as banned — the ORCH-1381 ban is scoped to window.open FEATURE STRINGS; on an <a> rel="noopener" is REQUIRED (ORCH-1399 §5.1)');
   }
 
   // A banned token inside a COMMENT must be stripped → compliant still passes.
@@ -414,7 +414,7 @@ const cta = (<div onClick={() => onCtaTrack(activeTab)}>{activeTab.cta.label}</d
     selfFailures.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
-  console.log("ORCH-1328 links-cta-opens-store-clientside self-test PASS (18/18 cases, ORCH-1382-amended: incl. the §0.4 decorative-repair proof + the §5.1 rel-on-anchor pin).");
+  console.log("ORCH-1328 links-cta-opens-store-clientside self-test PASS (18/18 cases, ORCH-1399-amended: incl. the §0.4 decorative-repair proof + the §5.1 rel-on-anchor pin).");
   process.exit(0);
 }
 
@@ -429,7 +429,7 @@ checkCta(fs.readFileSync(abs, "utf8"), failures);
 
 if (failures.length > 0) {
   console.error(
-    "ORCH-1328 (I-PROPOSED-1328-LINKS-CTA-OPENS-STORE-CLIENT-SIDE, ORCH-1382-amended) FAIL —\n" +
+    "ORCH-1328 (I-PROPOSED-1328-LINKS-CTA-OPENS-STORE-CLIENT-SIDE, ORCH-1399-amended) FAIL —\n" +
       "the /links CTA must be a real <a href> anchor to the ATTRIBUTED OneLink (resolved by\n" +
       "resolveExplorerAppTarget / resolveBusinessAppTarget), carrying target=\"_blank\" +\n" +
       "rel=\"noopener\" and firing onCtaTrack( — so the store app opens with no intermediate\n" +
@@ -440,7 +440,7 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "ORCH-1328 PASS (ORCH-1382-amended) — the /links CTA is a real <a href={…}> anchor to the\n" +
+  "ORCH-1328 PASS (ORCH-1399-amended) — the /links CTA is a real <a href={…}> anchor to the\n" +
     "attributed OneLink (target=\"_blank\" + rel=\"noopener\"), device-driven via\n" +
     "detectClientPlatform, with BOTH decisions delegated (resolveExplorerAppTarget /\n" +
     "resolveBusinessAppTarget); openExternal( survives for the desktop /download QR page;\n" +

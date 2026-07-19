@@ -35,9 +35,9 @@ const sizes: Record<Size, string> = {
 }
 
 /**
- * ORCH-1382 — the Button's class recipe, WITHOUT the element.
+ * ORCH-1399 — the Button's class recipe, WITHOUT the element.
  *
- * WHY THIS EXISTS. ORCH-1382 turns the store CTAs into real `<a href>` anchors (they
+ * WHY THIS EXISTS. ORCH-1399 turns the store CTAs into real `<a href>` anchors (they
  * navigate, and `window.open` is routinely blocked in the Instagram/TikTok in-app
  * webviews that dominate /links traffic). Those anchors must look identical to a
  * `<Button>` — but `Button` is a `<button>`-only component with site-wide blast

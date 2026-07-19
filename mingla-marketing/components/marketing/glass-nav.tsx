@@ -12,7 +12,7 @@ import { captureMarketing } from '@/components/marketing/posthog-provider'
 // ORCH-1381 — the organiser surface no longer guesses: it presents an explicit
 // inline CHOICE (Download the app / Use on web). The platform→destination decision
 // comes from the shared lib/business-app-target.ts helper — never re-derived here.
-// ORCH-1382 — every STORE / web destination in this nav is now a real <a href>
+// ORCH-1399 — every STORE / web destination in this nav is now a real <a href>
 // pointing at the ATTRIBUTED OneLink (which 301s straight to market:// / the App
 // Store, so no intermediate store web page renders and the install carries pid/c).
 // The explorer DESKTOP branch still opens the QR PANEL — it navigates nowhere, so it
@@ -63,12 +63,12 @@ export function GlassNav() {
   useEffect(() => {
     setBusinessPlatform(detectClientPlatform())
   }, [])
-  // ORCH-1382 — both targets resolve an ATTRIBUTED OneLink href that is rendered
+  // ORCH-1399 — both targets resolve an ATTRIBUTED OneLink href that is rendered
   // into a real <a href>, so they must resolve during render, not on the tap.
   const businessTarget = resolveBusinessAppTarget(businessPlatform, siteAttribution('business_nav'))
   const explorerTarget = resolveExplorerAppTarget(businessPlatform, siteAttribution('explorer_nav'))
 
-  // ORCH-1319 — device-aware "Get the app". ORCH-1382: on a PHONE this is now an
+  // ORCH-1319 — device-aware "Get the app". ORCH-1399: on a PHONE this is now an
   // <a href> to the Explorer OneLink and this handler only TRACKS. Desktop/other has
   // no store app, so it still opens the QR PANEL — which navigates nowhere and is
   // therefore correctly a <button>, not a link.
@@ -100,7 +100,7 @@ export function GlassNav() {
   //
   // The `action` prop is REQUIRED: without it an Android owner who CHOOSES web is
   // indistinguishable from ORCH-1324's forced-web, and the fix is unmeasurable.
-  // ORCH-1382 — these now TRACK only; the anchors below perform the navigation.
+  // ORCH-1399 — these now TRACK only; the anchors below perform the navigation.
   const handleDownloadTheBusinessApp = (): void => {
     const platform = detectClientPlatform()
     const target = resolveBusinessAppTarget(platform, siteAttribution('business_nav'))
@@ -217,7 +217,7 @@ export function GlassNav() {
             <div className="flex items-center gap-2">
               {businessTarget.canInstall && businessTarget.installHref !== null ? (
                 <>
-                  {/* ORCH-1382 — a real <a> to the attributed business OneLink. It
+                  {/* ORCH-1399 — a real <a> to the attributed business OneLink. It
                       uses buttonClasses(), the SAME recipe <Button> consumes, so it
                       is pixel-identical to the pill it replaces by construction. */}
                   <a
@@ -269,7 +269,7 @@ export function GlassNav() {
               )}
             </div>
           ) : explorerTarget.canInstall && explorerTarget.installHref !== null ? (
-            // ORCH-1319/1382 — explorer PHONE: a real <a> to the attributed Explorer
+            // ORCH-1319/1399 — explorer PHONE: a real <a> to the attributed Explorer
             // OneLink, which 301s to the right store with no intermediate web page.
             // No aria-haspopup here: this branch navigates and can never open the QR
             // dialog, so advertising a popup would be a lie to screen readers.

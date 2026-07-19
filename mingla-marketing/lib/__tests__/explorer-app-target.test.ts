@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------
-// ORCH-1382 [links-src-tracking-getapp-stack] — HAPPY-PATH regression test (T-6).
+// ORCH-1399 [links-src-tracking-getapp-stack] — HAPPY-PATH regression test (T-6).
 //
 // Pins the EXPLORER decision helper: ios/android resolve to the Explorer OneLink
 // (attributed), desktop resolves to NOTHING so the caller can route to the /download
@@ -129,7 +129,7 @@ declare const describe: undefined | ((name: string, fn: () => void) => void)
 declare const it: undefined | ((name: string, fn: () => void) => void)
 
 if (typeof describe === 'function' && typeof it === 'function') {
-  describe('ORCH-1382 explorer app target (happy-path)', () => {
+  describe('ORCH-1399 explorer app target (happy-path)', () => {
     for (const [name, fn] of cases) it(name, fn)
   })
 } else {

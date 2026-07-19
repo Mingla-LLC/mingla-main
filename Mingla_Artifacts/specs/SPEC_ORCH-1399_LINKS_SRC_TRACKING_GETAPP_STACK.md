@@ -1,7 +1,7 @@
-# SPEC — ORCH-1382 [links-src-tracking-getapp-stack]
+# SPEC — ORCH-1399 [links-src-tracking-getapp-stack]
 
 **Mode:** SPEC (build contract). No product code in this document.
-**Worktree:** `~/Desktop/mingla-orchs/ORCH-1382-[links-src-tracking-getapp-stack]` on branch `ORCH-1382-links-src-tracking-getapp-stack` (rebased onto `origin/main` @ `ebe07fa54`).
+**Worktree:** `~/Desktop/mingla-orchs/ORCH-1399-[links-src-tracking-getapp-stack]` on branch `ORCH-1399-links-src-tracking-getapp-stack` (rebased onto `origin/main` @ `ebe07fa54`).
 **Author:** mingla-forensics+claude · 2026-07-15
 **Upstream:** ORCH-1381 [business-getapp-android-choice] + its ADDENDUM (shipped hours ago; this ORCH edits the same 4 surfaces).
 **COMMS acked:** COMMS-0101 (WARN, `to: ALL`) — factored, **and materially corrected by execution** (see §0.1). New entry **COMMS-0103** filed.
@@ -51,7 +51,7 @@ gate docblock states its own lifting condition verbatim:
 > ban is a FUTURE ORCH gated on an operator dashboard Refresh Status + an Android curl returning the
 > 301**)"*
 
-**ORCH-1382 is that future ORCH, and its stated precondition is now MET and re-proven above.** The raw
+**ORCH-1399 is that future ORCH, and its stated precondition is now MET and re-proven above.** The raw
 `minglabiz.onelink.me` ban nevertheless **STAYS** (§10.4) — not because the link is dead, but because
 Seth's routing policy says business traffic uses the branded `biz.usemingla.com` domain. Same ban, new
 and now-correct rationale.
@@ -226,7 +226,7 @@ three-kind discriminated union that makes the distinction a **compile-time** fac
 
 **Verdict: unrelated. Leave dark. Do not touch.**
 - **Different app, different surface.** It is the **consumer** OneLink (`go.usemingla.com/w36m`) for the
-  **business web checkout guest funnel** (`/checkout/{eventId}` → "see who's going"). ORCH-1382 touches
+  **business web checkout guest funnel** (`/checkout/{eventId}` → "see who's going"). ORCH-1399 touches
   `mingla-marketing/` only.
 - **Different attribution grammar.** Its consumers are `af_sub*` deep-link payloads carrying an event slug
   (`guestFunnelLink.ts:133`), not a bio `pid`.
@@ -250,7 +250,7 @@ Its go-live is still owned by whoever revives ORCH-1342 §4.1. **Registered as a
 | 7 | **Business Web preview** (adjacent) | **NO** | — | none | Untouched. |
 | — | **Marketing Web** (`mingla-marketing/`) — **the only covered surface** | **YES** | A–E in full | §7.1 allowlist | **MANUAL parity across 4 CTA surfaces** — they do **not** share a component, only `lib/`. §6 splits success criteria per surface for exactly this reason. |
 
-**Why the primary-5 table is all NO:** ORCH-1382 is a **web-only** change to the public marketing site.
+**Why the primary-5 table is all NO:** ORCH-1399 is a **web-only** change to the public marketing site.
 The apps are consumers of its output (attribution), not participants in its diff. **`[deploy]` tag on the
 CLOSE commit is MANDATORY** (touches `mingla-marketing/`).
 
@@ -393,7 +393,7 @@ useful* to AppsFlyer.
 > regression while believing they were complying with ORCH-1381.
 > **Proven by execution** — the ban regex is scoped to `.open(`:
 > ```
-> passes | anchor rel="noopener" (proposed ORCH-1382)
+> passes | anchor rel="noopener" (proposed ORCH-1399)
 > passes | anchor rel="noopener noreferrer" (existing socials row)
 > FIRES  | window.open noopener (the real bug)
 > FIRES  | window.open noreferrer-only (half-fix trap)
@@ -404,7 +404,7 @@ useful* to AppsFlyer.
 
 Direct answer to *"Spec whether `openExternal` survives at all, or only for genuine non-store destinations."*
 
-**It survives, for genuine non-store destinations only. After ORCH-1382 it has exactly one call site:**
+**It survives, for genuine non-store destinations only. After ORCH-1399 it has exactly one call site:**
 `links-experience.tsx` → **Explorer, desktop/other → `/download`** (the QR page).
 
 Call-site ledger:
@@ -520,7 +520,7 @@ export function resolveExplorerAppTarget(platform, attribution: OneLinkAttributi
 > gate in this repo, and it costs one signature change.
 > **Cost, stated honestly:** it breaks `lib/__tests__/business-app-target.test.ts` (T-1) and
 > `business-app-target.tester.test.ts` at every call. Those updates are **mandated and pre-approved** in
-> §7.3 under `[TEST-MOD-APPROVED ORCH-1382]`.
+> §7.3 under `[TEST-MOD-APPROVED ORCH-1399]`.
 
 #### 5.2.5 `lib/links-config.ts` — **CHANGED** (D + E) — see §5.5
 
@@ -568,7 +568,7 @@ full-width (~335px at 375, ~320px at 360). `px-7` fits with room to spare.
 
 #### 5.3.3 The vertical budget — **the real risk in (C)**
 
-**This is the most likely way ORCH-1382 breaks something.** Stacking **adds ~64px** (second pill 56 +
+**This is the most likely way ORCH-1399 breaks something.** Stacking **adds ~64px** (second pill 56 +
 `gap-2` 8) to the business panel. QA_ORCH-1381 measured the `/links` no-scroll headroom at 375×667 as
 **~20px** (`maxBottom=647 ≤ 667`). **Naïve stacking overruns by ~44px.**
 
@@ -797,7 +797,7 @@ Per-surface where parity is manual (§3). **Every criterion is observable and te
 own attribution server-side (`pid=mingla_web`, `c=business_download`). **Never append a query param to the
 invite-email href to carry attribution.** This is the single easiest way to fail this ORCH's CI.
 
-### 7.3 `[TEST-MOD-APPROVED ORCH-1382]` — pre-approved test modifications
+### 7.3 `[TEST-MOD-APPROVED ORCH-1399]` — pre-approved test modifications
 
 These files assert tokens the spec deliberately removes. Modifying them is **mandated, bounded, and
 pre-approved** (precedent: `65ee89d85`). Each modification **must preserve the original defect-catching
@@ -887,7 +887,7 @@ constrained, prove T-4, T-7, and T-8 first.**
 | `orch-1327-links-tab-switcher-persistent-pill.mjs` | **NO** | tablist untouched |
 | `orch-1319-no-testflight-anywhere.mjs` | **NO** | no testflight tokens added |
 | `orch-1329-invite-email.tester.test.ts` | **NO** | href byte-frozen (§7.2) |
-| **NEW** `orch-1382-links-src-onelink-attribution.mjs` | — | **CREATE** (§10.5) |
+| **NEW** `orch-1399-links-src-onelink-attribution.mjs` | — | **CREATE** (§10.5) |
 
 **Every amended/new check needs a `--self-test` case that FAILS on the defect and PASSES on the fix.**
 A check without a failing case is decorative — this repo has now produced **four** (§0.4).
@@ -932,7 +932,7 @@ the desktop `/download` path)*, `links_page_cta_clicked`, `platform ===`, and **
 `<Link`, `<a href="/download"`, `<a href="/business/download"`, `apps.apple.com`, `play.google.com`,
 `window.open(`, the noopener/noreferrer `.open(` trap).
 
-> **The `apps.apple.com` / `play.google.com` bans stay and are now MORE meaningful**: after ORCH-1382 a
+> **The `apps.apple.com` / `play.google.com` bans stay and are now MORE meaningful**: after ORCH-1399 a
 > store literal on `/links` means someone bypassed the OneLink and killed attribution.
 
 **New self-test cases (all must fire):** CTA reverted to `<button onClick={() => onCtaClick(`; anchor with
@@ -960,7 +960,7 @@ if (!/EXPLORER_ONELINK_URL|oneLinkHref|installHref/.test(src)) failures.push(`${
 **Conflict — check (e).** Requires every external open to delegate to `openExternal(`. `glass-nav` + `hero`
 now use anchors for all business destinations → **`openExternal` legitimately disappears from both files.**
 ```js
-// ORCH-1382: business destinations are ANCHORS. openExternal is no longer required HERE
+// ORCH-1399: business destinations are ANCHORS. openExternal is no longer required HERE
 // (it survives ONLY for the /links desktop QR path). What must not come back is an INLINE window.open.
 if (!/<a\s+[^>]*href=\{/.test(src)) failures.push(`${label}: business destinations must render as real <a href={…}> anchors …`);
 if (!/rel="noopener/.test(src)) failures.push(`${label}: business anchors must carry rel="noopener" …`);
@@ -995,15 +995,15 @@ Also **AMEND** the required-checks block: `resolveBusinessAppTarget(` now takes 
 the **attribution argument is actually passed** (a 1-arg call is a `tsc` error, but the gate should state
 the contract):
 ```js
-if (!/resolveBusinessAppTarget\(\s*[^),]+,\s*[^)]+\)/.test(src)) failures.push(`${label}: resolveBusinessAppTarget( must be called WITH an attribution argument — a bare 1-arg call ships an unattributed OneLink (ORCH-1382 §5.2.4).`);
+if (!/resolveBusinessAppTarget\(\s*[^),]+,\s*[^)]+\)/.test(src)) failures.push(`${label}: resolveBusinessAppTarget( must be called WITH an attribution argument — a bare 1-arg call ships an unattributed OneLink (ORCH-1399 §5.2.4).`);
 ```
 **New self-test cases:** `biz.usemingla.com` literal at a surface → fire; `go.usemingla.com` at a business
 surface → fire; `mingla.onelink.me` → fire; 1-arg `resolveBusinessAppTarget(platform)` → fire; compliant
 (identifier + 2-arg) → pass.
 
-### 10.5 **NEW** `orch-1382-links-src-onelink-attribution.mjs`
+### 10.5 **NEW** `orch-1399-links-src-onelink-attribution.mjs`
 
-Invariant **`I-PROPOSED-1382-LINKS-SRC-BIO-PID-NEVER-CROSSED`** (DRAFT until CLOSE).
+Invariant **`I-PROPOSED-1399-LINKS-SRC-BIO-PID-NEVER-CROSSED`** (DRAFT until CLOSE).
 
 Over `lib/store-links.ts` + `lib/links-src.ts` + the 4 surfaces (comment-stripped):
 
@@ -1031,13 +1031,13 @@ surface with a hardcoded `go.usemingla.com` (R6); `page.tsx` passing `searchPara
 > **This section did not exist in the SPEC as written, and is added here per the orchestrator's
 > explicit instruction.** §11 OQ-3 recommended the probe but deferred it: *"The probe is a follow-on
 > ORCH, not this one."* Seth **accepted OQ-3** (*"everything works now and it's fixed… I want to track
-> where people are coming from"*) and the orchestrator ruled the probe **in scope for ORCH-1382** as
+> where people are coming from"*) and the orchestrator ruled the probe **in scope for ORCH-1399** as
 > cheap insurance for the risk that acceptance creates. Flagging the addition explicitly, per the
 > dispatch: *"If the spec has no section for this, add one and say so."*
 
-**The risk being mitigated (restating OQ-3 honestly).** Before ORCH-1382 every install CTA pointed at
+**The risk being mitigated (restating OQ-3 honestly).** Before ORCH-1399 every install CTA pointed at
 a plain store URL, which cannot go Pending — the CTAs had **no third-party runtime dependency**. After
-ORCH-1382 **every install CTA, both apps, all platforms** depends on AppsFlyer serving a `301`. This is
+ORCH-1399 **every install CTA, both apps, all platforms** depends on AppsFlyer serving a `301`. This is
 not theoretical: COMMS-0101 recorded exactly that failure in the same week. And it fails **silently** —
 the link resolves, the page renders, nothing throws; installs just stop.
 
@@ -1073,8 +1073,8 @@ the link resolves, the page renders, nothing throws; installs just stop.
 
 Every gate regex above is **case-sensitive**; browsers are not. `rel="NOOPENER"` /
 `w.open(d,'_blank','NOOPENER')` slips through **every** check in this repo. **Pre-existing, out of scope,
-explicitly not fixed by ORCH-1382.** New §10 regexes **must not make it worse**; adding `/i` where it costs
-nothing is encouraged but not mandated. **Flagged so the tester does not report it as an ORCH-1382 defect.**
+explicitly not fixed by ORCH-1399.** New §10 regexes **must not make it worse**; adding `/i` where it costs
+nothing is encouraged but not mandated. **Flagged so the tester does not report it as an ORCH-1399 defect.**
 
 ### 10.7 Local sweep before PR
 
@@ -1086,7 +1086,7 @@ node .github/scripts/strict-grep/orch-1326-links-business-download-route.mjs --s
 node .github/scripts/strict-grep/orch-1381-business-getapp-android-choice.mjs --self-test && node …
 node .github/scripts/strict-grep/orch-1381-open-external-no-double-nav.mjs --self-test && node …   # must stay green UNTOUCHED
 node .github/scripts/strict-grep/orch-1342-store-links-ssot.mjs --self-test && node …              # must stay green UNTOUCHED
-node .github/scripts/strict-grep/orch-1382-links-src-onelink-attribution.mjs --self-test && node … # NEW
+node .github/scripts/strict-grep/orch-1399-links-src-onelink-attribution.mjs --self-test && node … # NEW
 cd mingla-marketing && npm run build
 ```
 **Register the new gate as a job in `.github/workflows/strict-grep-mingla-business.yml`** (where the sibling
@@ -1111,7 +1111,7 @@ Business tab scrolling at 375×667 (**breaks the ORCH-1317 §1 contract**). **Re
 
 **OQ-3 — third-party dependency on the OneLink for the install path. (RECOMMEND: accept + monitor.)**
 **A genuine new risk introduced by ask A, and it must be stated.** Today a dead OneLink template breaks
-nothing — every CTA points at a plain store URL that cannot go Pending. After ORCH-1382, **every install
+nothing — every CTA points at a plain store URL that cannot go Pending. After ORCH-1399, **every install
 CTA on the marketing site depends on AppsFlyer serving a 301.** COMMS-0101 recorded exactly that failure
 mode **this week** (business app Pending → OneLink serving `200 "app unavailable"` instead of `301`). The
 blast radius **widens from "Android business only" to "every install CTA, both apps, all platforms."**
@@ -1230,12 +1230,12 @@ link broken** (§0.1 shows the flake live).
 | ORCH-1329 invite-email href byte-frozen | No query param added; `/business/download` self-attributes | attack #25 |
 
 ### NEW (propose as DRAFT — orchestrator flips ACTIVE at CLOSE)
-- **`I-PROPOSED-1382-LINKS-SRC-BIO-PID-NEVER-CROSSED`** (DRAFT) — *Every OneLink emitted by
+- **`I-PROPOSED-1399-LINKS-SRC-BIO-PID-NEVER-CROSSED`** (DRAFT) — *Every OneLink emitted by
   `mingla-marketing/` carries a `pid` matching `/^bio_[a-z0-9_]{1,32}$/` (bio surfaces) or a non-reserved
   owned-media pid (site surfaces); `src` is sanitised against an **anchored** charset and fails safe to
   `bio_direct`, never empty and never reflected; and the Explorer (`go.usemingla.com/w36m`) and Business
   (`biz.usemingla.com/ZSCW`) bases are **never crossed** and never raw `*.onelink.me`.*
-  **Enforcement:** `orch-1382-links-src-onelink-attribution.mjs` (§10.5) + T-4 + T-7. Fails-on-revert both
+  **Enforcement:** `orch-1399-links-src-onelink-attribution.mjs` (§10.5) + T-4 + T-7. Fails-on-revert both
   directions.
 
 ---
@@ -1244,11 +1244,11 @@ link broken** (§0.1 shows the flake live).
 
 **Next → `mingla-implementor`.** Then `mingla-tester` (§12). Then `mingla-orchestrator` CLOSE.
 
-- **Worktree:** `~/Desktop/mingla-orchs/ORCH-1382-[links-src-tracking-getapp-stack]` on branch
-  `ORCH-1382-links-src-tracking-getapp-stack`.
+- **Worktree:** `~/Desktop/mingla-orchs/ORCH-1399-[links-src-tracking-getapp-stack]` on branch
+  `ORCH-1399-links-src-tracking-getapp-stack`.
 - **CLOSE commit MUST carry `[deploy]`** (touches `mingla-marketing/`).
 - **One PR**, `gh pr merge --squash --admin`, **all checks green** first.
-- **Orchestrator at CLOSE:** flip `I-PROPOSED-1382-…` DRAFT → ACTIVE; register the new gate's invariant
+- **Orchestrator at CLOSE:** flip `I-PROPOSED-1399-…` DRAFT → ACTIVE; register the new gate's invariant
   stanza in the workflow header; **resolve/supersede COMMS-0101's "business OneLink DEAD on Android" claim
   (§0.1) — COMMS-0103 files the correction**; register the §11 OQ-3 synthetic-probe follow-on and the §2.2
   repo-wide `if (!win)` sweep as new ORCHs.

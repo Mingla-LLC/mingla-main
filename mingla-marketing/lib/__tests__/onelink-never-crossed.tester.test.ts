@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------
-// ORCH-1382 [links-src-tracking-getapp-stack] — TESTER ADVERSARIAL test (T-7). ⭐
+// ORCH-1399 [links-src-tracking-getapp-stack] — TESTER ADVERSARIAL test (T-7). ⭐
 //
 // ONE JOB: prove the Explorer and Business OneLinks are NEVER CROSSED (H-2).
 //
@@ -207,7 +207,7 @@ declare const describe: undefined | ((name: string, fn: () => void) => void)
 declare const it: undefined | ((name: string, fn: () => void) => void)
 
 if (typeof describe === 'function' && typeof it === 'function') {
-  describe('ORCH-1382 OneLinks never crossed (tester adversarial)', () => {
+  describe('ORCH-1399 OneLinks never crossed (tester adversarial)', () => {
     for (const [name, fn] of cases) it(name, fn)
   })
 } else {
@@ -229,5 +229,5 @@ if (typeof describe === 'function' && typeof it === 'function') {
     process.exit(1)
   }
   // eslint-disable-next-line no-console
-  console.log(`\nAll ${cases.length} ORCH-1382 never-crossed adversarial tests passed`)
+  console.log(`\nAll ${cases.length} ORCH-1399 never-crossed adversarial tests passed`)
 }

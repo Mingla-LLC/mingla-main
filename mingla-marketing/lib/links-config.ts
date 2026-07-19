@@ -85,7 +85,7 @@ export const LINKS_TABS: readonly LinksTab[] = [
   },
 ]
 
-// ORCH-1382 [links-src-tracking-getapp-stack] — the socials taxonomy is now an
+// ORCH-1399 [links-src-tracking-getapp-stack] — the socials taxonomy is now an
 // EXPLICIT, type-enforced discriminator instead of modelling-by-omission.
 //
 // THE DEFECT THIS KILLS. The old model was `businessHref?: string`, where the
@@ -163,7 +163,7 @@ export const LINKS_SOCIALS: readonly LinksSocial[] = [
     href: 'https://www.threads.com/@usemingla',
     businessHref: 'https://www.threads.com/@minglabusiness',
   },
-  // ORCH-1382 (D) — EXPLORER ONLY. There is NO business Snapchat account, so the
+  // ORCH-1399 (D) — EXPLORER ONLY. There is NO business Snapchat account, so the
   // Business tab renders no Snapchat icon at all. Linking the consumer handle from
   // the business tab IS the defect. Placed last so the business row simply ends one
   // icon earlier and the existing order stays stable.

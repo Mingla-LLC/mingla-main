@@ -153,10 +153,10 @@ const cases: ReadonlyArray<[string, () => void]> = [
         !/BUSINESS_APP_STORE_URL/.test(src) && !/BUSINESS_WEB_URL/.test(src),
         'links-experience re-derives a business destination locally — that triplication is exactly what left 4 surfaces stale when the business Play listing went live',
       )
-      // ORCH-1382 — the same rule now applies to the EXPLORER destinations.
+      // ORCH-1399 — the same rule now applies to the EXPLORER destinations.
       assert(
         /resolveExplorerAppTarget\(/.test(src),
-        'the explorer branch does not delegate to resolveExplorerAppTarget — the explorer ternary was duplicated across glass-nav AND here, the identical bug class ORCH-1381 killed for business (ORCH-1382)',
+        'the explorer branch does not delegate to resolveExplorerAppTarget — the explorer ternary was duplicated across glass-nav AND here, the identical bug class ORCH-1381 killed for business (ORCH-1399)',
       )
       // Both actions must exist, discriminated for analytics.
       assert(
@@ -169,7 +169,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
       )
     },
   ],
-  // ── (d) INVERTED BY ORCH-1382 [TEST-MOD-APPROVED ORCH-1382] ─────────────────
+  // ── (d) INVERTED BY ORCH-1399 [TEST-MOD-APPROVED ORCH-1399] ─────────────────
   // WAS: the Explorer phone branch is REQUIRED to carry
   // `platform === 'ios' ? APP_STORE_URL : PLAY_STORE_URL`. That was the ORCH-1319
   // contract and is now THE BUG — a plain store URL returns HTTP 200 text/html, so
@@ -181,7 +181,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
     () => {
       assert(
         !/platform === 'ios' \? APP_STORE_URL : PLAY_STORE_URL/.test(src),
-        'Explorer phone branch still carries the raw store ternary — a plain store URL renders the Play WEBSITE first on Android and drops attribution (ORCH-1382)',
+        'Explorer phone branch still carries the raw store ternary — a plain store URL renders the Play WEBSITE first on Android and drops attribution (ORCH-1399)',
       )
       assert(
         !/platform === 'ios' \? PLAY_STORE_URL : APP_STORE_URL/.test(src),
@@ -189,7 +189,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
       )
       assert(
         !/\bAPP_STORE_URL\b/.test(src) && !/\bPLAY_STORE_URL\b/.test(src),
-        'Explorer branch still references a raw store const — the destination must come from resolveExplorerAppTarget (ORCH-1382)',
+        'Explorer branch still references a raw store const — the destination must come from resolveExplorerAppTarget (ORCH-1399)',
       )
       // ⭐ NEVER CROSSED (H-2) — the highest-damage bug available on this surface.
       assert(
@@ -210,7 +210,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
         /openExternal\(tab\.cta\.href\)/.test(src),
         'the desktop/other Explorer branch no longer opens tab.cta.href (the /download QR page is lost)',
       )
-      // ORCH-1382 — openExternal survives for EXACTLY this one non-store destination.
+      // ORCH-1399 — openExternal survives for EXACTLY this one non-store destination.
       // Deleting the module because its last store caller moved is how the D-B
       // double-nav bug comes back (COMMS-0101 records the `if (!win)` idiom as still
       // unswept in mingla-admin/ + the RN webviews).
@@ -256,7 +256,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
       assertDelegatedTapIsStillGuarded()
     },
   ],
-  // ── (g) RETARGETED BY ORCH-1382 [TEST-MOD-APPROVED ORCH-1382] ───────────────
+  // ── (g) RETARGETED BY ORCH-1399 [TEST-MOD-APPROVED ORCH-1399] ───────────────
   // WAS: the CTA must be a native <button type="button">. The store/web CTAs are now
   // real <a href> anchors — which are ALSO natively keyboard-activatable, and unlike
   // a <button> they additionally survive in-app webviews and restore long-press /

@@ -1,4 +1,4 @@
-// ORCH-1382 [links-src-tracking-getapp-stack] — the `?src=` → AppsFlyer `pid`
+// ORCH-1399 [links-src-tracking-getapp-stack] — the `?src=` → AppsFlyer `pid`
 // contract for usemingla.com/links.
 //
 // WHAT THIS SOLVES. /links is the single link in Seth's social bios. Today every
@@ -39,7 +39,7 @@
  * Unanchored, `/[a-z0-9_]{1,32}/` would find a PARTIAL match inside
  * `<script>alert(1)</script>` and happily emit it. The anchors are what make a
  * malformed `src` fail whole rather than leak a fragment. Guarded by
- * orch-1382-links-src-onelink-attribution.mjs (R4).
+ * orch-1399-links-src-onelink-attribution.mjs (R4).
  */
 export const LINKS_SRC_PATTERN = /^[a-z0-9_]{1,32}$/
 

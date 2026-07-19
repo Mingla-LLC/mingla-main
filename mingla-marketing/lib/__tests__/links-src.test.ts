@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------
-// ORCH-1382 [links-src-tracking-getapp-stack] — HAPPY-PATH regression test (T-3/T-5).
+// ORCH-1399 [links-src-tracking-getapp-stack] — HAPPY-PATH regression test (T-3/T-5).
 //
 // Covers the sanitiser's contract for the inputs it is SUPPOSED to receive, plus the
 // href builder. The adversarial half (every malformed/hostile input) is a separate
@@ -127,7 +127,7 @@ declare const describe: undefined | ((name: string, fn: () => void) => void)
 declare const it: undefined | ((name: string, fn: () => void) => void)
 
 if (typeof describe === 'function' && typeof it === 'function') {
-  describe('ORCH-1382 links-src (happy-path)', () => {
+  describe('ORCH-1399 links-src (happy-path)', () => {
     for (const [name, fn] of cases) it(name, fn)
   })
 } else {

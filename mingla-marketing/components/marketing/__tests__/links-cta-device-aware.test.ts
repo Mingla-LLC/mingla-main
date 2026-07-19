@@ -136,7 +136,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
       assert(/detectClientPlatform/.test(src), 'CTA no longer imports/calls detectClientPlatform')
     },
   ],
-  // RETARGETED BY ORCH-1382 [TEST-MOD-APPROVED ORCH-1382]. WAS: requires the raw
+  // RETARGETED BY ORCH-1399 [TEST-MOD-APPROVED ORCH-1399]. WAS: requires the raw
   // APP_STORE_URL/PLAY_STORE_URL consts. The explorer CTA now resolves an ATTRIBUTED
   // OneLink through resolveExplorerAppTarget (the ORCH-1381 decision-module pattern,
   // extended to explorer — the same ternary was duplicated in glass-nav AND here), so
@@ -156,11 +156,11 @@ const cases: ReadonlyArray<[string, () => void]> = [
       // The destinations must not be re-derived here at all.
       assert(
         !/\bAPP_STORE_URL\b/.test(srcNoComments) && !/\bPLAY_STORE_URL\b/.test(srcNoComments),
-        'links-experience re-derives an explorer store const locally — that duplication is exactly what ORCH-1382 removed, and a raw store URL also re-introduces the intermediate Play web page + drops attribution',
+        'links-experience re-derives an explorer store const locally — that duplication is exactly what ORCH-1399 removed, and a raw store URL also re-introduces the intermediate Play web page + drops attribution',
       )
     },
   ],
-  // ── ORCH-1382 T-9 ⭐ THE ANCHOR CONTRACT ────────────────────────────────────
+  // ── ORCH-1399 T-9 ⭐ THE ANCHOR CONTRACT ────────────────────────────────────
   [
     'T-9: the store/web CTAs are real <a href> anchors with target=_blank and rel=noopener',
     () => {
@@ -203,13 +203,13 @@ const cases: ReadonlyArray<[string, () => void]> = [
       }
     },
   ],
-  // ── ORCH-1382 T-9 — attribution actually rides ─────────────────────────────
+  // ── ORCH-1399 T-9 — attribution actually rides ─────────────────────────────
   [
     'T-9: the CTA hrefs carry attribution (a bare OneLink reports nothing)',
     () => {
       assert(
         /linksAttribution\(/.test(srcNoComments),
-        'links-experience does not build a linksAttribution( — the OneLink would fall back to the template default and every bio install stays anonymous, which is the entire bug ORCH-1382 fixes',
+        'links-experience does not build a linksAttribution( — the OneLink would fall back to the template default and every bio install stays anonymous, which is the entire bug ORCH-1399 fixes',
       )
       assert(
         /'explorer_bio'/.test(srcNoComments) && /'business_bio'/.test(srcNoComments),
@@ -217,7 +217,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
       )
     },
   ],
-  // ── ORCH-1382 T-9 — `src` is a PAGE-level prop, not tab state ──────────────
+  // ── ORCH-1399 T-9 — `src` is a PAGE-level prop, not tab state ──────────────
   [
     'T-9: src is a component PROP (so a tab switch cannot structurally lose it)',
     () => {
@@ -231,7 +231,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
       )
     },
   ],
-  // ── ORCH-1382 T-10 — the px-4 patch must not creep back ────────────────────
+  // ── ORCH-1399 T-10 — the px-4 patch must not creep back ────────────────────
   [
     'T-10: the ORCH-1381 D-A px-4 override is GONE and the pills are STACKED',
     () => {
@@ -249,7 +249,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
       )
     },
   ],
-  // RETARGETED BY ORCH-1382 [TEST-MOD-APPROVED ORCH-1382]. WAS: the CTA must be a
+  // RETARGETED BY ORCH-1399 [TEST-MOD-APPROVED ORCH-1399]. WAS: the CTA must be a
   // <button type="button"> bound to onCtaClick. The store/web CTAs are anchors now
   // (see the T-9 anchor-contract case above); the DESKTOP QR CTA is still a real
   // <button>, because opening a PAGE is a genuinely different action from handing off

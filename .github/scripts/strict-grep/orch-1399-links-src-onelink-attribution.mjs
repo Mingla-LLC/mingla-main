@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * ORCH-1382 [links-src-tracking-getapp-stack].
- * Invariant: I-PROPOSED-1382-LINKS-SRC-BIO-PID-NEVER-CROSSED (DRAFT until CLOSE).
+ * ORCH-1399 [links-src-tracking-getapp-stack].
+ * Invariant: I-PROPOSED-1399-LINKS-SRC-BIO-PID-NEVER-CROSSED (DRAFT until CLOSE).
  *
  * WHAT THIS PROTECTS. usemingla.com/links is the single link in Seth's social bios.
  * `?src=youtube` now rides into the AppsFlyer OneLink as `pid=bio_youtube`, so an
@@ -363,11 +363,11 @@ export default async function LinksPage({ searchParams }) {
   }
 
   if (selfFailures.length) {
-    console.error("ORCH-1382 links-src-onelink-attribution self-test FAIL:");
+    console.error("ORCH-1399 links-src-onelink-attribution self-test FAIL:");
     selfFailures.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
-  console.log("ORCH-1382 links-src-onelink-attribution self-test PASS (18/18 cases, incl. the R4 unanchored-regex + R5 bare-interpolation teeth).");
+  console.log("ORCH-1399 links-src-onelink-attribution self-test PASS (18/18 cases, incl. the R4 unanchored-regex + R5 bare-interpolation teeth).");
   process.exit(0);
 }
 
@@ -377,7 +377,7 @@ const failures = [];
 const read = (rel) => {
   const abs = path.join(root, rel);
   if (!fs.existsSync(abs)) {
-    console.error(`ORCH-1382 FAIL — target not found at ${rel} (gate path out of sync).`);
+    console.error(`ORCH-1399 FAIL — target not found at ${rel} (gate path out of sync).`);
     process.exit(1);
   }
   return fs.readFileSync(abs, "utf8");
@@ -390,7 +390,7 @@ for (const rel of SURFACES) checkSurface(rel, read(rel), failures);
 
 if (failures.length > 0) {
   console.error(
-    "ORCH-1382 (I-PROPOSED-1382-LINKS-SRC-BIO-PID-NEVER-CROSSED) FAIL — every OneLink emitted\n" +
+    "ORCH-1399 (I-PROPOSED-1399-LINKS-SRC-BIO-PID-NEVER-CROSSED) FAIL — every OneLink emitted\n" +
       "by mingla-marketing must carry a pid matching /^bio_[a-z0-9_]{1,32}$/ (bio surfaces) or a\n" +
       "non-reserved owned-media pid (site surfaces); `src` must be sanitised against an ANCHORED\n" +
       "charset and fail safe to bio_direct — never empty, never reflected; and the Explorer\n" +
@@ -401,7 +401,7 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  "ORCH-1382 PASS — the OneLink bases are correctly owned and never crossed (go.*/w36m =\n" +
+  "ORCH-1399 PASS — the OneLink bases are correctly owned and never crossed (go.*/w36m =\n" +
     "consumer, biz.*/ZSCW = business, no raw *.onelink.me, no surface literals); links-src.ts\n" +
     "sanitises `src` against an ANCHORED charset with a non-empty fail-safe, composes the query\n" +
     "with URLSearchParams, and roots every pid at LINKS_PID_PREFIX via the single writer\n" +

@@ -19,14 +19,14 @@ export const BUSINESS_WEB_URL = 'https://business.usemingla.com'
 // ORCH-1381 — the business Play listing is LIVE (production versionCode 33 /
 // 1.1.2, status=completed, HTTP 200 — API-verified 2026-07-15, COMMS-0101).
 //
-// ORCH-1382 — these two PLAIN store URLs are NO LONGER the install destination for
+// ORCH-1399 — these two PLAIN store URLs are NO LONGER the install destination for
 // the business get-app CTAs: those now route through BUSINESS_ONELINK_URL below so
 // the install is ATTRIBUTED. They remain the SSOT record of the two live business
 // listings (pinned by the business-app-target tests, which assert the OneLink can
 // never be cross-wired to a consumer listing), and the plain Play URL is what the
 // OneLink itself resolves to on Android.
 //
-// STALE CLAIM CORRECTED (ORCH-1382 §0.1): the previous comment here stated
+// STALE CLAIM CORRECTED (ORCH-1399 §0.1): the previous comment here stated
 // minglabiz.onelink.me is "DEAD on Android (AppsFlyer app status Pending)". That is
 // FALSE as of 2026-07-15 and was re-proven false by execution — under an Android UA
 // the business OneLink returns 301 -> market://details/?id=com.sethogieva.minglabusiness
@@ -36,7 +36,7 @@ export const BUSINESS_WEB_URL = 'https://business.usemingla.com'
 export const BUSINESS_PLAY_STORE_URL =
   'https://play.google.com/store/apps/details?id=com.sethogieva.minglabusiness'
 
-// ORCH-1382 [links-src-tracking-getapp-stack] — the AppsFlyer OneLink install
+// ORCH-1399 [links-src-tracking-getapp-stack] — the AppsFlyer OneLink install
 // destinations. This is the swap this file's own header anticipated ("Later this may
 // indirect through the AppsFlyer OneLink (ORCH-1313 P2)").
 //
@@ -53,7 +53,7 @@ export const BUSINESS_PLAY_STORE_URL =
 //   Explorer/consumer -> go.usemingla.com  (template w36m  -> com.mingla.app.v2 / id6760440898)
 //   Business          -> biz.usemingla.com (template ZSCW -> com.sethogieva.minglabusiness / id6768737367)
 // Crossing them silently installs the WRONG app and poisons both apps' attribution.
-// Enforced by orch-1382-links-src-onelink-attribution.mjs (R1/R2) + the
+// Enforced by orch-1399-links-src-onelink-attribution.mjs (R1/R2) + the
 // onelink-never-crossed tester test. Never use the raw *.onelink.me domains.
 export const EXPLORER_ONELINK_URL = 'https://go.usemingla.com/w36m'
 export const BUSINESS_ONELINK_URL = 'https://biz.usemingla.com/ZSCW'

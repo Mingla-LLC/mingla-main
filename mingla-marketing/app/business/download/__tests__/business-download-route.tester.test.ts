@@ -56,7 +56,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
       assert(!/<QRCode/.test(src), 'route renders a <QRCode (business route has no QR)')
     },
   ],
-  // ── ORCH-1382 T-11 ⭐ THE INSTALL HREF IS THE ATTRIBUTED ONELINK ────────────
+  // ── ORCH-1399 T-11 ⭐ THE INSTALL HREF IS THE ATTRIBUTED ONELINK ────────────
   // And CRITICALLY: this route must self-attribute with NO query param. Its href is
   // BYTE-FROZEN in the partner-invite email to exactly
   // `https://usemingla.com/business/download` with no query string
@@ -73,13 +73,13 @@ const cases: ReadonlyArray<[string, () => void]> = [
       )
       assert(
         /resolveBusinessAppTarget\(\s*platform\s*,\s*siteAttribution\(/.test(src),
-        'the route does not pass an attribution argument to resolveBusinessAppTarget( — a bare 1-arg call ships an unattributed OneLink that works perfectly and reports nothing (ORCH-1382 §5.2.4)',
+        'the route does not pass an attribution argument to resolveBusinessAppTarget( — a bare 1-arg call ships an unattributed OneLink that works perfectly and reports nothing (ORCH-1399 §5.2.4)',
       )
       // The route must NOT read a query param for attribution — that is the
       // byte-frozen breach.
       assert(
         !/searchParams/.test(src),
-        'the route reads searchParams — the invite-email href is BYTE-FROZEN with no query string, so requiring a param would silently break attribution for every invited owner (ORCH-1329 / ORCH-1382 §7.2)',
+        'the route reads searchParams — the invite-email href is BYTE-FROZEN with no query string, so requiring a param would silently break attribution for every invited owner (ORCH-1329 / ORCH-1399 §7.2)',
       )
     },
   ],
@@ -154,7 +154,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
     },
   ],
   // ── (g) no raw / consumer-owned OneLink ─────────────────────────────────────
-  // RATIONALE CORRECTED BY ORCH-1382: the raw *.onelink.me ban is ROUTING POLICY
+  // RATIONALE CORRECTED BY ORCH-1399: the raw *.onelink.me ban is ROUTING POLICY
   // (branded domains only, ORCH-1346) — NOT "the OneLink is dead". COMMS-0101's "DEAD
   // on Android" claim is STALE: re-proven false by execution 2026-07-15 (5/5
   // Android-UA curls -> 301 market://). The ban stands; only the false "why" is fixed.
@@ -172,7 +172,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
       // SSOT — the base lives in store-links.ts; a surface literal is drift.
       assert(
         !/['"`]https:\/\/biz\.usemingla\.com/.test(src),
-        'route hardcodes the biz.usemingla.com literal — reference BUSINESS_ONELINK_URL from lib/store-links (ORCH-1382 SSOT)',
+        'route hardcodes the biz.usemingla.com literal — reference BUSINESS_ONELINK_URL from lib/store-links (ORCH-1399 SSOT)',
       )
     },
   ],

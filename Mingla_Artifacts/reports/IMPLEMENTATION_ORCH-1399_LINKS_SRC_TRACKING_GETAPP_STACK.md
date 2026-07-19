@@ -1,8 +1,8 @@
-# IMPLEMENTATION — ORCH-1382 [links-src-tracking-getapp-stack]
+# IMPLEMENTATION — ORCH-1399 [links-src-tracking-getapp-stack]
 
 **Skill:** mingla-implementor+claude · 2026-07-15
-**Worktree:** `~/Desktop/mingla-orchs/ORCH-1382-[links-src-tracking-getapp-stack]` on branch `ORCH-1382-links-src-tracking-getapp-stack`
-**Spec:** `Mingla_Artifacts/specs/SPEC_ORCH-1382_LINKS_SRC_TRACKING_GETAPP_STACK.md` (binding)
+**Worktree:** `~/Desktop/mingla-orchs/ORCH-1399-[links-src-tracking-getapp-stack]` on branch `ORCH-1399-links-src-tracking-getapp-stack`
+**Spec:** `Mingla_Artifacts/specs/SPEC_ORCH-1399_LINKS_SRC_TRACKING_GETAPP_STACK.md` (binding)
 **Rebased onto:** `origin/main` @ `92d1960d8` (origin moved during the session — re-rebased; clean)
 **Commits:** `6968b9725` (implementation) · `e951da8db` (HEAD — the fifth-decorative-guard repair)
 **Status:** **implemented and verified** (runtime-verified in a real browser; two spec gaps found; SC-8 finding below)
@@ -67,8 +67,8 @@ that alerts if either OneLink stops working.
 **New product code (3):** `lib/links-src.ts` · `lib/explorer-app-target.ts` · `scripts/probe-onelink-health.mjs`
 **Changed product code (8):** `lib/store-links.ts` (+2 consts, stale comment corrected) · `lib/business-app-target.ts` · `lib/links-config.ts` · `app/links/page.tsx` · `components/marketing/links-experience.tsx` · `components/marketing/glass-nav.tsx` · `components/sections/organiser-home/hero.tsx` · `app/business/download/page.tsx` · `components/ui/button.tsx` (additive `buttonClasses`)
 **New tests (4):** `links-src.test.ts` · `links-src.tester.test.ts` · `explorer-app-target.test.ts` · `onelink-never-crossed.tester.test.ts`
-**Modified tests (8, all `[TEST-MOD-APPROVED ORCH-1382]`):** `business-app-target.test.ts` · `business-app-target.tester.test.ts` · `links-config.tester.test.ts` · `links-cta-device-aware.test.ts` · `links-cta-device-aware.tester.test.ts` · `business-download-route.tester.test.ts` · **`business-getapp-cta.test.ts`** · **`business-getapp-cta.tester.test.ts`** ← the last two are the **§7.3 gap** (§10.2)
-**Gates (5):** orch-1328 / orch-1319 / orch-1324 / orch-1381 **amended** · **orch-1382 NEW**
+**Modified tests (8, all `[TEST-MOD-APPROVED ORCH-1399]`):** `business-app-target.test.ts` · `business-app-target.tester.test.ts` · `links-config.tester.test.ts` · `links-cta-device-aware.test.ts` · `links-cta-device-aware.tester.test.ts` · `business-download-route.tester.test.ts` · **`business-getapp-cta.test.ts`** · **`business-getapp-cta.tester.test.ts`** ← the last two are the **§7.3 gap** (§10.2)
+**Gates (5):** orch-1328 / orch-1319 / orch-1324 / orch-1381 **amended** · **orch-1399 NEW**
 **CI (2):** `strict-grep-mingla-business.yml` (job + invariant stanza) · `onelink-health-probe.yml` **NEW**
 **Spec (1):** §10.8 added (the probe — flagged as an implementor addition)
 
@@ -117,12 +117,12 @@ comment-out) and PASS when restored. Actual output pasted, not the word "verifie
 | **orch-1328** | strip CTA `rel` (socials row keeps its own) | `FAIL — a CTA anchor is missing rel="noopener" … Offending anchor: <a href={businessTarget.installHref} …` |
 | **orch-1381** | android → `BUSINESS_WEB_URL` | `FAIL — the 'android' branch resolves installHref to BUSINESS_WEB_URL() — it MUST be buildOneLinkHref(BUSINESS_ONELINK_URL, …)` |
 | **orch-1381** | android → plain Play URL (**new tooth**) | `FAIL — … resolves installHref to BUSINESS_PLAY_STORE_URL() …` |
-| **orch-1382 R4** ⭐ | unanchor the regex | `FAIL — LINKS_SRC_PATTERN /[a-z0-9_]{1,32}/ is NOT ANCHORED (^…$)…` |
-| **orch-1382 R5** ⭐ | bare `${src}` | `FAIL — toBioPid does not return a template/concat ROOTED at LINKS_PID_PREFIX…` |
-| **orch-1382 R1/R2** | swap bases | `FAIL — EXPLORER_ONELINK_URL "https://biz.usemingla.com/ZSCW" … CROSSED` (4 failures) |
-| **orch-1382 R7** | raw `searchParams.src` | `FAIL — must call sanitizeLinksSrc( on searchParams.src…` |
+| **orch-1399 R4** ⭐ | unanchor the regex | `FAIL — LINKS_SRC_PATTERN /[a-z0-9_]{1,32}/ is NOT ANCHORED (^…$)…` |
+| **orch-1399 R5** ⭐ | bare `${src}` | `FAIL — toBioPid does not return a template/concat ROOTED at LINKS_PID_PREFIX…` |
+| **orch-1399 R1/R2** | swap bases | `FAIL — EXPLORER_ONELINK_URL "https://biz.usemingla.com/ZSCW" … CROSSED` (4 failures) |
+| **orch-1399 R7** | raw `searchParams.src` | `FAIL — must call sanitizeLinksSrc( on searchParams.src…` |
 
-**Self-tests:** orch-1328 **18/18** · orch-1319 **9/9** · orch-1324 **19/19** · orch-1381 **20/20** · orch-1382 **18/18**.
+**Self-tests:** orch-1328 **18/18** · orch-1319 **9/9** · orch-1324 **19/19** · orch-1381 **20/20** · orch-1399 **18/18**.
 
 ---
 
@@ -243,7 +243,7 @@ Measured at 375×667 **pre-consent**, Business tab:
 
 ```
 BASELINE (ORCH-1381): banner top=439 | both pills shared ONE row y=394-450 → each overlapped 11px
-NOW      (ORCH-1382): banner top=440
+NOW      (ORCH-1399): banner top=440
   Get the app    y=362-418  overlap= 0px  vs 11px baseline -> IMPROVED
   Use on web     y=426-482  overlap=42px  vs 11px baseline -> DEEPENED
 ```
@@ -267,7 +267,7 @@ a change here.
 says orch-1381 is "PARTIAL — AMEND" and lists only the ban rationale + a 2-arg check. Proven by running
 the gate against the **spec-mandated** helper:
 ```
-orch-1381 gate vs the SPEC-MANDATED ORCH-1382 helper:
+orch-1381 gate vs the SPEC-MANDATED ORCH-1399 helper:
 FAILS with 3 failure(s):
   - check1: must reference BUSINESS_APP_STORE_URL
   - check1: must reference BUSINESS_PLAY_STORE_URL
@@ -285,7 +285,7 @@ hard-failed the correct implementation.
 
 **What I did:** treated both as covered by §7.3's stated principle ("these files assert tokens the spec
 deliberately removes… retarget the assertion, never delete it"), retargeted them **without weakening any
-angle**, and cited `[TEST-MOD-APPROVED ORCH-1382]`. **This needs the orchestrator to formally ratify the
+angle**, and cited `[TEST-MOD-APPROVED ORCH-1399]`. **This needs the orchestrator to formally ratify the
 §7.3 extension at review.** I did not stop the build for a clerical omission whose intent §10.3 states
 outright — but it is the orchestrator's call to bless.
 
@@ -371,7 +371,7 @@ fix, before trusting its silence.
 - **Seth (blocking the probe's usefulness only):** fix org billing (GitHub → Settings → Billing & plans →
   payment method + Actions spending limit), then re-run the failed workflows on `main` (`gh run rerun`)
   and trigger **OneLink Health Probe** once via `workflow_dispatch` to confirm green.
-- **Orchestrator at CLOSE:** flip `I-PROPOSED-1382-LINKS-SRC-BIO-PID-NEVER-CROSSED` DRAFT → ACTIVE ·
+- **Orchestrator at CLOSE:** flip `I-PROPOSED-1399-LINKS-SRC-BIO-PID-NEVER-CROSSED` DRAFT → ACTIVE ·
   **ratify the §7.3 extension (§10.2)** · **file COMMS-0104 (§10.5)** and resolve/supersede COMMS-0101 +
   COMMS-0100 (3) · register the §2.2 repo-wide `if (!win)` sweep + the `city-decks` harness bug as new
   ORCHs · CLOSE commit carries `[deploy]`.
@@ -391,3 +391,139 @@ fix, before trusting its silence.
 | append-only | `test-append-only-check.js` | **12 passed, 0 failed** |
 | runtime | Playwright, 4 viewports/UAs | **all green** |
 | OneLink probe | live | **both healthy, 301 → market://** |
+
+---
+
+## 14. REBUILD — renumbered 1382 → 1399, rebased onto post-ORCH-1383 main (2026-07-18)
+
+**Why this section exists.** The build above was completed and self-verified as ORCH-1382, but that
+number was lost to the shipped-first invite-funnel session (ORCH-1373 batch, squash `26cd280bb` /
+PR #938 — see COMMS-0104/0112). The orchestrator claimed **ORCH-1399** for this work (COMMS-0113,
+`885158eb7`) and dispatched a rebuild on current main. Everything above this line is the ORIGINAL
+report with only the ORCH number renumbered; everything in this section is the rebuild's own record.
+
+### 14.1 What the rebuild did
+
+1. **Branch:** `ORCH-1399-links-src-tracking-getapp-stack` created at the old HEAD `02e7386f7`
+   (4 commits: spec `eeb49f8d1` → impl `6968b9725` → guard-fix `e951da8db` → report `02e7386f7`)
+   and rebased onto `origin/main` @ `7f5584e48` (the ORCH-1383 ci-strict-grep-consolidation squash;
+   main moved ~105 commits since the merge-base `92d1960d8`). Rebased commits:
+   `19a66f6f5` (spec) · `b673d6ae2` (impl) · `9077cfea7` (guard-fix) · `95ce52c59` (report).
+   **No `git stash` used anywhere** (COMMS-0105).
+2. **The single conflict** was the expected one: `.github/workflows/strict-grep-mingla-business.yml`
+   — the parked build had appended a per-gate job block (+14 lines) in the pre-1383 350-job format,
+   which no longer exists. Resolved by taking **main's ORCH-1383 10-job batched workflow wholesale**
+   (the branch's delta on that file vs main is now EMPTY) and registering the gate in the manifest
+   instead (14.2). Every other file applied clean, exactly as the orchestrator's recon predicted.
+3. **Renumber 1382 → 1399** across the branch's own surface only (all 31 files carrying refs were
+   verified branch-added — zero main-side 1382 text in any of them, zero references to the OTHER
+   1382): gate file renamed `orch-1382-…` → **`orch-1399-links-src-onelink-attribution.mjs`**;
+   spec + report files renamed; invariant `I-PROPOSED-1382-LINKS-SRC-BIO-PID-NEVER-CROSSED` →
+   **`I-PROPOSED-1399-…`**; `[TEST-MOD-APPROVED ORCH-1382]` → **`ORCH-1399`**; all in-file header
+   comments, gate-amendment attributions, and test markers. No embedded-numeric false positives
+   (scanned for `[0-9]1382|1382[0-9]` before the pass).
+4. **MANIFEST.json registration (the ORCH-1383 regime).** The new gate is a pure-node static gate →
+   **class A**, entry: `enforcement "batch:A"`, `invocation "node"`, `modes ["self-test","plain"]`,
+   `selfTest "wired"`, `jobKeys ["orch-1399-links-src-onelink-attribution"]`, inserted in script-sorted
+   order. `expectedStrictGrepMjsFiles` 404 → **405**; `selfTestWiredFloor` ratcheted 184 → **185**
+   (the gate is wired; the ratchet direction is the allowed one). Diff is +16/−2 lines, nothing else
+   reformatted.
+5. **Probe kept** (`scripts/probe-onelink-health.mjs` + `.github/workflows/onelink-health-probe.yml`):
+   `ATTEMPTS = 5` retry logic intact (≥3 required); renumbered; its stale "BORN DARK (COMMS-0103)"
+   banner updated — Actions billing is fixed (COMMS-0111; 362 checks green on PR #938), so the note
+   now says to `workflow_dispatch` once after merge instead of claiming Actions is dead.
+
+### 14.2 Manifest parity gate — proven BOTH directions (real output)
+
+WITHOUT the registration (origin/main's MANIFEST + the gate file on disk) — fails BY NAME, exit 1:
+
+```
+META-1383 manifest parity: 405 on-disk .mjs, 435 manifest entries.
+META-1383 manifest parity FAILED — 3 violation(s):
+  - P1: ".github/scripts/strict-grep/orch-1399-links-src-onelink-attribution.mjs" is on disk but
+    ABSENT from MANIFEST.json. Add a gates[] entry with an explicit enforcement state. …
+  - P3: gates[] holds 404 .github/scripts/strict-grep/*.mjs entries but 405 are on disk.
+  - P3: expectedStrictGrepMjsFiles=404 but 405 .mjs files are on disk. …
+```
+
+WITH the registration:
+
+```
+META-1383 manifest parity: 405 on-disk .mjs, 436 manifest entries.
+META-1383 manifest parity: PASS (P1–P9 + P-vacuous).
+```
+
+Parity `--self-test`: **16/16 PASS**.
+
+### 14.3 Batched gate runs (bracket-free verification worktree — see 14.6 note)
+
+- **Class A: expected 537 / executed 537 / passed 537 / failed 0 / missing 0** — includes the four
+  ORCH-1399-amended gates (orch-1319/1324/1328/1381) and every pre-existing gate.
+- Classes C/D/E: 1/1, 2/2, 3/3 all PASS. Class B re-run at the final commit (parity gate lives there).
+- All five gates of this build also invoked directly, both modes, exit 0 each:
+  orch-1319 · orch-1324 · orch-1328 · orch-1381 · orch-1399 (self-test **18/18**).
+
+### 14.4 Full local verification on the rebased tree (real runs, this session)
+
+| Gate/suite | Command | Result |
+|---|---|---|
+| deps | `npm ci` in `mingla-marketing/` (main bumped next 15.1.6→15.5.20, postcss) | clean install |
+| tsc | `npx tsc --noEmit` (against Next **15.5.20**) | **clean, exit 0** |
+| build | `npm run build` | **green** — `/links` ƒ dynamic, `/business/download` ƒ dynamic |
+| 23 marketing suites | tsc+node per file | **23/23 PASS** (city-decks excluded — pre-existing harness bug, §10.6) |
+| invite-email byte-frozen | `deno test --allow-read --allow-env` (orch-1329 suites) | **29 passed, 0 failed** (was 26 — suite grew on main) |
+| manifest parity | plain + `--self-test` | **PASS + 16/16** |
+| append-only | `node .github/scripts/test-append-only-check.js` at final HEAD | recorded in 14.5 |
+
+### 14.5 Fails-on-revert — RE-PROVEN on the rebased tree (true line deletion/mutation, output pasted)
+
+| # | Revert applied | Observed failure (verbatim excerpts) | Restored |
+|---|---|---|---|
+| 1 | unanchor `LINKS_SRC_PATTERN` (`/^[a-z0-9_]{1,32}$/` → `/[a-z0-9_]{1,32}/`) | tester: `FAIL B-5: … LINKS_SRC_PATTERN is NOT start-anchored: /[a-z0-9_]{1,32}/` (3 failed, exit 1) · gate: `FAIL — … must be sanitised against an ANCHORED charset` (exit 1) | both exit 0 |
+| 2 | swap the two OneLink bases | tester: `FAIL C-1/C-3/C-4 … business/ios: installHref carries the CONSUMER branded domain … go.usemingla.com/w36m?pid=bio_youtube` (exit 1) · gate: `EXPLORER_ONELINK_URL "https://biz.usemingla.com/ZSCW" carries the BUSINESS token — CROSSED` (exit 1) | both exit 0 |
+| 3 | android `installHref` → `BUSINESS_WEB_URL` | test: `FAIL T-1: android installHref is "https://business.usemingla.com", expected the business OneLink` (exit 1) · amended orch-1381 gate: `the 'android' branch resolves installHref to BUSINESS_WEB_URL() — it MUST be buildOneLinkHref(BUSINESS_ONELINK_URL, …)` (exit 1) | both exit 0 |
+| 4 | strip `rel="noopener"` from the 3 CTA anchors | test: `FAIL T-9: a CTA anchor lost rel="noopener" — reverse-tabnabbing` (exit 1) · amended orch-1328 gate: `a CTA anchor is missing rel="noopener" … Offending anchor: <a href={businessTarget.installHref}` (exit 1) | both exit 0 |
+| 5 | drop `siteAttribution('business_download')` from the route | tester: `FAIL T-11: the route does not compose siteAttribution('business_download') — it MUST derive its own attribution server-side, because the invite-email href … is byte-frozen` (exit 1) | exit 0 |
+| 6 | Snapchat `explorer_only` → `neutral` | tester: `FAIL T-8: Snapchat must be scope:'explorer_only', got 'neutral'` + `FAIL T-8: business socials = 8, expected 7` (exit 1) | exit 0 |
+
+`fails-on-revert verified at` the rebuild commit (hash in 14.7) — one deletion per fix surface
+(`links-src.ts`, `store-links.ts`, `business-app-target.ts`, `links-experience.tsx`,
+`app/business/download/page.tsx`, `links-config.ts`). The original 15-test + 8-gate matrix in §6
+remains the full record; this re-proof demonstrates the teeth survived the rebase + renumber.
+
+### 14.6 Local-environment artifacts (NOT defects — for the tester's awareness)
+
+- Running class A **inside this worktree** shows 4 pre-existing gates red for reasons CI never sees:
+  three `.test.mjs` files build a module URL from the checkout path and break on the `[` `]` in
+  `ORCH-1382-[links-src-tracking-getapp-stack]` (percent-encoding — the exact bug class the
+  run-batch entry-point guard documents), and `orch-0964-theme-resolver-canonical.mjs` walks
+  `mingla-marketing/.next/` when a local build output exists (CI has no `.next` at gate time; a
+  minified chunk trips its themeColor check). Proof they are artifacts: the same class-A run in a
+  bracket-free worktree of this branch is **537/537 green**. Registered under Discoveries (14.8).
+- The physical worktree directory retains its spawn name `ORCH-1382-[links-src-tracking-getapp-stack]`;
+  the branch inside it is `ORCH-1399-links-src-tracking-getapp-stack`. Directory rename is
+  orchestrator-owned (spawn/reap) — not performed here.
+
+### 14.7 Rebuild commit + carry-forward
+
+- Rebuild commit (renumber + manifest registration + probe-banner update + this section): **see git
+  log — single commit on top of `95ce52c59`, carrying `[TEST-MOD-APPROVED ORCH-1399]`** (the branch
+  modifies 8 pre-existing test files with deletions, pre-approved in §7.3; per COMMS-0106 the token
+  must ride whatever commit is HEAD).
+- **COMMS-0107 carry-forward (open question for CLOSE, no code change here):** on Samsung,
+  `biz.usemingla.com/ZSCW`'s `market://` 301 raises a Galaxy-Store/Play chooser; a user choosing
+  Galaxy Store is an UNVERIFIED dead-end risk. Candidate fix is AppsFlyer-dashboard-side (301 target
+  → `play.google.com` App Link) — no repo change.
+- The `/links` cookie-banner overlap (SC-8, Seth-accepted pre-consent state) stands as shipped.
+
+### 14.8 Discoveries for Orchestrator (rebuild-specific)
+
+1. `orch-0964-theme-resolver-canonical.mjs` scans `.next/` build output when present locally —
+   false-positives for anyone who builds mingla-marketing before running gates. Candidate: exclude
+   `.next/` in its walker (gate not owned by this ORCH; not touched).
+2. Three gates (`i-proposed-orch-0931…`, `i-proposed-orch-0939…`, `i-proposed-orch-0943….test.mjs`)
+   cannot run from a worktree whose path contains `[` `]` (module-URL percent-encoding). Same fix
+   class as the run-batch `pathToFileURL` guard. Not touched.
+3. The ORCH-1383 differential-parity workflow install step (`npm install --no-save … yaml`) is the
+   only provider of `yaml` for `meta-1383-manifest-parity.mjs` — running the parity gate locally
+   needs the same one-liner; harmless, but undocumented outside the workflow.

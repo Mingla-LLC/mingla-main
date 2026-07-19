@@ -18,7 +18,7 @@
 // single source of truth — and store URLs from lib/store-links.ts. NEVER hardcode
 // either here.
 //
-// ORCH-1382 — the install action now points at the ATTRIBUTED business OneLink
+// ORCH-1399 — the install action now points at the ATTRIBUTED business OneLink
 // (which 301s straight to market:// / the App Store, so no intermediate store web
 // page renders and the install carries pid/c).
 //

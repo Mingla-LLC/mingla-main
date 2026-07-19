@@ -87,7 +87,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
     },
   ],
 
-  // ── Socials: the full EIGHT @usemingla profiles (ORCH-1382 added Snapchat) ──
+  // ── Socials: the full EIGHT @usemingla profiles (ORCH-1399 added Snapchat) ──
   [
     'exposes the eight usemingla social profiles with exact URLs',
     () => {
@@ -127,7 +127,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
     },
   ],
   // ── T-8 NEUTRAL — investor & education, neither explorer nor business ───────
-  // RETARGETED BY ORCH-1382 [TEST-MOD-APPROVED ORCH-1382]: neutrality is no longer
+  // RETARGETED BY ORCH-1399 [TEST-MOD-APPROVED ORCH-1399]: neutrality is no longer
   // modelled by the ABSENCE of businessHref (which was indistinguishable from
   // explorer_only) but by an explicit scope. Same angle, now unambiguous.
   [

@@ -39,7 +39,7 @@ import { LINKS_SRC_FALLBACK, linksAttribution } from '@/lib/links-src'
 // window.open here: a 'noopener'/'noreferrer' feature string makes it return null
 // even on success, so the popup-block fallback fires on every tap — which navigated
 // /links away and violated this page's own "stays mounted" contract (ORCH-1328).
-// ORCH-1382 — openExternal now has exactly ONE caller on this page: the Explorer
+// ORCH-1399 — openExternal now has exactly ONE caller on this page: the Explorer
 // DESKTOP branch, which opens the /download QR page. That is a genuinely different
 // action (a page, not a store hand-off), so it stays a <button>. Every STORE/web
 // destination is now a real <a href> — see the CTA block below.
@@ -93,7 +93,7 @@ function SocialIcon({ label }: { label: string }) {
           <path d="M16.5 11.1c-.11-.05-.22-.1-.34-.15-.2-3.7-2.22-5.82-5.62-5.84h-.05c-2.03 0-3.72.87-4.76 2.45l1.87 1.28c.77-1.17 1.99-1.42 2.9-1.42h.03c1.13.01 1.99.34 2.54 .99 .4 .47 .67 1.12 .8 1.94-1-.17-2.08-.22-3.24-.15-3.24.19-5.33 2.08-5.19 4.7 .07 1.33 .73 2.47 1.86 3.22 .96 .63 2.19 .94 3.47 .87 1.69-.09 3.02-.74 3.94-1.92 .7-.9 1.15-2.06 1.35-3.53 .81 .49 1.41 1.13 1.74 1.91 .57 1.32 .6 3.49-1.17 5.26-1.55 1.55-3.42 2.22-6.24 2.24-3.13-.02-5.5-1.03-7.04-2.99C2.7 17.44 1.96 15.15 1.93 12v-.01c.03-3.15 .77-5.44 2.21-6.82C5.68 3.21 8.05 2.2 11.18 2.18c3.15 .02 5.55 1.03 7.14 3 .78 .97 1.37 2.19 1.75 3.6l1.95-.52c-.47-1.75-1.22-3.27-2.24-4.54C17.75 1.28 14.79 .02 11.19 0h-.02C7.57 .02 4.6 1.29 2.72 3.68 1.05 5.81 .18 8.75 .15 12.24v.02c.03 3.49 .9 6.43 2.57 8.55C4.6 23.2 7.57 24.47 11.17 24.49h.02c3.28-.02 5.6-.88 7.5-2.78 2.49-2.49 2.41-5.6 1.59-7.53-.59-1.38-1.71-2.5-3.24-3.24zM11.5 16.68c-1.42 .08-2.9-.56-2.97-1.92-.05-1.01 .72-2.13 3.06-2.27 .27-.02 .53-.02 .79-.02 .85 0 1.64 .08 2.36 .24-.27 3.36-1.85 3.9-3.24 3.97z" />
         </svg>
       )
-    // ORCH-1382 (D) — lucide-react ^0.460.0 ships NO Snapchat glyph, so it follows
+    // ORCH-1399 (D) — lucide-react ^0.460.0 ships NO Snapchat glyph, so it follows
     // the same inline brand-SVG convention as TikTok / Threads / X above. No new
     // asset file, no new dependency, no icon-library change.
     case 'Snapchat':
@@ -117,7 +117,7 @@ interface LinksExperienceProps {
    *  editable in one place; defaults to the brand line if omitted. */
   tagline?: string
   /**
-   * ORCH-1382 — the SANITISED `?src=` bio source (already through
+   * ORCH-1399 — the SANITISED `?src=` bio source (already through
    * sanitizeLinksSrc on the server; defaults to the fail-safe). It is a PAGE-level
    * value passed as a prop, NOT tab state — which is what makes it structurally
    * impossible for a tab switch to lose it (§4.4).
@@ -147,7 +147,7 @@ export function LinksExperience({
   useEffect(() => {
     setBusinessPlatform(detectClientPlatform())
   }, [])
-  // ORCH-1382 — both targets now resolve an ATTRIBUTED OneLink href that is rendered
+  // ORCH-1399 — both targets now resolve an ATTRIBUTED OneLink href that is rendered
   // into a real <a href>, so they must be resolved during render (not on the tap).
   // `src` is a page-level prop, so switching tabs re-renders both with the SAME pid —
   // only the campaign differs. That is SC-3 (persistence) satisfied by structure.
@@ -205,7 +205,7 @@ export function LinksExperience({
     [selectTab],
   )
 
-  // ORCH-1382 — THE STORE CTAs ARE NOW REAL <a href> ANCHORS, not buttons.
+  // ORCH-1399 — THE STORE CTAs ARE NOW REAL <a href> ANCHORS, not buttons.
   //
   // WHY (and NOT for the reason you might assume). Anchors do NOT fix the "Android
   // shows the Play website first" complaint — the DESTINATION does. A plain store URL
@@ -236,7 +236,7 @@ export function LinksExperience({
   // it "to comply with ORCH-1381" would ship a real security regression. (Verified:
   // the ORCH-1381 ban regex is anchored to `.open(` and does not match rel=.)
 
-  // §7 — consent-gated tap analytics. ORCH-1382: this NO LONGER navigates — the
+  // §7 — consent-gated tap analytics. ORCH-1399: this NO LONGER navigates — the
   // anchor does. It fires the capture and returns, so analytics cannot be silently
   // dropped when the anchor takes over the navigation.
   const onCtaTrack = useCallback(
@@ -283,7 +283,7 @@ export function LinksExperience({
     [src],
   )
 
-  // ORCH-1382 — the LAST surviving openExternal call site on this page.
+  // ORCH-1399 — the LAST surviving openExternal call site on this page.
   //
   // Explorer DESKTOP has no store app to hand off to, so this opens the device-smart
   // /download QR page in a new tab while /links stays mounted. That is a genuinely
@@ -431,7 +431,7 @@ export function LinksExperience({
               {activeTab.body}
             </p>
 
-            {/* §4 — the smart CTA. ORCH-1382: every STORE/web destination is a real
+            {/* §4 — the smart CTA. ORCH-1399: every STORE/web destination is a real
                 <a href> pointing at the ATTRIBUTED OneLink, which 301s straight to
                 market:// (Android) / apps.apple.com (iOS) — so the store app opens
                 with NO intermediate web page, and the install carries pid/c. Explorer
@@ -440,12 +440,12 @@ export function LinksExperience({
                 ORCH-1381: the Business tab offers an explicit choice (Get the app /
                 Use on web) plus the app-does-more note; desktop can install nothing →
                 the web action only, never a dead button.
-                ORCH-1382 §1 NO-SCROLL: the two business actions now STACK vertically
+                ORCH-1399 §1 NO-SCROLL: the two business actions now STACK vertically
                 (see below), which is why the ADDENDUM D-A px-4 override is gone. */}
             <div className="mt-4">
               {activeTab.id === 'business' ? (
                 <>
-                  {/* ORCH-1382 — STACKED, not side-by-side.
+                  {/* ORCH-1399 — STACKED, not side-by-side.
                       The ORCH-1381 ADDENDUM D-A `px-4` override is REMOVED, and its
                       comment block with it, because the constraint that forced it no
                       longer exists. D-A's own recorded reason was: "Two w-full pills
@@ -457,7 +457,7 @@ export function LinksExperience({
                       restored. Do not reintroduce px-4 here (pinned by T-10).
                       Vertical budget: stacking costs ~64px against the ~20px measured
                       headroom at 375x667, reclaimed by the panel/spacing trims marked
-                      "ORCH-1382 budget" in this file. The copy is a code-verified
+                      "ORCH-1399 budget" in this file. The copy is a code-verified
                       CLAIM and is NEVER shortened to buy space. */}
                   <div className="flex flex-col items-center justify-center gap-2">
                     {businessTarget.canInstall && businessTarget.installHref !== null ? (
@@ -515,7 +515,7 @@ export function LinksExperience({
       </div>
 
       {/* Socials — pinned to the bottom of the viewport (§3).
-          The row is SURFACE-AWARE in TWO ways now (ORCH-1382):
+          The row is SURFACE-AWARE in TWO ways now (ORCH-1399):
            - the five business-branded networks swap to @minglabusiness, while the
              NEUTRAL YouTube & LinkedIn stay universal (resolved by `socialHref`);
            - `socialsForTab` FILTERS the row: Snapchat is explorer_only (there is no

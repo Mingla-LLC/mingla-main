@@ -1,4 +1,4 @@
-// ORCH-1382 [links-src-tracking-getapp-stack] — the SINGLE source of truth for the
+// ORCH-1399 [links-src-tracking-getapp-stack] — the SINGLE source of truth for the
 // EXPLORER (consumer) get-app decision. Mirrors lib/business-app-target.ts.
 //
 // WHY THIS MODULE EXISTS. The explorer store ternary
@@ -6,14 +6,14 @@
 // call sites (glass-nav.tsx:69 and links-experience.tsx:214). That is the SAME
 // triplication bug class ORCH-1381 killed for business — and it is exactly how the
 // business Play listing going live left four surfaces stale at once. The explorer
-// side simply had not bitten yet. ORCH-1382 kills it before it does.
+// side simply had not bitten yet. ORCH-1399 kills it before it does.
 //
 // HARD CONSTRAINTS (do not relax):
 //  - The install destination is the EXPLORER OneLink (go.usemingla.com/w36m) —
 //    NEVER biz.usemingla.com (business-owned: 1 branded domain = 1 template,
 //    ORCH-1346), and NEVER a raw *.onelink.me domain (routing policy: branded only).
 //    A crossed link silently installs the WRONG app and poisons both apps'
-//    attribution. Guarded by orch-1382-links-src-onelink-attribution.mjs (R1/R2) and
+//    attribution. Guarded by orch-1399-links-src-onelink-attribution.mjs (R1/R2) and
 //    the onelink-never-crossed tester test (by identity, not substring).
 //  - `attribution` is a REQUIRED parameter. See the note on the function below.
 //

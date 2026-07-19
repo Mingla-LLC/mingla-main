@@ -31,7 +31,7 @@ import {
   BUSINESS_WEB_URL,
 } from '../store-links'
 
-// ORCH-1382 [TEST-MOD-APPROVED ORCH-1382] — resolveBusinessAppTarget now takes a
+// ORCH-1399 [TEST-MOD-APPROVED ORCH-1399] — resolveBusinessAppTarget now takes a
 // REQUIRED attribution argument (SPEC §5.2.4), so every call here gains one.
 const ATTR = linksAttribution('youtube', 'business_bio')
 
@@ -49,7 +49,7 @@ function assert(cond: boolean, msg: string): void {
 
 const cases: ReadonlyArray<[string, () => void]> = [
   // ── T-1 ⭐ THE REGRESSION GUARD (fails-on-revert) ────────────────────────────
-  // RETARGETED BY ORCH-1382 [TEST-MOD-APPROVED ORCH-1382]. The destination changed
+  // RETARGETED BY ORCH-1399 [TEST-MOD-APPROVED ORCH-1399]. The destination changed
   // from the plain Play URL to the attributed business OneLink (SPEC §5.2.4), so
   // pinning BUSINESS_PLAY_STORE_URL would now fail the CORRECT implementation.
   // THE ANGLE IS UNCHANGED AND STILL THE POINT: android must resolve to a real
@@ -74,7 +74,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
         t.installHref !== BUSINESS_WEB_URL,
         'REVERTED — android installHref is BUSINESS_WEB_URL: every Android owner is denied the app (ORCH-1381)',
       )
-      // ORCH-1382 — the install must stay ATTRIBUTED. A bare OneLink falls to the
+      // ORCH-1399 — the install must stay ATTRIBUTED. A bare OneLink falls to the
       // template default and is indistinguishable from organic.
       assert(
         (t.installHref ?? '').includes('pid=bio_youtube') && (t.installHref ?? '').includes('c=business_bio'),
@@ -83,7 +83,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
     },
   ],
   // ── T-2 iOS decision ────────────────────────────────────────────────────────
-  // RETARGETED BY ORCH-1382 [TEST-MOD-APPROVED ORCH-1382] — same reason as T-1.
+  // RETARGETED BY ORCH-1399 [TEST-MOD-APPROVED ORCH-1399] — same reason as T-1.
   [
     'T-2: ios resolves to the attributed business OneLink',
     () => {
@@ -122,7 +122,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
     },
   ],
   // ── T-5 the RIGHT Android package (consumer is one autocomplete away) ───────
-  // RETARGETED BY ORCH-1382 [TEST-MOD-APPROVED ORCH-1382]. android's installHref is
+  // RETARGETED BY ORCH-1399 [TEST-MOD-APPROVED ORCH-1399]. android's installHref is
   // now the OneLink, which does not literally contain the package name (AppsFlyer
   // resolves it to `market://…?id=com.sethogieva.minglabusiness` server-side — curl-
   // verified 5/5 at SPEC time). THE ANGLE IS PRESERVED on both halves: the SSOT const
@@ -152,7 +152,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
     },
   ],
   // ── T-6 no raw / misowned OneLink ───────────────────────────────────────────
-  // RATIONALE CORRECTED BY ORCH-1382: the raw *.onelink.me ban is NOT "the OneLink is
+  // RATIONALE CORRECTED BY ORCH-1399: the raw *.onelink.me ban is NOT "the OneLink is
   // dead" (it is ALIVE — 5/5 Android-UA curls returned 301 -> market:// at SPEC time,
   // and AppsFlyer reports all 4 apps Active). It is ROUTING POLICY: branded domains
   // only (ORCH-1346). The ban itself is unchanged; only the false "why" is repaired,

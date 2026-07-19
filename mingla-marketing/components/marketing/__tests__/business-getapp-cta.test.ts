@@ -154,7 +154,7 @@ function assertDelegatedTapIsStillGuarded(): void {
   )
 }
 
-// ORCH-1382 — extract each CTA anchor and check it ON ITS OWN.
+// ORCH-1399 — extract each CTA anchor and check it ON ITS OWN.
 // A file-level /rel="noopener/ assertion silently becomes DECORATIVE the moment any
 // other rel-carrying anchor exists in the file — exactly what happened to
 // links-experience.tsx, whose socials row made a file-level rel check pass while
@@ -245,8 +245,8 @@ const cases: ReadonlyArray<[string, () => void]> = [
   //   Link 2  openExternal is DRIVEN against a fake Window, not grepped.
   // Fails both ways: delete the fallback in lib/open-external.ts → Link 2 red;
   // drop either handler's delegation or inline window.open( → Link 1 red.
-  // ── RETARGETED BY ORCH-1382 [TEST-MOD-APPROVED ORCH-1382] ───────────────────
-  // WAS: both handlers must route through openExternal(. ORCH-1382 turns every
+  // ── RETARGETED BY ORCH-1399 [TEST-MOD-APPROVED ORCH-1399] ───────────────────
+  // WAS: both handlers must route through openExternal(. ORCH-1399 turns every
   // business destination on this surface into a real <a href> pointing at the
   // ATTRIBUTED OneLink, so openExternal LEGITIMATELY disappears from glass-nav —
   // these greps went red against a CORRECT implementation, pinning WHERE the code
@@ -266,7 +266,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
       // Link 1 — real links to the attributed OneLink / web app.
       assert(
         /<a\s+[^>]*href=\{[^}]*installHref[^}]*\}/.test(nav),
-        'nav download action is not a real <a href={…installHref…}> anchor — a <button>+window.open is routinely blocked in the in-app webviews this CTA is opened from (ORCH-1382)',
+        'nav download action is not a real <a href={…installHref…}> anchor — a <button>+window.open is routinely blocked in the in-app webviews this CTA is opened from (ORCH-1399)',
       )
       assert(
         /<a\s+[^>]*href=\{[^}]*webHref[^}]*\}/.test(nav),
@@ -284,7 +284,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
       )
     },
   ],
-  // ── ORCH-1382 — the nav's OneLink must be ATTRIBUTED and never crossed ──────
+  // ── ORCH-1399 — the nav's OneLink must be ATTRIBUTED and never crossed ──────
   [
     'nav: the business OneLink is attributed and never crossed to the consumer domain',
     () => {
@@ -305,7 +305,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
   [
     'nav: organiser CTA renders BOTH actions from the shared copy constants',
     () => {
-      // ORCH-1382 — the handlers now TRACK; the anchors navigate. The binding must
+      // ORCH-1399 — the handlers now TRACK; the anchors navigate. The binding must
       // survive, or the tap analytics are silently dropped.
       assert(
         /onClick=\{handleDownloadTheBusinessApp\}/.test(nav),
@@ -369,7 +369,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
   // into lib/open-external.ts, so the grep went red against correct code — it
   // asserted WHERE the fallback lived, not that a blocked popup still navigates.
   // Same two-link chain as the nav case above; both directions covered.
-  // ── RETARGETED BY ORCH-1382 [TEST-MOD-APPROVED ORCH-1382] — same reasoning as
+  // ── RETARGETED BY ORCH-1399 [TEST-MOD-APPROVED ORCH-1399] — same reasoning as
   // the nav case above: hero's business destinations are real anchors now, so
   // openExternal legitimately disappears. Angle preserved and strengthened.
   [
@@ -377,7 +377,7 @@ const cases: ReadonlyArray<[string, () => void]> = [
     () => {
       assert(
         /<a\s+[^>]*href=\{[^}]*installHref[^}]*\}/.test(hero),
-        'hero download action is not a real <a href={…installHref…}> anchor (ORCH-1382)',
+        'hero download action is not a real <a href={…installHref…}> anchor (ORCH-1399)',
       )
       assert(
         /<a\s+[^>]*href=\{[^}]*webHref[^}]*\}/.test(hero),

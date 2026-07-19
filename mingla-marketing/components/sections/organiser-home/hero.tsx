@@ -13,7 +13,7 @@ import {
 import { siteAttribution } from '@/lib/links-src'
 import { captureMarketing } from '@/components/marketing/posthog-provider'
 
-// ORCH-1382 — both hero actions are now real <a href> anchors pointing at the
+// ORCH-1399 — both hero actions are now real <a href> anchors pointing at the
 // ATTRIBUTED business OneLink / web app. The OneLink 301s straight to market:// (or
 // the App Store), so the store app opens with no intermediate web page and the
 // install carries pid/c. openExternal is no longer needed in this file — every
@@ -46,11 +46,11 @@ export function OrganiserHero() {
   useEffect(() => {
     setPlatform(detectClientPlatform())
   }, [])
-  // ORCH-1382 — resolves an ATTRIBUTED OneLink href rendered into a real <a href>,
+  // ORCH-1399 — resolves an ATTRIBUTED OneLink href rendered into a real <a href>,
   // so it must resolve during render rather than on the tap.
   const target = resolveBusinessAppTarget(platform, siteAttribution('business_hero'))
 
-  // ORCH-1382 — these now TRACK only; the anchors below perform the navigation.
+  // ORCH-1399 — these now TRACK only; the anchors below perform the navigation.
   // The `action` prop is REQUIRED: without it an Android owner who CHOOSES web is
   // indistinguishable from ORCH-1324's forced-web, and the fix is unmeasurable.
   const handleDownloadTheBusinessApp = (): void => {

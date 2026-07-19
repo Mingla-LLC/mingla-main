@@ -10,7 +10,7 @@
 // four surfaces silently stayed stale and every Android owner was denied the app.
 // The decision now lives HERE and nowhere else — one store going live is one edit.
 //
-// ORCH-1382 [links-src-tracking-getapp-stack] — the install destination is now the
+// ORCH-1399 [links-src-tracking-getapp-stack] — the install destination is now the
 // BUSINESS ONELINK, not the plain store URLs. WHY: a plain store URL returns HTTP 200
 // text/html, so Android renders the Play WEBSITE first (the "intermediate page"
 // complaint) and the install arrives ANONYMOUS. The OneLink 301s straight to
@@ -74,7 +74,7 @@ export interface BusinessAppTarget {
  * android → the business OneLink (301s to market://)              + web fallback
  * other   → web only (desktop has nothing to install; no dead install button)
  *
- * WHY `attribution` IS REQUIRED AND NOT OPTIONAL (ORCH-1382). An optional param — or
+ * WHY `attribution` IS REQUIRED AND NOT OPTIONAL (ORCH-1399). An optional param — or
  * a separate decorator the 4 surfaces must remember to call — makes "forgot
  * attribution" SILENT: the CTA still works, the install still lands, and only the
  * attribution is gone. Invisible in QA, invisible in CI, discovered months later as a
@@ -127,7 +127,7 @@ export function resolveBusinessAppTarget(
  *    into app-superiority.
  */
 export const BUSINESS_APP_CHOICE_COPY = {
-  // ORCH-1382 — "Download the app" → "Get the app": matches the nav's existing
+  // ORCH-1399 — "Download the app" → "Get the app": matches the nav's existing
   // wording and its get_the_app_clicked event name. All 4 surfaces render this
   // constant, so all 4 update from this ONE line — the structural pin working as
   // designed. Never hand-write the label at a surface.

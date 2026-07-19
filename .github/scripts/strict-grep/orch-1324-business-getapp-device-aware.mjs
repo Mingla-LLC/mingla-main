@@ -153,7 +153,7 @@ function checkTarget(label, rawSrc, failures) {
     );
   }
 
-  // (e) ORCH-1382 — business destinations are now real <a href> ANCHORS on both of
+  // (e) ORCH-1399 — business destinations are now real <a href> ANCHORS on both of
   // these surfaces, so openExternal( LEGITIMATELY disappears from them (it survives
   // only for the /links desktop QR page, guarded by orch-1328). Requiring it here
   // would FAIL the correct implementation.
@@ -164,7 +164,7 @@ function checkTarget(label, rawSrc, failures) {
     failures.push(
       `${label}: business destinations must render as real <a href={…}> anchors — an ` +
         `anchor survives the in-app webviews where window.open is routinely blocked, and ` +
-        `the OneLink it points at 301s straight to the store app (ORCH-1382).`,
+        `the OneLink it points at 301s straight to the store app (ORCH-1399).`,
     );
   }
   // ⚠ PER-ANCHOR, NOT FILE-LEVEL — deliberately, and this matters even though these
@@ -277,11 +277,11 @@ const jsx = (
   const noSurface = good.replace(/\s*surface: 'organiser',/g, "");
   if (run(noSurface).length === 0) selfFailures.push("missing surface:'organiser' not flagged");
 
-  // ORCH-1382 — the business destinations stopped being anchors → fire.
+  // ORCH-1399 — the business destinations stopped being anchors → fire.
   const noAnchor = good.replace(/<a\s+href=\{/g, "<div data-href={");
   if (run(noAnchor).length === 0) selfFailures.push("business destinations not rendered as <a href={…}> anchors not flagged");
 
-  // ORCH-1382 — the anchor lost rel="noopener" (the §5.1 trap: an implementor
+  // ORCH-1399 — the anchor lost rel="noopener" (the §5.1 trap: an implementor
   // "complying" with the ORCH-1381 window.open ban by stripping rel) → fire.
   const noRel = good.replace(/ rel="noopener"/g, "");
   if (run(noRel).length === 0) selfFailures.push('business anchor missing rel="noopener" not flagged (the §5.1 trap)');
@@ -293,10 +293,10 @@ const jsx = (
     '\nconst social = (<a href="https://instagram.com/usemingla" target="_blank" rel="noopener noreferrer">IG</a>)\n';
   const relOnlyFailures = run(relOnlyOnNonCta);
   if (!relOnlyFailures.some((f) => /missing rel="noopener"/.test(f))) {
-    selfFailures.push('DECORATIVE-REL REGRESSION: CTA anchors stripped of rel were NOT flagged because an unrelated anchor still carries rel="noopener" — the check has gone file-level (ORCH-1382)');
+    selfFailures.push('DECORATIVE-REL REGRESSION: CTA anchors stripped of rel were NOT flagged because an unrelated anchor still carries rel="noopener" — the check has gone file-level (ORCH-1399)');
   }
 
-  // ⭐ ORCH-1382 §5.1 PIN — a file carrying rel="noopener" on an ANCHOR *and* a bare
+  // ⭐ ORCH-1399 §5.1 PIN — a file carrying rel="noopener" on an ANCHOR *and* a bare
   // window.open elsewhere must still fire ONLY for the window.open, never for the rel.
   // A future author who "simplifies" the .open( trap regex to a bare /noopener/ would
   // break this case — which is exactly why it exists.
@@ -306,7 +306,7 @@ const jsx = (
     selfFailures.push("bare inlined window.open alongside rel=\"noopener\" was NOT flagged");
   }
   if (relFailures.some((f) => /noopener\/noreferrer/.test(f))) {
-    selfFailures.push('rel="noopener" on an ANCHOR was WRONGLY caught by the .open( trap regex — the ban must stay scoped to window.open FEATURE STRINGS (ORCH-1382 §5.1)');
+    selfFailures.push('rel="noopener" on an ANCHOR was WRONGLY caught by the .open( trap regex — the ban must stay scoped to window.open FEATURE STRINGS (ORCH-1399 §5.1)');
   }
 
   // ORCH-1381 ADDENDUM D-B — inlined the SHIPPED bug back in → fire (both the
@@ -354,7 +354,7 @@ const jsx = (
     selfFailures.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
-  console.log("ORCH-1324 business-getapp-device-aware self-test PASS (19/19 cases, ORCH-1382-amended: incl. the §5.1 rel-on-anchor pin).");
+  console.log("ORCH-1324 business-getapp-device-aware self-test PASS (19/19 cases, ORCH-1399-amended: incl. the §5.1 rel-on-anchor pin).");
   process.exit(0);
 }
 
