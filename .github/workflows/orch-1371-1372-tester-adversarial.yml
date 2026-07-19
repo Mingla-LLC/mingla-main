@@ -32,6 +32,15 @@ on:
       - "app-mobile/src/components/__tests__/orch_1371_1372_picker_behavior.adversarial.test.ts"
       - ".github/workflows/orch-1371-1372-tester-adversarial.yml"
 
+# ORCH-1383 — cancel a superseded PR run instead of letting it finish.
+# Measured: 28 of 260 July strict-grep runs (10.8%) were superseded before finishing.
+# The expression (not a bare `true`) is deliberate: cancelling a `push` to main would
+# abandon the post-merge verification run for that commit. Guarding on pull_request
+# recovers the PR-side waste while main runs always complete.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   orch-1371-1372-tester-adversarial:
     name: "ORCH-1371/1372 tester adversarial — picker round-trip behavior (reset-dep, prop-controlled phone, PairRequest no-teardown swallow)"
