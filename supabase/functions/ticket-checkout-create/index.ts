@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { wrapEdgeHandler } from "../_shared/structuredLog.ts";
+// ISSUE-865 WP-B — post-finalize ad-conversion hook (idempotent + fail-open).
+import { fireAdConversion } from "../_shared/adConversionFire.ts";
 import { STRIPE_API_VERSION, stripeTicketCheckout } from "../_shared/stripe.ts";
 import { resolvePublishableKey } from "../_shared/stripeMode.ts";
 import { getPaymentMethodTypes } from "../_shared/stripePaymentMethods.ts";
@@ -526,6 +528,17 @@ serve(wrapEdgeHandler("ticket-checkout-create", async (req) => {
     buyer_status_token_hash: await sha256Hex(buyerStatusToken),
     updated_at: new Date().toISOString(),
   };
+  // ISSUE-865 WP-C threading: persist the first-party ad click_id the browser
+  // captured on the public page (byte-identical write when absent) so the WP-B
+  // post-finalize conversion send can link order -> touch -> campaign without
+  // touching biz_ticket_checkout_finalize internals. Merged into the SAME UPDATE.
+  const attributionClickId = typeof body.attribution_click_id === "string" &&
+      body.attribution_click_id.length > 0
+    ? body.attribution_click_id
+    : null;
+  if (attributionClickId !== null) {
+    sessionUpdate.attribution_click_id = attributionClickId;
+  }
   if (eventDateId !== null) {
     const existingMeta =
       typeof session.metadata === "object" && session.metadata !== null
@@ -604,6 +617,21 @@ serve(wrapEdgeHandler("ticket-checkout-create", async (req) => {
       (finalized as Record<string, unknown>).orderId ?? "",
     );
     if (orderId) await dispatchTicketConfirmation(orderId);
+    // ISSUE-865 WP-B — ad-conversion CAPI send for the FREE-order path (its own
+    // finalize; no webhook backup). FIRE-AND-FORGET (NOT awaited) so the buyer's
+    // create response is never delayed — this path is on the buyer's tap→confirm
+    // wait. Idempotent + fail-open; value_cents = 0 for a free RSVP. event_id
+    // = orderId.
+    if (orderId) {
+      void fireAdConversion(supabase as never, { orderId, surface: "web" }).catch(
+        (adConvErr) => {
+          console.warn(
+            "[ticket-checkout-create] ad-conversion fire failed (non-fatal):",
+            adConvErr instanceof Error ? adConvErr.message : String(adConvErr),
+          );
+        },
+      );
+    }
     return jsonResponse({
       kind: "free_completed",
       ...finalized,

@@ -22,6 +22,8 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { writeAudit } from "./audit.ts";
 import { qrTokenPepper } from "./ticketCheckout.ts";
+// ISSUE-865 WP-B — post-finalize ad-conversion hook (idempotent + fail-open).
+import { fireAdConversion } from "./adConversionFire.ts";
 
 // Verifier is injected so tests can stub the network call deterministically.
 export type PaystackVerifier = (
@@ -230,6 +232,23 @@ export async function handlePaystackChargeSuccess(
   }
 
   const orderId = String((finalized as Record<string, unknown>).orderId ?? "");
+
+  // ISSUE-865 WP-B — ad-conversion CAPI send for the Paystack/NGN arm (this is
+  // the ONLY finalize for Paystack orders — never reachable from the Stripe
+  // webhook / confirm sites). Awaited (webhook handler, no human waiting) but
+  // idempotent + fail-open: a CAPI failure never blocks the finalize. event_id
+  // = orderId. Belt-and-suspenders try/catch (the helper already never throws).
+  try {
+    if (orderId) {
+      await fireAdConversion(supabase as never, { orderId, surface: "web" });
+    }
+  } catch (adConvErr) {
+    console.warn(
+      "[paystack-webhook] ad-conversion fire threw (non-fatal):",
+      adConvErr instanceof Error ? adConvErr.message : String(adConvErr),
+    );
+  }
+
   return { status: "finalized", orderId, paidAtIso };
 }
 
