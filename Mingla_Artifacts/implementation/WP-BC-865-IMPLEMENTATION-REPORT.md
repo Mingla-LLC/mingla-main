@@ -3,7 +3,7 @@
 **Issue:** GitHub #865 (child of #852 Full Rooms) · **WPs:** WP-B (server conversion lane) + WP-C (browser revenue surfaces), built together (shared browser↔server dedup contract).
 **Worktree:** `~/Desktop/mingla-orchs/issue-865-[attribution-bc]/` on branch `issue-865-attribution-bc` (rebased onto origin/main — WP-A present, 0 behind).
 **Author:** mingla-implementor · **Date:** 2026-07-18
-**Commits:** WP-B backend `ed932b09a` · WP-C web `bdced2048` · tests + CI `28e0fd2f3`
+**Commits:** WP-B backend `e98100f34` · WP-C web `517d61010` · tests + CI `99d6f34c2`
 **Gates:** `deno check` clean on all edge files (EXIT=0); Stage-B Deno 12/12; Stage-C jest 4/4; both fails-on-revert proven; touched web files 0 tsc errors.
 
 ---
@@ -90,13 +90,13 @@ The anon capture path (`attribution-capture`, WP-A) already carries a per-isolat
 
 | SC | Covered by | Commit |
 |---|---|---|
-| SC-2/SC-3 (threading + one conversion when paid, event/trip/experience) | fireAdConversion at 6 sites; unique `event_id`; threading | `ed932b09a` |
-| SC-4-meta/tiktok (+snap/reddit) send hashed PII + shared event_id; fail-open | 4 senders + fire helper | `ed932b09a` |
-| SC-5 / SC-15 (dedup, exact pair, at each confirm page) | event_id = orders.id both sides; `fireAdPurchase` | `ed932b09a`/`bdced2048` |
-| SC-8 (consent: no client pixel pre-consent, no PII egress) | consent-gated bootstrap; PII-free browser POSTs | `bdced2048` |
-| SC-9 (SHA-256 PII; no raw PII stored/sent) | `sha256Hex` in senders/helper; hashed-only columns | `ed932b09a` |
-| SC-12 (Reddit PENDING-CONFIG until token) | `redditCapi` soft-skip | `ed932b09a` |
-| GDPR erasure cascade (P3-2) | migration `ON DELETE SET NULL` | `ed932b09a` |
+| SC-2/SC-3 (threading + one conversion when paid, event/trip/experience) | fireAdConversion at 6 sites; unique `event_id`; threading | `e98100f34` |
+| SC-4-meta/tiktok (+snap/reddit) send hashed PII + shared event_id; fail-open | 4 senders + fire helper | `e98100f34` |
+| SC-5 / SC-15 (dedup, exact pair, at each confirm page) | event_id = orders.id both sides; `fireAdPurchase` | `e98100f34`/`517d61010` |
+| SC-8 (consent: no client pixel pre-consent, no PII egress) | consent-gated bootstrap; PII-free browser POSTs | `517d61010` |
+| SC-9 (SHA-256 PII; no raw PII stored/sent) | `sha256Hex` in senders/helper; hashed-only columns | `e98100f34` |
+| SC-12 (Reddit PENDING-CONFIG until token) | `redditCapi` soft-skip | `e98100f34` |
+| GDPR erasure cascade (P3-2) | migration `ON DELETE SET NULL` | `e98100f34` |
 
 ---
 
@@ -107,8 +107,8 @@ The anon capture path (`attribution-capture`, WP-A) already carries a per-isolat
 **Stage C — `mingla-business/src/analytics/__tests__/webAnalytics.pixels.issue865.test.ts` (jest, 4/4):** consent gate blocks pre-consent firing, grantConsent bootstraps + `fireAdPurchase` carries `eventID == order id` (dedup), no-op when pixel id absent, simulated pixel-load failure does not throw/break the flow. Runs in a dedicated `issue-865-attribution-jest` CI job.
 
 **fails-on-revert (both proven, restored byte-identical):**
-- adConversionFire fail-open guard → reverted the outer catch to `throw err` → the "throwing DB is ABSORBED" test **FAILED** (0 passed / 1 failed) → restored → 12/12 green. `fails-on-revert verified at ed932b09a`.
-- Browser consent gate → added `bootstrapAdPixels()` into `initWebAnalytics` (pre-consent) → the "CONSENT GATE" test **FAILED** at `adPixelsReady()===false` → restored → 4/4 green. `fails-on-revert verified at bdced2048`.
+- adConversionFire fail-open guard → reverted the outer catch to `throw err` → the "throwing DB is ABSORBED" test **FAILED** (0 passed / 1 failed) → restored → 12/12 green. `fails-on-revert verified at e98100f34`.
+- Browser consent gate → added `bootstrapAdPixels()` into `initWebAnalytics` (pre-consent) → the "CONSENT GATE" test **FAILED** at `adPixelsReady()===false` → restored → 4/4 green. `fails-on-revert verified at 517d61010`.
 
 ---
 
@@ -133,3 +133,28 @@ The anon capture path (`attribution-capture`, WP-A) already carries a per-isolat
 - **COMMS-0102 factored** (unique migration prefix `20270106000865`). Per the no-push guard, no ledger ack was pushed — the orchestrator can append it at CLOSE.
 - **A foreign `git stash`** sits in the shared stash stack (COMMS-0105); untouched by this session.
 - **fbp** is not reconstructable server-side (browser-only cookie); the server Meta CAPI uses hashed email/phone + reconstructed `fbc`. The browser pixel carries the real `fbc`/`fbp`; the two dedup on the shared `event_id`. Match quality is good; noting for the live-fire tester.
+
+---
+
+## Rework — P2-1 (mingla-tester CONDITIONAL PASS → resolved) · commit `54c10d87d`
+
+**Finding (QA_ISSUE-865_WP-BC.md, QA commit `48fadad42`):** the `attribution_click_id` write was folded into `ticket-checkout-create`'s **fatal** status-token UPDATE, so if the edge functions deploy before migration `20270106000865` applies (column absent), an ad-attributed checkout returns `409 checkout_session_failed` and **blocks the buyer** — a regression to a live purchase path, violating this work's core invariant.
+
+**The exact decoupling change:**
+- New fail-open helper `persistAttributionClickId(supabase, checkoutSessionId, clickId)` in `_shared/adConversionFire.ts` — its OWN error-swallowing UPDATE that **NEVER throws** (a missing column / any write error → `console.warn` + return; a null click_id → no-op). Mirrors the `fireAdConversion` philosophy.
+- `ticket-checkout-create/index.ts`: `attribution_click_id` REMOVED from the fatal `sessionUpdate`; the write now runs **AFTER** the fatal status-token UPDATE and its `409` guard, via `await persistAttributionClickId(supabase as never, checkoutSessionId, attributionClickId)`. Result: a missing column degrades to "attribution absent" and **the checkout completes normally**; non-ad traffic (null click_id) is a byte-identical no-op.
+
+**Fatal-path sweep (all other attribution writes confirmed already fail-open):** `adConversionFire`'s `ad_conversions` reads/upsert/update run post-finalize inside its never-throws guard; `attribution-capture` (WP-A) returns soft-200 on every error. The `ticket-checkout-create` session write was the ONLY attribution write on a fatal path.
+
+**Regression tests (append-only, +3 in `issue_865_wp_b_ad_conversion.test.ts`):**
+1. column ABSENT → the write fails but `persistAttributionClickId` does NOT throw (the ad-attributed checkout is not blocked).
+2. a THROWING write is absorbed; a NULL click_id never touches the DB (byte-identical for non-ad traffic).
+3. **source guard** — asserts `attribution_click_id` is DECOUPLED (present as `persistAttributionClickId(supabase…` call; ABSENT from the fatal `sessionUpdate`).
+
+**fails-on-revert (proven, restored byte-identical):** re-coupled by adding `sessionUpdate.attribution_click_id = …` back into the fatal update → the source-guard test **FAILED** ("attribution_click_id must NOT be merged into the fatal sessionUpdate") → restored. `fails-on-revert verified at 54c10d87d`.
+
+**Battery result:** WP-B Deno now 15/15 (12 + 3 rework); mingla-tester adversarial suite 6/6 still green (rework did not break it); Stage-C jest 4/4 unaffected (no web files touched). Enabled `--allow-read` on the registered `stripe-deno` batch (the source guard reads the handler file). `deno check` clean on both changed edge files.
+
+**Carry-forward confirmed as registered (NOT fixed here, per the coordinator):** the RT-4 "no `7d_view`/`28d_view`" strict-grep gate belongs to **WP-D** (WP-B/C adds no Insights call); `appsflyer_status` pending is **WP-C2** (native app deep-link lane). Both are downstream WP scope.
+
+**Operator-order note (P2-1 minimum, still recommended even with the hardening):** apply migration `20270106000865` before deploying the WP-B/C edge functions at CLOSE. With this rework, a functions-before-migration window degrades gracefully instead of blocking checkout, but migrate-first remains the clean order.
