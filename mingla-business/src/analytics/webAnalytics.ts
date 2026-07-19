@@ -24,3 +24,30 @@ export const readStoredConsent = (): "granted" | "denied" | null => null;
 export const getFeatureFlagWeb = (
   _key: string,
 ): boolean | string | undefined => undefined;
+
+// ISSUE-865 WP-C — ad-conversion pixels + click capture are WEB-ONLY (the
+// browser pixels + fbclid/ttclid cookies exist only in the web export). Native
+// no-ops keep the shared import surface stable so app/e|t|b + the three checkout
+// confirm pages + the checkout services compile and no-op on iOS/Android. The
+// app deep-link attribution lane (WP-C2) ships separately in a native build.
+export interface CaptureAdClickDest {
+  pageType?: "event" | "trip" | "brand" | "venue";
+  brandSlug?: string | null;
+  entitySlug?: string | null;
+  eventId?: string | null;
+}
+export const captureAdClickIds = (_dest?: CaptureAdClickDest): void => {};
+export const fireAdPageView = noopVoid;
+export const fireAdViewContent = noopVoid;
+export const fireAdPurchase = (
+  _eventId: string,
+  _props: { value?: number; currency?: string },
+): void => {};
+export const adPixelsReady = (): boolean => false;
+export const getStoredClickAttribution = (): { clickId: string | null } => ({
+  clickId: null,
+});
+export const postAttributionTouch = async (
+  _input: unknown,
+): Promise<string | null> => null;
+export const postAttributionConversion = noopVoid;

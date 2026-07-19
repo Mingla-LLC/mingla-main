@@ -59,7 +59,12 @@ import { TicketQrCarousel } from "../../../src/components/checkout/TicketQrCarou
 import { confirmTicketCheckout } from "../../../src/services/ticketCheckoutService";
 import { useOrderRealtimeSubscription } from "../../../src/hooks/useOrderRealtimeSubscription";
 // META-ORCH-1187 LEG 2 — buyer-web conversion capture (web-only; native no-op).
-import { captureWeb, gaEvent } from "../../../src/analytics/webAnalytics";
+import {
+  captureWeb,
+  fireAdPurchase,
+  gaEvent,
+  postAttributionConversion,
+} from "../../../src/analytics/webAnalytics";
 import { phMaskProps } from "../../../src/analytics/phMask";
 
 const formatTripDateLine = (
@@ -345,6 +350,15 @@ function CheckoutTripConfirmScreenInner({
       value: result.total,
       currency: result.currency,
       items: result.tickets.length,
+    });
+    // ISSUE-865 WP-C — DEDUP fire (browser Purchase pixel + early conversion
+    // record), keyed on the SHARED event_id (= result.orderId) so the server
+    // CAPI (WP-B) dedups. No-op until consent; no PII egress; never blocks render.
+    fireAdPurchase(result.orderId, { value: result.total, currency: result.currency });
+    postAttributionConversion({
+      eventId: result.orderId,
+      valueCents: Math.round(result.total * 100),
+      currency: result.currency,
     });
   }, [result]);
 
