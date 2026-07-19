@@ -9,11 +9,18 @@
     "must never gain a plain run; 217 are plain-only; 182 run both. Changing modes changes WHAT is asserted.",
     "'jobKeys' preserves the PRE-BATCH job identity so a failure can still name its origin (SPEC §5.1).",
     "Ratchets (selfTestWiredFloor, unenforcedCap, gates[]) are append-only — enforced by",
-    "meta-1383-manifest-parity.mjs P7/P8 and by tests-append-only.yml. Shrinking needs a GATE-REMOVAL: token."
+    "meta-1383-manifest-parity.mjs P7/P8 and by tests-append-only.yml. Shrinking needs a GATE-REMOVAL: token.",
+    "ORCH-1400 additions: fixtureCap caps enforcement:\"fixture\" rows (P10); capableUnwiredCap caps",
+    "selfTest:\"capable-unwired\" rows (P12); externalGateDirs lists dirs OUTSIDE strict-grep swept for",
+    "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
+    "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
   "expectedStrictGrepMjsFiles": 405,
   "selfTestWiredFloor": 185,
   "unenforcedCap": 21,
+  "fixtureCap": 11,
+  "capableUnwiredCap": 27,
+  "externalGateDirs": [],
   "gates": [
     {
       "script": ".github/scripts/strict-grep/__tests__/i-1272-identity-admin-read.test.mjs",
@@ -23,7 +30,7 @@
       "modes": [],
       "selfTest": "capable-unwired",
       "jobKeys": [],
-      "reason": "Test fixture on disk, not invoked by any CI workflow. Recorded by ORCH-1383 so no file is unaccounted for."
+      "reason": "Test fixture on disk, not invoked by any CI workflow. Recorded by ORCH-1383 so no file is unaccounted for. ORCH-1400 Phase 1 (P10 audit): remains a recorded dark fixture, capped by fixtureCap; disposition in a later ORCH-1400 phase."
     },
     {
       "script": ".github/scripts/strict-grep/__tests__/i-1276-identity-admin-write.test.mjs",
@@ -111,7 +118,7 @@
       "modes": [],
       "selfTest": "none",
       "jobKeys": [],
-      "reason": "Test fixture on disk, not invoked by any CI workflow. Recorded by ORCH-1383 so no file is unaccounted for."
+      "reason": "Test fixture on disk, not invoked by any CI workflow. Recorded by ORCH-1383 so no file is unaccounted for. ORCH-1400 Phase 1 (P10 audit): remains a recorded dark fixture, capped by fixtureCap; disposition in a later ORCH-1400 phase."
     },
     {
       "script": ".github/scripts/strict-grep/circle-badge-dual-app.sh",
@@ -519,7 +526,7 @@
       "modes": [],
       "selfTest": "capable-unwired",
       "jobKeys": [],
-      "reason": "Test fixture on disk, not invoked by any CI workflow. Recorded by ORCH-1383 so no file is unaccounted for."
+      "reason": "Test fixture on disk, not invoked by any CI workflow. Recorded by ORCH-1383 so no file is unaccounted for. ORCH-1400 Phase 1 (P10 audit): remains a recorded dark fixture, capped by fixtureCap; disposition in a later ORCH-1400 phase."
     },
     {
       "script": ".github/scripts/strict-grep/i-ios-camera-photo-purpose-strings-specific.mjs",
@@ -1004,7 +1011,7 @@
       "modes": [],
       "selfTest": "capable-unwired",
       "jobKeys": [],
-      "reason": "Test fixture on disk, not invoked by any CI workflow. Recorded by ORCH-1383 so no file is unaccounted for."
+      "reason": "Test fixture on disk, not invoked by any CI workflow. Recorded by ORCH-1383 so no file is unaccounted for. ORCH-1400 Phase 1 (P10 audit): remains a recorded dark fixture, capped by fixtureCap; disposition in a later ORCH-1400 phase."
     },
     {
       "script": ".github/scripts/strict-grep/i-proposed-1223-footer-links-resolve.mjs",
@@ -1042,7 +1049,7 @@
       "modes": [],
       "selfTest": "capable-unwired",
       "jobKeys": [],
-      "reason": "Test fixture on disk, not invoked by any CI workflow. Recorded by ORCH-1383 so no file is unaccounted for."
+      "reason": "Test fixture on disk, not invoked by any CI workflow. Recorded by ORCH-1383 so no file is unaccounted for. ORCH-1400 Phase 1 (P10 audit): remains a recorded dark fixture, capped by fixtureCap; disposition in a later ORCH-1400 phase."
     },
     {
       "script": ".github/scripts/strict-grep/i-proposed-1224-business-route.mjs",
@@ -1523,7 +1530,7 @@
       "modes": [],
       "selfTest": "none",
       "jobKeys": [],
-      "reason": "Test fixture on disk, not invoked by any CI workflow. Recorded by ORCH-1383 so no file is unaccounted for."
+      "reason": "Test fixture on disk, not invoked by any CI workflow. Recorded by ORCH-1383 so no file is unaccounted for. ORCH-1400 Phase 1 (P10 audit): remains a recorded dark fixture, capped by fixtureCap; disposition in a later ORCH-1400 phase."
     },
     {
       "script": ".github/scripts/strict-grep/i-proposed-h-rls-returning-owner-gap.mjs",
@@ -1731,7 +1738,7 @@
       "modes": [],
       "selfTest": "none",
       "jobKeys": [],
-      "reason": "Test fixture on disk, not invoked by any CI workflow. Recorded by ORCH-1383 so no file is unaccounted for."
+      "reason": "Test fixture on disk, not invoked by any CI workflow. Recorded by ORCH-1383 so no file is unaccounted for. ORCH-1400 Phase 1 (P10 audit): remains a recorded dark fixture, capped by fixtureCap; disposition in a later ORCH-1400 phase."
     },
     {
       "script": ".github/scripts/strict-grep/i-proposed-orch-0945-prefs-sheet-read-only-no-write.mjs",
@@ -1754,7 +1761,7 @@
       "modes": [],
       "selfTest": "none",
       "jobKeys": [],
-      "reason": "Test fixture on disk, not invoked by any CI workflow. Recorded by ORCH-1383 so no file is unaccounted for."
+      "reason": "Test fixture on disk, not invoked by any CI workflow. Recorded by ORCH-1383 so no file is unaccounted for. ORCH-1400 Phase 1 (P10 audit): remains a recorded dark fixture, capped by fixtureCap; disposition in a later ORCH-1400 phase."
     },
     {
       "script": ".github/scripts/strict-grep/i-proposed-p-stripe-state-canonical.mjs",
@@ -1787,7 +1794,7 @@
       "modes": [],
       "selfTest": "capable-unwired",
       "jobKeys": [],
-      "reason": "Test fixture on disk, not invoked by any CI workflow. Recorded by ORCH-1383 so no file is unaccounted for."
+      "reason": "Test fixture on disk, not invoked by any CI workflow. Recorded by ORCH-1383 so no file is unaccounted for. ORCH-1400 Phase 1 (P10 audit): remains a recorded dark fixture, capped by fixtureCap; disposition in a later ORCH-1400 phase."
     },
     {
       "script": ".github/scripts/strict-grep/i-proposed-q-stripe-api-version.mjs",
@@ -5177,7 +5184,7 @@
       "modes": [],
       "selfTest": "capable-unwired",
       "jobKeys": [],
-      "reason": "Test fixture on disk, not invoked by any CI workflow. Recorded by ORCH-1383 so no file is unaccounted for."
+      "reason": "Test fixture on disk, not invoked by any CI workflow. Recorded by ORCH-1383 so no file is unaccounted for. ORCH-1400 Phase 1 (P10 audit): remains a recorded dark fixture, capped by fixtureCap; disposition in a later ORCH-1400 phase."
     },
     {
       "script": ".github/scripts/strict-grep/orch-1367-release-version-parity.mjs",
@@ -5267,7 +5274,7 @@
       "modes": [],
       "selfTest": "capable-unwired",
       "jobKeys": [],
-      "reason": "Test fixture on disk, not invoked by any CI workflow. Recorded by ORCH-1383 so no file is unaccounted for."
+      "reason": "Test fixture on disk, not invoked by any CI workflow. Recorded by ORCH-1383 so no file is unaccounted for. ORCH-1400 Phase 1 (P10 audit): remains a recorded dark fixture, capped by fixtureCap; disposition in a later ORCH-1400 phase."
     },
     {
       "script": ".github/scripts/strict-grep/orch-1385-workspace-deps-declared.mjs",
