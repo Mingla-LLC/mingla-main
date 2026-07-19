@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
  * ORCH-1369 [release-1.1.2-config] — TESTER ADVERSARIAL characterization test
- * (mingla-tester, TEST phase; append-only; NOT wired into CI — run manually:
- *   node .github/scripts/strict-grep/orch-1369-release-submit-config.adversarial.mjs
- * ).
+ * (mingla-tester, TEST phase; append-only). WIRED into CI as batch:A by
+ * ORCH-1400 Phase 1 (it is the base gate's self-test-in-exile — it shipped
+ * dark in its own SHIP commit e489715ab and stayed dark until ORCH-1400).
  *
  * ANGLE — DELIBERATELY DIFFERENT from the implementor's fails-on-revert. The
  * implementor proved: android `completed`->`draft` fires (both apps), and a
@@ -29,11 +29,15 @@
  *   These probe the DESIRED behavior. If the real gate passes them (exit 0),
  *   the gap is real and this harness reports HOLE.
  *
- * EXIT CODES:
- *   0  Part 1 guards hold AND Part 2 gaps closed (ideal; reachable only after
- *      the gate is widened to also assert track==="internal" + consumer-iOS ASC)
+ * EXIT CODES (ORCH-1400 Phase 1 recorded-gap mapping — SPEC_ORCH-1400 §4.1.c,
+ * OQ-1 default; supersedes the original 0/1/2/3 contract so the harness can run
+ * PR-blocking on Part 1 without blocking on the recorded Part 2 scope boundary):
+ *   0  Part 1 guards hold. Any open Part 2 gap is PRINTED as a recorded scope
+ *      boundary — the same list lives verbatim in INVARIANT_REGISTRY.md under
+ *      I-RELEASE-SUBMIT-CONFIG ("governs the publish STATUS only, not the
+ *      rollout track"). Widening the base gate (OQ-1) closes the gaps and
+ *      empties the printed list; that decision belongs to Seth, not this file.
  *   1  a Part 1 gate-strictness guard REGRESSED (gate got weaker) — hard fail
- *   2  Part 1 holds but Part 2 exposes >=1 open coverage gap (current state)
  *   3  harness/setup error
  */
 import fs from "node:fs";
@@ -128,14 +132,20 @@ if (part1Failed > 0) {
   process.exit(1);
 }
 if (holes > 0) {
-  console.error(
-    `RESULT: gate-strictness guards hold, but ${holes} release-safety coverage GAP(s) remain open ` +
+  // ORCH-1400 Phase 1 recorded-gap mapping (OQ-1 default): the gap list is a
+  // RECORDED scope boundary, not a CI failure — it prints on every run and is
+  // mirrored verbatim in INVARIANT_REGISTRY.md under I-RELEASE-SUBMIT-CONFIG.
+  // Part 1 regressions above remain hard-blocking (exit 1). Do NOT restore a
+  // non-zero exit here without widening the BASE gate first: while this harness
+  // was dark, exit 2 made it unwireable and the gaps invisible for 4 days.
+  console.log(
+    `RESULT: gate-strictness guards hold; ${holes} release-safety coverage GAP(s) remain open ` +
       `(the gate does not assert track==="internal", nor guard consumer-iOS ASC keys). ` +
-      `This is a documented scope boundary (INVARIANT_REGISTRY I-RELEASE-SUBMIT-CONFIG: ` +
-      `"governs the publish STATUS only, not the rollout track") — surfaced to Seth. ` +
-      `Widen the gate to close these and this harness will exit 0.`,
+      `Recorded scope boundary (INVARIANT_REGISTRY I-RELEASE-SUBMIT-CONFIG: ` +
+      `"governs the publish STATUS only, not the rollout track") — non-blocking by ` +
+      `ORCH-1400 OQ-1 default. Widen the base gate to close these and empty this list.`,
   );
-  process.exit(2);
+  process.exit(0);
 }
 console.log("RESULT: all Part 1 guards hold and all Part 2 gaps are closed.");
 process.exit(0);
