@@ -28,6 +28,10 @@
 - **Enforcement:** strict-grep gate `.github/scripts/strict-grep/orch-1369-release-submit-config.mjs` (reads both `eas.json` files; exits non-zero on any android `releaseStatus` that is `"draft"` / not `"completed"`, any missing/blank business-iOS ASC field, or invalid JSON), wired as CI job `orch-1369-release-submit-config` in `.github/workflows/strict-grep-mingla-business.yml` (PR-blocking — the workflow's path triggers include both `app-mobile/**` and `mingla-business/**`, which cover the two `eas.json` files). Registered in `.github/scripts/strict-grep/README.md`.
 - **Regression test:** the gate's `--self-test` proves 8/8 cases (good pair passes; consumer-draft and business-draft each fail; missing/blank/dropped business-iOS ASC field fails; bare `ascAppId`-only iOS block fails; invalid JSON fails). Fails-on-revert proven at IMPLEMENT by true value change against the committed files — flipping either android `releaseStatus` back to `"draft"`, or deleting a business-iOS ASC field, makes the live gate exit 1; restoring makes it exit 0 (evidence in the IMPLEMENTATION report). Append-only.
 - **Established:** DRAFT 2026-07-14 at ORCH-1369 IMPLEMENT. Flips ACTIVE at CLOSE.
+- **Recorded coverage gaps (ORCH-1400 Phase 1 — the adversarial harness `orch-1369-release-submit-config.adversarial.mjs` is now WIRED batch:A; Part 1 strictness regressions block, exit 1; the gaps below print on every run and exit 0 — a recorded scope boundary, NOT covered by this invariant. Closing them = widening the BASE gate, Seth's release-safety call (ORCH-1400 OQ-1); the harness list empties itself when closed.) Verbatim harness output:**
+  - `HOLE  D  business android.track 'internal'->'production' (silent public rollout) -> gate exit 0`
+  - `HOLE  D2 consumer android.track 'internal'->'production' (silent public rollout) -> gate exit 0`
+  - `HOLE  E  consumer-iOS ASC keys stripped to bare ascAppId (interactive-auth stall) -> gate exit 0`
 
 ---
 

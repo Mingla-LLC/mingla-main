@@ -14,7 +14,11 @@
 // commit token to shrink gates[] or lower a floor. A different workflow guards this
 // one, so disabling this gate does not disable its guard.
 //
-// Assertions (SPEC_ORCH-1383 §5.3): P1..P8 + P-vacuous.
+// Assertions (SPEC_ORCH-1383 §5.3): P1..P8 + P-vacuous. ORCH-1400 Phase 1 adds P10..P12
+// (SPEC_ORCH-1400 §4.1.b) — they close the three recurrence holes H1–H3 that let the
+// orch-1369 and orch-1385 adversarial suites ship dark at their own ORCHs' CLOSE:
+// uncapped `fixture` laundering (H1), unswept external gate dirs (H2), and permanently
+// legal `capable-unwired` self-tests (H3).
 //   P1 every on-disk strict-grep .mjs appears exactly once in gates[]
 //   P2 every file-kind gates[] entry exists on disk
 //   P3 strict-grep .mjs entry count === expectedStrictGrepMjsFiles === actual on disk
@@ -23,6 +27,14 @@
 //   P6 selfTest field matches source reality (source has --self-test => never "none")
 //   P7 ratchet: count(selfTest === "wired") >= selfTestWiredFloor
 //   P8 ratchet: count(enforcement === "unenforced") <= unenforcedCap
+//   P10 ratchet: count(enforcement === "fixture") <= fixtureCap, AND every
+//       fixture/unenforced reason cites an ORCH (/ORCH-\d{3,4}/). No bypass token
+//       exists (ORCH-1400 OQ-2): raising a cap is a committed MANIFEST diff, visible
+//       and guarded — a dark file can no longer be laundered in as a "fixture".
+//   P11 totality beyond the strict-grep dir: every on-disk .mjs under each
+//       manifest.externalGateDirs entry appears exactly once in gates[] (mirrors P1).
+//   P12 ratchet: count(selfTest === "capable-unwired") <= capableUnwiredCap — an
+//       unwired self-test is a visible, shrinking debt, never a permanent legal state.
 //   P-vacuous: discovering ZERO files is a FAILURE, never a pass. This is the
 //              "matched nothing -> green" mode (the rel="noopener" class).
 
@@ -48,14 +60,18 @@ const SG_REL = ".github/scripts/strict-grep";
 const VALID_ENFORCEMENT = /^(batch:[A-E]|job:[A-Za-z0-9._-]+|external:.+|fixture|unenforced|infrastructure)$/;
 const SG_WORKFLOW = "strict-grep-mingla-business.yml";
 
-export function walkMjs(dir, base = "") {
+export function walkMjsUnder(dir, relPrefix, base = "") {
   const out = [];
   for (const en of fs.readdirSync(dir, { withFileTypes: true })) {
     const rel = base ? `${base}/${en.name}` : en.name;
-    if (en.isDirectory()) out.push(...walkMjs(path.join(dir, en.name), rel));
-    else if (en.name.endsWith(".mjs")) out.push(`${SG_REL}/${rel}`);
+    if (en.isDirectory()) out.push(...walkMjsUnder(path.join(dir, en.name), relPrefix, rel));
+    else if (en.name.endsWith(".mjs")) out.push(`${relPrefix}/${rel}`);
   }
   return out;
+}
+
+export function walkMjs(dir, base = "") {
+  return walkMjsUnder(dir, SG_REL, base);
 }
 
 /**
@@ -70,9 +86,12 @@ export function walkMjs(dir, base = "") {
  * @param {Record<string,Set<string>>} a.workflowInvocations  wf name -> set of invoked script paths
  * @param {Record<string,Record<string,{script:string,mode:string}[]>>} [a.jobInvocations]
  *        wf name -> jobKey -> invocations (for P9, the carve-out check)
+ * @param {Record<string,string[]|null>} [a.externalDiskFiles]
+ *        externalGateDirs dir -> repo-relative on-disk .mjs paths under it, or null
+ *        if the dir does not exist on disk (for P11, the external-totality check)
  * @returns {string[]} failures
  */
-export function runChecks({ manifest, diskFiles, readSource, fileExists, workflowInvocations, jobInvocations }) {
+export function runChecks({ manifest, diskFiles, readSource, fileExists, workflowInvocations, jobInvocations, externalDiskFiles = {} }) {
   const failures = [];
   const gates = manifest.gates ?? [];
 
@@ -224,6 +243,82 @@ export function runChecks({ manifest, diskFiles, readSource, fileExists, workflo
     );
   }
 
+  // P10 (ORCH-1400, closes H1) — "fixture" is capped and every dark state is ORCH-cited.
+  // The legal way to land a dark file used to be registering it as `fixture` with any
+  // reason string (that is how the orch-1385 adversarial suite sat dark for weeks).
+  // There is deliberately NO bypass token (OQ-2): moving a cap is a committed MANIFEST
+  // change, visible in the diff and monotonic by review — never a laundering path.
+  if (typeof manifest.fixtureCap !== "number") {
+    failures.push(`P10: MANIFEST.json is missing the numeric "fixtureCap" ratchet field.`);
+  } else {
+    const fixtures = gates.filter((g) => g.enforcement === "fixture").length;
+    if (fixtures > manifest.fixtureCap) {
+      failures.push(
+        `P10: ${fixtures} gates are "fixture", above the cap ${manifest.fixtureCap}. ` +
+        `The dark-fixture count may only shrink. Wire the file (or raise the cap in a ` +
+        `reviewed MANIFEST change — there is no token that does this silently).`
+      );
+    }
+  }
+  const ORCH_CITE = /ORCH-\d{3,4}/;
+  for (const g of gates) {
+    if (g.enforcement !== "fixture" && g.enforcement !== "unenforced") continue;
+    if (!ORCH_CITE.test(g.reason ?? "")) {
+      failures.push(
+        `P10: "${g.script}" is ${g.enforcement} but its reason lacks an ORCH citation ` +
+        `(/ORCH-\\d{3,4}/). Every dark state must name the ORCH that owns its disposition.`
+      );
+    }
+  }
+
+  // P11 (ORCH-1400, closes H2) — totality beyond the strict-grep dir. A dir listed in
+  // externalGateDirs is swept like P1: every on-disk .mjs must be registered exactly once.
+  if (!Array.isArray(manifest.externalGateDirs)) {
+    failures.push(`P11: MANIFEST.json is missing the "externalGateDirs" array field.`);
+  } else {
+    const gateCounts = new Map();
+    for (const g of gates) gateCounts.set(g.script, (gateCounts.get(g.script) ?? 0) + 1);
+    for (const dir of manifest.externalGateDirs) {
+      const files = externalDiskFiles[dir];
+      if (files == null) {
+        failures.push(`P11: externalGateDirs lists "${dir}" but that directory was not found on disk.`);
+        continue;
+      }
+      if (!files.length) {
+        failures.push(
+          `P11: externalGateDirs lists "${dir}" but it contains ZERO .mjs files. ` +
+          `A swept dir that matches nothing is the vacuous-green mode — fix the path or remove it.`
+        );
+        continue;
+      }
+      for (const f of files) {
+        const n = gateCounts.get(f) ?? 0;
+        if (n === 0) {
+          failures.push(
+            `P11: "${f}" is on disk under externalGateDirs entry "${dir}" but ABSENT from ` +
+            `MANIFEST.json. Add a gates[] entry with an explicit enforcement state.`
+          );
+        } else if (n > 1) {
+          failures.push(`P11: "${f}" appears ${n} times in gates[]; it must appear exactly once.`);
+        }
+      }
+    }
+  }
+
+  // P12 (ORCH-1400, closes H3) — an existing-but-never-run self-test is capped debt.
+  if (typeof manifest.capableUnwiredCap !== "number") {
+    failures.push(`P12: MANIFEST.json is missing the numeric "capableUnwiredCap" ratchet field.`);
+  } else {
+    const capableUnwired = gates.filter((g) => g.selfTest === "capable-unwired").length;
+    if (capableUnwired > manifest.capableUnwiredCap) {
+      failures.push(
+        `P12: ${capableUnwired} gates are selfTest:"capable-unwired", above the cap ` +
+        `${manifest.capableUnwiredCap}. A self-test that exists but never runs is debt, ` +
+        `not coverage — wire it (modes += "self-test", selfTest: "wired") instead.`
+      );
+    }
+  }
+
   return failures;
 }
 
@@ -282,6 +377,12 @@ async function realRun() {
   const manifest = JSON.parse(fs.readFileSync(path.join(HERE, "MANIFEST.json"), "utf8"));
   const diskFiles = walkMjs(path.join(REPO_ROOT, SG_REL));
   const { workflowInvocations, jobInvocations } = await collectWorkflowInvocations();
+  // P11 — enumerate each externalGateDirs dir from disk (null = dir missing).
+  const externalDiskFiles = {};
+  for (const dir of Array.isArray(manifest.externalGateDirs) ? manifest.externalGateDirs : []) {
+    const abs = path.join(REPO_ROOT, dir);
+    externalDiskFiles[dir] = fs.existsSync(abs) ? walkMjsUnder(abs, dir) : null;
+  }
   const failures = runChecks({
     manifest,
     diskFiles,
@@ -291,6 +392,7 @@ async function realRun() {
     fileExists: (p) => fs.existsSync(path.join(REPO_ROOT, p)),
     workflowInvocations,
     jobInvocations,
+    externalDiskFiles,
   });
 
   console.log(`META-1383 manifest parity: ${diskFiles.length} on-disk .mjs, ${manifest.gates.length} manifest entries.`);
@@ -299,7 +401,7 @@ async function realRun() {
     for (const f of failures) console.error("  - " + f);
     process.exit(1);
   }
-  console.log("META-1383 manifest parity: PASS (P1–P9 + P-vacuous).");
+  console.log("META-1383 manifest parity: PASS (P1–P12 + P-vacuous).");
 }
 
 // ---------------------------------------------------------------- self-test
@@ -310,9 +412,12 @@ function baseFixture() {
       expectedStrictGrepMjsFiles: 2,
       selfTestWiredFloor: 1,
       unenforcedCap: 1,
+      fixtureCap: 1,
+      capableUnwiredCap: 0,
+      externalGateDirs: [],
       gates: [
         { script: `${SG_REL}/alpha.mjs`, kind: "file", enforcement: "batch:A", invocation: "node", modes: ["self-test", "plain"], selfTest: "wired", jobKeys: ["alpha"] },
-        { script: `${SG_REL}/beta.mjs`, kind: "file", enforcement: "unenforced", invocation: null, modes: [], selfTest: "none", jobKeys: [] },
+        { script: `${SG_REL}/beta.mjs`, kind: "file", enforcement: "unenforced", invocation: null, modes: [], selfTest: "none", jobKeys: [], reason: "Frozen by ORCH-1383; disposition owned by ORCH-1400." },
       ],
     },
     diskFiles: [`${SG_REL}/alpha.mjs`, `${SG_REL}/beta.mjs`],
@@ -320,6 +425,7 @@ function baseFixture() {
     fileExists: () => true,
     workflowInvocations: {},
     jobInvocations: {},
+    externalDiskFiles: {},
   };
 }
 
@@ -441,6 +547,123 @@ function selfTest() {
     const f = baseFixture();
     f.manifest.gates = [];
     check("P-vacuous: empty gates[] FAILS (never green)", f, true, "P-vacuous:");
+  }
+
+  // ── ORCH-1400 P10/P11/P12 — each rule proven BOTH directions (SPEC_ORCH-1400 §9).
+  // Reverting any of these rules makes its bad-direction case below fail this
+  // self-test, which runs wired in batch:B — the revert cannot land green.
+  const fixtureRow = (reason) => ({
+    script: `${SG_REL}/gamma.test.mjs`, kind: "file", enforcement: "fixture",
+    invocation: null, modes: [], selfTest: "none", jobKeys: [], reason,
+  });
+  // P10 good — an ORCH-cited fixture within fixtureCap passes.
+  {
+    const f = baseFixture();
+    f.manifest.gates.push(fixtureRow("Recorded by ORCH-1383; audited by ORCH-1400."));
+    f.diskFiles.push(`${SG_REL}/gamma.test.mjs`);
+    f.manifest.expectedStrictGrepMjsFiles = 3;
+    check("P10: ORCH-cited fixture within fixtureCap passes", f, false);
+  }
+  // P10 bad — fixture count above the cap (the H1 laundering path).
+  {
+    const f = baseFixture();
+    f.manifest.fixtureCap = 0;
+    f.manifest.gates.push(fixtureRow("Recorded by ORCH-1383; audited by ORCH-1400."));
+    f.diskFiles.push(`${SG_REL}/gamma.test.mjs`);
+    f.manifest.expectedStrictGrepMjsFiles = 3;
+    check("P10: fixture count above fixtureCap fails", f, true, "P10:");
+  }
+  // P10 bad — fixture reason with no ORCH citation.
+  {
+    const f = baseFixture();
+    f.manifest.gates.push(fixtureRow("test fixture on disk"));
+    f.diskFiles.push(`${SG_REL}/gamma.test.mjs`);
+    f.manifest.expectedStrictGrepMjsFiles = 3;
+    check("P10: citation-less fixture reason fails", f, true, "lacks an ORCH citation");
+  }
+  // P10 bad — unenforced reason with no ORCH citation.
+  {
+    const f = baseFixture();
+    f.manifest.gates[1].reason = "parked for later";
+    check("P10: citation-less unenforced reason fails", f, true, "lacks an ORCH citation");
+  }
+  // P10 bad — the ratchet field itself deleted.
+  {
+    const f = baseFixture();
+    delete f.manifest.fixtureCap;
+    check("P10: missing fixtureCap field fails", f, true, '"fixtureCap"');
+  }
+  // P11 good — external-dir gate registered exactly once passes.
+  const EXT_DIR = "app-x/scripts/ci";
+  const EXT_FILE = `${EXT_DIR}/gate.mjs`;
+  const extRow = () => ({
+    script: EXT_FILE, kind: "file", enforcement: "batch:A",
+    invocation: "node", modes: ["plain"], selfTest: "none", jobKeys: [],
+  });
+  {
+    const f = baseFixture();
+    f.manifest.externalGateDirs = [EXT_DIR];
+    f.externalDiskFiles = { [EXT_DIR]: [EXT_FILE] };
+    f.manifest.gates.push(extRow());
+    check("P11: registered external-dir gate passes", f, false);
+  }
+  // P11 bad — unregistered external-dir file fails BY NAME (the H2 dark path).
+  {
+    const f = baseFixture();
+    f.manifest.externalGateDirs = [EXT_DIR];
+    f.externalDiskFiles = { [EXT_DIR]: [EXT_FILE] };
+    check("P11: unregistered external-dir file fails by name", f, true, EXT_FILE);
+  }
+  // P11 bad — duplicate registration.
+  {
+    const f = baseFixture();
+    f.manifest.externalGateDirs = [EXT_DIR];
+    f.externalDiskFiles = { [EXT_DIR]: [EXT_FILE] };
+    f.manifest.gates.push(extRow(), extRow());
+    check("P11: duplicate external-dir registration fails", f, true, "exactly once");
+  }
+  // P11 bad — listed dir does not exist on disk.
+  {
+    const f = baseFixture();
+    f.manifest.externalGateDirs = [EXT_DIR];
+    f.externalDiskFiles = { [EXT_DIR]: null };
+    check("P11: listed dir missing on disk fails", f, true, "not found on disk");
+  }
+  // P11 bad — listed dir matches zero files (vacuous sweep).
+  {
+    const f = baseFixture();
+    f.manifest.externalGateDirs = [EXT_DIR];
+    f.externalDiskFiles = { [EXT_DIR]: [] };
+    check("P11: listed dir with zero .mjs fails (never a vacuous green)", f, true, "ZERO .mjs");
+  }
+  // P11 bad — the field itself deleted.
+  {
+    const f = baseFixture();
+    delete f.manifest.externalGateDirs;
+    check("P11: missing externalGateDirs field fails", f, true, '"externalGateDirs"');
+  }
+  // P12 good — capable-unwired within cap passes.
+  {
+    const f = baseFixture();
+    f.manifest.gates[0].selfTest = "capable-unwired";
+    f.manifest.gates[0].modes = ["plain"];
+    f.manifest.selfTestWiredFloor = 0;
+    f.manifest.capableUnwiredCap = 1;
+    check("P12: capable-unwired within cap passes", f, false);
+  }
+  // P12 bad — capable-unwired above the cap (the H3 permanent-legal state).
+  {
+    const f = baseFixture();
+    f.manifest.gates[0].selfTest = "capable-unwired";
+    f.manifest.gates[0].modes = ["plain"];
+    f.manifest.selfTestWiredFloor = 0;
+    check("P12: capable-unwired above cap fails", f, true, "P12:");
+  }
+  // P12 bad — the ratchet field itself deleted.
+  {
+    const f = baseFixture();
+    delete f.manifest.capableUnwiredCap;
+    check("P12: missing capableUnwiredCap field fails", f, true, '"capableUnwiredCap"');
   }
 
   let bad = 0;
