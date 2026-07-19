@@ -221,6 +221,9 @@ jobs:
             supabase/functions/_shared/__tests__/stripeKycReminderSchedule.test.ts
             supabase/functions/_shared/__tests__/stripeWebhookRouter.test.ts
             supabase/functions/_shared/__tests__/stripeWebhookSignature.test.ts
+            # ISSUE-865 WP-B — ad-conversion senders + fire helper (hermetic:
+            # stubbed fetch + injected supabase; runs with the same flags).
+            supabase/functions/_shared/__tests__/issue_865_wp_b_ad_conversion.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-net --no-check "${DENO_TEST_FILES[@]}"; then
@@ -491,6 +494,26 @@ jobs:
         run: >
           npx jest
           src/components/partner/__tests__/orch_1331_partner_paystack_ui.test.ts
+          --runInBand
+
+  issue-865-attribution-jest:
+    name: "ISSUE-865 WP-C — browser ad pixels + consent gate (Stage C)"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      - name: Run ISSUE-865 WP-C pixel + consent-gate suite
+        run: >
+          npx jest
+          src/analytics/__tests__/webAnalytics.pixels.issue865.test.ts
           --runInBand
 
   orch-1331-partner-paystack-strict-grep:
