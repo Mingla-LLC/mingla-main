@@ -21,6 +21,7 @@ import type {
   SenderDeps,
   SenderResult,
 } from "./adConversionFire.ts";
+import { resolveCapiToken } from "./capiTokens.ts";
 
 const TIKTOK_EVENTS_URL = "https://business-api.tiktok.com/open_api/v1.3/event/track/";
 const DEFAULT_TIMEOUT_MS = 8_000;
@@ -44,7 +45,7 @@ export async function sendTikTokConversion(
   conn: SenderConnection,
   deps: SenderDeps = {},
 ): Promise<SenderResult> {
-  const getToken = deps.getToken ?? ((n: string) => Deno.env.get(n));
+  const getToken = deps.getToken ?? ((n: string) => resolveCapiToken(n));
   const fetchImpl = deps.fetchImpl ?? fetch;
   const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 

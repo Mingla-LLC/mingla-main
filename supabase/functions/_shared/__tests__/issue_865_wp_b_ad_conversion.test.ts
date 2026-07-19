@@ -22,6 +22,7 @@ import { sendMetaConversion } from "../metaCapi.ts";
 import { sendTikTokConversion } from "../tiktokEvents.ts";
 import { sendSnapConversion } from "../snapCapi.ts";
 import { sendRedditConversion } from "../redditCapi.ts";
+import { resolveCapiToken } from "../capiTokens.ts";
 import {
   type ConversionSendInput,
   fireAdConversion,
@@ -144,6 +145,7 @@ Deno.test("snapCapi: endpoint w/ pixel + access_token query, client_dedup_id == 
   const sent = JSON.parse(String(calls[0].init.body));
   assertEquals(sent.data[0].client_dedup_id, EVENT_ID); // dedup
   assertEquals(sent.data[0].event_name, "PURCHASE");
+  assertEquals(sent.data[0].action_source, "web"); // ORCH-1405: Snap v3 /events requires action_source
 });
 
 // ── Reddit sender — PENDING-CONFIG (SC-12) ────────────────────────────────────
@@ -159,18 +161,45 @@ Deno.test("redditCapi: token UNSET → skipped 'pending_config' (never errors, n
   assertEquals(calls.length, 0); // no network attempted while pending
 });
 
-Deno.test("redditCapi: with a token it POSTs v3 conversion_events with the shared conversion_id", async () => {
+Deno.test("redditCapi: with a token it POSTs to the v2.0 conversions endpoint with the shared conversion_id", async () => {
   const { fn, calls } = stubFetch(200, { data: { message: "Successfully processed 1 conversion events." } });
   const res = await sendRedditConversion(baseInput({ eventName: "Purchase" }), {
     pixelId: "a2_jcfwvnfcfqcs",
     tokenEnvVar: "REDDIT_ADS_CAPI_TOKEN",
   }, { fetchImpl: fn, getToken: () => "rtok" });
   assertEquals(res.status, "sent");
-  assert(calls[0].url.includes("ads-api.reddit.com/api/v3/pixels/a2_jcfwvnfcfqcs/conversion_events"));
+  // ORCH-1405: account-scoped v2.0 endpoint (pixelId == account id). The v3
+  // /pixels/{id}/conversion_events path is rejected by Reddit (400) — proven by live fire.
+  assert(calls[0].url.includes("ads-api.reddit.com/api/v2.0/conversions/events/a2_jcfwvnfcfqcs"));
+  assert(!calls[0].url.includes("/pixels/"), "must NOT use the rejected v3 /pixels path");
   assertEquals((calls[0].init.headers as Record<string, string>).Authorization, "Bearer rtok");
   const sent = JSON.parse(String(calls[0].init.body));
   assertEquals(sent.events[0].event_metadata.conversion_id, EVENT_ID);
-  assertEquals(sent.events[0].event_type.tracking_type, "Purchase"); // v3 shape
+  assertEquals(sent.events[0].event_type.tracking_type, "Purchase"); // tracking_type body (accepted by v2.0)
+});
+
+// ── ORCH-1405: consolidated CAPI-token resolver (100-secret-cap fix) ───────────
+
+Deno.test("resolveCapiToken: standalone env wins; else AD_CONVERSION_TOKENS blob; malformed/missing → undefined (fail-open)", () => {
+  const blob = JSON.stringify({
+    REDDIT_ADS_CAPI_TOKEN: "reddit-from-blob",
+    SNAPCHAT_CAPI_TOKEN: "snap-from-blob",
+  });
+  const env = (m: Record<string, string>) => (n: string): string | undefined => m[n];
+  // a standalone secret still takes precedence (backward compatible)
+  assertEquals(
+    resolveCapiToken("META_CAPI_ACCESS_TOKEN", env({ META_CAPI_ACCESS_TOKEN: "meta-direct", AD_CONVERSION_TOKENS: blob })),
+    "meta-direct",
+  );
+  // no standalone slot → resolved from the consolidated blob
+  assertEquals(resolveCapiToken("REDDIT_ADS_CAPI_TOKEN", env({ AD_CONVERSION_TOKENS: blob })), "reddit-from-blob");
+  assertEquals(resolveCapiToken("SNAPCHAT_CAPI_TOKEN", env({ AD_CONVERSION_TOKENS: blob })), "snap-from-blob");
+  // absent from both → undefined (the sender soft-skips, never errors)
+  assertEquals(resolveCapiToken("TIKTOK_EVENTS_ACCESS_TOKEN", env({ AD_CONVERSION_TOKENS: blob })), undefined);
+  // malformed blob → undefined, never throws
+  assertEquals(resolveCapiToken("REDDIT_ADS_CAPI_TOKEN", env({ AD_CONVERSION_TOKENS: "{not json" })), undefined);
+  // no blob at all → undefined
+  assertEquals(resolveCapiToken("REDDIT_ADS_CAPI_TOKEN", env({})), undefined);
 });
 
 // ── Hashing helper (SC-9) ─────────────────────────────────────────────────────

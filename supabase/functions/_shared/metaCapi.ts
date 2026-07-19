@@ -29,6 +29,7 @@ import type {
   SenderDeps,
   SenderResult,
 } from "./adConversionFire.ts";
+import { resolveCapiToken } from "./capiTokens.ts";
 
 // Pinned per A2-6 (v25.0 shipped 2026-02-18; v21.0 is stale). Overridable by the
 // same META_API_VERSION env the ad-engine adapter (meta.ts) already reads.
@@ -61,7 +62,7 @@ export async function sendMetaConversion(
   conn: SenderConnection,
   deps: SenderDeps = {},
 ): Promise<SenderResult> {
-  const getToken = deps.getToken ?? ((n: string) => Deno.env.get(n));
+  const getToken = deps.getToken ?? ((n: string) => resolveCapiToken(n));
   const fetchImpl = deps.fetchImpl ?? fetch;
   const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 

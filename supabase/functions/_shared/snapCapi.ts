@@ -17,6 +17,7 @@ import type {
   SenderDeps,
   SenderResult,
 } from "./adConversionFire.ts";
+import { resolveCapiToken } from "./capiTokens.ts";
 
 const SNAP_CAPI_BASE = "https://tr.snapchat.com/v3";
 const DEFAULT_TIMEOUT_MS = 8_000;
@@ -40,7 +41,7 @@ export async function sendSnapConversion(
   conn: SenderConnection,
   deps: SenderDeps = {},
 ): Promise<SenderResult> {
-  const getToken = deps.getToken ?? ((n: string) => Deno.env.get(n));
+  const getToken = deps.getToken ?? ((n: string) => resolveCapiToken(n));
   const fetchImpl = deps.fetchImpl ?? fetch;
   const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
@@ -69,6 +70,7 @@ export async function sendSnapConversion(
 
   const event = definedOnly({
     event_name: input.eventName, // "PURCHASE"
+    action_source: "web", // ORCH-1405: REQUIRED by Snap v3 /events (400 "action_source is required" without it) — proven by live fire
     event_conversion_type: "WEB",
     event_time: input.eventTimeMs, // Snap wants milliseconds
     client_dedup_id: input.eventId, // dedup key — shared with the browser pixel

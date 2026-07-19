@@ -1,5 +1,5 @@
 /**
- * redditCapi.ts — ISSUE-865 WP-B · Reddit Conversions API v3 sender.
+ * redditCapi.ts — ISSUE-865 WP-B · Reddit Conversions API sender (account-scoped v2.0).
  *
  * Sends ONE server-side conversion to the Reddit Conversions API (v3 direct
  * integration, A2-7), deduplicated with the browser Reddit Pixel via the shared
@@ -25,8 +25,14 @@ import type {
   SenderDeps,
   SenderResult,
 } from "./adConversionFire.ts";
+import { resolveCapiToken } from "./capiTokens.ts";
 
-const REDDIT_CAPI_BASE = "https://ads-api.reddit.com/api/v3/pixels";
+// Reddit Conversions API — the account-scoped v2.0 endpoint (ORCH-1405).
+// The v3 `/pixels/{id}/conversion_events` path is REJECTED by Reddit
+// (400 "unknown field events"); the working endpoint is v2.0
+// `/conversions/events/{account_id}` — proven by live test-mode fire.
+// conn.pixelId doubles as the ad-account id (A2-3), so it is the path param.
+const REDDIT_CAPI_BASE = "https://ads-api.reddit.com/api/v2.0/conversions/events";
 const DEFAULT_TIMEOUT_MS = 8_000;
 
 function valueDecimal(valueCents: number | null): number | undefined {
@@ -48,7 +54,7 @@ export async function sendRedditConversion(
   conn: SenderConnection,
   deps: SenderDeps = {},
 ): Promise<SenderResult> {
-  const getToken = deps.getToken ?? ((n: string) => Deno.env.get(n));
+  const getToken = deps.getToken ?? ((n: string) => resolveCapiToken(n));
   const fetchImpl = deps.fetchImpl ?? fetch;
   const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
@@ -85,7 +91,7 @@ export async function sendRedditConversion(
     event_metadata: Object.keys(eventMetadata).length > 0 ? eventMetadata : undefined,
   } as Record<string, unknown>);
 
-  const url = `${REDDIT_CAPI_BASE}/${pixelId}/conversion_events`;
+  const url = `${REDDIT_CAPI_BASE}/${pixelId}`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
