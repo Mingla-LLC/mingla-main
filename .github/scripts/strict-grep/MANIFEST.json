@@ -6,13 +6,13 @@
     "strict-grep workflow invokes from outside this directory; they are registered so run-batch.mjs executes",
     "them and R4 counts them.",
     "'modes' is the exact set of invocation forms CI uses for that script — 2 gates are --self-test ONLY and",
-    "must never gain a plain run; 208 are plain-only; 168 run both. Changing modes changes WHAT is asserted.",
+    "must never gain a plain run; 217 are plain-only; 182 run both. Changing modes changes WHAT is asserted.",
     "'jobKeys' preserves the PRE-BATCH job identity so a failure can still name its origin (SPEC §5.1).",
     "Ratchets (selfTestWiredFloor, unenforcedCap, gates[]) are append-only — enforced by",
     "meta-1383-manifest-parity.mjs P7/P8 and by tests-append-only.yml. Shrinking needs a GATE-REMOVAL: token."
   ],
-  "expectedStrictGrepMjsFiles": 394,
-  "selfTestWiredFloor": 178,
+  "expectedStrictGrepMjsFiles": 404,
+  "selfTestWiredFloor": 184,
   "unenforcedCap": 21,
   "gates": [
     {
@@ -165,6 +165,20 @@
       "selfTest": "wired",
       "jobKeys": [
         "orch-1276-identity-admin-write"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/i-1378-web-shim-export-parity.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "i-1378-web-shim-export-parity"
       ]
     },
     {
@@ -2303,6 +2317,20 @@
       "selfTest": "wired",
       "jobKeys": [
         "issue-862-reddit-configured-status-explicit"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-866-creative-guards.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-866-creative-guards"
       ]
     },
     {
@@ -5232,6 +5260,111 @@
       ]
     },
     {
+      "script": ".github/scripts/strict-grep/orch-1385-workspace-deps-declared.adversarial.test.mjs",
+      "kind": "file",
+      "enforcement": "fixture",
+      "invocation": null,
+      "modes": [],
+      "selfTest": "capable-unwired",
+      "jobKeys": [],
+      "reason": "Test fixture on disk, not invoked by any CI workflow. Recorded by ORCH-1383 so no file is unaccounted for."
+    },
+    {
+      "script": ".github/scripts/strict-grep/orch-1385-workspace-deps-declared.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "orch-1385-workspace-deps-declared"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/orch-1385-workspace-deps-declared.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "capable-unwired",
+      "jobKeys": [
+        "orch-1385-workspace-deps-declared"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/orch-1386-framework-major-guard.adversarial.test.mjs",
+      "kind": "file",
+      "enforcement": "external:orch-1386-tester-adversarial.yml",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1386-tester-adversarial"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/orch-1386-framework-major-guard.mjs",
+      "kind": "file",
+      "enforcement": "external:framework-major-guard.yml",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "orch-1386-framework-major-guard"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/orch-1386-framework-major-guard.test.mjs",
+      "kind": "file",
+      "enforcement": "external:framework-major-guard.yml",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "capable-unwired",
+      "jobKeys": [
+        "orch-1386-framework-major-guard"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/orch-1387-wallet-config-threaded.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "orch-1387-wallet-config-threaded"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/orch-1398-expo-pinned-54.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "orch-1398-expo-pinned-54"
+      ]
+    },
+    {
       "script": ".github/scripts/strict-grep/regression-test-backfill-warning.mjs",
       "kind": "file",
       "enforcement": "batch:E",
@@ -5385,6 +5518,19 @@
       ]
     },
     {
+      "script": "app-mobile/src/payments/__tests__/wallet_config_threading.orch1387.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1387-wallet-config-threaded"
+      ]
+    },
+    {
       "script": "app-mobile/src/services/__tests__/oneLinkWiring.orch1318.test.mjs",
       "kind": "file",
       "enforcement": "batch:A",
@@ -5395,6 +5541,58 @@
       "selfTest": "none",
       "jobKeys": [
         "orch-1318-onelink-wiring-consumer"
+      ]
+    },
+    {
+      "script": "mingla-admin/src/__tests__/issue864_campaign_builder_happy.test.js",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "issue-864-campaign-builder-node-tests"
+      ]
+    },
+    {
+      "script": "mingla-admin/src/__tests__/issue864_campaign_builder_tester_adversarial.test.js",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "issue-864-campaign-builder-tester-adversarial"
+      ]
+    },
+    {
+      "script": "mingla-admin/src/__tests__/issue927_create_wired_widened.test.js",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "issue-927-create-wired-widened"
+      ]
+    },
+    {
+      "script": "mingla-admin/src/__tests__/issue927_tester_adversarial.test.js",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "issue-927-qa-tester-adversarial"
       ]
     },
     {
@@ -5502,6 +5700,19 @@
       ]
     },
     {
+      "script": "mingla-business/src/payments/__tests__/walletConfigThreading.orch1387.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1387-wallet-config-threaded"
+      ]
+    },
+    {
       "script": "mingla-business/src/services/__tests__/businessOneLinkWiring.orch1318.test.mjs",
       "kind": "file",
       "enforcement": "batch:A",
@@ -5547,6 +5758,18 @@
         "--prefix",
         "app-mobile"
       ]
+    },
+    {
+      "script": "workflow-job:orch-1387-wallet-type-contract",
+      "kind": "job",
+      "enforcement": "job:orch-1387-wallet-type-contract",
+      "invocation": null,
+      "modes": [],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1387-wallet-type-contract"
+      ],
+      "reason": "NOT a gate script — the preserved orch-1387 scoped npm-ci + tsc type-contract lane (ORCH-1383 replay). It invokes no .mjs, so run-batch.mjs and the differential proof cannot see it; this synthetic job: entry makes meta-1383 parity P9 fail the PR if the preserved job is ever deleted from strict-grep-mingla-business.yml."
     }
   ]
 }

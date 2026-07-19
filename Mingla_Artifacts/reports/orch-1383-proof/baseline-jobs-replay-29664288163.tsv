@@ -1,0 +1,350 @@
+ORCH-1322: app-mobile/app.json (CONSUMER) declares no READ_MEDIA_*/READ_EXTERNAL_STORAGE android ...	success
+ORCH-1303: web picked-video blob: URL reaches the uploader UNMANGLED (resolveRawClipUploadUri web...	success
+ORCH-1292 (tester adversarial): scope-bound render + strict byte-exact drift — each taxonomy .m...	success
+ORCH-1318: consumer OneLink listener flip + onDeepLink pre-initSdk + ATT-safe single startSdk + s...	success
+ORCH-1292: public event/RSVP pills resolve party/vibe/music slugs to canonical labels; in-package...	success
+ORCH-1321: mingla-business/app.json declares no READ_MEDIA_*/READ_EXTERNAL_STORAGE android permis...	success
+ORCH-1318: business OneLink listener flip + onDeepLink pre-initSdk + go.usemingla.com domain + _l...	success
+ORCH-1318: consumer AASA claims /b,/t,/exp with matching Android intentFilters + no unbacked path...	success
+ORCH-1297: chip-in return banner opaque (fails-on-revert)	success
+ORCH-1322: consumer gallery gates route through the mediaLibraryPermission wrapper (Android short...	success
+ORCH-1300: RSVP guest phone country-picker overlay is portaled to document.body on web so positio...	success
+ORCH-1223: marketing footer has zero dead links (I-PROPOSED-1223-FOOTER-LINKS-RESOLVE)	success
+META-ORCH-0991: BaseBottomSheet sole gorhom consumer invariant	success
+ORCH-0964: theme resolver canonical	success
+G-CIRCLE-RPC-SOLE-OWNER: Your Circle RPC sole owner	success
+ORCH-1238: Stripe publishable key via mode-validated resolver only (I-STRIPE-PUBLISHABLE-KEY-VIA-...	success
+ORCH-1227: app name is "Mingla Business" + login legal links point at live usemingla.com pages (I...	success
+ORCH-0964: brand-rendering self-contained	success
+ORCH-1299: RSVP guest phone country-picker uses web overlay inside RsvpDetailsModal; checkout kee...	success
+META-ORCH-1060: INV-1 consumer location has no Nominatim/OSM	success
+ORCH-1212: curated 'today' is from-now-onward (I-CURATED-TODAY-FROM-NOW-ONWARD)	success
+ORCH-0964: foreground computed	success
+META-ORCH-1060: INV-3 discover-city codes from structured Mapbox fields	success
+ORCH-0963: public trip RPC and route segregation	success
+ORCH-0978: video upload optimistic preview	success
+ORCH-0947: trip spots count tickets	success
+G-CIRCLE-BADGE-DUAL-APP: briefcase means dual-app	success
+ORCH-1019: curated hours via canonical reader (I-CURATED-HOURS-VIA-CANONICAL-READER)	success
+ORCH-1225: careers pill + footer link use absolute career.usemingla.com (I-PROPOSED-1225-CAREERS-...	success
+META-ORCH-1104: support backend invariants (NO-KBC-ON-WEB / no bare tickets-agents / support-scop...	success
+ORCH-0975: notifications sheet bottom-sheet invariant	success
+ORCH-1224: marketing business surface lives at /business + redirect (I-PROPOSED-1224-BUSINESS-ROUTE)	success
+ORCH-0965: home dashboard uses tri-kind upcoming hook	success
+ORCH-1303: RSVP momentum pulse loop + meter Animated.timing carry isInteraction:false so runAfter...	success
+ORCH-1298: paid chip-in enqueues guest+host gift receipts, idempotent, both rails, no-sms seed, g...	success
+ORCH-0978: video autoplay muted contract	success
+ORCH-1297 (ORCH-1301 hardening): Bunny TUS PATCH re-sends its CREATE auth headers (spread ...inpu...	success
+ORCH-0964: theme typed columns	success
+ORCH-1253: business iOS infoPlist declares NSLocationWhenInUseUsageDescription (fix ITMS-90683) (...	success
+ORCH-0974: Home mobile lock pane	success
+ORCH-0957: no metered place-photo reads	success
+META-ORCH-0972: data-driven tabs	success
+ORCH-0964: well-known JSON content type	success
+META-ORCH-1060: INV-2 consumer location uses shared Mapbox package	success
+META-ORCH-1236: brands.pricing_currency/region derived from default_currency by DB trigger only (...	success
+ORCH-0964: checkout no brand theme	success
+ORCH-0913: no tab strips on dashboards	success
+ORCH-1223/1224: marketing footer mounted on business ONLY (I-PROPOSED-1223-FOOTER-MOUNTED)	success
+I-39: Pressable accessibilityLabel coverage	success
+ORCH-0978: video cancel aborts upload	success
+ORCH-1298 (ORCH-1301 hardening): brand-edit + trip-review cover previews render via video-capable...	success
+I-PROPOSED-I: MUTATION-ROWCOUNT-VERIFIED	success
+META-ORCH-0972: no brand kind reads	success
+I-PROPOSED-A: brands queries filter deleted_at IS NULL	success
+ORCH-0990: flower stop composite florist gate	success
+I-38: IconChrome touch-target >= 44 effective	success
+I-PROPOSED-O: STRIPE-EMBEDDED-COMPONENTS-VIA-OFFICIAL-SDK-ONLY	success
+ORCH-0989: unified cover picker single-sheet + gallery-first	success
+I-PROPOSED-P: STRIPE-STATE-CANONICAL-IS-CONNECT-ACCOUNTS	success
+I-PROPOSED-Q: STRIPE-API-VERSION-PINNED-VIA-SHARED-CLIENT-ONLY	success
+I-PROPOSED-H: RLS-RETURNING-OWNER-GAP-PREVENTED	success
+ORCH-0986: paired profile friend-GPS and no-heart invariants	success
+I-PROPOSED-C: no setBrands() callers	success
+I-37: TopBar primary-tab default cluster	success
+I-PROPOSED-BV: REALTIME-TABLE-PUBLICATION-PAIRED (ORCH-0854)	success
+I-PROPOSED-TR2-EVENTS-TYPE-FILTER: events queries must filter event_type	success
+I-PROPOSED-M: persist-key whitelist sync	success
+I-PROPOSED-R: STRIPE-IDEMPOTENCY-KEY-ON-EVERY-CALL	success
+I-PROPOSED-W: NOTIFICATIONS-FILTERED-BY-APP-TYPE-PREFIX	success
+I-PROPOSED-X: web-export deprecation parser	success
+I-PROPOSED-T: STRIPE-COUNTRY-FROM-CANONICAL-ALLOWLIST-ONLY	success
+I-PROPOSED-U: MINGLA-TOS-ACCEPTED-BEFORE-STRIPE-CONNECT	success
+I-PROPOSED-Y: PLATFORM-WEB-URL-FROM-ENV-ONLY	success
+ORCH-1001: native TurboModules stay out of the web bundle	success
+ORCH-0777: production ticket checkout and organizer order visibility	success
+ORCH-0778: Stripe native imports stay behind .native boundaries	success
+I-PROPOSED-K: require-cycles baselined	success
+ORCH-0776D: event cover video cancelled_at schema/code parity	success
+ORCH-0776: video processing status bridge guard	success
+I-PROPOSED-N: TRANSITIONAL exit-condition lint	success
+ORCH-1296: no top-level boot-fragile native imports (OTA boot-safety)	success
+I-PROPOSED-V: STRIPE-NOTIFICATIONS-VIA-SHARED-DISPATCHER	success
+I-PROPOSED-Z: HOME-NO-FABRICATED-EVENTS	success
+I-PROPOSED-S: STRIPE-AUDIT-LOG-ON-EVERY-EDGE-FN	success
+ORCH-0785-D: shared email shell singleton	success
+ORCH-0785-E: ticket PDF privacy contract	success
+ORCH-0805: brand cover overhaul (custom upload + Pexels + GIPHY) (I-PROPOSED-BE)	success
+ORCH-0806: audit log slug → human label resolver (I-PROPOSED-BD)	success
+ORCH-0809: Discover TM classification by ID (I-PROPOSED-BI)	success
+ORCH-0792-A: publish RPC writes event_dates	success
+ORCH-0786: creator avatar upload integrity	success
+ORCH-0802: Stripe Embedded Components routing (I-PROPOSED-O)	success
+ORCH-0787: order refund + cancel production-grade flow	success
+ORCH-0795: event_scanners auto-provision trigger + UI honesty (I-PROPOSED-AZ)	success
+ORCH-0809: Discover price filter fully removed (Const #3, #9)	success
+ORCH-0810: Brand KPI tiles sourced from real aggregator (Const #9)	success
+ORCH-0816: Last 7 days KPI tile binds stats.rev7d (label/data agreement)	success
+ORCH-0796: expected-payout derived from real Stripe app-fee + refund cols (I-PROPOSED-BC)	success
+ORCH-0783: event cover image provider pivot	success
+ORCH-1004: auth-scoped hooks gate enabled on isAuthReady	success
+I-CONSUMER-READS-AI-SIGNAL-SCORES-NOT-TRIAL-TABLE: consumer ranker reads place_pool.ai_signal_sco...	success
+ORCH-0815-B: Marketing composer + send pipeline invariants	success
+ORCH-0785-B: no onboarding@resend.dev fallback in source	success
+ORCH-0807: Brand avatar square enforcement (I-PROPOSED-BG)	success
+META-ORCH-0827: packages/ pure-presentational isolation	success
+META-ORCH-0827: consumer (app-mobile) is native Stripe only	success
+I-AI-SCORE-STALENESS-AUTO-RECOVERED: META-ORCH-1009 Sub-D rescore-sweep cron registered + sole-wr...	success
+ORCH-1205: edge-fn CORS allow-list must include x-client-info	success
+ORCH-1056: STRIPE_RAK_* env reads via _shared/stripeMode.ts helper	success
+ORCH-0792-B: post-publish reads source from event_dates not theme JSON	success
+ORCH-0789: error toast must be user-dismissible + Stripe code preserved	success
+ORCH-1052: partner identity + account-level Stripe + currency-match invite gate	success
+ORCH-1050: brand-team invite flow is functional (no TRANSITIONAL)	success
+ORCH-0785-C: buyer/event/order strings must flow through escapeHtml	success
+ORCH-0804: Stripe Tax enabled on Checkout Sessions (I-PROPOSED-BF)	success
+ORCH-0808: appsflyer_devices writes carry app: (I-PROPOSED-AF-DISCRIMINATOR)	success
+ORCH-0791: checkout session must never be reused post-terminal	success
+I-AI-SIGNAL-SCORES-COLUMN-SOLE-OWNER: only run-place-intelligence-trial writes the column	success
+ORCH-0809: Discover TM local-time date window (I-PROPOSED-BJ)	success
+ORCH-1051: scanner-team invite flow is functional (no TRANSITIONAL)	success
+I-ARI-NO-OKLCH: Ari surface uses HSL/hex/rgb only (no oklch/color-mix/lab)	success
+ORCH-0793: biz_ticket_scan event_dates time-window enforcement (I-PROPOSED-BB)	success
+ORCH-0788: notification template_key dispatched + writers inline-dispatch (I-PROPOSED-BA)	success
+ORCH-0784: event list sales summary visibility	success
+ORCH-0785-A: Resend POST must declare attachments or opt out	success
+ORCH-1047: brand role literal is brand_owner, not account_owner	success
+ORCH-1204: business-web AuthProvider hydrates session/user/loading synchronously	success
+ORCH-1056: connect-*.web.tsx pages import shared iOS scroll/zoom helpers	success
+ORCH-0852: consumer payment flow frozen (no regressions)	success
+ORCH-0943: custom coords locked outside GPS mode	success
+ORCH-0873 [Tr3 Stage 2 UI]: order_installments rows pinned to single-source currency (no per-row ...	success
+ORCH-0839-A: merged meta counts match items returned (I-PROPOSED-DISCOVER-META-MATCHES-ITEMS)	success
+ORCH-0837: Stripe PI card-only + handleURLCallback wired (I-PROPOSED-STRIPE-PI-EXPLICIT-METHOD-TY...	success
+I-PROPOSED-AK: TICKET_PDF_FETCHABLE_BY_OWNER (ORCH-0842)	success
+ORCH-0852: I-WALLET-PASS-HIDDEN-UNTIL-IMPLEMENTED	success
+I-VE6-PARSE-PLAY-USER-JWT-ONLY: parse-play-activities never references service role	success
+ORCH-0843: Stripe direct-charge shape (no transfer_data.destination)	success
+ORCH-0847: public buyer phone field uses E.164 composer	success
+ORCH-0950 [Trip]: capacity, dates, and destination are canonical columns	success
+ORCH-0954: controller props pinned	success
+ORCH-0862: brand-delete blocking filter is date-aware (I-PROPOSED-BRAND-DELETE-BLOCKING-DATE-AWAR...	success
+ORCH-0948: waitlist confirm exclusion	success
+ORCH-0847: consumer cart marketing opt-in defaults unchecked	success
+ORCH-0954: RAK scope pinned	success
+ORCH-0853: business-ticket calendar end-not-start (I-CALENDAR-BUSINESS-TICKET-END-NOT-START)	success
+ORCH-0873 [Tr3 Stage 2 UI]: Stripe Customer + saved PM not deletable while installments pending	success
+ORCH-0850: consumer calendar end-not-start (I-PROPOSED-CONSUMER-CALENDAR-USES-END-NOT-START)	success
+ORCH-0925 [Trip Money]: installment-plan checkouts attach Stripe Customer	success
+ORCH-0862: event-detail handleCancelConfirm does not navigate (Symptom A)	success
+ORCH-0931: postgres_changes listeners avoid PK-filter silent drop	success
+ORCH-0921 [Trip Money]: finalize callers pass installment-plan params	success
+ORCH-0844: Stripe Connect account ID re-applied per-PI on mobile (I-PROPOSED-STRIPE-CONNECT-ACCOU...	success
+I-ARI-USER-JWT-ONLY: Ari edge handlers never reference service role	success
+ORCH-0839-A: TM cache-hit serves events verbatim (I-PROPOSED-DISCOVER-TM-CACHE-NO-SLICE)	success
+META-ORCH-1062: approve scorer-invoke carries signal_id + confirm never demotes is_servable	success
+ORCH-0847: TicketClaimConfirmModal removed (consumer cart sheet supersedes)	success
+ORCH-0860: markdown links must URL-encode parens (e.g. (tabs))	success
+ORCH-0839-A: mobile AsyncStorage cache permanently removed (I-PROPOSED-DISCOVER-NO-MOBILE-CACHE)	success
+ORCH-0849: PaymentSheet parity across consumer + business (I-PROPOSED-STRIPE-PAYMENTSHEET-PARITY)	success
+I-PROPOSED-AL: TICKET_PDF_SINGLE_SOURCE_OF_TRUTH (ORCH-0842)	success
+ORCH-0852: I-CHECKOUT-OWN-CONFIRM-PATH + I-CHECKOUT-NO-POLL-AND-FAIL	success
+ORCH-0869/0914 [Tr3]: installment PI creation owned by shared helper	success
+ORCH-0828: no new Date("YYYY-MM-DD") (I-PROPOSED-LIVE-STATUS-UTC-INPUT)	success
+ORCH-0914 [Trip Money]: manual installment actions route through shared PI helper	success
+ORCH-0850: business event lifecycle single helper (I-PROPOSED-EVENT-LIFECYCLE-SINGLE-HELPER)	success
+I-VE5-PARSE-MENU-USER-JWT-ONLY: parse-restaurant-menu never references service role	success
+ORCH-0836: Stripe RN 0.65.1 forwardRef warning silenced via LogBox.ignoreLogs	success
+ORCH-0939: CollabDeckSheet uses session-scoped RecommendationsProvider	success
+ORCH-0847: consumer cart sheet supports multi-line checkout	success
+ORCH-0824: events.category writes blocked (I-PROPOSED-EVENT-CATEGORY-FROZEN)	success
+ORCH-0824: eventTaxonomy.ts three-way parity (I-PROPOSED-EVENT-TAXONOMY-PARITY)	success
+I-REGRESSION-TEST-BACKFILL-WARN: modified source files without sibling test (informational, ORCH-...	success
+ORCH-0829-B D-1: biz_ticket_checkout_create_session tombstones past-expiry sessions (I-PROPOSED-C...	success
+ORCH-0849: PI payment_method_types sourced from allowlist (I-PROPOSED-STRIPE-PM-METHOD-ALLOWLIST)	success
+ORCH-0863: Marketing Hub Phase B invariants (no revenue, no Opened, starter-pack guard, compose t...	success
+ORCH-0845: discover-merged-events excludes ended events on all paths (I-PROPOSED-DISCOVER-EXCLUDE...	success
+ORCH-0846: consumer event sheet venue/address parity with brand-side public page (I-PROPOSED-CONS...	success
+ORCH-0875 [Tr4]: bookings-closed gate enforced at ticket-checkout-create	success
+ORCH-0880 [Tr5]: required intake questions block ticket-checkout-create	success
+ORCH-0880 [Tr5]: intake schema writes flow through canonical service/RPC	success
+ORCH-0909: positional shared-deck adversarial gates	success
+ORCH-0875 [Tr4]: cron skips cancelled installments (belt-and-braces filter)	success
+I-PROPOSED-CREATOR-ENTRY-IS-INSTANT: no entry-blocking server mutation in app/**/create.tsx (ORCH...	success
+ORCH-0882 [Payment Plan Disclosure]: every plan-active trip buyer + planner surface imports Insta...	success
+ORCH-0864 [Marketing Composer V2]: TenTap single-renderer + body-not-TextInput + insertion-bar-al...	success
+ORCH-0880 [Tr5]: trip_intake_files bucket RLS policies present	success
+ORCH-0885-A: No BottomNav outside (tabs)/_layout.tsx + desktop gate via hook only	success
+ORCH-0875 [Tr4]: refund_policy writes flow through validator	success
+ORCH-0891: Marketing performance budget detector self-test (composer <= 280KB gz)	success
+ORCH-0909: positional shared-deck regression gates	success
+ORCH-0892: no bespoke keyboard plumbing outside Sheet/ComposerV2/richEditor (informational, flips...	success
+ORCH-0861: sibling <ScrollView> without flexGrow:0 (informational, post ORCH-0857)	success
+ORCH-1105: glass surfaces route blur through shouldUseRealBlur (I-WEB-GLASS-OPAQUE-FALLBACK)	success
+ORCH-1167 [event-page-canonical]: EventOfferingBody hosts no scroll root + no cover shell (I-PROP...	success
+ORCH-1158 (re-pointed @ ORCH-1186): the live public event/RSVP bodies gate the exact address on h...	success
+ORCH-1136 R3: biz-web sheets animate via compositor CSS transition, not JS-rAF reanimated (I-PROP...	success
+ORCH-1138 Leg 2: deck EVENT card opens ConsumerEventDetailScreen, never EBES (I-PROPOSED-1138-EVE...	success
+ORCH-0906: no resurrected solo-only curated-collab comment	success
+ORCH-0945: PreferencesSheet read-only cannot write	success
+ORCH-1325: CI typescript install is version-pinned (no `latest` = TS7 breakage)	success
+ORCH-0945: collab dead-end reason coverage + payload propagation	success
+ORCH-1116: GIPHY key wired — app.config fail-loud guard + .env.example documented (I-GIPHY-KEY-...	success
+ORCH-1120: published refund/deadline/bookings-closed via gated RPC (I-PROPOSED-1120-PUBLISHED-REF...	success
+ORCH-1153 WS3: experience page/recap show the server all-in, never bare base under the all-in cap...	success
+ORCH-0955: native Stripe Tax invariants	success
+ORCH-1147R2: checkout SELECTION step leads with the server all-in (I-PROPOSED-1147R2-SELECTION-SH...	success
+ORCH-1079: business venue/brand/trip pickers use shared Mapbox input (INV-1)	success
+ORCH-1105: firewall-era signed-out route stubs stay DELETED (I-NO-ROUTE-STUB-GATES)	success
+ORCH-1136: TopSheet web overlay no-fixed + web top-bar breathing gap (I-PROPOSED-TOPSHEET-WEB-OVE...	success
+ORCH-1153 WS2: one canonical rule-based open-daily owner across surfaces (I-PROPOSED-1153-OPENDAI...	success
+ORCH-1138 Leg 3 rework: consumer experience Reserve checkout byte-identical — eventDateId + qua...	success
+ORCH-0908: chat mention mute respected	success
+ORCH-1148 reserve-tap: sheet render gate mirrors the button gate (I-PROPOSED-1148-RESERVE-SHEET-G...	success
+ORCH-1079: mapbox-geocode suggest stays filter-free for POI/name search (INV-3)	success
+ORCH-1076: paid buyer-supply requires charges enabled	success
+ORCH-1147: web Checkout bills the fee-grossed pre-tax subtotal (I-PROPOSED-1147-WEB-CHARGE-BILLS-...	success
+ORCH-1153 WS2: every experience CTA reads 'Reserve' (consumer passes buyVerb/freeVerb) (I-PROPOSE...	success
+ORCH-1214: business app.config.ts branch 4 accepts pk_live_ under live mode (I-ORCH-1214-BUSINESS...	success
+ORCH-1154: snap suggestions auto-draft + navigate (no per-card review; Ari manual-confirm untouched)	success
+ORCH-1167 [event-page-canonical]: pg_public_event_by_slug omits exact address+pin when hidden, re...	success
+ORCH-1137: biz-web lucide shim renders real icons, never undefined (I-PROPOSED-1137-BIZ-WEB-LUCID...	success
+ORCH-1105: root layout keeps the ORCH-1103 sign-out loop guard (I-LAYOUT-NO-SELF-REDIRECT)	success
+ORCH-1116: buyer-readiness predicates stay SECURITY DEFINER (booking-gate RLS)	success
+ORCH-1117: PublicEventPage text reads from luminance-aware palette, no raw white on palette surfa...	success
+ORCH-1147: pg_public_event_tier_allin has ONE owner; trip/experience reuse the helper (SC-11)	success
+ORCH-1167 [event-page-canonical]: EventOfferingBody emits sections 2..8 in the locked canonical o...	success
+ORCH-1105: sheets use WebSafeGestureDetector, not raw GestureDetector (I-WEB-GESTURE-SAFE)	success
+ORCH-1167 [event-page-canonical]: web + consumer both read the standard-event page via pg_public_...	success
+ORCH-1075: paid-publish integrity guards (Stripe readiness + past-date)	success
+ORCH-1130: no buyer-facing tax/address form on checkout payment (I-PROPOSED-1130-NO-BUYER-TAX-FORM)	success
+ORCH-1079: Google places-autocomplete retired, GOOGLE_MAPS_API_KEY retained (INV-2)	success
+ORCH-1138: trip Reserve opens the cart directly, never EBES (I-PROPOSED-1138-TRIP-RESERVE-STRAIGH...	success
+ORCH-1146: no hardcoded GBP currency fallback in the experience-parser path (I-PROPOSED-1146-PARS...	success
+ORCH-1138 Leg 2: no refund/deadline/itinerary/route/pay-toggle on the event page (I-PROPOSED-1138...	success
+ORCH-1148 2.1a: engine is sole slot source + no checkout in booking core (I-PROPOSED-1148-AVAILAB...	success
+ORCH-1138 Leg 3 rework: consumer experience surface imports nothing from mingla-business/src (I-M...	success
+ORCH-1147: checkout headline Total is the server fee-grossed all-in (I-PROPOSED-1147-CART-TOTAL-I...	success
+ORCH-1058 / ORCH-1058B: collab dead-end system banner (allowlist parity + intrinsic marker + cros...	success
+META-ORCH-0954: comms ledger stanza + 2-section output	success
+ORCH-0978: event cover video cap consistency	success
+ORCH-1138 Leg 3: ExpandedBusinessEventSheet DELETED, zero live importers (I-PROPOSED-1138-EBES-DE...	success
+ORCH-1167 [event-page-canonical]: inline ticket-box total reads server all-in, never bare base (I...	success
+ORCH-1186-C [venue-unify]: venue menu is DISTINCT from the snap-menu parser — menusService/publ...	success
+META-ORCH-1161 [notif-system]: SMS via approved Messaging Service + per-market kill-switch (I-PRO...	success
+I-PROPOSED-1201-PROBE-NO-WRITE-SIDE-EFFECTS: synthetic probes read-only against vendors (only Ser...	success
+I-PROPOSED-1201-SERVICE-KEY-CANONICAL: api_health_services is the ONE owner of the monitored-serv...	success
+I-PROPOSED-1201-ALERT-EMAIL-SINGLE-OWNER: api-health-probe sends operator alerts ONLY via sendOps...	success
+I-PROPOSED-1201R2-PROCESSOR-NO-BALANCE-ALERT: Stripe/Paystack never emit a balance/credit alert (...	success
+ORCH-1192 [app-instrumentation-gaps]: app_opened (cold+warm) + checkout_started wired across both...	success
+ORCH-1193 [sheet-cutoff]: the 8 venue/event action sheets bound their body ScrollView with flex:1...	success
+I-PROPOSED-1201R2-CLASS-B-REACTIVE-ERROR-MATCH: every Class-B service has a reactive/header deple...	success
+I-PROPOSED-1201R2-THRESHOLDS-FROM-BASELINE: alert thresholds seeded from REAL baselines (twilio 2...	success
+ORCH-1227 [Nigeria SMS via Termii]: NG→Termii (dnd/generic) behind the country seam + SMS_LIVE_...	success
+META-ORCH-1187 [Growth Analytics Hub]: PostHog US-host + no-phx-in-client + consent-gate-before-c...	success
+ORCH-1186-A [venue-unify]: opening hours single owner — brand_hours is canonical; service_perio...	success
+ORCH-1186-C [venue-unify]: venue menu is DISPLAY-ONLY — no cart/checkout/quantity/order/payment...	success
+META-ORCH-1235-A: every full-screen-spinner-gating service (getBrand/getBrands/getExperiencesByBr...	success
+ORCH-1324: business nav+hero CTAs are device-aware Get-the-app (iOS→business App Store, else→...	success
+ORCH-1319 G-3: download QR encodes DOWNLOAD_URL (one QR, both platforms) with role=img+aria-label...	success
+ORCH-1220: reviewer-signin gates on REVIEWER_EMAIL + REVIEWER_BYPASS_CODE (constant-time) + gener...	success
+ORCH-1216: no service-role key/secret in mingla-marketing (I-PROPOSED-1216-NO-SERVICE-KEY-CLIENT)	success
+ORCH-1226: careers applicant confirmation sends from careers@usemingla.com (Mingla Careers) + car...	success
+ORCH-1319 G-4: zero testflight.apple.com tokens under mingla-marketing/ + supabase/functions/ (th...	success
+META-ORCH-1222: job_applications RLS deny-by-default, no permissive anon/public policy (I-PROPOSE...	success
+ORCH-1328: /links CTA opens the store client-side (device-aware window.open + assign fallback, st...	success
+ORCH-1326: /business/download renders the inline choice (headers()+resolvePlatformFromUa → reso...	success
+ORCH-1381 ADDENDUM D-B: lib/open-external.ts is the ONE owner of opening an external destination ...	success
+META-ORCH-1232 (PUBLIC-SAFETY, CLOSE-BLOCKING): isAuthReady absent from public hooks/services; si...	success
+META-ORCH-1232 (C1): no _temp_/non-UUID id reaches a uuid column or the current-brand pointer —...	success
+ORCH-1327: /links tab switcher uses ONE persistent x-animated pill (no layoutId mount/unmount swi...	success
+ORCH-1381: every business get-app surface offers the inline choice — Download the app (iOS→bu...	success
+ORCH-1228: consumer Apple-review fixes — neutral location button (5.1.1iv) + calendar example (...	success
+ORCH-1240 / #668: side-aware delete-user + client side payloads (dual-account deletion)	success
+META-ORCH-1255: admin venue review is keyed to the venue_listings row; no brands claim-lifecycle ...	success
+ORCH-1263: pre-approval claim stages only — no live-place hours/gallery/ownership writes before...	success
+ORCH-1218: no AI-vendor token in venue-authoring user-facing errors; sanitizeAuthoringError wired...	success
+META-ORCH-1255: authoring pipeline state is keyed one-per-venue — no onConflict brand_id clobbe...	success
+ORCH-1263: claim search carries claim_state + blocked variants render at the gate + both hours va...	success
+META-ORCH-1235-B: queryClient sets networkMode: "always" so an online flap cannot pause-stick a q...	success
+META-ORCH-1232 (H3): getBrands verifies an attached authed session before returning the list — ...	success
+META-ORCH-1255: venue creation never inserts a brands row; decommissioned RPCs stay stubs (I-PROP...	success
+META-ORCH-1222: job_postings anon-read is open-only + careers-data filters status=eq.open (I-PROP...	success
+ORCH-1271: admin authz/audit node:test suites (happy-path + adversarial)	success
+ORCH-1240 / #668: consumer inbox excludes support linked_entity_type	success
+ORCH-1211: BusinessNotificationsScreen has no unguarded top-level reanimated layout-builder + Rea...	success
+ORCH-1271: admin single-gate + audited-write primitive + gate-first (I-PROPOSED-1271-ADMIN-SINGLE...	success
+ORCH-1217: no AI-vendor name (Gemini/OpenAI/Anthropic/Claude/…) in user-facing Ari copy; "Mingl...	success
+META-ORCH-1222: career-cvs bucket private + 5MB + PDF/DOC/DOCX + no client policy (I-PROPOSED-122...	success
+META-ORCH-1222 (D-1): job_postings admin writes stay is_admin_user()-gated, no broad authenticate...	success
+ORCH-1242: iOS camera + photo purpose strings specific w/ example (I-IOS-CAMERA-PHOTO-PURPOSE-STR...	success
+ORCH-1319 G-1: explorer nav CTA links to the live stores by detected platform, fires get_the_app_...	success
+I-PROPOSED-1209-NO-EAGER-VIDEO-PRELOAD: web cover <video> uses preload=none + poster (no eager .m...	success
+META-ORCH-1232 (H2): getBrands unions brands.account_id owner reads with brand_team_members (de-d...	success
+ORCH-1319 G-2: /download UA-redirects iOS/Android to the live store constants, renders QR+badges ...	success
+ORCH-1213: payment webhook-silence is info-only — stripe/paystack webhookFreshness pass alertOn...	success
+META-ORCH-1255: public venue reads go through venue_public_view only — no direct venue_listings...	success
+ORCH-1272: identity admin-read RLS + admin_get_person read-RPC (I-PROPOSED-1272-IDENTITY-ADMIN-READ)	success
+META-ORCH-1235-C: every enumerated full-screen loading gate (hub/experiences, hub/trips, brand pr...	success
+META-ORCH-1232 (C2): brand mutations are auth-ready-gated (await-until-ready; AuthNotReadyError o...	success
+META-ORCH-1222: careers-apply server-validates all six fields + CV + job_slug (I-PROPOSED-1222-AP...	success
+META-ORCH-1222: middleware rewrites only the career. host + guards the apex against /_careers (I-...	success
+ORCH-1256: brand-profile to-dos — trim-blank predicates + band 6 + section deep-link anchors + ...	success
+META-ORCH-1222: careers route segment is a routable (non-underscore, non-group) Next.js segment w...	success
+META-ORCH-1255(B): BrandEditView carries no physical-location toggle; has_physical_location write...	success
+ORCH-1230: consumer Apple-rejection round 2 — fully-functional-without-GPS manual city path (5....	success
+META-ORCH-1234: Connect-webhook writeAudit passes event_id null (+ audit.ts coerces non-uuid to n...	success
+META-ORCH-1281: SMS preview channel-branch + MMS media-url + no RCS tab (I-PROPOSED-1281/1282/128...	success
+ORCH-1277: offerings/venues write RPCs are guard-first + audited + least-privilege (HIGH carry re...	success
+ORCH-1309: /brand/[id]/edit + /team fetch the brand via useBrand(id) + guard the cold-load window...	success
+ORCH-1300: venue gallery 'Add photos' web picker routes through the real browser file input, neve...	success
+ORCH-1307: mobile-web video covers are enabled (no isPhoneWeb gate; video button disabled={upload...	success
+ORCH-1308: video-cover durations reach the INTEGER event_cover_video_jobs columns rounded (edge M...	success
+ORCH-1308: the picked cover video blob survives a retry on web (pickedVideoAssetsRef; freed on ne...	success
+ORCH-1276: identity write RPCs are guard-first + audited + least-privilege; console takes no dire...	success
+ORCH-1273: offerings/venues admin-read RLS + read RPCs are READ-ONLY (I-PROPOSED-1273-OFFERINGS-R...	success
+META-ORCH-1290: no business signal scores pre-approve + pitch consumer-facing + pitch write via p...	success
+ORCH-1306: the venue-settings Photos & vibes & AI section exposes exactly ONE edit affordance (ve...	success
+ORCH-1274: money reads via definer RPCs, no admin money RLS + cents contract (I-PROPOSED-1274-MON...	success
+ORCH-1304: the venue pitch is generated at APPROVE, not by an owner pre-approval affordance (I-PR...	success
+ORCH-1278: money-act RPCs guard-first + audited; refund amount-bounded + idempotent + service_rol...	success
+ORCH-1310: BrandEditView initializes its draft when the fetched brand arrives async (brand !== nu...	success
+ORCH-1369: both apps' eas.json submit.production.android.releaseStatus is "completed" (not "draft...	success
+ORCH-1367: app-mobile/app.json and mingla-business/app.json carry the SAME expo.version — the t...	success
+ORCH-1313: consumer ATT/startAppsFlyer fires at first-open for ANONYMOUS sessions — no !isAuthe...	success
+ISSUE-862: all five ad-platform token/refresh-secret env-var NAMES (Meta/TikTok/Snapchat/Google/R...	success
+ORCH-1313: business api3 S2S authentication header carries APPSFLYER_S2S_TOKEN (fail-closed), nev...	success
+ORCH-1385: every @mingla/* workspace package imported by mingla-business or app-mobile is DECLARE...	success
+ORCH-1355: RsvpCreatorWizard handleUpdate is STABLE (no liveDraft in deps) and builds the autosav...	success
+ORCH-1398: expo stays pinned to SDK 54 in BOTH apps — Expo 57 was INTENTIONALLY reverted (ORCH-...	success
+ORCH-1313: consumer performPrivateAuthCleanup integrations block calls BOTH clearAppsFlyerUserId(...	success
+ORCH-1312: the picked-video duration read spaces its retries with a delay so a later attempt land...	success
+ORCH-1313 (§4.C): AppsFlyer dev key env-driven with a RELEASE-BOUND fail-loud build guard in BOT...	success
+ORCH-1371/1372: the consumer country picker (CountryPickerModal) is never co-present with a wrapI...	success
+ORCH-1355: RsvpStep5Setup capacity toggle + visibility pick each persist via ONE combined updateD...	success
+ISSUE-864 WP4 QA: tester adversarial suite — exact cap boundaries (100/101, 1024/1025, 300/301,...	success
+ORCH-1313: business api3 S2S iOS app id is id-prefixed via idempotent ensureIdPrefix normalizer; ...	success
+ISSUE-927 QA: tester adversarial suite — the D-1 mislabeling class pinned at the CREATE_WIRED b...	success
+ORCH-1355: both create routes (app/rsvp/[id]/edit.tsx + app/event/[id]/edit.tsx) reconcile the d_...	success
+ORCH-1342: mingla-business store links SSOT'd in src/constants/storeLinks.ts, byte-equal to the m...	success
+ORCH-1378/1380: every .web.* shim exports a SUPERSET of its native twin's value exports — TypeS...	success
+ISSUE-927: CREATE_WIRED widened to all five + the payload-builder cascade — every payload carri...	success
+ORCH-1336: consumer NotificationsSheet populated+online body contributes no flex-growing sibling ...	success
+ORCH-1387: scoped wallet type-contract lane — PaymentSheetInitInput wallet keys vendor-typed ag...	success
+ORCH-1387: wallet config threaded — the Apple-4.9 cart line (cartItems via buildApplePayCartIte...	success
+ORCH-1313: no tracking SDK transmits before ATT resolves — every startAppsFlyer() is inside the...	success
+ORCH-1311: a picked video's duration is read ROBUSTLY (seek-to-end resolves Infinity/0 + retry + ...	success
+ISSUE-866: (G1/A1-2) the invented static Snap token env NAME appears NOWHERE — no static Snap t...	success
+ISSUE-864 WP4: campaign-builder happy-path suite — per-channel copy caps (TikTok 100-hard+emoji...	success
+ISSUE-862: the (future WP6) _shared/reddit.ts never constructs a create body without an explicit ...	success
+ORCH-1342: OneLink deep_link_sub3 parsed ONLY in oneLinkResolver.ts ('guest-list' → typed landi...	success
