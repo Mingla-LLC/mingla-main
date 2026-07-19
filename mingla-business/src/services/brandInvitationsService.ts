@@ -152,10 +152,14 @@ export async function inviteBrandMember(
     },
   );
   if (error) {
-    // supabase-js wraps non-2xx as an Error with `context.response`.
-    const status = extractStatus(error);
-    const code = extractErrorCode(data, error) ?? "server";
-    throw new BrandInvitationServiceError(code, status, error.message);
+    // ORCH-1404 — status/code come from the FunctionsHttpError `context`
+    // (Response), not the null `data`. See parseFunctionsError.
+    const { status, code } = await parseFunctionsError(error);
+    throw new BrandInvitationServiceError(
+      code,
+      status,
+      error instanceof Error ? error.message : undefined,
+    );
   }
   if (!data || typeof data !== "object" || typeof (data as { invitation_id?: unknown }).invitation_id !== "string") {
     throw new BrandInvitationServiceError("server", 500, "invalid response");
@@ -171,9 +175,15 @@ export async function acceptBrandInvitation(
     { body: { token } },
   );
   if (error) {
-    const status = extractStatus(error);
-    const code = extractErrorCode(data, error) ?? "server";
-    throw new BrandInvitationServiceError(code, status, error.message);
+    // ORCH-1404 — the load-bearing accept parse. A 403 invite_email_mismatch,
+    // 404, 409, 410, etc. now surface their REAL status/code so the accept
+    // screen renders the specific copy (and the wrong-account recovery).
+    const { status, code } = await parseFunctionsError(error);
+    throw new BrandInvitationServiceError(
+      code,
+      status,
+      error instanceof Error ? error.message : undefined,
+    );
   }
   if (!data || typeof data !== "object") {
     throw new BrandInvitationServiceError("server", 500, "invalid response");
@@ -213,9 +223,13 @@ export async function acceptMyPendingInvitation(
     { body: { invitationId } },
   );
   if (error) {
-    const status = extractStatus(error);
-    const code = extractErrorCode(data, error) ?? "server";
-    throw new BrandInvitationServiceError(code, status, error.message);
+    // ORCH-1404 — real status/code from the FunctionsHttpError context.
+    const { status, code } = await parseFunctionsError(error);
+    throw new BrandInvitationServiceError(
+      code,
+      status,
+      error instanceof Error ? error.message : undefined,
+    );
   }
   if (!data || typeof data !== "object") {
     throw new BrandInvitationServiceError("server", 500, "invalid response");
@@ -249,18 +263,23 @@ export async function acceptMyPendingInvitation(
 export async function declineBrandInvitation(
   invitationId: string,
 ): Promise<void> {
-  const { data, error } = await supabase.functions.invoke(
+  const { error } = await supabase.functions.invoke(
     "decline-brand-invitation",
     { body: { invitationId } },
   );
   if (error) {
-    const status = extractStatus(error);
-    const code = extractErrorCode(data, error) ?? "server";
+    // ORCH-1404 — now receives the CORRECT status/code, which only makes the
+    // treat-as-success branch below more accurate.
+    const { status, code } = await parseFunctionsError(error);
     // A no-longer-pending invite is the decline goal — treat as success.
     if (status === 410 || code === "invite_not_actionable") {
       return;
     }
-    throw new BrandInvitationServiceError(code, status, error.message);
+    throw new BrandInvitationServiceError(
+      code,
+      status,
+      error instanceof Error ? error.message : undefined,
+    );
   }
 }
 
@@ -301,9 +320,13 @@ export async function listMyPendingInvites(): Promise<PendingInviteRow[]> {
     { body: {} },
   );
   if (error) {
-    const status = extractStatus(error);
-    const code = extractErrorCode(data, error) ?? "server";
-    throw new BrandInvitationServiceError(code, status, error.message);
+    // ORCH-1404 — real status/code from the FunctionsHttpError context.
+    const { status, code } = await parseFunctionsError(error);
+    throw new BrandInvitationServiceError(
+      code,
+      status,
+      error instanceof Error ? error.message : undefined,
+    );
   }
   if (!data || typeof data !== "object") {
     return [];
@@ -361,27 +384,81 @@ export async function listBrandTeamMembers(
 
 // ---------- Internals ----------
 
-function extractStatus(error: unknown): number {
-  if (error && typeof error === "object") {
-    const ctx = (error as { context?: { response?: { status?: number } } })
-      .context;
-    if (ctx?.response?.status) return ctx.response.status;
-    const s = (error as { status?: number }).status;
-    if (typeof s === "number") return s;
-  }
-  return 500;
+/**
+ * ORCH-1404 [accept-invite-web-error-recovery] F-2 — the canonical parse of a
+ * Supabase edge-function error.
+ *
+ * ROOT CAUSE this replaces: the deleted `extractStatus`/`extractErrorCode` read
+ * `error.context.response.status` and `data.error`. Neither exists on a real
+ * `FunctionsHttpError`. supabase-js throws it at `FunctionsClient.js:266`
+ * (`if (!response.ok) throw new FunctionsHttpError(response)`), and
+ * `FunctionsError`'s constructor stores its third arg as `this.context`
+ * (`types.js`), so for an HTTP error **`error.context` IS the `Response`**:
+ *   - real status → `error.context.status`   (NOT `context.response.status`)
+ *   - real body   → `await error.context.json()`   (NOT `data`, which supabase-js
+ *     sets to `null` on non-2xx — `data.error` was always null → code "server")
+ * The old wrong-path read fell through to 500 / "server" for EVERY failure, so
+ * `errorCopyFor` only ever hit its generic `default` branch. Do NOT revert to
+ * `context.response.status` or `data.error`.
+ * (I-PROPOSED-1404-FUNCTIONS-ERROR-PARSE-CANONICAL.)
+ */
+interface ResponseLike {
+  status: number;
+  clone?: () => { json: () => Promise<unknown> };
+  json?: () => Promise<unknown>;
 }
 
-function extractErrorCode(data: unknown, error: unknown): string | null {
-  // Edge fn returns { error: '<code>' } on non-2xx; supabase-js stuffs the
-  // parsed body in `data` even when status is non-2xx.
-  if (data && typeof data === "object") {
-    const code = (data as { error?: unknown }).error;
-    if (typeof code === "string") return code;
-  }
+function isResponseLike(value: unknown): value is ResponseLike {
+  if (!value || typeof value !== "object") return false;
+  const v = value as { status?: unknown; clone?: unknown; json?: unknown };
+  return (
+    typeof v.status === "number" &&
+    (typeof v.clone === "function" || typeof v.json === "function")
+  );
+}
+
+export async function parseFunctionsError(
+  error: unknown,
+): Promise<{ status: number; code: string }> {
   if (error && typeof error === "object") {
-    const code = (error as { code?: unknown }).code;
-    if (typeof code === "string") return code;
+    const ctx = (error as { context?: unknown }).context;
+    // The FunctionsHttpError case — `context` IS the `Response`.
+    if (isResponseLike(ctx)) {
+      const status = ctx.status;
+      let code = "server";
+      try {
+        // `.clone()` so a second reader (logging / React Query) can never trip
+        // "body already read". Fall back to the response itself if `.clone` is
+        // absent (defensive; real Responses always have it).
+        const source =
+          typeof ctx.clone === "function" ? ctx.clone() : (ctx as { json: () => Promise<unknown> });
+        const body = await source.json();
+        if (
+          body &&
+          typeof body === "object" &&
+          typeof (body as { error?: unknown }).error === "string"
+        ) {
+          code = (body as { error: string }).error;
+        }
+      } catch {
+        // Unparseable body — keep the real status, generic code.
+        code = "server";
+      }
+      return { status, code };
+    }
+    // Legacy fallback — hand-constructed / re-thrown errors that carry the
+    // status/code at the top level (e.g. a re-thrown BrandInvitationServiceError).
+    // Preserved so a genuinely-unknown error still maps to a sane message.
+    const topStatus = (error as { status?: unknown }).status;
+    const topCode = (error as { code?: unknown }).code;
+    if (typeof topStatus === "number" || typeof topCode === "string") {
+      return {
+        status: typeof topStatus === "number" ? topStatus : 0,
+        code: typeof topCode === "string" ? topCode : "server",
+      };
+    }
   }
-  return null;
+  // FunctionsFetchError (network — `context` is the fetch error, not a Response)
+  // or a truly-unknown throw: status 0 → generic copy, never a fake 500.
+  return { status: 0, code: "server" };
 }

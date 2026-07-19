@@ -58,6 +58,10 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { Button } from "../src/components/ui/Button";
 import { BusinessAppDownloadCta } from "../src/components/invite/BusinessAppDownloadCta";
+// ORCH-1404 [accept-invite-web-error-recovery] — the recoverable wrong-account
+// screen (F-1) + the ONE `?next=` validator it routes through (reused, unchanged).
+import { WrongAccountRecovery } from "../src/components/invite/WrongAccountRecovery";
+import { sanitizeNextRoute } from "../src/utils/nextRoute";
 import {
   accent,
   canvas,
@@ -86,7 +90,9 @@ export default function AcceptBrandInvitationRoute(): React.ReactElement {
 
   // ORCH-1373 C-1373-A — branch on `authStatus`, NOT on `isAuthReady`. Deriving
   // the spinner from the boolean is the bug.
-  const { authStatus } = useAuth();
+  // ORCH-1404 — `user` + `signOut` power the wrong-account recovery (see
+  // handleSwitchAccount): show the signed-in email + sign out before resuming.
+  const { authStatus, user, signOut } = useAuth();
   const { mutateAsync: acceptAsync } = useAcceptBrandInvitation();
 
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
@@ -172,6 +178,23 @@ export default function AcceptBrandInvitationRoute(): React.ReactElement {
     router.replace("/(tabs)/home" as never);
   }, [router]);
 
+  // ORCH-1404 [accept-invite-web-error-recovery] F-1 — the wrong-account escape.
+  // Sign the current (wrong) user OUT, THEN resume the invite as a different
+  // account via the ORCH-1373/1375 `?next=` path.
+  //
+  // WHY sign out FIRST (load-bearing): `/auth`'s STEP-2 resume effect fires
+  // whenever `!loading && user`, so navigating to `/auth?next=` while still
+  // signed in as the wrong account would immediately bounce back here and
+  // re-fail as the same account (a loop). Signing out makes `user` null, so
+  // `/auth` renders the sign-in screen and CAPTURES `next`; after the user signs
+  // in as the correct account, the resume fires. Security is enforced by
+  // `sanitizeNextRoute` inside buildSwitchAccountResume AND again at `/auth`.
+  const handleSwitchAccount = useCallback(async (): Promise<void> => {
+    if (token.length === 0) return;
+    await signOut();
+    router.replace(buildSwitchAccountResume(token) as never);
+  }, [token, signOut, router]);
+
   // ─── RENDER ──────────────────────────────────────────────────────────────
   // ORCH-1373 C-1373-C — PRECEDENCE IS STRICTLY: resolved `phase` > auth axis.
   // Once the outcome has resolved, rendering is a PURE FUNCTION OF `phase` and
@@ -208,7 +231,18 @@ export default function AcceptBrandInvitationRoute(): React.ReactElement {
   }
 
   if (phase.kind === "error") {
-    const { title, body } = errorCopyFor(phase.code, phase.status);
+    // ORCH-1404 F-1 — the wrong-account case is recoverable, not a dead end.
+    // Every OTHER code keeps the existing single "Back to Mingla" card.
+    if (phase.code === "invite_email_mismatch") {
+      return (
+        <WrongAccountRecovery
+          signedInEmail={user?.email ?? null}
+          onSwitchAccount={handleSwitchAccount}
+          onGoHome={handleGoHome}
+        />
+      );
+    }
+    const { title, body } = errorCopyFor(phase.code);
     return (
       <View style={styles.host}>
         <View style={styles.card}>
@@ -285,10 +319,24 @@ export default function AcceptBrandInvitationRoute(): React.ReactElement {
   );
 }
 
-function errorCopyFor(
-  code: string,
-  status: number,
-): { title: string; body: string } {
+/**
+ * ORCH-1404 — the `?next=` resume target for the wrong-account recovery, built
+ * through the ONE validator (`sanitizeNextRoute`). Exported + pure so the
+ * routing is deterministically testable without a full-route render.
+ *
+ * The path prefix `/accept-brand-invitation` is hardcoded (only the token value
+ * varies) and is on the NEXT_ROUTE_ALLOWLIST, so a well-formed token returns a
+ * validated `/auth?next=<encoded>`; a value that fails validation falls back to
+ * a bare `/auth` (still recoverable, never an unvalidated redirect).
+ */
+export function buildSwitchAccountResume(token: string): string {
+  const candidate = `/accept-brand-invitation?token=${token}`;
+  const safe = sanitizeNextRoute(candidate);
+  if (safe === null) return "/auth";
+  return `/auth?next=${encodeURIComponent(safe)}`;
+}
+
+export function errorCopyFor(code: string): { title: string; body: string } {
   switch (code) {
     case "invite_not_found":
       return {
@@ -337,10 +385,19 @@ function errorCopyFor(
         title: "Invalid link",
         body: "The invitation link is malformed. Open the email and click the button again.",
       };
+    // ORCH-1404 §4.3.1 — the JWT expired mid-flow (edge fn 401). Previously fell
+    // through to `default`; now has its own copy.
+    case "unauthenticated":
+      return {
+        title: "Sign in to continue",
+        body: "Your session ended. Sign in again to accept this invitation.",
+      };
     default:
+      // ORCH-1404 OQ-3 — the generic branch is now reached ONLY by a truly
+      // unknown or network error. Drop the raw "(status N)" number for users.
       return {
         title: "Something went wrong",
-        body: `We couldn't accept this invitation right now (status ${status}). Try again in a moment.`,
+        body: "We couldn't accept this invitation right now. Try again in a moment.",
       };
   }
 }
