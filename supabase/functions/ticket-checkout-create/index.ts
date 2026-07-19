@@ -1,7 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { wrapEdgeHandler } from "../_shared/structuredLog.ts";
 // ISSUE-865 WP-B — post-finalize ad-conversion hook (idempotent + fail-open).
-import { fireAdConversion } from "../_shared/adConversionFire.ts";
+// persistAttributionClickId (WP-C, P2-1): the DECOUPLED, fail-open threading
+// write — attribution capture is never on the fatal checkout-creation path.
+import { fireAdConversion, persistAttributionClickId } from "../_shared/adConversionFire.ts";
 import { STRIPE_API_VERSION, stripeTicketCheckout } from "../_shared/stripe.ts";
 import { resolvePublishableKey } from "../_shared/stripeMode.ts";
 import { getPaymentMethodTypes } from "../_shared/stripePaymentMethods.ts";
@@ -528,17 +530,6 @@ serve(wrapEdgeHandler("ticket-checkout-create", async (req) => {
     buyer_status_token_hash: await sha256Hex(buyerStatusToken),
     updated_at: new Date().toISOString(),
   };
-  // ISSUE-865 WP-C threading: persist the first-party ad click_id the browser
-  // captured on the public page (byte-identical write when absent) so the WP-B
-  // post-finalize conversion send can link order -> touch -> campaign without
-  // touching biz_ticket_checkout_finalize internals. Merged into the SAME UPDATE.
-  const attributionClickId = typeof body.attribution_click_id === "string" &&
-      body.attribution_click_id.length > 0
-    ? body.attribution_click_id
-    : null;
-  if (attributionClickId !== null) {
-    sessionUpdate.attribution_click_id = attributionClickId;
-  }
   if (eventDateId !== null) {
     const existingMeta =
       typeof session.metadata === "object" && session.metadata !== null
@@ -563,6 +554,20 @@ serve(wrapEdgeHandler("ticket-checkout-create", async (req) => {
       409,
     );
   }
+
+  // ISSUE-865 WP-C threading — DECOUPLED, best-effort, FAIL-OPEN (P2-1 rework).
+  // The attribution_click_id write MUST NEVER sit on the fatal checkout-creation
+  // path (it is written AFTER the fatal status-token UPDATE + its 409 guard, in
+  // its own error-swallowing helper). If the column is absent (edge fns deployed
+  // before migration 20270106000865 applies) OR the write fails for ANY reason,
+  // attribution is simply skipped — the checkout completes normally. For non-ad
+  // traffic (attributionClickId null) the helper no-ops → byte-identical.
+  const attributionClickId = typeof body.attribution_click_id === "string" &&
+      body.attribution_click_id.length > 0
+    ? body.attribution_click_id
+    : null;
+  await persistAttributionClickId(supabase as never, checkoutSessionId, attributionClickId);
+
   const totalCents = Number(session.totalCents ?? 0);
   // ORCH-1034 — the session/ticket currency (ticket → event currency). This is
   // the LEGACY charge-currency source; post-migration the AUTHORITATIVE charge

@@ -25,6 +25,7 @@ import { sendRedditConversion } from "../redditCapi.ts";
 import {
   type ConversionSendInput,
   fireAdConversion,
+  persistAttributionClickId,
   type SenderConnection,
   type SenderResult,
   sha256Hex,
@@ -330,4 +331,79 @@ Deno.test("fireAdConversion: FAIL-OPEN — a throwing sender is absorbed; the ho
   // the throwing channel is recorded as failed (Promise.allSettled path).
   const meta = res?.results?.find((r) => r.channel === "meta");
   assertEquals(meta?.status, "failed");
+});
+
+// ── P2-1 rework — attribution threading is DECOUPLED + FAIL-OPEN ───────────────
+// The QA P2-1 hazard: if attribution_click_id is written on the FATAL
+// checkout-creation UPDATE and the column is absent (edge fns deployed before
+// migration 20270106000865), an ad-attributed checkout 409s and BLOCKS the
+// buyer. The fix: persistAttributionClickId is its own error-swallowing write,
+// off the fatal path — a missing column / any failure degrades to "attribution
+// absent", the checkout completes normally.
+
+function fakeUpdateSupabase(behavior: "column_absent" | "throws" | "ok") {
+  const updateCalls: unknown[] = [];
+  const from = () => {
+    const builder = {
+      update: (obj: unknown) => {
+        updateCalls.push(obj);
+        return builder;
+      },
+      eq: (): Promise<{ error: { message: string } | null }> => {
+        if (behavior === "throws") return Promise.reject(new Error("connection reset"));
+        if (behavior === "column_absent") {
+          return Promise.resolve({ error: { message: 'column "attribution_click_id" does not exist' } });
+        }
+        return Promise.resolve({ error: null });
+      },
+    };
+    return builder;
+  };
+  return { client: { from } as unknown as Parameters<typeof persistAttributionClickId>[0], updateCalls };
+}
+
+Deno.test("persistAttributionClickId: column ABSENT → the write fails but the helper does NOT throw (P2-1 — checkout still completes)", async () => {
+  const { client, updateCalls } = fakeUpdateSupabase("column_absent");
+  let threw = false;
+  try {
+    await persistAttributionClickId(client, "sess-1", "click-1");
+  } catch {
+    threw = true;
+  }
+  // The helper attempted the write (1 call) but ABSORBED the column-absent error.
+  assertEquals(threw, false); // never throws → the ad-attributed checkout is not blocked
+  assertEquals(updateCalls.length, 1);
+});
+
+Deno.test("persistAttributionClickId: a THROWING write is absorbed; a NULL click_id is a no-op (byte-identical for non-ad traffic)", async () => {
+  const throwing = fakeUpdateSupabase("throws");
+  let threw = false;
+  try {
+    await persistAttributionClickId(throwing.client, "sess-2", "click-2");
+  } catch {
+    threw = true;
+  }
+  assertEquals(threw, false);
+
+  // Non-ad traffic: null click_id → the helper never touches the DB.
+  const noop = fakeUpdateSupabase("ok");
+  await persistAttributionClickId(noop.client, "sess-3", null);
+  assertEquals(noop.updateCalls.length, 0);
+});
+
+Deno.test("P2-1 source guard: attribution_click_id is DECOUPLED from the fatal checkout-creation UPDATE", () => {
+  const src = Deno.readTextFileSync(
+    new URL("../../ticket-checkout-create/index.ts", import.meta.url),
+  );
+  // The decoupled, fail-open helper is called (not an inline write on the fatal path).
+  assert(
+    src.includes("persistAttributionClickId(supabase"),
+    "ticket-checkout-create must call the decoupled persistAttributionClickId helper",
+  );
+  // Re-coupling into the fatal status-token UPDATE (`sessionUpdate.attribution_click_id = …`)
+  // is FORBIDDEN — that is exactly the P2-1 buyer-blocking regression.
+  assert(
+    !src.includes("sessionUpdate.attribution_click_id"),
+    "attribution_click_id must NOT be merged into the fatal sessionUpdate (P2-1 re-couple regression)",
+  );
 });

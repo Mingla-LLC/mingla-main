@@ -229,7 +229,7 @@ jobs:
             supabase/functions/_shared/__tests__/issue_865_wp_bc_adversarial.tester.test.ts
           )
           for attempt in 1 2 3; do
-            if deno test --allow-env --allow-net --no-check "${DENO_TEST_FILES[@]}"; then
+            if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then
               exit 0
             fi
             if [ "$attempt" -eq 3 ]; then

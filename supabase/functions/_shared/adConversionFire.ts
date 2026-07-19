@@ -156,6 +156,41 @@ export async function sha256Hex(input: string): Promise<string> {
 const normEmail = (v: string): string => v.trim().toLowerCase();
 const normPhone = (v: string): string => v.replace(/[^0-9]/g, "");
 
+/**
+ * ISSUE-865 WP-C threading (P2-1 rework) — best-effort, FAIL-OPEN persistence of
+ * the ad click_id onto a checkout session, DECOUPLED from the fatal
+ * checkout-creation UPDATE. Attribution capture must NEVER sit on the tap→pay
+ * critical path: a missing `attribution_click_id` column (edge fns deployed
+ * before migration 20270106000865 applies) OR any write failure is SWALLOWED —
+ * the checkout completes normally, attribution is simply skipped. Returns void;
+ * the caller does NOT branch on it (there is no failure to branch on). Mirrors
+ * the fail-open philosophy of fireAdConversion. NEVER throws.
+ */
+export async function persistAttributionClickId(
+  supabase: SupabaseClient,
+  checkoutSessionId: string,
+  clickId: string | null,
+): Promise<void> {
+  if (clickId === null || clickId.length === 0) return; // non-ad traffic → no-op
+  try {
+    const { error } = await supabase
+      .from("ticket_checkout_sessions")
+      .update({ attribution_click_id: clickId })
+      .eq("id", checkoutSessionId);
+    if (error) {
+      console.warn(
+        "[adConversionFire] attribution_click_id persist skipped (non-fatal):",
+        error.message,
+      );
+    }
+  } catch (err) {
+    console.warn(
+      "[adConversionFire] attribution_click_id persist threw (non-fatal):",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+}
+
 // ── Internal resolution shapes ────────────────────────────────────────────────
 
 interface ConversionContext {
