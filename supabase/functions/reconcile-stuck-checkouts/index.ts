@@ -42,6 +42,8 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { stripeTicketCheckout } from "../_shared/stripe.ts";
 import { qrTokenPepper } from "../_shared/ticketCheckout.ts";
+// ISSUE-865 WP-B — post-finalize ad-conversion hook (idempotent + fail-open).
+import { fireAdConversion } from "../_shared/adConversionFire.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.74.0?target=denonext";
 import { classify, classifyRef } from "./classify.ts";
 import type { StripeTruth } from "./classify.ts";
@@ -257,6 +259,21 @@ serve(async (req) => {
               "string"
             ? String((finalized as Record<string, unknown>).orderId)
             : null;
+
+        // ISSUE-865 WP-B — ad-conversion CAPI send for orders the webhook missed
+        // and this cron recovered. Awaited (cron, no human waiting); idempotent
+        // (if the webhook DID eventually fire, the per-channel status gate dedups)
+        // + fail-open. event_id = orderId.
+        if (orderId) {
+          try {
+            await fireAdConversion(supabase as never, { orderId, surface: "web" });
+          } catch (adConvErr) {
+            console.warn(
+              "[reconcile-stuck-checkouts] ad-conversion fire threw (non-fatal):",
+              adConvErr instanceof Error ? adConvErr.message : String(adConvErr),
+            );
+          }
+        }
 
         // ORCH-1188 FIX 4a: render + store the ticket PDF for the recovered order
         // so the consumer ticket renders (orders.ticket_pdf_path was NULL on

@@ -69,7 +69,13 @@ import {
   socialProofKeys,
 } from "../../../src/services/socialProofService";
 // META-ORCH-1187 LEG 2 — buyer-web public-offering view capture (web-only).
-import { captureWeb } from "../../../src/analytics/webAnalytics";
+// ISSUE-865 WP-C — ad click-id capture + PageView/ViewContent pixels (web-only).
+import {
+  captureAdClickIds,
+  captureWeb,
+  fireAdPageView,
+  fireAdViewContent,
+} from "../../../src/analytics/webAnalytics";
 import { TripPreview } from "../../../src/components/trip/TripPreview";
 // ORCH-1342 [web-see-whos-going-funnel] — the buyer-web install gate (DESIGN
 // §3). LAZY (ORCH-1083 budget): tap-opened, never boot-path — a static import
@@ -126,6 +132,15 @@ export default function PublicTripRoute(): React.ReactElement {
       brand_slug: typeof brandSlug === "string" ? brandSlug : null,
       slug: typeof tripSlug === "string" ? tripSlug : null,
     });
+    // ISSUE-865 WP-C — ad click-id capture + consent-gated PageView/ViewContent
+    // (web-only, no-op until consent, fail-open).
+    captureAdClickIds({
+      pageType: "trip",
+      brandSlug: typeof brandSlug === "string" ? brandSlug : null,
+      entitySlug: typeof tripSlug === "string" ? tripSlug : null,
+    });
+    fireAdPageView();
+    fireAdViewContent();
   }, [brandSlug, tripSlug]);
 
   // META-ORCH-1174 Leg B3 — the per-package selection + per-package plan choice

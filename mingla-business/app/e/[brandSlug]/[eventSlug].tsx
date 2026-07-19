@@ -14,7 +14,13 @@ import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 
 // META-ORCH-1187 LEG 2 — buyer-web public-offering view capture (web-only).
-import { captureWeb } from "../../../src/analytics/webAnalytics";
+// ISSUE-865 WP-C — ad click-id capture + PageView/ViewContent pixels (web-only).
+import {
+  captureAdClickIds,
+  captureWeb,
+  fireAdPageView,
+  fireAdViewContent,
+} from "../../../src/analytics/webAnalytics";
 
 import {
   spacing,
@@ -52,6 +58,16 @@ export default function PublicEventRoute(): React.ReactElement {
       brand_slug: typeof brandSlug === "string" ? brandSlug : null,
       slug: typeof eventSlug === "string" ? eventSlug : null,
     });
+    // ISSUE-865 WP-C — capture ad click-ids off the landing URL (first-party,
+    // no PII) + fire the consent-gated PageView/ViewContent pixels (no-op until
+    // consent). All web-only + fail-open; never blocks the page.
+    captureAdClickIds({
+      pageType: "event",
+      brandSlug: typeof brandSlug === "string" ? brandSlug : null,
+      entitySlug: typeof eventSlug === "string" ? eventSlug : null,
+    });
+    fireAdPageView();
+    fireAdViewContent();
   }, [brandSlug, eventSlug]);
 
   if (publicEventQuery.isLoading || publicEventQuery.isFetching) {

@@ -33,6 +33,8 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { wrapEdgeHandler } from "../_shared/structuredLog.ts";
+// ISSUE-865 WP-B — post-finalize ad-conversion hook (idempotent + fail-open).
+import { fireAdConversion } from "../_shared/adConversionFire.ts";
 import { stripeTicketCheckout } from "../_shared/stripe.ts";
 import {
   jsonResponse,
@@ -232,6 +234,22 @@ serve(wrapEdgeHandler("venue-reservation-confirm", async (req) => {
     console.error("[venue-reservation-confirm] finalize returned no reservation id", finalized);
     return jsonResponse({ error: "reservation_create_failed" }, 409);
   }
+
+  // ISSUE-865 WP-B — ad-conversion CAPI send for a confirmed venue reservation.
+  // FIRE-AND-FORGET (NOT awaited) so the guest's confirmation is never delayed
+  // — this is the guest's tap→confirm wait. event_type = 'reservation',
+  // event_id = reservationId (deduped with the browser reservation pixel).
+  // Idempotent + fail-open.
+  void fireAdConversion(supabase as never, {
+    reservationId,
+    surface: "web",
+    eventType: "reservation",
+  }).catch((adConvErr) => {
+    console.warn(
+      "[venue-reservation-confirm] ad-conversion fire failed (non-fatal):",
+      adConvErr instanceof Error ? adConvErr.message : String(adConvErr),
+    );
+  });
 
   return jsonResponse({
     status: "completed",

@@ -1,5 +1,9 @@
 import { supabase } from "./supabase";
 import type { BuyerDetails, CartLine, OrderResult } from "../components/checkout/CartContext";
+// ISSUE-865 WP-C — thread the first-party ad click_id (captured on the public
+// page) into checkout-create so the post-finalize conversion send can link the
+// order to its campaign. Web-only source (native returns null → field omitted).
+import { getStoredClickAttribution } from "../analytics/webAnalytics";
 
 export interface TicketCheckoutCreateInput {
   eventId: string;
@@ -162,6 +166,12 @@ export const createTicketCheckout = async (
     // already accepts `eventDateId` (investigation Q5); never sent on the null path.
     ...(input.eventDateId !== undefined && input.eventDateId.length > 0
       ? { eventDateId: input.eventDateId }
+      : {}),
+    // ISSUE-865 WP-C — forward the captured ad click_id ONLY when present, so
+    // the request stays byte-identical for non-ad traffic. The edge fn persists
+    // it on ticket_checkout_sessions.attribution_click_id (WP-B threading).
+    ...(getStoredClickAttribution().clickId !== null
+      ? { attribution_click_id: getStoredClickAttribution().clickId }
       : {}),
   });
 

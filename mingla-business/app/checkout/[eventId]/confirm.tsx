@@ -59,7 +59,12 @@ import { DownloadMinglaCta } from "../../../src/components/checkout/DownloadMing
 import { confirmTicketCheckout } from "../../../src/services/ticketCheckoutService";
 import { useOrderRealtimeSubscription } from "../../../src/hooks/useOrderRealtimeSubscription";
 // META-ORCH-1187 LEG 2 — buyer-web conversion capture (web-only; native no-op).
-import { captureWeb, gaEvent } from "../../../src/analytics/webAnalytics";
+import {
+  captureWeb,
+  fireAdPurchase,
+  gaEvent,
+  postAttributionConversion,
+} from "../../../src/analytics/webAnalytics";
 import { phMaskProps } from "../../../src/analytics/phMask";
 
 export default function CheckoutConfirmScreen(): React.ReactElement | null {
@@ -371,6 +376,16 @@ function CheckoutConfirmScreenInner({
       value: result.total,
       currency: result.currency,
       items: result.tickets.length,
+    });
+    // ISSUE-865 WP-C — the DEDUP fire: the browser Purchase pixel + an early
+    // attribution-capture conversion record, both keyed on the SHARED event_id
+    // (= result.orderId) so the server CAPI (WP-B) dedups the exact pair (SC-15).
+    // No-op until consent; NO email/phone leaves the browser; never blocks render.
+    fireAdPurchase(result.orderId, { value: result.total, currency: result.currency });
+    postAttributionConversion({
+      eventId: result.orderId,
+      valueCents: Math.round(result.total * 100),
+      currency: result.currency,
     });
   }, [result]);
 

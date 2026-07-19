@@ -21,6 +21,9 @@ import {
   fireBuyerOrderNotify,
   fireOrderFinalizeNotifications,
 } from "./businessNotifyTriggers.ts";
+// ISSUE-865 WP-B — the single post-finalize ad-conversion hook (CAPI fan-out,
+// deduped with the browser pixel on the shared event_id; idempotent + fail-open).
+import { fireAdConversion } from "./adConversionFire.ts";
 import { qrTokenPepper } from "./ticketCheckout.ts";
 // ORCH-0869 [Tr3 Installment Payments]: discriminator + handlers for
 // installment PaymentIntent events. See SPEC §3.2.3.
@@ -1282,6 +1285,23 @@ async function handleTicketCheckoutPaymentIntent(
           notifyErr instanceof Error ? notifyErr.message : String(notifyErr),
         );
       }
+    }
+
+    // ISSUE-865 WP-B — ad-conversion CAPI send (Meta/TikTok/Snap/Reddit),
+    // deduped with the browser pixel on the shared event_id = orderId. Runs
+    // ONLY after finalize committed the sale; idempotent (per-channel status
+    // gate collapses the confirm-vs-webhook + replay double-fire) and FAIL-OPEN
+    // — a CAPI failure NEVER blocks/reverses the purchase (RT-1). Belt-and-
+    // suspenders try/catch: the helper already never throws.
+    try {
+      if (orderId) {
+        await fireAdConversion(supabase as never, { orderId, surface: "web" });
+      }
+    } catch (adConvErr) {
+      console.warn(
+        "[stripe-webhook] ad-conversion fire threw (non-fatal):",
+        adConvErr instanceof Error ? adConvErr.message : String(adConvErr),
+      );
     }
 
     // ORCH-0808 — AppsFlyer S2S: fire af_purchase exactly once per brand

@@ -78,6 +78,23 @@ function readEnv(name: string): string | undefined {
         extra?.EXPO_PUBLIC_GA4_MEASUREMENT_ID ??
         process.env.EXPO_PUBLIC_GA4_MEASUREMENT_ID
       );
+    // ISSUE-865 WP-C — ad-conversion pixel IDs (public-by-design; safe in the
+    // client bundle). Missing id → the pixel simply never loads (no-op). Values
+    // are set by Seth in app.config `extra` / .env — no VALUES in this repo.
+    case "EXPO_PUBLIC_META_PIXEL_ID":
+      return extra?.EXPO_PUBLIC_META_PIXEL_ID ?? process.env.EXPO_PUBLIC_META_PIXEL_ID;
+    case "EXPO_PUBLIC_TIKTOK_PIXEL_CODE":
+      return extra?.EXPO_PUBLIC_TIKTOK_PIXEL_CODE ?? process.env.EXPO_PUBLIC_TIKTOK_PIXEL_CODE;
+    case "EXPO_PUBLIC_SNAP_PIXEL_ID":
+      return extra?.EXPO_PUBLIC_SNAP_PIXEL_ID ?? process.env.EXPO_PUBLIC_SNAP_PIXEL_ID;
+    case "EXPO_PUBLIC_REDDIT_PIXEL_ID":
+      return extra?.EXPO_PUBLIC_REDDIT_PIXEL_ID ?? process.env.EXPO_PUBLIC_REDDIT_PIXEL_ID;
+    // Reachable-everywhere Supabase endpoint for the fire-and-forget
+    // attribution-capture POST (first-party; anon key is public-by-design).
+    case "EXPO_PUBLIC_SUPABASE_URL":
+      return extra?.EXPO_PUBLIC_SUPABASE_URL ?? process.env.EXPO_PUBLIC_SUPABASE_URL;
+    case "EXPO_PUBLIC_SUPABASE_ANON_KEY":
+      return extra?.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
     default:
       return undefined;
   }
@@ -87,11 +104,32 @@ let posthogClient: PostHog | null = null;
 let initialized = false;
 let gaMeasurementId: string | null = null;
 
+// ISSUE-865 WP-C — ad-conversion pixel state. Resolved in initWebAnalytics;
+// bootstrapped ONLY on consent grant. `null` id ⇒ that pixel never loads.
+interface AdPixelIds {
+  meta: string | null;
+  tiktok: string | null;
+  snap: string | null;
+  reddit: string | null;
+}
+let adPixelIds: AdPixelIds = { meta: null, tiktok: null, snap: null, reddit: null };
+let adPixelsBootstrapped = false;
+
+// First-party storage key for the captured ad click_id (threaded into checkout).
+const AD_CLICK_STORAGE_KEY = "mingla_ad_click_v1";
+
 declare global {
-  // gtag/dataLayer injected by the GA4 loader below.
+  // gtag/dataLayer injected by the GA4 loader below; the four ad-pixel globals
+  // are injected by their vendor snippets on consent (bootstrapAdPixels).
   interface Window {
     dataLayer?: unknown[];
     gtag?: (...args: unknown[]) => void;
+    fbq?: ((...args: unknown[]) => void) & { callMethod?: (...a: unknown[]) => void; queue?: unknown[] };
+    _fbq?: unknown;
+    ttq?: { page?: (...a: unknown[]) => void; track?: (...a: unknown[]) => void; load?: (...a: unknown[]) => void; [k: string]: unknown };
+    TiktokAnalyticsObject?: string;
+    snaptr?: ((...args: unknown[]) => void) & { queue?: unknown[] };
+    rdt?: ((...args: unknown[]) => void) & { callQueue?: unknown[] };
   }
 }
 
@@ -183,6 +221,16 @@ export async function initWebAnalytics(): Promise<void> {
   const posthogHost = readEnv("EXPO_PUBLIC_POSTHOG_HOST") ?? POSTHOG_US_HOST;
   gaMeasurementId = readEnv("EXPO_PUBLIC_GA4_MEASUREMENT_ID") ?? null;
 
+  // ISSUE-865 WP-C — resolve the ad-conversion pixel IDs (no-op each when
+  // absent). The pixels are NOT loaded here: they set third-party cookies, so
+  // they are bootstrapped ONLY on consent grant (grantConsent → bootstrapAdPixels).
+  adPixelIds = {
+    meta: readEnv("EXPO_PUBLIC_META_PIXEL_ID") ?? null,
+    tiktok: readEnv("EXPO_PUBLIC_TIKTOK_PIXEL_CODE") ?? null,
+    snap: readEnv("EXPO_PUBLIC_SNAP_PIXEL_ID") ?? null,
+    reddit: readEnv("EXPO_PUBLIC_REDDIT_PIXEL_ID") ?? null,
+  };
+
   // GA4 first (cheap, sets the consent-default-denied gate immediately).
   if (gaMeasurementId !== null && gaMeasurementId.length > 0) {
     try {
@@ -254,6 +302,13 @@ export function grantConsent(): void {
       ad_personalization: "granted",
     });
   }
+  // ISSUE-865 WP-C — the ad-conversion pixels (Meta/TikTok/Snap/Reddit) set
+  // third-party cookies, so they bootstrap ONLY here, on consent grant, and
+  // NEVER before (the hard consent invariant — SC-8 / RT-3; EEA/London must not
+  // be tracked pre-consent). Each pixel is wrapped so a failure is a silent
+  // no-op that never blocks the page or the other pixels.
+  bootstrapAdPixels();
+
   // META-ORCH-1187 P2 — consent-rate measurement. Fire AFTER opt_in_capturing()
   // above: while still opted-out PostHog drops captures, so an earlier fire would
   // be silently lost. Deny-rate is derived as sessions-without-a-grant (no
@@ -320,5 +375,416 @@ export function getFeatureFlagWeb(key: string): boolean | string | undefined {
     return posthogClient?.getFeatureFlag(key);
   } catch {
     return undefined;
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ISSUE-865 WP-C — ad-conversion pixels + click-id capture (LIVE web surfaces)
+//
+// The four browser pixels (Meta fbq / TikTok ttq / Snapchat snaptr / Reddit rdt)
+// mirror the existing GA4 loader idiom: injected via a <script> tag, wrapped so
+// ANY failure (adblock, CSP, 404, slow CDN) is a SILENT NO-OP that never blocks
+// render, the Reserve/Pay tap, or navigation. They bootstrap ONLY on consent
+// grant (bootstrapAdPixels ← grantConsent) — never before, so EEA/London traffic
+// is not tracked pre-consent (SC-8 / RT-3). Every pixel Purchase carries the
+// SHARED event_id (the Mingla order id) so browser + server CAPI (WP-B) dedup the
+// exact pair (A2-5 / SC-15). NOTHING here is on the tap→pay critical path.
+// ═════════════════════════════════════════════════════════════════════════════
+
+const ATTR_POST_TIMEOUT_MS = 4000;
+
+function injectPixelScriptOnce(src: string, marker: string): void {
+  if (!hasWindow()) return;
+  if (window.document.querySelector(`script[data-mingla-pixel="${marker}"]`) !== null) return;
+  const s = window.document.createElement("script");
+  s.async = true;
+  s.src = src;
+  s.setAttribute("data-mingla-pixel", marker);
+  window.document.head.appendChild(s);
+}
+
+/** Wrap a single pixel call so its failure is a silent no-op (never blocks the page). */
+function safePixel(fn: () => void): void {
+  if (!hasWindow()) return;
+  try {
+    fn();
+  } catch (err) {
+    console.warn("[webAnalytics] pixel call failed (non-fatal):", err);
+  }
+}
+
+function definedProps(obj: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k of Object.keys(obj)) {
+    if (obj[k] !== undefined && obj[k] !== null) out[k] = obj[k];
+  }
+  return out;
+}
+
+function bootstrapMetaPixel(pixelId: string): void {
+  if (!hasWindow()) return;
+  if (window.fbq === undefined) {
+    // Canonical fbq stub — queues calls until fbevents.js loads + sets callMethod.
+    const n = function fbq(): void {
+      const self = n as unknown as { callMethod?: (...a: unknown[]) => void; queue: unknown[] };
+      // eslint-disable-next-line prefer-rest-params
+      const args = Array.prototype.slice.call(arguments) as unknown[];
+      if (self.callMethod) self.callMethod(...args);
+      else self.queue.push(args);
+    };
+    const stub = n as unknown as { push: unknown; loaded: boolean; version: string; queue: unknown[] };
+    stub.push = n;
+    stub.loaded = true;
+    stub.version = "2.0";
+    stub.queue = [];
+    window.fbq = n as unknown as Window["fbq"];
+    window._fbq = window.fbq;
+  }
+  injectPixelScriptOnce("https://connect.facebook.net/en_US/fbevents.js", "meta");
+  window.fbq?.("init", pixelId);
+  window.fbq?.("track", "PageView");
+}
+
+function bootstrapTikTokPixel(pixelCode: string): void {
+  if (!hasWindow()) return;
+  window.TiktokAnalyticsObject = "ttq";
+  const ttq = (window.ttq = window.ttq ?? {}) as unknown as {
+    methods: string[];
+    setAndDefer: (obj: Record<string, unknown>, method: string) => void;
+    load: (id: string) => void;
+    page: () => void;
+    push: (a: unknown) => void;
+    _i?: Record<string, unknown[]>;
+    _t?: Record<string, number>;
+    _o?: Record<string, unknown>;
+    [k: string]: unknown;
+  };
+  ttq.push = ttq.push ?? ((a: unknown): void => {
+    ((ttq as unknown as { _q?: unknown[] })._q = (ttq as unknown as { _q?: unknown[] })._q ?? []).push(a);
+  });
+  ttq.methods = [
+    "page", "track", "identify", "instances", "debug", "on", "off", "once",
+    "ready", "alias", "group", "enableCookie", "disableCookie", "holdConsent",
+    "revokeConsent", "grantConsent",
+  ];
+  ttq.setAndDefer = function (obj: Record<string, unknown>, method: string): void {
+    obj[method] = function (): void {
+      // eslint-disable-next-line prefer-rest-params
+      const args = Array.prototype.slice.call(arguments) as unknown[];
+      (obj as unknown as { push: (a: unknown) => void }).push([method, ...args]);
+    };
+  };
+  for (const m of ttq.methods) ttq.setAndDefer(ttq as unknown as Record<string, unknown>, m);
+  ttq.load = function (id: string): void {
+    ttq._i = ttq._i ?? {};
+    ttq._i[id] = [];
+    ttq._t = ttq._t ?? {};
+    ttq._t[id] = Number(new Date());
+    ttq._o = ttq._o ?? {};
+    ttq._o[id] = {};
+    injectPixelScriptOnce(`https://analytics.tiktok.com/i18n/pixel/events.js?sdkid=${id}&lib=ttq`, "tiktok");
+  };
+  ttq.load(pixelCode);
+  ttq.page();
+}
+
+function bootstrapSnapPixel(pixelId: string): void {
+  if (!hasWindow()) return;
+  if (window.snaptr === undefined) {
+    const snaptr = function snaptr(): void {
+      const self = snaptr as unknown as { handleRequest?: (...a: unknown[]) => void; queue: unknown[] };
+      // eslint-disable-next-line prefer-rest-params
+      const args = Array.prototype.slice.call(arguments) as unknown[];
+      if (self.handleRequest) self.handleRequest(...args);
+      else self.queue.push(args);
+    };
+    (snaptr as unknown as { queue: unknown[] }).queue = [];
+    window.snaptr = snaptr as unknown as Window["snaptr"];
+  }
+  injectPixelScriptOnce("https://sc-static.net/scevent.min.js", "snap");
+  window.snaptr?.("init", pixelId);
+  window.snaptr?.("track", "PAGE_VIEW");
+}
+
+function bootstrapRedditPixel(pixelId: string): void {
+  if (!hasWindow()) return;
+  if (window.rdt === undefined) {
+    const rdt = function rdt(): void {
+      const self = rdt as unknown as { sendEvent?: (...a: unknown[]) => void; callQueue: unknown[] };
+      // eslint-disable-next-line prefer-rest-params
+      const args = Array.prototype.slice.call(arguments) as unknown[];
+      if (self.sendEvent) self.sendEvent(...args);
+      else self.callQueue.push(args);
+    };
+    (rdt as unknown as { callQueue: unknown[] }).callQueue = [];
+    window.rdt = rdt as unknown as Window["rdt"];
+  }
+  injectPixelScriptOnce("https://www.redditstatic.com/ads/pixel.js", "reddit");
+  window.rdt?.("init", pixelId);
+  window.rdt?.("track", "PageVisit");
+}
+
+/**
+ * Bootstrap the four ad pixels — called ONLY from grantConsent (consent-gated).
+ * Each pixel is isolated in its own try/catch so one broken loader can neither
+ * block the page nor prevent the others from loading. Idempotent.
+ */
+function bootstrapAdPixels(): void {
+  if (!hasWindow() || adPixelsBootstrapped) return;
+  adPixelsBootstrapped = true; // set first so a throw can't cause a re-bootstrap loop
+  if (adPixelIds.meta) safePixel(() => bootstrapMetaPixel(adPixelIds.meta as string));
+  if (adPixelIds.tiktok) safePixel(() => bootstrapTikTokPixel(adPixelIds.tiktok as string));
+  if (adPixelIds.snap) safePixel(() => bootstrapSnapPixel(adPixelIds.snap as string));
+  if (adPixelIds.reddit) safePixel(() => bootstrapRedditPixel(adPixelIds.reddit as string));
+}
+
+/** True only after consent granted AND at least one pixel could bootstrap. */
+export function adPixelsReady(): boolean {
+  return adPixelsBootstrapped;
+}
+
+// ── Browser pixel fires (all no-op pre-consent / when no pixel loaded) ────────
+
+/** Public-page view — PageView across the four pixels. No-op until bootstrapped. */
+export function fireAdPageView(): void {
+  if (!adPixelsBootstrapped) return;
+  safePixel(() => window.fbq?.("track", "PageView"));
+  safePixel(() => window.ttq?.page?.());
+  safePixel(() => window.snaptr?.("track", "PAGE_VIEW"));
+  safePixel(() => window.rdt?.("track", "PageVisit"));
+}
+
+/** Offering view — ViewContent across the four pixels. No-op until bootstrapped. */
+export function fireAdViewContent(props?: {
+  value?: number;
+  currency?: string;
+  contentId?: string;
+}): void {
+  if (!adPixelsBootstrapped) return;
+  const value = props?.value;
+  const currency = props?.currency;
+  const contentId = props?.contentId;
+  safePixel(() =>
+    window.fbq?.("track", "ViewContent", definedProps({
+      value,
+      currency,
+      content_type: "product",
+      content_ids: contentId ? [contentId] : undefined,
+    }))
+  );
+  safePixel(() => window.ttq?.track?.("ViewContent", definedProps({ value, currency, content_id: contentId })));
+  safePixel(() => window.snaptr?.("track", "VIEW_CONTENT", definedProps({ price: value, currency })));
+  safePixel(() => window.rdt?.("track", "ViewContent", definedProps({ value, currency })));
+}
+
+/**
+ * Purchase fire — the DEDUP fire. `eventId` MUST be the Mingla order id (the
+ * shared event_id): Meta's eventID (4th arg) + event name 'Purchase' must match
+ * the server CAPI's event_id + event_name exactly (A2-5). No-op pre-consent.
+ */
+export function fireAdPurchase(
+  eventId: string,
+  props: { value?: number; currency?: string },
+): void {
+  if (!adPixelsBootstrapped || !eventId) return;
+  const value = props.value;
+  const currency = props.currency;
+  safePixel(() =>
+    window.fbq?.("track", "Purchase", definedProps({ value, currency }), { eventID: eventId })
+  );
+  safePixel(() =>
+    window.ttq?.track?.(
+      "CompletePayment",
+      definedProps({ value, currency, content_type: "product" }),
+      { event_id: eventId },
+    )
+  );
+  safePixel(() =>
+    window.snaptr?.("track", "PURCHASE", definedProps({
+      price: value,
+      currency,
+      transaction_id: eventId,
+      client_dedup_id: eventId,
+    }))
+  );
+  safePixel(() =>
+    window.rdt?.("track", "Purchase", definedProps({ value, currency, conversion_id: eventId }))
+  );
+}
+
+// ── Click-id capture + first-party threading storage ──────────────────────────
+
+interface StoredAdClick {
+  clickId: string | null;
+}
+
+/** The click_id captured on landing, for threading into checkout-create. */
+export function getStoredClickAttribution(): StoredAdClick {
+  if (!hasWindow()) return { clickId: null };
+  try {
+    const raw = window.sessionStorage.getItem(AD_CLICK_STORAGE_KEY);
+    if (raw === null) return { clickId: null };
+    const parsed = JSON.parse(raw) as { clickId?: string };
+    return { clickId: typeof parsed.clickId === "string" ? parsed.clickId : null };
+  } catch {
+    return { clickId: null };
+  }
+}
+
+function storeClickId(clickId: string): void {
+  if (!hasWindow()) return;
+  try {
+    window.sessionStorage.setItem(AD_CLICK_STORAGE_KEY, JSON.stringify({ clickId, ts: Date.now() }));
+  } catch {
+    // sessionStorage unavailable (private mode) — non-fatal; threading is skipped.
+  }
+}
+
+export interface CaptureAdClickDest {
+  pageType?: "event" | "trip" | "brand" | "venue";
+  brandSlug?: string | null;
+  entitySlug?: string | null;
+  eventId?: string | null;
+}
+
+/**
+ * Parse the ad click-ids / UTMs off the landing URL and record a first-party
+ * touch (server-side, via attribution-capture) — returns nothing; the click_id
+ * is stored for checkout threading. First-party measurement: it forwards the
+ * click id / UTM ONLY (never email/phone), so no PII leaves the browser (SC-8).
+ * Fire-and-forget, timeout-bounded — never delays the landing render.
+ */
+export function captureAdClickIds(dest?: CaptureAdClickDest): void {
+  if (!hasWindow()) return;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const fbclid = params.get("fbclid");
+    const ttclid = params.get("ttclid");
+    const sccid = params.get("sccid") ?? params.get("ScCid");
+    const gclid = params.get("gclid");
+    const rdtCid = params.get("rdt_cid");
+    const afCId = params.get("af_c_id") ?? params.get("c_id");
+    const utm: Record<string, string> = {};
+    for (const k of ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"]) {
+      const v = params.get(k);
+      if (v !== null && v.length > 0) utm[k] = v;
+    }
+    const external = fbclid ?? ttclid ?? sccid ?? gclid ?? rdtCid ?? null;
+    const network = fbclid
+      ? "meta"
+      : ttclid
+      ? "tiktok"
+      : sccid
+      ? "snapchat"
+      : rdtCid
+      ? "reddit"
+      : gclid
+      ? "google"
+      : "other";
+    // No ad signal on this URL → nothing to record (byte-identical to no-op).
+    if (external === null && afCId === null && Object.keys(utm).length === 0) return;
+    void postAttributionTouch({ network, externalClickId: external, afCId, utm, dest }).then((clickId) => {
+      if (clickId !== null) storeClickId(clickId);
+    });
+  } catch (err) {
+    console.warn("[webAnalytics] captureAdClickIds failed (non-fatal):", err);
+  }
+}
+
+// ── attribution-capture POSTs (first-party, fire-and-forget, no PII egress) ───
+
+interface PostTouchInput {
+  network: string;
+  externalClickId: string | null;
+  afCId: string | null;
+  utm: Record<string, string>;
+  dest?: CaptureAdClickDest;
+}
+
+/** POST a touch to attribution-capture; returns the server click_id (or null). */
+export async function postAttributionTouch(input: PostTouchInput): Promise<string | null> {
+  if (!hasWindow()) return null;
+  const base = readEnv("EXPO_PUBLIC_SUPABASE_URL");
+  const anon = readEnv("EXPO_PUBLIC_SUPABASE_ANON_KEY");
+  if (base === undefined || anon === undefined) return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ATTR_POST_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${base}/functions/v1/attribution-capture`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${anon}`, apikey: anon },
+      body: JSON.stringify({
+        kind: "touch",
+        surface: "web",
+        lane: "consumer",
+        network: input.network,
+        external_click_id: input.externalClickId,
+        af_c_id: input.afCId,
+        utm: input.utm,
+        dest: input.dest
+          ? {
+            page_type: input.dest.pageType,
+            brand_slug: input.dest.brandSlug ?? undefined,
+            entity_slug: input.dest.entitySlug ?? undefined,
+            event_id: input.dest.eventId ?? undefined,
+          }
+          : undefined,
+      }),
+      signal: controller.signal,
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { click_id?: string };
+    return typeof data.click_id === "string" ? data.click_id : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * POST a conversion to attribution-capture at checkout success — an early,
+ * idempotent record (deduped server-side on event_id). NO email/phone leaves the
+ * browser (SC-9); the server fire helper (WP-B) hashes PII from the order and
+ * does the authoritative CAPI send. Fire-and-forget — never on the tap→pay path.
+ */
+export function postAttributionConversion(input: {
+  eventId: string;
+  valueCents?: number | null;
+  currency?: string | null;
+  eventSourceUrl?: string | null;
+}): void {
+  if (!hasWindow() || input.eventId.length === 0) return;
+  const base = readEnv("EXPO_PUBLIC_SUPABASE_URL");
+  const anon = readEnv("EXPO_PUBLIC_SUPABASE_ANON_KEY");
+  if (base === undefined || anon === undefined) return;
+  const clickId = getStoredClickAttribution().clickId;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ATTR_POST_TIMEOUT_MS);
+  try {
+    void fetch(`${base}/functions/v1/attribution-capture`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${anon}`, apikey: anon },
+      body: JSON.stringify({
+        kind: "conversion",
+        surface: "web",
+        lane: "consumer",
+        event_id: input.eventId,
+        event_type: "purchase",
+        event_name: "Purchase",
+        value_cents: input.valueCents ?? null,
+        currency: input.currency ?? null,
+        click_id: clickId,
+        event_source_url: input.eventSourceUrl ?? window.location.href,
+      }),
+      signal: controller.signal,
+    })
+      .catch(() => {
+        // Fire-and-forget: a failed early record is harmless — the server fire
+        // helper (WP-B) writes the authoritative conversion post-finalize.
+      })
+      .finally(() => clearTimeout(timer));
+  } catch {
+    clearTimeout(timer);
   }
 }

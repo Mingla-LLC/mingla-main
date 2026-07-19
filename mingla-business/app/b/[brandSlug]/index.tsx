@@ -17,7 +17,13 @@ import {
   text as textTokens,
 } from "../../../src/constants/designSystem";
 // META-ORCH-1187 LEG 2 — buyer-web public-offering view capture (web-only).
-import { captureWeb } from "../../../src/analytics/webAnalytics";
+// ISSUE-865 WP-C — ad click-id capture + PageView/ViewContent pixels (web-only).
+import {
+  captureAdClickIds,
+  captureWeb,
+  fireAdPageView,
+  fireAdViewContent,
+} from "../../../src/analytics/webAnalytics";
 import {
   usePublicBrandBySlug,
   usePublicBrandVenues,
@@ -53,6 +59,15 @@ export default function PublicBrandRoute(): React.ReactElement {
       brand_slug: typeof brandSlug === "string" ? brandSlug : null,
       slug: typeof brandSlug === "string" ? brandSlug : null,
     });
+    // ISSUE-865 WP-C — ad click-id capture + consent-gated PageView/ViewContent
+    // (web-only, no-op until consent, fail-open).
+    captureAdClickIds({
+      pageType: "brand",
+      brandSlug: typeof brandSlug === "string" ? brandSlug : null,
+      entitySlug: null,
+    });
+    fireAdPageView();
+    fireAdViewContent();
   }, [brandSlug]);
 
   if (publicBrandQuery.isLoading || publicBrandQuery.isFetching) {

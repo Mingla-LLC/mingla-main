@@ -56,6 +56,8 @@ import { qrPayloadToDataUrl } from "../_shared/ticketQrImage.ts";
 // low_inventory after a newly-finalized order. Idempotency keys collapse the
 // confirm-vs-webhook double-fire to one notification row per recipient.
 import { fireOrderFinalizeNotifications } from "../_shared/businessNotifyTriggers.ts";
+// ISSUE-865 WP-B — post-finalize ad-conversion hook (idempotent + fail-open).
+import { fireAdConversion } from "../_shared/adConversionFire.ts";
 
 interface ConfirmRequest {
   checkoutSessionId: string;
@@ -487,6 +489,24 @@ serve(async (req) => {
       currency: refreshedSession.currency,
       qty: order?.tickets?.length ?? 0,
     });
+
+    // ISSUE-865 WP-B — best-effort ad-conversion CAPI send from the confirm
+    // slow-path. FIRE-AND-FORGET (NOT awaited) so the buyer's confirmation is
+    // never delayed by the CAPI fan-out — this path IS on the buyer's tap→pay
+    // wait. The stripe webhook (stripeWebhookRouter) is the reliable awaited
+    // sender; this is an early, non-blocking attempt. Idempotent + fail-open, so
+    // a double-fire or a failure is harmless (RT-1 / RT-2). event_id = orderId.
+    if (refreshedSession.order_id) {
+      void fireAdConversion(supabase as never, {
+        orderId: String(refreshedSession.order_id),
+        surface: "web",
+      }).catch((adConvErr) => {
+        console.warn(
+          "[ticket-checkout-confirm] ad-conversion fire failed (non-fatal):",
+          adConvErr instanceof Error ? adConvErr.message : String(adConvErr),
+        );
+      });
+    }
 
     return jsonResponse({
       checkoutSessionId: session.id,
