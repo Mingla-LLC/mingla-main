@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { ArrowRight } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { buttonClasses } from '@/components/ui/button'
 import { HeroBookingWall } from '@/components/sections/organiser-home/hero-booking-wall'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 import { detectClientPlatform, type Platform } from '@/lib/device-platform'
@@ -10,12 +10,16 @@ import {
   BUSINESS_APP_CHOICE_COPY,
   resolveBusinessAppTarget,
 } from '@/lib/business-app-target'
-// ORCH-1381 ADDENDUM D-B — external opens go through the ONE owner. Never inline
-// window.open here: a 'noopener'/'noreferrer' feature string makes it return null
-// even on success, so the popup-block fallback fires on every tap and the page
-// double-navigates.
-import { openExternal } from '@/lib/open-external'
+import { siteAttribution } from '@/lib/links-src'
 import { captureMarketing } from '@/components/marketing/posthog-provider'
+
+// ORCH-1399 — both hero actions are now real <a href> anchors pointing at the
+// ATTRIBUTED business OneLink / web app. The OneLink 301s straight to market:// (or
+// the App Store), so the store app opens with no intermediate web page and the
+// install carries pid/c. openExternal is no longer needed in this file — every
+// destination here is a genuine navigation, which is what an anchor is for.
+// ⚠ rel="noopener" on an <a> is REQUIRED and is NOT the ORCH-1381 window.open
+// pathology (that ban is scoped to .open( FEATURE STRINGS). Never strip it.
 
 // ORCH-1010 — business hero. A full-bleed 3D "booking wall" (vibe-themed booking
 // moments across restaurants, cafés, events, clubs, tables) runs as the section
@@ -42,12 +46,15 @@ export function OrganiserHero() {
   useEffect(() => {
     setPlatform(detectClientPlatform())
   }, [])
-  const target = resolveBusinessAppTarget(platform)
+  // ORCH-1399 — resolves an ATTRIBUTED OneLink href rendered into a real <a href>,
+  // so it must resolve during render rather than on the tap.
+  const target = resolveBusinessAppTarget(platform, siteAttribution('business_hero'))
 
+  // ORCH-1399 — these now TRACK only; the anchors below perform the navigation.
   // The `action` prop is REQUIRED: without it an Android owner who CHOOSES web is
   // indistinguishable from ORCH-1324's forced-web, and the fix is unmeasurable.
   const handleDownloadTheBusinessApp = (): void => {
-    const live = resolveBusinessAppTarget(detectClientPlatform())
+    const live = resolveBusinessAppTarget(detectClientPlatform(), siteAttribution('business_hero'))
     if (live.installHref === null) return
     captureMarketing('get_the_app_clicked', {
       action: 'download',
@@ -56,11 +63,9 @@ export function OrganiserHero() {
       surface: 'organiser',
       location: 'hero',
     })
-    openExternal(live.installHref)
   }
 
   const handleUseBusinessOnWeb = (): void => {
-    const live = resolveBusinessAppTarget(detectClientPlatform())
     captureMarketing('get_the_app_clicked', {
       action: 'use_web',
       platform: detectClientPlatform(),
@@ -68,7 +73,6 @@ export function OrganiserHero() {
       surface: 'organiser',
       location: 'hero',
     })
-    openExternal(live.webHref)
   }
 
   return (
@@ -133,15 +137,27 @@ export function OrganiserHero() {
               {/* ORCH-1381 — two actions in a row (stacking to a column below sm).
                   Desktop/other can install nothing → ONLY the web action renders. */}
               <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
-                {target.canInstall ? (
-                  <Button variant="primary" size="lg" onClick={handleDownloadTheBusinessApp}>
+                {target.canInstall && target.installHref !== null ? (
+                  <a
+                    href={target.installHref}
+                    target="_blank"
+                    rel="noopener"
+                    onClick={handleDownloadTheBusinessApp}
+                    className={buttonClasses({ variant: 'primary', size: 'lg' })}
+                  >
                     {BUSINESS_APP_CHOICE_COPY.download}
                     <ArrowRight className="h-4 w-4" aria-hidden="true" />
-                  </Button>
+                  </a>
                 ) : null}
-                <Button variant="glass" size="lg" onClick={handleUseBusinessOnWeb}>
+                <a
+                  href={target.webHref}
+                  target="_blank"
+                  rel="noopener"
+                  onClick={handleUseBusinessOnWeb}
+                  className={buttonClasses({ variant: 'glass', size: 'lg' })}
+                >
                   {BUSINESS_APP_CHOICE_COPY.useWeb}
-                </Button>
+                </a>
               </div>
               <p className="mt-4 text-sm text-white/70">
                 {target.canInstall

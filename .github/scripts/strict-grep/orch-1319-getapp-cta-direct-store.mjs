@@ -3,9 +3,17 @@
  * ORCH-1319 [Explorer "Get the app" → direct live-store links] — G-1.
  * Invariant: I-1319-GETAPP-CTA-LINKS-LIVE-STORES-NOT-TESTFLIGHT (+ I-1319-NO-DOWNLOAD-GATE).
  *
+ * ORCH-1399 AMENDMENT (check (a)). The explorer nav CTA now resolves an ATTRIBUTED
+ * OneLink via resolveExplorerAppTarget( instead of referencing APP_STORE_URL /
+ * PLAY_STORE_URL locally — the OneLink 301s straight to market:// / the App Store, so
+ * no intermediate store WEB page renders and the install carries pid/c. Requiring the
+ * raw consts here would FAIL the correct implementation (a gate must never mandate a
+ * worse one). `platform ===` is RETAINED and still load-bearing: desktop → the QR
+ * panel, and installStore is platform-derived.
+ *
  * Over mingla-marketing/components/marketing/glass-nav.tsx (comment-stripped):
- *   (a) references BOTH APP_STORE_URL and PLAY_STORE_URL (the live store
- *       constants from lib/store-links) AND calls detectClientPlatform().
+ *   (a) resolves via resolveExplorerAppTarget( AND targets the Explorer OneLink,
+ *       AND calls detectClientPlatform().
  *   (b) contains a `get_the_app_clicked` capture (analytics not silently dropped).
  *   (c) does NOT re-import the deleted lead modal / transport / reducer, reference
  *       GetTheAppModal, contain a `testflight` token, a `get_the_app_submitted`
@@ -47,13 +55,22 @@ const BANNED = [
 function checkNav(rawSrc, failures) {
   const src = stripComments(rawSrc);
 
-  // (a) both live store constants + platform detection.
-  const hasApp = /APP_STORE_URL/.test(src);
-  const hasPlay = /PLAY_STORE_URL/.test(src);
-  if (!hasApp || !hasPlay) {
+  // (a) ORCH-1399 — the explorer CTA delegates to the ONE explorer decision module
+  // and targets the attributed OneLink. (WAS: references APP_STORE_URL +
+  // PLAY_STORE_URL. Those moved behind resolveExplorerAppTarget — requiring them here
+  // would re-create the glass-nav/links-experience triplication ORCH-1399 removed.)
+  if (!/resolveExplorerAppTarget\(/.test(src)) {
     failures.push(
-      `${NAV}: must reference BOTH APP_STORE_URL and PLAY_STORE_URL (live store ` +
-        `links from lib/store-links) — got app=${hasApp}, play=${hasPlay}.`,
+      `${NAV}: the explorer "Get the app" CTA must resolve via resolveExplorerAppTarget( ` +
+        `from lib/explorer-app-target — the platform→destination decision lives in exactly ` +
+        `ONE module (ORCH-1399), never re-derived here.`,
+    );
+  }
+  if (!/EXPLORER_ONELINK_URL|oneLinkHref|installHref/.test(src)) {
+    failures.push(
+      `${NAV}: the CTA must target the Explorer OneLink (via the helper's installHref) — a ` +
+        `plain store URL returns HTTP 200 text/html, so Android renders the Play WEBSITE ` +
+        `first and the install arrives unattributed (ORCH-1399).`,
     );
   }
   if (!/detectClientPlatform\(/.test(src)) {
@@ -94,24 +111,29 @@ if (process.argv.includes("--self-test")) {
 
   const good = `
 import { detectClientPlatform } from '@/lib/device-platform'
-import { APP_STORE_URL, PLAY_STORE_URL } from '@/lib/store-links'
-const handleGetTheApp = () => {
+import { resolveExplorerAppTarget } from '@/lib/explorer-app-target'
+import { siteAttribution } from '@/lib/links-src'
+const explorerTarget = resolveExplorerAppTarget(businessPlatform, siteAttribution('explorer_nav'))
+const handleGetTheAppTrack = () => {
   const platform = detectClientPlatform()
   if (platform === 'ios' || platform === 'android') {
-    const store = platform === 'ios' ? APP_STORE_URL : PLAY_STORE_URL
     captureMarketing('get_the_app_clicked', { platform, store: platform === 'ios' ? 'app_store' : 'play', location: 'nav' })
-    window.open(store)
     return
   }
   captureMarketing('get_the_app_clicked', { platform: 'other', store: 'qr_panel', location: 'nav' })
   setQrOpen(true)
 }
+const cta = (<a href={explorerTarget.installHref} target="_blank" rel="noopener" onClick={handleGetTheAppTrack}>Get the app</a>)
 `;
-  if (run(good).length !== 0) selfFailures.push("compliant nav wrongly flagged");
+  if (run(good).length !== 0) selfFailures.push("compliant nav wrongly flagged: " + JSON.stringify(run(good)));
 
-  // Missing PLAY_STORE_URL (single-store hardcode) → fire.
-  const singleStore = good.replace(/PLAY_STORE_URL/g, "APP_STORE_URL");
-  if (run(singleStore).length === 0) selfFailures.push("single-store (no PLAY_STORE_URL) not flagged");
+  // ORCH-1399 — the explorer CTA stopped delegating to its decision module → fire.
+  const noHelper = good.replace(/resolveExplorerAppTarget/g, "someLocalGuess");
+  if (run(noHelper).length === 0) selfFailures.push("nav missing resolveExplorerAppTarget not flagged");
+
+  // ORCH-1399 — the CTA lost its OneLink target (bypassed → attribution dead) → fire.
+  const noOneLink = good.replace(/installHref/g, "somethingElse").replace(/resolveExplorerAppTarget\(/g, "resolveExplorerAppTarget(");
+  if (run(noOneLink).length === 0) selfFailures.push("nav CTA not targeting the Explorer OneLink not flagged");
 
   // No detectClientPlatform → fire (and no platform ===).
   const noDetect = good
@@ -144,7 +166,7 @@ const handleGetTheApp = () => {
     selfFailures.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
-  console.log("ORCH-1319 G-1 getapp-cta-direct-store self-test PASS (8/8 cases).");
+  console.log("ORCH-1319 G-1 getapp-cta-direct-store self-test PASS (9/9 cases, ORCH-1399-amended).");
   process.exit(0);
 }
 
@@ -159,15 +181,18 @@ checkNav(fs.readFileSync(abs, "utf8"), failures);
 
 if (failures.length > 0) {
   console.error(
-    "ORCH-1319 G-1 (I-1319-GETAPP-CTA-LINKS-LIVE-STORES-NOT-TESTFLIGHT) FAIL — the\n" +
-      "explorer nav CTA must link to the live stores by detected platform, fire\n" +
-      "get_the_app_clicked, and carry no lead-form / TestFlight token.\n\nFailures:\n  " +
+    "ORCH-1319 G-1 (I-1319-GETAPP-CTA-LINKS-LIVE-STORES-NOT-TESTFLIGHT, ORCH-1399-amended)\n" +
+      "FAIL — the explorer nav CTA must resolve via resolveExplorerAppTarget( to the\n" +
+      "attributed Explorer OneLink (which 301s to the LIVE store listings), branch on the\n" +
+      "detected platform, fire get_the_app_clicked, and carry no lead-form / TestFlight\n" +
+      "token.\n\nFailures:\n  " +
       failures.join("\n  "),
   );
   process.exit(1);
 }
 console.log(
-  "ORCH-1319 G-1 PASS — nav CTA is device-driven to the live stores (APP_STORE_URL/\n" +
-    "PLAY_STORE_URL via detectClientPlatform), fires get_the_app_clicked, and carries\n" +
-    "no lead-form / TestFlight token.",
+  "ORCH-1319 G-1 PASS (ORCH-1399-amended) — nav CTA is device-driven via\n" +
+    "detectClientPlatform and resolves the attributed Explorer OneLink through\n" +
+    "resolveExplorerAppTarget (which 301s to the LIVE store listings — never TestFlight),\n" +
+    "fires get_the_app_clicked, and carries no lead-form / TestFlight token.",
 );

@@ -56,6 +56,33 @@ const cases: ReadonlyArray<[string, () => void]> = [
       assert(!/<QRCode/.test(src), 'route renders a <QRCode (business route has no QR)')
     },
   ],
+  // ── ORCH-1399 T-11 ⭐ THE INSTALL HREF IS THE ATTRIBUTED ONELINK ────────────
+  // And CRITICALLY: this route must self-attribute with NO query param. Its href is
+  // BYTE-FROZEN in the partner-invite email to exactly
+  // `https://usemingla.com/business/download` with no query string
+  // (orch-1329-invite-email.tester.test.ts). So attribution CANNOT ride in on the
+  // URL — it must be composed server-side from this surface's own identity. Appending
+  // a param to the invite-email href to carry it would break the byte-frozen pin and
+  // is the single easiest way to fail this ORCH's CI.
+  [
+    'T-11: the install href is the attributed Business OneLink, self-attributed with NO query param',
+    () => {
+      assert(
+        /siteAttribution\(\s*'business_download'\s*\)/.test(src),
+        "the route does not compose siteAttribution('business_download') — it MUST derive its own attribution server-side, because the invite-email href that lands here is byte-frozen with NO query string (ORCH-1329)",
+      )
+      assert(
+        /resolveBusinessAppTarget\(\s*platform\s*,\s*siteAttribution\(/.test(src),
+        'the route does not pass an attribution argument to resolveBusinessAppTarget( — a bare 1-arg call ships an unattributed OneLink that works perfectly and reports nothing (ORCH-1399 §5.2.4)',
+      )
+      // The route must NOT read a query param for attribution — that is the
+      // byte-frozen breach.
+      assert(
+        !/searchParams/.test(src),
+        'the route reads searchParams — the invite-email href is BYTE-FROZEN with no query string, so requiring a param would silently break attribution for every invited owner (ORCH-1329 / ORCH-1399 §7.2)',
+      )
+    },
+  ],
   // ── (b) SSOT — no hardcoded store/web literals ──────────────────────────────
   [
     'the route hardcodes NO store/web literal and delegates to the shared helper',
@@ -126,17 +153,26 @@ const cases: ReadonlyArray<[string, () => void]> = [
       )
     },
   ],
-  // ── (g) no dead OneLink / consumer-owned domain ─────────────────────────────
+  // ── (g) no raw / consumer-owned OneLink ─────────────────────────────────────
+  // RATIONALE CORRECTED BY ORCH-1399: the raw *.onelink.me ban is ROUTING POLICY
+  // (branded domains only, ORCH-1346) — NOT "the OneLink is dead". COMMS-0101's "DEAD
+  // on Android" claim is STALE: re-proven false by execution 2026-07-15 (5/5
+  // Android-UA curls -> 301 market://). The ban stands; only the false "why" is fixed.
   [
-    'the route routes through NO dead or consumer-owned OneLink',
+    'the route routes through NO raw or consumer-owned OneLink domain',
     () => {
       assert(
         !/minglabiz\.onelink\.me/.test(src),
-        'route references minglabiz.onelink.me — DEAD on Android (AppsFlyer Pending, COMMS-0101)',
+        'route references the RAW minglabiz.onelink.me domain — business traffic uses the branded biz.usemingla.com (ORCH-1346 routing policy)',
       )
       assert(
         !/go\.usemingla\.com/.test(src),
-        'route references go.usemingla.com — consumer-owned (ORCH-1346: 1 domain = 1 template)',
+        'route references go.usemingla.com — consumer-owned (ORCH-1346: 1 domain = 1 template); business owners would install the Explorer app',
+      )
+      // SSOT — the base lives in store-links.ts; a surface literal is drift.
+      assert(
+        !/['"`]https:\/\/biz\.usemingla\.com/.test(src),
+        'route hardcodes the biz.usemingla.com literal — reference BUSINESS_ONELINK_URL from lib/store-links (ORCH-1399 SSOT)',
       )
     },
   ],

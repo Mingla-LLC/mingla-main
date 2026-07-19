@@ -18,8 +18,42 @@ export const BUSINESS_WEB_URL = 'https://business.usemingla.com'
 
 // ORCH-1381 — the business Play listing is LIVE (production versionCode 33 /
 // 1.1.2, status=completed, HTTP 200 — API-verified 2026-07-15, COMMS-0101).
-// Business Android installs go to the PLAIN Play URL — NOT minglabiz.onelink.me,
-// which is DEAD on Android (AppsFlyer app status Pending, COMMS-0101), and NEVER
-// go.usemingla.com (consumer-owned OneLink, ORCH-1346).
+//
+// ORCH-1399 — these two PLAIN store URLs are NO LONGER the install destination for
+// the business get-app CTAs: those now route through BUSINESS_ONELINK_URL below so
+// the install is ATTRIBUTED. They remain the SSOT record of the two live business
+// listings (pinned by the business-app-target tests, which assert the OneLink can
+// never be cross-wired to a consumer listing), and the plain Play URL is what the
+// OneLink itself resolves to on Android.
+//
+// STALE CLAIM CORRECTED (ORCH-1399 §0.1): the previous comment here stated
+// minglabiz.onelink.me is "DEAD on Android (AppsFlyer app status Pending)". That is
+// FALSE as of 2026-07-15 and was re-proven false by execution — under an Android UA
+// the business OneLink returns 301 -> market://details/?id=com.sethogieva.minglabusiness
+// on 5/5 consecutive attempts, and AppsFlyer MCP get_apps reports all 4 apps Active.
+// The raw *.onelink.me domains stay BANNED, but on ROUTING POLICY (branded domains
+// only, ORCH-1346), never on liveness. Do not re-derive a "dead OneLink" narrative.
 export const BUSINESS_PLAY_STORE_URL =
   'https://play.google.com/store/apps/details?id=com.sethogieva.minglabusiness'
+
+// ORCH-1399 [links-src-tracking-getapp-stack] — the AppsFlyer OneLink install
+// destinations. This is the swap this file's own header anticipated ("Later this may
+// indirect through the AppsFlyer OneLink (ORCH-1313 P2)").
+//
+// WHY THESE AND NOT THE PLAIN STORE URLs. A plain store URL returns HTTP 200 text/html,
+// so Android renders the Play WEBSITE first and the user taps twice. The OneLink 301s
+// straight to `market://`, which Chrome hands to the Play app with no web page in
+// between — and it carries `pid`/`c` through to the Play install referrer, so the
+// install is attributable. Proven by execution 2026-07-15 (5/5 per domain):
+//   go.usemingla.com/w36m  -> 301 market://details/?id=com.mingla.app.v2
+//   biz.usemingla.com/ZSCW -> 301 market://details/?id=com.sethogieva.minglabusiness
+//   ?pid=bio_youtube&c=business_bio -> referrer=pid%3Dbio_youtube%26c%3Dbusiness_bio
+//
+// HARD RULE — NEVER CROSSED (ORCH-1346: one branded domain = one template):
+//   Explorer/consumer -> go.usemingla.com  (template w36m  -> com.mingla.app.v2 / id6760440898)
+//   Business          -> biz.usemingla.com (template ZSCW -> com.sethogieva.minglabusiness / id6768737367)
+// Crossing them silently installs the WRONG app and poisons both apps' attribution.
+// Enforced by orch-1399-links-src-onelink-attribution.mjs (R1/R2) + the
+// onelink-never-crossed tester test. Never use the raw *.onelink.me domains.
+export const EXPLORER_ONELINK_URL = 'https://go.usemingla.com/w36m'
+export const BUSINESS_ONELINK_URL = 'https://biz.usemingla.com/ZSCW'

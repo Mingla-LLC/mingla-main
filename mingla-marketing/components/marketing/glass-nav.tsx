@@ -12,17 +12,21 @@ import { captureMarketing } from '@/components/marketing/posthog-provider'
 // ORCH-1381 — the organiser surface no longer guesses: it presents an explicit
 // inline CHOICE (Download the app / Use on web). The platform→destination decision
 // comes from the shared lib/business-app-target.ts helper — never re-derived here.
+// ORCH-1399 — every STORE / web destination in this nav is now a real <a href>
+// pointing at the ATTRIBUTED OneLink (which 301s straight to market:// / the App
+// Store, so no intermediate store web page renders and the install carries pid/c).
+// The explorer DESKTOP branch still opens the QR PANEL — it navigates nowhere, so it
+// correctly stays a <button>, and openExternal is no longer needed in this file.
+// ⚠ rel="noopener" on an <a> is REQUIRED and is NOT the ORCH-1381 window.open
+// pathology (that ban is scoped to .open( FEATURE STRINGS). Never strip it.
 import { detectClientPlatform, type Platform } from '@/lib/device-platform'
-import { APP_STORE_URL, PLAY_STORE_URL } from '@/lib/store-links'
 import {
   BUSINESS_APP_CHOICE_COPY,
   resolveBusinessAppTarget,
 } from '@/lib/business-app-target'
-// ORCH-1381 ADDENDUM D-B — external opens go through the ONE owner. Never inline
-// window.open here: a 'noopener'/'noreferrer' feature string makes it return null
-// even on success, so the popup-block fallback fires on every tap and the page
-// double-navigates.
-import { openExternal } from '@/lib/open-external'
+import { resolveExplorerAppTarget } from '@/lib/explorer-app-target'
+import { siteAttribution } from '@/lib/links-src'
+import { buttonClasses } from '@/components/ui/button'
 
 export function GlassNav() {
   const pathname = usePathname()
@@ -59,20 +63,23 @@ export function GlassNav() {
   useEffect(() => {
     setBusinessPlatform(detectClientPlatform())
   }, [])
-  const businessTarget = resolveBusinessAppTarget(businessPlatform)
+  // ORCH-1399 — both targets resolve an ATTRIBUTED OneLink href that is rendered
+  // into a real <a href>, so they must resolve during render, not on the tap.
+  const businessTarget = resolveBusinessAppTarget(businessPlatform, siteAttribution('business_nav'))
+  const explorerTarget = resolveExplorerAppTarget(businessPlatform, siteAttribution('explorer_nav'))
 
-  // ORCH-1319 — device-aware "Get the app" action. Runs only on a real browser
-  // click (detectClientPlatform is SSR-safe → 'other' when navigator is absent).
-  const handleGetTheApp = (): void => {
+  // ORCH-1319 — device-aware "Get the app". ORCH-1399: on a PHONE this is now an
+  // <a href> to the Explorer OneLink and this handler only TRACKS. Desktop/other has
+  // no store app, so it still opens the QR PANEL — which navigates nowhere and is
+  // therefore correctly a <button>, not a link.
+  const handleGetTheAppTrack = (): void => {
     const platform = detectClientPlatform()
     if (platform === 'ios' || platform === 'android') {
-      const store = platform === 'ios' ? APP_STORE_URL : PLAY_STORE_URL
       captureMarketing('get_the_app_clicked', {
         platform,
         store: platform === 'ios' ? 'app_store' : 'play',
         location: 'nav',
       })
-      openExternal(store)
       return
     }
     // Desktop / other → the QR panel.
@@ -93,9 +100,10 @@ export function GlassNav() {
   //
   // The `action` prop is REQUIRED: without it an Android owner who CHOOSES web is
   // indistinguishable from ORCH-1324's forced-web, and the fix is unmeasurable.
+  // ORCH-1399 — these now TRACK only; the anchors below perform the navigation.
   const handleDownloadTheBusinessApp = (): void => {
     const platform = detectClientPlatform()
-    const target = resolveBusinessAppTarget(platform)
+    const target = resolveBusinessAppTarget(platform, siteAttribution('business_nav'))
     if (target.installHref === null) return
     captureMarketing('get_the_app_clicked', {
       action: 'download',
@@ -104,12 +112,10 @@ export function GlassNav() {
       surface: 'organiser',
       location: 'nav',
     })
-    openExternal(target.installHref)
   }
 
   const handleUseBusinessOnWeb = (): void => {
     const platform = detectClientPlatform()
-    const target = resolveBusinessAppTarget(platform)
     captureMarketing('get_the_app_clicked', {
       action: 'use_web',
       platform,
@@ -117,7 +123,6 @@ export function GlassNav() {
       surface: 'organiser',
       location: 'nav',
     })
-    openExternal(target.webHref)
   }
 
   return (
@@ -210,50 +215,81 @@ export function GlassNav() {
               explorer: "Get the app" is a device-aware direct store action (ORCH-1319). */}
           {surface === 'organiser' ? (
             <div className="flex items-center gap-2">
-              {businessTarget.canInstall ? (
+              {businessTarget.canInstall && businessTarget.installHref !== null ? (
                 <>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    className="whitespace-nowrap"
+                  {/* ORCH-1399 — a real <a> to the attributed business OneLink. It
+                      uses buttonClasses(), the SAME recipe <Button> consumes, so it
+                      is pixel-identical to the pill it replaces by construction. */}
+                  <a
+                    href={businessTarget.installHref}
+                    target="_blank"
+                    rel="noopener"
                     onClick={handleDownloadTheBusinessApp}
+                    className={buttonClasses({
+                      variant: 'primary',
+                      size: 'sm',
+                      className: 'whitespace-nowrap',
+                    })}
                   >
                     {BUSINESS_APP_CHOICE_COPY.download}
-                  </Button>
+                  </a>
                   {/* The second action is the one that does not fit next to the logo
                       on a phone. It returns at `sm` (640px), where there is room —
                       so desktop/tablet keep the full inline choice. */}
-                  <Button
-                    variant="glass"
-                    size="sm"
-                    className="hidden whitespace-nowrap sm:inline-flex"
+                  <a
+                    href={businessTarget.webHref}
+                    target="_blank"
+                    rel="noopener"
                     onClick={handleUseBusinessOnWeb}
+                    className={buttonClasses({
+                      variant: 'glass',
+                      size: 'sm',
+                      className: 'hidden whitespace-nowrap sm:inline-flex',
+                    })}
                   >
                     {BUSINESS_APP_CHOICE_COPY.useWeb}
-                  </Button>
+                  </a>
                 </>
               ) : (
                 // Nothing to install (desktop/unknown) → the web action is the ONLY
                 // action, so it always renders. This branch is unchanged by D-A-2.
-                <Button
-                  variant="glass"
-                  size="sm"
-                  className="whitespace-nowrap"
+                <a
+                  href={businessTarget.webHref}
+                  target="_blank"
+                  rel="noopener"
                   onClick={handleUseBusinessOnWeb}
+                  className={buttonClasses({
+                    variant: 'glass',
+                    size: 'sm',
+                    className: 'whitespace-nowrap',
+                  })}
                 >
                   {BUSINESS_APP_CHOICE_COPY.useWeb}
-                </Button>
+                </a>
               )}
             </div>
+          ) : explorerTarget.canInstall && explorerTarget.installHref !== null ? (
+            // ORCH-1319/1399 — explorer PHONE: a real <a> to the attributed Explorer
+            // OneLink, which 301s to the right store with no intermediate web page.
+            // No aria-haspopup here: this branch navigates and can never open the QR
+            // dialog, so advertising a popup would be a lie to screen readers.
+            <a
+              href={explorerTarget.installHref}
+              target="_blank"
+              rel="noopener"
+              onClick={handleGetTheAppTrack}
+              className={buttonClasses({ variant: 'glass', size: 'sm' })}
+            >
+              Get the app
+            </a>
           ) : (
-            // ORCH-1319 — explorer "Get the app" is a device-aware DIRECT action:
-            // iOS → App Store, Android → Play, desktop/other → QR panel. The
-            // aria-haspopup/aria-expanded stay set (the button CAN open a dialog;
-            // the phone branches simply never open it).
+            // Explorer DESKTOP/other → the QR PANEL. This opens a dialog and
+            // navigates nowhere, so it is correctly a <button> and keeps its
+            // aria-haspopup/aria-expanded.
             <Button
               variant="glass"
               size="sm"
-              onClick={handleGetTheApp}
+              onClick={handleGetTheAppTrack}
               aria-haspopup="dialog"
               aria-expanded={qrOpen}
             >

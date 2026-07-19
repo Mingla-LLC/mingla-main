@@ -153,13 +153,42 @@ function checkTarget(label, rawSrc, failures) {
     );
   }
 
-  // (e) ORCH-1381 ADDENDUM D-B — delegation to the ONE owner of the open decision.
-  if (!/openExternal\(/.test(src)) {
+  // (e) ORCH-1399 — business destinations are now real <a href> ANCHORS on both of
+  // these surfaces, so openExternal( LEGITIMATELY disappears from them (it survives
+  // only for the /links desktop QR page, guarded by orch-1328). Requiring it here
+  // would FAIL the correct implementation.
+  //
+  // What must NEVER come back is an INLINE window.open — that ban is RETAINED below,
+  // unweakened, and is what actually protects the D-B double-nav bug class.
+  if (!/<a\s+[^>]*href=\{/.test(src)) {
     failures.push(
-      `${label}: must open destinations via openExternal( from lib/open-external — the ` +
-        `popup-block decision lives in exactly ONE module. Inlining window.open ` +
-        `re-introduces the double-navigation bug (ORCH-1381 ADDENDUM D-B).`,
+      `${label}: business destinations must render as real <a href={…}> anchors — an ` +
+        `anchor survives the in-app webviews where window.open is routinely blocked, and ` +
+        `the OneLink it points at 301s straight to the store app (ORCH-1399).`,
     );
+  }
+  // ⚠ PER-ANCHOR, NOT FILE-LEVEL — deliberately, and this matters even though these
+  // two files happen to contain ONLY CTA anchors today. A file-level /rel="noopener/
+  // check silently becomes DECORATIVE the moment ANY other rel-carrying anchor is
+  // added to the file (a footer link, a social icon, anything). That is not
+  // hypothetical: it is exactly what happened to links-experience.tsx, whose socials
+  // row made its file-level rel check pass while every CTA anchor had lost its rel.
+  // Checking each CTA anchor on its own removes the trap permanently.
+  const ctaAnchors = [...src.matchAll(/<a\s[\s\S]*?>/g)]
+    .map((m) => m[0])
+    .filter((a) => /installHref|webHref/.test(a));
+  for (const a of ctaAnchors) {
+    const shape = a.replace(/\s+/g, " ").slice(0, 72);
+    if (!/rel="noopener/.test(a)) {
+      failures.push(
+        `${label}: a business anchor is missing rel="noopener" — reverse-tabnabbing. NOTE: the ` +
+          `ORCH-1381 noopener BAN below is scoped to window.open FEATURE STRINGS; on an <a> ` +
+          `element rel="noopener" is MANDATORY, not forbidden. Offending anchor: ${shape}…`,
+      );
+    }
+    if (!/target="_blank"/.test(a)) {
+      failures.push(`${label}: a business anchor is missing target="_blank". Offending anchor: ${shape}…`);
+    }
   }
 
   // BAN — no dead-funnel tokens.
@@ -184,23 +213,22 @@ if (process.argv.includes("--self-test")) {
   const good = `
 import { detectClientPlatform } from '@/lib/device-platform'
 import { BUSINESS_APP_CHOICE_COPY, resolveBusinessAppTarget } from '@/lib/business-app-target'
-import { openExternal } from '@/lib/open-external'
+import { siteAttribution } from '@/lib/links-src'
+const target = resolveBusinessAppTarget(businessPlatform, siteAttribution('business_nav'))
 const handleDownloadTheBusinessApp = () => {
   const platform = detectClientPlatform()
-  const target = resolveBusinessAppTarget(platform)
-  if (target.installHref === null) return
+  const t = resolveBusinessAppTarget(platform, siteAttribution('business_nav'))
+  if (t.installHref === null) return
   captureMarketing('get_the_app_clicked', {
     action: 'download',
     platform,
-    store: target.installStore,
+    store: t.installStore,
     surface: 'organiser',
     location: 'nav',
   })
-  openExternal(target.installHref)
 }
 const handleUseBusinessOnWeb = () => {
   const platform = detectClientPlatform()
-  const target = resolveBusinessAppTarget(platform)
   captureMarketing('get_the_app_clicked', {
     action: 'use_web',
     platform,
@@ -208,16 +236,20 @@ const handleUseBusinessOnWeb = () => {
     surface: 'organiser',
     location: 'nav',
   })
-  openExternal(target.webHref)
 }
-const jsx = <>{BUSINESS_APP_CHOICE_COPY.download}{BUSINESS_APP_CHOICE_COPY.useWeb}</>
+const jsx = (
+  <>
+    <a href={target.installHref} target="_blank" rel="noopener" onClick={handleDownloadTheBusinessApp}>{BUSINESS_APP_CHOICE_COPY.download}</a>
+    <a href={target.webHref} target="_blank" rel="noopener" onClick={handleUseBusinessOnWeb}>{BUSINESS_APP_CHOICE_COPY.useWeb}</a>
+  </>
+)
 `;
   if (run(good).length !== 0) selfFailures.push("compliant business CTA wrongly flagged: " + JSON.stringify(run(good)));
 
   // ORCH-1381 — reverted to the collapsed ternary (android → web) → fire.
   const ternary = good.replace(
-    "const target = resolveBusinessAppTarget(platform)",
-    "const dest = platform === 'ios' ? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL\n  const target = resolveBusinessAppTarget(platform)",
+    "  const t = resolveBusinessAppTarget(platform, siteAttribution('business_nav'))",
+    "  const dest = platform === 'ios' ? BUSINESS_APP_STORE_URL : BUSINESS_WEB_URL\n  const t = resolveBusinessAppTarget(platform, siteAttribution('business_nav'))",
   );
   if (run(ternary).length === 0) selfFailures.push("ORCH-1324 collapsed ternary (android→web) not flagged");
 
@@ -232,7 +264,8 @@ const jsx = <>{BUSINESS_APP_CHOICE_COPY.download}{BUSINESS_APP_CHOICE_COPY.useWe
   // No detectClientPlatform → fire.
   const noDetect = good
     .replace(/const platform = detectClientPlatform\(\)/g, "const platform = 'ios'")
-    .replace("import { detectClientPlatform } from '@/lib/device-platform'", "");
+    .replace("import { detectClientPlatform } from '@/lib/device-platform'", "")
+    .replace(/detectClientPlatform/g, "hardcodedPlatform");
   if (run(noDetect).length === 0) selfFailures.push("missing detectClientPlatform not flagged");
 
   // Removed analytics → fire.
@@ -244,31 +277,59 @@ const jsx = <>{BUSINESS_APP_CHOICE_COPY.download}{BUSINESS_APP_CHOICE_COPY.useWe
   const noSurface = good.replace(/\s*surface: 'organiser',/g, "");
   if (run(noSurface).length === 0) selfFailures.push("missing surface:'organiser' not flagged");
 
-  // ORCH-1381 ADDENDUM D-B — stopped delegating to openExternal( → fire.
-  const noDelegate = good.replace(/openExternal\(/g, "someLocalOpen(");
-  if (run(noDelegate).length === 0) selfFailures.push("missing openExternal( delegation not flagged");
+  // ORCH-1399 — the business destinations stopped being anchors → fire.
+  const noAnchor = good.replace(/<a\s+href=\{/g, "<div data-href={");
+  if (run(noAnchor).length === 0) selfFailures.push("business destinations not rendered as <a href={…}> anchors not flagged");
+
+  // ORCH-1399 — the anchor lost rel="noopener" (the §5.1 trap: an implementor
+  // "complying" with the ORCH-1381 window.open ban by stripping rel) → fire.
+  const noRel = good.replace(/ rel="noopener"/g, "");
+  if (run(noRel).length === 0) selfFailures.push('business anchor missing rel="noopener" not flagged (the §5.1 trap)');
+
+  // ⭐ THE DECORATIVE-REL CASE (the trap that bit links-experience.tsx). The CTA
+  // anchors lose their rel, but an unrelated rel-carrying anchor remains in the file.
+  // A FILE-LEVEL check would PASS here. The per-anchor check must FIRE.
+  const relOnlyOnNonCta = good.replace(/ rel="noopener"/g, "") +
+    '\nconst social = (<a href="https://instagram.com/usemingla" target="_blank" rel="noopener noreferrer">IG</a>)\n';
+  const relOnlyFailures = run(relOnlyOnNonCta);
+  if (!relOnlyFailures.some((f) => /missing rel="noopener"/.test(f))) {
+    selfFailures.push('DECORATIVE-REL REGRESSION: CTA anchors stripped of rel were NOT flagged because an unrelated anchor still carries rel="noopener" — the check has gone file-level (ORCH-1399)');
+  }
+
+  // ⭐ ORCH-1399 §5.1 PIN — a file carrying rel="noopener" on an ANCHOR *and* a bare
+  // window.open elsewhere must still fire ONLY for the window.open, never for the rel.
+  // A future author who "simplifies" the .open( trap regex to a bare /noopener/ would
+  // break this case — which is exactly why it exists.
+  const relPlusBareOpen = good + '\nconst x = (<a href={t.webHref} rel="noopener">y</a>)\nconst win = window.open(d, "_blank")\n';
+  const relFailures = run(relPlusBareOpen);
+  if (!relFailures.some((f) => /window\.open/.test(f))) {
+    selfFailures.push("bare inlined window.open alongside rel=\"noopener\" was NOT flagged");
+  }
+  if (relFailures.some((f) => /noopener\/noreferrer/.test(f))) {
+    selfFailures.push('rel="noopener" on an ANCHOR was WRONGLY caught by the .open( trap regex — the ban must stay scoped to window.open FEATURE STRINGS (ORCH-1399 §5.1)');
+  }
 
   // ORCH-1381 ADDENDUM D-B — inlined the SHIPPED bug back in → fire (both the
   // window.open ban and the noopener/noreferrer ban).
   const inlinedBug = good.replace(
-    "openExternal(target.installHref)",
-    "const win = window.open(target.installHref, '_blank', 'noopener,noreferrer')\n  if (!win) window.location.assign(target.installHref)",
+    "  if (t.installHref === null) return",
+    "  const win = window.open(t.installHref, '_blank', 'noopener,noreferrer')\n  if (!win) window.location.assign(t.installHref)",
   );
   if (run(inlinedBug).length === 0) selfFailures.push("inlined window.open(…,'noopener,noreferrer') double-nav bug not flagged");
 
   // ORCH-1381 ADDENDUM D-B — THE HALF-FIX TRAP: 'noreferrer' alone also returns
   // null, so this ships the IDENTICAL bug. It must fire.
   const halfFix = good.replace(
-    "openExternal(target.installHref)",
-    "const win = window.open(target.installHref, '_blank', 'noreferrer')\n  if (win) { win.opener = null } else { window.location.assign(target.installHref) }",
+    "  if (t.installHref === null) return",
+    "  const win = window.open(t.installHref, '_blank', 'noreferrer')\n  if (win) { win.opener = null } else { window.location.assign(t.installHref) }",
   );
   if (run(halfFix).length === 0) selfFailures.push("HALF-FIX TRAP ('noreferrer' only, still returns null) not flagged");
 
   // ORCH-1381 ADDENDUM D-B — even a BARE inlined window.open must fire: the
   // decision belongs in one module, not re-inlined per surface.
   const bareInline = good.replace(
-    "openExternal(target.installHref)",
-    "const win = window.open(target.installHref, '_blank')\n  if (win) { win.opener = null } else { window.location.assign(target.installHref) }",
+    "  if (t.installHref === null) return",
+    "  const win = window.open(t.installHref, '_blank')\n  if (win) { win.opener = null } else { window.location.assign(t.installHref) }",
   );
   if (run(bareInline).length === 0) selfFailures.push("bare inlined window.open (not delegating) not flagged");
 
@@ -293,7 +354,7 @@ const jsx = <>{BUSINESS_APP_CHOICE_COPY.download}{BUSINESS_APP_CHOICE_COPY.useWe
     selfFailures.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
-  console.log("ORCH-1324 business-getapp-device-aware self-test PASS (15/15 cases, ORCH-1381-ADDENDUM-amended).");
+  console.log("ORCH-1324 business-getapp-device-aware self-test PASS (19/19 cases, ORCH-1399-amended: incl. the §5.1 rel-on-anchor pin).");
   process.exit(0);
 }
 

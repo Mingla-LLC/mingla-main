@@ -85,53 +85,113 @@ export const LINKS_TABS: readonly LinksTab[] = [
   },
 ]
 
-export interface LinksSocial {
-  /** Human network name (also the analytics `network` value). */
-  label: string
-  /** Universal @usemingla profile — shown on the Explorer tab (and the default). */
-  href: string
+// ORCH-1399 [links-src-tracking-getapp-stack] — the socials taxonomy is now an
+// EXPLICIT, type-enforced discriminator instead of modelling-by-omission.
+//
+// THE DEFECT THIS KILLS. The old model was `businessHref?: string`, where the
+// ABSENCE of the field carried all the meaning: "no businessHref" meant "universal —
+// same URL on both tabs" (YouTube, LinkedIn). That worked only by accident, and
+// adding Snapchat is what breaks it. Snapchat is EXPLORER-ONLY (there is no business
+// Snapchat account). Added under the old model it would have no businessHref — making
+// it byte-identical in the data to YouTube/LinkedIn, and therefore rendered on BOTH
+// tabs with the consumer handle. But YouTube/LinkedIn are DELIBERATELY neutral
+// ("investor and education — neither explorer nor business"), while Snapchat is
+// explorer-only. TWO OPPOSITE INTENTS, ONE INDISTINGUISHABLE REPRESENTATION. The bug
+// would ship silently and look like data entry.
+//
+// WHY A DISCRIMINATED UNION AND NOT `scope` + optional `businessHref`. The union makes
+// a `per_surface` social WITHOUT a businessHref a COMPILE ERROR, and makes reading
+// `businessHref` off a `neutral` one a COMPILE ERROR. The invariant stops depending on
+// anyone remembering it.
+export type LinksSocialScope = 'per_surface' | 'neutral' | 'explorer_only'
+
+export type LinksSocial =
   /**
-   * @minglabusiness profile — swapped in on the Business tab. Mingla runs a
-   * dedicated business account on Instagram, X, TikTok, Facebook & Threads
-   * (DEC-198 / [[reference-mingla-social-links]]). LinkedIn & YouTube stay
-   * universal on BOTH tabs, so they intentionally omit this.
+   * A dedicated @minglabusiness account EXISTS — the URL swaps per tab.
+   * `businessHref` is REQUIRED: omitting it is a compile error, not a silent
+   * fallback to the consumer handle.
    */
-  businessHref?: string
-}
+  | { scope: 'per_surface'; label: string; href: string; businessHref: string }
+  /**
+   * Neither explorer nor business — shown on BOTH tabs with ONE URL.
+   * Seth's ruling: "YouTube and LinkedIn are not explorers nor business, they're
+   * neutral, used for investor and education."
+   */
+  | { scope: 'neutral'; label: string; href: string }
+  /**
+   * Explorer tab ONLY — there is no business account on this network, so the
+   * Business tab must render NOTHING rather than link to the consumer handle.
+   */
+  | { scope: 'explorer_only'; label: string; href: string }
 
 // The FULL Mingla social presence, in the order they sit in the bottom row. Add
 // or reorder here (data-driven) — links-experience renders each with its icon and
 // resolves the per-tab URL via `socialHref` below.
 export const LINKS_SOCIALS: readonly LinksSocial[] = [
   {
+    scope: 'per_surface',
     label: 'Instagram',
     href: 'https://www.instagram.com/usemingla',
     businessHref: 'https://www.instagram.com/minglabusiness',
   },
-  { label: 'X', href: 'https://x.com/usemingla', businessHref: 'https://x.com/MinglaBusiness' },
   {
+    scope: 'per_surface',
+    label: 'X',
+    href: 'https://x.com/usemingla',
+    businessHref: 'https://x.com/MinglaBusiness',
+  },
+  {
+    scope: 'per_surface',
     label: 'TikTok',
     href: 'https://www.tiktok.com/@usemingla',
     businessHref: 'https://www.tiktok.com/@minglabusiness',
   },
-  // YouTube & LinkedIn stay universal on both tabs (no business variant).
-  { label: 'YouTube', href: 'https://www.youtube.com/@usemingla' },
-  { label: 'LinkedIn', href: 'https://www.linkedin.com/company/usemingla' },
+  // NEUTRAL — investor & education. Same URL on both tabs, deliberately (Seth's
+  // ruling). This is NOT the same thing as explorer_only, which is why the scope
+  // is explicit now.
+  { scope: 'neutral', label: 'YouTube', href: 'https://www.youtube.com/@usemingla' },
+  { scope: 'neutral', label: 'LinkedIn', href: 'https://www.linkedin.com/company/usemingla' },
   {
+    scope: 'per_surface',
     label: 'Facebook',
     href: 'https://www.facebook.com/usemingla',
     businessHref: 'https://www.facebook.com/minglabusiness',
   },
   {
+    scope: 'per_surface',
     label: 'Threads',
     href: 'https://www.threads.com/@usemingla',
     businessHref: 'https://www.threads.com/@minglabusiness',
   },
+  // ORCH-1399 (D) — EXPLORER ONLY. There is NO business Snapchat account, so the
+  // Business tab renders no Snapchat icon at all. Linking the consumer handle from
+  // the business tab IS the defect. Placed last so the business row simply ends one
+  // icon earlier and the existing order stays stable.
+  { scope: 'explorer_only', label: 'Snapchat', href: 'https://www.snapchat.com/add/usemingla' },
 ]
 
-// Resolve the profile URL for the active tab: the Business tab uses the
-// @minglabusiness handle where one exists; everything else (Explorer, and the
-// universal-only YouTube/LinkedIn) falls back to the @usemingla `href`.
+/**
+ * Resolve the profile URL for the active tab. Only a `per_surface` social has a
+ * business variant — the union makes reading `businessHref` off any other scope a
+ * compile error, so this can no longer silently fall through.
+ */
 export function socialHref(social: LinksSocial, tab: LinksTabId): string {
-  return tab === 'business' && social.businessHref ? social.businessHref : social.href
+  return tab === 'business' && social.scope === 'per_surface' ? social.businessHref : social.href
+}
+
+/**
+ * The socials to RENDER for a tab.
+ *
+ * The Business tab filters out `explorer_only` members. This is the whole point of
+ * the scope discriminator: under the old optional-field model, Snapchat and YouTube
+ * were indistinguishable, so Snapchat would have rendered on the business tab
+ * pointing at the consumer handle — a silent, plausible-looking defect.
+ *
+ * Explorer: 8 socials. Business: 7.
+ */
+export function socialsForTab(tab: LinksTabId): readonly LinksSocial[] {
+  if (tab === 'business') {
+    return LINKS_SOCIALS.filter((s) => s.scope !== 'explorer_only')
+  }
+  return LINKS_SOCIALS
 }
