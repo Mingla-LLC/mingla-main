@@ -224,6 +224,9 @@ jobs:
             # ISSUE-865 WP-B — ad-conversion senders + fire helper (hermetic:
             # stubbed fetch + injected supabase; runs with the same flags).
             supabase/functions/_shared/__tests__/issue_865_wp_b_ad_conversion.test.ts
+            # ISSUE-865 WP-B/C — mingla-tester adversarial battery (real timeout
+            # path, end-to-end PII hashing on the wire, cross-side dedup contract).
+            supabase/functions/_shared/__tests__/issue_865_wp_bc_adversarial.tester.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-net --no-check "${DENO_TEST_FILES[@]}"; then
@@ -514,6 +517,7 @@ jobs:
         run: >
           npx jest
           src/analytics/__tests__/webAnalytics.pixels.issue865.test.ts
+          src/analytics/__tests__/webAnalytics.pixels.issue865.adversarial.tester.test.ts
           --runInBand
 
   orch-1331-partner-paystack-strict-grep:
