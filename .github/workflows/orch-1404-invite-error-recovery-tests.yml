@@ -49,4 +49,5 @@ jobs:
           npx jest
           src/services/__tests__/orch_1404_functions_error_parse.tester.test.ts
           src/components/invite/__tests__/orch_1404_wrong_account_recovery.tester.test.tsx
+          src/components/invite/__tests__/orch_1404_adversarial_resume_and_parse.tester.test.tsx
           --runInBand
