@@ -50,6 +50,7 @@ import {
   AccessibilityInfo,
   Linking,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -572,11 +573,21 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
     <View style={styles.host}>
       {renderTopBar()}
 
-      <View
-        style={[
+      {/* ORCH-1403 [connect-bank-heading-collision] — the state content is
+          wrapped in a ScrollView, NOT a plain flex:1 View. contentContainerStyle
+          carries flexGrow:1 + justifyContent:"center" so short content still
+          centers (unchanged look on tall screens) but tall content SCROLLS
+          instead of overflowing upward. The old plain View let the idle heading
+          paint over the fixed top bar ("Set up payments" / "Cancel") on a ~640px
+          viewport — illegible. The fixed top bar above stays outside the scroll
+          area, always legible. */}
+      <ScrollView
+        style={styles.bodyScroll}
+        contentContainerStyle={[
           styles.body,
           { paddingBottom: Math.max(insets.bottom, spacing.lg) },
         ]}
+        showsVerticalScrollIndicator={false}
       >
         {viewState === "permission-denied" ? (
           <View style={styles.stateBlock}>
@@ -985,7 +996,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
             </View>
           </>
         ) : null}
-      </View>
+      </ScrollView>
     </View>
   );
 };
@@ -1018,8 +1029,18 @@ const styles = StyleSheet.create({
   },
 
   // Body -----------------------------------------------------------------
-  body: {
+  // ORCH-1403 — the scroll VIEWPORT fills the space under the fixed top bar
+  // (flex:1). The scroll box, not the content, is bounded to the viewport, so
+  // overflow scrolls instead of painting over the top bar.
+  bodyScroll: {
     flex: 1,
+  },
+  // ORCH-1403 — contentContainerStyle for the body ScrollView. flexGrow:1 (was
+  // flex:1 on a plain View) lets the content CENTER when it fits a tall screen
+  // (unchanged look) but GROW past the viewport and SCROLL on a short screen —
+  // killing the heading-over-top-bar overlap at ~640px.
+  body: {
+    flexGrow: 1,
     paddingHorizontal: spacing.md,
     justifyContent: "center",
     gap: spacing.xl,
