@@ -4,7 +4,7 @@
  *
  * TESTER-AUTHORED, attacking angles the implementor's companion
  * (orch-1385-workspace-deps-declared.test.mjs) did NOT cover. The implementor
- * covered: real-tree happy path, --self-test matrix, the exact #925 fixture
+ * covered: real-tree happy path, the gate's own self-test matrix, the exact #925 fixture
  * shape (static import undeclared), registry-version half-revert, and
  * subpath/require/dynamic-import attribution. THIS suite attacks:
  *
@@ -19,8 +19,11 @@
  *             EVASION import(`@mingla/x`) (KNOWN-GAP)                  [T-8, T-9]
  *  ANGLE E  — declaration present but pointing at the WRONG package
  *             dir, trailing-slash and protocol-case variants           [T-10]
- *  ANGLE G  — the CI wiring itself: workflow path filters + job steps
- *             (a filter-narrowing regression goes red HERE)            [T-11]
+ *  ANGLE G  — the CI wiring itself: workflow path filters + the gate's
+ *             MANIFEST.json registration (a filter-narrowing or
+ *             de-registration regression goes red HERE; the pre-batch
+ *             per-gate-job assertion was retired by ORCH-1400 after
+ *             ORCH-1383 batched the workflow)                          [T-11]
  *  plus     — real-tree artifact binding (tester fails-on-revert case) [T-1, T-2]
  *             and the gate module's import-time side effect            [T-12]
  *
@@ -485,14 +488,24 @@ test("T-10 angle E: wrong-dir / trailing-slash / case-variant declarations all f
 });
 
 // ---------------------------------------------------------------------------
-// T-11 — ANGLE G: the CI wiring. The gate only defends main if the workflow
-// actually runs it: assert the REAL workflow's pull_request path filters
-// cover BOTH apps + packages/ + the gate scripts dir, and the ORCH-1385 job
-// still runs self-test + gate + companion. Narrowing the filters (e.g. to
-// mingla-business/** only — which would let an app-mobile-only undeclared
-// import merge without this gate running) or unhooking a step goes RED here.
+// T-11 — ANGLE G: the CI wiring. The gate only defends main if CI actually
+// runs it: assert the REAL workflow's pull_request path filters cover BOTH
+// apps + packages/ + the gate scripts dir, and that the gate family is
+// registered in MANIFEST.json the way run-batch.mjs executes it. Narrowing
+// the filters (e.g. to mingla-business/** only — which would let an
+// app-mobile-only undeclared import merge without this gate running) or
+// de-registering a row goes RED here.
+//
+// [TEST-MOD-APPROVED ORCH-1400] — this test used to assert the pre-batch
+// per-gate job format ("orch-1385-workspace-deps-declared:" + its three run
+// steps). ORCH-1383 legitimately removed that format when it batched 350 jobs
+// into run-batch.mjs classes driven by MANIFEST.json; the assertion then
+// failed for wiring-format reasons while this suite sat dark (ORCH-1400
+// RD-1: dark AND stale). The wiring truth this angle defends now lives in
+// MANIFEST.json rows, asserted below; run-batch R4 + parity P5 prove the
+// batch actually executes what the rows declare.
 // ---------------------------------------------------------------------------
-test("T-11 angle G: workflow path filters + ORCH-1385 job wiring are intact", () => {
+test("T-11 angle G: workflow path filters + ORCH-1385 MANIFEST wiring are intact", () => {
   const yml = fs.readFileSync(WORKFLOW, "utf8");
   const pr = yml.match(/on:\s*\n\s{2}pull_request:[\s\S]*?(?=\n\s{2}push:)/);
   assert.ok(pr, "pull_request trigger block not found in strict-grep-mingla-business.yml");
@@ -507,16 +520,44 @@ test("T-11 angle G: workflow path filters + ORCH-1385 job wiring are intact", ()
       `pull_request path filter lost ${p} — an undeclared-import PR touching only that path would merge without this gate running`,
     );
   }
-  assert.match(yml, /^ {2}orch-1385-workspace-deps-declared:/m, "ORCH-1385 job removed from the workflow");
-  const job = yml.slice(yml.indexOf("  orch-1385-workspace-deps-declared:"));
-  const jobBlock = job.slice(0, job.indexOf("\n  ", 1) > 0 ? job.indexOf("\n  or", 40) : undefined);
-  for (const step of [
-    "node .github/scripts/strict-grep/orch-1385-workspace-deps-declared.mjs --self-test",
-    "node .github/scripts/strict-grep/orch-1385-workspace-deps-declared.mjs",
-    "node --test .github/scripts/strict-grep/orch-1385-workspace-deps-declared.test.mjs",
-  ]) {
-    assert.ok(jobBlock.includes(step), `ORCH-1385 job lost its step: ${step}`);
-  }
+  const manifest = JSON.parse(
+    fs.readFileSync(
+      path.join(REPO_ROOT, ".github", "scripts", "strict-grep", "MANIFEST.json"),
+      "utf8",
+    ),
+  );
+  const row = (script) => manifest.gates.find((g) => g.script === script);
+  const gateRow = row(".github/scripts/strict-grep/orch-1385-workspace-deps-declared.mjs");
+  assert.ok(gateRow, "ORCH-1385 gate row missing from MANIFEST.json — the gate is enforced by nothing");
+  assert.equal(
+    gateRow.enforcement,
+    "batch:A",
+    "ORCH-1385 gate left batch:A — run-batch.mjs no longer executes it",
+  );
+  assert.deepEqual(
+    [...(gateRow.modes ?? [])].sort(),
+    ["plain", "self-test"],
+    "ORCH-1385 gate lost a mode — CI no longer runs both its plain scan and its self-test",
+  );
+  assert.equal(
+    gateRow.selfTest,
+    "wired",
+    "ORCH-1385 gate selfTest demoted from \"wired\" — its self-test no longer counts toward the floor",
+  );
+  const advRow = row(
+    ".github/scripts/strict-grep/orch-1385-workspace-deps-declared.adversarial.test.mjs",
+  );
+  assert.ok(advRow, "this adversarial suite's own row is missing from MANIFEST.json");
+  assert.equal(
+    advRow.enforcement,
+    "batch:A",
+    "this adversarial suite left batch:A — it has gone dark again (the exact RD-1 state ORCH-1400 fixed)",
+  );
+  assert.equal(advRow.invocation, "node --test", "this adversarial suite's invocation drifted");
+  assert.ok(
+    (advRow.modes ?? []).includes("plain"),
+    "this adversarial suite lost its plain mode — the batch would never run it",
+  );
 });
 
 // ---------------------------------------------------------------------------

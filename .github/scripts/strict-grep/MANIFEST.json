@@ -6,7 +6,7 @@
     "strict-grep workflow invokes from outside this directory; they are registered so run-batch.mjs executes",
     "them and R4 counts them.",
     "'modes' is the exact set of invocation forms CI uses for that script — 2 gates are --self-test ONLY and",
-    "must never gain a plain run; 217 are plain-only; 182 run both. Changing modes changes WHAT is asserted.",
+    "must never gain a plain run; 229 are plain-only; 186 run both. Changing modes changes WHAT is asserted.",
     "'jobKeys' preserves the PRE-BATCH job identity so a failure can still name its origin (SPEC §5.1).",
     "Ratchets (selfTestWiredFloor, unenforcedCap, gates[]) are append-only — enforced by",
     "meta-1383-manifest-parity.mjs P7/P8 and by tests-append-only.yml. Shrinking needs a GATE-REMOVAL: token.",
@@ -16,10 +16,10 @@
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
   "expectedStrictGrepMjsFiles": 405,
-  "selfTestWiredFloor": 185,
-  "unenforcedCap": 21,
-  "fixtureCap": 11,
-  "capableUnwiredCap": 27,
+  "selfTestWiredFloor": 188,
+  "unenforcedCap": 7,
+  "fixtureCap": 10,
+  "capableUnwiredCap": 23,
   "externalGateDirs": [],
   "gates": [
     {
@@ -1779,12 +1779,14 @@
     {
       "script": ".github/scripts/strict-grep/i-proposed-pay-in-full-opt-out-no-installment-rows.mjs",
       "kind": "file",
-      "enforcement": "unenforced",
-      "invocation": null,
-      "modes": [],
-      "selfTest": "capable-unwired",
-      "jobKeys": [],
-      "reason": "On disk with an exit contract, invoked only by a package.json script that no CI workflow runs. Frozen (not wired) by ORCH-1383; see SPEC_ORCH-1383 §1.1-C / §5.5 and orchestrator discovery D1."
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
     },
     {
       "script": ".github/scripts/strict-grep/i-proposed-pay-in-full-opt-out-no-installment-rows.test.mjs",
@@ -1877,12 +1879,13 @@
     {
       "script": ".github/scripts/strict-grep/i-proposed-tr2-livestore-addliveevent-owner.mjs",
       "kind": "file",
-      "enforcement": "unenforced",
-      "invocation": null,
-      "modes": [],
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
       "selfTest": "none",
-      "jobKeys": [],
-      "reason": "On disk with an exit contract, invoked only by a package.json script that no CI workflow runs. Frozen (not wired) by ORCH-1383; see SPEC_ORCH-1383 §1.1-C / §5.5 and orchestrator discovery D1."
+      "jobKeys": []
     },
     {
       "script": ".github/scripts/strict-grep/i-proposed-tr2-route-by-event-type.mjs",
@@ -1892,7 +1895,7 @@
       "modes": [],
       "selfTest": "none",
       "jobKeys": [],
-      "reason": "On disk with an exit contract, invoked only by a package.json script that no CI workflow runs. Frozen (not wired) by ORCH-1383; see SPEC_ORCH-1383 §1.1-C / §5.5 and orchestrator discovery D1."
+      "reason": "HELD unenforced by ORCH-1400 Phase 1: exits 1 live — flags 6 sub-path pushes (/event/:id/scanner, /trip/:id/edit|travelers) its own header intends as legal known-type sub-navigation. Detector-vs-intent mismatch, INVESTIGATION_ORCH-1400 F-1#3 (no routed D-id — reconcile aligns the detector with its header). Wire only once its live run is green."
     },
     {
       "script": ".github/scripts/strict-grep/i-proposed-tr2-safearea-on-fullscreen-routes.mjs",
@@ -1902,7 +1905,7 @@
       "modes": [],
       "selfTest": "none",
       "jobKeys": [],
-      "reason": "On disk with an exit contract, invoked only by a package.json script that no CI workflow runs. Frozen (not wired) by ORCH-1383; see SPEC_ORCH-1383 §1.1-C / §5.5 and orchestrator discovery D1."
+      "reason": "HELD unenforced by ORCH-1400 Phase 1: exits 1 live — 19 full-screen business routes lack SafeArea handling (ORCH-0864 operator-visible class). Routed as discovery D-1; reconciliation belongs to D-1's ORCH. Wire only once its live run is green."
     },
     {
       "script": ".github/scripts/strict-grep/i-proposed-tr3-installment-customer-durability.mjs",
@@ -2482,27 +2485,29 @@
       "modes": [],
       "selfTest": "none",
       "jobKeys": [],
-      "reason": "On disk with an exit contract, invoked only by a package.json script that no CI workflow runs. Frozen (not wired) by ORCH-1383; see SPEC_ORCH-1383 §1.1-C / §5.5 and orchestrator discovery D1."
+      "reason": "HELD unenforced by ORCH-1400 Phase 1: exits 1 live — BrandSwitcherSheet.tsx no longer carries the brand-create-persists-default-brand signature (possible live default-brand regression or blessed refactor drift). Routed as discovery D-2. Wire only once its live run is green."
     },
     {
       "script": ".github/scripts/strict-grep/orch-0766f-event-cover-quicktime-storage.mjs",
       "kind": "file",
-      "enforcement": "unenforced",
-      "invocation": null,
-      "modes": [],
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
       "selfTest": "none",
-      "jobKeys": [],
-      "reason": "On disk with an exit contract, invoked only by a package.json script that no CI workflow runs. Frozen (not wired) by ORCH-1383; see SPEC_ORCH-1383 §1.1-C / §5.5 and orchestrator discovery D1."
+      "jobKeys": []
     },
     {
       "script": ".github/scripts/strict-grep/orch-0768-brand-audience-identity-honesty.mjs",
       "kind": "file",
-      "enforcement": "unenforced",
-      "invocation": null,
-      "modes": [],
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
       "selfTest": "none",
-      "jobKeys": [],
-      "reason": "On disk with an exit contract, invoked only by a package.json script that no CI workflow runs. Frozen (not wired) by ORCH-1383; see SPEC_ORCH-1383 §1.1-C / §5.5 and orchestrator discovery D1."
+      "jobKeys": []
     },
     {
       "script": ".github/scripts/strict-grep/orch-0769-app-wide-currency.mjs",
@@ -2512,7 +2517,7 @@
       "modes": [],
       "selfTest": "none",
       "jobKeys": [],
-      "reason": "On disk with an exit contract, invoked only by a package.json script that no CI workflow runs. Frozen (not wired) by ORCH-1383; see SPEC_ORCH-1383 §1.1-C / §5.5 and orchestrator discovery D1."
+      "reason": "HELD unenforced by ORCH-1400 Phase 1: exits 1 live — mingla-business/app/rsvp/[id]/preview.tsx:112 hardcodes currency \"GBP\" (D-3a); the gate also scans mingla-business ONLY despite its app-wide name, leaving live consumer GBP fallbacks uncovered (D-3b). Routed as discoveries D-3a/D-3b. Wire only once its live run is green."
     },
     {
       "script": ".github/scripts/strict-grep/orch-0770-event-cover-video-processing.mjs",
@@ -2522,7 +2527,7 @@
       "modes": [],
       "selfTest": "none",
       "jobKeys": [],
-      "reason": "On disk with an exit contract, invoked only by a package.json script that no CI workflow runs. Frozen (not wired) by ORCH-1383; see SPEC_ORCH-1383 §1.1-C / §5.5 and orchestrator discovery D1."
+      "reason": "HELD unenforced by ORCH-1400 Phase 1 (D-4 + D-7): expectations pin the pre-META-1270 client pipeline while the guarded TUS/Bunny event-cover upload surface is LIVE — rewrite the expectations against eventCoverVideoTusPatch.ts + the event-cover-video-* function family; deletion prohibited. Wire only once the rewritten run is green."
     },
     {
       "script": ".github/scripts/strict-grep/orch-0776-video-processing-status-bridge.mjs",
@@ -2545,7 +2550,7 @@
       "modes": [],
       "selfTest": "none",
       "jobKeys": [],
-      "reason": "On disk with an exit contract, invoked only by a package.json script that no CI workflow runs. Frozen (not wired) by ORCH-1383; see SPEC_ORCH-1383 §1.1-C / §5.5 and orchestrator discovery D1."
+      "reason": "HELD unenforced by ORCH-1400 Phase 1 (D-4 + D-7): expectations pin the pre-META-1270 Expo createUploadTask path while real byte-progress honesty is live under TUS — rewrite the expectations against the TUS/Bunny pipeline (same target as orch-0770); deletion prohibited. Wire only once the rewritten run is green."
     },
     {
       "script": ".github/scripts/strict-grep/orch-0776d-cancelled-at-schema.mjs",
@@ -3189,42 +3194,46 @@
     {
       "script": ".github/scripts/strict-grep/orch-0889-disabled-query-loading-state.mjs",
       "kind": "file",
-      "enforcement": "unenforced",
-      "invocation": null,
-      "modes": [],
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
       "selfTest": "none",
-      "jobKeys": [],
-      "reason": "On disk with an exit contract, invoked only by a package.json script that no CI workflow runs. Frozen (not wired) by ORCH-1383; see SPEC_ORCH-1383 §1.1-C / §5.5 and orchestrator discovery D1."
+      "jobKeys": []
     },
     {
       "script": ".github/scripts/strict-grep/orch-0889-sticky-footer-via-hook.mjs",
       "kind": "file",
-      "enforcement": "unenforced",
-      "invocation": null,
-      "modes": [],
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
       "selfTest": "none",
-      "jobKeys": [],
-      "reason": "On disk with an exit contract, invoked only by a package.json script that no CI workflow runs. Frozen (not wired) by ORCH-1383; see SPEC_ORCH-1383 §1.1-C / §5.5 and orchestrator discovery D1."
+      "jobKeys": []
     },
     {
       "script": ".github/scripts/strict-grep/orch-0891-chip-backspace-via-dom-handler.mjs",
       "kind": "file",
-      "enforcement": "unenforced",
-      "invocation": null,
-      "modes": [],
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
       "selfTest": "none",
-      "jobKeys": [],
-      "reason": "On disk with an exit contract, invoked only by a package.json script that no CI workflow runs. Frozen (not wired) by ORCH-1383; see SPEC_ORCH-1383 §1.1-C / §5.5 and orchestrator discovery D1."
+      "jobKeys": []
     },
     {
       "script": ".github/scripts/strict-grep/orch-0891-chip-dom-contract.mjs",
       "kind": "file",
-      "enforcement": "unenforced",
-      "invocation": null,
-      "modes": [],
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
       "selfTest": "none",
-      "jobKeys": [],
-      "reason": "On disk with an exit contract, invoked only by a package.json script that no CI workflow runs. Frozen (not wired) by ORCH-1383; see SPEC_ORCH-1383 §1.1-C / §5.5 and orchestrator discovery D1."
+      "jobKeys": []
     },
     {
       "script": ".github/scripts/strict-grep/orch-0891-marketing-performance-budget.mjs",
@@ -3242,12 +3251,13 @@
     {
       "script": ".github/scripts/strict-grep/orch-0891-no-tiptap-in-native-bundle.mjs",
       "kind": "file",
-      "enforcement": "unenforced",
-      "invocation": null,
-      "modes": [],
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
       "selfTest": "none",
-      "jobKeys": [],
-      "reason": "On disk with an exit contract, invoked only by a package.json script that no CI workflow runs. Frozen (not wired) by ORCH-1383; see SPEC_ORCH-1383 §1.1-C / §5.5 and orchestrator discovery D1."
+      "jobKeys": []
     },
     {
       "script": ".github/scripts/strict-grep/orch-0892-no-bespoke-keyboard-plumbing.mjs",
@@ -3283,7 +3293,7 @@
       "modes": [],
       "selfTest": "none",
       "jobKeys": [],
-      "reason": "On disk with an exit contract, invoked only by a package.json script that no CI workflow runs. Frozen (not wired) by ORCH-1383; see SPEC_ORCH-1383 §1.1-C / §5.5 and orchestrator discovery D1."
+      "reason": "HELD unenforced by ORCH-1400 Phase 1: exits 1 live — buildCardDataPayload no longer synthesizes top-level curated image/images from stops (1/8 checks fail; potential curated collab-card image regression). Routed as discovery D-5. Wire only once its live run is green."
     },
     {
       "script": ".github/scripts/strict-grep/orch-0913-no-tabs-on-dashboards.mjs",
@@ -3736,12 +3746,14 @@
     {
       "script": ".github/scripts/strict-grep/orch-1054-partner-splits.mjs",
       "kind": "file",
-      "enforcement": "unenforced",
-      "invocation": null,
-      "modes": [],
-      "selfTest": "capable-unwired",
-      "jobKeys": [],
-      "reason": "On disk with an exit contract, invoked only by a package.json script that no CI workflow runs. Frozen (not wired) by ORCH-1383; see SPEC_ORCH-1383 §1.1-C / §5.5 and orchestrator discovery D1."
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
     },
     {
       "script": ".github/scripts/strict-grep/orch-1055-nav-tab-rank-gate.mjs",
@@ -4074,12 +4086,14 @@
     {
       "script": ".github/scripts/strict-grep/orch-1148-no-buyer-tax-form-in-venue-settings.mjs",
       "kind": "file",
-      "enforcement": "unenforced",
-      "invocation": null,
-      "modes": [],
-      "selfTest": "capable-unwired",
-      "jobKeys": [],
-      "reason": "On disk with an exit contract, invoked only by a package.json script that no CI workflow runs. Frozen (not wired) by ORCH-1383; see SPEC_ORCH-1383 §1.1-C / §5.5 and orchestrator discovery D1."
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
     },
     {
       "script": ".github/scripts/strict-grep/orch-1148-reserve-sheet-gate-mirrors-button.mjs",
@@ -4168,12 +4182,13 @@
     {
       "script": ".github/scripts/strict-grep/orch-1162-map-single-owner.mjs",
       "kind": "file",
-      "enforcement": "unenforced",
-      "invocation": null,
-      "modes": [],
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
       "selfTest": "none",
-      "jobKeys": [],
-      "reason": "On disk with an exit contract, invoked only by a package.json script that no CI workflow runs. Frozen (not wired) by ORCH-1383; see SPEC_ORCH-1383 §1.1-C / §5.5 and orchestrator discovery D1."
+      "jobKeys": []
     },
     {
       "script": ".github/scripts/strict-grep/orch-1167-allin-price-in-ticket-box.mjs",
@@ -4304,12 +4319,13 @@
     {
       "script": ".github/scripts/strict-grep/orch-1187-tester-consent-gate-deletion-robust.mjs",
       "kind": "file",
-      "enforcement": "unenforced",
-      "invocation": null,
-      "modes": [],
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
       "selfTest": "none",
-      "jobKeys": [],
-      "reason": "On disk with an exit contract, invoked only by a package.json script that no CI workflow runs. Frozen (not wired) by ORCH-1383; see SPEC_ORCH-1383 §1.1-C / §5.5 and orchestrator discovery D1."
+      "jobKeys": []
     },
     {
       "script": ".github/scripts/strict-grep/orch-1192-app-events-wired.mjs",
@@ -5203,12 +5219,13 @@
     {
       "script": ".github/scripts/strict-grep/orch-1369-release-submit-config.adversarial.mjs",
       "kind": "file",
-      "enforcement": "unenforced",
-      "invocation": null,
-      "modes": [],
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
       "selfTest": "none",
-      "jobKeys": [],
-      "reason": "On disk with an exit contract, invoked only by a package.json script that no CI workflow runs. Frozen (not wired) by ORCH-1383; see SPEC_ORCH-1383 §1.1-C / §5.5 and orchestrator discovery D1."
+      "jobKeys": []
     },
     {
       "script": ".github/scripts/strict-grep/orch-1369-release-submit-config.mjs",
@@ -5269,12 +5286,13 @@
     {
       "script": ".github/scripts/strict-grep/orch-1385-workspace-deps-declared.adversarial.test.mjs",
       "kind": "file",
-      "enforcement": "fixture",
-      "invocation": null,
-      "modes": [],
-      "selfTest": "capable-unwired",
-      "jobKeys": [],
-      "reason": "Test fixture on disk, not invoked by any CI workflow. Recorded by ORCH-1383 so no file is unaccounted for. ORCH-1400 Phase 1 (P10 audit): remains a recorded dark fixture, capped by fixtureCap; disposition in a later ORCH-1400 phase."
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
     },
     {
       "script": ".github/scripts/strict-grep/orch-1385-workspace-deps-declared.mjs",
