@@ -719,3 +719,154 @@ red on strict-grep pending the COMMS-0103 rerun.
 > "the suite is good."**
 
 Backfilling the 168 is separate scope, and it is the real work.
+
+---
+---
+
+# REPLAY — ORCH-1383 reconciled onto current main (2026-07-18)
+
+**Status: `implemented and verified` — replay complete; differential proof RE-RUN and PASSING
+against a fresh green baseline on current main.**
+
+Everything above this line describes the ORIGINAL build, proven against a baseline
+(`29453557478`, 340 jobs @ `60533968e`) that is now DEAD: `main` advanced ~100 commits and other
+sessions changed the workflow underneath it. This section is the reconciliation record. The job
+was replay, not redesign — §12 order, R1–R9, P1–P9 + P-vacuous, and Seth's Option 2 ruling all
+still bind, and all still hold.
+
+## R1. What moved under the branch, measured
+
+| Surface | At old baseline | On current main (`885158eb7`) |
+|---|---|---|
+| `strict-grep-mingla-business.yml` | 340 jobs / 4,478 lines | **350 jobs / 4,611 lines** |
+| distinct gate scripts in the workflow | 378 | **390** |
+| `(script,mode)` executions | 546 | **563** |
+| on-disk strict-grep `.mjs` | 394 | **404** |
+| new workflows invoking strict-grep scripts | — | `framework-major-guard.yml`, `orch-1386-tester-adversarial.yml` |
+
+Main's 10 new jobs: `issue-866-creative-guards`, `i-1378-web-shim-export-parity`,
+`issue-864-campaign-builder-node-tests`, `issue-864-campaign-builder-tester-adversarial`,
+`orch-1385-workspace-deps-declared`, `orch-1387-wallet-config-threaded`,
+`orch-1387-wallet-type-contract`, `issue-927-create-wired-widened`,
+`issue-927-qa-tester-adversarial`, `orch-1398-expo-pinned-54`. Amended gate scripts on main
+(orch-1004 / orch-1342 / orch-1381): untouched by this branch — they are simply the new SC-16
+baseline.
+
+## R2. The rebase — how the 4,611-line conflict was resolved without hand-merging
+
+`git fetch && git rebase origin/main` (NO stash — COMMS-0105). Per the dispatch's strategy:
+
+1. The research commit was dropped by rebase itself ("patch contents already upstream" — it had
+   merged to main separately).
+2. `aff993707` conflicted at the workflow tail (my parity job append vs main's 10 new jobs
+   appended at the same spot). Resolved by keeping BOTH: main's 10 jobs in place, the
+   `meta-1383-manifest-parity` job re-appended at EOF. YAML-verified: 351 jobs + concurrency.
+3. `0171a6203` (the batch rewrite) conflicted wholesale. Resolved by **taking main's version of
+   the workflow entirely** (`git checkout --ours`) — main's 4,611-line gate universe is the
+   source of truth; the batch is REGENERATED from it (below), never hand-merged hunk-by-hunk.
+4. Everything else applied clean. Post-rebase branch: 5 commits on `885158eb7`
+   (`c9b1d3f84` spec → `d56ffbac8` machinery → `af782002f` proof v1 → `84937d8fe` step 6 →
+   `1b611919a` step 7).
+
+## R3. Regeneration from main's universe (§5.1 method — YAML parse, never grep)
+
+**MANIFEST.json** re-derived from the rebased 351-job pre-batch workflow + all other workflows.
+**Generator-fidelity control: the derivation reproduced all 418 pre-existing entries
+byte-identically (changed = 0, removed = 0)** and added 17 rows:
+
+- 6 new `batch:A` strict-grep gates (issue-866, i-1378, orch-1385 + its `.test.mjs`,
+  orch-1387, orch-1398) — all with CI-wired self-tests where the workflow runs them;
+- 6 new out-of-dir `batch:A` suites (issue-864 ×2, issue-927 ×2 admin tests; orch-1387
+  business+consumer payment structural tests — the one `node --test a b` two-file invocation is
+  modeled as two entries, verdict-equivalent since node:test isolates per file);
+- 3 new `external:` gates (orch-1386 guard + its 2 test suites, in the two new workflows);
+- 1 new `fixture` — see discovery RD-1;
+- 1 synthetic `job:` lane guard — see R4.
+
+Totals: **435 entries · 404 on-disk `.mjs` · `selfTestWiredFloor` 178 → 184 · `unenforcedCap`
+21 unchanged** (only the original 21 stay frozen-unenforced; every gate main added is
+CI-enforced, so the ratchet math held with no gate-script edits).
+
+**The batched workflow** regenerated from main's version: **10 jobs** — the 5 dependency
+classes + the 4 carve-outs (preserved byte-for-byte from MAIN's copies, asserted mechanically)
++ 1 preserved lane (R4). The pre-batch job-key registry comment now carries all 350 gate-bearing
+job keys, which keeps the substring wiring contracts true (orch-0784, orch-0786, and NEW:
+`issue864_campaign_builder_tester_adversarial.test.js`, which asserts the happy job's key AND
+suite filename appear in the workflow — both live in the registry rows; verified by executing
+the gate against the batched tree, not by assumption).
+
+**Carve-out re-check (checked, not assumed):** every NEW gate was executed against the batched
+tree. All pass. **Zero new CI-wiring self-referencing gates → zero new carve-outs.** The 4
+existing carve-outs keep their jobs per Seth's Option 2 ruling.
+
+## R4. One structural addition main forced: the preserved lane (job #10)
+
+`orch-1387-wallet-type-contract` is a scoped `npm ci` + `npx tsc` type-contract lane that
+invokes **zero gate scripts**. The runner cannot represent it (nothing to iterate), and the
+differential proof cannot see it (its universe is gate scripts) — so batching it away would be
+INVISIBLE to D1. It is preserved verbatim (byte-identical to main, asserted), and guarded by a
+synthetic `job:orch-1387-wallet-type-contract` manifest entry so parity **P9 fails the PR if
+the job is ever deleted** — proven by true deletion (P9 fired naming it; restore → green).
+This is the replay's only design-shaped decision, taken because every alternative either
+darkens the lane or edits things the contract forbids; flagged for REVIEW.
+
+## R5. Differential proof — RE-RUN against a fresh green baseline (SC-4)
+
+Full artifact: `Mingla_Artifacts/reports/ORCH-1383_DIFFERENTIAL_PROOF.md` (rewritten in place;
+the `bbafb7e12` revision it supersedes is retained in git history — it certified a dead
+baseline).
+
+- **Baseline:** run **`29664288163`** @ `3a55962a1` (2026-07-18, `push`/`main`) — API-verified
+  by this session: **350 jobs, 350 success**; SHA is an ancestor of the branch base and the
+  gate surface is byte-identical from that SHA to `origin/main` tip. (Second candidate
+  `29661175901` @ `26cd280bb` also verified 350/success; the newer run was used.)
+- **Result:** `OLD 390 scripts / 563 pairs → NEW 391 / 565` (the +1 / +2 is exactly the
+  declared parity gate). **D1/D1b/D2/D2b/D3/D4/D5 ALL PASS. 0 dark gates.** Job-name
+  reconciliation 350 ↔ 350, 0 unmatched — after fixing the truncation rule: GitHub cuts at 97
+  raw UTF-8 bytes KEEPING partial codepoints (refines D8; the old back-off rule left 2
+  unmatched on this baseline).
+- **Executed:** A 537 · B 10 · C 1 (real expo export) · D 2 · E 3 · carve-outs 12 = **565/565
+  green** from a bracket-free clone.
+
+## R6. Fails-on-revert (replay level)
+
+The runner/parity/ratchet CODE is unchanged — all prior R1–R9/P1–P9/T-11 proofs stand. The
+replay changed DATA, and both data-level guards were attacked:
+
+| Guard | Attack | Result |
+|---|---|---|
+| The proof itself (T-15 analog) | dropped 5 manifest entries (3 replay-NEW + 2 old) | runner **GREEN 528/528**; proof **FAIL** naming all 5 DARK + 9 dark pairs; restore → 537/537 + PASS |
+| P9 lane guard (R4) | deleted the `orch-1387-wallet-type-contract` job (true line deletion) | parity **FAIL** naming it; restore → PASS |
+
+Parity self-test 16/16; real parity run PASS (P1–P9 + P-vacuous) on the shipped tree.
+Fails-on-revert verified at the replay commits (this branch's new HEAD).
+
+## R7. Files changed by the replay commits (beyond the rebase itself)
+
+| File | Δ | What |
+|---|---:|---|
+| `.github/scripts/strict-grep/MANIFEST.json` | +17 entries, counts | re-derived from main's universe; floor 184 |
+| `.github/workflows/strict-grep-mingla-business.yml` | 4,642 → 640 lines | re-batched: **10 jobs**; registry now 350 rows |
+| `Mingla_Artifacts/reports/orch-1383-proof/baseline-jobs-replay-29664288163.tsv` | +350 **new** | fresh baseline rows (old 340-row TSV retained) |
+| `Mingla_Artifacts/reports/ORCH-1383_DIFFERENTIAL_PROOF.md` | rewritten | replay proof, supersedes `bbafb7e12` revision |
+| this report | appended | the section you are reading |
+
+SC-16 re-verified against the NEW baseline: `git diff origin/main -- .github/scripts/strict-grep/`
+shows **added files only — zero modifications to any existing gate script**. `COMMS_LEDGER.md`
+never staged. No product code touched.
+
+## R8. Discoveries for the orchestrator (replay)
+
+| # | Discovery | Suggested action |
+|---|---|---|
+| **RD-1** | 🔴 **`orch-1385-workspace-deps-declared.adversarial.test.mjs` is invoked by NO workflow on main** — the tester's adversarial suite for the red-main fix went dark immediately, the exact `orch-1369` failure pattern (D3 of the original report), recurring DURING this ORCH's lifetime. Recorded as `fixture` in the manifest so the cap math holds. | Fold into the D1/D3 dark-gate triage ORCH; wiring it is a 12-line workflow job or 1 manifest row post-1383. |
+| **RD-2** | ⚠️ **The `orch-1387-wallet-type-contract` lane is outside every safety net this ORCH built** except the new P9 job-existence guard: no runner coverage, invisible to the proof, no self-test. Any future non-gate-script CI lane will have the same shape. | Note for the manifest's Q4 follow-up (workflow generated FROM the manifest would close this class). |
+| **RD-3** | ⚠️ **GitHub's 100-byte job-name truncation keeps partial codepoint bytes** (renders U+FFFD) — the old D8 back-off rule is measurably wrong on 2 of 350 names. | Reference note for any future name↔API reconciliation. |
+| **RD-4** | ⚠️ The prior session's report items D6 (red strict-grep run on main) and the COMMS-0103 rerun debt are **RESOLVED by events**: current main is green on strict-grep (2 fresh 350/350-success push runs, API-verified). | Close those threads at CLOSE. |
+
+## R9. Operator action required
+
+- **None new.** No migration, no edge functions, no deploy. The first PR run measures the
+  real "after" billed/wall numbers (SC-2/SC-3), exactly as §6 of the original report states —
+  now expected ≈16 billed min (10 jobs) vs the ~350+ of the unbatched workflow.
+- The PR body must carry §15 ("execution, not efficacy") and declare the one D2 addition.
