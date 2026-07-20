@@ -76,6 +76,7 @@ import {
 } from "../_shared/adChannel.ts";
 import {
   applySpecialAdCategoryRestrictions,
+  buildMetaGeoLocations,
   buildMetaInterestFlexibleSpec,
   metaFetchPixelLastFired,
   normalizeMetaCities,
@@ -2510,10 +2511,16 @@ serve(async (req: Request): Promise<Response> => {
   // omitted when the builder sends none, so broad country+age targeting is
   // byte-identical to before. Under a special ad category the restriction cascade
   // (below) strips genders + flexible_spec and pins age 18-65, unchanged.
+  //
+  // ISSUE-989 tester P1 fix: when ≥1 city is chosen, geo_locations targets the
+  // CITIES ONLY and DROPS countries — Meta UNIONS countries ∪ cities, so keeping
+  // both made the radius INERT (London 10mi ∪ US ≈ 263M instead of ~7.3M).
+  // buildMetaGeoLocations mirrors TikTok's city-replaces-country behavior; the
+  // country stays the fallback ONLY when no city is chosen.
   const metaCities = normalizeMetaCities(targetingInput.cities);
   const metaInterestSpec = buildMetaInterestFlexibleSpec(targetingInput.interests);
   let targeting: Record<string, unknown> = {
-    geo_locations: metaCities.length > 0 ? { countries, cities: metaCities } : { countries },
+    geo_locations: buildMetaGeoLocations(countries, metaCities),
     ...(typeof targetingInput.age_min === "number" ? { age_min: targetingInput.age_min } : {}),
     ...(typeof targetingInput.age_max === "number" ? { age_max: targetingInput.age_max } : {}),
     ...(Array.isArray(targetingInput.genders) ? { genders: targetingInput.genders } : {}),

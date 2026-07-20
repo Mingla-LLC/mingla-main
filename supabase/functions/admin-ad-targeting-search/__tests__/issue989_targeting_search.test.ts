@@ -22,6 +22,7 @@
 import "../../_shared/adChannel.ts";
 import { assert, assertEquals } from "https://deno.land/std@0.190.0/testing/asserts.ts";
 import {
+  buildMetaGeoLocations,
   buildMetaInterestFlexibleSpec,
   META_DEFAULT_CITY_RADIUS_MILE,
   normalizeMetaCities,
@@ -81,6 +82,24 @@ Deno.test("normalizeMetaCities enforces the geo_locations.cities shape + radius 
   assertEquals(out[1].radius, 50); // clamped to Meta max
   assertEquals(out[2].radius, META_DEFAULT_CITY_RADIUS_MILE);
   assertEquals(out[2].distance_unit, "mile");
+});
+
+// ── Meta geo_locations — city REPLACES country (tester P1: no union) ──────────
+Deno.test("buildMetaGeoLocations drops countries when a city is chosen (radius stays laser)", () => {
+  const cities = [{ key: "812057", radius: 10, distance_unit: "mile" }];
+  // City chosen → CITIES ONLY, countries DROPPED (Meta unions ∪; keeping both
+  // made the radius inert — London 10mi ∪ US ≈ 263M instead of ~7.3M).
+  const withCity = buildMetaGeoLocations(["US", "GB"], cities);
+  assertEquals(withCity, { cities });
+  assertEquals(withCity.countries, undefined);
+  // No city → country is the fallback geo (unchanged broad targeting).
+  assertEquals(buildMetaGeoLocations(["US", "GB"], []), { countries: ["US", "GB"] });
+  // Multi-city support preserved.
+  const two = [
+    { key: "812057", radius: 10, distance_unit: "mile" },
+    { key: "2418779", radius: 25, distance_unit: "mile" },
+  ];
+  assertEquals(buildMetaGeoLocations(["US"], two), { cities: two });
 });
 
 Deno.test("buildMetaInterestFlexibleSpec builds flexible_spec or null", () => {
@@ -159,6 +178,16 @@ Deno.test("create-campaign consumes cities + interests for Meta and TikTok", asy
   const src = await Deno.readTextFile(new URL("../../admin-ad-create-campaign/index.ts", import.meta.url));
   assert(src.includes("normalizeMetaCities"), "Meta city normalization must be wired");
   assert(src.includes("buildMetaInterestFlexibleSpec"), "Meta interest flexible_spec must be wired");
+  // tester P1: the Meta geo assembly MUST use buildMetaGeoLocations (city drops
+  // country) — never the old `{ countries, cities: metaCities }` union.
+  assert(
+    src.includes("geo_locations: buildMetaGeoLocations(countries, metaCities)"),
+    "Meta geo_locations must drop countries when a city is chosen (no union)",
+  );
+  assert(
+    !src.includes("{ countries, cities: metaCities }"),
+    "the old countries∪cities union must be gone",
+  );
   assert(src.includes("normalizeTikTokInterestCategoryIds"), "TikTok interest ids must be wired");
   assert(src.includes("interest_category_ids: interestCategoryIdsT"), "TikTok ad-group interest ids must be sent");
   assert(src.includes("location_ids: cityLocationIdsT") || src.includes("locationIdsT = cityLocationIdsT"), "TikTok city ids must override country resolution");

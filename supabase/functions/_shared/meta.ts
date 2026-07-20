@@ -367,6 +367,24 @@ export function normalizeMetaCities(cities: unknown): { key: string; radius: num
 }
 
 /**
+ * ISSUE-989 (tester P1 fix) — assemble geo_locations so city targeting is not
+ * INERT. Meta UNIONS geo_locations.countries ∪ cities: sending both makes the
+ * radius meaningless (PROVEN live — countries:[US] ∪ London/GB 10mi ≈ 263.4M vs
+ * pure cities:[London] ≈ 7.3M). So when ≥1 city is chosen, target the CITIES
+ * ONLY and DROP countries (mirrors TikTok, where city location_ids replace the
+ * country resolution). Country is the fallback ONLY when no city is chosen.
+ */
+export function buildMetaGeoLocations(
+  countries: unknown,
+  cities: readonly { key: string; radius: number; distance_unit: string }[],
+): Record<string, unknown> {
+  if (Array.isArray(cities) && cities.length > 0) {
+    return { cities: [...cities] };
+  }
+  return { countries };
+}
+
+/**
  * ISSUE-989 — build the flexible_spec interest clause from resolved Meta
  * interest ids. Returns null when there are none (so the caller omits the key).
  */
