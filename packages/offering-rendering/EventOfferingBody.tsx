@@ -103,7 +103,12 @@ if (
 // when the tier has no all-in (free / RPC miss) — never fabricating a markup.
 // ===========================================================================
 
-const formatMoney = (amount: number, currency: string): string => {
+// issue #1014 — currency may be null (published free-only event by a
+// currency-less brand). Every render site branches to "Free" for 0-money
+// BEFORE calling this; the null branch here is a defensive last resort that
+// renders the bare amount WITHOUT fabricating a currency symbol.
+const formatMoney = (amount: number, currency: string | null): string => {
+  if (currency === null) return amount.toFixed(2);
   try {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -118,11 +123,14 @@ const formatMoney = (amount: number, currency: string): string => {
 
 const formatTicketPrice = (
   ticket: PublicTicketProps,
-  fallbackCurrency: string,
+  fallbackCurrency: string | null,
 ): string => {
   if (ticket.isFree) return "Free";
   const price = ticket.priceAllInGbp ?? ticket.priceGbp;
   if (price === null || price === undefined) return "—";
+  // issue #1014 — a 0-priced ticket renders "Free" even without the isFree
+  // flag (price is truth; NULL-currency events only carry 0-priced tickets).
+  if (price === 0) return "Free";
   return formatMoney(price, ticket.currency ?? fallbackCurrency);
 };
 
@@ -879,7 +887,7 @@ const Pill: React.FC<{
 
 const TicketStepperRow: React.FC<{
   ticket: PublicTicketProps;
-  fallbackCurrency: string;
+  fallbackCurrency: string | null;
   palette: ThemePalette;
   surface: ReturnType<typeof offeringSurfaceStyles>;
   boldFamily: string;

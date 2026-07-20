@@ -162,14 +162,19 @@ const sortTicketsByDisplayOrder = (
 
 const formatTicketPrice = (
   ticket: PublicTicketProps,
-  fallbackCurrency: string,
+  fallbackCurrency: string | null,
 ): string => {
   if (ticket.isFree) return "Free";
   // ORCH-1006: show the server-computed all-in price; fall back to base. Never
   // recompute fees here — priceAllInGbp is compute_all_in_cents output / 100.
   const price = ticket.priceAllInGbp ?? ticket.priceGbp;
   if (price === null || price === undefined) return "—";
+  // issue #1014 — 0-priced renders "Free" even without the isFree flag
+  // (NULL-currency events only carry 0-priced tickets).
+  if (price === 0) return "Free";
   const currency = ticket.currency ?? fallbackCurrency;
+  // issue #1014 — defensive: never fabricate a symbol for a null code.
+  if (currency === null) return price.toFixed(2);
   try {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -981,7 +986,7 @@ const PublishedBody: React.FC<PublishedBodyProps> = ({
 interface PublicTicketRowProps {
   ticket: PublicTicketProps;
   variant: "published" | "pre-sale" | "sold-out" | "past";
-  fallbackCurrency: string;
+  fallbackCurrency: string | null;
   callbacks: PublicEventPageProps["callbacks"];
   theme: ResolvedTheme;
   palette: ThemePalette;

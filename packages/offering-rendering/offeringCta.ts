@@ -98,8 +98,10 @@ export interface ResolveOfferingCtaInput {
   bookable: boolean;
   /** The visible (non-hidden) tickets, already display-sorted. */
   tickets: PublicTicketProps[];
-  /** Fallback currency when a ticket omits its own. */
-  currency: string;
+  /** Fallback currency when a ticket omits its own. issue #1014: null for a
+   *  published free-only event by a currency-less brand — such events resolve
+   *  the `free` CTA (no paid tickets exist), so no price is ever formatted. */
+  currency: string | null;
   /**
    * The action verb for the buyable accent button on a NON-event offering
    * (trip: "Reserve my spot"; experience: "Get my spot"). Events default to
@@ -111,12 +113,17 @@ export interface ResolveOfferingCtaInput {
 
 const formatPrice = (
   ticket: PublicTicketProps,
-  fallbackCurrency: string,
+  fallbackCurrency: string | null,
 ): string | null => {
   if (ticket.isFree) return "Free";
   const price = ticket.priceAllInGbp ?? ticket.priceGbp;
   if (price === null || price === undefined) return null;
+  // issue #1014 — 0-priced renders "Free" even without the isFree flag.
+  if (price === 0) return "Free";
   const currency = ticket.currency ?? fallbackCurrency;
+  // issue #1014 — defensive: never fabricate a symbol for a null code
+  // (unreachable for real data: paid tickets always carry a currency).
+  if (currency === null) return price.toFixed(2);
   try {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -337,7 +344,7 @@ export const resolveRsvpCta = (input: ResolveRsvpCtaInput): RsvpCtaDescriptor =>
 /** Lowest numeric all-in price among paid tickets, formatted, or null. */
 const lowestPriceString = (
   tickets: PublicTicketProps[],
-  fallbackCurrency: string,
+  fallbackCurrency: string | null,
 ): string | null => {
   let lowestTicket: PublicTicketProps | null = null;
   let lowestValue = Number.POSITIVE_INFINITY;

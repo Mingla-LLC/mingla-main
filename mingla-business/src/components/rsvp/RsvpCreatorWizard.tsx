@@ -184,6 +184,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
   isCreateMode,
   onExit,
   onOpenPreview,
+  onOpenStripeOnboard,
   onAutosaveDraft,
   onDiscardServerDraft,
   onPublishDraft,

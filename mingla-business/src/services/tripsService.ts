@@ -681,12 +681,13 @@ export async function createTripDraft(
   const tempSlug = `draft-${Date.now().toString(36)}`;
 
   // 1. Look up brand default_currency + slug BEFORE creating the event.
-  //    The events row MUST carry a non-null currency or the
-  //    tg_enforce_event_ticket_currency trigger (ORCH-0769 [no implicit GBP
-  //    currency], 20260515000011_orch_0769_no_implicit_gbp_currency.sql:159)
-  //    raises `event_currency_not_found` when the placeholder ticket_types
-  //    row is inserted below. Mirrors `eventDrafts.fetchBrandDefaultCurrency`
-  //    + `draftToServerInsert` ordering for event_type='event'.
+  //    issue #1014 — the pre-#1014 `?? "USD"` fallback here existed ONLY to
+  //    dodge the old tg_enforce_event_ticket_currency `event_currency_not_found`
+  //    raiser when the placeholder ticket row was inserted. That trigger now
+  //    permits a FREE (price 0) placeholder on a NULL-currency draft, so a
+  //    currency-less brand's trip draft carries NULL — no fabricated USD.
+  //    Legacy fabricated-USD drafts are healed at publish (the #1014 migration
+  //    NULLs/normalizes event + ticket currencies on the publish path).
   const brandCurrencyQuery = await supabase
     .from("brands")
     .select("default_currency, slug")
@@ -695,7 +696,7 @@ export async function createTripDraft(
     .maybeSingle();
   if (brandCurrencyQuery.error) throw brandCurrencyQuery.error;
   const defaultCurrency =
-    (brandCurrencyQuery.data?.default_currency as string | null) ?? "USD";
+    (brandCurrencyQuery.data?.default_currency as string | null) ?? null;
   const brandSlug = (brandCurrencyQuery.data?.slug as string | null) ?? null;
 
   // 2. INSERT events row with currency populated up front.
