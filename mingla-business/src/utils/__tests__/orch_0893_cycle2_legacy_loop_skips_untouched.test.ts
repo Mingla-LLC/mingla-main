@@ -70,6 +70,16 @@ describe("ORCH-0893 cycle 2 Part 1 — legacy migration loop skips untouched d_*
 });
 
 describe("ORCH-0893 cycle 2 Part 2 — bounce-home safety belt follows replaceDraft swap", () => {
+  // Issue #976 [event-name-focus] — Part-2 pins updated ([TEST-MOD-APPROVED
+  // ORCH-0976]): the safety belt no longer router.replace's to the swapped id
+  // (a screen-replacing navigation remounts the wizard and drops the keyboard
+  // mid-type — the exact class the belt existed to recover from). It now
+  // adopts the ORCH-1355 no-remount mechanism: store-upsert +ROUTE-state
+  // promotion (`setPromotedServerId`) + in-place URL reconcile
+  // (`router.setParams`). The order pin's old literal
+  // `router.replace("/(tabs)/home" as never)` had also gone stale when the
+  // bounce moved to `safeEventsExitRoute()` — it is re-pinned on the real
+  // bounce inside the same guard block.
   test("edit.tsx bounce-home guard scans cached brand-drafts lists for legacyLocalDraftId match before bouncing", () => {
     const source = readFileSync(EDIT_ROUTE, "utf8");
 
@@ -85,14 +95,18 @@ describe("ORCH-0893 cycle 2 Part 2 — bounce-home safety belt follows replaceDr
     //   (a) gate the safety-belt scan on isLegacyLocalDraftId
     //   (b) call queryClient.getQueriesData with eventDraftKeys.lists() prefix
     //   (c) find a draft whose `legacyLocalDraftId === idParam`
-    //   (d) router.replace to /event/${swapped.id}/edit on hit
+    //   (d) on hit, adopt the swapped draft WITHOUT a screen replace:
+    //       setPromotedServerId + router.setParams — and NEVER a
+    //       router.replace to `/event/${swapped.id}/edit` (issue #976).
     expect(guardBlock).toMatch(/isLegacyLocalDraftId/);
     expect(guardBlock).toMatch(
       /queryClient\s*\.\s*getQueriesData[\s\S]*?eventDraftKeys\.lists\(\)/,
     );
     expect(guardBlock).toMatch(/legacyLocalDraftId\s*===\s*idParam/);
+    expect(guardBlock).toMatch(/setPromotedServerId\s*\(/);
+    expect(guardBlock).toMatch(/router\.setParams\s*\(/);
     // Use RegExp constructor to avoid backtick-inside-regex-literal parser issue.
-    expect(guardBlock).toMatch(
+    expect(guardBlock).not.toMatch(
       new RegExp("router\\.replace\\(\\s*`/event/\\$\\{swapped\\.id\\}/edit"),
     );
   });
@@ -100,11 +114,19 @@ describe("ORCH-0893 cycle 2 Part 2 — bounce-home safety belt follows replaceDr
   test("edit.tsx safety-belt scan executes BEFORE the bounce-home setTimeout (correctness order)", () => {
     const source = readFileSync(EDIT_ROUTE, "utf8");
 
-    const safetyBeltIndex = source.indexOf(
+    // Bound to the same guard block so the order pin cannot accidentally
+    // match an earlier safeEventsExitRoute bounce elsewhere in the file.
+    const guardStart = source.indexOf("if (\n      draft === null &&");
+    expect(guardStart).toBeGreaterThan(-1);
+    const guardEnd = source.indexOf("return (): void => clearTimeout(t)", guardStart);
+    expect(guardEnd).toBeGreaterThan(guardStart);
+    const guardBlock = source.slice(guardStart, guardEnd);
+
+    const safetyBeltIndex = guardBlock.indexOf(
       "queryClient.getQueriesData<DraftEvent[]>",
     );
-    const setTimeoutBounceIndex = source.indexOf(
-      'router.replace("/(tabs)/home" as never)',
+    const setTimeoutBounceIndex = guardBlock.indexOf(
+      "router.replace(safeEventsExitRoute() as never)",
     );
 
     // The safety belt MUST run BEFORE the setTimeout-bounce. If a future
