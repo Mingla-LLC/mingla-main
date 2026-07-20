@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   useMutation,
   useQuery,
@@ -31,6 +31,14 @@ import {
 // wrapper at app/event/[id]/edit.tsx handles dirty d_* drafts via its
 // own first-edit-triggered lazy insert.
 import { isDraftDirty } from "../utils/draftDirtyCheck";
+// Issue #976 [event-name-focus] — ALL d_*→server promotions route through the
+// single-flight registry (one createServerDraft per d_* id, live-merge swap),
+// and the loop never promotes the draft that is actively being edited.
+import {
+  isPromotionBackedOff,
+  promoteLegacyDraftOnce,
+  PromotionSourceMissingError,
+} from "../utils/draftPromotion";
 
 const STALE_TIME_MS = 30 * 1000;
 const DISABLED_KEY = ["event-drafts-disabled"] as const;
@@ -69,10 +77,13 @@ export const useServerDraftsForBrand = (
   const { isAuthReady } = useAuth();
   const enabled = brandId !== null && isAuthReady;
   const upsertServerDrafts = useDraftEventStore((s) => s.upsertServerDrafts);
-  const replaceDraft = useDraftEventStore((s) => s.replaceDraft);
   const localDrafts = useDraftEventStore((s) => s.drafts);
+  // Issue #976 — the draft currently open in a creator wizard (beginDraftEdit /
+  // markDraftDirty / endDraftEdit). Subscribed (not just getState-read) so the
+  // migration effect re-runs the moment the wizard unmounts and the
+  // abandoned-draft migration below is not deferred.
+  const activeDraftId = useDraftEventStore((s) => s.activeDraftId);
   const queryClient = useQueryClient();
-  const migratingIdsRef = useRef<Set<string>>(new Set());
 
   const query = useQuery<DraftEvent[]>({
     queryKey: enabled && brandId !== null ? eventDraftKeys.list(brandId) : DISABLED_KEY,
@@ -123,43 +134,46 @@ export const useServerDraftsForBrand = (
           // up then immediately closes"). The autosave wrapper at
           // app/event/[id]/edit.tsx handles dirty d_* drafts via its
           // own first-edit-triggered createServerDraft path.
-          isDraftDirty(draft),
+          isDraftDirty(draft) &&
+          // Issue #976 [event-name-focus] — NEVER promote the draft that is
+          // actively being edited (I-PROPOSED-0976-NO-BACKGROUND-PROMOTION-OF-
+          // ACTIVE-DRAFT). This effect depends on `drafts`, so it re-ran on the
+          // FIRST dirty keystroke of a create session and promoted the d_*
+          // draft from list-hook instances mounted behind the wizard —
+          // swapping a stale first-keystroke snapshot under the focused name
+          // input (keyboard drop + typed-text loss + duplicate rows, proven on
+          // the physical Samsung). The loop's legitimate job — migrating
+          // ABANDONED dirty local drafts — is preserved: endDraftEdit clears
+          // activeDraftId on wizard unmount and this draft becomes eligible.
+          draft.id !== activeDraftId,
       )
       .forEach((draft) => {
         if (
           migratedLegacyIds.has(draft.id) ||
-          serverLegacyIds.has(draft.id) ||
-          migratingIdsRef.current.has(draft.id)
+          serverLegacyIds.has(draft.id)
         ) {
           return;
         }
-        migratingIdsRef.current.add(draft.id);
-        void createServerDraft(brandId, draft)
-          .then((serverDraft) => {
-            replaceDraft(draft.id, serverDraft);
-            queryClient.setQueryData<DraftEvent[]>(
-              eventDraftKeys.list(brandId),
-              (prev) => {
-                const next = (prev ?? []).filter((d) => d.id !== serverDraft.id);
-                return [serverDraft, ...next];
-              },
-            );
-            queryClient.setQueryData(
-              eventDraftKeys.detail(serverDraft.id),
-              serverDraft,
-            );
-          })
+        // Issue #976 — fire-time re-checks against stale closures: skip while
+        // the registry is backing off a recent failure (this effect re-runs
+        // per keystroke — no offline request spam), and re-read activeDraftId
+        // from the store in case a wizard mounted since this effect ran.
+        if (
+          isPromotionBackedOff(draft.id) ||
+          useDraftEventStore.getState().activeDraftId === draft.id
+        ) {
+          return;
+        }
+        void promoteLegacyDraftOnce({ queryClient, brandId, draftId: draft.id })
           .catch((error) => {
             if (isBusinessAuthNotReadyError(error)) return;
+            if (error instanceof PromotionSourceMissingError) return;
             if (__DEV__) {
               console.error("[eventDrafts] legacy migration failed", error);
             }
-          })
-          .finally(() => {
-            migratingIdsRef.current.delete(draft.id);
           });
       });
-  }, [brandId, enabled, localDrafts, query.data, queryClient, replaceDraft]);
+  }, [activeDraftId, brandId, enabled, localDrafts, query.data, queryClient]);
 
   return query;
 };
@@ -303,6 +317,7 @@ export const useCreateServerDraft = (): {
   const mutation = useMutation<DraftEvent, Error, string>({
     mutationFn: (brandId) => {
       requireBusinessAuthReady(authStatus, session);
+      // orch-strict-grep-allow single-promotion-owner — useCreateServerDraft mints a FRESH server draft (no d_* source argument); it is not a d_*→server promotion, so the issue #976 registry does not own it.
       return createServerDraft(brandId);
     },
     onSuccess: (draft) => {
