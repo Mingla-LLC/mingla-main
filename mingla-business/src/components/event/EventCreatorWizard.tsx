@@ -560,9 +560,10 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
     } catch (error) {
       setIsPublishing(false);
       setPublishConfirmVisible(false);
-      // ORCH-1075 — paid-publish integrity guards. The publish RPC raises
-      // stripe_charges_disabled / offering_date_past on error.message; surface
-      // the locked copy + route (Stripe onboarding / When step) instead of a
+      // ORCH-1075 + issue #1014 — publish guards. The publish RPC raises
+      // stripe_charges_disabled / offering_date_past / event_currency_required
+      // on error.message; surface the locked copy + route (payments onboarding
+      // for the two money-setup reasons, When step for the date) instead of a
       // generic failure.
       const code = error instanceof Error ? error.message : String(error ?? "");
       const guardCopy = resolvePaidPublishGuardCopy(code);

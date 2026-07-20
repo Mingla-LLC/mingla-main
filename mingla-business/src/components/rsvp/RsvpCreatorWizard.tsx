@@ -157,8 +157,10 @@ export interface RsvpCreatorWizardProps {
   ) => void;
   /** Push to /rsvp/[id]/preview when user taps mini-card or Preview button. */
   onOpenPreview: () => void;
-  /** ORCH-1150 — INERT for RSVP (no money gate). Kept optional for route-shape
-   *  parity with the event wizard; never invoked. */
+  /** ORCH-1150 kept this optional for route-shape parity; since issue #1014 it
+   *  IS invoked — the RSVP catch routes stripe_charges_disabled (ORCH-1291
+   *  chip-in bank gate) and event_currency_required (currency-less brand) to
+   *  the provider-neutral payments onboarding. */
   onOpenStripeOnboard?: () => void;
   onAutosaveDraft?: (draft: DraftEvent) => void;
   onDiscardServerDraft?: (draft: DraftEvent) => Promise<void>;
@@ -544,15 +546,22 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
     } catch (error) {
       setIsPublishing(false);
       setPublishConfirmVisible(false);
-      // ORCH-1075 — paid-publish integrity guards. The publish RPC raises
-      // stripe_charges_disabled / offering_date_past on error.message; surface
-      // the locked copy + route (Stripe onboarding / When step) instead of a
-      // generic failure.
+      // ORCH-1075 + ORCH-1291 + issue #1014 — publish guards. The RSVP publish
+      // RPC raises stripe_charges_disabled (chip-in ON, bank-less brand),
+      // event_currency_required (chip-in ON, currency-less brand) and
+      // offering_date_past (discoverable + past date) on error.message.
+      // Money-setup reasons surface the locked copy AND route to the
+      // provider-neutral payments onboarding (the pre-#1014 skip of
+      // stripe_onboarding-action copies dead-toasted BOTH money reasons);
+      // the date reason jumps to the When step (mirror Guard B).
       const code = error instanceof Error ? error.message : String(error ?? "");
-      // RSVP only ever raises offering_date_past (discoverable + past date) —
-      // never a stripe gate. Map it to a When-step jump (mirror Guard B).
       const guardCopy = resolvePaidPublishGuardCopy(code);
-      if (guardCopy !== null && guardCopy.action !== "stripe_onboarding") {
+      if (guardCopy !== null && guardCopy.action === "stripe_onboarding") {
+        handleShowToast(guardCopy.body);
+        onOpenStripeOnboard?.();
+        return;
+      }
+      if (guardCopy !== null) {
         handleShowToast(guardCopy.body);
         setShowStepErrors(true);
         setCurrentStep(1);
@@ -573,6 +582,7 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
     onPublishDraft,
     deleteDraft,
     handleShowToast,
+    onOpenStripeOnboard,
   ]);
 
   const handleFixJump = useCallback((step: number): void => {
