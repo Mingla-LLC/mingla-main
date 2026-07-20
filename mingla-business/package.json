@@ -89,6 +89,7 @@
     "@expo-google-fonts/unbounded": "^0.4.1",
     "@expo/vector-icons": "^15.0.3",
     "@lottiefiles/dotlottie-react": "^0.13.5",
+    "@mingla/brand-assets": "file:../packages/brand-assets",
     "@mingla/brand-rendering": "file:../packages/brand-rendering",
     "@mingla/location-input": "file:../packages/location-input",
     "@mingla/offering-rendering": "file:../packages/offering-rendering",

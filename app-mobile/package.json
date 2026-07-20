@@ -105,6 +105,7 @@
     "@expo-google-fonts/unbounded": "^0.4.1",
     "@expo/vector-icons": "^15.0.2",
     "@gorhom/bottom-sheet": "^5.2.8",
+    "@mingla/brand-assets": "file:../packages/brand-assets",
     "@mingla/brand-rendering": "file:../packages/brand-rendering",
     "@mingla/location-input": "file:../packages/location-input",
     "@mingla/offering-rendering": "file:../packages/offering-rendering",

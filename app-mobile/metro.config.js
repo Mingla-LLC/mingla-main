@@ -58,6 +58,9 @@ config.resolver.extraNodeModules = {
     "packages",
     "location-input",
   ),
+  // ISSUE-1001 — canonical brand-asset masters (wordmark + business lockup).
+  // Single committed source for every Mingla mark; mirrors are parity-checked.
+  "@mingla/brand-assets": path.join(WORKSPACE_ROOT, "packages", "brand-assets"),
   // CRITICAL — force single React + RN instance across app + packages.
   // The packages have their own node_modules/react (for type-checking
   // only) which at runtime would create a DUPLICATE React instance and
