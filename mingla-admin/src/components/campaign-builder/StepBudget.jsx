@@ -21,7 +21,7 @@ import {
   learningLimitedWarning,
   validateBudget,
 } from "../../lib/adBuilder/budgetRules";
-import { PLATFORM_LABELS, splitBudget } from "../../lib/adBuilder/channelPlan";
+import { PLATFORM_LABELS, splitBudget, unfundedEligibleChannels } from "../../lib/adBuilder/channelPlan";
 
 const STRATEGIES = [
   { id: "auto", label: "Auto" },
@@ -39,6 +39,16 @@ export function StepBudget({ budget, onBudgetChange, channelRows }) {
     strategy: budget.strategy,
   });
   const excluded = channelRows.filter((r) => !r.eligible);
+  // ISSUE-979 Bug 4: channels that are ELIGIBLE but got $0 from the split (the
+  // total can't jointly fund them, or Concentrate put everything on the top
+  // channel). Surface them WITH a reason instead of letting them fall silently
+  // to $0 while Next stays enabled.
+  const unfunded = unfundedEligibleChannels({
+    channelRows,
+    allocations,
+    totalDailyCents: budget.totalDailyCents,
+    strategy: budget.strategy,
+  });
   const eligibleOptions = channelRows
     .filter((r) => r.eligible || (budget.allowlist ?? []).includes(r.platform))
     .map((r) => ({ value: r.platform, label: r.label }));
@@ -135,6 +145,22 @@ export function StepBudget({ budget, onBudgetChange, channelRows }) {
             </p>
           ))}
         </div>
+      )}
+
+      {/* ISSUE-979 Bug 4 — eligible channels the split funded at $0. Never silent. */}
+      {unfunded.length > 0 && (
+        <AlertCard
+          variant="warning"
+          title={`${unfunded.length} eligible ${unfunded.length === 1 ? "channel gets" : "channels get"} $0/day`}
+        >
+          <ul className="space-y-1 mt-1">
+            {unfunded.map((u) => (
+              <li key={u.platform} className="text-xs">
+                <span className="font-medium">{u.label}</span> — {u.reason}
+              </li>
+            ))}
+          </ul>
+        </AlertCard>
       )}
 
       {/* Honest pacing truths — a day can cost more than your daily budget. */}

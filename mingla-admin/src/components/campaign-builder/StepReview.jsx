@@ -104,6 +104,20 @@ export function StepReview({
             </AlertCard>
           );
         }
+        if (result.noPlatformValidate) {
+          // ISSUE-979 Bug 2: the honest state for a validate-only call to a
+          // platform with no dry-run (TikTok/Snap/Reddit) — nothing was created
+          // or validated. Surfaced instead of a false "Created" toast.
+          return (
+            <AlertCard key={platform} variant="info" title={`${PLATFORM_LABELS[platform]}: nothing created or validated.`}>
+              This platform has no dry-run, so the real create is its first check. Use “Create
+              campaign (paused)” to build it.
+              {Array.isArray(result.skipped_layers) && result.skipped_layers.length > 0 && (
+                <> (skipped: {result.skipped_layers.map((s) => s.layer ?? s).join(", ")})</>
+              )}
+            </AlertCard>
+          );
+        }
         if (result.error) {
           const isDestination = result.error.code === "destination_not_public";
           const isBudget = result.error.code === "budget_below_minimum";

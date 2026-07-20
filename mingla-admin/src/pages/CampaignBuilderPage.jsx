@@ -37,7 +37,8 @@ import {
   parseEdgeError,
   runPreflight,
 } from "../services/adEngineService";
-import { goalById } from "../lib/adBuilder/goals";
+import { resolveGoalForPayload, resolveMetaObjective } from "../lib/adBuilder/objectiveResolver";
+import { classifyCreateResult } from "../lib/adBuilder/createResult";
 import { planChannels, splitBudget } from "../lib/adBuilder/channelPlan";
 import { validateAudience, DEFAULT_AGE_MAX, DEFAULT_AGE_MIN, DEFAULT_COUNTRIES } from "../lib/adBuilder/audienceRules";
 import { validateBudget } from "../lib/adBuilder/budgetRules";
@@ -184,9 +185,12 @@ export function CampaignBuilderPage() {
   }, [maxVisitedIndex]);
 
   // ── The channel plan (the A4.0(1) output) ──
-  const metaGoal = goalIds.includes("awareness") && !goalIds.includes("traffic")
-    ? "REACH"
-    : "LINK_CLICKS";
+  // ISSUE-979 Bug 1: Meta's optimization_goal comes from the SAME coherent
+  // resolution the create payload uses (objectiveResolver) — one Meta goal in
+  // play, so the per-category budget floor here and the create pair never
+  // disagree. (Traffic wins over awareness for the two live goals, in any click
+  // order — the valid OUTCOME_TRAFFIC / LINK_CLICKS pair.)
+  const metaGoal = resolveMetaObjective(goalIds).optimization_goal;
   const channelRows = useMemo(
     () =>
       planChannels({
@@ -285,20 +289,19 @@ export function CampaignBuilderPage() {
     if (validateOnly) setValidatingShapes(true);
     else setSubmitting(true);
     const results = { ...(createResults ?? {}) };
+    // ISSUE-979 Bug 1: resolve every platform's objective AND optimization_goal
+    // ONCE, coherently, from the whole selected goal set (single source of
+    // truth) — never goalIds[0] for one field and the full array for another.
+    // Each platform's pair now comes from a single goals.js entry, so the Meta
+    // objective/optimization_goal pairing is always valid, in any click order.
+    const resolvedGoal = resolveGoalForPayload(goalIds);
     for (const allocation of allocations) {
       const platform = allocation.platform;
       if (results[platform]?.campaign) continue; // idempotent per session
-      const goal = goalById(goalIds[0]);
       const payload = buildCreatePayload(platform, {
         lane,
         name: name || suggestCampaignName({ brandName: destination?.brand_name, title: destination?.title }),
-        goal: {
-          metaObjective: goal?.platforms?.meta?.objective ?? "OUTCOME_TRAFFIC",
-          metaOptimizationGoal: metaGoal,
-          // ISSUE-927: the tiktok/reddit/snapchat payload branches read their
-          // native objective from the goal's per-platform map (goals.js).
-          platforms: goal?.platforms ?? {},
-        },
+        goal: resolvedGoal,
         destination: {
           page_type: destination.page_type,
           brand_slug: destination.brand_slug,
@@ -332,18 +335,41 @@ export function CampaignBuilderPage() {
             trace: parsed?.body?.detail?.trace_id ?? null,
           },
         };
-      } else if (data?.validated) {
-        results[platform] = {
-          validated: true,
-          validated_layers: data.validated_layers,
-          skipped_layers: data.skipped_layers,
-        };
       } else {
-        results[platform] = { campaign: data?.campaign ?? null };
-        addToast({
-          variant: "success",
-          title: `Created on ${platform}. Nothing is spending yet.`,
-        });
+        // ISSUE-979 Bug 2: only "Created" when something was actually created or
+        // validated. TikTok/Snap/Reddit have no validate-only mode and return
+        // { validated: false, skipped_layers } to a validate_only call — that is
+        // NOT a create, so it must never fire the "Created" toast.
+        const outcome = classifyCreateResult(data);
+        if (outcome.outcome === "validated") {
+          results[platform] = {
+            validated: true,
+            validated_layers: outcome.validatedLayers,
+            skipped_layers: outcome.skippedLayers,
+          };
+        } else if (outcome.outcome === "created") {
+          results[platform] = { campaign: outcome.campaign };
+          addToast({
+            variant: "success",
+            title: `Created on ${platform}. Nothing is spending yet.`,
+          });
+        } else {
+          // Honest "nothing happened": no dry-run exists on this platform (or the
+          // create returned no object). Record it truthfully — never a false
+          // "Created" — so Review shows the honest state.
+          results[platform] = {
+            noPlatformValidate: true,
+            skipped_layers: outcome.skippedLayers,
+            detail: outcome.detail,
+          };
+          addToast({
+            variant: "info",
+            title: `${platform}: nothing was created or validated.`,
+            description: validateOnly
+              ? "This platform has no dry-run, so the real create is its first check. Use “Create campaign (paused)” to build it."
+              : "The platform returned no object — check the card for details.",
+          });
+        }
       }
       setCreateResults({ ...results });
     }

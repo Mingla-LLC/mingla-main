@@ -80,6 +80,28 @@ export function buildCreatePayload(platform, state) {
     ...(destination.entity_slug ? { entity_slug: destination.entity_slug } : {}),
   };
 
+  // ISSUE-979 Bug 3 [Campaign Builder correctness] — the GLOBAL compliance
+  // intent (AI-generated disclosure + special-ad-category) travels to EVERY
+  // platform's create path, not Meta alone. It used to reach only the Meta
+  // branch and was silently dropped for the other four even though the UI
+  // presents both as global. This is a platform-NEUTRAL descriptor (camelCase,
+  // deliberately distinct from Meta's platform-specific API keys
+  // `special_ad_categories` / `ai_generated`, which stay Meta-shaped below).
+  // Each backend adapter applies it where its API supports it and documents the
+  // drop where it does not (admin-ad-create-campaign):
+  //   - Meta      → self_ai_disclosure=OPT_IN + special_ad_categories (applied).
+  //   - TikTok    → aigc_disclosure_type is CUSTOMIZED_USER-only and unreachable
+  //                 for our account (PROOF T-P6); no special-category field.
+  //   - Snapchat  → no AI-disclosure field, no special-ad-category field.
+  //   - Reddit    → no AI-disclosure field, no special-ad-category field.
+  //   - Google    → containsEuPoliticalAdvertising only (already declared); no
+  //                 general special-ad-category field, no RSA AI-disclosure field.
+  // Never silently dropped at the client — the flags always leave for the server.
+  const compliance = {
+    aiGenerated: creative?.aiGenerated === true,
+    specialAdCategory: specialAdCategory && specialAdCategory !== "" ? specialAdCategory : "NONE",
+  };
+
   if (platform === "tiktok") {
     // ISSUE-927: the goal step's native objective (goals.js) rides through;
     // ad_text = the primary copy (copyRules pins TikTok's 100-hard no-emoji
@@ -114,6 +136,10 @@ export function buildCreatePayload(platform, state) {
         image_url: creative.imageUrl,
         ...(creative.creativeLibraryId ? { creative_library_id: creative.creativeLibraryId } : {}),
       },
+      // Bug 3: global compliance intent reaches TikTok's create path. TikTok's
+      // only AI-disclosure field (aigc_disclosure_type) is CUSTOMIZED_USER-only
+      // and unreachable for our account (T-P6); it has no special-category field.
+      compliance,
       ...(validateOnly ? { validate_only: true } : {}),
     };
   }
@@ -137,6 +163,9 @@ export function buildCreatePayload(platform, state) {
         headline: copy.primary,
         image_url: creative.imageUrl,
       },
+      // Bug 3: global compliance intent reaches Reddit's create path. Reddit has
+      // no AI-disclosure field and no special-ad-category field on its API.
+      compliance,
       ...(validateOnly ? { validate_only: true } : {}),
     };
   }
@@ -163,6 +192,9 @@ export function buildCreatePayload(platform, state) {
         ...(creative.brandName ? { brand_name: creative.brandName } : {}),
         ...(creative.creativeLibraryId ? { creative_library_id: creative.creativeLibraryId } : {}),
       },
+      // Bug 3: global compliance intent reaches Snapchat's create path. Snapchat
+      // has no AI-disclosure field and no special-ad-category field on its API.
+      compliance,
       ...(validateOnly ? { validate_only: true } : {}),
     };
   }
@@ -187,6 +219,11 @@ export function buildCreatePayload(platform, state) {
       ...(Array.isArray(copy.negativeKeywords) && copy.negativeKeywords.length > 0
         ? { negative_keywords: copy.negativeKeywords.map((k) => k.trim()).filter(Boolean) }
         : {}),
+      // Bug 3: global compliance intent reaches Google's create path. Google
+      // Ads has no general special-ad-category field (housing/employment/etc.
+      // are account-level policy) and no RSA AI-disclosure field; the only
+      // related declaration is containsEuPoliticalAdvertising (already sent).
+      compliance,
       ...(validateOnly ? { validate_only: true } : {}),
     };
   }
@@ -222,6 +259,10 @@ export function buildCreatePayload(platform, state) {
     },
     special_ad_categories: categories,
     ...(categories.length > 0 ? { special_ad_category_country: audience.countries } : {}),
+    // Bug 3: Meta ALSO carries the platform-neutral compliance descriptor (it
+    // applies both flags via self_ai_disclosure + special_ad_categories above)
+    // so every platform's payload carries `compliance` uniformly.
+    compliance,
     ...(validateOnly ? { validate_only: true } : {}),
   };
 }

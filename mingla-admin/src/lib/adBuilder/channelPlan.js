@@ -235,3 +235,36 @@ export function splitBudget({ totalDailyCents, channelRows, strategy = "auto" })
   allocations[0].dailyCents += totalDailyCents - allocated;
   return allocations;
 }
+
+/**
+ * ISSUE-979 Bug 4 [Campaign Builder correctness] — the channels that
+ * planChannels marked ELIGIBLE but splitBudget funded at $0 (dropped from the
+ * allocation entirely because the total can't jointly fund them at each
+ * channel's learning minimum, or because Concentrate puts everything on the top
+ * channel). The wizard used to leave these silent — the operator saw a green,
+ * eligible channel, wrote copy for it, and it was never created, with no reason
+ * on screen and Next still enabled. Surface them WITH an explicit reason so the
+ * budget step can warn instead of silently proceeding.
+ *
+ * @param {object} input
+ * @param {Array}  input.channelRows    planChannels() output.
+ * @param {Array}  input.allocations    splitBudget() output.
+ * @param {number} input.totalDailyCents total daily budget in cents.
+ * @param {string} [input.strategy]     the split strategy in effect.
+ * @returns {Array<{platform, label, viabilityCents, reason}>}
+ */
+export function unfundedEligibleChannels({ channelRows = [], allocations = [], totalDailyCents = 0, strategy = "auto" }) {
+  if (!totalDailyCents || totalDailyCents <= 0) return [];
+  const fundedSet = new Set((allocations ?? []).map((a) => a.platform));
+  const totalLabel = `$${(totalDailyCents / 100).toFixed(2)}/day`;
+  return (channelRows ?? [])
+    .filter((r) => r.eligible && !fundedSet.has(r.platform))
+    .map((r) => {
+      const viabilityCents = Math.max(r.floorCents ?? 0, 500); // mirrors splitBudget's viability
+      const viabilityLabel = `$${(viabilityCents / 100).toFixed(2)}/day`;
+      const reason = strategy === "concentrate"
+        ? `Concentrate funds only the top channel, so ${r.label} gets $0/day. Switch to Auto or Diversify, or raise the budget, to fund it.`
+        : `At ${totalLabel} the plan can't also fund ${r.label} at its ~${viabilityLabel} learning minimum, so it gets $0/day. Raise the budget or drop a channel to include it.`;
+      return { platform: r.platform, label: r.label, viabilityCents, reason };
+    });
+}
