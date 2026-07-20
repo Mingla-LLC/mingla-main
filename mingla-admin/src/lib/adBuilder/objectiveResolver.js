@@ -90,3 +90,35 @@ export function resolveGoalForPayload(goalIds) {
     platforms,
   };
 }
+
+/**
+ * ISSUE-980 [Campaign Builder clarity] finding #3 — a short, honest,
+ * per-platform string for the Review step's channel rows. Review used to
+ * print the SAME goal-label string on every row even though the Goal step's
+ * "Advanced" copy promises Review shows the resolved per-platform objective
+ * (ISSUE-977 Lane B F-5). This renders what resolveGoalForPayload actually
+ * resolved for ONE platform — never a fabricated or borrowed value.
+ *
+ * Google has no `objective`/`optimization_goal` pair at all (its create path
+ * is a fixed Search+RSA strategy, not goal-driven — ISSUE-977 Lane A F-1
+ * table) — `channel_type`/`strategy` stand in for it. Every other resolved
+ * platform entry carries `objective` (+ `optimization_goal` where the
+ * platform has one).
+ *
+ * @param {"meta"|"google"|"tiktok"|"reddit"|"snapchat"} platform
+ * @param {object|null} entry — the resolved goals.js entry for this
+ *   platform (or null when no selected goal is expressible on it).
+ * @returns {string}
+ */
+export function formatResolvedObjective(platform, entry) {
+  if (!entry) {
+    return "No objective resolved for this platform — check the selected goal(s).";
+  }
+  if (platform === "google") {
+    return `${entry.channel_type ?? "SEARCH"} · ${entry.strategy ?? "n/a"}`;
+  }
+  if (!entry.objective) {
+    return "No objective resolved for this platform — check the selected goal(s).";
+  }
+  return entry.optimization_goal ? `${entry.objective} · ${entry.optimization_goal}` : entry.objective;
+}
