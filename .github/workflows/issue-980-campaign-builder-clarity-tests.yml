@@ -1,0 +1,61 @@
+name: ISSUE-980 Campaign Builder Clarity Tests
+
+# ISSUE-980 [campaign-builder-clarity] — the fails-on-revert regression tests
+# for the three clarity fixes: (1) Stepper/grid layout no longer overflows on
+# <=1440px laptops or strands unused width on wide monitors, (2) channel-
+# health copy is plain English (raw proof-tags/error codes/issue numbers only
+# behind a "Technical details" disclosure, never primary text), (3) Review
+# renders the REAL per-platform resolved objective instead of one repeated
+# goal-label string. These are node:test suites (mingla-admin's house runner,
+# pure-logic + fs source assertions). No other CI job runs the mingla-admin
+# campaign-builder suites, so without this dedicated job they would exist but
+# never gate (the dark-test surface trap, ORCH-1383). EXPLICIT registry
+# (never a glob) — append a path.
+#
+# mingla-tester PR #985 addition: issue980_clarity.adversarial.test.js — the
+# independent tester adversarial regression suite (numeric-extreme stepper
+# widths + source-parsed 10-step sweep + repo-wide 720px-track grep; real
+# admin-ad-preflight/index.ts + _shared/reddit.ts jargon strings the
+# implementor's fixtures never exercised, incl. empty-string/injection detail
+# attacks; all-5-platform + empty-goalIds Review objective attacks). Appended
+# here so it gates like the other three, never a dark test.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mingla-admin/src/**"
+      - ".github/workflows/issue-980-campaign-builder-clarity-tests.yml"
+  pull_request:
+    paths:
+      - "mingla-admin/src/**"
+      - ".github/workflows/issue-980-campaign-builder-clarity-tests.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-980-node-test:
+    name: "ISSUE-980: campaign-builder clarity (fails-on-revert regression suites)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: mingla-admin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # EXPLICIT registry — the three ISSUE-980 clarity-fix suites PLUS the
+      # tester's adversarial regression suite (registered here so ALL FOUR
+      # GATE, never a dark test surface — ORCH-1383). Pure ESM + fs source
+      # assertions; no node_modules required.
+      - name: Run ISSUE-980 campaign-builder clarity suites
+        run: >
+          node --test
+          src/__tests__/issue980_stepper_responsive.test.js
+          src/__tests__/issue980_preflight_copy_translation.test.js
+          src/__tests__/issue980_review_real_objectives.test.js
+          src/__tests__/issue980_clarity.adversarial.test.js

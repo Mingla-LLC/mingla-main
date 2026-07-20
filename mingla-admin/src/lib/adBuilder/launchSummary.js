@@ -7,7 +7,7 @@
  */
 
 import { learningLimitedWarning } from "./budgetRules.js";
-import { goalById } from "./goals.js";
+import { formatResolvedObjective } from "./objectiveResolver.js";
 
 function dollars(cents) {
   return `$${(cents / 100).toFixed(2)}`;
@@ -17,7 +17,10 @@ function dollars(cents) {
  * @param {object} input
  * @param {Array}  input.channelRows   planChannels() output
  * @param {Array}  input.allocations   splitBudget() output [{platform, dailyCents}]
- * @param {Array}  input.goalIds       selected goals
+ * @param {object|null} input.resolvedGoal  resolveGoalForPayload() output — the
+ *   SAME coherent per-platform objective resolution runCreate uses (ISSUE-980
+ *   finding #3). Each channel row's `objectiveLabel` comes from here — never a
+ *   single string repeated across every platform.
  * @param {object} input.destination   { title, dest_url }
  * @param {object} input.creative      { name, width, height, kind, validation }
  * @param {object} input.copyCheck     { policyFindings, copyHardBlocks }
@@ -27,7 +30,7 @@ export function buildLaunchSummary(input) {
   const {
     channelRows = [],
     allocations = [],
-    goalIds = [],
+    resolvedGoal = null,
     destination = null,
     creative = null,
     copyCheck = { policyFindings: 0, copyHardBlocks: 0 },
@@ -35,7 +38,24 @@ export function buildLaunchSummary(input) {
   } = input;
 
   const allocationByPlatform = new Map(allocations.map((a) => [a.platform, a.dailyCents]));
-  const goalLabels = goalIds.map((id) => goalById(id)?.label ?? id).join(" + ");
+
+  // ISSUE-980 finding #3: the Goal step's "Advanced" copy promises Review
+  // shows the resolved per-platform objective — it used to render the same
+  // blanket goal-label string on every row instead. Meta's pair always comes
+  // from resolveMetaObjective's own coherent fallback (never null); every
+  // other platform reads its own resolved entry, or an honest "not resolved"
+  // string when a funded channel genuinely has none (never borrows another
+  // platform's value).
+  const objectiveLabelFor = (platform) => {
+    if (!resolvedGoal) return formatResolvedObjective(platform, null);
+    if (platform === "meta") {
+      return formatResolvedObjective("meta", {
+        objective: resolvedGoal.metaObjective,
+        optimization_goal: resolvedGoal.metaOptimizationGoal,
+      });
+    }
+    return formatResolvedObjective(platform, resolvedGoal.platforms?.[platform] ?? null);
+  };
 
   const channelLines = [];
   const blockedLines = [];
@@ -48,7 +68,7 @@ export function buildLaunchSummary(input) {
         dailyCents: allocated,
         dailyLabel: `${dollars(allocated)}/day`,
         statusLine: "Paused → will go live on Launch",
-        goalLabel: goalLabels,
+        objectiveLabel: objectiveLabelFor(row.platform),
         amber: row.amber ?? null,
       });
     } else if (row.eligible) {

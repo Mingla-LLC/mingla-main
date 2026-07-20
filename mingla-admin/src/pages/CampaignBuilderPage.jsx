@@ -209,6 +209,14 @@ export function CampaignBuilderPage() {
     [budget.totalDailyCents, budget.strategy, channelRows],
   );
 
+  // ISSUE-980 [Campaign Builder clarity] finding #3: the SAME coherent
+  // per-platform resolution runCreate uses for the actual create payload
+  // (ISSUE-979's objectiveResolver), recomputed here (pure, cheap, byte-
+  // identical for the same goalIds) purely for display — Review reads this
+  // to show each channel's REAL resolved objective instead of one repeated
+  // goal-label string. Never touches runCreate's own resolution.
+  const resolvedGoalForDisplay = useMemo(() => resolveGoalForPayload(goalIds), [goalIds]);
+
   // Auto-suggest the campaign name from the destination (editable — §4.4).
   useEffect(() => {
     if (!nameTouched && destination) {
@@ -381,6 +389,7 @@ export function CampaignBuilderPage() {
     channelRows,
     allocations,
     goalIds,
+    resolvedGoal: resolvedGoalForDisplay,
     destination: destination ? { title: destination.title, dest_url: destination.dest_url } : null,
     creative: creative.publicUrl
       ? {
@@ -422,7 +431,14 @@ export function CampaignBuilderPage() {
         }}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,720px)_320px] gap-5 items-start">
+      {/* ISSUE-980 [Campaign Builder clarity] finding #1(b): a fixed
+          minmax(0,720px)_320px first track left-anchored the builder and
+          stranded unclaimed width on the right on wide monitors (ISSUE-977
+          Lane A F-6). A flexible first track (matching the existing
+          ScoreTunerPanel.jsx lg:grid-cols-[1fr_372px] two-column idiom) fills
+          the whole width AppShell already centers, so no leftover strip
+          remains and the padding around the builder stays balanced. */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-5 items-start">
         <div className="bg-[var(--color-background-primary)] border border-[var(--gray-200)] rounded-xl p-5">
           {stepId === "lane" && <StepLane lane={lane} onLaneChange={setLane} />}
           {stepId === "preflight" && (

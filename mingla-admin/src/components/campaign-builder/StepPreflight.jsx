@@ -4,19 +4,40 @@
  * right now, will an ad actually run?" Per-channel Recheck + Recheck all.
  * Hard blockers exclude the channel; ambers annotate but never block the
  * BUILD ("Continue anyway (build paused)" — everything is created PAUSED).
+ *
+ * ISSUE-980 [Campaign Builder clarity] finding #2: `check.detail` used to
+ * render RAW engineering text verbatim — proof-tags (T-P2, S-P4), platform
+ * error codes (1885183, pixel_no_signal, BALANCE_EXCEED), and internal issue
+ * numbers (#865) straight to the operator (ISSUE-977 Lane B F-2). The primary
+ * line now always renders `translatePreflightDetail`'s plain-English
+ * `friendly` text; the raw string survives ONLY behind a collapsed
+ * "Technical details" disclosure — a support affordance, never the default
+ * view.
  */
 
-import { RefreshCw } from "lucide-react";
+import { ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
+import { useState } from "react";
 import { AlertCard } from "../ui/Card";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Spinner } from "../ui/Spinner";
 import { PLATFORM_LABELS, CREATE_WIRED, CREATE_GAP_REASONS } from "../../lib/adBuilder/channelPlan";
+import { translatePreflightDetail } from "../../lib/adBuilder/preflightCopy";
 
 const OVERALL_BADGE = { green: "success", amber: "warning", red: "error", not_connected: "default" };
 const CHECK_BADGE = { pass: "success", warn: "warning", fail: "error", "n/a": "default" };
 
 export function StepPreflight({ rows, running, recheckBusy, onRecheck, onRecheckAll }) {
+  const [expandedChecks, setExpandedChecks] = useState(() => new Set());
+  const toggleExpanded = (key) => {
+    setExpandedChecks((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3">
@@ -71,15 +92,44 @@ export function StepPreflight({ rows, running, recheckBusy, onRecheck, onRecheck
                   </Button>
                 </div>
                 <ul className="space-y-1">
-                  {(row.checks ?? []).map((check) => (
-                    <li key={check.id} className="text-xs flex items-start gap-2">
-                      <Badge variant={CHECK_BADGE[check.status] ?? "default"}>{check.id}</Badge>
-                      <span>
-                        <span className="font-medium">{check.label}</span>
-                        {check.detail ? <> — {check.detail}</> : null}
-                      </span>
-                    </li>
-                  ))}
+                  {(row.checks ?? []).map((check) => {
+                    const { friendly, technical } = translatePreflightDetail({
+                      platform: row.platform,
+                      checkId: check.id,
+                      status: check.status,
+                      detail: check.detail,
+                    });
+                    const expandKey = `${row.platform}:${check.id}`;
+                    const isOpen = expandedChecks.has(expandKey);
+                    return (
+                      <li key={check.id} className="text-xs">
+                        <div className="flex items-start gap-2">
+                          <Badge variant={CHECK_BADGE[check.status] ?? "default"}>{check.id}</Badge>
+                          <span>
+                            <span className="font-medium">{check.label}</span> — {friendly}
+                          </span>
+                        </div>
+                        {technical && (
+                          <div className="pl-[52px] mt-0.5">
+                            <button
+                              type="button"
+                              aria-expanded={isOpen}
+                              onClick={() => toggleExpanded(expandKey)}
+                              className="inline-flex items-center gap-0.5 text-[10px] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)]"
+                            >
+                              {isOpen ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+                              Technical details
+                            </button>
+                            {isOpen && (
+                              <p className="mt-1 text-[10px] font-mono text-[var(--color-text-tertiary)] break-words">
+                                {technical}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             );

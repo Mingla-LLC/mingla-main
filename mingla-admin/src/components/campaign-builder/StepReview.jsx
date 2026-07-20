@@ -54,7 +54,12 @@ export function StepReview({
             <span className="font-medium w-20">{line.label}</span>
             <span className="font-mono text-xs">{line.dailyLabel}</span>
             <span className="text-xs text-[var(--color-text-secondary)]">{line.statusLine}</span>
-            <span className="text-xs text-[var(--color-text-tertiary)]">{line.goalLabel}</span>
+            <span
+              className="text-xs text-[var(--color-text-tertiary)] font-mono"
+              title="The resolved objective this platform's create payload will actually send."
+            >
+              {line.objectiveLabel}
+            </span>
           </div>
         ))}
         {summary.blocked.map((line) => (
