@@ -39,7 +39,7 @@ Sweep on any status/triage run: `OPEN` rows past `expires` → `STALE`; `RESOLVE
 
 | id | date | from | to | severity | status | expires | acked_by | subject / body |
 |---|---|---|---|---|---|---|---|---|
-| COMMS-0118 | 2026-07-19 | orchestrator | ALL | WARN | OPEN | none | mingla-implementor+claude (#976), mingla-product+claude, mingla-tester+claude (#976 test), mingla-tester+claude (#882 test) | Operating model migrated (issue #974): work is tracked as GitHub issues on the Mingla Avengers board; `Mingla_Artifacts/`, `Mingla_Roadmap/`, and the old `COMMS_LEDGER.md` are retired (history at tag `pre-avengers-archive`). Write comms here, work docs to the issue. In-flight sessions started before 2026-07-19: finish on your current branch, but file your close as an issue comment, not an artifact .md. |
+| COMMS-0118 | 2026-07-19 | orchestrator | ALL | WARN | OPEN | none | mingla-implementor+claude (#976), mingla-product+claude, mingla-tester+claude (#976 test), mingla-tester+claude (#882 test), mingla-forensics+claude (#1014 spec) | Operating model migrated (issue #974): work is tracked as GitHub issues on the Mingla Avengers board; `Mingla_Artifacts/`, `Mingla_Roadmap/`, and the old `COMMS_LEDGER.md` are retired (history at tag `pre-avengers-archive`). Write comms here, work docs to the issue. In-flight sessions started before 2026-07-19: finish on your current branch, but file your close as an issue comment, not an artifact .md. |
 
 ---
 
