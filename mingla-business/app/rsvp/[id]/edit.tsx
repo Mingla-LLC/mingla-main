@@ -13,7 +13,12 @@
 import React, { useEffect, useMemo } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import {
+  useFocusEffect,
+  useLocalSearchParams,
+  useNavigation,
+  useRouter,
+} from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -45,7 +50,14 @@ import {
 } from "../../../src/hooks/useServerDraftEvents";
 import { useBusinessEventById } from "../../../src/hooks/useBusinessEvents";
 import { usePublishRsvpDraft } from "../../../src/hooks/useRsvpEvents";
-import { createServerDraft } from "../../../src/services/eventDrafts";
+// Issue #976 [event-name-focus] — the d_*→server promotion routes through the
+// single-flight registry (one createServerDraft per d_* id, live-merge swap);
+// this route never calls createServerDraft directly anymore
+// (I-PROPOSED-0976-SINGLE-DRAFT-PROMOTION-OWNER).
+import {
+  promoteLegacyDraftOnce,
+  PromotionSourceMissingError,
+} from "../../../src/utils/draftPromotion";
 import { useAuth } from "../../../src/context/AuthContext";
 import { isBusinessAuthNotReadyError } from "../../../src/utils/authReadiness";
 // ORCH-0893 [Eager server-draft on creator entry — replace with client-id + lazy autosave]:
@@ -93,6 +105,34 @@ export default function RsvpEditRoute(): React.ReactElement {
     null,
   );
   const effectiveDraftId = promotedServerId ?? idParam;
+
+  // Issue #976 [event-name-focus] — unmount + focus guards for the promotion
+  // resolve handlers. `router.setParams` is imperative-global: fired while a
+  // pushed screen (e.g. Preview) is focused it would inject {id, step} into
+  // THAT screen's params; fired after unmount it targets an arbitrary screen.
+  // Both are now impossible: the resolve handler no-ops after unmount
+  // (mountedRef) and defers the URL reconcile (pendingUrlReconcileRef) until
+  // this route regains focus.
+  const mountedRef = React.useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return (): void => {
+      mountedRef.current = false;
+    };
+  }, []);
+  const pendingUrlReconcileRef = React.useRef<{ id: string; step: string } | null>(
+    null,
+  );
+  const navigationRef = useNavigation();
+  useFocusEffect(
+    React.useCallback(() => {
+      const pending = pendingUrlReconcileRef.current;
+      if (pending !== null) {
+        pendingUrlReconcileRef.current = null;
+        router.setParams(pending);
+      }
+    }, [router]),
+  );
 
   const initialStep = useMemo<number | undefined>(() => {
     if (stepParam === undefined || stepParam.length === 0) return undefined;
@@ -164,7 +204,6 @@ export default function RsvpEditRoute(): React.ReactElement {
   const autosave = useServerDraftAutosave();
   const discardServerDraft = useDiscardServerDraft();
   const publishServerDraft = usePublishRsvpDraft();
-  const replaceDraft = useDraftEventStore((s) => s.replaceDraft);
   const deleteDraft = useDraftEventStore((s) => s.deleteDraft);
   const migratingLegacyIdRef = React.useRef<string | null>(null);
   const staleRecoveryDraftIdRef = React.useRef<string | null>(null);
@@ -326,9 +365,27 @@ export default function RsvpEditRoute(): React.ReactElement {
                 .legacyLocalDraftId === idParam,
           );
           if (swapped !== undefined) {
-            router.replace(
-              `/rsvp/${swapped.id}/edit?step=${initialStep ?? 0}` as never,
-            );
+            // Issue #976 [event-name-focus] — adopt the ORCH-1355 no-remount
+            // mechanism instead of a screen-replacing router.replace to the
+            // swapped id (the replace remounted the wizard and dropped the
+            // keyboard mid-type when the legacy loop swapped the draft from
+            // behind this route). Upsert the swapped draft into the store so
+            // useDraftById(swapped.id) resolves even when no list hook
+            // upserted it this session, resolve the wizard via route state,
+            // and reconcile the URL in place (focus-gated).
+            useDraftEventStore.getState().upsertServerDraft(swapped);
+            setPromotedServerId(swapped.id);
+            if (navigationRef.isFocused()) {
+              router.setParams({
+                id: swapped.id,
+                step: String(initialStep ?? 0),
+              });
+            } else {
+              pendingUrlReconcileRef.current = {
+                id: swapped.id,
+                step: String(initialStep ?? 0),
+              };
+            }
             return undefined;
           }
         }
@@ -359,6 +416,7 @@ export default function RsvpEditRoute(): React.ReactElement {
     businessEventQuery.isFetching,
     businessEventQuery.data?.event,
     router,
+    navigationRef,
     deleteDraft,
     queryClient,
     serverDraftQuery.isFetching,
@@ -373,10 +431,19 @@ export default function RsvpEditRoute(): React.ReactElement {
   // the d_* id to the server id and the URL changes); rather than flash the
   // Spinner and remount the wizard, fall back to the last resolved draft so the
   // wizard stays mounted across the swap. Cover/name/all fields carry across
-  // because replaceDraft preserves them (the migration merge in
-  // handleAutosaveDraft copies them onto the server draft).
+  // because replaceDraft preserves them (the registry's live-merge lands them
+  // on the server draft).
+  // Issue #976 — re-keyed: `migrationInFlight` only covers this route's OWN
+  // promotion; the `|| isLegacyLocalDraftId` term holds the wizard mounted
+  // across an EXTERNAL d_*→server swap too (e.g. the legacy migration loop —
+  // the route's ref knows nothing about it). It cannot wedge: it only engages
+  // while the URL id is still d_* AND a draft was previously resolved this
+  // session; the safety belt or the bounce path always terminates that state.
   const renderDraft: DraftEvent | null =
-    draft ?? (migrationInFlight ? lastResolvedDraftRef.current : null);
+    draft ??
+    ((migrationInFlight || isLegacyLocalDraftId)
+      ? lastResolvedDraftRef.current
+      : null);
 
   const isCreateMode = useMemo<boolean>(() => {
     if (renderDraft === null) return false;
@@ -454,17 +521,19 @@ export default function RsvpEditRoute(): React.ReactElement {
 
   // ORCH-0893 [Eager server-draft on creator entry — replace with client-id + lazy autosave]:
   // route-owned autosave wrapper. Three branches:
-  //   (a) `d_<ts36>` id + dirty → lazy-insert server draft via
-  //       `createServerDraft`, then `replaceDraft` swaps the client id
-  //       for the server id in Zustand, then `router.replace` updates
-  //       the URL without unmounting the wizard.
+  //   (a) `d_<ts36>` id + dirty → promote through the issue #976 single-flight
+  //       registry (`promoteLegacyDraftOnce` — it alone calls
+  //       `createServerDraft`, performs the live-merge store swap, and writes
+  //       the React-Query caches; the RSVP fields survive by construction —
+  //       the live draft wins every user field by spread, no enumerated list),
+  //       then reconcile the route in place.
   //   (b) `d_<ts36>` id + NOT dirty → no save. Prevents ghost-draft row
   //       accumulation when the user backs out before typing.
   //   (c) server id → existing `autosave.saveDraft` path.
   //
-  // `migratingLegacyIdRef` dedupes concurrent migration attempts during
-  // the 800ms debounce window — only one `createServerDraft` is in flight
-  // for a given `d_*` id.
+  // `migratingLegacyIdRef` keeps this route's promotion state for the D-1
+  // retained-draft guard; the registry dedupes concurrent promotions globally
+  // (per d_* id across ALL surfaces — loop, routes, previews).
   const handleAutosaveDraft = React.useCallback(
     (incoming: DraftEvent): void => {
       if (!incoming.id.startsWith("d_")) {
@@ -475,77 +544,16 @@ export default function RsvpEditRoute(): React.ReactElement {
       if (migratingLegacyIdRef.current === incoming.id) return;
       if (!isAuthReady) return;
       migratingLegacyIdRef.current = incoming.id;
-      void createServerDraft(incoming.brandId, incoming)
-        .then((serverDraft) => {
-          // ORCH-0893 REWORK Part B — live-state merge race-guard.
-          // Between the createServerDraft call (which echoes the
-          // queue-time snapshot of `incoming`) and this resolve,
-          // the user may have continued typing into the d_<ts36>
-          // draft. Those keystrokes landed in Zustand against the
-          // OLD d_* id. A naive replaceDraft(d_id, serverDraft)
-          // would overwrite them with the queue-time snapshot.
-          //
-          // Fix: re-read the live draft from Zustand at resolve
-          // time and merge user-meaningful fields from the live
-          // state into the serverDraft payload before the swap.
-          // Server-issued fields (id, slug, created_by, server
-          // timestamps) stay from serverDraft; user fields stay
-          // from the live snapshot.
-          const liveDraft = useDraftEventStore
-            .getState()
-            .getDraft(incoming.id);
-          const mergedServerDraft = liveDraft
-            ? {
-                ...serverDraft,
-                name: liveDraft.name,
-                description: liveDraft.description,
-                coverMediaUrl: liveDraft.coverMediaUrl,
-                coverMediaType: liveDraft.coverMediaType,
-                coverMediaProvider: liveDraft.coverMediaProvider,
-                coverMediaSourceUrl: liveDraft.coverMediaSourceUrl,
-                coverMediaCredit: liveDraft.coverMediaCredit,
-                coverMediaCreditUrl: liveDraft.coverMediaCreditUrl,
-                coverMediaAlt: liveDraft.coverMediaAlt,
-                coverHue: liveDraft.coverHue,
-                format: liveDraft.format,
-                tickets: liveDraft.tickets,
-                date: liveDraft.date,
-                doorsOpen: liveDraft.doorsOpen,
-                endsAt: liveDraft.endsAt,
-                endsAtUtc: liveDraft.endsAtUtc,
-                venueName: liveDraft.venueName,
-                address: liveDraft.address,
-                city: liveDraft.city,
-                locationGeo: liveDraft.locationGeo,
-                onlineUrl: liveDraft.onlineUrl,
-                hideAddressUntilTicket: liveDraft.hideAddressUntilTicket,
-                lastStepReached: Math.max(
-                  liveDraft.lastStepReached,
-                  serverDraft.lastStepReached,
-                ),
-                partyTypes: liveDraft.partyTypes,
-                vibeTags: liveDraft.vibeTags,
-                musicGenres: liveDraft.musicGenres,
-                whenMode: liveDraft.whenMode,
-                multiDates: liveDraft.multiDates,
-                recurrenceRule: liveDraft.recurrenceRule,
-                timezone: liveDraft.timezone,
-                // ORCH-1150 — carry RSVP fields through the d_* → server swap so
-                // in-flight RSVP-setup edits aren't dropped on the first save.
-                isRsvp: liveDraft.isRsvp,
-                rsvpCapacity: liveDraft.rsvpCapacity,
-                rsvpAllowPlusOnes: liveDraft.rsvpAllowPlusOnes,
-                rsvpPlusOnesMax: liveDraft.rsvpPlusOnesMax,
-                rsvpWaitlistEnabled: liveDraft.rsvpWaitlistEnabled,
-                rsvpApprovalMode: liveDraft.rsvpApprovalMode,
-                rsvpDiscoverable: liveDraft.rsvpDiscoverable,
-              }
-            : serverDraft;
-          replaceDraft(incoming.id, mergedServerDraft);
-          queryClient.setQueryData(
-            eventDraftKeys.detail(mergedServerDraft.id),
-            mergedServerDraft,
-          );
+      void promoteLegacyDraftOnce({
+        queryClient,
+        brandId: incoming.brandId,
+        draftId: incoming.id,
+      })
+        .then((merged) => {
+          // Issue #976 — resolve handlers are unmount- and focus-guarded: a
+          // rapid wizard exit or a pushed Preview screen can never receive a
+          // stray setParams.
+          if (!mountedRef.current) return;
           // ORCH-1355 (symptom 1) — resolve the wizard against the server id via
           // route state, then reconcile the URL IN PLACE with setParams. A
           // router.replace here would change the [id] segment → expo-router
@@ -553,16 +561,28 @@ export default function RsvpEditRoute(): React.ReactElement {
           // drops mid-type. setParams updates the focused route's params without
           // a screen replace, so the input keeps focus AND the URL/route params
           // land on the server id immediately (resume/kill lands on the real id).
-          setPromotedServerId(mergedServerDraft.id);
-          router.setParams({
-            id: mergedServerDraft.id,
-            step: String(initialStep ?? 0),
-          });
+          setPromotedServerId(merged.id);
+          if (navigationRef.isFocused()) {
+            router.setParams({
+              id: merged.id,
+              step: String(initialStep ?? 0),
+            });
+          } else {
+            pendingUrlReconcileRef.current = {
+              id: merged.id,
+              step: String(initialStep ?? 0),
+            };
+          }
         })
         .catch((error) => {
           migratingLegacyIdRef.current = null;
           if (isBusinessAuthNotReadyError(error)) {
             // Will retry on next dirty save once auth lands.
+            return;
+          }
+          if (error instanceof PromotionSourceMissingError) {
+            // The d_* draft left the store (already swapped or discarded) —
+            // quiet no-op; the safety belt / bounce path owns recovery.
             return;
           }
           setToast({
@@ -575,8 +595,8 @@ export default function RsvpEditRoute(): React.ReactElement {
       autosave,
       isAuthReady,
       initialStep,
+      navigationRef,
       queryClient,
-      replaceDraft,
       router,
     ],
   );
@@ -662,7 +682,10 @@ export default function RsvpEditRoute(): React.ReactElement {
   // is the visible "refresh"/remount Seth hit when typing the name: the swap
   // briefly nulled `draft`, flashed this Spinner, and remounted the wizard.
   // Keep the wizard mounted against `renderDraft` until the new id resolves.
-  if (draft === null && !(migrationInFlight && renderDraft !== null)) {
+  // Issue #976 — condition simplified to the re-keyed renderDraft (covers
+  // external swaps while the URL id is still d_*, not just this route's own
+  // promotion).
+  if (draft === null && renderDraft === null) {
     return (
       <View
         style={[
