@@ -19,6 +19,7 @@ parentheses for traceability.
 
 ## Shipped
 
+- 2026-07-20 — Scanner-invite failures now show the real reason (expired / revoked / already-used / wrong-account) instead of a generic error — the same parsing fix already live for partner invites, extended to the scanner path (#959, PR #1010)
 - 2026-07-20 — Sign-in code emails are now fully Mingla-branded: sent from Mingla <noreply@usemingla.com> with the logo wordmark and a clean code card, replacing "Supabase Auth / Your Magic Link" with admin-dashboard copy that buyers and partners were receiving; auth email send limit raised 30→100/hr (#999)
 - 2026-07-20 — The business-app To-Do toggle now remembers whether you left it open or collapsed — across Home/Hub, brand switches, and app restarts (#882, PR #1000)
 - 2026-07-20 — Production business app un-bricked: a wrong-key OTA publish stuck iOS on the splash screen; republished with live payment keys via the canonical script, and crash reporting now actually ships in OTAs (#990)
