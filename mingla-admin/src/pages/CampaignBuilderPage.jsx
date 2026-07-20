@@ -42,6 +42,7 @@ import { classifyCreateResult } from "../lib/adBuilder/createResult";
 import { applyChannelSelection, planChannels, splitBudget } from "../lib/adBuilder/channelPlan";
 import { complianceExclusions } from "../lib/adBuilder/compliance";
 import { validateAudience, DEFAULT_AGE_MAX, DEFAULT_AGE_MIN, DEFAULT_COUNTRIES } from "../lib/adBuilder/audienceRules";
+import { DEFAULT_RADIUS_MI } from "../lib/adBuilder/targeting";
 import { validateBudget } from "../lib/adBuilder/budgetRules";
 import { validateCopy } from "../lib/adBuilder/copyRules";
 import { runPolicyPrecheck } from "../lib/adBuilder/policyLinter";
@@ -93,6 +94,14 @@ export function CampaignBuilderPage() {
   const [destination, setDestination] = useState(null);
   const [audience, setAudience] = useState({
     countries: DEFAULT_COUNTRIES,
+    // ISSUE-989 [Campaign Builder real targeting] — city + radius + interest
+    // targeting state. cities carry per-platform resolved keys; interests are
+    // platform-tagged chips; radius (mi) applies to Meta city targeting. Empty
+    // by default → the builder targets whole countries exactly as before.
+    cities: [],
+    interests: [],
+    radius: DEFAULT_RADIUS_MI,
+    distanceUnit: "mile",
     ageMin: DEFAULT_AGE_MIN,
     ageMax: DEFAULT_AGE_MAX,
     gender: "all",
@@ -533,7 +542,10 @@ export function CampaignBuilderPage() {
             <StepPolicy
               copy={copy}
               creative={creative}
-              channelRows={channelRows}
+              /* ISSUE-987 P3: pass the PICKED set (plannedRows), like every sibling
+                 step, so a deselected/compliance-excluded platform never produces
+                 a stale policy warning for a channel that won't be built. */
+              channelRows={plannedRows}
               specialAdCategory={specialAdCategory}
               onSpecialAdCategoryChange={setSpecialAdCategory}
             />

@@ -18,6 +18,18 @@
  */
 
 import { metaGendersFor } from "./audienceRules.js";
+import {
+  DEFAULT_RADIUS_MI,
+  googleLocationsFrom,
+  metaCitiesFrom,
+  metaInterestIdsFrom,
+  redditGendersFor,
+  redditInterestNamesFrom,
+  snapDemographicsFrom,
+  tiktokGenderFor,
+  tiktokInterestCategoryIdsFrom,
+  tiktokLocationIdsFrom,
+} from "./targeting.js";
 
 /** Dollars-in → cents-at-rest, once (the CurrencyInput contract). */
 export function dollarsToCents(dollars) {
@@ -120,15 +132,23 @@ export function buildCreatePayload(platform, state) {
       optimization_goal: goalDefaults.optimization_goal,
       billing_event: goalDefaults.billing_event,
       budget: { type: "daily", amount_cents: budget.dailyCentsForChannel },
+      // ISSUE-989: real city + interest targeting. City location_ids (resolved
+      // via the search proxy) REPLACE country resolution when present; interest
+      // category ids narrow the ad group; gender now maps correctly (the old
+      // "female"/"male" check never matched the wizard's women/men values —
+      // TikTok gender was silently dropped). Empty selections omit the keys, so
+      // broad country+age targeting is unchanged.
       targeting: {
         countries: audience.countries,
+        ...(tiktokLocationIdsFrom(audience.cities).length > 0
+          ? { location_ids: tiktokLocationIdsFrom(audience.cities) }
+          : {}),
+        ...(tiktokInterestCategoryIdsFrom(audience.interests).length > 0
+          ? { interest_category_ids: tiktokInterestCategoryIdsFrom(audience.interests) }
+          : {}),
         age_min: Number(audience.ageMin),
         age_max: Number(audience.ageMax),
-        ...(audience.gender === "female"
-          ? { gender: "GENDER_FEMALE" }
-          : audience.gender === "male"
-          ? { gender: "GENDER_MALE" }
-          : {}),
+        ...(tiktokGenderFor(audience.gender) ? { gender: tiktokGenderFor(audience.gender) } : {}),
       },
       destination: destinationBody,
       creative: {
@@ -157,7 +177,17 @@ export function buildCreatePayload(platform, state) {
       name,
       objective: goal.platforms?.reddit?.objective ?? "CLICKS",
       budget: { type: "daily", amount_cents: budget.dailyCentsForChannel },
-      targeting: { countries: audience.countries },
+      // ISSUE-989: gender (scalar, was silently dropped — Lane D finding #2) +
+      // community/interest names via passthrough.reddit (the serializer takes
+      // NAMES verbatim). Reddit has NO age field (R-8) — age is never sent.
+      // Country stays the geo (Reddit is country/metro, not city).
+      targeting: {
+        countries: audience.countries,
+        ...(redditGendersFor(audience.gender) ? { genders: redditGendersFor(audience.gender) } : {}),
+        ...(redditInterestNamesFrom(audience.interests).length > 0
+          ? { passthrough: { reddit: { interests: redditInterestNamesFrom(audience.interests) } } }
+          : {}),
+      },
       destination: destinationBody,
       creative: {
         headline: copy.primary,
@@ -185,7 +215,17 @@ export function buildCreatePayload(platform, state) {
       objective: goal.platforms?.snapchat?.objective ?? "TRAFFIC",
       optimization_goal: goal.platforms?.snapchat?.optimization_goal ?? "SWIPES",
       budget: { type: "daily", amount_cents: budget.dailyCentsForChannel },
-      targeting: { countries: audience.countries },
+      // ISSUE-989: age/gender via demographics (STRINGS — GR-39). These were
+      // silently dropped before (the server forced min_age:"18"); now the
+      // wizard's age/gender travels. Absent → server default [{min_age:"18"}].
+      // City circles + interest segments consumption is deferred (ISSUE-989
+      // split); Snap uses the picked countries + these demographics.
+      targeting: {
+        countries: audience.countries,
+        ...(snapDemographicsFrom(audience)
+          ? { demographics: snapDemographicsFrom(audience) }
+          : {}),
+      },
       destination: destinationBody,
       creative: {
         headline: copy.headline || copy.primary,
@@ -209,7 +249,16 @@ export function buildCreatePayload(platform, state) {
       request_id: requestId,
       name,
       budget: { type: "daily", amount_cents: budget.dailyCentsForChannel },
-      targeting: { countries: audience.countries },
+      // ISSUE-989: named city locations [{name, country_code}] — the create fn
+      // re-resolves each to an ENABLED geoTargetConstant by name (the London/
+      // Ontario disambiguation path already wired backend-side). Empty → the
+      // country seed constants target the whole country (unchanged).
+      targeting: {
+        countries: audience.countries,
+        ...(googleLocationsFrom(audience.cities).length > 0
+          ? { locations: googleLocationsFrom(audience.cities) }
+          : {}),
+      },
       destination: destinationBody,
       creative: {
         headlines: (copy.googleHeadlines ?? []).map((h) => h.trim()).filter(Boolean),
@@ -242,8 +291,19 @@ export function buildCreatePayload(platform, state) {
     optimization_goal: goal.metaOptimizationGoal,
     billing_event: "IMPRESSIONS",
     budget: { type: "daily", amount_cents: budget.dailyCentsForChannel },
+    // ISSUE-989: real city + radius + interest targeting. cities carry the
+    // resolved Meta geo keys with the chosen radius (the server enforces
+    // {key,radius,distance_unit} and Meta's 1-50mi bounds); interests carry the
+    // resolved adinterest ids → flexible_spec on the server. Empty selections
+    // omit the keys, so broad country+age targeting is byte-identical to before.
     targeting: {
       countries: audience.countries,
+      ...(metaCitiesFrom(audience.cities, audience.radius ?? DEFAULT_RADIUS_MI, audience.distanceUnit).length > 0
+        ? { cities: metaCitiesFrom(audience.cities, audience.radius ?? DEFAULT_RADIUS_MI, audience.distanceUnit) }
+        : {}),
+      ...(metaInterestIdsFrom(audience.interests).length > 0
+        ? { interests: metaInterestIdsFrom(audience.interests) }
+        : {}),
       age_min: Number(audience.ageMin),
       age_max: Number(audience.ageMax),
       ...(genders ? { genders } : {}),

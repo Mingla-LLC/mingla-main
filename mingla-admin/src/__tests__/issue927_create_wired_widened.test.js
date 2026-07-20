@@ -117,10 +117,14 @@ describe("ISSUE-927 — TikTok payload branch", () => {
     assert.equal(p.billing_event, "CPM");
   });
 
-  it("gender maps female/male to the TikTok enum", () => {
+  it("gender maps women/men to the TikTok enum", () => {
+    // ISSUE-989: the wizard's gender control emits women/men/all (audienceRules
+    // GENDER_OPTIONS) — NOT female/male. The old assertion used "female", which
+    // never matched the control's value, so TikTok gender was silently dropped
+    // (Lane D finding #2). The mapper (tiktokGenderFor) now maps women→GENDER_FEMALE.
     const p = buildCreatePayload("tiktok", {
       ...baseState,
-      audience: { ...baseState.audience, gender: "female" },
+      audience: { ...baseState.audience, gender: "women" },
     });
     assert.equal(p.targeting.gender, "GENDER_FEMALE");
   });
