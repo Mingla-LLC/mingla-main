@@ -19,6 +19,13 @@
  */
 
 import { supabase } from "./supabase";
+// #959 (byte-identical sibling of ORCH-1404) — reuse the canonical
+// FunctionsHttpError parse. The scanner service's old extractStatus/
+// extractErrorCode read `error.context.response.status` / `data.error`; on a
+// real edge-function HTTP error `error.context` IS the Response, so those paths
+// never matched and every failure collapsed to 500 / "server". parseFunctionsError
+// reads `error.context.status` + `await error.context.json()` correctly.
+import { parseFunctionsError } from "./brandInvitationsService";
 
 // ---------- Types ----------
 
@@ -121,9 +128,14 @@ export async function inviteScanner(
     { body },
   );
   if (error) {
-    const status = extractStatus(error);
-    const code = extractErrorCode(data, error) ?? "server";
-    throw new ScannerInvitationServiceError(code, status, error.message);
+    // #959 (mirrors ORCH-1404) — status/code come from the FunctionsHttpError
+    // `context` (Response), not the null `data`. See parseFunctionsError.
+    const { status, code } = await parseFunctionsError(error);
+    throw new ScannerInvitationServiceError(
+      code,
+      status,
+      error instanceof Error ? error.message : undefined,
+    );
   }
   if (
     !data ||
@@ -145,9 +157,15 @@ export async function acceptScannerInvitation(
     { body: { token } },
   );
   if (error) {
-    const status = extractStatus(error);
-    const code = extractErrorCode(data, error) ?? "server";
-    throw new ScannerInvitationServiceError(code, status, error.message);
+    // #959 (mirrors ORCH-1404) — real status/code from the FunctionsHttpError
+    // context so the accept screen can render the specific reason (expired,
+    // revoked, already used, wrong account) instead of a generic 500.
+    const { status, code } = await parseFunctionsError(error);
+    throw new ScannerInvitationServiceError(
+      code,
+      status,
+      error instanceof Error ? error.message : undefined,
+    );
   }
   if (!data || typeof data !== "object") {
     throw new ScannerInvitationServiceError("server", 500, "invalid response");
@@ -213,29 +231,4 @@ export async function listScannerInvitationsForEvent(
     throw new ScannerInvitationServiceError("server", 500, error.message);
   }
   return (data ?? []) as ScannerInvitationRow[];
-}
-
-// ---------- Internals ----------
-
-function extractStatus(error: unknown): number {
-  if (error && typeof error === "object") {
-    const ctx = (error as { context?: { response?: { status?: number } } })
-      .context;
-    if (ctx?.response?.status) return ctx.response.status;
-    const s = (error as { status?: number }).status;
-    if (typeof s === "number") return s;
-  }
-  return 500;
-}
-
-function extractErrorCode(data: unknown, error: unknown): string | null {
-  if (data && typeof data === "object") {
-    const code = (data as { error?: unknown }).error;
-    if (typeof code === "string") return code;
-  }
-  if (error && typeof error === "object") {
-    const code = (error as { code?: unknown }).code;
-    if (typeof code === "string") return code;
-  }
-  return null;
 }
