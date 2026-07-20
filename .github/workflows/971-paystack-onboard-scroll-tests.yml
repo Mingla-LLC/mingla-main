@@ -42,8 +42,13 @@ jobs:
           cache-dependency-path: mingla-business/package-lock.json
       - run: npm ci
       # EXPLICIT registry — add a new #971 suite by appending a path; never glob.
-      - name: Run #971 Paystack onboard-scroll jest suite
+      # Two suites gate #971: the implementor happy-path (.source.) AND the tester
+      # adversarial (.tester., different angle — top bar stays outside the scroll, the
+      # reusable card stays passive, the second render site stays scroll-wrapped). Both
+      # are fails-on-revert regressions and MUST run here or they would exist but never gate.
+      - name: Run #971 Paystack onboard-scroll jest suites (source + tester)
         run: >
           npx jest
           src/components/brand/__tests__/paystackOnboardBodyScrolls.971.source.test.ts
+          src/components/brand/__tests__/paystackOnboardBodyScrolls.971.tester.test.ts
           --runInBand
