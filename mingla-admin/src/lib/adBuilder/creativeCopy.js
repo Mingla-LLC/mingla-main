@@ -98,7 +98,16 @@ const RULE_PATTERNS = [
     action: () => "Use a clean, full-frame export and eyeball it before launching.",
   },
   {
-    test: (r) => /codec|loudness|youtube_hosted|chunked_path|ig_ingestion/.test(r),
+    // ISSUE-995 REWORK (tester P2): the raw matrix message says "We'll upload
+    // this to YouTube for you" — a promise the system does NOT keep yet (Google
+    // video create is unwired, #997). The operator-facing copy must be honest:
+    // Google is skipped for video, never a fabricated "we'll handle it".
+    test: (r) => /youtube_hosted/.test(r),
+    friendly: (p) => `${platformName(p)} only runs YouTube-hosted video, and that isn't available yet.`,
+    action: () => "Google is skipped for video ads for now (video ad creation is coming in a follow-up).",
+  },
+  {
+    test: (r) => /codec|loudness|chunked_path|ig_ingestion/.test(r),
     friendly: (p) => `A ${platformName(p)} export detail to double-check.`,
     action: () => "It won't block the build — verify your export settings.",
   },

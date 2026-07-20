@@ -51,6 +51,7 @@ const EXCLUSION_COPY = {
   needs_transcode: "the shape needs a crop or a variant we can't make here",
   blocked: "a hard rule blocks it",
   not_validated: "it hasn't been validated",
+  video_not_creatable: "video ad creation isn't available yet",
 };
 
 /** ratioLabel "9:16" → CSS aspect-ratio "9 / 16" (accurate crop box). */
@@ -272,11 +273,12 @@ export function StepCreative({
         </p>
       </div>
 
-      {/* ISSUE-995: media kind toggle. */}
+      {/* ISSUE-995: media kind toggle. Video is PREVIEW-ONLY until create is
+          wired (#997) — the option is labelled so, and building is blocked. */}
       <div className="inline-flex rounded-lg border border-[var(--gray-200)] p-0.5" role="tablist" aria-label="Creative type">
         {[
           { kind: "image", label: "Image", Icon: ImageIcon },
-          { kind: "video", label: "Video", Icon: Film },
+          { kind: "video", label: "Video (preview only)", Icon: Film },
         ].map(({ kind, label, Icon }) => (
           <button
             key={kind}
@@ -297,6 +299,17 @@ export function StepCreative({
           </button>
         ))}
       </div>
+
+      {/* ISSUE-995 REWORK (tester P1): video ad CREATE isn't wired yet (#997).
+          The operator must never be led to believe a video campaign will build —
+          this is preview-only, and the build path is blocked. */}
+      {isVideo && (
+        <AlertCard variant="warning" title="Video ad creation isn't available yet">
+          You can upload a video, validate it, and preview how it fits each placement — but you
+          can't build a video campaign yet (it's coming in a follow-up). To build and launch a
+          campaign now, switch to an image.
+        </AlertCard>
+      )}
 
       {!isVideo && (
         <ImageUploader
@@ -450,7 +463,9 @@ export function StepCreative({
           . Fix the problems below or add a variant to include them.
         </AlertCard>
       )}
-      {channels && fundedPlatforms.length > 0 && creativeBuildable.length === 0 && (
+      {/* Image-only: for video, the "not available yet" banner above already
+          explains why nothing builds — never show the generic "fix it" copy. */}
+      {!isVideo && channels && fundedPlatforms.length > 0 && creativeBuildable.length === 0 && (
         <AlertCard variant="error" title="No funded channel can run this creative yet">
           Every funded channel has a problem below. Fix at least one — or add a pre-cropped variant —
           to build.

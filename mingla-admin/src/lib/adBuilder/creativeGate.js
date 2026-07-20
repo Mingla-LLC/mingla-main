@@ -24,6 +24,18 @@
  */
 
 /**
+ * ISSUE-995 REWORK (tester P1/P2) — VIDEO AD CREATE IS NOT WIRED YET.
+ * admin-ad-create-campaign never calls resolveCreativeRef (the lazy per-platform
+ * video uploader), so a video ad actually FAILS at create on Meta/TikTok/Snap/
+ * Reddit (honest 422) and — worse — fires a fabricated "Created" for a text-only
+ * ad on Google. Until this flag flips (in #997, when the create endpoint wires
+ * video), the builder is PREVIEW-ONLY for video: it validates + previews per
+ * placement, but no video channel is ever built. Flip to true ONLY when
+ * admin-ad-create-campaign can actually create a video ad.
+ */
+export const VIDEO_CREATE_ENABLED = false;
+
+/**
  * A funded channel is buildable ONLY if its server validation passed with NO
  * reject AND NO outstanding needs_transcode (which resolveCreativeRef blocks
  * at create). A channel with no validation entry yet is not ready.
@@ -47,14 +59,23 @@ export function creativeExclusionReason(channel) {
  * @param {object} input
  * @param {string[]} input.fundedPlatforms   platforms the budget funded (allocations)
  * @param {Array}    input.channels          validation.channels from the byte-probe
+ * @param {"image"|"video"} [input.kind]     creative kind (default "image")
  * @returns {{ buildable: string[], excluded: Array<{platform, reason, channel}> }}
  */
-export function partitionFundedCreative({ fundedPlatforms = [], channels = [] }) {
+export function partitionFundedCreative({ fundedPlatforms = [], channels = [], kind = "image" }) {
   const byPlatform = new Map((channels ?? []).map((c) => [c.platform, c]));
   const buildable = [];
   const excluded = [];
   for (const platform of fundedPlatforms) {
     const channel = byPlatform.get(platform) ?? null;
+    // ISSUE-995 REWORK (tester P1/P2): video ad create is not wired yet, so NO
+    // video channel can build — every funded channel is excluded (preview-only),
+    // never a misleading build nor a fabricated Google "Created". This gates the
+    // build path itself; validation + placement previews still render.
+    if (kind === "video" && !VIDEO_CREATE_ENABLED) {
+      excluded.push({ platform, reason: "video_not_creatable", channel });
+      continue;
+    }
     if (creativeReady(channel)) {
       buildable.push(platform);
     } else {

@@ -301,8 +301,12 @@ export function CampaignBuilderPage() {
     () => partitionFundedCreative({
       fundedPlatforms,
       channels: creative.validation?.channels ?? [],
+      // ISSUE-995 REWORK: video ad create isn't wired yet (#997) — a video
+      // creative excludes every funded channel (preview-only), so nothing
+      // misleading builds.
+      kind: creative.kind,
     }),
-    [fundedPlatforms, creative.validation],
+    [fundedPlatforms, creative.validation, creative.kind],
   );
 
   // Auto-suggest the campaign name from the destination (editable — §4.4).
@@ -379,6 +383,11 @@ export function CampaignBuilderPage() {
             : "Upload an ad image first.";
         }
         if (!creative.validation) return "Validate the creative first.";
+        // ISSUE-995 REWORK: video ad creation isn't available yet — the builder
+        // is preview-only for video, so Next-to-build is intentionally blocked.
+        if (creative.kind === "video") {
+          return "Video ad creation isn't available yet — this is a preview. Switch to an image to build a campaign.";
+        }
         // Has media + validation, but no funded channel can build → every one failed.
         return "No funded channel can run this creative. Fix a problem above, or add a variant, to build at least one.";
       }

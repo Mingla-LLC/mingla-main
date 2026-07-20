@@ -61,3 +61,4 @@ jobs:
           node --test
           src/__tests__/issue995_creative_video_variants.test.js
           src/__tests__/issue995_creative_video_honesty.tester_adversarial.test.js
+          src/__tests__/issue995_creative_video_not_creatable.test.js

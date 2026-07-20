@@ -1,0 +1,137 @@
+// ISSUE-995 [Campaign Builder creative] Wave 3 of #977 — REWORK suite
+// (tester CONDITIONAL PASS, 2 honesty gaps).
+//
+// The video-CREATE wiring gap is deferred to #997 (admin-ad-create-campaign
+// never calls resolveCreativeRef). Until then, a video ad actually FAILS at
+// create on Meta/TikTok/Snap/Reddit (honest 422) AND fires a FABRICATED
+// "Created" for a text-only ad on Google. So #998 makes video PREVIEW-ONLY and
+// honest:
+//   P1 — selecting video surfaces an unmissable "not available yet" signal and
+//        the build path is blocked (every funded channel is excluded);
+//   P2 — a video funded to Google is never a "Created"/success (it's excluded),
+//        and the operator-facing copy never repeats the raw matrix's false
+//        "We'll upload this to YouTube for you" promise.
+//
+// FAILS-ON-REVERT (true line-deletion — see the ORCH report):
+//   - deleting creativeGate's `if (kind === "video" && !VIDEO_CREATE_ENABLED)`
+//     block makes a video channel buildable → the P1/P2 partition tests FAIL;
+//   - deleting creativeCopy's youtube_hosted rule falls back to the misleading
+//     "won't block the build" copy → the humanize honesty test FAILS.
+
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import {
+  partitionFundedCreative,
+  VIDEO_CREATE_ENABLED,
+} from "../lib/adBuilder/creativeGate.js";
+import { humanizeCreativeCheck } from "../lib/adBuilder/creativeCopy.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const ADMIN_SRC = path.resolve(__dirname, "..");
+const read = (p) => fs.readFileSync(p, "utf8");
+
+const ALL = ["meta", "tiktok", "snapchat", "google", "reddit"];
+const allPassing = ALL.map((platform) => ({ platform, ok: true, needsTranscode: false }));
+
+// ── P1: video is preview-only — nothing builds, everything is excluded ───────
+describe("ISSUE-995 rework · video ad create is not available yet (preview-only)", () => {
+  it("the video-create flag is OFF until #997 wires it", () => {
+    assert.equal(VIDEO_CREATE_ENABLED, false);
+  });
+
+  it("a video creative excludes EVERY funded channel — buildable is empty", () => {
+    const { buildable, excluded } = partitionFundedCreative({
+      fundedPlatforms: ALL,
+      channels: allPassing, // even all-passing validation must not build a video
+      kind: "video",
+    });
+    assert.deepEqual(buildable, [], "no channel may build a video ad while create is unwired");
+    assert.deepEqual(excluded.map((e) => e.platform).sort(), [...ALL].sort());
+    for (const e of excluded) assert.equal(e.reason, "video_not_creatable");
+  });
+
+  it("the partition stays TOTAL for video (buildable ∪ excluded = funded)", () => {
+    const { buildable, excluded } = partitionFundedCreative({ fundedPlatforms: ALL, channels: allPassing, kind: "video" });
+    assert.equal(buildable.length + excluded.length, ALL.length);
+  });
+});
+
+// ── P2: a video on Google never yields a "Created" success ───────────────────
+describe("ISSUE-995 rework · a video funded to Google is never a fabricated success", () => {
+  it("Google (ok:true) is EXCLUDED for a video, never buildable → runCreate skips it", () => {
+    const { buildable, excluded } = partitionFundedCreative({
+      fundedPlatforms: ["google", "meta"],
+      channels: [
+        { platform: "google", ok: true, needsTranscode: false },
+        { platform: "meta", ok: true, needsTranscode: false },
+      ],
+      kind: "video",
+    });
+    assert.equal(buildable.includes("google"), false, "Google video must not be buildable (no fake text-ad 'Created')");
+    const g = excluded.find((e) => e.platform === "google");
+    assert.equal(g.reason, "video_not_creatable");
+  });
+
+  it("the youtube_hosted check copy is honest — no fabricated 'we'll upload it for you'", () => {
+    const h = humanizeCreativeCheck({
+      platform: "google",
+      rule: "video.youtube_hosted",
+      level: "warn",
+      confidence: "OFFICIAL",
+      message: "We'll upload this to YouTube for you — Google can only run YouTube-hosted video. It'll be unlisted.",
+    });
+    // The false promise must not appear in the operator-facing copy…
+    assert.doesNotMatch(`${h.friendly} ${h.action}`, /we'll upload|upload this to youtube|won't block the build/i);
+    // …and it must say Google is skipped / not available.
+    assert.match(`${h.friendly} ${h.action}`, /skip|isn't available|not available|coming/i);
+    // The raw API-shaped requirement is still preserved for the details toggle.
+    assert.match(h.technical, /youtube_hosted/);
+  });
+});
+
+// ── Image path is UNREGRESSED (no kind, or kind:"image", behaves as before) ──
+describe("ISSUE-995 rework · image builds are unaffected", () => {
+  const mixed = [
+    { platform: "meta", ok: true, needsTranscode: false },
+    { platform: "google", ok: false, needsTranscode: false },
+  ];
+
+  it("no kind arg → image semantics (a passing channel still builds)", () => {
+    const { buildable, excluded } = partitionFundedCreative({ fundedPlatforms: ["meta", "google"], channels: mixed });
+    assert.deepEqual(buildable, ["meta"]);
+    assert.deepEqual(excluded.map((e) => e.platform), ["google"]);
+  });
+
+  it('kind:"image" → identical to no-kind', () => {
+    const a = partitionFundedCreative({ fundedPlatforms: ["meta", "google"], channels: mixed });
+    const b = partitionFundedCreative({ fundedPlatforms: ["meta", "google"], channels: mixed, kind: "image" });
+    assert.deepEqual(a, b);
+  });
+});
+
+// ── Source wiring (fails-on-revert on the component/page honesty signals) ────
+describe("ISSUE-995 rework · component + page honesty wiring", () => {
+  const stepCreative = read(path.join(ADMIN_SRC, "components/campaign-builder/StepCreative.jsx"));
+  const page = read(path.join(ADMIN_SRC, "pages/CampaignBuilderPage.jsx"));
+
+  it("StepCreative labels the video option preview-only", () => {
+    assert.match(stepCreative, /Video \(preview only\)/);
+  });
+
+  it("StepCreative shows an unmissable 'not available yet' banner for video", () => {
+    assert.match(stepCreative, /Video ad creation isn't available yet/);
+    assert.match(stepCreative, /isVideo &&/);
+  });
+
+  it("CampaignBuilderPage passes creative.kind into the build partition", () => {
+    assert.match(page, /kind:\s*creative\.kind/);
+  });
+
+  it("CampaignBuilderPage gives video its own preview-only disabled reason", () => {
+    assert.match(page, /Video ad creation isn't available yet/);
+  });
+});
