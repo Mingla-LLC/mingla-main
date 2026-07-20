@@ -19,6 +19,7 @@ parentheses for traceability.
 
 ## Shipped
 
+- 2026-07-20 — Typing an event name in the business app no longer kicks you out of the field mid-word: draft promotion is single-owner, keystrokes survive, and duplicate draft rows are gone (#976, PR #988)
 - 2026-07-19 — Repo + workflow migrated to the Mingla Avengers board as source of truth; artifact system retired (#974)
 - 2026-07-19 — Ad-conversion reports now actually reach Reddit and Snap (wrong Reddit endpoint and a missing Snap field fixed); all ad-channel tokens consolidated into one secret (ORCH-1405, PR #973)
 - 2026-07-19 — "Set up payments" page scrolls properly so its headings no longer pile on top of each other (ORCH-1403)

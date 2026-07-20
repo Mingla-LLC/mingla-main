@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 406,
-  "selfTestWiredFloor": 188,
+  "expectedStrictGrepMjsFiles": 407,
+  "selfTestWiredFloor": 189,
   "unenforcedCap": 7,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -3566,6 +3566,20 @@
       "selfTest": "none",
       "jobKeys": [
         "orch-0975-notifications-sheet"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/orch-0976-single-promotion-owner.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "orch-0976-single-promotion-owner"
       ]
     },
     {

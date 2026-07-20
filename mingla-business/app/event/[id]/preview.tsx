@@ -44,7 +44,11 @@ import {
   useServerDraftAutosave,
   useServerDraftById,
 } from "../../../src/hooks/useServerDraftEvents";
-import { createServerDraft } from "../../../src/services/eventDrafts";
+// Issue #976 [event-name-focus] — the eager d_*→server preview migration
+// routes through the single-flight registry: it joins the edit route's
+// in-flight promotion (no duplicate row race) and live-merges instead of
+// landing a stale snapshot (I-PROPOSED-0976-SINGLE-DRAFT-PROMOTION-OWNER).
+import { promoteLegacyDraftOnce } from "../../../src/utils/draftPromotion";
 import { useAuth } from "../../../src/context/AuthContext";
 import { isBusinessAuthNotReadyError } from "../../../src/utils/authReadiness";
 
@@ -80,7 +84,6 @@ export default function EventPreviewRoute(): React.ReactElement {
     return brands.find((b) => b.id === draft.brandId) ?? null;
   }, [draft, brands]);
   const updateDraft = useDraftEventStore((s) => s.updateDraft);
-  const replaceDraft = useDraftEventStore((s) => s.replaceDraft);
   const deleteDraft = useDraftEventStore((s) => s.deleteDraft);
   const migratingLegacyIdRef = React.useRef<string | null>(null);
   const staleRecoveryDraftIdRef = React.useRef<string | null>(null);
@@ -148,10 +151,18 @@ export default function EventPreviewRoute(): React.ReactElement {
     ) {
       if (!isAuthReady) return undefined;
       migratingLegacyIdRef.current = draft.id;
-      void createServerDraft(draft.brandId, draft)
-        .then((serverDraft) => {
-          replaceDraft(draft.id, serverDraft);
-          router.replace(`/event/${serverDraft.id}/preview` as never);
+      // Issue #976 — the registry owns the store swap + merge + caches. The
+      // router.replace below is documented-safe: it replaces this static
+      // preview screen with itself at the new id (no focused text input
+      // exists here), and the edit route sitting behind it is protected by
+      // its re-keyed retained-draft guard + converted safety belt.
+      void promoteLegacyDraftOnce({
+        queryClient,
+        brandId: draft.brandId,
+        draftId: draft.id,
+      })
+        .then((merged) => {
+          router.replace(`/event/${merged.id}/preview` as never);
         })
         .catch((error) => {
           migratingLegacyIdRef.current = null;
@@ -206,7 +217,6 @@ export default function EventPreviewRoute(): React.ReactElement {
     draft,
     router,
     isAuthReady,
-    replaceDraft,
     deleteDraft,
     queryClient,
     serverDraftQuery.isFetching,
