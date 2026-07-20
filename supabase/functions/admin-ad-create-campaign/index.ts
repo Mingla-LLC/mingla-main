@@ -76,7 +76,9 @@ import {
 } from "../_shared/adChannel.ts";
 import {
   applySpecialAdCategoryRestrictions,
+  buildMetaInterestFlexibleSpec,
   metaFetchPixelLastFired,
+  normalizeMetaCities,
   resolveMetaClient,
   validateSpecialAdCategories,
 } from "../_shared/meta.ts";
@@ -103,8 +105,10 @@ import {
   validateTikTokAdText,
   validateTikTokBudgetFloor,
   validateTikTokLandingPageUrl,
+  validateTikTokLocationIds,
   validateTikTokName,
   validateTikTokObjective,
+  normalizeTikTokInterestCategoryIds,
 } from "../_shared/tiktok.ts";
 import {
   normalizeRedditObjective,
@@ -1498,6 +1502,22 @@ serve(async (req: Request): Promise<Response> => {
     }
     const ageMinT = typeof targetingT.age_min === "number" ? targetingT.age_min : undefined;
     const ageMaxT = typeof targetingT.age_max === "number" ? targetingT.age_max : undefined;
+    // ISSUE-989 — city location_ids (resolved via admin-ad-targeting-search
+    // tool/region CITY filter) targeting laser city audiences; when present they
+    // REPLACE the whole-country resolution below. Numeric ids only (never ISO
+    // codes) — validated here so a malformed id 422s instead of silently widening.
+    const cityLocationIdsT = Array.isArray(targetingT.location_ids)
+      ? (targetingT.location_ids as unknown[]).filter((id): id is string => typeof id === "string")
+      : [];
+    if (cityLocationIdsT.length > 0) {
+      const cityCheck = validateTikTokLocationIds(cityLocationIdsT);
+      if (!cityCheck.ok) {
+        return json({ error: cityCheck.detail, detail: cityCheck.message }, 422);
+      }
+    }
+    // ISSUE-989 — interest_category_ids from tool/interest_category (numeric,
+    // deduped, capped). Empty when none picked → broad targeting unchanged.
+    const interestCategoryIdsT = normalizeTikTokInterestCategoryIds(targetingT.interest_category_ids);
 
     const destinationT = (body.destination ?? {}) as DestinationInput;
     const pageTypeT = destinationT.page_type ?? "";
@@ -1691,17 +1711,24 @@ serve(async (req: Request): Promise<Response> => {
 
     const adapterT = getAdapter("tiktok");
     try {
-      // (6) LIVE geo resolve (A1.1(e)/T-5 — OD-7 REVERSED): tool/region per
-      // objective; an unavailable country (GB today — T-P2) fails LOUD 422.
+      // (6) Geo resolve. ISSUE-989: when the builder picked specific cities
+      // (resolved location_ids), target THOSE directly — a laser city audience.
+      // Otherwise fall back to the LIVE per-country resolve (A1.1(e)/T-5 — OD-7
+      // REVERSED): tool/region per objective; an unavailable country (GB today —
+      // T-P2) fails LOUD 422.
       let locationIdsT: string[];
-      try {
-        locationIdsT = await resolveTikTokGeo(tconn, countryCodesT, objectiveT);
-      } catch (err) {
-        if (err instanceof AdApiError && err.code === "geo_unavailable") {
-          // AC-13: 422 naming the unavailable countries — never a silent drop.
-          return json({ error: "geo_unavailable", detail: err.message }, 422);
+      if (cityLocationIdsT.length > 0) {
+        locationIdsT = cityLocationIdsT;
+      } else {
+        try {
+          locationIdsT = await resolveTikTokGeo(tconn, countryCodesT, objectiveT);
+        } catch (err) {
+          if (err instanceof AdApiError && err.code === "geo_unavailable") {
+            // AC-13: 422 naming the unavailable countries — never a silent drop.
+            return json({ error: "geo_unavailable", detail: err.message }, 422);
+          }
+          throw err;
         }
-        throw err;
       }
 
       // (7) Image upload when the create-time URL path is used (GR-58:
@@ -1728,6 +1755,7 @@ serve(async (req: Request): Promise<Response> => {
         ...(budgetLevelT === "adset" ? { budgetCents: amountCents as number } : {}),
         targeting: {
           location_ids: locationIdsT,
+          ...(interestCategoryIdsT.length > 0 ? { interest_category_ids: interestCategoryIdsT } : {}),
           ...(ageMinT !== undefined ? { age_min: ageMinT } : {}),
           ...(ageMaxT !== undefined ? { age_max: ageMaxT } : {}),
           ...(genderT ? { gender: genderT } : {}),
@@ -1793,6 +1821,8 @@ serve(async (req: Request): Promise<Response> => {
       const targetingRecordT: Record<string, unknown> = {
         countries: countryCodesT,
         location_ids: locationIdsT, // resolved numeric ids persisted (T-5)
+        ...(cityLocationIdsT.length > 0 ? { city_targeted: true } : {}),
+        ...(interestCategoryIdsT.length > 0 ? { interest_category_ids: interestCategoryIdsT } : {}),
         ...(ageMinT !== undefined ? { age_min: ageMinT } : {}),
         ...(ageMaxT !== undefined ? { age_max: ageMaxT } : {}),
         ...(genderT ? { gender: genderT } : {}),
@@ -2473,14 +2503,21 @@ serve(async (req: Request): Promise<Response> => {
     return json({ error: specialValidation.detail, detail: specialValidation.message }, 422);
   }
   const specialAdCategories = specialValidation.categories;
+  // ISSUE-989 — real city + interest targeting. Cities carry the exact Meta
+  // geo_locations.cities shape [{key, radius, distance_unit}] (normalized/clamped
+  // to Meta's 1-50mi / 1-80km bounds — never a raw passthrough); interests become
+  // flexible_spec:[{interests:[{id}]}] from the resolved adinterest ids. Both are
+  // omitted when the builder sends none, so broad country+age targeting is
+  // byte-identical to before. Under a special ad category the restriction cascade
+  // (below) strips genders + flexible_spec and pins age 18-65, unchanged.
+  const metaCities = normalizeMetaCities(targetingInput.cities);
+  const metaInterestSpec = buildMetaInterestFlexibleSpec(targetingInput.interests);
   let targeting: Record<string, unknown> = {
-    geo_locations: { countries },
+    geo_locations: metaCities.length > 0 ? { countries, cities: metaCities } : { countries },
     ...(typeof targetingInput.age_min === "number" ? { age_min: targetingInput.age_min } : {}),
     ...(typeof targetingInput.age_max === "number" ? { age_max: targetingInput.age_max } : {}),
     ...(Array.isArray(targetingInput.genders) ? { genders: targetingInput.genders } : {}),
-    ...(Array.isArray(targetingInput.cities)
-      ? { geo_locations: { countries, cities: targetingInput.cities } }
-      : {}),
+    ...(metaInterestSpec ? { flexible_spec: metaInterestSpec } : {}),
   };
   if (specialAdCategories.length > 0) {
     targeting = applySpecialAdCategoryRestrictions(targeting);

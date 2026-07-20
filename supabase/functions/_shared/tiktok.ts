@@ -1050,6 +1050,128 @@ export async function resolveTikTokGeo(
   return picked.locationIds;
 }
 
+// ── Targeting Search (ISSUE-989) — READ-ONLY city + interest resolvers ────────
+// PROVEN live 2026-07-20 (MCP tool_region_get / tool_interest_category_get,
+// advertiser 7627974536397766673): TO_CITY returns 2014 CITY-level regions with
+// numeric location_ids (e.g. 5392967 Santa Barbara/US); interest_category_get
+// returns 716 categories {interest_category_id, interest_category_name}. Both
+// are reads — nothing is created. GB has NO city (T-P2) so a GB city search is
+// legitimately empty; the caller fails-open to country targeting.
+
+/**
+ * Pure city filter over live tool/region data: CITY-level regions in the given
+ * country whose name matches the query (case-insensitive substring). Numeric
+ * location_ids only. Sorted name-prefix matches first, capped to `limit`.
+ */
+export function filterTikTokCityRegions(
+  regions: readonly TikTokRegion[],
+  opts: { country?: string; q?: string; limit?: number } = {},
+): TikTokRegion[] {
+  const country = (opts.country ?? "").trim().toUpperCase();
+  const q = (opts.q ?? "").trim().toLowerCase();
+  const limit = opts.limit ?? 15;
+  const cities = regions.filter((r) => {
+    if (!r.level || r.level.toUpperCase() !== "CITY") return false;
+    if (country && r.regionCode !== country) return false;
+    if (!r.name) return false;
+    return q.length === 0 || r.name.toLowerCase().includes(q);
+  });
+  cities.sort((a, b) => {
+    const an = (a.name ?? "").toLowerCase();
+    const bn = (b.name ?? "").toLowerCase();
+    const ap = an.startsWith(q) ? 0 : 1;
+    const bp = bn.startsWith(q) ? 0 : 1;
+    if (ap !== bp) return ap - bp;
+    return an.localeCompare(bn);
+  });
+  return cities.slice(0, limit);
+}
+
+export interface TikTokInterestCategory {
+  id: string;
+  name: string;
+  level: number | null;
+}
+
+/** Tolerant parser over a tool/interest_category payload (flat, one level). */
+export function parseTikTokInterestCategories(payload: unknown): TikTokInterestCategory[] {
+  const record = ((payload as { data?: unknown })?.data ?? payload ?? {}) as Record<string, unknown>;
+  const raw = (Array.isArray(record.interest_categories)
+    ? record.interest_categories
+    : Array.isArray(record.list)
+    ? record.list
+    : Array.isArray(record.categories)
+    ? record.categories
+    : []) as Record<string, unknown>[];
+  const out: TikTokInterestCategory[] = [];
+  for (const entry of raw) {
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const idRaw = entry.interest_category_id ?? entry.id;
+    const id = typeof idRaw === "string" ? idRaw : typeof idRaw === "number" ? String(idRaw) : "";
+    const name = typeof entry.interest_category_name === "string"
+      ? entry.interest_category_name
+      : typeof entry.name === "string"
+      ? entry.name
+      : "";
+    if (!id || !name) continue;
+    out.push({ id, name, level: typeof entry.level === "number" ? entry.level : null });
+  }
+  return out;
+}
+
+/** Live tool/interest_category read — the interest_category_ids source (READ-ONLY). */
+export async function tiktokFetchInterestCategories(
+  client: TikTokClient,
+  opts: { placements?: readonly string[]; language?: string } = {},
+): Promise<TikTokInterestCategory[]> {
+  const data = await tiktokApi(client, "GET", "tool/interest_category/", {
+    advertiser_id: client.advertiserId,
+    placement: opts.placements ?? TIKTOK_DEFAULT_PLACEMENTS,
+    language: opts.language ?? "en",
+  });
+  return parseTikTokInterestCategories(data);
+}
+
+/**
+ * Filter interest categories by query (case-insensitive substring), prefix
+ * matches first, capped. Pure — used by the search fn over live data.
+ */
+export function filterTikTokInterestCategories(
+  categories: readonly TikTokInterestCategory[],
+  opts: { q?: string; limit?: number } = {},
+): TikTokInterestCategory[] {
+  const q = (opts.q ?? "").trim().toLowerCase();
+  const limit = opts.limit ?? 15;
+  const matched = categories.filter((c) => q.length === 0 || c.name.toLowerCase().includes(q));
+  matched.sort((a, b) => {
+    const ap = a.name.toLowerCase().startsWith(q) ? 0 : 1;
+    const bp = b.name.toLowerCase().startsWith(q) ? 0 : 1;
+    if (ap !== bp) return ap - bp;
+    return a.name.localeCompare(b.name);
+  });
+  return matched.slice(0, limit);
+}
+
+/**
+ * ISSUE-989 — validate builder-supplied interest_category_ids (numeric strings,
+ * deduped, ≤ cap). Returns the clean array; invalid entries are dropped, never
+ * fabricated. Empty/absent → [].
+ */
+export const TIKTOK_MAX_INTEREST_CATEGORY_IDS = 100;
+export function normalizeTikTokInterestCategoryIds(ids: unknown): string[] {
+  if (!Array.isArray(ids)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of ids) {
+    const id = typeof raw === "string" ? raw.trim() : typeof raw === "number" ? String(raw) : "";
+    if (!id || !NUMERIC_ID_REGEX.test(id) || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+    if (out.length >= TIKTOK_MAX_INTEREST_CATEGORY_IDS) break;
+  }
+  return out;
+}
+
 /** age_min/age_max → TikTok age_groups buckets (SPEC §4.3 helper). */
 export const TIKTOK_AGE_GROUPS = [
   { key: "AGE_13_17", min: 13, max: 17 },
@@ -1299,6 +1421,8 @@ export interface TikTokAdGroupSpec {
   /** Resolved numeric location ids (resolveTikTokGeo output — never ISO codes). */
   locationIds: string[];
   ageGroups?: string[];
+  /** ISSUE-989 — resolved numeric interest_category_ids (tool/interest_category). */
+  interestCategoryIds?: string[];
   gender?: string;
   scheduleType?: string;
   /** UTC+0 "YYYY-MM-DD HH:MM:SS" (T-1). Defaults to now for SCHEDULE_FROM_NOW. */
@@ -1392,6 +1516,11 @@ export function buildTikTokAdGroupBody(
     operation_status: "DISABLE",
   };
   if (spec.ageGroups && spec.ageGroups.length > 0) body.age_groups = spec.ageGroups;
+  // ISSUE-989: interest_category_ids (numeric ids from tool/interest_category);
+  // omitted entirely when none are picked so broad targeting is unchanged.
+  if (spec.interestCategoryIds && spec.interestCategoryIds.length > 0) {
+    body.interest_category_ids = spec.interestCategoryIds;
+  }
   if (spec.gender) {
     if (!(TIKTOK_GENDERS as readonly string[]).includes(spec.gender)) {
       throw new AdApiError({
@@ -1887,6 +2016,8 @@ async function tiktokReadEntity(
  */
 export interface TikTokAdGroupTargetingInput {
   location_ids?: string[];
+  /** ISSUE-989 — numeric interest_category_ids from tool/interest_category. */
+  interest_category_ids?: string[];
   age_groups?: string[];
   age_min?: number;
   age_max?: number;
@@ -1924,6 +2055,7 @@ function adGroupSpecFromInterfaceInput(input: CreateAdSetInput): TikTokAdGroupSp
     bidType: t.bid_type,
     bidPriceCents: t.bid_price_cents,
     locationIds: t.location_ids ?? [],
+    interestCategoryIds: t.interest_category_ids,
     ageGroups,
     gender: t.gender,
     scheduleType: t.schedule_type,

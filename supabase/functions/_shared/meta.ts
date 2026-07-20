@@ -247,6 +247,140 @@ export async function metaGraph(
   return payload;
 }
 
+// ── Targeting Search (ISSUE-989) — READ-ONLY /search resolvers ────────────────
+// The exact upstream calls admin-ad-preflight P6 already runs green (M-P9).
+// PROVEN live 2026-07-20 (master token, read-only): adgeolocation q=london
+// country_code=GB promotes London/England/GB to #1 (unscoped puts London,NJ and
+// London,Ontario first); adinterest q=nightlife → 6003375995381; adradiussuggestion
+// (lat/lng) → {suggested_radius,distance_unit}. These are SEARCHES — they create
+// nothing. distance_unit + a default radius come from the admin control; the
+// adgeolocation city record carries no lat/lng, so radius is admin-chosen.
+
+/** Normalized Meta city geo result. `key` is the geo_locations.cities key. */
+export interface MetaGeoResult {
+  key: string;
+  name: string;
+  type: string;
+  region: string | null;
+  country_code: string | null;
+  supports_region: boolean;
+}
+
+/** Normalized Meta interest result → feeds flexible_spec:[{interests:[{id}]}]. */
+export interface MetaInterestResult {
+  id: string;
+  name: string;
+  audience_size_lower_bound: number | null;
+  audience_size_upper_bound: number | null;
+}
+
+/**
+ * Thin read-only wrapper over Graph GET /search (the same call preflight P6
+ * makes). NEVER creates an object. Callers pass a country_code for city search
+ * so 'London' disambiguates to the campaign's country (the London/Canada hazard).
+ */
+export async function metaSearch(
+  client: MetaClient,
+  params: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  return metaGraph(client, "GET", "search", params);
+}
+
+/** Tolerant parser over an adgeolocation payload → MetaGeoResult[]. */
+export function parseMetaGeoResults(payload: unknown): MetaGeoResult[] {
+  const data = ((payload as { data?: unknown })?.data ?? []) as Record<string, unknown>[];
+  if (!Array.isArray(data)) return [];
+  const out: MetaGeoResult[] = [];
+  for (const entry of data) {
+    if (entry === null || typeof entry !== "object") continue;
+    const key = typeof entry.key === "string"
+      ? entry.key
+      : typeof entry.key === "number"
+      ? String(entry.key)
+      : "";
+    const name = typeof entry.name === "string" ? entry.name : "";
+    if (!key || !name) continue;
+    out.push({
+      key,
+      name,
+      type: typeof entry.type === "string" ? entry.type : "city",
+      region: typeof entry.region === "string" ? entry.region : null,
+      country_code: typeof entry.country_code === "string" ? entry.country_code : null,
+      supports_region: entry.supports_region === true,
+    });
+  }
+  return out;
+}
+
+/** Tolerant parser over an adinterest payload → MetaInterestResult[]. */
+export function parseMetaInterestResults(payload: unknown): MetaInterestResult[] {
+  const data = ((payload as { data?: unknown })?.data ?? []) as Record<string, unknown>[];
+  if (!Array.isArray(data)) return [];
+  const out: MetaInterestResult[] = [];
+  for (const entry of data) {
+    if (entry === null || typeof entry !== "object") continue;
+    const id = typeof entry.id === "string"
+      ? entry.id
+      : typeof entry.id === "number"
+      ? String(entry.id)
+      : "";
+    const name = typeof entry.name === "string" ? entry.name : "";
+    if (!id || !name) continue;
+    const lower = entry.audience_size_lower_bound;
+    const upper = entry.audience_size_upper_bound;
+    out.push({
+      id,
+      name,
+      audience_size_lower_bound: typeof lower === "number" ? lower : null,
+      audience_size_upper_bound: typeof upper === "number" ? upper : null,
+    });
+  }
+  return out;
+}
+
+/**
+ * ISSUE-989 — normalize the builder's city selections into the exact Meta
+ * geo_locations.cities shape [{key, radius, distance_unit}]. Meta radius is
+ * 1-50 mi / 1-80 km; anything out of range or missing falls back to the
+ * default. Non-numeric/absent keys are dropped (never fabricated).
+ */
+export const META_DEFAULT_CITY_RADIUS_MILE = 10;
+export function normalizeMetaCities(cities: unknown): { key: string; radius: number; distance_unit: string }[] {
+  if (!Array.isArray(cities)) return [];
+  const out: { key: string; radius: number; distance_unit: string }[] = [];
+  for (const raw of cities) {
+    if (raw === null || typeof raw !== "object") continue;
+    const c = raw as Record<string, unknown>;
+    const key = typeof c.key === "string" && c.key.trim()
+      ? c.key.trim()
+      : typeof c.key === "number"
+      ? String(c.key)
+      : "";
+    if (!key) continue;
+    const unit = c.distance_unit === "kilometer" ? "kilometer" : "mile";
+    const max = unit === "mile" ? 50 : 80;
+    const r = typeof c.radius === "number" && Number.isFinite(c.radius) ? c.radius : META_DEFAULT_CITY_RADIUS_MILE;
+    const radius = Math.min(max, Math.max(1, Math.round(r)));
+    out.push({ key, radius, distance_unit: unit });
+  }
+  return out;
+}
+
+/**
+ * ISSUE-989 — build the flexible_spec interest clause from resolved Meta
+ * interest ids. Returns null when there are none (so the caller omits the key).
+ */
+export function buildMetaInterestFlexibleSpec(
+  interestIds: unknown,
+): { interests: { id: string }[] }[] | null {
+  if (!Array.isArray(interestIds)) return null;
+  const interests = interestIds
+    .map((id) => (typeof id === "string" ? id.trim() : typeof id === "number" ? String(id) : ""))
+    .filter((id) => id.length > 0)
+    .map((id) => ({ id }));
+  return interests.length > 0 ? [{ interests }] : null;
+}
+
 // ── special_ad_categories validation (A4.g / M-4 / GR-56) ─────────────────────
 
 export const META_SPECIAL_AD_CATEGORIES: readonly string[] = [

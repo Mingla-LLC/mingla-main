@@ -130,6 +130,19 @@ export async function getCampaignDetail(campaignId) {
 }
 
 /**
+ * ISSUE-989 [Campaign Builder real targeting] — admin-ad-targeting-search: turn
+ * a typed city/interest NAME into per-platform targeting keys/ids. READ-ONLY,
+ * admin-gated server-side (no platform token reaches this client). Fail-open:
+ * the fn returns { results:[], warning } on a provider hiccup, never an error.
+ * kind ∈ 'city' | 'interest'; country is the ISO code that disambiguates a city.
+ */
+export async function searchTargeting({ platform, kind, q, country, lane = "consumer" }) {
+  return invokeWithRefresh("admin-ad-targeting-search", {
+    body: { platform, kind, q, lane, ...(country ? { country } : {}) },
+  });
+}
+
+/**
  * admin-ad-creative-upload (#866): action='validate' returns the byte-probe +
  * per-channel matrix report WITHOUT writing; action='record' persists the
  * ad_creatives row. The client must have already put the bytes in storage

@@ -10,11 +10,14 @@
 /**
  * A4.f city + radius targeting needs the admin-gated targeting-search proxy
  * (`admin-ad-targeting-search` → Graph GET /search?type=adgeolocation with
- * country_code disambiguation — the London,Canada-first hazard). The edge fn
- * is specced on the #862 side and NOT deployed. Until it exists the audience
- * step collects countries only and shows the city picker as "coming".
+ * country_code disambiguation — the London,Canada-first hazard).
+ *
+ * ISSUE-989: the proxy now EXISTS and is deployed (supabase/functions/
+ * admin-ad-targeting-search, verify_jwt + admin-gated, read-only; Meta city+
+ * interest + TikTok city+interest + Google city PROVEN live 2026-07-20). The
+ * Audience step ships the real city typeahead + radius + interest picker.
  */
-export const TARGETING_SEARCH_PROXY_ENABLED = false;
+export const TARGETING_SEARCH_PROXY_ENABLED = true;
 
 /**
  * Blueprint §1.4's `Preview split` button posts to
