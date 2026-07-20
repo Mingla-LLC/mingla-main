@@ -191,6 +191,7 @@ and skips if the verbatim allowlist tag is present. Anything else (no
 comment, wrong tag, malformed) is still a violation.
 
 Other registered gate tags:
+- I-PROPOSED-0976-SINGLE-DRAFT-PROMOTION-OWNER (`orch-0976-single-promotion-owner.mjs`, batch A, self-test wired): `// orch-strict-grep-allow single-promotion-owner — <reason>` — excuses a genuine NON-promotion `createServerDraft(` call (e.g. `useCreateServerDraft`'s fresh-draft mint); every d_*→server promotion must go through `src/utils/draftPromotion.ts`.
 - I-38: `// orch-strict-grep-allow icon-chrome-touch-target — <reason>`
 - I-39: `// orch-strict-grep-allow pressable-no-label — <reason>`
 - I-PROPOSED-A: `// orch-strict-grep-allow brands-deleted-filter — <reason>`
