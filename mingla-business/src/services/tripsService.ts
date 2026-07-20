@@ -681,7 +681,7 @@ export async function createTripDraft(
   const tempSlug = `draft-${Date.now().toString(36)}`;
 
   // 1. Look up brand default_currency + slug BEFORE creating the event.
-  //    issue #1014 — the pre-#1014 `?? "USD"` fallback here existed ONLY to
+  //    issue #1014 — the pre-#1014 coalesce-to-USD fallback here existed ONLY to
   //    dodge the old tg_enforce_event_ticket_currency `event_currency_not_found`
   //    raiser when the placeholder ticket row was inserted. That trigger now
   //    permits a FREE (price 0) placeholder on a NULL-currency draft, so a
@@ -1140,7 +1140,12 @@ export async function updateTripPricing(
   if (eventCurrencyResp.data === null) {
     throw new Error("updateTripPricing: event not found for id=" + eventId);
   }
-  const eventCurrency = (eventCurrencyResp.data.currency as string | null) ?? "USD";
+  // issue #1014 (rework F-2) — NULL passthrough, no fabricated USD: on a
+  // NULL-currency draft the tg_enforce_event_ticket_currency trigger is
+  // authoritative (free ticket → NULL; paid ticket → resolves the brand
+  // currency and stamps event+ticket, or raises event_currency_required —
+  // which the wizard's autosave catch maps to the payments-setup copy).
+  const eventCurrency = (eventCurrencyResp.data.currency as string | null) ?? null;
 
   // META-ORCH-1174 Leg B1 — lift the single-tier `.maybeSingle()` choke. A trip
   // may now carry N pricing tiers (packages). Target the tier addressed by
@@ -1308,7 +1313,9 @@ export async function createTripPricingTier(
   if (eventResp.data === null) {
     throw new Error("createTripPricingTier: event not found for id=" + eventId);
   }
-  const eventCurrency = (eventResp.data.currency as string | null) ?? "USD";
+  // issue #1014 (rework F-2) — NULL passthrough, no fabricated USD; trigger
+  // (d) is authoritative (see updateTripPricing above).
+  const eventCurrency = (eventResp.data.currency as string | null) ?? null;
 
   // Place the new package after the existing ones.
   const { data: existing, error: existingErr } = await supabase
