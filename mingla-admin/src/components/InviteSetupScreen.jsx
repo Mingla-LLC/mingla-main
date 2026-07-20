@@ -10,7 +10,9 @@ import {
   Loader2,
   PartyPopper,
 } from "lucide-react";
-import minglaLogo from "../assets/mingla-logo.png";
+// ISSUE-1001 — wordmark imported from the canonical master package
+// (packages/brand-assets); the admin-local copy is deleted.
+import minglaLogo from "../../../packages/brand-assets/mingla-wordmark.png";
 
 const COLORS = {
   bg: "var(--color-background-secondary, #f8f9fb)",
