@@ -6,9 +6,17 @@
  * host, QA P1-1) on ALL channels — the OneLink is built
  * server-side and rides only in Google's tracking template (PROOF D-P1: the
  * OneLink serves crawlers an app-install interstitial).
+ *
+ * ISSUE-1002 [multi-destination fan-out] — Wave 4 of #977. The picker is now a
+ * CHECKBOX MULTI-SELECT (mirroring the Goal step's goalIds pattern): the operator
+ * can select ANY MIX of event pages + the brand page. Selections PERSIST across
+ * the Event/Brand tabs (the tab only filters what's shown — it never clears the
+ * set). The wizard then fans out one ad per (selected destination × platform).
+ * A single selection behaves exactly as before.
  */
 
 import { useCallback, useEffect, useState } from "react";
+import { Check } from "lucide-react";
 import { AlertCard } from "../ui/Card";
 import { SearchInput } from "../ui/SearchInput";
 import { Button } from "../ui/Button";
@@ -20,8 +28,14 @@ const TABS = [
   { id: "brand", label: "Brand pages" },
 ];
 
-export function StepDestination({ destination, onDestinationChange }) {
-  const [tab, setTab] = useState(destination?.page_type === "brand" ? "brand" : "event");
+/** Stable identity for a destination row across tab reloads (page_type + id). */
+function destKey(row) {
+  return `${row.page_type}:${row.id}`;
+}
+
+export function StepDestination({ destinations, onDestinationsChange }) {
+  const selected = Array.isArray(destinations) ? destinations : [];
+  const [tab, setTab] = useState(selected[0]?.page_type === "brand" ? "brand" : "event");
   const [search, setSearch] = useState("");
   const [rows, setRows] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -47,13 +61,30 @@ export function StepDestination({ destination, onDestinationChange }) {
     return () => clearTimeout(t);
   }, [load, search]);
 
+  // ISSUE-1002: toggle a row in/out of the selection set (the goalIds idiom).
+  // Selections from BOTH tabs accumulate — switching tabs never clears the set,
+  // so "2 event pages + the brand page" is one continuous selection.
+  const toggle = useCallback(
+    (row) => {
+      const key = destKey(row);
+      const isSelected = selected.some((d) => destKey(d) === key);
+      onDestinationsChange(
+        isSelected
+          ? selected.filter((d) => destKey(d) !== key)
+          : [...selected, row],
+      );
+    },
+    [selected, onDestinationsChange],
+  );
+
   return (
     <div className="space-y-4">
       <div>
         <h2 className="text-lg font-semibold">Where are we sending people?</h2>
         <p className="text-sm text-[var(--color-text-secondary)]">
-          Live public pages only — every platform reviews the destination and rejects broken,
-          private or past pages.
+          Pick one or more — every selected page gets its own ad on every channel. Live public
+          pages only; each platform reviews the destination and rejects broken, private or past
+          pages.
         </p>
       </div>
 
@@ -105,24 +136,32 @@ export function StepDestination({ destination, onDestinationChange }) {
       )}
 
       {!loading && !error && rows && rows.length > 0 && (
-        <div role="radiogroup" aria-label="Destination page" className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <div role="group" aria-label="Destination pages" className="grid grid-cols-2 md:grid-cols-3 gap-3">
           {rows.map((row) => {
-            const selected = destination?.id === row.id && destination?.page_type === row.page_type;
+            const isSelected = selected.some((d) => destKey(d) === destKey(row));
             return (
               <button
                 key={`${row.page_type}-${row.id}`}
                 type="button"
-                role="radio"
-                aria-checked={selected}
-                onClick={() => onDestinationChange(row)}
+                role="checkbox"
+                aria-checked={isSelected}
+                onClick={() => toggle(row)}
                 className={[
-                  "text-left rounded-xl border overflow-hidden transition-all duration-150 cursor-pointer",
+                  "relative text-left rounded-xl border overflow-hidden transition-all duration-150 cursor-pointer",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-500)] focus-visible:ring-offset-2",
-                  selected
+                  isSelected
                     ? "border-[var(--color-brand-500)] ring-2 ring-[var(--color-brand-500)]"
                     : "border-[var(--gray-200)] hover:border-[var(--gray-300)]",
                 ].join(" ")}
               >
+                {isSelected && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute top-1.5 right-1.5 z-10 inline-flex items-center justify-center w-5 h-5 rounded-full bg-[var(--color-brand-500)] text-white"
+                  >
+                    <Check size={12} />
+                  </span>
+                )}
                 {row.cover_media_url ? (
                   <img src={row.cover_media_url} alt="" className="w-full h-20 object-cover" />
                 ) : (
@@ -145,14 +184,32 @@ export function StepDestination({ destination, onDestinationChange }) {
         </div>
       )}
 
-      {destination && (
-        <div className="p-3 rounded-lg border border-[var(--gray-200)] text-xs space-y-1">
-          <p>
-            <span className="font-semibold">Ad link (canonical): </span>
-            <span className="font-mono">{destination.dest_url}</span>
+      {selected.length > 0 && (
+        <div className="p-3 rounded-lg border border-[var(--gray-200)] text-xs space-y-2">
+          <p className="font-semibold">
+            {selected.length === 1
+              ? "1 destination selected"
+              : `${selected.length} destinations selected — one ad each, per channel`}
           </p>
+          <ul className="space-y-1">
+            {selected.map((d) => (
+              <li key={destKey(d)} className="flex items-start justify-between gap-2">
+                <span className="min-w-0">
+                  <span className="font-medium">{d.title}</span>{" "}
+                  <span className="font-mono text-[var(--color-text-secondary)] break-all">{d.dest_url}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => toggle(d)}
+                  className="shrink-0 text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] underline"
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
           <p className="text-[var(--color-text-secondary)]">
-            Every channel's ad points at this public page. The app-or-web smart link is built
+            Every channel's ad points at these public pages. The app-or-web smart link is built
             server-side and used only inside Google's tracking template — crawlers see an
             app-store interstitial on the smart link, which platforms police as cloaking.
           </p>

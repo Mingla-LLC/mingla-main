@@ -92,7 +92,11 @@ export function CampaignBuilderPage() {
   // silent eligibility∩concentrate auto-derivation). It can only narrow WITHIN
   // the eligible set — an ineligible platform can never be selected in.
   const [selectedPlatforms, setSelectedPlatforms] = useState(null);
-  const [destination, setDestination] = useState(null);
+  // ISSUE-1002 [multi-destination fan-out] — Wave 4 of #977. The destination is
+  // now an ARRAY (was a single object): the operator picks any mix of event pages
+  // + the brand page, and the wizard fans out one ad per (destination × platform).
+  // A single-element array behaves exactly as the old single object did.
+  const [destinations, setDestinations] = useState([]);
   const [audience, setAudience] = useState({
     countries: DEFAULT_COUNTRIES,
     // ISSUE-989 [Campaign Builder real targeting] — city + radius + interest
@@ -149,17 +153,30 @@ export function CampaignBuilderPage() {
   const [submitting, setSubmitting] = useState(false);
   const [validatingShapes, setValidatingShapes] = useState(false);
   const [createResults, setCreateResults] = useState(null);
-  // One request_id per (platform, wizard session) — server idempotency replay.
+  // One request_id per (platform, destination, wizard session) — server
+  // idempotency replay. ISSUE-1002: the fan-out is per (platform × destination),
+  // so the idempotency key gains the destination axis (a single-destination build
+  // keeps exactly one request_id per platform, byte-identical to before).
   const requestIdsRef = useRef({});
-  const requestIdFor = (platform) => {
-    if (!requestIdsRef.current[platform]) {
-      requestIdsRef.current[platform] = crypto.randomUUID();
+  const requestIdFor = (platform, destSlot = "") => {
+    const key = destSlot ? `${platform}::${destSlot}` : platform;
+    if (!requestIdsRef.current[key]) {
+      requestIdsRef.current[key] = crypto.randomUUID();
     }
-    return requestIdsRef.current[platform];
+    return requestIdsRef.current[key];
+  };
+  // ISSUE-1002: the shared fan-out group id, minted once per session and reused
+  // across retries so every (platform × destination) row shares it. Only attached
+  // when there is more than one destination — a single-destination build carries
+  // no group (NULL), keeping that path byte-identical.
+  const destGroupIdRef = useRef(null);
+  const destGroupId = () => {
+    if (!destGroupIdRef.current) destGroupIdRef.current = crypto.randomUUID();
+    return destGroupIdRef.current;
   };
 
   const dirty = Boolean(
-    destination || creative.publicUrl || copy.primary || budget.totalDailyCents > 0,
+    destinations.length > 0 || creative.publicUrl || copy.primary || budget.totalDailyCents > 0,
   );
 
   // ── Preflight + connections load ──
@@ -309,12 +326,16 @@ export function CampaignBuilderPage() {
     [fundedPlatforms, creative.validation, creative.kind],
   );
 
-  // Auto-suggest the campaign name from the destination (editable — §4.4).
+  // Auto-suggest the campaign name from the first destination (editable — §4.4).
+  // ISSUE-1002: the base name is derived from the first selected destination; on a
+  // multi-destination fan-out each ad's name is suffixed with its own destination
+  // title in runCreate, so the created campaigns stay distinguishable.
+  const firstDestination = destinations[0] ?? null;
   useEffect(() => {
-    if (!nameTouched && destination) {
-      setName(suggestCampaignName({ brandName: destination.brand_name, title: destination.title }));
+    if (!nameTouched && firstDestination) {
+      setName(suggestCampaignName({ brandName: firstDestination.brand_name, title: firstDestination.title }));
     }
-  }, [destination, nameTouched]);
+  }, [firstDestination, nameTouched]);
 
   // ── Per-step gate (Next disabled until the step is valid) ──
   const stepValid = (stepId) => {
@@ -330,7 +351,7 @@ export function CampaignBuilderPage() {
       case "goal":
         return goalIds.length > 0;
       case "destination":
-        return destination !== null;
+        return destinations.length > 0;
       case "audience":
         return validateAudience(audience).length === 0;
       case "budget":
@@ -407,7 +428,7 @@ export function CampaignBuilderPage() {
     if (index >= 0) goTo(index);
   };
 
-  // ── Create (paused) — one call per funded channel; NEVER launches ──
+  // ── Create (paused) — one call per (destination × funded channel); NEVER launches ──
   const runCreate = async ({ validateOnly }) => {
     if (validateOnly) setValidatingShapes(true);
     else setSubmitting(true);
@@ -422,42 +443,63 @@ export function CampaignBuilderPage() {
     // build (reject or unresolved needs_transcode). The backend loop is already
     // per-channel independent — we simply don't issue their create call.
     const creativeExcluded = new Set(creativePartition.excluded.map((e) => e.platform));
-    for (const allocation of allocations) {
-      const platform = allocation.platform;
-      if (results[platform]?.campaign) continue; // idempotent per session
-      if (creativeExcluded.has(platform)) continue; // excluded — build the passing ones
-      const payload = buildCreatePayload(platform, {
-        lane,
-        name: name || suggestCampaignName({ brandName: destination?.brand_name, title: destination?.title }),
-        goal: resolvedGoal,
-        destination: {
-          page_type: destination.page_type,
-          brand_slug: destination.brand_slug,
-          entity_slug: destination.page_type === "event" ? destination.slug : null,
-        },
-        audience,
-        budget: { dailyCentsForChannel: allocation.dailyCents },
-        creative: {
-          // ISSUE-995: kind drives the payload media descriptor — video rides
-          // on the library ref (creative_library_id), image on the inline URL.
-          kind: creative.kind,
-          imageUrl: creative.publicUrl,
-          aiGenerated: creative.aiGenerated,
-          // ISSUE-927: the #866 library row (recorded in StepCreative) —
-          // snapchat consumes media ONLY through the library; tiktok reuses a
-          // READY ref when one exists; a video creative REQUIRES it.
-          creativeLibraryId: creative.creativeRow?.id ?? null,
-          brandName: destination?.brand_name ?? null,
-        },
-        copy,
-        specialAdCategory,
-        requestId: requestIdFor(platform),
-        validateOnly,
-      });
-      const { data, error } = await createCampaign(payload);
+    // ISSUE-1002 [multi-destination fan-out] — the DESTINATION axis is the OUTER
+    // loop around the existing per-platform allocations loop, so one campaign fans
+    // out to one ad per (destination × platform), each with its own landing URL
+    // and pid attribution. A single-destination selection runs exactly one
+    // destination iteration, keyed by bare platform → byte-identical to before.
+    const multiDest = destinations.length > 1;
+    const groupId = multiDest ? destGroupId() : null;
+    const baseName = name || suggestCampaignName({ brandName: firstDestination?.brand_name, title: firstDestination?.title });
+    for (const dest of destinations) {
+      const destSlot = `${dest.page_type}:${dest.id}`;
+      const destBody = {
+        page_type: dest.page_type,
+        brand_slug: dest.brand_slug,
+        entity_slug: dest.page_type === "event" ? dest.slug : null,
+      };
+      // Each fanned-out ad carries its own name (base name + destination title) so
+      // the created campaigns stay distinguishable; a single-destination build
+      // keeps the base name exactly.
+      const perCallName = multiDest ? `${baseName} — ${dest.title}` : baseName;
+      for (const allocation of allocations) {
+        const platform = allocation.platform;
+        const resultKey = multiDest ? `${platform}::${destSlot}` : platform;
+        const meta = { platform, destTitle: dest.title, multiDest };
+        if (results[resultKey]?.campaign) continue; // idempotent per session
+        if (creativeExcluded.has(platform)) continue; // excluded — build the passing ones
+        const payload = buildCreatePayload(platform, {
+          lane,
+          name: perCallName,
+          goal: resolvedGoal,
+          destination: destBody,
+          // ISSUE-1002: the shared fan-out group id (null for single-destination),
+          // and payload.js emits the destinations[] array + destination_group_id.
+          destinationGroupId: groupId,
+          audience,
+          budget: { dailyCentsForChannel: allocation.dailyCents },
+          creative: {
+            // ISSUE-995: kind drives the payload media descriptor — video rides
+            // on the library ref (creative_library_id), image on the inline URL.
+            kind: creative.kind,
+            imageUrl: creative.publicUrl,
+            aiGenerated: creative.aiGenerated,
+            // ISSUE-927: the #866 library row (recorded in StepCreative) —
+            // snapchat consumes media ONLY through the library; tiktok reuses a
+            // READY ref when one exists; a video creative REQUIRES it.
+            creativeLibraryId: creative.creativeRow?.id ?? null,
+            brandName: dest.brand_name ?? null,
+          },
+          copy,
+          specialAdCategory,
+          requestId: requestIdFor(platform, destSlot),
+          validateOnly,
+        });
+        const { data, error } = await createCampaign(payload);
       if (error) {
         const parsed = await parseEdgeError(error);
-        results[platform] = {
+        results[resultKey] = {
+          ...meta,
           error: {
             code: parsed?.body?.error,
             message: typeof parsed?.body?.detail === "string"
@@ -472,37 +514,41 @@ export function CampaignBuilderPage() {
         // { validated: false, skipped_layers } to a validate_only call — that is
         // NOT a create, so it must never fire the "Created" toast.
         const outcome = classifyCreateResult(data);
+        const destLabel = multiDest ? ` → ${dest.title}` : "";
         if (outcome.outcome === "validated") {
-          results[platform] = {
+          results[resultKey] = {
+            ...meta,
             validated: true,
             validated_layers: outcome.validatedLayers,
             skipped_layers: outcome.skippedLayers,
           };
         } else if (outcome.outcome === "created") {
-          results[platform] = { campaign: outcome.campaign };
+          results[resultKey] = { ...meta, campaign: outcome.campaign };
           addToast({
             variant: "success",
-            title: `Created on ${platform}. Nothing is spending yet.`,
+            title: `Created on ${platform}${destLabel}. Nothing is spending yet.`,
           });
         } else {
           // Honest "nothing happened": no dry-run exists on this platform (or the
           // create returned no object). Record it truthfully — never a false
           // "Created" — so Review shows the honest state.
-          results[platform] = {
+          results[resultKey] = {
+            ...meta,
             noPlatformValidate: true,
             skipped_layers: outcome.skippedLayers,
             detail: outcome.detail,
           };
           addToast({
             variant: "info",
-            title: `${platform}: nothing was created or validated.`,
+            title: `${platform}${destLabel}: nothing was created or validated.`,
             description: validateOnly
               ? "This platform has no dry-run, so the real create is its first check. Use “Create campaign (paused)” to build it."
               : "The platform returned no object — check the card for details.",
           });
         }
       }
-      setCreateResults({ ...results });
+        setCreateResults({ ...results });
+      }
     }
     if (validateOnly) setValidatingShapes(false);
     else setSubmitting(false);
@@ -513,7 +559,7 @@ export function CampaignBuilderPage() {
     allocations,
     goalIds,
     resolvedGoal: resolvedGoalForDisplay,
-    destination: destination ? { title: destination.title, dest_url: destination.dest_url } : null,
+    destinations: destinations.map((d) => ({ title: d.title, dest_url: d.dest_url })),
     creative: (creative.kind === "video" ? creative.creativeRow : creative.publicUrl)
       ? {
         kind: creative.kind,
@@ -580,7 +626,7 @@ export function CampaignBuilderPage() {
           )}
           {stepId === "goal" && <StepGoal goalIds={goalIds} onGoalsChange={setGoalIds} />}
           {stepId === "destination" && (
-            <StepDestination destination={destination} onDestinationChange={setDestination} />
+            <StepDestination destinations={destinations} onDestinationsChange={setDestinations} />
           )}
           {stepId === "audience" && (
             <StepAudience audience={audience} onAudienceChange={setAudience} channelRows={plannedRows} />
@@ -593,7 +639,7 @@ export function CampaignBuilderPage() {
               creative={creative}
               onCreativeChange={setCreative}
               channelRows={plannedRows}
-              destination={destination}
+              destination={firstDestination}
               fundedPlatforms={fundedPlatforms}
               creativeExcluded={creativePartition.excluded}
               creativeBuildable={creativePartition.buildable}
@@ -661,16 +707,19 @@ export function CampaignBuilderPage() {
         {/* Sticky live ad preview rail (SC-6 — updates on every keystroke). */}
         <div className="hidden lg:block sticky top-4">
           <AdPreview
-            brandName={destination?.brand_name}
+            brandName={firstDestination?.brand_name}
             primary={copy.primary}
             headline={copy.headline}
             cta={copy.cta}
             imageUrl={creative.localPreviewUrl ?? creative.publicUrl}
-            destUrl={destination?.dest_url}
+            destUrl={firstDestination?.dest_url}
           />
           <p className="text-[10px] text-[var(--color-text-tertiary)] mt-2">
             Approximation of the Facebook mobile feed. Platform-rendered previews arrive with
             the preview endpoint.
+            {destinations.length > 1 && (
+              <> Showing the first of {destinations.length} destinations — each gets its own ad.</>
+            )}
           </p>
         </div>
       </div>

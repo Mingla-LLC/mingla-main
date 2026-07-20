@@ -21,7 +21,11 @@ function dollars(cents) {
  *   SAME coherent per-platform objective resolution runCreate uses (ISSUE-980
  *   finding #3). Each channel row's `objectiveLabel` comes from here — never a
  *   single string repeated across every platform.
- * @param {object} input.destination   { title, dest_url }
+ * @param {object} input.destination   { title, dest_url } — legacy single (kept
+ *   for backward compatibility; a single-destination build renders identically).
+ * @param {Array}  input.destinations  ISSUE-1002 [multi-destination fan-out] —
+ *   [{ title, dest_url }]. When present it supersedes `destination`; length > 1
+ *   renders a "N destinations — …" line. Absent → falls back to `destination`.
  * @param {object} input.creative      { name, width, height, kind, validation }
  * @param {object} input.copyCheck     { policyFindings, copyHardBlocks }
  * @param {number} input.totalDailyCents
@@ -32,10 +36,19 @@ export function buildLaunchSummary(input) {
     allocations = [],
     resolvedGoal = null,
     destination = null,
+    destinations = null,
     creative = null,
     copyCheck = { policyFindings: 0, copyHardBlocks: 0 },
     totalDailyCents = 0,
   } = input;
+
+  // ISSUE-1002 [multi-destination fan-out] — the effective destination list. The
+  // new `destinations[]` array wins when supplied; otherwise fall back to the
+  // legacy single `destination` (so pre-1002 callers and single-destination
+  // builds render byte-identically).
+  const destList = Array.isArray(destinations)
+    ? destinations
+    : (destination ? [destination] : []);
 
   const allocationByPlatform = new Map(allocations.map((a) => [a.platform, a.dailyCents]));
 
@@ -95,9 +108,11 @@ export function buildLaunchSummary(input) {
     headline: `Ready to create across ${channelLines.length} channel${channelLines.length === 1 ? "" : "s"} · ${dollars(totalDailyCents)}/day total`,
     channels: channelLines,
     blocked: blockedLines,
-    destinationLine: destination
-      ? `${destination.title} — ${destination.dest_url}`
-      : "No destination picked.",
+    destinationLine: destList.length === 0
+      ? "No destination picked."
+      : destList.length === 1
+      ? `${destList[0].title} — ${destList[0].dest_url}`
+      : `${destList.length} destinations — ${destList.map((d) => d.title).join(", ")}`,
     creativeLine: creative
       ? `1 ${creative.kind ?? "image"}${creative.width ? ` (${creative.width}×${creative.height})` : ""} — ${creative.name ?? "unnamed"}`
       : "No creative attached.",

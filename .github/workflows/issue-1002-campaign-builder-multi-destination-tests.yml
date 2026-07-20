@@ -1,0 +1,88 @@
+name: ISSUE-1002 Campaign Builder Multi-Destination Tests
+
+# ISSUE-1002 [campaign-builder-multi-destination] — the fails-on-revert
+# regression suites for Wave 4 (final) of #977: destination multi-select + the
+# (destination × platform) fan-out. Before this, destination was a SINGLE object
+# at every layer (StepDestination radiogroup, CampaignBuilderPage
+# `destination` useState(null), payload.js, backend DestinationInput, ad_campaigns
+# 6 scalar columns). No ad platform accepts multiple destinations per ad, so
+# multi-select fans out one ad per (destination × platform), each with its own
+# landing URL + pid, grouped by ad_campaigns.dest_group_id.
+#
+# Two suites, two runners:
+#   1. mingla-admin (node:test — pure ESM logic + fs source assertions):
+#      - payload.js emits destinations[] + destination_group_id (singular kept);
+#      - the N×M fan-out (own per-destination URL + pid, shared group, distinct
+#        request_ids); single-destination byte-identical; launchSummary multi line;
+#      - the migration shape (nullable dest_group_id + index, idempotent);
+#      - source wiring (outer destination loop, checkbox multi-select, composite
+#        result keys).
+#   2. supabase edge (deno test — source-contract over admin-ad-create-campaign):
+#      - the request accepts destinations[] + destination_group_id via the shared
+#        pickCallDestination/pickDestGroupId resolvers (5 copy-pasted picks
+#        de-duplicated); ALL FIVE ad_campaigns inserts persist dest_group_id.
+#
+# No other CI job runs the #1002 suites, so without this dedicated workflow they
+# would exist but never gate (the dark-test surface trap, ORCH-1383). EXPLICIT
+# registry (never a glob) — append a path.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mingla-admin/src/**"
+      - "supabase/functions/admin-ad-create-campaign/**"
+      - "supabase/functions/_shared/__tests__/issue1002_multi_destination_fanout.test.ts"
+      - "supabase/migrations/20270107001002_issue_1002_ad_campaign_destinations.sql"
+      - ".github/workflows/issue-1002-campaign-builder-multi-destination-tests.yml"
+  pull_request:
+    paths:
+      - "mingla-admin/src/**"
+      - "supabase/functions/admin-ad-create-campaign/**"
+      - "supabase/functions/_shared/__tests__/issue1002_multi_destination_fanout.test.ts"
+      - "supabase/migrations/20270107001002_issue_1002_ad_campaign_destinations.sql"
+      - ".github/workflows/issue-1002-campaign-builder-multi-destination-tests.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-1002-admin-node-test:
+    name: "ISSUE-1002: campaign-builder multi-destination (admin node:test)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: mingla-admin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # EXPLICIT registry — the ISSUE-1002 implementor suite (payload destinations[]
+      # + group id, N×M fan-out, single-destination backward compat, launchSummary
+      # multi line, migration shape, source wiring). Pure ESM + fs source
+      # assertions; no node_modules required. The tester appends its adversarial
+      # suite here in a later commit.
+      - name: Run ISSUE-1002 campaign-builder multi-destination suite
+        run: >
+          node --test
+          src/__tests__/issue1002_multi_destination.test.js
+
+  issue-1002-edge-deno-test:
+    name: "ISSUE-1002: admin-ad-create-campaign fan-out (edge deno test)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      # EXPLICIT registry — the ISSUE-1002 edge source-contract suite (destinations[]
+      # + group-id acceptance via the shared resolvers, 5 picks de-duplicated, all
+      # five ad_campaigns inserts persist dest_group_id).
+      - name: Run ISSUE-1002 admin-ad-create-campaign fan-out contract suite
+        run: >
+          deno test --allow-read
+          supabase/functions/_shared/__tests__/issue1002_multi_destination_fanout.test.ts
