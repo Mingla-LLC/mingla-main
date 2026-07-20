@@ -19,6 +19,7 @@ parentheses for traceability.
 
 ## Shipped
 
+- 2026-07-20 — Every Mingla logo now comes from one canonical source: emails and ticket PDFs resolve a live branded URL (four dead-404 fallbacks eliminated), the repo keeps one master copy per mark (7 duplicates deleted, CI-enforced), the admin tab icon is the proper square mark, and three screens faking the logo as text now show the real wordmark (#1001, PR #1012)
 - 2026-07-20 — Nigeria's "Set up payments" (Paystack) onboarding page now scrolls on short phone screens, so its headings no longer collide with the top bar and the "Connect bank" button can't fall off-screen — the same scroll fix already live for the Stripe page, extended to the NG path (#971, PR #1011)
 - 2026-07-20 — Scanner-invite failures now show the real reason (expired / revoked / already-used / wrong-account) instead of a generic error — the same parsing fix already live for partner invites, extended to the scanner path (#959, PR #1010)
 - 2026-07-20 — Sign-in code emails are now fully Mingla-branded: sent from Mingla <noreply@usemingla.com> with the logo wordmark and a clean code card, replacing "Supabase Auth / Your Magic Link" with admin-dashboard copy that buyers and partners were receiving; auth email send limit raised 30→100/hr (#999)
