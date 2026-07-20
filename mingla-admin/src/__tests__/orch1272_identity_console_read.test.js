@@ -216,7 +216,9 @@ describe("ORCH-1272 — gate + workflow + registry", () => {
     assert.doesNotMatch(writeGate, /admin_get_person/);
   });
   it("I-PROPOSED-1272-IDENTITY-ADMIN-READ is registered DRAFT", () => {
-    const reg = read("Mingla_Artifacts/INVARIANT_REGISTRY.md");
+    // Issue #974 [TEST-MOD-APPROVED ORCH-0974]: the invariant registry moved to
+    // docs/INVARIANT_REGISTRY.md when the artifact system retired (tag pre-avengers-archive).
+    const reg = read("docs/INVARIANT_REGISTRY.md");
     assert.match(reg, /I-PROPOSED-1272-IDENTITY-ADMIN-READ \(DRAFT\)/);
   });
 });
