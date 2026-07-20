@@ -23,6 +23,16 @@ src/context/AuthContext.tsx | src/hooks/useBrandListShim.ts | src/hooks/useBrand
 # chains on useBrands' traversal path. Removed per the gate's "removed cycles →
 # delete stale baseline entries" instruction.
 src/hooks/useBrandListShim.ts | src/store/currentBrandStore.ts
+# Issue #976 [event-name-focus]: intentional 2-module cycle. The single-flight
+# draft-promotion registry (draftPromotion.ts) must write the React-Query list/
+# detail caches through the ONE key factory (eventDraftKeys, Constitution #4),
+# which lives in useServerDraftEvents.ts — and that hook's legacy migration
+# loop must promote THROUGH the registry (I-PROPOSED-0976-SINGLE-DRAFT-
+# PROMOTION-OWNER). Both sides dereference the other only inside function
+# bodies (never at module init), so the cycle is init-order-safe under
+# Metro/CJS live bindings. Sanctioned per this file's rule (2): new cycle +
+# justification in the #976 PR.
+src/hooks/useServerDraftEvents.ts | src/utils/draftPromotion.ts
 src/store/draftEventStore.ts | src/utils/liveEventConverter.ts
 src/store/draftEventStore.ts | src/store/liveEventStore.ts
 src/store/draftEventStore.ts | src/store/liveEventStore.ts | src/utils/liveEventAdapter.ts
