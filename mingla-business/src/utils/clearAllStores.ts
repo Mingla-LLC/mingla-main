@@ -28,6 +28,7 @@ import { useDoorSalesStore } from "../store/doorSalesStore";
 import { useBrandTeamStore } from "../store/brandTeamStore";
 import { useNotificationPrefsStore } from "../store/notificationPrefsStore";
 import { useLiveSectionCollapseStore } from "../store/liveSectionCollapseStore";
+import { useTodoToggleCollapseStore } from "../store/todoToggleCollapseStore";
 
 export const clearAllStores = (): void => {
   useCurrentBrandStore.getState().reset();
@@ -43,4 +44,5 @@ export const clearAllStores = (): void => {
   useBrandTeamStore.getState().reset(); // NEW Cycle 13a — Constitution #6
   useNotificationPrefsStore.getState().reset(); // NEW Cycle 14 — Constitution #6
   useLiveSectionCollapseStore.getState().reset(); // NEW ORCH-1143 — Constitution #6 (live-section accordion collapse)
+  useTodoToggleCollapseStore.getState().reset(); // NEW #882 — Constitution #6 (todo-toggle position)
 };

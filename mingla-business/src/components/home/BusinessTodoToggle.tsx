@@ -8,11 +8,15 @@
  * automatically as their state is satisfied; when there are zero rows the whole
  * toggle renders NOTHING (the screen is then driven purely by real analytics).
  *
- * Pure presentational: it takes the already-derived, already-ordered list and an
- * `onAction` dispatcher. The parent wraps it with `paddingHorizontal: spacing.md`
- * so its width is flush with the TopBar's inner content.
+ * Contents are prop-driven/presentational: it takes the already-derived,
+ * already-ordered list and an `onAction` dispatcher. The parent wraps it with
+ * `paddingHorizontal: spacing.md` so its width is flush with the TopBar's
+ * inner content. The open/closed POSITION, however, is owned by the persisted
+ * `todoToggleCollapseStore` (#882) — shared by every render site and
+ * hydration-gated (nothing renders before `hasHydrated`), so the first
+ * visible paint is already the remembered position.
  */
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect } from "react";
 import {
   LayoutAnimation,
   Platform,
@@ -32,6 +36,7 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import { useTodoToggleCollapseStore } from "../../store/todoToggleCollapseStore";
 import type { BusinessTodo } from "../../utils/businessTodos";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
@@ -57,7 +62,13 @@ export const BusinessTodoToggle: React.FC<BusinessTodoToggleProps> = ({
   onAction,
   testID,
 }) => {
-  const [open, setOpen] = useState<boolean>(true);
+  // #882 — position is store-owned (persisted + hydration-gated), never
+  // component-local: both render sites (Home, Hub) share it and it survives
+  // remounts and restarts.
+  const collapsed = useTodoToggleCollapseStore((s) => s.collapsed);
+  const hasHydrated = useTodoToggleCollapseStore((s) => s.hasHydrated);
+  const toggle = useTodoToggleCollapseStore((s) => s.toggle);
+  const open = !collapsed;
   const count = todos.length;
 
   // Animate the row set whenever it shrinks/grows (the "vanish when done" feel)
@@ -68,11 +79,15 @@ export const BusinessTodoToggle: React.FC<BusinessTodoToggleProps> = ({
 
   const toggleOpen = useCallback((): void => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setOpen((prev) => !prev);
-  }, []);
+    toggle();
+  }, [toggle]);
 
   // Empty → render nothing at all (toggle hides entirely).
   if (count === 0) return null;
+  // #882 — hydration gate: render NOTHING until the persisted position has
+  // rehydrated, so the first visible paint is already the remembered position
+  // (no open→collapsed flip). Deliberately not animated.
+  if (!hasHydrated) return null;
 
   return (
     <GlassCard variant="elevated" padding={spacing.md} testID={testID}>
