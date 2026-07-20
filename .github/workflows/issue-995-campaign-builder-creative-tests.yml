@@ -1,0 +1,62 @@
+name: ISSUE-995 Campaign Builder Creative Tests
+
+# ISSUE-995 [campaign-builder-creative] — the fails-on-revert regression suite
+# for Wave 3 of #977: video upload + per-placement pass/fail & local preview +
+# proceed-with-passing + variant slots + humanized rejects. Before this, the
+# Campaign Builder creative step was IMAGE-ONLY, validated per-PLATFORM (never
+# per-placement), hard-blocked the whole build on one rejected channel, showed a
+# needs_transcode channel as "ready" (then failed at create), had no variant-slot
+# UI, and rendered raw matrix jargon ("550px < 600px floor / ratio 0.5046
+# [OFFICIAL]") straight to the operator.
+#
+# One suite, one runner:
+#   mingla-admin (node:test — pure ESM logic + fs source assertions):
+#     - payload.js video branch (creative_library_id + kind:"video", no image_url;
+#       image path byte-identical);
+#     - placements.js per-placement report (a 9:16 master passes Reels, fails Feed
+#       1:1) + variant-covers-placement;
+#     - creativeGate.js proceed-with-passing partition + needs_transcode≠ready;
+#     - creativeCopy.js humanized rejects (raw kept behind a toggle);
+#     - StepCreative.jsx / CampaignBuilderPage.jsx wiring source assertions.
+#
+# No other CI job runs the #995 suite, so without this dedicated workflow it
+# would exist but never gate (the dark-test surface trap, ORCH-1383). EXPLICIT
+# registry (never a glob) — append a path.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mingla-admin/src/**"
+      - ".github/workflows/issue-995-campaign-builder-creative-tests.yml"
+  pull_request:
+    paths:
+      - "mingla-admin/src/**"
+      - ".github/workflows/issue-995-campaign-builder-creative-tests.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-995-admin-node-test:
+    name: "ISSUE-995: campaign-builder creative (admin node:test)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: mingla-admin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # EXPLICIT registry — the ISSUE-995 implementor suite (video→payload,
+      # per-placement report, proceed-with-passing + needs_transcode
+      # reconciliation, variant slots, humanized rejects + component/page source
+      # wiring). The tester appends its adversarial suite here in a later commit.
+      # Pure ESM + fs source assertions; no node_modules required.
+      - name: Run ISSUE-995 campaign-builder creative suite
+        run: >
+          node --test
+          src/__tests__/issue995_creative_video_variants.test.js
