@@ -11,6 +11,14 @@ name: ISSUE-980 Campaign Builder Clarity Tests
 # campaign-builder suites, so without this dedicated job they would exist but
 # never gate (the dark-test surface trap, ORCH-1383). EXPLICIT registry
 # (never a glob) — append a path.
+#
+# mingla-tester PR #985 addition: issue980_clarity.adversarial.test.js — the
+# independent tester adversarial regression suite (numeric-extreme stepper
+# widths + source-parsed 10-step sweep + repo-wide 720px-track grep; real
+# admin-ad-preflight/index.ts + _shared/reddit.ts jargon strings the
+# implementor's fixtures never exercised, incl. empty-string/injection detail
+# attacks; all-5-platform + empty-goalIds Review objective attacks). Appended
+# here so it gates like the other three, never a dark test.
 
 on:
   push:
@@ -40,12 +48,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      # EXPLICIT registry — the three ISSUE-980 clarity-fix suites (registered
-      # here so they GATE, never a dark test surface — ORCH-1383). Pure ESM +
-      # fs source assertions; no node_modules required.
+      # EXPLICIT registry — the three ISSUE-980 clarity-fix suites PLUS the
+      # tester's adversarial regression suite (registered here so ALL FOUR
+      # GATE, never a dark test surface — ORCH-1383). Pure ESM + fs source
+      # assertions; no node_modules required.
       - name: Run ISSUE-980 campaign-builder clarity suites
         run: >
           node --test
           src/__tests__/issue980_stepper_responsive.test.js
           src/__tests__/issue980_preflight_copy_translation.test.js
           src/__tests__/issue980_review_real_objectives.test.js
+          src/__tests__/issue980_clarity.adversarial.test.js
