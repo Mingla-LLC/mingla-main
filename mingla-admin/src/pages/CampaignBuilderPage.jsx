@@ -46,6 +46,7 @@ import { DEFAULT_RADIUS_MI } from "../lib/adBuilder/targeting";
 import { validateBudget } from "../lib/adBuilder/budgetRules";
 import { validateCopy } from "../lib/adBuilder/copyRules";
 import { runPolicyPrecheck } from "../lib/adBuilder/policyLinter";
+import { partitionFundedCreative } from "../lib/adBuilder/creativeGate";
 import { buildCreatePayload, suggestCampaignName } from "../lib/adBuilder/payload";
 import { buildLaunchSummary } from "../lib/adBuilder/launchSummary";
 
@@ -108,10 +109,23 @@ export function CampaignBuilderPage() {
   });
   const [budget, setBudget] = useState({ totalDailyCents: 0, strategy: "auto", allowlist: null });
   const [creative, setCreative] = useState({
+    // ISSUE-995 [Campaign Builder creative] Wave 3 — media kind. "image" keeps
+    // the existing byte-upload flow; "video" references an already-hosted asset
+    // (Bunny id + MP4 master URL + a poster image) — the edge runtime can't
+    // transcode, so the admin supplies the refs the #866 library records.
+    kind: "image",
     file: null,
     localPreviewUrl: null,
     publicUrl: null,
     path: null,
+    // Video refs (kind === "video"):
+    mp4MasterUrl: "",
+    bunnyVideoId: "",
+    posterUrl: null,
+    posterPath: null,
+    // Per-ratio pre-cropped variant slots (4:5 / 1:1 / 9:16 / 1.91:1) →
+    // { source_url, storage_path } — probed server-side, rescues off-ratio masters.
+    variants: {},
     validation: null,
     creativeRow: null,
     aiGenerated: true,
@@ -274,6 +288,27 @@ export function CampaignBuilderPage() {
   // goal-label string. Never touches runCreate's own resolution.
   const resolvedGoalForDisplay = useMemo(() => resolveGoalForPayload(goalIds), [goalIds]);
 
+  // ── ISSUE-995 [Campaign Builder creative] Wave 3 — PROCEED-WITH-PASSING ──
+  // The funded set (allocations) partitioned into the channels this creative can
+  // build NOW and the ones to exclude. `buildable` requires ok AND not
+  // needs_transcode (reconciling the matrix `ok`-ignores-needs_transcode vs
+  // resolveCreativeRef-blocks-needs_transcode mismatch), so a channel shown
+  // "ready" can never fail at create. The build proceeds on `buildable` and
+  // simply does not create the `excluded` ones — the backend create loop is
+  // already per-channel independent.
+  const fundedPlatforms = useMemo(() => allocations.map((a) => a.platform), [allocations]);
+  const creativePartition = useMemo(
+    () => partitionFundedCreative({
+      fundedPlatforms,
+      channels: creative.validation?.channels ?? [],
+      // ISSUE-995 REWORK: video ad create isn't wired yet (#997) — a video
+      // creative excludes every funded channel (preview-only), so nothing
+      // misleading builds.
+      kind: creative.kind,
+    }),
+    [fundedPlatforms, creative.validation, creative.kind],
+  );
+
   // Auto-suggest the campaign name from the destination (editable — §4.4).
   useEffect(() => {
     if (!nameTouched && destination) {
@@ -302,12 +337,18 @@ export function CampaignBuilderPage() {
         return validateBudget({ totalDailyCents: budget.totalDailyCents, channelRows }).length === 0 &&
           allocations.length > 0;
       case "creative": {
-        if (!creative.publicUrl || !creative.validation) return false;
-        // A hard-reject on a funded channel blocks — the create would fail.
-        const funded = new Set(allocations.map((a) => a.platform));
-        return (creative.validation.channels ?? [])
-          .filter((c) => funded.has(c.platform))
-          .every((c) => c.ok);
+        // ISSUE-995: a video creative must be RECORDED (its bytes live off-
+        // client, so the library row id is the only way to reference it);
+        // an image can build from its inline public URL.
+        const hasMedia = creative.kind === "video"
+          ? Boolean(creative.creativeRow)
+          : Boolean(creative.publicUrl);
+        if (!hasMedia || !creative.validation) return false;
+        // ISSUE-995 PROCEED-WITH-PASSING: Next is enabled as long as AT LEAST
+        // ONE funded channel can build with this creative — the failing ones are
+        // excluded and the build proceeds on the rest (was: every funded channel
+        // had to pass, so one reject blocked the whole build).
+        return creativePartition.buildable.length > 0;
       }
       case "copy": {
         const funded = allocations.map((a) => a.platform);
@@ -334,10 +375,22 @@ export function CampaignBuilderPage() {
         return "Pick at least one goal.";
       case "destination":
         return "Pick a page to send people to.";
-      case "creative":
-        return creative.publicUrl
-          ? creative.validation ? "Fix the creative problems above first." : "Validate the creative first."
-          : "Upload an ad image first.";
+      case "creative": {
+        const hasMedia = creative.kind === "video" ? Boolean(creative.creativeRow) : Boolean(creative.publicUrl);
+        if (!hasMedia) {
+          return creative.kind === "video"
+            ? "Add the video and record it to the library first."
+            : "Upload an ad image first.";
+        }
+        if (!creative.validation) return "Validate the creative first.";
+        // ISSUE-995 REWORK: video ad creation isn't available yet — the builder
+        // is preview-only for video, so Next-to-build is intentionally blocked.
+        if (creative.kind === "video") {
+          return "Video ad creation isn't available yet — this is a preview. Switch to an image to build a campaign.";
+        }
+        // Has media + validation, but no funded channel can build → every one failed.
+        return "No funded channel can run this creative. Fix a problem above, or add a variant, to build at least one.";
+      }
       case "copy":
         return "Fix the copy problems above first.";
       default:
@@ -365,9 +418,14 @@ export function CampaignBuilderPage() {
     // Each platform's pair now comes from a single goals.js entry, so the Meta
     // objective/optimization_goal pairing is always valid, in any click order.
     const resolvedGoal = resolveGoalForPayload(goalIds);
+    // ISSUE-995 PROCEED-WITH-PASSING: skip funded channels this creative can't
+    // build (reject or unresolved needs_transcode). The backend loop is already
+    // per-channel independent — we simply don't issue their create call.
+    const creativeExcluded = new Set(creativePartition.excluded.map((e) => e.platform));
     for (const allocation of allocations) {
       const platform = allocation.platform;
       if (results[platform]?.campaign) continue; // idempotent per session
+      if (creativeExcluded.has(platform)) continue; // excluded — build the passing ones
       const payload = buildCreatePayload(platform, {
         lane,
         name: name || suggestCampaignName({ brandName: destination?.brand_name, title: destination?.title }),
@@ -380,11 +438,14 @@ export function CampaignBuilderPage() {
         audience,
         budget: { dailyCentsForChannel: allocation.dailyCents },
         creative: {
+          // ISSUE-995: kind drives the payload media descriptor — video rides
+          // on the library ref (creative_library_id), image on the inline URL.
+          kind: creative.kind,
           imageUrl: creative.publicUrl,
           aiGenerated: creative.aiGenerated,
           // ISSUE-927: the #866 library row (recorded in StepCreative) —
           // snapchat consumes media ONLY through the library; tiktok reuses a
-          // READY ref when one exists.
+          // READY ref when one exists; a video creative REQUIRES it.
           creativeLibraryId: creative.creativeRow?.id ?? null,
           brandName: destination?.brand_name ?? null,
         },
@@ -453,9 +514,9 @@ export function CampaignBuilderPage() {
     goalIds,
     resolvedGoal: resolvedGoalForDisplay,
     destination: destination ? { title: destination.title, dest_url: destination.dest_url } : null,
-    creative: creative.publicUrl
+    creative: (creative.kind === "video" ? creative.creativeRow : creative.publicUrl)
       ? {
-        kind: "image",
+        kind: creative.kind,
         name: creative.name,
         width: creative.validation?.probe?.width,
         height: creative.validation?.probe?.height,
@@ -533,6 +594,9 @@ export function CampaignBuilderPage() {
               onCreativeChange={setCreative}
               channelRows={plannedRows}
               destination={destination}
+              fundedPlatforms={fundedPlatforms}
+              creativeExcluded={creativePartition.excluded}
+              creativeBuildable={creativePartition.buildable}
             />
           )}
           {stepId === "copy" && (

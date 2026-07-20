@@ -66,7 +66,7 @@ const TIKTOK_GOAL_DEFAULTS = {
  *     destination:{page_type, brand_slug, entity_slug},
  *     audience:{countries, ageMin, ageMax, gender},
  *     budget:{dailyCentsForChannel},
- *     creative:{imageUrl, aiGenerated, creativeLibraryId, brandName},
+ *     creative:{kind, imageUrl, aiGenerated, creativeLibraryId, brandName},
  *     copy:{primary, headline, description, cta, googleHeadlines,
  *           googleDescriptions, keywords, negativeKeywords},
  *     specialAdCategory, requestId }
@@ -114,6 +114,22 @@ export function buildCreatePayload(platform, state) {
     specialAdCategory: specialAdCategory && specialAdCategory !== "" ? specialAdCategory : "NONE",
   };
 
+  // ISSUE-995 [Campaign Builder creative] Wave 3 — VIDEO. A video creative is
+  // never inline bytes: it was recorded to the #866 library (kind:"video" +
+  // bunny_video_id/poster_url/mp4_master_url) via admin-ad-creative-upload, and
+  // the create endpoint resolves it by its library row id (NOT an image_url).
+  // So the video media descriptor is `{ creative_library_id, kind:"video" }`
+  // for every platform — never image_url. Image creatives keep the byte-
+  // identical `image_url` (+ optional library ref) shape they had before, so
+  // the ISSUE-864/927/989 payload suites stay green.
+  const creativeIsVideo = creative?.kind === "video";
+  const videoRef = creativeIsVideo
+    ? {
+      kind: "video",
+      ...(creative.creativeLibraryId ? { creative_library_id: creative.creativeLibraryId } : {}),
+    }
+    : null;
+
   if (platform === "tiktok") {
     // ISSUE-927: the goal step's native objective (goals.js) rides through;
     // ad_text = the primary copy (copyRules pins TikTok's 100-hard no-emoji
@@ -151,11 +167,13 @@ export function buildCreatePayload(platform, state) {
         ...(tiktokGenderFor(audience.gender) ? { gender: tiktokGenderFor(audience.gender) } : {}),
       },
       destination: destinationBody,
-      creative: {
-        ad_text: copy.primary,
-        image_url: creative.imageUrl,
-        ...(creative.creativeLibraryId ? { creative_library_id: creative.creativeLibraryId } : {}),
-      },
+      creative: videoRef
+        ? { ad_text: copy.primary, ...videoRef }
+        : {
+          ad_text: copy.primary,
+          image_url: creative.imageUrl,
+          ...(creative.creativeLibraryId ? { creative_library_id: creative.creativeLibraryId } : {}),
+        },
       // Bug 3: global compliance intent reaches TikTok's create path. TikTok's
       // only AI-disclosure field (aigc_disclosure_type) is CUSTOMIZED_USER-only
       // and unreachable for our account (T-P6); it has no special-category field.
@@ -189,10 +207,12 @@ export function buildCreatePayload(platform, state) {
           : {}),
       },
       destination: destinationBody,
-      creative: {
-        headline: copy.primary,
-        image_url: creative.imageUrl,
-      },
+      creative: videoRef
+        ? { headline: copy.primary, ...videoRef }
+        : {
+          headline: copy.primary,
+          image_url: creative.imageUrl,
+        },
       // Bug 3: global compliance intent reaches Reddit's create path. Reddit has
       // no AI-disclosure field and no special-ad-category field on its API.
       compliance,
@@ -231,6 +251,7 @@ export function buildCreatePayload(platform, state) {
         headline: copy.headline || copy.primary,
         ...(creative.brandName ? { brand_name: creative.brandName } : {}),
         ...(creative.creativeLibraryId ? { creative_library_id: creative.creativeLibraryId } : {}),
+        ...(videoRef ? { kind: "video" } : {}),
       },
       // Bug 3: global compliance intent reaches Snapchat's create path. Snapchat
       // has no AI-disclosure field and no special-ad-category field on its API.
@@ -263,6 +284,9 @@ export function buildCreatePayload(platform, state) {
       creative: {
         headlines: (copy.googleHeadlines ?? []).map((h) => h.trim()).filter(Boolean),
         descriptions: (copy.googleDescriptions ?? []).map((d) => d.trim()).filter(Boolean),
+        // ISSUE-995: a video RSA rides on the library ref (Google runs it
+        // YouTube-hosted, resolved from the #866 row); image RSAs carry no media.
+        ...(videoRef ?? {}),
       },
       keywords: (copy.keywords ?? []).map((k) => k.trim()).filter(Boolean),
       ...(Array.isArray(copy.negativeKeywords) && copy.negativeKeywords.length > 0
@@ -313,7 +337,9 @@ export function buildCreatePayload(platform, state) {
       message: copy.primary,
       ...(copy.headline ? { headline: copy.headline } : {}),
       ...(copy.description ? { description: copy.description } : {}),
-      image_url: creative.imageUrl,
+      // ISSUE-995: video rides on the library ref (kind:"video" +
+      // creative_library_id) instead of an inline image_url; image is unchanged.
+      ...(videoRef ? videoRef : { image_url: creative.imageUrl }),
       call_to_action_type: copy.cta || "LEARN_MORE",
       ai_generated: creative.aiGenerated === true,
     },
