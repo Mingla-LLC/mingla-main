@@ -1,0 +1,99 @@
+# NOTE: the name is QUOTED — an unquoted ` #` starts a YAML comment (the #959/
+# #971 precedent files silently truncate their workflow name to "Issue").
+name: "Issue #1014 Free-Publish Currency Tests"
+
+# Issue #1014 [free-only publish / money fails close] — the fails-on-revert
+# regression suites for the currency-guard relax. Before this fix, ORCH-0769's
+# tg_require_event_brand_currency raised `event_currency_required` on EVERY
+# draft→published transition when the brand currency was unresolvable, so a
+# fresh brand (no Stripe, no Paystack, default_currency NULL) could publish
+# NOTHING — even free events. The #1014 migration splits the guard by MONEY:
+# free-only publishes succeed with events.currency NULL; money-bearing
+# transitions keep the fail-close and surface actionable copy.
+#
+# Two suites, two runners:
+#   1. supabase migration (deno test — file-pinning contract over
+#      20270108001014_issue_1014_free_only_publish_currency_relax.sql):
+#      trigger (c) free-only flag + §9(8) steady-state branch, trigger (d)
+#      resolve-or-block + retired event_currency_not_found token, the three
+#      publish RPCs' money predicates + publish_free_only flag, NGN whitelist,
+#      no coalesce-to-GBP left in the checkout RPC, money-row CHECKs.
+#   2. mingla-business (jest): paidPublishGuards locked-copy map for
+#      event_currency_required + the wizard mapping/routing suites
+#      (issue_1014_trip_currency_required_mapping,
+#      issue_1014_rsvp_money_guard_routing). New suites named issue_1014_*
+#      are picked up automatically (tester adversarial suites included).
+#
+# No other CI job runs the #1014 suites, so without this dedicated workflow
+# they would exist but never gate (the dark-test-surface trap, ORCH-1383).
+# EXPLICIT registry (never a glob) — add a new suite by appending its
+# pattern/path below. SPEC-amendment approved on issue #1014 (allowlist +
+# exactly this file; no existing workflow modified; MANIFEST.json untouched).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/20270108001014_issue_1014_free_only_publish_currency_relax.sql"
+      - "supabase/migrations/__tests__/issue_1014_free_publish_currency.test.ts"
+      - "mingla-business/src/**"
+      - "packages/offering-rendering/**"
+      - ".github/workflows/issue-1014-free-publish-currency-tests.yml"
+  pull_request:
+    paths:
+      - "supabase/migrations/20270108001014_issue_1014_free_only_publish_currency_relax.sql"
+      - "supabase/migrations/__tests__/issue_1014_free_publish_currency.test.ts"
+      - "mingla-business/src/**"
+      - "packages/offering-rendering/**"
+      - ".github/workflows/issue-1014-free-publish-currency-tests.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-1014-migration-deno-test:
+    name: "Issue #1014: free-publish currency migration contract (deno test)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      # EXPLICIT registry — the #1014 migration-pinning suite (14 assertions;
+      # fails-on-revert proven by actual trigger-(c) body revert in the
+      # implementation report). The behavioral sibling
+      # issue_1014_free_publish_currency.test.sql is hand-run post-`db push`
+      # (write-safe ROLLBACK blocks) — it needs a live database, not CI.
+      - name: Run Issue #1014 migration contract suite
+        run: >
+          deno test --allow-read
+          supabase/migrations/__tests__/issue_1014_free_publish_currency.test.ts
+
+  issue-1014-business-jest:
+    name: "Issue #1014: guard copy + wizard mapping (fails-on-revert jest suites)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      # Runs the #1014 client suites: the extended paidPublishGuards suite
+      # (event_currency_required → locked "Finish your payment setup" copy +
+      # payments-onboard route; pre-existing entries pinned untouched) plus
+      # every issue_1014_* suite (trip mapper case, RSVP money-guard routing —
+      # and any tester adversarial suite added under the same pattern).
+      - name: "Issue #1014: guard copy + wizard mapping jest suites"
+        run: >
+          npx jest
+          issue_1014
+          paidPublishGuards
+          --runInBand
