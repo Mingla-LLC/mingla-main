@@ -5868,7 +5868,7 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 - **Established:** DRAFT 2026-07-20 at #976 SPEC. Flips ACTIVE at CLOSE.
 
 
-### I-PROPOSED-882-TODO-TOGGLE-SINGLE-OWNER (DRAFT)
+### I-PROPOSED-882-TODO-TOGGLE-SINGLE-OWNER (ACTIVE — #882 CLOSE 2026-07-20)
 **Statement:** The BusinessTodoToggle open/closed position has exactly ONE owner: the persisted `todoToggleCollapseStore` (`mingla-business.todoToggleCollapse.v1`). Neither the component nor any render site may hold a parallel open-state (`useState` or otherwise) for it; all reads are hydration-gated (nothing renders before `hasHydrated`); the store is global (never brand-keyed) and resets only via `clearAllStores()`.
 **Enforcement:** `mingla-business/src/components/home/__tests__/BusinessTodoToggle.test.ts` single-owner assertions (store import present + `useState` absent + hydration-gate line) and `mingla-business/src/store/__tests__/todoToggleCollapseStore.test.ts` (partialize/persist-identity/defaults). Tests-append-only family.
 **Test that catches a regression:** reverting to component-local `useState` fails the single-owner assertions; persisting `hasHydrated` fails the partialize test.
