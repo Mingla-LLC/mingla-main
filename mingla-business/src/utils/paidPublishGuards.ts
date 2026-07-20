@@ -9,20 +9,28 @@
  * so a caller need only pass whichever string it has.
  *
  * Reasons (MUST match the RPC bodies in
- * supabase/migrations/20260911000000_orch_1075_paid_publish_integrity_guards.sql):
+ * supabase/migrations/20260911000000_orch_1075_paid_publish_integrity_guards.sql
+ * and, for the third reason,
+ * supabase/migrations/20270108001014_issue_1014_free_only_publish_currency_relax.sql):
  *   - stripe_charges_disabled → "Finish your payment setup" → route to the
  *     brand's Stripe Connect onboarding (`/brand/{brandId}/payments/onboard`,
  *     the same entry BrandOnboardView uses to reach charges_enabled=true).
  *   - offering_date_past → "Pick a future date" → route to the WHEN/date field.
+ *   - event_currency_required (issue #1014) → "Finish your payment setup" →
+ *     same payments-onboard route (provider-neutral: it covers Stripe AND the
+ *     NG Paystack path per #971). Raised when a MONEY-BEARING transition (any
+ *     ticket priced > 0 — online OR door — or money entering a published
+ *     free event) hits a brand with no resolvable payout currency.
  *
- * FREE offerings and in-person-only paid offerings never trigger these reasons
- * (the RPCs gate paid-online only), so this helper only ever sees them for the
- * paid case.
+ * FREE offerings never trigger these reasons (issue #1014: free-only publishes
+ * need zero payment setup), so this helper only ever sees them for the money
+ * case.
  */
 
 export type PaidPublishGuardReason =
   | "stripe_charges_disabled"
-  | "offering_date_past";
+  | "offering_date_past"
+  | "event_currency_required";
 
 export type PaidPublishGuardAction = "stripe_onboarding" | "edit_date";
 
@@ -57,6 +65,14 @@ const PAID_PUBLISH_GUARD_COPY: Record<
     actionLabel: "Edit date",
     action: "edit_date",
   },
+  // issue #1014 — LOCKED copy. Do not reword without an orchestrator decision.
+  event_currency_required: {
+    reason: "event_currency_required",
+    title: "Finish your payment setup",
+    body: "Paid listings need a payout currency, and that comes from your payment setup. Free listings publish any time.",
+    actionLabel: "Set up payments",
+    action: "stripe_onboarding",
+  },
 };
 
 /**
@@ -77,6 +93,11 @@ export const detectPaidPublishGuardReason = (
   }
   if (s === "offering_date_past" || s.includes("offering_date_past")) {
     return "offering_date_past";
+  }
+  // issue #1014 — money-bearing transition on a brand with no resolvable
+  // payout currency (raised by the publish RPCs + both currency triggers).
+  if (s === "event_currency_required" || s.includes("event_currency_required")) {
+    return "event_currency_required";
   }
   return null;
 };
