@@ -20,12 +20,12 @@ When you discover something that affects another in-flight session or issue:
 
 1. Allocate the next `COMMS-NNNN` (max existing ID + 1, zero-padded to 4; numbering continues from the old ledger — next is COMMS-0118).
 2. Append a row to the Active table. Bodies are inline (`<br>` for line breaks); no separate detail files.
-3. Commit it as a one-file direct-to-`main` commit on the anchor and push immediately — acks committed but never pushed get silently dropped by a later `pull --rebase`:
+3. Commit it as a one-file direct-to-`main` commit on the anchor and push immediately — acks committed but never pushed get silently dropped by a later `pull --rebase`. Note: the anchor pre-commit hook blocks direct main commits by default; `MINGLA_ALLOW_MAIN_COMMIT=1` is the sanctioned override for COMMS/CLOSE docs commits (#1014 tester D-9):
    ```bash
    cd /Users/sethogieva/Desktop/mingla-main
    git checkout main && git pull
    git add COMMS.md
-   git commit -m "COMMS-NNNN: <one-line subject>"
+   MINGLA_ALLOW_MAIN_COMMIT=1 git commit -m "COMMS-NNNN: <one-line subject>"
    git push origin main
    ```
 
