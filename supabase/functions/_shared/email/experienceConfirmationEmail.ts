@@ -19,6 +19,8 @@
 // The QR ticket PDF is still attached by the dispatch (reused, unchanged).
 
 import type { SenderIdentity } from "./senders.ts";
+// ISSUE-1001 — canonical logo resolution (env override, live fail-safe default).
+import { minglaLogoUrl } from "../brandAssets.ts";
 
 interface ExperienceStop {
   stopOrder: number;
@@ -131,12 +133,9 @@ export function renderExperienceConfirmationEmail(
 ): ExperienceConfirmationResult {
   const supportEmail =
     input.supportEmail ?? Deno.env.get("SUPPORT_EMAIL") ?? DEFAULT_SUPPORT_EMAIL;
-  const logoUrl = requireEnv(
-    "MINGLA_LOGO_URL",
-    Deno.env.get("DENO_TESTING") === "1"
-      ? "https://usemingla.com/email-assets/mingla-logo.png"
-      : undefined,
-  );
+  // ISSUE-1001 — MINGLA_LOGO_URL env override wins; else the live canonical
+  // default. No fail-loud, no dead fallback (see _shared/brandAssets.ts).
+  const logoUrl = minglaLogoUrl();
   const footerAddress = requireEnv(
     "MINGLA_FOOTER_ADDRESS",
     Deno.env.get("DENO_TESTING") === "1" ? "Mingla, hello@usemingla.com" : undefined,
