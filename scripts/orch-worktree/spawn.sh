@@ -5,7 +5,7 @@
 #
 # Per the worktree-per-ORCH workflow codified 2026-05-24
 # (memory rule: feedback_worktree_per_orch_workflow.md;
-# canonical doc: Mingla_Artifacts/WORKTREE_STRATEGY.md).
+# canonical doc: docs/WORKTREE_STRATEGY.md).
 #
 # Usage:
 #   scripts/orch-worktree/spawn.sh <ORCH_ID> <short-kebab-label>

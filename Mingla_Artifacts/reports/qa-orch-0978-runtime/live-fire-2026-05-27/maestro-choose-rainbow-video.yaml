@@ -1,5 +1,0 @@
-appId: com.sethogieva.minglabusiness
----
-- tapOn: "Choose"
-- waitForAnimationToEnd
-- takeScreenshot: "orch-0978-after-rainbow-choose"

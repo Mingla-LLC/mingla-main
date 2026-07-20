@@ -1,5 +1,0 @@
-appId: com.sethogieva.minglabusiness
----
-- tapOn: "Upload video"
-- waitForAnimationToEnd
-- takeScreenshot: "orch-retest-picker-open"

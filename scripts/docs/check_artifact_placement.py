@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""Check Mingla documentation/artifact placement invariants."""
+"""Check Mingla documentation placement invariants (Avengers era).
+
+Work documentation lives as issues on the Mingla Avengers board
+(https://github.com/orgs/Mingla-LLC/projects/4). The repo carries exactly
+four canonical docs at the root plus engineering references under docs/.
+This gate keeps the retired artifact system from growing back.
+
+History pre-2026-07-19 is preserved at git tag `pre-avengers-archive`.
+"""
 
 from __future__ import annotations
 
@@ -10,6 +18,41 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
+
+CANONICAL_DOCS = (
+    "README.md",
+    "AGENTS.md",
+    "PRODUCT_AND_STRATEGY.md",
+    "MARKETING.md",
+    "COMMS.md",
+    "REPORTS.md",
+)
+
+ENGINEERING_REFERENCES = (
+    "docs/INVARIANT_REGISTRY.md",
+    "docs/MINGLA_ENGINEERING_HANDBOOK.md",
+    "docs/WORKTREE_STRATEGY.md",
+    "docs/IOS_DEV_BUILD_REBUILD_RUNBOOK.md",
+)
+
+# Legacy roots that must never hold tracked files again. Pathspecs are
+# root-relative, so bare names only match the top-level directories.
+RETIRED_ROOTS = (
+    "Mingla_Artifacts",
+    "Mingla_Roadmap",
+    "outputs",
+    "clade transfer",
+    "investigations",
+    "specs",
+    "reports",
+)
+
+# Per-work-item documentation belongs in the work item's issue, not the repo.
+LEGACY_WORK_DOC = re.compile(
+    r"^(CLOSE_NOTE_|INVESTIGATE_|INVESTIGATION_"
+    r"|SPEC_(ORCH|META)|IMPLEMENT(ATION)?_(ORCH|META)"
+    r"|TEST_(ORCH|META)|DESIGN_(ORCH|META)|HANDOFF_(ORCH|META))"
+)
 
 FORBIDDEN_OUTPUT_DESTINATION = re.compile(
     r"outputs/(INVESTIGATION|SPEC|IMPLEMENTATION|QA|DESIGN|COMPONENT|FLOW|DESIGN_SYSTEM)"
@@ -71,90 +114,53 @@ def check_skill_output_destinations(failures: list[str]) -> None:
 
 def check_gitignore(failures: list[str]) -> None:
     text = read(".gitignore")
-    for required in (".claude/", ".codex/", "outputs/", "Mingla_Artifacts/prompts/"):
+    for required in (".claude/", ".codex/", "outputs/"):
         require(required in text, f".gitignore must keep `{required}` ignored/private", failures)
 
 
-def check_breadcrumbs(failures: list[str]) -> None:
-    breadcrumbs = {
-        "Mingla_Artifacts/SPEC_QUEUE.md": "archive/old_trackers/SPEC_QUEUE.md",
-        "Mingla_Artifacts/TEST_QUEUE.md": "archive/old_trackers/TEST_QUEUE.md",
-        "Mingla_Artifacts/RETEST_LEDGER.md": "archive/old_trackers/RETEST_LEDGER.md",
-    }
-    for path, archive_target in breadcrumbs.items():
-        full_path = ROOT / path
-        require(full_path.exists(), f"{path} breadcrumb is missing", failures)
-        if not full_path.exists():
+def check_retired_roots(failures: list[str]) -> None:
+    for root in RETIRED_ROOTS:
+        tracked = git_ls_files(root)
+        for path in tracked[:5]:
+            failures.append(
+                f"tracked file under retired root `{root}/`: {path} "
+                "(work docs belong in the issue; history is at tag pre-avengers-archive)"
+            )
+        if len(tracked) > 5:
+            failures.append(f"...and {len(tracked) - 5} more under `{root}/`")
+
+
+def check_canonical_docs(failures: list[str]) -> None:
+    tracked = set(git_ls_files())
+    for doc in CANONICAL_DOCS:
+        require(doc in tracked, f"canonical doc missing: {doc}", failures)
+    for doc in ENGINEERING_REFERENCES:
+        require(doc in tracked, f"engineering reference missing: {doc}", failures)
+
+
+def check_no_legacy_work_docs(failures: list[str]) -> None:
+    for path in git_ls_files():
+        p = Path(path)
+        if p.suffix.lower() != ".md":
             continue
-        text = full_path.read_text(encoding="utf-8")
-        require("DEPRECATED" in text, f"{path} must stay labeled deprecated", failures)
-        require("AGENT_HANDOFFS.md" in text, f"{path} must point to AGENT_HANDOFFS.md", failures)
-        require(archive_target in text, f"{path} must point to {archive_target}", failures)
-
-
-def check_archive_index(failures: list[str]) -> None:
-    text = read("Mingla_Artifacts/archive/README.md")
-    for required in (
-        "Mingla_Artifacts/ARTIFACT_MANIFEST.md",
-        "outputs_legacy/",
-        "handoffs_legacy/",
-        "superseded_reports/",
-        "old_trackers/",
-        "Mingla_Artifacts/backups/",
-    ):
-        require(required in text, f"archive README must mention `{required}`", failures)
-
-    require(
-        (ROOT / "Mingla_Artifacts/archive/superseded_reports/README.md").exists(),
-        "archive superseded_reports README is missing",
-        failures,
-    )
-    require(
-        (ROOT / "Mingla_Artifacts/backups/README.md").exists(),
-        "backups README is missing",
-        failures,
-    )
-
-
-def check_roadmap_system(failures: list[str]) -> None:
-    required_paths = (
-        "Mingla_Roadmap/README.md",
-        "Mingla_Roadmap/ROADMAP_MANIFEST.md",
-        "Mingla_Roadmap/FEATURE_REGISTRY.md",
-        "Mingla_Roadmap/HIGH_LEVEL_ROADMAP.md",
-        "Mingla_Roadmap/CURRENT_BUILD.md",
-        "Mingla_Roadmap/NEXT_UP.md",
-        "Mingla_Roadmap/living/PRODUCT_STRATEGY.md",
-        "Mingla_Roadmap/living/GTM_AND_POSITIONING.md",
-        "Mingla_Roadmap/living/CUSTOMER_AND_ICP.md",
-        "Mingla_Roadmap/living/FEATURE_PORTFOLIO.md",
-        "Mingla_Roadmap/archive/README.md",
-        "Mingla_Roadmap/drafts/README.md",
-    )
-    for path in required_paths:
-        require((ROOT / path).exists(), f"roadmap system path is missing: {path}", failures)
-
-    manifest = ROOT / "Mingla_Roadmap/ROADMAP_MANIFEST.md"
-    if manifest.exists():
-        text = manifest.read_text(encoding="utf-8")
-        for required in ("living/", "source-summaries/", "drafts/", "archive/", "Mingla_Artifacts/ARTIFACT_MANIFEST.md"):
-            require(required in text, f"roadmap manifest must mention `{required}`", failures)
+        if LEGACY_WORK_DOC.match(p.name):
+            failures.append(
+                f"per-work-item doc tracked in repo (belongs in its issue): {path}"
+            )
 
 
 def main() -> int:
     failures: list[str] = []
 
-    require(not git_ls_files("outputs"), "tracked files must not live under root outputs/", failures)
-    require(not git_ls_files("clade transfer"), "tracked files must not live under root clade transfer/", failures)
+    check_retired_roots(failures)
+    check_canonical_docs(failures)
+    check_no_legacy_work_docs(failures)
+    check_gitignore(failures)
 
     generated = tracked_existing_generated_outputs()
     for path in generated:
         failures.append(f"tracked generated output exists in worktree: {path}")
 
-    check_gitignore(failures)
-    check_breadcrumbs(failures)
-    check_archive_index(failures)
-    check_roadmap_system(failures)
     check_skill_output_destinations(failures)
 
     if failures:
@@ -164,12 +170,11 @@ def main() -> int:
         return 1
 
     print("Artifact placement check PASS")
-    print("- no tracked files under root outputs/ or clade transfer/")
+    print("- retired roots (Mingla_Artifacts/, Mingla_Roadmap/, outputs/, ...) hold no tracked files")
+    print("- canonical docs and docs/ engineering references are present")
+    print("- no per-work-item docs tracked (work documentation lives in issues)")
     print("- no tracked existing dist/build/web-build artifacts")
-    print("- private prompt/tool roots remain ignored")
-    print("- deprecated queues remain breadcrumbs")
-    print("- Mingla skills avoid stale outputs/* current destinations")
-    print("- Mingla roadmap system paths remain present")
+    print("- private tool roots remain ignored")
     return 0
 
 

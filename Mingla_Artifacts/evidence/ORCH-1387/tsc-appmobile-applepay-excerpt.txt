@@ -1,5 +1,0 @@
-64:src/payments/__tests__/nativeCheckoutFlow_regionGateToast.test.tsx(22,1): error TS2582: Cannot find name 'describe'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha`.
-65:src/payments/__tests__/nativeCheckoutFlow_regionGateToast.test.tsx(23,3): error TS2582: Cannot find name 'it'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha`.
-66:src/payments/__tests__/nativeCheckoutFlow_regionGateToast.test.tsx(25,5): error TS2304: Cannot find name 'expect'.
-67:src/payments/__tests__/nativeCheckoutFlow_regionGateToast.test.tsx(26,5): error TS2304: Cannot find name 'expect'.
-69:src/payments/nativeCheckoutFlow.ts(327,9): error TS2353: Object literal may only specify known properties, and 'applePay' does not exist in type 'PaymentSheetInitInput'.

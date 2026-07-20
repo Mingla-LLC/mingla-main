@@ -4,8 +4,12 @@ on:
   pull_request:
     paths:
       - "README.md"
+      - "AGENTS.md"
+      - "PRODUCT_AND_STRATEGY.md"
+      - "MARKETING.md"
+      - "COMMS.md"
+      - "REPORTS.md"
       - "docs/**"
-      - "Mingla_Artifacts/**"
       - "scripts/docs/**"
       - ".github/workflows/docs-artifact-regression.yml"
       - ".codex/skills/**"
@@ -15,8 +19,12 @@ on:
       - main
     paths:
       - "README.md"
+      - "AGENTS.md"
+      - "PRODUCT_AND_STRATEGY.md"
+      - "MARKETING.md"
+      - "COMMS.md"
+      - "REPORTS.md"
       - "docs/**"
-      - "Mingla_Artifacts/**"
       - "scripts/docs/**"
       - ".github/workflows/docs-artifact-regression.yml"
       - ".codex/skills/**"

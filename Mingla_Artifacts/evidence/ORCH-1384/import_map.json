@@ -1,5 +1,0 @@
-{
-  "imports": {
-    "https://esm.sh/@supabase/supabase-js@2": "./mock_supabase.ts"
-  }
-}

@@ -56,7 +56,6 @@ yarn-error.*
 
 # === Orchestrator artifacts (local operational state) ===
 outputs/
-Mingla_Artifacts/prompts/
 
 # === Native (signing keys) ===
 *.jks
@@ -84,7 +83,6 @@ stripe-values*.md
 *-stripe-secrets.md
 
 # === Provider credentials scratch (never commit) ===
-Mingla_Artifacts/cloudinary_details.md
 resend api key.md
 resend-api-key*.md
 *-resend-keys.md
@@ -115,19 +113,6 @@ RevenueCat-value*.md
 
 .vercel
 
-# === Test/retest/QA evidence directories (heavy screenshots + Metro logs; local-only) ===
-# Added 2026-05-14 after audit found ~103 MB of evidence in working tree.
-# The text reports referencing this evidence ARE committed; the raw evidence
-# stays on disk for local reference, never git history.
-Mingla_Artifacts/evidence/
-Mingla_Artifacts/reports/orch-*-retest*/
-Mingla_Artifacts/reports/orch-*-retest-*/
-Mingla_Artifacts/reports/orch-*-investigation/
-Mingla_Artifacts/reports/orch-*-rescoped/
-Mingla_Artifacts/reports/orch-*-qa/
-Mingla_Artifacts/reports/orch-*-retest*.log
-Mingla_Artifacts/reports/*.mov
-Mingla_Artifacts/evidence/**/*.mov
 vercel-token.md
 
 # Local-only personal secrets file — never commit
@@ -137,7 +122,6 @@ TokensNeeded.md
 
 # === Local-only tooling & working artifacts (repo-hygiene clean slate 2026-07-13) ===
 # Agent/skills tooling and the ad-production working library are local-only
-# (ads consolidated to ~/Desktop/Mingla Ads/; PLAN_THE_DATE stays local like evidence/).
+# (ads consolidated to ~/Desktop/Mingla Ads/).
 .agents/
 skills-lock.json
-Mingla_Artifacts/ads/

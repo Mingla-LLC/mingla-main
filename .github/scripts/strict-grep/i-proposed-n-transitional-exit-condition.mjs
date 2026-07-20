@@ -20,7 +20,7 @@ const TARGET_ROOTS = [
   join(REPO_ROOT, "mingla-business", "src"),
   join(REPO_ROOT, "mingla-business", "app"),
 ];
-const BASELINE_PATH = join(REPO_ROOT, "Mingla_Artifacts", ".transitional-baseline.txt");
+const BASELINE_PATH = join(REPO_ROOT, ".github", "scripts", "strict-grep", "transitional-baseline.txt");
 const FILE_EXTENSIONS = [".ts", ".tsx"];
 const TRANSITIONAL_PATTERN = /\[TRANSITIONAL\]/;
 const EXIT_KEYWORDS = [
@@ -119,7 +119,7 @@ if (staleBaselineEntries.length > 0) {
   for (const entry of staleBaselineEntries) {
     console.warn(`  - ${entry}`);
   }
-  console.warn("Fix: remove stale entries from Mingla_Artifacts/.transitional-baseline.txt.");
+  console.warn("Fix: remove stale entries from .github/scripts/strict-grep/transitional-baseline.txt.");
 }
 
 if (newViolations.length > 0) {

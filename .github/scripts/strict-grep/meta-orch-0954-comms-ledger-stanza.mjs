@@ -28,8 +28,12 @@ const SKIPPED_GITIGNORED = [
   '.codex/skills/*/SKILL.md (gitignored — Codex agent definitions are operator-local)',
 ];
 
-const REQUIRED_LEDGER_HEADING = '## Read the Comms Ledger on entry (MANDATORY)';
-const REQUIRED_2SECTION_HEADING = '## Standardized 2-Section Output (MANDATORY, every response, every turn)';
+// Issue #974 (2026-07-19): COMMS_LEDGER.md retired in favor of COMMS.md and the
+// long-form 2-section template compressed into "## Response style". The contract
+// is unchanged in substance: agents must read comms on entry and answer in the
+// two-section format; only the heading text moved.
+const REQUIRED_LEDGER_HEADING = '## Read COMMS.md on entry (MANDATORY)';
+const REQUIRED_2SECTION_HEADING = '## Response style';
 
 const failures = [];
 let checked = 0;

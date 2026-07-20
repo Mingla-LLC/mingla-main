@@ -1,7 +1,0 @@
-appId: com.sethogieva.minglabusiness
----
-- tapOn:
-    point: "38%,25%"
-- waitForAnimationToEnd:
-    timeout: 10000
-- takeScreenshot: orch-0978-after-select-first-brand
