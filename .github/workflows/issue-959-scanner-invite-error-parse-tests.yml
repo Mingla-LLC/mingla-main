@@ -43,9 +43,13 @@ jobs:
           cache: npm
           cache-dependency-path: mingla-business/package-lock.json
       - run: npm ci
-      # EXPLICIT registry — add a new #959 suite by appending a path; never glob.
-      - name: Run Issue #959 scanner-invite error-parse jest suite
+      # Runs BOTH #959 suites via the shared `issue_959` filename pattern: the
+      # implementor happy-path suite (issue_959_scanner_functions_error_parse.test.ts)
+      # AND the tester adversarial suite (issue_959_scanner_error_parse.tester.test.ts).
+      # Both are fails-on-revert regression tests; the dual regression gate requires
+      # both to run. A new suite named issue_959_* is picked up automatically.
+      - name: "Issue #959: scanner-invite error-parse jest suites (implementor + tester)"
         run: >
           npx jest
-          src/services/__tests__/issue_959_scanner_functions_error_parse.test.ts
+          issue_959
           --runInBand
