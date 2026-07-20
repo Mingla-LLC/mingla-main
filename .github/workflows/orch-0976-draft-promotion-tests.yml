@@ -56,6 +56,7 @@ jobs:
         run: >
           npx jest
           src/utils/__tests__/draftPromotion.orch0976.test.ts
+          src/utils/__tests__/draftPromotionRaces.orch0976.tester.test.ts
           src/hooks/__tests__/useServerDraftEvents.orch0976.activeDraft.test.tsx
           src/components/rsvp/__tests__/RsvpRouteKeystrokeSurvives.orch0976.test.tsx
           src/components/event/__tests__/EventRouteKeystrokeSurvives.orch0976.test.tsx
