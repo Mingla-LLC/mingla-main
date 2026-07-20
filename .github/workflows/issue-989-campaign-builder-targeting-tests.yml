@@ -1,0 +1,83 @@
+name: ISSUE-989 Campaign Builder Real Targeting Tests
+
+# ISSUE-989 [campaign-builder-real-targeting] — the fails-on-revert regression
+# suites for Wave 2 of #977: real city + radius + interest targeting (replacing
+# the country-only default) + age/gender on all platforms. Before this, the
+# builder targeted whole COUNTRIES only — city+radius was dark behind
+# TARGETING_SEARCH_PROXY_ENABLED=false (the server-side city search never
+# existed), interests were unreachable on all 5 platforms, and age/gender
+# silently dropped for Snap/Google/Reddit.
+#
+# Two suites, two runners:
+#   1. mingla-admin (node:test — pure ESM logic + fs source assertions): the
+#      targeting.js per-platform mappers + payload.js real per-platform shapes +
+#      the TARGETING_SEARCH_PROXY_ENABLED flip + the #987 P3 plannedRows fix.
+#   2. the admin-ad-targeting-search edge fn (deno test): the Meta/TikTok
+#      city+interest parsers/filters + the create-path consumption shapes
+#      (buildTikTokAdGroupBody interest_category_ids, normalizeMetaCities,
+#      buildMetaInterestFlexibleSpec) + the config.toml registration.
+#
+# No other CI job runs these #989 suites, so without this dedicated workflow
+# they would exist but never gate (the dark-test surface trap, ORCH-1383).
+# EXPLICIT registry (never a glob) — append a path.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mingla-admin/src/**"
+      - "supabase/functions/admin-ad-targeting-search/**"
+      - "supabase/functions/_shared/meta.ts"
+      - "supabase/functions/_shared/tiktok.ts"
+      - "supabase/functions/admin-ad-create-campaign/**"
+      - ".github/workflows/issue-989-campaign-builder-targeting-tests.yml"
+  pull_request:
+    paths:
+      - "mingla-admin/src/**"
+      - "supabase/functions/admin-ad-targeting-search/**"
+      - "supabase/functions/_shared/meta.ts"
+      - "supabase/functions/_shared/tiktok.ts"
+      - "supabase/functions/admin-ad-create-campaign/**"
+      - ".github/workflows/issue-989-campaign-builder-targeting-tests.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-989-admin-node-test:
+    name: "ISSUE-989: campaign-builder real targeting (admin node:test)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: mingla-admin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # EXPLICIT registry — the ISSUE-989 implementor suite (targeting mappers +
+      # payload shapes + flag flip + #987 P3). Pure ESM + fs source assertions;
+      # no node_modules required.
+      - name: Run ISSUE-989 campaign-builder targeting suite
+        run: >
+          node --test
+          src/__tests__/issue989_targeting.test.js
+
+  issue-989-targeting-search-deno-test:
+    name: "ISSUE-989: admin-ad-targeting-search resolvers (deno test)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      # EXPLICIT registry — the ISSUE-989 edge-fn suite: Meta/TikTok city+interest
+      # parsers/filters, the create-path consumption shapes, config registration.
+      # Hermetic (no network — pure parsers over fixture payloads + fs reads).
+      - name: Run ISSUE-989 targeting-search Deno tests
+        run: >
+          deno test --allow-read --allow-env --no-check
+          supabase/functions/admin-ad-targeting-search/__tests__/issue989_targeting_search.test.ts

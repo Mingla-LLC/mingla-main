@@ -568,7 +568,11 @@ describe("SC-10 create-paused (source assertions)", () => {
 
   it("spec'd-but-missing endpoints stay behind feature flags (fail-soft, never invented)", () => {
     const flags = read(path.join(ADMIN_SRC, "lib/adBuilder/flags.js"));
-    assert.ok(flags.includes("TARGETING_SEARCH_PROXY_ENABLED = false"));
+    // ISSUE-989: the targeting-search proxy LANDED (admin-ad-targeting-search
+    // deployed, city+interest resolvers PROVEN live) — its flag is now flipped
+    // ON, exactly as flags.js documented ("flip ONLY when its endpoint lands").
+    // The other two endpoints remain unbuilt, so their flags stay false.
+    assert.ok(flags.includes("TARGETING_SEARCH_PROXY_ENABLED = true"));
     assert.ok(flags.includes("API_AD_PREVIEWS_ENABLED = false"));
     assert.ok(flags.includes("FREQUENCY_CAP_CONTROL_ENABLED = false"));
   });
