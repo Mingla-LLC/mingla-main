@@ -1,0 +1,67 @@
+name: ISSUE-986 Campaign Builder Platform Picker Tests
+
+# ISSUE-986 [campaign-builder-platform-picker] — the fails-on-revert regression
+# suite for the explicit platform picker (Wave 1 of #977). Before this, the
+# 10-step builder had NO way to choose platforms: the channel set was silently
+# auto-derived (planChannels eligibility ∩ splitBudget) and a modest budget
+# built Meta ONLY. The fix makes the operator's pick in the Channel-health step
+# the single source of truth (applyChannelSelection folds it — plus the special-
+# ad-category compliance exclusions — into planChannels' output, so every
+# downstream step and the create loop respect it), and lets the operator
+# redirect the budget off Meta.
+#
+# These are node:test suites (mingla-admin's house runner — pure ESM logic +
+# fs source assertions, no node_modules required). No other CI job runs the
+# mingla-admin campaign-builder suites, so without this dedicated job the tests
+# would exist but never gate (the dark-test surface trap, ORCH-1383). EXPLICIT
+# registry (never a glob) — append a path.
+#
+# mingla-tester PR #987 addition: issue986_platform_picker.adversarial.test.js
+# — the independent tester adversarial regression suite (cross-consistency of
+# a picked subset across splitBudget/StepCopy/the real create payload/Review
+# together; a budget-floor ineligibility gate + garbage/malformed
+# selectedPlatforms + an immutability proof, as a different eligibility-safety
+# angle than the implementor's market-gate case; a compliance round-trip +
+# repeated re-selection resistance + budget-extreme Diversify-strategy funding
+# proof + a payload-shape structural proof; degenerate select-NONE cross-
+# checked against ISSUE-979 Bug-4's unfundedEligibleChannels, plus a rapid-
+# toggle determinism proof against the real togglePlatform reducer). Appended
+# here so it gates like #979/#980's tester suites did, never a dark test.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mingla-admin/src/**"
+      - ".github/workflows/issue-986-campaign-builder-platform-picker-tests.yml"
+  pull_request:
+    paths:
+      - "mingla-admin/src/**"
+      - ".github/workflows/issue-986-campaign-builder-platform-picker-tests.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-986-node-test:
+    name: "ISSUE-986: campaign-builder platform picker (fails-on-revert regression suites)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: mingla-admin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # EXPLICIT registry — the ISSUE-986 implementor suite PLUS the tester's
+      # adversarial suite (registered here so BOTH gate, never a dark test
+      # surface — ORCH-1383). Pure ESM + fs source assertions; no node_modules
+      # required.
+      - name: Run ISSUE-986 campaign-builder platform-picker suites
+        run: >
+          node --test
+          src/__tests__/issue986_platform_picker.test.js
+          src/__tests__/issue986_platform_picker.adversarial.test.js

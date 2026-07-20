@@ -39,7 +39,8 @@ import {
 } from "../services/adEngineService";
 import { resolveGoalForPayload, resolveMetaObjective } from "../lib/adBuilder/objectiveResolver";
 import { classifyCreateResult } from "../lib/adBuilder/createResult";
-import { planChannels, splitBudget } from "../lib/adBuilder/channelPlan";
+import { applyChannelSelection, planChannels, splitBudget } from "../lib/adBuilder/channelPlan";
+import { complianceExclusions } from "../lib/adBuilder/compliance";
 import { validateAudience, DEFAULT_AGE_MAX, DEFAULT_AGE_MIN, DEFAULT_COUNTRIES } from "../lib/adBuilder/audienceRules";
 import { validateBudget } from "../lib/adBuilder/budgetRules";
 import { validateCopy } from "../lib/adBuilder/copyRules";
@@ -82,6 +83,13 @@ export function CampaignBuilderPage() {
   const [recheckBusy, setRecheckBusy] = useState(null);
   const [connections, setConnections] = useState({});
   const [goalIds, setGoalIds] = useState(["traffic"]);
+  // ISSUE-986 [Campaign Builder platform picker] — the operator's explicit
+  // platform selection, made in the Channel-health step. `null` = the default
+  // "all currently-eligible platforms selected"; an array = an explicit pick.
+  // This is the SINGLE SOURCE OF TRUTH for the channel set (superseding the
+  // silent eligibility∩concentrate auto-derivation). It can only narrow WITHIN
+  // the eligible set — an ineligible platform can never be selected in.
+  const [selectedPlatforms, setSelectedPlatforms] = useState(null);
   const [destination, setDestination] = useState(null);
   const [audience, setAudience] = useState({
     countries: DEFAULT_COUNTRIES,
@@ -204,9 +212,49 @@ export function CampaignBuilderPage() {
       }),
     [preflightRows, goalIds, audience.countries, budget.totalDailyCents, budget.allowlist, connections, metaGoal],
   );
+  // ── ISSUE-986: the platform picker resolves the channel set ──
+  // The candidate set (`channelRows`) is what the picker renders. The COMPLIANCE
+  // guard drops any platform that can't declare an active special ad category
+  // (only Meta can) — a special-category ad must never silently run un-declared
+  // on TikTok/Snap/Reddit/Google. `plannedRows` folds the operator's selection
+  // AND the compliance exclusions into `eligible`, so every downstream consumer
+  // (splitBudget, StepCopy/Budget/Creative/Audience, launchSummary, create)
+  // respects the picked set with no further wiring.
+  const eligiblePlatforms = useMemo(
+    () => channelRows.filter((r) => r.eligible).map((r) => r.platform),
+    [channelRows],
+  );
+  const complianceExcluded = useMemo(
+    () => complianceExclusions(specialAdCategory, eligiblePlatforms),
+    [specialAdCategory, eligiblePlatforms],
+  );
+  const plannedRows = useMemo(
+    () => applyChannelSelection({ channelRows, selectedPlatforms, excluded: complianceExcluded }),
+    [channelRows, selectedPlatforms, complianceExcluded],
+  );
+  // The effective selected+buildable platform ids (post eligibility + compliance).
+  const effectivePlatforms = useMemo(
+    () => plannedRows.filter((r) => r.eligible).map((r) => r.platform),
+    [plannedRows],
+  );
+
+  const togglePlatform = useCallback((platform) => {
+    setSelectedPlatforms((prev) => {
+      // Materialize the "all eligible" default on the first explicit toggle so
+      // the operator owns the set from then on.
+      const current = prev === null ? eligiblePlatforms : prev;
+      return current.includes(platform)
+        ? current.filter((p) => p !== platform)
+        : [...current, platform];
+    });
+  }, [eligiblePlatforms]);
+
   const allocations = useMemo(
-    () => splitBudget({ totalDailyCents: budget.totalDailyCents, channelRows, strategy: budget.strategy }),
-    [budget.totalDailyCents, budget.strategy, channelRows],
+    // ISSUE-986: split across the PICKED channel set (plannedRows) — never the
+    // full eligible set. The picker is the single source of truth for who gets
+    // funded; a deselected/compliance-excluded channel is already ineligible here.
+    () => splitBudget({ totalDailyCents: budget.totalDailyCents, channelRows: plannedRows, strategy: budget.strategy }),
+    [budget.totalDailyCents, budget.strategy, plannedRows],
   );
 
   // ISSUE-980 [Campaign Builder clarity] finding #3: the SAME coherent
@@ -230,8 +278,11 @@ export function CampaignBuilderPage() {
       case "lane":
         return lane === "consumer";
       case "preflight":
+        // ISSUE-986: at least one platform must be healthy AND picked — the
+        // picker can't proceed with an empty channel set.
         return Boolean(preflightRows) &&
-          preflightRows.some((r) => r.overall === "green" || r.overall === "amber");
+          preflightRows.some((r) => r.overall === "green" || r.overall === "amber") &&
+          effectivePlatforms.length > 0;
       case "goal":
         return goalIds.length > 0;
       case "destination":
@@ -267,7 +318,9 @@ export function CampaignBuilderPage() {
     if (stepValid(stepId)) return null;
     switch (stepId) {
       case "preflight":
-        return "No channel can run an ad right now. Fix at least one blocker above to continue.";
+        return effectivePlatforms.length === 0 && preflightRows?.some((r) => r.overall === "green" || r.overall === "amber")
+          ? "Pick at least one platform to build for."
+          : "No channel can run an ad right now. Fix at least one blocker above to continue.";
       case "goal":
         return "Pick at least one goal.";
       case "destination":
@@ -386,7 +439,7 @@ export function CampaignBuilderPage() {
   };
 
   const summary = buildLaunchSummary({
-    channelRows,
+    channelRows: plannedRows,
     allocations,
     goalIds,
     resolvedGoal: resolvedGoalForDisplay,
@@ -448,6 +501,11 @@ export function CampaignBuilderPage() {
               recheckBusy={recheckBusy}
               onRecheck={(platform) => loadPreflight(platform)}
               onRecheckAll={() => loadPreflight()}
+              channelRows={channelRows}
+              selectedPlatforms={effectivePlatforms}
+              onTogglePlatform={togglePlatform}
+              complianceExcluded={complianceExcluded}
+              specialAdCategory={specialAdCategory}
             />
           )}
           {stepId === "goal" && <StepGoal goalIds={goalIds} onGoalsChange={setGoalIds} />}
@@ -455,21 +513,21 @@ export function CampaignBuilderPage() {
             <StepDestination destination={destination} onDestinationChange={setDestination} />
           )}
           {stepId === "audience" && (
-            <StepAudience audience={audience} onAudienceChange={setAudience} channelRows={channelRows} />
+            <StepAudience audience={audience} onAudienceChange={setAudience} channelRows={plannedRows} />
           )}
           {stepId === "budget" && (
-            <StepBudget budget={budget} onBudgetChange={setBudget} channelRows={channelRows} />
+            <StepBudget budget={budget} onBudgetChange={setBudget} channelRows={plannedRows} />
           )}
           {stepId === "creative" && (
             <StepCreative
               creative={creative}
               onCreativeChange={setCreative}
-              channelRows={channelRows}
+              channelRows={plannedRows}
               destination={destination}
             />
           )}
           {stepId === "copy" && (
-            <StepCopy copy={copy} onCopyChange={setCopy} channelRows={channelRows} />
+            <StepCopy copy={copy} onCopyChange={setCopy} channelRows={plannedRows} />
           )}
           {stepId === "policy" && (
             <StepPolicy

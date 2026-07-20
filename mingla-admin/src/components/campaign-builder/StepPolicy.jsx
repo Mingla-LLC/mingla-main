@@ -15,9 +15,15 @@ import {
   SPECIAL_CATEGORY_CASCADE,
   runPolicyPrecheck,
 } from "../../lib/adBuilder/policyLinter";
+import { PLATFORM_LABELS } from "../../lib/adBuilder/channelPlan";
+import { complianceExcludedPlatforms, isSpecialCategoryActive } from "../../lib/adBuilder/compliance";
 
 export function StepPolicy({ copy, creative, channelRows, specialAdCategory, onSpecialAdCategoryChange }) {
   const channelSet = channelRows.filter((r) => r.eligible).map((r) => r.platform);
+  // ISSUE-986 compliance guard: only Meta can DECLARE a special ad category, so
+  // picking one excludes the other four from the build (never a silent
+  // undeclared special-category ad). Name them here where the category is set.
+  const complianceExcluded = complianceExcludedPlatforms(specialAdCategory, channelSet);
   const copyText = [copy.primary, copy.headline, copy.description, ...(copy.googleHeadlines ?? []), ...(copy.googleDescriptions ?? [])]
     .filter(Boolean)
     .join("\n");
@@ -102,6 +108,21 @@ export function StepPolicy({ copy, creative, channelRows, specialAdCategory, onS
             <ul className="list-disc pl-4 space-y-0.5">
               {SPECIAL_CATEGORY_CASCADE.map((line) => <li key={line}>{line}</li>)}
             </ul>
+          </AlertCard>
+        )}
+
+        {/* ISSUE-986: a special ad category can only be DECLARED on Meta — the
+            other four platforms have no such field, so a special-category build
+            there would run un-declared. They're excluded from the build, never
+            silently run. */}
+        {isSpecialCategoryActive(specialAdCategory) && complianceExcluded.length > 0 && (
+          <AlertCard variant="warning" title="Only Meta can run this special-category campaign">
+            <p>
+              {complianceExcluded.map((p) => PLATFORM_LABELS[p] ?? p).join(", ")}{" "}
+              {complianceExcluded.length === 1 ? "has" : "have"} no special-ad-category field, so
+              building there would be an undeclared special-category ad. They're excluded from this
+              build — set the category back to "None" to include them, or continue on Meta only.
+            </p>
           </AlertCard>
         )}
       </div>

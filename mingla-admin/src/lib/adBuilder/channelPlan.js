@@ -179,6 +179,48 @@ export function planChannels(input) {
 }
 
 /**
+ * ISSUE-986 [Campaign Builder platform picker] — fold the operator's explicit
+ * platform-picker selection (and any compliance exclusions) into planChannels'
+ * output, so EVERY downstream consumer that keys off `eligible` (splitBudget,
+ * StepCopy, StepBudget, launchSummary, StepCreative, StepAudience) respects the
+ * selection with no further change. The picker is the SINGLE SOURCE OF TRUTH
+ * for the channel set — but it can only ever NARROW within the eligible set: a
+ * platform that planChannels marked ineligible stays ineligible (its safety-gate
+ * reason is preserved verbatim); selection never forces a blocked channel in.
+ *
+ * @param {object} input
+ * @param {Array}  input.channelRows        planChannels() output (the candidates).
+ * @param {string[]|null} input.selectedPlatforms  operator's picked set, or null
+ *   = the default "all currently-eligible platforms selected".
+ * @param {Record<string,string>} [input.excluded]  platform → reason to force
+ *   OFF regardless of selection (e.g. compliance.complianceExclusions) — takes
+ *   precedence over selection so the reason on screen is the important one.
+ * @returns {Array} channelRows with `eligible`/`excludedReason` reflecting the
+ *   selection; each narrowed row is tagged `deselected` or `complianceExcluded`.
+ */
+export function applyChannelSelection({ channelRows = [], selectedPlatforms = null, excluded = {} }) {
+  const eligiblePlatforms = channelRows.filter((r) => r.eligible).map((r) => r.platform);
+  const selectedSet = selectedPlatforms === null
+    ? new Set(eligiblePlatforms)
+    : new Set(selectedPlatforms);
+  return channelRows.map((row) => {
+    if (!row.eligible) return row; // a blocked channel keeps its safety-gate reason.
+    if (excluded[row.platform]) {
+      return { ...row, eligible: false, excludedReason: excluded[row.platform], complianceExcluded: true };
+    }
+    if (!selectedSet.has(row.platform)) {
+      return {
+        ...row,
+        eligible: false,
+        excludedReason: "Not selected in Channel health — turn it back on there to build it.",
+        deselected: true,
+      };
+    }
+    return row;
+  });
+}
+
+/**
  * Client-side split of one total daily budget across eligible channels.
  * Blueprint §1.4 [DESIGN DECISION]: concentrate by default — a channel is
  * funded only at ≥ max(floor, viability); "diversify into starvation" is the
@@ -187,6 +229,16 @@ export function planChannels(input) {
  * sends each channel its allocated amount as that campaign's daily budget.
  *
  * Priority order mirrors the blueprint's greedy fill: Meta > Google.
+ *
+ * ISSUE-986: the operator's platform pick reaches this function as the eligible
+ * set — applyChannelSelection has already dropped un-picked (and compliance-
+ * excluded) channels to ineligible, so the split only ever runs across the
+ * PICKED channels. That is what fixes the "only Meta got built" complaint: at a
+ * budget that funds a single slot, the top-PRIORITY eligible channel wins — and
+ * because the operator can now deselect Meta, that slot goes to the channel they
+ * actually want (previously Meta always won by priority, un-overridable). Picked
+ * channels the budget can't fund at viability are surfaced by
+ * unfundedEligibleChannels (Bug-4), never silently dropped.
  */
 export function splitBudget({ totalDailyCents, channelRows, strategy = "auto" }) {
   const eligible = channelRows.filter((r) => r.eligible);

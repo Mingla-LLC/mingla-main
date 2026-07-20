@@ -131,6 +131,10 @@ export function StepCopy({ copy, onCopyChange, channelRows }) {
   const googleEligible = platforms.includes("google");
   const validation = validateCopy(copy, platforms);
   const strip = truncationPreview(copy, platforms);
+  // ISSUE-986: name the platforms this copy is actually being built for (the
+  // picked set from Channel health) so the per-channel counters below are never
+  // a mystery.
+  const buildingFor = platforms.map((p) => PLATFORM_LABELS[p] ?? p).join(", ");
 
   return (
     <div className="space-y-4">
@@ -140,6 +144,16 @@ export function StepCopy({ copy, onCopyChange, channelRows }) {
           Write once — the strip below shows exactly what each channel will do to it. Never
           discover a character limit from a rejection.
         </p>
+        {platforms.length > 0 ? (
+          <p className="text-xs text-[var(--color-text-secondary)] mt-1" data-testid="copy-building-for">
+            Building this copy for <span className="font-medium">{buildingFor}</span>. Change the
+            platforms back in <span className="font-medium">Channel health</span>.
+          </p>
+        ) : (
+          <p className="text-xs text-[var(--color-warning-700)] mt-1" data-testid="copy-building-for">
+            No platforms selected — pick at least one in Channel health to write copy for it.
+          </p>
+        )}
       </div>
 
       <div>

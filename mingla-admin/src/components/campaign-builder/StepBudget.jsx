@@ -33,6 +33,8 @@ export function StepBudget({ budget, onBudgetChange, channelRows }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const set = (patch) => onBudgetChange({ ...budget, ...patch });
   const errors = validateBudget({ totalDailyCents: budget.totalDailyCents, channelRows });
+  // ISSUE-986: `channelRows` here is already the PICKED set (plannedRows) — the
+  // split preview runs across exactly the platforms the operator chose.
   const allocations = splitBudget({
     totalDailyCents: budget.totalDailyCents,
     channelRows,
