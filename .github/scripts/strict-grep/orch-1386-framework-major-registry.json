@@ -381,7 +381,7 @@
       "manifest": {
         "react": "19",
         "react-dom": "19",
-        "vite": "8"
+        "vite": "7"
       },
       "lockfile": {
         "react": [
@@ -391,7 +391,7 @@
           "19"
         ],
         "vite": [
-          "8"
+          "7"
         ]
       }
     },
