@@ -236,6 +236,51 @@ interface DestinationInput {
   event_id?: string;
 }
 
+/**
+ * ISSUE-979 Bug 3 [Campaign Builder correctness] — the GLOBAL compliance intent
+ * (AI-generated disclosure + special-ad-category) now reaches every platform's
+ * create path via `body.compliance` (the builder used to send it to Meta only,
+ * silently dropping it for the other four). Meta APPLIES both (self_ai_disclosure
+ * + special_ad_categories, handled inline in the Meta branch). The other four
+ * platforms have NO usable equivalent field on their create API — but the drop
+ * must be DOCUMENTED and OBSERVABLE, never silent.
+ *
+ * Researched per-platform capability (2026-07, adapters + create-campaign):
+ *   - tiktok:   aigc_disclosure_type is CUSTOMIZED_USER-only and unreachable for
+ *               our account (PROOF T-P6); no special-ad-category field.
+ *   - snapchat: no AI-disclosure field; no special-ad-category field.
+ *   - reddit:   no AI-disclosure field; no special-ad-category field.
+ *   - google:   no general special-ad-category field (account-level policy/
+ *               verification, not a create field); no RSA AI-disclosure field;
+ *               only containsEuPoliticalAdvertising (already declared
+ *               DOES_NOT_CONTAIN — G-14).
+ */
+const COMPLIANCE_UNSUPPORTED_REASON: Record<string, string> = {
+  tiktok:
+    "TikTok's aigc_disclosure_type is CUSTOMIZED_USER-only (unreachable for this account, T-P6) and it exposes no special-ad-category field",
+  snapchat: "Snapchat's create API exposes no AI-disclosure field and no special-ad-category field",
+  reddit: "Reddit's create API exposes no AI-disclosure field and no special-ad-category field",
+  google:
+    "Google Ads exposes no general special-ad-category field (account-level policy) and no RSA AI-disclosure field; only containsEuPoliticalAdvertising (already declared)",
+};
+
+/**
+ * Record + observe the compliance drop for a platform whose API cannot carry
+ * the flags. No-op when nothing was set. Never silent when something was set.
+ */
+function documentComplianceDrop(platform: string, compliance: unknown): void {
+  const c = (compliance ?? {}) as Record<string, unknown>;
+  const specialCategory = typeof c.specialAdCategory === "string" ? c.specialAdCategory : "NONE";
+  const aiGenerated = c.aiGenerated === true;
+  if (specialCategory === "NONE" && !aiGenerated) return; // nothing set — nothing to note
+  const reason = COMPLIANCE_UNSUPPORTED_REASON[platform] ?? `${platform} exposes no compliance-flag field`;
+  console.warn(
+    `[admin-ad-create-campaign] ${platform}: compliance intent received ` +
+      `(special_ad_category=${specialCategory}, ai_generated=${aiGenerated}) but cannot be ` +
+      `expressed on this platform — ${reason}. Documented, not applied (ISSUE-979 Bug 3).`,
+  );
+}
+
 serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
@@ -316,6 +361,10 @@ serve(async (req: Request): Promise<Response> => {
 
     // (1) Pure input validation — all 422s BEFORE any provider call.
     const creativeG = (body.creative ?? {}) as Record<string, unknown>;
+    // ISSUE-979 Bug 3: the global compliance intent reaches Google's create path
+    // now. Google has no general special-ad-category field and no RSA AI field —
+    // documented + observable, never silently dropped.
+    documentComplianceDrop("google", body.compliance);
     const rsa = validateGoogleRsa(creativeG.headlines, creativeG.descriptions);
     if (!rsa.ok) return json({ error: rsa.detail, detail: rsa.message }, 422);
     const headlines = (creativeG.headlines as string[]).map((h) => h.trim());
@@ -821,6 +870,10 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     const creativeS = (body.creative ?? {}) as Record<string, unknown>;
+    // ISSUE-979 Bug 3: the global compliance intent reaches Snapchat's create
+    // path now. Snapchat has no AI-disclosure and no special-ad-category field —
+    // documented + observable, never silently dropped.
+    documentComplianceDrop("snapchat", body.compliance);
     const headlineCheck = validateSnapchatHeadline(creativeS.headline);
     if (!headlineCheck.ok) {
       return json({ error: headlineCheck.detail, detail: headlineCheck.message }, 422);
@@ -1411,6 +1464,11 @@ serve(async (req: Request): Promise<Response> => {
     const bidPriceCentsT = bidPriceCentsRawT as number | undefined;
 
     const creativeT = (body.creative ?? {}) as Record<string, unknown>;
+    // ISSUE-979 Bug 3: the global compliance intent reaches TikTok's create path
+    // now. TikTok's aigc_disclosure_type is CUSTOMIZED_USER-only (unreachable,
+    // T-P6) and it has no special-ad-category field — documented + observable,
+    // never silently dropped.
+    documentComplianceDrop("tiktok", body.compliance);
     const adTextT = typeof creativeT.ad_text === "string"
       ? creativeT.ad_text.trim()
       : typeof creativeT.message === "string"
@@ -1963,6 +2021,10 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     const creativeR = (body.creative ?? {}) as Record<string, unknown>;
+    // ISSUE-979 Bug 3: the global compliance intent reaches Reddit's create path
+    // now. Reddit has no AI-disclosure and no special-ad-category field —
+    // documented + observable, never silently dropped.
+    documentComplianceDrop("reddit", body.compliance);
     const headlineR = typeof creativeR.headline === "string"
       ? creativeR.headline.trim()
       : typeof creativeR.message === "string"
@@ -2401,6 +2463,11 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   // ── 3. special_ad_categories (M-4/GR-56: CREDIT retired; restriction cascade). ─
+  // ISSUE-979 Bug 3: Meta is the platform that APPLIES the global compliance
+  // intent — special_ad_categories here + self_ai_disclosure in the creative
+  // (creative.ai_generated below). The platform-neutral body.compliance mirror
+  // is redundant for Meta (these API-shaped keys are authoritative) and is only
+  // consumed by the other four branches, which cannot express it.
   const specialValidation = validateSpecialAdCategories(body.special_ad_categories);
   if (!specialValidation.ok) {
     return json({ error: specialValidation.detail, detail: specialValidation.message }, 422);
