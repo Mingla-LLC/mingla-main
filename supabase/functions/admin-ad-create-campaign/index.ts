@@ -242,6 +242,49 @@ interface DestinationInput {
 }
 
 /**
+ * ISSUE-1002 [Campaign Builder multi-destination fan-out] — the request now
+ * accepts a `destinations: DestinationInput[]` array (the multi-select set) in
+ * addition to the legacy singular `destination`. The wizard fans out one create
+ * call per (destination × platform) — architecturally identical to the existing
+ * per-platform fan-out — so EACH call carries the single destination it builds an
+ * ad for (as the first/only element of `destinations`, or the legacy singular
+ * `destination`), plus a shared `destination_group_id` that ties the whole
+ * fan-out together (persisted as ad_campaigns.dest_group_id).
+ *
+ * This ONE resolver replaces the 5×-copy-pasted `(body.destination ?? {})` pick
+ * (ISSUE-977 Lane C discovery #2) and adds array tolerance. It deliberately does
+ * NOT merge the five per-platform resolve-against-view blocks below — those are
+ * genuinely platform-specific (different views/columns/URL builders) and merging
+ * them would be an over-refactor that risks the Wave 0–3 behaviour.
+ *
+ * Backward compatible: a body with only the singular `destination` (every
+ * pre-1002 caller, and every single-destination build) resolves byte-identically.
+ */
+function pickCallDestination(body: Record<string, unknown>): DestinationInput {
+  const single = body.destination;
+  if (single && typeof single === "object" && !Array.isArray(single)) {
+    return single as DestinationInput;
+  }
+  const list = body.destinations;
+  if (Array.isArray(list) && list.length > 0 && list[0] && typeof list[0] === "object") {
+    return list[0] as DestinationInput;
+  }
+  return {} as DestinationInput;
+}
+
+/**
+ * ISSUE-1002 — the shared fan-out group id (optional, nullable). Present on every
+ * call of a multi-destination fan-out so the N resulting ad_campaigns rows share
+ * it; absent (→ NULL) for a single-destination build, keeping that path
+ * byte-identical to before.
+ */
+function pickDestGroupId(body: Record<string, unknown>): string | null {
+  return typeof body.destination_group_id === "string" && body.destination_group_id.trim()
+    ? body.destination_group_id.trim()
+    : null;
+}
+
+/**
  * ISSUE-979 Bug 3 [Campaign Builder correctness] — the GLOBAL compliance intent
  * (AI-generated disclosure + special-ad-category) now reaches every platform's
  * create path via `body.compliance` (the builder used to send it to Meta only,
@@ -319,6 +362,11 @@ serve(async (req: Request): Promise<Response> => {
   const lane = body.lane ?? "consumer";
   if (!isPlatform(platform)) return json({ error: "validation_error", detail: "platform_invalid" }, 400);
   if (!isLane(lane)) return json({ error: "validation_error", detail: "lane_invalid" }, 400);
+
+  // ISSUE-1002 [multi-destination fan-out] — the shared group id for the N
+  // ad_campaigns rows this fan-out produces (one call per destination × platform).
+  // NULL for single-destination/legacy builds → those rows are byte-identical.
+  const destGroupId = pickDestGroupId(body);
 
   const name = typeof body.name === "string" ? body.name.trim() : "";
   if (!name) return json({ error: "validation_error", detail: "name_required" }, 400);
@@ -423,7 +471,7 @@ serve(async (req: Request): Promise<Response> => {
       }
     }
 
-    const destinationG = (body.destination ?? {}) as DestinationInput;
+    const destinationG = pickCallDestination(body); // ISSUE-1002: singular or destinations[0]
     const pageTypeG = destinationG.page_type ?? "";
     const brandSlugG = typeof destinationG.brand_slug === "string"
       ? destinationG.brand_slug.trim()
@@ -628,6 +676,7 @@ serve(async (req: Request): Promise<Response> => {
           dest_event_id: destEventIdG,
           dest_url: destUrlG,
           dest_smart_link: trackingUrlTemplate, // A4.f-demoted slot: tracking template, never the creative link
+          dest_group_id: destGroupId, // ISSUE-1002: shared fan-out group (NULL for single-destination)
           request_id: requestIdG,
           created_by: user.id,
         })
@@ -892,7 +941,7 @@ serve(async (req: Request): Promise<Response> => {
       ? creativeS.brand_name.trim()
       : undefined;
 
-    const destinationS = (body.destination ?? {}) as DestinationInput;
+    const destinationS = pickCallDestination(body); // ISSUE-1002: singular or destinations[0]
     const pageTypeS = destinationS.page_type ?? "";
     const brandSlugS = typeof destinationS.brand_slug === "string"
       ? destinationS.brand_slug.trim()
@@ -1207,6 +1256,7 @@ serve(async (req: Request): Promise<Response> => {
           dest_url: destUrlS,
           // A4.f-demoted slot: stored for attribution reference, never sent to Snap.
           dest_smart_link: snapSmartLink,
+          dest_group_id: destGroupId, // ISSUE-1002: shared fan-out group (NULL for single-destination)
           request_id: requestIdS,
           created_by: user.id,
         })
@@ -1520,7 +1570,7 @@ serve(async (req: Request): Promise<Response> => {
     // deduped, capped). Empty when none picked → broad targeting unchanged.
     const interestCategoryIdsT = normalizeTikTokInterestCategoryIds(targetingT.interest_category_ids);
 
-    const destinationT = (body.destination ?? {}) as DestinationInput;
+    const destinationT = pickCallDestination(body); // ISSUE-1002: singular or destinations[0]
     const pageTypeT = destinationT.page_type ?? "";
     const brandSlugT = typeof destinationT.brand_slug === "string"
       ? destinationT.brand_slug.trim()
@@ -1850,6 +1900,7 @@ serve(async (req: Request): Promise<Response> => {
           dest_url: destUrlT,
           // A4.f-demoted slot: stored for attribution reference, never sent to TikTok.
           dest_smart_link: tiktokSmartLink,
+          dest_group_id: destGroupId, // ISSUE-1002: shared fan-out group (NULL for single-destination)
           request_id: requestIdT,
           created_by: user.id,
         })
@@ -2036,7 +2087,7 @@ serve(async (req: Request): Promise<Response> => {
       | Record<string, unknown>
       | null;
 
-    const destinationR = (body.destination ?? {}) as DestinationInput;
+    const destinationR = pickCallDestination(body); // ISSUE-1002: singular or destinations[0]
     const pageTypeR = destinationR.page_type ?? "";
     const brandSlugR = typeof destinationR.brand_slug === "string"
       ? destinationR.brand_slug.trim()
@@ -2249,6 +2300,7 @@ serve(async (req: Request): Promise<Response> => {
           dest_url: destUrlR,
           // A4.f-demoted slot: stored for attribution reference, never sent to Reddit.
           dest_smart_link: redditSmartLink,
+          dest_group_id: destGroupId, // ISSUE-1002: shared fan-out group (NULL for single-destination)
           request_id: requestIdR,
           created_by: user.id,
         })
@@ -2431,7 +2483,7 @@ serve(async (req: Request): Promise<Response> => {
     return json({ error: "validation_error", detail: "targeting_countries_required" }, 400);
   }
 
-  const destination = (body.destination ?? {}) as DestinationInput;
+  const destination = pickCallDestination(body); // ISSUE-1002: singular or destinations[0]
   const pageType = destination.page_type ?? "";
   const brandSlug = typeof destination.brand_slug === "string" ? destination.brand_slug.trim() : "";
   const entitySlug = typeof destination.entity_slug === "string" ? destination.entity_slug.trim() : "";
@@ -2761,6 +2813,7 @@ serve(async (req: Request): Promise<Response> => {
         dest_event_id: destEventId,
         dest_url: destUrl,
         dest_smart_link: destSmartLink,
+        dest_group_id: destGroupId, // ISSUE-1002: shared fan-out group (NULL for single-destination)
         request_id: requestId,
         created_by: user.id,
       })

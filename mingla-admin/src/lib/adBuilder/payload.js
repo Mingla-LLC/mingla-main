@@ -77,6 +77,10 @@ export function buildCreatePayload(platform, state) {
     name,
     goal,
     destination,
+    // ISSUE-1002 [multi-destination fan-out] — the shared group id for the N
+    // (destination × platform) create calls the wizard fans out. Optional:
+    // absent for a single-destination build, keeping that payload byte-identical.
+    destinationGroupId = null,
     audience,
     budget,
     creative,
@@ -90,6 +94,21 @@ export function buildCreatePayload(platform, state) {
     page_type: destination.page_type,
     brand_slug: destination.brand_slug,
     ...(destination.entity_slug ? { entity_slug: destination.entity_slug } : {}),
+  };
+
+  // ISSUE-1002 [multi-destination fan-out] — the destination fields every
+  // per-platform body carries. The endpoint now accepts a `destinations[]` array
+  // (DestinationInput[]); the wizard fans out one call per (destination ×
+  // platform), so THIS call carries the single destination it builds as a
+  // one-element `destinations` array, plus the shared `destination_group_id` that
+  // ties the fan-out together. The singular `destination` is retained for full
+  // backward compatibility (the server prefers it; the array is the forward
+  // contract) — a single-destination build is byte-identical to before except for
+  // the additive `destinations`/`destination_group_id` keys.
+  const destinationFields = {
+    destination: destinationBody,
+    destinations: [destinationBody],
+    ...(destinationGroupId ? { destination_group_id: destinationGroupId } : {}),
   };
 
   // ISSUE-979 Bug 3 [Campaign Builder correctness] — the GLOBAL compliance
@@ -166,7 +185,7 @@ export function buildCreatePayload(platform, state) {
         age_max: Number(audience.ageMax),
         ...(tiktokGenderFor(audience.gender) ? { gender: tiktokGenderFor(audience.gender) } : {}),
       },
-      destination: destinationBody,
+      ...destinationFields,
       creative: videoRef
         ? { ad_text: copy.primary, ...videoRef }
         : {
@@ -206,7 +225,7 @@ export function buildCreatePayload(platform, state) {
           ? { passthrough: { reddit: { interests: redditInterestNamesFrom(audience.interests) } } }
           : {}),
       },
-      destination: destinationBody,
+      ...destinationFields,
       creative: videoRef
         ? { headline: copy.primary, ...videoRef }
         : {
@@ -246,7 +265,7 @@ export function buildCreatePayload(platform, state) {
           ? { demographics: snapDemographicsFrom(audience) }
           : {}),
       },
-      destination: destinationBody,
+      ...destinationFields,
       creative: {
         headline: copy.headline || copy.primary,
         ...(creative.brandName ? { brand_name: creative.brandName } : {}),
@@ -280,7 +299,7 @@ export function buildCreatePayload(platform, state) {
           ? { locations: googleLocationsFrom(audience.cities) }
           : {}),
       },
-      destination: destinationBody,
+      ...destinationFields,
       creative: {
         headlines: (copy.googleHeadlines ?? []).map((h) => h.trim()).filter(Boolean),
         descriptions: (copy.googleDescriptions ?? []).map((d) => d.trim()).filter(Boolean),
@@ -332,7 +351,7 @@ export function buildCreatePayload(platform, state) {
       age_max: Number(audience.ageMax),
       ...(genders ? { genders } : {}),
     },
-    destination: destinationBody,
+    ...destinationFields,
     creative: {
       message: copy.primary,
       ...(copy.headline ? { headline: copy.headline } : {}),

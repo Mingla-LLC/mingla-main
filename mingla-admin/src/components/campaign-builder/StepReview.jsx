@@ -83,12 +83,19 @@ export function StepReview({
         </AlertCard>
       ))}
 
-      {/* Per-channel create outcomes. */}
-      {createResults && Object.entries(createResults).map(([platform, result]) => {
+      {/* Per-channel create outcomes. ISSUE-1002 [multi-destination fan-out]:
+          createResults is keyed per (platform × destination) — the entry key is a
+          composite string, so the platform label comes from `result.platform` and
+          the destination title is appended on a multi-destination fan-out (a
+          single-destination build shows no suffix, byte-identical to before). */}
+      {createResults && Object.entries(createResults).map(([key, result]) => {
         if (!result) return null;
+        const platform = result.platform ?? key;
+        const label = PLATFORM_LABELS[platform] ?? platform;
+        const destSuffix = result.multiDest && result.destTitle ? ` → ${result.destTitle}` : "";
         if (result.campaign) {
           return (
-            <AlertCard key={platform} variant="success" title={`Created on ${PLATFORM_LABELS[platform]} — Paused.`}>
+            <AlertCard key={key} variant="success" title={`Created on ${label}${destSuffix} — Paused.`}>
               Nothing is spending yet.{" "}
               <a
                 className="underline inline-flex items-center gap-1"
@@ -101,7 +108,7 @@ export function StepReview({
         }
         if (result.validated) {
           return (
-            <AlertCard key={platform} variant="info" title={`${PLATFORM_LABELS[platform]}: shapes validated — nothing created.`}>
+            <AlertCard key={key} variant="info" title={`${label}${destSuffix}: shapes validated — nothing created.`}>
               Validated layers: {(result.validated_layers ?? []).join(", ") || "none"}
               {Array.isArray(result.skipped_layers) && result.skipped_layers.length > 0 && (
                 <> (skipped: {result.skipped_layers.map((s) => s.layer).join(", ")})</>
@@ -114,7 +121,7 @@ export function StepReview({
           // platform with no dry-run (TikTok/Snap/Reddit) — nothing was created
           // or validated. Surfaced instead of a false "Created" toast.
           return (
-            <AlertCard key={platform} variant="info" title={`${PLATFORM_LABELS[platform]}: nothing created or validated.`}>
+            <AlertCard key={key} variant="info" title={`${label}${destSuffix}: nothing created or validated.`}>
               This platform has no dry-run, so the real create is its first check. Use “Create
               campaign (paused)” to build it.
               {Array.isArray(result.skipped_layers) && result.skipped_layers.length > 0 && (
@@ -128,9 +135,9 @@ export function StepReview({
           const isBudget = result.error.code === "budget_below_minimum";
           return (
             <AlertCard
-              key={platform}
+              key={key}
               variant="error"
-              title={`${PLATFORM_LABELS[platform]} create failed${result.error.code ? ` — ${result.error.code}` : ""}`}
+              title={`${label}${destSuffix} create failed${result.error.code ? ` — ${result.error.code}` : ""}`}
               action={
                 isDestination ? (
                   <Button size="sm" variant="secondary" onClick={() => onJumpToStep("destination")}>
