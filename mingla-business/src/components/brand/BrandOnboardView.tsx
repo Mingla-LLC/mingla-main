@@ -549,13 +549,32 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
     return (
       <View style={styles.host}>
         {renderTopBar({ onBack: backToPicker, backLabel: "Back" })}
-        <View
-          style={{
-            flex: 1,
-            paddingHorizontal: spacing.md,
-            paddingTop: spacing.md,
-            paddingBottom: Math.max(insets.bottom, spacing.lg),
-          }}
+        {/* #971 [paystack-onboard-scroll] — sibling of ORCH-1403. The Nigeria
+            (Paystack) branch of this same /payments/onboard route rendered its
+            body in a plain non-scrolling <View style={{ flex:1 }}> — the exact
+            non-scrolling shape ORCH-1403 fixed for the Stripe body. On a short
+            (~640px) viewport the tall Paystack bank-details card (pick bank →
+            10-digit NUBAN → verify → "Connect bank & get paid") overflowed its
+            box, pushing the "Connect" action off-screen / colliding headings.
+            The wrap lives HERE at the screen owner (not inside
+            BrandPaystackOnboardView) because that component's root is a
+            content-sized GlassCard: a flex:1 ScrollView nested inside it would
+            collapse to height 0, and its OTHER render site (BrandPaymentsView)
+            already embeds it inside a parent ScrollView. bodyScroll (flex:1)
+            bounds the viewport under the fixed top bar; contentContainerStyle
+            styles.body (flexGrow:1 + justifyContent:"center") centers when the
+            card fits and SCROLLS when it doesn't. renderTopBar stays OUTSIDE the
+            scroll, always legible — exactly as ORCH-1403 kept it. */}
+        <ScrollView
+          style={styles.bodyScroll}
+          contentContainerStyle={[
+            styles.body,
+            {
+              paddingTop: spacing.md,
+              paddingBottom: Math.max(insets.bottom, spacing.lg),
+            },
+          ]}
+          showsVerticalScrollIndicator={false}
         >
           <BrandPaystackOnboardView
             brandId={brand.id}
@@ -564,7 +583,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
             onConnected={onAfterDone}
             onCancel={backToPicker}
           />
-        </View>
+        </ScrollView>
       </View>
     );
   }

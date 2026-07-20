@@ -1,0 +1,54 @@
+name: "#971 Paystack Onboard Scroll Test"
+
+# #971 [paystack-onboard-scroll] — fast-follow / sibling of ORCH-1403. Fails-on-revert
+# regression for the Nigeria (Paystack) branch of BrandOnboardView: the paystackSelected
+# body must be a ScrollView that centers-when-short / scrolls-when-tall (styles.bodyScroll
+# flex:1 + styles.body flexGrow:1 + justifyContent:center), NOT a plain non-scrolling
+# <View style={{ flex:1 }}> that overflows its headings/actions on a short (~640px)
+# viewport. This is a jest suite; the class-D strict-grep `jest-suites` job does NOT run
+# jest, so without this dedicated job the test would exist but never gate (the
+# dark-test-surface trap, ORCH-1383). EXPLICIT registry (never a glob) — add a suite by
+# appending its path below.
+
+on:
+  push:
+    branches: [Seth, main]
+    paths:
+      - "mingla-business/src/components/brand/**"
+      - ".github/workflows/971-paystack-onboard-scroll-tests.yml"
+  pull_request:
+    paths:
+      - "mingla-business/src/components/brand/**"
+      - ".github/workflows/971-paystack-onboard-scroll-tests.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  paystack-onboard-scroll-jest:
+    name: "#971: Paystack onboard body scrolls (fails-on-revert regression)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      # EXPLICIT registry — add a new #971 suite by appending a path; never glob.
+      # Two suites gate #971: the implementor happy-path (.source.) AND the tester
+      # adversarial (.tester., different angle — top bar stays outside the scroll, the
+      # reusable card stays passive, the second render site stays scroll-wrapped). Both
+      # are fails-on-revert regressions and MUST run here or they would exist but never gate.
+      - name: Run #971 Paystack onboard-scroll jest suites (source + tester)
+        run: >
+          npx jest
+          src/components/brand/__tests__/paystackOnboardBodyScrolls.971.source.test.ts
+          src/components/brand/__tests__/paystackOnboardBodyScrolls.971.tester.test.ts
+          --runInBand
