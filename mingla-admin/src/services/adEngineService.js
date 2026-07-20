@@ -47,6 +47,30 @@ export async function connectMeta(action = "connect") {
   });
 }
 
+// ── ISSUE-978 [Ad Connections panel] — generalizes connectMeta to all 5 ──────
+
+/**
+ * action: 'connect' | 'status'. Generalizes connectMeta to any of the 5
+ * live channels (admin-ad-connect already connects/verifies all of them —
+ * see the function's own header comment). No token ever reaches this client;
+ * the call is authenticated by the admin's own session JWT (invokeWithRefresh).
+ */
+export async function connectChannel(platform, action = "connect", lane = "consumer") {
+  return invokeWithRefresh("admin-ad-connect", {
+    body: { platform, lane, action },
+  });
+}
+
+/** All ad_connections rows for a lane (one read covers all 5 platforms — a
+ * platform with no row yet, e.g. Google pre-provisioning, is simply absent
+ * from the result; callers must not fabricate a row for it). */
+export async function getConnections(lane = "consumer") {
+  return supabase
+    .from("ad_connections")
+    .select("*")
+    .eq("lane", lane);
+}
+
 // ── Preflight ─────────────────────────────────────────────────────────────────
 
 /** platform omitted → all five channels (stubs report not_connected). */

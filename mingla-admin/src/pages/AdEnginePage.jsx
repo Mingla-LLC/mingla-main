@@ -19,6 +19,7 @@ import { Badge } from "../components/ui/Badge";
 import { Input, Textarea, Toggle } from "../components/ui/Input";
 import { Spinner } from "../components/ui/Spinner";
 import { useToast } from "../context/ToastContext";
+import { AdConnectionsPanel } from "../components/AdConnectionsPanel";
 import {
   campaignAction,
   connectMeta,
@@ -296,9 +297,16 @@ export function AdEnginePage() {
 
   return (
     <div className="space-y-6">
-      {/* ── SC-1…SC-4: connection ── */}
+      {/* ── ISSUE-978 [Ad Connections panel] — all 5 platforms, one-click
+          Connect/Reconnect, staleness surfacing. Additive: the Meta-specific
+          card below (billing floors, IG link, etc.) is unchanged and still
+          drives the Create-campaign gate; this panel is the missing all-5
+          operator overview. ── */}
+      <AdConnectionsPanel />
+
+      {/* ── SC-1…SC-4: Meta connection detail (floors, billing, IG link) ── */}
       <SectionCard
-        title="Meta connection"
+        title="Meta connection — detail"
         subtitle="System User token lives in Supabase Edge Function Secrets — never in the browser or the DB."
         action={
           <Button
