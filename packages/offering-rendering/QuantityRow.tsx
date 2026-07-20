@@ -67,8 +67,10 @@ export interface QuantityRowTicket {
    * quiet "incl. VAT & fees" line. Falls back to priceGbp when absent/null.
    */
   priceAllInGbp?: number | null;
-  /** ISO 4217 code. Falls back to caller-supplied default. */
-  currency?: string;
+  /** ISO 4217 code. Falls back to caller-supplied default. issue #1014: may
+   *  be null on a NULL-currency (free-only) event — such tickets are always
+   *  0-priced, so the "Free" branch renders before any currency formatting. */
+  currency?: string | null;
   /** Remaining capacity. NaN/null treated as "no capacity info". */
   capacity: number | null;
   isFree: boolean;
@@ -243,8 +245,11 @@ export const QuantityRow: React.FC<QuantityRowProps> = ({
   // Render ------------------------------------------------------------------
   // ORCH-1006: show the server-computed all-in price; never recompute fees here.
   // cents/100 was already done in the service layer. Fall back to base price.
+  // issue #1014: the free branch triggers on price === 0 OR isFree so a
+  // 0-priced ticket on a NULL-currency event NEVER reaches the formatter with
+  // a fabricated fallback code (free renders before any currency formatting).
   const effectivePrice = ticket.priceAllInGbp ?? ticket.priceGbp ?? 0;
-  const priceText = ticket.isFree
+  const priceText = ticket.isFree || effectivePrice === 0
     ? "Free"
     : formatCurrency(effectivePrice, ticket.currency ?? fallbackCurrency);
   // Quiet "incl. VAT & fees" treatment ONLY when all-in differs from base

@@ -100,3 +100,69 @@ describe("paidPublishGuards — onboarding route", () => {
     );
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// issue #1014 [free-only publish / money fails close] — APPEND-ONLY extension.
+// The third guard reason `event_currency_required` (raised by the #1014
+// migration's publish RPCs + both currency triggers when a MONEY-BEARING
+// transition hits a brand with no resolvable payout currency) must map to the
+// LOCKED copy + the provider-neutral payments-onboard route.
+//
+// fails-on-revert: removing the event_currency_required entry from the copy
+// map (or its detector branch) turns these assertions red.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("issue #1014 — event_currency_required reason detection", () => {
+  test("detects event_currency_required as an exact reason", () => {
+    expect(detectPaidPublishGuardReason("event_currency_required")).toBe(
+      "event_currency_required",
+    );
+  });
+
+  test("detects event_currency_required inside a decorated RAISE message", () => {
+    expect(
+      detectPaidPublishGuardReason(
+        'database error: event_currency_required (P0001)',
+      ),
+    ).toBe("event_currency_required");
+  });
+
+  test("does NOT over-reach onto other currency tokens", () => {
+    // The retired trigger token and the mismatch token must NOT map to the
+    // payments-setup copy (they are different failures).
+    expect(detectPaidPublishGuardReason("event_currency_not_found")).toBeNull();
+    expect(
+      detectPaidPublishGuardReason("ticket_currency_must_match_event_currency"),
+    ).toBeNull();
+    expect(detectPaidPublishGuardReason("event_currency_unsupported")).toBeNull();
+  });
+});
+
+describe("issue #1014 — event_currency_required locked copy (SPEC §4.4)", () => {
+  test("event_currency_required → Finish your payment setup → stripe_onboarding action", () => {
+    const copy = paidPublishGuardCopy("event_currency_required");
+    expect(copy.title).toBe("Finish your payment setup");
+    expect(copy.body).toBe(
+      "Paid listings need a payout currency, and that comes from your payment setup. Free listings publish any time.",
+    );
+    expect(copy.actionLabel).toBe("Set up payments");
+    expect(copy.action).toBe("stripe_onboarding");
+  });
+
+  test("resolvePaidPublishGuardCopy maps both surfaces to the same copy", () => {
+    const fromError = resolvePaidPublishGuardCopy(
+      "ERROR: event_currency_required",
+    );
+    const fromReason = resolvePaidPublishGuardCopy("event_currency_required");
+    expect(fromError?.title).toBe("Finish your payment setup");
+    expect(fromReason?.actionLabel).toBe("Set up payments");
+  });
+
+  test("the two pre-existing locked entries are untouched", () => {
+    expect(paidPublishGuardCopy("stripe_charges_disabled").actionLabel).toBe(
+      "Finish bank setup",
+    );
+    expect(paidPublishGuardCopy("offering_date_past").actionLabel).toBe(
+      "Edit date",
+    );
+  });
+});

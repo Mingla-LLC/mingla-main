@@ -196,6 +196,17 @@ export function mapPublishErrorToState(
           "This date has already passed. Choose a date that's still ahead so people can book it.",
         pointsToStep: 1,
       };
+    // issue #1014 — a paid trip (any package priced > 0, online OR door) on a
+    // brand with no resolvable payout currency. The Step-5 banner renders this;
+    // the proactive StripeBlockedCard already offers the Connect CTA on-screen
+    // for every paid trip, so the actionable route exists next to the message.
+    case "event_currency_required":
+      return {
+        code,
+        message:
+          "Connect your bank to set a payout currency before publishing a paid trip. Free trips publish any time.",
+        pointsToStep: 5,
+      };
     default:
       return {
         code,

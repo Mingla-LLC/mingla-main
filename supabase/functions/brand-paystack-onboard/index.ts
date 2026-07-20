@@ -190,10 +190,11 @@ serve(async (req) => {
       }
     }
 
-    // Read the brand once for create/refresh.
+    // Read the brand once for create/refresh. default_currency included so
+    // clear_provider can symmetrically unstamp the issue #1014 NGN signal.
     const { data: brand, error: brandErr } = await supabase
       .from("brands")
-      .select("id, name, payment_provider, payment_country, paystack_subaccount_code")
+      .select("id, name, payment_provider, payment_country, paystack_subaccount_code, default_currency")
       .eq("id", brandId)
       .maybeSingle();
     if (brandErr || !brand) {
@@ -261,9 +262,19 @@ serve(async (req) => {
       if (brand.paystack_subaccount_code != null) {
         return jsonResponse({ error: "conflict", detail: "disconnect_first" }, 409);
       }
+      // issue #1014 — symmetric removal of the explicit NGN signal when the
+      // brand leaves the NG rail pre-subaccount: a lingering NGN would leak
+      // into a later Stripe-rail brand until the SCA sync wins the COALESCE.
+      // ONLY 'NGN' is unstamped (never a Stripe-synced/other currency).
+      const clearNgnStamp = brand.default_currency === "NGN";
+      const clearUpdate: Record<string, unknown> = {
+        payment_provider: "stripe",
+        payment_country: null,
+        ...(clearNgnStamp ? { default_currency: null } : {}),
+      };
       const { error: updErr } = await supabase
         .from("brands")
-        .update({ payment_provider: "stripe", payment_country: null })
+        .update(clearUpdate)
         .eq("id", brandId);
       if (updErr) {
         console.error("[brand-paystack-onboard] clear_provider update failed:", updErr);
@@ -275,7 +286,11 @@ serve(async (req) => {
         action: "paystack.provider_cleared",
         target_type: "brand",
         target_id: brandId,
-        after: { payment_provider: "stripe", payment_country: null },
+        after: {
+          payment_provider: "stripe",
+          payment_country: null,
+          ...(clearNgnStamp ? { default_currency: null } : {}),
+        },
       });
       return jsonResponse({ payment_provider: "stripe", payment_country: null });
     }
@@ -429,12 +444,20 @@ serve(async (req) => {
 
     // Flip the brand onto Paystack. This is what makes the checkout deferred-split
     // fire (ticket-checkout-create attaches the subaccount once this column is set).
+    // issue #1014 — stamp default_currency='NGN': an EXPLICIT NG signal
+    // (ORCH-0769-compatible — the brand completed NG bank onboarding, this is
+    // not an implicit default). The brands trigger
+    // trg_brands_derive_pricing_from_default (META-ORCH-1236) atomically
+    // derives pricing_currency='NGN' + pricing_region='NG' — do NOT write
+    // those two directly. This is what lets a subsequent publish stamp
+    // events.currency='NGN' (whitelist admits NGN per the #1014 migration).
     const { error: updErr } = await supabase
       .from("brands")
       .update({
         paystack_subaccount_code: subaccountCode,
         payment_provider: "paystack",
         payment_country: "NG",
+        default_currency: "NGN",
       })
       .eq("id", brandId);
     if (updErr) {
@@ -448,7 +471,11 @@ serve(async (req) => {
       action: "paystack.subaccount_created",
       target_type: "brand",
       target_id: brandId,
-      after: { paystack_subaccount_code: subaccountCode, payment_country: "NG" },
+      after: {
+        paystack_subaccount_code: subaccountCode,
+        payment_country: "NG",
+        default_currency: "NGN",
+      },
     });
 
     return jsonResponse({

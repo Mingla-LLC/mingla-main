@@ -107,8 +107,12 @@ export interface RsvpOfferingConfig {
   rsvp_contribution_enabled?: boolean;
   rsvp_contribution_suggested_cents?: number | null;
   rsvp_contribution_min_cents?: number | null;
-  /** Brand settlement currency for the chip-in Intl formatting (GBP/USD/NGN…). */
-  settlementCurrency?: string;
+  /** Brand settlement currency for the chip-in Intl formatting (GBP/USD/NGN…).
+   *  issue #1014: may be null — a chip-in-enabled event always has a
+   *  resolvable settlement currency (publish forces it), so null means the
+   *  chip-in panel stays hidden (defense) instead of formatting in a
+   *  fabricated USD. */
+  settlementCurrency?: string | null;
   /** Brand display name for the "Chip in for {host}" copy (fallback "the host"). */
   hostShortName?: string;
   // ORCH-1339 [momentum-card-cross-entity] — the two D2 display gates
@@ -335,7 +339,11 @@ export const useRsvpOfferingState = (
 
   // ── ORCH-1291 [rsvp-chip-in] — voluntary contribution state slice (lifted so
   // the success-popup mount + the inline §5.5 mount never diverge/double-charge). ──
-  const chipCurrency = config.settlementCurrency ?? event.currency ?? "USD";
+  // issue #1014 — NULL passthrough, no fabricated USD: when neither the config
+  // nor the event resolves a currency the chip-in feature is forced OFF below
+  // (chipFeatureOn) and the panel builder returns null.
+  const chipCurrency: string | null =
+    config.settlementCurrency ?? event.currency ?? null;
   const chipMinCents = config.rsvp_contribution_min_cents ?? null;
   const chipSuggestedCents = config.rsvp_contribution_suggested_cents ?? null;
   const chipDefaultAmount = ((): number => {
@@ -858,14 +866,23 @@ export const useRsvpOfferingState = (
   // this ONE lifted slice). Eligible ⇔ config-enabled AND the surface wired a
   // payment hand-off. ──
   const chipHostName = config.hostShortName ?? brand?.name ?? "the host";
-  const chipFeatureOn = config.rsvp_contribution_enabled === true && onChipIn != null;
+  // issue #1014 — chipCurrency !== null: an unresolvable settlement currency
+  // hides the panel entirely (never format money in a fabricated currency).
+  const chipFeatureOn =
+    config.rsvp_contribution_enabled === true &&
+    onChipIn != null &&
+    chipCurrency !== null;
   const clearChipError = (): void => {
     if (chipInState === "error") {
       setChipInState("idle");
       setChipError(null);
     }
   };
-  const buildChipPanel = (mountTestID: string): React.ReactNode => (
+  const buildChipPanel = (mountTestID: string): React.ReactNode => {
+    // issue #1014 defense — unreachable when chipFeatureOn gates the mounts,
+    // but the builder itself never renders money without a real currency.
+    if (chipCurrency === null) return null;
+    return (
     <RsvpChipInPanel
       palette={palette}
       theme={theme}
@@ -888,7 +905,8 @@ export const useRsvpOfferingState = (
       isWeb={Platform.OS === "web"}
       testID={mountTestID}
     />
-  );
+    );
+  };
 
   // SC-2 gate (Seth-locked): the popup mount shows chip-in ONLY for a going /
   // pending-approval guest — NOT waitlisted (capacity-gated) or maybe. (The

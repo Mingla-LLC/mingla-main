@@ -95,7 +95,15 @@ export interface PublicEventProps {
 
   // Tickets
   tickets: PublicTicketProps[];
-  currency: string;
+  /**
+   * issue #1014 — the event's commerce currency. NULL for a published
+   * free-only event by a currency-less brand (NULL means "no currency": every
+   * price render takes the free/0-price branch and shows "Free"; no formatter
+   * may receive a null code and emit a fabricated symbol). Non-null for every
+   * event that can carry money (schema CHECKs guarantee paid tickets always
+   * have a currency).
+   */
+  currency: string | null;
 
   /**
    * ORCH-1157 [rsvp-public-redesign] — canonical party-type slugs (ORCH-0824),

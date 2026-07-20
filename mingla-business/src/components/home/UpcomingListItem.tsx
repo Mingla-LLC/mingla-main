@@ -99,9 +99,15 @@ const UpcomingListItemComponent: React.FC<UpcomingListItemProps> = ({
     salesSummary?.finiteCapacity !== null && salesSummary !== undefined
       ? `${soldLabel} sold`
       : soldLabel;
+  // issue #1014 — a currency-less brand's NULL-currency free event must not
+  // imply £0: with no resolvable currency there are no sales to denominate,
+  // so render the honest words instead of a fabricated-currency formatter call.
+  const revenueFallbackCurrency = event.currency ?? currentBrandCurrency ?? null;
   const revenueLabel =
     salesSummary?.revenueLabel ??
-    formatCurrencyRound(0, event.currency ?? currentBrandCurrency ?? "GBP");
+    (revenueFallbackCurrency !== null
+      ? formatCurrencyRound(0, revenueFallbackCurrency)
+      : "No sales yet");
   const isLive = item.status === "live";
 
   return (

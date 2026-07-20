@@ -220,7 +220,10 @@ const mapLiveEventToPublicEvent = (event: LiveEvent): PublicEventProps => {
         : null,
     coverCredit,
     tickets: event.tickets.map(mapTicket),
-    currency: event.currency ?? "GBP",
+    // issue #1014 — NULL passthrough, no fabricated GBP: a published
+    // NULL-currency event is free-only by schema (paid tickets always carry a
+    // currency), so every price render takes the "Free" branch downstream.
+    currency: event.currency ?? null,
     // ORCH-1157 [rsvp-public-redesign] — surface canonical party types (ORCH-0824)
     // for the Direction-C RSVP vibe chips. LiveEvent already carries these from
     // the view mapper; default `[]` for legacy persisted rows (rule 9 — no fake).
@@ -892,7 +895,11 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             rsvp_contribution_suggested_cents:
               event.rsvpContributionSuggestedCents ?? null,
             rsvp_contribution_min_cents: event.rsvpContributionMinCents ?? null,
-            settlementCurrency: event.currency ?? "USD",
+            // issue #1014 — NULL passthrough, no fabricated USD: a chip-in
+            // event always has a resolvable settlement currency (publish
+            // forces resolution); when null the shared body hides the panel
+            // (defense — it only renders when rsvp_contribution_enabled).
+            settlementCurrency: event.currency ?? null,
             hostShortName: brand?.displayName ?? undefined,
             // ORCH-1339 (D2) — the two SERVER-authoritative display gates.
             // Source binding (SPEC §4.6 / OQ-3): the LiveEvent model fields —

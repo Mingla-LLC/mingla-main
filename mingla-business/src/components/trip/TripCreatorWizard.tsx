@@ -116,7 +116,10 @@ import {
   type PublishErrorState,
   mapPublishErrorToState,
 } from "./TripCreatorStep5Review";
-import { brandStripeOnboardingRoute } from "../../utils/paidPublishGuards";
+import {
+  brandStripeOnboardingRoute,
+  resolvePaidPublishGuardCopy,
+} from "../../utils/paidPublishGuards";
 import {
   offeringNeedsStripeToPublish,
   tripDraftIsPaid,
@@ -947,7 +950,25 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       setPublishError(null);
       // ORCH-0880 [Tr5 Traveler Intake Forms] — wizard grew 6→7 steps.
       setStep((s) => (s < 7 ? ((s + 1) as StepIndex) : s));
-    } catch {
+    } catch (e) {
+      // issue #1014 (rework F-1) — a currency-less brand pricing a PAID trip
+      // fires trigger (d)'s event_currency_required during the Step-4 autosave
+      // write (updateTripPricing / createTripPricingTier). Run the caught
+      // error through the guard resolver FIRST: money-setup guards surface the
+      // locked copy + the payments-onboard route (mirroring
+      // handleConfirmPublish); only unrecognized errors keep the connection
+      // toast.
+      const autosaveErrCode = e instanceof Error ? e.message : String(e ?? "");
+      const guardCopy = resolvePaidPublishGuardCopy(autosaveErrCode);
+      if (guardCopy !== null && guardCopy.action === "stripe_onboarding") {
+        setPublishError({
+          code: guardCopy.reason,
+          message: guardCopy.body,
+          pointsToStep: (step >= 5 ? 5 : step) as 1 | 2 | 3 | 4 | 5,
+        });
+        router.push(brandStripeOnboardingRoute(trip.brandId) as never);
+        return;
+      }
       setPublishError({
         code: "autosave_failed",
         message: "Couldn't save your changes. Check your connection and try again.",
@@ -957,7 +978,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         pointsToStep: (step >= 5 ? 5 : step) as 1 | 2 | 3 | 4 | 5,
       });
     }
-  }, [autosaveCurrentStep, step]);
+  }, [autosaveCurrentStep, step, router, trip.brandId]);
 
   // ORCH-0876 — Back now autosaves before stepping back, mirroring
   // event wizard semantics so unsaved Step N edits aren't lost when the
@@ -969,7 +990,21 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
       await autosaveCurrentStep();
       setStep((s) => (s > 1 ? ((s - 1) as StepIndex) : s));
       setPublishError(null);
-    } catch {
+    } catch (e) {
+      // issue #1014 (rework F-1) — same money-setup guard mapping as
+      // handleNext's catch: locked copy + payments-onboard route first;
+      // only unrecognized errors keep the connection toast.
+      const autosaveErrCode = e instanceof Error ? e.message : String(e ?? "");
+      const guardCopy = resolvePaidPublishGuardCopy(autosaveErrCode);
+      if (guardCopy !== null && guardCopy.action === "stripe_onboarding") {
+        setPublishError({
+          code: guardCopy.reason,
+          message: guardCopy.body,
+          pointsToStep: (step >= 5 ? 5 : step) as 1 | 2 | 3 | 4 | 5,
+        });
+        router.push(brandStripeOnboardingRoute(trip.brandId) as never);
+        return;
+      }
       setPublishError({
         code: "autosave_failed",
         message:
@@ -980,7 +1015,7 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         pointsToStep: (step >= 5 ? 5 : step) as 1 | 2 | 3 | 4 | 5,
       });
     }
-  }, [autosaveCurrentStep, step]);
+  }, [autosaveCurrentStep, step, router, trip.brandId]);
 
   // ----- ORCH-0874 handleClose (chrome X) — branches on isCreateMode + pristine -----
   const handleClose = useCallback((): void => {
