@@ -8,7 +8,7 @@
 //   - The env secret remains the authoritative override; whitespace-only
 //     values are treated as unset (trim guard, T12).
 //   - No code path can produce the retired dead email-assets URL, the retired
-//     usemingla.com/logo.png literal, or a www.usemingla.com host.
+//     root logo.png literal, or a www.usemingla.com host.
 //
 // Tester adversarial surface is RESERVED at
 // issue_1001_brand_assets.adversarial.test.ts — do not fold it in here.
