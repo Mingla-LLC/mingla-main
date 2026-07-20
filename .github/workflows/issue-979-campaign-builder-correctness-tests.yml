@@ -38,8 +38,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      # EXPLICIT registry — the four ISSUE-979 suites (one per bug). Pure ESM +
-      # fs source assertions; no node_modules required.
+      # EXPLICIT registry — the four ISSUE-979 implementor suites (one per bug)
+      # plus the tester adversarial suite (registered here so it GATES, never a
+      # dark test surface — ORCH-1383). Pure ESM + fs source assertions; no
+      # node_modules required.
       - name: Run ISSUE-979 campaign-builder correctness suites
         run: >
           node --test
@@ -47,3 +49,4 @@ jobs:
           src/__tests__/issue979_honest_create_toast.test.js
           src/__tests__/issue979_compliance_flags_all_platforms.test.js
           src/__tests__/issue979_unfunded_eligible_channels.test.js
+          src/__tests__/issue979_correctness.adversarial.test.js
