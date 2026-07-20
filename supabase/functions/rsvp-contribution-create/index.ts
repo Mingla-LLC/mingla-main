@@ -351,7 +351,18 @@ serve(async (req: Request): Promise<Response> => {
     )
     ? (pricing.pricing_region as PricingRegion)
     : "GB"; // display-only; taxCents=0 for a gift so behaviour is inert.
-  const currency = (pricing.pricing_currency ?? "USD").toUpperCase();
+  // issue #1014 — NEVER fabricate a charge currency. An unresolvable
+  // pricing_currency on the Stripe leg fails close with a 409 (the shared
+  // RsvpOfferingBody guest panel maps it to its existing "couldn't start"
+  // error state). Near-unreachable post-NGN-stamp (pg_brand_can_collect ⇒
+  // SCA-synced currency or NGN), but this kills the last USD fabrication.
+  if (
+    typeof pricing.pricing_currency !== "string" ||
+    pricing.pricing_currency.trim().length === 0
+  ) {
+    return jsonResponse({ error: "brand_currency_unresolved" }, 409);
+  }
+  const currency = pricing.pricing_currency.toUpperCase();
   const currencyLower = currency.toLowerCase();
 
   const engineInput: ComputeAllInInput = {
