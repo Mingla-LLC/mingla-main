@@ -23,9 +23,15 @@ describe("BusinessTodoToggle contract", () => {
     expect(SRC).toContain("if (count === 0) return null;");
   });
 
-  test("is collapsible (open state + toggle handler)", () => {
-    expect(SRC).toContain("useState<boolean>(true)");
-    expect(SRC).toContain("setOpen((prev) => !prev)");
+  test("is collapsible (store-owned position + toggle handler)", () => {
+    // #882 [todo-toggle-position-memory] — single-owner lock: the open/closed
+    // position is owned by the persisted todoToggleCollapseStore (shared by
+    // Home + Hub, survives remounts/restarts). No component-local open-state
+    // may reappear, and the render is hydration-gated.
+    expect(SRC).toContain("useTodoToggleCollapseStore");
+    expect(SRC).toContain("useTodoToggleCollapseStore((s) => s.toggle)");
+    expect(SRC).not.toContain("useState");
+    expect(SRC).toContain("if (!hasHydrated) return null;");
     // chevron flips with open state
     expect(SRC).toContain('name={open ? "chevU" : "chevD"}');
   });
