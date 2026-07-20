@@ -15,6 +15,18 @@ name: ISSUE-986 Campaign Builder Platform Picker Tests
 # mingla-admin campaign-builder suites, so without this dedicated job the tests
 # would exist but never gate (the dark-test surface trap, ORCH-1383). EXPLICIT
 # registry (never a glob) — append a path.
+#
+# mingla-tester PR #987 addition: issue986_platform_picker.adversarial.test.js
+# — the independent tester adversarial regression suite (cross-consistency of
+# a picked subset across splitBudget/StepCopy/the real create payload/Review
+# together; a budget-floor ineligibility gate + garbage/malformed
+# selectedPlatforms + an immutability proof, as a different eligibility-safety
+# angle than the implementor's market-gate case; a compliance round-trip +
+# repeated re-selection resistance + budget-extreme Diversify-strategy funding
+# proof + a payload-shape structural proof; degenerate select-NONE cross-
+# checked against ISSUE-979 Bug-4's unfundedEligibleChannels, plus a rapid-
+# toggle determinism proof against the real togglePlatform reducer). Appended
+# here so it gates like #979/#980's tester suites did, never a dark test.
 
 on:
   push:
@@ -33,7 +45,7 @@ concurrency:
 
 jobs:
   issue-986-node-test:
-    name: "ISSUE-986: campaign-builder platform picker (fails-on-revert regression suite)"
+    name: "ISSUE-986: campaign-builder platform picker (fails-on-revert regression suites)"
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
@@ -44,9 +56,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      # EXPLICIT registry — the ISSUE-986 platform-picker regression suite.
-      # Pure ESM + fs source assertions; no node_modules required.
-      - name: Run ISSUE-986 campaign-builder platform-picker suite
+      # EXPLICIT registry — the ISSUE-986 implementor suite PLUS the tester's
+      # adversarial suite (registered here so BOTH gate, never a dark test
+      # surface — ORCH-1383). Pure ESM + fs source assertions; no node_modules
+      # required.
+      - name: Run ISSUE-986 campaign-builder platform-picker suites
         run: >
           node --test
           src/__tests__/issue986_platform_picker.test.js
+          src/__tests__/issue986_platform_picker.adversarial.test.js
