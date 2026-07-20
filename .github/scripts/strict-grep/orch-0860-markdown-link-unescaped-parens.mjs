@@ -13,9 +13,10 @@
  * caught the broken links). This gate catches it BEFORE the docs-artifact-
  * regression gate, with a clearer error message + suggested fix.
  *
- * **Scope:** all .md files under `Mingla_Artifacts/` (where the docs-artifact-
- * regression gate is enforced). Root README + docs/ + per-package READMEs
- * are not scanned (out of the docs-artifact-regression baseline).
+ * **Scope (re-pointed 2026-07-19 by issue #974):** the canonical root .md docs
+ * plus everything under `docs/` — the surface the docs-artifact-regression
+ * gate enforces since the Mingla_Artifacts system was retired (history at
+ * tag pre-avengers-archive). Per-package READMEs are not scanned.
  *
  * **Detection:** for each markdown link `[text](url)`, fail if `url` contains
  * an unescaped `(` or `)`. The fix is URL-encoding: `(` → `%28`, `)` → `%29`.
@@ -30,12 +31,27 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../../..");
-const SCAN_ROOT = resolve(REPO_ROOT, "Mingla_Artifacts");
+const SCAN_ROOT = resolve(REPO_ROOT, "docs");
+const ROOT_DOCS = [
+  "README.md",
+  "AGENTS.md",
+  "PRODUCT_AND_STRATEGY.md",
+  "MARKETING.md",
+  "COMMS.md",
+  "COMMS_LEDGER.md",
+  "REPORTS.md",
+];
 
-// Walk Mingla_Artifacts/ recursively and collect every .md file.
+// Walk docs/ recursively and collect every .md file.
 function walkMarkdownFiles(dir) {
   const out = [];
-  for (const name of readdirSync(dir)) {
+  let names;
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return out;
+  }
+  for (const name of names) {
     const path = resolve(dir, name);
     let stat;
     try {
@@ -44,7 +60,7 @@ function walkMarkdownFiles(dir) {
       continue;
     }
     if (stat.isDirectory()) {
-      if (name === "archive") continue; // legacy historical — out of scope
+      if (name === "node_modules") continue;
       out.push(...walkMarkdownFiles(path));
     } else if (stat.isFile() && name.endsWith(".md")) {
       out.push(path);
@@ -92,7 +108,16 @@ function findOffendingLinks(content) {
   return findings;
 }
 
-const files = walkMarkdownFiles(SCAN_ROOT);
+const files = [
+  ...ROOT_DOCS.map((name) => resolve(REPO_ROOT, name)).filter((path) => {
+    try {
+      return statSync(path).isFile();
+    } catch {
+      return false;
+    }
+  }),
+  ...walkMarkdownFiles(SCAN_ROOT),
+];
 let totalFindings = 0;
 const offendingByFile = new Map();
 
@@ -107,7 +132,7 @@ for (const path of files) {
 
 console.log("\nORCH-0860 markdown-link unescaped parens gate");
 console.log(
-  `Scanned ${files.length} .md files under Mingla_Artifacts/ (excluding archive/).\n`,
+  `Scanned ${files.length} .md files (canonical root docs + docs/).\n`,
 );
 
 if (totalFindings === 0) {

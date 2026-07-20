@@ -21,8 +21,8 @@
  * Usage:
  *   node tools/parity-harness/cold-load-auth-probe.mjs \
  *     --device R58R54YV7JT --web-build mingla-business/web-build-w3 \
- *     --session Mingla_Artifacts/reports/orch1100_wave2_verify/session.token.json \
- *     --out Mingla_Artifacts/reports/orch1100_wave3_verify \
+ *     --session tools/parity-harness/out/session.token.json \
+ *     --out tools/parity-harness/out/verify \
  *     --routes "/account,/brand/22a18413-bfbf-4087-9ba7-45f70deba0f3" --runs 3
  */
 import { spawnSync } from "node:child_process";
@@ -40,7 +40,7 @@ const arg = (k, d) => {
 const DEVICE = arg("device", "R58R54YV7JT");
 const WEB_BUILD = arg("web-build", "mingla-business/web-build-w3");
 const SESSION_FILE = arg("session", "");
-const OUT_DIR = arg("out", "Mingla_Artifacts/reports/orch1100_wave3_verify");
+const OUT_DIR = arg("out", "tools/parity-harness/out/verify");
 const ROUTES = arg("routes", "/account").split(",").map((s) => s.trim()).filter(Boolean);
 const RUNS = Number(arg("runs", "3"));
 const PORT = Number(arg("port", "8099"));

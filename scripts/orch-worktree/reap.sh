@@ -5,7 +5,7 @@
 #
 # Per the worktree-per-ORCH workflow (CLOSE Step 1.7).
 # Memory rule: feedback_worktree_per_orch_workflow.md
-# Canonical doc: Mingla_Artifacts/WORKTREE_STRATEGY.md
+# Canonical doc: docs/WORKTREE_STRATEGY.md
 #
 # Usage:
 #   scripts/orch-worktree/reap.sh <worktree-path> [--force]

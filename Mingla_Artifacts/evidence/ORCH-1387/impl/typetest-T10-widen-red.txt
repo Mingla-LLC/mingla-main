@@ -1,5 +1,0 @@
-../packages/payments-native/__typetests__/paymentSheetInitInput.orch1387.typetest.ts(116,9): error TS2578: Unused '@ts-expect-error' directive.
-../packages/payments-native/__typetests__/paymentSheetInitInput.orch1387.typetest.ts(131,7): error TS2578: Unused '@ts-expect-error' directive.
-../packages/payments-native/__typetests__/paymentSheetInitInput.orch1387.typetest.ts(144,7): error TS2578: Unused '@ts-expect-error' directive.
-../packages/payments-native/__typetests__/paymentSheetInitInput.orch1387.typetest.ts(154,3): error TS2578: Unused '@ts-expect-error' directive.
-EXIT:2

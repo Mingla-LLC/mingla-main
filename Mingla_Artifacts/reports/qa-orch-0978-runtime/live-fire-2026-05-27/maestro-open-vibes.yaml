@@ -1,6 +1,0 @@
-appId: com.sethogieva.minglabusiness
----
-- tapOn: "Vibes and Stuff"
-- waitForAnimationToEnd:
-    timeout: 10000
-- takeScreenshot: orch-0978-vibes-detail

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check that README remains a snapshot front door, not a second manifest."""
+"""Check that README remains a snapshot front door for the Avengers-era repo."""
 
 from __future__ import annotations
 
@@ -10,6 +10,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 README = ROOT / "README.md"
+
+BOARD_URL = "https://github.com/orgs/Mingla-LLC/projects/4"
 
 
 def require(condition: bool, message: str, failures: list[str]) -> None:
@@ -28,10 +30,13 @@ def main() -> int:
 
     required = (
         "README is a snapshot",
-        "Mingla_Artifacts/ARTIFACT_MANIFEST.md",
-        "Mingla_Roadmap/README.md",
-        "Mingla_Artifacts/archive/README.md",
-        "Mingla_Artifacts/reports/ORCH-0750A_LINK_AUDIT.md",
+        BOARD_URL,
+        "PRODUCT_AND_STRATEGY.md",
+        "MARKETING.md",
+        "COMMS.md",
+        "REPORTS.md",
+        "docs/INVARIANT_REGISTRY.md",
+        "pre-avengers-archive",
         "python3 scripts/docs/check_links.py --baseline-file scripts/docs/link_baseline.json",
         "python3 scripts/docs/check_artifact_placement.py",
         "python3 scripts/docs/check_readme_snapshot.py",
@@ -48,28 +53,30 @@ def main() -> int:
     if source_table:
         source_body = source_table.group("body")
         require(
-            "Mingla_Artifacts/ARTIFACT_MANIFEST.md" in source_body,
-            "Source Of Truth must point to the artifact manifest",
+            BOARD_URL in source_body,
+            "Source Of Truth must point to the Mingla Avengers board",
             failures,
         )
-        require(
-            "Mingla_Artifacts/archive/README.md" in source_body,
-            "Source Of Truth must point to the archive index",
-            failures,
-        )
-        require(
-            "Mingla_Roadmap/README.md" in source_body,
-            "Source Of Truth must point to the roadmap front door",
-            failures,
-        )
+        for doc in ("PRODUCT_AND_STRATEGY.md", "MARKETING.md", "COMMS.md", "REPORTS.md"):
+            require(
+                doc in source_body,
+                f"Source Of Truth must point to {doc}",
+                failures,
+            )
 
     repo_map = repo_map_block(text)
     require(repo_map, "README must contain a fenced Repo Map block", failures)
     if repo_map:
-        require("Mingla_Artifacts/" in repo_map, "Repo Map must include Mingla_Artifacts/", failures)
-        require("Mingla_Roadmap/" in repo_map, "Repo Map must include Mingla_Roadmap/", failures)
-        require("archive/" in repo_map, "Repo Map must include the archive under Mingla_Artifacts/", failures)
-        for stale_root in ("outputs/", "clade transfer/"):
+        for active_root in (
+            "app-mobile/",
+            "mingla-business/",
+            "mingla-admin/",
+            "mingla-marketing/",
+            "supabase/",
+            "docs/",
+        ):
+            require(active_root in repo_map, f"Repo Map must include {active_root}", failures)
+        for stale_root in ("Mingla_Artifacts/", "Mingla_Roadmap/", "outputs/", "clade transfer/"):
             require(stale_root not in repo_map, f"Repo Map must not list `{stale_root}` as active", failures)
 
     if failures:
@@ -80,9 +87,9 @@ def main() -> int:
 
     print("README snapshot check PASS")
     print("- README declares itself a snapshot")
-    print("- source-of-truth links point to manifest/archive authorities")
+    print("- source-of-truth links point to the Avengers board and canonical docs")
     print("- docs lock-in commands are present")
-    print("- repo map avoids stale active docs roots")
+    print("- repo map lists only active roots")
     return 0
 
 

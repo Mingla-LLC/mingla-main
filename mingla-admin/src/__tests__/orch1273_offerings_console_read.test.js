@@ -253,7 +253,9 @@ describe("ORCH-1273 — gate + workflow + registry", () => {
     for (const n of READ_RPCS) assert.doesNotMatch(writeGate, new RegExp(n), `${n} NOT in write-RPC registry`);
   });
   it("both invariants are registered (ACTIVE after META-ORCH-1237 CLOSE)", () => {
-    const reg = read("Mingla_Artifacts/INVARIANT_REGISTRY.md");
+    // Issue #974 [TEST-MOD-APPROVED ORCH-0974]: the invariant registry moved to
+    // docs/INVARIANT_REGISTRY.md when the artifact system retired (tag pre-avengers-archive).
+    const reg = read("docs/INVARIANT_REGISTRY.md");
     // ORCH-1293 [TEST-MOD-APPROVED ORCH-1293]: META-ORCH-1237 CLOSE flipped these
     // two ORCH-1273 invariants DRAFT -> ACTIVE in INVARIANT_REGISTRY.md (PR #743)
     // but did not update this assertion, leaving main red on any strict-grep-

@@ -1,57 +1,48 @@
 # Mingla
 
-Mingla helps people discover experiences, plan with friends, and run the operational surfaces that keep the ecosystem healthy.
+Mingla helps people discover experiences, plan with friends, and run the operational surfaces that keep the ecosystem healthy. Both apps are live on the App Store and Google Play.
+
+README is a snapshot front door. The truth system is small and lives in two places: **work** is tracked as issues on the Mingla Avengers board, and **durable knowledge** lives in the four canonical docs plus `docs/`.
+
+## How We Work
+
+All work — bugs, features, ideas, discoveries — is a GitHub issue on the [Mingla Avengers board](https://github.com/orgs/Mingla-LLC/projects/4). The board README is the operating manual. In short:
+
+- **Issue titles are plain English** a user would understand; the issue number is the work ID.
+- Branches are named `<issue#>-short-slug`; PRs say `Fixes #<issue#>`.
+- **Status** tracks the lifecycle: `Todo` → `In Progress` (being built) → `In Review` (PR open / testing) → `Done` (merged + verified; auto-closes the issue).
+- Investigation findings, specs, implementation notes, and test evidence go in **issue comments** — not repo .md files.
+- When something ships, one line is appended to [`REPORTS.md`](REPORTS.md).
+
+The pre-2026-07-19 operating system (`Mingla_Artifacts/`, `Mingla_Roadmap/`, per-ORCH docs) is retired; all of it is preserved at git tag `pre-avengers-archive`.
+
+## Source Of Truth
+
+| Need | Where |
+|---|---|
+| What is being worked on, and its state? | [Mingla Avengers board](https://github.com/orgs/Mingla-LLC/projects/4) and its issues |
+| Product, positioning, roadmap, strategy | [`PRODUCT_AND_STRATEGY.md`](PRODUCT_AND_STRATEGY.md) |
+| Marketing channels, attribution, motions | [`MARKETING.md`](MARKETING.md) |
+| Cross-session coordination | [`COMMS.md`](COMMS.md) |
+| What shipped, when | [`REPORTS.md`](REPORTS.md) |
+| Engineering invariants that must hold | [`docs/INVARIANT_REGISTRY.md`](docs/INVARIANT_REGISTRY.md) |
+| Stack conventions + Constitution detail | [`docs/MINGLA_ENGINEERING_HANDBOOK.md`](docs/MINGLA_ENGINEERING_HANDBOOK.md) |
+| Worktree / branch discipline | [`docs/WORKTREE_STRATEGY.md`](docs/WORKTREE_STRATEGY.md) |
+| Historical material (pre-migration) | git tag `pre-avengers-archive` |
 
 ## Ecosystem Snapshot
-
-Mingla is a monorepo with five active product and tooling surfaces:
 
 | Surface | Path | Role |
 |---|---|---|
 | Consumer mobile app | [`app-mobile/`](app-mobile/) | React Native Expo app for discovery, saving, planning, collaboration, events, feedback, and user profile flows. |
-| Business app | [`mingla-business/`](mingla-business/) | React Native Expo app for organisers, brands, public events, Stripe Connect, orders, QR, guest lists, and business operations. |
+| Business app | [`mingla-business/`](mingla-business/) | React Native Expo app for organisers, brands, public events, Stripe Connect, orders, QR, guest lists, and business operations. Also serves buyer web. |
 | Admin dashboard | [`mingla-admin/`](mingla-admin/) | React 19 + Vite dashboard for operations, moderation, trials, seeding, analytics, support, and backend visibility. |
 | Marketing site | [`mingla-marketing/`](mingla-marketing/) | Next.js marketing/public web surface. |
-| Backend and tooling | [`supabase/`](supabase/), [`scripts/`](scripts/), [`docs/`](docs/), [`Mingla_Artifacts/`](Mingla_Artifacts/) | Supabase edge functions, migrations, operational scripts, source-of-truth docs, and the artifact operating system. |
-
-## Source Of Truth
-
-README is a snapshot. It is not the whole truth system.
-
-| Need | Link |
-|---|---|
-| What is current, historical, superseded, or private? | [`Mingla_Artifacts/ARTIFACT_MANIFEST.md`](Mingla_Artifacts/ARTIFACT_MANIFEST.md) |
-| What is the current program map? | [`Mingla_Artifacts/WORLD_MAP.md`](Mingla_Artifacts/WORLD_MAP.md) |
-| What changed recently? | [`Mingla_Artifacts/PRODUCT_SNAPSHOT.md`](Mingla_Artifacts/PRODUCT_SNAPSHOT.md) |
-| What should happen next? | [`Mingla_Artifacts/PRIORITY_BOARD.md`](Mingla_Artifacts/PRIORITY_BOARD.md) |
-| What is the current product roadmap and PMM plan? | [`Mingla_Roadmap/README.md`](Mingla_Roadmap/README.md) |
-| What decisions are binding? | [`Mingla_Artifacts/DECISION_LOG.md`](Mingla_Artifacts/DECISION_LOG.md) |
-| What invariants must hold? | [`Mingla_Artifacts/INVARIANT_REGISTRY.md`](Mingla_Artifacts/INVARIANT_REGISTRY.md) |
-| What documentation link debt exists? | [`Mingla_Artifacts/reports/ORCH-0750A_LINK_AUDIT.md`](Mingla_Artifacts/reports/ORCH-0750A_LINK_AUDIT.md) |
-| Where is historical material archived? | [`Mingla_Artifacts/archive/README.md`](Mingla_Artifacts/archive/README.md) |
-
-The link system is measured, not fully clean yet. ORCH-0750A established the checker, ORCH-0750C created the archive structure, and ORCH-0750D locks the documentation system into skills and CI. Future archive/delete work must go through the manifest first.
-
-## Last Synced
-
-| Field | Value |
-|---|---|
-| Date | 2026-05-07 |
-| Commit | `8168cf16` |
-| Function count command | `find supabase/functions -mindepth 1 -maxdepth 1 -type d ...` |
-| Function directories | 66 including `_shared`; 65 deployable directories excluding `_shared` |
-| Migration count command | `find supabase/migrations -maxdepth 1 -type f -name '*.sql' ...` |
-| Active migration files | 26 |
-| Link checker | `python3 scripts/docs/check_links.py --format markdown` |
-| Link baseline gate | `python3 scripts/docs/check_links.py --baseline-file scripts/docs/link_baseline.json` |
-| Artifact placement gate | `python3 scripts/docs/check_artifact_placement.py` |
-| README snapshot gate | `python3 scripts/docs/check_readme_snapshot.py` |
-
-These counts are a snapshot at the commit above. Re-run the commands before updating this README.
+| Backend and tooling | [`supabase/`](supabase/), [`scripts/`](scripts/), [`docs/`](docs/) | Supabase edge functions, migrations, operational scripts, and engineering reference docs. |
 
 ## Architecture Constitution
 
-Every change must preserve these rules. If a change violates one, the implementation report or PR must call it out explicitly.
+Every change must preserve these rules. If a change violates one, the PR must call it out explicitly.
 
 1. **No dead taps.** Primary interactions show visible UI response before non-critical network work.
 2. **One owner per truth.** Every important domain fact has one authoritative owner.
@@ -83,26 +74,18 @@ Supporting contracts:
 ```text
 Mingla/
   app-mobile/          Consumer Expo app
-  mingla-business/     Organiser/business Expo app
+  mingla-business/     Organiser/business Expo app + buyer web
   mingla-admin/        Admin dashboard, React + Vite
   mingla-marketing/    Marketing site, Next.js
   supabase/
     functions/         Edge functions plus _shared utilities
-    migrations/        Active post-squash migration chain
+    migrations/        Active migration chain
+  packages/            Shared workspace packages
   scripts/             Repo and documentation tooling
-  docs/                Architecture and implementation contracts
-  Mingla_Artifacts/    Program operating system and evidence trail
-    archive/           Historical/superseded material, indexed by manifest
-  Mingla_Roadmap/      Product, marketing, GTM, launch, research, and enablement planning system
-    archive/           Superseded roadmap material, indexed by roadmap manifest
-  tests/               Repo-level tests and harnesses
+  docs/                Engineering references, contracts, runbooks
+  tools/               Diagnostic harnesses
+  tests/               Repo-level tests (append-only, CI-gated)
 ```
-
-## Current Backend Snapshot
-
-At the sync commit, `supabase/functions/` contains 66 function directories including `_shared`, or 65 deployable function directories excluding `_shared`. README intentionally does not keep a long hand-maintained function table. Re-run the inventory commands in the Last Synced block when updating backend claims.
-
-`supabase/migrations/` contains 26 active SQL migration files at the sync commit. Earlier migration history from the ORCH-0729 squash is preserved in [`Mingla_Artifacts/migrations_archive_orch_0729_2026-05-05/`](Mingla_Artifacts/migrations_archive_orch_0729_2026-05-05/); that archive is historical evidence, not junk.
 
 ## App Surfaces
 
@@ -113,37 +96,27 @@ At the sync commit, `supabase/functions/` contains 66 function directories inclu
 | Admin dashboard | [`mingla-admin/README.md`](mingla-admin/README.md) | `cd mingla-admin && npm run dev` |
 | Marketing site | `mingla-marketing/` | `cd mingla-marketing && npm run dev` |
 
-Some app-local READMEs may still contain older setup prose. Root README owns the global ecosystem snapshot; app READMEs own only their local setup and surface-specific guidance.
-
 ## Local Development
 
 Install dependencies in the surface you are working on:
 
 ```bash
-cd app-mobile
-npm install
-npx expo start
+cd app-mobile && npm install && npx expo start
 ```
 
 ```bash
-cd mingla-business
-npm install
-npx expo start
+cd mingla-business && npm install && npx expo start
 ```
 
 ```bash
-cd mingla-admin
-npm install
-npm run dev
+cd mingla-admin && npm install && npm run dev
 ```
 
 ```bash
-cd mingla-marketing
-npm install
-npm run dev
+cd mingla-marketing && npm install && npm run dev
 ```
 
-Supabase local function serving and migrations are handled from `supabase/` when a spec explicitly requires backend work:
+Supabase local function serving and migrations are handled from `supabase/`:
 
 ```bash
 cd supabase
@@ -151,7 +124,7 @@ supabase functions serve
 supabase db push
 ```
 
-For release flows, follow the active orchestrator/spec instructions. Supabase migration application is operator-gated; edge function deploys require the approved lifecycle gate.
+Supabase migration application is operator-gated; edge function deploys happen only from merged `main`.
 
 ## Store Submissions (EAS Submit)
 
@@ -169,13 +142,11 @@ Credential layout:
 | Google Play service account JSON | `~/.mingla-secrets/playstore-mingla.json` (mode 600) | Account `eas-submit@mingla-dev.iam.gserviceaccount.com`. Scoped to testing tracks on both apps. Has NO production-release permission by design. |
 | Apple App Store Connect API key | Stored in EAS (`H46434D7Z9`, Admin role, issuer `ee78d0ff-158c-4326-80ef-aec69745fc2d`) | Managed by EAS internally; no `.p8` file required on disk. |
 
-The Google service-account JSON is git-ignored (`.gitignore:48` covers `play-service-account.json`; `~/.mingla-secrets/` lives outside the repo). The `eas.json` `submit.production` blocks reference the absolute path. The `~/.mingla-secrets/` directory is mode 700 / file mode 600 — only the owning user can read.
-
 Safety boundaries baked in:
 
-- Android submissions land as **draft** in the **internal** testing track. Promotion to production tracks requires manual Play Console action.
-- The Play service account is intentionally scoped without `Release to production` permission. Even a misfired `eas submit` cannot reach production-track users.
-- iOS submissions land in TestFlight. App Store Review submission still requires manual ASC action.
+- Android submissions land as **draft** in the **internal** testing track; promotion to production requires manual Play Console action.
+- The Play service account is intentionally scoped without `Release to production` permission.
+- iOS submissions land in TestFlight; App Store Review submission still requires manual ASC action.
 
 Android-specific: `mingla-business` ships with an Expo config plugin at `mingla-business/plugins/withAdiRegistration.js` that writes `assets/adi-registration.properties` into Android APK builds to satisfy Play Console package-name verification. A dedicated `production-apk` build profile in `mingla-business/eas.json` produces signed APKs for that verification flow.
 
@@ -184,20 +155,9 @@ Android-specific: `mingla-business` ships with an Expo config plugin at `mingla-
 Use these checks when touching documentation:
 
 ```bash
-python3 scripts/docs/check_links.py --format markdown
 python3 scripts/docs/check_links.py --baseline-file scripts/docs/link_baseline.json
 python3 scripts/docs/check_artifact_placement.py
 python3 scripts/docs/check_readme_snapshot.py
 ```
 
-Use these checks when refreshing README inventory:
-
-```bash
-git rev-parse --short HEAD
-find supabase/functions -mindepth 1 -maxdepth 1 -type d | sed 's#supabase/functions/##' | sort | wc -l
-find supabase/functions -mindepth 1 -maxdepth 1 -type d ! -name '_shared' | sed 's#supabase/functions/##' | sort | wc -l
-find supabase/migrations -maxdepth 1 -type f -name '*.sql' | sed 's#supabase/migrations/##' | sort | wc -l
-find . -maxdepth 2 -name package.json -not -path './node_modules/*' -print | sort
-```
-
-Do not use ignored prompt files as durable README evidence. Link to reports, specs, decisions, invariants, the manifest, or live source commands instead.
+Both apps ship the SAME version — bump `app-mobile` and `mingla-business` together (CI parity gate enforces it).

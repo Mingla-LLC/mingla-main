@@ -1,129 +1,41 @@
 # AGENTS.md
 
-## Company/Product Operating Context
+## How Mingla work is tracked
 
-When working in this repo, treat product, marketing, GTM, and sales enablement work as first-class strategic work.
+All work — bugs, features, ideas, discoveries — lives as GitHub issues on the **Mingla Avengers board** (https://github.com/orgs/Mingla-LLC/projects/4). The board README is the operating manual. If it's not an issue, it doesn't exist.
 
-For product, positioning, GTM, sales enablement, launch, research, pricing, packaging, roadmap, or customer-facing strategy tasks, use the `pmm-mingla` skill.
+- **Issue titles are plain English**; the **issue # is the work ID**. Branches are `<issue#>-short-slug`; PRs say `Fixes #<issue#>`.
+- **Status lifecycle:** `Todo` (queued) → `In Progress` (investigating / building) → `In Review` (PR open, testing) → `Done` (merged + verified; auto-closes the issue).
+- **Documentation goes to the issue**, not the repo: investigation findings, spec decisions, implementation notes, and test evidence are issue comments (attach screenshots). Do NOT create per-work-item .md files — CI (`scripts/docs/check_artifact_placement.py`) rejects them.
+- When something ships, append one line to `REPORTS.md` (format documented in that file).
+- Set board fields when creating issues (Work Type, Product, Theme, Priority, Estimate; Horizon/Quarter for roadmap items) — board views filter on them.
+- Setting Status = Done auto-closes the issue (a project workflow); don't mark Done anything that should stay open.
 
-## Read the Comms Ledger on entry (MANDATORY)
+## Canonical docs (the only durable .md surface)
 
-Before doing ANY other work this turn, read `/Users/sethogieva/Desktop/mingla-main/COMMS_LEDGER.md`. Scan the **Active entries** table. For each row where `to` matches THIS skill name, OR matches the current ORCH-ID, OR is literally `ALL`:
+| Doc | Owns |
+|---|---|
+| `PRODUCT_AND_STRATEGY.md` | Product, positioning, roadmap, strategy |
+| `MARKETING.md` | Channels, attribution, marketing motions |
+| `COMMS.md` | Cross-session coordination (read on entry — see below) |
+| `REPORTS.md` | Shipped-work log |
+| `docs/` | Engineering references: invariant registry, handbook, worktree strategy, runbooks, contracts |
 
-1. `severity: BLOCK` + `status: OPEN` → STOP. Execute the body now. Append your `skill+side` to `acked_by` and change status to `ACKNOWLEDGED` (or `RESOLVED` if the action fully closes it). Mention the ack in your chat response Section A.
-2. `severity: WARN` + `status: OPEN` → read, factor into this turn's work, append `skill+side` to `acked_by`.
-3. `severity: FYI` → read and continue.
+Everything pre-2026-07-19 (Mingla_Artifacts/, Mingla_Roadmap/, per-ORCH docs, the old COMMS_LEDGER) is preserved at git tag `pre-avengers-archive`.
 
-When YOU discover something that affects another in-flight ORCH, write a new `COMMS-NNNN` entry via a direct-to-`main` one-file commit on the anchor checkout (procedure in the ledger file itself). Mention the new entry in your chat response Section A.
+## Read COMMS.md on entry (MANDATORY)
 
-Reference: `Mingla_Artifacts/INVARIANT_REGISTRY.md` I-COMMS-LEDGER-ENTRY-STANZA + I-COMMS-LEDGER-WRITE-ON-DISCOVERY.
+Before other work, read `/Users/sethogieva/Desktop/mingla-main/COMMS.md` and scan the Active table for rows addressed to you, your current issue #, or `ALL`. `BLOCK`+`OPEN` → stop and execute the body, then ack. `WARN`+`OPEN` → factor in and ack. `FYI` → read and continue. When you discover something affecting another in-flight session, append a `COMMS-NNNN` row via a one-file direct-to-`main` commit and push immediately (procedure in the file).
 
-## Standardized 2-Section Output (MANDATORY, every response, every turn)
+## Engineering discipline (unchanged)
 
-Every chat response from this skill uses exactly two top-level sections: **A** and **B**. No exceptions, no skipping, no extra top-level sections.
+- **Never commit on the anchor `main`** (`~/Desktop/mingla-main`). Work in a per-issue worktree: `~/Desktop/mingla-orchs/<issue#>-<slug>/` on branch `<issue#>-<slug>`, branched from fresh `origin/main`. Full rules: `docs/WORKTREE_STRATEGY.md`.
+- **One PR per issue; merge only when all required checks are GREEN** and the PR is mergeable. Never merge red, never disable a check.
+- The 14-rule Architecture Constitution in `README.md` binds every change; invariants in `docs/INVARIANT_REGISTRY.md` are enforced by strict-grep CI gates.
+- Fixes ship with regression tests; the tests suite is append-only (CI-gated).
+- Both apps ship the SAME version — bump together (CI parity gate).
+- Public trip/offering changes must hit ALL surfaces (consumer iOS/Android, business iOS/Android, buyer web, admin where applicable).
 
-### Section A — What just happened
+## Response style
 
-1–4 short sentences in plain English from the user's perspective. Lead with the outcome and what Seth needs to know to make an informed decision. No jargon. No file paths unless the path IS the deliverable. ORCH-#### references carry a `[bracketed feature/bug label]` on first mention.
-
-For shipped work: name what changed for end users.
-For mid-flight work (investigation just finished, spec just written, prompt just drafted): name what just got decided/found/written and what it means for the next step.
-For status / strategy / Q&A turns: just answer in plain English.
-
-If you acknowledged a comms-ledger entry mid-turn, include a one-sentence mention: "Also handled COMMS-NNNN: <subject>".
-
-If this turn shipped UI/runtime work Seth can touch, add a single labeled sub-section:
-
-#### How to smoke-test on the app
-1. [Open <app surface>, navigate to <screen>.]
-2. [Specific tap / action.]
-3. [What Seth should see.]
-4. [Next action and expected result.]
-
-The smoke-test sub-section is OMITTED entirely when the turn did not ship user-touchable work.
-
-### Section B — Handoff
-
-Exactly ONE of three variants, chosen by asking "whose hands does the work go to next?":
-
-**B1 — Seth does the next thing himself (deploy, merge, eyeball, decide):**
-
-```
-NEXT STEPS — for you, Seth:
-
-1. [Plain-English action with exact command, URL, or button name inline.]
-2. [Next action.]
-3. [Verification step that proves it worked.]
-```
-
-**B2 — Another skill takes the next phase:**
-
-```
-NEXT HANDOFF — paste into [target skill name + side]:
-
-[Single prose paragraph, 3–5 sentences, self-contained. Names: (1) target skill + side, (2) the goal, (3) inputs (artifact paths, ORCH-ID, worktree path + branch), (4) hard constraints, (5) expected output (filename + folder), (6) downstream routing.]
-```
-
-**B3 — Nothing pending:**
-
-```
-NEXT HANDOFF — none; awaiting your direction.
-```
-
-### Hard rules (apply across both sections)
-
-- Layman first. Plain-English impact before any technical detail.
-- ORCH-#### bracket-label rule on first mention.
-- Never refer to Seth in third person; never use "the operator".
-- Detail in artifact files under `Mingla_Artifacts/`; chat is summary-grade.
-- No emojis, no ASCII boxes, no decoration. Markdown headings + prose + tight bullets only.
-- This format SUPERSEDES the prior 4-section conditional rule (`feedback_response_shape_conditional.md`) and the deprecated "Non-Negotiable always-4-sections" rule (`feedback_universal_skill_output_format.md`).
-
-Canonical memory reference: `feedback_response_2_section_universal.md`.
-
-
-## Product Quality Bar
-
-All product work should:
-
-- Start from customer pain.
-- Tie to business outcomes.
-- Include target audience and use case.
-- Distinguish facts, assumptions, risks, and open questions.
-- Produce something usable by product, engineering, marketing, sales, customer success, or leadership.
-
-## Regression Test Habit
-
-For every behavior fix or delivered feature, require a repo-running regression test that would fail before the change and pass after it. If the intended behavior changes, rewrite or replace the old test so it encodes the new contract. The regression test must be included in the same scoped GitHub commit/push as the feature or fix. Any exception must be explicit, justified, and converted into a tester manual gate.
-
-## Communication Style
-
-Prefer:
-
-- Clear recommendations
-- Structured docs
-- Tables where useful
-- Specific examples
-- Executive-ready summaries
-- Direct language
-
-Avoid:
-
-- Generic frameworks without recommendations
-- Vague strategy
-- Buzzwords
-- Overlong explanations
-- Unsupported claims
-
-## Default Business Lens
-
-When relevant, evaluate work through:
-
-- Customer value
-- Revenue impact
-- Retention impact
-- Activation/adoption impact
-- Competitive differentiation
-- Sales enablement impact
-- Operational complexity
-- Strategic urgency
+Every chat response uses exactly two top-level sections: **A — What just happened** (1–4 plain-English sentences, outcome first, layman first) and **B — Handoff** (next steps for Seth, a handoff paragraph for the next agent, or "none; awaiting your direction"). Detail beyond summary-grade goes to the issue, not chat.

@@ -21,7 +21,7 @@
  *   node tools/parity-harness/run-parity-baseline.mjs \
  *     --device R58R54YV7JT \
  *     --web-build mingla-business/web-build \
- *     --out Mingla_Artifacts/reports/orch1100_baseline \
+ *     --out tools/parity-harness/out/baseline \
  *     [--email sethogieva@gmail.com] [--limit N] [--only /route,/route]
  *
  * Auth: this harness does NOT type passwords. It expects you to sign in once in
@@ -48,7 +48,7 @@ function arg(name, def) {
 }
 const DEVICE = arg("device", "R58R54YV7JT");
 const WEB_BUILD = resolve(REPO, arg("web-build", "mingla-business/web-build"));
-const OUT_DIR = resolve(REPO, arg("out", "Mingla_Artifacts/reports/orch1100_baseline"));
+const OUT_DIR = resolve(REPO, arg("out", "tools/parity-harness/out/baseline"));
 const PORT = Number(arg("port", "56815"));
 const CDP_PORT = Number(arg("cdp-port", "9222"));
 const LIMIT = Number(arg("limit", "0")) || Infinity;

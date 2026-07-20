@@ -2,7 +2,7 @@
 
 Consumer-facing React Native Expo app for discovery, saving, planning, collaboration, event browsing, onboarding, profile, and feedback flows.
 
-This README is app-local. For the full ecosystem map, backend snapshot, and artifact truth system, start at [`../README.md`](../README.md) and [`../Mingla_Artifacts/ARTIFACT_MANIFEST.md`](../Mingla_Artifacts/ARTIFACT_MANIFEST.md).
+This README is app-local. For the full ecosystem map and the truth system, start at [`../README.md`](../README.md) and the [Mingla Avengers board](https://github.com/orgs/Mingla-LLC/projects/4).
 
 ## Local Setup
 
@@ -108,9 +108,8 @@ Follow the active ORCH/spec instructions for OTA updates, TestFlight, Play Store
 This file should not duplicate global backend counts, migration inventories, or program status. Those live in:
 
 - [`../README.md`](../README.md)
-- [`../Mingla_Artifacts/ARTIFACT_MANIFEST.md`](../Mingla_Artifacts/ARTIFACT_MANIFEST.md)
-- [`../Mingla_Artifacts/WORLD_MAP.md`](../Mingla_Artifacts/WORLD_MAP.md)
-- [`../Mingla_Artifacts/PRODUCT_SNAPSHOT.md`](../Mingla_Artifacts/PRODUCT_SNAPSHOT.md)
-- [`../Mingla_Artifacts/PRIORITY_BOARD.md`](../Mingla_Artifacts/PRIORITY_BOARD.md)
+- The [Mingla Avengers board](https://github.com/orgs/Mingla-LLC/projects/4) (work items and their state)
+- [`../PRODUCT_AND_STRATEGY.md`](../PRODUCT_AND_STRATEGY.md)
+- [`../REPORTS.md`](../REPORTS.md)
 
 When app-local behavior changes, update this README only for mobile setup, app architecture, commands, and local contracts.

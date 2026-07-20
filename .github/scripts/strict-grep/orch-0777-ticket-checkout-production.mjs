@@ -175,21 +175,13 @@ assertRegex(
   /p_qr_token_pepper:\s*qrPepper/,
   "scanner validation must pass the QR pepper into the bounded RPC",
 );
-assertIncludes(
-  "Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-0777_QR_TOKEN_PEPPER_CONFIG_GATE.md",
-  "Superseded note (2026-05-10): this historical report documents the failed",
-  "historical DB-level QR pepper config report must be explicitly marked superseded",
-);
-assertIncludes(
-  "Mingla_Artifacts/reports/DEPLOY_ORCH-0777_EDGE_FUNCTIONS_AND_SECRETS.md",
-  "Superseded note (2026-05-10): this historical deploy report documents the",
-  "historical deploy report with DB-level QR pepper instructions must be explicitly marked superseded",
-);
-assertIncludes(
-  "Mingla_Artifacts/reports/TEST_REPORT_RETEST_ORCH-0777_QR_PEPPER_SESSION_GUC.md",
-  "Do not clear QR pepper through database-level Postgres configuration",
-  "tracked QR pepper retest evidence must preserve the operator guard against database-level config",
-);
+// [RETIRED 2026-07-19 by issue #974] Three assertions verified that the
+// historical ORCH-0777 reports under Mingla_Artifacts/reports/ carried
+// "superseded" labels warning against DB-level QR pepper config. Those reports
+// were deleted with the artifact system (preserved at tag pre-avengers-archive),
+// so the labeling contract has nothing left to guard. The LIVE contract —
+// no database-level pepper config in migrations or edge functions — is still
+// enforced by the assertRegexAbsent/assertIncludes checks above.
 
 assertNotIncludes(
   "mingla-business/src/services/eventOrdersService.ts",
