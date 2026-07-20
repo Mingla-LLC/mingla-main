@@ -21,9 +21,14 @@ describe("ORCH-1084 BusinessWelcomeScreen official-logo wordmark", () => {
     const source = readBusinessFile(SCREEN);
 
     // The official square business-logo asset is the brand mark.
+    // ISSUE-1001 [brand logo consolidation] — sourced from the canonical
+    // master package (packages/brand-assets/mingla-business-logo.png); the
+    // app-local require is gone. Intent unchanged: the official square
+    // lockup, not a text badge, is the single brand mark.
     expect(source).toContain(
-      'require("../../../assets/brand/mingla-business-logo.png")',
+      'import { MINGLA_BUSINESS_LOGO } from "@mingla/brand-assets"',
     );
+    expect(source).toContain("const logo = MINGLA_BUSINESS_LOGO;");
     // Native still renders as an <Image source={logo} ...> with contain sizing.
     expect(source).toMatch(/<Image\s+source=\{logo\}/);
     expect(source).toContain('resizeMode="contain"');

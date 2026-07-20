@@ -9,8 +9,11 @@ import {
 } from 'react-native'
 import { s } from '../utils/responsive'
 import { colors, spacing } from '../constants/designSystem'
+// ISSUE-1001 — wordmark from the canonical master package (same bytes as the
+// deleted app-local mingla_official_logo.png copy).
+import { MINGLA_WORDMARK } from '@mingla/brand-assets'
 
-const logo = require('../../assets/mingla_official_logo.png')
+const logo = MINGLA_WORDMARK
 
 interface AppLoadingScreenProps {
   /** Optional short message displayed below the spinner. */

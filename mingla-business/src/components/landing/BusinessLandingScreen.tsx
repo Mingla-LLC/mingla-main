@@ -22,8 +22,12 @@ import {
   backgroundWarmGlow,
 } from "../../constants/designSystem";
 import { s, vs } from "../../utils/responsive";
+// ISSUE-1001 — the official business lockup now imports from the canonical
+// master @mingla/brand-assets (packages/brand-assets/mingla-business-logo.png);
+// the app-local copy is deleted.
+import { MINGLA_BUSINESS_LOGO } from "@mingla/brand-assets";
 
-const logo = require("../../../assets/brand/mingla-business-logo.png");
+const logo = MINGLA_BUSINESS_LOGO;
 
 interface BusinessLandingScreenProps {
   onGetStarted: () => void;

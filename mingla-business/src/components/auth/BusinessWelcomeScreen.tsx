@@ -31,9 +31,14 @@ import {
   backgroundWarmGlow,
 } from "../../constants/designSystem";
 import { s, vs } from "../../utils/responsive";
+// ISSUE-1001 — the official business lockup now imports from the canonical
+// master @mingla/brand-assets (packages/brand-assets/mingla-business-logo.png);
+// the app-local copy is deleted. WEB_LOGO_SRC below is UNCHANGED — it serves
+// from mingla-business/public/brand/, a parity-checked mirror.
+import { MINGLA_BUSINESS_LOGO } from "@mingla/brand-assets";
 
 const googleIcon = require("../../../assets/google_icon.png");
-const logo = require("../../../assets/brand/mingla-business-logo.png");
+const logo = MINGLA_BUSINESS_LOGO;
 
 const TERMS_URL = "https://usemingla.com/terms-of-service";
 const PRIVACY_URL = "https://usemingla.com/privacy-policy";
@@ -886,7 +891,8 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   // ORCH-1084 — official square Mingla Business logo lockup (native path)
-  // (assets/brand/mingla-business-logo.png, 2000x2000, "Mingla" wordmark +
+  // (ISSUE-1001: packages/brand-assets/mingla-business-logo.png, 2000x2000,
+  // "Mingla" wordmark +
   // pretzel symbol + "BUSINESS" pill). The web path above uses a plain DOM
   // image because RN Web's Image internals can keep the actual <img>
   // opacity-zero. Replaces the orange "Mingla Business" text badge — the logo

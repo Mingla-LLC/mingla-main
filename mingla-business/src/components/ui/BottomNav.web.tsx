@@ -63,6 +63,10 @@ import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 
 import { Icon } from "./Icon";
 import type { IconName } from "./Icon";
+// ISSUE-1001 — the official business lockup now imports from the canonical
+// master @mingla/brand-assets (packages/brand-assets/mingla-business-logo.png);
+// the app-local copy is deleted.
+import { MINGLA_BUSINESS_LOGO } from "@mingla/brand-assets";
 
 export interface BottomNavTab {
   id: string;
@@ -91,7 +95,6 @@ const ACTIVE_BORDER = "rgba(235, 120, 37, 0.45)";
 const INACTIVE_ICON = "#b9b9c2";
 const INACTIVE_LABEL = "#a1a1aa";
 const RAIL_RIGHT_BORDER = "rgba(255, 255, 255, 0.05)";
-const MINGLA_BUSINESS_LOGO = require("../../../assets/brand/mingla-business-logo.png") as number;
 
 export const BottomNav: React.FC<BottomNavProps> = ({
   tabs,

@@ -107,6 +107,10 @@ import { CreatorStep5Tickets } from "./CreatorStep5Tickets";
 import { CreatorStep6Settings } from "./CreatorStep6Settings";
 import { CreatorStep7Preview } from "./CreatorStep7Preview";
 import { PublishErrorsSheet } from "./PublishErrorsSheet";
+// ISSUE-1001 — the official business lockup now imports from the canonical
+// master @mingla/brand-assets (packages/brand-assets/mingla-business-logo.png);
+// the app-local copy is deleted.
+import { MINGLA_BUSINESS_LOGO } from "@mingla/brand-assets";
 
 const STEP_DEFS: readonly { title: string; subtitle: string }[] = [
   { title: "Basics", subtitle: "Name, format, and category" },
@@ -125,7 +129,6 @@ const STEPPER_STEPS: StepperStep[] = STEP_DEFS.map((s, i) => ({
   label: s.title,
 }));
 
-const MINGLA_BUSINESS_LOGO = require("../../../assets/brand/mingla-business-logo.png") as number;
 const DESKTOP_WIZARD_NAV_ITEMS = [
   { label: "Home", icon: "home", href: "/(tabs)/home", active: false },
   { label: "Hub", icon: "calendar", href: "/(tabs)/hub/events", active: true },
