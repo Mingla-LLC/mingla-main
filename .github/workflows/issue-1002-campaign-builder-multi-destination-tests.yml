@@ -62,13 +62,15 @@ jobs:
           node-version: "20"
       # EXPLICIT registry — the ISSUE-1002 implementor suite (payload destinations[]
       # + group id, N×M fan-out, single-destination backward compat, launchSummary
-      # multi line, migration shape, source wiring). Pure ESM + fs source
-      # assertions; no node_modules required. The tester appends its adversarial
-      # suite here in a later commit.
-      - name: Run ISSUE-1002 campaign-builder multi-destination suite
+      # multi line, migration shape, source wiring) + the TESTER adversarial suite
+      # (anti-cross-contamination across the N×M matrix, empty/single boundaries,
+      # duplicate-destination idempotency). Pure ESM + fs source assertions; no
+      # node_modules required. Both fail-on-revert of the fan-out fix.
+      - name: Run ISSUE-1002 campaign-builder multi-destination suites
         run: >
           node --test
           src/__tests__/issue1002_multi_destination.test.js
+          src/__tests__/issue1002_multi_destination.tester_adversarial.test.js
 
   issue-1002-edge-deno-test:
     name: "ISSUE-1002: admin-ad-create-campaign fan-out (edge deno test)"
