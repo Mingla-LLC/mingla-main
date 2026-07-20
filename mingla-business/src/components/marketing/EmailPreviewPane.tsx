@@ -30,6 +30,9 @@ import {
   previewBlocks,
   type PreviewVariables,
 } from "../../services/marketing/marketingRenderingService";
+// ISSUE-1001 — the real wordmark replaces the "Mingla" text header, so the
+// preview mirrors what recipients actually see from _shared/email/shell.ts.
+import { MINGLA_WORDMARK } from "@mingla/brand-assets";
 
 // Mingla email design tokens — must match `_shared/email/shell.ts` and
 // `_shared/marketingEmailRender.ts` server-side.
@@ -129,7 +132,12 @@ export const EmailPreviewPane: React.FC<EmailPreviewPaneProps> = ({
           />
         ) : (
           <View style={styles.miniglaLogoRow}>
-            <Text style={styles.miniglaLogo}>Mingla</Text>
+            <Image
+              source={MINGLA_WORDMARK}
+              style={styles.miniglaLogoImg}
+              resizeMode="contain"
+              accessibilityLabel="Mingla"
+            />
           </View>
         )}
 
@@ -292,11 +300,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: FRAME_BG,
   },
-  miniglaLogo: {
-    ...typography.h3,
-    color: ORANGE,
-    fontWeight: "800",
-    letterSpacing: 0.4,
+  // ISSUE-1001 — half-scale echo of the real shell's 180px header logo.
+  miniglaLogoImg: {
+    width: 90,
+    height: 32,
   },
   bodyRegion: {
     padding: 24,

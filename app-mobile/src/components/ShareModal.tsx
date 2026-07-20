@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Text, View, StyleSheet, Alert, Clipboard, Share, Linking } from 'react-native';
+import { Text, View, Image, StyleSheet, Alert, Clipboard, Share, Linking } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import * as WebBrowser from 'expo-web-browser';
 import { TrackedTouchableOpacity } from './TrackedTouchableOpacity';
@@ -14,6 +14,8 @@ import { colors } from '../constants/colors';
 import { mixpanelService } from '../services/mixpanelService';
 import { logAppsFlyerEvent } from '../services/appsFlyerService';
 import { buildReferralLink, type ShareEntity } from '../services/oneLinkShare';
+// ISSUE-1001 — the real wordmark replaces the red-dot + "Mingla" text badge.
+import { MINGLA_WORDMARK } from '@mingla/brand-assets';
 
 
 interface ShareModalProps {
@@ -282,10 +284,16 @@ export default function ShareModal({
                       alt={title}
                       style={styles.experienceImage}
                     />
-                    {/* Mingla Badge */}
+                    {/* Mingla Badge — ISSUE-1001: the real orange wordmark
+                        on the fixed white pill (contrast holds over any cover
+                        image; identical in dark mode). */}
                     <View style={styles.minglaBadge}>
-                      <View style={styles.minglaDot} />
-                      <Text style={styles.minglaText}>Mingla</Text>
+                      <Image
+                        source={MINGLA_WORDMARK}
+                        style={styles.minglaWordmark}
+                        resizeMode="contain"
+                        accessibilityLabel="Mingla"
+                      />
                     </View>
                     {/* Rating Badge */}
                     <View style={styles.ratingBadge}>
@@ -517,16 +525,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
   },
-  minglaDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#ef4444',
-  },
-  minglaText: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: '#111827',
+  minglaWordmark: {
+    width: 34,
+    height: 12,
   },
   ratingBadge: {
     position: 'absolute',

@@ -16,6 +16,9 @@
 // rendered safely.
 import { renderShell } from "./email/shell.ts";
 import { escapeHtml as sharedEscapeHtml } from "./email/escape.ts";
+// ISSUE-1001 — canonical logo resolution; replaces the DEAD-404
+// email-assets param default with a live default.
+import { minglaLogoUrl } from "./brandAssets.ts";
 
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export const EMAIL_MAX = 254;
@@ -75,11 +78,9 @@ export function buildInviteEmail(input: {
   const roleLabel = roleDisplay(input.role);
   const partnerSetup = input.partnerSetup === true;
 
-  // Shell config — fall back to defaults that match the rest of the codebase.
-  // Production paths inject MINGLA_LOGO_URL / MINGLA_FOOTER_ADDRESS from env;
-  // tests can override.
-  const logoUrl = input.logoUrl ??
-    "https://usemingla.com/email-assets/mingla-logo.png";
+  // Shell config — caller override wins; else the canonical resolution
+  // (MINGLA_LOGO_URL env, then the live default — ISSUE-1001).
+  const logoUrl = input.logoUrl ?? minglaLogoUrl();
   const supportEmail = input.supportEmail ?? "support@usemingla.com";
   const footerAddress = input.footerAddress ?? "Mingla, hello@usemingla.com";
 

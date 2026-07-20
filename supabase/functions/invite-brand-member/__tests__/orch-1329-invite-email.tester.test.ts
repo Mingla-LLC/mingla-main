@@ -51,9 +51,11 @@ import {
 // non-sandbox senders and the DENO_TESTING fallbacks fire (mirrors
 // _shared/email/__tests__/shell.test.ts).
 Deno.env.set("DENO_TESTING", "1");
+// ISSUE-1001 [brand logo consolidation]: env pins the canonical bare-host URL
+// (the module's live default) — the dead email-assets literal is eliminated.
 Deno.env.set(
   "MINGLA_LOGO_URL",
-  "https://usemingla.com/email-assets/mingla-logo.png",
+  "https://usemingla.com/brand/email/mingla-wordmark-email.png",
 );
 Deno.env.set("MINGLA_FOOTER_ADDRESS", "Mingla, hello@usemingla.com");
 Deno.env.set("MINGLA_FROM_EMAIL", "hello@send.usemingla.com");

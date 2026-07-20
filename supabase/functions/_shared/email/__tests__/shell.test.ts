@@ -8,9 +8,11 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 Deno.env.set("DENO_TESTING", "1");
+// ISSUE-1001 [brand logo consolidation]: env pins the canonical bare-host URL
+// (the module's live default) — the dead email-assets literal is eliminated.
 Deno.env.set(
   "MINGLA_LOGO_URL",
-  "https://usemingla.com/email-assets/mingla-logo.png",
+  "https://usemingla.com/brand/email/mingla-wordmark-email.png",
 );
 Deno.env.set("MINGLA_FOOTER_ADDRESS", "Mingla, hello@usemingla.com");
 Deno.env.set("RESEND_TICKET_FROM", "Mingla <tickets@usemingla.com>");
@@ -63,7 +65,7 @@ Deno.test("paid ticket render: shell wraps body with logo, footer, total", () =>
   const result = renderTransactionalEmail(ticketFixture());
   assertEquals(result.from.address, "tickets@usemingla.com");
   assertStringIncludes(result.html, "<!doctype html>");
-  assertStringIncludes(result.html, "mingla-logo.png");
+  assertStringIncludes(result.html, "mingla-wordmark-email.png");
   assertStringIncludes(result.html, "Sunset Sail");
   assertStringIncludes(result.html, "Hosted by Coastline Co");
   assertStringIncludes(result.html, "Brighton Marina");
@@ -71,7 +73,7 @@ Deno.test("paid ticket render: shell wraps body with logo, footer, total", () =>
   assertStringIncludes(result.html, "support@usemingla.com");
   // Footer wordmark replaced the "experience app" tagline — logo now renders
   // in both header and footer (two <img> tags pointing at the same URL).
-  const logoMatches = result.html.match(/mingla-logo\.png/g) ?? [];
+  const logoMatches = result.html.match(/mingla-wordmark-email\.png/g) ?? [];
   assert(logoMatches.length >= 2);
   assertStringIncludes(result.html, "QR in attached PDF");
   assert(!result.html.includes("dating app"));

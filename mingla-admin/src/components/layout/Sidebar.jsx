@@ -39,7 +39,9 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { NAV_GROUPS } from "../../lib/constants";
-import minglaLogo from "../../assets/mingla-logo.png";
+// ISSUE-1001 — wordmark imported from the canonical master package
+// (packages/brand-assets); the admin-local copy is deleted.
+import minglaLogo from "../../../../packages/brand-assets/mingla-wordmark.png";
 
 const ICON_MAP = {
   LayoutDashboard, Database, Terminal, Globe, Flag, Shield, Users, Layers,

@@ -58,6 +58,10 @@ import {
 // helper is package-internal (not on the index barrel); duplicating the
 // composite math here would drift from the DESIGN §3.1-bound token.
 import { opaqueSurfaceColor } from "@mingla/offering-rendering/themePalette";
+// ISSUE-1001 — the real wordmark replaces the "MINGLA" text kicker; tinted to
+// the event-theme accent via the Image tintColor PROP (react-native-web 0.21
+// implements the prop form; style.tintColor is deprecated there).
+import { MINGLA_WORDMARK } from "@mingla/brand-assets";
 
 import { captureWeb } from "../../analytics/webAnalytics";
 import { APP_STORE_URL, PLAY_STORE_URL } from "../../constants/storeLinks";
@@ -390,7 +394,13 @@ export const SeeWhosGoingGate: React.FC<SeeWhosGoingGateProps> = ({
               </Text>
             </Pressable>
 
-            <Text style={[styles.kicker, { color: palette.accent }]}>MINGLA</Text>
+            <Image
+              source={MINGLA_WORDMARK}
+              tintColor={palette.accent}
+              style={styles.kickerLogo}
+              resizeMode="contain"
+              accessibilityLabel="Mingla"
+            />
             <Text
               style={[styles.dialogTitle, { color: palette.primaryText, fontFamily: boldFamily }]}
               accessibilityRole="header"
@@ -614,11 +624,11 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "700",
   },
-  kicker: {
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 3,
-    textTransform: "uppercase",
+  // ISSUE-1001 — accent-tinted wordmark kicker (left-aligned like the Text
+  // it replaced; dialogTitle's marginTop keeps the rhythm).
+  kickerLogo: {
+    width: 40,
+    height: 14,
   },
   dialogTitle: {
     fontSize: 30,

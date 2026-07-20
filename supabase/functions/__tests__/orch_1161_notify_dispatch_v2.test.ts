@@ -216,7 +216,7 @@ Deno.test("dispatchV2: kill-switch OFF — inapp+push+email fire, SMS skipped (n
     Deno.env.set("ONESIGNAL_APP_ID", "os-app");
     Deno.env.set("ONESIGNAL_REST_API_KEY", "os-key");
     Deno.env.set("RESEND_API_KEY", "re_test");
-    Deno.env.set("MINGLA_LOGO_URL", "https://usemingla.com/logo.png");
+    Deno.env.set("MINGLA_LOGO_URL", "https://usemingla.com/brand/email/mingla-wordmark-email.png");
     Deno.env.set("MINGLA_FOOTER_ADDRESS", "Mingla, hello@usemingla.com");
 
     const state = baseState();
@@ -260,7 +260,7 @@ Deno.test("dispatchV2: kill-switch ON + not suppressed → SMS sent with segment
     Deno.env.set("ONESIGNAL_APP_ID", "os-app");
     Deno.env.set("ONESIGNAL_REST_API_KEY", "os-key");
     Deno.env.set("RESEND_API_KEY", "re_test");
-    Deno.env.set("MINGLA_LOGO_URL", "https://usemingla.com/logo.png");
+    Deno.env.set("MINGLA_LOGO_URL", "https://usemingla.com/brand/email/mingla-wordmark-email.png");
     Deno.env.set("MINGLA_FOOTER_ADDRESS", "Mingla, hello@usemingla.com");
     Deno.env.set("TWILIO_ACCOUNT_SID", "AC_test");
     Deno.env.set("TWILIO_AUTH_TOKEN", "tok");
@@ -302,7 +302,7 @@ Deno.test("dispatchV2: STOP suppression → SMS suppressed (can_send denies)", a
     Deno.env.set("ONESIGNAL_APP_ID", "os-app");
     Deno.env.set("ONESIGNAL_REST_API_KEY", "os-key");
     Deno.env.set("RESEND_API_KEY", "re_test");
-    Deno.env.set("MINGLA_LOGO_URL", "https://usemingla.com/logo.png");
+    Deno.env.set("MINGLA_LOGO_URL", "https://usemingla.com/brand/email/mingla-wordmark-email.png");
     Deno.env.set("MINGLA_FOOTER_ADDRESS", "Mingla, hello@usemingla.com");
     Deno.env.set("TWILIO_ACCOUNT_SID", "AC_test");
     Deno.env.set("TWILIO_AUTH_TOKEN", "tok");

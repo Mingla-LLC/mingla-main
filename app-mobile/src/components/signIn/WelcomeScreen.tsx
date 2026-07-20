@@ -30,9 +30,12 @@ import {
 } from "../../constants/designSystem";
 import { s, vs } from "../../utils/responsive";
 import { useTranslation } from "react-i18next";
+// ISSUE-1001 — wordmark from the canonical master package (same bytes as the
+// deleted app-local mingla_official_logo.png copy).
+import { MINGLA_WORDMARK } from "@mingla/brand-assets";
 
 const googleIcon = require("../../../assets/google_icon.png");
-const logo = require("../../../assets/mingla_official_logo.png");
+const logo = MINGLA_WORDMARK;
 
 import { LEGAL_URLS } from "../../constants/urls";
 

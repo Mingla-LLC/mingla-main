@@ -131,6 +131,10 @@ import {
 } from "../../hooks/useIntakeSchema";
 import type { IntakeSchema } from "../../services/intakeSchemaService";
 import type { TripPreviewBrand } from "./TripPreview";
+// ISSUE-1001 — the official business lockup now imports from the canonical
+// master @mingla/brand-assets (packages/brand-assets/mingla-business-logo.png);
+// the app-local copy is deleted.
+import { MINGLA_BUSINESS_LOGO } from "@mingla/brand-assets";
 
 /*
  * Desktop web wizard contract restored after regression:
@@ -201,7 +205,6 @@ const STEPPER_STEPS: StepperStep[] = [
   { id: "step-7", label: STEP_TITLES[7] },
 ];
 
-const MINGLA_BUSINESS_LOGO = require("../../../assets/brand/mingla-business-logo.png") as number;
 const DESKTOP_WIZARD_NAV_ITEMS = [
   { label: "Home", icon: "home", href: "/(tabs)/home", active: false },
   { label: "Hub", icon: "calendar", href: "/(tabs)/hub/trips", active: true },

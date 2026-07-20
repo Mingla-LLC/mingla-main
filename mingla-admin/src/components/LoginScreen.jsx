@@ -19,7 +19,9 @@ import {
   Loader2,
   KeyRound,
 } from "lucide-react";
-import minglaLogo from "../assets/mingla-logo.png";
+// ISSUE-1001 — wordmark imported from the canonical master package
+// (packages/brand-assets); the admin-local copy is deleted.
+import minglaLogo from "../../../packages/brand-assets/mingla-wordmark.png";
 
 /* ═══════════════════════════════════════════════════════════════
    INLINE STYLE CONSTANTS — bulletproof, no Tailwind variable issues

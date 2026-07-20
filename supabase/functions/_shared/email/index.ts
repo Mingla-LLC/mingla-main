@@ -12,6 +12,8 @@ import {
   type SenderIdentity,
 } from "./senders.ts";
 import { escapeHtml } from "./escape.ts";
+// ISSUE-1001 — canonical logo resolution (env override, live fail-safe default).
+import { minglaLogoUrl } from "../brandAssets.ts";
 import type {
   EmailVariant,
   GenericBodyInput,
@@ -50,13 +52,9 @@ function requireEnv(key: string, fallback?: string): string {
 export function renderTransactionalEmail(input: RenderInput): RenderResult {
   const supportEmail = input.supportEmail ??
     Deno.env.get("SUPPORT_EMAIL") ?? DEFAULT_SUPPORT_EMAIL;
-  // Logo URL is required in production. Tests may inject MINGLA_LOGO_URL.
-  const logoUrl = requireEnv(
-    "MINGLA_LOGO_URL",
-    Deno.env.get("DENO_TESTING") === "1"
-      ? "https://usemingla.com/email-assets/mingla-logo.png"
-      : undefined,
-  );
+  // ISSUE-1001 — MINGLA_LOGO_URL env override wins; else the live canonical
+  // default. No fail-loud, no dead fallback (see _shared/brandAssets.ts).
+  const logoUrl = minglaLogoUrl();
   const footerAddress = requireEnv(
     "MINGLA_FOOTER_ADDRESS",
     Deno.env.get("DENO_TESTING") === "1"

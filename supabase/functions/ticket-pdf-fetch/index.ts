@@ -20,8 +20,12 @@ import {
   userIdFromAuthHeader,
 } from "../_shared/ticketCheckout.ts";
 import { buildTicketPdf } from "../_shared/ticketPdf.ts";
+// ISSUE-1001 — canonical logo resolution. Was `?? null` → text-only PDF
+// wordmark when the secret was unset; PDFs now always embed the logo
+// (ticketPdf.ts still degrades to text if the fetch itself fails).
+import { minglaLogoUrl } from "../_shared/brandAssets.ts";
 
-const MINGLA_LOGO_URL = Deno.env.get("MINGLA_LOGO_URL") ?? null;
+const MINGLA_LOGO_URL = minglaLogoUrl();
 const SIGNED_URL_TTL_SECONDS = 60;
 const STORAGE_BUCKET = "ticket-pdfs";
 

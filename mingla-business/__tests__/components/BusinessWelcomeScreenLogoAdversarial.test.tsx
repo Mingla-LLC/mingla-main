@@ -136,11 +136,20 @@ describe("ORCH-1084 BusinessWelcomeScreen — adversarial logo regression", () =
     // The wide consumer mark must never be the welcome-screen logo source.
     expect(source).not.toContain("mingla_official_logo.png");
 
-    // The required asset, and it must exist on disk as a genuine square PNG.
-    const assetRel = "assets/brand/mingla-business-logo.png";
-    expect(source).toContain(`require("../../../${assetRel}")`);
+    // ISSUE-1001 [brand logo consolidation] — the logo source moved from the
+    // app-local require to the canonical master package. Intent preserved:
+    // the source must be the SQUARE business asset, now pinned at its single
+    // canonical location (packages/brand-assets/mingla-business-logo.png).
+    expect(source).toContain(
+      'import { MINGLA_BUSINESS_LOGO } from "@mingla/brand-assets"',
+    );
+    expect(source).toContain("const logo = MINGLA_BUSINESS_LOGO;");
 
-    const assetPath = path.join(componentDir, assetRel);
+    const assetPath = path.join(
+      componentDir,
+      "..",
+      "packages/brand-assets/mingla-business-logo.png",
+    );
     expect(fs.existsSync(assetPath)).toBe(true);
 
     // Read PNG IHDR (bytes 16-23) for width/height — self-validate squareness.
