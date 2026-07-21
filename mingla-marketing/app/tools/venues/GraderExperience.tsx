@@ -73,6 +73,7 @@ const THEATER_LINES = [
   'Reading your menu like a first-timer',
   'Checking how you look on a Friday night',
   'Grading findability, mobile, occasion signal',
+  'Sizing up your competition',
   'Writing your fixes',
 ] as const
 

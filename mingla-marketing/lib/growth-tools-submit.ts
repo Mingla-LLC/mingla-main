@@ -44,6 +44,37 @@ export interface GraderFix {
   change: string
 }
 
+// ─── Competition (optional on the report — may be absent) ───────────────────
+
+export type GraderCompetitionEffort = 'this_week' | 'this_month' | 'project'
+
+export interface GraderCompetitor {
+  name: string
+  city: string
+  website: string | null
+  mingla_score: number | null
+  /** 1–3 bullets on what this competitor does better. */
+  what_they_do_better: string[]
+  evidence: string | null
+}
+
+export interface GraderOutrankMove {
+  move: string
+  why_it_works: string
+  effort: GraderCompetitionEffort
+}
+
+/** Head-to-head block — absent when the backend found no competitors. */
+export interface GraderCompetition {
+  /** Up to 4 competitors. */
+  competitors: GraderCompetitor[]
+  your_rank_read: string
+  /** 3–5 moves to outrank them. */
+  outrank_playbook: GraderOutrankMove[]
+}
+
+export type GraderCompetitionSource = 'pool+grounded' | 'pool_only' | 'none'
+
 export interface GraderReport {
   venue: { name: string; city: string; website: string }
   match: {
@@ -63,7 +94,8 @@ export interface GraderReport {
   fixes: GraderFix[]
   rewritten_hero: { before_excerpt: string; after_copy: string }
   ai_read: string
-  meta?: { fetch_failed?: boolean }
+  competition?: GraderCompetition
+  meta?: { fetch_failed?: boolean; competition_source?: GraderCompetitionSource }
 }
 
 export interface GraderRunInput {

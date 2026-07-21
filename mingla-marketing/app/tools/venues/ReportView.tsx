@@ -6,8 +6,10 @@
 // .font-dashboard; radius 16 via rounded-md). FREE zone: header + screenshot,
 // grade ring, vibe card, and the "Mingla already knows you" strip when the
 // place is already on Mingla. GATED zone (CSS blur + parchment gradient
-// overlay): score bars with reasons, the Google listing, the fixes, and the
-// before/after copy block. The gate card floats over the blur; the app CTA is
+// overlay): score bars with reasons, the Google listing, the fixes, the
+// competition head-to-head + outrank playbook (when the backend sends
+// report.competition), and the before/after copy block. The gate card floats
+// over the blur; the app CTA is
 // the ATTRIBUTED business OneLink (pid/c=tool_venues — base imported from
 // lib/store-links, never a hardcoded domain, per the ORCH-1399 SSOT rule).
 
@@ -18,6 +20,7 @@ import { captureMarketing } from '@/components/marketing/posthog-provider'
 import { BUSINESS_ONELINK_URL } from '@/lib/store-links'
 import {
   submitGrowthToolsGate,
+  type GraderCompetitionEffort,
   type GraderReport,
   type GraderScoreKey,
   type GrowthToolsError,
@@ -40,6 +43,20 @@ const SCORE_ROWS: Array<{ key: GraderScoreKey; label: string }> = [
   { key: 'menu_offers', label: 'Menu & offers' },
   { key: 'occasion_signal', label: 'Occasion signal' },
 ]
+
+// Effort chips for the outrank playbook — warm-tinted for this_week, neutral
+// for the rest. Unknown values from the backend fall back to the neutral chip.
+const EFFORT_CHIPS: Record<GraderCompetitionEffort, { label: string; className: string }> = {
+  this_week: { label: 'This week', className: 'border-warm/40 bg-warm/10 text-warm-ink' },
+  this_month: {
+    label: 'This month',
+    className: 'border-divider-strong bg-stripe-strong text-text-secondary',
+  },
+  project: {
+    label: 'Bigger project',
+    className: 'border-divider-strong bg-stripe-strong text-text-secondary',
+  },
+}
 
 const GATE_ERROR_COPY: Record<GrowthToolsError, string> = {
   rate_limited: 'You’ve hit today’s limit — try again tomorrow.',
@@ -116,6 +133,10 @@ export function ReportView({ report, runId }: { report: GraderReport; runId: str
   const host = displayHost(report.venue.website)
   const vibes = report.vibe_card.vibes.slice(0, 3)
   const photos = (report.match.photo_urls ?? []).slice(0, 3)
+  // Competition is optional on the report — hide everything when absent.
+  const competition = report.competition
+  const competitors = (competition?.competitors ?? []).slice(0, 4)
+  const playbook = (competition?.outrank_playbook ?? []).slice(0, 5)
 
   async function onGateSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -256,6 +277,16 @@ export function ReportView({ report, runId }: { report: GraderReport; runId: str
         </p>
       ) : null}
 
+      {/* Competition teaser — FREE zone, the gate's strongest hook */}
+      {competitors.length > 0 ? (
+        <p className="mt-6 rounded-sm border border-warm/40 bg-warm/10 px-4 py-3.5 text-sm font-semibold leading-relaxed text-warm-ink">
+          We found <span className="tabular-nums">{competitors.length}</span>{' '}
+          {competitors.length === 1 ? 'place' : 'places'}
+          {report.venue.city ? ` in ${report.venue.city}` : ''} competing for your
+          nights — the head-to-head is inside.
+        </p>
+      ) : null}
+
       {/* ── GATED ZONE ────────────────────────────────────────────────────── */}
       <section className="relative mt-8">
         <div
@@ -338,6 +369,99 @@ export function ReportView({ report, runId }: { report: GraderReport; runId: str
                     </p>
                   </li>
                 ))}
+              </ol>
+            </div>
+          ) : null}
+
+          {/* Competition — head-to-head */}
+          {competitors.length > 0 ? (
+            <div className="mt-10">
+              <DocHeading>Who&rsquo;s eating your Friday nights</DocHeading>
+              {competition?.your_rank_read ? (
+                <p className="mt-4 text-sm leading-relaxed text-text-secondary">
+                  {competition.your_rank_read}
+                </p>
+              ) : null}
+              <ul className="mt-4 space-y-4">
+                {competitors.map((competitor, i) => (
+                  <li
+                    key={`${competitor.name}-${i}`}
+                    className="rounded-sm border border-divider bg-white p-4 md:p-5"
+                  >
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                      <p className="min-w-0 break-words text-sm font-semibold text-text-primary">
+                        {competitor.name}
+                        {competitor.city ? (
+                          <span className="font-normal text-text-muted">
+                            {' '}
+                            · {competitor.city}
+                          </span>
+                        ) : null}
+                      </p>
+                      {typeof competitor.mingla_score === 'number' ? (
+                        <span className="whitespace-nowrap rounded-full border border-warm/40 bg-warm/10 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-warm-ink">
+                          Mingla score {clampScore(competitor.mingla_score)}
+                        </span>
+                      ) : null}
+                    </div>
+                    {competitor.what_they_do_better.length > 0 ? (
+                      <ul className="mt-2.5 space-y-1.5">
+                        {competitor.what_they_do_better.slice(0, 3).map((point) => (
+                          <li
+                            key={point}
+                            className="flex gap-2 text-sm leading-relaxed text-text-secondary"
+                          >
+                            <span aria-hidden="true" className="shrink-0 text-warm-ink">
+                              •
+                            </span>
+                            <span className="min-w-0 break-words">{point}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    {competitor.evidence ? (
+                      <p className="mt-2.5 break-words text-xs leading-relaxed text-text-muted">
+                        {competitor.evidence}
+                      </p>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {/* Outrank playbook */}
+          {playbook.length > 0 ? (
+            <div className="mt-10">
+              <DocHeading>How to outrank them</DocHeading>
+              <ol className="mt-4 space-y-4">
+                {playbook.map((move, i) => {
+                  const chip = EFFORT_CHIPS[move.effort] ?? EFFORT_CHIPS.project
+                  return (
+                    <li
+                      key={`${move.move}-${i}`}
+                      className="rounded-sm border border-divider bg-white p-4 md:p-5"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+                        <p className="min-w-0 flex-1 break-words text-sm font-semibold text-text-primary">
+                          <span className="tabular-nums text-warm-ink">{i + 1}.</span>{' '}
+                          {move.move}
+                        </p>
+                        <span
+                          className={cn(
+                            'whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold',
+                            chip.className,
+                          )}
+                        >
+                          {chip.label}
+                        </span>
+                      </div>
+                      <p className="mt-1.5 text-sm leading-relaxed text-text-secondary">
+                        {move.why_it_works}
+                      </p>
+                    </li>
+                  )
+                })}
               </ol>
             </div>
           ) : null}

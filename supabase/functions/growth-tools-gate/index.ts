@@ -9,7 +9,9 @@
 //   3. saves the email + status 'gated_email',
 //   4. renders the report as a branded HTML email through the shared shell
 //      (renderShell — the EMAIL_BRAND_SHELL_SINGLETON) and sends it via Resend
-//      from the system sender, reply-to support@usemingla.com,
+//      from the system sender, reply-to support@usemingla.com. When the report
+//      carries a competition block (ISSUE-1003), the email adds "Who's eating
+//      your Friday nights" + "How to outrank them"; absent → skipped cleanly,
 //   5. on send success → status 'emailed', 200 {ok:true}.
 // An email send failure returns 502 {error:"email_failed"} and the row STAYS
 // 'gated_email' (the lead is captured; the send can be retried).
@@ -249,6 +251,97 @@ export function buildReportEmail(report: Record<string, unknown>): {
       textLines.push(`* ${title}`);
       if (why) textLines.push(`  Why: ${why}`);
       if (change) textLines.push(`  Change: ${change}`);
+    }
+    textLines.push("");
+  }
+
+  // ── Competition (ISSUE-1003) — skipped cleanly when the report has none. ──
+  const competition = asRecord(report.competition);
+  const competitors = Array.isArray(competition.competitors)
+    ? competition.competitors
+    : [];
+  const rankRead = asString(competition.your_rank_read);
+  const pillBadge = (label: string): string =>
+    `<span style="display:inline-block;margin-left:8px;padding:2px 10px;border:1px solid ${BRAND_BORDER};border-radius:999px;font-size:11px;font-weight:600;color:${BRAND_MUTED};vertical-align:middle;">${
+      escapeHtml(label)
+    }</span>`;
+  if (competitors.length > 0) {
+    sections.push(h2("Who's eating your Friday nights"));
+    textLines.push("WHO'S EATING YOUR FRIDAY NIGHTS");
+    if (rankRead) {
+      sections.push(p(rankRead));
+      textLines.push(rankRead);
+    }
+    for (const raw of competitors) {
+      const comp = asRecord(raw);
+      const name = asString(comp.name);
+      if (!name) continue;
+      const score = asNumber(comp.mingla_score);
+      const better = asStringArray(comp.what_they_do_better);
+      sections.push(
+        `<div style="margin:0 0 14px 0;padding:12px 14px;border:1px solid ${BRAND_BORDER};border-radius:10px;">
+          <p style="margin:0 0 6px 0;font-size:14px;font-weight:700;color:${BRAND_INK};">${
+          escapeHtml(name)
+        }${score !== null ? pillBadge(`Mingla ${Math.round(score)}`) : ""}</p>
+          ${
+          better.length > 0
+            ? `<ul style="margin:0;padding:0 0 0 18px;">${
+              better
+                .map((b) =>
+                  `<li style="margin:0 0 4px 0;font-size:13px;line-height:1.5;color:${BRAND_INK};">${
+                    escapeHtml(b)
+                  }</li>`
+                )
+                .join("")
+            }</ul>`
+            : ""
+        }
+        </div>`,
+      );
+      textLines.push(
+        `* ${name}${score !== null ? ` (Mingla ${Math.round(score)})` : ""}`,
+      );
+      for (const b of better) textLines.push(`  - ${b}`);
+    }
+    textLines.push("");
+  }
+
+  // ── How to outrank them ──
+  const playbook = Array.isArray(competition.outrank_playbook)
+    ? competition.outrank_playbook
+    : [];
+  if (playbook.length > 0) {
+    sections.push(h2("How to outrank them"));
+    textLines.push("HOW TO OUTRANK THEM");
+    for (const raw of playbook) {
+      const item = asRecord(raw);
+      const move = asString(item.move);
+      if (!move) continue;
+      const why = asString(item.why_it_works);
+      const effort = asString(item.effort);
+      const effortLabel = effort === "this_week"
+        ? "This week"
+        : effort === "this_month"
+        ? "This month"
+        : effort === "project"
+        ? "Bigger project"
+        : "";
+      sections.push(
+        `<div style="margin:0 0 14px 0;padding:12px 14px;border:1px solid ${BRAND_BORDER};border-radius:10px;">
+          <p style="margin:0 0 4px 0;font-size:14px;font-weight:700;color:${BRAND_INK};">${
+          escapeHtml(move)
+        }${effortLabel ? pillBadge(effortLabel) : ""}</p>
+          ${
+          why
+            ? `<p style="margin:0;font-size:13px;line-height:1.5;color:${BRAND_MUTED};">${
+              escapeHtml(why)
+            }</p>`
+            : ""
+        }
+        </div>`,
+      );
+      textLines.push(`* ${move}${effortLabel ? ` [${effortLabel}]` : ""}`);
+      if (why) textLines.push(`  Why: ${why}`);
     }
     textLines.push("");
   }
