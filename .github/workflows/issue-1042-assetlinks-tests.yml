@@ -37,6 +37,8 @@ on:
       - "mingla-business/app.json"
       - "docs/runbooks/ANDROID_SIGNING_AND_DEEP_LINK_REGISTRY.md"
       - "scripts/ci/issue-1042-assetlinks-parity-check.mjs"
+      - "scripts/ci/issue-1042-probe-adversarial-check.mjs"
+      - "scripts/probe-android-applinks.mjs"
       - ".github/workflows/issue-1042-assetlinks-tests.yml"
   pull_request:
     paths:
@@ -46,6 +48,8 @@ on:
       - "mingla-business/app.json"
       - "docs/runbooks/ANDROID_SIGNING_AND_DEEP_LINK_REGISTRY.md"
       - "scripts/ci/issue-1042-assetlinks-parity-check.mjs"
+      - "scripts/ci/issue-1042-probe-adversarial-check.mjs"
+      - "scripts/probe-android-applinks.mjs"
       - ".github/workflows/issue-1042-assetlinks-tests.yml"
 
 concurrency:
@@ -65,3 +69,13 @@ jobs:
       # No dependencies: plain-Node .mjs, no install step, nothing to cache.
       - name: Parity + ratchet gate
         run: node scripts/ci/issue-1042-assetlinks-parity-check.mjs
+
+      # TESTER adversarial leg (#1042). Different angle from the gate above: that one
+      # attacks the REPO, this one attacks the PROBE. It runs the real, unmodified
+      # `scripts/probe-android-applinks.mjs` against a synthetic fixture with a stubbed
+      # resolver, and asserts the probe goes red on every way the outside world can be
+      # wrong — empty statement list, missing package, subset/drift, 404, timeout,
+      # malformed body — and that KNOWN_FAILURES cannot widen past the single
+      # (host, package, kind) triple it names. No network call; fully deterministic.
+      - name: Probe adversarial check (tester)
+        run: node scripts/ci/issue-1042-probe-adversarial-check.mjs
