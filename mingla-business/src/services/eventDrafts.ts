@@ -19,8 +19,12 @@ import {
 // columns so serverRowToDraft sees them on every fetch / autosave round-trip.
 // Without these the mapper falls back to empty arrays / null and silently
 // deselects the user's party-type / vibe-tag / music-genre picks every 700ms.
+// #1022: the three theme override columns ride the same contract. Without them
+// the autosave echo replaces the local draft with a projection lacking the
+// theme, so a colour set in the wizard is silently deleted roughly one
+// round-trip after being picked (A/F-1).
 const EVENT_DRAFT_SELECT =
-  "id,brand_id,created_by,title,description,slug,location_text,online_url,cover_media_url,cover_media_type,currency,is_online,is_recurring,is_multi_date,recurrence_rules,theme,visibility,status,timezone,created_at,updated_at,published_at,deleted_at,party_types,vibe_tags,music_genres,city,location_geo,pass_tax,pass_mingla_fee,pass_service_fee";
+  "id,brand_id,created_by,title,description,slug,location_text,online_url,cover_media_url,cover_media_type,currency,is_online,is_recurring,is_multi_date,recurrence_rules,theme,visibility,status,timezone,created_at,updated_at,published_at,deleted_at,party_types,vibe_tags,music_genres,city,location_geo,pass_tax,pass_mingla_fee,pass_service_fee,theme_color_override,theme_font_override,theme_animation_override";
 
 export type ServerDraftLifecycleErrorCode =
   | "draft_not_found"
