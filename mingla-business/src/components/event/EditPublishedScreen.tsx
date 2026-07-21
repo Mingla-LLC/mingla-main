@@ -99,6 +99,8 @@ import { CreatorStep1Basics } from "./CreatorStep1Basics";
 import { CreatorStep2When } from "./CreatorStep2When";
 import { CreatorStep3Where } from "./CreatorStep3Where";
 import { CreatorStep4Cover } from "./CreatorStep4Cover";
+import { ThemeControlRow } from "../theme/ThemeControlRow";
+import { ThemeSheet } from "../theme/ThemeSheet";
 import { CreatorStep5Tickets } from "./CreatorStep5Tickets";
 import { CreatorStep6Settings } from "./CreatorStep6Settings";
 import { EditAfterPublishBanner } from "./EditAfterPublishBanner";
@@ -132,7 +134,6 @@ import {
   useEventHasWebPurchases,
   useEventReconciliation,
 } from "../../hooks/useEventOrders";
-import { ThemeEditorSection } from "../theme/ThemeEditorSection";
 // ORCH-1172 — the section model lives in a pure sibling module so the
 // ticketed-vs-RSVP section-list logic is unit-testable without importing this
 // react-native component. Re-exported below for back-compat.
@@ -384,8 +385,17 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
   // create). Gated to rsvpMode so ticketed edits make no extra queries (both
   // hooks accept null → disabled). Fresh Stripe truth via the hook, Paystack via
   // the brand subaccount; loading → false → neutral nudge (no false-positive).
-  const chipInBrandId = rsvpMode ? (liveEvent?.brandId ?? null) : null;
-  const chipInBrandQuery = useBrand(chipInBrandId);
+  // #1022 C-2 — useBrand was gated to rsvpMode, so a TICKETED event edit
+  // loaded no brand record at all and the Theme row could not report
+  // inheritance (it would show Mingla defaults for a brand-themed event).
+  // Ungated: one extra CACHED read per mount, already warm in the wizards.
+  const brandId = liveEvent?.brandId ?? null;
+  const brandQuery = useBrand(brandId);
+  const [themeSheetOpen, setThemeSheetOpen] = useState(false);
+  const chipInBrandId = rsvpMode ? brandId : null;
+  const chipInBrandQuery = brandQuery;
+  // Deliberately still gated: a separate network call with no bearing on
+  // theme. Ungating it would be scope creep.
   const chipInStripeStatus = useBrandStripeStatus(chipInBrandId);
   const chipInPayoutReady = useMemo(
     () => isChipInPayoutReady(chipInBrandQuery.data ?? null, chipInStripeStatus.data?.status),
@@ -1322,14 +1332,37 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         case "where":
           return <CreatorStep3Where {...stepBodyProps} />;
         case "cover":
-          return <CreatorStep4Cover {...stepBodyProps} />;
+          return <CreatorStep4Cover {...stepBodyProps} showThemeRow={false} />;
         case "visual":
+          // #1022 — the Visual section survives (its key is pinned by an
+          // append-only parity test) but now hosts the NEW compact control.
           return (
-            <ThemeEditorSection
-              value={editState.themeOverrides}
-              onChange={(themeOverrides) => handleUpdateDraft({ themeOverrides })}
-              resetLabel="Use brand default"
-            />
+            <>
+              <ThemeControlRow
+                value={editState.themeOverrides}
+                onChange={(themeOverrides) => handleUpdateDraft({ themeOverrides })}
+                scope="offering"
+                brandTheme={brandQuery.data?.theme ?? null}
+                brandThemeStatus={
+                  brandQuery.isLoading
+                    ? "loading"
+                    : brandQuery.isError
+                      ? "error"
+                      : "ready"
+                }
+                onPress={() => setThemeSheetOpen(true)}
+                testID="edit-published-theme-row"
+              />
+              <ThemeSheet
+                visible={themeSheetOpen}
+                onClose={() => setThemeSheetOpen(false)}
+                value={editState.themeOverrides}
+                onChange={(themeOverrides) => handleUpdateDraft({ themeOverrides })}
+                scope="offering"
+                brandTheme={brandQuery.data?.theme ?? null}
+                testID="edit-published-theme-sheet"
+              />
+            </>
           );
         case "tickets":
           return <CreatorStep5Tickets {...stepBodyProps} />;

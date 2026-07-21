@@ -30,6 +30,12 @@ import {
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
+import { useMemo as useThemeMemo } from "react";
+
+import { createThemePalette } from "../../../../packages/offering-rendering/themePalette";
+import { resolveTheme } from "../../../../packages/offering-rendering/themeResolver";
+import { ThemeControlRow } from "../theme/ThemeControlRow";
+import { ThemeSheet } from "../theme/ThemeSheet";
 import { type StepBodyProps } from "../event/types";
 
 interface RsvpStep7PreviewProps extends StepBodyProps {
@@ -39,6 +45,7 @@ interface RsvpStep7PreviewProps extends StepBodyProps {
 
 export const RsvpStep7Preview: React.FC<RsvpStep7PreviewProps> = ({
   draft,
+  updateDraft,
   brand,
   onTapMiniCard,
 }) => {
@@ -55,14 +62,40 @@ export const RsvpStep7Preview: React.FC<RsvpStep7PreviewProps> = ({
   const venueLine =
     draft.format === "online" ? "Online" : draft.venueName ?? "Set a location in Step 3";
 
+  // #1022 A/F-12 — this preview was THEME-BLIND (accent.warm unconditionally),
+  // so a review row would have advertised a theme the preview could not show.
+  const brandTheme = brand?.theme ?? null;
+  const themePalette = useThemeMemo(
+    () => createThemePalette(resolveTheme(brandTheme, draft.themeOverrides ?? null)),
+    [brandTheme, draft.themeOverrides],
+  );
+  const [themeSheetOpen, setThemeSheetOpen] = React.useState(false);
+  const handleThemeChange = useCallback(
+    (next: Parameters<typeof updateDraft>[0]["themeOverrides"]): void => {
+      updateDraft({ themeOverrides: next });
+    },
+    [updateDraft],
+  );
+
   return (
     <View>
+      {/* #1022 — second touchpoint before publishing. */}
+      <ThemeControlRow
+        value={draft.themeOverrides}
+        onChange={handleThemeChange}
+        scope="offering"
+        brandTheme={brandTheme}
+        variant="review"
+        onPress={() => setThemeSheetOpen(true)}
+        testID="rsvp-review-theme-row"
+      />
+
       {/* Mini RSVP card */}
       <Pressable
         onPress={handleMiniCardPress}
         accessibilityRole="button"
         accessibilityLabel="Preview public page"
-        style={styles.miniCard}
+        style={[styles.miniCard, { backgroundColor: themePalette.page }]}
       >
         <View style={styles.miniCover}>
           <EventCoverMedia
@@ -75,8 +108,11 @@ export const RsvpStep7Preview: React.FC<RsvpStep7PreviewProps> = ({
           />
         </View>
         <View style={styles.miniBody}>
-          <Text style={styles.miniDate}>{dateLine}</Text>
-          <Text style={styles.miniTitle} numberOfLines={1}>
+          <Text style={[styles.miniDate, { color: themePalette.accent }]}>{dateLine}</Text>
+          <Text
+            style={[styles.miniTitle, { color: themePalette.primaryText }]}
+            numberOfLines={1}
+          >
             {titleLine}
           </Text>
           <Text style={styles.miniVenue} numberOfLines={1}>
@@ -139,6 +175,15 @@ export const RsvpStep7Preview: React.FC<RsvpStep7PreviewProps> = ({
         <Icon name="eye" size={16} color={accent.warm} />
         <Text style={styles.previewLinkLabel}>Preview public page</Text>
       </Pressable>
+      <ThemeSheet
+        visible={themeSheetOpen}
+        onClose={() => setThemeSheetOpen(false)}
+        value={draft.themeOverrides}
+        onChange={handleThemeChange}
+        scope="offering"
+        brandTheme={brandTheme}
+        testID="rsvp-review-theme-sheet"
+      />
     </View>
   );
 };

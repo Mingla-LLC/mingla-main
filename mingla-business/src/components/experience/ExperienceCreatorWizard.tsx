@@ -1072,6 +1072,8 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
             cover={cover}
             onCoverChange={setCover}
             onShowToast={setToast}
+            themeOverrides={themeOverrides}
+            onThemeChange={handleThemeChange}
           />
         ) : null}
 

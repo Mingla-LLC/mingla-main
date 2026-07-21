@@ -10,8 +10,13 @@
  * pattern — mirrors EventCreatorWizard).
  */
 
-import React from "react";
+import React, { useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
+
+import type { ThemeInput } from "@mingla/offering-rendering";
+import { useBrand } from "../../hooks/useBrands";
+import { ThemeControlRow } from "../theme/ThemeControlRow";
+import { ThemeSheet } from "../theme/ThemeSheet";
 
 import {
   radius as radiusTokens,
@@ -41,6 +46,10 @@ export interface TripCreatorStep5ReviewProps {
   needsStripe?: boolean;
   /** Connect-Stripe CTA handler — routes to the brand's Stripe onboarding. */
   onConnectStripe?: () => void;
+  /** #1022 — the trip's raw theme override. null = fully inherited. */
+  themeOverrides?: ThemeInput | null;
+  /** #1022 — ONE patch per user action. */
+  onThemeChange?: (next: ThemeInput | null) => void;
 }
 
 export interface PublishErrorState {
@@ -57,14 +66,37 @@ export const TripCreatorStep5Review: React.FC<TripCreatorStep5ReviewProps> = ({
   brand,
   publishError,
   needsStripe = false,
+  themeOverrides = null,
+  onThemeChange,
   onConnectStripe,
 }) => {
+  const [themeSheetOpen, setThemeSheetOpen] = useState(false);
+  // `brand` here is the narrow TripPreviewBrand (no theme), so the brand theme
+  // comes from the cached brand record — the same query the wizard already warms.
+  const brandQuery = useBrand(trip.brandId ?? null);
+  const brandTheme = brandQuery.data?.theme ?? null;
+
   return (
     <ScrollView
       style={styles.host}
       contentContainerStyle={styles.contentContainer}
       keyboardShouldPersistTaps="handled"
     >
+      {/* #1022 — the review-step Theme row, ABOVE the helper line. Trip's
+          Step-7 review receives NO `disabled` prop (verified), so unlike
+          Step 1 this row is always live. */}
+      {onThemeChange !== undefined ? (
+        <ThemeControlRow
+          value={themeOverrides}
+          onChange={onThemeChange}
+          scope="offering"
+          brandTheme={brandTheme}
+          variant="review"
+          onPress={() => setThemeSheetOpen(true)}
+          testID="trip-review-theme-row"
+        />
+      ) : null}
+
       <Text style={styles.helper}>
         Preview what buyers will see. Tap Publish in the footer when ready.
       </Text>
@@ -103,6 +135,17 @@ export const TripCreatorStep5Review: React.FC<TripCreatorStep5ReviewProps> = ({
           testID="trip-step5-preview"
         />
       </View>
+      {onThemeChange !== undefined ? (
+        <ThemeSheet
+          visible={themeSheetOpen}
+          onClose={() => setThemeSheetOpen(false)}
+          value={themeOverrides}
+          onChange={onThemeChange}
+          scope="offering"
+          brandTheme={brandTheme}
+          testID="trip-review-theme-sheet"
+        />
+      ) : null}
     </ScrollView>
   );
 };

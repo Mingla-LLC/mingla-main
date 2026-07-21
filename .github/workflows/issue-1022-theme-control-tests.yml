@@ -34,6 +34,15 @@ on:
       - "mingla-business/src/components/event/EventCreatorWizard.tsx"
       - "mingla-business/src/components/rsvp/RsvpCreatorWizard.tsx"
       - "mingla-business/src/components/experience/ExperienceCreatorWizard.tsx"
+      - "mingla-business/src/components/experience/ExperienceCoverStep.tsx"
+      - "mingla-business/src/components/event/CreatorStep4Cover.tsx"
+      - "mingla-business/src/components/event/CreatorStep7Preview.tsx"
+      - "mingla-business/src/components/event/EditPublishedScreen.tsx"
+      - "mingla-business/src/components/event/editPublishedSections.ts"
+      - "mingla-business/src/components/rsvp/RsvpStep7Preview.tsx"
+      - "mingla-business/src/components/trip/TripCreatorStep5Review.tsx"
+      - "mingla-business/src/components/brand/BrandEditView.tsx"
+      - "mingla-business/src/store/themeRecentsStore.ts"
       - "mingla-business/app/event/[id]/edit.tsx"
       - "mingla-business/app/rsvp/[id]/edit.tsx"
       - "mingla-business/src/utils/__tests__/issue1022*"
@@ -56,6 +65,15 @@ on:
       - "mingla-business/src/components/event/EventCreatorWizard.tsx"
       - "mingla-business/src/components/rsvp/RsvpCreatorWizard.tsx"
       - "mingla-business/src/components/experience/ExperienceCreatorWizard.tsx"
+      - "mingla-business/src/components/experience/ExperienceCoverStep.tsx"
+      - "mingla-business/src/components/event/CreatorStep4Cover.tsx"
+      - "mingla-business/src/components/event/CreatorStep7Preview.tsx"
+      - "mingla-business/src/components/event/EditPublishedScreen.tsx"
+      - "mingla-business/src/components/event/editPublishedSections.ts"
+      - "mingla-business/src/components/rsvp/RsvpStep7Preview.tsx"
+      - "mingla-business/src/components/trip/TripCreatorStep5Review.tsx"
+      - "mingla-business/src/components/brand/BrandEditView.tsx"
+      - "mingla-business/src/store/themeRecentsStore.ts"
       - "mingla-business/app/event/[id]/edit.tsx"
       - "mingla-business/app/rsvp/[id]/edit.tsx"
       - "mingla-business/src/utils/__tests__/issue1022*"
@@ -93,6 +111,8 @@ jobs:
           src/utils/__tests__/issue1022TripThemePristine.test.ts
           src/utils/__tests__/issue1022ThemePresets.test.ts
           src/utils/__tests__/issue1022ThemeResolveOrder.test.ts
+          src/utils/__tests__/issue1022ThemeSheetLayout.test.ts
+          src/utils/__tests__/issue1022ThemeMounts.test.ts
           --runInBand
       # The ORCH-0964 hex contract is append-only and must keep passing
       # UNMODIFIED alongside the new short-hex blur expansion.

@@ -81,6 +81,7 @@ import type { Trip, TripPublishValidationError } from "../../services/tripsServi
 import { setTripPricingSwitches } from "../../services/tripsService";
 // ORCH-1339 — guest-privacy leaf-write RPC (never the big trip edit RPCs).
 import { setEventGuestPrivacy } from "../../services/businessEvents";
+import type { ThemeInput } from "@mingla/offering-rendering";
 import {
   normalizeThemeOverrides,
   patchOfferingTheme,
@@ -800,6 +801,12 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
   ]);
 
   // ----- Autosave per step transition -----
+  // #1022 — the review-step row writes into the SAME step1Draft the Step-1 row
+  // does, so both touchpoints share one source of truth and one persistence path.
+  const handleReviewThemeChange = useCallback((next: ThemeInput | null): void => {
+    setStep1Draft((s) => ({ ...s, themeOverrides: next }));
+  }, []);
+
   const autosaveStep1 = useCallback(async (): Promise<void> => {
     await updateBasicsMutation.mutateAsync({
       eventId: trip.id,
@@ -1562,6 +1569,8 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
               publishError={publishError}
               needsStripe={tripNeedsStripe}
               onConnectStripe={handleConnectStripe}
+              themeOverrides={step1Draft.themeOverrides}
+              onThemeChange={handleReviewThemeChange}
             />
           ) : null}
         </View>
