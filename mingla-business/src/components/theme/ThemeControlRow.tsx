@@ -14,7 +14,6 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
-import { themeAxisIsInherited } from "../../services/offeringTheme";
 import { Icon } from "../ui/Icon";
 import { Skeleton } from "../ui/Skeleton";
 import { themeValueLine, type ThemeControlScope } from "./themeColorModel";

@@ -1,0 +1,103 @@
+name: Issue 1022 Theme Control Tests
+
+# #1022 [compact Theme control across 4 create wizards + 2 edit surfaces] —
+# fails-on-revert regressions for the theme persistence spine, the sheet
+# dismiss-pan scoping, and the control's own contracts.
+#
+# These are jest suites. The class-D strict-grep `jest-suites` job does NOT run
+# jest, and the mingla-business default config is only exercised by a full
+# `npx jest` that no workflow performs — so without this dedicated job these
+# tests would exist but never gate (the dark-test-surface trap, ORCH-1383).
+#
+# EXPLICIT registry (never a glob) — add a suite by appending its path below.
+# The strict-grep gate issue-1022-sheet-dismiss-pan-handle-only.mjs is NOT run
+# here: it is registered in MANIFEST.json as batch:A and runs under the batched
+# strict-grep lane.
+
+on:
+  push:
+    branches: [Seth, main]
+    paths:
+      - "mingla-business/src/services/offeringTheme.ts"
+      - "mingla-business/src/services/businessEvents.ts"
+      - "mingla-business/src/services/eventDrafts.ts"
+      - "mingla-business/src/services/tripsService.ts"
+      - "mingla-business/src/services/experienceDetailService.ts"
+      - "mingla-business/src/utils/serverDraftEventMapper.ts"
+      - "mingla-business/src/utils/liveEventAdapter.ts"
+      - "mingla-business/src/utils/draftDirtyCheck.ts"
+      - "mingla-business/src/utils/draftEventPristine.ts"
+      - "mingla-business/src/components/theme/**"
+      - "mingla-business/src/components/ui/SheetMobile.tsx"
+      - "mingla-business/src/components/trip/TripCreatorWizard.tsx"
+      - "mingla-business/src/components/trip/TripCreatorStep1Basics.tsx"
+      - "mingla-business/src/components/event/EventCreatorWizard.tsx"
+      - "mingla-business/src/components/rsvp/RsvpCreatorWizard.tsx"
+      - "mingla-business/src/components/experience/ExperienceCreatorWizard.tsx"
+      - "mingla-business/app/event/[id]/edit.tsx"
+      - "mingla-business/app/rsvp/[id]/edit.tsx"
+      - "mingla-business/src/utils/__tests__/issue1022*"
+      - ".github/workflows/issue-1022-theme-control-tests.yml"
+  pull_request:
+    paths:
+      - "mingla-business/src/services/offeringTheme.ts"
+      - "mingla-business/src/services/businessEvents.ts"
+      - "mingla-business/src/services/eventDrafts.ts"
+      - "mingla-business/src/services/tripsService.ts"
+      - "mingla-business/src/services/experienceDetailService.ts"
+      - "mingla-business/src/utils/serverDraftEventMapper.ts"
+      - "mingla-business/src/utils/liveEventAdapter.ts"
+      - "mingla-business/src/utils/draftDirtyCheck.ts"
+      - "mingla-business/src/utils/draftEventPristine.ts"
+      - "mingla-business/src/components/theme/**"
+      - "mingla-business/src/components/ui/SheetMobile.tsx"
+      - "mingla-business/src/components/trip/TripCreatorWizard.tsx"
+      - "mingla-business/src/components/trip/TripCreatorStep1Basics.tsx"
+      - "mingla-business/src/components/event/EventCreatorWizard.tsx"
+      - "mingla-business/src/components/rsvp/RsvpCreatorWizard.tsx"
+      - "mingla-business/src/components/experience/ExperienceCreatorWizard.tsx"
+      - "mingla-business/app/event/[id]/edit.tsx"
+      - "mingla-business/app/rsvp/[id]/edit.tsx"
+      - "mingla-business/src/utils/__tests__/issue1022*"
+      - ".github/workflows/issue-1022-theme-control-tests.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-1022-jest:
+    name: "#1022: theme persistence + sheet scoping (fails-on-revert regressions)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      # EXPLICIT registry — add a new #1022 suite by appending a path; never glob.
+      - name: Run issue-1022 jest suites
+        run: >
+          npx jest
+          src/services/__tests__/offeringTheme.issue1022.test.ts
+          src/utils/__tests__/issue1022ThemeDraftRoundTrip.test.ts
+          src/utils/__tests__/issue1022ThemePhantomDiff.test.ts
+          src/utils/__tests__/issue1022ThemeDirtyPristine.test.ts
+          src/utils/__tests__/issue1022ThemeWriteShapes.test.ts
+          src/utils/__tests__/issue1022TripThemePristine.test.ts
+          src/utils/__tests__/issue1022ThemePresets.test.ts
+          src/utils/__tests__/issue1022ThemeResolveOrder.test.ts
+          --runInBand
+      # The ORCH-0964 hex contract is append-only and must keep passing
+      # UNMODIFIED alongside the new short-hex blur expansion.
+      - name: Assert the ORCH-0964 hex contract still holds
+        run: >
+          npx jest
+          src/components/theme/__tests__/ThemeEditorSection.hexInput.orch_0964_hotfix.test.ts
+          --runInBand

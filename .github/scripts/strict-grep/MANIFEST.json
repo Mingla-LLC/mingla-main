@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff \u2014 there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 411,
-  "selfTestWiredFloor": 191,
+  "expectedStrictGrepMjsFiles": 412,
+  "selfTestWiredFloor": 192,
   "unenforcedCap": 7,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -5880,6 +5880,20 @@
         "orch-1387-wallet-type-contract"
       ],
       "reason": "NOT a gate script \u2014 the preserved orch-1387 scoped npm-ci + tsc type-contract lane (ORCH-1383 replay). It invokes no .mjs, so run-batch.mjs and the differential proof cannot see it; this synthetic job: entry makes meta-1383 parity P9 fail the PR if the preserved job is ever deleted from strict-grep-mingla-business.yml."
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1022-sheet-dismiss-pan-handle-only.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-1022-sheet-dismiss-pan-handle-only"
+      ]
     }
   ]
 }
