@@ -1,0 +1,69 @@
+name: Issue 1036 Contrast Chip Removal Tests
+
+# #1036 [remove-contrast-chip] — the theme colour picker's readability-advisory
+# apparatus is removed. Seth's decision (2026-07-21): "we can remove it, the
+# preview already shows which is ok, no need to confuse the user." Gone from
+# ThemeSheet.tsx: the three-tier contrast chip ("AA · Crisp" / warn / "Hard to
+# read"), the "Nudge to AA" action, and the seed->derived disclosure ("On the
+# page this becomes … so labels stay readable"), plus the now-dead supporting
+# logic and orphaned styles. The live preview band is now the sole readability
+# signal. The palette math (contrastRatio etc.) stays in the codebase, only the
+# ThemeSheet UI that surfaced it goes. This structural fails-on-revert suite
+# locks the removal in place.
+#
+# This is a jest suite. The class-D strict-grep `jest-suites` job does NOT run
+# jest, and the mingla-business default config is only exercised by a full
+# `npx jest` that no workflow performs — so without this dedicated job the test
+# would exist but never gate (the dark-test-surface trap, ORCH-1383).
+#
+# EXPLICIT registry (never a glob) — add a suite by appending its path below.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mingla-business/src/components/theme/ThemeSheet.tsx"
+      - "mingla-business/src/utils/__tests__/issue_1036_contrast_apparatus_removed.test.ts"
+      - "mingla-business/src/components/theme/__tests__/issue1036NoContrastNode.web.render.test.tsx"
+      - "mingla-business/jest.issue1036.render.cjs"
+      - ".github/workflows/issue-1036-contrast-chip-removal-tests.yml"
+  pull_request:
+    paths:
+      - "mingla-business/src/components/theme/ThemeSheet.tsx"
+      - "mingla-business/src/utils/__tests__/issue_1036_contrast_apparatus_removed.test.ts"
+      - "mingla-business/src/components/theme/__tests__/issue1036NoContrastNode.web.render.test.tsx"
+      - "mingla-business/jest.issue1036.render.cjs"
+      - ".github/workflows/issue-1036-contrast-chip-removal-tests.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-1036-jest:
+    name: "#1036: contrast chip / nudge / disclosure removed from ThemeSheet (fails-on-revert)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      # EXPLICIT registry — add a new #1036 suite by appending a path; never glob.
+      - name: Run issue-1036 jest suite (implementor source-gate)
+        run: >
+          npx jest
+          src/utils/__tests__/issue_1036_contrast_apparatus_removed.test.ts
+          --runInBand
+      # Tester adversarial WEB render-proof (different angle): mounts the REAL
+      # ThemeSheet through react-native-web and asserts NO contrast-advisory node
+      # renders for any seed (incl. the low-contrast Ocean #2563eb). Fails on
+      # revert because the with-chip version prints "Nudge to AA -> 3.7:1".
+      - name: Run issue-1036 tester render-proof (react-native-web)
+        run: npx jest --config jest.issue1036.render.cjs --runInBand
