@@ -5969,3 +5969,26 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 - **Enforcement:** batch:A strict-grep gate comparing the specimen registry keys against `THEME_FONT_SLUGS` (Seth-approved Q2), MANIFEST-registered.
 - **Regression test:** fails-on-revert — adding a slug without a specimen, or a specimen without a slug, turns the gate red; a source assertion proves exactly one `useThemeFont` call site inside the theme sheet. Append-only.
 - **Established:** DRAFT 2026-07-20 at #1022 SPEC; ACTIVE at CLOSE 2026-07-21 (PR #1033).
+
+### I-PROPOSED-1042-ANDROID-FINGERPRINT-SET-APPEND-ONLY (DRAFT — #1042 SPEC 2026-07-21)
+- **Rule:** an Android signing fingerprint published in any `assetlinks.json` in this repo is
+  APPEND-ONLY. Each Mingla Android app has THREE signing identities — Play app-signing, EAS
+  upload/release, EAS debug — and each one is load-bearing for a different install path
+  (Play install / release-signed sideload / `development` dev-client build). A fingerprint that
+  looks unfamiliar is presumed to be the third identity, not a stale key, until a Play Console
+  or `eas credentials` readback proves otherwise: `90:28:F8:B1:…` was carried for eight weeks as
+  a suspected stale key and is in fact Explorer's live debug keystore (#1042 F-2, proven from
+  `b9be365a4` — both of Explorer's Play certificates have been unchanged since 2026-04-12).
+  The `com.mingla.app.v2` fingerprint array MUST be byte-identical, order included, across
+  `mingla-marketing/` and `mingla-business/`. Removal requires a Play Console / `eas credentials`
+  readback cited in the PR body.
+- **Enforcement:** `scripts/ci/issue-1042-assetlinks-parity-check.mjs` (PR-blocking via
+  `.github/workflows/issue-1042-assetlinks-tests.yml`): cross-file deep-equality, uppercase
+  32-byte format, no duplicate packages, and a per-(file,package) count ratchet.
+- **Corollary (external):** every host declared `autoVerify: true` in either app's config MUST have
+  a Digital Asset Links statement for that app's package, verified against Google's resolver — NOT
+  against a repo copy. `scripts/probe-android-applinks.mjs` (scheduled) owns this; the repo gate
+  cannot and must not claim it.
+- **Regression test:** fails-on-revert — deleting any single fingerprint line, lowercasing one, or
+  desyncing the two files turns the gate red.
+- **Established:** DRAFT 2026-07-21 at #1042 SPEC.

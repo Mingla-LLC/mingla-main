@@ -1,0 +1,146 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# #1042 [android-signing-fingerprint-audit] — Android App Links health probe.
+#
+# WHY THIS EXISTS. Every Mingla Android deep link depends on a Digital Asset Links
+# statement served by a host, and THREE of the five hosts our apps depend on are not
+# in this repository: `go.usemingla.com` and `biz.usemingla.com` are served from the
+# AppsFlyer branded-domain dashboard, and the repo-backed ones are only as current as
+# the last Vercel deployment. Nothing in CI can see any of that. This probe asks
+# GOOGLE'S OWN resolver whether each host actually vouches for the app that declares
+# it — a fact about the outside world, changeable by a dashboard edit, a deploy, a
+# DNS change, or a CDN cache.
+#
+# It would have gone red the day #1042 F-4 was introduced (`go.usemingla.com`
+# publishes no statement for `com.sethogieva.minglabusiness` while the shipped
+# Business build autoVerifies it), and nothing else in the repo would ever have.
+#
+# THE COMPANION GATE CANNOT DO THIS, AND SAYS SO. `issue-1042-assetlinks-tests.yml`
+# proves only that our two repo copies agree and that no fingerprint was deleted. It
+# explicitly cannot certify that a fingerprint is CORRECT — the authority is a Play
+# Console screen CI cannot read, which is #1038's root cause. Correctness lives here.
+#
+# WHY A CI CRON. Same reasoning as `onelink-health-probe.yml`: the probe makes one
+# public HTTPS request per host and needs no database, no secrets, and no product
+# data, so an edge function + pg_cron would be three moving parts to make an HTTP
+# call. The alert channel (open/append a labelled GitHub Issue) already exists here.
+#
+# DAILY, NOT HOURLY. These statements change on human action — a deploy, a dashboard
+# edit — not on traffic. A day bounds the blind window without generating noise.
+#
+# NOTE: the schedule only arms once this file lands on the default branch. After
+# merge, trigger it once manually (workflow_dispatch) to confirm it is green before
+# trusting its silence.
+#
+# Runbook: docs/runbooks/ANDROID_SIGNING_AND_DEEP_LINK_REGISTRY.md
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: Android App Links Health Probe
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+# A second run while one is in flight tells us nothing new.
+concurrency:
+  group: android-applinks-health-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      issues: write # to open an android-applinks-outage issue
+      contents: read # to checkout the probe script + app configs
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Probe every declared autoVerify (host, package) pair
+        id: probe
+        run: node scripts/probe-android-applinks.mjs
+
+      - name: Open issue on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const today = new Date().toISOString().split("T")[0];
+            let detail = '(probe produced no detail file — read the run log; the probe itself may have errored)';
+            try { detail = fs.readFileSync('/tmp/android-applinks-probe-failure.md', 'utf8'); } catch {}
+
+            // Don't stack duplicate issues — one open outage issue is enough.
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'open', labels: 'android-applinks-outage',
+            });
+            const body = [
+              `A host that a Mingla Android app declares \`autoVerify\` against no longer vouches for that app,`,
+              `as resolved by Google's own Digital Asset Links resolver.`,
+              ``,
+              `**Run:** ${runUrl}`,
+              `**Date:** ${today}`,
+              ``,
+              `## What failed`,
+              ``,
+              detail,
+              ``,
+              `## Why this matters`,
+              ``,
+              `Android App Links only open in the app if the host publishes a Digital Asset Links statement`,
+              `naming that app's package AND the signing certificate of the installed binary. When the`,
+              `statement disappears, links open in Chrome instead. Nothing errors, nothing is logged, and`,
+              `already-installed apps keep working until their next update — so this fails SILENTLY and can`,
+              `run for months. That is exactly what #1038 did.`,
+              ``,
+              `On Android 11 and below the legacy verifier is **all-or-nothing** across an app's autoVerify`,
+              `hosts: one broken host can un-verify every other host that app declares.`,
+              ``,
+              `## Triage`,
+              ``,
+              `1. **NO_STATEMENT on an AppsFlyer host** (\`go.usemingla.com\`, \`biz.usemingla.com\`): the`,
+              `   branded domain lost its app target. AppsFlyer → OneLink → Branded domains → that domain →`,
+              `   check the Android app list and SHA-256 set. This is #1042 F-4's failure mode.`,
+              `2. **NO_STATEMENT on a repo-backed host** (\`usemingla.com\`, \`www.usemingla.com\`,`,
+              `   \`business.usemingla.com\`): the served \`.well-known/assetlinks.json\` is missing or`,
+              `   malformed. \`curl\` it directly — a trailing comma or a wrong Content-Type makes Google`,
+              `   return ZERO statements for the whole host, taking every package on it down at once.`,
+              `3. **DRIFT**: the live host publishes fewer fingerprints than the repo file declares. The repo`,
+              `   is right and the deployment is stale — check the latest Vercel production deployment for`,
+              `   \`mingla-marketing\` / \`mingla-business\` and redeploy.`,
+              `4. **RESOLVER_ERROR**: Google's endpoint was unreachable on all 5 attempts. Re-run the`,
+              `   workflow (\`workflow_dispatch\`) before treating it as real.`,
+              `5. Verify a fix on a device: \`adb shell pm get-app-links <package>\` after reinstalling —`,
+              `   Android re-runs verification at install and at update, never continuously.`,
+              ``,
+              `## Reference`,
+              ``,
+              `- Probe: \`scripts/probe-android-applinks.mjs\``,
+              `- Workflow: \`.github/workflows/android-applinks-health-probe.yml\``,
+              `- Runbook: \`docs/runbooks/ANDROID_SIGNING_AND_DEEP_LINK_REGISTRY.md\``,
+              `- Repo-side parity gate (proves far less — read its header): \`scripts/ci/issue-1042-assetlinks-parity-check.mjs\``,
+            ].join("\n");
+
+            if (existing.data.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: existing.data[0].number,
+                body: `### Still failing — ${today}\n\n${body}`,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                title: `🔴 Android App Links broken — a declared host stopped vouching for a Mingla app (${today})`,
+                body,
+                labels: ["android-applinks-outage", "urgent"],
+              });
+            }
