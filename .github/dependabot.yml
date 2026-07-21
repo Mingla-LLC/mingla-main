@@ -14,11 +14,45 @@
 # react-native, @react-native/*, react, react-dom, next, vite, metro,
 # metro-*) is a deliberate human project — pairing research, native rebuild,
 # full QA — never a batch rider. The `ignore` rules below stop Dependabot
-# from PROPOSING such updates (ignore conditions apply to BOTH scheduled
-# version updates and security updates). `open-pull-requests-limit: 0` keeps
+# from PROPOSING such updates. `open-pull-requests-limit: 0` keeps
 # scheduled version-update PRs OFF, preserving this repo's pre-existing
 # security-updates-only posture (security updates are exempt from that limit
 # and keep flowing for everything outside these ignore rules).
+#
+# ISSUE #1051 CORRECTION — the sentence that used to sit above ("ignore
+# conditions apply to BOTH scheduled version updates and security updates")
+# WAS WRONG, and that error is why this file failed three times. Two proven
+# facts, both established by reading the actual #944/#945 diffs:
+#
+#   1. `update-types:` with `version-update:*` values binds VERSION updates
+#      ONLY. It is INERT on the SECURITY-update path. Every recurrence
+#      (#925, #935/#936, #944/#945) arrived as a security update — visible in
+#      the PR title "in the npm_and_yarn group", and proven by the fact that
+#      `open-pull-requests-limit: 0` did not suppress them (security updates
+#      have their own internal limit of 10 that config cannot change).
+#      Only `dependency-name:` + `versions:` are honoured by security updates.
+#      => every `update-types:` entry below was decorative against the exact
+#         path all three recurrences used. The `versions:` block added under
+#         "#1051" restates the same rule in the form security updates respect.
+#
+#   2. THE ACTUAL MECHANISM was npm TRANSITIVE-DEPENDENCY UNLOCKING. In
+#      #944/#945 the advertised update was `postcss 8.4.49 → 8.5.19`. postcss
+#      is not a direct dependency of either mobile app; it is reachable only
+#      through `@expo/metro-config`, which on the Expo-54 line pins
+#      `postcss ~8.4.32` — a range that CANNOT reach 8.5.19. Rather than give
+#      up, Dependabot bumped the PARENT it could edit: it rewrote the
+#      top-level `expo` manifest entry ~54.0.34 → ~57.0.7, because Expo 57's
+#      @expo/metro-config allows `postcss ^8.5.14`. The update is NAMED
+#      `postcss`, so an ignore rule keyed on `expo` was never the subject of
+#      the update at all.
+#
+#      => a `versions:` ignore on `expo` is NECESSARY but may not be
+#         SUFFICIENT: whether Dependabot consults ignore conditions for a
+#         package it edits as an unlock PARENT (rather than as the named
+#         subject) is NOT provable from outside GitHub. Treat this file as
+#         defence-in-depth, NOT as the control. The load-bearing controls are
+#         the CI gates below plus branch protection (issue #1051, deferred to
+#         Seth — a guard that can be merged past is advisory, not a gate).
 #
 # react-native (and @react-native/*) is 0.x — its breaking line moves on
 # MINOR — so minors are human-only there too.
@@ -61,6 +95,37 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "metro-*"
         update-types: ["version-update:semver-major"]
+      # --- #1051: SECURITY-UPDATE-EFFECTIVE ignores. ---
+      # The `update-types:` entries above bind VERSION updates only and are
+      # inert on the security-update path that produced #925, #935/#936 and
+      # #944/#945 (see header §1). `versions:` IS honoured by security
+      # updates, so the same framework-family rule is restated here in the
+      # only form that path respects. Bounds = "one line above the approved
+      # major", kept in lockstep with
+      # .github/scripts/strict-grep/orch-1386-framework-major-registry.json.
+      # These are ADDITIVE — never delete the `update-types:` entries above.
+      - dependency-name: "expo"
+        versions: [">= 55"]
+      - dependency-name: "@expo/*"
+        versions: [">= 55"]
+      - dependency-name: "@expo/vector-icons"
+        versions: [">= 16"]
+      - dependency-name: "react-native"
+        versions: [">= 0.82"]
+      - dependency-name: "@react-native/*"
+        versions: [">= 0.82"]
+      - dependency-name: "react"
+        versions: [">= 20"]
+      - dependency-name: "react-dom"
+        versions: [">= 20"]
+      - dependency-name: "next"
+        versions: [">= 16"]
+      - dependency-name: "vite"
+        versions: [">= 8"]
+      - dependency-name: "metro"
+        versions: [">= 0.84"]
+      - dependency-name: "metro-*"
+        versions: [">= 0.84"]
   - package-ecosystem: "npm"
     directory: "/mingla-business"
     schedule:
@@ -89,6 +154,37 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "metro-*"
         update-types: ["version-update:semver-major"]
+      # --- #1051: SECURITY-UPDATE-EFFECTIVE ignores. ---
+      # The `update-types:` entries above bind VERSION updates only and are
+      # inert on the security-update path that produced #925, #935/#936 and
+      # #944/#945 (see header §1). `versions:` IS honoured by security
+      # updates, so the same framework-family rule is restated here in the
+      # only form that path respects. Bounds = "one line above the approved
+      # major", kept in lockstep with
+      # .github/scripts/strict-grep/orch-1386-framework-major-registry.json.
+      # These are ADDITIVE — never delete the `update-types:` entries above.
+      - dependency-name: "expo"
+        versions: [">= 55"]
+      - dependency-name: "@expo/*"
+        versions: [">= 55"]
+      - dependency-name: "@expo/vector-icons"
+        versions: [">= 16"]
+      - dependency-name: "react-native"
+        versions: [">= 0.82"]
+      - dependency-name: "@react-native/*"
+        versions: [">= 0.82"]
+      - dependency-name: "react"
+        versions: [">= 20"]
+      - dependency-name: "react-dom"
+        versions: [">= 20"]
+      - dependency-name: "next"
+        versions: [">= 16"]
+      - dependency-name: "vite"
+        versions: [">= 8"]
+      - dependency-name: "metro"
+        versions: [">= 0.84"]
+      - dependency-name: "metro-*"
+        versions: [">= 0.84"]
   - package-ecosystem: "npm"
     directory: "/mingla-admin"
     schedule:
@@ -117,6 +213,37 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "metro-*"
         update-types: ["version-update:semver-major"]
+      # --- #1051: SECURITY-UPDATE-EFFECTIVE ignores. ---
+      # The `update-types:` entries above bind VERSION updates only and are
+      # inert on the security-update path that produced #925, #935/#936 and
+      # #944/#945 (see header §1). `versions:` IS honoured by security
+      # updates, so the same framework-family rule is restated here in the
+      # only form that path respects. Bounds = "one line above the approved
+      # major", kept in lockstep with
+      # .github/scripts/strict-grep/orch-1386-framework-major-registry.json.
+      # These are ADDITIVE — never delete the `update-types:` entries above.
+      - dependency-name: "expo"
+        versions: [">= 55"]
+      - dependency-name: "@expo/*"
+        versions: [">= 55"]
+      - dependency-name: "@expo/vector-icons"
+        versions: [">= 16"]
+      - dependency-name: "react-native"
+        versions: [">= 0.82"]
+      - dependency-name: "@react-native/*"
+        versions: [">= 0.82"]
+      - dependency-name: "react"
+        versions: [">= 20"]
+      - dependency-name: "react-dom"
+        versions: [">= 20"]
+      - dependency-name: "next"
+        versions: [">= 16"]
+      - dependency-name: "vite"
+        versions: [">= 8"]
+      - dependency-name: "metro"
+        versions: [">= 0.84"]
+      - dependency-name: "metro-*"
+        versions: [">= 0.84"]
   - package-ecosystem: "npm"
     directory: "/mingla-marketing"
     schedule:
@@ -145,3 +272,34 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "metro-*"
         update-types: ["version-update:semver-major"]
+      # --- #1051: SECURITY-UPDATE-EFFECTIVE ignores. ---
+      # The `update-types:` entries above bind VERSION updates only and are
+      # inert on the security-update path that produced #925, #935/#936 and
+      # #944/#945 (see header §1). `versions:` IS honoured by security
+      # updates, so the same framework-family rule is restated here in the
+      # only form that path respects. Bounds = "one line above the approved
+      # major", kept in lockstep with
+      # .github/scripts/strict-grep/orch-1386-framework-major-registry.json.
+      # These are ADDITIVE — never delete the `update-types:` entries above.
+      - dependency-name: "expo"
+        versions: [">= 55"]
+      - dependency-name: "@expo/*"
+        versions: [">= 55"]
+      - dependency-name: "@expo/vector-icons"
+        versions: [">= 16"]
+      - dependency-name: "react-native"
+        versions: [">= 0.82"]
+      - dependency-name: "@react-native/*"
+        versions: [">= 0.82"]
+      - dependency-name: "react"
+        versions: [">= 20"]
+      - dependency-name: "react-dom"
+        versions: [">= 20"]
+      - dependency-name: "next"
+        versions: [">= 16"]
+      - dependency-name: "vite"
+        versions: [">= 8"]
+      - dependency-name: "metro"
+        versions: [">= 0.84"]
+      - dependency-name: "metro-*"
+        versions: [">= 0.84"]
