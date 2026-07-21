@@ -4,6 +4,7 @@ import { OrganiserImpactStats } from '@/components/sections/organiser-home/impac
 import { OrganiserAudienceTabs } from '@/components/sections/organiser-home/audience-tabs'
 import { OrganiserAudiences } from '@/components/sections/organiser-home/audiences'
 import { OrganiserFeatures } from '@/components/sections/organiser-home/features'
+import { OrganiserFreeTools } from '@/components/sections/organiser-home/free-tools'
 
 export const metadata = {
   title: 'Mingla Business — we give people a reason to show up for you.',
@@ -20,6 +21,8 @@ export default function OrganiserHomePage() {
       <OrganiserAudiences />
       <OrganiserAudienceTabs />
       <OrganiserFeatures />
+      {/* #1003 — funnel into the free growth tools (/tools). */}
+      <OrganiserFreeTools />
     </>
   )
 }

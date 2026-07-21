@@ -13,7 +13,11 @@ interface FooterColumn {
 const explorerColumns: FooterColumn[] = [
   {
     title: 'Company',
-    links: [{ href: '/support', label: 'Support' }],
+    links: [
+      { href: '/support', label: 'Support' },
+      // #1003 — the free growth tools hub (Venue Website Grader et al.).
+      { href: '/tools', label: 'Free tools' },
+    ],
   },
   {
     title: 'Legal',
@@ -32,6 +36,8 @@ const organiserColumns: FooterColumn[] = [
     // host-rewrites `career.usemingla.com` only). Business footer ONLY.
     links: [
       { href: 'https://career.usemingla.com', label: 'Careers', external: true },
+      // #1003 — the free growth tools hub (Venue Website Grader et al.).
+      { href: '/tools', label: 'Free tools' },
     ],
   },
   {
