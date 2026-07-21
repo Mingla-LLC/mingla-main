@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-07-21 — Repo un-blocked: main had drifted onto Expo SDK 57 (the version that broke native builds) in both apps for the third time, sneaked in by Dependabot PRs titled as postcss security patches and merged while the guard was red — which broke `npm ci` repo-wide. Re-pinned both apps to Expo 54, reconciled lockfiles, and closed the Dependabot hole that let a postcss bump carry a framework major (#1051, PR #1052)
 
 - 2026-07-21 — Fixed: "Continue with Google" failed with DEVELOPER_ERROR for every organizer who installed Mingla Business from the Play Store. Google Cloud only had the app registered under our upload certificate, not the certificate Google re-signs store builds with — so sideloaded test builds worked and every real install was rejected before the account picker opened. Resolved by registering the Play app-signing fingerprint; no app release needed. Explorer audited and cleared (#1038)
 - 2026-07-21 — Cleaned up the colour picker: removed the "AA · Crisp / Nudge to AA" contrast chip and its explainer line, which restated what the live preview already shows and fired false warnings on ordinary colours. The picker now reads spectrum → hue → hex → swatches, with the preview as the sole readability cue (#1036, PR #1041)
