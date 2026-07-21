@@ -1,0 +1,67 @@
+name: Issue 1042 Assetlinks Parity Tests
+
+# #1042 [android-signing-fingerprint-audit] — PR-blocking gate on the two
+# `assetlinks.json` files this repo serves publicly.
+#
+# WHY A DEDICATED WORKFLOW. The only pre-existing repo assertion about Android
+# signing fingerprints — `mingla-business/__tests__/assetlinks.consumerAppLinks.test.ts`
+# — was registered in NO workflow and had therefore protected nothing since
+# 2026-05-26 (#1042 F-6). `mingla-business`'s default jest config is exercised only
+# by a full `npx jest` that no workflow performs, and the class-D strict-grep
+# `jest-suites` job does not run jest at all. A test nobody runs is worse than no
+# test: it reads as coverage. This workflow exists so the #1042 gate cannot go dark
+# the same way.
+#
+# WHY NOT THE STRICT-GREP BATCH. The #1042 SPEC's DO-NOT-TOUCH list holds
+# `.github/scripts/strict-grep/**` and `MANIFEST.json` closed for this issue, and the
+# gate is not a grep — it parses JSON, compares two files, and reads app config. It
+# follows the `issue-1036-contrast-chip-removal-tests.yml` dedicated-workflow shape
+# with EXPLICIT `paths:` (never a glob) on both triggers.
+#
+# WHAT THIS GATE DOES *NOT* PROVE — stated here as plainly as in the script header:
+# it CANNOT certify that any fingerprint is the correct one. The authority is a Play
+# Console screen (Test and release -> Setup -> App signing) that CI cannot read. That
+# blindness is #1038's root cause, not an oversight of this gate. Correctness against
+# the outside world belongs to `android-applinks-health-probe.yml`, which asks
+# Google's own resolver.
+#
+# EXPLICIT registry (never a glob) — add a guarded path by appending it below.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mingla-marketing/public/.well-known/assetlinks.json"
+      - "mingla-business/public/.well-known/assetlinks.json"
+      - "app-mobile/app.json"
+      - "mingla-business/app.json"
+      - "docs/runbooks/ANDROID_SIGNING_AND_DEEP_LINK_REGISTRY.md"
+      - "scripts/ci/issue-1042-assetlinks-parity-check.mjs"
+      - ".github/workflows/issue-1042-assetlinks-tests.yml"
+  pull_request:
+    paths:
+      - "mingla-marketing/public/.well-known/assetlinks.json"
+      - "mingla-business/public/.well-known/assetlinks.json"
+      - "app-mobile/app.json"
+      - "mingla-business/app.json"
+      - "docs/runbooks/ANDROID_SIGNING_AND_DEEP_LINK_REGISTRY.md"
+      - "scripts/ci/issue-1042-assetlinks-parity-check.mjs"
+      - ".github/workflows/issue-1042-assetlinks-tests.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-1042-assetlinks-parity:
+    name: "#1042: assetlinks cross-file parity + fingerprint ratchet (fails-on-revert)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # No dependencies: plain-Node .mjs, no install step, nothing to cache.
+      - name: Parity + ratchet gate
+        run: node scripts/ci/issue-1042-assetlinks-parity-check.mjs

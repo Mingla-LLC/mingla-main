@@ -68,6 +68,7 @@ Supporting contracts:
 | [`docs/MUTATION_CONTRACT.md`](docs/MUTATION_CONTRACT.md) | State-changing operation contract. |
 | [`docs/QUERY_KEY_REGISTRY.md`](docs/QUERY_KEY_REGISTRY.md) | Query-key factories and invalidation rules. |
 | [`docs/TRANSITIONAL_ITEMS_REGISTRY.md`](docs/TRANSITIONAL_ITEMS_REGISTRY.md) | Temporary work with owners and exit conditions. |
+| [`docs/runbooks/ANDROID_SIGNING_AND_DEEP_LINK_REGISTRY.md`](docs/runbooks/ANDROID_SIGNING_AND_DEEP_LINK_REGISTRY.md) | Android signing certificates, where each is registered, and the pre-release check. |
 
 ## Repo Map
 
