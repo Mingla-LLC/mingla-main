@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import type { ThemeInput } from "@mingla/offering-rendering";
+import { patchOfferingTheme, themeOverridesFromColumns } from "./offeringTheme";
 import type {
   DraftEvent,
   DraftEventFormat,
@@ -471,16 +472,13 @@ const eventFromRow = (
     allowTransfers: asBoolean(settings.allowTransfers, tickets.every((t) => t.allowTransfers)),
     hideRemainingCount: asBoolean(settings.hideRemainingCount, false),
     passwordProtected: asBoolean(settings.passwordProtected, tickets.some((t) => t.passwordProtected)),
-    themeOverrides:
-      row.theme_color_override !== undefined ||
-      row.theme_font_override !== undefined ||
-      row.theme_animation_override !== undefined
-        ? {
-            color: row.theme_color_override ?? null,
-            font: row.theme_font_override ?? null,
-            animation: row.theme_animation_override ?? null,
-          }
-        : null,
+    // #1022 C-3 — BUSINESS_EVENT_SELECT is "*", so the three columns are
+    // ALWAYS present (as null) on a never-themed event. The old
+    // `!== undefined` guard was therefore always true and yielded a non-null
+    // {null,null,null}, which JSON.stringify-compared unequal to the editor's
+    // `null` and forged a phantom diff (spurious reason prompt + a DB write of
+    // three nulls over three nulls). Normalising collapses it to null.
+    themeOverrides: themeOverridesFromColumns(row),
     privateGuestList: asBoolean(settings.privateGuestList, false),
     inPersonPaymentsEnabled: asBoolean(
       settings.inPersonPaymentsEnabled,
@@ -1000,31 +998,19 @@ export interface PatchEventThemeInput {
   themeOverrides: ThemeInput | null;
 }
 
+/**
+ * @deprecated #1022 — moved to `services/offeringTheme.ts` as
+ * `patchOfferingTheme`, which is offering-type-neutral (trips and experiences
+ * are rows in `public.events` too). This alias survives one release so no
+ * unrelated call site breaks; new code must import `patchOfferingTheme`.
+ */
 export const patchPublishedEventTheme = async (
   input: PatchEventThemeInput,
 ): Promise<void> => {
-  // I-PROPOSED-I (MUTATION-ROWCOUNT-VERIFIED): chain .select() so a 0-row
-  // no-op (RLS denial / wrong id / already-mutated) surfaces as an error
-  // instead of a silent success. Fixes the violation ORCH-0964 (#220) left.
-  // orch-strict-grep-allow events-type-filter — id-targeted UPDATE; the .select("id")
-  // is a rowcount check (I-PROPOSED-I), not a content read, so an event_type
-  // filter is irrelevant (the eq("id") already uniquely identifies the row).
-  const { data, error } = await supabase
-    .from("events")
-    .update({
-      theme_color_override: input.themeOverrides?.color ?? null,
-      theme_font_override: input.themeOverrides?.font ?? null,
-      theme_animation_override: input.themeOverrides?.animation ?? null,
-    })
-    .eq("id", input.eventId)
-    .select("id");
-
-  if (error !== null) {
-    throw new Error(error.message ?? "patch_event_theme_failed");
-  }
-  if (data === null || data.length === 0) {
-    throw new Error("patch_event_theme_no_rows");
-  }
+  await patchOfferingTheme({
+    offeringId: input.eventId,
+    themeOverrides: input.themeOverrides,
+  });
 };
 
 // ─── ORCH-1006 — published-event pricing switches (who covers costs) ──
