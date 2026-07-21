@@ -46,7 +46,19 @@ const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
 
 const TARGET_REL = "src/components/ui/SheetMobile.tsx";
-const MIN_TOUCH_TARGET_PX = 44;
+/**
+ * #1022 F-2 — the band must be EXACTLY the handle chrome: handleWrap
+ * paddingVertical (spacing.sm + 2 = 10) x2 + the 4pt handle bar.
+ *
+ * This replaces the original ">= 44pt touch target" rule, which was WRONG and
+ * actively harmful: it forced a band TALLER than the handle, and every pixel
+ * of excess was an invisible overlay swallowing taps on consumer content in
+ * all 63 Sheet consumers (close buttons in ShareModal, CoverPickerSheet,
+ * GlobalSearchSheet...). 44pt is the minimum for a TAP target; a drag handle
+ * is not a tap target, and correctness here means "never larger than the
+ * chrome it sits on".
+ */
+const HANDLE_REGION_PX = 24;
 
 // INV-1 — the shared constant, exported so the value has exactly one owner.
 const RE_BAND_CONST =
@@ -108,7 +120,7 @@ function readSource(filePath) {
 function runSelfTest() {
   let selfFail = 0;
 
-  const goodConst = `export const SHEET_DRAG_BAND_HEIGHT = 52;`;
+  const goodConst = `export const SHEET_DRAG_BAND_HEIGHT = 24;`;
   const badConst = `const DRAG_BAND = 52;`;
   if (!RE_BAND_CONST.test(goodConst)) {
     console.error("SELF-TEST FAIL: exported band constant not detected");
@@ -184,12 +196,12 @@ if (constMatch === null) {
   );
 } else {
   const height = Number(constMatch[1]);
-  if (height >= MIN_TOUCH_TARGET_PX) {
-    ok("INV-1: shared-constant", `SHEET_DRAG_BAND_HEIGHT = ${height} (>= ${MIN_TOUCH_TARGET_PX}pt touch target)`);
+  if (height <= HANDLE_REGION_PX) {
+    ok("INV-1: band-never-exceeds-handle", `SHEET_DRAG_BAND_HEIGHT = ${height} (<= the ${HANDLE_REGION_PX}pt handle region — overlays no consumer content)`);
   } else {
     fail(
-      "INV-1: shared-constant",
-      `SHEET_DRAG_BAND_HEIGHT = ${height} is below the ${MIN_TOUCH_TARGET_PX}pt minimum touch target — the handle would be hard to grab`,
+      "INV-1: band-never-exceeds-handle",
+      `SHEET_DRAG_BAND_HEIGHT = ${height} EXCEEDS the ${HANDLE_REGION_PX}pt handle region. Every excess pixel is an invisible overlay over consumer content in all 63 Sheet consumers — dead taps on close buttons app-wide (Constitution #1, proven on device in #1022 F-2).`,
     );
   }
 }

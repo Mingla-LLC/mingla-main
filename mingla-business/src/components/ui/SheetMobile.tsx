@@ -47,7 +47,7 @@ import {
 import type { StyleProp, ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
-import { Gesture } from "react-native-gesture-handler";
+import { Gesture, GestureHandlerRootView } from "react-native-gesture-handler";
 import Animated, {
   Easing,
   cancelAnimation,
@@ -156,6 +156,12 @@ export interface SheetProps {
 // (single owner of the panel-height math) and are imported above.
 
 const SCRIM_COLOR = "rgba(0, 0, 0, 0.5)";
+/**
+ * The handle chrome's exact height: `handleWrap` paddingVertical
+ * (spacing.sm + 2 = 10) x2, plus the 4pt handle bar = 24pt. The drag band is
+ * derived from this so the two can never drift apart.
+ */
+const HANDLE_REGION_HEIGHT = 2 * (spacing.sm + 2) + 4;
 const CLOSE_THRESHOLD_PX = 80;
 const CLOSE_VELOCITY = 600;
 /**
@@ -172,8 +178,30 @@ const CLOSE_VELOCITY = 600;
  * simultaneousWithExternalGesture / blocksExternalGesture) is FORBIDDEN here:
  * ORCH-1173 R1 tried exactly that and it failed on a physical Samsung. R2's
  * handle-only scoping is the proven answer (see TopSheet.tsx:353-356, 497-502).
+ *
+ * #1022 F-2 — the band is EXACTLY the handle region, never a pixel more.
+ * At 52pt it was a 28pt overlay on top of consumer content in all 63 Sheet
+ * consumers, swallowing close buttons in ShareModal, CoverPickerSheet,
+ * GlobalSearchSheet and others — dead taps app-wide (Constitution #1).
+ * Deriving it from HANDLE_REGION_HEIGHT means it can only ever cover the
+ * handle chrome that TopSheet's precedent attaches the gesture to directly.
+ *
+ * DELETION WAS TESTED AND REJECTED ON EVIDENCE (physical SM-A725F): with the
+ * band removed and the Pan back on the whole panel, the colour plane still
+ * dragged correctly AND handle-drag still dismissed — but scrolling the font
+ * list DISMISSED THE SHEET. That is the original ORCH-1173 defect, and it is
+ * worse than the overlay. The pan must stay scoped; it just must not be
+ * bigger than the handle.
  */
-export const SHEET_DRAG_BAND_HEIGHT = 52;
+export const SHEET_DRAG_BAND_HEIGHT = 24;
+// Guard the literal against the derivation drifting apart. If the handle
+// chrome ever changes size, this throws in dev instead of silently letting
+// the band creep back over consumer content.
+if (__DEV__ && SHEET_DRAG_BAND_HEIGHT !== HANDLE_REGION_HEIGHT) {
+  console.warn(
+    `[#1022] SHEET_DRAG_BAND_HEIGHT (${SHEET_DRAG_BAND_HEIGHT}) no longer equals the handle region (${HANDLE_REGION_HEIGHT}) — the drag band would overlay consumer content.`,
+  );
+}
 const SPRING_CONFIG = { damping: 22, stiffness: 200, mass: 1 } as const;
 const REDUCE_MOTION_OPEN = { duration: 200, easing: Easing.out(Easing.cubic) } as const;
 const TIMING_CLOSE = { duration: 240, easing: Easing.in(Easing.cubic) } as const;
@@ -329,6 +357,15 @@ const SheetNative: React.FC<SheetProps> = ({
       onRequestClose={onClose}
       statusBarTranslucent
     >
+      {/* #1022 F-1 — GestureHandlerRootView is REQUIRED here on Android: the
+          app-root GestureHandlerRootView (mounted by expo-router) does NOT
+          extend into a Modal's separate window, so WITHOUT this inner root
+          every RNGH gesture inside a Sheet is silently dead on Android. That
+          is why the colour plane was completely inert on a physical Samsung
+          while Pressables and ScrollViews in the SAME sheet worked fine.
+          Identical precedent, already shipped and device-verified:
+          Toast.tsx:361-366. Web resolves this to a plain passthrough. */}
+      <GestureHandlerRootView style={styles.gestureRoot}>
       {/* ORCH-1170: KeyboardProvider scoped to THIS Modal's native window so the
           Done bar below actually receives keyboard frames here (the app-root
           provider does not reach into a separate RN Modal window). Wraps the
@@ -390,6 +427,7 @@ const SheetNative: React.FC<SheetProps> = ({
           <KeyboardToolbarRoot />
         </View>
       </KeyboardRoot>
+      </GestureHandlerRootView>
     </Modal>
   );
 };
@@ -1048,7 +1086,15 @@ const styles = StyleSheet.create({
   // #1022 — native counterpart of `webDragCatch`. Transparent, absolutely
   // positioned over the handle region, same 52pt height from the same
   // constant. This is the ONLY surface that carries the dismiss Pan.
+  // #1022 F-1 — the in-Modal gesture root must fill the window; unsized it
+  // collapses and gestures still never land.
+  gestureRoot: {
+    flex: 1,
+  },
   nativeDragCatch: {
+    // #1022 F-2 — covers the handle chrome ONLY, so it can swallow no
+    // consumer taps. `auto` because its whole job is to receive the drag.
+    pointerEvents: "auto",
     position: "absolute",
     top: 0,
     left: 0,

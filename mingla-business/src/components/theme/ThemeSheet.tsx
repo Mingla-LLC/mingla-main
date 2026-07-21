@@ -36,7 +36,11 @@ import { useThemeFont } from "../../theme/useThemeFont";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
-import { Sheet } from "../ui/SheetMobile";
+// #1022 F-4 — import the PLATFORM-RESOLVING entry point, not the mobile
+// implementation. Importing ../ui/SheetMobile directly (this was the only
+// consumer repo-wide that did) bypassed Sheet.web.tsx entirely, so the
+// >=1024px DesktopCenteredCard never rendered and the sheet went full-bleed.
+import { Sheet } from "../ui/Sheet";
 import { WebSafeGestureDetector } from "../ui/WebSafeGestureDetector";
 import { FONT_SPECIMENS } from "./fontSpecimens";
 import { normalizeHexColor, normalizeHexColorOnBlur } from "./normalizeHexColor";
@@ -160,6 +164,19 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
   // ── screen-reader detection: the 2D plane is unusable without sight, so the
   // colour tab opens in numeric mode and hides the plane from the a11y tree.
   useEffect(() => {
+    // #1022 F-3 — NEVER trust this API on web. react-native-web's
+    // AccessibilityInfo.isScreenReaderEnabled() resolves `true`
+    // UNCONDITIONALLY for every browser and every user
+    // (react-native-web/dist/exports/AccessibilityInfo/index.js), so the
+    // accessibility fallback was forcing numeric mode on 100% of web users
+    // and the colour plane — the deliverable Seth approved — never rendered
+    // on any browser at all. The a11y path is right; the API is not.
+    // Native keeps the real detection; web users get the plane and can still
+    // reach numeric mode with the keyboard toggle.
+    if (Platform.OS === "web") {
+      setScreenReaderOn(false);
+      return;
+    }
     let cancelled = false;
     void AccessibilityInfo.isScreenReaderEnabled().then((on) => {
       if (cancelled) return;
@@ -258,25 +275,32 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
   );
 
   // ── plane + rail gestures (NO coordination with the sheet pan) ───────────
-  const planeWidthRef = useRef(1);
+  // #1022 F-5 — the measured widths MUST live in state. Reading them from a
+  // ref meant the first painted frame used width 1, so both thumbs opened
+  // clipped at the far-left edge (left = 0.84*1 - 14 = -13.2) while the
+  // committed colour was something else entirely — the control opened telling
+  // the user their colour was something it was not. A ref assignment schedules
+  // no re-render, so nothing ever corrected it until an unrelated state change
+  // happened to repaint.
+  const [planeWidth, setPlaneWidth] = useState(0);
+  const [railWidth, setRailWidth] = useState(0);
   const planeHeight = compact ? PLANE_HEIGHT_COMPACT : PLANE_HEIGHT;
-  const railWidthRef = useRef(1);
 
   const applyPlane = useCallback(
     (x: number, y: number): void => {
-      const s = Math.min(1, Math.max(0, x / Math.max(1, planeWidthRef.current)));
+      const s = Math.min(1, Math.max(0, x / Math.max(1, planeWidth)));
       const v = 1 - Math.min(1, Math.max(0, y / Math.max(1, planeHeight)));
       commitColor(hsvToHex({ h: hsv.h, s, v }));
     },
-    [commitColor, hsv.h, planeHeight],
+    [commitColor, hsv.h, planeHeight, planeWidth],
   );
 
   const applyRail = useCallback(
     (x: number): void => {
-      const ratioX = Math.min(1, Math.max(0, x / Math.max(1, railWidthRef.current)));
+      const ratioX = Math.min(1, Math.max(0, x / Math.max(1, railWidth)));
       commitColor(hsvToHex({ h: ratioX * 360, s: hsv.s, v: hsv.v }));
     },
-    [commitColor, hsv.s, hsv.v],
+    [commitColor, hsv.s, hsv.v, railWidth],
   );
 
   const planeGesture = useMemo(
@@ -412,9 +436,7 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
                 <WebSafeGestureDetector gesture={planeGesture}>
                   <View
                     style={[styles.plane, { height: planeHeight }]}
-                    onLayout={(e) => {
-                      planeWidthRef.current = e.nativeEvent.layout.width;
-                    }}
+                    onLayout={(e) => setPlaneWidth(e.nativeEvent.layout.width)}
                     accessibilityElementsHidden={screenReaderOn}
                     importantForAccessibility={
                       screenReaderOn ? "no-hide-descendants" : "auto"
@@ -438,26 +460,26 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
                       end={{ x: 0.5, y: 1 }}
                       style={StyleSheet.absoluteFill}
                     />
+                    {planeWidth > 0 ? (
                     <View
                       pointerEvents="none"
                       style={[
                         styles.planeThumb,
                         {
-                          left: hsv.s * planeWidthRef.current - PLANE_THUMB / 2,
+                          left: hsv.s * planeWidth - PLANE_THUMB / 2,
                           top: (1 - hsv.v) * planeHeight - PLANE_THUMB / 2,
                           backgroundColor: seedHex,
                         },
                       ]}
                     />
+                    ) : null}
                   </View>
                 </WebSafeGestureDetector>
 
                 <WebSafeGestureDetector gesture={railGesture}>
                   <View
                     style={styles.rail}
-                    onLayout={(e) => {
-                      railWidthRef.current = e.nativeEvent.layout.width;
-                    }}
+                    onLayout={(e) => setRailWidth(e.nativeEvent.layout.width)}
                     accessibilityElementsHidden={screenReaderOn}
                     importantForAccessibility={
                       screenReaderOn ? "no-hide-descendants" : "auto"
@@ -477,16 +499,18 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
                       end={{ x: 1, y: 0.5 }}
                       style={[StyleSheet.absoluteFill, { borderRadius: radius.full }]}
                     />
+                    {railWidth > 0 ? (
                     <View
                       pointerEvents="none"
                       style={[
                         styles.railThumb,
                         {
-                          left: (hsv.h / 360) * railWidthRef.current - RAIL_THUMB / 2,
+                          left: (hsv.h / 360) * railWidth - RAIL_THUMB / 2,
                           backgroundColor: `hsl(${Math.round(hsv.h)}, 100%, 50%)`,
                         },
                       ]}
                     />
+                    ) : null}
                   </View>
                 </WebSafeGestureDetector>
               </>
@@ -968,7 +992,12 @@ const styles = StyleSheet.create({
   webBannerText: { fontSize: 12, lineHeight: 16, color: textTokens.secondary },
   motionGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   motionTile: {
-    width: 174,
+    // #1022 F-6 — 174 needed 356pt for two tiles + the 8pt gap, but the sheet
+    // body is `screen - 32`: 343 on iPhone SE/8 and 352 on the tested Samsung.
+    // Only phones >=388pt got the specified 2-column grid; everything narrower
+    // collapsed to one column and the grid grew to ~880pt. 167*2 + 8 = 342 fits
+    // the narrowest surface we ship to.
+    width: 167,
     height: 88,
     borderRadius: radius.lg,
     backgroundColor: glass.tint.profileBase,
