@@ -182,6 +182,53 @@ if (Platform.OS !== "web" && webClientId) {
   );
 }
 
+/**
+ * #1044 [auth-failure-sentry-capture] — I-PROPOSED-1044-AUTH-FAILURE-REPORTED.
+ *
+ * THE single decision point for whether a NATIVE sign-in failure reaches Sentry.
+ * One named, greppable predicate per app, on purpose: the exclusion logic must
+ * not get quietly re-scattered across the individual catch branches.
+ *
+ * Why it exists: #1038 broke Google sign-in for EVERY Play-Store organizer for
+ * months (an Android OAuth client registered against the EAS upload-key SHA-1
+ * instead of the Play app-signing SHA-1). A human reported it. Monitoring never
+ * did — the catch block below Alerted the user and threw the error away, so a
+ * 90-day Sentry search for DEVELOPER_ERROR returned zero while the Android
+ * native pipeline was demonstrably live the whole time.
+ *
+ * The exclusion set is not an optimisation. Picker cancels and double-taps are
+ * normal user behaviour and are the highest-volume events on this path; reporting
+ * them would bury the one signal that matters.
+ *
+ * ┌── DO NOT REORDER, DO NOT REMOVE ────────────────────────────────────────┐
+ * The `typeof code !== "string"` statement MUST run FIRST. An error carrying no
+ * `code` at all — `new Error("Failed to create session")`, `new Error("Failed to
+ * get ID token from Google")`, a raw Supabase error — is exactly the class #1038
+ * belonged to and MUST be reported. It also closes the F-7 trap: `statusCodes`
+ * members are runtime native constants, and `NULL_PRESENTER` exists in this app's
+ * SDK (16.1.2) but NOT in app-mobile's (16.0.0). Any bare comparison against a
+ * possibly-`undefined` constant — including a `Set`/array `.includes()` built
+ * from them — would match every codeless error and silently drop it, recreating
+ * the exact bug this code exists to fix, inside its own fix.
+ * └─────────────────────────────────────────────────────────────────────────┘
+ *
+ * `SIGN_IN_REQUIRED` and `NULL_PRESENTER` are deliberately NOT excluded: this app
+ * never calls `signInSilently()`, so after an interactive `signIn()` both are
+ * anomalies worth seeing (expected volume ~0). Do not "helpfully" add them.
+ *
+ * Exclusions reference the `statusCodes` object, NEVER a hardcoded integer — the
+ * values are native constants that differ per platform (SIGN_IN_CANCELLED is
+ * "12501" on Android and "-5" on iOS).
+ */
+const shouldReportAuthFailure = (code: unknown): boolean => {
+  if (typeof code !== "string") return true;
+  if (code === statusCodes.SIGN_IN_CANCELLED) return false;
+  if (code === statusCodes.IN_PROGRESS) return false;
+  if (code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) return false;
+  if (code === "ERR_REQUEST_CANCELED") return false;
+  return true;
+};
+
 // Web auth uses Supabase OAuth-redirect (DEC-076 + DEC-081). The browser
 // is redirected to Google/Apple, then back to `${origin}/auth/callback`
 // where Supabase finalises the session via `detectSessionInUrl: true`.
@@ -957,6 +1004,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const e = err instanceof Error ? err : new Error(String(err));
       const code = (err as { code?: string })?.code;
 
+      // #1044 [auth-failure-sentry-capture] / #1038 — report to engineering
+      // BEFORE any early return. Placed first on purpose: the SIGN_IN_CANCELLED
+      // and PLAY_SERVICES_NOT_AVAILABLE branches below return, so a capture
+      // placed after them would never see those codes and the exclusion set
+      // would be dead code. The exclusion set exists so picker cancellations and
+      // double-taps cannot drown the signal, and shouldReportAuthFailure's
+      // `typeof code !== "string"` guard MUST run first (codeless errors are the
+      // #1038 class). Additive ONLY — nothing below moves, no branch changes, no
+      // return value changes, and reportNonFatal cannot throw or block (its body
+      // is try/catch-wrapped and synchronous; see diagnostics/reportNonFatal.ts).
+      if (shouldReportAuthFailure(code)) {
+        const reportCode =
+          typeof code === "string" || typeof code === "number"
+            ? String(code)
+            : "none";
+        reportNonFatal(
+          "auth.signInWithGoogle.native",
+          e,
+          {
+            provider: "google",
+            code: reportCode,
+            platform: Platform.OS,
+            osVersion: String(Platform.Version),
+            // Last 8 chars ONLY — identifies WHICH OAuth client this build was
+            // configured against (the exact axis #1038 turned on) without
+            // publishing the id. Never the full client id, never an email,
+            // never a token (I-PROPOSED-1044-AUTH-FAILURE-REPORTED).
+            webClientIdSuffix:
+              typeof webClientId === "string" && webClientId.length > 0
+                ? webClientId.slice(-8)
+                : "unset",
+          },
+          // Group by provider + code, never by message: Google's messages vary
+          // by device locale and GMS version, so message grouping would shatter
+          // one systemic outage into dozens of issues.
+          ["auth-signin", "google", reportCode],
+        );
+      }
+
       if (code === statusCodes.SIGN_IN_CANCELLED) {
         return { error: e };
       }
@@ -1045,6 +1131,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (err: unknown) {
       const e = err instanceof Error ? err : new Error(String(err));
       const code = (err as { code?: string })?.code;
+      // #1044 [auth-failure-sentry-capture] / #1038 — report to engineering
+      // BEFORE the ERR_REQUEST_CANCELED early return below, so the predicate
+      // actually sees that code and the exclusion is provable. The exclusion set
+      // exists so user cancellations cannot drown the signal, and
+      // shouldReportAuthFailure's `typeof code !== "string"` guard MUST run first
+      // (a codeless "Failed to create session" is the #1038 class). Additive
+      // ONLY — the Alert, its copy, the branch order and the return value are
+      // unchanged, and reportNonFatal cannot throw or block.
+      if (shouldReportAuthFailure(code)) {
+        const reportCode =
+          typeof code === "string" || typeof code === "number"
+            ? String(code)
+            : "none";
+        reportNonFatal(
+          "auth.signInWithApple.native",
+          e,
+          {
+            provider: "apple",
+            code: reportCode,
+            platform: Platform.OS,
+            osVersion: String(Platform.Version),
+            // Last 8 chars ONLY — never the full client id, never an email,
+            // never Apple's identityToken / fullName / user identifier
+            // (I-PROPOSED-1044-AUTH-FAILURE-REPORTED).
+            webClientIdSuffix:
+              typeof webClientId === "string" && webClientId.length > 0
+                ? webClientId.slice(-8)
+                : "unset",
+          },
+          ["auth-signin", "apple", reportCode],
+        );
+      }
       if (code === "ERR_REQUEST_CANCELED") {
         return { error: e };
       }

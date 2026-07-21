@@ -12,6 +12,9 @@ import { useAppStore } from "../store/appStore";
 import { User } from "../types";
 import { logger } from "../utils/logger";
 import { mixpanelService } from "../services/mixpanelService";
+// #1044 [auth-failure-sentry-capture] — Sentry-backed non-fatal reporting for
+// the native sign-in catch blocks. Mirrors mingla-business's helper.
+import { reportNonFatal } from "../diagnostics/reportNonFatal";
 import { queryClient } from "../config/queryClient";
 import { deckService, DeckResponse } from "../services/deckService";
 import { buildDeckQueryKey } from "./useDeckCards";
@@ -48,6 +51,55 @@ if (webClientId) {
     "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID is not set. Google Sign-In may not work."
   );
 }
+
+/**
+ * #1044 [auth-failure-sentry-capture] — I-PROPOSED-1044-AUTH-FAILURE-REPORTED.
+ * Mirror of the predicate in `mingla-business/src/context/AuthContext.tsx`.
+ *
+ * THE single decision point for whether a NATIVE sign-in failure reaches Sentry.
+ * One named, greppable predicate per app, on purpose: the exclusion logic must
+ * not get quietly re-scattered across the individual catch branches.
+ *
+ * Why it exists: #1038 broke Google sign-in for EVERY Play-Store organizer on
+ * Mingla Business for months and monitoring never saw it, because the catch block
+ * Alerted the user and discarded the error. This app has the same shape with an
+ * extra illusion on top — `logger.error` LOOKS like production telemetry but its
+ * breadcrumb buffer is `__DEV__`-only (`src/utils/breadcrumbs.ts`), and
+ * `mixpanelService.trackLoginFailed` carries only the message string (no code, no
+ * platform, no build). Sentry received nothing from auth in this app either.
+ *
+ * The exclusion set is not an optimisation. Picker cancels and double-taps are
+ * normal user behaviour and are the highest-volume events on this path; reporting
+ * them would bury the one signal that matters.
+ *
+ * ┌── DO NOT REORDER, DO NOT REMOVE ────────────────────────────────────────┐
+ * The `typeof code !== "string"` statement MUST run FIRST. An error carrying no
+ * `code` at all — `new Error("Failed to create session")`, `new Error("Failed to
+ * get ID token from Google")`, a raw Supabase error — is exactly the class #1038
+ * belonged to and MUST be reported. It also closes the F-7 trap: `statusCodes`
+ * members are runtime native constants, and `NULL_PRESENTER` exists in
+ * mingla-business's SDK (16.1.2) but NOT in this app's (16.0.0). Any bare
+ * comparison against a possibly-`undefined` constant — including a `Set`/array
+ * `.includes()` built from them — would match every codeless error and silently
+ * drop it, recreating the exact bug this code exists to fix, inside its own fix.
+ * └─────────────────────────────────────────────────────────────────────────┘
+ *
+ * `SIGN_IN_REQUIRED` is deliberately NOT excluded: this app never calls
+ * `signInSilently()`, so after an interactive `signIn()` it is an anomaly worth
+ * seeing (expected volume ~0). Do not "helpfully" add it.
+ *
+ * Exclusions reference the `statusCodes` object, NEVER a hardcoded integer — the
+ * values are native constants that differ per platform (SIGN_IN_CANCELLED is
+ * "12501" on Android and "-5" on iOS).
+ */
+const shouldReportAuthFailure = (code: unknown): boolean => {
+  if (typeof code !== "string") return true;
+  if (code === statusCodes.SIGN_IN_CANCELLED) return false;
+  if (code === statusCodes.IN_PROGRESS) return false;
+  if (code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) return false;
+  if (code === "ERR_REQUEST_CANCELED") return false;
+  return true;
+};
 
 export const useAuthSimple = () => {
   const [loading, setLoading] = useState(true);
@@ -628,6 +680,45 @@ export const useAuthSimple = () => {
     } catch (err: unknown) {
       const error = err instanceof Error ? err : new Error(String(err));
       const code = (err as { code?: unknown })?.code;
+      // #1044 [auth-failure-sentry-capture] / #1038 — report to engineering
+      // BEFORE any early return. Placed first on purpose: the SIGN_IN_CANCELLED /
+      // IN_PROGRESS / PLAY_SERVICES_NOT_AVAILABLE branches below return, so a
+      // capture placed after them would never see those codes and the exclusion
+      // set would be dead code. The exclusion set exists so picker cancellations
+      // and double-taps cannot drown the signal, and shouldReportAuthFailure's
+      // `typeof code !== "string"` guard MUST run first (codeless errors are the
+      // #1038 class). Additive ONLY — the logger/console/Mixpanel calls, the
+      // branches, the Alerts and the return values below are all unchanged, and
+      // reportNonFatal cannot throw or block (synchronous, try/catch-wrapped).
+      if (shouldReportAuthFailure(code)) {
+        const reportCode =
+          typeof code === "string" || typeof code === "number"
+            ? String(code)
+            : "none";
+        reportNonFatal(
+          "auth.signInWithGoogle.native",
+          error,
+          {
+            provider: "google",
+            code: reportCode,
+            platform: Platform.OS,
+            osVersion: String(Platform.Version),
+            // Last 8 chars ONLY — identifies WHICH OAuth client this build was
+            // configured against (the exact axis #1038 turned on) without
+            // publishing the id. Never the full client id, never the Google
+            // account email available on the sign-in response, never a token
+            // (I-PROPOSED-1044-AUTH-FAILURE-REPORTED).
+            webClientIdSuffix:
+              typeof webClientId === "string" && webClientId.length > 0
+                ? webClientId.slice(-8)
+                : "unset",
+          },
+          // Group by provider + code, never by message: Google's messages vary
+          // by device locale and GMS version, so message grouping would shatter
+          // one systemic outage into dozens of issues.
+          ["auth-signin", "google", reportCode],
+        );
+      }
       logger.error('Google sign-in failed', { code, message: error.message });
       console.error("Google sign-in error:", code, error.message, err);
       mixpanelService.trackLoginFailed('google', error.message);
@@ -746,6 +837,39 @@ export const useAuthSimple = () => {
     } catch (err: unknown) {
       const error = err instanceof Error ? err : new Error(String(err));
       const code = (err as { code?: unknown })?.code;
+
+      // #1044 [auth-failure-sentry-capture] / #1038 — report to engineering
+      // BEFORE the ERR_REQUEST_CANCELED early return below, so the predicate
+      // actually sees that code and the exclusion is provable. The exclusion set
+      // exists so user cancellations cannot drown the signal, and
+      // shouldReportAuthFailure's `typeof code !== "string"` guard MUST run first
+      // (a codeless "Failed to create session" is the #1038 class). Additive
+      // ONLY — the branch order, the Alert copy and every return value below are
+      // unchanged, and reportNonFatal cannot throw or block.
+      if (shouldReportAuthFailure(code)) {
+        const reportCode =
+          typeof code === "string" || typeof code === "number"
+            ? String(code)
+            : "none";
+        reportNonFatal(
+          "auth.signInWithApple.native",
+          error,
+          {
+            provider: "apple",
+            code: reportCode,
+            platform: Platform.OS,
+            osVersion: String(Platform.Version),
+            // Last 8 chars ONLY — never the full client id, never an email,
+            // never Apple's identityToken / fullName / user identifier
+            // (I-PROPOSED-1044-AUTH-FAILURE-REPORTED).
+            webClientIdSuffix:
+              typeof webClientId === "string" && webClientId.length > 0
+                ? webClientId.slice(-8)
+                : "unset",
+          },
+          ["auth-signin", "apple", reportCode],
+        );
+      }
 
       // Handle specific error cases
       if (code === "ERR_REQUEST_CANCELED") {
