@@ -24,11 +24,15 @@ on:
     paths:
       - "mingla-business/src/components/theme/ThemeSheet.tsx"
       - "mingla-business/src/utils/__tests__/issue_1036_contrast_apparatus_removed.test.ts"
+      - "mingla-business/src/components/theme/__tests__/issue1036NoContrastNode.web.render.test.tsx"
+      - "mingla-business/jest.issue1036.render.cjs"
       - ".github/workflows/issue-1036-contrast-chip-removal-tests.yml"
   pull_request:
     paths:
       - "mingla-business/src/components/theme/ThemeSheet.tsx"
       - "mingla-business/src/utils/__tests__/issue_1036_contrast_apparatus_removed.test.ts"
+      - "mingla-business/src/components/theme/__tests__/issue1036NoContrastNode.web.render.test.tsx"
+      - "mingla-business/jest.issue1036.render.cjs"
       - ".github/workflows/issue-1036-contrast-chip-removal-tests.yml"
 
 concurrency:
@@ -52,8 +56,14 @@ jobs:
           cache-dependency-path: mingla-business/package-lock.json
       - run: npm ci
       # EXPLICIT registry — add a new #1036 suite by appending a path; never glob.
-      - name: Run issue-1036 jest suite
+      - name: Run issue-1036 jest suite (implementor source-gate)
         run: >
           npx jest
           src/utils/__tests__/issue_1036_contrast_apparatus_removed.test.ts
           --runInBand
+      # Tester adversarial WEB render-proof (different angle): mounts the REAL
+      # ThemeSheet through react-native-web and asserts NO contrast-advisory node
+      # renders for any seed (incl. the low-contrast Ocean #2563eb). Fails on
+      # revert because the with-chip version prints "Nudge to AA -> 3.7:1".
+      - name: Run issue-1036 tester render-proof (react-native-web)
+        run: npx jest --config jest.issue1036.render.cjs --runInBand

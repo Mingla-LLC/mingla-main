@@ -44,6 +44,12 @@ module.exports = {
     // .orch1118-testdeps overlay); MUST NOT run under this default
     // node/ts-jest config (no RTL installed here).
     "PartnerPaystackOnboardForm\\.orch1331\\.render\\.test\\.tsx$",
+    // #1036 [remove-contrast-chip] tester adversarial WEB render-proof — mounts
+    // the REAL ThemeSheet through react-native-web (ReactDOMServer) to assert no
+    // contrast-advisory node renders for any seed. Runs under
+    // jest.issue1036.render.cjs (react-native->react-native-web alias); MUST NOT
+    // run under this default node/ts-jest config (no web alias / react-dom).
+    "issue1036NoContrastNode\\.web\\.render\\.test\\.tsx$",
   ],
   moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json"],
   transform: {
