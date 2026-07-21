@@ -14,6 +14,10 @@ import {
 } from "../types/eventCoverProvider";
 import type { LiveEvent } from "../store/liveEventStore";
 import { normalizeCurrency } from "./currency";
+import {
+  themeOverridesFromColumns,
+  themeOverridesToColumns,
+} from "../services/offeringTheme";
 
 export const BUSINESS_DRAFT_SCHEMA_VERSION = 1;
 
@@ -60,6 +64,13 @@ export interface ServerDraftEventRow {
   pass_tax?: boolean | null;
   pass_mingla_fee?: boolean | null;
   pass_service_fee?: boolean | null;
+  // #1022 — theme override columns. Optional on the row type because legacy
+  // rows predate them. These are scalar columns, NOT the `theme` JSONB blob:
+  // trg_events_sync_departure fires on UPDATE OF theme, and the blob is
+  // wholesale-replaced by the autosave echo.
+  theme_color_override?: string | null;
+  theme_font_override?: string | null;
+  theme_animation_override?: string | null;
 }
 
 export interface ServerDraftEventInsert {
@@ -86,6 +97,13 @@ export interface ServerDraftEventInsert {
   visibility: "draft";
   status: "draft";
   timezone: string;
+  // #1022 — theme override columns. Optional on the row type because legacy
+  // rows predate them. These are scalar columns, NOT the `theme` JSONB blob:
+  // trg_events_sync_departure fires on UPDATE OF theme, and the blob is
+  // wholesale-replaced by the autosave echo.
+  theme_color_override: string | null;
+  theme_font_override: string | null;
+  theme_animation_override: string | null;
 }
 
 export interface ServerDraftEventUpdate {
@@ -127,6 +145,13 @@ export interface ServerDraftEventUpdate {
   pass_tax: boolean | null;
   pass_mingla_fee: boolean | null;
   pass_service_fee: boolean | null;
+  // #1022 — theme override columns. Optional on the row type because legacy
+  // rows predate them. These are scalar columns, NOT the `theme` JSONB blob:
+  // trg_events_sync_departure fires on UPDATE OF theme, and the blob is
+  // wholesale-replaced by the autosave echo.
+  theme_color_override: string | null;
+  theme_font_override: string | null;
+  theme_animation_override: string | null;
 }
 
 export interface BusinessDraftPayload {
@@ -614,6 +639,13 @@ export const draftToServerInsert = (
   visibility: "draft",
   status: "draft",
   timezone: draft.timezone,
+  // #1022 — the theme override columns ride the wizard's OWN row UPDATE.
+  // An unpromoted d_* draft has no server row to patch, and a standalone
+  // write would race the autosave echo's wholesale draft replacement, which
+  // is A/F-1's loss bug re-entered through a different door. One update per
+  // tick means zero race, and the insert carries the theme through promotion
+  // for free. Same shape as the ORCH-0841 taxonomy columns above.
+  ...themeOverridesToColumns(draft.themeOverrides),
 });
 
 export const draftToServerUpdate = (
@@ -668,6 +700,13 @@ export const draftToServerUpdate = (
   pass_tax: draft.pricingSwitches?.passTax ?? null,
   pass_mingla_fee: draft.pricingSwitches?.passMinglaFee ?? null,
   pass_service_fee: draft.pricingSwitches?.passServiceFee ?? null,
+  // #1022 — the theme override columns ride the wizard's OWN row UPDATE.
+  // An unpromoted d_* draft has no server row to patch, and a standalone
+  // write would race the autosave echo's wholesale draft replacement, which
+  // is A/F-1's loss bug re-entered through a different door. One update per
+  // tick means zero race, and the insert carries the theme through promotion
+  // for free. Same shape as the ORCH-0841 taxonomy columns above.
+  ...themeOverridesToColumns(draft.themeOverrides),
 });
 
 export const publishedVisibilityForDraft = (
@@ -796,6 +835,10 @@ export const serverRowToDraft = (row: ServerDraftEventRow): DraftEvent => {
       passMinglaFee: row.pass_mingla_fee ?? null,
       passServiceFee: row.pass_service_fee ?? null,
     },
+    // #1022 — read the theme back off the columns so every mount can DISPLAY
+    // the current override, and so the autosave echo carries it instead of
+    // erasing it.
+    themeOverrides: themeOverridesFromColumns(row),
     tickets: ticketsFromPayload(businessDraft.tickets),
     visibility: asVisibility(businessDraft.requestedVisibility),
     requireApproval: asBoolean(settings.requireApproval, false),

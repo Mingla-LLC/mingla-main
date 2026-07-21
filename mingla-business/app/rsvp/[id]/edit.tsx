@@ -206,6 +206,9 @@ export default function RsvpEditRoute(): React.ReactElement {
   const publishServerDraft = usePublishRsvpDraft();
   const deleteDraft = useDraftEventStore((s) => s.deleteDraft);
   const migratingLegacyIdRef = React.useRef<string | null>(null);
+  // #1022 A/F-7 — set when an autosave is requested while a d_* promotion
+  // is in flight; flushed once the server id resolves.
+  const pendingPostPromotionSaveRef = React.useRef<boolean>(false);
   const staleRecoveryDraftIdRef = React.useRef<string | null>(null);
   // ORCH-1150 (D-1) — retain the last resolved draft so the d_*→server migration
   // swap does NOT flash the `draft===null` Spinner (which remounts the wizard,
@@ -541,7 +544,14 @@ export default function RsvpEditRoute(): React.ReactElement {
         return;
       }
       if (!isDraftDirty(incoming)) return;
-      if (migratingLegacyIdRef.current === incoming.id) return;
+      if (migratingLegacyIdRef.current === incoming.id) {
+        // #1022 A/F-7 — an edit made INSIDE the promotion window used to be
+        // dropped on the floor with no retry: the guard returned early and
+        // nothing ever re-drove the save. Record that a save is owed so the
+        // promotion's resolve handler can flush it against the server id.
+        pendingPostPromotionSaveRef.current = true;
+        return;
+      }
       if (!isAuthReady) return;
       migratingLegacyIdRef.current = incoming.id;
       void promoteLegacyDraftOnce({
@@ -562,6 +572,15 @@ export default function RsvpEditRoute(): React.ReactElement {
           // a screen replace, so the input keeps focus AND the URL/route params
           // land on the server id immediately (resume/kill lands on the real id).
           setPromotedServerId(merged.id);
+          // #1022 A/F-7 — flush the edit that landed during promotion, now
+          // that a server row exists. Read the draft FRESH from the store so
+          // the flush carries every field written while we were in flight.
+          if (pendingPostPromotionSaveRef.current) {
+            pendingPostPromotionSaveRef.current = false;
+            const freshDraft =
+              useDraftEventStore.getState().getDraft(merged.id) ?? merged;
+            autosave.saveDraft(freshDraft);
+          }
           if (navigationRef.isFocused()) {
             router.setParams({
               id: merged.id,

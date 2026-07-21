@@ -77,7 +77,9 @@ import { TopBar } from "../ui/TopBar";
 import { BrandAvatarPickerSheet } from "./BrandAvatarPickerSheet";
 import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 import type { CoverPatch } from "../ui/CoverPicker";
-import { ThemeEditorSection } from "../theme/ThemeEditorSection";
+import type { ThemeInput } from "@mingla/offering-rendering";
+import { ThemeControlRow } from "../theme/ThemeControlRow";
+import { ThemeSheet } from "../theme/ThemeSheet";
 
 interface ToastState {
   visible: boolean;
@@ -94,6 +96,8 @@ export type BrandEditSection =
   | "photo"
   | "about"
   | "cover"
+  // #1022 M6 — theme is now a first-class, deep-linkable section like the rest.
+  | "theme"
   | "address"
   | "contact"
   | "social";
@@ -326,6 +330,8 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
   // editable copy. When brand === null, draft is unused (we render not-found).
   const initialDraft = useMemo<Brand | null>(() => brand, [brand]);
   const [draft, setDraft] = useState<Brand | null>(initialDraft);
+  // #1022 M6 — sheet visibility for the brand-scope Theme control.
+  const [themeSheetOpen, setThemeSheetOpen] = useState(false);
   // ORCH-1310 — sync the draft once the brand arrives ASYNCHRONOUSLY. ORCH-1309
   // made the route FETCH the brand (useBrand), so on a cold deep-link/refresh
   // `brand` is null on the first render and non-null a beat later. `useState`
@@ -355,6 +361,11 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
     if (brand === null || draft === null) return false;
     return JSON.stringify(draft) !== JSON.stringify(brand);
   }, [draft, brand]);
+
+  // ONE patch per user action, derived from current draft state at commit time.
+  const handleBrandThemeChange = useCallback((theme: ThemeInput | null): void => {
+    setDraft((current) => (current === null ? current : { ...current, theme }));
+  }, []);
 
   const fireToast = useCallback((message: string): void => {
     setToast({ visible: true, message });
@@ -675,11 +686,25 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
             </View>
           </View>
 
-          <Text style={styles.sectionLabel}>PUBLIC PAGE THEME</Text>
+          <Text
+            style={styles.sectionLabel}
+            onLayout={handleSectionLayout("theme")}
+          >
+            PUBLIC PAGE THEME
+          </Text>
           <View style={styles.fieldsCol}>
-            <ThemeEditorSection
+            {/* #1022 M6 — scope="brand": the brand's own theme occupies the
+                brandTheme slot and there is no offering override above it.
+                Theme continues to flow draft.theme -> onSave(draft) ->
+                computeDirtyFieldsPatch, which already diffs it minimally.
+                Do NOT add a separate write path here — brands are a different
+                table with an already-correct path. */}
+            <ThemeControlRow
               value={draft.theme}
-              onChange={(theme) => setDraft({ ...draft, theme })}
+              onChange={handleBrandThemeChange}
+              scope="brand"
+              onPress={() => setThemeSheetOpen(true)}
+              testID="brand-theme-control-row"
             />
           </View>
 
@@ -950,6 +975,16 @@ export const BrandEditView: React.FC<BrandEditViewProps> = ({
           onErrorToast={fireToast}
         />
       ) : null}
+
+      {/* I-SUB-SHEET-INSIDE-PARENT — last JSX child of the root View. */}
+      <ThemeSheet
+        visible={themeSheetOpen}
+        onClose={() => setThemeSheetOpen(false)}
+        value={draft?.theme ?? null}
+        onChange={handleBrandThemeChange}
+        scope="brand"
+        testID="brand-theme-sheet"
+      />
     </View>
   );
 };

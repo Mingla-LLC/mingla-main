@@ -53,6 +53,7 @@ import {
 } from "../../constants/designSystem";
 import {
   boldFontFamily,
+  createThemePalette,
   formatTripDateRange,
   offeringSurfaceStyles,
   type ResolvedTheme,
@@ -320,6 +321,7 @@ export const TripPreview: React.FC<TripPreviewProps> = ({
       contentPadding={contentPadding}
       onReserveTap={onReserveTap}
       testID={testID}
+      theme={theme}
     />
   );
 };
@@ -535,7 +537,21 @@ const LegacyTripPreview: React.FC<{
   contentPadding: number;
   onReserveTap?: () => void;
   testID?: string;
-}> = ({ trip, brand, showCta, contentPadding, onReserveTap, testID }) => {
+  /**
+   * #1022 — the RESOLVED theme (brand + offering override). OPTIONAL and
+   * additive: absent ⇒ the byte-stable prior render with the fixed platform
+   * accent. Present ⇒ the accent-bearing elements repaint, so the wizard's
+   * review step shows the theme the Theme row above it claims.
+   *
+   * NOTE this does NOT flip the mode: the FOUNDATION fork requires `palette`
+   * AND the chrome handlers, so passing `theme` alone stays LEGACY.
+   */
+  theme?: ResolvedTheme;
+}> = ({ trip, brand, showCta, contentPadding, onReserveTap, testID, theme }) => {
+  // #1022 A/F-12 (Trip leg) — the themed accent, or the platform default when
+  // no theme is supplied (every pre-existing caller).
+  const legacyAccent =
+    theme !== undefined ? createThemePalette(theme).accent : accent.warm;
   const includedItems = trip.inclusions.filter((i) => i.kind === "included");
   const excludedItems = trip.inclusions.filter((i) => i.kind === "excluded");
   const tier = trip.pricingTiers[0];
@@ -590,7 +606,7 @@ const LegacyTripPreview: React.FC<{
         <Text style={styles.legacyBrandByline}>by {brand.name}</Text>
 
         <View style={styles.legacyMetaRow}>
-          <Icon name="calendar" size={16} color={accent.warm} />
+          <Icon name="calendar" size={16} color={legacyAccent} />
           <Text style={styles.legacyMetaText}>
             {formatTripDateRange(
               trip.businessTrip.startAt,
@@ -600,7 +616,7 @@ const LegacyTripPreview: React.FC<{
         </View>
         {legacyDeparture !== null ? (
           <View style={styles.legacyMetaRow}>
-            <Icon name="send" size={16} color={accent.warm} />
+            <Icon name="send" size={16} color={legacyAccent} />
             <Text style={styles.legacyMetaText} numberOfLines={1}>
               Leaving from {legacyDeparture}
             </Text>
@@ -608,7 +624,7 @@ const LegacyTripPreview: React.FC<{
         ) : null}
         {legacyDestination !== null ? (
           <View style={styles.legacyMetaRow}>
-            <Icon name="location" size={16} color={accent.warm} />
+            <Icon name="location" size={16} color={legacyAccent} />
             <Text style={styles.legacyMetaText} numberOfLines={1}>
               {legacyDestination}
             </Text>
@@ -616,7 +632,7 @@ const LegacyTripPreview: React.FC<{
         ) : null}
         {trip.businessTrip.capacity !== null ? (
           <View style={styles.legacyMetaRow}>
-            <Icon name="users" size={16} color={accent.warm} />
+            <Icon name="users" size={16} color={legacyAccent} />
             <Text style={styles.legacyMetaText}>
               {trip.businessTrip.capacity} traveler
               {trip.businessTrip.capacity === 1 ? "" : "s"} max
@@ -645,7 +661,7 @@ const LegacyTripPreview: React.FC<{
                   firstVideoIndex >= 0 ? `${day.id}-${firstVideoIndex}` : null;
                 return (
                   <View key={day.id} style={styles.legacyDayCard}>
-                    <Text style={styles.legacyDayOrdinal}>
+                    <Text style={[styles.legacyDayOrdinal, { color: legacyAccent }]}>
                       DAY {day.ordinal}
                     </Text>
                     <Text style={styles.legacyDayTitle}>{day.title}</Text>
@@ -730,7 +746,7 @@ const LegacyTripPreview: React.FC<{
                 <View style={styles.legacyItemsList}>
                   {includedItems.map((i: TripInclusion) => (
                     <View key={i.id} style={styles.legacyItemRow}>
-                      <Icon name="check" size={14} color={accent.warm} />
+                      <Icon name="check" size={14} color={legacyAccent} />
                       <Text style={styles.legacyItemText}>{i.item}</Text>
                     </View>
                   ))}
@@ -772,7 +788,7 @@ const LegacyTripPreview: React.FC<{
                 onPress={onReserveTap}
                 accessibilityRole="button"
                 accessibilityLabel={`Reserve your spot on ${trip.title}`}
-                style={styles.legacyReserveCta}
+                style={[styles.legacyReserveCta, { backgroundColor: legacyAccent }]}
                 testID="trip-preview-reserve-cta"
               >
                 <Text style={styles.legacyReserveCtaText}>Reserve my spot</Text>

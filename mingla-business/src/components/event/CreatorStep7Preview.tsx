@@ -54,6 +54,12 @@ import { Pill } from "../ui/Pill";
 // CreatorStep7Preview.refactorParity.test.ts (T-15).
 import { StripeBlockedCard } from "../offering/StripeBlockedCard";
 
+import { useMemo as useThemeMemo } from "react";
+
+import { createThemePalette } from "../../../../packages/offering-rendering/themePalette";
+import { resolveTheme } from "../../../../packages/offering-rendering/themeResolver";
+import { ThemeControlRow } from "../theme/ThemeControlRow";
+import { ThemeSheet } from "../theme/ThemeSheet";
 import { type StepBodyProps } from "./types";
 
 interface CreatorStep7PreviewProps extends StepBodyProps {
@@ -81,6 +87,7 @@ const formatPriceLine = (
 
 export const CreatorStep7Preview: React.FC<CreatorStep7PreviewProps> = ({
   draft,
+  updateDraft,
   brand,
   onTapMiniCard,
   onConnectStripe,
@@ -110,14 +117,43 @@ export const CreatorStep7Preview: React.FC<CreatorStep7PreviewProps> = ({
   // Cycle 5 — aggregated event-level ticket-modifier badges.
   const ticketBadges = formatEventLevelTicketBadges(draft.tickets);
 
+  // #1022 A/F-12 — this preview was THEME-BLIND: it painted accent.warm
+  // unconditionally, so the review row would have advertised a theme beside a
+  // preview that could not show it. Route the mini-card through the SAME call
+  // PublicEventPage makes: resolveTheme(brandTheme, override) -> palette.
+  const brandTheme = brand?.theme ?? null;
+  const themePalette = useThemeMemo(
+    () => createThemePalette(resolveTheme(brandTheme, draft.themeOverrides ?? null)),
+    [brandTheme, draft.themeOverrides],
+  );
+  const [themeSheetOpen, setThemeSheetOpen] = React.useState(false);
+  const handleThemeChange = useCallback(
+    (next: Parameters<typeof updateDraft>[0]["themeOverrides"]): void => {
+      updateDraft({ themeOverrides: next });
+    },
+    [updateDraft],
+  );
+
   return (
     <View>
+      {/* #1022 — second touchpoint: last chance to fix the look before
+          publishing. variant="review" swaps the chevron for the word Edit. */}
+      <ThemeControlRow
+        value={draft.themeOverrides}
+        onChange={handleThemeChange}
+        scope="offering"
+        brandTheme={brandTheme}
+        variant="review"
+        onPress={() => setThemeSheetOpen(true)}
+        testID="event-review-theme-row"
+      />
+
       {/* Mini event card — tappable to /event/[id]/preview */}
       <Pressable
         onPress={handleMiniCardPress}
         accessibilityRole="button"
         accessibilityLabel="Preview public page"
-        style={styles.miniCard}
+        style={[styles.miniCard, { backgroundColor: themePalette.page }]}
       >
         <View style={styles.miniCover}>
           <EventCoverMedia
@@ -130,8 +166,11 @@ export const CreatorStep7Preview: React.FC<CreatorStep7PreviewProps> = ({
           />
         </View>
         <View style={styles.miniBody}>
-          <Text style={styles.miniDate}>{dateLine}</Text>
-          <Text style={styles.miniTitle} numberOfLines={1}>
+          <Text style={[styles.miniDate, { color: themePalette.accent }]}>{dateLine}</Text>
+          <Text
+            style={[styles.miniTitle, { color: themePalette.primaryText }]}
+            numberOfLines={1}
+          >
             {titleLine}
           </Text>
           <Text style={styles.miniVenue} numberOfLines={1}>
@@ -155,6 +194,16 @@ export const CreatorStep7Preview: React.FC<CreatorStep7PreviewProps> = ({
           ) : null}
         </View>
       </Pressable>
+
+      <ThemeSheet
+        visible={themeSheetOpen}
+        onClose={() => setThemeSheetOpen(false)}
+        value={draft.themeOverrides}
+        onChange={handleThemeChange}
+        scope="offering"
+        brandTheme={brandTheme}
+        testID="event-review-theme-sheet"
+      />
 
       {/* Status card */}
       <View style={styles.statusCardWrap}>

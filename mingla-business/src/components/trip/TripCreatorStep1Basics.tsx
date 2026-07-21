@@ -12,7 +12,7 @@
  * text entry. Mirrors the picker pattern in CreatorStep2When.tsx.
  */
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Modal,
   Platform,
@@ -33,6 +33,9 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
+import { useBrand } from "../../hooks/useBrands";
+import { ThemeControlRow } from "../theme/ThemeControlRow";
+import { ThemeSheet } from "../theme/ThemeSheet";
 // ORCH-1079 [Business-venue Google→Mapbox sweep] — swapped the legacy Google
 // address autocomplete for the shared Mapbox picker (drop-in, same props).
 // place.placeId now carries an opaque mapbox_id, stored in the SAME
@@ -52,6 +55,7 @@ import { type CoverPatch } from "../ui/CoverPicker";
 import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import type { EventCoverMediaType } from "../../store/draftEventStore";
+import type { ThemeInput } from "@mingla/offering-rendering";
 
 export interface Step1Draft {
   title: string;
@@ -78,6 +82,13 @@ export interface Step1Draft {
    */
   coverMediaUrl: string | null;
   coverMediaType: EventCoverMediaType | null;
+  /**
+   * #1022 — the offering's raw theme override. null = fully inherited from
+   * the brand. Persisted to the events theme_*_override COLUMNS by
+   * autosaveStep1 (never into the `theme` JSONB, which updateTripBasics
+   * read-modify-writes across two round-trips).
+   */
+  themeOverrides: ThemeInput | null;
 }
 
 export interface TripCreatorStep1BasicsProps {
@@ -201,7 +212,30 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
     },
     [onShowToast],
   );
-  const [coverPickerVisible, setCoverPickerVisible] = useState<boolean>(false);
+  // #1022 A/F-13 — ONE discriminated sheet state, never two booleans.
+  const [activeSheet, setActiveSheet] = useState<"none" | "cover" | "theme">("none");
+  const coverPickerVisible = activeSheet === "cover";
+
+  // C-2 — brand theme so the row reports inheritance truthfully.
+  const brandQuery = useBrand(brandId ?? null);
+  const brandThemeStatus = brandQuery.isLoading
+    ? ("loading" as const)
+    : brandQuery.isError
+      ? ("error" as const)
+      : ("ready" as const);
+
+  const handleThemeChange = useCallback(
+    (next: ThemeInput | null): void => {
+      onChange({ themeOverrides: next });
+    },
+    [onChange],
+  );
+
+  // B-13 — a theme write during publish could land inside handleConfirmPublish's
+  // 1200ms window, so an open sheet is force-closed the moment submitting starts.
+  useEffect(() => {
+    if (disabled && activeSheet === "theme") setActiveSheet("none");
+  }, [disabled, activeSheet]);
   const [pickerMode, setPickerMode] = useState<PickerMode>(null);
   const [tempPickerValue, setTempPickerValue] = useState<Date | null>(null);
 
@@ -514,17 +548,34 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           variant="secondary"
           size="md"
           shape="square"
-          onPress={() => setCoverPickerVisible(true)}
+          onPress={() => setActiveSheet("cover")}
           disabled={disabled}
           accessibilityLabel="Add cover photo, GIF, or video"
         />
       </View>
 
+      {/* #1022 M4 — direct child of styles.host (gap: spacing.md = 16pt),
+          NOT inside the cover fieldGroup (gap: spacing.xs = 4pt, wrong).
+          The cover field is the LAST laid-out field group in this step, so
+          the row lands at the end exactly like Event/RSVP. Step 1 already
+          overflows its viewport, so the step scrolls and the row is reached
+          by scrolling — that is expected, not a defect. */}
+      <ThemeControlRow
+        value={draft.themeOverrides}
+        onChange={handleThemeChange}
+        scope="offering"
+        brandTheme={brandQuery.data?.theme ?? null}
+        brandThemeStatus={brandThemeStatus}
+        disabled={disabled}
+        onPress={() => setActiveSheet("theme")}
+        testID="trip-theme-control-row"
+      />
+
       {/* ORCH-0989 — unified cover sheet, JSX child of this host
           (I-SUB-SHEET-INSIDE-PARENT). Video ENABLED on trips. */}
       <CoverPickerSheet
         visible={coverPickerVisible}
-        onClose={() => setCoverPickerVisible(false)}
+        onClose={() => setActiveSheet("none")}
         target={{
           kind: "trip",
           brandId,
@@ -590,6 +641,17 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           minimumDate={pickerMinDate}
         />
       ) : null}
+
+      {/* I-SUB-SHEET-INSIDE-PARENT — last JSX child of the host root View. */}
+      <ThemeSheet
+        visible={activeSheet === "theme"}
+        onClose={() => setActiveSheet("none")}
+        value={draft.themeOverrides}
+        onChange={handleThemeChange}
+        scope="offering"
+        brandTheme={brandQuery.data?.theme ?? null}
+        testID="trip-theme-sheet"
+      />
     </View>
   );
 };

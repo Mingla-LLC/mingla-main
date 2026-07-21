@@ -21,6 +21,8 @@ import type {
   TicketStub,
 } from "../store/draftEventStore";
 import type { EditSeverity } from "../store/eventEditLogStore";
+import type { ThemeInput } from "@mingla/offering-rendering";
+import { normalizeThemeOverrides } from "../services/offeringTheme";
 import type {
   EditableLiveEventFields,
   LiveEvent,
@@ -88,7 +90,10 @@ export const liveEventToEditableDraft = (e: LiveEvent): DraftEvent => ({
   allowTransfers: e.allowTransfers,
   hideRemainingCount: e.hideRemainingCount,
   passwordProtected: e.passwordProtected,
-  themeOverrides: e.themeOverrides ?? null,
+  // #1022 C-3 — normalise so a never-themed event projects `null`, not
+  // {null,null,null}. Without this the JSON.stringify deepEqual below sees
+  // '{"color":null,...}' !== 'null' and forges a phantom diff.
+  themeOverrides: normalizeThemeOverrides(e.themeOverrides),
   privateGuestList: e.privateGuestList,
   inPersonPaymentsEnabled: e.inPersonPaymentsEnabled,
   // ORCH-1150 — project the RSVP host-control snapshot into the editable
@@ -347,8 +352,16 @@ export const editableDraftToPatch = (
   if (original.passwordProtected !== edited.passwordProtected) {
     patch.passwordProtected = edited.passwordProtected;
   }
-  if (!deepEqual(original.themeOverrides ?? null, edited.themeOverrides ?? null)) {
-    patch.themeOverrides = edited.themeOverrides ?? null;
+  // #1022 C-3 — both sides normalised. A semantic no-op (all-null vs null)
+  // must produce NO patch key: no ChangeSummaryModal, no forced edit reason,
+  // no DB write of three nulls over three nulls, no "Edited" badge.
+  if (
+    !deepEqual(
+      normalizeThemeOverrides(original.themeOverrides),
+      normalizeThemeOverrides(edited.themeOverrides),
+    )
+  ) {
+    patch.themeOverrides = normalizeThemeOverrides(edited.themeOverrides);
   }
   if (original.privateGuestList !== edited.privateGuestList) {
     patch.privateGuestList = edited.privateGuestList;
@@ -540,7 +553,18 @@ export const computeRichFieldDiffs = (
     if (key === "category") continue;
     const a = original[key];
     const b = edited[key];
-    if (deepEqual(a, b)) continue;
+    // #1022 C-3 — theme is compared on its normalised shape so an all-null
+    // override never shows up as a change against `null`.
+    if (key === "themeOverrides") {
+      if (
+        deepEqual(
+          normalizeThemeOverrides(a as ThemeInput | null | undefined),
+          normalizeThemeOverrides(b as ThemeInput | null | undefined),
+        )
+      ) {
+        continue;
+      }
+    } else if (deepEqual(a, b)) continue;
     diffs.push({
       fieldKey: String(key),
       fieldLabel: FIELD_LABELS[key],

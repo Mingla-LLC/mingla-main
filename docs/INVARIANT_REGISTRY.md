@@ -5903,3 +5903,69 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 - **Enforcement:** two batch:A strict-grep gates, MANIFEST-registered (PR-blocking): `.github/scripts/strict-grep/issue-1001-dead-logo-urls.mjs` (rule a — scans `git ls-files` text files for both dead literals; self-excluding; `--self-test` 5/5) and `.github/scripts/strict-grep/issue-1001-brand-asset-parity.mjs` (rule b — master existence + md5 master↔mirror parity + deleted-path resurrection by path and by content; `--self-test` 5/5).
 - **Regression test:** Deno `supabase/functions/_shared/__tests__/issue_1001_brand_assets.test.ts` (default/override/trim resolution, shell renders canonical URL ≥2x with zero dead/www literals, marketing + invite default paths, PDF entrypoint binding); jest `mingla-business/__tests__/components/issue_1001_wordmark_swaps.test.ts` + Deno `app-mobile/__tests__/issue_1001_sharemodal_wordmark.test.ts` (text-wordmark renders stay dead). Fails-on-revert proven at IMPLEMENT by true value change (evidence in the #1001 implementation report). Append-only.
 - **Established:** DRAFT 2026-07-20 at #1001 IMPLEMENT. Flips ACTIVE at CLOSE.
+
+---
+
+## DRAFT — issue #1022 (compact Theme control across four create wizards + both edit surfaces — IN FLIGHT, registered at SPEC 2026-07-20)
+
+> Registered DRAFT at issue #1022 [theme-control] SPEC. Three structural audits (A: Event+RSVP, B: Trip+Experience, C: edit surfaces + Sheet) proved the design's persistence premise false on three of four wizards: `themeOverrides` is written by neither `draftToServer*` builder and read by neither `serverRowToDraft` nor `EVENT_DRAFT_SELECT` (0 refs each, verified) so the autosave echo deletes it ~one round-trip after it is set; `biz_create_experience` / `biz_publish_experience` write 0 theme override columns so a payload key persists nothing; `ThemeEditorSection.tsx:56` passes the offering override into `resolveTheme`'s **brandTheme** slot and so actively misreports inheritance; `EditPublishedScreen.tsx:387` gates `useBrand` to `rsvpMode` so ticketed edits carry no brand data at all. #1022 replaces four bespoke paths with ONE column contract on `public.events`. The orchestrator flips DRAFT → ACTIVE at CLOSE.
+
+### I-PROPOSED-1022-OFFERING-THEME-COLUMNS-ONLY (DRAFT — #1022 SPEC 2026-07-20)
+- **Rule:** an offering's visual theme override persists ONLY to the three scalar columns `public.events.theme_color_override` / `theme_font_override` / `theme_animation_override`, via a column-targeted `UPDATE ... .eq("id")`. It is NEVER nested inside the `events.theme` JSONB (any leaf, including `theme.business_draft` and `theme.business_trip`), never passed as a `p_payload` key to any publish/create RPC, and never derived from a JSONB read. Rationale, proven: `updateTripBasics` (`tripsService.ts`) performs a two-round-trip JS read-modify-write of the whole `theme` column and already races `setEventGuestPrivacy`; the event publish RPC strips `theme.business_draft`; `biz_create_experience` / `biz_publish_experience` read no theme key at all; and `trg_events_sync_departure` fires `BEFORE INSERT OR UPDATE OF theme`, so a JSONB write drags in an unrelated trigger a column write does not.
+- **Enforcement:** batch:A strict-grep gate (MANIFEST-registered, PR-blocking) asserting (a) the three column literals appear only inside the canonical theme module + the draft mapper + migrations + tests, and (b) no `theme_color_override` / `theme_font_override` / `theme_animation_override` string appears inside any `jsonb_set` / `theme:` object literal / RPC payload builder.
+- **Regression test:** fails-on-revert — moving any axis into `theme.business_draft` or a publish payload key turns the gate red.
+- **Established:** DRAFT 2026-07-20 at #1022 SPEC. Flips ACTIVE at CLOSE.
+
+### I-PROPOSED-1022-THEME-RESOLVE-ARG-ORDER (DRAFT — #1022 SPEC 2026-07-20)
+- **Rule:** `resolveTheme(brandTheme, offeringOverride)` — the FIRST argument is always the brand theme and the SECOND is always the offering override. No call site may pass an offering override in the first slot, and no call site may hard-code `null` in the first slot for a `scope="offering"` surface. Per-axis inheritance state is read from the RAW override (`override?.color == null`), never inferred from the resolved value.
+- **Enforcement:** batch:A strict-grep gate asserting every `resolveTheme(` call site repo-wide matches an allowlisted argument shape, plus a unit test proving an unthemed offering under a themed brand resolves to the BRAND colour/font/animation (not the Mingla default).
+- **Regression test:** fails-on-revert — restoring `resolveTheme(value ?? null, null)` makes the brand-inheritance assertion red.
+- **Established:** DRAFT 2026-07-20 at #1022 SPEC. Flips ACTIVE at CLOSE.
+
+### I-PROPOSED-1022-DRAFT-THEME-ROUNDTRIP (DRAFT — #1022 SPEC 2026-07-20)
+- **Rule:** `DraftEvent.themeOverrides` MUST survive a full server round-trip. `EVENT_DRAFT_SELECT` includes the three override columns; `ServerDraftEventRow` / `ServerDraftEventInsert` / `ServerDraftEventUpdate` carry them; `draftToServerInsert` and `draftToServerUpdate` write them from `draft.themeOverrides`; `serverRowToDraft` reads them back, returning `null` (never `{null,null,null}`) when all three are null. This is the ORCH-0841 taxonomy-column contract applied to theme, and it exists because `useServerDraftAutosave.onSuccess` performs a WHOLESALE object replacement of the local draft with the server projection.
+- **Enforcement:** jest round-trip test wired into a dedicated PR-blocking workflow (the `orch-1403-onboard-scroll-tests.yml` explicit-path pattern).
+- **Regression test:** fails-on-revert — `serverRowToDraft(draftToServerUpdate(draftWithTheme, …))` must return the same `themeOverrides`; removing the select entry, either builder leg, or the read leg turns it red. Append-only.
+- **Established:** DRAFT 2026-07-20 at #1022 SPEC. Flips ACTIVE at CLOSE.
+
+### I-PROPOSED-1022-THEME-EMPTY-NORMALISED (DRAFT — #1022 SPEC 2026-07-20)
+- **Rule:** exactly one exported normaliser collapses `undefined` and `{color:null,font:null,animation:null}` (and any all-null permutation) to `null`, and it is applied to BOTH sides of every theme comparison and before every write. Consequence: clearing the last remaining axis on a never-themed offering produces no diff, no ChangeSummaryModal, no forced edit reason, and no DB write. `BUSINESS_EVENT_SELECT = "*"` guarantees the three columns are always present as `null`, so an un-normalised `deepEqual` (`JSON.stringify`) can never compare equal to the editor's `null`.
+- **Enforcement:** the normaliser is the only permitted producer of a theme value at `liveEventToEditableDraft`, `editableDraftToPatch`, `computeRichFieldDiffs` and the write path; batch:A strict-grep gate on those four call sites.
+- **Regression test:** fails-on-revert — a unit test asserting `editableDraftToPatch(original, edited)` yields NO `themeOverrides` key when both sides are semantically unthemed; removing the normaliser turns it red. Append-only.
+- **Established:** DRAFT 2026-07-20 at #1022 SPEC. Flips ACTIVE at CLOSE.
+
+### I-PROPOSED-1022-THEME-PARTICIPATES-IN-DIRTY-AND-PRISTINE (DRAFT — #1022 SPEC 2026-07-20)
+- **Rule:** a theme-only change MUST mark the offering dirty and MUST NOT be judged pristine. `isDraftDirty` returns `true` when `themeOverrides` is semantically non-null; `isDraftEventPristine` returns `false` for the same condition; `isTripWizardPristine` compares `themeOverrides` (null-normalised, both sides). Consequence: a theme-only edit on a fresh `d_*` draft promotes to a server row, and the chrome X can never hard-delete a themed draft without the confirm dialog.
+- **Enforcement:** unit tests on all three pure functions, wired into the #1022 PR-blocking workflow.
+- **Regression test:** fails-on-revert — removing any of the three checks makes the matching assertion red. Append-only.
+- **Established:** DRAFT 2026-07-20 at #1022 SPEC. Flips ACTIVE at CLOSE.
+
+### I-PROPOSED-1022-SHEET-DISMISS-PAN-HANDLE-ONLY (DRAFT — #1022 SPEC 2026-07-20)
+- **Rule:** `SheetMobile`'s NATIVE drag-to-dismiss `Gesture.Pan()` is attached ONLY to a transparent band pinned to the top of the panel, height exactly `SHEET_DRAG_BAND_HEIGHT = 52` (matching the shipped web `webDragCatch`), never to the panel `Animated.View` and never to any ancestor of `children`. Gesture COORDINATION between the dismiss pan and any inner gesture (`Gesture.Simultaneous`, `Gesture.Native`, `simultaneousWithExternalGesture`, `blocksExternalGesture`) is FORBIDDEN — ORCH-1173 R1 tried exactly that for the brand-switcher TopSheet and it failed on a physical Samsung; R2's handle-only scoping is the codebase's proven answer. This is GLOBAL (all 59 Sheet consumers), not opt-in.
+- **Enforcement:** batch:A strict-grep gate on `SheetMobile.tsx` mirroring `orch1173BrandSwitcherAndroidScroll.gate.test.ts`: assert the native `WebSafeGestureDetector` wraps the drag band and not the panel; assert the band height constant is ≥44 and equals the web `webDragCatch` height; assert none of the four coordination APIs appears in the file.
+- **Regression test:** fails-on-revert — re-wrapping the panel, or introducing any coordination API, turns the gate red. Append-only.
+- **Established:** DRAFT 2026-07-20 at #1022 SPEC. Flips ACTIVE at CLOSE.
+
+### I-PROPOSED-1022-SHEET-BODY-BRINGS-ITS-OWN-SCROLL (DRAFT — #1022 SPEC 2026-07-20)
+- **Rule:** `Sheet` supplies NO scrolling of its own (`styles.body` is a bare `flex:1` View inside a panel with `overflow:"hidden"`). Any Sheet consumer whose content can exceed its snap height MUST mount its own scroll container carrying `style={{ flex: 1 }}` — not `contentContainerStyle` alone. Omitting `flex:1` is the ORCH-1193 unreachable-footer bug.
+- **Enforcement:** extends the existing `orch-1193-sheet-body-scroll-bounded.mjs` gate to the new theme-sheet file.
+- **Regression test:** fails-on-revert — a render test asserting the sheet footer (`Done`) is within the panel bounds at the full designed content height; dropping `flex:1` turns it red. Append-only.
+- **Established:** DRAFT 2026-07-20 at #1022 SPEC. Flips ACTIVE at CLOSE.
+
+### I-PROPOSED-1022-ONE-SHEET-OPEN-PER-HOST (DRAFT — #1022 SPEC 2026-07-20)
+- **Rule:** a host component that mounts more than one `Sheet` as siblings MUST guarantee at most one is `visible` at a time, by a single discriminated state (`activeSheet: "none" | "cover" | "theme"`), never two independent booleans. Stacking order must never be relied upon: on web each Sheet portals into its own `document.body` div with NO `zIndex` anywhere, so z-order is the order of first open, while RN-web's separate `activeModalStack` governs focus/Escape — the two can disagree. Timeout-based sequencing between a close and an open is also forbidden (`CreatorStep2When` already races a 200ms timeout against a 240ms close animation).
+- **Enforcement:** batch:A strict-grep gate asserting the multi-sheet hosts touched by #1022 hold a single `activeSheet` discriminant and no two-boolean pattern.
+- **Regression test:** fails-on-revert — a unit test that opening the theme sheet sets the cover sheet invisible and vice versa. Append-only.
+- **Established:** DRAFT 2026-07-20 at #1022 SPEC. Flips ACTIVE at CLOSE.
+
+### I-PROPOSED-1022-THEME-SINGLE-WRITE-PATH (DRAFT — #1022 SPEC 2026-07-20)
+- **Rule:** every colour affordance (S/V plane drag, hue rail drag, swatch/recent/brand tap, Nudge-to-AA, hex commit) writes through exactly one `commitColor(hex)` function; drag frames call it directly and NEVER route through the hex `TextInput`. Each user action emits exactly ONE patch to the host's update prop — a cross-axis change is one call, not two — and the patch is derived from CURRENT state at commit time, never from a captured render-snapshot prop (the `ThemeEditorSection.commit` prop-snapshot merge is explicitly not inherited). The control writes through the host's injected update callback ONLY; it never imports or writes `useDraftEventStore` directly (the timezone effect is the live example of a store write that reaches the device and never reaches the server).
+- **Enforcement:** batch:A strict-grep gate on the new component directory asserting zero `useDraftEventStore` import and a single `commitColor` definition; plus the ORCH-0964 hex-contract assertions (separate `hexDraft` state, commit only on `normalizeHexColor !== null`, `onBlur` revert, `useEffect` mirror).
+- **Regression test:** fails-on-revert — a unit test that two axis commits in one tick compound rather than dropping the first. Append-only.
+- **Established:** DRAFT 2026-07-20 at #1022 SPEC. Flips ACTIVE at CLOSE.
+
+### I-PROPOSED-1022-FONT-SPECIMEN-PARITY (DRAFT — #1022 SPEC 2026-07-20)
+- **Rule:** the static SVG font-specimen set MUST be exactly the set `THEME_FONT_SLUGS` — same cardinality, same slugs, no extras, no gaps. Browsing the font tab loads ZERO font families; only the SELECTED family loads, through the existing `useThemeFont(theme.fontFamilyValue)`, preserving the ORCH-1083 on-demand contract unmodified.
+- **Enforcement:** batch:A strict-grep gate comparing the specimen registry keys against `THEME_FONT_SLUGS` (Seth-approved Q2), MANIFEST-registered.
+- **Regression test:** fails-on-revert — adding a slug without a specimen, or a specimen without a slug, turns the gate red; a source assertion proves exactly one `useThemeFont` call site inside the theme sheet. Append-only.
+- **Established:** DRAFT 2026-07-20 at #1022 SPEC. Flips ACTIVE at CLOSE.

@@ -82,6 +82,11 @@ import {
   resolvePaidPublishGuardCopy,
 } from "../../utils/paidPublishGuards";
 import type { ExperienceDetail } from "../../services/experienceDetailService";
+import type { ThemeInput } from "@mingla/offering-rendering";
+import {
+  normalizeThemeOverrides,
+  patchOfferingTheme,
+} from "../../services/offeringTheme";
 
 export interface ExperienceCreatorWizardProps {
   brandId: string;
@@ -127,6 +132,8 @@ export interface ExperienceWizardInitialDraft {
   capacity: string;
   unlimited: boolean;
   pricingSwitches: PricingSwitchOverrides;
+  /** #1022 — seed the theme control from the persisted override columns. */
+  themeOverrides?: ThemeInput | null;
   when?: {
     whenMode: "single" | "recurring" | "multi_date";
     date: string | null;
@@ -272,6 +279,67 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
   );
   const [creatingDraft, setCreatingDraft] = useState(false);
   const draftCreateInFlight = useRef(false);
+
+  // #1022 B-1 — biz_create_experience and biz_publish_experience write ZERO
+  // theme override columns (orchestrator-verified). A publish payload key
+  // would persist NOTHING: publish succeeds, no error surfaces, the colour is
+  // simply gone. The theme is therefore written client-side, straight to the
+  // columns, debounced 400ms and force-flushed at the two moments an id
+  // becomes authoritative (draft creation, and publish).
+  const [themeOverrides, setThemeOverrides] = useState<ThemeInput | null>(
+    normalizeThemeOverrides(initialDraft?.themeOverrides ?? null),
+  );
+  const themeOverridesRef = useRef<ThemeInput | null>(themeOverrides);
+  const themeDirtyRef = useRef(false);
+  const themeWriteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    themeOverridesRef.current = themeOverrides;
+  }, [themeOverrides]);
+
+  const flushThemeWrite = useCallback(
+    async (targetId: string): Promise<void> => {
+      if (themeWriteTimerRef.current !== null) {
+        clearTimeout(themeWriteTimerRef.current);
+        themeWriteTimerRef.current = null;
+      }
+      if (!themeDirtyRef.current) return;
+      try {
+        await patchOfferingTheme({
+          offeringId: targetId,
+          themeOverrides: themeOverridesRef.current,
+        });
+        themeDirtyRef.current = false;
+      } catch {
+        // Constitution #3 — never fail silently.
+        setToast("Couldn't save your theme. Reopen Theme and try again.");
+      }
+    },
+    [],
+  );
+
+  const handleThemeChange = useCallback((next: ThemeInput | null): void => {
+    themeDirtyRef.current = true;
+    setThemeOverrides(normalizeThemeOverrides(next));
+  }, []);
+
+  useEffect(() => {
+    if (experienceId === null) return;
+    if (!themeDirtyRef.current) return;
+    if (themeWriteTimerRef.current !== null) {
+      clearTimeout(themeWriteTimerRef.current);
+    }
+    themeWriteTimerRef.current = setTimeout(() => {
+      themeWriteTimerRef.current = null;
+      void flushThemeWrite(experienceId);
+    }, 400);
+    return (): void => {
+      if (themeWriteTimerRef.current !== null) {
+        clearTimeout(themeWriteTimerRef.current);
+        themeWriteTimerRef.current = null;
+      }
+    };
+  }, [experienceId, themeOverrides, flushThemeWrite]);
   const [cover, setCover] = useState<CoverPatch>(initialCover ?? EMPTY_COVER);
 
   // ORCH-1339 (D5) — the two guest-privacy display gates (wizard-owned state;
@@ -508,6 +576,8 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
         throw new Error("Couldn't start your draft. Tap to retry.");
       }
       setExperienceId(newId);
+      // #1022 — the row now exists; flush any theme picked before it did.
+      void flushThemeWrite(newId);
       return newId;
     } catch (e) {
       setToast(e instanceof Error ? e.message : "Couldn't start your draft. Tap to retry.");
@@ -516,7 +586,7 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
       draftCreateInFlight.current = false;
       setCreatingDraft(false);
     }
-  }, [brandId, buildPayload, experienceId]);
+  }, [brandId, buildPayload, experienceId, flushThemeWrite]);
 
   const goNext = useCallback((): void => {
     if (!canContinue) {
@@ -623,6 +693,9 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
         }
         const result = data as { event?: { id?: string } } | null;
         const savedId = result?.event?.id ?? targetId;
+        // #1022 B-1 — write the theme columns AFTER the publish RPC, which
+        // touches none of them. Non-blocking, like guest privacy below.
+        await flushThemeWrite(savedId);
         // ORCH-1339 — persist the guest-privacy toggles via the leaf-write RPC
         // (NEVER inside biz_publish_experience's payload — COMMS-0029 class).
         // NON-BLOCKING: display prefs never block publish/save (SPEC §4.7).
@@ -655,6 +728,7 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
       brand,
       buildPayload,
       ensureDraft,
+      flushThemeWrite,
       experienceNeedsStripe,
       guestPrivacy,
       handlePaidPublishGuard,
@@ -998,6 +1072,8 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
             cover={cover}
             onCoverChange={setCover}
             onShowToast={setToast}
+            themeOverrides={themeOverrides}
+            onThemeChange={handleThemeChange}
           />
         ) : null}
 

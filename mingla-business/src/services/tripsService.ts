@@ -16,6 +16,8 @@
  */
 
 import { supabase } from "./supabase";
+import type { ThemeInput } from "@mingla/offering-rendering";
+import { themeOverridesFromColumns } from "./offeringTheme";
 import type { BrandRole } from "../store/currentBrandStore";
 // META-ORCH-1235 — settle-guarantee for the Hub trips full-screen gate.
 import { withTimeout, DATA_FETCH_TIMEOUT_MS } from "../utils/withTimeout";
@@ -223,6 +225,18 @@ export interface Trip {
     privateGuestList: boolean;
     hideRemainingCount: boolean;
   };
+  /**
+   * #1022 — the trip's raw theme override, read from the events
+   * theme_*_override COLUMNS. null = fully inherited from the brand.
+   * B-2: no wizard could DISPLAY the current override before this existed.
+   *
+   * OPTIONAL for exactly the reason `pricingSwitches` and `guestPrivacy`
+   * above are optional: `mapTrip` (the authoring read path) always populates
+   * it, while public Trip constructions omit it. Every read site goes through
+   * `normalizeThemeOverrides`, which treats `undefined` and `null`
+   * identically, so an absent field is simply "fully inherited".
+   */
+  themeOverrides?: ThemeInput | null;
 }
 
 export interface CreateTripDraftInput {
@@ -382,6 +396,11 @@ interface EventRow {
   pass_tax?: boolean | null;
   pass_mingla_fee?: boolean | null;
   pass_service_fee?: boolean | null;
+  // #1022 — theme override columns. Already returned by getTrip's select("*")
+  // and getTripsByBrand's select("*"); only the type + mapper were missing.
+  theme_color_override?: string | null;
+  theme_font_override?: string | null;
+  theme_animation_override?: string | null;
 }
 
 interface EventDateRow {
@@ -562,6 +581,9 @@ function mapTrip(
     id: event.id,
     brandId: event.brand_id,
     brandSlug,
+    // #1022 — surface the theme override so Step 1 and the review step can
+    // display what is actually set.
+    themeOverrides: themeOverridesFromColumns(event),
     title: event.title,
     description: event.description,
     slug: event.slug,

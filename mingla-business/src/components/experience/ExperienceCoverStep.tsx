@@ -24,6 +24,10 @@ import {
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { CoverPickerSheet } from "../ui/CoverPickerSheet";
+import { useBrand } from "../../hooks/useBrands";
+import { ThemeControlRow } from "../theme/ThemeControlRow";
+import { ThemeSheet } from "../theme/ThemeSheet";
+import type { ThemeInput } from "@mingla/offering-rendering";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { eventCoverProviderCreditLabel } from "../../types/eventCoverProvider";
 import type { CoverPatch } from "../ui/CoverPicker";
@@ -38,6 +42,15 @@ export interface ExperienceCoverStepProps {
   cover: CoverPatch;
   onCoverChange: (patch: CoverPatch) => void;
   onShowToast: (msg: string) => void;
+  /** #1022 — the offering's raw theme override. null = fully inherited. */
+  themeOverrides: ThemeInput | null;
+  /**
+   * MUST be a STABLE reference (useCallback with stable deps, or the raw
+   * setter). This component is React.memo'd specifically to survive the
+   * META-ORCH-1059 cover-freeze fix; an inline lambda breaks the memo and
+   * makes two expo-video surfaces re-reconcile on every theme frame.
+   */
+  onThemeChange: (next: ThemeInput | null) => void;
 }
 
 const ExperienceCoverStepImpl: React.FC<ExperienceCoverStepProps> = ({
@@ -47,8 +60,20 @@ const ExperienceCoverStepImpl: React.FC<ExperienceCoverStepProps> = ({
   cover,
   onCoverChange,
   onShowToast,
+  themeOverrides,
+  onThemeChange,
 }) => {
-  const [pickerVisible, setPickerVisible] = useState(false);
+  // #1022 A/F-13 — ONE discriminated sheet state, never two booleans.
+  const [activeSheet, setActiveSheet] = useState<"none" | "cover" | "theme">("none");
+  const pickerVisible = activeSheet === "cover";
+
+  // C-2 — brand theme so the row reports inheritance truthfully.
+  const brandQuery = useBrand(brandId ?? null);
+  const brandThemeStatus = brandQuery.isLoading
+    ? ("loading" as const)
+    : brandQuery.isError
+      ? ("error" as const)
+      : ("ready" as const);
 
   const hasCover =
     typeof cover.coverMediaUrl === "string" && cover.coverMediaUrl.length > 0;
@@ -116,7 +141,7 @@ const ExperienceCoverStepImpl: React.FC<ExperienceCoverStepProps> = ({
           variant="secondary"
           size="md"
           shape="square"
-          onPress={() => setPickerVisible(true)}
+          onPress={() => setActiveSheet("cover")}
           accessibilityLabel={
             hasCover ? "Change cover" : "Add cover photo, GIF, or video"
           }
@@ -130,10 +155,24 @@ const ExperienceCoverStepImpl: React.FC<ExperienceCoverStepProps> = ({
         </View>
       )}
 
+      {/* #1022 M5 — last child of the root stepBody View, after the Button
+          ternary. `stepBody: { gap: spacing.md }` gives the 16pt gap free.
+          Lands ABOVE the wizard-level StripeBlockedCard automatically,
+          because that card is a sibling AFTER <ExperienceCoverStep>. */}
+      <ThemeControlRow
+        value={themeOverrides}
+        onChange={onThemeChange}
+        scope="offering"
+        brandTheme={brandQuery.data?.theme ?? null}
+        brandThemeStatus={brandThemeStatus}
+        onPress={() => setActiveSheet("theme")}
+        testID="experience-theme-control-row"
+      />
+
       {target !== null ? (
         <CoverPickerSheet
           visible={pickerVisible}
-          onClose={() => setPickerVisible(false)}
+          onClose={() => setActiveSheet("none")}
           target={target}
           initial={cover}
           initialCoverHue={0}
@@ -141,6 +180,17 @@ const ExperienceCoverStepImpl: React.FC<ExperienceCoverStepProps> = ({
           onShowToast={onShowToast}
         />
       ) : null}
+
+      {/* I-SUB-SHEET-INSIDE-PARENT — last JSX child of the root View. */}
+      <ThemeSheet
+        visible={activeSheet === "theme"}
+        onClose={() => setActiveSheet("none")}
+        value={themeOverrides}
+        onChange={onThemeChange}
+        scope="offering"
+        brandTheme={brandQuery.data?.theme ?? null}
+        testID="experience-theme-sheet"
+      />
     </View>
   );
 };

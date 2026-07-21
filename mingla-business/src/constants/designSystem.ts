@@ -261,6 +261,29 @@ export const ariThread = {
   ribbonPadV: 5,
 } as const;
 
+/**
+ * #1022 A/F-18 — the canonical Android opaque composites for the Theme control
+ * row. Android gets opaque fills instead of translucent glass
+ * (ANDROID_GLASS_USES_OPAQUE_FALLBACK), and these are the true arithmetic
+ * composites over canvas.discover #0c0e12:
+ *   fill   0.04*255 + 0.96*(12,14,18) = (21.7, 23.6, 27.5) -> #16181b
+ *   border 0.08*255 + 0.92*(12,14,18) = (31.4, 33.3, 37.0) -> #1f2125
+ *
+ * `rowFill` ALIASES the existing ariThread.ariBubbleAndroid rather than
+ * creating a third copy of the same literal (B-27).
+ *
+ * NOTE: RsvpStep5Setup's #23262b (a ~0.09 composite) is deliberately NOT
+ * changed here — it is out of scope (#1028). On Android the Theme row will
+ * therefore read very slightly darker than the RSVP Step-5 rows in the same
+ * wizard until #1028 lands. That is the correct direction: this row matches
+ * the true composite; the RSVP rows are the drifted ones.
+ */
+export const androidOpaque = {
+  rowFill: ariThread.ariBubbleAndroid,
+  rowBorder: "#1f2125",
+} as const;
+
+
 export const canvas = {
   discover: "#0c0e12",
   profile: "#141113",
