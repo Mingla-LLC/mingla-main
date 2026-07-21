@@ -23,12 +23,14 @@ on:
       - "mingla-business/src/components/event/EditPublishedScreen.tsx"
       - "mingla-business/src/components/event/editPublishedSections.ts"
       - "mingla-business/src/components/event/__tests__/issue1035ThemeSheetHoisted.test.ts"
+      - "mingla-business/src/components/event/__tests__/issue_1035_stale_closure_dep_tester.test.ts"
       - ".github/workflows/issue-1035-theme-sheet-hoist-tests.yml"
   pull_request:
     paths:
       - "mingla-business/src/components/event/EditPublishedScreen.tsx"
       - "mingla-business/src/components/event/editPublishedSections.ts"
       - "mingla-business/src/components/event/__tests__/issue1035ThemeSheetHoisted.test.ts"
+      - "mingla-business/src/components/event/__tests__/issue_1035_stale_closure_dep_tester.test.ts"
       - ".github/workflows/issue-1035-theme-sheet-hoist-tests.yml"
 
 concurrency:
@@ -56,4 +58,5 @@ jobs:
         run: >
           npx jest
           src/components/event/__tests__/issue1035ThemeSheetHoisted.test.ts
+          src/components/event/__tests__/issue_1035_stale_closure_dep_tester.test.ts
           --runInBand
