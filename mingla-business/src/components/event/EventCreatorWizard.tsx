@@ -27,6 +27,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AppState,
   Image,
   Keyboard,
   Pressable,
@@ -267,13 +268,37 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
     };
   }, [beginDraftEdit, endDraftEdit, initialDraft.id]);
 
+  // #1022 A/F-8 — exit flush. Autosave is debounced 700ms; leaving the wizard
+  // or backgrounding the app inside that window previously just cleared the
+  // timer, silently discarding the pending write. A colour picked and then
+  // immediately followed by Continue (or a home-swipe) was lost.
+  const onAutosaveDraftRef = useRef(onAutosaveDraft);
   useEffect(() => {
-    return (): void => {
-      if (autosaveTimerRef.current !== null) {
-        clearTimeout(autosaveTimerRef.current);
-      }
-    };
+    onAutosaveDraftRef.current = onAutosaveDraft;
+  }, [onAutosaveDraft]);
+
+  const flushPendingAutosave = useCallback((): void => {
+    if (autosaveTimerRef.current === null) return;
+    clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = null;
+    const pending = latestDraftRef.current;
+    if (pending === undefined || pending === null) return;
+    const flush = onAutosaveDraftRef.current;
+    if (flush === undefined) return;
+    flush(pending);
   }, []);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (next): void => {
+      if (next === "background" || next === "inactive") {
+        flushPendingAutosave();
+      }
+    });
+    return (): void => {
+      subscription.remove();
+      flushPendingAutosave();
+    };
+  }, [flushPendingAutosave]);
 
   const queueAutosave = useCallback(
     (draft: DraftEvent): void => {
@@ -380,6 +405,22 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
     }
   }, [liveDraft.id, liveDraft.timezone, updateDraft]);
 
+  // ORCH-1355 F-1/F-3 — handleUpdate MUST be STABLE and build the autosave
+  // payload from the store's FRESH post-write state, never from a captured
+  // `liveDraft`. Two sequential writes in one handler (e.g. capacity-OFF
+  // clearing waitlist) previously both closed over the SAME stale `liveDraft`,
+  // so the second write's `{...liveDraft, ...patch}` re-introduced the first
+  // write's old value and the debounced autosave dropped it — the server echoed
+  // the stale value back and the toggle snapped ON. Reading getState() after the
+  // synchronous store merge makes sequential writes COMPOUND. Deps hold only
+  // stable references (initialDraft.id + Zustand setters) so the callback keeps
+  // one identity across keystrokes/taps. See I-PROPOSED-1355-WIZARD-UPDATE-CALLBACK-STABLE.
+  //
+  // #1022 A/F-2 — ported verbatim from RsvpCreatorWizard, which received this
+  // fix in ORCH-1355 while the Event wizard was left behind. The Theme control
+  // commits two axes in one tick (Nudge-to-AA then a font tap), which is
+  // exactly the sequential-write shape that dropped the first value here.
+  const draftId = initialDraft.id;
   const handleUpdate = useCallback(
     (patch: Partial<Omit<DraftEvent, "id" | "brandId" | "createdAt">>): void => {
       const nextRevision = clientRevisionRef.current + 1;
@@ -388,17 +429,18 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
         ...patch,
         clientRevision: nextRevision,
       };
-      markDraftDirty(liveDraft.id, nextRevision);
-      updateDraft(liveDraft.id, revisionedPatch);
-      const nextDraft = {
-        ...liveDraft,
-        ...revisionedPatch,
+      markDraftDirty(draftId, nextRevision);
+      updateDraft(draftId, revisionedPatch);
+      const fresh =
+        useDraftEventStore.getState().getDraft(draftId) ?? latestDraftRef.current;
+      const nextDraft: DraftEvent = {
+        ...fresh,
         updatedAt: new Date().toISOString(),
       };
       latestDraftRef.current = nextDraft;
       queueAutosave(nextDraft);
     },
-    [liveDraft, markDraftDirty, queueAutosave, updateDraft],
+    [draftId, markDraftDirty, queueAutosave, updateDraft],
   );
 
   const handleShowToast = useCallback((message: string): void => {

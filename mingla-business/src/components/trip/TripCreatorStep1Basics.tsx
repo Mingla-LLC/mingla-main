@@ -52,6 +52,7 @@ import { type CoverPatch } from "../ui/CoverPicker";
 import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import type { EventCoverMediaType } from "../../store/draftEventStore";
+import type { ThemeInput } from "@mingla/offering-rendering";
 
 export interface Step1Draft {
   title: string;
@@ -78,6 +79,13 @@ export interface Step1Draft {
    */
   coverMediaUrl: string | null;
   coverMediaType: EventCoverMediaType | null;
+  /**
+   * #1022 — the offering's raw theme override. null = fully inherited from
+   * the brand. Persisted to the events theme_*_override COLUMNS by
+   * autosaveStep1 (never into the `theme` JSONB, which updateTripBasics
+   * read-modify-writes across two round-trips).
+   */
+  themeOverrides: ThemeInput | null;
 }
 
 export interface TripCreatorStep1BasicsProps {

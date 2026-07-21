@@ -185,6 +185,9 @@ function detailToInitialDraft(
   return {
     title: exp.title,
     description: exp.description ?? "",
+    // #1022 — seed the Theme control from the persisted override columns so
+    // reopening an experience shows what is actually set.
+    themeOverrides: exp.themeOverrides ?? null,
     intents: exp.experienceIntents,
     locationMode: exp.locationMode ?? "single",
     pricingMode: exp.pricingMode ?? "whole",

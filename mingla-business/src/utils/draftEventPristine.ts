@@ -1,4 +1,5 @@
 import type { DraftEvent } from "../store/draftEventStore";
+import { normalizeThemeOverrides } from "../services/offeringTheme";
 
 export const isDraftEventPristine = (draft: DraftEvent): boolean =>
   draft.name.length === 0 &&
@@ -26,4 +27,8 @@ export const isDraftEventPristine = (draft: DraftEvent): boolean =>
   draft.requireApproval === false &&
   draft.allowTransfers === true &&
   draft.hideRemainingCount === false &&
-  draft.passwordProtected === false;
+  draft.passwordProtected === false &&
+  // #1022 — a theme-only draft is NOT pristine. Without this conjunct,
+  // "open wizard, pick a colour, tap X" silently hard-deletes the draft
+  // instead of offering the discard confirmation (A/F-4).
+  normalizeThemeOverrides(draft.themeOverrides) === null;

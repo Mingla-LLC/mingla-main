@@ -81,6 +81,10 @@ import type { Trip, TripPublishValidationError } from "../../services/tripsServi
 import { setTripPricingSwitches } from "../../services/tripsService";
 // ORCH-1339 — guest-privacy leaf-write RPC (never the big trip edit RPCs).
 import { setEventGuestPrivacy } from "../../services/businessEvents";
+import {
+  normalizeThemeOverrides,
+  patchOfferingTheme,
+} from "../../services/offeringTheme";
 
 import {
   TripCreatorStep1Basics,
@@ -215,7 +219,8 @@ const DESKTOP_WIZARD_NAV_ITEMS = [
   { label: "Blast", icon: "send", href: "/(tabs)/marketing", active: false },
 ] as const;
 
-function tripToStep1Draft(trip: Trip): Step1Draft {
+// #1022 — exported alongside isTripWizardPristine for the same reason.
+export function tripToStep1Draft(trip: Trip): Step1Draft {
   return {
     title: trip.title,
     startAt: trip.businessTrip.startAt,
@@ -238,10 +243,12 @@ function tripToStep1Draft(trip: Trip): Step1Draft {
       trip.coverMediaType === "gif"
         ? trip.coverMediaType
         : null,
+    // #1022 — seed from the trip's persisted theme override columns.
+    themeOverrides: normalizeThemeOverrides(trip.themeOverrides),
   };
 }
 
-function tripToDaysDraft(trip: Trip): TripDayDraft[] {
+export function tripToDaysDraft(trip: Trip): TripDayDraft[] {
   return trip.days.map((d) => ({
     ordinal: d.ordinal,
     title: d.title,
@@ -251,7 +258,7 @@ function tripToDaysDraft(trip: Trip): TripDayDraft[] {
   }));
 }
 
-function tripToInclusionsDraft(trip: Trip): InclusionDraft[] {
+export function tripToInclusionsDraft(trip: Trip): InclusionDraft[] {
   return trip.inclusions.map((i) => ({
     kind: i.kind,
     item: i.item,
@@ -277,7 +284,7 @@ function tierToStep4Package(tier: Trip["pricingTiers"][number]): Step4Package {
   };
 }
 
-function tripToStep4Draft(trip: Trip): Step4Draft {
+export function tripToStep4Draft(trip: Trip): Step4Draft {
   const currency = trip.pricingTiers[0]?.currency ?? "USD";
   const packages: Step4Package[] =
     trip.pricingTiers.length > 0
@@ -325,7 +332,7 @@ function step4PackagesSignature(packages: Step4Package[]): string {
 // trip's persisted refund_policy + booking_deadline columns.
 // ORCH-1339 — plus the two guest-privacy display gates (theme leaf via
 // tripsService.readGuestPrivacy; false defaults).
-function tripToStep5Draft(trip: Trip): Step5Draft {
+export function tripToStep5Draft(trip: Trip): Step5Draft {
   return {
     refundPolicy: trip.refundPolicy,
     bookingDeadline: trip.bookingDeadline,
@@ -341,7 +348,9 @@ function tripToStep5Draft(trip: Trip): Step5Draft {
  *
  * Per SPEC_ORCH-0874 §3.3.5 handleClose pristine branch.
  */
-function isTripWizardPristine(
+// #1022 — exported so the pristine contract (B-3: theme + departure fields)
+// is directly testable; the wizard remains its only runtime caller.
+export function isTripWizardPristine(
   step1Draft: Step1Draft,
   daysDraft: TripDayDraft[],
   inclusionsDraft: InclusionDraft[],
@@ -362,10 +371,23 @@ function isTripWizardPristine(
     step1Draft.capacity !== initStep1.capacity ||
     // ORCH-0876 — cover fields part of Step 1 draft now.
     step1Draft.coverMediaUrl !== initStep1.coverMediaUrl ||
-    step1Draft.coverMediaType !== initStep1.coverMediaType
+    step1Draft.coverMediaType !== initStep1.coverMediaType ||
+    // #1022 B-3 — the four ORCH-1016 departure fields were never compared, so
+    // "type a departure city, tap X" silently discarded it. In scope here
+    // because the moment themeOverrides joins step1Draft the same silent
+    // discard applies to a theme-only edit.
+    step1Draft.departurePlaceId !== initStep1.departurePlaceId ||
+    step1Draft.departureLocationText !== initStep1.departureLocationText ||
+    step1Draft.departureLat !== initStep1.departureLat ||
+    step1Draft.departureLng !== initStep1.departureLng ||
+    // #1022 — theme participates in pristineness, null-normalised both sides.
+    JSON.stringify(normalizeThemeOverrides(step1Draft.themeOverrides)) !==
+      JSON.stringify(normalizeThemeOverrides(initStep1.themeOverrides))
   ) {
     return false;
   }
+  // NOTE (#1022): step6Draft is deliberately still absent from this
+  // signature — that gap is out of scope for this build and tracked in #1028.
   // Step 2: days length + every (ordinal, title, narrative) equal
   const initDays = tripToDaysDraft(trip);
   if (daysDraft.length !== initDays.length) return false;
@@ -802,6 +824,16 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         coverMediaUrl: step1Draft.coverMediaUrl,
         coverMediaType: step1Draft.coverMediaType,
       },
+    });
+    // #1022 — the theme override columns are written SEPARATELY and strictly
+    // AFTER updateBasicsMutation resolves. updateTripBasics read-modify-writes
+    // the whole `theme` JSONB across two round-trips; sequencing after it means
+    // the theme columns can never be caught inside that race. Columns are not
+    // touched by that RMW, and a column-only UPDATE fires no trigger (the
+    // departure-sync trigger is scoped `UPDATE OF theme`).
+    await patchOfferingTheme({
+      offeringId: trip.id,
+      themeOverrides: normalizeThemeOverrides(step1Draft.themeOverrides),
     });
     // META-ORCH-1174 Leg B2 — persist the package set on Step 1 → Step 2 too,
     // so the primary package's price/capacity stays in sync with Step 1's

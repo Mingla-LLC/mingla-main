@@ -14,6 +14,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AppState,
   Image,
   Keyboard,
   Pressable,
@@ -251,13 +252,37 @@ export const RsvpCreatorWizard: React.FC<RsvpCreatorWizardProps> = ({
     };
   }, [beginDraftEdit, endDraftEdit, initialDraft.id]);
 
+  // #1022 A/F-8 — exit flush. Autosave is debounced 700ms; leaving the wizard
+  // or backgrounding the app inside that window previously just cleared the
+  // timer, silently discarding the pending write. A colour picked and then
+  // immediately followed by Continue (or a home-swipe) was lost.
+  const onAutosaveDraftRef = useRef(onAutosaveDraft);
   useEffect(() => {
-    return (): void => {
-      if (autosaveTimerRef.current !== null) {
-        clearTimeout(autosaveTimerRef.current);
-      }
-    };
+    onAutosaveDraftRef.current = onAutosaveDraft;
+  }, [onAutosaveDraft]);
+
+  const flushPendingAutosave = useCallback((): void => {
+    if (autosaveTimerRef.current === null) return;
+    clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = null;
+    const pending = latestDraftRef.current;
+    if (pending === undefined || pending === null) return;
+    const flush = onAutosaveDraftRef.current;
+    if (flush === undefined) return;
+    flush(pending);
   }, []);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (next): void => {
+      if (next === "background" || next === "inactive") {
+        flushPendingAutosave();
+      }
+    });
+    return (): void => {
+      subscription.remove();
+      flushPendingAutosave();
+    };
+  }, [flushPendingAutosave]);
 
   const queueAutosave = useCallback(
     (draft: DraftEvent): void => {

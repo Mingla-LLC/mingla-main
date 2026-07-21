@@ -15,6 +15,7 @@
  */
 
 import type { DraftEvent } from "../store/draftEventStore";
+import { normalizeThemeOverrides } from "../services/offeringTheme";
 
 export const isDraftDirty = (draft: DraftEvent): boolean => {
   if (draft.name.trim().length > 0) return true;
@@ -32,5 +33,8 @@ export const isDraftDirty = (draft: DraftEvent): boolean => {
   if (Array.isArray(draft.vibeTags) && draft.vibeTags.length > 0) return true;
   if (Array.isArray(draft.musicGenres) && draft.musicGenres.length > 0) return true;
   if (draft.format !== "in_person") return true;
+  // #1022 — theme participates in dirtiness. Without this, "open wizard,
+  // pick a colour, leave" produces no server row at all and the pick is lost.
+  if (normalizeThemeOverrides(draft.themeOverrides) !== null) return true;
   return false;
 };

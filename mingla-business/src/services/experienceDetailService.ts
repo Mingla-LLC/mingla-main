@@ -12,6 +12,8 @@
  */
 
 import { supabase } from "./supabase";
+import type { ThemeInput } from "@mingla/offering-rendering";
+import { themeOverridesFromColumns } from "./offeringTheme";
 import type { RecurrenceRule } from "../store/draftEventStore";
 import {
   asExperienceIntent,
@@ -112,6 +114,17 @@ export interface ExperienceDetail {
   stops: ExperienceStopRow[];
   ticket: ExperienceTicketRow | null;
   dates: ExperienceDateRow[];
+  /**
+   * #1022 — raw theme override. null = fully inherited from the brand.
+   * biz_create_experience / biz_publish_experience write ZERO theme columns
+   * (orchestrator-verified), so this is persisted client-side via
+   * patchOfferingTheme, never through a publish payload key.
+   *
+   * OPTIONAL so existing (append-only) ExperienceDetail constructions stay
+   * valid; every read site goes through `normalizeThemeOverrides`, which
+   * treats `undefined` and `null` identically as "fully inherited".
+   */
+  themeOverrides?: ThemeInput | null;
 }
 
 interface RawEventRow {
@@ -136,6 +149,10 @@ interface RawEventRow {
   recurrence_rules: unknown;
   event_type: string;
   theme: Record<string, unknown> | null;
+  // #1022 — theme override columns (scalar, NOT the `theme` JSONB).
+  theme_color_override?: string | null;
+  theme_font_override?: string | null;
+  theme_animation_override?: string | null;
   brands: { slug: string | null } | { slug: string | null }[] | null;
 }
 
@@ -233,7 +250,9 @@ export async function getExperienceDetail(
   const { data: row, error } = await supabase
     .from("events")
     .select(
-      "id, brand_id, title, slug, description, status, visibility, currency, timezone, cover_media_url, cover_media_type, location_mode, pricing_mode, experience_intent, experience_intents, whole_price_cents, is_recurring, is_multi_date, recurrence_rules, event_type, theme, brands(slug)",
+      // #1022 — this select is EXPLICIT (not a star), so the three theme override
+      // columns must be named here or the wizard cannot display what is set.
+      "id, brand_id, title, slug, description, status, visibility, currency, timezone, cover_media_url, cover_media_type, location_mode, pricing_mode, experience_intent, experience_intents, whole_price_cents, is_recurring, is_multi_date, recurrence_rules, event_type, theme, theme_color_override, theme_font_override, theme_animation_override, brands(slug)",
     )
     .eq("id", eventId)
     .eq("event_type", "experience")
@@ -295,6 +314,8 @@ export async function getExperienceDetail(
     timezone: raw.timezone ?? "UTC",
     coverMediaUrl: raw.cover_media_url,
     coverMediaType: normalizeCoverType(raw.cover_media_type),
+    // #1022 — read the theme back off the columns so the wizard can display it.
+    themeOverrides: themeOverridesFromColumns(raw),
     locationMode:
       raw.location_mode === "single" || raw.location_mode === "per_stop"
         ? raw.location_mode
