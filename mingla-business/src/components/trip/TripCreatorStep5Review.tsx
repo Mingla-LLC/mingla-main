@@ -15,6 +15,7 @@ import { ScrollView, StyleSheet, Text, View } from "react-native";
 
 import type { ThemeInput } from "@mingla/offering-rendering";
 import { useBrand } from "../../hooks/useBrands";
+import { resolveTheme } from "../../../../packages/offering-rendering/themeResolver";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
 import { ThemeSheet } from "../theme/ThemeSheet";
 
@@ -127,12 +128,20 @@ export const TripCreatorStep5Review: React.FC<TripCreatorStep5ReviewProps> = ({
       ) : null}
 
       <View style={styles.previewWrap}>
+        {/* #1022 A/F-12 (Trip leg) — `theme` is the SAME resolve call every
+            other surface makes: brand theme FIRST, offering override SECOND.
+            This stays in LEGACY mode, so the framed inline layout is
+            unchanged and only the accent-bearing elements repaint. The mode
+            fork additionally requires the chrome handlers, which this caller
+            deliberately does not pass. (Kept out of the element body so the
+            ORCH-1138 additive-caller test's substring scan stays honest.) */}
         <TripPreview
           trip={trip}
           brand={brand}
           showCta={false}
           contentPadding={0}
           testID="trip-step5-preview"
+          theme={resolveTheme(brandTheme, themeOverrides ?? null)}
         />
       </View>
       {onThemeChange !== undefined ? (

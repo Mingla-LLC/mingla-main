@@ -41,6 +41,7 @@ on:
       - "mingla-business/src/components/event/editPublishedSections.ts"
       - "mingla-business/src/components/rsvp/RsvpStep7Preview.tsx"
       - "mingla-business/src/components/trip/TripCreatorStep5Review.tsx"
+      - "mingla-business/src/components/trip/TripPreview.tsx"
       - "mingla-business/src/components/brand/BrandEditView.tsx"
       - "mingla-business/src/store/themeRecentsStore.ts"
       - "mingla-business/app/event/[id]/edit.tsx"
@@ -72,6 +73,7 @@ on:
       - "mingla-business/src/components/event/editPublishedSections.ts"
       - "mingla-business/src/components/rsvp/RsvpStep7Preview.tsx"
       - "mingla-business/src/components/trip/TripCreatorStep5Review.tsx"
+      - "mingla-business/src/components/trip/TripPreview.tsx"
       - "mingla-business/src/components/brand/BrandEditView.tsx"
       - "mingla-business/src/store/themeRecentsStore.ts"
       - "mingla-business/app/event/[id]/edit.tsx"
@@ -113,6 +115,7 @@ jobs:
           src/utils/__tests__/issue1022ThemeResolveOrder.test.ts
           src/utils/__tests__/issue1022ThemeSheetLayout.test.ts
           src/utils/__tests__/issue1022ThemeMounts.test.ts
+          src/utils/__tests__/issue1022TripReviewPreviewThemed.test.ts
           --runInBand
       # The ORCH-0964 hex contract is append-only and must keep passing
       # UNMODIFIED alongside the new short-hex blur expansion.
