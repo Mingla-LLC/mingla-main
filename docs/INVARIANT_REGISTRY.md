@@ -5970,7 +5970,7 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 - **Regression test:** fails-on-revert — adding a slug without a specimen, or a specimen without a slug, turns the gate red; a source assertion proves exactly one `useThemeFont` call site inside the theme sheet. Append-only.
 - **Established:** DRAFT 2026-07-20 at #1022 SPEC; ACTIVE at CLOSE 2026-07-21 (PR #1033).
 
-### I-PROPOSED-1042-ANDROID-FINGERPRINT-SET-APPEND-ONLY (DRAFT — #1042 SPEC 2026-07-21)
+### I-1042-ANDROID-FINGERPRINT-SET-APPEND-ONLY (ACTIVE — #1042 CLOSE 2026-07-21)
 - **Rule:** an Android signing fingerprint published in any `assetlinks.json` in this repo is
   APPEND-ONLY. Each Mingla Android app has THREE signing identities — Play app-signing, EAS
   upload/release, EAS debug — and each one is load-bearing for a different install path
@@ -5991,4 +5991,4 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   cannot and must not claim it.
 - **Regression test:** fails-on-revert — deleting any single fingerprint line, lowercasing one, or
   desyncing the two files turns the gate red.
-- **Established:** DRAFT 2026-07-21 at #1042 SPEC.
+- **Established:** DRAFT 2026-07-21 at #1042 SPEC; flipped ACTIVE 2026-07-21 at #1042 CLOSE (PR #1045 merged `e8484ea22`, tester PASS, probe verified HEALTHY against Google's live resolver post-deploy).
