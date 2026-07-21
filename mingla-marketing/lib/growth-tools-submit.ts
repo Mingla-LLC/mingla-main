@@ -96,7 +96,15 @@ export type GrowthToolsGateResponse =
 
 // ─── Transport ──────────────────────────────────────────────────────────────
 
-const FUNCTIONS_URL = process.env.NEXT_PUBLIC_SUPABASE_FUNCTIONS_URL ?? ''
+// Default = the public prod functions host from .env.example. NEXT_PUBLIC_*
+// vars are inlined at BUILD time and Vercel preview builds don't carry the
+// production env scope — without this default every preview build ships an
+// empty URL and the tool dies silently (proven on PR #1025's preview).
+const FUNCTIONS_URL =
+  process.env.NEXT_PUBLIC_SUPABASE_FUNCTIONS_URL ??
+  'https://gqnoajqerqhnvulmnyvv.functions.supabase.co'
+// Both growth-tools fns are verify_jwt=false public endpoints — auth headers
+// are optional. Sent only when the anon key is present in the build env.
 const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
 
 const KNOWN_ERRORS: readonly GrowthToolsError[] = [
@@ -125,25 +133,16 @@ async function postGrowthTools(
   payload: Record<string, unknown>,
   signal?: AbortSignal,
 ): Promise<{ ok: true; body: unknown } | { ok: false; error: GrowthToolsError }> {
-  if (!FUNCTIONS_URL || !ANON_KEY) {
-    if (typeof console !== 'undefined') {
-      console.error(
-        '[growth-tools-submit] Missing NEXT_PUBLIC_SUPABASE_FUNCTIONS_URL or ' +
-          'NEXT_PUBLIC_SUPABASE_ANON_KEY — see mingla-marketing/.env.example',
-      )
-    }
-    return { ok: false, error: 'network' }
-  }
-
   let response: Response
   try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (ANON_KEY) {
+      headers.Authorization = `Bearer ${ANON_KEY}`
+      headers.apikey = ANON_KEY
+    }
     response = await fetch(`${FUNCTIONS_URL.replace(/\/$/, '')}/${fn}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${ANON_KEY}`,
-        apikey: ANON_KEY,
-      },
+      headers,
       body: JSON.stringify(payload),
       signal,
     })
