@@ -748,35 +748,58 @@ describe("#1044 ADVERSARIAL D — the captured payload", () => {
   });
 
   /**
-   * ── P2 FINDING PINNED HERE (not a failure — a fact) ────────────────────────
-   * SPEC §4.5 justifies `webClientIdSuffix` as proof of "*which* OAuth client
-   * the failing build was configured against". Every Google OAuth client id
-   * ends in `.apps.googleusercontent.com`, so `.slice(-8)` is the constant
-   * "tent.com" for EVERY client id in existence. The field is therefore
-   * non-discriminating and cannot serve its stated purpose. It is safe (it
-   * leaks strictly less than intended) but it is dead weight.
-   * This test pins the current behaviour so the defect is visible and so a
-   * later fix (e.g. slicing the id's numeric project prefix instead) trips it.
+   * ── P2 FIX VERIFIED HERE ───────────────────────────────────────────────────
+   * [TEST-MOD-APPROVED ORCH-1044] — amended by the tester who authored this pin,
+   * on the #1044 RETEST, sanctioned by the orchestrator's rework acceptance.
+   *
+   * This block ORIGINALLY pinned the P2 defect: `.slice(-8)` of the WHOLE client
+   * id yielded the constant "tent.com" for every client id, so the field could
+   * not discriminate. The rework (fix commit on branch 1044-auth-failure-sentry-
+   * capture) now slices the DISCRIMINATING segment —
+   * `webClientId.split(".")[0].slice(-8)` — everything before the first ".",
+   * dropping the shared ".apps.googleusercontent.com" tail that every Google
+   * client id carries. Amended to assert the CORRECT post-fix behaviour: two
+   * different client ids now yield two DIFFERENT suffixes, neither is "tent.com",
+   * and neither leaks the full id / any PII (≤8 chars, is a substring of the id,
+   * never contains "googleusercontent"). VERIFIED AT RUNTIME on a physical
+   * business-Android build (SM-A725F): the invalid id
+   * "000000000000-issue1044retestinvalidclient.apps.googleusercontent.com"
+   * reported `webClientIdSuffix: "idclient"`; the prod id yields "p6smrfs0" —
+   * distinct, non-"tent.com".
    */
-  it("D9 [FINDING P2] — webClientIdSuffix cannot discriminate between two DIFFERENT Google client ids", () => {
+  it("D9 [P2 FIXED] — webClientIdSuffix DISCRIMINATES between two DIFFERENT Google client ids", () => {
     const idA = "169132274606-hp7cne780gsp7s6l1rrvbfktp6smrfs0.apps.googleusercontent.com";
     const idB = "999999999999-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz.apps.googleusercontent.com";
     const a = capture(withCode("boom", "10"), { webClientId: idA });
     const b = capture(withCode("boom", "10"), { webClientId: idB });
     const sa = (a[0][2] as Record<string, unknown>).webClientIdSuffix;
     const sb = (b[0][2] as Record<string, unknown>).webClientIdSuffix;
-    expect(sa).toBe("tent.com");
-    expect(sb).toBe("tent.com");
-    expect(sa).toBe(sb); // ← the defect: identical for every possible client id
+    expect(sa).toBe("p6smrfs0");
+    expect(sb).toBe("zzzzzzzz");
+    expect(sa).not.toBe("tent.com");
+    expect(sb).not.toBe("tent.com");
+    expect(sa).not.toBe(sb); // ← the fix: DIFFERENT for different client ids
+    // never the full id, never PII
+    expect(String(sa).length).toBeLessThanOrEqual(8);
+    expect(idA.includes(String(sa))).toBe(true);
+    expect(String(sa)).not.toContain("googleusercontent");
   });
 
-  it("D10 — an Apple failure still reports the GOOGLE web client id suffix (cosmetic mislabel, pinned)", () => {
+  it("D10 [P3.2 FIXED] — an Apple failure NO LONGER carries the Google web client id suffix", () => {
+    // [TEST-MOD-APPROVED ORCH-1044] — amended by the tester on the #1044 RETEST.
+    // Originally pinned the cosmetic mislabel (Apple payload carried the Google
+    // "tent.com" suffix). The rework removed `webClientIdSuffix` from the Apple
+    // path entirely — Apple has no Google client id at that point, and Sentry's
+    // release/dist already identify the build — so the Apple payload is now
+    // exactly FOUR keys (provider, code, platform, osVersion).
     const d = makeDeps();
     compileCatch(liveAppleCatch())(withCode("boom", "ERR_INVALID_RESPONSE"), d);
-    expect((d.reports[0][2] as Record<string, unknown>).provider).toBe("apple");
-    expect(
-      (d.reports[0][2] as Record<string, unknown>).webClientIdSuffix,
-    ).toBe("tent.com");
+    const extra = d.reports[0][2] as Record<string, unknown>;
+    expect(extra.provider).toBe("apple");
+    expect(extra.webClientIdSuffix).toBeUndefined();
+    expect(Object.keys(extra).sort()).toEqual(
+      ["code", "osVersion", "platform", "provider"].sort(),
+    );
   });
 
   it("D11 — excluded codes produce ZERO reports on both providers and both platforms", () => {

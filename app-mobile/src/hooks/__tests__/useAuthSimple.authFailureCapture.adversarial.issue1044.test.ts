@@ -726,13 +726,19 @@ test("D5 — an unconfigured client id reports the literal 'unset', never undefi
 });
 
 /**
- * ── P2 FINDING PINNED HERE (not a failure — a fact) ──────────────────────────
- * SPEC §4.5 justifies `webClientIdSuffix` as proof of "*which* OAuth client the
- * failing build was configured against". Every Google OAuth client id ends in
- * `.apps.googleusercontent.com`, so `.slice(-8)` is the constant "tent.com" for
- * every client id in existence. The field cannot serve its stated purpose.
+ * ── P2 FIX VERIFIED HERE ─────────────────────────────────────────────────────
+ * [TEST-MOD-APPROVED ORCH-1044] — amended by the tester who authored this pin,
+ * on the #1044 RETEST, sanctioned by the orchestrator's rework acceptance.
+ * Originally pinned the P2 defect (`.slice(-8)` of the WHOLE id = "tent.com" for
+ * every client id). The rework slices the DISCRIMINATING segment,
+ * `webClientId.split(".")[0].slice(-8)`, dropping the shared
+ * ".apps.googleusercontent.com" tail. Amended to assert the CORRECT post-fix
+ * behaviour: two different ids yield two DIFFERENT suffixes, neither "tent.com",
+ * neither leaking the full id / any PII. (Consumer runtime is dev-gated on
+ * Sentry.init, but this predicate is byte-identical to the business mirror that
+ * was RUNTIME-verified on a physical build.)
  */
-test("D6 [FINDING P2] — webClientIdSuffix is the same constant for two DIFFERENT Google client ids", () => {
+test("D6 [P2 FIXED] — webClientIdSuffix DISCRIMINATES between two DIFFERENT Google client ids", () => {
   const a = run(liveGoogleCatch(), withCode("boom", "10"), {
     webClientId: REAL_CLIENT_ID,
   });
@@ -742,9 +748,14 @@ test("D6 [FINDING P2] — webClientIdSuffix is the same constant for two DIFFERE
   });
   const sa = (a.rec.reports[0][2] as Record<string, unknown>).webClientIdSuffix;
   const sb = (b.rec.reports[0][2] as Record<string, unknown>).webClientIdSuffix;
-  assert.equal(sa, "tent.com");
-  assert.equal(sb, "tent.com");
-  assert.equal(sa, sb);
+  assert.equal(sa, "p6smrfs0");
+  assert.equal(sb, "zzzzzzzz");
+  assert.notEqual(sa, "tent.com");
+  assert.notEqual(sb, "tent.com");
+  assert.notEqual(sa, sb);
+  assert.ok(String(sa).length <= 8);
+  assert.ok(REAL_CLIENT_ID.includes(String(sa)));
+  assert.ok(!String(sa).includes("googleusercontent"));
 });
 
 test("D7 — excluded codes produce ZERO reports on both providers and both platform constant sets", () => {

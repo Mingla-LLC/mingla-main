@@ -31,18 +31,22 @@ on:
       - "mingla-business/src/context/AuthContext.tsx"
       - "mingla-business/src/diagnostics/reportNonFatal.ts"
       - "mingla-business/src/context/__tests__/AuthContext.authFailureCapture.issue1044.test.ts"
+      - "mingla-business/src/context/__tests__/AuthContext.authFailureCapture.adversarial.issue1044.test.ts"
       - "app-mobile/src/hooks/useAuthSimple.ts"
       - "app-mobile/src/diagnostics/reportNonFatal.ts"
       - "app-mobile/src/hooks/__tests__/useAuthSimple.authFailureCapture.issue1044.test.ts"
+      - "app-mobile/src/hooks/__tests__/useAuthSimple.authFailureCapture.adversarial.issue1044.test.ts"
       - ".github/workflows/issue-1044-auth-failure-capture-tests.yml"
   pull_request:
     paths:
       - "mingla-business/src/context/AuthContext.tsx"
       - "mingla-business/src/diagnostics/reportNonFatal.ts"
       - "mingla-business/src/context/__tests__/AuthContext.authFailureCapture.issue1044.test.ts"
+      - "mingla-business/src/context/__tests__/AuthContext.authFailureCapture.adversarial.issue1044.test.ts"
       - "app-mobile/src/hooks/useAuthSimple.ts"
       - "app-mobile/src/diagnostics/reportNonFatal.ts"
       - "app-mobile/src/hooks/__tests__/useAuthSimple.authFailureCapture.issue1044.test.ts"
+      - "app-mobile/src/hooks/__tests__/useAuthSimple.authFailureCapture.adversarial.issue1044.test.ts"
       - ".github/workflows/issue-1044-auth-failure-capture-tests.yml"
 
 concurrency:
@@ -73,6 +77,17 @@ jobs:
           npx jest
           src/context/__tests__/AuthContext.authFailureCapture.issue1044.test.ts
           --runInBand
+      # TESTER ADVERSARIAL suite (#1044 retest). Different angle from the
+      # implementor's: it slices and EXECUTES the real catch bodies and runs a
+      # differential against the frozen origin/main body, plus exotic-rejection
+      # and reporter-breakage matrices, plus the resolved-cancel P1 and the P2
+      # discriminator pins (D9/D10 amended under [TEST-MOD-APPROVED ORCH-1044]).
+      # Registered here so the regression guard is NOT dark (ORCH-1383 trap).
+      - name: Run issue-1044 business TESTER ADVERSARIAL suite
+        run: >
+          npx jest
+          src/context/__tests__/AuthContext.authFailureCapture.adversarial.issue1044.test.ts
+          --runInBand
       # Backward compatibility of the optional 4th `fingerprint` param: this
       # pre-existing suite must stay green UNMODIFIED.
       - name: Run the pre-existing reportNonFatal suite (backward compatibility)
@@ -99,6 +114,16 @@ jobs:
         run: >
           node --experimental-strip-types --test
           src/hooks/__tests__/useAuthSimple.authFailureCapture.issue1044.test.ts
+      # TESTER ADVERSARIAL suite (#1044 retest). Imports ONLY node builtins
+      # (node:test/assert/fs/path/url) and compiles source text, so it needs no
+      # npm ci — same contract as the implementor suite above. Different angle:
+      # differential against the frozen origin/main body + exotic rejections +
+      # reporter breakage + resolved-cancel P1 + P2 discriminator (D6 amended
+      # under [TEST-MOD-APPROVED ORCH-1044]). Registered so it is NOT dark.
+      - name: Run issue-1044 consumer TESTER ADVERSARIAL suite
+        run: >
+          node --experimental-strip-types --test
+          src/hooks/__tests__/useAuthSimple.authFailureCapture.adversarial.issue1044.test.ts
       # I-SENTRY-SINGLE-INIT — the consumer change adds a CAPTURE, never an INIT.
       - name: I-SENTRY-SINGLE-INIT still green
         run: bash scripts/ci/check-single-sentry-init.sh
