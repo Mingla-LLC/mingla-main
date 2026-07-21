@@ -1336,33 +1336,29 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         case "visual":
           // #1022 — the Visual section survives (its key is pinned by an
           // append-only parity test) but now hosts the NEW compact control.
+          // #1035 — the ThemeSheet that used to sit here as a sibling has been
+          // hoisted OUT of this memoized renderSectionBody to the component's
+          // top-level return (a sibling of ChangeSummaryModal). It read
+          // `themeSheetOpen` while that state was ABSENT from this useCallback's
+          // dep array, so tapping the row flipped the state but React returned
+          // the cached body with visible={false} and the sheet never presented.
+          // The row keeps its stable setter onPress and stays put.
           return (
-            <>
-              <ThemeControlRow
-                value={editState.themeOverrides}
-                onChange={(themeOverrides) => handleUpdateDraft({ themeOverrides })}
-                scope="offering"
-                brandTheme={brandQuery.data?.theme ?? null}
-                brandThemeStatus={
-                  brandQuery.isLoading
-                    ? "loading"
-                    : brandQuery.isError
-                      ? "error"
-                      : "ready"
-                }
-                onPress={() => setThemeSheetOpen(true)}
-                testID="edit-published-theme-row"
-              />
-              <ThemeSheet
-                visible={themeSheetOpen}
-                onClose={() => setThemeSheetOpen(false)}
-                value={editState.themeOverrides}
-                onChange={(themeOverrides) => handleUpdateDraft({ themeOverrides })}
-                scope="offering"
-                brandTheme={brandQuery.data?.theme ?? null}
-                testID="edit-published-theme-sheet"
-              />
-            </>
+            <ThemeControlRow
+              value={editState.themeOverrides}
+              onChange={(themeOverrides) => handleUpdateDraft({ themeOverrides })}
+              scope="offering"
+              brandTheme={brandQuery.data?.theme ?? null}
+              brandThemeStatus={
+                brandQuery.isLoading
+                  ? "loading"
+                  : brandQuery.isError
+                    ? "error"
+                    : "ready"
+              }
+              onPress={() => setThemeSheetOpen(true)}
+              testID="edit-published-theme-row"
+            />
           );
         case "tickets":
           return <CreatorStep5Tickets {...stepBodyProps} />;
@@ -1584,6 +1580,24 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         onClose={handleModalClose}
         onConfirm={handleConfirmSave}
         submitting={submitting}
+      />
+
+      {/* #1035 — Theme picker sheet, hoisted OUT of the memoized
+          renderSectionBody so `visible` is evaluated in live render scope on
+          every render. The Theme row (in the Visual section body) flips
+          themeSheetOpen; rendering the sheet here — a sibling of
+          ChangeSummaryModal, exactly like BrandEditView and every create
+          mount — makes the tap present it. Serves BOTH published-event and
+          published-RSVP edit (same screen, same Visual section). SheetMobile
+          lazy-mounts, so an always-present sheet costs nothing while closed. */}
+      <ThemeSheet
+        visible={themeSheetOpen}
+        onClose={() => setThemeSheetOpen(false)}
+        value={editState.themeOverrides}
+        onChange={(themeOverrides) => handleUpdateDraft({ themeOverrides })}
+        scope="offering"
+        brandTheme={brandQuery.data?.theme ?? null}
+        testID="edit-published-theme-sheet"
       />
 
       {/* Refund-first reject dialog */}
