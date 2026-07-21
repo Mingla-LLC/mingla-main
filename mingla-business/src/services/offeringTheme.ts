@@ -1,4 +1,3 @@
-import { supabase } from "./supabase";
 import type { ThemeInput } from "@mingla/offering-rendering";
 
 /**
@@ -132,6 +131,15 @@ export interface PatchOfferingThemeInput {
 export const patchOfferingTheme = async (
   input: PatchOfferingThemeInput,
 ): Promise<void> => {
+  // The supabase client is imported LAZILY, inside this already-async
+  // function, so that the pure half of this module (the normaliser and the
+  // column mapping) can be imported by pure utils — draftDirtyCheck,
+  // draftEventPristine, liveEventAdapter, serverDraftEventMapper — without
+  // dragging the client, and therefore expo-constants, into their import
+  // graph. Those utils are covered by node-environment jest projects that
+  // cannot parse expo's ESM; a top-level client import broke five existing
+  // suites that are append-only and may not be edited.
+  const { supabase } = await import("./supabase");
   // I-PROPOSED-I (MUTATION-ROWCOUNT-VERIFIED): chain .select() so a 0-row
   // no-op (RLS denial / wrong id / already-mutated) surfaces as an error
   // instead of a silent success. Fixes the violation ORCH-0964 (#220) left.
