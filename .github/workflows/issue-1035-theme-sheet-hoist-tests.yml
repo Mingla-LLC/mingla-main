@@ -1,0 +1,59 @@
+name: Issue 1035 Theme Sheet Hoist Tests
+
+# #1035 [edit-theme-open] — the theme picker never opened when editing a
+# published event or RSVP: the Theme row showed press feedback but the sheet
+# never appeared. Root cause: <ThemeSheet visible={themeSheetOpen}> sat inside
+# the memoized `renderSectionBody` useCallback whose dep array omitted
+# `themeSheetOpen`, so the tap flipped the state but React returned the stale
+# cached body with visible={false}. Fix: hoist <ThemeSheet> to the component's
+# top-level return (a sibling of ChangeSummaryModal) so `visible` reads live
+# render scope. This structural fails-on-revert suite locks the hoist in place.
+#
+# This is a jest suite. The class-D strict-grep `jest-suites` job does NOT run
+# jest, and the mingla-business default config is only exercised by a full
+# `npx jest` that no workflow performs — so without this dedicated job the test
+# would exist but never gate (the dark-test-surface trap, ORCH-1383).
+#
+# EXPLICIT registry (never a glob) — add a suite by appending its path below.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mingla-business/src/components/event/EditPublishedScreen.tsx"
+      - "mingla-business/src/components/event/editPublishedSections.ts"
+      - "mingla-business/src/components/event/__tests__/issue1035ThemeSheetHoisted.test.ts"
+      - ".github/workflows/issue-1035-theme-sheet-hoist-tests.yml"
+  pull_request:
+    paths:
+      - "mingla-business/src/components/event/EditPublishedScreen.tsx"
+      - "mingla-business/src/components/event/editPublishedSections.ts"
+      - "mingla-business/src/components/event/__tests__/issue1035ThemeSheetHoisted.test.ts"
+      - ".github/workflows/issue-1035-theme-sheet-hoist-tests.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-1035-jest:
+    name: "#1035: theme sheet hoisted out of memoized renderSectionBody (fails-on-revert)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      # EXPLICIT registry — add a new #1035 suite by appending a path; never glob.
+      - name: Run issue-1035 jest suite
+        run: >
+          npx jest
+          src/components/event/__tests__/issue1035ThemeSheetHoisted.test.ts
+          --runInBand
