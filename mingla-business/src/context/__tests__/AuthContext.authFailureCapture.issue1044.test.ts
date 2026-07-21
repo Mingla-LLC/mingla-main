@@ -175,7 +175,13 @@ const ANDROID_STATUS_CODES: StatusCodesShape = {
 
 const WEB_CLIENT_ID =
   "123456789012-abcdefghijklmnopqrstuvwxyz012345.apps.googleusercontent.com";
-const EXPECTED_SUFFIX = WEB_CLIENT_ID.slice(-8); // "ent.com" family — last 8 only
+// #1044 REWORK (tester P2). The suffix is the last 8 chars of the DISCRIMINATING
+// segment — everything before the first "." — NOT of the whole id. Slicing the
+// whole id returned the literal "tent.com" for every Google client id in
+// existence (they all end ".apps.googleusercontent.com"), so the one axis this
+// field exists for was never actually captured. Asserted as a discriminator by
+// `webClientIdSuffix DISCRIMINATES between two different client ids` below.
+const EXPECTED_SUFFIX = WEB_CLIENT_ID.split(".")[0].slice(-8);
 
 const makeDeps = (
   overrides: Partial<CatchDeps> = {},
@@ -391,7 +397,9 @@ describe("#1044 P2 signInWithApple (SC-2-BIZ)", () => {
       code: "ERR_INVALID_RESPONSE",
       platform: "ios",
       osVersion: "18.2",
-      webClientIdSuffix: EXPECTED_SUFFIX,
+      // #1044 REWORK (tester P3): NO webClientIdSuffix on the Apple path. That
+      // field describes a GOOGLE OAuth client and said nothing true about an
+      // Apple Services-ID fault. Four keys here, five on Google.
     });
     expect(fingerprint).toEqual([
       "auth-signin",
@@ -429,13 +437,17 @@ describe("#1044 P2 signInWithApple (SC-2-BIZ)", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("#1044 T10 — PII allowlist (SC-7)", () => {
-  const ALLOWED = [
+  // #1044 REWORK (tester P3): the allowlist is now PER PROVIDER. Google carries
+  // five keys; Apple carries four, because `webClientIdSuffix` describes a
+  // Google OAuth client and was a misleading field on every Apple event.
+  const ALLOWED_GOOGLE = [
     "provider",
     "code",
     "platform",
     "osVersion",
     "webClientIdSuffix",
   ];
+  const ALLOWED_APPLE = ["provider", "code", "platform", "osVersion"];
 
   const everyReportedExtra = (): Record<string, unknown>[] => {
     const out: Record<string, unknown>[] = [];
@@ -454,12 +466,17 @@ describe("#1044 T10 — PII allowlist (SC-7)", () => {
     return out;
   };
 
-  it("extra carries EXACTLY the five allowed keys on every reported failure", () => {
+  it("extra carries EXACTLY the allowed keys for its provider on every reported failure", () => {
     const extras = everyReportedExtra();
     expect(extras.length).toBeGreaterThan(0);
     for (const extra of extras) {
-      expect(Object.keys(extra).sort()).toEqual([...ALLOWED].sort());
+      const allowed =
+        extra.provider === "apple" ? ALLOWED_APPLE : ALLOWED_GOOGLE;
+      expect(Object.keys(extra).sort()).toEqual([...allowed].sort());
     }
+    // Both providers must actually be represented, or this test proves nothing.
+    expect(extras.some((e) => e.provider === "google")).toBe(true);
+    expect(extras.some((e) => e.provider === "apple")).toBe(true);
   });
 
   it("no captured value looks like an email, a token, or a full client id", () => {
@@ -480,9 +497,62 @@ describe("#1044 T10 — PII allowlist (SC-7)", () => {
       expect(body).not.toMatch(/idToken|identityToken|accessToken|serverAuthCode|refreshToken/);
       expect(body).not.toMatch(/\bemail\b/);
       expect(body).not.toMatch(/credential\.fullName|credential\.user/);
-      // the client id only ever appears sliced to its last 8 chars
+      // the client id is never passed whole
       expect(body).not.toMatch(/webClientId(?!Suffix)\s*,/);
-      expect(body).toMatch(/webClientId\.slice\(-8\)/);
+    }
+
+    // #1044 REWORK (tester P2 + P3): the Google site slices the DISCRIMINATING
+    // segment (before the first "."), never the whole id — a plain
+    // `webClientId.slice(-8)` yields the constant "tent.com". The Apple site
+    // does not read the Google client id at all.
+    const google = stripComments(googleCatch());
+    expect(google).toMatch(/webClientId\.split\("\."\)\[0\]\.slice\(-8\)/);
+    expect(google).not.toMatch(/webClientId\.slice\(-8\)/);
+
+    const apple = stripComments(appleCatch());
+    expect(apple).not.toMatch(/webClientId/);
+    expect(apple).not.toMatch(/webClientIdSuffix/);
+  });
+
+  /**
+   * #1044 REWORK — the P2 regression anchor. The pre-rework implementation
+   * sliced the last 8 characters of the WHOLE client id, which is the literal
+   * "tent.com" for every Google client id that exists (they all end
+   * ".apps.googleusercontent.com"). It was therefore incapable of answering the
+   * one question the field was added to answer — WHICH OAuth client this build
+   * was configured against, the exact axis #1038 turned on. Restore
+   * `webClientId.slice(-8)` and this test fails.
+   */
+  it("webClientIdSuffix DISCRIMINATES between two different Google client ids", () => {
+    const idA =
+      "169132274606-hp7cne780gsp7s6l1rrvbfktp6smrfs0.apps.googleusercontent.com";
+    const idB =
+      "999999999999-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz.apps.googleusercontent.com";
+
+    const suffixFor = (webClientId: string): unknown => {
+      const d = makeDeps({ webClientId });
+      compileCatch(googleCatch(), d)(errWith("10", "DEVELOPER_ERROR"));
+      return (d.report.mock.calls[0][2] as Record<string, unknown>)
+        .webClientIdSuffix;
+    };
+
+    const a = suffixFor(idA);
+    const b = suffixFor(idB);
+
+    expect(a).not.toBe(b); // ← the whole point: the field must discriminate
+    expect(a).not.toBe("tent.com"); // ← the pre-rework constant
+    expect(b).not.toBe("tent.com");
+    expect(String(a).length).toBeLessThanOrEqual(8); // never the full id
+    expect(String(a)).not.toContain("googleusercontent");
+
+    // An unconfigured id still reports the literal "unset", never undefined.
+    for (const wid of [undefined, null, "", 12345]) {
+      const d = makeDeps({ webClientId: wid });
+      compileCatch(googleCatch(), d)(errWith("10", "DEVELOPER_ERROR"));
+      expect(
+        (d.report.mock.calls[0][2] as Record<string, unknown>)
+          .webClientIdSuffix,
+      ).toBe("unset");
     }
   });
 });
@@ -642,5 +712,179 @@ describe("#1044 structural — I-PROPOSED-1044-AUTH-FAILURE-REPORTED", () => {
     // …but the swallow itself must be silent.
     const swallow = body![1].slice(body![1].lastIndexOf("} catch {"));
     expect(swallow).not.toMatch(/console\./);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #1044 REWORK — P1 REGRESSION: the RESOLVED cancel contract
+//
+// THE BUG THIS SECTION EXISTS TO CATCH, and why the original suite missed it.
+//
+// `@react-native-google-signin/google-signin` v16 RESOLVES with
+// `{ type: "cancelled", data: null }` when the user backs out of the account
+// picker. It does NOT reject with `statusCodes.SIGN_IN_CANCELLED`. Verified in
+// the installed SDK's own type declarations:
+//     signIn(): Promise<SignInSuccessResponse | CancelledResponse>
+//     CancelledResponse = { type: 'cancelled'; data: null }
+//
+// The original implementation discarded that resolved value and called
+// `getTokens()`, which throws `code: "getTokens"` — a code no exclusion covers.
+// The tester live-fired it on business Android: three picker cancels produced
+// THREE Sentry captures, and the user was shown
+// "Google Sign-In failed / getTokens requires a user to be signed in".
+//
+// Every test in the original suite passed because it INJECTED a rejection
+// carrying `{ code: SIGN_IN_CANCELLED }` — a shape this call path cannot
+// produce. Injecting the wrong shape is what made a broken exclusion look
+// proven. So these tests drive the REAL `signInWithGoogle` body end to end and
+// inject the shape the REAL SDK actually delivers: a RESOLVED cancel from
+// `signIn()`, plus a `getTokens()` that throws the REAL error observed on the
+// device, so that any regression reproduces the real failure rather than a
+// synthetic one.
+//
+// Delete the `if (signInResult?.type === "cancelled") return …` early return and
+// these fail: `getTokens` runs, throws, and produces exactly the capture + Alert
+// this issue exists to prevent.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("#1044 REWORK — P1: a RESOLVED cancel never reaches getTokens/Sentry", () => {
+  /** The whole `signInWithGoogle` callback body, sliced from the shipped file. */
+  const googleFnBody = (): string => {
+    const chunk = between(
+      "const signInWithGoogle = useCallback",
+      "const signInWithApple = useCallback",
+    );
+    const m = chunk.match(
+      /useCallback\(async \(\): Promise<\{ error: Error \| null \}> => \{\n([\s\S]*)\n {2}\}, \[\]\);/,
+    );
+    expect(m).not.toBeNull();
+    // Same single documented de-TS step as the catch slices, plus the `catch`
+    // parameter annotation that only appears in a whole-function slice.
+    return eraseTypeAssertions(m![1]).replace(/catch \(err: unknown\)/g, "catch (err)");
+  };
+
+  const compileGoogleFn = (
+    deps: Record<string, unknown>,
+  ): (() => Promise<{ error: Error | null }>) => {
+    const names = Object.keys(deps);
+    const make = new Function(
+      ...names,
+      `"use strict"; return async function () {\n${googleFnBody()}\n};`,
+    ) as (...injected: unknown[]) => () => Promise<{ error: Error | null }>;
+    return make(...names.map((n) => deps[n]));
+  };
+
+  /** The REAL error the device throws when getTokens runs with no signed-in user. */
+  const REAL_GET_TOKENS_ERROR = (): Error =>
+    errWith("getTokens", "getTokens requires a user to be signed in");
+
+  const makeFnDeps = (
+    signInResult: unknown,
+    opts: { getTokens?: jest.Mock } = {},
+  ) => {
+    const report = jest.fn();
+    const alert = jest.fn();
+    const getTokens =
+      opts.getTokens ??
+      jest.fn(() => {
+        throw REAL_GET_TOKENS_ERROR();
+      });
+    const GoogleSignin = {
+      hasPlayServices: jest.fn(async () => true),
+      hasPreviousSignIn: jest.fn(async () => false),
+      signOut: jest.fn(async () => null),
+      signIn: jest.fn(async () => signInResult),
+      getTokens,
+    };
+    const supabase = {
+      auth: {
+        signInWithIdToken: jest.fn(async () => ({
+          data: { session: { user: { id: "u1" } }, user: { id: "u1" } },
+          error: null,
+        })),
+        getSession: jest.fn(async () => ({ data: { session: null } })),
+        signInWithOAuth: jest.fn(async () => ({ error: null })),
+      },
+    };
+    const deps: Record<string, unknown> = {
+      Platform: { OS: "android", Version: 34 },
+      Alert: { alert },
+      GoogleSignin,
+      supabase,
+      buildWebRedirectTo: () => undefined,
+      webClientId: WEB_CLIENT_ID,
+      statusCodes: ANDROID_STATUS_CODES,
+      shouldReportAuthFailure: compilePredicate(ANDROID_STATUS_CODES),
+      reportNonFatal: report,
+    };
+    return { deps, report, alert, GoogleSignin, getTokens, supabase };
+  };
+
+  it("P1 — signIn() RESOLVING {type:'cancelled'} returns early: getTokens is never called, ZERO captures, ZERO alerts", async () => {
+    const h = makeFnDeps({ type: "cancelled", data: null });
+
+    const ret = await compileGoogleFn(h.deps)();
+
+    // The picker was shown and the user backed out.
+    expect(h.GoogleSignin.signIn).toHaveBeenCalledTimes(1);
+
+    // The root fix: control never reaches getTokens, so the "getTokens requires
+    // a user to be signed in" error is never manufactured in the first place.
+    expect(h.getTokens).not.toHaveBeenCalled();
+
+    // SC-3-BIZ, against the shape the SDK ACTUALLY delivers.
+    expect(h.report).not.toHaveBeenCalled();
+
+    // The user-visible half of the same bug: no "Google Sign-In failed" Alert.
+    expect(h.alert).not.toHaveBeenCalled();
+
+    expect(ret.error).toBeInstanceOf(Error);
+    expect((ret.error as Error).message).toBe("Sign-in cancelled");
+  });
+
+  it("P1 — the early return does NOT fire on a successful sign-in (the guard is not over-broad)", async () => {
+    const h = makeFnDeps(
+      { type: "success", data: { user: { id: "g1" } } },
+      { getTokens: jest.fn(async () => ({ idToken: "id-token" })) },
+    );
+
+    const ret = await compileGoogleFn(h.deps)();
+
+    expect(h.GoogleSignin.signIn).toHaveBeenCalledTimes(1);
+    expect(h.getTokens).toHaveBeenCalledTimes(1);
+    expect(h.supabase.auth.signInWithIdToken).toHaveBeenCalledTimes(1);
+    expect(h.report).not.toHaveBeenCalled();
+    expect(h.alert).not.toHaveBeenCalled();
+    expect(ret).toEqual({ error: null });
+  });
+
+  it("P1 — a GENUINE getTokens failure is still reported (the fix must not blind us to real token faults)", async () => {
+    // Not a cancel: signIn() succeeded, and getTokens genuinely failed. This is
+    // the case that adding "getTokens" to the exclusion set would have hidden,
+    // which is exactly the #1038 bug class. It MUST still reach Sentry.
+    const h = makeFnDeps({ type: "success", data: { user: { id: "g1" } } });
+
+    const ret = await compileGoogleFn(h.deps)();
+
+    expect(h.getTokens).toHaveBeenCalledTimes(1);
+    expect(h.report).toHaveBeenCalledTimes(1);
+    const [scope, , extra] = h.report.mock.calls[0];
+    expect(scope).toBe("auth.signInWithGoogle.native");
+    expect((extra as Record<string, unknown>).code).toBe("getTokens");
+    expect(h.alert).toHaveBeenCalledTimes(1);
+    expect(ret.error).toBeInstanceOf(Error);
+  });
+
+  it("P1 — the shipped source carries the resolved-cancel guard BEFORE getTokens", () => {
+    const body = stripComments(googleFnBody());
+    const guardAt = body.indexOf('signInResult?.type === "cancelled"');
+    const getTokensAt = body.indexOf("GoogleSignin.getTokens()");
+    expect(guardAt).toBeGreaterThan(-1);
+    expect(getTokensAt).toBeGreaterThan(-1);
+    expect(guardAt).toBeLessThan(getTokensAt);
+
+    // And "getTokens" must NOT have been papered over in the exclusion set —
+    // that would blind us to genuine token failures (#1038's bug class).
+    expect(predicateBody()).not.toContain("getTokens");
   });
 });

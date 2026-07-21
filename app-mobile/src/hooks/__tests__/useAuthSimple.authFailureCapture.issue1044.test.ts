@@ -202,7 +202,12 @@ const ANDROID_STATUS_CODES: StatusCodesShape = {
 
 const WEB_CLIENT_ID =
   '123456789012-abcdefghijklmnopqrstuvwxyz012345.apps.googleusercontent.com'
-const EXPECTED_SUFFIX = WEB_CLIENT_ID.slice(-8)
+// #1044 REWORK (tester P2). The suffix is the last 8 chars of the DISCRIMINATING
+// segment — everything before the first "." — NOT of the whole id. Slicing the
+// whole id returned the literal "tent.com" for every Google client id in
+// existence (they all end ".apps.googleusercontent.com"), so the one axis this
+// field exists for was never actually captured.
+const EXPECTED_SUFFIX = WEB_CLIENT_ID.split('.')[0].slice(-8)
 
 interface Harness {
   deps: Record<string, unknown>
@@ -402,7 +407,9 @@ test('T6 — P4 Apple config failure is REPORTED with provider "apple"', () => {
     code: 'ERR_INVALID_RESPONSE',
     platform: 'ios',
     osVersion: '18.2',
-    webClientIdSuffix: EXPECTED_SUFFIX,
+    // #1044 REWORK (tester P3): NO webClientIdSuffix on the Apple path. That
+    // field describes a GOOGLE OAuth client and said nothing true about an
+    // Apple Services-ID fault. Four keys here, five on Google.
   })
   assert.deepEqual(fingerprint, ['auth-signin', 'apple', 'ERR_INVALID_RESPONSE'])
 
@@ -433,13 +440,17 @@ test('T7 — P4 codeless Apple error is REPORTED with code "none"', () => {
 // SC-7 — PII allowlist (T10)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const ALLOWED_EXTRA_KEYS = [
+// #1044 REWORK (tester P3): the allowlist is now PER PROVIDER. Google carries
+// five keys; Apple carries four, because `webClientIdSuffix` describes a Google
+// OAuth client and was a misleading field on every Apple event.
+const ALLOWED_GOOGLE_KEYS = [
   'code',
   'osVersion',
   'platform',
   'provider',
   'webClientIdSuffix',
 ]
+const ALLOWED_APPLE_KEYS = ['code', 'osVersion', 'platform', 'provider']
 
 const everyReportedExtra = (): Record<string, unknown>[] => {
   const out: Record<string, unknown>[] = []
@@ -458,12 +469,17 @@ const everyReportedExtra = (): Record<string, unknown>[] => {
   return out
 }
 
-test('T10 — extra carries EXACTLY the five allowed keys on every reported failure', () => {
+test('T10 — extra carries EXACTLY the allowed keys for its provider on every reported failure', () => {
   const extras = everyReportedExtra()
   assert.ok(extras.length > 0)
   for (const extra of extras) {
-    assert.deepEqual(Object.keys(extra).sort(), ALLOWED_EXTRA_KEYS)
+    const allowed =
+      extra.provider === 'apple' ? ALLOWED_APPLE_KEYS : ALLOWED_GOOGLE_KEYS
+    assert.deepEqual(Object.keys(extra).sort(), allowed)
   }
+  // Both providers must actually be represented, or this test proves nothing.
+  assert.ok(extras.some((e) => e.provider === 'google'))
+  assert.ok(extras.some((e) => e.provider === 'apple'))
 })
 
 test('T10 — no captured value looks like an email, a token, or a full client id', () => {
@@ -485,8 +501,18 @@ test('T10 — the capture call sites never read a token, email, or full client i
     assert.ok(!/\bemail\b/.test(body))
     assert.ok(!/credential\.fullName|credential\.user/.test(body))
     assert.ok(!/webClientId(?!Suffix)\s*,/.test(body))
-    assert.ok(/webClientId\.slice\(-8\)/.test(body))
   }
+
+  // #1044 REWORK (tester P2 + P3): the Google site slices the DISCRIMINATING
+  // segment (before the first "."), never the whole id — a plain
+  // `webClientId.slice(-8)` yields the constant "tent.com". The Apple site does
+  // not read the Google client id at all.
+  const google = stripComments(googleCatch())
+  assert.ok(/webClientId\.split\("\."\)\[0\]\.slice\(-8\)/.test(google))
+  assert.ok(!/webClientId\.slice\(-8\)/.test(google))
+
+  const apple = stripComments(appleCatch())
+  assert.ok(!/webClientId/.test(apple))
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -622,4 +648,176 @@ test('the pre-existing consumer telemetry calls are PRESERVED, not replaced', ()
   assert.ok(/logger\.error\('Apple sign-in failed'/.test(a))
   assert.ok(/console\.error\("Apple sign-in error:"/.test(a))
   assert.ok(/mixpanelService\.trackLoginFailed\('apple'/.test(a))
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #1044 REWORK — P1 REGRESSION: the RESOLVED cancel contract
+//
+// THE BUG THIS SECTION EXISTS TO CATCH, and why the original suite missed it.
+//
+// `@react-native-google-signin/google-signin` v16 RESOLVES with
+// `{ type: "cancelled", data: null }` when the user backs out of the account
+// picker. It does NOT reject with `statusCodes.SIGN_IN_CANCELLED`. Verified in
+// this app's installed SDK (16.0.0) type declarations:
+//     signIn(): Promise<SignInSuccessResponse | CancelledResponse>
+//     CancelledResponse = { type: 'cancelled'; data: null }
+//
+// The original implementation discarded that resolved value and called
+// `getTokens()`, which throws `code: "getTokens"` — a code no exclusion covers.
+// Live-fired on the business twin of this code: three picker cancels produced
+// THREE Sentry captures plus a "Sign-In failed" Alert on every one.
+//
+// Every test in the original suite passed because it INJECTED a rejection
+// carrying `{ code: SIGN_IN_CANCELLED }` — a shape this call path cannot
+// produce. Injecting the wrong shape is what made a broken exclusion look
+// proven. So these tests drive the REAL `signInWithGoogle` body end to end and
+// inject the shape the REAL SDK actually delivers: a RESOLVED cancel from
+// `signIn()`, plus a `getTokens()` that throws the REAL error observed on the
+// device.
+//
+// Delete the `if (googleUser?.type === "cancelled") return …` early return and
+// these fail: `getTokens` runs, throws, and produces the capture, the
+// `trackLoginFailed` event and the Alert this issue exists to prevent.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The whole `signInWithGoogle` body, sliced from the shipped file. */
+const googleFnBody = (): string => {
+  const chunk = between(
+    'const signInWithGoogle = async () =>',
+    'const signInWithApple = async () =>',
+  )
+  const m = chunk.match(/const signInWithGoogle = async \(\) => \{\n([\s\S]*)\n {2}\};/)
+  assert.ok(m, 'signInWithGoogle body not found')
+  // The documented de-TS steps for a WHOLE-function slice (the catch slices only
+  // ever needed the first). Each is a type annotation or assertion that `tsc`
+  // erases identically; no logic is rewritten.
+  return eraseTypeAssertions(m[1])
+    .replace(/catch \(err: unknown\)/g, 'catch (err)')
+    .replace(/let googleEmail: string \| undefined;/, 'let googleEmail;')
+    .replace(/\(googleUser as unknown as \{[^}]*\}[^)]*\)/g, '(googleUser)')
+}
+
+const compileGoogleFn = (
+  deps: Record<string, unknown>,
+): (() => Promise<{ data: unknown; error: unknown }>) => {
+  const names = Object.keys(deps)
+  const make = new Function(
+    ...names,
+    `"use strict"; return async function () {\n${googleFnBody()}\n};`,
+  ) as (...injected: unknown[]) => () => Promise<{ data: unknown; error: unknown }>
+  return make(...names.map((n) => deps[n]))
+}
+
+const makeFnDeps = (signInResult: unknown, getTokensImpl?: () => unknown) => {
+  const report = spy()
+  const alert = spy()
+  const trackLoginFailed = spy()
+  const getTokens = spy(
+    getTokensImpl ??
+      (() => {
+        throw errWith('getTokens', 'getTokens requires a user to be signed in')
+      }),
+  )
+  const signIn = spy(async () => signInResult)
+  const signInWithIdToken = spy(async () => ({
+    data: { session: { user: { id: 'u1' } }, user: { id: 'u1' } },
+    error: null,
+  }))
+  const deps: Record<string, unknown> = {
+    Platform: { OS: 'android', Version: 34 },
+    Alert: { alert },
+    Constants: {
+      expoConfig: { extra: { EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: WEB_CLIENT_ID } },
+    },
+    GoogleSignin: {
+      hasPlayServices: spy(async () => true),
+      hasPreviousSignIn: spy(async () => false),
+      signOut: spy(async () => null),
+      signIn,
+      getTokens,
+    },
+    supabase: {
+      from: () => ({
+        select: () => ({ ilike: () => ({ maybeSingle: async () => ({ data: null }) }) }),
+      }),
+      auth: {
+        signInWithIdToken,
+        getSession: spy(async () => ({ data: { session: null } })),
+      },
+    },
+    logger: { auth: () => {}, error: () => {} },
+    console: { log: () => {}, warn: () => {}, error: () => {} },
+    mixpanelService: { trackLoginFailed },
+    webClientId: WEB_CLIENT_ID,
+    statusCodes: ANDROID_STATUS_CODES,
+    shouldReportAuthFailure: compilePredicate(ANDROID_STATUS_CODES),
+    reportNonFatal: report,
+  }
+  return { deps, report, alert, trackLoginFailed, getTokens, signIn, signInWithIdToken }
+}
+
+test("P1 — signIn() RESOLVING {type:'cancelled'} returns early: getTokens never called, ZERO captures, ZERO alerts", async () => {
+  const h = makeFnDeps({ type: 'cancelled', data: null })
+
+  const ret = await compileGoogleFn(h.deps)()
+
+  // The picker was shown and the user backed out.
+  assert.equal(h.signIn.calls.length, 1)
+
+  // The root fix: control never reaches getTokens, so the "getTokens requires a
+  // user to be signed in" error is never manufactured in the first place.
+  assert.equal(h.getTokens.calls.length, 0)
+
+  // SC-3-CONS, against the shape the SDK ACTUALLY delivers.
+  assert.equal(h.report.calls.length, 0)
+
+  // The user-visible half of the same bug: no "Google Sign-In Failed" Alert…
+  assert.equal(h.alert.calls.length, 0)
+  // …and a cancel is not a login FAILURE, so no analytics failure event either.
+  assert.equal(h.trackLoginFailed.calls.length, 0)
+
+  assert.deepEqual(ret, { data: null, error: { message: 'Sign-in cancelled' } })
+})
+
+test('P1 — the early return does NOT fire on a successful sign-in (the guard is not over-broad)', async () => {
+  const h = makeFnDeps({ type: 'success', data: { user: { id: 'g1' } } }, async () => ({
+    idToken: 'id-token',
+  }))
+
+  const ret = await compileGoogleFn(h.deps)()
+
+  assert.equal(h.signIn.calls.length, 1)
+  assert.equal(h.getTokens.calls.length, 1)
+  assert.equal(h.signInWithIdToken.calls.length, 1)
+  assert.equal(h.report.calls.length, 0)
+  assert.equal(h.alert.calls.length, 0)
+  assert.equal((ret as { error: unknown }).error, null)
+})
+
+test('P1 — a GENUINE getTokens failure is still reported (the fix must not blind us to real token faults)', async () => {
+  // Not a cancel: signIn() succeeded and getTokens genuinely failed. This is the
+  // case that adding "getTokens" to the exclusion set would have hidden — which
+  // is exactly the #1038 bug class. It MUST still reach Sentry.
+  const h = makeFnDeps({ type: 'success', data: { user: { id: 'g1' } } })
+
+  await compileGoogleFn(h.deps)()
+
+  assert.equal(h.getTokens.calls.length, 1)
+  assert.equal(h.report.calls.length, 1)
+  assert.equal(h.report.calls[0][0], 'auth.signInWithGoogle.native')
+  assert.equal((h.report.calls[0][2] as Record<string, unknown>).code, 'getTokens')
+  assert.equal(h.alert.calls.length, 1)
+})
+
+test('P1 — the shipped source carries the resolved-cancel guard BEFORE getTokens', () => {
+  const body = stripComments(googleFnBody())
+  const guardAt = body.indexOf('googleUser?.type === "cancelled"')
+  const getTokensAt = body.indexOf('GoogleSignin.getTokens()')
+  assert.ok(guardAt > -1, 'resolved-cancel guard missing from signInWithGoogle')
+  assert.ok(getTokensAt > -1)
+  assert.ok(guardAt < getTokensAt, 'the cancel guard must precede getTokens()')
+
+  // And "getTokens" must NOT have been papered over in the exclusion set — that
+  // would blind us to genuine token failures (#1038's bug class).
+  assert.ok(!predicateBody().includes('getTokens'))
 })

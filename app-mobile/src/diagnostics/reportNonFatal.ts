@@ -51,12 +51,32 @@ export function reportNonFatal(
     const message = error instanceof Error ? error.message : String(error);
     console.warn(`[${scope}]`, message, extra ?? "");
     if (error instanceof Error) {
-      captureException(
+      const captureResult = captureException(
         error,
         fingerprint
           ? { tags: { scope }, extra, fingerprint }
           : { tags: { scope }, extra },
       );
+      // #1044 — close the ASYNC escape hatch. The try/catch above only contains
+      // SYNCHRONOUS throws. `captureException` is synchronous today (it returns
+      // a string event id), so this branch does not run; but if a future SDK
+      // returned a Promise, a rejection would escape the helper as an UNHANDLED
+      // REJECTION — the one failure mode the guard above cannot see. Attach a
+      // no-op rejection handler and do NOT await it, so the reporter stays
+      // non-blocking and enqueue-only (SPEC §4.6.2).
+      //
+      // Narrowed to genuine `Promise` instances on purpose: invoking `.then` on
+      // an arbitrary object handed back by a third-party SDK would run foreign
+      // code from inside a telemetry helper whose whole contract is that it
+      // cannot affect its caller. `constructor === Promise` rather than
+      // `instanceof Promise` because this body is also executed as PLAIN JS by
+      // the regression harnesses (they slice it and run it through
+      // `new Function`), so it must contain no TypeScript-only syntax — and
+      // `captureException` is declared to return `string`, which makes
+      // `instanceof` itself a type error (TS2358).
+      if (captureResult && captureResult.constructor === Promise) {
+        void Promise.resolve(captureResult).catch(() => {});
+      }
     }
   } catch {
     // Silent by design (#1044) — see the header. Telemetry must never break a

@@ -94,6 +94,13 @@ if (webClientId) {
  */
 const shouldReportAuthFailure = (code: unknown): boolean => {
   if (typeof code !== "string") return true;
+  // BELT-AND-BRACES, NOT THE LIVE GUARD (#1044). The Google picker cancel is
+  // handled at its ROOT, in signInWithGoogle's try block: SDK v16 RESOLVES
+  // `{ type: "cancelled" }` rather than rejecting, so control returns early and
+  // never reaches this predicate. This line is therefore unreachable for the
+  // Google cancel path today. It is kept on purpose — it still fires if the SDK
+  // ever reverts to a rejecting cancel, and it costs nothing. Do not read it as
+  // the mechanism that stops cancels reaching Sentry; that is the early return.
   if (code === statusCodes.SIGN_IN_CANCELLED) return false;
   if (code === statusCodes.IN_PROGRESS) return false;
   if (code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) return false;
@@ -544,6 +551,30 @@ export const useAuthSimple = () => {
       // Sign in with Google - this will now show the account picker
       const googleUser = await GoogleSignin.signIn();
 
+      // #1044 [auth-failure-sentry-capture] / #1038 — HANDLE THE RESOLVED CANCEL.
+      // google-signin v16 RESOLVES with `{ type: "cancelled", data: null }` when
+      // the user backs out of the account picker; it does NOT reject with
+      // `statusCodes.SIGN_IN_CANCELLED`. Verified in the installed SDK's own
+      // types: `signIn(): Promise<SignInSuccessResponse | CancelledResponse>`
+      // (node_modules/@react-native-google-signin/google-signin/lib/typescript/
+      //  src/signIn/GoogleSignin.d.ts), identical in 16.0.0 and 16.1.2.
+      //
+      // Discarding this result sent control straight into getTokens(), which
+      // throws `code: "getTokens"` — a code no exclusion covers — so every
+      // picker cancel produced a Sentry capture AND a "Google Sign-In Failed"
+      // Alert. Live-fired on the business twin of this code: three cancels,
+      // three captures. Backing out of a picker is not a failure.
+      //
+      // Returning here — before getTokens() is ever called — is the root fix:
+      // no capture, no Alert, no trackLoginFailed, and the catch block below is
+      // never entered. The returned shape is identical to the pre-existing
+      // `statusCodes.SIGN_IN_CANCELLED` branch in that catch. Do NOT "solve"
+      // this by adding "getTokens" to shouldReportAuthFailure's exclusion set;
+      // that would blind us to genuine token failures — the #1038 bug class.
+      if (googleUser?.type === "cancelled") {
+        return { data: null, error: { message: "Sign-in cancelled" } };
+      }
+
       // Get the ID token from the current user
       const tokens = await GoogleSignin.getTokens();
 
@@ -703,14 +734,23 @@ export const useAuthSimple = () => {
             code: reportCode,
             platform: Platform.OS,
             osVersion: String(Platform.Version),
-            // Last 8 chars ONLY — identifies WHICH OAuth client this build was
-            // configured against (the exact axis #1038 turned on) without
-            // publishing the id. Never the full client id, never the Google
-            // account email available on the sign-in response, never a token
+            // #1044 — identifies WHICH OAuth client this build was configured
+            // against (the exact axis #1038 turned on) without publishing the
+            // id. Slice the DISCRIMINATING segment: everything before the first
+            // "." is the project number + client hash
+            // ("169132274606-hp7cne780gsp7s6l1rrvbfktp6smrfs0"); everything
+            // after it is the literal ".apps.googleusercontent.com", which every
+            // Google client id on earth shares. A naive `.slice(-8)` of the WHOLE
+            // id therefore returned the constant "tent.com" for every possible
+            // client — proven live against a deliberately invalid id — so the
+            // one axis this field exists for was not actually being captured.
+            // Last 8 chars of the discriminating segment only: never the full
+            // client id, never the Google account email available on the sign-in
+            // response, never a token
             // (I-PROPOSED-1044-AUTH-FAILURE-REPORTED).
             webClientIdSuffix:
               typeof webClientId === "string" && webClientId.length > 0
-                ? webClientId.slice(-8)
+                ? webClientId.split(".")[0].slice(-8)
                 : "unset",
           },
           // Group by provider + code, never by message: Google's messages vary
@@ -859,13 +899,14 @@ export const useAuthSimple = () => {
             code: reportCode,
             platform: Platform.OS,
             osVersion: String(Platform.Version),
-            // Last 8 chars ONLY — never the full client id, never an email,
-            // never Apple's identityToken / fullName / user identifier
+            // #1044 — NO `webClientIdSuffix` here, deliberately. That field
+            // describes a GOOGLE OAuth client; an Apple Services-ID fault is not
+            // described by it, and carrying it on this path was a misleading
+            // field on every Apple event. Apple has no equivalent client id
+            // available at this point, and Sentry's own `release`/`dist` already
+            // identify the build, so this payload is FOUR keys, not five. Never
+            // add Apple's identityToken / fullName / user identifier here
             // (I-PROPOSED-1044-AUTH-FAILURE-REPORTED).
-            webClientIdSuffix:
-              typeof webClientId === "string" && webClientId.length > 0
-                ? webClientId.slice(-8)
-                : "unset",
           },
           ["auth-signin", "apple", reportCode],
         );
