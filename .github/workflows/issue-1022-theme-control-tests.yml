@@ -116,6 +116,7 @@ jobs:
           src/utils/__tests__/issue1022ThemeSheetLayout.test.ts
           src/utils/__tests__/issue1022ThemeMounts.test.ts
           src/utils/__tests__/issue1022TripReviewPreviewThemed.test.ts
+          src/utils/__tests__/issue1022TesterAdversarial.test.ts
           --runInBand
       # The ORCH-0964 hex contract is append-only and must keep passing
       # UNMODIFIED alongside the new short-hex blur expansion.
