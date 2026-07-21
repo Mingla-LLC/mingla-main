@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AccessibilityInfo,
   Platform,
@@ -24,12 +24,11 @@ import {
   accent,
   glass,
   radius,
-  semantic,
   spacing,
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
-import { contrastRatio, readableTextFor } from "../../utils/buttonAccentContrast";
+import { readableTextFor } from "../../utils/buttonAccentContrast";
 import { themeAxisIsInherited } from "../../services/offeringTheme";
 import { useThemeRecentsStore } from "../../store/themeRecentsStore";
 import { useThemeFont } from "../../theme/useThemeFont";
@@ -49,11 +48,9 @@ import {
   ALL_ANIMATION_SLUGS,
   FONT_GROUPS,
   MOTION_DISPLAY_NAMES,
-  contrastTier,
   hexToHsv,
   hsvToHex,
   hueName,
-  nudgeToAA,
   type ThemeControlScope,
 } from "./themeColorModel";
 
@@ -85,7 +82,6 @@ const PLANE_HEIGHT_COMPACT = 132;
 const RAIL_HEIGHT = 28;
 const PLANE_THUMB = 28;
 const RAIL_THUMB = 32;
-const ANNOUNCE_DEBOUNCE_MS = 400;
 
 type TabKey = "colour" | "font" | "motion";
 
@@ -155,12 +151,6 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
   const seedHex = value?.color ?? resolved.color;
   const hsv = useMemo(() => hexToHsv(seedHex) ?? { h: 25, s: 0.84, v: 0.92 }, [seedHex]);
 
-  const ratio = useMemo(
-    () => contrastRatio(palette.accent, palette.page),
-    [palette],
-  );
-  const tier = contrastTier(ratio);
-
   // ── screen-reader detection: the 2D plane is unusable without sight, so the
   // colour tab opens in numeric mode and hides the plane from the a11y tree.
   useEffect(() => {
@@ -188,33 +178,10 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
     };
   }, []);
 
-  // ── contrast-tier announcements, debounced so a drag does not spam ────────
-  const lastTierRef = useRef<string>(tier);
-  const announceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    if (lastTierRef.current === tier) return;
-    lastTierRef.current = tier;
-    if (announceTimerRef.current !== null) clearTimeout(announceTimerRef.current);
-    announceTimerRef.current = setTimeout(() => {
-      announceTimerRef.current = null;
-      const label =
-        tier === "pass" ? "Crisp" : tier === "warn" ? "Small labels look faint" : "Hard to read";
-      AccessibilityInfo.announceForAccessibility(
-        `${label}. Contrast ${ratio.toFixed(1)} to 1.`,
-      );
-    }, ANNOUNCE_DEBOUNCE_MS);
-    return () => {
-      if (announceTimerRef.current !== null) {
-        clearTimeout(announceTimerRef.current);
-        announceTimerRef.current = null;
-      }
-    };
-  }, [tier, ratio]);
-
   // ── THE single colour write path ─────────────────────────────────────────
-  // Plane drag, rail drag, swatch, recent, brand tap, hex commit and
-  // Nudge-to-AA ALL funnel through here. Each call emits ONE patch derived
-  // from CURRENT state (never a captured prop snapshot — that is A/F-11).
+  // Plane drag, rail drag, swatch, recent, brand tap and hex commit ALL funnel
+  // through here. Each call emits ONE patch derived from CURRENT state (never a
+  // captured prop snapshot — that is A/F-11).
   const commitColor = useCallback(
     (hex: string): void => {
       onChange(withAxis(value, "color", hex));
@@ -339,13 +306,6 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
     const axis = tab === "colour" ? "color" : tab === "font" ? "font" : "animation";
     onChange(withAxis(value, axis, null));
   }, [tab, onChange, value]);
-
-  const nudgeTarget = useMemo(
-    () => (tier === "pass" ? null : nudgeToAA(seedHex)),
-    [tier, seedHex],
-  );
-
-  const seedVsDerived = contrastRatio(seedHex, palette.accent);
 
   return (
     <Sheet
@@ -579,62 +539,7 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
               >
                 <Text style={styles.numericToggleLabel}>⌨</Text>
               </Pressable>
-
-              {/* Contrast chip — colour is NEVER the only indicator: icon,
-                  words and the numeric ratio all carry it. */}
-              <Pressable
-                disabled={tier === "pass" || nudgeTarget === null}
-                onPress={() => {
-                  if (nudgeTarget !== null) pickSwatch(nudgeTarget);
-                }}
-                style={[
-                  styles.contrastChip,
-                  tier === "pass"
-                    ? styles.chipPass
-                    : tier === "warn"
-                      ? styles.chipWarn
-                      : styles.chipFail,
-                ]}
-                accessibilityRole={tier === "pass" ? "text" : "button"}
-                accessibilityLabel={
-                  tier === "pass"
-                    ? `AA Crisp. Contrast ${ratio.toFixed(1)} to 1.`
-                    : `${tier === "warn" ? "Small labels look faint" : "Hard to read"}. Contrast ${ratio.toFixed(1)} to 1.${nudgeTarget !== null ? " Tap to nudge to AA." : ""}`
-                }
-              >
-                <Icon
-                  name={tier === "pass" ? "check" : tier === "warn" ? "flag" : "close"}
-                  size={14}
-                  color={
-                    tier === "pass"
-                      ? semantic.success
-                      : tier === "warn"
-                        ? semantic.warning
-                        : semantic.error
-                  }
-                />
-                <Text style={styles.chipLabel} numberOfLines={1}>
-                  {tier === "pass"
-                    ? `AA · Crisp · ${ratio.toFixed(1)}:1`
-                    : nudgeTarget !== null
-                      ? `Nudge to AA → ${ratio.toFixed(1)}:1`
-                      : `${tier === "warn" ? "Faint" : "Hard to read"} · ${ratio.toFixed(1)}:1`}
-                </Text>
-              </Pressable>
             </View>
-
-            {/* Seed -> derived disclosure. The only honest way to let someone
-                type a specific hex on a system that adjusts it. */}
-            {seedVsDerived > 1.15 ? (
-              <View style={styles.disclosure}>
-                <View style={[styles.disclosureDot, { backgroundColor: seedHex }]} />
-                <View style={[styles.disclosureDot, { backgroundColor: palette.accent }]} />
-                <Text style={styles.disclosureText} numberOfLines={2}>
-                  On the page this becomes {palette.accent.toUpperCase()} so labels stay
-                  readable.
-                </Text>
-              </View>
-            ) : null}
 
             {/* Swatch strip — brand · recents · presets */}
             <ScrollView
@@ -921,33 +826,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   numericToggleLabel: { fontSize: 16, color: textTokens.tertiary },
-  contrastChip: {
-    flex: 1,
-    height: 44,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingHorizontal: spacing.sm,
-  },
-  chipPass: {
-    backgroundColor: "rgba(34,197,94,0.18)",
-    borderColor: "rgba(34,197,94,0.45)",
-  },
-  chipWarn: {
-    backgroundColor: "rgba(245,158,11,0.18)",
-    borderColor: "rgba(245,158,11,0.45)",
-  },
-  chipFail: {
-    backgroundColor: "rgba(239,68,68,0.18)",
-    borderColor: "rgba(239,68,68,0.45)",
-  },
-  chipLabel: { fontSize: 12, fontWeight: "600", color: textTokens.secondary, flexShrink: 1 },
-  disclosure: { flexDirection: "row", alignItems: "center", gap: 6 },
-  disclosureDot: { width: 10, height: 10, borderRadius: 5 },
-  disclosureText: { flex: 1, fontSize: 11, lineHeight: 14, color: textTokens.tertiary },
   swatchStrip: { alignItems: "center", gap: spacing.sm, paddingVertical: 2 },
   swatch: {
     width: 36,
