@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff \u2014 there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 412,
-  "selfTestWiredFloor": 192,
+  "expectedStrictGrepMjsFiles": 413,
+  "selfTestWiredFloor": 193,
   "unenforcedCap": 7,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -1481,6 +1481,20 @@
       "selfTest": "none",
       "jobKeys": [
         "i-proposed-a-brands-deleted-filter"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1051-dependabot-security-ignores.mjs",
+      "kind": "file",
+      "enforcement": "batch:B",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-1051-dependabot-security-ignores"
       ]
     },
     {

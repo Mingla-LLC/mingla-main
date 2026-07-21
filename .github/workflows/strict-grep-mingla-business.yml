@@ -88,6 +88,7 @@ concurrency:
 #   i-proposed-1187-growth-analytics  ->  i-proposed-1187-posthog-host-us.mjs, i-proposed-1187-no-phx-in-client.mjs, i-proposed-1187-consent-gate-before-cookies.mjs, i-proposed-1187-replay-masks-pii.mjs, i-proposed-1187-analytics-web-only-via-web-ts.mjs, i-proposed-1187-marketing-layout-mounts-analytics.mjs, orch-1187-leg2-buyer-web-analytics-wired.mjs, i-proposed-1187-posthog-key-static-read.mjs, i-proposed-1187-native-mounts-analytics.mjs
 #   i-proposed-1227-ng-sms-via-termii  ->  i-proposed-1227-ng-sms-via-termii.mjs
 #   i-proposed-a-brands-deleted-filter  ->  i-proposed-a-brands-deleted-filter.mjs
+#   issue-1051-dependabot-security-ignores  ->  issue-1051-dependabot-security-ignores.mjs
 #   i-proposed-c-brand-crud-via-react-query  ->  i-proposed-c-brand-crud-via-react-query.mjs
 #   i-proposed-creator-entry-is-instant  ->  i-proposed-creator-entry-is-instant.mjs
 #   i-proposed-finalize-callers-pass-installment-params  ->  i-proposed-finalize-callers-pass-installment-params.mjs
