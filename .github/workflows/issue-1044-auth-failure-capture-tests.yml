@@ -1,0 +1,135 @@
+name: Issue 1044 Native Auth Failure Capture Tests
+
+# #1044 [auth-failure-sentry-capture] — the four NATIVE interactive sign-in catch
+# blocks now route their caught error to Sentry via each app's `reportNonFatal`,
+# gated by a single named predicate `shouldReportAuthFailure(code)`.
+#
+# WHY THIS GATE EXISTS: #1038 broke Google sign-in for EVERY Play-Store organizer
+# on Mingla Business for months. A 90-day Sentry search for DEVELOPER_ERROR
+# returned zero issues while the Android native pipeline was demonstrably live —
+# the code caught the error, alerted the user, and discarded it. A human found the
+# bug; monitoring never did. These suites are the fails-on-revert lock on the fix,
+# including the F-7 trap (`typeof code !== "string"` MUST be the predicate's first
+# statement, or every codeless error is silently dropped again).
+#
+# WITHOUT THIS WORKFLOW BOTH SUITES WOULD BE DARK (the ORCH-1383 dark-test-surface
+# trap):
+#  - mingla-business's DEFAULT jest config is not exercised by any workflow (the
+#    class-D strict-grep `jest-suites` job does not run jest);
+#  - app-mobile has NO jest at all — its .test.ts files run under Node's built-in
+#    runner with type-stripping, and no workflow sweeps src/hooks/__tests__/.
+# Same shape and same rationale as issue-1036-contrast-chip-removal-tests.yml.
+#
+# EXPLICIT registry (never a glob) — add a suite by appending its path below.
+# Invokes no .mjs under .github/scripts/strict-grep/, so MANIFEST.json totality
+# and parity are untouched.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mingla-business/src/context/AuthContext.tsx"
+      - "mingla-business/src/diagnostics/reportNonFatal.ts"
+      - "mingla-business/src/context/__tests__/AuthContext.authFailureCapture.issue1044.test.ts"
+      - "mingla-business/src/context/__tests__/AuthContext.authFailureCapture.adversarial.issue1044.test.ts"
+      - "app-mobile/src/hooks/useAuthSimple.ts"
+      - "app-mobile/src/diagnostics/reportNonFatal.ts"
+      - "app-mobile/src/hooks/__tests__/useAuthSimple.authFailureCapture.issue1044.test.ts"
+      - "app-mobile/src/hooks/__tests__/useAuthSimple.authFailureCapture.adversarial.issue1044.test.ts"
+      - ".github/workflows/issue-1044-auth-failure-capture-tests.yml"
+  pull_request:
+    paths:
+      - "mingla-business/src/context/AuthContext.tsx"
+      - "mingla-business/src/diagnostics/reportNonFatal.ts"
+      - "mingla-business/src/context/__tests__/AuthContext.authFailureCapture.issue1044.test.ts"
+      - "mingla-business/src/context/__tests__/AuthContext.authFailureCapture.adversarial.issue1044.test.ts"
+      - "app-mobile/src/hooks/useAuthSimple.ts"
+      - "app-mobile/src/diagnostics/reportNonFatal.ts"
+      - "app-mobile/src/hooks/__tests__/useAuthSimple.authFailureCapture.issue1044.test.ts"
+      - "app-mobile/src/hooks/__tests__/useAuthSimple.authFailureCapture.adversarial.issue1044.test.ts"
+      - ".github/workflows/issue-1044-auth-failure-capture-tests.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-1044-business-jest:
+    name: "#1044 BIZ: native Google/Apple sign-in failures reach Sentry (fails-on-revert)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      # P1 + P2. Slices and EXECUTES the REAL shipped catch bodies + the REAL
+      # shouldReportAuthFailure body (no replica — ORCH-1373 P2-2 proved replicas
+      # stay green while the real guard is deleted).
+      - name: Run issue-1044 business suite (implementor happy-path)
+        run: >
+          npx jest
+          src/context/__tests__/AuthContext.authFailureCapture.issue1044.test.ts
+          --runInBand
+      # TESTER ADVERSARIAL suite (#1044 retest). Different angle from the
+      # implementor's: it slices and EXECUTES the real catch bodies and runs a
+      # differential against the frozen origin/main body, plus exotic-rejection
+      # and reporter-breakage matrices, plus the resolved-cancel P1 and the P2
+      # discriminator pins (D9/D10 amended under [TEST-MOD-APPROVED ORCH-1044]).
+      # Registered here so the regression guard is NOT dark (ORCH-1383 trap).
+      - name: Run issue-1044 business TESTER ADVERSARIAL suite
+        run: >
+          npx jest
+          src/context/__tests__/AuthContext.authFailureCapture.adversarial.issue1044.test.ts
+          --runInBand
+      # Backward compatibility of the optional 4th `fingerprint` param: this
+      # pre-existing suite must stay green UNMODIFIED.
+      - name: Run the pre-existing reportNonFatal suite (backward compatibility)
+        run: npx jest src/diagnostics/__tests__/reportNonFatal.test.ts --runInBand
+
+  issue-1044-consumer-node-test:
+    name: "#1044 CONS: native Google/Apple sign-in failures reach Sentry (fails-on-revert)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: app-mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # Node 22 — `--experimental-strip-types` is how EVERY .test.ts in this
+          # app runs (there is no jest here). See useLaunchCityGate.test.ts.
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: app-mobile/package-lock.json
+      # npm ci is required by the TESTER ADVERSARIAL suite ONLY: its B6 test reads
+      # the INSTALLED @react-native-google-signin/google-signin package.json +
+      # errorCodes.js to assert NULL_PRESENTER's real absence in this app's SDK
+      # (16.0.0). The implementor happy-path suite below reads source TEXT only
+      # and needs no node_modules — npm ci is harmless to it.
+      - name: Install deps (the adversarial suite reads the installed SDK constants)
+        run: npm ci
+      - name: Run issue-1044 consumer suite (implementor happy-path)
+        run: >
+          node --experimental-strip-types --test
+          src/hooks/__tests__/useAuthSimple.authFailureCapture.issue1044.test.ts
+      # TESTER ADVERSARIAL suite (#1044 retest). Imports ONLY node builtins
+      # (node:test/assert/fs/path/url) and compiles source text, so it needs no
+      # npm ci — same contract as the implementor suite above. Different angle:
+      # differential against the frozen origin/main body + exotic rejections +
+      # reporter breakage + resolved-cancel P1 + P2 discriminator (D6 amended
+      # under [TEST-MOD-APPROVED ORCH-1044]). Registered so it is NOT dark.
+      - name: Run issue-1044 consumer TESTER ADVERSARIAL suite
+        run: >
+          node --experimental-strip-types --test
+          src/hooks/__tests__/useAuthSimple.authFailureCapture.adversarial.issue1044.test.ts
+      # I-SENTRY-SINGLE-INIT — the consumer change adds a CAPTURE, never an INIT.
+      - name: I-SENTRY-SINGLE-INIT still green
+        run: bash scripts/ci/check-single-sentry-init.sh

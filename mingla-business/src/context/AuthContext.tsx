@@ -182,6 +182,60 @@ if (Platform.OS !== "web" && webClientId) {
   );
 }
 
+/**
+ * #1044 [auth-failure-sentry-capture] — I-PROPOSED-1044-AUTH-FAILURE-REPORTED.
+ *
+ * THE single decision point for whether a NATIVE sign-in failure reaches Sentry.
+ * One named, greppable predicate per app, on purpose: the exclusion logic must
+ * not get quietly re-scattered across the individual catch branches.
+ *
+ * Why it exists: #1038 broke Google sign-in for EVERY Play-Store organizer for
+ * months (an Android OAuth client registered against the EAS upload-key SHA-1
+ * instead of the Play app-signing SHA-1). A human reported it. Monitoring never
+ * did — the catch block below Alerted the user and threw the error away, so a
+ * 90-day Sentry search for DEVELOPER_ERROR returned zero while the Android
+ * native pipeline was demonstrably live the whole time.
+ *
+ * The exclusion set is not an optimisation. Picker cancels and double-taps are
+ * normal user behaviour and are the highest-volume events on this path; reporting
+ * them would bury the one signal that matters.
+ *
+ * ┌── DO NOT REORDER, DO NOT REMOVE ────────────────────────────────────────┐
+ * The `typeof code !== "string"` statement MUST run FIRST. An error carrying no
+ * `code` at all — `new Error("Failed to create session")`, `new Error("Failed to
+ * get ID token from Google")`, a raw Supabase error — is exactly the class #1038
+ * belonged to and MUST be reported. It also closes the F-7 trap: `statusCodes`
+ * members are runtime native constants, and `NULL_PRESENTER` exists in this app's
+ * SDK (16.1.2) but NOT in app-mobile's (16.0.0). Any bare comparison against a
+ * possibly-`undefined` constant — including a `Set`/array `.includes()` built
+ * from them — would match every codeless error and silently drop it, recreating
+ * the exact bug this code exists to fix, inside its own fix.
+ * └─────────────────────────────────────────────────────────────────────────┘
+ *
+ * `SIGN_IN_REQUIRED` and `NULL_PRESENTER` are deliberately NOT excluded: this app
+ * never calls `signInSilently()`, so after an interactive `signIn()` both are
+ * anomalies worth seeing (expected volume ~0). Do not "helpfully" add them.
+ *
+ * Exclusions reference the `statusCodes` object, NEVER a hardcoded integer — the
+ * values are native constants that differ per platform (SIGN_IN_CANCELLED is
+ * "12501" on Android and "-5" on iOS).
+ */
+const shouldReportAuthFailure = (code: unknown): boolean => {
+  if (typeof code !== "string") return true;
+  // BELT-AND-BRACES, NOT THE LIVE GUARD (#1044). The Google picker cancel is
+  // handled at its ROOT, in signInWithGoogle's try block: SDK v16 RESOLVES
+  // `{ type: "cancelled" }` rather than rejecting, so control returns early and
+  // never reaches this predicate. This line is therefore unreachable for the
+  // Google cancel path today. It is kept on purpose — it still fires if the SDK
+  // ever reverts to a rejecting cancel, and it costs nothing. Do not read it as
+  // the mechanism that stops cancels reaching Sentry; that is the early return.
+  if (code === statusCodes.SIGN_IN_CANCELLED) return false;
+  if (code === statusCodes.IN_PROGRESS) return false;
+  if (code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) return false;
+  if (code === "ERR_REQUEST_CANCELED") return false;
+  return true;
+};
+
 // Web auth uses Supabase OAuth-redirect (DEC-076 + DEC-081). The browser
 // is redirected to Google/Apple, then back to `${origin}/auth/callback`
 // where Supabase finalises the session via `detectSessionInUrl: true`.
@@ -895,7 +949,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await GoogleSignin.signOut();
       }
 
-      await GoogleSignin.signIn();
+      // #1044 [auth-failure-sentry-capture] / #1038 — HANDLE THE RESOLVED CANCEL.
+      // google-signin v16 RESOLVES with `{ type: "cancelled", data: null }` when
+      // the user backs out of the account picker; it does NOT reject with
+      // `statusCodes.SIGN_IN_CANCELLED`. Verified in the installed SDK's own
+      // types: `signIn(): Promise<SignInSuccessResponse | CancelledResponse>`
+      // (node_modules/@react-native-google-signin/google-signin/lib/typescript/
+      //  src/signIn/GoogleSignin.d.ts), identical in 16.1.2 and 16.0.0.
+      //
+      // Discarding this result sent control straight into getTokens(), which
+      // throws `code: "getTokens"` — a code no exclusion covers. Live-fired on
+      // business Android: three picker cancels produced THREE Sentry captures,
+      // and the user was shown "Google Sign-In failed / getTokens requires a
+      // user to be signed in". Backing out of a picker is not a failure.
+      //
+      // Returning here — before getTokens() is ever called — is the root fix:
+      // no capture, no Alert, and the catch block below is never entered.
+      // Do NOT "solve" this by adding "getTokens" to shouldReportAuthFailure's
+      // exclusion set; that would blind us to genuine token failures, which is
+      // the exact class of bug #1038 was.
+      const signInResult = await GoogleSignin.signIn();
+      if (signInResult?.type === "cancelled") {
+        return { error: new Error("Sign-in cancelled") };
+      }
+
       const tokens = await GoogleSignin.getTokens();
 
       if (!tokens.idToken) {
@@ -956,6 +1033,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (err: unknown) {
       const e = err instanceof Error ? err : new Error(String(err));
       const code = (err as { code?: string })?.code;
+
+      // #1044 [auth-failure-sentry-capture] / #1038 — report to engineering
+      // BEFORE any early return. Placed first on purpose: the SIGN_IN_CANCELLED
+      // and PLAY_SERVICES_NOT_AVAILABLE branches below return, so a capture
+      // placed after them would never see those codes and the exclusion set
+      // would be dead code. The exclusion set exists so picker cancellations and
+      // double-taps cannot drown the signal, and shouldReportAuthFailure's
+      // `typeof code !== "string"` guard MUST run first (codeless errors are the
+      // #1038 class). Additive ONLY — nothing below moves, no branch changes, no
+      // return value changes, and reportNonFatal cannot throw or block (its body
+      // is try/catch-wrapped and synchronous; see diagnostics/reportNonFatal.ts).
+      if (shouldReportAuthFailure(code)) {
+        const reportCode =
+          typeof code === "string" || typeof code === "number"
+            ? String(code)
+            : "none";
+        reportNonFatal(
+          "auth.signInWithGoogle.native",
+          e,
+          {
+            provider: "google",
+            code: reportCode,
+            platform: Platform.OS,
+            osVersion: String(Platform.Version),
+            // #1044 — identifies WHICH OAuth client this build was configured
+            // against (the exact axis #1038 turned on) without publishing the
+            // id. Slice the DISCRIMINATING segment: everything before the first
+            // "." is the project number + client hash
+            // ("169132274606-hp7cne780gsp7s6l1rrvbfktp6smrfs0"); everything
+            // after it is the literal ".apps.googleusercontent.com", which every
+            // Google client id on earth shares. A naive `.slice(-8)` of the WHOLE
+            // id therefore returned the constant "tent.com" for every possible
+            // client — proven live against a deliberately invalid id — so the
+            // one axis this field exists for was not actually being captured.
+            // Last 8 chars of the discriminating segment only: never the full
+            // client id, never an email, never a token
+            // (I-PROPOSED-1044-AUTH-FAILURE-REPORTED).
+            webClientIdSuffix:
+              typeof webClientId === "string" && webClientId.length > 0
+                ? webClientId.split(".")[0].slice(-8)
+                : "unset",
+          },
+          // Group by provider + code, never by message: Google's messages vary
+          // by device locale and GMS version, so message grouping would shatter
+          // one systemic outage into dozens of issues.
+          ["auth-signin", "google", reportCode],
+        );
+      }
 
       if (code === statusCodes.SIGN_IN_CANCELLED) {
         return { error: e };
@@ -1045,6 +1170,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (err: unknown) {
       const e = err instanceof Error ? err : new Error(String(err));
       const code = (err as { code?: string })?.code;
+      // #1044 [auth-failure-sentry-capture] / #1038 — report to engineering
+      // BEFORE the ERR_REQUEST_CANCELED early return below, so the predicate
+      // actually sees that code and the exclusion is provable. The exclusion set
+      // exists so user cancellations cannot drown the signal, and
+      // shouldReportAuthFailure's `typeof code !== "string"` guard MUST run first
+      // (a codeless "Failed to create session" is the #1038 class). Additive
+      // ONLY — the Alert, its copy, the branch order and the return value are
+      // unchanged, and reportNonFatal cannot throw or block.
+      if (shouldReportAuthFailure(code)) {
+        const reportCode =
+          typeof code === "string" || typeof code === "number"
+            ? String(code)
+            : "none";
+        reportNonFatal(
+          "auth.signInWithApple.native",
+          e,
+          {
+            provider: "apple",
+            code: reportCode,
+            platform: Platform.OS,
+            osVersion: String(Platform.Version),
+            // #1044 — NO `webClientIdSuffix` here, deliberately. That field
+            // describes a GOOGLE OAuth client; an Apple Services-ID fault is not
+            // described by it, and carrying it on this path was a misleading
+            // field on every Apple event. Apple has no equivalent client id
+            // available at this point, and Sentry's own `release`/`dist` already
+            // identify the build, so this payload is FOUR keys, not five. Never
+            // add Apple's identityToken / fullName / user identifier here
+            // (I-PROPOSED-1044-AUTH-FAILURE-REPORTED).
+          },
+          ["auth-signin", "apple", reportCode],
+        );
+      }
       if (code === "ERR_REQUEST_CANCELED") {
         return { error: e };
       }
