@@ -855,6 +855,40 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           showToast(message);
           return;
         }
+        // #1043 — the RSVP branch returns at the end of this block (below),
+        // BEFORE the non-RSVP theme write (~:1178), so an organiser's theme
+        // change on a published RSVP was silently dropped:
+        // buildRsvpUpdatePayloadDiff carries no theme field and
+        // biz_update_live_rsvp writes no override columns. RSVPs are
+        // public.events rows, so the SAME offering-neutral columnar write the
+        // event path uses (patchPublishedEventTheme -> patchOfferingTheme,
+        // .eq("id")) targets them correctly — no RPC or migration needed. Gated
+        // on an actual theme patch so an RSVP edit that didn't touch the theme
+        // emits no needless write. Server-success-then-local, ordered like the
+        // event path: written after the RSVP RPC commits and before the Zustand
+        // mirror + navigate; the invalidateServerEventCaches() at the end of
+        // this branch covers the columns just written.
+        if (patch.themeOverrides !== undefined) {
+          if (liveEvent.serverEventId === null) {
+            setSubmitting(false);
+            setModal((prev) => ({ ...prev, visible: false }));
+            showToast(
+              "Save failed because this event is missing its server id.",
+            );
+            return;
+          }
+          try {
+            await patchPublishedEventTheme({
+              eventId: liveEvent.serverEventId,
+              themeOverrides: patch.themeOverrides ?? null,
+            });
+          } catch {
+            setSubmitting(false);
+            setModal((prev) => ({ ...prev, visible: false }));
+            showToast("Couldn't save the public theme. Tap to try again.");
+            return;
+          }
+        }
         // ORCH-1172 — the RPC is the source of truth for an RSVP edit; it has
         // already committed. Best-effort refresh the local Zustand mirror so a
         // cached list stays fresh — but a server-loaded RSVP (the common case,

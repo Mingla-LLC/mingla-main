@@ -175,6 +175,12 @@ export interface PublishRpcResponse {
     vibe_tags?: string[] | null;
     music_genres?: string[] | null;
     location_geo?: string | { x: number; y: number } | null;
+    // issue #1039: the publish RPC returns `to_jsonb(v_event)` (a full
+    // public.events%ROWTYPE row), so the three theme override columns ARE
+    // present at runtime. Optional during transition for old test fixtures.
+    theme_color_override?: string | null;
+    theme_font_override?: string | null;
+    theme_animation_override?: string | null;
   };
   brand: {
     id: string;
@@ -834,9 +840,16 @@ export const eventFromPublishResponse = (
     vibe_tags: response.event.vibe_tags ?? null,
     music_genres: response.event.music_genres ?? null,
     location_geo: response.event.location_geo ?? null,
-    theme_color_override: null,
-    theme_font_override: null,
-    theme_animation_override: null,
+    // issue #1039 — forward the REAL theme overrides from the publish RPC
+    // response (to_jsonb(v_event) carries them) instead of hardcoding null, so
+    // the synthetic post-publish row matches what business_management_events_view
+    // returns on subsequent fetches. Without this, publish -> immediately-edit
+    // shows brand-default even with the view fix, because the ORCH-1172 R4
+    // re-seed can't rescue it (synthetic seed and view refetch share the same
+    // updated_at, so the seed key never changes).
+    theme_color_override: response.event.theme_color_override ?? null,
+    theme_font_override: response.event.theme_font_override ?? null,
+    theme_animation_override: response.event.theme_animation_override ?? null,
   };
   const tickets = (response.tickets ?? []).map(ticketRowToTicketStub);
   return {
