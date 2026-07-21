@@ -11,12 +11,18 @@
  * past 80pt or 600px/s the sheet closed under the user.
  *
  * The fix, mirroring the already-shipped web `webDragCatch`: the Pan is
- * attached to a transparent, absolutely-positioned 52pt band pinned to the top
- * of the panel over the handle, rendered as a SIBLING of SheetMobilePanelInner.
+ * attached to a transparent, absolutely-positioned band pinned to the top of
+ * the panel over the handle, rendered as a SIBLING of SheetMobilePanelInner.
+ * The band is EXACTLY the handle chrome (24pt) and may never exceed it — an
+ * earlier 52pt band overlaid ~28pt of consumer content and killed close
+ * buttons in 63 sheets (#1022 F-2, proven on a physical Samsung).
  *
  * This gate asserts, on mingla-business/src/components/ui/SheetMobile.tsx:
- *   INV-1  a single shared SHEET_DRAG_BAND_HEIGHT constant exists and is >= 44
- *          (the platform minimum touch target).
+ *   INV-1  a single shared SHEET_DRAG_BAND_HEIGHT constant exists and is
+ *          <= HANDLE_REGION_PX (24) — the band never exceeds the handle chrome,
+ *          so it can overlay no consumer content. (Supersedes the original
+ *          ">= 44pt touch target" rule, which was WRONG: a drag handle is not
+ *          a tap target, and a band taller than the handle IS the F-2 bug.)
  *   INV-2  BOTH the native band and the web webDragCatch consume that constant
  *          — neither may hardcode a height, so the platforms cannot drift.
  *   INV-3  WebSafeGestureDetector wraps the drag band, NOT the panel
