@@ -38,6 +38,12 @@ const mockFrom = jest.fn();
 jest.mock("../supabase", () => ({
   supabase: {
     from: (...args: unknown[]) => mockFrom(...args),
+    // #1062 [biz-jest-residual-burndown] Wave 1 / B3c [TEST-MOD-APPROVED ORCH-1062] —
+    // getBrands now precheck-reads supabase.auth.getSession() (META-ORCH-1232 H3 /
+    // META-ORCH-1235) and THROWS if no session is attached, so the mock needs `auth`.
+    // Sourced from the shared supabaseMock so this can never drift again (defaults to
+    // a signed-in session). Plumbing only.
+    auth: require("./__helpers__/supabaseMock").createSupabaseAuthMock(),
   },
 }));
 
@@ -46,6 +52,8 @@ jest.mock("../appsFlyerService", () => ({
 }));
 
 import { getBrands } from "../brandsService";
+// #1062 [biz-jest-residual-burndown] Wave 1 / B3c — shared chainable supabase mock.
+import { createChainableQuery } from "./__helpers__/supabaseMock";
 import type { BrandRow } from "../brandMapping";
 
 const brand = (id: string, name: string, createdAt: string): BrandRow => ({
@@ -148,6 +156,12 @@ function setupMocks(membRows: EmbeddedRow[]): MembershipBuilder {
   mockFrom.mockImplementation((...args: unknown[]) => {
     const table = args[0] as string;
     if (table === "brand_team_members") return memb;
+    // #1062 [biz-jest-residual-burndown] Wave 1 / B3c [TEST-MOD-APPROVED ORCH-1062] —
+    // getBrands also runs the META-ORCH-1232 H2 owner-union backstop read
+    // `from("brands").select("*").eq("account_id",…).is("deleted_at",null)`; route it
+    // to an empty shared chainable query so it resolves (the membership rows above are
+    // the switcher source under test). Plumbing only.
+    if (table === "brands") return createChainableQuery({ data: [] });
     if (table === "events") return eventsEmpty();
     if (table === "orders") return ordersEmpty();
     throw new Error(`unexpected table ${table}`);
