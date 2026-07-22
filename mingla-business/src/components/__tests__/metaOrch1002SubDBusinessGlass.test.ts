@@ -99,7 +99,11 @@ describe("Sub-D Symptom-B — ari/AiDisclosureModal.tsx guarded (via shared help
   });
 
   test("real-blur path still renders a real BlurView", () => {
-    expect(code).toMatch(/<BlurView\s+intensity=\{40\}/);
+    // [ORCH-1062 pin-fix] A `pointerEvents="none"` prop was inserted before
+    // `intensity={40}` on the BlurView (prop ORDER is incidental source shape;
+    // intensity is still 40). Tolerate intervening props while keeping the real
+    // assertion: the real-blur path renders a <BlurView> with intensity 40.
+    expect(code).toMatch(/<BlurView[\s\S]{0,160}intensity=\{40\}/);
   });
 });
 
