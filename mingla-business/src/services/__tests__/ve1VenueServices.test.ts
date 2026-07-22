@@ -82,13 +82,30 @@ describe("upsertBrandHours", () => {
 
     await upsertBrandHours("brand-1", hours);
 
+    // [TEST-MOD-APPROVED ORCH-1062] B2 drift — META-ORCH-1255 (Leg A M3/deviation
+    // D5) made biz_upsert_brand_hours VENUE-keyed: the payload key is now
+    // `p_venue_id` (was `p_brand_id`) and each hour row carries `open_time`/
+    // `close_time` (brandHoursToRpcPayload maps openTime/closeTime, null → "").
+    // brandsService.ts:381-383 + utils/venueBrandHours.ts. Assertion strength is
+    // preserved (still an exact-key objectContaining, now widened to pin the
+    // open_time/close_time payload the drift introduced).
     expect(rpcMock).toHaveBeenCalledWith(
       "biz_upsert_brand_hours",
       expect.objectContaining({
-        p_brand_id: "brand-1",
+        p_venue_id: "brand-1",
         p_hours: expect.arrayContaining([
-          expect.objectContaining({ weekday: 0, is_closed: false }),
-          expect.objectContaining({ weekday: 6, is_closed: true }),
+          expect.objectContaining({
+            weekday: 0,
+            is_closed: false,
+            open_time: "09:00",
+            close_time: "17:00",
+          }),
+          expect.objectContaining({
+            weekday: 6,
+            is_closed: true,
+            open_time: "",
+            close_time: "",
+          }),
         ]),
       }),
     );

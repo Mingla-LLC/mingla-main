@@ -15,7 +15,23 @@ import {
 import { uploadEventCoverMedia } from "../eventCoverMediaService";
 import { supabase } from "../supabase";
 
-const mockFileArrayBuffer = jest.fn<() => Promise<ArrayBuffer>>();
+// [TEST-MOD-APPROVED ORCH-1062] B3c-style byte-read mock migration — the local
+// file read moved off `expo-file-system` `new File(uri).arrayBuffer()` onto
+// `readEventCoverFileBytes(uri)` (services/eventCoverFileReader.ts), which now
+// reads via `fetch(uri).arrayBuffer()`. The old `expo-file-system.File` mock is
+// dead (nothing imports it any more), so every upload test resolved 0 bytes and
+// dead-ended at the "We couldn't read that file" guard. Mock the current read
+// seam directly. This is plumbing only — zero `expect()` changed.
+const mockReadEventCoverFileBytes = jest.fn<
+  (uri: string) => Promise<{ bytes: Uint8Array; byteLength: number }>
+>();
+
+const fileBytes = (
+  arr: number[],
+): { bytes: Uint8Array; byteLength: number } => {
+  const bytes = new Uint8Array(arr);
+  return { bytes, byteLength: bytes.byteLength };
+};
 
 jest.mock("../supabase", () => ({
   supabase: {
@@ -25,10 +41,8 @@ jest.mock("../supabase", () => ({
   },
 }));
 
-jest.mock("expo-file-system", () => ({
-  File: jest.fn().mockImplementation(() => ({
-    arrayBuffer: mockFileArrayBuffer,
-  })),
+jest.mock("../eventCoverFileReader", () => ({
+  readEventCoverFileBytes: (uri: string) => mockReadEventCoverFileBytes(uri),
 }));
 
 describe("eventCoverMediaService", () => {
@@ -76,7 +90,9 @@ describe("eventCoverMediaService", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockFileArrayBuffer.mockResolvedValue(new Uint8Array([0x89, 0x50, 0x4e, 0x47]).buffer);
+    mockReadEventCoverFileBytes.mockResolvedValue(
+      fileBytes([0x89, 0x50, 0x4e, 0x47]),
+    );
     storageUpload.mockResolvedValue({ error: null });
     storageGetPublicUrl.mockReturnValue({
       data: { publicUrl: "https://cdn.example.com/cover.png" },
@@ -252,12 +268,16 @@ describe("eventCoverMediaService", () => {
   });
 
   test("rejects over-duration video covers", () => {
+    // [TEST-MOD-APPROVED ORCH-1062] B2 drift — the cover-video cap was raised
+    // 15s→29s (EVENT_COVER_MAX_VIDEO_DURATION_MS = 29_000, utils/
+    // eventCoverMediaRules.ts:4). The threshold assertion already uses the
+    // constant; only the human copy string drifted (15→29). Same strength.
     expect(() =>
       validateEventCoverAsset({
         mimeType: "video/mp4",
         durationMs: EVENT_COVER_MAX_VIDEO_DURATION_MS + 1,
       }),
-    ).toThrow("Cover videos must be 15 seconds or shorter.");
+    ).toThrow("Cover videos must be 29 seconds or shorter.");
   });
 
   test("rejects videos with missing duration using a precise error", () => {
@@ -278,7 +298,7 @@ describe("eventCoverMediaService", () => {
     }
   });
 
-  test("accepts iOS MOV or QuickTime videos when they are within the 15-second cover limit", () => {
+  test("accepts iOS MOV or QuickTime videos when they are within the 29-second cover limit", () => {
     expect(
       validateEventCoverAsset({
         mimeType: "video/quicktime",
@@ -379,7 +399,10 @@ describe("eventCoverMediaService", () => {
   });
 
   test("rejects empty local file bytes before storage upload", async () => {
-    mockFileArrayBuffer.mockResolvedValueOnce(new ArrayBuffer(0));
+    mockReadEventCoverFileBytes.mockResolvedValueOnce({
+      bytes: new Uint8Array(0),
+      byteLength: 0,
+    });
 
     await expect(
       uploadEventCoverMedia({
@@ -417,11 +440,11 @@ describe("eventCoverMediaService", () => {
   });
 
   test("routes over-duration videos through video_too_long before upload if trim returned an over-limit asset", async () => {
-    mockFileArrayBuffer.mockResolvedValueOnce(
-      new Uint8Array([
+    mockReadEventCoverFileBytes.mockResolvedValueOnce(
+      fileBytes([
         0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f,
         0x6d,
-      ]).buffer,
+      ]),
     );
 
     await expect(
@@ -439,12 +462,12 @@ describe("eventCoverMediaService", () => {
     expect(storageUpload).not.toHaveBeenCalled();
   });
 
-  test("keeps 15-second enforcement for iOS MOV videos before upload", async () => {
-    mockFileArrayBuffer.mockResolvedValueOnce(
-      new Uint8Array([
+  test("keeps 29-second enforcement for iOS MOV videos before upload", async () => {
+    mockReadEventCoverFileBytes.mockResolvedValueOnce(
+      fileBytes([
         0x00, 0x00, 0x00, 0x14, 0x66, 0x74, 0x79, 0x70, 0x71, 0x74, 0x20,
         0x20,
-      ]).buffer,
+      ]),
     );
 
     await expect(
@@ -463,11 +486,11 @@ describe("eventCoverMediaService", () => {
   });
 
   test("uploads short iOS MOV videos with QuickTime content type", async () => {
-    mockFileArrayBuffer.mockResolvedValueOnce(
-      new Uint8Array([
+    mockReadEventCoverFileBytes.mockResolvedValueOnce(
+      fileBytes([
         0x00, 0x00, 0x00, 0x14, 0x66, 0x74, 0x79, 0x70, 0x71, 0x74, 0x20,
         0x20,
-      ]).buffer,
+      ]),
     );
     storageGetPublicUrl.mockReturnValueOnce({
       data: { publicUrl: "https://cdn.example.com/cover.mov" },

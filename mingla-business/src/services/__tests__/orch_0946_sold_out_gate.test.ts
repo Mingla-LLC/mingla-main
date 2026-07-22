@@ -20,11 +20,52 @@
  * in `app/checkout-trip/[tripEventId]/index.tsx` and re-running this file.
  */
 
-import { describe, expect, test } from "@jest/globals";
+/* eslint-disable import/first */
+import { describe, expect, jest, test } from "@jest/globals";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import type { TripPricingTier } from "../tripsService";
+
+// [TEST-MOD-APPROVED ORCH-1062] B1 CONVERT (behavioral) — the adversarial
+// "event-side public read overwrites capacity with remaining" assertion below
+// was a source-text pin (`readFileSync` → `toMatch(/return { ...s, capacity:
+// remaining }/)`). ORCH-1006 (server all-in) renamed the mapper's intermediate
+// var `s` → `withAllIn` (publicEventsService.ts:1263-1274), so the exact-text pin
+// broke on the refactor while the BEHAVIOR is unchanged. This invariant (event
+// tickets expose `capacity = bookable remaining` for limited tiers, untouched for
+// unlimited) is load-bearing and has NO other coverage (publicEventsService.test
+// asserts no capacity; orch_1130 mocks the RPC empty), so per SPEC §B1 it is
+// CONVERTED to a real behavioral assertion through the exported getPublicEventById
+// (a strict-grep gate convert would touch DO-NOT-TOUCH CI/MANIFEST). Harness
+// mirrors the proven publicEventsService.orch_1130_trip_dates.test.ts.
+const rpcMock = jest.fn() as ReturnType<typeof jest.fn>;
+const fromMock = jest.fn() as ReturnType<typeof jest.fn>;
+
+jest.mock("../supabase", () => ({
+  supabase: {
+    rpc: (...args: unknown[]) => rpcMock(...args),
+    from: (table: string) => fromMock(table),
+  },
+}));
+
+jest.mock("expo-image", () => ({}), { virtual: true });
+
+// `@mingla/offering-rendering` is a Metro-resolved workspace barrel; publicEvents
+// Service only pulls the theme-slug guards from it. Stub them so the module loads
+// under node/ts-jest (no moduleNameMapper in this worktree). Does not mask the
+// capacity behavior under test.
+jest.mock(
+  "@mingla/offering-rendering",
+  () => ({
+    isThemeAnimationSlug: () => false,
+    isThemeColor: () => false,
+    isThemeFontSlug: () => false,
+  }),
+  { virtual: true },
+);
+
+import { getPublicEventById } from "../publicEventsService";
 
 // Re-derive the trip-side mapper here (same logic as
 // `app/checkout-trip/[tripEventId]/index.tsx:65`) so the test is fully
@@ -131,13 +172,154 @@ describe("ORCH-0946 sold-out gate (adversarial)", () => {
     expect(file).toMatch(/GRANT EXECUTE ON FUNCTION public\.pg_public_ticket_types_remaining\(uuid\) TO anon, authenticated/);
   });
 
-  test("event-side public read overwrites capacity with remaining for non-unlimited tickets", () => {
-    const file = readFileSync(
-      path.resolve(__dirname, "../publicEventsService.ts"),
-      "utf-8",
-    );
-    expect(file).toMatch(/fetchTicketTypesRemaining/);
-    expect(file).toMatch(/return \{ \.\.\.s, capacity: remaining \}/);
-    expect(file).toMatch(/if \(s\.isUnlimited\) return s/);
+  test("event-side public read overwrites capacity with remaining for non-unlimited tickets", async () => {
+    // BEHAVIORAL CONVERT (see file header): drive the exported getPublicEventById
+    // and assert the mapper wires the bookable `remaining` into `capacity` for a
+    // limited tier while leaving an unlimited tier untouched — the exact invariant
+    // the old source-text pin guarded, now refactor-proof.
+    const EVENT_ID = "11111111-1111-4111-8111-111111111111";
+    const eventRow = {
+      id: EVENT_ID,
+      brand_id: "brand-1",
+      brand_slug: "brand-1",
+      brand_name: "Brand One",
+      brand_description: null,
+      brand_profile_photo_url: null,
+      brand_display_attendee_count: false,
+      brand_address: null,
+      brand_cover_media_url: null,
+      brand_theme_color: null,
+      brand_theme_font: null,
+      brand_theme_animation: null,
+      title: "Sold-out gate event",
+      description: null,
+      slug: "sold-out-gate-event",
+      event_type: "event",
+      location_text: null,
+      online_url: null,
+      is_online: false,
+      is_recurring: false,
+      is_multi_date: false,
+      recurrence_rules: null,
+      cover_media_url: null,
+      cover_media_type: null,
+      cover_media_provider: null,
+      cover_media_source_url: null,
+      cover_media_credit: null,
+      cover_media_credit_url: null,
+      cover_media_alt: null,
+      currency: "USD",
+      visibility: "public",
+      show_on_discover: true,
+      status: "scheduled",
+      published_at: "2026-05-01T00:00:00Z",
+      timezone: "UTC",
+      created_at: "2026-05-01T00:00:00Z",
+      updated_at: "2026-05-01T00:00:00Z",
+      public_theme: null,
+      theme_color_override: null,
+      theme_font_override: null,
+      theme_animation_override: null,
+      master_start_at: "2026-09-19T18:00:00Z",
+      master_end_at: "2026-09-19T22:00:00Z",
+      master_timezone: "UTC",
+      master_event_date_id: "date-1",
+    };
+
+    const ticketRow = (
+      patch: Record<string, unknown>,
+    ): Record<string, unknown> => ({
+      id: "tt",
+      event_id: EVENT_ID,
+      name: "Ticket",
+      description: null,
+      price_cents: 0,
+      currency: "USD",
+      quantity_total: 55,
+      is_unlimited: false,
+      is_free: true,
+      sale_start_at: null,
+      sale_end_at: null,
+      min_purchase_qty: 1,
+      max_purchase_qty: null,
+      is_hidden: false,
+      is_disabled: false,
+      requires_approval: false,
+      allow_transfers: true,
+      password_protected: false,
+      available_online: true,
+      available_in_person: false,
+      waitlist_enabled: false,
+      display_order: 0,
+      ...patch,
+    });
+
+    const ticketRows = [
+      ticketRow({ id: "tt-limited", quantity_total: 55, is_unlimited: false }),
+      ticketRow({
+        id: "tt-unlimited",
+        quantity_total: null,
+        is_unlimited: true,
+        display_order: 1,
+      }),
+    ];
+
+    fromMock.mockReset();
+    rpcMock.mockReset();
+    fromMock.mockImplementation((table: string) => {
+      if (table === "business_public_events_view") {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () =>
+                Promise.resolve({ data: eventRow, error: null }),
+            }),
+          }),
+        };
+      }
+      if (table === "ticket_types") {
+        return {
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                is: () => ({
+                  order: () =>
+                    Promise.resolve({ data: ticketRows, error: null }),
+                }),
+              }),
+            }),
+          }),
+        };
+      }
+      throw new Error(`unexpected from(${table}) in ORCH-0946 behavioral test`);
+    });
+    // pg_public_ticket_types_remaining → the limited tier has 3 bookable left;
+    // every other RPC (all-in, canonical body) returns benign empty/null so the
+    // getter never blanks and no bookable RPC fires (free tickets).
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pg_public_ticket_types_remaining") {
+        return Promise.resolve({
+          data: [{ ticket_type_id: "tt-limited", sold: 52, remaining: 3 }],
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: null, error: null });
+    });
+
+    const detail = await getPublicEventById(EVENT_ID);
+    expect(detail).not.toBeNull();
+
+    const limited = detail!.tickets.find((t) => t.id === "tt-limited");
+    const unlimited = detail!.tickets.find((t) => t.id === "tt-unlimited");
+    expect(limited).toBeDefined();
+    expect(unlimited).toBeDefined();
+
+    // Non-unlimited tier: capacity is OVERWRITTEN with the bookable remaining (3),
+    // NOT the total tier capacity (55) — this is the sold-out-gate fix.
+    expect(limited!.capacity).toBe(3);
+    expect(limited!.capacity).not.toBe(55);
+    // Unlimited tier: capacity untouched (null), never overwritten with remaining.
+    expect(unlimited!.isUnlimited).toBe(true);
+    expect(unlimited!.capacity).toBeNull();
   });
 });
