@@ -70,12 +70,22 @@ const BANNED = [
 ];
 
 /**
- * GRANDFATHERED pre-existing debt (registered as ORCH-1342 discoveries — the
- * exceptions are FILE+PATTERN narrow, so any NEW literal class in these files
- * still fires):
- * - appsFlyerService.ts (business) still sets go.usemingla.com as its branded
- *   domain — the ORCH-1346 business swap is bound to the next business NATIVE
- *   build (COMMS-0052/0063: no business OTA).
+ * GRANDFATHERED pre-existing debt. Currently EMPTY — every registered debt has
+ * been paid off and its entry deleted in the SAME commit that paid it. The
+ * mechanism is retained for a future FILE+PATTERN-narrow exception (any such
+ * entry stays narrow, so a NEW literal class in the same file still fires).
+ *
+ * ─── #1050 — appsFlyerService.ts `onelink` grandfather DELETED ───────────────
+ * appsFlyerService.ts (business) previously set `go.usemingla.com` as its
+ * branded OneLink domain and was grandfathered for the `onelink` pattern — the
+ * ORCH-1346 business host swap was bound to the next business NATIVE build
+ * (COMMS-0052/0063: no business OTA). #1050 IS that swap: the service now
+ * imports BUSINESS_ONELINK_BRANDED_DOMAIN (`biz.usemingla.com`) from the
+ * storeLinks SSOT and carries NO `go.usemingla.com` literal. The debt is PAID,
+ * so the exemption is DELETED and the gate now polices that file like any other.
+ * #1050 — `biz.` is the Business app's OWN vouching host; `go.` is CONSUMER-only
+ * and re-introducing it (here or in mingla-business/app.json) re-breaks
+ * business.usemingla.com App Link verification on Android <=11.
  *
  * ─── ORCH-1378 — accept-brand-invitation/success.tsx REMOVED from this map ──
  * Its entry read: "carries the BUSINESS store listing URLs inline — predates
@@ -89,9 +99,7 @@ const BANNED = [
  * it silently re-authorises the exact literal class the gate exists to ban. If
  * you pay off a debt here, delete the entry in the same commit.
  */
-const GRANDFATHERED = {
-  "mingla-business/src/services/appsFlyerService.ts": new Set(["onelink"]),
-};
+const GRANDFATHERED = {};
 
 /**
  * Core checker — pure over a {relPath: content} map so --self-test can inject
@@ -243,21 +251,26 @@ open(APP_STORE_URL);
   };
   if (run(testFixture).length !== 0) selfFailures.push("__tests__ fixture literal wrongly flagged: " + JSON.stringify(run(testFixture)));
 
-  // 9. A grandfathered file passes for ITS registered pattern only…
-  const grandfatheredOk = {
+  // 9. #1050 — appsFlyerService.ts is NO LONGER grandfathered for `onelink`
+  // (debt paid: it imports BUSINESS_ONELINK_BRANDED_DOMAIN from the SSOT and
+  // carries no go. literal). A RESURRECTED go.usemingla.com literal there MUST
+  // now fire like any other file — the deleted grandfather no longer silently
+  // re-authorises it (re-adding go. re-breaks Android <=11 verification).
+  const appsFlyerGoResurrected = {
     ...good,
     "mingla-business/src/services/appsFlyerService.ts":
       'const ONELINK_BRANDED_DOMAIN = "go.usemingla.com";\n',
   };
-  if (run(grandfatheredOk).length !== 0) selfFailures.push("grandfathered onelink literal wrongly flagged: " + JSON.stringify(run(grandfatheredOk)));
+  if (run(appsFlyerGoResurrected).length === 0) selfFailures.push("go.usemingla.com literal in appsFlyerService.ts not flagged (the #1050 grandfather deletion is decorative)");
 
-  // 10. …but a DIFFERENT banned class in a grandfathered file still fires.
-  const grandfatheredNarrow = {
+  // 10. …and any OTHER banned class in that same file fires too — no grandfather
+  // shields it now.
+  const appsFlyerMultiClass = {
     ...good,
     "mingla-business/src/services/appsFlyerService.ts":
       'const ONELINK_BRANDED_DOMAIN = "go.usemingla.com";\nconst STALE = "https://apps.apple.com/app/mingla";\n',
   };
-  if (run(grandfatheredNarrow).length === 0) selfFailures.push("non-grandfathered class in a grandfathered file not flagged");
+  if (run(appsFlyerMultiClass).length === 0) selfFailures.push("banned classes in appsFlyerService.ts not flagged");
 
   // 11. ORCH-1381 — BUSINESS_PLAY_STORE_URL in the marketing SSOT must not shadow
   // PLAY_STORE_URL's byte-compare. parseConst needs whitespace + a literal

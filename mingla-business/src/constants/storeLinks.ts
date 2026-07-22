@@ -83,3 +83,21 @@ export const GUEST_FUNNEL_ONELINK_URL: string | null = null;
  * domain (a raw literal injected outside the SSOT PASSED it).
  */
 export const BUSINESS_INVITE_ONELINK_URL = "https://biz.usemingla.com/ZSCW";
+
+/**
+ * The bare branded-OneLink HOST (no scheme, no path) for the AppsFlyer SDK's
+ * `setOneLinkCustomDomains` registration in appsFlyerService.ts. Derived from
+ * BUSINESS_INVITE_ONELINK_URL's host. #1050.
+ *
+ * #1050 — the Business app's OneLink host is `biz.` (its OWN vouching domain);
+ * `go.usemingla.com` is CONSUMER-only. Registering `go.` here (or declaring it
+ * in app.json) re-breaks `business.usemingla.com` App Link verification on
+ * Android <=11 (the all-or-nothing verifier fails the whole autoVerify set when
+ * a declared host has no Digital Asset Links statement for the Business package).
+ *
+ * This file is the ONLY place a bare `biz.usemingla.com` host literal may live —
+ * the `orch-1342-store-links-ssot.mjs` gate bans it everywhere else in
+ * mingla-business. appsFlyerService.ts MUST import this constant, never hardcode
+ * the host.
+ */
+export const BUSINESS_ONELINK_BRANDED_DOMAIN = "biz.usemingla.com";

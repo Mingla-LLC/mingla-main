@@ -19,6 +19,11 @@
 
 import { Platform } from "react-native";
 import { supabase } from "./supabase";
+// #1050 — the branded OneLink host is imported from the storeLinks SSOT, never
+// hardcoded here (the orch-1342 gate bans a bare `biz.usemingla.com` literal
+// outside storeLinks.ts). Its value is `biz.usemingla.com` — the Business app's
+// OWN vouching domain; `go.usemingla.com` is CONSUMER-only.
+import { BUSINESS_ONELINK_BRANDED_DOMAIN } from "../constants/storeLinks";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Native-module lazy load (ORCH-0807 Rev 3 emergency unblock 2026-05-12)
@@ -129,7 +134,14 @@ const registeredDeviceKeys = new Set<string>();
 // ─────────────────────────────────────────────────────────────────────────────
 
 // §C.1 — the branded OneLink subdomain the SDK must treat as a OneLink host.
-const ONELINK_BRANDED_DOMAIN = "go.usemingla.com";
+//
+// #1050 — this is the SSOT import BUSINESS_ONELINK_BRANDED_DOMAIN (value
+// `biz.usemingla.com`, the Business app's OWN vouching branded domain), used
+// directly at the setOneLinkCustomDomains call below. It MUST swap in lockstep
+// with app.json: if app.json declares `biz.` but the SDK registers `go.`, a
+// verified `biz.usemingla.com/ZSCW` link opens the app and then DEAD-ENDS
+// (deepLinkStatus: NOT_FOUND) — the referral/download sink never fires. `go.`
+// is CONSUMER-only and must never be registered here.
 
 // §B.1 payload contract (shared with consumer). B1 business only acts on the
 // referral discriminator + a piggybacked `af_sub1`; everything else is a no-op
@@ -296,16 +308,16 @@ export function initializeAppsFlyer(): void {
     registerOneLinkDeepLink(sdk);
 
     // ORCH-1318 (§C.1) — treat the branded subdomain as a OneLink host so the
-    // SDK resolves `go.usemingla.com` links as OneLinks. Own try/catch so a
-    // failure here never blocks `initSdk`.
+    // SDK resolves `biz.usemingla.com` links as OneLinks (#1050). Own try/catch
+    // so a failure here never blocks `initSdk`.
     try {
       sdk.setOneLinkCustomDomains(
-        [ONELINK_BRANDED_DOMAIN],
+        [BUSINESS_ONELINK_BRANDED_DOMAIN],
         (result: unknown) => {
           if (__DEV__) {
             console.log(
               "[AppsFlyer] OneLink custom domain registered:",
-              ONELINK_BRANDED_DOMAIN,
+              BUSINESS_ONELINK_BRANDED_DOMAIN,
               result,
             );
           }
