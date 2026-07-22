@@ -37,38 +37,52 @@ describe("ORCH-0859 REWORK 3 — events_type filter audit (event-only callers)",
   const BUSINESS_EVENTS = read("services/businessEvents.ts");
   const PUBLIC_EVENTS = read("services/publicEventsService.ts");
 
-  test("eventDrafts.fetchDraftsForBrand filters event_type='event'", () => {
-    const fn = EVENT_DRAFTS.match(/fetchDraftsForBrand[^]*?^\};/m);
+  // [TEST-MOD-APPROVED ORCH-1062] B2 drift (tests below) — ORCH-1150 [RSVP event
+  // wizard] stores RSVP drafts as event_type='rsvp' and every event-only draft
+  // READ/UPDATE now admits BOTH via `.in("event_type", DRAFT_EVENT_TYPES)`
+  // (= ["event","rsvp"], eventDrafts.ts:64) instead of `.eq("event_type","event")`,
+  // or RSVP drafts vanish from the Hub. The trip-exclusion invariant is preserved
+  // (trips still never match). The extraction anchors also gained `= async` because
+  // ORCH-1150's header comment (eventDrafts.ts:56-63) mentions several of these
+  // function names before their definitions. Same-strength drift updates, not a
+  // loosening. Fails-on-revert: reverting a `.in(...)` back to `.eq("event_type",
+  // "event")` (dropping RSVP) flips the matching assertion red.
+  test("eventDrafts.fetchDraftsForBrand filters event_type IN (event,rsvp)", () => {
+    const fn = EVENT_DRAFTS.match(/fetchDraftsForBrand = async[^]*?^\};/m);
     expect(fn).not.toBeNull();
-    expect(fn?.[0]).toMatch(/\.eq\("event_type",\s*"event"\)/);
+    expect(fn?.[0]).toMatch(/\.in\("event_type",\s*DRAFT_EVENT_TYPES\)/);
   });
 
-  test("eventDrafts.fetchDraftById filters event_type='event'", () => {
-    const fn = EVENT_DRAFTS.match(/fetchDraftById[^]*?^\};/m);
+  test("eventDrafts.fetchDraftById filters event_type IN (event,rsvp)", () => {
+    const fn = EVENT_DRAFTS.match(/fetchDraftById = async[^]*?^\};/m);
     expect(fn).not.toBeNull();
-    expect(fn?.[0]).toMatch(/\.eq\("event_type",\s*"event"\)/);
+    expect(fn?.[0]).toMatch(/\.in\("event_type",\s*DRAFT_EVENT_TYPES\)/);
   });
 
-  test("eventDrafts.resolveMissingDraftLifecycle filters event_type='event'", () => {
-    const fn = EVENT_DRAFTS.match(/resolveMissingDraftLifecycle[^]*?^\};/m);
+  test("eventDrafts.resolveMissingDraftLifecycle filters event_type IN (event,rsvp)", () => {
+    const fn = EVENT_DRAFTS.match(/resolveMissingDraftLifecycle = async[^]*?^\};/m);
     expect(fn).not.toBeNull();
-    expect(fn?.[0]).toMatch(/\.eq\("event_type",\s*"event"\)/);
+    expect(fn?.[0]).toMatch(/\.in\("event_type",\s*DRAFT_EVENT_TYPES\)/);
   });
 
-  test("eventDrafts.fetchExistingDraftSaveContext filters event_type='event'", () => {
-    const fn = EVENT_DRAFTS.match(/fetchExistingDraftSaveContext[^]*?^\};/m);
+  test("eventDrafts.fetchExistingDraftSaveContext filters event_type IN (event,rsvp)", () => {
+    const fn = EVENT_DRAFTS.match(/fetchExistingDraftSaveContext = async[^]*?^\};/m);
     expect(fn).not.toBeNull();
-    expect(fn?.[0]).toMatch(/\.eq\("event_type",\s*"event"\)/);
+    expect(fn?.[0]).toMatch(/\.in\("event_type",\s*DRAFT_EVENT_TYPES\)/);
   });
 
-  test("eventDrafts.autosaveServerDraft (UPDATE) filters event_type='event'", () => {
-    const fn = EVENT_DRAFTS.match(/autosaveServerDraft[^]*?^\};/m);
+  test("eventDrafts.autosaveServerDraft (UPDATE) filters event_type IN (event,rsvp)", () => {
+    const fn = EVENT_DRAFTS.match(/autosaveServerDraft = async[^]*?^\};/m);
     expect(fn).not.toBeNull();
-    expect(fn?.[0]).toMatch(/\.eq\("event_type",\s*"event"\)/);
+    expect(fn?.[0]).toMatch(/\.in\("event_type",\s*DRAFT_EVENT_TYPES\)/);
   });
 
-  test("eventDrafts.createServerDraft INSERT payload sets event_type='event'", () => {
-    expect(EVENT_DRAFTS).toMatch(/insert\(\{[^}]*event_type:\s*["']event["']/);
+  test("eventDrafts.createServerDraft INSERT payload sets event_type (event|rsvp)", () => {
+    // ORCH-1150: the insert writes the event_type via the `eventTypeForInsert`
+    // variable ("event" | "rsvp", draft.isRsvp), not a bare literal.
+    expect(EVENT_DRAFTS).toMatch(
+      /insert\(\{[^}]*event_type:\s*eventTypeForInsert/,
+    );
   });
 
   test("useBrands brand-stats counters (past/scheduled/live) all filter event_type='event'", () => {
@@ -106,11 +120,18 @@ describe("ORCH-0859 REWORK 3 — events_type filter audit (event-only callers)",
     expect(fn?.[0]).toMatch(/return null/);
   });
 
-  test("publicEventsService.getPublicBrandBySlug filters trip rows from brand events list", () => {
-    const fn = PUBLIC_EVENTS.match(/getPublicBrandBySlug[^]*?^\};/m);
+  test("publicEventsService.fetchPublicBrandEvents filters the brand events list to event rows (excludes trips)", () => {
+    // [TEST-MOD-APPROVED ORCH-1062] B2 drift — META-ORCH-0972 Sub-C: the brand
+    // page now loads events + trips via SEPARATE typed fetches. Trip exclusion
+    // moved out of getPublicBrandBySlug's `tripIds` post-filter and into
+    // fetchPublicBrandEvents, which filters `row.event_type === "event"` right
+    // after reading business_public_events_view (publicEventsService.ts:1433).
+    // Same invariant (trip rows never leak into the brand events list), current
+    // mechanism. Fails-on-revert: dropping the `row.event_type === "event"` filter
+    // in fetchPublicBrandEvents flips this red.
+    const fn = PUBLIC_EVENTS.match(/fetchPublicBrandEvents = async[^]*?^\};/m);
     expect(fn).not.toBeNull();
-    expect(fn?.[0]).toMatch(/tripIds/);
-    expect(fn?.[0]).toMatch(/event_type === ["']trip["']/);
+    expect(fn?.[0]).toMatch(/row\.event_type === ["']event["']/);
   });
 });
 
@@ -127,8 +148,14 @@ describe("ORCH-0859 REWORK 3 — events_type filter audit (trip-only defensive)"
   });
 
   test("tripsService.updateTripBasics theme SELECT pins event_type='trip'", () => {
-    // The theme-select snippet is inside updateTripBasics; pin via local block.
-    const fn = TRIPS.match(/updateTripBasics[^]*?^\}/m);
+    // [TEST-MOD-APPROVED ORCH-1062] B1 stale-anchor repair — a comment at
+    // tripsService.ts:644 ("same policy that governs `updateTripBasics`") made the
+    // bare-name anchor match that mention instead of the real function, capturing
+    // an earlier body with only 1 filter. Anchor on the declaration. The two
+    // event_type='trip' filters (theme SELECT + UPDATE, lines 1023 + 1062) are
+    // intact; assertion unchanged. Fails-on-revert: removing either filter drops
+    // the count below 2.
+    const fn = TRIPS.match(/export async function updateTripBasics[^]*?^\}/m);
     expect(fn).not.toBeNull();
     // updateTripBasics has TWO event_type='trip' filters (theme SELECT + UPDATE).
     const matches = fn?.[0].match(/\.eq\("event_type",\s*"trip"\)/g);
@@ -169,7 +196,14 @@ describe("ORCH-0859 REWORK 3 — events_type filter audit (trip-only defensive)"
   // the SQL enforcement will fail this test.
 
   test("publicEventsService.getPublicTripById pins event_type='trip'", () => {
-    const fn = PUBLIC_EVENTS.match(/getPublicTripById[^]*?^\};/m);
+    // [TEST-MOD-APPROVED ORCH-1062] B1 stale-anchor repair — ORCH-0946 added a doc
+    // comment mentioning `getPublicTripById` (publicEventsService.ts:1123) BEFORE
+    // the function, so the bare-name anchor matched the comment and captured the
+    // wrong block (fetchTicketTypesRemaining). Anchor on the `export const`
+    // declaration. The real function (line 1666) still pins `.eq("event_type",
+    // "trip")` at line 1675; assertion unchanged. Fails-on-revert: removing that
+    // filter flips this red.
+    const fn = PUBLIC_EVENTS.match(/export const getPublicTripById = async[^]*?^\};/m);
     expect(fn).not.toBeNull();
     expect(fn?.[0]).toMatch(/\.eq\("event_type",\s*"trip"\)/);
   });
@@ -266,27 +300,19 @@ describe("ORCH-0859 REWORK 3 — item C (wizard auto-seeds day cards from date r
   });
 });
 
-describe("ORCH-0859 REWORK 3 — strict-grep gate registered", () => {
-  test("CI workflow registers i-proposed-tr2-events-type-filter job", () => {
-    const workflow = readFileSync(
-      join(
-        __dirname,
-        "..",
-        "..",
-        "..",
-        "..",
-        ".github",
-        "workflows",
-        "strict-grep-mingla-business.yml",
-      ),
-      "utf8",
-    );
-    expect(workflow).toMatch(/i-proposed-tr2-events-type-filter/);
-    expect(workflow).toMatch(
-      /node \.github\/scripts\/strict-grep\/i-proposed-tr2-events-type-filter\.mjs/,
-    );
-  });
-});
+// [TEST-MOD-APPROVED ORCH-1062] JUNK PIN DELETED — the "CI workflow registers
+// i-proposed-tr2-events-type-filter job" block pinned a per-gate `node
+// .github/scripts/strict-grep/i-proposed-tr2-events-type-filter.mjs` command in
+// strict-grep-mingla-business.yml. CI moved to a MANIFEST-batch model: gates are
+// listed in .github/scripts/strict-grep/MANIFEST.json (the tr2 gate IS registered,
+// MANIFEST.json:1881) and executed via `run-batch.mjs --class A` — the per-gate
+// `node` lines were deleted from the workflow ("The gate list is NOT in this file
+// any more", workflow line 52). This is a CI-restructure, NOT a regression: the
+// gate's REGISTRATION is enforced by the #1047 MANIFEST parity gates (P1-P12,
+// DO-NOT-TOUCH, SC-6) and its BEHAVIOR is proven LIVE by
+// tr2_rework3.tester_adversarial.test.ts (runs the gate against a bad fixture,
+// asserts exit 1). Proven junk → deleted per SPEC §B1 (covered by a strict-grep
+// gate + a live behavioral test).
 
 describe("META-ORCH-1059 Sub-B — experience routing via routeForEventRow", () => {
   const ROUTE_HELPER = read("utils/routeForEventRow.ts");
@@ -342,7 +368,7 @@ describe("META-ORCH-1059 Sub-B — experience routing via routeForEventRow", () 
 });
 
 describe("META-ORCH-1059 Sub-C/D — buyer journey (public page + checkout entry)", () => {
-  const CHECKOUT_FLOW = read("components/experience/ExperienceCheckoutFlow.tsx");
+  // CHECKOUT_FLOW read removed with the ORCH-1117 junk-pin deletion above.
   const PUBLIC_SERVICE = read("services/publicExperienceService.ts");
 
   test("the public experience route exists at app/exp/[brandSlug]/[experienceSlug]", () => {
@@ -369,14 +395,17 @@ describe("META-ORCH-1059 Sub-C/D — buyer journey (public page + checkout entry
     ).not.toThrow();
   });
 
-  test("ExperienceCheckoutFlow routes into its own /checkout-experience chain (not event/trip)", () => {
-    expect(CHECKOUT_FLOW).toMatch(
-      /router\.push\(\s*`\/checkout-experience\/\$\{experience\.id\}`/,
-    );
-    // Must NOT route into the event-side or trip-side chains.
-    expect(CHECKOUT_FLOW).not.toMatch(/\/checkout\/\$\{/);
-    expect(CHECKOUT_FLOW).not.toMatch(/\/checkout-trip\//);
-  });
+  // [TEST-MOD-APPROVED ORCH-1062] JUNK PIN DELETED — ORCH-1117 REMOVED the inline
+  // Get-spot CTA + its `router.push` from ExperienceCheckoutFlow; the component is
+  // now a recap-only card (verified: zero `router.push` in the file). Navigation
+  // into /checkout-experience moved to the public page's floating Buy bar via the
+  // `experienceCheckoutPath` helper (constants/publicUrls.ts:132). This pin tested
+  // routing behavior that no longer lives in this file, and the routing invariant
+  // is ALREADY covered by two LIVE tests: app/exp/__tests__/public-experience-
+  // page.test.ts (A-EXP-4: route-based via experienceCheckoutPath) and
+  // components/offering/__tests__/offeringCtaDeadTap.orch1117.adversarial.test.ts
+  // (expects experienceCheckoutPath(experience.id)). Proven junk → deleted per
+  // SPEC §B1 (behavior covered by a live test).
 
   test("COMMS-0014/0016 — checkout POSTs to the SHARED ticket-checkout-create, no parallel money fn", () => {
     const BUYER = appRead("checkout-experience/[experienceEventId]/buyer.tsx");

@@ -42,8 +42,20 @@ describe("ORCH-1138 tester adversarial — anon cannot read brands.theme_* (P0)"
     ),
   ).map((m) => m[2]);
 
-  test("publicExperienceService DOES read brands (sanity — guard targets the right call)", () => {
-    expect(brandSelects.length).toBeGreaterThan(0);
+  // [TEST-MOD-APPROVED ORCH-1062] B2 drift — the COMMS-0009 / P0-1 rework was
+  // completed further: publicExperienceService no longer makes ANY direct
+  // `.from("brands").select(...)` — the brand THEME is sourced from the anon-safe
+  // `business_public_events_view` (brand_theme_*) instead (service lines 189-235).
+  // The invariant this block protects (anon never reads brands.theme_*) is now
+  // satisfied in its STRONGEST form: ZERO direct brands read at all. Re-point the
+  // sanity assertion accordingly — identical treatment to the ORCH-1164 /
+  // META-ORCH-1174 trip-hook block below. This does NOT loosen: it asserts a
+  // strictly stronger guarantee (no brands read) + confirms the theme moved to
+  // the anon-safe view. Fails-on-revert: re-adding a `.from("brands")` read to the
+  // service flips the first assertion red.
+  test("publicExperienceService makes ZERO direct brands read (theme rides the anon-safe view)", () => {
+    expect(src).not.toMatch(/\.from\(\s*["']brands["']\s*\)/);
+    expect(src).toMatch(/business_public_events_view/);
   });
 
   const FORBIDDEN = ["theme_color", "theme_font", "theme_animation"];

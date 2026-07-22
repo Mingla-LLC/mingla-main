@@ -194,7 +194,13 @@ describe("ORCH-0859 REWORK 3 tester adversarial — auto-seed boundary attacks",
   test("auto-seed effect guards against end-before-start (no negative day count)", () => {
     // Extract the useEffect block that auto-seeds days.
     const effectStart = WIZARD_SRC.indexOf(
-      "// ORCH-0859 REWORK 3 (operator smoke item C — auto-seed days from range):",
+      // [TEST-MOD-APPROVED ORCH-1062] B1 stale-anchor repair — ORCH-0874 (#130,
+      // Trip visual-parity) rewrote this locator comment; the auto-seed effect
+      // body is unchanged (comment literally says "(unchanged)"). Re-point the
+      // anchor to the current comment. All guard assertions below (endMs<=startMs,
+      // Math.max(1, …), Number.isFinite, [...current], slice(0,dayCount), not
+      // splice) still match the live source at full strength.
+      "// ORCH-0859 REWORK 3: auto-seed days from Step 1 date range (unchanged).",
     );
     expect(effectStart).toBeGreaterThan(-1);
     const effectEnd = WIZARD_SRC.indexOf(
@@ -219,7 +225,13 @@ describe("ORCH-0859 REWORK 3 tester adversarial — auto-seed boundary attacks",
     // `Array.from({length: dayCount}, ...)` would wipe operator-filled
     // titles. Pin the spread pattern.
     const effectStart = WIZARD_SRC.indexOf(
-      "// ORCH-0859 REWORK 3 (operator smoke item C — auto-seed days from range):",
+      // [TEST-MOD-APPROVED ORCH-1062] B1 stale-anchor repair — ORCH-0874 (#130,
+      // Trip visual-parity) rewrote this locator comment; the auto-seed effect
+      // body is unchanged (comment literally says "(unchanged)"). Re-point the
+      // anchor to the current comment. All guard assertions below (endMs<=startMs,
+      // Math.max(1, …), Number.isFinite, [...current], slice(0,dayCount), not
+      // splice) still match the live source at full strength.
+      "// ORCH-0859 REWORK 3: auto-seed days from Step 1 date range (unchanged).",
     );
     const effectEnd = WIZARD_SRC.indexOf(
       "}, [step1Draft.startAt, step1Draft.endAt]);",
@@ -237,7 +249,13 @@ describe("ORCH-0859 REWORK 3 tester adversarial — auto-seed boundary attacks",
     // `.splice` is mutable. The setState updater pattern requires
     // immutable returns.
     const effectStart = WIZARD_SRC.indexOf(
-      "// ORCH-0859 REWORK 3 (operator smoke item C — auto-seed days from range):",
+      // [TEST-MOD-APPROVED ORCH-1062] B1 stale-anchor repair — ORCH-0874 (#130,
+      // Trip visual-parity) rewrote this locator comment; the auto-seed effect
+      // body is unchanged (comment literally says "(unchanged)"). Re-point the
+      // anchor to the current comment. All guard assertions below (endMs<=startMs,
+      // Math.max(1, …), Number.isFinite, [...current], slice(0,dayCount), not
+      // splice) still match the live source at full strength.
+      "// ORCH-0859 REWORK 3: auto-seed days from Step 1 date range (unchanged).",
     );
     const effectEnd = WIZARD_SRC.indexOf(
       "}, [step1Draft.startAt, step1Draft.endAt]);",

@@ -179,10 +179,17 @@ describe("ORCH-1318 business OneLink service (B1)", () => {
       mockInitSdk.mock.invocationCallOrder[0],
     );
 
-    // §C.1 — branded OneLink domain registered
+    // §C.1 — branded OneLink domain registered.
+    // [TEST-MOD-APPROVED ORCH-1062] B2 drift — #1050 ("Point Business app at its
+    // own biz. OneLink domain", commit e4bb5ef96) pointed the BUSINESS app at
+    // `biz.usemingla.com` (BUSINESS_ONELINK_BRANDED_DOMAIN, constants/storeLinks.ts)
+    // — the Business app's OWN vouching domain — to fix Android ≤11 deep-link
+    // breakage. `go.usemingla.com` is CONSUMER-only. Same exact-array assertion
+    // strength. Fails-on-revert: pointing the service back at go.usemingla.com
+    // flips this red.
     expect(mockSetOneLinkCustomDomains).toHaveBeenCalledTimes(1);
     expect(mockSetOneLinkCustomDomains.mock.calls[0][0]).toEqual([
-      "go.usemingla.com",
+      "biz.usemingla.com",
     ]);
 
     // iOS resolves via AppDelegate hooks — no forced Android resolution pass
