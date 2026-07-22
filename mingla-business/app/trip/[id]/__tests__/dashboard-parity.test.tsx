@@ -43,17 +43,15 @@ function styleBlock(source: string, styleName: string): string {
   return source.match(new RegExp(`${styleName}: \\{[^}]*\\}`))?.[0] ?? "";
 }
 
-// ORCH-0913-A: ScrollView moved up to wrap hero + action grid (full-page
-// scroll parity with event dashboard). The actionGrid block is now followed
-// directly by the KPI strip (no intervening <ScrollView>). Terminator marker
-// updated accordingly.
+// ORCH-1062 [TEST-MOD-APPROVED ORCH-1062]: the actionGrid terminator marker went
+// stale — META-ORCH-1059 Pass 2 rebuilt the grid from buildOfferingDashboardTiles
+// and now renders <EventDetailKpiCard> (then <TripDetailKpiCard>) after the grid,
+// not <TripDetailKpiCard> directly. The grid's ActionTiles are all self-closing,
+// so its single `</View>` is the reliable terminator; drop the fragile
+// following-element anchor.
 const actionGrid = DASHBOARD_SRC.match(
-  /<View style=\{styles\.actionGrid\}>([\s\S]*?)<\/View>\s*\n\s*<TripDetailKpiCard/,
+  /<View style=\{styles\.actionGrid\}>([\s\S]*?)<\/View>/,
 )?.[1] ?? "";
-
-const actionTileLabels = Array.from(
-  actionGrid.matchAll(/label=(?:\{[^}]*\}|"([^"]+)")/g),
-).map((match) => match[1] ?? "EDIT_LABEL");
 
 describe("ORCH-0913 trip dashboard parity", () => {
   test("T-01 Dashboard renders zero tabs", () => {
@@ -61,19 +59,15 @@ describe("ORCH-0913 trip dashboard parity", () => {
     expect(DASHBOARD_SRC).not.toMatch(/\bsetTab\b|\btab ===/);
   });
 
-  // [TEST-MOD-APPROVED ORCH-0920] — second tile label changed "Money" → "Payments"
-  // (cosmetic refresh, icon also changed "pound" → "receipt"; route + ordering preserved).
-  test("T-02 Dashboard renders 7 action tiles in locked order", () => {
-    expect(actionTileLabels).toEqual([
-      "Travelers",
-      "Payments",
-      "Blasts",
-      "Group chat",
-      "Public page",
-      "Brand page",
-      "EDIT_LABEL",
-    ]);
-  });
+  // T-02 REMOVED [TEST-MOD-APPROVED ORCH-1062]: the locked 7-tile static order was
+  // a stale source pin. META-ORCH-1059 Pass 2 made the tile set config-driven —
+  // Edit is primary/first, then buildOfferingDashboardTiles("trip") emits the
+  // Travelers(guests)/Blasts/Public/Brand/Scan/Orders tiles via a single
+  // `label={tile.label}` map, then the static Payments + Group chat tiles. The
+  // tile inventory, labels, order, and routes are now covered behaviorally by
+  // src/components/offering/__tests__/offeringDashboardTiles.parity.test.ts. A
+  // hard-coded label array over the index.tsx source can no longer model the
+  // config-driven grid, so this pin is dropped (coverage lives in the config test).
 
   test("T-03 Travelers tile sub uses tickets-sold singular/plural correctly", () => {
     expect(actionGrid).toContain('ticketsSold === 1 ? "traveler" : "travelers"');
@@ -88,24 +82,22 @@ describe("ORCH-0913 trip dashboard parity", () => {
   });
 
   test("T-06 KPI strip renders directly beneath action grid", () => {
-    // ORCH-0913-A: ScrollView now wraps hero + action grid + KPI + sections,
-    // so the action grid's closing </View> is followed directly by
-    // <TripDetailKpiCard> with no intervening <ScrollView>. Assertion still
-    // pins KPI immediately after grid and PRICING TIERS after KPI.
+    // ORCH-1062 [TEST-MOD-APPROVED ORCH-1062]: META-ORCH-1059 Pass 2 inserted the
+    // shared <EventDetailKpiCard> (revenue/payout summary) between the action grid
+    // and <TripDetailKpiCard>. The invariant is unchanged — the KPI strip renders
+    // directly beneath the grid and PRICING TIERS follows the KPI cards — so the
+    // pin is updated to the current EventDetailKpiCard→TripDetailKpiCard shape.
     expect(DASHBOARD_SRC).toMatch(
-      /<\/View>\s*<TripDetailKpiCard[\s\S]*?<Text style=\{styles\.sectionLabel\}>PRICING TIERS<\/Text>/,
+      /<\/View>\s*(?:\{\/\*[\s\S]*?\*\/\}\s*)?<EventDetailKpiCard[\s\S]*?<TripDetailKpiCard[\s\S]*?<Text style=\{styles\.sectionLabel\}>PRICING TIERS<\/Text>/,
     );
   });
 
-  test("T-07 KPI strip Spots renders N / capacity when capacity set", () => {
-    expect(DASHBOARD_SRC).toContain(
-      "`${ticketsSold} / ${trip.businessTrip.capacity}`",
-    );
-  });
-
-  test("T-08 KPI strip Spots renders N when capacity null", () => {
-    expect(DASHBOARD_SRC).toContain("`$ {ticketsSold}`".replace(" ", ""));
-  });
+  // T-07 + T-08 REMOVED [TEST-MOD-APPROVED ORCH-1062]: the KPI Spots derivation
+  // (`${ticketsSold} / ${capacity}` when capacity set, `${ticketsSold}` when null)
+  // moved out of index.tsx into the shared formatTripSpotsLabel() helper
+  // (src/utils/tripDashboardDisplay.ts) and is now covered behaviorally by
+  // src/utils/__tests__/tripDashboardDisplay.test.ts. These two source-text pins
+  // referenced strings that no longer live in index.tsx — dropped as covered.
 
   test("T-09 Recent Activity 5-stream merge includes real timestamped streams", () => {
     expect(DASHBOARD_SRC).toContain('o.paymentStatus !== "paid"');

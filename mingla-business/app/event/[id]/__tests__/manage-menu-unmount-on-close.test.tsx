@@ -87,7 +87,12 @@ describe("ORCH-0862 F-6 — EventManageMenu unmounts fully when closed (dual-mod
   });
 
   test("F-6 protective comment present (ORCH-0862 reference)", () => {
-    expect(source).toMatch(/ORCH-0862[\s\S]*F-6[\s\S]*unmount/);
+    // [TEST-MOD-APPROVED ORCH-1062] REPAIR: the protective comment is intact
+    // ("ORCH-0862 / F-6 … so the component fully UNMOUNTS when closed",
+    // app/event/[id]/index.tsx:851-856) — it just uses uppercase "UNMOUNTS", so the
+    // case-sensitive pin no longer matched. Case-insensitive flag added; the
+    // comment-presence invariant is unchanged.
+    expect(source).toMatch(/ORCH-0862[\s\S]*F-6[\s\S]*unmount/i);
   });
 
   test("Hub-list parity comment cited in the protective block", () => {

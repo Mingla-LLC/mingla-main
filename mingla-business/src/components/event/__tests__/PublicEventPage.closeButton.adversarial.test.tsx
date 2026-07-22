@@ -64,6 +64,16 @@ jest.mock("react", () => {
       mockStateSetters.push(setter);
       return [typeof initial === "function" ? initial() : initial, setter];
     },
+    // ORCH-1062 [TEST-MOD-APPROVED ORCH-1062] — the adapter grew top-level
+    // useEffect/useRef calls (returnBannerHandledRef, lastRsvpContactRef, the
+    // return-banner effect). This suite evaluates PublicEventPage as a plain
+    // function (not a React render) to extract + drive its close callbacks, so —
+    // exactly as useState/useMemo/useCallback are already stubbed above — stub
+    // useEffect to a no-op and useRef to a plain box. The BEHAVIORAL close-handler
+    // coverage (router.back / brand+root fallback) is derived from props/memo, not
+    // effect state, so this changes nothing about what the assertions verify.
+    useEffect: () => undefined,
+    useRef: (initial: unknown) => ({ current: initial }),
   };
 });
 
@@ -78,6 +88,10 @@ jest.mock("react-native", () => ({
 
 jest.mock("expo-router", () => ({
   useRouter: () => mockRouter,
+  // ORCH-1062 [TEST-MOD-APPROVED ORCH-1062] — the adapter added
+  // useLocalSearchParams (return-banner query read); stub it to empty params so
+  // the standalone evaluation resolves. Irrelevant to the close-callback branches.
+  useLocalSearchParams: () => ({}),
 }));
 
 jest.mock("expo-router/head", () => "Head");
@@ -86,6 +100,14 @@ jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
 
+// ORCH-1062 [TEST-MOD-APPROVED ORCH-1062] — MERGED the two prior
+// jest.mock("@mingla/offering-rendering") calls into one factory. Two jest.mock
+// registrations for the same module do NOT merge — the second (useResponsiveLayout
+// only) silently clobbered the first (resolveTheme/createThemePalette/…), so the
+// adapter's resolveTheme call threw once the phone-input boundary was cleared.
+// The single factory now exports every runtime value the adapter destructures,
+// including the post-ORCH-1167 EventOfferingFloatingBar/EventTicketBox +
+// buildStaticMapUrl. Behavior under test (close callbacks) is unaffected.
 jest.mock("@mingla/offering-rendering", () => ({
   PublicEventPage: "SharedPublicEventPage",
   // ORCH-1117 — the adapter pulls the shared theme + offering-CTA helpers.
@@ -95,13 +117,13 @@ jest.mock("@mingla/offering-rendering", () => ({
   computeOfferingVariant: () => "published",
   createThemePalette: () => ({ page: "#0c0e12", accent: "#eb7825", accentText: "#fff", primaryText: "#fff", secondaryText: "#ccc", tertiaryText: "#999", panel: "#111", panelStrong: "#222", panelBorder: "#333", card: "#1a1a1a", cutoutBorder: "#444", glass: "#000", glassTint: "dark", accentWash: "#332211" }),
   boldFontFamily: () => undefined,
-}), { virtual: true });
-
-// ORCH-1138 Leg 2 — the adapter composes the Direction-A foundation: it pulls
-// useResponsiveLayout from @mingla/offering-rendering (and, post-ORCH-1167, the
-// shared EventOfferingFloatingBar + EventTicketBox from the same package).
-jest.mock("@mingla/offering-rendering", () => ({
+  buildStaticMapUrl: () => "https://map.test/static.png",
+  // ORCH-1138 Leg 2 — the adapter composes the Direction-A foundation: it pulls
+  // useResponsiveLayout from @mingla/offering-rendering (and, post-ORCH-1167, the
+  // shared EventOfferingFloatingBar + EventTicketBox from the same package).
   useResponsiveLayout: () => ({ isDesktop: false, isWeb: true }),
+  EventOfferingFloatingBar: "EventOfferingFloatingBar",
+  EventTicketBox: "EventTicketBox",
 }), { virtual: true });
 
 jest.mock("../../../context/AuthContext", () => ({
@@ -246,6 +268,47 @@ const renderPublicEventPage = (
         return require(request);
       case "./FoundationEventPreview":
         return { FoundationEventPreview: "FoundationEventPreview" };
+      // ORCH-1062 [TEST-MOD-APPROVED ORCH-1062] — deps the adapter added after
+      // this evaluator was last written. @mingla/phone-input is a proven web-safe
+      // dep (already shipping in buyer-web checkout); the rest are stubbed like the
+      // existing boundary stubs so the module evaluates without pulling native
+      // barrels. None affect the close-callback behavior under test.
+      case "./FoundationRsvpPreview":
+        return { FoundationRsvpPreview: "FoundationRsvpPreview" };
+      case "@mingla/phone-input":
+        return {
+          PhoneInput: "PhoneInput",
+          COUNTRIES: [],
+          getCountryByCode: () => undefined,
+        };
+      case "../../utils/phone":
+        return { composeE164: () => "" };
+      case "../ui/Icon":
+        return { Icon: "Icon" };
+      case "../../analytics/webAnalytics":
+        return { captureWeb: () => undefined };
+      case "../../services/rsvpEvents":
+        return {
+          submitPublicRsvp: () => Promise.resolve(),
+          submitRsvpContribution: () => Promise.resolve(),
+        };
+      case "../../services/socialProofService":
+        return {
+          fetchSocialProof: () => Promise.resolve(null),
+          socialProofKeys: {
+            all: ["social-proof"],
+            summary: (eventId: string) => ["social-proof", eventId],
+          },
+        };
+      case "@tanstack/react-query":
+        return {
+          useQuery: () => ({
+            data: null,
+            isLoading: false,
+            isError: false,
+            error: null,
+          }),
+        };
       case "../../constants/publicUrls":
         return {
           checkoutPublicPath: (eventId: string) => `/checkout/${eventId}`,
@@ -269,6 +332,7 @@ const renderPublicEventPage = (
           formatDraftDateLine: () => "May 30",
           formatDraftDateSubline: () => "7:00 PM",
           formatDraftDatesList: () => ["May 30, 7:00 PM"],
+          formatEventDoorsTimes: () => ({ open: null, close: null }),
         };
       case "../../utils/eventCoverMediaRules":
         return { isLegacyUnsafeEventCoverVideoUrl: () => false };

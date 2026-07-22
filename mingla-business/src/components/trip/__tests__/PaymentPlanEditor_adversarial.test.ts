@@ -178,7 +178,12 @@ describe("ORCH-0873 Stage 2 UI — TESTER adversarial regression", () => {
   });
 
   describe("A-04: MoneyTabBody Retry button double-gate", () => {
-    const src = read("../app/trip/[id]/index.tsx");
+    // [TEST-MOD-APPROVED ORCH-1062] REPAIR: ORCH-0913 split the trip dashboard into
+    // dedicated routes — the MoneyTabBody (installment list + Retry button) moved
+    // from app/trip/[id]/index.tsx into the dedicated money route
+    // app/trip/[id]/money/index.tsx (:815-833). Retarget the read; the double-gate
+    // invariant (failed-status gate + isPending disable) is unchanged.
+    const src = read("../app/trip/[id]/money/index.tsx");
     it("Retry rendered only on failed status AND disabled on mutation.isPending", () => {
       // Implementor checks status gate; adversarial checks BOTH gates fire.
       expect(src).toMatch(/inst\.status\s*===\s*"failed"/);
@@ -187,7 +192,9 @@ describe("ORCH-0873 Stage 2 UI — TESTER adversarial regression", () => {
     });
 
     it("Retry button label shifts to 'Retrying…' when mutation pending", () => {
-      expect(src).toMatch(/retryMutation\.isPending\s*\n?\s*\?\s*"Retrying[….]"/);
+      // The label now uses three ASCII dots ("Retrying...") rather than the "…"
+      // glyph (money/index.tsx:833); accept either.
+      expect(src).toMatch(/retryMutation\.isPending\s*\n?\s*\?\s*"Retrying(?:\.\.\.|…)"/);
     });
   });
 

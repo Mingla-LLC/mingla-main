@@ -63,13 +63,27 @@ describe("ORCH-1076 — trip wizard gate + disabled Publish + toast (T-19)", () 
 
   test("dock Publish is disabled when tripNeedsStripe", () => {
     const src = wizardSource();
-    expect(src).toContain("disabled={submitting || tripNeedsStripe}");
+    // [TEST-MOD-APPROVED ORCH-1062] DRIFT UPDATE (intended, cited): the dock
+    // Publish disabled clause gained `!tripLocationValid` (ORCH-1118 trip-location
+    // Mapbox gate) and `!packagesValidation.ok` (META-ORCH-1174 Leg B2 multi-
+    // package validity) and is now multi-line formatted (TripCreatorWizard.tsx
+    // :1637-1642). tripNeedsStripe is still a disabling term (ORCH-1076 Stream B).
+    // Assert the exact current gate at the same (all-terms) strength.
+    expect(src).toMatch(
+      /disabled=\{\s*submitting\s*\|\|\s*tripNeedsStripe\s*\|\|\s*!tripLocationValid\s*\|\|\s*!packagesValidation\.ok\s*\}/,
+    );
   });
 
   test("handlePublishTap pre-checks tripNeedsStripe → toast, no confirm dialog", () => {
     const src = wizardSource();
     const tapIdx = src.indexOf("const handlePublishTap");
-    const block = src.slice(tapIdx, tapIdx + 600);
+    // [TEST-MOD-APPROVED ORCH-1062] window widened 600→1400: ORCH-1118 inserted a
+    // trip-location pre-check block (with a multi-line comment) BEFORE the
+    // tripNeedsStripe pre-check, pushing `if (tripNeedsStripe)` past the old
+    // 600-char window. The invariant (stripe toast + return BEFORE the confirm
+    // dialog) is unchanged; the window just needs to reach it (the confirm call
+    // now sits ~1390 chars in — after the location + packages pre-checks).
+    const block = src.slice(tapIdx, tapIdx + 1600);
     expect(block).toContain("if (tripNeedsStripe)");
     expect(block).toContain("Connect a bank to publish this paid trip.");
     const toastIdx = block.indexOf("Connect a bank to publish this paid trip.");

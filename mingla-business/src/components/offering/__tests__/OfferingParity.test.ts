@@ -251,7 +251,15 @@ describe("META-ORCH-1059 — shared-primitive adoption", () => {
   });
 
   test("trip + experience Hub lists pass onManageOpen (3-dot opens shared sheet)", () => {
-    expect(readApp("(tabs)/hub/trips.tsx")).toMatch(/<OfferingManageSheet/);
+    // [TEST-MOD-APPROVED ORCH-1062] DRIFT UPDATE (intended, cited): the trips Hub
+    // list now code-splits the manage sheet via React.lazy
+    // (<LazyOfferingManageSheet>, app/(tabs)/hub/trips.tsx:76-78,384) — the lazy
+    // loader imports the SAME shared OfferingManageSheet. The experiences Hub still
+    // mounts it directly. Both still open the shared sheet; the trips assertion is
+    // updated to the lazy mount + its OfferingManageSheet import target.
+    const tripsHub = readApp("(tabs)/hub/trips.tsx");
+    expect(tripsHub).toMatch(/<LazyOfferingManageSheet/);
+    expect(tripsHub).toMatch(/import\([^)]*OfferingManageSheet[^)]*\)|OfferingManageSheet/);
     expect(readApp("(tabs)/hub/experiences.tsx")).toMatch(/<OfferingManageSheet/);
   });
 });

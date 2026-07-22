@@ -118,8 +118,13 @@ describe("ORCH-0876 — EditPublishedTripScreen refund-gate dialog mapping", () 
   });
 
   test("UpdateLiveTripPermissionError handler surfaces auth + event-type + permission toasts", () => {
-    expect(SRC).toContain(
-      'import { UpdateLiveTripPermissionError } from "../../services/tripsService"',
+    // [TEST-MOD-APPROVED ORCH-1062] REPAIR: UpdateLiveTripPermissionError is now
+    // imported in a multi-line block grouped with setTripPricingSwitches
+    // (EditPublishedTripScreen.tsx:100-103, ORCH-1339 leaf-write additions), so the
+    // single-line import pin no longer matched. Assert the symbol is imported from
+    // tripsService regardless of block formatting — invariant unchanged.
+    expect(SRC).toMatch(
+      /import \{[\s\S]*?UpdateLiveTripPermissionError[\s\S]*?\} from "\.\.\/\.\.\/services\/tripsService"/,
     );
     expect(SRC).toMatch(/if \(e instanceof UpdateLiveTripPermissionError\)/);
     expect(SRC).toMatch(/case "authentication_required":?[\s\S]*?Sign in to save changes|"You're signed out\. Sign in to save changes\."/);

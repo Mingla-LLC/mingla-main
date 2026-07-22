@@ -57,8 +57,13 @@ describe("ORCH-0876 — TripCreatorWizard cover field + autosave wiring", () => 
   });
 
   test("handleStepBack is async and autosaves before stepping back", () => {
+    // [TEST-MOD-APPROVED ORCH-1062] REPAIR: issue #1014's rework added a
+    // try/catch money-setup guard to handleStepBack, growing its dependency array
+    // beyond `[autosaveCurrentStep, step]`. Make the carve deps-agnostic; the
+    // behavioral assertions (await autosaveCurrentStep + void-wrapped callsite)
+    // still fully pin the invariant.
     const fn = WIZ.match(
-      /const handleStepBack = useCallback\(async \(\): Promise<void> => \{[\s\S]*?\}, \[autosaveCurrentStep,\s*step\]\);/,
+      /const handleStepBack = useCallback\(async \(\): Promise<void> => \{[\s\S]*?\}, \[[\s\S]*?\]\);/,
     );
     expect(fn).not.toBeNull();
     expect(fn![0]).toMatch(/await autosaveCurrentStep\(\)/);
@@ -103,10 +108,16 @@ describe("ORCH-0876 — TripCreatorWizard cover field + autosave wiring", () => 
     expect(STEP1).toMatch(/onShowToast\?\:\s*\(msg:\s*string\)\s*=>\s*void;/);
   });
 
-  test("Step1 renders shared <CoverPicker> with all 3 providers enabled", () => {
-    expect(STEP1).toContain('import { CoverPicker, type CoverPatch } from "../ui/CoverPicker"');
-    expect(STEP1).toMatch(/<CoverPicker\b[\s\S]*?providers=\{\["upload", "giphy", "pexels"\]\}/);
-    expect(STEP1).toMatch(/<CoverPicker\b[\s\S]*?onCoverChange=\{handleCoverChange\}/);
+  test("Step1 renders the shared unified <CoverPickerSheet> wired to onCoverChange", () => {
+    // [TEST-MOD-APPROVED ORCH-1062] DRIFT UPDATE (intended, cited): ORCH-0989
+    // [Unified cover picker sheet] replaced the inline <CoverPicker> in Step1 with
+    // the canonical <CoverPickerSheet>. The provider set ("upload"/"giphy"/
+    // "pexels") is now internal to CoverPickerSheet — covered by the CoverPicker.*
+    // suites — so Step1 just mounts the sheet + wires onCoverChange. CoverPatch is
+    // still imported from ../ui/CoverPicker.
+    expect(STEP1).toContain('import { type CoverPatch } from "../ui/CoverPicker"');
+    expect(STEP1).toContain('import { CoverPickerSheet } from "../ui/CoverPickerSheet"');
+    expect(STEP1).toMatch(/<CoverPickerSheet\b[\s\S]*?onCoverChange=\{handleCoverChange\}/);
   });
 
   test("handleCoverChange forwards both cover fields to the parent onChange", () => {

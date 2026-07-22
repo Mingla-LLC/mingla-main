@@ -17,14 +17,35 @@ import { readFileSync } from "fs";
 import { join } from "path";
 
 describe("ORCH-0963 T-06 ADVERSARIAL — Bookings-closed precedence over scarcity", () => {
+  // ORCH-1062 [TEST-MOD-APPROVED ORCH-1062] — REPAIR (not removal): the
+  // TripMiniCard component moved out of mingla-business/src/components/brand/
+  // PublicBrandPage.tsx (now a thin wrapper) into the shared
+  // @mingla/brand-rendering package's PublicBrandPage.tsx, and the badge styles
+  // were renamed (tripBadgeClosed/tripBadgeScarce → the shared `styles.badge`
+  // with `surface.cardStrong` for the closed variant). The behavior these
+  // adversarial pins guard (bookings-closed precedence over scarcity, mutual
+  // exclusivity, closed-card still navigates) is load-bearing (Constitution #9
+  // fabricated affordance) with NO other behavioral coverage, so the pins are
+  // re-pointed at the moved source and updated to the current shape — every
+  // invariant kept.
   const pageSrc = readFileSync(
-    join(__dirname, "..", "PublicBrandPage.tsx"),
+    join(
+      __dirname,
+      "..",
+      "..",
+      "..",
+      "..",
+      "..",
+      "packages",
+      "brand-rendering",
+      "PublicBrandPage.tsx",
+    ),
     "utf8",
   );
 
   const tripCardBody = (() => {
     const m = pageSrc.match(
-      /const\s+TripMiniCard:\s*React\.FC<TripMiniCardProps>\s*=\s*\(\{[\s\S]*?\n\};\n/,
+      /const\s+TripMiniCard:\s*React\.FC<\{[\s\S]*?\}>\s*=\s*\(\{[\s\S]*?\}\)\s*=>\s*\{[\s\S]*?\n\};\n/,
     );
     if (m === null) throw new Error("TripMiniCard body not found");
     return m[0];
@@ -33,13 +54,13 @@ describe("ORCH-0963 T-06 ADVERSARIAL — Bookings-closed precedence over scarcit
   test("T-06a bookingsClosed branch evaluated BEFORE spotsLabel branch", () => {
     // Pin the order: { trip.bookingsClosed ? <closed/> : spotsLabel !== null ? <scarce/> : null }
     expect(tripCardBody).toMatch(
-      /trip\.bookingsClosed\s*\?\s*\(\s*<View\s+style=\{styles\.tripBadgeClosed\}>[\s\S]*?\)\s*:\s*spotsLabel\s*!==\s*null\s*\?\s*\(\s*<View\s+style=\{styles\.tripBadgeScarce\}>/,
+      /trip\.bookingsClosed\s*\?\s*\(\s*<View\s+style=\{\[styles\.badge,\s*surface\.cardStrong\]\}>[\s\S]*?Booking closed[\s\S]*?\)\s*:\s*spotsLabel\s*!==\s*null\s*\?\s*\(\s*<View/,
     );
   });
 
   test("T-06b bookingsClosed badge label is 'Booking closed' (not 'Closed' or 'Sold out')", () => {
     expect(tripCardBody).toMatch(
-      /<View\s+style=\{styles\.tripBadgeClosed\}>\s*<Text\s+style=\{styles\.tripBadgeLabel\}>Booking closed<\/Text>/,
+      /<View\s+style=\{\[styles\.badge,\s*surface\.cardStrong\]\}>\s*<Text[\s\S]*?>\s*Booking closed\s*<\/Text>/,
     );
   });
 
@@ -47,8 +68,8 @@ describe("ORCH-0963 T-06 ADVERSARIAL — Bookings-closed precedence over scarcit
     // There must be exactly ONE conditional chain choosing between the two —
     // not two independent `{trip.bookingsClosed && ...}` + `{spotsLabel && ...}`
     // mounts that could both fire.
-    const independentBookingMount = /\{trip\.bookingsClosed\s*&&\s*\(?\s*<View\s+style=\{styles\.tripBadgeClosed\}/g;
-    const independentSpotsMount = /\{spotsLabel\s*&&\s*\(?\s*<View\s+style=\{styles\.tripBadgeScarce\}/g;
+    const independentBookingMount = /\{trip\.bookingsClosed\s*&&\s*\(?\s*<View\s+style=\{\[?styles\.badge/g;
+    const independentSpotsMount = /\{spotsLabel\s*&&\s*\(?\s*<View\s+style=\{\[?styles\.badge/g;
     expect(tripCardBody.match(independentBookingMount) ?? []).toHaveLength(0);
     expect(tripCardBody.match(independentSpotsMount) ?? []).toHaveLength(0);
   });

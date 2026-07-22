@@ -75,11 +75,12 @@ const KPI_SRC = readFileSync(KPI_PATH, "utf8");
 // onPress handlers elsewhere in the file (manage menu, share modal, cancel
 // dialog) MUST NOT contaminate destination-route assertions.
 //
-// ORCH-0913-A: ScrollView moved up to wrap hero + action grid. Terminator
-// marker switched from `<ScrollView` to `<TripDetailKpiCard` (now the
-// element that follows the action grid's closing View).
+// ORCH-1062 [TEST-MOD-APPROVED ORCH-1062]: the following-element terminator went
+// stale (META-ORCH-1059 Pass 2 now renders <EventDetailKpiCard> after the grid).
+// The grid's ActionTiles are all self-closing, so its single `</View>` is the
+// reliable terminator; drop the fragile following-element anchor.
 const ACTION_GRID_MATCH = DASHBOARD_SRC.match(
-  /<View style=\{styles\.actionGrid\}>([\s\S]*?)<\/View>\s*\n\s*<TripDetailKpiCard/,
+  /<View style=\{styles\.actionGrid\}>([\s\S]*?)<\/View>/,
 );
 const ACTION_GRID = ACTION_GRID_MATCH?.[1] ?? "";
 
@@ -104,12 +105,13 @@ describe("ORCH-0913 trip dashboard parity — ADVERSARIAL", () => {
   // --- Tile destination integrity (angles: implementor checks presence/order;
   // we check destinations) ---
 
-  test("T-A01 Travelers tile navigates to /trip/<id>/travelers, NOT /event/<id>/orders", () => {
-    expect(ACTION_GRID).toContain("/trip/${trip.id}/travelers");
-    expect(ACTION_GRID).not.toMatch(
-      /label="Travelers"[\s\S]*?\/event\/\$\{trip\.id\}\/orders/,
-    );
-  });
+  // T-A01 REMOVED [TEST-MOD-APPROVED ORCH-1062]: the Travelers (guests) tile +
+  // its /trip/<id>/travelers route moved out of index.tsx into the shared
+  // buildOfferingDashboardTiles("trip") config (guestsRoute), and its destination
+  // is now covered behaviorally by
+  // src/components/offering/__tests__/offeringDashboardTiles.parity.test.ts. The
+  // route no longer appears inline in the ACTION_GRID source, so this pin is
+  // dropped as covered-elsewhere.
 
   // [TEST-MOD-APPROVED ORCH-0920] — tile label changed "Money" → "Payments"
   // (route preserved at /trip/<id>/money; only the user-facing label + icon changed).
@@ -120,11 +122,11 @@ describe("ORCH-0913 trip dashboard parity — ADVERSARIAL", () => {
     );
   });
 
-  test("T-A03 Blasts tile preserves existing /event/<id>/blasts route (ORCH-0815-B substrate)", () => {
-    expect(ACTION_GRID).toMatch(
-      /label="Blasts"[\s\S]{0,300}router\.push\(`\/event\/\$\{trip\.id\}\/blasts`/,
-    );
-  });
+  // T-A03 REMOVED [TEST-MOD-APPROVED ORCH-1062]: the Blasts tile + its
+  // /event/<id>/blasts route moved out of index.tsx into the shared
+  // buildOfferingDashboardTiles("trip") config, covered behaviorally by
+  // offeringDashboardTiles.parity.test.ts. The `label="Blasts"` inline route no
+  // longer exists in the ACTION_GRID source — dropped as covered-elsewhere.
 
   test("T-A04 Group chat tile preserves existing /event/<id>/group-chat route (ORCH-0897 [Trips + Events Group Chat] shared substrate)", () => {
     expect(ACTION_GRID).toMatch(
@@ -187,15 +189,13 @@ describe("ORCH-0913 trip dashboard parity — ADVERSARIAL", () => {
   // --- Capacity zero edge case (angle: implementor checks "N / capacity";
   // we check that capacity=0 renders honestly, not as "infinity" or hidden) ---
 
-  test("T-A09 KPI Spots when capacity is zero: renders `N / 0` honestly (not hidden, not falsy-coerced to undefined branch)", () => {
-    // The capacity null-guard uses `!== null` — capacity 0 (falsy but not null)
-    // MUST take the `/ capacity` branch, not the `null` branch.
-    expect(DASHBOARD_SRC).toContain(
-      "trip.businessTrip.capacity !== null",
-    );
-    expect(DASHBOARD_SRC).not.toMatch(/trip\.businessTrip\.capacity\s*\?/);
-    expect(DASHBOARD_SRC).not.toMatch(/trip\.businessTrip\.capacity\s*\?\?/);
-  });
+  // T-A09 REMOVED [TEST-MOD-APPROVED ORCH-1062]: the KPI Spots capacity-honesty
+  // branch (`capacity !== null` → `N / capacity`, capacity 0 rendered honestly)
+  // moved out of index.tsx into the shared formatTripSpotsLabel() helper
+  // (src/utils/tripDashboardDisplay.ts) and is covered behaviorally — including
+  // the capacity-zero edge — by src/utils/__tests__/tripDashboardDisplay.test.ts.
+  // The `trip.businessTrip.capacity !== null` string no longer lives in index.tsx,
+  // so this source pin is dropped as covered-elsewhere.
 
   // --- Anti-zealous-parity guard (angle: implementor checks "Edit tile
   // renders"; we check that the deliberate-divergence comment + primary

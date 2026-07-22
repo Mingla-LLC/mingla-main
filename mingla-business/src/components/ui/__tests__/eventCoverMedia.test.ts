@@ -48,46 +48,28 @@ describe("EventCoverMedia presentation", () => {
   });
 
   test("event creator shows upload limits before opening the picker", () => {
-    const source = repoFile("src/components/event/CreatorStep4Cover.tsx");
+    // ORCH-0989/ORCH-1062 [TEST-MOD-APPROVED ORCH-1062]: the inline picker (which
+    // owned EVENT_COVER_UPLOAD_LIMIT_COPY) was replaced in CreatorStep4Cover by
+    // the shared <CoverPickerSheet>/<CoverPicker> — the picker copy + behavior now
+    // live there and are covered by the CoverPicker.* suites. The upload-limit copy
+    // string itself still lives in the rules module, so keep that copy-existence
+    // check and drop the stale CreatorStep4Cover source pin.
     const rulesSource = repoFile("src/utils/eventCoverMediaRules.ts");
 
-    expect(source).toContain("EVENT_COVER_UPLOAD_LIMIT_COPY");
     expect(rulesSource).toContain(
       "Upload a JPEG, PNG, WebP, or GIF up to 30 MB.",
     );
   });
 
-  test("event creator requests iOS-compatible image output while preserving GIF-safe picking", () => {
-    const source = repoFile("src/components/event/CreatorStep4Cover.tsx");
-
-    expect(source).toContain('mediaTypes: ["images"]');
-    expect(source).toContain("allowsEditing: false");
-    expect(source).toContain("UIImagePickerPreferredAssetRepresentationMode");
-    expect(source).toContain("Compatible");
-    expect(source).toContain("quality: 1");
-  });
-
-  test("event creator separates image/GIF picking from native-trim-first video processing", () => {
-    const source = repoFile("src/components/event/CreatorStep4Cover.tsx");
-
-    expect(source).toContain('mediaTypes: ["images"]');
-    expect(source).not.toContain('mediaTypes: ["videos"]');
-    expect(source).not.toContain("validateNativeTrimmedEventCoverVideo");
-    expect(source).toContain("allowsEditing: false");
-    expect(source).not.toContain("allowsEditing: true");
-    expect(source).not.toContain("videoMaxDuration: 15");
-    expect(source).not.toContain("createEventCoverVideoUploadIntent");
-    expect(source).toContain("if (!isAuthReady)");
-    expect(source).toContain("Finishing sign-in before upload");
-    expect(source).not.toContain("Use this clip");
-    expect(source).not.toContain("Trim video cover");
-    expect(source).toContain("searchGiphyEventCovers");
-    expect(source).toContain("searchPexelsEventCovers");
-    expect(source).toContain("coverMediaProvider");
-    expect(source).not.toContain("VideoExportPreset.H264_1280x720");
-    expect(source).not.toContain("UIImagePickerControllerQualityType.High");
-    expect(source).not.toContain("EVENT_COVER_VIDEO_PROCESSING_COPY");
-  });
+  // ORCH-0989/ORCH-1062 [TEST-MOD-APPROVED ORCH-1062]: the two source pins that
+  // asserted CreatorStep4Cover called the image picker inline
+  // (`mediaTypes: ["images"]`, `allowsEditing: false`,
+  // `UIImagePickerPreferredAssetRepresentationMode`, the GIF-safe / no-inline-video
+  // guards) were removed — CreatorStep4Cover no longer calls the picker directly.
+  // The unified <CoverPickerSheet> (ORCH-0989) delegates to the shared
+  // coverPickerDeviceMedia picker, whose iOS-compatible / GIF-safe / image-only
+  // behavior is covered by the passing CoverPicker.* suites. These were pure
+  // source-shape pins on moved code, not behavioral coverage.
 
   test("event creator no longer logs active video upload-intent diagnostics", () => {
     const source = repoFile("src/components/event/CreatorStep4Cover.tsx");
@@ -108,8 +90,13 @@ describe("EventCoverMedia presentation", () => {
 
     expect(source).toContain("fullscreenOptions={{ enable: false }}");
     expect(source).toContain("playsInline");
-    expect(source).toContain('React.createElement("video"');
-    expect(source).toContain("WEB_VIDEO_STYLE");
+    // ORCH-1167-R8/ORCH-1062 [TEST-MOD-APPROVED ORCH-1062]: the web cover video is
+    // now created imperatively via `document.createElement('video')` (a
+    // React-reconciled <video> is permanently denied inline-muted autoplay by
+    // WebKit), and the inline web style constant was renamed away from
+    // WEB_VIDEO_STYLE. Dropped these two stale source-shape pins; the browser-safe
+    // playback behavior stays covered by the retained playsInline / fullscreen /
+    // AppState / audio-pill assertions below and the ORCH-1124 audio-pill suite.
     expect(source).toContain("AppState.addEventListener");
     expect(source).toContain('player.addListener("playToEnd"');
     expect(source).toContain('payload.status === "readyToPlay" && shouldPlay');
@@ -144,10 +131,18 @@ describe("EventCoverMedia presentation", () => {
   });
 
   test("event cover video playback is gated by active surface intent", () => {
-    // ORCH-0964 [TEST-MOD-APPROVED ORCH-0964]: implementation moved to the
-    // shared @mingla/offering-rendering package; assertions unchanged.
+    // ORCH-1062 [TEST-MOD-APPROVED ORCH-1062]: this suite's `publicPageSource`
+    // half pinned the src/components/event/PublicEventPage.tsx pathname→
+    // mediaPlaybackActive wiring (usePathname / eventPublicPath /
+    // publicHeroPlaybackActive / the close→router.replace ordering). That whole
+    // page moved into the shared @mingla/offering-rendering package (the
+    // mingla-business file is now a thin delegate), so those pins were stale and
+    // their behavior is covered by the shared package's own tests. Dropped the
+    // moved publicPageSource half plus the two stale component strings
+    // (`if (shouldPlay) callNativeVideoPlayer`, `autoPlay: shouldPlay`) that the
+    // ORCH-1167-R8 imperative-DOM video refactor renamed away. Kept the
+    // component-level playbackActive gating pins that still hold.
     const source = repoFile("../packages/offering-rendering/EventCoverMedia.tsx");
-    const publicPageSource = repoFile("src/components/event/PublicEventPage.tsx");
 
     expect(source).toContain("playbackActive?: boolean");
     expect(source).toContain("playbackActive = true");
@@ -155,29 +150,13 @@ describe("EventCoverMedia presentation", () => {
     expect(source).toContain("isDisposedNativeVideoPlayerError");
     expect(source).toContain("callNativeVideoPlayer");
     expect(source).toContain("NativeSharedObjectNotFoundException");
-    expect(source).toContain("if (shouldPlay) callNativeVideoPlayer");
     expect(source).toContain('payload.status === "readyToPlay" && shouldPlay');
     expect(source).toContain("if (shouldPlay) {");
     expect(source).toContain("callNativeVideoPlayer(() => player.pause())");
     expect(source).toContain('state === "active" && shouldPlay');
     expect(source).toContain('state === "inactive" || state === "background"');
-    expect(source).toContain("autoPlay: shouldPlay");
     expect(source).toContain("if (!loop || !shouldPlay) return");
     expect(source).toContain("playbackActive={playbackActive}");
-
-    expect(publicPageSource).toContain("usePathname");
-    expect(publicPageSource).toContain("eventPublicPath");
-    expect(publicPageSource).toContain("mediaPlaybackActive");
-    expect(publicPageSource).toContain("publicHeroPlaybackActive");
-    expect(publicPageSource).toContain("playbackActive={playbackActive}");
-    expect(publicPageSource).toContain("setMediaPlaybackActive(false)");
-
-    const closeIndex = publicPageSource.indexOf("setMediaPlaybackActive(false)");
-    const replaceIndex = publicPageSource.indexOf('router.replace("/(tabs)/hub/events"');
-    expect(closeIndex).toBeGreaterThan(-1);
-    expect(replaceIndex).toBeGreaterThan(closeIndex);
-    expect(publicPageSource).toContain("muted={coverVideoMuted}");
-    expect(publicPageSource).toContain('showAudioControl={safeCoverMediaType === "video"}');
   });
 
   test("native event cover cleanup does not call pause on a potentially disposed player", () => {
@@ -199,13 +178,15 @@ describe("EventCoverMedia presentation", () => {
     // ORCH-0964 [TEST-MOD-APPROVED ORCH-0964]: implementation moved to the
     // shared @mingla/offering-rendering package; assertions unchanged.
     const source = repoFile("../packages/offering-rendering/EventCoverMedia.tsx");
-    const stepSource = repoFile("src/components/event/CreatorStep4Cover.tsx");
 
     expect(source).toContain("onMediaError");
     expect(source).toContain('handleMediaError("image"');
     expect(source).toContain('handleMediaError("video"');
-    expect(stepSource).toContain("mediaDisplayError");
-    expect(stepSource).toContain('accessibilityRole="alert"');
+    // ORCH-0989/ORCH-1062 [TEST-MOD-APPROVED ORCH-1062]: the CreatorStep4Cover
+    // media-display-error UI (mediaDisplayError / accessibilityRole="alert") moved
+    // into the shared <CoverPickerSheet>/<CoverPicker> when the inline picker was
+    // replaced (ORCH-0989); dropped the two stale stepSource pins. The
+    // error-surfacing behavior on the shared cover component stays asserted above.
   });
 });
 

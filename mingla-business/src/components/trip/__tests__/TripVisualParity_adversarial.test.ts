@@ -129,17 +129,26 @@ describe("ORCH-0874 Trip surfaces visual parity with Events — TESTER adversari
     const SRC = readApp("trip/[id]/index.tsx");
 
     it("A-03: View public page tile renders only when trip.brandSlug is non-null", () => {
-      // Find the ActionTile with View public page label — must be inside a
-      // conditional that checks brandSlug.
+      // [TEST-MOD-APPROVED ORCH-1062] DRIFT UPDATE (intended, cited): the
+      // View-public-page tile moved into buildOfferingDashboardTiles("trip") (key
+      // "public", requiresPublicPage: true). The dashboard now suppresses every
+      // requiresPublicPage tile when brandSlug is null/empty via the config-map
+      // guard (index.tsx:469-474) — the broken-link defense is preserved at the map
+      // level. Assert the guard filters requiresPublicPage tiles on null brandSlug.
       expect(SRC).toMatch(
-        /trip\.brandSlug !== null && trip\.brandSlug\.length > 0[\s\S]{0,400}label="View public page"/,
+        /tile\.requiresPublicPage\s*&&\s*\(\s*trip\.brandSlug === null \|\| trip\.brandSlug\.length === 0\s*\)[\s\S]{0,80}return null/,
       );
     });
 
     it("A-03: Brand page tile renders only when trip.brandSlug is non-null", () => {
-      expect(SRC).toMatch(
-        /trip\.brandSlug !== null && trip\.brandSlug\.length > 0[\s\S]{0,400}label="Brand page"/,
-      );
+      // [TEST-MOD-APPROVED ORCH-1062] DRIFT UPDATE (intended, cited): the Brand-page
+      // tile is likewise a shared config tile (key "brand", requiresPublicPage:
+      // true) gated by the same map guard. Assert the shared config marks BOTH
+      // brandSlug-dependent tiles requiresPublicPage so the map suppresses them when
+      // brandSlug is null (offeringDashboardTiles.ts:119-133).
+      const tilesCfg = read("components/offering/offeringDashboardTiles.ts");
+      expect(tilesCfg).toMatch(/label: "Public page",\s*requiresPublicPage: true/);
+      expect(tilesCfg).toMatch(/label: "Brand page",\s*requiresPublicPage: true/);
     });
 
     it("A-04: ShareModal renders only when trip.brandSlug is non-null", () => {
@@ -258,9 +267,22 @@ describe("ORCH-0874 Trip surfaces visual parity with Events — TESTER adversari
     const SRC = readApp("t/[brandSlug]/[tripSlug].tsx");
 
     it("Share.share() wrapped in try/catch with silent catch (user-cancel UX)", () => {
-      expect(SRC).toMatch(
-        /try \{[\s\S]*?await Share\.share\([\s\S]*?\}\s*catch \{[\s\S]*?\/\/[\s\S]*?cancel/,
+      // [TEST-MOD-APPROVED ORCH-1062] DRIFT UPDATE (intended, cited): ORCH-1114 moved
+      // the raw Share.share() out of the /t/ route into the web-aware ShareModal —
+      // the route now opens the modal via setShareModalVisible(true), and ShareModal
+      // wraps the native Share.share() in silent try/catch blocks for the
+      // user-cancel UX (ShareModal.tsx:147,163,175,198). Assert the route delegates
+      // to ShareModal and that ShareModal owns the silent-catch native share.
+      expect(SRC).toMatch(/setShareModalVisible\(true\)/);
+      // ShareModal.handleNativeShare wraps the native share in a silent try/catch
+      // (user-cancel swallowed; only a web-unsupported toast surfaces).
+      const modalSrc = read("components/ui/ShareModal.tsx");
+      expect(modalSrc).toMatch(
+        /const handleNativeShare[\s\S]*?try\s*\{[\s\S]*?await sharePublicUrl\([\s\S]*?\}\s*catch\s*\{/,
       );
+      // the underlying native Share.share() lives in the shared util it delegates to.
+      const shareUtil = read("utils/sharePublicUrl.ts");
+      expect(shareUtil).toMatch(/Share\.share\(/);
     });
   });
 

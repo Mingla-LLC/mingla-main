@@ -46,12 +46,16 @@ describe("ORCH-1138 FIX-2 — destination normalized everywhere (business/web)",
   });
 
   test("the 📍 location pill renders destinationCityCountry", () => {
-    // The §3 location pill renders the normalized value, gated on it being non-null.
+    // [TEST-MOD-APPROVED ORCH-1062] DRIFT UPDATE (intended): a later ORCH-1138 rework
+    // folded the §3 route/location rendering into a computed `routeLabel`
+    // (TripOfferingBody.tsx:204-210) that is gated on data.destinationCityCountry
+    // !== null and rendered as {routeLabel} in the route pills (:333). The
+    // normalized destination is still the rendered value — just via the derived
+    // label instead of a bare {data.destinationCityCountry} interpolation.
     expect(
-      /data\.destinationCityCountry !== null \?[\s\S]{0,600}\{data\.destinationCityCountry\}/.test(
-        bodySrc,
-      ),
+      /const routeLabel[\s\S]*?data\.destinationCityCountry !== null/.test(bodySrc),
     ).toBe(true);
+    expect(bodySrc).toContain("{routeLabel}");
   });
 
   test("the adapter still normalizes both legs (shared normalizer, not forked)", () => {

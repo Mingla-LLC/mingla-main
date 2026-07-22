@@ -45,7 +45,12 @@ describe("ORCH-0911 — event confirm adversarial gates", () => {
     const branch = sliceResultNullBranch();
     expect(branch).toContain("globalThis as unknown as");
     expect(branch).toContain("location?: { search?: string }");
-    expect(branch).toContain("const hasCs = /[?&]cs=/.test");
+    // [TEST-MOD-APPROVED ORCH-1062] DRIFT UPDATE (intended): the gate gained an
+    // `isClient &&` SSR-safety prefix (confirm.tsx:460 `const hasCs = isClient &&
+    // /[?&]cs=/.test(win.location?.search ?? "")`) so it never touches window on the
+    // server. It still reads ONLY the URL search string (the sessionStorage/resume
+    // negative assertions below are unchanged) — invariant preserved.
+    expect(branch).toContain("const hasCs = isClient && /[?&]cs=/.test");
     // hasCs branch must NOT read sessionStorage as a gate
     const hasCsBlock = branch.slice(branch.indexOf("if (hasCs)"));
     expect(hasCsBlock).not.toMatch(/sessionStorage/);

@@ -91,7 +91,14 @@ describe("ORCH-0876 — EditPublishedTripScreen save flow contract", () => {
     expect(bannerIdx).toBeLessThan(sectionMapIdx);
   });
 
-  test("six sections in the locked order (Basics, Itinerary, Inclusions, Pricing, Cover, Settings)", () => {
+  // [TEST-MOD-APPROVED ORCH-1062] — DRIFT UPDATE (intended, cited): ORCH-0880
+  // [Tr5 Traveler Intake Forms] added the "intake" section between Cover and
+  // Settings ("sits between Cover and Settings per DESIGN §6",
+  // EditPublishedTripScreen.tsx:172-173; the SectionKey union gained "intake" at
+  // :158). The locked order is now seven sections. This is a deliberate feature
+  // addition, not a regression — the expected value is updated to the proven
+  // current order at the same (toEqual, exhaustive) assertion strength.
+  test("seven sections in the locked order (Basics, Itinerary, Inclusions, Pricing, Cover, Intake form, Settings)", () => {
     const sectionsMatch = SRC.match(/const SECTIONS:\s*readonly\s+SectionConfig\[\][\s\S]*?\];/);
     expect(sectionsMatch).not.toBeNull();
     const sections = sectionsMatch![0];
@@ -104,6 +111,7 @@ describe("ORCH-0876 — EditPublishedTripScreen save flow contract", () => {
       "inclusions",
       "pricing",
       "cover",
+      "intake",
       "settings",
     ]);
   });

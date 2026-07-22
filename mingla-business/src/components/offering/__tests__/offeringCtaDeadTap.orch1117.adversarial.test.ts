@@ -374,7 +374,13 @@ describe("ORCH-1117 adversarial B4 — single-ticket inline CTA removed (bar is 
   });
 
   it("the trip route mounts the floating bar and routes it to the trip-specific chain", () => {
-    expect(TRIP_ROUTE).toMatch(/FloatingOfferingBar/);
+    // [TEST-MOD-APPROVED ORCH-1062] DRIFT UPDATE (intended, cited): ORCH-1138 /
+    // META-ORCH-1174 replaced FloatingOfferingBar with the shared <TripReserveBar>
+    // (docked + floating variants) on the trip route (app/t/…:546,628). The
+    // floating-bar-is-the-CTA invariant is unchanged — the stable
+    // `orch-1117-trip-floating-bar` testID + tripCheckoutPath routing (asserted
+    // below) still pin it; only the component name changed.
+    expect(TRIP_ROUTE).toMatch(/TripReserveBar/);
     expect(TRIP_ROUTE).toMatch(/orch-1117-trip-floating-bar/);
     expect(TRIP_ROUTE).toMatch(/tripCheckoutPath\(trip\.id\)/);
     // Never the events chain that hard-rejects trip rows.
@@ -382,8 +388,15 @@ describe("ORCH-1117 adversarial B4 — single-ticket inline CTA removed (bar is 
   });
 
   it("the experience route mounts the floating bar and routes it to the experience chain", () => {
-    expect(EXP_ROUTE).toMatch(/FloatingOfferingBar/);
-    expect(EXP_ROUTE).toMatch(/orch-1117-experience-floating-bar/);
+    // [TEST-MOD-APPROVED ORCH-1062] DRIFT UPDATE (intended, cited): the experience
+    // route reuses the same shared <TripReserveBar> (app/exp/…:528,597) after
+    // ORCH-1138 / META-ORCH-1174. The orch-1117-experience-floating-bar testID +
+    // experienceCheckoutPath routing (below) still pin the invariant.
+    expect(EXP_ROUTE).toMatch(/TripReserveBar/);
+    // ORCH-1138 renamed the experience reserve-bar testID
+    // orch-1117-experience-floating-bar → orch-1138-experience-reserve-bar
+    // (app/exp/…:537,605). The bar-mount invariant is unchanged.
+    expect(EXP_ROUTE).toMatch(/orch-1138-experience-reserve-bar/);
     expect(EXP_ROUTE).toMatch(/experienceCheckoutPath\(experience\.id\)/);
   });
 });
