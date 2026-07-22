@@ -134,8 +134,14 @@ describe("ORCH-1101 ADV-3 · web paddingBottom short-circuits BEFORE the 80px na
       /paddingBottom:\s*\n?\s*Platform\.OS === ["']web["']/,
     );
     expect(pbIdx).toBeGreaterThan(-1);
-    // Slice from that paddingBottom to the next property/line end.
-    const expr = screenCode.slice(pbIdx, pbIdx + 260);
+    // Slice from that paddingBottom over the full web/keyboard/native ternary.
+    // [ORCH-1062 pin-fix] The ternary grew (keyboard-up branch gained
+    // `+ composerHeight + 12`; native branch became `Math.max(insets.bottom,
+    // spacing.md) + BOTTOM_NAV_CLEARANCE_PX`), pushing BOTTOM_NAV_CLEARANCE_PX
+    // past the old 260-char window → navMathPos went -1. Widen the window so the
+    // whole expression is captured; indexOf-first keeps the ordering exact
+    // (web `spacing.sm` and web branch still precede the native 80px term).
+    const expr = screenCode.slice(pbIdx, pbIdx + 500);
     const webBranchPos = expr.indexOf('Platform.OS === "web"');
     const navMathPos = expr.indexOf("BOTTOM_NAV_CLEARANCE_PX");
     const webResultPos = expr.indexOf("spacing.sm");

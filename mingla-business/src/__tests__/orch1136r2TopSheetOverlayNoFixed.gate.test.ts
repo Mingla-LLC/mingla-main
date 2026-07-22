@@ -95,20 +95,28 @@ describe("ORCH-1136 R2 TopSheet web overlay no-fixed gate", () => {
     expect(run()).toContain("I-PROPOSED-TOPSHEET-WEB-OVERLAY-NO-FIXED");
   });
 
-  // ---- T-4: the event ⋯ DIAG discriminator is bound (web-visible) ------------
-  test("T-4 — event ⋯ handleManageOpen carries the [ORCH-1136-DIAG] web-visible discriminator", () => {
+  // ---- T-4: the event ⋯ manage tap is never a silent no-op (Const#1) ---------
+  test("T-4 — event ⋯ handleManageOpen surfaces UI in every branch (never a silent no-op)", () => {
+    // [ORCH-1062 pin-fix] The temporary `[ORCH-1136-DIAG]` instrument was REAPED
+    // at ORCH-1136 CLOSE (DIAG markers are scoped + orchestrator-reaped). The
+    // never-silent-on-web guarantee it probed is now enforced by the REAL
+    // handleManageOpen (whose own comment reads "ORCH-1136 F-2: never a silent
+    // dead tap (Const #1)"): brand===null forces a VISIBLE toast, and the
+    // resolved path opens the menu — so the tap is never a silent no-op. Assert
+    // the surviving real handler instead of the reaped diagnostic marker.
     const src = fs.readFileSync(EVENT_INDEX_PATH, "utf8");
-    expect(src).toContain("[ORCH-1136-DIAG]");
-    expect(src).toContain("[ORCH-1136-DIAG END]");
-    // The discriminator surfaces the brand-null state and forces a web toast.
-    expect(src).toContain("[DIAG] ⋯ tapped — brand=");
-    // It is web-fenced (native control flow byte-identical) and precedes the
-    // real brand===null branch.
-    const diagIdx = src.indexOf("[ORCH-1136-DIAG]");
-    const realBranchIdx = src.indexOf(
-      'message: "Loading brand… tap again in a moment."',
-    );
-    expect(diagIdx).toBeGreaterThan(0);
-    expect(realBranchIdx).toBeGreaterThan(diagIdx);
+    const handlerStart = src.indexOf("const handleManageOpen = useCallback");
+    expect(handlerStart).toBeGreaterThan(0);
+    const handlerEnd = src.indexOf("const handleManageClose", handlerStart);
+    expect(handlerEnd).toBeGreaterThan(handlerStart);
+    const body = src.slice(handlerStart, handlerEnd);
+    // brand-not-yet-resolved → forced VISIBLE toast (never silent).
+    const nullBranchIdx = body.indexOf("if (brand === null)");
+    expect(nullBranchIdx).toBeGreaterThan(0);
+    const nullBranch = body.slice(nullBranchIdx);
+    expect(nullBranch).toMatch(/setToast\(\s*\{[\s\S]*?visible:\s*true/);
+    expect(nullBranch).toContain("Loading brand… tap again in a moment.");
+    // resolved-brand path opens the manage menu.
+    expect(body).toContain("setManageMenuVisible(true)");
   });
 });

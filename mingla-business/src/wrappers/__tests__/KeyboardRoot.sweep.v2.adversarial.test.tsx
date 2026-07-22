@@ -71,6 +71,35 @@ const SAFELIST = new Set([
 const EXPECTED_ALLOWLISTED_FILES = new Set([
   "mingla-business/src/components/ui/Input.tsx",
   "mingla-business/src/components/auth/BusinessWelcomeScreen.tsx",
+  // [ORCH-1062 drift-update] Eight legitimate keyboard-avoidance exemptions were
+  // added by later ORCHs (AFTER the ORCH-0892-B allowlist was seeded) but never
+  // registered here — the EXPECTED set drifted; this is truth-catch-up, NOT
+  // scope-creep silencing. Each marker's documented reason was read and verified
+  // as a genuine non-SmartScrollView keyboard context (TA-V2-1 already permits
+  // these via the inline allowlist; TA-V2-3 only tracks registration hygiene,
+  // and stays live for any FUTURE unapproved allowlist). Reasons/citations:
+  //   - SmsComposeCard: horizontal MMS thumbnail row (image list), no keyboard
+  //     insets/listeners — ORCH-1289 / META-ORCH-1281 (SMS composer photo/MMS).
+  //   - account/support: short ticket list, single above-fold input (chat-thread
+  //     keyboard handling lives in SupportThread.native) — META-ORCH-1104.
+  //   - TripDayEditor: only ScrollView is the ORCH-1119 HORIZONTAL media-thumb
+  //     strip (no TextInput inside) — a vertical KAS would hijack focus.
+  //   - GroupChatPanel / SupportThread.native: chat/support composers using a
+  //     sticky-above-keyboard lift (keyboard-controller), not a scrolling form.
+  //   - BrandCreationFlow: META-ORCH-0972 Sub-B — name/bio/address fields sit
+  //     above-fold, not scroll-occluded; SmartScrollView migration deferred.
+  //   - ExperienceCreatorWizard: META-ORCH-1059 Sub-A — single ScrollView +
+  //     keyboardShouldPersistTaps; SmartScrollView migration deferred.
+  //   - JoinWaitlistSheet: bespoke Cycle-3 pattern (Keyboard.addListener +
+  //     dynamic paddingBottom) per feedback_keyboard_never_blocks_input.md.
+  "mingla-business/src/components/marketing/SmsComposeCard.tsx",
+  "mingla-business/app/account/support.tsx",
+  "mingla-business/src/components/trip/TripDayEditor.tsx",
+  "mingla-business/src/components/groupChat/GroupChatPanel.tsx",
+  "mingla-business/src/components/support/SupportThread.native.tsx",
+  "mingla-business/src/components/brand/BrandCreationFlow.tsx",
+  "mingla-business/src/components/experience/ExperienceCreatorWizard.tsx",
+  "mingla-business/src/components/waitlist/JoinWaitlistSheet.tsx",
 ]);
 
 const SKIP_DIRS = new Set([

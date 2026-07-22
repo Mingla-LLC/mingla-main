@@ -129,6 +129,13 @@ const EXPECTED: Record<string, Bucket> = {
   event: "gated-default",
   experience: "gated-default",
   partner: "gated-default",
+  // [ORCH-1062 drift-update] The `app/rsvp` authed RSVP creator route
+  // (create / [id]/{index,edit,guests,preview}; shipped ORCH-1355/#831,
+  // mirrors `event`) was added to app/ but never seeded into this ORCH-1139
+  // inventory. `/rsvp` is in NONE of the exempt prefix sets
+  // (PUBLIC_BUYER / SELF_AUTHENTICATING_CONNECT / INVITE_ACCEPT), so it is
+  // gated-default — proven from coldLoadAuthGates membership.
+  rsvp: "gated-default",
   support: "gated-default",
   trip: "gated-default",
   venue: "gated-default",

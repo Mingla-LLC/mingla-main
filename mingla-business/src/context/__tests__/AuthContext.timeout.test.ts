@@ -519,7 +519,12 @@ describe("ORCH-0887-A — AuthContext.tsx source-text structural assertions (Sur
       // The SIGNED_IN-only recovery + analytics block stays gated to the
       // explicit SIGNED_IN event so the passive late-session recovery does
       // NOT re-fire ensureCreatorAccount analytics (anti-flash preserved).
-      expect(AUTH_CONTEXT_SOURCE).toMatch(/if \(_event === ["']SIGNED_IN["']\)/);
+      // [ORCH-1062 pin-fix] The deferred-init path now captures the event into
+      // `eventForDeferred` and gates on `if (eventForDeferred === "SIGNED_IN")`
+      // (AuthContext.tsx: the tryRecoverAccountIfDeleted + AppsFlyer/Mixpanel/
+      // PostHog identity block). The event-variable NAME is incidental — assert
+      // a SIGNED_IN-only conditional gate exists, tolerating the identifier.
+      expect(AUTH_CONTEXT_SOURCE).toMatch(/if \(\w+ === ["']SIGNED_IN["']\)/);
     },
     5000,
   );

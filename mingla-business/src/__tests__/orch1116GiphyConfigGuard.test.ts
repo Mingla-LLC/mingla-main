@@ -46,6 +46,20 @@ const FAKE_CTX = { config: { plugins: [] } } as never;
 const FAKE_PK_LIVE = "pk_live_" + "0".repeat(24);
 const FAKE_PK_TEST = "pk_test_" + "0".repeat(24);
 
+// [ORCH-1062 drift-update] ORCH-1313 (§4.C) added a SIBLING AppsFlyer fail-loud
+// guard that runs BEFORE the GIPHY guard on release-bound EAS profiles
+// (production / production-apk / preview / preview-sim; app.config.ts:60-81).
+// It throws when the three AppsFlyer env vars are unset — masking the GIPHY
+// assertion on the EAS-profile cases (A1/A2/A7/A8). Supply a valid AppsFlyer env
+// on those cases to get past it and isolate the GIPHY throw/no-throw behavior,
+// exactly as the Stripe pk_live above already masks the Stripe guard on
+// VERCEL_ENV cases. Shape-only placeholders, NOT real keys.
+const FAKE_APPSFLYER_ENV = {
+  EXPO_PUBLIC_APPSFLYER_DEV_KEY: "af_dev_key_placeholder",
+  EXPO_PUBLIC_APPSFLYER_IOS_APP_ID: "id0000000000",
+  EXPO_PUBLIC_APPSFLYER_ANDROID_APP_ID: "com.mingla.business.placeholder",
+} as const;
+
 const ORIGINAL_ENV = process.env;
 
 function runConfigWithEnv(env: Record<string, string | undefined>): unknown {
@@ -74,6 +88,7 @@ describe("ORCH-1116 app.config GIPHY fail-loud guard (real default fn)", () => {
       runConfigWithEnv({
         EAS_BUILD_PROFILE: "preview",
         VERCEL_ENV: undefined,
+        ...FAKE_APPSFLYER_ENV, // [ORCH-1062] past the ORCH-1313 AppsFlyer guard.
         EXPO_PUBLIC_GIPHY_API_KEY: undefined,
         EXPO_PUBLIC_GIPHY_KEY: undefined,
         // No VERCEL_ENV → Stripe guard uses sandbox fallback, no interference.
@@ -86,6 +101,7 @@ describe("ORCH-1116 app.config GIPHY fail-loud guard (real default fn)", () => {
       runConfigWithEnv({
         EAS_BUILD_PROFILE: "production-apk",
         VERCEL_ENV: undefined,
+        ...FAKE_APPSFLYER_ENV, // [ORCH-1062] past the ORCH-1313 AppsFlyer guard.
         EXPO_PUBLIC_GIPHY_API_KEY: undefined,
         EXPO_PUBLIC_GIPHY_KEY: undefined,
       }),
@@ -153,6 +169,7 @@ describe("ORCH-1116 app.config GIPHY fail-loud guard (real default fn)", () => {
       result = runConfigWithEnv({
         EAS_BUILD_PROFILE: "preview",
         VERCEL_ENV: undefined,
+        ...FAKE_APPSFLYER_ENV, // [ORCH-1062] past the ORCH-1313 AppsFlyer guard.
         EXPO_PUBLIC_GIPHY_API_KEY: "gphy_dummy_key_value_abcdef ".trim(),
         EXPO_PUBLIC_GIPHY_KEY: undefined,
       }) as { extra?: Record<string, unknown> };
@@ -165,6 +182,7 @@ describe("ORCH-1116 app.config GIPHY fail-loud guard (real default fn)", () => {
       runConfigWithEnv({
         EAS_BUILD_PROFILE: "preview",
         VERCEL_ENV: undefined,
+        ...FAKE_APPSFLYER_ENV, // [ORCH-1062] past the ORCH-1313 AppsFlyer guard.
         EXPO_PUBLIC_GIPHY_API_KEY: undefined,
         EXPO_PUBLIC_GIPHY_KEY: "legacy_giphy_fallback_key_value",
       }),

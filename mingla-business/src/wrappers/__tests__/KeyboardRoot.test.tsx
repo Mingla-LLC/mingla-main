@@ -81,31 +81,11 @@ describe("ORCH-0892-A KeyboardRoot + pilot migration", () => {
   });
 
   // --- T-03b: TripBrandWizard v3 contract ---
-  it("T-03b: TripBrandWizard.tsx uses SmartScrollView, retains Keyboard for Keyboard.dismiss() (v3 / ORCH-0892-B)", () => {
-    const source = read("src/components/brand/TripBrandWizard.tsx");
-    const stripped = source
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .split("\n")
-      .map((line) => line.replace(/\/\/.*$/, ""))
-      .join("\n");
-    expect(source).toMatch(
-      /import\s+\{\s*ScrollView\s*\}\s+from\s+["']\.\.\/\.\.\/wrappers\/SmartScrollView["']/,
-    );
-    expect(stripped).not.toMatch(/\bKeyboardAvoidingView\b/);
-    expect(stripped).not.toMatch(
-      /from\s+["']react-native-keyboard-controller["']/,
-    );
-    // Keyboard import retained for Keyboard.dismiss().
-    expect(source).toMatch(/Keyboard\.dismiss\(\)/);
-    const reactNativeImportBlockMatch = source.match(
-      /import\s+\{[^}]+\}\s+from\s+["']react-native["']/,
-    );
-    expect(reactNativeImportBlockMatch).not.toBeNull();
-    expect(reactNativeImportBlockMatch?.[0] ?? "").not.toMatch(
-      /\bScrollView\b/,
-    );
-    expect(reactNativeImportBlockMatch?.[0] ?? "").toMatch(/\bKeyboard,?/);
-  });
+  // [ORCH-1062 pin-removal] The dedicated TripBrandWizard.tsx SmartScrollView
+  // pin was deleted: META-ORCH-0972 (brand-kind decommission + universal
+  // authoring) REMOVED src/components/brand/TripBrandWizard.tsx entirely, so
+  // this pin read a non-existent file and threw. No behavioral coverage is
+  // lost — the component no longer exists.
 
   // --- T-04: CoverPicker v3 contract — SmartScrollView, KAV deleted ---
   it("T-04: CoverPicker.tsx uses SmartScrollView, no parentScrollRef/keyboardScrollExtraOffset props, KAV deleted (v3 / ORCH-0892-B)", () => {
@@ -244,11 +224,19 @@ describe("ORCH-0892-B v2 form-screen migrations — SmartScrollView contract", (
     "src/components/event/EditPublishedScreen.tsx",
     "src/components/trip/EditPublishedTripScreen.tsx",
     "src/components/brand/BrandEditView.tsx",
-    "src/components/brand/TripBrandWizard.tsx",
+    // [ORCH-1062 pin-removal] src/components/brand/TripBrandWizard.tsx was
+    // DELETED by META-ORCH-0972 (brand-kind decommission + universal authoring);
+    // the file no longer exists so this SmartScrollView pin is junk. The
+    // invariant remains enforced for the surviving form screens below.
     "src/components/ui/CoverPicker.tsx",
     "src/components/brand/BrandStripeCountryPicker.tsx",
     "src/components/event/CreatorStep2When.tsx",
-    "src/components/trip/TripCreatorStep3Inclusions.tsx",
+    // [ORCH-1062 pin-removal] src/components/trip/TripCreatorStep3Inclusions.tsx
+    // was refactored to a plain-<View> leaf sub-step that no longer owns a
+    // scroll container; keyboard avoidance is provided by its parents
+    // (TripCreatorWizard / EditPublishedTripScreen — both still in this list and
+    // both own the SmartScrollView). A nested ScrollView here would be an
+    // anti-pattern, so the SmartScrollView pin on this leaf is junk.
     "src/screens/ari/AriSettingsScreen.tsx",
   ];
 

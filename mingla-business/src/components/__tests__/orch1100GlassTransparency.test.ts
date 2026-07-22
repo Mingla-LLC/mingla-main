@@ -94,12 +94,18 @@ describe.each(WIDTH_AWARE_SURFACES.map((f) => [f]))(
       expect(code).toMatch(/width:\s*windowWidth\s*\}\s*=\s*useWindowDimensions\(\)/);
     });
 
-    test("keeps the kit opaque fallback fill rgba(20,22,26,0.92) / opaque #hex", () => {
+    test("keeps the kit opaque fallback fill (solid rgb / rgba ≥0.92 / opaque #hex)", () => {
       const hasRgbaFallback = /rgba\(20,\s*22,\s*26,\s*0\.92\)/.test(code);
+      // [ORCH-1062 drift-update] TopSheet's kit opaque fallback was HARDENED from
+      // rgba(20,22,26,0.92) to the FULLY-opaque rgb(20, 22, 26) because at 0.92
+      // the home screen bled through under a blur-capable ancestor (see the
+      // FALLBACK_BACKGROUND source comment). A solid rgb (alpha 1.0) is MORE
+      // opaque than the ≥0.92 contract, not less — the guarantee strengthened.
+      const hasSolidRgbFallback = /rgb\(20,\s*22,\s*26\)/.test(code);
       // AiDisclosureModal uses an opaque #hex sheet (opaqueSheet) instead of the
-      // rgba token — both satisfy the ≥0.92 opaque-fallback contract.
+      // rgba token — all three satisfy the ≥0.92 opaque-fallback contract.
       const hasHexFallback = /backgroundColor:\s*["']#[0-9a-fA-F]{6}["']/.test(code);
-      expect(hasRgbaFallback || hasHexFallback).toBe(true);
+      expect(hasRgbaFallback || hasSolidRgbFallback || hasHexFallback).toBe(true);
     });
 
     test("does NOT define its own local supportsBackdropFilter (single source of truth)", () => {
