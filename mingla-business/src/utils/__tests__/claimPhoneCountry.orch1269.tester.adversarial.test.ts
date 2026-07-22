@@ -226,17 +226,28 @@ describe("ORCH-1269(tester): TA-W source contracts", () => {
     );
   });
 
-  test("TA-W3 the E.164 gate exists EXACTLY once in validation and only in the c6 case (s3 create rule untouched)", () => {
+  test("TA-W3 the E.164 gate mirrors across BOTH contact steps (create s5 + claim c6) — META-ORCH-1290 unified authoring; each call sits inside its own contact case", () => {
+    // #1062 B2 drift-to-truth: META-ORCH-1290 (#750) folded venue authoring into
+    // one submission and made the create-path contact step (renumbered s3→s5)
+    // MIRROR claim c6 — including the E.164 shape gate. So the gate now appears
+    // in TWO contact cases (was c6-only under ORCH-1269 #722). Structural
+    // isolation is preserved: each call sits inside its own contact case and
+    // cannot leak into an unrelated step.
     const calls = validationSrc.match(/composeE164\(/g) ?? [];
-    expect(calls).toHaveLength(1);
-    // The single call sits AFTER the c6 case opens and BEFORE c7 —
-    // i.e., inside c6, structurally incapable of running for s3.
+    expect(calls).toHaveLength(2);
+    const s5Start = validationSrc.indexOf('case "s5": {');
     const c6Start = validationSrc.indexOf('case "c6": {');
     const c7Start = validationSrc.indexOf('case "c7":');
-    const callAt = validationSrc.indexOf("composeE164(c6DialCode(");
-    expect(c6Start).toBeGreaterThan(-1);
-    expect(callAt).toBeGreaterThan(c6Start);
-    expect(callAt).toBeLessThan(c7Start);
+    expect(s5Start).toBeGreaterThan(-1);
+    expect(c6Start).toBeGreaterThan(s5Start);
+    // the create-path (s5) gate sits inside s5 (after s5 opens, before c6):
+    const s5Call = validationSrc.indexOf("composeE164(c6DialCode(", s5Start);
+    expect(s5Call).toBeGreaterThan(s5Start);
+    expect(s5Call).toBeLessThan(c6Start);
+    // the claim-path (c6) gate sits inside c6 (after c6 opens, before c7):
+    const c6Call = validationSrc.indexOf("composeE164(c6DialCode(", c6Start);
+    expect(c6Call).toBeGreaterThan(c6Start);
+    expect(c6Call).toBeLessThan(c7Start);
   });
 });
 
@@ -302,17 +313,29 @@ describe("ORCH-1269(tester): TA-V c6 gate — actual contract, phone-optional, s
     ).toBe("That phone number doesn't look right — check it.");
   });
 
-  test("TA-V5 create-path s3 stays byte-equal behaviorally: garbage/over-long phones sail through s3, presence rule intact", () => {
-    expect(venueStepError("s3", d({ contactPhone: "call us!" }))).toBeNull();
+  test("TA-V5 create-path contact step is now s5 and MIRRORS claim c6 (META-ORCH-1290 unified authoring): E.164 gate applies, presence rule intact; the old s3 slot is the gallery step and never validates a phone", () => {
+    // #1062 B2 drift-to-truth: META-ORCH-1290 (#750) renumbered the create-path
+    // contact step s3→s5 and made it mirror claim c6 — so the create path now
+    // ALSO shape-validates the phone (the ORCH-1269 "s3 isolation" contract was
+    // superseded here). The presence rule stays intact on the create path.
     expect(
       venueStepError(
-        "s3",
+        "s5",
+        d({ contactPhone: "call us!", contactPhoneCountryIso: null }),
+      ),
+    ).toBe("That phone number doesn't look right — check it.");
+    expect(
+      venueStepError(
+        "s5",
         d({
           contactPhone: "999999999999999999",
           contactPhoneCountryIso: "NG",
         }),
       ),
-    ).toBeNull();
-    expect(venueStepError("s3", d({}))).toBe("Add an email or phone number.");
+    ).toBe("That phone number doesn't look right — check it.");
+    expect(venueStepError("s5", d({}))).toBe("Add an email or phone number.");
+    // The old s3 slot is now the gallery step (ORCH-1304/META-ORCH-1290) — it
+    // never validates a phone, so a garbage phone cannot block there:
+    expect(venueStepError("s3", d({ contactPhone: "call us!" }))).toBeNull();
   });
 });

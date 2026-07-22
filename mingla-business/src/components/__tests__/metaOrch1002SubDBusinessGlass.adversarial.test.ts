@@ -75,9 +75,22 @@ interface ClippedBlock {
   block: string;
 }
 
+// #1062 RE-BASELINE — META-ORCH-1002 Sub-D is MERGED into origin/main, so
+// `git diff origin/main...HEAD` no longer surfaces the sweep (it lives in the
+// merge-base → an empty set → the >150 sanity floor could never pass). Re-anchor
+// the diff base to the FIXED pre-sweep commit and derive the EXACT Sub-D clipped
+// set from the sweep commit itself: the ~196 style blocks that gained
+// overflow:'hidden' in 6d714b567 (#261) vs its parent. This isolates Sub-D's own
+// surfaces (excluding clips added by LATER, unrelated ORCHs — e.g. the ari chat
+// composer, offering/trip bars) so the standing no-flatten (A) + shadow-clip (D)
+// guards keep validating the Sub-D surfaces against the CURRENT source. The
+// threshold is UNCHANGED (>150) and met by real data (196), not lowered.
+const SUBD_SWEEP_COMMIT = "6d714b567"; // META-ORCH-1002 Sub-D (#261)
+const SUBD_PRE_SWEEP = `${SUBD_SWEEP_COMMIT}^`;
+
 const computeClippedBlocks = (): ClippedBlock[] => {
   const files = execSync(
-    "git diff origin/main...HEAD --name-only -- 'mingla-business/src/**/*.tsx'",
+    `git diff ${SUBD_PRE_SWEEP} ${SUBD_SWEEP_COMMIT} --name-only -- 'mingla-business/src/**/*.tsx'`,
     { cwd: REPO_ROOT, encoding: "utf8" },
   )
     .split("\n")
@@ -86,29 +99,31 @@ const computeClippedBlocks = (): ClippedBlock[] => {
 
   const out: ClippedBlock[] = [];
   for (const f of files) {
-    const absHead = path.join(REPO_ROOT, f);
-    let head = "";
-    let base = "";
+    let sweep = "";
+    let pre = "";
     try {
-      head = fs.readFileSync(absHead, "utf8");
-    } catch {
-      continue;
-    }
-    try {
-      base = execSync(`git show origin/main:${f}`, {
+      sweep = execSync(`git show ${SUBD_SWEEP_COMMIT}:${f}`, {
         cwd: REPO_ROOT,
         encoding: "utf8",
       });
     } catch {
-      base = "";
+      continue;
     }
-    const hb = findStyleBlocks(head);
-    const bb = findStyleBlocks(base);
-    for (const name of Object.keys(hb)) {
-      const hHas = /overflow:\s*["']hidden["']/.test(hb[name]);
-      const bHas =
-        bb[name] !== undefined && /overflow:\s*["']hidden["']/.test(bb[name]);
-      if (hHas && !bHas) out.push({ file: f, block: name });
+    try {
+      pre = execSync(`git show ${SUBD_PRE_SWEEP}:${f}`, {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+      });
+    } catch {
+      pre = "";
+    }
+    const sb = findStyleBlocks(sweep);
+    const pb = findStyleBlocks(pre);
+    for (const name of Object.keys(sb)) {
+      const sHas = /overflow:\s*["']hidden["']/.test(sb[name]);
+      const pHas =
+        pb[name] !== undefined && /overflow:\s*["']hidden["']/.test(pb[name]);
+      if (sHas && !pHas) out.push({ file: f, block: name });
     }
   }
   return out;
@@ -127,8 +142,10 @@ try {
 describe("Sub-D adversarial — diff harness sanity", () => {
   test("git diff harness resolved a non-trivial clipped-block set", () => {
     expect(GIT_OK).toBe(true);
-    // Implementor reports ~198 named blocks gained overflow:'hidden'. Require a
-    // floor well above any accidental empty/partial result.
+    // Sub-D swept ~196 named blocks to overflow:'hidden' (implementor: ~198).
+    // Require a floor well above any accidental empty/partial result. #1062:
+    // the set is now the FIXED Sub-D sweep set (see computeClippedBlocks), so
+    // this floor is met by real data even though the sweep has merged.
     expect(CLIPPED.length).toBeGreaterThan(150);
   });
 });
@@ -137,17 +154,37 @@ describe("Sub-D adversarial — diff harness sanity", () => {
 // A. NO-FLATTEN — every clipped block kept its exact backgroundColor from main.
 // ---------------------------------------------------------------------------
 
+// #1062 RE-BASELINE — fills that a LATER, intentional (non-Sub-D) restyle
+// changed since the sweep. Each entry is `file:block` with its cited reason;
+// these are NOT Sub-D flattens, so documenting them keeps Part A honest without
+// matching an unrelated redesign as a regression. (Mirrors the file's existing
+// KNOWN_SHADOW_CLIP_OFFENDERS allowlist pattern for Part D.)
+const KNOWN_REDESIGNED_FILLS: ReadonlySet<string> = new Set<string>([
+  // The ari chat thread redesign gave the composer a cohesive OPAQUE dark
+  // surface (glass.tint.profileBase → ariThread.composerSurface "#191c21");
+  // Sub-D only added the clip, a later ari restyle changed the fill.
+  "mingla-business/src/components/ari/InputBar.tsx:host",
+]);
+
 describe("Sub-D adversarial A — no clipped surface was flattened to opaque", () => {
-  test("every block that gained overflow:'hidden' kept its main backgroundColor", () => {
+  test("every block Sub-D clipped kept its pre-sweep backgroundColor (bar cited later restyles)", () => {
     const baseCache: Record<string, string> = {};
     const flattened: { file: string; block: string; from: string; to: string }[] =
       [];
 
     for (const { file, block } of CLIPPED) {
-      const head = fs.readFileSync(path.join(REPO_ROOT, file), "utf8");
+      // #1062: the no-flatten reference is the FIXED pre-Sub-D baseline; skip
+      // blocks a later, cited restyle intentionally changed.
+      if (KNOWN_REDESIGNED_FILLS.has(`${file}:${block}`)) continue;
+      let head = "";
+      try {
+        head = fs.readFileSync(path.join(REPO_ROOT, file), "utf8");
+      } catch {
+        continue;
+      }
       if (!(file in baseCache)) {
         try {
-          baseCache[file] = execSync(`git show origin/main:${file}`, {
+          baseCache[file] = execSync(`git show ${SUBD_PRE_SWEEP}:${file}`, {
             cwd: REPO_ROOT,
             encoding: "utf8",
           });
@@ -213,8 +250,10 @@ describe("Sub-D adversarial B/C — stragglers opaque via shared helper, iOS fro
     const block = styleBlock(code, "opaqueSheet");
     expect(block).not.toBeNull();
     expect(block!).toMatch(/backgroundColor:\s*["']#[0-9a-fA-F]{6}["']/);
-    // Real-blur path still renders the real blur.
-    expect(code).toMatch(/<BlurView\s+intensity=\{40\}/);
+    // Real-blur path still renders the real blur at intensity 40. #1062 B2
+    // drift-to-truth: a `pointerEvents="none"` prop now precedes `intensity`
+    // on the <BlurView>, so tolerate intervening props (still pins intensity 40).
+    expect(code).toMatch(/<BlurView[\s\S]{0,80}intensity=\{40\}/);
   });
 
   test("BlastCustomersCta: L1 BlurView when blurOk else opaque, via shared helper", () => {
@@ -270,7 +309,14 @@ const detectComposedShadowClips = (): {
   }[] = [];
 
   for (const file of Object.keys(byFile)) {
-    const src = fs.readFileSync(path.join(REPO_ROOT, file), "utf8");
+    // #1062: a Sub-D-swept file may have been deleted/renamed since the sweep —
+    // it can no longer clip a live shadow, so skip it rather than throwing.
+    let src = "";
+    try {
+      src = fs.readFileSync(path.join(REPO_ROOT, file), "utf8");
+    } catch {
+      continue;
+    }
     const sb = findStyleBlocks(src);
     const shadowStyles = new Set(
       Object.entries(sb)

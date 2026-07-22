@@ -159,8 +159,13 @@ describe("ORCH-1106 — AuthContext.tsx boot-probe wiring (fails-on-revert)", ()
   });
 
   test("performs an authenticated getUser() probe inside the bootstrap user branch", () => {
+    // META-ORCH-1235 (§5.1) bounded the probe with a per-probe deadline: the
+    // getUser() call is now wrapped in withTimeout(...) so a hung GET /user
+    // rejects as a transport failure (fail-open). The (time-bounded) getUser()
+    // probe still exists — assert against the current wrapped form
+    // (#1062 B2 drift-to-truth; behavior unchanged, wiring hardened).
     expect(AUTH_CONTEXT_SOURCE).toMatch(
-      /await supabase\.auth\.getUser\(\)/,
+      /await withTimeout\(\s*supabase\.auth\.getUser\(\)/,
     );
     expect(AUTH_CONTEXT_SOURCE).toMatch(
       /classifyBootSessionProbe\(probeError\) === "invalid_session"/,
@@ -180,8 +185,11 @@ describe("ORCH-1106 — AuthContext.tsx boot-probe wiring (fails-on-revert)", ()
 
   test("is NOT gated behind Platform.OS === \"web\" (runs native + web)", () => {
     const lines = AUTH_CONTEXT_SOURCE.split("\n");
+    // META-ORCH-1235: the probe is `await withTimeout(supabase.auth.getUser(),
+    // …)`, so the getUser() call sits on its own line without a bare `await`
+    // prefix — match the call itself (#1062 B2 drift-to-truth).
     const probeIdx = lines.findIndex((l) =>
-      l.includes("await supabase.auth.getUser()"),
+      l.includes("supabase.auth.getUser()"),
     );
     expect(probeIdx).toBeGreaterThan(-1);
     const windowAbove = lines

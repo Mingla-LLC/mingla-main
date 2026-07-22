@@ -41,11 +41,12 @@ describe("ORCH-1091 mobile web JS cache invalidation", () => {
     expect(source).toContain("?v=${JS_CACHE_BUST_PARAM}");
   });
 
-  test("mobile-web CI guard pins the JS cache invalidation contract", () => {
-    const source = repoFile("scripts/ci/orch-1085-mobile-web-signin-home.mjs");
-
-    expect(source).toContain("web JS bundles must not be served immutable");
-    expect(source).toContain("post-export injection must cache-bust eager Expo JS script URLs");
-    expect(source).toContain("dist/index.html must cache-bust eager Expo JS script URLs");
-  });
+  // NOTE (#1062 B1 junk-pin removal): the 4th test previously pinned the
+  // existence + string-content of `scripts/ci/orch-1085-mobile-web-signin-home.mjs`,
+  // a firewall-gate script INTENTIONALLY RETIRED in ORCH-1098 Stage 3
+  // (commit 76a10b126 — "Retire the obsolete ORCH-1085→1096 firewall gate
+  // scripts"). The JS-cache-invalidation contract it nominally guarded is
+  // fully covered by the three tests above, which assert the real runtime
+  // behavior against the live vercel.json headers + the post-export inject
+  // script. Deleting the pin drops zero behavioral coverage.
 });

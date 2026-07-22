@@ -239,9 +239,12 @@ const week = (
 // T-B1 — venueWizardSteps: 10 vs 6, IDs stable, create byte-identical.
 // ---------------------------------------------------------------------------
 describe("T-B1 — venueWizardSteps step model", () => {
-  // META-ORCH-1290 supersession (D-1): create folds into ONE 10-step submit
-  // mirroring claim (deck-readiness leg removed). [TEST-MOD-APPROVED META-ORCH-1290]
-  test("create = the folded META-ORCH-1290 ten steps, IDs + labels byte-stable", () => {
+  // META-ORCH-1290 supersession (D-1): create folds into ONE submit mirroring
+  // claim (deck-readiness leg removed). #1062 B2 drift-to-truth: ORCH-1304
+  // then REMOVED the owner-side Pitch step (create s6 / claim c5) — Mingla
+  // writes the pitch at approve — so both arms are now NINE steps with the
+  // s6/c5 id intentionally GAPPED. [TEST-MOD-APPROVED META-ORCH-1290]
+  test("create = the folded nine steps (ORCH-1304 dropped Pitch; s6 gapped), IDs + labels byte-stable", () => {
     const steps = venueWizardSteps(false);
     expect(steps.map((s) => s.id)).toEqual([
       "s0",
@@ -250,7 +253,6 @@ describe("T-B1 — venueWizardSteps step model", () => {
       "s3",
       "s4",
       "s5",
-      "s6",
       "s7",
       "s8",
       "s9",
@@ -262,14 +264,13 @@ describe("T-B1 — venueWizardSteps step model", () => {
       "Photos",
       "Cover",
       "Contact",
-      "Pitch",
       "Price",
       "Bookings",
       "Review",
     ]);
   });
 
-  test("claim = the c0–c9 walkthrough (DESIGN §1 step map)", () => {
+  test("claim = the c0–c9 walkthrough minus the dropped Pitch (c5 gapped, ORCH-1304) — DESIGN §1 step map", () => {
     const steps = venueWizardSteps(true);
     expect(steps.map((s) => s.id)).toEqual([
       "c0",
@@ -277,7 +278,6 @@ describe("T-B1 — venueWizardSteps step model", () => {
       "c2",
       "c3",
       "c4",
-      "c5",
       "c6",
       "c7",
       "c8",
@@ -289,13 +289,14 @@ describe("T-B1 — venueWizardSteps step model", () => {
       "Hours",
       "Photos",
       "Cover",
-      "Pitch",
       "Contact",
       "Price",
       "Bookings",
       "Review",
     ]);
-    expect(CLAIM_FILLABLE_TOTAL).toBe(9);
+    // #1062 B2 drift-to-truth: ORCH-1304 dropped the fillable Pitch step, so
+    // the banner denominator is 8 (was 9).
+    expect(CLAIM_FILLABLE_TOTAL).toBe(8);
   });
 });
 
@@ -584,10 +585,13 @@ describe("T-B6 — claim submit plan + 23505 backstop wiring", () => {
     expect(wizard).toContain("PlaceClaimConflictError");
     expect(wizard).toContain('{ kind: "retry" }');
     expect(wizard).toContain('{ kind: "foreign" }');
-    // Claim success NEVER enters the inline deck-readiness leg.
-    expect(wizard.indexOf("if (claimMode) {")).toBeLessThan(
-      wizard.indexOf("setCreatedVenue({"),
-    );
+    // Claim success NEVER enters the inline deck-readiness leg — and #1062 B2
+    // drift-to-truth: META-ORCH-1290 Leg B (D-1) RETIRED that inline leg for
+    // the create path too (create now lands directly on the management page via
+    // onDone, exactly like claim), so the old setCreatedVenue({...}) inline
+    // deck-readiness completion is gone entirely.
+    expect(wizard.indexOf("if (claimMode) {")).toBeGreaterThan(-1);
+    expect(wizard).not.toContain("setCreatedVenue");
   });
 
   test("review step carries the §8.2 foreign card + §8.3 retry card", () => {
@@ -703,12 +707,14 @@ describe("T-B7 — provenanceFor + claimDockLabel (DESIGN §3/§5.3)", () => {
 describe("T-B8 — adoption banner live math", () => {
   test("fully-seeded fixture: n counts every validation-passing adopted step", () => {
     const d = claimDraft();
-    // c0 confident + c1 place + c2 overnight-valid hours + c3 gallery +
-    // c5 generative pitch + c6 phone + c7 tiers + c8 hint = 8 (c4 never).
-    expect(claimPrefilledStepCount(d)).toBe(8);
+    // #1062 B2 drift-to-truth: ORCH-1304 dropped the c5 Pitch step, so the
+    // fully-seeded count is 7 (was 8): c0 confident + c1 place + c2
+    // overnight-valid hours + c3 gallery + c6 phone + c7 tiers + c8 hint = 7
+    // (c4 never; c5 removed).
+    expect(claimPrefilledStepCount(d)).toBe(7);
     expect(claimStepPrefilled("c4", d)).toBe(false);
-    expect(adoptionBannerBody(8)).toBe(
-      "8 of 9 steps are filled from your listing. Keep what's right, fix what's not.",
+    expect(adoptionBannerBody(7)).toBe(
+      "7 of 8 steps are filled from your listing. Keep what's right, fix what's not.",
     );
   });
 
@@ -754,6 +760,8 @@ describe("T-B8 — adoption banner live math", () => {
       };
     }
     expect(claimStepPrefilled("c2", d)).toBe(false);
-    expect(claimPrefilledStepCount(d)).toBe(7);
+    // #1062 B2 drift-to-truth: with the c5 Pitch step dropped (ORCH-1304), the
+    // invalid-hours count is 6 (was 7).
+    expect(claimPrefilledStepCount(d)).toBe(6);
   });
 });

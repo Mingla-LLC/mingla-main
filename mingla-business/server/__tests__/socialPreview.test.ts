@@ -190,6 +190,11 @@ describe("social preview metadata renderers", () => {
   });
 
   test("builds brand OG card props without exposing the brand handle", () => {
+    // #1062 B2 drift-to-truth: `chooseBrandFeatureEvent` (afa30fa14 "Polish
+    // business share previews") selects the CHRONOLOGICALLY-EARLIEST active
+    // event as the feature, not the array-first one. Date the cover-bearing
+    // "Summer Rooftop" earliest so it stays the featured event and its cover
+    // still flows into coverUrl (preserving this test's cover-flow coverage).
     const nextRow = {
       ...row,
       id: "event-2",
@@ -199,7 +204,7 @@ describe("social preview metadata renderers", () => {
       cover_media_type: "image",
       public_theme: {
         business_event: {
-          when: { date: "2026-06-12" },
+          when: { date: "2026-05-01" },
         },
       },
     };
@@ -220,7 +225,7 @@ describe("social preview metadata renderers", () => {
         title: "Test Stripe",
         kicker: "Mingla Business",
         eventCountLabel: "2 events",
-        nextEventLabel: "Summer Rooftop - Jun 12, 2026",
+        nextEventLabel: "Summer Rooftop - May 1, 2026",
         coverUrl: "https://cdn.example.com/cover.png",
       }),
     );
@@ -236,7 +241,7 @@ describe("social preview metadata renderers", () => {
     expect(props.textFit).toEqual(
       expect.objectContaining({
         primaryChipText: "2 events",
-        secondaryChipText: "Summer Rooftop - Jun 12, 2026",
+        secondaryChipText: "Summer Rooftop - May 1, 2026",
       }),
     );
   });

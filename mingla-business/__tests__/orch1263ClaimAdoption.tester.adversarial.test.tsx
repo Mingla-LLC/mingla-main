@@ -517,9 +517,11 @@ describe("A6 — prefill honesty under invalid adopted payloads", () => {
 
   test("banner n for the full fixture counts EXACTLY the passing steps", () => {
     const d = adoptedDraft();
-    // c0 (confident) + c1 (name+address) + c2 (valid hours) + c3 (gallery)
-    // + c5 (generative ≥20) + c6 (phone) + c7 (tiers) = 7; c8 hint false, c4 never.
-    expect(claimPrefilledStepCount(d)).toBe(7);
+    // #1062 B2 drift-to-truth: ORCH-1304 dropped the c5 Pitch step, so this
+    // fixture counts 6 (was 7): c0 (confident) + c1 (name+address) + c2 (valid
+    // hours) + c3 (gallery) + c6 (phone) + c7 (tiers) = 6; c8 hint false,
+    // c4 never, c5 removed.
+    expect(claimPrefilledStepCount(d)).toBe(6);
   });
 });
 
