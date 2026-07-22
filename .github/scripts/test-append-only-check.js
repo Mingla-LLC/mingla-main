@@ -180,12 +180,18 @@ function countDeletedLines(baseRef, path) {
 // specific change, never the whole branch. This is why the scan is per-file across
 // the range and NOT a single tip-only `git log -1` global boolean.
 //
-// RESIDUAL (accepted, bounded, intentional — #1058 §4a): a single commit's token
-// blesses every test file THAT COMMIT deletes from. The token is a human
-// attestation on that commit, and the reviewer sees the bundled files together.
-// Closing even this would require the token to name the exact file (a grammar
-// change) — explicitly OUT of scope to avoid over-engineering. This fix must never
-// do worse than "token attributed to a commit that touched the file."
+// RESIDUAL (accepted, bounded, intentional — #1058 §4a): attribution is PER FILE
+// ACROSS THE WHOLE RANGE — a file's deletions are blessed if ANY PR-range commit
+// that TOUCHED that file carries the token, even a commit that itself deleted
+// nothing (e.g. an additions-only edit to the same file, or a commit that touched
+// the file alongside others). The token is a human attestation scoped to a FILE for
+// the whole PR, not to an individual deletion; the reviewer sees every change to
+// that file bundled in the PR diff. This is SAME-FILE ONLY — a token on one file
+// NEVER launders deletions in a DIFFERENT file (that cross-file hole, F-2, is
+// exactly what this gate closes; see selfTest T2/T3). Tightening even the same-file
+// residual would require the token to name the exact file/line (a grammar change) —
+// explicitly OUT of scope to avoid over-engineering. This fix must never do worse
+// than "token attributed to a commit that touched the file."
 function fileHasToken(baseRef, paths, tokenRegex) {
   const pathArgs = paths.map((p) => `"${p}"`).join(" ");
   const bodies = runGit(`log ${baseRef}..HEAD --pretty=%B -- ${pathArgs}`);
@@ -397,6 +403,45 @@ function scenarioT2() {
   }
 }
 
+// T3 (tester adversarial, #1058 CLOSE — a DIFFERENT ANGLE than T1/T2): the
+// unsanctioned deletions to b.test.ts are SPLIT ACROSS TWO commits, and the ONLY
+// token sits on a THIRD (tip) commit that touches a.test.ts alone. Where T2 gutted
+// b in a single commit, this proves the per-file scan aggregates the WHOLE range of
+// commits touching a file before deciding — a first-commit-only or tip-only
+// attribution would launder b.test.ts. b must FAIL; a passes on its own token.
+// Fails-on-revert: reverting fileHasToken to the tip-only global boolean flips this
+// GREEN (the tip a-token re-authorizes b's deletions across the whole range).
+function scenarioT3() {
+  const { dir, g, write } = makeTempRepo();
+  try {
+    write("a.test.ts", "expect(a).toBe(1);\nexpect(b).toBe(2);\nexpect(c).toBe(3);\n");
+    write("b.test.ts", "expect(w).toBe(1);\nexpect(x).toBe(2);\nexpect(y).toBe(3);\nexpect(z).toBe(4);\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "base");
+    g("branch", "-M", "main");
+    g("checkout", "-q", "-b", "feature");
+
+    // commit1: strip assertions from b.test.ts (part 1), NO token
+    write("b.test.ts", "expect(w).toBe(1);\nexpect(y).toBe(3);\nexpect(z).toBe(4);\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "trim b assertions part 1");
+
+    // commit2: strip more from b.test.ts (part 2), still NO token
+    write("b.test.ts", "expect(w).toBe(1);\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "trim b assertions part 2");
+
+    // commit3 (tip): sanctioned edit to a.test.ts; token touches a.test.ts ONLY
+    write("a.test.ts", "expect(a).toBe(1);\nexpect(c).toBe(3);\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "sanctioned assertion fix", "-m", APPROVED);
+
+    return runCheckIn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 function selfTest() {
   let failures = 0;
   let total = 0;
@@ -435,6 +480,18 @@ function selfTest() {
     t2.status === 1 && t2NamesB && t2PassesA,
     "T2 (SC-2 false-green closed): unsanctioned b.test.ts deletion not waved through by a.test.ts's token",
     `check exited ${t2.status} (expected 1); names b.test.ts=${t2NamesB}; a.test.ts passes=${t2PassesA}`,
+  );
+
+  // T3 (tester adversarial) — multi-commit attribution: b's deletions split across
+  // two commits, token on a third commit touching only a. Distinct from T2 (single
+  // commit) and T1 (false-red). Fails-on-revert: tip-only boolean flips this green.
+  const t3 = scenarioT3();
+  const t3NamesB = /❌[^\n]*b\.test\.ts/.test(t3.out);
+  const t3PassesA = /✅[^\n]*a\.test\.ts/.test(t3.out);
+  check(
+    t3.status === 1 && t3NamesB && t3PassesA,
+    "T3 (tester adversarial): b.test.ts deletions split across TWO commits, token on a THIRD commit touching only a.test.ts — b not laundered across the range",
+    `check exited ${t3.status} (expected 1); names b.test.ts=${t3NamesB}; a.test.ts passes=${t3PassesA}`,
   );
 
   console.log("");
