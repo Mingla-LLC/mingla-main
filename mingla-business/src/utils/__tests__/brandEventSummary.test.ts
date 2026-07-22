@@ -42,16 +42,21 @@ const draft = (patch: Partial<DraftEvent> = {}): DraftEvent => ({
   name: "Draft event",
   description: "Draft description",
   format: "in_person",
-  category: null,
+  partyTypes: [],
+  vibeTags: [],
+  musicGenres: [],
   whenMode: "single",
   date: "2026-05-20",
   doorsOpen: "19:00",
   endsAt: "23:00",
+  endsAtUtc: null,
   timezone: "Europe/London",
   recurrenceRule: null,
   multiDates: null,
   venueName: "Venue",
   address: "1 Main Street",
+  city: null,
+  locationGeo: null,
   onlineUrl: null,
   hideAddressUntilTicket: true,
   coverHue: 25,
@@ -65,6 +70,16 @@ const draft = (patch: Partial<DraftEvent> = {}): DraftEvent => ({
   passwordProtected: false,
   privateGuestList: false,
   inPersonPaymentsEnabled: false,
+  isRsvp: false,
+  rsvpCapacity: null,
+  rsvpAllowPlusOnes: false,
+  rsvpPlusOnesMax: 0,
+  rsvpWaitlistEnabled: false,
+  rsvpApprovalMode: "auto",
+  rsvpDiscoverable: false,
+  rsvpContributionEnabled: false,
+  rsvpContributionSuggestedCents: null,
+  rsvpContributionMinCents: null,
   lastStepReached: 2,
   status: "draft",
   createdAt: "2026-05-01T09:00:00.000Z",
@@ -162,8 +177,19 @@ describe("buildBrandEventSummary", () => {
   });
 
   test("live-window events become the primary live item", () => {
+    // ORCH-0828: live status is instant-based (deriveLiveStatus live window =
+    // [masterStartAtUtc - 4h, +24h)), not date-only. NOW is 2026-05-08T12:00Z,
+    // so the event must actually be inside its live window — doors 15:00 London
+    // (14:00Z start) opens the window at 10:00Z, which contains NOW.
     const summary = buildBrandEventSummary(
-      [liveEvent({ id: "tonight", date: "2026-05-08" })],
+      [
+        liveEvent({
+          id: "tonight",
+          date: "2026-05-08",
+          doorsOpen: "15:00",
+          endsAt: "18:00",
+        }),
+      ],
       [],
     );
 
@@ -199,7 +225,14 @@ describe("buildBrandEventSummary", () => {
     const summary = buildBrandEventSummary(
       [
         liveEvent({ id: "upcoming", date: "2026-05-20" }),
-        liveEvent({ id: "live-now", date: "2026-05-08" }),
+        // ORCH-0828: instant-based live window — doors 15:00 London (14:00Z)
+        // puts NOW (2026-05-08T12:00Z) inside [start-4h, +24h).
+        liveEvent({
+          id: "live-now",
+          date: "2026-05-08",
+          doorsOpen: "15:00",
+          endsAt: "18:00",
+        }),
       ],
       [draft({ id: "draft" })],
     );

@@ -229,14 +229,18 @@ describe("ORCH-0962 adversarial regressions", () => {
     expect(detail?.brand.coverMediaUrl).toBe("https://cdn.example/cover.jpg");
   });
 
-  test("A-05 SocialLinksRow uses normalizeSocialUrl URL builder for facebook + linkedin", () => {
-    // Pre-fix component had no facebook/linkedin entries at all so neither
-    // normalizeSocialUrl reference existed for these platforms. Post-fix
-    // both platforms call `normalizeSocialUrl(links.X, BASE)` matching the
-    // pattern used by the other 6 platforms — NOT a hardcoded URL constant
-    // (which would break when the operator already typed a full URL).
-    // Different angle from T-07/T-08 (which only assert the entry blocks
-    // exist as substrings); this verifies the URL-builder integrity.
+  test("A-05 social chips use normalizeSocialUrl URL builder for facebook + linkedin", () => {
+    // #1062 [biz-jest-residual-burndown] Wave 2 / B1 CONVERT [TEST-MOD-APPROVED ORCH-1062]:
+    // This is a source-text pin. The social-link rendering moved out of
+    // PublicBrandPage.tsx into the shared BrandProfileView.tsx (the row-builder
+    // now reads `brand.links.<key>` and pushes chips), so the old pin read a
+    // file that no longer contains the logic (a false green risk). The GUARDED
+    // INVARIANT is unchanged and load-bearing with no behavioral coverage
+    // (normalizeSocialUrl is a non-exported local + the RN component isn't
+    // node-renderable): facebook/linkedin must go through the normalizeSocialUrl
+    // BUILDER (not a hardcoded URL constant, which would double-prefix an
+    // operator-typed full URL). Re-pointed to the current source + current call
+    // and guard shapes, same strength.
     const pageSrc = readFileSync(
       join(
         __dirname,
@@ -244,24 +248,24 @@ describe("ORCH-0962 adversarial regressions", () => {
         "..",
         "components",
         "brand",
-        "PublicBrandPage.tsx",
+        "BrandProfileView.tsx",
       ),
       "utf8",
     );
 
-    // Builder pattern: normalizeSocialUrl(links.<key>, "<base>")
-    const fbCall = /normalizeSocialUrl\(\s*links\.facebook\s*,\s*"https?:\/\/(?:www\.)?facebook\.com\/?"\s*\)/;
-    const liCall = /normalizeSocialUrl\(\s*links\.linkedin\s*,\s*"https?:\/\/(?:www\.)?linkedin\.com\/[^"]*"\s*\)/;
+    // Builder pattern: normalizeSocialUrl(brand.links.<key>, "<base>")
+    const fbCall = /normalizeSocialUrl\(\s*brand\.links\.facebook\s*,\s*"https?:\/\/(?:www\.)?facebook\.com\/?"\s*\)/;
+    const liCall = /normalizeSocialUrl\(\s*brand\.links\.linkedin\s*,\s*"https?:\/\/(?:www\.)?linkedin\.com\/[^"]*"\s*\)/;
     expect(pageSrc).toMatch(fbCall);
     expect(pageSrc).toMatch(liCall);
 
     // Both platforms must use the SAME guard shape as the other 6 (defends
     // against a subtle regression that bypasses the empty-string check).
     expect(pageSrc).toMatch(
-      /links\.facebook\s*!==\s*undefined\s*&&\s*links\.facebook\.length\s*>\s*0/,
+      /typeof\s+brand\.links\?\.facebook\s*===\s*"string"\s*&&\s*brand\.links\.facebook\.length\s*>\s*0/,
     );
     expect(pageSrc).toMatch(
-      /links\.linkedin\s*!==\s*undefined\s*&&\s*links\.linkedin\.length\s*>\s*0/,
+      /typeof\s+brand\.links\?\.linkedin\s*===\s*"string"\s*&&\s*brand\.links\.linkedin\.length\s*>\s*0/,
     );
   });
 });

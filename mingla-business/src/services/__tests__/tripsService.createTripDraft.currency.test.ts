@@ -143,7 +143,10 @@ describe("ORCH-0859 — createTripDraft must set currency on events insert", () 
     expect(payload.status).toBe("draft");
   });
 
-  test("falls back to 'USD' when brand has no default_currency", async () => {
+  // issue #1014 — a currency-less brand's trip draft carries NULL, no fabricated
+  // USD (tripsService.ts:705-735: `defaultCurrency = brand.default_currency ?? null`).
+  // Legacy fabricated-USD drafts are healed at publish by the #1014 migration.
+  test("carries NULL currency (no fabricated USD) when brand has no default_currency [#1014]", async () => {
     authGetUserMock.mockResolvedValueOnce({
       data: { user: { id: "user-1" } },
     });
@@ -225,6 +228,6 @@ describe("ORCH-0859 — createTripDraft must set currency on events insert", () 
 
     expect(capturedEventsInsertPayload).not.toBeNull();
     const payload = capturedEventsInsertPayload as unknown as Record<string, unknown>;
-    expect(payload.currency).toBe("USD");
+    expect(payload.currency).toBeNull();
   });
 });

@@ -29,6 +29,22 @@ const queryBuilder = <T,>(
   return builder;
 };
 
+// #1062 [biz-jest-residual-burndown] Wave 2 / B2 [TEST-MOD-APPROVED ORCH-1062]:
+// ORCH-1186-C — getPublicBrandBySlug now fetches a DISPLAY-ONLY menu via
+// fetchPublicMenus → from("public_menus_view").select().eq().order().order()
+// (chained double .order, thenable terminal). Non-venue brands yield []. Route
+// it so the bespoke mock resolves instead of throwing "Unexpected table".
+const menusQuery = () => {
+  const builder: Record<string, unknown> = {
+    select: jest.fn(() => builder),
+    eq: jest.fn(() => builder),
+    order: jest.fn(() => builder),
+    then: (resolve: (r: { data: unknown[]; error: null }) => unknown) =>
+      Promise.resolve({ data: [], error: null }).then(resolve),
+  };
+  return builder;
+};
+
 const row = (patch: Record<string, unknown> = {}): Record<string, unknown> => ({
   id: "event-1",
   brand_id: "brand-1",
@@ -140,6 +156,7 @@ describe("Ve4 public brand lookup", () => {
       if (table === "claimed_venues_public_view") return claimedQuery;
       if (table === "business_public_brands_view") return brandQuery;
       if (table === "business_public_events_view") return eventsQuery;
+      if (table === "public_menus_view") return menusQuery();
       throw new Error(`Unexpected table ${String(table)}`);
     });
 
@@ -167,7 +184,8 @@ describe("Ve4 public brand lookup", () => {
     expect(claimedQuery.eq).toHaveBeenCalledWith("slug", "brand-3");
     expect(brandQuery.eq).toHaveBeenCalledWith("slug", "brand-3");
     expect(eventsQuery.eq).toHaveBeenCalledWith("brand_slug", "brand-3");
-    expect(mockFrom).toHaveBeenCalledTimes(3);
+    // #1062 Wave 2 / B2 — ORCH-1186-C added a 4th from() call: public_menus_view.
+    expect(mockFrom).toHaveBeenCalledTimes(4);
   });
 
   test("falls back to business_public_brands_view when claimed row is absent", async () => {
@@ -187,6 +205,7 @@ describe("Ve4 public brand lookup", () => {
       if (table === "claimed_venues_public_view") return claimedQuery;
       if (table === "business_public_brands_view") return brandQuery;
       if (table === "business_public_events_view") return eventsQuery;
+      if (table === "public_menus_view") return menusQuery();
       throw new Error(`Unexpected table ${String(table)}`);
     });
 
@@ -198,7 +217,8 @@ describe("Ve4 public brand lookup", () => {
       displayAttendeeCount: false,
     });
     expect(detail?.venue).toBeNull();
-    expect(mockFrom).toHaveBeenCalledTimes(3);
+    // #1062 Wave 2 / B2 — ORCH-1186-C added a 4th from() call: public_menus_view.
+    expect(mockFrom).toHaveBeenCalledTimes(4);
   });
 
   test("returns null only after claimed and business profile rows are missing", async () => {
@@ -277,6 +297,7 @@ describe("Ve4 public brand lookup", () => {
       if (table === "business_public_events_view") return eventsQuery;
       if (table === "events") return eventTypesQuery;
       if (table === "ticket_types") return ticketsQuery;
+      if (table === "public_menus_view") return menusQuery();
       throw new Error(`Unexpected table ${String(table)}`);
     });
 
