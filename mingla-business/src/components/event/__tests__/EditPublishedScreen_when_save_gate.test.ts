@@ -79,8 +79,14 @@ describe("ORCH-0877 hotfix — EditPublishedScreen When-section save gate", () =
   test("dock-level save-button disabled gate uses canSaveServerCoverMediaOnly (lifted when patch is server-editable-only)", () => {
     const src = read();
     expect(src).toContain("canSaveServerCoverMediaOnly =");
-    expect(src).toContain(
-      "disableLocalSaveReason !== undefined &&\n    isServerEditableOnlyPatch(currentPatch)",
+    // [TEST-MOD-APPROVED ORCH-1062] DRIFT UPDATE (intended, cited): ORCH-1172 gave
+    // RSVP edits their own complete server write path (biz_update_live_rsvp), so
+    // the gate became `disableLocalSaveReason !== undefined && (rsvpMode ||
+    // isServerEditableOnlyPatch(currentPatch))` (EditPublishedScreen.tsx:482-487).
+    // The invariant is unchanged for the ticketed path — updated to the current
+    // shape (still pins the disableLocalSaveReason gate + isServerEditableOnlyPatch).
+    expect(src).toMatch(
+      /disableLocalSaveReason !== undefined &&[\s\S]*?\(rsvpMode \|\| isServerEditableOnlyPatch\(currentPatch\)\)/,
     );
     expect(src).toContain("!canSaveServerCoverMediaOnly");
   });

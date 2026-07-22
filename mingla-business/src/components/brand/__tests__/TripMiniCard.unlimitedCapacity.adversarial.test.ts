@@ -18,25 +18,45 @@ import { readFileSync } from "fs";
 import { join } from "path";
 
 describe("ORCH-0963 T-05 ADVERSARIAL — TripMiniCard unlimited-capacity honesty", () => {
+  // ORCH-1062 [TEST-MOD-APPROVED ORCH-1062] — REPAIR (not removal): the
+  // TripMiniCard component moved out of mingla-business/src/components/brand/
+  // PublicBrandPage.tsx (now a thin wrapper) into the shared
+  // @mingla/brand-rendering package's PublicBrandPage.tsx, and the spotsLabel
+  // logic was refactored from a `useMemo` into an equivalent plain-const ternary.
+  // The behavior these adversarial pins guard (unlimited-capacity honesty:
+  // spotsLeft===null → null, no "null spots left"; sold-out; pluralization;
+  // scarcity threshold 5) is load-bearing (Constitution #9 fabricated
+  // affordance) with NO other behavioral coverage, so the pins are re-pointed at
+  // the moved source and updated to the current shape — every invariant kept.
   const pageSrc = readFileSync(
-    join(__dirname, "..", "PublicBrandPage.tsx"),
+    join(
+      __dirname,
+      "..",
+      "..",
+      "..",
+      "..",
+      "..",
+      "packages",
+      "brand-rendering",
+      "PublicBrandPage.tsx",
+    ),
     "utf8",
   );
 
   // Extract the TripMiniCard component body.
   const tripCardBody = (() => {
     const m = pageSrc.match(
-      /const\s+TripMiniCard:\s*React\.FC<TripMiniCardProps>\s*=\s*\(\{[\s\S]*?\n\};\n/,
+      /const\s+TripMiniCard:\s*React\.FC<\{[\s\S]*?\}>\s*=\s*\(\{[\s\S]*?\}\)\s*=>\s*\{[\s\S]*?\n\};\n/,
     );
     if (m === null) throw new Error("TripMiniCard body not found");
     return m[0];
   })();
 
   test("T-05a spotsLabel returns null when spotsLeft === null (unlimited)", () => {
-    // The null-branch MUST come FIRST in the spotsLabel memo. If a future
+    // The null-branch MUST come FIRST in the spotsLabel derivation. If a future
     // patch removes it, fallback `${trip.spotsLeft}` interpolation prints "null".
     expect(tripCardBody).toMatch(
-      /spotsLabel\s*=\s*useMemo<string\s*\|\s*null>\(\(\)\s*=>\s*\{\s*if\s*\(\s*trip\.spotsLeft\s*===\s*null\s*\)\s*return\s+null;/,
+      /spotsLabel\s*=\s*trip\.spotsLeft\s*===\s*null\s*\?\s*null/,
     );
   });
 
@@ -56,13 +76,13 @@ describe("ORCH-0963 T-05 ADVERSARIAL — TripMiniCard unlimited-capacity honesty
 
   test("T-05d sold-out branch returns 'Sold out' (not '0 spots left')", () => {
     expect(tripCardBody).toMatch(
-      /if\s*\(\s*trip\.spotsLeft\s*===\s*0\s*\)\s*return\s+"Sold out"/,
+      /trip\.spotsLeft\s*===\s*0\s*\?\s*"Sold out"/,
     );
   });
 
   test("T-05e scarcity threshold pinned at 5 (non-scarce capacity shows no badge)", () => {
     expect(tripCardBody).toMatch(/trip\.spotsLeft\s*<=\s*5/);
-    // Above-threshold returns null (no badge).
-    expect(tripCardBody).toMatch(/return\s+null;\s*\}\s*,\s*\[trip\.spotsLeft\]/);
+    // Above-threshold (spotsLeft > 5) falls through to null → no scarcity badge.
+    expect(tripCardBody).toMatch(/trip\.spotsLeft\s*<=\s*5[\s\S]*?:\s*null;/);
   });
 });

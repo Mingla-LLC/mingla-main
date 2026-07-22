@@ -155,22 +155,25 @@ describe("ORCH-0884 follow-up #2 — Nestable* primitives swapped for standalone
     // was the operator-reported instance; placeholder hint in
     // IntakeQuestionEditor was the other). Fixing once at the primitive
     // level fixes ALL Sheet consumers.
-    const sheetPath = path.join(
+    // [TEST-MOD-APPROVED ORCH-1062] REPAIR: ORCH-0892-B v2 + ORCH-1170 replaced the
+    // Sheet's hand-rolled keyboard math (Keyboard.addListener / openY=-keyboardHeight
+    // / availableHeight clamp) with the react-native-keyboard-controller stack — the
+    // canonical bottom-sheet impl moved to SheetMobile.tsx (Sheet.tsx is now a thin
+    // re-export) and wraps its Modal content in a per-window <KeyboardRoot>
+    // (KeyboardProvider) so inputs + the Done bar stay above the keyboard
+    // (SheetMobile.tsx:84,373). Verify the current keyboard-safety mechanism.
+    const sheetImplPath = path.join(
       __dirname,
       "..",
       "..",
       "ui",
-      "Sheet.tsx",
+      "SheetMobile.tsx",
     );
-    const src = readFileSync(sheetPath, "utf8");
-    // Imports the Keyboard API.
-    expect(src).toMatch(/Keyboard,/);
-    // Registers a keyboard-show listener.
-    expect(src).toMatch(/Keyboard\.addListener\(\s*showEvent/);
-    // openY is computed as -keyboardHeight (panel slides UP by keyboard height).
-    expect(src).toMatch(/const\s+openY\s*=\s*-keyboardHeight/);
-    // sheetHeight clamps to available space above keyboard.
-    expect(src).toMatch(/availableHeight\s*=[\s\S]*?keyboardHeight/);
+    const src = readFileSync(sheetImplPath, "utf8");
+    expect(src).toMatch(
+      /import\s*\{\s*KeyboardRoot\s*\}\s*from\s*["']\.\.\/\.\.\/wrappers\/KeyboardRoot["']/,
+    );
+    expect(src).toMatch(/<KeyboardRoot>/);
   });
 
   test("EditPublishedTripScreen + EditPublishedScreen ScrollViews auto-scroll focused input above keyboard", () => {
@@ -195,12 +198,20 @@ describe("ORCH-0884 follow-up #2 — Nestable* primitives swapped for standalone
     );
     const tripSrc = readFileSync(tripEditPath, "utf8");
     const eventSrc = readFileSync(eventEditPath, "utf8");
-    expect(tripSrc).toMatch(/automaticallyAdjustKeyboardInsets/);
-    expect(eventSrc).toMatch(/automaticallyAdjustKeyboardInsets/);
-    // Also assert keyboardDismissMode=on-drag (so swiping over keyboard
-    // dismisses it without explicit "Done" tap).
-    expect(tripSrc).toMatch(/keyboardDismissMode=["']on-drag["']/);
-    expect(eventSrc).toMatch(/keyboardDismissMode=["']on-drag["']/);
+    // [TEST-MOD-APPROVED ORCH-1062] REPAIR: ORCH-0892-B v2 lifted the per-screen
+    // keyboard handling (automaticallyAdjustKeyboardInsets / keyboardDismissMode)
+    // into the shared SmartScrollView wrapper — on native it IS
+    // react-native-keyboard-controller's KeyboardAwareScrollView, which
+    // auto-scrolls the focused input above the keyboard (SmartScrollView.native
+    // .tsx:16,36). Both edit screens now render their ScrollView from that wrapper
+    // (EditPublishedTripScreen.tsx:61 / EditPublishedScreen.tsx:51). Verify the
+    // current auto-scroll mechanism is used on both.
+    expect(tripSrc).toMatch(
+      /import\s*\{\s*ScrollView\s*\}\s*from\s*["']\.\.\/\.\.\/wrappers\/SmartScrollView["']/,
+    );
+    expect(eventSrc).toMatch(
+      /import\s*\{\s*ScrollView\s*\}\s*from\s*["']\.\.\/\.\.\/wrappers\/SmartScrollView["']/,
+    );
   });
 
   test("IntakeQuestionEditor applies Cycle 3 wizard root keyboard pattern", () => {
@@ -215,13 +226,14 @@ describe("ORCH-0884 follow-up #2 — Nestable* primitives swapped for standalone
       "IntakeQuestionEditor.tsx",
     );
     const src = readFileSync(editorPath, "utf8");
-    // Imports the Keyboard API from react-native.
-    expect(src).toMatch(/import[\s\S]*?Keyboard[\s\S]*?from\s*["']react-native["']/);
-    // Registers a keyboard-show listener (keyboardWillShow on iOS).
-    expect(src).toMatch(/Keyboard\.addListener\(\s*showEvent/);
-    // Applies dynamic paddingBottom on the ScrollView contentContainerStyle.
+    // [TEST-MOD-APPROVED ORCH-1062] REPAIR: ORCH-0892-B v2 deleted the editor's
+    // inline Keyboard listener + dynamic paddingBottom and routed its ScrollView
+    // through the shared SmartScrollView wrapper (KeyboardAwareScrollView on
+    // native), which owns the "focused input never hidden" behavior
+    // (IntakeQuestionEditor.tsx:31). Verify the editor mounts the shared
+    // keyboard-aware ScrollView.
     expect(src).toMatch(
-      /keyboardHeight\s*>\s*0\s*\?\s*\{\s*paddingBottom:\s*keyboardHeight\s*\}/,
+      /import\s*\{\s*ScrollView\s*\}\s*from\s*["']\.\.\/\.\.\/wrappers\/SmartScrollView["']/,
     );
   });
 });

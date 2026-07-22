@@ -132,7 +132,12 @@ describe("ORCH-1130 — TripCheckoutFlow public page rebuild", () => {
     // buyer's explicit pay-full/pay-over-time choice is still threaded as the
     // `plan` route param; only the source expression evolved. Still fails on
     // revert (deleting the param drops the choice → no `params: { plan:`).
-    expect(src).toContain("params: { plan: choice ?? paymentPlanChoice }");
+    // [TEST-MOD-APPROVED ORCH-1062] DRIFT UPDATE (intended, cited): META-ORCH-1174
+    // multi-package selection appended `...linesParam` to the checkout route params
+    // (app/t/…:398 `params: { plan: choice ?? paymentPlanChoice, ...linesParam }`).
+    // The plan-threading invariant is unchanged — still fails on revert (dropping
+    // the plan param). Match the prefix through the plan key.
+    expect(src).toContain("params: { plan: choice ?? paymentPlanChoice,");
     // [TEST-MOD-APPROVED META-ORCH-1174] retarget: the plan-trip bar price that
     // disambiguates with the word "total" was LIFTED out of the route into the
     // shared useTripOfferingState (one owner — the §10 box + bars never diverge).
@@ -153,9 +158,15 @@ describe("ORCH-1130 — funnel collapse + CartContext relocation", () => {
     expect(src).toContain("SET_PAYMENT_PLAN_CHOICE");
   });
 
-  test("Review & pay step is 2 OF 2 and reuses the shared selector pre-filled from cart", () => {
+  test("Review & pay step reuses the shared selector pre-filled from cart", () => {
     const src = paymentSrc();
-    expect(src).toContain("totalSteps={2}");
+    // [TEST-MOD-APPROVED ORCH-1062] DRIFT UPDATE (intended, cited): ORCH-0880 added
+    // an optional traveler-intake funnel step, so the total is no longer a fixed
+    // "2 OF 2" — it is computed by tripFunnelTotalSteps(hasAnyIntakeSchema) and
+    // passed as `totalSteps={totalSteps}` (payment.tsx:638,653,665). Assert the
+    // dynamic derivation instead of the stale literal 2.
+    expect(src).toContain("const totalSteps = tripFunnelTotalSteps(");
+    expect(src).toContain("totalSteps={totalSteps}");
     expect(src).toContain("<TripPaymentChoice");
     expect(src).toContain("value={paymentPlanChoice}");
     // qty stepper present on the order-summary card.

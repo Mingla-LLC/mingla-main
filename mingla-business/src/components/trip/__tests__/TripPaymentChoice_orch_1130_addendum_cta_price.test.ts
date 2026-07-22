@@ -108,10 +108,19 @@ describe("ORCH-1130 ADDENDUM — public trip page floating bar follows the toggl
     // The bar's deposit comes from the SAME pure projection, never a recompute.
     expect(hookSrc).toContain("projectTripSchedule(selectedTier, anchor)");
     expect(hookSrc).toContain("projectedSchedule.depositCents");
-    // Selection-driven: installments → "{deposit} today"; full → "{price} total".
+    // Selection-driven: installments → "{deposit} today"; full → the all-in
+    // fromLabel disambiguated by the "All-in, taxes included" kicker.
+    // [TEST-MOD-APPROVED ORCH-1062] DRIFT UPDATE (intended, cited): META-ORCH-1174
+    // unified the bar label so the full-pay case now leads with `fromLabel`
+    // (the all-in price) + an "All-in, taxes included" kicker instead of the
+    // `${priceLabel} total` string (useTripOfferingState.ts:310-312,325-326). The
+    // pay-over-time-shows-deposit / full-shows-price invariant is preserved.
     expect(hookSrc).toContain('paymentPlanChoice === "installments"');
     expect(hookSrc).toContain("${depositLabel} today");
-    expect(hookSrc).toContain("${priceLabel} total");
+    expect(hookSrc).toMatch(
+      /paymentPlanChoice === "installments"\s*\?\s*`\$\{depositLabel\} today`\s*:\s*fromLabel/,
+    );
+    expect(hookSrc).toContain('"All-in, taxes included"');
   });
 });
 

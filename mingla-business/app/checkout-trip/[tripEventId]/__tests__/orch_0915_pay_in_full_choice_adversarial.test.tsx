@@ -34,14 +34,22 @@ function sourceBetween(source: string, start: string, end: string): string {
 
 describe("ORCH-0915 pay-in-full choice — adversarial source contract", () => {
   test("T-A01 rapid full/installment toggles mutate only the choice, not cart, buyer, intake, restore, or checkout state", () => {
+    // [TEST-MOD-APPROVED ORCH-1062] DRIFT UPDATE (intended, cited): ORCH-1130
+    // collapsed the inline "Payment option" toggle into the shared
+    // <TripPaymentChoice> selector, wired as `onChange={setPaymentPlanChoice}` —
+    // the cart's pure choice setter (payment.tsx:800-808). The per-option
+    // setPaymentPlanChoice("full"/"installments") calls now live inside
+    // TripPaymentChoice.tsx. The invariant is unchanged: toggling mutates ONLY the
+    // choice. Assert the selector mount wires the pure cart setter + touches none
+    // of the cart/buyer/restore/checkout state.
     const controlWindow = sourceBetween(
       paymentSource,
-      "Payment option",
-      "planDisclosureWrap",
+      "<TripPaymentChoice",
+      "/>",
     );
 
-    expect(controlWindow.match(/setPaymentPlanChoice\("full"\)/g)).toHaveLength(1);
-    expect(controlWindow.match(/setPaymentPlanChoice\("installments"\)/g)).toHaveLength(1);
+    expect(controlWindow).toContain("value={paymentPlanChoice}");
+    expect(controlWindow).toContain("onChange={setPaymentPlanChoice}");
     for (const forbidden of [
       "setLineQuantity",
       "setBuyer",
@@ -63,7 +71,16 @@ describe("ORCH-0915 pay-in-full choice — adversarial source contract", () => {
       "setRestoreChecked(true);",
     );
 
-    expect(paymentSource).toContain('useState<PaymentPlanChoice>("full")');
+    // [TEST-MOD-APPROVED ORCH-1062] DRIFT UPDATE (intended, cited): ORCH-1130
+    // relocated the pay-full/over-time choice into CartContext, so the payment
+    // route no longer owns a `useState<PaymentPlanChoice>("full")` — it reads
+    // { paymentPlanChoice, setPaymentPlanChoice } from useCart() (payment.tsx
+    // :135-137). The deterministic default-"full" now lives in CartContext and is
+    // covered by TripPaymentChoice_orch_1130_regression ("CartContext carries the
+    // choice, default full"). Assert the choice is sourced from the cart.
+    expect(paymentSource).toMatch(
+      /paymentPlanChoice,\s*setPaymentPlanChoice,\s*\}\s*=\s*useCart\(\)/,
+    );
     expect(restoreWindow).toContain("readCheckoutResumePayload");
     expect(restoreWindow).toContain("setLineQuantity");
     expect(restoreWindow).toContain("setBuyer(payload.buyer)");
@@ -130,6 +147,12 @@ describe("ORCH-0915 pay-in-full choice — adversarial source contract", () => {
       /isPlanActive\s*&&\s*projectedSchedule\s*!==\s*null\s*&&\s*!isUsingInstallments\s*\?\s*\(/,
     );
     expect(paymentSource).toContain("Paid in full today");
-    expect(paymentSource).toContain("No future installment bills will be scheduled for this booking.");
+    // [TEST-MOD-APPROVED ORCH-1062] REPAIR: the copy is unchanged but now wraps
+    // across two JSX text lines ("…for this\n              booking.",
+    // payment.tsx:895-896), so the single-space substring no longer matched. Match
+    // whitespace-tolerantly.
+    expect(paymentSource).toMatch(
+      /No future installment bills will be scheduled for this\s+booking\./,
+    );
   });
 });

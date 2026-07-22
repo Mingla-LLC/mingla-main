@@ -164,10 +164,6 @@ describe("ORCH-1130 adversarial — GBP plan trip formats £, not €", () => {
 describe("ORCH-1130 adversarial — consent value reaching ticket-checkout-create", () => {
   const nativeFlow = (): string =>
     read("../app-mobile/src/payments/nativeCheckoutFlow.ts");
-  const ebes = (): string =>
-    read(
-      "../app-mobile/src/components/expandedCard/ExpandedBusinessEventSheet.tsx",
-    );
   const screen = (): string =>
     read("../app-mobile/src/screens/Trip/ConsumerTripDetailScreen.tsx");
   const payment = (): string =>
@@ -188,12 +184,15 @@ describe("ORCH-1130 adversarial — consent value reaching ticket-checkout-creat
     expect(bodyRegion).not.toMatch(/payment_plan_choice:\s*['"]auto['"]/);
   });
 
-  test("ExpandedBusinessEventSheet forwards the prop conditionally into runNativeCheckout", () => {
-    const src = ebes();
-    expect(src).toMatch(
-      /\.\.\.\(\s*paymentPlanChoice\s*\?\s*\{\s*paymentPlanChoice\s*\}\s*:\s*\{\}\s*\)/,
-    );
-  });
+  // REMOVED [TEST-MOD-APPROVED ORCH-1062]: this pin read app-mobile's
+  // ExpandedBusinessEventSheet.tsx, which ORCH-1138 DELETED — it ported the
+  // consumer reserve flow off the duplicate <ExpandedBusinessEventSheet> JSX onto
+  // an in-place handleBuy → runNativeCheckout({...}) call in
+  // ConsumerTripDetailScreen (see the adjacent test's [TEST-MOD-APPROVED ORCH-1138]
+  // note). The file no longer exists (readFileSync ENOENT), and the conditional
+  // paymentPlanChoice-forward invariant it guarded is now covered by the very next
+  // test ("ConsumerTripDetailScreen passes the explicit choice ONLY for a plan
+  // trip"). Dropped as a stale cross-app pin on deleted code, covered elsewhere.
 
   test("ConsumerTripDetailScreen passes the explicit choice ONLY for a plan trip (hasPlan gate); no-plan → undefined", () => {
     const src = screen();

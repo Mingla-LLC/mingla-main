@@ -53,11 +53,17 @@ describe("ORCH-0865 — EventListCard defensive event_type filter (adversarial s
     expect(src).toMatch(
       /const\s+eventType\s*=\s*\(event\s+as\s+\{\s*event_type\?:\s*string\s*\}\)\.event_type/,
     );
-    // Must early-return null on non-event types. The 2-arm condition is
-    // load-bearing: `undefined` MUST pass through (legacy row defense)
-    // AND non-"event" MUST be rejected.
+    // Must early-return null on non-event types. The condition is load-bearing:
+    // `undefined` MUST pass through (legacy row defense) AND non-event kinds MUST
+    // be rejected.
+    // [TEST-MOD-APPROVED ORCH-1062] DRIFT UPDATE (intended, cited): the RSVP event
+    // kind (ORCH-1150r2 / ORCH-1172) is now a first-class list row, so the filter
+    // gained a third arm — it rejects everything except "event" AND "rsvp"
+    // (EventListCard.tsx:104). Trip/experience are still rejected. Assertion
+    // strength preserved (both the undefined pass-through and the event/rsvp
+    // allow-list are pinned).
     expect(src).toMatch(
-      /if\s*\(eventType\s*!==\s*undefined\s*&&\s*eventType\s*!==\s*"event"\)/,
+      /if\s*\(eventType\s*!==\s*undefined\s*&&\s*eventType\s*!==\s*"event"\s*&&\s*eventType\s*!==\s*"rsvp"\)/,
     );
     expect(src).toMatch(/return\s+null\s*;/);
   });

@@ -104,6 +104,13 @@ describe("ORCH-1118 — create wizard requires confirmed Mapbox picks", () => {
 
   test("T-5: Publish button is disabled while location is unvalidated (suspenders)", () => {
     const w = wizardSrc();
-    expect(w).toContain("disabled={submitting || tripNeedsStripe || !tripLocationValid}");
+    // [TEST-MOD-APPROVED ORCH-1062] DRIFT UPDATE (intended, cited): the dock
+    // Publish disabled clause gained `!packagesValidation.ok` (META-ORCH-1174 Leg
+    // B2 multi-package validity) and is now multi-line (TripCreatorWizard.tsx
+    // :1637-1642). `!tripLocationValid` is still a disabling term (ORCH-1118); the
+    // pin is updated to the exact current multi-term gate at the same strength.
+    expect(w).toMatch(
+      /disabled=\{\s*submitting\s*\|\|\s*tripNeedsStripe\s*\|\|\s*!tripLocationValid\s*\|\|\s*!packagesValidation\.ok\s*\}/,
+    );
   });
 });

@@ -50,14 +50,17 @@ describe("ORCH-0874 Trip surfaces visual parity with Events — implementor", ()
       expect(SRC).not.toMatch(/progressSegment/);
     });
 
-    it("SC-06: body renders eyebrow + 26pt step title + 14pt subtitle (above step content)", () => {
+    it("SC-06: body renders step subtitle + step title + progress (above step content)", () => {
+      // [TEST-MOD-APPROVED ORCH-1062] DRIFT UPDATE (intended, cited): Tr2 (ORCH-0859)
+      // rewrote the wizard chrome — the uppercase "STEP {step} OF {STEP_COUNT}"
+      // eyebrow + 26pt stepTitle style were replaced by a mobile step header
+      // ("{brand.name} · Step {step} of {STEP_COUNT}" + STEP_SUBTITLES +
+      // styles.mobileStepTitle, TripCreatorWizard.tsx:1393,1455,1457). The
+      // step-context invariant (subtitle + title + progress above the step body) is
+      // preserved at the new shape.
       expect(SRC).toMatch(/STEP_SUBTITLES/);
-      // JSX expression: STEP {step} OF {STEP_COUNT}
-      expect(SRC).toMatch(/STEP \{step\} OF \{STEP_COUNT\}/);
-      // eyebrow style — 11pt accent.warm uppercase
-      expect(SRC).toMatch(/eyebrow:[^}]*fontSize:\s*11[^}]*color:\s*accent\.warm/s);
-      // stepTitle — 26pt fontWeight 700
-      expect(SRC).toMatch(/stepTitle:[^}]*fontSize:\s*26[^}]*fontWeight:\s*"700"/s);
+      expect(SRC).toMatch(/\{brand\.name\}\s*·\s*Step\s+\{step\}\s+of\s+\{STEP_COUNT\}/);
+      expect(SRC).toMatch(/<Text style=\{styles\.mobileStepTitle\}>\{stepTitle\}/);
     });
 
     it("SC-07: dock uses GlassCard variant='elevated' radius='xxl' floating; hides when keyboard up", () => {
@@ -88,11 +91,15 @@ describe("ORCH-0874 Trip surfaces visual parity with Events — implementor", ()
       expect(SRC).toMatch(/accessibilityLabel="Close wizard"/);
     });
 
-    it("keyboard listener pattern replaces KeyboardAvoidingView", () => {
-      // ORCH-0874 §3.3.5 — replace KeyboardAvoidingView with explicit
-      // Keyboard.addListener + dynamic paddingBottom.
-      expect(SRC).toMatch(/Keyboard\.addListener\(\s*showEvent/);
-      expect(SRC).toMatch(/Keyboard\.addListener\(\s*hideEvent/);
+    it("keyboard-safe scrolling via SmartScrollView (no KeyboardAvoidingView)", () => {
+      // [TEST-MOD-APPROVED ORCH-1062] DRIFT UPDATE (intended, cited): ORCH-0892-B v2
+      // deleted the inline Keyboard.addListener + KeyboardAvoidingView wrap and
+      // routed the wizard ScrollView through the shared SmartScrollView wrapper
+      // (KeyboardAwareScrollView on native), which owns focused-input scrolling
+      // (TripCreatorWizard.tsx:31-34). The no-KeyboardAvoidingView guard is kept.
+      expect(SRC).toMatch(
+        /import\s*\{\s*ScrollView\s*\}\s*from\s*["']\.\.\/\.\.\/wrappers\/SmartScrollView["']/,
+      );
       expect(SRC).not.toMatch(/<KeyboardAvoidingView/);
     });
 
@@ -137,7 +144,13 @@ describe("ORCH-0874 Trip surfaces visual parity with Events — implementor", ()
     const SRC = read("components/trip/TripListCard.tsx");
 
     it("SC-10: uses glass.tint.profileBase background + 76×92 cover (mirror EventListCard)", () => {
-      expect(SRC).toMatch(/backgroundColor:\s*glass\.tint\.profileBase/);
+      // [TEST-MOD-APPROVED ORCH-1062] REPAIR: the card background is now
+      // Platform.select-wrapped (ios + default both resolve to
+      // glass.tint.profileBase, TripListCard.tsx:323-326), so the direct
+      // `backgroundColor: glass.tint.profileBase` pin no longer matched. Assert the
+      // token is used via the platform-select.
+      expect(SRC).toMatch(/backgroundColor:\s*Platform\.select\(/);
+      expect(SRC).toMatch(/glass\.tint\.profileBase/);
       expect(SRC).toMatch(/COVER_W\s*=\s*76/);
       expect(SRC).toMatch(/COVER_H\s*=\s*92/);
     });
@@ -203,12 +216,17 @@ describe("ORCH-0874 Trip surfaces visual parity with Events — implementor", ()
       expect(SRC).toMatch(/heroTitle:[^}]*fontSize:\s*24[^}]*fontWeight:\s*"700"/s);
     });
 
-    it("SC-13: action grid with 4 tiles including View public page (ORCH-0867 fold)", () => {
-      expect(SRC).toMatch(/<ActionTile[^>]*label="View public page"/);
-      expect(SRC).toMatch(/<ActionTile[^>]*label="Brand page"/);
-      expect(SRC).toMatch(/<ActionTile[^>]*label="Marketing blasts"/);
-      expect(SRC).toMatch(/<ActionTile[^>]*label=\{trip\.status === "draft"/);
-      expect(SRC).toMatch(/<ActionTile[^>]*primary/);
+    it("SC-13: action grid is config-driven with the inline primary Edit tile (ORCH-0867 fold)", () => {
+      // [TEST-MOD-APPROVED ORCH-1062] DRIFT UPDATE (intended, cited): META-ORCH-1059
+      // Pass 2 made the tile set config-driven via buildOfferingDashboardTiles("trip")
+      // — the View-public-page / Brand-page / Blasts tile labels+routes are now
+      // covered behaviorally by offeringDashboardTiles.parity.test.ts. The Edit tile
+      // stays inline + primary (the ORCH-0913 deliberate divergence, index.tsx
+      // :462-465). Assert the config grid + the inline primary Edit tile.
+      expect(SRC).toMatch(/buildOfferingDashboardTiles\("trip"\)/);
+      expect(SRC).toMatch(/dashboardTiles\.map\(/);
+      expect(SRC).toMatch(/<ActionTile[\s\S]*?label=\{trip\.status === "draft"/);
+      expect(SRC).toMatch(/<ActionTile[\s\S]*?primary/);
     });
 
     it("SC-14: header right slot has share + moreH IconChromes; inline Edit Pressable removed", () => {
@@ -241,11 +259,16 @@ describe("ORCH-0874 Trip surfaces visual parity with Events — implementor", ()
     });
 
     it("Money tab content + retry logic UNCHANGED (no regression on ORCH-0873)", () => {
-      // ORCH-0874 hard guard: PRESERVE all ORCH-0873 Money tab functionality.
-      // Pin the key invariants from ORCH-0873 SC-11.
-      expect(SRC).toMatch(/inst\.status\s*===\s*"failed"/);
-      expect(SRC).toContain("retryMutation.mutate(inst.id)");
-      expect(SRC).toContain("Refund · coming in Tr4");
+      // [TEST-MOD-APPROVED ORCH-1062] REPAIR: ORCH-0913 split the trip dashboard —
+      // the Money tab (installment list + Retry) moved into the dedicated money
+      // route (app/trip/[id]/money/index.tsx), and Tr4 shipped the real refund so
+      // the "Refund · coming in Tr4" placeholder became the RefundPreviewSheet /
+      // "Cancel & refund" affordance. Retarget the read; assert the failed-status
+      // gate + retry + the current refund affordance.
+      const moneySrc = readApp("trip/[id]/money/index.tsx");
+      expect(moneySrc).toMatch(/inst\.status\s*===\s*"failed"/);
+      expect(moneySrc).toContain("retryMutation.mutate(inst.id)");
+      expect(moneySrc).toMatch(/RefundPreviewSheet|Cancel &amp; refund/);
     });
   });
 
@@ -306,9 +329,14 @@ describe("ORCH-0874 Trip surfaces visual parity with Events — implementor", ()
       expect(SRC).toMatch(/router\.back\(\)/);
     });
 
-    it("share handler uses native Share.share() with platform branch", () => {
-      expect(SRC).toMatch(/Share\.share\(/);
-      expect(SRC).toMatch(/Platform\.OS\s*===\s*"ios"/);
+    it("share handler opens the web-aware ShareModal", () => {
+      // [TEST-MOD-APPROVED ORCH-1062] DRIFT UPDATE (intended, cited): ORCH-1114
+      // replaced the native Share.share() call with the web-aware ShareModal
+      // (copy-link / QR / native-share-via) — handleShare now opens it via
+      // setShareModalVisible(true) and the route owns the ShareModal
+      // (app/t/…:57,199-203). The share affordance is preserved.
+      expect(SRC).toMatch(/setShareModalVisible\(true\)/);
+      expect(SRC).toMatch(/import\s*\{\s*ShareModal\s*\}/);
     });
   });
 

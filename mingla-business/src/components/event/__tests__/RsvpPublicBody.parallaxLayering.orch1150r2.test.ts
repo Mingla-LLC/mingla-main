@@ -79,8 +79,14 @@ describe("ORCH-1150 R2 D-7b — RSVP scroll-runway parity", () => {
   });
 
   it("FoundationRsvpPreview forwards contentBottomInset to <ParallaxCoverShell>", () => {
+    // [TEST-MOD-APPROVED ORCH-1062] DRIFT UPDATE (intended, cited): the prop-drilled
+    // contentBottomInset is now folded into `resolvedBottomInset` (FoundationRsvpPreview
+    // .tsx:135-136 maxes the incoming inset with the measured bottom inset) before
+    // it reaches the shell (:211). The scroll-runway invariant is preserved — the
+    // shell still receives a positive, contentBottomInset-derived inset — so the
+    // pin is updated to the current forwarded expression.
     expect(SRC).toMatch(
-      /<ParallaxCoverShell[\s\S]*?contentBottomInset=\{contentBottomInset\}[\s\S]*?>/,
+      /<ParallaxCoverShell[\s\S]*?contentBottomInset=\{resolvedBottomInset\}[\s\S]*?>/,
     );
   });
 
@@ -100,7 +106,13 @@ describe("ORCH-1150 R2 D-7b — RSVP scroll-runway parity", () => {
     // must pass contentBottomInset, and it must NOT be a literal 0
     expect(tag).toMatch(/contentBottomInset=\{[\s\S]*?\}/);
     expect(tag).not.toMatch(/contentBottomInset=\{0\}/);
-    // the chosen value adds safe-area bottom plus a spacing runway
-    expect(tag).toMatch(/contentBottomInset=\{insets\.bottom\s*\+\s*spacing\./);
+    // [TEST-MOD-APPROVED ORCH-1062] DRIFT UPDATE (intended, cited): the RSVP inset
+    // now accounts for the floating buy/RSVP bar clearance — on mobile it is
+    // `FLOATING_BAR_CLEARANCE + insets.bottom` (positive, safe-area-aware runway);
+    // on desktop it is 0 (no floating bar, no runway needed)
+    // (PublicEventPage.tsx:948). The positive-mobile-runway invariant is preserved.
+    expect(tag).toMatch(
+      /contentBottomInset=\{isDesktop \? 0 : FLOATING_BAR_CLEARANCE \+ insets\.bottom\}/,
+    );
   });
 });

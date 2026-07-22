@@ -138,9 +138,15 @@ describe("ORCH-1138 route block stays on ONE aligned row (no wrap)", () => {
     const single = block.match(/numberOfLines=\{1\}/g) ?? [];
     expect(single.length).toBeGreaterThanOrEqual(2);
     expect(block).toContain('ellipsizeMode="tail"');
-    // and it consumes the normalized values, not the raw *LocationText.
-    expect(block).toContain("departureCityCountry");
-    expect(block).toContain("destinationCityCountry");
+    // [TEST-MOD-APPROVED ORCH-1062] REPAIR: the §3 pills now render a pre-computed
+    // `routeLabel` (TripOfferingBody.tsx:204-210,333) built from the normalized
+    // departure/destinationCityCountry above the pill markup, rather than
+    // interpolating the raw fields inside the pill. Assert the pill renders the
+    // derived label AND that the label is built from the normalized values (still
+    // proves normalized-not-raw at the same strength).
+    expect(block).toContain("{routeLabel}");
+    expect(src).toContain("departureCityCountry");
+    expect(src).toContain("destinationCityCountry");
   });
 
   test("the business adapter imports + applies the shared normalizer", () => {
