@@ -182,11 +182,16 @@ describe("ORCH-1081 — partner switcher sources from brand_team_members", () =>
 
     const result = await getBrands("partner-uid");
 
-    // Smoking gun: was "brands" called as the data source? A revert would
-    // call from("brands"), not from("brand_team_members").
+    // Smoking gun: the FIRST data source must be brand_team_members. A revert to
+    // owner-only `.from("brands").eq("account_id", uid)` would make the first
+    // call "brands" (matches the fails-on-revert note in this file's header).
+    // META-ORCH-1232 H2 — getBrands ALSO runs an owner-union backstop read
+    // `from("brands").eq("account_id",…)` AFTER the membership read, so "brands"
+    // IS queried additively now; pin the FIRST call rather than asserting brands
+    // is never hit (which is stale post-owner-union).
     const tablesQueried = mockFrom.mock.calls.map((c) => c[0]);
     expect(tablesQueried).toContain("brand_team_members");
-    expect(tablesQueried).not.toContain("brands");
+    expect(tablesQueried[0]).toBe("brand_team_members");
     expect(memb.eqCalls).toContainEqual(["user_id", "partner-uid"]);
     // Sorted newest-first by created_at.
     expect(result.map((b) => b.id)).toEqual(["b1", "b2"]);

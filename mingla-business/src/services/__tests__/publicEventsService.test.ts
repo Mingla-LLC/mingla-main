@@ -36,6 +36,22 @@ const queryBuilder = <T,>(
   return builder;
 };
 
+// #1062 [biz-jest-residual-burndown] Wave 2 / B2 [TEST-MOD-APPROVED ORCH-1062]:
+// ORCH-1186-C — getPublicBrandBySlug now fetches a DISPLAY-ONLY menu via
+// fetchPublicMenus → from("public_menus_view").select().eq().order().order()
+// (chained double .order, thenable terminal). Non-venue brands yield []. Route
+// it so the bespoke mock resolves instead of throwing "Unexpected table".
+const menusQuery = () => {
+  const builder: Record<string, unknown> = {
+    select: jest.fn(() => builder),
+    eq: jest.fn(() => builder),
+    order: jest.fn(() => builder),
+    then: (resolve: (r: { data: unknown[]; error: null }) => unknown) =>
+      Promise.resolve({ data: [], error: null }).then(resolve),
+  };
+  return builder;
+};
+
 const ticket = (patch: Partial<TicketStub> = {}): TicketStub => ({
   id: "ticket-1",
   name: "General",
@@ -264,6 +280,7 @@ describe("public brand lookup", () => {
       if (table === "claimed_venues_public_view") return claimedQuery;
       if (table === "business_public_brands_view") return brandQuery;
       if (table === "business_public_events_view") return eventsQuery;
+      if (table === "public_menus_view") return menusQuery();
       throw new Error(`Unexpected table ${String(table)}`);
     });
 
@@ -291,7 +308,10 @@ describe("public brand lookup", () => {
     expect(detail?.events).toEqual([]);
     expect(brandQuery.eq).toHaveBeenCalledWith("slug", "brand-3");
     expect(eventsQuery.eq).toHaveBeenCalledWith("brand_slug", "brand-3");
-    expect(mockFrom).toHaveBeenCalledTimes(3);
+    // #1062 Wave 2 / B2 — ORCH-1186-C added a 4th from() call: the
+    // public_menus_view DISPLAY-ONLY menu fetch (claimed + brands + events +
+    // menus). Was 3 pre-menu.
+    expect(mockFrom).toHaveBeenCalledTimes(4);
   });
 
   test("returns null only when the brand profile row is missing", async () => {
@@ -370,6 +390,7 @@ describe("public brand lookup", () => {
       if (table === "business_public_events_view") return eventsQuery;
       if (table === "events") return eventTypesQuery;
       if (table === "ticket_types") return ticketsQuery;
+      if (table === "public_menus_view") return menusQuery();
       throw new Error(`Unexpected table ${String(table)}`);
     });
 

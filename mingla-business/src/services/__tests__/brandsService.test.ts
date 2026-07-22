@@ -225,7 +225,13 @@ describe("getBrands", () => {
     });
 
     await expect(getBrands("account-1")).resolves.toEqual([]);
-    expect(mockFrom).toHaveBeenCalledTimes(1);
+    // META-ORCH-1232 H2 — getBrands now runs TWO brand-source reads before it can
+    // decide the account has zero brands: the brand_team_members membership read
+    // AND the owner-union backstop `from("brands")`. Both empty here → it still
+    // short-circuits BEFORE any events/orders count read, so the total from()
+    // count is exactly 2 (was 1 pre-owner-union). Preserves the original intent:
+    // no event-count query when there are no brands.
+    expect(mockFrom).toHaveBeenCalledTimes(2);
   });
 });
 

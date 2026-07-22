@@ -136,7 +136,11 @@ describe("ORCH-0859 REWORK 2 — updateTripPricing currency contract", () => {
     expect(ticketTypesCalls).toBe(1);
   });
 
-  test("falls back to 'USD' when events row has no currency", async () => {
+  // issue #1014 (rework F-2) — NULL passthrough, no fabricated USD: a NULL-currency
+  // event stamps the ticket NULL (tripsService.ts:1165-1204); the
+  // tg_enforce_event_ticket_currency trigger resolves the brand currency for PAID
+  // tickets at write time and raises event_currency_required if none.
+  test("passes NULL through to ticket_types when events row has no currency [#1014]", async () => {
     let capturedTicketUpdate: Record<string, unknown> | null = null;
 
     const eventsChain = {
@@ -215,6 +219,6 @@ describe("ORCH-0859 REWORK 2 — updateTripPricing currency contract", () => {
 
     expect(capturedTicketUpdate).not.toBeNull();
     const payload = capturedTicketUpdate as unknown as Record<string, unknown>;
-    expect(payload.currency).toBe("USD");
+    expect(payload.currency).toBeNull();
   });
 });

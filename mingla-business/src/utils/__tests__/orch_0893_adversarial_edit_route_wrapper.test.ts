@@ -40,7 +40,9 @@ import { join } from "node:path";
 const REPO_ROOT = join(__dirname, "..", "..", "..", "..");
 const EDIT_ROUTE = join(REPO_ROOT, "mingla-business", "app", "event", "[id]", "edit.tsx");
 const TRIP_EDIT_ROUTE = join(REPO_ROOT, "mingla-business", "app", "trip", "[id]", "edit.tsx");
-const INVARIANT_REGISTRY = join(REPO_ROOT, "Mingla_Artifacts", "INVARIANT_REGISTRY.md");
+// #1062 [biz-jest-residual-burndown] Wave 2 [TEST-MOD-APPROVED ORCH-1062] —
+// OPERATING MODEL V2 (#974) moved the invariant registry to docs/.
+const INVARIANT_REGISTRY = join(REPO_ROOT, "docs", "INVARIANT_REGISTRY.md");
 
 const stripComments = (source: string): string =>
   source
@@ -106,7 +108,11 @@ describe("ORCH-0893 adversarial — event/[id]/edit.tsx wrapper structural contr
     const migratingRefCheck = indexOf(wrapperBody, /migratingLegacyIdRef\.current\s*===\s*incoming\.id/);
     const authCheck = indexOf(wrapperBody, /if\s*\(\s*!\s*isAuthReady\s*\)/);
     const refSet = indexOf(wrapperBody, /migratingLegacyIdRef\.current\s*=\s*incoming\.id/);
-    const createCall = indexOf(wrapperBody, /\bcreateServerDraft\s*\(/);
+    // #1062 Wave 2 / B2 — ORCH-1355 replaced the inline createServerDraft call with
+    // promoteLegacyDraftOnce (the client-id mint + field merge moved into
+    // src/utils/draftPromotion.ts). The ordering invariant (ref-set before the
+    // promotion call) is unchanged; only the landmark symbol moved.
+    const promoteCall = indexOf(wrapperBody, /\bpromoteLegacyDraftOnce\s*\(/);
 
     // All six landmarks must exist in the wrapper.
     expect(serverIdShortCircuit).toBeGreaterThan(-1);
@@ -114,7 +120,7 @@ describe("ORCH-0893 adversarial — event/[id]/edit.tsx wrapper structural contr
     expect(migratingRefCheck).toBeGreaterThan(-1);
     expect(authCheck).toBeGreaterThan(-1);
     expect(refSet).toBeGreaterThan(-1);
-    expect(createCall).toBeGreaterThan(-1);
+    expect(promoteCall).toBeGreaterThan(-1);
 
     // Ordering invariants:
     // 1. Server-id short-circuit FIRST (server-id drafts must NOT be gated on
@@ -130,9 +136,9 @@ describe("ORCH-0893 adversarial — event/[id]/edit.tsx wrapper structural contr
     expect(migratingRefCheck).toBeLessThan(authCheck);
     // 4. Auth check BEFORE ref-set (so we don't strand the ref under auth lapse).
     expect(authCheck).toBeLessThan(refSet);
-    // 5. Ref-set BEFORE createServerDraft call (race-guard: prevents double-fire
-    //    when two debounced autosaves arrive during the migration in-flight window).
-    expect(refSet).toBeLessThan(createCall);
+    // 5. Ref-set BEFORE the promoteLegacyDraftOnce call (race-guard: prevents
+    //    double-fire when two debounced autosaves arrive during the in-flight window).
+    expect(refSet).toBeLessThan(promoteCall);
   });
 
   test("error catch resets migrationRef AND handles BusinessAuthNotReadyError silently", () => {
@@ -225,13 +231,15 @@ describe("ORCH-0893 adversarial — trip/[id]/edit.tsx narrowed-scope contract",
 });
 
 describe("ORCH-0893 adversarial — invariant registry entry present", () => {
-  test("I-PROPOSED-CREATOR-ENTRY-IS-INSTANT is registered as DRAFT in INVARIANT_REGISTRY.md", () => {
+  test("I-PROPOSED-CREATOR-ENTRY-IS-INSTANT is registered (ACTIVE) in INVARIANT_REGISTRY.md", () => {
     const source = readFileSync(INVARIANT_REGISTRY, "utf8");
 
-    // The invariant entry must exist and be in DRAFT status pending close.
+    // #1062 Wave 2 / B2 — the invariant was pre-staged DRAFT and PROMOTED to ACTIVE
+    // at ORCH-0893 CLOSE (the expected lifecycle; docs/INVARIANT_REGISTRY.md). The
+    // entry must still exist and cite ORCH-0893 — now as ACTIVE, not DRAFT.
     expect(source).toMatch(/I-PROPOSED-CREATOR-ENTRY-IS-INSTANT/);
     expect(source).toMatch(
-      /I-PROPOSED-CREATOR-ENTRY-IS-INSTANT.*\n.*DRAFT.*ORCH-0893/s,
+      /I-PROPOSED-CREATOR-ENTRY-IS-INSTANT.*ACTIVE.*ORCH-0893/s,
     );
     // The enforcement triple must be cited:
     expect(source).toMatch(/i-proposed-creator-entry-is-instant\.mjs/);

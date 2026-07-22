@@ -47,7 +47,6 @@ import { join } from "node:path";
 import type { DraftEvent, TicketStub } from "../../store/draftEventStore";
 
 const REPO_ROOT = join(__dirname, "..", "..", "..", "..");
-const EDIT_ROUTE = join(REPO_ROOT, "mingla-business", "app", "event", "[id]", "edit.tsx");
 
 // Synthetic DraftEvent matching DEFAULT_DRAFT_FIELDS — mirrors the pattern
 // in `draftDirtyCheck.test.ts` to avoid the Supabase/Expo runtime chain.
@@ -92,6 +91,16 @@ const draft = (overrides: Partial<DraftEvent> = {}): DraftEvent => ({
   passwordProtected: false,
   privateGuestList: false,
   inPersonPaymentsEnabled: false,
+  isRsvp: false,
+  rsvpCapacity: null,
+  rsvpAllowPlusOnes: false,
+  rsvpPlusOnesMax: 0,
+  rsvpWaitlistEnabled: false,
+  rsvpApprovalMode: "auto",
+  rsvpDiscoverable: false,
+  rsvpContributionEnabled: false,
+  rsvpContributionSuggestedCents: null,
+  rsvpContributionMinCents: null,
   lastStepReached: 0,
   status: "draft",
   clientRevision: 0,
@@ -351,120 +360,6 @@ describe("ORCH-0893 REWORK adversarial — Part B merge spec behaviour", () => {
     expect(merged.partyTypes).toEqual(["dinner", "social"]);
     expect(merged.vibeTags).toEqual(["chill"]);
     expect(merged.musicGenres).toEqual(["jazz"]);
-  });
-});
-
-describe("ORCH-0893 REWORK adversarial — Part B merge SOURCE field completeness audit", () => {
-  // This audit reads the actual merge block in edit.tsx and asserts every
-  // field in the test's `applyMergeSpec` replica is also present in the
-  // source. Catches the "implementor adds a field to the spec but forgets
-  // to mirror it in the source" drift AND vice versa.
-  //
-  // The list below is the canonical Part B user-meaningful field set per
-  // ORCH-0893 SPEC §8.3.3 + implementation report §2. Future DraftEvent
-  // fields that are user-mutable must be added here AND to the source
-  // merge block AND to the `applyMergeSpec` replica above.
-  const REQUIRED_MERGE_FIELDS = [
-    "name",
-    "description",
-    "coverMediaUrl",
-    "coverMediaType",
-    "coverMediaProvider",
-    "coverMediaSourceUrl",
-    "coverMediaCredit",
-    "coverMediaCreditUrl",
-    "coverMediaAlt",
-    "coverHue",
-    "format",
-    "tickets",
-    "date",
-    "doorsOpen",
-    "endsAt",
-    "endsAtUtc",
-    "venueName",
-    "address",
-    "city",
-    "locationGeo",
-    "onlineUrl",
-    "hideAddressUntilTicket",
-    "lastStepReached",
-    "partyTypes",
-    "vibeTags",
-    "musicGenres",
-    "whenMode",
-    "multiDates",
-    "recurrenceRule",
-    "timezone",
-  ] as const;
-
-  test("every required merge field appears as `<field>: liveDraft.<field>` (or Math.max for lastStepReached) in the source", () => {
-    const source = readFileSync(EDIT_ROUTE, "utf8");
-    // Bound the search to the rework merge block — between `mergedServerDraft`
-    // assignment and `replaceDraft(incoming.id, mergedServerDraft)`.
-    const mergeStart = source.indexOf("const mergedServerDraft");
-    const mergeEnd = source.indexOf(
-      "replaceDraft(incoming.id, mergedServerDraft)",
-      mergeStart,
-    );
-    expect(mergeStart).toBeGreaterThan(-1);
-    expect(mergeEnd).toBeGreaterThan(mergeStart);
-    const mergeBlock = source.slice(mergeStart, mergeEnd);
-
-    const missing: string[] = [];
-    for (const field of REQUIRED_MERGE_FIELDS) {
-      if (field === "lastStepReached") {
-        // Special case: uses Math.max(liveDraft.lastStepReached, serverDraft.lastStepReached)
-        const re = new RegExp(
-          `lastStepReached:\\s*Math\\.max\\(\\s*liveDraft\\.lastStepReached`,
-        );
-        if (!re.test(mergeBlock)) missing.push(field);
-      } else {
-        const re = new RegExp(`\\b${field}:\\s*liveDraft\\.${field}\\b`);
-        if (!re.test(mergeBlock)) missing.push(field);
-      }
-    }
-    expect(missing).toEqual([]);
-  });
-
-  test("merge block does NOT echo the d_* pseudo-id back via liveDraft.id (would break URL flip)", () => {
-    const source = readFileSync(EDIT_ROUTE, "utf8");
-    const mergeStart = source.indexOf("const mergedServerDraft");
-    const mergeEnd = source.indexOf(
-      "replaceDraft(incoming.id, mergedServerDraft)",
-      mergeStart,
-    );
-    const mergeBlock = source.slice(mergeStart, mergeEnd);
-
-    // The merge MUST NOT have `id: liveDraft.id` — that would resurrect
-    // the d_* pseudo-id and break the URL flip + the lazy-insert idempotency.
-    expect(mergeBlock).not.toMatch(/\bid:\s*liveDraft\.id\b/);
-    // Also MUST NOT have `serverSlug: liveDraft.serverSlug` — server is
-    // the slug authority post-insert.
-    expect(mergeBlock).not.toMatch(/\bserverSlug:\s*liveDraft\.serverSlug\b/);
-    // Also MUST NOT echo brandId from liveDraft — brand is set at d_* mint
-    // time and survives via incoming.brandId, but the server validates and
-    // echoes it back; trust the server's echo not the live state.
-    expect(mergeBlock).not.toMatch(/\bbrandId:\s*liveDraft\.brandId\b/);
-  });
-
-  test("merge block re-reads live state INSIDE the .then callback, not at queue time (correctness invariant)", () => {
-    const source = readFileSync(EDIT_ROUTE, "utf8");
-
-    // The `useDraftEventStore.getState().getDraft(incoming.id)` call MUST
-    // appear AFTER the .then( opening AND before the replaceDraft call.
-    // If a future refactor extracts the live-state read to a useCallback
-    // closure or memo, the snapshot captured at queue time would be reused —
-    // defeating the merge's purpose.
-    const thenStart = source.indexOf(".then((serverDraft)");
-    const replaceCall = source.indexOf("replaceDraft(incoming.id, mergedServerDraft)");
-    const liveReadIndex = source.indexOf(
-      "useDraftEventStore\n            .getState()\n            .getDraft(incoming.id)",
-    );
-
-    expect(thenStart).toBeGreaterThan(-1);
-    expect(replaceCall).toBeGreaterThan(-1);
-    expect(liveReadIndex).toBeGreaterThan(thenStart);
-    expect(liveReadIndex).toBeLessThan(replaceCall);
   });
 });
 

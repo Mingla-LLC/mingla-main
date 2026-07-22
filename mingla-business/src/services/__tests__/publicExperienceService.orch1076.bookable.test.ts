@@ -87,16 +87,28 @@ const builderFor = (result: { data: unknown; error: unknown }) => {
   return builder;
 };
 
-// Route .from by table; sidecars: experience_stops -> [], ticket_types -> tickets,
-// event_dates -> []. brands + events resolve via maybeSingle.
-const setupFrom = (tickets: Record<string, unknown>[]): void => {
+// #1062 [biz-jest-residual-burndown] Wave 2 / B2 [TEST-MOD-APPROVED ORCH-1062]:
+// META-ORCH-1235 consolidated getPublicExperienceBySlug onto the single anon RPC
+// `pg_public_experience_by_slug`, which returns the full payload INCLUDING a
+// server-computed `bookable` flag (publicExperienceService.ts RPC-consolidation
+// note, ~L505-513; mapRpcPayload surfaces `p.bookable` at L670). The client no
+// longer runs resolveBookable for the by-slug deep link — it surfaces the
+// server's decision verbatim. So the four buyer-supply resolveBookable scenarios
+// (ORCH-1076) now live under the ById resolver below (which STILL owns that
+// client-side logic via pg_brand_can_charge), and BySlug gets passthrough tests.
+
+// Route .from by table for the ById resolver: events (with embedded brands) +
+// ticket_types carry the scenario; experience_stops / event_dates / the theme
+// view resolve empty.
+const setupById = (tickets: Record<string, unknown>[]): void => {
   mockFrom.mockImplementation((...a: unknown[]) => {
     const table = a[0] as string;
     switch (table) {
-      case "brands":
-        return builderFor({ data: brandRow, error: null });
       case "events":
-        return builderFor({ data: eventRow(), error: null });
+        return builderFor({
+          data: { ...eventRow(), brands: brandRow },
+          error: null,
+        });
       case "ticket_types":
         return builderFor({ data: tickets, error: null });
       case "experience_stops":
@@ -117,7 +129,84 @@ const routeRpc = (canCharge: boolean): void => {
   });
 };
 
-describe("ORCH-1076 — experience deep-link bookable flag (BySlug)", () => {
+// Full pg_public_experience_by_slug payload (RpcExpPayload shape). Only `bookable`
+// varies per test — the client passes it straight through.
+const rpcPayload = (bookable: boolean): Record<string, unknown> => ({
+  id: "exp-1",
+  brandId: "brand-1",
+  brandSlug: "lantern-vine",
+  experienceSlug: "wine-crawl",
+  title: "Wine Crawl",
+  description: null,
+  status: "scheduled",
+  visibility: "public",
+  timezone: "America/New_York",
+  currency: "USD",
+  coverMediaUrl: null,
+  coverMediaType: null,
+  venueText: null,
+  isRecurring: false,
+  isMultiDate: false,
+  recurrenceRules: null,
+  intents: null,
+  hideAddressUntilTicket: false,
+  themeColorOverride: null,
+  themeFontOverride: null,
+  themeAnimationOverride: null,
+  brand: {
+    id: "brand-1",
+    slug: "lantern-vine",
+    name: "Lantern & Vine",
+    bio: null,
+    coverMediaUrl: null,
+    coverMediaType: null,
+    coverHue: null,
+    verified: false,
+    themeColor: null,
+    themeFont: null,
+    themeAnimation: null,
+  },
+  stops: [],
+  ticket: null,
+  dates: [],
+  bookable,
+});
+
+const routeSlugRpc = (bookable: boolean): void => {
+  mockRpc.mockImplementation((...a: unknown[]) => {
+    const fn = a[0] as string;
+    if (fn === "pg_public_experience_by_slug") {
+      return Promise.resolve({ data: rpcPayload(bookable), error: null });
+    }
+    return Promise.resolve({ data: [], error: null });
+  });
+};
+
+describe("META-ORCH-1235 — BySlug surfaces the RPC's server-computed bookable", () => {
+  beforeEach(() => {
+    mockFrom.mockReset();
+    mockRpc.mockReset();
+  });
+
+  test("surfaces bookable:false (server suppressed buyer-supply)", async () => {
+    routeSlugRpc(false);
+    const payload = await getPublicExperienceBySlug("lantern-vine", "wine-crawl");
+    expect(payload).not.toBeNull();
+    expect(payload?.experience.bookable).toBe(false);
+    expect(mockRpc).toHaveBeenCalledWith("pg_public_experience_by_slug", {
+      p_brand_slug: "lantern-vine",
+      p_experience_slug: "wine-crawl",
+    });
+  });
+
+  test("surfaces bookable:true", async () => {
+    routeSlugRpc(true);
+    const payload = await getPublicExperienceBySlug("lantern-vine", "wine-crawl");
+    expect(payload?.experience.bookable).toBe(true);
+  });
+});
+
+describe("ORCH-1076 — experience deep-link bookable flag (ById resolver — client resolveBookable)", () => {
   beforeEach(() => {
     mockFrom.mockReset();
     mockRpc.mockReset();
@@ -125,8 +214,8 @@ describe("ORCH-1076 — experience deep-link bookable flag (BySlug)", () => {
 
   test("PAID experience + brand CANNOT charge -> bookable:false", async () => {
     routeRpc(false);
-    setupFrom([ttRow()]);
-    const payload = await getPublicExperienceBySlug("lantern-vine", "wine-crawl");
+    setupById([ttRow()]);
+    const payload = await getPublicExperienceById("exp-1");
     expect(payload).not.toBeNull();
     expect(payload?.experience.bookable).toBe(false);
     expect(mockRpc).toHaveBeenCalledWith("pg_brand_can_charge", {
@@ -136,15 +225,15 @@ describe("ORCH-1076 — experience deep-link bookable flag (BySlug)", () => {
 
   test("PAID experience + brand CAN charge -> bookable:true (self-heal)", async () => {
     routeRpc(true);
-    setupFrom([ttRow()]);
-    const payload = await getPublicExperienceBySlug("lantern-vine", "wine-crawl");
+    setupById([ttRow()]);
+    const payload = await getPublicExperienceById("exp-1");
     expect(payload?.experience.bookable).toBe(true);
   });
 
   test("FREE experience -> bookable:true; pg_brand_can_charge NOT consulted", async () => {
     routeRpc(false);
-    setupFrom([ttRow({ price_cents: 0, is_free: true })]);
-    const payload = await getPublicExperienceBySlug("lantern-vine", "wine-crawl");
+    setupById([ttRow({ price_cents: 0, is_free: true })]);
+    const payload = await getPublicExperienceById("exp-1");
     expect(payload?.experience.bookable).toBe(true);
     expect(mockRpc).not.toHaveBeenCalledWith(
       "pg_brand_can_charge",
@@ -154,38 +243,12 @@ describe("ORCH-1076 — experience deep-link bookable flag (BySlug)", () => {
 
   test("in-person-only PAID -> bookable:true (never hits online 409)", async () => {
     routeRpc(false);
-    setupFrom([ttRow({ available_online: false })]);
-    const payload = await getPublicExperienceBySlug("lantern-vine", "wine-crawl");
+    setupById([ttRow({ available_online: false })]);
+    const payload = await getPublicExperienceById("exp-1");
     expect(payload?.experience.bookable).toBe(true);
     expect(mockRpc).not.toHaveBeenCalledWith(
       "pg_brand_can_charge",
       expect.anything(),
     );
-  });
-});
-
-describe("ORCH-1076 — experience deep-link bookable flag (ById)", () => {
-  beforeEach(() => {
-    mockFrom.mockReset();
-    mockRpc.mockReset();
-  });
-
-  test("PAID + not-ready via id resolver -> bookable:false", async () => {
-    routeRpc(false);
-    mockFrom.mockImplementation((...a: unknown[]) => {
-      const table = a[0] as string;
-      if (table === "events") {
-        return builderFor({
-          data: { ...eventRow(), brands: brandRow },
-          error: null,
-        });
-      }
-      if (table === "ticket_types") {
-        return builderFor({ data: [ttRow()], error: null });
-      }
-      return builderFor({ data: [], error: null });
-    });
-    const payload = await getPublicExperienceById("exp-1");
-    expect(payload?.experience.bookable).toBe(false);
   });
 });

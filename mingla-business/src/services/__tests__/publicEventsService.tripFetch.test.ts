@@ -105,6 +105,22 @@ beforeEach(() => {
   fromMock.mockReset();
 });
 
+// #1062 [biz-jest-residual-burndown] Wave 2 / B2 [TEST-MOD-APPROVED ORCH-1062]:
+// ORCH-1186-C — getPublicBrandBySlug now fetches a DISPLAY-ONLY menu via
+// fetchPublicMenus → from("public_menus_view").select().eq().order().order()
+// (chained double .order, thenable terminal). Non-venue brands yield []. Route
+// it so the bespoke mock resolves instead of throwing "unexpected from(...)".
+const menusQuery = () => {
+  const builder: Record<string, unknown> = {
+    select: () => builder,
+    eq: () => builder,
+    order: () => builder,
+    then: (resolve: (r: { data: never[]; error: null }) => unknown) =>
+      Promise.resolve({ data: [], error: null }).then(resolve),
+  };
+  return builder;
+};
+
 describe("ORCH-0963 T-02 — public trips by brand fetch path", () => {
   test("T-02a tripRowToCard maps snake_case → camelCase with all 20 fields", () => {
     const card = tripRowToCard(TRIP_FIXTURE_DC);
@@ -180,6 +196,7 @@ describe("ORCH-0963 T-02 — public trips by brand fetch path", () => {
           }),
         };
       }
+      if (table === "public_menus_view") return menusQuery();
       throw new Error(`unexpected from(${table}) call in T-02c`);
     });
     rpcMock.mockImplementation((name: string) => {
@@ -247,6 +264,7 @@ describe("ORCH-0963 T-02 — public trips by brand fetch path", () => {
       if (table === "business_public_events_view") {
         return eventsViewMock();
       }
+      if (table === "public_menus_view") return menusQuery();
       throw new Error(`unexpected from(${table}) call in T-02d`);
     });
 

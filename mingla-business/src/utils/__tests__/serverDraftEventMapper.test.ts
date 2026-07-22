@@ -40,11 +40,14 @@ const draft = (patch: Partial<DraftEvent> = {}): DraftEvent => ({
   name: "Friday Supper",
   description: "A proper supper club.",
   format: "hybrid",
-  category: "food",
+  partyTypes: [],
+  vibeTags: [],
+  musicGenres: [],
   whenMode: "multi_date",
   date: null,
   doorsOpen: "18:30",
   endsAt: "22:00",
+  endsAtUtc: null,
   timezone: "Europe/London",
   recurrenceRule: null,
   multiDates: [
@@ -77,6 +80,8 @@ const draft = (patch: Partial<DraftEvent> = {}): DraftEvent => ({
   ],
   venueName: "Studio",
   address: "1 Test Street",
+  city: null,
+  locationGeo: null,
   onlineUrl: "https://example.com/live",
   hideAddressUntilTicket: true,
   coverHue: 180,
@@ -95,6 +100,16 @@ const draft = (patch: Partial<DraftEvent> = {}): DraftEvent => ({
   passwordProtected: false,
   privateGuestList: true,
   inPersonPaymentsEnabled: true,
+  isRsvp: false,
+  rsvpCapacity: null,
+  rsvpAllowPlusOnes: false,
+  rsvpPlusOnesMax: 0,
+  rsvpWaitlistEnabled: false,
+  rsvpApprovalMode: "auto",
+  rsvpDiscoverable: false,
+  rsvpContributionEnabled: false,
+  rsvpContributionSuggestedCents: null,
+  rsvpContributionMinCents: null,
   lastStepReached: 5,
   status: "draft",
   createdAt: "2026-05-08T08:00:00.000Z",
@@ -270,7 +285,21 @@ describe("serverDraftEventMapper", () => {
   });
 
   test("accepts recovered configured password tickets during publish validation", () => {
+    // The base fixture defaults to whenMode "multi_date" with fixed 2026-06
+    // dates + empty partyTypes; both now trip validatePublish (ORCH-0824 made
+    // partyTypes required; the fixed dates are in the past). This test is about
+    // the password-ticket branch, so make the draft otherwise-valid: a
+    // non-empty party type and a dynamically-future single date.
+    const future = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10);
     const source = draft({
+      partyTypes: ["birthday-party"],
+      whenMode: "single",
+      date: future,
+      multiDates: null,
+      city: "London",
+      locationGeo: { lat: 51.5, lng: -0.12 },
       tickets: [
         ticket({
           passwordProtected: true,
