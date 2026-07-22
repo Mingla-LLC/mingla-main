@@ -24,19 +24,24 @@
  * ── WHY VACUITY IS THE THREAT MODEL ────────────────────────────────────────────
  * The realistic ways a health probe rots into decoration are all "passes when it
  * should not": an empty statement list read as success; a failed fetch swallowed; a
- * `KNOWN_FAILURES` suppression that quietly widens to cover an unrelated regression;
- * a suppression that keeps firing after the world is fixed and is never removed.
- * Each of those is a scenario below, and each must produce a NON-zero exit (or, for
- * S13, the explicit "delete the entry" notice).
+ * body with no `statements` key; a subset / no-certificate drift read as health.
+ * Each of those is a scenario below, and each must produce a NON-zero exit.
+ *
+ * #1050 — the KNOWN_FAILURES-suppression scenarios (S9/S10/S13, which policed a
+ * suppression that quietly widens, or that keeps firing after the world is fixed) are
+ * RETIRED: #1050 emptied KNOWN_FAILURES entirely (the Business app stopped declaring
+ * `go.`, so the F-4 go.×business suppression is gone). If a suppression is ever added
+ * back, restore those scenarios alongside it.
  *
  * Usage:  node scripts/ci/issue-1042-probe-adversarial-check.mjs
  * Exit:   0 = the probe behaved correctly in every scenario · 1 = it did not.
  * CI:     .github/workflows/issue-1042-assetlinks-tests.yml
  * Docs:   docs/runbooks/ANDROID_SIGNING_AND_DEEP_LINK_REGISTRY.md
  *
- * FAILS-ON-REVERT: deleting the `if (pairs.length === 0) throw` guard, the
- * `obs.error !== null` branch, or the three-way `KNOWN_FAILURES` match in
- * `scripts/probe-android-applinks.mjs` turns S1/S5/S9/S10 red. Verified by hand.
+ * FAILS-ON-REVERT: deleting the `if (pairs.length === 0) throw` guard or the
+ * `obs.error !== null` branch in `scripts/probe-android-applinks.mjs` turns S1/S5
+ * red. Verified by hand. (#1050 retired the KNOWN_FAILURES-suppression scenarios
+ * S9/S10/S13 — the suppression list is now empty.)
  */
 
 import fs from "node:fs";
@@ -94,7 +99,9 @@ function makeFixture() {
   );
   fs.writeFileSync(
     path.join(dir, "mingla-business/app.json"),
-    JSON.stringify(filters(BUSINESS_PKG, ["business.usemingla.com", "go.usemingla.com"]), null, 2),
+    // #1050 — the Business app now declares its OWN vouching branded domain
+    // `biz.usemingla.com`, not the consumer domain `go.usemingla.com`.
+    JSON.stringify(filters(BUSINESS_PKG, ["business.usemingla.com", "biz.usemingla.com"]), null, 2),
   );
   return dir;
 }
@@ -124,11 +131,14 @@ const consumer = () => FIX.consumer.map((fp) => stmt(CONSUMER_PKG, fp));
 const business = () => FIX.business.map((fp) => stmt(BUSINESS_PKG, fp));
 
 // The world exactly as it must look AFTER this PR deploys.
+// #1050 — the branded OneLink domain is now per-app: biz. vouches for business,
+// go. vouches for consumer. Both are healthy; there is no suppressed pair left.
 const HEALTHY = {
   "usemingla.com": consumer(),
   "www.usemingla.com": consumer(),
   "business.usemingla.com": [...business(), ...consumer()],
-  "go.usemingla.com": consumer(), // still no business statement -> the KNOWN_FAILURES pair
+  "biz.usemingla.com": business(), // #1050 — business now declares biz.; biz. vouches for the business pkg
+  "go.usemingla.com": consumer(), // #1050 — go. is consumer-only now; it vouches for the consumer pkg
 };
 
 const ok = (obj) => ({ ok: true, status: 200, json: async () => obj });
@@ -148,19 +158,13 @@ function respond(host) {
     case "S6-malformed-json":     return { ok: true, status: 200, json: async () => { throw new SyntaxError("Unexpected end of JSON input"); } };
     case "S7-timeout":            return Promise.reject(Object.assign(new Error("The operation was aborted."), { name: "AbortError" }));
     case "S8-resolver-errorcode": return ok({ errorCode: ["ERROR_CODE_FETCH_ERROR"], statements: [] });
-    case "S9-known-abuse-other-package":
-      if (host === "go.usemingla.com") return ok({ statements: [] }); // consumer ALSO gone
-      return ok({ statements: HEALTHY[host] ?? [] });
-    case "S10-known-abuse-other-host":
-      if (host === "business.usemingla.com") return ok({ statements: consumer() }); // business target gone
-      return ok({ statements: HEALTHY[host] ?? [] });
+    // #1050 — S9/S10/S13 retired: they existed solely to police the F-4
+    // KNOWN_FAILURES suppression, which #1050 emptied (the Business app no longer
+    // declares go., so there is no suppressed go.×business pair to abuse or fix).
     case "S11-lowercase-live":
       return ok({ statements: (HEALTHY[host] ?? []).map((s) => ({ ...s, target: { androidApp: { packageName: s.target.androidApp.packageName, certificate: { sha256Fingerprint: s.target.androidApp.certificate.sha256Fingerprint.toLowerCase() } } } })) });
     case "S12-no-certificate":
       return ok({ statements: (HEALTHY[host] ?? []).map((s) => ({ ...s, target: { androidApp: { packageName: s.target.androidApp.packageName } } })) });
-    case "S13-world-fixed":
-      if (host === "go.usemingla.com") return ok({ statements: [...consumer(), ...business()] });
-      return ok({ statements: HEALTHY[host] ?? [] });
     default: throw new Error("unknown scenario " + scenario);
   }
 }
@@ -178,7 +182,10 @@ await import("./probe-android-applinks.mjs");
  * `exit` is the contract; `expect` / `forbid` are substrings of the probe's output.
  */
 const SCENARIOS = [
-  { id: "S0-healthy", why: "post-deploy steady state — the daily schedule must be born GREEN", exit: 0, expect: ["ALL DECLARED APP LINKS HOSTS HEALTHY", "KNOWN-FAIL"] },
+  // #1050 — S0 no longer expects a "KNOWN-FAIL" line: the go.×business
+  // suppression is gone, so the steady state is fully GREEN with no suppressed
+  // pair. S9/S10/S13 are retired (they only policed that now-empty suppression).
+  { id: "S0-healthy", why: "post-deploy steady state — the daily schedule must be born GREEN, no suppression", exit: 0, expect: ["ALL DECLARED APP LINKS HOSTS HEALTHY"], forbid: ["KNOWN-FAIL"] },
   { id: "S1-empty-list", why: "HTTP 200 with an EMPTY statement list must never read as success", exit: 1, expect: ["NO_STATEMENT"] },
   { id: "S2-no-statements-key", why: "a body with no `statements` key at all must not pass vacuously", exit: 1, expect: ["NO_STATEMENT"] },
   { id: "S3-wrong-package", why: "a host vouching for SOMEBODY ELSE'S package is not a pass", exit: 1, expect: ["NO_STATEMENT"] },
@@ -187,11 +194,8 @@ const SCENARIOS = [
   { id: "S6-malformed-json", why: "a truncated/malformed resolver body must fail the run", exit: 1, expect: ["RESOLVER_ERROR"] },
   { id: "S7-timeout", why: "a network timeout on all attempts must fail the run", exit: 1, expect: ["RESOLVER_ERROR"] },
   { id: "S8-resolver-errorcode", why: "an errorCode alongside HTTP 200 must fail the run", exit: 1, expect: ["RESOLVER_ERROR"] },
-  { id: "S9-known-abuse-other-package", why: "KNOWN_FAILURES must NOT swallow a different package on the same host", exit: 1, expect: ["FAIL: NO_STATEMENT on " + CONSUMER_PKG] },
-  { id: "S10-known-abuse-other-host", why: "KNOWN_FAILURES must NOT swallow the same package on a different host", exit: 1, expect: ["business.usemingla.com"] },
   { id: "S11-lowercase-live", why: "case-insensitive comparison — lowercase live fingerprints are still a match", exit: 0, expect: ["ALL DECLARED APP LINKS HOSTS HEALTHY"] },
   { id: "S12-no-certificate", why: "a statement naming the package but carrying no certificate is drift, not health", exit: 1, expect: ["DRIFT"] },
-  { id: "S13-world-fixed", why: "when F-4 is fixed the suppression must announce itself for deletion", exit: 0, expect: ["did NOT fire", "Delete the entry"] },
 ];
 
 // ── run ────────────────────────────────────────────────────────────────────────
@@ -252,7 +256,7 @@ if (failures.length) {
 
 console.log(
   `\nPASS — the probe went red in every scenario where the outside world was wrong, green only\n` +
-    `where it was right, refused to pass on an empty or failed resolver response, and kept its\n` +
-    `KNOWN_FAILURES suppression scoped to the single (host, package, kind) triple it names.`,
+    `where it was right, and refused to pass on an empty or failed resolver response. (#1050\n` +
+    `emptied KNOWN_FAILURES, so the suppression-abuse scenarios S9/S10/S13 were retired.)`,
 );
 process.exit(0);

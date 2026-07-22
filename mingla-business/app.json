@@ -33,7 +33,7 @@
       },
       "associatedDomains": [
         "applinks:business.usemingla.com",
-        "applinks:go.usemingla.com"
+        "applinks:biz.usemingla.com"
       ],
       "runtimeVersion": {
         "policy": "appVersion"
@@ -81,7 +81,7 @@
           "data": [
             {
               "scheme": "https",
-              "host": "go.usemingla.com"
+              "host": "biz.usemingla.com"
             }
           ],
           "category": [

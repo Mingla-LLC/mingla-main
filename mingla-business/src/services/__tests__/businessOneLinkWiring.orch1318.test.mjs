@@ -19,7 +19,10 @@
  * FAILS-ON-REVERT map:
  *   - Flip onDeepLinkListener / onInstallConversionDataListener back to false → A1 fails.
  *   - Register onDeepLink after (or drop it before) initSdk → A2 fails.
- *   - Drop setOneLinkCustomDomains / the go.usemingla.com domain → A3 fails.
+ *   - Drop setOneLinkCustomDomains, drop the BUSINESS_ONELINK_BRANDED_DOMAIN
+ *     SSOT import, or reintroduce a go.usemingla.com literal → A3 fails (#1050:
+ *     the Business OneLink host is `biz.` — its own vouching domain; `go.` is
+ *     consumer-only and re-adding it re-breaks Android <=11 verification).
  *   - Drop subscribeOneLinkDeepLink export or the _layout referral capture → B1 fails.
  */
 import { test } from 'node:test';
@@ -58,9 +61,34 @@ test('A2: onDeepLink is registered before initSdk (business has no manualStart)'
 });
 
 // ── A3: branded OneLink domain registered at runtime (SPEC §C.1) ──────────────
-test('A3: business registers the go.usemingla.com branded OneLink domain', () => {
+// #1050 — the Business app's OneLink host is `biz.usemingla.com` (its OWN
+// vouching branded domain), imported from the storeLinks SSOT as
+// BUSINESS_ONELINK_BRANDED_DOMAIN. `go.usemingla.com` is CONSUMER-only:
+// re-adding it here (or in the SDK registration, or in app.json) re-breaks
+// business.usemingla.com App Link verification on Android <=11 (the
+// all-or-nothing legacy verifier fails the whole autoVerify set on a host that
+// publishes no Digital Asset Links statement for the Business package).
+test('A3: business registers the biz. branded OneLink domain via the storeLinks SSOT (no go. literal)', () => {
   assert.match(service, /setOneLinkCustomDomains\(/, 'must call setOneLinkCustomDomains');
-  assert.match(service, /"go\.usemingla\.com"|'go\.usemingla\.com'/, "must register 'go.usemingla.com'");
+  // (a) the host comes from the SSOT import, never a hardcoded literal.
+  assert.match(
+    service,
+    /import\s*\{[^}]*\bBUSINESS_ONELINK_BRANDED_DOMAIN\b[^}]*\}\s*from\s*['"]\.\.\/constants\/storeLinks['"]/,
+    'must import BUSINESS_ONELINK_BRANDED_DOMAIN from ../constants/storeLinks (the SSOT)',
+  );
+  // (b) that imported identifier is what is registered with the SDK.
+  assert.match(
+    service,
+    /setOneLinkCustomDomains\(\s*\[\s*BUSINESS_ONELINK_BRANDED_DOMAIN\s*\]/,
+    'must pass BUSINESS_ONELINK_BRANDED_DOMAIN to setOneLinkCustomDomains',
+  );
+  // (c) the CONSUMER host must NOT appear anywhere in the service (comments are
+  // stripped before matching — this is fails-on-revert on a real go. literal).
+  assert.doesNotMatch(
+    service,
+    /go\.usemingla\.com/,
+    'the service must carry NO go.usemingla.com literal (#1050 — go. is consumer-only)',
+  );
   // never navigates from the service — forwards to a sink
   assert.match(service, /export function subscribeOneLinkDeepLink/, 'must export subscribeOneLinkDeepLink');
   assert.match(service, /_deepLinkSubscribed/, 'must guard idempotent onDeepLink registration');

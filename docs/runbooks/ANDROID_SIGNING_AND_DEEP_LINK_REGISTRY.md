@@ -92,11 +92,11 @@ Every host either app declares `autoVerify: true` against. The parity gate reads
 | `business.usemingla.com` | `com.mingla.app.v2` | This repo — `mingla-business/public/.well-known/assetlinks.json` (Vercel) | Yes |
 | `business.usemingla.com` | `com.sethogieva.minglabusiness` | This repo — `mingla-business/public/.well-known/assetlinks.json` (Vercel) | Yes |
 | `go.usemingla.com` | `com.mingla.app.v2` | **AppsFlyer branded domain** — invisible to this repo | Yes |
-| `go.usemingla.com` | `com.sethogieva.minglabusiness` | **AppsFlyer branded domain** — invisible to this repo | **NO — #1042 F-4.** See §4. |
+| `biz.usemingla.com` | `com.sethogieva.minglabusiness` | **AppsFlyer branded domain** — invisible to this repo | Yes |
 
 <!-- ISSUE-1042-HOSTS-TABLE:END -->
 
-`www.usemingla.com` serves the same file as the apex but is declared by no intent filter; the probe checks it for deploy drift only. `biz.usemingla.com` publishes the correct Business pair but **no shipped binary declares it** — it is provisioned ahead of the ORCH-1346 branded-domain swap that lands at the next Business native build (#1042 F-8). That asymmetry is deliberate: *"app declares a host that publishes nothing for it"* is a failure; *"host publishes a package no app declares"* is informational.
+`www.usemingla.com` serves the same file as the apex but is declared by no intent filter; the probe checks it for deploy drift only. Per-app branded-domain split (ORCH-1346, completed in-config by #1050): the **Business** app declares `biz.usemingla.com` (which vouches for `com.sethogieva.minglabusiness`) and the **Explorer** app declares `go.usemingla.com` (which vouches for `com.mingla.app.v2`) — one branded domain per template, each declaring only the domain that vouches for it. The `go.` × Business pair that failed #1042 F-4 is gone: the Business binary no longer declares `go.` (ships at the next Business native build; the repo-read probe re-arms at #1050 merge). That asymmetry rule still holds: *"app declares a host that publishes nothing for it"* is a failure; *"host publishes a package no app declares"* is informational.
 
 ---
 
@@ -172,7 +172,7 @@ Open **`Android Client Development`** (`…-6k0i…`) and record its *Package na
 node scripts/probe-android-applinks.mjs
 ```
 
-Or trigger **Android App Links Health Probe** → *Run workflow* on the Actions tab. Require green (the one expected-failing pair, `go.usemingla.com` × `com.sethogieva.minglabusiness`, is suppressed by name in the script's `KNOWN_FAILURES` and printed as `KNOWN-FAIL`).
+Or trigger **Android App Links Health Probe** → *Run workflow* on the Actions tab. Require green. (`KNOWN_FAILURES` is now empty — the sole prior entry, `go.usemingla.com` × `com.sethogieva.minglabusiness`, was retired by #1050 when the Business app stopped declaring `go.`; a fresh entry is only added if a new declared-but-unvouched pair is knowingly tolerated.)
 
 A `DRIFT` result means the repo is right and a deployment is stale — check the latest Vercel production deployment. A `NO_STATEMENT` result on an AppsFlyer host means a branded domain lost an app target.
 
@@ -188,16 +188,16 @@ A drifted registry is worse than no registry: it launders a wrong value into "do
 
 **OP-2 — read both apps' EAS Android credentials** (`npx eas-cli credentials -p android`, both app dirs). Seals #1042 F-2's identity claim for `90:28:F8:B1:…` and supplies the two `UNRESOLVED` rows in §1.1/§1.2. Until it returns, `mingla-business`'s `assetlinks.json` cannot gain its debug fingerprint (F-5) — and it must not be guessed.
 
-**OP-3 — read the AppsFlyer branded-domain Android config** for `go.usemingla.com` (AppsFlyer → OneLink → Branded domains → `go.usemingla.com` → Android app + SHA-256 list). Confirms whether `com.sethogieva.minglabusiness` was removed deliberately under ORCH-1346 or dropped by accident. This decides F-4's fix direction.
+**OP-3 — read the AppsFlyer branded-domain Android config** (AppsFlyer → OneLink → Branded domains). Informational only now (see F-4 below): confirm `biz.usemingla.com` carries `com.sethogieva.minglabusiness` + its two SHA-256s (it does — live-readback-confirmed at #1050) and that `go.usemingla.com` carries only `com.mingla.app.v2`. No longer blocks anything.
 
-**F-4 — `go.usemingla.com` publishes no statement for the Business package, while the shipped Business build autoVerifies it.** On Android 12+ each host verifies independently, so only `go.` links are affected. On **Android 11 and below** the legacy verifier is all-or-nothing across an app's autoVerify hosts, so this plausibly un-verifies `business.usemingla.com` for **every Play-installed organiser** on those devices. Both apps ship `minSdkVersion 24`, so those installs exist. Not device-proven — handed to the tester with an explicit protocol at #1042.
+**F-4 — RESOLVED by #1050 (2026-07-21).** The shipped Business build declared `go.usemingla.com` (the CONSUMER OneLink domain, which never vouches for `com.sethogieva.minglabusiness`) as an autoVerify host. On Android 12+ each host verifies independently so only `go.` links were affected; on **Android 11 and below** the legacy verifier is all-or-nothing across an app's autoVerify hosts, so it un-verified `business.usemingla.com` for every Play-installed organiser on those devices — **tester-proven on an Android 11 (API 30) AVD** (`Verification 1 complete. Success:false. Failed hosts:go.usemingla.com` → `Status: ask`). Fix (#1050): the Business app now declares its OWN already-vouching domain `biz.usemingla.com` instead of `go.` — the swap covered the Android intentFilter, the iOS `associatedDomains`, and the AppsFlyer SDK's `setOneLinkCustomDomains` registration in lockstep. This was fix-direction (2) below (the ORCH-1346 branded-domain swap), not (1). **Ships at the next Business native build** (`autoVerify`/`associatedDomains`/SDK-domain bake into the binary; no OTA) — installed organisers stay affected until they update, even though the repo-read probe re-arms at merge.
 
-Two possible fixes, and they are mutually exclusive:
+Historical fix options (F-4's original framing, retained for the record — option 2 was taken):
 
-1. **Re-add `com.sethogieva.minglabusiness` (with both its SHA-256s) to the `go.usemingla.com` branded domain in AppsFlyer.** Same-day operator fix, no build. Correct if the removal was accidental.
-2. **Drop the `go.usemingla.com` intent filter and associated domain from `mingla-business/app.json` at the next native build.** Correct if the removal was deliberate — and ORCH-1346's *one branded domain = one template* policy (`go.` → Explorer, `biz.` → Business) favours this. Requires a native build; cannot ride an OTA.
+1. Re-add `com.sethogieva.minglabusiness` to the `go.usemingla.com` branded domain in AppsFlyer — same-day operator fix, no build. NOT taken: it would re-muddle ORCH-1346's one-domain-one-template split by making the consumer domain vouch for the business app.
+2. **Point the Business app at `biz.usemingla.com` instead of `go.` in `mingla-business` config at the next native build** — the ORCH-1346 direction; requires a native build, cannot ride an OTA. **This is what #1050 shipped.**
 
-OP-3 decides which. Until then the probe suppresses this one pair by name; deleting that `KNOWN_FAILURES` entry is the fix's acceptance test.
+Interim mitigation while the native build is pending (Seth's decision, OQ-1 on #1050): option 1 above can un-break the currently-installed binary on Android ≤11 sooner, reversible once the native build lands. Weigh against the Android ≤11 organiser share in Play Console.
 
 ---
 

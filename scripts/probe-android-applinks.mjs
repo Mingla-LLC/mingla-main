@@ -22,12 +22,16 @@
  * apps depend on (`go.usemingla.com`, `biz.usemingla.com`) are served entirely from
  * an AppsFlyer dashboard and have no repo representation at all.
  *
- * It would have gone red the day #1042 F-4 was introduced: `go.usemingla.com`
- * publishes NO statement for `com.sethogieva.minglabusiness`, while the shipped
- * Business build autoVerifies against it. On Android 11 and below the legacy verifier
- * is all-or-nothing across an app's autoVerify hosts, so that single missing statement
- * plausibly kills `business.usemingla.com` App Links for every Play-installed
- * organiser on those devices. Nothing told us. This is the thing that tells us.
+ * It went red the day #1042 F-4 was introduced: `go.usemingla.com` published NO
+ * statement for `com.sethogieva.minglabusiness`, while the shipped Business build
+ * autoVerified against it. On Android 11 and below the legacy verifier is
+ * all-or-nothing across an app's autoVerify hosts, so that single missing statement
+ * dropped `business.usemingla.com` App Links to `Status: ask` for every Play-installed
+ * organiser on those devices. Nothing else told us. This is the thing that told us.
+ * #1050 FIXED it at the source: the Business app now declares `biz.usemingla.com`
+ * (its own vouching domain) and no longer declares `go.` at all, so the go.×business
+ * pair is gone from what this probe reads (it goes green at PR merge; installed
+ * organisers are fixed only by the next native build).
  *
  * This is `scripts/probe-onelink-health.mjs`'s pattern applied one layer down: that
  * probe checks whether the OneLink redirects; this one checks whether the app is
@@ -39,8 +43,10 @@
  *   FAIL  a repo-backed host publishes a SMALLER fingerprint set than the repo file
  *         → deploy drift: a stale Vercel deployment or a CDN serving an old copy.
  *   INFO  a host publishes a package no app declares
- *         → NOT a defect. `biz.usemingla.com` is provisioned ahead of the ORCH-1346
- *           branded-domain swap that lands at the next Business native build.
+ *         → NOT a defect. A host may vouch for a package before the app declares it
+ *           (e.g. a branded domain provisioned ahead of the native build that wires
+ *           it). #1050 note: `biz.usemingla.com` is now DECLARED by the Business app,
+ *           so it is a normal declared pair, not an informational one.
  *
  * ── THE RETRY IS THE DESIGN (inherited from probe-onelink-health.mjs) ───────────
  * Google's resolver and the CDNs behind these hosts flake. A single-shot probe would
@@ -50,13 +56,15 @@
  * (a missing statement, a bad deploy) fails 5/5 deterministically and is still caught
  * on the first scheduled run.
  *
- * ── KNOWN_FAILURES IS DELIBERATELY NARROW ──────────────────────────────────────
- * A scheduled probe that is born red gets ignored. F-4 is real, is NOT fixable in
- * this repo (its fix is an AppsFlyer dashboard change or a native-build config
- * change), and is recorded below as ONE explicit (host, package, kind) triple with an
- * issue reference. It swallows nothing else: another package failing on the same
- * host, or a drift failure on that same pair, still fails the run. Deleting that
- * entry is the acceptance test for F-4's fix.
+ * ── KNOWN_FAILURES IS DELIBERATELY NARROW (AND NOW EMPTY) ───────────────────────
+ * A scheduled probe that is born red gets ignored, so a real-but-not-repo-fixable
+ * failure may be recorded as ONE explicit (host, package, kind) triple with an issue
+ * reference — swallowing nothing else (another package on the same host, or a drift
+ * on that same pair, still fails the run). Deleting an entry the moment its world is
+ * fixed is that entry's acceptance test. #1050 did exactly that: F-4's entry
+ * (go.usemingla.com × com.sethogieva.minglabusiness) is DELETED because the Business
+ * app stopped declaring `go.` (it now declares its own vouching `biz.usemingla.com`),
+ * so the list is empty. `go.` is consumer-only — do NOT re-add a business suppression.
  *
  * Usage:  node scripts/probe-android-applinks.mjs
  * Exit:   0 = every declared (host, package) resolves, modulo KNOWN_FAILURES
@@ -100,23 +108,25 @@ const REPO_BACKED_HOSTS = {
 };
 
 /**
- * Expected-failing (host, package, kind) triples. ONE entry only. Each carries the
- * issue that owns the real fix and a one-line reason. Scoped narrowly on purpose:
- * `kind` is matched too, so a DRIFT failure on this same pair would still fail.
+ * Expected-failing (host, package, kind) triples. Currently EMPTY.
+ *
+ * #1050 emptied this list. The sole entry — (go.usemingla.com,
+ * com.sethogieva.minglabusiness, NO_STATEMENT), #1042 F-4 — is GONE because the
+ * Business app no longer declares `go.` at all: mingla-business/app.json now
+ * declares `biz.usemingla.com` (its OWN vouching branded domain) instead, so the
+ * go.×business pair is never probed and the suppression had nothing left to
+ * suppress. Deleting the entry the moment the declaration changed is exactly
+ * #1042's acceptance test (the NOTE loop below) and the anti-decorative-guard rule.
+ *
+ * #1050 — do NOT re-add a go.×business suppression here. `go.` is CONSUMER-only;
+ * re-declaring it in the Business config (and papering over it with a suppression)
+ * re-breaks business.usemingla.com App Link verification on Android <=11.
+ *
+ * If a future real, not-repo-fixable failure needs suppressing, add ONE narrow
+ * (host, package, kind) triple with its owning issue and a one-line reason —
+ * `kind` is matched too, so a DRIFT failure on the same pair would still fire.
  */
-const KNOWN_FAILURES = [
-  {
-    host: "go.usemingla.com",
-    package: "com.sethogieva.minglabusiness",
-    kind: "NO_STATEMENT",
-    issue: 1042,
-    reason:
-      "#1042 F-4: the AppsFlyer branded domain go.usemingla.com publishes no statement for the " +
-      "Business package (residue of the ORCH-1346 one-domain-one-template split), while the shipped " +
-      "Business build still autoVerifies it. Fix is external (re-add the target in AppsFlyer) or a " +
-      "native-build config change (drop the go. intent filter) — neither is repo work available now.",
-  },
-];
+const KNOWN_FAILURES = [];
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -354,7 +364,7 @@ async function main() {
     for (const info of result.info) {
       console.log(
         `  INFO: publishes \`${info}\`, which no app declares for this host. Not a defect ` +
-          `(#1042 F-8 — biz.usemingla.com is provisioned ahead of the next Business native build).`,
+          `(#1042 F-8 — a host may vouch for a package no app declares, e.g. a domain provisioned ahead of a build).`,
       );
     }
 
