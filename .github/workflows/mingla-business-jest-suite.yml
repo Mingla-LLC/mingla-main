@@ -1,0 +1,101 @@
+# mingla-business — full jest suite (issue #1047 [business-jest-suite-audit])
+#
+# WHY THIS EXISTS: the mingla-business default jest suite (`mingla-business/jest.config.cjs`)
+# had ~245 failing tests and was run by NO workflow — every regression test the
+# CLOSE gate deposited into it was a dead letter, and new issues had to author
+# bespoke per-file jest workflows to route around it (#1042, #1044). That is the
+# same failure shape as #1038: a safety mechanism that LOOKS present in the repo
+# but that CI never invokes. This workflow ends the dark suite. It is enforced by
+# the I-PROPOSED-1047-BIZ-JEST-WIRED strict-grep gate (which fails if this file
+# stops invoking the whole suite).
+#
+# NON-BLOCKING BY CONSTRUCTION (do NOT change without a Seth-gated decision):
+#   - Triggers are `schedule` (nightly) + `workflow_dispatch` ONLY. It does NOT run
+#     on `pull_request`, so it can never gate a PR.
+#   - It is NOT in the branch-protection ruleset (`13549056` / `19508605`), so it is
+#     not a required check and cannot block a merge.
+#   - It is a standalone test workflow, NOT a strict-grep batch gate, so it needs
+#     NO MANIFEST.json entry (MANIFEST governs only .github/scripts/strict-grep/*.mjs).
+#   The job DOES go red when tests fail (so a real regression is visibly observed —
+#   it reports failures, it does not merely exist), but a red run here blocks
+#   nothing because of the three points above.
+#
+# REQUIRED-FLIP PATH (LATER, Seth-gated — NOT done here): once the residual red
+# count reaches zero (the §4.5 burn-down backlog on #1047), Seth adds this job's
+# check-name to the required-checks ruleset and (optionally) adds a `pull_request`
+# trigger so it blocks PRs. Until then it stays advisory/nightly. See
+# docs/MINGLA_ENGINEERING_HANDBOOK.md ("mingla-business jest suite — required-flip path").
+
+name: mingla-business jest suite (nightly, non-blocking)
+
+on:
+  schedule:
+    # 07:00 UTC daily — advisory nightly run; never on PRs.
+    - cron: "0 7 * * *"
+  workflow_dispatch: {}
+
+# No PR trigger => nothing to cancel per-PR; keep runs independent.
+concurrency:
+  group: mingla-business-jest-suite-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  jest:
+    name: mingla-business jest (full suite, advisory)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+
+      - name: Install mingla-business deps
+        run: npm ci
+
+      # react-test-renderer is a TEST-ONLY renderer, deliberately NOT an app
+      # dependency (mirrors orch-0976-draft-promotion-tests.yml). The 3
+      # *.orch0976.* bare-react-test-renderer suites run under the STOCK jest
+      # config and need it installed; --no-save keeps it out of the lockfile.
+      - name: Install test-only renderer (react-test-renderer, --no-save)
+        run: npm install --no-save react-test-renderer@19.1.0
+
+      - name: Run the full jest suite (capture JSON summary)
+        id: jest
+        continue-on-error: true
+        run: npm test -- --json --outputFile=jest-summary.json
+
+      - name: Upload jest JSON summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mingla-business-jest-summary
+          path: mingla-business/jest-summary.json
+          if-no-files-found: warn
+
+      # Make the JOB reflect the suite result (red on any failure) so a planted
+      # regression is observed — while remaining non-blocking (schedule/dispatch
+      # only, not a required check). This is the burn-down signal: it stays red
+      # until the §4.5 residual reaches zero, then Seth flips it to required.
+      - name: Suite verdict (advisory — red on failure, blocks nothing)
+        run: |
+          node -e '
+            const fs = require("fs");
+            let s;
+            try { s = JSON.parse(fs.readFileSync("jest-summary.json", "utf8")); }
+            catch (e) { console.error("could not read jest-summary.json:", e.message); process.exit(1); }
+            const { numFailedTests = 0, numPassedTests = 0, numTotalTests = 0,
+                    numFailedTestSuites = 0, numPassedTestSuites = 0, numTotalTestSuites = 0 } = s;
+            console.log(`Suites: ${numFailedTestSuites} failed, ${numPassedTestSuites} passed, ${numTotalTestSuites} total`);
+            console.log(`Tests:  ${numFailedTests} failed, ${numPassedTests} passed, ${numTotalTests} total`);
+            if (numFailedTests > 0 || numFailedTestSuites > 0) {
+              console.error(`\n#1047 residual burn-down: ${numFailedTests} test(s) / ${numFailedTestSuites} suite(s) still red — see the uploaded summary. This job is ADVISORY and blocks nothing.`);
+              process.exit(1);
+            }
+            console.log("\nmingla-business jest suite is GREEN — ready for the Seth-gated required-flip (#1047 §4.4.3).");
+          '

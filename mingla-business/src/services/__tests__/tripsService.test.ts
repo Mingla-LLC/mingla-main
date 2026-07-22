@@ -40,6 +40,8 @@ import {
   SlugCollisionError,
   TripPublishValidationError,
 } from "../tripsService";
+// #1047 [business-jest-suite-audit] Part 2.3 — shared chainable supabase mock.
+import { createChainableQuery } from "./__helpers__/supabaseMock";
 
 beforeEach(() => {
   fromMock.mockReset();
@@ -87,18 +89,14 @@ describe("ORCH-0859 — tripsService.publishTrip", () => {
       in: () => eventChain,
       order: () => eventChain,
     };
-    // Chainable mock — every method returns the chain so multi-`.order()`
-    // calls (trip_inclusions uses .order("kind").order("ordinal")) resolve.
-    // The chain is thenable so awaiting it yields {data:[], error:null}.
-    const arrayChain: Record<string, unknown> = {};
-    arrayChain.select = () => arrayChain;
-    arrayChain.eq = () => arrayChain;
-    arrayChain.is = () => arrayChain;
-    arrayChain.in = () => arrayChain;
-    arrayChain.order = () => arrayChain;
-    arrayChain.then = (
-      resolve: (value: { data: unknown[]; error: null }) => unknown,
-    ) => resolve({ data: [], error: null });
+    // #1047 [business-jest-suite-audit] Part 2.3 [TEST-MOD-APPROVED ORCH-1047] —
+    // migrated the hand-rolled catch-all chain to the shared createChainableQuery,
+    // which provides EVERY chain method (incl. the .maybeSingle the service now
+    // calls at tripsService.ts and which this inline chain lacked) so the mock can
+    // never drift out of date again. Terminal value is unchanged: awaiting / single
+    // / maybeSingle all resolve to { data: [], error: null }. Plumbing only —
+    // assertions below (RPC call names/args) are untouched.
+    const arrayChain = createChainableQuery({ data: [] });
     fromMock.mockImplementation((table: string) => {
       if (table === "events") return eventChain;
       return arrayChain;
