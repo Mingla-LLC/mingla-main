@@ -107,6 +107,16 @@ function escapeLike(v: string): string {
   return v.replace(/[\\%_]/g, (c) => `\\${c}`);
 }
 
+// place_scores is a 0–200 internal metric. Every USER-FACING "Mingla score"
+// is presented on a clean 0–100 scale (raw ÷ 2). Ranking/percentile use the
+// raw score elsewhere; only display values pass through here.
+const MINGLA_SCORE_RAW_MAX = 200;
+function minglaScoreTo100(raw: number | null | undefined): number | null {
+  if (typeof raw !== "number" || !Number.isFinite(raw)) return null;
+  const v = Math.round((raw / MINGLA_SCORE_RAW_MAX) * 100);
+  return Math.max(0, Math.min(100, v));
+}
+
 // ── Website URL validation (SSRF guard) ──────────────────────────────────────
 export function isPrivateHost(hostname: string): boolean {
   const h = hostname.toLowerCase().replace(/^\[|\]$/g, "");
@@ -532,6 +542,57 @@ async function fetchSite(
   }
 }
 
+// ── Live "before" screenshot (ScreenshotOne signed URL) ─────────────────────
+// We hand the browser a SIGNED ScreenshotOne URL: the access key is visible but
+// the HMAC-SHA256 signature authorizes ONLY this exact URL, so it can't be
+// reused. ScreenshotOne renders on first load and caches (repeat loads free).
+// No server-side wait — this adds zero latency to the run. Best-effort: a
+// missing key just leaves image_url null and the report falls back to og:image.
+async function buildScreenshotUrl(url: string): Promise<string | null> {
+  try {
+    const accessKey = Deno.env.get("SCREENSHOTONE_ACCESS_KEY") ?? "";
+    const secretKey = Deno.env.get("SCREENSHOTONE_SECRET_KEY") ?? "";
+    if (!accessKey || !secretKey) return null;
+    // Order matters — the exact query string is what gets signed AND sent.
+    const params = new URLSearchParams();
+    params.set("access_key", accessKey);
+    params.set("url", url);
+    params.set("format", "jpg");
+    params.set("viewport_width", "1280");
+    params.set("viewport_height", "800");
+    params.set("device_scale_factor", "1");
+    params.set("image_quality", "80");
+    params.set("block_cookie_banners", "true");
+    params.set("block_ads", "true");
+    params.set("block_chats", "true");
+    params.set("cache", "true");
+    params.set("cache_ttl", "2592000"); // 30 days
+    const query = params.toString();
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(secretKey),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"],
+    );
+    const sig = await crypto.subtle.sign(
+      "HMAC",
+      key,
+      new TextEncoder().encode(query),
+    );
+    const hex = Array.from(new Uint8Array(sig))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    return `https://api.screenshotone.com/take?${query}&signature=${hex}`;
+  } catch (err) {
+    console.error(
+      "[growth-tools-run] screenshot url build failed (non-fatal)",
+      err instanceof Error ? err.message : String(err),
+    );
+    return null;
+  }
+}
+
 // ── place_pool matching ──────────────────────────────────────────────────────
 // Column names VERIFIED against migrations/20260505000000_baseline_squash
 // (place_pool: id/name/city/website/stored_photo_urls/primary_type/
@@ -624,8 +685,8 @@ async function findPlaceMatch(
     return {
       found: true,
       place_id: row.id,
-      // place_scores holds long decimals — round for every display surface.
-      mingla_score: minglaScore === null ? null : Math.round(minglaScore),
+      // Presented on the clean 0–100 Mingla scale (raw place_scores is 0–200).
+      mingla_score: minglaScoreTo100(minglaScore),
       category: row.primary_type,
       description: row.generative_summary ?? row.editorial_summary ?? null,
       photo_urls: photoUrls,
@@ -737,7 +798,8 @@ async function findPoolCompetitors(
         if (!scoreErr && Array.isArray(scoreRows) && scoreRows.length > 0) {
           const s = (scoreRows[0] as { score: unknown }).score;
           const n = typeof s === "number" ? s : Number(s);
-          score = Number.isFinite(n) ? n : null;
+          // Store on the clean 0–100 scale (ranking order is unaffected).
+          score = minglaScoreTo100(Number.isFinite(n) ? n : null);
         }
         return {
           id: row.id,
@@ -1288,9 +1350,10 @@ export function normalizeCompetition(
         .map((s) => s.trim().slice(0, 240))
       : [];
     if (better.length === 0) continue;
+    // The AI echoes the 0–100 pool scores; clamp defensively in case it drifts.
     const score = typeof r.mingla_score === "number" &&
         Number.isFinite(r.mingla_score)
-      ? Math.round(r.mingla_score)
+      ? Math.max(0, Math.min(100, Math.round(r.mingla_score)))
       : null;
     competitors.push({
       name: r.name.trim().slice(0, 120),
@@ -1839,6 +1902,8 @@ async function handleRun(
   // e. Best-effort place match (+ top place_scores score) + city percentile.
   const match = await findPlaceMatch(supabase, input);
   const percentile = await computePoolPercentile(supabase, match, input.city);
+  // Live "before" screenshot (signed URL, rendered on first browser load).
+  const screenshotUrl = await buildScreenshotUrl(input.website);
 
   // f. Gemini grade (strict JSON, one retry).
   const apiKey = Deno.env.get("GEMINI_API_KEY") ?? "";
@@ -1917,7 +1982,10 @@ async function handleRun(
       ai_read: gemini.ai_read,
       photo_urls: match.photo_urls,
     },
-    screenshot: { og_image_url: site.og_image_url },
+    screenshot: {
+      image_url: screenshotUrl,
+      og_image_url: site.og_image_url,
+    },
     site_signals: { checks: site.signals },
     ...(percentile !== null ? { percentile } : {}),
     vibe_card: gemini.vibe_card,

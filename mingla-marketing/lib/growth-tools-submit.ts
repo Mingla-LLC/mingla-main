@@ -113,7 +113,7 @@ export interface GraderReport {
     ai_read?: string
     photo_urls?: string[]
   }
-  screenshot: { og_image_url?: string }
+  screenshot: { image_url?: string | null; og_image_url?: string | null }
   site_signals?: { checks: SiteSignal[] }
   percentile?: GraderPercentile
   vibe_card: {

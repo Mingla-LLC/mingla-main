@@ -226,6 +226,8 @@ export function ReportView({ report, runId }: { report: GraderReport; runId: str
   const hhRows = (headToHead?.rows ?? []).slice(0, 6)
   const whereYouWin = (report.where_you_win ?? []).slice(0, 3)
   const offerFrom = report.offer?.per_person_from ?? '$3.99'
+  // Prefer the live ScreenshotOne capture; fall back to the site's og:image.
+  const siteImage = report.screenshot.image_url || report.screenshot.og_image_url || null
 
   // The offer view fires once, when the report first renders unlocked.
   useEffect(() => {
@@ -267,13 +269,17 @@ export function ReportView({ report, runId }: { report: GraderReport; runId: str
         </p>
       </header>
 
-      {report.screenshot.og_image_url ? (
+      {siteImage ? (
         <figure className="mt-6 overflow-hidden rounded-sm border border-divider-strong bg-white p-1.5 shadow-[var(--elev-1)]">
           <img
-            src={report.screenshot.og_image_url}
-            alt={`Preview of ${host}`}
-            className="aspect-video w-full max-w-full rounded-[6px] object-cover"
+            src={siteImage}
+            alt={`Live screenshot of ${host}`}
+            loading="lazy"
+            className="aspect-[16/10] w-full max-w-full rounded-[6px] object-cover object-top"
           />
+          <figcaption className="px-1 py-1.5 text-center text-xs text-text-muted">
+            Your site right now — {host}
+          </figcaption>
         </figure>
       ) : (
         <div className="mt-6 grid place-items-center rounded-sm border border-dashed border-divider-strong bg-stripe-strong px-4 py-10 text-center">
@@ -729,13 +735,23 @@ export function ReportView({ report, runId }: { report: GraderReport; runId: str
           <div className="mt-10">
             <DocHeading>Your homepage, rewritten</DocHeading>
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              <div className="rounded-sm border border-divider bg-white p-4 md:p-5">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-                  Before — your site now
-                </p>
-                <p className="mt-3 break-words text-sm italic leading-relaxed text-text-secondary">
-                  &ldquo;{report.rewritten_hero.before_excerpt}&rdquo;
-                </p>
+              <div className="overflow-hidden rounded-sm border border-divider bg-white">
+                {siteImage ? (
+                  <img
+                    src={siteImage}
+                    alt={`Live screenshot of ${host}`}
+                    loading="lazy"
+                    className="aspect-[16/10] w-full max-w-full object-cover object-top"
+                  />
+                ) : null}
+                <div className="p-4 md:p-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+                    Before — your site now
+                  </p>
+                  <p className="mt-3 break-words text-sm italic leading-relaxed text-text-secondary">
+                    &ldquo;{report.rewritten_hero.before_excerpt}&rdquo;
+                  </p>
+                </div>
               </div>
               <div className="rounded-sm border border-warm/40 bg-warm/10 p-4 md:p-5">
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-warm-ink">
@@ -743,6 +759,10 @@ export function ReportView({ report, runId }: { report: GraderReport; runId: str
                 </p>
                 <p className="mt-3 break-words text-sm font-medium leading-relaxed text-text-primary">
                   {report.rewritten_hero.after_copy}
+                </p>
+                <p className="mt-4 border-t border-warm/30 pt-3 text-xs leading-relaxed text-text-muted">
+                  This is the rewritten copy. The full visual redesign — your site
+                  rebuilt in a premium template — is coming next.
                 </p>
               </div>
             </div>
