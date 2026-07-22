@@ -52,6 +52,20 @@ module.exports = {
     "issue1036NoContrastNode\\.web\\.render\\.test\\.tsx$",
 
     // ======================================================================
+    // #1062 [biz-jest-residual-burndown] Wave 1 — B5 WRONG-RUNTIME exclusions.
+    // These files match jest's testMatch (*.test.ts) but their REAL runner is
+    // NOT jest — each is excluded here (file RETAINED in the repo, never deleted;
+    // tests-append-only.yml stays green) with its true runner named. Placed BEFORE
+    // the #1047 quarantine marker on purpose: the ORCH-1047 anti-quarantine gate
+    // classifies only the #1047 block, and these are wrong-runtime files, not
+    // source-text pins.
+    // ======================================================================
+    "buttonAccentContrast\\.orch1162\\.test\\.ts$", // DENO test (Deno.test + https://deno.land/std import) — runs under Deno, never jest
+    "meta_orch_0952_carousel_adversarial\\.test\\.ts$", // PLAYWRIGHT spec — runs under playwright.config.ts (`npm run test:browser`), never jest
+    "meta_orch_0952_carousel_browser\\.test\\.ts$", // PLAYWRIGHT spec — runs under playwright.config.ts (`npm run test:browser`), never jest
+    "orch_1138_event_foundation\\.test\\.ts$", // NODE-ASSERT script (node:assert at module scope, zero jest test()/it() blocks; header: "Run with: node …") — runs under node, never jest
+
+    // ======================================================================
     // #1047 [business-jest-suite-audit] — Part 1 quarantine (config-only).
     // Regenerate/verify the exact membership with:
     //   node scripts/ci/select-source-text-pins.mjs
@@ -109,6 +123,53 @@ module.exports = {
     "orch_0911_trip_confirm_loading_state\\.adversarial\\.test\\.tsx$", // invariant -> i-1047-biz-trip-confirm-hascs-url-only.mjs
   ],
   moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json"],
+  // #1062 [biz-jest-residual-burndown] Wave 1 — B3a shared-harness (fix-once-
+  // clears-many). node-env unit tests transitively import ESM-native packages and
+  // an RN-eager workspace barrel that cannot load under this default node/ts-jest
+  // config. Each map below redirects ONLY the exact native/ESM boundary to a
+  // lightweight manual mock (in ./__manual_mocks__/) or the package's own shipped
+  // jest mock — NEVER a src/** module, so real product logic is still executed and
+  // no assertion is masked (verified by the mandatory full-suite no-green-regression
+  // run, SPEC SC-8). Anchored (^…$) so only the bare specifier maps — react-native-*
+  // / react-dom / @mingla/* siblings are untouched. A test's own jest.mock()
+  // overrides any map for that file.
+  moduleNameMapper: {
+    // react/jsx-runtime is unresolvable FROM packages/*.tsx (no react in packages/;
+    // mingla-business owns the one real copy). Point both automatic-runtime entries
+    // at the REAL react — this is resolution repair, not a mock (zero faking). Fixes
+    // the phone-input WebOverlayPortal.web unit-under-test (orch1300) directly.
+    "^react/jsx-runtime$": "<rootDir>/node_modules/react/jsx-runtime.js",
+    "^react/jsx-dev-runtime$": "<rootDir>/node_modules/react/jsx-dev-runtime.js",
+    // react-dom is likewise unresolvable FROM packages/*.tsx (phone-input's
+    // WebOverlayPortal.web imports `createPortal`). Point the bare specifier at the
+    // REAL react-dom mingla-business owns — resolution repair; the orch1300 suite
+    // still jest.mock()s react-dom itself (which now resolves so it can be replaced).
+    "^react-dom$": "<rootDir>/node_modules/react-dom",
+    // react-native: Flow-ESM entry unparseable under node/ts-jest — map the bare
+    // specifier to the lightweight manual mock (see __manual_mocks__/react-native.js
+    // for the safety argument). Anchored so react-native-* siblings are untouched.
+    "^react-native$": "<rootDir>/__manual_mocks__/react-native.js",
+    // The @mingla/offering-rendering barrel eagerly re-exports RN component .tsx —
+    // map to a mock that re-exports the REAL pure helpers + stubs the components.
+    "^@mingla/offering-rendering$": "<rootDir>/__manual_mocks__/offering-rendering.js",
+    // ESM-native expo packages (reached via expo-image-picker / expo-file-system /
+    // mapboxToken / config reads).
+    "^expo-constants$": "<rootDir>/__manual_mocks__/expo-constants.js",
+    "^expo-modules-core$": "<rootDir>/__manual_mocks__/expo-modules-core.js",
+    // react-native (Flow ESM entry) is pulled only via async-storage in the node
+    // chains here — map async-storage to ITS OWN shipped jest mock so react-native
+    // is never reached (narrower + safer than a blanket react-native mock).
+    "^@react-native-async-storage/async-storage$":
+      "<rootDir>/node_modules/@react-native-async-storage/async-storage/jest/async-storage-mock.js",
+    // @react-native-google-signin ships ESM (`export { … }`) — pulled transitively
+    // via AuthContext; map to a lightweight stub so the auth-context chain loads.
+    "^@react-native-google-signin/google-signin$":
+      "<rootDir>/__manual_mocks__/google-signin.js",
+    // expo-apple-authentication ships ESM (`export * from …`) — also pulled via
+    // AuthContext; stub so the auth-context chain loads under node.
+    "^expo-apple-authentication$":
+      "<rootDir>/__manual_mocks__/expo-apple-authentication.js",
+  },
   transform: {
     // ORCH-1147 — `jsx: "react-jsx"` (was "react-native", which PRESERVES JSX
     // and makes node/ts-jest choke on any runtime import of a JSX-bearing .tsx —
