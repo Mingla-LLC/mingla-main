@@ -17,6 +17,7 @@
     "web:export": "expo export -p web --output-dir web-build",
     "lint": "expo lint",
     "typecheck": "tsc",
+    "test": "jest --ci",
     "test:browser": "playwright test -c playwright.config.ts",
     "test:meta-orch-1002": "npx jest metaOrch1002AndroidGlass.test --runInBand",
     "test:orch-0964-assetlinks": "npx jest assetlinks.consumerAppLinks.test --runInBand",

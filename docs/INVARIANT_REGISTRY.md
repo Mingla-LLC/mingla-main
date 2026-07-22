@@ -7,6 +7,24 @@
 
 ---
 
+## DRAFT — issue #1047 (the mingla-business jest suite is executed by CI, and no new source-only pin counts as a regression proof — IN FLIGHT, registered at IMPLEMENT 2026-07-22)
+
+> Registered DRAFT at issue #1047 [business-jest-suite-audit] IMPLEMENT. The mingla-business default jest suite (`mingla-business/jest.config.cjs`) had ~245 failing tests across ~157 suites and was run by NO workflow — the CLOSE regression gate had been depositing tests into a suite CI never invoked (the same "safety net that looks present but is dark" shape as #1038). This issue makes it honest: it quarantines the brittle source-text pins via config (files retained, not deleted — `tests-append-only.yml` makes deletion absolute), re-homes 7 load-bearing invariants to additive strict-grep gates that actually run, fixes the shared harness + the real-signal items, and wires the suite into CI NON-BLOCKING (nightly `schedule` + `workflow_dispatch`). The orchestrator flips DRAFT → ACTIVE at CLOSE. Cross-ref: SPEC + implementation report on issue #1047.
+
+### I-1047-BIZ-JEST-WIRED (ACTIVE — issue #1047 CLOSE 2026-07-22)
+- **Rule:** the mingla-business default jest suite is executed by a CI workflow (a workflow invokes bare `jest` / `npm test`, NOT a per-file `jest <path>` list); it is never again dark.
+- **Enforcement:** `.github/workflows/mingla-business-jest-suite.yml` (schedule + workflow_dispatch, non-blocking) runs `npm test`, guarded by the strict-grep gate `.github/scripts/strict-grep/i-proposed-1047-biz-jest-wired.mjs` (registered batch:A in MANIFEST.json), which FAILS if the workflow stops invoking the whole suite.
+- **Regression test:** fails-on-revert — deleting the workflow (or reducing it to a per-file jest list) fails the gate; verified at IMPLEMENT (the gate exited 1 before the workflow existed, 0 after). Append-only.
+- **Established:** DRAFT 2026-07-22 at issue #1047 IMPLEMENT; flipped ACTIVE at CLOSE 2026-07-22 (PR #1060, tester PASS). NOTE: the workflow is NON-BLOCKING while the §4.5 residual (160 fails / 110 suites) is red; the required-flip is a separate Seth-gated decision once the residual hits zero.
+
+### I-1047-BIZ-NO-SOLE-SOURCE-PIN (ACTIVE — issue #1047 CLOSE 2026-07-22)
+- **Rule:** a NEW mingla-business test whose ONLY assertions read source text (readFileSync + source-derived expects, no render, no executed behavior — the criterion §4.1.1 pure source-text pin) is disallowed as a regression proof; such pins caught ZERO of the ~245 regressions this issue cleaned up and rot on every refactor.
+- **Enforcement:** the committed selector `mingla-business/scripts/ci/select-source-text-pins.mjs --assert-no-new` (classifies each ADDED biz `*.test.ts(x)` in the PR diff), invoked by the strict-grep gate `.github/scripts/strict-grep/i-proposed-1047-biz-no-sole-source-pin.mjs` (registered batch:A in MANIFEST.json).
+- **Regression test:** fails-on-revert — adding a new source-only pin as a test makes the gate exit 1 (the selector classifies it "source-pin" and names it); the selector also self-verifies its QUARANTINE_SAFE/INVARIANT_CONVERT/RENDER_EXCLUDE partition against disk on every run. Append-only.
+- **Established:** DRAFT 2026-07-22 at issue #1047 IMPLEMENT; flipped ACTIVE at CLOSE 2026-07-22 (PR #1060). Reinforced by the tester's `orch-1047-quarantine-list-is-source-pins-only.mjs` gate (no real behavioral test can enter the quarantine list).
+
+---
+
 ## DRAFT — issue #1058 (append-only gate honors the [TEST-MOD-APPROVED …] token across the whole PR range, per-file — IN FLIGHT, registered at IMPLEMENT 2026-07-21)
 
 > Registered DRAFT at issue #1058 SPEC/IMPLEMENT. The `tests-append-only.yml` gate diffs test-file changes across the whole PR range (three-dot `base...HEAD`) but PRE-FIX read the `[TEST-MOD-APPROVED …]`/`[TEST-RENAME-APPROVED …]` token from only the tip commit (`git log -1`), stored as two branch-wide global booleans. That single line caused two real bugs (both proven in the #1058 investigation): F-1 false-red — an approved test change plus any later commit (even docs) shifted the token off the tip and re-red the already-sanctioned change (hit 3× that session); and F-2 false-green — a tip token sanctioning `a.test.ts` also authorized UNSANCTIONED assertion-gutting in an unrelated `b.test.ts` from an earlier commit, and this gate is the SOLE guard for ordinary test-file integrity. Fix: replace the tip-only global-boolean scan with per-file attribution (`fileHasToken`) — for each changed test file, the token must appear in a PR-range commit (`git log base..HEAD -- <path>`) that actually touched that file. Whole-file deletion (status D) stays unconditionally blocked. Folds in two robustness fixes (regex `\d{4}`→`\d{4,}`; `(?:META-)?` added to the rename token). The orchestrator flips DRAFT → ACTIVE at CLOSE. Cross-ref: SPEC + implementation report on issue #1058.

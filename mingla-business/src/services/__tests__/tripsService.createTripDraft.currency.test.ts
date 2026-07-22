@@ -58,6 +58,8 @@ describe("ORCH-0859 — createTripDraft must set currency on events insert", () 
     const brandsChain = {
       select: () => brandsChain,
       eq: () => brandsChain,
+      // #1047 Part 2.3 — service now chains .is(...) here; additive (assertions unchanged).
+      is: () => brandsChain,
       maybeSingle: () =>
         Promise.resolve({
           data: { default_currency: "EUR", slug: "travelbrand" },
@@ -151,6 +153,8 @@ describe("ORCH-0859 — createTripDraft must set currency on events insert", () 
     const brandsChain = {
       select: () => brandsChain,
       eq: () => brandsChain,
+      // #1047 Part 2.3 — service now chains .is(...) here; additive (assertions unchanged).
+      is: () => brandsChain,
       maybeSingle: () =>
         Promise.resolve({
           data: { default_currency: null, slug: "newbrand" },

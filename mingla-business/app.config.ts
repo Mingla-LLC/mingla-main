@@ -158,20 +158,14 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     ],
     extra: {
       ...config.extra,
-      // META-ORCH-1187 [Growth Analytics Hub] Phase 1 — PostHog native keys.
-      // Read at runtime via Constants.expoConfig.extra (COMMS-0028 — a dynamic
-      // process.env read is NOT inlined by babel-preset-expo and is undefined in
-      // Hermes standalone/OTA builds; emitting into `extra` is the runtime-safe
-      // path, mirroring the supabase/giphy/mapbox keys below). The PUBLIC phc_*
-      // project key is set in EAS env per profile (eas.json) — NO key literal is
-      // committed here. SECRET HYGIENE: only the public phc_* key ever ships; the
-      // phx_* personal/MCP key MUST NEVER appear here. Absent at runtime →
-      // postHogService no-ops gracefully (does not break the build or boot).
-      EXPO_PUBLIC_POSTHOG_KEY: process.env.EXPO_PUBLIC_POSTHOG_KEY ?? null,
-      // US region — dispatch-locked. Default to the US host literal so the host
-      // is always present even if the env is unset.
-      EXPO_PUBLIC_POSTHOG_HOST:
-        process.env.EXPO_PUBLIC_POSTHOG_HOST ?? "https://us.i.posthog.com",
+      // NOTE (#1047 [business-jest-suite-audit], C-1): the earlier duplicate
+      // EXPO_PUBLIC_POSTHOG_KEY / _HOST stanza (META-ORCH-1187 Phase 1) was
+      // removed here — it was a duplicate object key with the LEG-2 block below
+      // (search "EXPO_PUBLIC_POSTHOG_KEY"), which already won at runtime, so this
+      // is a ZERO runtime-delta cleanup that also resolves the TS1117 duplicate-key
+      // compile error blinding the app.config guard tests. The surviving stanza
+      // (SECRET HYGIENE: only the public phc_* key ships; the phx_* personal/MCP
+      // key must NEVER appear) carries the full rationale.
       EXPO_PUBLIC_SUPABASE_URL:
         process.env.EXPO_PUBLIC_SUPABASE_URL ??
         "https://gqnoajqerqhnvulmnyvv.supabase.co",

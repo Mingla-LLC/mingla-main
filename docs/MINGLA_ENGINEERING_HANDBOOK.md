@@ -405,6 +405,16 @@ Per milestone brief — verify adjacent functionality still works. If you touche
 
 For any new table or RLS policy: test the negative case. Sign in as User A. Attempt to read/write data owned by User B. **Confirm the read returns empty, the write errors.** If you can read another user's data, the RLS is broken.
 
+### 8.6 The mingla-business jest suite — status & the required-flip path (issue #1047)
+
+`cd mingla-business && npm test` runs the whole default jest suite (`jest --ci`, the `test` script added by #1047). For years this suite was run by NO workflow: it had ~245 failing tests, and the CLOSE regression gate had been depositing tests into a dark file (the #1038-shape "safety net that looks present but isn't running"). #1047 made it honest:
+
+- **It runs in CI, NON-BLOCKING first.** `.github/workflows/mingla-business-jest-suite.yml` runs the suite on a nightly `schedule` + `workflow_dispatch`. It is deliberately NOT on `pull_request` and NOT in the branch-protection ruleset, so it cannot block a PR or a merge — while still going red when a real regression lands (so failures are observed, not merely present). It installs `react-test-renderer --no-save` so the bare-RTR `*.orch0976.*` suites pass under the stock config.
+- **The brittle source-text pins are QUARANTINED, not deleted.** `tests-append-only.yml` makes whole-test-file deletion absolute, so #1047 excludes the pins via `jest.config.cjs` `testPathIgnorePatterns` (files retained, grep-able). Regenerate/review the exact list with `node mingla-business/scripts/ci/select-source-text-pins.mjs`.
+- **Load-bearing invariants that had been pinned by source-text tests were re-homed to additive strict-grep gates** (`.github/scripts/strict-grep/i-1047-biz-*.mjs`, registered in `MANIFEST.json`) that actually run — never dropped.
+
+**REQUIRED-FLIP PATH (a later, Seth-gated decision — do NOT do it implicitly):** once the residual red count in the nightly reaches zero (the #1047 §4.5 burn-down backlog), Seth (a) adds a `pull_request` trigger to `mingla-business-jest-suite.yml` and (b) adds its check-name to the required-checks ruleset (`13549056`-family). Until the residual is zero, flipping it required would block every unrelated PR — which is exactly the harm the #1047 guard forbids. Two DRAFT invariants (`I-PROPOSED-1047-BIZ-JEST-WIRED`, `I-PROPOSED-1047-BIZ-NO-SOLE-SOURCE-PIN`) protect the wire and forbid reintroducing source-only pins as regression proofs.
+
 ---
 
 ## 9. Working with Existing Patterns

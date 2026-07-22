@@ -59,6 +59,10 @@ function queryChain(data: unknown[] = []) {
   chain.eq = () => chain;
   chain.is = () => chain;
   chain.order = () => chain;
+  // #1047 Part 2.3 — service now chains .maybeSingle() on this catch-all chain;
+  // additive (resolves the first row / null, terminal shape unchanged).
+  chain.maybeSingle = () =>
+    Promise.resolve({ data: (data as unknown[])[0] ?? null, error: null });
   chain.then = (
     resolve: (value: { data: unknown[]; error: null }) => unknown,
   ) => resolve({ data, error: null });
