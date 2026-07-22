@@ -21,20 +21,32 @@ describe("ORCH-0964 design rework — public event page premium renderer", () =>
     path.join(process.cwd(), "src/components/event/PublicEventPage.tsx"),
     "utf8",
   );
-  const consumerSheetSource = repoFile(
-    "app-mobile/src/components/expandedCard/ExpandedBusinessEventSheet.tsx",
-  );
+  // #1062 B1 cross-app junk removal: this business-repo jest suite previously
+  // reached into app-mobile's ExpandedBusinessEventSheet.tsx to cross-check the
+  // CONSUMER sheet's photo/onOpenMaps wiring. That file was DELETED in
+  // ORCH-1138 Leg 3 (#507, "EBES deletion") and its logic moved to app-mobile's
+  // ConsumerEventDetailScreen — a separate app with its own test suite. The
+  // cross-app assertions are dropped (architecturally out of scope for
+  // mingla-business jest); the business renderer's own photo/onOpenMaps wiring
+  // stays covered below via sharedSource + businessAdapterSource.
 
   test("event body keeps the cover-scroll concept and upgrades into a glass sheet", () => {
-    const heroWrapBlock =
-      sharedSource.match(/heroWrap: \{[\s\S]*?\n  \},/)?.[0] ?? "";
     const bodyContentBlock =
       sharedSource.match(/bodyContent: \{[\s\S]*?\n  \},/)?.[0] ?? "";
-    expect(sharedSource).toContain('import { BlurView } from "expo-blur"');
+    // #1062 B2 drift-to-truth: ORCH-1169 (#543) extracted the raw expo-blur
+    // BlurView into the shared, mobile-web-safe GlassBlur wrapper. The body
+    // still upgrades into a glass sheet — now via <GlassBlur> (asserted below) —
+    // and offering-rendering still depends on expo-blur (GlassBlur imports it).
+    expect(sharedSource).toContain('import { GlassBlur } from "./GlassBlur"');
     expect(packageSource).toContain('"expo-blur": "*"');
-    expect(heroWrapBlock).toContain('position: "absolute"');
-    expect(heroWrapBlock).toContain("height: 380");
-    expect(sharedSource).toContain("paddingTop: 288");
+    // #1062 B2 drift-to-truth: META-ORCH-0991 (sheet rework) + ORCH-1138
+    // (aspect-adaptive hero) rebuilt the cover-scroll — the fixed heroWrap
+    // (absolute, height 380) + paddingTop-288 body offset were replaced by the
+    // shared EventCoverMedia cover + a body that OVERLAPS the cover via
+    // marginTop:-28 ("preserves the prior immersive seam"). The cover-scroll
+    // concept + immersive seam are preserved; the glass sheet is asserted below.
+    expect(sharedSource).toContain("<EventCoverMedia");
+    expect(bodyContentBlock).toContain("marginTop: -28");
     expect(sharedSource).toContain('pointerEvents="none"');
     expect(sharedSource).toContain("style={styles.bodyGlassLayer}");
     expect(paletteSource).toContain("type ThemePalette");
@@ -89,12 +101,16 @@ describe("ORCH-0964 design rework — public event page premium renderer", () =>
     expect(sharedSource).toContain("Presented by");
   });
 
-  test("event date and time labels stay white above the themed event surface", () => {
+  test("event date and time labels stay READABLE via luminance-aware palette colors above the themed event surface (ORCH-1117 R1 — no raw #ffffff)", () => {
+    // #1062 B2 drift-to-truth: ORCH-1117 R1 replaced the raw-white date/time
+    // labels (invisible on light brand themes) with luminance-aware palette
+    // colors contrast-adjusted ≥4.5:1. The date eyebrow takes palette.accent;
+    // the recurrence pill label takes palette.primaryText.
     expect(sharedSource).toContain(
-      '{ color: "#ffffff", fontFamily: theme.fontFamilyValue }',
+      "{ color: palette.accent, fontFamily: theme.fontFamilyValue }",
     );
     expect(sharedSource).toContain("styles.recurrencePillLabel");
-    expect(sharedSource).toContain('{ color: "#ffffff" }');
+    expect(sharedSource).toContain("{ color: palette.primaryText }");
   });
 
   test("presented-by card renders the brand profile photo when available", () => {
@@ -103,9 +119,6 @@ describe("ORCH-0964 design rework — public event page premium renderer", () =>
     expect(sharedSource).toContain("source={{ uri: brand.photo }}");
     expect(sharedSource).toContain("styles.brandPhoto");
     expect(businessAdapterSource).toContain("photo: brand.photo");
-    expect(consumerSheetSource).toContain(
-      "photo: card.brandProfilePhotoUrl ?? undefined",
-    );
   });
 
   test("location card opens platform maps without leaking hidden addresses", () => {
@@ -126,6 +139,5 @@ describe("ORCH-0964 design rework — public event page premium renderer", () =>
       "https://www.google.com/maps/search/?api=1&query=",
     );
     expect(businessAdapterSource).toContain("onOpenMaps: openMapsForQuery");
-    expect(consumerSheetSource).toContain("onOpenMaps: openMapsForQuery");
   });
 });

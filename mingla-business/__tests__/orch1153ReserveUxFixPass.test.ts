@@ -46,16 +46,20 @@ const EXP_ROUTE = join(ROOT, "app/exp/[brandSlug]/[experienceSlug].tsx");
 
 describe("ORCH-1153 reserve-UX fix pass", () => {
   // ----- BUG 1: consumer reserve-bar clears the sheet bottom overshoot -----
-  test("BUG-1: consumer scroll clearance clears the sheet bottom overshoot (not a flat 8)", () => {
+  test("BUG-1: consumer reserve clearance matches the trip page — flat 8 + overshoot on the floating pill (ORCH-1187 FIX-1)", () => {
     const src = read(CONSUMER_SCREEN);
-    // FAILS-ON-REVERT: restoring `const reserveBarClearance = 8;` removes this
-    // match and the bar gets clipped again.
+    // #1062 B2 drift-to-truth: ORCH-1187 FIX-1 (Seth device — black band below
+    // the experience page) SUPERSEDED ORCH-1153's BUG-1 fix. The
+    // `SHEET_BOTTOM_OVERSHOOT + 8` scroll-content padding sat BELOW the
+    // self-padding docked bar and exposed the gorhom sheet's dark background
+    // (a black band). The corrected pattern matches the consumer TRIP page: a
+    // flat 8pt scroll clearance, with the float→dock overshoot applied ONLY on
+    // the FLOATING pill's sheetBottomOvershoot prop.
     expect(src).toMatch(/SHEET_BOTTOM_OVERSHOOT\s*=\s*63/);
-    expect(src).toMatch(
-      /reserveBarClearance\s*=\s*SHEET_BOTTOM_OVERSHOOT\s*\+\s*8/,
-    );
-    // Must NOT have reverted to the flat-8 clearance.
-    expect(src).not.toMatch(/const\s+reserveBarClearance\s*=\s*8\s*;/);
+    expect(src).toMatch(/const\s+reserveBarClearance\s*=\s*8\s*;/);
+    // FAILS-ON-REVERT: the overshoot must ride the floating pill (not the scroll
+    // padding) or the black band / clipping returns.
+    expect(src).toMatch(/sheetBottomOvershoot=\{SHEET_BOTTOM_OVERSHOOT\}/);
   });
 
   // ----- BUG 2: ParallaxCoverShell coverAspectRatio prop + experience passes it -----
@@ -84,7 +88,12 @@ describe("ORCH-1153 reserve-UX fix pass", () => {
     // FAILS-ON-REVERT: reverting either string trips the corresponding assertion.
     expect(route).not.toMatch(/Reserve a table/);
     expect(picker).not.toMatch(/Reserve a table/);
-    expect(route).toMatch(/Reserve a spot any upcoming day/);
+    // #1062 B2 drift-to-truth: ORCH-1186 (#583) reserve-flow polish moved the
+    // open-daily reserve copy out of the /exp route and into the shared
+    // ExperienceReservePicker (which the route renders). The open-daily label is
+    // now "Reserve a spot"; the route delegates to the picker instead of
+    // carrying the copy inline. No restaurant "Reserve a table" leak survives.
+    expect(route).toMatch(/ExperienceReservePicker/);
     expect(picker).toMatch(/"Reserve a spot"/);
   });
 

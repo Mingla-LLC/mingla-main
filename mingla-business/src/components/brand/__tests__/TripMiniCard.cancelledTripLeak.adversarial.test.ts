@@ -31,10 +31,19 @@
  * inclusion of cancelled rows — so the two layers stay in tension and
  * any single-layer regression is caught.
  *
- * Fails-on-revert proof: changing `t.status === "scheduled" || t.status
- * === "live"` to `t.status !== "ended" && t.status !== "cancelled" ?
- * Wait — even THAT would still work. The naive regression is
- * `t.status !== "ended"` which would admit cancelled — FAIL on T-10b.
+ * #1062 brand re-pointing (ORCH-1169 dissolution + ORCH-1155 chrome
+ * redesign): the business PublicBrandPage rendering — the upcomingTrips /
+ * pastTrips memos, the TripMiniCard component, and the empty-state copy —
+ * was dissolved into `@mingla/brand-rendering/PublicBrandPage.tsx`. The
+ * two-layer cancelled-leak defense is PRESERVED there verbatim
+ * (upcoming = scheduled||live, past = ended; cancelled admitted by neither).
+ * The exact-filter + no-negation invariants are unchanged; the source
+ * assertions now read the shared package (the migration RPC pin, T-10a,
+ * is unchanged). The redesign changed the empty-trips copy to
+ * "No public trips yet" and the past-section heading to "Past" (T-10e).
+ *
+ * Fails-on-revert proof: broadening `upcomingTrips` to `t.status !== "ended"`
+ * (which would admit cancelled) fails T-10b/T-10d against the shared source.
  */
 
 import { describe, expect, test } from "@jest/globals";
@@ -42,8 +51,20 @@ import { readFileSync } from "fs";
 import { join } from "path";
 
 describe("ORCH-0963 T-10 ADVERSARIAL — cancelled-trip MUST NOT leak", () => {
-  const pageSrc = readFileSync(
-    join(__dirname, "..", "PublicBrandPage.tsx"),
+  // The trip rendering now lives in the shared @mingla/brand-rendering package
+  // (ORCH-1169); repo root is five levels up from this __tests__ dir.
+  const sharedSrc = readFileSync(
+    join(
+      __dirname,
+      "..",
+      "..",
+      "..",
+      "..",
+      "..",
+      "packages",
+      "brand-rendering",
+      "PublicBrandPage.tsx",
+    ),
     "utf8",
   );
   const migrationSrc = readFileSync(
@@ -74,8 +95,8 @@ describe("ORCH-0963 T-10 ADVERSARIAL — cancelled-trip MUST NOT leak", () => {
   });
 
   test("T-10b upcomingTrips memo admits ONLY 'scheduled' OR 'live' (cancelled and ended are filtered)", () => {
-    const memo = pageSrc.match(
-      /const\s+upcomingTrips\s*=\s*useMemo<PublicTripCard\[\]>\([\s\S]*?\}\,\s*\[trips\]\);/,
+    const memo = sharedSrc.match(
+      /const\s+upcomingTrips\s*=\s*useMemo\([\s\S]*?\[trips\],?\s*\);/,
     );
     expect(memo).not.toBeNull();
     // Pin the EXACT filter — not a broader negation that could let cancelled slip in.
@@ -88,8 +109,8 @@ describe("ORCH-0963 T-10 ADVERSARIAL — cancelled-trip MUST NOT leak", () => {
   });
 
   test("T-10c pastTrips memo admits ONLY 'ended' (cancelled and live are filtered)", () => {
-    const memo = pageSrc.match(
-      /const\s+pastTrips\s*=\s*useMemo<PublicTripCard\[\]>\([\s\S]*?\}\,\s*\[providedPastTrips,\s*trips\]\);/,
+    const memo = sharedSrc.match(
+      /const\s+pastTrips\s*=\s*useMemo\([\s\S]*?\[providedPastTrips,\s*trips\],?\s*\);/,
     );
     expect(memo).not.toBeNull();
     // Exact positive match for 'ended' only.
@@ -106,11 +127,11 @@ describe("ORCH-0963 T-10 ADVERSARIAL — cancelled-trip MUST NOT leak", () => {
     // This test pins that the missing status is exactly 'cancelled' (no other
     // gap exists that would mean a published trip silently disappears).
     const rpcStatuses = ["scheduled", "live", "ended", "cancelled"];
-    const upcomingMemo = pageSrc.match(
-      /const\s+upcomingTrips\s*=\s*useMemo[\s\S]*?\}\,\s*\[trips\]\);/,
+    const upcomingMemo = sharedSrc.match(
+      /const\s+upcomingTrips\s*=\s*useMemo[\s\S]*?\[trips\],?\s*\);/,
     );
-    const pastMemo = pageSrc.match(
-      /const\s+pastTrips\s*=\s*useMemo[\s\S]*?\}\,\s*\[providedPastTrips,\s*trips\]\);/,
+    const pastMemo = sharedSrc.match(
+      /const\s+pastTrips\s*=\s*useMemo[\s\S]*?\[providedPastTrips,\s*trips\],?\s*\);/,
     );
     expect(upcomingMemo).not.toBeNull();
     expect(pastMemo).not.toBeNull();
@@ -122,17 +143,17 @@ describe("ORCH-0963 T-10 ADVERSARIAL — cancelled-trip MUST NOT leak", () => {
     expect(combined).not.toContain('"cancelled"');
   });
 
-  test("T-10e empty-state copy is honest ('No upcoming trips yet', not 'No active trips') so a trip-planner mid-cancellation isn't misrepresented", () => {
-    // Constitution #9: if all trips were cancelled, the tab body MUST say
-    // "No upcoming trips yet" — not "No trips" or "We have trips but
-    // they're cancelled" or any phrasing that fabricates a state the data
-    // doesn't carry. Pin the exact copy.
-    expect(pageSrc).toMatch(/No upcoming trips yet/);
-    expect(pageSrc).toMatch(/Past trips/);
+  test("T-10e empty-state copy is honest (no fabricated cancellation state) — ORCH-1155 redesign copy", () => {
+    // Constitution #9: if all trips were cancelled, the tab body MUST show an
+    // honest empty pane — NOT a phrasing that fabricates a state the data
+    // doesn't carry. ORCH-1155 changed the copy: the empty trips pane now
+    // reads "No public trips yet" and the past section is headed "Past".
+    expect(sharedSrc).toMatch(/No public trips yet/);
+    expect(sharedSrc).toMatch(/>\s*Past\s*<\/Text>/);
     // No user-facing copy that mentions cancellation state — would imply
     // a hidden archive surface that doesn't exist. The string identifier
     // `"cancelled"` is allowed inside filter predicates / status checks
-    // (e.g. `e.status === "cancelled"`), but a Text/Label/heading/Pressable
+    // (e.g. `event.status === "cancelled"`), but a Text/Label/heading
     // containing the word "cancelled" would be a UI fabrication.
     //
     // Allowlist: any single-line string literal mentioning "cancelled"
@@ -140,9 +161,11 @@ describe("ORCH-0963 T-10 ADVERSARIAL — cancelled-trip MUST NOT leak", () => {
     // comparand) — never as user-visible copy. Strip comment blocks
     // first so `*` characters inside JSDoc don't terminate our literal-regex
     // search.
-    const srcWithoutComments = pageSrc.replace(/\/\*[\s\S]*?\*\//g, "")
+    const srcWithoutComments = sharedSrc
+      .replace(/\/\*[\s\S]*?\*\//g, "")
       .replace(/\/\/[^\n]*/g, "");
-    const cancelledLiterals = srcWithoutComments.match(/"[^"\n]*[Cc]ancelled[^"\n]*"/g) ?? [];
+    const cancelledLiterals =
+      srcWithoutComments.match(/"[^"\n]*[Cc]ancelled[^"\n]*"/g) ?? [];
     for (const lit of cancelledLiterals) {
       expect(lit.toLowerCase()).toBe('"cancelled"');
     }
@@ -151,16 +174,17 @@ describe("ORCH-0963 T-10 ADVERSARIAL — cancelled-trip MUST NOT leak", () => {
   test("T-10f trip card tap navigates regardless of status — but a cancelled trip never reaches the card", () => {
     // The Pressable onPress is unconditional. If a cancelled trip somehow
     // reached <TripMiniCard> (via test fixture or future bug), the user
-    // would still navigate to /t/{brandSlug}/{tripSlug}, where the trip
-    // detail page is expected to surface the "this trip is cancelled"
-    // state honestly. This test pins the unconditional onPress so we
-    // don't introduce a status-based dead-tap guard on the card itself —
-    // that would violate Constitution #1.
-    const cardBody = pageSrc.match(
-      /const\s+TripMiniCard:\s*React\.FC<TripMiniCardProps>[\s\S]*?\n\};/,
+    // would still navigate to the trip detail page, where the "this trip is
+    // cancelled" state is expected to surface honestly. This test pins the
+    // unconditional onPress so we don't introduce a status-based dead-tap
+    // guard on the card itself — that would violate Constitution #1.
+    const cardBody = sharedSrc.match(
+      /const\s+TripMiniCard:\s*React\.FC<[\s\S]*?(?=\nconst\s)/,
     );
     expect(cardBody).not.toBeNull();
-    expect(cardBody![0]).toMatch(/<Pressable\s+onPress=\{\(\)\s*=>\s*onPress\(trip\)\}/);
+    expect(cardBody![0]).toMatch(
+      /<Pressable\s+onPress=\{\(\)\s*=>\s*onPress\(trip\)\}/,
+    );
     // No `disabled={trip.status === 'cancelled'}` short-circuit.
     expect(cardBody![0]).not.toMatch(/disabled=\{trip\.status/);
   });

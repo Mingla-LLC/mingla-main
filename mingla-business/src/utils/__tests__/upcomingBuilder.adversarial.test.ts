@@ -280,15 +280,31 @@ describe("ORCH-0965 ADVERSARIAL — invariant violations under live mutation", (
   });
 
   test("ADV-09 — Brand-switch mid-render: pickHomeNextAction called twice with different brands → results don't bleed", () => {
+    // #1062 B2 drift-to-truth: the ladder was reshaped by META-ORCH-0972
+    // (universal authoring — rung 1 now fires ONLY when a brand is not
+    // payout-ready AND has a paid draft) + META-ORCH-1076 (provider-neutral
+    // payout readiness). Rung 2 is the universal first-offering chooser
+    // ("What do you want to make first?" → /event/create). Two distinct brands
+    // must still yield distinct, brand-SCOPED results (no cross-call bleed).
     const brandA = baseBrand({ id: "brand-A", stripeStatus: "not_connected" });
     const brandB = baseBrand({ id: "brand-B", stripeStatus: "active" });
+    // brandA carries a paid draft → not-payout-ready + paid offering = rung 1.
+    const paidDraftA = draft({
+      id: "paid-draft-A",
+      tickets: [
+        { isFree: false, priceGbp: 25 },
+      ] as unknown as DraftEvent["tickets"],
+    });
+    const draftCounts: UpcomingCounts = { total: 1, active: 1, live: 0, upcoming: 0, draft: 1 };
     const emptyCounts: UpcomingCounts = { total: 0, active: 0, live: 0, upcoming: 0, draft: 0 };
-    const resultA = pickHomeNextAction(brandA, emptyCounts, []);
+    const resultA = pickHomeNextAction(brandA, draftCounts, [paidDraftA]);
     const resultB = pickHomeNextAction(brandB, emptyCounts, []);
+    // brandA: not payout-ready + paid draft → rung 1 payout upsell, BRAND-scoped route.
     expect(resultA?.rung).toBe(1);
     expect(resultA?.ctaRoute).toBe("/brand/brand-A/payments");
+    // brandB: payout-ready, no offerings → rung 2 chooser (NOT brandA's payments route → no bleed).
     expect(resultB?.rung).toBe(2);
-    expect(resultB?.title).toBe("Plan a trip");
+    expect(resultB?.ctaRoute).toBe("/event/create");
   });
 
   test("ADV-10 — Cancelled live event in input → excluded, counts.live === 0, primaryLiveItem null", () => {

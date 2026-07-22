@@ -65,9 +65,12 @@ describe("ORCH-1333 close-glyph — app-wide adversarial guard", () => {
     expect(earnings).toContain('testID="partner-earnings-close-button"');
     expect(earnings).toContain('accessibilityLabel="Close partner earnings"');
 
-    // Canonical left-close ChromeRow: the balanced right spacer is NEW to the
-    // re-skin (absent from the old right-close hero header) → fails-on-revert.
-    expect(brands).toContain("headerRightSlot");
+    // Canonical left-close ChromeRow: close LEFT → centered title → a balanced
+    // right element. #1062 B2 drift-to-truth: ORCH-1384 replaced brands.tsx's
+    // empty `headerRightSlot` spacer with a functional add-brand CTA (rendered
+    // in ALL list states, cited inline in brands.tsx); earnings.tsx keeps the
+    // empty spacer. The balanced ChromeRow structure is preserved on both.
+    expect(brands).toContain('testID="partner-brands-add-button"');
     expect(earnings).toContain("headerRightSlot");
 
     // Close control renders BEFORE the centered title column (left position).
