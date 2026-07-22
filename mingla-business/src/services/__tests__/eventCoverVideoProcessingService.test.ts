@@ -28,11 +28,49 @@ jest.mock("expo-file-system/legacy", () => ({
   FileSystemSessionType: { FOREGROUND: 1 },
   FileSystemUploadType: { MULTIPART: 1 },
   createUploadTask: jest.fn(),
+  getInfoAsync: jest.fn(),
 }));
 
 jest.mock("react-native", () => ({
   Platform: { OS: "ios" },
 }));
+
+// [TEST-MOD-APPROVED ORCH-1062] jest resolves the `.ts` (web) variant of
+// platformFileSystem (moduleFileExtensions has no `.native`), whose multipart
+// stub throws → the service falls back to its XHR path (needs XMLHttpRequest,
+// absent in this node/ts-jest env). This suite mocks Platform.OS="ios" and the
+// expo-file-system/legacy createUploadTask — i.e. it exercises the NATIVE
+// multipart shim. Double the platform-shim boundary with a thin mock that
+// delegates to the (already-mocked) expo-file-system/legacy, mirroring
+// platformFileSystem.native.ts's runtime contract, so the intended native path
+// runs. (requireActual of the .native.ts file is unusable — ts-jest type-checks
+// it and its own expo-file-system typing error fails the compile.) Plumbing only
+// — zero expect() changed.
+jest.mock("../../utils/platformFileSystem", () => {
+  const legacy = require("expo-file-system/legacy");
+  return {
+    createMultipartUploadTask: async (
+      url: string,
+      fileUri: string,
+      options: Record<string, unknown>,
+      onProgress: (event: {
+        totalBytesSent: number;
+        totalBytesExpectedToSend: number;
+      }) => void,
+    ) =>
+      legacy.createUploadTask(
+        url,
+        fileUri,
+        {
+          ...options,
+          sessionType: legacy.FileSystemSessionType.FOREGROUND,
+          uploadType: legacy.FileSystemUploadType.MULTIPART,
+        },
+        onProgress,
+      ),
+    getFileInfoAsync: async (uri: string) => legacy.getInfoAsync(uri),
+  };
+});
 
 const invoke = supabase.functions.invoke as unknown as jest.MockedFunction<
   (name: string, options?: unknown) => Promise<{ data: unknown; error: unknown }>

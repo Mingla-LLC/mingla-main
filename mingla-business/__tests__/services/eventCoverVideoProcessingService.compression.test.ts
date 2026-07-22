@@ -15,6 +15,13 @@ jest.mock("../../src/services/supabase", () => ({
     functions: {
       invoke: jest.fn(),
     },
+    // [TEST-MOD-APPROVED ORCH-1062] createEventCoverVideoUploadIntent now reads
+    // supabase.auth.getSession() for the intent JWT; this suite's mock predates
+    // that and only stubbed functions.invoke. Mirror the eventCoverVideoProcessingService.test.ts
+    // mock so a valid session is present. Plumbing only — zero expect() changed.
+    auth: {
+      getSession: jest.fn(),
+    },
   },
 }));
 
@@ -35,8 +42,51 @@ jest.mock("react-native-compressor", () => ({
   },
 }));
 
+// [TEST-MOD-APPROVED ORCH-1062] jest resolves the `.ts` (web) variant of
+// platformFileSystem (moduleFileExtensions has no `.native`), whose multipart
+// stub throws → the service falls back to its XHR path (needs XMLHttpRequest +
+// supabase.auth, neither present in this node/ts-jest env). This suite mocks
+// Platform.OS="ios" and the expo-file-system/legacy createUploadTask — i.e. it
+// exercises the NATIVE multipart shim. Double the platform-shim boundary with a
+// thin mock that delegates to the (already-mocked) expo-file-system/legacy,
+// mirroring platformFileSystem.native.ts's runtime contract, so the intended
+// native path runs. (requireActual of the .native.ts file is unusable here —
+// ts-jest type-checks it and its own expo-file-system typing error fails the
+// compile.) Plumbing only — zero expect() changed.
+jest.mock("../../src/utils/platformFileSystem", () => {
+  const legacy = require("expo-file-system/legacy");
+  return {
+    createMultipartUploadTask: async (
+      url: string,
+      fileUri: string,
+      options: Record<string, unknown>,
+      onProgress: (event: {
+        totalBytesSent: number;
+        totalBytesExpectedToSend: number;
+      }) => void,
+    ) =>
+      legacy.createUploadTask(
+        url,
+        fileUri,
+        {
+          ...options,
+          sessionType: legacy.FileSystemSessionType.FOREGROUND,
+          uploadType: legacy.FileSystemUploadType.MULTIPART,
+        },
+        onProgress,
+      ),
+    getFileInfoAsync: async (uri: string) => legacy.getInfoAsync(uri),
+  };
+});
+
 const invoke = supabase.functions.invoke as unknown as jest.MockedFunction<
   (name: string, options?: unknown) => Promise<{ data: unknown; error: unknown }>
+>;
+const getSession = supabase.auth.getSession as unknown as jest.MockedFunction<
+  () => Promise<{
+    data: { session: { access_token: string } | null };
+    error: null | Error;
+  }>
 >;
 const createUploadTask = FileSystem.createUploadTask as unknown as jest.MockedFunction<
   (
@@ -59,6 +109,11 @@ describe("ORCH-0978 event cover video compression happy path", () => {
     invoke.mockReset();
     createUploadTask.mockReset();
     getInfoAsync.mockReset();
+    getSession.mockReset();
+    getSession.mockResolvedValue({
+      data: { session: { access_token: "user-session-jwt" } },
+      error: null,
+    });
   });
 
   test("compresses locally, uploads compressed bytes, and reaches applied status", async () => {

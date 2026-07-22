@@ -19,11 +19,17 @@ import type { IconName } from "../../components/ui/Icon";
  * `"buyer" | "order" | "campaign" | …`; the exhaustive switch sites
  * (iconForType) MUST fail typecheck when a new member is added so the
  * handling is forced.
+ *
+ * `"rsvp"` is an offering type: `LiveEvent.event_type` (store/liveEventStore.ts)
+ * legitimately carries `"rsvp"`, so `eventsToIndexEntries` emits it as the entry
+ * `type` (adapters.ts). It is grouped under `"offerings"` and routed via
+ * `routeForEventRow` like the other offering types.
  */
 export type SearchResultType =
   | "event"
   | "trip"
   | "experience"
+  | "rsvp"
   | "screen"
   | "setting"
   | "action";
