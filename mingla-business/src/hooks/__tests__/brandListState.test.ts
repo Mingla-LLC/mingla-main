@@ -90,9 +90,21 @@ describe("brand list state honesty", () => {
     expect(accountSource).toContain("Loading your brands");
     expect(accountSource).toContain("brandList.status === \"empty\"");
     expect(currentBrandSource).toContain("isAuthReady ? currentBrandId : null");
-    expect(currentBrandSource).toContain("!isError && brand === null");
+    // [ORCH-1062 pin-fix] ORCH-1100 Wave 1A (RC-1) extracted the inline
+    // `!isError && brand === null` clear-guard into the shouldClearCurrentBrandId
+    // predicate, which receives `isError` + `brandIsNull: brand === null`. The
+    // error-aware + brand-null-aware guard is preserved — assert the current form.
+    expect(currentBrandSource).toContain("shouldClearCurrentBrandId");
+    expect(currentBrandSource).toContain("brandIsNull: brand === null");
     expect(recoverySource).toContain("isAuthReady &&");
-    expect(recoverySource).toContain("!brandsQuery.isError");
-    expect(recoverySource).toContain("!creatorAccount.isError");
+    // [ORCH-1062 pin-fix] The inline `!brandsQuery.isError && !creatorAccount.isError`
+    // recovery guard was extracted into hasCurrentBrandRecoveryQueryError(
+    // brandsQuery.isError, creatorAccount.isError) → `hasQueryError`, and the
+    // write gates on `dataReady = isAuthReady && … && !hasQueryError`. The
+    // both-queries-error-free-awareness is preserved — assert the current form.
+    expect(recoverySource).toContain("hasCurrentBrandRecoveryQueryError(");
+    expect(recoverySource).toContain("brandsQuery.isError");
+    expect(recoverySource).toContain("creatorAccount.isError");
+    expect(recoverySource).toContain("!hasQueryError");
   });
 });
