@@ -3,22 +3,38 @@
  * Pragmatic Append-Only Test Files gate — codified by ORCH-0840
  * [Regression-test enforcement + append-only CI].
  *
- * Diffs test files between the current HEAD and a base ref. Rules:
+ * Diffs test files across the whole PR range (three-dot merge-base..HEAD) and,
+ * for each changed test file, attributes the override token PER FILE across that
+ * same range. Rules:
  *   - Added test files (status A)              → ALLOWED.
- *   - Deleted test files (status D)            → FAIL, no override.
- *   - Renamed test files (status R*)           → FAIL unless latest commit
- *                                                body contains override token
+ *   - Deleted test files (status D)            → FAIL, no override (absolute).
+ *   - Renamed test files (status R*)           → FAIL unless a commit in the PR
+ *                                                range that renames THIS file
+ *                                                carries the override token
  *                                                [TEST-RENAME-APPROVED ORCH-####].
  *   - Modified test files (status M):
  *       - zero deleted lines (additions only)  → ALLOWED.
- *       - any deleted line                     → FAIL unless latest commit
- *                                                body contains override token
+ *       - any deleted line                     → FAIL unless a commit in the PR
+ *                                                range that modifies THIS file
+ *                                                carries the override token
  *                                                [TEST-MOD-APPROVED ORCH-####].
  *
- * The "latest commit body" is the commit at HEAD (i.e., the top commit of the
- * PR branch). Override tokens MUST cite a 4-digit ORCH-#### (optionally with
- * -<letter> suffix) so any approved test mutation is traceable to a follow-up
- * ORCH that explains why the prior assertion was wrong.
+ * Per-file, whole-range attribution (#1058): the diff spans the whole PR range,
+ * so the token is honored wherever its commit sits in that range — NOT only on
+ * the tip (`git log -1`). A token authorizes ONLY the test file(s) touched by the
+ * commit that carries it — never the whole branch. This kills two real bugs the
+ * previous tip-only global-boolean scan produced:
+ *   F-1 (false-red)   — a later (even docs-only) commit shifted the token off the
+ *                       tip and re-red an already-approved change.
+ *   F-2 (false-green) — one global boolean let a tip token sanctioning `a.test.ts`
+ *                       also wave through UNSANCTIONED assertion-gutting in an
+ *                       unrelated `b.test.ts` from an earlier commit. This gate is
+ *                       the SOLE guard for ordinary test-file integrity.
+ * See `fileHasToken` for the mechanism and the accepted, bounded residual.
+ *
+ * Override tokens MUST cite an ORCH-#### (four or more digits, optional META-
+ * prefix, optional -<letter> suffix) so any approved test mutation is traceable to
+ * a follow-up ORCH that explains why the prior assertion was wrong.
  *
  * Scope of test files:
  *   - **\/*.test.* (any extension — ts, tsx, js, mjs, py)
@@ -30,8 +46,8 @@
  *   - In GitHub Actions push runs: HEAD~1 (single commit comparison)
  *   - Locally:                     origin/main (best effort)
  *
- * Override token grammar (case-sensitive, must appear verbatim somewhere in
- * the commit body — title or full body, both are checked):
+ * Override token grammar (case-sensitive, must appear verbatim in the body —
+ * subject or full body — of a PR-range commit that touches the file):
  *   [TEST-MOD-APPROVED ORCH-NNNN]
  *   [TEST-MOD-APPROVED ORCH-NNNN-A]
  *   [TEST-RENAME-APPROVED ORCH-NNNN]
@@ -46,11 +62,14 @@
  *   2 — script error (cannot resolve base ref, git command failed unexpectedly).
  *
  * Established by ORCH-0840 [Regression-test enforcement + append-only CI] —
- * 2026-05-14. See `Mingla_Artifacts/specs/SPEC_ORCH-0840_*.md` (if present)
- * and the dispatch prompt at `outputs/ORCH-0840_implementor_prompt.md`.
+ * 2026-05-14. Per-file whole-range token attribution + a git-scenario self-test
+ * wired into CI added by issue #1058 (2026-07-21).
  */
 
-const { execSync } = require("node:child_process");
+const { execSync, execFileSync, spawnSync } = require("node:child_process");
+const fs = require("node:fs");
+const os = require("node:os");
+const nodePath = require("node:path");
 
 const TEST_FILE_PATTERNS = [
   /\.test\.[A-Za-z0-9]+$/,
@@ -58,8 +77,10 @@ const TEST_FILE_PATTERNS = [
   /(^|\/)__tests__\//,
 ];
 
-const MOD_TOKEN = /\[TEST-MOD-APPROVED (?:META-)?ORCH-\d{4}(?:-[A-Z])?\]/;
-const RENAME_TOKEN = /\[TEST-RENAME-APPROVED ORCH-\d{4}(?:-[A-Z])?\]/;
+// #1058 (F-3 robustness): \d{4,} (not \d{4}) — issue ids will eventually exceed 4
+// digits; RENAME_TOKEN now carries the same (?:META-)? alternation as MOD_TOKEN.
+const MOD_TOKEN = /\[TEST-MOD-APPROVED (?:META-)?ORCH-\d{4,}(?:-[A-Z])?\]/;
+const RENAME_TOKEN = /\[TEST-RENAME-APPROVED (?:META-)?ORCH-\d{4,}(?:-[A-Z])?\]/;
 
 function isTestPath(path) {
   return TEST_FILE_PATTERNS.some((re) => re.test(path));
@@ -150,10 +171,31 @@ function countDeletedLines(baseRef, path) {
   return deleted;
 }
 
-function latestCommitBody() {
-  const subject = runGit("log -1 --pretty=%s").trim();
-  const body = runGit("log -1 --pretty=%B").trim();
-  return `${subject}\n${body}`;
+// --- Per-file token attribution (#1058 — fixes F-1 false-red + F-2 false-green) ---
+// Answers "did any commit in the PR range that touched THESE path(s) carry the
+// token?" We scan `${baseRef}..HEAD` (TWO-dot: commits reachable from HEAD but not
+// from base = exactly the PR commits — the range whose diff the gate already
+// enforces via the three-dot merge-base). The pathspec after `--` limits the log
+// to commits that actually touched the file, so the token is attributed to the
+// specific change, never the whole branch. This is why the scan is per-file across
+// the range and NOT a single tip-only `git log -1` global boolean.
+//
+// RESIDUAL (accepted, bounded, intentional — #1058 §4a): attribution is PER FILE
+// ACROSS THE WHOLE RANGE — a file's deletions are blessed if ANY PR-range commit
+// that TOUCHED that file carries the token, even a commit that itself deleted
+// nothing (e.g. an additions-only edit to the same file, or a commit that touched
+// the file alongside others). The token is a human attestation scoped to a FILE for
+// the whole PR, not to an individual deletion; the reviewer sees every change to
+// that file bundled in the PR diff. This is SAME-FILE ONLY — a token on one file
+// NEVER launders deletions in a DIFFERENT file (that cross-file hole, F-2, is
+// exactly what this gate closes; see selfTest T2/T3). Tightening even the same-file
+// residual would require the token to name the exact file/line (a grammar change) —
+// explicitly OUT of scope to avoid over-engineering. This fix must never do worse
+// than "token attributed to a commit that touched the file."
+function fileHasToken(baseRef, paths, tokenRegex) {
+  const pathArgs = paths.map((p) => `"${p}"`).join(" ");
+  const bodies = runGit(`log ${baseRef}..HEAD --pretty=%B -- ${pathArgs}`);
+  return tokenRegex.test(bodies);
 }
 
 function main() {
@@ -187,10 +229,6 @@ function main() {
     process.exit(0);
   }
 
-  const commitBody = latestCommitBody();
-  const hasModToken = MOD_TOKEN.test(commitBody);
-  const hasRenameToken = RENAME_TOKEN.test(commitBody);
-
   let failures = 0;
   let passes = 0;
 
@@ -208,14 +246,14 @@ function main() {
       continue;
     }
     if (entry.status === "R") {
-      if (hasRenameToken) {
+      if (fileHasToken(baseRef, [entry.oldPath, entry.path], RENAME_TOKEN)) {
         console.log(
-          `✅ RENAMED    ${entry.oldPath} → ${entry.path} (override token [TEST-RENAME-APPROVED ORCH-####] present in commit body)`,
+          `✅ RENAMED    ${entry.oldPath} → ${entry.path} (override token [TEST-RENAME-APPROVED ORCH-####] present in a PR commit that renames this file)`,
         );
         passes += 1;
       } else {
         console.log(
-          `❌ RENAMED    ${entry.oldPath} → ${entry.path} — test file rename requires override token [TEST-RENAME-APPROVED ORCH-NNNN] in the latest commit body. None found.`,
+          `❌ RENAMED    ${entry.oldPath} → ${entry.path} — test file rename requires override token [TEST-RENAME-APPROVED ORCH-NNNN] in a commit in this PR that renames this file. None found.`,
         );
         failures += 1;
       }
@@ -237,14 +275,14 @@ function main() {
           `✅ MODIFIED  ${entry.path} (additions only, 0 deleted lines)`,
         );
         passes += 1;
-      } else if (hasModToken) {
+      } else if (fileHasToken(baseRef, [entry.path], MOD_TOKEN)) {
         console.log(
-          `✅ MODIFIED  ${entry.path} (${deleted} deleted lines; override token [TEST-MOD-APPROVED ORCH-####] present in commit body)`,
+          `✅ MODIFIED  ${entry.path} (${deleted} deleted lines; override token [TEST-MOD-APPROVED ORCH-####] present in a PR commit that modifies this file)`,
         );
         passes += 1;
       } else {
         console.log(
-          `❌ MODIFIED  ${entry.path} — ${deleted} deleted lines detected. Test file modifications with deletions require override token [TEST-MOD-APPROVED ORCH-NNNN] in the latest commit body. None found. Either restore the deleted lines (additions are always allowed), or open a follow-up ORCH and cite it as [TEST-MOD-APPROVED ORCH-NNNN] in the commit body explaining why the prior assertion was wrong.`,
+          `❌ MODIFIED  ${entry.path} — ${deleted} deleted lines detected. Test file modifications with deletions require override token [TEST-MOD-APPROVED ORCH-NNNN] in a commit in this PR that modifies this file. None found. Either restore the deleted lines (additions are always allowed), or open a follow-up ORCH and cite it as [TEST-MOD-APPROVED ORCH-NNNN] in that commit's body explaining why the prior assertion was wrong.`,
         );
         failures += 1;
       }
@@ -261,24 +299,203 @@ function main() {
   process.exit(failures > 0 ? 1 : 0);
 }
 
+// ---------------------------------------------------------------------------
+// Self-test (`--self-test`) — regex grammar cases + two git-scenario cases that
+// exercise the whole-range per-file attribution (#1058 T1/T2). Deterministic on
+// the CI runner: it builds throwaway git repos under os.tmpdir() with a local
+// `main` base and a pinned identity, and relies on no network and no Date.now().
+// ---------------------------------------------------------------------------
+
+function runGitIn(cwd, args) {
+  return execFileSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+}
+
+// Spawn THIS script's main() inside `cwd` (a temp repo). The GitHub env is
+// stripped so resolveBaseRef() deterministically falls back to the local `main`
+// branch regardless of the CI context this self-test itself runs in.
+function runCheckIn(cwd) {
+  const childEnv = { ...process.env };
+  delete childEnv.GITHUB_BASE_REF;
+  delete childEnv.GITHUB_EVENT_NAME;
+  delete childEnv.GITHUB_HEAD_REF;
+  delete childEnv.GIT_DIR;
+  delete childEnv.GIT_WORK_TREE;
+  const r = spawnSync(process.execPath, [__filename], {
+    cwd,
+    env: childEnv,
+    encoding: "utf8",
+  });
+  return { status: r.status, out: `${r.stdout || ""}${r.stderr || ""}` };
+}
+
+function makeTempRepo() {
+  const dir = fs.mkdtempSync(nodePath.join(os.tmpdir(), "append-only-selftest-"));
+  const g = (...args) => runGitIn(dir, args);
+  const write = (rel, content) => fs.writeFileSync(nodePath.join(dir, rel), content);
+  g("init", "-q");
+  g("config", "user.email", "ci@mingla.test");
+  g("config", "user.name", "ci");
+  g("config", "commit.gpgsign", "false");
+  return { dir, g, write };
+}
+
+const APPROVED = "[TEST-MOD-APPROVED ORCH-1058] ORCH-1058 [append-only token whole range]";
+
+// T1 (SC-1, false-red fixed): the sanctioning commit (token + a.test.ts deletion)
+// is NOT the tip — a later docs-only commit is. The token must still be honored so
+// the check exits 0.
+function scenarioT1() {
+  const { dir, g, write } = makeTempRepo();
+  try {
+    write("a.test.ts", "expect(a).toBe(1);\nexpect(b).toBe(2);\nexpect(c).toBe(3);\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "base");
+    g("branch", "-M", "main");
+    g("checkout", "-q", "-b", "feature");
+
+    // commit1: modify a.test.ts WITH a deletion + carry the token (this is NOT the tip)
+    write("a.test.ts", "expect(a).toBe(1);\nexpect(c).toBe(3);\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "sanctioned assertion fix", "-m", APPROVED);
+
+    // commit2 (tip): docs only — no token, no test file
+    write("NOTES.md", "release notes\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "docs: update notes");
+
+    return runCheckIn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// T2 (SC-2, false-green closed): an EARLIER commit guts assertions from b.test.ts
+// with NO token; the tip commit modifies a.test.ts and carries a token sanctioning
+// ONLY a.test.ts. The unrelated b.test.ts deletion must NOT be waved through — the
+// check exits 1 and names b.test.ts (a.test.ts passes on its own token).
+function scenarioT2() {
+  const { dir, g, write } = makeTempRepo();
+  try {
+    write("a.test.ts", "expect(a).toBe(1);\nexpect(b).toBe(2);\nexpect(c).toBe(3);\n");
+    write("b.test.ts", "expect(x).toBe(1);\nexpect(y).toBe(2);\nexpect(z).toBe(3);\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "base");
+    g("branch", "-M", "main");
+    g("checkout", "-q", "-b", "feature");
+
+    // commit1: unsanctioned assertion gutting in b.test.ts, NO token
+    write("b.test.ts", "expect(x).toBe(1);\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "trim b assertions");
+
+    // commit2 (tip): sanctioned edit to a.test.ts, token names a.test.ts's ORCH only
+    write("a.test.ts", "expect(a).toBe(1);\nexpect(c).toBe(3);\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "sanctioned assertion fix", "-m", APPROVED);
+
+    return runCheckIn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// T3 (tester adversarial, #1058 CLOSE — a DIFFERENT ANGLE than T1/T2): the
+// unsanctioned deletions to b.test.ts are SPLIT ACROSS TWO commits, and the ONLY
+// token sits on a THIRD (tip) commit that touches a.test.ts alone. Where T2 gutted
+// b in a single commit, this proves the per-file scan aggregates the WHOLE range of
+// commits touching a file before deciding — a first-commit-only or tip-only
+// attribution would launder b.test.ts. b must FAIL; a passes on its own token.
+// Fails-on-revert: reverting fileHasToken to the tip-only global boolean flips this
+// GREEN (the tip a-token re-authorizes b's deletions across the whole range).
+function scenarioT3() {
+  const { dir, g, write } = makeTempRepo();
+  try {
+    write("a.test.ts", "expect(a).toBe(1);\nexpect(b).toBe(2);\nexpect(c).toBe(3);\n");
+    write("b.test.ts", "expect(w).toBe(1);\nexpect(x).toBe(2);\nexpect(y).toBe(3);\nexpect(z).toBe(4);\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "base");
+    g("branch", "-M", "main");
+    g("checkout", "-q", "-b", "feature");
+
+    // commit1: strip assertions from b.test.ts (part 1), NO token
+    write("b.test.ts", "expect(w).toBe(1);\nexpect(y).toBe(3);\nexpect(z).toBe(4);\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "trim b assertions part 1");
+
+    // commit2: strip more from b.test.ts (part 2), still NO token
+    write("b.test.ts", "expect(w).toBe(1);\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "trim b assertions part 2");
+
+    // commit3 (tip): sanctioned edit to a.test.ts; token touches a.test.ts ONLY
+    write("a.test.ts", "expect(a).toBe(1);\nexpect(c).toBe(3);\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "sanctioned assertion fix", "-m", APPROVED);
+
+    return runCheckIn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 function selfTest() {
-  const cases = [
-    { input: "[TEST-MOD-APPROVED ORCH-0840]", expect: true, label: "bare ORCH" },
-    { input: "[TEST-MOD-APPROVED ORCH-0840-A]", expect: true, label: "ORCH with suffix" },
-    { input: "[TEST-MOD-APPROVED META-ORCH-0952]", expect: true, label: "META-ORCH (ORCH-0959)" },
-    { input: "[TEST-MOD-APPROVED META-ORCH-0001-A]", expect: true, label: "META-ORCH with suffix (ORCH-0959)" },
-    { input: "[TEST-MOD-APPROVED FOO-0001]", expect: false, label: "wrong prefix" },
-    { input: "TEST-MOD-APPROVED ORCH-0840", expect: false, label: "missing brackets" },
-  ];
   let failures = 0;
+  let total = 0;
+  const check = (ok, label, detail) => {
+    total += 1;
+    console.log(`${ok ? "✅" : "❌"} ${label}${detail ? ` — ${detail}` : ""}`);
+    if (!ok) failures += 1;
+  };
+
+  // --- Regex grammar cases (token format) ---
+  const cases = [
+    { input: "[TEST-MOD-APPROVED ORCH-0840]", expect: true, label: "regex: bare ORCH" },
+    { input: "[TEST-MOD-APPROVED ORCH-0840-A]", expect: true, label: "regex: ORCH with suffix" },
+    { input: "[TEST-MOD-APPROVED META-ORCH-0952]", expect: true, label: "regex: META-ORCH" },
+    { input: "[TEST-MOD-APPROVED META-ORCH-0001-A]", expect: true, label: "regex: META-ORCH with suffix" },
+    { input: "[TEST-MOD-APPROVED FOO-0001]", expect: false, label: "regex: wrong prefix" },
+    { input: "TEST-MOD-APPROVED ORCH-0840", expect: false, label: "regex: missing brackets" },
+  ];
   for (const c of cases) {
     const got = MOD_TOKEN.test(c.input);
-    const ok = got === c.expect;
-    console.log(`${ok ? "✅" : "❌"} ${c.label}: input=${JSON.stringify(c.input)} got=${got} expected=${c.expect}`);
-    if (!ok) failures += 1;
+    check(got === c.expect, c.label, `input=${JSON.stringify(c.input)} got=${got} expected=${c.expect}`);
   }
+
+  // --- Git-scenario cases (whole-range per-file attribution — #1058 T1/T2) ---
+  const t1 = scenarioT1();
+  check(
+    t1.status === 0,
+    "T1 (SC-1 false-red fixed): token in non-tip commit, docs commit on tip",
+    `check exited ${t1.status} (expected 0)`,
+  );
+
+  const t2 = scenarioT2();
+  const t2NamesB = /❌[^\n]*b\.test\.ts/.test(t2.out);
+  const t2PassesA = /✅[^\n]*a\.test\.ts/.test(t2.out);
+  check(
+    t2.status === 1 && t2NamesB && t2PassesA,
+    "T2 (SC-2 false-green closed): unsanctioned b.test.ts deletion not waved through by a.test.ts's token",
+    `check exited ${t2.status} (expected 1); names b.test.ts=${t2NamesB}; a.test.ts passes=${t2PassesA}`,
+  );
+
+  // T3 (tester adversarial) — multi-commit attribution: b's deletions split across
+  // two commits, token on a third commit touching only a. Distinct from T2 (single
+  // commit) and T1 (false-red). Fails-on-revert: tip-only boolean flips this green.
+  const t3 = scenarioT3();
+  const t3NamesB = /❌[^\n]*b\.test\.ts/.test(t3.out);
+  const t3PassesA = /✅[^\n]*a\.test\.ts/.test(t3.out);
+  check(
+    t3.status === 1 && t3NamesB && t3PassesA,
+    "T3 (tester adversarial): b.test.ts deletions split across TWO commits, token on a THIRD commit touching only a.test.ts — b not laundered across the range",
+    `check exited ${t3.status} (expected 1); names b.test.ts=${t3NamesB}; a.test.ts passes=${t3PassesA}`,
+  );
+
   console.log("");
-  console.log(`Self-test: ${cases.length - failures} passed, ${failures} failed.`);
+  console.log(`Self-test: ${total - failures} passed, ${failures} failed.`);
   process.exit(failures > 0 ? 1 : 0);
 }
 

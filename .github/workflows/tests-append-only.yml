@@ -3,10 +3,13 @@ name: Tests Append-Only
 # Codified by ORCH-0840 [Regression-test enforcement + append-only CI].
 # Test files are append-only. Existing test files cannot be modified
 # (with deletions) or deleted/renamed without an explicit override token
-# in the latest commit body — see `.github/scripts/test-append-only-check.js`
-# for the exact rules and grammar.
+# in a PR-range commit that TOUCHES that file (per-file whole-range
+# attribution, #1058) — see `.github/scripts/test-append-only-check.js`
+# for the exact rules and grammar. A token only authorizes the file(s) its
+# commit touched; it is honored wherever that commit sits in the PR range,
+# not only on the tip.
 #
-# Override tokens (in latest commit body):
+# Override tokens (in a PR-range commit that touches the file):
 #   [TEST-MOD-APPROVED ORCH-NNNN]    — modifications with deleted lines
 #   [TEST-RENAME-APPROVED ORCH-NNNN] — renames
 # Deletions cannot be overridden.
@@ -50,6 +53,13 @@ jobs:
           node-version: "20"
       - name: Run append-only check
         run: node .github/scripts/test-append-only-check.js
+
+      # issue #1058 — regression guard for the gate itself. Exercises the
+      # two-arm git-scenario self-test (T1 false-red fixed, T2 false-green
+      # closed) plus the token-grammar regex cases. A regression test no
+      # workflow runs is worthless — this wires it into CI.
+      - name: Append-only gate self-test (regression guard)
+        run: node .github/scripts/test-append-only-check.js --self-test
 
       # ORCH-1383 — MANIFEST.json ratchet (I-PROPOSED-1383-NO-SILENT-SHRINK).
       #
