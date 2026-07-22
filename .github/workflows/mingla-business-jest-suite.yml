@@ -9,7 +9,7 @@
 # the I-PROPOSED-1047-BIZ-JEST-WIRED strict-grep gate (which fails if this file
 # stops invoking the whole suite).
 #
-# NON-BLOCKING BY CONSTRUCTION (do NOT change without a Seth-gated decision):
+# REQUIRED PR GATE since #1062 CLOSE (2026-07-22, Seth-gated flip — admin-bypassable):
 #   - Triggers are `schedule` (nightly) + `workflow_dispatch` ONLY. It does NOT run
 #     on `pull_request`, so it can never gate a PR.
 #   - It is NOT in the branch-protection ruleset (`13549056` / `19508605`), so it is
@@ -26,28 +26,39 @@
 # trigger so it blocks PRs. Until then it stays advisory/nightly. See
 # docs/MINGLA_ENGINEERING_HANDBOOK.md ("mingla-business jest suite — required-flip path").
 
-name: mingla-business jest suite (nightly, non-blocking)
+name: mingla-business jest suite (required + nightly)
 
 on:
+  # REQUIRED PR gate (#1062, Seth-gated flip 2026-07-22): runs on EVERY PR to main.
+  # NO paths filter — a paths-gated required check hangs merges on PRs that miss the
+  # paths (the #1051 lesson). The suite is green (688 pass / 0 fail) and enforced via
+  # the admin-bypassable ruleset bound to the job check-name below.
+  pull_request:
+    branches: [main]
   schedule:
-    # 07:00 UTC daily — advisory nightly run; never on PRs.
+    # 07:00 UTC daily — also runs nightly (catches env/dep drift off-PR).
     - cron: "0 7 * * *"
   workflow_dispatch: {}
 
-# No PR trigger => nothing to cancel per-PR; keep runs independent.
 concurrency:
   group: mingla-business-jest-suite-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   jest:
-    name: mingla-business jest (full suite, advisory)
+    name: mingla-business jest (full suite)
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: mingla-business
     steps:
+      # fetch-depth: 0 — the metaOrch1002 git-diff-harness sanity test resolves a
+      # diff against a historical base commit; a shallow checkout (default depth 1)
+      # can't reach it → empty set → false failure. Full history keeps the suite
+      # CI-deterministic as a required gate (#1062).
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -82,7 +93,7 @@ jobs:
       # regression is observed — while remaining non-blocking (schedule/dispatch
       # only, not a required check). This is the burn-down signal: it stays red
       # until the §4.5 residual reaches zero, then Seth flips it to required.
-      - name: Suite verdict (advisory — red on failure, blocks nothing)
+      - name: Suite verdict (required — red on any failure blocks the PR)
         run: |
           node -e '
             const fs = require("fs");
@@ -97,5 +108,5 @@ jobs:
               console.error(`\n#1047 residual burn-down: ${numFailedTests} test(s) / ${numFailedTestSuites} suite(s) still red — see the uploaded summary. This job is ADVISORY and blocks nothing.`);
               process.exit(1);
             }
-            console.log("\nmingla-business jest suite is GREEN — ready for the Seth-gated required-flip (#1047 §4.4.3).");
+            console.log("\nmingla-business jest suite is GREEN.");
           '

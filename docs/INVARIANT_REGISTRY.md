@@ -7,6 +7,25 @@
 
 ---
 
+## ACTIVE — issue #1062 (mingla-business jest suite burned down to green + made a required PR gate — CLOSED 2026-07-22)
+
+> The lean #1047 pass wired the suite (nightly, non-blocking) at 160 fails / 110 red. #1062 burned the residual to ZERO across Wave 1 (config/mock) + Wave 2 A/B/C + Wave 2 Remainder (services, utils/brand/misc) + Wave 3 (2 runtime-neutral product type-fixes), then flipped it to a required PR gate. Tester Wave-4 anti-faking audit PASS (SC-2/SC-3/SC-4/SC-5): no test deleted/gutted (test count rose +281), no assertion loosened, zero drift updated to match a bug, green re-verified independently (688 pass / 0 fail). One real bug the exercise surfaced (venue picker-cancel crash) was split to #1063 and fixed.
+
+### I-1062-BIZ-JEST-GREEN (ACTIVE — issue #1062 CLOSE 2026-07-22)
+- **Rule:** the mingla-business default jest suite (`CI=true npx jest --ci`) MUST stay green — 0 failing tests, 0 failing suites (the 2 pre-existing META-ORCH-1290-superseded skips excepted). Tests are cleaned by SURGICAL means only: a removed assertion must be a proven source-text pin, a changed expected value must match PROVEN current behavior of equal strength (never a loosening / `toBeTruthy`/`expect.anything`), and no real behavioral test may be deleted, `.skip`'d, or quarantined to manufacture green.
+- **Enforcement:** the suite now runs on every PR via `.github/workflows/mingla-business-jest-suite.yml` (job **`mingla-business jest (full suite)`**) — a red run fails the check; plus the #1047 gates (`orch-1047-quarantine-list-is-source-pins-only`, `i-proposed-1047-biz-no-sole-source-pin`, `i-proposed-1047-biz-jest-wired`) that forbid re-darkening, re-quarantining a real test, or adding a new source-only pin.
+- **Regression test:** the suite IS the test; a planted failure reds the PR check (tester Wave-4 proved a planted failure → check red). Append-only.
+- **Established:** ACTIVE 2026-07-22 at #1062 CLOSE (tester anti-faking audit PASS; 688 pass / 0 fail re-verified).
+
+### I-1062-BIZ-JEST-REQUIRED (ACTIVE — issue #1062 CLOSE 2026-07-22)
+- **Rule:** `mingla-business jest (full suite)` is a REQUIRED status check on `main` (admin-bypassable — Seth's 2026-07-22 decision): a non-admin cannot merge a PR while the suite is red; org admins / the orchestrator `--admin` flow may override a flaky red (escape valve for a heavier, freshly-green suite; tighten to zero-bypass later if it proves stable). Removing the `pull_request` trigger, re-adding a `paths:` filter to it, renaming the job without re-binding the ruleset context, or deleting the ruleset each silently un-gates the suite and is forbidden.
+- **Enforcement:** repo ruleset (admin-bypassable) binding the `mingla-business jest (full suite)` check + the `pull_request` trigger on the workflow. Runbook: `docs/MINGLA_ENGINEERING_HANDBOOK.md`.
+- **Regression test:** a PR with the suite red is not mergeable by a non-admin (ruleset-enforced).
+- **Established:** ACTIVE 2026-07-22 at #1062 CLOSE.
+
+---
+
+
 ### I-1063-NATIVE-PICKER-GUARD-CANCEL-BEFORE-ASSETS (ACTIVE — issue #1063 CLOSE 2026-07-22)
 - **Rule:** every consumer of a native image/media picker MUST narrow on the discriminated-union `canceled` flag BEFORE reading `.assets` (no `result.assets.map()`/index without a `canceled` guard). Picker shim return types MUST model expo's real contract — `{ canceled: true; assets: null } | { canceled: false; assets: Asset[] }` — never "assets is always an array". Root cause (#1063): `expo-image-picker` v17 resolves `{ canceled: true, assets: null }` on cancel; a mistyped shim (`platformImagePicker.native.ts`) + an unguarded `.map()` in `venueGalleryDeviceMedia.native.ts` threw on every cancel → a false "Couldn't open photos. Try again." toast on Business iOS+Android. The type lie also hid the defect from tsc.
 - **Enforcement:** the corrected discriminated-union return type on the picker shims + the per-consumer `canceled` guard; regression suite `mingla-business/src/services/__tests__/venueGalleryCancelGuard.orch1063.test.ts` (impl) + the tester's append-only edge/service-contract tests (runs in the now-wired #1047 jest suite). tsc enforces the union at the call sites (the fix removed 2 masked `TS2322`s; a re-introduced "always array" return re-adds them).
