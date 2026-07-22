@@ -68,10 +68,15 @@ describe("ORCH-1098 Stage 3 — real Business app boots on phone browsers", () =
   describe("native BottomNav keeps the reanimated spotlight (web-gate only)", () => {
     const native = read("src/components/ui/BottomNav.tsx");
     it("iOS/Android still use the animated spotlight capsule", () => {
-      // The fix is web-only; native behavior is byte-unchanged.
-      expect(native).toContain("useSharedValue");
-      expect(native).toContain("useAnimatedStyle");
-      expect(native).toContain("withSpring");
+      // The fix is web-only; native keeps its animated spotlight capsule.
+      // [ORCH-1062 drift-update] ORCH-1320 (biz Account-tab Apple crash) moved
+      // the native spotlight OFF react-native-reanimated worklets onto RN-core
+      // `Animated` (JS-driven, no worklets runtime; see BottomNav.tsx source
+      // comment). The animated spotlight capsule is preserved; only the
+      // animation primitive changed. Assert the current RN-core Animated tokens.
+      expect(native).toContain("Animated.Value");
+      expect(native).toContain("Animated.timing");
+      expect(native).toContain("Animated.spring");
       expect(native).toContain("Animated.View");
     });
   });

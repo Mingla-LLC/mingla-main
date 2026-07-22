@@ -126,17 +126,23 @@ describe("ORCH-1098 Stage 4 adversarial — mobile-web BottomNav can never re-im
     const edges = moduleEdges(raw);
     const code = stripCommentsAndStrings(raw);
 
-    it("still depends on react-native-reanimated", () => {
-      const reanimatedEdges = edges.filter(
-        (s) => s === REANIMATED_MODULE || s.startsWith(REANIMATED_MODULE + "/"),
-      );
-      expect(reanimatedEdges.length).toBeGreaterThan(0);
+    it("still drives its spotlight animation natively (RN-core Animated, post ORCH-1320)", () => {
+      // [ORCH-1062 drift-update] ORCH-1320 (biz Account-tab Apple crash) moved
+      // the native spotlight OFF react-native-reanimated worklets onto RN-core
+      // `Animated` (from "react-native"). Native motion is preserved — the fix
+      // remains a web-gate, not a global rip-out — it just no longer routes
+      // through the reanimated worklets runtime. Assert native still pulls a
+      // real animation-capable module edge (RN core).
+      const rnCoreEdges = edges.filter((s) => s === "react-native");
+      expect(rnCoreEdges.length).toBeGreaterThan(0);
     });
 
-    it("still CALLS the spotlight reanimated hooks and renders <Animated.View", () => {
-      expect(code).toMatch(/\buseSharedValue\s*\(/);
-      expect(code).toMatch(/\buseAnimatedStyle\s*\(/);
-      expect(code).toMatch(/\bwithSpring\s*\(/);
+    it("still CALLS the spotlight animation drivers and renders <Animated.View", () => {
+      // Post ORCH-1320 the spotlight is driven by RN-core Animated
+      // (`new Animated.Value(...)` + `Animated.spring`/`Animated.timing`),
+      // NOT the reanimated worklet hooks.
+      expect(code).toMatch(/\bAnimated\.Value\s*\(/);
+      expect(code).toMatch(/\bAnimated\.(?:spring|timing)\s*\(/);
       expect(code).toContain("Animated.View");
     });
   });

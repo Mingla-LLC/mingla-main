@@ -93,8 +93,15 @@ describe("ORCH-1098 Stage 5 — _layout hooks-order fix (Residual 2 / React #300
   test("the auth-routing decisions are computed as deferred booleans (returns gated on the predicates)", () => {
     expect(inner).toMatch(/const\s+authResolving\s*=/);
     expect(inner).toMatch(/const\s+redirectToSignIn\s*=/);
-    expect(inner).toMatch(/if\s*\(\s*authResolving\s*\)/);
-    expect(inner).toMatch(/if\s*\(\s*redirectToSignIn\s*\)/);
+    // [ORCH-1062 pin-fix] The deferred `authResolving` return guard gained a
+    // refinement — `if (authResolving && !(atSignInRoute && authResolutionExpired))`
+    // (don't spin the AuthResolvingScreen at the sign-in route once resolution
+    // has expired; see the deadlock-loop source comments). The load-bearing
+    // invariant is that the deferred return is GATED ON the `authResolving`
+    // predicate, not that the guard is `authResolving` alone — match a word
+    // boundary so added guard conditions don't re-break the pin.
+    expect(inner).toMatch(/if\s*\(\s*authResolving\b/);
+    expect(inner).toMatch(/if\s*\(\s*redirectToSignIn\b/);
   });
 
   test("the key deferred hooks still run unconditionally (present in the body)", () => {

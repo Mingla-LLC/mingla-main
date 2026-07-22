@@ -141,14 +141,18 @@ describe("ORCH-0862 AD-3 — liveEventStore migrator-chain integrity", () => {
     expect(pickForm !== null || literalForm !== null).toBe(true);
   });
 
-  test("version field is exactly 5 (no off-by-one, no string `'5'`)", () => {
-    // Defensive: `version: "5"` (string) would silently break the
+  test("version field is a numeric literal >= 5 (no off-by-one, no string version)", () => {
+    // Defensive: a quoted `version: "6"` (string) would silently break the
     // migrator chain since version comparisons are === number.
+    // [ORCH-1062 drift-update] The store advanced v5 -> v6: a new
+    // `if (version === 5)` migrator branch was added and `version: 6` is
+    // the current persist value (liveEventStore.ts). Assert a non-staling
+    // numeric range (>= 5) instead of an exact value that re-breaks on
+    // every schema bump, and reject ANY quoted (string) version.
     const persistBlock = source.match(/persistOptions[^=]*=\s*\{[\s\S]*?\n\};/);
     expect(persistBlock).not.toBeNull();
-    expect(persistBlock![0]).toMatch(/version:\s*5\b/);
-    expect(persistBlock![0]).not.toMatch(/version:\s*"5"/);
-    expect(persistBlock![0]).not.toMatch(/version:\s*'5'/);
+    expect(persistBlock![0]).toMatch(/version:\s*[5-9]\b/);
+    expect(persistBlock![0]).not.toMatch(/version:\s*["']\d+["']/);
   });
 
   test("partialize argument is named `_state` (underscore-prefixed to signal unused) AND returns a freshly-constructed object literal, not a destructured reference", () => {

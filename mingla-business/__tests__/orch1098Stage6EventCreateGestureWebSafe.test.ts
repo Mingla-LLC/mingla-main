@@ -74,7 +74,14 @@ describe("ORCH-1098 Stage 6 — web-safe gesture detector kills the reanimated u
 
       it(`${file}: wraps its gesture with <WebSafeGestureDetector gesture=...>`, () => {
         const code = stripComments(read(file));
-        expect(code).toMatch(/<WebSafeGestureDetector\s+gesture=\{panGesture\}>/);
+        // [ORCH-1062 pin-fix] TopSheet was split into an outer component +
+        // `TopSheetPanelInner`, which receives the pan gesture via a
+        // `dismissGesture` prop and renders `gesture={dismissGesture}`;
+        // SheetMobile/Toast still use `gesture={panGesture}`. The gesture
+        // variable NAME is incidental source shape — assert the real invariant
+        // (the primitive is wrapped by WebSafeGestureDetector with a bound
+        // gesture prop) rather than pin one file's variable name.
+        expect(code).toMatch(/<WebSafeGestureDetector\s+gesture=\{\w+\}>/);
         expect(code).toMatch(
           /import\s*\{[^}]*WebSafeGestureDetector[^}]*\}\s*from\s*["']\.\/WebSafeGestureDetector["']/,
         );
