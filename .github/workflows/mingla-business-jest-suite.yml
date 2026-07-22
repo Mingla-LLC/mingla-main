@@ -52,7 +52,13 @@ jobs:
       run:
         working-directory: mingla-business
     steps:
+      # fetch-depth: 0 — the metaOrch1002 git-diff-harness sanity test resolves a
+      # diff against a historical base commit; a shallow checkout (default depth 1)
+      # can't reach it → empty set → false failure. Full history keeps the suite
+      # CI-deterministic as a required gate (#1062).
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
