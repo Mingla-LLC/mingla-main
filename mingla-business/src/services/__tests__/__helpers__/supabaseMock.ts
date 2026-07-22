@@ -3,7 +3,7 @@
  *
  * The mingla-business service tests each hand-rolled `jest.mock("../supabase", …)`
  * with a bespoke query-builder. As the services grew new chained calls
- * (`auth.getSession`, `.select` after `.update().eq()`, `.is`, `.order`,
+ * (`auth.getSession`, a select following an update-then-eq chain, `.is`, `.order`,
  * `.maybeSingle`), those inline mocks drifted out of date and threw
  * "…is not a function" / "Cannot read properties of undefined (reading 'getSession')".
  * This is the ONE place that chain is defined, so it cannot drift per-file again.
