@@ -7,6 +7,13 @@
 
 ---
 
+### I-1063-NATIVE-PICKER-GUARD-CANCEL-BEFORE-ASSETS (ACTIVE — issue #1063 CLOSE 2026-07-22)
+- **Rule:** every consumer of a native image/media picker MUST narrow on the discriminated-union `canceled` flag BEFORE reading `.assets` (no `result.assets.map()`/index without a `canceled` guard). Picker shim return types MUST model expo's real contract — `{ canceled: true; assets: null } | { canceled: false; assets: Asset[] }` — never "assets is always an array". Root cause (#1063): `expo-image-picker` v17 resolves `{ canceled: true, assets: null }` on cancel; a mistyped shim (`platformImagePicker.native.ts`) + an unguarded `.map()` in `venueGalleryDeviceMedia.native.ts` threw on every cancel → a false "Couldn't open photos. Try again." toast on Business iOS+Android. The type lie also hid the defect from tsc.
+- **Enforcement:** the corrected discriminated-union return type on the picker shims + the per-consumer `canceled` guard; regression suite `mingla-business/src/services/__tests__/venueGalleryCancelGuard.orch1063.test.ts` (impl) + the tester's append-only edge/service-contract tests (runs in the now-wired #1047 jest suite). tsc enforces the union at the call sites (the fix removed 2 masked `TS2322`s; a re-introduced "always array" return re-adds them).
+- **Fails-on-revert:** deleting the `if (result.canceled) return` guard makes the cancel test throw `Cannot read properties of null (reading 'map')`; reverting the shim type re-introduces the 2 `TS2322`s. Proven at `bfe3c2d0a`. Append-only.
+- **Established:** ACTIVE 2026-07-22 at #1063 CLOSE (PR #1064; tester CONDITIONAL PASS — repo-side proven, on-device Cancel tap deferred to the next native build as a recorded post-build check).
+
+
 ## DRAFT — issue #1047 (the mingla-business jest suite is executed by CI, and no new source-only pin counts as a regression proof — IN FLIGHT, registered at IMPLEMENT 2026-07-22)
 
 > Registered DRAFT at issue #1047 [business-jest-suite-audit] IMPLEMENT. The mingla-business default jest suite (`mingla-business/jest.config.cjs`) had ~245 failing tests across ~157 suites and was run by NO workflow — the CLOSE regression gate had been depositing tests into a suite CI never invoked (the same "safety net that looks present but is dark" shape as #1038). This issue makes it honest: it quarantines the brittle source-text pins via config (files retained, not deleted — `tests-append-only.yml` makes deletion absolute), re-homes 7 load-bearing invariants to additive strict-grep gates that actually run, fixes the shared harness + the real-signal items, and wires the suite into CI NON-BLOCKING (nightly `schedule` + `workflow_dispatch`). The orchestrator flips DRAFT → ACTIVE at CLOSE. Cross-ref: SPEC + implementation report on issue #1047.
