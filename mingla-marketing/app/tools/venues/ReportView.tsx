@@ -14,6 +14,7 @@
 // lib/store-links, never a hardcoded domain, per the ORCH-1399 SSOT rule).
 
 import { useEffect, useState } from 'react'
+import { motion, useReducedMotion } from 'framer-motion'
 import { cn } from '@/lib/cn'
 import { buttonClasses } from '@/components/ui/button'
 import { captureMarketing } from '@/components/marketing/posthog-provider'
@@ -24,6 +25,7 @@ import {
   type GraderReport,
   type GraderScoreKey,
   type GrowthToolsError,
+  type SignalStatus,
 } from '@/lib/growth-tools-submit'
 
 // The app-gate destination: the business OneLink carrying tool attribution.
@@ -79,6 +81,13 @@ function displayHost(website: string): string {
   }
 }
 
+// Site-health chip styling per status — moss/butter/danger tints, and the mark.
+const SIGNAL_STYLE: Record<SignalStatus, { mark: string; className: string }> = {
+  pass: { mark: '✓', className: 'border-moss/40 bg-moss/12 text-moss' },
+  warn: { mark: '!', className: 'border-butter/50 bg-butter/15 text-warning' },
+  fail: { mark: '✗', className: 'border-danger/30 bg-danger/10 text-danger' },
+}
+
 function DocHeading({ children }: { children: React.ReactNode }) {
   return (
     <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
@@ -87,30 +96,99 @@ function DocHeading({ children }: { children: React.ReactNode }) {
   )
 }
 
-function GradeRing({ overall, grade }: { overall: number; grade: string }) {
+// Count a number up to `target` over ~800ms once mounted. Honors reduced motion
+// (jumps straight to the value). SSR-safe: starts from the target so the first
+// paint is never wrong if JS is slow.
+function useCountUp(target: number, enabled: boolean): number {
+  const [value, setValue] = useState(enabled ? 0 : target)
+  useEffect(() => {
+    if (!enabled) {
+      setValue(target)
+      return
+    }
+    let raf = 0
+    let start: number | null = null
+    const duration = 800
+    const tick = (t: number) => {
+      if (start === null) start = t
+      const p = Math.min(1, (t - start) / duration)
+      // easeOutCubic
+      const eased = 1 - Math.pow(1 - p, 3)
+      setValue(Math.round(target * eased))
+      if (p < 1) raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [target, enabled])
+  return value
+}
+
+function GradeRing({
+  overall,
+  grade,
+  percentile,
+}: {
+  overall: number
+  grade: string
+  percentile?: { city: string; better_than_pct: number; sample: number }
+}) {
   const pct = clampScore(overall)
+  const reduce = useReducedMotion()
+  const animate = !reduce
+  const shown = useCountUp(pct, animate)
+  // SVG ring geometry.
+  const R = 52
+  const C = 2 * Math.PI * R
+  const offset = C * (1 - pct / 100)
+
   return (
     <div className="flex flex-wrap items-center gap-5">
       <div
         role="img"
         aria-label={`Overall grade ${grade} — ${pct} out of 100`}
-        className="grid size-28 shrink-0 place-items-center rounded-full"
-        style={{
-          background: `conic-gradient(var(--color-warm) ${pct * 3.6}deg, var(--color-divider-strong) 0deg)`,
-        }}
+        className="relative grid size-28 shrink-0 place-items-center"
       >
-        <div className="grid size-[5.25rem] place-items-center rounded-full bg-parchment">
-          <span className="whitespace-nowrap font-display text-[clamp(1.9rem,5vw,2.4rem)] leading-none text-text-primary">
-            {grade}
-          </span>
-        </div>
+        <svg viewBox="0 0 120 120" className="size-28 -rotate-90">
+          <circle
+            cx="60"
+            cy="60"
+            r={R}
+            fill="none"
+            stroke="var(--color-divider-strong)"
+            strokeWidth="12"
+          />
+          <motion.circle
+            cx="60"
+            cy="60"
+            r={R}
+            fill="none"
+            stroke="var(--color-warm)"
+            strokeWidth="12"
+            strokeLinecap="round"
+            strokeDasharray={C}
+            initial={{ strokeDashoffset: animate ? C : offset }}
+            animate={{ strokeDashoffset: offset }}
+            transition={{ duration: animate ? 1 : 0, ease: 'easeOut' }}
+          />
+        </svg>
+        <span className="absolute font-display text-[clamp(1.9rem,5vw,2.4rem)] leading-none text-text-primary">
+          {grade}
+        </span>
       </div>
       <div>
         <p className="whitespace-nowrap font-display text-[clamp(1.6rem,4.5vw,2.1rem)] leading-none tabular-nums text-text-primary">
-          {pct}
+          {shown}
           <span className="text-text-muted">/100</span>
         </p>
         <p className="mt-2 text-sm text-text-secondary">Overall website score</p>
+        {percentile ? (
+          <p className="mt-1.5 text-sm font-semibold text-warm-ink">
+            Better than{' '}
+            <span className="tabular-nums">{clampScore(percentile.better_than_pct)}%</span> of{' '}
+            <span className="tabular-nums">{percentile.sample.toLocaleString()}</span> scored
+            venues in {percentile.city}
+          </p>
+        ) : null}
       </div>
     </div>
   )
@@ -137,6 +215,22 @@ export function ReportView({ report, runId }: { report: GraderReport; runId: str
   const competition = report.competition
   const competitors = (competition?.competitors ?? []).slice(0, 4)
   const playbook = (competition?.outrank_playbook ?? []).slice(0, 5)
+  // Depth fields — all optional, each hides gracefully.
+  const checks = report.site_signals?.checks ?? []
+  const passCount = checks.filter((c) => c.status === 'pass').length
+  const warnCount = checks.filter((c) => c.status === 'warn').length
+  const failCount = checks.filter((c) => c.status === 'fail').length
+  const praise = report.review_themes?.praise ?? []
+  const complaints = report.review_themes?.complaints ?? []
+  const headToHead = report.head_to_head
+  const hhRows = (headToHead?.rows ?? []).slice(0, 6)
+  const whereYouWin = (report.where_you_win ?? []).slice(0, 3)
+  const offerFrom = report.offer?.per_person_from ?? '$3.99'
+
+  // The offer view fires once, when the report first renders unlocked.
+  useEffect(() => {
+    if (!gated) captureMarketing('tool_offer_view', { tool: 'venues', run_id: runId })
+  }, [gated, runId])
 
   async function onGateSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -196,7 +290,11 @@ export function ReportView({ report, runId }: { report: GraderReport; runId: str
       ) : null}
 
       <div className="mt-8">
-        <GradeRing overall={report.scores.overall} grade={report.scores.grade} />
+        <GradeRing
+          overall={report.scores.overall}
+          grade={report.scores.grade}
+          percentile={report.percentile}
+        />
       </div>
 
       {/* Vibe Card */}
@@ -232,6 +330,48 @@ export function ReportView({ report, runId }: { report: GraderReport; runId: str
           </p>
         ) : null}
       </section>
+
+      {/* Site health — FREE zone, deterministic checks (credibility bait) */}
+      {checks.length > 0 ? (
+        <section className="mt-6">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <DocHeading>Site health check</DocHeading>
+            <p className="text-xs font-semibold tabular-nums text-text-muted">
+              <span className="text-moss">{passCount} passed</span> ·{' '}
+              <span className="text-warning">{warnCount} warning{warnCount === 1 ? '' : 's'}</span> ·{' '}
+              <span className="text-danger">{failCount} failing</span>
+            </p>
+          </div>
+          <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+            {checks.map((c) => {
+              const style = SIGNAL_STYLE[c.status] ?? SIGNAL_STYLE.warn
+              return (
+                <li
+                  key={c.key}
+                  className={cn(
+                    'flex gap-2.5 rounded-sm border p-3',
+                    style.className,
+                  )}
+                >
+                  <span aria-hidden="true" className="mt-px shrink-0 font-bold leading-none">
+                    {style.mark}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block break-words text-sm font-semibold text-text-primary">
+                      {c.label}
+                    </span>
+                    {c.detail ? (
+                      <span className="mt-0.5 block break-words text-xs leading-relaxed text-text-secondary">
+                        {c.detail}
+                      </span>
+                    ) : null}
+                  </span>
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      ) : null}
 
       {/* Mingla already knows you — FREE zone */}
       {report.match.found ? (
@@ -277,15 +417,18 @@ export function ReportView({ report, runId }: { report: GraderReport; runId: str
         </p>
       ) : null}
 
-      {/* Competition teaser — FREE zone, the gate's strongest hook */}
+      {/* Teasers — FREE zone, the gate's strongest hooks */}
       {competitors.length > 0 ? (
         <p className="mt-6 rounded-sm border border-warm/40 bg-warm/10 px-4 py-3.5 text-sm font-semibold leading-relaxed text-warm-ink">
           We found <span className="tabular-nums">{competitors.length}</span>{' '}
           {competitors.length === 1 ? 'place' : 'places'}
           {report.venue.city ? ` in ${report.venue.city}` : ''} competing for your
-          nights — the head-to-head is inside.
+          nights — the head-to-head scorecard is inside.
         </p>
       ) : null}
+      <p className="mt-3 rounded-sm border border-warm/40 bg-warm/10 px-4 py-3.5 text-sm font-semibold leading-relaxed text-warm-ink">
+        Inside: how Mingla drives people to your venue from {offerFrom} per person.
+      </p>
 
       {/* ── GATED ZONE ────────────────────────────────────────────────────── */}
       <section className="relative mt-8">
@@ -309,9 +452,12 @@ export function ReportView({ report, runId }: { report: GraderReport; runId: str
                     </span>
                   </div>
                   <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-divider-strong">
-                    <div
+                    <motion.div
                       className="h-full rounded-full bg-warm"
-                      style={{ width: `${value}%` }}
+                      initial={{ width: 0 }}
+                      whileInView={{ width: `${value}%` }}
+                      viewport={{ once: true, amount: 0.6 }}
+                      transition={{ duration: 0.7, ease: 'easeOut' }}
                     />
                   </div>
                   {reason ? (
@@ -344,6 +490,45 @@ export function ReportView({ report, runId }: { report: GraderReport; runId: str
             </div>
           ) : null}
 
+          {/* What your customers say — real review themes */}
+          {praise.length > 0 || complaints.length > 0 ? (
+            <div className="mt-10">
+              <DocHeading>What your customers say</DocHeading>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                {praise.length > 0 ? (
+                  <div className="rounded-sm border border-moss/40 bg-moss/10 p-4 md:p-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-moss">
+                      People love
+                    </p>
+                    <ul className="mt-3 space-y-2">
+                      {praise.map((s) => (
+                        <li key={s} className="flex gap-2 text-sm leading-relaxed text-text-secondary">
+                          <span aria-hidden="true" className="shrink-0 text-moss">+</span>
+                          <span className="min-w-0 break-words">{s}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {complaints.length > 0 ? (
+                  <div className="rounded-sm border border-divider bg-white p-4 md:p-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+                      What comes up as a gripe
+                    </p>
+                    <ul className="mt-3 space-y-2">
+                      {complaints.map((s) => (
+                        <li key={s} className="flex gap-2 text-sm leading-relaxed text-text-secondary">
+                          <span aria-hidden="true" className="shrink-0 text-warning">–</span>
+                          <span className="min-w-0 break-words">{s}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
           {/* Fixes */}
           {report.fixes.length > 0 ? (
             <div className="mt-10">
@@ -354,10 +539,22 @@ export function ReportView({ report, runId }: { report: GraderReport; runId: str
                     key={fix.title}
                     className="rounded-sm border border-divider bg-white p-4 md:p-5"
                   >
-                    <p className="text-sm font-semibold text-text-primary">
-                      <span className="tabular-nums text-warm-ink">{i + 1}.</span>{' '}
-                      {fix.title}
-                    </p>
+                    <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+                      <p className="min-w-0 flex-1 break-words text-sm font-semibold text-text-primary">
+                        <span className="tabular-nums text-warm-ink">{i + 1}.</span>{' '}
+                        {fix.title}
+                      </p>
+                      <span
+                        className={cn(
+                          'whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold',
+                          fix.impact === 'high'
+                            ? 'border-warm/40 bg-warm/10 text-warm-ink'
+                            : 'border-divider-strong bg-stripe-strong text-text-secondary',
+                        )}
+                      >
+                        {fix.impact === 'high' ? 'High impact' : 'Medium'}
+                      </span>
+                    </div>
                     <p className="mt-1.5 text-sm leading-relaxed text-text-secondary">
                       {fix.why}
                     </p>
@@ -424,6 +621,68 @@ export function ReportView({ report, runId }: { report: GraderReport; runId: str
                         {competitor.evidence}
                       </p>
                     ) : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {/* Head-to-head scorecard */}
+          {headToHead && hhRows.length > 0 ? (
+            <div className="mt-10">
+              <DocHeading>You vs {headToHead.competitor}</DocHeading>
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full min-w-[26rem] border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b border-divider-strong">
+                      <th className="py-2 pr-3 text-left font-semibold text-text-muted" />
+                      <th className="py-2 pr-3 text-left font-semibold text-text-primary">You</th>
+                      <th className="break-words py-2 text-left font-semibold text-text-muted">
+                        {headToHead.competitor}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {hhRows.map((row, i) => (
+                      <tr key={`${row.dimension}-${i}`} className="border-b border-divider align-top">
+                        <td className="py-2.5 pr-3 text-text-muted">{row.dimension}</td>
+                        <td
+                          className={cn(
+                            'py-2.5 pr-3',
+                            row.winner === 'you'
+                              ? 'rounded-sm bg-warm/10 font-semibold text-warm-ink'
+                              : 'text-text-secondary',
+                          )}
+                        >
+                          {row.you}
+                        </td>
+                        <td
+                          className={cn(
+                            'py-2.5',
+                            row.winner === 'them'
+                              ? 'rounded-sm bg-warm/10 font-semibold text-warm-ink'
+                              : 'text-text-secondary',
+                          )}
+                        >
+                          {row.them}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+
+          {/* Where you already win */}
+          {whereYouWin.length > 0 ? (
+            <div className="mt-10">
+              <DocHeading>Where you already win</DocHeading>
+              <ul className="mt-4 space-y-2.5">
+                {whereYouWin.map((s) => (
+                  <li key={s} className="flex gap-2.5 text-sm leading-relaxed text-text-primary">
+                    <span aria-hidden="true" className="mt-px shrink-0 font-bold text-moss">✓</span>
+                    <span className="min-w-0 break-words">{s}</span>
                   </li>
                 ))}
               </ul>
@@ -612,6 +871,60 @@ export function ReportView({ report, runId }: { report: GraderReport; runId: str
             </a>
           </div>
         </div>
+      ) : null}
+
+      {/* ── THE OFFER (the wow close, post-unlock) ────────────────────────── */}
+      {!gated ? (
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.4 }}
+          transition={{ duration: 0.45, ease: 'easeOut' }}
+          className="mt-6 overflow-hidden rounded-md p-6 text-white md:p-8"
+          style={{
+            background:
+              'linear-gradient(135deg, var(--color-warm) 0%, var(--color-warm-hover) 100%)',
+          }}
+        >
+          <p className="break-words font-display text-[clamp(1.6rem,4.5vw,2.2rem)] leading-tight">
+            We can drive people to your venue for as low as{' '}
+            <span className="whitespace-nowrap">{offerFrom}</span> per person.
+          </p>
+          <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/90 md:text-base">
+            That&rsquo;s the introductory Mingla promotion — claim your page or book a free
+            call and we&rsquo;ll show you the math for your venue.
+          </p>
+          <div className="mt-6 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+            <a
+              href={APP_GATE_HREF}
+              target="_blank"
+              rel="noopener"
+              onClick={() =>
+                captureMarketing('tool_offer_cta_click', {
+                  tool: 'venues',
+                  run_id: runId,
+                  cta: 'claim',
+                })
+              }
+              className="inline-flex min-h-11 items-center justify-center rounded-full bg-white px-6 text-sm font-semibold text-warm-ink transition hover:bg-white/90 focus-ring"
+            >
+              Claim your page &amp; get the offer
+            </a>
+            <a
+              href="mailto:seth@usemingla.com?subject=Drive%20people%20to%20my%20venue%20(Mingla%20offer)"
+              onClick={() =>
+                captureMarketing('tool_offer_cta_click', {
+                  tool: 'venues',
+                  run_id: runId,
+                  cta: 'call',
+                })
+              }
+              className="inline-flex min-h-11 items-center rounded-sm text-sm font-semibold text-white underline-offset-4 transition hover:underline focus-ring"
+            >
+              Book a free call
+            </a>
+          </div>
+        </motion.div>
       ) : null}
     </article>
   )

@@ -119,6 +119,10 @@ export function buildReportEmail(report: Record<string, unknown>): {
     `<p style="margin:0 0 10px 0;font-size:13px;line-height:1.5;color:${BRAND_MUTED};">${
       escapeHtml(text)
     }</p>`;
+  const pillBadge = (label: string): string =>
+    `<span style="display:inline-block;margin-left:8px;padding:2px 10px;border:1px solid ${BRAND_BORDER};border-radius:999px;font-size:11px;font-weight:600;color:${BRAND_MUTED};vertical-align:middle;">${
+      escapeHtml(label)
+    }</span>`;
 
   const textLines: string[] = [];
   const sections: string[] = [];
@@ -216,6 +220,54 @@ export function buildReportEmail(report: Record<string, unknown>): {
     textLines.push("");
   }
 
+  // ── Site health (ISSUE-1003 depth) — deterministic pass/warn/fail checks. ──
+  const siteSignals = asRecord(report.site_signals);
+  const checks = Array.isArray(siteSignals.checks) ? siteSignals.checks : [];
+  if (checks.length > 0) {
+    let pass = 0, warn = 0, fail = 0;
+    const rows: string[] = [];
+    const textRows: string[] = [];
+    for (const raw of checks) {
+      const c = asRecord(raw);
+      const label = asString(c.label);
+      const status = asString(c.status);
+      const detail = asString(c.detail);
+      if (!label) continue;
+      const mark = status === "pass" ? "✓" : status === "warn" ? "!" : "✗";
+      const color = status === "pass"
+        ? "#2E7D52"
+        : status === "warn"
+        ? "#B7791F"
+        : "#C0392B";
+      if (status === "pass") pass++;
+      else if (status === "warn") warn++;
+      else fail++;
+      rows.push(
+        `<tr>
+          <td style="padding:5px 10px 5px 0;font-size:15px;font-weight:700;color:${color};vertical-align:top;">${mark}</td>
+          <td style="padding:5px 0;font-size:13px;line-height:1.45;color:${BRAND_INK};vertical-align:top;"><strong>${
+          escapeHtml(label)
+        }</strong>${
+          detail ? ` — <span style="color:${BRAND_MUTED};">${escapeHtml(detail)}</span>` : ""
+        }</td>
+        </tr>`,
+      );
+      textRows.push(`${mark} ${label}${detail ? ` — ${detail}` : ""}`);
+    }
+    sections.push(h2("Site health check"));
+    sections.push(
+      muted(`${pass} passed · ${warn} warning${warn === 1 ? "" : "s"} · ${fail} failing`),
+    );
+    sections.push(
+      `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;width:100%;">${rows.join("")}</table>`,
+    );
+    textLines.push(
+      `SITE HEALTH CHECK — ${pass} passed, ${warn} warnings, ${fail} failing`,
+      ...textRows,
+      "",
+    );
+  }
+
   // ── Fixes ──
   const fixes = Array.isArray(report.fixes) ? report.fixes : [];
   if (fixes.length > 0) {
@@ -227,11 +279,12 @@ export function buildReportEmail(report: Record<string, unknown>): {
       const why = asString(fix.why);
       const change = asString(fix.change);
       if (!title) continue;
+      const impactLabel = fix.impact === "high" ? "High impact" : "";
       sections.push(
         `<div style="margin:0 0 14px 0;padding:12px 14px;border:1px solid ${BRAND_BORDER};border-radius:10px;">
           <p style="margin:0 0 4px 0;font-size:14px;font-weight:700;color:${BRAND_INK};">${
           escapeHtml(title)
-        }</p>
+        }${impactLabel ? pillBadge(impactLabel) : ""}</p>
           ${
           why
             ? `<p style="margin:0 0 4px 0;font-size:13px;line-height:1.5;color:${BRAND_MUTED};">${
@@ -255,16 +308,50 @@ export function buildReportEmail(report: Record<string, unknown>): {
     textLines.push("");
   }
 
+  // ── What your customers say (ISSUE-1003) — real review themes. ──
+  const reviewThemes = asRecord(report.review_themes);
+  const praise = asStringArray(reviewThemes.praise);
+  const complaints = asStringArray(reviewThemes.complaints);
+  if (praise.length > 0 || complaints.length > 0) {
+    sections.push(h2("What your customers say"));
+    textLines.push("WHAT YOUR CUSTOMERS SAY");
+    if (praise.length > 0) {
+      sections.push(p("People love:"));
+      sections.push(
+        `<ul style="margin:0 0 10px 0;padding:0 0 0 18px;">${
+          praise.map((s) =>
+            `<li style="margin:0 0 4px 0;font-size:14px;line-height:1.5;color:${BRAND_INK};">${
+              escapeHtml(s)
+            }</li>`
+          ).join("")
+        }</ul>`,
+      );
+      textLines.push("People love:");
+      for (const s of praise) textLines.push(`  + ${s}`);
+    }
+    if (complaints.length > 0) {
+      sections.push(p("What comes up as a gripe:"));
+      sections.push(
+        `<ul style="margin:0 0 10px 0;padding:0 0 0 18px;">${
+          complaints.map((s) =>
+            `<li style="margin:0 0 4px 0;font-size:14px;line-height:1.5;color:${BRAND_MUTED};">${
+              escapeHtml(s)
+            }</li>`
+          ).join("")
+        }</ul>`,
+      );
+      textLines.push("What comes up as a gripe:");
+      for (const s of complaints) textLines.push(`  - ${s}`);
+    }
+    textLines.push("");
+  }
+
   // ── Competition (ISSUE-1003) — skipped cleanly when the report has none. ──
   const competition = asRecord(report.competition);
   const competitors = Array.isArray(competition.competitors)
     ? competition.competitors
     : [];
   const rankRead = asString(competition.your_rank_read);
-  const pillBadge = (label: string): string =>
-    `<span style="display:inline-block;margin-left:8px;padding:2px 10px;border:1px solid ${BRAND_BORDER};border-radius:999px;font-size:11px;font-weight:600;color:${BRAND_MUTED};vertical-align:middle;">${
-      escapeHtml(label)
-    }</span>`;
   if (competitors.length > 0) {
     sections.push(h2("Who's eating your Friday nights"));
     textLines.push("WHO'S EATING YOUR FRIDAY NIGHTS");
@@ -303,6 +390,60 @@ export function buildReportEmail(report: Record<string, unknown>): {
       );
       for (const b of better) textLines.push(`  - ${b}`);
     }
+    textLines.push("");
+  }
+
+  // ── Head-to-head scorecard (ISSUE-1003) ──
+  const headToHead = asRecord(report.head_to_head);
+  const hhRows = Array.isArray(headToHead.rows) ? headToHead.rows : [];
+  const hhCompetitor = asString(headToHead.competitor);
+  if (hhRows.length > 0 && hhCompetitor) {
+    sections.push(h2(`You vs ${hhCompetitor}`));
+    textLines.push(`YOU VS ${hhCompetitor.toUpperCase()}`);
+    const trs: string[] = [
+      `<tr>
+        <td style="padding:6px 12px 6px 0;font-size:12px;color:${BRAND_MUTED};font-weight:600;"></td>
+        <td style="padding:6px 12px 6px 0;font-size:12px;color:${BRAND_INK};font-weight:700;">You</td>
+        <td style="padding:6px 0;font-size:12px;color:${BRAND_MUTED};font-weight:700;">${escapeHtml(hhCompetitor)}</td>
+      </tr>`,
+    ];
+    for (const raw of hhRows) {
+      const r = asRecord(raw);
+      const dim = asString(r.dimension);
+      const you = asString(r.you);
+      const them = asString(r.them);
+      const winner = asString(r.winner);
+      if (!dim) continue;
+      const youWeight = winner === "you" ? "700" : "400";
+      const themWeight = winner === "them" ? "700" : "400";
+      trs.push(
+        `<tr>
+          <td style="padding:6px 12px 6px 0;font-size:13px;color:${BRAND_MUTED};vertical-align:top;">${escapeHtml(dim)}</td>
+          <td style="padding:6px 12px 6px 0;font-size:13px;color:${BRAND_INK};font-weight:${youWeight};vertical-align:top;">${escapeHtml(you)}</td>
+          <td style="padding:6px 0;font-size:13px;color:${BRAND_INK};font-weight:${themWeight};vertical-align:top;">${escapeHtml(them)}</td>
+        </tr>`,
+      );
+      textLines.push(`${dim}: you — ${you} | ${hhCompetitor} — ${them}${winner === "you" ? " (you win)" : winner === "them" ? " (they win)" : ""}`);
+    }
+    sections.push(
+      `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;width:100%;">${trs.join("")}</table>`,
+    );
+    textLines.push("");
+  }
+
+  // ── Where you already win (ISSUE-1003) ──
+  const whereYouWin = asStringArray(report.where_you_win);
+  if (whereYouWin.length > 0) {
+    sections.push(h2("Where you already win"));
+    textLines.push("WHERE YOU ALREADY WIN");
+    sections.push(
+      `<ul style="margin:0 0 10px 0;padding:0 0 0 18px;">${
+        whereYouWin.map((s) =>
+          `<li style="margin:0 0 4px 0;font-size:14px;line-height:1.5;color:${BRAND_INK};">${escapeHtml(s)}</li>`
+        ).join("")
+      }</ul>`,
+    );
+    for (const s of whereYouWin) textLines.push(`+ ${s}`);
     textLines.push("");
   }
 
@@ -362,6 +503,19 @@ export function buildReportEmail(report: Record<string, unknown>): {
     }
     textLines.push("");
   }
+
+  // ── The offer (ISSUE-1003) — the wow close. ──
+  sections.push(
+    `<div style="margin:26px 0 6px 0;padding:18px 20px;border-radius:14px;background:${BRAND_ORANGE_BUTTON};">
+      <p style="margin:0 0 4px 0;font-size:18px;line-height:1.3;color:#FFFFFF;font-weight:700;">We can drive people to your venue for as low as $3.99 per person.</p>
+      <p style="margin:0;font-size:13px;line-height:1.5;color:#FFF3EA;">That's the introductory Mingla promotion — claim your page or book a free call and we'll show you the math.</p>
+    </div>`,
+  );
+  textLines.push(
+    "WE CAN DRIVE PEOPLE TO YOUR VENUE FROM $3.99 PER PERSON.",
+    "That's the introductory Mingla promotion — claim your page or book a free call and we'll show you the math.",
+    "",
+  );
 
   // ── Footer CTA ──
   sections.push(

@@ -70,10 +70,12 @@ const FIELD_INPUT =
 
 const THEATER_LINES = [
   'Taking a look at your site',
+  'Running 11 automated site-health checks',
   'Reading your menu like a first-timer',
   'Checking how you look on a Friday night',
-  'Grading findability, mobile, occasion signal',
+  'Ranking you against every venue in your city',
   'Sizing up your competition',
+  'Building your head-to-head scorecard',
   'Writing your fixes',
 ] as const
 

@@ -42,6 +42,36 @@ export interface GraderFix {
   title: string
   why: string
   change: string
+  impact?: 'high' | 'medium'
+}
+
+// ─── Depth fields (all optional — hide gracefully when absent) ──────────────
+
+export type SignalStatus = 'pass' | 'warn' | 'fail'
+export interface SiteSignal {
+  key: string
+  label: string
+  status: SignalStatus
+  detail?: string
+}
+export interface GraderPercentile {
+  city: string
+  better_than_pct: number
+  sample: number
+}
+export interface GraderReviewThemes {
+  praise: string[]
+  complaints: string[]
+}
+export interface GraderHeadToHeadRow {
+  dimension: string
+  you: string
+  them: string
+  winner: 'you' | 'them' | 'tie'
+}
+export interface GraderHeadToHead {
+  competitor: string
+  rows: GraderHeadToHeadRow[]
 }
 
 // ─── Competition (optional on the report — may be absent) ───────────────────
@@ -84,6 +114,8 @@ export interface GraderReport {
     photo_urls?: string[]
   }
   screenshot: { og_image_url?: string }
+  site_signals?: { checks: SiteSignal[] }
+  percentile?: GraderPercentile
   vibe_card: {
     vibes: string[]
     occasions: string[]
@@ -95,6 +127,10 @@ export interface GraderReport {
   rewritten_hero: { before_excerpt: string; after_copy: string }
   ai_read: string
   competition?: GraderCompetition
+  review_themes?: GraderReviewThemes
+  head_to_head?: GraderHeadToHead
+  where_you_win?: string[]
+  offer?: { per_person_from: string }
   meta?: { fetch_failed?: boolean; competition_source?: GraderCompetitionSource }
 }
 
