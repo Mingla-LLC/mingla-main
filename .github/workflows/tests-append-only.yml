@@ -51,6 +51,13 @@ jobs:
       - name: Run append-only check
         run: node .github/scripts/test-append-only-check.js
 
+      # issue #1058 — regression guard for the gate itself. Exercises the
+      # two-arm git-scenario self-test (T1 false-red fixed, T2 false-green
+      # closed) plus the token-grammar regex cases. A regression test no
+      # workflow runs is worthless — this wires it into CI.
+      - name: Append-only gate self-test (regression guard)
+        run: node .github/scripts/test-append-only-check.js --self-test
+
       # ORCH-1383 — MANIFEST.json ratchet (I-PROPOSED-1383-NO-SILENT-SHRINK).
       #
       # This lives HERE, in a DIFFERENT workflow from the parity gate it protects, on

@@ -7,6 +7,18 @@
 
 ---
 
+## DRAFT — issue #1058 (append-only gate honors the [TEST-MOD-APPROVED …] token across the whole PR range, per-file — IN FLIGHT, registered at IMPLEMENT 2026-07-21)
+
+> Registered DRAFT at issue #1058 SPEC/IMPLEMENT. The `tests-append-only.yml` gate diffs test-file changes across the whole PR range (three-dot `base...HEAD`) but PRE-FIX read the `[TEST-MOD-APPROVED …]`/`[TEST-RENAME-APPROVED …]` token from only the tip commit (`git log -1`), stored as two branch-wide global booleans. That single line caused two real bugs (both proven in the #1058 investigation): F-1 false-red — an approved test change plus any later commit (even docs) shifted the token off the tip and re-red the already-sanctioned change (hit 3× that session); and F-2 false-green — a tip token sanctioning `a.test.ts` also authorized UNSANCTIONED assertion-gutting in an unrelated `b.test.ts` from an earlier commit, and this gate is the SOLE guard for ordinary test-file integrity. Fix: replace the tip-only global-boolean scan with per-file attribution (`fileHasToken`) — for each changed test file, the token must appear in a PR-range commit (`git log base..HEAD -- <path>`) that actually touched that file. Whole-file deletion (status D) stays unconditionally blocked. Folds in two robustness fixes (regex `\d{4}`→`\d{4,}`; `(?:META-)?` added to the rename token). The orchestrator flips DRAFT → ACTIVE at CLOSE. Cross-ref: SPEC + implementation report on issue #1058.
+
+### I-PROPOSED-1058-APPEND-ONLY-TOKEN-WHOLE-RANGE (DRAFT — issue #1058 IMPLEMENT 2026-07-21)
+- **Rule:** the append-only gate honors a `[TEST-MOD-APPROVED …]`/`[TEST-RENAME-APPROVED …]` token wherever its commit sits in the PR range, and a token authorizes only the test file(s) touched by the commit that carries it — never the whole branch. Whole-file test deletion remains unconditionally blocked (no token overrides a status-D deletion). Accepted, bounded residual: a single commit's token blesses every test file that same commit deletes from (a human attestation on the bundled commit) — closing even this would require the token to name the exact file (a grammar change), explicitly out of scope.
+- **Enforcement:** the two-arm git-scenario `--self-test` in `.github/scripts/test-append-only-check.js` (T1 false-red fixed, T2 false-green closed) plus the token-grammar regex cases, wired as the `Append-only gate self-test (regression guard)` step in `.github/workflows/tests-append-only.yml`.
+- **Regression test:** fails-on-revert — reverting the per-file `fileHasToken` attribution back to the tip-only global boolean flips SC-1 red (the docs-tip commit hides the token again → false-red returns) AND SC-2 green (the tip token re-authorizes `b.test.ts` → false-green returns). Both flips proven at IMPLEMENT. Append-only.
+- **Established:** DRAFT 2026-07-21 at issue #1058 SPEC/IMPLEMENT. Flips ACTIVE at CLOSE (orchestrator).
+
+---
+
 ## ACTIVE — issue #1044 (native Google/Apple sign-in failures report to Sentry, excluding normal user behaviour — CLOSED 2026-07-21, PR #1046)
 
 > Registered DRAFT at issue #1044 SPEC (as `I-PROPOSED-1044-AUTH-FAILURE-REPORTED`); no prior registry entry existed, so it is inserted ACTIVE at CLOSE. Root cause of the motivating outage (#1038): every native sign-in catch block caught the error, showed an Alert, and discarded it — a 90-day Sentry search for `DEVELOPER_ERROR` returned zero events while Google sign-in was broken for every Play-Store organizer for months. Tester PASS with runtime proof on a physical Samsung (Android 14) Business dev-client: 3 real picker cancels = 0 events, positive-control `DEVELOPER_ERROR` = exactly 1 event.
