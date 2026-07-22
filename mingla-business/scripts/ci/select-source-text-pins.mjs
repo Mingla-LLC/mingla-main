@@ -346,4 +346,12 @@ function main() {
   if (argv.includes("--check")) process.exit(0);
 }
 
-main();
+// Auto-run ONLY when executed directly as a CLI (`node select-source-text-pins.mjs …`,
+// including the spawnSync in i-proposed-1047-biz-no-sole-source-pin.mjs) — NOT when
+// imported for its `classifyFile`/`assertNoNewSourcePin` exports (e.g. by the tester's
+// orch-1047 anti-quarantine gate), so importing has no side effects. `fileURLToPath`
+// DECODES any %5B/%5D in a bracketed worktree path (#1047 D-1047), so this comparison
+// is robust to the worktree-name fileURLToPath footgun.
+const invokedDirectly =
+  Boolean(process.argv[1]) && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+if (invokedDirectly) main();

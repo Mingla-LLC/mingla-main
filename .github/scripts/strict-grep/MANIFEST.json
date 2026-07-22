@@ -15,7 +15,7 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 422,
+  "expectedStrictGrepMjsFiles": 423,
   "selfTestWiredFloor": 193,
   "unenforcedCap": 7,
   "fixtureCap": 10,
@@ -6037,6 +6037,19 @@
       "selfTest": "none",
       "jobKeys": [
         "i-proposed-1047-biz-no-sole-source-pin"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/orch-1047-quarantine-list-is-source-pins-only.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1047-quarantine-list-is-source-pins-only"
       ]
     }
   ]
