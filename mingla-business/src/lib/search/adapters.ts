@@ -46,6 +46,10 @@ function iconForOffering(type: SearchResultType): SearchIndexEntry["iconName"] {
       return "compass";
     case "experience":
       return "sparkle";
+    case "rsvp":
+      // RSVP offerings share the event/calendar icon (matches the prior
+      // `default` behavior — no runtime change; now handled explicitly).
+      return "calendar";
     default:
       return "calendar";
   }

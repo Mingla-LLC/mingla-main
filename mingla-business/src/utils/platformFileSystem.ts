@@ -6,7 +6,24 @@ export const getFileInfoAsync = async (
   _uri: string,
 ): Promise<{ exists?: boolean; size?: unknown }> => ({ exists: false });
 
-export const createMultipartUploadTask = async (): Promise<{
+// Signature mirrors platformFileSystem.native.ts so the platform-split module
+// contract agrees under tsc (which resolves this web variant). The args are
+// intentionally ignored — web never runs the native multipart task; it uses the
+// TUS/XHR path in the processing service. Underscore-prefixed = deliberate no-op.
+export const createMultipartUploadTask = async (
+  _url: string,
+  _fileUri: string,
+  _options: {
+    fieldName: string;
+    httpMethod: string;
+    mimeType: string;
+    parameters: Record<string, string>;
+  },
+  _onProgress: (event: {
+    totalBytesSent: number;
+    totalBytesExpectedToSend: number;
+  }) => void,
+): Promise<{
   uploadAsync: () => Promise<unknown>;
   cancelAsync?: () => Promise<void>;
 }> => ({
