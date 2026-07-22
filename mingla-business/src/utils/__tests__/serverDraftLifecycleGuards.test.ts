@@ -72,8 +72,12 @@ describe("server-backed draft lifecycle guards", () => {
     const source = repoFile("src/hooks/useServerDraftEvents.ts");
 
     expect(source).toContain("serverLegacyIds.has(draft.id)");
-    expect(source).toContain("migratingIdsRef.current.has(draft.id)");
-    expect(source).toContain("replaceDraft(draft.id, serverDraft)");
+    // #1062 [biz-jest-residual-burndown] Wave 2 / B1 [TEST-MOD-APPROVED ORCH-1062]:
+    // dropped 2 drifted source pins — the in-flight guard (migratingIdsRef) and the
+    // field merge (`replaceDraft(draft.id, serverDraft)`) moved into
+    // promoteLegacyDraftOnce / mergeLiveDraftIntoServerDraft (src/utils/draftPromotion.ts).
+    // The idempotency + merge behavior is covered behaviorally by
+    // draftPromotion.orch0976 (single-flight registry + `...liveDraft` spread merge).
     expect(source).toContain("brandId !== null && isAuthReady");
     expect(source).toContain("isBusinessAuthNotReadyError(error)");
   });
@@ -158,7 +162,8 @@ describe("server-backed draft lifecycle guards", () => {
     expect(editSource).toContain("staleRecoveryDraftIdRef.current === idParam");
 
     expect(previewStaleBlock).toContain("staleRecoveryDraftIdRef.current = draft.id");
-    expect(previewStaleBlock).toContain("router.replace(\"/(tabs)/events\" as never)");
+    // #1062 Wave 2 / B2 — the organiser events surface moved to /(tabs)/hub/events.
+    expect(previewStaleBlock).toContain("router.replace(\"/(tabs)/hub/events\" as never)");
     expect(previewStaleBlock).not.toContain("setTimeout");
     expect(previewStaleBlock).not.toContain("clearTimeout");
     expect(previewSource).toContain("staleRecoveryDraftIdRef.current === idParam");
@@ -201,7 +206,7 @@ describe("server-backed draft lifecycle guards", () => {
   });
 
   test("draft delete UI handles local-only drafts, server pending state, and visible errors", () => {
-    const eventsSource = repoFile("app/(tabs)/events.tsx");
+    const eventsSource = repoFile("app/(tabs)/hub/events.tsx");
     const dialogSource = repoFile("src/components/ui/ConfirmDialog.tsx");
     const editSource = repoFile("app/event/[id]/edit.tsx");
     const wizardSource = repoFile("src/components/event/EventCreatorWizard.tsx");
@@ -232,12 +237,14 @@ describe("server-backed draft lifecycle guards", () => {
   });
 
   test("new organiser surfaces read published events from server-backed hooks", () => {
-    const homeSource = repoFile("app/(tabs)/home.tsx");
-    const eventsSource = repoFile("app/(tabs)/events.tsx");
+    // #1062 Wave 2 / B1 — dropped the home.tsx pin: ORCH-1038 moved the events
+    // list off the Home tab (now the smart to-do toggle + a push to
+    // /(tabs)/hub/events), so home.tsx no longer reads useBusinessEventsForBrand.
+    // The server-backed-events-hook coverage is the hub/events.tsx assertion below.
+    const eventsSource = repoFile("app/(tabs)/hub/events.tsx");
     const detailSource = repoFile("app/event/[id]/index.tsx");
     const editSource = repoFile("app/event/[id]/edit.tsx");
 
-    expect(homeSource).toContain("useBusinessEventsForBrand");
     expect(eventsSource).toContain("useBusinessEventsForBrand");
     expect(detailSource).toContain("useManagedEventRoute");
     expect(editSource).toContain("useBusinessEventById");
@@ -269,7 +276,7 @@ describe("server-backed draft lifecycle guards", () => {
 
   test("server-backed event lifecycle actions use server RPC hooks", () => {
     const detailSource = repoFile("app/event/[id]/index.tsx");
-    const eventsSource = repoFile("app/(tabs)/events.tsx");
+    const eventsSource = repoFile("app/(tabs)/hub/events.tsx");
     const menuSource = repoFile("src/components/event/EventManageMenu.tsx");
 
     expect(menuSource).toContain("canUseLifecycleActions");
@@ -363,12 +370,11 @@ describe("server-backed draft lifecycle guards", () => {
 
     expect(source).toContain("isCoverMediaOnlyPatch");
     expect(source).toContain("canSaveServerCoverMediaOnly");
-    expect(source).toContain(
-      "disableLocalSaveReason !== undefined && !isCoverMediaOnlyPatch(patch)",
-    );
-    expect(source).toContain(
-      "disableLocalSaveReason !== undefined && isCoverMediaOnlyPatch(patch)",
-    );
+    // #1062 Wave 2 / B1 — dropped 2 drifted disableLocalSaveReason source pins: the
+    // guard was reformatted (now multi-line via `canSaveServerCoverMediaOnly`;
+    // EditPublishedScreen.tsx:482-483/518/1599). The cover-media-only-bypass behavior
+    // stays covered by the `canSaveServerCoverMediaOnly` + `isCoverMediaOnlyPatch`
+    // assertions above and the EditPublishedTripScreen.save render-proof.
     expect(source).toContain("invalidateServerEventCaches");
     expect(source).toContain("businessEventKeys.detail(liveEvent.id)");
     expect(source).toContain("publicEventKeys.detailBySlug(");
