@@ -14,27 +14,23 @@ name: Framework Major Guard
 # to avoid registration collisions with in-flight ORCH branches editing that
 # file.
 #
-# NOTE for branch protection: this workflow is paths-filtered, so only PRs
-# touching a manifest/lockfile (or the guard itself) run it. If it is ever
-# marked a REQUIRED check, the paths filter must be removed (a skipped
-# required check hangs the merge).
+# NOTE for branch protection (issue #1051): the pull_request trigger's paths
+# filter has been REMOVED so this job runs on EVERY PR targeting main — a
+# prerequisite for making it a REQUIRED status check. A paths-gated required
+# check never reports on the PRs that miss the paths, and a required check that
+# never reports HANGS the merge button forever. The required-check context to
+# bind in the ruleset is the short, stable job name below: "Framework Major
+# Guard" (the job's `name:`). Do NOT re-add a pull_request paths filter. Running
+# on every PR is cheap and correct: the guard reads the four package.json /
+# lockfiles directly with NO `npm install`, and passes whenever no
+# framework-family major is present. The push trigger stays paths-filtered —
+# post-merge runs need not fire on unrelated pushes to main.
 
 on:
+  # No `paths:` filter here on purpose (issue #1051): this job must run on EVERY
+  # PR to main so it can be a REQUIRED status check that always reports.
   pull_request:
     branches: [main]
-    paths:
-      - "app-mobile/package.json"
-      - "app-mobile/package-lock.json"
-      - "mingla-business/package.json"
-      - "mingla-business/package-lock.json"
-      - "mingla-admin/package.json"
-      - "mingla-admin/package-lock.json"
-      - "mingla-marketing/package.json"
-      - "mingla-marketing/package-lock.json"
-      - ".github/scripts/strict-grep/orch-1386-framework-major-guard.mjs"
-      - ".github/scripts/strict-grep/orch-1386-framework-major-guard.test.mjs"
-      - ".github/scripts/strict-grep/orch-1386-framework-major-registry.json"
-      - ".github/workflows/framework-major-guard.yml"
   push:
     branches: [main]
     paths:
@@ -52,8 +48,22 @@ on:
       - ".github/workflows/framework-major-guard.yml"
 
 jobs:
+  # Job `name:` is deliberately SHORT and STABLE ("Framework Major Guard") so it
+  # can be bound as a ruleset required-status-check context (issue #1051) — a
+  # long/edited name silently unbinds the required check. What this job enforces
+  # (the description that used to live in the `name:` field):
+  #   Framework-family majors (expo, @expo/*, react-native, @react-native/*,
+  #   react, react-dom, next, vite, metro*) are registry-pinned across all four
+  #   apps — manifest AND lockfile-resolved (the #925 transitive disguise) — plus
+  #   the expo<->react-native pairing must be a supported SDK pairing and both
+  #   mobile apps must share the same expo major. Majors move ONLY via a
+  #   deliberate upgrade PR that regenerates
+  #   orch-1386-framework-major-registry.json.
+  #   Invariant: I-PROPOSED-1386-FRAMEWORK-MAJOR-GUARD.
+  # The job KEY (`orch-1386-framework-major-guard`) is unchanged — MANIFEST.json
+  # jobKeys + the meta-1383 parity gate key off it, not off `name:`.
   orch-1386-framework-major-guard:
-    name: "ORCH-1386: framework-family majors (expo, @expo/*, react-native, @react-native/*, react, react-dom, next, vite, metro*) are registry-pinned across all four apps — manifest AND lockfile-resolved (the #925 transitive disguise) — plus expo↔react-native pairing must be a supported SDK pairing and both mobile apps must share the same expo major. Majors move ONLY via a deliberate upgrade PR that regenerates orch-1386-framework-major-registry.json (I-PROPOSED-1386-FRAMEWORK-MAJOR-GUARD)"
+    name: Framework Major Guard
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
