@@ -51,6 +51,15 @@ const WORKFLOW_PATH = path.join(
   "workflows",
   "strict-grep-mingla-business.yml",
 );
+// [ORCH-1062] ORCH-1383/1399 moved per-gate enforcement from workflow jobs into
+// the MANIFEST batch (run-batch.mjs). The gate's enforcement wiring now lives here.
+const MANIFEST_PATH = path.join(
+  REPO_ROOT,
+  ".github",
+  "scripts",
+  "strict-grep",
+  "MANIFEST.json",
+);
 const EVENT_INDEX_PATH = path.join(
   BUSINESS_ROOT,
   "app",
@@ -76,39 +85,55 @@ describe("ORCH-1136 R2 — adversarial: no dangling old invariant + DIAG Const#1
     expect(src).toContain(NEW_NAME);
   });
 
-  // ---- (A2) the workflow job ENFORCES the new invariant, not the old --------
-  test("A2 — the ORCH-1136 workflow job name references the new invariant, never the old", () => {
-    const wf = fs.readFileSync(WORKFLOW_PATH, "utf8");
-    // Isolate the orch-1136 job block (up to the next top-level job key).
-    const jobStart = wf.indexOf("orch-1136-biz-web-shell-bugs:");
-    expect(jobStart).toBeGreaterThan(0);
-    const after = wf.slice(jobStart);
-    const nextJob = after.slice(1).search(/\n {2}[a-z0-9-]+:\n/);
-    const jobBlock = nextJob >= 0 ? after.slice(0, nextJob + 1) : after;
-    expect(jobBlock).toContain(NEW_NAME);
-    expect(jobBlock.includes(OLD_NAME)).toBe(false);
-    // The sibling breathing-gap step must still be present (untouched).
-    expect(jobBlock).toContain("i-proposed-web-topbar-breathing-gap.mjs");
+  // ---- (A2) the gate's ENFORCEMENT (MANIFEST batch) carries the new name -----
+  test("A2 — the ORCH-1136 gate enforcement (MANIFEST batch) references the new invariant, never the old", () => {
+    // [ORCH-1062 drift-update] ORCH-1383/1399 consolidated the per-gate
+    // strict-grep workflow JOBS into MANIFEST.json + run-batch.mjs — the
+    // workflow header now states "The gate list is NOT in this file any more".
+    // The dedicated `orch-1136-biz-web-shell-bugs:` job no longer exists;
+    // enforcement is the MANIFEST entry that runs the gate .mjs under a batch.
+    // Re-point SC-6 to the current enforcement path: (a) the gate is wired via
+    // MANIFEST under the orch-1136 jobKey, and (b) the gate's own enforcement
+    // OUTPUT names ONLY the new invariant (the old name may survive only in a
+    // descriptive "Supersedes" comment, which is allowed per SC-6).
+    const manifest = fs.readFileSync(MANIFEST_PATH, "utf8");
+    expect(manifest).toContain('"orch-1136-biz-web-shell-bugs"');
+    expect(manifest).toContain("i-proposed-topsheet-web-viewport-anchor.mjs");
+    // The sibling breathing-gap gate must still be wired.
+    expect(manifest).toContain("i-proposed-web-topbar-breathing-gap.mjs");
+    // The gate's ENFORCEMENT output (console / OK[ / FAIL[ labels) names only
+    // the NEW invariant — no dangling old-name enforcement path.
+    const gate = fs.readFileSync(GATE_PATH, "utf8");
+    const enforcementLines = gate
+      .split("\n")
+      .filter((l) => /console\.(log|error)|\bOK \[|\bFAIL \[/.test(l));
+    expect(enforcementLines.some((l) => l.includes(NEW_NAME))).toBe(true);
+    expect(enforcementLines.some((l) => l.includes(OLD_NAME))).toBe(false);
   });
 
-  // ---- (B1) DIAG toast is forced VISIBLE inside a Platform.OS web fence -----
-  test("B1 — event ⋯ DIAG forces a web-visible toast inside a Platform.OS==='web' fence", () => {
+  // ---- (B1) manage tap forces a VISIBLE toast when brand is unresolved ------
+  test("B1 — event ⋯ handleManageOpen forces a web-visible toast when brand is unresolved (never-silent Const#1)", () => {
+    // [ORCH-1062 pin-fix] The `[ORCH-1136-DIAG]` instrument was REAPED at CLOSE
+    // (DIAG markers are scoped + orchestrator-reaped). The never-silent Const#1
+    // contract it probed survives in the REAL handleManageOpen (its own comment:
+    // "ORCH-1136 F-2: never a silent dead tap (Const #1)"): brand===null forces
+    // `setToast({ visible: true, ... })`. Assert the surviving real enforcement.
     const src = fs.readFileSync(EVENT_INDEX_PATH, "utf8");
-    const diagStart = src.indexOf("[ORCH-1136-DIAG]");
-    const diagEnd = src.indexOf("[ORCH-1136-DIAG END]");
-    expect(diagStart).toBeGreaterThan(0);
-    expect(diagEnd).toBeGreaterThan(diagStart);
-    const diagBlock = src.slice(diagStart, diagEnd);
-    // (1) web-fenced — native control flow byte-identical.
-    expect(diagBlock).toMatch(/Platform\.OS\s*===\s*["']web["']/);
-    // (2) forces a VISIBLE toast (the never-silent-on-web guarantee).
-    expect(diagBlock).toMatch(/setToast\(\s*\{[\s\S]*?visible:\s*true/);
-    // (3) the DIAG toast message is the discriminator copy.
-    expect(diagBlock).toContain("[DIAG] ⋯ tapped — brand=");
+    const handlerStart = src.indexOf("const handleManageOpen = useCallback");
+    expect(handlerStart).toBeGreaterThan(0);
+    const handlerEnd = src.indexOf("const handleManageClose", handlerStart);
+    expect(handlerEnd).toBeGreaterThan(handlerStart);
+    const body = src.slice(handlerStart, handlerEnd);
+    const nullBranchIdx = body.indexOf("if (brand === null)");
+    expect(nullBranchIdx).toBeGreaterThan(0);
+    const nullBranch = body.slice(nullBranchIdx);
+    // forces a VISIBLE toast (the never-silent guarantee).
+    expect(nullBranch).toMatch(/setToast\(\s*\{[\s\S]*?visible:\s*true/);
+    expect(nullBranch).toContain("Loading brand…");
   });
 
   // ---- (B2) the handler has NO silent path: every branch produces UI --------
-  test("B2 — handleManageOpen on web always surfaces UI (DIAG toast precedes the real branch, real branch also toasts/opens)", () => {
+  test("B2 — handleManageOpen always surfaces UI (every branch toasts/opens, no silent path)", () => {
     const src = fs.readFileSync(EVENT_INDEX_PATH, "utf8");
     // Extract the handleManageOpen body.
     const handlerStart = src.indexOf("const handleManageOpen = useCallback");
@@ -117,13 +142,11 @@ describe("ORCH-1136 R2 — adversarial: no dangling old invariant + DIAG Const#1
     expect(handlerEnd).toBeGreaterThan(handlerStart);
     const body = src.slice(handlerStart, handlerEnd);
 
-    // The web DIAG block (forced visible toast) precedes the real brand check.
-    const diagIdx = body.indexOf("[ORCH-1136-DIAG]");
-    const brandNullBranchIdx = body.indexOf("if (brand === null)");
-    expect(diagIdx).toBeGreaterThan(0);
-    expect(brandNullBranchIdx).toBeGreaterThan(diagIdx);
-
+    // [ORCH-1062 pin-fix] Removed the reaped-`[ORCH-1136-DIAG]`-ordering
+    // assertions; the never-silent contract is enforced by the real branches.
     // The real brand===null branch surfaces a visible toast (never silent)…
+    const brandNullBranchIdx = body.indexOf("if (brand === null)");
+    expect(brandNullBranchIdx).toBeGreaterThan(0);
     const nullBranch = body.slice(brandNullBranchIdx);
     expect(nullBranch).toContain("Loading brand…");
     // …and the resolved-brand path opens the menu.
