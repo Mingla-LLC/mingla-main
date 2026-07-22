@@ -35,8 +35,17 @@ export async function launchGalleryImagePicker(
     selectionLimit: remainingSlots,
     quality: 0.7,
   });
+  // #1063: expo-image-picker v17 resolves `{ canceled: true, assets: null }` when
+  // the operator dismisses the native picker. Guard the cancel BEFORE `.map()` —
+  // an unguarded `null.map()` throws, which venueGalleryService catches and
+  // surfaces as a false "Couldn't open photos. Try again." toast on every cancel.
+  // On cancel return silently (no toast, no throw): venueGalleryService reads
+  // `canceled` and returns [] (its intended silent-cancel path).
+  if (result.canceled) {
+    return { canceled: true, assets: [] };
+  }
   return {
-    canceled: result.canceled,
+    canceled: false,
     assets: result.assets.map((asset) => ({
       uri: asset.uri,
       mimeType: asset.mimeType ?? null,
