@@ -16,11 +16,20 @@ import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 const mockFrom = jest.fn();
 
 jest.mock("../supabase", () => ({
-  supabase: { from: (...args: unknown[]) => mockFrom(...args) },
+  supabase: {
+    from: (...args: unknown[]) => mockFrom(...args),
+    // #1062 [biz-jest-residual-burndown] Wave 1 / B3c [TEST-MOD-APPROVED ORCH-1062] —
+    // getBrands precheck-reads supabase.auth.getSession() (META-ORCH-1232/1235) and
+    // throws without a session, so the mock needs `auth`. Sourced from the shared
+    // supabaseMock (defaults signed-in). Plumbing only.
+    auth: require("./__helpers__/supabaseMock").createSupabaseAuthMock(),
+  },
 }));
 jest.mock("../appsFlyerService", () => ({ logAppsFlyerEvent: jest.fn() }));
 
 import { getBrands, HUB_VISIBLE_EVENT_STATUSES } from "../brandsService";
+// #1062 [biz-jest-residual-burndown] Wave 1 / B3c — shared chainable supabase mock.
+import { createChainableQuery } from "./__helpers__/supabaseMock";
 import type { BrandRow } from "../brandMapping";
 
 const brandRow = (id: string, name: string): BrandRow =>
@@ -60,17 +69,6 @@ interface AnyBuilder {
   not: jest.Mock;
 }
 
-const brandsBuilder = (data: BrandRow[]): AnyBuilder => {
-  const b = {} as AnyBuilder;
-  b.select = jest.fn(() => b);
-  b.eq = jest.fn(() => b);
-  b.is = jest.fn(() => b);
-  b.in = jest.fn(() => b);
-  b.not = jest.fn(() => b);
-  b.order = jest.fn(() => Promise.resolve({ data, error: null }));
-  return b;
-};
-
 const eventsBuilder = (
   data: { brand_id: string | null }[],
 ): AnyBuilder => {
@@ -105,7 +103,14 @@ describe("ORCH-1062 — brand event-count badge excludes drafts (hub parity)", (
   test("getEventCountsByBrandIds filters events to hub-visible statuses only", async () => {
     const eventsQ = eventsBuilder([{ brand_id: "brand-1" }]);
     mockFrom.mockImplementation((table: unknown) => {
-      if (table === "brands") return brandsBuilder([brandRow("brand-1", "One")]);
+      // #1062 [biz-jest-residual-burndown] Wave 1 / B3c [TEST-MOD-APPROVED ORCH-1062] —
+      // getBrands sources the list from brand_team_members (empty here) + the
+      // META-ORCH-1232 H2 owner-union backstop from("brands"); route both to the shared
+      // chainable mock (thenable, resolves the .select.eq.is chain the owner-union ends
+      // on) so the brand surfaces via the owner-union. Event-count assertions unchanged.
+      if (table === "brand_team_members") return createChainableQuery({ data: [] });
+      if (table === "brands")
+        return createChainableQuery({ data: [brandRow("brand-1", "One")] });
       if (table === "events") return eventsQ;
       if (table === "orders") return ordersBuilder();
       throw new Error(`unexpected table ${String(table)}`);

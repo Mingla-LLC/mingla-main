@@ -27,6 +27,8 @@ jest.mock("../supabase", () => ({
 }));
 
 import { updateTripPricing } from "../tripsService";
+// #1062 [biz-jest-residual-burndown] Wave 1 / B3c — shared chainable supabase mock.
+import { createChainableQuery } from "./__helpers__/supabaseMock";
 
 beforeEach(() => {
   fromMock.mockReset();
@@ -46,21 +48,23 @@ describe("ORCH-0859 REWORK 2 — updateTripPricing currency contract", () => {
         }),
     };
 
-    const tierSelectChain = {
-      select: () => tierSelectChain,
-      eq: () => tierSelectChain,
-      maybeSingle: () =>
-        Promise.resolve({
-          data: {
-            id: "tier-1",
-            event_id: "evt-1",
-            ticket_type_id: "tt-1",
-            tier_name: "Standard",
-            tier_metadata: {},
-          },
-          error: null,
-        }),
-    };
+    // #1062 [biz-jest-residual-burndown] Wave 1 / B3c [TEST-MOD-APPROVED ORCH-1062] —
+    // updateTripPricing now reads the tier via `.order("created_at").limit(1)`
+    // (META-ORCH-1174 Leg B1: pick the earliest-created row, NEVER throw on >1 as the
+    // old `.maybeSingle()` did), so the select chain must expose `.order`/`.limit` and
+    // resolve an ARRAY. Migrated to the shared chainable mock (every chain method +
+    // thenable terminal). Plumbing only — assertions unchanged.
+    const tierSelectChain = createChainableQuery({
+      data: [
+        {
+          id: "tier-1",
+          event_id: "evt-1",
+          ticket_type_id: "tt-1",
+          tier_name: "Standard",
+          tier_metadata: {},
+        },
+      ],
+    });
 
     const ticketUpdateChain = {
       update: (payload: Record<string, unknown>) => {
@@ -145,21 +149,20 @@ describe("ORCH-0859 REWORK 2 — updateTripPricing currency contract", () => {
         }),
     };
 
-    const tierSelectChain = {
-      select: () => tierSelectChain,
-      eq: () => tierSelectChain,
-      maybeSingle: () =>
-        Promise.resolve({
-          data: {
-            id: "tier-2",
-            event_id: "evt-2",
-            ticket_type_id: "tt-2",
-            tier_name: "Standard",
-            tier_metadata: {},
-          },
-          error: null,
-        }),
-    };
+    // #1062 [biz-jest-residual-burndown] Wave 1 / B3c [TEST-MOD-APPROVED ORCH-1062] —
+    // see the first case: the tier select now uses `.order().limit()` returning an
+    // ARRAY. Migrated to the shared chainable mock. Plumbing only.
+    const tierSelectChain = createChainableQuery({
+      data: [
+        {
+          id: "tier-2",
+          event_id: "evt-2",
+          ticket_type_id: "tt-2",
+          tier_name: "Standard",
+          tier_metadata: {},
+        },
+      ],
+    });
 
     const ticketUpdateChain = {
       update: (payload: Record<string, unknown>) => {

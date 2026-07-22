@@ -6,6 +6,11 @@ const mockFrom = jest.fn();
 jest.mock("../supabase", () => ({
   supabase: {
     from: (...args: unknown[]) => mockFrom(...args),
+    // #1062 [biz-jest-residual-burndown] Wave 1 / B3c [TEST-MOD-APPROVED ORCH-1062] —
+    // getBrands precheck-reads supabase.auth.getSession() (META-ORCH-1232/1235) and
+    // throws without a session, so the mock needs `auth`. Sourced from the shared
+    // supabaseMock (defaults signed-in). Plumbing only.
+    auth: require("./__helpers__/supabaseMock").createSupabaseAuthMock(),
   },
 }));
 
@@ -18,6 +23,8 @@ import {
   aggregateBrandStatsByBrandIds,
   getBrands,
 } from "../brandsService";
+// #1062 [biz-jest-residual-burndown] Wave 1 / B3c — shared chainable supabase mock.
+import { createChainableQuery } from "./__helpers__/supabaseMock";
 import type { BrandRow } from "../brandMapping";
 
 const brandRow = (id: string, name: string): BrandRow => ({
@@ -47,15 +54,14 @@ const brandRow = (id: string, name: string): BrandRow => ({
   deleted_at: null,
 });
 
-const brandsQuery = (result: { data: BrandRow[]; error: Error | null }) => {
-  const builder = {
-    select: jest.fn(() => builder),
-    eq: jest.fn(() => builder),
-    is: jest.fn(() => builder),
-    order: jest.fn(() => Promise.resolve(result)),
-  };
-  return builder;
-};
+// #1062 [biz-jest-residual-burndown] Wave 1 / B3c [TEST-MOD-APPROVED ORCH-1062] —
+// getBrands sources the brand list from brand_team_members (empty in these cases) +
+// the META-ORCH-1232 H2 owner-union backstop from("brands"), whose chain ends on
+// `.is("deleted_at", null)` (NOT `.order`). Use the shared chainable mock so the
+// owner-union read resolves the brands regardless of the terminal method. No test
+// asserts spies on this query; the event/order-query spies below are unchanged.
+const brandsQuery = (result: { data: BrandRow[]; error: Error | null }) =>
+  createChainableQuery(result);
 
 const eventsQuery = (
   result: { data: { brand_id: string | null }[]; error: Error | null },
@@ -110,6 +116,9 @@ describe("getBrands", () => {
     });
     const orderStatsQuery = ordersQuery({ data: [], error: null });
     mockFrom.mockImplementation((table: unknown) => {
+      // #1062 Wave 1 / B3c — getBrands reads brand_team_members (empty here) before the
+      // owner-union from("brands"); route it so it does not throw. Plumbing only.
+      if (table === "brand_team_members") return createChainableQuery({ data: [] });
       if (table === "brands") return brandListQuery;
       if (table === "events") return eventCountQuery;
       if (table === "orders") return orderStatsQuery;
@@ -180,6 +189,9 @@ describe("getBrands", () => {
       error: null,
     });
     mockFrom.mockImplementation((table: unknown) => {
+      // #1062 Wave 1 / B3c — getBrands reads brand_team_members (empty here) before the
+      // owner-union from("brands"); route it so it does not throw. Plumbing only.
+      if (table === "brand_team_members") return createChainableQuery({ data: [] });
       if (table === "brands") return brandListQuery;
       if (table === "events") return eventCountQuery;
       if (table === "orders") return orderStatsQuery;
@@ -205,6 +217,9 @@ describe("getBrands", () => {
   test("does not query event counts when the account has no brands", async () => {
     const brandListQuery = brandsQuery({ data: [], error: null });
     mockFrom.mockImplementation((table: unknown) => {
+      // #1062 Wave 1 / B3c — route brand_team_members (empty) before the owner-union
+      // from("brands"). Plumbing only.
+      if (table === "brand_team_members") return createChainableQuery({ data: [] });
       if (table === "brands") return brandListQuery;
       throw new Error(`unexpected table ${String(table)}`);
     });

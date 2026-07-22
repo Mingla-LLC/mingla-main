@@ -27,7 +27,19 @@ jest.mock("../../store/currentBrandStore", () => ({
 }));
 
 // Capture the fire-and-forget mark-clicked UPDATE chain.
-const updateEq = jest.fn(() => ({ then: (cb: () => void) => cb() }));
+// #1062 [biz-jest-residual-burndown] Wave 1 / B3c [TEST-MOD-APPROVED ORCH-1062] —
+// the SUT now chains `.select("id")` after `.eq(...)` (I-PROPOSED-I: the update
+// returns affected rows so a 0-row / RLS-blocked write is surfaced, never silently
+// swallowed — businessNotificationRouting.ts:191). The eq result must therefore
+// expose a thenable `.select()` resolving to a 1-row payload. Plumbing only — the
+// updateFn / updateEq spy assertions below are unchanged.
+const updateEq = jest.fn(() => ({
+  select: () => ({
+    then: (cb: (r: { data: { id: string }[]; error: null }) => void) =>
+      cb({ data: [{ id: "n" }], error: null }),
+  }),
+  then: (cb: () => void) => cb(),
+}));
 const updateFn = jest.fn(() => ({ eq: updateEq }));
 jest.mock("../supabase", () => ({
   supabase: {
