@@ -5850,6 +5850,19 @@
       ]
     },
     {
+      "script": "mingla-business/src/services/__tests__/businessOneLinkHostCoupling.orch1050.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1050-onelink-host-coupling"
+      ]
+    },
+    {
       "script": "test:orch-0901",
       "kind": "npm-script",
       "enforcement": "batch:D",
