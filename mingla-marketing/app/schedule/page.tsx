@@ -9,8 +9,7 @@ import { ScheduleClient } from './ScheduleClient'
 
 export const metadata: Metadata = {
   title: 'Book a call with Mingla',
-  description:
-    'Grab 20 minutes with Mingla — pick a day and time. We’ll show you how we drive high-ticket guests to your venue and fix your website for free.',
+  description: 'Grab 20 minutes with Mingla — pick a day and time that works for you.',
   robots: { index: false, follow: false },
 }
 
