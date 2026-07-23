@@ -149,7 +149,7 @@ export function ScheduleClient() {
 
   if (phase === 'loading') {
     return (
-      <Shell venue={venue}>
+      <Shell>
         <div className="grid place-items-center py-20 text-center">
           <div className="flex flex-col items-center gap-3">
             <span
@@ -165,7 +165,7 @@ export function ScheduleClient() {
 
   if (phase === 'unavailable') {
     return (
-      <Shell venue={venue}>
+      <Shell>
         <div className="rounded-md border border-divider-strong bg-parchment p-8 text-center">
           <p className="font-display text-2xl text-text-primary">Let’s find a time by email</p>
           <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-text-secondary">
@@ -185,7 +185,7 @@ export function ScheduleClient() {
 
   if (phase === 'done' && confirmed) {
     return (
-      <Shell venue={venue}>
+      <Shell>
         <motion.div
           initial={reduceMotion ? false : { opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
@@ -229,7 +229,7 @@ export function ScheduleClient() {
 
   // 'ready' | 'confirming'
   return (
-    <Shell venue={venue}>
+    <Shell>
       <div className="overflow-hidden rounded-md border border-divider-strong bg-parchment">
         <div className="grid md:grid-cols-[minmax(0,240px)_1fr]">
           {/* Day rail — a full month of open days, scrollable */}
@@ -363,7 +363,7 @@ export function ScheduleClient() {
 // Header + framing shared by every state. Light card region flips to the
 // theme-aware light tokens via data-theme; the page sits on the dark /schedule
 // stage from schedule/layout.tsx.
-function Shell({ venue, children }: { venue: string; children: React.ReactNode }) {
+function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6 sm:py-14" data-theme="light">
       <div className="text-center">
@@ -373,11 +373,6 @@ function Shell({ venue, children }: { venue: string; children: React.ReactNode }
         <h1 className="mt-2 font-display text-[clamp(1.8rem,5vw,2.6rem)] leading-tight text-white">
           Grab 20 minutes with Mingla
         </h1>
-        <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-white/70 md:text-base">
-          {venue
-            ? `We’ll show you how we drive high-ticket guests to ${venue} — and fix your website for free.`
-            : 'We’ll show you how we drive high-ticket guests looking for date spots to your venue — and fix your website for free.'}
-        </p>
       </div>
       <div className="mt-8">{children}</div>
     </div>
