@@ -42,6 +42,10 @@ const config: NextConfig = {
     return [
       { source: '/organisers', destination: '/business', permanent: true },
       { source: '/organisers/:path*', destination: '/business/:path*', permanent: true },
+      // #1086 — the scheduler moved /tools/book → /schedule (top-level). Keep the
+      // short-lived old path working (it shipped in #1084). Query string is
+      // preserved automatically, so ?venue/?report_url/?source carry through.
+      { source: '/tools/book', destination: '/schedule', permanent: true },
     ]
   },
 }

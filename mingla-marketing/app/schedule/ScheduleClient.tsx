@@ -1,13 +1,13 @@
 'use client'
-// ISSUE-1083 [Standalone scheduling page] — the day → time booking flow.
+// #1086 [Standalone scheduler] — the day → time booking flow.
 //
 // A dedicated page (not the inline report picker) so leads from ANY funnel —
 // the grader report, a homepage CTA, a cold email, an ad — can book a Mingla
 // call at one URL. Reads context from the query string (?venue / ?report_url /
-// ?source, optional name/email prefill), lists the full availability window
+// ?source, optional name/email prefill), lists a full MONTH of availability
 // from `growth-tools-book` grouped by day, and books via the same edge fn
-// (Google Calendar + Meet invite). Degrades to a mailto when the calendar is
-// unconfigured or empty.
+// (Google Calendar + Meet invite; confirmation emails to both parties). Degrades
+// to a mailto when the calendar is unconfigured or empty.
 
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
@@ -21,7 +21,7 @@ const CALL_MAILTO =
   'mailto:seth@usemingla.com?subject=Book%20a%20call%20with%20Mingla'
 
 // Locale-aware, stable at module scope. Day label doubles as the group key —
-// within a 10-day window it is unique (weekday + month + day never collide).
+// across the booking window it is unique (weekday + month + day).
 const dayLabelFmt = new Intl.DateTimeFormat(undefined, {
   weekday: 'long',
   month: 'short',
@@ -46,7 +46,7 @@ interface Confirmed {
   event_url: string | null
 }
 
-export function BookCallClient() {
+export function ScheduleClient() {
   const params = useSearchParams()
   const venue = (params.get('venue') ?? '').slice(0, 120)
   const reportUrl = (params.get('report_url') ?? '').slice(0, 500)
@@ -208,7 +208,7 @@ export function BookCallClient() {
             </span>
           </p>
           <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-text-secondary">
-            A calendar invite with a Google Meet link is on its way to{' '}
+            A confirmation and a calendar invite with a Google Meet link are on their way to{' '}
             <span className="font-semibold text-text-primary">{confirmed.email}</span>. See
             you then.
           </p>
@@ -231,13 +231,13 @@ export function BookCallClient() {
   return (
     <Shell venue={venue}>
       <div className="overflow-hidden rounded-md border border-divider-strong bg-parchment">
-        <div className="grid md:grid-cols-[minmax(0,220px)_1fr]">
-          {/* Day rail */}
+        <div className="grid md:grid-cols-[minmax(0,240px)_1fr]">
+          {/* Day rail — a full month of open days, scrollable */}
           <div className="border-b border-divider-strong p-4 md:border-b-0 md:border-r md:p-5">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
               Pick a day
             </p>
-            <div className="mt-3 flex gap-2 overflow-x-auto pb-1 md:flex-col md:overflow-visible md:pb-0">
+            <div className="mt-3 flex gap-2 overflow-x-auto pb-1 md:max-h-[26rem] md:flex-col md:overflow-x-visible md:overflow-y-auto md:pb-0 md:pr-1">
               {days.map((d) => {
                 const active = d.key === selectedDay?.key
                 return (
@@ -249,22 +249,27 @@ export function BookCallClient() {
                       setSelectedSlot(null)
                     }}
                     className={cn(
-                      'flex shrink-0 flex-col items-start rounded-md border px-3.5 py-2.5 text-left transition focus-ring md:w-full',
+                      'flex shrink-0 items-center justify-between gap-3 rounded-md border px-3.5 py-2.5 text-left transition focus-ring md:w-full',
                       active
                         ? 'border-warm bg-warm/10'
                         : 'border-divider-strong bg-white hover:border-warm/40 hover:bg-stripe',
                     )}
                     aria-pressed={active}
                   >
-                    <span
-                      className={cn(
-                        'text-sm font-semibold',
-                        active ? 'text-warm-ink' : 'text-text-primary',
-                      )}
-                    >
-                      {dayWeekdayFmt.format(d.date)}
+                    <span className="flex flex-col">
+                      <span
+                        className={cn(
+                          'text-sm font-semibold',
+                          active ? 'text-warm-ink' : 'text-text-primary',
+                        )}
+                      >
+                        {dayWeekdayFmt.format(d.date)}
+                      </span>
+                      <span className="text-xs text-text-muted">{dayDateFmt.format(d.date)}</span>
                     </span>
-                    <span className="text-xs text-text-muted">{dayDateFmt.format(d.date)}</span>
+                    <span className="hidden text-[0.7rem] font-medium text-text-muted md:inline">
+                      {d.slots.length}
+                    </span>
                   </button>
                 )
               })}
@@ -280,7 +285,7 @@ export function BookCallClient() {
               {selectedDay ? dayLabelFmt.format(selectedDay.date) : ''} · times in your
               timezone · 20&nbsp;min
             </p>
-            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <div className="mt-3 grid max-h-72 grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3">
               {selectedDay?.slots.map((s) => {
                 const active = s.start === selectedSlot
                 return (
@@ -356,8 +361,8 @@ export function BookCallClient() {
 }
 
 // Header + framing shared by every state. Light card region flips to the
-// theme-aware light tokens via data-theme; the page sits on the dark /tools
-// stage from tools/layout.tsx.
+// theme-aware light tokens via data-theme; the page sits on the dark /schedule
+// stage from schedule/layout.tsx.
 function Shell({ venue, children }: { venue: string; children: React.ReactNode }) {
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6 sm:py-14" data-theme="light">
