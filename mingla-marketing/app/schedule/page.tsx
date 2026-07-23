@@ -1,11 +1,11 @@
-// ISSUE-1083 — standalone scheduling page. Any lead funnel (grader report,
-// homepage CTA, cold email, ad) can point at /tools/book to schedule a Mingla
+// #1086 — standalone scheduling page at the top-level /schedule. Any lead funnel
+// (grader report, homepage CTA, cold email, ad) points here to book a Mingla
 // call. Reads ?venue / ?report_url / ?source (+ optional name/email prefill) on
-// the client; the whole day → time → confirm flow is a client state machine.
+// the client; the day → time → confirm flow is a client state machine.
 
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
-import { BookCallClient } from './BookCallClient'
+import { ScheduleClient } from './ScheduleClient'
 
 export const metadata: Metadata = {
   title: 'Book a call with Mingla',
@@ -16,15 +16,15 @@ export const metadata: Metadata = {
 
 export const dynamic = 'force-dynamic'
 
-export default function BookCallPage() {
+export default function SchedulePage() {
   return (
-    <Suspense fallback={<BookSkeleton />}>
-      <BookCallClient />
+    <Suspense fallback={<ScheduleSkeleton />}>
+      <ScheduleClient />
     </Suspense>
   )
 }
 
-function BookSkeleton() {
+function ScheduleSkeleton() {
   return (
     <div className="grid place-items-center py-24 text-center">
       <div className="flex flex-col items-center gap-3">

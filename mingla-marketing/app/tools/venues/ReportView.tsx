@@ -343,14 +343,14 @@ export function ReportView({
   // mismatch), then the effect enriches the link.
   const [bookHref, setBookHref] = useState(
     () =>
-      `/tools/book?${new URLSearchParams({
+      `/schedule?${new URLSearchParams({
         venue: report.venue.name,
         source: 'venue_grader',
       }).toString()}`,
   )
   useEffect(() => {
     setBookHref(
-      `/tools/book?${new URLSearchParams({
+      `/schedule?${new URLSearchParams({
         venue: report.venue.name,
         source: 'venue_grader',
         report_url: window.location.href,

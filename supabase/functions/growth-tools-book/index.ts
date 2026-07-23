@@ -12,14 +12,26 @@
 //
 // Config secret GOOGLE_CALENDAR_KEYS = "client_id|client_secret|refresh_token".
 // Optional env: BOOKING_TZ (default America/New_York), BOOKING_CALENDAR_ID
-// (default "primary"). Bookable Mon–Fri 10:00–17:00 in BOOKING_TZ, 20-min
-// slots, 12h min notice, 10 days ahead.
+// (default "primary"), BOOKING_NOTIFY_TO (default seth@usemingla.com). Bookable
+// Mon–Fri 05:00–20:00 in BOOKING_TZ, 20-min slots, 12h min notice, up to a month
+// ahead. On a successful book we (best-effort) email BOTH parties via Resend:
+// a confirmation to the booker and a notification to BOOKING_NOTIFY_TO.
 //
 // → 400 {error:"validation"} | 409 {error:"slot_taken"} | 502 {error:"calendar_unavailable"}
 //   500 {error:"server"} · OPTIONS → 200 "ok" + CORS
 
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { corsHeaders } from "../_shared/cors.ts";
+// Branded email shell + senders + escape — reused by import (same infra the
+// grader gate uses to email the report). DO-NOT edit those modules here.
+import { renderShell, SHELL_TOKENS } from "../_shared/email/shell.ts";
+import { escapeHtml } from "../_shared/email/escape.ts";
+import {
+  assertNotResendSandbox,
+  EMAIL_SENDERS,
+  formatSenderHeader,
+} from "../_shared/email/senders.ts";
+import { minglaLogoUrl } from "../_shared/brandAssets.ts";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -35,8 +47,11 @@ const WORK_START_MIN = 5 * 60; // 05:00 local
 const WORK_END_MIN = 20 * 60; // 20:00 local (last slot starts 19:40)
 const SLOT_MIN = 20;
 const MIN_NOTICE_MS = 12 * 60 * 60 * 1000; // 12h
-const LOOKAHEAD_DAYS = 10;
-const MAX_SLOTS = 30;
+const LOOKAHEAD_DAYS = 45; // ~1.5 months of calendar days scanned
+const MAX_DAYS = 31; // distinct open weekdays returned (a full month+)
+const MAX_SLOTS = 1200; // hard payload ceiling across all days
+const NOTIFY_TO = Deno.env.get("BOOKING_NOTIFY_TO") ?? "seth@usemingla.com";
+const REPLY_TO = "support@usemingla.com";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // ── Timezone math (DST-correct via Intl) ─────────────────────────────────────
@@ -164,16 +179,25 @@ async function fetchBusy(
 function computeFreeSlots(busy: Busy[], now: number): { start: string; end: string }[] {
   const slots: { start: string; end: string }[] = [];
   const earliest = now + MIN_NOTICE_MS;
+  // Cap by DISTINCT open days, not a flat slot count: a flat cap fills up on the
+  // first free day (15h × 20-min ≈ 44 slots) and hides the rest of the month.
+  let openDays = 0;
   for (let dayOffset = 0; dayOffset <= LOOKAHEAD_DAYS; dayOffset++) {
     const dayInstant = new Date(now + dayOffset * 24 * 60 * 60 * 1000);
     const { y, mo, d, wd } = tzYmd(dayInstant, TZ);
     if (wd === 0 || wd === 6) continue; // weekends off
+    let dayHasSlot = false;
     for (let m = WORK_START_MIN; m + SLOT_MIN <= WORK_END_MIN; m += SLOT_MIN) {
       const startMs = wallToUtc(y, mo, d, Math.floor(m / 60), m % 60, TZ);
       const endMs = startMs + SLOT_MIN * 60 * 1000;
       if (startMs < earliest) continue;
       const overlaps = busy.some((b) => startMs < b.end && endMs > b.start);
       if (overlaps) continue;
+      if (!dayHasSlot) {
+        if (openDays >= MAX_DAYS) return slots; // month is full — stop
+        openDays++;
+        dayHasSlot = true;
+      }
       slots.push({
         start: new Date(startMs).toISOString(),
         end: new Date(endMs).toISOString(),
@@ -182,6 +206,154 @@ function computeFreeSlots(busy: Busy[], now: number): { start: string; end: stri
     }
   }
   return slots;
+}
+
+// ── Confirmation + notification emails (Resend, best-effort) ──────────────────
+// Full local-time label, e.g. "Friday, July 24 at 9:00 AM EDT".
+function formatLocal(ms: number): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: TZ,
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  }).format(new Date(ms));
+}
+
+const { BRAND_ORANGE_BUTTON, BRAND_INK, BRAND_MUTED, BRAND_BORDER } = SHELL_TOKENS;
+
+function emailButton(href: string, label: string): string {
+  return `<a href="${escapeHtml(href)}" style="display:inline-block;background:${BRAND_ORANGE_BUTTON};color:#ffffff;text-decoration:none;font-weight:700;padding:12px 22px;border-radius:9999px;font-size:15px;">${escapeHtml(label)}</a>`;
+}
+
+async function sendResend(input: {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+  replyTo: string;
+}): Promise<boolean> {
+  const resendKey = Deno.env.get("RESEND_API_KEY") ?? "";
+  if (!resendKey) {
+    console.error("[growth-tools-book] RESEND_API_KEY missing — skipping email");
+    return false;
+  }
+  const sender = EMAIL_SENDERS.system;
+  try {
+    assertNotResendSandbox(sender);
+  } catch (e) {
+    console.error("[growth-tools-book] sandbox sender rejected", String(e));
+    return false;
+  }
+  // no-attachment: booking confirmation/notification is plain transactional HTML.
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${resendKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: formatSenderHeader(sender),
+      to: [input.to],
+      reply_to: input.replyTo,
+      subject: input.subject,
+      html: input.html,
+      text: input.text,
+    }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    console.error("[growth-tools-book] resend failed", res.status, detail.slice(0, 160));
+    return false;
+  }
+  return true;
+}
+
+// Fire both emails. Never throws — a mail failure must not fail the booking
+// (the Google Calendar invite has already gone out via sendUpdates=all).
+async function sendBookingEmails(input: {
+  startMs: number;
+  name: string;
+  email: string;
+  venue: string;
+  reportUrl: string;
+  meetUrl: string | null;
+  eventUrl: string | null;
+}): Promise<void> {
+  const when = formatLocal(input.startMs);
+  const logo = minglaLogoUrl();
+  const shell = (bodyHtml: string, preheader: string) =>
+    renderShell({
+      preheader,
+      bodyHtml,
+      supportEmail: Deno.env.get("SUPPORT_EMAIL") ?? REPLY_TO,
+      logoUrl: logo,
+      footerAddress: Deno.env.get("MINGLA_FOOTER_ADDRESS") ??
+        "Mingla, hello@usemingla.com",
+    });
+  const meetBtn = input.meetUrl
+    ? `<p style="margin:20px 0 0;">${emailButton(input.meetUrl, "Join the Google Meet")}</p>`
+    : "";
+
+  // 1) Confirmation to the booker.
+  const bookerBody = `
+    <h1 style="margin:0 0 8px;color:${BRAND_INK};font-size:22px;">You’re booked in ✅</h1>
+    <p style="margin:0 0 4px;color:${BRAND_INK};font-size:16px;">Your call with Mingla is confirmed for:</p>
+    <p style="margin:0 0 8px;color:${BRAND_INK};font-size:18px;font-weight:700;">${escapeHtml(when)}</p>
+    <p style="margin:0;color:${BRAND_MUTED};font-size:14px;">A Google Calendar invite with the Meet link is also on its way. Reply to this email if you need to move it.</p>
+    ${meetBtn}`;
+  const bookerText =
+    `You're booked in.\n\nYour call with Mingla is confirmed for ${when}.\n` +
+    `A Google Calendar invite with the Meet link is on its way.` +
+    (input.meetUrl ? `\n\nMeet: ${input.meetUrl}` : "");
+
+  // 2) Notification to Seth — reply-to is the lead so a reply reaches them.
+  const rows = [
+    `<tr><td style="padding:4px 12px 4px 0;color:${BRAND_MUTED};">When</td><td style="color:${BRAND_INK};font-weight:600;">${escapeHtml(when)}</td></tr>`,
+    `<tr><td style="padding:4px 12px 4px 0;color:${BRAND_MUTED};">Who</td><td style="color:${BRAND_INK};font-weight:600;">${escapeHtml(input.name)} &lt;${escapeHtml(input.email)}&gt;</td></tr>`,
+    input.venue
+      ? `<tr><td style="padding:4px 12px 4px 0;color:${BRAND_MUTED};">Venue</td><td style="color:${BRAND_INK};font-weight:600;">${escapeHtml(input.venue)}</td></tr>`
+      : "",
+  ].filter(Boolean).join("");
+  const links = [
+    input.meetUrl ? `${emailButton(input.meetUrl, "Join the Meet")} ` : "",
+    input.reportUrl
+      ? `<a href="${escapeHtml(input.reportUrl)}" style="color:${BRAND_ORANGE_BUTTON};font-weight:600;">Their report</a>`
+      : "",
+  ].join(" ");
+  const ownerBody = `
+    <h1 style="margin:0 0 12px;color:${BRAND_INK};font-size:22px;">New call booked 📅</h1>
+    <table style="border-collapse:collapse;font-size:15px;border-top:1px solid ${BRAND_BORDER};border-bottom:1px solid ${BRAND_BORDER};padding:8px 0;">${rows}</table>
+    <p style="margin:18px 0 0;">${links}</p>`;
+  const ownerText =
+    `New Mingla call booked.\n\nWhen: ${when}\nWho: ${input.name} <${input.email}>` +
+    (input.venue ? `\nVenue: ${input.venue}` : "") +
+    (input.meetUrl ? `\nMeet: ${input.meetUrl}` : "") +
+    (input.reportUrl ? `\nReport: ${input.reportUrl}` : "");
+
+  const results = await Promise.allSettled([
+    sendResend({
+      to: input.email,
+      subject: "You’re booked — your Mingla call",
+      html: shell(bookerBody, `Confirmed: ${when}`),
+      text: bookerText,
+      replyTo: REPLY_TO,
+    }),
+    sendResend({
+      to: NOTIFY_TO,
+      subject: `New Mingla call — ${input.venue || input.name} (${when})`,
+      html: shell(ownerBody, `${input.name} booked a call`),
+      text: ownerText,
+      replyTo: input.email, // reply lands on the lead
+    }),
+  ]);
+  for (const r of results) {
+    if (r.status === "rejected") {
+      console.error("[growth-tools-book] booking email threw", String(r.reason));
+    }
+  }
 }
 
 // ── Handlers ─────────────────────────────────────────────────────────────────
@@ -277,6 +449,19 @@ async function handleBook(
   };
   const meet = ev.hangoutLink ??
     ev.conferenceData?.entryPoints?.find((e) => e.uri)?.uri ?? null;
+
+  // Confirmation to the booker + notification to Seth. Best-effort and awaited
+  // so the sends complete before the isolate is frozen; never fails the booking.
+  await sendBookingEmails({
+    startMs,
+    name,
+    email,
+    venue,
+    reportUrl,
+    meetUrl: meet,
+    eventUrl: ev.htmlLink ?? null,
+  });
+
   return json({
     ok: true,
     event_url: ev.htmlLink ?? null,
