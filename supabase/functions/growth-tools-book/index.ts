@@ -31,8 +31,8 @@ function json(body: unknown, status = 200): Response {
 // ── Booking config ───────────────────────────────────────────────────────────
 const TZ = Deno.env.get("BOOKING_TZ") ?? "America/New_York";
 const CALENDAR_ID = Deno.env.get("BOOKING_CALENDAR_ID") ?? "primary";
-const WORK_START_MIN = 10 * 60; // 10:00 local
-const WORK_END_MIN = 17 * 60; // 17:00 local (last slot starts 16:40)
+const WORK_START_MIN = 5 * 60; // 05:00 local
+const WORK_END_MIN = 20 * 60; // 20:00 local (last slot starts 19:40)
 const SLOT_MIN = 20;
 const MIN_NOTICE_MS = 12 * 60 * 60 * 1000; // 12h
 const LOOKAHEAD_DAYS = 10;
