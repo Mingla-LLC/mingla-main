@@ -223,10 +223,16 @@ Deno.test("A5 fireAdConversion: a hanging sender never blocks past the bound and
     });
   const t0 = Date.now();
   let threw = false;
+  // getToken returns a token for ALL channels, so tiktok/snap/reddit run their
+  // REAL senders — route them through a capturing fetch (as A6 does) so they
+  // never hit the network. Without this they issue real requests whose response
+  // bodies go unconsumed, which the leak sanitizer flags intermittently.
+  const { fn: capturedFetch } = capturingFetch();
   const res = await fireAdConversion(client, { orderId: ORDER_ID }, {
     senders: { meta: hangingMeta as never },
     getToken: () => "tok",
     timeoutMs: 60,
+    fetchImpl: capturedFetch,
   }).catch(() => {
     threw = true;
     return undefined;

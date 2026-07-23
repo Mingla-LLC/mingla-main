@@ -471,3 +471,35 @@ verify_jwt = true
 # token VALUE (the CAPI send is WP-B).
 [functions.attribution-capture]
 verify_jwt = false
+
+# ISSUE-1003 [Venue Website Grader growth tool — test cut] — the anonymous
+# grader page's run endpoint (place_pool typeahead search + report generation).
+# verify_jwt=false because the marketing tool surface is UNAUTHENTICATED. The
+# fn re-validates every field server-side, rate-limits by salted IP hash (raw
+# IP never stored, 8 runs/24h), SSRF-guards the site fetch, and talks to the DB
+# as service_role only (tool_leads + place_pool have no anon policies —
+# deny-by-default).
+[functions.growth-tools-run]
+verify_jwt = false
+
+# ISSUE-1003 — the email gate: POST {run_id, email} captures the lead email and
+# sends the generated report as a branded HTML email (shared shell, system
+# sender, reply-to support@). Same anon posture + service-role-only DB access
+# as growth-tools-run.
+[functions.growth-tools-gate]
+verify_jwt = false
+
+# ISSUE-1003 — the public render-data read for the "after" homepage preview
+# (template engine). GET ?run_id / POST {run_id} returns the storefront-render
+# subset (name, tagline, vibes, occasions, photos) of a saved run so the
+# /tools/venues/preview page can render a redesigned homepage to screenshot.
+# No sensitive fields; service-role-only DB access.
+[functions.growth-tools-preview]
+verify_jwt = false
+
+# ISSUE-1003 — token-gated full-report read. POST {run_id, token} returns the
+# full report ONLY when the token matches the one emailed to the verified
+# address (growth-tools-gate). Entering an email never reveals the report; the
+# emailed link does. Service-role DB access.
+[functions.growth-tools-report]
+verify_jwt = false

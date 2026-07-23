@@ -1,0 +1,110 @@
+import type { Metadata } from 'next'
+import Link from 'next/link'
+
+// #1003 [Venue Website Grader — growth tools, test cut] — the /tools hub.
+//
+// Dark stage (site default). One LIVE card (the Venue Website Grader) + three
+// coming-soon cards rendered subtle and non-clickable. Server component — no
+// interactivity on this page.
+
+export const metadata: Metadata = {
+  title: 'Free AI tools for venues, events & experiences',
+  description:
+    'Free AI tools for people who run real places — grade your website, predict your event turnout, quote any trip, and audit your pricing. Built by Mingla.',
+}
+
+interface ComingSoonTool {
+  title: string
+  blurb: string
+  audience: string
+}
+
+const COMING_SOON: ComingSoonTool[] = [
+  {
+    title: 'Event Turnout Predictor',
+    blurb: 'Know roughly how many people your event will pull — before you commit to the space.',
+    audience: 'Event organisers · promoters',
+  },
+  {
+    title: 'Quote Any Trip',
+    blurb: 'Price a group trip in minutes, not spreadsheets.',
+    audience: 'Trip planners · hosts',
+  },
+  {
+    title: 'The Undercharging Audit',
+    blurb: 'Find out what your experience should actually cost.',
+    audience: 'Experience hosts · activity spaces',
+  },
+]
+
+export default function ToolsHubPage() {
+  return (
+    <div className="px-6 py-16 md:px-10 md:py-24 [padding-left:max(1.5rem,env(safe-area-inset-left))] [padding-right:max(1.5rem,env(safe-area-inset-right))] md:[padding-left:max(2.5rem,env(safe-area-inset-left))] md:[padding-right:max(2.5rem,env(safe-area-inset-right))]">
+      <div className="mx-auto max-w-6xl">
+        <span className="block text-xs font-semibold uppercase tracking-[0.2em] text-warm">
+          Free tools
+        </span>
+        <h1 className="mt-4 max-w-3xl font-display text-4xl leading-[1.08] tracking-[-0.02em] text-white md:text-6xl">
+          Free AI tools for people who run real places.
+        </h1>
+        <p className="mt-5 max-w-2xl text-base leading-relaxed text-white/72 md:text-lg">
+          No sign-up, no sales call. Run one, get something useful in a minute —
+          built by Mingla, the app that helps people find your place.
+        </p>
+
+        <div className="mt-12 grid gap-5 sm:grid-cols-2">
+          {/* LIVE — Venue Website Grader */}
+          <Link
+            href="/tools/venues"
+            className="group flex flex-col rounded-md glass-soft p-6 transition-all duration-200 ease-out-quart hover:-translate-y-1 hover:brightness-110 focus-ring md:p-8"
+          >
+            <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-warm/40 bg-warm/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-warm">
+              <span aria-hidden="true" className="size-1.5 rounded-full bg-warm" />
+              Live
+            </span>
+            <h2 className="mt-4 font-display text-2xl leading-tight text-white md:text-3xl">
+              Venue Website Grader
+            </h2>
+            <p className="mt-3 text-sm leading-relaxed text-white/70 md:text-base">
+              Find out what your website says to a first-timer — and exactly what
+              it&rsquo;s costing you. Free report in 60 seconds.
+            </p>
+            <div className="mt-auto pt-6">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/45">
+                Restaurants · bars · cafés · clubs
+              </p>
+              <span className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-warm transition-transform duration-200 ease-out-quart group-hover:translate-x-1">
+                Grade my website
+                <span aria-hidden="true">→</span>
+              </span>
+            </div>
+          </Link>
+
+          {/* COMING SOON — subtle, non-clickable */}
+          {COMING_SOON.map((tool) => (
+            <div
+              key={tool.title}
+              aria-disabled="true"
+              className="flex flex-col rounded-md border border-white/8 bg-white/[0.02] p-6 opacity-60 md:p-8"
+            >
+              <span className="inline-flex w-fit items-center rounded-full border border-white/12 bg-white/6 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-white/50">
+                Coming soon
+              </span>
+              <h2 className="mt-4 font-display text-2xl leading-tight text-white/80 md:text-3xl">
+                {tool.title}
+              </h2>
+              <p className="mt-3 text-sm leading-relaxed text-white/50 md:text-base">
+                {tool.blurb}
+              </p>
+              <div className="mt-auto pt-6">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/35">
+                  {tool.audience}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
