@@ -564,6 +564,21 @@ export function validateToolsOrigin(raw: unknown): string | null {
   return u.origin;
 }
 
+// Pick the homepage skin that best fits the venue (mirrors the frontend
+// pickSkin in app/venue-preview/venueSkins.tsx — keep the two in sync).
+function pickSkin(vibes: string[], occasions: string[]): string {
+  const hay = [...vibes, ...occasions].join(" ").toLowerCase();
+  if (
+    /(bar|club|lounge|cocktail|night|party|dance|dj|rooftop|late|speakeasy|nightlife|drinks)/
+      .test(hay)
+  ) return "nightlife";
+  if (
+    /(caf[eé]|coffee|brunch|bakery|breakfast|casual|cosy|cozy|family|deli|diner|brewery|pub|garden|daytime)/
+      .test(hay)
+  ) return "warm";
+  return "editorial";
+}
+
 // ── Live "before" screenshot (ScreenshotOne signed URL) ─────────────────────
 // We hand the browser a SIGNED ScreenshotOne URL: the access key is visible but
 // the HMAC-SHA256 signature authorizes ONLY this exact URL, so it can't be
@@ -2014,12 +2029,14 @@ async function handleRun(
   }
 
   // g2. The "after" screenshot: our redesigned-homepage preview page, rendered
-  //     from this run's saved data. Points at the caller's origin so it works on
-  //     both prod and preview deploys; null when origin/keys are absent (the UI
-  //     then hides the after side). +3s delay for the page's client fetch/paint.
+  //     from this run's saved data in the skin that best fits this venue.
+  //     Points at the caller's origin so it works on both prod and preview
+  //     deploys; null when origin/keys are absent (the UI then hides the after
+  //     side). +3s delay for the page's client fetch/paint.
+  const skin = pickSkin(gemini.vibe_card.vibes, gemini.vibe_card.occasions);
   const afterScreenshotUrl = toolsOrigin
     ? await buildScreenshotUrl(
-      `${toolsOrigin}/venue-preview?run_id=${runId}`,
+      `${toolsOrigin}/venue-preview?run_id=${runId}&skin=${skin}`,
       { delaySeconds: 3 },
     )
     : null;
