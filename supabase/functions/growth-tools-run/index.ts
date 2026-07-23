@@ -550,8 +550,16 @@ async function fetchSite(
 // missing key just leaves image_url null and the report falls back to og:image.
 async function buildScreenshotUrl(url: string): Promise<string | null> {
   try {
-    const accessKey = Deno.env.get("SCREENSHOTONE_ACCESS_KEY") ?? "";
-    const secretKey = Deno.env.get("SCREENSHOTONE_SECRET_KEY") ?? "";
+    // Packed as "access:secret" in ONE secret (SCREENSHOTONE_KEYS) to fit the
+    // prod project's 100-secret cap; falls back to two discrete vars if present.
+    const packed = Deno.env.get("SCREENSHOTONE_KEYS") ?? "";
+    const colon = packed.indexOf(":");
+    const accessKey = colon > 0
+      ? packed.slice(0, colon)
+      : (Deno.env.get("SCREENSHOTONE_ACCESS_KEY") ?? "");
+    const secretKey = colon > 0
+      ? packed.slice(colon + 1)
+      : (Deno.env.get("SCREENSHOTONE_SECRET_KEY") ?? "");
     if (!accessKey || !secretKey) return null;
     // Order matters — the exact query string is what gets signed AND sent.
     const params = new URLSearchParams();
