@@ -503,3 +503,10 @@ verify_jwt = false
 # emailed link does. Service-role DB access.
 [functions.growth-tools-report]
 verify_jwt = false
+
+# ISSUE-1078 — real Google Calendar booking. POST {action:"slots"} returns free
+# 20-min slots on seth@usemingla.com's calendar; POST {action:"book"} creates the
+# event with a Meet link + report context. OAuth refresh token (calendar scope),
+# no service account. Public (no user data mutated without the calendar API).
+[functions.growth-tools-book]
+verify_jwt = false
