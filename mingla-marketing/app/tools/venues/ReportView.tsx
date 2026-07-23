@@ -14,16 +14,14 @@
 // lib/store-links, never a hardcoded domain, per the ORCH-1399 SSOT rule).
 
 import { useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
 import { motion, useReducedMotion } from 'framer-motion'
 import { cn } from '@/lib/cn'
 import { buttonClasses } from '@/components/ui/button'
 import { captureMarketing } from '@/components/marketing/posthog-provider'
 import { BUSINESS_ONELINK_URL } from '@/lib/store-links'
 import {
-  bookCall,
-  fetchBookingSlots,
   submitGrowthToolsGate,
-  type BookingSlot,
   type GraderCompetitionEffort,
   type GraderReport,
   type GraderScoreKey,
@@ -99,193 +97,6 @@ function DocHeading({ children }: { children: React.ReactNode }) {
     <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
       {children}
     </h2>
-  )
-}
-
-const CALL_MAILTO =
-  'mailto:seth@usemingla.com?subject=Drive%20people%20to%20my%20venue%20(Mingla%20offer)'
-
-// On-page call booking. Renders "on" the warm offer card (white-on-orange), so
-// its surfaces are translucent-white. Degrades to a mailto when the calendar
-// isn't configured yet (booking_unconfigured) or there are no slots.
-function BookingPicker({
-  venue,
-  onBookClick,
-}: {
-  venue: string
-  onBookClick: () => void
-}) {
-  type Phase = 'cta' | 'loading' | 'slots' | 'booking' | 'done' | 'fallback'
-  const [phase, setPhase] = useState<Phase>('cta')
-  const [slots, setSlots] = useState<BookingSlot[]>([])
-  const [selected, setSelected] = useState<string | null>(null)
-  const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [confirmed, setConfirmed] = useState<{ start: string; email: string } | null>(null)
-
-  const dayFmt = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
-  const timeFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' })
-
-  async function open() {
-    onBookClick()
-    setPhase('loading')
-    setError(null)
-    const res = await fetchBookingSlots()
-    if (!res.ok) {
-      // Not configured yet, or calendar unavailable → fall back to email.
-      setPhase('fallback')
-      return
-    }
-    if (res.slots.length === 0) {
-      setPhase('fallback')
-      return
-    }
-    setSlots(res.slots.slice(0, 18))
-    setPhase('slots')
-  }
-
-  async function confirm() {
-    if (!selected || name.trim().length < 2 || !EMAIL_REGEX.test(email.trim())) return
-    setPhase('booking')
-    setError(null)
-    const res = await bookCall({
-      start: selected,
-      name: name.trim(),
-      email: email.trim(),
-      venue,
-      report_url: typeof window !== 'undefined' ? window.location.href : '',
-    })
-    if (res.ok) {
-      setConfirmed({ start: res.start, email: email.trim() })
-      setPhase('done')
-      return
-    }
-    if (res.error === 'slot_taken') {
-      setError('That time was just taken — pick another.')
-      setPhase('slots')
-      setSelected(null)
-      return
-    }
-    setError('That didn’t go through — try again, or email us.')
-    setPhase('slots')
-  }
-
-  // Group slots by local day.
-  const byDay = new Map<string, BookingSlot[]>()
-  for (const s of slots) {
-    const key = dayFmt.format(new Date(s.start))
-    const arr = byDay.get(key) ?? []
-    arr.push(s)
-    byDay.set(key, arr)
-  }
-
-  if (phase === 'cta') {
-    return (
-      <button
-        type="button"
-        onClick={open}
-        className="inline-flex min-h-12 items-center justify-center rounded-full bg-white px-7 text-sm font-semibold text-warm-ink transition hover:bg-white/90 focus-ring"
-      >
-        Book a call — we fix all of this, free
-      </button>
-    )
-  }
-
-  if (phase === 'loading') {
-    return (
-      <div className="flex items-center gap-3 text-sm text-white/90">
-        <span aria-hidden="true" className="size-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-        Finding open times…
-      </div>
-    )
-  }
-
-  if (phase === 'fallback') {
-    return (
-      <a
-        href={CALL_MAILTO}
-        className="inline-flex min-h-12 items-center justify-center rounded-full bg-white px-7 text-sm font-semibold text-warm-ink transition hover:bg-white/90 focus-ring"
-      >
-        Book a call — we fix all of this, free
-      </a>
-    )
-  }
-
-  if (phase === 'done' && confirmed) {
-    return (
-      <div className="rounded-md bg-white/15 p-4 text-white">
-        <p className="text-base font-semibold">You’re booked in.</p>
-        <p className="mt-1 text-sm text-white/90">
-          {dayFmt.format(new Date(confirmed.start))} at {timeFmt.format(new Date(confirmed.start))} —
-          a calendar invite with a Google Meet link is on its way to{' '}
-          <span className="font-semibold">{confirmed.email}</span>.
-        </p>
-      </div>
-    )
-  }
-
-  // slots / booking
-  return (
-    <div className="rounded-md bg-white/12 p-4">
-      <p className="text-sm font-semibold text-white">Pick a time for your free call</p>
-      <p className="mt-0.5 text-xs text-white/80">Times shown in your timezone · 20 minutes</p>
-      <div className="mt-3 max-h-56 space-y-3 overflow-y-auto pr-1">
-        {[...byDay.entries()].map(([day, daySlots]) => (
-          <div key={day}>
-            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-white/75">{day}</p>
-            <div className="mt-1.5 flex flex-wrap gap-2">
-              {daySlots.map((s) => (
-                <button
-                  key={s.start}
-                  type="button"
-                  onClick={() => setSelected(s.start)}
-                  className={cn(
-                    'rounded-full px-3 py-1.5 text-xs font-semibold transition',
-                    selected === s.start
-                      ? 'bg-white text-warm-ink'
-                      : 'bg-white/15 text-white hover:bg-white/25',
-                  )}
-                >
-                  {timeFmt.format(new Date(s.start))}
-                </button>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-      {selected ? (
-        <div className="mt-4 space-y-2">
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Your name"
-              autoComplete="name"
-              className="min-h-11 w-full min-w-0 flex-1 rounded-sm border border-white/30 bg-white/90 px-3 text-base text-ink placeholder:text-ink/50 focus-ring"
-            />
-            <input
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              type="email"
-              inputMode="email"
-              autoComplete="email"
-              placeholder="you@yourplace.com"
-              className="min-h-11 w-full min-w-0 flex-1 rounded-sm border border-white/30 bg-white/90 px-3 text-base text-ink placeholder:text-ink/50 focus-ring"
-            />
-          </div>
-          <button
-            type="button"
-            onClick={confirm}
-            disabled={phase === 'booking' || name.trim().length < 2 || !EMAIL_REGEX.test(email.trim())}
-            className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-white px-6 text-sm font-semibold text-warm-ink transition hover:bg-white/90 focus-ring disabled:opacity-60 sm:w-auto"
-          >
-            {phase === 'booking' ? 'Booking…' : `Confirm ${timeFmt.format(new Date(selected))}`}
-          </button>
-        </div>
-      ) : null}
-      {error ? <p role="alert" className="mt-2 text-sm text-white">{error}</p> : null}
-    </div>
   )
 }
 
@@ -525,6 +336,27 @@ export function ReportView({
   const [submitting, setSubmitting] = useState(false)
   const [gateError, setGateError] = useState<GrowthToolsError | null>(null)
   const [emailedTo, setEmailedTo] = useState<string | null>(null)
+
+  // Deep-link to the standalone scheduling page, carrying venue + source. The
+  // report_url is added after mount (window is server-undefined) — starting
+  // without it keeps the SSR and first client render identical (no hydration
+  // mismatch), then the effect enriches the link.
+  const [bookHref, setBookHref] = useState(
+    () =>
+      `/tools/book?${new URLSearchParams({
+        venue: report.venue.name,
+        source: 'venue_grader',
+      }).toString()}`,
+  )
+  useEffect(() => {
+    setBookHref(
+      `/tools/book?${new URLSearchParams({
+        venue: report.venue.name,
+        source: 'venue_grader',
+        report_url: window.location.href,
+      }).toString()}`,
+    )
+  }, [report.venue.name])
 
   // The report first renders gated — count the gate view exactly once per run.
   useEffect(() => {
@@ -1215,16 +1047,19 @@ export function ReportView({
             people planning a night out.
           </p>
           <div className="mt-6">
-            <BookingPicker
-              venue={report.venue.name}
-              onBookClick={() =>
+            <Link
+              href={bookHref}
+              onClick={() =>
                 captureMarketing('tool_offer_cta_click', {
                   tool: 'venues',
                   run_id: runId,
                   cta: 'call',
                 })
               }
-            />
+              className="inline-flex min-h-12 items-center justify-center rounded-full bg-white px-7 text-sm font-semibold text-warm-ink transition hover:bg-white/90 focus-ring"
+            >
+              Book a call — we fix all of this, free
+            </Link>
           </div>
         </motion.div>
       ) : null}
