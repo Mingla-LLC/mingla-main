@@ -21,11 +21,6 @@ interface ComingSoonTool {
 
 const COMING_SOON: ComingSoonTool[] = [
   {
-    title: 'Event Turnout Predictor',
-    blurb: 'Know roughly how many people your event will pull — before you commit to the space.',
-    audience: 'Event organisers · promoters',
-  },
-  {
     title: 'Quote Any Trip',
     blurb: 'Price a group trip in minutes, not spreadsheets.',
     audience: 'Trip planners · hosts',
@@ -75,6 +70,33 @@ export default function ToolsHubPage() {
               </p>
               <span className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-warm transition-transform duration-200 ease-out-quart group-hover:translate-x-1">
                 Grade my website
+                <span aria-hidden="true">→</span>
+              </span>
+            </div>
+          </Link>
+
+          {/* LIVE — Event Turnout Predictor */}
+          <Link
+            href="/tools/events"
+            className="group flex flex-col rounded-md glass-soft p-6 transition-all duration-200 ease-out-quart hover:-translate-y-1 hover:brightness-110 focus-ring md:p-8"
+          >
+            <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-warm/40 bg-warm/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-warm">
+              <span aria-hidden="true" className="size-1.5 rounded-full bg-warm" />
+              Live
+            </span>
+            <h2 className="mt-4 font-display text-2xl leading-tight text-white md:text-3xl">
+              Event Turnout Predictor
+            </h2>
+            <p className="mt-3 text-sm leading-relaxed text-white/70 md:text-base">
+              How many people will actually show up? Get a turnout forecast — and
+              see what your promo budget can buy. Free, in under a minute.
+            </p>
+            <div className="mt-auto pt-6">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/45">
+                Event organisers · promoters
+              </p>
+              <span className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-warm transition-transform duration-200 ease-out-quart group-hover:translate-x-1">
+                Forecast my turnout
                 <span aria-hidden="true">→</span>
               </span>
             </div>

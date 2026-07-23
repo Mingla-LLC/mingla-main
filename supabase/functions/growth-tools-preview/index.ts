@@ -72,6 +72,28 @@ function buildRender(report: Record<string, unknown>) {
   };
 }
 
+// ISSUE-1004 — the Event Turnout Predictor's "as a Mingla listing" render.
+// Subset of the event report used by /event-preview to render a polished
+// listing card. Nothing sensitive (no budget, no forecast internals).
+function buildEventRender(report: Record<string, unknown>) {
+  const event = asRecord(report.event);
+  const lp = asRecord(report.listing_preview);
+  return {
+    kind: "event" as const,
+    title: (asString(lp.title) || asString(event.title)).slice(0, 120) ||
+      "Your event",
+    tagline: asString(lp.tagline).slice(0, 200),
+    city: asString(event.city).slice(0, 80),
+    venue_name: asString(event.venue_name).slice(0, 120),
+    category: asString(event.category).slice(0, 60),
+    date: asString(event.date).slice(0, 10),
+    start_time: asString(event.start_time).slice(0, 5),
+    vibe_tags: asStringArray(lp.vibe_tags, 5).map((s) => s.slice(0, 30)),
+    why_go: asStringArray(lp.why_go, 4).map((s) => s.slice(0, 160)),
+    best_for: asStringArray(lp.best_for, 3).map((s) => s.slice(0, 40)),
+  };
+}
+
 export async function handler(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -101,7 +123,7 @@ export async function handler(req: Request): Promise<Response> {
 
     const { data: lead, error } = await supabase
       .from("tool_leads")
-      .select("status, report")
+      .select("tool, status, report")
       .eq("id", runId as string)
       .maybeSingle();
     if (error) {
@@ -113,7 +135,11 @@ export async function handler(req: Request): Promise<Response> {
     if (report === null || typeof report !== "object") {
       return json({ error: "report_not_ready" }, 409);
     }
-    return json({ render: buildRender(report as Record<string, unknown>) });
+    const isEvent = (lead as { tool?: unknown }).tool === "events";
+    const render = isEvent
+      ? buildEventRender(report as Record<string, unknown>)
+      : buildRender(report as Record<string, unknown>);
+    return json({ render });
   } catch (err) {
     console.error(
       "[growth-tools-preview] unexpected error",

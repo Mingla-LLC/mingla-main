@@ -214,6 +214,7 @@ function mapErrorBody(status: number, body: unknown): GrowthToolsError {
 async function postGrowthTools(
   fn:
     | 'growth-tools-run'
+    | 'growth-tools-events'
     | 'growth-tools-gate'
     | 'growth-tools-preview'
     | 'growth-tools-report'
@@ -398,4 +399,183 @@ export async function bookCall(input: {
     return { ok: false, error: 'server' }
   }
   return { ok: true, event_url: b.event_url ?? null, meet_url: b.meet_url ?? null, start: b.start }
+}
+
+// ─── Event Turnout Predictor (#1004) ─────────────────────────────────────────
+
+export interface EventRunInput {
+  title: string
+  category: string
+  city: string
+  venue_name: string
+  date: string // YYYY-MM-DD
+  start_time: string // HH:MM
+  indoor_outdoor: 'indoor' | 'outdoor' | 'mixed'
+  ticket_price: number
+  capacity: number
+  budget: number
+  audience_size: number | null
+  lineup: string | null
+  currency: string
+}
+
+export interface EventForecast {
+  total_low: number
+  total_high: number
+  baseline_low: number
+  baseline_high: number
+  capacity: number
+  pct_capacity_low: number
+  pct_capacity_high: number
+  confidence: 'low' | 'medium' | 'high'
+  headline_read: string
+}
+export interface EventPaidPlan {
+  budget: number
+  currency: string
+  cpc: number
+  cpc_source: 'researched' | 'estimated'
+  clicks_low: number
+  clicks_high: number
+  funnel: Array<{ step: string; rate: number }>
+  attendees_low: number
+  attendees_high: number
+  cost_per_attendee_low: number | null
+  cost_per_attendee_high: number | null
+}
+export interface EventFactor {
+  key?: string
+  label: string
+  status: 'help' | 'watch' | 'hurt'
+  detail: string
+}
+export interface EventCompetitor {
+  name: string
+  platform: string
+  date_note: string
+  scale_note: string
+}
+export interface EventComparable {
+  name: string
+  city: string
+  turnout_note: string
+  source_note: string
+}
+export interface EventWeather {
+  summary: string
+  impact: string
+  kind: 'forecast' | 'seasonal'
+}
+export interface EventFix {
+  title: string
+  why: string
+  change: string
+  lift_note: string
+  effort: 'this_week' | 'this_month' | 'project'
+}
+export interface EventListingPreview {
+  title: string
+  tagline: string
+  vibe_tags: string[]
+  why_go: string[]
+  best_for: string[]
+}
+export interface EventReport {
+  event: {
+    title: string
+    category: string
+    city: string
+    venue_name: string
+    date: string
+    start_time: string
+    indoor_outdoor: string
+    ticket_price: number
+    capacity: number
+    currency: string
+    audience_size: number | null
+    lineup: string | null
+  }
+  forecast: EventForecast
+  paid_plan: EventPaidPlan
+  factors: EventFactor[]
+  competitors: EventCompetitor[]
+  comparables: EventComparable[]
+  weather?: EventWeather
+  demand_read: string
+  fixes: EventFix[]
+  listing_preview: EventListingPreview
+  offer?: { per_person_from: string }
+  narrative: string
+  meta?: { generated_at?: string; model?: string; research_source?: 'grounded' | 'fallback' }
+}
+
+export type EventRunResponse =
+  | { ok: true; run_id: string; report: EventReport }
+  | { ok: false; error: GrowthToolsError }
+
+/** The event forecast run: {action:'run', input} → {run_id, report}. Slow (LLM + search). */
+export async function runEventPredictor(
+  input: EventRunInput,
+  opts?: { pid?: string; utm?: Record<string, string>; signal?: AbortSignal },
+): Promise<EventRunResponse> {
+  const origin = typeof window !== 'undefined' ? window.location.origin : undefined
+  const result = await postGrowthTools(
+    'growth-tools-events',
+    {
+      action: 'run',
+      input,
+      ...(opts?.pid ? { pid: opts.pid } : {}),
+      ...(opts?.utm && Object.keys(opts.utm).length > 0 ? { utm: opts.utm } : {}),
+      ...(origin ? { origin } : {}),
+    },
+    opts?.signal,
+  )
+  if (!result.ok) return result
+  const body = result.body as { run_id?: string; report?: EventReport } | null
+  if (!body || typeof body.run_id !== 'string' || !body.report) {
+    return { ok: false, error: 'server' }
+  }
+  return { ok: true, run_id: body.run_id, report: body.report }
+}
+
+/** Token-gated full event report (from the emailed link): {run_id, token} → {report}. */
+export async function fetchEventReport(
+  run_id: string,
+  token: string,
+): Promise<{ ok: true; report: EventReport } | { ok: false; error: GrowthToolsError }> {
+  const result = await postGrowthTools('growth-tools-report', { run_id, token })
+  if (!result.ok) return result
+  const report =
+    result.body && typeof result.body === 'object' && 'report' in result.body
+      ? (result.body as { report?: EventReport }).report
+      : undefined
+  if (!report || typeof report.event !== 'object') return { ok: false, error: 'server' }
+  return { ok: true, report }
+}
+
+/** Public render-data for the "as a Mingla listing" event preview (by run_id). */
+export interface EventPreviewRender {
+  kind: 'event'
+  title: string
+  tagline: string
+  city: string
+  venue_name: string
+  category: string
+  date: string
+  start_time: string
+  vibe_tags: string[]
+  why_go: string[]
+  best_for: string[]
+}
+export async function fetchEventPreview(
+  runId: string,
+): Promise<{ ok: true; render: EventPreviewRender } | { ok: false; error: GrowthToolsError }> {
+  const result = await postGrowthTools('growth-tools-preview', { run_id: runId })
+  if (!result.ok) return result
+  const render =
+    result.body && typeof result.body === 'object' && 'render' in result.body
+      ? (result.body as { render?: EventPreviewRender }).render
+      : undefined
+  if (!render || typeof render.title !== 'string') return { ok: false, error: 'server' }
+  return { ok: true, render }
 }

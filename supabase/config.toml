@@ -510,3 +510,11 @@ verify_jwt = false
 # no service account. Public (no user data mutated without the calendar API).
 [functions.growth-tools-book]
 verify_jwt = false
+
+# ISSUE-1004 — Event Turnout Predictor. POST {action:"run", input, budget}
+# forecasts event turnout + what ad spend buys, grounded in LIVE external
+# research (competing events, historical turnouts, weather, event-ad CPC) via
+# Gemini google_search, then a deterministic budget engine + structured
+# synthesis. Writes tool_leads(tool='events'). Same anon + service-role posture.
+[functions.growth-tools-events]
+verify_jwt = false

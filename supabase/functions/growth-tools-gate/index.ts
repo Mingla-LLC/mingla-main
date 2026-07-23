@@ -235,6 +235,118 @@ export function buildSummaryEmail(
   };
 }
 
+// ISSUE-1004 — the Event Turnout Predictor summary email. Same posture as the
+// grader's: a SUMMARY + a tokenized link, never the full forecast inline.
+export function buildEventSummaryEmail(
+  report: Record<string, unknown>,
+  reportLink: string,
+): { subject: string; preheader: string; bodyHtml: string; text: string } {
+  const event = asRecord(report.event);
+  const forecast = asRecord(report.forecast);
+  const plan = asRecord(report.paid_plan);
+  const title = asString(event.title) || "your event";
+  const cur = asString(event.currency) || "USD";
+  const lo = asNumber(forecast.total_low);
+  const hi = asNumber(forecast.total_high);
+  const range = lo !== null && hi !== null ? `${lo}–${hi}` : "?";
+  const headline = asString(forecast.headline_read);
+  const budget = asNumber(plan.budget);
+  const attLo = asNumber(plan.attendees_low);
+  const attHi = asNumber(plan.attendees_high);
+  const competitors = Array.isArray(report.competitors)
+    ? (report.competitors as unknown[]).length
+    : 0;
+  const fixCount = Array.isArray(report.fixes)
+    ? (report.fixes as unknown[]).length
+    : 0;
+
+  const subject = `Turnout forecast: ~${range} at ${title}`;
+  const preheader = headline ||
+    `We forecast ~${range} people at ${title}. Open your full report.`;
+
+  const inside: string[] = [];
+  if (budget !== null && budget > 0 && attLo !== null && attHi !== null) {
+    inside.push(
+      `Your ad-spend plan — what ${budget} ${cur} can add (~${attLo}–${attHi} more people)`,
+    );
+  }
+  if (competitors > 0) {
+    inside.push(
+      `Who you're up against — ${competitors} competing event${
+        competitors === 1 ? "" : "s"
+      } that night`,
+    );
+  }
+  inside.push("What's driving your turnout — the full factor breakdown");
+  if (fixCount > 0) {
+    inside.push(`${fixCount} concrete ways to pull a bigger crowd`);
+  }
+  inside.push("Your event as a Mingla listing — ready to publish");
+
+  const sections: string[] = [];
+  const textLines: string[] = [];
+
+  sections.push(
+    `<h1 style="margin:0 0 6px 0;font-size:24px;line-height:1.25;color:${BRAND_INK};font-weight:700;">~${
+      escapeHtml(range)
+    } expected — ${escapeHtml(title)}</h1>`,
+  );
+  textLines.push(`~${range} expected — ${title}`, "");
+  if (headline) {
+    sections.push(
+      `<p style="margin:0 0 16px 0;font-size:15px;line-height:1.55;color:${BRAND_INK};">${
+        escapeHtml(headline)
+      }</p>`,
+    );
+    textLines.push(headline, "");
+  }
+
+  sections.push(
+    `<p style="margin:18px 0 8px 0;font-size:13px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:${BRAND_MUTED};">Inside your full report</p>`,
+  );
+  sections.push(
+    `<ul style="margin:0 0 8px 0;padding:0 0 0 18px;">${
+      inside.map((line) =>
+        `<li style="margin:0 0 6px 0;font-size:14px;line-height:1.5;color:${BRAND_INK};">${
+          escapeHtml(line)
+        }</li>`
+      ).join("")
+    }</ul>`,
+  );
+  textLines.push("INSIDE YOUR FULL REPORT");
+  for (const line of inside) textLines.push(`- ${line}`);
+  textLines.push("");
+
+  sections.push(
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:22px 0 6px 0;">
+      <tr><td style="background:${BRAND_ORANGE_BUTTON};border-radius:999px;">
+        <a href="${
+      escapeHtml(reportLink)
+    }" style="display:inline-block;padding:14px 26px;color:#FFFFFF;font-size:15px;font-weight:700;text-decoration:none;">View your full turnout report</a>
+      </td></tr>
+    </table>
+    <p style="margin:0 0 4px 0;font-size:12px;color:${BRAND_MUTED};">This link is just for you — it opens your full forecast on the web.</p>`,
+  );
+  textLines.push("VIEW YOUR FULL TURNOUT REPORT:", reportLink, "(This link is just for you.)", "");
+
+  sections.push(
+    `<div style="margin:22px 0 6px 0;padding:16px 18px;border-radius:12px;border:1px solid ${BRAND_BORDER};">
+      <p style="margin:0;font-size:14px;line-height:1.5;color:${BRAND_INK};"><strong>Mingla can put your event in front of high-intent people for as low as $3.99 per head.</strong> That's the introductory promotion — your report shows the math for your budget.</p>
+    </div>`,
+  );
+  textLines.push(
+    "Mingla can put your event in front of high-intent people for as low as $3.99 per head — your report shows the math.",
+    "",
+  );
+
+  return {
+    subject,
+    preheader: preheader.slice(0, 120),
+    bodyHtml: sections.join("\n"),
+    text: textLines.join("\n"),
+  };
+}
+
 export function buildReportEmail(report: Record<string, unknown>): {
   subject: string;
   preheader: string;
@@ -739,7 +851,7 @@ export async function handler(req: Request): Promise<Response> {
     // ── Load the run (must have a generated report). ─────────────────────────
     const { data: lead, error: leadErr } = await supabase
       .from("tool_leads")
-      .select("id, status, report, report_token")
+      .select("id, tool, status, report, report_token")
       .eq("id", runId as string)
       .maybeSingle();
     if (leadErr) {
@@ -748,6 +860,9 @@ export async function handler(req: Request): Promise<Response> {
     }
     if (!lead) return json({ error: "not_found" }, 404);
     const status = (lead as { status: string }).status;
+    const tool = (lead as { tool?: unknown }).tool === "events"
+      ? "events"
+      : "venues";
     const report = (lead as { report: unknown }).report;
     const gateable = status === "report_ready" || status === "gated_email" ||
       status === "emailed";
@@ -774,7 +889,8 @@ export async function handler(req: Request): Promise<Response> {
       console.error("[growth-tools-gate] email save failed", gateErr.message);
       return json({ error: "server" }, 500);
     }
-    const reportLink = `${reportBase}/tools/venues/report?id=${
+    const reportPath = tool === "events" ? "/tools/events/report" : "/tools/venues/report";
+    const reportLink = `${reportBase}${reportPath}?id=${
       encodeURIComponent(runId as string)
     }&t=${encodeURIComponent(reportToken)}`;
 
@@ -795,7 +911,9 @@ export async function handler(req: Request): Promise<Response> {
       return json({ error: "email_failed" }, 502);
     }
 
-    const built = buildSummaryEmail(report as Record<string, unknown>, reportLink);
+    const built = tool === "events"
+      ? buildEventSummaryEmail(report as Record<string, unknown>, reportLink)
+      : buildSummaryEmail(report as Record<string, unknown>, reportLink);
     const html = renderShell({
       preheader: built.preheader,
       bodyHtml: built.bodyHtml,
