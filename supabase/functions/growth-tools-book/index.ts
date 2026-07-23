@@ -247,6 +247,7 @@ async function sendResend(input: {
     console.error("[growth-tools-book] sandbox sender rejected", String(e));
     return false;
   }
+  // no-attachment: booking confirmation/notification is plain transactional HTML.
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
