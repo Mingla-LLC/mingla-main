@@ -153,6 +153,14 @@ export type GrowthToolsError =
   | 'validation'
   | 'server'
   | 'network'
+  | 'booking_unconfigured'
+  | 'slot_taken'
+  | 'calendar_unavailable'
+
+export interface BookingSlot {
+  start: string
+  end: string
+}
 
 export type GrowthToolsSearchResponse =
   | { ok: true; results: GrowthToolsSearchResult[] }
@@ -185,6 +193,9 @@ const KNOWN_ERRORS: readonly GrowthToolsError[] = [
   'validation',
   'server',
   'network',
+  'booking_unconfigured',
+  'slot_taken',
+  'calendar_unavailable',
 ]
 
 function mapErrorBody(status: number, body: unknown): GrowthToolsError {
@@ -205,7 +216,8 @@ async function postGrowthTools(
     | 'growth-tools-run'
     | 'growth-tools-gate'
     | 'growth-tools-preview'
-    | 'growth-tools-report',
+    | 'growth-tools-report'
+    | 'growth-tools-book',
   payload: Record<string, unknown>,
   signal?: AbortSignal,
 ): Promise<{ ok: true; body: unknown } | { ok: false; error: GrowthToolsError }> {
@@ -347,4 +359,43 @@ export async function fetchFullReport(
       : undefined
   if (!report || typeof report.venue !== 'object') return { ok: false, error: 'server' }
   return { ok: true, report }
+}
+
+/** Available call slots on seth@usemingla.com's calendar. */
+export async function fetchBookingSlots(): Promise<
+  { ok: true; slots: BookingSlot[] } | { ok: false; error: GrowthToolsError }
+> {
+  const result = await postGrowthTools('growth-tools-book', { action: 'slots' })
+  if (!result.ok) return result
+  const slots =
+    result.body && typeof result.body === 'object' && 'slots' in result.body
+      ? (result.body as { slots?: BookingSlot[] }).slots
+      : undefined
+  if (!Array.isArray(slots)) return { ok: false, error: 'server' }
+  return { ok: true, slots }
+}
+
+/** Book a call: creates the event + Meet link and emails the invite. */
+export async function bookCall(input: {
+  start: string
+  name: string
+  email: string
+  venue?: string
+  report_url?: string
+}): Promise<
+  | { ok: true; event_url: string | null; meet_url: string | null; start: string }
+  | { ok: false; error: GrowthToolsError }
+> {
+  const result = await postGrowthTools('growth-tools-book', {
+    action: 'book',
+    ...input,
+  })
+  if (!result.ok) return result
+  const b = result.body as
+    | { ok?: boolean; event_url?: string | null; meet_url?: string | null; start?: string }
+    | null
+  if (!b || b.ok !== true || typeof b.start !== 'string') {
+    return { ok: false, error: 'server' }
+  }
+  return { ok: true, event_url: b.event_url ?? null, meet_url: b.meet_url ?? null, start: b.start }
 }
