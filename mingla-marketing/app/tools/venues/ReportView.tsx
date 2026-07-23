@@ -96,6 +96,79 @@ function DocHeading({ children }: { children: React.ReactNode }) {
   )
 }
 
+// Interactive before/after: the redesigned homepage (after) clipped over the
+// current site (before), split by a range slider. Keyboard-accessible; the clip
+// is the only thing that moves, so it's smooth and dependency-free.
+function BeforeAfterSlider({
+  before,
+  after,
+  host,
+}: {
+  before: string
+  after: string
+  host: string
+}) {
+  const [pos, setPos] = useState(50)
+  return (
+    <div>
+      <div className="relative select-none overflow-hidden rounded-sm border border-divider-strong bg-black">
+        <img
+          src={before}
+          alt={`Current site — ${host}`}
+          loading="lazy"
+          className="block aspect-[16/10] w-full max-w-full object-cover object-top"
+          draggable={false}
+        />
+        <div
+          className="absolute inset-0 overflow-hidden"
+          style={{ clipPath: `inset(0 0 0 ${pos}%)` }}
+        >
+          <img
+            src={after}
+            alt="Redesigned in a Mingla template"
+            loading="lazy"
+            className="block aspect-[16/10] w-full max-w-full object-cover object-top"
+            draggable={false}
+          />
+        </div>
+        {/* Divider + handle */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-y-0 w-0.5 bg-white/90 shadow-[0_0_0_1px_rgba(0,0,0,0.25)]"
+          style={{ left: `${pos}%` }}
+        >
+          <span className="absolute top-1/2 left-1/2 grid size-8 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-white text-[11px] font-bold text-ink shadow-[0_2px_8px_rgba(0,0,0,0.35)]">
+            ⇄
+          </span>
+        </div>
+        {/* Labels */}
+        <span className="pointer-events-none absolute left-2 top-2 rounded-full bg-black/55 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+          Before
+        </span>
+        <span className="pointer-events-none absolute right-2 top-2 rounded-full bg-warm px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+          After
+        </span>
+      </div>
+      <label className="sr-only" htmlFor="ba-slider">
+        Drag to compare before and after
+      </label>
+      <input
+        id="ba-slider"
+        type="range"
+        min={0}
+        max={100}
+        value={pos}
+        onChange={(e) => setPos(Number(e.target.value))}
+        className="mt-3 w-full accent-warm"
+        aria-label="Compare your current site with the redesign"
+      />
+      <p className="mt-1 text-center text-xs text-text-muted">
+        Drag to compare — your site now vs. rebuilt in a Mingla template
+      </p>
+    </div>
+  )
+}
+
 // Count a number up to `target` over ~800ms once mounted. Honors reduced motion
 // (jumps straight to the value). SSR-safe: starts from the target so the first
 // paint is never wrong if JS is slow.
@@ -228,6 +301,7 @@ export function ReportView({ report, runId }: { report: GraderReport; runId: str
   const offerFrom = report.offer?.per_person_from ?? '$3.99'
   // Prefer the live ScreenshotOne capture; fall back to the site's og:image.
   const siteImage = report.screenshot.image_url || report.screenshot.og_image_url || null
+  const afterImage = report.screenshot.after_url || null
 
   // The offer view fires once, when the report first renders unlocked.
   useEffect(() => {
@@ -731,27 +805,22 @@ export function ReportView({ report, runId }: { report: GraderReport; runId: str
             </div>
           ) : null}
 
-          {/* Before / After copy */}
+          {/* Before / After — the visual redesign */}
           <div className="mt-10">
-            <DocHeading>Your homepage, rewritten</DocHeading>
+            <DocHeading>Your homepage, redesigned</DocHeading>
+            {siteImage && afterImage ? (
+              <div className="mt-4">
+                <BeforeAfterSlider before={siteImage} after={afterImage} host={host} />
+              </div>
+            ) : null}
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              <div className="overflow-hidden rounded-sm border border-divider bg-white">
-                {siteImage ? (
-                  <img
-                    src={siteImage}
-                    alt={`Live screenshot of ${host}`}
-                    loading="lazy"
-                    className="aspect-[16/10] w-full max-w-full object-cover object-top"
-                  />
-                ) : null}
-                <div className="p-4 md:p-5">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-                    Before — your site now
-                  </p>
-                  <p className="mt-3 break-words text-sm italic leading-relaxed text-text-secondary">
-                    &ldquo;{report.rewritten_hero.before_excerpt}&rdquo;
-                  </p>
-                </div>
+              <div className="rounded-sm border border-divider bg-white p-4 md:p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+                  Before — your headline now
+                </p>
+                <p className="mt-3 break-words text-sm italic leading-relaxed text-text-secondary">
+                  &ldquo;{report.rewritten_hero.before_excerpt}&rdquo;
+                </p>
               </div>
               <div className="rounded-sm border border-warm/40 bg-warm/10 p-4 md:p-5">
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-warm-ink">
@@ -759,10 +828,6 @@ export function ReportView({ report, runId }: { report: GraderReport; runId: str
                 </p>
                 <p className="mt-3 break-words text-sm font-medium leading-relaxed text-text-primary">
                   {report.rewritten_hero.after_copy}
-                </p>
-                <p className="mt-4 border-t border-warm/30 pt-3 text-xs leading-relaxed text-text-muted">
-                  This is the rewritten copy. The full visual redesign — your site
-                  rebuilt in a premium template — is coming next.
                 </p>
               </div>
             </div>

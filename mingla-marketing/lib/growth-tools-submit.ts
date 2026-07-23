@@ -113,7 +113,11 @@ export interface GraderReport {
     ai_read?: string
     photo_urls?: string[]
   }
-  screenshot: { image_url?: string | null; og_image_url?: string | null }
+  screenshot: {
+    image_url?: string | null
+    og_image_url?: string | null
+    after_url?: string | null
+  }
   site_signals?: { checks: SiteSignal[] }
   percentile?: GraderPercentile
   vibe_card: {
@@ -197,7 +201,7 @@ function mapErrorBody(status: number, body: unknown): GrowthToolsError {
 }
 
 async function postGrowthTools(
-  fn: 'growth-tools-run' | 'growth-tools-gate',
+  fn: 'growth-tools-run' | 'growth-tools-gate' | 'growth-tools-preview',
   payload: Record<string, unknown>,
   signal?: AbortSignal,
 ): Promise<{ ok: true; body: unknown } | { ok: false; error: GrowthToolsError }> {
@@ -256,6 +260,9 @@ export async function runVenueGrader(
   input: GraderRunInput,
   opts?: { pid?: string; utm?: Record<string, string>; signal?: AbortSignal },
 ): Promise<GrowthToolsRunResponse> {
+  // The venue's own origin so the backend builds the "after" screenshot against
+  // the right deployment (prod or this preview). Server-side validated.
+  const origin = typeof window !== 'undefined' ? window.location.origin : undefined
   const result = await postGrowthTools(
     'growth-tools-run',
     {
@@ -263,6 +270,7 @@ export async function runVenueGrader(
       input,
       ...(opts?.pid ? { pid: opts.pid } : {}),
       ...(opts?.utm && Object.keys(opts.utm).length > 0 ? { utm: opts.utm } : {}),
+      ...(origin ? { origin } : {}),
     },
     opts?.signal,
   )
@@ -272,6 +280,32 @@ export async function runVenueGrader(
     return { ok: false, error: 'server' }
   }
   return { ok: true, run_id: body.run_id, report: body.report }
+}
+
+/** Storefront-render subset for the "after" homepage preview page. */
+export interface VenuePreviewRender {
+  name: string
+  city: string
+  tagline: string
+  vibes: string[]
+  occasions: string[]
+  signature: string
+  ai_read: string
+  photos: string[]
+}
+
+/** Public render-data read for the redesigned-homepage preview (by run_id). */
+export async function fetchVenuePreview(
+  runId: string,
+): Promise<{ ok: true; render: VenuePreviewRender } | { ok: false; error: GrowthToolsError }> {
+  const result = await postGrowthTools('growth-tools-preview', { run_id: runId })
+  if (!result.ok) return result
+  const render =
+    result.body && typeof result.body === 'object' && 'render' in result.body
+      ? (result.body as { render?: VenuePreviewRender }).render
+      : undefined
+  if (!render || typeof render.name !== 'string') return { ok: false, error: 'server' }
+  return { ok: true, render }
 }
 
 /** Email gate: {run_id, email} → {ok:true} unlocks the report + emails it. */

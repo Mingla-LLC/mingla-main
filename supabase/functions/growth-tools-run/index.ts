@@ -542,13 +542,38 @@ async function fetchSite(
   }
 }
 
+// The client passes its own origin so the "after" screenshot points at the
+// correct deployment (prod usemingla.com or a vercel.app preview). Validate it
+// hard: https only, host must be usemingla.com (or a subdomain) or a
+// *.vercel.app preview — never an arbitrary attacker-supplied origin.
+export function validateToolsOrigin(raw: unknown): string | null {
+  if (typeof raw !== "string" || raw.length === 0 || raw.length > 200) {
+    return null;
+  }
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== "https:") return null;
+  const host = u.hostname.toLowerCase();
+  const ok = host === "usemingla.com" || host.endsWith(".usemingla.com") ||
+    host.endsWith(".vercel.app");
+  if (!ok) return null;
+  return u.origin;
+}
+
 // ── Live "before" screenshot (ScreenshotOne signed URL) ─────────────────────
 // We hand the browser a SIGNED ScreenshotOne URL: the access key is visible but
 // the HMAC-SHA256 signature authorizes ONLY this exact URL, so it can't be
 // reused. ScreenshotOne renders on first load and caches (repeat loads free).
 // No server-side wait — this adds zero latency to the run. Best-effort: a
 // missing key just leaves image_url null and the report falls back to og:image.
-async function buildScreenshotUrl(url: string): Promise<string | null> {
+async function buildScreenshotUrl(
+  url: string,
+  opts: { delaySeconds?: number } = {},
+): Promise<string | null> {
   try {
     // Packed as "access:secret" in ONE secret (SCREENSHOTONE_KEYS) to fit the
     // prod project's 100-secret cap; falls back to two discrete vars if present.
@@ -573,6 +598,11 @@ async function buildScreenshotUrl(url: string): Promise<string | null> {
     params.set("block_cookie_banners", "true");
     params.set("block_ads", "true");
     params.set("block_chats", "true");
+    // The "after" preview renders client-side (fetches its data), so wait a
+    // beat for the fetch + paint before capturing.
+    if (opts.delaySeconds && opts.delaySeconds > 0) {
+      params.set("delay", String(opts.delaySeconds));
+    }
     params.set("cache", "true");
     params.set("cache_ttl", "2592000"); // 30 days
     const query = params.toString();
@@ -1841,6 +1871,9 @@ async function handleRun(
       !Array.isArray(body.utm)
       ? body.utm as Record<string, unknown>
       : null;
+  // Origin of the marketing surface — where the /tools/venues/preview page that
+  // becomes the "after" screenshot lives. Validated (usemingla / vercel only).
+  const toolsOrigin = validateToolsOrigin(body.origin);
 
   // b. Rate limit by salted IP hash (8 runs / 24h).
   const ip = firstForwardedHop(req.headers.get("x-forwarded-for"));
@@ -1980,6 +2013,17 @@ async function handleRun(
     competitionSource = "none";
   }
 
+  // g2. The "after" screenshot: our redesigned-homepage preview page, rendered
+  //     from this run's saved data. Points at the caller's origin so it works on
+  //     both prod and preview deploys; null when origin/keys are absent (the UI
+  //     then hides the after side). +3s delay for the page's client fetch/paint.
+  const afterScreenshotUrl = toolsOrigin
+    ? await buildScreenshotUrl(
+      `${toolsOrigin}/venue-preview?run_id=${runId}`,
+      { delaySeconds: 3 },
+    )
+    : null;
+
   // h. Assemble + persist the full report. Grounded listing lines REPLACE
   //    pass-1's google_listing.lines when they came back.
   const report = {
@@ -1993,6 +2037,7 @@ async function handleRun(
     screenshot: {
       image_url: screenshotUrl,
       og_image_url: site.og_image_url,
+      after_url: afterScreenshotUrl,
     },
     site_signals: { checks: site.signals },
     ...(percentile !== null ? { percentile } : {}),

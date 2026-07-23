@@ -488,3 +488,11 @@ verify_jwt = false
 # as growth-tools-run.
 [functions.growth-tools-gate]
 verify_jwt = false
+
+# ISSUE-1003 — the public render-data read for the "after" homepage preview
+# (template engine). GET ?run_id / POST {run_id} returns the storefront-render
+# subset (name, tagline, vibes, occasions, photos) of a saved run so the
+# /tools/venues/preview page can render a redesigned homepage to screenshot.
+# No sensitive fields; service-role-only DB access.
+[functions.growth-tools-preview]
+verify_jwt = false
