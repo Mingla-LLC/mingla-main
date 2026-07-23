@@ -496,3 +496,10 @@ verify_jwt = false
 # No sensitive fields; service-role-only DB access.
 [functions.growth-tools-preview]
 verify_jwt = false
+
+# ISSUE-1003 — token-gated full-report read. POST {run_id, token} returns the
+# full report ONLY when the token matches the one emailed to the verified
+# address (growth-tools-gate). Entering an email never reveals the report; the
+# emailed link does. Service-role DB access.
+[functions.growth-tools-report]
+verify_jwt = false

@@ -201,7 +201,11 @@ function mapErrorBody(status: number, body: unknown): GrowthToolsError {
 }
 
 async function postGrowthTools(
-  fn: 'growth-tools-run' | 'growth-tools-gate' | 'growth-tools-preview',
+  fn:
+    | 'growth-tools-run'
+    | 'growth-tools-gate'
+    | 'growth-tools-preview'
+    | 'growth-tools-report',
   payload: Record<string, unknown>,
   signal?: AbortSignal,
 ): Promise<{ ok: true; body: unknown } | { ok: false; error: GrowthToolsError }> {
@@ -308,13 +312,19 @@ export async function fetchVenuePreview(
   return { ok: true, render }
 }
 
-/** Email gate: {run_id, email} → {ok:true} unlocks the report + emails it. */
+/** Email gate: {run_id, email} → {ok:true}. Sends a summary email with a
+ *  tokenized link; does NOT unlock the page (the full report opens from email). */
 export async function submitGrowthToolsGate(
   run_id: string,
   email: string,
   signal?: AbortSignal,
 ): Promise<GrowthToolsGateResponse> {
-  const result = await postGrowthTools('growth-tools-gate', { run_id, email }, signal)
+  const origin = typeof window !== 'undefined' ? window.location.origin : undefined
+  const result = await postGrowthTools(
+    'growth-tools-gate',
+    { run_id, email, ...(origin ? { origin } : {}) },
+    signal,
+  )
   if (!result.ok) return result
   const ok =
     result.body && typeof result.body === 'object' && 'ok' in result.body
@@ -322,4 +332,19 @@ export async function submitGrowthToolsGate(
       : undefined
   if (ok !== true) return { ok: false, error: 'server' }
   return { ok: true }
+}
+
+/** Token-gated full report (from the emailed link): {run_id, token} → {report}. */
+export async function fetchFullReport(
+  run_id: string,
+  token: string,
+): Promise<{ ok: true; report: GraderReport } | { ok: false; error: GrowthToolsError }> {
+  const result = await postGrowthTools('growth-tools-report', { run_id, token })
+  if (!result.ok) return result
+  const report =
+    result.body && typeof result.body === 'object' && 'report' in result.body
+      ? (result.body as { report?: GraderReport }).report
+      : undefined
+  if (!report || typeof report.venue !== 'object') return { ok: false, error: 'server' }
+  return { ok: true, report }
 }

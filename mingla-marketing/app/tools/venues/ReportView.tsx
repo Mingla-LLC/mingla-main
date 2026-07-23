@@ -109,13 +109,30 @@ function BeforeAfterSlider({
   host: string
 }) {
   const [pos, setPos] = useState(50)
+  const [beforeLoaded, setBeforeLoaded] = useState(false)
+  const [afterLoaded, setAfterLoaded] = useState(false)
+  const ready = beforeLoaded && afterLoaded
   return (
     <div>
       <div className="relative select-none overflow-hidden rounded-sm border border-divider-strong bg-black">
+        {!ready ? (
+          <div className="absolute inset-0 z-10 grid place-items-center bg-ink/90">
+            <div className="flex flex-col items-center gap-3 text-center">
+              <span
+                aria-hidden="true"
+                className="size-6 animate-spin rounded-full border-2 border-white/25 border-t-white"
+              />
+              <p className="px-6 text-xs text-white/70">
+                Rendering your before &amp; after… this takes a few seconds the first time.
+              </p>
+            </div>
+          </div>
+        ) : null}
         <img
           src={before}
           alt={`Current site — ${host}`}
-          loading="lazy"
+          onLoad={() => setBeforeLoaded(true)}
+          onError={() => setBeforeLoaded(true)}
           className="block aspect-[16/10] w-full max-w-full object-cover object-top"
           draggable={false}
         />
@@ -126,7 +143,8 @@ function BeforeAfterSlider({
           <img
             src={after}
             alt="Redesigned in a Mingla template"
-            loading="lazy"
+            onLoad={() => setAfterLoaded(true)}
+            onError={() => setAfterLoaded(true)}
             className="block aspect-[16/10] w-full max-w-full object-cover object-top"
             draggable={false}
           />
@@ -267,8 +285,17 @@ function GradeRing({
   )
 }
 
-export function ReportView({ report, runId }: { report: GraderReport; runId: string }) {
-  const [gated, setGated] = useState(true)
+export function ReportView({
+  report,
+  runId,
+  initialGated = true,
+}: {
+  report: GraderReport
+  runId: string
+  /** false when opened from the emailed, token-verified report link. */
+  initialGated?: boolean
+}) {
+  const [gated, setGated] = useState(initialGated)
   const [emailOpen, setEmailOpen] = useState(false)
   const [email, setEmail] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -318,8 +345,9 @@ export function ReportView({ report, runId }: { report: GraderReport; runId: str
     setSubmitting(false)
     if (res.ok) {
       captureMarketing('tool_report_emailed', { tool: 'venues', run_id: runId })
+      // The page stays gated on purpose — the full report opens only from the
+      // tokenized link we just emailed (email-verified access).
       setEmailedTo(email.trim())
-      setGated(false)
       return
     }
     setGateError(res.error)
@@ -488,13 +516,19 @@ export function ReportView({ report, runId }: { report: GraderReport; runId: str
       ) : null}
 
       {emailedTo ? (
-        <p
+        <div
           role="status"
           aria-live="polite"
-          className="mt-6 rounded-sm border border-warm/40 bg-warm/10 px-4 py-3 text-sm text-text-secondary"
+          className="mt-6 rounded-sm border border-warm/40 bg-warm/10 px-4 py-4 text-sm text-text-secondary"
         >
-          Report emailed to <span className="font-semibold text-text-primary">{emailedTo}</span>.
-        </p>
+          <p className="font-semibold text-text-primary">Check your inbox.</p>
+          <p className="mt-1">
+            We sent your full report — grades, fixes, competitor head-to-head, and
+            your homepage redesigned — to{' '}
+            <span className="font-semibold text-text-primary">{emailedTo}</span>. Open
+            it from the link in that email.
+          </p>
+        </div>
       ) : null}
 
       {/* Teasers — FREE zone, the gate's strongest hooks */}
@@ -806,32 +840,18 @@ export function ReportView({ report, runId }: { report: GraderReport; runId: str
           ) : null}
 
           {/* Before / After — the visual redesign */}
-          <div className="mt-10">
-            <DocHeading>Your homepage, redesigned</DocHeading>
-            {siteImage && afterImage ? (
+          {siteImage && afterImage ? (
+            <div className="mt-10">
+              <DocHeading>Your homepage, redesigned</DocHeading>
+              <p className="mt-2 text-sm leading-relaxed text-text-secondary">
+                Your current site vs. the same venue rebuilt in a premium Mingla
+                template — your real photos, a clearer story, a reason to book.
+              </p>
               <div className="mt-4">
                 <BeforeAfterSlider before={siteImage} after={afterImage} host={host} />
               </div>
-            ) : null}
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              <div className="rounded-sm border border-divider bg-white p-4 md:p-5">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-                  Before — your headline now
-                </p>
-                <p className="mt-3 break-words text-sm italic leading-relaxed text-text-secondary">
-                  &ldquo;{report.rewritten_hero.before_excerpt}&rdquo;
-                </p>
-              </div>
-              <div className="rounded-sm border border-warm/40 bg-warm/10 p-4 md:p-5">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-warm-ink">
-                  After — written to convert
-                </p>
-                <p className="mt-3 break-words text-sm font-medium leading-relaxed text-text-primary">
-                  {report.rewritten_hero.after_copy}
-                </p>
-              </div>
             </div>
-          </div>
+          ) : null}
         </div>
 
         {/* Gate overlay + floating gate card */}
@@ -843,74 +863,104 @@ export function ReportView({ report, runId }: { report: GraderReport; runId: str
             />
             <div className="relative mx-auto mt-4 max-w-md px-1 sm:mt-8">
               <div className="rounded-md border border-divider-strong bg-parchment p-5 text-center shadow-[0_24px_80px_rgba(14,14,16,0.28)] sm:p-6">
-                <p className="font-display text-2xl text-text-primary">
-                  Your full report is ready
-                </p>
-                <p className="mt-2 text-sm leading-relaxed text-text-secondary">
-                  Every grade with its reason, your Google listing, your fixes, and
-                  your homepage rewritten.
-                </p>
-                <a
-                  href={APP_GATE_HREF}
-                  target="_blank"
-                  rel="noopener"
-                  onClick={() =>
-                    captureMarketing('tool_gate_app_click', {
-                      tool: 'venues',
-                      run_id: runId,
-                      location: 'gate',
-                    })
-                  }
-                  className={buttonClasses({ variant: 'primary', className: 'mt-5 w-full' })}
-                >
-                  View on Mingla app
-                </a>
-                {!emailOpen ? (
-                  <button
-                    type="button"
-                    onClick={() => setEmailOpen(true)}
-                    className="mt-3 rounded-sm text-sm font-semibold text-warm-ink underline-offset-4 transition hover:underline focus-ring"
-                  >
-                    Continue on web — email me it
-                  </button>
-                ) : (
-                  <form onSubmit={onGateSubmit} noValidate className="mt-4 text-left">
-                    <label
-                      htmlFor="gate-email"
-                      className="block text-xs font-semibold uppercase tracking-[0.16em] text-text-muted"
+                {emailedTo ? (
+                  <>
+                    <p className="font-display text-2xl text-text-primary">
+                      Check your inbox
+                    </p>
+                    <p className="mt-2 text-sm leading-relaxed text-text-secondary">
+                      We sent your full report to{' '}
+                      <span className="font-semibold text-text-primary">{emailedTo}</span>.
+                      Open it from the private link in that email — grades, fixes, the
+                      competitor head-to-head, and your homepage redesigned.
+                    </p>
+                    <p className="mt-3 text-xs text-text-muted">
+                      Didn&rsquo;t get it? Check spam, or try a different email below.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEmailedTo(null)
+                        setEmail('')
+                        setEmailOpen(true)
+                      }}
+                      className="mt-2 rounded-sm text-sm font-semibold text-warm-ink underline-offset-4 transition hover:underline focus-ring"
                     >
-                      Your email <span aria-hidden="true" className="text-warm">*</span>
-                    </label>
-                    <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-                      <input
-                        id="gate-email"
-                        type="email"
-                        inputMode="email"
-                        autoComplete="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="you@yourplace.com"
-                        aria-invalid={email.trim().length > 0 && !emailValid}
-                        className="min-h-11 w-full min-w-0 flex-1 rounded-sm border border-divider-strong bg-white px-3 text-base text-text-primary placeholder:text-text-muted focus-ring"
-                      />
+                      Use a different email
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-display text-2xl text-text-primary">
+                      Get your full report
+                    </p>
+                    <p className="mt-2 text-sm leading-relaxed text-text-secondary">
+                      Grades, fixes, your competitor head-to-head, and your homepage
+                      redesigned — we&rsquo;ll email you a private link to the full report.
+                    </p>
+                    <a
+                      href={APP_GATE_HREF}
+                      target="_blank"
+                      rel="noopener"
+                      onClick={() =>
+                        captureMarketing('tool_gate_app_click', {
+                          tool: 'venues',
+                          run_id: runId,
+                          location: 'gate',
+                        })
+                      }
+                      className={buttonClasses({ variant: 'primary', className: 'mt-5 w-full' })}
+                    >
+                      View on Mingla app
+                    </a>
+                    {!emailOpen ? (
                       <button
-                        type="submit"
-                        disabled={!emailValid || submitting}
-                        className={buttonClasses({
-                          variant: 'primary',
-                          size: 'sm',
-                          className: 'whitespace-nowrap',
-                        })}
+                        type="button"
+                        onClick={() => setEmailOpen(true)}
+                        className="mt-3 rounded-sm text-sm font-semibold text-warm-ink underline-offset-4 transition hover:underline focus-ring"
                       >
-                        {submitting ? 'Sending…' : 'Email me it'}
+                        Or email me my full report
                       </button>
-                    </div>
-                    {gateError ? (
-                      <p role="alert" className="mt-2 text-sm text-danger">
-                        {GATE_ERROR_COPY[gateError]}
-                      </p>
-                    ) : null}
-                  </form>
+                    ) : (
+                      <form onSubmit={onGateSubmit} noValidate className="mt-4 text-left">
+                        <label
+                          htmlFor="gate-email"
+                          className="block text-xs font-semibold uppercase tracking-[0.16em] text-text-muted"
+                        >
+                          Your email <span aria-hidden="true" className="text-warm">*</span>
+                        </label>
+                        <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                          <input
+                            id="gate-email"
+                            type="email"
+                            inputMode="email"
+                            autoComplete="email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            placeholder="you@yourplace.com"
+                            aria-invalid={email.trim().length > 0 && !emailValid}
+                            className="min-h-11 w-full min-w-0 flex-1 rounded-sm border border-divider-strong bg-white px-3 text-base text-text-primary placeholder:text-text-muted focus-ring"
+                          />
+                          <button
+                            type="submit"
+                            disabled={!emailValid || submitting}
+                            className={buttonClasses({
+                              variant: 'primary',
+                              size: 'sm',
+                              className: 'whitespace-nowrap',
+                            })}
+                          >
+                            {submitting ? 'Sending…' : 'Send my report'}
+                          </button>
+                        </div>
+                        {gateError ? (
+                          <p role="alert" className="mt-2 text-sm text-danger">
+                            {GATE_ERROR_COPY[gateError]}
+                          </p>
+                        ) : null}
+                      </form>
+                    )}
+                  </>
                 )}
               </div>
             </div>

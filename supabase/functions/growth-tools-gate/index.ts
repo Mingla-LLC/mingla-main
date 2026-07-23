@@ -64,6 +64,25 @@ export function isUuid(v: unknown): v is string {
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 }
 
+// Client-supplied origin for the emailed report link — https + usemingla/vercel
+// hosts only (never an attacker-controlled origin in the email).
+export function validateToolsOrigin(raw: unknown): string | null {
+  if (typeof raw !== "string" || raw.length === 0 || raw.length > 200) {
+    return null;
+  }
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== "https:") return null;
+  const host = u.hostname.toLowerCase();
+  const ok = host === "usemingla.com" || host.endsWith(".usemingla.com") ||
+    host.endsWith(".vercel.app");
+  return ok ? u.origin : null;
+}
+
 // ── Defensive report readers (the report is service-written JSON, but the
 //    email builder still never throws on a missing field). ───────────────────
 function asString(v: unknown, fallback = ""): string {
@@ -85,6 +104,137 @@ function asNumber(v: unknown): number | null {
 }
 
 // ── Email body builder (inline per SPEC — shared shell + escape only). ───────
+// The email is a SUMMARY + a link — never the full report. The full report
+// (scores, fixes, competition, before/after) lives on web behind the tokenized
+// link, so it is only ever seen by someone who owns the email we sent it to.
+export function buildSummaryEmail(
+  report: Record<string, unknown>,
+  reportLink: string,
+): { subject: string; preheader: string; bodyHtml: string; text: string } {
+  const venue = asRecord(report.venue);
+  const scores = asRecord(report.scores);
+  const venueName = asString(venue.name) || "your venue";
+  const grade = asString(scores.grade) || "?";
+  const overall = asNumber(scores.overall);
+  const aiRead = asString(report.ai_read);
+  const percentile = asRecord(report.percentile);
+  const pct = asNumber(percentile.better_than_pct);
+  const pctCity = asString(percentile.city);
+  const competitors = Array.isArray(asRecord(report.competition).competitors)
+    ? (asRecord(report.competition).competitors as unknown[]).length
+    : 0;
+  const fixCount = Array.isArray(report.fixes)
+    ? (report.fixes as unknown[]).length
+    : 0;
+  const checks = Array.isArray(asRecord(report.site_signals).checks)
+    ? (asRecord(report.site_signals).checks as unknown[])
+    : [];
+  const failing = checks.filter((c) => asRecord(c).status === "fail").length;
+
+  const subject = `Your website grade: ${grade} — ${venueName}`;
+  const preheader = aiRead ||
+    `${venueName} scored ${overall ?? "?"}/100. Open your full report.`;
+
+  const inside: string[] = [];
+  if (checks.length > 0) {
+    inside.push(
+      `Your site health check — ${checks.length} points scored${
+        failing > 0 ? `, ${failing} failing` : ""
+      }`,
+    );
+  }
+  if (pct !== null && pctCity) {
+    inside.push(`Where you rank — better than ${pct}% of venues in ${pctCity}`);
+  }
+  if (competitors > 0) {
+    inside.push(
+      `Your head-to-head vs ${competitors} nearby competitor${
+        competitors === 1 ? "" : "s"
+      }`,
+    );
+  }
+  inside.push("Your homepage redesigned — a real before / after");
+  if (fixCount > 0) {
+    inside.push(`${fixCount} specific fixes, ranked by impact`);
+  }
+
+  const sections: string[] = [];
+  const textLines: string[] = [];
+
+  sections.push(
+    `<h1 style="margin:0 0 6px 0;font-size:24px;line-height:1.25;color:${BRAND_INK};font-weight:700;">Grade ${
+      escapeHtml(grade)
+    } — ${escapeHtml(venueName)}</h1>`,
+  );
+  textLines.push(`Grade ${grade} — ${venueName}`, "");
+  if (overall !== null) {
+    sections.push(
+      `<p style="margin:0 0 12px 0;font-size:14px;color:${BRAND_MUTED};">Overall website score: ${overall}/100</p>`,
+    );
+    textLines.push(`Overall website score: ${overall}/100`, "");
+  }
+  if (aiRead) {
+    sections.push(
+      `<p style="margin:0 0 16px 0;font-size:15px;line-height:1.55;color:${BRAND_INK};">${
+        escapeHtml(aiRead)
+      }</p>`,
+    );
+    textLines.push(aiRead, "");
+  }
+
+  sections.push(
+    `<p style="margin:18px 0 8px 0;font-size:13px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:${BRAND_MUTED};">Inside your full report</p>`,
+  );
+  sections.push(
+    `<ul style="margin:0 0 8px 0;padding:0 0 0 18px;">${
+      inside.map((line) =>
+        `<li style="margin:0 0 6px 0;font-size:14px;line-height:1.5;color:${BRAND_INK};">${
+          escapeHtml(line)
+        }</li>`
+      ).join("")
+    }</ul>`,
+  );
+  textLines.push("INSIDE YOUR FULL REPORT");
+  for (const line of inside) textLines.push(`- ${line}`);
+  textLines.push("");
+
+  // The primary CTA — the tokenized report link.
+  sections.push(
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:22px 0 6px 0;">
+      <tr><td style="background:${BRAND_ORANGE_BUTTON};border-radius:999px;">
+        <a href="${
+      escapeHtml(reportLink)
+    }" style="display:inline-block;padding:14px 26px;color:#FFFFFF;font-size:15px;font-weight:700;text-decoration:none;">View your full report &amp; redesign</a>
+      </td></tr>
+    </table>
+    <p style="margin:0 0 4px 0;font-size:12px;color:${BRAND_MUTED};">This link is just for you — it opens your full report on the web.</p>`,
+  );
+  textLines.push(
+    "VIEW YOUR FULL REPORT & REDESIGN:",
+    reportLink,
+    "(This link is just for you.)",
+    "",
+  );
+
+  // The offer.
+  sections.push(
+    `<div style="margin:22px 0 6px 0;padding:16px 18px;border-radius:12px;border:1px solid ${BRAND_BORDER};">
+      <p style="margin:0;font-size:14px;line-height:1.5;color:${BRAND_INK};"><strong>Mingla can drive people to your venue for as low as $3.99 per person.</strong> That's the introductory promotion — the full report shows you the math.</p>
+    </div>`,
+  );
+  textLines.push(
+    "Mingla can drive people to your venue for as low as $3.99 per person — the full report shows the math.",
+    "",
+  );
+
+  return {
+    subject,
+    preheader: preheader.slice(0, 120),
+    bodyHtml: sections.join("\n"),
+    text: textLines.join("\n"),
+  };
+}
+
 export function buildReportEmail(report: Record<string, unknown>): {
   subject: string;
   preheader: string;
@@ -573,6 +723,8 @@ export async function handler(req: Request): Promise<Response> {
   if (fields.length > 0) {
     return json({ error: "validation", fields }, 400);
   }
+  // Origin of the report link in the email — validated to usemingla/vercel only.
+  const reportBase = validateToolsOrigin(body.origin) ?? "https://usemingla.com";
 
   try {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -587,7 +739,7 @@ export async function handler(req: Request): Promise<Response> {
     // ── Load the run (must have a generated report). ─────────────────────────
     const { data: lead, error: leadErr } = await supabase
       .from("tool_leads")
-      .select("id, status, report")
+      .select("id, status, report, report_token")
       .eq("id", runId as string)
       .maybeSingle();
     if (leadErr) {
@@ -603,15 +755,28 @@ export async function handler(req: Request): Promise<Response> {
       return json({ error: "report_not_ready" }, 409);
     }
 
-    // ── Capture the email FIRST (the lead survives a send failure). ──────────
+    // ── Capture the email + mint a report-access token. Entering an email does
+    //    NOT unlock the page; the full report is reachable only via the tokenized
+    //    link we email — so the feature is only revealed to real, owned emails.
+    const existingToken =
+      typeof (lead as { report_token?: unknown }).report_token === "string"
+        ? (lead as { report_token: string }).report_token
+        : "";
+    const reportToken = existingToken.length >= 16
+      ? existingToken
+      : crypto.randomUUID().replace(/-/g, "") +
+        crypto.randomUUID().replace(/-/g, "");
     const { error: gateErr } = await supabase
       .from("tool_leads")
-      .update({ email, status: "gated_email" })
+      .update({ email, status: "gated_email", report_token: reportToken })
       .eq("id", runId as string);
     if (gateErr) {
       console.error("[growth-tools-gate] email save failed", gateErr.message);
       return json({ error: "server" }, 500);
     }
+    const reportLink = `${reportBase}/tools/venues/report?id=${
+      encodeURIComponent(runId as string)
+    }&t=${encodeURIComponent(reportToken)}`;
 
     // ── Render + send via Resend (system sender, reply-to support@). ─────────
     const resendKey = Deno.env.get("RESEND_API_KEY") ?? "";
@@ -630,7 +795,7 @@ export async function handler(req: Request): Promise<Response> {
       return json({ error: "email_failed" }, 502);
     }
 
-    const built = buildReportEmail(report as Record<string, unknown>);
+    const built = buildSummaryEmail(report as Record<string, unknown>, reportLink);
     const html = renderShell({
       preheader: built.preheader,
       bodyHtml: built.bodyHtml,
