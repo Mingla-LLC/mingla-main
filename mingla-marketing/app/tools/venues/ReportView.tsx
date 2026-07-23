@@ -13,7 +13,7 @@
 // the ATTRIBUTED business OneLink (pid/c=tool_venues — base imported from
 // lib/store-links, never a hardcoded domain, per the ORCH-1399 SSOT rule).
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { cn } from '@/lib/cn'
 import { buttonClasses } from '@/components/ui/button'
@@ -112,9 +112,40 @@ function BeforeAfterSlider({
   const [beforeLoaded, setBeforeLoaded] = useState(false)
   const [afterLoaded, setAfterLoaded] = useState(false)
   const ready = beforeLoaded && afterLoaded
+  const frameRef = useRef<HTMLDivElement>(null)
+  const dragging = useRef(false)
+
+  const setFromClientX = (clientX: number) => {
+    const el = frameRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const p = ((clientX - rect.left) / rect.width) * 100
+    setPos(Math.max(0, Math.min(100, p)))
+  }
+
   return (
     <div>
-      <div className="relative select-none overflow-hidden rounded-sm border border-divider-strong bg-black">
+      <div
+        ref={frameRef}
+        className="relative touch-none select-none overflow-hidden rounded-sm border border-divider-strong bg-black"
+        style={{ cursor: ready ? 'ew-resize' : 'default' }}
+        onPointerDown={(e) => {
+          if (!ready) return
+          dragging.current = true
+          e.currentTarget.setPointerCapture(e.pointerId)
+          setFromClientX(e.clientX)
+        }}
+        onPointerMove={(e) => {
+          if (dragging.current) setFromClientX(e.clientX)
+        }}
+        onPointerUp={(e) => {
+          dragging.current = false
+          e.currentTarget.releasePointerCapture(e.pointerId)
+        }}
+        onPointerCancel={() => {
+          dragging.current = false
+        }}
+      >
         {!ready ? (
           <div className="absolute inset-0 z-10 grid place-items-center bg-ink/90">
             <div className="flex flex-col items-center gap-3 text-center">
@@ -181,7 +212,7 @@ function BeforeAfterSlider({
         aria-label="Compare your current site with the redesign"
       />
       <p className="mt-1 text-center text-xs text-text-muted">
-        Drag to compare — your site now vs. rebuilt in a Mingla template
+        Drag anywhere on the image — your site now vs. rebuilt in a Mingla template
       </p>
     </div>
   )
@@ -968,83 +999,29 @@ export function ReportView({
         ) : null}
       </section>
 
-      {/* ── PIVOT (post-unlock) ───────────────────────────────────────────── */}
-      {!gated ? (
-        <div
-          data-theme="dark"
-          className="mt-10 rounded-md border border-white/12 p-6 md:p-8"
-          style={{ background: 'var(--bg-spotlight)' }}
-        >
-          <p className="font-display text-2xl leading-snug text-white">
-            Or skip the rebuild — your Mingla page already does all of this.
-          </p>
-          <p className="mt-2 text-sm leading-relaxed text-white/70">
-            Vibe, occasions, photos, booking — one page that already speaks
-            first-timer. Claim it and point your links there.
-          </p>
-          <div className="mt-5 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
-            <a
-              href={APP_GATE_HREF}
-              target="_blank"
-              rel="noopener"
-              onClick={() =>
-                captureMarketing('tool_gate_app_click', {
-                  tool: 'venues',
-                  run_id: runId,
-                  location: 'pivot',
-                })
-              }
-              className={buttonClasses({ variant: 'primary' })}
-            >
-              Claim your Mingla page
-            </a>
-            <a
-              href="mailto:seth@usemingla.com?subject=Fix%20my%20website%20(Mingla)"
-              className="rounded-sm text-sm font-semibold text-warm underline-offset-4 transition hover:underline focus-ring"
-            >
-              Or let us fix it for you — free
-            </a>
-          </div>
-        </div>
-      ) : null}
-
-      {/* ── THE OFFER (the wow close, post-unlock) ────────────────────────── */}
+      {/* ── THE OFFER — one consolidated close (post-unlock) ──────────────── */}
       {!gated ? (
         <motion.div
           initial={{ opacity: 0, y: 24 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, amount: 0.4 }}
           transition={{ duration: 0.45, ease: 'easeOut' }}
-          className="mt-6 overflow-hidden rounded-md p-6 text-white md:p-8"
+          className="mt-10 overflow-hidden rounded-md p-6 text-white md:p-8"
           style={{
             background:
               'linear-gradient(135deg, var(--color-warm) 0%, var(--color-warm-hover) 100%)',
           }}
         >
-          <p className="break-words font-display text-[clamp(1.6rem,4.5vw,2.2rem)] leading-tight">
-            We can drive people to your venue for as low as{' '}
-            <span className="whitespace-nowrap">{offerFrom}</span> per person.
+          <p className="break-words font-display text-[clamp(1.6rem,4.5vw,2.3rem)] leading-tight">
+            We drive high-ticket people looking for date spots to your venue — for as
+            low as <span className="whitespace-nowrap">{offerFrom}</span> per person.
           </p>
           <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/90 md:text-base">
-            That&rsquo;s the introductory Mingla promotion — claim your page or book a free
-            call and we&rsquo;ll show you the math for your venue.
+            That&rsquo;s the introductory Mingla promotion. Book a call and we&rsquo;ll fix
+            everything in this report for you — free — and put your venue in front of
+            people planning a night out.
           </p>
-          <div className="mt-6 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
-            <a
-              href={APP_GATE_HREF}
-              target="_blank"
-              rel="noopener"
-              onClick={() =>
-                captureMarketing('tool_offer_cta_click', {
-                  tool: 'venues',
-                  run_id: runId,
-                  cta: 'claim',
-                })
-              }
-              className="inline-flex min-h-11 items-center justify-center rounded-full bg-white px-6 text-sm font-semibold text-warm-ink transition hover:bg-white/90 focus-ring"
-            >
-              Claim your page &amp; get the offer
-            </a>
+          <div className="mt-6">
             <a
               href="mailto:seth@usemingla.com?subject=Drive%20people%20to%20my%20venue%20(Mingla%20offer)"
               onClick={() =>
@@ -1054,9 +1031,9 @@ export function ReportView({
                   cta: 'call',
                 })
               }
-              className="inline-flex min-h-11 items-center rounded-sm text-sm font-semibold text-white underline-offset-4 transition hover:underline focus-ring"
+              className="inline-flex min-h-12 items-center justify-center rounded-full bg-white px-7 text-sm font-semibold text-warm-ink transition hover:bg-white/90 focus-ring"
             >
-              Book a free call
+              Book a call — we fix all of this, free
             </a>
           </div>
         </motion.div>
