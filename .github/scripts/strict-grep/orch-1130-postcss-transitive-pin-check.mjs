@@ -2,6 +2,8 @@
 /**
  * ORCH-1130 [Dependabot smuggles Expo 54→57 into app-mobile + mingla-business
  * via grouped transitive postcss bumps] — I-PROPOSED-1130-POSTCSS-TRANSITIVE-PATCHED.
+ * Extended (#1135) to also cover mingla-marketing, which carries the same
+ * vulnerable postcss transitively under `next` (not Expo) and takes the same pin.
  *
  * WHY: postcss < 8.5.10 (GHSA-qx2v-qp2m-jg93 / CVE-2026-41305 — XSS via an
  * unescaped `</style>` in stringify) is a VULNERABLE TRANSITIVE dependency of
@@ -28,7 +30,16 @@
  * resolved `postcss` node drift back below 8.5.10) re-arms the exact
  * transitive-security → expo-parent-unlock drag this gate exists to prevent.
  *
- * ASSERTS (for BOTH app-mobile and mingla-business — the two Expo-54 apps):
+ * MINGLA-MARKETING (#1135, folded into this same fix): the Next.js marketing
+ * site carries the SAME vulnerable postcss, but transitively under `next`
+ * (which pins `postcss@8.4.31` exactly) rather than under Expo. It also declares
+ * postcss as a direct devDependency, so the pin is applied as BOTH a matching
+ * direct-dep bump (`postcss ^8.5.21`, required by npm's EOVERRIDE rule) AND the
+ * same top-level `overrides.postcss: ^8.5.21`; regenerating the lockfile dedupes
+ * next's nested 8.4.31 up to 8.5.22. Same advisory, same floor, same guard.
+ *
+ * ASSERTS (for ALL THREE guarded apps — app-mobile + mingla-business under Expo
+ * 54, and mingla-marketing under Next.js):
  *  A. MANIFEST: package.json declares a top-level `overrides.postcss` whose
  *     guaranteed lower bound is ≥ the advisory floor (8.5.10). A missing
  *     override, or a floor below 8.5.10 (e.g. `^8.4.49`, `<8.5.10`, `*`), fails.
@@ -56,8 +67,35 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const root = path.join(__dirname, "..", "..", "..");
 
-/** The two Expo-54 apps that resolve postcss transitively under @expo/metro-config. */
-export const GUARDED_APPS = ["app-mobile", "mingla-business"];
+/**
+ * The three apps whose trees carry postcss as a vulnerable transitive and are
+ * pinned forward by the ORCH-1130 override. app-mobile + mingla-business resolve
+ * it under `@expo/metro-config` (Expo 54); mingla-marketing (#1135) resolves it
+ * under `next`. All three take the identical `overrides.postcss: ^8.5.21` pin.
+ */
+export const GUARDED_APPS = ["app-mobile", "mingla-business", "mingla-marketing"];
+
+/**
+ * Per-app description of WHERE postcss enters the tree as a vulnerable transitive
+ * — used only to keep failure messages truthful per app. Floors + pin are
+ * identical across all three; only the dragged-parent narrative differs.
+ */
+export const TRANSITIVE_SOURCE = {
+  "app-mobile": "@expo/metro-config under Expo 54",
+  "mingla-business": "@expo/metro-config under Expo 54",
+  "mingla-marketing": "next",
+};
+
+/**
+ * Per-app description of what deleting the override re-arms — the two Expo apps
+ * re-open the Dependabot expo 54→57 parent-unlock drag; marketing simply
+ * re-admits a vulnerable postcss under next. Used in the missing-override message.
+ */
+export const REVERT_RISK = {
+  "app-mobile": "the Dependabot expo 54→57 transitive drag",
+  "mingla-business": "the Dependabot expo 54→57 transitive drag",
+  "mingla-marketing": "a vulnerable postcss transitive under next",
+};
 
 /**
  * The advisory floor for GHSA-qx2v-qp2m-jg93: postcss is fixed in 8.5.10+.
@@ -115,10 +153,11 @@ export function postcssNodes(lockJson) {
 /** Check A — the manifest override pins postcss forward. Returns failure strings. */
 export function checkOverride(appName, pkgJson) {
   const failures = [];
+  const revertRisk = REVERT_RISK[appName] ?? "the GHSA-qx2v-qp2m-jg93 vulnerable-transitive alert";
   const spec = pkgJson?.overrides?.postcss;
   if (spec === undefined) {
     failures.push(
-      `${appName}/package.json: missing the ORCH-1130 pin — a top-level "overrides": { "postcss": "^8.5.21" } (floor ≥ ${fmt(ADVISORY_FLOOR)}) must be present. Removing it re-arms the Dependabot expo 54→57 transitive drag (GHSA-qx2v-qp2m-jg93). DO NOT REMOVE THE OVERRIDE.`,
+      `${appName}/package.json: missing the ORCH-1130 pin — a top-level "overrides": { "postcss": "^8.5.21" } (floor ≥ ${fmt(ADVISORY_FLOOR)}) must be present. Removing it re-arms ${revertRisk} (GHSA-qx2v-qp2m-jg93). DO NOT REMOVE THE OVERRIDE.`,
     );
     return failures;
   }
@@ -146,10 +185,11 @@ export function checkOverride(appName, pkgJson) {
 /** Check B — every resolved postcss node clears the advisory floor. */
 export function checkLockfile(appName, lockJson) {
   const failures = [];
+  const source = TRANSITIVE_SOURCE[appName] ?? "its framework toolchain";
   const nodes = postcssNodes(lockJson);
   if (nodes.length === 0) {
     failures.push(
-      `${appName}/package-lock.json: resolves ZERO postcss nodes. postcss is a required transitive of @expo/metro-config under Expo 54 — its total absence means the tree was rewritten. This gate fails closed rather than pass vacuously.`,
+      `${appName}/package-lock.json: resolves ZERO postcss nodes. postcss is a required transitive of ${source} — its total absence means the tree was rewritten. This gate fails closed rather than pass vacuously.`,
     );
     return failures;
   }
@@ -314,6 +354,35 @@ function selfTest() {
       lockPathName("node_modules/postcss-loader") === "postcss-loader",
   );
 
+  // 14. THREE-APP COVERAGE (#1135): the guard runs against all three pinned apps,
+  //     including the Next.js marketing site, not just the two Expo apps.
+  ok(
+    "GUARDED_APPS covers all three pinned apps (incl. mingla-marketing #1135)",
+    GUARDED_APPS.length === 3 &&
+      GUARDED_APPS.includes("app-mobile") &&
+      GUARDED_APPS.includes("mingla-business") &&
+      GUARDED_APPS.includes("mingla-marketing"),
+  );
+
+  // 15. marketing's missing-override message is next-specific (not the Expo drag)
+  //     and still carries the DO-NOT-REMOVE protection.
+  const fMktMissing = checkOverride("mingla-marketing", { dependencies: {}, devDependencies: {} });
+  ok(
+    "mingla-marketing missing-override message is next-specific and keeps DO NOT REMOVE",
+    fMktMissing.length === 1 &&
+      /under next/.test(fMktMissing[0]) &&
+      /DO NOT REMOVE THE OVERRIDE/.test(fMktMissing[0]) &&
+      !/expo 54/.test(fMktMissing[0]),
+  );
+
+  // 16. marketing's zero-postcss-nodes message names next as the source, not Expo.
+  ok(
+    "mingla-marketing zero-postcss-nodes message names next (not Expo)",
+    checkLockfile("mingla-marketing", {
+      packages: { "": {}, "node_modules/lodash": { version: "4.17.21" } },
+    }).some((f) => /required transitive of next/.test(f) && !/@expo\/metro-config/.test(f)),
+  );
+
   const failed = results.filter((r) => !r.pass);
   for (const r of results) {
     console.log(`${r.pass ? "PASS" : "FAIL"}  ${r.name}`);
@@ -347,12 +416,12 @@ if (isMain) {
         );
         for (const f of failures) console.error("  - " + f);
         console.error(
-          "\npostcss must stay pinned ≥ 8.5.10 via overrides in BOTH Expo-54 apps so Dependabot has no vulnerable-transitive reason to unlock the expo parent (see the header of .github/scripts/strict-grep/orch-1130-postcss-transitive-pin-check.mjs). Issue #1130 / GHSA-qx2v-qp2m-jg93.",
+          "\npostcss must stay pinned ≥ 8.5.10 via overrides in all three guarded apps (app-mobile + mingla-business under Expo 54, mingla-marketing under Next.js) so Dependabot has no vulnerable-transitive reason to unlock the expo parent or the next dep (see the header of .github/scripts/strict-grep/orch-1130-postcss-transitive-pin-check.mjs). Issue #1130 / #1135 / GHSA-qx2v-qp2m-jg93.",
         );
         process.exit(1);
       }
       console.log(
-        "ORCH-1130 postcss-transitive-pin-check PASS — overrides.postcss pins ≥ 8.5.10 in both Expo-54 apps and every resolved postcss node clears the advisory floor.",
+        "ORCH-1130 postcss-transitive-pin-check PASS — overrides.postcss pins ≥ 8.5.10 in all three guarded apps (app-mobile, mingla-business, mingla-marketing) and every resolved postcss node clears the advisory floor.",
       );
     }
   } catch (err) {
