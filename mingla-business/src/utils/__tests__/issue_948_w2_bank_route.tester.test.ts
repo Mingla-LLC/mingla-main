@@ -79,10 +79,13 @@ jest.mock("../../hooks/useMinglaToSAcceptance", () => ({
   }),
 }));
 
-jest.mock("../../hooks/useStartBrandStripeOnboarding", () => ({
-  useStartBrandStripeOnboarding: () => ({
+jest.mock("@tanstack/react-query", () => ({
+  useMutation: () => ({
     isPending: false,
     mutateAsync: mintOnboarding,
+  }),
+  useQueryClient: () => ({
+    invalidateQueries: jest.fn(),
   }),
 }));
 
