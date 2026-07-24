@@ -58,6 +58,22 @@ jest.mock("../../hooks/useBrandInvitations", () => ({
   }),
 }));
 
+// The mounted route imports the service error class for its catch boundary.
+// Keep that boundary real enough for `instanceof`, while preventing the
+// service's production Supabase singleton from booting inside Node 20 CI.
+jest.mock("../../services/brandInvitationsService", () => ({
+  BrandInvitationServiceError: class BrandInvitationServiceError extends Error {
+    code: string;
+    status: number;
+
+    constructor(message: string, code: string, status: number) {
+      super(message);
+      this.code = code;
+      this.status = status;
+    }
+  },
+}));
+
 jest.mock("../../components/ui/Button", () => {
   const ReactRuntime = require("react");
   return {
