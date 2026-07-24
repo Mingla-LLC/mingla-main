@@ -111,6 +111,7 @@ export default function BrandBankConnectWebRoute(): React.ReactElement {
   }, [brandId, router]);
 
   const handleCountryChange = useCallback((countryCode: string): void => {
+    // orch-strict-grep-allow stripe-country-out-of-scope — Nigeria uses Paystack and is deliberately outside the Stripe allowlist.
     const next = resolveBankConnectRail({
       countryCode,
       paymentProvider: countryCode.trim().toUpperCase() === "NG"

@@ -52,6 +52,13 @@ jobs:
         working-directory: mingla-business
         run: npm ci
 
+      # react-test-renderer is a TEST-ONLY renderer, deliberately NOT an app
+      # dependency (same class as the strict-grep workflow's --no-save parser
+      # installs). Pin to the installed react major.
+      - name: Install test-only renderer (react-test-renderer, --no-save)
+        working-directory: mingla-business
+        run: npm install --no-save react-test-renderer@19.1.0
+
       - name: Run W2 bank-route contracts
         working-directory: mingla-business
         run: >

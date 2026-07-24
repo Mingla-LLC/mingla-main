@@ -39,6 +39,7 @@ interface StartStripeWebBankConnectInput {
 const DEFAULT_STRIPE_COUNTRY = "GB" as const;
 const PAYSTACK_RAIL: BankConnectRail = {
   provider: "paystack",
+  // orch-strict-grep-allow stripe-country-out-of-scope — Nigeria uses Paystack and is deliberately outside the Stripe allowlist.
   countryCode: "NG",
   displayName: "Nigeria",
   currency: "NGN",
@@ -75,6 +76,7 @@ export function resolveBankConnectRail(
       ? input.paymentProvider.trim().toLowerCase()
       : null;
 
+  // orch-strict-grep-allow stripe-country-out-of-scope — Nigeria uses Paystack and is deliberately outside the Stripe allowlist.
   if (provider === "paystack" || countryCode === "NG") {
     return PAYSTACK_RAIL;
   }
