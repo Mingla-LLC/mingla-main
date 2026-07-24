@@ -173,7 +173,7 @@ describe("ORCH-1375 SC-4 — the OAuth round-trip destroys the URL; the handoff 
       "https://evil.com",
       "//evil.com",
       "javascript:alert(1)",
-      "/brand/1/payments",
+      "/brand-evil/1/payments",
     ]) {
       store.set(AUTH_NEXT_STORAGE_KEY, attack);
       expect(sanitizeNextRoute(consumeNextRoute())).toBeNull();

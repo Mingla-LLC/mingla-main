@@ -2,14 +2,18 @@
  * ORCH-1373 [accept-invite-infinite-loader] — P2-1: dot-segment traversal
  * defeats the `next` allowlist.
  *
- * THE DEFECT (tester-proven, executed):
+ * THE ORIGINAL DEFECT (tester-proven before #948 B-01):
  *   REJECT  "/brand/123/payments"                            -> null
  *   ACCEPT  "/accept-brand-invitation/../brand/123/payments" -> returned verbatim
+ *
+ * THE CURRENT CONTRACT (#948 B-01):
+ *   ACCEPT  "/brand/123/payments"                            -> returned verbatim
+ *   REJECT  "/accept-brand-invitation/../brand/123/payments" -> null
  *
  * `isAllowlistedPath` judges the PRE-RESOLUTION string; `remove_dot_segments`
  * (RFC 3986 §5.2.4) runs later in the router/URL parser. So the validator and
  * the browser saw different strings, and traversal walked through the allowlist
- * to the exact path the allowlist exists to refuse.
+ * to a path the validator had not independently authorised.
  *
  * ⚠️ HONEST SCOPE — this is NOT an open redirect, and this file does not claim
  * one. Every accepted value stays same-origin and scheme-less; the tester
@@ -43,9 +47,12 @@ describe("ORCH-1373 P2-1 — traversal can no longer defeat the allowlist", () =
     expect(sanitizeNextRoute(candidate)).toBeNull();
   });
 
-  it("PROOF OF EQUIVALENCE: the traversal target and its resolved form are now BOTH rejected", () => {
-    // This pair is the whole bug in two lines: before the fix these disagreed.
-    expect(sanitizeNextRoute("/brand/123/payments")).toBeNull();
+  it("PROOF OF INDEPENDENT AUTHORIZATION: direct /brand is allowed while traversal stays rejected", () => {
+    // B-01 intentionally authorises direct /brand routes; dot-segment smuggling
+    // remains invalid regardless of whether its resolved destination is allowed.
+    expect(sanitizeNextRoute("/brand/123/payments")).toBe(
+      "/brand/123/payments",
+    );
     expect(
       sanitizeNextRoute("/accept-brand-invitation/../brand/123/payments"),
     ).toBeNull();
