@@ -7,13 +7,13 @@
 
 ---
 
-## DRAFT — issues #948 + #949 (bank-first partner invites stay offering-agnostic — IN FLIGHT, registered at W3 IMPLEMENT 2026-07-24)
+## ACTIVE — issues #948 + #949 (bank-first partner invites stay offering-agnostic — W3 CLOSED 2026-07-24)
 
-### I-PROPOSED-949-INVITE-ONBOARDING-OFFERING-AGNOSTIC (DRAFT)
+### I-PROPOSED-949-INVITE-ONBOARDING-OFFERING-AGNOSTIC (ACTIVE)
 - **Rule:** cross-offering invite, accept, bank-onboarding, and payments surfaces describe offerings, bookings, taking payments, and getting paid; they MUST NOT regress to ticket-only claims. Genuine event-manager/scanner capability copy and legal merchant-of-record language remain explicitly outside this invariant.
 - **CI enforcement:** `.github/scripts/strict-grep/issue-949-invite-onboarding-offering-agnostic.mjs`, registered as a wired batch:A gate in `MANIFEST.json`, scans the exact eight funnel surfaces and fails closed if one disappears.
 - **Regression test:** the gate self-tests every banned phrase, comment stripping, and the one-line exception form; reverting any W3 replacement (for example restoring “sell tickets” on the payments banner) makes the plain gate fail. Append-only.
-- **Established:** DRAFT at #948/#949 W3 IMPLEMENT; flip ACTIVE only after independent tester PASS and merge verification.
+- **Established:** ACTIVE at #948/#949 W3 CLOSE after independent tester PASS on PR #1205; merge and production verification are required before either master issue may be closed.
 
 ---
 
