@@ -518,3 +518,9 @@ verify_jwt = false
 # synthesis. Writes tool_leads(tool='events'). Same anon + service-role posture.
 [functions.growth-tools-events]
 verify_jwt = false
+
+# ISSUE-1096 — city autocomplete for the event predictor intake. POST {q}
+# proxies Mapbox Search Box /forward (server-side token) and returns real city
+# candidates so the city field is validated, not free text. No DB access.
+[functions.growth-tools-geocode]
+verify_jwt = false
