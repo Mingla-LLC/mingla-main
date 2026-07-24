@@ -24,5 +24,6 @@ jobs:
         run: |
           deno test \
             supabase/functions/brand-paystack-onboard/issue_1176_brand_recipient.test.ts \
+            supabase/functions/brand-paystack-onboard/issue_1176_brand_recipient_adversarial.test.ts \
             supabase/migrations/__tests__/issue_1176_brand_paystack_recipients.test.ts \
             --allow-read
