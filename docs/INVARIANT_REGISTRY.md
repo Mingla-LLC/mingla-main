@@ -7,6 +7,18 @@
 
 ---
 
+## ACTIVE — issue #1158 (@vercel/og pinned to 0.x so a sharp security bump can't unlock it to the broken 1.0.0 — CLOSED 2026-07-24)
+
+> Same parent-unlock class as #1130. `@vercel/og@0.11.1` optional-deps `sharp ^0.34.5`; to bump `sharp` Dependabot rewrites the editable parent `@vercel/og` to its highest tag `1.0.0` — a stray 2023 mispublish (edge/WASM-only, `ERR_MODULE_NOT_FOUND: 'wbg'`) that crashes the business OG preview renderer (`mingla-business/server/socialPreview.js` → `/api/og-*`, Node serverless — untested by the expo web-build, which is why the trap PR #1151 was green). #1158 pins `@vercel/og` forward via a byte-identical npm `overrides` entry (fail-closed: a poisoned direct-dep bump → `npm install` EOVERRIDE error), rescues `sharp` to `0.35.3` (closes libvips GHSA-f88m-g3jw-g9cj; render-verified), adds a Dependabot ignore, and closes the OG coverage gap with a real render gate.
+
+### I-1158-VERCEL-OG-SEMVER-TRAP-PINNED (ACTIVE — issue #1158 CLOSE 2026-07-24)
+- **Rule:** `mingla-business` MUST keep a top-level npm `overrides."@vercel/og"` pin on the `0.x` line (`^0.11.1`, npm `latest`; no maintained `1.x` exists) so no lockfile node resolves `@vercel/og >= 1.0.0` — that version is a broken 2023 build that renders zero OG images. The pin is byte-identical to the direct dep (EOVERRIDE-safe, and fail-closed if the direct range is rewritten). `sharp` is pinned to `0.35.3` via overrides to satisfy libvips GHSA-f88m-g3jw-g9cj while staying render-compatible with `@vercel/og@0.11.1` (whose `^0.34.5` cap otherwise blocks it). Composes with the #1130 postcss pin (same override block) — this is the parent-unlock defense pattern.
+- **Enforcement:** three append-only strict-grep gates in `.github/scripts/strict-grep/` (registered in `MANIFEST.json`): `issue-1158-vercel-og-semver-trap-pin-check.mjs` (override present + `@vercel/og` stays 0.x + EOVERRIDE-byte-identical), `issue-1158-og-render-smoke.mjs` (class C — actually installs business deps and renders an OG PNG, closing the serverless coverage gap that let #1151 merge green), and `issue-1158-vercel-og-sharp-repo-wide-trap-sweep.mjs` (repo-wide sweep — no OTHER package.json reintroduces an unpinned @vercel/og/sharp). Plus the `@vercel/og >= 1.0.0` Dependabot ignore (defense-in-depth only — an ignore may not be consulted for a dragged parent).
+- **Regression test:** all three gates proven fails-on-revert (remove override / resolve 1.0.0 → gate reds); tester independently reproduced the EOVERRIDE fail-closed on the real manifest + rendered 6 OG PNGs under sharp 0.35.3. Append-only.
+- **Established:** ACTIVE 2026-07-24 at #1158 CLOSE (tester VERDICT PASS, 0 P0/P1).
+
+---
+
 ## ACTIVE — issue #1162 (stock-first creative provenance — TESTER PASS 2026-07-24)
 
 ### I-1162-STOCK-FIRST-CREATIVE-PROVENANCE (ACTIVE)
