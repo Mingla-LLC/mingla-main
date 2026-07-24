@@ -14,11 +14,17 @@ on:
     paths:
       - "mingla-admin/src/**"
       - "supabase/functions/admin-ad-create-campaign/**"
+      - "supabase/functions/admin-ad-creative-upload/**"
+      - "supabase/functions/_shared/meta.ts"
+      - "MARKETING.md"
       - ".github/workflows/issue-979-campaign-builder-correctness-tests.yml"
   pull_request:
     paths:
       - "mingla-admin/src/**"
       - "supabase/functions/admin-ad-create-campaign/**"
+      - "supabase/functions/admin-ad-creative-upload/**"
+      - "supabase/functions/_shared/meta.ts"
+      - "MARKETING.md"
       - ".github/workflows/issue-979-campaign-builder-correctness-tests.yml"
 
 concurrency:
@@ -50,3 +56,5 @@ jobs:
           src/__tests__/issue979_compliance_flags_all_platforms.test.js
           src/__tests__/issue979_unfunded_eligible_channels.test.js
           src/__tests__/issue979_correctness.adversarial.test.js
+          src/__tests__/issue1162_stock_first_ai_defaults.test.js
+          src/__tests__/issue1162_stock_first_ai_defaults.tester_adversarial.test.js

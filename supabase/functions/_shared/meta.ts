@@ -592,8 +592,8 @@ export function buildMetaCreativeBody(
   // validate-only proof). Only present when configured — see igIdentity above.
   if (igIdentity) body.instagram_user_id = igIdentity;
   if (input.aiGenerated) {
-    // GR-61 self_ai_disclosure — default OPT_IN for the Higgsfield/Remotion
-    // pipeline output; non-disclosure is a compliance exposure we create.
+    // GR-61 self_ai_disclosure — explicit true means the final creative
+    // contains materially generated pixels (for example authorized Magnific).
     body.self_ai_disclosure = "OPT_IN";
   }
   if (input.validateOnly) body.execution_options = ["validate_only"];

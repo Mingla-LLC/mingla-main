@@ -293,9 +293,10 @@ serve(async (req: Request): Promise<Response> => {
   if (action === "validate") return json({ validation });
 
   // ── Record the canonical row — probe-derived fields only (A1-6a). ───────────
-  // ai_generated: A1-8 — our creative pipeline is AI-generative; non-disclosure
-  // is the compliance exposure, over-disclosure is safe. Absent ⇒ true.
-  const aiGenerated = typeof body.ai_generated === "boolean" ? body.ai_generated : true;
+  // ai_generated: A1-8 — stock/real UI + Remotion is the default pipeline.
+  // Magnific is explicit opt-in, so an omitted flag defaults to non-generated.
+  // Explicit true still propagates for creative containing generated pixels.
+  const aiGenerated = typeof body.ai_generated === "boolean" ? body.ai_generated : false;
   const { data: creative, error: insertError } = await supabase
     .from("ad_creatives")
     .insert({

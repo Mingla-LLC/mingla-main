@@ -387,7 +387,7 @@ export interface CreateCreativeInput {
   videoId?: string;
   videoThumbnailImageHash?: string;
   callToActionType?: string;
-  /** GR-61 — AI-generated creative disclosure (Higgsfield/Remotion pipeline ⇒ OPT_IN). */
+  /** GR-61 — true when the delivered creative contains materially generated pixels. */
   aiGenerated?: boolean;
   campaignName?: string;
   adName?: string;

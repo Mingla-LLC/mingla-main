@@ -132,7 +132,7 @@ export function CampaignBuilderPage() {
     variants: {},
     validation: null,
     creativeRow: null,
-    aiGenerated: true,
+    aiGenerated: false,
     name: "",
   });
   const [copy, setCopy] = useState({
