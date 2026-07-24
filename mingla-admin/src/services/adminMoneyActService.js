@@ -18,11 +18,17 @@ import { callAdminWriteRpc, invokeAdminWriteEdge } from "./adminWriteService";
 
 /**
  * Issue a full/partial refund on an order. `lines` = [{ order_line_item_id,
- * quantity, amount_cents }]. A stable per-attempt Idempotency-Key dedupes retries
- * (DB pending-row + Stripe both key on it). Returns { data, error }.
+ * quantity, amount_cents }]. The mounted refund intent owns the Idempotency-Key
+ * so an uncertain response can be retried against the same DB/provider attempt.
  */
-export async function refundOrder({ order_id, lines, reason }) {
-  const idempotencyKey = crypto.randomUUID();
+export function createAdminRefundIdempotencyKey() {
+  return crypto.randomUUID();
+}
+
+export async function refundOrder({ order_id, lines, reason, idempotencyKey }) {
+  if (typeof idempotencyKey !== "string" || idempotencyKey.length === 0) {
+    throw new Error("idempotencyKey is required");
+  }
   return invokeAdminWriteEdge(
     "admin-refund-order",
     { order_id, lines, reason },

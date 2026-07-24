@@ -15,7 +15,10 @@ import { HighRiskActionModal } from "../components/entity/HighRiskActionModal";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { listOrders, getOrder } from "../services/adminMoneyService";
-import { refundOrder } from "../services/adminMoneyActService";
+import {
+  createAdminRefundIdempotencyKey,
+  refundOrder,
+} from "../services/adminMoneyActService";
 import { timeAgo, formatDateTime } from "../lib/formatters";
 
 // Order payment_status values (DB enum) an admin may refund.
@@ -319,6 +322,7 @@ function buildOrderSections(bundle, onViewSubscriber) {
 // each open without a setState-in-effect.
 function RefundModal({ onClose, order, lineItems, onRefunded }) {
   const [qtys, setQtys] = useState({});
+  const [idempotencyKey] = useState(createAdminRefundIdempotencyKey);
 
   const rows = (lineItems || []).map((li) => {
     const remaining = Math.max(0, (li.quantity ?? 0) - (li.refunded_quantity ?? 0));
@@ -354,7 +358,12 @@ function RefundModal({ onClose, order, lineItems, onRefunded }) {
       .filter((r) => r.qty > 0)
       .map((r) => ({ order_line_item_id: r.id, quantity: r.qty, amount_cents: r.amount }));
     if (lines.length === 0) throw new Error("Pick at least one item to refund.");
-    const { error } = await refundOrder({ order_id: order.id, lines, reason });
+    const { error } = await refundOrder({
+      order_id: order.id,
+      lines,
+      reason,
+      idempotencyKey,
+    });
     if (error) {
       let code = null;
       let detail = null;
