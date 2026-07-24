@@ -34,6 +34,11 @@
 // @ts-ignore — Deno ESM import; types resolved at runtime.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { stripeTicketRefund } from "../_shared/stripe.ts";
+import {
+  createPaystackRefund,
+  isRetryablePaystackRefundError,
+  paystackRefundTransaction,
+} from "../_shared/paystackRefunds.ts";
 import { writeAudit } from "../_shared/audit.ts";
 import {
   dispatchTicketConfirmation,
@@ -188,6 +193,9 @@ serve(async (req: Request): Promise<Response> => {
   const paymentIntentId = typeof pending.stripe_payment_intent_id === "string"
     ? pending.stripe_payment_intent_id
     : null;
+  const chargeId = typeof pending.stripe_charge_id === "string"
+    ? pending.stripe_charge_id
+    : null;
   const applicationFeeAmountCents = Number(
     pending.application_fee_amount_cents ?? 0,
   );
@@ -246,7 +254,9 @@ serve(async (req: Request): Promise<Response> => {
   // block below → 502 with detail; acceptable degrade.
   const { data: brandRow, error: brandErr } = await supabase
     .from("orders")
-    .select("event_id, events(brand_id, brands(stripe_connect_id))")
+    .select(
+      "event_id, events(brand_id, brands(stripe_connect_id, payment_provider))",
+    )
     .eq("id", orderId)
     .maybeSingle();
   if (brandErr || !brandRow) {
@@ -262,7 +272,10 @@ serve(async (req: Request): Promise<Response> => {
   // Supabase JS infers the joined shape as either an object (single-row
   // nested) or an array, depending on FK cardinality. Both `events` and
   // `brands` are single-row joins here; defensively normalise both shapes.
-  type JoinedBrand = { stripe_connect_id?: string | null };
+  type JoinedBrand = {
+    stripe_connect_id?: string | null;
+    payment_provider?: string | null;
+  };
   type JoinedEvents = {
     brand_id?: string | null;
     brands?: JoinedBrand | JoinedBrand[] | null;
@@ -282,7 +295,10 @@ serve(async (req: Request): Promise<Response> => {
       brandsRow.stripe_connect_id.length > 0
     ? brandsRow.stripe_connect_id
     : null;
-  if (!connectedAccountId) {
+  const paymentProvider = brandsRow?.payment_provider === "paystack"
+    ? "paystack"
+    : "stripe";
+  if (paymentProvider === "stripe" && !connectedAccountId) {
     console.error("[refund-order] brand has no stripe_connect_id", { orderId });
     return jsonResponse(
       {
@@ -294,54 +310,105 @@ serve(async (req: Request): Promise<Response> => {
     );
   }
 
-  // Step 2: call Stripe Refunds API against the connected account
-  // (direct-charge refund per ORCH-0843).
+  // Step 2: call the owning provider. The Stripe arm below is unchanged in
+  // payload and request options; Paystack reconciles by transaction + the
+  // deterministic merchant note before POST because its refund API accepts no
+  // caller-supplied idempotency key.
   let stripeRefund: StripeRefundResult;
-  try {
-    const stripe = stripeTicketRefund();
-    // @ts-ignore — Stripe SDK namespace is runtime-provided in Deno.
-    const created = await stripe.refunds.create(
-      {
-        payment_intent: paymentIntentId,
-        amount: amountCents,
-        reason: "requested_by_customer",
-        // ORCH-0843 — reverse_transfer removed; it was destination-charge
-        // syntax (instructed Stripe to claw the routed amount back from the
-        // connected account). Under direct charges the funds already sit on
-        // the connected account, so the refund debits the connected balance
-        // directly. refund_application_fee:true still tells Stripe to also
-        // refund the platform's application_fee_amount cut (Mingla's 1.5%)
-        // when there was one.
-        refund_application_fee: applicationFeeAmountCents > 0,
-        metadata: {
-          mingla_refund_id: refundId,
-          mingla_order_id: orderId,
-          mingla_idempotency_key: idempotencyKey,
+  if (paymentProvider === "paystack") {
+    const transaction = paystackRefundTransaction(paymentIntentId, chargeId);
+    if (!transaction) {
+      return jsonResponse(
+        {
+          error: "missing_payment_intent",
+          detail: "order has no Paystack transaction reference; cannot refund",
         },
-      },
-      {
-        idempotencyKey: `ticket_refund:${refundId}`,
-        // ORCH-0843 — direct-charge refund: Stripe-Account header routes the
-        // refund against the connected account that owns the PI.
-        stripeAccount: connectedAccountId,
-      },
-    );
-    stripeRefund = {
-      id: String(created.id),
-      status: created.status ?? null,
-      amount: Number(created.amount ?? amountCents),
-    };
-  } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
-    console.error("[refund-order] stripe.refunds.create failed", detail);
-    // Mark the pending refund as failed so the row reflects reality.
-    await supabaseAsUser.rpc("biz_refund_order_commit", {
-      p_refund_id: refundId,
-      p_stripe_refund_id: null,
-      p_application_fee_refunded_cents: 0,
-      p_status: "failed",
-    });
-    return jsonResponse({ error: "stripe_declined", detail }, 502);
+        422,
+      );
+    }
+    try {
+      const paystackRefund = await createPaystackRefund({
+        transaction,
+        merchantNote: `mingla_refund:${refundId}`,
+        amountSubunits: pending.is_full_refund === true
+          ? undefined
+          : amountCents,
+        currency: "NGN",
+      });
+      stripeRefund = {
+        id: paystackRefund.id,
+        status: paystackRefund.status,
+        amount: paystackRefund.amount || amountCents,
+      };
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error("[refund-order] Paystack refund failed", detail);
+      const retryable = isRetryablePaystackRefundError(err);
+      if (!retryable) {
+        await supabaseAsUser.rpc("biz_refund_order_commit", {
+          p_refund_id: refundId,
+          p_stripe_refund_id: null,
+          p_application_fee_refunded_cents: 0,
+          p_status: "failed",
+        });
+      }
+      return jsonResponse(
+        {
+          error: retryable
+            ? "paystack_refund_retryable"
+            : "paystack_refund_failed",
+          detail,
+        },
+        retryable ? 503 : 502,
+      );
+    }
+  } else {
+    try {
+      const stripe = stripeTicketRefund();
+      // @ts-ignore — Stripe SDK namespace is runtime-provided in Deno.
+      const created = await stripe.refunds.create(
+        {
+          payment_intent: paymentIntentId,
+          amount: amountCents,
+          reason: "requested_by_customer",
+          // ORCH-0843 — reverse_transfer removed; it was destination-charge
+          // syntax (instructed Stripe to claw the routed amount back from the
+          // connected account). Under direct charges the funds already sit on
+          // the connected account, so the refund debits the connected balance
+          // directly. refund_application_fee:true still tells Stripe to also
+          // refund the platform's application_fee_amount cut (Mingla's 1.5%)
+          // when there was one.
+          refund_application_fee: applicationFeeAmountCents > 0,
+          metadata: {
+            mingla_refund_id: refundId,
+            mingla_order_id: orderId,
+            mingla_idempotency_key: idempotencyKey,
+          },
+        },
+        {
+          idempotencyKey: `ticket_refund:${refundId}`,
+          // ORCH-0843 — direct-charge refund: Stripe-Account header routes the
+          // refund against the connected account that owns the PI.
+          stripeAccount: connectedAccountId,
+        },
+      );
+      stripeRefund = {
+        id: String(created.id),
+        status: created.status ?? null,
+        amount: Number(created.amount ?? amountCents),
+      };
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error("[refund-order] stripe.refunds.create failed", detail);
+      // Mark the pending refund as failed so the row reflects reality.
+      await supabaseAsUser.rpc("biz_refund_order_commit", {
+        p_refund_id: refundId,
+        p_stripe_refund_id: null,
+        p_application_fee_refunded_cents: 0,
+        p_status: "failed",
+      });
+      return jsonResponse({ error: "stripe_declined", detail }, 502);
+    }
   }
 
   if (stripeRefund.status === "failed" || stripeRefund.status === "canceled") {
@@ -360,11 +427,14 @@ serve(async (req: Request): Promise<Response> => {
     );
   }
 
-  const { data: orderTaxRow, error: orderTaxError } = await supabase
-    .from("orders")
-    .select("stripe_tax_transaction_id")
-    .eq("id", orderId)
-    .maybeSingle();
+  const { data: orderTaxRow, error: orderTaxError } =
+    paymentProvider === "stripe"
+      ? await supabase
+        .from("orders")
+        .select("stripe_tax_transaction_id")
+        .eq("id", orderId)
+        .maybeSingle()
+      : { data: null, error: null };
   if (orderTaxError) {
     console.error(
       "[refund-order] tax transaction lookup failed",
@@ -385,7 +455,7 @@ serve(async (req: Request): Promise<Response> => {
       ? orderTaxRow.stripe_tax_transaction_id
       : null;
   let reversalTaxTransactionId: string | null = null;
-  if (originalTaxTransactionId !== null) {
+  if (paymentProvider === "stripe" && originalTaxTransactionId !== null) {
     try {
       const stripeForTax = stripeTicketRefund();
       const isFullRefund = pending.is_full_refund === true;
@@ -472,6 +542,31 @@ serve(async (req: Request): Promise<Response> => {
 
   const commit = commitResult as Record<string, unknown>;
 
+  if (paymentProvider === "paystack") {
+    const transaction = paystackRefundTransaction(paymentIntentId, chargeId);
+    if (transaction) {
+      const { error: debtError } = await supabase.rpc(
+        "record_paystack_refund_outcome",
+        {
+          p_source_type: "order",
+          p_source_id: orderId,
+          p_local_refund_id: refundId,
+          p_transaction_reference: transaction,
+          p_merchant_note: `mingla_refund:${refundId}`,
+          p_provider_refund_id: stripeRefund.id,
+          p_amount_cents: amountCents,
+          p_status: "accepted",
+        },
+      );
+      if (debtError) {
+        console.error(
+          "[refund-order] Paystack debt reconciliation failed after accepted refund",
+          debtError.message,
+        );
+      }
+    }
+  }
+
   // Step 4: enqueue buyer notification (ORCH-0788 dispatcher routes by template_key).
   // Look up event_id + buyer email for the notification recipient.
   const { data: orderDetail } = await supabase
@@ -499,6 +594,7 @@ serve(async (req: Request): Promise<Response> => {
         reason: reason.trim(),
         is_full_refund: pending.is_full_refund === true,
         stripe_refund_id: stripeRefund.id,
+        payment_provider: paymentProvider,
       },
     });
     if (notifError) {
@@ -553,6 +649,7 @@ serve(async (req: Request): Promise<Response> => {
     currency,
     status: "succeeded",
     stripe_refund_id: stripeRefund.id,
+    payment_provider: paymentProvider,
     application_fee_refunded_cents: applicationFeeRefundedCents,
     new_payment_status: commit.new_payment_status,
     processed_at: new Date().toISOString(),

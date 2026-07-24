@@ -1,0 +1,37 @@
+name: Issue 1175 Paystack refunds
+
+on:
+  pull_request:
+    paths:
+      - "supabase/functions/_shared/paystackRefunds.ts"
+      - "supabase/functions/_shared/paystackRefundRouter.ts"
+      - "supabase/functions/refund-order/**"
+      - "supabase/functions/admin-refund-order/**"
+      - "supabase/functions/cancel-trip-booking/**"
+      - "supabase/functions/venue-reservation-cancel/**"
+      - "supabase/functions/paystack-webhook/**"
+      - "supabase/migrations/20270110000004_issue_1175_paystack_refunds.sql"
+      - "supabase/migrations/__tests__/issue_1175_paystack_refunds.test.ts"
+      - ".github/workflows/issue-1175-paystack-refunds-tests.yml"
+
+jobs:
+  issue-1175-paystack-refunds:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Check handlers
+        run: >-
+          deno check
+          supabase/functions/refund-order/index.ts
+          supabase/functions/admin-refund-order/index.ts
+          supabase/functions/cancel-trip-booking/index.ts
+          supabase/functions/venue-reservation-cancel/index.ts
+          supabase/functions/paystack-webhook/index.ts
+      - name: Run issue 1175 regression contract
+        run: >-
+          deno test --allow-read --allow-env
+          supabase/functions/refund-order/__tests__/issue_1175_paystack_refunds.test.ts
+          supabase/migrations/__tests__/issue_1175_paystack_refunds.test.ts

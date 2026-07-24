@@ -49,6 +49,7 @@
 // @ts-ignore — Deno ESM import; types resolved at runtime.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { stripeTicketRefund } from "../_shared/stripe.ts";
+import { createPaystackRefund } from "../_shared/paystackRefunds.ts";
 import { writeAudit } from "../_shared/audit.ts";
 import {
   dispatchTicketConfirmation,
@@ -84,7 +85,9 @@ interface BeginRpcResult {
   refund_total_cents?: number;
   currency?: string;
   tier_pct?: number;
-  installments_to_cancel?: Array<{ installment_id: string; ordinal: number; due_at: string }>;
+  installments_to_cancel?: Array<
+    { installment_id: string; ordinal: number; due_at: string }
+  >;
 }
 
 interface ComputeRpcResult {
@@ -100,7 +103,9 @@ interface ComputeRpcResult {
   refund_total_cents?: number;
   currency?: string;
   per_payment_refund?: PerPaymentRefund[];
-  installments_to_cancel?: Array<{ installment_id: string; ordinal: number; due_at: string }>;
+  installments_to_cancel?: Array<
+    { installment_id: string; ordinal: number; due_at: string }
+  >;
   policy_kind?: string;
 }
 
@@ -114,18 +119,29 @@ interface StripeRefundResult {
 // RPC error → HTTP mapper
 // ---------------------------------------------------------------------------
 
-function mapComputeReasonToHttp(reason: string): { code: string; status: number; detail: string } {
+function mapComputeReasonToHttp(
+  reason: string,
+): { code: string; status: number; detail: string } {
   switch (reason) {
     case "order_not_found":
-      return { code: "order_not_found", status: 404, detail: "Order not found" };
+      return {
+        code: "order_not_found",
+        status: 404,
+        detail: "Order not found",
+      };
     case "not_a_trip":
       return {
         code: "not_a_trip",
         status: 422,
-        detail: "This cancel flow is trip-only; single events use the refund-order endpoint",
+        detail:
+          "This cancel flow is trip-only; single events use the refund-order endpoint",
       };
     case "already_cancelled":
-      return { code: "already_cancelled", status: 409, detail: "Order is already cancelled" };
+      return {
+        code: "already_cancelled",
+        status: 409,
+        detail: "Order is already cancelled",
+      };
     case "no_trip_start_date":
       return {
         code: "no_trip_start_date",
@@ -133,7 +149,11 @@ function mapComputeReasonToHttp(reason: string): { code: string; status: number;
         detail: "Trip has no scheduled start date — refund math cannot compute",
       };
     case "invalid_actor_kind":
-      return { code: "invalid_actor_kind", status: 400, detail: "actor_kind must be buyer or operator" };
+      return {
+        code: "invalid_actor_kind",
+        status: 400,
+        detail: "actor_kind must be buyer or operator",
+      };
     default:
       return { code: "rpc_error", status: 500, detail: reason };
   }
@@ -148,7 +168,14 @@ async function validateBuyerToken(
   supabase: ReturnType<typeof serviceClient>,
   orderId: string,
   plaintextToken: string,
-): Promise<{ ok: boolean; reason?: string; status?: number; orderRow?: Record<string, unknown> }> {
+): Promise<
+  {
+    ok: boolean;
+    reason?: string;
+    status?: number;
+    orderRow?: Record<string, unknown>;
+  }
+> {
   if (!plaintextToken || plaintextToken.length < 16) {
     return { ok: false, reason: "token_required", status: 401 };
   }
@@ -168,7 +195,8 @@ async function validateBuyerToken(
     return { ok: false, reason: "order_not_found", status: 404 };
   }
   const storedHash =
-    typeof (data as Record<string, unknown>).buyer_cancel_token_hash === "string"
+    typeof (data as Record<string, unknown>).buyer_cancel_token_hash ===
+        "string"
       ? ((data as Record<string, unknown>).buyer_cancel_token_hash as string)
       : null;
   if (!storedHash || storedHash !== tokenHash) {
@@ -185,16 +213,33 @@ async function validateBuyerToken(
 async function resolveConnectedAccountId(
   supabase: ReturnType<typeof serviceClient>,
   orderId: string,
-): Promise<{ connectedAccountId: string | null; eventId: string | null; brandId: string | null }> {
+): Promise<{
+  connectedAccountId: string | null;
+  eventId: string | null;
+  brandId: string | null;
+  paymentProvider: "stripe" | "paystack";
+  paystackTransactionId: string | null;
+}> {
   const { data, error } = await supabase
     .from("orders")
-    .select("event_id, events(brand_id, brands(stripe_connect_id))")
+    .select(
+      "event_id, stripe_charge_id, events(brand_id, brands(stripe_connect_id, payment_provider))",
+    )
     .eq("id", orderId)
     .maybeSingle();
   if (error || !data) {
-    return { connectedAccountId: null, eventId: null, brandId: null };
+    return {
+      connectedAccountId: null,
+      eventId: null,
+      brandId: null,
+      paymentProvider: "stripe",
+      paystackTransactionId: null,
+    };
   }
-  type JoinedBrand = { stripe_connect_id?: string | null };
+  type JoinedBrand = {
+    stripe_connect_id?: string | null;
+    payment_provider?: string | null;
+  };
   type JoinedEvents = {
     brand_id?: string | null;
     brands?: JoinedBrand | JoinedBrand[] | null;
@@ -202,15 +247,32 @@ async function resolveConnectedAccountId(
   const row = data as Record<string, unknown>;
   const eventId = typeof row.event_id === "string" ? row.event_id : null;
   const eventsJoined = row.events as JoinedEvents | JoinedEvents[] | null;
-  const eventsRow = Array.isArray(eventsJoined) ? eventsJoined[0] ?? null : eventsJoined;
-  const brandId = typeof eventsRow?.brand_id === "string" ? eventsRow.brand_id : null;
+  const eventsRow = Array.isArray(eventsJoined)
+    ? eventsJoined[0] ?? null
+    : eventsJoined;
+  const brandId = typeof eventsRow?.brand_id === "string"
+    ? eventsRow.brand_id
+    : null;
   const brandsJoined = eventsRow?.brands ?? null;
-  const brandsRow = Array.isArray(brandsJoined) ? brandsJoined[0] ?? null : brandsJoined;
-  const connectedAccountId =
-    typeof brandsRow?.stripe_connect_id === "string" && brandsRow.stripe_connect_id.length > 0
-      ? brandsRow.stripe_connect_id
-      : null;
-  return { connectedAccountId, eventId, brandId };
+  const brandsRow = Array.isArray(brandsJoined)
+    ? brandsJoined[0] ?? null
+    : brandsJoined;
+  const connectedAccountId = typeof brandsRow?.stripe_connect_id === "string" &&
+      brandsRow.stripe_connect_id.length > 0
+    ? brandsRow.stripe_connect_id
+    : null;
+  return {
+    connectedAccountId,
+    eventId,
+    brandId,
+    paymentProvider: brandsRow?.payment_provider === "paystack"
+      ? "paystack"
+      : "stripe",
+    paystackTransactionId: typeof row.stripe_charge_id === "string" &&
+        row.stripe_charge_id.length > 0
+      ? row.stripe_charge_id
+      : null,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -233,13 +295,18 @@ serve(async (req: Request): Promise<Response> => {
     return jsonResponse({ error: "invalid_json" }, 400);
   }
 
-  const mode: CancelMode =
-    body.mode === "buyer" ? "buyer" : body.mode === "operator" ? "operator" : "preview";
+  const mode: CancelMode = body.mode === "buyer"
+    ? "buyer"
+    : body.mode === "operator"
+    ? "operator"
+    : "preview";
   const orderId = typeof body.orderId === "string" ? body.orderId : "";
   const token = typeof body.token === "string" ? body.token : "";
   const reasonRaw = typeof body.reason === "string" ? body.reason.trim() : "";
   const expectedRefundTotalCents =
-    typeof body.expectedRefundTotalCents === "number" ? body.expectedRefundTotalCents : null;
+    typeof body.expectedRefundTotalCents === "number"
+      ? body.expectedRefundTotalCents
+      : null;
 
   if (!orderId) return jsonResponse({ error: "order_id_required" }, 400);
 
@@ -264,7 +331,10 @@ serve(async (req: Request): Promise<Response> => {
       const auth = await validateBuyerToken(supabase, orderId, token);
       if (!auth.ok) {
         return jsonResponse(
-          { error: auth.reason ?? "invalid_token", detail: "buyer cancel token invalid or missing" },
+          {
+            error: auth.reason ?? "invalid_token",
+            detail: "buyer cancel token invalid or missing",
+          },
           auth.status ?? 401,
         );
       }
@@ -275,7 +345,10 @@ serve(async (req: Request): Promise<Response> => {
     const userId = await userIdFromAuthHeader(req);
     if (!userId) return jsonResponse({ error: "unauthenticated" }, 401);
     if (reasonRaw.length < 10 || reasonRaw.length > 200) {
-      return jsonResponse({ error: "reason_invalid_length", detail: "operator cancel requires reason 10-200 chars" }, 400);
+      return jsonResponse({
+        error: "reason_invalid_length",
+        detail: "operator cancel requires reason 10-200 chars",
+      }, 400);
     }
     actorKind = "operator";
     actorUserId = userId;
@@ -297,12 +370,18 @@ serve(async (req: Request): Promise<Response> => {
     );
     if (computeErr) {
       console.error("[cancel-trip-booking] preview compute failed", computeErr);
-      return jsonResponse({ error: "compute_failed", detail: computeErr.message }, 500);
+      return jsonResponse({
+        error: "compute_failed",
+        detail: computeErr.message,
+      }, 500);
     }
     const compute = (computeData as ComputeRpcResult | null) ?? { ok: false };
     if (!compute.ok) {
       const mapped = mapComputeReasonToHttp(compute.reason ?? "rpc_error");
-      return jsonResponse({ error: mapped.code, detail: mapped.detail }, mapped.status);
+      return jsonResponse(
+        { error: mapped.code, detail: mapped.detail },
+        mapped.status,
+      );
     }
     return jsonResponse({
       mode: "preview",
@@ -326,8 +405,11 @@ serve(async (req: Request): Promise<Response> => {
   // preview response. We re-compute via biz_cancel_trip_booking_begin (which
   // pins amount at cancel_at) and compare. If different, return 409 so the
   // client re-fetches preview before re-confirming.
-  const idempotencyKey = req.headers.get("Idempotency-Key") ?? req.headers.get("idempotency-key");
-  if (!idempotencyKey || idempotencyKey.length < 8 || idempotencyKey.length > 128) {
+  const idempotencyKey = req.headers.get("Idempotency-Key") ??
+    req.headers.get("idempotency-key");
+  if (
+    !idempotencyKey || idempotencyKey.length < 8 || idempotencyKey.length > 128
+  ) {
     return jsonResponse({ error: "idempotency_key_required" }, 400);
   }
   if (expectedRefundTotalCents === null || expectedRefundTotalCents < 0) {
@@ -351,12 +433,18 @@ serve(async (req: Request): Promise<Response> => {
 
   if (beginErr) {
     console.error("[cancel-trip-booking] begin RPC failed", beginErr);
-    return jsonResponse({ error: "begin_failed", detail: beginErr.message }, 500);
+    return jsonResponse(
+      { error: "begin_failed", detail: beginErr.message },
+      500,
+    );
   }
   const begin = (beginData as BeginRpcResult | null) ?? { ok: false };
   if (!begin.ok) {
     const mapped = mapComputeReasonToHttp(begin.reason ?? "rpc_error");
-    return jsonResponse({ error: mapped.code, detail: mapped.detail }, mapped.status);
+    return jsonResponse(
+      { error: mapped.code, detail: mapped.detail },
+      mapped.status,
+    );
   }
 
   const refundId = begin.refund_id ?? "";
@@ -375,12 +463,14 @@ serve(async (req: Request): Promise<Response> => {
   if (computedRefundTotalCents !== expectedRefundTotalCents) {
     await supabase.rpc("biz_cancel_trip_booking_rollback", {
       p_refund_id: refundId,
-      p_failure_reason: `sc22_freshness_divergence: expected=${expectedRefundTotalCents}, computed=${computedRefundTotalCents}`,
+      p_failure_reason:
+        `sc22_freshness_divergence: expected=${expectedRefundTotalCents}, computed=${computedRefundTotalCents}`,
     });
     return jsonResponse(
       {
         error: "policy_updated",
-        detail: "Cancellation policy was updated — refresh to see your new refund amount",
+        detail:
+          "Cancellation policy was updated — refresh to see your new refund amount",
         currentRefundTotalCents: computedRefundTotalCents,
         currency,
         refundId,
@@ -390,22 +480,38 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   // Step 2: connected-account lookup for Stripe refund calls.
-  const { connectedAccountId, eventId, brandId } = await resolveConnectedAccountId(supabase, orderId);
-  if (!connectedAccountId) {
+  const {
+    connectedAccountId,
+    eventId,
+    brandId,
+    paymentProvider,
+    paystackTransactionId,
+  } =
+    await resolveConnectedAccountId(supabase, orderId);
+  if (paymentProvider === "stripe" && !connectedAccountId) {
     await supabase.rpc("biz_cancel_trip_booking_rollback", {
       p_refund_id: refundId,
       p_failure_reason: "missing_connected_account",
     });
     return jsonResponse(
-      { error: "missing_connected_account", detail: "brand has no Stripe connected account" },
+      {
+        error: "missing_connected_account",
+        detail: "brand has no Stripe connected account",
+      },
       422,
     );
   }
 
   // Step 3: per-PI refund loop. One stripe.refunds.create per source PI.
   // Zero-refund tiers (refund_cents=0 for all rows) skip Stripe entirely.
-  const stripe = stripeTicketRefund();
+  const stripe = paymentProvider === "stripe" ? stripeTicketRefund() : null;
   const stripeRefundIds: string[] = [];
+  const paystackAccepted: Array<{
+    transaction: string;
+    merchantNote: string;
+    providerRefundId: string;
+    amountCents: number;
+  }> = [];
   const refundLineRowsToInsert: Array<{
     refund_id: string;
     order_line_item_id: string;
@@ -436,7 +542,10 @@ serve(async (req: Request): Promise<Response> => {
       p_failure_reason: "no_order_line_items",
     });
     return jsonResponse(
-      { error: "no_order_line_items", detail: "order has no line items to attribute refund against" },
+      {
+        error: "no_order_line_items",
+        detail: "order has no line items to attribute refund against",
+      },
       500,
     );
   }
@@ -456,10 +565,43 @@ serve(async (req: Request): Promise<Response> => {
     if (!entry.source_pi) {
       // No source PI (data integrity issue — installment finalized without PI?).
       // Skip + log; don't fail the whole flow.
-      console.warn("[cancel-trip-booking] per-payment entry has no source_pi", entry);
+      console.warn(
+        "[cancel-trip-booking] per-payment entry has no source_pi",
+        entry,
+      );
       continue;
     }
     try {
+      if (paymentProvider === "paystack") {
+        const merchantNote = `mingla_trip_refund:${refundId}:${
+          entry.installment_id ?? "deposit"
+        }`;
+        const created = await createPaystackRefund({
+          transaction: paystackTransactionId ?? entry.source_pi,
+          merchantNote,
+          amountSubunits: entry.refund_cents,
+          currency: "NGN",
+        });
+        stripeRefundIds.push(created.id);
+        paystackAccepted.push({
+          transaction: paystackTransactionId ?? entry.source_pi,
+          merchantNote,
+          providerRefundId: created.id,
+          amountCents: entry.refund_cents,
+        });
+        refundLineRowsToInsert.push({
+          refund_id: refundId,
+          order_line_item_id: primaryLineItem.id,
+          ticket_type_id: primaryLineItem.ticket_type_id,
+          quantity: primaryLineItem.quantity,
+          amount_cents: entry.refund_cents,
+          installment_id: entry.installment_id,
+        });
+        continue;
+      }
+      if (!stripe || !connectedAccountId) {
+        throw new Error("stripe_missing_connected_account");
+      }
       // @ts-ignore — Stripe SDK namespace is runtime-provided in Deno.
       const created = await stripe.refunds.create(
         {
@@ -478,6 +620,7 @@ serve(async (req: Request): Promise<Response> => {
         {
           // Per-PI idempotency-key: refund_id + installment_id (or 'deposit')
           // — same key always returns same refund attempt at Stripe.
+          // deno-fmt-ignore
           idempotencyKey: `tr4_cancel:${refundId}:${entry.installment_id ?? "deposit"}`,
           stripeAccount: connectedAccountId,
         },
@@ -488,7 +631,10 @@ serve(async (req: Request): Promise<Response> => {
         amount: Number(created.amount ?? entry.refund_cents),
       };
       if (result.status === "failed" || result.status === "canceled") {
-        stripeFailureDetail = `stripe refund status=${result.status} on installment_id=${entry.installment_id ?? "deposit"}`;
+        stripeFailureDetail =
+          `stripe refund status=${result.status} on installment_id=${
+            entry.installment_id ?? "deposit"
+          }`;
         break;
       }
       stripeRefundIds.push(result.id);
@@ -550,7 +696,10 @@ serve(async (req: Request): Promise<Response> => {
       // Webhook reconciliation will catch this; refunds.status=failed surfaces
       // the issue. Mark commit as failed but DO NOT roll back orders.cancelled_at —
       // booking IS cancelled (and Stripe IS refunded — buyer gets their money).
-      console.error("[cancel-trip-booking] refund_line_items insert failed", insertError);
+      console.error(
+        "[cancel-trip-booking] refund_line_items insert failed",
+        insertError,
+      );
       await supabase.rpc("biz_cancel_trip_booking_rollback", {
         p_refund_id: refundId,
         p_failure_reason: `ledger_insert_failed: ${insertError.message}`,
@@ -582,7 +731,10 @@ serve(async (req: Request): Promise<Response> => {
   if (commitErr || !commitData || !(commitData as { ok: boolean }).ok) {
     // Critical: Stripe succeeded + ledger rows written but refund commit failed.
     // The refund-status reconciliation cron can recover; surface to caller.
-    console.error("[cancel-trip-booking] commit RPC failed after Stripe + ledger success", commitErr);
+    console.error(
+      "[cancel-trip-booking] commit RPC failed after Stripe + ledger success",
+      commitErr,
+    );
     return jsonResponse(
       {
         error: "commit_failed_after_stripe_success",
@@ -595,6 +747,30 @@ serve(async (req: Request): Promise<Response> => {
     );
   }
 
+  if (paymentProvider === "paystack") {
+    for (const accepted of paystackAccepted) {
+      const { error: debtError } = await supabase.rpc(
+        "record_paystack_refund_outcome",
+        {
+          p_source_type: "order",
+          p_source_id: orderId,
+          p_local_refund_id: refundId,
+          p_transaction_reference: accepted.transaction,
+          p_merchant_note: accepted.merchantNote,
+          p_provider_refund_id: accepted.providerRefundId,
+          p_amount_cents: accepted.amountCents,
+          p_status: "accepted",
+        },
+      );
+      if (debtError) {
+        console.error(
+          "[cancel-trip-booking] Paystack debt reconciliation failed after accepted refund",
+          debtError.message,
+        );
+      }
+    }
+  }
+
   // Step 6: notification dispatch. REUSE existing ORCH-0788 kinds. Two rows
   // enqueued: buyer_order_cancelled (the cancellation confirmation) +
   // buyer_refund_issued (the refund processing email). Payload discriminator
@@ -605,7 +781,9 @@ serve(async (req: Request): Promise<Response> => {
     .eq("id", orderId)
     .maybeSingle();
 
-  const buyerEmail = typeof orderDetail?.buyer_email === "string" ? orderDetail.buyer_email : "";
+  const buyerEmail = typeof orderDetail?.buyer_email === "string"
+    ? orderDetail.buyer_email
+    : "";
 
   if (buyerEmail.length > 0) {
     const baseNotifPayload = {
@@ -624,7 +802,9 @@ serve(async (req: Request): Promise<Response> => {
     };
 
     // buyer_order_cancelled (the cancellation email)
-    const { error: notif1Err } = await supabase.from("ticket_order_notifications").insert({
+    const { error: notif1Err } = await supabase.from(
+      "ticket_order_notifications",
+    ).insert({
       order_id: orderId,
       event_id: orderDetail?.event_id ?? eventId,
       channel: "email",
@@ -638,12 +818,17 @@ serve(async (req: Request): Promise<Response> => {
       },
     });
     if (notif1Err) {
-      console.error("[cancel-trip-booking] buyer_order_cancelled notification enqueue failed (non-fatal)", notif1Err.message);
+      console.error(
+        "[cancel-trip-booking] buyer_order_cancelled notification enqueue failed (non-fatal)",
+        notif1Err.message,
+      );
     }
 
     // buyer_refund_issued (only when refund > 0)
     if (computedRefundTotalCents > 0) {
-      const { error: notif2Err } = await supabase.from("ticket_order_notifications").insert({
+      const { error: notif2Err } = await supabase.from(
+        "ticket_order_notifications",
+      ).insert({
         order_id: orderId,
         event_id: orderDetail?.event_id ?? eventId,
         channel: "email",
@@ -658,7 +843,10 @@ serve(async (req: Request): Promise<Response> => {
         },
       });
       if (notif2Err) {
-        console.error("[cancel-trip-booking] buyer_refund_issued notification enqueue failed (non-fatal)", notif2Err.message);
+        console.error(
+          "[cancel-trip-booking] buyer_refund_issued notification enqueue failed (non-fatal)",
+          notif2Err.message,
+        );
       }
     }
 
@@ -667,10 +855,16 @@ serve(async (req: Request): Promise<Response> => {
     try {
       await dispatchTicketConfirmation(orderId);
     } catch (dispatchErr) {
-      console.error("[cancel-trip-booking] inline dispatch failed (non-fatal)", dispatchErr);
+      console.error(
+        "[cancel-trip-booking] inline dispatch failed (non-fatal)",
+        dispatchErr,
+      );
     }
   } else {
-    console.warn("[cancel-trip-booking] no buyer_email; skipping notification enqueue", { orderId });
+    console.warn(
+      "[cancel-trip-booking] no buyer_email; skipping notification enqueue",
+      { orderId },
+    );
   }
 
   // Step 7: audit row.
@@ -689,12 +883,16 @@ serve(async (req: Request): Promise<Response> => {
         tier_pct: tierPct,
         cancelled_by_kind: actorKind,
         stripe_refund_ids: stripeRefundIds,
+        payment_provider: paymentProvider,
         installments_cancelled: installmentsCancelled,
         reason: reasonRaw.length > 0 ? reasonRaw : null,
       },
     });
   } catch (auditError) {
-    console.error("[cancel-trip-booking] audit write failed (non-fatal)", auditError);
+    console.error(
+      "[cancel-trip-booking] audit write failed (non-fatal)",
+      auditError,
+    );
   }
 
   // Final success response — buyer UI shows success state; operator UI dismisses sheet.
@@ -707,6 +905,7 @@ serve(async (req: Request): Promise<Response> => {
     tierPct,
     tierKind: "computed",
     stripeRefundIds,
+    paymentProvider,
     installmentsCancelled,
     processedAt: new Date().toISOString(),
   });
