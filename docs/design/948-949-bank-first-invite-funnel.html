@@ -1,0 +1,1652 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="Design review — bank-first partner invite funnel (#948 + #949). Body-only source is also published as a Claude artifact."></head>
+<body>
+<title>Bank-first invite funnel — #948 + #949</title>
+
+<style>
+/* ============================================================
+   PAGE TOKENS — cool slate workspace so the warm Mingla product
+   mockups (dark canvas + #eb7825) read as artifacts on a board.
+   ============================================================ */
+:root{
+  --ground:#e9ecf1;
+  --panel:#ffffff;
+  --panel-2:#f4f6f9;
+  --line:#d3d8e0;
+  --line-soft:#e2e6ec;
+  --ink:#15181e;
+  --ink-2:#3d4450;
+  --muted:#666e7d;
+  --faint:#8b93a1;
+  --accent:#eb7825;          /* Mingla accent.warm — the product's own */
+  --accent-deep:#b4560f;
+  --accent-wash:rgba(235,120,37,.10);
+  --blocker:#cf3535;
+  --blocker-wash:rgba(207,53,53,.10);
+  --decision:#6d51c9;
+  --decision-wash:rgba(109,81,201,.10);
+  --ok:#1c8a4c;
+  --ok-wash:rgba(28,138,76,.10);
+  --shadow:0 1px 2px rgba(18,22,30,.05),0 8px 24px -12px rgba(18,22,30,.18);
+  --shadow-lg:0 2px 4px rgba(18,22,30,.06),0 24px 60px -20px rgba(18,22,30,.32);
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --ground:#0a0c10;
+    --panel:#14181f;
+    --panel-2:#1a1f28;
+    --line:#262d38;
+    --line-soft:#1e242d;
+    --ink:#e8ebf1;
+    --ink-2:#b9c0cc;
+    --muted:#8b93a2;
+    --faint:#6a7280;
+    --accent:#f2903f;
+    --accent-deep:#f2903f;
+    --accent-wash:rgba(242,144,63,.13);
+    --blocker:#f06a6a;
+    --blocker-wash:rgba(240,106,106,.13);
+    --decision:#a68ef0;
+    --decision-wash:rgba(166,142,240,.13);
+    --ok:#4cc47f;
+    --ok-wash:rgba(76,196,127,.13);
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -12px rgba(0,0,0,.7);
+    --shadow-lg:0 2px 4px rgba(0,0,0,.5),0 24px 60px -20px rgba(0,0,0,.85);
+  }
+}
+:root[data-theme="light"]{
+  --ground:#e9ecf1;--panel:#ffffff;--panel-2:#f4f6f9;--line:#d3d8e0;--line-soft:#e2e6ec;
+  --ink:#15181e;--ink-2:#3d4450;--muted:#666e7d;--faint:#8b93a1;
+  --accent:#eb7825;--accent-deep:#b4560f;--accent-wash:rgba(235,120,37,.10);
+  --blocker:#cf3535;--blocker-wash:rgba(207,53,53,.10);
+  --decision:#6d51c9;--decision-wash:rgba(109,81,201,.10);
+  --ok:#1c8a4c;--ok-wash:rgba(28,138,76,.10);
+  --shadow:0 1px 2px rgba(18,22,30,.05),0 8px 24px -12px rgba(18,22,30,.18);
+  --shadow-lg:0 2px 4px rgba(18,22,30,.06),0 24px 60px -20px rgba(18,22,30,.32);
+}
+:root[data-theme="dark"]{
+  --ground:#0a0c10;--panel:#14181f;--panel-2:#1a1f28;--line:#262d38;--line-soft:#1e242d;
+  --ink:#e8ebf1;--ink-2:#b9c0cc;--muted:#8b93a2;--faint:#6a7280;
+  --accent:#f2903f;--accent-deep:#f2903f;--accent-wash:rgba(242,144,63,.13);
+  --blocker:#f06a6a;--blocker-wash:rgba(240,106,106,.13);
+  --decision:#a68ef0;--decision-wash:rgba(166,142,240,.13);
+  --ok:#4cc47f;--ok-wash:rgba(76,196,127,.13);
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px -12px rgba(0,0,0,.7);
+  --shadow-lg:0 2px 4px rgba(0,0,0,.5),0 24px 60px -20px rgba(0,0,0,.85);
+}
+
+*{box-sizing:border-box}
+.wrap{
+  font-family:var(--sans);
+  background:var(--ground);
+  color:var(--ink);
+  line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+  min-height:100vh;
+  overflow-x:hidden;
+}
+.shell{max-width:1560px;margin:0 auto;padding:clamp(20px,3vw,44px) clamp(14px,3vw,36px) 96px}
+
+/* ---------- type ---------- */
+.eyebrow{
+  font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--faint);font-weight:600;margin:0;
+}
+h1.title{
+  font-size:clamp(28px,4.4vw,50px);line-height:1.03;letter-spacing:-.03em;font-weight:800;
+  margin:10px 0 0;text-wrap:balance;max-width:19ch;
+}
+h1.title em{font-style:normal;color:var(--accent)}
+.lede{font-size:clamp(15px,1.35vw,18px);color:var(--ink-2);max-width:62ch;margin:16px 0 0;text-wrap:pretty}
+h2.sec{font-size:clamp(19px,2.2vw,26px);letter-spacing:-.02em;font-weight:750;margin:0;text-wrap:balance}
+h3{font-size:15px;font-weight:700;letter-spacing:-.01em;margin:0}
+p{margin:0}
+code,.cite{font-family:var(--mono);font-size:11.5px;letter-spacing:-.01em}
+.cite{color:var(--faint);word-break:break-all}
+.mono-lbl{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);font-weight:600}
+
+/* ---------- header ---------- */
+.head{display:flex;flex-wrap:wrap;gap:28px;align-items:flex-end;justify-content:space-between;
+  padding-bottom:26px;border-bottom:1px solid var(--line)}
+.head-meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.pill{
+  font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.03em;
+  padding:5px 10px;border-radius:999px;border:1px solid var(--line);
+  background:var(--panel);color:var(--muted);white-space:nowrap;
+}
+.pill.hot{border-color:transparent;background:var(--accent-wash);color:var(--accent-deep)}
+.pill.bad{border-color:transparent;background:var(--blocker-wash);color:var(--blocker)}
+.pill.dec{border-color:transparent;background:var(--decision-wash);color:var(--decision)}
+.pill.good{border-color:transparent;background:var(--ok-wash);color:var(--ok)}
+
+/* ---------- controls ---------- */
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:26px 0 22px;position:sticky;top:0;
+  z-index:40;background:linear-gradient(var(--ground) 68%,transparent);padding:12px 0 14px}
+.seg{display:inline-flex;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:3px;gap:3px}
+.seg button{
+  font:inherit;font-size:13px;font-weight:600;border:0;background:transparent;color:var(--muted);
+  padding:7px 14px;border-radius:7px;cursor:pointer;min-height:36px;
+}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--ground)}
+.seg button:focus-visible,.btn:focus-visible,.node:focus-visible,.iss:focus-visible{
+  outline:2px solid var(--accent);outline-offset:2px}
+.btn{
+  font:inherit;font-size:13px;font-weight:600;border:1px solid var(--line);background:var(--panel);
+  color:var(--ink-2);padding:8px 14px;border-radius:var(--r);cursor:pointer;min-height:38px;
+}
+.btn:hover{border-color:var(--faint)}
+.spacer{flex:1 1 auto}
+
+/* ============================================================
+   FLOW MAP
+   ============================================================ */
+.mapwrap{position:relative;overflow-x:auto;padding-bottom:8px}
+.map{position:relative;display:grid;gap:clamp(18px,2.4vw,40px);min-width:1180px;
+  grid-template-columns:repeat(6,minmax(178px,1fr));align-items:start}
+#edges{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:0}
+.col{position:relative;z-index:1;display:flex;flex-direction:column;gap:16px}
+.colhead{display:flex;gap:8px;align-items:baseline;padding-bottom:2px;border-bottom:1px solid var(--line)}
+.colhead .ltr{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--accent)}
+.colhead .nm{font-size:12px;font-weight:700;letter-spacing:-.01em;color:var(--ink-2)}
+
+.node{
+  display:block;width:100%;text-align:left;font:inherit;cursor:pointer;padding:0;
+  background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;
+  box-shadow:var(--shadow);transition:transform .18s cubic-bezier(.33,1,.68,1),box-shadow .18s,border-color .18s;
+}
+.node:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg);border-color:var(--faint)}
+.node.is-active{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-wash),var(--shadow-lg)}
+.node.escape{border-style:dashed}
+.thumb{position:relative;height:172px;overflow:hidden;background:#07080b;display:block}
+.thumb-inner{position:absolute;top:0;left:50%;transform-origin:top center}
+.thumb::after{content:"";position:absolute;inset:auto 0 0 0;height:52px;
+  background:linear-gradient(to top,var(--panel),transparent);pointer-events:none}
+.node-ft{padding:9px 11px 11px;display:flex;flex-direction:column;gap:5px}
+.node-ttl{font-size:12.5px;font-weight:700;letter-spacing:-.01em;line-height:1.25}
+.node-tags{display:flex;flex-wrap:wrap;gap:4px}
+.tg{font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;
+  padding:2px 6px;border-radius:4px;background:var(--panel-2);color:var(--faint)}
+.tg.new{background:var(--accent-wash);color:var(--accent-deep)}
+.tg.ship{background:var(--ok-wash);color:var(--ok)}
+.tg.blk{background:var(--blocker-wash);color:var(--blocker)}
+.edgelabel{font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.02em;fill:var(--faint)}
+.edgelabel-bg{fill:var(--ground)}
+
+/* legend */
+.legend{display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin:20px 0 4px;
+  font-size:12px;color:var(--muted)}
+.legend .k{display:inline-flex;align-items:center;gap:7px}
+.legend svg{flex:none}
+
+/* ============================================================
+   GALLERY
+   ============================================================ */
+.gallery{display:grid;gap:clamp(16px,2vw,28px);grid-template-columns:repeat(auto-fill,minmax(268px,1fr))}
+.gcard{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;
+  box-shadow:var(--shadow);display:flex;flex-direction:column}
+.gcard .gtop{padding:12px 14px;border-bottom:1px solid var(--line-soft);display:flex;flex-direction:column;gap:5px}
+.gstage{background:#07080b;padding:16px 0;display:flex;justify-content:center;overflow:hidden}
+.gcard .gbtn{margin:auto 12px 12px;text-align:center}
+
+/* ============================================================
+   DETAIL OVERLAY
+   ============================================================ */
+.ovl{position:fixed;inset:0;z-index:80;background:rgba(8,10,14,.62);backdrop-filter:blur(6px);
+  display:none;padding:clamp(8px,2vw,32px);overflow-y:auto}
+.ovl[open]{display:block}
+.sheet{max-width:1180px;margin:0 auto;background:var(--panel);border:1px solid var(--line);
+  border-radius:16px;box-shadow:var(--shadow-lg);overflow:hidden}
+.sheet-hd{display:flex;gap:14px;align-items:flex-start;justify-content:space-between;
+  padding:16px clamp(14px,2vw,24px);border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel);z-index:3}
+.sheet-body{display:grid;grid-template-columns:minmax(0,420px) minmax(0,1fr);gap:0}
+@media (max-width:900px){.sheet-body{grid-template-columns:1fr}}
+.stage{background:#07080b;padding:clamp(18px,3vw,34px) 10px;display:flex;justify-content:center;align-items:flex-start;
+  border-right:1px solid var(--line)}
+.notes{padding:clamp(16px,2vw,26px);display:flex;flex-direction:column;gap:22px;min-width:0}
+.nblock h4{margin:0 0 9px;font-size:11px;font-family:var(--mono);letter-spacing:.12em;text-transform:uppercase;
+  color:var(--faint);font-weight:600}
+.nlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:9px}
+.nlist li{font-size:13.5px;color:var(--ink-2);padding-left:15px;position:relative;text-wrap:pretty}
+.nlist li::before{content:"";position:absolute;left:0;top:8px;width:6px;height:6px;border-radius:2px;background:var(--accent)}
+.nlist.was li::before{background:var(--faint);border-radius:999px}
+.flag{display:flex;gap:10px;padding:11px 13px;border-radius:10px;font-size:13px;line-height:1.5;
+  border:1px solid var(--line-soft);background:var(--panel-2);color:var(--ink-2);text-wrap:pretty}
+.flag .fk{font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  padding:2px 6px;border-radius:4px;height:fit-content;white-space:nowrap;flex:none;margin-top:1px}
+.flag.blocker{background:var(--blocker-wash);border-color:transparent}
+.flag.blocker .fk{background:var(--blocker);color:#fff}
+.flag.risk .fk{background:var(--accent);color:#fff}
+.flag.question .fk{background:var(--decision);color:#fff}
+.flag b{color:var(--ink);font-weight:650}
+.walk{display:flex;flex-wrap:wrap;gap:8px;padding:14px clamp(14px,2vw,24px);border-top:1px solid var(--line);
+  background:var(--panel-2);align-items:center}
+.walk .lbl{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);font-weight:600;margin-right:2px}
+.close-x{border:1px solid var(--line);background:var(--panel);border-radius:8px;width:34px;height:34px;
+  cursor:pointer;color:var(--ink-2);font-size:17px;line-height:1;flex:none}
+
+/* ============================================================
+   DECISIONS
+   ============================================================ */
+.decisions{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(292px,1fr));margin-top:20px}
+.dec{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;
+  display:flex;flex-direction:column;gap:14px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+.dec::before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:var(--decision)}
+.dec .dnum{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--decision);letter-spacing:.1em}
+.dec h3{font-size:16.5px;line-height:1.25;letter-spacing:-.015em}
+.dec p{font-size:13.5px;color:var(--muted);text-wrap:pretty}
+.opts{display:flex;flex-direction:column;gap:8px}
+.opt{border:1px solid var(--line);border-radius:9px;padding:10px 12px;font-size:13px;color:var(--ink-2);text-wrap:pretty}
+.opt.rec{border-color:var(--decision);background:var(--decision-wash)}
+.opt .ot{display:block;font-weight:700;color:var(--ink);margin-bottom:2px;font-size:13px}
+.opt .rk{font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--decision);font-weight:700}
+
+/* ============================================================
+   ISSUE REGISTER
+   ============================================================ */
+.issues{display:flex;flex-direction:column;gap:0;border:1px solid var(--line);border-radius:14px;
+  overflow:hidden;background:var(--panel);box-shadow:var(--shadow)}
+.iss{display:grid;grid-template-columns:78px minmax(0,1fr) auto;gap:14px;align-items:start;
+  padding:14px 16px;border-top:1px solid var(--line-soft);text-align:left;background:transparent;
+  border-left:0;border-right:0;border-bottom:0;font:inherit;width:100%;cursor:pointer;color:inherit}
+.iss:first-child{border-top:0}
+.iss:hover{background:var(--panel-2)}
+.iss .ik{font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+  padding:3px 6px;border-radius:4px;text-align:center;margin-top:2px}
+.iss.blocker .ik{background:var(--blocker);color:#fff}
+.iss.risk .ik{background:var(--accent);color:#fff}
+.iss.question .ik{background:var(--decision);color:#fff}
+.iss .itxt{font-size:13.5px;color:var(--ink-2);text-wrap:pretty}
+.iss .itxt b{color:var(--ink);font-weight:650}
+.iss .icite{margin-top:5px;display:block}
+.iss .igo{font-family:var(--mono);font-size:10px;color:var(--faint);white-space:nowrap;margin-top:3px}
+@media (max-width:640px){.iss{grid-template-columns:1fr;gap:7px}.iss .igo{display:none}}
+
+.section{margin-top:clamp(44px,6vw,80px)}
+.section-hd{display:flex;flex-wrap:wrap;gap:12px;align-items:baseline;justify-content:space-between;margin-bottom:6px}
+.section-sub{font-size:14px;color:var(--muted);max-width:70ch;margin-top:8px;text-wrap:pretty}
+
+/* ============================================================
+   MOCKUPS — real Mingla tokens. The business app is DARK-ONLY
+   (canvas.discover #0c0e12 + white-alpha text tokens), so these
+   stay dark in both page themes. The email is light-locked
+   (shell.ts sets color-scheme: light only). Both are honest.
+   ============================================================ */
+.mk{
+  --c-canvas:#0c0e12; --c-profile:#141113;
+  --c-accent:#eb7825; --c-accent-tint:rgba(235,120,37,.28); --c-accent-border:rgba(235,120,37,.55);
+  --t1:rgba(255,255,255,.96); --t2:rgba(255,255,255,.72); --t3:rgba(255,255,255,.52); --t4:rgba(255,255,255,.32);
+  --g-base:rgba(255,255,255,.04); --g-elev:rgba(255,255,255,.06);
+  --gb-base:rgba(255,255,255,.08); --gb-elev:rgba(255,255,255,.12);
+  --err:#ef4444; --err-tint:rgba(239,68,68,.18);
+  --ok2:#22c55e; --ok-tint:rgba(34,197,94,.18);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  flex:none;
+}
+/* phone shell: 390 x 844 (iPhone 14 logical) */
+.ph{width:390px;height:844px;border-radius:46px;background:#000;padding:11px;position:relative;
+  box-shadow:0 0 0 1.5px #2b2f36,0 30px 60px -24px rgba(0,0,0,.9)}
+.ph-scr{width:100%;height:100%;border-radius:36px;overflow:hidden;background:var(--c-canvas);
+  position:relative;display:flex;flex-direction:column}
+.ph-pill{position:absolute;top:20px;left:50%;transform:translateX(-50%);width:112px;height:31px;
+  background:#000;border-radius:999px;z-index:9}
+.sbar{height:52px;flex:none;display:flex;align-items:flex-end;justify-content:space-between;
+  padding:0 26px 7px;font-size:14px;font-weight:600;color:var(--t1);letter-spacing:-.01em}
+.sbar .r{display:flex;gap:5px;align-items:center}
+.pad{padding:0 24px;display:flex;flex-direction:column}
+.grow{flex:1 1 auto;min-height:0}
+.ctr{justify-content:center}
+
+/* app primitives — mapped to real tokens */
+.a-card{background:var(--g-base);border:1px solid var(--gb-base);border-radius:16px;padding:32px;
+  display:flex;flex-direction:column;gap:16px}
+.a-card.elev{background:var(--g-elev);border-color:var(--gb-elev);padding:24px}
+.a-h1{font-size:26px;line-height:32px;font-weight:700;letter-spacing:-.2px;color:var(--t1);margin:0}
+.a-h2{font-size:24px;line-height:32px;font-weight:700;letter-spacing:-.2px;color:var(--t1);margin:0}
+.a-h3{font-size:20px;line-height:28px;font-weight:600;color:var(--t1);margin:0}
+.a-ttl{font-size:22px;line-height:28px;font-weight:700;letter-spacing:-.2px;color:var(--t1);margin:0}
+.a-body{font-size:16px;line-height:24px;color:var(--t2);margin:0}
+.a-sm{font-size:14px;line-height:20px;color:var(--t2);margin:0}
+.a-cap{font-size:12px;line-height:16px;font-weight:500;letter-spacing:.2px;color:var(--t3);margin:0}
+.a-lblcap{font-size:12px;line-height:16px;font-weight:600;letter-spacing:1.4px;text-transform:uppercase;color:var(--t3);margin:0}
+.a-b1{color:var(--t1);font-weight:600}
+.a-ctr{text-align:center}
+.a-btn{height:52px;border-radius:12px;display:flex;align-items:center;justify-content:center;
+  font-size:16px;font-weight:600;letter-spacing:0;color:#fff;background:var(--c-accent);width:100%}
+.a-btn.sec{background:var(--g-elev);border:1px solid var(--gb-elev);color:var(--t1)}
+.a-btn.ghost{background:transparent;color:var(--t2)}
+.a-btn.md{height:44px;font-size:14px}
+.a-btn.dis{background:rgba(235,120,37,.32);color:rgba(255,255,255,.6)}
+.a-link{font-size:14px;line-height:20px;color:var(--t3);text-decoration:underline;text-align:center}
+.a-field{height:48px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);
+  display:flex;align-items:center;padding:0 14px;font-size:16px;color:var(--t1)}
+.a-field.ph-txt{color:var(--t4)}
+.a-topbar{min-height:56px;flex:none;display:flex;align-items:center;justify-content:space-between;
+  padding:8px 16px;gap:8px}
+.a-topbar .tt{flex:1;text-align:center;font-size:20px;line-height:28px;font-weight:600;color:var(--t1)}
+.a-topbar .slot{min-width:80px;font-size:14px;font-weight:600;color:var(--t2)}
+.a-topbar .slot.r{text-align:right}
+.a-circle{width:64px;height:64px;border-radius:999px;border:1px solid var(--c-accent-border);
+  background:var(--c-accent-tint);display:flex;align-items:center;justify-content:center;margin:0 auto}
+.a-circle.bad{background:var(--err-tint);border-color:rgba(239,68,68,.45)}
+.a-circle.warn{background:rgba(245,158,11,.18);border-color:rgba(245,158,11,.45)}
+.a-note{background:var(--g-base);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:4px}
+.a-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:999px;
+  background:var(--c-accent-tint);border:1px solid var(--c-accent-border);font-size:12px;font-weight:600;color:#ffd9bd}
+.a-ribbon{display:flex;gap:9px;align-items:center;padding:10px 14px;border-radius:12px;
+  background:var(--g-base);border:1px solid var(--gb-base);font-size:13px;line-height:18px;color:var(--t2)}
+.a-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.a-spin{width:44px;height:44px;border-radius:999px;border:3px solid rgba(235,120,37,.22);
+  border-top-color:var(--c-accent);margin:0 auto;animation:spin 900ms linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){
+  .a-spin{animation:none}
+  .node{transition:none}
+  *{scroll-behavior:auto !important}
+}
+.a-sheet{position:absolute;left:0;right:0;bottom:0;background:#14110f;border-radius:24px 24px 0 0;
+  padding:24px;display:flex;flex-direction:column;gap:16px;z-index:6;box-shadow:0 -20px 50px rgba(0,0,0,.6)}
+.a-scrim{position:absolute;inset:0;background:rgba(0,0,0,.5);z-index:5}
+.a-bankrow{padding:16px 0;border-bottom:1px solid rgba(255,255,255,.08);font-size:16px;color:var(--t1)}
+.a-seg{display:flex;background:var(--g-base);border:1px solid var(--gb-base);border-radius:12px;padding:3px;gap:3px}
+.a-seg span{flex:1;text-align:center;font-size:12px;font-weight:600;padding:7px 4px;border-radius:9px;color:var(--t3)}
+.a-seg span.on{background:var(--c-accent);color:#fff}
+
+/* email frames */
+.mail-ph .ph-scr{background:#f5f5f7}
+.mailbar{background:#f7f7f9;border-bottom:1px solid #dcdce1;padding:8px 16px 10px;flex:none}
+.mailbar .mfrom{font-size:14px;font-weight:700;color:#0f1115}
+.mailbar .msubj{font-size:13px;color:#5b6172;margin-top:1px}
+.mailbar .mto{font-size:11px;color:#8b90a0;margin-top:3px;font-family:var(--mono)}
+.mailscroll{flex:1;overflow:hidden;background:#f5f5f7;padding:14px 12px}
+.em{max-width:600px;margin:0 auto;background:#fff;border:1px solid #ececee;border-radius:16px;overflow:hidden;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+.em-hd{padding:24px 24px 20px;border-bottom:1px solid #ececee;text-align:center}
+.em-bd{padding:26px 24px}
+.em-h{font-size:16px;line-height:1.5;font-weight:600;color:#0f1115;margin:0}
+.em-p{font-size:15px;line-height:1.55;color:#0f1115;margin:0}
+.em-sub{font-size:14px;line-height:1.5;color:#5b6172;margin:0}
+.em-fine{font-size:13px;line-height:1.5;color:#5b6172;margin:0}
+.em-chip{display:inline-block;background:#fff6f1;color:#b23e12;font-size:12px;font-weight:700;
+  letter-spacing:.4px;text-transform:uppercase;padding:5px 10px;border-radius:999px}
+.em-cta{display:block;background:#c4471a;color:#fff;font-size:16px;font-weight:700;text-align:center;
+  padding:15px 30px;border-radius:10px;text-decoration:none;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.em-step{display:flex;gap:12px;align-items:flex-start}
+.em-num{width:28px;height:28px;border-radius:14px;background:#fff6f1;color:#b23e12;font-size:13px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;flex:none}
+.em-trust{background:#fff6f1;border-radius:8px;padding:12px 14px;font-size:13px;line-height:1.5;color:#5b6172}
+.em-ft{background:#fff6f1;padding:20px 24px;text-align:center;border-top:1px solid #ececee}
+.em-ft p{font-size:12px;line-height:1.5;color:#5b6172;margin:0}
+.em-strong{color:#b23e12;font-weight:600}
+
+/* desktop frame 1000x660 */
+.desk{width:1000px;border-radius:12px;overflow:hidden;background:#f7f7f9;
+  box-shadow:0 0 0 1.5px #2b2f36,0 30px 60px -24px rgba(0,0,0,.9)}
+.desk-bar{height:38px;background:#e6e6ea;display:flex;align-items:center;gap:7px;padding:0 14px;flex:none;
+  border-bottom:1px solid #d3d3d9}
+.dot{width:11px;height:11px;border-radius:999px}
+.desk-url{margin-left:12px;background:#fff;border-radius:6px;height:24px;flex:1;max-width:420px;
+  display:flex;align-items:center;padding:0 10px;font-family:var(--mono);font-size:11px;color:#5b6172}
+.desk-body{height:622px;overflow:hidden;display:flex}
+.desk-side{width:214px;background:#ededf1;border-right:1px solid #dcdce1;padding:14px 12px;flex:none}
+.desk-side .sl{font-size:12px;color:#5b6172;padding:7px 8px;border-radius:6px}
+.desk-side .sl.on{background:#dcdce4;color:#0f1115;font-weight:600}
+.desk-main{flex:1;overflow:hidden;padding:22px;background:#f5f5f7}
+
+/* QR */
+.qr{width:168px;height:168px;background:#fff;border-radius:12px;padding:10px;margin:0 auto}
+.qr canvas{width:100%;height:100%;image-rendering:pixelated;display:block}
+
+.footnote{margin-top:56px;padding-top:22px;border-top:1px solid var(--line);font-size:12.5px;color:var(--faint);
+  display:flex;flex-wrap:wrap;gap:8px 22px;text-wrap:pretty}
+</style>
+
+<div class="wrap">
+<div class="shell">
+
+  <header class="head">
+    <div>
+      <p class="eyebrow">Design review · pre-build</p>
+      <h1 class="title">One path: accept, <em>add your bank</em>, then get the app.</h1>
+      <p class="lede">
+        The full partner invite funnel — from the email that lands in their inbox to the moment
+        the brand is live in the app. Every node is a real screen design, not a label. Walk the
+        forks, open the escapes, and shoot holes in it before anyone writes code.
+      </p>
+    </div>
+    <div class="head-meta">
+      <span class="pill hot">#948 bank-first single CTA</span>
+      <span class="pill hot">#949 offering-agnostic copy</span>
+      <span class="pill" id="cnt-screens">17 screens</span>
+      <span class="pill bad" id="cnt-blockers">blockers</span>
+    </div>
+  </header>
+
+  <!-- ================= DECISIONS ================= -->
+  <section class="section" id="decisions" style="margin-top:38px">
+    <div class="section-hd">
+      <h2 class="sec">Three calls only you can make</h2>
+      <span class="mono-lbl">these change the design</span>
+    </div>
+    <p class="section-sub">
+      Everything downstream is drawn assuming the recommended option. Pick differently and the
+      affected screens are named on each card.
+    </p>
+    <div class="decisions">
+
+      <div class="dec">
+        <span class="dnum">Decision 01</span>
+        <h3>How hard do we push the bank?</h3>
+        <p>A partner without a bank cannot take a single payment. But a hard wall on a page they
+          reached from an email is also how you lose someone who just wanted to look.</p>
+        <div class="opts">
+          <div class="opt"><span class="ot">Hard gate — no escape</span>
+            Bank or nothing. Highest conversion for those who finish; highest abandon.</div>
+          <div class="opt rec"><span class="rk">Recommended</span><span class="ot">Quiet text link, below the fold of the thumb</span>
+            One loud CTA, one whispered <em>“I'll add it later”</em> in tertiary text. It exists, it
+            is reachable, it never competes. Skipping routes through a confirm sheet that states the
+            actual cost.</div>
+          <div class="opt"><span class="ot">Equal secondary button</span>
+            What we ship today, one step later. Two buttons of similar weight is exactly the leak
+            #948 was filed to close.</div>
+        </div>
+        <p class="cite">Affects C1 · D4 · D5</p>
+      </div>
+
+      <div class="dec">
+        <span class="dnum">Decision 02</span>
+        <h3>Bank before the app download?</h3>
+        <p>This makes a bank form the partner's first real Mingla experience. No product tour, no
+          dopamine — a form asking for account numbers.</p>
+        <div class="opts">
+          <div class="opt rec"><span class="rk">Recommended</span><span class="ot">Yes — bank first, app immediately after</span>
+            They arrived from an email that already promised “claim + get paid”, so the bank is the
+            expected next beat, not a surprise. Crucially there is <b>no deferred deep-link
+            continuity</b>: install-before-accept strands the invite entirely, so the app genuinely
+            cannot come first.</div>
+          <div class="opt"><span class="ot">App first, bank inside the app</span>
+            Warmer first impression, but hands the partner to a store listing mid-funnel and the
+            invite context dies at the store door.</div>
+        </div>
+        <p class="cite">Grounded in BusinessAppDownloadCta.tsx:9–13 (ORCH-1378 OQ-1)</p>
+      </div>
+
+      <div class="dec">
+        <span class="dnum">Decision 03</span>
+        <h3>Nigeria vs Stripe inside one CTA</h3>
+        <p>One button, two completely different destinations: a Stripe hosted flow, or a Mingla-owned
+          Nigerian bank form. Today the partner picks a country from a list to get there.</p>
+        <div class="opts">
+          <div class="opt rec"><span class="rk">Recommended</span><span class="ot">Pre-resolve from <code>brands.country_code</code>, show a confirm row</span>
+            The invite was created by us — we already know where the brand is. Show
+            <em>“Payouts in Nigeria · NGN”</em> with a quiet Change. Zero picker taps for the 99% case.</div>
+          <div class="opt"><span class="ot">Keep the country picker as the first screen</span>
+            Honest but slow, and it presents an ex-ticketing 34-country list to a Lagos restaurant.</div>
+        </div>
+        <p class="cite">Blocked today — see B-04 and B-05 in the register</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ================= FLOW ================= -->
+  <section class="section" id="flow">
+    <div class="section-hd">
+      <h2 class="sec">The funnel</h2>
+    </div>
+
+    <div class="toolbar">
+      <div class="seg" role="group" aria-label="View mode">
+        <button type="button" id="v-map" aria-pressed="true">Flow map</button>
+        <button type="button" id="v-gal" aria-pressed="false">All screens</button>
+      </div>
+      <button class="btn" type="button" id="walk-btn">Walk the happy path</button>
+      <span class="spacer"></span>
+      <div class="seg" role="group" aria-label="Theme">
+        <button type="button" id="t-auto" aria-pressed="true">Auto</button>
+        <button type="button" id="t-light" aria-pressed="false">Light</button>
+        <button type="button" id="t-dark" aria-pressed="false">Dark</button>
+      </div>
+    </div>
+
+    <div class="legend" aria-hidden="true">
+      <span class="k"><svg width="34" height="10"><line x1="1" y1="5" x2="33" y2="5" stroke="var(--accent)" stroke-width="2.5"/></svg> main path</span>
+      <span class="k"><svg width="34" height="10"><line x1="1" y1="5" x2="33" y2="5" stroke="var(--faint)" stroke-width="1.6" stroke-dasharray="5 4"/></svg> fork / failure</span>
+      <span class="k"><svg width="34" height="10"><line x1="1" y1="5" x2="33" y2="5" stroke="var(--decision)" stroke-width="1.6" stroke-dasharray="2 4"/></svg> escape hatch</span>
+      <span class="k"><span class="tg new">new</span> new in this design</span>
+      <span class="k"><span class="tg ship">shipped</span> exists today</span>
+      <span class="k"><span class="tg blk">blocked</span> code blocks it</span>
+    </div>
+
+    <div class="mapwrap" id="mapwrap">
+      <div class="map" id="map">
+        <svg id="edges" aria-hidden="true"></svg>
+      </div>
+    </div>
+
+    <div class="gallery" id="gallery" hidden></div>
+  </section>
+
+  <!-- ================= ISSUES ================= -->
+  <section class="section" id="register">
+    <div class="section-hd">
+      <h2 class="sec">What I found in the code</h2>
+      <span class="mono-lbl">click a row to open the screen</span>
+    </div>
+    <p class="section-sub">
+      Everything below came out of reading the shipped implementation, not from imagining the
+      redesign. <b>Blockers</b> stop the bank-first funnel from being buildable as drawn.
+    </p>
+    <div class="issues" id="issues"></div>
+  </section>
+
+  <p class="footnote">
+    <span>Design deliverable · not implemented</span>
+    <span>Mockups use real tokens from <code>mingla-business/src/constants/designSystem.ts</code></span>
+    <span>The business app is dark-only; the invite email is light-locked at <code>shell.ts:71</code></span>
+    <span>Keyboard: <b>←</b> <b>→</b> walk · <b>Esc</b> close</span>
+  </p>
+
+</div>
+</div>
+
+<div class="ovl" id="ovl" role="dialog" aria-modal="true" aria-labelledby="ovl-title">
+  <div class="sheet">
+    <div class="sheet-hd">
+      <div style="min-width:0">
+        <p class="eyebrow" id="ovl-step">Step</p>
+        <h2 class="sec" id="ovl-title" style="margin-top:4px">Title</h2>
+        <p class="section-sub" id="ovl-sub" style="margin-top:6px"></p>
+      </div>
+      <button class="close-x" type="button" id="ovl-close" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="sheet-body">
+      <div class="stage" id="ovl-stage"></div>
+      <div class="notes" id="ovl-notes"></div>
+    </div>
+    <div class="walk" id="ovl-walk"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ==========================================================
+   MOCKUP PRIMITIVES
+   ========================================================== */
+var BRAND = "Fig &amp; Vine";        // a restaurant on purpose: proves #949
+var BRAND_PLAIN = "Fig & Vine";
+
+function phone(inner, cls){
+  return '<div class="mk"><div class="ph ' + (cls||'') + '"><div class="ph-pill"></div><div class="ph-scr">' +
+    sbar() + inner + '</div></div></div>';
+}
+function sbar(){
+  return '<div class="sbar"><span>9:41</span><span class="r">' +
+   '<svg width="17" height="11" viewBox="0 0 17 11" fill="rgba(255,255,255,.96)"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" y="0" width="3" height="11" rx="1"/></svg>' +
+   '<svg width="16" height="11" viewBox="0 0 16 11" fill="rgba(255,255,255,.96)"><path d="M8 10.5 5.4 7.8a3.7 3.7 0 0 1 5.2 0zM8 5.2c-1.7 0-3.2.7-4.3 1.8L2.4 5.7A8 8 0 0 1 8 3.4c2.2 0 4.2.9 5.6 2.3l-1.3 1.3A6 6 0 0 0 8 5.2M8 1.4c-2.7 0-5.2 1.1-7 2.9L-.3 3A11.8 11.8 0 0 1 8 -.4c3.3 0 6.2 1.3 8.3 3.4L15 4.3A9.9 9.9 0 0 0 8 1.4"/></svg>' +
+   '<svg width="25" height="12" viewBox="0 0 25 12"><rect x="0.5" y="0.5" width="20" height="11" rx="3.2" fill="none" stroke="rgba(255,255,255,.4)"/><rect x="2" y="2" width="16" height="8" rx="2" fill="rgba(255,255,255,.96)"/><path d="M22 4v4a2.2 2.2 0 0 0 0-4" fill="rgba(255,255,255,.4)"/></svg>' +
+   '</span></div>';
+}
+function mailPhone(inner){
+  return '<div class="mk"><div class="ph mail-ph"><div class="ph-pill"></div><div class="ph-scr">' +
+    '<div class="sbar" style="color:#0f1115;background:#f7f7f9"><span>9:41</span><span class="r">' +
+    '<svg width="17" height="11" viewBox="0 0 17 11" fill="#0f1115"><rect x="0" y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" y="0" width="3" height="11" rx="1"/></svg>' +
+    '<svg width="25" height="12" viewBox="0 0 25 12"><rect x="0.5" y="0.5" width="20" height="11" rx="3.2" fill="none" stroke="rgba(0,0,0,.3)"/><rect x="2" y="2" width="16" height="8" rx="2" fill="#0f1115"/></svg>' +
+    '</span></div>' + inner + '</div></div></div>';
+}
+function desktop(url, inner){
+  return '<div class="mk"><div class="desk"><div class="desk-bar">' +
+    '<span class="dot" style="background:#ff5f57"></span><span class="dot" style="background:#febc2e"></span><span class="dot" style="background:#28c840"></span>' +
+    '<span class="desk-url">' + url + '</span></div>' + inner + '</div></div>';
+}
+
+function svgCheck(c, s){
+  s = s || 30;
+  return '<svg width="' + s + '" height="' + s + '" viewBox="0 0 24 24" fill="none" stroke="' + c +
+    '" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+}
+function svgSpark(c, s){
+  s = s || 30;
+  return '<svg width="' + s + '" height="' + s + '" viewBox="0 0 24 24" fill="' + c + '">' +
+    '<path d="M12 2.5 13.9 9l6.6 1.9-6.6 1.9L12 19.4 10.1 12.8 3.5 10.9 10.1 9z"/>' +
+    '<path d="M18.6 15.4l.8 2.6 2.6.8-2.6.8-.8 2.6-.8-2.6-2.6-.8 2.6-.8z" opacity=".65"/></svg>';
+}
+function svgBank(c, s){
+  s = s || 30;
+  return '<svg width="' + s + '" height="' + s + '" viewBox="0 0 24 24" fill="none" stroke="' + c +
+    '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M3 9.5 12 4l9 5.5"/><path d="M5 10v8M9.7 10v8M14.3 10v8M19 10v8"/><path d="M3 20.5h18"/></svg>';
+}
+function svgAlert(c, s){
+  s = s || 30;
+  return '<svg width="' + s + '" height="' + s + '" viewBox="0 0 24 24" fill="none" stroke="' + c +
+    '" stroke-width="2.2" stroke-linecap="round"><path d="M12 7.5v6"/><circle cx="12" cy="17" r="1.1" fill="' + c + '" stroke="none"/>' +
+    '<path d="M12 2.8 22 20.4H2z" stroke-linejoin="round"/></svg>';
+}
+function svgClock(c, s){
+  s = s || 30;
+  return '<svg width="' + s + '" height="' + s + '" viewBox="0 0 24 24" fill="none" stroke="' + c +
+    '" stroke-width="2.1" stroke-linecap="round"><circle cx="12" cy="12" r="9.2"/><path d="M12 6.8V12l3.4 2.2"/></svg>';
+}
+function svgApple(c, s){
+  s = s || 20;
+  return '<svg width="' + s + '" height="' + s + '" viewBox="0 0 24 24" fill="' + c + '">' +
+    '<path d="M16.4 12.7c0-2.5 2-3.7 2.1-3.8-1.1-1.7-2.9-1.9-3.6-1.9-1.5-.2-3 .9-3.8.9s-2-.9-3.2-.9C6.2 7 4.6 8 3.7 9.6c-1.7 2.9-.4 7.3 1.2 9.7.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.1-.8 1.5 0 1.9.8 3.2.8 1.3 0 2.1-1.2 2.9-2.4.9-1.3 1.3-2.6 1.3-2.7-.1 0-2.5-1-2.5-3.9zM14 5.2c.7-.8 1.1-2 1-3.2-1 0-2.2.7-2.9 1.5-.6.7-1.2 1.9-1 3 1.1.1 2.2-.6 2.9-1.3z"/></svg>';
+}
+function svgPlay(c, s){
+  s = s || 20;
+  return '<svg width="' + s + '" height="' + s + '" viewBox="0 0 24 24" fill="' + c + '">' +
+    '<path d="M3.6 2.2 14 12 3.6 21.8c-.4-.2-.6-.6-.6-1.1V3.3c0-.5.2-.9.6-1.1zM16 10.1l2.9 1.9-2.9 1.9L13.9 12zM5.1 1.5 15 7.3l-1.9 1.8zM13.1 15l1.9 1.8-9.9 5.7z"/></svg>';
+}
+function minglaMark(size){
+  size = size || 26;
+  return '<svg width="' + (size*3.6) + '" height="' + size + '" viewBox="0 0 126 28" aria-label="Mingla">' +
+    '<text x="0" y="21" font-family="-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="23" font-weight="800" letter-spacing="-.8" fill="#eb7825">mingla</text></svg>';
+}
+
+/* ==========================================================
+   SCREENS
+   ========================================================== */
+var S = [];
+function add(o){ S.push(o); return o; }
+
+/* ---------- A1 · invite email on a phone ---------- */
+var EMAIL_BODY =
+  '<div class="em">' +
+    '<div class="em-hd">' + minglaMark(22) + '</div>' +
+    '<div class="em-bd" style="display:flex;flex-direction:column;gap:16px">' +
+      '<span class="em-chip" style="align-self:flex-start">Set up for you by Mingla</span>' +
+      '<p class="em-p">Hi Adaeze,</p>' +
+      '<p class="em-h">We built <span class="em-strong">' + BRAND + '</span> for you on Mingla — your page, your listings and your photos are done. Three steps and it is yours:</p>' +
+      '<div style="display:flex;flex-direction:column;gap:12px">' +
+        '<div class="em-step"><span class="em-num">1</span><div><p class="em-p"><b>Claim ' + BRAND + '</b></p><p class="em-sub">You take over as owner. Nothing to rebuild.</p></div></div>' +
+        '<div class="em-step"><span class="em-num">2</span><div><p class="em-p"><b>Add your bank</b></p><p class="em-sub">A few minutes, so the money has somewhere to land.</p></div></div>' +
+        '<div class="em-step"><span class="em-num">3</span><div><p class="em-p"><b>Publish and get paid</b></p><p class="em-sub">Tables, tickets or trips — whatever you sell, payouts land in your account.</p></div></div>' +
+      '</div>' +
+      '<a class="em-cta" href="#">Claim &amp; add your bank</a>' +
+      '<div class="em-trust"><span class="em-strong">Bank-secure.</span> Your details go straight to our payment provider. Mingla never sees them.</div>' +
+      '<p class="em-fine">You will get the app straight after — one tap, no extra sign-in.</p>' +
+      '<p class="em-fine">This link expires in 7 days. If the button does not work, paste this into your browser:<br><span style="color:#8b90a0">business.usemingla.com/accept-brand-invitation?token=…</span></p>' +
+    '</div>' +
+    '<div class="em-ft">' + minglaMark(14) +
+      '<p style="margin-top:8px">Need help? <span class="em-strong">support@usemingla.com</span></p>' +
+      '<p style="margin-top:6px">You received this email because someone invited you to manage a brand on Mingla.</p>' +
+    '</div>' +
+  '</div>';
+
+add({
+  id:'A1', col:0, letter:'A1', name:'Invite email — phone',
+  sub:'The single-CTA rewrite. One button, no competing app link.',
+  tags:[['new','new']],
+  render:function(){
+    return mailPhone(
+      '<div class="mailbar"><p class="mfrom">Mingla</p>' +
+      '<p class="msubj">' + BRAND + ' is ready — claim it and get paid</p>' +
+      '<p class="mto">to adaeze@figandvine.ng</p></div>' +
+      '<div class="mailscroll">' + EMAIL_BODY + '</div>'
+    );
+  },
+  changed:[
+    'The entire secondary card is <b>deleted</b> — “Prefer to run ' + BRAND_PLAIN + ' from your phone? / Get the Mingla Business app”. That card is the leak #948 exists to close: it is a live exit to a store listing placed directly beneath the accept button.',
+    'One CTA that names the whole job: <b>“Claim &amp; add your bank”</b>. The bank stops being a surprise on the next page. The brand name is deliberately kept OUT of the button — it lives in the subject, step 1 and the body — so the CTA is <b>always one line</b> regardless of brand-name length (a “The Aviary Rooftop Bar &amp; Kitchen” would have wrapped). Locked <code>white-space:nowrap</code>.',
+    'Step 3 rewritten from “Your events open for tickets and the money lands in your account” to <b>“Tables, tickets or trips — whatever you sell”</b>. A restaurant owner now sees themselves in step 3.',
+    'Step 2 drops the Stripe name — Nigeria settles through Paystack and reads a Stripe promise as “not my country”.',
+    'Footer disclaimer replaced. It currently reads “because you purchased tickets or requested an action with Mingla” on an email inviting someone to <em>run a brand</em>.',
+    'A one-line expectation-setter replaces the removed card: “You will get the app straight after”. Keeps the app promise, removes the competing link.'
+  ],
+  was:[
+    'Two CTAs: “Accept &amp; set up ' + BRAND_PLAIN + '” (filled) and “Get the Mingla Business app” (outlined) in its own bordered card.',
+    'Step 3: “Your events open for tickets and the money lands in your account.”',
+    'Step 2: “A few minutes through Stripe, so customers can pay you.”'
+  ],
+  flags:[
+    ['blocker','The download href is <b>byte-frozen by CI</b>. Removing the secondary CTA fails the pinned assertion — the test asserts the exact literal and asserts no query string. This test must be rewritten in the same PR or the build goes red.','supabase/functions/invite-brand-member/__tests__/orch-1329-invite-email.tester.test.ts:193-208, 285-286'],
+    ['risk','Copy lives in <b>one builder shared by two senders</b> — invite-brand-member and partner-reissue-invitation. Both must be re-verified; the reissue path always sets partnerSetup:true.','supabase/functions/_shared/brandInviteEmail.ts:62-241; partner-reissue-invitation/index.ts:298-316'],
+    ['risk','The team-invite variant (partnerSetup:false) keeps its own ticket copy: “runs its events, tickets and page on Mingla” and “scan guests in, check sales, run events”. #949 is not done until this variant is rewritten too.','brandInviteEmail.ts:143, 175, 227'],
+    ['question','Should the CTA say “add your bank” at all, or is “Claim ' + BRAND_PLAIN + '” alone the higher-converting label, with the bank revealed on landing? Naming it is honest and pre-frames Decision 01; hiding it converts the click better.','—'],
+    ['question','The email header swaps the Mingla wordmark for the brand cover image when the brand has a still cover. For a partner claim, is the partner\'s own venue photo the stronger opener than our logo?','supabase/functions/_shared/email/shell.ts:56-60']
+  ]
+});
+
+/* ---------- A2 · desktop email ---------- */
+add({
+  id:'A2', col:0, letter:'A2', name:'Invite email — desktop',
+  sub:'Same email, same single CTA. Device-awareness belongs at step E, not here.',
+  tags:[['new','new']],
+  render:function(){
+    return desktop('mail.google.com',
+      '<div class="desk-body"><div class="desk-side">' +
+        '<div class="sl on">Inbox</div><div class="sl">Starred</div><div class="sl">Sent</div><div class="sl">Drafts</div>' +
+      '</div><div class="desk-main" style="overflow:hidden">' +
+        '<p style="font-size:19px;font-weight:700;color:#0f1115;margin:0 0 4px">' + BRAND + ' is ready — claim it and get paid</p>' +
+        '<p style="font-size:12px;color:#5b6172;margin:0 0 16px;font-family:ui-monospace,Menlo,monospace">Mingla &lt;hello@usemingla.com&gt; · to me</p>' +
+        EMAIL_BODY +
+      '</div></div>');
+  },
+  changed:[
+    'Byte-identical to the phone email — the template is <b>not</b> device-aware and should not become so.',
+    'Desktop click still lands on the same accept URL. The device fork happens once, at step E, where it is actually about which store to send them to.'
+  ],
+  was:['Same two-CTA layout as the phone email — the second CTA drove desktop readers to a download page for an app they cannot install on the machine in front of them.'],
+  flags:[
+    ['risk','On desktop, the app CTA we are deleting was actively wrong — it sent a laptop user to a mobile install page. Deleting it removes a dead end, not just a competing choice.','mingla-marketing/lib/business-app-target.ts:85-112']
+  ]
+});
+
+/* ---------- B1 · signed out ---------- */
+add({
+  id:'B1', col:1, letter:'B1', name:'Not signed in',
+  sub:'Fork: signed out is terminal and actionable — never a spinner.',
+  tags:[['ship','shipped'],['new','copy']],
+  render:function(){
+    return phone('<div class="pad grow ctr" style="gap:16px">' +
+      '<div class="a-card">' +
+        '<div class="a-chip" style="align-self:flex-start">Invitation to ' + BRAND + '</div>' +
+        '<p class="a-ttl">You are invited</p>' +
+        '<p class="a-body">Sign in to claim ' + BRAND + '. We will bring you right back to this page.</p>' +
+        '<div class="a-btn">Sign in</div>' +
+      '</div></div>');
+  },
+  changed:[
+    'Added the brand-context chip. Today this screen never names the brand — the partner sees a generic “You are invited” after clicking an email all about ' + BRAND_PLAIN + '.',
+    'Body copy names the job: “claim ' + BRAND_PLAIN + '” rather than the neutral “accept this invitation”.'
+  ],
+  was:['“You are invited” / “Sign in to accept this invitation. We will bring you right back.” / “Sign in”. Correct, but anonymous.'],
+  flags:[
+    ['risk','Naming the brand here requires the brand name <b>before</b> accept — and there is no unauthenticated endpoint that resolves a token to a brand name. Either add a public token-preview endpoint, or pass the brand name as a signed query param on the email link. Neither exists today.','app/accept-brand-invitation.tsx:268-286'],
+    ['question','A token-preview endpoint leaks “this token is valid and belongs to ' + BRAND_PLAIN + '” to anyone holding the link. The edge fn deliberately refuses to leak the invited email for exactly this reason. Is the brand name an acceptable leak?','src/components/invite/WrongAccountRecovery.tsx:20-23']
+  ]
+});
+
+/* ---------- B2 · sign-in email ---------- */
+add({
+  id:'B2', col:2, letter:'B2', name:'Sign in — email',
+  sub:'Shipped screen. One change: it must not lose the invite context.',
+  tags:[['ship','shipped'],['new','ribbon']],
+  render:function(){
+    return phone('<div class="pad grow" style="gap:16px;padding-top:40px">' +
+      '<div class="a-ribbon">' + svgSpark('#eb7825',16) + '<span>Claiming your invite to <span class="a-b1">' + BRAND + '</span></span></div>' +
+      '<div style="height:16px"></div>' +
+      '<p class="a-h1">What is your email?</p>' +
+      '<div style="height:8px"></div>' +
+      '<div class="a-field ph-txt">you@example.com</div>' +
+      '<div style="height:8px"></div>' +
+      '<div class="a-btn">Send code</div>' +
+      '<div class="a-btn ghost">Back</div>' +
+      '<div style="height:20px"></div>' +
+      '<p class="a-cap a-ctr">By continuing, you agree to our Terms of Service and Privacy Policy.</p>' +
+      '</div>');
+  },
+  changed:[
+    'Added a persistent <b>context ribbon</b> naming the invite. Today the partner is thrown onto a generic sign-in screen and the invite vanishes from view — the single most likely place to think “wrong link, I will deal with this later”.',
+    'Everything else is untouched: the shipped screen already does email OTP correctly.'
+  ],
+  was:['“What is your email?” / “you@example.com” / “Send code” / “Back”. No reference to the invite anywhere on the screen.'],
+  flags:[
+    ['risk','The invite <em>token</em> survives via ?next= and a sessionStorage handoff, but nothing carries the <em>brand name</em> into this screen for display. The ribbon needs a value the sign-in screen currently has no way to obtain.','src/utils/authNextHandoff.ts:41-95; app/auth/index.tsx:46-70'],
+    ['question','Apple and Google sign-in are rendered above the email option. For an invite sent to a specific address, should social sign-in be de-emphasised here — it is the most common route into the wrong-account fork (B5).','src/components/auth/BusinessWelcomeScreen.tsx:591-671']
+  ]
+});
+
+/* ---------- B3 · OTP ---------- */
+add({
+  id:'B3', col:2, letter:'B3', name:'Sign in — 6-digit code',
+  sub:'Shipped. Single input, auto-submits on the 6th digit.',
+  tags:[['ship','shipped']],
+  render:function(){
+    return phone('<div class="pad grow" style="gap:16px;padding-top:40px">' +
+      '<div class="a-ribbon">' + svgSpark('#eb7825',16) + '<span>Claiming your invite to <span class="a-b1">' + BRAND + '</span></span></div>' +
+      '<div style="height:16px"></div>' +
+      '<p class="a-h1">Check your inbox</p>' +
+      '<p class="a-body">We sent a 6-digit code to adaeze@figandvine.ng</p>' +
+      '<div style="height:8px"></div>' +
+      '<div class="a-field" style="letter-spacing:12px;font-size:22px;justify-content:center;height:60px">4 1 9 2 <span style="color:rgba(255,255,255,.32)">••</span></div>' +
+      '<div style="height:8px"></div>' +
+      '<p class="a-sm a-ctr" style="color:rgba(255,255,255,.52)">Resend code in 47s</p>' +
+      '<p class="a-sm a-ctr" style="text-decoration:underline">Wrong email? Edit</p>' +
+      '</div>');
+  },
+  changed:[
+    'Same context ribbon as B2, so the invite is visible on every screen of the detour.',
+    'No structural change. It already auto-submits at six digits and has a 60-second resend cooldown.'
+  ],
+  was:['Identical minus the ribbon.'],
+  flags:[
+    ['risk','This is a <b>second inbox trip inside an email-triggered funnel</b>. The partner leaves our page, opens mail, and lands next to the original invite email — which, today, also contains a big “Get the Mingla Business app” button. Deleting that second CTA (A1) protects this moment as much as it protects the inbox.','supabase/functions/_shared/brandInviteEmail.ts:171-176'],
+    ['question','Sign-in OTP emails are the Supabase-hosted template, not in this repo. Do they carry the branded shell shipped in #999, and do they say anything ticket-specific?','no in-repo template; supabase/config.toml has no auth.email.template block']
+  ]
+});
+
+/* ---------- B4 · accepting ---------- */
+add({
+  id:'B4', col:1, letter:'B4', name:'Accepting…',
+  sub:'The only legitimate spinner: an accept call genuinely in flight.',
+  tags:[['ship','shipped']],
+  render:function(){
+    return phone('<div class="pad grow ctr" style="gap:16px;align-items:center">' +
+      '<div class="a-spin"></div>' +
+      '<p class="a-body a-ctr">Claiming ' + BRAND + '…</p></div>');
+  },
+  changed:[
+    'Copy names the brand instead of the generic “Accepting your invitation…”.',
+    'Kept exactly as-is otherwise. This spinner is correct and was hard-won.'
+  ],
+  was:['“Accepting your invitation…” / “Checking your invitation…”'],
+  flags:[
+    ['risk','This screen is protected by an invariant worth not breaking: <code>!isAuthReady</code> is <b>not</b> “still loading” — for a signed-out user it is terminal, and any <code>user === null</code> branch beneath it is dead code. The bank-first work touches this file; anyone editing it must branch on <code>authStatus</code>, never the boolean.','app/accept-brand-invitation.tsx:24-29, 101-131']
+  ]
+});
+
+/* ---------- B5 · wrong account ---------- */
+add({
+  id:'B5', col:1, letter:'B5', name:'Wrong account',
+  sub:'Shipped recovery. Refined, not redesigned.',
+  tags:[['ship','shipped']],
+  render:function(){
+    return phone('<div class="pad grow ctr" style="gap:16px">' +
+      '<div class="a-card">' +
+        '<div class="a-circle warn">' + svgAlert('#f59e0b',26) + '</div>' +
+        '<p class="a-ttl a-ctr">Wrong account</p>' +
+        '<p class="a-body a-ctr">This invitation was sent to a different email. Sign in with the address that received it.</p>' +
+        '<div class="a-note a-ctr"><p class="a-cap">SIGNED IN AS</p><p class="a-sm" style="color:rgba(255,255,255,.96)">adaeze.personal@gmail.com</p></div>' +
+        '<div class="a-btn">Sign in with a different email</div>' +
+        '<div class="a-btn ghost">Back to Mingla</div>' +
+      '</div></div>');
+  },
+  changed:[
+    'Added the warning mark and promoted the signed-in address into its own labelled block. Today it is a plain sentence in the body — the single most useful fact on the screen, styled as an afterthought.',
+    'Body reworded from “that received the invite” to “that received it” — shorter, same meaning.'
+  ],
+  was:['Title, body, an inline “You are signed in as …” line, then two stacked buttons. No icon, no visual hierarchy on the email address.'],
+  flags:[
+    ['risk','We can only show the <b>signed-in</b> address, never the <b>invited</b> one — the 403 body deliberately carries no invited address so a token holder cannot enumerate it. The partner has to guess which of their addresses we used. This is the known limitation OQ-1.','src/components/invite/WrongAccountRecovery.tsx:20-23'],
+    ['question','We could show a masked hint of the invited address (a***e@f***.ng) without meaningfully leaking it. Worth an edge-fn change to remove the guessing?','supabase/functions/accept-brand-invitation/index.ts'],
+    ['blocker','Sign-out-then-resume works only because <code>/accept-brand-invitation</code> is on the route allowlist. The bank-first funnel adds a new post-sign-in destination under <code>/brand/…</code>, which is <b>not</b> allowlisted — see B-01.','src/utils/nextRoute.ts:42-47']
+  ]
+});
+
+/* ---------- B6 · invite invalid ---------- */
+var ERRVARIANTS = [
+  ['expired','Invitation expired','This invitation has expired. Ask whoever sent it for a new one — links are valid for 7 days.'],
+  ['revoked','Invitation revoked','This invitation was withdrawn. Ask the brand owner to send a new one.'],
+  ['used','Already accepted','This invitation has already been used. If that was not you, contact the brand owner.'],
+  ['not found','Invitation not found','This invitation link is not valid. Ask the inviter to send a fresh one.'],
+  ['no bank','Add your bank first','Connect a bank account before claiming this brand.']
+];
+add({
+  id:'B6', col:1, letter:'B6', name:'Invite not valid',
+  sub:'Five real codes, five distinct copies. Tap the segments to cycle.',
+  tags:[['ship','shipped']],
+  interactive:true,
+  render:function(active){
+    var i = active || 0;
+    var v = ERRVARIANTS[i];
+    var seg = '<div class="a-seg" data-seg="B6">' + ERRVARIANTS.map(function(e,ix){
+      return '<span class="' + (ix===i?'on':'') + '" data-i="' + ix + '">' + e[0] + '</span>';
+    }).join('') + '</div>';
+    return phone('<div class="pad grow ctr" style="gap:16px">' + seg +
+      '<div class="a-card">' +
+        '<div class="a-circle bad">' + svgAlert('#ef4444',26) + '</div>' +
+        '<p class="a-ttl a-ctr">' + v[1] + '</p>' +
+        '<p class="a-body a-ctr">' + v[2] + '</p>' +
+        '<div class="a-btn">Back to Mingla</div>' +
+      '</div></div>');
+  },
+  changed:[
+    'Added the error mark so a dead end reads as a dead end at a glance rather than as another content card.',
+    'Copy left almost verbatim — these five were written deliberately and each maps to a real edge-fn code. Only “Ask the brand owner” became “Ask whoever sent it” on the expiry case, since a partner-setup invite comes from Mingla, not from a brand owner they have ever met.',
+    'The currency-mismatch case is reframed from “Connect your bank first / Connect your bank to accept this brand” — kept, because it is the one error that is genuinely actionable.'
+  ],
+  was:['Nine mapped codes with a plain title + body + “Back to Mingla”. No icon; every error looked identical to a success card.'],
+  flags:[
+    ['risk','The <code>invite_currency_mismatch</code> code already blocks accept until a bank exists — meaning a <b>bank-before-accept</b> gate is partially live today, contradicting the bank-<em>after</em>-accept order this design assumes. Someone needs to confirm which invites can actually hit it.','app/accept-brand-invitation.tsx:378-382'],
+    ['risk','“Back to Mingla” routes to <code>/(tabs)/home</code> — for a partner who has never signed in and owns nothing, that is an empty app. A dead end sends them to a second dead end.','app/accept-brand-invitation.tsx:177-179'],
+    ['question','Should expired and revoked offer a <b>“Send me a new link”</b> action? A reissue endpoint already exists (partner-reissue-invitation) — the partner just has no way to trigger it.','supabase/functions/partner-reissue-invitation/index.ts']
+  ]
+});
+
+/* ---------- C1 · welcome ---------- */
+add({
+  id:'C1', col:3, letter:'C1', name:'Welcome to the brand',
+  sub:'The screen #948 is really about. Two parallel choices collapse to one.',
+  tags:[['new','rebuilt']],
+  render:function(){
+    return phone('<div class="pad grow ctr" style="gap:16px">' +
+      '<div class="a-card">' +
+        '<div class="a-circle">' + svgSpark('#eb7825',30) + '</div>' +
+        '<p class="a-h1 a-ctr">Welcome to ' + BRAND + '</p>' +
+        '<p class="a-body a-ctr">Hey Adaeze — it is yours now. One thing left: add your bank so you can get paid for what you sell.</p>' +
+        '<div class="a-btn">Add your bank</div>' +
+        '<p class="a-cap a-ctr">Takes about 3 minutes. Your details go straight to our payment provider — Mingla never sees them.</p>' +
+        '<p class="a-link" style="margin-top:4px">I will add it later</p>' +
+      '</div></div>');
+  },
+  changed:[
+    '<b>Two competing CTAs become one.</b> “Set up ' + BRAND_PLAIN + ' on the web →” plus the whole “Get the Mingla Business app / Download the app” block are gone; a single “Add your bank” remains.',
+    '“The next step is connecting your bank so customers can buy tickets” → <b>“add your bank so you can get paid for what you sell”</b>. This is the exact sentence in #949 — it currently tells a restaurant, at the moment we ask for their account number, that we are a ticketing company.',
+    'The escape is a <b>tertiary text link</b>, not a button (Decision 01). It exists; it does not compete.',
+    'The 🎉 emoji hero is replaced with an SVG mark. Emoji-as-icon fails the design bar, renders differently per platform, and reads as a system emoji rather than as Mingla.',
+    'Trust and time-cost move <b>above</b> the escape link — the two facts that most reduce the urge to skip.',
+    '“Or come back to your email anytime” is deleted. It invites the partner to close the tab.'
+  ],
+  was:[
+    '🎉 / “Welcome to ' + BRAND_PLAIN + '” / “Mingla has built it out for you. The next step is connecting your bank so customers can buy tickets.”',
+    'Primary “Set up ' + BRAND_PLAIN + ' on the web →” → /brand/{id}/payments.',
+    'Secondary block “Get the Mingla Business app / Manage your brand, sell tickets, and scan guests in from your phone” + “Download the app”.',
+    'Footer “Or come back to your email anytime.”'
+  ],
+  flags:[
+    ['blocker','“Add your bank” <b>cannot</b> go where this design says it goes. Today the button lands on <code>/brand/{id}/payments</code>, a payments <em>dashboard</em> — banner, KPI tiles, payouts list, tax section, danger zone. The partner then has to find and tap “Connect bank”. There is no route that takes a brandId and lands in a bank form.','app/accept-brand-invitation/success.tsx:114 → app/brand/[id]/payments/index.tsx'],
+    ['blocker','This screen is only reached when <code>partnerSetup && transferred</code>. Every other accepted invite — including a plain brand_owner invite — gets the inline “You are on the team” card with “Go to team”, and is <b>never asked for a bank at all</b>. #948 as scoped leaves that hole open.','app/accept-brand-invitation.tsx:162-175, 205-231'],
+    ['risk','The screen fetches only <code>name</code> from the brands row. It cannot tell whether a bank already exists, which country the brand is in, or which rail applies — so it cannot skip to D5 or pre-pick the rail. Widening that one select is a zero-migration fix.','app/accept-brand-invitation/success.tsx:88-91'],
+    ['question','“I will add it later” — where does it actually go? Straight to the app download (E1), or to the brand home with a persistent banner? Drawn here as going to the skip sheet (D4) then E1.','—']
+  ]
+});
+
+/* ---------- D1 · add bank, stripe ---------- */
+add({
+  id:'D1', col:4, letter:'D1', name:'Add your bank — Stripe',
+  sub:'Country pre-resolved. ToS folded into the button. No picker.',
+  tags:[['new','rebuilt'],['blk','blocked']],
+  render:function(){
+    return phone('<div class="a-topbar"><span class="slot">Back</span><span class="tt">Add your bank</span><span class="slot r"></span></div>' +
+      '<div class="pad grow" style="gap:16px;overflow:hidden">' +
+      '<div class="a-circle">' + svgBank('#eb7825',28) + '</div>' +
+      '<p class="a-h2 a-ctr">Add your bank</p>' +
+      '<p class="a-body a-ctr">This is how you get paid. Add it once and every sale settles to this account — tables, tickets or trips.</p>' +
+      '<div class="a-note"><div class="a-row"><div><p class="a-cap">PAYOUTS IN</p>' +
+        '<p class="a-sm" style="color:rgba(255,255,255,.96);margin-top:2px">United Kingdom · GBP</p></div>' +
+        '<span class="a-sm" style="text-decoration:underline;color:rgba(255,255,255,.72)">Change</span></div></div>' +
+      '<div class="a-note"><p class="a-lblcap">BEFORE YOU START, HAVE READY</p>' +
+        '<p class="a-sm" style="margin-top:6px">•&nbsp; Business name and tax ID</p>' +
+        '<p class="a-sm">•&nbsp; A bank account in your country</p>' +
+        '<p class="a-sm">•&nbsp; Photo of government ID</p></div>' +
+      '<div class="a-btn">Add bank details</div>' +
+      '<p class="a-cap a-ctr">By continuing you agree to the Mingla partner terms. Powered by Stripe — your data is encrypted.</p>' +
+      '<p class="a-link">I will add it later</p>' +
+      '</div>');
+  },
+  changed:[
+    '<b>“Connect bank to start selling tickets” → “Add your bank”.</b> The single highest-value copy fix in #949: it is the headline of the screen where a venue or trip operator decides whether we are for them.',
+    '“Set up payments to publish events and receive money from ticket sales” → “every sale settles to this account — tables, tickets or trips”.',
+    'The 34-country <b>picker becomes a confirm row</b> pre-filled from the brand row, with a quiet Change (Decision 03). Today it defaults to GB regardless of the brand and the partner must open a sheet and hunt.',
+    'The <b>blocking Terms sheet is folded into the button</b> as a legal line. Today a non-dismissible sheet with a checkbox plus an “Accept and continue” button sits between the partner and the bank form — two mandatory taps and a wall of terms on first onboarding.',
+    'Top bar “Set up payments” → “Add your bank”, matching the CTA that got them here.',
+    'The escape repeats here in the same tertiary style. Someone who got this far and balked at the ID requirement needs a way out that is not the back button.'
+  ],
+  was:[
+    'Title “Connect bank to start selling tickets”; body “Set up payments to publish events and receive money from ticket sales.”',
+    'Country picker defaulting to GB, an opaque non-dismissible ToS gate, prerequisites card, “Set up payments”, “Powered by Stripe. Your data is encrypted.”',
+    'No escape hatch at all — only Cancel in the top bar.'
+  ],
+  flags:[
+    ['blocker','Nothing reads the brand\'s country. <code>DEFAULT_COUNTRY = "GB"</code> is hardcoded and the only auto-fill comes from Stripe status, which does not exist until an account has already been created. The confirm row cannot be built without wiring <code>brands.country_code</code> through.','src/components/brand/BrandOnboardView.tsx:100, 191, 220, 240-243'],
+    ['blocker','On <b>web</b> the Stripe hand-off is broken. <code>openAuthSessionAsync</code> is called after an awaited network call, so the popup is outside the user-gesture tick and gets blocked; the partner sees a network/Stripe failure. Bank-first makes web the primary surface, so this stops being an edge case.','BrandOnboardView.tsx:374-388'],
+    ['blocker','The return leg has no web path: <code>RETURN_DEEP_LINK</code> is the hardcoded <code>mingla-business://onboarding-complete</code> with no Platform branch, and <code>maybeCompleteAuthSession</code> is called nowhere in the app. On desktop the popup navigates to a dead scheme and the parent only resolves when the user manually closes the window.','BrandOnboardView.tsx:99, 376, 387'],
+    ['risk','Folding ToS into the button changes a compliance surface. Acceptance is currently recorded against <code>brand_team_members.mingla_tos_accepted_at</code> via an explicit checkbox. Legal has to accept implicit consent before this ships.','src/components/onboarding/MinglaToSAcceptanceGate.tsx:145-184'],
+    ['question','“Photo of government ID” at step one of a partner\'s first minute is the heaviest ask on the screen. Can it move into the Stripe flow itself where it is actually needed, leaving this list at two items?','BrandOnboardView.tsx:703-710']
+  ]
+});
+
+/* ---------- D2 · stripe embedded ---------- */
+add({
+  id:'D2', col:4, letter:'D2', name:'Stripe embedded onboarding',
+  sub:'Mingla-hosted Connect page. Our chrome, Stripe inside.',
+  tags:[['ship','shipped'],['blk','blocked']],
+  render:function(){
+    return desktop('business.usemingla.com/connect-onboarding?session=…',
+      '<div class="desk-body" style="background:#fff;display:block;padding:0">' +
+      '<div style="background:#0c0e12;height:100%;padding:26px 30px;font-family:-apple-system,Segoe UI,Roboto,sans-serif">' +
+        '<div style="max-width:620px;margin:0 auto;display:flex;flex-direction:column;gap:18px">' +
+          '<div style="display:flex;align-items:center;justify-content:space-between">' + minglaMark(18) +
+            '<span style="font-size:12px;color:rgba(255,255,255,.52)">Secured by Stripe</span></div>' +
+          '<p style="font-size:24px;font-weight:700;color:rgba(255,255,255,.96);margin:0;letter-spacing:-.3px">Add your bank</p>' +
+          '<p style="font-size:14px;color:rgba(255,255,255,.72);margin:0">Step 2 of 3 · Business details</p>' +
+          '<div style="height:4px;background:rgba(255,255,255,.08);border-radius:999px;overflow:hidden"><div style="width:62%;height:100%;background:#eb7825"></div></div>' +
+          '<div style="background:#fff;border-radius:14px;padding:24px;display:flex;flex-direction:column;gap:14px">' +
+            '<p style="font-size:15px;font-weight:700;color:#0f1115;margin:0">Business details</p>' +
+            '<div><p style="font-size:12px;color:#5b6172;margin:0 0 5px">Legal business name</p>' +
+              '<div style="height:42px;border:1px solid #d8dbe2;border-radius:8px;display:flex;align-items:center;padding:0 12px;font-size:14px;color:#0f1115">' + BRAND + ' Ltd</div></div>' +
+            '<div style="display:flex;gap:12px"><div style="flex:1"><p style="font-size:12px;color:#5b6172;margin:0 0 5px">Sort code</p>' +
+              '<div style="height:42px;border:1px solid #d8dbe2;border-radius:8px;display:flex;align-items:center;padding:0 12px;font-size:14px;color:#0f1115">20-00-00</div></div>' +
+              '<div style="flex:1"><p style="font-size:12px;color:#5b6172;margin:0 0 5px">Account number</p>' +
+              '<div style="height:42px;border:1px solid #d8dbe2;border-radius:8px;display:flex;align-items:center;padding:0 12px;font-size:14px;color:#9aa0ad">8 digits</div></div></div>' +
+            '<div style="height:44px;border-radius:8px;background:#635bff;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;margin-top:4px">Continue</div>' +
+          '</div>' +
+          '<p style="font-size:12px;color:rgba(255,255,255,.52);margin:0;text-align:center">Mingla never sees or stores your bank details.</p>' +
+        '</div></div></div>');
+  },
+  changed:[
+    'Wrapped in Mingla chrome with an explicit <b>step counter and progress bar</b>. Today the partner is dropped into a Stripe surface with no sense of how much is left — the moment abandonment spikes.',
+    'The reassurance line is repeated at the foot of the Stripe form, where the account-number field is actually in front of them.',
+    'Inner form is Stripe\'s own embedded component and is not ours to restyle — only the surround changes.'
+  ],
+  was:['The embedded component on a bare hosted page, reached via a popup window opened by expo-web-browser.'],
+  flags:[
+    ['blocker','Same web hand-off defect as D1: popup blocked outbound, dead custom scheme inbound. Both legs must be fixed for a bank-first funnel that is primarily used on the web.','app/connect-onboarding.web.tsx; BrandOnboardView.tsx:99, 374-388'],
+    ['risk','On native this route renders a fallback telling the partner to “return to payments and open Set up payments again” — a screen that will not exist under the new naming. Its copy must be updated with the rest.','app/connect-onboarding.tsx:5-12'],
+    ['question','Progress “Step 2 of 3” has to come from somewhere. Stripe\'s embedded component does not expose step counts. Do we approximate it, or drop the counter and keep only the bar?','—']
+  ]
+});
+
+/* ---------- D3 · paystack ---------- */
+add({
+  id:'D3', col:4, letter:'D3', name:'Add your bank — Nigeria',
+  sub:'Paystack rail. Mingla-owned form: bank, NUBAN, verify, connect.',
+  tags:[['ship','shipped'],['new','entry']],
+  render:function(){
+    return phone('<div class="a-topbar"><span class="slot">Back</span><span class="tt">Add your bank</span><span class="slot r"></span></div>' +
+      '<div class="pad grow" style="gap:14px;overflow:hidden">' +
+      '<div class="a-card elev" style="gap:12px">' +
+        '<p class="a-h3">Get paid in Nigeria</p>' +
+        '<p class="a-sm">Add the account that receives your payouts. Sales settle directly, usually the next business day.</p>' +
+        '<div><p class="a-cap" style="margin-bottom:6px">BANK</p><div class="a-field">Guaranty Trust Bank</div></div>' +
+        '<div><p class="a-cap" style="margin-bottom:6px">ACCOUNT NUMBER</p><div class="a-field">0123456789</div></div>' +
+        '<div class="a-note" style="border:1px solid rgba(34,197,94,.35);background:rgba(34,197,94,.10)">' +
+          '<div style="display:flex;gap:8px;align-items:center">' + svgCheck('#22c55e',16) +
+          '<p class="a-cap" style="color:rgba(255,255,255,.52)">ACCOUNT NAME</p></div>' +
+          '<p class="a-sm" style="font-size:18px;line-height:26px;color:rgba(255,255,255,.96);margin-top:2px">FIG AND VINE LIMITED</p>' +
+          '<p class="a-cap" style="margin-top:4px">Make sure this is correct — payouts go here.</p></div>' +
+        '<div class="a-btn" style="margin-top:4px">Connect bank &amp; get paid</div>' +
+      '</div>' +
+      '<p class="a-link">I will add it later</p>' +
+      '</div>');
+  },
+  changed:[
+    'Reached <b>directly</b> when the brand is Nigerian, instead of only through the Stripe country picker. Today NG is an extra option injected into a Stripe country list — a Lagos restaurant has to open a sheet, scroll a 34-country list and find Nigeria to reach the form that was always right for them.',
+    'The verified-name block is promoted to a success-tinted panel with a check mark. Resolving “FIG AND VINE LIMITED” from ten digits is the most reassuring moment in the whole funnel and it is currently styled as a plain grey box.',
+    'Top bar and headline harmonised with D1 so both rails read as the same product.',
+    'Same tertiary escape as every other bank screen.'
+  ],
+  was:[
+    'Reached only via “‹ Choose a different country” ↔ country picker. Title “Get paid in Nigeria”, plain field rows, plain verified-name box, “Connect bank & get paid”.',
+    'No escape hatch.'
+  ],
+  flags:[
+    ['blocker','Same root cause as D1: nothing pre-resolves the rail. The <b>only</b> path into this form is a manual country selection intercepting the code “NG”. Direct entry requires the brand country to reach this screen.','BrandOnboardView.tsx:104-106, 208-218, 544-589'],
+    ['risk','This form has a live scroll history — the body was non-scrolling and pushed the Connect action off short viewports, fixed only just now in #971. Any restyle must keep the ScrollView at the screen owner: the component root is a content-sized card, so a flex:1 ScrollView nested inside it collapses to zero height.','BrandOnboardView.tsx:552-586'],
+    ['risk','The Paystack rail has <b>no verification-pending state</b>. Stripe has verifying, restricted and needs-information; Paystack goes straight from form to connected. If Paystack ever holds a subaccount, this funnel has nowhere to put that partner.','src/components/brand/BrandPaystackOnboardView.tsx:151-167'],
+    ['question','The bank picker is a 64%-height modal sheet with search. Reached directly from a welcome screen, is a full-screen bank list a better first impression than a sheet over a form the partner has not read yet?','BrandPaystackOnboardView.tsx:266-326']
+  ]
+});
+
+/* ---------- D4 · skip ---------- */
+add({
+  id:'D4', col:4, letter:'D4', name:'Skip for now',
+  sub:'The escape. States the real cost, once, without scolding.',
+  tags:[['new','new']],
+  render:function(){
+    return phone('<div class="pad grow ctr" style="gap:16px;opacity:.35">' +
+      '<div class="a-card"><p class="a-h2 a-ctr">Add your bank</p>' +
+      '<p class="a-body a-ctr">This is how you get paid.</p><div class="a-btn">Add bank details</div></div></div>' +
+      '<div class="a-scrim"></div>' +
+      '<div class="a-sheet">' +
+        '<div style="width:36px;height:4px;border-radius:999px;background:rgba(255,255,255,.18);margin:0 auto"></div>' +
+        '<p class="a-h3">Skip for now?</p>' +
+        '<p class="a-sm">You can build your page and add listings straight away. You just cannot take money until a bank is connected — so nothing can go on sale yet.</p>' +
+        '<div class="a-ribbon">' + svgClock('#f59e0b',16) + '<span>We will remind you, and it is in Payments whenever you are ready.</span></div>' +
+        '<div class="a-btn">Add my bank now</div>' +
+        '<div class="a-btn ghost">Skip for now</div>' +
+      '</div>');
+  },
+  changed:[
+    '<b>Entirely new.</b> There is no skip anywhere in bank onboarding today — only Cancel, which silently drops the partner back with nothing said about what they just gave up.',
+    'States the exact consequence in the partner\'s own terms: the page and listings work, <em>selling</em> does not. No guilt, no dark pattern; the honest cost is persuasive enough.',
+    'Primary is still the bank. The skip is the ghost button — the last chance to reconsider, weighted accordingly.',
+    'Promises a reminder and names where to find it, so skipping does not feel like a one-way door.'
+  ],
+  was:['Nothing. Cancel, and no acknowledgement.'],
+  flags:[
+    ['blocker','“We will remind you” is a promise with <b>no mechanism</b>. There is no reminder job, no push, no email for a partner who skips the bank. Either build it, or cut the sentence — shipping an unkept promise here is worse than shipping no sentence.','no sender exists in supabase/functions'],
+    ['risk','A skipping partner must land somewhere that keeps the bank reachable. The payments dashboard already has a “Connect bank to sell tickets” banner, which the #949 rewrite must catch too.','src/utils/brandStripeUiState.ts:45; BrandPaymentsView.tsx:94-132'],
+    ['question','Should the skip sheet appear on the <b>first</b> tap of the escape link, or should the first tap just go, with the sheet reserved for a partner who has already skipped once?','—']
+  ]
+});
+
+/* ---------- D5 · already connected ---------- */
+add({
+  id:'D5', col:4, letter:'D5', name:'Bank already connected',
+  sub:'Fork: skip the whole bank step and go straight to the app.',
+  tags:[['new','new']],
+  render:function(){
+    return phone('<div class="pad grow ctr" style="gap:16px">' +
+      '<div class="a-card">' +
+        '<div class="a-circle">' + svgCheck('#eb7825',30) + '</div>' +
+        '<p class="a-h1 a-ctr">' + BRAND + ' is ready to sell</p>' +
+        '<p class="a-body a-ctr">Your bank is already connected, so there is nothing to set up. Payouts settle to your account.</p>' +
+        '<div class="a-note a-ctr"><p class="a-cap">PAYOUTS TO</p>' +
+          '<p class="a-sm" style="color:rgba(255,255,255,.96);margin-top:2px">Guaranty Trust Bank ••••6789</p></div>' +
+        '<div class="a-btn">Get the app</div>' +
+        '<p class="a-link">Open the web dashboard instead</p>' +
+      '</div></div>');
+  },
+  changed:[
+    '<b>Entirely new fork.</b> Today a partner whose brand already has a bank is still shown “The next step is connecting your bank” and marched into an onboarding screen for something already done.',
+    'Shows the masked destination account, so “already connected” is a verifiable claim rather than an assertion.',
+    'Jumps straight to the app step — the bank was the only thing standing between them and being live.'
+  ],
+  was:['Does not exist. The welcome screen has no idea whether a bank exists.'],
+  flags:[
+    ['blocker','The accept response carries <b>no</b> bank signal — no provider, no stripe_connect_id, no charges_enabled, no paystack_subaccount_code — and the welcome screen selects only <code>name</code> from the brands row. This fork is undetectable today.','accept-brand-invitation/index.ts:479-485; success.tsx:88-91'],
+    ['risk','“Connected” is not one flag. Stripe splits charges_enabled from payouts_enabled and can be active-but-restricted; Paystack has a subaccount code and nothing else. The single sentence on this screen has to resolve four columns across two rails without ever lying to a partner about being able to take money.','currentBrandStore BrandStripeStatus; brands.paystack_subaccount_code'],
+    ['question','If charges are enabled but payouts are restricted, is that this screen with a warning, or D6? Drawn as D6 — “you can sell, we are still verifying payouts”.','—']
+  ]
+});
+
+/* ---------- D6 · verifying ---------- */
+add({
+  id:'D6', col:4, letter:'D6', name:'Verifying / needs more',
+  sub:'Submitted but not cleared. Must not block the app step.',
+  tags:[['ship','shipped'],['new','merged']],
+  render:function(){
+    return phone('<div class="pad grow ctr" style="gap:16px">' +
+      '<div class="a-card">' +
+        '<div class="a-circle warn">' + svgClock('#f59e0b',28) + '</div>' +
+        '<p class="a-h2 a-ctr">We are checking your details</p>' +
+        '<p class="a-body a-ctr">Your bank is submitted. Verification usually takes a few minutes — we will email you the moment it clears.</p>' +
+        '<div class="a-ribbon">' + svgCheck('#22c55e',16) + '<span>You can set everything else up in the meantime.</span></div>' +
+        '<div class="a-btn">Get the app</div>' +
+        '<p class="a-link">Add the missing details</p>' +
+      '</div></div>');
+  },
+  changed:[
+    'The primary action becomes <b>“Get the app”</b>, not “Done”. Verification is asynchronous and the partner has nothing to do while it runs — parking them on a terminal screen wastes the one moment they are most willing to install.',
+    '“Stripe is verifying your details” → “We are checking your details”. The partner has a relationship with Mingla, not with Stripe, and Nigeria has no Stripe at all — one sentence must be true on both rails.',
+    'Merges the verifying and needs-information states into one screen with a secondary “Add the missing details” action rather than two near-identical screens.',
+    'Adds the reassurance that the rest of the product is usable now.'
+  ],
+  was:[
+    '“✓ Submitted to Stripe” / “Stripe is verifying your details. We will email you the moment it is done — usually within minutes.” / “Done”.',
+    'A separate “More information needed” state with “Continue verification” and “Back to payments”.'
+  ],
+  flags:[
+    ['risk','“We will email you the moment it clears” is asserted on the shipped screen today. Whether a verification-cleared email actually sends was not confirmed — if it does not, this is a second unkept promise alongside D4.','BrandOnboardView.tsx:815-819'],
+    ['risk','Paystack has no equivalent state at all, so a merged screen has to degrade cleanly when the rail cannot report verification progress.','BrandPaystackOnboardView.tsx:151-167'],
+    ['question','If verification fails <em>after</em> the partner has installed the app and published, where does that land? Push, email, or an app banner — none is designed.','—']
+  ]
+});
+
+/* ---------- E1 · download ---------- */
+var DL = [
+  ['iOS','App Store'],
+  ['Android','Google Play'],
+  ['Desktop','QR']
+];
+add({
+  id:'E1', col:5, letter:'E1', name:'Get the app',
+  sub:'Device-aware. Tap the segments for iOS, Android and desktop.',
+  tags:[['new','rebuilt']],
+  interactive:true,
+  render:function(active){
+    var i = active || 0;
+    var seg = '<div class="a-seg" data-seg="E1">' + DL.map(function(e,ix){
+      return '<span class="' + (ix===i?'on':'') + '" data-i="' + ix + '">' + e[0] + '</span>';
+    }).join('') + '</div>';
+    var action;
+    if(i===0){
+      action = '<div class="a-btn" style="background:#000;border:1px solid rgba(255,255,255,.22);gap:9px">' +
+        svgApple('#fff',20) + '<span>Get it on the App Store</span></div>';
+    } else if(i===1){
+      action = '<div class="a-btn" style="background:#000;border:1px solid rgba(255,255,255,.22);gap:9px">' +
+        svgPlay('#fff',18) + '<span>Get it on Google Play</span></div>';
+    } else {
+      action = '<div class="qr"><canvas width="29" height="29" data-qr="1"></canvas></div>' +
+        '<p class="a-cap a-ctr" style="margin-top:8px">Scan with your phone camera</p>' +
+        '<p class="a-sm a-ctr" style="color:rgba(255,255,255,.96);font-family:ui-monospace,Menlo,monospace">biz.usemingla.com/ZSCW</p>';
+    }
+    return phone('<div class="pad grow ctr" style="gap:16px">' + seg +
+      '<div class="a-card">' +
+        '<div class="a-circle">' + svgCheck('#eb7825',30) + '</div>' +
+        '<p class="a-h1 a-ctr">You are all set</p>' +
+        '<p class="a-body a-ctr">Run ' + BRAND + ' from your phone — publish, take payments and run the door.</p>' +
+        action +
+        '<p class="a-link">Keep going on the web</p>' +
+      '</div></div>');
+  },
+  changed:[
+    'Now a <b>step in the funnel</b> rather than a competing choice offered alongside the bank. It arrives after the bank, when the partner has already committed.',
+    'Device-aware at the button: App Store on iOS, Play on Android, a QR plus the smart link on desktop. Today the invite success screen offers one generic “Download the app”, and a desktop partner is sent to a mobile install page.',
+    'Copy is offering-agnostic: “publish, take payments and run the door” replaces “sell tickets, and scan guests in”.',
+    'The web option survives as a tertiary link — some partners genuinely work from a laptop, and losing them here would undo the bank we just won.'
+  ],
+  was:[
+    '“Get the Mingla Business app / Manage your brand, sell tickets, and scan guests in from your phone / Download the app”, one URL for every platform, rendered on web only.'
+  ],
+  flags:[
+    ['risk','Do <b>not</b> branch client-side to store URLs. The single OneLink carries the af_tranid that rides the Play Install Referrer into the install — branching to a plain store listing destroys attribution. The device-awareness here must be presentational only, with one href underneath.','src/components/invite/BusinessAppDownloadCta.tsx:15-27'],
+    ['risk','The download landing page is a server component that reads User-Agent with no client JS, and iPadOS Safari falls through to “other” — an iPad partner gets the desktop QR treatment.','mingla-marketing/lib/device-platform.ts:20-39'],
+    ['risk','A marketing SSOT explicitly instructs “scan tickets”, never “check guests in”. “Run the door” satisfies #949 but sits outside that rule — the two need reconciling in one place.','mingla-marketing/lib/business-app-target.ts:117-121'],
+    ['question','The QR is drawn representatively here. Real generation needs an encoder — inline library, or a server-rendered image on the marketing page?','—'],
+    ['blocker','This CTA component is <b>web-only</b> and returns null on native. Correct today, but the bank-first funnel is also walked inside the native app after a skip, and that path then silently has no step E at all.','BusinessAppDownloadCta.tsx:81-82']
+  ]
+});
+
+/* ---------- F1 · done ---------- */
+add({
+  id:'F1', col:5, letter:'F1', name:'Live in the app',
+  sub:'The end of the funnel: brand owned, bank connected, ready to publish.',
+  tags:[['new','new']],
+  render:function(){
+    return phone('<div class="a-topbar"><span class="slot"></span><span class="tt">' + BRAND + '</span><span class="slot r">Edit</span></div>' +
+      '<div class="pad grow" style="gap:14px;overflow:hidden">' +
+      '<div class="a-note" style="background:rgba(34,197,94,.10);border:1px solid rgba(34,197,94,.32);flex-direction:row;align-items:center;gap:10px">' +
+        svgCheck('#22c55e',18) + '<div><p class="a-sm" style="color:rgba(255,255,255,.96)">Bank connected</p>' +
+        '<p class="a-cap">Payouts settle to GTB ••••6789</p></div></div>' +
+      '<p class="a-lblcap" style="margin-top:6px">GET ' + BRAND.toUpperCase() + ' LIVE</p>' +
+      '<div class="a-card elev" style="gap:14px;padding:18px">' +
+        '<div class="a-row"><span class="a-sm" style="color:rgba(255,255,255,.96)">' + svgCheck('#22c55e',15) + ' &nbsp;Claim your brand</span><span class="a-cap">Done</span></div>' +
+        '<div class="a-row"><span class="a-sm" style="color:rgba(255,255,255,.96)">' + svgCheck('#22c55e',15) + ' &nbsp;Add your bank</span><span class="a-cap">Done</span></div>' +
+        '<div class="a-row"><span class="a-sm" style="color:rgba(255,255,255,.96)">' + svgSpark('#eb7825',15) + ' &nbsp;Publish your first listing</span>' +
+          '<span class="a-cap" style="color:#eb7825">Next</span></div>' +
+      '</div>' +
+      '<div class="a-btn" style="margin-top:4px">Add your first listing</div>' +
+      '<p class="a-cap a-ctr">Tables, tickets or trips — whatever ' + BRAND + ' sells.</p>' +
+      '</div>');
+  },
+  changed:[
+    'A closing screen that <b>proves the bank landed</b> — the whole funnel was about this, so it earns a permanent, verifiable line rather than a toast that disappears.',
+    'The checklist reuses the email\'s three steps, now two-thirds ticked. The partner sees the promise from the inbox completed in the product — the funnel closes its own loop.',
+    'The final line is deliberately offering-agnostic and brand-specific: “Tables, tickets or trips — whatever ' + BRAND_PLAIN + ' sells.”'
+  ],
+  was:['No such screen. After download the partner lands in the ordinary app home with no acknowledgement that anything was completed.'],
+  flags:[
+    ['risk','Brand Home already has a to-do toggle redesign parked. This checklist must be folded into that work rather than shipped as a second, competing checklist on the same screen.','known parked work: business home to-do toggle redesign'],
+    ['question','Should the funnel end here, or push straight into the listing creator? Ending here is calmer; pushing keeps momentum while the partner is still warm.','—']
+  ]
+});
+
+/* ==========================================================
+   EDGES
+   ========================================================== */
+var EDGES = [
+  ['A1','B1','main','tap CTA'],
+  ['A2','B1','main',''],
+  ['A1','B5','fork','wrong acct'],
+  ['A1','B6','fork','invalid'],
+  ['B1','B2','main',''],
+  ['B2','B3','main',''],
+  ['B3','B4','main',''],
+  ['B5','B2','fork','switch'],
+  ['A1','B4','main','signed in'],
+  ['B4','C1','main','accepted'],
+  ['C1','D1','main','Stripe'],
+  ['C1','D3','fork','Nigeria'],
+  ['C1','D5','fork','has bank'],
+  ['C1','D4','escape','later'],
+  ['D1','D2','main',''],
+  ['D2','D6','fork','pending'],
+  ['D2','E1','main','done'],
+  ['D3','E1','main','done'],
+  ['D4','E1','escape',''],
+  ['D5','E1','main',''],
+  ['D6','E1','main',''],
+  ['E1','F1','main','installed']
+];
+
+var COLS = [
+  ['A','Invite email'],
+  ['B','Land &amp; accept'],
+  ['B','Sign in'],
+  ['C','Accepted'],
+  ['D','Add the bank'],
+  ['E/F','App &amp; live']
+];
+
+var HAPPY = ['A1','B1','B2','B3','B4','C1','D1','D2','E1','F1'];
+
+/* ==========================================================
+   ISSUE REGISTER — collected from every screen
+   ========================================================== */
+var EXTRA = [
+  ['blocker','B-01','<b>The post-sign-in route allowlist has no <code>/brand/…</code> entry.</b> Any bank-first destination reached through sign-in is silently rejected and the partner is dumped on the app home — invite complete, bank never asked for. This one line gates the whole funnel.','src/utils/nextRoute.ts:42-47','C1'],
+  ['blocker','B-02','<b>There is no one-hop route into a bank form.</b> The nearest, <code>/brand/[id]/payments/onboard</code>, lands on a pre-flight with a Terms sheet and a country picker. Reaching the actual Stripe form needs a pre-minted session client secret that a brandId alone cannot produce.','app/brand/[id]/payments/onboard.tsx; app/connect-onboarding.web.tsx','C1'],
+  ['blocker','B-03','<b>Only partner-setup transfers reach the welcome screen.</b> Every other accepted invite gets “You are on the team / Go to team” and is never asked for a bank. #948 as written fixes one of two doors.','app/accept-brand-invitation.tsx:162-175','C1'],
+  ['risk','R-01','<b>Ticket copy is spread across at least eight files.</b> Email builder, welcome screen, onboarding view, the Stripe UI-state helper, the payments dashboard banners and empty states, the download CTA, and the role phrases. #949 is a sweep, not an edit — and needs a strict-grep guard afterwards or it regresses.','brandInviteEmail.ts:125,143,175,213,227,273-279 · success.tsx:132 · BrandOnboardView.tsx:677-688 · brandStripeUiState.ts:45 · BrandPaymentsView.tsx:94-132,699-706,804-818 · BusinessAppDownloadCta.tsx:88','C1'],
+  ['risk','R-02','<b>The payments dashboard is the other half of #949.</b> “Connect bank to sell tickets”, “We need additional information before you can sell tickets”, “Payouts arrive here once you start selling tickets”, and a danger-zone warning about “selling tickets” all live there and all face the same venue and trip owners.','src/components/brand/BrandPaymentsView.tsx:94-132, 699-706, 804-818','D4'],
+  ['question','Q-01','<b>Currency is decided before the bank.</b> Brands carry a pricing currency defaulting to GBP while payment country and default currency sit null. A Nigerian partner may be priced in GBP before ever seeing the bank screen — which is also how <code>invite_currency_mismatch</code> becomes reachable.','brands.pricing_currency default GBP; payment_country null','B6']
+];
+
+/* ==========================================================
+   RENDER
+   ========================================================== */
+var byId = {};
+S.forEach(function(s){ byId[s.id] = s; });
+
+var map = document.getElementById('map');
+var edgesSvg = document.getElementById('edges');
+var colEls = [];
+COLS.forEach(function(c, i){
+  var col = document.createElement('div');
+  col.className = 'col';
+  col.innerHTML = '<div class="colhead"><span class="ltr">' + c[0] + '</span><span class="nm">' + c[1] + '</span></div>';
+  map.appendChild(col);
+  colEls.push(col);
+});
+
+var state = {};   // screenId -> variant index
+
+function thumbHtml(s){
+  var inner = s.render(state[s.id] || 0);
+  var isDesk = inner.indexOf('class="desk"') > -1;
+  var scale = isDesk ? 0.155 : 0.395;
+  var w = isDesk ? 1000 : 390;
+  return '<span class="thumb"><span class="thumb-inner" style="transform:translateX(-50%) scale(' + scale +
+    ');width:' + w + 'px">' + inner + '</span></span>';
+}
+
+S.forEach(function(s){
+  var btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'node' + (s.id === 'D4' ? ' escape' : '');
+  btn.id = 'node-' + s.id;
+  btn.setAttribute('data-id', s.id);
+  btn.setAttribute('aria-label', 'Open screen ' + s.letter + ' — ' + s.name);
+  var tags = (s.tags || []).map(function(t){ return '<span class="tg ' + t[0] + '">' + t[1] + '</span>'; }).join('');
+  btn.innerHTML = thumbHtml(s) +
+    '<span class="node-ft"><span class="node-ttl">' + s.letter + ' · ' + s.name + '</span>' +
+    '<span class="node-tags">' + tags + '</span></span>';
+  btn.addEventListener('click', function(){ openScreen(s.id); });
+  colEls[s.col].appendChild(btn);
+});
+
+/* ---- QR (representative pattern, deterministic) ---- */
+function paintQRs(root){
+  var cs = root.querySelectorAll('canvas[data-qr]');
+  for(var k=0;k<cs.length;k++){
+    var c = cs[k], n = 29, ctx = c.getContext('2d');
+    if(!ctx) continue;
+    ctx.fillStyle = '#fff'; ctx.fillRect(0,0,n,n);
+    ctx.fillStyle = '#000';
+    var seed = 20260720;
+    function rnd(){ seed = (seed*1103515245 + 12345) & 0x7fffffff; return seed/0x7fffffff; }
+    for(var y=0;y<n;y++){
+      for(var x=0;x<n;x++){
+        var inFinder = (x<8&&y<8)||(x>n-9&&y<8)||(x<8&&y>n-9);
+        if(inFinder) continue;
+        if(rnd()>0.53) ctx.fillRect(x,y,1,1);
+      }
+    }
+    var fp = [[0,0],[n-7,0],[0,n-7]];
+    for(var f=0;f<3;f++){
+      var fx=fp[f][0], fy=fp[f][1];
+      ctx.fillStyle='#000'; ctx.fillRect(fx,fy,7,7);
+      ctx.fillStyle='#fff'; ctx.fillRect(fx+1,fy+1,5,5);
+      ctx.fillStyle='#000'; ctx.fillRect(fx+2,fy+2,3,3);
+    }
+  }
+}
+paintQRs(document);
+
+/* ---- edges ---- */
+function drawEdges(){
+  var wrapRect = map.getBoundingClientRect();
+  edgesSvg.setAttribute('viewBox', '0 0 ' + wrapRect.width + ' ' + wrapRect.height);
+  edgesSvg.setAttribute('width', wrapRect.width);
+  edgesSvg.setAttribute('height', wrapRect.height);
+  var out = '<defs>' +
+    '<marker id="ah-main" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">' +
+      '<path d="M0 0 L7 3.5 L0 7 z" fill="var(--accent)"/></marker>' +
+    '<marker id="ah-fork" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">' +
+      '<path d="M0 0 L7 3.5 L0 7 z" fill="var(--faint)"/></marker>' +
+    '<marker id="ah-escape" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">' +
+      '<path d="M0 0 L7 3.5 L0 7 z" fill="var(--decision)"/></marker>' +
+    '</defs>';
+  var labels = '';
+  EDGES.forEach(function(e){
+    var a = document.getElementById('node-' + e[0]);
+    var b = document.getElementById('node-' + e[1]);
+    if(!a || !b) return;
+    var ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+    var x1 = ra.right - wrapRect.left, y1 = ra.top - wrapRect.top + ra.height*0.42;
+    var x2 = rb.left - wrapRect.left, y2 = rb.top - wrapRect.top + rb.height*0.42;
+    var back = x2 < x1;
+    if(back){ x1 = ra.left - wrapRect.left; x2 = rb.right - wrapRect.left; }
+    var dx = Math.max(28, Math.abs(x2 - x1) * 0.5);
+    var c1 = back ? x1 - dx : x1 + dx;
+    var c2 = back ? x2 + dx : x2 - dx;
+    var kind = e[2];
+    var stroke = kind === 'main' ? 'var(--accent)' : (kind === 'escape' ? 'var(--decision)' : 'var(--faint)');
+    var dash = kind === 'main' ? '' : (kind === 'escape' ? ' stroke-dasharray="2 5"' : ' stroke-dasharray="5 4"');
+    var w = kind === 'main' ? 2.4 : 1.5;
+    out += '<path d="M' + x1 + ' ' + y1 + ' C' + c1 + ' ' + y1 + ' ' + c2 + ' ' + y2 + ' ' + x2 + ' ' + y2 +
+      '" fill="none" stroke="' + stroke + '" stroke-width="' + w + '"' + dash +
+      ' marker-end="url(#ah-' + kind + ')" opacity="' + (kind === 'main' ? '.95' : '.75') + '"/>';
+    if(e[3]){
+      var mx = (x1 + x2) / 2, my = (y1 + y2) / 2 - 7;
+      var tw = e[3].length * 5.6 + 10;
+      labels += '<rect class="edgelabel-bg" x="' + (mx - tw/2) + '" y="' + (my - 9) + '" width="' + tw +
+        '" height="14" rx="3"/>' +
+        '<text class="edgelabel" x="' + mx + '" y="' + (my + 1.5) + '" text-anchor="middle">' + e[3] + '</text>';
+    }
+  });
+  edgesSvg.innerHTML = out + labels;
+}
+
+/* ---- gallery ---- */
+var gallery = document.getElementById('gallery');
+function buildGallery(){
+  gallery.innerHTML = '';
+  S.forEach(function(s){
+    var inner = s.render(state[s.id] || 0);
+    var isDesk = inner.indexOf('class="desk"') > -1;
+    var scale = isDesk ? 0.24 : 0.58;
+    var h = isDesk ? 660*0.24 : 866*0.58;
+    var card = document.createElement('div');
+    card.className = 'gcard';
+    var tags = (s.tags || []).map(function(t){ return '<span class="tg ' + t[0] + '">' + t[1] + '</span>'; }).join('');
+    card.innerHTML =
+      '<div class="gtop"><h3>' + s.letter + ' · ' + s.name + '</h3>' +
+      '<div class="node-tags">' + tags + '</div></div>' +
+      '<div class="gstage" style="height:' + (h + 32) + 'px">' +
+        '<div style="transform:scale(' + scale + ');transform-origin:top center">' + inner + '</div>' +
+      '</div>' +
+      '<div class="gbtn"><button class="btn" type="button" data-open="' + s.id + '" style="width:100%">Open notes</button></div>';
+    gallery.appendChild(card);
+  });
+  paintQRs(gallery);
+  gallery.querySelectorAll('[data-open]').forEach(function(b){
+    b.addEventListener('click', function(){ openScreen(b.getAttribute('data-open')); });
+  });
+}
+
+/* ---- issue register ---- */
+var allIssues = [];
+S.forEach(function(s){
+  (s.flags || []).forEach(function(f){
+    allIssues.push({ kind:f[0], text:f[1], cite:f[2], screen:s.id, label:s.letter + ' · ' + s.name });
+  });
+});
+EXTRA.forEach(function(e){
+  allIssues.push({ kind:e[0], text:e[2], cite:e[3], screen:e[4], label:e[1] });
+});
+var order = { blocker:0, risk:1, question:2 };
+allIssues.sort(function(a,b){ return order[a.kind] - order[b.kind]; });
+
+var issuesEl = document.getElementById('issues');
+allIssues.forEach(function(it){
+  var b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'iss ' + it.kind;
+  b.innerHTML = '<span class="ik">' + it.kind + '</span>' +
+    '<span class="itxt">' + it.text + (it.cite && it.cite !== '—' ? '<span class="cite icite">' + it.cite + '</span>' : '') + '</span>' +
+    '<span class="igo">' + it.label + ' →</span>';
+  b.addEventListener('click', function(){ openScreen(it.screen); });
+  issuesEl.appendChild(b);
+});
+
+var nb = allIssues.filter(function(i){ return i.kind === 'blocker'; }).length;
+var nr = allIssues.filter(function(i){ return i.kind === 'risk'; }).length;
+var nq = allIssues.filter(function(i){ return i.kind === 'question'; }).length;
+document.getElementById('cnt-blockers').textContent = nb + ' blockers · ' + nr + ' risks · ' + nq + ' questions';
+document.getElementById('cnt-screens').textContent = S.length + ' screens';
+
+/* ---- overlay ---- */
+var ovl = document.getElementById('ovl');
+var stage = document.getElementById('ovl-stage');
+var notes = document.getElementById('ovl-notes');
+var walk = document.getElementById('ovl-walk');
+var lastFocus = null;
+var current = null;
+
+function branchesFrom(id){
+  return EDGES.filter(function(e){ return e[0] === id; });
+}
+function branchesInto(id){
+  return EDGES.filter(function(e){ return e[1] === id; });
+}
+
+function renderStage(s){
+  var inner = s.render(state[s.id] || 0);
+  var isDesk = inner.indexOf('class="desk"') > -1;
+  var scale = isDesk ? 0.36 : 0.78;
+  stage.innerHTML = '<div style="transform:scale(' + scale + ');transform-origin:top center">' + inner + '</div>';
+  stage.style.height = (isDesk ? 660*0.36 : 866*0.78) + 40 + 'px';
+  paintQRs(stage);
+  var seg = stage.querySelector('[data-seg]');
+  if(seg){
+    seg.querySelectorAll('span[data-i]').forEach(function(sp){
+      sp.style.cursor = 'pointer';
+      sp.addEventListener('click', function(ev){
+        ev.stopPropagation();
+        state[s.id] = parseInt(sp.getAttribute('data-i'), 10);
+        renderStage(s);
+        var nd = document.getElementById('node-' + s.id);
+        if(nd){ nd.querySelector('.thumb').outerHTML = thumbHtml(s); }
+      });
+    });
+  }
+}
+
+function openScreen(id){
+  var s = byId[id];
+  if(!s) return;
+  if(!ovl.hasAttribute('open')) lastFocus = document.activeElement;
+  current = id;
+  document.getElementById('ovl-step').textContent =
+    'Step ' + s.letter + '  ·  ' + COLS[s.col][0] + ' — ' + COLS[s.col][1].replace('&amp;','&');
+  document.getElementById('ovl-title').textContent = s.name;
+  document.getElementById('ovl-sub').textContent = s.sub;
+  renderStage(s);
+
+  var html = '';
+  if(s.changed && s.changed.length){
+    html += '<div class="nblock"><h4>What changed, and why</h4><ul class="nlist">' +
+      s.changed.map(function(c){ return '<li>' + c + '</li>'; }).join('') + '</ul></div>';
+  }
+  if(s.was && s.was.length){
+    html += '<div class="nblock"><h4>What ships today</h4><ul class="nlist was">' +
+      s.was.map(function(c){ return '<li>' + c + '</li>'; }).join('') + '</ul></div>';
+  }
+  if(s.flags && s.flags.length){
+    html += '<div class="nblock"><h4>Open questions, risks, gaps</h4>' +
+      '<div style="display:flex;flex-direction:column;gap:9px">' +
+      s.flags.map(function(f){
+        return '<div class="flag ' + f[0] + '"><span class="fk">' + f[0] + '</span><span>' + f[1] +
+          (f[2] && f[2] !== '—' ? '<br><span class="cite">' + f[2] + '</span>' : '') + '</span></div>';
+      }).join('') + '</div></div>';
+  }
+  notes.innerHTML = html;
+
+  var w = '<span class="lbl">from</span>';
+  var into = branchesInto(id);
+  w += into.length ? into.map(function(e){
+    return '<button class="btn" type="button" data-go="' + e[0] + '">' + byId[e[0]].letter + '</button>';
+  }).join('') : '<span class="cite">entry point</span>';
+  w += '<span class="lbl" style="margin-left:10px">then</span>';
+  var out = branchesFrom(id);
+  w += out.length ? out.map(function(e){
+    var lab = byId[e[1]].letter + ' · ' + byId[e[1]].name + (e[3] ? ' (' + e[3] + ')' : '');
+    return '<button class="btn" type="button" data-go="' + e[1] + '">' + lab + '</button>';
+  }).join('') : '<span class="cite">end of funnel</span>';
+  walk.innerHTML = w;
+  walk.querySelectorAll('[data-go]').forEach(function(b){
+    b.addEventListener('click', function(){ openScreen(b.getAttribute('data-go')); });
+  });
+
+  S.forEach(function(x){
+    var nd = document.getElementById('node-' + x.id);
+    if(nd) nd.classList.toggle('is-active', x.id === id);
+  });
+
+  ovl.setAttribute('open','');
+  document.documentElement.style.overflow = 'hidden';
+  ovl.scrollTop = 0;
+  document.getElementById('ovl-close').focus();
+}
+
+function closeOvl(){
+  ovl.removeAttribute('open');
+  document.documentElement.style.overflow = '';
+  S.forEach(function(x){
+    var nd = document.getElementById('node-' + x.id);
+    if(nd) nd.classList.remove('is-active');
+  });
+  if(lastFocus && lastFocus.focus) lastFocus.focus();
+  current = null;
+}
+document.getElementById('ovl-close').addEventListener('click', closeOvl);
+ovl.addEventListener('click', function(e){ if(e.target === ovl) closeOvl(); });
+
+document.addEventListener('keydown', function(e){
+  if(e.key === 'Escape' && current) { closeOvl(); return; }
+  if(!current) return;
+  if(e.key === 'ArrowRight' || e.key === 'ArrowLeft'){
+    var idx = S.findIndex(function(x){ return x.id === current; });
+    var n = e.key === 'ArrowRight' ? idx + 1 : idx - 1;
+    if(n >= 0 && n < S.length){ e.preventDefault(); openScreen(S[n].id); }
+  }
+});
+
+/* ---- walk the happy path ---- */
+document.getElementById('walk-btn').addEventListener('click', function(){ openScreen(HAPPY[0]); });
+
+/* ---- view toggle ---- */
+var vMap = document.getElementById('v-map'), vGal = document.getElementById('v-gal');
+var mapwrap = document.getElementById('mapwrap');
+var galleryBuilt = false;
+function setView(m){
+  var isMap = m === 'map';
+  vMap.setAttribute('aria-pressed', String(isMap));
+  vGal.setAttribute('aria-pressed', String(!isMap));
+  mapwrap.hidden = !isMap;
+  gallery.hidden = isMap;
+  document.querySelector('.legend').hidden = !isMap;
+  if(!isMap && !galleryBuilt){ buildGallery(); galleryBuilt = true; }
+  if(isMap) requestAnimationFrame(drawEdges);
+}
+vMap.addEventListener('click', function(){ setView('map'); });
+vGal.addEventListener('click', function(){ setView('gal'); });
+
+/* ---- theme ---- */
+var tA = document.getElementById('t-auto'), tL = document.getElementById('t-light'), tD = document.getElementById('t-dark');
+function setTheme(t){
+  if(t === 'auto') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', t);
+  tA.setAttribute('aria-pressed', String(t === 'auto'));
+  tL.setAttribute('aria-pressed', String(t === 'light'));
+  tD.setAttribute('aria-pressed', String(t === 'dark'));
+  requestAnimationFrame(drawEdges);
+}
+tA.addEventListener('click', function(){ setTheme('auto'); });
+tL.addEventListener('click', function(){ setTheme('light'); });
+tD.addEventListener('click', function(){ setTheme('dark'); });
+
+/* ---- layout ---- */
+requestAnimationFrame(drawEdges);
+window.addEventListener('resize', function(){ requestAnimationFrame(drawEdges); });
+if(window.ResizeObserver){
+  new ResizeObserver(function(){ drawEdges(); }).observe(map);
+}
+setTimeout(drawEdges, 220);
+
+})();
+</script>
+
+</body>
+</html>
