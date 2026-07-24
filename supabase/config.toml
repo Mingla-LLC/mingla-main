@@ -524,3 +524,13 @@ verify_jwt = false
 # candidates so the city field is validated, not free text. No DB access.
 [functions.growth-tools-geocode]
 verify_jwt = false
+
+# ISSUE-1005 — Quote Any Trip. POST {action:"run", input} builds a fully-costed
+# trip quote grounded in LIVE external research (real named hotels + activities
+# with current rate estimates, comparable trips, demand, weather, trip-ad CPC)
+# via Gemini google_search, then a deterministic cost-sheet + pricing engine
+# (recommended per-person price, margin ladder, profit-max ad budget) + a
+# structured day-by-day itinerary. Writes tool_leads(tool='trips'). Same anon +
+# service-role posture as the other growth tools.
+[functions.growth-tools-trips]
+verify_jwt = false

@@ -215,6 +215,7 @@ async function postGrowthTools(
   fn:
     | 'growth-tools-run'
     | 'growth-tools-events'
+    | 'growth-tools-trips'
     | 'growth-tools-geocode'
     | 'growth-tools-gate'
     | 'growth-tools-preview'
@@ -637,6 +638,235 @@ export async function fetchEventPreview(
   const render =
     result.body && typeof result.body === 'object' && 'render' in result.body
       ? (result.body as { render?: EventPreviewRender }).render
+      : undefined
+  if (!render || typeof render.title !== 'string') return { ok: false, error: 'server' }
+  return { ok: true, render }
+}
+
+// ─── Quote Any Trip (#1005) ──────────────────────────────────────────────────
+
+export type TripVibe = 'budget' | 'balanced' | 'luxury'
+
+export interface TripRunInput {
+  title: string
+  destination: string
+  departure: string
+  start_date: string // YYYY-MM-DD
+  nights: number
+  group_size: number
+  vibe: TripVibe
+  vibe_note: string | null
+  includes: { stay: boolean; activities: boolean; meals: boolean; transport: boolean }
+  currency: string
+}
+
+export interface TripCostLine {
+  key: string
+  label: string
+  per_person: number
+  basis: string
+}
+export interface TripMarginTier {
+  margin_pct: number
+  price_per_person: number
+  profit_per_person: number
+  group_profit: number
+  recommended: boolean
+}
+export interface TripScenario {
+  label: string
+  budget: number
+  ad_bookings: number
+  extra_profit: number
+  cost_per_booking: number | null
+  total_booked: number
+  pct_full: number
+  recommended: boolean
+}
+export interface TripPricingPlan {
+  currency: string
+  nights: number
+  days: number
+  group_size: number
+  cost_lines: TripCostLine[]
+  cost_per_person: number
+  cost_per_person_low: number
+  cost_per_person_high: number
+  group_cost: number
+  margin_tiers: TripMarginTier[]
+  recommended_margin_pct: number
+  recommended_price_per_person: number
+  price_per_person_low: number
+  price_per_person_high: number
+  group_price: number
+  profit_per_person: number
+  group_profit: number
+  comparable_price_pp: number | null
+  price_vs_market: string
+  organic_bookings_low: number
+  organic_bookings_high: number
+  cpc: number
+  cpc_source: 'researched' | 'estimated'
+  recommended_ad_budget: number
+  ad_bookings_low: number
+  ad_bookings_high: number
+  ad_extra_profit: number
+  ads_worth_it: boolean
+  scenarios: TripScenario[]
+  read: string
+}
+export interface TripItineraryDay {
+  day: number
+  title: string
+  summary: string
+  stay: string
+  activities: string[]
+}
+export interface TripHotel {
+  name: string
+  area: string
+  nightly_pp: number | null
+  note: string
+}
+export interface TripActivity {
+  name: string
+  price_pp: number | null
+  note: string
+}
+export interface TripComparable {
+  name: string
+  operator: string
+  price_pp: number | null
+  note: string
+}
+export interface TripFactor {
+  key?: string
+  label: string
+  status: 'help' | 'watch' | 'hurt'
+  detail: string
+}
+export interface TripFix {
+  title: string
+  why: string
+  change: string
+  lift_note: string
+  effort: 'this_week' | 'this_month' | 'project'
+}
+export interface TripListingPreview {
+  title: string
+  tagline: string
+  vibe_tags: string[]
+  why_go: string[]
+  best_for: string[]
+  included: string[]
+  excluded: string[]
+  cover_url?: string
+}
+export interface TripReport {
+  trip: {
+    title: string
+    destination: string
+    departure: string
+    start_date: string
+    nights: number
+    days: number
+    date_range: string
+    group_size: number
+    vibe: TripVibe
+    vibe_note: string | null
+    currency: string
+  }
+  headline_read: string
+  cover_narrative: string
+  confidence: 'low' | 'medium' | 'high'
+  plan: TripPricingPlan
+  itinerary: TripItineraryDay[]
+  hotels: TripHotel[]
+  activities: TripActivity[]
+  comparables: TripComparable[]
+  weather?: EventWeather
+  demand_read: string
+  factors: TripFactor[]
+  fixes: TripFix[]
+  listing_preview: TripListingPreview
+  price_basis: { note: string; checked_on: string }
+  offer?: { per_person_from: string }
+  meta?: { generated_at?: string; model?: string; research_source?: 'grounded' | 'fallback' }
+}
+
+export type TripRunResponse =
+  | { ok: true; run_id: string; report: TripReport }
+  | { ok: false; error: GrowthToolsError }
+
+/** The trip quote run: {action:'run', input} → {run_id, report}. Slow (LLM + search). */
+export async function runTripQuoter(
+  input: TripRunInput,
+  opts?: { pid?: string; utm?: Record<string, string>; signal?: AbortSignal },
+): Promise<TripRunResponse> {
+  const origin = typeof window !== 'undefined' ? window.location.origin : undefined
+  const result = await postGrowthTools(
+    'growth-tools-trips',
+    {
+      action: 'run',
+      input,
+      ...(opts?.pid ? { pid: opts.pid } : {}),
+      ...(opts?.utm && Object.keys(opts.utm).length > 0 ? { utm: opts.utm } : {}),
+      ...(origin ? { origin } : {}),
+    },
+    opts?.signal,
+  )
+  if (!result.ok) return result
+  const body = result.body as { run_id?: string; report?: TripReport } | null
+  if (!body || typeof body.run_id !== 'string' || !body.report) {
+    return { ok: false, error: 'server' }
+  }
+  return { ok: true, run_id: body.run_id, report: body.report }
+}
+
+/** Token-gated full trip report (from the emailed link): {run_id, token} → {report}. */
+export async function fetchTripReport(
+  run_id: string,
+  token: string,
+): Promise<{ ok: true; report: TripReport } | { ok: false; error: GrowthToolsError }> {
+  const result = await postGrowthTools('growth-tools-report', { run_id, token })
+  if (!result.ok) return result
+  const report =
+    result.body && typeof result.body === 'object' && 'report' in result.body
+      ? (result.body as { report?: TripReport }).report
+      : undefined
+  if (!report || typeof report.trip !== 'object') return { ok: false, error: 'server' }
+  return { ok: true, report }
+}
+
+/** Public render-data for the "as a Mingla trip page" preview (by run_id). */
+export interface TripPreviewRender {
+  kind: 'trip'
+  title: string
+  tagline: string
+  cover_url?: string
+  destination: string
+  departure: string
+  date_range: string
+  nights: number
+  days: number
+  group_size: number
+  price_per_person: number
+  currency: string
+  vibe_tags: string[]
+  why_go: string[]
+  best_for: string[]
+  included: string[]
+  excluded: string[]
+  itinerary: TripItineraryDay[]
+}
+export async function fetchTripPreview(
+  runId: string,
+): Promise<{ ok: true; render: TripPreviewRender } | { ok: false; error: GrowthToolsError }> {
+  const result = await postGrowthTools('growth-tools-preview', { run_id: runId })
+  if (!result.ok) return result
+  const render =
+    result.body && typeof result.body === 'object' && 'render' in result.body
+      ? (result.body as { render?: TripPreviewRender }).render
       : undefined
   if (!render || typeof render.title !== 'string') return { ok: false, error: 'server' }
   return { ok: true, render }
