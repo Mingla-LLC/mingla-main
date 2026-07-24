@@ -126,8 +126,21 @@ function buildTripRender(report: Record<string, unknown>) {
   const pricePp = typeof plan.recommended_price_per_person === "number"
     ? plan.recommended_price_per_person
     : 0;
+  const experiences = Array.isArray(report.activities)
+    ? (report.activities as unknown[]).slice(0, 8).map((a) => {
+      const o = rec(a);
+      return {
+        name: asString(o.name).slice(0, 120),
+        tag: asString(o.tag).slice(0, 30),
+        why: asString(o.why).slice(0, 200),
+        best_time: asString(o.best_time).slice(0, 80),
+      };
+    }).filter((a) => a.name.length > 0)
+    : [];
   return {
     kind: "trip" as const,
+    season_note: asString(report.season_note).slice(0, 300),
+    experiences,
     title: (asString(lp.title) || asString(trip.title)).slice(0, 120) || "Your trip",
     tagline: (asString(lp.tagline) || asString(report.cover_narrative)).slice(0, 320),
     cover_url: /^https?:\/\//i.test(coverUrl) ? coverUrl : "",

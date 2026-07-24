@@ -731,7 +731,12 @@ export interface TripHotel {
 export interface TripActivity {
   name: string
   price_pp: number | null
-  note: string
+  /** Badge: Must-see | Local favourite | Seasonal | Hidden gem | Adventure | Food & drink | Culture | Nature | Experience */
+  tag: string
+  /** Punchy one-line reason it's worth it. */
+  why: string
+  /** When it's best — season / time-of-day note. */
+  best_time: string
 }
 export interface TripComparable {
   name: string
@@ -785,6 +790,7 @@ export interface TripReport {
   activities: TripActivity[]
   comparables: TripComparable[]
   weather?: EventWeather
+  season_note?: string
   demand_read: string
   factors: TripFactor[]
   fixes: TripFix[]
@@ -858,6 +864,8 @@ export interface TripPreviewRender {
   included: string[]
   excluded: string[]
   itinerary: TripItineraryDay[]
+  season_note?: string
+  experiences?: Array<{ name: string; tag: string; why: string; best_time: string }>
 }
 export async function fetchTripPreview(
   runId: string,

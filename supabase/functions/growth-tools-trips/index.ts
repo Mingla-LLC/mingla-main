@@ -283,11 +283,20 @@ function tripDates(startIso: string, nights: number): { range: string; days: num
 
 // ── Research shape (PASS A — grounded) ───────────────────────────────────────
 interface ResearchHotel { name: string; area: string; nightly_pp: number | null; note: string }
-interface ResearchActivity { name: string; price_pp: number | null; note: string }
+// A curated, popular, in-season experience — the wow. `tag` badges it, `why` is
+// the punchy sell, `best_time` is the season/time-of-day note.
+interface ResearchActivity {
+  name: string;
+  price_pp: number | null;
+  tag: string;
+  why: string;
+  best_time: string;
+}
 interface ResearchComparable { name: string; operator: string; price_pp: number | null; note: string }
 interface TripResearch {
   hotels: ResearchHotel[];
   activities: ResearchActivity[];
+  season_note: string; // why THIS time of year is special (festivals / in-season sights)
   meals_per_day_pp: number | null;
   transport_pp: number | null;
   comparables: ResearchComparable[];
@@ -295,6 +304,19 @@ interface TripResearch {
   weather: { summary: string; impact: string; kind: "forecast" | "climate_normal" | "seasonal" } | null;
   cpc: number | null;
   price_basis_note: string;
+}
+
+// Allowed experience badges — a stray tag falls back to "Experience".
+const ACTIVITY_TAGS = new Set([
+  "Must-see", "Local favourite", "Seasonal", "Hidden gem",
+  "Adventure", "Food & drink", "Culture", "Nature",
+]);
+function normalizeTag(raw: string): string {
+  const t = raw.trim();
+  if (ACTIVITY_TAGS.has(t)) return t;
+  const lc = t.toLowerCase();
+  for (const tag of ACTIVITY_TAGS) if (tag.toLowerCase() === lc) return tag;
+  return "Experience";
 }
 
 // ── Cost sheet + pricing (deterministic) ─────────────────────────────────────
@@ -392,22 +414,21 @@ function computePricing(
     });
   }
 
-  // Activities: sum up to `days` researched activities (≈ one/day), clamped each.
-  let actPp = 0;
+  // Activities: the curated signature set is ALL included (not capped at ~1/day
+  // — the organiser asked for everything in). Each price clamped to a sane band.
   const usedActs = research.activities
     .map((a) => clampBand(a.price_pp, ACTIVITY_BAND, cur))
-    .filter((n): n is number => n !== null)
-    .slice(0, Math.max(1, days));
-  actPp = input.includes.activities
+    .filter((n): n is number => n !== null);
+  const actPp = input.includes.activities
     ? roundMoney(usedActs.reduce((s, n) => s + n, 0))
     : 0;
   if (input.includes.activities) {
     cost_lines.push({
       key: "activities",
-      label: "Activities & tours",
+      label: "Signature experiences",
       per_person: actPp,
       basis: usedActs.length > 0
-        ? `${usedActs.length} experiences priced from live research`
+        ? `${usedActs.length} experiences included, priced from live research`
         : "estimate",
     });
   }
@@ -721,7 +742,8 @@ function buildResearchPrompt(input: TripInput): string {
     `Use Google Search. All money is PER PERSON in ${input.currency}. Return EXACTLY this JSON shape:`,
     "{",
     `  "hotels": [ { "name": string (a REAL, named hotel/riad/lodge fitting the ${input.vibe} style in ${input.destination}), "area": string, "nightly_pp": number (estimated nightly rate PER PERSON in ${input.currency}, assuming 2 sharing a room), "note": string (one line, e.g. what it's known for) } ],`,
-    `  "activities": [ { "name": string (a REAL, named tour/experience/attraction in or near ${input.destination}), "price_pp": number (per person in ${input.currency}), "note": string } ],`,
+    `  "activities": [ { "name": string (a REAL, named experience/tour/attraction in or near ${input.destination}), "price_pp": number (per person in ${input.currency}), "tag": one of "Must-see" | "Local favourite" | "Seasonal" | "Hidden gem" | "Adventure" | "Food & drink" | "Culture" | "Nature", "why": string (a punchy one-line reason it's worth it — the wow), "best_time": string (when it's best, e.g. "best at sunrise", "in season in October", "cooler months only") } ],`,
+    `  "season_note": string (why THIS time of year is a great time to visit ${input.destination} — any festivals, events, or in-season sights during ${range}; empty if nothing notable),`,
     `  "meals_per_day_pp": number (typical food+drink spend PER PERSON PER DAY in ${input.currency} for this style),`,
     `  "transport_pp": number (airport transfers + local getting-around for the WHOLE trip PER PERSON in ${input.currency}, EXCLUDING flights),`,
     `  "comparables": [ { "name": string (a REAL comparable packaged/group trip to ${input.destination}), "operator": string, "price_pp": number (advertised per-person price in ${input.currency}), "note": string } ],`,
@@ -731,7 +753,12 @@ function buildResearchPrompt(input: TripInput): string {
     '  "price_basis_note": string (one line on how current these estimates are, e.g. "rates checked against listings this week")',
     "}",
     "",
-    `Rules: 3-6 real named hotels for the ${input.vibe} tier; 4-8 real named activities; up to 4 comparable trips.`,
+    `Rules: 3-6 real named hotels for the ${input.vibe} tier; up to 4 comparable trips.`,
+    `ACTIVITIES ARE THE CENTREPIECE — return 6-8 REAL, NAMED experiences that make a ${input.destination} trip special:`,
+    `  • Lead with the POPULAR, iconic must-see sights and the top-rated experiences travellers actually rave about.`,
+    `  • Choose experiences suited to ${range} specifically — what's in season, at its best, or only available around then; include any festival/seasonal highlight if one lands in the window.`,
+    `  • Mix it up: iconic sightseeing, a signature local experience, food/culture, a day trip, and a hidden gem — so it feels complete and curated, not generic.`,
+    input.vibe_note ? `  • Lean into the traveller's note: ${input.vibe_note}.` : "",
     "For weather, use a real forecast if within ~10 days, otherwise typical seasonal conditions; set kind accordingly.",
     "Every price is a CURRENT ESTIMATE, not a guaranteed rate. NEVER invent hotel, activity or operator names — if you can't find real ones, return fewer or an empty array. Prefer well-known, verifiable places.",
   ].filter(Boolean).join("\n");
@@ -739,8 +766,9 @@ function buildResearchPrompt(input: TripInput): string {
 
 function normalizeResearch(p: Record<string, unknown> | null): TripResearch {
   const empty: TripResearch = {
-    hotels: [], activities: [], meals_per_day_pp: null, transport_pp: null,
-    comparables: [], demand_read: "", weather: null, cpc: null, price_basis_note: "",
+    hotels: [], activities: [], season_note: "", meals_per_day_pp: null,
+    transport_pp: null, comparables: [], demand_read: "", weather: null,
+    cpc: null, price_basis_note: "",
   };
   if (!p) return empty;
   const arr = (v: unknown) => Array.isArray(v) ? v : [];
@@ -764,7 +792,9 @@ function normalizeResearch(p: Record<string, unknown> | null): TripResearch {
     return {
       name: asStr(o.name).slice(0, 120),
       price_pp: posNum(o.price_pp),
-      note: asStr(o.note).slice(0, 160),
+      tag: normalizeTag(asStr(o.tag)),
+      why: asStr(o.why).slice(0, 200),
+      best_time: asStr(o.best_time).slice(0, 80),
     };
   }).filter((a) => a.name.length > 0);
   const comparables = arr(p.comparables).slice(0, 4).map((c) => {
@@ -787,6 +817,7 @@ function normalizeResearch(p: Record<string, unknown> | null): TripResearch {
   }
   return {
     hotels, activities,
+    season_note: asStr(p.season_note).slice(0, 300),
     meals_per_day_pp: posNum(p.meals_per_day_pp),
     transport_pp: posNum(p.transport_pp),
     comparables,
@@ -927,7 +958,7 @@ function buildSynthesisPrompt(input: TripInput, research: TripResearch): string 
     ? research.hotels.map((h) => `- ${h.name}${h.area ? ` (${h.area})` : ""}: ${h.note}`).join("\n")
     : "(none found — describe suitable stays generically)";
   const actLines = research.activities.length > 0
-    ? research.activities.map((a) => `- ${a.name}: ${a.note}`).join("\n")
+    ? research.activities.map((a) => `- ${a.name} [${a.tag}]: ${a.why}${a.best_time ? ` (${a.best_time})` : ""}`).join("\n")
     : "(none found)";
   return [
     "Build the day-by-day plan + client-ready copy for this trip using the REAL researched places below.",
@@ -941,13 +972,14 @@ function buildSynthesisPrompt(input: TripInput, research: TripResearch): string 
     "",
     "Researched hotels:",
     hotelLines,
-    "Researched activities:",
+    "Signature experiences (popular + in-season — build the trip around these):",
     actLines,
+    `Why now (season): ${research.season_note || "(none)"}`,
     `Demand read: ${research.demand_read || "(none)"}`,
     `Weather: ${research.weather ? `${research.weather.summary} — ${research.weather.impact}` : "(none)"}`,
     "",
     "Guidance:",
-    `- itinerary: EXACTLY ${days} day objects (day 1..${days}). Each: a short title, a 1-2 sentence summary, the stay (use a researched hotel name where sensible), and 1-3 activities (use researched activity names). Arrange logically (arrival → highlights → departure).`,
+    `- itinerary: EXACTLY ${days} day objects (day 1..${days}). Each: a short title, a 1-2 sentence summary that sells the day with a wow moment, the stay (use a researched hotel name where sensible), and 1-3 activities (use the researched experience names, working in the popular/in-season ones). Arrange logically (arrival → highlights → departure) and make it feel unmissable.`,
     `- organic_bookings_low/high: how many of the ${input.group_size} seats the organiser likely fills WITHOUT paid ads, 0..${input.group_size}.`,
     "- confidence: how sure you are given the evidence.",
     "- headline_read: one punchy sentence an organiser would quote to a client.",
@@ -1206,6 +1238,7 @@ async function handleRun(
     activities: research.activities,
     comparables: research.comparables,
     ...(research.weather !== null ? { weather: research.weather } : {}),
+    season_note: research.season_note,
     demand_read: research.demand_read,
     factors: synth.factors,
     fixes: synth.fixes,

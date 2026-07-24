@@ -51,6 +51,14 @@ const SAMPLE: TripPreviewRender = {
   best_for: ['Friend groups', 'Milestone birthday', 'First-time Morocco'],
   included: ['4 nights riad', 'Airport transfers', 'Daily breakfast', 'Guided souk tour', 'Atlas day trip'],
   excluded: ['Flights', 'Travel insurance', 'Lunches & dinners'],
+  season_note: 'Mid-October is Marrakech at its best — warm days, cool evenings, and the light everyone photographs, with none of the summer heat.',
+  experiences: [
+    { name: 'Jardin Majorelle & YSL Museum', tag: 'Must-see', why: 'The cobalt-blue garden that defines Marrakech — go early before the crowds.', best_time: 'Best at opening, 8am' },
+    { name: 'Sunrise camel trek in the Agafay', tag: 'Adventure', why: 'Desert dunes 40 minutes from the medina, at the best hour of the day.', best_time: 'Sunrise' },
+    { name: 'Guided souk crawl', tag: 'Local favourite', why: 'A local guide gets you the real prices and the stalls tourists never find.', best_time: 'Late afternoon' },
+    { name: 'Cooking class at La Maison Arabe', tag: 'Food & drink', why: 'Learn a tagine from scratch in a legendary riad kitchen.', best_time: 'Half day' },
+    { name: 'Ourika Valley day trip', tag: 'Nature', why: 'Waterfalls, a Berber village lunch and Atlas mountain air.', best_time: 'In season Oct–May' },
+  ],
   itinerary: [
     { day: 1, title: 'Arrival & the medina', summary: 'Land, settle into the riad, and ease in with a rooftop dinner over the old town.', stay: 'Riad El Fenn', activities: ['Rooftop welcome dinner'] },
     { day: 2, title: 'Souks & palaces', summary: 'A guided crawl through the souks, then the Bahia Palace and a hammam to wind down.', stay: 'Riad El Fenn', activities: ['Guided souk tour', 'Bahia Palace'] },
@@ -227,6 +235,37 @@ export function TripPreviewClient() {
                   ))}
                 </ul>
               ) : null}
+            </section>
+          ) : null}
+
+          {/* Perfect timing — the seasonal "why now" */}
+          {render.season_note ? (
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginTop: 20, background: T.accentWash, border: `1px solid ${T.accentBorder}`, borderRadius: 14, padding: '12px 14px' }}>
+              <span aria-hidden="true" style={{ fontSize: 18 }}>🗓️</span>
+              <span style={{ fontSize: 14, lineHeight: '20px', color: T.text }}>{render.season_note}</span>
+            </div>
+          ) : null}
+
+          {/* Highlights — the curated, popular, in-season experiences */}
+          {render.experiences && render.experiences.length > 0 ? (
+            <section style={{ marginTop: 24 }}>
+              <h2 style={{ fontSize: 20, fontWeight: 900, letterSpacing: '-0.3px', marginBottom: 12, color: T.text }}>Highlights</h2>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {render.experiences.map((e) => (
+                  <div key={e.name} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 14, padding: '12px 14px' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+                      {e.tag ? (
+                        <span style={{ borderRadius: 999, background: T.accentWash, border: `1px solid ${T.accentBorder}`, padding: '3px 9px', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.4, color: T.accent }}>{e.tag}</span>
+                      ) : null}
+                      <span style={{ fontSize: 15, fontWeight: 800, color: T.text }}>{e.name}</span>
+                    </div>
+                    {e.why ? <p style={{ fontSize: 14, lineHeight: '20px', marginTop: 6, color: T.text2 }}>{e.why}</p> : null}
+                    {e.best_time ? (
+                      <p style={{ fontSize: 12, fontWeight: 700, marginTop: 6, color: T.accent }}>◷ {e.best_time}</p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
             </section>
           ) : null}
 
