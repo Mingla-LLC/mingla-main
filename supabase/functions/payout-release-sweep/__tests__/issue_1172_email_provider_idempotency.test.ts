@@ -85,6 +85,14 @@ function fixture() {
           providerMessageId: null,
         };
       }
+      if (existing.claimId) {
+        return {
+          action: "in_progress",
+          deliveryId: "delivery-1172",
+          claimId: null,
+          providerMessageId: null,
+        };
+      }
       const claimId = `claim-${++claimSequence}`;
       existing.claimId = claimId;
       return {
@@ -155,6 +163,10 @@ function fixture() {
     providerAcceptanceCount: () => accepted.size,
     failProviderAck: () => failProviderAckOnce = true,
     failCompletion: () => failCompletionOnce = true,
+    expireClaim: () => {
+      const delivery = deliveries.get(logicalKey);
+      if (delivery) delivery.claimId = null;
+    },
     setProviderOutcome: (
       value: "accepted" | "retryable" | "manual_review",
     ) => providerOutcome = value,
@@ -185,6 +197,7 @@ Deno.test("lost provider response retries the same Resend key", async () => {
     },
     () => undefined,
   );
+  state.expireClaim();
   const retry = await state.send();
   assert(retry.outcome === "provider_accepted", "retry not accepted");
   assert(state.providerCalls() === 2, "expected one provider retry");
@@ -203,6 +216,7 @@ Deno.test("delivery-record failure retries without a second acceptance", async (
     },
     () => undefined,
   );
+  state.expireClaim();
   const retry = await state.send();
   assert(retry.outcome === "provider_accepted", "retry not accepted");
   assert(
@@ -219,8 +233,20 @@ Deno.test("overlapping sends converge through one provider key and id", async ()
   const state = fixture();
   const results = await Promise.all([state.send(), state.send()]);
   assert(
-    results.every((result) => result.outcome === "provider_accepted"),
-    "overlap did not converge to acceptance",
+    results.some((result) => result.outcome === "provider_accepted"),
+    "overlap did not produce provider acceptance",
+  );
+  assert(
+    results.every((result) =>
+      result.outcome === "provider_accepted" ||
+      result.outcome === "retry_pending"
+    ),
+    "overlapping claimant returned an unsafe terminal outcome",
+  );
+  const replay = await state.send();
+  assert(
+    replay.outcome === "provider_accepted" && replay.duplicate,
+    "overlap replay did not converge to accepted provider id",
   );
   assert(
     new Set(state.providerKeys).size === 1,
