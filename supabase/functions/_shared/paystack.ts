@@ -24,6 +24,7 @@
 
 // ORCH-1201 — Layer-C passive health observation (fire-and-forget, best-effort).
 import { recordApiCall } from "./apiHealthLog.ts";
+import { resolvePaymentModeValue } from "./secretBundle.ts";
 
 export type PaystackMode = "test" | "live";
 
@@ -35,7 +36,7 @@ export const PAYSTACK_WEBHOOK_IPS = ["52.31.139.75", "52.49.173.169", "52.214.14
 const MODE_ENV_VAR = "PAYSTACK_MODE";
 
 export function resolvePaystackMode(): PaystackMode {
-  const raw = Deno.env.get(MODE_ENV_VAR);
+  const raw = resolvePaymentModeValue("paystack_mode", MODE_ENV_VAR);
   if (raw === undefined || raw === null || raw.trim().length === 0) {
     return "test"; // proof-slice default; Phase 0-proper throws on unset
   }

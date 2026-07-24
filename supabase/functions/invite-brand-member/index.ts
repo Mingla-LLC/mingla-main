@@ -53,6 +53,8 @@ export { buildInviteEmail, sha256Hex };
 // The shared object already uses "POST, OPTIONS", matching this function's
 // methods, so behavior is unchanged except the widened allow-headers.
 import { corsHeaders } from "../_shared/cors.ts";
+import { minglaLogoUrl } from "../_shared/brandAssets.ts";
+import { resolveRuntimeString } from "../_shared/runtimeConfig.ts";
 
 const PERSONAL_NOTE_MAX = 280;
 
@@ -349,9 +351,12 @@ export async function handler(req: Request): Promise<Response> {
       partnerSetup: effectivePartnerSetup,
       // ORCH-0785 shell env — share the same env keys the rest of the
       // transactional email pipeline uses.
-      logoUrl: Deno.env.get("MINGLA_LOGO_URL") ?? undefined,
+      logoUrl: minglaLogoUrl(),
       supportEmail: Deno.env.get("SUPPORT_EMAIL") ?? undefined,
-      footerAddress: Deno.env.get("MINGLA_FOOTER_ADDRESS") ?? undefined,
+      footerAddress: resolveRuntimeString(
+        "mingla_footer_address",
+        "MINGLA_FOOTER_ADDRESS",
+      ),
     });
 
     const sent = await sendInviteEmail(resendKey, emailPayload);

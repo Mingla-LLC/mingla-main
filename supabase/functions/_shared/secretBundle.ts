@@ -1,0 +1,359 @@
+/**
+ * Strict, value-redacting readers for the four semantic secret bundles.
+ *
+ * Bundle values are never included in errors or telemetry. During the
+ * compatibility window, a missing or invalid bundle falls back only to the
+ * exact legacy name for the requested field.
+ */
+
+export type SecretEnvGetter = (name: string) => string | undefined;
+
+export type PaymentModeField = "stripe_mode" | "paystack_mode";
+export type EmailSenderField = "admin_from" | "system_from" | "ticket_from";
+export type DeliveryFlagField =
+  | "marketing_send_live_enabled"
+  | "sms_live_enabled.ng"
+  | "sms_live_enabled.us";
+export type AlertRecipientField =
+  | "api_health"
+  | "stripe_disputes"
+  | "stripe_webhook_failures";
+
+type BundleName =
+  | "MINGLA_PAYMENT_MODES_JSON"
+  | "MINGLA_EMAIL_SENDERS_JSON"
+  | "MINGLA_DELIVERY_FLAGS_JSON"
+  | "MINGLA_ALERT_RECIPIENTS_JSON";
+
+type DiagnosticReason =
+  | "invalid_json"
+  | "not_object"
+  | "oversized"
+  | "schema_version"
+  | "unknown_field"
+  | "missing_field"
+  | "wrong_type"
+  | "invalid_value";
+
+type ParseResult<T> =
+  | { ok: true; value: T }
+  | {
+    ok: false;
+    reason: DiagnosticReason;
+    field?: string;
+    schemaVersion?: number;
+  };
+
+const MAX_BUNDLE_BYTES = 48 * 1024;
+const EMAIL_RE = /^(?:(.+?)\s*<)?([^<>\s]+@[^<>\s]+)>?$/;
+
+function defaultGetEnv(name: string): string | undefined {
+  return Deno.env.get(name);
+}
+
+function diagnosticEnv(name: string): string | undefined {
+  try {
+    return Deno.env.get(name);
+  } catch {
+    return undefined;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function safeField(field: string | undefined): string | undefined {
+  return field && /^[a-z][a-z0-9_.]{0,63}$/.test(field) ? field : undefined;
+}
+
+function emitDiagnostic(
+  event: "secret_bundle_invalid" | "secret_bundle_legacy_fallback",
+  bundle: BundleName,
+  reason: DiagnosticReason | "missing",
+  field?: string,
+  schemaVersion?: number,
+): void {
+  const diagnostic: Record<string, string | number> = {
+    event,
+    bundle,
+    reason,
+  };
+  const redactedField = safeField(field);
+  if (redactedField) diagnostic.field = redactedField;
+  if (schemaVersion === 1) diagnostic.schema_version = schemaVersion;
+  const deploymentId = diagnosticEnv("DENO_DEPLOYMENT_ID");
+  if (deploymentId) diagnostic.deployment_id = deploymentId;
+  const functionName = diagnosticEnv("DENO_FUNCTION_NAME");
+  if (functionName && /^[a-z0-9-]{1,80}$/.test(functionName)) {
+    diagnostic.function_name = functionName;
+  }
+  const serialized = JSON.stringify(diagnostic);
+  if (event === "secret_bundle_invalid") console.error(serialized);
+  else console.warn(serialized);
+}
+
+function parseObject(
+  raw: string,
+  allowedFields: readonly string[],
+): ParseResult<Record<string, unknown>> {
+  if (new TextEncoder().encode(raw).byteLength >= MAX_BUNDLE_BYTES) {
+    return { ok: false, reason: "oversized" };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { ok: false, reason: "invalid_json" };
+  }
+  if (!isRecord(parsed)) return { ok: false, reason: "not_object" };
+  const version = parsed.schema_version;
+  if (version !== 1) {
+    return {
+      ok: false,
+      reason: "schema_version",
+      schemaVersion: typeof version === "number" ? version : undefined,
+    };
+  }
+  const allowed = new Set(["schema_version", ...allowedFields]);
+  if (Object.keys(parsed).some((field) => !allowed.has(field))) {
+    return { ok: false, reason: "unknown_field", field: "unknown" };
+  }
+  for (const field of allowedFields) {
+    if (!Object.hasOwn(parsed, field)) {
+      return { ok: false, reason: "missing_field", field };
+    }
+  }
+  return { ok: true, value: parsed };
+}
+
+function parseModeBundle(
+  raw: string,
+): ParseResult<Record<PaymentModeField, "live" | "test">> {
+  const base = parseObject(raw, ["stripe_mode", "paystack_mode"]);
+  if (!base.ok) return base;
+  for (const field of ["stripe_mode", "paystack_mode"] as const) {
+    if (base.value[field] !== "live" && base.value[field] !== "test") {
+      return { ok: false, reason: "invalid_value", field };
+    }
+  }
+  return {
+    ok: true,
+    value: {
+      stripe_mode: base.value.stripe_mode as "live" | "test",
+      paystack_mode: base.value.paystack_mode as "live" | "test",
+    },
+  };
+}
+
+function validSender(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > 320) return false;
+  const match = value.match(EMAIL_RE);
+  return match !== null && match[2].length <= 254;
+}
+
+function parseSenderBundle(
+  raw: string,
+): ParseResult<Record<EmailSenderField, string>> {
+  const fields = ["admin_from", "system_from", "ticket_from"] as const;
+  const base = parseObject(raw, fields);
+  if (!base.ok) return base;
+  for (const field of fields) {
+    if (!validSender(base.value[field])) {
+      return {
+        ok: false,
+        reason: typeof base.value[field] === "string"
+          ? "invalid_value"
+          : "wrong_type",
+        field,
+      };
+    }
+  }
+  return {
+    ok: true,
+    value: {
+      admin_from: base.value.admin_from as string,
+      system_from: base.value.system_from as string,
+      ticket_from: base.value.ticket_from as string,
+    },
+  };
+}
+
+type DeliveryFlags = {
+  marketing_send_live_enabled: boolean;
+  sms_live_enabled: { ng: boolean; us: boolean };
+};
+
+function parseDeliveryBundle(raw: string): ParseResult<DeliveryFlags> {
+  const base = parseObject(raw, [
+    "marketing_send_live_enabled",
+    "sms_live_enabled",
+  ]);
+  if (!base.ok) return base;
+  if (typeof base.value.marketing_send_live_enabled !== "boolean") {
+    return {
+      ok: false,
+      reason: "wrong_type",
+      field: "marketing_send_live_enabled",
+    };
+  }
+  const sms = base.value.sms_live_enabled;
+  if (!isRecord(sms)) {
+    return { ok: false, reason: "wrong_type", field: "sms_live_enabled" };
+  }
+  if (
+    Object.keys(sms).some((field) => field !== "ng" && field !== "us") ||
+    !Object.hasOwn(sms, "ng") ||
+    !Object.hasOwn(sms, "us")
+  ) {
+    return { ok: false, reason: "unknown_field", field: "sms_live_enabled" };
+  }
+  if (typeof sms.ng !== "boolean" || typeof sms.us !== "boolean") {
+    return { ok: false, reason: "wrong_type", field: "sms_live_enabled" };
+  }
+  return {
+    ok: true,
+    value: {
+      marketing_send_live_enabled: base.value.marketing_send_live_enabled,
+      sms_live_enabled: { ng: sms.ng, us: sms.us },
+    },
+  };
+}
+
+function parseRecipientList(value: unknown): string[] | null {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 50) {
+    return null;
+  }
+  const normalized: string[] = [];
+  for (const candidate of value) {
+    if (
+      typeof candidate !== "string" ||
+      candidate.length > 254 ||
+      !/^[^<>\s]+@[^<>\s]+$/.test(candidate)
+    ) return null;
+    normalized.push(candidate.toLowerCase());
+  }
+  return new Set(normalized).size === normalized.length ? normalized : null;
+}
+
+function parseAlertBundle(
+  raw: string,
+): ParseResult<Record<AlertRecipientField, string[]>> {
+  const fields = [
+    "api_health",
+    "stripe_disputes",
+    "stripe_webhook_failures",
+  ] as const;
+  const base = parseObject(raw, fields);
+  if (!base.ok) return base;
+  const apiHealth = parseRecipientList(base.value.api_health);
+  const stripeDisputes = parseRecipientList(base.value.stripe_disputes);
+  const stripeWebhookFailures = parseRecipientList(
+    base.value.stripe_webhook_failures,
+  );
+  if (!apiHealth) {
+    return { ok: false, reason: "invalid_value", field: "api_health" };
+  }
+  if (!stripeDisputes) {
+    return { ok: false, reason: "invalid_value", field: "stripe_disputes" };
+  }
+  if (!stripeWebhookFailures) {
+    return {
+      ok: false,
+      reason: "invalid_value",
+      field: "stripe_webhook_failures",
+    };
+  }
+  return {
+    ok: true,
+    value: {
+      api_health: apiHealth,
+      stripe_disputes: stripeDisputes,
+      stripe_webhook_failures: stripeWebhookFailures,
+    },
+  };
+}
+
+function fallback<T>(
+  bundle: BundleName,
+  field: string,
+  legacyName: string,
+  result: ParseResult<T> | null,
+  getEnv: SecretEnvGetter,
+): string | undefined {
+  if (result && !result.ok) {
+    emitDiagnostic(
+      "secret_bundle_invalid",
+      bundle,
+      result.reason,
+      result.field,
+      result.schemaVersion,
+    );
+  }
+  emitDiagnostic(
+    "secret_bundle_legacy_fallback",
+    bundle,
+    result === null ? "missing" : result.ok ? "missing" : result.reason,
+    field,
+    result && !result.ok ? result.schemaVersion : undefined,
+  );
+  return getEnv(legacyName);
+}
+
+export function resolvePaymentModeValue(
+  field: PaymentModeField,
+  legacyName: string,
+  getEnv: SecretEnvGetter = defaultGetEnv,
+): string | undefined {
+  const bundle = "MINGLA_PAYMENT_MODES_JSON";
+  const raw = getEnv(bundle);
+  const result = raw ? parseModeBundle(raw) : null;
+  return result?.ok
+    ? result.value[field]
+    : fallback(bundle, field, legacyName, result, getEnv);
+}
+
+export function resolveEmailSenderValue(
+  field: EmailSenderField,
+  legacyName: string,
+  getEnv: SecretEnvGetter = defaultGetEnv,
+): string | undefined {
+  const bundle = "MINGLA_EMAIL_SENDERS_JSON";
+  const raw = getEnv(bundle);
+  const result = raw ? parseSenderBundle(raw) : null;
+  return result?.ok
+    ? result.value[field]
+    : fallback(bundle, field, legacyName, result, getEnv);
+}
+
+export function resolveDeliveryFlagValue(
+  field: DeliveryFlagField,
+  legacyName: string,
+  getEnv: SecretEnvGetter = defaultGetEnv,
+): boolean | string | undefined {
+  const bundle = "MINGLA_DELIVERY_FLAGS_JSON";
+  const raw = getEnv(bundle);
+  const result = raw ? parseDeliveryBundle(raw) : null;
+  if (result?.ok) {
+    if (field === "marketing_send_live_enabled") {
+      return result.value.marketing_send_live_enabled;
+    }
+    return field === "sms_live_enabled.ng"
+      ? result.value.sms_live_enabled.ng
+      : result.value.sms_live_enabled.us;
+  }
+  return fallback(bundle, field, legacyName, result, getEnv);
+}
+
+export function resolveAlertRecipientValue(
+  field: AlertRecipientField,
+  legacyName: string,
+  getEnv: SecretEnvGetter = defaultGetEnv,
+): string[] | string | undefined {
+  const bundle = "MINGLA_ALERT_RECIPIENTS_JSON";
+  const raw = getEnv(bundle);
+  const result = raw ? parseAlertBundle(raw) : null;
+  return result?.ok
+    ? result.value[field]
+    : fallback(bundle, field, legacyName, result, getEnv);
+}

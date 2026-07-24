@@ -22,6 +22,8 @@
 // Invariant: I-PROPOSED-1227-NG-SMS-VIA-TERMII. The Twilio path MUST keep its
 // MessagingServiceSid usage, the SMS_LIVE_ENABLED_ kill-switch, and the
 // no-raw-`From` discipline — the I-PROPOSED-1161 CI gate still enforces all three.
+import { resolveDeliveryFlagValue } from "../secretBundle.ts";
+import { resolveRuntimeConfigValue } from "../runtimeConfig.ts";
 
 export interface AdapterResult {
   ok: boolean;
@@ -134,7 +136,11 @@ export function resolveMarketKillSwitch(countryCode?: string | null): string {
 }
 
 function envTrue(name: string): boolean {
-  const raw = Deno.env.get(name);
+  const field = name === "SMS_LIVE_ENABLED_NG"
+    ? "sms_live_enabled.ng"
+    : "sms_live_enabled.us";
+  const raw = resolveDeliveryFlagValue(field, name);
+  if (typeof raw === "boolean") return raw;
   return raw === "true" || raw === "1";
 }
 
@@ -218,9 +224,9 @@ async function termiiSend(
   channel: "dnd" | "generic",
 ): Promise<{ ok: boolean; sid?: string; error?: string; blacklisted?: boolean }> {
   const apiKey = Deno.env.get("TERMII_API_KEY");
-  const baseUrl = Deno.env.get("TERMII_BASE_URL");
+  const baseUrl = resolveRuntimeConfigValue("termii_base_url", "TERMII_BASE_URL");
   const senderId = Deno.env.get("TERMII_SENDER_ID");
-  if (!apiKey || !baseUrl || !senderId) {
+  if (!apiKey || typeof baseUrl !== "string" || !baseUrl || !senderId) {
     return { ok: false, error: "termii_env_missing" };
   }
   const payload = {

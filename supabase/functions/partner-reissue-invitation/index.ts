@@ -42,6 +42,8 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import { corsHeaders } from "../_shared/cors.ts";
+import { minglaLogoUrl } from "../_shared/brandAssets.ts";
+import { resolveRuntimeString } from "../_shared/runtimeConfig.ts";
 import {
   buildInviteEmail,
   EMAIL_MAX,
@@ -310,9 +312,12 @@ export async function handler(req: Request): Promise<Response> {
       // Partner-attribution copy variant — every reissued link is a
       // partner-setup ownership invite by construction.
       partnerSetup: true,
-      logoUrl: Deno.env.get("MINGLA_LOGO_URL") ?? undefined,
+      logoUrl: minglaLogoUrl(),
       supportEmail: Deno.env.get("SUPPORT_EMAIL") ?? undefined,
-      footerAddress: Deno.env.get("MINGLA_FOOTER_ADDRESS") ?? undefined,
+      footerAddress: resolveRuntimeString(
+        "mingla_footer_address",
+        "MINGLA_FOOTER_ADDRESS",
+      ),
     });
 
     const sent = await sendInviteEmail(resendKey, emailPayload);

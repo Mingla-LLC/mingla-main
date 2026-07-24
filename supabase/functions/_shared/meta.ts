@@ -36,6 +36,7 @@ import {
   type EntityLevel,
   type MetaBudgetCategory,
 } from "./adChannel.ts";
+import { resolveRuntimeString } from "./runtimeConfig.ts";
 
 // ── Env config (NAMES only — values live in Supabase Edge Function Secrets) ───
 
@@ -88,7 +89,8 @@ export function resolveMetaEnvConfig(lane: MetaLane = "consumer"): MetaEnvConfig
   if (!adAccountId) throw new AdNotConnectedError("meta", "meta_not_connected");
   if (!pageId) throw new AdNotConnectedError("meta", "meta_not_connected");
   return {
-    apiVersion: (Deno.env.get("META_API_VERSION") ?? META_DEFAULT_API_VERSION).trim(),
+    apiVersion: (resolveRuntimeString("meta_api_version", "META_API_VERSION") ??
+      META_DEFAULT_API_VERSION).trim(),
     graphBase: (Deno.env.get("META_GRAPH_BASE") ?? META_DEFAULT_GRAPH_BASE).trim(),
     adAccountId,
     businessId: (Deno.env.get(laneEnvName("META_BUSINESS_ID", lane)) ?? "").trim() || null,

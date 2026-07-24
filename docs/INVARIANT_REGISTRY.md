@@ -6112,3 +6112,29 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 - **Regression test:** fails-on-revert — deleting any single fingerprint line, lowercasing one, or
   desyncing the two files turns the gate red.
 - **Established:** DRAFT 2026-07-21 at #1042 SPEC; flipped ACTIVE 2026-07-21 at #1042 CLOSE (PR #1045 merged `e8484ea22`, tester PASS, probe verified HEALTHY against Google's live resolver post-deploy).
+
+---
+
+## DRAFT — issue #1203 (Supabase secret capacity and bounded compatibility bundles)
+
+### I-PROPOSED-1203-SECRET-CAPACITY (DRAFT)
+
+- **Rule:** Production operates at no more than 85 user-managed Supabase secret names normally
+  and never above 90 under an approved, unexpired exception. Every user-managed name has
+  names-only manifest ownership, backup ownership, readers, secure source type, and review
+  metadata. Values, digests, credential prefixes, and raw CLI metadata never enter the repository,
+  issues, chat, logs, audit artifacts, or CI output. The five compatibility bundles use strict
+  `schema_version: 1` allowlists and independent fields; provider credentials and Stripe RAK roles
+  remain separate.
+- **Enforcement:** Daily/manual live names-only audit plus pull-request manifest audit in
+  `.github/workflows/supabase-secret-budget.yml`; parser validation in
+  `supabase/functions/_shared/secretBundle.ts` and `_shared/runtimeConfig.ts`; batch-A guard
+  `.github/scripts/strict-grep/issue-1203-secret-capacity.mjs` prevents runtime-bundle field growth,
+  client exposure, raw CLI output, and manifest shrink/drift.
+- **Regression:** Additive Deno happy-path/legacy-fallback tests and Node capacity tests, with
+  strict-grep synthetic self-tests and implementor fail-on-revert/pass-on-restore proof. The
+  independent tester adds malformed/smuggling/order/parity adversarial coverage before activation.
+- **Status:** DRAFT until the implementation is merged, the approved secret choreography reaches
+  exactly 85 user-managed names, independent tester PASS is recorded, and the required soak is
+  clean.
+- **Established:** DRAFT 2026-07-24 at issue #1203 implementation.

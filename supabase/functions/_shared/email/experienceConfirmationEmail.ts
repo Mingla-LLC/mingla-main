@@ -21,6 +21,7 @@
 import type { SenderIdentity } from "./senders.ts";
 // ISSUE-1001 — canonical logo resolution (env override, live fail-safe default).
 import { minglaLogoUrl } from "../brandAssets.ts";
+import { resolveRuntimeString } from "../runtimeConfig.ts";
 
 interface ExperienceStop {
   stopOrder: number;
@@ -65,8 +66,8 @@ interface ExperienceConfirmationResult {
 const DEFAULT_SUPPORT_EMAIL = "support@usemingla.com";
 const DEFAULT_FROM_NAME = "Mingla";
 
-function requireEnv(key: string, fallback?: string): string {
-  const raw = Deno.env.get(key);
+function requireEnv(key: string, fallback?: string, resolved?: string): string {
+  const raw = resolved ?? Deno.env.get(key);
   if (raw && raw.trim().length > 0) return raw.trim();
   if (fallback !== undefined) return fallback;
   throw new Error(`email_env_missing:${key}`);
@@ -139,6 +140,7 @@ export function renderExperienceConfirmationEmail(
   const footerAddress = requireEnv(
     "MINGLA_FOOTER_ADDRESS",
     Deno.env.get("DENO_TESTING") === "1" ? "Mingla, hello@usemingla.com" : undefined,
+    resolveRuntimeString("mingla_footer_address", "MINGLA_FOOTER_ADDRESS"),
   );
   const fromAddress = requireEnv(
     "MINGLA_FROM_EMAIL",

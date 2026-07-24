@@ -50,6 +50,7 @@ import {
   type Platform,
 } from "./adChannel.ts";
 import { metaGraph, resolveMetaClient, scrubMetaTokens } from "./meta.ts";
+import { resolveRuntimeString } from "./runtimeConfig.ts";
 import {
   type ChannelValidationResult,
   classifyRatio,
@@ -1094,7 +1095,8 @@ export async function mintGoogleAccessToken(deps: CreativeUploadDeps = {}): Prom
 }
 
 function googleAdsVersion(): string {
-  return (Deno.env.get("GOOGLE_ADS_API_VERSION") ?? GOOGLE_ADS_DEFAULT_API_VERSION).trim();
+  return (resolveRuntimeString("google_ads_api_version", "GOOGLE_ADS_API_VERSION") ??
+    GOOGLE_ADS_DEFAULT_API_VERSION).trim();
 }
 
 function googleHeaders(accessToken: string): Record<string, string> {

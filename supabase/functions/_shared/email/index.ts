@@ -14,6 +14,7 @@ import {
 import { escapeHtml } from "./escape.ts";
 // ISSUE-1001 — canonical logo resolution (env override, live fail-safe default).
 import { minglaLogoUrl } from "../brandAssets.ts";
+import { resolveRuntimeString } from "../runtimeConfig.ts";
 import type {
   EmailVariant,
   GenericBodyInput,
@@ -42,8 +43,8 @@ function resolveSender(variant: EmailVariant): SenderIdentity {
   }
 }
 
-function requireEnv(key: string, fallback?: string): string {
-  const raw = Deno.env.get(key);
+function requireEnv(key: string, fallback?: string, resolved?: string): string {
+  const raw = resolved ?? Deno.env.get(key);
   if (raw && raw.trim().length > 0) return raw.trim();
   if (fallback !== undefined) return fallback;
   throw new Error(`email_env_missing:${key}`);
@@ -60,6 +61,7 @@ export function renderTransactionalEmail(input: RenderInput): RenderResult {
     Deno.env.get("DENO_TESTING") === "1"
       ? "Mingla, hello@usemingla.com"
       : undefined,
+    resolveRuntimeString("mingla_footer_address", "MINGLA_FOOTER_ADDRESS"),
   );
 
   let bodyHtml: string;
