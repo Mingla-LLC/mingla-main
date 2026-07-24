@@ -72,6 +72,12 @@ interface BrandStripeCountryPickerProps {
   /** Open the country sheet immediately on mount (e.g. returning from a region's
    * own onboarding to re-pick). */
   defaultOpen?: boolean;
+  /**
+   * Bank-first invite presentation: renders the selected payout destination as
+   * a confirmation row with a quiet Change affordance instead of leading with
+   * the full country picker.
+   */
+  presentation?: "operation-picker" | "payout-confirm";
 }
 
 export function BrandStripeCountryPicker({
@@ -82,6 +88,7 @@ export function BrandStripeCountryPicker({
   warningText = null,
   extraOptions = [],
   defaultOpen = false,
+  presentation = "operation-picker",
 }: BrandStripeCountryPickerProps): React.ReactElement {
   const [open, setOpen] = useState(defaultOpen);
   const [search, setSearch] = useState("");
@@ -89,6 +96,8 @@ export function BrandStripeCountryPicker({
 
   const selectedCode = value ?? "GB";
   const selected = getStripeSupportedCountry(selectedCode);
+  const selectedExtra =
+    extraOptions.find((option) => option.code === selectedCode) ?? null;
 
   const handleOpen = useCallback((): void => {
     if (disabled) return;
@@ -139,9 +148,14 @@ export function BrandStripeCountryPicker({
     );
   }, [allRows, search]);
 
-  const triggerLabel = selected
-    ? `${selected.displayName} · ${selected.defaultCurrency}`
+  const selectedName =
+    selected?.displayName ?? selectedExtra?.name ?? selectedCode;
+  const selectedCurrency =
+    selected?.defaultCurrency ?? selectedExtra?.currency ?? null;
+  const triggerLabel = selectedCurrency !== null
+    ? `${selectedName} · ${selectedCurrency}`
     : `Country: ${selectedCode}`;
+  const payoutConfirm = presentation === "payout-confirm";
 
   return (
     <View style={styles.wrap}>
@@ -149,7 +163,11 @@ export function BrandStripeCountryPicker({
         onPress={handleOpen}
         disabled={disabled}
         accessibilityRole="button"
-        accessibilityLabel={`Country: ${selected?.displayName ?? selectedCode}, tap to change`}
+        accessibilityLabel={
+          payoutConfirm
+            ? `Payout country: ${selectedName}, tap to change`
+            : `Country: ${selectedName}, tap to change`
+        }
         accessibilityState={{ disabled }}
         style={({ pressed }) => [
           styles.trigger,
@@ -158,10 +176,16 @@ export function BrandStripeCountryPicker({
         ]}
       >
         <View style={styles.triggerRow}>
-          <Text style={styles.triggerLabel}>Where will you operate?</Text>
+          <Text style={styles.triggerLabel}>
+            {payoutConfirm ? "PAYOUTS IN" : "Where will you operate?"}
+          </Text>
           <Text style={styles.triggerValue}>{triggerLabel}</Text>
         </View>
-        <Text style={styles.triggerChevron}>›</Text>
+        <Text
+          style={payoutConfirm ? styles.triggerChange : styles.triggerChevron}
+        >
+          {payoutConfirm ? "Change" : "›"}
+        </Text>
       </Pressable>
 
       {helperText !== null ? (
@@ -312,6 +336,13 @@ const styles = StyleSheet.create({
     fontSize: 24,
     color: textTokens.tertiary,
     paddingLeft: spacing.sm,
+  },
+  triggerChange: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    color: textTokens.secondary,
+    paddingLeft: spacing.sm,
+    textDecorationLine: "underline",
   },
   helperText: {
     fontSize: typography.caption.fontSize,

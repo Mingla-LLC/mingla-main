@@ -49,6 +49,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   Linking,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -95,6 +96,11 @@ import {
 } from "../../utils/brandStripeUiState";
 import { BrandStripeCountryLockedError } from "../../services/brandStripeService";
 import { BrandPaystackOnboardView } from "./BrandPaystackOnboardView";
+import {
+  buildBankConnectWebReturnUrl,
+  isSameOriginConnectOnboardingUrl,
+  resolveBankConnectRail,
+} from "../../utils/bankConnectFunnel";
 
 const RETURN_DEEP_LINK = "mingla-business://onboarding-complete" as const;
 const DEFAULT_COUNTRY = "GB" as const;
@@ -172,6 +178,10 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   const onboardMutation = useStartBrandStripeOnboarding();
   const statusQuery = useBrandStripeStatus(brand?.id ?? null);
   const startInProgressRef = useRef(false);
+  const brandRail = resolveBankConnectRail({
+    countryCode: brand?.countryCode,
+    paymentProvider: brand?.paymentProvider,
+  });
 
   // Mount-time bypass derivation
   const initialState: ViewState = (() => {
@@ -186,9 +196,11 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   const [viewState, setViewState] = useState<ViewState>(initialState);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   // V3 multi-country: brand admin picks country before onboarding starts.
-  // Defaults to GB to preserve Phase 0 behaviour for unmodified callers.
-  // Per SPEC §13 amendment A4 + I-PROPOSED-T (canonical 34-country allowlist).
-  const [selectedCountry, setSelectedCountry] = useState<string>(DEFAULT_COUNTRY);
+  // #948 W2 — seed from the normalized brand country when Stripe supports it.
+  // Missing/unsupported data preserves the existing GB fallback.
+  const [selectedCountry, setSelectedCountry] = useState<string>(
+    brandRail.countryCode,
+  );
   const [countryTouched, setCountryTouched] = useState(false);
   // V3 ToS gate: must pass before Stripe onboarding can start (per I-PROPOSED-U).
   // Gate component checks brand_team_members.mingla_tos_accepted_at and either
@@ -201,19 +213,22 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   // form instantly (no network call — the form's "Connect bank" step commits the
   // provider). The Stripe onboarding path below is never entered for NG, and the
   // form offers "Choose a different country" to return here.
-  const [paystackSelected, setPaystackSelected] = useState(false);
+  const [paystackSelected, setPaystackSelected] = useState(
+    brandRail.provider === "paystack",
+  );
   // When the user returns from the Nigeria bank form, re-open the country sheet
   // so they can immediately re-pick (rather than landing on the closed picker).
   const [reopenPickerOnReturn, setReopenPickerOnReturn] = useState(false);
   const handleCountryChange = useCallback((countryCode: string): void => {
     setReopenPickerOnReturn(false);
+    setCountryTouched(true);
     // orch-strict-grep-allow stripe-country-out-of-scope — NG routes to the
     // Paystack rail, never Stripe; it is intentionally not in the Stripe allowlist.
     if (countryCode === "NG") {
       setPaystackSelected(true);
       return;
     }
-    setCountryTouched(true);
+    setPaystackSelected(false);
     setSelectedCountry(countryCode);
   }, []);
 
@@ -241,6 +256,17 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
     if (countryTouched || savedStripeCountry === null) return;
     setSelectedCountry(savedStripeCountry);
   }, [countryTouched, savedStripeCountry]);
+
+  useEffect(() => {
+    if (countryTouched || savedStripeCountry !== null) return;
+    setSelectedCountry(brandRail.countryCode);
+    setPaystackSelected(brandRail.provider === "paystack");
+  }, [
+    brandRail.countryCode,
+    brandRail.provider,
+    countryTouched,
+    savedStripeCountry,
+  ]);
 
   const applyOnboardingOutcome = useCallback(
     (outcome: StripeOnboardingOutcome): void => {
@@ -371,9 +397,13 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
     announceForAccessibility("Creating your Stripe account.");
 
     try {
+      const returnUrl =
+        Platform.OS === "web"
+          ? buildBankConnectWebReturnUrl(window.location.origin, brand.id)
+          : RETURN_DEEP_LINK;
       const result = await onboardMutation.mutateAsync({
         brandId: brand.id,
-        returnUrl: RETURN_DEEP_LINK,
+        returnUrl,
         country: selectedCountry,
       });
 
@@ -381,6 +411,21 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
       announceForAccessibility(
         "Complete the form that opened. We will know when you are done.",
       );
+
+      if (Platform.OS === "web") {
+        if (
+          !isSameOriginConnectOnboardingUrl(
+            result.onboarding_url,
+            window.location.origin,
+          )
+        ) {
+          throw new Error(
+            "Stripe returned an unexpected bank setup link. Please try again.",
+          );
+        }
+        window.location.assign(result.onboarding_url);
+        return;
+      }
 
       const browserResult = await WebBrowser.openAuthSessionAsync(
         result.onboarding_url,
@@ -543,8 +588,10 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
   // inline (instant). "Choose a different country" returns to the picker.
   if (brand !== null && paystackSelected) {
     const backToPicker = (): void => {
+      setCountryTouched(true);
       setReopenPickerOnReturn(true);
       setPaystackSelected(false);
+      setSelectedCountry(DEFAULT_COUNTRY);
     };
     return (
       <View style={styles.host}>
