@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { Footer } from '@/components/marketing/footer'
+import { ToolsBreadcrumb } from '@/components/marketing/tools-breadcrumb'
 
 // #1003 [Venue Website Grader — growth tools, test cut] — the /tools shell.
 //
@@ -35,6 +36,7 @@ export default function ToolsLayout({ children }: { children: React.ReactNode })
           </Link>
         </div>
       </header>
+      <ToolsBreadcrumb />
       <main id="main" className="flex-1">{children}</main>
       <div data-theme="light">
         <Footer surface="organiser" />
