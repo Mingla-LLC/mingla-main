@@ -84,7 +84,7 @@ Deno.test("adversarial bearer variants cannot construct a client and the accepte
       "Bearer  service-secret",
       "Bearer service-secret,forged",
       "Basic service-secret",
-      "Bearer eyJhbGciOiJub25lIn0.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.",
+      "Bearer forged.jwt.token",
       "prefix-Bearer service-secret",
     ]
   ) {
