@@ -44,6 +44,9 @@ export const NEXT_ROUTE_ALLOWLIST: readonly string[] = [
   "/accept-scanner-invitation",
   "/rsvp/create",
   "/event/create",
+  // #948 — dynamic brand routes carry only an RLS-scoped brand UUID, never a
+  // URL credential. Segment-safe matching below rejects `/brand-evil`.
+  "/brand",
 ] as const;
 
 /** Bound the surface — nothing legitimate is anywhere near this long. */

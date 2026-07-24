@@ -137,6 +137,36 @@ export function parsePartnerGateDetail(
   return null;
 }
 
+interface AcceptBrandEnrichment {
+  brandSlug: string | null;
+  newOwnerFirstName: string | null;
+  countryCode: string | null;
+  paymentProvider: "stripe" | "paystack" | null;
+  stripeChargesEnabled: boolean;
+  stripePayoutsEnabled: boolean;
+  paystackSubaccountCode: string | null;
+}
+
+/**
+ * #948 W1 — the additive accept-response contract. Keeping the envelope in a
+ * pure builder makes both accept entry points share one fail-safe response.
+ */
+export function buildAcceptResponse(
+  rpcResult: Record<string, unknown> | null,
+  enrichment: AcceptBrandEnrichment,
+): Record<string, unknown> {
+  return {
+    ...(rpcResult ?? {}),
+    brand_slug: enrichment.brandSlug,
+    new_owner_first_name: enrichment.newOwnerFirstName,
+    country_code: enrichment.countryCode,
+    payment_provider: enrichment.paymentProvider,
+    stripe_charges_enabled: enrichment.stripeChargesEnabled,
+    stripe_payouts_enabled: enrichment.stripePayoutsEnabled,
+    paystack_subaccount_code: enrichment.paystackSubaccountCode,
+  };
+}
+
 export async function handler(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -338,9 +368,18 @@ export async function handler(req: Request): Promise<Response> {
     // (when partner_brand_links has a matching row).
     let resolvedBrandSlug: string | null = null;
     let resolvedNewOwnerFirstName: string | null = null;
+    // #948 W1 — routing hints are best-effort. A failed/malformed enrichment
+    // must never fabricate a connected bank or choose a payment rail.
+    let resolvedCountryCode: string | null = null;
+    let resolvedPaymentProvider: "stripe" | "paystack" | null = null;
+    let resolvedStripeChargesEnabled = false;
+    let resolvedStripePayoutsEnabled = false;
+    let resolvedPaystackSubaccountCode: string | null = null;
     try {
       const result = (rpcResult ?? {}) as Record<string, unknown>;
-      const brandId = typeof result.brand_id === "string" ? result.brand_id : null;
+      const brandId = typeof result.brand_id === "string"
+        ? result.brand_id
+        : null;
       const memberRole = typeof result.role === "string" ? result.role : null;
       if (brandId) {
         // Resolve the joining member's display name (nicer copy; falls back to
@@ -359,11 +398,28 @@ export async function handler(req: Request): Promise<Response> {
         // partner-transfer notification.
         const { data: brandRow } = await service
           .from("brands")
-          .select("name, slug, partner_setup")
+          .select(
+            "name, slug, partner_setup, country_code, payment_provider, stripe_charges_enabled, stripe_payouts_enabled, paystack_subaccount_code, stripe_connect_id",
+          )
           .eq("id", brandId)
           .maybeSingle();
         const brandName = (brandRow?.name as string | null) ?? "your brand";
         resolvedBrandSlug = (brandRow?.slug as string | null) ?? null;
+        resolvedCountryCode = typeof brandRow?.country_code === "string"
+          ? brandRow.country_code
+          : null;
+        resolvedPaymentProvider = brandRow?.payment_provider === "stripe" ||
+            brandRow?.payment_provider === "paystack"
+          ? brandRow.payment_provider
+          : null;
+        resolvedStripeChargesEnabled =
+          brandRow?.stripe_charges_enabled === true;
+        resolvedStripePayoutsEnabled =
+          brandRow?.stripe_payouts_enabled === true;
+        resolvedPaystackSubaccountCode =
+          typeof brandRow?.paystack_subaccount_code === "string"
+            ? brandRow.paystack_subaccount_code
+            : null;
         resolvedNewOwnerFirstName = memberName
           ? memberName.split(/\s+/)[0]
           : null;
@@ -478,11 +534,18 @@ export async function handler(req: Request): Promise<Response> {
     // ORCH-1081 — extend response with the slug + first name so the celebration
     // page can render without an extra round-trip. partner_setup already flows
     // back from the RPC (added in the migration); we pass it through.
-    const responseBody = {
-      ...(rpcResult as Record<string, unknown> | null ?? {}),
-      brand_slug: resolvedBrandSlug,
-      new_owner_first_name: resolvedNewOwnerFirstName,
-    };
+    const responseBody = buildAcceptResponse(
+      rpcResult as Record<string, unknown> | null,
+      {
+        brandSlug: resolvedBrandSlug,
+        newOwnerFirstName: resolvedNewOwnerFirstName,
+        countryCode: resolvedCountryCode,
+        paymentProvider: resolvedPaymentProvider,
+        stripeChargesEnabled: resolvedStripeChargesEnabled,
+        stripePayoutsEnabled: resolvedStripePayoutsEnabled,
+        paystackSubaccountCode: resolvedPaystackSubaccountCode,
+      },
+    );
     return json(responseBody, 200);
   } catch (err) {
     console.error(
