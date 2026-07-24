@@ -288,6 +288,18 @@ export interface FreePlan {
   read: string;
 }
 
+export interface EventScenario {
+  label: string;
+  budget: number;
+  ad_tickets: number;
+  revenue: number;
+  profit: number;
+  roas: number | null;
+  cost_per_ticket: number | null;
+  total_attendees: number;
+  pct_capacity: number;
+  recommended: boolean;
+}
 export interface PaidPlan {
   kind: "paid_optimized";
   currency: string;
@@ -306,6 +318,7 @@ export interface PaidPlan {
   ad_profit: number; // ad revenue − recommended budget
   roas: number | null;
   ads_worth_it: boolean;
+  scenarios: EventScenario[]; // profit ladder — the organiser picks their spend
   read: string;
 }
 
@@ -380,6 +393,37 @@ function computePaidPlan(
   const ad_profit = Math.round(ad_revenue - recommended_budget);
   const costPerTicket = ticketsMid > 0 ? recommended_budget / ticketsMid : null;
 
+  // Scenario ladder — sample the profit curve around the recommended spend so the
+  // organiser can see the tradeoff and pick their own risk level.
+  const scenarios: EventScenario[] = ads_worth_it
+    ? [
+      { m: 0.4, label: "Lean" },
+      { m: 0.7, label: "Balanced" },
+      { m: 1.0, label: "Recommended" },
+      { m: 1.5, label: "Aggressive" },
+    ].map(({ m, label }) => {
+      const b = roundMoney(recommended_budget * m);
+      const t = ticketsFromBudget(b, remaining, baseCpts);
+      const rev = Math.round(t * price);
+      const totalAtt = Math.min(
+        input.capacity,
+        Math.round(organicAttendeesMid + t * sr),
+      );
+      return {
+        label,
+        budget: b,
+        ad_tickets: Math.round(t),
+        revenue: rev,
+        profit: Math.round(rev - b),
+        roas: b > 0 ? Math.round((rev / b) * 10) / 10 : null,
+        cost_per_ticket: t > 0 ? roundMoney(b / t) : null,
+        total_attendees: totalAtt,
+        pct_capacity: input.capacity > 0 ? Math.round((totalAtt / input.capacity) * 100) : 0,
+        recommended: m === 1.0,
+      };
+    })
+    : [];
+
   let read: string;
   if (!ads_worth_it) {
     read = remaining <= 0
@@ -411,6 +455,7 @@ function computePaidPlan(
     ad_profit,
     roas: recommended_budget > 0 ? Math.round((ad_revenue / recommended_budget) * 10) / 10 : null,
     ads_worth_it,
+    scenarios,
     read,
   };
 }
