@@ -38,21 +38,34 @@ const ms = (value: string): number => {
   return parsed;
 };
 
-export function resolveLiveAnchor(candidate: MoneyCandidate): string | null {
+export function resolveLiveOccurrence(
+  candidate: MoneyCandidate,
+): Occurrence | null {
   if (candidate.sourceType === "venue_reservation") {
-    return candidate.reservationEndAt ?? null;
+    return candidate.reservationEndAt
+      ? {
+        id: `reservation:${candidate.sourceId}`,
+        endAt: candidate.reservationEndAt,
+      }
+      : null;
   }
   if (candidate.eventDateId) {
-    return candidate.occurrences.find((row) => row.id === candidate.eventDateId)
-      ?.endAt ?? null;
+    return candidate.occurrences.find((row) =>
+      row.id === candidate.eventDateId
+    ) ??
+      null;
   }
   const finalized = ms(candidate.finalizedAt);
   const sorted = [...candidate.occurrences].sort((a, b) =>
     ms(a.endAt) - ms(b.endAt)
   );
-  return sorted.find((row) => ms(row.endAt) >= finalized)?.endAt ??
-    sorted.at(-1)?.endAt ??
+  return sorted.find((row) => ms(row.endAt) >= finalized) ??
+    sorted.at(-1) ??
     null;
+}
+
+export function resolveLiveAnchor(candidate: MoneyCandidate): string | null {
+  return resolveLiveOccurrence(candidate)?.endAt ?? null;
 }
 
 export function computePendingItems(
@@ -68,8 +81,9 @@ export function computePendingItems(
     if (candidate.eventStatus === "cancelled") continue;
     // R4: finalized STRICTLY AFTER cutover; equality is excluded.
     if (ms(candidate.finalizedAt) <= ms(candidate.cutoverAt)) continue;
-    const anchorEndAt = resolveLiveAnchor(candidate);
-    if (!anchorEndAt) continue;
+    const occurrence = resolveLiveOccurrence(candidate);
+    if (!occurrence) continue;
+    const anchorEndAt = occurrence.endAt;
     const releasableAt = new Date(ms(anchorEndAt) + RELEASE_DELAY_MS)
       .toISOString();
     if (ms(releasableAt) > now) continue;
@@ -79,12 +93,13 @@ export function computePendingItems(
         candidate.minglaFeeCents - candidate.partnerShareCents -
         candidate.providerFeeCents,
     );
-    const occurrenceKey = candidate.eventDateId ??
-      (candidate.sourceType === "venue_reservation"
-        ? `reservation:${candidate.sourceId}`
-        : `fallback:${anchorEndAt}`);
+    const resolvedEventDateId = candidate.sourceType === "venue_reservation"
+      ? null
+      : occurrence.id;
+    const occurrenceKey = resolvedEventDateId ?? occurrence.id;
     pending.push({
       ...candidate,
+      eventDateId: resolvedEventDateId,
       anchorEndAt,
       releasableAt,
       netCents,

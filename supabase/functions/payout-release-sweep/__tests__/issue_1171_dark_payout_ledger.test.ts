@@ -11,7 +11,7 @@ import {
   resolveLiveAnchor,
   withholdTemporaryDebt,
 } from "../engine.ts";
-import { handlePayoutReleaseSweep } from "../index.ts";
+import { handlePayoutReleaseSweep, providerReferenceRoute } from "../index.ts";
 
 const DAY = 24 * 60 * 60 * 1000;
 const iso = (day: number, seconds = 0) =>
@@ -88,10 +88,51 @@ Deno.test("seeded dark sweep emits exact single/multi/recurring/fallback rows an
     iso(5),
     iso(6),
   ]);
+  assertEquals(rows.map((r) => r.eventDateId), [
+    "date-1",
+    "date-late",
+    "date-current",
+    "first-after",
+    "final",
+  ]);
   assert(
     rows.every((r) =>
       Date.parse(r.releasableAt) === Date.parse(r.anchorEndAt) + 3 * DAY
     ),
+  );
+});
+
+Deno.test("fallback occurrence identity cannot collide across events sharing an end time", () => {
+  const rows = computePendingItems([
+    base({
+      sourceId: "fallback-a",
+      eventId: "event-a",
+      eventDateId: null,
+      occurrences: [{ id: "event-a-date", endAt: iso(5) }],
+    }),
+    base({
+      sourceId: "fallback-b",
+      eventId: "event-b",
+      eventDateId: null,
+      occurrences: [{ id: "event-b-date", endAt: iso(5) }],
+    }),
+  ], iso(20));
+  assertEquals(rows.map((row) => row.eventDateId), [
+    "event-a-date",
+    "event-b-date",
+  ]);
+  assert(rows[0].releaseKey !== rows[1].releaseKey);
+});
+
+Deno.test("provider references route by rail before any provider retrieval", () => {
+  assertEquals(
+    providerReferenceRoute("paystack", "pi_paystack_reference"),
+    "paystack_reference",
+  );
+  assertEquals(providerReferenceRoute("stripe", "ch_123"), "stripe_charge");
+  assertEquals(
+    providerReferenceRoute("stripe", "pi_123"),
+    "stripe_payment_intent",
   );
 });
 

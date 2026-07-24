@@ -20,6 +20,9 @@ CREATE TABLE public.brand_payout_releases (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   brand_id uuid NOT NULL REFERENCES public.brands(id) ON DELETE RESTRICT,
   event_id uuid REFERENCES public.events(id) ON DELETE RESTRICT,
+  event_key uuid GENERATED ALWAYS AS (
+    coalesce(event_id,'00000000-0000-0000-0000-000000000000'::uuid)
+  ) STORED,
   event_date_id uuid REFERENCES public.event_dates(id) ON DELETE SET NULL,
   occurrence_key text NOT NULL,
   surface text NOT NULL CHECK (surface IN ('order','rsvp_contribution','venue_reservation')),
@@ -55,7 +58,7 @@ CREATE TABLE public.brand_payout_releases (
 
 CREATE UNIQUE INDEX brand_payout_releases_unit_uniq
   ON public.brand_payout_releases
-  (brand_id, occurrence_key, surface, provider, currency);
+  (brand_id, event_key, occurrence_key, surface, provider, currency);
 CREATE INDEX brand_payout_releases_pending_idx
   ON public.brand_payout_releases (status, releasable_at, created_at);
 CREATE INDEX brand_payout_releases_event_idx
@@ -74,6 +77,7 @@ CREATE TABLE public.payout_release_items (
   -- Charge-processing cost only. Outbound transfer costs live in payout_transfer_legs.
   provider_fee_cents integer NOT NULL DEFAULT 0 CHECK (provider_fee_cents >= 0),
   net_cents integer NOT NULL CHECK (net_cents >= 0),
+  source_finalized_at timestamptz NOT NULL,
   attached_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (source_type, source_id)
 );
@@ -149,6 +153,9 @@ CREATE TABLE public.payout_debt_applications (
   debt_id uuid NOT NULL REFERENCES public.organiser_payout_debts(id) ON DELETE RESTRICT,
   release_id uuid NOT NULL REFERENCES public.brand_payout_releases(id) ON DELETE RESTRICT,
   amount_cents integer NOT NULL CHECK (amount_cents > 0),
+  converted_cents integer NOT NULL DEFAULT 0 CHECK (
+    converted_cents >= 0 AND converted_cents <= amount_cents
+  ),
   idempotency_key text NOT NULL UNIQUE,
   created_at timestamptz NOT NULL DEFAULT now(),
   released_at timestamptz,
@@ -179,18 +186,45 @@ $fn$;
 CREATE TRIGGER payout_release_items_append_only
   BEFORE UPDATE OR DELETE ON public.payout_release_items
   FOR EACH ROW EXECUTE FUNCTION public.reject_payout_append_only_mutation();
+CREATE TRIGGER payout_source_fee_snapshots_append_only
+  BEFORE UPDATE OR DELETE ON public.payout_source_fee_snapshots
+  FOR EACH ROW EXECUTE FUNCTION public.reject_payout_append_only_mutation();
 CREATE TRIGGER payout_transfer_legs_append_only
   BEFORE DELETE ON public.payout_transfer_legs
   FOR EACH ROW EXECUTE FUNCTION public.reject_payout_append_only_mutation();
 CREATE TRIGGER payout_ledger_adjustments_append_only
   BEFORE UPDATE OR DELETE ON public.payout_ledger_adjustments
   FOR EACH ROW EXECUTE FUNCTION public.reject_payout_append_only_mutation();
-CREATE TRIGGER payout_debt_applications_append_only
-  BEFORE UPDATE OR DELETE ON public.payout_debt_applications
-  FOR EACH ROW EXECUTE FUNCTION public.reject_payout_append_only_mutation();
 CREATE TRIGGER payout_debt_events_append_only
   BEFORE UPDATE OR DELETE ON public.payout_debt_events
   FOR EACH ROW EXECUTE FUNCTION public.reject_payout_append_only_mutation();
+
+CREATE OR REPLACE FUNCTION public.protect_payout_debt_application()
+RETURNS trigger LANGUAGE plpgsql SET search_path = public, pg_temp AS $fn$
+BEGIN
+  IF TG_OP='DELETE' THEN
+    RAISE EXCEPTION 'payout_ledger_append_only' USING ERRCODE='P0001';
+  END IF;
+  IF OLD.released_at IS NULL AND NEW.released_at IS NOT NULL
+     AND NEW.id=OLD.id AND NEW.debt_id=OLD.debt_id
+     AND NEW.release_id=OLD.release_id AND NEW.amount_cents=OLD.amount_cents
+     AND NEW.converted_cents=OLD.converted_cents
+     AND NEW.idempotency_key=OLD.idempotency_key AND NEW.created_at=OLD.created_at THEN
+    RETURN NEW;
+  END IF;
+  IF NEW.released_at IS NOT DISTINCT FROM OLD.released_at
+     AND NEW.id=OLD.id AND NEW.debt_id=OLD.debt_id
+     AND NEW.release_id=OLD.release_id AND NEW.amount_cents=OLD.amount_cents
+     AND NEW.converted_cents>=OLD.converted_cents
+     AND NEW.idempotency_key=OLD.idempotency_key AND NEW.created_at=OLD.created_at THEN
+    RETURN NEW;
+  END IF;
+  RAISE EXCEPTION 'payout_debt_application_immutable' USING ERRCODE='P0001';
+END;
+$fn$;
+CREATE TRIGGER payout_debt_applications_protected
+  BEFORE UPDATE OR DELETE ON public.payout_debt_applications
+  FOR EACH ROW EXECUTE FUNCTION public.protect_payout_debt_application();
 
 ALTER TABLE public.payout_source_fee_snapshots ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.brand_payout_releases ENABLE ROW LEVEL SECURITY;
@@ -250,18 +284,40 @@ CREATE POLICY payout_debt_events_brand_read ON public.payout_debt_events
     )
   );
 -- No client write policy on any ledger table; service_role bypasses RLS.
-GRANT SELECT,INSERT,UPDATE,DELETE ON public.payout_source_fee_snapshots TO service_role;
+GRANT SELECT,INSERT ON public.payout_source_fee_snapshots TO service_role;
 GRANT SELECT,INSERT,UPDATE,DELETE ON public.brand_payout_releases TO service_role;
 GRANT SELECT,INSERT,UPDATE ON public.payout_release_items TO service_role;
 GRANT SELECT,INSERT,UPDATE ON public.payout_transfer_legs TO service_role;
 GRANT SELECT,INSERT ON public.payout_ledger_adjustments TO service_role;
 GRANT SELECT,INSERT,UPDATE ON public.organiser_payout_debts TO service_role;
-GRANT SELECT,INSERT ON public.payout_debt_applications TO service_role;
+GRANT SELECT,INSERT,UPDATE ON public.payout_debt_applications TO service_role;
 GRANT SELECT,INSERT ON public.payout_debt_events TO service_role;
 GRANT SELECT ON public.brand_payout_releases,public.payout_release_items,
   public.payout_transfer_legs,public.payout_ledger_adjustments,
   public.organiser_payout_debts,public.payout_debt_applications,
   public.payout_debt_events TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.resolve_payout_live_occurrence(
+  p_event_id uuid,
+  p_event_date_id uuid,
+  p_finalized_at timestamptz
+) RETURNS TABLE(event_date_id uuid,end_at timestamptz)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+AS $fn$
+  SELECT ed.id,ed.end_at
+  FROM public.event_dates ed
+  WHERE ed.event_id=p_event_id
+    AND (p_event_date_id IS NULL OR ed.id=p_event_date_id)
+  ORDER BY
+    CASE WHEN p_event_date_id IS NOT NULL THEN 0
+         WHEN ed.end_at>=p_finalized_at THEN 0 ELSE 1 END,
+    CASE WHEN p_event_date_id IS NULL AND ed.end_at>=p_finalized_at
+         THEN ed.end_at END ASC,
+    CASE WHEN p_event_date_id IS NULL AND ed.end_at<p_finalized_at
+         THEN ed.end_at END DESC,
+    ed.id
+  LIMIT 1;
+$fn$;
 
 CREATE OR REPLACE FUNCTION public.resolve_payout_live_anchor(
   p_event_id uuid,
@@ -270,17 +326,9 @@ CREATE OR REPLACE FUNCTION public.resolve_payout_live_anchor(
 ) RETURNS timestamptz
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
 AS $fn$
-  SELECT CASE
-    WHEN p_event_date_id IS NOT NULL THEN (
-      SELECT ed.end_at FROM public.event_dates ed
-      WHERE ed.id = p_event_date_id AND ed.event_id = p_event_id
-    )
-    ELSE COALESCE(
-      (SELECT min(ed.end_at) FROM public.event_dates ed
-       WHERE ed.event_id = p_event_id AND ed.end_at >= p_finalized_at),
-      (SELECT max(ed.end_at) FROM public.event_dates ed WHERE ed.event_id = p_event_id)
-    )
-  END;
+  SELECT o.end_at FROM public.resolve_payout_live_occurrence(
+    p_event_id,p_event_date_id,p_finalized_at
+  ) o;
 $fn$;
 
 CREATE OR REPLACE FUNCTION public.attach_payout_release(
@@ -337,7 +385,7 @@ BEGIN
     p_gross_cents,p_refunded_cents,p_disputed_cents,p_mingla_fee_cents,
     p_partner_share_cents,p_provider_fee_cents,v_net
   )
-  ON CONFLICT (brand_id,occurrence_key,surface,provider,currency)
+  ON CONFLICT (brand_id,event_key,occurrence_key,surface,provider,currency)
   DO UPDATE SET
     anchor_end_at = EXCLUDED.anchor_end_at,
     releasable_at = EXCLUDED.releasable_at,
@@ -347,16 +395,19 @@ BEGIN
 
   IF v_release_id IS NULL THEN
     SELECT id INTO v_release_id FROM public.brand_payout_releases
-     WHERE brand_id=p_brand_id AND occurrence_key=p_occurrence_key
+     WHERE brand_id=p_brand_id
+       AND event_key=coalesce(p_event_id,'00000000-0000-0000-0000-000000000000'::uuid)
+       AND occurrence_key=p_occurrence_key
        AND surface=p_source_type AND provider=p_provider AND currency=lower(p_currency);
   END IF;
 
   INSERT INTO public.payout_release_items (
     release_id,source_type,source_id,gross_cents,refunded_cents,disputed_cents,
-    mingla_fee_cents,partner_share_cents,provider_fee_cents,net_cents
+    mingla_fee_cents,partner_share_cents,provider_fee_cents,net_cents,source_finalized_at
   ) VALUES (
     v_release_id,p_source_type,p_source_id,p_gross_cents,p_refunded_cents,
-    p_disputed_cents,p_mingla_fee_cents,p_partner_share_cents,p_provider_fee_cents,v_net
+    p_disputed_cents,p_mingla_fee_cents,p_partner_share_cents,p_provider_fee_cents,v_net,
+    p_finalized_at
   ) ON CONFLICT (source_type,source_id) DO NOTHING;
 
   -- Totals are rebuilt from immutable items, never from provider balances.
@@ -372,6 +423,42 @@ BEGIN
     FROM public.payout_release_items WHERE release_id=v_release_id GROUP BY release_id
   ) x WHERE r.id=x.release_id;
   RETURN v_release_id;
+END;
+$fn$;
+
+CREATE OR REPLACE FUNCTION public.refresh_pending_payout_release_truth(
+  p_now timestamptz DEFAULT now()
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+AS $fn$
+DECLARE v_release record; v_end_at timestamptz; v_reanchored integer:=0; v_cancelled integer:=0;
+BEGIN
+  FOR v_release IN
+    SELECT r.id,r.event_id,r.event_date_id,r.anchor_end_at,e.status event_status
+    FROM public.brand_payout_releases r
+    JOIN public.events e ON e.id=r.event_id
+    WHERE r.status IN ('pending','blocked_kyc','blocked_balance','blocked_otp')
+    ORDER BY r.id FOR UPDATE OF r SKIP LOCKED
+  LOOP
+    IF v_release.event_status='cancelled' THEN
+      UPDATE public.brand_payout_releases
+      SET status='cancelled_event',updated_at=p_now
+      WHERE id=v_release.id;
+      v_cancelled:=v_cancelled+1;
+      CONTINUE;
+    END IF;
+    SELECT ed.end_at INTO v_end_at FROM public.event_dates ed
+    WHERE ed.id=v_release.event_date_id AND ed.event_id=v_release.event_id;
+    IF v_end_at IS NOT NULL AND v_end_at IS DISTINCT FROM v_release.anchor_end_at THEN
+      UPDATE public.brand_payout_releases
+      SET anchor_end_at=v_end_at,releasable_at=v_end_at+interval '3 days',updated_at=p_now
+      WHERE id=v_release.id;
+      v_reanchored:=v_reanchored+1;
+    END IF;
+  END LOOP;
+  RETURN jsonb_build_object(
+    'as_of',p_now,'reanchored',v_reanchored,'cancelled',v_cancelled
+  );
 END;
 $fn$;
 
@@ -424,9 +511,8 @@ BEGIN
        AND r.organiser_cash_delivered_cents>0
      ORDER BY r.released_at,r.id
   LOOP
-    v_anchor:=public.resolve_payout_live_anchor(
-      v_release.event_id,v_release.event_date_id,v_release.created_at
-    );
+    SELECT ed.end_at INTO v_anchor FROM public.event_dates ed
+    WHERE ed.id=v_release.event_date_id AND ed.event_id=v_release.event_id;
     IF v_anchor IS NOT NULL
        AND v_anchor+interval '3 days'>p_now
        AND v_anchor>v_release.anchor_end_at THEN
@@ -438,7 +524,10 @@ BEGIN
 END;
 $fn$;
 
-CREATE OR REPLACE FUNCTION public.apply_open_payout_debts(p_release_id uuid)
+CREATE OR REPLACE FUNCTION public.apply_open_payout_debts(
+  p_release_id uuid,
+  p_now timestamptz
+)
 RETURNS integer
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
 AS $fn$
@@ -451,7 +540,7 @@ BEGIN
   FOR v_debt IN
     SELECT * FROM public.organiser_payout_debts
      WHERE brand_id=v_release.brand_id AND currency=v_release.currency AND status='open'
-       AND (kind <> 'post_release_postponement' OR maturity_at > now())
+       AND (kind <> 'post_release_postponement' OR maturity_at > p_now)
      ORDER BY CASE WHEN kind='post_release_postponement' THEN 1 ELSE 0 END, opened_at, id
      FOR UPDATE SKIP LOCKED
   LOOP
@@ -462,7 +551,8 @@ BEGIN
       VALUES(v_debt.id,p_release_id,v_take,'debt-apply:'||v_debt.id||':'||p_release_id)
       ON CONFLICT(idempotency_key) DO NOTHING;
       IF FOUND THEN
-        UPDATE public.organiser_payout_debts SET recovered_cents=recovered_cents+v_take,updated_at=now()
+        UPDATE public.organiser_payout_debts
+        SET recovered_cents=recovered_cents+v_take,updated_at=p_now
          WHERE id=v_debt.id;
         INSERT INTO public.payout_debt_events(debt_id,event_kind,amount_cents,release_id,idempotency_key)
         VALUES(v_debt.id,'future_value_reserved',v_take,p_release_id,
@@ -482,7 +572,7 @@ BEGIN
       JOIN public.organiser_payout_debts d ON d.id=a.debt_id
       WHERE a.release_id=p_release_id AND d.kind='post_release_postponement'
     ),
-    net_release_cents=v_available,updated_at=now()
+    net_release_cents=v_available,updated_at=p_now
   WHERE id=p_release_id;
   RETURN v_total;
 END;
@@ -492,21 +582,35 @@ CREATE OR REPLACE FUNCTION public.mature_postponement_debts(p_now timestamptz DE
 RETURNS integer
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
 AS $fn$
-DECLARE v_debt record; v_count integer:=0;
+DECLARE v_debt record; v_app record; v_recredit integer; v_count integer:=0;
 BEGIN
   FOR v_debt IN
     SELECT * FROM public.organiser_payout_debts
      WHERE kind='post_release_postponement' AND status='open' AND maturity_at<=p_now
      ORDER BY maturity_at,id FOR UPDATE SKIP LOCKED
   LOOP
-    IF v_debt.recovered_cents>0 THEN
-      INSERT INTO public.payout_ledger_adjustments(
-        release_id,brand_id,currency,kind,amount_cents,idempotency_key
-      ) VALUES(
-        v_debt.origin_release_id,v_debt.brand_id,v_debt.currency,'maturity_recredit',
-        v_debt.recovered_cents,'postpone-recredit:'||v_debt.id
-      ) ON CONFLICT(idempotency_key) DO NOTHING;
-    END IF;
+    FOR v_app IN
+      SELECT * FROM public.payout_debt_applications
+      WHERE debt_id=v_debt.id AND released_at IS NULL
+      ORDER BY created_at,id FOR UPDATE
+    LOOP
+      v_recredit:=v_app.amount_cents-v_app.converted_cents;
+      IF v_recredit>0 THEN
+        INSERT INTO public.payout_ledger_adjustments(
+          release_id,brand_id,currency,kind,amount_cents,idempotency_key
+        ) VALUES(
+          v_app.release_id,v_debt.brand_id,v_debt.currency,'maturity_recredit',
+          v_recredit,'postpone-recredit:'||v_app.id
+        ) ON CONFLICT(idempotency_key) DO NOTHING;
+        INSERT INTO public.payout_debt_events(
+          debt_id,event_kind,amount_cents,anchor_at,release_id,idempotency_key
+        ) VALUES(
+          v_debt.id,'future_value_released',v_recredit,v_debt.maturity_at,
+          v_app.release_id,'postpone-released:'||v_app.id
+        ) ON CONFLICT(idempotency_key) DO NOTHING;
+      END IF;
+      UPDATE public.payout_debt_applications SET released_at=p_now WHERE id=v_app.id;
+    END LOOP;
     IF v_debt.principal_cents>v_debt.recovered_cents THEN
       INSERT INTO public.payout_ledger_adjustments(
         release_id,brand_id,currency,kind,amount_cents,idempotency_key
@@ -515,7 +619,7 @@ BEGIN
         v_debt.principal_cents-v_debt.recovered_cents,'postpone-close:'||v_debt.id
       ) ON CONFLICT(idempotency_key) DO NOTHING;
     END IF;
-    UPDATE public.organiser_payout_debts SET status='closed',closed_at=p_now,updated_at=now()
+    UPDATE public.organiser_payout_debts SET status='closed',closed_at=p_now,updated_at=p_now
      WHERE id=v_debt.id;
     INSERT INTO public.payout_debt_events(debt_id,event_kind,amount_cents,anchor_at,idempotency_key)
     VALUES(v_debt.id,'cleared',v_debt.recovered_cents,v_debt.maturity_at,'postpone-cleared:'||v_debt.id)
@@ -523,6 +627,90 @@ BEGIN
     v_count:=v_count+1;
   END LOOP;
   RETURN v_count;
+END;
+$fn$;
+
+CREATE OR REPLACE FUNCTION public.convert_postponement_debt_to_permanent(
+  p_origin_release_id uuid,
+  p_kind text,
+  p_amount_cents integer,
+  p_now timestamptz DEFAULT now()
+) RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_release public.brand_payout_releases;
+  v_temp public.organiser_payout_debts;
+  v_permanent_id uuid;
+  v_overlap integer:=0;
+  v_recovered_overlap integer:=0;
+  v_left integer;
+  v_app record;
+  v_take integer;
+BEGIN
+  IF p_kind NOT IN ('post_release_refund','post_release_dispute','post_release_cancellation')
+     OR p_amount_cents<=0 THEN
+    RAISE EXCEPTION 'invalid_permanent_debt_conversion' USING ERRCODE='22023';
+  END IF;
+  SELECT * INTO v_release FROM public.brand_payout_releases
+  WHERE id=p_origin_release_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'origin_release_not_found' USING ERRCODE='P0002'; END IF;
+
+  SELECT id INTO v_permanent_id FROM public.organiser_payout_debts
+  WHERE origin_release_id=p_origin_release_id AND kind=p_kind;
+  IF FOUND THEN RETURN v_permanent_id; END IF;
+
+  SELECT * INTO v_temp FROM public.organiser_payout_debts
+  WHERE origin_release_id=p_origin_release_id
+    AND kind='post_release_postponement' AND status='open'
+  FOR UPDATE;
+  IF FOUND THEN
+    v_overlap:=least(p_amount_cents,v_temp.principal_cents);
+    v_recovered_overlap:=least(v_overlap,v_temp.recovered_cents);
+  END IF;
+
+  INSERT INTO public.organiser_payout_debts(
+    brand_id,currency,origin_release_id,kind,principal_cents,recovered_cents,
+    idempotency_key,opened_at,updated_at
+  ) VALUES(
+    v_release.brand_id,v_release.currency,p_origin_release_id,p_kind,p_amount_cents,
+    v_recovered_overlap,'permanent:'||p_kind||':'||p_origin_release_id,p_now,p_now
+  ) RETURNING id INTO v_permanent_id;
+
+  IF v_overlap>0 THEN
+    v_left:=v_recovered_overlap;
+    FOR v_app IN
+      SELECT * FROM public.payout_debt_applications
+      WHERE debt_id=v_temp.id AND amount_cents>converted_cents
+      ORDER BY created_at,id FOR UPDATE
+    LOOP
+      EXIT WHEN v_left=0;
+      v_take:=least(v_left,v_app.amount_cents-v_app.converted_cents);
+      UPDATE public.payout_debt_applications
+      SET converted_cents=converted_cents+v_take WHERE id=v_app.id;
+      INSERT INTO public.payout_debt_applications(
+        debt_id,release_id,amount_cents,idempotency_key,created_at
+      ) VALUES(
+        v_permanent_id,v_app.release_id,v_take,
+        'converted-apply:'||v_permanent_id||':'||v_app.id,p_now
+      ) ON CONFLICT(idempotency_key) DO NOTHING;
+      v_left:=v_left-v_take;
+    END LOOP;
+    UPDATE public.organiser_payout_debts SET
+      principal_cents=principal_cents-v_overlap,
+      recovered_cents=recovered_cents-v_recovered_overlap,
+      status=CASE WHEN principal_cents-v_overlap=0 THEN 'converted' ELSE 'open' END,
+      closed_at=CASE WHEN principal_cents-v_overlap=0 THEN p_now ELSE NULL END,
+      updated_at=p_now
+    WHERE id=v_temp.id;
+    INSERT INTO public.payout_debt_events(
+      debt_id,event_kind,amount_cents,release_id,idempotency_key,created_at
+    ) VALUES(
+      v_temp.id,'cancellation_converted',v_overlap,p_origin_release_id,
+      'postpone-convert:'||v_temp.id||':'||p_kind,p_now
+    );
+  END IF;
+  RETURN v_permanent_id;
 END;
 $fn$;
 
@@ -536,7 +724,9 @@ AS $fn$
   SELECT * FROM (
     SELECT 'order'::text AS source_type,o.id AS source_id,
       b.payment_provider AS provider,
-      coalesce(o.stripe_charge_id,o.stripe_payment_intent_id) AS provider_reference,
+      CASE WHEN b.payment_provider='paystack' THEN o.stripe_payment_intent_id
+           ELSE coalesce(o.stripe_charge_id,o.stripe_payment_intent_id) END
+        AS provider_reference,
       CASE WHEN b.payment_provider='stripe' THEN b.stripe_connect_id ELSE NULL END
         AS stripe_account_id
     FROM public.orders o JOIN public.events e ON e.id=o.event_id
@@ -545,18 +735,22 @@ AS $fn$
       AND b.payout_hold_cutover_at IS NOT NULL AND o.created_at>b.payout_hold_cutover_at
     UNION ALL
     SELECT 'rsvp_contribution',c.id,c.provider,
-      coalesce(c.stripe_charge_id,c.stripe_payment_intent_id),
+      CASE WHEN c.provider='paystack' THEN c.stripe_payment_intent_id
+           ELSE coalesce(c.stripe_charge_id,c.stripe_payment_intent_id) END,
       CASE WHEN c.provider='stripe' THEN b.stripe_connect_id ELSE NULL END
     FROM public.event_rsvp_contributions c JOIN public.brands b ON b.id=c.brand_id
     WHERE c.status IN ('paid','partially_refunded') AND b.payout_hold_cutover_at IS NOT NULL
       AND coalesce(c.paid_at,c.created_at)>b.payout_hold_cutover_at
     UNION ALL
     SELECT 'venue_reservation',s.id,b.payment_provider,
-      coalesce(s.paystack_reference,s.stripe_payment_intent_id,s.stripe_checkout_session_id),
+      CASE WHEN b.payment_provider='paystack' THEN s.paystack_reference
+           ELSE s.stripe_payment_intent_id END,
       CASE WHEN b.payment_provider='stripe' THEN s.stripe_account_id ELSE NULL END
-    FROM public.reservation_checkout_sessions s JOIN public.brands b ON b.id=s.brand_id
+    FROM public.reservation_checkout_sessions s
+    JOIN public.reservations r ON r.id=s.reservation_id
+    JOIN public.brands b ON b.id=s.brand_id
     WHERE s.status='completed' AND s.amount_cents>0 AND b.payout_hold_cutover_at IS NOT NULL
-      AND s.updated_at>b.payout_hold_cutover_at
+      AND r.created_at>b.payout_hold_cutover_at
   ) q
   WHERE q.provider_reference IS NOT NULL
     AND NOT EXISTS (
@@ -573,53 +767,61 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
 AS $fn$
 DECLARE v_row record; v_release_id uuid; v_created integer:=0; v_matured integer;
   v_opened integer;
+  v_refreshed jsonb;
 BEGIN
+  v_refreshed:=public.refresh_pending_payout_release_truth(p_now);
   v_opened:=public.sync_post_release_postponement_debts(p_now);
   v_matured:=public.mature_postponement_debts(p_now);
   FOR v_row IN
     WITH candidates AS (
-      SELECT 'order'::text source_type,o.id source_id,e.brand_id,o.event_id,o.event_date_id,
+      SELECT 'order'::text source_type,o.id source_id,e.brand_id,o.event_id,
+        occ.event_date_id,
         b.payment_provider provider,lower(o.currency::text) currency,o.created_at finalized_at,
-        public.resolve_payout_live_anchor(o.event_id,o.event_date_id,o.created_at) anchor_end_at,
+        occ.end_at anchor_end_at,
         o.total_cents gross_cents,o.refunded_amount_cents refunded_cents,
         coalesce((SELECT sum(d.amount)::int FROM public.stripe_disputes d
           WHERE d.order_id=o.id AND d.status NOT IN ('won','warning_closed')),0) disputed_cents,
         o.stripe_application_fee_amount_cents mingla_fee_cents,
         coalesce((SELECT sum(ps.partner_share_cents)::int FROM public.partner_splits ps
           WHERE ps.order_id=o.id),0) partner_share_cents,
-        coalesce(fs.provider_fee_cents,0) provider_fee_cents,
-        coalesce(o.event_date_id::text,'fallback:'||public.resolve_payout_live_anchor(
-          o.event_id,o.event_date_id,o.created_at)::text) occurrence_key
+        fs.provider_fee_cents,
+        occ.event_date_id::text occurrence_key
       FROM public.orders o JOIN public.events e ON e.id=o.event_id
       JOIN public.brands b ON b.id=e.brand_id
+      JOIN LATERAL public.resolve_payout_live_occurrence(
+        o.event_id,o.event_date_id,o.created_at
+      ) occ ON true
       JOIN public.payout_source_fee_snapshots fs
         ON fs.source_type='order' AND fs.source_id=o.id
       WHERE o.payment_status IN ('paid','partial_refund')
         AND o.total_cents>0 AND b.payout_hold_cutover_at IS NOT NULL
         AND o.created_at>b.payout_hold_cutover_at AND e.status<>'cancelled'
       UNION ALL
-      SELECT 'rsvp_contribution',c.id,e.brand_id,c.event_id,NULL::uuid,c.provider,
+      SELECT 'rsvp_contribution',c.id,e.brand_id,c.event_id,occ.event_date_id,c.provider,
         lower(c.currency),coalesce(c.paid_at,c.created_at),
-        public.resolve_payout_live_anchor(c.event_id,NULL,coalesce(c.paid_at,c.created_at)),
+        occ.end_at,
         c.buyer_total_cents,c.refunded_amount_cents,0,c.application_fee_amount_cents,0,
-        coalesce(fs.provider_fee_cents,0),
-        'fallback:'||public.resolve_payout_live_anchor(
-          c.event_id,NULL,coalesce(c.paid_at,c.created_at))::text
+        fs.provider_fee_cents,occ.event_date_id::text
       FROM public.event_rsvp_contributions c JOIN public.events e ON e.id=c.event_id
       JOIN public.brands b ON b.id=c.brand_id
+      JOIN LATERAL public.resolve_payout_live_occurrence(
+        c.event_id,NULL,coalesce(c.paid_at,c.created_at)
+      ) occ ON true
       JOIN public.payout_source_fee_snapshots fs
         ON fs.source_type='rsvp_contribution' AND fs.source_id=c.id
       WHERE c.status IN ('paid','partially_refunded') AND b.payout_hold_cutover_at IS NOT NULL
         AND coalesce(c.paid_at,c.created_at)>b.payout_hold_cutover_at AND e.status<>'cancelled'
       UNION ALL
       SELECT 'venue_reservation',s.id,s.brand_id,NULL::uuid,NULL::uuid,b.payment_provider,
-        lower(s.currency::text),s.updated_at,s.reserved_for,s.amount_cents,0,0,0,0,
-        coalesce(fs.provider_fee_cents,0),'reservation:'||s.id::text
-      FROM public.reservation_checkout_sessions s JOIN public.brands b ON b.id=s.brand_id
+        lower(s.currency::text),r.created_at,s.reserved_for,s.amount_cents,0,0,0,0,
+        fs.provider_fee_cents,'reservation:'||s.id::text
+      FROM public.reservation_checkout_sessions s
+      JOIN public.reservations r ON r.id=s.reservation_id
+      JOIN public.brands b ON b.id=s.brand_id
       JOIN public.payout_source_fee_snapshots fs
         ON fs.source_type='venue_reservation' AND fs.source_id=s.id
       WHERE s.status='completed' AND s.amount_cents>0 AND b.payout_hold_cutover_at IS NOT NULL
-        AND s.updated_at>b.payout_hold_cutover_at
+        AND r.created_at>b.payout_hold_cutover_at
     )
     SELECT * FROM candidates c
      WHERE c.anchor_end_at IS NOT NULL AND c.anchor_end_at+interval '3 days'<=p_now
@@ -633,38 +835,47 @@ BEGIN
       v_row.gross_cents,v_row.refunded_cents,v_row.disputed_cents,v_row.mingla_fee_cents,
       v_row.partner_share_cents,v_row.provider_fee_cents
     );
-    PERFORM public.apply_open_payout_debts(v_release_id);
+    PERFORM public.apply_open_payout_debts(v_release_id,p_now);
     v_created:=v_created+1;
   END LOOP;
   RETURN jsonb_build_object(
     'dark',true,'attached',v_created,'opened_postponement_debts',v_opened,
-    'matured_debts',v_matured,'executed',0
+    'matured_debts',v_matured,'refreshed',v_refreshed,'executed',0
   );
 END;
 $fn$;
 
 REVOKE ALL ON FUNCTION public.resolve_payout_live_anchor(uuid,uuid,timestamptz) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.resolve_payout_live_anchor(uuid,uuid,timestamptz) FROM anon,authenticated;
+REVOKE ALL ON FUNCTION public.resolve_payout_live_occurrence(uuid,uuid,timestamptz) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.resolve_payout_live_occurrence(uuid,uuid,timestamptz) FROM anon,authenticated;
 REVOKE ALL ON FUNCTION public.attach_payout_release(text,uuid,uuid,uuid,uuid,text,text,text,timestamptz,timestamptz,integer,integer,integer,integer,integer,integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.attach_payout_release(text,uuid,uuid,uuid,uuid,text,text,text,timestamptz,timestamptz,integer,integer,integer,integer,integer,integer) FROM anon,authenticated;
 REVOKE ALL ON FUNCTION public.open_post_release_postponement_debt(uuid,timestamptz) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.open_post_release_postponement_debt(uuid,timestamptz) FROM anon,authenticated;
+REVOKE ALL ON FUNCTION public.refresh_pending_payout_release_truth(timestamptz) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.refresh_pending_payout_release_truth(timestamptz) FROM anon,authenticated;
 REVOKE ALL ON FUNCTION public.sync_post_release_postponement_debts(timestamptz) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.sync_post_release_postponement_debts(timestamptz) FROM anon,authenticated;
-REVOKE ALL ON FUNCTION public.apply_open_payout_debts(uuid) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.apply_open_payout_debts(uuid) FROM anon,authenticated;
+REVOKE ALL ON FUNCTION public.apply_open_payout_debts(uuid,timestamptz) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.apply_open_payout_debts(uuid,timestamptz) FROM anon,authenticated;
 REVOKE ALL ON FUNCTION public.mature_postponement_debts(timestamptz) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.mature_postponement_debts(timestamptz) FROM anon,authenticated;
+REVOKE ALL ON FUNCTION public.convert_postponement_debt_to_permanent(uuid,text,integer,timestamptz) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.convert_postponement_debt_to_permanent(uuid,text,integer,timestamptz) FROM anon,authenticated;
 REVOKE ALL ON FUNCTION public.list_missing_payout_source_fees(integer) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.list_missing_payout_source_fees(integer) FROM anon,authenticated;
 REVOKE ALL ON FUNCTION public.run_payout_release_dark_sweep(timestamptz) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.run_payout_release_dark_sweep(timestamptz) FROM anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.resolve_payout_live_anchor(uuid,uuid,timestamptz) TO service_role;
+GRANT EXECUTE ON FUNCTION public.resolve_payout_live_occurrence(uuid,uuid,timestamptz) TO service_role;
 GRANT EXECUTE ON FUNCTION public.attach_payout_release(text,uuid,uuid,uuid,uuid,text,text,text,timestamptz,timestamptz,integer,integer,integer,integer,integer,integer) TO service_role;
 GRANT EXECUTE ON FUNCTION public.open_post_release_postponement_debt(uuid,timestamptz) TO service_role;
+GRANT EXECUTE ON FUNCTION public.refresh_pending_payout_release_truth(timestamptz) TO service_role;
 GRANT EXECUTE ON FUNCTION public.sync_post_release_postponement_debts(timestamptz) TO service_role;
-GRANT EXECUTE ON FUNCTION public.apply_open_payout_debts(uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.apply_open_payout_debts(uuid,timestamptz) TO service_role;
 GRANT EXECUTE ON FUNCTION public.mature_postponement_debts(timestamptz) TO service_role;
+GRANT EXECUTE ON FUNCTION public.convert_postponement_debt_to_permanent(uuid,text,integer,timestamptz) TO service_role;
 GRANT EXECUTE ON FUNCTION public.list_missing_payout_source_fees(integer) TO service_role;
 GRANT EXECUTE ON FUNCTION public.run_payout_release_dark_sweep(timestamptz) TO service_role;
 

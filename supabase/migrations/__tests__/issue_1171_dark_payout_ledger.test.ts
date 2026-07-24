@@ -30,23 +30,37 @@ Deno.test("#1171 schema is append-only, rail-neutral, and fee-normalized", () =>
   assertStringIncludes(sql, "UNIQUE (source_type, source_id)");
   assertStringIncludes(sql, "payout_release_items_append_only");
   assertStringIncludes(sql, "provider_fee_cents integer NOT NULL");
+  assertStringIncludes(sql, "payout_source_fee_snapshots_append_only");
+  assertStringIncludes(sql, "event_key uuid GENERATED ALWAYS AS");
+  assertStringIncludes(sql, "source_finalized_at timestamptz NOT NULL");
   assertStringIncludes(sql, "CREATE TABLE public.payout_transfer_legs");
   assertStringIncludes(sql, "estimated_fee_cents");
   assertStringIncludes(sql, "stamp_duty_cents");
   assertStringIncludes(sql, "fee_schedule_version");
 });
 
-Deno.test("#1171 RPCs enforce live anchors, strict cutover, debt ordering and recovered-only recredit", () => {
+Deno.test("#1171 RPCs enforce persisted live occurrences, refresh, conversion and recovered-only recredit", () => {
+  assertStringIncludes(sql, "public.resolve_payout_live_occurrence");
   assertStringIncludes(sql, "public.resolve_payout_live_anchor");
-  assertStringIncludes(sql, "ed.end_at >= p_finalized_at");
-  assertStringIncludes(sql, "max(ed.end_at)");
+  assertStringIncludes(sql, "ed.end_at>=p_finalized_at");
+  assertStringIncludes(sql, "occ.event_date_id");
+  assertStringIncludes(sql, "public.refresh_pending_payout_release_truth");
   assertStringIncludes(sql, "p_finalized_at <= v_cutover");
   assertStringIncludes(sql, "cancelled_event_never_releases");
   assertStringIncludes(sql, "FOR UPDATE SKIP LOCKED");
   assertStringIncludes(sql, "kind <> 'post_release_postponement'");
-  assertStringIncludes(sql, "v_debt.recovered_cents,'postpone-recredit:'");
+  assertStringIncludes(sql, "v_app.amount_cents-v_app.converted_cents");
+  assertStringIncludes(sql, "'future_value_released'");
+  assertStringIncludes(sql, "released_at=p_now");
   assertStringIncludes(sql, "v_debt.principal_cents-v_debt.recovered_cents");
+  assertStringIncludes(sql, "public.convert_postponement_debt_to_permanent");
+  assertStringIncludes(sql, "'cancellation_converted'");
   assertStringIncludes(sql, "'postpone:'||v_release.id");
+  assertStringIncludes(sql, "r.created_at>b.payout_hold_cutover_at");
+  assertStringIncludes(
+    sql,
+    "CASE WHEN b.payment_provider='paystack' THEN o.stripe_payment_intent_id",
+  );
   assertStringIncludes(sql, "'dark',true");
   assertStringIncludes(sql, "'executed',0");
   assertStringIncludes(sql, "FROM anon,authenticated");
@@ -66,3 +80,229 @@ Deno.test("#1171 cron and gateway contract are explicit and service-role sourced
   assertStringIncludes(sql, "'Authorization','Bearer ' ||");
   assert(!/\b(payouts|transfers)\.create\s*\(/.test(sql));
 });
+
+const behaviorSql = String.raw`
+BEGIN;
+SET LOCAL session_replication_role = replica;
+INSERT INTO auth.users(id) VALUES ('11710000-0000-0000-0000-000000000001');
+INSERT INTO public.creator_accounts(id)
+VALUES ('11710000-0000-0000-0000-000000000001');
+INSERT INTO public.brands(
+  id,account_id,name,slug,default_currency,payout_hold_cutover_at
+) VALUES (
+  '11710000-0000-0000-0000-000000000010',
+  '11710000-0000-0000-0000-000000000001',
+  'Issue 1171 SQL Test','issue-1171-sql-test','USD','2026-07-01T00:00:00Z'
+);
+INSERT INTO public.events(id,brand_id,title,slug,status,currency)
+VALUES
+  ('11710000-0000-0000-0000-000000000101',
+   '11710000-0000-0000-0000-000000000010','Event A','issue-1171-a','scheduled','USD'),
+  ('11710000-0000-0000-0000-000000000102',
+   '11710000-0000-0000-0000-000000000010','Event B','issue-1171-b','scheduled','USD');
+INSERT INTO public.event_dates(id,event_id,start_at,end_at,is_master)
+VALUES
+  ('11710000-0000-0000-0000-000000000201',
+   '11710000-0000-0000-0000-000000000101','2026-07-04T18:00:00Z','2026-07-04T20:00:00Z',true),
+  ('11710000-0000-0000-0000-000000000202',
+   '11710000-0000-0000-0000-000000000102','2026-07-04T18:00:00Z','2026-07-04T20:00:00Z',true);
+SET LOCAL session_replication_role = origin;
+
+DO $test$
+DECLARE
+  v_occurrence_a uuid;
+  v_occurrence_b uuid;
+  v_release_a uuid;
+  v_release_b uuid;
+  v_target uuid;
+  v_origin uuid;
+  v_debt uuid;
+  v_permanent uuid;
+  v_failed boolean;
+BEGIN
+  SELECT event_date_id INTO v_occurrence_a
+  FROM public.resolve_payout_live_occurrence(
+    '11710000-0000-0000-0000-000000000101',NULL,'2026-07-02T00:00:00Z'
+  );
+  SELECT event_date_id INTO v_occurrence_b
+  FROM public.resolve_payout_live_occurrence(
+    '11710000-0000-0000-0000-000000000102',NULL,'2026-07-02T00:00:00Z'
+  );
+  IF v_occurrence_a=v_occurrence_b OR
+     v_occurrence_a<>'11710000-0000-0000-0000-000000000201' OR
+     v_occurrence_b<>'11710000-0000-0000-0000-000000000202' THEN
+    RAISE EXCEPTION 'fallback occurrence identity was not event-scoped';
+  END IF;
+
+  v_release_a:=public.attach_payout_release(
+    'order','11710000-0000-0000-0000-000000000301',
+    '11710000-0000-0000-0000-000000000010',
+    '11710000-0000-0000-0000-000000000101',v_occurrence_a,v_occurrence_a::text,
+    'stripe','usd','2026-07-02T00:00:00Z','2026-07-04T20:00:00Z',
+    1000,0,0,100,0,30
+  );
+  v_release_b:=public.attach_payout_release(
+    'order','11710000-0000-0000-0000-000000000302',
+    '11710000-0000-0000-0000-000000000010',
+    '11710000-0000-0000-0000-000000000102',v_occurrence_b,v_occurrence_b::text,
+    'stripe','usd','2026-07-02T00:00:00Z','2026-07-04T20:00:00Z',
+    1000,0,0,100,0,30
+  );
+  IF v_release_a=v_release_b OR
+     (SELECT count(*) FROM public.brand_payout_releases
+      WHERE id IN (v_release_a,v_release_b))<>2 THEN
+    RAISE EXCEPTION 'same-time events collided into one release';
+  END IF;
+
+  v_failed:=false;
+  BEGIN
+    PERFORM public.attach_payout_release(
+      'order','11710000-0000-0000-0000-000000000303',
+      '11710000-0000-0000-0000-000000000010',
+      '11710000-0000-0000-0000-000000000101',v_occurrence_a,'cutover-equal',
+      'stripe','usd','2026-07-01T00:00:00Z','2026-07-04T20:00:00Z',
+      1000,0,0,0,0,0
+    );
+  EXCEPTION WHEN SQLSTATE 'P0001' THEN v_failed:=true;
+  END;
+  IF NOT v_failed THEN RAISE EXCEPTION 'cutover equality was admitted'; END IF;
+
+  UPDATE public.event_dates SET end_at='2026-07-10T20:00:00Z'
+  WHERE id=v_occurrence_a;
+  PERFORM public.refresh_pending_payout_release_truth('2026-07-05T00:00:00Z');
+  IF (SELECT anchor_end_at FROM public.brand_payout_releases WHERE id=v_release_a)
+       <>'2026-07-10T20:00:00Z' THEN
+    RAISE EXCEPTION 'pending release did not refresh live event truth';
+  END IF;
+  UPDATE public.events SET status='cancelled'
+  WHERE id='11710000-0000-0000-0000-000000000101';
+  PERFORM public.refresh_pending_payout_release_truth('2026-07-05T00:00:01Z');
+  IF (SELECT status FROM public.brand_payout_releases WHERE id=v_release_a)
+       <>'cancelled_event' THEN
+    RAISE EXCEPTION 'pending release did not refresh cancellation truth';
+  END IF;
+
+  UPDATE public.brand_payout_releases
+  SET status='released',released_at='2026-07-05T00:00:00Z',
+      organiser_cash_delivered_cents=1000
+  WHERE id=v_release_b;
+  INSERT INTO public.event_dates(event_id,start_at,end_at)
+  VALUES(
+    '11710000-0000-0000-0000-000000000102',
+    '2027-07-04T18:00:00Z','2027-07-04T20:00:00Z'
+  );
+  IF public.sync_post_release_postponement_debts('2026-07-06T00:00:00Z')<>0 THEN
+    RAISE EXCEPTION 'recurrence top-up created false postponement debt';
+  END IF;
+
+  INSERT INTO public.payout_source_fee_snapshots(
+    source_type,source_id,provider_fee_cents
+  ) VALUES('order','11710000-0000-0000-0000-000000000301',30);
+  v_failed:=false;
+  BEGIN
+    UPDATE public.payout_source_fee_snapshots SET provider_fee_cents=31
+    WHERE source_id='11710000-0000-0000-0000-000000000301';
+  EXCEPTION WHEN SQLSTATE 'P0001' THEN v_failed:=true;
+  END;
+  IF NOT v_failed THEN RAISE EXCEPTION 'fee snapshot was mutable'; END IF;
+
+  INSERT INTO public.brand_payout_releases(
+    brand_id,occurrence_key,surface,provider,currency,anchor_end_at,releasable_at,
+    gross_cents,net_release_cents,status
+  ) VALUES(
+    '11710000-0000-0000-0000-000000000010','debt-target',
+    'venue_reservation','stripe','usd','2026-06-28T00:00:00Z',
+    '2026-07-01T00:00:00Z',600,600,'pending'
+  ) RETURNING id INTO v_target;
+  v_debt:=public.open_post_release_postponement_debt(
+    v_release_b,'2026-07-02T00:00:00Z'
+  );
+  IF public.apply_open_payout_debts(v_target,'2026-07-03T00:00:00Z')<>600 THEN
+    RAISE EXCEPTION 'temporary debt did not reserve future value';
+  END IF;
+  IF public.mature_postponement_debts('2026-07-05T00:00:00Z')<>1 THEN
+    RAISE EXCEPTION 'maturity did not process exactly one debt';
+  END IF;
+  IF (SELECT amount_cents FROM public.payout_ledger_adjustments
+      WHERE idempotency_key LIKE 'postpone-recredit:%')<>600 OR
+     NOT EXISTS(
+       SELECT 1 FROM public.payout_debt_applications
+       WHERE debt_id=v_debt AND released_at='2026-07-05T00:00:00Z'
+     ) OR
+     NOT EXISTS(
+       SELECT 1 FROM public.payout_debt_events
+       WHERE debt_id=v_debt AND event_kind='future_value_released'
+     ) THEN
+    RAISE EXCEPTION 'maturity did not recredit and release applications';
+  END IF;
+
+  INSERT INTO public.brand_payout_releases(
+    brand_id,occurrence_key,surface,provider,currency,anchor_end_at,releasable_at,
+    gross_cents,net_release_cents,status,organiser_cash_delivered_cents,released_at
+  ) VALUES(
+    '11710000-0000-0000-0000-000000000010','conversion-origin',
+    'venue_reservation','stripe','usd','2026-06-20T00:00:00Z',
+    '2026-06-23T00:00:00Z',1000,1000,'released',1000,'2026-06-23T00:00:00Z'
+  ) RETURNING id INTO v_origin;
+  v_debt:=public.open_post_release_postponement_debt(
+    v_origin,'2026-07-10T00:00:00Z'
+  );
+  UPDATE public.brand_payout_releases SET status='pending',net_release_cents=400
+  WHERE id=v_target;
+  PERFORM public.apply_open_payout_debts(v_target,'2026-07-11T00:00:00Z');
+  v_permanent:=public.convert_postponement_debt_to_permanent(
+    v_origin,'post_release_refund',700,'2026-07-11T00:00:01Z'
+  );
+  IF (SELECT (principal_cents,recovered_cents,status)
+      FROM public.organiser_payout_debts WHERE id=v_debt)
+       IS DISTINCT FROM ROW(300,0,'open'::text) OR
+     (SELECT (principal_cents,recovered_cents)
+      FROM public.organiser_payout_debts WHERE id=v_permanent)
+       IS DISTINCT FROM ROW(700,400) OR
+     NOT EXISTS(
+       SELECT 1 FROM public.payout_debt_applications
+       WHERE debt_id=v_debt AND converted_cents=400
+     ) OR
+     NOT EXISTS(
+       SELECT 1 FROM public.payout_debt_events
+       WHERE debt_id=v_debt AND event_kind='cancellation_converted'
+     ) THEN
+    RAISE EXCEPTION 'temporary-to-permanent debt conversion was not atomic';
+  END IF;
+END
+$test$;
+ROLLBACK;
+`;
+
+if (Deno.env.get("ISSUE_1171_SQL_BEHAVIOR") === "1") {
+  Deno.test("#1171 executable PostgreSQL behavior contract", async () => {
+    const container = Deno.env.get("ISSUE_1171_POSTGRES_CONTAINER") ??
+      "issue1171-pg-20260724";
+    const command = new Deno.Command("docker", {
+      args: [
+        "exec",
+        "-i",
+        container,
+        "psql",
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-U",
+        "postgres",
+        "-d",
+        "postgres",
+      ],
+      stdin: "piped",
+      stdout: "piped",
+      stderr: "piped",
+    }).spawn();
+    const writer = command.stdin.getWriter();
+    await writer.write(new TextEncoder().encode(behaviorSql));
+    await writer.close();
+    const result = await command.output();
+    assertEquals(
+      result.code,
+      0,
+      new TextDecoder().decode(result.stderr),
+    );
+  });
+}

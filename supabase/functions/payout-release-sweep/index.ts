@@ -28,10 +28,48 @@ type FeeSnapshot = {
   provider_balance_transaction_id: string | null;
 };
 
+export function providerReferenceRoute(
+  provider: FeeCandidate["provider"],
+  reference: string,
+): "paystack_reference" | "stripe_charge" | "stripe_payment_intent" {
+  if (provider === "paystack") return "paystack_reference";
+  if (reference.startsWith("ch_")) return "stripe_charge";
+  if (reference.startsWith("pi_")) return "stripe_payment_intent";
+  throw new Error("unsupported_stripe_provider_reference");
+}
+
+function stripeFeeSnapshot(
+  balanceTransaction:
+    | {
+      id: string;
+      fee: number;
+    }
+    | string
+    | null,
+): FeeSnapshot {
+  if (!balanceTransaction || typeof balanceTransaction === "string") {
+    throw new Error("stripe_balance_transaction_not_expanded");
+  }
+  if (
+    !Number.isInteger(balanceTransaction.fee) ||
+    balanceTransaction.fee < 0
+  ) {
+    throw new Error("invalid_stripe_provider_fee");
+  }
+  return {
+    provider_fee_cents: balanceTransaction.fee,
+    provider_balance_transaction_id: balanceTransaction.id,
+  };
+}
+
 async function resolveProviderFee(
   candidate: FeeCandidate,
 ): Promise<FeeSnapshot> {
-  if (candidate.provider === "paystack") {
+  const route = providerReferenceRoute(
+    candidate.provider,
+    candidate.provider_reference,
+  );
+  if (route === "paystack_reference") {
     const transaction = await paystackVerifyTransaction(
       candidate.provider_reference,
     );
@@ -49,22 +87,31 @@ async function resolveProviderFee(
   if (!candidate.stripe_account_id) throw new Error("stripe_account_required");
   // WEBHOOK is the existing least-privilege read role with Charges +
   // Balance-transactions read. BALANCES lacks Charges read.
-  const charge = await stripeWebhook().charges.retrieve(
+  const stripe = stripeWebhook();
+  if (route === "stripe_charge") {
+    const charge = await stripe.charges.retrieve(
+      candidate.provider_reference,
+      { expand: ["balance_transaction"] },
+      { stripeAccount: candidate.stripe_account_id },
+    );
+    return stripeFeeSnapshot(charge.balance_transaction);
+  }
+  const paymentIntent = await stripe.paymentIntents.retrieve(
     candidate.provider_reference,
+    { expand: ["latest_charge.balance_transaction"] },
+    { stripeAccount: candidate.stripe_account_id },
+  );
+  const latestCharge = paymentIntent.latest_charge;
+  if (!latestCharge) throw new Error("stripe_payment_intent_has_no_charge");
+  if (typeof latestCharge !== "string") {
+    return stripeFeeSnapshot(latestCharge.balance_transaction);
+  }
+  const charge = await stripe.charges.retrieve(
+    latestCharge,
     { expand: ["balance_transaction"] },
     { stripeAccount: candidate.stripe_account_id },
   );
-  const balanceTransaction = charge.balance_transaction;
-  if (!balanceTransaction || typeof balanceTransaction === "string") {
-    throw new Error("stripe_balance_transaction_not_expanded");
-  }
-  if (!Number.isInteger(balanceTransaction.fee) || balanceTransaction.fee < 0) {
-    throw new Error("invalid_stripe_provider_fee");
-  }
-  return {
-    provider_fee_cents: balanceTransaction.fee,
-    provider_balance_transaction_id: balanceTransaction.id,
-  };
+  return stripeFeeSnapshot(charge.balance_transaction);
 }
 
 const defaultDeps: SweepDeps = {

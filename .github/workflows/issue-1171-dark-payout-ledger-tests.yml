@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   issue-1171-dark-payout-ledger:
-    name: "#1171 dark ledger (implementor; tester path added before merge)"
+    name: "#1171 dark ledger behavior"
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -32,8 +32,30 @@ jobs:
       - uses: denoland/setup-deno@v1
         with:
           deno-version: "1.46.x"
-      - name: Run migration contract and seeded dark-sweep happy path
+      - name: Apply every migration to clean PostgreSQL 17
         run: |
-          deno test --allow-read --allow-env --allow-net --no-check \
+          docker run --name issue1171-postgres \
+            -e POSTGRES_PASSWORD=postgres \
+            -d supabase/postgres:17.4.1.075
+          for attempt in {1..30}; do
+            if docker exec issue1171-postgres pg_isready -U postgres; then
+              break
+            fi
+            sleep 1
+          done
+          for migration_file in supabase/migrations/*.sql; do
+            docker exec -i issue1171-postgres \
+              psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+              < "$migration_file"
+          done
+      - name: Run executable SQL contract and seeded dark-sweep tests
+        env:
+          ISSUE_1171_SQL_BEHAVIOR: "1"
+          ISSUE_1171_POSTGRES_CONTAINER: issue1171-postgres
+        run: |
+          deno test --allow-read --allow-env --allow-net --allow-run=docker --no-check \
             supabase/migrations/__tests__/issue_1171_dark_payout_ledger.test.ts \
             supabase/functions/payout-release-sweep/__tests__/issue_1171_dark_payout_ledger.test.ts
+      - name: Remove disposable database
+        if: always()
+        run: docker rm -f issue1171-postgres || true
