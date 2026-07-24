@@ -230,6 +230,9 @@ jobs:
             # ISSUE-996 — implementor source guard: A5 keeps its local fetch
             # declaration + fireAdConversion injection (no network execution).
             supabase/functions/_shared/__tests__/issue_996_a5_hermetic_fetch.test.ts
+            # ISSUE-996 — independent tester runtime guard: A1-A6 execute behind
+            # a non-egressing global-fetch sentinel.
+            supabase/functions/_shared/__tests__/issue_996_a5_no_global_fetch.tester.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then
