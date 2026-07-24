@@ -37,13 +37,15 @@ CREATE TABLE IF NOT EXISTS public.payout_release_alert_outbox (
   brand_id uuid NOT NULL REFERENCES public.brands(id) ON DELETE RESTRICT,
   error_message text NOT NULL,
   status text NOT NULL DEFAULT 'pending'
-    CHECK (status IN ('pending','dispatching','delivered')),
+    CHECK (status IN (
+      'pending','dispatching','provider_accepted','manual_review'
+    )),
   delivery_attempt_count integer NOT NULL DEFAULT 0
     CHECK (delivery_attempt_count >= 0),
   dispatch_claim_id uuid,
   dispatch_claimed_at timestamptz,
   last_delivery_error text,
-  delivered_at timestamptz,
+  provider_accepted_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (release_id, alert_kind)
@@ -55,6 +57,217 @@ ALTER TABLE public.payout_release_alert_outbox FORCE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS payout_release_alert_outbox_retry_idx
   ON public.payout_release_alert_outbox (status, created_at)
   WHERE status IN ('pending','dispatching');
+
+ALTER TABLE public.notification_deliveries
+  ADD COLUMN IF NOT EXISTS recipient_fingerprint text,
+  ADD COLUMN IF NOT EXISTS payload_fingerprint text,
+  ADD COLUMN IF NOT EXISTS dispatch_claim_id uuid,
+  ADD COLUMN IF NOT EXISTS dispatch_claimed_at timestamptz,
+  ADD COLUMN IF NOT EXISTS first_attempt_at timestamptz,
+  ADD COLUMN IF NOT EXISTS provider_idempotency_expires_at timestamptz;
+
+ALTER TABLE public.notification_deliveries
+  DROP CONSTRAINT IF EXISTS notification_deliveries_owner_chk;
+ALTER TABLE public.notification_deliveries
+  ADD CONSTRAINT notification_deliveries_owner_chk CHECK (
+    notification_id IS NOT NULL
+    OR contact IS NOT NULL
+    OR recipient_fingerprint IS NOT NULL
+  );
+
+CREATE OR REPLACE FUNCTION public.claim_notification_email_delivery(
+  p_idempotency_key text,
+  p_recipient_fingerprint text,
+  p_payload_fingerprint text,
+  p_now timestamptz DEFAULT now()
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_delivery public.notification_deliveries;
+  v_claim_id uuid;
+BEGIN
+  IF nullif(btrim(p_idempotency_key),'') IS NULL
+     OR nullif(btrim(p_recipient_fingerprint),'') IS NULL
+     OR nullif(btrim(p_payload_fingerprint),'') IS NULL THEN
+    RAISE EXCEPTION 'email_delivery_claim_fields_required'
+      USING ERRCODE='22023';
+  END IF;
+
+  SELECT * INTO v_delivery
+  FROM public.notification_deliveries
+  WHERE idempotency_key=p_idempotency_key AND channel='email'
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    v_claim_id:=gen_random_uuid();
+    INSERT INTO public.notification_deliveries (
+      notification_id,
+      channel,
+      status,
+      provider,
+      provider_message_id,
+      contact,
+      idempotency_key,
+      recipient_fingerprint,
+      payload_fingerprint,
+      dispatch_claim_id,
+      dispatch_claimed_at,
+      first_attempt_at,
+      provider_idempotency_expires_at,
+      attempt_at
+    ) VALUES (
+      NULL,
+      'email',
+      'queued',
+      'resend',
+      NULL,
+      NULL,
+      p_idempotency_key,
+      p_recipient_fingerprint,
+      p_payload_fingerprint,
+      v_claim_id,
+      p_now,
+      p_now,
+      p_now+interval '24 hours',
+      p_now
+    )
+    RETURNING * INTO v_delivery;
+    RETURN jsonb_build_object(
+      'action','send_new',
+      'delivery_id',v_delivery.id,
+      'claim_id',v_claim_id,
+      'provider_message_id',NULL
+    );
+  END IF;
+
+  IF v_delivery.recipient_fingerprint IS DISTINCT FROM p_recipient_fingerprint
+     OR v_delivery.payload_fingerprint IS DISTINCT FROM p_payload_fingerprint THEN
+    RETURN jsonb_build_object(
+      'action','idempotency_conflict',
+      'delivery_id',v_delivery.id,
+      'claim_id',NULL,
+      'provider_message_id',NULL
+    );
+  END IF;
+  IF v_delivery.status='sent' AND v_delivery.provider_message_id IS NOT NULL THEN
+    RETURN jsonb_build_object(
+      'action','already_accepted',
+      'delivery_id',v_delivery.id,
+      'claim_id',NULL,
+      'provider_message_id',v_delivery.provider_message_id
+    );
+  END IF;
+  IF v_delivery.status='failed' THEN
+    RETURN jsonb_build_object(
+      'action','acceptance_unknown',
+      'delivery_id',v_delivery.id,
+      'claim_id',NULL,
+      'provider_message_id',NULL
+    );
+  END IF;
+  IF v_delivery.dispatch_claim_id IS NOT NULL
+     AND v_delivery.dispatch_claimed_at>=p_now-interval '10 minutes' THEN
+    RETURN jsonb_build_object(
+      'action','in_progress',
+      'delivery_id',v_delivery.id,
+      'claim_id',NULL,
+      'provider_message_id',NULL
+    );
+  END IF;
+  IF v_delivery.provider_idempotency_expires_at IS NULL
+     OR v_delivery.provider_idempotency_expires_at<=p_now THEN
+    UPDATE public.notification_deliveries
+    SET status='failed',
+        failed_reason='acceptance_unknown_after_provider_window',
+        dispatch_claim_id=NULL,
+        dispatch_claimed_at=NULL,
+        attempt_at=p_now
+    WHERE id=v_delivery.id;
+    RETURN jsonb_build_object(
+      'action','acceptance_unknown',
+      'delivery_id',v_delivery.id,
+      'claim_id',NULL,
+      'provider_message_id',NULL
+    );
+  END IF;
+
+  v_claim_id:=gen_random_uuid();
+  UPDATE public.notification_deliveries
+  SET dispatch_claim_id=v_claim_id,
+      dispatch_claimed_at=p_now,
+      attempt_at=p_now
+  WHERE id=v_delivery.id;
+  RETURN jsonb_build_object(
+    'action','retry_same_provider_key',
+    'delivery_id',v_delivery.id,
+    'claim_id',v_claim_id,
+    'provider_message_id',NULL
+  );
+EXCEPTION
+  WHEN unique_violation THEN
+    RETURN jsonb_build_object(
+      'action','in_progress',
+      'delivery_id',NULL,
+      'claim_id',NULL,
+      'provider_message_id',NULL
+    );
+END;
+$fn$;
+
+CREATE OR REPLACE FUNCTION public.complete_notification_email_delivery(
+  p_delivery_id uuid,
+  p_claim_id uuid,
+  p_outcome text,
+  p_provider_message_id text DEFAULT NULL,
+  p_error_reason text DEFAULT NULL,
+  p_now timestamptz DEFAULT now()
+) RETURNS text
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_delivery public.notification_deliveries;
+BEGIN
+  IF p_outcome NOT IN ('accepted','retryable','manual_review') THEN
+    RAISE EXCEPTION 'invalid_email_delivery_outcome' USING ERRCODE='22023';
+  END IF;
+  SELECT * INTO v_delivery
+  FROM public.notification_deliveries
+  WHERE id=p_delivery_id AND channel='email'
+  FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'email_delivery_not_found' USING ERRCODE='P0002';
+  END IF;
+  IF v_delivery.dispatch_claim_id IS DISTINCT FROM p_claim_id THEN
+    RAISE EXCEPTION 'stale_email_delivery_claim' USING ERRCODE='P0001';
+  END IF;
+  IF p_outcome='accepted'
+     AND nullif(btrim(coalesce(p_provider_message_id,'')),'') IS NULL THEN
+    RAISE EXCEPTION 'provider_message_id_required' USING ERRCODE='22023';
+  END IF;
+
+  UPDATE public.notification_deliveries
+  SET status=CASE p_outcome
+        WHEN 'accepted' THEN 'sent'
+        WHEN 'retryable' THEN 'queued'
+        ELSE 'failed'
+      END,
+      provider_message_id=CASE WHEN p_outcome='accepted'
+        THEN p_provider_message_id ELSE provider_message_id END,
+      delivered_at=CASE WHEN p_outcome='accepted' THEN p_now ELSE delivered_at END,
+      failed_reason=CASE WHEN p_outcome='accepted' THEN NULL
+        ELSE left(coalesce(p_error_reason,p_outcome),500) END,
+      dispatch_claim_id=NULL,
+      dispatch_claimed_at=NULL,
+      attempt_at=p_now
+  WHERE id=p_delivery_id;
+  RETURN CASE p_outcome
+    WHEN 'accepted' THEN 'provider_accepted'
+    WHEN 'retryable' THEN 'retry_pending'
+    ELSE 'manual_review'
+  END;
+END;
+$fn$;
 
 CREATE OR REPLACE FUNCTION public.authorize_stripe_payout_execution(
   p_release_id uuid,
@@ -403,7 +616,7 @@ $fn$;
 CREATE OR REPLACE FUNCTION public.record_payout_release_alert_delivery(
   p_alert_id uuid,
   p_claim_id uuid,
-  p_delivered boolean,
+  p_outcome text,
   p_error_message text DEFAULT NULL,
   p_now timestamptz DEFAULT now()
 ) RETURNS text
@@ -412,6 +625,10 @@ AS $fn$
 DECLARE
   v_alert public.payout_release_alert_outbox;
 BEGIN
+  IF p_outcome NOT IN ('provider_accepted','retryable','manual_review') THEN
+    RAISE EXCEPTION 'invalid_payout_release_alert_outcome'
+      USING ERRCODE='22023';
+  END IF;
   SELECT * INTO v_alert
   FROM public.payout_release_alert_outbox
   WHERE id=p_alert_id
@@ -425,18 +642,27 @@ BEGIN
   END IF;
 
   UPDATE public.payout_release_alert_outbox
-  SET status=CASE WHEN p_delivered THEN 'delivered' ELSE 'pending' END,
+  SET status=CASE p_outcome
+        WHEN 'provider_accepted' THEN 'provider_accepted'
+        WHEN 'manual_review' THEN 'manual_review'
+        ELSE 'pending'
+      END,
       delivery_attempt_count=delivery_attempt_count+1,
       dispatch_claim_id=NULL,
       dispatch_claimed_at=NULL,
       last_delivery_error=CASE
-        WHEN p_delivered THEN NULL
+        WHEN p_outcome='provider_accepted' THEN NULL
         ELSE left(coalesce(p_error_message,'alert_delivery_failed'),1000)
       END,
-      delivered_at=CASE WHEN p_delivered THEN p_now ELSE delivered_at END,
+      provider_accepted_at=CASE WHEN p_outcome='provider_accepted'
+        THEN p_now ELSE provider_accepted_at END,
       updated_at=p_now
   WHERE id=p_alert_id;
-  RETURN CASE WHEN p_delivered THEN 'delivered' ELSE 'pending' END;
+  RETURN CASE p_outcome
+    WHEN 'provider_accepted' THEN 'provider_accepted'
+    WHEN 'manual_review' THEN 'manual_review'
+    ELSE 'pending'
+  END;
 END;
 $fn$;
 
@@ -498,11 +724,29 @@ BEGIN
         stripe_execution_claimed_at=NULL,
         updated_at=p_now
     WHERE id=v_release.id;
+    INSERT INTO public.payout_release_alert_outbox (
+      release_id,
+      alert_kind,
+      idempotency_key,
+      brand_id,
+      error_message,
+      created_at,
+      updated_at
+    ) VALUES (
+      v_release.id,
+      'stripe_attempt_cap',
+      'ops.stripe_payout_release_attempt_cap:' || v_release.id::text,
+      v_release.brand_id,
+      left(coalesce(p_error_message,'stripe_payout_failed'),1000),
+      p_now,
+      p_now
+    )
+    ON CONFLICT (release_id, alert_kind) DO NOTHING;
   END IF;
 
   RETURN jsonb_build_object(
     'release_id',v_release.id,'status',v_status,
-    'attempt_cap_reached',false,'mutated',true
+    'attempt_cap_reached',NOT p_retryable_kyc,'mutated',true
   );
 END;
 $fn$;
@@ -518,7 +762,13 @@ REVOKE ALL ON FUNCTION public.record_stripe_payout_execution(
 REVOKE ALL ON FUNCTION public.claim_payout_release_alerts(integer,timestamptz)
   FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.record_payout_release_alert_delivery(
-  uuid,uuid,boolean,text,timestamptz
+  uuid,uuid,text,text,timestamptz
+) FROM PUBLIC,anon,authenticated;
+REVOKE ALL ON FUNCTION public.claim_notification_email_delivery(
+  text,text,text,timestamptz
+) FROM PUBLIC,anon,authenticated;
+REVOKE ALL ON FUNCTION public.complete_notification_email_delivery(
+  uuid,uuid,text,text,text,timestamptz
 ) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.record_stripe_payout_webhook_failure(
   text,boolean,text,timestamptz
@@ -534,7 +784,13 @@ GRANT EXECUTE ON FUNCTION public.record_stripe_payout_execution(
 GRANT EXECUTE ON FUNCTION public.claim_payout_release_alerts(integer,timestamptz)
   TO service_role;
 GRANT EXECUTE ON FUNCTION public.record_payout_release_alert_delivery(
-  uuid,uuid,boolean,text,timestamptz
+  uuid,uuid,text,text,timestamptz
+) TO service_role;
+GRANT EXECUTE ON FUNCTION public.claim_notification_email_delivery(
+  text,text,text,timestamptz
+) TO service_role;
+GRANT EXECUTE ON FUNCTION public.complete_notification_email_delivery(
+  uuid,uuid,text,text,text,timestamptz
 ) TO service_role;
 GRANT EXECUTE ON FUNCTION public.record_stripe_payout_webhook_failure(
   text,boolean,text,timestamptz

@@ -650,28 +650,10 @@ async function handlePayout(
         attempt_cap_reached?: boolean;
         mutated?: boolean;
       } | null;
-      if (
-        reconciliation?.attempt_cap_reached === true &&
-        reconciliation.mutated === true
-      ) {
-        await dispatchNotification({
-          emailTo: "ops@mingla.app",
-          emailVariant: "generic_notification",
-          type: "ops.stripe_payout_release_attempt_cap",
-          title: "Stripe organiser payout needs manual review",
-          body:
-            `Release ${releaseId} reached its terminal payout-attempt state after Stripe reported ${failureCode}.`,
-          data: {
-            release_id: releaseId,
-            stripe_payout_id: payoutId,
-            failure_code: failureCode,
-          },
-          relatedId: releaseId,
-          relatedType: "payout_release",
-          idempotencyKey: `ops.stripe_payout_release_attempt_cap:${releaseId}`,
-          skipPush: true,
-        });
-      }
+      // The reconciliation RPC atomically upserts the terminal alert intent.
+      // payout-release-sweep is the sole renderer/sender so webhook and
+      // synchronous failures converge on one byte-identical provider payload.
+      void reconciliation;
     }
     await notifyBrandManagers(supabase, {
       brandId,

@@ -9,6 +9,9 @@ on:
       - "supabase/functions/_shared/stripe.ts"
       - "supabase/functions/_shared/stripeMode.ts"
       - "supabase/functions/_shared/stripeWebhookRouter.ts"
+      - "supabase/functions/_shared/stripeEdgeAuth.ts"
+      - "supabase/functions/_shared/legacyEmailIdempotency.ts"
+      - "supabase/functions/notify-dispatch/index.ts"
       - ".github/workflows/issue-1172-stripe-payout-execution-tests.yml"
   pull_request:
     paths:
@@ -17,6 +20,9 @@ on:
       - "supabase/functions/_shared/stripe.ts"
       - "supabase/functions/_shared/stripeMode.ts"
       - "supabase/functions/_shared/stripeWebhookRouter.ts"
+      - "supabase/functions/_shared/stripeEdgeAuth.ts"
+      - "supabase/functions/_shared/legacyEmailIdempotency.ts"
+      - "supabase/functions/notify-dispatch/index.ts"
       - ".github/workflows/issue-1172-stripe-payout-execution-tests.yml"
 
 permissions:
@@ -62,13 +68,17 @@ jobs:
           docker exec -i issue1172-postgres \
             psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
             < supabase/migrations/__tests__/issue_1172_stripe_payout_rework.test.sql
+          docker exec -i issue1172-postgres \
+            psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            < supabase/migrations/__tests__/issue_1172_email_provider_idempotency.test.sql
       - name: Run Stripe payout execution regression tests
         run: |
           deno test --allow-read --allow-env --allow-net --no-check \
             supabase/migrations/__tests__/issue_1172_stripe_payout_execution.test.ts \
             supabase/functions/payout-release-sweep/__tests__/issue_1172_stripe_payout_execution.test.ts \
             supabase/functions/payout-release-sweep/__tests__/issue_1172_stripe_payout_adversarial.test.ts \
-            supabase/functions/payout-release-sweep/__tests__/issue_1172_stripe_payout_rework.test.ts
+            supabase/functions/payout-release-sweep/__tests__/issue_1172_stripe_payout_rework.test.ts \
+            supabase/functions/payout-release-sweep/__tests__/issue_1172_email_provider_idempotency.test.ts
       - name: Remove disposable database
         if: always()
         run: docker rm -f issue1172-postgres || true

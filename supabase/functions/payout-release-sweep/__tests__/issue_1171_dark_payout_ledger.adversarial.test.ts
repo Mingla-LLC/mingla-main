@@ -124,7 +124,12 @@ Deno.test("adversarial bearer variants cannot construct a client and the accepte
     ok: true,
     dark: true,
     capturedFees: 0,
-    alertDelivery: { claimed: 0, delivered: 0, retryPending: 0 },
+    alertDelivery: {
+      claimed: 0,
+      providerAccepted: 0,
+      retryPending: 0,
+      manualReview: 0,
+    },
     result: { dark: true, executed: 0 },
   });
   assertEquals(clientCreations, 1);

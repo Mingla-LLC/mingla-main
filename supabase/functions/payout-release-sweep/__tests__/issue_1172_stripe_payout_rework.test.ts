@@ -104,9 +104,9 @@ Deno.test("webhook reconciliation preserves release attribution and delegates re
   assertStringIncludes(router, '.from("payouts")');
   assertStringIncludes(router, '.select("release_id")');
   assertStringIncludes(router, '"record_stripe_payout_webhook_failure"');
-  assertStringIncludes(
-    router,
-    "`ops.stripe_payout_release_attempt_cap:${releaseId}`",
+  assertEquals(
+    router.includes("emailTo: \"ops@mingla.app\""),
+    false,
   );
 });
 
@@ -171,7 +171,7 @@ Deno.test("attempt-cap alert survives transport failure and delivers once withou
         });
       }
       if (name === "record_payout_release_alert_delivery") {
-        if (args.p_delivered === true) {
+        if (args.p_outcome === "provider_accepted") {
           alertDelivered = true;
           alertPending = false;
         } else {
@@ -179,7 +179,9 @@ Deno.test("attempt-cap alert survives transport failure and delivers once withou
         }
         alertClaimed = false;
         return Promise.resolve({
-          data: args.p_delivered === true ? "delivered" : "pending",
+          data: args.p_outcome === "provider_accepted"
+            ? "provider_accepted"
+            : "pending",
           error: null,
         });
       }

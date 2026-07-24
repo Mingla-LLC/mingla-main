@@ -14,6 +14,14 @@ import {
   renderTransactionalEmail,
   type SenderIdentity,
 } from "../_shared/email/index.ts";
+import {
+  dispatchIdempotentLegacyEmail,
+  isExactServiceBearer,
+  type EmailDeliveryClaim,
+  type EmailDeliveryCompletionOutcome,
+  type ResendAttempt,
+  type ResendEmailPayload,
+} from "../_shared/legacyEmailIdempotency.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -32,13 +40,11 @@ function jsonResponse(body: object, status = 200) {
 // Hard guard: assertNotResendSandbox runs before every POST. There is NO
 // resend.dev fallback. If RESEND_SYSTEM_FROM/RESEND_FROM_EMAIL is unset, the
 // usemingla.com default is used; @resend.dev senders throw.
-async function sendResendPlainEmail(
+function buildResendPlainEmail(
   to: string,
   subject: string,
   text: string,
-): Promise<{ ok: boolean; error?: string }> {
-  const key = Deno.env.get("RESEND_API_KEY");
-  if (!key) return { ok: false, error: "RESEND_API_KEY missing" };
+): ResendEmailPayload {
   let sender: SenderIdentity = EMAIL_SENDERS.system;
   // Backwards-compatible env: callers still using RESEND_FROM_EMAIL.
   const legacyOverride = Deno.env.get("RESEND_FROM_EMAIL");
@@ -50,96 +56,172 @@ async function sendResendPlainEmail(
       sender = { name: (match[1] ?? "Mingla").trim(), address: match[2] };
     }
   }
-  try {
-    assertNotResendSandbox(sender);
-  } catch (err) {
-    return {
-      ok: false,
-      error: err instanceof Error ? err.message : String(err),
-    };
-  }
-  try {
-    // no-attachment: notify-dispatch legacy plain-text path; generic_notification
-    // branded path is HTML+text only with no PDF/file payload.
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: formatSenderHeader(sender),
-        to: [to],
-        subject,
-        text,
-      }),
-    });
-    if (!res.ok) {
-      return { ok: false, error: `Resend ${res.status}: ${await res.text()}` };
-    }
-    return { ok: true };
-  } catch (err) {
-    return {
-      ok: false,
-      error: err instanceof Error ? err.message : String(err),
-    };
-  }
+  assertNotResendSandbox(sender);
+  return {
+    from: formatSenderHeader(sender),
+    to: [to],
+    subject,
+    text,
+  };
 }
 
-async function sendResendBrandedEmail(
+function buildResendBrandedEmail(
   to: string,
   payload: {
     title: string;
     body: string;
     cta?: { label: string; url: string };
   },
-): Promise<{ ok: boolean; error?: string }> {
-  const key = Deno.env.get("RESEND_API_KEY");
-  if (!key) return { ok: false, error: "RESEND_API_KEY missing" };
-  let rendered;
-  try {
-    rendered = renderTransactionalEmail({
+): ResendEmailPayload {
+  const rendered = renderTransactionalEmail({
+    variant: "generic_notification",
+    recipient: { name: null, email: to },
+    body: {
       variant: "generic_notification",
-      recipient: { name: null, email: to },
-      body: {
-        variant: "generic_notification",
-        title: payload.title,
-        paragraphs: payload.body.split("\n\n"),
-        cta: payload.cta ?? null,
-      },
-    });
-  } catch (err) {
-    return {
-      ok: false,
-      error: err instanceof Error ? err.message : String(err),
-    };
-  }
+      title: payload.title,
+      paragraphs: payload.body.split("\n\n"),
+      cta: payload.cta ?? null,
+    },
+  });
+  return {
+    from: formatSenderHeader(rendered.from),
+    to: [to],
+    subject: rendered.subject,
+    html: rendered.html,
+    text: rendered.text,
+  };
+}
+
+async function sendResendEmail(
+  payload: ResendEmailPayload,
+  providerIdempotencyKey: string,
+): Promise<ResendAttempt> {
+  const key = Deno.env.get("RESEND_API_KEY");
+  if (!key) return { outcome: "manual_review", reason: "resend_key_missing" };
   try {
-    // no-attachment: generic notification path carries no PDF/file payload.
+    // no-attachment: legacy notification emails contain rendered HTML/text only.
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${key}`,
         "Content-Type": "application/json",
+        "Idempotency-Key": providerIdempotencyKey,
       },
-      body: JSON.stringify({
-        from: formatSenderHeader(rendered.from),
-        to: [to],
-        subject: rendered.subject,
-        html: rendered.html,
-        text: rendered.text,
-      }),
+      body: JSON.stringify(payload),
     });
-    if (!res.ok) {
-      return { ok: false, error: `Resend ${res.status}: ${await res.text()}` };
-    }
-    return { ok: true };
-  } catch (err) {
-    return {
-      ok: false,
-      error: err instanceof Error ? err.message : String(err),
+    const responseBody = await res.json().catch(() => ({})) as {
+      id?: unknown;
+      name?: unknown;
     };
+    if (res.ok) {
+      return typeof responseBody.id === "string" &&
+          responseBody.id.trim().length > 0
+        ? {
+          outcome: "accepted",
+          providerMessageId: responseBody.id,
+        }
+        : { outcome: "retryable", reason: "resend_acceptance_id_missing" };
+    }
+    const providerError = typeof responseBody.name === "string"
+      ? responseBody.name
+      : "";
+    if (
+      res.status === 429 || res.status >= 500 ||
+      providerError === "concurrent_idempotent_requests"
+    ) {
+      return {
+        outcome: "retryable",
+        reason: providerError === "concurrent_idempotent_requests"
+          ? providerError
+          : `resend_retryable_${res.status}`,
+      };
+    }
+    return {
+      outcome: "manual_review",
+      reason: providerError === "invalid_idempotent_request"
+        ? providerError
+        : `resend_rejected_${res.status}`,
+    };
+  } catch {
+    return { outcome: "retryable", reason: "resend_network_ambiguity" };
   }
+}
+
+async function dispatchDurableLegacyEmail(
+  adminClient: {
+    rpc: (
+      functionName: never,
+      args: never,
+    ) => PromiseLike<{
+      data: unknown;
+      error: { message: string } | null;
+    }>;
+  },
+  input: {
+    recipient: string;
+    idempotencyKey: string;
+    payload: ResendEmailPayload;
+  },
+) {
+  return await dispatchIdempotentLegacyEmail(
+    {
+      recipient: input.recipient,
+      logicalIdempotencyKey: input.idempotencyKey,
+      recipientHmacSecret:
+        Deno.env.get("NOTIFICATION_RECIPIENT_HMAC_SECRET") ?? "",
+      payload: input.payload,
+    },
+    {
+      claimDelivery: async (claimInput): Promise<EmailDeliveryClaim> => {
+        const { data: claim, error: claimError } = await adminClient.rpc(
+          "claim_notification_email_delivery" as never,
+          {
+            p_idempotency_key: claimInput.idempotencyKey,
+            p_recipient_fingerprint: claimInput.recipientFingerprint,
+            p_payload_fingerprint: claimInput.payloadFingerprint,
+            p_now: new Date().toISOString(),
+          } as never,
+        );
+        if (claimError) {
+          throw new Error(
+            `email_delivery_claim_failed:${claimError.message}`,
+          );
+        }
+        const row = claim as Record<string, unknown> | null;
+        return {
+          action: String(row?.action ?? "in_progress") as
+            EmailDeliveryClaim["action"],
+          deliveryId: typeof row?.delivery_id === "string"
+            ? row.delivery_id
+            : null,
+          claimId: typeof row?.claim_id === "string" ? row.claim_id : null,
+          providerMessageId: typeof row?.provider_message_id === "string"
+            ? row.provider_message_id
+            : null,
+        };
+      },
+      completeDelivery: async (completionInput): Promise<void> => {
+        const { error: completionError } = await adminClient.rpc(
+          "complete_notification_email_delivery" as never,
+          {
+            p_delivery_id: completionInput.deliveryId,
+            p_claim_id: completionInput.claimId,
+            p_outcome:
+              completionInput.outcome as EmailDeliveryCompletionOutcome,
+            p_provider_message_id: completionInput.providerMessageId,
+            p_error_reason: completionInput.errorReason,
+            p_now: new Date().toISOString(),
+          } as never,
+        );
+        if (completionError) {
+          throw new Error(
+            `email_delivery_completion_failed:${completionError.message}`,
+          );
+        }
+      },
+      sendResend: sendResendEmail,
+    },
+  );
 }
 
 // ── Session-scoped types (ORCH-0520) ────────────────────────────────────────
@@ -327,6 +409,83 @@ serve(async (req) => {
         400
       );
     }
+    if (
+      emailTo &&
+      !isExactServiceBearer(authHeader, SUPABASE_SERVICE_ROLE_KEY)
+    ) {
+      return jsonResponse({ success: false, reason: "unauthorized_email_dispatch" }, 401);
+    }
+    if (
+      emailTo &&
+      (typeof idempotencyKey !== "string" ||
+        idempotencyKey.trim().length === 0)
+    ) {
+      return jsonResponse(
+        { success: false, reason: "email_idempotency_key_required" },
+        400,
+      );
+    }
+
+    const emailPayload = emailTo
+      ? emailVariant === "generic_notification"
+        ? buildResendBrandedEmail(emailTo, {
+          title,
+          body,
+          cta: emailCta && typeof emailCta === "object" &&
+              typeof (emailCta as { label?: unknown }).label === "string" &&
+              typeof (emailCta as { url?: unknown }).url === "string"
+            ? {
+              label: (emailCta as { label: string }).label,
+              url: (emailCta as { url: string }).url,
+            }
+            : undefined,
+        })
+        : buildResendPlainEmail(emailTo, title, body)
+      : null;
+
+    // #1172: email-only legacy notifications use the existing delivery ledger
+    // as their durable provider-acceptance owner. Raw recipients never enter
+    // the row, key, response, or logs.
+    if (emailTo && !userId && emailPayload) {
+      const result = await dispatchDurableLegacyEmail(adminClient, {
+        recipient: emailTo,
+        idempotencyKey,
+        payload: emailPayload,
+      });
+      if (result.outcome === "provider_accepted") {
+        return jsonResponse({
+          success: true,
+          providerAccepted: true,
+          retryPending: false,
+          manualReview: false,
+          emailSent: true,
+          providerMessageId: result.providerMessageId,
+          reason: result.duplicate
+            ? "already_accepted"
+            : "provider_accepted",
+        });
+      }
+      if (result.outcome === "manual_review") {
+        return jsonResponse({
+          success: false,
+          providerAccepted: false,
+          retryPending: false,
+          manualReview: true,
+          emailSent: false,
+          reason: result.reason,
+        }, result.reason === "idempotency_conflict" ? 409 : 422);
+      }
+      return jsonResponse({
+        success: false,
+        providerAccepted: false,
+        retryPending: true,
+        manualReview: false,
+        emailSent: false,
+        reason: result.reason,
+      }, 503);
+    }
+
+    let notificationId: string | null = null;
 
     // ── Idempotency check ───────────────────────────────────────────────────
     if (idempotencyKey && userId) {
@@ -337,18 +496,21 @@ serve(async (req) => {
         .maybeSingle();
 
       if (existing) {
-        return jsonResponse({
-          success: true,
-          notificationId: existing.id,
-          pushSent: false,
-          reason: "duplicate",
-        });
+        notificationId = existing.id;
+        if (!emailTo) {
+          return jsonResponse({
+            success: true,
+            notificationId: existing.id,
+            pushSent: false,
+            reason: "duplicate",
+          });
+        }
       }
     }
 
     // ── Rate limiting BEFORE insert (prevents in-app spam too) ──────────────
     // Uses the notification `type` field (not idempotency key prefix) for accurate matching
-    if (idempotencyKey && userId) {
+    if (idempotencyKey && userId && !notificationId) {
       const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
 
       const { count } = await adminClient
@@ -370,8 +532,7 @@ serve(async (req) => {
     }
 
     // ── Insert notification record (in-app) ────────────────────────────────
-    let notificationId: string | null = null;
-    if (userId) {
+    if (userId && !notificationId) {
       const insertPayload: Record<string, unknown> = {
         user_id: userId,
         type,
@@ -402,48 +563,61 @@ serve(async (req) => {
 
       if (insertError) {
         if (insertError.code === "23505") {
-          return jsonResponse({
-            success: true,
-            notificationId: null,
-            pushSent: false,
-            emailSent: false,
-            reason: "duplicate",
-          });
+          if (!emailTo) {
+            return jsonResponse({
+              success: true,
+              notificationId: null,
+              pushSent: false,
+              emailSent: false,
+              reason: "duplicate",
+            });
+          }
+          const { data: concurrent } = await adminClient
+            .from("notifications")
+            .select("id")
+            .eq("idempotency_key", idempotencyKey)
+            .maybeSingle();
+          if (!concurrent?.id) {
+            return jsonResponse(
+              { success: false, reason: "notification_idempotency_lookup_failed" },
+              500,
+            );
+          }
+          notificationId = concurrent.id;
+        } else {
+          console.error("[notify-dispatch] Insert error:", insertError);
+          return jsonResponse(
+            { success: false, reason: "Failed to insert notification" },
+            500
+          );
         }
-        console.error("[notify-dispatch] Insert error:", insertError);
-        return jsonResponse(
-          { success: false, reason: "Failed to insert notification" },
-          500
-        );
+      } else {
+        notificationId = notification.id;
       }
-
-      notificationId = notification.id;
     }
 
     let emailSent = false;
-    if (emailTo) {
+    if (emailTo && emailPayload) {
       // ORCH-0785: callers opt into the Mingla brand shell with
       // `emailVariant: "generic_notification"`. The legacy plain-text path is
       // retained for backwards compatibility but now routes through
       // EMAIL_SENDERS.system — no more onboarding@resend.dev fallback.
-      const emailResult = emailVariant === "generic_notification"
-        ? await sendResendBrandedEmail(emailTo, {
-          title,
-          body,
-          cta: emailCta && typeof emailCta === "object" &&
-              typeof (emailCta as { label?: unknown }).label === "string" &&
-              typeof (emailCta as { url?: unknown }).url === "string"
-            ? {
-              label: (emailCta as { label: string }).label,
-              url: (emailCta as { url: string }).url,
-            }
-            : undefined,
-        })
-        : await sendResendPlainEmail(emailTo, title, body);
-      emailSent = emailResult.ok;
-      if (!emailResult.ok) {
-        console.warn("[notify-dispatch] Email send failed:", emailResult.error);
+      const emailResult = await dispatchDurableLegacyEmail(adminClient, {
+        recipient: emailTo,
+        idempotencyKey,
+        payload: emailPayload,
+      });
+      if (emailResult.outcome !== "provider_accepted") {
+        return jsonResponse({
+          success: false,
+          providerAccepted: false,
+          retryPending: emailResult.outcome === "retry_pending",
+          manualReview: emailResult.outcome === "manual_review",
+          emailSent: false,
+          reason: emailResult.reason,
+        }, emailResult.outcome === "retry_pending" ? 503 : 422);
       }
+      emailSent = true;
     }
 
     // ── Skip push early return ──────────────────────────────────────────────
@@ -453,6 +627,7 @@ serve(async (req) => {
         notificationId,
         pushSent: false,
         emailSent,
+        providerAccepted: emailSent,
         reason: "skip_push",
       });
     }
@@ -482,6 +657,7 @@ serve(async (req) => {
         notificationId,
         pushSent: false,
         emailSent,
+        providerAccepted: emailSent,
         reason: "user_disabled",
       });
     }
@@ -496,6 +672,7 @@ serve(async (req) => {
         notificationId,
         pushSent: false,
         emailSent,
+        providerAccepted: emailSent,
         reason: "user_disabled",
       });
     }
@@ -528,6 +705,7 @@ serve(async (req) => {
             notificationId,
             pushSent: false,
             emailSent,
+            providerAccepted: emailSent,
             reason: "session_muted",
           });
         }
@@ -553,6 +731,7 @@ serve(async (req) => {
         notificationId,
         pushSent: false,
         emailSent,
+        providerAccepted: emailSent,
         reason: "quiet_hours",
       });
     }
@@ -630,6 +809,7 @@ serve(async (req) => {
       notificationId,
       pushSent,
       emailSent,
+      providerAccepted: emailSent,
     });
   } catch (err: unknown) {
     console.error("[notify-dispatch] Unhandled error:", err);

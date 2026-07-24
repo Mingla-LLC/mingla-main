@@ -279,7 +279,7 @@ BEGIN
   v_result:=public.record_payout_release_alert_delivery(
     v_alert_id,
     v_claim_id,
-    false,
+    'retryable',
     'notification transport unavailable',
     '2027-01-10 00:02:03+00'
   );
@@ -317,7 +317,7 @@ BEGIN
   v_result:=public.record_payout_release_alert_delivery(
     v_alert_id,
     v_claim_id,
-    true,
+    'provider_accepted',
     NULL,
     '2027-01-10 00:02:05+00'
   );
@@ -330,10 +330,10 @@ BEGIN
     '2027-01-10 00:02:06+00'
   )
   WHERE release_id='11720000-0000-0000-0000-000000000110';
-  IF v_result<>'delivered'
-     OR v_alert.status<>'delivered'
+  IF v_result<>'provider_accepted'
+     OR v_alert.status<>'provider_accepted'
      OR v_alert.delivery_attempt_count<>2
-     OR v_alert.delivered_at IS NULL
+     OR v_alert.provider_accepted_at IS NULL
      OR v_payout_claim_count<>0 THEN
     RAISE EXCEPTION 'alert retry did not deliver exactly once without payout retry';
   END IF;

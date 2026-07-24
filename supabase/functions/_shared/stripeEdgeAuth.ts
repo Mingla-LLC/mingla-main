@@ -155,6 +155,28 @@ export function formatMoneyCents(
   }
 }
 
+export type DispatchNotificationResult = {
+  providerAccepted: boolean;
+  retryPending: boolean;
+  manualReview: boolean;
+  providerMessageId: string | null;
+};
+
+export class NotificationDispatchError extends Error {
+  readonly retryPending: boolean;
+  readonly manualReview: boolean;
+
+  constructor(
+    message: string,
+    options: { retryPending: boolean; manualReview: boolean },
+  ) {
+    super(message);
+    this.name = "NotificationDispatchError";
+    this.retryPending = options.retryPending;
+    this.manualReview = options.manualReview;
+  }
+}
+
 export async function dispatchNotification(
   input: {
     userId?: string | null;
@@ -173,7 +195,7 @@ export async function dispatchNotification(
     emailVariant?: "generic_notification";
     emailCta?: { label: string; url: string };
   },
-): Promise<void> {
+): Promise<DispatchNotificationResult> {
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   if (!supabaseUrl || !serviceKey) {
@@ -187,8 +209,35 @@ export async function dispatchNotification(
     },
     body: JSON.stringify(input),
   });
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(`notify-dispatch failed ${response.status}: ${text}`);
+  const result = await response.json().catch(() => ({})) as {
+    success?: unknown;
+    providerAccepted?: unknown;
+    retryPending?: unknown;
+    manualReview?: unknown;
+    providerMessageId?: unknown;
+    reason?: unknown;
+  };
+  const providerAccepted = result.providerAccepted === true;
+  const retryPending = result.retryPending === true;
+  const manualReview = result.manualReview === true;
+  if (
+    !response.ok || result.success === false ||
+    (input.emailTo && !providerAccepted)
+  ) {
+    const reason = typeof result.reason === "string"
+      ? result.reason
+      : `http_${response.status}`;
+    throw new NotificationDispatchError(
+      `notify-dispatch failed:${reason}`,
+      { retryPending, manualReview },
+    );
   }
+  return {
+    providerAccepted,
+    retryPending,
+    manualReview,
+    providerMessageId: typeof result.providerMessageId === "string"
+      ? result.providerMessageId
+      : null,
+  };
 }

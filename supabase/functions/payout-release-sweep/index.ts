@@ -9,6 +9,7 @@ import {
 import {
   dispatchNotification,
   getBrandPaymentManagerUserIds,
+  NotificationDispatchError,
 } from "../_shared/stripeEdgeAuth.ts";
 import {
   classifyStripePayoutCreateError,
@@ -37,7 +38,7 @@ type SweepDeps = {
   notifyAttemptCap?: (
     release: Pick<StripeReleaseCandidate, "release_id" | "brand_id">,
     message: string,
-  ) => Promise<void>;
+  ) => Promise<"provider_accepted" | void>;
 };
 
 type AdminClient = ReturnType<typeof createClient>;
@@ -214,8 +215,8 @@ async function notifyKycBlocked(
 async function notifyAttemptCap(
   release: Pick<StripeReleaseCandidate, "release_id" | "brand_id">,
   message: string,
-): Promise<void> {
-  await dispatchNotification({
+): Promise<"provider_accepted"> {
+  const result = await dispatchNotification({
     emailTo: "ops@mingla.app",
     emailVariant: "generic_notification",
     type: "ops.stripe_payout_release_attempt_cap",
@@ -235,12 +236,21 @@ async function notifyAttemptCap(
       `ops.stripe_payout_release_attempt_cap:${release.release_id}`,
     skipPush: true,
   });
+  if (!result.providerAccepted) {
+    throw new Error("attempt_cap_provider_acceptance_missing");
+  }
+  return "provider_accepted";
 }
 
 async function deliverPendingAttemptCapAlerts(
   admin: AdminClient,
   deps: SweepDeps,
-): Promise<{ claimed: number; delivered: number; retryPending: number }> {
+): Promise<{
+  claimed: number;
+  providerAccepted: number;
+  retryPending: number;
+  manualReview: number;
+}> {
   const { data, error } = await admin.rpc(
     "claim_payout_release_alerts" as never,
     {
@@ -253,9 +263,15 @@ async function deliverPendingAttemptCapAlerts(
   }
 
   const alerts = (data ?? []) as PayoutReleaseAlert[];
-  const counts = { claimed: alerts.length, delivered: 0, retryPending: 0 };
+  const counts = {
+    claimed: alerts.length,
+    providerAccepted: 0,
+    retryPending: 0,
+    manualReview: 0,
+  };
   for (const alert of alerts) {
-    let delivered = false;
+    let outcome: "provider_accepted" | "retryable" | "manual_review" =
+      "retryable";
     let deliveryError: string | null = null;
     try {
       await (deps.notifyAttemptCap ?? notifyAttemptCap)(
@@ -265,9 +281,15 @@ async function deliverPendingAttemptCapAlerts(
         },
         alert.error_message,
       );
-      delivered = true;
+      outcome = "provider_accepted";
     } catch (error) {
       deliveryError = error instanceof Error ? error.message : String(error);
+      if (
+        error instanceof NotificationDispatchError &&
+        error.manualReview
+      ) {
+        outcome = "manual_review";
+      }
     }
 
     const { data: recordedStatus, error: recordError } = await admin.rpc(
@@ -275,7 +297,7 @@ async function deliverPendingAttemptCapAlerts(
       {
         p_alert_id: alert.alert_id,
         p_claim_id: alert.claim_id,
-        p_delivered: delivered,
+        p_outcome: outcome,
         p_error_message: deliveryError,
         p_now: new Date().toISOString(),
       } as never,
@@ -285,8 +307,10 @@ async function deliverPendingAttemptCapAlerts(
         `payout_release_alert_record_failed:${recordError.message}`,
       );
     }
-    if (recordedStatus === "delivered") {
-      counts.delivered++;
+    if (recordedStatus === "provider_accepted") {
+      counts.providerAccepted++;
+    } else if (recordedStatus === "manual_review") {
+      counts.manualReview++;
     } else {
       counts.retryPending++;
       console.error("[payout-release-sweep] attempt-cap alert retained", {
@@ -548,9 +572,12 @@ export async function handlePayoutReleaseSweep(
       capturedFees,
       alertDelivery: {
         claimed: alertDelivery.claimed + newAlertDelivery.claimed,
-        delivered: alertDelivery.delivered + newAlertDelivery.delivered,
+        providerAccepted: alertDelivery.providerAccepted +
+          newAlertDelivery.providerAccepted,
         retryPending: alertDelivery.retryPending +
           newAlertDelivery.retryPending,
+        manualReview: alertDelivery.manualReview +
+          newAlertDelivery.manualReview,
       },
       result: data ?? {},
       stripeExecution,
