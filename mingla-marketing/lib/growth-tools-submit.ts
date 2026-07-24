@@ -215,6 +215,7 @@ async function postGrowthTools(
   fn:
     | 'growth-tools-run'
     | 'growth-tools-events'
+    | 'growth-tools-geocode'
     | 'growth-tools-gate'
     | 'growth-tools-preview'
     | 'growth-tools-report'
@@ -512,6 +513,27 @@ export interface EventReport {
 export type EventRunResponse =
   | { ok: true; run_id: string; report: EventReport }
   | { ok: false; error: GrowthToolsError }
+
+/** City autocomplete for the event intake — validates the city against Mapbox. */
+export interface CitySuggestion {
+  label: string
+  city: string
+  region: string
+  country: string
+}
+export async function searchCities(
+  q: string,
+  signal?: AbortSignal,
+): Promise<{ ok: true; cities: CitySuggestion[] } | { ok: false; error: GrowthToolsError }> {
+  const result = await postGrowthTools('growth-tools-geocode', { q }, signal)
+  if (!result.ok) return result
+  const cities =
+    result.body && typeof result.body === 'object' && 'cities' in result.body
+      ? (result.body as { cities?: CitySuggestion[] }).cities
+      : undefined
+  if (!Array.isArray(cities)) return { ok: false, error: 'server' }
+  return { ok: true, cities }
+}
 
 /** The event forecast run: {action:'run', input} → {run_id, report}. Slow (LLM + search). */
 export async function runEventPredictor(

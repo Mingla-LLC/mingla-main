@@ -7,12 +7,14 @@
 // research + the budget engine + synthesis (~15-30s). REPORT — the parchment
 // document (EventReportView), gated behind an emailed link like the grader.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/cn'
 import { buttonClasses } from '@/components/ui/button'
 import { captureMarketing } from '@/components/marketing/posthog-provider'
 import {
   runEventPredictor,
+  searchCities,
+  type CitySuggestion,
   type EventReport,
   type EventRunInput,
   type GrowthToolsError,
@@ -145,6 +147,12 @@ export function EventPredictorExperience() {
   const [title, setTitle] = useState('')
   const [category, setCategory] = useState(CATEGORIES[0])
   const [city, setCity] = useState('')
+  const [citySuggestions, setCitySuggestions] = useState<CitySuggestion[]>([])
+  const [citySearching, setCitySearching] = useState(false)
+  const [cityFocused, setCityFocused] = useState(false)
+  const [cityChosen, setCityChosen] = useState(false)
+  const [geocodeDown, setGeocodeDown] = useState(false)
+  const cityAbort = useRef<AbortController | null>(null)
   const [venue, setVenue] = useState('')
   const [date, setDate] = useState('')
   const [startTime, setStartTime] = useState('20:00')
@@ -162,13 +170,63 @@ export function EventPredictorExperience() {
   const [runId, setRunId] = useState<string | null>(null)
   const [report, setReport] = useState<EventReport | null>(null)
 
+  // Debounced city autocomplete (validates the city against Mapbox). Skips while
+  // a suggestion is already chosen; degrades to free text if the geocoder is down.
+  useEffect(() => {
+    const q = city.trim()
+    if (cityChosen || q.length < 2) {
+      setCitySuggestions([])
+      setCitySearching(false)
+      return
+    }
+    setCitySearching(true)
+    const timer = setTimeout(async () => {
+      cityAbort.current?.abort()
+      const controller = new AbortController()
+      cityAbort.current = controller
+      try {
+        const res = await searchCities(q, controller.signal)
+        if (controller.signal.aborted) return
+        setCitySearching(false)
+        if (res.ok) {
+          setCitySuggestions(res.cities)
+          setGeocodeDown(false)
+        } else {
+          setCitySuggestions([])
+          if (res.error === 'network' || res.error === 'server') setGeocodeDown(true)
+        }
+      } catch {
+        // superseded by a newer keystroke
+      }
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [city, cityChosen])
+
+  function selectCity(hit: CitySuggestion) {
+    const value = hit.country
+      ? `${hit.city}, ${hit.country}`
+      : hit.region
+        ? `${hit.city}, ${hit.region}`
+        : hit.city
+    setCity(value)
+    setCityChosen(true)
+    setCitySuggestions([])
+    setCitySearching(false)
+  }
+
   const todayStr = new Date().toISOString().slice(0, 10)
   const dateValid = /^\d{4}-\d{2}-\d{2}$/.test(date) && date >= todayStr
   const capacityNum = Number(capacity)
   const capacityValid = Number.isFinite(capacityNum) && capacityNum >= 1
+  // City must be a chosen suggestion — unless the geocoder is unavailable, then
+  // accept free text so infra issues never hard-block a run.
+  const cityValid = cityChosen || (geocodeDown && city.trim().length >= 2)
+  const showCityDropdown =
+    cityFocused && !cityChosen && city.trim().length >= 2 &&
+    (citySearching || citySuggestions.length > 0)
   const canRun =
     title.trim().length >= 2 &&
-    city.trim().length >= 2 &&
+    cityValid &&
     category.trim().length >= 2 &&
     dateValid &&
     capacityValid
@@ -293,18 +351,59 @@ export function EventPredictorExperience() {
                 ))}
               </select>
             </div>
-            <div>
+            <div className="relative">
               <label htmlFor="ev-city" className={MICRO_LABEL}>
                 City <span aria-hidden="true" className="text-warm">*</span>
               </label>
               <input
                 id="ev-city"
                 type="text"
+                autoComplete="off"
+                spellCheck={false}
                 value={city}
-                onChange={(e) => setCity(e.target.value)}
-                placeholder="e.g. London"
-                className={cn(FIELD, 'mt-2')}
+                onChange={(e) => {
+                  setCity(e.target.value)
+                  if (cityChosen) setCityChosen(false)
+                }}
+                onFocus={() => setCityFocused(true)}
+                onBlur={() => setCityFocused(false)}
+                placeholder="Start typing your city…"
+                aria-expanded={showCityDropdown}
+                aria-autocomplete="list"
+                className={cn(FIELD, 'mt-2', cityChosen && 'border-moss/50')}
               />
+              {cityChosen ? (
+                <span aria-hidden="true" className="pointer-events-none absolute right-3 top-[2.55rem] text-moss">✓</span>
+              ) : null}
+              {showCityDropdown ? (
+                <div className="absolute inset-x-0 top-full z-30 mt-2 overflow-hidden rounded-2xl border border-white/14 bg-[#0d0d10]/97 shadow-[0_24px_64px_rgba(0,0,0,0.55)]">
+                  {citySearching && citySuggestions.length === 0 ? (
+                    <p className="px-4 py-3 text-sm text-white/55">Searching…</p>
+                  ) : (
+                    <ul>
+                      {citySuggestions.map((hit) => (
+                        <li key={hit.label}>
+                          <button
+                            type="button"
+                            onMouseDown={(e) => {
+                              e.preventDefault()
+                              selectCity(hit)
+                            }}
+                            className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm text-white/85 transition hover:bg-white/8 focus-ring"
+                          >
+                            <span aria-hidden="true" className="text-warm">◎</span>
+                            <span className="truncate">{hit.label}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ) : null}
+              {!cityChosen && !geocodeDown && !citySearching && city.trim().length >= 2 &&
+                citySuggestions.length === 0 && cityFocused ? (
+                <p className="mt-1 text-xs text-white/45">Pick your city from the list.</p>
+              ) : null}
             </div>
           </div>
 
