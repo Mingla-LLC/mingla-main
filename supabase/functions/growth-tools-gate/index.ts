@@ -347,6 +347,140 @@ export function buildEventSummaryEmail(
   };
 }
 
+// ISSUE-1005 — the Quote Any Trip summary email. Same posture: a SUMMARY + a
+// tokenized link, never the full costed proposal inline. Reads `report.plan`
+// (the TripPricingPlan) directly.
+export function buildTripSummaryEmail(
+  report: Record<string, unknown>,
+  reportLink: string,
+): { subject: string; preheader: string; bodyHtml: string; text: string } {
+  const trip = asRecord(report.trip);
+  const plan = asRecord(report.plan);
+  const title = asString(trip.title) || "your trip";
+  const destination = asString(trip.destination);
+  const cur = asString(plan.currency) || asString(trip.currency) || "USD";
+  const groupSize = asNumber(trip.group_size);
+  const money = (n: number | null): string => {
+    if (n === null) return "—";
+    try {
+      return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: cur,
+        maximumFractionDigits: n < 100 && !Number.isInteger(n) ? 2 : 0,
+      }).format(n);
+    } catch {
+      return `${cur} ${Math.round(n)}`;
+    }
+  };
+  const pricePp = asNumber(plan.recommended_price_per_person);
+  const costPp = asNumber(plan.cost_per_person);
+  const groupProfit = asNumber(plan.group_profit);
+  const marginPct = asNumber(plan.recommended_margin_pct);
+  const itineraryDays = Array.isArray(report.itinerary)
+    ? (report.itinerary as unknown[]).length
+    : 0;
+  const comparables = Array.isArray(report.comparables)
+    ? (report.comparables as unknown[]).length
+    : 0;
+
+  const subject = pricePp !== null
+    ? `Trip quote: ${money(pricePp)}/person — ${title}`
+    : `Your trip quote — ${title}`;
+  const preheader = asString(report.headline_read) ||
+    `A fully-costed quote for ${title}${destination ? ` in ${destination}` : ""}. Open your full proposal.`;
+
+  const inside: string[] = [];
+  if (itineraryDays > 0) {
+    inside.push(`Your day-by-day plan — ${itineraryDays} days with real named hotels & activities`);
+  }
+  inside.push("The full cost sheet — every line, with what to charge and why");
+  if (groupProfit !== null && groupProfit > 0) {
+    inside.push(
+      `Your profit — about ${money(groupProfit)} across the group${
+        marginPct !== null ? ` at a ${marginPct}% margin` : ""
+      }`,
+    );
+  }
+  if (comparables > 0) {
+    inside.push(`How your price compares to ${comparables} real trips on the market`);
+  }
+  inside.push("A client-ready proposal you can forward as-is");
+
+  const sections: string[] = [];
+  const textLines: string[] = [];
+
+  const headlinePrice = pricePp !== null ? `${money(pricePp)} / person` : title;
+  sections.push(
+    `<h1 style="margin:0 0 6px 0;font-size:24px;line-height:1.25;color:${BRAND_INK};font-weight:700;">${
+      escapeHtml(headlinePrice)
+    }${pricePp !== null ? ` — ${escapeHtml(title)}` : ""}</h1>`,
+  );
+  textLines.push(`${headlinePrice}${pricePp !== null ? ` — ${title}` : ""}`, "");
+  if (costPp !== null && pricePp !== null) {
+    const sub = `Built up from ${money(costPp)}/person real cost${
+      groupSize !== null ? ` · ${groupSize} people` : ""
+    }.`;
+    sections.push(
+      `<p style="margin:0 0 12px 0;font-size:14px;color:${BRAND_MUTED};">${escapeHtml(sub)}</p>`,
+    );
+    textLines.push(sub, "");
+  }
+  const headline = asString(report.headline_read);
+  if (headline) {
+    sections.push(
+      `<p style="margin:0 0 16px 0;font-size:15px;line-height:1.55;color:${BRAND_INK};">${
+        escapeHtml(headline)
+      }</p>`,
+    );
+    textLines.push(headline, "");
+  }
+
+  sections.push(
+    `<p style="margin:18px 0 8px 0;font-size:13px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:${BRAND_MUTED};">Inside your full quote</p>`,
+  );
+  sections.push(
+    `<ul style="margin:0 0 8px 0;padding:0 0 0 18px;">${
+      inside.map((line) =>
+        `<li style="margin:0 0 6px 0;font-size:14px;line-height:1.5;color:${BRAND_INK};">${
+          escapeHtml(line)
+        }</li>`
+      ).join("")
+    }</ul>`,
+  );
+  textLines.push("INSIDE YOUR FULL QUOTE");
+  for (const line of inside) textLines.push(`- ${line}`);
+  textLines.push("");
+
+  sections.push(
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:22px 0 6px 0;">
+      <tr><td style="background:${BRAND_ORANGE_BUTTON};border-radius:999px;">
+        <a href="${
+      escapeHtml(reportLink)
+    }" style="display:inline-block;padding:14px 26px;color:#FFFFFF;font-size:15px;font-weight:700;text-decoration:none;">View your full trip quote</a>
+      </td></tr>
+    </table>
+    <p style="margin:0 0 4px 0;font-size:12px;color:${BRAND_MUTED};">This link is just for you — it opens your full costed proposal on the web.</p>`,
+  );
+  textLines.push("VIEW YOUR FULL TRIP QUOTE:", reportLink, "(This link is just for you.)", "");
+
+  sections.push(
+    `<div style="margin:22px 0 6px 0;padding:16px 18px;border-radius:12px;border:1px solid ${BRAND_BORDER};">
+      <p style="margin:0;font-size:14px;line-height:1.5;color:${BRAND_INK};"><strong>Turn this quote into a bookable trip page on Mingla — and we can fill the seats for as low as $3.99 per head.</strong> That's the introductory promotion; your report shows the math.</p>
+    </div>`,
+  );
+  textLines.push(
+    "Turn this quote into a bookable trip page on Mingla — and fill seats from $3.99 per head. Your report shows the math.",
+    "",
+  );
+
+  return {
+    subject,
+    preheader: preheader.slice(0, 120),
+    bodyHtml: sections.join("\n"),
+    text: textLines.join("\n"),
+  };
+}
+
 export function buildReportEmail(report: Record<string, unknown>): {
   subject: string;
   preheader: string;
@@ -860,8 +994,9 @@ export async function handler(req: Request): Promise<Response> {
     }
     if (!lead) return json({ error: "not_found" }, 404);
     const status = (lead as { status: string }).status;
-    const tool = (lead as { tool?: unknown }).tool === "events"
-      ? "events"
+    const toolRaw = (lead as { tool?: unknown }).tool;
+    const tool = (toolRaw === "events" || toolRaw === "trips")
+      ? toolRaw
       : "venues";
     const report = (lead as { report: unknown }).report;
     const gateable = status === "report_ready" || status === "gated_email" ||
@@ -908,7 +1043,11 @@ export async function handler(req: Request): Promise<Response> {
       console.error("[growth-tools-gate] email save failed", gateErr.message);
       return json({ error: "server" }, 500);
     }
-    const reportPath = tool === "events" ? "/tools/events/report" : "/tools/venues/report";
+    const reportPath = tool === "events"
+      ? "/tools/events/report"
+      : tool === "trips"
+      ? "/tools/trips/report"
+      : "/tools/venues/report";
     const reportLink = `${reportBase}${reportPath}?id=${
       encodeURIComponent(runId as string)
     }&t=${encodeURIComponent(reportToken)}`;
@@ -932,6 +1071,8 @@ export async function handler(req: Request): Promise<Response> {
 
     const built = tool === "events"
       ? buildEventSummaryEmail(report as Record<string, unknown>, reportLink)
+      : tool === "trips"
+      ? buildTripSummaryEmail(report as Record<string, unknown>, reportLink)
       : buildSummaryEmail(report as Record<string, unknown>, reportLink);
     const html = renderShell({
       preheader: built.preheader,

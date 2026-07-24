@@ -98,6 +98,56 @@ function buildEventRender(report: Record<string, unknown>) {
   };
 }
 
+// ISSUE-1005 — the Quote Any Trip "as a Mingla trip page" render. Subset of the
+// trip report used by /trip-preview to render a faithful trip page (day-by-day
+// itinerary + reserve box). Nothing sensitive (no cost sheet, no ad budget).
+function buildTripRender(report: Record<string, unknown>) {
+  const trip = asRecord(report.trip);
+  const plan = asRecord(report.plan);
+  const lp = asRecord(report.listing_preview);
+  const coverUrl = asString(lp.cover_url);
+  const rec = (v: unknown) =>
+    v !== null && typeof v === "object" && !Array.isArray(v)
+      ? v as Record<string, unknown>
+      : {};
+  const itinerary = Array.isArray(report.itinerary)
+    ? (report.itinerary as unknown[]).slice(0, 30).map((d) => {
+      const o = rec(d);
+      const dayN = typeof o.day === "number" ? o.day : 0;
+      return {
+        day: dayN,
+        title: asString(o.title).slice(0, 90),
+        summary: asString(o.summary).slice(0, 320),
+        stay: asString(o.stay).slice(0, 120),
+        activities: asStringArray(o.activities, 3).map((s) => s.slice(0, 120)),
+      };
+    })
+    : [];
+  const pricePp = typeof plan.recommended_price_per_person === "number"
+    ? plan.recommended_price_per_person
+    : 0;
+  return {
+    kind: "trip" as const,
+    title: (asString(lp.title) || asString(trip.title)).slice(0, 120) || "Your trip",
+    tagline: (asString(lp.tagline) || asString(report.cover_narrative)).slice(0, 320),
+    cover_url: /^https?:\/\//i.test(coverUrl) ? coverUrl : "",
+    destination: asString(trip.destination).slice(0, 120),
+    departure: asString(trip.departure).slice(0, 100),
+    date_range: asString(trip.date_range).slice(0, 60),
+    nights: typeof trip.nights === "number" ? trip.nights : 0,
+    days: typeof trip.days === "number" ? trip.days : 0,
+    group_size: typeof trip.group_size === "number" ? trip.group_size : 0,
+    price_per_person: pricePp,
+    currency: asString(plan.currency).slice(0, 3) || asString(trip.currency).slice(0, 3) || "USD",
+    vibe_tags: asStringArray(lp.vibe_tags, 5).map((s) => s.slice(0, 30)),
+    why_go: asStringArray(lp.why_go, 4).map((s) => s.slice(0, 160)),
+    best_for: asStringArray(lp.best_for, 3).map((s) => s.slice(0, 40)),
+    included: asStringArray(lp.included, 8).map((s) => s.slice(0, 60)),
+    excluded: asStringArray(lp.excluded, 6).map((s) => s.slice(0, 60)),
+    itinerary,
+  };
+}
+
 export async function handler(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -139,9 +189,11 @@ export async function handler(req: Request): Promise<Response> {
     if (report === null || typeof report !== "object") {
       return json({ error: "report_not_ready" }, 409);
     }
-    const isEvent = (lead as { tool?: unknown }).tool === "events";
-    const render = isEvent
+    const toolKind = (lead as { tool?: unknown }).tool;
+    const render = toolKind === "events"
       ? buildEventRender(report as Record<string, unknown>)
+      : toolKind === "trips"
+      ? buildTripRender(report as Record<string, unknown>)
       : buildRender(report as Record<string, unknown>);
     return json({ render });
   } catch (err) {
