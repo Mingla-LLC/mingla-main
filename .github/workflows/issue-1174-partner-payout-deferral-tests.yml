@@ -69,6 +69,11 @@ jobs:
           docker exec -i issue1174-postgres \
             psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
             < supabase/functions/payout-release-sweep/__tests__/issue_1174_atomic_partner_outcome.sql
+      - name: Run tester two-session atomic visibility regression
+        run: |
+          bash \
+            supabase/functions/payout-release-sweep/__tests__/issue_1174_atomic_visibility_race_adversarial.sh \
+            issue1174-postgres
       - name: Remove disposable database
         if: always()
         run: docker rm -f issue1174-postgres || true
