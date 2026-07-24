@@ -1,0 +1,65 @@
+name: "#1171 Dark Payout Ledger Tests"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/config.toml"
+      - "supabase/migrations/**"
+      - "supabase/functions/payout-release-sweep/**"
+      - ".github/workflows/issue-1171-dark-payout-ledger-tests.yml"
+  pull_request:
+    paths:
+      - "supabase/config.toml"
+      - "supabase/migrations/**"
+      - "supabase/functions/payout-release-sweep/**"
+      - ".github/workflows/issue-1171-dark-payout-ledger-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-1171-dark-payout-ledger:
+    name: "#1171 dark ledger behavior"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: Apply every migration to clean PostgreSQL 17
+        run: |
+          docker run --name issue1171-postgres \
+            -e POSTGRES_PASSWORD=postgres \
+            -d supabase/postgres:17.4.1.075
+          for attempt in {1..90}; do
+            state="$(docker inspect --format \
+              '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' \
+              issue1171-postgres)"
+            if [ "$state" = "healthy" ]; then
+              break
+            fi
+            sleep 1
+          done
+          for migration_file in supabase/migrations/*.sql; do
+            docker exec -i issue1171-postgres \
+              psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+              < "$migration_file"
+          done
+      - name: Run executable SQL contract and seeded dark-sweep tests
+        env:
+          ISSUE_1171_SQL_BEHAVIOR: "1"
+          ISSUE_1171_POSTGRES_CONTAINER: issue1171-postgres
+        run: |
+          deno test --allow-read --allow-env --allow-net --allow-run=docker --no-check \
+            supabase/migrations/__tests__/issue_1171_dark_payout_ledger.test.ts \
+            supabase/functions/payout-release-sweep/__tests__/issue_1171_dark_payout_ledger.test.ts \
+            supabase/functions/payout-release-sweep/__tests__/issue_1171_dark_payout_ledger.adversarial.test.ts
+      - name: Remove disposable database
+        if: always()
+        run: docker rm -f issue1171-postgres || true
