@@ -548,31 +548,31 @@ export function EventReportView({
             </div>
           ) : null}
 
-          {/* Comparables + weather + demand */}
-          {(report.comparables.length > 0 || report.weather || report.demand_read) ? (
-            <div className="mt-8 grid gap-4 md:grid-cols-2">
-              {report.comparables.length > 0 ? (
+          {/* Comparables — full width */}
+          {report.comparables.length > 0 ? (
+            <div className="mt-8 rounded-md border border-divider-strong bg-white p-4">
+              <DocHeading>Similar events, real turnouts</DocHeading>
+              <ul className="mt-2 space-y-2">
+                {report.comparables.map((c) => (
+                  <li key={c.name} className="text-sm">
+                    <span className="font-semibold text-text-primary">{c.name}</span>
+                    <span className="text-text-secondary"> — {c.turnout_note}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {/* Weather + demand — side by side */}
+          {(report.weather || report.demand_read) ? (
+            <div className="mt-8 grid items-start gap-4 md:grid-cols-2">
+              {report.weather ? <WeatherCard weather={report.weather} /> : null}
+              {report.demand_read ? (
                 <div className="rounded-md border border-divider-strong bg-white p-4">
-                  <DocHeading>Similar events, real turnouts</DocHeading>
-                  <ul className="mt-2 space-y-2">
-                    {report.comparables.map((c) => (
-                      <li key={c.name} className="text-sm">
-                        <span className="font-semibold text-text-primary">{c.name}</span>
-                        <span className="text-text-secondary"> — {c.turnout_note}</span>
-                      </li>
-                    ))}
-                  </ul>
+                  <DocHeading>Demand right now</DocHeading>
+                  <p className="mt-2 text-sm text-text-secondary">{report.demand_read}</p>
                 </div>
               ) : null}
-              <div className="space-y-4">
-                {report.weather ? <WeatherCard weather={report.weather} /> : null}
-                {report.demand_read ? (
-                  <div className="rounded-md border border-divider-strong bg-white p-4">
-                    <DocHeading>Demand right now</DocHeading>
-                    <p className="mt-2 text-sm text-text-secondary">{report.demand_read}</p>
-                  </div>
-                ) : null}
-              </div>
             </div>
           ) : null}
 
@@ -640,6 +640,13 @@ export function EventReportView({
                     way to <span className="font-semibold text-text-primary">{emailedTo}</span> with
                     a private link.
                   </p>
+                  <button
+                    type="button"
+                    onClick={() => setEmailedTo(null)}
+                    className="mt-3 text-sm font-semibold text-warm underline-offset-4 hover:underline focus-ring"
+                  >
+                    Wrong email? Send to a different one
+                  </button>
                 </>
               ) : (
                 <>
