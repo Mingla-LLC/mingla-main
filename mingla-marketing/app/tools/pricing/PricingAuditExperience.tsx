@@ -171,6 +171,7 @@ export function PricingAuditExperience() {
 
   const [seats, setSeats] = useState('')
   const [price, setPrice] = useState('')
+  const [isFree, setIsFree] = useState(false)
   const [currency, setCurrency] = useState('USD')
   const [perMonth, setPerMonth] = useState('')
   const [venueCost, setVenueCost] = useState('')
@@ -229,7 +230,8 @@ export function PricingAuditExperience() {
   const seatsNum = Number(seats)
   const seatsValid = Number.isFinite(seatsNum) && seatsNum >= 1
   const priceNum = Number(price)
-  const priceValid = Number.isFinite(priceNum) && priceNum > 0
+  // A currently-FREE experience (0) is valid — it's the ultimate under-charger.
+  const priceValid = isFree || (price.trim() !== '' && Number.isFinite(priceNum) && priceNum >= 0)
   const perMonthNum = Number(perMonth)
   const perMonthValid = Number.isFinite(perMonthNum) && perMonthNum >= 1
   const cityValid = cityChosen || city.trim().length >= 2
@@ -241,7 +243,7 @@ export function PricingAuditExperience() {
   if (description.trim().length < 4) missing.push('what your experience is')
   if (!cityValid) missing.push('city')
   if (!seatsValid) missing.push('seats per event')
-  if (!priceValid) missing.push('your current price')
+  if (!priceValid) missing.push('your current price (or mark it free)')
   if (!perMonthValid) missing.push('how often you run it')
   const canRun = missing.length === 0
 
@@ -261,7 +263,7 @@ export function PricingAuditExperience() {
       category: category.trim(),
       city: city.trim(),
       seats: Math.round(seatsNum),
-      current_price: Math.max(0, priceNum),
+      current_price: isFree ? 0 : Math.max(0, priceNum),
       events_per_month: Math.round(perMonthNum),
       currency,
       venue_cost: optNum(venueCost),
@@ -450,7 +452,8 @@ export function PricingAuditExperience() {
                   aria-label="Currency"
                   value={currency}
                   onChange={(e) => setCurrency(e.target.value)}
-                  className={cn(FIELD, 'w-[4.5rem] shrink-0 appearance-none px-2')}
+                  disabled={isFree}
+                  className={cn(FIELD, 'w-[4.5rem] shrink-0 appearance-none px-2', isFree && 'opacity-40')}
                 >
                   {CURRENCIES.map((c) => (
                     <option key={c} value={c} className="bg-[#0d0d10]">{c}</option>
@@ -461,12 +464,31 @@ export function PricingAuditExperience() {
                   type="number"
                   inputMode="decimal"
                   min={0}
-                  value={price}
+                  value={isFree ? '' : price}
+                  disabled={isFree}
                   onChange={(e) => setPrice(e.target.value)}
-                  placeholder="45"
-                  className={cn(FIELD, 'flex-1')}
+                  placeholder={isFree ? 'Free' : '45'}
+                  className={cn(FIELD, 'flex-1', isFree && 'opacity-40')}
                 />
+                <button
+                  type="button"
+                  onClick={() => setIsFree((f) => !f)}
+                  className={cn(
+                    'min-h-12 shrink-0 rounded-2xl border px-3 text-sm font-semibold transition focus-ring',
+                    isFree
+                      ? 'border-warm bg-warm/15 text-white'
+                      : 'border-white/14 bg-black/30 text-white/70 hover:bg-white/8',
+                  )}
+                  aria-pressed={isFree}
+                >
+                  Free
+                </button>
               </div>
+              {isFree ? (
+                <p className="mt-1 text-xs text-white/45">
+                  Free right now? We&rsquo;ll show what your time is worth and what to start charging.
+                </p>
+              ) : null}
             </div>
             <div>
               <label htmlFor="pr-permonth" className={MICRO_LABEL}>

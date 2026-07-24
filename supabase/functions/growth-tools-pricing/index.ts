@@ -175,8 +175,9 @@ function validatePricingInput(
   if (seatsN === null || seatsN < 1) fields.push("seats");
   const seats = seatsN === null ? 0 : Math.min(Math.round(seatsN), 100000);
 
+  // 0 is valid — a currently-FREE experience is the ultimate under-charger.
   const priceN = asNum(r.current_price);
-  if (priceN === null || priceN <= 0) fields.push("current_price");
+  if (priceN === null || priceN < 0) fields.push("current_price");
   const current_price = priceN === null || priceN < 0 ? 0 : Math.min(priceN, 1000000);
 
   const epmN = asNum(r.events_per_month);
@@ -350,7 +351,13 @@ function computeAudit(input: PricingInput, research: PricingResearch): PricingAu
   let verdict: PricingAudit["verdict"];
   let headline_amount: number;
   let read: string;
-  if (profit_per_event < 0) {
+  if (input.current_price <= 0) {
+    // Currently FREE — the ultimate under-charger. The sting is the unpaid
+    // time + costs; the pull is the full revenue they'd unlock by charging.
+    verdict = "losing";
+    headline_amount = Math.abs(monthly_profit);
+    read = `You're hosting this for free — but once your time is counted it costs about ${Math.abs(profit_per_event)} ${cur} an event to run (~${headline_amount} ${cur} a month). Charging even ${recommended_price} ${cur} a head would bring in about ${monthly_upside} ${cur} a month.`;
+  } else if (profit_per_event < 0) {
     verdict = "losing";
     headline_amount = Math.abs(monthly_profit);
     read = `Once your own time is counted, each event loses about ${Math.abs(profit_per_event)} ${cur} — roughly ${headline_amount} ${cur} a month. At ${recommended_price} ${cur} you'd turn that into a real profit.`;
