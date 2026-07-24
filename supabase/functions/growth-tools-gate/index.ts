@@ -481,6 +481,121 @@ export function buildTripSummaryEmail(
   };
 }
 
+// ISSUE-1006 — the Undercharging Audit summary email. Same posture: a SUMMARY +
+// a tokenized link, never the full audit inline. Reads `report.audit` directly.
+export function buildPricingSummaryEmail(
+  report: Record<string, unknown>,
+  reportLink: string,
+): { subject: string; preheader: string; bodyHtml: string; text: string } {
+  const exp = asRecord(report.experience);
+  const audit = asRecord(report.audit);
+  const cur = asString(audit.currency) || asString(exp.currency) || "USD";
+  const money = (n: number | null): string => {
+    if (n === null) return "—";
+    try {
+      return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: cur,
+        maximumFractionDigits: n < 100 && !Number.isInteger(n) ? 2 : 0,
+      }).format(n);
+    } catch {
+      return `${cur} ${Math.round(n)}`;
+    }
+  };
+  const verdict = asString(audit.verdict);
+  const headlineAmount = asNumber(audit.headline_amount);
+  const recPrice = asNumber(audit.recommended_price);
+  const curPrice = asNumber(audit.current_price);
+  const costPerHead = asNumber(audit.cost_per_head);
+  const comps = Array.isArray(report.comps) ? (report.comps as unknown[]).length : 0;
+
+  const stinger = verdict === "losing"
+    ? `You're losing about ${money(headlineAmount)} a month`
+    : verdict === "underpriced"
+    ? `You're leaving about ${money(headlineAmount)} a month on the table`
+    : "Your price holds up — here's how to defend it";
+  const subject = `Pricing audit — ${stinger}`;
+  const preheader = asString(report.headline_verdict) ||
+    `${stinger}. Open your full pricing audit.`;
+
+  const inside: string[] = [];
+  inside.push("Your true cost per head — including your own time, the line most hosts never see");
+  if (comps > 0) {
+    inside.push(`What ${comps} comparable experience${comps === 1 ? "" : "s"} in your city charge`);
+  }
+  if (recPrice !== null) {
+    inside.push(
+      `The price you should charge — ${money(recPrice)}${
+        curPrice !== null ? ` (you're at ${money(curPrice)})` : ""
+      } — with break-even seats`,
+    );
+  }
+  inside.push("The framing that justifies it, and how to reprice without losing bookings");
+
+  const sections: string[] = [];
+  const textLines: string[] = [];
+
+  sections.push(
+    `<h1 style="margin:0 0 6px 0;font-size:24px;line-height:1.25;color:${BRAND_INK};font-weight:700;">${
+      escapeHtml(stinger)
+    }</h1>`,
+  );
+  textLines.push(stinger, "");
+  if (costPerHead !== null && recPrice !== null) {
+    const sub = `Your true cost per head is ${money(costPerHead)} — the market and your costs support ${money(recPrice)}.`;
+    sections.push(`<p style="margin:0 0 12px 0;font-size:14px;color:${BRAND_MUTED};">${escapeHtml(sub)}</p>`);
+    textLines.push(sub, "");
+  }
+  const hv = asString(report.headline_verdict);
+  if (hv) {
+    sections.push(
+      `<p style="margin:0 0 16px 0;font-size:15px;line-height:1.55;color:${BRAND_INK};">${escapeHtml(hv)}</p>`,
+    );
+    textLines.push(hv, "");
+  }
+
+  sections.push(
+    `<p style="margin:18px 0 8px 0;font-size:13px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:${BRAND_MUTED};">Inside your full audit</p>`,
+  );
+  sections.push(
+    `<ul style="margin:0 0 8px 0;padding:0 0 0 18px;">${
+      inside.map((line) =>
+        `<li style="margin:0 0 6px 0;font-size:14px;line-height:1.5;color:${BRAND_INK};">${escapeHtml(line)}</li>`
+      ).join("")
+    }</ul>`,
+  );
+  textLines.push("INSIDE YOUR FULL AUDIT");
+  for (const line of inside) textLines.push(`- ${line}`);
+  textLines.push("");
+
+  sections.push(
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:22px 0 6px 0;">
+      <tr><td style="background:${BRAND_ORANGE_BUTTON};border-radius:999px;">
+        <a href="${escapeHtml(reportLink)}" style="display:inline-block;padding:14px 26px;color:#FFFFFF;font-size:15px;font-weight:700;text-decoration:none;">View your full pricing audit</a>
+      </td></tr>
+    </table>
+    <p style="margin:0 0 4px 0;font-size:12px;color:${BRAND_MUTED};">This link is just for you — it opens your full audit on the web.</p>`,
+  );
+  textLines.push("VIEW YOUR FULL PRICING AUDIT:", reportLink, "(This link is just for you.)", "");
+
+  sections.push(
+    `<div style="margin:22px 0 6px 0;padding:16px 18px;border-radius:12px;border:1px solid ${BRAND_BORDER};">
+      <p style="margin:0;font-size:14px;line-height:1.5;color:${BRAND_INK};"><strong>Relaunch at the right price on Mingla — all-in checkout, no surprise fees.</strong> And we can fill your seats for as low as $3.99 per head. Your audit shows the math.</p>
+    </div>`,
+  );
+  textLines.push(
+    "Relaunch at the right price on Mingla — all-in checkout, no surprise fees. Fill seats from $3.99/head. Your audit shows the math.",
+    "",
+  );
+
+  return {
+    subject,
+    preheader: preheader.slice(0, 120),
+    bodyHtml: sections.join("\n"),
+    text: textLines.join("\n"),
+  };
+}
+
 export function buildReportEmail(report: Record<string, unknown>): {
   subject: string;
   preheader: string;
@@ -995,7 +1110,7 @@ export async function handler(req: Request): Promise<Response> {
     if (!lead) return json({ error: "not_found" }, 404);
     const status = (lead as { status: string }).status;
     const toolRaw = (lead as { tool?: unknown }).tool;
-    const tool = (toolRaw === "events" || toolRaw === "trips")
+    const tool = (toolRaw === "events" || toolRaw === "trips" || toolRaw === "experiences")
       ? toolRaw
       : "venues";
     const report = (lead as { report: unknown }).report;
@@ -1047,6 +1162,8 @@ export async function handler(req: Request): Promise<Response> {
       ? "/tools/events/report"
       : tool === "trips"
       ? "/tools/trips/report"
+      : tool === "experiences"
+      ? "/tools/pricing/report"
       : "/tools/venues/report";
     const reportLink = `${reportBase}${reportPath}?id=${
       encodeURIComponent(runId as string)
@@ -1073,6 +1190,8 @@ export async function handler(req: Request): Promise<Response> {
       ? buildEventSummaryEmail(report as Record<string, unknown>, reportLink)
       : tool === "trips"
       ? buildTripSummaryEmail(report as Record<string, unknown>, reportLink)
+      : tool === "experiences"
+      ? buildPricingSummaryEmail(report as Record<string, unknown>, reportLink)
       : buildSummaryEmail(report as Record<string, unknown>, reportLink);
     const html = renderShell({
       preheader: built.preheader,

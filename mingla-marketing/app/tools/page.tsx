@@ -13,20 +13,6 @@ export const metadata: Metadata = {
     'Free AI tools for people who run real places — grade your website, predict your event turnout, quote any trip, and audit your pricing. Built by Mingla.',
 }
 
-interface ComingSoonTool {
-  title: string
-  blurb: string
-  audience: string
-}
-
-const COMING_SOON: ComingSoonTool[] = [
-  {
-    title: 'The Undercharging Audit',
-    blurb: 'Find out what your experience should actually cost.',
-    audience: 'Experience hosts · activity spaces',
-  },
-]
-
 export default function ToolsHubPage() {
   return (
     <div className="px-6 py-16 md:px-10 md:py-24 [padding-left:max(1.5rem,env(safe-area-inset-left))] [padding-right:max(1.5rem,env(safe-area-inset-right))] md:[padding-left:max(2.5rem,env(safe-area-inset-left))] md:[padding-right:max(2.5rem,env(safe-area-inset-right))]">
@@ -124,29 +110,32 @@ export default function ToolsHubPage() {
             </div>
           </Link>
 
-          {/* COMING SOON — subtle, non-clickable */}
-          {COMING_SOON.map((tool) => (
-            <div
-              key={tool.title}
-              aria-disabled="true"
-              className="flex flex-col rounded-md border border-white/8 bg-white/[0.02] p-6 opacity-60 md:p-8"
-            >
-              <span className="inline-flex w-fit items-center rounded-full border border-white/12 bg-white/6 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-white/50">
-                Coming soon
-              </span>
-              <h2 className="mt-4 font-display text-2xl leading-tight text-white/80 md:text-3xl">
-                {tool.title}
-              </h2>
-              <p className="mt-3 text-sm leading-relaxed text-white/50 md:text-base">
-                {tool.blurb}
+          {/* LIVE — The Undercharging Audit */}
+          <Link
+            href="/tools/pricing"
+            className="group flex flex-col rounded-md glass-soft p-6 transition-all duration-200 ease-out-quart hover:-translate-y-1 hover:brightness-110 focus-ring md:p-8"
+          >
+            <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-warm/40 bg-warm/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-warm">
+              <span aria-hidden="true" className="size-1.5 rounded-full bg-warm" />
+              Live
+            </span>
+            <h2 className="mt-4 font-display text-2xl leading-tight text-white md:text-3xl">
+              The Undercharging Audit
+            </h2>
+            <p className="mt-3 text-sm leading-relaxed text-white/70 md:text-base">
+              Priced by guilt? See your true cost per head &mdash; including your
+              own time &mdash; and the price you should actually charge. Free.
+            </p>
+            <div className="mt-auto pt-6">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/45">
+                Experience hosts &middot; activity spaces
               </p>
-              <div className="mt-auto pt-6">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/35">
-                  {tool.audience}
-                </p>
-              </div>
+              <span className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-warm transition-transform duration-200 ease-out-quart group-hover:translate-x-1">
+                Audit my pricing
+                <span aria-hidden="true">→</span>
+              </span>
             </div>
-          ))}
+          </Link>
         </div>
       </div>
     </div>

@@ -216,6 +216,7 @@ async function postGrowthTools(
     | 'growth-tools-run'
     | 'growth-tools-events'
     | 'growth-tools-trips'
+    | 'growth-tools-pricing'
     | 'growth-tools-geocode'
     | 'growth-tools-gate'
     | 'growth-tools-preview'
@@ -878,4 +879,144 @@ export async function fetchTripPreview(
       : undefined
   if (!render || typeof render.title !== 'string') return { ok: false, error: 'server' }
   return { ok: true, render }
+}
+
+// ─── The Undercharging Audit (#1006) ─────────────────────────────────────────
+
+export interface PricingRunInput {
+  description: string
+  category: string
+  city: string
+  seats: number
+  current_price: number
+  events_per_month: number
+  currency: string
+  venue_cost: number | null
+  materials_cost: number | null
+  own_hours: number | null
+  hourly_rate: number | null
+}
+
+export interface PricingCostLine {
+  key: string
+  label: string
+  per_event: number
+  per_head: number
+  basis: string
+  estimated: boolean
+}
+export interface PricingComp {
+  name: string
+  price_pp: number | null
+  note: string
+  source_note: string
+}
+export interface PricingAudit {
+  currency: string
+  seats: number
+  events_per_month: number
+  current_price: number
+  cost_lines: PricingCostLine[]
+  total_cost_per_event: number
+  cost_per_head: number
+  time_value_per_event: number
+  hourly_rate: number
+  hourly_rate_source: 'yours' | 'researched' | 'estimated'
+  own_hours: number
+  own_hours_estimated: boolean
+  revenue_per_event: number
+  profit_per_event: number
+  margin_per_head: number
+  monthly_profit: number
+  break_even_seats_now: number | null
+  verdict: 'losing' | 'underpriced' | 'healthy'
+  headline_amount: number
+  comp_price_pp: number | null
+  recommended_price: number
+  recommended_margin_pct: number
+  break_even_seats_rec: number | null
+  monthly_upside: number
+  extra_per_head: number
+  read: string
+}
+export interface PricingFactor {
+  key?: string
+  label: string
+  status: 'help' | 'watch' | 'hurt'
+  detail: string
+}
+export interface PricingFix {
+  title: string
+  why: string
+  change: string
+  lift_note: string
+  effort: 'this_week' | 'this_month' | 'project'
+}
+export interface PricingReport {
+  experience: {
+    description: string
+    category: string
+    city: string
+    seats: number
+    current_price: number
+    events_per_month: number
+    currency: string
+  }
+  headline_verdict: string
+  narrative: string
+  confidence: 'low' | 'medium' | 'high'
+  premium_framing: string
+  value_points: string[]
+  audit: PricingAudit
+  comps: PricingComp[]
+  demand_read: string
+  factors: PricingFactor[]
+  fixes: PricingFix[]
+  price_basis: { note: string; checked_on: string }
+  offer?: { per_person_from: string }
+  meta?: { generated_at?: string; model?: string; research_source?: 'grounded' | 'fallback' }
+}
+
+export type PricingRunResponse =
+  | { ok: true; run_id: string; report: PricingReport }
+  | { ok: false; error: GrowthToolsError }
+
+/** The pricing audit run: {action:'run', input} → {run_id, report}. Slow (LLM + search). */
+export async function runPricingAudit(
+  input: PricingRunInput,
+  opts?: { pid?: string; utm?: Record<string, string>; signal?: AbortSignal },
+): Promise<PricingRunResponse> {
+  const origin = typeof window !== 'undefined' ? window.location.origin : undefined
+  const result = await postGrowthTools(
+    'growth-tools-pricing',
+    {
+      action: 'run',
+      input,
+      ...(opts?.pid ? { pid: opts.pid } : {}),
+      ...(opts?.utm && Object.keys(opts.utm).length > 0 ? { utm: opts.utm } : {}),
+      ...(origin ? { origin } : {}),
+    },
+    opts?.signal,
+  )
+  if (!result.ok) return result
+  const body = result.body as { run_id?: string; report?: PricingReport } | null
+  if (!body || typeof body.run_id !== 'string' || !body.report) {
+    return { ok: false, error: 'server' }
+  }
+  return { ok: true, run_id: body.run_id, report: body.report }
+}
+
+/** Token-gated full pricing audit (from the emailed link): {run_id, token} → {report}. */
+export async function fetchPricingReport(
+  run_id: string,
+  token: string,
+): Promise<{ ok: true; report: PricingReport } | { ok: false; error: GrowthToolsError }> {
+  const result = await postGrowthTools('growth-tools-report', { run_id, token })
+  if (!result.ok) return result
+  const report =
+    result.body && typeof result.body === 'object' && 'report' in result.body
+      ? (result.body as { report?: PricingReport }).report
+      : undefined
+  if (!report || typeof report.experience !== 'object') return { ok: false, error: 'server' }
+  return { ok: true, report }
 }
