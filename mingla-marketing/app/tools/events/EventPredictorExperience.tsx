@@ -214,22 +214,30 @@ export function EventPredictorExperience() {
     setCitySearching(false)
   }
 
-  const todayStr = new Date().toISOString().slice(0, 10)
+  // LOCAL today (not UTC) — toISOString() is UTC and rolls a day early for
+  // anyone ahead of UTC, which silently failed "date >= today" on valid
+  // same-day events and greyed out the button with no explanation.
+  const now = new Date()
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
   const dateValid = /^\d{4}-\d{2}-\d{2}$/.test(date) && date >= todayStr
   const capacityNum = Number(capacity)
   const capacityValid = Number.isFinite(capacityNum) && capacityNum >= 1
-  // City must be a chosen suggestion — unless the geocoder is unavailable, then
-  // accept free text so infra issues never hard-block a run.
-  const cityValid = cityChosen || (geocodeDown && city.trim().length >= 2)
+  // The autocomplete validates the city, but a typed city is accepted too — so
+  // it's a helpful assist, never a hard gate that silently blocks the button.
+  const cityValid = cityChosen || city.trim().length >= 2
   const showCityDropdown =
     cityFocused && !cityChosen && city.trim().length >= 2 &&
     (citySearching || citySuggestions.length > 0)
-  const canRun =
-    title.trim().length >= 2 &&
-    cityValid &&
-    category.trim().length >= 2 &&
-    dateValid &&
-    capacityValid
+
+  // Everything still required — surfaced under the button so a disabled state
+  // is never a mystery.
+  const missing: string[] = []
+  if (title.trim().length < 2) missing.push('event name')
+  if (category.trim().length < 2) missing.push('event type')
+  if (!cityValid) missing.push('city')
+  if (!dateValid) missing.push('a date (today or later)')
+  if (!capacityValid) missing.push('capacity')
+  const canRun = missing.length === 0
 
   async function handleRun() {
     if (!canRun) return
@@ -600,6 +608,12 @@ export function EventPredictorExperience() {
           >
             Forecast my turnout
           </button>
+          {!canRun && missing.length > 0 ? (
+            <p className="mt-3 text-sm text-white/55">
+              Still need:{' '}
+              <span className="font-semibold text-warm">{missing.join(' · ')}</span>
+            </p>
+          ) : null}
         </div>
 
         <p className="mt-4 text-xs text-white/45">
