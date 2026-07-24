@@ -1,7 +1,23 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { paystackVerifyTransaction } from "../_shared/paystack.ts";
-import { stripeWebhook } from "../_shared/stripe.ts";
+import {
+  createStripeReleasePayout,
+  stripePayoutRelease,
+  stripeWebhook,
+} from "../_shared/stripe.ts";
+import {
+  dispatchNotification,
+  getBrandPaymentManagerUserIds,
+} from "../_shared/stripeEdgeAuth.ts";
+import {
+  classifyStripePayoutCreateError,
+  executeStripeRelease,
+  type StripeBalance,
+  type StripePayout,
+  type StripeReleaseCandidate,
+  type StripeReleaseResult,
+} from "./engine.ts";
 
 const json = (body: Record<string, unknown>, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -13,6 +29,42 @@ type SweepDeps = {
   env: (key: string) => string | undefined;
   createAdmin: typeof createClient;
   resolveProviderFee: (candidate: FeeCandidate) => Promise<FeeSnapshot>;
+  createStripeReleaseClient?: () => StripeReleaseClient;
+  notifyKycBlocked?: (
+    admin: AdminClient,
+    release: StripeReleaseCandidate,
+  ) => Promise<void>;
+  notifyAttemptCap?: (
+    release: Pick<StripeReleaseCandidate, "release_id" | "brand_id">,
+    message: string,
+  ) => Promise<void>;
+};
+
+type AdminClient = ReturnType<typeof createClient>;
+
+type StripeReleaseClient = {
+  balance: {
+    retrieve: (
+      params: Record<string, never>,
+      options: {
+        stripeAccount: string;
+        idempotencyKey: string;
+      },
+    ) => Promise<StripeBalance>;
+  };
+  payouts: {
+    create: (
+      params: {
+        amount: number;
+        currency: string;
+        metadata: { mingla_release_id: string };
+      },
+      options: {
+        stripeAccount: string;
+        idempotencyKey: string;
+      },
+    ) => Promise<StripePayout>;
+  };
 };
 
 type FeeCandidate = {
@@ -26,6 +78,15 @@ type FeeCandidate = {
 type FeeSnapshot = {
   provider_fee_cents: number;
   provider_balance_transaction_id: string | null;
+};
+
+type PayoutReleaseAlert = {
+  alert_id: string;
+  release_id: string;
+  brand_id: string;
+  error_message: string;
+  idempotency_key: string;
+  claim_id: string;
 };
 
 export function providerReferenceRoute(
@@ -121,7 +182,261 @@ const defaultDeps: SweepDeps = {
   env: (key) => Deno.env.get(key),
   createAdmin: createClient,
   resolveProviderFee,
+  createStripeReleaseClient: () => stripePayoutRelease(),
 };
+
+async function notifyKycBlocked(
+  admin: AdminClient,
+  release: StripeReleaseCandidate,
+): Promise<void> {
+  const userIds = await getBrandPaymentManagerUserIds(
+    admin as never,
+    release.brand_id,
+  );
+  for (const userId of userIds) {
+    await dispatchNotification({
+      userId,
+      brandId: release.brand_id,
+      type: "stripe.payout_release_blocked_kyc",
+      title: "Finish Stripe verification",
+      body:
+        "Stripe needs updated account or bank details before this event payout can be released.",
+      data: { releaseId: release.release_id },
+      relatedId: release.release_id,
+      relatedType: "payout_release",
+      idempotencyKey:
+        `stripe.payout_release_blocked_kyc:${release.release_id}:${userId}`,
+      deepLink: `mingla-business://brand/${release.brand_id}/payments/onboard`,
+    });
+  }
+}
+
+async function notifyAttemptCap(
+  release: Pick<StripeReleaseCandidate, "release_id" | "brand_id">,
+  message: string,
+): Promise<void> {
+  await dispatchNotification({
+    emailTo: "ops@mingla.app",
+    emailVariant: "generic_notification",
+    type: "ops.stripe_payout_release_attempt_cap",
+    title: "Stripe organiser payout needs manual review",
+    body:
+      `Release ${release.release_id} exhausted 10 definitive payout attempts. Last error: ${
+        message.slice(0, 500)
+      }`,
+    data: {
+      releaseId: release.release_id,
+      brandId: release.brand_id,
+      attemptCap: 10,
+    },
+    relatedId: release.release_id,
+    relatedType: "payout_release",
+    idempotencyKey:
+      `ops.stripe_payout_release_attempt_cap:${release.release_id}`,
+    skipPush: true,
+  });
+}
+
+async function deliverPendingAttemptCapAlerts(
+  admin: AdminClient,
+  deps: SweepDeps,
+): Promise<{ claimed: number; delivered: number; retryPending: number }> {
+  const { data, error } = await admin.rpc(
+    "claim_payout_release_alerts" as never,
+    {
+      p_limit: 20,
+      p_now: new Date().toISOString(),
+    } as never,
+  );
+  if (error) {
+    throw new Error(`payout_release_alert_claim_failed:${error.message}`);
+  }
+
+  const alerts = (data ?? []) as PayoutReleaseAlert[];
+  const counts = { claimed: alerts.length, delivered: 0, retryPending: 0 };
+  for (const alert of alerts) {
+    let delivered = false;
+    let deliveryError: string | null = null;
+    try {
+      await (deps.notifyAttemptCap ?? notifyAttemptCap)(
+        {
+          release_id: alert.release_id,
+          brand_id: alert.brand_id,
+        },
+        alert.error_message,
+      );
+      delivered = true;
+    } catch (error) {
+      deliveryError = error instanceof Error ? error.message : String(error);
+    }
+
+    const { data: recordedStatus, error: recordError } = await admin.rpc(
+      "record_payout_release_alert_delivery" as never,
+      {
+        p_alert_id: alert.alert_id,
+        p_claim_id: alert.claim_id,
+        p_delivered: delivered,
+        p_error_message: deliveryError,
+        p_now: new Date().toISOString(),
+      } as never,
+    );
+    if (recordError) {
+      throw new Error(
+        `payout_release_alert_record_failed:${recordError.message}`,
+      );
+    }
+    if (recordedStatus === "delivered") {
+      counts.delivered++;
+    } else {
+      counts.retryPending++;
+      console.error("[payout-release-sweep] attempt-cap alert retained", {
+        alertId: alert.alert_id,
+        releaseId: alert.release_id,
+        message: deliveryError ?? "alert_delivery_not_confirmed",
+      });
+    }
+  }
+  return counts;
+}
+
+async function recordStripeExecution(
+  admin: AdminClient,
+  release: StripeReleaseCandidate,
+  result: StripeReleaseResult,
+): Promise<string> {
+  const { data, error } = await admin.rpc(
+    "record_stripe_payout_execution" as never,
+    {
+      p_release_id: release.release_id,
+      p_claim_id: release.claim_id,
+      p_outcome: result.outcome,
+      p_payout_id: result.outcome === "accepted" ? result.payoutId : null,
+      p_amount_cents: result.amountCents,
+      p_error_message: result.outcome === "accepted" ? null : result.message,
+      p_now: new Date().toISOString(),
+    } as never,
+  );
+  if (error) {
+    throw new Error(`stripe_execution_record_failed:${error.message}`);
+  }
+  return String(data);
+}
+
+async function executeClaimedStripeReleases(
+  admin: AdminClient,
+  deps: SweepDeps,
+): Promise<{
+  claimed: number;
+  accepted: number;
+  blockedBalance: number;
+  blockedKyc: number;
+  retryableErrors: number;
+  definitiveErrors: number;
+  notAuthorized: number;
+}> {
+  const { data, error } = await admin.rpc(
+    "claim_stripe_payout_releases" as never,
+    {
+      p_limit: 20,
+      p_now: new Date().toISOString(),
+    } as never,
+  );
+  if (error) throw new Error(`stripe_release_claim_failed:${error.message}`);
+
+  const releases = (data ?? []) as StripeReleaseCandidate[];
+  if (releases.length === 0) {
+    return {
+      claimed: 0,
+      accepted: 0,
+      blockedBalance: 0,
+      blockedKyc: 0,
+      retryableErrors: 0,
+      definitiveErrors: 0,
+      notAuthorized: 0,
+    };
+  }
+  const stripe = deps.createStripeReleaseClient?.() ??
+    stripePayoutRelease();
+  const counts = {
+    claimed: releases.length,
+    accepted: 0,
+    blockedBalance: 0,
+    blockedKyc: 0,
+    retryableErrors: 0,
+    definitiveErrors: 0,
+    notAuthorized: 0,
+  };
+  for (const release of releases) {
+    let result: StripeReleaseResult;
+    try {
+      result = await executeStripeRelease(release, {
+        retrieveBalance: async (stripeAccountId) => {
+          // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve; deterministic key is supplied for request tracing
+          return await stripe.balance.retrieve({}, {
+            stripeAccount: stripeAccountId,
+            idempotencyKey: `brand_payout_balance_${release.release_id}`,
+          });
+        },
+        revalidateReleaseImmediatelyBeforePayout: async (
+          claimedRelease,
+          amountCents,
+        ) => {
+          const { data: authorized, error: authorizationError } = await admin
+            .rpc(
+              "authorize_stripe_payout_execution" as never,
+              {
+                p_release_id: claimedRelease.release_id,
+                p_claim_id: claimedRelease.claim_id,
+                p_amount_cents: amountCents,
+                p_now: new Date().toISOString(),
+              } as never,
+            );
+          if (authorizationError) {
+            throw new Error(
+              `stripe_execution_authorization_failed:${authorizationError.message}`,
+            );
+          }
+          return authorized === true;
+        },
+        createPayout: async (input) => {
+          return await createStripeReleasePayout(stripe as never, input);
+        },
+      });
+    } catch (error) {
+      const classified = classifyStripePayoutCreateError(error);
+      result = {
+        ...classified,
+        amountCents: release.net_release_cents +
+          release.maturity_recredit_cents,
+      };
+    }
+    if (result.outcome === "not_authorized") {
+      counts.notAuthorized++;
+      continue;
+    }
+    await recordStripeExecution(admin, release, result);
+    if (result.outcome === "accepted") counts.accepted++;
+    if (result.outcome === "blocked_balance") counts.blockedBalance++;
+    if (result.outcome === "blocked_kyc") {
+      counts.blockedKyc++;
+      try {
+        await (deps.notifyKycBlocked ?? notifyKycBlocked)(admin, release);
+      } catch (notifyError) {
+        console.error("[payout-release-sweep] KYC remediation alert failed", {
+          releaseId: release.release_id,
+          message: notifyError instanceof Error
+            ? notifyError.message
+            : String(notifyError),
+        });
+      }
+    }
+    if (result.outcome === "retryable_error") counts.retryableErrors++;
+    if (result.outcome === "definitive_error") {
+      counts.definitiveErrors++;
+    }
+  }
+  return counts;
+}
 
 export async function handlePayoutReleaseSweep(
   req: Request,
@@ -195,9 +510,59 @@ export async function handlePayoutReleaseSweep(
     });
     return json({ error: "ledger_sweep_failed" }, 500);
   }
-  // B is structurally dark: provider access above is read-only fee truth;
-  // there is no payout/transfer/schedule mutation path.
-  return json({ ok: true, dark: true, capturedFees, result: data ?? {} });
+  let alertDelivery;
+  try {
+    alertDelivery = await deliverPendingAttemptCapAlerts(admin as never, deps);
+  } catch (alertError) {
+    console.error("[payout-release-sweep] durable alert drain failed", {
+      message: alertError instanceof Error
+        ? alertError.message
+        : String(alertError),
+    });
+    return json({ error: "alert_delivery_failed" }, 500);
+  }
+  // #1172 ships DARK. The code path exists for test/R2 verification, but
+  // production execution remains off until the orchestrator explicitly sets
+  // PAYOUT_RELEASE_EXECUTE=true after the required soak gate.
+  if (deps.env("PAYOUT_RELEASE_EXECUTE") !== "true") {
+    return json({
+      ok: true,
+      dark: true,
+      capturedFees,
+      alertDelivery,
+      result: data ?? {},
+    });
+  }
+  try {
+    const stripeExecution = await executeClaimedStripeReleases(
+      admin as never,
+      deps,
+    );
+    const newAlertDelivery = await deliverPendingAttemptCapAlerts(
+      admin as never,
+      deps,
+    );
+    return json({
+      ok: true,
+      dark: false,
+      capturedFees,
+      alertDelivery: {
+        claimed: alertDelivery.claimed + newAlertDelivery.claimed,
+        delivered: alertDelivery.delivered + newAlertDelivery.delivered,
+        retryPending: alertDelivery.retryPending +
+          newAlertDelivery.retryPending,
+      },
+      result: data ?? {},
+      stripeExecution,
+    });
+  } catch (executionError) {
+    console.error("[payout-release-sweep] Stripe execution phase failed", {
+      message: executionError instanceof Error
+        ? executionError.message
+        : String(executionError),
+    });
+    return json({ error: "stripe_execution_failed" }, 500);
+  }
 }
 
 if (import.meta.main) serve((req) => handlePayoutReleaseSweep(req));

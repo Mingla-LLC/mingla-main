@@ -551,6 +551,34 @@ async function handlePayout(
   if (!payoutId) throw new Error(`${event.type} missing payout.id`);
   const rawStatus = objectString(payout, "status") ?? "pending";
   const status = rawStatus === "in_transit" ? "in_transit" : rawStatus;
+  const releaseLookup = await supabase
+    .from("brand_payout_releases")
+    .select("id")
+    .eq("stripe_payout_id", payoutId)
+    .maybeSingle();
+  if (releaseLookup.error) {
+    throw new Error(
+      `payout release lookup failed: ${releaseLookup.error.message}`,
+    );
+  }
+  let releaseId = typeof releaseLookup.data?.id === "string"
+    ? releaseLookup.data.id
+    : null;
+  if (!releaseId) {
+    const priorPayout = await supabase
+      .from("payouts")
+      .select("release_id")
+      .eq("stripe_payout_id", payoutId)
+      .maybeSingle();
+    if (priorPayout.error) {
+      throw new Error(
+        `prior payout attribution lookup failed: ${priorPayout.error.message}`,
+      );
+    }
+    releaseId = typeof priorPayout.data?.release_id === "string"
+      ? priorPayout.data.release_id
+      : null;
+  }
   const { error } = await supabase.from("payouts").upsert(
     {
       brand_id: brandId,
@@ -559,14 +587,92 @@ async function handlePayout(
       currency: char3(payout.currency),
       status,
       arrival_date: dateFromUnixSeconds(payout.arrival_date),
+      initiated_by: releaseId ? "mingla_release" : "stripe_auto",
+      release_id: releaseId,
     },
     { onConflict: "stripe_payout_id" },
   );
   if (error) throw new Error(`payout upsert failed: ${error.message}`);
 
+  if (releaseId && event.type === "payout.paid") {
+    const { error: releaseError } = await supabase
+      .from("brand_payout_releases")
+      .update({
+        status: "released",
+        released_at: new Date().toISOString(),
+        organiser_cash_delivered_cents: Number(payout.amount ?? 0),
+        error_message: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", releaseId)
+      .eq("stripe_payout_id", payoutId);
+    if (releaseError) {
+      throw new Error(
+        `payout release paid reconcile failed: ${releaseError.message}`,
+      );
+    }
+  }
+
   if (event.type === "payout.failed") {
     const failureCode = objectString(payout, "failure_code") ?? "unknown";
     const remediation = mapPayoutFailureCode(failureCode);
+    if (releaseId) {
+      const retryableKyc = [
+        "account_closed",
+        "account_frozen",
+        "bank_account_restricted",
+        "bank_ownership_changed",
+        "could_not_process",
+        "debit_not_authorized",
+        "declined",
+        "invalid_account_number",
+        "incorrect_account_holder_name",
+        "incorrect_account_holder_tax_id",
+        "incorrect_account_type",
+        "incorrect_routing_number",
+        "no_account",
+      ].includes(failureCode);
+      const { data: failureResult, error: releaseError } = await supabase.rpc(
+        "record_stripe_payout_webhook_failure",
+        {
+          p_payout_id: payoutId,
+          p_retryable_kyc: retryableKyc,
+          p_error_message: `${failureCode}:${remediation}`,
+          p_now: new Date().toISOString(),
+        },
+      );
+      if (releaseError) {
+        throw new Error(
+          `payout release failed reconcile failed: ${releaseError.message}`,
+        );
+      }
+      const reconciliation = failureResult as {
+        attempt_cap_reached?: boolean;
+        mutated?: boolean;
+      } | null;
+      if (
+        reconciliation?.attempt_cap_reached === true &&
+        reconciliation.mutated === true
+      ) {
+        await dispatchNotification({
+          emailTo: "ops@mingla.app",
+          emailVariant: "generic_notification",
+          type: "ops.stripe_payout_release_attempt_cap",
+          title: "Stripe organiser payout needs manual review",
+          body:
+            `Release ${releaseId} reached its terminal payout-attempt state after Stripe reported ${failureCode}.`,
+          data: {
+            release_id: releaseId,
+            stripe_payout_id: payoutId,
+            failure_code: failureCode,
+          },
+          relatedId: releaseId,
+          relatedType: "payout_release",
+          idempotencyKey: `ops.stripe_payout_release_attempt_cap:${releaseId}`,
+          skipPush: true,
+        });
+      }
+    }
     await notifyBrandManagers(supabase, {
       brandId,
       type: "stripe.payout_failed",
@@ -574,6 +680,7 @@ async function handlePayout(
       body: remediation,
       data: {
         stripe_payout_id: payoutId,
+        release_id: releaseId,
         failure_code: failureCode,
         remediation,
       },
@@ -582,6 +689,24 @@ async function handlePayout(
       idempotencyKey: `stripe.payout_failed:${payoutId}:${failureCode}`,
       deepLink: `mingla-business://brand/${brandId}/payments`,
     });
+  }
+
+  if (releaseId && event.type === "payout.canceled") {
+    const { error: releaseError } = await supabase
+      .from("brand_payout_releases")
+      .update({
+        status: "failed",
+        organiser_cash_delivered_cents: 0,
+        error_message: "stripe_payout_canceled",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", releaseId)
+      .eq("stripe_payout_id", payoutId);
+    if (releaseError) {
+      throw new Error(
+        `payout release canceled reconcile failed: ${releaseError.message}`,
+      );
+    }
   }
 
   await writeAudit(supabase, {
@@ -612,6 +737,7 @@ async function handlePayout(
       body: `${formatMoneyCents(payoutAmountCents, payoutCurrency)} is on its way to your bank.`,
       data: {
         payoutId,
+        releaseId,
         amountCents: payoutAmountCents,
         currency: payoutCurrency,
         arrivalDate,
