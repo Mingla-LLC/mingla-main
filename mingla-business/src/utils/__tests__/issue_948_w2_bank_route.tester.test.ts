@@ -57,6 +57,8 @@ const router = {
 };
 
 jest.mock("expo-router", () => ({
+  Redirect: ({ href }: { href: string }) =>
+    React.createElement("redirect", { href }),
   useLocalSearchParams: () => params,
   useRouter: () => router,
 }));
@@ -487,8 +489,43 @@ describe("#948 W2 tester — native W4 boundary remains intact", () => {
     "utf8",
   );
 
-  test("native route stays on the legacy onboard owner until Wave 4", () => {
-    expect(nativeRouteSource).toContain(
+  test("native route safely redirects to the legacy onboard owner until Wave 4", async () => {
+    const NativeBankConnectAlias =
+      require("../../../app/brand/[id]/connect.tsx").default as
+        React.ComponentType;
+
+    params = { id: "brand/with hostile path bytes" };
+    let nativeTree: TestTree;
+    await TestRenderer.act(async () => {
+      nativeTree = TestRenderer.create(
+        React.createElement(NativeBankConnectAlias),
+      );
+    });
+    expect(
+      nativeTree!.root.findByProps({
+        href:
+          "/brand/brand%2Fwith%20hostile%20path%20bytes/payments/onboard",
+      }),
+    ).toBeTruthy();
+    await TestRenderer.act(async () => {
+      nativeTree!.unmount();
+    });
+
+    params = {};
+    await TestRenderer.act(async () => {
+      nativeTree = TestRenderer.create(
+        React.createElement(NativeBankConnectAlias),
+      );
+    });
+    expect(
+      nativeTree!.root.findByProps({ href: "/(tabs)/account" }),
+    ).toBeTruthy();
+    await TestRenderer.act(async () => {
+      nativeTree!.unmount();
+    });
+
+    expect(nativeRouteSource).toContain("Redirect");
+    expect(nativeRouteSource).not.toContain(
       'export { default } from "./payments/onboard";',
     );
     expect(nativeRouteSource).not.toContain("startStripeWebBankConnect");
