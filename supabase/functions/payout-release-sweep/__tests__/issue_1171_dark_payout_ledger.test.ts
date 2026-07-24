@@ -237,6 +237,9 @@ Deno.test("internal handler fails closed before client creation and exact bearer
         rpc: (name: string) => {
           rpcCalls++;
           rpcNames.push(name);
+          if (name === "claim_payout_release_alerts") {
+            return Promise.resolve({ data: [], error: null });
+          }
           return Promise.resolve({
             data: name === "list_missing_payout_source_fees"
               ? []
@@ -280,10 +283,11 @@ Deno.test("internal handler fails closed before client creation and exact bearer
   );
   assertEquals(ok.status, 200);
   assertEquals(clientCreations, 1);
-  assertEquals(rpcCalls, 2);
+  assertEquals(rpcCalls, 3);
   assertEquals(rpcNames, [
     "list_missing_payout_source_fees",
     "run_payout_release_dark_sweep",
+    "claim_payout_release_alerts",
   ]);
   assertEquals((await ok.json()).dark, true);
 });

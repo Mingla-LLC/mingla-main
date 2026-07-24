@@ -82,6 +82,8 @@ export const stripeRefreshStatus = () =>
   createStripeClientForRole("REFRESH_STATUS");
 export const stripeDetach = () => createStripeClientForRole("DETACH");
 export const stripeBalances = () => createStripeClientForRole("BALANCES");
+export const stripePayoutRelease = () =>
+  createStripeClientForRole("PAYOUT_RELEASE");
 export const stripeKycReminder = () =>
   createStripeClientForRole("KYC_REMINDER");
 export const stripeTicketCheckout = () =>
@@ -91,5 +93,30 @@ export const stripeTicketCheckout = () =>
 // must grant refunds:write + application_fees:read.
 export const stripeTicketRefund = () =>
   createStripeClientForRole("TICKET_REFUND");
+
+export type StripeReleasePayoutInput = {
+  stripeAccountId: string;
+  amountCents: number;
+  currency: string;
+  releaseId: string;
+  idempotencyKey: string;
+};
+
+export async function createStripeReleasePayout(
+  stripe: Stripe,
+  input: StripeReleasePayoutInput,
+): Promise<{ id: string; amount: number; currency: string; status?: string }> {
+  return await stripe.payouts.create(
+    {
+      amount: input.amountCents,
+      currency: input.currency,
+      metadata: { mingla_release_id: input.releaseId },
+    },
+    {
+      stripeAccount: input.stripeAccountId,
+      idempotencyKey: input.idempotencyKey,
+    },
+  );
+}
 
 export type StripeClient = ReturnType<typeof createStripeClient>;

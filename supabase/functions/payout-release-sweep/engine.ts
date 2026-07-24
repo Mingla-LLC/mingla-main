@@ -244,3 +244,215 @@ export function matureTemporaryDebt(
     unrecoveredClosedCents: debt.principalCents - debt.recoveredCents,
   };
 }
+
+export type StripeReleaseCandidate = {
+  release_id: string;
+  brand_id: string;
+  stripe_account_id: string;
+  currency: string;
+  net_release_cents: number;
+  maturity_recredit_cents: number;
+  attempt_count: number;
+  claim_id: string;
+};
+
+export type StripeBalance = {
+  available?: Array<{ amount?: number; currency?: string }>;
+};
+
+export type StripePayout = {
+  id: string;
+  amount: number;
+  currency: string;
+  status?: string | null;
+};
+
+export type StripeReleaseResult =
+  | {
+    outcome: "accepted";
+    payoutId: string;
+    amountCents: number;
+  }
+  | {
+    outcome: "blocked_balance";
+    amountCents: number;
+    availableCents?: number;
+    message: string;
+  }
+  | {
+    outcome: "blocked_kyc" | "retryable_error" | "definitive_error";
+    amountCents: number;
+    message: string;
+  }
+  | {
+    outcome: "not_authorized";
+    amountCents: number;
+    message: string;
+  };
+
+export type StripeReleaseDeps = {
+  retrieveBalance: (
+    stripeAccountId: string,
+  ) => Promise<StripeBalance>;
+  revalidateReleaseImmediatelyBeforePayout: (
+    release: StripeReleaseCandidate,
+    amountCents: number,
+  ) => Promise<boolean>;
+  createPayout: (input: {
+    stripeAccountId: string;
+    amountCents: number;
+    currency: string;
+    releaseId: string;
+    idempotencyKey: string;
+  }) => Promise<StripePayout>;
+};
+
+export function stripeReleaseAmountCents(
+  release: Pick<
+    StripeReleaseCandidate,
+    "net_release_cents" | "maturity_recredit_cents"
+  >,
+): number {
+  const amount = release.net_release_cents + release.maturity_recredit_cents;
+  if (!Number.isSafeInteger(amount) || amount <= 0) {
+    throw new Error("invalid_stripe_release_amount");
+  }
+  return amount;
+}
+
+export function stripePayoutIdempotencyKey(releaseId: string): string {
+  if (releaseId.trim().length === 0) {
+    throw new Error("stripe_release_id_required");
+  }
+  return `brand_payout_${releaseId}`;
+}
+
+export function stripeAvailableCents(
+  balance: StripeBalance,
+  currency: string,
+): number {
+  const normalized = currency.trim().toLowerCase();
+  return (balance.available ?? []).reduce((total, row) => {
+    if (
+      row.currency?.trim().toLowerCase() !== normalized ||
+      !Number.isSafeInteger(row.amount) ||
+      (row.amount ?? 0) < 0
+    ) {
+      return total;
+    }
+    return total + (row.amount ?? 0);
+  }, 0);
+}
+
+type StripeErrorShape = {
+  code?: unknown;
+  type?: unknown;
+  statusCode?: unknown;
+  message?: unknown;
+  raw?: {
+    code?: unknown;
+    type?: unknown;
+    message?: unknown;
+  };
+};
+
+function stripeErrorField(
+  error: StripeErrorShape,
+  key: "code" | "type" | "message",
+): string | null {
+  const direct = error[key];
+  if (typeof direct === "string" && direct.trim().length > 0) return direct;
+  const raw = error.raw?.[key];
+  return typeof raw === "string" && raw.trim().length > 0 ? raw : null;
+}
+
+export function classifyStripePayoutCreateError(
+  error: unknown,
+): {
+  outcome:
+    | "blocked_balance"
+    | "blocked_kyc"
+    | "retryable_error"
+    | "definitive_error";
+  message: string;
+} {
+  const stripeError = error && typeof error === "object"
+    ? error as StripeErrorShape
+    : {};
+  const code = stripeErrorField(stripeError, "code");
+  const type = stripeErrorField(stripeError, "type");
+  const message = stripeErrorField(stripeError, "message") ??
+    (error instanceof Error ? error.message : String(error));
+  if (code === "balance_insufficient") {
+    return { outcome: "blocked_balance", message };
+  }
+  // Stripe test-mode probes proved KYC payout rejection is an
+  // invalid_request_error with no error.code.
+  if (type === "invalid_request_error") {
+    return { outcome: "blocked_kyc", message };
+  }
+  const statusCode = typeof stripeError.statusCode === "number"
+    ? stripeError.statusCode
+    : null;
+  if (
+    statusCode !== null && statusCode >= 400 && statusCode < 500 &&
+    ![408, 409, 429].includes(statusCode)
+  ) {
+    return { outcome: "definitive_error", message };
+  }
+  return { outcome: "retryable_error", message };
+}
+
+export async function executeStripeRelease(
+  release: StripeReleaseCandidate,
+  deps: StripeReleaseDeps,
+): Promise<StripeReleaseResult> {
+  const amountCents = stripeReleaseAmountCents(release);
+  const balance = await deps.retrieveBalance(release.stripe_account_id);
+  const availableCents = stripeAvailableCents(balance, release.currency);
+  if (availableCents < amountCents) {
+    return {
+      outcome: "blocked_balance",
+      amountCents,
+      availableCents,
+      message: "stripe_available_balance_below_ledger_release",
+    };
+  }
+  const authorized = await deps.revalidateReleaseImmediatelyBeforePayout(
+    release,
+    amountCents,
+  );
+  if (!authorized) {
+    return {
+      outcome: "not_authorized",
+      amountCents,
+      message: "live_release_authorization_revoked",
+    };
+  }
+  try {
+    const payout = await deps.createPayout({
+      stripeAccountId: release.stripe_account_id,
+      amountCents,
+      currency: release.currency,
+      releaseId: release.release_id,
+      idempotencyKey: stripePayoutIdempotencyKey(release.release_id),
+    });
+    if (
+      !payout.id || payout.amount !== amountCents ||
+      payout.currency.toLowerCase() !== release.currency.toLowerCase()
+    ) {
+      throw new Error("stripe_payout_response_mismatch");
+    }
+    if (payout.status === "failed" || payout.status === "canceled") {
+      return {
+        outcome: "retryable_error",
+        amountCents,
+        message: `stripe_payout_${payout.status}:${payout.id}`,
+      };
+    }
+    return { outcome: "accepted", payoutId: payout.id, amountCents };
+  } catch (error) {
+    const classified = classifyStripePayoutCreateError(error);
+    return { ...classified, amountCents };
+  }
+}

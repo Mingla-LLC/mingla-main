@@ -29,6 +29,7 @@ export type StripeRole =
   | "WEBHOOK"
   | "DETACH"
   | "BALANCES"
+  | "PAYOUT_RELEASE"
   | "REFRESH_STATUS"
   | "KYC_REMINDER"
   | "TAX_DASHBOARD";

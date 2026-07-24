@@ -1,0 +1,84 @@
+name: "#1172 Stripe Payout Execution Tests"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/functions/payout-release-sweep/**"
+      - "supabase/functions/_shared/stripe.ts"
+      - "supabase/functions/_shared/stripeMode.ts"
+      - "supabase/functions/_shared/stripeWebhookRouter.ts"
+      - "supabase/functions/_shared/stripeEdgeAuth.ts"
+      - "supabase/functions/_shared/legacyEmailIdempotency.ts"
+      - "supabase/functions/notify-dispatch/index.ts"
+      - ".github/workflows/issue-1172-stripe-payout-execution-tests.yml"
+  pull_request:
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/functions/payout-release-sweep/**"
+      - "supabase/functions/_shared/stripe.ts"
+      - "supabase/functions/_shared/stripeMode.ts"
+      - "supabase/functions/_shared/stripeWebhookRouter.ts"
+      - "supabase/functions/_shared/stripeEdgeAuth.ts"
+      - "supabase/functions/_shared/legacyEmailIdempotency.ts"
+      - "supabase/functions/notify-dispatch/index.ts"
+      - ".github/workflows/issue-1172-stripe-payout-execution-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-1172-stripe-payout-execution:
+    name: "#1172 Stripe payout execution"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: Apply every migration to clean PostgreSQL 17
+        run: |
+          issue1172_db_password="$(openssl rand -hex 24)"
+          docker run --name issue1172-postgres \
+            -e POSTGRES_PASSWORD="$issue1172_db_password" \
+            -d supabase/postgres:17.4.1.075
+          for attempt in {1..90}; do
+            state="$(docker inspect --format \
+              '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' \
+              issue1172-postgres)"
+            if [ "$state" = "healthy" ]; then
+              break
+            fi
+            sleep 1
+          done
+          for migration_file in supabase/migrations/*.sql; do
+            docker exec -i issue1172-postgres \
+              psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+              < "$migration_file"
+          done
+          docker exec -i issue1172-postgres \
+            psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            < supabase/migrations/__tests__/issue_1172_stripe_payout_execution.test.sql
+          docker exec -i issue1172-postgres \
+            psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            < supabase/migrations/__tests__/issue_1172_stripe_payout_rework.test.sql
+          docker exec -i issue1172-postgres \
+            psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            < supabase/migrations/__tests__/issue_1172_email_provider_idempotency.test.sql
+      - name: Run Stripe payout execution regression tests
+        run: |
+          deno test --allow-read --allow-env --allow-net --no-check \
+            supabase/migrations/__tests__/issue_1172_stripe_payout_execution.test.ts \
+            supabase/functions/payout-release-sweep/__tests__/issue_1172_stripe_payout_execution.test.ts \
+            supabase/functions/payout-release-sweep/__tests__/issue_1172_stripe_payout_adversarial.test.ts \
+            supabase/functions/payout-release-sweep/__tests__/issue_1172_stripe_payout_rework.test.ts \
+            supabase/functions/payout-release-sweep/__tests__/issue_1172_email_provider_idempotency.test.ts
+      - name: Remove disposable database
+        if: always()
+        run: docker rm -f issue1172-postgres || true

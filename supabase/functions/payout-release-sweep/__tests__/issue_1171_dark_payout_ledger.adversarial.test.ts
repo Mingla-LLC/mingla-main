@@ -59,6 +59,9 @@ Deno.test("adversarial bearer variants cannot construct a client and the accepte
       return {
         rpc: (name: string) => {
           rpcNames.push(name);
+          if (name === "claim_payout_release_alerts") {
+            return Promise.resolve({ data: [], error: null });
+          }
           return Promise.resolve({
             data: name === "list_missing_payout_source_fees"
               ? []
@@ -121,12 +124,19 @@ Deno.test("adversarial bearer variants cannot construct a client and the accepte
     ok: true,
     dark: true,
     capturedFees: 0,
+    alertDelivery: {
+      claimed: 0,
+      providerAccepted: 0,
+      retryPending: 0,
+      manualReview: 0,
+    },
     result: { dark: true, executed: 0 },
   });
   assertEquals(clientCreations, 1);
   assertEquals(rpcNames, [
     "list_missing_payout_source_fees",
     "run_payout_release_dark_sweep",
+    "claim_payout_release_alerts",
   ]);
 
   const darkScope = `${migration}\n${handler}\n${engine}`;
