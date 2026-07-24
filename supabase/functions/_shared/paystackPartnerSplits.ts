@@ -85,6 +85,7 @@ export interface PaystackSplitArgs {
 export interface PaystackSplitResult {
   brandId: string | null;
   status:
+    | "held"
     | "transferred"
     | "pending"
     | "blocked_no_paystack"
@@ -160,6 +161,30 @@ async function resolveBrandIdForOrder(
   }
   const single = events as Record<string, unknown>;
   return (single.brand_id as string | undefined) ?? null;
+}
+
+async function isAfterBrandPayoutCutover(
+  supabase: SupabaseClient,
+  brandId: string,
+  finalizedAtIso: string,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("brands")
+    .select("payout_hold_cutover_at")
+    .eq("id", brandId)
+    .maybeSingle();
+  if (error) {
+    throw new Error(`brand payout cutover lookup failed: ${error.message}`);
+  }
+  const cutover = (data as Record<string, unknown> | null)
+    ?.payout_hold_cutover_at;
+  if (typeof cutover !== "string" || cutover.length === 0) return false;
+  const cutoverMs = Date.parse(cutover);
+  const finalizedMs = Date.parse(finalizedAtIso);
+  if (!Number.isFinite(cutoverMs) || !Number.isFinite(finalizedMs)) {
+    throw new Error("invalid_partner_split_cutover_timestamp");
+  }
+  return finalizedMs > cutoverMs;
 }
 
 /** Direct service-role error_message note on a still-pending row (retryable /
@@ -466,6 +491,32 @@ export async function handlePaystackPartnerSplit(
   // ("so we don't steal a cent"). Rate imported from _shared/partnerSplits.ts.
   const partnerShareKobo = Math.round(minglaFeeKobo * PARTNER_SHARE_OF_FEE);
 
+  if (await isAfterBrandPayoutCutover(supabase, brandId, pinIso)) {
+    const { data: heldRow, error: heldError } = await supabase.rpc(
+      "record_held_partner_split",
+      {
+        p_key: key,
+        p_order_id: args.orderId,
+        p_brand_id: brandId,
+        p_partner_account_id: partnerAccountId,
+        p_mingla_fee_cents: minglaFeeKobo,
+        p_partner_share_cents: partnerShareKobo,
+        p_currency: "ngn",
+        p_provider: "paystack",
+      },
+    );
+    if (heldError) {
+      throw new Error(`record_held_partner_split failed: ${heldError.message}`);
+    }
+    const heldStatus = (heldRow as { status?: string } | null)?.status ??
+      "held";
+    if (heldStatus === "held") return { brandId, status: "held" };
+    if (heldStatus === "transferred") {
+      return { brandId, status: "transferred" };
+    }
+    return { brandId, status: "pending" };
+  }
+
   // 5. Record the attempt FIRST (forensic row even when blocked). Idempotent.
   const { data: recordRow, error: recordErr } = await supabase.rpc(
     "record_paystack_partner_split_attempt",
@@ -760,7 +811,7 @@ export async function handlePaystackRefundProcessed(
   const splitId = String(r.id ?? "");
 
   if (
-    status === "pending" || status === "failed" ||
+    status === "held" || status === "pending" || status === "failed" ||
     status.startsWith("blocked_")
   ) {
     // Money never left — permanently prevent payment (the sweep only selects

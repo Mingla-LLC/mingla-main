@@ -2,10 +2,10 @@
  * ORCH-1054 — partner splits + Stripe Transfer pipeline.
  *
  * Wires four webhook surfaces:
- *   - charge.succeeded       → resolve partner, create Stripe Transfer
- *                              (source_transaction = charge.id) for 10% of
- *                              the 1.5% Mingla application fee. Zero FX:
- *                              Transfer.currency = charge.currency.
+ *   - charge.succeeded       → resolve partner, record 10% of the 1.5%
+ *                              Mingla application fee. Post-cutover rows are
+ *                              held for occurrence release; legacy rows use a
+ *                              plain platform-balance Stripe Transfer.
  *   - charge.refunded        → reverse the partner share via
  *                              POST /v1/transfers/{id}/reversals.
  *   - charge.dispute.*       → same as refund (reverse if transferred,
@@ -21,7 +21,7 @@
  *
  * Stripe API references (per feedback-external-api-docs-verified):
  *   - Transfers: https://docs.stripe.com/api/transfers/create
- *     - amount, currency, destination, source_transaction, description,
+ *     - amount, currency, destination, description,
  *       metadata are the documented payload fields.
  *     - Idempotency-Key required on writes per stripe-best-practices.
  *   - Transfer reversals: https://docs.stripe.com/api/transfer_reversals/create
@@ -48,6 +48,7 @@ export interface ChargeSucceededHandlerResult {
   brandId: string | null;
   status:
     | "no_partner"
+    | "held"
     | "transferred"
     | "pending_retry"
     | "blocked_no_stripe"
@@ -147,7 +148,7 @@ async function resolveBrandIdForOrder(
   return (single.brand_id as string | undefined) ?? null;
 }
 
-interface PartnerStripeAccountRow {
+export interface PartnerStripeAccountRow {
   account_id: string;
   stripe_account_id: string | null;
   charges_enabled: boolean;
@@ -156,7 +157,7 @@ interface PartnerStripeAccountRow {
   detached_at: string | null;
 }
 
-async function getPartnerStripeAccount(
+export async function getPartnerStripeAccount(
   supabase: SupabaseClient,
   partnerAccountId: string,
 ): Promise<PartnerStripeAccountRow | null> {
@@ -188,6 +189,30 @@ async function getPartnerStripeAccount(
     external_account_currencies: currencies,
     detached_at: typeof raw.detached_at === "string" ? raw.detached_at : null,
   };
+}
+
+async function isAfterBrandPayoutCutover(
+  supabase: SupabaseClient,
+  brandId: string,
+  finalizedAtIso: string,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("brands")
+    .select("payout_hold_cutover_at")
+    .eq("id", brandId)
+    .maybeSingle();
+  if (error) {
+    throw new Error(`brand payout cutover lookup failed: ${error.message}`);
+  }
+  const cutover = (data as Record<string, unknown> | null)
+    ?.payout_hold_cutover_at;
+  if (typeof cutover !== "string" || cutover.length === 0) return false;
+  const cutoverMs = Date.parse(cutover);
+  const finalizedMs = Date.parse(finalizedAtIso);
+  if (!Number.isFinite(cutoverMs) || !Number.isFinite(finalizedMs)) {
+    throw new Error("invalid_partner_split_cutover_timestamp");
+  }
+  return finalizedMs > cutoverMs;
 }
 
 /**
@@ -269,6 +294,34 @@ export async function handleChargeSucceeded(
   // 10% of the application fee. Math.round so we don't steal a cent.
   const partnerShareCents = Math.round(applicationFeeAmount * PARTNER_SHARE_OF_FEE);
 
+  const postCutover = await isAfterBrandPayoutCutover(
+    supabase,
+    brandId,
+    chargeCreatedIso,
+  );
+  if (postCutover) {
+    const { data: heldRow, error: heldError } = await supabase.rpc(
+      "record_held_partner_split",
+      {
+        p_key: applicationFeeId,
+        p_order_id: orderId,
+        p_brand_id: brandId,
+        p_partner_account_id: partnerAccountId,
+        p_mingla_fee_cents: applicationFeeAmount,
+        p_partner_share_cents: partnerShareCents,
+        p_currency: currency,
+        p_provider: "stripe",
+      },
+    );
+    if (heldError) {
+      throw new Error(`record_held_partner_split failed: ${heldError.message}`);
+    }
+    const status = (heldRow as { status?: string } | null)?.status ?? "held";
+    if (status === "held") return { brandId, status: "held" };
+    if (status === "transferred") return { brandId, status: "transferred" };
+    return { brandId, status: "pending_retry" };
+  }
+
   // Always record the attempt first so we have a forensic row even if we
   // block before Stripe call. ON CONFLICT DO NOTHING handles webhook replay.
   const { data: priorRow, error: recordErr } = await supabase.rpc(
@@ -320,6 +373,8 @@ export async function handleChargeSucceeded(
   // Stripe Transfer create:
   //   POST /v1/transfers
   //   https://docs.stripe.com/api/transfers/create
+  // #1029: source_transaction is intentionally absent because the source
+  // charge belongs to the brand's connected account, not the platform.
   // Per stripe-best-practices: Idempotency-Key required for writes.
   try {
     // @ts-ignore — Stripe SDK Transfers namespace is runtime-provided.
@@ -328,7 +383,6 @@ export async function handleChargeSucceeded(
         amount: partnerShareCents,
         currency, // SOURCE CURRENCY — zero FX invariant
         destination: partnerStripe.stripe_account_id,
-        source_transaction: chargeId,
         description: `Mingla partner share for order ${orderId}`,
         metadata: {
           mingla_application_fee_id: applicationFeeId,
@@ -438,7 +492,9 @@ export async function handleChargeSucceeded(
     // pending so Stripe redelivers and we retry.
     const stripeErr = err as { type?: string; code?: string } | null;
     const errType = stripeErr?.type ?? "";
-    const isPermanent = errType === "StripeInvalidRequestError" ||
+    const isPermanent =
+      (errType === "StripeInvalidRequestError" &&
+        stripeErr?.code !== "balance_insufficient") ||
       errType === "StripePermissionError";
     if (isPermanent) {
       await supabase.rpc("mark_partner_split_failed", {
