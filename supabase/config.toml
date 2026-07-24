@@ -534,3 +534,13 @@ verify_jwt = false
 # service-role posture as the other growth tools.
 [functions.growth-tools-trips]
 verify_jwt = false
+
+# ISSUE-1006 — The Undercharging Audit. POST {action:"run", input} runs a pricing
+# audit for experience hosts grounded in LIVE research (named comparable
+# experiences + prices, a fair hourly rate for the host's time) via Gemini
+# google_search, then a deterministic audit engine (true cost per head INCLUDING
+# their time → profit/loss, recommended price, break-even seats, upside) + a
+# structured verdict. Writes tool_leads(tool='experiences'). Same anon +
+# service-role posture as the other growth tools.
+[functions.growth-tools-pricing]
+verify_jwt = false
