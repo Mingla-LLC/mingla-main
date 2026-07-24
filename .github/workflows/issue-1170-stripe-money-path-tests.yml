@@ -1,0 +1,51 @@
+name: "#1170 Stripe Money-Path Tests"
+
+# Issue #1170 corrects stale source-contract tests so they describe Mingla's
+# live direct-charge architecture. This dedicated job keeps both the corrected
+# implementor guards and the tester's different-angle call-argument parser live
+# in PR CI. Explicit files only: additions require an intentional workflow edit.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/functions/_shared/stripe.ts"
+      - "supabase/functions/refund-order/index.ts"
+      - "supabase/functions/refund-order/index.test.ts"
+      - "supabase/functions/refund-order/__tests__/issue_1170_refund_call_shape.adversarial.test.ts"
+      - "supabase/functions/ticket-checkout-create/index.ts"
+      - "supabase/functions/ticket-checkout-create/__tests__/orch-0843-direct-charge-shape.test.ts"
+      - ".github/workflows/issue-1170-stripe-money-path-tests.yml"
+  pull_request:
+    paths:
+      - "supabase/functions/_shared/stripe.ts"
+      - "supabase/functions/refund-order/index.ts"
+      - "supabase/functions/refund-order/index.test.ts"
+      - "supabase/functions/refund-order/__tests__/issue_1170_refund_call_shape.adversarial.test.ts"
+      - "supabase/functions/ticket-checkout-create/index.ts"
+      - "supabase/functions/ticket-checkout-create/__tests__/orch-0843-direct-charge-shape.test.ts"
+      - ".github/workflows/issue-1170-stripe-money-path-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-1170-stripe-money-path-tests:
+    name: "#1170 direct-charge test truth (implementor + tester)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: Run corrected implementor guards and tester adversarial guard
+        run: |
+          deno test --allow-read \
+            supabase/functions/refund-order/index.test.ts \
+            supabase/functions/ticket-checkout-create/__tests__/orch-0843-direct-charge-shape.test.ts \
+            supabase/functions/refund-order/__tests__/issue_1170_refund_call_shape.adversarial.test.ts
