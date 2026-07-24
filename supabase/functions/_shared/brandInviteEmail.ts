@@ -96,7 +96,7 @@ export function buildInviteEmail(input: {
 
   const preheader = partnerSetup
     ? `${input.inviterName} built ${input.brandName} for you. Accept, connect your bank, and you're live.`
-    : `${input.inviterName} added you to ${input.brandName} as ${roleLabel}. Accept to jump in — and grab the app.`;
+    : `${input.inviterName} added you to ${input.brandName} as ${roleLabel}. Accept to jump in.`;
 
   // ORCH-1329 — designer polish (DESIGN_ORCH-1329). Every interpolation of a
   // brand/inviter/note/role/cta string in an HTML-context literal flows through
@@ -107,7 +107,7 @@ export function buildInviteEmail(input: {
     "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
 
   const ctaLabel = partnerSetup
-    ? `Accept & set up ${input.brandName}`
+    ? "Claim & add your bank"
     : "Accept invitation";
 
   const roleCan = roleCanPhrase(input.role);
@@ -118,11 +118,11 @@ export function buildInviteEmail(input: {
     : "";
 
   const leadBlock = partnerSetup
-    ? `<p style="margin:0 0 20px 0;font-size:16px;line-height:1.5;color:#0F1115;font-weight:600;">${sharedEscapeHtml(input.inviterName)} built <span style="color:#B23E12;">${sharedEscapeHtml(input.brandName)}</span> for you on Mingla — your page, events and photos are done.</p><p style="margin:0 0 18px 0;font-size:15px;line-height:1.55;color:#5B6172;">Three quick steps and it's yours:</p>`
+    ? `<p style="margin:0 0 20px 0;font-size:16px;line-height:1.5;color:#0F1115;font-weight:600;">${sharedEscapeHtml(input.inviterName)} built <span style="color:#B23E12;">${sharedEscapeHtml(input.brandName)}</span> for you on Mingla — your page, offerings and photos are done.</p><p style="margin:0 0 18px 0;font-size:15px;line-height:1.55;color:#5B6172;">Three quick steps and it's yours:</p>`
     : "";
 
   const stepsBlock = partnerSetup
-    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 22px 0;"><tr><td width="40" valign="top" style="padding:0 12px 16px 0;"><div style="width:28px;height:28px;border-radius:14px;background:#FFF6F1;color:#B23E12;font-size:14px;font-weight:700;line-height:28px;text-align:center;">1</div></td><td valign="top" style="padding:0 0 16px 0;"><p style="margin:0 0 2px 0;font-size:15px;font-weight:600;color:#0F1115;line-height:1.35;">Accept &amp; claim ${sharedEscapeHtml(input.brandName)}</p><p style="margin:0;font-size:14px;color:#5B6172;line-height:1.5;">You take over as owner — nothing to rebuild.</p></td></tr><tr><td width="40" valign="top" style="padding:0 12px 16px 0;"><div style="width:28px;height:28px;border-radius:14px;background:#FFF6F1;color:#B23E12;font-size:14px;font-weight:700;line-height:28px;text-align:center;">2</div></td><td valign="top" style="padding:0 0 16px 0;"><p style="margin:0 0 2px 0;font-size:15px;font-weight:600;color:#0F1115;line-height:1.35;">Connect your bank</p><p style="margin:0;font-size:14px;color:#5B6172;line-height:1.5;">A few minutes through Stripe, so customers can pay you.</p></td></tr><tr><td width="40" valign="top" style="padding:0 12px 0 0;"><div style="width:28px;height:28px;border-radius:14px;background:#FFF6F1;color:#B23E12;font-size:14px;font-weight:700;line-height:28px;text-align:center;">3</div></td><td valign="top" style="padding:0;"><p style="margin:0 0 2px 0;font-size:15px;font-weight:600;color:#0F1115;line-height:1.35;">You're live</p><p style="margin:0;font-size:14px;color:#5B6172;line-height:1.5;">Your events open for tickets and the money lands in your account.</p></td></tr></table>`
+    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 22px 0;"><tr><td width="40" valign="top" style="padding:0 12px 16px 0;"><div style="width:28px;height:28px;border-radius:14px;background:#FFF6F1;color:#B23E12;font-size:14px;font-weight:700;line-height:28px;text-align:center;">1</div></td><td valign="top" style="padding:0 0 16px 0;"><p style="margin:0 0 2px 0;font-size:15px;font-weight:600;color:#0F1115;line-height:1.35;">Accept &amp; claim ${sharedEscapeHtml(input.brandName)}</p><p style="margin:0;font-size:14px;color:#5B6172;line-height:1.5;">You take over as owner — nothing to rebuild.</p></td></tr><tr><td width="40" valign="top" style="padding:0 12px 16px 0;"><div style="width:28px;height:28px;border-radius:14px;background:#FFF6F1;color:#B23E12;font-size:14px;font-weight:700;line-height:28px;text-align:center;">2</div></td><td valign="top" style="padding:0 0 16px 0;"><p style="margin:0 0 2px 0;font-size:15px;font-weight:600;color:#0F1115;line-height:1.35;">Connect your bank</p><p style="margin:0;font-size:14px;color:#5B6172;line-height:1.5;">A few minutes through Stripe, so customers can pay you.</p></td></tr><tr><td width="40" valign="top" style="padding:0 12px 0 0;"><div style="width:28px;height:28px;border-radius:14px;background:#FFF6F1;color:#B23E12;font-size:14px;font-weight:700;line-height:28px;text-align:center;">3</div></td><td valign="top" style="padding:0;"><p style="margin:0 0 2px 0;font-size:15px;font-weight:600;color:#0F1115;line-height:1.35;">You're live</p><p style="margin:0;font-size:14px;color:#5B6172;line-height:1.5;">Your offerings open for bookings and the money lands in your account.</p></td></tr></table>`
     : "";
 
   const trustNote = partnerSetup
@@ -140,7 +140,7 @@ export function buildInviteEmail(input: {
 
   const contextLine = partnerSetup
     ? ""
-    : `<p style="margin:0 0 4px 0;font-size:15px;line-height:1.55;color:#0F1115;">${sharedEscapeHtml(input.brandName)} runs its events, tickets and page on Mingla — you're now part of the team that makes it happen.</p>`;
+    : `<p style="margin:0 0 4px 0;font-size:15px;line-height:1.55;color:#0F1115;">${sharedEscapeHtml(input.brandName)} runs its offerings and page on Mingla — you're now part of the team that makes it happen.</p>`;
 
   // --- Optional personal note (partner-setup) ---
   const personalNoteBlock =
@@ -155,25 +155,7 @@ export function buildInviteEmail(input: {
   // SHELL_TOKENS.BRAND_ORANGE_BUTTON used by the ticket/trip/generic renderers.
   // Decorative #FF6B2C (borders, chip-handled-as-#B23E12) is left unchanged.
   const primaryCtaMargin = partnerSetup ? "0 0 12px 0" : "24px 0 26px 0";
-  const primaryCta = `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:${primaryCtaMargin};"><tr><td align="center" style="background:#C4471A;border-radius:10px;"><a href="${sharedEscapeHtml(input.acceptUrl)}" style="display:inline-block;padding:15px 30px;color:#FFFFFF;text-decoration:none;font-weight:700;font-size:16px;line-height:20px;font-family:${FONT_STACK};">${sharedEscapeHtml(ctaLabel)}</a></td></tr></table>`;
-
-  // --- Secondary CTA — "Get the Mingla Business app" (both variants) ---
-  // Outlined ghost button inside a quiet card so it never competes with the
-  // filled primary (hierarchy rule: exactly ONE filled-orange button). The
-  // href is a STATIC LITERAL → the /business/download route renders an explicit
-  // choice (Download the app: iPhone → business App Store / Android → business
-  // Play; or Use on web). ORCH-1381 retired the old 307 redirect, so this copy no
-  // longer promises "everywhere else opens the web" — that became FALSE the moment
-  // the business Play listing went live (2026-07-15, COMMS-0101).
-  // HARD: the href is BYTE-FROZEN — no query string, no token, no UTM
-  // (orch-1329-invite-email.tester.test.ts pins it exactly).
-  const secondaryHeading = partnerSetup
-    ? `Prefer to run ${sharedEscapeHtml(input.brandName)} from your phone?`
-    : "Get the app to manage on the go";
-  const secondarySub = partnerSetup
-    ? "Get the Mingla Business app on iPhone or Android — or open your dashboard on the web."
-    : "The Mingla Business app is where you'll do the work — scan guests in, check sales, run events. Get it on iPhone or Android, or open the web dashboard.";
-  const secondaryCta = `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;margin:0 0 6px 0;"><tr><td style="padding:18px 20px;background:#FFFFFF;border:1px solid #ECECEE;border-radius:12px;"><p style="margin:0 0 3px 0;font-size:14px;font-weight:600;color:#0F1115;line-height:1.4;">${secondaryHeading}</p><p style="margin:0 0 14px 0;font-size:13px;color:#5B6172;line-height:1.5;">${secondarySub}</p><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" style="background:#FFFFFF;border:1.5px solid #FF6B2C;border-radius:8px;"><a href="https://usemingla.com/business/download" style="display:inline-block;padding:12px 22px;color:#B23E12;text-decoration:none;font-weight:600;font-size:15px;line-height:20px;font-family:${FONT_STACK};">Get the Mingla Business app</a></td></tr></table></td></tr></table>`;
+  const primaryCta = `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:${primaryCtaMargin};"><tr><td align="center" style="background:#C4471A;border-radius:10px;"><a href="${sharedEscapeHtml(input.acceptUrl)}" style="display:inline-block;white-space:nowrap;padding:15px 30px;color:#FFFFFF;text-decoration:none;font-weight:700;font-size:16px;line-height:20px;font-family:${FONT_STACK};">${sharedEscapeHtml(ctaLabel)}</a></td></tr></table>`;
 
   // --- Fine print (both, tightened: expiry + paste-URL only) ---
   const finePrint = `<p style="margin:22px 0 0 0;font-size:13px;line-height:1.5;color:#5B6172;">This link expires in ${EXPIRY_DAYS} days. If the button doesn't work, paste this into your browser:</p><p style="margin:5px 0 0 0;word-break:break-all;font-size:12px;color:#5B6172;">${sharedEscapeHtml(input.acceptUrl)}</p>`;
@@ -183,8 +165,8 @@ export function buildInviteEmail(input: {
   // Outer assembly is a pure `${var}` concatenation (no literal HTML) so the
   // ORCH-0785-C gate skips it; each fragment above is individually escape-safe.
   const bodyHtml = partnerSetup
-    ? `${greeting}${eyebrowChip}${leadBlock}${stepsBlock}${personalNoteBlock}${primaryCta}${trustNote}${secondaryCta}${finePrint}`
-    : `${greeting}${valueLine}${roleClarity}${contextLine}${primaryCta}${secondaryCta}${finePrint}`;
+    ? `${greeting}${eyebrowChip}${leadBlock}${stepsBlock}${personalNoteBlock}${primaryCta}${trustNote}${finePrint}`
+    : `${greeting}${valueLine}${roleClarity}${contextLine}${primaryCta}${finePrint}`;
 
   const html = renderShell({
     preheader,
@@ -196,9 +178,7 @@ export function buildInviteEmail(input: {
   });
 
   // Plain-text fallback (text/plain — no HTML escaping). ORCH-1329: both
-  // variants MUST include the accept URL AND the download URL, plus the
-  // step/role copy per DESIGN_ORCH-1329 §5/§6.
-  const DOWNLOAD_URL = "https://usemingla.com/business/download";
+  // variants MUST include the accept URL plus the step/role copy.
   let text: string;
   if (partnerSetup) {
     const noteLine =
@@ -206,15 +186,14 @@ export function buildInviteEmail(input: {
         ? `${input.inviterName} added a note: "${input.personalNote}"\n\n`
         : "";
     text = `Hi ${input.inviteeName},\n\n` +
-      `${input.inviterName} built ${input.brandName} for you on Mingla — your page, events and photos are done.\n\n` +
+      `${input.inviterName} built ${input.brandName} for you on Mingla — your page, offerings and photos are done.\n\n` +
       `Three quick steps and it's yours:\n` +
       `1. Accept — you take over as owner of ${input.brandName}. Nothing to rebuild.\n` +
       `2. Connect your bank — a few minutes through Stripe, so customers can pay you.\n` +
-      `3. You're live — your events open for tickets and you get paid.\n\n` +
+      `3. You're live — your offerings open for bookings and you get paid.\n\n` +
       noteLine +
-      `Accept & set up ${input.brandName}:\n${input.acceptUrl}\n\n` +
+      `Claim & add your bank:\n${input.acceptUrl}\n\n` +
       `Bank-secure: your bank details go straight to Stripe. Mingla never sees them.\n\n` +
-      `Prefer to manage on your phone? Get the Mingla Business app:\n${DOWNLOAD_URL}\n\n` +
       `This link expires in ${EXPIRY_DAYS} days.\n` +
       `Need help? ${supportEmail}`;
   } else {
@@ -224,9 +203,8 @@ export function buildInviteEmail(input: {
     text = `Hi ${input.inviteeName},\n\n` +
       `${input.inviterName} invited you to join ${input.brandName} on Mingla as ${roleLabel}.\n` +
       roleClarityText +
-      `\n${input.brandName} runs its events, tickets and page on Mingla — you're now part of the team.\n\n` +
+      `\n${input.brandName} runs its offerings and page on Mingla — you're now part of the team.\n\n` +
       `Accept your invitation:\n${input.acceptUrl}\n\n` +
-      `Get the Mingla Business app to manage ${input.brandName} on the go:\n${DOWNLOAD_URL}\n\n` +
       `This link expires in ${EXPIRY_DAYS} days.\n` +
       `Need help? ${supportEmail}`;
   }
@@ -266,9 +244,9 @@ function roleDisplay(role: string): string {
 function roleCanPhrase(role: string): string {
   switch (role) {
     case "brand_owner":
-      return "manage everything — events, payouts, team and settings";
+      return "manage everything — offerings, payouts, team and settings";
     case "brand_admin":
-      return "manage events, the team and most brand settings";
+      return "manage offerings, the team and most brand settings";
     case "event_manager":
       return "create and run events, and manage tickets and guests";
     case "finance_manager":
@@ -276,6 +254,7 @@ function roleCanPhrase(role: string): string {
     case "marketing_manager":
       return "run campaigns and manage the page and promotions";
     case "scanner":
+      // orch-strict-grep-allow invite-offering-agnostic — genuine scanner capability, not cross-offering funnel copy
       return "scan tickets and check guests in at the door";
     default:
       return "";

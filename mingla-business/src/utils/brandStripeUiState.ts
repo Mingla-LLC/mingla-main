@@ -42,8 +42,8 @@ export function getBrandProfileStripeBannerCopy(
   switch (status) {
     case "not_connected":
       return {
-        title: "Connect bank to sell tickets",
-        sub: "Get paid for your events. Setup takes 5 minutes.",
+        title: "Connect your bank to get paid",
+        sub: "Get paid for what you sell. Setup takes 5 minutes.",
       };
     case "onboarding":
       return {

@@ -95,8 +95,8 @@ const BANNER_CONFIG: Record<BrandStripeStatus, BannerConfig | null> = {
   not_connected: {
     icon: "bank",
     iconColor: accent.warm,
-    title: "Connect bank to sell tickets",
-    sub: "Get paid for your events. Setup takes 5 minutes.",
+    title: "Connect your bank to get paid",
+    sub: "Get paid for what you sell. Setup takes 5 minutes.",
     ctaLabel: "Connect bank",
     ctaVariant: "primary",
     destructive: false,
@@ -124,7 +124,7 @@ const BANNER_CONFIG: Record<BrandStripeStatus, BannerConfig | null> = {
     icon: "flag", // W-1: alert/info absent in kit; flag = action-needed
     iconColor: semantic.error,
     title: "Action required — your account is limited",
-    sub: "We need additional information before you can sell tickets.",
+    sub: "We need additional information before you can take payments.",
     ctaLabel: "Continue verification",
     ctaVariant: "destructive",
     destructive: true,
@@ -702,7 +702,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
             <GlassCard variant="base" padding={spacing.lg}>
               <Text style={styles.emptyTitle}>No payouts yet</Text>
               <Text style={styles.emptyBody}>
-                Payouts arrive here once you start selling tickets.
+                Payouts arrive here once you start getting paid.
               </Text>
             </GlassCard>
           )
@@ -805,7 +805,7 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
               <GlassCard variant="base" padding={spacing.md}>
                 <Text style={styles.dangerZoneBody}>
                   Disconnecting stops {brand.displayName}{" "}
-                  from selling tickets. Existing buyers keep their tickets;
+                  from taking payments. Existing buyers keep their bookings;
                   refunds remain visible under your refund history.
                 </Text>
                 <View style={styles.dangerZoneBtnRow}>

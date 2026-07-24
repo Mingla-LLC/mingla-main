@@ -85,7 +85,7 @@ export function BusinessAppDownloadCta({
     <View style={styles.host} testID={testID}>
       <Text style={styles.title}>Get the Mingla Business app</Text>
       <Text style={styles.body}>
-        Manage your brand, sell tickets, and scan guests in from your phone.
+        Manage your brand, take payments, and run the door from your phone.
       </Text>
       <Button
         label="Download the app"

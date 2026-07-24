@@ -35,7 +35,7 @@ export type BrandRole = "owner" | "admin";
  *
  * - not_connected: brand has not started Stripe Connect onboarding
  * - onboarding: submitted but Stripe is verifying (KYC in progress)
- * - active: fully verified, can sell tickets and receive payouts
+ * - active: fully verified, can take payments and receive payouts
  * - restricted: Stripe has flagged the account; payouts paused until resolved
  *
  * Per Designer Handoff §5.3.7 + §6.3.3.

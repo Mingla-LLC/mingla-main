@@ -105,7 +105,7 @@ describe("ORCH-1378 BusinessAppDownloadCta — T-23: web-only + open discipline"
     const s = source();
     expect(s).toContain("Get the Mingla Business app");
     expect(s).toContain(
-      "Manage your brand, sell tickets, and scan guests in from your phone.",
+      "Manage your brand, take payments, and run the door from your phone.",
     );
     expect(s).toContain('label="Download the app"');
   });
