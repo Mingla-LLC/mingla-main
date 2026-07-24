@@ -58,7 +58,7 @@ function json(body: unknown, status = 200): Response {
 // ── Constants ────────────────────────────────────────────────────────────────
 const IP_SALT = "mingla-tools";
 const RATE_LIMIT_WINDOW_MS = 24 * 60 * 60 * 1000; // 24h
-const RATE_LIMIT_MAX = 8; // 8th row in-window blocks the 9th run
+const RATE_LIMIT_MAX = 10; // 10th row in-window blocks the 11th run (per IP/24h)
 
 const SITE_FETCH_TIMEOUT_MS = 8_000;
 const SITE_BODY_CAP_BYTES = 300 * 1024; // 300KB
