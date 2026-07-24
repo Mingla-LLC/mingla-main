@@ -1,0 +1,39 @@
+name: "#1171 Dark Payout Ledger Tests"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/config.toml"
+      - "supabase/migrations/**"
+      - "supabase/functions/payout-release-sweep/**"
+      - ".github/workflows/issue-1171-dark-payout-ledger-tests.yml"
+  pull_request:
+    paths:
+      - "supabase/config.toml"
+      - "supabase/migrations/**"
+      - "supabase/functions/payout-release-sweep/**"
+      - ".github/workflows/issue-1171-dark-payout-ledger-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-1171-dark-payout-ledger:
+    name: "#1171 dark ledger (implementor; tester path added before merge)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: Run migration contract and seeded dark-sweep happy path
+        run: |
+          deno test --allow-read --allow-env --allow-net --no-check \
+            supabase/migrations/__tests__/issue_1171_dark_payout_ledger.test.ts \
+            supabase/functions/payout-release-sweep/__tests__/issue_1171_dark_payout_ledger.test.ts
