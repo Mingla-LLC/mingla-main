@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-07-24 — Shipped the dark, rail-neutral event-payout ledger: Mingla can now calculate what each organiser is owed from live occurrence dates, charge-level fee truth, refunds, disputes, and postponement debt without moving money or changing today’s payout schedules; the two-week safety soak is running before any cutover (#1171, PR #1196)
 - 2026-07-24 — Bank-first partner invites now have a one-hop web bank route: the payout rail is preselected from the brand’s country, Nigeria uses Paystack, Stripe accepts its terms before minting a session, and the handoff stays in the same secure browser tab; native behavior remains unchanged for Wave 4 (#948, #949 — Wave 2, PR #1195)
 - 2026-07-24 — Corrected the automated safety checks around Stripe money movement: refunds now prove they run inside the connected account without reversing transfers, and direct-charge tests now verify Mingla's live configurable take-rate engine instead of the retired 1.5% assumption. No payment behavior changed (#1170, PR #1183)
 - 2026-07-24 — Bank-first partner invites now have the safe foundations for the next funnel waves: sign-in can resume to a brand bank route, invite acceptance returns country/provider/connection hints without a migration, and the approved design no longer promises a reminder that does not exist (#948, #949 — Wave 1, PR #1182)
