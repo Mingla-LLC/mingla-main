@@ -59,6 +59,11 @@ jobs:
           deno test --allow-read --allow-env --no-check \
             supabase/functions/payout-release-sweep/__tests__/issue_1174_partner_deferral.test.ts \
             supabase/functions/_shared/__tests__/orch_1054_partner_splits_happy.test.ts
+      - name: Run tester late-partner-ledger adversarial regression
+        run: |
+          docker exec -i issue1174-postgres \
+            psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            < supabase/functions/payout-release-sweep/__tests__/issue_1174_partner_late_ledger_adversarial.sql
       - name: Remove disposable database
         if: always()
         run: docker rm -f issue1174-postgres || true
