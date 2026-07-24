@@ -1,12 +1,22 @@
-// ISSUE-1004 [Event Turnout Predictor] — the "as a Mingla listing" preview.
+// ISSUE-1105 [Event Turnout Predictor] — the "as a Mingla listing" preview.
 //
-// A polished, ready-to-publish version of the organiser's event, rendered from
-// a run's saved listing copy. Opened from the report ("See the full listing
-// preview"). Unlisted, noindex, reached only via the run's run_id.
+// A faithful web replica of the real Mingla event page (the RN
+// @mingla/offering-rendering EventOfferingBody): its design tokens, Inter font
+// (the default event theme), and section layout — NOT the marketing brand look.
+// Loads Inter with heavy weights here so the 900 hero title matches the app.
 
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
+import { Inter } from 'next/font/google'
 import { EventPreviewClient } from './EventPreviewClient'
+
+// The real event page's default theme font is Inter; the app renders headings at
+// weight 900, which the site-wide Inter (400–700) can't reach — load it here.
+const previewInter = Inter({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700', '800', '900'],
+  display: 'swap',
+})
 
 export const metadata: Metadata = {
   title: 'Event preview',
@@ -17,8 +27,10 @@ export const dynamic = 'force-dynamic'
 
 export default function EventPreviewPage() {
   return (
-    <Suspense fallback={<div style={{ position: 'fixed', inset: 0, background: '#0b0b0d' }} />}>
-      <EventPreviewClient />
-    </Suspense>
+    <div className={previewInter.className}>
+      <Suspense fallback={<div style={{ position: 'fixed', inset: 0, background: '#0c0e12' }} />}>
+        <EventPreviewClient />
+      </Suspense>
+    </div>
   )
 }
