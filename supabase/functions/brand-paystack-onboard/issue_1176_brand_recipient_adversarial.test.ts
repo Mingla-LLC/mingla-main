@@ -162,3 +162,34 @@ Deno.test("#1176 tester: local persistence failure rolls back only the newly-cre
   assertEquals(error.code, "recipient_store_failed");
   assertEquals(h.calls.deletes, ["RCP_replacement"]);
 });
+
+Deno.test("#1176 tester: provider creation failure leaves the existing local recipient untouched", async () => {
+  const h = adversarialHarness({
+    recipient_code: "RCP_old",
+    bank_code: "044",
+    account_fingerprint: "fingerprint:044:account-a",
+    account_number_masked: "••••1111",
+    account_name: "OLD HOLDER",
+    is_active: true,
+  });
+  h.deps.createRecipient = () =>
+    Promise.reject(new Error("provider unavailable"));
+
+  const error = await assertRejects(
+    () =>
+      saveBrandPaystackRecipient(
+        {
+          action: "update_recipient",
+          brandId: BRAND_ID,
+          accountNumber: "9876546789",
+          bankCode: "058",
+        },
+        h.deps,
+      ),
+    BrandRecipientError,
+  );
+
+  assertEquals(error.code, "recipient_create_failed");
+  assertEquals(h.calls.persisted.length, 0);
+  assertEquals(h.calls.deletes.length, 0);
+});
