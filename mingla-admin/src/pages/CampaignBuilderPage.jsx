@@ -56,6 +56,7 @@ import {
   PREPARATION_ORDER,
   retryDelayMs,
 } from "../lib/adBuilder/preparationState";
+import { areAllExpectedCreatePairsSuccessful } from "../lib/adBuilder/createProgress";
 
 const STEPS = [
   { id: "lane", label: "Lane" },
@@ -476,6 +477,19 @@ export function CampaignBuilderPage() {
     }
   }, [creative.creativeRow?.id, preparationOnline, runPreparationPlatform]);
 
+  // ISSUE-1009 [partial-failure retry lockout] — the page owns completion
+  // truth because it owns all three inputs. Expected create work is exactly the
+  // current destinations × creative-buildable platforms; funded-but-excluded
+  // channels and stale result keys cannot complete or permanently block Review.
+  const allExpectedPairsSucceeded = useMemo(
+    () => areAllExpectedCreatePairsSuccessful({
+      destinations,
+      buildablePlatforms: creativePartition.buildable,
+      createResults,
+    }),
+    [destinations, creativePartition.buildable, createResults],
+  );
+
   // Auto-suggest the campaign name from the first destination (editable — §4.4).
   // ISSUE-1002: the base name is derived from the first selected destination; on a
   // multi-destination fan-out each ad's name is suffixed with its own destination
@@ -843,6 +857,7 @@ export function CampaignBuilderPage() {
               submitting={submitting}
               validatingShapes={validatingShapes}
               createResults={createResults}
+              allExpectedPairsSucceeded={allExpectedPairsSucceeded}
               onCreate={() => runCreate({ validateOnly: false })}
               onValidateShapes={() => runCreate({ validateOnly: true })}
               onJumpToStep={jumpToStepId}

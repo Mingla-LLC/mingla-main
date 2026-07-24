@@ -23,6 +23,7 @@ export function StepReview({
   submitting,
   validatingShapes,
   createResults,
+  allExpectedPairsSucceeded,
   onCreate,
   onValidateShapes,
   onJumpToStep,
@@ -178,7 +179,7 @@ export function StepReview({
           variant="secondary"
           icon={ShieldCheck}
           loading={validatingShapes}
-          disabled={hardBlocked || submitting || anySuccess}
+          disabled={hardBlocked || submitting || allExpectedPairsSucceeded}
           onClick={onValidateShapes}
         >
           Validate shapes (nothing created)
@@ -186,7 +187,7 @@ export function StepReview({
         <Button
           icon={Megaphone}
           loading={submitting}
-          disabled={hardBlocked || anySuccess}
+          disabled={hardBlocked || allExpectedPairsSucceeded}
           onClick={onCreate}
         >
           {summary.primaryActionLabel ?? "Create campaign (paused)"}
