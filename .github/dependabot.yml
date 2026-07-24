@@ -185,6 +185,15 @@ updates:
         versions: [">= 0.84"]
       - dependency-name: "metro-*"
         versions: [">= 0.84"]
+      # --- #1158: @vercel/og semver-trap. 1.0.0 is a stale 2023 mispublish,
+      # OLDER than latest (0.11.1); no maintained 1.x. sharp is an optional
+      # transitive of @vercel/og, so a sharp security update unlocks @vercel/og
+      # as the PARENT and drags it to 1.0.0 (renders zero OG PNGs). Defense-in-
+      # depth only — an ignore may not be consulted for a dragged parent vs the
+      # named subject (see header §2 / #1130). The load-bearing control is the
+      # overrides pin in mingla-business/package.json + the issue-1158 CI gate.
+      - dependency-name: "@vercel/og"
+        versions: [">= 1.0.0"]
   - package-ecosystem: "npm"
     directory: "/mingla-admin"
     schedule:
