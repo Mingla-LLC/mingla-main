@@ -86,8 +86,9 @@ export const stripeKycReminder = () =>
   createStripeClientForRole("KYC_REMINDER");
 export const stripeTicketCheckout = () =>
   createStripeClientForRole("TICKET_CHECKOUT");
-// ORCH-0787: Refund issuance uses platform-account refunds with reverse_transfer.
-// Restricted API key must grant refunds:write + application_fees:read on the platform account.
+// ORCH-0843: Refund issuance targets the connected account via stripeAccount
+// (direct-charge model); reverse_transfer is forbidden. The restricted API key
+// must grant refunds:write + application_fees:read.
 export const stripeTicketRefund = () =>
   createStripeClientForRole("TICKET_REFUND");
 

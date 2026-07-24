@@ -77,16 +77,16 @@ Deno.test("ORCH-0843 — Stripe-Account header is set on both create calls", () 
   );
 });
 
-Deno.test("ORCH-0843 — application_fee_amount plumbing is present (1.5% hardcoded)", () => {
+Deno.test("ORCH-0843 — application_fee_amount uses effective take-rate plumbing", () => {
   assertStringIncludes(
     sourceNoComments,
-    "MINGLA_APPLICATION_FEE_RATE = 0.015",
-    "edge function must declare MINGLA_APPLICATION_FEE_RATE = 0.015 (operator decision G-2)",
+    "effectiveTakeRateBps: pricing.effective_take_rate_bps",
+    "pricing must flow effective_take_rate_bps into the shared all-in engine",
   );
   assertStringIncludes(
     sourceNoComments,
-    "applicationFeeAmountCents = Math.round",
-    "edge function must compute applicationFeeAmountCents via Math.round (integer-cent math, precision-safe)",
+    "applicationFeeAmountCents = buyerSubtotal.miglaFeeCents",
+    "application_fee_amount must derive from the engine's effective take-rate result",
   );
   // Conditional-omit form: the key only goes on the body when > 0.
   assertStringIncludes(
@@ -101,7 +101,7 @@ Deno.test("ORCH-0843 — application_fee_amount plumbing is present (1.5% hardco
   );
 });
 
-Deno.test("ORCH-0843 — statement_descriptor_suffix \"MINGLA\" on Checkout Session", () => {
+Deno.test('ORCH-0843 — statement_descriptor_suffix "MINGLA" on Checkout Session', () => {
   assertStringIncludes(
     sourceNoComments,
     `statement_descriptor_suffix: "MINGLA"`,
