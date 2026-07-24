@@ -1,5 +1,5 @@
-// ORCH-1329 [partner-invite email polish + "Get the Mingla Business app"
-// download CTA + AA button-contrast fix] — TESTER adversarial regression.
+// ORCH-1329 / #948 W3 [single invite CTA + AA button-contrast fix] — TESTER
+// adversarial regression.
 //
 // This is the tester's INDEPENDENT second test. It deliberately attacks a
 // DIFFERENT ANGLE than the implementor's happy-path test
@@ -14,18 +14,15 @@
 //      form is *present* for the standard variant — never that the raw
 //      payload is *absent*, never the partner variant, note, or inviteeName,
 //      and never the attribute-breakout `"><img onerror>` vector.
-//   2. WRONG-APP / WRONG-TARGET — the secondary CTA must point at the
-//      business /business/download route, NOT the consumer app, the OneLink,
-//      the consumer /download route, or the accept URL; and the PRIMARY CTA
-//      must still carry the accept token, with the token NEVER leaking into
-//      the download anchor.
+//   2. SINGLE-CTA — neither variant may contain the retired download CTA;
+//      partner setup says "Claim & add your bank", standard says "Accept
+//      invitation", and the one primary CTA still carries the accept token.
 //   3. BOTH-VARIANTS COMPLETENESS across ALL six roles (incl. scanner +
-//      finance_manager, which the implementor's single event_manager fixture
-//      never exercises) — download URL + accept token in html AND text.
+//      finance_manager) — exact variant CTA + accept token in html AND text,
+//      with no download secondary.
 //   4. AA CONTRAST INVARIANT — no white-text button fill on #FF6B2C OR
 //      #F97316; primary fill is #C4471A; AND the fix was SURGICAL: the
-//      decorative #FF6B2C border on the outlined secondary + personal-note
-//      rule is PRESERVED (guards against a blanket search-replace).
+//      decorative #FF6B2C personal-note rule is PRESERVED.
 //   5. CROSS-SURFACE NON-REGRESSION — the ticket / generic (shell-wrapped)
 //      and trip / experience (self-contained) renderers still emit a complete
 //      email (exactly one doctype) with their action button darkened to
@@ -34,8 +31,7 @@
 // Fails-on-revert (tester-verified locally):
 //   - un-escape any brand/inviter/note interpolation in buildInviteEmail →
 //     the ESCAPE suite FAILs (raw tag-breakout string reappears).
-//   - swap the secondary href off /business/download (e.g. to the OneLink or
-//     the consumer route) → the WRONG-TARGET suite FAILs.
+//   - restore the secondary /business/download block → SINGLE-CTA FAILs.
 //
 // Run: DENO_TESTING=1 deno test --allow-env --allow-net \
 //   supabase/functions/invite-brand-member/__tests__/orch-1329-invite-email.tester.test.ts
@@ -78,7 +74,6 @@ const { renderExperienceConfirmationEmail } = await import(
 // Fixtures
 // ---------------------------------------------------------------------------
 
-const DOWNLOAD_URL = "https://usemingla.com/business/download";
 const ACCEPT_URL =
   "https://business.usemingla.com/accept-brand-invitation?token=SECRET_TOKEN_9f3a";
 
@@ -171,12 +166,12 @@ Deno.test("ORCH-1329 tester — partner personal note is escaped inside the note
 });
 
 // ===========================================================================
-// 2. WRONG-APP / WRONG-TARGET
+// 2. SINGLE CTA / ACCEPT TARGET
 // ===========================================================================
 
 for (const partnerSetup of [true, false]) {
   const variant = partnerSetup ? "partner-setup" : "standard";
-  Deno.test(`ORCH-1329 tester — ${variant}: secondary CTA targets the BUSINESS download route, not consumer/OneLink/accept`, () => {
+  Deno.test(`#948 W3 tester — ${variant}: exactly the approved primary CTA remains and it carries the accept token`, () => {
     const p = buildInviteEmail({
       inviteeName: "Amara",
       inviteeEmail: "amara@example.com",
@@ -188,104 +183,28 @@ for (const partnerSetup of [true, false]) {
       partnerSetup,
     });
 
-    // Secondary CTA anchor is EXACTLY the business smart-redirect route, with
-    // the closing quote immediately after `download` → no token/query appended.
-    assertStringIncludes(
-      p.html,
-      `<a href="https://usemingla.com/business/download"`,
-    );
-
-    // Primary CTA still carries the accept token, intact (escape is a no-op on
-    // this token — no special chars — so the literal URL must appear as href).
     assertStringIncludes(p.html, `<a href="${ACCEPT_URL}"`);
-
-    // The token must NEVER leak into the download anchor.
     assert(
-      !p.html.includes("business/download?token"),
-      "accept token leaked into the download CTA href",
+      !p.html.includes("business/download"),
+      `${variant} html restored the retired download secondary`,
     );
     assert(
-      !p.html.includes("business/download?"),
-      "download CTA carries an unexpected query string",
+      !p.text.includes("business/download"),
+      `${variant} text restored the retired download secondary`,
     );
-
-    // The download CTA must NOT be pointed at any wrong target:
-    for (
-      const wrongTarget of [
-        "mingla.onelink.me", // AppsFlyer OneLink (consumer-only)
-        "id6760440898", // consumer App Store id
-        "com.mingla.app.v2", // consumer Android package
-        `href="https://usemingla.com/download"`, // consumer /download route
-      ]
-    ) {
-      assert(
-        !p.html.includes(wrongTarget),
-        `invite email points at a WRONG download target: ${wrongTarget}`,
-      );
-    }
-
-    // Accept URL and download URL are distinct destinations. (Widened to
-    // `string` so the literal-type checker does not flag the comparison.)
-    const acceptStr: string = ACCEPT_URL;
-    const downloadStr: string = DOWNLOAD_URL;
     assert(
-      acceptStr !== downloadStr && p.html.includes(downloadStr),
-      "accept URL and download URL must be different destinations",
+      !p.html.includes("Get the Mingla Business app"),
+      `${variant} html restored the retired download label`,
     );
-
-    // Plain-text: both the accept token and the download URL are present, and
-    // the download line is the business route (not the accept URL again).
-    assertStringIncludes(p.text, "SECRET_TOKEN_9f3a");
-    assertStringIncludes(p.text, DOWNLOAD_URL);
-  });
-
-  // T-11 (ORCH-1381) — COPY TRUTHFULNESS. Both variants used to promise that
-  // "iPhone opens the App Store, everywhere else opens the web". That became FALSE
-  // on 2026-07-15, when the business Play listing went live (production versionCode
-  // 33 / 1.1.2 — COMMS-0101): an Android owner reading it was told the app was not
-  // for them. /business/download now renders a real choice on every device.
-  //
-  // This test guards the CLAIM, not the layout. Copy is the one thing here with no
-  // compiler — nothing else fails if it silently reverts to a falsehood.
-  Deno.test(`ORCH-1381 tester — ${variant}: secondary CTA copy names iPhone AND Android, never "everywhere else opens the web"`, () => {
-    const p = buildInviteEmail({
-      inviteeName: "Amara",
-      inviteeEmail: "amara@example.com",
-      brandName: "Zuri Kitchen",
-      inviterName: "David Okon",
-      role: partnerSetup ? "brand_owner" : "scanner",
-      acceptUrl: ACCEPT_URL,
-      from: "Mingla <noreply@usemingla.com>",
-      partnerSetup,
-    });
-
-    // The falsehood, in both of its shipped shapes.
-    for (
-      const falsehood of [
-        "everywhere else opens",
-        "everywhere else opens the web",
-        "everywhere else opens your dashboard on the web",
-      ]
-    ) {
-      assert(
-        !p.html.includes(falsehood),
-        `invite email still claims "${falsehood}" — FALSE since the business Play listing went live (COMMS-0101); an Android owner is told the app is not for them`,
-      );
-    }
-
-    // The truthful replacement must name BOTH phone platforms.
-    assertStringIncludes(p.html, "iPhone or Android");
-
-    // The href stays byte-frozen — the copy fix must never smuggle in a query
-    // string (the route resolves the device itself, server-side).
     assertStringIncludes(
       p.html,
-      `<a href="https://usemingla.com/business/download"`,
+      partnerSetup ? "Claim &amp; add your bank" : "Accept invitation",
     );
-    assert(
-      !p.html.includes("business/download?"),
-      "the ORCH-1381 copy fix leaked a query string into the byte-frozen download href",
+    assertStringIncludes(
+      p.text,
+      partnerSetup ? "Claim & add your bank:" : "Accept your invitation:",
     );
+    assertStringIncludes(p.text, "SECRET_TOKEN_9f3a");
   });
 }
 
@@ -305,7 +224,7 @@ const ALL_ROLES = [
 for (const partnerSetup of [true, false]) {
   const variant = partnerSetup ? "partner-setup" : "standard";
   for (const role of ALL_ROLES) {
-    Deno.test(`ORCH-1329 tester — completeness ${variant}/${role}: download URL + accept token in html AND text`, () => {
+    Deno.test(`#948 W3 tester — completeness ${variant}/${role}: one exact CTA + accept token in html AND text`, () => {
       const p = buildInviteEmail({
         inviteeName: "Amara",
         inviteeEmail: "amara@example.com",
@@ -317,14 +236,18 @@ for (const partnerSetup of [true, false]) {
         partnerSetup,
         personalNote: partnerSetup ? "Welcome aboard!" : null,
       });
-      // Download URL present in BOTH bodies.
-      assertStringIncludes(p.html, DOWNLOAD_URL);
-      assertStringIncludes(p.text, DOWNLOAD_URL);
-      // Accept token present in BOTH bodies.
       assertStringIncludes(p.html, "SECRET_TOKEN_9f3a");
       assertStringIncludes(p.text, "SECRET_TOKEN_9f3a");
-      // Secondary CTA label present in html.
-      assertStringIncludes(p.html, "Get the Mingla Business app");
+      assert(
+        !p.html.includes("business/download") &&
+          !p.text.includes("business/download") &&
+          !p.html.includes("Get the Mingla Business app"),
+        `${variant}/${role} must remain single-CTA`,
+      );
+      assertStringIncludes(
+        p.html,
+        partnerSetup ? "Claim &amp; add your bank" : "Accept invitation",
+      );
     });
   }
 }
@@ -335,7 +258,7 @@ for (const partnerSetup of [true, false]) {
 
 for (const partnerSetup of [true, false]) {
   const variant = partnerSetup ? "partner-setup" : "standard";
-  Deno.test(`ORCH-1329 tester — ${variant}: AA button fill = #C4471A; no #FF6B2C/#F97316 fill; decorative #FF6B2C border kept`, () => {
+  Deno.test(`ORCH-1329 tester — ${variant}: AA button fill = #C4471A; no #FF6B2C/#F97316 fill`, () => {
     const p = buildInviteEmail({
       inviteeName: "Amara",
       inviteeEmail: "amara@example.com",
@@ -361,10 +284,6 @@ for (const partnerSetup of [true, false]) {
       "a CTA button fill remains on #F97316 (fails WCAG AA)",
     );
 
-    // Surgical: the fix must NOT be a blanket #FF6B2C purge. The DECORATIVE
-    // #FF6B2C border on the outlined-ghost secondary is the hierarchy signal
-    // (fill vs outline) and MUST be preserved.
-    assertStringIncludes(p.html, "border:1.5px solid #FF6B2C");
   });
 }
 

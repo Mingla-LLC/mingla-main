@@ -2,8 +2,8 @@
  * Provider-neutral payout readiness (META-ORCH-1076 Phase 2 polish).
  *
  * A brand can take payments once its payout rail is connected — Stripe Connect
- * "active", OR a Paystack subaccount linked. The seller-facing "Connect bank to
- * sell tickets" tile / publish gates / to-dos all hide once this is true,
+ * "active", OR a Paystack subaccount linked. The seller-facing "Connect your
+ * bank to get paid" tile / publish gates / to-dos all hide once this is true,
  * regardless of which rail the brand is on.
  */
 

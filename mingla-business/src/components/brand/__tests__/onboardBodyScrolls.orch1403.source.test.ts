@@ -4,7 +4,7 @@
  * THE BUG (Seth, business web on a real phone / ~640px viewport): the
  * "connect your bank" onboarding page (`/brand/{id}/payments/onboard` →
  * BrandOnboardView) painted TWO headings on top of each other — the idle body
- * heading "Connect bank to start selling tickets" overlapped the fixed top bar
+ * heading "Connect your bank to start getting paid" overlapped the fixed top bar
  * ("Set up payments" + "Cancel"), illegible. Root cause (forensics, proven on
  * device): the body was a NON-scrolling `<View style={[styles.body]}>` with
  * `styles.body = { flex: 1, justifyContent: "center" }`. On a short viewport the

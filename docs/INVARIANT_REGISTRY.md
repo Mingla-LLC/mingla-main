@@ -7,6 +7,16 @@
 
 ---
 
+## ACTIVE — issues #948 + #949 (bank-first partner invites stay offering-agnostic — W3 CLOSED 2026-07-24)
+
+### I-PROPOSED-949-INVITE-ONBOARDING-OFFERING-AGNOSTIC (ACTIVE)
+- **Rule:** cross-offering invite, accept, bank-onboarding, and payments surfaces describe offerings, bookings, taking payments, and getting paid; they MUST NOT regress to ticket-only claims. Genuine event-manager/scanner capability copy and legal merchant-of-record language remain explicitly outside this invariant.
+- **CI enforcement:** `.github/scripts/strict-grep/issue-949-invite-onboarding-offering-agnostic.mjs`, registered as a wired batch:A gate in `MANIFEST.json`, scans the exact eight funnel surfaces and fails closed if one disappears.
+- **Regression test:** the gate self-tests every banned phrase, comment stripping, and the one-line exception form; reverting any W3 replacement (for example restoring “sell tickets” on the payments banner) makes the plain gate fail. Append-only.
+- **Established:** ACTIVE at #948/#949 W3 CLOSE after independent tester PASS on PR #1205; merge and production verification are required before either master issue may be closed.
+
+---
+
 ## ACTIVE — issue #1158 (@vercel/og pinned to 0.x so a sharp security bump can't unlock it to the broken 1.0.0 — CLOSED 2026-07-24)
 
 > Same parent-unlock class as #1130. `@vercel/og@0.11.1` optional-deps `sharp ^0.34.5`; to bump `sharp` Dependabot rewrites the editable parent `@vercel/og` to its highest tag `1.0.0` — a stray 2023 mispublish (edge/WASM-only, `ERR_MODULE_NOT_FOUND: 'wbg'`) that crashes the business OG preview renderer (`mingla-business/server/socialPreview.js` → `/api/og-*`, Node serverless — untested by the expo web-build, which is why the trap PR #1151 was green). #1158 pins `@vercel/og` forward via a byte-identical npm `overrides` entry (fail-closed: a poisoned direct-dep bump → `npm install` EOVERRIDE error), rescues `sharp` to `0.35.3` (closes libvips GHSA-f88m-g3jw-g9cj; render-verified), adds a Dependabot ignore, and closes the OG coverage gap with a real render gate.

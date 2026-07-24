@@ -42,8 +42,8 @@
  *      via ?next= — ORCH-1375; without that resume this fix would convert the
  *      spinner into a SILENT TOKEN DROP, which is worse).
  *   3. Signed in → POST { token } to the accept-brand-invitation edge fn.
- *   4. Success → inline card (+ download CTA) or, for partner-setup ownership
- *      transfers, the celebration screen.
+ *   4. Success → payments-capable partner setups that still need a bank go
+ *      directly to /brand/:id/connect; standard team joins stay inline.
  *   5. Error → friendly copy per mapped code. Every code has copy.
  */
 
@@ -76,6 +76,7 @@ import {
   BrandInvitationServiceError,
   type AcceptBrandInvitationResult,
 } from "../src/services/brandInvitationsService";
+import { decideBankFirstInviteNext } from "../src/utils/bankFirstPartnerInvite";
 
 type Phase =
   | { kind: "loading" }
@@ -154,24 +155,17 @@ export default function AcceptBrandInvitationRoute(): React.ReactElement {
     router.replace(`/accept-brand-invitation?token=${token}` as never);
   }, [router, token]);
 
-  // ORCH-1081 — once accept succeeds AND the brand was a partner setup, route
-  // immediately to the celebration screen instead of staying on the inline
-  // success card. This is the path most new owners take (link from email →
-  // sign in → accept → celebration). For non-partner-setup accepts, we keep
-  // the existing inline success card.
+  // #948 W3 — once accept succeeds, a payments-capable partner setup that does
+  // not already have a payout rail goes straight to the one-hop bank route.
+  // Transfer status is deliberately irrelevant: partner setups that did not
+  // transfer still need the same bank step. D5 already-connected partners skip
+  // bank and advance to the web get-app step; standard team/scanner joins stay
+  // inline without that secondary.
   useEffect(() => {
     if (phase.kind !== "success") return;
-    if (!phase.result.partnerSetup) return;
-    if (!phase.result.transferred) return;
-    const params = new URLSearchParams();
-    params.set("brand_id", phase.result.brandId);
-    if (phase.result.brandSlug) params.set("brand", phase.result.brandSlug);
-    if (phase.result.newOwnerFirstName) {
-      params.set("owner_name", phase.result.newOwnerFirstName);
-    }
-    router.replace(
-      `/accept-brand-invitation/success?${params.toString()}` as never,
-    );
+    const decision = decideBankFirstInviteNext(phase.result);
+    if (decision.kind !== "connect") return;
+    router.replace(decision.href as never);
   }, [phase, router]);
 
   const handleGoHome = useCallback((): void => {
@@ -204,6 +198,7 @@ export default function AcceptBrandInvitationRoute(): React.ReactElement {
 
   if (phase.kind === "success") {
     const transferred = phase.result.transferred;
+    const decision = decideBankFirstInviteNext(phase.result);
     return (
       <View style={styles.host}>
         <View style={styles.card}>
@@ -222,9 +217,7 @@ export default function AcceptBrandInvitationRoute(): React.ReactElement {
             size="lg"
             fullWidth
           />
-          {/* ORCH-1378 — membership is already granted server-side by here, so
-              this CTA can never strand anyone. Web-only by design. */}
-          <BusinessAppDownloadCta />
+          {decision.kind === "download" ? <BusinessAppDownloadCta /> : null}
         </View>
       </View>
     );

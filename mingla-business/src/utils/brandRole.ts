@@ -62,7 +62,7 @@ export const roleDescription = (role: BrandRole): string => {
     case "brand_owner":
       return "Full control of the account, brands, and billing.";
     case "brand_admin":
-      return "Manage brand settings, team, events, and finances.";
+      return "Manage brand settings, team, offerings, and finances.";
     case "event_manager":
       return "Create and edit events; manage tickets and scanners.";
     case "finance_manager":
