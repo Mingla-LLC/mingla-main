@@ -77,7 +77,9 @@ function objectNumber(
 
 /** Extract application_fee id from a charge object. Stripe may serialize it
  * as a string id or an expanded object. */
-function chargeApplicationFeeId(charge: Record<string, unknown>): string | null {
+function chargeApplicationFeeId(
+  charge: Record<string, unknown>,
+): string | null {
   const af = charge["application_fee"];
   if (typeof af === "string" && af.length > 0) return af;
   if (af && typeof af === "object") {
@@ -108,7 +110,9 @@ async function resolveOrderIdForCharge(
   charge: Record<string, unknown>,
 ): Promise<string | null> {
   const md = (charge["metadata"] ?? {}) as Record<string, unknown>;
-  const direct = typeof md.mingla_order_id === "string" ? md.mingla_order_id : null;
+  const direct = typeof md.mingla_order_id === "string"
+    ? md.mingla_order_id
+    : null;
   if (direct) return direct;
 
   const paymentIntentId = objectString(charge, "payment_intent");
@@ -241,7 +245,11 @@ async function isAfterBrandPayoutCutover(
 export async function handleChargeSucceeded(
   supabase: SupabaseClient,
   stripe: StripeClient,
-  event: { id: string; type: string; data: { object: Record<string, unknown> } },
+  event: {
+    id: string;
+    type: string;
+    data: { object: Record<string, unknown> };
+  },
 ): Promise<ChargeSucceededHandlerResult> {
   const charge = event.data.object;
   const chargeId = objectString(charge, "id");
@@ -273,7 +281,8 @@ export async function handleChargeSucceeded(
 
   // Pin the partner relationship to charge.created (unix seconds → ISO).
   const chargeCreatedUnix = objectNumber(charge, "created");
-  const chargeCreatedIso = chargeCreatedUnix !== null
+  const chargeCreatedIso = chargeCreatedUnix !== null &&
+      chargeCreatedUnix > 0
     ? new Date(chargeCreatedUnix * 1000).toISOString()
     : new Date().toISOString();
 
@@ -282,17 +291,19 @@ export async function handleChargeSucceeded(
     { p_brand_id: brandId, p_at: chargeCreatedIso },
   );
   if (partnerLookupErr) {
-    throw new Error(`resolve_partner_for_brand_at_time failed: ${partnerLookupErr.message}`);
+    throw new Error(
+      `resolve_partner_for_brand_at_time failed: ${partnerLookupErr.message}`,
+    );
   }
-  const partnerAccountId = typeof partnerLookup === "string" && partnerLookup.length > 0
-    ? partnerLookup
-    : null;
-  if (!partnerAccountId) {
-    return { brandId, status: "no_partner" };
-  }
+  const partnerAccountId =
+    typeof partnerLookup === "string" && partnerLookup.length > 0
+      ? partnerLookup
+      : null;
 
   // 10% of the application fee. Math.round so we don't steal a cent.
-  const partnerShareCents = Math.round(applicationFeeAmount * PARTNER_SHARE_OF_FEE);
+  const partnerShareCents = Math.round(
+    applicationFeeAmount * PARTNER_SHARE_OF_FEE,
+  );
 
   const postCutover = await isAfterBrandPayoutCutover(
     supabase,
@@ -300,6 +311,31 @@ export async function handleChargeSucceeded(
     chargeCreatedIso,
   );
   if (postCutover) {
+    if (chargeCreatedUnix === null || chargeCreatedUnix <= 0) {
+      throw new Error("charge.succeeded missing canonical charge.created");
+    }
+    const { error: attributionError } = await supabase.rpc(
+      "record_payout_partner_attribution",
+      {
+        p_key: applicationFeeId,
+        p_order_id: orderId,
+        p_brand_id: brandId,
+        p_partner_account_id: partnerAccountId,
+        p_provider_sale_at: chargeCreatedIso,
+        p_mingla_fee_cents: applicationFeeAmount,
+        p_partner_share_cents: partnerAccountId ? partnerShareCents : 0,
+        p_currency: currency,
+        p_provider: "stripe",
+      },
+    );
+    if (attributionError) {
+      throw new Error(
+        `record_payout_partner_attribution failed: ${attributionError.message}`,
+      );
+    }
+    if (!partnerAccountId) {
+      return { brandId, status: "no_partner" };
+    }
     const { data: heldRow, error: heldError } = await supabase.rpc(
       "record_held_partner_split",
       {
@@ -311,6 +347,7 @@ export async function handleChargeSucceeded(
         p_partner_share_cents: partnerShareCents,
         p_currency: currency,
         p_provider: "stripe",
+        p_provider_sale_at: chargeCreatedIso,
       },
     );
     if (heldError) {
@@ -320,6 +357,9 @@ export async function handleChargeSucceeded(
     if (status === "held") return { brandId, status: "held" };
     if (status === "transferred") return { brandId, status: "transferred" };
     return { brandId, status: "pending_retry" };
+  }
+  if (!partnerAccountId) {
+    return { brandId, status: "no_partner" };
   }
 
   // Always record the attempt first so we have a forensic row even if we
@@ -337,20 +377,33 @@ export async function handleChargeSucceeded(
     },
   );
   if (recordErr) {
-    throw new Error(`record_partner_split_attempt failed: ${recordErr.message}`);
+    throw new Error(
+      `record_partner_split_attempt failed: ${recordErr.message}`,
+    );
   }
-  const priorStatus = (priorRow as { status?: string } | null)?.status ?? "pending";
-  if (priorStatus === "transferred" || priorStatus === "reversed" ||
-      priorStatus === "reversed_pending") {
-    return { brandId, status: priorStatus === "transferred" ? "transferred" : "no_partner" };
+  const priorStatus = (priorRow as { status?: string } | null)?.status ??
+    "pending";
+  if (
+    priorStatus === "transferred" || priorStatus === "reversed" ||
+    priorStatus === "reversed_pending"
+  ) {
+    return {
+      brandId,
+      status: priorStatus === "transferred" ? "transferred" : "no_partner",
+    };
   }
 
   // Partner Stripe eligibility check (after recording the attempt so we can
   // mark the exact blocking reason on the row).
-  const partnerStripe = await getPartnerStripeAccount(supabase, partnerAccountId);
-  if (!partnerStripe || !partnerStripe.stripe_account_id ||
-      partnerStripe.detached_at !== null ||
-      !partnerStripe.charges_enabled || !partnerStripe.payouts_enabled) {
+  const partnerStripe = await getPartnerStripeAccount(
+    supabase,
+    partnerAccountId,
+  );
+  if (
+    !partnerStripe || !partnerStripe.stripe_account_id ||
+    partnerStripe.detached_at !== null ||
+    !partnerStripe.charges_enabled || !partnerStripe.payouts_enabled
+  ) {
     await supabase.rpc("mark_partner_split_failed", {
       p_application_fee_id: applicationFeeId,
       p_reason: "blocked_no_stripe",
@@ -492,9 +545,8 @@ export async function handleChargeSucceeded(
     // pending so Stripe redelivers and we retry.
     const stripeErr = err as { type?: string; code?: string } | null;
     const errType = stripeErr?.type ?? "";
-    const isPermanent =
-      (errType === "StripeInvalidRequestError" &&
-        stripeErr?.code !== "balance_insufficient") ||
+    const isPermanent = (errType === "StripeInvalidRequestError" &&
+      stripeErr?.code !== "balance_insufficient") ||
       errType === "StripePermissionError";
     if (isPermanent) {
       await supabase.rpc("mark_partner_split_failed", {
@@ -531,7 +583,11 @@ export async function handleChargeSucceeded(
 export async function handleChargeReversal(
   supabase: SupabaseClient,
   stripe: StripeClient,
-  event: { id: string; type: string; data: { object: Record<string, unknown> } },
+  event: {
+    id: string;
+    type: string;
+    data: { object: Record<string, unknown> };
+  },
   source: "refund" | "dispute",
 ): Promise<void> {
   const obj = event.data.object;
@@ -568,7 +624,9 @@ export async function handleChargeReversal(
     .eq("stripe_application_fee_id", applicationFeeId)
     .maybeSingle();
   if (error) {
-    throw new Error(`partner_splits lookup for reversal failed: ${error.message}`);
+    throw new Error(
+      `partner_splits lookup for reversal failed: ${error.message}`,
+    );
   }
   if (!row) {
     // No partner split was recorded for this charge — common: charge had no
@@ -664,7 +722,9 @@ export async function syncPartnerAccountFromEvent(
   // Extract distinct lowercase currencies from external_accounts.data[].
   // external_accounts is included on the Account object as a paginated list:
   // https://docs.stripe.com/api/accounts/object#account_object-external_accounts
-  const ext = account["external_accounts"] as Record<string, unknown> | undefined;
+  const ext = account["external_accounts"] as
+    | Record<string, unknown>
+    | undefined;
   const extData = (ext?.["data"] ?? []) as Array<Record<string, unknown>>;
   const currencySet = new Set<string>();
   for (const e of extData) {

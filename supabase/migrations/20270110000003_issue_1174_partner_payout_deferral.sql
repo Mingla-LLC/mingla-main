@@ -83,6 +83,163 @@ ALTER TABLE public.payout_ledger_adjustments
     'partner_principal_correction'
   ));
 
+-- One immutable provider-authoritative sale pin per order. Both the webhook
+-- path and payout planner consume this row, including an explicit no-partner
+-- outcome, so order.created_at can never stand in for Stripe charge.created
+-- or verified Paystack paid_at.
+CREATE TABLE public.payout_partner_attributions (
+  order_id uuid PRIMARY KEY
+    REFERENCES public.orders(id) ON DELETE RESTRICT,
+  brand_id uuid NOT NULL
+    REFERENCES public.brands(id) ON DELETE RESTRICT,
+  provider text NOT NULL CHECK (provider IN ('stripe', 'paystack')),
+  provider_key text NOT NULL UNIQUE CHECK (length(provider_key) > 0),
+  provider_sale_at timestamptz NOT NULL,
+  partner_account_id uuid
+    REFERENCES public.creator_accounts(id) ON DELETE RESTRICT,
+  outcome text NOT NULL CHECK (outcome IN ('partner', 'no_partner')),
+  mingla_fee_cents integer NOT NULL CHECK (mingla_fee_cents >= 0),
+  partner_share_cents integer NOT NULL CHECK (partner_share_cents >= 0),
+  currency text NOT NULL CHECK (length(currency) = 3),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT payout_partner_attribution_outcome_check CHECK (
+    (outcome = 'partner'
+      AND partner_account_id IS NOT NULL
+      AND partner_share_cents =
+        round(mingla_fee_cents::numeric * 0.10)::integer)
+    OR
+    (outcome = 'no_partner'
+      AND partner_account_id IS NULL
+      AND partner_share_cents = 0)
+  )
+);
+
+ALTER TABLE public.payout_partner_attributions ENABLE ROW LEVEL SECURITY;
+
+CREATE TRIGGER payout_partner_attributions_append_only
+  BEFORE UPDATE OR DELETE ON public.payout_partner_attributions
+  FOR EACH ROW EXECUTE FUNCTION public.reject_payout_append_only_mutation();
+
+REVOKE ALL ON TABLE public.payout_partner_attributions
+  FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT ON TABLE public.payout_partner_attributions
+  TO service_role;
+
+CREATE OR REPLACE FUNCTION public.record_payout_partner_attribution(
+  p_key text,
+  p_order_id uuid,
+  p_brand_id uuid,
+  p_partner_account_id uuid,
+  p_provider_sale_at timestamptz,
+  p_mingla_fee_cents integer,
+  p_partner_share_cents integer,
+  p_currency text,
+  p_provider text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_row public.payout_partner_attributions%ROWTYPE;
+  v_outcome text;
+BEGIN
+  IF p_key IS NULL OR length(p_key) = 0 THEN
+    RAISE EXCEPTION 'partner_attribution_key_required' USING ERRCODE = '22023';
+  END IF;
+  IF p_provider NOT IN ('stripe', 'paystack') THEN
+    RAISE EXCEPTION 'invalid_partner_attribution_provider'
+      USING ERRCODE = '22023';
+  END IF;
+  IF p_provider_sale_at IS NULL THEN
+    RAISE EXCEPTION 'provider_sale_at_required' USING ERRCODE = '22023';
+  END IF;
+  IF p_mingla_fee_cents < 0 OR p_partner_share_cents < 0 THEN
+    RAISE EXCEPTION 'invalid_partner_attribution_amount'
+      USING ERRCODE = '22023';
+  END IF;
+
+  v_outcome := CASE
+    WHEN p_partner_account_id IS NULL THEN 'no_partner'
+    ELSE 'partner'
+  END;
+  IF (
+    v_outcome = 'no_partner' AND p_partner_share_cents <> 0
+  ) OR (
+    v_outcome = 'partner'
+    AND p_partner_share_cents <>
+      round(p_mingla_fee_cents::numeric * 0.10)::integer
+  ) THEN
+    RAISE EXCEPTION 'partner_attribution_share_mismatch'
+      USING ERRCODE = '22023';
+  END IF;
+
+  INSERT INTO public.payout_partner_attributions (
+    order_id,
+    brand_id,
+    provider,
+    provider_key,
+    provider_sale_at,
+    partner_account_id,
+    outcome,
+    mingla_fee_cents,
+    partner_share_cents,
+    currency
+  )
+  VALUES (
+    p_order_id,
+    p_brand_id,
+    p_provider,
+    p_key,
+    p_provider_sale_at,
+    p_partner_account_id,
+    v_outcome,
+    p_mingla_fee_cents,
+    p_partner_share_cents,
+    lower(p_currency)
+  )
+  ON CONFLICT (order_id) DO NOTHING;
+
+  SELECT * INTO STRICT v_row
+  FROM public.payout_partner_attributions
+  WHERE order_id = p_order_id;
+
+  IF v_row.brand_id IS DISTINCT FROM p_brand_id
+     OR v_row.provider IS DISTINCT FROM p_provider
+     OR v_row.provider_key IS DISTINCT FROM p_key
+     OR v_row.provider_sale_at IS DISTINCT FROM p_provider_sale_at
+     OR v_row.partner_account_id IS DISTINCT FROM p_partner_account_id
+     OR v_row.outcome IS DISTINCT FROM v_outcome
+     OR v_row.mingla_fee_cents IS DISTINCT FROM p_mingla_fee_cents
+     OR v_row.partner_share_cents IS DISTINCT FROM p_partner_share_cents
+     OR v_row.currency IS DISTINCT FROM lower(p_currency) THEN
+    RAISE EXCEPTION 'partner_attribution_replay_mismatch'
+      USING ERRCODE = 'P0001';
+  END IF;
+
+  RETURN jsonb_build_object(
+    'order_id', v_row.order_id,
+    'outcome', v_row.outcome,
+    'provider_sale_at', v_row.provider_sale_at,
+    'partner_account_id', v_row.partner_account_id,
+    'partner_share_cents', v_row.partner_share_cents
+  );
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.record_payout_partner_attribution(
+  text, uuid, uuid, uuid, timestamptz, integer, integer, text, text
+) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.record_payout_partner_attribution(
+  text, uuid, uuid, uuid, timestamptz, integer, integer, text, text
+) TO service_role;
+
+COMMENT ON FUNCTION public.record_payout_partner_attribution(
+  text, uuid, uuid, uuid, timestamptz, integer, integer, text, text
+) IS
+  'Issue #1174: records the immutable provider-sale-time partner or no-partner outcome consumed by payout reconciliation.';
+
 CREATE OR REPLACE FUNCTION public.reconcile_payout_partner_principal(
   p_release_id uuid
 )
@@ -113,17 +270,17 @@ BEGIN
       r.brand_id,
       r.currency,
       i.partner_share_cents,
-      round(i.mingla_fee_cents::numeric * 0.10)::integer
-        AS expected_partner_share_cents
+      a.partner_share_cents AS expected_partner_share_cents
     FROM public.payout_release_items i
     JOIN public.brand_payout_releases r ON r.id = i.release_id
+    JOIN public.payout_partner_attributions a
+      ON a.order_id = i.source_id
+     AND a.brand_id = r.brand_id
+     AND a.provider = r.provider
+     AND a.outcome = 'partner'
     WHERE i.release_id = p_release_id
       AND i.source_type = 'order'
       AND i.refunded_cents = 0
-      AND public.resolve_partner_for_brand_at_time(
-        r.brand_id,
-        i.source_finalized_at
-      ) IS NOT NULL
   )
   INSERT INTO public.payout_ledger_adjustments (
     release_id,
@@ -167,7 +324,8 @@ CREATE OR REPLACE FUNCTION public.record_held_partner_split(
   p_mingla_fee_cents integer,
   p_partner_share_cents integer,
   p_currency text,
-  p_provider text
+  p_provider text,
+  p_provider_sale_at timestamptz
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -176,6 +334,7 @@ SET search_path TO 'public', 'pg_temp'
 AS $function$
 DECLARE
   v_row record;
+  v_attribution public.payout_partner_attributions%ROWTYPE;
 BEGIN
   IF p_key IS NULL OR length(p_key) = 0 THEN
     RAISE EXCEPTION 'partner_split_key_required' USING ERRCODE = 'P0001';
@@ -186,6 +345,23 @@ BEGIN
   IF p_partner_share_cents <> round(p_mingla_fee_cents::numeric * 0.10)::integer
   THEN
     RAISE EXCEPTION 'partner_share_formula_mismatch' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT * INTO v_attribution
+  FROM public.payout_partner_attributions
+  WHERE order_id = p_order_id;
+  IF NOT FOUND
+     OR v_attribution.brand_id IS DISTINCT FROM p_brand_id
+     OR v_attribution.provider IS DISTINCT FROM p_provider
+     OR v_attribution.provider_key IS DISTINCT FROM p_key
+     OR v_attribution.provider_sale_at IS DISTINCT FROM p_provider_sale_at
+     OR v_attribution.partner_account_id IS DISTINCT FROM p_partner_account_id
+     OR v_attribution.outcome IS DISTINCT FROM 'partner'
+     OR v_attribution.mingla_fee_cents IS DISTINCT FROM p_mingla_fee_cents
+     OR v_attribution.partner_share_cents IS DISTINCT FROM p_partner_share_cents
+     OR v_attribution.currency IS DISTINCT FROM lower(p_currency) THEN
+    RAISE EXCEPTION 'held_split_attribution_mismatch'
+      USING ERRCODE = 'P0001';
   END IF;
 
   INSERT INTO public.partner_splits (
@@ -236,14 +412,14 @@ END;
 $function$;
 
 REVOKE ALL ON FUNCTION public.record_held_partner_split(
-  text, uuid, uuid, uuid, integer, integer, text, text
+  text, uuid, uuid, uuid, integer, integer, text, text, timestamptz
 ) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.record_held_partner_split(
-  text, uuid, uuid, uuid, integer, integer, text, text
+  text, uuid, uuid, uuid, integer, integer, text, text, timestamptz
 ) TO service_role;
 
 COMMENT ON FUNCTION public.record_held_partner_split(
-  text, uuid, uuid, uuid, integer, integer, text, text
+  text, uuid, uuid, uuid, integer, integer, text, text, timestamptz
 ) IS
   'Issue #1174: idempotently records a post-cutover partner share as held. It performs no provider movement.';
 
@@ -270,6 +446,8 @@ DECLARE
   v_mingla_fee integer;
   v_item_partner_share integer;
   v_provider_fee integer;
+  v_missing_attributions integer;
+  v_blocked_attributions integer := 0;
 BEGIN
   FOR v_release IN
     SELECT r.id
@@ -279,6 +457,21 @@ BEGIN
     LIMIT greatest(1, least(p_limit, 500))
     FOR UPDATE SKIP LOCKED
   LOOP
+    SELECT count(*)::integer
+      INTO v_missing_attributions
+    FROM public.payout_release_items i
+    LEFT JOIN public.payout_partner_attributions a
+      ON a.order_id = i.source_id
+    WHERE i.release_id = v_release.id
+      AND i.source_type = 'order'
+      AND i.mingla_fee_cents > 0
+      AND a.order_id IS NULL;
+    IF v_missing_attributions > 0 THEN
+      v_blocked_attributions :=
+        v_blocked_attributions + v_missing_attributions;
+      CONTINUE;
+    END IF;
+
     v_new_corrections :=
       public.reconcile_payout_partner_principal(v_release.id);
     v_principal_corrections :=
@@ -397,7 +590,8 @@ BEGIN
 
   RETURN jsonb_build_object(
     'planned_partner_legs', v_planned,
-    'partner_principal_corrections', v_principal_corrections
+    'partner_principal_corrections', v_principal_corrections,
+    'blocked_partner_attributions', v_blocked_attributions
   );
 END;
 $function$;

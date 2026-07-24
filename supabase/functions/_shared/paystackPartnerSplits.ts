@@ -367,11 +367,12 @@ export async function attemptTransferForSplit(
       await noteSplitError(supabase, ctx.key, "otp_required");
       if (!alreadyAlerted) {
         await deps.sendOpsAlert({
-          subject: "[Mingla ops] Paystack partner transfer blocked: OTP enabled",
+          subject:
+            "[Mingla ops] Paystack partner transfer blocked: OTP enabled",
           paragraphs: [
-            "A Paystack partner transfer returned status \"otp\" — transfer OTP confirmation is still enabled on the Mingla Paystack integration (OPS-2).",
+            'A Paystack partner transfer returned status "otp" — transfer OTP confirmation is still enabled on the Mingla Paystack integration (OPS-2).',
             `Split row: ${ctx.id} (order ${ctx.orderId}, ${ctx.partnerShareCents} kobo).`,
-            "Disable \"Confirm transfers before sending\" (Dashboard → Settings → Preferences) or run the Transfer Control disable_otp flow. The retry sweep re-attempts every 30 minutes.",
+            'Disable "Confirm transfers before sending" (Dashboard → Settings → Preferences) or run the Transfer Control disable_otp flow. The retry sweep re-attempts every 30 minutes.',
           ],
           recipients: paystackPartnerAlertRecipients(),
         });
@@ -483,15 +484,37 @@ export async function handlePaystackPartnerSplit(
     typeof partnerLookup === "string" && partnerLookup.length > 0
       ? partnerLookup
       : null;
-  if (!partnerAccountId) {
-    return { brandId, status: "no_partner" };
-  }
 
   // 4. Share math — EXACT Stripe mirror, to the kobo. Math.round, not floor
   // ("so we don't steal a cent"). Rate imported from _shared/partnerSplits.ts.
   const partnerShareKobo = Math.round(minglaFeeKobo * PARTNER_SHARE_OF_FEE);
 
   if (await isAfterBrandPayoutCutover(supabase, brandId, pinIso)) {
+    if (!args.paidAtIso || !Number.isFinite(Date.parse(args.paidAtIso))) {
+      throw new Error("paystack charge missing canonical paid_at");
+    }
+    const { error: attributionError } = await supabase.rpc(
+      "record_payout_partner_attribution",
+      {
+        p_key: key,
+        p_order_id: args.orderId,
+        p_brand_id: brandId,
+        p_partner_account_id: partnerAccountId,
+        p_provider_sale_at: pinIso,
+        p_mingla_fee_cents: minglaFeeKobo,
+        p_partner_share_cents: partnerAccountId ? partnerShareKobo : 0,
+        p_currency: "ngn",
+        p_provider: "paystack",
+      },
+    );
+    if (attributionError) {
+      throw new Error(
+        `record_payout_partner_attribution failed: ${attributionError.message}`,
+      );
+    }
+    if (!partnerAccountId) {
+      return { brandId, status: "no_partner" };
+    }
     const { data: heldRow, error: heldError } = await supabase.rpc(
       "record_held_partner_split",
       {
@@ -503,6 +526,7 @@ export async function handlePaystackPartnerSplit(
         p_partner_share_cents: partnerShareKobo,
         p_currency: "ngn",
         p_provider: "paystack",
+        p_provider_sale_at: pinIso,
       },
     );
     if (heldError) {
@@ -515,6 +539,9 @@ export async function handlePaystackPartnerSplit(
       return { brandId, status: "transferred" };
     }
     return { brandId, status: "pending" };
+  }
+  if (!partnerAccountId) {
+    return { brandId, status: "no_partner" };
   }
 
   // 5. Record the attempt FIRST (forensic row even when blocked). Idempotent.
@@ -585,8 +612,9 @@ export async function handlePaystackPartnerSplit(
     await supabase.rpc("mark_partner_split_failed", {
       p_application_fee_id: key,
       p_reason: "blocked_currency_mismatch",
-      p_error_message:
-        `Paystack partner rail is NGN-only; order currency is ${orderCurrency || "unknown"}.`,
+      p_error_message: `Paystack partner rail is NGN-only; order currency is ${
+        orderCurrency || "unknown"
+      }.`,
     });
     return { brandId, status: "blocked_currency_mismatch" };
   }
@@ -635,7 +663,9 @@ export async function handlePaystackTransferEvent(
     .eq("id", splitId)
     .maybeSingle();
   if (error) {
-    throw new Error(`partner_splits lookup for transfer event failed: ${error.message}`);
+    throw new Error(
+      `partner_splits lookup for transfer event failed: ${error.message}`,
+    );
   }
   if (!row) return;
   const r = row as Record<string, unknown>;
@@ -678,16 +708,17 @@ export async function handlePaystackTransferEvent(
     //    transfer (that would re-open the double-initiate seam).
     //  * event reference attempt ≠ row attempt_count → same staleness, for
     //    payloads that omit transfer_code.
-    const currentTransferCode =
-      typeof r.stripe_transfer_id === "string" &&
+    const currentTransferCode = typeof r.stripe_transfer_id === "string" &&
         r.stripe_transfer_id.length > 0
-        ? r.stripe_transfer_id
-        : null;
+      ? r.stripe_transfer_id
+      : null;
     if (!currentTransferCode) return;
     const eventTransferCode = typeof data?.transfer_code === "string"
       ? data.transfer_code
       : null;
-    if (eventTransferCode !== null && eventTransferCode !== currentTransferCode) {
+    if (
+      eventTransferCode !== null && eventTransferCode !== currentTransferCode
+    ) {
       return;
     }
     const eventAttempt = Number(match[2]);
@@ -803,7 +834,9 @@ export async function handlePaystackRefundProcessed(
     .eq("stripe_application_fee_id", key)
     .maybeSingle();
   if (error) {
-    throw new Error(`partner_splits lookup for refund failed: ${error.message}`);
+    throw new Error(
+      `partner_splits lookup for refund failed: ${error.message}`,
+    );
   }
   if (!row) return; // no partner split for this charge — nothing to reverse
   const r = row as Record<string, unknown>;
@@ -856,7 +889,9 @@ export async function handlePaystackRefundProcessed(
           "[Mingla ops] Partner split reversal owed (NGN refund after payout)",
         paragraphs: [
           `An NGN refund was processed for a charge whose partner split was ALREADY paid out. Paystack has no transfer claw-back — the partner share is owed back to Mingla.`,
-          `Split ${splitId} · order ${String(r.order_id ?? "?")} · ${Number(r.partner_share_cents ?? 0)} kobo · partner ${String(r.partner_account_id ?? "?")}.`,
+          `Split ${splitId} · order ${String(r.order_id ?? "?")} · ${
+            Number(r.partner_share_cents ?? 0)
+          } kobo · partner ${String(r.partner_account_id ?? "?")}.`,
           "Recovery is an ops action (net against the partner's future splits or recover off-platform).",
         ],
         recipients: paystackPartnerAlertRecipients(),

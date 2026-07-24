@@ -574,6 +574,25 @@ export async function handlePayoutReleaseSweep(
     });
     return json({ error: "partner_leg_planning_failed" }, 500);
   }
+  const blockedPartnerAttributions = typeof partnerPlan === "object" &&
+      partnerPlan !== null &&
+      typeof (partnerPlan as Record<string, unknown>)
+          .blocked_partner_attributions === "number"
+    ? Number(
+      (partnerPlan as Record<string, unknown>)
+        .blocked_partner_attributions,
+    )
+    : 0;
+  if (blockedPartnerAttributions > 0) {
+    console.error(
+      "[payout-release-sweep] organiser execution blocked by missing provider-sale attribution",
+      { blockedPartnerAttributions },
+    );
+    return json({
+      error: "partner_attribution_pending",
+      blockedPartnerAttributions,
+    }, 409);
+  }
 
   let stripeExecution;
   let newAlertDelivery;

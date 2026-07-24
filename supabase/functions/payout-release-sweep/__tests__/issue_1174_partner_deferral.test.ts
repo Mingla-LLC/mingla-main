@@ -11,6 +11,9 @@ import { releasePartnerSplitsForOrganiserRelease } from "../partnerRelease.ts";
 const migration = await Deno.readTextFile(
   "supabase/migrations/20270110000003_issue_1174_partner_payout_deferral.sql",
 );
+const sweepIndex = await Deno.readTextFile(
+  "supabase/functions/payout-release-sweep/index.ts",
+);
 
 type RpcCall = { name: string; args: Record<string, unknown> };
 type FromCall = { table: string; op: string; payload?: unknown };
@@ -46,7 +49,10 @@ function queryResult(
   return null;
 }
 
-function fakeSupabase(releaseRows: Array<Record<string, unknown>> = []) {
+function fakeSupabase(
+  releaseRows: Array<Record<string, unknown>> = [],
+  partnerLookup: string | null = "partner-1",
+) {
   const rpcCalls: RpcCall[] = [];
   const fromCalls: FromCall[] = [];
   const client = {
@@ -56,7 +62,7 @@ function fakeSupabase(releaseRows: Array<Record<string, unknown>> = []) {
     ): Promise<{ data: unknown; error: null }> => {
       rpcCalls.push({ name, args });
       if (name === "resolve_partner_for_brand_at_time") {
-        return Promise.resolve({ data: "partner-1", error: null });
+        return Promise.resolve({ data: partnerLookup, error: null });
       }
       if (name === "record_held_partner_split") {
         return Promise.resolve({
@@ -143,12 +149,25 @@ Deno.test("post-cutover Stripe charge records held and performs no transfer", as
 
   assertEquals(result, { brandId: "brand-1", status: "held" });
   assertEquals(calls.length, 0);
+  const attribution = rpcCalls.find((call) =>
+    call.name === "record_payout_partner_attribution"
+  );
+  assert(attribution);
+  assertEquals(
+    attribution.args.p_provider_sale_at,
+    "2026-07-25T00:00:00.000Z",
+  );
+  assertEquals(attribution.args.p_partner_account_id, "partner-1");
   const record = rpcCalls.find((call) =>
     call.name === "record_held_partner_split"
   );
   assert(record);
   assertEquals(record.args.p_partner_share_cents, 100);
   assertEquals(record.args.p_provider, "stripe");
+  assertEquals(
+    record.args.p_provider_sale_at,
+    attribution.args.p_provider_sale_at,
+  );
   assertFalse(
     rpcCalls.some((call) => call.name === "record_partner_split_attempt"),
   );
@@ -177,12 +196,60 @@ Deno.test("post-cutover Paystack charge records held and performs no transfer", 
 
   assertEquals(result, { brandId: "brand-1", status: "held" });
   assertEquals(initiated, 0);
+  const attribution = rpcCalls.find((call) =>
+    call.name === "record_payout_partner_attribution"
+  );
+  assert(attribution);
+  assertEquals(
+    attribution.args.p_provider_sale_at,
+    "2026-07-25T00:00:00.000Z",
+  );
+  assertEquals(attribution.args.p_partner_account_id, "partner-1");
   const record = rpcCalls.find((call) =>
     call.name === "record_held_partner_split"
   );
   assert(record);
   assertEquals(record.args.p_partner_share_cents, 1_000);
   assertEquals(record.args.p_provider, "paystack");
+  assertEquals(
+    record.args.p_provider_sale_at,
+    attribution.args.p_provider_sale_at,
+  );
+});
+
+Deno.test("post-cutover no-partner outcome is durable and creates no held split", async () => {
+  const { client, rpcCalls } = fakeSupabase([], null);
+  const { stripe, calls } = fakeStripe();
+  const result = await handleChargeSucceeded(
+    client as never,
+    stripe as never,
+    {
+      id: "evt-no-partner",
+      type: "charge.succeeded",
+      data: {
+        object: {
+          id: "ch_no_partner",
+          application_fee: "fee-no-partner",
+          application_fee_amount: 1_000,
+          currency: "usd",
+          created: 1_784_937_600,
+          metadata: { mingla_order_id: "order-1" },
+        },
+      },
+    },
+  );
+
+  assertEquals(result, { brandId: "brand-1", status: "no_partner" });
+  assertEquals(calls.length, 0);
+  const attribution = rpcCalls.find((call) =>
+    call.name === "record_payout_partner_attribution"
+  );
+  assert(attribution);
+  assertEquals(attribution.args.p_partner_account_id, null);
+  assertEquals(attribution.args.p_partner_share_cents, 0);
+  assertFalse(
+    rpcCalls.some((call) => call.name === "record_held_partner_split"),
+  );
 });
 
 Deno.test("released occurrence triggers one plain Stripe platform transfer and one Paystack pending leg", async () => {
@@ -256,4 +323,27 @@ Deno.test("Paystack partner movement fee reduces organiser cash without reducing
     migration,
     "v_split.partner_share_cents < 5000",
   );
+});
+
+Deno.test("organiser execution blocks until provider-sale partner attribution is persisted", () => {
+  assertStringIncludes(
+    migration,
+    "CREATE TABLE public.payout_partner_attributions",
+  );
+  assertStringIncludes(
+    migration,
+    "a.partner_share_cents AS expected_partner_share_cents",
+  );
+  assertStringIncludes(
+    migration,
+    "'blocked_partner_attributions', v_blocked_attributions",
+  );
+  const blocker = sweepIndex.indexOf(
+    'error: "partner_attribution_pending"',
+  );
+  const providerRelease = sweepIndex.indexOf(
+    'from("brand_payout_releases")',
+  );
+  assert(blocker >= 0);
+  assert(providerRelease > blocker);
 });

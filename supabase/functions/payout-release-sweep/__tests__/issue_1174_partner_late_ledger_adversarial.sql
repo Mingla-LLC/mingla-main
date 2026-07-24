@@ -94,7 +94,7 @@ INSERT INTO public.brand_team_members (
   '11740000-0000-4000-8000-000000000003',
   '11740000-0000-4000-8000-000000000002',
   'brand_admin',
-  '2026-07-24T12:00:00Z'
+  '2026-07-25T00:30:00Z'
 );
 
 -- Simulate the dark sweep attaching before the partner webhook finishes.
@@ -154,8 +154,51 @@ INSERT INTO public.payout_release_items (
   '2026-07-25T00:00:00Z'
 );
 
+DO $$
+BEGIN
+  IF public.resolve_partner_for_brand_at_time(
+    '11740000-0000-4000-8000-000000000003',
+    '2026-07-25T00:00:00Z'
+  ) IS NOT NULL THEN
+    RAISE EXCEPTION 'partner must not exist at order creation';
+  END IF;
+  IF public.resolve_partner_for_brand_at_time(
+    '11740000-0000-4000-8000-000000000003',
+    '2026-07-25T01:00:00Z'
+  ) IS DISTINCT FROM '11740000-0000-4000-8000-000000000002'::uuid THEN
+    RAISE EXCEPTION 'partner must exist at provider payment time';
+  END IF;
+END;
+$$;
+
+DO $$
+DECLARE
+  v_plan jsonb;
+BEGIN
+  v_plan := public.plan_pending_payout_partner_legs(100);
+  IF (v_plan->>'blocked_partner_attributions')::integer <> 1 THEN
+    RAISE EXCEPTION
+      'missing provider-sale outcome did not block execution: %',
+      v_plan;
+  END IF;
+END;
+$$;
+
+SELECT public.record_payout_partner_attribution(
+  'paystack:issue-1174-late-partner',
+  '11740000-0000-4000-8000-000000000005',
+  '11740000-0000-4000-8000-000000000003',
+  '11740000-0000-4000-8000-000000000002',
+  '2026-07-25T01:00:00Z',
+  100000,
+  10000,
+  'ngn',
+  'paystack'
+);
+
 -- Planning runs before the held row arrives. It must reserve the attributable
--- principal from sale-time relationship + immutable fee truth first, so an
+-- principal from persisted provider-sale attribution + immutable fee truth,
+-- not order creation, so an
 -- organiser adapter reading immediately afterwards cannot overpay.
 SELECT public.plan_pending_payout_partner_legs(100);
 
@@ -210,7 +253,8 @@ SELECT public.record_held_partner_split(
   100000,
   10000,
   'ngn',
-  'paystack'
+  'paystack',
+  '2026-07-25T01:00:00Z'
 );
 
 SELECT public.plan_pending_payout_partner_legs(100);
@@ -274,6 +318,158 @@ BEGIN
   IF v_release.net_release_cents <> 879000 THEN
     RAISE EXCEPTION
       'organiser cash overpays late partner principal: expected 879000, got %',
+      v_release.net_release_cents;
+  END IF;
+END;
+$$;
+
+-- Inverse boundary: the partner exists when the order is created, but is
+-- removed before the provider confirms payment. Persisting the canonical
+-- no-partner sale outcome must prevent a phantom correction or transfer leg.
+UPDATE public.brand_team_members
+SET removed_at = '2026-07-25T01:30:00Z'
+WHERE brand_id = '11740000-0000-4000-8000-000000000003'
+  AND user_id = '11740000-0000-4000-8000-000000000002';
+
+INSERT INTO public.orders (
+  id,
+  event_id,
+  total_cents,
+  currency,
+  payment_status,
+  stripe_application_fee_amount_cents,
+  buyer_phone_e164,
+  created_at
+) VALUES (
+  '11740000-0000-4000-8000-000000000007',
+  '11740000-0000-4000-8000-000000000004',
+  1000000,
+  'NGN',
+  'paid',
+  100000,
+  '+15555550175',
+  '2026-07-25T01:00:00Z'
+);
+
+INSERT INTO public.brand_payout_releases (
+  id,
+  brand_id,
+  event_id,
+  occurrence_key,
+  surface,
+  provider,
+  currency,
+  anchor_end_at,
+  releasable_at,
+  gross_cents,
+  mingla_fee_cents,
+  partner_share_cents,
+  provider_fee_cents,
+  net_release_cents,
+  status
+) VALUES (
+  '11740000-0000-4000-8000-000000000008',
+  '11740000-0000-4000-8000-000000000003',
+  '11740000-0000-4000-8000-000000000004',
+  'issue-1174-inverse',
+  'order',
+  'paystack',
+  'ngn',
+  '2026-07-20T00:00:00Z',
+  '2026-07-23T00:00:00Z',
+  1000000,
+  100000,
+  0,
+  10000,
+  890000,
+  'pending'
+);
+
+INSERT INTO public.payout_release_items (
+  release_id,
+  source_type,
+  source_id,
+  gross_cents,
+  mingla_fee_cents,
+  partner_share_cents,
+  provider_fee_cents,
+  net_cents,
+  source_finalized_at
+) VALUES (
+  '11740000-0000-4000-8000-000000000008',
+  'order',
+  '11740000-0000-4000-8000-000000000007',
+  1000000,
+  100000,
+  0,
+  10000,
+  890000,
+  '2026-07-25T01:00:00Z'
+);
+
+DO $$
+BEGIN
+  IF public.resolve_partner_for_brand_at_time(
+    '11740000-0000-4000-8000-000000000003',
+    '2026-07-25T01:00:00Z'
+  ) IS DISTINCT FROM '11740000-0000-4000-8000-000000000002'::uuid THEN
+    RAISE EXCEPTION 'inverse partner must exist at order creation';
+  END IF;
+  IF public.resolve_partner_for_brand_at_time(
+    '11740000-0000-4000-8000-000000000003',
+    '2026-07-25T02:00:00Z'
+  ) IS NOT NULL THEN
+    RAISE EXCEPTION 'inverse partner must be absent at provider payment time';
+  END IF;
+END;
+$$;
+
+SELECT public.record_payout_partner_attribution(
+  'paystack:issue-1174-no-partner',
+  '11740000-0000-4000-8000-000000000007',
+  '11740000-0000-4000-8000-000000000003',
+  NULL,
+  '2026-07-25T02:00:00Z',
+  100000,
+  0,
+  'ngn',
+  'paystack'
+);
+
+SELECT public.plan_pending_payout_partner_legs(100);
+SELECT public.plan_pending_payout_partner_legs(100);
+
+DO $$
+DECLARE
+  v_release public.brand_payout_releases%ROWTYPE;
+  v_correction_count integer;
+  v_leg_count integer;
+BEGIN
+  SELECT * INTO STRICT v_release
+  FROM public.brand_payout_releases
+  WHERE id = '11740000-0000-4000-8000-000000000008';
+
+  SELECT count(*)::integer INTO v_correction_count
+  FROM public.payout_ledger_adjustments
+  WHERE release_id = v_release.id
+    AND kind = 'partner_principal_correction';
+
+  SELECT count(*)::integer INTO v_leg_count
+  FROM public.payout_transfer_legs
+  WHERE release_id = v_release.id
+    AND kind = 'partner';
+
+  IF v_correction_count <> 0 OR v_leg_count <> 0 THEN
+    RAISE EXCEPTION
+      'no-partner sale gained phantom accounting: corrections %, legs %',
+      v_correction_count,
+      v_leg_count;
+  END IF;
+  IF v_release.partner_share_cents <> 0
+     OR v_release.net_release_cents <> 890000 THEN
+    RAISE EXCEPTION
+      'no-partner sale was underpaid: share %, net %',
+      v_release.partner_share_cents,
       v_release.net_release_cents;
   END IF;
 END;
