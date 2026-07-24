@@ -89,6 +89,7 @@ async function resolveProviderFee(
   // Balance-transactions read. BALANCES lacks Charges read.
   const stripe = stripeWebhook();
   if (route === "stripe_charge") {
+    // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve (GET; no mutation to dedupe)
     const charge = await stripe.charges.retrieve(
       candidate.provider_reference,
       { expand: ["balance_transaction"] },
@@ -96,6 +97,7 @@ async function resolveProviderFee(
     );
     return stripeFeeSnapshot(charge.balance_transaction);
   }
+  // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve (GET; no mutation to dedupe)
   const paymentIntent = await stripe.paymentIntents.retrieve(
     candidate.provider_reference,
     { expand: ["latest_charge.balance_transaction"] },
@@ -106,6 +108,7 @@ async function resolveProviderFee(
   if (typeof latestCharge !== "string") {
     return stripeFeeSnapshot(latestCharge.balance_transaction);
   }
+  // orch-strict-grep-allow stripe-no-idempotency-key — read-only retrieve (GET; no mutation to dedupe)
   const charge = await stripe.charges.retrieve(
     latestCharge,
     { expand: ["balance_transaction"] },
