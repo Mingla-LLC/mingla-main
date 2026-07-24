@@ -48,6 +48,117 @@ CREATE INDEX IF NOT EXISTS partner_splits_release_status_idx
 COMMENT ON COLUMN public.partner_splits.release_id IS
   'Issue #1174: organiser occurrence release that made this held partner share eligible.';
 
+-- payout_release_items is intentionally immutable. If its snapshot wins the
+-- race against the partner webhook, reserve the missing partner principal as
+-- an additive ledger adjustment instead of rewriting the item.
+DO $$
+DECLARE
+  v_name text;
+BEGIN
+  FOR v_name IN
+    SELECT conname
+    FROM pg_constraint
+    WHERE conrelid = 'public.payout_ledger_adjustments'::regclass
+      AND contype = 'c'
+      AND pg_get_constraintdef(oid) LIKE '%kind%'
+      AND pg_get_constraintdef(oid) LIKE '%post_release_refund%'
+  LOOP
+    EXECUTE format(
+      'ALTER TABLE public.payout_ledger_adjustments DROP CONSTRAINT %I',
+      v_name
+    );
+  END LOOP;
+END$$;
+
+ALTER TABLE public.payout_ledger_adjustments
+  ADD CONSTRAINT payout_ledger_adjustments_kind_check
+  CHECK (kind IN (
+    'post_release_refund',
+    'post_release_dispute',
+    'dispute_reversal',
+    'transfer_fee_debit',
+    'transfer_fee_credit',
+    'maturity_recredit',
+    'debt_writeoff',
+    'partner_principal_correction'
+  ));
+
+CREATE OR REPLACE FUNCTION public.reconcile_payout_partner_principal(
+  p_release_id uuid
+)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_inserted integer := 0;
+BEGIN
+  -- The release row is the serialization boundary shared with partner-leg
+  -- planning. The deterministic sale-time lookup means a late webhook cannot
+  -- make organiser cash executable before its partner principal is reserved.
+  PERFORM 1
+  FROM public.brand_payout_releases
+  WHERE id = p_release_id
+    AND status = 'pending'
+  FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN 0;
+  END IF;
+
+  WITH attributable AS (
+    SELECT
+      i.release_id,
+      i.source_id,
+      r.brand_id,
+      r.currency,
+      i.partner_share_cents,
+      round(i.mingla_fee_cents::numeric * 0.10)::integer
+        AS expected_partner_share_cents
+    FROM public.payout_release_items i
+    JOIN public.brand_payout_releases r ON r.id = i.release_id
+    WHERE i.release_id = p_release_id
+      AND i.source_type = 'order'
+      AND i.refunded_cents = 0
+      AND public.resolve_partner_for_brand_at_time(
+        r.brand_id,
+        i.source_finalized_at
+      ) IS NOT NULL
+  )
+  INSERT INTO public.payout_ledger_adjustments (
+    release_id,
+    brand_id,
+    currency,
+    kind,
+    amount_cents,
+    provider_ref,
+    idempotency_key
+  )
+  SELECT
+    a.release_id,
+    a.brand_id,
+    a.currency,
+    'partner_principal_correction',
+    a.expected_partner_share_cents - a.partner_share_cents,
+    'order:' || a.source_id::text,
+    'partner-principal:' || a.release_id::text || ':' || a.source_id::text
+  FROM attributable a
+  WHERE a.expected_partner_share_cents > a.partner_share_cents
+  ON CONFLICT (idempotency_key) DO NOTHING;
+
+  GET DIAGNOSTICS v_inserted = ROW_COUNT;
+  RETURN v_inserted;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.reconcile_payout_partner_principal(uuid)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.reconcile_payout_partner_principal(uuid)
+  TO service_role;
+
+COMMENT ON FUNCTION public.reconcile_payout_partner_principal(uuid) IS
+  'Issue #1174: appends an idempotent correction when an immutable payout item predates its attributable held partner split.';
+
 CREATE OR REPLACE FUNCTION public.record_held_partner_split(
   p_key text,
   p_order_id uuid,
@@ -71,6 +182,10 @@ BEGIN
   END IF;
   IF p_provider NOT IN ('stripe', 'paystack') THEN
     RAISE EXCEPTION 'invalid_partner_split_provider' USING ERRCODE = '22023';
+  END IF;
+  IF p_partner_share_cents <> round(p_mingla_fee_cents::numeric * 0.10)::integer
+  THEN
+    RAISE EXCEPTION 'partner_share_formula_mismatch' USING ERRCODE = '22023';
   END IF;
 
   INSERT INTO public.partner_splits (
@@ -102,6 +217,11 @@ BEGIN
     INTO v_row
   FROM public.partner_splits
   WHERE stripe_application_fee_id = p_key;
+
+  PERFORM public.reconcile_payout_partner_principal(i.release_id)
+  FROM public.payout_release_items i
+  WHERE i.source_type = 'order'
+    AND i.source_id = p_order_id;
 
   RETURN jsonb_build_object(
     'id', v_row.id,
@@ -142,6 +262,14 @@ DECLARE
   v_fee integer;
   v_stamp integer;
   v_partner_cost integer;
+  v_principal_corrections integer := 0;
+  v_new_corrections integer;
+  v_gross integer;
+  v_refunded integer;
+  v_disputed integer;
+  v_mingla_fee integer;
+  v_item_partner_share integer;
+  v_provider_fee integer;
 BEGIN
   FOR v_release IN
     SELECT r.id
@@ -151,6 +279,11 @@ BEGIN
     LIMIT greatest(1, least(p_limit, 500))
     FOR UPDATE SKIP LOCKED
   LOOP
+    v_new_corrections :=
+      public.reconcile_payout_partner_principal(v_release.id);
+    v_principal_corrections :=
+      v_principal_corrections + v_new_corrections;
+
     FOR v_split IN
       SELECT DISTINCT ps.id, ps.provider, ps.partner_share_cents
       FROM public.payout_release_items i
@@ -219,14 +352,42 @@ BEGIN
     WHERE release_id = v_release.id
       AND kind = 'partner';
 
-    -- Rebuild from internal ledger truth so retries never double-deduct fees.
-    -- Partner principal is untouched; only its outbound movement cost reduces
-    -- organiser cash on Paystack.
+    SELECT
+      coalesce(sum(gross_cents), 0)::integer,
+      coalesce(sum(refunded_cents), 0)::integer,
+      coalesce(sum(disputed_cents), 0)::integer,
+      coalesce(sum(mingla_fee_cents), 0)::integer,
+      coalesce(sum(partner_share_cents), 0)::integer,
+      coalesce(sum(provider_fee_cents), 0)::integer
+    INTO
+      v_gross,
+      v_refunded,
+      v_disputed,
+      v_mingla_fee,
+      v_item_partner_share,
+      v_provider_fee
+    FROM public.payout_release_items
+    WHERE release_id = v_release.id;
+
+    SELECT coalesce(sum(amount_cents), 0)::integer
+      INTO v_new_corrections
+    FROM public.payout_ledger_adjustments
+    WHERE release_id = v_release.id
+      AND kind = 'partner_principal_correction';
+
+    -- Rebuild from immutable items plus append-only corrections so retries
+    -- cannot double-deduct either principal or transfer costs.
     UPDATE public.brand_payout_releases
-    SET net_release_cents = greatest(
+    SET gross_cents = v_gross,
+        refunded_cents = v_refunded,
+        disputed_cents = v_disputed,
+        mingla_fee_cents = v_mingla_fee,
+        partner_share_cents = v_item_partner_share + v_new_corrections,
+        provider_fee_cents = v_provider_fee,
+        net_release_cents = greatest(
           0,
-          gross_cents - refunded_cents - disputed_cents - mingla_fee_cents
-          - partner_share_cents - provider_fee_cents
+          v_gross - v_refunded - v_disputed - v_mingla_fee
+          - v_item_partner_share - v_new_corrections - v_provider_fee
           - permanent_debt_withheld_cents - temporary_debt_withheld_cents
           + maturity_recredit_cents - v_partner_cost
         ),
@@ -234,7 +395,10 @@ BEGIN
     WHERE id = v_release.id;
   END LOOP;
 
-  RETURN jsonb_build_object('planned_partner_legs', v_planned);
+  RETURN jsonb_build_object(
+    'planned_partner_legs', v_planned,
+    'partner_principal_corrections', v_principal_corrections
+  );
 END;
 $function$;
 

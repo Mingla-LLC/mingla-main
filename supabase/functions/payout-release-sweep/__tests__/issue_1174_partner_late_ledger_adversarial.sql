@@ -85,6 +85,18 @@ INSERT INTO public.orders (
   '2026-07-25T00:00:00Z'
 );
 
+INSERT INTO public.brand_team_members (
+  brand_id,
+  user_id,
+  role,
+  accepted_at
+) VALUES (
+  '11740000-0000-4000-8000-000000000003',
+  '11740000-0000-4000-8000-000000000002',
+  'brand_admin',
+  '2026-07-24T12:00:00Z'
+);
+
 -- Simulate the dark sweep attaching before the partner webhook finishes.
 INSERT INTO public.brand_payout_releases (
   id,
@@ -142,7 +154,54 @@ INSERT INTO public.payout_release_items (
   '2026-07-25T00:00:00Z'
 );
 
--- The held partner row arrives after attachment, as it can in production.
+-- Planning runs before the held row arrives. It must reserve the attributable
+-- principal from sale-time relationship + immutable fee truth first, so an
+-- organiser adapter reading immediately afterwards cannot overpay.
+SELECT public.plan_pending_payout_partner_legs(100);
+
+DO $$
+DECLARE
+  v_release public.brand_payout_releases%ROWTYPE;
+  v_item public.payout_release_items%ROWTYPE;
+  v_correction integer;
+BEGIN
+  SELECT * INTO STRICT v_release
+  FROM public.brand_payout_releases
+  WHERE id = '11740000-0000-4000-8000-000000000006';
+
+  SELECT * INTO STRICT v_item
+  FROM public.payout_release_items
+  WHERE source_type = 'order'
+    AND source_id = '11740000-0000-4000-8000-000000000005';
+
+  SELECT coalesce(sum(amount_cents), 0)::integer INTO v_correction
+  FROM public.payout_ledger_adjustments
+  WHERE release_id = v_release.id
+    AND kind = 'partner_principal_correction';
+
+  IF v_item.partner_share_cents <> 0 THEN
+    RAISE EXCEPTION
+      'immutable item was rewritten: expected original 0, got %',
+      v_item.partner_share_cents;
+  END IF;
+
+  IF v_correction <> 10000 THEN
+    RAISE EXCEPTION
+      'append-only partner correction missing: expected 10000, got %',
+      v_correction;
+  END IF;
+
+  IF v_release.partner_share_cents <> 10000
+     OR v_release.net_release_cents <> 880000 THEN
+    RAISE EXCEPTION
+      'organiser amount became executable before correction: share %, net %',
+      v_release.partner_share_cents,
+      v_release.net_release_cents;
+  END IF;
+END;
+$$;
+
+-- The held partner row then arrives, as it can in production.
 SELECT public.record_held_partner_split(
   'paystack:issue-1174-late-partner',
   '11740000-0000-4000-8000-000000000005',
@@ -155,11 +214,15 @@ SELECT public.record_held_partner_split(
 );
 
 SELECT public.plan_pending_payout_partner_legs(100);
+SELECT public.plan_pending_payout_partner_legs(100);
 
 DO $$
 DECLARE
   v_release public.brand_payout_releases%ROWTYPE;
   v_item public.payout_release_items%ROWTYPE;
+  v_correction integer;
+  v_correction_count integer;
+  v_leg_count integer;
 BEGIN
   SELECT * INTO STRICT v_release
   FROM public.brand_payout_releases
@@ -170,10 +233,34 @@ BEGIN
   WHERE source_type = 'order'
     AND source_id = '11740000-0000-4000-8000-000000000005';
 
-  IF v_item.partner_share_cents <> 10000 THEN
+  SELECT coalesce(sum(amount_cents), 0)::integer, count(*)::integer
+    INTO v_correction, v_correction_count
+  FROM public.payout_ledger_adjustments
+  WHERE release_id = v_release.id
+    AND kind = 'partner_principal_correction';
+
+  SELECT count(*)::integer INTO v_leg_count
+  FROM public.payout_transfer_legs
+  WHERE release_id = v_release.id
+    AND kind = 'partner';
+
+  IF v_item.partner_share_cents <> 0 THEN
     RAISE EXCEPTION
-      'late partner principal missing from immutable item: expected 10000, got %',
+      'immutable item was rewritten after late split: expected 0, got %',
       v_item.partner_share_cents;
+  END IF;
+
+  IF v_correction <> 10000 OR v_correction_count <> 1 THEN
+    RAISE EXCEPTION
+      'partner correction not exactly-once: amount %, rows %',
+      v_correction,
+      v_correction_count;
+  END IF;
+
+  IF v_leg_count <> 1 THEN
+    RAISE EXCEPTION
+      'partner transfer leg not exactly-once: expected 1, got %',
+      v_leg_count;
   END IF;
 
   IF v_release.partner_share_cents <> 10000 THEN
