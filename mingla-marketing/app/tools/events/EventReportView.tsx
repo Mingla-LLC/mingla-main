@@ -18,6 +18,7 @@ import {
   submitGrowthToolsGate,
   type EventFactor,
   type EventReport,
+  type EventScenario,
   type GrowthToolsError,
 } from '@/lib/growth-tools-submit'
 
@@ -249,6 +250,158 @@ function BudgetEngine({ report }: { report: EventReport }) {
   )
 }
 
+// ── The bottom line — a decision-first summary ───────────────────────────────
+function DecisionBox({ report }: { report: EventReport }) {
+  const f = report.forecast
+  const plan = report.plan
+  const topFix = report.fixes[0]
+  const risk = report.factors.find((x) => x.status === 'hurt') ??
+    report.factors.find((x) => x.status === 'watch')
+  const cur = plan.currency
+  const paidWorth = plan.kind === 'paid_optimized' && plan.ads_worth_it
+  return (
+    <div className="rounded-md border-2 border-warm/30 bg-warm/[0.06] p-5 md:p-6">
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-warm">The bottom line</p>
+      <p className="mt-2 text-base leading-relaxed text-text-primary md:text-lg">
+        You’ll likely draw <span className="font-bold">{f.total_low}–{f.total_high}</span>{' '}
+        (<span className="font-bold">{f.pct_capacity_low}–{f.pct_capacity_high}% full</span>), at{' '}
+        <span className="font-bold">{f.confidence} confidence</span>.
+        {paidWorth ? (
+          <> The profit-max ad spend is <span className="font-bold">{money((plan as { recommended_budget: number }).recommended_budget, cur)}</span> → about <span className="font-bold">{money((plan as { ad_profit: number }).ad_profit, cur)}</span> more profit.</>
+        ) : null}
+      </p>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {topFix ? (
+          <div className="rounded-md bg-white p-3">
+            <p className="text-[0.65rem] font-semibold uppercase tracking-wide text-moss">Best move</p>
+            <p className="mt-0.5 text-sm font-semibold text-text-primary">{topFix.title}</p>
+          </div>
+        ) : null}
+        {risk ? (
+          <div className="rounded-md bg-white p-3">
+            <p className="text-[0.65rem] font-semibold uppercase tracking-wide text-warning">Watch out for</p>
+            <p className="mt-0.5 text-sm font-semibold text-text-primary">{risk.label}</p>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+// ── How your room fills — a stacked visual (organic + ads + empty) ───────────
+function Legend({ color, label, value }: { color: string; label: string; value: number }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className={cn('size-2.5 rounded-full', color)} />
+      <span className="font-semibold text-text-primary">{value}</span>
+      <span className="text-text-secondary">{label}</span>
+    </span>
+  )
+}
+function RoomFill({ report }: { report: EventReport }) {
+  const f = report.forecast
+  const cap = Math.max(1, f.capacity)
+  const plan = report.plan
+  const organic = Math.min(cap, Math.round((f.baseline_low + f.baseline_high) / 2))
+  const adMid = plan.kind === 'paid_optimized'
+    ? Math.round((plan.ad_attendees_low + plan.ad_attendees_high) / 2)
+    : Math.round((plan.attendees_low + plan.attendees_high) / 2)
+  const ad = Math.max(0, Math.min(cap - organic, adMid))
+  const empty = Math.max(0, cap - organic - ad)
+  const pct = (n: number) => (n / cap) * 100
+  return (
+    <div className="rounded-md border border-divider-strong bg-white p-5">
+      <DocHeading>How your room fills</DocHeading>
+      <div className="mt-3 flex h-7 w-full overflow-hidden rounded-full bg-stripe">
+        <div className="bg-moss" style={{ width: `${pct(organic)}%` }} />
+        <div className="bg-warm" style={{ width: `${pct(ad)}%` }} />
+      </div>
+      <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs">
+        <Legend color="bg-moss" label="Come organically" value={organic} />
+        {ad > 0 ? (
+          <Legend color="bg-warm" label={plan.kind === 'paid_optimized' ? 'From ads (recommended)' : 'From your budget'} value={ad} />
+        ) : null}
+        <Legend color="bg-divider-strong" label="Empty seats" value={empty} />
+      </div>
+      <p className="mt-2 text-xs text-text-muted">
+        Capacity {cap} · likely {organic + ad} through the door ({Math.round(pct(organic + ad))}% full).
+      </p>
+    </div>
+  )
+}
+
+// ── Pick your spend — the budget scenario ladder (the decision tool) ─────────
+function ScenarioLadder({ scenarios, currency }: { scenarios: EventScenario[]; currency: string }) {
+  if (scenarios.length === 0) return null
+  const maxProfit = Math.max(...scenarios.map((s) => s.profit), 1)
+  return (
+    <div className="mt-8">
+      <DocHeading>Pick your spend</DocHeading>
+      <p className="mt-1 text-sm text-text-secondary">
+        Every level is profitable — pick your risk. We recommend the one marked ★.
+      </p>
+      <div className="mt-3 space-y-2">
+        {scenarios.map((s) => (
+          <div
+            key={s.label}
+            className={cn('rounded-md border p-3', s.recommended ? 'border-warm bg-warm/10' : 'border-divider-strong bg-white')}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-sm font-semibold text-text-primary">
+                {s.recommended ? '★ ' : ''}{s.label} — {money(s.budget, currency)}
+              </span>
+              <span className="text-xs text-text-secondary">
+                {s.total_attendees} in ({s.pct_capacity}% full){s.roas !== null ? ` · ${s.roas}× ROAS` : ''}
+              </span>
+            </div>
+            <div className="mt-2 flex items-center gap-3">
+              <div className="h-2 flex-1 overflow-hidden rounded-full bg-stripe">
+                <div className="h-full rounded-full bg-warm" style={{ width: `${Math.max(4, (s.profit / maxProfit) * 100)}%` }} />
+              </div>
+              <span className="shrink-0 text-sm font-bold text-warm-ink">+{money(s.profit, currency)} profit</span>
+            </div>
+            <p className="mt-1 text-xs text-text-muted">
+              {s.ad_tickets} extra tickets{s.cost_per_ticket !== null ? ` · ${money(s.cost_per_ticket, currency)}/ticket` : ''}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Weather card — a visual read of the day ──────────────────────────────────
+function weatherGlyph(summary: string): string {
+  const s = summary.toLowerCase()
+  if (/(snow|freezing)/.test(s)) return '❄️'
+  if (/(thunder|storm)/.test(s)) return '⛈️'
+  if (/(rain|drizzle|shower)/.test(s)) return '🌧️'
+  if (/fog/.test(s)) return '🌫️'
+  if (/(overcast|cloud)/.test(s)) return '☁️'
+  if (/(clear|sun)/.test(s)) return '☀️'
+  return '🌤️'
+}
+function WeatherCard({ weather }: { weather: NonNullable<EventReport['weather']> }) {
+  const badge = weather.kind === 'forecast'
+    ? { t: 'Forecast', c: 'bg-moss/15 text-moss' }
+    : { t: weather.kind === 'climate_normal' ? 'Typical for this date' : 'Seasonal', c: 'bg-butter/20 text-warning' }
+  return (
+    <div className="rounded-md border border-divider-strong bg-white p-4">
+      <div className="flex items-center justify-between gap-2">
+        <DocHeading>Weather</DocHeading>
+        <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[0.65rem] font-semibold', badge.c)}>{badge.t}</span>
+      </div>
+      <div className="mt-2 flex items-start gap-3">
+        <span aria-hidden="true" className="text-3xl leading-none">{weatherGlyph(weather.summary)}</span>
+        <div>
+          <p className="text-sm text-text-secondary">{weather.summary}</p>
+          {weather.impact ? <p className="mt-1 text-xs font-medium text-warm-ink">{weather.impact}</p> : null}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function EventReportView({
   report,
   runId,
@@ -336,10 +489,21 @@ export function EventReportView({
       {/* ── GATED ZONE ────────────────────────────────────────────────────── */}
       <section className="relative mt-8">
         <div className={cn(gated && 'pointer-events-none select-none blur-[7px]')} aria-hidden={gated}>
+          {/* The bottom line + how the room fills — decision-first */}
+          <div className="grid gap-4">
+            <DecisionBox report={report} />
+            <RoomFill report={report} />
+          </div>
+
           {/* Budget engine */}
-          <div className="mt-2">
+          <div className="mt-6">
             <BudgetEngine report={report} />
           </div>
+
+          {/* Scenario ladder — pick your spend (paid events) */}
+          {report.plan.kind === 'paid_optimized' && report.plan.scenarios && report.plan.scenarios.length > 0 ? (
+            <ScenarioLadder scenarios={report.plan.scenarios} currency={report.plan.currency} />
+          ) : null}
 
           {/* Factor breakdown */}
           {report.factors.length > 0 ? (
@@ -401,13 +565,7 @@ export function EventReportView({
                 </div>
               ) : null}
               <div className="space-y-4">
-                {report.weather ? (
-                  <div className="rounded-md border border-divider-strong bg-white p-4">
-                    <DocHeading>Weather {report.weather.kind === 'forecast' ? '(forecast)' : report.weather.kind === 'climate_normal' ? '(typical for this date)' : '(seasonal)'}</DocHeading>
-                    <p className="mt-2 text-sm text-text-secondary">{report.weather.summary}</p>
-                    {report.weather.impact ? <p className="mt-1 text-xs text-text-muted">{report.weather.impact}</p> : null}
-                  </div>
-                ) : null}
+                {report.weather ? <WeatherCard weather={report.weather} /> : null}
                 {report.demand_read ? (
                   <div className="rounded-md border border-divider-strong bg-white p-4">
                     <DocHeading>Demand right now</DocHeading>

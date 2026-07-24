@@ -446,6 +446,18 @@ export interface EventFreePlan {
   cost_per_attendee_high: number | null
   read: string
 }
+export interface EventScenario {
+  label: string
+  budget: number
+  ad_tickets: number
+  revenue: number
+  profit: number
+  roas: number | null
+  cost_per_ticket: number | null
+  total_attendees: number
+  pct_capacity: number
+  recommended: boolean
+}
 export interface EventProfitPlan {
   kind: 'paid_optimized'
   currency: string
@@ -464,6 +476,7 @@ export interface EventProfitPlan {
   ad_profit: number
   roas: number | null
   ads_worth_it: boolean
+  scenarios?: EventScenario[]
   read: string
 }
 export type EventPlan = EventFreePlan | EventProfitPlan
