@@ -132,11 +132,13 @@ function Stat({ k, v, sub }: { k: string; v: string; sub?: string }) {
   )
 }
 
-function BenchmarkNote({ lines }: { lines: string[] }) {
+// A generic disclaimer only — never expose the CPC / conversion assumptions
+// (those are the model, and competitors shouldn't be able to read it off).
+function BenchmarkNote() {
   return (
     <p className="mt-3 text-xs leading-relaxed text-white/70">
-      Based on industry benchmarks ({lines.join(' · ')}), refined by live research on your event.
-      Estimates for planning — real results vary.
+      Grounded in live research on your event plus Mingla&rsquo;s demand data. Estimates for
+      planning — real results vary.
     </p>
   )
 }
@@ -199,13 +201,7 @@ function BudgetEngine({ report }: { report: EventReport }) {
         <div className="mt-5 rounded-md bg-white/10 p-4 text-sm text-white/90">
           {plan.read} Beyond that, each new ticket starts costing more than it earns.
         </div>
-        <BenchmarkNote
-          lines={[
-            `ad CPC ${money(plan.cpc, cur)}`,
-            `${plan.benchmarks.landing_to_ticket_pct}% buy`,
-            `${plan.benchmarks.show_rate_pct}% show up`,
-          ]}
-        />
+        <BenchmarkNote />
       </div>
     )
   }
@@ -239,13 +235,7 @@ function BudgetEngine({ report }: { report: EventReport }) {
         <Stat k="Clicks your budget buys" v={`${plan.clicks_low}–${plan.clicks_high}`} sub="to your event page" />
         <Stat k="Cost per attendee" v={plan.cost_per_attendee_low !== null && plan.cost_per_attendee_high !== null ? `${money(plan.cost_per_attendee_low, cur)}–${money(plan.cost_per_attendee_high, cur)}` : '—'} sub={`promo from ${offerFrom}/head`} />
       </div>
-      <BenchmarkNote
-        lines={[
-          `ad CPC ${money(plan.cpc, cur)}`,
-          `${plan.benchmarks.landing_to_rsvp_pct}% RSVP`,
-          `${plan.benchmarks.show_rate_pct}% show up`,
-        ]}
-      />
+      <BenchmarkNote />
     </div>
   )
 }
@@ -496,7 +486,7 @@ export function EventReportView({
           </div>
 
           {/* Budget engine */}
-          <div className="mt-6">
+          <div className="mt-8">
             <BudgetEngine report={report} />
           </div>
 
@@ -509,11 +499,12 @@ export function EventReportView({
           {report.factors.length > 0 ? (
             <div className="mt-8">
               <DocHeading>What’s driving your turnout</DocHeading>
-              <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
-                {report.factors.map((factor) => {
+              <div className="mt-3 grid gap-2.5 sm:auto-rows-fr sm:grid-cols-2">
+                {report.factors.map((factor, i) => {
                   const s = FACTOR_STYLE[factor.status]
+                  const lastOdd = i === report.factors.length - 1 && report.factors.length % 2 === 1
                   return (
-                    <div key={factor.label} className="rounded-md border border-divider-strong bg-white p-3.5">
+                    <div key={factor.label} className={cn('rounded-md border border-divider-strong bg-white p-3.5', lastOdd && 'sm:col-span-2')}>
                       <div className="flex items-center gap-2">
                         <span className={cn('grid size-6 shrink-0 place-items-center rounded-full border text-xs font-bold', s.className)}>
                           {s.mark}
@@ -565,7 +556,7 @@ export function EventReportView({
 
           {/* Weather + demand — side by side */}
           {(report.weather || report.demand_read) ? (
-            <div className="mt-8 grid items-start gap-4 md:grid-cols-2">
+            <div className="mt-8 grid gap-4 md:auto-rows-fr md:grid-cols-2">
               {report.weather ? <WeatherCard weather={report.weather} /> : null}
               {report.demand_read ? (
                 <div className="rounded-md border border-divider-strong bg-white p-4">
