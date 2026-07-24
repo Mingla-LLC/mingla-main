@@ -488,7 +488,7 @@ export interface EventComparable {
 export interface EventWeather {
   summary: string
   impact: string
-  kind: 'forecast' | 'seasonal'
+  kind: 'forecast' | 'climate_normal' | 'seasonal'
 }
 export interface EventFix {
   title: string
