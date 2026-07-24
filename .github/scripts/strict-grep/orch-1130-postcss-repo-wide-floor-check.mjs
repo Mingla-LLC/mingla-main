@@ -9,9 +9,10 @@
  *   - THIS gate ignores manifests and the allowlist entirely. It DISCOVERS the OPEN SET
  *     of every package-lock.json in the repo (skipping node_modules/.git) and asserts a
  *     single invariant: NO resolved postcss node in ANY lockfile is below the advisory
- *     floor (8.5.10). It is the "4th surface" catch — a lockfile the primary guard's
+ *     floor (8.5.12 — bumped 8.5.10 → 8.5.12 at #1150 for the newer HIGH advisory
+ *     CVE-2026-45623). It is the "4th surface" catch — a lockfile the primary guard's
  *     hardcoded 3-app list structurally cannot see (mingla-admin, scripts/, or a NEW app
- *     added tomorrow) reintroducing postcss < 8.5.10 (GHSA-qx2v-qp2m-jg93 / CVE-2026-41305)
+ *     added tomorrow) reintroducing postcss below the 8.5.12 floor (GHSA-qx2v-qp2m-jg93 / CVE-2026-45623)
  *     re-arms the exact vulnerable-transitive → framework-parent-unlock drag #1130 exists
  *     to prevent, yet would pass the per-app guard green. This gate reds on it.
  *
@@ -19,7 +20,7 @@
  * it to the Next.js marketing app. The vulnerability class is a vulnerable TRANSITIVE
  * postcss dragging an editable framework PARENT (expo, next) forward when Dependabot tries
  * to remediate it. That class is not app-specific — ANY future dependency tree that
- * resolves postcss < 8.5.10 is a fresh instance of the same drag. A per-app allowlist is
+ * resolves postcss < 8.5.12 is a fresh instance of the same drag. A per-app allowlist is
  * necessary (it also proves the override is present) but not sufficient: it goes stale the
  * moment a 4th surface appears. This gate makes the resolved-version invariant total across
  * the whole repository, so the drag cannot re-enter through a door the allowlist never
@@ -48,8 +49,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.join(__dirname, "..", "..", "..");
 
-/** GHSA-qx2v-qp2m-jg93 is fixed in postcss 8.5.10; any resolved node below this fails. */
-export const ADVISORY_FLOOR = [8, 5, 10];
+/**
+ * The advisory floor, enforcing the HIGHER of two stacked postcss advisories:
+ * GHSA-qx2v-qp2m-jg93 / CVE-2026-41305 (fixed 8.5.10, the original #1130 driver) and
+ * the newer HIGH CVE-2026-45623 (fixed 8.5.12). Bumped 8.5.10 → 8.5.12 at #1150 so a
+ * future drift to 8.5.11 cannot pass. Any resolved node below this fails.
+ */
+export const ADVISORY_FLOOR = [8, 5, 12];
 
 /**
  * Directories the sweep MUST cover. These carry a framework (expo / next / vite) that can
@@ -161,7 +167,7 @@ export function runChecks({ lockfiles, requiredSurfaces = REQUIRED_SWEEP_SURFACE
           `${relPath}: "${p}" resolves postcss ${version}, BELOW the advisory floor ` +
             `${ADVISORY_FLOOR.join(".")} (GHSA-qx2v-qp2m-jg93). This is the #1130 vulnerable-` +
             `transitive drag on a surface the per-app guard may not watch — pin postcss ` +
-            `forward (overrides.postcss ≥ ^8.5.10) and regenerate this lockfile.`,
+            `forward (overrides.postcss ≥ ^8.5.12) and regenerate this lockfile.`,
         );
       }
     }
@@ -236,14 +242,15 @@ function selfTest() {
     { relPath: "scripts/package-lock.json", json: { packages: { "": {}, "node_modules/lodash": { version: "4.17.21" } } } },
   ];
 
-  // 1. version parsing + boundary.
+  // 1. version parsing + boundary. Floor moved to 8.5.12 (#1150): 8.5.12 passes,
+  //    8.5.11 fails (it passed under the old 8.5.10 floor).
   ok(
-    "floorTuple + gte handle the 8.5.10 boundary and padding",
-    gte(floorTuple("8.5.10"), ADVISORY_FLOOR) === true &&
+    "floorTuple + gte handle the 8.5.12 boundary and padding",
+    gte(floorTuple("8.5.12"), ADVISORY_FLOOR) === true &&
       gte(floorTuple("8.5.22"), ADVISORY_FLOOR) === true &&
       gte(floorTuple("8.6"), ADVISORY_FLOOR) === true &&
       gte(floorTuple("9"), ADVISORY_FLOOR) === true &&
-      gte(floorTuple("8.5.9"), ADVISORY_FLOOR) === false &&
+      gte(floorTuple("8.5.11"), ADVISORY_FLOOR) === false &&
       gte(floorTuple("8.4.49"), ADVISORY_FLOOR) === false &&
       gte(floorTuple("8.4.31"), ADVISORY_FLOOR) === false &&
       floorTuple("latest") === null,
@@ -269,6 +276,19 @@ function selfTest() {
     ok(
       "vulnerable postcss on an UNGUARDED surface (mingla-admin) fails (fails-on-revert / 4th-surface)",
       f.some((x) => /mingla-admin\/package-lock\.json/.test(x) && /8\.4\.31/.test(x) && /BELOW the advisory floor/.test(x)),
+    );
+  }
+
+  // 4a. NEW-FLOOR PROOF (#1150): a resolved postcss 8.5.11 — clean under the OLD 8.5.10
+  //     floor — now REDS under the 8.5.12 floor (CVE-2026-45623). Directly proves the
+  //     tightening does real work: 8.5.11 no longer sweeps green.
+  {
+    const corpus = cleanCorpus();
+    corpus[0].json.packages["node_modules/postcss"].version = "8.5.11"; // app-mobile
+    const f = runChecks({ lockfiles: corpus });
+    ok(
+      "postcss 8.5.11 FAILS at the 8.5.12 floor (#1150 tightening; passed at old 8.5.10)",
+      f.some((x) => /app-mobile\/package-lock\.json/.test(x) && /8\.5\.11/.test(x) && /BELOW the advisory floor/.test(x)),
     );
   }
 
@@ -352,7 +372,7 @@ if (isMain) {
         console.error(`ORCH-1130 repo-wide postcss floor FAIL (${failures.length} violation(s)):\n`);
         for (const f of failures) console.error("  - " + f);
         console.error(
-          "\nNo resolved postcss node in ANY repo lockfile may fall below 8.5.10 " +
+          "\nNo resolved postcss node in ANY repo lockfile may fall below 8.5.12 " +
             "(GHSA-qx2v-qp2m-jg93). This adversarial gate is the repo-wide backstop to the " +
             "per-app orch-1130-postcss-transitive-pin-check — it catches a vulnerable postcss " +
             "reintroduced on a surface the fixed 3-app allowlist does not watch. Issue #1130 / #1135.",
