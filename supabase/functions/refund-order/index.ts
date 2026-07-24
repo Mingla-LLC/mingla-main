@@ -86,6 +86,13 @@ function mapRpcErrorToHttp(errorMessage: string): {
   if (msg.includes("permission_denied")) {
     return { code: "permission_denied", status: 403, detail: errorMessage };
   }
+  if (msg.includes("idempotency_request_mismatch")) {
+    return {
+      code: "idempotency_request_mismatch",
+      status: 409,
+      detail: errorMessage,
+    };
+  }
   if (msg.includes("order_not_found")) {
     return { code: "order_not_found", status: 404, detail: errorMessage };
   }

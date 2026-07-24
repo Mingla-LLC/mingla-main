@@ -84,6 +84,13 @@ function mapRpcErrorToHttp(
   if (msg.includes("not_authorized")) {
     return { code: "not_authorized", status: 403, detail: errorMessage };
   }
+  if (msg.includes("idempotency_request_mismatch")) {
+    return {
+      code: "idempotency_request_mismatch",
+      status: 409,
+      detail: errorMessage,
+    };
+  }
   if (msg.includes("order_not_found")) {
     return { code: "order_not_found", status: 404, detail: errorMessage };
   }

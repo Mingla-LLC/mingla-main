@@ -37,4 +37,5 @@ jobs:
           supabase/functions/refund-order/__tests__/issue_1175_rework_contract.test.ts
           supabase/functions/refund-order/__tests__/issue_1175_processed_replay_debt_adversarial.test.ts
           supabase/functions/refund-order/__tests__/issue_1175_failure_boundary_rework.test.ts
+          supabase/functions/refund-order/__tests__/issue_1175_immutable_manifest_runtime.test.ts
           supabase/migrations/__tests__/issue_1175_paystack_refunds.test.ts

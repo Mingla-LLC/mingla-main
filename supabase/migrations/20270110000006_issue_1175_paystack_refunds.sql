@@ -482,4 +482,459 @@ REVOKE ALL ON FUNCTION public.pg_resume_my_paystack_reservation_refund(uuid)
 GRANT EXECUTE ON FUNCTION
   public.pg_resume_my_paystack_reservation_refund(uuid) TO authenticated;
 
+-- The original order-refund preparation functions stored only the idempotency
+-- key. A retry therefore could not recover whether the first request was full
+-- (Paystack amount omitted) or partial (Paystack amount explicit). These final
+-- definitions make the first request manifest database-owned and immutable.
+CREATE OR REPLACE FUNCTION public.biz_refund_order(
+  p_order_id uuid,
+  p_lines jsonb,
+  p_reason text,
+  p_idempotency_key text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_order public.orders%ROWTYPE;
+  v_brand_id uuid;
+  v_caller uuid := auth.uid();
+  v_refund_id uuid;
+  v_refund_amount_cents int := 0;
+  v_line jsonb;
+  v_line_item public.order_line_items%ROWTYPE;
+  v_existing_refunded int;
+  v_all_lines_fully_refunded boolean;
+  v_proposed_new_payment_status text;
+  v_existing_refund public.refunds%ROWTYPE;
+  v_canonical_lines jsonb;
+  v_request_manifest jsonb;
+  v_stored_manifest jsonb;
+BEGIN
+  -- Authorization precedes the idempotency lookup so replay cannot disclose
+  -- refund or payment identifiers to a caller outside the order's brand.
+  SELECT * INTO v_order FROM public.orders WHERE id = p_order_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'order_not_found' USING ERRCODE = 'P0001';
+  END IF;
+
+  SELECT brand_id INTO v_brand_id FROM public.events WHERE id = v_order.event_id;
+  IF NOT public.biz_can_manage_payments_for_brand(v_brand_id, v_caller) THEN
+    RAISE EXCEPTION 'permission_denied' USING ERRCODE = '42501';
+  END IF;
+
+  IF p_reason IS NULL OR length(trim(p_reason)) < 10 OR length(trim(p_reason)) > 200 THEN
+    RAISE EXCEPTION 'reason_invalid_length' USING ERRCODE = 'P0003';
+  END IF;
+
+  SELECT coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'order_line_item_id', line->>'order_line_item_id',
+        'quantity', (line->>'quantity')::int,
+        'amount_cents', (line->>'amount_cents')::int
+      )
+      ORDER BY
+        line->>'order_line_item_id',
+        (line->>'quantity')::int,
+        (line->>'amount_cents')::int
+    ),
+    '[]'::jsonb
+  )
+  INTO v_canonical_lines
+  FROM jsonb_array_elements(p_lines) AS line;
+
+  v_request_manifest := jsonb_build_object(
+    'lines', v_canonical_lines,
+    'reason', trim(p_reason)
+  );
+
+  -- Serialize same-key requests before the lookup/insert pair. The existing
+  -- unique expression index remains the final database backstop.
+  PERFORM pg_advisory_xact_lock(
+    hashtextextended(p_order_id::text || ':' || p_idempotency_key, 0)
+  );
+
+  SELECT * INTO v_existing_refund
+  FROM public.refunds
+  WHERE metadata->>'idempotency_key' = p_idempotency_key
+    AND order_id = p_order_id
+  LIMIT 1
+  FOR UPDATE;
+
+  IF FOUND THEN
+    v_stored_manifest := v_existing_refund.metadata->'refund_request_manifest';
+    IF v_stored_manifest IS NULL
+       OR v_stored_manifest->'lines' IS DISTINCT FROM v_canonical_lines
+       OR v_stored_manifest->>'reason' IS DISTINCT FROM trim(p_reason) THEN
+      RAISE EXCEPTION 'idempotency_request_mismatch'
+        USING ERRCODE = '23505';
+    END IF;
+
+    RETURN jsonb_build_object(
+      'refund_id', v_existing_refund.id,
+      'order_id', p_order_id,
+      'amount_cents', v_existing_refund.amount_cents,
+      'currency', v_existing_refund.currency,
+      'stripe_payment_intent_id', v_order.stripe_payment_intent_id,
+      'stripe_charge_id', v_order.stripe_charge_id,
+      'application_fee_amount_cents', v_order.stripe_application_fee_amount_cents,
+      'proposed_new_payment_status',
+        v_stored_manifest->>'proposed_new_payment_status',
+      'is_full_refund',
+        (v_stored_manifest->>'is_full_refund')::boolean,
+      'lines', v_stored_manifest->'lines',
+      'reason', v_stored_manifest->>'reason',
+      'idempotent_replay', true
+    );
+  END IF;
+
+  IF v_order.payment_status NOT IN ('paid', 'partial_refund') THEN
+    RAISE EXCEPTION 'order_not_refundable: status=%', v_order.payment_status
+      USING ERRCODE = 'P0002';
+  END IF;
+
+  FOR v_line IN SELECT * FROM jsonb_array_elements(v_canonical_lines) LOOP
+    SELECT * INTO v_line_item
+    FROM public.order_line_items
+    WHERE id = (v_line->>'order_line_item_id')::uuid
+      AND order_id = p_order_id;
+
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'line_item_not_found: %',
+        v_line->>'order_line_item_id' USING ERRCODE = 'P0004';
+    END IF;
+
+    SELECT COALESCE(SUM(rli.quantity), 0) INTO v_existing_refunded
+    FROM public.refund_line_items rli
+    JOIN public.refunds r ON r.id = rli.refund_id
+    WHERE rli.order_line_item_id = v_line_item.id
+      AND r.status IN ('pending', 'succeeded');
+
+    IF v_existing_refunded + (v_line->>'quantity')::int > v_line_item.quantity THEN
+      RAISE EXCEPTION 'line_overrefund: line=% requested=% existing=% capacity=%',
+        v_line_item.id, v_line->>'quantity', v_existing_refunded,
+        v_line_item.quantity USING ERRCODE = 'P0005';
+    END IF;
+
+    v_refund_amount_cents :=
+      v_refund_amount_cents + (v_line->>'amount_cents')::int;
+  END LOOP;
+
+  IF v_refund_amount_cents <= 0 THEN
+    RAISE EXCEPTION 'refund_amount_zero' USING ERRCODE = 'P0008';
+  END IF;
+
+  INSERT INTO public.refunds (
+    order_id, amount_cents, currency, reason, initiated_by, status,
+    stripe_payment_intent_id, stripe_charge_id, metadata
+  ) VALUES (
+    p_order_id,
+    v_refund_amount_cents,
+    v_order.currency,
+    trim(p_reason),
+    v_caller,
+    'pending',
+    v_order.stripe_payment_intent_id,
+    v_order.stripe_charge_id,
+    jsonb_build_object(
+      'idempotency_key', p_idempotency_key,
+      'refund_request_manifest', v_request_manifest
+    )
+  ) RETURNING id INTO v_refund_id;
+
+  FOR v_line IN SELECT * FROM jsonb_array_elements(v_canonical_lines) LOOP
+    INSERT INTO public.refund_line_items (
+      refund_id, order_line_item_id, ticket_type_id, quantity, amount_cents
+    )
+    SELECT
+      v_refund_id,
+      (v_line->>'order_line_item_id')::uuid,
+      oli.ticket_type_id,
+      (v_line->>'quantity')::int,
+      (v_line->>'amount_cents')::int
+    FROM public.order_line_items oli
+    WHERE oli.id = (v_line->>'order_line_item_id')::uuid;
+  END LOOP;
+
+  SELECT NOT EXISTS (
+    SELECT 1 FROM public.order_line_items oli
+    WHERE oli.order_id = p_order_id
+      AND oli.quantity > (
+        SELECT COALESCE(SUM(rli.quantity), 0)
+        FROM public.refund_line_items rli
+        JOIN public.refunds r ON r.id = rli.refund_id
+        WHERE rli.order_line_item_id = oli.id
+          AND r.status IN ('pending', 'succeeded')
+      )
+  ) INTO v_all_lines_fully_refunded;
+
+  v_proposed_new_payment_status := CASE
+    WHEN v_all_lines_fully_refunded THEN 'refunded'
+    ELSE 'partial_refund'
+  END;
+  v_request_manifest := v_request_manifest || jsonb_build_object(
+    'amount_cents', v_refund_amount_cents,
+    'proposed_new_payment_status', v_proposed_new_payment_status,
+    'is_full_refund', v_all_lines_fully_refunded
+  );
+  UPDATE public.refunds
+  SET metadata = metadata ||
+    jsonb_build_object('refund_request_manifest', v_request_manifest)
+  WHERE id = v_refund_id;
+
+  RETURN jsonb_build_object(
+    'refund_id', v_refund_id,
+    'order_id', p_order_id,
+    'amount_cents', v_refund_amount_cents,
+    'currency', v_order.currency,
+    'stripe_payment_intent_id', v_order.stripe_payment_intent_id,
+    'stripe_charge_id', v_order.stripe_charge_id,
+    'application_fee_amount_cents', v_order.stripe_application_fee_amount_cents,
+    'proposed_new_payment_status', v_proposed_new_payment_status,
+    'is_full_refund', v_all_lines_fully_refunded,
+    'lines', v_canonical_lines,
+    'reason', trim(p_reason),
+    'idempotent_replay', false
+  );
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.biz_refund_order(uuid, jsonb, text, text)
+  FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.biz_refund_order(uuid, jsonb, text, text)
+  TO authenticated;
+
+COMMENT ON FUNCTION public.biz_refund_order(uuid, jsonb, text, text) IS
+  'Issue #1175: auth-first buyer refund preparation with immutable exact-request replay truth.';
+
+CREATE OR REPLACE FUNCTION public.admin_refund_order(
+  p_order_id uuid,
+  p_lines jsonb,
+  p_reason text,
+  p_idempotency_key text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_order public.orders%ROWTYPE;
+  v_caller uuid := auth.uid();
+  v_refund_id uuid;
+  v_refund_amount_cents int := 0;
+  v_line jsonb;
+  v_line_item public.order_line_items%ROWTYPE;
+  v_existing_refunded int;
+  v_all_lines_fully_refunded boolean;
+  v_proposed_new_payment_status text;
+  v_existing_refund public.refunds%ROWTYPE;
+  v_remaining_cents int;
+  v_canonical_lines jsonb;
+  v_request_manifest jsonb;
+  v_stored_manifest jsonb;
+BEGIN
+  -- I-PROPOSED-1278-ADMIN-GATE-FIRST: this remains the first executable
+  -- statement, byte-for-byte equivalent to the approved service-role twin.
+  IF auth.uid() IS NOT NULL AND NOT public.is_admin_user() THEN
+    RAISE EXCEPTION 'not_authorized';
+  END IF;
+
+  SELECT * INTO v_order FROM public.orders WHERE id = p_order_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'order_not_found' USING ERRCODE = 'P0001';
+  END IF;
+
+  IF p_reason IS NULL OR length(trim(p_reason)) < 10 OR length(trim(p_reason)) > 200 THEN
+    RAISE EXCEPTION 'reason_invalid_length' USING ERRCODE = 'P0003';
+  END IF;
+
+  SELECT coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'order_line_item_id', line->>'order_line_item_id',
+        'quantity', (line->>'quantity')::int,
+        'amount_cents', (line->>'amount_cents')::int
+      )
+      ORDER BY
+        line->>'order_line_item_id',
+        (line->>'quantity')::int,
+        (line->>'amount_cents')::int
+    ),
+    '[]'::jsonb
+  )
+  INTO v_canonical_lines
+  FROM jsonb_array_elements(p_lines) AS line;
+
+  v_request_manifest := jsonb_build_object(
+    'lines', v_canonical_lines,
+    'reason', trim(p_reason)
+  );
+  PERFORM pg_advisory_xact_lock(
+    hashtextextended(p_order_id::text || ':' || p_idempotency_key, 0)
+  );
+
+  SELECT * INTO v_existing_refund
+  FROM public.refunds
+  WHERE metadata->>'idempotency_key' = p_idempotency_key
+    AND order_id = p_order_id
+  LIMIT 1
+  FOR UPDATE;
+
+  IF FOUND THEN
+    v_stored_manifest := v_existing_refund.metadata->'refund_request_manifest';
+    IF v_stored_manifest IS NULL
+       OR v_stored_manifest->'lines' IS DISTINCT FROM v_canonical_lines
+       OR v_stored_manifest->>'reason' IS DISTINCT FROM trim(p_reason) THEN
+      RAISE EXCEPTION 'idempotency_request_mismatch'
+        USING ERRCODE = '23505';
+    END IF;
+
+    RETURN jsonb_build_object(
+      'refund_id', v_existing_refund.id,
+      'order_id', p_order_id,
+      'amount_cents', v_existing_refund.amount_cents,
+      'currency', v_existing_refund.currency,
+      'stripe_payment_intent_id', v_order.stripe_payment_intent_id,
+      'stripe_charge_id', v_order.stripe_charge_id,
+      'application_fee_amount_cents', v_order.stripe_application_fee_amount_cents,
+      'proposed_new_payment_status',
+        v_stored_manifest->>'proposed_new_payment_status',
+      'is_full_refund',
+        (v_stored_manifest->>'is_full_refund')::boolean,
+      'lines', v_stored_manifest->'lines',
+      'reason', v_stored_manifest->>'reason',
+      'idempotent_replay', true
+    );
+  END IF;
+
+  IF v_order.payment_status NOT IN ('paid', 'partial_refund') THEN
+    RAISE EXCEPTION 'order_not_refundable: status=%', v_order.payment_status
+      USING ERRCODE = 'P0002';
+  END IF;
+
+  FOR v_line IN SELECT * FROM jsonb_array_elements(v_canonical_lines) LOOP
+    SELECT * INTO v_line_item
+    FROM public.order_line_items
+    WHERE id = (v_line->>'order_line_item_id')::uuid
+      AND order_id = p_order_id;
+
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'line_item_not_found: %',
+        v_line->>'order_line_item_id' USING ERRCODE = 'P0004';
+    END IF;
+
+    SELECT COALESCE(SUM(rli.quantity), 0) INTO v_existing_refunded
+    FROM public.refund_line_items rli
+    JOIN public.refunds r ON r.id = rli.refund_id
+    WHERE rli.order_line_item_id = v_line_item.id
+      AND r.status IN ('pending', 'succeeded');
+
+    IF v_existing_refunded + (v_line->>'quantity')::int > v_line_item.quantity THEN
+      RAISE EXCEPTION 'line_overrefund: line=% requested=% existing=% capacity=%',
+        v_line_item.id, v_line->>'quantity', v_existing_refunded,
+        v_line_item.quantity USING ERRCODE = 'P0005';
+    END IF;
+
+    v_refund_amount_cents :=
+      v_refund_amount_cents + (v_line->>'amount_cents')::int;
+  END LOOP;
+
+  IF v_refund_amount_cents <= 0 THEN
+    RAISE EXCEPTION 'refund_amount_zero' USING ERRCODE = 'P0008';
+  END IF;
+
+  v_remaining_cents :=
+    v_order.total_cents - COALESCE(v_order.refunded_amount_cents, 0);
+  IF v_refund_amount_cents > v_remaining_cents THEN
+    RAISE EXCEPTION 'refund_exceeds_remaining: requested=% remaining=%',
+      v_refund_amount_cents, v_remaining_cents USING ERRCODE = 'P0009';
+  END IF;
+
+  INSERT INTO public.refunds (
+    order_id, amount_cents, currency, reason, initiated_by, status,
+    stripe_payment_intent_id, stripe_charge_id, metadata
+  ) VALUES (
+    p_order_id,
+    v_refund_amount_cents,
+    v_order.currency,
+    trim(p_reason),
+    v_caller,
+    'pending',
+    v_order.stripe_payment_intent_id,
+    v_order.stripe_charge_id,
+    jsonb_build_object(
+      'idempotency_key', p_idempotency_key,
+      'refund_request_manifest', v_request_manifest
+    )
+  ) RETURNING id INTO v_refund_id;
+
+  FOR v_line IN SELECT * FROM jsonb_array_elements(v_canonical_lines) LOOP
+    INSERT INTO public.refund_line_items (
+      refund_id, order_line_item_id, ticket_type_id, quantity, amount_cents
+    )
+    SELECT
+      v_refund_id,
+      (v_line->>'order_line_item_id')::uuid,
+      oli.ticket_type_id,
+      (v_line->>'quantity')::int,
+      (v_line->>'amount_cents')::int
+    FROM public.order_line_items oli
+    WHERE oli.id = (v_line->>'order_line_item_id')::uuid;
+  END LOOP;
+
+  SELECT NOT EXISTS (
+    SELECT 1 FROM public.order_line_items oli
+    WHERE oli.order_id = p_order_id
+      AND oli.quantity > (
+        SELECT COALESCE(SUM(rli.quantity), 0)
+        FROM public.refund_line_items rli
+        JOIN public.refunds r ON r.id = rli.refund_id
+        WHERE rli.order_line_item_id = oli.id
+          AND r.status IN ('pending', 'succeeded')
+      )
+  ) INTO v_all_lines_fully_refunded;
+
+  v_proposed_new_payment_status := CASE
+    WHEN v_all_lines_fully_refunded THEN 'refunded'
+    ELSE 'partial_refund'
+  END;
+  v_request_manifest := v_request_manifest || jsonb_build_object(
+    'amount_cents', v_refund_amount_cents,
+    'proposed_new_payment_status', v_proposed_new_payment_status,
+    'is_full_refund', v_all_lines_fully_refunded
+  );
+  UPDATE public.refunds
+  SET metadata = metadata ||
+    jsonb_build_object('refund_request_manifest', v_request_manifest)
+  WHERE id = v_refund_id;
+
+  RETURN jsonb_build_object(
+    'refund_id', v_refund_id,
+    'order_id', p_order_id,
+    'amount_cents', v_refund_amount_cents,
+    'currency', v_order.currency,
+    'stripe_payment_intent_id', v_order.stripe_payment_intent_id,
+    'stripe_charge_id', v_order.stripe_charge_id,
+    'application_fee_amount_cents', v_order.stripe_application_fee_amount_cents,
+    'proposed_new_payment_status', v_proposed_new_payment_status,
+    'is_full_refund', v_all_lines_fully_refunded,
+    'lines', v_canonical_lines,
+    'reason', trim(p_reason),
+    'idempotent_replay', false
+  );
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.admin_refund_order(uuid, jsonb, text, text)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.admin_refund_order(uuid, jsonb, text, text)
+  TO service_role;
+
+COMMENT ON FUNCTION public.admin_refund_order(uuid, jsonb, text, text) IS
+  'Issue #1175: bounded admin refund preparation with immutable exact-request replay truth.';
+
 COMMIT;
