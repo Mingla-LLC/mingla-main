@@ -10,7 +10,7 @@ on:
       - "supabase/functions/cancel-trip-booking/**"
       - "supabase/functions/venue-reservation-cancel/**"
       - "supabase/functions/paystack-webhook/**"
-      - "supabase/migrations/20270110000004_issue_1175_paystack_refunds.sql"
+      - "supabase/migrations/20270110000006_issue_1175_paystack_refunds.sql"
       - "supabase/migrations/__tests__/issue_1175_paystack_refunds.test.ts"
       - ".github/workflows/issue-1175-paystack-refunds-tests.yml"
 
@@ -36,4 +36,5 @@ jobs:
           supabase/functions/refund-order/__tests__/issue_1175_paystack_refunds.test.ts
           supabase/functions/refund-order/__tests__/issue_1175_rework_contract.test.ts
           supabase/functions/refund-order/__tests__/issue_1175_processed_replay_debt_adversarial.test.ts
+          supabase/functions/refund-order/__tests__/issue_1175_failure_boundary_rework.test.ts
           supabase/migrations/__tests__/issue_1175_paystack_refunds.test.ts

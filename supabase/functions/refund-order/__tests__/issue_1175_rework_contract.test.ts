@@ -109,7 +109,7 @@ Deno.test("issue #1175 rework: trip and venue retries preserve durable identity 
   );
   const migration = await Deno.readTextFile(
     new URL(
-      "../../../migrations/20270110000004_issue_1175_paystack_refunds.sql",
+      "../../../migrations/20270110000006_issue_1175_paystack_refunds.sql",
       import.meta.url,
     ),
   );

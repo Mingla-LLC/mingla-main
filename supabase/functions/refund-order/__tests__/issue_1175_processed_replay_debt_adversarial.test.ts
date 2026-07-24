@@ -5,7 +5,7 @@ function assert(condition: unknown, message: string): asserts condition {
 const functionsRoot = new URL("../../", import.meta.url);
 const migration = await Deno.readTextFile(
   new URL(
-    "../../../migrations/20270110000004_issue_1175_paystack_refunds.sql",
+      "../../../migrations/20270110000006_issue_1175_paystack_refunds.sql",
     import.meta.url,
   ),
 );

@@ -3,7 +3,7 @@ function assert(condition: unknown, message: string): asserts condition {
 }
 
 const sql = await Deno.readTextFile(
-  new URL("../20270110000004_issue_1175_paystack_refunds.sql", import.meta.url),
+  new URL("../20270110000006_issue_1175_paystack_refunds.sql", import.meta.url),
 );
 
 Deno.test("issue #1175 migration: refund attempt identity and service-role boundary are enforced", () => {

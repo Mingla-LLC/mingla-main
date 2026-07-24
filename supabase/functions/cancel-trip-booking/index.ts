@@ -54,6 +54,7 @@ import {
   isRetryablePaystackRefundError,
   PAYSTACK_MIN_REFUND_SUBUNITS,
   paystackRefundOutcomeStatus,
+  persistPaystackRefundOutcome,
 } from "../_shared/paystackRefunds.ts";
 import { writeAudit } from "../_shared/audit.ts";
 import {
@@ -533,13 +534,6 @@ serve(async (req: Request): Promise<Response> => {
   // Zero-refund tiers (refund_cents=0 for all rows) skip Stripe entirely.
   const stripe = paymentProvider === "stripe" ? stripeTicketRefund() : null;
   const stripeRefundIds: string[] = [];
-  const paystackAccepted: Array<{
-    transaction: string;
-    merchantNote: string;
-    providerRefundId: string;
-    amountCents: number;
-    status: string;
-  }> = [];
   const refundLineRowsToInsert: Array<{
     refund_id: string;
     order_line_item_id: string;
@@ -633,14 +627,21 @@ serve(async (req: Request): Promise<Response> => {
           amountSubunits,
           currency: "NGN",
         });
+        await persistPaystackRefundOutcome(
+          () =>
+            supabase.rpc("record_paystack_refund_outcome", {
+              p_source_type: "order",
+              p_source_id: orderId,
+              p_local_refund_id: refundId,
+              p_transaction_reference: transaction,
+              p_merchant_note: merchantNote,
+              p_provider_refund_id: created.id,
+              p_amount_cents: entry.refund_cents,
+              p_status: paystackRefundOutcomeStatus(created.status),
+            }),
+          "cancel-trip-booking",
+        );
         stripeRefundIds.push(created.id);
-        paystackAccepted.push({
-          transaction,
-          merchantNote,
-          providerRefundId: created.id,
-          amountCents: entry.refund_cents,
-          status: created.status,
-        });
         refundLineRowsToInsert.push({
           refund_id: refundId,
           order_line_item_id: primaryLineItem.id,
@@ -805,30 +806,6 @@ serve(async (req: Request): Promise<Response> => {
       },
       500,
     );
-  }
-
-  if (paymentProvider === "paystack") {
-    for (const accepted of paystackAccepted) {
-      const { error: debtError } = await supabase.rpc(
-        "record_paystack_refund_outcome",
-        {
-          p_source_type: "order",
-          p_source_id: orderId,
-          p_local_refund_id: refundId,
-          p_transaction_reference: accepted.transaction,
-          p_merchant_note: accepted.merchantNote,
-          p_provider_refund_id: accepted.providerRefundId,
-          p_amount_cents: accepted.amountCents,
-          p_status: paystackRefundOutcomeStatus(accepted.status),
-        },
-      );
-      if (debtError) {
-        console.error(
-          "[cancel-trip-booking] Paystack debt reconciliation failed after accepted refund",
-          debtError.message,
-        );
-      }
-    }
   }
 
   // Step 6: notification dispatch. REUSE existing ORCH-0788 kinds. Two rows

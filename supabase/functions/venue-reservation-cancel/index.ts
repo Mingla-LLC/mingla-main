@@ -43,6 +43,7 @@ import {
   createPaystackRefund,
   isRetryablePaystackRefundError,
   paystackRefundOutcomeStatus,
+  persistPaystackRefundOutcome,
 } from "../_shared/paystackRefunds.ts";
 import {
   jsonResponse,
@@ -239,6 +240,20 @@ serve(
         });
         providerRefundId = created.id;
         paystackRefundStatus = created.status;
+        await persistPaystackRefundOutcome(
+          () =>
+            svc.rpc("record_paystack_refund_outcome", {
+              p_source_type: "venue_reservation",
+              p_source_id: paystackSourceId,
+              p_local_refund_id: null,
+              p_transaction_reference: paystackTransaction,
+              p_merchant_note: merchantNote,
+              p_provider_refund_id: providerRefundId,
+              p_amount_cents: feeCents,
+              p_status: paystackRefundOutcomeStatus(paystackRefundStatus),
+            }),
+          "venue-reservation-cancel",
+        );
       } else {
         if (!connectedAccountId) {
           throw new Error("stripe_missing_connected_account");
@@ -336,35 +351,21 @@ serve(
       })
       .eq("id", reservation.id);
     if (updErr) {
-      // The money moved; a stale payment_status is non-fatal (webhook/retry can
-      // reconcile). Log + still report the refund as done.
       console.error(
         "[venue-reservation-cancel] payment_status update failed (refund DID succeed)",
         updErr,
       );
-    }
-
-    if (
-      paymentProvider === "paystack" && paystackTransaction &&
-      paystackSourceId
-    ) {
-      const { error: debtError } = await svc.rpc(
-        "record_paystack_refund_outcome",
-        {
-          p_source_type: "venue_reservation",
-          p_source_id: paystackSourceId,
-          p_local_refund_id: null,
-          p_transaction_reference: paystackTransaction,
-          p_merchant_note: `mingla_venue_refund:${reservation.id}`,
-          p_provider_refund_id: providerRefundId,
-          p_amount_cents: feeCents,
-          p_status: paystackRefundOutcomeStatus(paystackRefundStatus),
-        },
-      );
-      if (debtError) {
-        console.error(
-          "[venue-reservation-cancel] Paystack debt reconciliation failed after accepted refund",
-          debtError.message,
+      if (paymentProvider === "paystack") {
+        return jsonResponse(
+          {
+            status: "cancelled",
+            cancelled: true,
+            refundEligible: true,
+            refunded: false,
+            refundAmountCents: 0,
+            refundError: "refund_state_retryable",
+          },
+          200,
         );
       }
     }

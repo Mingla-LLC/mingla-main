@@ -37,6 +37,7 @@ import {
   isRetryablePaystackRefundError,
   paystackRefundOutcomeStatus,
   paystackRefundTransaction,
+  persistPaystackRefundOutcome,
 } from "../_shared/paystackRefunds.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -320,6 +321,20 @@ serve(async (req: Request): Promise<Response> => {
         status: paystackRefund.status,
         amount: paystackRefund.amount || amountCents,
       };
+      await persistPaystackRefundOutcome(
+        () =>
+          supabase.rpc("record_paystack_refund_outcome", {
+            p_source_type: "order",
+            p_source_id: orderId,
+            p_local_refund_id: refundId,
+            p_transaction_reference: transaction,
+            p_merchant_note: `mingla_admin_refund:${refundId}`,
+            p_provider_refund_id: paystackRefund.id,
+            p_amount_cents: amountCents,
+            p_status: paystackRefundOutcomeStatus(paystackRefund.status),
+          }),
+        "admin-refund-order",
+      );
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       console.error("[admin-refund-order] Paystack refund failed", detail);
@@ -505,31 +520,6 @@ serve(async (req: Request): Promise<Response> => {
   const newRefundedTotalCents = Number(
     commit.total_refunded_cents ?? amountCents,
   );
-
-  if (paymentProvider === "paystack") {
-    const transaction = paystackRefundTransaction(paymentIntentId, chargeId);
-    if (transaction) {
-      const { error: debtError } = await supabase.rpc(
-        "record_paystack_refund_outcome",
-        {
-          p_source_type: "order",
-          p_source_id: orderId,
-          p_local_refund_id: refundId,
-          p_transaction_reference: transaction,
-          p_merchant_note: `mingla_admin_refund:${refundId}`,
-          p_provider_refund_id: stripeRefund.id,
-          p_amount_cents: amountCents,
-          p_status: paystackRefundOutcomeStatus(stripeRefund.status),
-        },
-      );
-      if (debtError) {
-        console.error(
-          "[admin-refund-order] Paystack debt reconciliation failed after accepted refund",
-          debtError.message,
-        );
-      }
-    }
-  }
 
   // ── Step 6: audit (post-commit, exactly once — service_role path passes actor). ──
   const { error: auditError } = await supabase.rpc("admin_write_audit", {

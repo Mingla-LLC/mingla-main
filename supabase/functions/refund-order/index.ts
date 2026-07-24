@@ -40,6 +40,7 @@ import {
   isRetryablePaystackRefundError,
   paystackRefundOutcomeStatus,
   paystackRefundTransaction,
+  persistPaystackRefundOutcome,
 } from "../_shared/paystackRefunds.ts";
 import { writeAudit } from "../_shared/audit.ts";
 import {
@@ -342,6 +343,20 @@ serve(async (req: Request): Promise<Response> => {
         status: paystackRefund.status,
         amount: paystackRefund.amount || amountCents,
       };
+      await persistPaystackRefundOutcome(
+        () =>
+          supabase.rpc("record_paystack_refund_outcome", {
+            p_source_type: "order",
+            p_source_id: orderId,
+            p_local_refund_id: refundId,
+            p_transaction_reference: transaction,
+            p_merchant_note: `mingla_refund:${refundId}`,
+            p_provider_refund_id: paystackRefund.id,
+            p_amount_cents: amountCents,
+            p_status: paystackRefundOutcomeStatus(paystackRefund.status),
+          }),
+        "refund-order",
+      );
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       console.error("[refund-order] Paystack refund failed", detail);
@@ -546,31 +561,6 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   const commit = commitResult as Record<string, unknown>;
-
-  if (paymentProvider === "paystack") {
-    const transaction = paystackRefundTransaction(paymentIntentId, chargeId);
-    if (transaction) {
-      const { error: debtError } = await supabase.rpc(
-        "record_paystack_refund_outcome",
-        {
-          p_source_type: "order",
-          p_source_id: orderId,
-          p_local_refund_id: refundId,
-          p_transaction_reference: transaction,
-          p_merchant_note: `mingla_refund:${refundId}`,
-          p_provider_refund_id: stripeRefund.id,
-          p_amount_cents: amountCents,
-          p_status: paystackRefundOutcomeStatus(stripeRefund.status),
-        },
-      );
-      if (debtError) {
-        console.error(
-          "[refund-order] Paystack debt reconciliation failed after accepted refund",
-          debtError.message,
-        );
-      }
-    }
-  }
 
   // Step 4: enqueue buyer notification (ORCH-0788 dispatcher routes by template_key).
   // Look up event_id + buyer email for the notification recipient.

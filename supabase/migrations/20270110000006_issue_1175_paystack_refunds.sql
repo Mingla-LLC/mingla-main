@@ -1,4 +1,4 @@
--- Issue #1175: replay-safe Paystack refund reconciliation and post-release debt.
+-- Issue #1175: retry-safe Paystack refund reconciliation and post-release debt.
 BEGIN;
 
 CREATE TABLE public.paystack_refund_attempts (
@@ -400,7 +400,10 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
 AS $fn$
 DECLARE
   v_row public.reservations;
+  v_session public.reservation_checkout_sessions;
   v_uid uuid:=auth.uid();
+  v_session_count bigint;
+  v_refund_was_eligible boolean;
 BEGIN
   IF v_uid IS NULL THEN
     RAISE EXCEPTION 'not_authenticated' USING ERRCODE='28000';
@@ -411,16 +414,61 @@ BEGIN
   IF NOT FOUND THEN
     RAISE EXCEPTION 'reservation_not_found' USING ERRCODE='P0002';
   END IF;
-  IF v_row.status<>'cancelled_by_guest' OR v_row.payment_status<>'paid'
-     OR NOT EXISTS(
-       SELECT 1
-       FROM public.reservation_checkout_sessions s
-       JOIN public.paystack_refund_attempts a
-         ON a.source_type='venue_reservation' AND a.source_id=s.id
-       WHERE s.reservation_id=v_row.id AND s.status='completed'
-         AND a.merchant_note='mingla_venue_refund:'||v_row.id
-         AND a.status IN ('pending','accepted','processed')
-     ) THEN
+  IF v_row.status<>'cancelled_by_guest' OR v_row.payment_status<>'paid' THEN
+    RAISE EXCEPTION 'cancel_not_allowed_from_%',v_row.status
+      USING ERRCODE='23514';
+  END IF;
+
+  SELECT EXISTS(
+    SELECT 1 FROM public.audit_log a
+    WHERE a.user_id=v_uid
+      AND a.target_type='reservation'
+      AND a.target_id=v_row.id::text
+      AND a.action='venue_reservation.consumer_cancel'
+      AND coalesce(a.after->>'refund_eligible','false')='true'
+  ) INTO v_refund_was_eligible;
+  IF NOT v_refund_was_eligible OR NOT EXISTS(
+    SELECT 1 FROM public.brands b
+    WHERE b.id=v_row.brand_id AND b.payment_provider='paystack'
+  ) THEN
+    RAISE EXCEPTION 'cancel_not_allowed_from_%',v_row.status
+      USING ERRCODE='23514';
+  END IF;
+
+  SELECT count(*) INTO v_session_count
+  FROM public.reservation_checkout_sessions s
+  WHERE s.reservation_id=v_row.id
+    AND s.status='completed'
+    AND coalesce(nullif(s.paystack_reference,''),nullif(v_row.payment_intent_id,'')) IS NOT NULL;
+  IF v_session_count<>1 THEN
+    RAISE EXCEPTION 'paystack_reservation_checkout_session_count_%',v_session_count
+      USING ERRCODE='23514';
+  END IF;
+  SELECT * INTO v_session
+  FROM public.reservation_checkout_sessions s
+  WHERE s.reservation_id=v_row.id
+    AND s.status='completed'
+    AND coalesce(nullif(s.paystack_reference,''),nullif(v_row.payment_intent_id,'')) IS NOT NULL
+  FOR UPDATE;
+
+  INSERT INTO public.paystack_refund_attempts(
+    source_type,source_id,local_refund_id,transaction_reference,
+    merchant_note,amount_cents,currency,status,idempotency_key
+  ) VALUES(
+    'venue_reservation',v_session.id,NULL,
+    coalesce(nullif(v_session.paystack_reference,''),v_row.payment_intent_id),
+    'mingla_venue_refund:'||v_row.id,
+    greatest(coalesce(v_row.fee_cents,0),0),'ngn','pending',
+    'paystack-refund:mingla_venue_refund:'||v_row.id
+  ) ON CONFLICT(idempotency_key) DO NOTHING;
+
+  IF NOT EXISTS(
+    SELECT 1 FROM public.paystack_refund_attempts a
+    WHERE a.source_type='venue_reservation'
+      AND a.source_id=v_session.id
+      AND a.merchant_note='mingla_venue_refund:'||v_row.id
+      AND a.status IN ('pending','accepted','processed')
+  ) THEN
     RAISE EXCEPTION 'cancel_not_allowed_from_%',v_row.status
       USING ERRCODE='23514';
   END IF;

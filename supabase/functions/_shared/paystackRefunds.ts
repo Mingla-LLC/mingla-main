@@ -27,6 +27,10 @@ export type PaystackRefundOutcomeStatus =
   | "processed"
   | "failed";
 
+interface PaystackRefundOutcomeWriteResult {
+  error: { message?: string } | null;
+}
+
 export const PAYSTACK_MIN_REFUND_SUBUNITS = 5_000;
 
 interface RefundRecord {
@@ -165,6 +169,20 @@ export function paystackRefundOutcomeStatus(
   if (normalized === "processed") return "processed";
   if (normalized === "failed" || normalized === "canceled") return "failed";
   return "accepted";
+}
+
+export async function persistPaystackRefundOutcome(
+  writeOutcome: () => PromiseLike<PaystackRefundOutcomeWriteResult>,
+  context: string,
+): Promise<void> {
+  const { error } = await writeOutcome();
+  if (error) {
+    throw new Error(
+      `paystack_refund_outcome_persist_failed:${context}:${
+        error.message ?? "unknown error"
+      }`,
+    );
+  }
 }
 
 export function paystackRefundTransaction(
