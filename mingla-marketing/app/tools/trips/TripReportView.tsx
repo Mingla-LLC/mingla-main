@@ -271,6 +271,74 @@ function Itinerary({ report }: { report: TripReport }) {
   )
 }
 
+// ── Perfect timing — the "why now" seasonal callout ──────────────────────────
+function SeasonCallout({ note }: { note: string }) {
+  if (!note.trim()) return null
+  return (
+    <div className="mt-8 flex items-start gap-3 rounded-md border border-warm/30 bg-warm/[0.06] p-4">
+      <span aria-hidden="true" className="text-2xl leading-none">🗓️</span>
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-warm">Perfect timing</p>
+        <p className="mt-1 text-sm leading-relaxed text-text-primary">{note}</p>
+      </div>
+    </div>
+  )
+}
+
+// ── Signature experiences — the curated, popular, in-season highlights reel ───
+const TAG_STYLE: Record<string, string> = {
+  'Must-see': 'bg-warm/15 text-warm-ink',
+  Seasonal: 'bg-butter/20 text-warning',
+  'Hidden gem': 'bg-moss/15 text-moss',
+  'Local favourite': 'bg-moss/15 text-moss',
+  Adventure: 'bg-warm/15 text-warm-ink',
+  'Food & drink': 'bg-warm/15 text-warm-ink',
+  Culture: 'bg-stripe-strong text-text-secondary',
+  Nature: 'bg-moss/15 text-moss',
+}
+function tagClass(tag: string): string {
+  return TAG_STYLE[tag] ?? 'bg-stripe-strong text-text-secondary'
+}
+function ExperiencesShowcase({ report }: { report: TripReport }) {
+  const acts = report.activities.filter((a) => a.name)
+  if (acts.length === 0) return null
+  const cur = report.plan.currency
+  return (
+    <div className="mt-8">
+      <DocHeading>Signature experiences — all included</DocHeading>
+      <p className="mt-1 text-sm text-text-secondary">
+        The popular, in-season highlights we&rsquo;d build this trip around.
+      </p>
+      <div className="mt-3 grid gap-2.5 sm:auto-rows-fr sm:grid-cols-2">
+        {acts.map((a, i) => {
+          const lastOdd = i === acts.length - 1 && acts.length % 2 === 1
+          return (
+            <div key={a.name} className={cn('rounded-md border border-divider-strong bg-white p-4', lastOdd && 'sm:col-span-2')}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                {a.tag ? (
+                  <span className={cn('rounded-full px-2 py-0.5 text-[0.65rem] font-bold uppercase tracking-wide', tagClass(a.tag))}>
+                    {a.tag}
+                  </span>
+                ) : <span />}
+                {a.price_pp !== null ? (
+                  <span className="text-xs font-bold text-text-primary tabular-nums">{money(a.price_pp, cur)}/pp</span>
+                ) : null}
+              </div>
+              <p className="mt-2 text-sm font-semibold text-text-primary">{a.name}</p>
+              {a.why ? <p className="mt-1 text-xs leading-relaxed text-text-secondary">{a.why}</p> : null}
+              {a.best_time ? (
+                <p className="mt-1.5 inline-flex items-center gap-1 text-[0.7rem] font-semibold text-warm-ink">
+                  <span aria-hidden="true">◷</span> {a.best_time}
+                </p>
+              ) : null}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ── Fill + ad plan (secondary) — the profit-max promo budget ─────────────────
 function FillPlan({ report }: { report: TripReport }) {
   const p = report.plan
@@ -476,6 +544,12 @@ export function TripReportView({
 
           {/* What to charge — the margin ladder */}
           <MarginLadder plan={report.plan} />
+
+          {/* Perfect timing — the seasonal "why now" */}
+          {report.season_note ? <SeasonCallout note={report.season_note} /> : null}
+
+          {/* Signature experiences — the curated, in-season highlights reel */}
+          <ExperiencesShowcase report={report} />
 
           {/* Day-by-day itinerary */}
           <Itinerary report={report} />
