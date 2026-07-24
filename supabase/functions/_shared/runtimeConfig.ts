@@ -42,6 +42,7 @@ type ParseFailure = {
     | "wrong_type"
     | "invalid_value";
   field?: RuntimeConfigField | "unknown";
+  schemaVersion?: number;
 };
 
 type ParseResult = { ok: true; value: RuntimeConfig } | ParseFailure;
@@ -69,6 +70,7 @@ const RUNTIME_CONFIG_LEGACY_NAMES: Record<RuntimeConfigField, string> = {
 };
 
 const MAX_BUNDLE_BYTES = 48 * 1024;
+const MAX_DIAGNOSTIC_SCHEMA_VERSION = 1_000_000;
 const TERMII_HOSTS = new Set(["v3.api.termii.com"]);
 const VERSION_RE = /^v[1-9]\d?(?:\.\d{1,2})?$/;
 const emittedDiagnostics = new Set<string>();
@@ -87,6 +89,14 @@ function diagnosticEnv(name: string): string | undefined {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function boundedSchemaVersion(value: unknown): number | undefined {
+  return typeof value === "number" &&
+      Number.isFinite(value) &&
+      Math.abs(value) <= MAX_DIAGNOSTIC_SCHEMA_VERSION
+    ? value
+    : undefined;
 }
 
 function validHttpsUrl(
@@ -119,7 +129,11 @@ export function parseRuntimeConfig(raw: string): ParseResult {
   }
   if (!isRecord(parsed)) return { ok: false, reason: "not_object" };
   if (parsed.schema_version !== 1) {
-    return { ok: false, reason: "schema_version" };
+    return {
+      ok: false,
+      reason: "schema_version",
+      schemaVersion: boundedSchemaVersion(parsed.schema_version),
+    };
   }
   const allowed = new Set(["schema_version", ...RUNTIME_CONFIG_FIELDS]);
   if (Object.keys(parsed).some((field) => !allowed.has(field))) {
@@ -188,6 +202,7 @@ function emit(
   event: "secret_bundle_invalid" | "secret_bundle_legacy_fallback",
   reason: ParseFailure["reason"] | "missing",
   field: RuntimeConfigField | "unknown",
+  schemaVersion?: number,
 ): void {
   const identity = [event, RUNTIME_CONFIG_BUNDLE, reason, field].join(":");
   if (emittedDiagnostics.has(identity)) return;
@@ -198,6 +213,10 @@ function emit(
     reason,
     field,
   };
+  const redactedSchemaVersion = boundedSchemaVersion(schemaVersion);
+  if (redactedSchemaVersion !== undefined) {
+    diagnostic.schema_version = redactedSchemaVersion;
+  }
   const deploymentId = diagnosticEnv("DENO_DEPLOYMENT_ID");
   if (deploymentId) diagnostic.deployment_id = deploymentId;
   const functionName = diagnosticEnv("DENO_FUNCTION_NAME");
@@ -221,8 +240,18 @@ export function resolveRuntimeConfigValue(
   if (raw) {
     const result = parseRuntimeConfig(raw);
     if (result.ok) return result.value[field];
-    emit("secret_bundle_invalid", result.reason, result.field ?? field);
-    emit("secret_bundle_legacy_fallback", result.reason, field);
+    emit(
+      "secret_bundle_invalid",
+      result.reason,
+      result.field ?? field,
+      result.schemaVersion,
+    );
+    emit(
+      "secret_bundle_legacy_fallback",
+      result.reason,
+      field,
+      result.schemaVersion,
+    );
   } else {
     emit("secret_bundle_legacy_fallback", "missing", field);
   }

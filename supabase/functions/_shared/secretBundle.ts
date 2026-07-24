@@ -45,6 +45,7 @@ type ParseResult<T> =
   };
 
 const MAX_BUNDLE_BYTES = 48 * 1024;
+const MAX_DIAGNOSTIC_SCHEMA_VERSION = 1_000_000;
 const EMAIL_RE = /^(?:(.+?)\s*<)?([^<>\s]+@[^<>\s]+)>?$/;
 const emittedDiagnostics = new Set<string>();
 const PAYMENT_MODE_LEGACY_NAMES: Record<PaymentModeField, string> = {
@@ -87,6 +88,14 @@ function safeField(field: string | undefined): string | undefined {
   return field && /^[a-z][a-z0-9_.]{0,63}$/.test(field) ? field : undefined;
 }
 
+function boundedSchemaVersion(value: unknown): number | undefined {
+  return typeof value === "number" &&
+      Number.isFinite(value) &&
+      Math.abs(value) <= MAX_DIAGNOSTIC_SCHEMA_VERSION
+    ? value
+    : undefined;
+}
+
 function emitDiagnostic(
   event: "secret_bundle_invalid" | "secret_bundle_legacy_fallback",
   bundle: BundleName,
@@ -104,7 +113,10 @@ function emitDiagnostic(
     reason,
   };
   if (redactedField) diagnostic.field = redactedField;
-  if (schemaVersion === 1) diagnostic.schema_version = schemaVersion;
+  const redactedSchemaVersion = boundedSchemaVersion(schemaVersion);
+  if (redactedSchemaVersion !== undefined) {
+    diagnostic.schema_version = redactedSchemaVersion;
+  }
   const deploymentId = diagnosticEnv("DENO_DEPLOYMENT_ID");
   if (deploymentId) diagnostic.deployment_id = deploymentId;
   const functionName = diagnosticEnv("DENO_FUNCTION_NAME");
@@ -135,7 +147,7 @@ function parseObject(
     return {
       ok: false,
       reason: "schema_version",
-      schemaVersion: typeof version === "number" ? version : undefined,
+      schemaVersion: boundedSchemaVersion(version),
     };
   }
   const allowed = new Set(["schema_version", ...allowedFields]);
