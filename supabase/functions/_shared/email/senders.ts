@@ -25,6 +25,12 @@ export const EMAIL_SENDERS = {
   tickets: resolveSender("RESEND_TICKET_FROM", "Mingla", "tickets@usemingla.com"),
   admin: resolveSender("RESEND_ADMIN_FROM", "Mingla", "hello@usemingla.com"),
   system: resolveSender("RESEND_SYSTEM_FROM", "Mingla", "notifications@usemingla.com"),
+  // #1154 — a dedicated no-reply identity for the growth-tools funnel (report
+  // summaries + booking confirmations) so those emails stop inheriting the shared
+  // `system` sender (a payments@ identity in prod). Replies still route via the
+  // per-message reply_to (support@usemingla.com). Env-overridable; domain-level
+  // Resend verification on usemingla.com covers this local-part.
+  noreply: resolveSender("RESEND_NOREPLY_FROM", "Mingla", "noreply@usemingla.com"),
 } as const;
 
 export function assertNotResendSandbox(sender: SenderIdentity): void {
