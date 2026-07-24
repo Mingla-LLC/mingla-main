@@ -34,5 +34,6 @@ jobs:
         run: >-
           deno test --allow-read --allow-env
           supabase/functions/refund-order/__tests__/issue_1175_paystack_refunds.test.ts
+          supabase/functions/refund-order/__tests__/issue_1175_rework_contract.test.ts
           supabase/functions/refund-order/__tests__/issue_1175_processed_replay_debt_adversarial.test.ts
           supabase/migrations/__tests__/issue_1175_paystack_refunds.test.ts

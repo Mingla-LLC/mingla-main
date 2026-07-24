@@ -33,7 +33,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { stripeTicketRefund } from "../_shared/stripe.ts";
 import {
   createPaystackRefund,
+  isPaystackRefundBelowMinimumError,
   isRetryablePaystackRefundError,
+  paystackRefundOutcomeStatus,
   paystackRefundTransaction,
 } from "../_shared/paystackRefunds.ts";
 
@@ -322,6 +324,7 @@ serve(async (req: Request): Promise<Response> => {
       const detail = err instanceof Error ? err.message : String(err);
       console.error("[admin-refund-order] Paystack refund failed", detail);
       const retryable = isRetryablePaystackRefundError(err);
+      const belowMinimum = isPaystackRefundBelowMinimumError(err);
       if (!retryable) {
         await supabase.rpc("admin_refund_order_commit", {
           p_refund_id: refundId,
@@ -333,9 +336,11 @@ serve(async (req: Request): Promise<Response> => {
       return json({
         error: retryable
           ? "paystack_refund_retryable"
+          : belowMinimum
+          ? "paystack_refund_below_minimum"
           : "paystack_refund_failed",
         detail,
-      }, retryable ? 503 : 502);
+      }, retryable ? 503 : belowMinimum ? 422 : 502);
     }
   } else {
     try {
@@ -514,7 +519,7 @@ serve(async (req: Request): Promise<Response> => {
           p_merchant_note: `mingla_admin_refund:${refundId}`,
           p_provider_refund_id: stripeRefund.id,
           p_amount_cents: amountCents,
-          p_status: "accepted",
+          p_status: paystackRefundOutcomeStatus(stripeRefund.status),
         },
       );
       if (debtError) {

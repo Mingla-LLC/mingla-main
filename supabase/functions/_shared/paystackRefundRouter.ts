@@ -82,12 +82,26 @@ export async function handlePaystackRefundEvent(
     }
   } else if (venueMatch) {
     sourceType = "venue_reservation";
-    sourceId = venueMatch[1];
+    const reservationId = venueMatch[1];
+    const { data: checkoutSession, error: checkoutError } = await supabase
+      .from("reservation_checkout_sessions")
+      .select("id")
+      .eq("reservation_id", reservationId)
+      .eq("status", "completed")
+      .maybeSingle();
+    if (checkoutError || !checkoutSession?.id) {
+      throw new Error(
+        `paystack_reservation_checkout_lookup_failed: ${
+          checkoutError?.message ?? reservationId
+        }`,
+      );
+    }
+    sourceId = String(checkoutSession.id);
     if (!Number.isFinite(amountCents) || amountCents <= 0) {
       const { data: reservation, error } = await supabase
         .from("reservations")
         .select("fee_cents")
-        .eq("id", sourceId)
+        .eq("id", reservationId)
         .maybeSingle();
       if (error) {
         throw new Error(

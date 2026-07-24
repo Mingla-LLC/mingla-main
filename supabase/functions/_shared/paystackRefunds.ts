@@ -22,6 +22,13 @@ export interface PaystackRefundResult {
   replayed: boolean;
 }
 
+export type PaystackRefundOutcomeStatus =
+  | "accepted"
+  | "processed"
+  | "failed";
+
+export const PAYSTACK_MIN_REFUND_SUBUNITS = 5_000;
+
 interface RefundRecord {
   id?: string | number;
   amount?: number;
@@ -90,6 +97,15 @@ export async function createPaystackRefund(params: {
   amountSubunits?: number;
   currency?: string;
 }): Promise<PaystackRefundResult> {
+  if (
+    params.amountSubunits !== undefined &&
+    params.amountSubunits < PAYSTACK_MIN_REFUND_SUBUNITS
+  ) {
+    throw new PaystackApiError(
+      "Paystack partial refunds must be at least NGN 50",
+      422,
+    );
+  }
   const existing = await findExistingRefund(params);
   if (existing) return existing;
 
@@ -142,6 +158,15 @@ export async function createPaystackRefund(params: {
   };
 }
 
+export function paystackRefundOutcomeStatus(
+  providerStatus: string | null,
+): PaystackRefundOutcomeStatus {
+  const normalized = (providerStatus ?? "").trim().toLowerCase();
+  if (normalized === "processed") return "processed";
+  if (normalized === "failed" || normalized === "canceled") return "failed";
+  return "accepted";
+}
+
 export function paystackRefundTransaction(
   primaryReference: string | null,
   chargeId: string | null,
@@ -154,4 +179,8 @@ export function paystackRefundTransaction(
 export function isRetryablePaystackRefundError(error: unknown): boolean {
   if (!(error instanceof PaystackApiError)) return true;
   return error.status === 408 || error.status === 429 || error.status >= 500;
+}
+
+export function isPaystackRefundBelowMinimumError(error: unknown): boolean {
+  return error instanceof PaystackApiError && error.status === 422;
 }

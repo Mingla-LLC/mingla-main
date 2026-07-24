@@ -49,7 +49,12 @@
 // @ts-ignore — Deno ESM import; types resolved at runtime.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { stripeTicketRefund } from "../_shared/stripe.ts";
-import { createPaystackRefund } from "../_shared/paystackRefunds.ts";
+import {
+  createPaystackRefund,
+  isRetryablePaystackRefundError,
+  PAYSTACK_MIN_REFUND_SUBUNITS,
+  paystackRefundOutcomeStatus,
+} from "../_shared/paystackRefunds.ts";
 import { writeAudit } from "../_shared/audit.ts";
 import {
   dispatchTicketConfirmation,
@@ -218,12 +223,11 @@ async function resolveConnectedAccountId(
   eventId: string | null;
   brandId: string | null;
   paymentProvider: "stripe" | "paystack";
-  paystackTransactionId: string | null;
 }> {
   const { data, error } = await supabase
     .from("orders")
     .select(
-      "event_id, stripe_charge_id, events(brand_id, brands(stripe_connect_id, payment_provider))",
+      "event_id, events(brand_id, brands(stripe_connect_id, payment_provider))",
     )
     .eq("id", orderId)
     .maybeSingle();
@@ -233,7 +237,6 @@ async function resolveConnectedAccountId(
       eventId: null,
       brandId: null,
       paymentProvider: "stripe",
-      paystackTransactionId: null,
     };
   }
   type JoinedBrand = {
@@ -268,10 +271,6 @@ async function resolveConnectedAccountId(
     paymentProvider: brandsRow?.payment_provider === "paystack"
       ? "paystack"
       : "stripe",
-    paystackTransactionId: typeof row.stripe_charge_id === "string" &&
-        row.stripe_charge_id.length > 0
-      ? row.stripe_charge_id
-      : null,
   };
 }
 
@@ -416,10 +415,46 @@ serve(async (req: Request): Promise<Response> => {
     return jsonResponse({ error: "expected_refund_total_cents_required" }, 400);
   }
 
+  const cancelAt = new Date().toISOString();
+  const {
+    connectedAccountId,
+    eventId,
+    brandId,
+    paymentProvider,
+  } = await resolveConnectedAccountId(supabase, orderId);
+
+  // Paystack rejects explicit partial-refund amounts below NGN 50. Validate
+  // before the cancellation state flips. True full refunds omit `amount` and
+  // therefore retain Paystack's full-reversal/replay shape.
+  if (paymentProvider === "paystack") {
+    const { data: floorData, error: floorError } = await supabase.rpc(
+      "biz_compute_refund_for_cancel",
+      { p_order_id: orderId, p_cancel_at: cancelAt },
+    );
+    const floorCompute = (floorData as ComputeRpcResult | null) ?? {
+      ok: false,
+    };
+    if (
+      floorError === null && floorCompute.ok &&
+      (floorCompute.per_payment_refund ?? []).some((entry) =>
+        entry.refund_cents > 0 &&
+        entry.refund_cents < PAYSTACK_MIN_REFUND_SUBUNITS &&
+        entry.refund_cents !== entry.paid_cents
+      )
+    ) {
+      return jsonResponse(
+        {
+          error: "paystack_refund_below_minimum",
+          detail: "Paystack partial refunds must be at least NGN 50",
+        },
+        422,
+      );
+    }
+  }
+
   // Step 1: BEGIN — atomic insert pending refund + flip orders.cancelled_at +
   // cancel scheduled/failed installments. Returns refund_id + per-payment attribution.
   // SERVICE-ROLE only per RPC GRANT — we use serviceClient() not userClient.
-  const cancelAt = new Date().toISOString();
   const { data: beginData, error: beginErr } = await supabase.rpc(
     "biz_cancel_trip_booking_begin",
     {
@@ -480,14 +515,6 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   // Step 2: connected-account lookup for Stripe refund calls.
-  const {
-    connectedAccountId,
-    eventId,
-    brandId,
-    paymentProvider,
-    paystackTransactionId,
-  } =
-    await resolveConnectedAccountId(supabase, orderId);
   if (paymentProvider === "stripe" && !connectedAccountId) {
     await supabase.rpc("biz_cancel_trip_booking_rollback", {
       p_refund_id: refundId,
@@ -511,6 +538,7 @@ serve(async (req: Request): Promise<Response> => {
     merchantNote: string;
     providerRefundId: string;
     amountCents: number;
+    status: string;
   }> = [];
   const refundLineRowsToInsert: Array<{
     refund_id: string;
@@ -522,6 +550,7 @@ serve(async (req: Request): Promise<Response> => {
   }> = [];
   let totalApplicationFeeRefunded = 0;
   let stripeFailureDetail: string | null = null;
+  let paystackFailureRetryable = false;
 
   // For refund_line_items inserts we need order_line_items rows; fetch once.
   // refund_line_items schema requires order_line_item_id + ticket_type_id + quantity.
@@ -576,18 +605,41 @@ serve(async (req: Request): Promise<Response> => {
         const merchantNote = `mingla_trip_refund:${refundId}:${
           entry.installment_id ?? "deposit"
         }`;
+        const transaction = entry.source_pi;
+        const amountSubunits = entry.refund_cents === entry.paid_cents
+          ? undefined
+          : entry.refund_cents;
+        const { error: attemptError } = await supabase.rpc(
+          "record_paystack_refund_outcome",
+          {
+            p_source_type: "order",
+            p_source_id: orderId,
+            p_local_refund_id: refundId,
+            p_transaction_reference: transaction,
+            p_merchant_note: merchantNote,
+            p_provider_refund_id: null,
+            p_amount_cents: entry.refund_cents,
+            p_status: "pending",
+          },
+        );
+        if (attemptError) {
+          throw new Error(
+            `paystack_refund_attempt_persist_failed: ${attemptError.message}`,
+          );
+        }
         const created = await createPaystackRefund({
-          transaction: paystackTransactionId ?? entry.source_pi,
+          transaction,
           merchantNote,
-          amountSubunits: entry.refund_cents,
+          amountSubunits,
           currency: "NGN",
         });
         stripeRefundIds.push(created.id);
         paystackAccepted.push({
-          transaction: paystackTransactionId ?? entry.source_pi,
+          transaction,
           merchantNote,
           providerRefundId: created.id,
           amountCents: entry.refund_cents,
+          status: created.status,
         });
         refundLineRowsToInsert.push({
           refund_id: refundId,
@@ -654,6 +706,8 @@ serve(async (req: Request): Promise<Response> => {
       totalApplicationFeeRefunded += Math.floor(entry.refund_cents * 0.015);
     } catch (err) {
       stripeFailureDetail = err instanceof Error ? err.message : String(err);
+      paystackFailureRetryable = paymentProvider === "paystack" &&
+        isRetryablePaystackRefundError(err);
       break;
     }
   }
@@ -669,18 +723,24 @@ serve(async (req: Request): Promise<Response> => {
       stripeFailureDetail,
       succeededBeforeFailure: stripeRefundIds.length,
     });
-    await supabase.rpc("biz_cancel_trip_booking_rollback", {
-      p_refund_id: refundId,
-      p_failure_reason: stripeFailureDetail,
-    });
+    if (!paystackFailureRetryable) {
+      await supabase.rpc("biz_cancel_trip_booking_rollback", {
+        p_refund_id: refundId,
+        p_failure_reason: stripeFailureDetail,
+      });
+    }
     return jsonResponse(
       {
-        error: "stripe_refund_failed",
+        error: paystackFailureRetryable
+          ? "paystack_refund_retryable"
+          : paymentProvider === "paystack"
+          ? "paystack_refund_failed"
+          : "stripe_refund_failed",
         detail: stripeFailureDetail,
         refundId,
         partialSucceededRefunds: stripeRefundIds.length,
       },
-      502,
+      paystackFailureRetryable ? 503 : 502,
     );
   }
 
@@ -759,7 +819,7 @@ serve(async (req: Request): Promise<Response> => {
           p_merchant_note: accepted.merchantNote,
           p_provider_refund_id: accepted.providerRefundId,
           p_amount_cents: accepted.amountCents,
-          p_status: "accepted",
+          p_status: paystackRefundOutcomeStatus(accepted.status),
         },
       );
       if (debtError) {

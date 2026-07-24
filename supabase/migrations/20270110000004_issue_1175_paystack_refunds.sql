@@ -11,7 +11,7 @@ CREATE TABLE public.paystack_refund_attempts (
   provider_refund_id text,
   amount_cents integer NOT NULL CHECK (amount_cents >= 0),
   currency text NOT NULL CHECK (currency = lower(currency)),
-  status text NOT NULL CHECK (status IN ('accepted','processed','failed')),
+  status text NOT NULL CHECK (status IN ('pending','accepted','processed','failed')),
   error_message text,
   idempotency_key text NOT NULL UNIQUE,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -74,7 +74,7 @@ BEGIN
      OR p_transaction_reference IS NULL OR btrim(p_transaction_reference)=''
      OR p_merchant_note IS NULL OR btrim(p_merchant_note)=''
      OR p_amount_cents<0
-     OR p_status NOT IN ('accepted','processed','failed') THEN
+     OR p_status NOT IN ('pending','accepted','processed','failed') THEN
     RAISE EXCEPTION 'invalid_paystack_refund_outcome' USING ERRCODE='22023';
   END IF;
 
@@ -96,6 +96,8 @@ BEGIN
       WHEN public.paystack_refund_attempts.status='processed' THEN 'processed'
       WHEN excluded.status='processed' THEN 'processed'
       WHEN excluded.status='failed' THEN 'failed'
+      WHEN public.paystack_refund_attempts.status='accepted'
+        OR excluded.status='accepted' THEN 'accepted'
       ELSE public.paystack_refund_attempts.status
     END,
     error_message=excluded.error_message,
@@ -236,5 +238,200 @@ GRANT EXECUTE ON FUNCTION public.record_paystack_refund_outcome(
 COMMENT ON FUNCTION public.record_paystack_refund_outcome(
   text,uuid,uuid,text,text,text,integer,text,text,timestamptz
 ) IS 'Issue #1175: idempotently records Paystack refund acceptance/webhooks and converts matching temporary postponement debt to permanent post-release refund liability exactly once.';
+
+CREATE OR REPLACE FUNCTION public.biz_cancel_trip_booking_begin(
+  p_order_id uuid,
+  p_actor_kind text,
+  p_actor_user_id uuid,
+  p_reason text,
+  p_cancel_at timestamptz DEFAULT now()
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_compute jsonb;
+  v_refund_id uuid;
+  v_existing_refund public.refunds;
+  v_order public.orders;
+  v_payment jsonb;
+  v_payment_rows jsonb := '[]'::jsonb;
+  v_suffix text;
+  v_paid_cents integer;
+  v_paid_total integer := 0;
+  v_provider text;
+BEGIN
+  IF p_actor_kind IS NULL OR p_actor_kind NOT IN ('buyer','operator') THEN
+    RETURN jsonb_build_object('ok',false,'reason','invalid_actor_kind');
+  END IF;
+
+  SELECT * INTO v_order FROM public.orders WHERE id=p_order_id;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('ok',false,'reason','order_not_found');
+  END IF;
+  SELECT b.payment_provider INTO v_provider
+  FROM public.orders o
+  JOIN public.events e ON e.id=o.event_id
+  JOIN public.brands b ON b.id=e.brand_id
+  WHERE o.id=p_order_id;
+
+  IF v_order.cancelled_at IS NOT NULL THEN
+    SELECT r.* INTO v_existing_refund
+    FROM public.refunds r
+    WHERE r.order_id=p_order_id AND r.status='pending'
+      AND EXISTS(
+        SELECT 1 FROM public.paystack_refund_attempts a
+        WHERE a.local_refund_id=r.id
+          AND a.merchant_note LIKE 'mingla_trip_refund:'||r.id||':%'
+          AND a.status IN ('pending','accepted','processed')
+      )
+    ORDER BY r.created_at DESC
+    LIMIT 1;
+    IF NOT FOUND THEN
+      RETURN jsonb_build_object('ok',false,'reason','already_cancelled');
+    END IF;
+
+    FOR v_payment IN
+      SELECT jsonb_build_object(
+        'merchant_note',a.merchant_note,
+        'transaction_reference',a.transaction_reference,
+        'amount_cents',a.amount_cents
+      )
+      FROM public.paystack_refund_attempts a
+      WHERE a.local_refund_id=v_existing_refund.id
+        AND a.merchant_note LIKE
+          'mingla_trip_refund:'||v_existing_refund.id||':%'
+      ORDER BY a.created_at,a.id
+    LOOP
+      v_suffix:=split_part(v_payment->>'merchant_note',':',3);
+      IF v_suffix='deposit' THEN
+        v_paid_cents:=v_order.total_cents;
+      ELSE
+        SELECT amount_cents INTO v_paid_cents
+        FROM public.order_installments
+        WHERE id=v_suffix::uuid AND order_id=p_order_id;
+      END IF;
+      v_paid_total:=v_paid_total+coalesce(v_paid_cents,0);
+      v_payment_rows:=v_payment_rows||jsonb_build_object(
+        'installment_id',CASE WHEN v_suffix='deposit' THEN NULL ELSE v_suffix END,
+        'ordinal',0,
+        'source_pi',v_payment->>'transaction_reference',
+        'paid_cents',coalesce(v_paid_cents,0),
+        'refund_cents',(v_payment->>'amount_cents')::integer,
+        'currency',v_existing_refund.currency
+      );
+    END LOOP;
+
+    RETURN jsonb_build_object(
+      'ok',true,
+      'refund_id',v_existing_refund.id,
+      'per_payment_refund',v_payment_rows,
+      'refund_total_cents',v_existing_refund.amount_cents,
+      'currency',v_existing_refund.currency,
+      'tier_pct',CASE WHEN v_paid_total>0
+        THEN round(v_existing_refund.amount_cents*100.0/v_paid_total)::integer
+        ELSE 0 END,
+      'installments_to_cancel','[]'::jsonb,
+      'paystack_retry',true
+    );
+  END IF;
+
+  v_compute:=public.biz_compute_refund_for_cancel(p_order_id,p_cancel_at);
+  IF NOT (v_compute->>'ok')::boolean THEN
+    RETURN v_compute;
+  END IF;
+
+  INSERT INTO public.refunds(
+    order_id,amount_cents,currency,status,reason,
+    application_fee_refunded_cents
+  ) VALUES(
+    p_order_id,(v_compute->>'refund_total_cents')::bigint,
+    v_compute->>'currency','pending',
+    left(coalesce(p_reason,'tr4_cancel'),200),0
+  ) RETURNING id INTO v_refund_id;
+
+  IF v_provider='paystack' THEN
+    FOR v_payment IN
+      SELECT value FROM jsonb_array_elements(v_compute->'per_payment_refund')
+    LOOP
+      IF (v_payment->>'refund_cents')::integer>0 THEN
+        v_suffix:=coalesce(v_payment->>'installment_id','deposit');
+        INSERT INTO public.paystack_refund_attempts(
+          source_type,source_id,local_refund_id,transaction_reference,
+          merchant_note,amount_cents,currency,status,idempotency_key
+        ) VALUES(
+          'order',p_order_id,v_refund_id,v_payment->>'source_pi',
+          'mingla_trip_refund:'||v_refund_id||':'||v_suffix,
+          (v_payment->>'refund_cents')::integer,'ngn','pending',
+          'paystack-refund:mingla_trip_refund:'||v_refund_id||':'||v_suffix
+        );
+      END IF;
+    END LOOP;
+  END IF;
+
+  UPDATE public.orders SET
+    cancelled_at=p_cancel_at,cancellation_reason=p_reason,
+    cancelled_by=p_actor_user_id,at_risk=false,at_risk_since=NULL
+  WHERE id=p_order_id;
+  UPDATE public.order_installments SET
+    status='cancelled',cancelled_at=p_cancel_at,cancelled_by=p_actor_user_id
+  WHERE order_id=p_order_id AND status IN ('scheduled','failed')
+    AND cancelled_at IS NULL;
+
+  RETURN jsonb_build_object(
+    'ok',true,'refund_id',v_refund_id,
+    'per_payment_refund',v_compute->'per_payment_refund',
+    'refund_total_cents',v_compute->'refund_total_cents',
+    'currency',v_compute->'currency','tier_pct',v_compute->'tier_pct',
+    'installments_to_cancel',v_compute->'installments_to_cancel'
+  );
+END;
+$fn$;
+REVOKE ALL ON FUNCTION public.biz_cancel_trip_booking_begin(
+  uuid,text,uuid,text,timestamptz
+) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.biz_cancel_trip_booking_begin(
+  uuid,text,uuid,text,timestamptz
+) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.pg_resume_my_paystack_reservation_refund(
+  p_reservation_id uuid
+) RETURNS TABLE(reservation public.reservations, refund_eligible boolean)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
+AS $fn$
+DECLARE
+  v_row public.reservations;
+  v_uid uuid:=auth.uid();
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'not_authenticated' USING ERRCODE='28000';
+  END IF;
+  SELECT * INTO v_row FROM public.reservations
+  WHERE id=p_reservation_id AND consumer_user_id=v_uid
+  FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'reservation_not_found' USING ERRCODE='P0002';
+  END IF;
+  IF v_row.status<>'cancelled_by_guest' OR v_row.payment_status<>'paid'
+     OR NOT EXISTS(
+       SELECT 1
+       FROM public.reservation_checkout_sessions s
+       JOIN public.paystack_refund_attempts a
+         ON a.source_type='venue_reservation' AND a.source_id=s.id
+       WHERE s.reservation_id=v_row.id AND s.status='completed'
+         AND a.merchant_note='mingla_venue_refund:'||v_row.id
+         AND a.status IN ('pending','accepted','processed')
+     ) THEN
+    RAISE EXCEPTION 'cancel_not_allowed_from_%',v_row.status
+      USING ERRCODE='23514';
+  END IF;
+  reservation:=v_row;
+  refund_eligible:=true;
+  RETURN NEXT;
+END;
+$fn$;
+REVOKE ALL ON FUNCTION public.pg_resume_my_paystack_reservation_refund(uuid)
+  FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION
+  public.pg_resume_my_paystack_reservation_refund(uuid) TO authenticated;
 
 COMMIT;

@@ -36,7 +36,9 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { stripeTicketRefund } from "../_shared/stripe.ts";
 import {
   createPaystackRefund,
+  isPaystackRefundBelowMinimumError,
   isRetryablePaystackRefundError,
+  paystackRefundOutcomeStatus,
   paystackRefundTransaction,
 } from "../_shared/paystackRefunds.ts";
 import { writeAudit } from "../_shared/audit.ts";
@@ -344,6 +346,7 @@ serve(async (req: Request): Promise<Response> => {
       const detail = err instanceof Error ? err.message : String(err);
       console.error("[refund-order] Paystack refund failed", detail);
       const retryable = isRetryablePaystackRefundError(err);
+      const belowMinimum = isPaystackRefundBelowMinimumError(err);
       if (!retryable) {
         await supabaseAsUser.rpc("biz_refund_order_commit", {
           p_refund_id: refundId,
@@ -356,10 +359,12 @@ serve(async (req: Request): Promise<Response> => {
         {
           error: retryable
             ? "paystack_refund_retryable"
+            : belowMinimum
+            ? "paystack_refund_below_minimum"
             : "paystack_refund_failed",
           detail,
         },
-        retryable ? 503 : 502,
+        retryable ? 503 : belowMinimum ? 422 : 502,
       );
     }
   } else {
@@ -555,7 +560,7 @@ serve(async (req: Request): Promise<Response> => {
           p_merchant_note: `mingla_refund:${refundId}`,
           p_provider_refund_id: stripeRefund.id,
           p_amount_cents: amountCents,
-          p_status: "accepted",
+          p_status: paystackRefundOutcomeStatus(stripeRefund.status),
         },
       );
       if (debtError) {
