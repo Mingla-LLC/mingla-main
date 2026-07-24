@@ -156,7 +156,7 @@ function CostSheet({ report }: { report: PricingReport }) {
         </div>
       </div>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md bg-stripe-strong px-3 py-2 text-xs text-text-secondary">
-        <span>You charge <span className="font-bold text-text-primary">{money(a.current_price, cur)}</span></span>
+        <span>You charge <span className="font-bold text-text-primary">{a.current_price > 0 ? money(a.current_price, cur) : 'nothing'}</span></span>
         <span>Margin per head: <span className={cn('font-bold', a.margin_per_head < 0 ? 'text-danger' : 'text-moss')}>{money(a.margin_per_head, cur)}</span></span>
         {a.break_even_seats_now !== null ? (
           <span>Break-even: <span className="font-bold text-text-primary">{a.break_even_seats_now} seats</span></span>
@@ -318,7 +318,7 @@ export function PricingReportView({
           {shortTitle}
         </h1>
         <p className="mt-2 text-sm text-text-secondary">
-          {[e.city, `${e.seats} seats`, `${money(e.current_price, cur)}/person`, `${e.events_per_month}×/month`]
+          {[e.city, `${e.seats} seats`, e.current_price > 0 ? `${money(e.current_price, cur)}/person` : 'Currently free', `${e.events_per_month}×/month`]
             .filter(Boolean)
             .join(' · ')}
         </p>
