@@ -403,7 +403,7 @@ export function EventReportView({
               <div className="space-y-4">
                 {report.weather ? (
                   <div className="rounded-md border border-divider-strong bg-white p-4">
-                    <DocHeading>Weather {report.weather.kind === 'forecast' ? '(forecast)' : '(seasonal)'}</DocHeading>
+                    <DocHeading>Weather {report.weather.kind === 'forecast' ? '(forecast)' : report.weather.kind === 'climate_normal' ? '(typical for this date)' : '(seasonal)'}</DocHeading>
                     <p className="mt-2 text-sm text-text-secondary">{report.weather.summary}</p>
                     {report.weather.impact ? <p className="mt-1 text-xs text-text-muted">{report.weather.impact}</p> : null}
                   </div>

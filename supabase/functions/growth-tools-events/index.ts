@@ -447,6 +447,129 @@ async function fetchCoverImage(
   }
 }
 
+// ── Day-specific weather (Open-Meteo, free/keyless, best-effort) ─────────────
+// A real DAILY forecast when the event is within the ~16-day horizon, otherwise
+// the CLIMATE NORMAL for that exact calendar date (averaged over the last 5
+// years). Never throws; null on any failure → the Gemini weather stands as the
+// fallback. This "drills to the day" instead of a vague seasonal read.
+const WMO_DESC: Record<number, string> = {
+  0: "clear skies", 1: "mostly clear", 2: "partly cloudy", 3: "overcast",
+  45: "fog", 48: "freezing fog", 51: "light drizzle", 53: "drizzle",
+  55: "heavy drizzle", 61: "light rain", 63: "rain", 65: "heavy rain",
+  71: "light snow", 73: "snow", 75: "heavy snow", 80: "rain showers",
+  81: "rain showers", 82: "heavy rain showers", 95: "thunderstorms",
+  96: "thunderstorms with hail", 99: "severe thunderstorms",
+};
+
+function cToF(c: number): number {
+  return Math.round((c * 9) / 5 + 32);
+}
+function monthDay(dateIso: string): string {
+  const ms = Date.parse(`${dateIso}T00:00:00Z`);
+  return Number.isFinite(ms)
+    ? new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric", timeZone: "UTC" })
+      .format(new Date(ms))
+    : dateIso;
+}
+function weatherImpact(outdoor: boolean, tempC: number, rainPct: number, code: number | null): string {
+  if (!outdoor) return "Indoor event — weather is a minor factor, mostly affecting how many brave the trip.";
+  const cold = tempC < 10, hot = tempC > 30;
+  const wet = (Number.isFinite(rainPct) && rainPct >= 40) || (code !== null && code >= 61);
+  if (wet && cold) return "Cold and wet for an outdoor event — plan cover/heating and message it, or expect drop-off.";
+  if (wet) return "Rain is a real risk for an outdoor event — a covered area or weather-proof messaging helps hold turnout.";
+  if (cold) return "On the cold side for outdoors — heaters and a warm-up area help people stay.";
+  if (hot) return "Hot for an outdoor event — shade and water matter; an evening start helps.";
+  return "Good conditions for an outdoor event — lean into it in your promo.";
+}
+
+async function geocodeCity(city: string): Promise<{ lat: number; lon: number } | null> {
+  const name = city.split(",")[0].trim();
+  if (name.length < 2) return null;
+  try {
+    const res = await fetch(
+      `https://geocoding-api.open-meteo.com/v1/search?name=${
+        encodeURIComponent(name)
+      }&count=1&language=en&format=json`,
+    );
+    if (!res.ok) return null;
+    const d = await res.json() as {
+      results?: Array<{ latitude?: number; longitude?: number }>;
+    };
+    const r = d.results?.[0];
+    if (!r || typeof r.latitude !== "number" || typeof r.longitude !== "number") return null;
+    return { lat: r.latitude, lon: r.longitude };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchDayWeather(input: EventInput): Promise<EventResearch["weather"]> {
+  const coords = await geocodeCity(input.city);
+  if (!coords) return null;
+  const { lat, lon } = coords;
+  const outdoor = input.indoor_outdoor !== "indoor";
+  const dateMs = Date.parse(`${input.date}T12:00:00Z`);
+  const daysUntil = Math.round((dateMs - Date.now()) / 86400000);
+
+  // Within the forecast horizon → a real daily forecast for THAT day.
+  if (daysUntil >= 0 && daysUntil <= 15) {
+    try {
+      const res = await fetch(
+        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+        `&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code` +
+        `&start_date=${input.date}&end_date=${input.date}&timezone=auto`,
+      );
+      if (res.ok) {
+        const d = await res.json() as { daily?: Record<string, unknown[]> };
+        const day = d.daily ?? {};
+        const tmax = Number((day.temperature_2m_max ?? [])[0]);
+        const tmin = Number((day.temperature_2m_min ?? [])[0]);
+        const pprob = Number((day.precipitation_probability_max ?? [])[0]);
+        const code = Number((day.weather_code ?? [])[0]);
+        if (Number.isFinite(tmax)) {
+          const desc = WMO_DESC[code] ?? "mixed conditions";
+          const rain = Number.isFinite(pprob) ? `, ${Math.round(pprob)}% chance of rain` : "";
+          const summary =
+            `Forecast for ${monthDay(input.date)}: ${desc}, around ${Math.round(tmax)}°C / ${
+              cToF(tmax)
+            }°F (low ${Math.round(tmin)}°C)${rain}.`;
+          return { summary, impact: weatherImpact(outdoor, tmax, pprob, code), kind: "forecast" };
+        }
+      }
+    } catch { /* fall through to null */ }
+    return null;
+  }
+
+  // Beyond the horizon → climate normal for THIS calendar date (last 5 years).
+  const yearNow = new Date(dateMs).getUTCFullYear();
+  const mmdd = input.date.slice(5);
+  try {
+    const results = await Promise.all([1, 2, 3, 4, 5].map(async (n) => {
+      const ds = `${yearNow - n}-${mmdd}`;
+      const res = await fetch(
+        `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}` +
+        `&start_date=${ds}&end_date=${ds}&daily=temperature_2m_max,precipitation_sum&timezone=auto`,
+      );
+      if (!res.ok) return null;
+      const d = await res.json() as { daily?: Record<string, unknown[]> };
+      const tmax = Number((d.daily?.temperature_2m_max ?? [])[0]);
+      const psum = Number((d.daily?.precipitation_sum ?? [])[0]);
+      return Number.isFinite(tmax) ? { tmax, wet: Number.isFinite(psum) && psum >= 1 } : null;
+    }));
+    const ok = results.filter((r): r is { tmax: number; wet: boolean } => r !== null);
+    if (ok.length >= 2) {
+      const avg = ok.reduce((s, r) => s + r.tmax, 0) / ok.length;
+      const wetShare = Math.round((ok.filter((r) => r.wet).length / ok.length) * 100);
+      const summary =
+        `Typical for ${monthDay(input.date)}: around ${Math.round(avg)}°C / ${
+          cToF(avg)
+        }°F, with rain on ~${wetShare}% of the last ${ok.length} years.`;
+      return { summary, impact: weatherImpact(outdoor, avg, wetShare, null), kind: "climate_normal" };
+    }
+  } catch { /* fall through to null */ }
+  return null;
+}
+
 // ── Gemini: PASS A — grounded external research ──────────────────────────────
 const RESEARCH_SYSTEM =
   "You are Mingla's live event-market analyst. Use Google Search to find REAL, " +
@@ -458,7 +581,7 @@ interface EventResearch {
   competitors: Array<{ name: string; platform: string; date_note: string; scale_note: string }>;
   comparables: Array<{ name: string; city: string; turnout_note: string; source_note: string }>;
   demand_read: string;
-  weather: { summary: string; impact: string; kind: "forecast" | "seasonal" } | null;
+  weather: { summary: string; impact: string; kind: "forecast" | "climate_normal" | "seasonal" } | null;
   cpc: number | null; // in the event's currency
   cpc_note: string;
 }
@@ -916,6 +1039,15 @@ async function handleRun(
     console.error("[growth-tools-events] research threw", String(err));
     researchSource = "fallback";
     research = normalizeResearch(null);
+  }
+
+  // Day-specific weather (Open-Meteo) overrides the Gemini weather when it
+  // resolves — so the synthesis and the report both use the real per-day read.
+  try {
+    const dw = await fetchDayWeather(input);
+    if (dw) research.weather = dw;
+  } catch (err) {
+    console.error("[growth-tools-events] weather threw (non-fatal)", String(err));
   }
 
   // PASS B — structured synthesis (organic baseline + factors + fixes + copy).
