@@ -27,7 +27,7 @@ describe("ORCH-1375 sanitizeNextRoute — T-16 open-redirect defence (SC-5)", ()
     ["prefix confusion (segment-safety)", "/accept-brand-invitation-evil"],
     ["prefix confusion on scanner", "/accept-scanner-invitation-evil"],
     ["scheme after decode", "/%6a%61vascript:alert(1)"],
-    ["off-allowlist relative path", "/brand/123/payments"],
+    ["brand prefix confusion (segment-safety)", "/brand-evil/123/payments"],
     ["bare root", "/"],
     ["protocol-relative with credentials", "//user:pass@evil.com"],
     ["uppercase scheme", "HTTPS://evil.com"],
@@ -82,6 +82,10 @@ describe("ORCH-1375 sanitizeNextRoute — T-16 open-redirect defence (SC-5)", ()
     expect(sanitizeNextRoute("/event/create")).toBe("/event/create");
   });
 
+  it("ACCEPTS /brand/:id/connect (#948 — the fifth safe writer)", () => {
+    expect(sanitizeNextRoute("/brand/123/connect")).toBe("/brand/123/connect");
+  });
+
   it("ACCEPTS the success sub-route (segment-safe prefix covers /…/success)", () => {
     expect(sanitizeNextRoute("/accept-brand-invitation/success?brand_id=1")).toBe(
       "/accept-brand-invitation/success?brand_id=1",
@@ -98,10 +102,11 @@ describe("ORCH-1375 sanitizeNextRoute — T-16 open-redirect defence (SC-5)", ()
   });
 
   // ─── The allowlist is the contract (I-PROPOSED-1375-NEXT-ALLOWLISTED) ────
-  it("the allowlist contains EXACTLY the four known ?next= writers", () => {
+  it("the allowlist contains EXACTLY the five known ?next= writers", () => {
     expect([...NEXT_ROUTE_ALLOWLIST].sort()).toEqual([
       "/accept-brand-invitation",
       "/accept-scanner-invitation",
+      "/brand",
       "/event/create",
       "/rsvp/create",
     ]);

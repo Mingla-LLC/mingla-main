@@ -1090,7 +1090,7 @@ add({
         '<div style="width:36px;height:4px;border-radius:999px;background:rgba(255,255,255,.18);margin:0 auto"></div>' +
         '<p class="a-h3">Skip for now?</p>' +
         '<p class="a-sm">You can build your page and add listings straight away. You just cannot take money until a bank is connected — so nothing can go on sale yet.</p>' +
-        '<div class="a-ribbon">' + svgClock('#f59e0b',16) + '<span>We will remind you, and it is in Payments whenever you are ready.</span></div>' +
+        '<div class="a-ribbon">' + svgClock('#f59e0b',16) + '<span>Add your bank anytime from Payments</span></div>' +
         '<div class="a-btn">Add my bank now</div>' +
         '<div class="a-btn ghost">Skip for now</div>' +
       '</div>');
@@ -1099,11 +1099,10 @@ add({
     '<b>Entirely new.</b> There is no skip anywhere in bank onboarding today — only Cancel, which silently drops the partner back with nothing said about what they just gave up.',
     'States the exact consequence in the partner\'s own terms: the page and listings work, <em>selling</em> does not. No guilt, no dark pattern; the honest cost is persuasive enough.',
     'Primary is still the bank. The skip is the ghost button — the last chance to reconsider, weighted accordingly.',
-    'Promises a reminder and names where to find it, so skipping does not feel like a one-way door.'
+    'Names the self-service path truthfully, so skipping does not feel like a one-way door.'
   ],
   was:['Nothing. Cancel, and no acknowledgement.'],
   flags:[
-    ['blocker','“We will remind you” is a promise with <b>no mechanism</b>. There is no reminder job, no push, no email for a partner who skips the bank. Either build it, or cut the sentence — shipping an unkept promise here is worse than shipping no sentence.','no sender exists in supabase/functions'],
     ['risk','A skipping partner must land somewhere that keeps the bank reachable. The payments dashboard already has a “Connect bank to sell tickets” banner, which the #949 rewrite must catch too.','src/utils/brandStripeUiState.ts:45; BrandPaymentsView.tsx:94-132'],
     ['question','Should the skip sheet appear on the <b>first</b> tap of the escape link, or should the first tap just go, with the sheet reserved for a partner who has already skipped once?','—']
   ]

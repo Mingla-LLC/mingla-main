@@ -91,6 +91,13 @@ export interface AcceptBrandInvitationResult {
   brandSlug: string | null;
   newOwnerFirstName: string | null;
   partnerSetup: boolean;
+  // #948 W1 — additive routing hints. These are fail-safe hints only; the
+  // payment edge functions remain authoritative for readiness.
+  countryCode: string | null;
+  paymentProvider: "stripe" | "paystack" | null;
+  stripeChargesEnabled: boolean;
+  stripePayoutsEnabled: boolean;
+  paystackSubaccountCode: string | null;
 }
 
 export class BrandInvitationServiceError extends Error {
@@ -205,6 +212,17 @@ export async function acceptBrandInvitation(
     newOwnerFirstName:
       typeof d.new_owner_first_name === "string" ? d.new_owner_first_name : null,
     partnerSetup: d.partner_setup === true,
+    countryCode: typeof d.country_code === "string" ? d.country_code : null,
+    paymentProvider:
+      d.payment_provider === "stripe" || d.payment_provider === "paystack"
+        ? d.payment_provider
+        : null,
+    stripeChargesEnabled: d.stripe_charges_enabled === true,
+    stripePayoutsEnabled: d.stripe_payouts_enabled === true,
+    paystackSubaccountCode:
+      typeof d.paystack_subaccount_code === "string"
+        ? d.paystack_subaccount_code
+        : null,
   };
 }
 
@@ -251,6 +269,17 @@ export async function acceptMyPendingInvitation(
     newOwnerFirstName:
       typeof d.new_owner_first_name === "string" ? d.new_owner_first_name : null,
     partnerSetup: d.partner_setup === true,
+    countryCode: typeof d.country_code === "string" ? d.country_code : null,
+    paymentProvider:
+      d.payment_provider === "stripe" || d.payment_provider === "paystack"
+        ? d.payment_provider
+        : null,
+    stripeChargesEnabled: d.stripe_charges_enabled === true,
+    stripePayoutsEnabled: d.stripe_payouts_enabled === true,
+    paystackSubaccountCode:
+      typeof d.paystack_subaccount_code === "string"
+        ? d.paystack_subaccount_code
+        : null,
   };
 }
 

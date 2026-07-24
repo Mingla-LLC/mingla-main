@@ -1,0 +1,68 @@
+name: Issue 948 Wave 1 Enabler Tests
+
+# #948 W1 — explicit CI registry for the bank-first enablers. The required full
+# mingla-business Jest suite also discovers the Jest file automatically; this
+# focused job pairs it with the otherwise-dark Deno edge contract.
+# No strict-grep .mjs is added, so MANIFEST.json totality is unaffected.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "mingla-business/src/utils/nextRoute.ts"
+      - "mingla-business/src/services/brandInvitationsService.ts"
+      - "mingla-business/src/services/__tests__/issue_948_w1_enablers.implementor.test.ts"
+      - "supabase/functions/accept-brand-invitation/**"
+      - "docs/design/948-949-bank-first-invite-funnel.html"
+      - ".github/workflows/issue-948-w1-enablers-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "mingla-business/src/utils/nextRoute.ts"
+      - "mingla-business/src/services/brandInvitationsService.ts"
+      - "mingla-business/src/services/__tests__/issue_948_w1_enablers.implementor.test.ts"
+      - "supabase/functions/accept-brand-invitation/**"
+      - "docs/design/948-949-bank-first-invite-funnel.html"
+      - ".github/workflows/issue-948-w1-enablers-tests.yml"
+
+concurrency:
+  group: issue-948-w1-enablers-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-948-w1-enablers:
+    name: "#948 W1: route + accept hints + truthful skip copy"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+
+      - name: Install business dependencies
+        working-directory: mingla-business
+        run: npm ci
+
+      - name: Run W1 business contract
+        working-directory: mingla-business
+        run: >
+          npx jest
+          src/services/__tests__/issue_948_w1_enablers.implementor.test.ts
+          --runInBand
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Run W1 edge response contract
+        run: >
+          deno test
+          --allow-env
+          --allow-net
+          --allow-read
+          --no-check
+          supabase/functions/accept-brand-invitation/__tests__/issue-948-w1-bank-hints.implementor.test.ts
