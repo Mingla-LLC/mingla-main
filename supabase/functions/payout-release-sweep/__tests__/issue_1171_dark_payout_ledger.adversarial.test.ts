@@ -1,0 +1,613 @@
+import {
+  assert,
+  assertEquals,
+  assertStringIncludes,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
+import { handlePayoutReleaseSweep } from "../index.ts";
+
+const migrationPath =
+  "supabase/migrations/20270110000001_issue_1171_dark_payout_ledger.sql";
+const handlerPath = "supabase/functions/payout-release-sweep/index.ts";
+const enginePath = "supabase/functions/payout-release-sweep/engine.ts";
+
+const migration = await Deno.readTextFile(migrationPath);
+const handler = await Deno.readTextFile(handlerPath);
+const engine = await Deno.readTextFile(enginePath);
+
+const spawnDockerSql = async (container: string, statement: string) => {
+  const command = new Deno.Command("docker", {
+    args: [
+      "exec",
+      "-i",
+      container,
+      "psql",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-At",
+      "-U",
+      "postgres",
+      "-d",
+      "postgres",
+    ],
+    stdin: "piped",
+    stdout: "piped",
+    stderr: "piped",
+  }).spawn();
+  const writer = command.stdin.getWriter();
+  await writer.write(new TextEncoder().encode(statement));
+  await writer.close();
+  return command;
+};
+
+const runDockerSql = async (container: string, statement: string) => {
+  const command = await spawnDockerSql(container, statement);
+  return await command.output();
+};
+
+Deno.test("adversarial bearer variants cannot construct a client and the accepted path remains DARK", async () => {
+  let clientCreations = 0;
+  const rpcNames: string[] = [];
+  const deps = {
+    env: (key: string) =>
+      key === "SUPABASE_URL"
+        ? "https://example.test"
+        : key === "SUPABASE_SERVICE_ROLE_KEY"
+        ? "service-secret"
+        : undefined,
+    createAdmin: (() => {
+      clientCreations++;
+      return {
+        rpc: (name: string) => {
+          rpcNames.push(name);
+          return Promise.resolve({
+            data: name === "list_missing_payout_source_fees"
+              ? []
+              : { dark: true, executed: 0 },
+            error: null,
+          });
+        },
+        from: () => {
+          throw new Error("DARK test has no fee candidate write");
+        },
+      };
+    }) as never,
+    resolveProviderFee: () => {
+      throw new Error("DARK test has no provider read candidate");
+    },
+  };
+
+  for (
+    const authorization of [
+      "",
+      "service-secret",
+      "bearer service-secret",
+      "Bearer  service-secret",
+      "Bearer service-secret,forged",
+      "Basic service-secret",
+      "Bearer eyJhbGciOiJub25lIn0.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.",
+      "prefix-Bearer service-secret",
+    ]
+  ) {
+    const response = await handlePayoutReleaseSweep(
+      new Request("https://example.test/functions/v1/payout-release-sweep", {
+        method: "POST",
+        headers: authorization ? { authorization } : {},
+      }),
+      deps,
+    );
+    assertEquals(response.status, 401, authorization);
+  }
+  assertEquals(clientCreations, 0);
+
+  const getResponse = await handlePayoutReleaseSweep(
+    new Request("https://example.test/functions/v1/payout-release-sweep", {
+      method: "GET",
+      headers: { authorization: "Bearer service-secret" },
+    }),
+    deps,
+  );
+  assertEquals(getResponse.status, 405);
+  assertEquals(clientCreations, 0);
+
+  const accepted = await handlePayoutReleaseSweep(
+    new Request("https://example.test/functions/v1/payout-release-sweep", {
+      method: "POST",
+      headers: { authorization: "Bearer service-secret" },
+    }),
+    deps,
+  );
+  assertEquals(accepted.status, 200);
+  assertEquals(await accepted.json(), {
+    ok: true,
+    dark: true,
+    capturedFees: 0,
+    result: { dark: true, executed: 0 },
+  });
+  assertEquals(clientCreations, 1);
+  assertEquals(rpcNames, [
+    "list_missing_payout_source_fees",
+    "run_payout_release_dark_sweep",
+  ]);
+
+  const darkScope = `${migration}\n${handler}\n${engine}`;
+  for (
+    const forbidden of [
+      /\bpayouts\.create\s*\(/,
+      /\btransfers\.create\s*\(/,
+      /\bpaystackInitiateTransfer\s*\(/,
+      /\bsetManualPayoutSchedule\s*\(/,
+      /\bsource_transaction\b/,
+    ]
+  ) {
+    assert(
+      !forbidden.test(darkScope),
+      `provider execute shape found: ${forbidden}`,
+    );
+  }
+  assertStringIncludes(migration, "'executed',0");
+});
+
+const stateMachineSql = String.raw`
+BEGIN;
+SET LOCAL session_replication_role = replica;
+INSERT INTO auth.users(id) VALUES
+  ('1171ad00-0000-0000-0000-000000000001'),
+  ('1171ad00-0000-0000-0000-000000000002');
+INSERT INTO public.creator_accounts(id) VALUES
+  ('1171ad00-0000-0000-0000-000000000001'),
+  ('1171ad00-0000-0000-0000-000000000002');
+INSERT INTO public.brands(
+  id,account_id,name,slug,default_currency,payout_hold_cutover_at
+) VALUES
+  ('1171ad00-0000-0000-0000-000000000011',
+   '1171ad00-0000-0000-0000-000000000001',
+   'Adversarial A','issue-1171-adversarial-a','USD','2026-07-01T00:00:00Z'),
+  ('1171ad00-0000-0000-0000-000000000012',
+   '1171ad00-0000-0000-0000-000000000002',
+   'Adversarial B','issue-1171-adversarial-b','USD','2026-07-01T00:00:00Z');
+INSERT INTO public.events(id,brand_id,title,slug,status,currency) VALUES
+  ('1171ad00-0000-0000-0000-000000000101',
+   '1171ad00-0000-0000-0000-000000000011',
+   'Boundary Event','issue-1171-adversarial-boundary','scheduled','USD'),
+  ('1171ad00-0000-0000-0000-000000000102',
+   '1171ad00-0000-0000-0000-000000000011',
+   'Never Ending Event','issue-1171-adversarial-never','scheduled','USD');
+INSERT INTO public.event_dates(id,event_id,start_at,end_at,is_master) VALUES
+  ('1171ad00-0000-0000-0000-000000000201',
+   '1171ad00-0000-0000-0000-000000000101',
+   '2026-07-04T18:00:00Z','2026-07-04T20:00:00Z',true),
+  ('1171ad00-0000-0000-0000-000000000202',
+   '1171ad00-0000-0000-0000-000000000102',
+   '2026-07-04T18:00:00Z','2026-07-04T20:00:00Z',true),
+  ('1171ad00-0000-0000-0000-000000000203',
+   '1171ad00-0000-0000-0000-000000000102',
+   '2027-07-04T18:00:00Z','2027-07-04T20:00:00Z',false);
+SET LOCAL session_replication_role = origin;
+
+DO $test$
+DECLARE
+  v_failed boolean;
+  v_boundary uuid;
+  v_no_future_origin uuid;
+  v_no_future_debt uuid;
+  v_partial_origin uuid;
+  v_partial_debt uuid;
+  v_partial_target uuid;
+  v_wrong_brand uuid;
+  v_wrong_currency uuid;
+  v_convert_origin uuid;
+  v_convert_debt uuid;
+  v_convert_target uuid;
+  v_permanent uuid;
+  v_repeat_origin uuid;
+  v_repeat_debt uuid;
+BEGIN
+  -- Exactly-before and equal are excluded; exactly-after is admitted.
+  FOR v_boundary IN
+    SELECT source_id FROM (VALUES
+      ('1171ad00-0000-0000-0000-000000000301'::uuid),
+      ('1171ad00-0000-0000-0000-000000000302'::uuid)
+    ) q(source_id)
+  LOOP
+    v_failed:=false;
+    BEGIN
+      PERFORM public.attach_payout_release(
+        'order',v_boundary,
+        '1171ad00-0000-0000-0000-000000000011',
+        '1171ad00-0000-0000-0000-000000000101',
+        '1171ad00-0000-0000-0000-000000000201',
+        '1171ad00-0000-0000-0000-000000000201',
+        'stripe','usd',
+        CASE WHEN v_boundary='1171ad00-0000-0000-0000-000000000301'
+          THEN '2026-06-30T23:59:59Z'::timestamptz
+          ELSE '2026-07-01T00:00:00Z'::timestamptz END,
+        '2026-07-04T20:00:00Z',1000,0,0,0,0,0
+      );
+    EXCEPTION WHEN SQLSTATE 'P0001' THEN v_failed:=true;
+    END;
+    IF NOT v_failed THEN
+      RAISE EXCEPTION 'cutover before/equal source was admitted';
+    END IF;
+  END LOOP;
+  v_boundary:=public.attach_payout_release(
+    'order','1171ad00-0000-0000-0000-000000000303',
+    '1171ad00-0000-0000-0000-000000000011',
+    '1171ad00-0000-0000-0000-000000000101',
+    '1171ad00-0000-0000-0000-000000000201',
+    '1171ad00-0000-0000-0000-000000000201',
+    'stripe','usd','2026-07-01T00:00:01Z',
+    '2026-07-04T20:00:00Z',1000,0,0,0,0,0
+  );
+  IF v_boundary IS NULL THEN RAISE EXCEPTION 'cutover +1 second was excluded'; END IF;
+
+  -- A debt with no future release closes without an external debit or recredit.
+  INSERT INTO public.brand_payout_releases(
+    brand_id,occurrence_key,surface,provider,currency,anchor_end_at,releasable_at,
+    gross_cents,net_release_cents,status,organiser_cash_delivered_cents,released_at
+  ) VALUES(
+    '1171ad00-0000-0000-0000-000000000011','no-future-origin',
+    'venue_reservation','stripe','usd','2026-07-01T00:00:00Z',
+    '2026-07-04T00:00:00Z',1000,1000,'released',1000,'2026-07-04T00:00:00Z'
+  ) RETURNING id INTO v_no_future_origin;
+  v_no_future_debt:=public.open_post_release_postponement_debt(
+    v_no_future_origin,'2026-07-10T00:00:00Z'
+  );
+  PERFORM public.mature_postponement_debts('2026-07-13T00:00:00Z');
+  IF (SELECT (status,recovered_cents) FROM public.organiser_payout_debts
+      WHERE id=v_no_future_debt)
+       IS DISTINCT FROM ROW('closed'::text,0) OR
+     EXISTS(SELECT 1 FROM public.payout_ledger_adjustments
+       WHERE release_id=v_no_future_origin AND kind='maturity_recredit') THEN
+    RAISE EXCEPTION 'no-future-release debt did not close without recredit';
+  END IF;
+
+  -- Same-brand/same-currency only; partial recovery recredits only the 600 held.
+  INSERT INTO public.brand_payout_releases(
+    brand_id,occurrence_key,surface,provider,currency,anchor_end_at,releasable_at,
+    gross_cents,net_release_cents,status,organiser_cash_delivered_cents,released_at
+  ) VALUES(
+    '1171ad00-0000-0000-0000-000000000011','partial-origin',
+    'venue_reservation','stripe','usd','2026-07-01T00:00:00Z',
+    '2026-07-04T00:00:00Z',1000,1000,'released',1000,'2026-07-04T00:00:00Z'
+  ) RETURNING id INTO v_partial_origin;
+  v_partial_debt:=public.open_post_release_postponement_debt(
+    v_partial_origin,'2026-07-20T00:00:00Z'
+  );
+  INSERT INTO public.brand_payout_releases(
+    brand_id,occurrence_key,surface,provider,currency,anchor_end_at,releasable_at,
+    gross_cents,net_release_cents,status
+  ) VALUES
+    ('1171ad00-0000-0000-0000-000000000012','wrong-brand',
+     'venue_reservation','stripe','usd','2026-07-10T00:00:00Z',
+     '2026-07-13T00:00:00Z',600,600,'pending'),
+    ('1171ad00-0000-0000-0000-000000000011','wrong-currency',
+     'venue_reservation','paystack','ngn','2026-07-10T00:00:00Z',
+     '2026-07-13T00:00:00Z',600,600,'pending'),
+    ('1171ad00-0000-0000-0000-000000000011','partial-target',
+     'venue_reservation','stripe','usd','2026-07-10T00:00:00Z',
+     '2026-07-13T00:00:00Z',600,600,'pending');
+  SELECT id INTO v_wrong_brand FROM public.brand_payout_releases
+    WHERE occurrence_key='wrong-brand';
+  SELECT id INTO v_wrong_currency FROM public.brand_payout_releases
+    WHERE occurrence_key='wrong-currency';
+  SELECT id INTO v_partial_target FROM public.brand_payout_releases
+    WHERE occurrence_key='partial-target';
+  IF public.apply_open_payout_debts(v_wrong_brand,'2026-07-14T00:00:00Z')<>0 OR
+     public.apply_open_payout_debts(v_wrong_currency,'2026-07-14T00:00:00Z')<>0 OR
+     public.apply_open_payout_debts(v_partial_target,'2026-07-14T00:00:00Z')<>600 THEN
+    RAISE EXCEPTION 'cross-brand/currency isolation or partial withholding failed';
+  END IF;
+  PERFORM public.mature_postponement_debts('2026-07-23T00:00:00Z');
+  IF (SELECT amount_cents FROM public.payout_ledger_adjustments
+      WHERE release_id=v_partial_target AND kind='maturity_recredit')<>600 OR
+     (SELECT amount_cents FROM public.payout_ledger_adjustments
+      WHERE release_id=v_partial_origin AND kind='debt_writeoff')<>400 THEN
+    RAISE EXCEPTION 'partial recovery did not recredit only held value';
+  END IF;
+
+  -- Cancellation converts held cash once; only the unconverted remainder recredits.
+  INSERT INTO public.brand_payout_releases(
+    brand_id,occurrence_key,surface,provider,currency,anchor_end_at,releasable_at,
+    gross_cents,net_release_cents,status,organiser_cash_delivered_cents,released_at
+  ) VALUES(
+    '1171ad00-0000-0000-0000-000000000011','convert-origin',
+    'venue_reservation','stripe','usd','2026-07-01T00:00:00Z',
+    '2026-07-04T00:00:00Z',1000,1000,'released',1000,'2026-07-04T00:00:00Z'
+  ) RETURNING id INTO v_convert_origin;
+  INSERT INTO public.brand_payout_releases(
+    brand_id,occurrence_key,surface,provider,currency,anchor_end_at,releasable_at,
+    gross_cents,net_release_cents,status
+  ) VALUES(
+    '1171ad00-0000-0000-0000-000000000011','convert-target',
+    'venue_reservation','stripe','usd','2026-07-12T00:00:00Z',
+    '2026-07-15T00:00:00Z',700,700,'pending'
+  ) RETURNING id INTO v_convert_target;
+  v_convert_debt:=public.open_post_release_postponement_debt(
+    v_convert_origin,'2026-07-30T00:00:00Z'
+  );
+  PERFORM public.apply_open_payout_debts(v_convert_target,'2026-07-16T00:00:00Z');
+  v_permanent:=public.convert_postponement_debt_to_permanent(
+    v_convert_origin,'post_release_cancellation',400,'2026-07-16T00:00:01Z'
+  );
+  PERFORM public.mature_postponement_debts('2026-08-02T00:00:00Z');
+  PERFORM public.mature_postponement_debts('2026-08-03T00:00:00Z');
+  IF (SELECT (principal_cents,recovered_cents,status)
+      FROM public.organiser_payout_debts WHERE id=v_permanent)
+       IS DISTINCT FROM ROW(400,400,'closed'::text) OR
+     (SELECT amount_cents FROM public.payout_ledger_adjustments
+      WHERE release_id=v_convert_target AND kind='maturity_recredit')<>300 OR
+     (SELECT count(*) FROM public.payout_ledger_adjustments
+      WHERE release_id=v_convert_target AND kind='maturity_recredit')<>1 OR
+     (SELECT converted_cents FROM public.payout_debt_applications
+      WHERE debt_id=v_convert_debt AND release_id=v_convert_target)<>400 THEN
+    RAISE EXCEPTION 'cancellation conversion double-withheld or double-recredited';
+  END IF;
+
+  -- A rolling future occurrence never changes the released occurrence identity.
+  INSERT INTO public.brand_payout_releases(
+    brand_id,event_id,event_date_id,occurrence_key,surface,provider,currency,
+    anchor_end_at,releasable_at,gross_cents,net_release_cents,status,
+    organiser_cash_delivered_cents,released_at
+  ) VALUES(
+    '1171ad00-0000-0000-0000-000000000011',
+    '1171ad00-0000-0000-0000-000000000102',
+    '1171ad00-0000-0000-0000-000000000202',
+    '1171ad00-0000-0000-0000-000000000202',
+    'order','stripe','usd','2026-07-04T20:00:00Z',
+    '2026-07-07T20:00:00Z',500,500,'released',500,'2026-07-08T00:00:00Z'
+  ) RETURNING id INTO v_repeat_origin;
+  IF public.sync_post_release_postponement_debts('2026-07-08T00:00:00Z')<>0 THEN
+    RAISE EXCEPTION 'never-ending recurrence top-up created a debt';
+  END IF;
+  UPDATE public.event_dates SET end_at='2026-07-12T20:00:00Z'
+    WHERE id='1171ad00-0000-0000-0000-000000000202';
+  PERFORM public.sync_post_release_postponement_debts('2026-07-08T00:00:01Z');
+  SELECT id INTO v_repeat_debt FROM public.organiser_payout_debts
+    WHERE origin_release_id=v_repeat_origin AND kind='post_release_postponement';
+  UPDATE public.event_dates SET end_at='2026-07-14T20:00:00Z'
+    WHERE id='1171ad00-0000-0000-0000-000000000202';
+  PERFORM public.sync_post_release_postponement_debts('2026-07-08T00:00:02Z');
+  UPDATE public.event_dates SET end_at='2026-07-04T20:00:00Z'
+    WHERE id='1171ad00-0000-0000-0000-000000000202';
+  PERFORM public.sync_post_release_postponement_debts('2026-07-08T00:00:03Z');
+  PERFORM public.mature_postponement_debts('2026-07-08T00:00:03Z');
+  IF (SELECT count(*) FROM public.organiser_payout_debts
+      WHERE origin_release_id=v_repeat_origin
+        AND kind='post_release_postponement')<>1 OR
+     (SELECT status FROM public.organiser_payout_debts WHERE id=v_repeat_debt)<>'closed' THEN
+    RAISE EXCEPTION 'repeated forward/backward anchor moves left stale debt';
+  END IF;
+END
+$test$;
+ROLLBACK;
+`;
+
+if (Deno.env.get("ISSUE_1171_SQL_BEHAVIOR") === "1") {
+  const container = Deno.env.get("ISSUE_1171_POSTGRES_CONTAINER") ??
+    "issue1171-tester-pg-20260724";
+
+  Deno.test("adversarial PostgreSQL state-machine boundaries remain isolated and value-conserving", async () => {
+    const result = await runDockerSql(container, stateMachineSql);
+    assertEquals(result.code, 0, new TextDecoder().decode(result.stderr));
+  });
+
+  const concurrencyCleanup = String.raw`
+SET session_replication_role=replica;
+DELETE FROM public.payout_debt_events WHERE debt_id IN (
+  SELECT id FROM public.organiser_payout_debts
+  WHERE origin_release_id IN (
+    SELECT id FROM public.brand_payout_releases
+    WHERE brand_id='1171ac00-0000-0000-0000-000000000011'
+  )
+);
+DELETE FROM public.payout_debt_applications WHERE debt_id IN (
+  SELECT id FROM public.organiser_payout_debts
+  WHERE origin_release_id IN (
+    SELECT id FROM public.brand_payout_releases
+    WHERE brand_id='1171ac00-0000-0000-0000-000000000011'
+  )
+);
+DELETE FROM public.organiser_payout_debts WHERE origin_release_id IN (
+  SELECT id FROM public.brand_payout_releases
+  WHERE brand_id='1171ac00-0000-0000-0000-000000000011'
+);
+DELETE FROM public.payout_release_items WHERE release_id IN (
+  SELECT id FROM public.brand_payout_releases
+  WHERE brand_id='1171ac00-0000-0000-0000-000000000011'
+);
+DELETE FROM public.brand_payout_releases
+WHERE brand_id='1171ac00-0000-0000-0000-000000000011';
+DELETE FROM public.event_dates
+WHERE event_id='1171ac00-0000-0000-0000-000000000101';
+DELETE FROM public.events
+WHERE id='1171ac00-0000-0000-0000-000000000101';
+DELETE FROM public.brands
+WHERE id='1171ac00-0000-0000-0000-000000000011';
+DELETE FROM public.creator_accounts
+WHERE id='1171ac00-0000-0000-0000-000000000001';
+DELETE FROM auth.users
+WHERE id='1171ac00-0000-0000-0000-000000000001';
+SET session_replication_role=origin;
+`;
+  const concurrencySetup = concurrencyCleanup + String.raw`
+SET session_replication_role=replica;
+INSERT INTO auth.users(id)
+VALUES('1171ac00-0000-0000-0000-000000000001');
+INSERT INTO public.creator_accounts(id)
+VALUES('1171ac00-0000-0000-0000-000000000001');
+INSERT INTO public.brands(
+  id,account_id,name,slug,default_currency,payout_hold_cutover_at
+) VALUES(
+  '1171ac00-0000-0000-0000-000000000011',
+  '1171ac00-0000-0000-0000-000000000001',
+  'Adversarial Concurrency','issue-1171-adversarial-concurrency',
+  'USD','2026-07-01T00:00:00Z'
+);
+INSERT INTO public.events(id,brand_id,title,slug,status,currency)
+VALUES(
+  '1171ac00-0000-0000-0000-000000000101',
+  '1171ac00-0000-0000-0000-000000000011',
+  'Concurrency Event','issue-1171-concurrency-event','scheduled','USD'
+);
+INSERT INTO public.event_dates(id,event_id,start_at,end_at,is_master)
+VALUES(
+  '1171ac00-0000-0000-0000-000000000201',
+  '1171ac00-0000-0000-0000-000000000101',
+  '2026-07-12T18:00:00Z','2026-07-12T20:00:00Z',true
+);
+INSERT INTO public.brand_payout_releases(
+  id,brand_id,event_id,event_date_id,occurrence_key,surface,provider,currency,
+  anchor_end_at,releasable_at,gross_cents,net_release_cents,status,
+  organiser_cash_delivered_cents,released_at
+) VALUES(
+  '1171ac00-0000-0000-0000-000000000301',
+  '1171ac00-0000-0000-0000-000000000011',
+  '1171ac00-0000-0000-0000-000000000101',
+  '1171ac00-0000-0000-0000-000000000201',
+  '1171ac00-0000-0000-0000-000000000201',
+  'order','stripe','usd','2026-07-04T20:00:00Z','2026-07-07T20:00:00Z',
+  500,500,'released',500,'2026-07-08T00:00:00Z'
+),(
+  '1171ac00-0000-0000-0000-000000000302',
+  '1171ac00-0000-0000-0000-000000000011',
+  NULL,NULL,'race-target','venue_reservation','stripe','usd',
+  '2026-07-10T00:00:00Z','2026-07-13T00:00:00Z',
+  500,500,'pending',0,NULL
+);
+SET session_replication_role=origin;
+`;
+
+  Deno.test("postponement and sweep concurrency serializes before future value can escape", async () => {
+    const setup = await runDockerSql(container, concurrencySetup);
+    assertEquals(setup.code, 0, new TextDecoder().decode(setup.stderr));
+    try {
+      const first = await spawnDockerSql(
+        container,
+        String.raw`
+BEGIN;
+SELECT public.sync_post_release_postponement_debts('2026-07-09T00:00:00Z');
+SELECT pg_sleep(1);
+COMMIT;
+`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      const second = await spawnDockerSql(
+        container,
+        String.raw`
+BEGIN;
+SELECT public.sync_post_release_postponement_debts('2026-07-09T00:00:01Z');
+SELECT public.apply_open_payout_debts(
+  '1171ac00-0000-0000-0000-000000000302','2026-07-09T00:00:01Z'
+);
+COMMIT;
+`,
+      );
+      const [firstResult, secondResult] = await Promise.all([
+        first.output(),
+        second.output(),
+      ]);
+      assertEquals(
+        firstResult.code,
+        0,
+        new TextDecoder().decode(firstResult.stderr),
+      );
+      assertEquals(
+        secondResult.code,
+        0,
+        new TextDecoder().decode(secondResult.stderr),
+      );
+      const proof = await runDockerSql(
+        container,
+        String.raw`
+SELECT
+  (SELECT count(*) FROM public.organiser_payout_debts
+   WHERE origin_release_id='1171ac00-0000-0000-0000-000000000301'),
+  (SELECT count(*) FROM public.payout_debt_applications
+   WHERE release_id='1171ac00-0000-0000-0000-000000000302'),
+  (SELECT net_release_cents FROM public.brand_payout_releases
+   WHERE id='1171ac00-0000-0000-0000-000000000302');
+`,
+      );
+      assertEquals(proof.code, 0, new TextDecoder().decode(proof.stderr));
+      assertEquals(new TextDecoder().decode(proof.stdout).trim(), "1|1|0");
+    } finally {
+      await runDockerSql(container, concurrencyCleanup);
+    }
+  });
+
+  Deno.test("three concurrent duplicate attaches converge without an empty release", async () => {
+    const setup = await runDockerSql(container, concurrencySetup);
+    assertEquals(setup.code, 0, new TextDecoder().decode(setup.stderr));
+    const sourceId = "1171ac00-0000-0000-0000-000000000901";
+    const attach = (key: string, hold = false) =>
+      String.raw`
+BEGIN;
+${
+        hold
+          ? `SELECT pg_advisory_xact_lock(hashtextextended('order:${sourceId}',1171));`
+          : ""
+      }
+SELECT public.attach_payout_release(
+  'order','${sourceId}',
+  '1171ac00-0000-0000-0000-000000000011',
+  '1171ac00-0000-0000-0000-000000000101',
+  '1171ac00-0000-0000-0000-000000000201','${key}',
+  'stripe','usd','2026-07-02T00:00:00Z','2026-07-12T20:00:00Z',
+  900,0,0,0,0,30
+);
+${hold ? "SELECT pg_sleep(1);" : ""}
+COMMIT;
+`;
+    try {
+      const first = await spawnDockerSql(
+        container,
+        attach("three-way-a", true),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      const second = await spawnDockerSql(container, attach("three-way-b"));
+      const third = await spawnDockerSql(container, attach("three-way-c"));
+      const results = await Promise.all([
+        first.output(),
+        second.output(),
+        third.output(),
+      ]);
+      for (const result of results) {
+        assertEquals(result.code, 0, new TextDecoder().decode(result.stderr));
+      }
+      const ids = results.map((result) =>
+        new TextDecoder().decode(result.stdout).match(
+          /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/,
+        )?.[0]
+      );
+      assert(ids[0]);
+      assertEquals(new Set(ids).size, 1);
+      const proof = await runDockerSql(
+        container,
+        String.raw`
+SELECT
+  (SELECT count(*) FROM public.payout_release_items
+   WHERE source_type='order' AND source_id='${sourceId}'),
+  (SELECT count(*) FROM public.brand_payout_releases r
+   WHERE r.brand_id='1171ac00-0000-0000-0000-000000000011'
+     AND r.id IN (
+       SELECT release_id FROM public.payout_release_items
+       WHERE source_type='order' AND source_id='${sourceId}'
+     )),
+  (SELECT count(*) FROM public.brand_payout_releases r
+   WHERE r.brand_id='1171ac00-0000-0000-0000-000000000011'
+     AND NOT EXISTS(
+       SELECT 1 FROM public.payout_release_items i WHERE i.release_id=r.id
+     )
+     AND r.id NOT IN (
+       '1171ac00-0000-0000-0000-000000000301',
+       '1171ac00-0000-0000-0000-000000000302'
+     ));
+`,
+      );
+      assertEquals(proof.code, 0, new TextDecoder().decode(proof.stderr));
+      assertEquals(new TextDecoder().decode(proof.stdout).trim(), "1|1|0");
+    } finally {
+      await runDockerSql(container, concurrencyCleanup);
+    }
+  });
+}

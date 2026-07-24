@@ -58,7 +58,8 @@ jobs:
         run: |
           deno test --allow-read --allow-env --allow-net --allow-run=docker --no-check \
             supabase/migrations/__tests__/issue_1171_dark_payout_ledger.test.ts \
-            supabase/functions/payout-release-sweep/__tests__/issue_1171_dark_payout_ledger.test.ts
+            supabase/functions/payout-release-sweep/__tests__/issue_1171_dark_payout_ledger.test.ts \
+            supabase/functions/payout-release-sweep/__tests__/issue_1171_dark_payout_ledger.adversarial.test.ts
       - name: Remove disposable database
         if: always()
         run: docker rm -f issue1171-postgres || true
