@@ -1,0 +1,29 @@
+name: "#1176 Paystack Organiser Recipient Tests"
+
+on:
+  pull_request:
+    paths:
+      - "supabase/functions/brand-paystack-onboard/**"
+      - "supabase/migrations/20270110000005_issue_1176_brand_paystack_recipients.sql"
+      - "supabase/migrations/__tests__/issue_1176_brand_paystack_recipients.test.ts"
+      - "mingla-business/src/services/brandPaystackService.ts"
+      - "mingla-business/src/hooks/useBrandPaystack.ts"
+      - "mingla-business/src/components/brand/BrandPaystackOnboardView.tsx"
+      - ".github/workflows/issue-1176-paystack-recipient-tests.yml"
+  workflow_dispatch:
+
+jobs:
+  recipient-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Run organiser recipient behavior and schema tests
+        run: |
+          deno test \
+            supabase/functions/brand-paystack-onboard/issue_1176_brand_recipient.test.ts \
+            supabase/functions/brand-paystack-onboard/issue_1176_brand_recipient_adversarial.test.ts \
+            supabase/migrations/__tests__/issue_1176_brand_paystack_recipients.test.ts \
+            --allow-read

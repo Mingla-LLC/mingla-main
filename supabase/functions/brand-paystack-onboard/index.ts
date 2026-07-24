@@ -19,6 +19,13 @@
  *       paystack_subaccount_code + payment_provider=paystack + payment_country=Nigeria.
  *       Gate: biz_can_manage_payments_for_brand(brand_id, user_id).
  *
+ *   action = create_recipient | update_recipient
+ *     → resolves the name again server-side, creates an RCP_ transfer recipient,
+ *       and stores masked truth without changing the legacy ACCT_ subaccount.
+ *
+ *   action = deactivate_recipient
+ *     → deactivates the local transfer target before best-effort provider delete.
+ *
  *   action = refresh_status  (brand_id)
  *     → re-poll subaccount verification/active state for the readiness card.
  *       Gate: biz_can_manage_payments_for_brand(brand_id, user_id).
@@ -39,12 +46,23 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { writeAudit } from "../_shared/audit.ts";
 import {
+  paystackCreateTransferRecipient,
   paystackCreateSubaccount,
+  paystackDeleteTransferRecipient,
   paystackFetchSubaccount,
   paystackListBanks,
   paystackResolveAccount,
   paystackUpdateSubaccount,
+  resolvePaystackSecretKey,
 } from "../_shared/paystack.ts";
+import {
+  BrandRecipientError,
+  deactivateBrandPaystackRecipient,
+  hmacPaystackAccountFingerprint,
+  saveBrandPaystackRecipient,
+  type BrandRecipientDeps,
+  type BrandRecipientRow,
+} from "./recipient.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -109,6 +127,8 @@ serve(async (req) => {
     if (
       action !== "list_banks" && action !== "resolve_account" &&
       action !== "create_subaccount" && action !== "update_subaccount" &&
+      action !== "create_recipient" && action !== "update_recipient" &&
+      action !== "deactivate_recipient" &&
       action !== "disconnect" && action !== "refresh_status" &&
       action !== "select_provider" && action !== "clear_provider"
     ) {
@@ -201,8 +221,81 @@ serve(async (req) => {
       return jsonResponse({ error: "brand_not_found" }, 404);
     }
 
+    const recipientDeps: BrandRecipientDeps = {
+      resolveAccount: paystackResolveAccount,
+      createRecipient: paystackCreateTransferRecipient,
+      deleteRecipient: paystackDeleteTransferRecipient,
+      fingerprintAccount: (input) =>
+        hmacPaystackAccountFingerprint(resolvePaystackSecretKey(), input),
+      loadRecipient: async (recipientBrandId) => {
+        const { data, error } = await supabase
+          .from("brand_paystack_recipients")
+          .select(
+            "recipient_code, bank_code, account_fingerprint, account_number_masked, account_name, is_active",
+          )
+          .eq("brand_id", recipientBrandId)
+          .maybeSingle<BrandRecipientRow>();
+        if (error) throw error;
+        return data;
+      },
+      persistRecipient: async (recipientBrandId, recipient) => {
+        const { error } = await supabase
+          .from("brand_paystack_recipients")
+          .upsert(
+            {
+              brand_id: recipientBrandId,
+              ...recipient,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "brand_id" },
+          );
+        if (error) throw error;
+      },
+      deactivateRecipient: async (recipientBrandId) => {
+        const { error } = await supabase
+          .from("brand_paystack_recipients")
+          .update({
+            is_active: false,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("brand_id", recipientBrandId);
+        if (error) throw error;
+      },
+      audit: async (recipientAction, recipient) => {
+        await writeAudit(supabase, {
+          user_id: userId,
+          brand_id: brandId,
+          action: `paystack.recipient_${recipientAction}`,
+          target_type: "brand_paystack_recipient",
+          target_id: brandId,
+          after: {
+            recipient_code: recipient.recipient_code,
+            bank_code: recipient.bank_code,
+            account_number_masked: recipient.account_number_masked,
+            account_name: recipient.account_name,
+            is_active: recipient.is_active,
+          },
+        });
+      },
+      warn: (message, error) =>
+        console.error(
+          `[brand-paystack-onboard] ${message}:`,
+          error instanceof Error ? error.message : String(error),
+        ),
+    };
+
     // ── action: refresh_status ───────────────────────────────────────────────
     if (action === "refresh_status") {
+      let recipient: BrandRecipientRow | null;
+      try {
+        recipient = await recipientDeps.loadRecipient(brandId);
+      } catch (error) {
+        console.error(
+          "[brand-paystack-onboard] recipient status read failed:",
+          error,
+        );
+        return jsonResponse({ error: "internal_error" }, 500);
+      }
       const code = brand.paystack_subaccount_code as string | null;
       if (!code) {
         return jsonResponse({
@@ -210,6 +303,13 @@ serve(async (req) => {
           is_verified: false,
           settlement_bank: null,
           account_number_masked: null,
+          recipient_connected: recipient?.is_active === true,
+          recipient_code: recipient?.is_active === true
+            ? recipient.recipient_code
+            : null,
+          recipient_account_number_masked: recipient?.is_active === true
+            ? recipient.account_number_masked
+            : null,
         });
       }
       const sub = await paystackFetchSubaccount(code);
@@ -220,7 +320,29 @@ serve(async (req) => {
         active: sub.active !== false,
         settlement_bank: sub.settlement_bank ?? null,
         account_number_masked: acct ? `••••${acct.slice(-4)}` : null,
+        recipient_connected: recipient?.is_active === true,
+        recipient_code: recipient?.is_active === true
+          ? recipient.recipient_code
+          : null,
+        recipient_account_number_masked: recipient?.is_active === true
+          ? recipient.account_number_masked
+          : null,
       });
+    }
+
+    if (action === "deactivate_recipient") {
+      try {
+        await deactivateBrandPaystackRecipient(brandId, recipientDeps);
+        return jsonResponse({ deactivated: true });
+      } catch (error) {
+        const recipientError = error instanceof BrandRecipientError
+          ? error
+          : new BrandRecipientError("recipient_deactivate_failed", 500, error);
+        return jsonResponse(
+          { error: recipientError.code, detail: recipientError.message },
+          recipientError.status,
+        );
+      }
     }
 
     // ── action: select_provider ──────────────────────────────────────────────
@@ -300,6 +422,17 @@ serve(async (req) => {
     // full-settles to the Mingla main account, as before onboarding) and
     // best-effort deactivate the Paystack subaccount so it isn't reused.
     if (action === "disconnect") {
+      try {
+        await deactivateBrandPaystackRecipient(brandId, recipientDeps);
+      } catch (error) {
+        const recipientError = error instanceof BrandRecipientError
+          ? error
+          : new BrandRecipientError("recipient_deactivate_failed", 500, error);
+        return jsonResponse(
+          { error: recipientError.code, detail: recipientError.message },
+          recipientError.status,
+        );
+      }
       const code = brand.paystack_subaccount_code as string | null;
       if (code) {
         try {
@@ -340,6 +473,29 @@ serve(async (req) => {
         { error: "validation_error", detail: "bank_code_required" },
         400,
       );
+    }
+
+    if (action === "create_recipient" || action === "update_recipient") {
+      try {
+        const recipient = await saveBrandPaystackRecipient(
+          {
+            action,
+            brandId,
+            accountNumber: body.account_number as string,
+            bankCode: body.bank_code,
+          },
+          recipientDeps,
+        );
+        return jsonResponse(recipient);
+      } catch (error) {
+        const recipientError = error instanceof BrandRecipientError
+          ? error
+          : new BrandRecipientError("recipient_create_failed", 500, error);
+        return jsonResponse(
+          { error: recipientError.code, detail: recipientError.message },
+          recipientError.status,
+        );
+      }
     }
 
     // ── action: update_subaccount ────────────────────────────────────────────
