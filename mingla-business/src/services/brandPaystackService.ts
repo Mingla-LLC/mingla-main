@@ -36,6 +36,16 @@ export interface PaystackOnboardStatus {
   active?: boolean;
   settlement_bank: string | null;
   account_number_masked: string | null;
+  recipient_connected?: boolean;
+  recipient_code?: string | null;
+  recipient_account_number_masked?: string | null;
+}
+
+export interface PaystackRecipientResult {
+  recipient_code: string;
+  account_name: string;
+  account_number_masked: string;
+  is_active: true;
 }
 
 async function unwrapError(fn: string, error: unknown): Promise<Error> {
@@ -128,6 +138,56 @@ export async function updatePaystackSubaccount(
   if (error) throw await unwrapError("updatePaystackSubaccount", error);
   if (!data) throw new Error("updatePaystackSubaccount: edge fn returned null");
   return data;
+}
+
+async function savePaystackRecipient(
+  action: "create_recipient" | "update_recipient",
+  brandId: string,
+  accountNumber: string,
+  bankCode: string,
+): Promise<PaystackRecipientResult> {
+  const { data, error } = await supabase.functions.invoke<PaystackRecipientResult>(
+    "brand-paystack-onboard",
+    {
+      body: {
+        action,
+        brand_id: brandId,
+        account_number: accountNumber,
+        bank_code: bankCode,
+      },
+    },
+  );
+  if (error) throw await unwrapError("savePaystackRecipient", error);
+  if (!data) throw new Error("savePaystackRecipient: edge fn returned null");
+  return data;
+}
+
+/** Create the brand's balance-transfer recipient without touching its ACCT_. */
+export function createPaystackRecipient(
+  brandId: string,
+  accountNumber: string,
+  bankCode: string,
+): Promise<PaystackRecipientResult> {
+  return savePaystackRecipient(
+    "create_recipient",
+    brandId,
+    accountNumber,
+    bankCode,
+  );
+}
+
+/** Replace the brand's balance-transfer recipient without touching its ACCT_. */
+export function updatePaystackRecipient(
+  brandId: string,
+  accountNumber: string,
+  bankCode: string,
+): Promise<PaystackRecipientResult> {
+  return savePaystackRecipient(
+    "update_recipient",
+    brandId,
+    accountNumber,
+    bankCode,
+  );
 }
 
 /**

@@ -18,15 +18,18 @@ import {
 
 import {
   clearPaystackProvider,
+  createPaystackRecipient,
   createPaystackSubaccount,
   disconnectPaystack,
   listPaystackBanks,
   refreshPaystackStatus,
   resolvePaystackAccount,
   selectPaystackProvider,
+  updatePaystackRecipient,
   updatePaystackSubaccount,
   type PaystackBankOption,
   type PaystackOnboardStatus,
+  type PaystackRecipientResult,
   type PaystackResolvedAccount,
   type PaystackSubaccountResult,
 } from "../services/brandPaystackService";
@@ -123,6 +126,36 @@ export function useUpdatePaystackSubaccount(): UseMutationResult<
     onSuccess: (_data, { brandId }) => {
       queryClient.invalidateQueries({ queryKey: brandPaystackKeys.status(brandId) });
       queryClient.invalidateQueries({ queryKey: brandKeys.detail(brandId) });
+    },
+  });
+}
+
+export function useCreatePaystackRecipient(): UseMutationResult<
+  PaystackRecipientResult,
+  Error,
+  ResolveInput
+> {
+  const queryClient = useQueryClient();
+  return useMutation<PaystackRecipientResult, Error, ResolveInput>({
+    mutationFn: ({ brandId, accountNumber, bankCode }) =>
+      createPaystackRecipient(brandId, accountNumber, bankCode),
+    onSuccess: (_data, { brandId }) => {
+      queryClient.invalidateQueries({ queryKey: brandPaystackKeys.status(brandId) });
+    },
+  });
+}
+
+export function useUpdatePaystackRecipient(): UseMutationResult<
+  PaystackRecipientResult,
+  Error,
+  ResolveInput
+> {
+  const queryClient = useQueryClient();
+  return useMutation<PaystackRecipientResult, Error, ResolveInput>({
+    mutationFn: ({ brandId, accountNumber, bankCode }) =>
+      updatePaystackRecipient(brandId, accountNumber, bankCode),
+    onSuccess: (_data, { brandId }) => {
+      queryClient.invalidateQueries({ queryKey: brandPaystackKeys.status(brandId) });
     },
   });
 }

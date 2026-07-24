@@ -39,8 +39,10 @@ import { Input } from "../ui/Input";
 import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
 import {
   useBrandBanks,
+  useCreatePaystackRecipient,
   useCreatePaystackSubaccount,
   useResolvePaystackAccount,
+  useUpdatePaystackRecipient,
   useUpdatePaystackSubaccount,
 } from "../../hooks/useBrandPaystack";
 
@@ -70,6 +72,11 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
   const createMutation = useCreatePaystackSubaccount();
   const updateMutation = useUpdatePaystackSubaccount();
   const submitMutation = isUpdate ? updateMutation : createMutation;
+  const createRecipientMutation = useCreatePaystackRecipient();
+  const updateRecipientMutation = useUpdatePaystackRecipient();
+  const recipientMutation = isUpdate
+    ? updateRecipientMutation
+    : createRecipientMutation;
 
   const [pickerOpen, setPickerOpen] = useState(false);
   // ORCH-1165 REWORK loop 2 (DISC-1165-T3) — the bank-picker KAV's
@@ -112,7 +119,9 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
 
   const accountComplete = accountNumber.length === ACCOUNT_LEN;
   const canVerify = bankCode !== null && accountComplete && !resolveMutation.isPending;
-  const canConnect = resolvedName !== null && !submitMutation.isPending;
+  const canConnect = resolvedName !== null &&
+    !submitMutation.isPending &&
+    !recipientMutation.isPending;
 
   // Re-entering details invalidates a prior verification.
   const onAccountChange = (next: string): void => {
@@ -140,7 +149,7 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
         bankCode: bankCode as string,
       });
       setResolvedName(res.account_name);
-    } catch (e) {
+    } catch {
       setResolvedName(null);
       setError(
         "We couldn't verify that account. Check the number and bank, then try again.",
@@ -151,13 +160,17 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
   const handleConnect = async (): Promise<void> => {
     setError(null);
     try {
-      await submitMutation.mutateAsync({
+      const input = {
         brandId,
         accountNumber,
         bankCode: bankCode as string,
-      });
+      };
+      // Create the RCP_ first. If the legacy ACCT_ write then fails, retrying is
+      // idempotent and today's at-charge split remains unchanged.
+      await recipientMutation.mutateAsync(input);
+      await submitMutation.mutateAsync(input);
       onConnected?.();
-    } catch (e) {
+    } catch {
       setError(
         isUpdate
           ? "We couldn't update this bank account. Please try again in a moment."
@@ -239,6 +252,7 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
         ) : (
           <Button
             label={submitMutation.isPending
+                || recipientMutation.isPending
               ? (isUpdate ? "Updating…" : "Connecting…")
               : (isUpdate ? "Update bank account" : "Connect bank & get paid")}
             variant="primary"
