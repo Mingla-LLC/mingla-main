@@ -142,9 +142,23 @@ function BenchmarkNote({ lines }: { lines: string[] }) {
 
 // ── The plan engine: profit-optimiser (paid) or budget-buys (free) ───────────
 function BudgetEngine({ report }: { report: EventReport }) {
-  const plan = report.plan
-  const cur = plan.currency
+  // Reports generated before #1100 stored `paid_plan`, not `plan` — guard so an
+  // old emailed link degrades gracefully instead of throwing a client exception.
+  const plan = report.plan as EventReport['plan'] | undefined
   const offerFrom = report.offer?.per_person_from ?? '$3.99'
+  if (!plan || (plan.kind !== 'paid_optimized' && plan.kind !== 'free_budget')) {
+    return (
+      <div className="rounded-md border border-divider-strong bg-white p-5">
+        <DocHeading>Your ad-spend plan</DocHeading>
+        <p className="mt-3 text-sm leading-relaxed text-text-secondary">
+          This report predates our upgraded ad-spend planner. Re-run the predictor for the
+          full profit-max forecast — Mingla can drive people to your event from{' '}
+          <span className="font-semibold text-text-primary">{offerFrom}</span> per head.
+        </p>
+      </div>
+    )
+  }
+  const cur = plan.currency
   const warmCard =
     'overflow-hidden rounded-md p-6 text-white md:p-7'
   const warmStyle = {
