@@ -21,13 +21,13 @@
  * THE FIX THIS GATE PROTECTS: pin `postcss` forward to a non-vulnerable,
  * Expo-54-compatible version via a top-level npm `overrides` block in each app's
  * package.json (`"overrides": { "postcss": "^8.5.21" }`) and regenerate the
- * lockfile so `postcss` resolves ≥ 8.5.10. The security alert clears, Dependabot
+ * lockfile so `postcss` resolves ≥ 8.5.12. The security alert clears, Dependabot
  * has no reason to unlock the `expo` parent, and the poisoned 54→57 PR is never
  * generated — while the expo-54 pin, the dependabot.yml expo ignores, and the
  * ORCH-1386 framework-major guard all stay ACTIVE and untouched.
  *
  * DO NOT REMOVE THE OVERRIDE. Deleting `overrides.postcss` (or letting any
- * resolved `postcss` node drift back below 8.5.10) re-arms the exact
+ * resolved `postcss` node drift back below 8.5.12) re-arms the exact
  * transitive-security → expo-parent-unlock drag this gate exists to prevent.
  *
  * MINGLA-MARKETING (#1135, folded into this same fix): the Next.js marketing
@@ -41,11 +41,11 @@
  * ASSERTS (for ALL THREE guarded apps — app-mobile + mingla-business under Expo
  * 54, and mingla-marketing under Next.js):
  *  A. MANIFEST: package.json declares a top-level `overrides.postcss` whose
- *     guaranteed lower bound is ≥ the advisory floor (8.5.10). A missing
- *     override, or a floor below 8.5.10 (e.g. `^8.4.49`, `<8.5.10`, `*`), fails.
+ *     guaranteed lower bound is ≥ the advisory floor (8.5.12). A missing
+ *     override, or a floor below 8.5.12 (e.g. `^8.4.49`, `<8.5.12`, `*`), fails.
  *  B. LOCKFILE: every resolved postcss node (top-level `node_modules/postcss`
  *     and any nested `.../node_modules/postcss`) in
- *     package-lock.json is ≥ 8.5.10, and at least one postcss node exists (a
+ *     package-lock.json is ≥ 8.5.12, and at least one postcss node exists (a
  *     lockfile that resolves ZERO postcss nodes is a rewritten tree, not a pass —
  *     the "green because it matched nothing" mode is a FAILURE here).
  *
@@ -55,7 +55,7 @@
  * the move. Defense-in-depth; both fail-on-revert, neither replaces the other.
  *
  * A revert that deletes the override, or a lockfile that regresses postcss below
- * 8.5.10, must FAIL CI. `--self-test` proves both directions.
+ * 8.5.12, must FAIL CI. `--self-test` proves both directions.
  *
  * Exit codes: 0 clean, 1 violation, 2 script error / inconclusive.
  */
@@ -98,16 +98,23 @@ export const REVERT_RISK = {
 };
 
 /**
- * The advisory floor for GHSA-qx2v-qp2m-jg93: postcss is fixed in 8.5.10+.
- * Any resolved postcss < this, or any override whose floor is below this, fails.
+ * The advisory floor. TWO stacked postcss advisories drive it; the guard enforces
+ * the HIGHER fix version:
+ *   - GHSA-qx2v-qp2m-jg93 / CVE-2026-41305 (XSS via an unescaped </style> in
+ *     stringify) — the original advisory that motivated this guard; fixed in 8.5.10.
+ *   - CVE-2026-45623 (HIGH) — a newer advisory; fixed in 8.5.12. Bumped the floor
+ *     8.5.10 → 8.5.12 as of #1150 so a future drift to 8.5.11 cannot pass green
+ *     (the resolved postcss is already 8.5.22, so no app changes — this is a
+ *     tightening of the guard's internal floor only).
+ * Any resolved postcss < this floor, or any override whose floor is below it, fails.
  */
-export const ADVISORY_FLOOR = [8, 5, 10];
+export const ADVISORY_FLOOR = [8, 5, 12];
 
 /**
  * Parse a version or range lower-bound into [major, minor, patch]. Strips a
  * leading run of range operators (`^ ~ >= = v` and whitespace), then reads the
  * first concrete numeric triple, padding a missing minor/patch with 0. Returns
- * null for specs with no leading concrete version (`*`, `latest`, `<8.5.10`,
+ * null for specs with no leading concrete version (`*`, `latest`, `<8.5.12`,
  * `file:`, `git+…`, `workspace:`, objects) — an override that loose cannot
  * guarantee a floor and is reported as a violation by the caller.
  */
@@ -244,25 +251,26 @@ function selfTest() {
     "versionFloor handles caret/tilde/gte/exact, padding, and rejects loose specs",
     fmt(versionFloor("^8.5.21")) === "8.5.21" &&
       fmt(versionFloor("~8.5.21")) === "8.5.21" &&
-      fmt(versionFloor(">=8.5.10")) === "8.5.10" &&
+      fmt(versionFloor(">=8.5.12")) === "8.5.12" &&
       fmt(versionFloor("8.5.22")) === "8.5.22" &&
       fmt(versionFloor("8.6")) === "8.6.0" &&
       fmt(versionFloor("8")) === "8.0.0" &&
-      versionFloor("<8.5.10") === null &&
+      versionFloor("<8.5.12") === null &&
       versionFloor("*") === null &&
       versionFloor("latest") === null &&
       versionFloor(undefined) === null &&
       versionFloor({ ".": "^8.5.21" }) === null,
   );
 
-  // 2. gte tuple comparison incl. the exact advisory boundary.
+  // 2. gte tuple comparison incl. the exact advisory boundary. The boundary moved to
+  //    8.5.12 (#1150): 8.5.12 passes, 8.5.11 fails (it passed at the old 8.5.10 floor).
   ok(
-    "gte compares major.minor.patch correctly at the 8.5.10 boundary",
-    gte([8, 5, 10], ADVISORY_FLOOR) === true &&
+    "gte compares major.minor.patch correctly at the 8.5.12 boundary",
+    gte([8, 5, 12], ADVISORY_FLOOR) === true &&
       gte([8, 5, 22], ADVISORY_FLOOR) === true &&
       gte([8, 6, 0], ADVISORY_FLOOR) === true &&
       gte([9, 0, 0], ADVISORY_FLOOR) === true &&
-      gte([8, 5, 9], ADVISORY_FLOOR) === false &&
+      gte([8, 5, 11], ADVISORY_FLOOR) === false &&
       gte([8, 4, 49], ADVISORY_FLOOR) === false &&
       gte([8, 0, 0], ADVISORY_FLOOR) === false,
   );
@@ -289,7 +297,7 @@ function selfTest() {
 
   // 6. override floor below the advisory floor — fails.
   ok(
-    "override floor below 8.5.10 fails (^8.4.49)",
+    "override floor below 8.5.12 fails (^8.4.49)",
     checkOverride("app-mobile", { overrides: { postcss: "^8.4.49" } }).some((f) =>
       /BELOW the advisory floor/.test(f),
     ),
@@ -297,8 +305,8 @@ function selfTest() {
 
   // 7. an un-pinnable override range — fails.
   ok(
-    "un-pinnable override (<8.5.10) fails",
-    checkOverride("app-mobile", { overrides: { postcss: "<8.5.10" } }).some((f) =>
+    "un-pinnable override (<8.5.12) fails",
+    checkOverride("app-mobile", { overrides: { postcss: "<8.5.12" } }).some((f) =>
       /no guaranteed lower bound/.test(f),
     ),
   );
@@ -311,16 +319,16 @@ function selfTest() {
     ),
   );
 
-  // 9. clean lockfile (all postcss ≥ floor, incl. a nested node) passes.
+  // 9. clean lockfile (all postcss ≥ floor, incl. a nested node AT the 8.5.12 boundary) passes.
   const goodLock = {
     packages: {
       "": {},
       "node_modules/postcss": { version: "8.5.22" },
-      "node_modules/@some/tool/node_modules/postcss": { version: "8.5.10" },
+      "node_modules/@some/tool/node_modules/postcss": { version: "8.5.12" },
       "node_modules/lodash": { version: "4.17.21" },
     },
   };
-  ok("lockfile with all postcss ≥ 8.5.10 (incl. nested) passes", checkLockfile("app-mobile", goodLock).length === 0);
+  ok("lockfile with all postcss ≥ 8.5.12 (incl. nested at the boundary) passes", checkLockfile("app-mobile", goodLock).length === 0);
 
   // 10. THE REVERT (T3): a postcss node regressed to 8.4.49 — fails by path + version.
   const vulnLock = structuredClone(goodLock);
@@ -337,6 +345,26 @@ function selfTest() {
   ok(
     "nested vulnerable postcss node (8.4.31) is caught",
     checkLockfile("app-mobile", nestedVuln).some((f) => /8\.4\.31/.test(f) && /BELOW the advisory floor/.test(f)),
+  );
+
+  // 11a. NEW-FLOOR PROOF (#1150): a resolved postcss 8.5.11 — which PASSED under the old
+  //      8.5.10 floor — now REDS under the 8.5.12 floor (CVE-2026-45623). This is the
+  //      whole point of the tightening: 8.5.11 must no longer sneak through.
+  const floor8511Lock = structuredClone(goodLock);
+  floor8511Lock.packages["node_modules/postcss"].version = "8.5.11";
+  const f8511 = checkLockfile("app-mobile", floor8511Lock);
+  ok(
+    "lockfile postcss 8.5.11 FAILS at the 8.5.12 floor (#1150 tightening; passed at old 8.5.10)",
+    f8511.length === 1 && /BELOW the advisory floor/.test(f8511[0]) && /8\.5\.11/.test(f8511[0]),
+  );
+
+  // 11b. NEW-FLOOR PROOF (#1150): an override ^8.5.11 — accepted under the old floor — now
+  //      fails, because its guaranteed lower bound 8.5.11 is below the 8.5.12 floor.
+  ok(
+    "override ^8.5.11 FAILS at the 8.5.12 floor (#1150 tightening)",
+    checkOverride("app-mobile", { overrides: { postcss: "^8.5.11" } }).some((f) =>
+      /BELOW the advisory floor/.test(f),
+    ),
   );
 
   // 12. zero postcss nodes in the lockfile is a FAILURE, never a vacuous pass.
@@ -416,12 +444,12 @@ if (isMain) {
         );
         for (const f of failures) console.error("  - " + f);
         console.error(
-          "\npostcss must stay pinned ≥ 8.5.10 via overrides in all three guarded apps (app-mobile + mingla-business under Expo 54, mingla-marketing under Next.js) so Dependabot has no vulnerable-transitive reason to unlock the expo parent or the next dep (see the header of .github/scripts/strict-grep/orch-1130-postcss-transitive-pin-check.mjs). Issue #1130 / #1135 / GHSA-qx2v-qp2m-jg93.",
+          "\npostcss must stay pinned ≥ 8.5.12 via overrides in all three guarded apps (app-mobile + mingla-business under Expo 54, mingla-marketing under Next.js) so Dependabot has no vulnerable-transitive reason to unlock the expo parent or the next dep (see the header of .github/scripts/strict-grep/orch-1130-postcss-transitive-pin-check.mjs). Issue #1130 / #1135 / #1150 / GHSA-qx2v-qp2m-jg93 / CVE-2026-45623.",
         );
         process.exit(1);
       }
       console.log(
-        "ORCH-1130 postcss-transitive-pin-check PASS — overrides.postcss pins ≥ 8.5.10 in all three guarded apps (app-mobile, mingla-business, mingla-marketing) and every resolved postcss node clears the advisory floor.",
+        "ORCH-1130 postcss-transitive-pin-check PASS — overrides.postcss pins ≥ 8.5.12 in all three guarded apps (app-mobile, mingla-business, mingla-marketing) and every resolved postcss node clears the advisory floor.",
       );
     }
   } catch (err) {
