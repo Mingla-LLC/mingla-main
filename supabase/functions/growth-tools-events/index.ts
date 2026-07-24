@@ -42,7 +42,7 @@ const IP_SALT = "mingla-tools";
 const RATE_LIMIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 // Free-run cap per IP per 24h — scoped to THIS tool (see handleRun). Env-tunable
 // while in test without a redeploy.
-const RATE_LIMIT_MAX = Number(Deno.env.get("EVENTS_RATE_LIMIT_MAX") ?? "8") || 8;
+const RATE_LIMIT_MAX = Number(Deno.env.get("EVENTS_RATE_LIMIT_MAX") ?? "10") || 10;
 
 const GEMINI_MODEL_ID = "gemini-2.5-flash";
 const GEMINI_API_URL =

@@ -884,7 +884,7 @@ export async function handler(req: Request): Promise<Response> {
         .eq("email", email)
         .eq("tool", tool)
         .gte("created_at", sinceIso);
-      if (!capErr && (count ?? 0) >= 8) {
+      if (!capErr && (count ?? 0) >= 10) {
         return json({ error: "rate_limited" }, 429);
       }
     }
