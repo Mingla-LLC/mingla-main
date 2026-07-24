@@ -33,7 +33,13 @@
  * placement, but no video channel is ever built. Flip to true ONLY when
  * admin-ad-create-campaign can actually create a video ad.
  */
-export const VIDEO_CREATE_ENABLED = false;
+export const VIDEO_CREATE_ENABLED = Object.freeze({
+  meta: true,
+  snapchat: true,
+  tiktok: false,
+  google: false,
+  reddit: false,
+});
 
 /**
  * A funded channel is buildable ONLY if its server validation passed with NO
@@ -62,7 +68,12 @@ export function creativeExclusionReason(channel) {
  * @param {"image"|"video"} [input.kind]     creative kind (default "image")
  * @returns {{ buildable: string[], excluded: Array<{platform, reason, channel}> }}
  */
-export function partitionFundedCreative({ fundedPlatforms = [], channels = [], kind = "image" }) {
+export function partitionFundedCreative({
+  fundedPlatforms = [],
+  channels = [],
+  kind = "image",
+  preparationByPlatform = {},
+}) {
   const byPlatform = new Map((channels ?? []).map((c) => [c.platform, c]));
   const buildable = [];
   const excluded = [];
@@ -72,9 +83,27 @@ export function partitionFundedCreative({ fundedPlatforms = [], channels = [], k
     // video channel can build — every funded channel is excluded (preview-only),
     // never a misleading build nor a fabricated Google "Created". This gates the
     // build path itself; validation + placement previews still render.
-    if (kind === "video" && !VIDEO_CREATE_ENABLED) {
-      excluded.push({ platform, reason: "video_not_creatable", channel });
-      continue;
+    if (kind === "video") {
+      if (VIDEO_CREATE_ENABLED[platform] !== true) {
+        excluded.push({
+          platform,
+          reason: platform === "tiktok"
+            ? "preview_only"
+            : platform === "google"
+            ? "approximation_only"
+            : "video_not_creatable",
+          channel,
+        });
+        continue;
+      }
+      if (preparationByPlatform[platform]?.state !== "ready") {
+        excluded.push({
+          platform,
+          reason: `preparation_${preparationByPlatform[platform]?.state ?? "not_started"}`,
+          channel,
+        });
+        continue;
+      }
     }
     if (creativeReady(channel)) {
       buildable.push(platform);

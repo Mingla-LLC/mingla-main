@@ -144,12 +144,13 @@ import {
   validateSnapchatVideoDuration,
   validateSnapchatWebViewUrl,
 } from "../_shared/snapchat.ts";
-import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "../_shared/businessWebOrigin.ts";
+import {
+  AdDestinationError,
+  resolveAdDestination,
+} from "../_shared/adDestination.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const BUSINESS_WEB_ORIGIN = (Deno.env.get("BUSINESS_WEB_ORIGIN") ?? "").trim() ||
-  PRODUCTION_BUSINESS_WEB_ORIGIN;
 
 /** A1 smart-link host + template (consumer OneLink w36m on go.usemingla.com — LIVE). */
 const ONELINK_BASE = "https://go.usemingla.com/w36m";
@@ -238,7 +239,6 @@ interface DestinationInput {
   page_type?: string;
   brand_slug?: string;
   entity_slug?: string;
-  event_id?: string;
 }
 
 /**
@@ -251,11 +251,8 @@ interface DestinationInput {
  * `destination`), plus a shared `destination_group_id` that ties the whole
  * fan-out together (persisted as ad_campaigns.dest_group_id).
  *
- * This ONE resolver replaces the 5×-copy-pasted `(body.destination ?? {})` pick
- * (ISSUE-977 Lane C discovery #2) and adds array tolerance. It deliberately does
- * NOT merge the five per-platform resolve-against-view blocks below — those are
- * genuinely platform-specific (different views/columns/URL builders) and merging
- * them would be an over-refactor that risks the Wave 0–3 behaviour.
+ * This picker provides the exact descriptor consumed by the shared
+ * `_shared/adDestination.ts` public/live resolver in all five branches.
  *
  * Backward compatible: a body with only the singular `destination` (every
  * pre-1002 caller, and every single-destination build) resolves byte-identically.
@@ -414,6 +411,9 @@ serve(async (req: Request): Promise<Response> => {
 
     // (1) Pure input validation — all 422s BEFORE any provider call.
     const creativeG = (body.creative ?? {}) as Record<string, unknown>;
+    if (creativeG.kind === "video") {
+      return json({ error: "video_create_not_available_phase_a" }, 422);
+    }
     // ISSUE-979 Bug 3: the global compliance intent reaches Google's create path
     // now. Google has no general special-ad-category field and no RSA AI field —
     // documented + observable, never silently dropped.
@@ -513,33 +513,17 @@ serve(async (req: Request): Promise<Response> => {
 
     // (3) Destination resolve — READ-ONLY, public + live only (§4.4b; the
     //     GR-52 sync re-checker re-asserts this same gate for the ad's life).
-    let destUrlG: string;
-    let destEventIdG: string | null = null;
-    if (pageTypeG === "event") {
-      if (!entitySlugG) {
-        return json({ error: "validation_error", detail: "destination_entity_slug_required" }, 400);
+    let resolvedDestinationG;
+    try {
+      resolvedDestinationG = await resolveAdDestination(supabase, destinationG);
+    } catch (err) {
+      if (err instanceof AdDestinationError) {
+        return json({ error: err.code, detail: err.message }, err.status);
       }
-      const { data: eventRow } = await supabase
-        .from("business_public_events_view")
-        .select("id, brand_slug, slug, status")
-        .eq("brand_slug", brandSlugG)
-        .eq("slug", entitySlugG)
-        .in("status", ["scheduled", "live"])
-        .maybeSingle();
-      if (!eventRow) return json({ error: "destination_not_public" }, 422);
-      destUrlG = `${BUSINESS_WEB_ORIGIN}/e/${brandSlugG}/${entitySlugG}`;
-      destEventIdG = String(eventRow.id);
-    } else if (pageTypeG === "brand") {
-      const { data: brandRow } = await supabase
-        .from("business_public_brands_view")
-        .select("id, slug")
-        .eq("slug", brandSlugG)
-        .maybeSingle();
-      if (!brandRow) return json({ error: "destination_not_public" }, 422);
-      destUrlG = `${BUSINESS_WEB_ORIGIN}/b/${brandSlugG}`;
-    } else {
-      return json({ error: "destination_not_public", detail: "dest_page_type_not_supported_wp1" }, 422);
+      return json({ error: "destination_lookup_failed" }, 503);
     }
+    const destUrlG = resolvedDestinationG.canonical_url;
+    const destEventIdG = resolvedDestinationG.event_id;
 
     // A4.f/GR-73: finalUrls = [canonical dest_url] — https, ≤2,084 bytes.
     const finalUrlCheck = validateGoogleFinalUrl(destUrlG);
@@ -1031,33 +1015,17 @@ serve(async (req: Request): Promise<Response> => {
 
     // (4) Destination resolve — READ-ONLY, public + live only (§4.4b; the
     //     GR-52 sync re-checker re-asserts this same gate for the ad's life).
-    let destUrlS: string;
-    let destEventIdS: string | null = null;
-    if (pageTypeS === "event") {
-      if (!entitySlugS) {
-        return json({ error: "validation_error", detail: "destination_entity_slug_required" }, 400);
+    let resolvedDestinationS;
+    try {
+      resolvedDestinationS = await resolveAdDestination(supabase, destinationS);
+    } catch (err) {
+      if (err instanceof AdDestinationError) {
+        return json({ error: err.code, detail: err.message }, err.status);
       }
-      const { data: eventRow } = await supabase
-        .from("business_public_events_view")
-        .select("id, brand_slug, slug, status")
-        .eq("brand_slug", brandSlugS)
-        .eq("slug", entitySlugS)
-        .in("status", ["scheduled", "live"])
-        .maybeSingle();
-      if (!eventRow) return json({ error: "destination_not_public" }, 422);
-      destUrlS = `${BUSINESS_WEB_ORIGIN}/e/${brandSlugS}/${entitySlugS}`;
-      destEventIdS = String(eventRow.id);
-    } else if (pageTypeS === "brand") {
-      const { data: brandRow } = await supabase
-        .from("business_public_brands_view")
-        .select("id, slug")
-        .eq("slug", brandSlugS)
-        .maybeSingle();
-      if (!brandRow) return json({ error: "destination_not_public" }, 422);
-      destUrlS = `${BUSINESS_WEB_ORIGIN}/b/${brandSlugS}`;
-    } else {
-      return json({ error: "destination_not_public", detail: "dest_page_type_not_supported_wp1" }, 422);
+      return json({ error: "destination_lookup_failed" }, 503);
     }
+    const destUrlS = resolvedDestinationS.canonical_url;
+    const destEventIdS = resolvedDestinationS.event_id;
     // GR-54 + destination policy v1: the web-view URL is the canonical page
     // (https, ≤2048) — NEVER the OneLink (D-P1).
     const webViewUrlCheck = validateSnapchatWebViewUrl(destUrlS);
@@ -1065,8 +1033,8 @@ serve(async (req: Request): Promise<Response> => {
       return json({ error: webViewUrlCheck.detail, detail: webViewUrlCheck.message }, 422);
     }
 
-    // (5) Media resolve — the adapter NEVER uploads; media comes from the #866
-    //     creative library (uploadToSnap) or an explicit top_snap_media_id.
+    // (5) Media resolve — Phase A videos must use the exact prepared ref.
+    const creativeKindS = creativeS.kind === "video" ? "video" : "image";
     let topSnapMediaIdS = typeof creativeS.top_snap_media_id === "string"
       ? creativeS.top_snap_media_id.trim()
       : "";
@@ -1074,14 +1042,21 @@ serve(async (req: Request): Promise<Response> => {
       ? creativeS.creative_library_id.trim()
       : "";
     let creativeLibraryRowIdS: string | null = null;
+    if (creativeKindS === "video" && !creativeLibraryIdS) {
+      return json({ error: "video_preparation_required" }, 422);
+    }
+    if (creativeKindS === "video") topSnapMediaIdS = "";
     if (!topSnapMediaIdS && creativeLibraryIdS) {
       const { data: libCreative } = await supabase
         .from("ad_creatives")
-        .select("id, kind, content_hash, duration_seconds")
+        .select("id, kind, status, content_hash, duration_seconds")
         .eq("id", creativeLibraryIdS)
         .maybeSingle();
-      if (!libCreative) {
+      if (!libCreative || libCreative.status !== "active") {
         return json({ error: "creative_not_found", detail: "creative_library_id does not resolve" }, 422);
+      }
+      if (creativeKindS === "video" && libCreative.kind !== "video") {
+        return json({ error: "creative_kind_mismatch" }, 422);
       }
       const { data: ref } = await supabase
         .from("ad_creative_platform_refs")
@@ -1090,6 +1065,9 @@ serve(async (req: Request): Promise<Response> => {
         .eq("platform", "snapchat")
         .eq("lane", lane)
         .eq("external_account_id", sconn.external_account_id)
+        .eq("external_kind", libCreative.kind)
+        .eq("content_hash", libCreative.content_hash)
+        .eq("status", "ready")
         .maybeSingle();
       if (!ref || ref.status !== "ready" || !ref.external_ref) {
         return json({
@@ -1519,6 +1497,9 @@ serve(async (req: Request): Promise<Response> => {
     const bidPriceCentsT = bidPriceCentsRawT as number | undefined;
 
     const creativeT = (body.creative ?? {}) as Record<string, unknown>;
+    if (creativeT.kind === "video") {
+      return json({ error: "video_create_not_available_phase_a" }, 422);
+    }
     // ISSUE-979 Bug 3: the global compliance intent reaches TikTok's create path
     // now. TikTok's aigc_disclosure_type is CUSTOMIZED_USER-only (unreachable,
     // T-P6) and it has no special-ad-category field — documented + observable,
@@ -1643,33 +1624,17 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     // (4) Destination resolve — READ-ONLY, public + live only (§4.4b).
-    let destUrlT: string;
-    let destEventIdT: string | null = null;
-    if (pageTypeT === "event") {
-      if (!entitySlugT) {
-        return json({ error: "validation_error", detail: "destination_entity_slug_required" }, 400);
+    let resolvedDestinationT;
+    try {
+      resolvedDestinationT = await resolveAdDestination(supabase, destinationT);
+    } catch (err) {
+      if (err instanceof AdDestinationError) {
+        return json({ error: err.code, detail: err.message }, err.status);
       }
-      const { data: eventRow } = await supabase
-        .from("business_public_events_view")
-        .select("id, brand_slug, slug, status")
-        .eq("brand_slug", brandSlugT)
-        .eq("slug", entitySlugT)
-        .in("status", ["scheduled", "live"])
-        .maybeSingle();
-      if (!eventRow) return json({ error: "destination_not_public" }, 422);
-      destUrlT = `${BUSINESS_WEB_ORIGIN}/e/${brandSlugT}/${entitySlugT}`;
-      destEventIdT = String(eventRow.id);
-    } else if (pageTypeT === "brand") {
-      const { data: brandRow } = await supabase
-        .from("business_public_brands_view")
-        .select("id, slug")
-        .eq("slug", brandSlugT)
-        .maybeSingle();
-      if (!brandRow) return json({ error: "destination_not_public" }, 422);
-      destUrlT = `${BUSINESS_WEB_ORIGIN}/b/${brandSlugT}`;
-    } else {
-      return json({ error: "destination_not_public", detail: "dest_page_type_not_supported_wp1" }, 422);
+      return json({ error: "destination_lookup_failed" }, 503);
     }
+    const destUrlT = resolvedDestinationT.canonical_url;
+    const destEventIdT = resolvedDestinationT.event_id;
     // A1.0-5 (PROOF D-P1): the ad-visible landing_page_url is the canonical
     // page — NEVER the OneLink; attribution rides in utm_params.
     const landingCheckT = validateTikTokLandingPageUrl(destUrlT);
@@ -2103,6 +2068,9 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     const creativeR = (body.creative ?? {}) as Record<string, unknown>;
+    if (creativeR.kind === "video") {
+      return json({ error: "video_create_not_available_phase_a" }, 422);
+    }
     // ISSUE-979 Bug 3: the global compliance intent reaches Reddit's create path
     // now. Reddit has no AI-disclosure and no special-ad-category field —
     // documented + observable, never silently dropped.
@@ -2164,33 +2132,17 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     // (3) Destination resolve — READ-ONLY, public + live only (§4.4b).
-    let destUrlR: string;
-    let destEventIdR: string | null = null;
-    if (pageTypeR === "event") {
-      if (!entitySlugR) {
-        return json({ error: "validation_error", detail: "destination_entity_slug_required" }, 400);
+    let resolvedDestinationR;
+    try {
+      resolvedDestinationR = await resolveAdDestination(supabase, destinationR);
+    } catch (err) {
+      if (err instanceof AdDestinationError) {
+        return json({ error: err.code, detail: err.message }, err.status);
       }
-      const { data: eventRow } = await supabase
-        .from("business_public_events_view")
-        .select("id, brand_slug, slug, status")
-        .eq("brand_slug", brandSlugR)
-        .eq("slug", entitySlugR)
-        .in("status", ["scheduled", "live"])
-        .maybeSingle();
-      if (!eventRow) return json({ error: "destination_not_public" }, 422);
-      destUrlR = `${BUSINESS_WEB_ORIGIN}/e/${brandSlugR}/${entitySlugR}`;
-      destEventIdR = String(eventRow.id);
-    } else if (pageTypeR === "brand") {
-      const { data: brandRow } = await supabase
-        .from("business_public_brands_view")
-        .select("id, slug")
-        .eq("slug", brandSlugR)
-        .maybeSingle();
-      if (!brandRow) return json({ error: "destination_not_public" }, 422);
-      destUrlR = `${BUSINESS_WEB_ORIGIN}/b/${brandSlugR}`;
-    } else {
-      return json({ error: "destination_not_public", detail: "dest_page_type_not_supported_wp1" }, 422);
+      return json({ error: "destination_lookup_failed" }, 503);
     }
+    const destUrlR = resolvedDestinationR.canonical_url;
+    const destEventIdR = resolvedDestinationR.event_id;
 
     // (4) Creative validation (§5 — copy caps, Title-Case CTA enum, and the
     // §5.4 destination policy: display_url must match; NO OneLink can reach a
@@ -2493,12 +2445,20 @@ serve(async (req: Request): Promise<Response> => {
   if (!brandSlug) return json({ error: "validation_error", detail: "destination_brand_slug_required" }, 400);
 
   const creative = (body.creative ?? {}) as Record<string, unknown>;
+  const creativeKind = creative.kind === "video" ? "video" : "image";
+  const creativeLibraryId = typeof creative.creative_library_id === "string"
+    ? creative.creative_library_id.trim()
+    : "";
   const message = typeof creative.message === "string" ? creative.message.trim() : "";
   if (!message) return json({ error: "validation_error", detail: "creative_message_required" }, 400);
-  const imageUrl = typeof creative.image_url === "string" ? creative.image_url : undefined;
-  const imageHash = typeof creative.image_hash === "string" ? creative.image_hash : undefined;
-  const videoId = typeof creative.video_id === "string" ? creative.video_id : undefined;
-  if (!imageUrl && !imageHash && !videoId) {
+  let imageUrl = typeof creative.image_url === "string" ? creative.image_url : undefined;
+  let imageHash = typeof creative.image_hash === "string" ? creative.image_hash : undefined;
+  let videoId = typeof creative.video_id === "string" ? creative.video_id : undefined;
+  let videoThumbnailImageHash = typeof creative.video_thumbnail_image_hash === "string"
+    ? creative.video_thumbnail_image_hash
+    : undefined;
+  let metaCreativeLibraryRowId: string | null = null;
+  if (!imageUrl && !imageHash && !videoId && !creativeLibraryId) {
     return json({ error: "validation_error", detail: "creative_media_required" }, 400);
   }
 
@@ -2518,6 +2478,42 @@ serve(async (req: Request): Promise<Response> => {
     return json({ error: `${platform}_not_connected` }, 424);
   }
   const connection = conn as unknown as AdConnectionRow;
+
+  // Phase A video cannot accept a client-supplied provider id. Resolve the
+  // exact current-hash READY ref for this creative/account/lane.
+  if (creativeKind === "video") {
+    if (!creativeLibraryId) return json({ error: "video_preparation_required" }, 422);
+    const { data: libCreative } = await supabase
+      .from("ad_creatives")
+      .select("id, kind, status, content_hash")
+      .eq("id", creativeLibraryId)
+      .maybeSingle();
+    if (!libCreative || libCreative.kind !== "video" || libCreative.status !== "active" || !libCreative.content_hash) {
+      return json({ error: "creative_not_found" }, 422);
+    }
+    const { data: ref } = await supabase
+      .from("ad_creative_platform_refs")
+      .select("external_ref, external_ref_extra")
+      .eq("creative_id", creativeLibraryId)
+      .eq("platform", "meta")
+      .eq("lane", lane)
+      .eq("external_account_id", connection.external_account_id)
+      .eq("external_kind", "video")
+      .eq("content_hash", libCreative.content_hash)
+      .eq("status", "ready")
+      .maybeSingle();
+    const refExtra = ref?.external_ref_extra && typeof ref.external_ref_extra === "object"
+      ? ref.external_ref_extra as Record<string, unknown>
+      : {};
+    if (!ref?.external_ref || typeof refExtra.thumbnail_image_hash !== "string") {
+      return json({ error: "video_preparation_required" }, 422);
+    }
+    videoId = String(ref.external_ref);
+    videoThumbnailImageHash = refExtra.thumbnail_image_hash;
+    imageUrl = undefined;
+    imageHash = undefined;
+    metaCreativeLibraryRowId = String(libCreative.id);
+  }
 
   // Idempotency (A3 §A request_id): replay returns the existing row.
   if (requestId && !validateOnly) {
@@ -2626,37 +2622,17 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   // ── 6. Destination resolve — READ-ONLY, public + live only (§4.4b). ──────────
-  let destUrl: string;
-  let destEventId: string | null = null;
-  if (pageType === "event") {
-    if (!entitySlug) {
-      return json({ error: "validation_error", detail: "destination_entity_slug_required" }, 400);
+  let resolvedDestination;
+  try {
+    resolvedDestination = await resolveAdDestination(supabase, destination);
+  } catch (err) {
+    if (err instanceof AdDestinationError) {
+      return json({ error: err.code, detail: err.message }, err.status);
     }
-    // QA P3-6 (AC-4 "public + LIVE"): the view also exposes ended/cancelled
-    // events — paid traffic must never point at one.
-    const { data: eventRow } = await supabase
-      .from("business_public_events_view")
-      .select("id, brand_slug, slug, status")
-      .eq("brand_slug", brandSlug)
-      .eq("slug", entitySlug)
-      .in("status", ["scheduled", "live"])
-      .maybeSingle();
-    if (!eventRow) return json({ error: "destination_not_public" }, 422);
-    destUrl = `${BUSINESS_WEB_ORIGIN}/e/${brandSlug}/${entitySlug}`;
-    destEventId = String(eventRow.id);
-  } else if (pageType === "brand") {
-    const { data: brandRow } = await supabase
-      .from("business_public_brands_view")
-      .select("id, slug")
-      .eq("slug", brandSlug)
-      .maybeSingle();
-    if (!brandRow) return json({ error: "destination_not_public" }, 422);
-    destUrl = `${BUSINESS_WEB_ORIGIN}/b/${brandSlug}`;
-  } else {
-    // trip/venue public resolution has no server-side read model in WP1 —
-    // fail-close rather than guess (flagged in the WP1 report).
-    return json({ error: "destination_not_public", detail: "dest_page_type_not_supported_wp1" }, 422);
+    return json({ error: "destination_lookup_failed" }, 503);
   }
+  const destUrl = resolvedDestination.canonical_url;
+  const destEventId = resolvedDestination.event_id;
 
   const conversionDomain = conversionDomainFromUrl(destUrl);
   const adapter = getAdapter(platform);
@@ -2689,9 +2665,7 @@ serve(async (req: Request): Promise<Response> => {
     imageUrl,
     imageHash,
     videoId,
-    videoThumbnailImageHash: typeof creative.video_thumbnail_image_hash === "string"
-      ? creative.video_thumbnail_image_hash
-      : undefined,
+    videoThumbnailImageHash,
     callToActionType: typeof creative.call_to_action_type === "string"
       ? creative.call_to_action_type
       : "LEARN_MORE",
@@ -2849,6 +2823,7 @@ serve(async (req: Request): Promise<Response> => {
           ad_set_id: adSetRow.id,
           external_ad_id: created.externalAdId,
           external_creative_id: created.externalCreativeId,
+          ...(metaCreativeLibraryRowId ? { creative_id: metaCreativeLibraryRowId } : {}),
           name: adInput.name,
           status: "PAUSED",
           review_status: created.reviewStatus,

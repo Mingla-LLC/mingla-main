@@ -53,6 +53,11 @@ import {
   type CrawlerCheckResult,
   fetchCreativeBytes,
 } from "../_shared/adCreative.ts";
+import {
+  assertCreativeCdnConfigured,
+  CreativeTrustError,
+  probeTrustedVideoSources,
+} from "../_shared/adCreativePrepare.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -104,6 +109,15 @@ serve(async (req: Request): Promise<Response> => {
     .eq("status", "active")
     .maybeSingle();
   if (!adminRow) return json({ error: "forbidden" }, 403);
+
+  try {
+    assertCreativeCdnConfigured();
+  } catch (err) {
+    const code = err instanceof CreativeTrustError
+      ? err.code
+      : "creative_cdn_config_missing";
+    return json({ error: code }, 503);
+  }
 
   // ── Input validation (mirrors the DB CHECKs — fail-close before any fetch). ─
   const action = body.action ?? "record";
@@ -175,10 +189,24 @@ serve(async (req: Request): Promise<Response> => {
 
   // ── The A1-6 byte-probe (never trust admin-supplied dimensions). ────────────
   let probe: CreativeProbeResult;
+  let posterContentHash: string | null = null;
   try {
-    const bytes = await fetchCreativeBytes(probeUrl);
-    probe = await probeCreativeBytes(bytes);
+    if (kind === "video") {
+      const trusted = await probeTrustedVideoSources({
+        bunny_video_id: bunnyVideoId,
+        mp4_master_url: mp4MasterUrl,
+        poster_url: posterUrl,
+      });
+      probe = trusted.videoProbe;
+      posterContentHash = trusted.posterHash;
+    } else {
+      const bytes = await fetchCreativeBytes(probeUrl);
+      probe = await probeCreativeBytes(bytes);
+    }
   } catch (err) {
+    if (err instanceof CreativeTrustError) {
+      return json({ error: err.code, message: err.message }, err.status);
+    }
     if (err instanceof CreativeProbeError || err instanceof CreativeByteSourceError) {
       return json({ error: "probe_failed", detail: err.detail, message: err.message }, 422);
     }
@@ -264,15 +292,9 @@ serve(async (req: Request): Promise<Response> => {
     // Meta ad review DOWNLOADS image_url — strict (tier "fail" on block).
     crawler.push(await checkCreativeUrlCrawlerAccessible(sourceUrl, { strict: platforms.includes("meta") }));
   }
-  if (kind === "video") {
-    // TikTok UPLOAD_BY_URL and Meta advideos file_url fetch these server-side —
-    // warn tier (their robots behavior is not live-proven the way Meta images are).
-    crawler.push(await checkCreativeUrlCrawlerAccessible(probeUrl, { strict: false }));
-    if (posterUrl) crawler.push(await checkCreativeUrlCrawlerAccessible(posterUrl, { strict: false }));
-  }
-
   const validation = {
     content_hash: probe.contentHash,
+    poster_content_hash: posterContentHash,
     probe: {
       kind: probe.kind,
       mime_type: probe.mimeType,
@@ -318,6 +340,7 @@ serve(async (req: Request): Promise<Response> => {
       byte_size: probe.byteSize,
       has_audio: probe.hasAudio,
       content_hash: probe.contentHash,
+      poster_content_hash: posterContentHash,
       ai_generated: aiGenerated,
       variants,
       status: "active",

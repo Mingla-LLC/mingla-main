@@ -28,12 +28,24 @@ export const TARGETING_SEARCH_PROXY_ENABLED = true;
 export const BUDGET_PLAN_PREVIEW_ENDPOINT_ENABLED = false;
 
 /**
- * A4.g ad-preview step (Meta GET /{ad_id}/previews, TikTok
- * creative_ads_preview_create, Reddit preview_url) needs a preview edge fn
- * that does not exist. The Preview step draws the client-side safe-zone
- * overlay instead (blueprint §1.7a "where no API preview exists, draw one").
+ * Legacy all-platform switch retained OFF because a single boolean would
+ * falsely imply that every provider has a real preview. ISSUE-1184 adds the
+ * narrower, truthful source map below.
  */
 export const API_AD_PREVIEWS_ENABLED = false;
+
+/**
+ * ISSUE-1184 Phase A: real provider previews exist only for Meta and TikTok.
+ * Snapchat and Google remain explicitly labelled Mingla approximations;
+ * Reddit is outside this phase.
+ */
+export const VIDEO_API_AD_PREVIEWS_ENABLED = Object.freeze({
+  meta: true,
+  tiktok: true,
+  snapchat: false,
+  google: false,
+  reddit: false,
+});
 
 /**
  * A4.g frequency-cap control: Meta `frequency_control_specs` is writable only

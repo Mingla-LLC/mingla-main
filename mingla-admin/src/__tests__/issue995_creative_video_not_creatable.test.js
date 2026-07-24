@@ -37,25 +37,40 @@ const read = (p) => fs.readFileSync(p, "utf8");
 const ALL = ["meta", "tiktok", "snapchat", "google", "reddit"];
 const allPassing = ALL.map((platform) => ({ platform, ok: true, needsTranscode: false }));
 
-// ── P1: video is preview-only — nothing builds, everything is excluded ───────
-describe("ISSUE-995 rework · video ad create is not available yet (preview-only)", () => {
-  it("the video-create flag is OFF until #997 wires it", () => {
-    assert.equal(VIDEO_CREATE_ENABLED, false);
+// ── P1: #1184 narrows the former blanket block to exact READY platforms ──────
+describe("ISSUE-995 rework · Phase A video create remains platform-honest", () => {
+  it("video create is enabled only for Meta and Snapchat", () => {
+    assert.deepEqual(VIDEO_CREATE_ENABLED, {
+      meta: true,
+      snapchat: true,
+      tiktok: false,
+      google: false,
+      reddit: false,
+    });
   });
 
-  it("a video creative excludes EVERY funded channel — buildable is empty", () => {
+  it("only exact READY Meta/Snap rows become buildable", () => {
     const { buildable, excluded } = partitionFundedCreative({
       fundedPlatforms: ALL,
-      channels: allPassing, // even all-passing validation must not build a video
+      channels: allPassing,
       kind: "video",
+      preparationByPlatform: {
+        meta: { state: "ready" },
+        snapchat: { state: "ready" },
+        tiktok: { state: "ready" },
+      },
     });
-    assert.deepEqual(buildable, [], "no channel may build a video ad while create is unwired");
-    assert.deepEqual(excluded.map((e) => e.platform).sort(), [...ALL].sort());
-    for (const e of excluded) assert.equal(e.reason, "video_not_creatable");
+    assert.deepEqual(buildable, ["meta", "snapchat"]);
+    assert.deepEqual(excluded.map((e) => e.platform).sort(), ["google", "reddit", "tiktok"]);
   });
 
   it("the partition stays TOTAL for video (buildable ∪ excluded = funded)", () => {
-    const { buildable, excluded } = partitionFundedCreative({ fundedPlatforms: ALL, channels: allPassing, kind: "video" });
+    const { buildable, excluded } = partitionFundedCreative({
+      fundedPlatforms: ALL,
+      channels: allPassing,
+      kind: "video",
+      preparationByPlatform: { meta: { state: "ready" } },
+    });
     assert.equal(buildable.length + excluded.length, ALL.length);
   });
 });
@@ -73,7 +88,7 @@ describe("ISSUE-995 rework · a video funded to Google is never a fabricated suc
     });
     assert.equal(buildable.includes("google"), false, "Google video must not be buildable (no fake text-ad 'Created')");
     const g = excluded.find((e) => e.platform === "google");
-    assert.equal(g.reason, "video_not_creatable");
+    assert.equal(g.reason, "approximation_only");
   });
 
   it("the youtube_hosted check copy is honest — no fabricated 'we'll upload it for you'", () => {
@@ -118,20 +133,20 @@ describe("ISSUE-995 rework · component + page honesty wiring", () => {
   const stepCreative = read(path.join(ADMIN_SRC, "components/campaign-builder/StepCreative.jsx"));
   const page = read(path.join(ADMIN_SRC, "pages/CampaignBuilderPage.jsx"));
 
-  it("StepCreative labels the video option preview-only", () => {
-    assert.match(stepCreative, /Video \(preview only\)/);
+  it("StepCreative labels Phase A truth and embeds preparation", () => {
+    assert.match(stepCreative, /Video Phase A/);
+    assert.match(stepCreative, /VideoPreparationPanel/);
   });
 
-  it("StepCreative shows an unmissable 'not available yet' banner for video", () => {
-    assert.match(stepCreative, /Video ad creation isn't available yet/);
-    assert.match(stepCreative, /isVideo &&/);
+  it("StepCreative names the create-capable platforms", () => {
+    assert.match(stepCreative, /Meta and Snapchat can build after/);
   });
 
   it("CampaignBuilderPage passes creative.kind into the build partition", () => {
     assert.match(page, /kind:\s*creative\.kind/);
   });
 
-  it("CampaignBuilderPage gives video its own preview-only disabled reason", () => {
-    assert.match(page, /Video ad creation isn't available yet/);
+  it("CampaignBuilderPage gives video its preparation gate reason", () => {
+    assert.match(page, /Prepare at least one video platform/);
   });
 });

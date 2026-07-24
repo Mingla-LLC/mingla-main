@@ -40,6 +40,7 @@ export function buildLaunchSummary(input) {
     creative = null,
     copyCheck = { policyFindings: 0, copyHardBlocks: 0 },
     totalDailyCents = 0,
+    preparationByPlatform = {},
   } = input;
 
   // ISSUE-1002 [multi-destination fan-out] — the effective destination list. The
@@ -83,6 +84,17 @@ export function buildLaunchSummary(input) {
         statusLine: "Paused → will go live on Launch",
         objectiveLabel: objectiveLabelFor(row.platform),
         amber: row.amber ?? null,
+        videoReadiness: creative?.kind === "video"
+          ? row.platform === "meta"
+            ? preparationByPlatform.meta?.state === "ready"
+              ? "Video ready · real preview available"
+              : "Video not ready"
+            : row.platform === "snapchat"
+            ? preparationByPlatform.snapchat?.state === "ready"
+              ? "Video ready · Mingla approximation"
+              : "Video not ready"
+            : null
+          : null,
       });
     } else if (row.eligible) {
       blockedLines.push({ platform: row.platform, label: row.label, reason: "Not funded by the split." });
@@ -104,8 +116,15 @@ export function buildLaunchSummary(input) {
     ? `Checked: ${copyCheck.policyFindings} policy warning(s) — reviewed, warn-only.`
     : "Checked: no personal-attribute risk, no editorial flags";
 
+  const campaignCount = channelLines.length * destList.length;
   return {
-    headline: `Ready to create across ${channelLines.length} channel${channelLines.length === 1 ? "" : "s"} · ${dollars(totalDailyCents)}/day total`,
+    campaignCount,
+    headline: creative?.kind === "video"
+      ? `Ready to create ${campaignCount} paused video campaign${campaignCount === 1 ? "" : "s"} across ${channelLines.length} platform${channelLines.length === 1 ? "" : "s"}`
+      : `Ready to create across ${channelLines.length} channel${channelLines.length === 1 ? "" : "s"} · ${dollars(totalDailyCents)}/day total`,
+    primaryActionLabel: creative?.kind === "video"
+      ? `Create ${campaignCount} campaign${campaignCount === 1 ? "" : "s"} (paused)`
+      : "Create campaign (paused)",
     channels: channelLines,
     blocked: blockedLines,
     destinationLine: destList.length === 0
