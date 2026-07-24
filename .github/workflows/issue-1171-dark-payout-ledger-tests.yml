@@ -37,8 +37,11 @@ jobs:
           docker run --name issue1171-postgres \
             -e POSTGRES_PASSWORD=postgres \
             -d supabase/postgres:17.4.1.075
-          for attempt in {1..30}; do
-            if docker exec issue1171-postgres pg_isready -U postgres; then
+          for attempt in {1..90}; do
+            state="$(docker inspect --format \
+              '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' \
+              issue1171-postgres)"
+            if [ "$state" = "healthy" ]; then
               break
             fi
             sleep 1

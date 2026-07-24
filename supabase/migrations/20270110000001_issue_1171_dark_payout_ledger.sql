@@ -23,7 +23,7 @@ CREATE TABLE public.brand_payout_releases (
   event_key uuid GENERATED ALWAYS AS (
     coalesce(event_id,'00000000-0000-0000-0000-000000000000'::uuid)
   ) STORED,
-  event_date_id uuid REFERENCES public.event_dates(id) ON DELETE SET NULL,
+  event_date_id uuid REFERENCES public.event_dates(id) ON DELETE RESTRICT,
   occurrence_key text NOT NULL,
   surface text NOT NULL CHECK (surface IN ('order','rsvp_contribution','venue_reservation')),
   provider text NOT NULL CHECK (provider IN ('stripe','paystack')),
@@ -44,7 +44,8 @@ CREATE TABLE public.brand_payout_releases (
     CHECK (organiser_cash_delivered_cents >= 0),
   status text NOT NULL DEFAULT 'pending' CHECK (status IN (
     'pending','released','in_flight','blocked_kyc','blocked_balance','blocked_otp',
-    'blocked_over_cap','fee_unreconciled','cancelled_event','reanchored','failed'
+    'blocked_over_cap','fee_unreconciled','blocked_anchor',
+    'cancelled_event','reanchored','failed'
   )),
   stripe_payout_id text,
   paystack_transfer_code text,
@@ -355,12 +356,23 @@ DECLARE
   v_cutover timestamptz;
   v_status text;
   v_release_id uuid;
+  v_existing_release_id uuid;
   v_net integer;
 BEGIN
   IF p_source_type NOT IN ('order','rsvp_contribution','venue_reservation')
      OR p_provider NOT IN ('stripe','paystack') THEN
     RAISE EXCEPTION 'invalid_payout_source' USING ERRCODE = '22023';
   END IF;
+  -- Claim the globally unique money object before creating a release unit.
+  -- This serializes concurrent snapshots even when they disagree on release key.
+  PERFORM pg_advisory_xact_lock(
+    hashtextextended(p_source_type||':'||p_source_id::text,1171)
+  );
+  SELECT release_id INTO v_existing_release_id
+  FROM public.payout_release_items
+  WHERE source_type=p_source_type AND source_id=p_source_id;
+  IF FOUND THEN RETURN v_existing_release_id; END IF;
+
   SELECT payout_hold_cutover_at INTO v_cutover FROM public.brands
    WHERE id = p_brand_id FOR SHARE;
   IF v_cutover IS NULL OR p_finalized_at <= v_cutover THEN
@@ -431,13 +443,22 @@ CREATE OR REPLACE FUNCTION public.refresh_pending_payout_release_truth(
 ) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
 AS $fn$
-DECLARE v_release record; v_end_at timestamptz; v_reanchored integer:=0; v_cancelled integer:=0;
+DECLARE
+  v_release record;
+  v_end_at timestamptz;
+  v_reanchored integer:=0;
+  v_cancelled integer:=0;
+  v_blocked integer:=0;
 BEGIN
   FOR v_release IN
-    SELECT r.id,r.event_id,r.event_date_id,r.anchor_end_at,e.status event_status
+    SELECT r.id,r.event_id,r.event_date_id,r.anchor_end_at,r.status release_status,
+      e.status event_status
     FROM public.brand_payout_releases r
     JOIN public.events e ON e.id=r.event_id
-    WHERE r.status IN ('pending','blocked_kyc','blocked_balance','blocked_otp')
+    WHERE r.status IN (
+      'pending','blocked_kyc','blocked_balance','blocked_otp','blocked_over_cap',
+      'fee_unreconciled','blocked_anchor','reanchored'
+    )
     ORDER BY r.id FOR UPDATE OF r SKIP LOCKED
   LOOP
     IF v_release.event_status='cancelled' THEN
@@ -449,15 +470,28 @@ BEGIN
     END IF;
     SELECT ed.end_at INTO v_end_at FROM public.event_dates ed
     WHERE ed.id=v_release.event_date_id AND ed.event_id=v_release.event_id;
-    IF v_end_at IS NOT NULL AND v_end_at IS DISTINCT FROM v_release.anchor_end_at THEN
+    IF v_end_at IS NULL THEN
       UPDATE public.brand_payout_releases
-      SET anchor_end_at=v_end_at,releasable_at=v_end_at+interval '3 days',updated_at=p_now
+      SET status='blocked_anchor',error_message='missing_live_occurrence_truth',
+          updated_at=p_now
       WHERE id=v_release.id;
-      v_reanchored:=v_reanchored+1;
+      v_blocked:=v_blocked+1;
+    ELSIF v_end_at IS DISTINCT FROM v_release.anchor_end_at
+       OR v_release.release_status='blocked_anchor' THEN
+      UPDATE public.brand_payout_releases
+      SET anchor_end_at=v_end_at,releasable_at=v_end_at+interval '3 days',
+          status=CASE WHEN status='blocked_anchor' THEN 'pending' ELSE status END,
+          error_message=CASE WHEN status='blocked_anchor' THEN NULL ELSE error_message END,
+          updated_at=p_now
+      WHERE id=v_release.id;
+      IF v_end_at IS DISTINCT FROM v_release.anchor_end_at THEN
+        v_reanchored:=v_reanchored+1;
+      END IF;
     END IF;
   END LOOP;
   RETURN jsonb_build_object(
-    'as_of',p_now,'reanchored',v_reanchored,'cancelled',v_cancelled
+    'as_of',p_now,'reanchored',v_reanchored,'cancelled',v_cancelled,
+    'blocked_missing_anchor',v_blocked
   );
 END;
 $fn$;
@@ -483,7 +517,11 @@ BEGIN
     v_release.organiser_cash_delivered_cents,v_maturity,'postpone:'||v_release.id
   )
   ON CONFLICT (origin_release_id,kind) DO UPDATE SET
-    maturity_at=EXCLUDED.maturity_at,updated_at=now()
+    maturity_at=EXCLUDED.maturity_at,
+    recovered_cents=CASE
+      WHEN organiser_payout_debts.status='closed' THEN 0
+      ELSE organiser_payout_debts.recovered_cents END,
+    status='open',closed_at=NULL,updated_at=now()
   RETURNING id INTO v_debt_id;
   INSERT INTO public.payout_debt_events(
     debt_id,event_kind,amount_cents,anchor_at,idempotency_key
@@ -503,7 +541,12 @@ CREATE OR REPLACE FUNCTION public.sync_post_release_postponement_debts(
 ) RETURNS integer
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
 AS $fn$
-DECLARE v_release record; v_anchor timestamptz; v_count integer:=0;
+DECLARE
+  v_release record;
+  v_anchor timestamptz;
+  v_maturity timestamptz;
+  v_debt public.organiser_payout_debts;
+  v_count integer:=0;
 BEGIN
   FOR v_release IN
     SELECT r.* FROM public.brand_payout_releases r
@@ -513,9 +556,25 @@ BEGIN
   LOOP
     SELECT ed.end_at INTO v_anchor FROM public.event_dates ed
     WHERE ed.id=v_release.event_date_id AND ed.event_id=v_release.event_id;
-    IF v_anchor IS NOT NULL
-       AND v_anchor+interval '3 days'>p_now
-       AND v_anchor>v_release.anchor_end_at THEN
+    IF v_anchor IS NULL THEN CONTINUE; END IF;
+    v_maturity:=v_anchor+interval '3 days';
+    SELECT * INTO v_debt FROM public.organiser_payout_debts
+    WHERE origin_release_id=v_release.id
+      AND kind='post_release_postponement';
+
+    IF NOT FOUND THEN
+      IF v_anchor>v_release.anchor_end_at AND v_maturity>p_now THEN
+        PERFORM public.open_post_release_postponement_debt(v_release.id,v_anchor);
+        v_count:=v_count+1;
+      END IF;
+    ELSIF v_debt.status='open'
+       AND v_maturity IS DISTINCT FROM v_debt.maturity_at THEN
+      PERFORM public.open_post_release_postponement_debt(v_release.id,v_anchor);
+      v_count:=v_count+1;
+    ELSIF v_debt.status='closed'
+       AND v_maturity>v_debt.maturity_at AND v_maturity>p_now THEN
+      -- A later edit after a completed lifecycle legitimately reopens the same
+      -- debt identity. Same/earlier anchors remain closed.
       PERFORM public.open_post_release_postponement_debt(v_release.id,v_anchor);
       v_count:=v_count+1;
     END IF;
@@ -552,11 +611,29 @@ BEGIN
       ON CONFLICT(idempotency_key) DO NOTHING;
       IF FOUND THEN
         UPDATE public.organiser_payout_debts
-        SET recovered_cents=recovered_cents+v_take,updated_at=p_now
+        SET recovered_cents=recovered_cents+v_take,
+            status=CASE
+              WHEN kind<>'post_release_postponement'
+               AND recovered_cents+v_take=principal_cents THEN 'closed'
+              ELSE status END,
+            closed_at=CASE
+              WHEN kind<>'post_release_postponement'
+               AND recovered_cents+v_take=principal_cents THEN p_now
+              ELSE closed_at END,
+            updated_at=p_now
          WHERE id=v_debt.id;
         INSERT INTO public.payout_debt_events(debt_id,event_kind,amount_cents,release_id,idempotency_key)
         VALUES(v_debt.id,'future_value_reserved',v_take,p_release_id,
           'debt-reserve:'||v_debt.id||':'||p_release_id) ON CONFLICT DO NOTHING;
+        IF v_debt.kind<>'post_release_postponement'
+           AND v_debt.recovered_cents+v_take=v_debt.principal_cents THEN
+          INSERT INTO public.payout_debt_events(
+            debt_id,event_kind,amount_cents,release_id,idempotency_key,created_at
+          ) VALUES(
+            v_debt.id,'cleared',v_debt.principal_cents,p_release_id,
+            'permanent-cleared:'||v_debt.id,p_now
+          ) ON CONFLICT(idempotency_key) DO NOTHING;
+        END IF;
         v_available:=v_available-v_take; v_total:=v_total+v_take;
       END IF;
     END IF;
@@ -619,10 +696,15 @@ BEGIN
         v_debt.principal_cents-v_debt.recovered_cents,'postpone-close:'||v_debt.id
       ) ON CONFLICT(idempotency_key) DO NOTHING;
     END IF;
-    UPDATE public.organiser_payout_debts SET status='closed',closed_at=p_now,updated_at=p_now
+    UPDATE public.organiser_payout_debts SET
+      recovered_cents=0,status='closed',closed_at=p_now,updated_at=p_now
      WHERE id=v_debt.id;
     INSERT INTO public.payout_debt_events(debt_id,event_kind,amount_cents,anchor_at,idempotency_key)
-    VALUES(v_debt.id,'cleared',v_debt.recovered_cents,v_debt.maturity_at,'postpone-cleared:'||v_debt.id)
+    VALUES(
+      v_debt.id,'cleared',v_debt.recovered_cents,v_debt.maturity_at,
+      'postpone-cleared:'||v_debt.id||':'||
+        extract(epoch from v_debt.maturity_at)::bigint
+    )
     ON CONFLICT DO NOTHING;
     v_count:=v_count+1;
   END LOOP;
@@ -671,10 +753,13 @@ BEGIN
 
   INSERT INTO public.organiser_payout_debts(
     brand_id,currency,origin_release_id,kind,principal_cents,recovered_cents,
-    idempotency_key,opened_at,updated_at
+    status,idempotency_key,opened_at,updated_at,closed_at
   ) VALUES(
     v_release.brand_id,v_release.currency,p_origin_release_id,p_kind,p_amount_cents,
-    v_recovered_overlap,'permanent:'||p_kind||':'||p_origin_release_id,p_now,p_now
+    v_recovered_overlap,
+    CASE WHEN v_recovered_overlap=p_amount_cents THEN 'closed' ELSE 'open' END,
+    'permanent:'||p_kind||':'||p_origin_release_id,p_now,p_now,
+    CASE WHEN v_recovered_overlap=p_amount_cents THEN p_now ELSE NULL END
   ) RETURNING id INTO v_permanent_id;
 
   IF v_overlap>0 THEN
@@ -709,6 +794,14 @@ BEGIN
       v_temp.id,'cancellation_converted',v_overlap,p_origin_release_id,
       'postpone-convert:'||v_temp.id||':'||p_kind,p_now
     );
+  END IF;
+  IF v_recovered_overlap=p_amount_cents THEN
+    INSERT INTO public.payout_debt_events(
+      debt_id,event_kind,amount_cents,release_id,idempotency_key,created_at
+    ) VALUES(
+      v_permanent_id,'cleared',p_amount_cents,p_origin_release_id,
+      'permanent-cleared:'||v_permanent_id,p_now
+    ) ON CONFLICT(idempotency_key) DO NOTHING;
   END IF;
   RETURN v_permanent_id;
 END;
