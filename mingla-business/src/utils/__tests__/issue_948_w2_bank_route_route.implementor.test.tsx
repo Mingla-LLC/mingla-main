@@ -76,6 +76,55 @@ jest.mock("../../hooks/useStartBrandStripeOnboarding", () => ({
   }),
 }));
 
+jest.mock("../../services/brandStripeService", () => ({
+  startBrandStripeOnboarding: (
+    brandId: string,
+    returnUrl: string,
+    country?: string,
+  ) => mintOnboarding({ brandId, returnUrl, country }),
+}));
+
+jest.mock("@tanstack/react-query", () => ({
+  useMutation: ({
+    mutationFn,
+    onError,
+    onSuccess,
+  }: {
+    mutationFn: (input: {
+      brandId: string;
+      country?: string;
+      returnUrl: string;
+    }) => Promise<unknown>;
+    onError?: (
+      error: Error,
+      input: { brandId: string; country?: string; returnUrl: string },
+    ) => void;
+    onSuccess?: (
+      data: unknown,
+      input: { brandId: string; country?: string; returnUrl: string },
+    ) => void;
+  }) => ({
+    isPending: false,
+    mutateAsync: async (input: {
+      brandId: string;
+      country?: string;
+      returnUrl: string;
+    }) => {
+      try {
+        const data = await mutationFn(input);
+        onSuccess?.(data, input);
+        return data;
+      } catch (error) {
+        onError?.(error as Error, input);
+        throw error;
+      }
+    },
+  }),
+  useQueryClient: () => ({
+    invalidateQueries: jest.fn(),
+  }),
+}));
+
 jest.mock("../../hooks/useBrandStripeCountries", () => ({
   useBrandStripeCountries: () => ({
     data: [],

@@ -96,11 +96,7 @@ import {
 } from "../../utils/brandStripeUiState";
 import { BrandStripeCountryLockedError } from "../../services/brandStripeService";
 import { BrandPaystackOnboardView } from "./BrandPaystackOnboardView";
-import {
-  buildBankConnectWebReturnUrl,
-  isSameOriginConnectOnboardingUrl,
-  resolveBankConnectRail,
-} from "../../utils/bankConnectFunnel";
+import { resolveBankConnectRail } from "../../utils/bankConnectRail";
 
 const RETURN_DEEP_LINK = "mingla-business://onboarding-complete" as const;
 const DEFAULT_COUNTRY = "GB" as const;
@@ -113,6 +109,38 @@ const PAYSTACK_PICKER_OPTIONS = [
 // B2a Path C V3 forensics C-3: was support@mingla.com — domain not Mingla-owned.
 const SUPPORT_EMAIL = "support@usemingla.com" as const;
 const SUPPORT_MAILTO = `mailto:${SUPPORT_EMAIL}` as const;
+
+// #948 W2 parity: keep the legacy route's web URL guards local so its screen
+// graph does not share the bank-first route-only funnel module. These checks
+// intentionally mirror the canonical, directly-tested bankConnectFunnel rules.
+function buildLegacyWebReturnUrl(origin: string, brandId: string): string {
+  const parsedOrigin = new URL(origin);
+  if (parsedOrigin.protocol !== "https:") {
+    throw new Error("Bank setup requires a secure HTTPS page.");
+  }
+  return new URL(
+    `/brand/${encodeURIComponent(brandId)}/payments`,
+    parsedOrigin.origin,
+  ).toString();
+}
+
+function isSafeLegacyOnboardingUrl(
+  onboardingUrl: string,
+  expectedOrigin: string,
+): boolean {
+  try {
+    const parsed = new URL(onboardingUrl);
+    const origin = new URL(expectedOrigin);
+    return (
+      parsed.protocol === "https:" &&
+      parsed.origin === origin.origin &&
+      parsed.pathname === "/connect-onboarding" &&
+      (parsed.searchParams.get("session")?.trim().length ?? 0) > 0
+    );
+  } catch {
+    return false;
+  }
+}
 
 type ViewState =
   | "permission-denied"
@@ -399,7 +427,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
     try {
       const returnUrl =
         Platform.OS === "web"
-          ? buildBankConnectWebReturnUrl(window.location.origin, brand.id)
+          ? buildLegacyWebReturnUrl(window.location.origin, brand.id)
           : RETURN_DEEP_LINK;
       const result = await onboardMutation.mutateAsync({
         brandId: brand.id,
@@ -414,7 +442,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
 
       if (Platform.OS === "web") {
         if (
-          !isSameOriginConnectOnboardingUrl(
+          !isSafeLegacyOnboardingUrl(
             result.onboarding_url,
             window.location.origin,
           )

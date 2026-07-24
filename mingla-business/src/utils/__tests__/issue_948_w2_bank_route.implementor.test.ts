@@ -4,9 +4,9 @@ import { join } from "node:path";
 import {
   buildBankConnectWebReturnUrl,
   isSameOriginConnectOnboardingUrl,
-  resolveBankConnectRail,
   startStripeWebBankConnect,
 } from "../bankConnectFunnel";
+import { resolveBankConnectRail } from "../bankConnectRail";
 
 const BRAND_ID = "2b7c8f6a-1111-4a22-8333-123456789abc";
 const USER_ID = "79f45786-2222-4b33-8444-123456789abc";
@@ -154,7 +154,7 @@ describe("#948 W2 implementor — rail pre-resolution", () => {
 });
 
 describe("#948 W2 implementor — production route wiring", () => {
-  const routeSource = readFileSync(
+  const routeShellSource = readFileSync(
     join(
       __dirname,
       "..",
@@ -164,6 +164,31 @@ describe("#948 W2 implementor — production route wiring", () => {
       "brand",
       "[id]",
       "connect.web.tsx",
+    ),
+    "utf8",
+  );
+  const routeBodySource = readFileSync(
+    join(
+      __dirname,
+      "..",
+      "..",
+      "components",
+      "brand",
+      "BrandBankConnectBody.web.tsx",
+    ),
+    "utf8",
+  );
+  const routeSource = `${routeShellSource}\n${routeBodySource}`;
+  const nativeRouteSource = readFileSync(
+    join(
+      __dirname,
+      "..",
+      "..",
+      "..",
+      "app",
+      "brand",
+      "[id]",
+      "connect.tsx",
     ),
     "utf8",
   );
@@ -207,16 +232,56 @@ describe("#948 W2 implementor — production route wiring", () => {
     expect(routeSource).not.toContain("MinglaToSAcceptanceGate");
   });
 
+  test("route shell lazily loads the full body while native redirects to the legacy owner", () => {
+    expect(routeShellSource).toContain("React.lazy(");
+    expect(routeShellSource).toContain(
+      'import("../../../src/components/brand/BrandBankConnectBody.web")',
+    );
+    expect(routeShellSource).toContain("<Suspense");
+    expect(routeShellSource).toContain("<ConnectLoadingFallback />");
+    expect(routeShellSource).not.toContain("useStartBrandStripeOnboarding");
+    expect(routeShellSource).not.toContain("BrandPaystackOnboardView");
+    expect(routeBodySource).not.toContain(
+      'from "../../hooks/useStartBrandStripeOnboarding"',
+    );
+    expect(routeBodySource).toContain(
+      "startBrandStripeOnboarding(brandId, returnUrl, country)",
+    );
+    expect(routeBodySource).toContain(
+      "brandStripeStatusKeys.detail(brandId)",
+    );
+    expect(routeBodySource).toContain("brandKeys.detail(brandId)");
+    expect(routeBodySource).toContain("brandKeys.lists()");
+
+    expect(nativeRouteSource).toContain("<Redirect");
+    expect(nativeRouteSource).toContain(
+      "/brand/${encodeURIComponent(brandId)}/payments/onboard",
+    );
+    expect(nativeRouteSource).toContain('href="/(tabs)/account"');
+    expect(nativeRouteSource).not.toContain(
+      'export { default } from "./payments/onboard"',
+    );
+  });
+
   test("existing BrandOnboardView splits web same-tab handoff from unchanged native auth-session handoff", () => {
     expect(existingOnboardSource).toContain('Platform.OS === "web"');
     expect(existingOnboardSource).toContain(
-      "buildBankConnectWebReturnUrl(window.location.origin, brand.id)",
+      "buildLegacyWebReturnUrl(window.location.origin, brand.id)",
     );
     expect(existingOnboardSource).toContain(
       "window.location.assign(result.onboarding_url)",
     );
     expect(existingOnboardSource).toMatch(
       /WebBrowser\.openAuthSessionAsync\(\s*result\.onboarding_url,\s*RETURN_DEEP_LINK,\s*\)/,
+    );
+    expect(existingOnboardSource).toContain(
+      'parsed.pathname === "/connect-onboarding"',
+    );
+    expect(existingOnboardSource).toContain(
+      'parsed.origin === origin.origin',
+    );
+    expect(existingOnboardSource).not.toContain(
+      'from "../../utils/bankConnectFunnel"',
     );
   });
 });

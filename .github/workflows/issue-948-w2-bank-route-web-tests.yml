@@ -10,9 +10,11 @@ on:
     paths:
       - "mingla-business/app/brand/**/connect.tsx"
       - "mingla-business/app/brand/**/connect.web.tsx"
+      - "mingla-business/src/components/brand/BrandBankConnectBody.web.tsx"
       - "mingla-business/src/components/brand/BrandOnboardView.tsx"
       - "mingla-business/src/components/brand/BrandStripeCountryPicker.tsx"
       - "mingla-business/src/utils/bankConnectFunnel.ts"
+      - "mingla-business/src/utils/bankConnectRail.ts"
       - "mingla-business/src/utils/__tests__/issue_948_w2_bank_route.implementor.test.ts"
       - "mingla-business/src/utils/__tests__/issue_948_w2_bank_route_route.implementor.test.tsx"
       - "mingla-business/src/utils/__tests__/issue_948_w2_bank_route.tester.test.ts"
@@ -22,9 +24,11 @@ on:
     paths:
       - "mingla-business/app/brand/**/connect.tsx"
       - "mingla-business/app/brand/**/connect.web.tsx"
+      - "mingla-business/src/components/brand/BrandBankConnectBody.web.tsx"
       - "mingla-business/src/components/brand/BrandOnboardView.tsx"
       - "mingla-business/src/components/brand/BrandStripeCountryPicker.tsx"
       - "mingla-business/src/utils/bankConnectFunnel.ts"
+      - "mingla-business/src/utils/bankConnectRail.ts"
       - "mingla-business/src/utils/__tests__/issue_948_w2_bank_route.implementor.test.ts"
       - "mingla-business/src/utils/__tests__/issue_948_w2_bank_route_route.implementor.test.tsx"
       - "mingla-business/src/utils/__tests__/issue_948_w2_bank_route.tester.test.ts"
