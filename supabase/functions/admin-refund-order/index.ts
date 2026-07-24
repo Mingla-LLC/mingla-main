@@ -175,15 +175,14 @@ serve(async (req: Request): Promise<Response> => {
   if (!adminRow) return json({ error: "forbidden" }, 403);
 
   // ── Step 1: validate + insert the pending refund row (service_role twin). ────
-  const { data: pendingResult, error: pendingError } = await supabase.rpc(
-    "admin_refund_order",
-    {
-      p_order_id: orderId,
-      p_lines: lines,
-      p_reason: reason,
-      p_idempotency_key: idempotencyKey,
-    },
-  );
+  const pendingArgs = {
+    p_order_id: orderId,
+    p_lines: lines,
+    p_reason: reason,
+    p_idempotency_key: idempotencyKey,
+  };
+  const pendingResponse = await supabase.rpc("admin_refund_order", pendingArgs);
+  const { data: pendingResult, error: pendingError } = pendingResponse;
 
   if (pendingError || !pendingResult) {
     const mapped = mapRpcErrorToHttp(pendingError?.message ?? "rpc_failed");
