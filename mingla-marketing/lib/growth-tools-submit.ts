@@ -431,19 +431,42 @@ export interface EventForecast {
   confidence: 'low' | 'medium' | 'high'
   headline_read: string
 }
-export interface EventPaidPlan {
-  budget: number
+export interface EventFreePlan {
+  kind: 'free_budget'
   currency: string
+  budget: number
   cpc: number
   cpc_source: 'researched' | 'estimated'
+  benchmarks: { cpc: number; landing_to_rsvp_pct: number; show_rate_pct: number }
   clicks_low: number
   clicks_high: number
-  funnel: Array<{ step: string; rate: number }>
   attendees_low: number
   attendees_high: number
   cost_per_attendee_low: number | null
   cost_per_attendee_high: number | null
+  read: string
 }
+export interface EventProfitPlan {
+  kind: 'paid_optimized'
+  currency: string
+  ticket_price: number
+  cpc: number
+  cpc_source: 'researched' | 'estimated'
+  benchmarks: { cpc: number; landing_to_ticket_pct: number; show_rate_pct: number }
+  recommended_budget: number
+  ad_tickets_low: number
+  ad_tickets_high: number
+  ad_attendees_low: number
+  ad_attendees_high: number
+  cost_per_ticket: number | null
+  cost_pct_of_ticket: number | null
+  ad_revenue: number
+  ad_profit: number
+  roas: number | null
+  ads_worth_it: boolean
+  read: string
+}
+export type EventPlan = EventFreePlan | EventProfitPlan
 export interface EventFactor {
   key?: string
   label: string
@@ -480,6 +503,7 @@ export interface EventListingPreview {
   vibe_tags: string[]
   why_go: string[]
   best_for: string[]
+  cover_url?: string
 }
 export interface EventReport {
   event: {
@@ -497,7 +521,7 @@ export interface EventReport {
     lineup: string | null
   }
   forecast: EventForecast
-  paid_plan: EventPaidPlan
+  plan: EventPlan
   factors: EventFactor[]
   competitors: EventCompetitor[]
   comparables: EventComparable[]
@@ -588,6 +612,9 @@ export interface EventPreviewRender {
   vibe_tags: string[]
   why_go: string[]
   best_for: string[]
+  cover_url?: string
+  ticket_price?: number
+  currency?: string
 }
 export async function fetchEventPreview(
   runId: string,

@@ -78,11 +78,15 @@ function buildRender(report: Record<string, unknown>) {
 function buildEventRender(report: Record<string, unknown>) {
   const event = asRecord(report.event);
   const lp = asRecord(report.listing_preview);
+  const coverUrl = asString(lp.cover_url);
   return {
     kind: "event" as const,
     title: (asString(lp.title) || asString(event.title)).slice(0, 120) ||
       "Your event",
     tagline: asString(lp.tagline).slice(0, 200),
+    cover_url: /^https?:\/\//i.test(coverUrl) ? coverUrl : "",
+    ticket_price: typeof event.ticket_price === "number" ? event.ticket_price : 0,
+    currency: asString(event.currency).slice(0, 3) || "USD",
     city: asString(event.city).slice(0, 80),
     venue_name: asString(event.venue_name).slice(0, 120),
     category: asString(event.category).slice(0, 60),
