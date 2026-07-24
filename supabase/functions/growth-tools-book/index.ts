@@ -240,7 +240,10 @@ async function sendResend(input: {
     console.error("[growth-tools-book] RESEND_API_KEY missing — skipping email");
     return false;
   }
-  const sender = EMAIL_SENDERS.system;
+  // #1154 — the growth-tools funnel gets its own no-reply identity instead of the
+  // shared `system` sender (a payments@ identity in prod). reply_to below still
+  // routes replies (to the lead / support@).
+  const sender = EMAIL_SENDERS.noreply;
   try {
     assertNotResendSandbox(sender);
   } catch (e) {

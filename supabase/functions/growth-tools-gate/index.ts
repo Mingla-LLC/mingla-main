@@ -243,16 +243,20 @@ export function buildEventSummaryEmail(
 ): { subject: string; preheader: string; bodyHtml: string; text: string } {
   const event = asRecord(report.event);
   const forecast = asRecord(report.forecast);
-  const plan = asRecord(report.paid_plan);
+  // #1100 renamed `paid_plan` → `plan` (a free|paid union); #1154 reads the
+  // right one so the ad-spend bullet stops silently dropping. Paid plans carry
+  // recommended_budget + ad_attendees_low/high; free plans budget + attendees_*.
+  const plan = asRecord(report.plan);
+  const isPaidPlan = asString(plan.kind) === "paid_optimized";
   const title = asString(event.title) || "your event";
   const cur = asString(event.currency) || "USD";
   const lo = asNumber(forecast.total_low);
   const hi = asNumber(forecast.total_high);
   const range = lo !== null && hi !== null ? `${lo}–${hi}` : "?";
   const headline = asString(forecast.headline_read);
-  const budget = asNumber(plan.budget);
-  const attLo = asNumber(plan.attendees_low);
-  const attHi = asNumber(plan.attendees_high);
+  const budget = isPaidPlan ? asNumber(plan.recommended_budget) : asNumber(plan.budget);
+  const attLo = isPaidPlan ? asNumber(plan.ad_attendees_low) : asNumber(plan.attendees_low);
+  const attHi = isPaidPlan ? asNumber(plan.ad_attendees_high) : asNumber(plan.attendees_high);
   const competitors = Array.isArray(report.competitors)
     ? (report.competitors as unknown[]).length
     : 0;
@@ -267,7 +271,9 @@ export function buildEventSummaryEmail(
   const inside: string[] = [];
   if (budget !== null && budget > 0 && attLo !== null && attHi !== null) {
     inside.push(
-      `Your ad-spend plan — what ${budget} ${cur} can add (~${attLo}–${attHi} more people)`,
+      isPaidPlan
+        ? `Your profit-max ad plan — spend ~${budget} ${cur} to add ~${attLo}–${attHi} more people`
+        : `Your ad-spend plan — what ${budget} ${cur} can add (~${attLo}–${attHi} more people)`,
     );
   }
   if (competitors > 0) {
@@ -1175,7 +1181,10 @@ export async function handler(req: Request): Promise<Response> {
       console.error("[growth-tools-gate] RESEND_API_KEY missing");
       return json({ error: "email_failed" }, 502);
     }
-    const sender = EMAIL_SENDERS.system;
+    // #1154 — the growth-tools funnel gets its own no-reply identity instead of
+    // the shared `system` sender (a payments@ identity in prod). reply_to below
+    // still routes replies to support@.
+    const sender = EMAIL_SENDERS.noreply;
     try {
       assertNotResendSandbox(sender);
     } catch (e) {
