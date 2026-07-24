@@ -100,7 +100,7 @@ export function AdEnginePage() {
     description: "",
     image_url: "",
     call_to_action_type: "BUY_TICKETS",
-    ai_generated: true,
+    ai_generated: false,
     validate_only: false,
   });
   const [submitting, setSubmitting] = useState(false);

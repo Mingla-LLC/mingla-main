@@ -125,8 +125,13 @@ its status with the company marketing stack described in this document.
 
 ### Paid ads pipeline
 
-- Production pipeline: **Higgsfield → Remotion → Magnific** (AI-generative footage → programmatic
-  motion graphics / real-UI animation → upscale/finish).
+- Production pipeline: **Envato stock → Remotion** by default. The cinematic director supplies
+  exact search requirements, Seth manually downloads/licenses the chosen clips, and every ad is
+  assembled and rendered in Remotion. **Magnific is opt-in only**: use it solely when Seth
+  explicitly requests generated media for the current project or shot, then finish in Remotion.
+  Higgsfield, Seedance, and Soul are retired from production.
+- Creative disclosure follows the delivered pixels: stock/real UI + Remotion defaults to
+  `ai_generated=false`; a creative containing materially Magnific-generated visuals uses `true`.
 - Finished ads live in `~/Desktop/Mingla Ads/` — one folder per ad.
 - Channel infrastructure (Meta, TikTok, Reddit, Snap, Google) is provisioned with tokens, and the
   measurement layer (pixels + CAPI) is live — but as of this writing **no channel can

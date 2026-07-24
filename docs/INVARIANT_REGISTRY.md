@@ -7,6 +7,16 @@
 
 ---
 
+## ACTIVE — issue #1162 (stock-first creative provenance — TESTER PASS 2026-07-24)
+
+### I-1162-STOCK-FIRST-CREATIVE-PROVENANCE (ACTIVE)
+- **Rule:** Mingla cinematic ad production starts with Seth-licensed Envato stock, never invokes Magnific without Seth's explicit request, finishes every ad in Remotion, and defaults creative provenance to non-AI. An explicit `true` remains preserved through Meta `self_ai_disclosure = "OPT_IN"`.
+- **Enforcement:** the CI-wired implementor and tester ISSUE-1162 source-regression suites plus local cinematic-skill validation and Codex/Claude semantic parity audit.
+- **Regression test:** `mingla-admin/src/__tests__/issue1162_stock_first_ai_defaults.test.js` proves both admin defaults, the omitted/false/true upload matrix, the Meta exact-true mapping, and the canonical stock-first workflow. `mingla-admin/src/__tests__/issue1162_stock_first_ai_defaults.tester_adversarial.test.js` independently proves the negative permission boundary, mandatory Remotion finish, deliberate operator opt-in, malformed-input fallback, and exact-true terminal disclosure. Both are explicitly registered in the PR-blocking ISSUE-979 workflow. Append-only.
+- **Established:** ACTIVE 2026-07-24 at issue #1162 TESTER PASS; both independent guards proven fails-on-revert/pass-on-restore.
+
+---
+
 ## ACTIVE — issue #1130 (postcss pinned forward via overrides so a vulnerable transitive can't unlock a framework-major parent — CLOSED 2026-07-24)
 
 > Dependabot repeatedly tried to smuggle the banned `expo 54 → 57` upgrade (4th recurrence: #925 / ORCH-1398 / #1051 / #1053) because a vulnerable transitive `postcss` (< 8.5.10) was only reachable by unlocking the editable framework parent — so the `ignore` rule keyed on `expo` was structurally never consulted (the update's subject is `postcss`). #1130 pins `postcss` forward via a top-level npm `overrides` in `app-mobile` + `mingla-business` + `mingla-marketing` (#1135), clearing the advisory without moving any framework version, so the drag can no longer be generated. Enforced by two independent append-only strict-grep gates.
