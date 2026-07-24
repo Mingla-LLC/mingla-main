@@ -1,0 +1,99 @@
+name: Issue 1175 Paystack refunds
+
+on:
+  pull_request:
+    paths:
+      - "supabase/functions/_shared/paystackRefunds.ts"
+      - "supabase/functions/_shared/paystackRefundRouter.ts"
+      - "supabase/functions/refund-order/**"
+      - "supabase/functions/admin-refund-order/**"
+      - "supabase/functions/cancel-trip-booking/**"
+      - "supabase/functions/venue-reservation-cancel/**"
+      - "supabase/functions/paystack-webhook/**"
+      - "mingla-admin/src/services/adminMoneyActService.js"
+      - "mingla-admin/src/pages/BusinessOrdersPage.jsx"
+      - "mingla-admin/src/__tests__/issue1175_admin_refund_idempotency.test.js"
+      - "supabase/migrations/20270110000006_issue_1175_paystack_refunds.sql"
+      - "supabase/migrations/__tests__/issue_1175_paystack_refunds.test.ts"
+      - "supabase/migrations/__tests__/issue_1175_immutable_manifest_pg17.test.sql"
+      - ".github/workflows/issue-1175-paystack-refunds-tests.yml"
+
+jobs:
+  issue-1175-paystack-refunds:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Check handlers
+        run: >-
+          deno check
+          supabase/functions/refund-order/index.ts
+          supabase/functions/admin-refund-order/index.ts
+          supabase/functions/cancel-trip-booking/index.ts
+          supabase/functions/venue-reservation-cancel/index.ts
+          supabase/functions/paystack-webhook/index.ts
+      - name: Run issue 1175 regression contract
+        run: >-
+          deno test --allow-read --allow-env
+          supabase/functions/refund-order/__tests__/issue_1175_paystack_refunds.test.ts
+          supabase/functions/refund-order/__tests__/issue_1175_rework_contract.test.ts
+          supabase/functions/refund-order/__tests__/issue_1175_processed_replay_debt_adversarial.test.ts
+          supabase/functions/refund-order/__tests__/issue_1175_failure_boundary_rework.test.ts
+          supabase/functions/refund-order/__tests__/issue_1175_immutable_manifest_runtime.test.ts
+          supabase/migrations/__tests__/issue_1175_paystack_refunds.test.ts
+      - name: Run Admin refund intent idempotency contract
+        run: node --test mingla-admin/src/__tests__/issue1175_admin_refund_idempotency.test.js
+
+  issue-1175-pg17:
+    name: "Issue 1175 executable manifest proof (PG17)"
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ format('issue-1175-ci-{0}', github.run_id) }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for PostgreSQL 17
+        env:
+          PGPASSWORD: ${{ format('issue-1175-ci-{0}', github.run_id) }}
+        run: |
+          for i in {1..90}; do
+            if psql -h localhost -U postgres -d postgres -Atc \
+              "SELECT to_regnamespace('vault') IS NOT NULL AND to_regrole('supabase_admin') IS NOT NULL" \
+              2>/dev/null | grep -qx t; then
+              echo "postgres ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "postgres did not become ready in 90s"
+          exit 1
+      - name: Apply all migrations in timestamp order
+        env:
+          PGPASSWORD: ${{ format('issue-1175-ci-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 \
+            | sort -z \
+            | while IFS= read -r -d '' migration; do
+                echo "::group::Applying $migration"
+                psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$migration"
+                echo "::endgroup::"
+              done
+      - name: Execute issue 1175 immutable-manifest proof
+        env:
+          PGPASSWORD: ${{ format('issue-1175-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_1175_immutable_manifest_pg17.test.sql

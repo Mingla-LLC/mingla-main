@@ -33,6 +33,7 @@ import {
   verifyPaystackSignature,
 } from "../_shared/paystack.ts";
 import { handlePaystackChargeSuccess } from "../_shared/paystackWebhookRouter.ts";
+import { handlePaystackRefundEvent } from "../_shared/paystackRefundRouter.ts";
 // ORCH-1331 — partner Paystack payout rail: fail-soft split fan-out on
 // charge.success + transfer.*/refund.processed lifecycle routing.
 import {
@@ -102,7 +103,9 @@ serve(async (req) => {
   const data = (event?.data ?? {}) as Record<string, unknown>;
   const reference = typeof data?.reference === "string"
     ? data.reference
-    : (data?.id !== undefined && data?.id !== null ? String(data.id) : "unknown");
+    : (data?.id !== undefined && data?.id !== null
+      ? String(data.id)
+      : "unknown");
 
   console.log("[paystack-webhook] VERIFIED event", {
     event: eventName,
@@ -140,7 +143,10 @@ serve(async (req) => {
     if (existingRow.processed === true) {
       return json({ status: "replayed_processed", reference }, 200);
     }
-    if (existingRow.retries_exhausted === true || priorRetryCount >= MAX_WEBHOOK_ATTEMPTS) {
+    if (
+      existingRow.retries_exhausted === true ||
+      priorRetryCount >= MAX_WEBHOOK_ATTEMPTS
+    ) {
       await supabase
         .from("payment_webhook_events")
         .update({ retries_exhausted: true })
@@ -203,9 +209,11 @@ serve(async (req) => {
       // ORCH-1331 — dashboard-issued NGN refunds: reverse the pending split /
       // stamp reversal_owed_at on an already-paid one.
       await handlePaystackRefundProcessed(supabase, data);
+      await handlePaystackRefundEvent(supabase, "refund.processed", data);
+    } else if (eventName === "refund.failed") {
+      await handlePaystackRefundEvent(supabase, "refund.failed", data);
     } else if (
-      eventName === "refund.failed" || eventName === "refund.pending" ||
-      eventName === "refund.processing"
+      eventName === "refund.pending" || eventName === "refund.processing"
     ) {
       // ORCH-1331 — audited no-op (only refund.processed moves the ledger).
       await writeAudit(supabase, {
@@ -252,12 +260,15 @@ serve(async (req) => {
       const eventId = (orderRow as Record<string, unknown> | null)?.event_id as
         | string
         | undefined;
-      const joinedEvent = (orderRow as Record<string, unknown> | null)?.events as
-        | { title?: string | null; brand_id?: string | null }
-        | Array<{ title?: string | null; brand_id?: string | null }>
-        | null
-        | undefined;
-      const eventRow = Array.isArray(joinedEvent) ? joinedEvent[0] ?? null : joinedEvent ?? null;
+      const joinedEvent = (orderRow as Record<string, unknown> | null)
+        ?.events as
+          | { title?: string | null; brand_id?: string | null }
+          | Array<{ title?: string | null; brand_id?: string | null }>
+          | null
+          | undefined;
+      const eventRow = Array.isArray(joinedEvent)
+        ? joinedEvent[0] ?? null
+        : joinedEvent ?? null;
       if (eventId) {
         await fireBuyerPurchaseConfirmationPush(supabase as never, {
           orderId: finalizedOrderId,
@@ -293,7 +304,8 @@ serve(async (req) => {
 
   // ---- Mark processed / retry_count++ / error (mirror stripe-webhook) ----
   const nextRetryCount = priorRetryCount + 1;
-  const exhausted = processingError !== null && nextRetryCount >= MAX_WEBHOOK_ATTEMPTS;
+  const exhausted = processingError !== null &&
+    nextRetryCount >= MAX_WEBHOOK_ATTEMPTS;
   const { error: markError } = await supabase
     .from("payment_webhook_events")
     .update({
