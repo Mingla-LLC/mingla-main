@@ -216,6 +216,12 @@ Deno.test("enabled test path records one accepted payout with exact amount and k
               error: null,
             });
           }
+          if (name === "plan_pending_payout_partner_legs") {
+            return Promise.resolve({
+              data: { blocked_partner_attributions: 0 },
+              error: null,
+            });
+          }
           if (name === "claim_stripe_payout_releases") {
             return Promise.resolve({ data: [release()], error: null });
           }
@@ -231,7 +237,18 @@ Deno.test("enabled test path records one accepted payout with exact amount and k
           }
           throw new Error(`unexpected RPC ${name}`);
         },
-        from: () => {
+        from: (table: string) => {
+          if (table === "brand_payout_releases") {
+            return {
+              select: () => ({
+                eq: () => ({
+                  order: () => ({
+                    limit: () => Promise.resolve({ data: [], error: null }),
+                  }),
+                }),
+              }),
+            };
+          }
           throw new Error("no provider-fee writes expected");
         },
       })) as never,

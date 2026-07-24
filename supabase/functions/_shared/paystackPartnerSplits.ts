@@ -493,8 +493,8 @@ export async function handlePaystackPartnerSplit(
     if (!args.paidAtIso || !Number.isFinite(Date.parse(args.paidAtIso))) {
       throw new Error("paystack charge missing canonical paid_at");
     }
-    const { error: attributionError } = await supabase.rpc(
-      "record_payout_partner_attribution",
+    const { data: outcomeRow, error: outcomeError } = await supabase.rpc(
+      "record_payout_partner_outcome",
       {
         p_key: key,
         p_order_id: args.orderId,
@@ -507,33 +507,16 @@ export async function handlePaystackPartnerSplit(
         p_provider: "paystack",
       },
     );
-    if (attributionError) {
+    if (outcomeError) {
       throw new Error(
-        `record_payout_partner_attribution failed: ${attributionError.message}`,
+        `record_payout_partner_outcome failed: ${outcomeError.message}`,
       );
     }
     if (!partnerAccountId) {
       return { brandId, status: "no_partner" };
     }
-    const { data: heldRow, error: heldError } = await supabase.rpc(
-      "record_held_partner_split",
-      {
-        p_key: key,
-        p_order_id: args.orderId,
-        p_brand_id: brandId,
-        p_partner_account_id: partnerAccountId,
-        p_mingla_fee_cents: minglaFeeKobo,
-        p_partner_share_cents: partnerShareKobo,
-        p_currency: "ngn",
-        p_provider: "paystack",
-        p_provider_sale_at: pinIso,
-      },
-    );
-    if (heldError) {
-      throw new Error(`record_held_partner_split failed: ${heldError.message}`);
-    }
-    const heldStatus = (heldRow as { status?: string } | null)?.status ??
-      "held";
+    const heldStatus =
+      (outcomeRow as { held_status?: string } | null)?.held_status ?? "held";
     if (heldStatus === "held") return { brandId, status: "held" };
     if (heldStatus === "transferred") {
       return { brandId, status: "transferred" };

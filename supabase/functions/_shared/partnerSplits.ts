@@ -314,8 +314,8 @@ export async function handleChargeSucceeded(
     if (chargeCreatedUnix === null || chargeCreatedUnix <= 0) {
       throw new Error("charge.succeeded missing canonical charge.created");
     }
-    const { error: attributionError } = await supabase.rpc(
-      "record_payout_partner_attribution",
+    const { data: outcomeRow, error: outcomeError } = await supabase.rpc(
+      "record_payout_partner_outcome",
       {
         p_key: applicationFeeId,
         p_order_id: orderId,
@@ -328,32 +328,16 @@ export async function handleChargeSucceeded(
         p_provider: "stripe",
       },
     );
-    if (attributionError) {
+    if (outcomeError) {
       throw new Error(
-        `record_payout_partner_attribution failed: ${attributionError.message}`,
+        `record_payout_partner_outcome failed: ${outcomeError.message}`,
       );
     }
     if (!partnerAccountId) {
       return { brandId, status: "no_partner" };
     }
-    const { data: heldRow, error: heldError } = await supabase.rpc(
-      "record_held_partner_split",
-      {
-        p_key: applicationFeeId,
-        p_order_id: orderId,
-        p_brand_id: brandId,
-        p_partner_account_id: partnerAccountId,
-        p_mingla_fee_cents: applicationFeeAmount,
-        p_partner_share_cents: partnerShareCents,
-        p_currency: currency,
-        p_provider: "stripe",
-        p_provider_sale_at: chargeCreatedIso,
-      },
-    );
-    if (heldError) {
-      throw new Error(`record_held_partner_split failed: ${heldError.message}`);
-    }
-    const status = (heldRow as { status?: string } | null)?.status ?? "held";
+    const status =
+      (outcomeRow as { held_status?: string } | null)?.held_status ?? "held";
     if (status === "held") return { brandId, status: "held" };
     if (status === "transferred") return { brandId, status: "transferred" };
     return { brandId, status: "pending_retry" };

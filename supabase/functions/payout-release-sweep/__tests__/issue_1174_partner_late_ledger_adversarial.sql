@@ -184,7 +184,10 @@ BEGIN
 END;
 $$;
 
-SELECT public.record_payout_partner_attribution(
+-- Provider-sale attribution and its held obligation commit together. There is
+-- no service-role-visible state in which planning can reserve principal but
+-- omit the transfer obligation.
+SELECT public.record_payout_partner_outcome(
   'paystack:issue-1174-late-partner',
   '11740000-0000-4000-8000-000000000005',
   '11740000-0000-4000-8000-000000000003',
@@ -194,67 +197,6 @@ SELECT public.record_payout_partner_attribution(
   10000,
   'ngn',
   'paystack'
-);
-
--- Planning runs before the held row arrives. It must reserve the attributable
--- principal from persisted provider-sale attribution + immutable fee truth,
--- not order creation, so an
--- organiser adapter reading immediately afterwards cannot overpay.
-SELECT public.plan_pending_payout_partner_legs(100);
-
-DO $$
-DECLARE
-  v_release public.brand_payout_releases%ROWTYPE;
-  v_item public.payout_release_items%ROWTYPE;
-  v_correction integer;
-BEGIN
-  SELECT * INTO STRICT v_release
-  FROM public.brand_payout_releases
-  WHERE id = '11740000-0000-4000-8000-000000000006';
-
-  SELECT * INTO STRICT v_item
-  FROM public.payout_release_items
-  WHERE source_type = 'order'
-    AND source_id = '11740000-0000-4000-8000-000000000005';
-
-  SELECT coalesce(sum(amount_cents), 0)::integer INTO v_correction
-  FROM public.payout_ledger_adjustments
-  WHERE release_id = v_release.id
-    AND kind = 'partner_principal_correction';
-
-  IF v_item.partner_share_cents <> 0 THEN
-    RAISE EXCEPTION
-      'immutable item was rewritten: expected original 0, got %',
-      v_item.partner_share_cents;
-  END IF;
-
-  IF v_correction <> 10000 THEN
-    RAISE EXCEPTION
-      'append-only partner correction missing: expected 10000, got %',
-      v_correction;
-  END IF;
-
-  IF v_release.partner_share_cents <> 10000
-     OR v_release.net_release_cents <> 880000 THEN
-    RAISE EXCEPTION
-      'organiser amount became executable before correction: share %, net %',
-      v_release.partner_share_cents,
-      v_release.net_release_cents;
-  END IF;
-END;
-$$;
-
--- The held partner row then arrives, as it can in production.
-SELECT public.record_held_partner_split(
-  'paystack:issue-1174-late-partner',
-  '11740000-0000-4000-8000-000000000005',
-  '11740000-0000-4000-8000-000000000003',
-  '11740000-0000-4000-8000-000000000002',
-  100000,
-  10000,
-  'ngn',
-  'paystack',
-  '2026-07-25T01:00:00Z'
 );
 
 SELECT public.plan_pending_payout_partner_legs(100);
@@ -424,7 +366,7 @@ BEGIN
 END;
 $$;
 
-SELECT public.record_payout_partner_attribution(
+SELECT public.record_payout_partner_outcome(
   'paystack:issue-1174-no-partner',
   '11740000-0000-4000-8000-000000000007',
   '11740000-0000-4000-8000-000000000003',

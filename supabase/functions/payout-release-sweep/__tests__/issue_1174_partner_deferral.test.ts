@@ -64,9 +64,13 @@ function fakeSupabase(
       if (name === "resolve_partner_for_brand_at_time") {
         return Promise.resolve({ data: partnerLookup, error: null });
       }
-      if (name === "record_held_partner_split") {
+      if (name === "record_payout_partner_outcome") {
         return Promise.resolve({
-          data: { id: "split-held", status: "held" },
+          data: {
+            outcome: partnerLookup ? "partner" : "no_partner",
+            held_split_id: partnerLookup ? "split-held" : null,
+            held_status: partnerLookup ? "held" : null,
+          },
           error: null,
         });
       }
@@ -149,24 +153,27 @@ Deno.test("post-cutover Stripe charge records held and performs no transfer", as
 
   assertEquals(result, { brandId: "brand-1", status: "held" });
   assertEquals(calls.length, 0);
-  const attribution = rpcCalls.find((call) =>
-    call.name === "record_payout_partner_attribution"
+  const outcome = rpcCalls.find((call) =>
+    call.name === "record_payout_partner_outcome"
   );
-  assert(attribution);
+  assert(outcome);
   assertEquals(
-    attribution.args.p_provider_sale_at,
+    outcome.args.p_provider_sale_at,
     "2026-07-25T00:00:00.000Z",
   );
-  assertEquals(attribution.args.p_partner_account_id, "partner-1");
-  const record = rpcCalls.find((call) =>
-    call.name === "record_held_partner_split"
-  );
-  assert(record);
-  assertEquals(record.args.p_partner_share_cents, 100);
-  assertEquals(record.args.p_provider, "stripe");
+  assertEquals(outcome.args.p_partner_account_id, "partner-1");
+  assertEquals(outcome.args.p_partner_share_cents, 100);
+  assertEquals(outcome.args.p_provider, "stripe");
   assertEquals(
-    record.args.p_provider_sale_at,
-    attribution.args.p_provider_sale_at,
+    rpcCalls.filter((call) => call.name === "record_payout_partner_outcome")
+      .length,
+    1,
+  );
+  assertFalse(
+    rpcCalls.some((call) =>
+      call.name === "record_payout_partner_attribution" ||
+      call.name === "record_held_partner_split"
+    ),
   );
   assertFalse(
     rpcCalls.some((call) => call.name === "record_partner_split_attempt"),
@@ -196,24 +203,27 @@ Deno.test("post-cutover Paystack charge records held and performs no transfer", 
 
   assertEquals(result, { brandId: "brand-1", status: "held" });
   assertEquals(initiated, 0);
-  const attribution = rpcCalls.find((call) =>
-    call.name === "record_payout_partner_attribution"
+  const outcome = rpcCalls.find((call) =>
+    call.name === "record_payout_partner_outcome"
   );
-  assert(attribution);
+  assert(outcome);
   assertEquals(
-    attribution.args.p_provider_sale_at,
+    outcome.args.p_provider_sale_at,
     "2026-07-25T00:00:00.000Z",
   );
-  assertEquals(attribution.args.p_partner_account_id, "partner-1");
-  const record = rpcCalls.find((call) =>
-    call.name === "record_held_partner_split"
-  );
-  assert(record);
-  assertEquals(record.args.p_partner_share_cents, 1_000);
-  assertEquals(record.args.p_provider, "paystack");
+  assertEquals(outcome.args.p_partner_account_id, "partner-1");
+  assertEquals(outcome.args.p_partner_share_cents, 1_000);
+  assertEquals(outcome.args.p_provider, "paystack");
   assertEquals(
-    record.args.p_provider_sale_at,
-    attribution.args.p_provider_sale_at,
+    rpcCalls.filter((call) => call.name === "record_payout_partner_outcome")
+      .length,
+    1,
+  );
+  assertFalse(
+    rpcCalls.some((call) =>
+      call.name === "record_payout_partner_attribution" ||
+      call.name === "record_held_partner_split"
+    ),
   );
 });
 
@@ -241,14 +251,22 @@ Deno.test("post-cutover no-partner outcome is durable and creates no held split"
 
   assertEquals(result, { brandId: "brand-1", status: "no_partner" });
   assertEquals(calls.length, 0);
-  const attribution = rpcCalls.find((call) =>
-    call.name === "record_payout_partner_attribution"
+  const outcome = rpcCalls.find((call) =>
+    call.name === "record_payout_partner_outcome"
   );
-  assert(attribution);
-  assertEquals(attribution.args.p_partner_account_id, null);
-  assertEquals(attribution.args.p_partner_share_cents, 0);
+  assert(outcome);
+  assertEquals(outcome.args.p_partner_account_id, null);
+  assertEquals(outcome.args.p_partner_share_cents, 0);
+  assertEquals(
+    rpcCalls.filter((call) => call.name === "record_payout_partner_outcome")
+      .length,
+    1,
+  );
   assertFalse(
-    rpcCalls.some((call) => call.name === "record_held_partner_split"),
+    rpcCalls.some((call) =>
+      call.name === "record_payout_partner_attribution" ||
+      call.name === "record_held_partner_split"
+    ),
   );
 });
 
@@ -328,7 +346,7 @@ Deno.test("Paystack partner movement fee reduces organiser cash without reducing
 Deno.test("organiser execution blocks until provider-sale partner attribution is persisted", () => {
   assertStringIncludes(
     migration,
-    "CREATE TABLE public.payout_partner_attributions",
+    "CREATE OR REPLACE FUNCTION public.record_payout_partner_outcome",
   );
   assertStringIncludes(
     migration,
@@ -346,4 +364,61 @@ Deno.test("organiser execution blocks until provider-sale partner attribution is
   );
   assert(blocker >= 0);
   assert(providerRelease > blocker);
+});
+
+Deno.test("atomic outcome is the only service-role attribution write boundary", () => {
+  assertStringIncludes(
+    migration,
+    "FROM PUBLIC, anon, authenticated, service_role;\nGRANT SELECT ON TABLE public.payout_partner_attributions TO service_role;",
+  );
+  assertStringIncludes(
+    migration,
+    "CREATE OR REPLACE FUNCTION public.record_payout_partner_outcome",
+  );
+  assertStringIncludes(
+    migration,
+    ") FROM PUBLIC, anon, authenticated, service_role;",
+  );
+  assertStringIncludes(
+    migration,
+    "GRANT EXECUTE ON FUNCTION public.record_payout_partner_outcome",
+  );
+});
+
+Deno.test("combined C and E execution order is fail-closed", () => {
+  const handlerStart = sweepIndex.indexOf(
+    "export async function handlePayoutReleaseSweep",
+  );
+  const darkAttach = sweepIndex.indexOf(
+    'admin.rpc("run_payout_release_dark_sweep"',
+    handlerStart,
+  );
+  const darkGate = sweepIndex.indexOf(
+    'deps.env("PAYOUT_RELEASE_EXECUTE") !== "true"',
+    handlerStart,
+  );
+  const partnerPlan = sweepIndex.indexOf(
+    '"plan_pending_payout_partner_legs"',
+    handlerStart,
+  );
+  const missingStop = sweepIndex.indexOf(
+    'error: "partner_attribution_pending"',
+    handlerStart,
+  );
+  const organiserClaim = sweepIndex.indexOf(
+    "executeClaimedStripeReleases(",
+    partnerPlan,
+  );
+  const partnerDispatch = sweepIndex.indexOf(
+    "releasePartnerSplitsForOrganiserRelease(",
+    organiserClaim,
+  );
+
+  assert(handlerStart >= 0);
+  assert(darkAttach > handlerStart);
+  assert(darkGate > darkAttach);
+  assert(partnerPlan > darkGate);
+  assert(missingStop > partnerPlan);
+  assert(organiserClaim > missingStop);
+  assert(partnerDispatch > organiserClaim);
 });

@@ -636,17 +636,20 @@ export async function handlePayoutReleaseSweep(
     retryableStripe: 0,
     blockedStripe: 0,
   };
-  const stripe = stripeWebhook();
-  for (const row of (releasedRows ?? []) as Array<{ id: string }>) {
-    const released = await releasePartnerSplitsForOrganiserRelease(
-      admin,
-      stripe,
-      row.id,
-    );
-    totals.releasedStripe += released.releasedStripe;
-    totals.pendingPaystack += released.pendingPaystack;
-    totals.retryableStripe += released.retryableStripe;
-    totals.blockedStripe += released.blockedStripe;
+  const releasableRows = (releasedRows ?? []) as Array<{ id: string }>;
+  if (releasableRows.length > 0) {
+    const stripe = stripeWebhook();
+    for (const row of releasableRows) {
+      const released = await releasePartnerSplitsForOrganiserRelease(
+        admin,
+        stripe,
+        row.id,
+      );
+      totals.releasedStripe += released.releasedStripe;
+      totals.pendingPaystack += released.pendingPaystack;
+      totals.retryableStripe += released.retryableStripe;
+      totals.blockedStripe += released.blockedStripe;
+    }
   }
 
   return json({

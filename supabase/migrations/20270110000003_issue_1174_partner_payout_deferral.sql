@@ -121,9 +121,8 @@ CREATE TRIGGER payout_partner_attributions_append_only
   FOR EACH ROW EXECUTE FUNCTION public.reject_payout_append_only_mutation();
 
 REVOKE ALL ON TABLE public.payout_partner_attributions
-  FROM PUBLIC, anon, authenticated;
-GRANT SELECT, INSERT ON TABLE public.payout_partner_attributions
-  TO service_role;
+  FROM PUBLIC, anon, authenticated, service_role;
+GRANT SELECT ON TABLE public.payout_partner_attributions TO service_role;
 
 CREATE OR REPLACE FUNCTION public.record_payout_partner_attribution(
   p_key text,
@@ -164,6 +163,40 @@ BEGIN
     WHEN p_partner_account_id IS NULL THEN 'no_partner'
     ELSE 'partner'
   END;
+
+  -- Replay comparison happens before new-row formula validation so every
+  -- changed canonical field on an existing provider sale fails with the same
+  -- immutable replay-mismatch class and leaves both tables untouched.
+  SELECT * INTO v_row
+  FROM public.payout_partner_attributions
+  WHERE order_id = p_order_id
+     OR provider_key = p_key
+  ORDER BY (order_id = p_order_id AND provider_key = p_key) DESC
+  LIMIT 1;
+  IF FOUND THEN
+    IF v_row.order_id IS DISTINCT FROM p_order_id
+       OR v_row.brand_id IS DISTINCT FROM p_brand_id
+       OR v_row.provider IS DISTINCT FROM p_provider
+       OR v_row.provider_key IS DISTINCT FROM p_key
+       OR v_row.provider_sale_at IS DISTINCT FROM p_provider_sale_at
+       OR v_row.partner_account_id IS DISTINCT FROM p_partner_account_id
+       OR v_row.outcome IS DISTINCT FROM v_outcome
+       OR v_row.mingla_fee_cents IS DISTINCT FROM p_mingla_fee_cents
+       OR v_row.partner_share_cents IS DISTINCT FROM p_partner_share_cents
+       OR v_row.currency IS DISTINCT FROM lower(p_currency) THEN
+      RAISE EXCEPTION 'partner_attribution_replay_mismatch'
+        USING ERRCODE = 'P0001';
+    END IF;
+
+    RETURN jsonb_build_object(
+      'order_id', v_row.order_id,
+      'outcome', v_row.outcome,
+      'provider_sale_at', v_row.provider_sale_at,
+      'partner_account_id', v_row.partner_account_id,
+      'partner_share_cents', v_row.partner_share_cents
+    );
+  END IF;
+
   IF (
     v_outcome = 'no_partner' AND p_partner_share_cents <> 0
   ) OR (
@@ -199,13 +232,19 @@ BEGIN
     p_partner_share_cents,
     lower(p_currency)
   )
-  ON CONFLICT (order_id) DO NOTHING;
+  ON CONFLICT DO NOTHING;
 
   SELECT * INTO STRICT v_row
   FROM public.payout_partner_attributions
-  WHERE order_id = p_order_id;
+  WHERE order_id = p_order_id
+     OR provider_key = p_key
+  ORDER BY (order_id = p_order_id AND provider_key = p_key) DESC
+  LIMIT 1;
 
-  IF v_row.brand_id IS DISTINCT FROM p_brand_id
+  -- A concurrent call may have won either unique key while this statement
+  -- waited. Compare the now-visible winner before returning.
+  IF v_row.order_id IS DISTINCT FROM p_order_id
+     OR v_row.brand_id IS DISTINCT FROM p_brand_id
      OR v_row.provider IS DISTINCT FROM p_provider
      OR v_row.provider_key IS DISTINCT FROM p_key
      OR v_row.provider_sale_at IS DISTINCT FROM p_provider_sale_at
@@ -230,10 +269,7 @@ $function$;
 
 REVOKE ALL ON FUNCTION public.record_payout_partner_attribution(
   text, uuid, uuid, uuid, timestamptz, integer, integer, text, text
-) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.record_payout_partner_attribution(
-  text, uuid, uuid, uuid, timestamptz, integer, integer, text, text
-) TO service_role;
+) FROM PUBLIC, anon, authenticated, service_role;
 
 COMMENT ON FUNCTION public.record_payout_partner_attribution(
   text, uuid, uuid, uuid, timestamptz, integer, integer, text, text
@@ -333,7 +369,7 @@ SECURITY DEFINER
 SET search_path TO 'public', 'pg_temp'
 AS $function$
 DECLARE
-  v_row record;
+  v_row public.partner_splits%ROWTYPE;
   v_attribution public.payout_partner_attributions%ROWTYPE;
 BEGIN
   IF p_key IS NULL OR length(p_key) = 0 THEN
@@ -388,11 +424,21 @@ BEGIN
   )
   ON CONFLICT (stripe_application_fee_id) DO NOTHING;
 
-  SELECT id, status, stripe_transfer_id, attempt_count, payout_reference,
-         error_message, release_id
-    INTO v_row
+  SELECT * INTO STRICT v_row
   FROM public.partner_splits
   WHERE stripe_application_fee_id = p_key;
+
+  IF v_row.order_id IS DISTINCT FROM p_order_id
+     OR v_row.brand_id IS DISTINCT FROM p_brand_id
+     OR v_row.partner_account_id IS DISTINCT FROM p_partner_account_id
+     OR v_row.mingla_fee_cents IS DISTINCT FROM p_mingla_fee_cents
+     OR v_row.partner_share_cents IS DISTINCT FROM p_partner_share_cents
+     OR v_row.transfer_currency IS DISTINCT FROM lower(p_currency)
+     OR v_row.stripe_application_fee_id IS DISTINCT FROM p_key
+     OR v_row.provider IS DISTINCT FROM p_provider THEN
+    RAISE EXCEPTION 'held_split_replay_mismatch'
+      USING ERRCODE = 'P0001';
+  END IF;
 
   PERFORM public.reconcile_payout_partner_principal(i.release_id)
   FROM public.payout_release_items i
@@ -413,15 +459,86 @@ $function$;
 
 REVOKE ALL ON FUNCTION public.record_held_partner_split(
   text, uuid, uuid, uuid, integer, integer, text, text, timestamptz
-) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.record_held_partner_split(
-  text, uuid, uuid, uuid, integer, integer, text, text, timestamptz
-) TO service_role;
+) FROM PUBLIC, anon, authenticated, service_role;
 
 COMMENT ON FUNCTION public.record_held_partner_split(
   text, uuid, uuid, uuid, integer, integer, text, text, timestamptz
 ) IS
   'Issue #1174: idempotently records a post-cutover partner share as held. It performs no provider movement.';
+
+CREATE OR REPLACE FUNCTION public.record_payout_partner_outcome(
+  p_key text,
+  p_order_id uuid,
+  p_brand_id uuid,
+  p_partner_account_id uuid,
+  p_provider_sale_at timestamptz,
+  p_mingla_fee_cents integer,
+  p_partner_share_cents integer,
+  p_currency text,
+  p_provider text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_attribution jsonb;
+  v_held jsonb := NULL;
+BEGIN
+  -- This function is the sole service-role write boundary. PostgreSQL keeps
+  -- both lower writes in this statement's transaction, so a planner observes
+  -- neither row until both the attribution and held obligation are valid.
+  v_attribution := public.record_payout_partner_attribution(
+    p_key,
+    p_order_id,
+    p_brand_id,
+    p_partner_account_id,
+    p_provider_sale_at,
+    p_mingla_fee_cents,
+    p_partner_share_cents,
+    p_currency,
+    p_provider
+  );
+
+  IF p_partner_account_id IS NOT NULL THEN
+    v_held := public.record_held_partner_split(
+      p_key,
+      p_order_id,
+      p_brand_id,
+      p_partner_account_id,
+      p_mingla_fee_cents,
+      p_partner_share_cents,
+      p_currency,
+      p_provider,
+      p_provider_sale_at
+    );
+  END IF;
+
+  RETURN jsonb_build_object(
+    'order_id', v_attribution->>'order_id',
+    'outcome', v_attribution->>'outcome',
+    'provider_sale_at', v_attribution->>'provider_sale_at',
+    'partner_account_id', v_attribution->>'partner_account_id',
+    'partner_share_cents',
+      (v_attribution->>'partner_share_cents')::integer,
+    'held_split_id', v_held->>'id',
+    'held_status', v_held->>'status'
+  );
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.record_payout_partner_outcome(
+  text, uuid, uuid, uuid, timestamptz, integer, integer, text, text
+) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.record_payout_partner_outcome(
+  text, uuid, uuid, uuid, timestamptz, integer, integer, text, text
+) TO service_role;
+
+COMMENT ON FUNCTION public.record_payout_partner_outcome(
+  text, uuid, uuid, uuid, timestamptz, integer, integer, text, text
+) IS
+  'Issue #1174: atomically records the immutable provider-sale attribution and its exact held split, or an explicit no-partner outcome.';
 
 CREATE OR REPLACE FUNCTION public.plan_pending_payout_partner_legs(
   p_limit integer DEFAULT 100
