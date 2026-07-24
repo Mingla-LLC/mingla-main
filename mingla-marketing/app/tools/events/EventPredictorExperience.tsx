@@ -247,7 +247,8 @@ export function EventPredictorExperience() {
       indoor_outdoor: inout,
       ticket_price: isFree ? 0 : Math.max(0, Number(price) || 0),
       capacity: Math.round(capacityNum),
-      budget: Math.max(0, Number(budget) || 0),
+      // Budget only applies to FREE events; paid events get a recommended budget.
+      budget: isFree ? Math.max(0, Number(budget) || 0) : 0,
       audience_size: audience.trim() ? Math.max(0, Math.round(Number(audience) || 0)) : null,
       lineup: lineup.trim() || null,
       currency,
@@ -524,29 +525,40 @@ export function EventPredictorExperience() {
             </div>
           </div>
 
-          {/* The differentiator — promo budget */}
-          <div className="rounded-2xl border border-warm/25 bg-warm/[0.06] p-4">
-            <label htmlFor="ev-budget" className={MICRO_LABEL}>
-              Promo budget <span className="text-white/40">(what you’ll spend to fill it)</span>
-            </label>
-            <div className="mt-2 flex items-center gap-2">
-              <span className="text-sm font-semibold text-white/60">{currency}</span>
-              <input
-                id="ev-budget"
-                type="number"
-                inputMode="decimal"
-                min={0}
-                value={budget}
-                onChange={(e) => setBudget(e.target.value)}
-                placeholder="e.g. 1500"
-                className={cn(FIELD, 'flex-1')}
-              />
+          {/* Budget — only for FREE events. For paid events we RECOMMEND the
+              profit-max budget (no need to ask). */}
+          {isFree ? (
+            <div className="rounded-2xl border border-warm/25 bg-warm/[0.06] p-4">
+              <label htmlFor="ev-budget" className={MICRO_LABEL}>
+                Promo budget <span className="text-white/40">(what you can spend to drive attendance)</span>
+              </label>
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-sm font-semibold text-white/60">{currency}</span>
+                <input
+                  id="ev-budget"
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  value={budget}
+                  onChange={(e) => setBudget(e.target.value)}
+                  placeholder="e.g. 400"
+                  className={cn(FIELD, 'flex-1')}
+                />
+              </div>
+              <p className="mt-2 text-xs text-white/45">
+                Free events earn no ticket revenue, so tell us your spend and we’ll show what it
+                buys — attendees and cost per head. Leave blank for organic-only.
+              </p>
             </div>
-            <p className="mt-2 text-xs text-white/45">
-              We’ll show what this buys — clicks, attendees, and cost per head — through
-              Mingla’s conversion brain. Leave blank for organic-only.
-            </p>
-          </div>
+          ) : (
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+              <p className="text-sm text-white/70">
+                <span className="font-semibold text-warm">No budget needed.</span> For a paid
+                event we’ll <span className="font-semibold text-white">recommend the ad budget
+                that makes you the most profit</span> — and show the math.
+              </p>
+            </div>
+          )}
 
           <details className="group">
             <summary className="cursor-pointer list-none text-sm font-semibold text-warm underline-offset-4 hover:underline focus-ring">

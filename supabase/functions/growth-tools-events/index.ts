@@ -42,42 +42,58 @@ const IP_SALT = "mingla-tools";
 const RATE_LIMIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 // Free-run cap per IP per 24h — scoped to THIS tool (see handleRun). Env-tunable
 // while in test without a redeploy.
-const RATE_LIMIT_MAX = Number(Deno.env.get("EVENTS_RATE_LIMIT_MAX") ?? "25") || 25;
+const RATE_LIMIT_MAX = Number(Deno.env.get("EVENTS_RATE_LIMIT_MAX") ?? "8") || 8;
 
 const GEMINI_MODEL_ID = "gemini-2.5-flash";
 const GEMINI_API_URL =
   `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_ID}:generateContent`;
 const GEMINI_TEMPERATURE = 0.4;
 
-// ── Mingla "conversion brain" (transparent, tunable) ─────────────────────────
-// Translates ad CLICKS into ATTENDEES. This is MINGLA's funnel, not generic
-// DIY ads: Mingla shows the event to people already planning their week, so
-// intent runs higher than a cold ad audience. Honest, defensible defaults —
-// shown to the user in the report, never hidden. A ±25% band gives the range.
-const CONV = {
-  clickToLanding: 0.85, // clicked → landed on the event page
-  landingToIntent: 0.35, // landed → showed real intent (high-intent Mingla audience)
-  bandLow: 0.75,
-  bandHigh: 1.25,
-};
-// intent → attends, by ticket price (free converts best; pricier tickets lower).
-// Priced in the event's own currency, normalised to a rough USD band for tiers.
-function intentToAttend(price: number): number {
-  if (price <= 0) return 0.65;
-  if (price < 20) return 0.50;
-  if (price < 50) return 0.40;
-  if (price < 100) return 0.30;
-  return 0.20;
+// ── Conversion + cost model (grounded in INDUSTRY BENCHMARKS, tunable) ────────
+// Sources (2025 data): Meta entertainment CPC ~$0.40–0.70 (one of the cheapest
+// verticals); event ticketing landing→ticket ~2–10%; free landing→RSVP ~15–25%;
+// paid show-up ~75–90% (no-show 10–25%), free show-up ~45% (no-show 40–60%);
+// a small fee sharply cuts no-shows. Shown to the user in the report, refined
+// per-event by live research. A ±25% band produces the low/high range.
+const BAND_LOW = 0.75;
+const BAND_HIGH = 1.25;
+
+// PAID: an ad click that lands → buys a ticket. Cheaper tickets convert better.
+function landingToTicket(price: number): number {
+  if (price < 20) return 0.08;
+  if (price < 50) return 0.06;
+  if (price < 100) return 0.045;
+  return 0.03;
 }
-// Event-ad CPC is expressed in the EVENT'S currency (asked for in that currency
-// during research). A stray model estimate is clamped to a band around the
-// currency's typical link-CPC so it can never produce an absurd cost-per-head.
+// FREE: an ad click that lands → RSVPs (no purchase friction, so far higher).
+const LANDING_TO_RSVP = 0.20;
+// Show-up (attendance) rate — paid buyers mostly show; free RSVPs often don't.
+function showRate(price: number): number {
+  if (price <= 0) return 0.45; // free: 40–60% no-show
+  if (price < 15) return 0.75;
+  if (price < 50) return 0.82;
+  if (price < 100) return 0.86;
+  return 0.88;
+}
+
+// Event-ad CPC in the EVENT'S currency. A stray model estimate is clamped to a
+// band around the currency's typical entertainment link-CPC.
 const FALLBACK_CPC: Record<string, number> = {
-  USD: 0.55, GBP: 0.45, EUR: 0.50, CAD: 0.70, AUD: 0.75,
-  NGN: 60, INR: 12, ZAR: 4, AED: 2, NZD: 0.8,
+  USD: 0.50, GBP: 0.42, EUR: 0.48, CAD: 0.65, AUD: 0.70,
+  NGN: 55, INR: 11, ZAR: 3.8, AED: 1.9, NZD: 0.75,
 };
 function typicalCpc(currency: string): number {
-  return FALLBACK_CPC[currency] ?? 0.55;
+  return FALLBACK_CPC[currency] ?? 0.50;
+}
+function resolveCpc(currency: string, cpcResearched: number | null): number {
+  // Clamp to [0.4×, 2.2×] the currency's typical entertainment CPC. Event-ad
+  // CPCs cluster tightly (~$0.40–0.70); models tend to over-estimate, so the
+  // high side is deliberately tight to keep cost-per-ticket believable.
+  const typical = typicalCpc(currency);
+  return Math.min(typical * 2.2, Math.max(typical * 0.4, cpcResearched ?? typical));
+}
+function roundMoney(n: number): number {
+  return n < 100 ? Math.round(n * 100) / 100 : Math.round(n);
 }
 
 // ── IP helpers (privacy: raw IP never stored) ────────────────────────────────
@@ -241,66 +257,194 @@ function eventTiming(dateIso: string): { weekday: string; leadDays: number } {
   return { weekday, leadDays };
 }
 
-// ── Budget engine (deterministic) ────────────────────────────────────────────
-interface PaidPlan {
-  budget: number;
+// ── Plan engine (deterministic, benchmark-driven) ────────────────────────────
+// FREE events: the organiser gives a budget → we show what it buys.
+// PAID events: we RECOMMEND the profit-max ad budget (no budget asked) —
+// profit = tickets sold × price − ad spend, with diminishing returns.
+
+// Concave saturating curve: tickets `budget` buys, approaching the reachable
+// ceiling `remaining` as spend grows (so the last seats cost the most).
+// scale = remaining × baseCpts sets the decay so the FIRST ticket costs ~baseCpts
+// (marginal cost = baseCpts at budget→0) and rises as the room fills.
+function ticketsFromBudget(budget: number, remaining: number, baseCpts: number): number {
+  if (budget <= 0 || remaining <= 0 || baseCpts <= 0) return 0;
+  const scale = remaining * baseCpts;
+  return remaining * (1 - Math.exp(-budget / scale));
+}
+
+export interface FreePlan {
+  kind: "free_budget";
   currency: string;
+  budget: number;
   cpc: number;
   cpc_source: "researched" | "estimated";
+  benchmarks: { cpc: number; landing_to_rsvp_pct: number; show_rate_pct: number };
   clicks_low: number;
   clicks_high: number;
-  funnel: Array<{ step: string; rate: number }>;
   attendees_low: number;
   attendees_high: number;
   cost_per_attendee_low: number | null;
   cost_per_attendee_high: number | null;
+  read: string;
 }
 
+export interface PaidPlan {
+  kind: "paid_optimized";
+  currency: string;
+  ticket_price: number;
+  cpc: number;
+  cpc_source: "researched" | "estimated";
+  benchmarks: { cpc: number; landing_to_ticket_pct: number; show_rate_pct: number };
+  recommended_budget: number;
+  ad_tickets_low: number;
+  ad_tickets_high: number;
+  ad_attendees_low: number;
+  ad_attendees_high: number;
+  cost_per_ticket: number | null;
+  cost_pct_of_ticket: number | null; // cost per ticket as % of the ticket price
+  ad_revenue: number;
+  ad_profit: number; // ad revenue − recommended budget
+  roas: number | null;
+  ads_worth_it: boolean;
+  read: string;
+}
+
+export type EventPlan = FreePlan | PaidPlan;
+
+function computeFreePlan(input: EventInput, cpcResearched: number | null): FreePlan {
+  const cpc_source: "researched" | "estimated" = cpcResearched !== null ? "researched" : "estimated";
+  const cpc = resolveCpc(input.currency, cpcResearched);
+  const clicksMid = input.budget > 0 ? input.budget / cpc : 0;
+  const rate = LANDING_TO_RSVP * showRate(0); // landing → RSVP → shows up
+  const attMid = clicksMid * rate;
+  const attendees_low = Math.round(attMid * BAND_LOW);
+  const attendees_high = Math.round(attMid * BAND_HIGH);
+  return {
+    kind: "free_budget",
+    currency: input.currency,
+    budget: input.budget,
+    cpc: roundMoney(cpc),
+    cpc_source,
+    benchmarks: {
+      cpc: roundMoney(cpc),
+      landing_to_rsvp_pct: Math.round(LANDING_TO_RSVP * 100),
+      show_rate_pct: Math.round(showRate(0) * 100),
+    },
+    clicks_low: Math.round(clicksMid * BAND_LOW),
+    clicks_high: Math.round(clicksMid * BAND_HIGH),
+    attendees_low,
+    attendees_high,
+    cost_per_attendee_low: attendees_high > 0 ? roundMoney(input.budget / attendees_high) : null,
+    cost_per_attendee_high: attendees_low > 0 ? roundMoney(input.budget / attendees_low) : null,
+    read: input.budget > 0
+      ? `Your ${input.budget} ${input.currency} could bring roughly ${attendees_low}–${attendees_high} more people.`
+      : "Add a promo budget to see how many more people it could bring.",
+  };
+}
+
+// PAID: scan budgets, pick the one that maximises (ad ticket revenue − spend).
 function computePaidPlan(
   input: EventInput,
   cpcResearched: number | null,
+  organicAttendeesMid: number,
 ): PaidPlan {
-  const cpc_source: "researched" | "estimated" = cpcResearched !== null
-    ? "researched"
-    : "estimated";
-  // Clamp to [0.15×, 3.5×] the currency's typical CPC — bounds model outliers
-  // (e.g. a $4.50 estimate for a market that really runs ~$0.45) in any currency.
-  const typical = typicalCpc(input.currency);
-  const cpc = Math.min(
-    typical * 3.5,
-    Math.max(typical * 0.15, cpcResearched ?? typical),
-  );
-  const clicksMid = input.budget > 0 ? input.budget / cpc : 0;
-  const attendRate = intentToAttend(input.ticket_price);
-  const composite = CONV.clickToLanding * CONV.landingToIntent * attendRate;
-  const attMid = clicksMid * composite;
+  const cpc_source: "researched" | "estimated" = cpcResearched !== null ? "researched" : "estimated";
+  const cpc = resolveCpc(input.currency, cpcResearched);
+  const price = input.ticket_price;
+  const conv = landingToTicket(price); // landing → ticket bought
+  const sr = showRate(price); // ticket → shows up
+  const baseCpts = cpc / conv; // cost per ticket sold at low saturation
 
-  const attendees_low = Math.round(attMid * CONV.bandLow);
-  const attendees_high = Math.round(attMid * CONV.bandHigh);
-  const clicks_low = Math.round(clicksMid * CONV.bandLow);
-  const clicks_high = Math.round(clicksMid * CONV.bandHigh);
+  // Organic tickets ≈ organic attendees / show-rate (some buyers don't show).
+  const organicTickets = sr > 0 ? organicAttendeesMid / sr : organicAttendeesMid;
+  const remaining = Math.max(0, input.capacity - organicTickets);
+
+  // Numeric profit-max scan: each extra ticket earns `price`, buying gets harder
+  // as we fill `remaining`. The optimum is where the marginal ticket costs `price`.
+  let best = { budget: 0, profit: 0, tickets: 0 };
+  const bMax = remaining > 0 ? remaining * baseCpts * 4 : 0;
+  const steps = 240;
+  for (let i = 1; i <= steps && bMax > 0; i++) {
+    const b = (bMax * i) / steps;
+    const t = ticketsFromBudget(b, remaining, baseCpts);
+    const profit = t * price - b;
+    if (profit > best.profit) best = { budget: b, profit, tickets: t };
+  }
+
+  const ads_worth_it = best.budget > 0 && best.tickets >= 1;
+  const recommended_budget = ads_worth_it ? roundMoney(best.budget) : 0;
+  const ticketsMid = ads_worth_it ? best.tickets : 0;
+  const ad_tickets_low = Math.round(ticketsMid * BAND_LOW);
+  const ad_tickets_high = Math.round(ticketsMid * BAND_HIGH);
+  const ad_revenue = Math.round(ticketsMid * price);
+  const ad_profit = Math.round(ad_revenue - recommended_budget);
+  const costPerTicket = ticketsMid > 0 ? recommended_budget / ticketsMid : null;
+
+  let read: string;
+  if (!ads_worth_it) {
+    read = remaining <= 0
+      ? "You're on track to fill the room organically — paid ads aren't needed."
+      : `At a ${price} ${input.currency} ticket, paid ads would cost more per ticket than they earn — put the energy into organic promotion.`;
+  } else {
+    read = `Spend about ${recommended_budget} ${input.currency} on ads to sell ~${ad_tickets_low}–${ad_tickets_high} extra tickets (~${ad_revenue} ${input.currency}), netting ~${ad_profit} ${input.currency} after ad spend.`;
+  }
 
   return {
-    budget: input.budget,
+    kind: "paid_optimized",
     currency: input.currency,
-    cpc: Math.round(cpc * 100) / 100,
+    ticket_price: price,
+    cpc: roundMoney(cpc),
     cpc_source,
-    clicks_low,
-    clicks_high,
-    funnel: [
-      { step: "Ad click → lands on your event page", rate: CONV.clickToLanding },
-      { step: "Lands → shows real intent (RSVP / ticket start)", rate: CONV.landingToIntent },
-      { step: "Intent → actually attends", rate: attendRate },
-    ],
-    attendees_low,
-    attendees_high,
-    cost_per_attendee_low: attendees_high > 0
-      ? Math.round((input.budget / attendees_high) * 100) / 100
-      : null,
-    cost_per_attendee_high: attendees_low > 0
-      ? Math.round((input.budget / attendees_low) * 100) / 100
-      : null,
+    benchmarks: {
+      cpc: roundMoney(cpc),
+      landing_to_ticket_pct: Math.round(conv * 1000) / 10,
+      show_rate_pct: Math.round(sr * 100),
+    },
+    recommended_budget,
+    ad_tickets_low,
+    ad_tickets_high,
+    ad_attendees_low: Math.round(ad_tickets_low * sr),
+    ad_attendees_high: Math.round(ad_tickets_high * sr),
+    cost_per_ticket: costPerTicket !== null ? roundMoney(costPerTicket) : null,
+    cost_pct_of_ticket: costPerTicket !== null && price > 0 ? Math.round((costPerTicket / price) * 100) : null,
+    ad_revenue,
+    ad_profit,
+    roas: recommended_budget > 0 ? Math.round((ad_revenue / recommended_budget) * 10) / 10 : null,
+    ads_worth_it,
+    read,
   };
+}
+
+// ── Cover image (Pexels, best-effort) ────────────────────────────────────────
+// A landscape cover for the "as a Mingla listing" render, so the preview looks
+// like a real published event. Uses the PEXELS_API_KEY secret directly (the
+// cover edge fns are auth-gated). Never throws; returns null on any failure.
+async function fetchCoverImage(
+  input: EventInput,
+  vibeTags: string[],
+): Promise<string | null> {
+  const key = Deno.env.get("PEXELS_API_KEY") ?? "";
+  if (!key) return null;
+  const q = [vibeTags[0], vibeTags[1], input.category]
+    .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
+    .slice(0, 2)
+    .join(" ") || input.category || "event party crowd";
+  try {
+    const res = await fetch(
+      `https://api.pexels.com/v1/search?query=${
+        encodeURIComponent(q)
+      }&orientation=landscape&per_page=5`,
+      { headers: { Authorization: key } },
+    );
+    if (!res.ok) return null;
+    const data = await res.json() as {
+      photos?: Array<{ src?: { landscape?: string } }>;
+    };
+    const first = (data.photos ?? []).find((p) => typeof p.src?.landscape === "string");
+    return first?.src?.landscape ?? null;
+  } catch {
+    return null;
+  }
 }
 
 // ── Gemini: PASS A — grounded external research ──────────────────────────────
@@ -520,7 +664,6 @@ interface Synthesis {
 function buildSynthesisPrompt(
   input: EventInput,
   research: EventResearch,
-  plan: PaidPlan,
 ): string {
   const { weekday, leadDays } = eventTiming(input.date);
   const compLines = research.competitors.length > 0
@@ -552,9 +695,8 @@ function buildSynthesisPrompt(
     "Comparable past events:",
     compareLines,
     "",
-    "The paid-ads plan has ALREADY been computed separately (budget ÷ CPC → clicks → conversion):",
-    `Budget ${plan.budget} ${plan.currency}, CPC ${plan.cpc} ${plan.currency} (${plan.cpc_source}) → ~${plan.attendees_low}-${plan.attendees_high} extra attendees from ads.`,
-    "Do NOT re-forecast the paid numbers. Forecast ORGANIC baseline only (people who come WITHOUT paid ads).",
+    "Forecast ORGANIC turnout ONLY — people who come WITHOUT paid ads. The paid-ads",
+    "plan is computed separately from benchmarks; do NOT estimate ad-driven numbers.",
     "",
     "Guidance:",
     `- baseline_low/high: a realistic organic attendance range, 0..${input.capacity}. Weigh day-of-week, ${leadDays}-day runway, price vs the market, competition above, category demand, weather, lineup, and audience size.`,
@@ -677,9 +819,8 @@ async function generateSynthesis(
   apiKey: string,
   input: EventInput,
   research: EventResearch,
-  plan: PaidPlan,
 ): Promise<Synthesis | null> {
-  const prompt = buildSynthesisPrompt(input, research, plan);
+  const prompt = buildSynthesisPrompt(input, research);
   const first = await callSynthesisOnce(apiKey, prompt, input.capacity);
   if (first !== null) return first;
   return await callSynthesisOnce(apiKey, prompt, input.capacity);
@@ -777,19 +918,28 @@ async function handleRun(
     research = normalizeResearch(null);
   }
 
-  // BUDGET ENGINE (deterministic).
-  const plan = computePaidPlan(input, research.cpc);
-
   // PASS B — structured synthesis (organic baseline + factors + fixes + copy).
-  const synth = await generateSynthesis(apiKey, input, research, plan);
+  const synth = await generateSynthesis(apiKey, input, research);
   if (synth === null) {
     await markFailed();
     return json({ error: "generation_failed" }, 502);
   }
+  const organicMid = (synth.baseline_low + synth.baseline_high) / 2;
 
-  // Totals = organic baseline + paid attendees, capped at capacity.
-  const total_low = Math.min(input.capacity, synth.baseline_low + plan.attendees_low);
-  const total_high = Math.min(input.capacity, synth.baseline_high + plan.attendees_high);
+  // PLAN ENGINE — paid: recommend the profit-max budget; free: what the budget buys.
+  const isFree = input.ticket_price <= 0;
+  const plan: EventPlan = isFree
+    ? computeFreePlan(input, research.cpc)
+    : computePaidPlan(input, research.cpc, organicMid);
+  const adAttLow = plan.kind === "paid_optimized" ? plan.ad_attendees_low : plan.attendees_low;
+  const adAttHigh = plan.kind === "paid_optimized" ? plan.ad_attendees_high : plan.attendees_high;
+
+  // Best-effort cover image for the "as a Mingla listing" render (Pexels).
+  const coverUrl = await fetchCoverImage(input, synth.listing_preview.vibe_tags);
+
+  // Totals = organic baseline + ad-driven attendees, capped at capacity.
+  const total_low = Math.min(input.capacity, synth.baseline_low + adAttLow);
+  const total_high = Math.min(input.capacity, synth.baseline_high + adAttHigh);
   const pct = (n: number) =>
     input.capacity > 0 ? Math.round((n / input.capacity) * 100) : 0;
 
@@ -809,14 +959,14 @@ async function handleRun(
       confidence: synth.confidence,
       headline_read: synth.headline_read,
     },
-    paid_plan: plan,
+    plan,
     factors: synth.factors,
     competitors: research.competitors,
     comparables: research.comparables,
     ...(research.weather !== null ? { weather: research.weather } : {}),
     demand_read: research.demand_read,
     fixes: synth.fixes,
-    listing_preview: synth.listing_preview,
+    listing_preview: { ...synth.listing_preview, cover_url: coverUrl },
     offer: { per_person_from: "$3.99" },
     narrative: synth.narrative,
     meta: {

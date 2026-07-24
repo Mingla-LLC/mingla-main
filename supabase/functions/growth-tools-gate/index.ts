@@ -870,6 +870,25 @@ export async function handler(req: Request): Promise<Response> {
       return json({ error: "report_not_ready" }, 409);
     }
 
+    // ── Per-email cap (8 reports / 24h / tool) — the "scoped by email" guard.
+    //    Counts existing runs this email already gated for THIS tool. The
+    //    current row isn't counted (its email is set below), so >= max blocks
+    //    the next one. Skips when this row is a re-gate of the same email.
+    const alreadyThisRow =
+      (lead as { email?: unknown }).email === email;
+    if (!alreadyThisRow) {
+      const sinceIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { count, error: capErr } = await supabase
+        .from("tool_leads")
+        .select("id", { count: "exact", head: true })
+        .eq("email", email)
+        .eq("tool", tool)
+        .gte("created_at", sinceIso);
+      if (!capErr && (count ?? 0) >= 8) {
+        return json({ error: "rate_limited" }, 429);
+      }
+    }
+
     // ── Capture the email + mint a report-access token. Entering an email does
     //    NOT unlock the page; the full report is reachable only via the tokenized
     //    link we email — so the feature is only revealed to real, owned emails.

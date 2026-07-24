@@ -120,66 +120,117 @@ function ForecastHero({ report }: { report: EventReport }) {
   )
 }
 
-// ── The budget engine: what the promo spend buys ─────────────────────────────
+// Small stat cell used across both plan cards.
+function Stat({ k, v, sub }: { k: string; v: string; sub?: string }) {
+  return (
+    <div className="rounded-md bg-white/12 p-3">
+      <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-white/70">{k}</p>
+      <p className="mt-1 text-lg font-bold">{v}</p>
+      {sub ? <p className="text-[0.7rem] text-white/70">{sub}</p> : null}
+    </div>
+  )
+}
+
+function BenchmarkNote({ lines }: { lines: string[] }) {
+  return (
+    <p className="mt-3 text-xs leading-relaxed text-white/70">
+      Based on industry benchmarks ({lines.join(' · ')}), refined by live research on your event.
+      Estimates for planning — real results vary.
+    </p>
+  )
+}
+
+// ── The plan engine: profit-optimiser (paid) or budget-buys (free) ───────────
 function BudgetEngine({ report }: { report: EventReport }) {
-  const p = report.paid_plan
-  const cur = p.currency
+  const plan = report.plan
+  const cur = plan.currency
   const offerFrom = report.offer?.per_person_from ?? '$3.99'
-  if (!p.budget || p.budget <= 0) {
+  const warmCard =
+    'overflow-hidden rounded-md p-6 text-white md:p-7'
+  const warmStyle = {
+    background: 'linear-gradient(135deg, var(--color-warm) 0%, var(--color-warm-hover) 100%)',
+  }
+
+  // ── PAID: recommend the profit-max budget ─────────────────────────────────
+  if (plan.kind === 'paid_optimized') {
+    if (!plan.ads_worth_it) {
+      return (
+        <div className="rounded-md border border-divider-strong bg-white p-5">
+          <DocHeading>Your ad-spend plan</DocHeading>
+          <p className="mt-3 text-sm leading-relaxed text-text-secondary">{plan.read}</p>
+          <p className="mt-2 text-xs text-text-muted">
+            (At {money(plan.ticket_price, cur)}/ticket, ad clicks cost about {money(plan.cpc, cur)}{' '}
+            and ~{plan.benchmarks.landing_to_ticket_pct}% buy — so each ad ticket would cost more
+            than it earns. Lean on organic + Mingla’s {offerFrom}/head promotion.)
+          </p>
+        </div>
+      )
+    }
+    return (
+      <div className={warmCard} style={warmStyle}>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/75">
+          Your profit-max ad plan
+        </p>
+        <p className="mt-2 font-display text-[clamp(1.5rem,4.5vw,2.2rem)] leading-tight">
+          Spend <span className="whitespace-nowrap">{money(plan.recommended_budget, cur)}</span> on ads
+          → net <span className="whitespace-nowrap">≈{money(plan.ad_profit, cur)}</span> more profit.
+        </p>
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Stat k="Recommended budget" v={money(plan.recommended_budget, cur)} sub="the profit sweet-spot" />
+          <Stat k="Extra tickets sold" v={`${plan.ad_tickets_low}–${plan.ad_tickets_high}`} sub={`~${money(plan.ad_revenue, cur)} revenue`} />
+          <Stat k="Cost per ticket" v={plan.cost_per_ticket !== null ? money(plan.cost_per_ticket, cur) : '—'} sub={plan.cost_pct_of_ticket !== null ? `${plan.cost_pct_of_ticket}% of your ticket` : undefined} />
+          <Stat k="Return on ad spend" v={plan.roas !== null ? `${plan.roas}×` : '—'} sub="revenue per £/$ spent" />
+        </div>
+        <div className="mt-5 rounded-md bg-white/10 p-4 text-sm text-white/90">
+          {plan.read} Beyond that, each new ticket starts costing more than it earns.
+        </div>
+        <BenchmarkNote
+          lines={[
+            `ad CPC ${money(plan.cpc, cur)}`,
+            `${plan.benchmarks.landing_to_ticket_pct}% buy`,
+            `${plan.benchmarks.show_rate_pct}% show up`,
+          ]}
+        />
+      </div>
+    )
+  }
+
+  // ── FREE: what the budget buys ────────────────────────────────────────────
+  if (!plan.budget || plan.budget <= 0) {
     return (
       <div className="rounded-md border border-divider-strong bg-white p-5">
         <DocHeading>What a promo budget could add</DocHeading>
         <p className="mt-3 text-sm leading-relaxed text-text-secondary">
-          You didn’t enter a promo budget, so this is your organic outlook. Add a budget
-          and we’ll show exactly how many more people it can drive — Mingla puts your
-          event in front of people already planning their week, from{' '}
+          This is your organic outlook. Add a promo budget on a re-run and we’ll show exactly
+          how many more people it can bring — Mingla puts your event in front of people already
+          planning their week, from{' '}
           <span className="font-semibold text-text-primary">{offerFrom}</span> per head.
         </p>
       </div>
     )
   }
   return (
-    <div
-      className="overflow-hidden rounded-md p-6 text-white md:p-7"
-      style={{ background: 'linear-gradient(135deg, var(--color-warm) 0%, var(--color-warm-hover) 100%)' }}
-    >
+    <div className={warmCard} style={warmStyle}>
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/75">
-        Your {money(p.budget, cur)} promo plan
+        Your {money(plan.budget, cur)} promo plan
       </p>
       <p className="mt-2 font-display text-[clamp(1.5rem,4.5vw,2.2rem)] leading-tight">
         Mingla can drive{' '}
-        <span className="whitespace-nowrap">{p.attendees_low}–{p.attendees_high}</span>{' '}
+        <span className="whitespace-nowrap">{plan.attendees_low}–{plan.attendees_high}</span>{' '}
         more people to your event.
       </p>
       <div className="mt-5 grid gap-3 sm:grid-cols-3">
-        {[
-          { k: 'Ad cost per click', v: `${money(p.cpc, cur)}`, sub: p.cpc_source === 'researched' ? 'from live research' : 'estimated' },
-          { k: 'Clicks your budget buys', v: `${p.clicks_low}–${p.clicks_high}`, sub: 'to your event page' },
-          { k: 'Cost per attendee', v: p.cost_per_attendee_low !== null && p.cost_per_attendee_high !== null ? `${money(p.cost_per_attendee_low, cur)}–${money(p.cost_per_attendee_high, cur)}` : '—', sub: `promo from ${offerFrom}/head` },
-        ].map((c) => (
-          <div key={c.k} className="rounded-md bg-white/12 p-3">
-            <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-white/70">{c.k}</p>
-            <p className="mt-1 text-lg font-bold">{c.v}</p>
-            <p className="text-[0.7rem] text-white/70">{c.sub}</p>
-          </div>
-        ))}
+        <Stat k="Ad cost per click" v={money(plan.cpc, cur)} sub={plan.cpc_source === 'researched' ? 'from live research' : 'estimated'} />
+        <Stat k="Clicks your budget buys" v={`${plan.clicks_low}–${plan.clicks_high}`} sub="to your event page" />
+        <Stat k="Cost per attendee" v={plan.cost_per_attendee_low !== null && plan.cost_per_attendee_high !== null ? `${money(plan.cost_per_attendee_low, cur)}–${money(plan.cost_per_attendee_high, cur)}` : '—'} sub={`promo from ${offerFrom}/head`} />
       </div>
-      {/* funnel */}
-      <div className="mt-5 rounded-md bg-white/10 p-4">
-        <p className="text-xs font-semibold uppercase tracking-wide text-white/75">How we get there — our conversion brain</p>
-        <ul className="mt-2 space-y-1.5">
-          {p.funnel.map((step) => (
-            <li key={step.step} className="flex items-center justify-between gap-3 text-sm">
-              <span className="text-white/90">{step.step}</span>
-              <span className="shrink-0 font-semibold">{Math.round(step.rate * 100)}%</span>
-            </li>
-          ))}
-        </ul>
-      </div>
-      <p className="mt-3 text-xs leading-relaxed text-white/70">
-        These are estimates for planning — real turnout varies. Cost per attendee shown is the
-        DIY-ad math; Mingla’s introductory promotion goes as low as {offerFrom} per head.
-      </p>
+      <BenchmarkNote
+        lines={[
+          `ad CPC ${money(plan.cpc, cur)}`,
+          `${plan.benchmarks.landing_to_rsvp_pct}% RSVP`,
+          `${plan.benchmarks.show_rate_pct}% show up`,
+        ]}
+      />
     </div>
   )
 }

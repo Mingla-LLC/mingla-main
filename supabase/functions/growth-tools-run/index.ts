@@ -1890,7 +1890,8 @@ async function handleRun(
   // becomes the "after" screenshot lives. Validated (usemingla / vercel only).
   const toolsOrigin = validateToolsOrigin(body.origin);
 
-  // b. Rate limit by salted IP hash (8 runs / 24h).
+  // b. Rate limit by salted IP hash (8 runs / 24h) — scoped to THIS tool so the
+  //    grader and the event predictor never eat each other's budget.
   const ip = firstForwardedHop(req.headers.get("x-forwarded-for"));
   const ipHash = ip ? await hashIp(ip) : null;
   if (ipHash) {
@@ -1899,6 +1900,7 @@ async function handleRun(
       .from("tool_leads")
       .select("id", { count: "exact", head: true })
       .eq("ip_hash", ipHash)
+      .eq("tool", "venues")
       .gte("created_at", sinceIso);
     if (countErr) {
       console.error(
