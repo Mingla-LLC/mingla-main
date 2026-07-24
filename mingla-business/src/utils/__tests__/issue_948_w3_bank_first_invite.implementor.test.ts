@@ -24,7 +24,7 @@ describe("#948 W3 implementor — bank-first invite routing", () => {
     [
       "partner whose bank is connected",
       { stripeChargesEnabled: true },
-      "inline",
+      "download",
     ],
     [
       "standard scanner/team invite",
@@ -39,6 +39,8 @@ describe("#948 W3 implementor — bank-first invite routing", () => {
         kind: "connect",
         href: "/brand/brand-948/connect",
       });
+    } else if (expectedKind === "download") {
+      expect(decision).toEqual({ kind: "download" });
     }
   });
 
@@ -60,5 +62,9 @@ describe("#948 W3 implementor — bank-first invite routing", () => {
 
     expect(executable).toContain("decideBankFirstInviteNext(phase.result)");
     expect(executable).not.toContain("isAuthReady");
+    expect(executable).toMatch(
+      /decision\.kind === "download"\s*\?\s*<BusinessAppDownloadCta\s*\/>/,
+    );
+    expect(executable.match(/<BusinessAppDownloadCta\s*\/>/g)).toHaveLength(1);
   });
 });

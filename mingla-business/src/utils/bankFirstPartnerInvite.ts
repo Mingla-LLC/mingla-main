@@ -9,6 +9,7 @@ const PAYMENTS_CAPABLE_ROLES: ReadonlySet<BrandRole> = new Set([
 
 export type BankFirstInviteDecision =
   | { kind: "connect"; href: string }
+  | { kind: "download" }
   | { kind: "inline" };
 
 /**
@@ -34,11 +35,15 @@ export function decideBankFirstInviteNext(
   if (
     !result.partnerSetup ||
     !PAYMENTS_CAPABLE_ROLES.has(result.role) ||
-    result.brandId.trim().length === 0 ||
-    hasConnectedPayoutRail
+    result.brandId.trim().length === 0
   ) {
     return { kind: "inline" };
   }
+
+  // D5 — a partner whose payout rail is already connected skips the bank step
+  // and advances to the existing web get-app step. This stays distinct from a
+  // standard team join, whose founder-approved flow has no download secondary.
+  if (hasConnectedPayoutRail) return { kind: "download" };
 
   return {
     kind: "connect",

@@ -34,7 +34,7 @@ for (
     {
       name: "already-connected partner",
       patch: { stripeChargesEnabled: true },
-      kind: "inline",
+      kind: "download",
     },
     {
       name: "standard scanner/team invite",
@@ -54,6 +54,8 @@ for (
         kind: "connect",
         href: "/brand/brand-948/connect",
       });
+    } else if (fixture.kind === "download") {
+      assertEquals(decision, { kind: "download" });
     }
   });
 }

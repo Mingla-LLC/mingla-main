@@ -57,6 +57,7 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { Button } from "../src/components/ui/Button";
+import { BusinessAppDownloadCta } from "../src/components/invite/BusinessAppDownloadCta";
 // ORCH-1404 [accept-invite-web-error-recovery] — the recoverable wrong-account
 // screen (F-1) + the ONE `?next=` validator it routes through (reused, unchanged).
 import { WrongAccountRecovery } from "../src/components/invite/WrongAccountRecovery";
@@ -157,8 +158,9 @@ export default function AcceptBrandInvitationRoute(): React.ReactElement {
   // #948 W3 — once accept succeeds, a payments-capable partner setup that does
   // not already have a payout rail goes straight to the one-hop bank route.
   // Transfer status is deliberately irrelevant: partner setups that did not
-  // transfer still need the same bank step. Standard team/scanner joins and
-  // already-connected partners keep the existing inline success path (D5).
+  // transfer still need the same bank step. D5 already-connected partners skip
+  // bank and advance to the web get-app step; standard team/scanner joins stay
+  // inline without that secondary.
   useEffect(() => {
     if (phase.kind !== "success") return;
     const decision = decideBankFirstInviteNext(phase.result);
@@ -196,6 +198,7 @@ export default function AcceptBrandInvitationRoute(): React.ReactElement {
 
   if (phase.kind === "success") {
     const transferred = phase.result.transferred;
+    const decision = decideBankFirstInviteNext(phase.result);
     return (
       <View style={styles.host}>
         <View style={styles.card}>
@@ -214,6 +217,7 @@ export default function AcceptBrandInvitationRoute(): React.ReactElement {
             size="lg"
             fullWidth
           />
+          {decision.kind === "download" ? <BusinessAppDownloadCta /> : null}
         </View>
       </View>
     );
