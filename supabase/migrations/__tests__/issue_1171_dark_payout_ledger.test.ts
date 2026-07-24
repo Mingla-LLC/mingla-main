@@ -58,6 +58,7 @@ Deno.test("#1171 RPCs enforce persisted live occurrences, refresh, conversion an
   assertStringIncludes(sql, "released_at=p_now");
   assertStringIncludes(sql, "v_debt.principal_cents-v_debt.recovered_cents");
   assertStringIncludes(sql, "public.convert_postponement_debt_to_permanent");
+  assertStringIncludes(sql, "debt_id=v_temp.id AND released_at IS NULL");
   assertStringIncludes(sql, "'cancellation_converted'");
   assertStringIncludes(sql, "'postpone:'||v_release.id");
   assertStringIncludes(sql, "r.created_at>b.payout_hold_cutover_at");
@@ -125,6 +126,11 @@ DECLARE
   v_debt uuid;
   v_permanent uuid;
   v_permanent_apply uuid;
+  v_reopen_origin uuid;
+  v_reopen_debt uuid;
+  v_reopen_a uuid;
+  v_reopen_b uuid;
+  v_reopen_permanent uuid;
   v_failed boolean;
 BEGIN
   SELECT event_date_id INTO v_occurrence_a
@@ -362,6 +368,93 @@ BEGIN
        WHERE debt_id=v_permanent_apply AND event_kind='cleared'
      ) THEN
     RAISE EXCEPTION 'fully recovered permanent debt remained open';
+  END IF;
+
+  INSERT INTO public.brand_payout_releases(
+    brand_id,occurrence_key,surface,provider,currency,anchor_end_at,releasable_at,
+    gross_cents,net_release_cents,status,organiser_cash_delivered_cents,released_at
+  ) VALUES(
+    '11710000-0000-0000-0000-000000000010','reopen-origin',
+    'venue_reservation','stripe','usd','2026-07-20T00:00:00Z',
+    '2026-07-23T00:00:00Z',600,600,'released',600,'2026-07-23T00:00:00Z'
+  ) RETURNING id INTO v_reopen_origin;
+  INSERT INTO public.brand_payout_releases(
+    brand_id,occurrence_key,surface,provider,currency,anchor_end_at,releasable_at,
+    gross_cents,net_release_cents,status
+  ) VALUES(
+    '11710000-0000-0000-0000-000000000010','reopen-reserve-a',
+    'venue_reservation','stripe','usd','2026-07-28T00:00:00Z',
+    '2026-07-31T00:00:00Z',600,600,'pending'
+  ) RETURNING id INTO v_reopen_a;
+  INSERT INTO public.brand_payout_releases(
+    brand_id,occurrence_key,surface,provider,currency,anchor_end_at,releasable_at,
+    gross_cents,net_release_cents,status
+  ) VALUES(
+    '11710000-0000-0000-0000-000000000010','reopen-reserve-b',
+    'venue_reservation','stripe','usd','2026-08-07T00:00:00Z',
+    '2026-08-10T00:00:00Z',600,600,'pending'
+  ) RETURNING id INTO v_reopen_b;
+
+  v_reopen_debt:=public.open_post_release_postponement_debt(
+    v_reopen_origin,'2026-08-02T00:00:00Z'
+  );
+  IF public.apply_open_payout_debts(
+       v_reopen_a,'2026-08-03T00:00:00Z'
+     )<>600 THEN
+    RAISE EXCEPTION 'lifecycle A did not reserve';
+  END IF;
+  PERFORM public.mature_postponement_debts('2026-08-05T00:00:00Z');
+  IF NOT EXISTS(
+       SELECT 1 FROM public.payout_debt_applications
+       WHERE debt_id=v_reopen_debt AND release_id=v_reopen_a
+         AND released_at='2026-08-05T00:00:00Z' AND converted_cents=0
+     ) OR
+     NOT EXISTS(
+       SELECT 1 FROM public.payout_ledger_adjustments
+       WHERE release_id=v_reopen_a AND kind='maturity_recredit'
+         AND amount_cents=600
+     ) THEN
+    RAISE EXCEPTION 'lifecycle A did not preserve released historical truth';
+  END IF;
+
+  IF public.open_post_release_postponement_debt(
+       v_reopen_origin,'2026-08-10T00:00:00Z'
+     )<>v_reopen_debt OR
+     public.apply_open_payout_debts(
+       v_reopen_b,'2026-08-11T00:00:00Z'
+     )<>600 THEN
+    RAISE EXCEPTION 'lifecycle B did not reopen and reserve on the same debt';
+  END IF;
+  v_reopen_permanent:=public.convert_postponement_debt_to_permanent(
+    v_reopen_origin,'post_release_cancellation',600,'2026-08-11T00:00:01Z'
+  );
+  IF NOT EXISTS(
+       SELECT 1 FROM public.payout_debt_applications
+       WHERE debt_id=v_reopen_debt AND release_id=v_reopen_a
+         AND released_at IS NOT NULL AND converted_cents=0
+     ) OR
+     NOT EXISTS(
+       SELECT 1 FROM public.payout_debt_applications
+       WHERE debt_id=v_reopen_debt AND release_id=v_reopen_b
+         AND released_at IS NULL AND converted_cents=600
+     ) OR
+     NOT EXISTS(
+       SELECT 1 FROM public.payout_debt_applications
+       WHERE debt_id=v_reopen_permanent AND release_id=v_reopen_b
+         AND amount_cents=600
+     ) OR
+     EXISTS(
+       SELECT 1 FROM public.payout_debt_applications
+       WHERE debt_id=v_reopen_permanent AND release_id=v_reopen_a
+     ) THEN
+    RAISE EXCEPTION 'conversion consumed historical A instead of current B';
+  END IF;
+  PERFORM public.mature_postponement_debts('2026-08-13T00:00:00Z');
+  IF EXISTS(
+       SELECT 1 FROM public.payout_ledger_adjustments
+       WHERE release_id=v_reopen_b AND kind='maturity_recredit'
+     ) THEN
+    RAISE EXCEPTION 'converted lifecycle B escaped as a later recredit';
   END IF;
 END
 $test$;

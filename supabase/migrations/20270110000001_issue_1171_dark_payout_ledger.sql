@@ -766,7 +766,8 @@ BEGIN
     v_left:=v_recovered_overlap;
     FOR v_app IN
       SELECT * FROM public.payout_debt_applications
-      WHERE debt_id=v_temp.id AND amount_cents>converted_cents
+      WHERE debt_id=v_temp.id AND released_at IS NULL
+        AND amount_cents>converted_cents
       ORDER BY created_at,id FOR UPDATE
     LOOP
       EXIT WHEN v_left=0;
