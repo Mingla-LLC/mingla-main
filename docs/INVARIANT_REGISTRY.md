@@ -7,6 +7,18 @@
 
 ---
 
+## ACTIVE — issue #1130 (postcss pinned forward via overrides so a vulnerable transitive can't unlock a framework-major parent — CLOSED 2026-07-24)
+
+> Dependabot repeatedly tried to smuggle the banned `expo 54 → 57` upgrade (4th recurrence: #925 / ORCH-1398 / #1051 / #1053) because a vulnerable transitive `postcss` (< 8.5.10) was only reachable by unlocking the editable framework parent — so the `ignore` rule keyed on `expo` was structurally never consulted (the update's subject is `postcss`). #1130 pins `postcss` forward via a top-level npm `overrides` in `app-mobile` + `mingla-business` + `mingla-marketing` (#1135), clearing the advisory without moving any framework version, so the drag can no longer be generated. Enforced by two independent append-only strict-grep gates.
+
+### I-1130-POSTCSS-TRANSITIVE-PINNED (ACTIVE — issue #1130 CLOSE 2026-07-24)
+- **Rule:** every app surface carrying a vulnerable-capable transitive `postcss` MUST keep a top-level npm `overrides.postcss` pin resolving ≥ the current advisory floor (8.5.10 as of #1130; the override is `^8.5.21`, resolving 8.5.22), so no `node_modules/**/postcss` node in any lockfile resolves below the floor. The pin exists to stop Dependabot unlocking a framework-family parent (`expo`/`@expo/*`/`metro`/`next`) to reach a safe postcss — framework majors move ONLY via the deliberate-upgrade path (composes with the ORCH-1386 framework-major guard + the expo SDK-54 pin, both untouched and ACTIVE).
+- **Enforcement:** two append-only strict-grep gates in `.github/scripts/strict-grep/` (registered in `MANIFEST.json`, batch:A): `orch-1130-postcss-transitive-pin-check.mjs` (override present + every resolved postcss ≥ floor in the 3 guarded apps) and `orch-1130-postcss-repo-wide-floor-check.mjs` (repo-wide sweep — catches a 4th surface reintroducing a bad postcss, which the 3-app guard is blind to).
+- **Regression test:** both gates proven fails-on-revert (remove the override / regress postcss → gate reds); the ratchet floor `selfTestWiredFloor` was bumped in the same PR (SC-7). Append-only / immutable.
+- **Established:** ACTIVE 2026-07-24 at #1130 + #1135 CLOSE (tester adversarial PASS; postcss 8.5.22 in all 3 apps, zero framework moved, synthetic expo-57 still reds ORCH-1386).
+
+---
+
 ## ACTIVE — issue #1062 (mingla-business jest suite burned down to green + made a required PR gate — CLOSED 2026-07-22)
 
 > The lean #1047 pass wired the suite (nightly, non-blocking) at 160 fails / 110 red. #1062 burned the residual to ZERO across Wave 1 (config/mock) + Wave 2 A/B/C + Wave 2 Remainder (services, utils/brand/misc) + Wave 3 (2 runtime-neutral product type-fixes), then flipped it to a required PR gate. Tester Wave-4 anti-faking audit PASS (SC-2/SC-3/SC-4/SC-5): no test deleted/gutted (test count rose +281), no assertion loosened, zero drift updated to match a bug, green re-verified independently (688 pass / 0 fail). One real bug the exercise surfaced (venue picker-cancel crash) was split to #1063 and fixed.
