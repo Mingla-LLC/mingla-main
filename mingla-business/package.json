@@ -196,7 +196,9 @@
     }
   },
   "overrides": {
-    "postcss": "^8.5.21"
+    "postcss": "^8.5.21",
+    "@vercel/og": "^0.11.1",
+    "sharp": "0.35.3"
   },
   "private": true
 }
