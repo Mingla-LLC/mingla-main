@@ -53,10 +53,12 @@ import {
   paystackListBanks,
   paystackResolveAccount,
   paystackUpdateSubaccount,
+  resolvePaystackSecretKey,
 } from "../_shared/paystack.ts";
 import {
   BrandRecipientError,
   deactivateBrandPaystackRecipient,
+  hmacPaystackAccountFingerprint,
   saveBrandPaystackRecipient,
   type BrandRecipientDeps,
   type BrandRecipientRow,
@@ -223,11 +225,13 @@ serve(async (req) => {
       resolveAccount: paystackResolveAccount,
       createRecipient: paystackCreateTransferRecipient,
       deleteRecipient: paystackDeleteTransferRecipient,
+      fingerprintAccount: (input) =>
+        hmacPaystackAccountFingerprint(resolvePaystackSecretKey(), input),
       loadRecipient: async (recipientBrandId) => {
         const { data, error } = await supabase
           .from("brand_paystack_recipients")
           .select(
-            "recipient_code, bank_code, account_number_masked, account_name, is_active",
+            "recipient_code, bank_code, account_fingerprint, account_number_masked, account_name, is_active",
           )
           .eq("brand_id", recipientBrandId)
           .maybeSingle<BrandRecipientRow>();

@@ -31,6 +31,12 @@ function adversarialHarness(seed: BrandRecipientRow) {
       calls.deletes.push(recipientCode);
       return Promise.resolve();
     },
+    fingerprintAccount: ({ accountNumber, bankCode }) =>
+      Promise.resolve(
+        `fingerprint:${bankCode}:${
+          accountNumber === "0123456789" ? "account-a" : "account-b"
+        }`,
+      ),
     loadRecipient: () => Promise.resolve(seed),
     persistRecipient: (_brandId, recipient) => {
       calls.persisted.push(recipient);
@@ -47,6 +53,7 @@ Deno.test("#1176 tester: a different NUBAN with the same bank, holder, and last4
   const h = adversarialHarness({
     recipient_code: "RCP_old",
     bank_code: "058",
+    account_fingerprint: "fingerprint:058:account-a",
     account_number_masked: "••••6789",
     account_name: "SAME HOLDER",
     is_active: true,
@@ -74,6 +81,7 @@ Deno.test("#1176 tester: an inactive mirror is never reused", async () => {
   const h = adversarialHarness({
     recipient_code: "RCP_inactive",
     bank_code: "058",
+    account_fingerprint: "fingerprint:058:account-a",
     account_number_masked: "••••6789",
     account_name: "SAME HOLDER",
     is_active: false,
@@ -98,6 +106,7 @@ Deno.test("#1176 tester: an invalid bank fails closed before provider or local m
   const h = adversarialHarness({
     recipient_code: "RCP_old",
     bank_code: "058",
+    account_fingerprint: "fingerprint:058:account-a",
     account_number_masked: "••••6789",
     account_name: "SAME HOLDER",
     is_active: true,
@@ -128,11 +137,13 @@ Deno.test("#1176 tester: local persistence failure rolls back only the newly-cre
   const h = adversarialHarness({
     recipient_code: "RCP_old",
     bank_code: "044",
+    account_fingerprint: "fingerprint:044:account-b",
     account_number_masked: "••••1111",
     account_name: "OLD HOLDER",
     is_active: true,
   });
-  h.deps.persistRecipient = () => Promise.reject(new Error("database unavailable"));
+  h.deps.persistRecipient = () =>
+    Promise.reject(new Error("database unavailable"));
 
   const error = await assertRejects(
     () =>

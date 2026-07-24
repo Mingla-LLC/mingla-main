@@ -8,6 +8,8 @@ CREATE TABLE public.brand_paystack_recipients (
   brand_id uuid NOT NULL UNIQUE REFERENCES public.brands(id) ON DELETE CASCADE,
   recipient_code text NOT NULL UNIQUE CHECK (recipient_code LIKE 'RCP\_%' ESCAPE '\'),
   bank_code text NOT NULL CHECK (length(bank_code) > 0),
+  account_fingerprint text NOT NULL
+    CHECK (account_fingerprint ~ '^hmac-sha256:[0-9a-f]{64}$'),
   account_number_masked text NOT NULL
     CHECK (account_number_masked ~ '^••••[0-9]{4}$'),
   account_name text NOT NULL CHECK (length(btrim(account_name)) > 0),
@@ -20,6 +22,8 @@ COMMENT ON TABLE public.brand_paystack_recipients IS
   '#1176: one Paystack Transfer Recipient (RCP_) mirror per Nigerian organiser brand. Full NUBAN values are never stored; legacy ACCT_ subaccount history remains on brands.';
 COMMENT ON COLUMN public.brand_paystack_recipients.account_number_masked IS
   '#1176: bullet mask plus last four digits only; never a full NUBAN.';
+COMMENT ON COLUMN public.brand_paystack_recipients.account_fingerprint IS
+  '#1176: exact-account replay identity; HMAC-SHA256 keyed by the active Paystack secret, never a raw or unkeyed NUBAN hash.';
 
 ALTER TABLE public.brand_paystack_recipients ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.brand_paystack_recipients FORCE ROW LEVEL SECURITY;

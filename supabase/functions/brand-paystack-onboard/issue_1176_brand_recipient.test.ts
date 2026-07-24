@@ -7,10 +7,23 @@ import {
   BrandRecipientError,
   type BrandRecipientRow,
   deactivateBrandPaystackRecipient,
+  hmacPaystackAccountFingerprint,
   saveBrandPaystackRecipient,
 } from "./recipient.ts";
 
 const BRAND_ID = "11111111-1111-4111-8111-111111111111";
+
+Deno.test("#1176 exact identity fingerprint is deterministic, keyed, and does not expose the NUBAN", async () => {
+  const input = { accountNumber: "0123456789", bankCode: "058" };
+  const first = await hmacPaystackAccountFingerprint("secret-a", input);
+  const replay = await hmacPaystackAccountFingerprint("secret-a", input);
+  const otherKey = await hmacPaystackAccountFingerprint("secret-b", input);
+
+  assertEquals(first, replay);
+  assertEquals(first.startsWith("hmac-sha256:"), true);
+  assertEquals(first.includes(input.accountNumber), false);
+  assertEquals(first === otherKey, false);
+});
 
 function harness(seed: BrandRecipientRow | null = null) {
   let stored = seed;
@@ -35,6 +48,12 @@ function harness(seed: BrandRecipientRow | null = null) {
       calls.deletes.push(code);
       return Promise.resolve();
     },
+    fingerprintAccount: ({ accountNumber, bankCode }) =>
+      Promise.resolve(
+        `fingerprint:${bankCode}:${
+          accountNumber === "0123456789" ? "account-a" : "account-b"
+        }`,
+      ),
     loadRecipient: () => Promise.resolve(stored),
     persistRecipient: (_brandId, row) => {
       stored = row;
@@ -80,6 +99,7 @@ Deno.test("#1176 create stores one RCP_ with masked account truth and preserves 
   assertEquals(h.calls.persisted, [{
     recipient_code: "RCP_issue1176",
     bank_code: "058",
+    account_fingerprint: "fingerprint:058:account-a",
     account_number_masked: "••••6789",
     account_name: "ADA ORGANISER",
     is_active: true,
@@ -92,6 +112,7 @@ Deno.test("#1176 same-input replay reuses the active mirror without another Pays
   const h = harness({
     recipient_code: "RCP_existing",
     bank_code: "058",
+    account_fingerprint: "fingerprint:058:account-a",
     account_number_masked: "••••6789",
     account_name: "ADA ORGANISER",
     is_active: true,
@@ -115,6 +136,7 @@ Deno.test("#1176 replacement persists the new recipient before deleting the old 
   const h = harness({
     recipient_code: "RCP_old",
     bank_code: "044",
+    account_fingerprint: "fingerprint:044:account-b",
     account_number_masked: "••••1111",
     account_name: "OLD HOLDER",
     is_active: true,
@@ -169,6 +191,7 @@ Deno.test("#1176 deactivate turns off the local target before best-effort provid
   const h = harness({
     recipient_code: "RCP_existing",
     bank_code: "058",
+    account_fingerprint: "fingerprint:058:account-a",
     account_number_masked: "••••6789",
     account_name: "ADA ORGANISER",
     is_active: true,

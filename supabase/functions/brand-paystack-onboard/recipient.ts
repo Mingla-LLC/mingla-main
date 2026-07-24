@@ -1,6 +1,7 @@
 export type BrandRecipientRow = {
   recipient_code: string;
   bank_code: string;
+  account_fingerprint: string;
   account_number_masked: string;
   account_name: string;
   is_active: boolean;
@@ -37,6 +38,10 @@ export type BrandRecipientDeps = {
     bankCode: string;
   }) => Promise<{ recipient_code: string }>;
   deleteRecipient: (recipientCode: string) => Promise<void>;
+  fingerprintAccount: (input: {
+    accountNumber: string;
+    bankCode: string;
+  }) => Promise<string>;
   loadRecipient: (brandId: string) => Promise<BrandRecipientRow | null>;
   persistRecipient: (
     brandId: string,
@@ -57,6 +62,29 @@ function result(row: BrandRecipientRow): BrandRecipientResult {
     account_number_masked: row.account_number_masked,
     is_active: true,
   };
+}
+
+export async function hmacPaystackAccountFingerprint(
+  secret: string,
+  input: { accountNumber: string; bankCode: string },
+): Promise<string> {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    encoder.encode(`${input.bankCode}:${input.accountNumber}`),
+  );
+  const hex = Array.from(new Uint8Array(signature))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  return `hmac-sha256:${hex}`;
 }
 
 export async function saveBrandPaystackRecipient(
@@ -81,6 +109,16 @@ export async function saveBrandPaystackRecipient(
     throw new BrandRecipientError("resolved_account_mismatch", 422);
   }
 
+  let accountFingerprint: string;
+  try {
+    accountFingerprint = await deps.fingerprintAccount({
+      accountNumber: input.accountNumber,
+      bankCode: input.bankCode,
+    });
+  } catch (error) {
+    throw new BrandRecipientError("recipient_fingerprint_failed", 500, error);
+  }
+
   let previous: BrandRecipientRow | null;
   try {
     previous = await deps.loadRecipient(input.brandId);
@@ -92,8 +130,7 @@ export async function saveBrandPaystackRecipient(
   if (
     previous?.is_active === true &&
     previous.bank_code === input.bankCode &&
-    previous.account_number_masked === masked &&
-    previous.account_name === resolved.account_name
+    previous.account_fingerprint === accountFingerprint
   ) {
     return result(previous);
   }
@@ -116,6 +153,7 @@ export async function saveBrandPaystackRecipient(
   const next: BrandRecipientRow = {
     recipient_code: recipientCode,
     bank_code: input.bankCode,
+    account_fingerprint: accountFingerprint,
     account_number_masked: masked,
     account_name: resolved.account_name,
     is_active: true,

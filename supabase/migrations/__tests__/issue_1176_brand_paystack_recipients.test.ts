@@ -15,6 +15,8 @@ Deno.test("#1176 migration stores one RCP_ identity per brand and no full NUBAN"
   assertMatch(sql, /CREATE TABLE public\.brand_paystack_recipients/);
   assertMatch(sql, /brand_id uuid NOT NULL UNIQUE REFERENCES public\.brands/);
   assertMatch(sql, /recipient_code text NOT NULL UNIQUE/);
+  assertMatch(sql, /account_fingerprint text NOT NULL/);
+  assertMatch(sql, /\^hmac-sha256:\[0-9a-f\]\{64\}\$/);
   assertMatch(sql, /account_number_masked text NOT NULL/);
   assertEquals(
     /\baccount_number\s+(?:text|varchar|character)/i.test(sql),
