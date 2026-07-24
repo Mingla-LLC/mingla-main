@@ -43,28 +43,4 @@ describe("#948 W3 implementor — bank-first invite routing", () => {
       expect(decision).toEqual({ kind: "download" });
     }
   });
-
-  it("the shipped accept route delegates resolved success and never routes on isAuthReady", () => {
-    const source = require("node:fs").readFileSync(
-      require("node:path").join(
-        __dirname,
-        "..",
-        "..",
-        "..",
-        "app",
-        "accept-brand-invitation.tsx",
-      ),
-      "utf8",
-    );
-    const executable = source
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/(^|[^:])\/\/.*$/gm, "$1");
-
-    expect(executable).toContain("decideBankFirstInviteNext(phase.result)");
-    expect(executable).not.toContain("isAuthReady");
-    expect(executable).toMatch(
-      /decision\.kind === "download"\s*\?\s*<BusinessAppDownloadCta\s*\/>/,
-    );
-    expect(executable.match(/<BusinessAppDownloadCta\s*\/>/g)).toHaveLength(1);
-  });
 });

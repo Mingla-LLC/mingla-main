@@ -66,6 +66,10 @@ jobs:
         working-directory: mingla-business
         run: npm ci
 
+      - name: Install route-render proof dependency
+        working-directory: mingla-business
+        run: npm install --no-save --package-lock=false react-test-renderer@19.1.0
+
       - name: Run W3 business routing contracts
         working-directory: mingla-business
         run: >
