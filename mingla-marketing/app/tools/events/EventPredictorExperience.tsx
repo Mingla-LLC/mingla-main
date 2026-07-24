@@ -11,6 +11,8 @@ import { useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/cn'
 import { buttonClasses } from '@/components/ui/button'
 import { captureMarketing } from '@/components/marketing/posthog-provider'
+import { detectClientPlatform } from '@/lib/device-platform'
+import { BUSINESS_ONELINK_URL, BUSINESS_WEB_URL } from '@/lib/store-links'
 import {
   runEventPredictor,
   searchCities,
@@ -84,24 +86,41 @@ function RunningTheater({
     return () => clearTimeout(timer)
   }, [revealed, error])
 
+  // Device-aware "create your event" target — desktop → business web, mobile → app.
+  const [appHref, setAppHref] = useState(BUSINESS_WEB_URL)
+  useEffect(() => {
+    const p = detectClientPlatform()
+    if (p === 'ios' || p === 'android') {
+      setAppHref(`${BUSINESS_ONELINK_URL}?pid=tool_events&c=tool_events`)
+    }
+  }, [])
+
   if (error) {
     const rateLimited = error === 'rate_limited'
     return (
       <div className="rounded-md glass-soft p-6 md:p-8" role="alert">
         <p className="font-display text-2xl text-white">
-          {rateLimited ? 'You’ve hit today’s limit' : 'That didn’t work — try again'}
+          {rateLimited ? 'You’ve used your free forecasts for today' : 'That didn’t work — try again'}
         </p>
         <p className="mt-3 text-sm leading-relaxed text-white/70 md:text-base">
           {rateLimited
-            ? 'The free predictor is capped per day while it’s in test. Come back tomorrow.'
+            ? 'That’s your free forecasts used up for today — come back tomorrow, or create your event on the Mingla app now to see full turnout insights as it fills.'
             : 'Something broke while building your forecast. Give it another go — it usually works the second time.'}
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
-          {!rateLimited ? (
+          {rateLimited ? (
+            <a
+              href={appHref}
+              onClick={() => captureMarketing('tool_ratelimit_cta_click', { tool: 'events' })}
+              className={buttonClasses({ variant: 'primary' })}
+            >
+              Create your event on Mingla
+            </a>
+          ) : (
             <button type="button" onClick={onRetry} className={buttonClasses({ variant: 'primary' })}>
               Try again
             </button>
-          ) : null}
+          )}
           <button
             type="button"
             onClick={onBack}
