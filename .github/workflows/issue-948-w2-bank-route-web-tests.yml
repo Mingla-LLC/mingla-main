@@ -14,6 +14,7 @@ on:
       - "mingla-business/src/components/brand/BrandStripeCountryPicker.tsx"
       - "mingla-business/src/utils/bankConnectFunnel.ts"
       - "mingla-business/src/utils/__tests__/issue_948_w2_bank_route.implementor.test.ts"
+      - "mingla-business/src/utils/__tests__/issue_948_w2_bank_route_route.implementor.test.tsx"
       - "mingla-business/src/utils/__tests__/issue_948_w2_bank_route.tester.test.ts"
       - ".github/workflows/issue-948-w2-bank-route-web-tests.yml"
   push:
@@ -25,6 +26,7 @@ on:
       - "mingla-business/src/components/brand/BrandStripeCountryPicker.tsx"
       - "mingla-business/src/utils/bankConnectFunnel.ts"
       - "mingla-business/src/utils/__tests__/issue_948_w2_bank_route.implementor.test.ts"
+      - "mingla-business/src/utils/__tests__/issue_948_w2_bank_route_route.implementor.test.tsx"
       - "mingla-business/src/utils/__tests__/issue_948_w2_bank_route.tester.test.ts"
       - ".github/workflows/issue-948-w2-bank-route-web-tests.yml"
 
@@ -55,5 +57,6 @@ jobs:
         run: >
           npx jest
           src/utils/__tests__/issue_948_w2_bank_route.implementor.test.ts
+          src/utils/__tests__/issue_948_w2_bank_route_route.implementor.test.tsx
           src/utils/__tests__/issue_948_w2_bank_route.tester.test.ts
           --runInBand
