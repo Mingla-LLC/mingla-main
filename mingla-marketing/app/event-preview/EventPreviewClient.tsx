@@ -158,6 +158,20 @@ export function EventPreviewClient() {
             <div style={{ width: '100%', height: '100%', background: `radial-gradient(120% 120% at 20% 10%, ${T.accentWash} 0%, ${T.bg} 60%)` }} />
           )}
           <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(180deg, rgba(12,14,18,0.1) 0%, rgba(12,14,18,0.55) 55%, ${T.bg} 100%)` }} />
+          {/* Cover-media banner — the auto cover is a placeholder; on Mingla the
+              organiser adds their own photo/GIF/video. Centered on the cover. */}
+          <div style={{ position: 'absolute', insetInline: 0, top: '34%', display: 'flex', justifyContent: 'center', padding: '0 16px', pointerEvents: 'none' }}>
+            <div style={{ pointerEvents: 'auto', display: 'inline-flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderRadius: 999, background: 'rgba(12,14,18,0.55)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)', border: `1px solid ${T.accentBorder}`, boxShadow: '0 10px 30px rgba(0,0,0,0.4)', maxWidth: '100%' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={T.accent} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+                <rect x="3" y="3" width="18" height="18" rx="3" />
+                <circle cx="8.5" cy="8.5" r="1.8" />
+                <path d="m21 15-5-5L5 21" />
+              </svg>
+              <span style={{ fontSize: 13, fontWeight: 700, color: T.text, lineHeight: 1.3 }}>
+                Upload your own photo, GIF or video on Mingla
+              </span>
+            </div>
+          </div>
         </div>
         <div style={{ position: 'absolute', insetInline: 0, bottom: 0, padding: '0 24px 28px' }}>
           <div style={{ maxWidth: 1000, margin: '0 auto' }}>
