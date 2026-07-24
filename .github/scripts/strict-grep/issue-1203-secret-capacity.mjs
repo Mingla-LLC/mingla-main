@@ -14,6 +14,7 @@ const RUNTIME_CONFIG = "supabase/functions/_shared/runtimeConfig.ts";
 const AUDIT = "scripts/secrets/audit-supabase-secret-budget.mjs";
 const MANIFEST = "supabase/secrets.manifest.json";
 const CLIENT_ROOTS = ["app-mobile/", "mingla-business/", "mingla-admin/"];
+const BACKEND_ROOT = "supabase/functions/";
 
 const APPROVED_RUNTIME_FIELDS = [
   "bunny_storage_cap_bytes",
@@ -43,8 +44,61 @@ const FORBIDDEN_RUNTIME_WORDS = [
   "webhook",
   "private_key",
 ];
+const FIELD_LEGACY_MAPPINGS = [
+  ["stripe_mode", "MINGLA_STRIPE_MODE"],
+  ["paystack_mode", "PAYSTACK_MODE"],
+  ["admin_from", "RESEND_ADMIN_FROM"],
+  ["system_from", "RESEND_SYSTEM_FROM"],
+  ["ticket_from", "RESEND_TICKET_FROM"],
+  ["marketing_send_live_enabled", "MARKETING_SEND_LIVE_ENABLED"],
+  ["sms_live_enabled.ng", "SMS_LIVE_ENABLED_NG"],
+  ["sms_live_enabled.us", "SMS_LIVE_ENABLED_US"],
+  ["api_health", "API_HEALTH_ALERT_EMAILS"],
+  ["stripe_disputes", "STRIPE_DISPUTE_ALERT_EMAILS"],
+  ["stripe_webhook_failures", "STRIPE_WEBHOOK_FAILURE_ALERT_EMAILS"],
+  ["bunny_storage_cap_bytes", "BUNNY_STORAGE_CAP_BYTES"],
+  ["bunny_traffic_cap_bytes", "BUNNY_TRAFFIC_CAP_BYTES"],
+  ["event_cover_video_provider", "EVENT_COVER_VIDEO_PROVIDER"],
+  ["google_ads_api_version", "GOOGLE_ADS_API_VERSION"],
+  ["meta_api_version", "META_API_VERSION"],
+  ["mingla_footer_address", "MINGLA_FOOTER_ADDRESS"],
+  ["mingla_logo_url", "MINGLA_LOGO_URL"],
+  ["termii_base_url", "TERMII_BASE_URL"],
+];
+const CONSUMER_CONTRACTS = [
+  ["supabase/functions/_shared/stripeMode.ts", "resolvePaymentModeValue"],
+  ["supabase/functions/_shared/paystack.ts", "resolvePaymentModeValue"],
+  ["supabase/functions/_shared/email/senders.ts", "resolveEmailSenderValue"],
+  ["supabase/functions/marketing-send/index.ts", "resolveDeliveryFlagValue"],
+  ["supabase/functions/_shared/adapters/smsAdapter.ts", "resolveDeliveryFlagValue"],
+  ["supabase/functions/api-health-probe/index.ts", "resolveAlertRecipientValue"],
+  ["supabase/functions/_shared/stripeDisputeHandlers.ts", "resolveAlertRecipientValue"],
+  ["supabase/functions/stripe-webhook/index.ts", "resolveAlertRecipientValue"],
+  ["supabase/functions/_shared/adCreative.ts", "resolveRuntimeString"],
+  ["supabase/functions/_shared/brandAssets.ts", "resolveRuntimeString"],
+  ["supabase/functions/_shared/eventCoverVideo.ts", "resolveRuntimeString"],
+  ["supabase/functions/_shared/google.ts", "resolveRuntimeString"],
+  ["supabase/functions/_shared/meta.ts", "resolveRuntimeString"],
+  ["supabase/functions/_shared/metaCapi.ts", "resolveRuntimeString"],
+  ["supabase/functions/_shared/email/index.ts", "resolveRuntimeString"],
+  ["supabase/functions/_shared/email/experienceConfirmationEmail.ts", "resolveRuntimeString"],
+  ["supabase/functions/_shared/email/tripConfirmationEmail.ts", "resolveRuntimeString"],
+  ["supabase/functions/_shared/marketingEmailRender.ts", "resolveRuntimeString"],
+  ["supabase/functions/event-cover-video-upload-intent/index.ts", "resolveRuntimeNumber"],
+  ["supabase/functions/careers-apply/index.ts", "resolveRuntimeString"],
+  ["supabase/functions/growth-tools-book/index.ts", "resolveRuntimeString"],
+  ["supabase/functions/growth-tools-gate/index.ts", "resolveRuntimeString"],
+  ["supabase/functions/invite-brand-member/index.ts", "resolveRuntimeString"],
+  ["supabase/functions/partner-reissue-invitation/index.ts", "resolveRuntimeString"],
+];
 
-export function check({ runtimeSource, auditSource, manifestText, clientFiles }) {
+export function check({
+  runtimeSource,
+  auditSource,
+  manifestText,
+  clientFiles,
+  backendFiles = [],
+}) {
   const violations = [];
   const fieldMatch = runtimeSource.match(
     /RUNTIME_CONFIG_FIELDS:[^=]*=\s*\[([\s\S]*?)\];/,
@@ -101,10 +155,53 @@ export function check({ runtimeSource, auditSource, manifestText, clientFiles })
       if (file.text.includes(name)) violations.push(`${file.path}:client_bundle_exposure:${name}`);
     }
   }
+  if (backendFiles.length > 0) {
+    const byPath = new Map(backendFiles.map((file) => [file.path, file.text]));
+    const productionFiles = backendFiles.filter((file) =>
+      !file.path.includes(".test.") && !file.path.includes("/__tests__/")
+    );
+    const compactBackend = productionFiles.map((file) =>
+      file.text.replace(/\s+/g, "")
+    ).join("\n");
+    for (const [field, legacy] of FIELD_LEGACY_MAPPINGS) {
+      const escapedField = field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (
+        !new RegExp(`${escapedField}.{0,80}"${legacy}"`).test(compactBackend) &&
+        !new RegExp(`"${legacy}".{0,80}${escapedField}`).test(compactBackend)
+      ) {
+        violations.push(`${BACKEND_ROOT}:mapping_missing:${field}:${legacy}`);
+      }
+      const directRead = `Deno.env.get("${legacy}")`;
+      for (const file of productionFiles) {
+        if (file.text.includes(directRead)) {
+          violations.push(`${file.path}:legacy_direct_read:${legacy}`);
+        }
+      }
+    }
+    for (const [path, resolver] of CONSUMER_CONTRACTS) {
+      const source = byPath.get(path);
+      const occurrences = source?.split(resolver).length ?? 0;
+      if (!source || occurrences < 3) {
+        violations.push(`${path}:migrated_consumer_missing:${resolver}`);
+      }
+    }
+  }
   return violations;
 }
 
 function selfTest() {
+  const backendFiles = [
+    {
+      path: "supabase/functions/_shared/syntheticMappings.ts",
+      text: FIELD_LEGACY_MAPPINGS.map(([field, legacy]) =>
+        `map("${field}","${legacy}");`
+      ).join("\n"),
+    },
+    ...CONSUMER_CONTRACTS.map(([path, resolver]) => ({
+      path,
+      text: `import { ${resolver} } from "./resolver.ts"; ${resolver}();`,
+    })),
+  ];
   const clean = {
     runtimeSource:
       `export const RUNTIME_CONFIG_FIELDS: readonly string[] = [${
@@ -115,6 +212,7 @@ function selfTest() {
       secrets: Array.from({ length: 85 }, (_, index) => ({ name: `SYNTH_${index}` })),
     }),
     clientFiles: [{ path: "app-mobile/src/ok.ts", text: "export const ok = true;" }],
+    backendFiles,
   };
   if (check(clean).length !== 0) throw new Error("clean_fixture_failed");
   if (
@@ -136,7 +234,26 @@ function selfTest() {
       clientFiles: [{ path: "app-mobile/src/bad.ts", text: BUNDLE_NAMES[0] }],
     }).length === 0
   ) throw new Error("client_exposure_fixture_passed");
-  console.log("issue-1203 secret-capacity self-test OK (4/4 cases).");
+  if (
+    check({
+      ...clean,
+      backendFiles: backendFiles.map((file) => ({
+        ...file,
+        text: file.text.replace('"stripe_mode","MINGLA_STRIPE_MODE"', '"stripe_mode","WRONG"'),
+      })),
+    }).every((violation) => !violation.includes("mapping_missing:stripe_mode"))
+  ) throw new Error("mapping_regression_fixture_passed");
+  if (
+    check({
+      ...clean,
+      backendFiles: backendFiles.map((file) =>
+        file.path === CONSUMER_CONTRACTS[0][0]
+          ? { ...file, text: "export const reverted = true;" }
+          : file
+      ),
+    }).every((violation) => !violation.includes("migrated_consumer_missing"))
+  ) throw new Error("consumer_regression_fixture_passed");
+  console.log("issue-1203 secret-capacity self-test OK (6/6 cases).");
 }
 
 function trackedClientFiles() {
@@ -145,6 +262,17 @@ function trackedClientFiles() {
     encoding: "utf8",
   }).split("\n").filter(Boolean);
   return paths.filter((path) => /\.(?:ts|tsx|js|jsx|json|mjs|cjs)$/.test(path)).map((path) => ({
+    path,
+    text: readFileSync(resolve(REPO_ROOT, path), "utf8"),
+  }));
+}
+
+function trackedBackendFiles() {
+  const paths = execFileSync("git", ["ls-files", BACKEND_ROOT], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+  }).split("\n").filter(Boolean);
+  return paths.filter((path) => /\.(?:ts|tsx|js|jsx|mjs|cjs)$/.test(path)).map((path) => ({
     path,
     text: readFileSync(resolve(REPO_ROOT, path), "utf8"),
   }));
@@ -167,6 +295,7 @@ async function main() {
     auditSource: readFileSync(resolve(REPO_ROOT, AUDIT), "utf8"),
     manifestText: readFileSync(resolve(REPO_ROOT, MANIFEST), "utf8"),
     clientFiles,
+    backendFiles: trackedBackendFiles(),
   });
   if (violations.length > 0) {
     violations.forEach((violation) =>

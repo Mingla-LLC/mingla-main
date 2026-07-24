@@ -46,6 +46,26 @@ type ParseResult<T> =
 
 const MAX_BUNDLE_BYTES = 48 * 1024;
 const EMAIL_RE = /^(?:(.+?)\s*<)?([^<>\s]+@[^<>\s]+)>?$/;
+const emittedDiagnostics = new Set<string>();
+const PAYMENT_MODE_LEGACY_NAMES: Record<PaymentModeField, string> = {
+  stripe_mode: "MINGLA_STRIPE_MODE",
+  paystack_mode: "PAYSTACK_MODE",
+};
+const EMAIL_SENDER_LEGACY_NAMES: Record<EmailSenderField, string> = {
+  admin_from: "RESEND_ADMIN_FROM",
+  system_from: "RESEND_SYSTEM_FROM",
+  ticket_from: "RESEND_TICKET_FROM",
+};
+const DELIVERY_FLAG_LEGACY_NAMES: Record<DeliveryFlagField, string> = {
+  marketing_send_live_enabled: "MARKETING_SEND_LIVE_ENABLED",
+  "sms_live_enabled.ng": "SMS_LIVE_ENABLED_NG",
+  "sms_live_enabled.us": "SMS_LIVE_ENABLED_US",
+};
+const ALERT_RECIPIENT_LEGACY_NAMES: Record<AlertRecipientField, string> = {
+  api_health: "API_HEALTH_ALERT_EMAILS",
+  stripe_disputes: "STRIPE_DISPUTE_ALERT_EMAILS",
+  stripe_webhook_failures: "STRIPE_WEBHOOK_FAILURE_ALERT_EMAILS",
+};
 
 function defaultGetEnv(name: string): string | undefined {
   return Deno.env.get(name);
@@ -74,12 +94,15 @@ function emitDiagnostic(
   field?: string,
   schemaVersion?: number,
 ): void {
+  const redactedField = safeField(field);
+  const identity = [event, bundle, reason, redactedField ?? ""].join(":");
+  if (emittedDiagnostics.has(identity)) return;
+  emittedDiagnostics.add(identity);
   const diagnostic: Record<string, string | number> = {
     event,
     bundle,
     reason,
   };
-  const redactedField = safeField(field);
   if (redactedField) diagnostic.field = redactedField;
   if (schemaVersion === 1) diagnostic.schema_version = schemaVersion;
   const deploymentId = diagnosticEnv("DENO_DEPLOYMENT_ID");
@@ -300,11 +323,22 @@ function fallback<T>(
   return getEnv(legacyName);
 }
 
+function assertLegacyMapping(
+  field: string,
+  legacyName: string,
+  expectedLegacyName: string,
+): void {
+  if (legacyName !== expectedLegacyName) {
+    throw new Error(`secret_bundle_legacy_mapping_invalid:${field}`);
+  }
+}
+
 export function resolvePaymentModeValue(
   field: PaymentModeField,
   legacyName: string,
   getEnv: SecretEnvGetter = defaultGetEnv,
 ): string | undefined {
+  assertLegacyMapping(field, legacyName, PAYMENT_MODE_LEGACY_NAMES[field]);
   const bundle = "MINGLA_PAYMENT_MODES_JSON";
   const raw = getEnv(bundle);
   const result = raw ? parseModeBundle(raw) : null;
@@ -318,6 +352,7 @@ export function resolveEmailSenderValue(
   legacyName: string,
   getEnv: SecretEnvGetter = defaultGetEnv,
 ): string | undefined {
+  assertLegacyMapping(field, legacyName, EMAIL_SENDER_LEGACY_NAMES[field]);
   const bundle = "MINGLA_EMAIL_SENDERS_JSON";
   const raw = getEnv(bundle);
   const result = raw ? parseSenderBundle(raw) : null;
@@ -331,6 +366,7 @@ export function resolveDeliveryFlagValue(
   legacyName: string,
   getEnv: SecretEnvGetter = defaultGetEnv,
 ): boolean | string | undefined {
+  assertLegacyMapping(field, legacyName, DELIVERY_FLAG_LEGACY_NAMES[field]);
   const bundle = "MINGLA_DELIVERY_FLAGS_JSON";
   const raw = getEnv(bundle);
   const result = raw ? parseDeliveryBundle(raw) : null;
@@ -350,6 +386,7 @@ export function resolveAlertRecipientValue(
   legacyName: string,
   getEnv: SecretEnvGetter = defaultGetEnv,
 ): string[] | string | undefined {
+  assertLegacyMapping(field, legacyName, ALERT_RECIPIENT_LEGACY_NAMES[field]);
   const bundle = "MINGLA_ALERT_RECIPIENTS_JSON";
   const raw = getEnv(bundle);
   const result = raw ? parseAlertBundle(raw) : null;

@@ -57,10 +57,21 @@ export const RUNTIME_CONFIG_FIELDS: readonly RuntimeConfigField[] = [
   "mingla_logo_url",
   "termii_base_url",
 ];
+const RUNTIME_CONFIG_LEGACY_NAMES: Record<RuntimeConfigField, string> = {
+  bunny_storage_cap_bytes: "BUNNY_STORAGE_CAP_BYTES",
+  bunny_traffic_cap_bytes: "BUNNY_TRAFFIC_CAP_BYTES",
+  event_cover_video_provider: "EVENT_COVER_VIDEO_PROVIDER",
+  google_ads_api_version: "GOOGLE_ADS_API_VERSION",
+  meta_api_version: "META_API_VERSION",
+  mingla_footer_address: "MINGLA_FOOTER_ADDRESS",
+  mingla_logo_url: "MINGLA_LOGO_URL",
+  termii_base_url: "TERMII_BASE_URL",
+};
 
 const MAX_BUNDLE_BYTES = 48 * 1024;
 const TERMII_HOSTS = new Set(["v3.api.termii.com"]);
 const VERSION_RE = /^v[1-9]\d?(?:\.\d{1,2})?$/;
+const emittedDiagnostics = new Set<string>();
 
 function defaultGetEnv(name: string): string | undefined {
   return Deno.env.get(name);
@@ -178,6 +189,9 @@ function emit(
   reason: ParseFailure["reason"] | "missing",
   field: RuntimeConfigField | "unknown",
 ): void {
+  const identity = [event, RUNTIME_CONFIG_BUNDLE, reason, field].join(":");
+  if (emittedDiagnostics.has(identity)) return;
+  emittedDiagnostics.add(identity);
   const diagnostic: Record<string, string | number> = {
     event,
     bundle: RUNTIME_CONFIG_BUNDLE,
@@ -200,6 +214,9 @@ export function resolveRuntimeConfigValue(
   legacyName: string,
   getEnv: SecretEnvGetter = defaultGetEnv,
 ): RuntimeConfig[RuntimeConfigField] | string | undefined {
+  if (legacyName !== RUNTIME_CONFIG_LEGACY_NAMES[field]) {
+    throw new Error(`runtime_config_legacy_mapping_invalid:${field}`);
+  }
   const raw = getEnv(RUNTIME_CONFIG_BUNDLE);
   if (raw) {
     const result = parseRuntimeConfig(raw);

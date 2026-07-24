@@ -20,7 +20,16 @@ response into GitHub, chat, logs, artifacts, or this file.
 
 The pull-request audit validates the 85-name target manifest offline. The scheduled/manual
 workflow uses the dedicated least-privilege `SUPABASE_SECRET_AUDIT_ACCESS_TOKEN` only at live
-runtime and emits sorted names/reasons/counts, never raw CLI output.
+runtime and emits sorted names/reasons/counts, never raw CLI output. Until that separately
+authorized credential exists, the live step records an explicit warning and does not invoke the
+CLI.
+
+`supabase/secrets.manifest.json` deliberately starts in `transition` / `pre_rollout` mode. In
+that state the live audit requires exact parity with the known 100-name pre-rollout set: the five
+pending bundle names must be absent and the 20 approved legacy/stale names must be present. It
+does not treat the count alone as a final-policy breach, but any missing, extra, or count-drifted
+name still fails. After the approved stages reach 85, change `live_audit_mode` to `enforced` in a
+reviewed PR; enforced mode accepts only the final manifest set and applies the 85/90 ceilings.
 
 ## Ownership and secure re-entry
 
@@ -100,7 +109,7 @@ Offline target validation is safe and requires no credential:
 
 ```bash
 node scripts/secrets/audit-supabase-secret-budget.mjs --manifest-only
-node --test scripts/secrets/issue_1203_audit_supabase_secret_budget.test.mjs
+node --test scripts/secrets/issue_1203_*.test.mjs
 node .github/scripts/strict-grep/issue-1203-secret-capacity.mjs --self-test
 node .github/scripts/strict-grep/issue-1203-secret-capacity.mjs
 ```
