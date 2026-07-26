@@ -39,6 +39,8 @@ import {
 import {
   createAccountSession,
   createRecipientAccount,
+  restoreDailyPayoutSchedule,
+  setManualPayoutSchedule,
 } from "../_shared/stripeBlueprintClient.ts";
 import { resolveBusinessWebOrigin } from "../_shared/businessWebOrigin.ts";
 
@@ -50,6 +52,12 @@ if (!BUSINESS_WEB_ORIGIN) {
     "BUSINESS_WEB_ORIGIN env var is not set. Configure in Supabase secrets.",
   );
 }
+
+// #1173 (sub-issue D) — dark gate for the event-anchored payout-schedule flip.
+// Read ONCE at module top. Unset / anything-but-"true" (the state D merges in)
+// → the onboard flip+stamp block is skipped entirely and onboarding is
+// byte-identical to pre-D `main` (SC-2). Wave 1 sets it "true".
+const ONBOARD_FLIP = Deno.env.get("PAYOUT_HOLD_ONBOARD_FLIP") === "true";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -421,6 +429,134 @@ serve(async (req) => {
           scaUpsertError,
         );
         throw new Error("internal_error:sca_upsert_failed");
+      }
+
+      // ── #1173 (sub-issue D) — event-anchored payout schedule flip + stamp. ──
+      // DARK by default (ONBOARD_FLIP === false → this whole block is skipped
+      // and onboarding is byte-identical to pre-D `main`; SC-2).
+      //
+      // Flip is per-ACCOUNT and ALWAYS (every freshly created account —
+      // including a country-replacement account — defaults to `daily`, so it
+      // must be flipped). Stamp is per-BRAND and ONCE (the RPC stamps
+      // payout_hold_cutover_at only when NULL; a re-onboarding / replacement
+      // brand is a stamp no-op). Atomicity via compensation guarantees
+      // both-or-neither: a brand is never left manual-but-unstamped (the one
+      // dangerous state — funds accrue that the sweep could never release).
+      // A Stripe hiccup must NOT block a brand from onboarding: on flip failure
+      // we leave the safe status-quo (daily + unstamped) and return success;
+      // the #1173 admin migration is the backstop that flips it later.
+      if (ONBOARD_FLIP) {
+        const flipAccountId = scaUpsert.stripe_account_id;
+        try {
+          await setManualPayoutSchedule(
+            flipAccountId,
+            generateIdempotencyKey(
+              brand_id,
+              `payout_hold_flip:${flipAccountId}`,
+            ),
+          );
+
+          let stampResult: string | null = null;
+          try {
+            const { data: stampData, error: stampError } = await supabase.rpc(
+              "stamp_payout_hold_cutover",
+              {
+                p_brand_id: brand_id,
+                p_stripe_account_id: flipAccountId,
+                p_batch_id: crypto.randomUUID(),
+                p_actor_email: claims.email,
+                p_actor_uid: userId,
+                p_reason: "onboard_flip",
+              },
+            );
+            if (stampError) throw stampError;
+            stampResult = typeof stampData === "string" ? stampData : null;
+          } catch (stampErr) {
+            // Stamp failed AFTER a successful flip → compensate: restore daily
+            // so the account is never manual-but-unstamped. Treat as un-migrated.
+            const stampMessage = stampErr instanceof Error
+              ? stampErr.message
+              : String(stampErr);
+            console.error(
+              "[brand-stripe-onboard] payout_hold stamp failed — compensating (restore daily):",
+              stampMessage,
+            );
+            try {
+              await restoreDailyPayoutSchedule(
+                flipAccountId,
+                generateIdempotencyKey(
+                  brand_id,
+                  `payout_hold_rollback:${flipAccountId}`,
+                ),
+              );
+            } catch (rollbackErr) {
+              const rbMessage = rollbackErr instanceof Error
+                ? rollbackErr.message
+                : String(rollbackErr);
+              console.error(
+                "[brand-stripe-onboard] payout_hold compensation restore FAILED (manual review):",
+                rbMessage,
+              );
+            }
+            await writeAudit(supabase, {
+              user_id: userId,
+              brand_id,
+              action: "payout_hold.stamp_failed_rolled_back",
+              target_type: "stripe_connect_account",
+              target_id: flipAccountId,
+              after: { error: stampMessage },
+            }).catch((auditErr) => {
+              console.error(
+                "[brand-stripe-onboard] stamp_failed audit write failed:",
+                auditErr,
+              );
+            });
+            return {
+              id: scaUpsert.stripe_account_id,
+              scaRowId: scaUpsert.id,
+            };
+          }
+
+          // Flip + stamp both succeeded (or stamp was a per-brand no-op for a
+          // re-onboarding brand). Non-fatal audit (Const #3 — log only).
+          await writeAudit(supabase, {
+            user_id: userId,
+            brand_id,
+            action: "payout_hold.onboard_flipped",
+            target_type: "stripe_connect_account",
+            target_id: flipAccountId,
+            before: { schedule: "daily" },
+            after: { schedule: "manual", stamp_result: stampResult },
+          }).catch((auditErr) => {
+            console.error(
+              "[brand-stripe-onboard] onboard_flipped audit write failed:",
+              auditErr,
+            );
+          });
+        } catch (flipErr) {
+          // Flip itself failed → do NOT stamp. Leave the brand on daily +
+          // unstamped (status quo, safe). Onboarding still returns success.
+          const flipMessage = flipErr instanceof Error
+            ? flipErr.message
+            : String(flipErr);
+          console.error(
+            "[brand-stripe-onboard] payout_hold onboard flip failed (left on daily, unstamped):",
+            flipMessage,
+          );
+          await writeAudit(supabase, {
+            user_id: userId,
+            brand_id,
+            action: "payout_hold.onboard_flip_failed",
+            target_type: "stripe_connect_account",
+            target_id: flipAccountId,
+            after: { error: flipMessage },
+          }).catch((auditErr) => {
+            console.error(
+              "[brand-stripe-onboard] flip_failed audit write failed:",
+              auditErr,
+            );
+          });
+        }
       }
 
       return {

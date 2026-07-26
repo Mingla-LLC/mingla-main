@@ -424,6 +424,14 @@ verify_jwt = true
 [functions.admin-stripe-connect-action]
 verify_jwt = true
 
+# ISSUE-1173 (sub-issue D of #1013) — admin-gated batch migration of existing
+# Stripe organiser accounts onto (or off) a manual event-anchored payout
+# schedule. verify_jwt=true: the gateway rejects no-JWT callers (401); the fn
+# then re-verifies the JWT is a real user AND an active admin (else 403).
+# Moves NO money; creates/replaces NO Stripe account.
+[functions.admin-payout-hold-migrate]
+verify_jwt = true
+
 # ISSUE-862 WP1 [Full Rooms Ad Engine] — admin-ad-* edge fns (Meta channel +
 # 4 fail-close stubs). verify_jwt=true: the gateway rejects no-JWT callers (401);
 # each fn then re-verifies the JWT is a real user AND an active admin
