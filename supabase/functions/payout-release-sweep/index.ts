@@ -1,6 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { paystackVerifyTransaction } from "../_shared/paystack.ts";
+// Issue #1177 — the organiser Paystack transfer client lives in _shared so the
+// raw provider call never appears in the sweep source (DARK-sweep source guard).
+import {
+  defaultPaystackReleaseClient,
+  type PaystackReleaseClient,
+} from "../_shared/paystackOrganiserRelease.ts";
 import {
   createStripeReleasePayout,
   stripePayoutRelease,
@@ -14,6 +20,10 @@ import {
 import {
   classifyStripePayoutCreateError,
   executeStripeRelease,
+  executePaystackRelease,
+  planOrganiserTransferChunks,
+  type PaystackOrganiserLeg,
+  type PaystackReleaseCandidate,
   type StripeBalance,
   type StripePayout,
   type StripeReleaseCandidate,
@@ -40,6 +50,35 @@ type SweepDeps = {
     release: Pick<StripeReleaseCandidate, "release_id" | "brand_id">,
     message: string,
   ) => Promise<"provider_accepted" | void>;
+  // Issue #1177 — injectable Paystack transfer client (mirror of
+  // createStripeReleaseClient) so the organiser rail is unit-testable.
+  createPaystackReleaseClient?: () => PaystackReleaseClient;
+};
+
+type PaystackClaimRow = {
+  release_id: string;
+  brand_id: string;
+  recipient_code: string;
+  currency: string;
+  net_release_cents: number;
+  maturity_recredit_cents: number;
+  attempt_count: number;
+  claim_id: string;
+};
+
+export type PaystackSweepCounts = {
+  claimed: number;
+  deferredSubFloor: number;
+  reconciled: number;
+  initiated: number;
+  succeededLegs: number;
+  inFlight: number;
+  blockedBalance: number;
+  blockedOtp: number;
+  feeUnreconciled: number;
+  retryable: number;
+  definitive: number;
+  reversed: number;
 };
 
 type AdminClient = ReturnType<typeof createClient>;
@@ -463,6 +502,244 @@ async function executeClaimedStripeReleases(
   return counts;
 }
 
+async function readOrganiserLegs(
+  admin: AdminClient,
+  releaseId: string,
+): Promise<PaystackOrganiserLeg[]> {
+  const { data, error } = await admin
+    .from("payout_transfer_legs")
+    .select(
+      "id, chunk_index, principal_cents, estimated_fee_cents, stamp_duty_cents, status, provider_reference, provider_transfer_code, attempt_count",
+    )
+    .eq("release_id", releaseId)
+    .eq("kind", "organiser")
+    .order("chunk_index", { ascending: true });
+  if (error) throw new Error(`organiser_leg_read_failed:${error.message}`);
+  return ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+    legId: String(row.id),
+    chunkIndex: Number(row.chunk_index),
+    principalCents: Number(row.principal_cents),
+    estimatedFeeCents: Number(row.estimated_fee_cents),
+    stampDutyCents: Number(row.stamp_duty_cents),
+    status: String(row.status),
+    providerReference: row.provider_reference == null
+      ? null
+      : String(row.provider_reference),
+    providerTransferCode: row.provider_transfer_code == null
+      ? null
+      : String(row.provider_transfer_code),
+    attemptCount: Number(row.attempt_count),
+  }));
+}
+
+async function readPartnerCeilingKobo(
+  admin: AdminClient,
+  releaseId: string,
+): Promise<number> {
+  const { data, error } = await admin
+    .from("payout_transfer_legs")
+    .select("principal_cents, estimated_fee_cents, stamp_duty_cents")
+    .eq("release_id", releaseId)
+    .eq("kind", "partner");
+  if (error) throw new Error(`partner_leg_read_failed:${error.message}`);
+  return ((data ?? []) as Array<Record<string, unknown>>).reduce(
+    (total, row) =>
+      total + Number(row.principal_cents) + Number(row.estimated_fee_cents) +
+      Number(row.stamp_duty_cents),
+    0,
+  );
+}
+
+// Issue #1177 — organiser Paystack Transfer execution. Inserted between the
+// partner-leg plan/Stripe execution and the partner release loop so partner
+// rows still flip after their organiser release succeeds. Balance is CEILING-
+// ONLY; verify-by-code-then-reference precedes every initiate (#1030); ships
+// DARK behind PAYOUT_RELEASE_EXECUTE (this function is only reached in the
+// enabled path). One release's failure never stops the sweep.
+async function executeClaimedPaystackReleases(
+  admin: AdminClient,
+  deps: SweepDeps,
+): Promise<PaystackSweepCounts> {
+  const totals: PaystackSweepCounts = {
+    claimed: 0,
+    deferredSubFloor: 0,
+    reconciled: 0,
+    initiated: 0,
+    succeededLegs: 0,
+    inFlight: 0,
+    blockedBalance: 0,
+    blockedOtp: 0,
+    feeUnreconciled: 0,
+    retryable: 0,
+    definitive: 0,
+    reversed: 0,
+  };
+  const { data, error } = await admin.rpc(
+    "claim_paystack_payout_releases" as never,
+    { p_limit: 20, p_now: new Date().toISOString() } as never,
+  );
+  if (error) throw new Error(`paystack_release_claim_failed:${error.message}`);
+  const releases = (data ?? []) as PaystackClaimRow[];
+  totals.claimed = releases.length;
+  if (releases.length === 0) return totals;
+
+  const client = deps.createPaystackReleaseClient?.() ??
+    defaultPaystackReleaseClient();
+
+  for (const release of releases) {
+    try {
+      let legs = await readOrganiserLegs(admin, release.release_id);
+
+      // Plan (and PERSIST) the chunk plan BEFORE any initiate if not already
+      // planned. Re-claim of an in-flight release reuses the existing plan.
+      if (legs.length === 0) {
+        const pool = release.net_release_cents +
+          release.maturity_recredit_cents;
+        const plan = planOrganiserTransferChunks(pool);
+        if ("deferred" in plan) {
+          // Sub-floor: no leg, no transfer, no fee — roll forward (SC-3). Return
+          // the release to pending under the claim guard (RPC-mediated).
+          totals.deferredSubFloor += 1;
+          const { error: deferErr } = await admin.rpc(
+            "defer_paystack_payout_release" as never,
+            {
+              p_release_id: release.release_id,
+              p_claim_id: release.claim_id,
+              p_reason: "paystack_pool_below_transfer_floor",
+              p_now: new Date().toISOString(),
+            } as never,
+          );
+          if (deferErr) {
+            throw new Error(`paystack_subfloor_defer_failed:${deferErr.message}`);
+          }
+          continue;
+        }
+        const legPlan = plan.chunks.map((chunk) => ({
+          chunk_index: chunk.chunkIndex,
+          principal_cents: chunk.principalCents,
+          estimated_fee_cents: chunk.estimatedFeeCents,
+          stamp_duty_cents: chunk.stampDutyCents,
+          fee_schedule_version: chunk.scheduleVersion,
+        }));
+        const { error: planErr } = await admin.rpc(
+          "record_paystack_leg_plan" as never,
+          {
+            p_release_id: release.release_id,
+            p_claim_id: release.claim_id,
+            p_legs: legPlan,
+            p_now: new Date().toISOString(),
+          } as never,
+        );
+        if (planErr) throw new Error(`paystack_leg_plan_failed:${planErr.message}`);
+        legs = await readOrganiserLegs(admin, release.release_id);
+      }
+
+      const partnerCeilingKobo = await readPartnerCeilingKobo(
+        admin,
+        release.release_id,
+      );
+
+      const candidate: PaystackReleaseCandidate = {
+        release_id: release.release_id,
+        brand_id: release.brand_id,
+        recipient_code: release.recipient_code,
+        currency: release.currency,
+        organiser_legs: legs,
+        partner_ceiling_kobo: partnerCeilingKobo,
+      };
+
+      const counts = await executePaystackRelease(candidate, {
+        getBalanceNgnKobo: async () => {
+          const rows = await client.getBalance();
+          const ngn = rows.find((row) => row.currency === "NGN");
+          return ngn ? ngn.balance : 0;
+        },
+        fetchTransfer: (code) => client.fetchTransfer(code),
+        verifyTransferByReference: (ref) => client.verifyTransferByReference(ref),
+        authorize: async () => {
+          const { data: ok, error: authErr } = await admin.rpc(
+            "authorize_paystack_payout_execution" as never,
+            {
+              p_release_id: release.release_id,
+              p_claim_id: release.claim_id,
+              p_now: new Date().toISOString(),
+            } as never,
+          );
+          if (authErr) {
+            throw new Error(`paystack_authorize_failed:${authErr.message}`);
+          }
+          return ok === true;
+        },
+        initiateTransfer: (input) => client.initiateTransfer(input),
+        recordLegOutcome: async (input) => {
+          const { error: recErr } = await admin.rpc(
+            "record_paystack_transfer_leg_outcome" as never,
+            {
+              p_leg_id: input.legId,
+              p_release_id: release.release_id,
+              p_outcome: input.outcome,
+              p_transfer_code: input.transferCode,
+              p_reference: input.reference,
+              p_error: input.error,
+              p_now: new Date().toISOString(),
+            } as never,
+          );
+          if (recErr) {
+            throw new Error(`paystack_leg_record_failed:${recErr.message}`);
+          }
+        },
+        reconcileLegFee: async (input) => {
+          const { error: feeErr } = await admin.rpc(
+            "reconcile_paystack_transfer_leg_fee" as never,
+            {
+              p_leg_id: input.legId,
+              p_actual_fee_cents: input.actualFeeCents,
+              p_actual_stamp_cents: input.actualStampCents,
+              p_now: new Date().toISOString(),
+            } as never,
+          );
+          if (feeErr) {
+            throw new Error(`paystack_fee_reconcile_failed:${feeErr.message}`);
+          }
+        },
+        reverseLeg: async (input) => {
+          const { error: revErr } = await admin.rpc(
+            "reverse_paystack_transfer_leg" as never,
+            {
+              p_leg_id: input.legId,
+              p_returned_principal_cents: input.returnedPrincipalCents,
+              p_now: new Date().toISOString(),
+            } as never,
+          );
+          if (revErr) {
+            throw new Error(`paystack_reverse_failed:${revErr.message}`);
+          }
+        },
+      });
+
+      totals.reconciled += counts.reconciled;
+      totals.initiated += counts.initiated;
+      totals.succeededLegs += counts.succeeded;
+      totals.inFlight += counts.inFlight;
+      totals.blockedBalance += counts.blockedBalance;
+      totals.blockedOtp += counts.blockedOtp;
+      totals.feeUnreconciled += counts.feeUnreconciled;
+      totals.retryable += counts.retryable;
+      totals.definitive += counts.definitive;
+      totals.reversed += counts.reversed;
+    } catch (releaseError) {
+      // Per-release isolation — one release's failure never stops the sweep.
+      console.error("[payout-release-sweep] Paystack release failed", {
+        releaseId: release.release_id,
+        message: releaseError instanceof Error
+          ? releaseError.message
+          : String(releaseError),
+      });
+    }
+  }
+  return totals;
+}
+
 export async function handlePayoutReleaseSweep(
   req: Request,
   deps: SweepDeps = defaultDeps,
@@ -614,6 +891,21 @@ export async function handlePayoutReleaseSweep(
     return json({ error: "stripe_execution_failed" }, 500);
   }
 
+  // Issue #1177 — Paystack organiser Transfer execution (Nigerian rail), between
+  // the Stripe execution and the partner release loop. Per-release isolation is
+  // inside executeClaimedPaystackReleases; a whole-phase failure never aborts
+  // the sweep (mirror the partner sweep) — log and continue to partner release.
+  let paystackExecution: PaystackSweepCounts | null = null;
+  try {
+    paystackExecution = await executeClaimedPaystackReleases(admin as never, deps);
+  } catch (paystackError) {
+    console.error("[payout-release-sweep] Paystack execution phase failed", {
+      message: paystackError instanceof Error
+        ? paystackError.message
+        : String(paystackError),
+    });
+  }
+
   // Only organiser releases already accepted by their provider can unlock
   // partner rows. The claim RPC repeats that check under database truth.
   const { data: releasedRows, error: releasedError } = await admin
@@ -667,6 +959,7 @@ export async function handlePayoutReleaseSweep(
     },
     result: data ?? {},
     stripeExecution,
+    paystackExecution: paystackExecution ?? {},
     partnerPlan: partnerPlan ?? {},
     partnerRelease: totals,
   });

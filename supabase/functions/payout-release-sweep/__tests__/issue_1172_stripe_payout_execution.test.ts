@@ -235,6 +235,12 @@ Deno.test("enabled test path records one accepted payout with exact amount and k
             recordArgs.push(args);
             return Promise.resolve({ data: "released", error: null });
           }
+          // Issue #1177 (append-only): the enabled path now also claims Paystack
+          // organiser releases. This scenario has none, so it returns empty and
+          // the organiser rail is a no-op here.
+          if (name === "claim_paystack_payout_releases") {
+            return Promise.resolve({ data: [], error: null });
+          }
           throw new Error(`unexpected RPC ${name}`);
         },
         from: (table: string) => {

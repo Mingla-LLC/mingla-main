@@ -41,6 +41,9 @@ import {
   handlePaystackRefundProcessed,
   handlePaystackTransferEvent,
 } from "../_shared/paystackPartnerSplits.ts";
+// Issue #1177 — organiser payout transfer (bprel_) lifecycle. Sibling to the
+// partner (psplit_) handler; each no-ops on the other's references.
+import { handlePaystackOrganiserTransferEvent } from "../_shared/paystackOrganiserRelease.ts";
 import { writeAudit } from "../_shared/audit.ts";
 import { dispatchTicketConfirmation } from "../_shared/ticketCheckout.ts";
 // META-ORCH-1161 §7.1 — buyer purchase-confirmation push (the Paystack-equivalent
@@ -205,6 +208,9 @@ serve(async (req) => {
       // ticketing consequence, so the inbox retry semantics (processingError)
       // are safe and desirable here.
       await handlePaystackTransferEvent(supabase, eventName, data);
+      // Issue #1177 — organiser payout transfer lifecycle (bprel_ references).
+      // The partner handler above no-ops on bprel_; this one no-ops on psplit_.
+      await handlePaystackOrganiserTransferEvent(supabase, eventName, data);
     } else if (eventName === "refund.processed") {
       // ORCH-1331 — dashboard-issued NGN refunds: reverse the pending split /
       // stamp reversal_owed_at on an already-paid one.
