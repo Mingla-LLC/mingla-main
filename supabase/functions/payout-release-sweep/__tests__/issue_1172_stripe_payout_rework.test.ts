@@ -138,6 +138,12 @@ Deno.test("attempt-cap alert survives transport failure and delivers once withou
       if (name === "run_payout_release_dark_sweep") {
         return Promise.resolve({ data: { executed: 0 }, error: null });
       }
+      if (name === "plan_pending_payout_partner_legs") {
+        return Promise.resolve({
+          data: { blocked_partner_attributions: 0 },
+          error: null,
+        });
+      }
       if (name === "claim_stripe_payout_releases") {
         return Promise.resolve({
           data: recordOutcomes.length === 0 ? [release] : [],
@@ -187,7 +193,18 @@ Deno.test("attempt-cap alert survives transport failure and delivers once withou
       }
       throw new Error(`unexpected RPC ${name}`);
     },
-    from: () => {
+    from: (table: string) => {
+      if (table === "brand_payout_releases") {
+        return {
+          select: () => ({
+            eq: () => ({
+              order: () => ({
+                limit: () => Promise.resolve({ data: [], error: null }),
+              }),
+            }),
+          }),
+        };
+      }
       throw new Error("no provider-fee writes expected");
     },
   })) as never;

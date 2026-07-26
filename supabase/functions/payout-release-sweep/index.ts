@@ -19,6 +19,7 @@ import {
   type StripeReleaseCandidate,
   type StripeReleaseResult,
 } from "./engine.ts";
+import { releasePartnerSplitsForOrganiserRelease } from "./partnerRelease.ts";
 
 const json = (body: Record<string, unknown>, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -557,31 +558,53 @@ export async function handlePayoutReleaseSweep(
       result: data ?? {},
     });
   }
-  try {
-    const stripeExecution = await executeClaimedStripeReleases(
-      admin as never,
-      deps,
-    );
-    const newAlertDelivery = await deliverPendingAttemptCapAlerts(
-      admin as never,
-      deps,
+
+  // Plan partner legs before C's organiser claim/authorization/execution.
+  // Paystack
+  // movement costs are itemized and deducted from organiser cash without
+  // touching partner principal.
+  const { data: partnerPlan, error: partnerPlanError } = await admin.rpc(
+    "plan_pending_payout_partner_legs",
+    { p_limit: 100 },
+  );
+  if (partnerPlanError) {
+    console.error("[payout-release-sweep] partner leg planning failed", {
+      code: partnerPlanError.code,
+      message: partnerPlanError.message,
+    });
+    return json({ error: "partner_leg_planning_failed" }, 500);
+  }
+  const blockedPartnerAttributions = typeof partnerPlan === "object" &&
+      partnerPlan !== null &&
+      typeof (partnerPlan as Record<string, unknown>)
+          .blocked_partner_attributions === "number"
+    ? Number(
+      (partnerPlan as Record<string, unknown>)
+        .blocked_partner_attributions,
+    )
+    : 0;
+  if (blockedPartnerAttributions > 0) {
+    console.error(
+      "[payout-release-sweep] organiser execution blocked by missing provider-sale attribution",
+      { blockedPartnerAttributions },
     );
     return json({
-      ok: true,
-      dark: false,
-      capturedFees,
-      alertDelivery: {
-        claimed: alertDelivery.claimed + newAlertDelivery.claimed,
-        providerAccepted: alertDelivery.providerAccepted +
-          newAlertDelivery.providerAccepted,
-        retryPending: alertDelivery.retryPending +
-          newAlertDelivery.retryPending,
-        manualReview: alertDelivery.manualReview +
-          newAlertDelivery.manualReview,
-      },
-      result: data ?? {},
-      stripeExecution,
-    });
+      error: "partner_attribution_pending",
+      blockedPartnerAttributions,
+    }, 409);
+  }
+
+  let stripeExecution;
+  let newAlertDelivery;
+  try {
+    stripeExecution = await executeClaimedStripeReleases(
+      admin as never,
+      deps,
+    );
+    newAlertDelivery = await deliverPendingAttemptCapAlerts(
+      admin as never,
+      deps,
+    );
   } catch (executionError) {
     console.error("[payout-release-sweep] Stripe execution phase failed", {
       message: executionError instanceof Error
@@ -590,6 +613,63 @@ export async function handlePayoutReleaseSweep(
     });
     return json({ error: "stripe_execution_failed" }, 500);
   }
+
+  // Only organiser releases already accepted by their provider can unlock
+  // partner rows. The claim RPC repeats that check under database truth.
+  const { data: releasedRows, error: releasedError } = await admin
+    .from("brand_payout_releases")
+    .select("id")
+    .eq("status", "released")
+    .order("released_at", { ascending: true })
+    .limit(100);
+  if (releasedError) {
+    console.error("[payout-release-sweep] released-row read failed", {
+      code: releasedError.code,
+      message: releasedError.message,
+    });
+    return json({ error: "released_row_read_failed" }, 500);
+  }
+
+  const totals = {
+    releasedStripe: 0,
+    pendingPaystack: 0,
+    retryableStripe: 0,
+    blockedStripe: 0,
+  };
+  const releasableRows = (releasedRows ?? []) as Array<{ id: string }>;
+  if (releasableRows.length > 0) {
+    const stripe = stripeWebhook();
+    for (const row of releasableRows) {
+      const released = await releasePartnerSplitsForOrganiserRelease(
+        admin,
+        stripe,
+        row.id,
+      );
+      totals.releasedStripe += released.releasedStripe;
+      totals.pendingPaystack += released.pendingPaystack;
+      totals.retryableStripe += released.retryableStripe;
+      totals.blockedStripe += released.blockedStripe;
+    }
+  }
+
+  return json({
+    ok: true,
+    dark: false,
+    capturedFees,
+    alertDelivery: {
+      claimed: alertDelivery.claimed + newAlertDelivery.claimed,
+      providerAccepted: alertDelivery.providerAccepted +
+        newAlertDelivery.providerAccepted,
+      retryPending: alertDelivery.retryPending +
+        newAlertDelivery.retryPending,
+      manualReview: alertDelivery.manualReview +
+        newAlertDelivery.manualReview,
+    },
+    result: data ?? {},
+    stripeExecution,
+    partnerPlan: partnerPlan ?? {},
+    partnerRelease: totals,
+  });
 }
 
 if (import.meta.main) serve((req) => handlePayoutReleaseSweep(req));
