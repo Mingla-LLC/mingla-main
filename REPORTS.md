@@ -18,6 +18,9 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-07-26 — Stripe organiser payouts can now be released from the internal event-payout ledger (ledger-exact amount, provider balance as ceiling only, per-occurrence release timing); shipped dark behind the per-brand cutover flag, so no live payout schedule changed (#1172, PR #1201)
+- 2026-07-26 — Complete Paystack refunds for Nigerian purchases — tickets, trips, and venue reservations — with idempotent no-double-refund tracking and organiser-debt netting; shipped dark (#1175, PR #1199)
+- 2026-07-26 — Partner fee-shares are now held until event payout and settled atomically (the Stripe transfer and its ledger record commit together, so money can never move while the books say "unpaid" and a failed write is genuinely retried); shipped dark (#1174, PR #1197)
 - 2026-07-26 — Consolidated Supabase edge-function secrets from 100 to 85 (freed 15 slots for new secrets) by packing non-credential settings into 5 validated JSON bundles with exact legacy fallbacks, and retired one dead Stripe key. No production behavior changed — the money path and all consumers were verified byte-for-byte and live-fire boot-checked bundle-only (#1203, PR #1206)
 - 2026-07-24 — Bank-first partner invites now continue straight from acceptance to the correct bank connection when needed, skip that step when already connected, use one role-correct email action, and describe Mingla’s offerings/payments journey without ticket-only language (#948, #949 — Wave 3, PR #1205)
 - 2026-07-24 — Nigerian organisers can now securely connect the Paystack transfer recipient Mingla will use for event-anchored payouts: exact-account retries are safe, full bank numbers are never stored, cross-brand access is blocked, and the legacy checkout split remains untouched while the new payout system stays dark (#1176, PR #1198)
