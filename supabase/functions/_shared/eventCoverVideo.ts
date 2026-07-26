@@ -7,6 +7,7 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { recordApiCall } from "./apiHealthLog.ts";
 // META-ORCH-1270 — Bunny Stream provider branch (Cloudinary path stays intact).
 import { bunnyDeleteVideo } from "./bunnyStream.ts";
+import { resolveRuntimeString } from "./runtimeConfig.ts";
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -255,7 +256,10 @@ export async function requireBrandCoverManager(
 export type CoverVideoProvider = "cloudinary" | "bunny";
 
 export function coverVideoProvider(): CoverVideoProvider {
-  return (Deno.env.get("EVENT_COVER_VIDEO_PROVIDER") ?? "cloudinary") === "bunny"
+  return (resolveRuntimeString(
+      "event_cover_video_provider",
+      "EVENT_COVER_VIDEO_PROVIDER",
+    ) ?? "cloudinary") === "bunny"
     ? "bunny"
     : "cloudinary";
 }
@@ -268,7 +272,7 @@ export function providerConfigured(): boolean {
 
 function cloudinaryConfigured(): boolean {
   return (
-    (Deno.env.get("EVENT_COVER_VIDEO_PROVIDER") ?? "cloudinary") === "cloudinary" &&
+    coverVideoProvider() === "cloudinary" &&
     Boolean(Deno.env.get("CLOUDINARY_CLOUD_NAME")) &&
     Boolean(Deno.env.get("CLOUDINARY_API_KEY")) &&
     Boolean(Deno.env.get("CLOUDINARY_API_SECRET"))

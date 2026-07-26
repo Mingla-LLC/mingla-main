@@ -41,6 +41,7 @@ import {
 } from "../_shared/email/senders.ts";
 // ISSUE-1001 — canonical logo resolution (env override, live fail-safe default).
 import { minglaLogoUrl } from "../_shared/brandAssets.ts";
+import { resolveRuntimeString } from "../_shared/runtimeConfig.ts";
 
 const { BRAND_ORANGE_BUTTON, BRAND_INK, BRAND_MUTED, BRAND_BORDER } =
   SHELL_TOKENS;
@@ -1207,7 +1208,7 @@ export async function handler(req: Request): Promise<Response> {
       bodyHtml: built.bodyHtml,
       supportEmail: Deno.env.get("SUPPORT_EMAIL") ?? REPLY_TO,
       logoUrl: minglaLogoUrl(),
-      footerAddress: Deno.env.get("MINGLA_FOOTER_ADDRESS") ??
+      footerAddress: resolveRuntimeString("mingla_footer_address", "MINGLA_FOOTER_ADDRESS") ??
         "Mingla, hello@usemingla.com",
     });
 

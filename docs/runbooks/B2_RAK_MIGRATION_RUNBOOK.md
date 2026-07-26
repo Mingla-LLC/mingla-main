@@ -101,13 +101,11 @@ For each edge function, the required scopes are listed below. Create each RAK in
 
 ### RAK #6 — `rak_mingla_kyc_reminder`
 
-**Used by:** `supabase/functions/stripe-kyc-stall-reminder/index.ts` (extended in Sub-dispatch B Phase 4)
-
-**Stripe API calls:** `GET /v1/accounts/{id}` (read currently_due + current_deadline + disabled_reason), `POST /v1/account_links` (issue fresh resume link for stalled accounts).
-
-**Scopes:**
-- Connect → Accounts: **Read**
-- Connect → Account links: **Write**
+**Current status:** not used by the current `stripe-kyc-stall-reminder` implementation. That
+function reads cached requirements from `stripe_connect_accounts` and dispatches a notification;
+it does not construct a Stripe client or call Stripe. The historical plan below is superseded by
+issue #1203. Do not create or restore this RAK without a new reviewed consumer and least-privilege
+contract.
 
 ---
 
@@ -138,7 +136,7 @@ For each fn, set its specific RAK env var. In Supabase Dashboard → Project Set
 | `STRIPE_RAK_REFRESH_STATUS` | `rk_test_...` from RAK #3 |
 | `STRIPE_RAK_DETACH` | `rk_test_...` from RAK #4 (or skip if hard-delete disabled) |
 | `STRIPE_RAK_BALANCES` | `rk_test_...` from RAK #5 |
-| `STRIPE_RAK_KYC_REMINDER` | `rk_test_...` from RAK #6 |
+| `STRIPE_RAK_KYC_REMINDER` | **Do not provision** — no current Stripe API consumer; see issue #1203 |
 
 Keep the existing `STRIPE_SECRET_KEY` env var in place for now (will be removed in Step 5 after verification).
 
@@ -168,7 +166,7 @@ Deploy each edge fn (Sub-dispatch B builds the new fns; existing fns get the new
 | `brand-stripe-refresh-status` | Refresh BrandPaymentsView → verify status updates |
 | `brand-stripe-detach` | Tap "Disconnect Stripe" on a sandbox brand → verify soft-delete |
 | `brand-stripe-balances` | Open BrandPaymentsView KPIs → verify balance loads |
-| `stripe-kyc-stall-reminder` | Manually invoke fn (Supabase Dashboard → Edge Functions → Invoke) with test brand → verify reminder fires |
+| `stripe-kyc-stall-reminder` | Verify a reminder from cached requirements data; no Stripe credential or Stripe API call is expected |
 
 If any fn returns **403 Forbidden** from Stripe API: the RAK is missing a required scope. Go to Stripe Dashboard, edit the RAK, add the missing scope, save. Re-test.
 

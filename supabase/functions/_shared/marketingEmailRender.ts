@@ -33,6 +33,7 @@ import { generateTrackingId } from "./marketingTokens.ts";
 // ISSUE-1001 — canonical logo resolution; replaces the silent DEAD-404
 // email-assets fallback URL with a live default.
 import { minglaLogoUrl } from "./brandAssets.ts";
+import { resolveRuntimeString } from "./runtimeConfig.ts";
 
 const { BRAND_ORANGE, BRAND_INK, BRAND_MUTED, BRAND_BG_SOFT, BRAND_BORDER } =
   SHELL_TOKENS;
@@ -188,7 +189,7 @@ export function renderMarketingEmail(
       Deno.env.get("SUPPORT_EMAIL") ??
       "support@usemingla.com",
     logoUrl: minglaLogoUrl(),
-    footerAddress: Deno.env.get("MINGLA_FOOTER_ADDRESS") ??
+    footerAddress: resolveRuntimeString("mingla_footer_address", "MINGLA_FOOTER_ADDRESS") ??
       "Mingla, hello@usemingla.com",
     brandHeaderImageUrl: input.brand_header_image_url ?? null,
   });

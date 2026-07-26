@@ -23,6 +23,7 @@ import {
   bunnyPresignTusUpload,
   bunnyUsagePct,
 } from "../_shared/bunnyStream.ts";
+import { resolveRuntimeNumber } from "../_shared/runtimeConfig.ts";
 
 export const SOURCE_CEILING_MS = 33_000;
 
@@ -100,8 +101,10 @@ async function readBunnyUsagePercent(supabase: any): Promise<number | null> {
   if (bunnyUsageCache && Date.now() - bunnyUsageCache.atMs < BUNNY_USAGE_CACHE_TTL_MS) {
     return bunnyUsageCache.value;
   }
-  const storageCap = Number(Deno.env.get("BUNNY_STORAGE_CAP_BYTES") ?? "0");
-  const trafficCap = Number(Deno.env.get("BUNNY_TRAFFIC_CAP_BYTES") ?? "0");
+  const storageCap = resolveRuntimeNumber("bunny_storage_cap_bytes", "BUNNY_STORAGE_CAP_BYTES") ??
+    0;
+  const trafficCap = resolveRuntimeNumber("bunny_traffic_cap_bytes", "BUNNY_TRAFFIC_CAP_BYTES") ??
+    0;
   const usage = await bunnyFetchLibraryUsage();
   let value: number | null = null;
   if (usage.ok) {

@@ -19,6 +19,7 @@ import {
 } from "../_shared/stripeWebhookSignature.ts";
 import { sendOpsAlertEmail } from "../_shared/stripeOpsAlertEmail.ts";
 import { logError } from "../_shared/structuredLog.ts";
+import { resolveAlertRecipientValue } from "../_shared/secretBundle.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -35,8 +36,13 @@ export async function notifyWebhookSignatureFailure(
   signature: string | null,
   send: typeof sendOpsAlertEmail = sendOpsAlertEmail,
 ): Promise<number> {
-  const raw = Deno.env.get("STRIPE_WEBHOOK_FAILURE_ALERT_EMAILS") ?? "";
-  const emails = raw.split(",").map((s) => s.trim()).filter(Boolean);
+  const value = resolveAlertRecipientValue(
+    "stripe_webhook_failures",
+    "STRIPE_WEBHOOK_FAILURE_ALERT_EMAILS",
+  );
+  const emails = Array.isArray(value)
+    ? value
+    : (value ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   if (emails.length === 0) return 0;
   const sigPrefix = signature?.slice(0, 20) ?? "missing";
   const subject = "⚠️ [LIVE] Stripe webhook signature failure detected";

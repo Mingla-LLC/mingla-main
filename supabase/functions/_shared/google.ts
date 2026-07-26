@@ -44,6 +44,7 @@ import {
   type ChannelAdapter,
   type EntityLevel,
 } from "./adChannel.ts";
+import { resolveRuntimeString } from "./runtimeConfig.ts";
 
 // ── Env config (NAMES per §7 Google item 5 — values live in Function Secrets) ─
 
@@ -116,7 +117,8 @@ export function resolveGoogleEnvConfig(
     clientSecret,
     loginCustomerId,
     customerId,
-    apiVersion: read("GOOGLE_ADS_API_VERSION") || GOOGLE_ADS_DEFAULT_API_VERSION,
+    apiVersion: resolveRuntimeString("google_ads_api_version", "GOOGLE_ADS_API_VERSION") ||
+      GOOGLE_ADS_DEFAULT_API_VERSION,
     apiBase: read("GOOGLE_ADS_API_BASE") || GOOGLE_ADS_API_BASE,
   };
 }

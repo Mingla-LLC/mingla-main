@@ -27,6 +27,8 @@ import { sendOpsAlertEmail } from "../_shared/stripeOpsAlertEmail.ts";
 import { logError, structuredLog } from "../_shared/structuredLog.ts";
 // META-ORCH-1270 (Phase 2) — Bunny Stream account usage read for the alarm.
 import { bunnyFetchLibraryUsage, bunnyUsagePct } from "../_shared/bunnyStream.ts";
+import { resolveAlertRecipientValue } from "../_shared/secretBundle.ts";
+import { resolveRuntimeConfigValue } from "../_shared/runtimeConfig.ts";
 import {
   buildCheckRows,
   CLASS_B_DEPLETION,
@@ -78,7 +80,9 @@ function num(envVar: string, def: number): number {
 }
 
 function alertRecipients(): string[] {
-  const raw = Deno.env.get("API_HEALTH_ALERT_EMAILS") ?? "seth@usemingla.com";
+  const value = resolveAlertRecipientValue("api_health", "API_HEALTH_ALERT_EMAILS");
+  if (Array.isArray(value)) return value;
+  const raw = value ?? "seth@usemingla.com";
   return raw.split(",").map((s) => s.trim()).filter(Boolean);
 }
 
@@ -450,8 +454,12 @@ async function probeTwilio(): Promise<ProbeResult> {
 async function probeBunny(): Promise<ProbeResult> {
   const libraryId = Deno.env.get("BUNNY_STREAM_LIBRARY_ID");
   const accountKey = Deno.env.get("BUNNY_ACCOUNT_API_KEY");
-  const storageCap = num("BUNNY_STORAGE_CAP_BYTES", 0);
-  const trafficCap = num("BUNNY_TRAFFIC_CAP_BYTES", 0);
+  const storageCap = Number(
+    resolveRuntimeConfigValue("bunny_storage_cap_bytes", "BUNNY_STORAGE_CAP_BYTES") ?? 0,
+  );
+  const trafficCap = Number(
+    resolveRuntimeConfigValue("bunny_traffic_cap_bytes", "BUNNY_TRAFFIC_CAP_BYTES") ?? 0,
+  );
   if (!libraryId || !accountKey || !(storageCap > 0) || !(trafficCap > 0)) {
     return {
       ok: false, latencyMs: null, status: "unknown",

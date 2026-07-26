@@ -19,11 +19,12 @@
 // OPTIONAL, so no code path can ever resolve a dead logo URL again
 // (I-PROPOSED-1001-BRAND-ASSET-CANON, enforced by
 // .github/scripts/strict-grep/issue-1001-dead-logo-urls.mjs).
+import { resolveRuntimeString } from "./runtimeConfig.ts";
 
 export const DEFAULT_MINGLA_LOGO_URL =
   "https://usemingla.com/brand/email/mingla-wordmark-email.png";
 
 export function minglaLogoUrl(): string {
-  const v = Deno.env.get("MINGLA_LOGO_URL");
+  const v = resolveRuntimeString("mingla_logo_url", "MINGLA_LOGO_URL");
   return v && v.trim().length > 0 ? v.trim() : DEFAULT_MINGLA_LOGO_URL;
 }

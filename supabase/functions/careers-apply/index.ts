@@ -46,6 +46,7 @@ import {
 // ISSUE-1001 — canonical logo resolution; replaces the silent DEAD-404
 // email-assets fallback URL with a live default.
 import { minglaLogoUrl } from "../_shared/brandAssets.ts";
+import { resolveRuntimeString } from "../_shared/runtimeConfig.ts";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -291,7 +292,7 @@ export function buildApplicantEmail(
     bodyHtml,
     supportEmail: Deno.env.get("SUPPORT_EMAIL") ?? "support@usemingla.com",
     logoUrl: minglaLogoUrl(),
-    footerAddress: Deno.env.get("MINGLA_FOOTER_ADDRESS") ??
+    footerAddress: resolveRuntimeString("mingla_footer_address", "MINGLA_FOOTER_ADDRESS") ??
       "Mingla, hello@usemingla.com",
   });
 
@@ -342,7 +343,7 @@ export function buildNotifyEmail(
     bodyHtml,
     supportEmail: Deno.env.get("SUPPORT_EMAIL") ?? "support@usemingla.com",
     logoUrl: minglaLogoUrl(),
-    footerAddress: Deno.env.get("MINGLA_FOOTER_ADDRESS") ??
+    footerAddress: resolveRuntimeString("mingla_footer_address", "MINGLA_FOOTER_ADDRESS") ??
       "Mingla, hello@usemingla.com",
   });
 

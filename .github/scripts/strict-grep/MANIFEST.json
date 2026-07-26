@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 429,
-  "selfTestWiredFloor": 198,
+  "expectedStrictGrepMjsFiles": 430,
+  "selfTestWiredFloor": 199,
   "unenforcedCap": 7,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -6120,6 +6120,18 @@
       "jobKeys": [
         "issue-1158-vercel-og-sharp-repo-wide-trap-sweep"
       ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1203-secret-capacity.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
     },
     {
       "script": ".github/scripts/strict-grep/issue-949-invite-onboarding-offering-agnostic.mjs",
