@@ -65,6 +65,9 @@ jobs:
           docker exec -i issue1173-postgres \
             psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
             < supabase/migrations/__tests__/issue_1173_stamp_cutover.test.sql
+          docker exec -i issue1173-postgres \
+            psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            < supabase/migrations/__tests__/issue_1173_rollback_cutover_guard.adversarial.test.sql
       - name: Run #1173 schedule-flip regression tests (Deno)
         run: |
           deno test --allow-read --allow-env --allow-net --no-check \
