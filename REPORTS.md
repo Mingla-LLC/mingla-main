@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-07-26 — Consolidated Supabase edge-function secrets from 100 to 85 (freed 15 slots for new secrets) by packing non-credential settings into 5 validated JSON bundles with exact legacy fallbacks, and retired one dead Stripe key. No production behavior changed — the money path and all consumers were verified byte-for-byte and live-fire boot-checked bundle-only (#1203, PR #1206)
 - 2026-07-24 — Bank-first partner invites now continue straight from acceptance to the correct bank connection when needed, skip that step when already connected, use one role-correct email action, and describe Mingla’s offerings/payments journey without ticket-only language (#948, #949 — Wave 3, PR #1205)
 - 2026-07-24 — Nigerian organisers can now securely connect the Paystack transfer recipient Mingla will use for event-anchored payouts: exact-account retries are safe, full bank numbers are never stored, cross-brand access is blocked, and the legacy checkout split remains untouched while the new payout system stays dark (#1176, PR #1198)
 - 2026-07-24 — Shipped the dark, rail-neutral event-payout ledger: Mingla can now calculate what each organiser is owed from live occurrence dates, charge-level fee truth, refunds, disputes, and postponement debt without moving money or changing today’s payout schedules; the two-week safety soak is running before any cutover (#1171, PR #1196)

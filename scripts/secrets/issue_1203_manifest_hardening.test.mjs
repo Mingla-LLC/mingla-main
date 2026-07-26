@@ -37,14 +37,21 @@ test("issue #1203: manifest rejects malformed metadata and non-consumer reader p
 });
 
 test("issue #1203: a pre-rollout live audit is exact and drift remains fail-closed", () => {
-  const target = manifest.secrets.map((record) => record.name);
-  const pending = new Set(manifest.rollout.pending_bundle_names);
+  // #1203 rollout completed → the on-disk manifest is now "enforced"; force a
+  // transition clone here so this pre-rollout scenario stays valid independent of
+  // the shipped mode (mirrors the enforced test's clone below).
+  const transition = clone(manifest);
+  transition.rollout.live_audit_mode = "transition";
+  transition.rollout.transition_stage = "pre_rollout";
+  transition.rollout.expected_user_managed_count = 100;
+  const target = transition.secrets.map((record) => record.name);
+  const pending = new Set(transition.rollout.pending_bundle_names);
   const preRolloutNames = [
     ...target.filter((name) => !pending.has(name)),
-    ...manifest.rollout.legacy_names,
+    ...transition.rollout.legacy_names,
   ];
   const expected = auditSecretBudget({
-    manifest,
+    manifest: transition,
     liveNames: preRolloutNames,
     liveAudit: true,
   });
@@ -53,7 +60,7 @@ test("issue #1203: a pre-rollout live audit is exact and drift remains fail-clos
   assert.match(expected.warnings.join("\n"), /secret_budget_transition/);
 
   const drifted = auditSecretBudget({
-    manifest,
+    manifest: transition,
     liveNames: preRolloutNames.slice(1),
     liveAudit: true,
   });
