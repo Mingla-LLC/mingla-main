@@ -312,15 +312,25 @@ Deno.test("released occurrence triggers one plain Stripe platform transfer and o
   assertEquals(calls[0].payload.destination, "acct_partner_1");
   assertFalse("source_transaction" in calls[0].payload);
   assertEquals(calls[0].options.idempotencyKey, "partner_split_fee-1");
-  assert(
+  // The split marker and its normalized leg are now committed by ONE idempotent
+  // RPC. The two-write seam (mark_partner_split_transferred + a separate direct
+  // payout_transfer_legs update) is gone.
+  const settle = rpcCalls.find((call) =>
+    call.name === "settle_partner_split_transfer"
+  );
+  assert(settle);
+  assertEquals(settle.args.p_application_fee_id, "fee-1");
+  assertEquals(settle.args.p_transfer_id, "tr_platform_balance_1");
+  assertEquals(
+    rpcCalls.filter((call) => call.name === "settle_partner_split_transfer")
+      .length,
+    1,
+  );
+  assertFalse(
     rpcCalls.some((call) => call.name === "mark_partner_split_transferred"),
   );
-  assert(
-    fromCalls.some((call) =>
-      call.table === "payout_transfer_legs" &&
-      call.op === "update" &&
-      (call.payload as { status?: string }).status === "succeeded"
-    ),
+  assertFalse(
+    fromCalls.some((call) => call.table === "payout_transfer_legs"),
   );
 });
 

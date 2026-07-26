@@ -814,4 +814,95 @@ REVOKE ALL ON FUNCTION public.mark_partner_split_reversed(text, text)
 GRANT EXECUTE ON FUNCTION public.mark_partner_split_reversed(text, text)
   TO service_role;
 
+-- settle_partner_split_transfer — the SINGLE atomic post-provider ledger-commit
+-- boundary. After Stripe accepts the partner transfer, this one idempotent RPC
+-- marks the partner split 'transferred' AND settles its matching normalized
+-- partner leg 'succeeded' inside ONE transaction. It replaces the previous
+-- two-write seam (mark_partner_split_transferred, then a separate direct
+-- payout_transfer_legs UPDATE), which could commit the terminal split marker and
+-- then fail the leg write — leaving real, moved partner money recorded as a
+-- permanently 'planned' leg that no later sweep could ever select to repair.
+--
+-- Atomicity is the contract: any inconsistency raises, and because both writes
+-- live in the same function invocation, the RAISE rolls BOTH back. The split
+-- stays 'pending'/selectable, so the next sweep re-selects it and replays the
+-- same Stripe idempotency key (partner_split_<application_fee_id>) — which
+-- converges to the same provider transfer id and one succeeded leg, never a
+-- duplicate movement. Exact replay after a full success is a pure no-op.
+CREATE OR REPLACE FUNCTION public.settle_partner_split_transfer(
+  p_application_fee_id text,
+  p_transfer_id text
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $function$
+DECLARE
+  v_split_id uuid;
+  v_succeeded_legs integer;
+BEGIN
+  IF p_transfer_id IS NULL OR length(btrim(p_transfer_id)) = 0 THEN
+    RAISE EXCEPTION
+      'settle_partner_split_transfer requires a provider transfer id for %',
+      p_application_fee_id;
+  END IF;
+
+  SELECT id INTO v_split_id
+  FROM public.partner_splits
+  WHERE stripe_application_fee_id = p_application_fee_id;
+
+  IF v_split_id IS NULL THEN
+    RAISE EXCEPTION
+      'settle_partner_split_transfer: no partner split for application fee %',
+      p_application_fee_id;
+  END IF;
+
+  -- Mark the split transferred. Idempotent: a no-op once already transferred,
+  -- so exact replay converges instead of double-marking.
+  UPDATE public.partner_splits
+  SET status = 'transferred',
+      stripe_transfer_id = p_transfer_id,
+      transferred_at = COALESCE(transferred_at, now()),
+      error_message = NULL
+  WHERE id = v_split_id
+    AND status IN ('pending', 'failed');
+
+  -- Settle the matching normalized partner leg in the SAME transaction.
+  -- Idempotent: a no-op once already succeeded (attempt_count is not
+  -- re-incremented on replay).
+  UPDATE public.payout_transfer_legs
+  SET status = 'succeeded',
+      provider_transfer_code = p_transfer_id,
+      reconciled_at = COALESCE(reconciled_at, now()),
+      attempt_count = attempt_count + 1
+  WHERE partner_split_id = v_split_id
+    AND kind = 'partner'
+    AND status <> 'succeeded';
+
+  -- Fail closed: a split can never end 'transferred' without exactly one
+  -- succeeded partner leg carrying THIS provider transfer code. A missing leg,
+  -- a failed leg write, or a divergent code all raise here and roll the split
+  -- marker back with them, so durable state is either fully settled or fully
+  -- selectable for the next sweep — never the half-state the P0 produced.
+  SELECT count(*)::integer INTO v_succeeded_legs
+  FROM public.payout_transfer_legs
+  WHERE partner_split_id = v_split_id
+    AND kind = 'partner'
+    AND status = 'succeeded'
+    AND provider_transfer_code = p_transfer_id;
+
+  IF v_succeeded_legs <> 1 THEN
+    RAISE EXCEPTION
+      'settle_partner_split_transfer: split % must have exactly one succeeded partner leg for transfer %, found %',
+      v_split_id, p_transfer_id, v_succeeded_legs;
+  END IF;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.settle_partner_split_transfer(text, text)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.settle_partner_split_transfer(text, text)
+  TO service_role;
+
 COMMIT;

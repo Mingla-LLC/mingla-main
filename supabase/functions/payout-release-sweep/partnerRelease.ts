@@ -3,6 +3,13 @@
 // held split can become pending. Stripe then moves platform-balance funds with
 // no source_transaction (#1029); Paystack pending rows remain owned by the
 // existing reconcile-first partner retry sweep.
+//
+// Once Stripe accepts the partner transfer, the split marker and its normalized
+// transfer leg are committed together by ONE idempotent RPC
+// (settle_partner_split_transfer). A database failure rolls BOTH back, so the
+// split stays 'pending'/selectable and the next sweep replays the same
+// idempotency key to the same transfer id — never a transferred split stranded
+// with a permanently 'planned' leg.
 
 // @ts-ignore — Deno ESM
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -40,25 +47,6 @@ async function markPartnerBlocked(
   });
   if (error) {
     throw new Error(`partner split block write failed: ${error.message}`);
-  }
-}
-
-async function markStripeLegSucceeded(
-  admin: SupabaseClient,
-  splitId: string,
-  transferId: string,
-): Promise<void> {
-  const { error } = await admin
-    .from("payout_transfer_legs")
-    .update({
-      status: "succeeded",
-      provider_transfer_code: transferId,
-      reconciled_at: new Date().toISOString(),
-    })
-    .eq("partner_split_id", splitId)
-    .eq("kind", "partner");
-  if (error) {
-    throw new Error(`partner transfer leg update failed: ${error.message}`);
   }
 }
 
@@ -143,21 +131,39 @@ export async function releasePartnerSplitsForOrganiserRelease(
         },
       );
       const transferId = String((transfer as { id: string }).id);
-      const { error: markError } = await admin.rpc(
-        "mark_partner_split_transferred",
+      // Stripe has accepted the transfer. Commit the split marker AND its
+      // normalized leg in ONE idempotent transaction. settle_* returns its
+      // failure via { error } (it does not throw), so the catch below stays
+      // scoped to Stripe transfer-create errors only.
+      const { error: settleError } = await admin.rpc(
+        "settle_partner_split_transfer",
         {
           p_application_fee_id: split.stripe_application_fee_id,
           p_transfer_id: transferId,
         },
       );
-      if (markError) {
-        throw new Error(
-          `partner transfer ledger update failed: ${markError.message}`,
+      if (settleError) {
+        // Post-provider database failure: the atomic RPC rolled BOTH the split
+        // marker and the leg back, so the split is genuinely still selectable
+        // and the next sweep replays the same idempotency key to this same
+        // transfer id. Surface it (ops-visible) and count it as a real retry —
+        // it is NOT a durable success and NEVER a stranded transferred split.
+        console.error(
+          "[payout-release-sweep] partner transfer settlement rolled back; provider accepted but ledger commit failed — split stays selectable for replay",
+          {
+            splitId: split.id,
+            applicationFeeId: split.stripe_application_fee_id,
+            transferId,
+            message: settleError.message,
+          },
         );
+        result.retryableStripe++;
+        continue;
       }
-      await markStripeLegSucceeded(admin, split.id, transferId);
       result.releasedStripe++;
     } catch (caught) {
+      // Scoped to stripe.transfers.create errors only — the ledger commit
+      // above reports failure via { error }, not by throwing.
       const stripeError = caught as {
         type?: string;
         code?: string;

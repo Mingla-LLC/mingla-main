@@ -58,6 +58,7 @@ jobs:
         run: |
           deno test --allow-read --allow-env --no-check \
             supabase/functions/payout-release-sweep/__tests__/issue_1174_partner_deferral.test.ts \
+            supabase/functions/payout-release-sweep/__tests__/issue_1174_atomic_ledger_commit_boundary.test.ts \
             supabase/functions/_shared/__tests__/orch_1054_partner_splits_happy.test.ts
       - name: Run tester late-partner-ledger adversarial regression
         run: |
@@ -69,6 +70,11 @@ jobs:
           docker exec -i issue1174-postgres \
             psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
             < supabase/functions/payout-release-sweep/__tests__/issue_1174_atomic_partner_outcome.sql
+      - name: Run atomic ledger-commit boundary regression
+        run: |
+          docker exec -i issue1174-postgres \
+            psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            < supabase/functions/payout-release-sweep/__tests__/issue_1174_atomic_ledger_commit_boundary.sql
       - name: Run tester two-session atomic visibility regression
         run: |
           bash \
