@@ -256,11 +256,19 @@ export async function cancelOffering(eventId, reason) {
     p_event_id: eventId,
     p_reason: reason,
   });
-  supabase.functions
-    .invoke("event-cancel-refund-fanout", { body: { event_id: eventId } })
-    .catch(() => {
-      /* backstop cron re-drives — see supabase/functions/event-cancel-refund-fanout */
-    });
+  // Strictly transparent kickoff: the try/catch swallows any synchronous failure
+  // (e.g. an absent functions client) and the trailing .catch() swallows any async
+  // rejection, so neither a failure nor the absence of the fan-out endpoint can
+  // ever reject into cancelOffering or alter its result.
+  try {
+    supabase.functions
+      .invoke("event-cancel-refund-fanout", { body: { event_id: eventId } })
+      .catch(() => {
+        /* backstop cron re-drives — see supabase/functions/event-cancel-refund-fanout */
+      });
+  } catch {
+    /* fan-out client unavailable — backstop cron re-drives */
+  }
   return result;
 }
 
