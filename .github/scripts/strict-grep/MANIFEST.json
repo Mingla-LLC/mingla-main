@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 436,
-  "selfTestWiredFloor": 236,
+  "expectedStrictGrepMjsFiles": 437,
+  "selfTestWiredFloor": 237,
   "unenforcedCap": 7,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -6238,6 +6238,18 @@
     },
     {
       "script": ".github/scripts/strict-grep/issue-949-invite-onboarding-offering-agnostic.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/i-1026-mapper-no-error-suppressing-cast.mjs",
       "kind": "file",
       "enforcement": "batch:A",
       "invocation": "node",
