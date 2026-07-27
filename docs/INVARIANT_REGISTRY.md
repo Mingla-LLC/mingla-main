@@ -7,6 +7,18 @@
 
 ---
 
+## DRAFT — issue #885 (the scanner-invite route renders an actionable screen for a terminal auth state, never an infinite spinner — IN FLIGHT, registered at IMPLEMENT 2026-07-27)
+
+> Registered DRAFT at issue #885 [scanner-invite-loader-guard] IMPLEMENT (lineage ORCH-1374). The infinite-loader FIX already shipped in `mingla-business/app/accept-scanner-invitation.tsx` (commit 26cd280bb, batched into the ORCH-1373 PR): the route branches on the five-state `authStatus` and renders an actionable "Sign in" screen for a logged-out visitor instead of the old dead `if (!isAuthReady) return;`-above-`router.replace('/auth?next=…')` clone that would have spun a logged-out scanner forever (a loaded landmine, not a live fire — production `scanner_invitations` = 0 rows). The GAP this issue closes is that the route's OWN render control flow had no fails-on-revert regression test: the shared `authReadiness` tests and the layout route-gate test (`orch_1373_auth_route_gate.test.ts`) protect the auth DERIVATION and the route MOUNT, but nothing pinned THIS component's branch structure. The implementor adds a happy-path proof that MOUNTS the real shipped route via react-test-renderer (not a hand-rolled branch copy — the ORCH-1373 P2-2 disease) and asserts an actionable "Sign in" affordance + zero ActivityIndicator for `authStatus="signed_out"`. The orchestrator flips DRAFT → ACTIVE at CLOSE after the tester's adversarial angle. Cross-ref: implementation report on issue #885.
+
+### I-PROPOSED-885-SCANNER-INVITE-NO-INFINITE-LOADER (DRAFT — issue #885 IMPLEMENT 2026-07-27)
+- **Rule:** On `/accept-scanner-invitation` (`mingla-business/app/accept-scanner-invitation.tsx`), a terminal-but-actionable auth state MUST render an actionable screen, never an infinite spinner. `authStatus === "signed_out"` → a working "Sign in" screen; `authStatus === "error"` → a "Try again" screen. A spinner is legitimate ONLY for transient states (`bootstrapping` / `refreshing`, or `signed_in_ready` while the accept mutation is in flight). `!isAuthReady` must NEVER be treated as "still loading" for a logged-out visitor — for a terminal `signed_out` state it is actionable, not transient. (Route-scoped sibling of `I-PROPOSED-1373-AUTH-TERMINAL-STATE-IS-ACTIONABLE`.)
+- **CI enforcement:** the `#885 BIZ` job (`.github/workflows/issue-885-scanner-invite-loader-tests.yml`) runs the append-only jest suite `issue_885_scanner_invite_signed_out_actionable.implementor.test.ts` under Node 20 with `react-test-renderer@19.1.0 --no-save`, path-gated on the route source, the test, and the workflow. It is also swept into the required full suite (`mingla-business-jest-suite.yml`, which installs the same renderer).
+- **Regression test:** the suite MOUNTS the real `AcceptScannerInvitationRoute` and, for `authStatus="signed_out"` with an unresolved phase, asserts (a) the accept mutation is not attempted, (b) exactly one actionable "Sign in" affordance renders with an onPress handler, (c) NO ActivityIndicator renders, and (d) the visible copy is the invite screen, not spinner copy. Reverting the route to the dead-redirect / spinner-for-signed_out shape removes the "Sign in" branch and renders a spinner → assertions (b)/(c)/(d) flip red. Append-only.
+- **Established:** DRAFT 2026-07-27 at issue #885 IMPLEMENT. Flips ACTIVE at CLOSE.
+
+---
+
 ## ACTIVE — issues #948 + #949 (bank-first partner invites stay offering-agnostic — W3 CLOSED 2026-07-24)
 
 ### I-PROPOSED-949-INVITE-ONBOARDING-OFFERING-AGNOSTIC (ACTIVE)
