@@ -49,7 +49,12 @@ while ((m = callRe.exec(code)) !== null) {
 const wrapFiles = [
   "supabase/functions/_shared/paystack.ts",
   "supabase/functions/_shared/mapboxGeocode.ts",
-  "supabase/functions/_shared/eventCoverVideo.ts",
+  // #966 (SPEC AMENDMENT 1): the cover-video vendor call moved from
+  // eventCoverVideo.ts (Cloudinary destroy fetch, removed) to bunnyStream.ts, which
+  // now owns `void recordApiCall("bunny", …)` at 3 sites; eventCoverVideo.ts no
+  // longer makes any vendor fetch. Coverage-preserving swap — the fire-and-forget
+  // wrap stays under gate protection on the file that now makes the vendor call.
+  "supabase/functions/_shared/bunnyStream.ts",
   "supabase/functions/_shared/agentGemini.ts",
   "supabase/functions/_shared/geminiMenuParser.ts",
   "supabase/functions/_shared/appsFlyerS2S.ts",
