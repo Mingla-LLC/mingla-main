@@ -602,6 +602,21 @@ serve(async (req: Request): Promise<Response> => {
             provider_terminal_attempt_id: null,
             provider_terminal_at: null,
             provider_terminal_code: null,
+            // ISSUE-997 D1: a provider whose stable media id is only learned at
+            // READY time (Google/YouTube: youtube_video_id, known only once the
+            // upload reaches PROCESSED) surfaces it via checked.mergeExtra so the
+            // READY ref carries it in external_ref_extra. Providers that record
+            // their full extra at initiate (Meta/Snap/TikTok) never set mergeExtra,
+            // so this spread is omitted for them and their external_ref_extra is
+            // left exactly as persisted at upload — a strict no-op.
+            ...(checked.mergeExtra
+              ? {
+                external_ref_extra: {
+                  ...row.current_external_ref_extra,
+                  ...checked.mergeExtra,
+                },
+              }
+              : {}),
           },
           "prepare_ready",
           row.current_status,

@@ -5,9 +5,20 @@
  * envelopes, rejects stale responses, and derives the READY create subset.
  */
 
-export const PREPARATION_ORDER = Object.freeze(["meta", "snapchat", "tiktok"]);
+// ISSUE-997 D1: Google joins the PREPARATION queue so a Google video can walk
+// meta→snapchat→tiktok→google to READY (its YouTube resumable upload). Google
+// video CREATE stays a SEPARATE, still-fail-closed gate (it is intentionally NOT
+// added to VIDEO_CREATE_PLATFORMS / VIDEO_CREATE_ENABLED until 997-D2), so a
+// prepared-READY Google row is still excluded from the build as approximation_only.
+export const PREPARATION_ORDER = Object.freeze([
+  "meta",
+  "snapchat",
+  "tiktok",
+  "google",
+]);
 // ISSUE-997 C: TikTok joins the video-create subset (paused-video wired
-// end-to-end). Google stays out until the separate 997-D sub-wave.
+// end-to-end). Google stays out of the CREATE subset until the separate 997-D2
+// sub-wave — preparation (above) is wired in D1, create remains fail-closed.
 export const VIDEO_CREATE_PLATFORMS = Object.freeze(["meta", "snapchat", "tiktok"]);
 export const ACTIVE_PREPARATION_STATES = Object.freeze(["uploading", "processing"]);
 export const TERMINAL_PREPARATION_STATES = Object.freeze(["ready", "failed", "timed_out"]);

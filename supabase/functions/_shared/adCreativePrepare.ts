@@ -13,8 +13,10 @@ import {
 import type { AdCreativeRow, CreativeUploadDeps } from "./adCreative.ts";
 import { probeCreativeBytes, sha256Hex } from "./adCreativeProbe.ts";
 import { normalizeMetaError, resolveMetaClient } from "./meta.ts";
+import { resolveGoogleClient } from "./google.ts";
+import type { GoogleClient } from "./google.ts";
 
-export type PreparationPlatform = "meta" | "snapchat" | "tiktok";
+export type PreparationPlatform = "meta" | "snapchat" | "tiktok" | "google";
 export type PreparationState =
   | "not_started"
   | "uploading"
@@ -511,6 +513,12 @@ export interface ProviderCheckResult {
   terminalCode?: string;
   retryAfterSeconds?: number;
   preview?: Record<string, unknown> | null;
+  // ISSUE-997 D1: a provider whose stable media id is only learned at READY time
+  // (Google/YouTube returns the youtube_video_id only once state === "PROCESSED")
+  // returns it here so the prepare endpoint folds it into external_ref_extra on the
+  // READY transition. Providers that record their full extra at initiate
+  // (Meta/Snap/TikTok) never set this — it is a strict no-op for them.
+  mergeExtra?: Record<string, unknown>;
 }
 
 export interface PrepareProviderAdapter {
@@ -1093,6 +1101,137 @@ const tiktokPrepareAdapter: PrepareProviderAdapter = {
   },
 };
 
+// ── ISSUE-997 D1: Google (YouTube) video prepare adapter ─────────────────────
+// Ports the working legacy YouTube resumable upload+poll (the dead-at-create
+// googleCreativeAdapter in adCreative.ts) into the #1184 PrepareProviderAdapter
+// shape. Auth resolves through google.ts::resolveGoogleClient (NOT the file-private
+// googleHeaders()/googleAdsVersion()), so no adCreative.ts internals are needed.
+// Unlike the legacy in-loop poll, check() polls exactly ONCE per call: the #1184
+// client re-polls with retry_after, so YouTube's ~180s processing fits inside the
+// 60-minute RPC deadline with zero edge wall-clock risk. The upload lands an
+// UNLISTED video on the Google-managed channel (an ASSET, never an ad — no spend,
+// deletable). bytes.poster is IGNORED — Google needs no cover (contrast TikTok C,
+// which uploads a cover_image_id). The youtube_video_id is only known at PROCESSED
+// time, so check() surfaces it via mergeExtra for the endpoint to fold into
+// external_ref_extra on the READY transition (§3.1). Create stays a separate,
+// still-fail-closed gate (D2) — this adapter only produces a READY ref.
+function googleAdsAuthHeaders(client: GoogleClient): Record<string, string> {
+  return {
+    Authorization: `Bearer ${client.accessToken}`,
+    "developer-token": client.developerToken,
+    "login-customer-id": client.loginCustomerId,
+  };
+}
+
+const googlePrepareAdapter: PrepareProviderAdapter = {
+  initiate: async (_asset, connection, bytes, hooks, deps = {}) => {
+    const client = await resolveGoogleClient(connection);
+    const fetchImpl = deps.fetchImpl ?? fetch;
+    const startResponse = await fetchImpl(
+      `${client.apiBase}/resumable/upload/${client.apiVersion}/customers/${client.customerId}/youTubeVideoUploads:create`,
+      {
+        method: "POST",
+        headers: {
+          ...googleAdsAuthHeaders(client),
+          "Content-Type": "application/json",
+          "X-Goog-Upload-Protocol": "resumable",
+          "X-Goog-Upload-Command": "start",
+          "X-Goog-Upload-Header-Content-Length": String(bytes.video.byteLength),
+        },
+        body: JSON.stringify({}),
+      },
+    );
+    if (!startResponse.ok) {
+      throw new CreativeUploadError(
+        "google",
+        "google_yt_upload_start_failed",
+        `YouTube resumable start failed: HTTP ${startResponse.status}.`,
+      );
+    }
+    const uploadUrl = startResponse.headers.get("X-Goog-Upload-URL");
+    if (!uploadUrl) {
+      throw new CreativeUploadError(
+        "google",
+        "google_yt_upload_url_missing",
+        "YouTube resumable start returned no X-Goog-Upload-URL header.",
+      );
+    }
+    const uploadResponse = await fetchImpl(uploadUrl, {
+      method: "POST",
+      headers: {
+        "X-Goog-Upload-Command": "upload, finalize",
+        "X-Goog-Upload-Offset": "0",
+      },
+      body: bytes.video as unknown as BodyInit,
+    });
+    if (!uploadResponse.ok) {
+      throw new CreativeUploadError(
+        "google",
+        "google_yt_upload_failed",
+        `YouTube resumable upload/finalize failed: HTTP ${uploadResponse.status}.`,
+      );
+    }
+    const uploadPayload = await responseJson(uploadResponse);
+    const nested = uploadPayload.youTubeVideoUpload;
+    const resourceName = typeof uploadPayload.resourceName === "string"
+      ? uploadPayload.resourceName
+      : nested && typeof nested === "object" &&
+          typeof (nested as Record<string, unknown>).resourceName === "string"
+      ? String((nested as Record<string, unknown>).resourceName)
+      : "";
+    if (!resourceName) {
+      throw new CreativeUploadError(
+        "google",
+        "google_yt_resource_missing",
+        "YouTube resumable finalize returned no youTubeVideoUpload resourceName.",
+      );
+    }
+    if (
+      !await hooks.saveProviderRef(resourceName, {
+        upload_resource_name: resourceName,
+      })
+    ) return;
+    await hooks.markProcessing();
+  },
+  check: async (ref, extra, connection, deps = {}) => {
+    const client = await resolveGoogleClient(connection);
+    const fetchImpl = deps.fetchImpl ?? fetch;
+    const resourceName =
+      typeof extra.upload_resource_name === "string" &&
+        extra.upload_resource_name
+        ? extra.upload_resource_name
+        : ref;
+    const pollResponse = await fetchImpl(
+      `${client.apiBase}/${client.apiVersion}/${resourceName}`,
+      { method: "GET", headers: googleAdsAuthHeaders(client) },
+    );
+    const payload = await responseJson(pollResponse);
+    const state = typeof payload.state === "string" ? payload.state : null;
+    if (state === "PROCESSED") {
+      const videoId = typeof payload.videoId === "string"
+        ? payload.videoId
+        : typeof payload.video_id === "string"
+        ? String(payload.video_id)
+        : "";
+      if (!videoId) {
+        return {
+          state: "terminal",
+          terminalCode: "google_yt_video_id_missing",
+        };
+      }
+      return {
+        state: "ready",
+        preview: null,
+        mergeExtra: { youtube_video_id: videoId },
+      };
+    }
+    if (state === "FAILED" || state === "REJECTED" || state === "UNAVAILABLE") {
+      return { state: "terminal", terminalCode: "google_yt_processing_failed" };
+    }
+    return { state: "processing", retryAfterSeconds: 10 };
+  },
+};
+
 export const PREPARE_PROVIDER_ADAPTERS: Record<
   PreparationPlatform,
   PrepareProviderAdapter
@@ -1100,6 +1239,7 @@ export const PREPARE_PROVIDER_ADAPTERS: Record<
   meta: metaPrepareAdapter,
   snapchat: snapPrepareAdapter,
   tiktok: tiktokPrepareAdapter,
+  google: googlePrepareAdapter,
 };
 
 export function capabilityFor(platform: PreparationPlatform):
@@ -1108,6 +1248,13 @@ export function capabilityFor(platform: PreparationPlatform):
   | "preview_only" {
   if (platform === "meta") return "create_and_real_preview";
   if (platform === "snapchat") return "create_and_approx_preview";
+  // ISSUE-997 D1: Google video PREPARATION is wired here; create is a SEPARATE
+  // gate (still fail-closed until D2). Approximation-only preview forever — Google
+  // exposes no video-ad preview API (flags.js VIDEO_API_AD_PREVIEWS_ENABLED.google
+  // stays false). Like TikTok's note below, this label gates nothing (create is
+  // gated by the admin VIDEO_CREATE_ENABLED/VIDEO_CREATE_PLATFORMS lists + the
+  // create-branch READY-ref resolve), but the accurate label is set for google now.
+  if (platform === "google") return "create_and_approx_preview";
   // ISSUE-997 C NOTE: TikTok now supports video CREATE (this issue) in addition to
   // its real provider preview (#1184), so the semantically-accurate label is
   // "create_and_real_preview". It is intentionally LEFT as "preview_only" here to
@@ -1127,7 +1274,8 @@ export function toPreparationState(
 export function isPreparationPlatform(
   value: unknown,
 ): value is PreparationPlatform {
-  return value === "meta" || value === "snapchat" || value === "tiktok";
+  return value === "meta" || value === "snapchat" || value === "tiktok" ||
+    value === "google";
 }
 
 export function assertConsumerVideoPlatform(
@@ -1138,7 +1286,7 @@ export function assertConsumerVideoPlatform(
     throw new CreativeTrustError(
       "platform_or_lane_invalid",
       422,
-      "Only consumer Meta, Snapchat, and TikTok video preparation is available.",
+      "Only consumer Meta, Snapchat, TikTok, and Google video preparation is available.",
     );
   }
 }
