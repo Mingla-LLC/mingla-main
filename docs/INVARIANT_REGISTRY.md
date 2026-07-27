@@ -6279,8 +6279,14 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   `tsc+node` suites (implementor happy-path, implementor edge-case, tester route-set-integrity
   adversarial), path-gated on the module, the component, the tests, and the workflow. The gate
   installs only `@types/node` in an isolated dir so a bare CI runner compiles cleanly without the
-  full marketing install. (#906 will add the shared structural harness that generalizes this
-  predicate as its first assertion.)
+  full marketing install. PLUS the shared structural batch gate
+  `.github/scripts/strict-grep/issue-906-links-nav-layout-guard.mjs` (issue #906) now ALSO enforces
+  this `/links` mechanism, as its assertion families A1 (the `links-experience.tsx`
+  `h-[100svh]`+inline `100dvh`+`overflow-hidden`+`min-h-0`/`flex-1` no-scroll snapshot) and A2 (the
+  `SUPPRESSED_CONSENT_ROUTES` `['/links']` SSOT membership + the `usePathname`/`shouldRenderConsentBanner(`
+  wiring site in `consent-banner.tsx`) — comment-stripped, assert-PRESENT, fails-on-revert, run inside
+  the class-A strict-grep batch. Belt-and-suspenders with the #905 decision-table workflow: a revert of
+  the `/links` membership or the wiring call trips BOTH gates.
 - **Regression test (CLOSE Step 0.5):** implementor happy-path
   `consent-banner-links-suppression.test.ts` (predicate decision table `/links`->false,
   `/`,`/business`,`/download`,`/privacy-policy`->true, single-source-of-truth const, +
@@ -6293,3 +6299,35 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 - **Established:** ACTIVE 2026-07-27 at issue #905 CLOSE (PR `Fixes #905` merged) after independent
   tester PASS with runtime SSR-HTML proof (banner marker count 0 on `/links`, 1 on six other
   routes). Final production confirmation: banner absent on usemingla.com/links post-Vercel deploy.
+
+---
+
+## DRAFT — issue #906 (links-nav-layout-guard — shared structural CI gate, IN FLIGHT)
+
+### I-PROPOSED-906-NAV-ONE-ACTION-BELOW-SM (DRAFT)
+- **Rule:** on the marketing glass-nav organiser surface
+  (`mingla-marketing/components/marketing/glass-nav.tsx`), the second/overflow business action (the
+  "Use on web" pill) MUST retain its `hidden … sm:inline-flex` responsive gating, so at ≤412px (below
+  the `sm` 640px breakpoint) exactly ONE header action renders beside the logo. This is the geometric
+  fit proven at #892/ORCH-1381 (logo + BOTH pinned-copy pills cannot fit on any Android width).
+- **Enforcement:** this gate's assertion A3 — the shared structural gate
+  `.github/scripts/strict-grep/issue-906-links-nav-layout-guard.mjs`, bounded regex
+  `/hidden\b[^'"]*\bsm:inline-flex\b/` on the comment-stripped `glass-nav.tsx` (`:247`). The regex is
+  bounded (both tokens inside ONE class string) so the unrelated `:188` `hidden md:block` surface
+  toggle cannot satisfy it.
+- **Regression test:** the gate's `--self-test` A3 violated-source case seeds a reordered/reflowed pill
+  with `sm:inline-flex` dropped and proves it FLAGS (and that the bare `hidden md:block` does NOT
+  satisfy A3). Deleting `sm:inline-flex` (or `hidden`) from that pill → gate exit 1 naming the file.
+  Fails-on-revert; append-only. (Flips ACTIVE at #906 CLOSE — orchestrator owns the flip.)
+
+### I-PROPOSED-906-NAV-LOGO-DIMENSIONS-PINNED (DRAFT)
+- **Rule:** the glass-nav logo wrapper MUST keep `shrink-0` (the load-bearing anti-squash guard); the
+  business lockup `<img>` keeps `h-20 w-20`; the explorer wordmark `<img>` keeps `h-7 w-auto`. "84px"
+  is HISTORICAL narrative from #892 prose only — the invariant locks the CURRENT literal `h-20` and
+  MUST NOT resurrect `h-[84px]`.
+- **Enforcement:** this gate's assertion A4 — `issue-906-links-nav-layout-guard.mjs` regexes
+  `/inline-flex[^'"]*\bshrink-0\b/` (`:168`), `/\bh-20\b[^'"]*\bw-20\b/` (`:174`),
+  `/\bh-7\b[^'"]*\bw-auto\b/` (`:181`) on the comment-stripped `glass-nav.tsx`.
+- **Regression test:** the gate's `--self-test` A4 violated-source case removes the logo `shrink-0` and
+  proves it FLAGS. Removing `shrink-0` or altering the size literals → gate exit 1. Fails-on-revert;
+  append-only. (Flips ACTIVE at #906 CLOSE.)
