@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 442,
-  "selfTestWiredFloor": 249,
+  "expectedStrictGrepMjsFiles": 444,
+  "selfTestWiredFloor": 250,
   "unenforcedCap": 5,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -6329,6 +6329,29 @@
         "plain"
       ],
       "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-906-links-nav-layout-guard.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/__tests__/issue-906-links-nav-layout-guard.adversarial.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
       "jobKeys": []
     }
   ]
