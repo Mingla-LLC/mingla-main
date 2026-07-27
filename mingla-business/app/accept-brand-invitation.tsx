@@ -76,7 +76,10 @@ import {
   BrandInvitationServiceError,
   type AcceptBrandInvitationResult,
 } from "../src/services/brandInvitationsService";
-import { decideBankFirstInviteNext } from "../src/utils/bankFirstPartnerInvite";
+import {
+  decideBankFirstInviteNext,
+  withInviteFunnelParam,
+} from "../src/utils/bankFirstPartnerInvite";
 
 type Phase =
   | { kind: "loading" }
@@ -165,7 +168,9 @@ export default function AcceptBrandInvitationRoute(): React.ReactElement {
     if (phase.kind !== "success") return;
     const decision = decideBankFirstInviteNext(phase.result);
     if (decision.kind !== "connect") return;
-    router.replace(decision.href as never);
+    // #948 W4 [web-skip-download] — tag the bank screen as invite-funnel so it
+    // hides its top Back and offers Skip → {Download app | Continue on web}.
+    router.replace(withInviteFunnelParam(decision.href) as never);
   }, [phase, router]);
 
   const handleGoHome = useCallback((): void => {

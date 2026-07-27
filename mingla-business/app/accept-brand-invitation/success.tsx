@@ -43,6 +43,7 @@ import {
   typography,
 } from "../../src/constants/designSystem";
 import { supabase } from "../../src/services/supabase";
+import { withInviteFunnelParam } from "../../src/utils/bankFirstPartnerInvite";
 
 export default function AcceptBrandInvitationSuccess(): React.ReactElement {
   const router = useRouter();
@@ -94,7 +95,9 @@ export default function AcceptBrandInvitationSuccess(): React.ReactElement {
       router.replace("/(tabs)/home" as never);
       return;
     }
-    router.replace(`/brand/${brandId}/connect` as never);
+    // #948 W4 [web-skip-download] — tag the bank screen as invite-funnel so it
+    // hides its top Back and offers Skip → {Download app | Continue on web}.
+    router.replace(withInviteFunnelParam(`/brand/${brandId}/connect`) as never);
   };
 
   const displayName = brandName ?? brandSlug ?? "your brand";
