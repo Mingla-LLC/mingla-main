@@ -711,12 +711,23 @@ export function parsePaystackTransferCost(
     for (const item of breakdown as unknown[]) {
       if (!item || typeof item !== "object") continue;
       const row = item as Record<string, unknown>;
-      const amount = Number(row.amount);
-      if (!Number.isInteger(amount) || amount < 0) continue;
+      // #1237 — gate on genuine numeric PRESENCE, not the coerced value.
+      // `Number(null)` / `Number("")` / `Number(false)` all === 0, so the old
+      // `Number(row.amount)` gate accepted a falsy-but-absent amount as a real
+      // 0-cost line, flipped `sawNumeric`, and returned a spurious {0,0} that
+      // MASKED the combined `fee_charged` fallback below. Only a genuinely
+      // present positive integer counts as an itemised fee line; any
+      // falsy/absent/zero amount is ignored so the real fee is preserved.
+      const rawAmount = row.amount;
+      if (
+        typeof rawAmount !== "number" ||
+        !Number.isInteger(rawAmount) ||
+        rawAmount <= 0
+      ) continue;
       sawNumeric = true;
       const type = String(row.type ?? "").toLowerCase();
-      if (type.includes("stamp")) stampCents += amount;
-      else feeCents += amount;
+      if (type.includes("stamp")) stampCents += rawAmount;
+      else feeCents += rawAmount;
     }
     if (sawNumeric) {
       return { actualFeeCents: feeCents, actualStampCents: stampCents };
