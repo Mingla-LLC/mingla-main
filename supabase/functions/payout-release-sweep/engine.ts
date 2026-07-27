@@ -686,14 +686,43 @@ export function mapPaystackTransferStatus(
  * Best-effort actual transfer cost from a transfer object (initiate / fetch /
  * verify / webhook payload). Returns null when Paystack has not yet exposed the
  * fee (async settlement) — the caller then marks the leg fee_unreconciled and
- * reconciles on a later sweep/webhook. `fee` covers the combined transfer cost;
- * the ₦50 stamp is netted into the same variance so the reconcile compares
- * TOTALS and never silently subsidises Mingla.
+ * reconciles on a later sweep/webhook.
+ *
+ * #1218 — credit-only-what-is-returned. A read-only test-mode transfer-object
+ * probe (2026-07-27) confirmed Paystack reports the fee as `fee_charged` and,
+ * when it itemises, an optional `fees_breakdown` array of `{ amount, type }`
+ * rows (this is where the separately-charged ₦50 stamp duty appears). When the
+ * breakdown is present we reflect the ACTUAL stamp from it rather than hardcoding
+ * zero; when only a combined charge is reported we treat it as the whole transfer
+ * cost (stamp 0) — we never fabricate a stamp split we cannot see. Either way
+ * the reconcile compares TOTALS (actualFee + actualStamp) and never silently
+ * subsidises Mingla.
  */
 export function parsePaystackTransferCost(
   data: Record<string, unknown> | null | undefined,
 ): { actualFeeCents: number; actualStampCents: number } | null {
   if (!data || typeof data !== "object") return null;
+  // Prefer Paystack's itemised breakdown so the ACTUAL stamp is reflected.
+  const breakdown = data.fees_breakdown;
+  if (Array.isArray(breakdown) && breakdown.length > 0) {
+    let feeCents = 0;
+    let stampCents = 0;
+    let sawNumeric = false;
+    for (const item of breakdown as unknown[]) {
+      if (!item || typeof item !== "object") continue;
+      const row = item as Record<string, unknown>;
+      const amount = Number(row.amount);
+      if (!Number.isInteger(amount) || amount < 0) continue;
+      sawNumeric = true;
+      const type = String(row.type ?? "").toLowerCase();
+      if (type.includes("stamp")) stampCents += amount;
+      else feeCents += amount;
+    }
+    if (sawNumeric) {
+      return { actualFeeCents: feeCents, actualStampCents: stampCents };
+    }
+  }
+  // No itemised breakdown → the reported charge is the combined transfer cost.
   const raw = data.fee ?? data.fees ?? data.fee_charged;
   if (raw === undefined || raw === null) return null;
   const fee = Number(raw);
@@ -832,10 +861,14 @@ async function settleTransferData(
     return { initiate: false, stopRail: false };
   }
   if (bucket === "reversed") {
+    // #1219 — credit ONLY what Paystack actually returned. `data` here is the
+    // authoritative fetch/verify object (reconcile-by-fetch), so its amount is
+    // Paystack's truth. When it is missing/invalid we credit 0 — mirroring the
+    // webhook (paystackOrganiserRelease.ts) so the two paths agree — and NEVER
+    // fabricate the full leg principal. A 0 credit still marks the leg reversed;
+    // if the SQL is called with NULL it parks + alerts (reversal_unreconciled).
     const amount = Number(data.amount);
-    const returned = Number.isInteger(amount) && amount > 0
-      ? amount
-      : leg.principalCents;
+    const returned = Number.isInteger(amount) && amount > 0 ? amount : 0;
     await deps.reverseLeg({ legId: leg.legId, returnedPrincipalCents: returned });
     counts.reversed += 1;
     return { initiate: false, stopRail: false };
@@ -1004,12 +1037,14 @@ export async function executePaystackRelease(
         counts.blockedOtp += 1;
         break;
       } else if (bucket === "reversed") {
+        // #1219 — credit ONLY what Paystack returned; 0 when absent (mirror the
+        // webhook), never the fabricated full leg principal.
         const amount = Number(result.amount);
         await deps.reverseLeg({
           legId: leg.legId,
           returnedPrincipalCents: Number.isInteger(amount) && amount > 0
             ? amount
-            : leg.principalCents,
+            : 0,
         });
         counts.reversed += 1;
       } else if (bucket === "failed") {
