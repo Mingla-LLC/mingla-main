@@ -315,6 +315,19 @@ if (process.argv.includes("--self-test")) {
       problems.push("BAD4 (create store-write leg removed) not flagged");
     }
   }
+  // BAD5 (tester #961, Step-0.5 adversarial — angle ≠ implementor's per-leg deletion):
+  // create legs RELOCATED out of BrandCreationFlow.tsx back into the switcher (helper
+  // moved, not deleted). The gate MUST still fire because create-persistence is pinned
+  // to creationFlowPath, not checked globally — this catches an incomplete refactor-revert.
+  {
+    const s = goodSources();
+    s[creationFlowPath] = "// create-persistence relocated away";
+    s[switcherPath] =
+      "await mutateAsync({ default_brand_id: brand.id }).catch(() => onDefaultBrandSaveError?.(msg));\n" +
+      "setCurrentBrand(newBrand);\nawait mutateAsync({ default_brand_id: newBrand.id });\ncommitDefaultBrand(newBrand);";
+    const v = run(s);
+    if (v.length === 0) problems.push("BAD5 (create legs relocated to switcher) not flagged");
+  }
 
   if (problems.length) {
     console.error("ORCH-0756A active-brand recovery guard self-test FAIL:");
@@ -322,7 +335,7 @@ if (process.argv.includes("--self-test")) {
     process.exit(1);
   }
   console.log(
-    "ORCH-0756A self-test PASS (GOOD + 4 revert fixtures — brand-create persists-default guarded at BrandCreationFlow.tsx).",
+    "ORCH-0756A self-test PASS (GOOD + 4 revert fixtures + 1 tester adversarial BAD5 — brand-create persists-default guarded at BrandCreationFlow.tsx).",
   );
   process.exit(0);
 }
