@@ -7,18 +7,19 @@
  * is intentionally NOT exercised here — its bare-href contract stays pinned by
  * its own W3 tests, and this feature appends the signal at the call site.
  *
- * FAILS ON REVERT: if `withInviteFunnelParam` / `isInviteFunnelValue` /
- * `INVITE_FUNNEL_PARAM` / `INVITE_FUNNEL_VALUE` are deleted from
- * bankFirstPartnerInvite.ts, this suite fails to import/compile and every case
- * below goes red.
+ * FAILS ON REVERT: the writer + param constants live in bankFirstPartnerInvite.ts
+ * (loaded by the eager accept route), the exact-match reader in
+ * inviteFunnelSignal.ts (loaded only by the lazy /connect body) — split for the
+ * ORCH-1083 __common budget. Delete any of them and this suite fails to
+ * import/compile and every case below goes red.
  */
 
 import {
   INVITE_FUNNEL_PARAM,
   INVITE_FUNNEL_VALUE,
-  isInviteFunnelValue,
   withInviteFunnelParam,
 } from "../bankFirstPartnerInvite";
+import { isInviteFunnelValue } from "../inviteFunnelSignal";
 
 describe("#948 W4 — invite-funnel signal constants", () => {
   test("the param name is `from` and the value is `invite` (the redirect contract)", () => {

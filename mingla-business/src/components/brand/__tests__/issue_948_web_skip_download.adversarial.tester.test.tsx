@@ -105,6 +105,21 @@ jest.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({ invalidateQueries: jest.fn() }),
 }));
 
+// Stub the Supabase service boundary. The component reaches it transitively via
+// useBrandStripeStatus → services/supabase, whose top-level createClient()
+// instantiates a RealtimeClient that THROWS on CI Node 20 (no native WebSocket).
+// The component only consumes the pure `brandStripeStatusKeys` factory, never the
+// client, so a bare named stub is sufficient. Infra-only; no assertion changes.
+jest.mock("../../../services/supabase", () => ({
+  supabase: {
+    from: jest.fn(),
+    channel: jest.fn(() => ({ on: jest.fn().mockReturnThis(), subscribe: jest.fn() })),
+    removeChannel: jest.fn(),
+    functions: { invoke: jest.fn(async () => ({ data: null, error: null })) },
+    auth: {},
+  },
+}));
+
 // Spy the external opener; keep the URL builder REAL so any Download assertion
 // binds to the shipped OneLink, not a re-derived literal.
 jest.mock("../../../services/guestFunnelLink", () => {

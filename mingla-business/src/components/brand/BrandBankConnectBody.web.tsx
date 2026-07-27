@@ -57,7 +57,7 @@ import {
   resolveBankConnectRail,
   type BankConnectProvider,
 } from "../../utils/bankConnectRail";
-import { isInviteFunnelValue } from "../../utils/bankFirstPartnerInvite";
+import { isInviteFunnelValue } from "../../utils/inviteFunnelSignal";
 
 const TERMS_URL = "https://www.usemingla.com/terms-of-service/" as const;
 const PAYSTACK_PICKER_OPTIONS = [
