@@ -20,12 +20,16 @@
 import { metaGendersFor } from "./audienceRules.js";
 import {
   DEFAULT_RADIUS_MI,
+  googleAudienceIdsFrom,
+  googleDemographicsFrom,
   googleLocationsFrom,
   metaCitiesFrom,
   metaInterestIdsFrom,
   redditGendersFor,
   redditInterestNamesFrom,
+  snapCirclesFrom,
   snapDemographicsFrom,
+  snapInterestCategoryIdsFrom,
   tiktokGenderFor,
   tiktokInterestCategoryIdsFrom,
   tiktokLocationIdsFrom,
@@ -254,15 +258,22 @@ export function buildCreatePayload(platform, state) {
       objective: goal.platforms?.snapchat?.objective ?? "TRAFFIC",
       optimization_goal: goal.platforms?.snapchat?.optimization_goal ?? "SWIPES",
       budget: { type: "daily", amount_cents: budget.dailyCentsForChannel },
-      // ISSUE-989: age/gender via demographics (STRINGS — GR-39). These were
-      // silently dropped before (the server forced min_age:"18"); now the
-      // wizard's age/gender travels. Absent → server default [{min_age:"18"}].
-      // City circles + interest segments consumption is deferred (ISSUE-989
-      // split); Snap uses the picked countries + these demographics.
+      // ISSUE-989: age/gender via demographics (STRINGS — GR-39). Absent →
+      // server default [{min_age:"18"}].
+      // ISSUE-992 (3a): city circles + SCLS interest segments now travel. Circles
+      // carry NAME + country (not coords — the create fn geocodes server-side);
+      // interests are SCLS category ids. Empty selections omit the keys, so a
+      // country+demographics-only build stays byte-identical.
       targeting: {
         countries: audience.countries,
         ...(snapDemographicsFrom(audience)
           ? { demographics: snapDemographicsFrom(audience) }
+          : {}),
+        ...(snapCirclesFrom(audience.cities, audience.radius ?? DEFAULT_RADIUS_MI, audience.distanceUnit).length > 0
+          ? { circles: snapCirclesFrom(audience.cities, audience.radius ?? DEFAULT_RADIUS_MI, audience.distanceUnit) }
+          : {}),
+        ...(snapInterestCategoryIdsFrom(audience.interests).length > 0
+          ? { interests: snapInterestCategoryIdsFrom(audience.interests) }
           : {}),
       },
       ...destinationFields,
@@ -293,10 +304,19 @@ export function buildCreatePayload(platform, state) {
       // re-resolves each to an ENABLED geoTargetConstant by name (the London/
       // Ontario disambiguation path already wired backend-side). Empty → the
       // country seed constants target the whole country (unchanged).
+      // ISSUE-992 (3a): age/gender demographics (age_min/age_max/genders — the
+      // server maps to Google's fixed 10-yr bands via EXCLUSION, G-1 widening);
+      // (3b): affinity/in-market audiences (user_interest ids). Both spread only
+      // when set, so a broad country-only build stays byte-identical. NEVER add
+      // call_to_action_type here (A4.b — Search RSAs have no CTA button).
       targeting: {
         countries: audience.countries,
         ...(googleLocationsFrom(audience.cities).length > 0
           ? { locations: googleLocationsFrom(audience.cities) }
+          : {}),
+        ...(googleDemographicsFrom(audience) ?? {}),
+        ...(googleAudienceIdsFrom(audience.interests).length > 0
+          ? { audiences: googleAudienceIdsFrom(audience.interests) }
           : {}),
       },
       ...destinationFields,

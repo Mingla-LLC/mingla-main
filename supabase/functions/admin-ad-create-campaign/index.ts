@@ -85,7 +85,9 @@ import {
 } from "../_shared/meta.ts";
 import {
   GOOGLE_GEO_COUNTRY_CONSTANTS,
+  googleAgeRangesForRange,
   googleCreateFullCampaign,
+  GOOGLE_GENDER_TYPES,
   type GoogleKeywordInput,
   normalizeGoogleKeywords,
   type ResolvedGeoTarget,
@@ -94,6 +96,7 @@ import {
   validateGoogleFinalUrl,
   validateGoogleRsa,
 } from "../_shared/google.ts";
+import { forwardGeocodeText } from "../_shared/mapboxGeocode.ts";
 import {
   assertTikTokIdentityAllowed,
   resolveTikTokGeo,
@@ -123,7 +126,9 @@ import {
 } from "../_shared/reddit.ts";
 import {
   buildSnapchatReviewDetail,
+  type SnapchatCircleGeo,
   SNAPCHAT_BID_STRATEGIES,
+  SNAPCHAT_CIRCLE_UNITS,
   SNAPCHAT_DEFAULT_BID_STRATEGY,
   SNAPCHAT_DEFAULT_OPTIMIZATION_GOAL,
   SNAPCHAT_MIN_ADSQUAD_BUDGET_MICRO,
@@ -471,6 +476,82 @@ serve(async (req: Request): Promise<Response> => {
       }
     }
 
+    // ── ISSUE-992 (3a) age/gender demographics + (3b) affinity/in-market
+    //    audiences — ALL 422/400s pre-flight, BEFORE any provider call.
+    //    Google demographics default all-included; the create fn expresses a
+    //    narrowed target as NEGATIVE ad-group criteria for the buckets outside
+    //    it (G-1 bucket-widening ACCEPTED). Age/gender UNDETERMINED stay
+    //    INCLUDED (G-2 — excludeUndetermined* flags default false). Full-range
+    //    + all-gender emits NOTHING (broad build byte-identical). ──────────────
+    let googleAgeRanges: string[] | undefined;
+    let googleGenders: string[] | undefined;
+    let googleUserInterestIds: string[] | undefined;
+    let googleDemographicsRecord: Record<string, unknown> | undefined;
+    {
+      const ageMinRaw = targetingG.age_min;
+      const ageMaxRaw = targetingG.age_max;
+      if (ageMinRaw !== undefined || ageMaxRaw !== undefined) {
+        const min = Number(ageMinRaw);
+        const max = Number(ageMaxRaw);
+        if (
+          (ageMinRaw !== undefined && (!Number.isInteger(min) || min < 13 || min > 65)) ||
+          (ageMaxRaw !== undefined && (!Number.isInteger(max) || max < 13 || max > 65))
+        ) {
+          return json({
+            error: "validation_error",
+            detail: "targeting_age_invalid — age_min/age_max must be integers 13-65",
+          }, 400);
+        }
+        if (ageMinRaw !== undefined && ageMaxRaw !== undefined && min > max) {
+          return json({
+            error: "validation_error",
+            detail: "targeting_age_range_invalid — age_min must be ≤ age_max",
+          }, 400);
+        }
+        googleAgeRanges = googleAgeRangesForRange(
+          ageMinRaw !== undefined ? min : undefined,
+          ageMaxRaw !== undefined ? max : undefined,
+        );
+        googleDemographicsRecord = {
+          ...(ageMinRaw !== undefined ? { age_min: min } : {}),
+          ...(ageMaxRaw !== undefined ? { age_max: max } : {}),
+        };
+      }
+      const gendersRaw = targetingG.genders;
+      if (gendersRaw !== undefined) {
+        if (
+          !Array.isArray(gendersRaw) ||
+          gendersRaw.some((g) => !(GOOGLE_GENDER_TYPES as readonly string[]).includes(String(g)))
+        ) {
+          return json({
+            error: "validation_error",
+            detail: `targeting_genders_invalid — genders ⊆ {${GOOGLE_GENDER_TYPES.join(",")}}`,
+          }, 400);
+        }
+        const uniq = [...new Set(gendersRaw.map((g) => String(g)))];
+        // A single-gender target restricts; both genders = "all" → no criteria.
+        if (uniq.length === 1) {
+          googleGenders = uniq;
+          googleDemographicsRecord = { ...(googleDemographicsRecord ?? {}), genders: uniq };
+        }
+      }
+      // 3b audiences — numeric-string user_interest ids; junk dropped (never
+      // fabricated). G-4 seam: an empty/absent list ⇒ zero audience ops, so 3a
+      // ships unaffected if audiences turn out account/policy-gated.
+      const audiencesRaw = targetingG.audiences;
+      if (audiencesRaw !== undefined) {
+        if (!Array.isArray(audiencesRaw)) {
+          return json({
+            error: "validation_error",
+            detail: "targeting_audiences_invalid — expected an array of numeric-string ids",
+          }, 400);
+        }
+        const ids = [...new Set(audiencesRaw.map((a) => String(a).trim()))]
+          .filter((id) => /^\d+$/.test(id));
+        if (ids.length > 0) googleUserInterestIds = ids;
+      }
+    }
+
     const destinationG = pickCallDestination(body); // ISSUE-1002: singular or destinations[0]
     const pageTypeG = destinationG.page_type ?? "";
     const brandSlugG = typeof destinationG.brand_slug === "string"
@@ -595,6 +676,10 @@ serve(async (req: Request): Promise<Response> => {
       );
       geoTargetingRecord.country_criterion_ids = geoTargetCriterionIds;
     }
+    // ISSUE-992: state the applied demographics/audiences in the persisted
+    // targeting jsonb (so the campaign surface + audit reflect them).
+    if (googleDemographicsRecord) geoTargetingRecord.demographics = googleDemographicsRecord;
+    if (googleUserInterestIds) geoTargetingRecord.audiences = googleUserInterestIds;
 
     const trackingUrlTemplate = buildGoogleTrackingUrlTemplate({
       pageType: pageTypeG,
@@ -613,6 +698,14 @@ serve(async (req: Request): Promise<Response> => {
       keywords,
       negativeKeywords,
       geoTargetCriterionIds,
+      // ISSUE-992 (3a): target age bands + gender → the create fn emits the
+      // NEGATIVE demographic-exclusion criteria; (3b): positive audiences.
+      ...(googleAgeRanges ? { ageRanges: googleAgeRanges } : {}),
+      ...(googleGenders ? { genders: googleGenders } : {}),
+      ...(googleUserInterestIds ? { userInterestIds: googleUserInterestIds } : {}),
+      // G-2 (Seth-approved): keep AGE/GENDER UNDETERMINED INCLUDED.
+      excludeUndeterminedAge: false,
+      excludeUndeterminedGender: false,
       validateOnly: validateOnlyG,
     };
 
@@ -621,9 +714,22 @@ serve(async (req: Request): Promise<Response> => {
     try {
       const created = await googleCreateFullCampaign(gconn, createInput);
       if (validateOnlyG) {
+        // ISSUE-992: the validate_only mutate proves the exact demographic /
+        // audience criterion body (G-4 account-eligibility probe path) — zero
+        // objects created. Layers reflect what was actually in the mutate.
+        const validatedLayersG = [
+          "campaign_budget",
+          "campaign",
+          "geo_criteria",
+          "ad_group",
+          "ad",
+          "keywords",
+        ];
+        if (googleDemographicsRecord) validatedLayersG.push("demographics");
+        if (googleUserInterestIds) validatedLayersG.push("audiences");
         return json({
           validated: true,
-          validated_layers: ["campaign_budget", "campaign", "geo_criteria", "ad_group", "ad", "keywords"],
+          validated_layers: validatedLayersG,
           skipped_layers: [],
           request_id: created.requestId,
           detail: "validate_only — nothing created on the platform, nothing persisted.",
@@ -907,6 +1013,48 @@ serve(async (req: Request): Promise<Response> => {
       return json({ error: demographicsCheck.detail, detail: demographicsCheck.message }, 422);
     }
 
+    // ── ISSUE-992 (3a): city circles + SCLS interest segments (pre-flight
+    //    422/400s BEFORE any provider call). Circles carry a place NAME +
+    //    country_code (NOT coords) — the create path geocodes server-side (§4),
+    //    so no lat/lng ever touches the browser. ──────────────────────────────
+    const rawCirclesS = Array.isArray(targetingS.circles)
+      ? targetingS.circles as Record<string, unknown>[]
+      : [];
+    const circleInputsS: { name: string; country_code: string; radius: number; unit: string }[] = [];
+    for (const c of rawCirclesS) {
+      const cName = typeof c.name === "string" ? c.name.trim() : "";
+      const cCountry = typeof c.country_code === "string" ? c.country_code.trim() : "";
+      const cRadius = Number(c.radius);
+      const cUnit = typeof c.unit === "string" ? c.unit.trim() : "";
+      if (!cName || !cCountry) {
+        return json({
+          error: "validation_error",
+          detail: "targeting_circle_invalid — each circle needs { name, country_code }",
+        }, 400);
+      }
+      if (!Number.isFinite(cRadius) || cRadius <= 0) {
+        return json({
+          error: "validation_error",
+          detail: "targeting_circle_radius_invalid — radius must be a positive number",
+        }, 422);
+      }
+      if (!(SNAPCHAT_CIRCLE_UNITS as readonly string[]).includes(cUnit)) {
+        return json({
+          error: "validation_error",
+          detail: `targeting_circle_unit_invalid — unit ∈ {${SNAPCHAT_CIRCLE_UNITS.join(",")}}`,
+        }, 422);
+      }
+      circleInputsS.push({
+        name: cName,
+        country_code: cCountry,
+        radius: Math.round(cRadius),
+        unit: cUnit,
+      });
+    }
+    const snapInterestIdsS = Array.isArray(targetingS.interests)
+      ? [...new Set((targetingS.interests as unknown[]).map((i) => String(i).trim()))].filter(Boolean)
+      : [];
+
     const creativeS = (body.creative ?? {}) as Record<string, unknown>;
     // ISSUE-979 Bug 3: the global compliance intent reaches Snapchat's create
     // path now. Snapchat has no AI-disclosure and no special-ad-category field —
@@ -1144,6 +1292,23 @@ serve(async (req: Request): Promise<Response> => {
       ...(typeof spendCapCentsS === "number" ? { spendCapCents: spendCapCentsS } : {}),
       ...(typeof body.promotion_type === "string" ? { promotionType: body.promotion_type } : {}),
     };
+    // ISSUE-992 (3a): create-time SERVER geocode of each city circle — the
+    // MAPBOX_ACCESS_TOKEN + every coordinate stay strictly server-side. A null
+    // geocode DROPS that circle (never fabricates a location — Constitution #3);
+    // if every circle misses, buildSnapchatAdSquadBody falls back to country-only.
+    const geocodedCirclesS: SnapchatCircleGeo[] = [];
+    for (const circle of circleInputsS) {
+      const coords = await forwardGeocodeText(`${circle.name}, ${circle.country_code}`);
+      if (!coords) continue; // geocode miss → this city drops to country targeting
+      geocodedCirclesS.push({
+        country_code: circle.country_code,
+        latitude: coords.lat,
+        longitude: coords.lng,
+        radius: circle.radius,
+        unit: circle.unit,
+      });
+    }
+
     const adSetInputS: CreateAdSetInput = {
       name: `${name} — ad squad`,
       optimizationGoal: optimizationGoalS,
@@ -1152,6 +1317,9 @@ serve(async (req: Request): Promise<Response> => {
       targeting: {
         countries: countryCodesS,
         demographics: demographicsS,
+        // ISSUE-992 (3a): geocoded circles → circle geos; SCLS interest ids.
+        ...(geocodedCirclesS.length > 0 ? { circles: geocodedCirclesS } : {}),
+        ...(snapInterestIdsS.length > 0 ? { interests: snapInterestIdsS } : {}),
         budget_mode: "daily",
         bid_strategy: bidStrategyS,
         ...(typeof bidCentsS === "number" ? { bid_cents: bidCentsS } : {}),
@@ -1219,6 +1387,10 @@ serve(async (req: Request): Promise<Response> => {
       const targetingRecordS: Record<string, unknown> = {
         countries: countryCodesS,
         demographics: demographicsS, // GR-39: min_age "18" default, strings
+        // ISSUE-992 (3a): the applied circle geos + SCLS interests (states what
+        // actually shipped — geocoded circles only; missed cities dropped).
+        ...(geocodedCirclesS.length > 0 ? { circles: geocodedCirclesS } : {}),
+        ...(snapInterestIdsS.length > 0 ? { interests: snapInterestIdsS } : {}),
       };
 
       // (7) Persist ONE campaign+ad_set+ad row set (only now that all IDs exist).

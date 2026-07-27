@@ -1,0 +1,94 @@
+name: ISSUE-992 Campaign Builder Google + Snap Targeting Tests
+
+# ISSUE-992 [Campaign Builder targeting — Google + Snap consumption at CREATE] —
+# Wave 3 of #977, follow-up to #989/#991. Adds the last targeting gaps:
+#   - 3a Google age/gender demographics (ad-group EXCLUSION criteria; G-1
+#     bucket-widening; G-2 UNDETERMINED kept included).
+#   - 3a Snap city-circle geos (create-time SERVER geocode via forwardGeocodeText
+#     — coords never touch the browser) + SCLS interest segments.
+#   - 3b Google affinity/in-market audiences (user_interest search + positive
+#     ad-group userInterest criteria) — behind the GOOGLE_AUDIENCES_ENABLED seam
+#     (G-4: droppable to ship 3a alone if the account is audience-gated).
+# Google radius/proximity stays DEFERRED; custom/lookalike stay blocked (#865 B).
+#
+# Two suites, two runners (mirrors issue-989-…):
+#   1. mingla-admin (node:test — pure ESM logic + fs source assertions): the
+#      targeting.js NEW mappers (googleDemographicsFrom / googleAudienceIdsFrom /
+#      snapCirclesFrom / snapInterestCategoryIdsFrom) + payload.js Google/Snap
+#      shapes + the StepAudience honesty-copy flip.
+#   2. the edge builders + resolvers (deno test): buildGoogleMutateOperations
+#      demographic-exclusion + userInterest ops; buildSnapchatAdSquadBody circle
+#      geos + SCLS interests; the user_interest / SCLS parse+filter; and the
+#      create-campaign + targeting-search source wiring. Hermetic (no network).
+#
+# EXPLICIT registry (never a glob) — the tester APPENDS their adversarial suite
+# to Job 1's `node --test` line + adds its path to this file (per the #989
+# precedent: implementor happy-path here, independent tester adversarial after).
+# No other CI job runs these #992 suites, so without this dedicated workflow they
+# would exist but never gate (the dark-test surface trap, ORCH-1383).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mingla-admin/src/**"
+      - "supabase/functions/admin-ad-targeting-search/**"
+      - "supabase/functions/admin-ad-create-campaign/**"
+      - "supabase/functions/_shared/google.ts"
+      - "supabase/functions/_shared/snapchat.ts"
+      - "supabase/functions/_shared/mapboxGeocode.ts"
+      - ".github/workflows/issue-992-campaign-builder-google-snap-targeting-tests.yml"
+  pull_request:
+    paths:
+      - "mingla-admin/src/**"
+      - "supabase/functions/admin-ad-targeting-search/**"
+      - "supabase/functions/admin-ad-create-campaign/**"
+      - "supabase/functions/_shared/google.ts"
+      - "supabase/functions/_shared/snapchat.ts"
+      - "supabase/functions/_shared/mapboxGeocode.ts"
+      - ".github/workflows/issue-992-campaign-builder-google-snap-targeting-tests.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-992-admin-node-test:
+    name: "ISSUE-992: Google + Snap targeting mappers/payload (admin node:test)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: mingla-admin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # EXPLICIT registry — the ISSUE-992 IMPLEMENTOR happy-path suite. Pure ESM +
+      # fs source assertions; no node_modules required. The independent tester
+      # APPENDS `src/__tests__/issue992_google_snap_targeting_adversarial.test.js`
+      # to this line when their adversarial pass lands.
+      - name: Run ISSUE-992 Google + Snap targeting suite
+        run: >
+          node --test
+          src/__tests__/issue992_google_snap_targeting.test.js
+
+  issue-992-edge-builders-deno-test:
+    name: "ISSUE-992: Google/Snap edge builders + resolvers (deno test)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      # EXPLICIT registry — the ISSUE-992 edge-fn suite: buildGoogleMutateOperations
+      # demographic-exclusion + audience ops, buildSnapchatAdSquadBody circle geos
+      # + SCLS interests, the user_interest / SCLS parse+filter, and the create fn
+      # + targeting-search source wiring. Hermetic (pure builders over fixtures +
+      # fs source reads — no network).
+      - name: Run ISSUE-992 Google/Snap edge Deno tests
+        run: >
+          deno test --allow-read --allow-env --no-check
+          supabase/functions/admin-ad-targeting-search/__tests__/issue992_google_snap_targeting_search.test.ts
