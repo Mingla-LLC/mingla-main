@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 432,
-  "selfTestWiredFloor": 201,
+  "expectedStrictGrepMjsFiles": 433,
+  "selfTestWiredFloor": 210,
   "unenforcedCap": 7,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -1795,9 +1795,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-proposed-p-stripe-state-canonical"
       ]
@@ -1843,9 +1844,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-proposed-r-stripe-idempotency-key"
       ]
@@ -1856,9 +1858,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-proposed-s-stripe-audit-log"
       ]
@@ -2773,9 +2776,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0787-refund-cancel-flow"
       ]
@@ -2812,9 +2816,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0791-checkout-session-never-reused-post-terminal"
       ]
@@ -3086,9 +3091,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0829b-d1-checkout-expiry-tombstone"
       ]
@@ -3099,9 +3105,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0843-stripe-direct-charges-only"
       ]
@@ -3112,9 +3119,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0844-stripe-connect-account-id-per-pi"
       ]
@@ -3425,9 +3433,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0954-rak-scope-pinned"
       ]
@@ -5382,6 +5391,17 @@
     },
     {
       "script": ".github/scripts/strict-grep/__tests__/orch-1400-ratchet-frontier.adversarial.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/__tests__/issue-955-p0-batch1-selftest-coupling.adversarial.test.mjs",
       "kind": "file",
       "enforcement": "batch:A",
       "invocation": "node --test",
