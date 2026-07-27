@@ -124,6 +124,11 @@ const AUTH_SCOPED_HOOK_FILES = [
   //    edge fn); the status hook folds isAuthReady into enabled
   //    (usePartnerStripe mirror).
   "usePartnerPaystack.ts",
+  // ── #1180 [payout-ui-copy] — reads the brand's OWN payout ledger tables
+  //    (brand_payout_releases / payout_transfer_legs / payout_ledger_adjustments
+  //    / organiser_payout_debts), all RLS-gated at finance_manager rank
+  //    (auth.uid()-scoped). Folds isAuthReady into enabled.
+  "useBrandPayoutLedger.ts",
 ];
 
 // ── Public / dual-use hooks. These MUST NOT be gated — buyer-web anon reads
