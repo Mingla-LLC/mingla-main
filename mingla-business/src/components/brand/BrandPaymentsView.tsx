@@ -34,8 +34,6 @@ import {
 import type {
   Brand,
   BrandPayout,
-  BrandPayoutStatus,
-  BrandRefund,
   BrandStripeStatus,
 } from "../../store/currentBrandStore";
 import { formatCurrency } from "../../utils/currency";
@@ -46,8 +44,6 @@ import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import type { IconName } from "../ui/Icon";
 import { KpiTile } from "../ui/KpiTile";
-import { Pill } from "../ui/Pill";
-import type { PillVariant } from "../ui/Pill";
 import { TopBar } from "../ui/TopBar";
 // V3 multi-country surfaces — Sub-C Session A + B
 import { BrandStripeBankSection } from "./BrandStripeBankSection";
@@ -60,6 +56,9 @@ import { BrandStripeDeadlineBanner } from "./BrandStripeDeadlineBanner";
 import { BrandStripeDetachConfirmSheet } from "./BrandStripeDetachConfirmSheet";
 // META-ORCH-1076 Phase 2 — Paystack (NG) payout onboarding surface.
 import { BrandPaystackOnboardView } from "./BrandPaystackOnboardView";
+// #1180 — held-payout receipt + release history (both rails) + explainer sheet.
+import { BrandPayoutBreakdown } from "./BrandPayoutBreakdown";
+import { BrandPayoutTimelineExplainer } from "./BrandPayoutTimelineExplainer";
 import {
   useBrandPaystackStatus,
   useClearPaystackProvider,
@@ -129,18 +128,6 @@ const BANNER_CONFIG: Record<BrandStripeStatus, BannerConfig | null> = {
     ctaVariant: "destructive",
     destructive: true,
   },
-};
-
-const PAYOUT_PILL_VARIANT: Record<BrandPayoutStatus, PillVariant> = {
-  paid: "live", // W-2: green dot — money safely landed
-  in_transit: "info",
-  failed: "error",
-};
-
-const PAYOUT_STATUS_LABEL: Record<BrandPayoutStatus, string> = {
-  paid: "PAID",
-  in_transit: "IN TRANSIT",
-  failed: "FAILED",
 };
 
 export interface BrandPaymentsViewProps {
@@ -225,6 +212,15 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
     setDetachSheetVisible(false);
   }, []);
 
+  // #1180 — "How payouts work" explainer sheet (shared by both rails).
+  const [explainerVisible, setExplainerVisible] = useState<boolean>(false);
+  const handleOpenExplainer = useCallback((): void => {
+    setExplainerVisible(true);
+  }, []);
+  const handleCloseExplainer = useCallback((): void => {
+    setExplainerVisible(false);
+  }, []);
+
   const bannerConfig = BANNER_CONFIG[stripeStatus];
 
   // ORCH-0796 — `brand.payouts` and `brand.refunds` are intentionally unpopulated
@@ -236,13 +232,6 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
     return (brand.payouts ?? [])
       .slice()
       .sort((a, b) => (a.arrivedAt < b.arrivedAt ? 1 : -1));
-  }, [brand]);
-
-  const sortedRefunds = useMemo<BrandRefund[]>(() => {
-    if (brand === null) return [];
-    return (brand.refunds ?? [])
-      .slice()
-      .sort((a, b) => (a.refundedAt < b.refundedAt ? 1 : -1));
   }, [brand]);
 
   // ----- Not-found state -----
@@ -332,12 +321,13 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
         >
           {connected && !paystackEditing
             ? (
+              <>
               <GlassCard variant="elevated" padding={spacing.lg}>
                 <Text style={styles.notFoundTitle}>Bank connected</Text>
                 <Text style={styles.notFoundBody}>
                   {ps?.account_number_masked != null
-                    ? `Payouts settle to ${ps.account_number_masked}, usually the next business day.`
-                    : "Your payout account is connected. Sales settle to your bank, usually the next business day."}
+                    ? `Payouts settle to ${ps.account_number_masked}, released 3 days after each event date ends and typically arrive within 1–2 business days.`
+                    : "Your payout account is connected. Sales are held securely and released 3 days after each event date ends, and typically arrive within 1–2 business days."}
                   {ps?.is_verified === false
                     ? " Your bank is still being verified — your first payout may take a little longer."
                     : ""}
@@ -362,6 +352,13 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
                   />
                 </View>
               </GlassCard>
+              {/* #1180 — payout-release history + gross→bank receipt (NG rail). */}
+              <BrandPayoutBreakdown
+                brandId={brand.id}
+                isNgBrand
+                onOpenExplainer={handleOpenExplainer}
+              />
+              </>
             )
             : (
               <BrandPaystackOnboardView
@@ -382,6 +379,13 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
               />
             )}
         </ScrollView>
+        {/* #1180 — explainer sheet mounted outside the ScrollView so the modal
+            overlay isn't clipped by the scroll frame. */}
+        <BrandPayoutTimelineExplainer
+          visible={explainerVisible}
+          onClose={handleCloseExplainer}
+          isNgBrand
+        />
       </View>
     );
   }
@@ -695,88 +699,17 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
           )
           : null}
 
-        {/* SECTION C — Recent Payouts */}
-        <Text style={styles.sectionLabel}>RECENT PAYOUTS</Text>
-        {sortedPayouts.length === 0
-          ? (
-            <GlassCard variant="base" padding={spacing.lg}>
-              <Text style={styles.emptyTitle}>No payouts yet</Text>
-              <Text style={styles.emptyBody}>
-                Payouts arrive here once you start getting paid.
-              </Text>
-            </GlassCard>
-          )
-          : (
-            <GlassCard variant="base" padding={0}>
-              {sortedPayouts.map((payout, index) => {
-                const isLast = index === sortedPayouts.length - 1;
-                return (
-                  <View
-                    key={payout.id}
-                    style={[styles.txnRow, !isLast && styles.txnRowDivider]}
-                  >
-                    <View style={styles.txnLeftCol}>
-                      <Text style={styles.txnAmount}>
-                        {payout.currency.length > 0
-                          ? formatCurrency(payout.amountGbp, payout.currency)
-                          : "—"}
-                      </Text>
-                      <Text style={styles.txnSub}>
-                        {payout.status === "in_transit"
-                          ? "Arriving soon"
-                          : `Paid ${formatRelativeTime(payout.arrivedAt)}`}
-                      </Text>
-                    </View>
-                    <Pill variant={PAYOUT_PILL_VARIANT[payout.status]}>
-                      {PAYOUT_STATUS_LABEL[payout.status]}
-                    </Pill>
-                  </View>
-                );
-              })}
-            </GlassCard>
-          )}
-
-        {/* SECTION D — Recent Refunds (skipped entirely when empty) */}
-        {sortedRefunds.length > 0
-          ? (
-            <>
-              <Text style={[styles.sectionLabel, styles.sectionLabelGap]}>
-                RECENT REFUNDS
-              </Text>
-              <GlassCard variant="base" padding={0}>
-                {sortedRefunds.map((refund, index) => {
-                  const isLast = index === sortedRefunds.length - 1;
-                  return (
-                    <View
-                      key={refund.id}
-                      style={[styles.txnRow, !isLast && styles.txnRowDivider]}
-                    >
-                      <View style={styles.txnLeftCol}>
-                        {/* Render-time minus prefix on positive amount per spec §6 + AC#27 */}
-                        <Text style={styles.txnAmountRefund}>
-                          {refund.currency.length > 0
-                            ? `−${
-                              formatCurrency(refund.amountGbp, refund.currency)
-                            }`
-                            : "—"}
-                        </Text>
-                        <Text style={styles.txnSub} numberOfLines={1}>
-                          {refund.eventTitle}
-                          {refund.reason !== undefined
-                            ? ` · ${refund.reason}`
-                            : ""}
-                        </Text>
-                      </View>
-                      <Text style={styles.refundDate}>
-                        {formatRelativeTime(refund.refundedAt)}
-                      </Text>
-                    </View>
-                  );
-                })}
-              </GlassCard>
-            </>
-          )
-          : null}
+        {/* SECTION C/D — #1180 held-payout receipt + release history + refunds.
+            Replaces the old always-empty RECENT PAYOUTS/REFUNDS lists (fed by the
+            never-populated brand.payouts/brand.refunds — ORCH-0796) with the real
+            event-anchored ledger read from brand_payout_releases /
+            payout_transfer_legs / payout_ledger_adjustments / organiser_payout_debts.
+            The Stripe rail passes isNgBrand=false. */}
+        <BrandPayoutBreakdown
+          brandId={brand.id}
+          isNgBrand={false}
+          onOpenExplainer={handleOpenExplainer}
+        />
 
         {/* SECTION E — Export CTA */}
         <View style={styles.exportRow}>
@@ -835,6 +768,13 @@ export const BrandPaymentsView: React.FC<BrandPaymentsViewProps> = ({
         brandId={brand?.id ?? null}
         brandName={brand?.displayName ?? null}
         onClose={handleCloseDetach}
+      />
+
+      {/* #1180 — "How payouts work" explainer sheet (Stripe rail). */}
+      <BrandPayoutTimelineExplainer
+        visible={explainerVisible}
+        onClose={handleCloseExplainer}
+        isNgBrand={false}
       />
     </View>
   );
