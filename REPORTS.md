@@ -18,6 +18,8 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-07-27 — Cancelling an event now automatically refunds every buyer (tickets + trips) on both rails, exactly once and resumably — LIVE. A real change from before, where cancellation did not refund. Venue reservations + chip-ins tracked as a fast-follow (#1221); no cutover gate by design (#1179, PR #1222)
+- 2026-07-27 — Organiser Payments screen now honestly explains event-anchored payouts — a gross-to-bank receipt, 12 payout states, transfer-fee/stamp-duty itemization, and truthful "held until 3 days after your event" copy. LIVE on web; mobile rides the next native build (#1180, PR #1223)
 - 2026-07-27 — Stripe organiser accounts can be moved from daily payouts to manual event-anchored schedules, with an idempotent admin migration action and a daily-schedule rollback lever; shipped dark behind a default-off flag — zero production brands flipped (#1173, PR #1214)
 - 2026-07-27 — Nigerian organiser payouts execute through Paystack Transfers with brand-absorbed fees, ₦50 floor / ₦10M chunking, and verify-by-reference no-double-pay recovery (which also fixes the #1030 loop bug); shipped dark — no naira moves (#1177, PR #1215)
 - 2026-07-26 — Stripe organiser payouts can now be released from the internal event-payout ledger (ledger-exact amount, provider balance as ceiling only, per-occurrence release timing); shipped dark behind the per-brand cutover flag, so no live payout schedule changed (#1172, PR #1201)
