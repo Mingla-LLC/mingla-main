@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 438,
-  "selfTestWiredFloor": 246,
+  "expectedStrictGrepMjsFiles": 439,
+  "selfTestWiredFloor": 247,
   "unenforcedCap": 7,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -1512,6 +1512,18 @@
       "jobKeys": [
         "issue-1051-dependabot-security-ignores"
       ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-957-nul-hidden-orch-id-consistency.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
     },
     {
       "script": ".github/scripts/strict-grep/i-proposed-c-brand-crud-via-react-query.mjs",
