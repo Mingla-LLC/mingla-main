@@ -15,6 +15,12 @@
 - **Regression test:** the gate self-tests every banned phrase, comment stripping, and the one-line exception form; reverting any W3 replacement (for example restoring “sell tickets” on the payments banner) makes the plain gate fail. Append-only.
 - **Established:** ACTIVE at #948/#949 W3 CLOSE after independent tester PASS on PR #1205; merge and production verification are required before either master issue may be closed.
 
+### I-1401-INVITE-BANK-BACK-HIDE-SIGNAL-GATED (ACTIVE)
+- **Rule:** On the web bank-connect screen (`mingla-business/src/components/brand/BrandBankConnectBody.web.tsx`), the top "Back" button is hidden AND the "Skip for now" section (Download the app | Continue on web) is shown ONLY when the invite-funnel signal `?from=invite` is present, read via the exact-match `isInviteFunnelValue` (`src/utils/inviteFunnelSignal.ts`). With the signal absent, empty, or ANY other value (case variants, whitespace, CSV/array), the screen is byte-for-byte the pre-#1226 behavior: Back present, no Skip. This keeps the invite-only affordances from ever regressing the dashboard/direct/bookmark entry. "Download the app" uses the single attribution-safe biz OneLink (no `Platform.OS`/store branching); "Continue on web" routes to the brand dashboard.
+- **CI enforcement:** the `#948 W4` job (`.github/workflows/issue-948-web-skip-download-tests.yml`) runs the append-only jest suites `issue_948_web_skip_download.{implementor.test.ts, render.tester.test.tsx, adversarial.tester.test.tsx}` under Node 20 (the Supabase client boundary is mocked so the render suites run). Offering-agnostic copy on this surface rides `I-PROPOSED-949-INVITE-ONBOARDING-OFFERING-AGNOSTIC` (the connect screen was added to its strict-grep surfaces).
+- **Regression test:** deleting the Back-hide gate flips the `bank-connect-back` count assertion red (Back reappears in invite mode); loosening `isInviteFunnelValue` to case-insensitive flips the adversarial `INVITE`/whitespace/CSV assertions red. Restore → green. Fails-on-revert proven at `f02e843f9` (implementor happy-path) + `662ceee1a` (tester adversarial), re-verified under Node 20 at `0cbda315a`. Append-only.
+- **Established:** ACTIVE 2026-07-27 at #948 CLOSE (tester VERDICT PASS, 0 P0/P1); PR #1226 merged `4b0446d`. Supersedes the original native Wave-4 (B-07) plan, which was dropped as redundant with the in-app to-do "connect your bank" nudge (`businessTodos.ts`).
+
 ---
 
 ## ACTIVE — issue #1158 (@vercel/og pinned to 0.x so a sharp security bump can't unlock it to the broken 1.0.0 — CLOSED 2026-07-24)
