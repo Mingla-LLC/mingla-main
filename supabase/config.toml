@@ -472,6 +472,15 @@ verify_jwt = true
 [functions.admin-ad-creative-upload]
 verify_jwt = true
 
+# ISSUE-1184 [Campaign Builder video Phase A] — one-platform-at-a-time media
+# preparation plus read-only provider previews. Gateway JWT and the in-function
+# active-admin gate both run before input handling or provider access.
+[functions.admin-ad-creative-prepare]
+verify_jwt = true
+
+[functions.admin-ad-preview]
+verify_jwt = true
+
 # ISSUE-989 [Campaign Builder real targeting] — the admin-gated, READ-ONLY
 # targeting resolver the Audience step calls to turn a typed city/interest NAME
 # into per-platform targeting keys/ids (Meta adgeolocation+adinterest, TikTok

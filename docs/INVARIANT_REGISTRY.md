@@ -35,6 +35,25 @@
 
 ---
 
+## DRAFT — issue #1184 (Campaign Builder video Phase A — IN FLIGHT)
+
+### I-PROPOSED-1184-CREATIVE-PREPARE-RESUMABLE (DRAFT)
+- **Rule:** a video preparation attempt is server-owned, account-scoped, current-byte-hash-scoped, and resumable. Exactly one caller wins initiation; the provider ID is persisted before later upload/poster/check work; replacement after an ID exists requires same-attempt machine terminal proof. Client Stop stops waiting only.
+- **Enforcement:** lifecycle migration/RPC, attempt-ID CAS writes, exact action/state matrix in `admin-ad-creative-prepare`, and the dedicated #1184 workflow.
+- **Regression test:** implementor schema/Deno suites prove the lock/RPC shape, immediate ID persistence, stale-response rejection, and fixed sequential queue. Independent adversarial coverage is added before PR.
+
+### I-PROPOSED-1184-VIDEO-CREATE-READY-PAUSED (DRAFT)
+- **Rule:** Phase A video create is consumer-lane Meta and Snapchat only, and only from an exact current-hash READY ref for the same external account. TikTok, Google, and Reddit video create remain excluded. Every real create persists PAUSED; `validate_only` persists and creates zero objects.
+- **Enforcement:** exact ref predicates in `admin-ad-create-campaign`, platform-aware admin gate, and #1184 CI.
+- **Regression test:** Deno create-source regression plus admin READY-subset/destination×platform regression; existing image and multi-destination suites remain green.
+
+### I-PROPOSED-1184-PREVIEW-TRUTH-BOUNDARY (DRAFT)
+- **Rule:** Meta preview accepts only a trusted provider iframe URL and the UI never renders raw HTML; TikTok preview is one fresh response-only provider link per user action; Snapchat and Google are always labeled Mingla approximations. Preview and create share one canonical public/live destination resolver.
+- **Enforcement:** `_shared/adDestination.ts`, `admin-ad-preview`, iframe sandbox/referrer policy, response-only TikTok state, and source-aware preview labels.
+- **Regression test:** implementor destination/iframe/service-normalization suites plus independent malicious-preview and expiry testing before PR.
+
+---
+
 ## ACTIVE — issue #1158 (@vercel/og pinned to 0.x so a sharp security bump can't unlock it to the broken 1.0.0 — CLOSED 2026-07-24)
 
 > Same parent-unlock class as #1130. `@vercel/og@0.11.1` optional-deps `sharp ^0.34.5`; to bump `sharp` Dependabot rewrites the editable parent `@vercel/og` to its highest tag `1.0.0` — a stray 2023 mispublish (edge/WASM-only, `ERR_MODULE_NOT_FOUND: 'wbg'`) that crashes the business OG preview renderer (`mingla-business/server/socialPreview.js` → `/api/og-*`, Node serverless — untested by the expo web-build, which is why the trap PR #1151 was green). #1158 pins `@vercel/og` forward via a byte-identical npm `overrides` entry (fail-closed: a poisoned direct-dep bump → `npm install` EOVERRIDE error), rescues `sharp` to `0.35.3` (closes libvips GHSA-f88m-g3jw-g9cj; render-verified), adds a Dependabot ignore, and closes the OG coverage gap with a real render gate.

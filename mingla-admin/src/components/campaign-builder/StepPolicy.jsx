@@ -127,15 +127,15 @@ export function StepPolicy({ copy, creative, channelRows, specialAdCategory, onS
         )}
       </div>
 
-      {/* Safe-zone overlay — drawn client-side (no API preview endpoint yet). */}
-      {creative.publicUrl && (
+      {/* This remains an explicitly named local guide, including for video. */}
+      {(creative.kind === "video" ? creative.posterUrl : creative.publicUrl) && (
         <div>
           <p className="text-sm font-medium mb-1.5">
-            Story/Reels safe zone (9:16 crop preview)
+            Mingla safe-zone approximation
           </p>
           <div className="relative inline-block w-48 aspect-[9/16] overflow-hidden rounded-xl border border-[var(--gray-200)]">
             <img
-              src={creative.publicUrl}
+              src={creative.kind === "video" ? creative.posterUrl : creative.publicUrl}
               alt="Creative with Stories/Reels safe-zone overlay"
               className="absolute inset-0 w-full h-full object-cover"
             />
@@ -155,9 +155,8 @@ export function StepPolicy({ copy, creative, channelRows, specialAdCategory, onS
             </div>
           </div>
           <p className="text-xs text-[var(--color-text-tertiary)] mt-1.5 max-w-md">
-            On Stories and Reels the shaded bands sit under the platform's own buttons — keep
-            text and logos out of them. Real per-placement previews arrive once the preview
-            endpoint ships; entities are created paused, so previewing after create is free.
+            On Stories and Reels the shaded bands sit under the platform's own buttons. This
+            guide is drawn by Mingla; it is not a render returned by Meta.
           </p>
         </div>
       )}

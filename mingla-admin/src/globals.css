@@ -275,3 +275,71 @@
 [data-theme="dark"] .login-bg-glow {
   background: radial-gradient(circle, rgba(249, 115, 22, 0.04) 0%, transparent 70%);
 }
+
+/* ISSUE-1184 Phase A actions only — WCAG-AA contrast without a global button change. */
+.phase-a-panel {
+  padding: 1rem;
+  border: 1px solid var(--gray-200);
+  border-radius: 0.75rem;
+  background: var(--color-background-primary);
+}
+.phase-a-panel-header,
+.phase-a-panel-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.phase-a-platform-row {
+  min-height: 4rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--gray-200);
+  border-radius: 0.5rem;
+}
+.phase-a-success { border-color: var(--color-success-500); }
+.phase-a-error { border-color: #ef4444; }
+.phase-a-preview-tabs {
+  display: flex;
+  gap: 0.25rem;
+  overflow-x: auto;
+}
+.phase-a-preview-tab {
+  min-height: 44px;
+  flex: 0 0 auto;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  color: var(--color-brand-700);
+  background: white;
+  border: 1px solid var(--gray-200);
+}
+.phase-a-preview-tab[aria-selected="true"] {
+  color: white;
+  background: var(--color-brand-700);
+}
+.phase-a-preview-tab:focus-visible {
+  outline: 2px solid var(--color-brand-500);
+  outline-offset: 2px;
+}
+[data-theme="dark"] .phase-a-preview-tab {
+  color: var(--color-brand-400);
+  background: #0f1117;
+}
+[data-theme="dark"] .phase-a-preview-tab[aria-selected="true"] {
+  color: #0f1117;
+  background: var(--color-brand-400);
+}
+@media (max-width: 639px) {
+  .phase-a-panel-header,
+  .phase-a-panel-footer,
+  .phase-a-platform-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .phase-a-panel button {
+    width: 100%;
+    min-height: 44px;
+  }
+}
