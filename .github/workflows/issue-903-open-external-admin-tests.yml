@@ -32,8 +32,9 @@ jobs:
           node-version: "20"
       - name: Run ISSUE-903 openExternal admin regressions
         working-directory: mingla-admin
+        # Both the implementor happy-path suite AND the tester adversarial suite
+        # exist on this branch, so both run unconditionally (no -f guard).
         run: |
-          files=( src/lib/__tests__/openExternal.test.js )
-          tester=src/lib/__tests__/openExternal.adversarial.tester.test.js
-          if [[ -f "$tester" ]]; then files+=("$tester"); fi
-          node --test "${files[@]}"
+          node --test \
+            src/lib/__tests__/openExternal.test.js \
+            src/lib/__tests__/openExternal.adversarial.tester.test.js
