@@ -53,6 +53,9 @@ import {
   resolveProviderRouting,
 } from "../_shared/paymentProvider.ts";
 import { paystackInitializeTransaction } from "../_shared/paystack.ts";
+// #1178 [ng-split-removal] — pure Paystack split-field gate (co-located so it is
+// unit-testable without importing this serve()-on-load entry).
+import { paystackTicketSplitFields } from "./ngPaystackSplit.ts";
 
 type CheckoutLine = { ticketTypeId: string; quantity: number };
 type CheckoutMode = "create" | "preview";
@@ -776,6 +779,37 @@ serve(wrapEdgeHandler("ticket-checkout-create", async (req) => {
     // (Ghana-only). https://paystack.com/docs/payments/payment-channels/
     const psChannels = paystackChannelsForCountry("NG");
 
+    // #1178 [ng-split-removal] — read the payout-hold cut-over stamp for this
+    // event's brand. A STAMPED brand (brands.payout_hold_cutover_at IS NOT NULL)
+    // settles 100% to Mingla's main balance for later event-anchored release
+    // (#1177) instead of splitting to the organiser subaccount at charge time.
+    // Read-only embed mirroring the META-ORCH-1236 currency probe below; on ANY
+    // read error fail CLOSED to today's split behaviour (isCutover=false) so a
+    // transient failure can never drop an UNSTAMPED brand's subaccount split.
+    // The buyer `amount` (amountSubunits) is untouched either way.
+    const { data: cutoverRow, error: cutoverErr } = await supabase
+      .from("events")
+      .select("brands!inner(payout_hold_cutover_at)")
+      .eq("id", eventId)
+      .maybeSingle();
+    if (cutoverErr) {
+      console.error(
+        "[ticket-checkout-create] payout_hold_cutover_at read failed; treating as unstamped",
+        cutoverErr,
+      );
+    }
+    const isCutover = ((): boolean => {
+      const brandRel = (cutoverRow as
+        | {
+          brands?:
+            | { payout_hold_cutover_at?: string | null }
+            | { payout_hold_cutover_at?: string | null }[];
+        }
+        | null)?.brands;
+      const brand = Array.isArray(brandRel) ? brandRel[0] : brandRel;
+      return (brand?.payout_hold_cutover_at ?? null) !== null;
+    })();
+
     // amount = psBuyerTotalCents, ALREADY in kobo (the engine works in minor
     // units; NGN minor unit is kobo). DO NOT multiply by 100 again — the
     // proof-slice harness multiplies because it takes MAJOR units; this branch
@@ -795,17 +829,18 @@ serve(wrapEdgeHandler("ticket-checkout-create", async (req) => {
           mingla_event_id: eventId,
           mingla_buyer_email: buyerEmail,
         },
-        // Phase 1 deferred-split: if the brand already has a subaccount, pass it
-        // + the flat Mingla take (transaction_charge in kobo). Absent → full
-        // settle to the main Mingla account (brand payout is Phase 2). Either
-        // way the buyer is charged the same all-in total.
+        // #1178 [ng-split-removal] — split to the organiser subaccount ONLY for
+        // an UNSTAMPED brand that has a subaccount (pass it + the flat Mingla
+        // take, transaction_charge in kobo). A STAMPED (cut-over) brand — OR any
+        // brand with no subaccount — omits all split fields and settles 100% to
+        // the main Mingla account (event-anchored release is #1177). Either way
+        // the buyer is charged the same all-in total (amountSubunits unchanged).
         //   https://paystack.com/docs/api/subaccount/
-        ...(pricing.paystack_subaccount_code
-          ? {
-            subaccount: pricing.paystack_subaccount_code,
-            transactionChargeSubunits: psApplicationFeeCents,
-          }
-          : {}),
+        ...paystackTicketSplitFields(
+          isCutover,
+          pricing.paystack_subaccount_code,
+          psApplicationFeeCents,
+        ),
       });
     } catch (err) {
       console.error(

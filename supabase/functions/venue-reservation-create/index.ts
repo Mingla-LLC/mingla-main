@@ -67,6 +67,9 @@ import {
   resolveProviderRouting,
 } from "../_shared/paymentProvider.ts";
 import { paystackInitializeTransaction } from "../_shared/paystack.ts";
+// #1178 [ng-split-removal] — pure Paystack split-field gate (co-located so it is
+// unit-testable without importing this serve()-on-load entry).
+import { paystackReservationSplitFields } from "./ngPaystackSplit.ts";
 
 type ReserveSurface = "native" | "web";
 
@@ -413,7 +416,30 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
         409,
       );
     }
-    if (!pricing.paystack_subaccount_code) {
+    // #1178 [ng-split-removal] — read the payout-hold cut-over stamp. A STAMPED
+    // brand (brands.payout_hold_cutover_at IS NOT NULL) settles the deposit 100%
+    // to Mingla main for later event-anchored release (#1177) instead of
+    // splitting to the organiser subaccount at charge time, and is charge-ready
+    // even without a subaccount. Read-only PK lookup; on ANY read error fail
+    // CLOSED to today's behaviour (isCutover=false).
+    const { data: cutoverRow, error: cutoverErr } = await supabase
+      .from("brands")
+      .select("payout_hold_cutover_at")
+      .eq("id", brandId)
+      .maybeSingle();
+    if (cutoverErr) {
+      console.error(
+        "[venue-reservation-create] payout_hold_cutover_at read failed; treating as unstamped",
+        cutoverErr,
+      );
+    }
+    const isCutover =
+      ((cutoverRow as { payout_hold_cutover_at?: string | null } | null)
+        ?.payout_hold_cutover_at ?? null) !== null;
+
+    // #1178 — a STAMPED brand needs no subaccount (settles to Mingla main); an
+    // UNSTAMPED fee venue on Paystack still requires one (byte-identical 409).
+    if (!isCutover && !pricing.paystack_subaccount_code) {
       // a fee venue on Paystack with no payout subaccount is not charge-ready.
       return jsonResponse({ error: "stripe_account_not_ready" }, 409);
     }
@@ -493,8 +519,15 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
           mingla_brand_id: brandId,
           mingla_buyer_email: buyerEmail,
         },
-        subaccount: pricing.paystack_subaccount_code,
-        transactionChargeSubunits: psSubtotal.miglaFeeCents,
+        // #1178 [ng-split-removal] — split to the organiser subaccount ONLY for
+        // an UNSTAMPED brand; a STAMPED (cut-over) brand omits the split fields →
+        // full settle to Mingla main (later organiser payout owned by #1177).
+        // Buyer `amountSubunits` is unchanged.
+        ...paystackReservationSplitFields(
+          isCutover,
+          pricing.paystack_subaccount_code,
+          psSubtotal.miglaFeeCents,
+        ),
       });
     } catch (err) {
       await failReservationSession(supabase, sessionId, String((err as Error)?.message ?? err));
