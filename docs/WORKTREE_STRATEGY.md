@@ -232,6 +232,16 @@ The orchestrator must justify the bundle in chat ("these two share a migration",
 
 ---
 
+## Multi-issue PRs — one closing keyword per issue (MANDATORY)
+
+GitHub auto-closes an issue ONLY when the PR body carries a closing keyword naming it (`Fixes #NNN` / `Closes #NNN` / `Resolves #NNN`) — one line per issue. A PR that resolves several issues but names only one leaves the rest OPEN forever: they strand on the board (often stuck at "In Progress") while the code is already merged and deployed, and no one notices until a status query surfaces them.
+
+**Pre-merge checklist item:** when a PR resolves more than one issue — a pre-approved bundle, OR a single fix that incidentally closes sibling issues carved off the same investigation — the PR body MUST carry a separate `Fixes #NNN` line for EVERY issue it resolves. At merge time, cross-check the `Fixes #` lines against every issue# in the PR title, branch lineage, and any sibling issues the diff actually closes; if a resolved issue is missing its line, add it before merging (or close + comment that issue manually right after merge).
+
+**Proven failure:** PR #938 fixed #880 plus siblings #886/#887/#888/#889 (ORCH-1375/1376/1377/1378) but carried a single `Fixes #880`. Only #880 auto-closed; the other four sat OPEN and "In Progress" for 9 days after shipping until a board query surfaced them (closed 2026-07-27 with evidence comments).
+
+---
+
 ## Cross-references
 
 - Memory rule: `~/.claude/projects/-Users-sethogieva-Desktop-mingla-main/memory/feedback_worktree_per_orch_workflow.md`
