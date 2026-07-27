@@ -36,11 +36,13 @@ on:
     paths:
       - "mingla-business/app/accept-scanner-invitation.tsx"
       - "mingla-business/src/utils/__tests__/issue_885_scanner_invite_signed_out_actionable.implementor.test.ts"
+      - "mingla-business/src/utils/__tests__/issue_885_scanner_invite_actionable.adversarial.test.ts"
       - ".github/workflows/issue-885-scanner-invite-loader-tests.yml"
   pull_request:
     paths:
       - "mingla-business/app/accept-scanner-invitation.tsx"
       - "mingla-business/src/utils/__tests__/issue_885_scanner_invite_signed_out_actionable.implementor.test.ts"
+      - "mingla-business/src/utils/__tests__/issue_885_scanner_invite_actionable.adversarial.test.ts"
       - ".github/workflows/issue-885-scanner-invite-loader-tests.yml"
 
 concurrency:
@@ -77,4 +79,14 @@ jobs:
         run: >
           npx jest
           src/utils/__tests__/issue_885_scanner_invite_signed_out_actionable.implementor.test.ts
+          --runInBand
+      # TESTER adversarial suite. Mounts the same REAL route and pins two OTHER
+      # invariants of the fix: authStatus="error" -> an actionable "Try again" screen
+      # (never a spinner), and C-1373-C precedence (a resolved `phase` is not re-masked
+      # by a later transient auth change). Fails on revert of the error arm / the render
+      # precedence ordering.
+      - name: Run issue-885 scanner-invite loader guard (tester adversarial)
+        run: >
+          npx jest
+          src/utils/__tests__/issue_885_scanner_invite_actionable.adversarial.test.ts
           --runInBand
