@@ -40,6 +40,7 @@ import {
   PaystackApiError,
   paystackFetchTransfer,
   paystackInitiateTransfer,
+  paystackVerifyTransferByReference,
 } from "./paystack.ts";
 import { sendOpsAlertEmail } from "./stripeOpsAlertEmail.ts";
 import { dispatchNotification, formatMoneyCents } from "./stripeEdgeAuth.ts";
@@ -62,6 +63,13 @@ export interface PaystackPartnerSplitDeps {
   fetchTransfer: typeof paystackFetchTransfer;
   sendOpsAlert: typeof sendOpsAlertEmail;
   notify: typeof dispatchNotification;
+  /**
+   * #1030 [partner verify-by-reference] — GET /transfer/verify/{reference}. The
+   * retry sweep reconciles a code-less pending row BY REFERENCE before any
+   * re-initiate (I-PROPOSED-1030-PARTNER-VERIFY-BEFORE-INITIATE). OPTIONAL so
+   * existing test deps that never reach the reconcile path compile unchanged.
+   */
+  verifyTransferByReference?: typeof paystackVerifyTransferByReference;
 }
 
 export function defaultPaystackPartnerSplitDeps(): PaystackPartnerSplitDeps {
@@ -70,6 +78,7 @@ export function defaultPaystackPartnerSplitDeps(): PaystackPartnerSplitDeps {
     fetchTransfer: paystackFetchTransfer,
     sendOpsAlert: sendOpsAlertEmail,
     notify: dispatchNotification,
+    verifyTransferByReference: paystackVerifyTransferByReference,
   };
 }
 
@@ -321,6 +330,55 @@ function classifyTransferError(
   // Network / timeout / non-HTTP throw — ambiguous; the transfer MAY have gone
   // through. Same reference on retry so a duplicate can never pay twice.
   return { kind: "retryable", message };
+}
+
+/**
+ * #1030 [partner verify-by-reference] — classify a THROW from
+ * `paystackVerifyTransferByReference` on the retry-sweep reconcile path.
+ *
+ * STRICTER than `classifyTransferError` because the consequence is inverted: a
+ * wrong "definitive" here re-initiates a transfer, so only an UNAMBIGUOUS
+ * not-found (the transfer never processed → the deterministic reference is free
+ * to reuse) may read as definitive. Everything ambiguous (5xx, 429, network,
+ * un-worded 4xx) is transient → skip this sweep, no initiate. Money-safe under
+ * either miss: a wrong "definitive" hits Paystack's reference-idempotency 400
+ * (duplicate → retryable, no double-pay, resolves next sweep); a wrong
+ * "transient" is a visible recoverable stall, never a loop.
+ *
+ * Mirror of the organiser rail's `classifyPaystackTransferError`
+ * (payout-release-sweep/engine.ts) but tightened for the verify path per SPEC
+ * §4.2c. Duplicate/balance wording must NEVER read as definitive here.
+ */
+export function classifyVerifyByReferenceError(
+  err: unknown,
+): { kind: "definitive" | "transient"; message: string } {
+  const message = err instanceof Error ? err.message : String(err);
+  // Guard: duplicate/balance wording is never a not-found signal on the verify
+  // path (they should not appear here; if they do, stay transient → never
+  // re-initiate on ambiguity).
+  if (
+    /duplicate/i.test(message) || /insufficient/i.test(message) ||
+    /balance/i.test(message)
+  ) {
+    return { kind: "transient", message };
+  }
+  const saysNotFound =
+    /not found|does not exist|unknown|could not\s+(find|resolve)|no .*transfer.*found/i
+      .test(message);
+  if (err instanceof PaystackApiError) {
+    // 5xx / 429 → the verify itself failed, outcome unknown → transient.
+    if (err.status >= 500 || err.status === 429) {
+      return { kind: "transient", message };
+    }
+    // Clean 404, or a non-5xx/429 response whose message clearly says
+    // not-found (covers a 200-status:false or 400 not-found shape) → definitive.
+    if (err.status === 404) return { kind: "definitive", message };
+    if (saysNotFound) return { kind: "definitive", message };
+    // Ambiguous 400/401/403 without not-found wording → transient (money-safe).
+    return { kind: "transient", message };
+  }
+  // Network / timeout / non-HTTP throw → ambiguous → transient.
+  return { kind: "transient", message };
 }
 
 /**

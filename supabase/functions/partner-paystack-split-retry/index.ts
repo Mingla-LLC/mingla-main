@@ -27,6 +27,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   attemptTransferForSplit,
+  classifyVerifyByReferenceError,
   defaultPaystackPartnerSplitDeps,
   handlePaystackTransferEvent,
   MAX_PAYSTACK_TRANSFER_ATTEMPTS,
@@ -34,6 +35,9 @@ import {
   resolveActivePaystackRecipient,
   type PaystackPartnerSplitDeps,
 } from "../_shared/paystackPartnerSplits.ts";
+// #1030 [partner verify-by-reference] — null-safe fallback when a caller's deps
+// omit the optional verifyTransferByReference (production deps always set it).
+import { paystackVerifyTransferByReference } from "../_shared/paystack.ts";
 
 const SWEEP_BATCH = 20;
 const MIN_AGE_MINUTES = 10;
@@ -177,6 +181,95 @@ export async function runPartnerPaystackSplitSweep(
           result.skipped += 1;
         }
         continue;
+      }
+
+      // #1030 [partner verify-by-reference] — RECONCILE-FIRST for a code-less
+      // pending row (I-PROPOSED-1030-PARTNER-VERIFY-BEFORE-INITIATE). A lost
+      // initiate response leaves this row with a burned-but-unrecorded
+      // deterministic reference; re-initiating blind loops forever on the
+      // duplicate-reference 400. Read Paystack BY REFERENCE first and reconcile
+      // from the returned status; only a DEFINITIVE not-found falls through to
+      // the initiate path below. Mirrors the fetch-by-code branch above and the
+      // merged organiser sweep (I-PROPOSED-1177-VERIFY-BEFORE-INITIATE).
+      const reference = `psplit_${row.id}_a${row.attempt_count}`;
+      const verifyByRef = deps.verifyTransferByReference ??
+        paystackVerifyTransferByReference;
+      try {
+        const data = await verifyByRef(reference);
+        const vstatus = String(
+          (data as Record<string, unknown>).status ?? "",
+        ).toLowerCase();
+        const vcode =
+          typeof (data as Record<string, unknown>).transfer_code === "string"
+            ? (data as Record<string, unknown>).transfer_code as string
+            : null;
+
+        if (vstatus === "success") {
+          // Money already moved — reconcile to transferred (+ first-split push);
+          // NEVER initiate. mark_partner_split_transferred is idempotent.
+          await handlePaystackTransferEvent(supabase, "transfer.success", {
+            reference,
+            transfer_code: vcode,
+          }, deps);
+          result.transferred += 1;
+          continue;
+        }
+        if (vstatus === "failed" || vstatus === "abandoned") {
+          // Stamp the verified code + reference FIRST so the code-less row's
+          // stripe_transfer_id/payout_reference match the event — otherwise the
+          // stale-code guard in handlePaystackTransferEvent("transfer.failed")
+          // (paystackPartnerSplits.ts:694-698) reads a null current code and
+          // no-ops. attempt_count is unchanged, so reference+attempt still match.
+          await supabase.rpc("mark_paystack_partner_split_attempted", {
+            p_key: row.stripe_application_fee_id,
+            p_payout_reference: reference,
+            p_transfer_code: vcode,
+          });
+          await handlePaystackTransferEvent(supabase, "transfer.failed", {
+            reference,
+            transfer_code: vcode,
+            reason: `sweep verify-by-reference: ${vstatus}`,
+          }, deps);
+          result.retried += 1;
+          continue;
+        }
+        if (vstatus === "reversed") {
+          // Definitive for THIS reference — bump (new reference next sweep) and
+          // clear the transfer code. Mirrors the reconcile-reversed block above
+          // (index.ts fetch-by-code branch); cap finalize is handled by the
+          // sweep's capped-rows pre-pass next cycle.
+          await supabase.rpc("bump_paystack_partner_split_attempt", {
+            p_key: row.stripe_application_fee_id,
+            p_error: "transfer_reversed_by_bank",
+          });
+          const { error: clearErr } = await supabase
+            .from("partner_splits")
+            .update({ stripe_transfer_id: null })
+            .eq("id", row.id)
+            .eq("status", "pending");
+          if (clearErr) {
+            throw new Error(
+              `reversed transfer_code clear failed: ${clearErr.message}`,
+            );
+          }
+          result.retried += 1;
+          continue;
+        }
+        // pending / otp / queued / processing / received → genuinely in-flight
+        // at Paystack → skip, NO initiate; the webhook or next sweep settles it.
+        result.skipped += 1;
+        continue;
+      } catch (verifyErr) {
+        const { kind } = classifyVerifyByReferenceError(verifyErr);
+        if (kind === "transient") {
+          // Outcome unknown (5xx/429/network/ambiguous 4xx) → NO initiate this
+          // sweep; resolves next cycle.
+          result.skipped += 1;
+          continue;
+        }
+        // kind === "definitive" (404 / not-found) → the transfer never
+        // processed → FALL THROUGH to the existing recipient-resolve + initiate
+        // path below (money-safe: reference-idempotency 400 backstops a lag-404).
       }
 
       // No transfer initiated yet — eligibility, then attempt.

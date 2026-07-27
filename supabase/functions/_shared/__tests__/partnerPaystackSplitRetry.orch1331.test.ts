@@ -177,6 +177,21 @@ function fakeDeps(opts: {
       calls.push({ kind: "notify", args: input });
       return Promise.resolve();
     }) as any,
+    // [TEST-MOD-APPROVED ORCH-1030] #1030 [partner verify-by-reference] — the
+    // sweep now reconciles a code-less pending row BY REFERENCE before any
+    // initiate. These T-10 cases exercise the code-less ELSE branch and must
+    // still fall through to initiateTransfer, so verify returns a DEFINITIVE
+    // 404 not-found (classifyVerifyByReferenceError → definitive → fall
+    // through). Additions-only; no existing assertion touched.
+    verifyTransferByReference: (reference: string) => {
+      calls.push({ kind: "verifyTransferByReference", args: reference });
+      return Promise.reject(
+        new PaystackApiError(
+          "Paystack verify-transfer-by-reference failed (404): Transfer not found",
+          404,
+        ),
+      );
+    },
   };
   return { deps, calls };
 }
