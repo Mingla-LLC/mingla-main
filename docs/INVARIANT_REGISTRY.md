@@ -7,6 +7,24 @@
 
 ---
 
+## DRAFT — issue #958 (bracketed/spaced worktree paths break strict-grep wrappers + orch-0964 walks `.next/` — IN FLIGHT, registered at IMPLEMENT 2026-07-27)
+
+> Registered DRAFT at issue #958 [bracketed-worktree-path-gates] IMPLEMENT. Two CI-only, backend-only defects, both proven from the bracketed worktree `958-[bracketed-worktree-path-gates]`: (1) four strict-grep `.test.mjs` wrappers spawned their sibling gate using `new URL(...).pathname`, which percent-encodes `[`→`%5B`, `]`→`%5D`, space→`%20`, so the child `node` received a non-existent path and every spawning subtest crashed with `MODULE_NOT_FOUND` from any bracketed/spaced worktree; (2) three `orch-0964` theme walkers recursed into a local `.next/` Next build and false-red on compiled bundle output. Fix: swap `.pathname` for `fileURLToPath(SCRIPT)` in the 4 wrappers, and add `".next"` to the 3 walker exclusion arrays. No detection/assertion logic changed. The orchestrator flips DRAFT → ACTIVE at CLOSE. Cross-ref: SPEC + implementation report on issue #958.
+
+### I-PROPOSED-958-STRICTGREP-SPAWN-VIA-FILEURLTOPATH (DRAFT)
+- **Rule:** every strict-grep wrapper that spawns, execs, or imports a sibling gate MUST derive the child path via `fileURLToPath(...)`, never `URL.pathname`, so gates run correctly from ANY worktree path — brackets, spaces, or unicode. `URL.pathname` is a percent-encoded URL component and is not a valid filesystem path.
+- **CI enforcement:** the append-only regression `.github/scripts/strict-grep/__tests__/issue-958-bracketed-worktree-spawn.regression.mjs` (registered `batch:A`, `node --test`) copies each fixed wrapper into a throwaway directory whose absolute path carries `[`, `]`, and a space, runs it, and fails on any `%5B` or `MODULE_NOT_FOUND` in the output.
+- **Regression test:** the regression asserts exit 0 with neither `%5B` nor `MODULE_NOT_FOUND` for all four fixed wrappers; reverting any wrapper to `SCRIPT.pathname` reintroduces `Cannot find module '…%5B…%5D…/<gate>.mjs'` and flips that wrapper red (proven fails-on-revert at IMPLEMENT). The tester adds a distinct unicode+space-path angle. Append-only.
+- **Established:** DRAFT 2026-07-27 at issue #958 IMPLEMENT. Flips ACTIVE at CLOSE.
+
+### I-PROPOSED-958-REPO-WALKER-EXCLUDES-NEXT (DRAFT)
+- **Rule:** any strict-grep gate that walks a root which can contain a Next build MUST exclude `.next` alongside `node_modules`/`dist`/`build`/`.expo`, so the gate scans source, never compiled bundle output.
+- **CI enforcement:** the three whole-repo `orch-0964` theme walkers (`theme-foreground-computed`, `theme-resolver-canonical`, `theme-typed-columns`) now carry `.next` in their exclusion arrays; the tester's adversarial `.next` non-descent fixture guards the behavior.
+- **Regression test:** with a compiled `.next/` file matching each gate's regex present under `mingla-business/`, the three gates exit 0 (no descent); the identical content placed in a real source path still trips all three (detection preserved). Proven both directions at IMPLEMENT. Append-only.
+- **Established:** DRAFT 2026-07-27 at issue #958 IMPLEMENT. Flips ACTIVE at CLOSE.
+
+---
+
 ## ACTIVE — issue #885 (the scanner-invite route renders an actionable screen for a terminal auth state, never an infinite spinner — CLOSED 2026-07-27)
 
 > ACTIVE at issue #885 [scanner-invite-loader-guard] CLOSE (lineage ORCH-1374; PR #1233 merged). The infinite-loader FIX already shipped in `mingla-business/app/accept-scanner-invitation.tsx` (commit 26cd280bb, batched into the ORCH-1373 PR): the route branches on the five-state `authStatus` and renders an actionable "Sign in" screen for a logged-out visitor instead of the old dead `if (!isAuthReady) return;`-above-`router.replace('/auth?next=…')` clone that would have spun a logged-out scanner forever (a loaded landmine, not a live fire — production `scanner_invitations` = 0 rows). The GAP this issue closed is that the route's OWN render control flow had no fails-on-revert regression test: the shared `authReadiness` tests and the layout route-gate test (`orch_1373_auth_route_gate.test.ts`) protect the auth DERIVATION and the route MOUNT, but nothing pinned THIS component's branch structure. The implementor added a happy-path proof that MOUNTS the real shipped route via react-test-renderer (not a hand-rolled branch copy — the ORCH-1373 P2-2 disease) and asserts an actionable "Sign in" affordance + zero ActivityIndicator for `authStatus="signed_out"`; the tester added an adversarial suite on a different angle (`authStatus="error"` Try-again screen + C-1373-C precedence), both fails-on-revert. Cross-ref: implementation + test reports on issue #885.
