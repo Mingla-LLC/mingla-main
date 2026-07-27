@@ -1,0 +1,79 @@
+name: "#1173 Stripe Schedule Flip Tests"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/functions/admin-payout-hold-migrate/**"
+      - "supabase/functions/brand-stripe-onboard/**"
+      - "supabase/functions/_shared/stripeBlueprintClient.ts"
+      - "supabase/functions/_shared/stripeMode.ts"
+      - "supabase/functions/_shared/secretBundle.ts"
+      - "supabase/functions/_shared/stripe.ts"
+      - "supabase/config.toml"
+      - ".github/workflows/issue-1173-stripe-schedule-flip-tests.yml"
+  pull_request:
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/functions/admin-payout-hold-migrate/**"
+      - "supabase/functions/brand-stripe-onboard/**"
+      - "supabase/functions/_shared/stripeBlueprintClient.ts"
+      - "supabase/functions/_shared/stripeMode.ts"
+      - "supabase/functions/_shared/secretBundle.ts"
+      - "supabase/functions/_shared/stripe.ts"
+      - "supabase/config.toml"
+      - ".github/workflows/issue-1173-stripe-schedule-flip-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-1173-stripe-schedule-flip:
+    name: "#1173 Stripe schedule flip"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: Apply every migration to clean PostgreSQL 17 + run the RPC SQL test
+        run: |
+          issue1173_db_password="$(openssl rand -hex 24)"
+          docker run --name issue1173-postgres \
+            -e POSTGRES_PASSWORD="$issue1173_db_password" \
+            -d supabase/postgres:17.4.1.075
+          for attempt in {1..90}; do
+            state="$(docker inspect --format \
+              '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' \
+              issue1173-postgres)"
+            if [ "$state" = "healthy" ]; then
+              break
+            fi
+            sleep 1
+          done
+          for migration_file in supabase/migrations/*.sql; do
+            docker exec -i issue1173-postgres \
+              psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+              < "$migration_file"
+          done
+          docker exec -i issue1173-postgres \
+            psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            < supabase/migrations/__tests__/issue_1173_stamp_cutover.test.sql
+          docker exec -i issue1173-postgres \
+            psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            < supabase/migrations/__tests__/issue_1173_rollback_cutover_guard.adversarial.test.sql
+      - name: Run #1173 schedule-flip regression tests (Deno)
+        run: |
+          deno test --allow-read --allow-env --allow-net --no-check \
+            supabase/functions/_shared/__tests__/issue_1173_payout_schedule_helper.test.ts \
+            supabase/functions/admin-payout-hold-migrate/__tests__/issue_1173_admin_migrate.test.ts \
+            supabase/functions/brand-stripe-onboard/__tests__/issue_1173_onboard_dark_default.test.ts
+      - name: Remove disposable database
+        if: always()
+        run: docker rm -f issue1173-postgres || true

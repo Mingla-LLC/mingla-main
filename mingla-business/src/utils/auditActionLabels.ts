@@ -140,6 +140,17 @@ export const KNOWN_STATIC_SLUGS: readonly string[] = [
   "partner_paystack.recipient_detached",
   "paystack.partner_split_reversal_owed",
   "paystack.webhook_unhandled_refund_state",
+  // #1173 [Stripe payout-hold schedule flip] — payout-schedule (daily → manual
+  // hold) lifecycle audit slugs. onboard_* emitted by brand-stripe-onboard at
+  // onboarding (flip succeeded / flip failed / stamp failed then rolled back);
+  // migrate + rollback emitted by the admin-payout-hold-migrate batch fn via
+  // the admin_write_audit RPC (dynamic p_action, so registered here for the
+  // human-readable label path even though the gate does not harvest them).
+  "payout_hold.onboard_flipped",
+  "payout_hold.onboard_flip_failed",
+  "payout_hold.stamp_failed_rolled_back",
+  "payout_hold.migrate",
+  "payout_hold.rollback",
 ];
 
 const humanizeSlug = (slug: string): string => {
@@ -513,6 +524,42 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
         detail: "Schema change on a tier with existing answers triggered re-answer notification to affected travelers.",
         category: "orders",
         iconHint: "ticket",
+      };
+    // #1173 [Stripe payout-hold schedule flip] — payout-schedule lifecycle.
+    case "payout_hold.onboard_flipped":
+      return {
+        title: "Payout hold enabled at onboarding",
+        detail: "The new Stripe account was switched from daily to manual payouts (funds held) and the cutover was recorded.",
+        category: "payouts_refunds",
+        iconHint: "pound",
+      };
+    case "payout_hold.onboard_flip_failed":
+      return {
+        title: "Payout hold not applied at onboarding",
+        detail: "Switching the new Stripe account to manual payouts failed; it stays on daily payouts and will be migrated later.",
+        category: "payouts_refunds",
+        iconHint: "flag",
+      };
+    case "payout_hold.stamp_failed_rolled_back":
+      return {
+        title: "Payout hold rolled back",
+        detail: "The account was switched to manual payouts but recording the cutover failed, so it was restored to daily payouts to avoid a manual-but-unstamped state.",
+        category: "payouts_refunds",
+        iconHint: "flag",
+      };
+    case "payout_hold.migrate":
+      return {
+        title: "Payout hold applied (admin migration)",
+        detail: "An admin batch migration switched this brand's Stripe account to manual payouts (funds held).",
+        category: "payouts_refunds",
+        iconHint: "pound",
+      };
+    case "payout_hold.rollback":
+      return {
+        title: "Payout hold reverted (admin migration)",
+        detail: "An admin batch migration reverted this brand's Stripe account back to daily payouts.",
+        category: "payouts_refunds",
+        iconHint: "flag",
       };
   }
 
