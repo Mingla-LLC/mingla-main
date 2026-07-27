@@ -311,3 +311,51 @@ Deno.test("ISSUE-1184 prepare maps rate limits and both CAS audit failures expli
   assertStringIncludes(source, 'resumeStopResult === "audit_failed"');
   assert(!source.includes('row.current_error_code === "audit_write_failed"'));
 });
+
+// Regression mirror for the #927 s3 cross-contract guard (issue #1184 comment
+// 5087577373): Phase A briefly folded a `status !== "active"` clause into the
+// Snapchat creative-library not-found gate. Because that block serves BOTH the
+// image and video kinds and the #866/#927 mock seeds an existing image row with
+// NO `status` field, the clause reclassified the pinned "row exists, no READY
+// ref" case from creative_not_uploaded (422) to creative_not_found. This pins
+// the Snapchat image contract in our OWN suite so the class fails here first.
+Deno.test("ISSUE-1184 Snapchat not-found gate stays bare (row-exists-no-ref => creative_not_uploaded, never creative_not_found) — #927 s3 mirror", async () => {
+  const source = await Deno.readTextFile(
+    new URL("../../admin-ad-create-campaign/index.ts", import.meta.url),
+  );
+  // Isolate the Snapchat media-resolve block by its stable entry/exit anchors:
+  // the `!topSnapMediaId && creativeLibraryId` opener and the `!topSnapMediaId`
+  // media-required fall-through. This is distinct from the TikTok (no status
+  // guard) and Meta-video (video-only) branches, so the assertions below never
+  // touch those legitimately-different siblings.
+  const blockStart = source.indexOf(
+    "if (!topSnapMediaIdS && creativeLibraryIdS) {",
+  );
+  assert(blockStart !== -1, "Snapchat media-resolve block opener not found");
+  const blockEnd = source.indexOf("if (!topSnapMediaIdS) {", blockStart + 1);
+  assert(blockEnd !== -1, "Snapchat media-required fall-through not found");
+  const snapBlock = source.slice(blockStart, blockEnd);
+
+  // (1) The not-found gate must be the BARE !libCreative check. A
+  // `status !== "active"` clause here breaks the #927 s3 image contract.
+  const gateStart = snapBlock.indexOf("if (!libCreative");
+  assert(gateStart !== -1, "Snapchat not-found gate not found");
+  const gateLine = snapBlock
+    .slice(gateStart, snapBlock.indexOf("\n", gateStart))
+    .trim();
+  assertEquals(
+    gateLine,
+    "if (!libCreative) {",
+    "the Snapchat not-found gate must be a bare !libCreative check; a status/active clause reclassifies the row-exists-no-ref case away from creative_not_uploaded",
+  );
+
+  // (2) The Snapchat block must not gate on the library-row status at all — the
+  // authoritative usability gate is the READY platform ref, not ad_creatives.status.
+  assert(
+    !snapBlock.includes("libCreative.status"),
+    "the Snapchat media-resolve block must not gate on libCreative.status (#927 s3)",
+  );
+
+  // (3) The honest row-exists-no-ready-ref error must remain reachable.
+  assertStringIncludes(snapBlock, '"creative_not_uploaded"');
+});

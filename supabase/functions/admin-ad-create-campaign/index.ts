@@ -1049,10 +1049,18 @@ serve(async (req: Request): Promise<Response> => {
     if (!topSnapMediaIdS && creativeLibraryIdS) {
       const { data: libCreative } = await supabase
         .from("ad_creatives")
-        .select("id, kind, status, content_hash, duration_seconds")
+        .select("id, kind, content_hash, duration_seconds")
         .eq("id", creativeLibraryIdS)
         .maybeSingle();
-      if (!libCreative || libCreative.status !== "active") {
+      // #927 s3 contract: the not-found gate fires ONLY when the row genuinely
+      // does not resolve. An existing library row with no READY #866 ref must
+      // fall through to the ref check below and return creative_not_uploaded —
+      // NOT be reclassified as creative_not_found. A `status !== "active"`
+      // clause here would break that contract for the image path (the #866
+      // mock seeds a row with no status field), so it lives on NEITHER gate.
+      // The authoritative usability gate is the READY-ref check
+      // (external_kind + content_hash + status="ready"), asserted below.
+      if (!libCreative) {
         return json({ error: "creative_not_found", detail: "creative_library_id does not resolve" }, 422);
       }
       if (creativeKindS === "video" && libCreative.kind !== "video") {
