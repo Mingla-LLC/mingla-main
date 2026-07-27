@@ -18,6 +18,8 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-07-27 — Stripe organiser accounts can be moved from daily payouts to manual event-anchored schedules, with an idempotent admin migration action and a daily-schedule rollback lever; shipped dark behind a default-off flag — zero production brands flipped (#1173, PR #1214)
+- 2026-07-27 — Nigerian organiser payouts execute through Paystack Transfers with brand-absorbed fees, ₦50 floor / ₦10M chunking, and verify-by-reference no-double-pay recovery (which also fixes the #1030 loop bug); shipped dark — no naira moves (#1177, PR #1215)
 - 2026-07-26 — Stripe organiser payouts can now be released from the internal event-payout ledger (ledger-exact amount, provider balance as ceiling only, per-occurrence release timing); shipped dark behind the per-brand cutover flag, so no live payout schedule changed (#1172, PR #1201)
 - 2026-07-26 — Complete Paystack refunds for Nigerian purchases — tickets, trips, and venue reservations — with idempotent no-double-refund tracking and organiser-debt netting; shipped dark (#1175, PR #1199)
 - 2026-07-26 — Partner fee-shares are now held until event payout and settled atomically (the Stripe transfer and its ledger record commit together, so money can never move while the books say "unpaid" and a failed write is genuinely retried); shipped dark (#1174, PR #1197)
