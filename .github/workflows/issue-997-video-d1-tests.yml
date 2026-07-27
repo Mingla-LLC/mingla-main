@@ -34,6 +34,7 @@ on:
       - "supabase/functions/_shared/__tests__/tiktok.test.ts"
       - "supabase/migrations/20270111001185_issue_997_google_video_prepare.sql"
       - "supabase/migrations/__tests__/issue997_google_video_prepare_schema.test.ts"
+      - "supabase/migrations/__tests__/issue997_google_video_prepare_schema.adversarial.tester.test.ts"
       - "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts"
       - "supabase/config.toml"
       - "mingla-admin/src/**"
@@ -83,11 +84,13 @@ jobs:
         run: |
           files=(
             supabase/functions/_shared/__tests__/issue997_google_video_prepare.test.ts
+            supabase/functions/_shared/__tests__/issue997_google_video_prepare.adversarial.tester.test.ts
             supabase/functions/_shared/__tests__/issue997_tiktok_video_create.test.ts
             supabase/functions/_shared/__tests__/issue997_tiktok_video_create.adversarial.tester.test.ts
             supabase/functions/_shared/__tests__/issue1184_video_prepare.test.ts
             supabase/functions/_shared/__tests__/issue1184_video_prepare_adversarial.tester.test.ts
             supabase/migrations/__tests__/issue997_google_video_prepare_schema.test.ts
+            supabase/migrations/__tests__/issue997_google_video_prepare_schema.adversarial.tester.test.ts
             supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts
             supabase/functions/_shared/__tests__/google.test.ts
             supabase/functions/_shared/__tests__/tiktok.test.ts
@@ -122,6 +125,7 @@ jobs:
         run: |
           node --test \
             src/__tests__/issue997_google_video_prepare.test.js \
+            src/__tests__/issue997_google_video_prepare.adversarial.tester.test.js \
             src/__tests__/issue997_tiktok_video_create.test.js \
             src/__tests__/issue997_tiktok_video_create.adversarial.tester.test.js \
             src/__tests__/issue1184_video_phase_a.test.js \
