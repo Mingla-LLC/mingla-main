@@ -28,6 +28,12 @@
  *   0 — gate passes
  *   1 — gate fails (one or both contracts missing in the latest definition)
  *   2 — script error (no matching migration found, repo structure broken)
+ *
+ * `--self-test` proves fail-on-revert (mirrors i-1272-identity-admin-read.mjs):
+ * the pure `check(body, failures)` is exercised with a GOOD fixture
+ * (specificity) and ≥2 DISTINCT BAD fixtures (sensitivity). The disk-reading
+ * main path selects the latest migration and calls the SAME `check(...)`; the
+ * refactor is behavior-preserving (identical verdict on the real tree).
  */
 
 import { readFileSync, readdirSync } from "node:fs";
@@ -41,6 +47,92 @@ const MIGRATIONS_DIR = join(REPO_ROOT, "supabase", "migrations");
 const RPC_SIGNATURE =
   "CREATE OR REPLACE FUNCTION public.biz_ticket_checkout_create_session";
 
+/** Pure verdict over a single migration body. */
+function check(body, violations) {
+  if (!/OR\s+v_existing\.expires_at\s*<\s*now\s*\(\s*\)/.test(body)) {
+    violations.push(
+      "missing tombstone-expiry OR clause `OR v_existing.expires_at < now()` in the IF FOUND THEN branch",
+    );
+  }
+
+  const hasStatusCase =
+    /status\s*=\s*CASE/i.test(body) &&
+    /WHEN\s+status\s+IN\s*\(\s*'paid_completed'\s*,\s*'free_completed'\s*,\s*'failed'\s*,\s*'expired'\s*\)\s+THEN\s+status/i.test(
+      body,
+    ) &&
+    /ELSE\s+'expired'/i.test(body);
+
+  if (!hasStatusCase) {
+    violations.push(
+      "missing CASE expression that preserves terminal statuses and writes 'expired' for non-terminal rows in the tombstone UPDATE",
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────── self-test
+if (process.argv.includes("--self-test")) {
+  const self = [];
+
+  const goodBody = [
+    "CREATE OR REPLACE FUNCTION public.biz_ticket_checkout_create_session()",
+    "RETURNS jsonb AS $$",
+    "BEGIN",
+    "  IF FOUND THEN",
+    "    IF v_existing.status IN ('paid_completed','free_completed','failed','expired')",
+    "       OR v_existing.expires_at < now() THEN",
+    "      UPDATE checkout_sessions",
+    "         SET status = CASE",
+    "               WHEN status IN ('paid_completed','free_completed','failed','expired') THEN status",
+    "               ELSE 'expired'",
+    "             END,",
+    "             idempotency_key = idempotency_key || ':tombstone:' || id::text",
+    "       WHERE id = v_existing.id;",
+    "    END IF;",
+    "  END IF;",
+    "END;",
+    "$$ LANGUAGE plpgsql;",
+  ].join("\n");
+
+  // GOOD: both contracts present.
+  let v = [];
+  check(goodBody, v);
+  if (v.length) self.push("GOOD fixture wrongly flagged: " + v.join("; "));
+
+  // BAD1 (revert-style): remove the expires_at < now() OR-clause → §1 fires.
+  const bad1 = goodBody.replace(
+    "       OR v_existing.expires_at < now() THEN",
+    "       THEN",
+  );
+  v = [];
+  check(bad1, v);
+  if (v.length === 0) self.push("BAD1 (expires_at OR-clause removed) not flagged");
+
+  // BAD2 (regression, different angle): replace the terminal-preserving CASE
+  // with an unconditional 'expired' write (would clobber terminal statuses) →
+  // §2 fires. OR-clause kept so ONLY §2 fires.
+  const bad2 = goodBody.replace(
+    [
+      "         SET status = CASE",
+      "               WHEN status IN ('paid_completed','free_completed','failed','expired') THEN status",
+      "               ELSE 'expired'",
+      "             END,",
+    ].join("\n"),
+    "         SET status = 'expired',",
+  );
+  v = [];
+  check(bad2, v);
+  if (v.length === 0) self.push("BAD2 (terminal-preserving CASE replaced by unconditional 'expired') not flagged");
+
+  if (self.length) {
+    console.error("ORCH-0829B-D1 self-test FAIL:");
+    self.forEach((m) => console.error("  - " + m));
+    process.exit(1);
+  }
+  console.log("ORCH-0829B-D1 self-test PASS (3/3 cases).");
+  process.exit(0);
+}
+
+// ─────────────────────────────────────────────────────────────── main path
 function findLatestRpcMigration() {
   let files;
   try {
@@ -69,25 +161,7 @@ function findLatestRpcMigration() {
 
 const latest = findLatestRpcMigration();
 const violations = [];
-
-if (!/OR\s+v_existing\.expires_at\s*<\s*now\s*\(\s*\)/.test(latest.body)) {
-  violations.push(
-    "missing tombstone-expiry OR clause `OR v_existing.expires_at < now()` in the IF FOUND THEN branch",
-  );
-}
-
-const hasStatusCase =
-  /status\s*=\s*CASE/i.test(latest.body) &&
-  /WHEN\s+status\s+IN\s*\(\s*'paid_completed'\s*,\s*'free_completed'\s*,\s*'failed'\s*,\s*'expired'\s*\)\s+THEN\s+status/i.test(
-    latest.body,
-  ) &&
-  /ELSE\s+'expired'/i.test(latest.body);
-
-if (!hasStatusCase) {
-  violations.push(
-    "missing CASE expression that preserves terminal statuses and writes 'expired' for non-terminal rows in the tombstone UPDATE",
-  );
-}
+check(latest.body, violations);
 
 if (violations.length === 0) {
   console.log(
