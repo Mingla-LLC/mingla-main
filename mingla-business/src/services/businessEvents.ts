@@ -911,6 +911,23 @@ export const cancelBusinessEvent = async (
   if (response === null) {
     throw new Error("Cancel did not return a durable event.");
   }
+  // #1179 [cancel-refund-fanout] — best-effort kickoff of the buyer auto-refund
+  // fan-out once the event is durably cancelled. This is a LATENCY optimisation
+  // ONLY: correctness is guaranteed by the backstop pg_cron, which re-drives any
+  // run the kickoff missed. Strictly transparent to the cancel flow: the try/catch
+  // swallows any SYNCHRONOUS failure (e.g. an absent functions client) and the
+  // trailing .catch() swallows any ASYNC rejection, so neither a failure nor the
+  // absence of the fan-out endpoint can ever reject into cancelBusinessEvent's
+  // promise or alter the mapped event (the RPC already succeeded).
+  try {
+    void supabase.functions
+      .invoke("event-cancel-refund-fanout", { body: { event_id: eventId } })
+      .catch(() => {
+        /* backstop cron re-drives — see supabase/functions/event-cancel-refund-fanout */
+      });
+  } catch {
+    /* fan-out client unavailable — backstop cron re-drives */
+  }
   return eventFromPublishResponse(response);
 };
 

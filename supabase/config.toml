@@ -3,6 +3,15 @@ project_id = "gqnoajqerqhnvulmnyvv"
 [functions.payout-release-sweep]
 verify_jwt = false
 
+# issue #1179 (initiative #1013 sub-issue J) [cancel-refund-fanout] — refunds every
+# order-buyer of a cancelled event exactly once. Invoked by the backstop pg_cron
+# (service-role Bearer, not a user JWT) AND by best-effort client cancel kickoffs, so
+# verify_jwt=false. Authorization is NOT a user gate — it is the status-first
+# precondition inside cancel_event_refund_prepare (event_not_cancelled ⇒ zero refunds
+# regardless of caller); the twin RPCs it calls are GRANTed to service_role only.
+[functions.event-cancel-refund-fanout]
+verify_jwt = false
+
 # ORCH-1201 — hourly API-health probe; auth via service-role Bearer (pg_cron),
 # not user JWT. verify_jwt=false so the cron POST is accepted (the fn enforces
 # its own service-role-Bearer auth-guard).
