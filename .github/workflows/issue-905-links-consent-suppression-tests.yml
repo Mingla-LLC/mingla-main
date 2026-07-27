@@ -28,20 +28,35 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+      - name: Install ONLY @types/node (isolated — no marketing tree)
+        # The three suites import node:fs / node:path and use `process`, so the
+        # tsc COMPILE needs @types/node. A bare checkout has no node_modules
+        # (gitignored) and this workflow intentionally skips `npm ci`, so install
+        # @types/node into an ISOLATED dir with NO package.json — npm then pulls
+        # ONLY that one package (not the full ~290-dep marketing tree), keeping the
+        # gate fast while still giving tsc the node type declarations it needs.
+        run: |
+          mkdir -p "$RUNNER_TEMP/nodetypes"
+          npm install --no-save --no-audit --no-fund \
+            --prefix "$RUNNER_TEMP/nodetypes" @types/node@^22.10.0
       - name: Compile + run #905 /links consent-banner suppression suites
         working-directory: mingla-marketing
-        # Both the implementor happy-path suite AND the tester adversarial suite
-        # exist on this branch, so both run unconditionally (no -f guard). The
-        # predicate module + tests are dependency-free, so a pinned standalone
-        # TypeScript compile is all that is required (no full npm install). The
-        # `--rootDir .` keeps the emitted layout so the tests' relative import
+        # The implementor happy-path suite, the implementor .tester suite, AND the
+        # tester route-set-integrity adversarial suite all exist on this branch, so
+        # all three run unconditionally (no -f guard). `--rootDir .` keeps the
+        # emitted layout so the tests' relative import
         # `../../../lib/consent-banner-visibility` still resolves post-compile.
+        # `--typeRoots` + `--types node` point tsc at the isolated @types/node above
+        # so `node:fs` / `process` resolve without a full project install.
         run: |
           npx --yes -p typescript@5.7.2 tsc \
             lib/consent-banner-visibility.ts \
             components/marketing/__tests__/consent-banner-links-suppression.test.ts \
             components/marketing/__tests__/consent-banner-links-suppression.tester.test.ts \
+            components/marketing/__tests__/consent-banner-links-suppression.adversarial.test.ts \
             --outDir /tmp/o905 --rootDir . --module commonjs --target es2020 \
-            --moduleResolution node
+            --moduleResolution node \
+            --typeRoots "$RUNNER_TEMP/nodetypes/node_modules/@types" --types node
           node /tmp/o905/components/marketing/__tests__/consent-banner-links-suppression.test.js
           node /tmp/o905/components/marketing/__tests__/consent-banner-links-suppression.tester.test.js
+          node /tmp/o905/components/marketing/__tests__/consent-banner-links-suppression.adversarial.test.js
