@@ -16,8 +16,8 @@
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
   "expectedStrictGrepMjsFiles": 442,
-  "selfTestWiredFloor": 248,
-  "unenforcedCap": 6,
+  "selfTestWiredFloor": 249,
+  "unenforcedCap": 5,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
   "externalGateDirs": [],
@@ -1950,12 +1950,14 @@
     {
       "script": ".github/scripts/strict-grep/i-proposed-tr2-safearea-on-fullscreen-routes.mjs",
       "kind": "file",
-      "enforcement": "unenforced",
-      "invocation": null,
-      "modes": [],
-      "selfTest": "none",
-      "jobKeys": [],
-      "reason": "HELD unenforced by ORCH-1400 Phase 1: exits 1 live — 19 full-screen business routes lack SafeArea handling (ORCH-0864 operator-visible class). Routed as discovery D-1; reconciliation belongs to D-1's ORCH. Wire only once its live run is green."
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
     },
     {
       "script": ".github/scripts/strict-grep/i-proposed-tr3-installment-customer-durability.mjs",

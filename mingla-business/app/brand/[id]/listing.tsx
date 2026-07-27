@@ -20,6 +20,7 @@
  * is active-brand-scoped), THEN redirects. Do NOT re-add a brand-page row
  * here or in BrandProfileView — single doorway.
  */
+// orch-strict-grep-allow safearea-on-fullscreen-routes — redirect-only route (<Redirect>/null), no visible surface
 import React, { useEffect } from "react";
 import { Redirect, useLocalSearchParams } from "expo-router";
 

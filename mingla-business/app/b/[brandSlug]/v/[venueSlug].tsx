@@ -13,6 +13,7 @@
  * indistinguishable not-found state (no state leak).
  */
 
+// orch-strict-grep-allow safearea-on-fullscreen-routes — anon public route; PublicVenuePage/PublicVenueNotFound apply insets.top; state views center-anchored
 import React, { useEffect, useRef } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";

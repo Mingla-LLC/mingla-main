@@ -23,6 +23,7 @@
  * their own brand.
  */
 
+// orch-strict-grep-allow safearea-on-fullscreen-routes — center-anchored celebration card (justifyContent:center); no top-anchored chrome
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,

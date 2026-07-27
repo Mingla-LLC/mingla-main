@@ -47,6 +47,7 @@
  *   5. Error → friendly copy per mapped code. Every code has copy.
  */
 
+// orch-strict-grep-allow safearea-on-fullscreen-routes — all render paths are center-anchored cards (justifyContent:center); no top-anchored chrome
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
