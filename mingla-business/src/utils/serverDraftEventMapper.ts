@@ -861,11 +861,28 @@ export const serverRowToDraft = (row: ServerDraftEventRow): DraftEvent => {
     rsvpApprovalMode:
       businessDraft.rsvpApprovalMode === "manual" ? "manual" : "auto",
     rsvpDiscoverable: asBoolean(businessDraft.rsvpDiscoverable, false),
+    // ORCH-1291 / #1026 — chip-in host-controls round-trip from
+    // business_draft (write leg at buildBusinessDraftPayload `:378-380`).
+    // Omitting these reads let the autosave echo wipe chip-in to blank ~700ms
+    // after the host set it, and a wiped draft published with chip-in OFF.
+    // Legacy/pre-ORCH-1291 blobs lack the keys → default false/null (never
+    // undefined, which JSON.stringify would then drop from the next payload).
+    rsvpContributionEnabled: asBoolean(businessDraft.rsvpContributionEnabled, false),
+    rsvpContributionSuggestedCents:
+      typeof businessDraft.rsvpContributionSuggestedCents === "number" &&
+      Number.isFinite(businessDraft.rsvpContributionSuggestedCents)
+        ? businessDraft.rsvpContributionSuggestedCents
+        : null,
+    rsvpContributionMinCents:
+      typeof businessDraft.rsvpContributionMinCents === "number" &&
+      Number.isFinite(businessDraft.rsvpContributionMinCents)
+        ? businessDraft.rsvpContributionMinCents
+        : null,
     lastStepReached: asNumber(businessDraft.lastStepReached, 0),
     status: "draft",
     clientRevision: asNumber(businessDraft.clientRevision, 0),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     ...(legacyLocalDraftId !== null ? { legacyLocalDraftId } : {}),
-  } as DraftEvent;
+  } satisfies DraftEvent;
 };
