@@ -352,17 +352,6 @@ export function evaluateBalanceForSignal(
       const sev = low && crit != null && v <= crit ? "crit" : (low ? "warn" : null);
       return { balanceLow: low, balanceText: `$${v} ${detail.currency ?? "USD"} (warn ≤ $${warn})`, severity: sev };
     }
-    // META-ORCH-1270 — Cloudinary is RETIRED (no probe emits this kind anymore);
-    // the pure severity math is retained so the append-only ORCH-1201 balance
-    // tests keep passing. It is never reached at runtime (no cloudinary probe).
-    case "cloudinary_used_pct": {
-      const used = toNum(detail.used_percent);
-      if (used == null || warn == null) return { balanceLow: null, balanceText: null, severity: null };
-      const isCrit = crit != null && used >= crit;
-      const low = used >= warn;
-      const sevTxt = isCrit ? `crit ≥ ${crit}%` : `warn ≥ ${warn}%`;
-      return { balanceLow: low, balanceText: `${used.toFixed(2)}% used (${sevTxt})`, severity: isCrit ? "crit" : (low ? "warn" : null) };
-    }
     case "bunny_usage_pct": {
       // META-ORCH-1270 (Phase 2) — Bunny storage/traffic usage %.
       // VECTOR-D ROOT-CAUSE FIX: a config-present-but-unreadable usage read

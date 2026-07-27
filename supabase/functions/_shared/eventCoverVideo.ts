@@ -3,16 +3,15 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // @ts-ignore - Deno ESM import
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
-// ORCH-1201 — Layer-C passive health observation (fire-and-forget, best-effort).
-import { recordApiCall } from "./apiHealthLog.ts";
-// META-ORCH-1270 — Bunny Stream provider branch (Cloudinary path stays intact).
+// #966 — Bunny is the sole cover-video provider; the Cloudinary upload/config/
+// webhook residue was removed (dead post-META-1270). bunnyDeleteVideo is the
+// only provider delete path.
 import { bunnyDeleteVideo } from "./bunnyStream.ts";
-import { resolveRuntimeString } from "./runtimeConfig.ts";
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-cld-signature, x-cld-timestamp",
+    "authorization, x-client-info, apikey, content-type",
 };
 
 export const FINAL_MAX_BYTES = Number.parseInt(
@@ -249,34 +248,19 @@ export async function requireBrandCoverManager(
   return { brandId };
 }
 
-// META-ORCH-1270 — real provider dispatch. EVENT_COVER_VIDEO_PROVIDER now selects
-// a genuine cloudinary | bunny branch (previously it only gated a boolean inside
-// providerConfigured). Default stays "cloudinary"; the Cloudinary path is
-// byte-for-byte unchanged until Phase 4.
-export type CoverVideoProvider = "cloudinary" | "bunny";
+// #966 — Bunny is the sole cover-video provider. The runtime-config value is no
+// longer read here, so a missing/invalid config can never route cover-video to
+// the retired provider (was: `resolveRuntimeString(...) ?? "cloudinary"`).
+export type CoverVideoProvider = "bunny";
 
 export function coverVideoProvider(): CoverVideoProvider {
-  return (resolveRuntimeString(
-      "event_cover_video_provider",
-      "EVENT_COVER_VIDEO_PROVIDER",
-    ) ?? "cloudinary") === "bunny"
-    ? "bunny"
-    : "cloudinary";
+  return "bunny";
 }
 
-// providerConfigured() dispatches to the active provider's readiness check.
-// Cloudinary branch preserves the EXACT pre-1270 three-secret + env check.
+// providerConfigured() reports the sole provider's readiness. bunnyConfigured()
+// is byte-for-byte unchanged from META-ORCH-1270.
 export function providerConfigured(): boolean {
-  return coverVideoProvider() === "bunny" ? bunnyConfigured() : cloudinaryConfigured();
-}
-
-function cloudinaryConfigured(): boolean {
-  return (
-    coverVideoProvider() === "cloudinary" &&
-    Boolean(Deno.env.get("CLOUDINARY_CLOUD_NAME")) &&
-    Boolean(Deno.env.get("CLOUDINARY_API_KEY")) &&
-    Boolean(Deno.env.get("CLOUDINARY_API_SECRET"))
-  );
+  return bunnyConfigured();
 }
 
 function bunnyConfigured(): boolean {
@@ -287,21 +271,15 @@ function bunnyConfigured(): boolean {
   );
 }
 
-// Provider-agnostic terminal cleanup — routes to the active provider's delete.
-// Replaces the direct cloudinaryDestroy call sites (Cloudinary path unchanged).
+// Provider-agnostic terminal cleanup. Bunny is the only provider; this is
+// byte-for-byte what the prior code did for every (bunny) row. The param shape
+// is retained so callers (cancel/reaper/apply/webhook) compile unchanged.
 export async function destroyCoverVideoAsset(job: {
   provider?: string | null;
   source_public_id?: unknown;
   source_asset_id?: unknown;
 }): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const provider =
-    typeof job.provider === "string" && job.provider.length > 0
-      ? job.provider
-      : coverVideoProvider();
-  if (provider === "bunny") {
-    return bunnyDeleteVideo(String(job.source_asset_id ?? ""));
-  }
-  return cloudinaryDestroy(String(job.source_public_id ?? ""));
+  return bunnyDeleteVideo(String(job.source_asset_id ?? ""));
 }
 
 export async function sha1Hex(input: string): Promise<string> {
@@ -310,137 +288,6 @@ export async function sha1Hex(input: string): Promise<string> {
   return Array.from(new Uint8Array(hash))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-}
-
-export async function cloudinarySignature(params: Record<string, string>): Promise<string> {
-  const secret = Deno.env.get("CLOUDINARY_API_SECRET") ?? "";
-  const base = Object.keys(params)
-    .filter((key) => params[key] !== "")
-    .sort()
-    .map((key) => `${key}=${params[key]}`)
-    .join("&");
-  return sha1Hex(`${base}${secret}`);
-}
-
-export async function cloudinaryDestroy(
-  publicId: string,
-): Promise<{ ok: true } | { ok: false; reason: string }> {
-  if (!providerConfigured()) {
-    return { ok: false, reason: "provider_not_configured" };
-  }
-  const trimmedPublicId = publicId.trim();
-  if (trimmedPublicId.length === 0) {
-    return { ok: false, reason: "missing_public_id" };
-  }
-
-  const cloudName = Deno.env.get("CLOUDINARY_CLOUD_NAME") ?? "";
-  const apiKey = Deno.env.get("CLOUDINARY_API_KEY") ?? "";
-  const timestamp = Math.floor(Date.now() / 1000).toString();
-  const signature = await cloudinarySignature({
-    public_id: trimmedPublicId,
-    timestamp,
-  });
-
-  // Cloudinary Upload API destroy method:
-  // https://cloudinary.com/documentation/image_upload_api_reference#destroy_method
-  const formData = new FormData();
-  formData.append("public_id", trimmedPublicId);
-  formData.append("resource_type", "video");
-  formData.append("timestamp", timestamp);
-  formData.append("api_key", apiKey);
-  formData.append("signature", signature);
-
-  const _t0 = Date.now();
-  const response = await fetch(
-    `https://api.cloudinary.com/v1_1/${cloudName}/video/destroy`,
-    { method: "POST", body: formData },
-  );
-  void recordApiCall("cloudinary", response.ok, Date.now() - _t0, response.status); // ORCH-1201 Layer-C
-  let body: { result?: unknown } | null = null;
-  try {
-    body = await response.json();
-  } catch {
-    body = null;
-  }
-  if (!response.ok) {
-    return { ok: false, reason: `cloudinary_destroy_http_${response.status}` };
-  }
-  const result = typeof body?.result === "string" ? body.result : "unknown";
-  if (result !== "ok" && result !== "not found") {
-    return { ok: false, reason: `cloudinary_destroy_${result}` };
-  }
-  return { ok: true };
-}
-
-export type CloudinaryNotificationSignatureResult =
-  | { ok: true }
-  | { ok: false; code: string; status: number; message: string };
-
-export async function verifyCloudinaryNotificationSignature(input: {
-  rawBody: string;
-  signature: string | null;
-  timestamp: string | null;
-  apiSecret: string;
-  nowMs?: number;
-  toleranceSeconds?: number;
-}): Promise<CloudinaryNotificationSignatureResult> {
-  if (input.apiSecret.length === 0) {
-    return {
-      ok: false,
-      code: "missing_api_secret",
-      message: "Cloudinary API secret is not configured.",
-      status: 500,
-    };
-  }
-  if (input.signature === null || input.signature.trim().length === 0) {
-    return {
-      ok: false,
-      code: "missing_signature",
-      message: "Cloudinary signature is missing.",
-      status: 403,
-    };
-  }
-  if (input.timestamp === null || input.timestamp.trim().length === 0) {
-    return {
-      ok: false,
-      code: "missing_timestamp",
-      message: "Cloudinary timestamp is missing.",
-      status: 403,
-    };
-  }
-
-  const timestampSeconds = Number.parseInt(input.timestamp, 10);
-  if (!Number.isFinite(timestampSeconds) || timestampSeconds <= 0) {
-    return {
-      ok: false,
-      code: "invalid_timestamp",
-      message: "Cloudinary timestamp is invalid.",
-      status: 403,
-    };
-  }
-
-  const nowSeconds = Math.floor((input.nowMs ?? Date.now()) / 1000);
-  const tolerance = input.toleranceSeconds ?? 3600;
-  if (Math.abs(nowSeconds - timestampSeconds) > tolerance) {
-    return {
-      ok: false,
-      code: "stale_timestamp",
-      message: "Cloudinary timestamp is outside the allowed tolerance.",
-      status: 403,
-    };
-  }
-
-  const expected = await sha1Hex(`${input.rawBody}${input.timestamp}${input.apiSecret}`);
-  if (expected !== input.signature.trim()) {
-    return {
-      ok: false,
-      code: "invalid_signature",
-      message: "Cloudinary signature is invalid.",
-      status: 403,
-    };
-  }
-
-  return { ok: true };
 }
 
 export function validateTrimRange(input: {

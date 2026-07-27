@@ -64,6 +64,17 @@
 
 ---
 
+## DRAFT — issue #966 (Cloudinary cover-video residue removed; cover-video is Bunny-only — IN FLIGHT)
+
+### I-PROPOSED-966-COVER-VIDEO-PROVIDER-BUNNY-ONLY (DRAFT)
+- **Rule:** The event/brand cover-video provider is Bunny-only. `coverVideoProvider()` (`supabase/functions/_shared/eventCoverVideo.ts`) resolves to `"bunny"` unconditionally and `CoverVideoProvider` is the singleton type `"bunny"`. No Cloudinary upload/webhook/signature/config branch may be reintroduced into the cover-video pipeline — specifically none of `cloudinarySignature`, `cloudinaryDestroy`, `verifyCloudinaryNotificationSignature`, `cloudinaryConfigured`, `cloudinaryUploadFailureDetail`, the Cloudinary XHR/chunked/multipart upload legs (`uploadEventCoverVideoSourceWithXhr` / `uploadEventCoverVideoSourceInChunks`), or a `"cloudinary"` member of `EventCoverVideoUploadProtocol` may exist in non-test production source. A missing/invalid runtime config can never route cover-video to the retired provider.
+- **Scope note:** the legacy Cloudinary `/video/upload/`→`so_0` sub-clauses in the Category-2 render path (`deriveCoverPosterUrl` / `isVideoUrl` / `posterFor`) are EXPLICITLY EXEMPT — they serve the live Bunny render path under I-1069-VIDEO-DETECTION-MATCHES-EDGE and are not part of the retired upload/webhook/config path this invariant governs. Legal/terms copy naming Cloudinary is out of scope (separate compliance follow-up).
+- **Enforcement:** strict-grep gate `.github/scripts/strict-grep/i-proposed-966-cover-video-provider-bunny-only.mjs` (batch:A, two-sided `--self-test`) — a symbol-targeted absence check over non-test source under `supabase/functions/**` and `mingla-business/src/**` (comment-stripped so retained narrative refs, e.g. bunnyStream.ts's "Replaces cloudinaryDestroy", never false-positive).
+- **Regression test:** implementor happy-path `supabase/functions/_shared/coverVideoProviderDefault.966.test.ts` (fails-on-revert: restoring the `resolveRuntimeString("event_cover_video_provider", …) ?? "cloudinary"` body turns T-1/T-2 RED). Independent adversarial coverage added before PR.
+- **Status:** DRAFT at SPEC → ACTIVE at #966 CLOSE (orchestrator flips; house style strips the `I-PROPOSED-` prefix on activation, the gate FILENAME keeps its on-disk name).
+
+---
+
 ## ACTIVE — issue #1158 (@vercel/og pinned to 0.x so a sharp security bump can't unlock it to the broken 1.0.0 — CLOSED 2026-07-24)
 
 > Same parent-unlock class as #1130. `@vercel/og@0.11.1` optional-deps `sharp ^0.34.5`; to bump `sharp` Dependabot rewrites the editable parent `@vercel/og` to its highest tag `1.0.0` — a stray 2023 mispublish (edge/WASM-only, `ERR_MODULE_NOT_FOUND: 'wbg'`) that crashes the business OG preview renderer (`mingla-business/server/socialPreview.js` → `/api/og-*`, Node serverless — untested by the expo web-build, which is why the trap PR #1151 was green). #1158 pins `@vercel/og` forward via a byte-identical npm `overrides` entry (fail-closed: a poisoned direct-dep bump → `npm install` EOVERRIDE error), rescues `sharp` to `0.35.3` (closes libvips GHSA-f88m-g3jw-g9cj; render-verified), adds a Dependabot ignore, and closes the OG coverage gap with a real render gate.

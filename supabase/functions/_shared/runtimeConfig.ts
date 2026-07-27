@@ -158,6 +158,14 @@ export function parseRuntimeConfig(raw: string): ParseResult {
       return { ok: false, reason: "invalid_value", field };
     }
   }
+  // #966 — `event_cover_video_provider` is retained-but-UNREAD post-#966: Bunny is
+  // hard-wired in coverVideoProvider() (eventCoverVideo.ts), so nothing routes on
+  // this field anymore. The validator DELIBERATELY still accepts both "cloudinary"
+  // and "bunny": narrowing it to "bunny"-only would make a stale/drifted bundle
+  // still carrying "cloudinary" fail the WHOLE-bundle parse (parseRuntimeConfig is
+  // all-or-nothing), silently falling every runtime-config field back to its legacy
+  // env var — a worse, surprising failure mode. Tolerance here + hard-wire at the
+  // routing layer is the belt-and-suspenders low-risk posture.
   if (
     parsed.event_cover_video_provider !== "cloudinary" &&
     parsed.event_cover_video_provider !== "bunny"

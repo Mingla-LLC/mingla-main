@@ -58,7 +58,13 @@ if (!sourceUploaded.includes("provider_payload") || sourceUploaded.includes("sec
 if (!webhook.includes("provider_failed") || !webhook.includes("completed_at")) {
   fail("webhook must persist provider/validation failures as terminal job state.");
 }
-if (!webhook.includes("late_webhook_ignored_cancelled")) {
+// #966 (SPEC AMENDMENT 1): re-pointed from the removed Cloudinary tail's
+// `late_webhook_ignored_cancelled` log stage to the Bunny terminal guard that
+// enforces the SAME invariant — handleEventCoverVideoWebhook's terminal guards
+// idempotently ignore a late callback for a cancelled job. Re-point, not weaken:
+// removing the cancelled-status ignore (or the `ignored: "cancelled"` response)
+// still fails this gate.
+if (!webhook.includes('status === "cancelled"') || !webhook.includes('ignored: "cancelled"')) {
   fail("webhook must ignore late callbacks for cancelled/superseded jobs.");
 }
 if (!cancel.includes("source_uploaded") && !cancel.includes("mapEventCoverVideoStatus")) {

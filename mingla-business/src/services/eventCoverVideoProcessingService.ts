@@ -2,7 +2,6 @@ import { supabase } from "./supabase";
 import { BusinessAuthNotReadyError } from "../utils/authReadiness";
 import { Platform } from "react-native";
 import {
-  createMultipartUploadTask,
   getFileInfoAsync,
 } from "../utils/platformFileSystem";
 // ORCH-1295 — native TUS PATCH transport (File.bytes() + expo/fetch). Metro
@@ -41,9 +40,10 @@ export type EventCoverVideoJobStatus =
   | "cancelled"
   | "applied";
 
-// META-ORCH-1270 — transport discriminator. "tus" → Bunny resumable upload;
-// absent / any other value → the existing Cloudinary multipart path.
-export type EventCoverVideoUploadProtocol = "cloudinary" | "tus";
+// #966 — Bunny/TUS is the sole cover-video transport. The Cloudinary multipart
+// legs were removed as dead residue post-META-1270; the server always returns
+// `protocol: "tus"`.
+export type EventCoverVideoUploadProtocol = "tus";
 
 // META-ORCH-1270 — the upload descriptor the client acts on. `fields` are opaque
 // server-supplied strings the client forwards blindly (Cloudinary signed params
@@ -384,33 +384,6 @@ const emitUploadProgress = (
   });
 };
 
-const cloudinaryUploadFailureDetail = (body: unknown, status: number): string => {
-  if (
-    body !== null &&
-    typeof body === "object" &&
-    typeof (body as { error?: { message?: unknown } }).error?.message === "string"
-  ) {
-    return (body as { error: { message: string } }).error.message;
-  }
-  return `Cloud upload failed (${status}).`;
-};
-
-const sanitizeProviderUploadResponse = (
-  body: unknown,
-): EventCoverVideoProviderUploadResponse | null => {
-  if (body === null || typeof body !== "object") return null;
-  const payload = body as Record<string, unknown>;
-  return {
-    asset_id: typeof payload.asset_id === "string" ? payload.asset_id : undefined,
-    bytes: typeof payload.bytes === "number" ? payload.bytes : undefined,
-    duration: typeof payload.duration === "number" ? payload.duration : undefined,
-    format: typeof payload.format === "string" ? payload.format : undefined,
-    public_id: typeof payload.public_id === "string" ? payload.public_id : undefined,
-    resource_type:
-      typeof payload.resource_type === "string" ? payload.resource_type : undefined,
-  };
-};
-
 const statFileSize = async (
   uri: string,
   fallbackBytes: number,
@@ -474,129 +447,6 @@ export const compressVideoLocally = async (input: {
     durationMs: input.durationMs,
     wasCompressed: true,
   };
-};
-
-const uploadEventCoverVideoSourceWithXhr = async (input: {
-  upload: { url: string; fields: Record<string, string> };
-  uri: string;
-  fileName?: string | null;
-  mimeType?: string | null;
-  onProgress?: (progress: EventCoverVideoUploadProgress) => void;
-  signal?: AbortSignal;
-}): Promise<EventCoverVideoProviderUploadResponse | null> =>
-  new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    const abort = (): void => {
-      xhr.abort();
-      reject(
-        new EventCoverVideoProcessingError(
-          "source_upload_cancelled",
-          "Video upload was cancelled.",
-        ),
-      );
-    };
-    if (input.signal?.aborted) {
-      abort();
-      return;
-    }
-    input.signal?.addEventListener("abort", abort, { once: true });
-    const formData = new FormData();
-    Object.entries(input.upload.fields).forEach(([key, value]) => {
-      if (key !== "resource_type") formData.append(key, value);
-    });
-    formData.append("file", {
-      name: input.fileName ?? "event-cover.mov",
-      type: input.mimeType ?? "video/quicktime",
-      uri: input.uri,
-    } as unknown as Blob);
-
-    xhr.upload.onprogress = (event) => {
-      emitUploadProgress(input.onProgress, event.loaded, event.total);
-    };
-    xhr.onerror = () => {
-      input.signal?.removeEventListener("abort", abort);
-      reject(
-        new EventCoverVideoProcessingError(
-          "source_upload_failed",
-          "Video upload failed before processing. Try again.",
-        ),
-      );
-    };
-    xhr.onload = () => {
-      input.signal?.removeEventListener("abort", abort);
-      let body: unknown = null;
-      try {
-        body = JSON.parse(xhr.responseText);
-      } catch {
-        // Keep status detail when provider body is not JSON.
-      }
-      if (xhr.status >= 200 && xhr.status < 300) {
-        emitUploadProgress(input.onProgress, 1, 1);
-        resolve(sanitizeProviderUploadResponse(body));
-        return;
-      }
-      const detail = cloudinaryUploadFailureDetail(body, xhr.status);
-      devWarn("source-upload-failed", {
-        detail,
-        status: xhr.status,
-      });
-      reject(new EventCoverVideoProcessingError("source_upload_failed", detail));
-    };
-    xhr.open("POST", input.upload.url);
-    xhr.send(formData);
-  });
-
-const uploadEventCoverVideoSourceInChunks = async (input: {
-  upload: { url: string; fields: Record<string, string> };
-  uri: string;
-  bytes: number;
-  jobId: string;
-  fileName?: string | null;
-  mimeType?: string | null;
-  onProgress?: (progress: EventCoverVideoUploadProgress) => void;
-  signal?: AbortSignal;
-}): Promise<EventCoverVideoProviderUploadResponse | null> => {
-  const response = await fetch(input.uri);
-  const file = await response.blob();
-  const totalBytes = input.bytes > 0 ? input.bytes : file.size;
-  const chunkSize = 10 * 1024 * 1024;
-  let lastResponse: EventCoverVideoProviderUploadResponse | null = null;
-
-  for (let start = 0; start < totalBytes; start += chunkSize) {
-    if (input.signal?.aborted) {
-      throw new EventCoverVideoProcessingError(
-        "source_upload_cancelled",
-        "Video upload was cancelled.",
-      );
-    }
-    const end = Math.min(start + chunkSize, totalBytes) - 1;
-    const chunk = file.slice(start, end + 1, input.mimeType ?? file.type);
-    const formData = new FormData();
-    Object.entries(input.upload.fields).forEach(([key, value]) => {
-      if (key !== "resource_type") formData.append(key, value);
-    });
-    formData.append("file", chunk, input.fileName ?? "event-cover.mp4");
-    // Cloudinary chunked upload headers:
-    // https://support.cloudinary.com/hc/en-us/articles/208263735-Guidelines-for-implementing-chunked-upload-to-Cloudinary
-    const chunkResponse = await fetch(input.upload.url, {
-      body: formData,
-      headers: {
-        "Content-Range": `bytes ${start}-${end}/${totalBytes}`,
-        "X-Unique-Upload-Id": input.jobId,
-      },
-      method: "POST",
-      signal: input.signal,
-    });
-    const body = await chunkResponse.json().catch(() => null);
-    if (!chunkResponse.ok) {
-      const detail = cloudinaryUploadFailureDetail(body, chunkResponse.status);
-      throw new EventCoverVideoProcessingError("source_upload_failed", detail);
-    }
-    lastResponse = sanitizeProviderUploadResponse(body);
-    emitUploadProgress(input.onProgress, end + 1, totalBytes);
-  }
-
-  return lastResponse;
 };
 
 const edgeError = async (
@@ -1080,109 +930,17 @@ export const uploadEventCoverVideoSource = async (input: {
   onProgress?: (progress: EventCoverVideoUploadProgress) => void;
   signal?: AbortSignal;
 }): Promise<EventCoverVideoProviderUploadResponse | null> => {
-  // C7 (META-ORCH-1270): transport dispatch. "tus" → Bunny resumable leg; every
-  // other value (including absent) → the existing Cloudinary path (unchanged).
+  // #966 — Bunny/TUS is the sole transport. The server always returns
+  // `protocol: "tus"`; the Cloudinary multipart/XHR/chunked legs were removed as
+  // dead residue post-META-1270. A non-"tus" descriptor is unreachable in
+  // production — fail loud rather than silently attempt a retired path.
   if (input.upload.protocol === "tus") {
     return await uploadEventCoverVideoSourceViaTus(input);
   }
-  if (
-    Platform.OS === "web" &&
-    typeof input.bytes === "number" &&
-    input.bytes > 50 * 1024 * 1024 &&
-    typeof input.jobId === "string"
-  ) {
-    return await uploadEventCoverVideoSourceInChunks({
-      ...input,
-      bytes: input.bytes,
-      jobId: input.jobId,
-    });
-  }
-  const parameters = Object.fromEntries(
-    Object.entries(input.upload.fields).filter(([key]) => key !== "resource_type"),
+  throw new EventCoverVideoProcessingError(
+    "provider_not_configured",
+    EVENT_COVER_VIDEO_NOT_CONFIGURED_COPY,
   );
-  let task:
-    | { uploadAsync: () => Promise<unknown>; cancelAsync?: () => Promise<void> }
-    | null = null;
-  const abort = (): void => {
-    void task?.cancelAsync?.();
-  };
-  try {
-    if (input.signal?.aborted) {
-      throw new EventCoverVideoProcessingError(
-        "source_upload_cancelled",
-        "Video upload was cancelled.",
-      );
-    }
-    input.signal?.addEventListener("abort", abort, { once: true });
-    task = await createMultipartUploadTask(
-      input.upload.url,
-      input.uri,
-      {
-        fieldName: "file",
-        httpMethod: "POST",
-        mimeType: input.mimeType ?? "video/quicktime",
-        parameters,
-      },
-      (event) => {
-        emitUploadProgress(
-          input.onProgress,
-          event.totalBytesSent,
-          event.totalBytesExpectedToSend,
-        );
-      },
-    );
-    const result = await task.uploadAsync() as
-      | { body: string; status: number }
-      | null
-      | undefined;
-    input.signal?.removeEventListener("abort", abort);
-    if (input.signal?.aborted) {
-      throw new EventCoverVideoProcessingError(
-        "source_upload_cancelled",
-        "Video upload was cancelled.",
-      );
-    }
-    if (result === null || result === undefined) {
-      throw new EventCoverVideoProcessingError(
-        "source_upload_failed",
-        "Cloud upload did not return a response.",
-      );
-    }
-    if (result.status < 200 || result.status >= 300) {
-      let body: unknown = null;
-      try {
-        body = JSON.parse(result.body);
-      } catch {
-        // Keep status detail when provider body is not JSON.
-      }
-      const detail = cloudinaryUploadFailureDetail(body, result.status);
-      devWarn("source-upload-failed", {
-        detail,
-        status: result.status,
-      });
-      throw new EventCoverVideoProcessingError("source_upload_failed", detail);
-    }
-    emitUploadProgress(input.onProgress, 1, 1);
-    try {
-      return sanitizeProviderUploadResponse(JSON.parse(result.body));
-    } catch {
-      return null;
-    }
-  } catch (error) {
-    input.signal?.removeEventListener("abort", abort);
-    if (error instanceof EventCoverVideoProcessingError) throw error;
-    if (input.signal?.aborted) {
-      throw new EventCoverVideoProcessingError(
-        "source_upload_cancelled",
-        "Video upload was cancelled.",
-      );
-    }
-    devWarn("source-upload-task-failed", {
-      message: error instanceof Error ? error.message : String(error),
-      fallback: "xhr",
-    });
-    return await uploadEventCoverVideoSourceWithXhr(input);
-  }
 };
 
 export const fetchEventCoverVideoStatus = async (
