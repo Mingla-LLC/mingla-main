@@ -94,7 +94,14 @@ export default function AcceptBrandInvitationSuccess(): React.ReactElement {
       router.replace("/(tabs)/home" as never);
       return;
     }
-    router.replace(`/brand/${brandId}/connect` as never);
+    // #948 W4 [web-skip-download] — tag the bank screen as invite-funnel so it
+    // hides its top Back and offers Skip → {Download app | Continue on web}. The
+    // `?from=invite` literal is inlined here (rather than importing the writer
+    // from bankFirstPartnerInvite) so this legacy success route does NOT become a
+    // second eager importer of that module — which would hoist it into the eager
+    // __common chunk (ORCH-1083). The href is always bare, so a plain `?` is
+    // correct. Signal value must match bankFirstPartnerInvite.INVITE_FUNNEL_VALUE.
+    router.replace(`/brand/${brandId}/connect?from=invite` as never);
   };
 
   const displayName = brandName ?? brandSlug ?? "your brand";

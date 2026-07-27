@@ -24,6 +24,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { BrandPaystackOnboardView } from "./BrandPaystackOnboardView";
 import { BrandStripeCountryPicker } from "./BrandStripeCountryPicker";
+import { BusinessAppDownloadCta } from "../invite/BusinessAppDownloadCta";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
@@ -56,6 +57,7 @@ import {
   resolveBankConnectRail,
   type BankConnectProvider,
 } from "../../utils/bankConnectRail";
+import { isInviteFunnelValue } from "../../utils/inviteFunnelSignal";
 
 const TERMS_URL = "https://www.usemingla.com/terms-of-service/" as const;
 const PAYSTACK_PICKER_OPTIONS = [
@@ -124,9 +126,13 @@ export default function BrandBankConnectBody(): React.ReactElement {
   const params = useLocalSearchParams<{
     id?: string | string[];
     provider?: string | string[];
+    from?: string | string[];
   }>();
   const brandId = firstParam(params.id);
   const providerHint = firstParam(params.provider);
+  // #948 W4 [web-skip-download] — invite-funnel phase gates the Back-hide + Skip
+  // reveal. Exact-match on `?from=invite`; absent/other values keep Back + no Skip.
+  const isInviteFunnel = isInviteFunnelValue(params.from);
   const brandQuery = useBrand(brandId);
   const brand = brandQuery.data ?? null;
   const { user } = useAuth();
@@ -137,6 +143,9 @@ export default function BrandBankConnectBody(): React.ReactElement {
   const [selectedProvider, setSelectedProvider] =
     useState<BankConnectProvider>("stripe");
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // #948 W4 — the two Skip choices stay hidden until "Skip for now" is pressed,
+  // so the primary "Add bank details" CTA keeps bank-first emphasis.
+  const [skipChoicesOpen, setSkipChoicesOpen] = useState(false);
 
   const canonicalRail = useMemo(
     () =>
@@ -168,6 +177,19 @@ export default function BrandBankConnectBody(): React.ReactElement {
     }
     router.replace("/(tabs)/account" as never);
   }, [brandId, router]);
+
+  // #948 W4 [web-skip-download] — "Continue on web" lands on the brand's
+  // dashboard home (`/brand/[id]`), which carries its own status-driven bank
+  // nudge, so skipping never strands the partner. `replace` (not `push`) keeps
+  // the skipped bank screen off the back stack.
+  const handleContinueOnWeb = useCallback((): void => {
+    if (brandId === null) return;
+    router.replace(`/brand/${brandId}` as never);
+  }, [brandId, router]);
+
+  const handleOpenSkipChoices = useCallback((): void => {
+    setSkipChoicesOpen(true);
+  }, []);
 
   const handleCountryChange = useCallback((countryCode: string): void => {
     // orch-strict-grep-allow stripe-country-out-of-scope — Nigeria uses Paystack and is deliberately outside the Stripe allowlist.
@@ -328,13 +350,24 @@ export default function BrandBankConnectBody(): React.ReactElement {
   return (
     <View style={styles.host}>
       <View style={styles.topBar}>
-        <Button
-          label="Back"
-          onPress={handleBack}
-          variant="ghost"
-          size="sm"
-          accessibilityLabel="Back from bank setup"
-        />
+        {/*
+          #948 W4 [web-skip-download] — the top Back is hidden ONLY in the
+          invite funnel (a fresh partner arrived from email with nowhere to go
+          back to). Absent/other `from` values keep Back exactly as before —
+          the make-or-break no-regression for dashboard/direct/bookmark entry.
+        */}
+        {isInviteFunnel ? (
+          <View style={styles.topBarSpacer} />
+        ) : (
+          <Button
+            label="Back"
+            onPress={handleBack}
+            variant="ghost"
+            size="sm"
+            accessibilityLabel="Back from bank setup"
+            testID="bank-connect-back"
+          />
+        )}
         <Text style={styles.topBarTitle}>Add your bank</Text>
         <View style={styles.topBarSpacer} />
       </View>
@@ -432,6 +465,50 @@ export default function BrandBankConnectBody(): React.ReactElement {
               </Pressable>
             </>
           )}
+
+          {/*
+            #948 W4 [web-skip-download] — invite-phase-only Skip affordance,
+            below the primary "Add bank details" so bank-first emphasis is
+            preserved. Renders for BOTH provider paths (placed after the branch).
+            Collapsed: a quiet ghost link. Expanded: the two secondary choices —
+            reuse the attribution-safe BusinessAppDownloadCta (one OneLink, no
+            store branching) + "Continue on web" → the brand dashboard home.
+          */}
+          {isInviteFunnel ? (
+            skipChoicesOpen ? (
+              <GlassCard
+                variant="base"
+                padding={spacing.md}
+                style={styles.skipChoices}
+                testID="bank-connect-skip-choices"
+              >
+                <Text style={styles.skipHeading}>Add your bank later</Text>
+                <Text style={styles.skipSubtext}>
+                  No rush — you can add it anytime from your dashboard.
+                </Text>
+                <BusinessAppDownloadCta testID="bank-connect-skip-download" />
+                <Button
+                  label="Continue on web"
+                  onPress={handleContinueOnWeb}
+                  variant="ghost"
+                  size="lg"
+                  fullWidth
+                  accessibilityLabel="Continue to your dashboard on the web"
+                  testID="bank-connect-skip-continue-web"
+                />
+              </GlassCard>
+            ) : (
+              <Pressable
+                onPress={handleOpenSkipChoices}
+                accessibilityRole="button"
+                accessibilityLabel="Skip bank setup for now"
+                style={styles.skipLinkPressable}
+                testID="bank-connect-skip-link"
+              >
+                <Text style={styles.skipLink}>Skip for now</Text>
+              </Pressable>
+            )
+          ) : null}
         </View>
       </ScrollView>
     </View>
@@ -549,6 +626,37 @@ const styles = StyleSheet.create({
   legalLink: {
     color: textTokens.secondary,
     textDecorationLine: "underline",
+  },
+  // #948 W4 [web-skip-download] — the Skip affordance. Kept deliberately quiet
+  // (secondary/ghost) so it never competes with the primary "Add bank details".
+  skipLinkPressable: {
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  skipLink: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    color: textTokens.tertiary,
+    textDecorationLine: "underline",
+  },
+  skipChoices: {
+    width: "100%",
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  skipHeading: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: textTokens.primary,
+    letterSpacing: -0.1,
+  },
+  skipSubtext: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    color: textTokens.secondary,
   },
   centeredState: {
     flex: 1,
