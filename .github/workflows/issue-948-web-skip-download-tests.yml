@@ -16,6 +16,7 @@ on:
       - "mingla-business/src/utils/bankFirstPartnerInvite.ts"
       - "mingla-business/src/utils/__tests__/issue_948_web_skip_download.implementor.test.ts"
       - "mingla-business/src/components/brand/__tests__/issue_948_web_skip_download.render.tester.test.tsx"
+      - "mingla-business/src/components/brand/__tests__/issue_948_web_skip_download.adversarial.tester.test.tsx"
       - "mingla-business/src/utils/__tests__/issue_948_w3_bank_first_invite.tester.test.ts"
       - "mingla-business/src/components/invite/**"
       - ".github/scripts/strict-grep/issue-949-invite-onboarding-offering-agnostic.mjs"
@@ -30,6 +31,7 @@ on:
       - "mingla-business/src/utils/bankFirstPartnerInvite.ts"
       - "mingla-business/src/utils/__tests__/issue_948_web_skip_download.implementor.test.ts"
       - "mingla-business/src/components/brand/__tests__/issue_948_web_skip_download.render.tester.test.tsx"
+      - "mingla-business/src/components/brand/__tests__/issue_948_web_skip_download.adversarial.tester.test.tsx"
       - "mingla-business/src/utils/__tests__/issue_948_w3_bank_first_invite.tester.test.ts"
       - "mingla-business/src/components/invite/**"
       - ".github/scripts/strict-grep/issue-949-invite-onboarding-offering-agnostic.mjs"
@@ -68,6 +70,7 @@ jobs:
           npx jest
           src/utils/__tests__/issue_948_web_skip_download.implementor.test.ts
           src/components/brand/__tests__/issue_948_web_skip_download.render.tester.test.tsx
+          src/components/brand/__tests__/issue_948_web_skip_download.adversarial.tester.test.tsx
           src/utils/__tests__/issue_948_w3_bank_first_invite.tester.test.ts
           --runInBand
 
