@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 437,
-  "selfTestWiredFloor": 237,
+  "expectedStrictGrepMjsFiles": 438,
+  "selfTestWiredFloor": 246,
   "unenforcedCap": 7,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -2459,9 +2459,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "meta-orch-0827-no-web-stripe-in-consumer"
       ]
@@ -2681,9 +2682,10 @@
       "enforcement": "job:orch-0778-web-stripe-native-import-gate",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0778-web-stripe-native-import-gate"
       ]
@@ -2904,9 +2906,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0796-no-stub-payout-fee"
       ]
@@ -2931,9 +2934,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0804-stripe-tax-enabled-on-checkout"
       ]
@@ -3471,9 +3475,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0955-native-stripe-tax"
       ]
@@ -3484,9 +3489,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0955-native-stripe-tax"
       ]
@@ -3497,9 +3503,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0955-native-stripe-tax"
       ]
@@ -3510,9 +3517,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0955-native-stripe-tax"
       ]
@@ -3523,9 +3531,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0955-native-stripe-tax"
       ]
@@ -5460,6 +5469,17 @@
     },
     {
       "script": ".github/scripts/strict-grep/__tests__/issue-955-p1-batch2-selftest-coupling.adversarial.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/__tests__/issue-955-p1-batch3-selftest-coupling.adversarial.test.mjs",
       "kind": "file",
       "enforcement": "batch:A",
       "invocation": "node --test",

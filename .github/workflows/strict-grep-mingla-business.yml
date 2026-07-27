@@ -573,6 +573,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+      - name: Self-test the ORCH-0778 gate
+        run: node .github/scripts/strict-grep/orch-0778-web-stripe-native-import-gate.mjs --self-test
       - name: Run ORCH-0778 gate
         run: node .github/scripts/strict-grep/orch-0778-web-stripe-native-import-gate.mjs
 

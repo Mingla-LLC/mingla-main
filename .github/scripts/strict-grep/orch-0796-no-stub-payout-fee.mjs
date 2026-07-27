@@ -21,6 +21,12 @@
  *      is complete at the UI layer).
  *
  * Codified by ORCH-0796 SPEC §7.8 + §9 (NEW invariant I-PROPOSED-BB).
+ *
+ * `--self-test` proves fail-on-revert (mirrors i-1272-identity-admin-read.mjs):
+ * the pure `check(inputs, failures)` is exercised with a GOOD fixture and ≥2
+ * DISTINCT BAD fixtures. The disk-reading main path builds `inputs` from the
+ * real tree and calls the SAME `check(...)`; the refactor is behavior-preserving
+ * (identical verdict on the real tree, same messages in the same order).
  */
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
@@ -46,8 +52,6 @@ const RECONCILIATION_TSX_PATH = join(
   "[id]",
   "reconciliation.tsx",
 );
-
-const failures = [];
 
 function readOrEmpty(path) {
   try {
@@ -86,80 +90,180 @@ function walk(dir, accept) {
 const isSource = (n) =>
   n.endsWith(".ts") || n.endsWith(".tsx") || n.endsWith(".js");
 
-// Check 1 — no `* 0.96` literal in moneySummary.ts
+/**
+ * Pure verdict. `inputs`:
+ *   moneySummarySrc, reconciliationTsSrc, reconciliationTsxSrc — file contents
+ *     ("" when unreadable);
+ *   srcEntries — [{ rel, content }] for every scanned mingla-business source
+ *     file (rel = repo-relative path, used verbatim in offender messages);
+ *   moneySummaryPath, reconciliationTsxPath — for the "cannot read" messages.
+ * Pushes the SAME strings, in the SAME order, as the pre-refactor gate.
+ */
+function check(inputs, failures) {
+  const {
+    moneySummarySrc,
+    reconciliationTsSrc,
+    reconciliationTsxSrc,
+    srcEntries,
+    moneySummaryPath,
+    reconciliationTsxPath,
+  } = inputs;
+
+  // Check 1 — no `* 0.96` literal in moneySummary.ts
+  if (!moneySummarySrc) {
+    failures.push(`Check 1 FAIL: cannot read ${moneySummaryPath}`);
+  } else if (/\*\s*0\.96/.test(moneySummarySrc)) {
+    failures.push(
+      "Check 1 FAIL: moneySummary.ts still contains the `* 0.96` Stripe-fee stub literal",
+    );
+  }
+
+  // Same check for reconciliation.ts (defensive)
+  if (reconciliationTsSrc && /\*\s*0\.96/.test(reconciliationTsSrc)) {
+    failures.push(
+      "Check 1 FAIL: reconciliation.ts still contains the `* 0.96` Stripe-fee stub literal",
+    );
+  }
+
+  // Check 2 — no `payoutEstimate` field references anywhere under mingla-business/src/ or /app/
+  const offenders = [];
+  for (const { rel, content } of srcEntries) {
+    // Match the bare identifier (not inside a longer word).
+    if (/\bpayoutEstimate\b/.test(content)) {
+      offenders.push(rel);
+    }
+  }
+  if (offenders.length > 0) {
+    failures.push(
+      `Check 2 FAIL: ${offenders.length} file(s) still reference \`payoutEstimate\`:\n  - ${offenders.join("\n  - ")}`,
+    );
+  }
+
+  // Check 3 — no `TRANSITIONAL — B-cycle Stripe payout API` placeholder anywhere
+  const placeholderOffenders = [];
+  for (const { rel, content } of srcEntries) {
+    if (content.includes("TRANSITIONAL — B-cycle Stripe payout API")) {
+      placeholderOffenders.push(rel);
+    }
+  }
+  if (placeholderOffenders.length > 0) {
+    failures.push(
+      `Check 3 FAIL: ${placeholderOffenders.length} file(s) still contain the placeholder string:\n  - ${placeholderOffenders.join("\n  - ")}`,
+    );
+  }
+
+  // Check 4 — moneySummary.ts exposes both new field names
+  if (moneySummarySrc) {
+    if (!moneySummarySrc.includes("expectedPayoutMajor")) {
+      failures.push(
+        "Check 4 FAIL: moneySummary.ts does not expose `expectedPayoutMajor`",
+      );
+    }
+    if (!moneySummarySrc.includes("onlineNetMajor")) {
+      failures.push(
+        "Check 4 FAIL: moneySummary.ts does not expose `onlineNetMajor`",
+      );
+    }
+  }
+
+  // Check 5 — reconciliation.tsx reads summary.expectedPayoutMajor
+  if (!reconciliationTsxSrc) {
+    failures.push(`Check 5 FAIL: cannot read ${reconciliationTsxPath}`);
+  } else if (!/summary\.expectedPayoutMajor/.test(reconciliationTsxSrc)) {
+    failures.push(
+      "Check 5 FAIL: reconciliation.tsx does not reference `summary.expectedPayoutMajor`",
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────── self-test
+if (process.argv.includes("--self-test")) {
+  const self = [];
+  const P = {
+    moneySummaryPath: "mingla-business/src/utils/moneySummary.ts",
+    reconciliationTsxPath: "mingla-business/app/event/[id]/reconciliation.tsx",
+  };
+  const goodMoney = "export const s = { expectedPayoutMajor, onlineNetMajor };\n";
+  const goodTsx = "return summary.expectedPayoutMajor;\n";
+
+  // GOOD: derived fields present, no `* 0.96`, no payoutEstimate, no placeholder.
+  let f = [];
+  check(
+    {
+      moneySummarySrc: goodMoney,
+      reconciliationTsSrc: "",
+      reconciliationTsxSrc: goodTsx,
+      srcEntries: [{ rel: "mingla-business/src/utils/moneySummary.ts", content: goodMoney }],
+      ...P,
+    },
+    f,
+  );
+  if (f.length) self.push("GOOD (derived payout fields, no stub) wrongly flagged: " + f.join("; "));
+
+  // BAD1 (revert-style): the `* 0.96` Stripe-fee stub re-added to moneySummary.ts
+  // → fires.
+  f = [];
+  check(
+    {
+      moneySummarySrc: "const net = gross * 0.96;\n" + goodMoney,
+      reconciliationTsSrc: "",
+      reconciliationTsxSrc: goodTsx,
+      srcEntries: [{ rel: "mingla-business/src/utils/moneySummary.ts", content: goodMoney }],
+      ...P,
+    },
+    f,
+  );
+  if (f.length === 0) self.push("BAD1 (`* 0.96` fee-stub re-added to moneySummary.ts) not flagged");
+
+  // BAD2 (regression, different angle): the `payoutEstimate` field name
+  // re-introduced in a source file → fires.
+  f = [];
+  check(
+    {
+      moneySummarySrc: goodMoney,
+      reconciliationTsSrc: "",
+      reconciliationTsxSrc: goodTsx,
+      srcEntries: [{ rel: "mingla-business/src/components/Recon.tsx", content: "const payoutEstimate = 0;\n" }],
+      ...P,
+    },
+    f,
+  );
+  if (f.length === 0) self.push("BAD2 (`payoutEstimate` field name re-introduced) not flagged");
+
+  if (self.length) {
+    console.error("ORCH-0796-NO-STUB-PAYOUT-FEE self-test FAIL:");
+    self.forEach((m) => console.error("  - " + m));
+    process.exit(1);
+  }
+  console.log("ORCH-0796-NO-STUB-PAYOUT-FEE self-test PASS (3/3 cases).");
+  process.exit(0);
+}
+
+// ─────────────────────────────────────────────────────────────── main path
 const moneySummarySrc = readOrEmpty(MONEY_SUMMARY_PATH);
-if (!moneySummarySrc) {
-  failures.push(`Check 1 FAIL: cannot read ${MONEY_SUMMARY_PATH}`);
-} else if (/\*\s*0\.96/.test(moneySummarySrc)) {
-  failures.push(
-    "Check 1 FAIL: moneySummary.ts still contains the `* 0.96` Stripe-fee stub literal",
-  );
-}
-
-// Same check for reconciliation.ts (defensive)
 const reconciliationTsSrc = readOrEmpty(RECONCILIATION_TS_PATH);
-if (reconciliationTsSrc && /\*\s*0\.96/.test(reconciliationTsSrc)) {
-  failures.push(
-    "Check 1 FAIL: reconciliation.ts still contains the `* 0.96` Stripe-fee stub literal",
-  );
-}
-
-// Check 2 — no `payoutEstimate` field references anywhere under mingla-business/src/ or /app/
+const reconciliationTsxSrc = readOrEmpty(RECONCILIATION_TSX_PATH);
 const srcFiles = [
   ...walk(join(BUSINESS_DIR, "src"), isSource),
   ...walk(join(BUSINESS_DIR, "app"), isSource),
 ];
-const offenders = [];
-for (const file of srcFiles) {
-  const content = readOrEmpty(file);
-  // Match the bare identifier (not inside a longer word).
-  if (/\bpayoutEstimate\b/.test(content)) {
-    offenders.push(relative(REPO_ROOT, file));
-  }
-}
-if (offenders.length > 0) {
-  failures.push(
-    `Check 2 FAIL: ${offenders.length} file(s) still reference \`payoutEstimate\`:\n  - ${offenders.join("\n  - ")}`,
-  );
-}
+const srcEntries = srcFiles.map((file) => ({
+  rel: relative(REPO_ROOT, file),
+  content: readOrEmpty(file),
+}));
 
-// Check 3 — no `TRANSITIONAL — B-cycle Stripe payout API` placeholder anywhere
-const placeholderOffenders = [];
-for (const file of srcFiles) {
-  const content = readOrEmpty(file);
-  if (content.includes("TRANSITIONAL — B-cycle Stripe payout API")) {
-    placeholderOffenders.push(relative(REPO_ROOT, file));
-  }
-}
-if (placeholderOffenders.length > 0) {
-  failures.push(
-    `Check 3 FAIL: ${placeholderOffenders.length} file(s) still contain the placeholder string:\n  - ${placeholderOffenders.join("\n  - ")}`,
-  );
-}
-
-// Check 4 — moneySummary.ts exposes both new field names
-if (moneySummarySrc) {
-  if (!moneySummarySrc.includes("expectedPayoutMajor")) {
-    failures.push(
-      "Check 4 FAIL: moneySummary.ts does not expose `expectedPayoutMajor`",
-    );
-  }
-  if (!moneySummarySrc.includes("onlineNetMajor")) {
-    failures.push(
-      "Check 4 FAIL: moneySummary.ts does not expose `onlineNetMajor`",
-    );
-  }
-}
-
-// Check 5 — reconciliation.tsx reads summary.expectedPayoutMajor
-const reconciliationTsxSrc = readOrEmpty(RECONCILIATION_TSX_PATH);
-if (!reconciliationTsxSrc) {
-  failures.push(`Check 5 FAIL: cannot read ${RECONCILIATION_TSX_PATH}`);
-} else if (!/summary\.expectedPayoutMajor/.test(reconciliationTsxSrc)) {
-  failures.push(
-    "Check 5 FAIL: reconciliation.tsx does not reference `summary.expectedPayoutMajor`",
-  );
-}
+const failures = [];
+check(
+  {
+    moneySummarySrc,
+    reconciliationTsSrc,
+    reconciliationTsxSrc,
+    srcEntries,
+    moneySummaryPath: MONEY_SUMMARY_PATH,
+    reconciliationTsxPath: RECONCILIATION_TSX_PATH,
+  },
+  failures,
+);
 
 // Report
 if (failures.length > 0) {
