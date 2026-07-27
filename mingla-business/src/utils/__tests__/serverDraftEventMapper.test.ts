@@ -317,4 +317,122 @@ describe("serverDraftEventMapper", () => {
     expect(publishedVisibilityForDraft("unlisted")).toBe("hidden");
     expect(publishedVisibilityForDraft("private")).toBe("private");
   });
+
+  // ---------------------------------------------------------------------------
+  // #1026 [chip-in-draft-persist] — RSVP "chip in" host-controls must survive a
+  // draft round-trip. They are WRITTEN into theme.business_draft
+  // (buildBusinessDraftPayload `:378-380`) and MUST be READ BACK in
+  // serverRowToDraft. Before the fix, serverRowToDraft omitted the three reads
+  // and the `serverDraftEventMapper.ts:870` `as DraftEvent` cast hid the
+  // omission from the compiler — so the autosave echo overwrote chip-in with
+  // undefined ~700ms after the host set it, and a wiped draft published OFF
+  // (lost host revenue). Guards I-PROPOSED-1026-DRAFT-CHIPIN-ROUNDTRIP and
+  // I-PROPOSED-1026-DRAFT-MAPPER-COMPILE-COMPLETE. Append-only.
+  // ---------------------------------------------------------------------------
+
+  // T-1 (happy, fails-on-revert): chip-in-ON survives save → reload/autosave-echo
+  // through the REAL builders (draftToServerUpdate → serverRowToDraft).
+  test("#1026 — chip-in survives a real save→reload/autosave round-trip", () => {
+    const source = draft({
+      isRsvp: true,
+      rsvpContributionEnabled: true,
+      rsvpContributionSuggestedCents: 2500,
+      rsvpContributionMinCents: 500,
+    });
+    const payload = draftToServerUpdate(source, {});
+
+    // Write leg: the trio must land in theme.business_draft.
+    const businessDraft = payload.theme.business_draft as {
+      rsvpContributionEnabled: unknown;
+      rsvpContributionSuggestedCents: unknown;
+      rsvpContributionMinCents: unknown;
+    };
+    expect(businessDraft.rsvpContributionEnabled).toBe(true);
+    expect(businessDraft.rsvpContributionSuggestedCents).toBe(2500);
+    expect(businessDraft.rsvpContributionMinCents).toBe(500);
+
+    // Read leg (the fix): serverRowToDraft must read the trio back off the blob.
+    const hydrated = serverRowToDraft(rowFromPayload(source, payload.theme));
+    expect(hydrated.rsvpContributionEnabled).toBe(true);
+    expect(hydrated.rsvpContributionSuggestedCents).toBe(2500);
+    expect(hydrated.rsvpContributionMinCents).toBe(500);
+  });
+
+  // T-2 (edge/legacy): a pre-ORCH-1291 blob without the three chip-in keys must
+  // hydrate to false/null/null — NEVER undefined (undefined would be dropped by
+  // JSON.stringify on the next autosave and re-wipe the DB).
+  test("#1026 — legacy blob without chip-in keys hydrates to false/null (not undefined)", () => {
+    const source = draft({ isRsvp: true });
+    const payload = draftToServerUpdate(source, {});
+    const businessDraft = payload.theme.business_draft as Record<string, unknown>;
+    delete businessDraft.rsvpContributionEnabled;
+    delete businessDraft.rsvpContributionSuggestedCents;
+    delete businessDraft.rsvpContributionMinCents;
+
+    const hydrated = serverRowToDraft(rowFromPayload(source, payload.theme));
+
+    expect(hydrated.rsvpContributionEnabled).toBe(false);
+    expect(hydrated.rsvpContributionSuggestedCents).toBeNull();
+    expect(hydrated.rsvpContributionMinCents).toBeNull();
+    // Must be real values, present as own-properties — never undefined.
+    expect(hydrated.rsvpContributionEnabled).not.toBeUndefined();
+    expect(hydrated.rsvpContributionSuggestedCents).not.toBeUndefined();
+    expect(hydrated.rsvpContributionMinCents).not.toBeUndefined();
+    expect(
+      Object.prototype.hasOwnProperty.call(hydrated, "rsvpContributionEnabled"),
+    ).toBe(true);
+  });
+
+  // T-3 (insert/lazy-promote path): chip-in survives the draftToServerInsert leg
+  // (a fresh d_* draft promoted to a server row), not just the update leg.
+  test("#1026 — chip-in survives the lazy-promote/insert path", () => {
+    const source = draft({
+      isRsvp: true,
+      rsvpContributionEnabled: true,
+      rsvpContributionSuggestedCents: 3000,
+      rsvpContributionMinCents: 1000,
+    });
+    const payload = draftToServerInsert(source, "user-1", "draft-chipin");
+    const hydrated = serverRowToDraft(rowFromPayload(source, payload.theme));
+
+    expect(hydrated.rsvpContributionEnabled).toBe(true);
+    expect(hydrated.rsvpContributionSuggestedCents).toBe(3000);
+    expect(hydrated.rsvpContributionMinCents).toBe(1000);
+  });
+
+  // T-4 (type / compile-completeness gate for
+  // I-PROPOSED-1026-DRAFT-MAPPER-COMPILE-COMPLETE): serverRowToDraft closes with
+  // `} satisfies DraftEvent;` (was `as DraftEvent`). `satisfies` makes any
+  // omitted required DraftEvent field — including the chip-in trio — a hard
+  // `tsc` error (SC-4: `npm run typecheck` reddens if Edit A is reverted under
+  // `satisfies`). The type gate lives in `npm run typecheck`; this test adds a
+  // runtime completeness assertion so the whole trio must materialize as real
+  // values (undefined would slip through the OLD `as` cast but fails here too).
+  test("#1026 — serverRowToDraft returns a materially-complete chip-in trio", () => {
+    const source = draft({
+      isRsvp: true,
+      rsvpContributionEnabled: true,
+      rsvpContributionSuggestedCents: 2500,
+      rsvpContributionMinCents: 500,
+    });
+    const hydrated = serverRowToDraft(
+      rowFromPayload(source, draftToServerInsert(source, "user-1", "draft-t4").theme),
+    );
+
+    // Type-level: the mapper is annotated `: DraftEvent` and closed with
+    // `satisfies DraftEvent`; this assignment documents the completeness contract.
+    const complete: DraftEvent = hydrated;
+
+    const chipInKeys: (keyof DraftEvent)[] = [
+      "rsvpContributionEnabled",
+      "rsvpContributionSuggestedCents",
+      "rsvpContributionMinCents",
+    ];
+    for (const key of chipInKeys) {
+      expect(complete[key]).not.toBeUndefined();
+    }
+    expect(complete.rsvpContributionEnabled).toBe(true);
+    expect(complete.rsvpContributionSuggestedCents).toBe(2500);
+    expect(complete.rsvpContributionMinCents).toBe(500);
+  });
 });

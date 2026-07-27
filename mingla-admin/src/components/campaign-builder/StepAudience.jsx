@@ -128,7 +128,12 @@ export function StepAudience({ audience, onAudienceChange, channelRows }) {
 
   // ── Interest typeahead (Meta + TikTok real taxonomies) ──────────────────────
   const [interestQuery, setInterestQuery] = useState("");
-  const searchablePlatforms = interestPlatforms.filter((p) => p === "meta" || p === "tiktok");
+  // ISSUE-992: Google (affinity/in-market) + Snapchat (SCLS) join Meta + TikTok
+  // in the interest typeahead (Google gated by INTEREST_SEARCH_PLATFORMS, the
+  // G-4 seam). Reddit stays free-text (handled separately below).
+  const searchablePlatforms = interestPlatforms.filter(
+    (p) => p === "meta" || p === "tiktok" || p === "google" || p === "snapchat",
+  );
   const interestRunner = useCallback(async () => {
     const calls = await Promise.all(
       searchablePlatforms.map(async (platform) => {
@@ -272,9 +277,9 @@ export function StepAudience({ audience, onAudienceChange, channelRows }) {
             </div>
           )}
 
-          {cities.length > 0 && pickedPlatforms.includes("meta") && (
+          {cities.length > 0 && (pickedPlatforms.includes("meta") || pickedPlatforms.includes("snapchat")) && (
             <div className="flex items-center gap-3 max-w-sm pt-1">
-              <label className="text-xs font-medium whitespace-nowrap">Radius (Meta)</label>
+              <label className="text-xs font-medium whitespace-nowrap">Radius (Meta &amp; Snap)</label>
               <input
                 type="range"
                 min={RADIUS_BOUNDS[distanceUnit].min}
@@ -296,8 +301,8 @@ export function StepAudience({ audience, onAudienceChange, channelRows }) {
         </div>
       )}
 
-      {/* ── Interest targeting ── */}
-      {(interestPlatforms.includes("meta") || interestPlatforms.includes("tiktok")) && (
+      {/* ── Interest targeting (Meta + TikTok + Google + Snapchat — ISSUE-992) ── */}
+      {searchablePlatforms.length > 0 && (
         <div className="space-y-2">
           <span className="block text-sm font-medium">Interests (optional)</span>
           <div className="relative">
@@ -440,8 +445,9 @@ export function StepAudience({ audience, onAudienceChange, channelRows }) {
           ))}
         </div>
         <p className="text-[11px] text-[var(--color-text-tertiary)]">
-          Age applies to Meta, TikTok and Snapchat (Reddit can't target age). Gender applies to
-          Meta, TikTok, Snapchat and Reddit. Google Search ignores both.
+          Age applies to Meta, TikTok, Snapchat and Google (Reddit can't target age). Gender
+          applies to Meta, TikTok, Snapchat, Google and Reddit. City radius applies to Meta and
+          Snapchat; Google targets the whole city (radius coming later).
         </p>
       </div>
 

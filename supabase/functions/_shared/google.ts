@@ -632,6 +632,60 @@ export const GOOGLE_SEARCH_NETWORK_SETTINGS = {
   targetPartnerSearchNetwork: false,
 } as const;
 
+// ── ISSUE-992 (3a) demographics + (3b) audiences — ad-group criteria ──────────
+//
+// Google demographics are ALL-INCLUDED by default; you restrict by adding
+// NEGATIVE `adGroupCriterion` criteria for the buckets OUTSIDE the target
+// (Google Ads v24 AdGroupCriterion.age_range / .gender). Age bands are FIXED
+// 10-year bands — a requested [min,max] INCLUDES every band it overlaps
+// (Seth decision G-1: bucket-widening ACCEPTED — never hard-clamp). Age/gender
+// UNDETERMINED buckets stay INCLUDED unless the caller opts to exclude them
+// (Seth decision G-2 — flags default false). SUSPECTED wire shape (documented
+// Google Ads v24 contract) — the create fn threads `validateOnly` so a
+// zero-object validate_only mutate proves the exact criterion body at BUILD.
+//
+// [SUSPECTED — Google Ads v24] adGroupCriterion age_range / gender enum values.
+export const GOOGLE_AGE_RANGE_TYPES = [
+  "AGE_RANGE_18_24",
+  "AGE_RANGE_25_34",
+  "AGE_RANGE_35_44",
+  "AGE_RANGE_45_54",
+  "AGE_RANGE_55_64",
+  "AGE_RANGE_65_UP",
+] as const;
+export type GoogleAgeRangeType = (typeof GOOGLE_AGE_RANGE_TYPES)[number];
+
+/** Fixed 10-year bands (65_UP is open-topped) — the G-1 overlap source. */
+export const GOOGLE_AGE_BANDS: readonly { type: GoogleAgeRangeType; min: number; max: number }[] = [
+  { type: "AGE_RANGE_18_24", min: 18, max: 24 },
+  { type: "AGE_RANGE_25_34", min: 25, max: 34 },
+  { type: "AGE_RANGE_35_44", min: 35, max: 44 },
+  { type: "AGE_RANGE_45_54", min: 45, max: 54 },
+  { type: "AGE_RANGE_55_64", min: 55, max: 64 },
+  { type: "AGE_RANGE_65_UP", min: 65, max: 200 },
+];
+
+export const GOOGLE_AGE_RANGE_UNDETERMINED = "AGE_RANGE_UNDETERMINED";
+export const GOOGLE_GENDER_TYPES = ["MALE", "FEMALE"] as const;
+export type GoogleGenderType = (typeof GOOGLE_GENDER_TYPES)[number];
+export const GOOGLE_GENDER_UNDETERMINED = "UNDETERMINED";
+
+/**
+ * G-1 (bucket-widening ACCEPTED): map a requested [ageMin, ageMax] to the
+ * TARGET (included) fixed age bands — every band whose 10-year span OVERLAPS
+ * the request is kept (mirrors tiktokAgeGroupsForRange). A request of 21-30
+ * therefore INCLUDES 18-24 + 25-34 (wider than asked — standard Google
+ * behavior; hard-clamp would silently drop 21-24). Absent bounds default to
+ * the widest span so an unset field never narrows.
+ */
+export function googleAgeRangesForRange(ageMin?: number, ageMax?: number): GoogleAgeRangeType[] {
+  const min = typeof ageMin === "number" && Number.isFinite(ageMin) ? ageMin : 0;
+  const max = typeof ageMax === "number" && Number.isFinite(ageMax) ? ageMax : 200;
+  return GOOGLE_AGE_BANDS
+    .filter((band) => band.max >= min && band.min <= max)
+    .map((band) => band.type);
+}
+
 export interface GoogleCreateFullCampaignInput {
   name: string;
   /** Minor units (cents) — converted ONCE here via centsToPlatformBudget. */
@@ -648,6 +702,27 @@ export interface GoogleCreateFullCampaignInput {
   negativeKeywords?: GoogleKeywordInput[];
   /** Resolved numeric criterion ids (GR-37 — resolver output, never raw names). */
   geoTargetCriterionIds: string[];
+  /**
+   * ISSUE-992 (3a) — the TARGET (included) age bands (GOOGLE_AGE_RANGE_TYPES);
+   * buildGoogleMutateOperations excludes the COMPLEMENT as negative criteria.
+   * Absent / all-6 → no age criteria (broad, byte-identical).
+   */
+  ageRanges?: string[];
+  /**
+   * ISSUE-992 (3a) — the TARGET gender(s) ("MALE"|"FEMALE"); a single-gender
+   * target excludes the opposite. Absent / both → no gender criteria.
+   */
+  genders?: string[];
+  /** G-2 (default false): also exclude the AGE_RANGE_UNDETERMINED bucket. */
+  excludeUndeterminedAge?: boolean;
+  /** G-2 (default false): also exclude the gender UNDETERMINED bucket. */
+  excludeUndeterminedGender?: boolean;
+  /**
+   * ISSUE-992 (3b) — affinity / in-market audience ids (user_interest_id);
+   * emitted as POSITIVE ad-group userInterest criteria. 3b is account/policy-
+   * gated (G-4) — clean seam: empty ⇒ zero audience ops (3a ships regardless).
+   */
+  userInterestIds?: string[];
   /** googleAds:mutate validateOnly passthrough — zero objects created (G-P3). */
   validateOnly?: boolean;
 }
@@ -738,6 +813,71 @@ export function buildGoogleMutateOperations(
     adGroup.cpcBidMicros = String(centsToPlatformBudget("google", input.cpcBidCents));
   }
   operations.push({ adGroupOperation: { create: adGroup } });
+
+  // 4b. ISSUE-992 (3a) demographics by EXCLUSION + (3b) audiences (POSITIVE) —
+  //     ad-group-level criteria referencing the ad group above. Demographics
+  //     are all-included by default, so a narrowed target is expressed as
+  //     NEGATIVE criteria for the buckets OUTSIDE it; a full-range/all target
+  //     emits NOTHING (byte-identical broad build). [SUSPECTED wire — probe.]
+  const targetAges = Array.isArray(input.ageRanges) ? input.ageRanges : [];
+  if (targetAges.length > 0) {
+    // Exclude every fixed band NOT in the target set (the G-1 complement).
+    for (const band of GOOGLE_AGE_RANGE_TYPES) {
+      if (targetAges.includes(band)) continue;
+      operations.push({
+        adGroupCriterionOperation: {
+          create: { adGroup: adGroupResource, negative: true, ageRange: { type: band } },
+        },
+      });
+    }
+    // G-2: UNDETERMINED stays INCLUDED unless the flag opts to exclude it.
+    if (input.excludeUndeterminedAge === true) {
+      operations.push({
+        adGroupCriterionOperation: {
+          create: {
+            adGroup: adGroupResource,
+            negative: true,
+            ageRange: { type: GOOGLE_AGE_RANGE_UNDETERMINED },
+          },
+        },
+      });
+    }
+  }
+  const targetGenders = Array.isArray(input.genders) ? input.genders : [];
+  if (targetGenders.length === 1) {
+    // Single-gender target → exclude the opposite (target women ⇒ exclude MALE).
+    const opposite = targetGenders[0] === "MALE" ? "FEMALE" : "MALE";
+    operations.push({
+      adGroupCriterionOperation: {
+        create: { adGroup: adGroupResource, negative: true, gender: { type: opposite } },
+      },
+    });
+  }
+  if (input.excludeUndeterminedGender === true) {
+    operations.push({
+      adGroupCriterionOperation: {
+        create: {
+          adGroup: adGroupResource,
+          negative: true,
+          gender: { type: GOOGLE_GENDER_UNDETERMINED },
+        },
+      },
+    });
+  }
+  // 3b audiences — POSITIVE affinity/in-market userInterest criteria (G-4 seam:
+  // empty ⇒ nothing emitted, so 3a is unaffected if audiences are account-gated).
+  for (const rawId of input.userInterestIds ?? []) {
+    const id = String(rawId).trim();
+    if (!id) continue;
+    operations.push({
+      adGroupCriterionOperation: {
+        create: {
+          adGroup: adGroupResource,
+          userInterest: { userInterestCategory: `userInterests/${id}` },
+        },
+      },
+    });
+  }
 
   // 5. The RSA ad — PAUSED; finalUrls = [canonical dest_url] (A4.f / D-P1).
   operations.push({
@@ -1100,6 +1240,86 @@ export async function googleFetchCustomer(client: GoogleClient): Promise<GoogleC
     timezone: typeof customer.timeZone === "string" ? customer.timeZone : null,
     testAccount: customer.testAccount === true,
   };
+}
+
+// ── ISSUE-992 (3b): affinity / in-market audience search (user_interest) ──────
+
+export interface GoogleUserInterest {
+  id: string;
+  name: string;
+  /** AFFINITY | IN_MARKET | … (Google user-interest taxonomy). */
+  taxonomyType: string | null;
+}
+
+/** Tolerant parser over a googleAds:search `user_interest` result page. */
+export function parseGoogleUserInterests(payload: unknown): GoogleUserInterest[] {
+  const results = Array.isArray((payload as Record<string, unknown> | null)?.results)
+    ? (payload as Record<string, unknown>).results as Record<string, unknown>[]
+    : [];
+  const out: GoogleUserInterest[] = [];
+  const seen = new Set<string>();
+  for (const row of results) {
+    const ui = (row.userInterest ?? row.user_interest ?? {}) as Record<string, unknown>;
+    const idRaw = ui.userInterestId ?? ui.user_interest_id;
+    const id = typeof idRaw === "string" ? idRaw : typeof idRaw === "number" ? String(idRaw) : "";
+    const name = typeof ui.name === "string" ? ui.name : "";
+    if (!id || !name || seen.has(id)) continue;
+    seen.add(id);
+    const taxonomy = ui.taxonomyType ?? ui.taxonomy_type;
+    out.push({ id, name, taxonomyType: typeof taxonomy === "string" ? taxonomy : null });
+  }
+  return out;
+}
+
+/**
+ * Case-insensitive substring filter, prefix matches first, capped — the
+ * fetch+filter fallback shape (mirrors filterTikTokInterestCategories) if a
+ * live probe shows `LIKE` is unsupported on user_interest.name. Pure.
+ */
+export function filterGoogleUserInterests(
+  interests: readonly GoogleUserInterest[],
+  opts: { q?: string; limit?: number } = {},
+): GoogleUserInterest[] {
+  const q = (opts.q ?? "").trim().toLowerCase();
+  const limit = opts.limit ?? 20;
+  const matched = interests.filter((i) => q.length === 0 || i.name.toLowerCase().includes(q));
+  matched.sort((a, b) => {
+    const ap = a.name.toLowerCase().startsWith(q) ? 0 : 1;
+    const bp = b.name.toLowerCase().startsWith(q) ? 0 : 1;
+    if (ap !== bp) return ap - bp;
+    return a.name.localeCompare(b.name);
+  });
+  return matched.slice(0, limit);
+}
+
+/**
+ * ISSUE-992 (3b): resolve affinity / in-market audiences by NAME via a
+ * googleAds:search over the `user_interest` resource (non-streaming — cleaner
+ * for a typeahead than searchStream; same POST client as googleFetchCustomer).
+ * [SUSPECTED GAQL — the `LIKE` operator on user_interest.name must be confirmed
+ * with a live read at BUILD; fallback = an unfiltered page + filterGoogle-
+ * UserInterests substring match.] Returns [] on an empty query.
+ */
+export async function searchGoogleUserInterests(
+  client: GoogleClient,
+  q: string,
+  opts: { limit?: number } = {},
+): Promise<GoogleUserInterest[]> {
+  const limit = opts.limit ?? 20;
+  const term = q.trim();
+  if (!term) return [];
+  // GAQL single-quoted string literal — escape backslash + quote (never inject).
+  const safe = term.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  const query =
+    "SELECT user_interest.user_interest_id, user_interest.name, user_interest.taxonomy_type " +
+    `FROM user_interest WHERE user_interest.name LIKE '%${safe}%' LIMIT ${limit}`;
+  const { payload } = await googleAdsRequest(
+    client,
+    `customers/${client.customerId}/googleAds:search`,
+    { query },
+  );
+  // Post-filter to keep the substring contract stable across the LIKE / fallback paths.
+  return filterGoogleUserInterests(parseGoogleUserInterests(payload), { q: term, limit });
 }
 
 // ── The adapter ───────────────────────────────────────────────────────────────

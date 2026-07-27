@@ -1,17 +1,19 @@
-import { recoverJobIdFromPayload } from "../index.ts";
-
+// #966 [TEST-MOD-APPROVED ORCH-0966] — recoverJobIdFromPayload was removed with
+// the Cloudinary webhook arm (dead residue post-META-1270). The former
+// public_id-last-segment fallback test is retired; this assert-absence proves the
+// export is gone so it cannot be reintroduced silently. (The live Bunny webhook
+// keys the job on source_asset_id = VideoGuid, not on any public_id.)
 const assertEquals = <T>(actual: T, expected: T, message: string): void => {
   if (actual !== expected) {
     throw new Error(`${message}: expected ${expected}, received ${actual}`);
   }
 };
 
-Deno.test("ORCH-0978 adversarial public_id fallback ignores missing context and extra folder prefixes", () => {
-  const jobId = "dde19eac-9810-4e0d-b8f6-63fe235fc5af";
-  const recovered = recoverJobIdFromPayload({
-    notification_type: "eager",
-    public_id: `cloudinary-callbacks/event-covers/raw/22a18413-bfbf-4087-9ba7-45f70deba0f3/09b4ece6-eabc-4734-8ce3-3a25d90417e4/${jobId}`,
-  });
-
-  assertEquals(recovered, jobId, "expected fallback to recover the UUID last segment");
+Deno.test("#966 recoverJobIdFromPayload is removed — webhook is Bunny-only (no Cloudinary public_id recovery)", async () => {
+  const mod = await import("../index.ts") as Record<string, unknown>;
+  assertEquals(
+    typeof mod.recoverJobIdFromPayload,
+    "undefined",
+    "recoverJobIdFromPayload must not exist post-#966 (the Cloudinary webhook arm was removed)",
+  );
 });

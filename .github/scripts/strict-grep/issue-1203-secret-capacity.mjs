@@ -76,7 +76,6 @@ const CONSUMER_CONTRACTS = [
   ["supabase/functions/stripe-webhook/index.ts", "resolveAlertRecipientValue"],
   ["supabase/functions/_shared/adCreative.ts", "resolveRuntimeString"],
   ["supabase/functions/_shared/brandAssets.ts", "resolveRuntimeString"],
-  ["supabase/functions/_shared/eventCoverVideo.ts", "resolveRuntimeString"],
   ["supabase/functions/_shared/google.ts", "resolveRuntimeString"],
   ["supabase/functions/_shared/meta.ts", "resolveRuntimeString"],
   ["supabase/functions/_shared/metaCapi.ts", "resolveRuntimeString"],

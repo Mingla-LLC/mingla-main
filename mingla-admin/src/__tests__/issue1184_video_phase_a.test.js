@@ -169,7 +169,15 @@ describe("ISSUE-1184 UI/service wiring remains truthful", () => {
     assert.match(flags, /google: false/);
     assert.match(preview, /sandbox="allow-scripts allow-same-origin allow-presentation"/);
     assert.match(preview, /referrerPolicy="no-referrer"/);
-    assert.match(preview, /noopener,noreferrer/);
+    // ISSUE-903: the TikTok new-tab link now routes through the openExternal owner
+    // (bare window.open(dest,"_blank") + win.opener = null) instead of an inline
+    // window.open(...,"noopener,noreferrer"). Tab-nabbing safety is preserved by the
+    // owner's opener severance; the inline feature string was the ORCH-1381 double-nav
+    // bug (noopener/noreferrer null the return even on success) and is now banned
+    // repo-wide by orch-1381-open-external-no-double-nav.mjs. Same intent, safer wiring.
+    assert.match(preview, /openExternal\(/);
+    assert.match(preview, /from ["'][^"']*\/openExternal["']/);
+    assert.doesNotMatch(preview, /window\.open\(/);
     assert.doesNotMatch(preview, /srcDoc/);
     assert.match(preview, /Mingla approximation/);
   });

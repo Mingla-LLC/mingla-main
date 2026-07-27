@@ -1,0 +1,40 @@
+name: ISSUE-903 openExternal Admin Tests
+
+on:
+  push:
+    branches: [main, "903-window-open-admin-sweep"]
+    paths:
+      - "mingla-admin/src/lib/openExternal.js"
+      - "mingla-admin/src/components/campaign-builder/AdPreview.jsx"
+      - "mingla-admin/src/pages/CareersPage.jsx"
+      - "mingla-admin/src/lib/__tests__/openExternal*.test.js"
+      - ".github/workflows/issue-903-open-external-admin-tests.yml"
+  pull_request:
+    paths:
+      - "mingla-admin/src/lib/openExternal.js"
+      - "mingla-admin/src/components/campaign-builder/AdPreview.jsx"
+      - "mingla-admin/src/pages/CareersPage.jsx"
+      - "mingla-admin/src/lib/__tests__/openExternal*.test.js"
+      - ".github/workflows/issue-903-open-external-admin-tests.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  admin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ISSUE-903 openExternal admin regressions
+        working-directory: mingla-admin
+        # Both the implementor happy-path suite AND the tester adversarial suite
+        # exist on this branch, so both run unconditionally (no -f guard).
+        run: |
+          node --test \
+            src/lib/__tests__/openExternal.test.js \
+            src/lib/__tests__/openExternal.adversarial.tester.test.js

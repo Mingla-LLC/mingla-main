@@ -6,8 +6,8 @@
 //     evaluateBalance(paystack) branch returning `bal < threshold` would FAIL this.
 //   • OpenAI insufficient_quota (429) ⇒ depleted; rate_limit_exceeded (429) ⇒ NOT
 //     — keying off bare 429 would FAIL this (the disambiguation).
-//   • Cloudinary 747.88% used ⇒ low + CRIT severity — the old (limit-used)/limit
-//     remaining-percent math @ warn-remaining-10% would FAIL this.
+// (#966: the Cloudinary 747.88% regression was retired with the removed
+//  cloudinary_used_pct balance case.)
 
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
@@ -44,11 +44,8 @@ Deno.test("REGRESSION: OpenAI disambiguation — insufficient_quota depletes, ra
   assertEquals(dep.lastErrorCode, "insufficient_quota");
 });
 
-Deno.test("REGRESSION: Cloudinary 747.88% used ⇒ low + CRIT (red dot)", () => {
-  const r = evaluateBalanceForSignal("cloudinary", { used_percent: 747.88 }, { kind: "cloudinary_used_pct", warn: 80, crit: 100 });
-  assertEquals(r.balanceLow, true);
-  assertEquals(r.severity, "crit");
-});
+// #966 [TEST-MOD-APPROVED ORCH-0966] — the Cloudinary 747.88% ⇒ CRIT regression
+// was retired with the removed cloudinary_used_pct balance case.
 
 Deno.test("REGRESSION: Serper 'Not enough credits' single observation ⇒ depleted immediately", () => {
   // No 5-sample floor for an explicit depletion body.
