@@ -782,3 +782,409 @@ Deno.test("ADV D2 guardrail: the create module consumes the prepared youtube_vid
     "Reddit video create must still fail closed (422)",
   );
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ISSUE-1288 — INDEPENDENT TESTER adversarial suite (the finalize FIX + REDACTION)
+//
+// DIFFERENT ANGLE from the #1288 implementor happy-path (issue997_google_video_
+// prepare.test.ts §6-8, which drove the SUCCESS finalize + a single 401 redaction
+// case + endpoint source-grep). This suite attacks the NEGATIVE space of the fix:
+//
+//   - the data/finalize leg is a PUT that carries ONLY `Authorization: Bearer`
+//     (RC-1/RC-3) and does NOT over-send the Ads developer-token / login-customer-id
+//     (per the documented contract the data leg needs the bearer alone) — while the
+//     START leg keeps its full Ads auth headers;
+//   - the START metadata (RC-2) carries customer_id + UNLISTED + a video_title that
+//     is a faithful passthrough of asset.name — proven with a 1000-char name (no
+//     overflow / no truncation by our code) AND an empty name (no crash; fail-closed
+//     metadata still present) — see the report Discovery on the missing non-empty
+//     title guard;
+//   - REDACTION (security, highest value): a finalize error body that echoes a
+//     `Bearer <token>` OR a Meta `EAA…` token is scrubbed before it reaches the
+//     surfaced error / server log; the raw token NEVER appears in the thrown message
+//     NOR in the endpoint's `${platform}/${detail}: ${message}` log composition; and
+//     the slice(0,300) bounds the surface so a token beyond 300 chars never leaks;
+//   - a 400 metadata rejection is fail-closed terminal (throws, ZERO ref, ZERO
+//     markProcessing) — the RC-1-vs-RC-2 discriminator the contract relies on;
+//   - a finalize HTTP 200 whose resourceName is a NON-STRING or an EMPTY STRING goes
+//     TERMINAL (google_yt_resource_missing) — never a false-ready ref;
+//   - CROSS-PLATFORM no-regression: the endpoint's new initiate-catch console.error
+//     is platform-AGNOSTIC, sits AFTER the trust + rate-limit early-returns, and does
+//     NOT alter the generic provider_init_failed / 502 envelope for Meta/Snap/TikTok;
+//     the only new value import is CreativeUploadError.
+//
+// Pure/hermetic: globalThis.fetch is stubbed; ZERO network, ZERO provider calls,
+// ZERO ad objects, ZERO spend, ZERO real YouTube upload.
+
+/**
+ * Like withGoogle, but the UPLOAD-SESSION (finalize) response is a caller-supplied
+ * RAW status + body — used to drive the finalize-FAILURE + redaction paths with
+ * exact control of the response TEXT (JSON.stringify would escape the token shapes
+ * the scrub regexes target). START always succeeds (200 + upload URL) so control
+ * reaches the finalize leg. initiate() throws before check(), so no poll is needed.
+ */
+function withGoogleRawFinalize(
+  finalizeStatus: number,
+  finalizeBodyText: string,
+  fn: (calls: RecordedCall[]) => Promise<void>,
+): () => Promise<void> {
+  return async () => {
+    const prior = new Map<string, string | undefined>();
+    for (const [name, value] of Object.entries(GOOGLE_ENV)) {
+      prior.set(name, Deno.env.get(name));
+      Deno.env.set(name, value);
+    }
+    for (const name of ["GOOGLE_ADS_API_BASE", "GOOGLE_ADS_API_VERSION"]) {
+      prior.set(name, Deno.env.get(name));
+      Deno.env.delete(name);
+    }
+    resetGoogleTokenCacheForTests();
+    const calls: RecordedCall[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch =
+      ((input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        const url = typeof input === "string"
+          ? input
+          : input instanceof URL
+          ? input.href
+          : input.url;
+        calls.push({ url, init });
+        if (url.includes("oauth2.googleapis.com/token")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({ access_token: "ya29.adv", expires_in: 3600 }),
+              { status: 200, headers: { "Content-Type": "application/json" } },
+            ),
+          );
+        }
+        if (url.includes("youTubeVideoUploads:create")) {
+          return Promise.resolve(
+            new Response(JSON.stringify({}), {
+              status: 200,
+              headers: { "X-Goog-Upload-URL": UPLOAD_SESSION_URL },
+            }),
+          );
+        }
+        if (url === UPLOAD_SESSION_URL) {
+          return Promise.resolve(
+            new Response(finalizeBodyText, { status: finalizeStatus }),
+          );
+        }
+        return Promise.resolve(new Response("unexpected", { status: 500 }));
+      }) as typeof fetch;
+    try {
+      await fn(calls);
+    } finally {
+      globalThis.fetch = originalFetch;
+      for (const [name, value] of prior) {
+        if (value !== undefined) Deno.env.set(name, value);
+        else Deno.env.delete(name);
+      }
+      resetGoogleTokenCacheForTests();
+    }
+  };
+}
+
+// A realistic-shaped Google OAuth access token used ONLY as leak bait in a stubbed
+// finalize body. It is NOT a real credential.
+const LEAK_BAIT_TOKEN =
+  "ya29.a0AfB_LEAKMARKER_abcdefghijklmnopqrstuvwxyz0123456789";
+
+// ── #1288.1: data leg = PUT + ONLY-bearer; START leg keeps full Ads auth ──────
+// Fails-on-revert: reverting the data leg to POST, or dropping the Authorization
+// header, fails this. Also pins that the data leg does NOT over-send the Ads
+// developer-token / login-customer-id (contract: data leg needs the bearer alone).
+Deno.test(
+  "ADV #1288: finalize leg is PUT carrying ONLY Bearer; dev-token/login-customer-id stay on the START leg",
+  withGoogle({}, async (calls) => {
+    const { hooks } = recordingHooks();
+    await google().initiate(ASSET, GOOGLE_CONN, BYTES, hooks);
+
+    const uploadCall = calls.find((c) => c.url === UPLOAD_SESSION_URL);
+    assert(uploadCall, "the data/finalize leg must be sent");
+    assertEquals(uploadCall!.init?.method, "PUT");
+    const uh = new Headers(uploadCall!.init?.headers);
+    assert(
+      (uh.get("Authorization") ?? "").startsWith("Bearer "),
+      "the data leg must carry Authorization: Bearer <token>",
+    );
+    // The data leg must NOT leak the Ads developer-token / login-customer-id.
+    assertEquals(uh.get("developer-token"), null);
+    assertEquals(uh.get("login-customer-id"), null);
+    assertEquals(uh.get("X-Goog-Upload-Command"), "upload, finalize");
+
+    // …but the START leg IS the Ads-authenticated one and keeps the full headers.
+    const startCall = calls.find((c) =>
+      c.url.includes("youTubeVideoUploads:create")
+    );
+    const sh = new Headers(startCall!.init?.headers);
+    assert((sh.get("Authorization") ?? "").startsWith("Bearer "));
+    assertEquals(sh.get("developer-token"), "test-dev-token");
+    assertEquals(sh.get("login-customer-id"), "8284700017");
+  }),
+);
+
+// ── #1288.2: START body = customer_id + UNLISTED + faithful title (1000 chars) ──
+// Fails-on-revert: reverting the START body to {} fails (customer_id/UNLISTED/title
+// all vanish). Proves a very long asset.name is passed through, not truncated/over-
+// flowed by our code.
+Deno.test(
+  "ADV #1288: START body carries customer_id + UNLISTED + the full (1000-char) video_title, valid JSON",
+  withGoogle({}, async (calls) => {
+    const longName = "z".repeat(1000);
+    const longAsset = { ...ASSET, name: longName } as unknown as typeof ASSET;
+    const { hooks } = recordingHooks();
+    await google().initiate(longAsset, GOOGLE_CONN, BYTES, hooks);
+
+    const startCall = calls.find((c) =>
+      c.url.includes("youTubeVideoUploads:create")
+    );
+    assert(startCall, "a resumable START must be sent");
+    const body = JSON.parse(String(startCall!.init?.body)) as {
+      customer_id?: unknown;
+      you_tube_video_upload?: {
+        video_title?: unknown;
+        video_privacy?: unknown;
+      };
+    };
+    assertEquals(body.customer_id, "3623860476");
+    assertEquals(body.you_tube_video_upload?.video_privacy, "UNLISTED");
+    // Faithful passthrough — the full 1000-char title, no truncation on our side.
+    assertEquals(body.you_tube_video_upload?.video_title, longName);
+  }),
+);
+
+// ── #1288.3: an EMPTY asset.name does not crash; fail-closed metadata still sent ─
+// The adapter passes asset.name straight through with NO non-empty fallback (see the
+// report Discovery). This test locks only that the request stays well-formed and the
+// UNLISTED privacy + customer_id are ALWAYS present — it deliberately does NOT assert
+// the (currently empty) title value, so a future non-empty-title guard is not blocked.
+Deno.test(
+  "ADV #1288: an empty asset.name still produces a valid UNLISTED START body (no crash)",
+  withGoogle({}, async (calls) => {
+    const blankAsset = { ...ASSET, name: "" } as unknown as typeof ASSET;
+    const { hooks, calls: h } = recordingHooks();
+    await google().initiate(blankAsset, GOOGLE_CONN, BYTES, hooks);
+    assertEquals(h.processing, 1); // finalize still succeeded
+
+    const startCall = calls.find((c) =>
+      c.url.includes("youTubeVideoUploads:create")
+    );
+    const body = JSON.parse(String(startCall!.init?.body)) as {
+      customer_id?: unknown;
+      you_tube_video_upload?: { video_privacy?: unknown };
+    };
+    assertEquals(body.customer_id, "3623860476");
+    assertEquals(body.you_tube_video_upload?.video_privacy, "UNLISTED");
+  }),
+);
+
+// ── #1288.4: a 401 finalize surfaces the status + SCRUBBED bearer (NO token leak) ─
+// Different token + raw body than the implementor's §7. Also proves the ACTUAL log
+// line the endpoint composes (`${platform}/${detail}: ${message}`) carries no token.
+// Fails-on-revert: reverting the finalize guard to the bare `HTTP {status}.` message
+// (no scrubbed body read) fails this — reason + redaction marker disappear.
+Deno.test(
+  "ADV #1288: a 401 finalize throws with the status + a SCRUBBED Bearer; raw token never reaches the log line",
+  withGoogleRawFinalize(
+    401,
+    `Request had invalid authentication credentials. Authorization: Bearer ${LEAK_BAIT_TOKEN} expected OAuth2`,
+    async (_calls) => {
+      const { hooks, calls: h } = recordingHooks();
+      const err = await assertRejects(
+        () => google().initiate(ASSET, GOOGLE_CONN, BYTES, hooks),
+        CreativeUploadError,
+      );
+      const ce = err as CreativeUploadError;
+      assertEquals(ce.detail, "google_yt_upload_failed");
+      assertStringIncludes(ce.message, "401");
+      assertStringIncludes(ce.message, "invalid authentication credentials");
+      assertStringIncludes(ce.message, "Bearer [redacted]");
+      assert(
+        !ce.message.includes(LEAK_BAIT_TOKEN),
+        "the raw bearer token must never appear in the surfaced error",
+      );
+      // The EXACT string the endpoint console.errors — must also be token-free.
+      const logLine = `${ce.platform}/${ce.detail}: ${ce.message}`;
+      assert(
+        !logLine.includes(LEAK_BAIT_TOKEN),
+        "the composed endpoint log line must not leak the token",
+      );
+      // Fail-closed: a rejected finalize saves NO ref and never marks processing.
+      assertEquals(h.saveCount, 0);
+      assertEquals(h.processing, 0);
+    },
+  ),
+);
+
+// ── #1288.5: a Meta-shaped EAA token in the finalize body is ALSO redacted ────
+// scrubCreativeSecrets composes scrubMetaTokens (EAA…) + the Bearer redaction, so a
+// stray EAA-shaped token in a provider body is scrubbed too (defense-in-depth).
+Deno.test(
+  "ADV #1288: a Meta EAA-shaped token in the finalize body is redacted, never surfaced raw",
+  withGoogleRawFinalize(
+    400,
+    "metadata rejected near token EAABsomeReallyLongMetaTokenValue1234567890 please retry",
+    async (_calls) => {
+      const { hooks } = recordingHooks();
+      const err = await assertRejects(
+        () => google().initiate(ASSET, GOOGLE_CONN, BYTES, hooks),
+        CreativeUploadError,
+      );
+      const ce = err as CreativeUploadError;
+      assertEquals(ce.detail, "google_yt_upload_failed");
+      assertStringIncludes(ce.message, "400");
+      assert(
+        !ce.message.includes("EAABsomeReallyLongMetaTokenValue1234567890"),
+        "a Meta EAA-shaped token must be scrubbed from the surfaced error",
+      );
+      assertStringIncludes(ce.message, "[redacted]");
+    },
+  ),
+);
+
+// ── #1288.6: a 400 metadata rejection is fail-closed TERMINAL (RC-2 discriminator) ─
+// The status surfaced pins RC-2 (400 metadata) vs RC-1 (401/403 auth). No ref, no
+// processing — a bad START metadata can never leak a half-ready asset.
+Deno.test(
+  "ADV #1288: a 400 metadata rejection throws google_yt_upload_failed with the reason; ZERO ref, ZERO processing",
+  withGoogleRawFinalize(
+    400,
+    '{"error":{"code":400,"status":"INVALID_ARGUMENT","message":"you_tube_video_upload.video_privacy is required"}}',
+    async (_calls) => {
+      const { hooks, calls: h } = recordingHooks();
+      const err = await assertRejects(
+        () => google().initiate(ASSET, GOOGLE_CONN, BYTES, hooks),
+        CreativeUploadError,
+      );
+      const ce = err as CreativeUploadError;
+      assertEquals(ce.detail, "google_yt_upload_failed");
+      assertStringIncludes(ce.message, "400");
+      assertStringIncludes(ce.message, "INVALID_ARGUMENT");
+      assertEquals(h.saveCount, 0);
+      assertEquals(h.processing, 0);
+    },
+  ),
+);
+
+// ── #1288.7: the surfaced finalize body is length-bounded (slice(0,300) caps leak) ─
+// A token beyond the 300-char window is TRUNCATED AWAY entirely — it never reaches
+// the message, so even an unredacted shape past the window cannot leak.
+Deno.test(
+  "ADV #1288: a token beyond the 300-char finalize slice is truncated away, never surfaced",
+  withGoogleRawFinalize(
+    500,
+    "x".repeat(350) + " Bearer " + "FARLEAKMARKER_ya29.wontshow0123456789",
+    async (_calls) => {
+      const { hooks } = recordingHooks();
+      const err = await assertRejects(
+        () => google().initiate(ASSET, GOOGLE_CONN, BYTES, hooks),
+        CreativeUploadError,
+      );
+      const ce = err as CreativeUploadError;
+      assertStringIncludes(ce.message, "500");
+      assert(
+        !ce.message.includes("FARLEAKMARKER"),
+        "a body token beyond the 300-char slice must be truncated away",
+      );
+      // Sanity: the message is bounded (prefix + status + <=300 body chars).
+      assert(ce.message.length < 420, "surfaced message must stay bounded");
+    },
+  ),
+);
+
+// ── #1288.8: a 200 finalize whose resourceName is NON-STRING is terminal ──────
+// Type-guard attack: neither a numeric top-level resourceName nor a null nested one
+// is a valid resource — must go terminal, never a false-ready ref.
+Deno.test(
+  "ADV #1288: a 200 finalize with a NON-STRING resourceName is terminal (no false ready)",
+  withGoogle(
+    {
+      finalizeBody: {
+        resourceName: 12345,
+        youTubeVideoUpload: { resourceName: null },
+      },
+    },
+    async (_calls) => {
+      const { hooks, calls: h } = recordingHooks();
+      const err = await assertRejects(
+        () => google().initiate(ASSET, GOOGLE_CONN, BYTES, hooks),
+        CreativeUploadError,
+      );
+      assertEquals(
+        (err as CreativeUploadError).detail,
+        "google_yt_resource_missing",
+      );
+      assertEquals(h.saveCount, 0);
+      assertEquals(h.processing, 0);
+    },
+  ),
+);
+
+// ── #1288.9: a 200 finalize with an EMPTY-STRING resourceName is terminal ─────
+// An empty string is `typeof === "string"` but falsy — the `!resourceName` guard
+// must still reject it, never persist an empty ref.
+Deno.test(
+  "ADV #1288: a 200 finalize with an EMPTY-STRING resourceName is terminal (no empty ref persisted)",
+  withGoogle({ finalizeBody: { resourceName: "" } }, async (_calls) => {
+    const { hooks, calls: h } = recordingHooks();
+    const err = await assertRejects(
+      () => google().initiate(ASSET, GOOGLE_CONN, BYTES, hooks),
+      CreativeUploadError,
+    );
+    assertEquals(
+      (err as CreativeUploadError).detail,
+      "google_yt_resource_missing",
+    );
+    assertEquals(h.saveCount, 0);
+    assertEquals(h.processing, 0);
+  }),
+);
+
+// ── #1288.10: endpoint no-regression — the new log is platform-agnostic & ordered ─
+// Cross-platform proof by SOURCE (the endpoint is not runtime-invokable in a
+// hermetic Deno test without the full serve harness). The initiate-catch change must
+// NOT alter Meta/Snap/TikTok behavior: the console.error sits AFTER the trust +
+// rate-limit early-returns, BEFORE the single generic CAS, is not gated on platform,
+// and the only new value import is CreativeUploadError.
+Deno.test("ADV #1288: the endpoint initiate-catch log is platform-agnostic, ordered after trust+rate-limit, envelope unchanged", async () => {
+  const src = await Deno.readTextFile(
+    new URL("../../admin-ad-creative-prepare/index.ts", import.meta.url),
+  );
+
+  const trustIdx = src.indexOf("error instanceof CreativeTrustError");
+  const rateIdx = src.indexOf("error instanceof ProviderRateLimitError");
+  const logIdx = src.indexOf("[admin-ad-creative-prepare] initiate failed:");
+  const casIdx = src.indexOf('error_code: "provider_init_failed"');
+  assert(trustIdx > -1, "trust early-return must exist");
+  assert(rateIdx > trustIdx, "rate-limit early-return must follow trust");
+  assert(logIdx > rateIdx, "the log must sit AFTER both early-returns");
+  assert(casIdx > logIdx, "the generic CAS must follow the log");
+
+  // Exactly ONE generic failure envelope — no per-platform divergence was added.
+  assertEquals(src.match(/error_code: "provider_init_failed"/g)?.length, 1);
+  assertEquals(
+    src.match(/\n {8}502,/g)?.length ?? src.match(/ 502,/g)?.length,
+    1,
+  );
+
+  // The failure path between the log and the CAS is NOT gated on platform.
+  const between = src.slice(logIdx, casIdx);
+  assert(
+    !between.includes("platform ==="),
+    "the generic failure path must stay platform-agnostic",
+  );
+
+  // The console.error has a non-CreativeUploadError fallback arm, so a Meta/Snap/
+  // TikTok initiate error that is NOT a CreativeUploadError still logs AND still
+  // falls through to the SAME generic envelope (behavior unchanged for them).
+  assertStringIncludes(src, "error instanceof CreativeUploadError");
+  assertStringIncludes(src, "error instanceof Error");
+  assertStringIncludes(src, "String(error)");
+
+  // Blast radius: the ONLY new value import from adCreative.ts is CreativeUploadError.
+  assertStringIncludes(
+    src,
+    'import { CreativeUploadError } from "../_shared/adCreative.ts";',
+  );
+});
