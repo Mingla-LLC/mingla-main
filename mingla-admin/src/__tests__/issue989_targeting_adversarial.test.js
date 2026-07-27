@@ -149,26 +149,45 @@ describe("ISSUE-989 adversarial — deferred platforms never fabricate targeting
     }
   });
 
-  it("Google carries ONLY countries + city locations — never a fabricated interest / age-gender", () => {
-    // Google interest/affinity + age/gender demographics are deferred (#989 split);
-    // Google city (geoTargetConstants) IS shipped. Honest = the city travels, the
-    // rest does not silently masquerade as targeted.
+  it("Google carries the wizard's age/gender when set — but NEVER fabricates un-requested targeting", () => {
+    // ISSUE-992 (Wave 3 — [TEST-MOD-APPROVED ORCH-0992]) OVERTURNS the #989
+    // deferral this subtest originally encoded: Google NOW legitimately consumes
+    // age/gender (age_min/age_max/genders) and affinity/in-market audiences at
+    // create. The surviving integrity guard (still adversarial): Google must
+    // carry EXACTLY what the wizard requested and must NOT fabricate a dimension
+    // the user never picked, nor any foreign (Meta/TikTok/Snap-shaped) field.
     const p = buildCreatePayload("google", stateFor());
     const t = p.targeting;
     assert.deepEqual(t.countries, ["GB"]);
-    assert.deepEqual(t.locations, [{ name: "London", country_code: "GB" }]); // shipped
+    assert.deepEqual(t.locations, [{ name: "London", country_code: "GB" }]); // city still ships
+    // NEW TRUTH: stateFor picks age 21-45 + women → Google carries them (#992 3a).
+    assert.equal(t.age_min, 21);
+    assert.equal(t.age_max, 45);
+    assert.deepEqual(t.genders, ["FEMALE"]);
+    // ANTI-FABRICATION (kept): the interests here are meta/tiktok/reddit — NO
+    // google-tagged audience was picked, so Google must NOT fabricate `audiences`.
+    assert.equal(t.audiences, undefined, "Google must not fabricate audiences the user never picked");
+    // Foreign-shaped or never-a-Google keys must stay absent.
     for (const forbidden of [
       "interests",
       "interest_category_ids",
       "flexible_spec",
-      "age_min",
-      "age_max",
-      "genders",
-      "gender",
-      "demographics",
+      "gender", // Google emits `genders` (plural); a singular `gender` is Meta/TikTok-shaped
+      "demographics", // Snap-shaped; Google uses age_min/age_max/genders
       "passthrough",
     ]) {
       assert.equal(t[forbidden], undefined, `Google targeting must not carry ${forbidden}`);
+    }
+    // And when the wizard requests NOTHING, Google fabricates NOTHING — the true
+    // anti-fabrication invariant the #989 deferral was really protecting.
+    const broad = buildCreatePayload("google", stateFor({
+      interests: [],
+      ageMin: 18,
+      ageMax: 65,
+      gender: "all",
+    })).targeting;
+    for (const f of ["age_min", "age_max", "genders", "audiences", "interests"]) {
+      assert.equal(broad[f], undefined, `broad Google build must not fabricate ${f}`);
     }
   });
 });
