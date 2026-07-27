@@ -62,7 +62,12 @@ import {
   tiktokFetchInterestCategories,
   tiktokFetchRegions,
 } from "../_shared/tiktok.ts";
-import { resolveGoogleClient, suggestGeoTargetConstants } from "../_shared/google.ts";
+import {
+  resolveGoogleClient,
+  searchGoogleUserInterests,
+  suggestGeoTargetConstants,
+} from "../_shared/google.ts";
+import { resolveSnapchatClient, snapchatFetchInterests } from "../_shared/snapchat.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -187,8 +192,20 @@ async function resolveGoogle(
   q: string,
   country: string | null,
 ): Promise<{ results: TargetingSearchResult[]; warning?: string }> {
-  if (kind !== "city") {
-    return { results: [], warning: "Google audiences (affinity / in-market) aren't wired yet — keywords carry search intent." };
+  if (kind === "interest") {
+    // ISSUE-992 (3b): real affinity / in-market audiences via user_interest
+    // search (replaces the old deferred stub). Account/policy-gated (G-4) — a
+    // fresh account may 403; the fail-open wrapper degrades honestly.
+    if (!conn) throw new AdNotConnectedError("google", "google_not_connected");
+    const gclient = await resolveGoogleClient(conn);
+    const interests = await searchGoogleUserInterests(gclient, q);
+    return {
+      results: interests.map((i) => ({
+        id: i.id,
+        name: i.name,
+        meta: { user_interest_id: i.id, taxonomy_type: i.taxonomyType },
+      })),
+    };
   }
   if (!country) return { results: [], warning: "Add a country to resolve a Google location." };
   if (!conn) throw new AdNotConnectedError("google", "google_not_connected");
@@ -210,6 +227,36 @@ async function resolveGoogle(
         target_type: resolved.targetType,
       },
     }],
+  };
+}
+
+async function resolveSnapchat(
+  conn: AdConnectionRow | null,
+  kind: Kind,
+  q: string,
+): Promise<{ results: TargetingSearchResult[]; warning?: string }> {
+  if (kind === "interest") {
+    // ISSUE-992 (3a): real SCLS interest-segment resolution (replaces the old
+    // deferred fail-open stub).
+    if (!conn) throw new AdNotConnectedError("snapchat", "snapchat_not_connected");
+    const client = await resolveSnapchatClient(conn);
+    const interests = await snapchatFetchInterests(client, q);
+    return {
+      results: interests.map((i) => ({
+        id: i.id,
+        name: i.name,
+        meta: { category_id: i.id, scls: true },
+      })),
+    };
+  }
+  // ISSUE-992 (3a) city: PASSTHROUGH echo of the typed name (like Reddit). The
+  // create path re-geocodes server-side (§4) so coordinates NEVER reach the
+  // browser — no Mapbox call here. The chip carries { label, country } from the
+  // shared Meta geo dictionary; that is enough for the create-time geocode.
+  const name = q.trim();
+  if (!name) return { results: [] };
+  return {
+    results: [{ id: name, name, meta: { circle_passthrough: true } }],
   };
 }
 
@@ -296,16 +343,7 @@ serve(async (req: Request): Promise<Response> => {
     else if (p === "tiktok") out = await resolveTikTok(conn, k, q, country);
     else if (p === "google") out = await resolveGoogle(conn, k, q, country);
     else if (p === "reddit") out = resolveReddit(k, q);
-    else {
-      // Snapchat — city circles + interest segments consumption deferred (ISSUE-989
-      // split). Snap still gets age/gender via targeting.demographics on create.
-      out = {
-        results: [],
-        warning: k === "city"
-          ? "Snapchat city radius targeting is coming — this campaign uses the countries + age/gender you picked."
-          : "Snapchat interest segments are coming — this campaign uses the countries + age/gender you picked.",
-      };
-    }
+    else out = await resolveSnapchat(conn, k, q); // ISSUE-992 (3a): city passthrough + SCLS interests
     return json(out);
   } catch (err) {
     // FAIL-OPEN: never block the wizard on a provider error.
