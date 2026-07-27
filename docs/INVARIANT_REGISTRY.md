@@ -6245,3 +6245,32 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 - **Regression test:** fails-on-revert — reverting any of the 3 fixture retitles (ORCH-1399→ORCH-1382 on a `links-src` line) makes the gate exit 1 and name the file:line; restoring makes it exit 0 (proven at IMPLEMENT: reverting line 2 named `links-src.tester.test.ts:2`, file byte-identical on restore — 14,755 bytes, 1 NUL at byte 3502). The `--self-test`'s NUL-hidden case proves the guard itself is immune to the grep-blindness that caused #957; a plain-grep gate would silently pass the reverted fixture.
 - **Status:** DRAFT until the implementation is merged and independent tester PASS is recorded; flips ACTIVE at issue #957 CLOSE (orchestrator owns the flip).
 - **Established:** DRAFT 2026-07-27 at issue #957 IMPLEMENT.
+
+## DRAFT — issue #905 (/links consent-banner suppression — IN FLIGHT)
+
+### I-PROPOSED-905-LINKS-CONSENT-BANNER-SUPPRESSED (DRAFT)
+- **Rule:** On the `/links` no-scroll viewport route, the global marketing consent banner
+  (`mingla-marketing/components/marketing/consent-banner.tsx`) MUST render nothing, so the
+  fixed bottom banner can never obstruct the `/links` CTAs or socials
+  (`links-experience.tsx` `100dvh`+`overflow-hidden` snapshot). On every OTHER marketing
+  route the banner is byte-for-byte unchanged (storage key `mingla_consent_v1`, opt-in/opt-out,
+  GA4 Consent Mode calls, mount re-apply effect, animation). Suppression is decided by the pure
+  predicate `shouldRenderConsentBanner(pathname)` against the single-source-of-truth
+  `SUPPRESSED_CONSENT_ROUTES` list (`mingla-marketing/lib/consent-banner-visibility.ts`),
+  exact-match on the trailing-slash-normalized pathname (NEVER substring/prefix), with a
+  null/unknown/empty pathname defaulting to SHOW. Privacy-safe: analytics are opt-out /
+  GA-denied by default until Accept, so suppression leaves the safe denied default and
+  solicits nothing on `/links`.
+- **Enforcement:** the `#905` dedicated workflow
+  (`.github/workflows/issue-905-links-consent-suppression-tests.yml`) compiles + runs the two
+  `tsc+node` suites (happy-path + adversarial), path-gated on the module, the component, the
+  tests, and the workflow. (#906 will add the shared structural harness that generalizes this
+  predicate as its first assertion.)
+- **Regression test:** happy-path `consent-banner-links-suppression.test.ts` (predicate decision
+  table `/links`->false, `/`,`/business`,`/download`,`/privacy-policy`->true, single-source-of-truth
+  const, + component-wiring source-pin) and adversarial
+  `consent-banner-links-suppression.tester.test.ts` (trailing slash, `/linksomething` /
+  `/links/deep` must NOT suppress, null/empty/`/LINKS`, + off-route no-change source-pin), both
+  fails-on-revert.
+- **Established:** DRAFT at issue #905 SPEC; flips ACTIVE on CLOSE after independent tester PASS +
+  merge (PR `Fixes #905`) + production verification on usemingla.com/links.
