@@ -6302,9 +6302,9 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 
 ---
 
-## DRAFT — issue #906 (links-nav-layout-guard — shared structural CI gate, IN FLIGHT)
+## ACTIVE — issue #906 (links-nav-layout-guard — shared structural CI gate)
 
-### I-PROPOSED-906-NAV-ONE-ACTION-BELOW-SM (DRAFT)
+### I-906-NAV-ONE-ACTION-BELOW-SM (ACTIVE)
 - **Rule:** on the marketing glass-nav organiser surface
   (`mingla-marketing/components/marketing/glass-nav.tsx`), the second/overflow business action (the
   "Use on web" pill) MUST retain its `hidden … sm:inline-flex` responsive gating, so at ≤412px (below
@@ -6318,9 +6318,9 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 - **Regression test:** the gate's `--self-test` A3 violated-source case seeds a reordered/reflowed pill
   with `sm:inline-flex` dropped and proves it FLAGS (and that the bare `hidden md:block` does NOT
   satisfy A3). Deleting `sm:inline-flex` (or `hidden`) from that pill → gate exit 1 naming the file.
-  Fails-on-revert; append-only. (Flips ACTIVE at #906 CLOSE — orchestrator owns the flip.)
+  Fails-on-revert; append-only. ACTIVE 2026-07-27 at #906 CLOSE (PR merged, tester PASS).
 
-### I-PROPOSED-906-NAV-LOGO-DIMENSIONS-PINNED (DRAFT)
+### I-906-NAV-LOGO-DIMENSIONS-PINNED (ACTIVE)
 - **Rule:** the glass-nav logo wrapper MUST keep `shrink-0` (the load-bearing anti-squash guard); the
   business lockup `<img>` keeps `h-20 w-20`; the explorer wordmark `<img>` keeps `h-7 w-auto`. "84px"
   is HISTORICAL narrative from #892 prose only — the invariant locks the CURRENT literal `h-20` and
@@ -6330,4 +6330,4 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   `/\bh-7\b[^'"]*\bw-auto\b/` (`:181`) on the comment-stripped `glass-nav.tsx`.
 - **Regression test:** the gate's `--self-test` A4 violated-source case removes the logo `shrink-0` and
   proves it FLAGS. Removing `shrink-0` or altering the size literals → gate exit 1. Fails-on-revert;
-  append-only. (Flips ACTIVE at #906 CLOSE.)
+  append-only. ACTIVE 2026-07-27 at #906 CLOSE (PR merged, tester PASS).
