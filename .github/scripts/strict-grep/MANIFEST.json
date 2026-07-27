@@ -15,13 +15,25 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 431,
-  "selfTestWiredFloor": 200,
+  "expectedStrictGrepMjsFiles": 432,
+  "selfTestWiredFloor": 201,
   "unenforcedCap": 7,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
   "externalGateDirs": [],
   "gates": [
+    {
+      "script": ".github/scripts/strict-grep/i-proposed-966-cover-video-provider-bunny-only.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
     {
       "script": ".github/scripts/strict-grep/__tests__/i-1272-identity-admin-read.test.mjs",
       "kind": "file",
