@@ -419,22 +419,21 @@ async function createSource(): Promise<string> {
   );
 }
 
-Deno.test("ISSUE-997 C adversarial [structural]: Google + Reddit video create STAY hard fail-closed (scope D not built)", async () => {
+Deno.test("ISSUE-997 C/D2 adversarial [structural]: only Reddit video create stays hard fail-closed (Google is now Demand Gen wired)", async () => {
   const src = await createSource();
-  // Exactly two blanket phase-A 422s remain — Google and Reddit.
-  assertEquals(src.match(/video_create_not_available_phase_a/g)?.length, 2);
-  // Each is bound to its own video guard.
-  assert(
-    /creativeG\.kind === "video"[\s\S]{0,120}video_create_not_available_phase_a/
-      .test(src),
-    "Google video must fail closed",
-  );
+  // [TEST-MOD-APPROVED ORCH-0997] D2 wired Google Demand Gen video create, so the
+  // C-era "Google + Reddit stay fail-closed" assertion is obsolete. Exactly ONE
+  // blanket phase-A 422 remains — Reddit; the Google guard is now the Demand Gen
+  // create branch. Reddit fail-closed stays asserted.
+  assertEquals(src.match(/video_create_not_available_phase_a/g)?.length, 1);
+  // The remaining 422 is bound to the Reddit video guard.
   assert(
     /creativeR\.kind === "video"[\s\S]{0,120}video_create_not_available_phase_a/
       .test(src),
     "Reddit video must fail closed",
   );
-  // The SINGLE_VIDEO seam must NOT appear in the Google or Reddit branches.
+  // The SINGLE_VIDEO (TikTok) seam must NOT appear in the Google or Reddit branches;
+  // Google video is a Demand Gen ad (demandGenVideoResponsiveAd), not SINGLE_VIDEO.
   const gStart = src.indexOf('if (platform === "google")');
   const gEnd = src.indexOf('if (platform === "snapchat")');
   const rStart = src.indexOf('if (platform === "reddit")');
@@ -451,6 +450,12 @@ Deno.test("ISSUE-997 C adversarial [structural]: Google + Reddit video create ST
   assert(
     !redditBranch.includes("SINGLE_VIDEO"),
     "no SINGLE_VIDEO seam in the Reddit branch",
+  );
+  // Google is now wired as a Demand Gen video create (not a phase-A 422).
+  assertStringIncludes(googleBranch, "googleCreateDemandGenVideoCampaign");
+  assert(
+    !googleBranch.includes("video_create_not_available_phase_a"),
+    "Google video create must no longer fail closed",
   );
 });
 

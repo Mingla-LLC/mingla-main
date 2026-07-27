@@ -75,13 +75,17 @@ Deno.test("ISSUE-1002 · pickCallDestination prefers the singular destination (b
   );
 });
 
-Deno.test("ISSUE-1002 · the 5 copy-pasted destination picks are de-duplicated to the shared resolver", async () => {
+Deno.test("ISSUE-1002 · every destination pick is de-duplicated to the shared resolver", async () => {
   const src = await readCreateFn();
-  // All five per-platform blocks now pick via the one resolver...
+  // [TEST-MOD-APPROVED ORCH-0997] #997 D2 adds a SIXTH create path — the Google
+  // Demand Gen video sub-branch inside the google branch (google now has BOTH an
+  // image SEARCH path and a video Demand Gen path). It resolves the destination
+  // through the SAME shared helper, so the count is 6, not 5 — the DRY invariant
+  // (shared resolver, no inline copy-paste) is preserved and extended.
   assertEquals(
     countOf(src, "pickCallDestination(body)"),
-    5,
-    "all five per-platform blocks resolve the destination through the shared helper",
+    6,
+    "every per-create-path block resolves the destination through the shared helper",
   );
   // ...and the old inline copy-paste (ISSUE-977 Lane C discovery #2) is gone.
   assertEquals(
@@ -91,12 +95,15 @@ Deno.test("ISSUE-1002 · the 5 copy-pasted destination picks are de-duplicated t
   );
 });
 
-Deno.test("ISSUE-1002 · ALL FIVE ad_campaigns inserts persist dest_group_id (fan-out rows share the group)", async () => {
+Deno.test("ISSUE-1002 · ALL ad_campaigns inserts persist dest_group_id (fan-out rows share the group)", async () => {
   const src = await readCreateFn();
+  // [TEST-MOD-APPROVED ORCH-0997] #997 D2's Google Demand Gen video path adds a
+  // SIXTH ad_campaigns insert — it too carries the shared group id, so the count is
+  // 6, not 5. Every insert (incl. the new google-video one) shares the group.
   assertEquals(
     countOf(src, "dest_group_id: destGroupId"),
-    5,
-    "every one of the five ad_campaigns inserts carries the shared group id",
+    6,
+    "every ad_campaigns insert carries the shared group id",
   );
   // The group id is derived once, from the request, via the shared resolver.
   assert(

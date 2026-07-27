@@ -33,40 +33,42 @@ const okChannels = (platforms) =>
 const allReady = (platforms) =>
   Object.fromEntries(platforms.map((p) => [p, { state: "ready" }]));
 
-describe("ISSUE-997 C adversarial · Google/Reddit video create can NEVER build", () => {
-  // THE core safety invariant. Even handed a READY prep AND a passing channel for
-  // every platform, Google and Reddit must land in `excluded`, never `buildable`.
-  // Fails-on-revert: flipping creativeGate VIDEO_CREATE_ENABLED.google → true makes
-  // google buildable here → RED.
-  it("google + reddit stay excluded with a READY prep and passing channels", () => {
+describe("ISSUE-997 C/D2 adversarial · only Reddit video create can NEVER build", () => {
+  // [TEST-MOD-APPROVED ORCH-0997] D2 wired Google Demand Gen video create, so the
+  // C-era "Google + Reddit can NEVER build" invariant is superseded — a READY google
+  // now builds. THE core safety invariant is re-pointed to REDDIT (the last
+  // fail-closed platform): even handed a READY prep AND a passing channel, Reddit
+  // must land in `excluded`, never `buildable`. Fails-on-revert: flipping creativeGate
+  // VIDEO_CREATE_ENABLED.reddit → true makes reddit buildable here → RED.
+  it("a READY google builds; only reddit stays excluded with a READY prep and passing channels", () => {
     const { buildable, excluded } = partitionFundedCreative({
       fundedPlatforms: ALL,
       channels: okChannels(ALL),
       kind: "video",
       preparationByPlatform: allReady(ALL),
     });
-    assert.equal(buildable.includes("google"), false, "google must never build a video");
+    assert.equal(buildable.includes("google"), true, "a READY google must build (Demand Gen)");
     assert.equal(buildable.includes("reddit"), false, "reddit must never build a video");
     const reasonOf = (p) => excluded.find((e) => e.platform === p)?.reason;
-    assert.equal(reasonOf("google"), "approximation_only");
     assert.equal(reasonOf("reddit"), "video_not_creatable");
-    // The flag table itself keeps them OFF (frozen — see below).
-    assert.equal(VIDEO_CREATE_ENABLED.google, false);
+    // The flag table enables google, keeps reddit OFF (frozen — see below).
+    assert.equal(VIDEO_CREATE_ENABLED.google, true);
     assert.equal(VIDEO_CREATE_ENABLED.reddit, false);
-    // And tiktok, correctly wired, DOES build alongside meta/snap.
-    assert.deepEqual(buildable.sort(), ["meta", "snapchat", "tiktok"]);
+    // tiktok + google + meta + snap all build; only reddit is excluded.
+    assert.deepEqual(buildable.sort(), ["google", "meta", "snapchat", "tiktok"]);
   });
 
-  it("videoPreparationGate keeps google/reddit excluded even when marked READY in rows", () => {
+  it("videoPreparationGate keeps reddit excluded even when marked READY in rows; a READY google continues", () => {
     const gate = videoPreparationGate({
       fundedPlatforms: ALL,
-      rows: allReady(ALL), // google & reddit LIE that they are ready
+      rows: allReady(ALL), // reddit LIES that it is ready
     });
-    // They are not in VIDEO_CREATE_PLATFORMS, so they never enter `ready`.
-    assert.equal(gate.ready.includes("google"), false);
+    // Reddit is not in VIDEO_CREATE_PLATFORMS, so it never enters `ready`.
     assert.equal(gate.ready.includes("reddit"), false);
+    // Google IS now in the subset and ready → it continues, no longer excluded.
+    assert.equal(gate.ready.includes("google"), true);
     const reasonOf = (p) => gate.excluded.find((e) => e.platform === p)?.reason;
-    assert.equal(reasonOf("google"), "approximation_only");
+    assert.equal(reasonOf("google"), undefined);
     assert.equal(reasonOf("reddit"), "video_excluded");
     // tiktok, being in the subset AND ready, continues.
     assert.ok(gate.ready.includes("tiktok"));
@@ -130,20 +132,23 @@ describe("ISSUE-997 C adversarial · a READY tiktok prep is NOT a free pass", ()
 });
 
 describe("ISSUE-997 C adversarial · gate tables are immutable + partition is total", () => {
-  it("VIDEO_CREATE_ENABLED / VIDEO_CREATE_PLATFORMS are frozen — enabling google/reddit is a no-op", () => {
+  // [TEST-MOD-APPROVED ORCH-0997] google is now creatable, so the frozen-off target
+  // is REDDIT — enabling it at runtime must be a no-op.
+  it("VIDEO_CREATE_ENABLED / VIDEO_CREATE_PLATFORMS are frozen — enabling reddit is a no-op", () => {
     assert.ok(Object.isFrozen(VIDEO_CREATE_ENABLED));
     assert.ok(Object.isFrozen(VIDEO_CREATE_PLATFORMS));
-    // Attempt to smuggle google on at runtime — must not stick.
+    // Attempt to smuggle reddit on at runtime — must not stick.
     try {
-      VIDEO_CREATE_ENABLED.google = true;
-      VIDEO_CREATE_PLATFORMS.push("google");
+      VIDEO_CREATE_ENABLED.reddit = true;
+      VIDEO_CREATE_PLATFORMS.push("reddit");
     } catch {
       // strict mode throws on a frozen write — also acceptable.
     }
-    assert.equal(VIDEO_CREATE_ENABLED.google, false);
     assert.equal(VIDEO_CREATE_ENABLED.reddit, false);
-    assert.equal(VIDEO_CREATE_PLATFORMS.includes("google"), false);
-    assert.deepEqual([...VIDEO_CREATE_PLATFORMS], ["meta", "snapchat", "tiktok"]);
+    // google stays wired ON (frozen).
+    assert.equal(VIDEO_CREATE_ENABLED.google, true);
+    assert.equal(VIDEO_CREATE_PLATFORMS.includes("reddit"), false);
+    assert.deepEqual([...VIDEO_CREATE_PLATFORMS], ["meta", "snapchat", "tiktok", "google"]);
   });
 
   it("the video partition stays TOTAL once tiktok joins (buildable ∪ excluded === funded)", () => {
@@ -161,10 +166,10 @@ describe("ISSUE-997 C adversarial · gate tables are immutable + partition is to
     }
   });
 
-  it("readyVideoSubset never surfaces google/reddit even when funded and 'ready'", () => {
+  it("readyVideoSubset surfaces google (never reddit) when funded and 'ready'", () => {
     const subset = readyVideoSubset({ fundedPlatforms: ALL, rows: allReady(ALL) });
-    assert.deepEqual(subset.sort(), ["meta", "snapchat", "tiktok"]);
-    assert.equal(subset.includes("google"), false);
+    assert.deepEqual(subset.sort(), ["google", "meta", "snapchat", "tiktok"]);
+    assert.equal(subset.includes("google"), true);
     assert.equal(subset.includes("reddit"), false);
   });
 });

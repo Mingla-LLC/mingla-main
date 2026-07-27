@@ -86,13 +86,16 @@ import {
 import {
   GOOGLE_GEO_COUNTRY_CONSTANTS,
   googleAgeRangesForRange,
+  googleCreateDemandGenVideoCampaign,
   googleCreateFullCampaign,
+  type GoogleDemandGenVideoInput,
   GOOGLE_GENDER_TYPES,
   type GoogleKeywordInput,
   normalizeGoogleKeywords,
   type ResolvedGeoTarget,
   resolveGoogleClient,
   suggestGeoTargetConstants,
+  validateGoogleDemandGenAd,
   validateGoogleFinalUrl,
   validateGoogleRsa,
 } from "../_shared/google.ts";
@@ -239,6 +242,25 @@ function buildGoogleTrackingUrlTemplate(input: {
   }
   params.push("af_r={lpurl}");
   return `${ONELINK_BASE}?${params.join("&")}`;
+}
+
+/**
+ * ISSUE-997 D2: derive a Demand Gen businessName (≤25) from the resolved brand
+ * slug when the payload carries no explicit `creative.business_name`
+ * ("smoke-and-rhythm" → "Smoke And Rhythm", capped at 25). A DERIVED value is
+ * truncated (never a 422); an EXPLICIT value is validated (422 if >25) by
+ * validateGoogleDemandGenAd. Falls back to "Mingla" for an empty slug so the
+ * REQUIRED field is never blank.
+ */
+function deriveGoogleBusinessName(brandSlug: string): string {
+  const titled = brandSlug
+    .split("-")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ")
+    .trim();
+  const name = titled || "Mingla";
+  return name.slice(0, 25);
 }
 
 interface DestinationInput {
@@ -418,7 +440,456 @@ serve(async (req: Request): Promise<Response> => {
     // (1) Pure input validation — all 422s BEFORE any provider call.
     const creativeG = (body.creative ?? {}) as Record<string, unknown>;
     if (creativeG.kind === "video") {
-      return json({ error: "video_create_not_available_phase_a" }, 422);
+      // ══ ISSUE-997 D2: Google Demand Gen VIDEO create ══════════════════════════
+      // Google video is a DISTINCT campaign type (DEMAND_GEN) — this sub-branch is
+      // fully self-contained and EARLY-RETURNS before the SEARCH+RSA validators
+      // below (a video payload has no keywords). Like TikTok C, create is a pure
+      // READY-ref CONSUMER: it NEVER uploads media inline — the D1 prepare adapter
+      // walks the video to a READY google ref carrying external_ref_extra.
+      // youtube_video_id. PAUSED at every level; validate_only threads NATIVELY
+      // (Google validate → zero objects, unlike TikTok/Snap).
+      documentComplianceDrop("google", body.compliance);
+
+      // (1a) Require the prepared library ref (create never uploads inline).
+      const creativeLibraryIdGV = typeof creativeG.creative_library_id === "string"
+        ? creativeG.creative_library_id.trim()
+        : "";
+      if (!creativeLibraryIdGV) {
+        return json({ error: "video_preparation_required" }, 422);
+      }
+
+      // (1b) Destination gates (page_type/brand_slug) — the finalUrl, businessName
+      //      derivation, and geo all need them (mirror the SEARCH branch).
+      const destinationGV = pickCallDestination(body);
+      const pageTypeGV = destinationGV.page_type ?? "";
+      const brandSlugGV = typeof destinationGV.brand_slug === "string"
+        ? destinationGV.brand_slug.trim()
+        : "";
+      const entitySlugGV = typeof destinationGV.entity_slug === "string"
+        ? destinationGV.entity_slug.trim()
+        : "";
+      if (!["event", "trip", "brand", "venue"].includes(pageTypeGV)) {
+        return json({ error: "validation_error", detail: "destination_page_type_invalid" }, 400);
+      }
+      if (!brandSlugGV) {
+        return json({ error: "validation_error", detail: "destination_brand_slug_required" }, 400);
+      }
+
+      // (1c) Demand Gen ad copy — businessName (≤25), ≥1 headline (≤40), ≥1 long
+      //      headline (≤90), ≥1 description (≤90). Keywords are NOT collected for
+      //      Demand Gen (audience-based). longHeadlines / businessName DEFAULT from
+      //      the RSA headlines / brand slug when the payload sends no explicit ones
+      //      (wiring explicit long_headlines/business_name into the admin payload is
+      //      a follow-up — see the D2 report); an explicit value overrides and is
+      //      validated by validateGoogleDemandGenAd.
+      const headlinesGV = (Array.isArray(creativeG.headlines) ? creativeG.headlines : [])
+        .filter((h): h is string => typeof h === "string" && h.trim().length > 0)
+        .map((h) => h.trim());
+      const descriptionsGV = (Array.isArray(creativeG.descriptions) ? creativeG.descriptions : [])
+        .filter((d): d is string => typeof d === "string" && d.trim().length > 0)
+        .map((d) => d.trim());
+      const longHeadlinesGV = Array.isArray(creativeG.long_headlines)
+        ? (creativeG.long_headlines as unknown[])
+          .filter((h): h is string => typeof h === "string" && h.trim().length > 0)
+          .map((h) => h.trim())
+        : headlinesGV;
+      const businessNameGV =
+        typeof creativeG.business_name === "string" && creativeG.business_name.trim()
+          ? creativeG.business_name.trim()
+          : deriveGoogleBusinessName(brandSlugGV);
+      const demandGenCheck = validateGoogleDemandGenAd({
+        businessName: businessNameGV,
+        headlines: headlinesGV,
+        longHeadlines: longHeadlinesGV,
+        descriptions: descriptionsGV,
+      });
+      if (!demandGenCheck.ok) {
+        return json({ error: demandGenCheck.detail, detail: demandGenCheck.message }, 422);
+      }
+
+      // (1d) Targeting — countries required; named locations validated (SEARCH mirror).
+      const targetingGV = (body.targeting ?? {}) as Record<string, unknown>;
+      const countriesGV = targetingGV.countries;
+      if (
+        !Array.isArray(countriesGV) || countriesGV.length === 0 ||
+        countriesGV.some((c) => typeof c !== "string" || !c.trim())
+      ) {
+        return json({ error: "validation_error", detail: "targeting_countries_required" }, 400);
+      }
+      const countryCodesGV = (countriesGV as string[]).map((c) => c.trim().toUpperCase());
+      const locationsGV = Array.isArray(targetingGV.locations)
+        ? targetingGV.locations as Record<string, unknown>[]
+        : [];
+      for (const location of locationsGV) {
+        if (
+          typeof location.name !== "string" || !location.name.trim() ||
+          typeof location.country_code !== "string" || !location.country_code.trim()
+        ) {
+          return json({
+            error: "validation_error",
+            detail: "targeting_location_invalid — each location needs { name, country_code }",
+          }, 400);
+        }
+      }
+
+      // (2) Connection (fail-close): absent/broken → 409 google_not_provisioned.
+      const { data: gconnRowGV } = await supabase
+        .from("ad_connections")
+        .select("*")
+        .eq("platform", "google")
+        .eq("lane", lane)
+        .maybeSingle();
+      if (!gconnRowGV || !gconnRowGV.connected || gconnRowGV.status !== "connected") {
+        return json({ error: "google_not_provisioned" }, 409);
+      }
+      const gconnGV = gconnRowGV as unknown as AdConnectionRow;
+
+      // Idempotency (request_id): replay returns the existing row.
+      if (requestIdG && !validateOnlyG) {
+        const { data: existingGV } = await supabase
+          .from("ad_campaigns")
+          .select("*")
+          .eq("connection_id", gconnGV.id)
+          .eq("request_id", requestIdG)
+          .maybeSingle();
+        if (existingGV) return json({ campaign: existingGV, idempotent_replay: true });
+      }
+
+      // (3) READY-ref resolve — the exact current-hash READY google VIDEO ref (D1):
+      //     platform=google / lane / this advertiser / external_kind=video /
+      //     content_hash match / status=ready, carrying external_ref_extra.
+      //     youtube_video_id. create NEVER uploads inline (mirror TikTok C / Snap).
+      const { data: libCreativeGV } = await supabase
+        .from("ad_creatives")
+        .select("id, kind, content_hash")
+        .eq("id", creativeLibraryIdGV)
+        .maybeSingle();
+      if (!libCreativeGV) {
+        return json({ error: "creative_not_found", detail: "creative_library_id does not resolve" }, 422);
+      }
+      if (libCreativeGV.kind !== "video") {
+        return json({ error: "creative_kind_mismatch" }, 422);
+      }
+      const { data: refGV } = await supabase
+        .from("ad_creative_platform_refs")
+        .select("external_ref, external_ref_extra, status, content_hash")
+        .eq("creative_id", creativeLibraryIdGV)
+        .eq("platform", "google")
+        .eq("lane", lane)
+        .eq("external_account_id", gconnGV.external_account_id)
+        .eq("external_kind", "video")
+        .eq("content_hash", libCreativeGV.content_hash)
+        .eq("status", "ready")
+        .maybeSingle();
+      if (!refGV || refGV.status !== "ready" || !refGV.external_ref) {
+        return json({
+          error: "creative_not_uploaded",
+          detail:
+            "No READY google VIDEO ref for this creative on this advertiser — prepare it through admin-ad-creative-prepare (google) first; create never uploads inline.",
+        }, 422);
+      }
+      if (
+        refGV.content_hash && libCreativeGV.content_hash &&
+        refGV.content_hash !== libCreativeGV.content_hash
+      ) {
+        return json({
+          error: "creative_ref_stale",
+          detail:
+            "The google video ref was prepared from different bytes than the creative's current content_hash — re-prepare through admin-ad-creative-prepare.",
+        }, 422);
+      }
+      // A Demand Gen video ad needs the PREPARED youtube_video_id (D1 folds it into
+      // external_ref_extra on the READY transition). A ref missing it fails closed.
+      const refExtraGV = (refGV.external_ref_extra ?? {}) as Record<string, unknown>;
+      const youtubeVideoIdGV = typeof refExtraGV.youtube_video_id === "string"
+        ? refExtraGV.youtube_video_id
+        : "";
+      if (!youtubeVideoIdGV) {
+        return json({
+          error: "creative_ref_incomplete",
+          detail:
+            "The google video ref is missing external_ref_extra.youtube_video_id — re-prepare through admin-ad-creative-prepare.",
+        }, 422);
+      }
+
+      // (4) Destination resolve — READ-ONLY, public + live only.
+      let resolvedDestinationGV;
+      try {
+        resolvedDestinationGV = await resolveAdDestination(supabase, destinationGV);
+      } catch (err) {
+        if (err instanceof AdDestinationError) {
+          return json({ error: err.code, detail: err.message }, err.status);
+        }
+        return json({ error: "destination_lookup_failed" }, 503);
+      }
+      const destUrlGV = resolvedDestinationGV.canonical_url;
+      const destEventIdGV = resolvedDestinationGV.event_id;
+      const finalUrlCheckGV = validateGoogleFinalUrl(destUrlGV);
+      if (!finalUrlCheckGV.ok) {
+        return json({ error: finalUrlCheckGV.detail, detail: finalUrlCheckGV.message }, 422);
+      }
+
+      // (5) Geo resolution — numeric criterion ids (mirror SEARCH); PRESENCE.
+      const resolvedLocationsGV: ResolvedGeoTarget[] = [];
+      try {
+        if (locationsGV.length > 0) {
+          const gclientGV = await resolveGoogleClient(gconnGV);
+          for (const location of locationsGV) {
+            const nameL = (location.name as string).trim();
+            const countryCodeL = (location.country_code as string).trim().toUpperCase();
+            const resolved = await suggestGeoTargetConstants(gclientGV, {
+              name: nameL,
+              countryCode: countryCodeL,
+            });
+            if (!resolved) {
+              return json({
+                error: "geo_not_resolvable",
+                detail:
+                  `"${nameL}" did not resolve to an ENABLED geo target constant in ${countryCodeL} (countryCode-scoped suggest — GR-37).`,
+              }, 422);
+            }
+            resolvedLocationsGV.push(resolved);
+          }
+        }
+      } catch (err) {
+        if (err instanceof AdNotConnectedError) {
+          return json(
+            { error: err.detail === "google_not_provisioned" ? "google_not_provisioned" : "google_not_connected" },
+            err.detail === "google_not_provisioned" ? 409 : 424,
+          );
+        }
+        if (err instanceof AdApiError) {
+          return json({ error: "geo_not_resolvable", detail: err.toJSON() }, 422);
+        }
+        throw err;
+      }
+      let geoTargetCriterionIdsGV: string[];
+      const geoTargetingRecordGV: Record<string, unknown> = {
+        countries: countryCodesGV,
+        positive_geo_target_type: "PRESENCE",
+      };
+      if (resolvedLocationsGV.length > 0) {
+        geoTargetCriterionIdsGV = resolvedLocationsGV.map((l) => l.criterionId);
+        geoTargetingRecordGV.locations = resolvedLocationsGV.map((l) => ({
+          criterion_id: l.criterionId,
+          name: l.name,
+          canonical_name: l.canonicalName,
+          country_code: l.countryCode,
+          target_type: l.targetType,
+        }));
+      } else {
+        const unresolvedGV = countryCodesGV.filter((code) => !GOOGLE_GEO_COUNTRY_CONSTANTS[code]);
+        if (unresolvedGV.length > 0) {
+          return json({
+            error: "geo_not_resolvable",
+            detail:
+              `Country code(s) ${unresolvedGV.join(", ")} are not in the verified seed constants (US/GB/NG — A1.3 GR-37). Add a CSV-verified constant or target a named location instead.`,
+          }, 422);
+        }
+        geoTargetCriterionIdsGV = countryCodesGV.map(
+          (code) => GOOGLE_GEO_COUNTRY_CONSTANTS[code].criterionId,
+        );
+        geoTargetingRecordGV.country_criterion_ids = geoTargetCriterionIdsGV;
+      }
+      // Record the Demand Gen shape in the persisted targeting jsonb (surface + audit).
+      geoTargetingRecordGV.demand_gen = true;
+      geoTargetingRecordGV.youtube_video_id = youtubeVideoIdGV;
+      geoTargetingRecordGV.business_name = businessNameGV;
+
+      const trackingUrlTemplateGV = buildGoogleTrackingUrlTemplate({
+        pageType: pageTypeGV,
+        brandSlug: brandSlugGV,
+        entitySlug: entitySlugGV || null,
+      });
+
+      const demandGenInput: GoogleDemandGenVideoInput = {
+        name,
+        dailyBudgetCents: amountCents as number,
+        finalUrl: destUrlGV,
+        trackingUrlTemplate: trackingUrlTemplateGV,
+        businessName: businessNameGV,
+        headlines: headlinesGV,
+        longHeadlines: longHeadlinesGV,
+        descriptions: descriptionsGV,
+        youtubeVideoId: youtubeVideoIdGV,
+        geoTargetCriterionIds: geoTargetCriterionIdsGV,
+        validateOnly: validateOnlyG,
+      };
+
+      // (6) The atomic Demand Gen mutate — validateOnly passthrough validates the
+      //     EXACT same body with ZERO objects created (native Google validate).
+      try {
+        const createdGV = await googleCreateDemandGenVideoCampaign(gconnGV, demandGenInput);
+        if (validateOnlyG) {
+          return json({
+            validated: true,
+            validated_layers: [
+              "campaign_budget",
+              "campaign",
+              "geo_criteria",
+              "video_asset",
+              "ad_group",
+              "ad",
+            ],
+            skipped_layers: [],
+            request_id: createdGV.requestId,
+            detail: "validate_only — nothing created on the platform, nothing persisted.",
+          });
+        }
+
+        // Best-effort delivery read-back (sync repairs it).
+        let deliveryStatusGV: string | null = null;
+        try {
+          const adapterGV = getAdapter("google");
+          const statusGV = await adapterGV.getStatus(gconnGV, "campaign", createdGV.externalCampaignId);
+          deliveryStatusGV = statusGV.effectiveStatus;
+        } catch {
+          deliveryStatusGV = null;
+        }
+
+        // (7) Persist ONE campaign+ad_set+ad row set — objective DEMAND_GEN, PAUSED.
+        const { data: campaignRowGV, error: campaignErrGV } = await supabase
+          .from("ad_campaigns")
+          .insert({
+            connection_id: gconnGV.id,
+            platform: "google",
+            external_campaign_id: createdGV.externalCampaignId,
+            name,
+            objective: "DEMAND_GEN", // normalized-per-platform: the advertising channel type
+            status: "PAUSED",
+            daily_budget_cents: amountCents,
+            delivery_status: deliveryStatusGV,
+            status_synced_at: new Date().toISOString(),
+            targeting: geoTargetingRecordGV,
+            dest_page_type: pageTypeGV,
+            dest_brand_slug: brandSlugGV,
+            dest_entity_slug: entitySlugGV || null,
+            dest_event_id: destEventIdGV,
+            dest_url: destUrlGV,
+            dest_smart_link: trackingUrlTemplateGV,
+            dest_group_id: destGroupId,
+            request_id: requestIdG,
+            created_by: user.id,
+          })
+          .select("*")
+          .single();
+
+        let adSetRowGV: Record<string, unknown> | null = null;
+        let adRowGV: Record<string, unknown> | null = null;
+        let persistErrGV = campaignErrGV;
+        if (!persistErrGV && campaignRowGV) {
+          const { data, error } = await supabase
+            .from("ad_sets")
+            .insert({
+              campaign_id: campaignRowGV.id,
+              external_adset_id: createdGV.externalAdSetId,
+              name: `${name} — ad group`,
+              targeting: geoTargetingRecordGV,
+              budget_cents: null, // budget lives on the campaign budget resource
+              optimization_goal: "MAXIMIZE_CLICKS", // targetSpend = maximize clicks (GR-55)
+              bid_strategy: "TARGET_SPEND",
+              billing_event: null,
+              // PAUSED parent + ENABLED ad group — the paused campaign gates delivery.
+              status: "ACTIVE",
+            })
+            .select("*")
+            .single();
+          adSetRowGV = data;
+          persistErrGV = error;
+        }
+        if (!persistErrGV && adSetRowGV) {
+          const { data, error } = await supabase
+            .from("ads")
+            .insert({
+              ad_set_id: adSetRowGV.id,
+              external_ad_id: createdGV.externalAdId,
+              external_creative_id: null, // demandGenVideoResponsiveAd is inline on the ad
+              name: `${name} — ad`,
+              status: "PAUSED",
+              review_status: null, // sync fills approval_status + review_detail (G-3)
+            })
+            .select("*")
+            .single();
+          adRowGV = data;
+          persistErrGV = error;
+        }
+
+        if (persistErrGV) {
+          // Never a half-written DB row set. Everything on Google is PAUSED (zero
+          // spend) and natively consistent; no delete path (REMOVED is permanent),
+          // so the audit row carries the IDs for manual reconciliation.
+          if (campaignRowGV) await supabase.from("ad_campaigns").delete().eq("id", campaignRowGV.id);
+          await supabase.from("ad_status_events").insert({
+            campaign_id: null,
+            platform: "google",
+            entity: "campaign",
+            action: "create_failed",
+            actor: user.id,
+            to_status: null,
+            external_ids: {
+              external_campaign_id: createdGV.externalCampaignId,
+              external_adset_id: createdGV.externalAdSetId,
+              external_ad_id: createdGV.externalAdId,
+              budget_resource_name: createdGV.budgetResourceName,
+            },
+            provider_response: {
+              db_error: persistErrGV.message,
+              request_id: createdGV.requestId,
+              note: "google demand-gen objects exist PAUSED (atomic create succeeded; DB persist failed) — reconcile manually",
+            },
+          });
+          console.error("[admin-ad-create-campaign] google demand-gen persist failed:", persistErrGV.message);
+          return json({ error: "internal_error", detail: "db_persist_failed_google_objects_paused" }, 500);
+        }
+
+        await supabase.from("ad_status_events").insert({
+          campaign_id: campaignRowGV.id,
+          platform: "google",
+          entity: "campaign",
+          action: "create",
+          actor: user.id,
+          from_status: null,
+          to_status: "PAUSED",
+          external_ids: {
+            external_campaign_id: createdGV.externalCampaignId,
+            external_adset_id: createdGV.externalAdSetId,
+            external_ad_id: createdGV.externalAdId,
+            budget_resource_name: createdGV.budgetResourceName,
+          },
+          provider_response: createdGV.requestId ? { request_id: createdGV.requestId } : null,
+        });
+
+        return json({ campaign: campaignRowGV, ad_set: adSetRowGV, ad: adRowGV });
+      } catch (err) {
+        if (err instanceof AdNotConnectedError) {
+          return json(
+            { error: err.detail === "google_not_provisioned" ? "google_not_provisioned" : "google_not_connected" },
+            err.detail === "google_not_provisioned" ? 409 : 424,
+          );
+        }
+        if (err instanceof AdApiError) {
+          // partialFailure:false — the WHOLE request failed; nothing exists on
+          // Google (native atomicity), so there are no partial IDs to reconcile.
+          await supabase.from("ad_status_events").insert({
+            campaign_id: null,
+            platform: "google",
+            entity: "campaign",
+            action: "create_failed",
+            actor: user.id,
+            external_ids: null,
+            provider_response: { step: "atomic_mutate_demand_gen", ...err.toJSON() },
+          });
+          return json({
+            error: "google_create_failed",
+            detail: err.toJSON(),
+            step: "atomic_mutate_demand_gen",
+            rolled_back: null, // nothing to roll back — the mutate is all-or-nothing
+          }, 502);
+        }
+        const detailGV = err instanceof Error ? err.message : String(err);
+        console.error("[admin-ad-create-campaign] google demand-gen unexpected:", detailGV);
+        return json({ error: "internal_error" }, 500);
+      }
     }
     // ISSUE-979 Bug 3: the global compliance intent reaches Google's create path
     // now. Google has no general special-ad-category field and no RSA AI field —

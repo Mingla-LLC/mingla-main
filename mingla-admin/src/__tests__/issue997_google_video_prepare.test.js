@@ -44,33 +44,36 @@ describe("ISSUE-997 D1 · Google video preparation is wired; create stays fail-c
     assert.deepEqual(queue, ["google"], "a funded google video must be prepared");
   });
 
-  // Fails-on-revert (create fail-closed): D2 must not have added google here.
-  it("VIDEO_CREATE_PLATFORMS / VIDEO_CREATE_ENABLED still EXCLUDE google (create fail-closed)", () => {
-    assert.deepEqual([...VIDEO_CREATE_PLATFORMS], ["meta", "snapchat", "tiktok"]);
-    assert.equal(VIDEO_CREATE_ENABLED.google, false);
+  // [TEST-MOD-APPROVED ORCH-0997] D2 wired Google Demand Gen video create, so the
+  // D1-era "google create stays fail-closed / prepared-READY google is
+  // approximation_only" assertions are obsolete. Updated to the new truth (google
+  // IS now in the video-create subset and a prepared-READY google IS buildable),
+  // keeping meta/snap/tiktok intact and reddit still fail-closed. The D1
+  // PREPARATION_ORDER + queued-google tests above are untouched.
+  it("VIDEO_CREATE_PLATFORMS / VIDEO_CREATE_ENABLED now INCLUDE google (D2 create wired); only reddit OFF", () => {
+    assert.deepEqual([...VIDEO_CREATE_PLATFORMS], ["meta", "snapchat", "tiktok", "google"]);
+    assert.equal(VIDEO_CREATE_ENABLED.google, true);
     assert.equal(VIDEO_CREATE_ENABLED.meta, true);
     assert.equal(VIDEO_CREATE_ENABLED.snapchat, true);
     assert.equal(VIDEO_CREATE_ENABLED.tiktok, true);
+    assert.equal(VIDEO_CREATE_ENABLED.reddit, false);
   });
 
-  it("even a prepared-READY google video is EXCLUDED from the build as approximation_only", () => {
+  it("a prepared-READY google video is now BUILDABLE alongside tiktok", () => {
     const { buildable, excluded } = partitionFundedCreative({
       fundedPlatforms: ["tiktok", "google"],
       channels: okChannels(["tiktok", "google"]),
       kind: "video",
       preparationByPlatform: {
         tiktok: { state: "ready" },
-        google: { state: "ready" }, // prepared, yet still not creatable in D1
+        google: { state: "ready" }, // prepared → now creatable (Demand Gen)
       },
     });
-    assert.deepEqual(buildable, ["tiktok"]);
-    assert.equal(
-      excluded.find((e) => e.platform === "google").reason,
-      "approximation_only",
-    );
+    assert.deepEqual(buildable.sort(), ["google", "tiktok"]);
+    assert.deepEqual(excluded, []);
   });
 
-  it("readyVideoSubset + videoPreparationGate never surface google as creatable", () => {
+  it("readyVideoSubset + videoPreparationGate surface a READY google as creatable", () => {
     const rows = {
       meta: { state: "ready" },
       tiktok: { state: "ready" },
@@ -81,16 +84,13 @@ describe("ISSUE-997 D1 · Google video preparation is wired; create stays fail-c
         fundedPlatforms: ["meta", "tiktok", "google"],
         rows,
       }).sort(),
-      ["meta", "tiktok"],
+      ["google", "meta", "tiktok"],
     );
     const gate = videoPreparationGate({
       fundedPlatforms: ["meta", "tiktok", "google"],
       rows,
     });
-    assert.equal(gate.ready.includes("google"), false);
-    assert.equal(
-      gate.excluded.find((x) => x.platform === "google").reason,
-      "approximation_only",
-    );
+    assert.equal(gate.ready.includes("google"), true);
+    assert.equal(gate.excluded.find((x) => x.platform === "google"), undefined);
   });
 });

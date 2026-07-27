@@ -6,10 +6,7 @@
  */
 
 // ISSUE-997 D1: Google joins the PREPARATION queue so a Google video can walk
-// meta→snapchat→tiktok→google to READY (its YouTube resumable upload). Google
-// video CREATE stays a SEPARATE, still-fail-closed gate (it is intentionally NOT
-// added to VIDEO_CREATE_PLATFORMS / VIDEO_CREATE_ENABLED until 997-D2), so a
-// prepared-READY Google row is still excluded from the build as approximation_only.
+// meta→snapchat→tiktok→google to READY (its YouTube resumable upload).
 export const PREPARATION_ORDER = Object.freeze([
   "meta",
   "snapchat",
@@ -17,9 +14,10 @@ export const PREPARATION_ORDER = Object.freeze([
   "google",
 ]);
 // ISSUE-997 C: TikTok joins the video-create subset (paused-video wired
-// end-to-end). Google stays out of the CREATE subset until the separate 997-D2
-// sub-wave — preparation (above) is wired in D1, create remains fail-closed.
-export const VIDEO_CREATE_PLATFORMS = Object.freeze(["meta", "snapchat", "tiktok"]);
+// end-to-end). ISSUE-997 D2: Google joins too — the admin-ad-create-campaign
+// Google Demand Gen branch builds a PAUSED demandGenVideoResponsiveAd from a
+// READY google ref (youtube_video_id). ONLY Reddit video create stays fail-closed.
+export const VIDEO_CREATE_PLATFORMS = Object.freeze(["meta", "snapchat", "tiktok", "google"]);
 export const ACTIVE_PREPARATION_STATES = Object.freeze(["uploading", "processing"]);
 export const TERMINAL_PREPARATION_STATES = Object.freeze(["ready", "failed", "timed_out"]);
 const BUNNY_VIDEO_ID = /^[A-Za-z0-9-]{1,128}$/;
@@ -74,6 +72,18 @@ export function emptyPreparation(platform) {
     capability: platform === "meta"
       ? "create_and_real_preview"
       : platform === "snapchat"
+      ? "create_and_approx_preview"
+      // ISSUE-997 D2: reconciled with the edge capabilityFor("google") default
+      // ("create_and_approx_preview" — Google exposes no video-ad preview API so
+      // preview stays approximation-only, but create IS wired). Fixes the P4
+      // divergence where the frontend labelled google "preview_only" while the edge
+      // labelled it "create_and_approx_preview".
+      // ISSUE-997 D2: reconciled with the edge capabilityFor("google") default
+      // ("create_and_approx_preview" — Google exposes no video-ad preview API so
+      // preview stays approximation-only, but create IS wired). Fixes the P4
+      // divergence where the frontend labelled google "preview_only" while the edge
+      // labelled it "create_and_approx_preview".
+      : platform === "google"
       ? "create_and_approx_preview"
       // ISSUE-997 C: kept in lock-step with the edge capabilityFor("tiktok") default
       // (still "preview_only" — see the note there). This label is cosmetic; TikTok
@@ -164,12 +174,11 @@ export function videoPreparationGate(input) {
       .filter((platform) => !ready.includes(platform))
       .map((platform) => ({
         platform,
-        // ISSUE-997 C: tiktok is now in VIDEO_CREATE_PLATFORMS, so it is excluded
-        // ONLY when its preparation is not ready (preparation_<state>) — never as
-        // "preview_only". google (approximation_only) / reddit (video_excluded) stay.
-        reason: platform === "google"
-          ? "approximation_only"
-          : platform === "reddit"
+        // ISSUE-997 C/D2: tiktok AND google are now in VIDEO_CREATE_PLATFORMS, so
+        // each is excluded ONLY when its preparation is not ready
+        // (preparation_<state>) — never as "approximation_only". Only reddit
+        // (video_excluded) stays hard-excluded from video create.
+        reason: platform === "reddit"
           ? "video_excluded"
           : `preparation_${input.rows?.[platform]?.state ?? "not_started"}`,
       })),

@@ -33,6 +33,7 @@ import {
   assert,
   assertEquals,
   assertRejects,
+  assertStringIncludes,
 } from "https://deno.land/std@0.190.0/testing/asserts.ts";
 import type { AdConnectionRow } from "../adChannel.ts";
 import type { AdCreativeRow } from "../adCreative.ts";
@@ -734,34 +735,50 @@ Deno.test("ADV D1: no sibling adapter check() body references mergeExtra (source
   );
 });
 
-// ══ 5. GUARDRAIL — Google video CREATE stays fail-closed; create is BLIND to the prepared id ══
+// ══ 5. GUARDRAIL — post-D2, Google video CREATE consumes the prepared id; Reddit stays closed ══
 
-Deno.test("ADV D1 guardrail: the create module has ZERO Demand Gen / youtube_video_id knowledge (D2 not built)", async () => {
+// [TEST-MOD-APPROVED ORCH-0997] D2 wired Google Demand Gen video create, so the
+// D1-era "create is BLIND to the prepared id / D2 not built" adversarial guard is
+// obsolete. Updated to the new truth (the create module now consumes the prepared
+// youtube_video_id through the Demand Gen create fn), while KEEPING Reddit
+// fail-closed and asserting the create side stays a READY-ref consumer (never an
+// inline uploader). D1's prepare-side assertions (§1–§4) are untouched.
+Deno.test("ADV D2 guardrail: the create module consumes the prepared youtube_video_id (Demand Gen wired); Reddit stays fail-closed", async () => {
   const src = await Deno.readTextFile(
     new URL("../../admin-ad-create-campaign/index.ts", import.meta.url),
   );
-  // A READY google ref can never build a create because the create side does not
-  // even know how to consume the prepared youtube_video_id yet.
+  // The create side now knows the Demand Gen create fn + the prepared id.
   for (
     const symbol of [
       "youtube_video_id",
-      "youTubeVideoAsset",
-      "demandGenVideoResponsiveAd",
-      "DEMAND_GEN",
-      "buildGoogleDemandGenMutateOperations",
       "googleCreateDemandGenVideoCampaign",
+      "DEMAND_GEN",
     ]
   ) {
     assertEquals(
       src.includes(symbol),
-      false,
-      `create module must not contain D2 symbol: ${symbol}`,
+      true,
+      `create module must now contain D2 symbol: ${symbol}`,
     );
   }
-  // And the google video branch still returns the 422 phase-a seam.
+  // But it stays a READY-ref CONSUMER — it never uploads google video bytes inline
+  // (the prepare adapter owns the YouTube resumable upload). A stale/incomplete ref
+  // fails closed; the ref is advertiser + content-hash scoped.
+  const gStart = src.indexOf('if (platform === "google")');
+  const gEnd = src.indexOf('if (platform === "snapchat")');
+  assert(gStart >= 0 && gEnd > gStart, "could not bound the google branch");
+  const googleBranch = src.slice(gStart, gEnd);
+  assertStringIncludes(googleBranch, "creative_ref_incomplete");
+  assertStringIncludes(googleBranch, '.eq("external_account_id", gconnGV.external_account_id)');
+  assertStringIncludes(googleBranch, '.eq("content_hash", libCreativeGV.content_hash)');
+  // The google branch no longer fail-closes; only Reddit does.
   assert(
-    /creativeG\.kind === "video"[\s\S]{0,200}video_create_not_available_phase_a/
+    !googleBranch.includes("video_create_not_available_phase_a"),
+    "google video create must no longer fail closed",
+  );
+  assert(
+    /creativeR\.kind === "video"[\s\S]{0,200}video_create_not_available_phase_a/
       .test(src),
-    "google video create must still fail closed (422)",
+    "Reddit video create must still fail closed (422)",
   );
 });
