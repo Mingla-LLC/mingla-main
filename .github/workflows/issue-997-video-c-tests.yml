@@ -21,6 +21,7 @@ on:
       - "supabase/functions/admin-ad-create-campaign/**"
       - "supabase/functions/admin-ad-creative-prepare/**"
       - "supabase/functions/_shared/__tests__/issue997_tiktok_video_create.test.ts"
+      - "supabase/functions/_shared/__tests__/issue997_tiktok_video_create.adversarial.tester.test.ts"
       - "supabase/functions/_shared/__tests__/issue1184_video_prepare*.test.ts"
       - "supabase/functions/_shared/__tests__/tiktok.test.ts"
       - "supabase/functions/_shared/__tests__/issue86*_wp*.test.ts"
@@ -58,7 +59,8 @@ jobs:
         # `deno check` (type-check) + the regression suites below + `git diff --check`.
         run: |
           deno fmt --check \
-            supabase/functions/_shared/__tests__/issue997_tiktok_video_create.test.ts
+            supabase/functions/_shared/__tests__/issue997_tiktok_video_create.test.ts \
+            supabase/functions/_shared/__tests__/issue997_tiktok_video_create.adversarial.tester.test.ts
       - name: Type-check the changed edge modules
         run: |
           deno check \
@@ -72,6 +74,7 @@ jobs:
         run: |
           files=(
             supabase/functions/_shared/__tests__/issue997_tiktok_video_create.test.ts
+            supabase/functions/_shared/__tests__/issue997_tiktok_video_create.adversarial.tester.test.ts
             supabase/functions/_shared/__tests__/issue1184_video_prepare.test.ts
             supabase/functions/_shared/__tests__/issue1184_video_prepare_adversarial.tester.test.ts
             supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts
@@ -104,6 +107,7 @@ jobs:
         run: |
           node --test \
             src/__tests__/issue997_tiktok_video_create.test.js \
+            src/__tests__/issue997_tiktok_video_create.adversarial.tester.test.js \
             src/__tests__/issue995_creative_video_not_creatable.test.js \
             src/__tests__/issue1184_video_phase_a.test.js \
             src/__tests__/issue1184_video_phase_a.adversarial.tester.test.js \
