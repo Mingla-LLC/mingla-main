@@ -59,7 +59,8 @@ jobs:
       - name: Run the #1177 organiser Paystack execution behavior tests
         run: |
           deno test --allow-read --allow-env --allow-net --no-check \
-            supabase/functions/payout-release-sweep/__tests__/issue_1177_paystack_organiser_release.test.ts
+            supabase/functions/payout-release-sweep/__tests__/issue_1177_paystack_organiser_release.test.ts \
+            supabase/functions/payout-release-sweep/__tests__/issue_1177_paystack_organiser_release_adversarial.test.ts
       - name: Remove disposable database
         if: always()
         run: docker rm -f issue1177-postgres || true
