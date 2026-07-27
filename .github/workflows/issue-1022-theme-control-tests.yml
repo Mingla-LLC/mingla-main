@@ -24,6 +24,7 @@ on:
       - "mingla-business/src/services/tripsService.ts"
       - "mingla-business/src/services/experienceDetailService.ts"
       - "mingla-business/src/utils/serverDraftEventMapper.ts"
+      - "mingla-business/src/utils/__tests__/serverDraftEventMapper.test.ts"
       - "mingla-business/src/utils/liveEventAdapter.ts"
       - "mingla-business/src/utils/draftDirtyCheck.ts"
       - "mingla-business/src/utils/draftEventPristine.ts"
@@ -56,6 +57,7 @@ on:
       - "mingla-business/src/services/tripsService.ts"
       - "mingla-business/src/services/experienceDetailService.ts"
       - "mingla-business/src/utils/serverDraftEventMapper.ts"
+      - "mingla-business/src/utils/__tests__/serverDraftEventMapper.test.ts"
       - "mingla-business/src/utils/liveEventAdapter.ts"
       - "mingla-business/src/utils/draftDirtyCheck.ts"
       - "mingla-business/src/utils/draftEventPristine.ts"
@@ -119,6 +121,7 @@ jobs:
           src/utils/__tests__/issue1022ReworkFindings.test.ts
           src/utils/__tests__/issue1022TesterAdversarial.test.ts
           src/utils/__tests__/issue1022RetestHonestyEngine.test.ts
+          src/utils/__tests__/serverDraftEventMapper.test.ts
           --runInBand
       # The ORCH-0964 hex contract is append-only and must keep passing
       # UNMODIFIED alongside the new short-hex blur expansion.
