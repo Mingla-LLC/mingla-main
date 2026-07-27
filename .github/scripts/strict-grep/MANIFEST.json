@@ -15,7 +15,7 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 440,
+  "expectedStrictGrepMjsFiles": 442,
   "selfTestWiredFloor": 247,
   "unenforcedCap": 7,
   "fixtureCap": 10,
@@ -2400,6 +2400,28 @@
     },
     {
       "script": ".github/scripts/strict-grep/__tests__/issue-1001-brand-asset-parity.adversarial.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/__tests__/issue-958-bracketed-worktree-spawn.regression.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/__tests__/issue-958-next-walker-and-unicode-path.adversarial.mjs",
       "kind": "file",
       "enforcement": "batch:A",
       "invocation": "node --test",

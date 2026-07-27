@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
 
@@ -9,6 +10,7 @@ const SCRIPT = new URL(
   "./i-proposed-orch-0943-custom-coords-locked.mjs",
   import.meta.url,
 );
+const SCRIPT_PATH = fileURLToPath(SCRIPT);
 
 function writeFixture(root, rel, source) {
   const file = join(root, rel);
@@ -21,7 +23,7 @@ function runAgainst(source) {
   const root = mkdtempSync(join(tmpdir(), "orch-0943-coords-lock-"));
   try {
     writeFixture(root, "Fixture.tsx", source);
-    return spawnSync(process.execPath, [SCRIPT.pathname, "--root", root], {
+    return spawnSync(process.execPath, [SCRIPT_PATH, "--root", root], {
       encoding: "utf8",
     });
   } finally {
@@ -30,7 +32,7 @@ function runAgainst(source) {
 }
 
 test("ORCH-0943 gate passes the post-fix codebase", () => {
-  const output = execFileSync(process.execPath, [SCRIPT.pathname], {
+  const output = execFileSync(process.execPath, [SCRIPT_PATH], {
     encoding: "utf8",
   });
   assert.match(output, /PASS/);
