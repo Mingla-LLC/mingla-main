@@ -85,19 +85,6 @@ function readOrEmpty(path) {
   }
 }
 
-const failures = [];
-
-let scanned = 0;
-const files = [];
-try {
-  for (const file of walk(BUSINESS_ROOT)) {
-    files.push(file);
-    scanned += 1;
-  }
-} catch (err) {
-  failures.push(`Walk FAIL: cannot scan mingla-business/: ${err.message}`);
-}
-
 // Check 1 — Stripe Web JS SDK packages are forbidden in mingla-business/src/
 // (the shared RN code tree). Mingla-hosted web pages under mingla-business/app/
 // may import them (that's Path B per I-PROPOSED-O). Importing them from RN
@@ -114,45 +101,136 @@ try {
 // NATIVE code) does not apply. See SPEC §C-1 + INVARIANT I-PROPOSED-1083-A.
 const CHECK1_PATTERN = /from\s+["']@stripe\/(react-)?connect-js["']/;
 const WEB_ONLY_EXT = /\.web\.(tsx?|jsx?)$/;
-for (const file of files) {
-  if (!file.startsWith(BUSINESS_SRC)) continue;
-  if (WEB_ONLY_EXT.test(file)) continue; // web-only file → never in native bundle
-  const src = readOrEmpty(file);
-  if (CHECK1_PATTERN.test(src)) {
-    const rel = relative(REPO_ROOT, file);
-    failures.push(
-      `Check 1 FAIL (${rel}): Stripe Web JS SDK import in mingla-business/src/ is FORBIDDEN. These packages belong in Mingla-hosted web pages under mingla-business/app/ (Path B). I-PROPOSED-O.`,
-    );
-  }
-}
-
 // Check 2 — no Path A marker (RN SDK Connect Embedded Components)
 // Path A is FORBIDDEN until all three RN components reach GA.
 const CHECK2_PATTERN_A = /from\s+["']@stripe\/stripe-react-native["']/;
 const CHECK2_PATTERN_B = /ConnectComponentsProvider/;
-for (const file of files) {
-  const src = readOrEmpty(file);
-  if (CHECK2_PATTERN_A.test(src) && CHECK2_PATTERN_B.test(src)) {
-    const rel = relative(REPO_ROOT, file);
-    failures.push(
-      `Check 2 FAIL (${rel}): RN SDK Connect Embedded Components (Path A) is FORBIDDEN until all three Preview components reach GA. Use Path B (Mingla-hosted web page + expo-web-browser) instead — see app/connect-onboarding.tsx. I-PROPOSED-O EXIT condition.`,
-    );
+// Check 3 — anti-WebView-wrap guard
+// Disallow co-occurrence of WebView + (@stripe/connect-js | connect.stripe.com).
+const CHECK3_WEBVIEW = /\bWebView\b/;
+const CHECK3_STRIPE = /(@stripe\/connect-js|connect\.stripe\.com)/;
+
+// mingla-business/src/ repo-relative prefix — Check 1 only applies under src/.
+const BUSINESS_SRC_REL = "mingla-business/src";
+
+/**
+ * Pure verdict. `fileEntries` = [{ rel, content }] with `rel` the repo-relative
+ * POSIX path (drives Check-1's src/ scoping + .web exemption, and all reporting).
+ * Runs the three checks in the original order (all Check-1 hits, then Check-2,
+ * then Check-3) so the emitted failure list is byte-identical to the original.
+ * Behavior-preserving refactor.
+ */
+function check(fileEntries, failures) {
+  // Check 1 — Web JS SDK forbidden in native src/ (web-only files exempt).
+  for (const { rel, content } of fileEntries) {
+    if (!rel.startsWith(BUSINESS_SRC_REL)) continue;
+    if (WEB_ONLY_EXT.test(rel)) continue; // web-only file → never in native bundle
+    if (CHECK1_PATTERN.test(content)) {
+      failures.push(
+        `Check 1 FAIL (${rel}): Stripe Web JS SDK import in mingla-business/src/ is FORBIDDEN. These packages belong in Mingla-hosted web pages under mingla-business/app/ (Path B). I-PROPOSED-O.`,
+      );
+    }
+  }
+  // Check 2 — Path A RN SDK Connect Embedded Components marker (held until GA).
+  for (const { rel, content } of fileEntries) {
+    if (CHECK2_PATTERN_A.test(content) && CHECK2_PATTERN_B.test(content)) {
+      failures.push(
+        `Check 2 FAIL (${rel}): RN SDK Connect Embedded Components (Path A) is FORBIDDEN until all three Preview components reach GA. Use Path B (Mingla-hosted web page + expo-web-browser) instead — see app/connect-onboarding.tsx. I-PROPOSED-O EXIT condition.`,
+      );
+    }
+  }
+  // Check 3 — DIY WebView wrap of Stripe Embedded Components.
+  for (const { rel, content } of fileEntries) {
+    if (CHECK3_WEBVIEW.test(content) && CHECK3_STRIPE.test(content)) {
+      failures.push(
+        `Check 3 FAIL (${rel}): DIY WebView wrap of Stripe Embedded Components is FORBIDDEN. Use Path B (expo-web-browser) instead. I-PROPOSED-O.`,
+      );
+    }
   }
 }
 
-// Check 3 — anti-WebView-wrap guard
-// Disallow co-occurrence of WebView + (@stripe/connect-js | connect.stripe.com) in the same file.
-const CHECK3_WEBVIEW = /\bWebView\b/;
-const CHECK3_STRIPE = /(@stripe\/connect-js|connect\.stripe\.com)/;
-for (const file of files) {
-  const src = readOrEmpty(file);
-  if (CHECK3_WEBVIEW.test(src) && CHECK3_STRIPE.test(src)) {
-    const rel = relative(REPO_ROOT, file);
-    failures.push(
-      `Check 3 FAIL (${rel}): DIY WebView wrap of Stripe Embedded Components is FORBIDDEN. Use Path B (expo-web-browser) instead. I-PROPOSED-O.`,
-    );
+// ─────────────────────────────────────────────────────────────── self-test
+if (process.argv.includes("--self-test")) {
+  const self = [];
+  const run = (entries) => {
+    const f = [];
+    check(entries, f);
+    return f;
+  };
+
+  // GOOD: a clean src/ file (no Web JS SDK, no Path A marker, no WebView wrap).
+  let f = run([
+    {
+      rel: "mingla-business/src/components/PaymentsView.tsx",
+      content: 'import React from "react";\nexport const X = () => null;\n',
+    },
+  ]);
+  if (f.length) self.push("GOOD (clean src file) wrongly flagged");
+
+  // SPECIFICITY: a .web.tsx file under src/ MAY carry the Web JS SDK (web-only
+  // bundle, ORCH-1083 exemption) → Check 1 must stay silent.
+  f = run([
+    {
+      rel: "mingla-business/src/components/stripe/connect-pages/OnboardBody.web.tsx",
+      content: 'import { loadConnectAndInitialize } from "@stripe/connect-js";\n',
+    },
+  ]);
+  if (f.length) self.push(".web.tsx Web JS import (ORCH-1083 exemption) wrongly flagged");
+
+  // SPECIFICITY: a Mingla-hosted page under app/ MAY carry the Web JS SDK (Path B).
+  f = run([
+    {
+      rel: "mingla-business/app/connect-onboarding.tsx",
+      content: 'import { loadConnectAndInitialize } from "@stripe/connect-js";\n',
+    },
+  ]);
+  if (f.length) self.push("app/ Path-B Web JS import wrongly flagged");
+
+  // BAD1 (revert-style): @stripe/react-connect-js imported in native src/ → Check 1.
+  f = run([
+    {
+      rel: "mingla-business/src/screens/ConnectOnboard.tsx",
+      content: 'import { ConnectComponentsProvider } from "@stripe/react-connect-js";\n',
+    },
+  ]);
+  if (f.length === 0) self.push("BAD1 (react-connect-js in src/) not flagged");
+
+  // BAD2 (regression, different angle): @stripe/connect-js imported in native src/.
+  f = run([
+    {
+      rel: "mingla-business/src/screens/ConnectOnboard2.tsx",
+      content: 'import { loadConnectAndInitialize } from "@stripe/connect-js";\n',
+    },
+  ]);
+  if (f.length === 0) self.push("BAD2 (connect-js in src/) not flagged");
+
+  if (self.length) {
+    console.error("ORCH-0802 self-test FAIL:");
+    self.forEach((m) => console.error("  - " + m));
+    process.exit(1);
   }
+  console.log("ORCH-0802 self-test PASS (5/5 cases).");
+  process.exit(0);
 }
+
+// ─────────────────────────────────────────────────────────────── main path
+const failures = [];
+
+let scanned = 0;
+const fileEntries = [];
+try {
+  for (const file of walk(BUSINESS_ROOT)) {
+    fileEntries.push({
+      rel: relative(REPO_ROOT, file),
+      content: readOrEmpty(file),
+    });
+    scanned += 1;
+  }
+} catch (err) {
+  failures.push(`Walk FAIL: cannot scan mingla-business/: ${err.message}`);
+}
+
+check(fileEntries, failures);
 
 if (failures.length > 0) {
   console.error("ORCH-0802 strict-grep FAIL:");
