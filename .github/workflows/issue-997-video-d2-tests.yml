@@ -66,7 +66,8 @@ jobs:
         # admin-ad-create-campaign/index.ts are NOT reformatted — same reason.)
         run: |
           deno fmt --check \
-            supabase/functions/_shared/__tests__/issue997_google_video_create.test.ts
+            supabase/functions/_shared/__tests__/issue997_google_video_create.test.ts \
+            supabase/functions/_shared/__tests__/issue997_google_video_create.adversarial.tester.test.ts
       - name: Type-check the changed edge modules
         run: |
           deno check \
@@ -83,6 +84,7 @@ jobs:
         run: |
           files=(
             supabase/functions/_shared/__tests__/issue997_google_video_create.test.ts
+            supabase/functions/_shared/__tests__/issue997_google_video_create.adversarial.tester.test.ts
             supabase/functions/_shared/__tests__/issue997_google_video_prepare.test.ts
             supabase/functions/_shared/__tests__/issue997_google_video_prepare.adversarial.tester.test.ts
             supabase/functions/_shared/__tests__/issue997_tiktok_video_create.test.ts
@@ -125,6 +127,7 @@ jobs:
         run: |
           node --test \
             src/__tests__/issue997_google_video_create.test.js \
+            src/__tests__/issue997_google_video_create.adversarial.tester.test.js \
             src/__tests__/issue997_google_video_prepare.test.js \
             src/__tests__/issue997_google_video_prepare.adversarial.tester.test.js \
             src/__tests__/issue997_tiktok_video_create.test.js \
