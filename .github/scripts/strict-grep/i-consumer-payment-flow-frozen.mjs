@@ -109,35 +109,87 @@ const FROZEN_FILES = [
   },
 ];
 
-const violations = [];
-
-for (const entry of FROZEN_FILES) {
-  const abs = join(ROOT, entry.path);
-  if (!existsSync(abs)) {
-    violations.push({
-      file: entry.path,
-      msg: "Frozen file missing — consumer payment flow must remain present.",
-    });
-    continue;
-  }
-  const src = readFileSync(abs, "utf8");
-  for (const needle of entry.mustContain) {
-    if (!src.includes(needle)) {
+// Pure verdict (behavior-preserving refactor). `files` maps each frozen path to
+// its content, or null if absent. Pushes { file, msg } records into `violations`
+// in FROZEN_FILES order (mustContain checks, then mustNotContain) as before.
+// Never touches disk.
+function check(files, violations) {
+  for (const entry of FROZEN_FILES) {
+    const src = files[entry.path];
+    if (src == null) {
       violations.push({
         file: entry.path,
-        msg: `Expected identifier "${needle}" missing — consumer flow appears to have been modified.`,
+        msg: "Frozen file missing — consumer payment flow must remain present.",
       });
+      continue;
     }
-  }
-  for (const needle of entry.mustNotContain) {
-    if (src.includes(needle)) {
-      violations.push({
-        file: entry.path,
-        msg: `Unexpected identifier "${needle}" present — consumer flow appears to have been migrated to a pattern that belongs in a separate ORCH (e.g., ORCH-0853 [Consumer-app synchronous checkout confirm parity]). Cite [CONSUMER-MOD-APPROVED ORCH-NNNN] and update this gate together.`,
-      });
+    for (const needle of entry.mustContain) {
+      if (!src.includes(needle)) {
+        violations.push({
+          file: entry.path,
+          msg: `Expected identifier "${needle}" missing — consumer flow appears to have been modified.`,
+        });
+      }
+    }
+    for (const needle of entry.mustNotContain) {
+      if (src.includes(needle)) {
+        violations.push({
+          file: entry.path,
+          msg: `Unexpected identifier "${needle}" present — consumer flow appears to have been migrated to a pattern that belongs in a separate ORCH (e.g., ORCH-0853 [Consumer-app synchronous checkout confirm parity]). Cite [CONSUMER-MOD-APPROVED ORCH-NNNN] and update this gate together.`,
+        });
+      }
     }
   }
 }
+
+// ─────────────────────────────────────────────────────────────── self-test
+if (process.argv.includes("--self-test")) {
+  const self = [];
+  const run = (map) => {
+    const v = [];
+    check(map, v);
+    return v;
+  };
+
+  // GOOD: every frozen file carries all its load-bearing identifiers and none of
+  // the sync-confirm identifiers → silent.
+  const GOOD = {};
+  for (const e of FROZEN_FILES) GOOD[e.path] = e.mustContain.join("\n");
+  if (run(GOOD).length) self.push("GOOD (all frozen consumer identifiers intact) wrongly flagged");
+
+  // BAD1 (revert-style): runNativeCheckout removed from ConsumerEventDetailScreen
+  // (the fire-and-forget flow rewritten) → fires.
+  const eventScreen = FROZEN_FILES[1].path;
+  const bad1 = {
+    ...GOOD,
+    [eventScreen]: FROZEN_FILES[1].mustContain.filter((n) => n !== "runNativeCheckout").join("\n"),
+  };
+  if (run(bad1).length === 0) self.push("BAD1 (runNativeCheckout removed from ConsumerEventDetailScreen) not flagged");
+
+  // BAD2 (regression, different angle): the sync-confirm identifier
+  // confirmTicketCheckout is adopted in nativeCheckoutFlow → fires.
+  const flow = FROZEN_FILES[0].path;
+  const bad2 = { ...GOOD, [flow]: GOOD[flow] + "\nconfirmTicketCheckout(order);" };
+  if (run(bad2).length === 0) self.push("BAD2 (confirmTicketCheckout adopted in nativeCheckoutFlow) not flagged");
+
+  if (self.length) {
+    console.error("I-CONSUMER-PAYMENT-FLOW-FROZEN self-test FAIL:");
+    self.forEach((m) => console.error("  - " + m));
+    process.exit(1);
+  }
+  console.log("I-CONSUMER-PAYMENT-FLOW-FROZEN self-test PASS (3/3 cases).");
+  process.exit(0);
+}
+
+// ─────────────────────────────────────────────────────────────── main path
+const files = {};
+for (const entry of FROZEN_FILES) {
+  const abs = join(ROOT, entry.path);
+  files[entry.path] = existsSync(abs) ? readFileSync(abs, "utf8") : null;
+}
+
+const violations = [];
+check(files, violations);
 
 if (violations.length > 0) {
   console.error("\n[ORCH-0852 — i-consumer-payment-flow-frozen] VIOLATIONS:\n");
