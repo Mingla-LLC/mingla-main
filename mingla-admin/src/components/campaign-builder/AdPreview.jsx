@@ -10,6 +10,7 @@ import { requestVideoPreview } from "../../services/adEngineService";
 import { PLATFORM_LABELS } from "../../lib/adBuilder/channelPlan";
 import { VIDEO_API_AD_PREVIEWS_ENABLED } from "../../lib/adBuilder/flags";
 import { previewRequestFingerprint } from "../../lib/adBuilder/preparationState";
+import { openExternal } from "../../lib/openExternal";
 import { Button } from "../ui/Button";
 
 const PLACEMENTS = {
@@ -235,7 +236,7 @@ export function AdPreview({
       url: data.url,
       fingerprint: requestFingerprint,
     });
-    window.open(data.url, "_blank", "noopener,noreferrer");
+    openExternal(data.url);
   };
 
   const approximation = (
