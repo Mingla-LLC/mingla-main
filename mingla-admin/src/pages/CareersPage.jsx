@@ -22,6 +22,7 @@ import { Badge } from "../components/ui/Badge";
 import { Modal, ModalBody, ModalFooter } from "../components/ui/Modal";
 import { Spinner } from "../components/ui/Spinner";
 import { useToast } from "../context/ToastContext";
+import { openExternal } from "../lib/openExternal";
 import {
   getCvSignedUrl,
   listApplications,
@@ -162,7 +163,7 @@ export function CareersPage() {
       setCvLoading(true);
       try {
         const url = await getCvSignedUrl(applicationId);
-        window.open(url, "_blank", "noopener,noreferrer");
+        openExternal(url);
       } catch (e) {
         addToast({ variant: "error", title: "Couldn't fetch CV", description: e?.message });
       } finally {
