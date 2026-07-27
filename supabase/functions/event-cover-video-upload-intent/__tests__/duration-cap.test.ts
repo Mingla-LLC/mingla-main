@@ -1,3 +1,12 @@
+// #966 [TEST-MOD-APPROVED ORCH-0966] — cover-video is Bunny-only. The upload
+// intent used to run the Cloudinary signature/URL branch by default; post-#966
+// coverVideoProvider() is hard-wired to "bunny", so the intent runs the Bunny/TUS
+// branch. This suite is adapted to inject Bunny deps (bunnyCreateVideo /
+// bunnyPresignTusUpload) instead of the removed cloudinarySignature dep, and the
+// Cloudinary `eager`/`du_30` payload assertion was retired. The LIVE, provider-
+// agnostic duration-cap boundaries — 33000ms accept / 33001ms reject (the 33001
+// reject returns 422 before any provider branch) and the trim-clamp insert
+// values — are preserved verbatim.
 import {
   handleEventCoverVideoUploadIntent,
   SOURCE_CEILING_MS,
@@ -69,8 +78,20 @@ const createSupabaseStub = (captured: CapturedUploadIntentWrite = {}) => {
   };
 };
 
+// #966 — Bunny deps replace the removed cloudinarySignature dep. bunnyCreateVideo
+// returns a guid; bunnyPresignTusUpload returns a TUS descriptor. The intent's
+// Bunny branch returns 200 with { jobId, provider: "bunny", upload: { protocol:
+// "tus", ... } }.
 const createDeps = (captured: CapturedUploadIntentWrite = {}) => ({
-  cloudinarySignature: () => Promise.resolve("signed-upload-payload"),
+  bunnyCreateVideo: () => Promise.resolve({ ok: true as const, guid: "bunny-guid-source-ceiling" }),
+  bunnyPresignTusUpload: () =>
+    Promise.resolve({
+      tusEndpoint: "https://video.bunnycdn.com/tusupload",
+      libraryId: "lib-test",
+      videoId: "bunny-guid-source-ceiling",
+      authorizationSignature: "sig-test",
+      authorizationExpire: 1_760_000_000,
+    }),
   providerConfigured: () => true,
   requireEventManager: () =>
     Promise.resolve({ event: { brand_id: BRAND_ID, id: EVENT_ID, status: "published" } }),
@@ -79,10 +100,6 @@ const createDeps = (captured: CapturedUploadIntentWrite = {}) => ({
 });
 
 Deno.test("ORCH-0978 duration cap accepts 33000ms source boundary", async () => {
-  Deno.env.set("CLOUDINARY_CLOUD_NAME", "mingla-test");
-  Deno.env.set("CLOUDINARY_API_KEY", "api-key");
-  Deno.env.set("SUPABASE_URL", "https://example.supabase.co");
-
   const response = await handleEventCoverVideoUploadIntent(
     makeRequest({ sourceDurationMs: SOURCE_CEILING_MS }),
     createDeps() as never,
@@ -126,8 +143,6 @@ Deno.test("ORCH-0978 generous source clamps persisted trim window to 30000ms", a
     createDeps(captured) as never,
   );
   const body = await response.json();
-  const eager = (captured.providerPayload?.provider_payload as { eager?: string } | undefined)
-    ?.eager;
 
   if (response.status !== 200) {
     throw new Error(
@@ -143,9 +158,6 @@ Deno.test("ORCH-0978 generous source clamps persisted trim window to 30000ms", a
     throw new Error(
       `Expected clamped trim_end_ms=30000, received ${String(captured.insert?.trim_end_ms)}`,
     );
-  }
-  if (typeof eager !== "string" || !eager.includes("du_30")) {
-    throw new Error(`Expected eager transformation to contain du_30, received ${String(eager)}`);
   }
 });
 

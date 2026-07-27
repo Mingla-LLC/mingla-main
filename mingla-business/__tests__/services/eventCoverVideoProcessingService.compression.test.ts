@@ -1,4 +1,29 @@
+// #966 [TEST-MOD-APPROVED ORCH-0966] — cover-video is Bunny-only. This suite's
+// PRIMARY proof is compressVideoLocally + the compressed bytes flowing into the
+// upload intent (the fails-on-revert core). Its upload leg previously exercised
+// the Cloudinary multipart transport (createMultipartUploadTask), which was
+// removed as dead residue post-META-1270. It is adapted here to the live Bunny
+// TUS transport (protocol:"tus" descriptor + mocked eventCoverVideoTusPatch +
+// TUS-create fetch), mirroring the tusPatchErrorSurface.orch1301 mock recipe. The
+// compression + intent-body assertions are preserved verbatim.
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
+
+// #966 — the native TUS transport module the service imports. Mocking it (as the
+// orch1301 suite does) lets the compressed-bytes upload leg run through the live
+// Bunny TUS path under node/ts-jest without a real native module or network.
+// These `mock`-prefixed fns + the jest.mock MUST be declared BEFORE the service
+// import so they are initialized when the service's transitive require pulls the
+// mocked module in (jest hoists the jest.mock, not the const).
+const mockReadBytes = jest.fn<(uri: string) => Promise<Uint8Array>>();
+const mockPatchBunny =
+  jest.fn<
+    (input: { url: string; headers: Record<string, string>; body: Uint8Array; signal?: AbortSignal }) =>
+      Promise<{ status: number; bodyText: string }>
+  >();
+jest.mock("../../src/services/eventCoverVideoTusPatch", () => ({
+  readEventCoverVideoBytes: mockReadBytes,
+  patchBunnyTusNative: mockPatchBunny,
+}));
 
 import {
   acknowledgeEventCoverVideoSourceUploaded,
@@ -42,17 +67,9 @@ jest.mock("react-native-compressor", () => ({
   },
 }));
 
-// [TEST-MOD-APPROVED ORCH-1062] jest resolves the `.ts` (web) variant of
-// platformFileSystem (moduleFileExtensions has no `.native`), whose multipart
-// stub throws → the service falls back to its XHR path (needs XMLHttpRequest +
-// supabase.auth, neither present in this node/ts-jest env). This suite mocks
-// Platform.OS="ios" and the expo-file-system/legacy createUploadTask — i.e. it
-// exercises the NATIVE multipart shim. Double the platform-shim boundary with a
-// thin mock that delegates to the (already-mocked) expo-file-system/legacy,
-// mirroring platformFileSystem.native.ts's runtime contract, so the intended
-// native path runs. (requireActual of the .native.ts file is unusable here —
-// ts-jest type-checks it and its own expo-file-system typing error fails the
-// compile.) Plumbing only — zero expect() changed.
+// [TEST-MOD-APPROVED ORCH-1062] platformFileSystem native shim delegated to the
+// (already-mocked) expo-file-system/legacy so getFileInfoAsync (used by
+// compressVideoLocally → statFileSize) resolves. Plumbing only.
 jest.mock("../../src/utils/platformFileSystem", () => {
   const legacy = require("expo-file-system/legacy");
   return {
@@ -88,35 +105,48 @@ const getSession = supabase.auth.getSession as unknown as jest.MockedFunction<
     error: null | Error;
   }>
 >;
-const createUploadTask = FileSystem.createUploadTask as unknown as jest.MockedFunction<
-  (
-    url: string,
-    fileUri: string,
-    options?: unknown,
-    callback?: (event: {
-      totalBytesSent: number;
-      totalBytesExpectedToSend: number;
-    }) => void,
-  ) => { uploadAsync: () => Promise<unknown>; cancelAsync: () => Promise<void> }
->;
 const getInfoAsync = FileSystem.getInfoAsync as unknown as jest.MockedFunction<
   (uri: string, options?: unknown) => Promise<{ exists: boolean; size?: number }>
 >;
 
+const RESUMABLE_URL = "https://video.bunnycdn.com/tus/upload-966-compression";
+
 describe("ORCH-0978 event cover video compression happy path", () => {
+  const originalFetch = global.fetch;
+
   beforeEach(() => {
     jest.clearAllMocks();
     invoke.mockReset();
-    createUploadTask.mockReset();
     getInfoAsync.mockReset();
     getSession.mockReset();
     getSession.mockResolvedValue({
       data: { session: { access_token: "user-session-jwt" } },
       error: null,
     });
+    mockReadBytes.mockResolvedValue(new Uint8Array([1, 2, 3]));
+    mockPatchBunny.mockResolvedValue({ status: 204, bodyText: "" });
+    // Only the TUS CREATE (POST) hits global fetch → 201 + Location.
+    global.fetch = jest.fn(
+      async (_url: unknown, init?: { method?: string }): Promise<unknown> => {
+        if (init?.method === "POST") {
+          return {
+            status: 201,
+            headers: {
+              get: (name: string): string | null =>
+                name.toLowerCase() === "location" ? RESUMABLE_URL : null,
+            },
+          };
+        }
+        throw new Error("unexpected fetch call");
+      },
+    ) as unknown as typeof fetch;
   });
 
-  test("compresses locally, uploads compressed bytes, and reaches applied status", async () => {
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  test("compresses locally, uploads compressed bytes via Bunny TUS, and reaches applied status", async () => {
     // fails-on-revert verified: removing compressVideoLocally or the compressed
     // upload byte plumbing makes this test send file:///raw.mov / 389 MB instead.
     const compressor = jest.requireMock("react-native-compressor") as {
@@ -138,34 +168,23 @@ describe("ORCH-0978 event cover video compression happy path", () => {
       },
     );
     getInfoAsync.mockResolvedValue({ exists: true, size: 6_270_000 });
-    createUploadTask.mockImplementation((_url, _fileUri, _options, callback) => ({
-      cancelAsync: async () => undefined,
-      uploadAsync: async () => {
-        callback?.({
-          totalBytesExpectedToSend: 6_270_000,
-          totalBytesSent: 6_270_000,
-        });
-        return {
-          body: JSON.stringify({
-            asset_id: "asset_1",
-            bytes: 6_270_000,
-            duration: 30,
-            format: "mp4",
-            public_id: "event-covers/raw/brand/event/job",
-            resource_type: "video",
-          }),
-          status: 200,
-        };
-      },
-    }));
     invoke
       .mockResolvedValueOnce({
+        // #966 — the server now returns a Bunny TUS upload descriptor.
         data: {
           jobId: "job_1",
-          provider: "cloudinary",
+          provider: "bunny",
           upload: {
-            fields: { api_key: "key", signature: "sig", timestamp: "123" },
-            url: "https://api.cloudinary.com/v1_1/demo/video/upload",
+            protocol: "tus",
+            url: "https://video.bunnycdn.com/tusupload",
+            videoId: "bunny-guid-966",
+            fields: {
+              AuthorizationSignature: "sig-966",
+              AuthorizationExpire: "1760000000",
+              LibraryId: "lib-966",
+              VideoId: "bunny-guid-966",
+            },
+            metadata: { filetype: "video/mp4", title: "job_1" },
           },
         },
         error: null,
@@ -214,7 +233,7 @@ describe("ORCH-0978 event cover video compression happy path", () => {
           eventId: "event_1",
           isTerminal: true,
           jobId: "job_1",
-          processedUrl: "https://res.cloudinary.com/demo/video/upload/processed.mp4",
+          processedUrl: "https://vz-966.b-cdn.net/bunny-guid-966/play_720p.mp4",
           progressKind: "terminal",
           progressPercent: 100,
           stageLabel: "Cover video updated.",
@@ -252,7 +271,7 @@ describe("ORCH-0978 event cover video compression happy path", () => {
     await expect(
       waitForEventCoverVideoReady(intent.jobId, { pollIntervalMs: 1, timeoutMs: 1_000 }),
     ).resolves.toMatchObject({
-      processedUrl: "https://res.cloudinary.com/demo/video/upload/processed.mp4",
+      processedUrl: "https://vz-966.b-cdn.net/bunny-guid-966/play_720p.mp4",
       status: "applied",
     });
 
@@ -270,11 +289,9 @@ describe("ORCH-0978 event cover video compression happy path", () => {
         }),
       }),
     );
-    expect(createUploadTask).toHaveBeenCalledWith(
-      "https://api.cloudinary.com/v1_1/demo/video/upload",
-      "file:///compressed.mp4",
-      expect.any(Object),
-      expect.any(Function),
-    );
+    // #966 — the compressed bytes upload via the live Bunny TUS PATCH leg (the
+    // Cloudinary multipart createUploadTask path was removed).
+    expect(mockPatchBunny).toHaveBeenCalledTimes(1);
+    expect(providerUploadResponse).toBeNull();
   });
 });

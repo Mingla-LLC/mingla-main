@@ -587,85 +587,26 @@ describe("event cover video processing service", () => {
     });
   });
 
-  test("uploads source video with real byte progress and signed Cloudinary fields", async () => {
-    const progress: number[] = [];
-    createUploadTask.mockImplementation((_url, _fileUri, _options, callback) => ({
-      uploadAsync: async () => {
-        callback?.({ totalBytesExpectedToSend: 200, totalBytesSent: 50 });
-        callback?.({ totalBytesExpectedToSend: 200, totalBytesSent: 220 });
-        return {
-          body: "{}",
-          headers: {},
-          mimeType: "application/json",
-          status: 200,
-        };
-      },
-    }));
-
-    await uploadEventCoverVideoSource({
-      fileName: "cover.mov",
-      mimeType: "video/quicktime",
-      onProgress: (event) => {
-        progress.push(event.percent);
-      },
-      upload: {
-        fields: {
-          api_key: "key",
-          eager: "vc_h264,f_mp4",
-          resource_type: "video",
-          signature: "sig",
-          timestamp: "123",
-        },
-        url: "https://api.cloudinary.com/v1_1/demo/video/upload",
-      },
-      uri: "file:///cover.mov",
-    });
-
-    expect(progress).toEqual([25, 100, 100]);
-    expect(createUploadTask).toHaveBeenCalledWith(
-      "https://api.cloudinary.com/v1_1/demo/video/upload",
-      "file:///cover.mov",
-      expect.objectContaining({
-        fieldName: "file",
-        httpMethod: "POST",
-        mimeType: "video/quicktime",
-        parameters: expect.objectContaining({
-          api_key: "key",
-          eager: "vc_h264,f_mp4",
-          signature: "sig",
-          timestamp: "123",
-        }),
-        uploadType: 1,
-      }),
-      expect.any(Function),
-    );
-    expect(
-      (createUploadTask.mock.calls[0][2] as { parameters?: Record<string, string> })
-        .parameters,
-    ).not.toHaveProperty("resource_type");
-  });
-
-  test("maps provider source upload failure without falling into fake processing progress", async () => {
-    createUploadTask.mockReturnValue({
-      uploadAsync: async () => ({
-        body: JSON.stringify({ error: { message: "Invalid Signature" } }),
-        headers: {},
-        mimeType: "application/json",
-        status: 401,
-      }),
-    });
-
+  // #966 [TEST-MOD-APPROVED ORCH-0966] — the Cloudinary multipart/XHR/chunked
+  // upload legs (createMultipartUploadTask + cloudinaryUploadFailureDetail +
+  // sanitizeProviderUploadResponse) were removed as dead residue post-META-1270.
+  // The two Cloudinary-upload tests ("signed Cloudinary fields" success + the
+  // Cloudinary 401 failure-mapping) are retired in place. What remains proves the
+  // dead path is GONE: uploadEventCoverVideoSource fails LOUD for any non-"tus"
+  // (former Cloudinary) descriptor rather than silently attempting a retired path.
+  // The live TUS transport is covered by eventCoverVideoProcessingService.bunnyTus
+  // / .orch1295 / tusPatch* suites.
+  test("#966 uploadEventCoverVideoSource is Bunny/TUS-only — a non-tus descriptor fails loud", async () => {
     await expect(
       uploadEventCoverVideoSource({
         upload: {
-          fields: { api_key: "key", signature: "bad", timestamp: "123" },
+          fields: { api_key: "key", signature: "sig", timestamp: "123" },
           url: "https://api.cloudinary.com/v1_1/demo/video/upload",
         },
         uri: "file:///cover.mov",
       }),
     ).rejects.toMatchObject({
-      code: "source_upload_failed",
-      message: "Invalid Signature",
+      code: "provider_not_configured",
     });
   });
 });
