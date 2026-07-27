@@ -16,8 +16,8 @@
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
   "expectedStrictGrepMjsFiles": 442,
-  "selfTestWiredFloor": 247,
-  "unenforcedCap": 7,
+  "selfTestWiredFloor": 248,
+  "unenforcedCap": 6,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
   "externalGateDirs": [],
@@ -2622,12 +2622,16 @@
     {
       "script": ".github/scripts/strict-grep/orch-0756a-active-brand-recovery.mjs",
       "kind": "file",
-      "enforcement": "unenforced",
-      "invocation": null,
-      "modes": [],
-      "selfTest": "none",
-      "jobKeys": [],
-      "reason": "HELD unenforced by ORCH-1400 Phase 1: exits 1 live — BrandSwitcherSheet.tsx no longer carries the brand-create-persists-default-brand signature (possible live default-brand regression or blessed refactor drift). Routed as discovery D-2. Wire only once its live run is green."
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "orch-0756a-active-brand-recovery"
+      ]
     },
     {
       "script": ".github/scripts/strict-grep/orch-0766f-event-cover-quicktime-storage.mjs",

@@ -167,6 +167,7 @@ concurrency:
 #   meta-orch-1236-pricing-currency-canonical  ->  meta-orch-1236-pricing-currency-canonical.mjs
 #   meta-orch-1281-marketing-sms-wave2  ->  i-proposed-1283-no-rcs-tab.mjs, i-proposed-1282-mms-media-url-publicly-fetchable.mjs, orch-0815-b-composer-and-send.mjs
 #   meta-orch-1290-venue-authoring-one-submission  ->  i-proposed-1290-no-business-signal-scores-pre-approve.mjs, i-proposed-1290-pitch-consumer-facing.mjs, i-proposed-1290-pitch-via-pipeline.mjs
+#   orch-0756a-active-brand-recovery  ->  orch-0756a-active-brand-recovery.mjs
 #   orch-0776-video-processing-status-bridge  ->  orch-0776-video-processing-status-bridge.mjs
 #   orch-0776d-cancelled-at-schema  ->  orch-0776d-cancelled-at-schema.mjs
 #   orch-0777-ticket-checkout-production  ->  orch-0777-ticket-checkout-production.mjs
