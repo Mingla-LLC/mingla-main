@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 433,
-  "selfTestWiredFloor": 210,
+  "expectedStrictGrepMjsFiles": 434,
+  "selfTestWiredFloor": 218,
   "unenforcedCap": 7,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -294,9 +294,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-ari-user-jwt-only"
       ]
@@ -645,9 +646,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-1120-published-refund-via-gated-rpc"
       ]
@@ -1942,9 +1944,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-proposed-tr3-installment-customer-durability"
       ]
@@ -2007,9 +2010,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-proposed-tr4-cancelled-installment-never-charged"
       ]
@@ -2033,9 +2037,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-proposed-tr5-file-rls-anon-write-planner-read"
       ]
@@ -2232,9 +2237,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-ticket-pdf-owner-check"
       ]
@@ -2258,9 +2264,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-ve5-parse-menu-user-jwt-only"
       ]
@@ -2271,9 +2278,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-ve6-parse-play-user-jwt-only"
       ]
@@ -5402,6 +5410,17 @@
     },
     {
       "script": ".github/scripts/strict-grep/__tests__/issue-955-p0-batch1-selftest-coupling.adversarial.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/__tests__/issue-955-p0-batch2-selftest-coupling.adversarial.test.mjs",
       "kind": "file",
       "enforcement": "batch:A",
       "invocation": "node --test",
