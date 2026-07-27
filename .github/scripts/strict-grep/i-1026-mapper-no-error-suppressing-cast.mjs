@@ -39,8 +39,15 @@
  * Over the ISOLATED serverRowToDraft function (signature + body, comments AND
  * string/template literals stripped so a cast cannot hide behind `//` and a
  * `"as DraftEvent"` string cannot false-trip) REQUIRE:
- *   R1 — NO `as DraftEvent` / `as unknown as DraftEvent` assertion
- *        (whitespace/newline-tolerant between every token). This is the teeth.
+ *   R1 — NO error-suppressing assertion of the returned literal to DraftEvent, in
+ *        EITHER surface form (whitespace/newline-tolerant between every token):
+ *          R1a  `as DraftEvent` / `as unknown as DraftEvent` (incl. `as ( DraftEvent )`)
+ *          R1b  the LEGACY ANGLE-BRACKET assertion `<DraftEvent>{ ... }`
+ *        Both are valid in this .ts (no-JSX) file and launder a near-complete literal
+ *        into DraftEvent IDENTICALLY, suppressing the missing-required-field error. This
+ *        is the teeth. R1b was added at #1254 REVIEW after the tester CONFIRMED the
+ *        angle-bracket form LIVE — R2 alone passed it because the `): DraftEvent =>`
+ *        annotation is still present.
  *   R2 — a compiler anchor exists: `satisfies DraftEvent` in the body, OR the
  *        `(...): DraftEvent =>` return annotation on the signature. Without one,
  *        a bare literal is unchecked and a dropped field ships green.
@@ -48,11 +55,25 @@
  * If serverRowToDraft cannot be located at all, that is a HARD FAILURE (exit 1),
  * never a silent pass — a rename must not make this gate go dark.
  *
+ * ACCEPTED RESIDUALS (grep cannot resolve these without a typechecker; both are
+ * contrived HERE and both stay backstopped by the invariant's field-completeness
+ * layer). Two vectors the #1254 tester flagged as out of practical grep scope:
+ *   (1) a local alias — `type DE = DraftEvent; ... return { ... } as DE;`
+ *   (2) a qualified import type — `... as import("../store/draftEventStore").DraftEvent`
+ * Both are unnatural in this file (it imports `DraftEvent` directly by name, so no
+ * one would alias or re-import it), and either one that DROPPED a field would still
+ * be caught by the OTHER enforcement of I-PROPOSED-1026-DRAFT-MAPPER-COMPILE-COMPLETE
+ * — the append-only T-4 compile-completeness + round-trip tests in
+ * serverDraftEventMapper.test.ts and `tsc` over the full mingla-business suite — which
+ * fail on a missing required-field READ regardless of the assertion's spelling.
+ *
  * --self-test injects self-contained fixtures (no repo file): the prescribed
  * satisfies form passes; the bare-return-under-annotation form passes; the
- * `as DraftEvent` and `as unknown as DraftEvent` reverts fire; a comment/string
- * merely MENTIONING `as DraftEvent` does not false-trip; a literal with neither
- * a satisfies nor a return annotation fires.
+ * `as DraftEvent`, `as unknown as DraftEvent`, `as ( DraftEvent )`, and
+ * `<DraftEvent>{...}` reverts fire; a comment/string merely MENTIONING `as DraftEvent`
+ * does not false-trip; legitimate generics (`Array<DraftEvent>`, `readonly
+ * DraftEvent[]`) do not false-trip; a literal with neither a satisfies nor a return
+ * annotation fires.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -68,6 +89,16 @@ const TARGET = "mingla-business/src/utils/serverDraftEventMapper.ts";
 // DraftEvent` also catches the TAIL of `as unknown as DraftEvent`, but the
 // dedicated `unknown as` alternation keeps the intent explicit.
 const BANNED_CAST = /\bas\s+(?:unknown\s+as\s+)?\(?\s*DraftEvent\b/;
+// R1b — the LEGACY ANGLE-BRACKET assertion `<DraftEvent>{ ... }` (tester-confirmed
+// LIVE evasion at #1254 REVIEW). Valid in this .ts (no-JSX) service file and launders
+// the returned literal IDENTICALLY to `as DraftEvent`. The leading `(?:^|[^\w.$])`
+// requires the `<` to NOT sit immediately after an identifier char / `$` / dot — which
+// is exactly what separates an ASSERTION (`return <DraftEvent>{`, ` = <DraftEvent>{`)
+// from a GENERIC (`Array<DraftEvent>`, `Promise<DraftEvent>`, `x.y<DraftEvent>`), where
+// a base identifier always precedes the `<`. The optional inner parens mirror the `as`
+// path's paren-tolerance; the trailing `[({A-Za-z_$]` confirms a value is being asserted
+// (object literal `{`, parenthesized expr `(`, or an identifier), never a stray `>`.
+const ANGLE_CAST = /(?:^|[^\w.$])<\s*\(?\s*DraftEvent\s*\)?\s*>\s*[({A-Za-z_$]/;
 // R2a — the `satisfies` compiler anchor on the returned literal.
 const SATISFIES_ANCHOR = /\bsatisfies\s+DraftEvent\b/;
 // R2b — the `(...): DraftEvent =>` return-type annotation. Anchored on `)` +
@@ -165,6 +196,21 @@ export function checkMapperSource(rawSrc) {
         `three times. Close the literal with \`} satisfies DraftEvent;\` (or a bare ` +
         `\`return { ... };\` under the \`: DraftEvent\` return annotation). ` +
         `I-PROPOSED-1026-DRAFT-MAPPER-COMPILE-COMPLETE.`,
+    );
+  }
+
+  // R1b — the LEGACY ANGLE-BRACKET assertion form (see ANGLE_CAST). Kept as a
+  // SEPARATE check from R1a so a targeted revert (deleting only ANGLE_CAST) turns
+  // ONLY the angle-bracket self-test case red, leaving every `as`-form case firing.
+  if (ANGLE_CAST.test(fn)) {
+    failures.push(
+      `${TARGET}: serverRowToDraft asserts its returned object with a legacy angle-bracket ` +
+        `\`<DraftEvent>{ ... }\` type assertion. In a .ts (no-JSX) file this is a valid cast ` +
+        `that launders the near-complete literal into DraftEvent and suppresses the missing-` +
+        `required-field compile error IDENTICALLY to \`as DraftEvent\` — reintroducing the ` +
+        `#1026 draft-wipe bug class with CI green. Close the literal with ` +
+        `\`} satisfies DraftEvent;\` (or a bare \`return { ... };\` under the \`: DraftEvent\` ` +
+        `return annotation) — never an assertion. I-PROPOSED-1026-DRAFT-MAPPER-COMPILE-COMPLETE.`,
     );
   }
 
@@ -316,18 +362,57 @@ export const serverRowToDraft = (row: ServerDraftEventRow): DraftEvent => {
     bad.push("(i) parenthesized `as ( DraftEvent )` cast NOT flagged (BANNED_CAST paren-tolerance `\\(?` broken)");
   }
 
+  // (j) issue #1254 REVIEW — the LEGACY ANGLE-BRACKET assertion `<DraftEvent>{ ... }`,
+  // a tester-CONFIRMED live evasion. `satisfies` is ABSENT and the `: DraftEvent` return
+  // annotation is PRESENT (so R2 passes) — the ONLY thing that fires this is R1b's
+  // ANGLE_CAST. Fails-on-revert (targeted): delete the R1b/ANGLE_CAST check and ONLY
+  // this case goes RED; every `as`-form case still fires via BANNED_CAST.
+  const angleCastForm = `
+export const serverRowToDraft = (row: ServerDraftEventRow): DraftEvent => {
+  return <DraftEvent>{
+    id: row.id,
+    name: row.title,
+  };
+};
+`;
+  if (run(angleCastForm).length === 0) {
+    bad.push("(j) legacy angle-bracket `<DraftEvent>{...}` assertion NOT flagged (R1b ANGLE_CAST broken)");
+  }
+
+  // (k) NEGATIVE companion to (j) — legitimate GENERIC type positions `Array<DraftEvent>`
+  // and `readonly DraftEvent[]` are TYPES, not assertions (an identifier precedes the
+  // `<`; `[]` has no `<` at all), so R1b must NOT trip on them. The function otherwise
+  // closes with `satisfies`, so this fixture must PASS with ZERO failures — proving the
+  // angle-bracket ban is precise, not a blanket `<...DraftEvent...>` match.
+  const legitGenericForm = `
+export const serverRowToDraft = (row: ServerDraftEventRow): DraftEvent => {
+  const siblings: readonly DraftEvent[] = [];
+  const wrapped: Array<DraftEvent> = siblings.slice();
+  void siblings; void wrapped;
+  return {
+    id: row.id,
+    name: row.title,
+  } satisfies DraftEvent;
+};
+`;
+  if (run(legitGenericForm).length !== 0) {
+    bad.push("(k) legitimate generic `Array<DraftEvent>` / `readonly DraftEvent[]` WRONGLY flagged: " + JSON.stringify(run(legitGenericForm)));
+  }
+
   if (bad.length) {
     console.error("issue #1254 mapper-no-error-suppressing-cast self-test FAIL:");
     for (const m of bad) console.error("  - " + m);
     process.exit(1);
   }
   console.log(
-    "issue #1254 / I-PROPOSED-1026-DRAFT-MAPPER-COMPILE-COMPLETE self-test PASS (10/10 cases:\n" +
+    "issue #1254 / I-PROPOSED-1026-DRAFT-MAPPER-COMPILE-COMPLETE self-test PASS (12/12 cases:\n" +
       "  satisfies form + bare-return-under-annotation PASS; `as DraftEvent`, `as unknown as\n" +
       "  DraftEvent`, and newline-split `as\\n DraftEvent` reverts FIRE; comment/string mention\n" +
       "  does NOT false-trip; missing-anchor FIRES; a real cast with a trailing // comment\n" +
-      "  FIRES; a renamed-away function HARD-FAILS instead of going dark; and the tester-added\n" +
-      "  parenthesized `as ( DraftEvent )` cast FIRES via the `\\(?` paren-tolerance).",
+      "  FIRES; a renamed-away function HARD-FAILS instead of going dark; the tester-added\n" +
+      "  parenthesized `as ( DraftEvent )` cast FIRES via the `\\(?` paren-tolerance; the\n" +
+      "  legacy angle-bracket `<DraftEvent>{...}` assertion FIRES via R1b; and legitimate\n" +
+      "  generics `Array<DraftEvent>` / `readonly DraftEvent[]` do NOT false-trip).",
   );
   process.exit(0);
 }
