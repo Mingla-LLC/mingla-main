@@ -35,7 +35,7 @@ const ITEMS: FeedItem[] = [
   { icon: Ticket, tint: 'success', action: 'Ticket sold', subject: 'Live jazz night', meta: '5m ago', amount: '+$38' },
   { icon: CalendarCheck, tint: 'warm', action: 'New booking', subject: 'Bowling lane · 2 hrs', meta: '7m ago', amount: '+$70' },
   { icon: UtensilsCrossed, tint: 'warm', action: 'Reservation', subject: 'Patio · golden hour', meta: '9m ago' },
-  { icon: Wallet, tint: 'success', action: 'Payout sent', subject: '$1,240', meta: '12m ago' },
+  { icon: Wallet, tint: 'success', action: 'Payout released', subject: '$1,240', meta: 'after event' },
 ]
 
 function Row({ it }: { it: FeedItem }) {

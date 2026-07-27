@@ -197,7 +197,7 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
       <Text style={styles.subtitle}>
         {isUpdate
           ? "Enter the new bank account that should receive your payouts."
-          : "Connect your bank account to receive payouts. Sales settle directly to this account, usually the next business day."}
+          : "Connect your bank account to receive payouts. Ticket sales are released to this account 3 days after each event date ends and typically arrive within 1–2 business days."}
       </Text>
 
       {/* Bank picker */}

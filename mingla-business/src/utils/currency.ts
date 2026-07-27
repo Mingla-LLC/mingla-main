@@ -163,6 +163,10 @@ const LOCALE_BY_CURRENCY: Record<string, string> = {
   GBP: "en-GB",
   USD: "en-US",
   CAD: "en-CA",
+  // #1180 — without an en-NG mapping, NGN amounts rendered "NGN 1,234.00"
+  // instead of "₦1,234.00" (the fallback en-GB locale has no ₦ glyph for the
+  // Nigerian payout ledger rows). en-NG gives NG organisers the correct symbol.
+  NGN: "en-NG",
   EUR: "en-IE",
   CHF: "de-CH",
   BGN: "bg-BG",

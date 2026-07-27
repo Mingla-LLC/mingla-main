@@ -70,6 +70,11 @@ const PLACEHOLDER_TOS_BODY = [
   "",
   "7. Mingla may update these terms; material changes require re-acceptance before further onboarding actions.",
   "",
+  // #1180 — payout hold-disclosure clause (binding meaning; final legal text
+  // owned by mingla-product). Additive to the [TRANSITIONAL] placeholder body;
+  // CURRENT_MINGLA_TOS_VERSION is NOT bumped here (operator/legal own that).
+  "8. Ticket revenue is held by Mingla and released to your payout account 3 days after the corresponding event date ends, and typically arrives within 1–2 business days. Cancelled events are refunded to buyers from held funds. In Nigeria, bank transfer fees and stamp duty are deducted from your payout.",
+  "",
   // B2a Path C V3 forensics C-3: was mingla.com/business/terms — domain not Mingla-owned.
   // [TRANSITIONAL] placeholder URL pending legal sign-off — exit when operator/legal
   // swap the live ToS URL (likely usemingla.com/business/terms or similar).
