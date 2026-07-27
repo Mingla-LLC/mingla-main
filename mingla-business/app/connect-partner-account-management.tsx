@@ -8,6 +8,7 @@
  * variant takes over on Expo Web bundles.
  */
 
+// orch-strict-grep-allow safearea-on-fullscreen-routes — renders NativeConnectWebOnlyFallback, which wraps in SafeScreen
 import React from "react";
 
 import { NativeConnectWebOnlyFallback } from "../src/components/stripe/NativeConnectWebOnlyFallback";

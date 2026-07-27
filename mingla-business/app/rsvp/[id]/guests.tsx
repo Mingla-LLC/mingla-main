@@ -5,6 +5,7 @@
  * be added to the anon allowlist (SPEC §5.3 / §11). Mounts RsvpGuestConsole.
  */
 
+// orch-strict-grep-allow safearea-on-fullscreen-routes — renders RsvpGuestConsole, which applies paddingTop: insets.top on its root
 import React from "react";
 import { useLocalSearchParams } from "expo-router";
 

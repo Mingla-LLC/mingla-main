@@ -15,6 +15,7 @@
  * Per SPEC §5.1.
  */
 
+// orch-strict-grep-allow safearea-on-fullscreen-routes — renders SupportThreadCore (SafeScreen); invalid-id fallback is center-anchored
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
