@@ -969,6 +969,51 @@ function validTikTokPreviewUrl(value: unknown): string {
   }
 }
 
+// ISSUE-997 C: a TikTok SINGLE_VIDEO ad-object needs a cover image_id alongside
+// the video_id. Capture it PREPARE-SIDE (Seth-approved D-C1) from the already-
+// trusted poster bytes — mirroring how metaPrepareAdapter uploads the poster and
+// merges thumbnail_image_hash (uploadMetaPoster). Keeping the upload inside
+// prepare preserves the #1184 invariant that create is a pure READY-ref consumer
+// and never re-uploads provider media inline.
+async function uploadTiktokCover(
+  connection: AdConnectionRow,
+  posterBytes: Uint8Array,
+  asset: AdCreativeRow,
+  hooks: ProviderLifecycleHooks,
+  deps: CreativeUploadDeps,
+): Promise<void> {
+  const token = requiredToken(connection);
+  const form = new FormData();
+  form.append("advertiser_id", connection.external_account_id);
+  form.append("upload_type", "UPLOAD_BY_FILE");
+  form.append("file_name", `${asset.name}-cover.jpg`);
+  form.append("image_signature", md5Hex(posterBytes));
+  form.append(
+    "image_file",
+    new Blob([posterBytes as BlobPart], { type: "image/jpeg" }),
+    `${asset.name}-cover.jpg`,
+  );
+  const data = await tiktokRequest(
+    "/file/image/ad/upload/",
+    token,
+    { method: "POST", body: form },
+    deps,
+  );
+  const record = firstRecord(data.list ?? data);
+  const coverImageId = typeof record.image_id === "string"
+    ? record.image_id
+    : "";
+  if (!coverImageId) {
+    throw new CreativeUploadError(
+      "tiktok",
+      "tiktok_cover_image_id_missing",
+      "TikTok returned no cover image_id.",
+    );
+  }
+  if (!await hooks.mergeProviderExtra({ cover_image_id: coverImageId })) return;
+  await hooks.markProcessing();
+}
+
 const tiktokPrepareAdapter: PrepareProviderAdapter = {
   initiate: async (asset, connection, bytes, hooks, deps = {}) => {
     const token = requiredToken(connection);
@@ -1004,7 +1049,11 @@ const tiktokPrepareAdapter: PrepareProviderAdapter = {
       );
     }
     if (!await hooks.saveProviderRef(primary, { video_id: videoId })) return;
-    await hooks.markProcessing();
+    // ISSUE-997 C: capture the cover image_id BEFORE markProcessing, so a
+    // "processing"/"ready" ref always carries { video_id, cover_image_id }. The
+    // authoritative completeness gate is the create branch's creative_ref_incomplete
+    // check (a legacy #1184 ref with no cover fails closed there, never silently).
+    await uploadTiktokCover(connection, bytes.poster, asset, hooks, deps);
   },
   check: async (_ref, extra, connection, deps = {}) => {
     const token = requiredToken(connection);
@@ -1059,6 +1108,13 @@ export function capabilityFor(platform: PreparationPlatform):
   | "preview_only" {
   if (platform === "meta") return "create_and_real_preview";
   if (platform === "snapchat") return "create_and_approx_preview";
+  // ISSUE-997 C NOTE: TikTok now supports video CREATE (this issue) in addition to
+  // its real provider preview (#1184), so the semantically-accurate label is
+  // "create_and_real_preview". It is intentionally LEFT as "preview_only" here to
+  // avoid a TEST-MOD on the core #1184 edge regression (issue1184_video_prepare.test.ts:30)
+  // for a purely-cosmetic label that NO code gates on (create is gated by the admin
+  // VIDEO_CREATE_ENABLED / VIDEO_CREATE_PLATFORMS lists + the create-branch READY-ref
+  // resolve, never by this string). Deferred to the orchestrator (spec §2.4).
   return "preview_only";
 }
 

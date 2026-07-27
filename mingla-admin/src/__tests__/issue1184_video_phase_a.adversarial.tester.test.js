@@ -42,8 +42,11 @@ const okChannel = (platform) => ({
   needsTranscode: false,
 });
 
-describe("ISSUE-1184 adversarial: create is Meta/Snap-only; nothing else can EVER build a video", () => {
-  it("excludes TikTok/Google/Reddit even when their prep says ready and validation passes", () => {
+describe("ISSUE-1184 adversarial: create is Meta/Snap/TikTok-only; Google/Reddit can NEVER build a video (#997 C)", () => {
+  // [TEST-MOD-APPROVED ORCH-0997] #997 C wires TikTok paused-video, so a READY
+  // tiktok now BUILDS (it leaves the excluded set). Google/Reddit stay excluded and
+  // their reasons/flags are unchanged — the negative-space guard on THEM is intact.
+  it("builds a READY TikTok too, but still excludes Google/Reddit even when their prep says ready (#997 C)", () => {
     const funded = ["meta", "snapchat", "tiktok", "google", "reddit"];
     const channels = funded.map(okChannel);
     const rows = Object.fromEntries(funded.map((p) => [p, { state: "ready" }]));
@@ -53,13 +56,13 @@ describe("ISSUE-1184 adversarial: create is Meta/Snap-only; nothing else can EVE
       kind: "video",
       preparationByPlatform: rows,
     });
-    assert.deepEqual(buildable, ["meta", "snapchat"]);
+    assert.deepEqual(buildable.sort(), ["meta", "snapchat", "tiktok"]);
     const reasonOf = (p) => excluded.find((e) => e.platform === p)?.reason;
-    assert.equal(reasonOf("tiktok"), "preview_only");
+    assert.equal(reasonOf("tiktok"), undefined); // READY tiktok now builds
     assert.equal(reasonOf("google"), "approximation_only");
     assert.equal(reasonOf("reddit"), "video_not_creatable");
-    // Belt-and-braces: the flag table itself forbids the three.
-    assert.equal(VIDEO_CREATE_ENABLED.tiktok, false);
+    // Belt-and-braces: the flag table enables tiktok, still forbids google/reddit.
+    assert.equal(VIDEO_CREATE_ENABLED.tiktok, true);
     assert.equal(VIDEO_CREATE_ENABLED.google, false);
     assert.equal(VIDEO_CREATE_ENABLED.reddit, false);
   });
@@ -109,8 +112,9 @@ describe("ISSUE-1184 adversarial: create is Meta/Snap-only; nothing else can EVE
   });
 });
 
-describe("ISSUE-1184 adversarial: READY subset & gate keep TikTok preview-only", () => {
-  it("a READY+funded TikTok is NEVER in the create subset", () => {
+describe("ISSUE-1184 adversarial: READY subset & gate now include TikTok (#997 C)", () => {
+  // [TEST-MOD-APPROVED ORCH-0997] a READY+funded TikTok is now IN the create subset.
+  it("a READY+funded TikTok is in the create subset alongside Meta/Snap (#997 C)", () => {
     const rows = {
       meta: { state: "ready" },
       snapchat: { state: "ready" },
@@ -120,12 +124,15 @@ describe("ISSUE-1184 adversarial: READY subset & gate keep TikTok preview-only",
       readyVideoSubset({
         fundedPlatforms: ["tiktok", "snapchat", "meta"],
         rows,
-      }),
-      ["meta", "snapchat"],
+      }).sort(),
+      ["meta", "snapchat", "tiktok"],
     );
   });
 
-  it("gate reports canContinue false with no READY Meta/Snap and names each exclusion", () => {
+  // [TEST-MOD-APPROVED ORCH-0997] With Meta/Snap failed/timed_out but TikTok READY,
+  // the gate can now continue on TikTok alone — TikTok is no longer preview-only.
+  // Google/Reddit exclusion reasons and the Meta/Snap state reporting are unchanged.
+  it("gate continues on a READY TikTok even when Meta/Snap are not ready, and names each exclusion (#997 C)", () => {
     const gate = videoPreparationGate({
       fundedPlatforms: ["meta", "snapchat", "tiktok", "google", "reddit"],
       rows: {
@@ -134,10 +141,10 @@ describe("ISSUE-1184 adversarial: READY subset & gate keep TikTok preview-only",
         tiktok: { state: "ready" },
       },
     });
-    assert.equal(gate.canContinue, false);
-    assert.deepEqual(gate.ready, []);
+    assert.equal(gate.canContinue, true);
+    assert.deepEqual(gate.ready, ["tiktok"]);
     const reasonOf = (p) => gate.excluded.find((e) => e.platform === p)?.reason;
-    assert.equal(reasonOf("tiktok"), "preview_only");
+    assert.equal(reasonOf("tiktok"), undefined); // READY tiktok now continues
     assert.equal(reasonOf("google"), "approximation_only");
     assert.equal(reasonOf("reddit"), "video_excluded");
     assert.equal(reasonOf("meta"), "preparation_failed");

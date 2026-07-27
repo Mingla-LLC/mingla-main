@@ -6,7 +6,9 @@
  */
 
 export const PREPARATION_ORDER = Object.freeze(["meta", "snapchat", "tiktok"]);
-export const VIDEO_CREATE_PLATFORMS = Object.freeze(["meta", "snapchat"]);
+// ISSUE-997 C: TikTok joins the video-create subset (paused-video wired
+// end-to-end). Google stays out until the separate 997-D sub-wave.
+export const VIDEO_CREATE_PLATFORMS = Object.freeze(["meta", "snapchat", "tiktok"]);
 export const ACTIVE_PREPARATION_STATES = Object.freeze(["uploading", "processing"]);
 export const TERMINAL_PREPARATION_STATES = Object.freeze(["ready", "failed", "timed_out"]);
 const BUNNY_VIDEO_ID = /^[A-Za-z0-9-]{1,128}$/;
@@ -62,6 +64,10 @@ export function emptyPreparation(platform) {
       ? "create_and_real_preview"
       : platform === "snapchat"
       ? "create_and_approx_preview"
+      // ISSUE-997 C: kept in lock-step with the edge capabilityFor("tiktok") default
+      // (still "preview_only" — see the note there). This label is cosmetic; TikTok
+      // video create is gated by VIDEO_CREATE_PLATFORMS + VIDEO_CREATE_ENABLED, not
+      // by this string. Server rows override this default anyway (normalizePreparation).
       : "preview_only",
     cached: true,
     retryable: false,
@@ -147,9 +153,10 @@ export function videoPreparationGate(input) {
       .filter((platform) => !ready.includes(platform))
       .map((platform) => ({
         platform,
-        reason: platform === "tiktok"
-          ? "preview_only"
-          : platform === "google"
+        // ISSUE-997 C: tiktok is now in VIDEO_CREATE_PLATFORMS, so it is excluded
+        // ONLY when its preparation is not ready (preparation_<state>) — never as
+        // "preview_only". google (approximation_only) / reddit (video_excluded) stay.
+        reason: platform === "google"
           ? "approximation_only"
           : platform === "reddit"
           ? "video_excluded"

@@ -1629,10 +1629,15 @@ export interface TikTokAdSpec {
   /** v1: TT_USER ONLY (assertTikTokIdentityAllowed hard-fails everything else). */
   identityType: string;
   identityId: string;
-  /** v1: SINGLE_IMAGE only; SINGLE_VIDEO is the #866 fast-follow. */
+  /** SINGLE_IMAGE (#866) or SINGLE_VIDEO (#997 C — a prepared ad video + cover). */
   adFormat?: string;
-  /** Asset-Library image ids (exactly 1 for SINGLE_IMAGE). */
+  /**
+   * SINGLE_IMAGE: exactly 1 Asset-Library image_id.
+   * SINGLE_VIDEO: exactly 1 image_id — the video COVER (external_ref_extra.cover_image_id).
+   */
   imageIds: string[];
+  /** SINGLE_VIDEO only (#997 C): the prepared ad video_id (external_ref_extra.video_id). */
+  videoId?: string;
   adText: string;
   /** TikTok CTAs are bare display strings (TIKTOK_CTA_MAP) — default "Learn more". */
   callToAction?: string;
@@ -1660,20 +1665,35 @@ export function buildTikTokAdBody(
   throwValidation(validateTikTokLandingPageUrl(spec.landingPageUrl));
   throwValidation(validateTikTokUtmParams(spec.utmParams));
 
+  // ISSUE-997 C: SINGLE_VIDEO joins SINGLE_IMAGE. Everything else (SINGLE_CAROUSEL,
+  // etc.) still hard-fails ad_format_unsupported_v1 (fails-on-revert protected).
   const adFormat = spec.adFormat ?? "SINGLE_IMAGE";
-  if (adFormat !== "SINGLE_IMAGE") {
+  if (adFormat !== "SINGLE_IMAGE" && adFormat !== "SINGLE_VIDEO") {
     throw new AdApiError({
       platform: "tiktok",
       code: "ad_format_unsupported_v1",
       message:
-        `ad_format=${adFormat} is not built in v1 — SINGLE_IMAGE only; SINGLE_VIDEO is the #866 fast-follow (its 5–60s POLICY duration validator already ships: validateTikTokVideoDuration).`,
+        `ad_format=${adFormat} is not built — only SINGLE_IMAGE (#866) and SINGLE_VIDEO (#997) are supported.`,
     });
   }
+  // Both formats carry exactly ONE image_id: SINGLE_IMAGE the ad image, SINGLE_VIDEO
+  // the video COVER (external_ref_extra.cover_image_id captured at prepare — #997 C).
   if (!Array.isArray(spec.imageIds) || spec.imageIds.length !== 1 || !spec.imageIds[0]) {
     throw new AdApiError({
       platform: "tiktok",
       code: "image_ids_invalid",
-      message: "SINGLE_IMAGE requires exactly one Asset-Library image_id (tiktokUploadImage output).",
+      message: adFormat === "SINGLE_VIDEO"
+        ? "SINGLE_VIDEO requires exactly one image_id — the video cover (external_ref_extra.cover_image_id)."
+        : "SINGLE_IMAGE requires exactly one Asset-Library image_id (tiktokUploadImage output).",
+    });
+  }
+  const videoId = typeof spec.videoId === "string" ? spec.videoId.trim() : "";
+  if (adFormat === "SINGLE_VIDEO" && !videoId) {
+    throw new AdApiError({
+      platform: "tiktok",
+      code: "video_id_required",
+      message:
+        "SINGLE_VIDEO requires a prepared video_id (external_ref_extra.video_id from admin-ad-creative-prepare).",
     });
   }
 
@@ -1683,6 +1703,9 @@ export function buildTikTokAdBody(
     identity_id: spec.identityId,
     ad_format: adFormat,
     image_ids: spec.imageIds,
+    // SINGLE_VIDEO carries the prepared ad video_id alongside the cover image_ids
+    // (SUSPECTED/DOC wire shape — pinned by the PAUSED acceptance probe downstream).
+    ...(adFormat === "SINGLE_VIDEO" ? { video_id: videoId } : {}),
     ad_text: spec.adText,
     call_to_action: spec.callToAction ?? TIKTOK_CTA_MAP.default,
     // A1.0-5 (PROOF D-P1): the ad-visible destination is the canonical public
@@ -2080,6 +2103,8 @@ export interface TikTokCreateAdExtensions {
   callToAction?: string;
   utmParams?: TikTokUtmParam[];
   adFormat?: string;
+  /** SINGLE_VIDEO only (#997 C): the prepared ad video_id. */
+  videoId?: string;
 }
 
 export const tiktokAdapter: ChannelAdapter = {
@@ -2177,6 +2202,7 @@ export const tiktokAdapter: ChannelAdapter = {
       identityId,
       adFormat: extensions.adFormat,
       imageIds: extensions.imageIds,
+      videoId: extensions.videoId,
       adText: extensions.adText,
       callToAction: extensions.callToAction,
       landingPageUrl: extensions.landingPageUrl,

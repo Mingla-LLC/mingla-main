@@ -33,10 +33,16 @@
  * placement, but no video channel is ever built. Flip to true ONLY when
  * admin-ad-create-campaign can actually create a video ad.
  */
+/**
+ * ISSUE-997 C: TikTok paused-video create is now wired end-to-end
+ * (admin-ad-creative-prepare captures video_id + cover_image_id → the
+ * admin-ad-create-campaign TikTok SINGLE_VIDEO branch builds a PAUSED ad). Google
+ * and Reddit video create remain unwired (google = separate 997-D sub-wave).
+ */
 export const VIDEO_CREATE_ENABLED = Object.freeze({
   meta: true,
   snapchat: true,
-  tiktok: false,
+  tiktok: true,
   google: false,
   reddit: false,
 });
@@ -85,13 +91,12 @@ export function partitionFundedCreative({
     // build path itself; validation + placement previews still render.
     if (kind === "video") {
       if (VIDEO_CREATE_ENABLED[platform] !== true) {
+        // ISSUE-997 C: tiktok is now VIDEO_CREATE_ENABLED, so it never reaches
+        // this exclusion branch — only google (approximation_only) and reddit
+        // (video_not_creatable) remain unwired for video.
         excluded.push({
           platform,
-          reason: platform === "tiktok"
-            ? "preview_only"
-            : platform === "google"
-            ? "approximation_only"
-            : "video_not_creatable",
+          reason: platform === "google" ? "approximation_only" : "video_not_creatable",
           channel,
         });
         continue;

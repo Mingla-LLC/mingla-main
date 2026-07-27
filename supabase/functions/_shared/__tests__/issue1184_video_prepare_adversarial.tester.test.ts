@@ -804,14 +804,15 @@ Deno.test("ISSUE-1184 adversarial [structural]: prepare returns cached 200 for s
   );
 });
 
-// ── 10. [structural] Create-path safety: Meta/Snap only, all PAUSED ──────────
-Deno.test("ISSUE-1184 adversarial [structural]: create is Meta/Snap-only, others fail closed, all PAUSED", async () => {
+// ── 10. [structural] Create-path safety: Meta/Snap/TikTok, all PAUSED (#997 C) ─
+Deno.test("ISSUE-1184 adversarial [structural]: create is Meta/Snap/TikTok, Google+Reddit fail closed, all PAUSED", async () => {
   const src = await Deno.readTextFile(
     new URL("../../admin-ad-create-campaign/index.ts", import.meta.url),
   );
-  // Google, TikTok, Reddit each fail closed for a video creative.
-  assertEquals(src.match(/video_create_not_available_phase_a/g)?.length, 3);
-  for (const guard of ["creativeG", "creativeT", "creativeR"]) {
+  // [TEST-MOD-APPROVED ORCH-0997] #997 C wires TikTok paused-video create, so the
+  // TikTok phase-A 422 is gone — only Google + Reddit still fail closed for video.
+  assertEquals(src.match(/video_create_not_available_phase_a/g)?.length, 2);
+  for (const guard of ["creativeG", "creativeR"]) {
     assertMatch(
       src,
       new RegExp(
@@ -819,7 +820,10 @@ Deno.test("ISSUE-1184 adversarial [structural]: create is Meta/Snap-only, others
       ),
     );
   }
-  // Meta + Snap require an exact current-hash READY ref.
+  // TikTok video now resolves a READY ref (video_id + cover) instead of failing closed.
+  assertStringIncludes(src, 'const creativeKindT = creativeT.kind === "video" ? "video" : "image";');
+  assertStringIncludes(src, "creative_ref_incomplete");
+  // Meta + Snap + TikTok all require an exact current-hash READY ref.
   assertStringIncludes(src, '.eq("status", "ready")');
   assertStringIncludes(src, "video_preparation_required");
   assertStringIncludes(src, '.eq("external_kind", "video")');
