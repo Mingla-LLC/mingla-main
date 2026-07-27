@@ -9,6 +9,7 @@ on:
       - "supabase/config.toml"
       - "supabase/migrations/20270110000009_issue_1179_cancel_refund_fanout.sql"
       - "supabase/migrations/__tests__/issue_1179_cancel_refund_fanout_pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_1179_cancel_refund_fanout_adversarial_pg17.test.sql"
       - "mingla-business/src/services/businessEvents.ts"
       - "mingla-admin/src/services/offeringsService.js"
       - ".github/workflows/issue-1179-cancel-refund-fanout-tests.yml"
@@ -72,9 +73,15 @@ jobs:
                 psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$migration"
                 echo "::endgroup::"
               done
-      - name: Execute issue 1179 cancel-refund fan-out proof
+      - name: Execute issue 1179 cancel-refund fan-out proof (implementor happy-path)
         env:
           PGPASSWORD: ${{ format('issue-1179-ci-{0}', github.run_id) }}
         run: >-
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
           -f supabase/migrations/__tests__/issue_1179_cancel_refund_fanout_pg17.test.sql
+      - name: Execute issue 1179 cancel-refund fan-out proof (tester adversarial)
+        env:
+          PGPASSWORD: ${{ format('issue-1179-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_1179_cancel_refund_fanout_adversarial_pg17.test.sql
