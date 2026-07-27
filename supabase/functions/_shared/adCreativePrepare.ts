@@ -1196,11 +1196,10 @@ const googlePrepareAdapter: PrepareProviderAdapter = {
   check: async (ref, extra, connection, deps = {}) => {
     const client = await resolveGoogleClient(connection);
     const fetchImpl = deps.fetchImpl ?? fetch;
-    const resourceName =
-      typeof extra.upload_resource_name === "string" &&
+    const resourceName = typeof extra.upload_resource_name === "string" &&
         extra.upload_resource_name
-        ? extra.upload_resource_name
-        : ref;
+      ? extra.upload_resource_name
+      : ref;
     const pollResponse = await fetchImpl(
       `${client.apiBase}/${client.apiVersion}/${resourceName}`,
       { method: "GET", headers: googleAdsAuthHeaders(client) },
