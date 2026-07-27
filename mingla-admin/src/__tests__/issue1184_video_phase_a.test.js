@@ -50,23 +50,28 @@ describe("ISSUE-1184 preparation state is sequential, resumable, and stale-safe"
     }), current);
   });
 
-  it("READY Meta/Snap is the only video-create subset", () => {
+  // [TEST-MOD-APPROVED ORCH-0997] #997 C adds TikTok to the video-create subset, so
+  // a READY tiktok is now part of `ready` (not excluded as "preview_only"). Snapchat
+  // here is `failed`, so it stays out — the Meta/Snap behavior is otherwise unchanged.
+  it("READY Meta/TikTok are the video-create subset (#997 C); a failed Snap stays out", () => {
     const rows = {
       meta: { state: "ready" },
       snapchat: { state: "failed" },
       tiktok: { state: "ready" },
     };
     assert.deepEqual(
-      readyVideoSubset({ fundedPlatforms: ["meta", "snapchat", "tiktok", "google"], rows }),
-      ["meta"],
+      readyVideoSubset({ fundedPlatforms: ["meta", "snapchat", "tiktok", "google"], rows }).sort(),
+      ["meta", "tiktok"],
     );
     const gate = videoPreparationGate({
       fundedPlatforms: ["meta", "snapchat", "tiktok", "google", "reddit"],
       rows,
     });
     assert.equal(gate.canContinue, true);
-    assert.deepEqual(gate.ready, ["meta"]);
-    assert.equal(gate.excluded.find((x) => x.platform === "tiktok").reason, "preview_only");
+    assert.deepEqual(gate.ready.sort(), ["meta", "tiktok"]);
+    // A READY tiktok is no longer excluded; a failed Snap is excluded as its state.
+    assert.equal(gate.excluded.find((x) => x.platform === "tiktok"), undefined);
+    assert.equal(gate.excluded.find((x) => x.platform === "snapchat").reason, "preparation_failed");
   });
 });
 
@@ -113,14 +118,15 @@ describe("ISSUE-1184 build and review count only prepared destinations × platfo
     tiktok: { state: "ready" },
   };
 
-  it("creative partition builds Meta/Snap and never TikTok video", () => {
+  // [TEST-MOD-APPROVED ORCH-0997] #997 C makes a READY tiktok video buildable too.
+  it("creative partition builds Meta/Snap AND TikTok video when all are READY (#997 C)", () => {
     const result = partitionFundedCreative({
       fundedPlatforms: ["meta", "snapchat", "tiktok"],
       channels,
       kind: "video",
       preparationByPlatform: rows,
     });
-    assert.deepEqual(result.buildable, ["meta", "snapchat"]);
+    assert.deepEqual(result.buildable.sort(), ["meta", "snapchat", "tiktok"]);
   });
 
   it("two destinations × two READY platforms produces four paused campaigns", () => {

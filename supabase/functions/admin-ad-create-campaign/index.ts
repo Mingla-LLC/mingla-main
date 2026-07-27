@@ -112,6 +112,7 @@ import {
   validateTikTokLocationIds,
   validateTikTokName,
   validateTikTokObjective,
+  validateTikTokVideoDuration,
   normalizeTikTokInterestCategoryIds,
 } from "../_shared/tiktok.ts";
 import {
@@ -1677,9 +1678,12 @@ serve(async (req: Request): Promise<Response> => {
     const bidPriceCentsT = bidPriceCentsRawT as number | undefined;
 
     const creativeT = (body.creative ?? {}) as Record<string, unknown>;
-    if (creativeT.kind === "video") {
-      return json({ error: "video_create_not_available_phase_a" }, 422);
-    }
+    // ISSUE-997 C: TikTok paused-video create. The blanket phase-A 422 is lifted;
+    // the video media-resolve (READY ref → video_id + cover image_id + 5–60 s
+    // duration gate) runs in the media block below, mirroring the Meta/Snap video
+    // branches. Everything else (PAUSED, targeting, persist) is byte-identical to
+    // the image path.
+    const creativeKindT = creativeT.kind === "video" ? "video" : "image";
     // ISSUE-979 Bug 3: the global compliance intent reaches TikTok's create path
     // now. TikTok's aigc_disclosure_type is CUSTOMIZED_USER-only (unreachable,
     // T-P6) and it has no special-ad-category field — documented + observable,
@@ -1822,16 +1826,89 @@ serve(async (req: Request): Promise<Response> => {
       return json({ error: landingCheckT.detail, detail: landingCheckT.message }, 422);
     }
 
-    // (5) Media resolve — an explicit Asset-Library image_id, a #866 library
-    // ref (external_ref_extra.image_id), or an image_url to upload AFTER the
-    // validate gate (UPLOAD_BY_URL — GR-58).
+    // (5) Media resolve — for VIDEO (#997 C): a #866 library ref that
+    // admin-ad-creative-prepare (tiktok) promoted to READY, carrying BOTH
+    // external_ref_extra.video_id and .cover_image_id. For IMAGE (#866): an
+    // explicit Asset-Library image_id, a #866 library ref
+    // (external_ref_extra.image_id), or an image_url to upload AFTER the validate
+    // gate (UPLOAD_BY_URL — GR-58).
     let imageIdT = typeof creativeT.image_id === "string" ? creativeT.image_id.trim() : "";
+    let videoIdT = "";
+    // ISSUE-997 C: SINGLE_VIDEO for a prepared video, else SINGLE_IMAGE (#866).
+    const adFormatT = creativeKindT === "video" ? "SINGLE_VIDEO" : "SINGLE_IMAGE";
     const creativeLibraryIdT = typeof creativeT.creative_library_id === "string"
       ? creativeT.creative_library_id.trim()
       : "";
     const imageUrlT = typeof creativeT.image_url === "string" ? creativeT.image_url.trim() : "";
     let creativeLibraryRowIdT: string | null = null;
-    if (!imageIdT && creativeLibraryIdT) {
+    if (creativeKindT === "video") {
+      // ISSUE-997 C: video create is a pure READY-ref consumer — create NEVER
+      // uploads provider media inline (mirror Snap creative_not_uploaded contract).
+      if (!creativeLibraryIdT) {
+        return json({ error: "video_preparation_required" }, 422);
+      }
+      const { data: libCreativeVT } = await supabase
+        .from("ad_creatives")
+        .select("id, kind, content_hash, duration_seconds")
+        .eq("id", creativeLibraryIdT)
+        .maybeSingle();
+      if (!libCreativeVT) {
+        return json({ error: "creative_not_found", detail: "creative_library_id does not resolve" }, 422);
+      }
+      if (libCreativeVT.kind !== "video") {
+        return json({ error: "creative_kind_mismatch" }, 422);
+      }
+      const { data: refVT } = await supabase
+        .from("ad_creative_platform_refs")
+        .select("external_ref, external_ref_extra, status, content_hash")
+        .eq("creative_id", creativeLibraryIdT)
+        .eq("platform", "tiktok")
+        .eq("lane", lane)
+        .eq("external_account_id", tconn.external_account_id)
+        .eq("external_kind", "video")
+        .eq("content_hash", libCreativeVT.content_hash)
+        .eq("status", "ready")
+        .maybeSingle();
+      if (!refVT || refVT.status !== "ready" || !refVT.external_ref) {
+        return json({
+          error: "creative_not_uploaded",
+          detail:
+            "No READY tiktok VIDEO ref for this creative on this advertiser — prepare it through admin-ad-creative-prepare (tiktok) first; create never uploads inline.",
+        }, 422);
+      }
+      if (refVT.content_hash && libCreativeVT.content_hash && refVT.content_hash !== libCreativeVT.content_hash) {
+        // A1-1 (#866): cache validity keys on CONTENT — a stale ref must never serve.
+        return json({
+          error: "creative_ref_stale",
+          detail:
+            "The tiktok video ref was prepared from different bytes than the creative's current content_hash — re-prepare through admin-ad-creative-prepare.",
+        }, 422);
+      }
+      // A SINGLE_VIDEO ad-object needs BOTH the prepared video_id and a cover
+      // image_id (both land in external_ref_extra at prepare — #997 C 2.1). A
+      // legacy #1184 ref with only video_id fails closed here, never silently.
+      const refExtraVT = (refVT.external_ref_extra ?? {}) as Record<string, unknown>;
+      const preparedVideoIdT = typeof refExtraVT.video_id === "string" ? refExtraVT.video_id : "";
+      const coverImageIdT = typeof refExtraVT.cover_image_id === "string" ? refExtraVT.cover_image_id : "";
+      if (!preparedVideoIdT || !coverImageIdT) {
+        return json({
+          error: "creative_ref_incomplete",
+          detail:
+            "The tiktok video ref is missing external_ref_extra.video_id or cover_image_id (SINGLE_VIDEO needs BOTH) — re-prepare through admin-ad-creative-prepare.",
+        }, 422);
+      }
+      // 5–60 s ADVERTISING-POLICY duration gate (Seth-approved; T-4). A longer
+      // video uploads/creates fine, then dies in review while budget burns.
+      if (typeof libCreativeVT.duration_seconds === "number") {
+        const durationCheckVT = validateTikTokVideoDuration(libCreativeVT.duration_seconds);
+        if (!durationCheckVT.ok) {
+          return json({ error: durationCheckVT.detail, detail: durationCheckVT.message }, 422);
+        }
+      }
+      videoIdT = preparedVideoIdT;
+      imageIdT = coverImageIdT; // the cover rides in image_ids:[cover] for SINGLE_VIDEO
+      creativeLibraryRowIdT = String(libCreativeVT.id);
+    } else if (!imageIdT && creativeLibraryIdT) {
       const { data: libCreativeT } = await supabase
         .from("ad_creatives")
         .select("id, kind, content_hash")
@@ -1974,7 +2051,11 @@ serve(async (req: Request): Promise<Response> => {
       const adInputT: Omit<CreateAdInput, "externalCreativeId"> & TikTokCreateAdExtensions = {
         name: `${name} — ad`,
         adText: adTextT,
+        // SINGLE_IMAGE: the ad image. SINGLE_VIDEO (#997 C): the video cover +
+        // the prepared video_id (both from external_ref_extra at prepare).
+        adFormat: adFormatT,
         imageIds: [imageIdT],
+        ...(videoIdT ? { videoId: videoIdT } : {}),
         // A1.0-5: the canonical page is the ad-visible URL; attribution rides
         // utm_params (≤14, case-sensitive keys, TikTok serve-time macros).
         landingPageUrl: destUrlT,
@@ -2137,7 +2218,8 @@ serve(async (req: Request): Promise<Response> => {
           external_campaign_id: createdT.externalCampaignId,
           external_adset_id: createdT.externalAdSetId,
           external_ad_id: createdT.externalAdId,
-          external_image_id: imageIdT,
+          external_image_id: imageIdT, // SINGLE_VIDEO: this is the cover image_id
+          ...(videoIdT ? { external_video_id: videoIdT } : {}),
         },
         provider_response: null,
       });

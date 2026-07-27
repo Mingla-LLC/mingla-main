@@ -39,17 +39,22 @@ const allPassing = ALL.map((platform) => ({ platform, ok: true, needsTranscode: 
 
 // ── P1: #1184 narrows the former blanket block to exact READY platforms ──────
 describe("ISSUE-995 rework · Phase A video create remains platform-honest", () => {
-  it("video create is enabled only for Meta and Snapchat", () => {
+  // [TEST-MOD-APPROVED ORCH-0997] #997 C wires TikTok paused-video create, so the
+  // Phase-A "tiktok: false" assertion is superseded. Meta/Snap/Google/Reddit values
+  // are unchanged; only tiktok graduates false → true.
+  it("video create is enabled for Meta, Snapchat, and TikTok (#997 C)", () => {
     assert.deepEqual(VIDEO_CREATE_ENABLED, {
       meta: true,
       snapchat: true,
-      tiktok: false,
+      tiktok: true,
       google: false,
       reddit: false,
     });
   });
 
-  it("only exact READY Meta/Snap rows become buildable", () => {
+  // [TEST-MOD-APPROVED ORCH-0997] TikTok now becomes buildable from a READY prep,
+  // exactly like Meta/Snap; only Google/Reddit remain excluded for video.
+  it("exact READY Meta/Snap/TikTok rows become buildable (#997 C)", () => {
     const { buildable, excluded } = partitionFundedCreative({
       fundedPlatforms: ALL,
       channels: allPassing,
@@ -60,8 +65,8 @@ describe("ISSUE-995 rework · Phase A video create remains platform-honest", () 
         tiktok: { state: "ready" },
       },
     });
-    assert.deepEqual(buildable, ["meta", "snapchat"]);
-    assert.deepEqual(excluded.map((e) => e.platform).sort(), ["google", "reddit", "tiktok"]);
+    assert.deepEqual(buildable.sort(), ["meta", "snapchat", "tiktok"]);
+    assert.deepEqual(excluded.map((e) => e.platform).sort(), ["google", "reddit"]);
   });
 
   it("the partition stays TOTAL for video (buildable ∪ excluded = funded)", () => {
