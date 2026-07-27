@@ -294,17 +294,40 @@ export const serverRowToSomethingElse = (row: ServerDraftEventRow): DraftEvent =
 `;
   if (run(renamedAway).length === 0) bad.push("(h) serverRowToDraft renamed away NOT flagged (gate would go dark)");
 
+  // (i) TESTER-ADDED adversarial vector (issue #1254 TEST phase) — a PARENTHESIZED
+  // cast `x as ( DraftEvent )`. A DIFFERENT evasion angle than cases (a)-(h): none
+  // of them wrap the asserted type in parens. `as ( DraftEvent )` is a valid TS
+  // type assertion identical in effect to `as DraftEvent` — it launders the same
+  // near-complete literal and suppresses the same missing-field error. The `: DraftEvent`
+  // return annotation is present so R2 passes; the ONLY thing that makes this fire is
+  // R1's `\(?\s*` paren-tolerance. Fails-on-revert (targeted): delete the `\(?` token
+  // from BANNED_CAST and this case goes RED — the parenthesized cast slips the gate.
+  // This regression-locks the paren-tolerance so a future edit cannot quietly narrow
+  // the ban to only the unparenthesized form.
+  const parenCastForm = `
+export const serverRowToDraft = (row: ServerDraftEventRow): DraftEvent => {
+  return {
+    id: row.id,
+    name: row.title,
+  } as ( DraftEvent );
+};
+`;
+  if (run(parenCastForm).length === 0) {
+    bad.push("(i) parenthesized `as ( DraftEvent )` cast NOT flagged (BANNED_CAST paren-tolerance `\\(?` broken)");
+  }
+
   if (bad.length) {
     console.error("issue #1254 mapper-no-error-suppressing-cast self-test FAIL:");
     for (const m of bad) console.error("  - " + m);
     process.exit(1);
   }
   console.log(
-    "issue #1254 / I-PROPOSED-1026-DRAFT-MAPPER-COMPILE-COMPLETE self-test PASS (9/9 cases:\n" +
+    "issue #1254 / I-PROPOSED-1026-DRAFT-MAPPER-COMPILE-COMPLETE self-test PASS (10/10 cases:\n" +
       "  satisfies form + bare-return-under-annotation PASS; `as DraftEvent`, `as unknown as\n" +
       "  DraftEvent`, and newline-split `as\\n DraftEvent` reverts FIRE; comment/string mention\n" +
       "  does NOT false-trip; missing-anchor FIRES; a real cast with a trailing // comment\n" +
-      "  FIRES; a renamed-away function HARD-FAILS instead of going dark).",
+      "  FIRES; a renamed-away function HARD-FAILS instead of going dark; and the tester-added\n" +
+      "  parenthesized `as ( DraftEvent )` cast FIRES via the `\\(?` paren-tolerance).",
   );
   process.exit(0);
 }
