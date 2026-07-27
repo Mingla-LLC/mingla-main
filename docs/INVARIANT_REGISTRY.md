@@ -64,14 +64,14 @@
 
 ---
 
-## DRAFT — issue #966 (Cloudinary cover-video residue removed; cover-video is Bunny-only — IN FLIGHT)
+## ACTIVE — issue #966 (Cloudinary cover-video residue removed; cover-video is Bunny-only — CLOSED 2026-07-27)
 
-### I-PROPOSED-966-COVER-VIDEO-PROVIDER-BUNNY-ONLY (DRAFT)
+### I-966-COVER-VIDEO-PROVIDER-BUNNY-ONLY (ACTIVE)
 - **Rule:** The event/brand cover-video provider is Bunny-only. `coverVideoProvider()` (`supabase/functions/_shared/eventCoverVideo.ts`) resolves to `"bunny"` unconditionally and `CoverVideoProvider` is the singleton type `"bunny"`. No Cloudinary upload/webhook/signature/config branch may be reintroduced into the cover-video pipeline — specifically none of `cloudinarySignature`, `cloudinaryDestroy`, `verifyCloudinaryNotificationSignature`, `cloudinaryConfigured`, `cloudinaryUploadFailureDetail`, the Cloudinary XHR/chunked/multipart upload legs (`uploadEventCoverVideoSourceWithXhr` / `uploadEventCoverVideoSourceInChunks`), or a `"cloudinary"` member of `EventCoverVideoUploadProtocol` may exist in non-test production source. A missing/invalid runtime config can never route cover-video to the retired provider.
 - **Scope note:** the legacy Cloudinary `/video/upload/`→`so_0` sub-clauses in the Category-2 render path (`deriveCoverPosterUrl` / `isVideoUrl` / `posterFor`) are EXPLICITLY EXEMPT — they serve the live Bunny render path under I-1069-VIDEO-DETECTION-MATCHES-EDGE and are not part of the retired upload/webhook/config path this invariant governs. Legal/terms copy naming Cloudinary is out of scope (separate compliance follow-up).
 - **Enforcement:** strict-grep gate `.github/scripts/strict-grep/i-proposed-966-cover-video-provider-bunny-only.mjs` (batch:A, two-sided `--self-test`) — a symbol-targeted absence check over non-test source under `supabase/functions/**` and `mingla-business/src/**` (comment-stripped so retained narrative refs, e.g. bunnyStream.ts's "Replaces cloudinaryDestroy", never false-positive).
 - **Regression test:** implementor happy-path `supabase/functions/_shared/coverVideoProviderDefault.966.test.ts` (fails-on-revert: restoring the `resolveRuntimeString("event_cover_video_provider", …) ?? "cloudinary"` body turns T-1/T-2 RED). Independent adversarial coverage added before PR.
-- **Status:** DRAFT at SPEC → ACTIVE at #966 CLOSE (orchestrator flips; house style strips the `I-PROPOSED-` prefix on activation, the gate FILENAME keeps its on-disk name).
+- **Established:** ACTIVE 2026-07-27 at issue #966 CLOSE (independent tester VERDICT PASS, 0 P0/P1; PR #1251 merged, squash `d786ac7ab`). All 8 `event-cover-video-*` + `api-health-probe` edge functions were redeployed from merged `main` and first-call verified — the webhook now returns a Bunny-only validation response (`bunny_payload_invalid`), proving the Cloudinary arm is gone and the Bunny route is unconditional. The gate FILENAME keeps its on-disk `i-proposed-966-…` name (house style strips only the invariant-ID prefix on activation). Cross-session: 3 pre-existing gates (`orch-0776`, `orch-0978` C5/C6, `i-proposed-1201`) were re-pointed to the Bunny equivalents (protection-preserving, never-weaken proven) and one stale consumer entry was removed from the #1203-owned `issue-1203-secret-capacity.mjs` (coordinated via COMMS-0124).
 
 ---
 
