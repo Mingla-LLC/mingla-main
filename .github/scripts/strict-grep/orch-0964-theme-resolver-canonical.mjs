@@ -9,7 +9,7 @@ const failures = [];
 const walk = (dir) => {
   const out = [];
   for (const entry of readdirSync(dir)) {
-    if ([".git", "node_modules", "dist", "build", ".expo"].includes(entry)) continue;
+    if ([".git", "node_modules", "dist", "build", ".expo", ".next"].includes(entry)) continue;
     const path = join(dir, entry);
     const stat = statSync(path);
     if (stat.isDirectory()) out.push(...walk(path));
