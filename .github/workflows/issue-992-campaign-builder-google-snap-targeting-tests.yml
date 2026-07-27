@@ -65,14 +65,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      # EXPLICIT registry — the ISSUE-992 IMPLEMENTOR happy-path suite. Pure ESM +
-      # fs source assertions; no node_modules required. The independent tester
-      # APPENDS `src/__tests__/issue992_google_snap_targeting_adversarial.test.js`
-      # to this line when their adversarial pass lands.
+      # EXPLICIT registry — the ISSUE-992 IMPLEMENTOR happy-path suite + the
+      # independent tester ADVERSARIAL suite (G-4 seam flip, broad-build byte-
+      # identity by deep-equal, coord/token scrub, cross-platform interest-leak,
+      # snapCircles drop-on-incomplete, demographics floor/top boundaries — a
+      # different angle, fails-on-revert on the seam guard). Pure ESM + fs source
+      # assertions; no node_modules required.
       - name: Run ISSUE-992 Google + Snap targeting suite
         run: >
           node --test
           src/__tests__/issue992_google_snap_targeting.test.js
+          src/__tests__/issue992_google_snap_targeting_adversarial.test.js
 
   issue-992-edge-builders-deno-test:
     name: "ISSUE-992: Google/Snap edge builders + resolvers (deno test)"
@@ -83,12 +86,16 @@ jobs:
       - uses: denoland/setup-deno@v1
         with:
           deno-version: "1.46.x"
-      # EXPLICIT registry — the ISSUE-992 edge-fn suite: buildGoogleMutateOperations
-      # demographic-exclusion + audience ops, buildSnapchatAdSquadBody circle geos
-      # + SCLS interests, the user_interest / SCLS parse+filter, and the create fn
-      # + targeting-search source wiring. Hermetic (pure builders over fixtures +
-      # fs source reads — no network).
+      # EXPLICIT registry — the ISSUE-992 edge-fn IMPLEMENTOR suite + the
+      # independent tester ADVERSARIAL edge suite (age-band boundary math,
+      # exclusion COMPLEMENT men⇒FEMALE + ad-group scope, full-range zero-ops by
+      # whole-array deep-equal, userInterest shape/junk-drop, circle null/junk
+      # drop + unit-token coercion, circles-REPLACE-country, parse tolerance,
+      # #1184 four-anchor threading + video-422 guard — a different angle,
+      # fails-on-revert on the exclusion / full-range / circle-replace lines).
+      # Hermetic (pure builders over fixtures + fs source reads — no network).
       - name: Run ISSUE-992 Google/Snap edge Deno tests
         run: >
           deno test --allow-read --allow-env --no-check
           supabase/functions/admin-ad-targeting-search/__tests__/issue992_google_snap_targeting_search.test.ts
+          supabase/functions/admin-ad-targeting-search/__tests__/issue992_google_snap_targeting_adversarial.test.ts
