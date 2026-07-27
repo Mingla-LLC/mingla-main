@@ -19,7 +19,8 @@
 // and the SC-1 case routes the row straight to attemptTransferForSplit → the
 // duplicate-400 throw → `initiateTransfer` called >=1 and
 // `mark_partner_split_transferred` called 0 → both SC-1 assertions flip RED.
-// fails-on-revert verified at <commit hash — see IMPLEMENTATION REPORT>
+// fails-on-revert verified at 13b719bd9 (index.ts reverted to origin/main →
+// all 3 tests RED: 0 passed, 3 failed; restored → 3 passed, 0 failed).
 //
 // NO live Paystack calls — deps injected. Run (repo root):
 //   SUPABASE_URL=https://example-test.supabase.co \
