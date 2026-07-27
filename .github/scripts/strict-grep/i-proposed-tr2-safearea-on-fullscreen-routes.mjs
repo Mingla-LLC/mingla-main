@@ -226,6 +226,34 @@ if (process.argv.includes("--self-test")) {
     }
   }
 
+  // (d) tester #960 (Step-0.5 adversarial — angle ≠ implementor's positive-satisfier
+  // cases): the SafeArea signal must be COMPLETE. A route that imports useSafeAreaInsets
+  // but never applies `paddingTop: insets.top` is NOT protected → MUST still be flagged.
+  // Guards against a future weakening that accepts the bare import as sufficient.
+  const insetsImportOnly =
+    `import { useSafeAreaInsets } from "react-native-safe-area-context";\n` +
+    `export default function S() {\n` +
+    `  const insets = useSafeAreaInsets(); // imported but paddingTop never applied\n` +
+    `  return <View style={{ flex: 1 }}><Text>Dashboard</Text></View>;\n` +
+    `}\n`;
+  if (!isSafeAreaViolation(insetsImportOnly)) {
+    selfFailures.push(
+      "(d) a route importing useSafeAreaInsets WITHOUT paddingTop: insets.top was NOT flagged — incomplete SafeArea signal wrongly exempted",
+    );
+  }
+
+  // (e) tester #960 — documented P3 gap: an allowlist tag inside a STRING (not a comment
+  // line) still exempts via the whole-file includes() match. No route does this today;
+  // recorded so a future hardening (comment-line-scoped allowlist) has a marker.
+  const tagInString =
+    `import { View, Text } from "react-native";\n` +
+    `export default function S(){return(<View style={{flex:1}}><Text>{"${ALLOWLIST_TAG}"}</Text></View>);}\n`;
+  if (!isSafeAreaViolation(tagInString)) {
+    console.warn(
+      "NOTE (P3, tester #960): allowlist tag inside a string exempts a top-anchored route — documented gap, no route does this today",
+    );
+  }
+
   if (selfFailures.length) {
     console.error(
       "I-PROPOSED-TR2-SAFEAREA-ON-FULLSCREEN-ROUTES self-test FAIL:",
@@ -234,7 +262,7 @@ if (process.argv.includes("--self-test")) {
     process.exit(1);
   }
   console.log(
-    "I-PROPOSED-TR2-SAFEAREA-ON-FULLSCREEN-ROUTES self-test PASS (all cases).",
+    "I-PROPOSED-TR2-SAFEAREA-ON-FULLSCREEN-ROUTES self-test PASS (teeth + satisfiers + scan-set precision + tester adversarial cases d/e).",
   );
   process.exit(0);
 }
