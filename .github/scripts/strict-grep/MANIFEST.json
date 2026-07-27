@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 435,
-  "selfTestWiredFloor": 227,
+  "expectedStrictGrepMjsFiles": 436,
+  "selfTestWiredFloor": 236,
   "unenforcedCap": 7,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -362,9 +362,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0852-checkout-own-confirm-path"
       ]
@@ -416,9 +417,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0852-consumer-payment-flow-frozen"
       ]
@@ -2004,9 +2006,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-proposed-tr4-booking-deadline-respected-at-checkout"
       ]
@@ -2205,9 +2208,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-stripe-paymentsheet-parity"
       ]
@@ -2218,9 +2222,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-stripe-pm-method-allowlist"
       ]
@@ -2662,9 +2667,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0777-ticket-checkout-production"
       ]
@@ -3163,9 +3169,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0847-consumer-multi-line-checkout"
       ]
@@ -4078,9 +4085,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-1138-experience-checkout-byte-identical"
       ]
@@ -5451,6 +5459,17 @@
       "jobKeys": []
     },
     {
+      "script": ".github/scripts/strict-grep/__tests__/issue-955-p1-batch2-selftest-coupling.adversarial.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
       "script": ".github/scripts/strict-grep/orch-1385-workspace-deps-declared.mjs",
       "kind": "file",
       "enforcement": "batch:A",
@@ -6038,9 +6057,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-1047-biz-payment-plan-editor-constraints"
       ]

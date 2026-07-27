@@ -94,119 +94,174 @@ function nonCommentLines(source) {
   });
 }
 
-const failures = [];
-const passes = [];
+// Pure verdict (behavior-preserving refactor). `files` carries the two source
+// strings { allowSource, edgeSource }; R-1..R-6 push human-readable strings into
+// `failures` / `passes` in the same order as before. Never touches disk.
+function check(files, failures, passes) {
+  const { allowSource, edgeSource } = files;
 
-// ─── R-1: allowlist file exists + exports MINGLA_PM_ALLOWLIST ────────────
-
-const allowSource = readOrFail(ALLOWLIST_FILE);
-if (/export\s+const\s+MINGLA_PM_ALLOWLIST\s*=\s*\[/.test(allowSource)) {
-  passes.push("R-1: MINGLA_PM_ALLOWLIST exported");
-} else {
-  failures.push(
-    "R-1: MINGLA_PM_ALLOWLIST export missing from " + ALLOWLIST_FILE,
-  );
-}
-
-// ─── R-2 + R-3 + R-4 + R-5: edge function shape ─────────────────────────
-
-const edgeSource = readOrFail(EDGE_FN_FILE);
-const edgeNonCommentText = nonCommentLines(edgeSource).join("\n");
-
-if (
-  /import\s+\{\s*getPaymentMethodTypes\s*\}\s+from\s+["']\.\.\/_shared\/stripePaymentMethods\.ts["']/
-    .test(edgeSource)
-) {
-  passes.push("R-2: import getPaymentMethodTypes present");
-} else {
-  failures.push(
-    "R-2: missing `import { getPaymentMethodTypes } from \"../_shared/stripePaymentMethods.ts\"` in " +
-      EDGE_FN_FILE,
-  );
-}
-
-if (
-  /payment_method_types\s*:\s*\[\s*\.\.\.\s*getPaymentMethodTypes\(\s*\)\s*\]/
-    .test(edgeNonCommentText)
-) {
-  passes.push("R-3: spread call present at PI-create site");
-} else {
-  failures.push(
-    "R-3: missing `payment_method_types: [...getPaymentMethodTypes()]` on a non-comment line in " +
-      EDGE_FN_FILE,
-  );
-}
-
-if (
-  /payment_method_types\s*:\s*\[\s*["']card["']\s*\]/.test(edgeNonCommentText)
-) {
-  failures.push(
-    "R-4: hardcoded `payment_method_types: [\"card\"]` literal found on non-comment line — must source from getPaymentMethodTypes() in " +
-      EDGE_FN_FILE,
-  );
-} else {
-  passes.push("R-4: no hardcoded card-only literal");
-}
-
-if (
-  /automatic_payment_methods\s*:\s*\{\s*enabled\s*:\s*true\s*\}/.test(
-    edgeNonCommentText,
-  )
-) {
-  failures.push(
-    "R-5: forbidden `automatic_payment_methods: { enabled: true }` form found — preserves ORCH-0837 H2 guard in " +
-      EDGE_FN_FILE,
-  );
-} else {
-  passes.push("R-5: no automatic_payment_methods enabled form");
-}
-
-// ─── R-6: allowlist contains exactly Phase 1 methods, no Phase 2 ────────
-
-// Extract array content between `MINGLA_PM_ALLOWLIST = [` and `] as const`.
-const arrayMatch = allowSource.match(
-  /MINGLA_PM_ALLOWLIST\s*=\s*\[([\s\S]*?)\]\s*as\s+const/,
-);
-if (arrayMatch === null) {
-  failures.push(
-    "R-6: could not parse MINGLA_PM_ALLOWLIST array literal in " +
-      ALLOWLIST_FILE,
-  );
-} else {
-  const body = arrayMatch[1];
-  const entries = [...body.matchAll(/["']([a-z_]+)["']/g)].map((m) => m[1]);
-  // ORCH-0849 hotfix 2026-05-15: reduced from four to two after Stripe CLI
-  // live-probe proved "apple_pay" / "google_pay" are NOT valid
-  // payment_method_types (400 payment_intent_invalid_parameter). The
-  // wallets surface through `card` when the mobile SDK is initialized
-  // with merchantIdentifier and the platform PaymentMethodConfiguration
-  // has them enabled. See `_shared/stripePaymentMethods.ts` header.
-  const allowlist = ["card", "link"];
-  const isExactAllowlist =
-    entries.length === allowlist.length &&
-    allowlist.every((m, i) => entries[i] === m);
-  if (!isExactAllowlist) {
+  // ─── R-1: allowlist file exists + exports MINGLA_PM_ALLOWLIST ────────────
+  if (/export\s+const\s+MINGLA_PM_ALLOWLIST\s*=\s*\[/.test(allowSource)) {
+    passes.push("R-1: MINGLA_PM_ALLOWLIST exported");
+  } else {
     failures.push(
-      "R-6: MINGLA_PM_ALLOWLIST must contain exactly [card, link] in this order. Found: " +
-        JSON.stringify(entries) +
-        ". Apple Pay / Google Pay are NOT separate types — they surface through `card`.",
+      "R-1: MINGLA_PM_ALLOWLIST export missing from " + ALLOWLIST_FILE,
+    );
+  }
+
+  // ─── R-2 + R-3 + R-4 + R-5: edge function shape ─────────────────────────
+  const edgeNonCommentText = nonCommentLines(edgeSource).join("\n");
+
+  if (
+    /import\s+\{\s*getPaymentMethodTypes\s*\}\s+from\s+["']\.\.\/_shared\/stripePaymentMethods\.ts["']/
+      .test(edgeSource)
+  ) {
+    passes.push("R-2: import getPaymentMethodTypes present");
+  } else {
+    failures.push(
+      "R-2: missing `import { getPaymentMethodTypes } from \"../_shared/stripePaymentMethods.ts\"` in " +
+        EDGE_FN_FILE,
+    );
+  }
+
+  if (
+    /payment_method_types\s*:\s*\[\s*\.\.\.\s*getPaymentMethodTypes\(\s*\)\s*\]/
+      .test(edgeNonCommentText)
+  ) {
+    passes.push("R-3: spread call present at PI-create site");
+  } else {
+    failures.push(
+      "R-3: missing `payment_method_types: [...getPaymentMethodTypes()]` on a non-comment line in " +
+        EDGE_FN_FILE,
+    );
+  }
+
+  if (
+    /payment_method_types\s*:\s*\[\s*["']card["']\s*\]/.test(edgeNonCommentText)
+  ) {
+    failures.push(
+      "R-4: hardcoded `payment_method_types: [\"card\"]` literal found on non-comment line — must source from getPaymentMethodTypes() in " +
+        EDGE_FN_FILE,
     );
   } else {
-    const phase2Leak = entries.filter((m) =>
-      PHASE_2_FORBIDDEN_METHODS.includes(m),
+    passes.push("R-4: no hardcoded card-only literal");
+  }
+
+  if (
+    /automatic_payment_methods\s*:\s*\{\s*enabled\s*:\s*true\s*\}/.test(
+      edgeNonCommentText,
+    )
+  ) {
+    failures.push(
+      "R-5: forbidden `automatic_payment_methods: { enabled: true }` form found — preserves ORCH-0837 H2 guard in " +
+        EDGE_FN_FILE,
     );
-    if (phase2Leak.length > 0) {
+  } else {
+    passes.push("R-5: no automatic_payment_methods enabled form");
+  }
+
+  // ─── R-6: allowlist contains exactly Phase 1 methods, no Phase 2 ────────
+
+  // Extract array content between `MINGLA_PM_ALLOWLIST = [` and `] as const`.
+  const arrayMatch = allowSource.match(
+    /MINGLA_PM_ALLOWLIST\s*=\s*\[([\s\S]*?)\]\s*as\s+const/,
+  );
+  if (arrayMatch === null) {
+    failures.push(
+      "R-6: could not parse MINGLA_PM_ALLOWLIST array literal in " +
+        ALLOWLIST_FILE,
+    );
+  } else {
+    const body = arrayMatch[1];
+    const entries = [...body.matchAll(/["']([a-z_]+)["']/g)].map((m) => m[1]);
+    // ORCH-0849 hotfix 2026-05-15: reduced from four to two after Stripe CLI
+    // live-probe proved "apple_pay" / "google_pay" are NOT valid
+    // payment_method_types (400 payment_intent_invalid_parameter). The
+    // wallets surface through `card` when the mobile SDK is initialized
+    // with merchantIdentifier and the platform PaymentMethodConfiguration
+    // has them enabled. See `_shared/stripePaymentMethods.ts` header.
+    const allowlist = ["card", "link"];
+    const isExactAllowlist =
+      entries.length === allowlist.length &&
+      allowlist.every((m, i) => entries[i] === m);
+    if (!isExactAllowlist) {
       failures.push(
-        "R-6: Phase 2 methods leaked into allowlist (require dedicated ORCH proving redirect-flow / delayed-method plumbing): " +
-          phase2Leak.join(", "),
+        "R-6: MINGLA_PM_ALLOWLIST must contain exactly [card, link] in this order. Found: " +
+          JSON.stringify(entries) +
+          ". Apple Pay / Google Pay are NOT separate types — they surface through `card`.",
       );
     } else {
-      passes.push(
-        "R-6: allowlist is exactly [card, link] with no Phase 2 leakage",
+      const phase2Leak = entries.filter((m) =>
+        PHASE_2_FORBIDDEN_METHODS.includes(m),
       );
+      if (phase2Leak.length > 0) {
+        failures.push(
+          "R-6: Phase 2 methods leaked into allowlist (require dedicated ORCH proving redirect-flow / delayed-method plumbing): " +
+            phase2Leak.join(", "),
+        );
+      } else {
+        passes.push(
+          "R-6: allowlist is exactly [card, link] with no Phase 2 leakage",
+        );
+      }
     }
   }
 }
+
+// ─────────────────────────────────────────────────────────────── self-test
+if (process.argv.includes("--self-test")) {
+  const self = [];
+  const run = (files) => {
+    const f = [];
+    check(files, f, []);
+    return f;
+  };
+
+  const goodAllow = 'export const MINGLA_PM_ALLOWLIST = ["card", "link"] as const;';
+  const goodEdge = [
+    'import { getPaymentMethodTypes } from "../_shared/stripePaymentMethods.ts";',
+    "const params = { payment_method_types: [...getPaymentMethodTypes()] };",
+  ].join("\n");
+
+  // GOOD: allowlist [card, link] + spread-sourced PM types, no hardcode / apm form.
+  if (run({ allowSource: goodAllow, edgeSource: goodEdge }).length) {
+    self.push("GOOD (spread-from-allowlist PM types) wrongly flagged");
+  }
+
+  // BAD1 (revert-style): the spread is replaced by a hardcoded card literal — the
+  // exact ORCH-0849 regression — fires R-4 (and R-3). See divergence note below:
+  // the gate's R-4 regex matches the single `["card"]` hardcode form specifically.
+  const bad1Edge = [
+    'import { getPaymentMethodTypes } from "../_shared/stripePaymentMethods.ts";',
+    'const params = { payment_method_types: ["card"] };',
+  ].join("\n");
+  if (run({ allowSource: goodAllow, edgeSource: bad1Edge }).length === 0) {
+    self.push("BAD1 (hardcoded payment_method_types literal) not flagged");
+  }
+
+  // BAD2 (regression, different angle): the automatic_payment_methods enabled
+  // form re-appears (ORCH-0837 H2 guard) → fires R-5.
+  const bad2Edge = goodEdge + "\nconst apm = { automatic_payment_methods: { enabled: true } };";
+  if (run({ allowSource: goodAllow, edgeSource: bad2Edge }).length === 0) {
+    self.push("BAD2 (automatic_payment_methods: { enabled: true }) not flagged");
+  }
+
+  if (self.length) {
+    console.error("I-PROPOSED-STRIPE-PM-METHOD-ALLOWLIST self-test FAIL:");
+    self.forEach((m) => console.error("  - " + m));
+    process.exit(1);
+  }
+  console.log("I-PROPOSED-STRIPE-PM-METHOD-ALLOWLIST self-test PASS (3/3 cases).");
+  process.exit(0);
+}
+
+// ─────────────────────────────────────────────────────────────── main path
+const failures = [];
+const passes = [];
+
+const allowSource = readOrFail(ALLOWLIST_FILE);
+const edgeSource = readOrFail(EDGE_FN_FILE);
+check({ allowSource, edgeSource }, failures, passes);
 
 // ─── Report ──────────────────────────────────────────────────────────────
 
