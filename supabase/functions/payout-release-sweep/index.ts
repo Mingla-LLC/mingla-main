@@ -49,6 +49,7 @@ type SweepDeps = {
   notifyAttemptCap?: (
     release: Pick<StripeReleaseCandidate, "release_id" | "brand_id">,
     message: string,
+    alertKind?: string,
   ) => Promise<"provider_accepted" | void>;
   // Issue #1177 — injectable Paystack transfer client (mirror of
   // createStripeReleaseClient) so the organiser rail is unit-testable.
@@ -125,10 +126,64 @@ type PayoutReleaseAlert = {
   alert_id: string;
   release_id: string;
   brand_id: string;
+  // Issue #1217 — the drain now returns alert_kind so the worker can emit
+  // rail-aware copy (Stripe vs Paystack) rather than Stripe-only wording.
+  alert_kind: string;
   error_message: string;
   idempotency_key: string;
   claim_id: string;
 };
+
+// Issue #1217 — rail-aware ops alert copy keyed on the outbox alert_kind. Each
+// kind maps to a distinct notification type + idempotency key so a Paystack
+// payout-release alert never reads as a Stripe one. The default keeps the
+// original Stripe attempt-cap wording for the legacy stripe_attempt_cap kind.
+function payoutReleaseAlertCopy(alertKind: string): {
+  type: string;
+  title: string;
+  bodyLead: string;
+} {
+  switch (alertKind) {
+    case "paystack_otp_blocked":
+      return {
+        type: "ops.paystack_payout_release_otp_blocked",
+        title: "Paystack organiser payout is blocked on transfer OTP",
+        bodyLead: "is blocked because Paystack transfer OTP is still enabled",
+      };
+    case "paystack_attempt_cap":
+      return {
+        type: "ops.paystack_payout_release_attempt_cap",
+        title: "Paystack organiser payout needs manual review",
+        bodyLead: "exhausted its Paystack transfer attempts",
+      };
+    case "paystack_fee_unreconciled":
+      return {
+        type: "ops.paystack_payout_release_fee_unreconciled",
+        title: "Paystack organiser payout fee needs reconciliation",
+        bodyLead: "has an unreconciled Paystack transfer fee",
+      };
+    case "paystack_reversal_unreconciled":
+      return {
+        type: "ops.paystack_payout_release_reversal_unreconciled",
+        title: "Paystack organiser payout reversal needs manual review",
+        bodyLead:
+          "was reversed by Paystack with no resolvable returned amount and credited nothing",
+      };
+    case "paystack_over_cap":
+      return {
+        type: "ops.paystack_payout_release_over_cap",
+        title: "Paystack organiser payout exceeds the transfer cap",
+        bodyLead: "exceeds the Paystack transfer cap",
+      };
+    case "stripe_attempt_cap":
+    default:
+      return {
+        type: "ops.stripe_payout_release_attempt_cap",
+        title: "Stripe organiser payout needs manual review",
+        bodyLead: "exhausted 10 definitive payout attempts",
+      };
+  }
+}
 
 export function providerReferenceRoute(
   provider: FeeCandidate["provider"],
@@ -255,25 +310,27 @@ async function notifyKycBlocked(
 async function notifyAttemptCap(
   release: Pick<StripeReleaseCandidate, "release_id" | "brand_id">,
   message: string,
+  alertKind = "stripe_attempt_cap",
 ): Promise<"provider_accepted"> {
+  // Issue #1217 — pick rail-aware copy + a kind-specific idempotency key so a
+  // Paystack payout-release alert reads correctly instead of as a Stripe one.
+  const copy = payoutReleaseAlertCopy(alertKind);
   const result = await dispatchNotification({
     emailTo: "ops@mingla.app",
     emailVariant: "generic_notification",
-    type: "ops.stripe_payout_release_attempt_cap",
-    title: "Stripe organiser payout needs manual review",
-    body:
-      `Release ${release.release_id} exhausted 10 definitive payout attempts. Last error: ${
-        message.slice(0, 500)
-      }`,
+    type: copy.type,
+    title: copy.title,
+    body: `Release ${release.release_id} ${copy.bodyLead}. Last error: ${
+      message.slice(0, 500)
+    }`,
     data: {
       releaseId: release.release_id,
       brandId: release.brand_id,
-      attemptCap: 10,
+      alertKind,
     },
     relatedId: release.release_id,
     relatedType: "payout_release",
-    idempotencyKey:
-      `ops.stripe_payout_release_attempt_cap:${release.release_id}`,
+    idempotencyKey: `${copy.type}:${release.release_id}`,
     skipPush: true,
   });
   if (!result.providerAccepted) {
@@ -320,6 +377,7 @@ async function deliverPendingAttemptCapAlerts(
           brand_id: alert.brand_id,
         },
         alert.error_message,
+        alert.alert_kind,
       );
       outcome = "provider_accepted";
     } catch (error) {

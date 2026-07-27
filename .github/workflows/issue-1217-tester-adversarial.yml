@@ -1,0 +1,86 @@
+name: "#1217/#1219 Tester Adversarial — mixed alert-drain + reversal safety + containment"
+
+# mingla-tester adversarial regression for the batched #1217/#1219 fix.
+#
+# DIFFERENT ANGLE from the implementor's issue_1217_alert_drain_reversal.test.sql
+# (single Paystack kind + one NULL reversal + one positive credit) and
+# issue_1219_reversal_amount_safety.test.ts (per-call TS amount handling):
+#   * a MIXED outbox with ALL SIX alert kinds pending drains every one in one
+#     claim AND the Stripe kind still drains (#1172 no-regression);
+#   * a GREATER-THAN-PRINCIPAL reversal is clamped to the principal;
+#   * reverse_paystack_transfer_leg(leg, NULL) is idempotent on replay (one park,
+#     one alert, zero credits);
+#   * CONTAINMENT — a reversal transfer_fee_credit never reaches net_release_cents;
+#   * #1218 parse defensiveness — case-insensitive stamp, mislabelled-stamp TOTAL
+#     preservation, non-numeric/empty breakdown fallback, negative-row skip.
+# Fails-on-revert verified: reverting the drain filter to stripe-only fails the
+# mixed-drain assertion; reverting the reverse fn to NULL->RAISE aborts the park
+# test; disabling the fees_breakdown block fails the stamp parse cases.
+#
+# House pattern: pinned Deno, EXPLICIT files (never a glob), path-triggered on the
+# guarded SOURCE + the tests.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/functions/payout-release-sweep/**"
+      - "supabase/migrations/__tests__/issue_1217_1219_gates.adversarial.test.sql"
+      - "supabase/functions/payout-release-sweep/__tests__/issue_1218_parse_stamp_defensive.adversarial.test.ts"
+      - ".github/workflows/issue-1217-tester-adversarial.yml"
+  pull_request:
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/functions/payout-release-sweep/**"
+      - "supabase/migrations/__tests__/issue_1217_1219_gates.adversarial.test.sql"
+      - "supabase/functions/payout-release-sweep/__tests__/issue_1218_parse_stamp_defensive.adversarial.test.ts"
+      - ".github/workflows/issue-1217-tester-adversarial.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-1217-tester-adversarial:
+    name: "#1217/#1219 tester adversarial — mixed drain (incl. stripe no-regression), reversal clamp/park idempotency, containment, #1218 parse"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: Apply every migration to clean PostgreSQL 17, run the SQL adversarial suite
+        run: |
+          adv_db_password="$(openssl rand -hex 24)"
+          docker run --name issue1217-adv-postgres \
+            -e POSTGRES_PASSWORD="$adv_db_password" \
+            -d supabase/postgres:17.4.1.075
+          for attempt in {1..90}; do
+            state="$(docker inspect --format \
+              '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' \
+              issue1217-adv-postgres)"
+            if [ "$state" = "healthy" ]; then
+              break
+            fi
+            sleep 1
+          done
+          for migration_file in supabase/migrations/*.sql; do
+            docker exec -i issue1217-adv-postgres \
+              psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+              < "$migration_file"
+          done
+          docker exec -i issue1217-adv-postgres \
+            psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            < supabase/migrations/__tests__/issue_1217_1219_gates.adversarial.test.sql
+      - name: Run the #1218 stamp-parse defensive adversarial suite
+        run: |
+          deno test --allow-read --allow-env --allow-net --no-check \
+            supabase/functions/payout-release-sweep/__tests__/issue_1218_parse_stamp_defensive.adversarial.test.ts
+      - name: Remove disposable database
+        if: always()
+        run: docker rm -f issue1217-adv-postgres || true
