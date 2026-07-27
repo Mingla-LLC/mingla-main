@@ -244,9 +244,24 @@ export function setOfferingVisibility(eventId, visibility, reason) {
   });
 }
 
-/** #2 — cancel an offering (HIGH, destructive). NO refund (money = ORCH-1274). */
-export function cancelOffering(eventId, reason) {
-  return callAdminWriteRpc("admin_cancel_offering", { p_event_id: eventId, p_reason: reason });
+/**
+ * #2 — cancel an offering (HIGH, destructive). The RPC body still only flips
+ * events.status='cancelled'; #1179 [cancel-refund-fanout] adds a best-effort kickoff
+ * of the buyer auto-refund fan-out AFTER the cancel commits. The kickoff is a LATENCY
+ * optimisation only — correctness is guaranteed by the backstop pg_cron — so it is
+ * fire-and-forget and NEVER throws into the cancel flow.
+ */
+export async function cancelOffering(eventId, reason) {
+  const result = await callAdminWriteRpc("admin_cancel_offering", {
+    p_event_id: eventId,
+    p_reason: reason,
+  });
+  supabase.functions
+    .invoke("event-cancel-refund-fanout", { body: { event_id: eventId } })
+    .catch(() => {
+      /* backstop cron re-drives — see supabase/functions/event-cancel-refund-fanout */
+    });
+  return result;
 }
 
 /** #3 — close / reopen bookings (HIGH). */
