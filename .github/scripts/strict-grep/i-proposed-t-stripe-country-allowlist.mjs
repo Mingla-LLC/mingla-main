@@ -96,6 +96,101 @@ function isExemptFile(filePath) {
   return EXEMPT_FILE_PATTERNS.some((p) => p.test(filePath));
 }
 
+/**
+ * Pure verdict. `fileEntries` = [{ rel, content }] with `rel` the repo-relative
+ * POSIX path (drives both the file-pattern exemption and reporting). Pushes one
+ * { rel, line, lineText, countryCode } record per offending line into `failures`.
+ * Behavior-preserving refactor of the original per-line scanFile logic.
+ */
+function check(fileEntries, failures) {
+  for (const { rel, content } of fileEntries) {
+    if (isExemptFile(rel)) continue;
+    const lines = content.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const m = line.match(COUNTRY_KEY_REGEX);
+      if (!m) continue;
+
+      const countryCode = m[1];
+      if (ALLOWED_COUNTRIES.has(countryCode)) continue;
+
+      // Skip type-only / comment / import lines.
+      const trimmed = line.trim();
+      if (
+        trimmed.startsWith("//") ||
+        trimmed.startsWith("*") ||
+        trimmed.startsWith("import ") ||
+        trimmed.startsWith("export type ")
+      ) {
+        continue;
+      }
+
+      // Allowlist within 5 lines above.
+      const allowStart = Math.max(0, i - 5);
+      const allowContext = lines.slice(allowStart, i).join("\n");
+      if (allowContext.includes(ALLOWLIST_TAG)) continue;
+
+      failures.push({ rel, line: i + 1, lineText: line, countryCode });
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────── self-test
+if (process.argv.includes("--self-test")) {
+  const self = [];
+  const run = (entries) => {
+    const f = [];
+    check(entries, f);
+    return f;
+  };
+
+  // GOOD: an in-allowlist country literal on a country-key line → silent (specificity).
+  let f = run([
+    {
+      rel: "supabase/functions/brand-stripe-onboard/index.ts",
+      content: 'const country = "US";\n',
+    },
+  ]);
+  if (f.length) self.push("GOOD (in-allowlist US) wrongly flagged");
+
+  // BAD1 (revert-style): an out-of-list country the gate was created to stop.
+  f = run([
+    {
+      rel: "supabase/functions/brand-stripe-onboard/index.ts",
+      content: '  country: "NG",\n',
+    },
+  ]);
+  if (f.length === 0) self.push("BAD1 (out-of-list country NG) not flagged");
+
+  // BAD2 (regression, different angle): a DIFFERENT country-key name + out-of-list code.
+  f = run([
+    {
+      rel: "mingla-business/src/payments/connect.ts",
+      content: '  stripeCountry: "IN",\n',
+    },
+  ]);
+  if (f.length === 0) self.push("BAD2 (out-of-list stripeCountry IN) not flagged");
+
+  // SPECIFICITY: a tag-exempt out-of-list literal stays silent.
+  f = run([
+    {
+      rel: "supabase/functions/brand-stripe-onboard/index.ts",
+      content:
+        "// orch-strict-grep-allow stripe-country-out-of-scope — B2c AU entity backlog\n" +
+        '  country: "AU",\n',
+    },
+  ]);
+  if (f.length) self.push("tag-exempt out-of-list country wrongly flagged");
+
+  if (self.length) {
+    console.error("I-PROPOSED-T self-test FAIL:");
+    self.forEach((m) => console.error("  - " + m));
+    process.exit(1);
+  }
+  console.log("I-PROPOSED-T self-test PASS (4/4 cases).");
+  process.exit(0);
+}
+
 function* walkTsTsx(dir) {
   let entries;
   try {
@@ -125,8 +220,7 @@ function* walkTsTsx(dir) {
   }
 }
 
-function reportViolation(filePath, lineNumber, lineText, countryCode) {
-  const rel = relative(REPO_ROOT, filePath).split(sep).join("/");
+function reportViolation(rel, lineNumber, lineText, countryCode) {
   console.error(`ERROR: I-PROPOSED-T violation in ${rel}:${lineNumber}`);
   console.error(`  ${lineText.trim()}`);
   console.error(
@@ -148,62 +242,36 @@ function reportViolation(filePath, lineNumber, lineText, countryCode) {
     `  See: Mingla_Artifacts/INVARIANT_REGISTRY.md I-PROPOSED-T`,
   );
   console.error("");
-  violations += 1;
 }
 
-function scanFile(filePath) {
-  filesScanned += 1;
-  if (isExemptFile(filePath)) return;
-
-  let source;
-  try {
-    source = readFileSync(filePath, "utf8");
-  } catch (err) {
-    const rel = relative(REPO_ROOT, filePath).split(sep).join("/");
-    console.error(`READ-FAIL: ${rel} — ${err.message}`);
-    readFailures += 1;
-    return;
-  }
-
-  const lines = source.split("\n");
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const m = line.match(COUNTRY_KEY_REGEX);
-    if (!m) continue;
-
-    const countryCode = m[1];
-    if (ALLOWED_COUNTRIES.has(countryCode)) continue;
-
-    // Skip type-only / comment / import lines
-    const trimmed = line.trim();
-    if (
-      trimmed.startsWith("//") ||
-      trimmed.startsWith("*") ||
-      trimmed.startsWith("import ") ||
-      trimmed.startsWith("export type ")
-    ) {
-      continue;
-    }
-
-    // Allowlist within 5 lines above
-    const allowStart = Math.max(0, i - 5);
-    const allowContext = lines.slice(allowStart, i).join("\n");
-    if (allowContext.includes(ALLOWLIST_TAG)) continue;
-
-    reportViolation(filePath, i + 1, line, countryCode);
-  }
-}
-
+const fileEntries = [];
 try {
   for (const dir of SCAN_DIRS) {
     for (const file of walkTsTsx(dir)) {
-      scanFile(file);
+      filesScanned += 1;
+      const rel = relative(REPO_ROOT, file).split(sep).join("/");
+      let source;
+      try {
+        source = readFileSync(file, "utf8");
+      } catch (err) {
+        console.error(`READ-FAIL: ${rel} — ${err.message}`);
+        readFailures += 1;
+        continue;
+      }
+      fileEntries.push({ rel, content: source });
     }
   }
 } catch (err) {
   console.error(`SCRIPT ERROR: ${err.message}`);
   process.exit(2);
 }
+
+const failures = [];
+check(fileEntries, failures);
+for (const v of failures) {
+  reportViolation(v.rel, v.line, v.lineText, v.countryCode);
+}
+violations = failures.length;
 
 console.error("");
 console.error(
