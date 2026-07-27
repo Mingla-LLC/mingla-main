@@ -283,7 +283,7 @@ describe("#948 W4 render — invite bank screen Skip + Back-hide", () => {
   });
 
   // ─── T-a — happy path (fails on revert) ───────────────────────────────────
-  test("T-a: invite phase hides Back, reveals the two choices only after Skip, and Continue-on-web routes to /brand/[id]", async () => {
+  test("T-a: invite phase hides Back, reveals the two choices only after Skip, and Continue-on-web routes to /(tabs)/home", async () => {
     tree = await mountBody();
 
     // Back hidden; the primary CTA and Skip link are present.
@@ -303,10 +303,11 @@ describe("#948 W4 render — invite bank screen Skip + Back-hide", () => {
     expect(count(tree, "bank-connect-skip-download")).toBe(1);
     expect(count(tree, "bank-connect-skip-continue-web")).toBe(1);
 
-    // Continue on web → brand dashboard home, via replace (not push).
+    // Continue on web → top-level web-app home (`/(tabs)/home`), via replace
+    // (not push). ORCH-1401 [continue-web-home].
     await pressOnly(tree, { testID: "bank-connect-skip-continue-web" });
     expect(router.replace).toHaveBeenCalledTimes(1);
-    expect(router.replace).toHaveBeenCalledWith(`/brand/${BRAND_ID}`);
+    expect(router.replace).toHaveBeenCalledWith("/(tabs)/home");
   });
 
   // ─── T-b — Download choice fires the ONE attribution-safe OneLink ──────────

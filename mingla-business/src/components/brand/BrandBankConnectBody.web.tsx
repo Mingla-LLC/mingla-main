@@ -178,13 +178,14 @@ export default function BrandBankConnectBody(): React.ReactElement {
     router.replace("/(tabs)/account" as never);
   }, [brandId, router]);
 
-  // #948 W4 [web-skip-download] — "Continue on web" lands on the brand's
-  // dashboard home (`/brand/[id]`), which carries its own status-driven bank
-  // nudge, so skipping never strands the partner. `replace` (not `push`) keeps
-  // the skipped bank screen off the back stack.
+  // #948 W4 [web-skip-download] — ORCH-1401 [continue-web-home]: "Continue on
+  // web" lands on the top-level web-app home (`/(tabs)/home`) rather than the
+  // brand's own dashboard, so skipping the bank step drops the partner at the
+  // app's front door. `replace` (not `push`) keeps the skipped bank screen off
+  // the back stack.
   const handleContinueOnWeb = useCallback((): void => {
     if (brandId === null) return;
-    router.replace(`/brand/${brandId}` as never);
+    router.replace("/(tabs)/home" as never);
   }, [brandId, router]);
 
   const handleOpenSkipChoices = useCallback((): void => {
@@ -472,7 +473,8 @@ export default function BrandBankConnectBody(): React.ReactElement {
             preserved. Renders for BOTH provider paths (placed after the branch).
             Collapsed: a quiet ghost link. Expanded: the two secondary choices —
             reuse the attribution-safe BusinessAppDownloadCta (one OneLink, no
-            store branching) + "Continue on web" → the brand dashboard home.
+            store branching) + "Continue on web" → the top-level web-app home
+            (`/(tabs)/home`).
           */}
           {isInviteFunnel ? (
             skipChoicesOpen ? (

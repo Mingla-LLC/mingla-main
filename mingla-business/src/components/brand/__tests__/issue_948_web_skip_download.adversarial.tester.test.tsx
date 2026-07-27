@@ -320,9 +320,11 @@ describe("#948 W4 ADVERSARIAL — Paystack Skip, exact-match hardening, signal-i
     expect(count(tree, "bank-connect-skip-download")).toBe(1);
     expect(count(tree, "bank-connect-skip-continue-web")).toBe(1);
 
+    // Continue on web → top-level web-app home (`/(tabs)/home`) on the Paystack
+    // path too. ORCH-1401 [continue-web-home].
     await pressOnly(tree, { testID: "bank-connect-skip-continue-web" });
     expect(router.replace).toHaveBeenCalledTimes(1);
-    expect(router.replace).toHaveBeenCalledWith(`/brand/${BRAND_ID}`);
+    expect(router.replace).toHaveBeenCalledWith("/(tabs)/home");
   });
 
   // ─── Angle B — exact-match reader hardening (THE fails-on-revert anchor) ────
