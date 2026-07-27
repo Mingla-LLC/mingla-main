@@ -347,26 +347,25 @@ Deno.test("ISSUE-997 D1: the prepare endpoint folds checked.mergeExtra into exte
   );
 });
 
-// ── 5. GUARDRAIL: Google video CREATE is STILL fail-closed (D2 not built) ─────
-// This is an invariant guard, not a D1 seam: it proves the create branch was NOT
-// touched — Google video create still returns the 422 phase-a seam.
-Deno.test("ISSUE-997 D1 guardrail: Google video CREATE stays fail-closed (422); only Google+Reddit still closed", async () => {
+// ── 5. GUARDRAIL: post-D2, Google video create is WIRED; only Reddit fail-closed ─
+// [TEST-MOD-APPROVED ORCH-0997] D2 wired Google Demand Gen video create, so the
+// D1-era "Google create stays fail-closed" assertion is obsolete. Updated to the
+// new truth (Google now builds; the Demand Gen create fn is wired), while KEEPING
+// the Reddit fail-closed assertion (the last remaining video create 422).
+Deno.test("ISSUE-997 D2 guardrail: Google video CREATE is now WIRED (Demand Gen); only Reddit stays fail-closed", async () => {
   const src = await Deno.readTextFile(
     new URL("../../admin-ad-create-campaign/index.ts", import.meta.url),
   );
-  // Exactly two video create fail-closed seams remain: Google + Reddit.
-  assertEquals(src.match(/video_create_not_available_phase_a/g)?.length, 2);
-  assert(
-    /creativeG\.kind === "video"[\s\S]{0,160}video_create_not_available_phase_a/
-      .test(src),
-    "the Google video-create branch must still return video_create_not_available_phase_a (422)",
-  );
+  // Exactly ONE video create fail-closed seam remains: Reddit.
+  assertEquals(src.match(/video_create_not_available_phase_a/g)?.length, 1);
   assert(
     /creativeR\.kind === "video"[\s\S]{0,160}video_create_not_available_phase_a/
       .test(src),
     "the Reddit video-create branch must still fail closed",
   );
-  // D2 not built: no Demand Gen builder wired into the create fn.
-  assertEquals(src.includes("buildGoogleDemandGenMutateOperations"), false);
-  assertEquals(src.includes("googleCreateDemandGenVideoCampaign"), false);
+  // D2 built: the Demand Gen create fn is wired into the create branch, consuming
+  // the D1-prepared youtube_video_id.
+  assertEquals(src.includes("googleCreateDemandGenVideoCampaign"), true);
+  assertStringIncludes(src, "youtube_video_id");
+  assertStringIncludes(src, 'objective: "DEMAND_GEN"');
 });

@@ -34,16 +34,20 @@
  * admin-ad-create-campaign can actually create a video ad.
  */
 /**
- * ISSUE-997 C: TikTok paused-video create is now wired end-to-end
+ * ISSUE-997 C: TikTok paused-video create is wired end-to-end
  * (admin-ad-creative-prepare captures video_id + cover_image_id → the
- * admin-ad-create-campaign TikTok SINGLE_VIDEO branch builds a PAUSED ad). Google
- * and Reddit video create remain unwired (google = separate 997-D sub-wave).
+ * admin-ad-create-campaign TikTok SINGLE_VIDEO branch builds a PAUSED ad).
+ * ISSUE-997 D2: Google video create is now wired too — a Google video walks to a
+ * READY google ref (D1 YouTube resumable upload → external_ref_extra.
+ * youtube_video_id), and the admin-ad-create-campaign Google Demand Gen branch
+ * builds a PAUSED demandGenVideoResponsiveAd from it. ONLY Reddit video create
+ * remains fail-closed (no wired create path).
  */
 export const VIDEO_CREATE_ENABLED = Object.freeze({
   meta: true,
   snapchat: true,
   tiktok: true,
-  google: false,
+  google: true,
   reddit: false,
 });
 
@@ -91,12 +95,12 @@ export function partitionFundedCreative({
     // build path itself; validation + placement previews still render.
     if (kind === "video") {
       if (VIDEO_CREATE_ENABLED[platform] !== true) {
-        // ISSUE-997 C: tiktok is now VIDEO_CREATE_ENABLED, so it never reaches
-        // this exclusion branch — only google (approximation_only) and reddit
-        // (video_not_creatable) remain unwired for video.
+        // ISSUE-997 C/D2: tiktok AND google are now VIDEO_CREATE_ENABLED, so they
+        // never reach this exclusion branch — only reddit (video_not_creatable)
+        // remains unwired for video.
         excluded.push({
           platform,
-          reason: platform === "google" ? "approximation_only" : "video_not_creatable",
+          reason: "video_not_creatable",
           channel,
         });
         continue;

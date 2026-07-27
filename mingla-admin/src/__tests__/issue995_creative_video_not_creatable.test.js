@@ -39,15 +39,15 @@ const allPassing = ALL.map((platform) => ({ platform, ok: true, needsTranscode: 
 
 // ── P1: #1184 narrows the former blanket block to exact READY platforms ──────
 describe("ISSUE-995 rework · Phase A video create remains platform-honest", () => {
-  // [TEST-MOD-APPROVED ORCH-0997] #997 C wires TikTok paused-video create, so the
-  // Phase-A "tiktok: false" assertion is superseded. Meta/Snap/Google/Reddit values
-  // are unchanged; only tiktok graduates false → true.
-  it("video create is enabled for Meta, Snapchat, and TikTok (#997 C)", () => {
+  // [TEST-MOD-APPROVED ORCH-0997] #997 C wired TikTok and #997 D2 wired Google
+  // (Demand Gen) paused-video create, so the "google: false" assertion is now
+  // superseded too — only reddit remains fail-closed for video.
+  it("video create is enabled for Meta, Snapchat, TikTok, and Google (#997 C/D2)", () => {
     assert.deepEqual(VIDEO_CREATE_ENABLED, {
       meta: true,
       snapchat: true,
       tiktok: true,
-      google: false,
+      google: true,
       reddit: false,
     });
   });
@@ -80,9 +80,13 @@ describe("ISSUE-995 rework · Phase A video create remains platform-honest", () 
   });
 });
 
-// ── P2: a video on Google never yields a "Created" success ───────────────────
+// ── P2: a video on Google never yields a "Created" success without a READY prep ─
 describe("ISSUE-995 rework · a video funded to Google is never a fabricated success", () => {
-  it("Google (ok:true) is EXCLUDED for a video, never buildable → runCreate skips it", () => {
+  // [TEST-MOD-APPROVED ORCH-0997] D2 wired Google Demand Gen video create, so a
+  // Google video is no longer excluded as approximation_only — but with NO ready
+  // preparation it is still EXCLUDED (preparation_not_started), never a fabricated
+  // "Created". The no-fake-success invariant holds via the readiness gate.
+  it("Google (ok:true) with NO ready prep is EXCLUDED for a video, never buildable → runCreate skips it", () => {
     const { buildable, excluded } = partitionFundedCreative({
       fundedPlatforms: ["google", "meta"],
       channels: [
@@ -91,9 +95,9 @@ describe("ISSUE-995 rework · a video funded to Google is never a fabricated suc
       ],
       kind: "video",
     });
-    assert.equal(buildable.includes("google"), false, "Google video must not be buildable (no fake text-ad 'Created')");
+    assert.equal(buildable.includes("google"), false, "Google video must not be buildable without a READY prep");
     const g = excluded.find((e) => e.platform === "google");
-    assert.equal(g.reason, "approximation_only");
+    assert.equal(g.reason, "preparation_not_started");
   });
 
   it("the youtube_hosted check copy is honest — no fabricated 'we'll upload it for you'", () => {

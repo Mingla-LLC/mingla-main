@@ -42,11 +42,11 @@ const okChannel = (platform) => ({
   needsTranscode: false,
 });
 
-describe("ISSUE-1184 adversarial: create is Meta/Snap/TikTok-only; Google/Reddit can NEVER build a video (#997 C)", () => {
-  // [TEST-MOD-APPROVED ORCH-0997] #997 C wires TikTok paused-video, so a READY
-  // tiktok now BUILDS (it leaves the excluded set). Google/Reddit stay excluded and
-  // their reasons/flags are unchanged — the negative-space guard on THEM is intact.
-  it("builds a READY TikTok too, but still excludes Google/Reddit even when their prep says ready (#997 C)", () => {
+describe("ISSUE-1184 adversarial: create is Meta/Snap/TikTok/Google video; only Reddit can NEVER build a video (#997 C/D2)", () => {
+  // [TEST-MOD-APPROVED ORCH-0997] #997 C wired TikTok and #997 D2 wired Google
+  // (Demand Gen), so a READY tiktok AND a READY google now BUILD. Only Reddit stays
+  // hard-excluded — the negative-space guard on IT is intact.
+  it("builds a READY TikTok and a READY Google too, but still excludes Reddit even when its prep says ready (#997 C/D2)", () => {
     const funded = ["meta", "snapchat", "tiktok", "google", "reddit"];
     const channels = funded.map(okChannel);
     const rows = Object.fromEntries(funded.map((p) => [p, { state: "ready" }]));
@@ -56,14 +56,14 @@ describe("ISSUE-1184 adversarial: create is Meta/Snap/TikTok-only; Google/Reddit
       kind: "video",
       preparationByPlatform: rows,
     });
-    assert.deepEqual(buildable.sort(), ["meta", "snapchat", "tiktok"]);
+    assert.deepEqual(buildable.sort(), ["google", "meta", "snapchat", "tiktok"]);
     const reasonOf = (p) => excluded.find((e) => e.platform === p)?.reason;
     assert.equal(reasonOf("tiktok"), undefined); // READY tiktok now builds
-    assert.equal(reasonOf("google"), "approximation_only");
+    assert.equal(reasonOf("google"), undefined); // READY google now builds (Demand Gen)
     assert.equal(reasonOf("reddit"), "video_not_creatable");
-    // Belt-and-braces: the flag table enables tiktok, still forbids google/reddit.
+    // Belt-and-braces: the flag table enables tiktok + google, still forbids reddit.
     assert.equal(VIDEO_CREATE_ENABLED.tiktok, true);
-    assert.equal(VIDEO_CREATE_ENABLED.google, false);
+    assert.equal(VIDEO_CREATE_ENABLED.google, true);
     assert.equal(VIDEO_CREATE_ENABLED.reddit, false);
   });
 
@@ -145,7 +145,9 @@ describe("ISSUE-1184 adversarial: READY subset & gate now include TikTok (#997 C
     assert.deepEqual(gate.ready, ["tiktok"]);
     const reasonOf = (p) => gate.excluded.find((e) => e.platform === p)?.reason;
     assert.equal(reasonOf("tiktok"), undefined); // READY tiktok now continues
-    assert.equal(reasonOf("google"), "approximation_only");
+    // [TEST-MOD-APPROVED ORCH-0997] google is now creatable — with no ready row
+    // here it is excluded as preparation_<state>, no longer approximation_only.
+    assert.equal(reasonOf("google"), "preparation_not_started");
     assert.equal(reasonOf("reddit"), "video_excluded");
     assert.equal(reasonOf("meta"), "preparation_failed");
     assert.equal(reasonOf("snapchat"), "preparation_timed_out");

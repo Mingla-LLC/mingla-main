@@ -1038,6 +1038,334 @@ export async function googleCreateFullCampaign(
   };
 }
 
+// ── ISSUE-997 D2: Google Demand Gen VIDEO campaign (a DISTINCT campaign type) ──
+//
+// A YouTube video ad is a DIFFERENT CAMPAIGN TYPE — not a new asset on the Search
+// path. googleCreateFullCampaign above is SEARCH+RSA and a video ad CANNOT ride a
+// Search campaign. This is the sibling builder: advertisingChannelType
+// "DEMAND_GEN" (Google's supported go-forward home for YouTube/Discovery video —
+// standalone Video-campaign creation is being sunset into Demand Gen), reusing the
+// SAME honest zero-conversion targetSpend (Maximize Clicks) strategy the SEARCH
+// path ships, so there is NO conversion-tracking dependency. The prepared UNLISTED
+// YouTube video (external_ref_extra.youtube_video_id from the D1 prepare adapter)
+// rides as its OWN assetOperation (youtubeVideoAsset), referenced by the
+// demandGenVideoResponsiveAd. NO cover / thumbnail (YouTube auto-generates one)
+// and NO logo (logoImages is OPTIONAL for the video responsive ad — omitted).
+// PAUSED at every level; validateOnly threads natively (Google honors
+// validateOnly:true → zero objects), the key D de-risking lever TikTok/Snap lack.
+//
+// [SUSPECTED — Google Ads v24] the exact demandGenVideoResponsiveAd required-field
+// set + char caps, adGroup no-`type`, and targetSpend acceptance on a zero-
+// conversion account are pinned by a native validateOnly:true mutate BEFORE any
+// object exists (the §4 probe — a separate orchestrator acceptance step). The wire
+// SHAPE below is the documented v24 contract; deleting containsEuPoliticalAdvertising
+// or flipping any status off PAUSED is a fails-on-revert target of the D2 suite.
+
+export const GOOGLE_DEMAND_GEN_BUSINESS_NAME_MAX = 25;
+export const GOOGLE_DEMAND_GEN_HEADLINE_MAX_CHARS = 40;
+export const GOOGLE_DEMAND_GEN_LONG_HEADLINE_MAX_CHARS = 90;
+export const GOOGLE_DEMAND_GEN_DESCRIPTION_MAX_CHARS = 90;
+
+export interface GoogleDemandGenVideoInput {
+  name: string;
+  /** Minor units (cents) — converted ONCE here via centsToPlatformBudget. */
+  dailyBudgetCents: number;
+  /** A4.f destination policy v1: the canonical public page — NEVER the OneLink. */
+  finalUrl: string;
+  /** The ONLY slot the OneLink may ride in — campaign level. */
+  trackingUrlTemplate?: string;
+  /** Advertiser/brand display name (≤25) — REQUIRED by the video responsive ad. */
+  businessName: string;
+  /** ≥1, each ≤40 chars. */
+  headlines: string[];
+  /** ≥1, each ≤90 chars (a NEW field the SEARCH/RSA path does not collect). */
+  longHeadlines: string[];
+  /** ≥1, each ≤90 chars. */
+  descriptions: string[];
+  /** The prepared YouTube video id (external_ref_extra.youtube_video_id — D1). */
+  youtubeVideoId: string;
+  /** Resolved numeric criterion ids (GR-37 — resolver output, never raw names). */
+  geoTargetCriterionIds: string[];
+  /** googleAds:mutate validateOnly passthrough — zero objects created. */
+  validateOnly?: boolean;
+}
+
+/**
+ * Demand Gen video responsive-ad copy validator (pre-call 422s): businessName
+ * ≤25, ≥1 headline ≤40, ≥1 longHeadline ≤90, ≥1 description ≤90. NO keyword
+ * validation — Demand Gen is audience-based, not keyword-based.
+ */
+export function validateGoogleDemandGenAd(input: {
+  businessName: unknown;
+  headlines: unknown;
+  longHeadlines: unknown;
+  descriptions: unknown;
+}): GoogleValidation {
+  const checkTextArray = (
+    value: unknown,
+    field: string,
+    maxChars: number,
+  ): GoogleValidation => {
+    if (!Array.isArray(value) || value.length === 0) {
+      return {
+        ok: false,
+        detail: `demand_gen_${field}_required`,
+        message: `A Demand Gen video ad needs at least one ${field.replace(/_/g, " ")}.`,
+      };
+    }
+    if (value.some((t) => typeof t !== "string" || !t.trim())) {
+      return {
+        ok: false,
+        detail: `demand_gen_${field}_invalid`,
+        message: `creative.${field} must be an array of non-empty strings.`,
+      };
+    }
+    const tooLong = (value as string[]).find((t) => t.trim().length > maxChars);
+    if (tooLong !== undefined) {
+      return {
+        ok: false,
+        detail: `demand_gen_${field}_too_long`,
+        message: `"${tooLong.trim().slice(0, 40)}" exceeds ${maxChars} characters.`,
+      };
+    }
+    return { ok: true };
+  };
+
+  if (typeof input.businessName !== "string" || !input.businessName.trim()) {
+    return {
+      ok: false,
+      detail: "demand_gen_business_name_required",
+      message: "A Demand Gen video ad needs a business name.",
+    };
+  }
+  if (input.businessName.trim().length > GOOGLE_DEMAND_GEN_BUSINESS_NAME_MAX) {
+    return {
+      ok: false,
+      detail: "demand_gen_business_name_too_long",
+      message:
+        `The business name exceeds ${GOOGLE_DEMAND_GEN_BUSINESS_NAME_MAX} characters.`,
+    };
+  }
+  const headlineCheck = checkTextArray(
+    input.headlines,
+    "headlines",
+    GOOGLE_DEMAND_GEN_HEADLINE_MAX_CHARS,
+  );
+  if (!headlineCheck.ok) return headlineCheck;
+  const longHeadlineCheck = checkTextArray(
+    input.longHeadlines,
+    "long_headlines",
+    GOOGLE_DEMAND_GEN_LONG_HEADLINE_MAX_CHARS,
+  );
+  if (!longHeadlineCheck.ok) return longHeadlineCheck;
+  const descriptionCheck = checkTextArray(
+    input.descriptions,
+    "descriptions",
+    GOOGLE_DEMAND_GEN_DESCRIPTION_MAX_CHARS,
+  );
+  if (!descriptionCheck.ok) return descriptionCheck;
+  return { ok: true };
+}
+
+/**
+ * Demand Gen temp ids (negative, unique, defined-before-referenced). The YouTube
+ * video ASSET gets its own temp id so the adGroupAd can reference it —
+ * budget(-1) → campaign(-2) → video asset(-3) → adGroup(-4) → adGroupAd.
+ */
+const DG_TEMP_BUDGET_ID = -1;
+const DG_TEMP_CAMPAIGN_ID = -2;
+const DG_TEMP_VIDEO_ASSET_ID = -3;
+const DG_TEMP_AD_GROUP_ID = -4;
+
+/**
+ * Builds the Demand Gen video op list, define-before-reference. Diffs from the
+ * SEARCH builder (buildGoogleMutateOperations): advertisingChannelType
+ * "DEMAND_GEN" (no subtype); NO networkSettings (does not apply to Demand Gen — a
+ * Search-style networkSettings is REJECTED); a separate assetOperation carrying
+ * the prepared youtubeVideoId; the adGroup takes NO `type`; the ad is a
+ * demandGenVideoResponsiveAd (businessName/headlines/longHeadlines/descriptions/
+ * videos — NO logoImages). All PAUSED (ad group ENABLED under the PAUSED parent).
+ */
+export function buildGoogleDemandGenMutateOperations(
+  customerId: string,
+  input: GoogleDemandGenVideoInput,
+): Record<string, unknown>[] {
+  const budgetResource = `customers/${customerId}/campaignBudgets/${DG_TEMP_BUDGET_ID}`;
+  const campaignResource = `customers/${customerId}/campaigns/${DG_TEMP_CAMPAIGN_ID}`;
+  const videoAssetResource = `customers/${customerId}/assets/${DG_TEMP_VIDEO_ASSET_ID}`;
+  const adGroupResource = `customers/${customerId}/adGroups/${DG_TEMP_AD_GROUP_ID}`;
+
+  const operations: Record<string, unknown>[] = [];
+
+  // 1. Campaign budget — micros via THE one google conversion point.
+  operations.push({
+    campaignBudgetOperation: {
+      create: {
+        resourceName: budgetResource,
+        name: `${input.name} — budget`,
+        amountMicros: String(centsToPlatformBudget("google", input.dailyBudgetCents)),
+        deliveryMethod: "STANDARD",
+        explicitlyShared: false,
+      },
+    },
+  });
+
+  // 2. Campaign — PAUSED, DEMAND_GEN, targetSpend (reuse the honest zero-
+  //    conversion strategy), G-14, PRESENCE. NO networkSettings.
+  const campaign: Record<string, unknown> = {
+    resourceName: campaignResource,
+    name: input.name,
+    // GR-11: PAUSED explicitly at every level — never a default.
+    status: "PAUSED",
+    // DOC: Demand Gen takes NO advertisingChannelSubType.
+    advertisingChannelType: "DEMAND_GEN",
+    campaignBudget: budgetResource,
+    // Maximize Clicks IS a supported Demand Gen strategy → the same honest
+    // zero-conversion-history strategy the SEARCH path ships (NO conversion goal).
+    targetSpend: {},
+    // G-14: v24 REQUIRES this on every campaign create — deleting it is the
+    // fails-on-revert target of the Demand Gen G-14 test.
+    containsEuPoliticalAdvertising: GOOGLE_EU_POLITICAL_ADVERTISING_VALUE,
+    // GR-37: PRESENCE always (never PRESENCE_OR_INTEREST).
+    geoTargetTypeSetting: { positiveGeoTargetType: "PRESENCE" },
+    // NO networkSettings — it does not apply to Demand Gen.
+  };
+  if (input.trackingUrlTemplate) {
+    // The OneLink rides ONLY here — never in finalUrls.
+    campaign.trackingUrlTemplate = input.trackingUrlTemplate;
+  }
+  operations.push({ campaignOperation: { create: campaign } });
+
+  // 3. Geo criteria — resolved numeric ids only (GR-37).
+  for (const criterionId of input.geoTargetCriterionIds) {
+    operations.push({
+      campaignCriterionOperation: {
+        create: {
+          campaign: campaignResource,
+          location: { geoTargetConstant: `geoTargetConstants/${criterionId}` },
+        },
+      },
+    });
+  }
+
+  // 4. YouTube video ASSET — the prepared UNLISTED video, referenced by the ad.
+  operations.push({
+    assetOperation: {
+      create: {
+        resourceName: videoAssetResource,
+        name: `${input.name} — video`,
+        youtubeVideoAsset: { youtubeVideoId: input.youtubeVideoId },
+      },
+    },
+  });
+
+  // 5. Ad group — ENABLED under the PAUSED parent. DOC: Demand Gen ad groups take
+  //    NO `type` (SEARCH_STANDARD would be REJECTED) — omit it.
+  operations.push({
+    adGroupOperation: {
+      create: {
+        resourceName: adGroupResource,
+        name: `${input.name} — ad group`,
+        campaign: campaignResource,
+        status: "ENABLED",
+      },
+    },
+  });
+
+  // 6. The Demand Gen video responsive ad — PAUSED; finalUrls = [canonical
+  //    dest_url]. NO logoImages (OPTIONAL — omitted; YouTube auto-thumbnail).
+  operations.push({
+    adGroupAdOperation: {
+      create: {
+        adGroup: adGroupResource,
+        status: "PAUSED",
+        ad: {
+          finalUrls: [input.finalUrl],
+          demandGenVideoResponsiveAd: {
+            businessName: { text: input.businessName.trim() },
+            headlines: input.headlines.map((text) => ({ text: text.trim() })),
+            longHeadlines: input.longHeadlines.map((text) => ({ text: text.trim() })),
+            descriptions: input.descriptions.map((text) => ({ text: text.trim() })),
+            videos: [{ asset: videoAssetResource }],
+          },
+        },
+      },
+    },
+  });
+
+  return operations;
+}
+
+/** Demand Gen request envelope — `partialFailure:false` all-or-nothing. */
+export function buildGoogleDemandGenMutateRequest(
+  customerId: string,
+  input: GoogleDemandGenVideoInput,
+): Record<string, unknown> {
+  return {
+    mutateOperations: buildGoogleDemandGenMutateOperations(customerId, input),
+    partialFailure: false,
+    validateOnly: input.validateOnly === true,
+  };
+}
+
+export interface GoogleDemandGenVideoResult {
+  validated: boolean;
+  externalCampaignId: string;
+  externalAdSetId: string;
+  externalAdId: string;
+  budgetResourceName: string | null;
+  requestId: string | null;
+}
+
+/**
+ * The Google Demand Gen video create: ONE atomic `googleAds:mutate`
+ * (`partialFailure:false`). `validateOnly:true` passthrough validates the exact
+ * same body with ZERO objects created (native Google validate — the D de-risking
+ * lever). Mirrors googleCreateFullCampaign's result contract.
+ */
+export async function googleCreateDemandGenVideoCampaign(
+  conn: AdConnectionRow,
+  input: GoogleDemandGenVideoInput,
+): Promise<GoogleDemandGenVideoResult> {
+  const client = await resolveGoogleClient(conn);
+  const request = buildGoogleDemandGenMutateRequest(client.customerId, input);
+  const { payload, requestId } = await googleAdsRequest(
+    client,
+    `customers/${client.customerId}/googleAds:mutate`,
+    request,
+  );
+  if (input.validateOnly === true) {
+    return {
+      validated: true,
+      externalCampaignId: "",
+      externalAdSetId: "",
+      externalAdId: "",
+      budgetResourceName: null,
+      requestId,
+    };
+  }
+  const names = parseGoogleMutateResults(payload);
+  if (
+    !names.campaignResourceName || !names.adGroupResourceName || !names.adGroupAdResourceName
+  ) {
+    throw new AdApiError({
+      platform: "google",
+      code: "unexpected_mutate_response",
+      message:
+        "googleAds:mutate (Demand Gen) returned OK but the campaign/adGroup/adGroupAd resource names are missing — refusing to persist an unverifiable create.",
+      traceId: requestId,
+    });
+  }
+  return {
+    validated: false,
+    externalCampaignId: idFromResourceName(names.campaignResourceName),
+    externalAdSetId: idFromResourceName(names.adGroupResourceName),
+    externalAdId: idFromResourceName(names.adGroupAdResourceName),
+    budgetResourceName: names.budgetResourceName,
+    requestId,
+  };
+}
+
 // ── Status semantics (A1.1(4) / GR-55 / AC-G-4 — REMOVED is NEVER emitted) ────
 
 /**

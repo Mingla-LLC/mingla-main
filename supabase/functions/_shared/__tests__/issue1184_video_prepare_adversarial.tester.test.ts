@@ -804,26 +804,28 @@ Deno.test("ISSUE-1184 adversarial [structural]: prepare returns cached 200 for s
   );
 });
 
-// ── 10. [structural] Create-path safety: Meta/Snap/TikTok, all PAUSED (#997 C) ─
-Deno.test("ISSUE-1184 adversarial [structural]: create is Meta/Snap/TikTok, Google+Reddit fail closed, all PAUSED", async () => {
+// ── 10. [structural] Create-path safety: Meta/Snap/TikTok/Google, all PAUSED ───
+Deno.test("ISSUE-1184 adversarial [structural]: create is Meta/Snap/TikTok/Google video, only Reddit fail closed, all PAUSED", async () => {
   const src = await Deno.readTextFile(
     new URL("../../admin-ad-create-campaign/index.ts", import.meta.url),
   );
-  // [TEST-MOD-APPROVED ORCH-0997] #997 C wires TikTok paused-video create, so the
-  // TikTok phase-A 422 is gone — only Google + Reddit still fail closed for video.
-  assertEquals(src.match(/video_create_not_available_phase_a/g)?.length, 2);
-  for (const guard of ["creativeG", "creativeR"]) {
-    assertMatch(
-      src,
-      new RegExp(
-        `${guard}\\.kind === "video"[\\s\\S]{0,140}video_create_not_available_phase_a`,
-      ),
-    );
-  }
+  // [TEST-MOD-APPROVED ORCH-0997] #997 C wired TikTok paused-video create and #997
+  // D2 wired Google Demand Gen video create — so the TikTok AND Google phase-A 422s
+  // are gone. Only Reddit still fails closed for video (exactly ONE remaining 422).
+  assertEquals(src.match(/video_create_not_available_phase_a/g)?.length, 1);
+  assertMatch(
+    src,
+    new RegExp(
+      `creativeR\\.kind === "video"[\\s\\S]{0,140}video_create_not_available_phase_a`,
+    ),
+  );
   // TikTok video now resolves a READY ref (video_id + cover) instead of failing closed.
   assertStringIncludes(src, 'const creativeKindT = creativeT.kind === "video" ? "video" : "image";');
   assertStringIncludes(src, "creative_ref_incomplete");
-  // Meta + Snap + TikTok all require an exact current-hash READY ref.
+  // Google video now resolves a READY google ref (youtube_video_id) → Demand Gen.
+  assertStringIncludes(src, "googleCreateDemandGenVideoCampaign");
+  assertStringIncludes(src, "youtube_video_id");
+  // Meta + Snap + TikTok + Google video all require an exact current-hash READY ref.
   assertStringIncludes(src, '.eq("status", "ready")');
   assertStringIncludes(src, "video_preparation_required");
   assertStringIncludes(src, '.eq("external_kind", "video")');
