@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 448,
-  "selfTestWiredFloor": 263,
+  "expectedStrictGrepMjsFiles": 449,
+  "selfTestWiredFloor": 264,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -1513,6 +1513,20 @@
       "selfTest": "wired",
       "jobKeys": [
         "issue-1051-dependabot-security-ignores"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-890-web-sentry-lazy-only.mjs",
+      "kind": "file",
+      "enforcement": "job:issue-890-web-sentry-lazy-only",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-890-web-sentry-lazy-only"
       ]
     },
     {

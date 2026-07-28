@@ -72,7 +72,8 @@
     "test:orch-433": "node ../scripts/audit/trip-checkout-grade-a-contract.mjs",
     "test:g3-sentry": "node ../scripts/audit/g3-sentry-contract.mjs",
     "test:orch-1387": "node ../.github/scripts/strict-grep/orch-1387-wallet-config-threaded.mjs --self-test && node ../.github/scripts/strict-grep/orch-1387-wallet-config-threaded.mjs && node --test src/payments/__tests__/walletConfigThreading.orch1387.test.mjs && npx tsc --noEmit -p ../packages/payments-native/tsconfig.orch1387.typetest.json",
-    "test:orch-1130": "node ../.github/scripts/strict-grep/orch-1130-postcss-transitive-pin-check.mjs --self-test && node ../.github/scripts/strict-grep/orch-1130-postcss-transitive-pin-check.mjs"
+    "test:orch-1130": "node ../.github/scripts/strict-grep/orch-1130-postcss-transitive-pin-check.mjs --self-test && node ../.github/scripts/strict-grep/orch-1130-postcss-transitive-pin-check.mjs",
+    "test:issue-890": "node ../.github/scripts/strict-grep/issue-890-web-sentry-lazy-only.mjs --self-test && node ../.github/scripts/strict-grep/issue-890-web-sentry-lazy-only.mjs && npx jest sentry.web.issue890"
   },
   "dependencies": {
     "@expo-google-fonts/anton": "^0.4.2",
@@ -102,6 +103,7 @@
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-native-community/datetimepicker": "8.4.4",
     "@react-native-google-signin/google-signin": "^16.0.0",
+    "@sentry/browser": "10.12.0",
     "@sentry/react-native": "~7.2.0",
     "@stripe/connect-js": "3.4.2",
     "@stripe/react-connect-js": "3.4.1",
