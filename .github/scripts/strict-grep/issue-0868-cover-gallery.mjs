@@ -85,6 +85,40 @@ function evaluate(b, failures) {
   // <Head> adds the second, so >= 2 og:image occurrences proves the fix landed.
   if (b.publicEventPage === null || (b.publicEventPage.match(/og:image/g) || []).length < 2)
     failures.push("issue-868: business PublicEventPage.tsx RSVP <Head> must add og:image (>= 2 total).");
+
+  // ---- Pass 2 (Section M) ----
+  // (7) consumer app: the shared pager exists + each of the 3 consumer detail
+  // screens wires CoverGalleryPager + CoverGalleryRow (they don't mount the shell).
+  if (b.coverGalleryPager === null)
+    failures.push("issue-868 M.1: packages/offering-rendering/CoverGalleryPager.tsx must exist.");
+  for (const [name, src] of [
+    ["ConsumerEventDetailScreen", b.consumerEvent],
+    ["ConsumerTripDetailScreen", b.consumerTrip],
+    ["ConsumerExperienceDetailScreen", b.consumerExperience],
+  ]) {
+    if (src === null || !/CoverGalleryPager/.test(src) || !/CoverGalleryRow/.test(src))
+      failures.push(`issue-868 M.1: ${name} must render CoverGalleryPager + CoverGalleryRow (gallery mode).`);
+  }
+
+  // (8) trip + experience INITIAL-publish RPCs persist cover_media_gallery.
+  if (b.tripExpPublish === null) {
+    failures.push("issue-868 M.2: trip/experience publish migration not found.");
+  } else {
+    for (const fn of ["business_publish_trip_draft", "biz_publish_experience"]) {
+      if (!b.tripExpPublish.includes(fn))
+        failures.push(`issue-868 M.2: publish migration must re-publish ${fn}.`);
+    }
+    if ((b.tripExpPublish.match(/cover_media_gallery\s*=\s*v_cover_media_gallery/g) || []).length < 2)
+      failures.push("issue-868 M.2: both trip + experience publish RPCs must write cover_media_gallery.");
+  }
+
+  // (9) providers-into-gallery: CoverPicker can append a provider pick to the gallery.
+  if (
+    b.coverPicker === null ||
+    !/providerAddTarget/.test(b.coverPicker) ||
+    !/appendGalleryItem/.test(b.coverPicker)
+  )
+    failures.push("issue-868 M.3: CoverPicker must support appending a GIF/Photo provider pick to the gallery.");
 }
 
 const readOrNull = (rel) => {
@@ -125,6 +159,15 @@ if (process.argv.includes("--self-test")) {
     coverGalleryRow: "export const CoverGalleryRow = () => null;",
     parallaxShell: "galleryImages?: OfferingGalleryImage[];",
     publicEventPage: 'property="og:image"\nproperty="og:image"',
+    // Pass 2 fixtures.
+    coverGalleryPager: "export const CoverGalleryPager = () => null;",
+    consumerEvent: "import { CoverGalleryPager, CoverGalleryRow } from '@mingla/offering-rendering';",
+    consumerTrip: "import { CoverGalleryPager, CoverGalleryRow } from '@mingla/offering-rendering';",
+    consumerExperience: "import { CoverGalleryPager, CoverGalleryRow } from '@mingla/offering-rendering';",
+    tripExpPublish:
+      "business_publish_trip_draft cover_media_gallery = v_cover_media_gallery\n" +
+      "biz_publish_experience cover_media_gallery = v_cover_media_gallery",
+    coverPicker: "const providerAddTarget = ...; const appendGalleryItem = useCallback(...)",
   };
   const self = [];
   let f = [];
@@ -142,6 +185,10 @@ if (process.argv.includes("--self-test")) {
     },
     "shell drops galleryImages": { ...good, parallaxShell: "coverMediaUrl: string;" },
     "rsvp og:image missing": { ...good, publicEventPage: 'property="og:image"' },
+    // Pass 2 BAD fixtures.
+    "consumer event drops pager": { ...good, consumerEvent: "// no gallery wiring" },
+    "trip/exp publish drops gallery": { ...good, tripExpPublish: "business_publish_trip_draft\nbiz_publish_experience" },
+    "providers cannot reach gallery": { ...good, coverPicker: "// cover-only" },
   };
   for (const [name, bundle] of Object.entries(mutations)) {
     f = [];
@@ -154,7 +201,7 @@ if (process.argv.includes("--self-test")) {
     self.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
-  console.log("issue-0868 self-test PASS (7/7 cases).");
+  console.log("issue-0868 self-test PASS (10/10 cases).");
   process.exit(0);
 }
 
@@ -171,6 +218,13 @@ evaluate(
     coverGalleryRow: readOrNull("packages/offering-rendering/CoverGalleryRow.tsx"),
     parallaxShell: readOrNull("packages/offering-rendering/ParallaxCoverShell.tsx"),
     publicEventPage: readOrNull("mingla-business/src/components/event/PublicEventPage.tsx"),
+    // Pass 2 (Section M).
+    coverGalleryPager: readOrNull("packages/offering-rendering/CoverGalleryPager.tsx"),
+    consumerEvent: readOrNull("app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx"),
+    consumerTrip: readOrNull("app-mobile/src/screens/Trip/ConsumerTripDetailScreen.tsx"),
+    consumerExperience: readOrNull("app-mobile/src/screens/Experience/ConsumerExperienceDetailScreen.tsx"),
+    tripExpPublish: findMigration((n) => /issue_868.*cover_gallery_trip_exp_publish\.sql$/.test(n)),
+    coverPicker: readOrNull("mingla-business/src/components/ui/CoverPicker.tsx"),
   },
   failures,
 );
