@@ -16,6 +16,12 @@ export type { ParallaxCoverShellProps } from "./ParallaxCoverShell";
 export { CoverGalleryRow } from "./CoverGalleryRow";
 export type { CoverGalleryRowProps } from "./CoverGalleryRow";
 
+// issue #868 [cover-gallery] — Section M.1a: the pinned pager over [cover] ++
+// gallery for the consumer detail screens (which don't mount ParallaxCoverShell).
+// Page 0 = the screen's existing <EventCoverMedia>, passed in as coverNode.
+export { CoverGalleryPager } from "./CoverGalleryPager";
+export type { CoverGalleryPagerProps } from "./CoverGalleryPager";
+
 export { OfferingChrome } from "./OfferingChrome";
 export type { OfferingChromeProps } from "./OfferingChrome";
 
