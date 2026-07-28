@@ -46,11 +46,11 @@ Deno.test("T-NO-SCROLLVIEW — no horizontal pager ScrollView (it could not scro
   assert(!/scrollTo\(/.test(CODE), "no scrollTo (deterministic render, not scroll-driven)");
 });
 
-Deno.test("T-CHEVRON — tap chevrons change activeIndex (guaranteed control)", () => {
-  assert(/const goPrev = \(\): void => \{\s*\n\s*if \(clamped > 0\) onActiveIndexChange\(clamped - 1\)/.test(SRC));
-  assert(/const goNext = \(\): void => \{\s*\n\s*if \(clamped < lastIndex\) onActiveIndexChange\(clamped \+ 1\)/.test(SRC));
-  assert(/onPress=\{goPrev\}/.test(SRC));
-  assert(/onPress=\{goNext\}/.test(SRC));
-  assert(/accessibilityLabel="Previous photo"/.test(SRC));
-  assert(/accessibilityLabel="Next photo"/.test(SRC));
+Deno.test("T-NO-DEAD-CONTROL — no on-cover chevrons/Pressable (unreachable behind the gorhom sheet; the row-card is the control)", () => {
+  // On-device (Samsung, FIFA) proof: on-cover chevron taps were swallowed by the
+  // sheet's scroll responder while a row-card tap flipped the cover. Dead on-cover
+  // controls are removed — the pager only RENDERS sequence[activeIndex]; the
+  // CoverGalleryRow (body, on top of the sheet) drives activeIndex.
+  assert(!/<Pressable/.test(CODE), "no on-cover Pressable control");
+  assert(!/react-native-svg/.test(CODE), "no chevron glyph on the cover");
 });

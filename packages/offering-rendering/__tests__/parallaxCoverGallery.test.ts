@@ -65,10 +65,9 @@ Deno.test("T-5 flicker-free — the shown index has NO intermediate scroll commi
   assert(!/settleTimerRef/.test(SRC), "no debounced scroll commit");
 });
 
-Deno.test("T-6 shell cover has tap chevrons that change activeIndex (guaranteed control)", () => {
-  assert(/<ShellChevron dir="left"/.test(SRC));
-  assert(/<ShellChevron dir="right"/.test(SRC));
-  assert(/onPress=\{goToPrevPage\}/.test(SRC));
-  assert(/onPress=\{goToNextPage\}/.test(SRC));
-  assert(/const goToNextPage = React\.useCallback\(\(\): void => \{\s*\n\s*setActiveIndex\(\(cur\) => \(cur < lastIndex \? cur \+ 1 : cur\)\)/.test(SRC), "next advances activeIndex");
+Deno.test("T-6 no on-cover chevrons (unreliable on the pinned-behind-scroll native cover; the row-card is the control)", () => {
+  assert(!/ShellChevron/.test(SRC), "no on-cover chevron component");
+  assert(!/pagerChevron/.test(SRC), "no chevron styles");
+  // The beneath-cover CoverGalleryRow drives activeIndex via onSelect.
+  assert(/onSelect=\{selectSequenceIndex\}/.test(SRC), "row-card tap drives the shown index");
 });

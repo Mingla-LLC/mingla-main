@@ -43,7 +43,6 @@
 import React from "react";
 import {
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   View,
@@ -53,7 +52,6 @@ import {
   type StyleProp,
   type ViewStyle,
 } from "react-native";
-import Svg, { Path } from "react-native-svg";
 
 import { EventCoverMedia } from "./EventCoverMedia";
 import { ThemeEntranceAnimation } from "./ThemeEntranceAnimation";
@@ -77,19 +75,6 @@ type WebViewStyle = ViewStyle & {
 };
 const webStyle = (style: WebViewStyle): StyleProp<ViewStyle> =>
   style as StyleProp<ViewStyle>;
-
-// issue #868 Pass 3 — cover-pager tap chevron (BUG 2 guaranteed control).
-const ShellChevron: React.FC<{ dir: "left" | "right" }> = ({ dir }) => (
-  <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
-    <Path
-      d={dir === "left" ? "M15 18l-6-6 6-6" : "M9 6l6 6-6 6"}
-      stroke="#FFFFFF"
-      strokeWidth={2.5}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </Svg>
-);
 
 const SHELL_MAX_WIDTH = 1200;
 const STICKY_PANEL_WIDTH = 360;
@@ -221,21 +206,14 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
   // renders ONLY sequence[activeIndex]; a tap/chevron changes activeIndex → the
   // cover re-renders the new image. No scroll machinery, no flicker (no scroll
   // offset to commit), and no RISK-1 gesture arbitration.
-  const lastIndex = gallery.length; // sequence indices 0..gallery.length
   const activeSequenceItem =
     activeIndex <= 0 ? undefined : gallery[activeIndex - 1];
 
-  // Tap a card / chevron → set the shown index. That's all — the deterministic
-  // render below picks up sequence[activeIndex].
+  // Tap a row card → set the shown index. That's all — the deterministic render
+  // below picks up sequence[activeIndex].
   const selectSequenceIndex = React.useCallback((index: number): void => {
     setActiveIndex(index);
   }, []);
-  const goToPrevPage = React.useCallback((): void => {
-    setActiveIndex((cur) => (cur > 0 ? cur - 1 : cur));
-  }, []);
-  const goToNextPage = React.useCallback((): void => {
-    setActiveIndex((cur) => (cur < lastIndex ? cur + 1 : cur));
-  }, [lastIndex]);
 
   const chrome = (
     <OfferingChrome
@@ -295,31 +273,10 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
           width="100%"
         />
       )}
-      {/* Pass 3/4 — tap chevrons page cover↔photos as the guaranteed control. */}
-      {activeIndex > 0 ? (
-        <Pressable
-          onPress={goToPrevPage}
-          accessibilityRole="button"
-          accessibilityLabel="Previous photo"
-          hitSlop={10}
-          style={[styles.pagerChevron, styles.pagerChevronLeft]}
-          testID={testID !== undefined ? `${testID}-cover-prev` : undefined}
-        >
-          <ShellChevron dir="left" />
-        </Pressable>
-      ) : null}
-      {activeIndex < lastIndex ? (
-        <Pressable
-          onPress={goToNextPage}
-          accessibilityRole="button"
-          accessibilityLabel="Next photo"
-          hitSlop={10}
-          style={[styles.pagerChevron, styles.pagerChevronRight]}
-          testID={testID !== undefined ? `${testID}-cover-next` : undefined}
-        >
-          <ShellChevron dir="right" />
-        </Pressable>
-      ) : null}
+      {/* Pass 4 — NO on-cover chevrons: on the pinned-behind-scroll native cover
+          they are unreachable (the body scroll swallows the tap, verified on the
+          consumer). The beneath-cover CoverGalleryRow card-tap is the paging
+          control on every surface (it lives in the scrolling body, on top). */}
     </View>
   );
   const coverRender = sequenceActive ? coverPager : coverMedia;
@@ -689,29 +646,10 @@ const styles = StyleSheet.create({
     zIndex: CHROME_Z,
   },
   // ---- shared ----
-  // issue #868 — the horizontal cover pager fills the cover box (native).
+  // issue #868 — the cover box fills its parent (deterministic single-item render).
   coverPager: {
     width: "100%",
     height: "100%",
-  },
-  // issue #868 Pass 3 — cover-pager tap chevrons (BUG 2).
-  pagerChevron: {
-    position: "absolute",
-    top: "50%",
-    marginTop: -18,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.42)",
-    zIndex: 4,
-  },
-  pagerChevronLeft: {
-    left: 12,
-  },
-  pagerChevronRight: {
-    right: 12,
   },
   coverScrim: {
     ...StyleSheet.absoluteFillObject,
