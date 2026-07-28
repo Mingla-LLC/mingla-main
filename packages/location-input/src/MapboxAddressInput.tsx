@@ -38,6 +38,7 @@ import React, {
 import {
   AccessibilityInfo,
   ActivityIndicator,
+  Keyboard,
   Platform,
   Pressable,
   ScrollView as RNScrollView,
@@ -45,6 +46,7 @@ import {
   Text,
   TextInput as RNTextInput,
   View,
+  type KeyboardEvent,
   type ScrollViewProps,
   type TextInputProps,
 } from "react-native";
@@ -65,6 +67,61 @@ import type {
 } from "./types";
 
 const AUTOCOMPLETE_DEBOUNCE_MS = 250;
+
+// ── Keyboard-aware dropdown cap (issue #1027 · Thread A) ──────────────────────
+// I-PROPOSED-1027-KEYBOARD-AWARE-DROPDOWN-CAP. The card-mode suggestion list
+// renders in normal flow directly below the field. Without a keyboard-aware cap,
+// a large/unbounded injected `dropdown.maxHeight` (9999 on every business host,
+// 280 consumer-light) lays the list out as one tall block that overflows BEHIND
+// the soft keyboard — rows past the keyboard's top edge are rendered but
+// physically unreachable while typing (proven on a physical Samsung A72). These
+// constants + the pure `computeDropdownMaxHeight` below cap the scroll viewport
+// to the measured space between the card's top and the keyboard's top, so the
+// list scrolls WITHIN the cap instead of overflowing.
+
+/** Breathing room between the last visible row and the keyboard's top edge. */
+export const DROPDOWN_SAFETY_MARGIN = 8;
+/**
+ * Extra reserved space on iOS for the keyboard accessory / Done bar that sits
+ * above the raw keyboard frame (mirrors SmartScrollView's DEFAULT_BOTTOM_OFFSET
+ * rationale). Subtracted from the available space only on iOS.
+ */
+export const DROPDOWN_KEYBOARD_ACCESSORY_ALLOWANCE = 44;
+/**
+ * Floor for the capped viewport (≈2 rows) so the dropdown is always a usable,
+ * scrollable window even in very tight layouts (iPhone SE, tall Android keyboard).
+ */
+export const MIN_DROPDOWN_HEIGHT = 96;
+
+/**
+ * Keyboard-aware effective `maxHeight` for the card-mode suggestion list.
+ *
+ * - `keyboardScreenY` — the keyboard's top edge in window coords (RN
+ *   `KeyboardEvent.endCoordinates.screenY`); `Infinity` when the keyboard is hidden.
+ * - `cardTopY` — the dropdown card's top edge in window coords (`measureInWindow`);
+ *   `null` before the card has measured.
+ * - `tokenMaxHeight` — the injected `dropdown.maxHeight` token, now an UPPER BOUND.
+ *
+ * When the keyboard is hidden (`keyboardScreenY` non-finite) or the card has not
+ * measured yet (`cardTopY === null`), returns the token unchanged — today's
+ * behavior, zero regression. Otherwise caps to the measured space above the
+ * keyboard, never below `MIN_DROPDOWN_HEIGHT`.
+ */
+export function computeDropdownMaxHeight(params: {
+  keyboardScreenY: number;
+  cardTopY: number | null;
+  tokenMaxHeight: number;
+  isIOS: boolean;
+}): number {
+  const { keyboardScreenY, cardTopY, tokenMaxHeight, isIOS } = params;
+  if (!Number.isFinite(keyboardScreenY) || cardTopY === null) {
+    return tokenMaxHeight;
+  }
+  const accessory = isIOS ? DROPDOWN_KEYBOARD_ACCESSORY_ALLOWANCE : 0;
+  const availableBelow =
+    keyboardScreenY - cardTopY - DROPDOWN_SAFETY_MARGIN - accessory;
+  return Math.max(MIN_DROPDOWN_HEIGHT, Math.min(tokenMaxHeight, availableBelow));
+}
 
 type HapticsLike = {
   selectionAsync?: () => Promise<void>;
@@ -174,6 +231,17 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
   // One Mapbox session token per typing session; reused across suggest→retrieve.
   const sessionToken = useRef<string>(newMapboxSessionToken());
 
+  // issue #1027 (Thread A) — keyboard-aware card-mode dropdown cap. Track the
+  // soft keyboard's top edge (window coords) + the dropdown card's own top edge
+  // so the suggestion list caps its scroll viewport to the space above the
+  // keyboard instead of overflowing behind it. Infinity/null → no constraint
+  // (keyboard hidden / not yet measured), preserving today's token-driven height.
+  const [keyboardScreenY, setKeyboardScreenY] = useState<number>(
+    Number.POSITIVE_INFINITY,
+  );
+  const [cardTopY, setCardTopY] = useState<number | null>(null);
+  const cardRef = useRef<View>(null);
+
   const TextInput = TextInputComponent ?? RNTextInput;
 
   const clearDebounceTimer = useCallback((): void => {
@@ -188,6 +256,50 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
       clearDebounceTimer();
     };
   }, [clearDebounceTimer]);
+
+  // issue #1027 (Thread A) — subscribe to the soft keyboard's frame so the
+  // card-mode dropdown can cap to the space above it. `endCoordinates.screenY`
+  // is the keyboard's top in window coords; when hidden we treat it as Infinity
+  // (no constraint). Listeners are cleaned up on unmount.
+  useEffect((): (() => void) => {
+    const onFrame = (e: KeyboardEvent): void => {
+      const y = e?.endCoordinates?.screenY;
+      setKeyboardScreenY(
+        typeof y === "number" && Number.isFinite(y) && y > 0
+          ? y
+          : Number.POSITIVE_INFINITY,
+      );
+    };
+    const onHide = (): void => setKeyboardScreenY(Number.POSITIVE_INFINITY);
+    const subs = [
+      Keyboard.addListener("keyboardDidShow", onFrame),
+      Keyboard.addListener("keyboardDidChangeFrame", onFrame),
+      Keyboard.addListener("keyboardWillChangeFrame", onFrame),
+      Keyboard.addListener("keyboardDidHide", onHide),
+      Keyboard.addListener("keyboardWillHide", onHide),
+    ];
+    return (): void => {
+      subs.forEach((s) => s.remove());
+    };
+  }, []);
+
+  // issue #1027 (Thread A) — measure the dropdown card's top edge in window
+  // coords. Called on the card's onLayout AND re-invoked whenever the keyboard
+  // frame or the open/closed status changes (below), so the cap tracks reality.
+  const measureCard = useCallback((): void => {
+    const node = cardRef.current;
+    if (node && typeof node.measureInWindow === "function") {
+      node.measureInWindow((_x: number, y: number): void => {
+        if (typeof y === "number" && Number.isFinite(y)) {
+          setCardTopY(y);
+        }
+      });
+    }
+  }, []);
+
+  useEffect((): void => {
+    measureCard();
+  }, [measureCard, keyboardScreenY, status.kind]);
 
   const fireHaptic = useCallback(
     (kind: "selection" | "success" | "error"): void => {
@@ -492,6 +604,16 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
   // (radius clip). Status rows stay above the scroll (single-row).
   const Scroll = ScrollComponent ?? RNScrollView;
 
+  // issue #1027 (Thread A) — the injected `dropdown.maxHeight` token is now an
+  // UPPER BOUND; the effective viewport is capped to the space above the keyboard
+  // (falls back to the token unchanged when the keyboard is hidden / not measured).
+  const dropdownMaxHeight = computeDropdownMaxHeight({
+    keyboardScreenY,
+    cardTopY,
+    tokenMaxHeight: tokens.dropdown.maxHeight,
+    isIOS: Platform.OS === "ios",
+  });
+
   const wrappedList =
     tokens.dropdown.mode === "card" ? (
       status.kind === "suggestions_open" ||
@@ -499,6 +621,8 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
       status.kind === "no_results" ||
       status.kind === "offline" ? (
         <View
+          ref={cardRef}
+          onLayout={measureCard}
           style={[
             {
               marginTop: 4,
@@ -514,7 +638,7 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
           {statusContent}
           {rowsOpen ? (
             <Scroll
-              style={{ maxHeight: tokens.dropdown.maxHeight }}
+              style={{ maxHeight: dropdownMaxHeight }}
               keyboardShouldPersistTaps="handled"
               nestedScrollEnabled
               showsVerticalScrollIndicator
