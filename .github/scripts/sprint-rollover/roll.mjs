@@ -12,6 +12,9 @@
 // ENV
 //   GH_PROJECT_TOKEN     board-write PAT (from secrets.SPRINT_ROLLOVER_TOKEN)
 //   ROLLOVER_ENABLED     'true' arms live writes (from vars.SPRINT_ROLLOVER_ENABLED)
+//   ROLLOVER_TZ          IANA operating timezone for "today" (from vars.SPRINT_ROLLOVER_TZ;
+//                        default America/New_York). The board is run in US Eastern, so
+//                        "today" MUST be the Eastern calendar date, not the UTC date (#1293).
 //   DRY_RUN              'true' forces read-only
 //   GITHUB_TOKEN         fallback READ token in dry-run when no PAT is present
 //
@@ -37,12 +40,11 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const UA = "mingla-sprint-rollover/1293";
 
 import { selectMoves } from "./selectMoves.mjs";
+// #1293: "today" is resolved in the operating timezone (default America/New_York),
+// NOT from UTC. The extracted helper is unit-tested in today.test.mjs.
+import { DEFAULT_ROLLOVER_TZ, todayISO } from "./today.mjs";
 
 // ── tiny helpers ─────────────────────────────────────────────────────────────
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
 
 /** startDate + duration days -> "YYYY-MM-DD" (exclusive end). */
 function computeEndISO(startDate, duration) {
@@ -328,12 +330,16 @@ async function main() {
     }
   }
 
-  const today = todayISO();
+  // #1293: resolve "today" in the operating timezone (default America/New_York), so a
+  // still-active Eastern sprint is never treated as ended at UTC-midnight.
+  const rolloverTz = process.env.ROLLOVER_TZ || DEFAULT_ROLLOVER_TZ;
+  const today = todayISO(rolloverTz);
   const { projectTitle, iterations } = await fetchIterations(readToken);
   const items = await fetchItems(readToken);
 
   console.log(`project: ${projectTitle}`);
-  console.log(`today (UTC): ${today}`);
+  console.log(`operating timezone (ROLLOVER_TZ): ${rolloverTz}`);
+  console.log(`today (${rolloverTz}): ${today}`);
   console.log(`active iterations: ${iterations.length}`);
   console.log(`board items scanned: ${items.length}`);
 
@@ -345,6 +351,9 @@ async function main() {
       const [sy, sm, sd] = String(it.startDate).slice(0, 10).split("-").map(Number);
       const start = Date.UTC(sy, sm - 1, sd);
       const end = start + Number(it.duration) * MS_PER_DAY;
+      // #1293: derive the comparison day from the SAME tz-aware `today` string above —
+      // bare-date UTC-epoch arithmetic on it is timezone-independent and stays consistent
+      // with selectMoves(). Never re-derive "today" from a fresh UTC clock here.
       const [ty, tm, td] = today.split("-").map(Number);
       const t = Date.UTC(ty, tm - 1, td);
       return start <= t && t < end;

@@ -19,14 +19,17 @@
 # WIRING (Seth sets these before flipping live):
 #   secret  SPRINT_ROLLOVER_TOKEN     -> GH_PROJECT_TOKEN (board-write PAT: project + repo/issues)
 #   variable SPRINT_ROLLOVER_ENABLED  -> ROLLOVER_ENABLED ('true' to arm writes)
+#   variable SPRINT_ROLLOVER_TZ       -> ROLLOVER_TZ (optional; default America/New_York) (#1293)
 # ─────────────────────────────────────────────────────────────────────────────
 
 name: Sprint Rollover
 
 on:
   schedule:
-    # 06:17 UTC daily — safely after the sprint-boundary midnight.
-    - cron: "17 6 * * *"
+    # 12:00 UTC daily = 08:00 EDT / 07:00 EST — solidly the MORNING AFTER an Eastern
+    # sprint boundary, with margin (#1293: the board is operated in US Eastern, so this
+    # must land well past Eastern midnight, not UTC midnight).
+    - cron: "0 12 * * *"
   workflow_dispatch:
     inputs:
       dry_run:
@@ -64,5 +67,8 @@ jobs:
           # On dispatch: DRY_RUN = the boolean input (default true).
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
           ROLLOVER_ENABLED: ${{ vars.SPRINT_ROLLOVER_ENABLED }}
+          # #1293: operating timezone for "today". Board is run in US Eastern; override
+          # via repo variable SPRINT_ROLLOVER_TZ if the operating zone ever changes.
+          ROLLOVER_TZ: ${{ vars.SPRINT_ROLLOVER_TZ || 'America/New_York' }}
           GH_PROJECT_TOKEN: ${{ secrets.SPRINT_ROLLOVER_TOKEN }}
           GITHUB_TOKEN: ${{ github.token }}
