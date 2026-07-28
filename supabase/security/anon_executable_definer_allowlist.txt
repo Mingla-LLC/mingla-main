@@ -20,7 +20,7 @@
 biz_ticket_checkout_create_session(p_event_id uuid, p_buyer_user_id uuid, p_buyer_name text, p_buyer_email text, p_buyer_phone_e164 text, p_marketing_opt_in boolean, p_lines jsonb, p_idempotency_key text, p_expires_at timestamp with time zone, p_application_fee_amount_cents integer, p_payment_plan_choice text)
 check_username_availability(check_username text)
 is_username_available(p_username text)
-pg_discover_business_events(p_cities text[], p_lower_bound timestamp with time zone, p_upper_start timestamp with time zone, p_party_types text[], p_vibe_tags text[], p_music_genres text[], p_offset integer, p_limit integer)
+pg_discover_business_events(p_cities text[], p_lower_bound timestamp with time zone, p_upper_start timestamp with time zone, p_party_types text[], p_vibe_tags text[], p_music_genres text[], p_offset integer, p_limit integer, p_center_lng double precision, p_center_lat double precision, p_radius_km double precision)
 pg_public_brand_upcoming(p_brand_slug text, p_cursor_at timestamp with time zone, p_limit integer)
 pg_public_event_by_slug(p_brand_slug text, p_event_slug text)
 pg_public_event_tier_allin(p_event_id uuid)
