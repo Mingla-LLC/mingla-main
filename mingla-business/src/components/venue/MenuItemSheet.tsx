@@ -46,8 +46,16 @@ export interface MenuItemSheetProps {
   onClose: () => void;
   /** Present → edit; absent → add. */
   item: MenuItem | null;
-  /** Brand default currency (3-letter ISO) — drives the price input + label. */
+  /** Brand default currency (3-letter ISO) — drives the price input + math. */
   currency: string;
+  /**
+   * #962 VM2 — whether the brand has an ESTABLISHED currency. False for a
+   * pre-bank brand (brands.default_currency = NULL); the `currency` prop is a
+   * normalized crash-guard value ("GBP") upstream, so this explicit signal is
+   * what suppresses the currency code in the field label + a11y so a pre-bank
+   * brand never SEES a fabricated £. The stored value + math are untouched.
+   */
+  brandHasCurrency: boolean;
   onSave: (input: MenuItemSheetSaveInput) => void;
   saving: boolean;
   onDelete?: (id: string) => void;
@@ -61,6 +69,7 @@ export function MenuItemSheet({
   onClose,
   item,
   currency,
+  brandHasCurrency,
   onSave,
   saving,
   onDelete,
@@ -157,13 +166,13 @@ export function MenuItemSheet({
           </Field>
 
           <Text style={styles.groupLabel}>Price</Text>
-          <Field label={`Price (${code})`}>
+          <Field label={`Price${brandHasCurrency ? ` (${code})` : ""}`}>
             <Input
               value={priceDraft}
               onChangeText={setPriceDraft}
               variant="number"
               placeholder="0.00"
-              accessibilityLabel={`Item price in ${code}`}
+              accessibilityLabel={`Item price${brandHasCurrency ? ` in ${code}` : ""}`}
               testID="menu-item-price"
             />
           </Field>

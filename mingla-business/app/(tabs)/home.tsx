@@ -92,7 +92,7 @@ import { routeForEventRowDefensive } from "../../src/utils/routeForEventRow";
 import { tripToLiveEvent } from "../../src/utils/tripToLiveEvent";
 import type { BusinessTodo } from "../../src/utils/businessTodos";
 
-import { formatCurrencyRound } from "../../src/utils/currency";
+import { formatCurrencyRound, currencyCodeOrNull } from "../../src/utils/currency";
 import { formatDraftDateLine } from "../../src/utils/eventDateDisplay";
 import { getActiveEventsKpiSub } from "../../src/utils/homeKpiPresentation";
 import { formatRelativeTime } from "../../src/utils/relativeTime";
@@ -359,13 +359,15 @@ export default function HomeTab(): React.ReactElement {
       const capacity = finiteTicketCapacity(view);
       const salesSummary = eventSalesSummaries[view.id];
       const soldCount = salesSummary?.soldCount ?? 0;
+      // #962 G2 — never manufacture GBP; hide the revenue label ("—") when the
+      // brand has no established currency, else format the real code.
+      const fallbackCode = currencyCodeOrNull(
+        view.currency ?? currentBrand?.defaultCurrency,
+      );
       map[view.id] = {
         revenueLabel:
           salesSummary?.revenueLabel ??
-          formatCurrencyRound(
-            0,
-            view.currency ?? currentBrand?.defaultCurrency ?? "GBP",
-          ),
+          (fallbackCode === null ? "—" : formatCurrencyRound(0, fallbackCode)),
         soldValue:
           salesSummary?.hasError === true
             ? "Unable"
@@ -806,12 +808,15 @@ export default function HomeTab(): React.ReactElement {
                       salesSummary?.finiteCapacity !== null && salesSummary !== undefined
                         ? `${soldLabel} sold`
                         : soldLabel;
+                    // #962 G2 — hide ("—") when no established currency; never GBP.
+                    const upcomingFallbackCode = currencyCodeOrNull(
+                      event.currency ?? currentBrand.defaultCurrency,
+                    );
                     const revenueLabel =
                       salesSummary?.revenueLabel ??
-                      formatCurrencyRound(
-                        0,
-                        event.currency ?? currentBrand.defaultCurrency ?? "GBP",
-                      );
+                      (upcomingFallbackCode === null
+                        ? "—"
+                        : formatCurrencyRound(0, upcomingFallbackCode));
                     const isLive = item.status === "live";
 
                     return (

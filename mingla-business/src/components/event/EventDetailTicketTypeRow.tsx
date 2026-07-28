@@ -16,7 +16,7 @@ import {
   text as textTokens,
 } from "../../constants/designSystem";
 import type { TicketStub } from "../../store/draftEventStore";
-import { formatCurrency } from "../../utils/currency";
+import { formatCurrency, currencyCodeOrNull } from "../../utils/currency";
 
 interface EventDetailTicketTypeRowProps {
   ticket: TicketStub;
@@ -35,9 +35,14 @@ const EventDetailTicketTypeRowInner: React.FC<EventDetailTicketTypeRowProps> = (
     ? Number.POSITIVE_INFINITY
     : (ticket.capacity ?? 0);
   const isSoldOut = !ticket.isUnlimited && cap > 0 && sold >= cap;
+  // #962 G14 — hide the price ("—") when the ticket has no established currency
+  // (pre-bank brand); never manufacture GBP. Mirrors G8 (ticketDisplay.ts).
+  const ticketCode = currencyCodeOrNull(ticket.currency);
   const priceText = ticket.isFree
     ? "Free"
-    : formatCurrency(ticket.priceGbp ?? 0, ticket.currency ?? "GBP");
+    : ticketCode !== null
+      ? formatCurrency(ticket.priceGbp ?? 0, ticketCode)
+      : "—";
   const capText = ticket.isUnlimited ? `${sold} sold` : `${sold} / ${cap}`;
 
   return (

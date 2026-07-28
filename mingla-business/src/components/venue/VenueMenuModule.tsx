@@ -32,7 +32,11 @@ import { Button } from "../ui/Button";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { BRAND_ROLE_RANK } from "../../utils/brandRole";
-import { formatCurrency, normalizeCurrency } from "../../utils/currency";
+import {
+  formatCurrency,
+  normalizeCurrency,
+  currencyCodeOrNull,
+} from "../../utils/currency";
 import {
   useBrandMenus,
   useDeleteMenu,
@@ -60,7 +64,14 @@ export function VenueMenuModule({
   const brand = useCurrentBrand();
   const { rank } = useCurrentBrandRole(brandId);
   const canMutate = rank >= MANAGER_PLUS_RANK;
+  // KEEP — `menu_items.currency` is text NOT NULL (migration 20261118000000);
+  // the stored value cannot be null without a migration (#962 §7 D-5 follow-up,
+  // tracked in #1305). This feeds the WRITE + the MenuItemSheet math prop.
   const currency = normalizeCurrency(brand?.defaultCurrency);
+  // #962 VM1 — DISPLAY gate only: suppress the menu-price DISPLAY when the brand
+  // has no established currency so a pre-bank brand never SEES a fabricated £.
+  // The stored value is untouched.
+  const brandHasCurrency = currencyCodeOrNull(brand?.defaultCurrency) !== null;
 
   const menusQuery = useBrandMenus(brandId);
   const menus = menusQuery.data ?? [];
@@ -382,7 +393,9 @@ export function VenueMenuModule({
               accessibilityLabel={`${item.name}, ${
                 item.priceCents === null
                   ? "price on request"
-                  : formatCurrency(item.priceCents, item.currency, true)
+                  : brandHasCurrency
+                    ? formatCurrency(item.priceCents, item.currency, true)
+                    : "—"
               }, ${item.isAvailable ? "available" : "hidden"}`}
             >
               <View style={styles.itemLeft}>
@@ -398,10 +411,12 @@ export function VenueMenuModule({
               <View style={styles.itemRight}>
                 {item.priceCents === null ? (
                   <Text style={styles.priceOnRequest}>Price on request</Text>
-                ) : (
+                ) : brandHasCurrency ? (
                   <Text style={styles.itemPrice}>
                     {formatCurrency(item.priceCents, item.currency, true)}
                   </Text>
+                ) : (
+                  <Text style={styles.itemPrice}>—</Text>
                 )}
                 <View
                   style={[
@@ -487,6 +502,7 @@ export function VenueMenuModule({
         onClose={() => setItemSheetOpen(false)}
         item={editingItem}
         currency={currency}
+        brandHasCurrency={brandHasCurrency}
         onSave={handleSaveItem}
         saving={upsertItem.isPending}
         onDelete={canMutate ? handleDeleteItem : undefined}

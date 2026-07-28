@@ -18,6 +18,7 @@
 
 import { Platform, Share } from "react-native";
 
+import { currencyCodeOrNull } from "./currency";
 import type { LiveEvent } from "../store/liveEventStore";
 import type { OrderRecord } from "../store/orderStore";
 import type { CompGuestEntry } from "../store/guestStore";
@@ -124,7 +125,9 @@ export interface ReconciliationCsvSummary {
   totalRefunded: number;
   netRevenue: number;
   uniqueScannedTickets: number;
-  currency: string;
+  // #962 G18 — null when the brand has no established currency; the preamble
+  // lines then carry NO currency code (never a fabricated "GBP").
+  currency: string | null;
   currenciesPresent?: string[];
   currencyMismatchCount?: number;
 }
@@ -168,14 +171,17 @@ export const serializeGuestsToCsv = (
     stanzaLines.push(
       `# Tickets: ${summary.totalLiveTickets} live · ${summary.uniqueScannedTickets} scanned`,
     );
-    stanzaLines.push(`# Revenue: gross ${formatMoneyForCsv(summary.grossRevenue)} ${summary.currency}`);
-    stanzaLines.push(`# Refunded: ${formatMoneyForCsv(summary.totalRefunded)} ${summary.currency}`);
-    stanzaLines.push(`# Net: ${formatMoneyForCsv(summary.netRevenue)} ${summary.currency}`);
+    // #962 G18 — append the currency code ONLY when the brand has one; a
+    // pre-bank brand (0 orders, all totals 0) emits no fabricated "GBP".
+    const cur = summary.currency ? ` ${summary.currency}` : "";
+    stanzaLines.push(`# Revenue: gross ${formatMoneyForCsv(summary.grossRevenue)}${cur}`);
+    stanzaLines.push(`# Refunded: ${formatMoneyForCsv(summary.totalRefunded)}${cur}`);
+    stanzaLines.push(`# Net: ${formatMoneyForCsv(summary.netRevenue)}${cur}`);
     if (summary.currenciesPresent !== undefined && summary.currenciesPresent.length > 1) {
       stanzaLines.push(`# Currencies present: ${summary.currenciesPresent.join(", ")}`);
     }
     if ((summary.currencyMismatchCount ?? 0) > 0) {
-      stanzaLines.push(`# Currency mismatches excluded from ${summary.currency} totals: ${summary.currencyMismatchCount}`);
+      stanzaLines.push(`# Currency mismatches excluded from${cur} totals: ${summary.currencyMismatchCount}`);
     }
   }
 
@@ -448,7 +454,8 @@ export const exportReconciliationCsv = async (
     // here under "Net" so the 5-line preamble reads cleanly to an accountant.
     netRevenue: args.summary.grossRevenue,
     uniqueScannedTickets: args.summary.uniqueScannedTickets,
-    currency: args.event.currency ?? "GBP",
+    // #962 G18 — null when unset; the serializer omits the currency code.
+    currency: currencyCodeOrNull(args.event.currency),
     currenciesPresent: args.summary.currenciesPresent,
     currencyMismatchCount: args.summary.currencyMismatches.length,
   };

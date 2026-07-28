@@ -24,7 +24,7 @@ import {
   text as textTokens,
 } from "../../constants/designSystem";
 import type { EditSeverity } from "../../store/eventEditLogStore";
-import { formatCurrency } from "../../utils/currency";
+import { formatCurrency, currencyCodeOrNull } from "../../utils/currency";
 import { Icon, type IconName } from "../ui/Icon";
 
 // ----- Activity feed types (Cycle 9c rework v3 + Cycle 9c-2 ext) ---
@@ -97,7 +97,7 @@ export type ActivityEvent =
       saleId: string; // ds_xxx parent door sale
       refundId: string; // dr_xxx refund record
       buyerName: string; // sale.buyerName or "Walk-up"
-      summary: string; // "{buyer} — refunded £X (door)"
+      summary: string; // "{buyer} — refunded {amount} (door)" (#962 N3 — no implied £)
       amountGbp: number;
       currency?: string;
       at: string; // refund.refundedAt ISO
@@ -259,18 +259,23 @@ const EventDetailActivityRowInner: React.FC<EventDetailActivityRowProps> = ({
   // Amount label only applies to order-level kinds with money flow.
   // Purchase with totalGbpAtPurchase === 0 renders "Free" instead of "+£0.00".
   let amountLabel: string | null = null;
+  // #962 G15 — resolve the activity's REAL currency (from the order/refund).
+  // When unset, render the bare amount with no symbol (never a fabricated £).
+  // Effectively unreachable pre-bank (0 orders), converted to kill the literal.
+  const amountMoney = (code: string | null, amount: number): string =>
+    code !== null ? formatCurrency(amount, code) : String(amount);
   if (a.kind === "purchase") {
     amountLabel =
       a.amountGbp === 0
         ? "Free"
-        : `${spec.amountSign ?? ""}${formatCurrency(a.amountGbp, a.currency ?? "GBP")}`;
+        : `${spec.amountSign ?? ""}${amountMoney(currencyCodeOrNull(a.currency), a.amountGbp)}`;
   } else if (a.kind === "refund") {
-    amountLabel = `${spec.amountSign ?? ""}${formatCurrency(a.amountGbp, a.currency ?? "GBP")}`;
+    amountLabel = `${spec.amountSign ?? ""}${amountMoney(currencyCodeOrNull(a.currency), a.amountGbp)}`;
   } else if (a.kind === "event_door_refund") {
     // Cycle 12 — door refund renders amount the same as online refund
     // (warm color + minus sign) so the operator's eye sweep across the
     // feed sees "money out" consistently regardless of channel.
-    amountLabel = `${spec.amountSign ?? ""}${formatCurrency(a.amountGbp, a.currency ?? "GBP")}`;
+    amountLabel = `${spec.amountSign ?? ""}${amountMoney(currencyCodeOrNull(a.currency), a.amountGbp)}`;
   }
 
   // Row shape branches by stream:

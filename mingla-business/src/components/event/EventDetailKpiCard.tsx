@@ -17,7 +17,7 @@ import {
   spacing,
   text as textTokens,
 } from "../../constants/designSystem";
-import { formatCurrency } from "../../utils/currency";
+import { formatCurrency, currencyCodeOrNull } from "../../utils/currency";
 
 import { GlassCard } from "../ui/GlassCard";
 
@@ -35,15 +35,23 @@ export interface EventDetailKpiCardProps {
    * (don't show "You covered £0.00"). Surface 5.
    */
   coveredGbp?: number | null;
-  currency?: string;
+  /**
+   * #962 G16 — nullable. When the brand has no established currency (pre-bank),
+   * callers pass null and every money value renders "—"; a real code formats
+   * normally. GBP is never manufactured (the old `= "GBP"` default is gone).
+   */
+  currency?: string | null;
 }
 
 export const EventDetailKpiCard: React.FC<EventDetailKpiCardProps> = ({
   revenueGbp,
   payoutGbp,
   coveredGbp,
-  currency = "GBP",
+  currency,
 }) => {
+  // #962 G16 — resolve the real code or null; hide money ("—") when null
+  // (pre-bank brand). NEVER manufacture GBP.
+  const code = currencyCodeOrNull(currency);
   const hasData = revenueGbp > 0;
   const showCovered =
     typeof coveredGbp === "number" && Number.isFinite(coveredGbp) && coveredGbp > 0;
@@ -59,21 +67,21 @@ export const EventDetailKpiCard: React.FC<EventDetailKpiCardProps> = ({
         <View style={styles.col}>
           <Text style={styles.label}>REVENUE</Text>
           <Text style={styles.bigValue}>
-            {formatCurrency(hasData ? revenueGbp : 0, currency)}
+            {code === null ? "—" : formatCurrency(hasData ? revenueGbp : 0, code)}
           </Text>
         </View>
         <View style={styles.colRight}>
           <Text style={styles.label}>PAYOUT</Text>
           <Text style={styles.midValue}>
-            {hasData && payoutGbp !== null
-              ? formatCurrency(payoutGbp, currency)
+            {code !== null && hasData && payoutGbp !== null
+              ? formatCurrency(payoutGbp, code)
               : "—"}
           </Text>
         </View>
       </View>
-      {showCovered ? (
+      {showCovered && code !== null ? (
         <Text style={styles.coveredLine}>
-          You covered {formatCurrency(coveredGbp as number, currency)} in VAT &
+          You covered {formatCurrency(coveredGbp as number, code)} in VAT &
           fees
         </Text>
       ) : null}

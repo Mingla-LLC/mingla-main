@@ -49,6 +49,7 @@ import {
 import { EventDetailTicketTypeRow } from "../../../src/components/event/EventDetailTicketTypeRow";
 import { buildOfferingDashboardTiles } from "../../../src/components/offering/offeringDashboardTiles";
 import { summarizeEventMoney } from "../../../src/utils/moneySummary";
+import { currencyCodeOrNull } from "../../../src/utils/currency";
 import { useEventOrders } from "../../../src/hooks/useEventOrders";
 import { TripManageMenu } from "../../../src/components/trip/TripManageMenu";
 import {
@@ -202,8 +203,10 @@ export default function TripDashboardRoute(): React.ReactElement {
 
   // Revenue aggregation (excludes failed/cancelled/refunded orders).
   const revenueByCurrency = useMemo(() => {
-    if (ordersQuery.data === undefined) return new Map<string, number>();
-    const map = new Map<string, number>();
+    // #962 N2 — key type admits null so a null primaryCurrency (pre-bank brand,
+    // no established currency) is a valid `.get` key that resolves to 0.
+    if (ordersQuery.data === undefined) return new Map<string | null, number>();
+    const map = new Map<string | null, number>();
     for (const o of ordersQuery.data) {
       if (
         o.paymentStatus === "failed" ||
@@ -338,10 +341,19 @@ export default function TripDashboardRoute(): React.ReactElement {
   // payload (server-derived via biz_trip_tickets_sold). Counting orders
   // client-side underreports because most orders carry >1 ticket.
   const ticketsSold = trip.ticketsSoldCount;
-  const primaryCurrency =
+  // #962 N2 — never manufacture a display currency (the old "USD" fallback is a
+  // business-display leak too — "do NOT swap to a different literal"). Resolve
+  // the trip's REAL currency, or null when the brand has no established currency.
+  const primaryCurrency = currencyCodeOrNull(
     [...revenueByCurrency.entries()][0]?.[0] ??
-    trip.pricingTiers[0]?.currency ??
-    "USD";
+      trip.pricingTiers[0]?.currency ??
+      trip.revenueCurrency,
+  );
+  // Severed from moneySummary.expectedCurrency (which normalizes to "GBP" for a
+  // pre-bank brand); drives the KpiCard money — hidden ("—") when null.
+  const displayCurrency = currencyCodeOrNull(
+    trip.pricingTiers[0]?.currency ?? trip.revenueCurrency,
+  );
   const totalRevenue = revenueByCurrency.get(primaryCurrency) ?? 0;
   const spotsLabel = formatTripSpotsLabel(
     ticketsSold,
@@ -519,11 +531,13 @@ export default function TripDashboardRoute(): React.ReactElement {
         <EventDetailKpiCard
           revenueGbp={moneySummary.onlineRevenue}
           payoutGbp={moneySummary.onlineNetMajor}
-          currency={moneySummary.expectedCurrency}
+          currency={displayCurrency}
         />
 
         <TripDetailKpiCard
-          revenueLabel={formatCurrency(totalRevenue, primaryCurrency)}
+          revenueLabel={
+            primaryCurrency ? formatCurrency(totalRevenue, primaryCurrency) : "—"
+          }
           spotsLabel={spotsLabel}
           spotsValueTestID="orch-0950-trip-dashboard-spots-value"
         />

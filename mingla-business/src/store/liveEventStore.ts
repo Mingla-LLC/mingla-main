@@ -289,8 +289,14 @@ export interface LiveEvent {
   coverMediaCredit?: string | null;
   coverMediaCreditUrl?: string | null;
   coverMediaAlt?: string | null;
-  /** ISO 4217 immutable commerce currency for this published event. */
-  currency?: string;
+  /**
+   * ISO 4217 immutable commerce currency for this published event.
+   * #962 — nullable: a pre-bank brand has NO currency (brands.default_currency
+   * = NULL, migration 0769). The converter (liveEventConverter.ts) writes null
+   * when neither the draft nor the brand has an established currency; display
+   * surfaces resolve via `currencyCodeOrNull` and hide the price when null.
+   */
+  currency?: string | null;
   /**
    * ORCH-1006 Slice 3 — server-computed all-in (tax/fee-inclusive) lowest-tier
    * price in CENTS, sourced from business_public_events_view. Null when no

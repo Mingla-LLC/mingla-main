@@ -108,8 +108,13 @@ export interface WhoCoversCostsSectionProps {
   onChange: (next: PricingSwitchOverrides) => void;
   /** Representative single-ticket price in CENTS for the live preview. */
   previewBaseCents: number;
-  /** ISO 4217 currency (drives the money helper — never hardcode £). */
-  currency: string;
+  /**
+   * ISO 4217 currency (drives the money helper — never hardcode £). #962 G12 —
+   * nullable: when the brand has NO established currency (pre-bank), the preview
+   * amounts render as PLAIN NUMBERS with no symbol (the toggles still
+   * illustrate). GBP is never manufactured. A real code formats normally.
+   */
+  currency: string | null;
   /** Mingla take-rate in bps (brand override or platform default). */
   effectiveTakeRateBps: number;
   /** Surface 3 — sold a ticket → read-only. */
@@ -156,6 +161,11 @@ export const WhoCoversCostsSection: React.FC<WhoCoversCostsSectionProps> = ({
   testID,
 }) => {
   const resolved = resolveSwitches(overrides, defaults);
+  // #962 G12 — null-safe money: format with the real code, else a plain number
+  // (no symbol) when the brand has no established currency. NEVER manufacture
+  // GBP (a null flowing into formatCurrency would coerce to GBP).
+  const money = (cents: number): string =>
+    currency !== null ? formatCurrency(cents, currency, true) : (cents / 100).toFixed(2);
   const hasPrice = Number.isFinite(previewBaseCents) && previewBaseCents > 0;
   const vatUnregistered = vatRegistered !== true;
 
@@ -258,20 +268,16 @@ export const WhoCoversCostsSection: React.FC<WhoCoversCostsSectionProps> = ({
         <View
           style={styles.previewChip}
           accessibilityRole="summary"
-          accessibilityLabel={`Buyer pays ${formatCurrency(
+          accessibilityLabel={`Buyer pays ${money(
             preview.buyerPaysCents,
-            currency,
-            true,
-          )} all in. You keep ${formatCurrency(
+          )} all in. You keep ${money(
             preview.youKeepFloorCents,
-            currency,
-            true,
           )} before VAT.`}
         >
           <View style={styles.previewCol}>
             <Text style={styles.previewHead}>Buyer pays</Text>
             <Text style={styles.previewBuyer}>
-              {formatCurrency(preview.buyerPaysCents, currency, true)}
+              {money(preview.buyerPaysCents)}
             </Text>
             <Text style={styles.previewCaption}>all-in, one tap</Text>
           </View>
@@ -279,7 +285,7 @@ export const WhoCoversCostsSection: React.FC<WhoCoversCostsSectionProps> = ({
           <View style={styles.previewCol}>
             <Text style={styles.previewHead}>You keep</Text>
             <Text style={styles.previewKeep}>
-              {formatCurrency(preview.youKeepFloorCents, currency, true)}
+              {money(preview.youKeepFloorCents)}
             </Text>
             <Text style={styles.previewCaption}>before VAT</Text>
           </View>
