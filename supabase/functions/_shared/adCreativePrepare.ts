@@ -1226,11 +1226,39 @@ const googlePrepareAdapter: PrepareProviderAdapter = {
         extra.upload_resource_name
       ? extra.upload_resource_name
       : ref;
+    // #1292: `youTubeVideoUploads/{id}` is NOT a routable Ads-API REST GET — it is a
+    // resumable-upload (POST …:create) + GAQL resource, so Google's front door answers
+    // a GET on that path with a generic HTML 404 (never a JSON NOT_FOUND). The prior
+    // GET therefore never saw PROCESSED and the ref spun to timeout. The documented v24
+    // mechanism is a GAQL search on `you_tube_video_upload` filtered by resource_name;
+    // `state` reaches PROCESSED and `video_id` is populated there. `resourceName` is our
+    // own Google-generated saved ref (fixed shape, no user input) — safe to interpolate.
+    const query = "SELECT you_tube_video_upload.resource_name, " +
+      "you_tube_video_upload.video_id, you_tube_video_upload.state " +
+      "FROM you_tube_video_upload " +
+      `WHERE you_tube_video_upload.resource_name = '${resourceName}'`;
     const pollResponse = await fetchImpl(
-      `${client.apiBase}/${client.apiVersion}/${resourceName}`,
-      { method: "GET", headers: googleAdsAuthHeaders(client) },
+      `${client.apiBase}/${client.apiVersion}/customers/${client.customerId}/googleAds:search`,
+      {
+        method: "POST",
+        headers: {
+          ...googleAdsAuthHeaders(client),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ query }),
+      },
     );
-    const payload = await responseJson(pollResponse);
+    // Direct fetchImpl POST (not googleAdsRequest) preserves the adapter's deps.fetchImpl
+    // DI and today's tolerant-on-transient behavior: a non-2xx / un-parseable body →
+    // responseJson {} → empty results → state=null → processing (retry), never a false
+    // terminal. `payload` is redirected to the parsed upload row so the enum→verdict
+    // mapping below (video_id read + PROCESSED/FAILED handling) stays UNCHANGED.
+    const searchPayload = await responseJson(pollResponse);
+    const results = Array.isArray(searchPayload.results)
+      ? searchPayload.results as Record<string, unknown>[]
+      : [];
+    const payload = (results[0]?.youTubeVideoUpload ??
+      results[0]?.you_tube_video_upload ?? {}) as Record<string, unknown>;
     const state = typeof payload.state === "string" ? payload.state : null;
     if (state === "PROCESSED") {
       const videoId = typeof payload.videoId === "string"

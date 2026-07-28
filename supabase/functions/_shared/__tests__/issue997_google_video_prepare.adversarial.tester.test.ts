@@ -11,9 +11,9 @@
  *     !ok, missing resourceName, saveProviderRef-lost CAS) leaves ZERO ref saved
  *     and ZERO markProcessing.
  *   - initiate uploads the VIDEO bytes (identity) and IGNORES bytes.poster entirely.
- *   - check() poll-URL fallback to `ref` when extra.upload_resource_name is
- *     absent / non-string / empty; snake_case video_id; empty/non-string videoId
- *     is terminal; unknown/missing state stays processing; exactly-one poll.
+ *   - check() poll-query (GAQL WHERE) fallback to `ref` when extra.upload_resource_name
+ *     is absent / non-string / empty; snake_case video_id; empty/non-string videoId
+ *     is terminal; unknown/missing state / empty results stays processing; one poll.
  *   - mergeExtra no-op: proven by DRIVING the real google + tiktok + meta check()
  *     adapters and asserting only google emits mergeExtra (exactly {youtube_video_id}),
  *     then EXECUTING the endpoint's real READY fold to show a sibling result leaves
@@ -118,8 +118,27 @@ interface GoogleRoutes {
   startUploadUrl?: string | null;
   uploadStatus?: number;
   finalizeBody?: Record<string, unknown>;
+  // `pollPayload` is the inner you_tube_video_upload row the GAQL-search envelope is
+  // built from; `pollResults` overrides the whole results[] array (e.g. [] for the
+  // empty-results case). #1292.
   pollPayload?: Record<string, unknown>;
+  pollResults?: Record<string, unknown>[];
   pollStatus?: number;
+}
+
+/**
+ * #1292: the documented v24 GAQL search envelope for a `you_tube_video_upload` row
+ * (Google Ads REST = camelCase `results[].youTubeVideoUpload`). The ONLY shape the
+ * fixed check() parser reads — a flat `{ state, videoId }` can never satisfy it.
+ */
+function searchEnvelope(
+  upload: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    results: [{
+      youTubeVideoUpload: { resourceName: RESOURCE_NAME, ...upload },
+    }],
+  };
 }
 
 /**
@@ -186,13 +205,36 @@ function withGoogle(
             ),
           );
         }
-        // Anything else is the status poll GET.
-        return Promise.resolve(
-          new Response(
-            JSON.stringify(routes.pollPayload ?? { state: "PENDING" }),
-            {
+        // #1292: the CORRECT v24 poll transport — a GAQL search POST for the
+        // you_tube_video_upload row. The stub asserts the request shape (POST +
+        // FROM you_tube_video_upload) so a pass is only achievable against the real
+        // transport + envelope.
+        if (url.includes("googleAds:search")) {
+          assertEquals(init?.method, "POST");
+          const q = String(
+            (JSON.parse(String(init?.body)) as { query?: unknown }).query ?? "",
+          );
+          assertStringIncludes(q, "FROM you_tube_video_upload");
+          const envelope = routes.pollResults !== undefined
+            ? { results: routes.pollResults }
+            : searchEnvelope(routes.pollPayload ?? { state: "PENDING" });
+          return Promise.resolve(
+            new Response(JSON.stringify(envelope), {
               status: routes.pollStatus ?? 200,
               headers: { "Content-Type": "application/json" },
+            }),
+          );
+        }
+        // REVERT-TRAP: the OLD non-routable GET on …/youTubeVideoUploads/{id}, which
+        // Google's real front door answers with a generic HTML 404 (not an Ads JSON
+        // NOT_FOUND). Reverting check() to the GET transport routes here → never
+        // PROCESSED → the PROCESSED-based tests fail.
+        return Promise.resolve(
+          new Response(
+            "<!DOCTYPE html><html><head><title>Error 404 (Not Found)</title></head><body><h1>Error 404</h1></body></html>",
+            {
+              status: 404,
+              headers: { "Content-Type": "text/html" },
             },
           ),
         );
@@ -383,53 +425,62 @@ Deno.test(
   }),
 );
 
-// ══ 2. check() poll-URL fallback + state machine ══
+// ══ 2. check() poll-query fallback + state machine ══
+// #1292: the ref (extra.upload_resource_name when a valid string, else `ref`) now
+// lands in the GAQL WHERE clause of the search POST body — NOT the URL path. These
+// prove the SAME fallback precedence via the query the adapter actually sends.
 
-async function pollUrlFor(
+async function pollQueryFor(
   extra: Record<string, unknown>,
   ref: string,
 ): Promise<string> {
   let captured = "";
   await withGoogle({ pollPayload: { state: "PENDING" } }, async (calls) => {
     await google().check(ref, extra, GOOGLE_CONN);
-    const poll = calls.find(
-      (c) =>
-        !c.url.includes("oauth2.googleapis.com") &&
-        !c.url.includes(":create") &&
-        c.url !== UPLOAD_SESSION_URL,
+    const poll = calls.find((c) => c.url.includes("googleAds:search"));
+    captured = String(
+      (JSON.parse(String(poll?.init?.body)) as { query?: unknown }).query ?? "",
     );
-    captured = poll?.url ?? "";
   })();
   return captured;
 }
 
-Deno.test("ADV D1: check() polls `ref` when extra.upload_resource_name is ABSENT", async () => {
-  const url = await pollUrlFor({}, RESOURCE_NAME);
-  assert(
-    url.endsWith("/" + RESOURCE_NAME),
-    `poll url should end with ref, got ${url}`,
+Deno.test("ADV D1: check() queries `ref` when extra.upload_resource_name is ABSENT", async () => {
+  const q = await pollQueryFor({}, RESOURCE_NAME);
+  assertStringIncludes(
+    q,
+    `you_tube_video_upload.resource_name = '${RESOURCE_NAME}'`,
   );
 });
 
 Deno.test("ADV D1: check() falls back to `ref` for a NON-STRING upload_resource_name", async () => {
   const fallbackRef = "customers/x/youTubeVideoUploads/FALLBACK";
-  const url = await pollUrlFor({ upload_resource_name: 12345 }, fallbackRef);
-  assert(url.endsWith("/" + fallbackRef), `expected ref fallback, got ${url}`);
+  const q = await pollQueryFor({ upload_resource_name: 12345 }, fallbackRef);
+  assertStringIncludes(
+    q,
+    `you_tube_video_upload.resource_name = '${fallbackRef}'`,
+  );
 });
 
 Deno.test("ADV D1: check() falls back to `ref` for an EMPTY-STRING upload_resource_name", async () => {
   const fallbackRef = "customers/x/youTubeVideoUploads/EMPTYFALLBACK";
-  const url = await pollUrlFor({ upload_resource_name: "" }, fallbackRef);
-  assert(url.endsWith("/" + fallbackRef), `expected ref fallback, got ${url}`);
+  const q = await pollQueryFor({ upload_resource_name: "" }, fallbackRef);
+  assertStringIncludes(
+    q,
+    `you_tube_video_upload.resource_name = '${fallbackRef}'`,
+  );
 });
 
 Deno.test("ADV D1: check() prefers a valid string upload_resource_name over ref", async () => {
-  const url = await pollUrlFor(
+  const q = await pollQueryFor(
     { upload_resource_name: RESOURCE_NAME },
     "IGNORED_REF",
   );
-  assert(url.endsWith("/" + RESOURCE_NAME));
-  assertEquals(url.includes("IGNORED_REF"), false);
+  assertStringIncludes(
+    q,
+    `you_tube_video_upload.resource_name = '${RESOURCE_NAME}'`,
+  );
+  assertEquals(q.includes("IGNORED_REF"), false);
 });
 
 Deno.test(
@@ -496,18 +547,25 @@ Deno.test(
 );
 
 Deno.test(
-  "ADV D1: check() performs EXACTLY ONE poll GET per call",
+  "ADV D1: check() with EMPTY search results stays processing (row not yet materialized)",
+  withGoogle({ pollResults: [] }, async () => {
+    const res = await google().check(RESOURCE_NAME, {
+      upload_resource_name: RESOURCE_NAME,
+    }, GOOGLE_CONN);
+    assertEquals(res, { state: "processing", retryAfterSeconds: 10 });
+  }),
+);
+
+Deno.test(
+  "ADV D1: check() performs EXACTLY ONE poll (googleAds:search POST) per call",
   withGoogle(
     { pollPayload: { state: "PROCESSED", videoId: "yt-one" } },
     async (calls) => {
       await google().check(RESOURCE_NAME, {
         upload_resource_name: RESOURCE_NAME,
       }, GOOGLE_CONN);
-      const polls = calls.filter(
-        (c) =>
-          !c.url.includes("oauth2.googleapis.com") &&
-          !c.url.includes(":create") &&
-          c.url !== UPLOAD_SESSION_URL,
+      const polls = calls.filter((c) =>
+        c.url.includes("googleAds:search") && c.init?.method === "POST"
       );
       assertEquals(polls.length, 1);
     },
@@ -769,8 +827,14 @@ Deno.test("ADV D2 guardrail: the create module consumes the prepared youtube_vid
   assert(gStart >= 0 && gEnd > gStart, "could not bound the google branch");
   const googleBranch = src.slice(gStart, gEnd);
   assertStringIncludes(googleBranch, "creative_ref_incomplete");
-  assertStringIncludes(googleBranch, '.eq("external_account_id", gconnGV.external_account_id)');
-  assertStringIncludes(googleBranch, '.eq("content_hash", libCreativeGV.content_hash)');
+  assertStringIncludes(
+    googleBranch,
+    '.eq("external_account_id", gconnGV.external_account_id)',
+  );
+  assertStringIncludes(
+    googleBranch,
+    '.eq("content_hash", libCreativeGV.content_hash)',
+  );
   // The google branch no longer fail-closes; only Reddit does.
   assert(
     !googleBranch.includes("video_create_not_available_phase_a"),
