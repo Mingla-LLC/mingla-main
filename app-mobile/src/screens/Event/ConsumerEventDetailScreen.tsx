@@ -65,6 +65,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   boldFontFamily,
   computeOfferingVariant,
+  CoverGalleryPager,
+  CoverGalleryRow,
   createThemePalette,
   EventCoverMedia,
   resolveTheme,
@@ -283,6 +285,10 @@ export default function ConsumerEventDetailScreen({
     {},
   );
   const [checkoutInFlight, setCheckoutInFlight] = useState<boolean>(false);
+  // issue #868 [cover-gallery], M.1b — single owner of the shown hero item
+  // (0 = cover, i = gallery[i-1]) shared by the cover pager + the row. Placed with
+  // the other hooks (before the loading early-returns) to preserve hook order.
+  const [coverIndex, setCoverIndex] = useState<number>(0);
   const [muted, setMuted] = useState<boolean>(true);
 
   // ORCH-1341 — "Who's going" guest-list sheet visibility. Both branches share
@@ -896,6 +902,43 @@ export default function ConsumerEventDetailScreen({
     palette,
   );
   const showMute = fnd.coverMediaType === "video";
+  // issue #868 [cover-gallery], M.1b — the ADDITIONAL image/GIF items (plain const,
+  // not a hook, since fnd resolves AFTER the loading early-returns). Empty ⇒ the
+  // single cover renders byte-identically (no pager, no row).
+  const coverGallery = (fnd.coverGallery ?? []).filter(
+    (g) => typeof g?.url === "string" && g.url.length > 0,
+  );
+  const galleryActive = coverGallery.length >= 1;
+  // issue #868 Pass 3 — the pager OWNS scrolling (it drives scrollTo from
+  // activeIndex with a settle-guard, BUG 1). The row just sets the shown index.
+  const selectCoverIndex = (index: number): void => {
+    setCoverIndex(index);
+  };
+  // The screen's EXISTING cover node — UNCHANGED (video-capable). Reused as page 0
+  // of the pager in gallery mode, or rendered alone when the gallery is empty.
+  const coverMediaNode = (
+    <EventCoverMedia
+      mediaUrl={fnd.coverMediaUrl}
+      mediaType={fnd.coverMediaType}
+      hue={fnd.coverHue}
+      autoplay={true}
+      playbackActive={true}
+      muted={muted}
+      loop={true}
+      height="100%"
+      width="100%"
+    />
+  );
+  const galleryRow = galleryActive ? (
+    <CoverGalleryRow
+      cover={{ url: fnd.coverMediaUrl, type: fnd.coverMediaType }}
+      gallery={coverGallery}
+      activeIndex={coverIndex}
+      onSelect={selectCoverIndex}
+      palette={palette}
+      variant="phone"
+    />
+  ) : null;
 
   // ORCH-1167 [event-page-canonical] — the standard-event PublicEventProps for the
   // shared EventOfferingBody (warm path from the deck seed). RSVP rows do NOT use
@@ -1000,24 +1043,26 @@ export default function ConsumerEventDetailScreen({
         // broke its in-sheet reserve taps. Back to the proven inline path.
         accessibilityLabel={fnd.title}
       >
-        {/* (1) pinned cover — absolute sibling BEHIND the scroll. */}
-        <View style={styles.nativeCover} pointerEvents="none">
-          <EventCoverMedia
-            mediaUrl={fnd.coverMediaUrl}
-            mediaType={fnd.coverMediaType}
-            hue={fnd.coverHue}
-            // ORCH-1167-R4 — VIDEO cover AUTOPLAYS (muted, inline) + LOOPS on
-            // consumer iOS/Android (the standard-event sheet pins this cover
-            // directly, not via ParallaxCoverShell). Explicit (not bare-boolean)
-            // so the R4 regression pins it; reduce-motion freeze + the chrome
-            // Mute toggle (owns `muted`) are unaffected. Image/GIF unchanged.
-            autoplay={true}
-            playbackActive={true}
-            muted={muted}
-            loop={true}
-            height="100%"
-            width="100%"
-          />
+        {/* (1) pinned cover — absolute sibling BEHIND the scroll. issue #868 — in
+            gallery mode it becomes a swipeable pager over [cover] ++ gallery
+            (page 0 = the EXISTING cover node, video-capable, UNCHANGED); the
+            nativeCover becomes pointerEvents:"auto" so the pager receives swipes.
+            Empty gallery ⇒ the single cover, byte-identical (pointerEvents:"none").
+            ORCH-1167-R4 video-cover autoplay+loop is preserved via coverMediaNode. */}
+        <View
+          style={styles.nativeCover}
+          pointerEvents={galleryActive ? "auto" : "none"}
+        >
+          {galleryActive ? (
+            <CoverGalleryPager
+              coverNode={coverMediaNode}
+              gallery={coverGallery}
+              activeIndex={coverIndex}
+              onActiveIndexChange={setCoverIndex}
+            />
+          ) : (
+            coverMediaNode
+          )}
           <View style={styles.coverScrim} pointerEvents="none" />
           <ThemeEntranceAnimation theme={theme} sessionKey={`event:${seed.eventId}`} />
         </View>
@@ -1035,7 +1080,13 @@ export default function ConsumerEventDetailScreen({
           onLayout={handleScrollLayout}
           testID="orch-1138-consumer-event-scroll"
         >
-          <View style={styles.coverSpacer} />
+          {/* issue #868 — spacer is pointerEvents:"none" in gallery mode so a
+              horizontal swipe over the cover region reaches the pinned pager
+              behind the body; default otherwise (byte-identical). */}
+          <View
+            style={styles.coverSpacer}
+            pointerEvents={galleryActive ? "none" : undefined}
+          />
           <View
             style={[
               styles.nativeBody,
@@ -1046,6 +1097,10 @@ export default function ConsumerEventDetailScreen({
               { paddingBottom: bodyClearance },
             ]}
           >
+            {/* issue #868 [cover-gallery] — the beneath-cover card row is the body's
+                FIRST child (shared by the event AND RSVP branches below). Null when
+                the gallery is empty. */}
+            {galleryRow}
             {/* ORCH-1167 — STANDARD ticketed-event branch renders the ONE shared
                 canonical EventOfferingBody (sections 2–8 incl. the inline ticket
                 box at 5). The cover (section 1) is the pinned sibling above; the

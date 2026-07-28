@@ -55,7 +55,7 @@ import { type CoverPatch } from "../ui/CoverPicker";
 import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import type { EventCoverMediaType } from "../../store/draftEventStore";
-import type { ThemeInput } from "@mingla/offering-rendering";
+import type { ThemeInput, OfferingGalleryImage } from "@mingla/offering-rendering";
 
 export interface Step1Draft {
   title: string;
@@ -82,6 +82,8 @@ export interface Step1Draft {
    */
   coverMediaUrl: string | null;
   coverMediaType: EventCoverMediaType | null;
+  /** issue #868 [cover-gallery] — ADDITIONAL image/GIF items (default []). */
+  coverGallery?: OfferingGalleryImage[];
   /**
    * #1022 — the offering's raw theme override. null = fully inherited from
    * the brand. Persisted to the events theme_*_override COLUMNS by
@@ -202,6 +204,8 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
       onChange({
         coverMediaUrl: patch.coverMediaUrl,
         coverMediaType: patch.coverMediaType,
+        // issue #868 [cover-gallery] — carry the ADDITIONAL photos into the draft.
+        coverGallery: patch.coverGallery ?? [],
       });
     },
     [onChange],
@@ -590,6 +594,8 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           coverMediaCredit: null,
           coverMediaCreditUrl: null,
           coverMediaAlt: null,
+          // issue #868 [cover-gallery] — seed the manager from the trip draft.
+          coverGallery: draft.coverGallery ?? [],
         }}
         onCoverChange={handleCoverChange}
         onShowToast={handleCoverToast}

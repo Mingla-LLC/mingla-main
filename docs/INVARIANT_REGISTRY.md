@@ -6431,3 +6431,59 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 - **Regression test:** the gate's `--self-test` A4 violated-source case removes the logo `shrink-0` and
   proves it FLAGS. Removing `shrink-0` or altering the size literals → gate exit 1. Fails-on-revert;
   append-only. ACTIVE 2026-07-27 at #906 CLOSE (PR merged, tester PASS).
+
+## DRAFT — issue #868 (cover-gallery: ordered images-only additional-photos gallery on Event / RSVP / Trip / Experience)
+
+> Registered DRAFT at issue #868 [cover-gallery] IMPLEMENT (SPEC-868 §J). The feature adds an ADDITIVE
+> `public.events.cover_media_gallery jsonb '[]'` column of ADDITIONAL image/GIF items (hero indices 1..N),
+> INDEPENDENT of the primary cover (`cover_media_url`/`cover_media_type`, image OR video, at sequence index 0).
+> The hero pinned pager renders the sequence `[cover] ++ gallery` (page 0 = the existing cover, unchanged); a new
+> shared `CoverGalleryRow` renders card 0 = the cover (video poster + ▶ badge when the cover is a video) + cards
+> 1..N = the gallery, as the body's first row. Orchestrator owns the flip to ACTIVE at CLOSE.
+
+### I-PROPOSED-868-GALLERY-ADDITIVE-INDEPENDENT (DRAFT)
+- **Rule:** `events.cover_media_gallery` holds ADDITIONAL cover items and is INDEPENDENT of
+  `cover_media_url` / `cover_media_type` (the primary cover, image OR video, at sequence index 0). NO write path
+  syncs, derives, or clears one from the other: the additive writers (`setEventCoverGallery`,
+  `business_publish_event_draft`, `business_publish_rsvp_draft`, `biz_update_live_trip`, `tripsService.updateTripBasics`,
+  `serverDraftEventMapper.draftToServerUpdate/Insert`) write `cover_media_gallery` while the cover-field writes stay
+  BYTE-IDENTICAL; the cover-absent branch NEVER nulls the gallery. Every existing cover write is unchanged, so all
+  ~30 thumbnail/share/OG/email readers are unaffected. `event-cover-video-apply/index.ts` NEVER touches
+  `cover_media_gallery` (a video cover coexists with a photo gallery).
+- **Enforcement:** `.github/scripts/strict-grep/issue-0868-cover-gallery.mjs` (registered in MANIFEST.json, batch:A,
+  self-test wired) — incl. the NEGATIVE grep proving `event-cover-video-apply` never references
+  `cover_media_gallery`; plus `mingla-business/src/services/__tests__/coverGalleryPersist.test.ts`
+  (`draftToServerUpdate` leaves the cover fields unchanged when a gallery is set; a video cover + a photo gallery
+  coexist; `setEventCoverGallery` writes ONLY `cover_media_gallery`).
+- **Status:** DRAFT until the implementation is merged and independent tester PASS is recorded; flips ACTIVE at #868 CLOSE.
+- **Established:** DRAFT 2026-07-28 at issue #868 IMPLEMENT.
+
+### I-PROPOSED-868-GALLERY-NO-VIDEO (DRAFT)
+- **Rule:** `cover_media_gallery` items are `image` / `gif` ONLY (`type ∈ {image, gif}`, never `video`). A video lives
+  ONLY in the cover fields (index 0) and COEXISTS with a photo/GIF gallery. The authoring manager (CoverPicker
+  "Additional photos") appends only image/GIF items (the video picker only ever sets the primary cover); the shared
+  `CoverGalleryRow` renders gallery items via `item.type` and never passes `mediaType="video"` for a gallery card.
+- **Enforcement:** `coverGalleryRow.test.ts` T-7 (gallery typed image/GIF; no `mediaType="video"` in the row) + the
+  adversarial coexistence test (tester, at CLOSE) driving a video cover + a 3-photo gallery through publish→read-back.
+- **Status:** DRAFT until CLOSE.
+- **Established:** DRAFT 2026-07-28 at issue #868 IMPLEMENT.
+
+### I-PROPOSED-868-HERO-SEQUENCE (DRAFT)
+- **Rule:** the hero pinned pager + `CoverGalleryRow` render the sequence `[cover] ++ cover_media_gallery`; card/page 0
+  is the cover (a ▶ badge only when the cover is a video); the pager + row engage ONLY when
+  `cover_media_gallery.length ≥ 1` (empty ⇒ single-cover behavior BYTE-IDENTICAL, for BOTH image and video covers).
+  A single `activeIndex` owns the shown item; swipe (onScroll) and card-tap (scrollTo) both drive it. On buyer-web +
+  business the pager lives in `ParallaxCoverShell`; on the CONSUMER app (Pass 2 §M.1 — the 3 detail screens hand-roll
+  their own pinned cover, they do NOT mount `ParallaxCoverShell`) the SAME sequence is rendered by the shared
+  `CoverGalleryPager` (page 0 = the screen's EXISTING `<EventCoverMedia>` passed in as `coverNode`, UNCHANGED) +
+  `CoverGalleryRow` as the body's first child. `EventCoverMedia`, `coverMediaPresentation.ts` /
+  `eventCoverMediaRules.ts` resolve* helpers, the z-index / seam / aspect constants, and `CountAwareGallery` are
+  UNCHANGED on every surface.
+- **Enforcement:** `packages/offering-rendering/__tests__/parallaxCoverGallery.test.ts` (byte-identical guard:
+  `coverRender = sequenceActive ? coverPager : coverMedia`; row before `{children}`; single-owner activeIndex) +
+  `coverGalleryRow.test.ts` (null when empty; 1+N cards; card 0 = cover; ▶ only for a video cover; active ring+badge) +
+  Pass 2: `coverGalleryPager.test.ts` (page 0 = coverNode, pages 1..N, offset→index, empty ⇒ page-0-only) +
+  `pass2ConsumerAuthoringWiring.test.ts` (each consumer screen wires the pager + row in gallery mode, single cover
+  byte-identical when empty) + the strict-grep gate legs (7)/(8)/(9).
+- **Status:** DRAFT until CLOSE.
+- **Established:** DRAFT 2026-07-28 at issue #868 IMPLEMENT (Pass 1); consumer coverage added Pass 2 (2026-07-28).

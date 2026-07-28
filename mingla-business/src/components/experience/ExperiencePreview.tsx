@@ -374,6 +374,8 @@ const FoundationExperiencePreview: React.FC<{
       theme={theme}
       coverMediaUrl={experience.coverMediaUrl}
       coverMediaType={coverType}
+      // issue #868 [cover-gallery] — ADDITIONAL image/GIF gallery items.
+      galleryImages={experience.coverGallery}
       entranceAnimationKey={`experience:${experience.id}`}
       muted={muted}
       onToggleMute={onToggleMute}

@@ -190,6 +190,8 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
         coverMediaUrl={event.coverMediaUrl}
         coverMediaType={coverType}
         coverHue={event.coverHue}
+        // issue #868 [cover-gallery] — ADDITIONAL image/GIF gallery items.
+        galleryImages={event.coverGallery}
         entranceAnimationKey={`rsvp:${event.id}`}
         muted={muted}
         onToggleMute={onToggleMute}

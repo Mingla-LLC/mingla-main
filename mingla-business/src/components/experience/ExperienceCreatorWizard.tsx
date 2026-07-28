@@ -531,6 +531,9 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
           coverMediaCredit: cover.coverMediaCredit,
           coverMediaCreditUrl: cover.coverMediaCreditUrl,
           coverMediaAlt: cover.coverMediaAlt,
+          // issue #868 [cover-gallery] — ADDITIONAL image/GIF items. biz_publish_experience
+          // reads v_cover->'coverGallery' (§M.2). Independent of the cover fields.
+          coverGallery: cover.coverGallery ?? [],
         },
       };
     },

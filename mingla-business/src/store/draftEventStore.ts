@@ -45,7 +45,7 @@ import {
 } from "../utils/serverDraftAutosaveGuards";
 import type { EventCoverMediaProvider } from "../types/eventCoverProvider";
 import type { LiveEvent } from "./liveEventStore";
-import type { ThemeInput } from "@mingla/offering-rendering";
+import type { ThemeInput, OfferingGalleryImage } from "@mingla/offering-rendering";
 
 /**
  * Detect device's IANA timezone via Intl. Falls back to "Europe/London"
@@ -321,6 +321,13 @@ export interface DraftEvent {
   coverMediaCredit?: string | null;
   coverMediaCreditUrl?: string | null;
   coverMediaAlt?: string | null;
+  /**
+   * issue #868 [cover-gallery] — ADDITIONAL image/GIF cover-gallery items (hero
+   * indices 1..N), ordered. INDEPENDENT of the cover fields above. Optional +
+   * default-safe: DEFAULT_DRAFT_FIELDS sets [] and the persist v12→v13 backfill
+   * fills legacy drafts; every read defaults `?? []` ⇒ single-cover behavior.
+   */
+  coverGallery?: OfferingGalleryImage[];
   // Step 5 — Tickets
   /** ISO 4217 event commerce currency. Null means server should use brand default. */
   currency?: string | null;
@@ -460,6 +467,8 @@ const DEFAULT_DRAFT_FIELDS: Omit<
   coverMediaCredit: null,
   coverMediaCreditUrl: null,
   coverMediaAlt: null,
+  // issue #868 [cover-gallery] — additional-photos gallery; [] = single cover.
+  coverGallery: [],
   currency: null,
   tickets: [],
   visibility: "public",
@@ -521,6 +530,7 @@ type V1DraftEvent = Omit<
   | "coverMediaCredit"
   | "coverMediaCreditUrl"
   | "coverMediaAlt"
+  | "coverGallery"
   | "currency"
 > & {
   tickets: V1TicketStub[];
@@ -551,6 +561,7 @@ type V2DraftEvent = Omit<
   | "coverMediaCredit"
   | "coverMediaCreditUrl"
   | "coverMediaAlt"
+  | "coverGallery"
   | "currency"
 > & {
   tickets: V3TicketStub[];
@@ -573,6 +584,7 @@ type V3DraftEvent = Omit<
   | "coverMediaCredit"
   | "coverMediaCreditUrl"
   | "coverMediaAlt"
+  | "coverGallery"
   | "currency"
 > & {
   tickets: V3TicketStub[];
@@ -620,6 +632,7 @@ type V4DraftEvent = Omit<
   | "coverMediaCredit"
   | "coverMediaCreditUrl"
   | "coverMediaAlt"
+  | "coverGallery"
   | "currency"
 > & {
   tickets: V4TicketStub[];
@@ -675,6 +688,7 @@ type V5DraftEvent = Omit<
   | "coverMediaCredit"
   | "coverMediaCreditUrl"
   | "coverMediaAlt"
+  | "coverGallery"
   | "currency"
 > & {
   tickets: V5TicketStub[];
@@ -698,6 +712,7 @@ type V6DraftEvent = Omit<
   | "coverMediaCredit"
   | "coverMediaCreditUrl"
   | "coverMediaAlt"
+  | "coverGallery"
   | "currency"
 >;
 
@@ -717,6 +732,8 @@ const upgradeV6DraftToV7 = (d: V6DraftEvent): DraftEvent => ({
   coverMediaCredit: null,
   coverMediaCreditUrl: null,
   coverMediaAlt: null,
+  // issue #868 — legacy v1..v6 drafts predate the cover gallery.
+  coverGallery: [],
   currency: null,
   // ORCH-1150 — RSVP defaults backfilled on the legacy v1..v6 chain.
   isRsvp: false,
@@ -738,6 +755,9 @@ const withProviderMetadataDefaults = (draft: DraftEvent): DraftEvent => ({
   coverMediaCredit: draft.coverMediaCredit ?? null,
   coverMediaCreditUrl: draft.coverMediaCreditUrl ?? null,
   coverMediaAlt: draft.coverMediaAlt ?? null,
+  // issue #868 — defensively backfill the additive cover gallery so a draft
+  // migrated up any older chain never carries an undefined coverGallery.
+  coverGallery: draft.coverGallery ?? [],
   // ORCH-1150 — defensively backfill RSVP defaults so a draft migrated up an
   // older chain (v1..v10 → eventually here) never carries undefined rsvp fields.
   isRsvp: draft.isRsvp ?? false,
@@ -764,7 +784,8 @@ const persistOptions: PersistOptions<DraftEventState, PersistedState> = {
   // no data loss; wizard recomputes on next commit.
   // ORCH-1150 — v11 → v12 backfills the additive RSVP fields (isRsvp:false +
   // RSVP defaults) on legacy drafts; all existing drafts are ticketed events.
-  version: 12,
+  // issue #868 — v12 → v13 backfills the additive cover gallery (coverGallery:[]).
+  version: 13,
   migrate: (persistedState, version): PersistedState => {
     if (version < 1) {
       return { drafts: [] };
@@ -883,6 +904,21 @@ const persistOptions: PersistOptions<DraftEventState, PersistedState> = {
           rsvpContributionEnabled: false,
           rsvpContributionSuggestedCents: null,
           rsvpContributionMinCents: null,
+          // issue #868 — v11 predates the cover gallery.
+          coverGallery: [],
+        })),
+      };
+    }
+    if (version === 12) {
+      // issue #868 — v12 → v13: backfill the additive cover gallery. Every legacy
+      // draft predates it → coverGallery:[] = single-cover behavior. No data loss.
+      const v12 = persistedState as {
+        drafts: Array<Omit<DraftEvent, "coverGallery">>;
+      };
+      return {
+        drafts: v12.drafts.map((d): DraftEvent => ({
+          ...(d as DraftEvent),
+          coverGallery: [],
         })),
       };
     }

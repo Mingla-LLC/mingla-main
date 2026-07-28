@@ -17,7 +17,11 @@
 // 🔒 I-MOR-0827-PACKAGE-ISOLATION: no import from mingla-business/src.
 
 import { normalizeCityCountry } from "@mingla/offering-rendering";
-import type { ThemePalette, PublicTicketProps } from "@mingla/offering-rendering";
+import type {
+  ThemePalette,
+  PublicTicketProps,
+  OfferingGalleryImage,
+} from "@mingla/offering-rendering";
 
 import type { BusinessEventCard } from "../types/mergedDiscover";
 import { formatEventDateLine, formatEventDoorsTimes } from "../utils/eventDateDisplay";
@@ -26,6 +30,11 @@ import { formatEventDateLine, formatEventDoorsTimes } from "../utils/eventDateDi
 export interface ConsumerEventFoundationModel {
   coverMediaUrl: string | null;
   coverMediaType: "image" | "video" | "gif" | null;
+  /**
+   * issue #868 [cover-gallery] — ADDITIONAL image/GIF gallery items, INDEPENDENT
+   * of the cover fields. From the cold-path seed read; warm deck cards default [].
+   */
+  coverGallery: OfferingGalleryImage[];
   coverHue: number;
   title: string;
   /** Date eyebrow ("Sat 18 May · 10 PM") — null → omit (rule 9). */
@@ -144,6 +153,8 @@ export function mapConsumerEventToFoundation(
   return {
     coverMediaUrl: card.coverMediaUrl,
     coverMediaType: coerceCoverType(card.coverMediaType),
+    // issue #868 [cover-gallery] — additive; [] on warm deck cards (rule 9).
+    coverGallery: Array.isArray(card.coverGallery) ? card.coverGallery : [],
     coverHue: card.coverHue,
     title: card.title,
     dateLine: dateLine.length > 0 ? dateLine : null,

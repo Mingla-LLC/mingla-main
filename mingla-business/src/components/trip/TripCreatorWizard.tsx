@@ -244,6 +244,8 @@ export function tripToStep1Draft(trip: Trip): Step1Draft {
       trip.coverMediaType === "gif"
         ? trip.coverMediaType
         : null,
+    // issue #868 [cover-gallery] — seed the ADDITIONAL photos from the trip row.
+    coverGallery: trip.coverGallery ?? [],
     // #1022 — seed from the trip's persisted theme override columns.
     themeOverrides: normalizeThemeOverrides(trip.themeOverrides),
   };
@@ -830,6 +832,9 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
         // to the events row on Continue / Back / Close (edit mode).
         coverMediaUrl: step1Draft.coverMediaUrl,
         coverMediaType: step1Draft.coverMediaType,
+        // issue #868 [cover-gallery] — persist the ADDITIONAL photos via
+        // updateTripBasics (§G.5, writes cover_media_gallery independently).
+        coverGallery: step1Draft.coverGallery ?? [],
       },
     });
     // #1022 — the theme override columns are written SEPARATELY and strictly

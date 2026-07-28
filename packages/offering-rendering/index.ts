@@ -11,6 +11,17 @@
 export { ParallaxCoverShell } from "./ParallaxCoverShell";
 export type { ParallaxCoverShellProps } from "./ParallaxCoverShell";
 
+// issue #868 [cover-gallery] — the beneath-cover ordered card row over the full
+// [cover] ++ gallery hero sequence (card 0 = cover). Injected by ParallaxCoverShell.
+export { CoverGalleryRow } from "./CoverGalleryRow";
+export type { CoverGalleryRowProps } from "./CoverGalleryRow";
+
+// issue #868 [cover-gallery] — Section M.1a: the pinned pager over [cover] ++
+// gallery for the consumer detail screens (which don't mount ParallaxCoverShell).
+// Page 0 = the screen's existing <EventCoverMedia>, passed in as coverNode.
+export { CoverGalleryPager } from "./CoverGalleryPager";
+export type { CoverGalleryPagerProps } from "./CoverGalleryPager";
+
 export { OfferingChrome } from "./OfferingChrome";
 export type { OfferingChromeProps } from "./OfferingChrome";
 
@@ -449,6 +460,8 @@ export type {
   EventStatus,
   TicketVisibility,
   TicketAvailableAt,
+  // issue #868 [cover-gallery] — ADDITIONAL image/GIF cover-gallery item type.
+  OfferingGalleryImage,
 } from "./types";
 export type {
   ResolvedTheme,

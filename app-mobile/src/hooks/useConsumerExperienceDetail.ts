@@ -20,6 +20,9 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { supabase } from "../services/supabase";
+// issue #868 [cover-gallery] — ADDITIONAL image/GIF items (pg_public_experience_by_slug
+// already returns coverGallery from Pass 1 §C.1).
+import type { OfferingGalleryImage } from "@mingla/offering-rendering";
 
 export type ConsumerExperienceWhenMode = "single" | "recurring" | "multi_date";
 
@@ -73,6 +76,11 @@ export interface ConsumerExperienceDetail {
   currency: string;
   coverMediaUrl: string | null;
   coverMediaType: "image" | "video" | "gif" | null;
+  /**
+   * issue #868 [cover-gallery] — ADDITIONAL image/GIF gallery items, INDEPENDENT
+   * of the cover fields. [] = single cover.
+   */
+  coverGallery: OfferingGalleryImage[];
   venueText: string | null;
   whenMode: ConsumerExperienceWhenMode;
   /** {preset, termination.kind} — the shared isOpenDailyExperience detector reads it. */
@@ -150,6 +158,8 @@ interface RpcPayload {
   currency: string;
   coverMediaUrl: string | null;
   coverMediaType: string | null;
+  // issue #868 [cover-gallery] — RPC coverGallery json key (default []).
+  coverGallery?: OfferingGalleryImage[] | null;
   venueText: string | null;
   isRecurring: boolean;
   isMultiDate: boolean;
@@ -204,6 +214,8 @@ function mapPayload(p: RpcPayload): ConsumerExperienceDetail {
     currency: p.currency ?? "USD",
     coverMediaUrl: p.coverMediaUrl ?? null,
     coverMediaType: coverType(p.coverMediaType),
+    // issue #868 [cover-gallery] — additive; [] on legacy/absent (rule 9).
+    coverGallery: Array.isArray(p.coverGallery) ? p.coverGallery : [],
     venueText: p.venueText ?? null,
     whenMode: p.isRecurring ? "recurring" : p.isMultiDate ? "multi_date" : "single",
     isRecurring: p.isRecurring === true,
