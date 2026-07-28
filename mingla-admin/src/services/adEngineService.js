@@ -131,6 +131,20 @@ export async function getCampaignDetail(campaignId) {
 }
 
 /**
+ * ISSUE-865 PR1 WP-4 — per-campaign conversions & ROI for the campaign-detail
+ * "Conversions & ROI" panel. Reads the SECURITY DEFINER, self-authorizing
+ * `ad_campaign_conversion_rollup(p_campaign_id)` RPC (conversions, attributed
+ * value per currency, by-platform, send health; spend_cents is NULL — no in-DB
+ * spend source yet, so the panel never fabricates ROAS). Returns the raw
+ * { data, error } (the page toasts the error), matching this service's contract.
+ */
+export async function getCampaignConversions(campaignId) {
+  return supabase.rpc("ad_campaign_conversion_rollup", {
+    p_campaign_id: campaignId,
+  });
+}
+
+/**
  * ISSUE-989 [Campaign Builder real targeting] — admin-ad-targeting-search: turn
  * a typed city/interest NAME into per-platform targeting keys/ids. READ-ONLY,
  * admin-gated server-side (no platform token reaches this client). Fail-open:

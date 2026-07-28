@@ -129,6 +129,9 @@ const AUTH_SCOPED_HOOK_FILES = [
   //    / organiser_payout_debts), all RLS-gated at finance_manager rank
   //    (auth.uid()-scoped). Folds isAuthReady into enabled.
   "useBrandPayoutLedger.ts",
+  // #865 — brand's own ad-conversion rollup, auth.uid()-scoped RPC
+  // (brand_conversion_rollup self-authorizes via biz_is_brand_member_for_read_for_caller).
+  "useBrandConversionRollup.ts",
 ];
 
 // ── Public / dual-use hooks. These MUST NOT be gated — buyer-web anon reads

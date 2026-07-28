@@ -62,7 +62,20 @@ import {
   WEEKDAY_TICKS,
 } from "./venueIntelligence";
 import { useVenueIntelligence } from "../../hooks/useVenueIntelligence";
+import { useBrandConversionRollup } from "../../hooks/useBrandConversionRollup";
 import { VENUE_SCROLL_NAV_CLEARANCE } from "./venueShellScroll";
+
+// ISSUE-865 PR1 WP-4 — friendly per-platform labels for the "Customers your ads
+// drove" tile (never fabricated: only platforms that actually drove a customer).
+const AD_PLATFORM_LABEL: Record<string, string> = {
+  meta: "Instagram & Facebook",
+  tiktok: "TikTok",
+  snapchat: "Snapchat",
+  snap: "Snapchat",
+  google: "Google",
+  reddit: "Reddit",
+};
+const adPlatformLabel = (p: string): string => AD_PLATFORM_LABEL[p] ?? p;
 
 const MANAGER_PLUS_RANK = BRAND_ROLE_RANK.event_manager; // 40
 
@@ -94,6 +107,10 @@ export function VenueIntelligenceModule({
   const router = useRouter();
   const query = useVenueIntelligence(brandId, venueId);
   const data = query.data ?? null;
+  // ISSUE-865 PR1 WP-4 — "Customers your ads drove" rollup (brand-scoped, RLS +
+  // SECURITY DEFINER self-authorizing). Separate query key from venue intel so it
+  // never thrashes that cache. Honest empties when nothing has been driven yet.
+  const adsRollup = useBrandConversionRollup(brandId);
 
   // ORCH-1190 #7 — "Message your guests" blast entry, RELOCATED from Settings
   // (ORCH-1186-D) to a top-of-Overview button. REUSE ONLY: deep-link into the
@@ -242,6 +259,19 @@ export function VenueIntelligenceModule({
   const slowDayIdx = minBucketIndices(dayCounts);
   const slowDayLabel = joinLabels(slowDayIdx.map((i) => weekdayLabel(i)));
 
+  // ISSUE-865 PR1 WP-4 — "Customers your ads drove" tile values. NO fabrication:
+  // every number is a real ad-driven conversion (paid Purchase or free RSVP lead);
+  // an unauthorized/empty rollup falls through to the honest empty state.
+  const ads = adsRollup.data ?? null;
+  const adsDriven30d = ads?.customersDriven30d ?? 0;
+  const adsDrivenLifetime = ads?.customersDrivenLifetime ?? 0;
+  const adsValueLifetime = ads?.valueByCurrencyLifetime[brandDefaultCurrency] ?? 0;
+  const adsHasData = adsDrivenLifetime > 0;
+  const adsTopCampaign = ads?.topCampaign ?? null;
+  const adsTopPlatforms = (ads?.byPlatform ?? [])
+    .filter((p) => p.conversions > 0)
+    .slice(0, 3);
+
   return (
     <ScrollView
       style={styles.host}
@@ -334,6 +364,62 @@ export function VenueIntelligenceModule({
                 </Text>
               ) : null}
             </>
+          )}
+        </GlassCard>
+
+        {/* Tile #2 (ISSUE-865 PR1 WP-4) — Customers your ads drove. Real
+            ad-attributed conversions only (paid Purchase + free RSVP); honest
+            empty state when your ads haven't driven anyone yet. */}
+        <GlassCard variant="elevated" padding={spacing.lg}>
+          <Text style={styles.tileTitle}>Customers your ads drove</Text>
+          {adsHasData ? (
+            <>
+              <View style={styles.metricRow}>
+                <View>
+                  <Text style={styles.metricCap}>LAST 30 DAYS</Text>
+                  <Text style={styles.statValue}>{adsDriven30d}</Text>
+                </View>
+                <View style={styles.metricRight}>
+                  <Text style={styles.metricCap}>LIFETIME</Text>
+                  <Text style={styles.metricSecondary}>{adsDrivenLifetime}</Text>
+                </View>
+              </View>
+              {adsValueLifetime > 0 ? (
+                <Text style={styles.takeaway}>
+                  {`${formatCurrencyRound(adsValueLifetime, brandDefaultCurrency, true)} in bookings driven.`}
+                </Text>
+              ) : (
+                <Text style={styles.bodySm}>
+                  These are RSVPs and free bookings your ads brought in.
+                </Text>
+              )}
+              {adsTopCampaign !== null && adsTopCampaign.name ? (
+                <Text style={styles.footnote}>
+                  {`Top campaign: ${adsTopCampaign.name} (${adsTopCampaign.conversions})`}
+                </Text>
+              ) : null}
+              {adsTopPlatforms.length > 0 ? (
+                <View style={styles.scoreList}>
+                  {adsTopPlatforms.map((p) => (
+                    <View
+                      key={p.platform}
+                      style={styles.scoreRow}
+                      accessibilityLabel={`${adPlatformLabel(p.platform)}: ${p.conversions} customers`}
+                    >
+                      <Text style={styles.scoreLabel} numberOfLines={1}>
+                        {adPlatformLabel(p.platform)}
+                      </Text>
+                      <Text style={styles.scoreValue}>{p.conversions}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+            </>
+          ) : (
+            <Text style={styles.bodySm}>
+              When someone taps your ad and books or RSVPs on Mingla, they show up
+              here — so you can see exactly what your ads bring in.
+            </Text>
           )}
         </GlassCard>
 

@@ -49,16 +49,16 @@ import {
 // SHARED all-in money engine — the SINGLE owner of fee/tax math (never forked).
 import {
   buildPricingBreakdown,
+  type ComputeAllInInput,
   computeBuyerSubtotal,
   computeConfigVat,
   inclusiveVatDivisorForRegion,
   MINGLA_SERVICE_FEE_BPS,
-  taxBehaviorForRegion,
-  type ComputeAllInInput,
   type PricingBreakdown,
   type PricingRegion,
   type PricingSwitches,
   type TaxBasis,
+  taxBehaviorForRegion,
 } from "../_shared/allInPricingEngine.ts";
 // META-ORCH-1076 Paystack routing — same provider-neutral arm ticket-checkout
 // uses; activates only for NG/paystack brands (no NEW Paystack work — reuse).
@@ -70,6 +70,13 @@ import { paystackInitializeTransaction } from "../_shared/paystack.ts";
 // #1178 [ng-split-removal] — pure Paystack split-field gate (co-located so it is
 // unit-testable without importing this serve()-on-load entry).
 import { paystackReservationSplitFields } from "./ngPaystackSplit.ts";
+// ISSUE-865 PR1 WP-2 — reservation attribution: thread the ad click_id onto the
+// checkout session (fee path, decoupled + fail-open) and fire the lead-type
+// conversion for a completed FREE RSVP (fire-and-forget, idempotent, fail-open).
+import {
+  fireAdConversion,
+  persistReservationAttributionClickId,
+} from "../_shared/adConversionFire.ts";
 
 type ReserveSurface = "native" | "web";
 
@@ -141,8 +148,17 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
   const occasion = typeof body.occasion === "string" && body.occasion.trim()
     ? body.occasion.trim()
     : null;
-  const guestNotes = typeof body.guestNotes === "string" && body.guestNotes.trim()
-    ? body.guestNotes.trim()
+  const guestNotes =
+    typeof body.guestNotes === "string" && body.guestNotes.trim()
+      ? body.guestNotes.trim()
+      : null;
+  // ISSUE-865 PR1 WP-2 — the first-party ad click_id forwarded by the public
+  // venue page (mirrors ticket-checkout-create). Threaded onto the fee session
+  // (decoupled + fail-open) or passed inline to the free-RSVP conversion fire.
+  // NULL for non-ad traffic (byte-identical to before).
+  const attributionClickId = typeof body.attributionClickId === "string" &&
+      body.attributionClickId.trim()
+    ? body.attributionClickId.trim()
     : null;
 
   const uuidRe =
@@ -206,7 +222,10 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
       .select("id, brand_id")
       .eq("brand_id", legacyBrandId);
     if (venuesErr !== null) {
-      console.error("[venue-reservation-create] legacy venue resolve failed", venuesErr);
+      console.error(
+        "[venue-reservation-create] legacy venue resolve failed",
+        venuesErr,
+      );
       return jsonResponse(
         { error: "venue_lookup_failed", detail: venuesErr.message },
         500,
@@ -230,7 +249,10 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     .eq("venue_id", venueId)
     .maybeSingle();
   if (settingsErr !== null) {
-    console.error("[venue-reservation-create] settings lookup failed", settingsErr);
+    console.error(
+      "[venue-reservation-create] settings lookup failed",
+      settingsErr,
+    );
     return jsonResponse(
       { error: "venue_lookup_failed", detail: settingsErr.message },
       500,
@@ -281,9 +303,10 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
   }
 
   // The effective fee: a configured reservation fee, OR a deposit-threshold fee.
-  const settingsFeeCents = settings.fee_enabled && (settings.fee_amount_cents ?? 0) > 0
-    ? Number(settings.fee_amount_cents)
-    : 0;
+  const settingsFeeCents =
+    settings.fee_enabled && (settings.fee_amount_cents ?? 0) > 0
+      ? Number(settings.fee_amount_cents)
+      : 0;
   const baseFeeCents = depositRequired
     ? (depositRuleAmountCents ?? settingsFeeCents)
     : settingsFeeCents;
@@ -298,7 +321,9 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
   // FREE PATH — no fee, no deposit threshold. Mint the reservation directly.
   // ════════════════════════════════════════════════════════════════════════════
   if (!hasFee) {
-    const guestCancelToken = surface === "web" ? randomBuyerStatusToken() : null;
+    const guestCancelToken = surface === "web"
+      ? randomBuyerStatusToken()
+      : null;
     const { data: created, error: createErr } = await supabase.rpc(
       "pg_create_guest_reservation",
       {
@@ -324,9 +349,32 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     if (createErr !== null || !created) {
       return classifyRpcError(createErr, "free reservation create");
     }
-    const row = (Array.isArray(created) ? created[0] : created) as
-      Record<string, unknown>;
+    const row = (Array.isArray(created) ? created[0] : created) as Record<
+      string,
+      unknown
+    >;
     const reservationId = String(row.id ?? "");
+
+    // ISSUE-865 PR1 WP-2 TWO-TIER — a completed FREE RSVP fires the LEAD-type
+    // conversion (eventType 'reservation' → Meta 'Schedule' / TikTok
+    // 'CompleteRegistration' / Snap 'SAVE' / Reddit 'Lead', value £0) so it is
+    // counted as a "customer your ads drove". FIRE-AND-FORGET (not awaited) so the
+    // guest's confirmation is never delayed; idempotent + fail-open. event_id =
+    // reservationId; the inline click_id lets the send resolve touch → campaign.
+    if (reservationId) {
+      void fireAdConversion(supabase as never, {
+        reservationId,
+        surface: surface === "web" ? "web" : "ios",
+        eventType: "reservation",
+        clickId: attributionClickId,
+      }).catch((adConvErr) => {
+        console.warn(
+          "[venue-reservation-create] free-RSVP ad-conversion fire failed (non-fatal):",
+          adConvErr instanceof Error ? adConvErr.message : String(adConvErr),
+        );
+      });
+    }
+
     return jsonResponse({
       kind: "free_completed",
       reservationId,
@@ -349,8 +397,14 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     "resolve_brand_pricing_inputs",
     { p_brand_id: brandId, p_venue_id: venueId },
   );
-  if (pricingErr !== null || !Array.isArray(pricingRows) || pricingRows.length === 0) {
-    console.error("[venue-reservation-create] resolve_brand_pricing_inputs failed", pricingErr);
+  if (
+    pricingErr !== null || !Array.isArray(pricingRows) ||
+    pricingRows.length === 0
+  ) {
+    console.error(
+      "[venue-reservation-create] resolve_brand_pricing_inputs failed",
+      pricingErr,
+    );
     return jsonResponse(
       { error: "pricing_config_unavailable", detail: pricingErr?.message },
       409,
@@ -363,7 +417,10 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     : "";
   if (settlementCurrencyRaw.length === 0) {
     return jsonResponse(
-      { error: "pricing_config_unavailable", detail: "pricing_currency_missing" },
+      {
+        error: "pricing_config_unavailable",
+        detail: "pricing_currency_missing",
+      },
       409,
     );
   }
@@ -387,13 +444,19 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
       .eq("id", brandId)
       .maybeSingle();
     const accountCurrencyRaw =
-      typeof (brandCcyRow as { default_currency?: string | null } | null)?.default_currency === "string"
-        ? ((brandCcyRow as { default_currency: string }).default_currency).trim().toLowerCase()
+      typeof (brandCcyRow as { default_currency?: string | null } | null)
+          ?.default_currency === "string"
+        ? (brandCcyRow as { default_currency: string }).default_currency.trim()
+          .toLowerCase()
         : "";
     if (accountCurrencyRaw.length > 0 && accountCurrencyRaw !== currency) {
       console.warn(
         "[venue-reservation-create] META-ORCH-1236: settlement currency != connected-account default_currency (trigger regression?)",
-        { brandId, pricingCurrency: currency, accountCurrency: accountCurrencyRaw },
+        {
+          brandId,
+          pricingCurrency: currency,
+          accountCurrency: accountCurrencyRaw,
+        },
       );
     }
   }
@@ -412,7 +475,10 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     const psCurrency = (providerRouting.currency || "NGN").toUpperCase();
     if (psCurrency !== "NGN") {
       return jsonResponse(
-        { error: "pricing_config_unavailable", detail: "paystack_currency_must_be_ngn" },
+        {
+          error: "pricing_config_unavailable",
+          detail: "paystack_currency_must_be_ngn",
+        },
         409,
       );
     }
@@ -494,16 +560,29 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
       return jsonResponse({ error: "reservation_session_failed" }, 500);
     }
 
+    // ISSUE-865 PR1 WP-2 — thread the ad click_id onto the session, DECOUPLED
+    // from the fatal insert (a missing column / write failure never blocks the
+    // reservation — mirrors the ticket P2-1 fix). Fire-and-forget, fail-open.
+    void persistReservationAttributionClickId(
+      supabase as never,
+      sessionId,
+      attributionClickId,
+    );
+
     const psReference = `mingla_resv_${sessionId}_${Date.now().toString(36)}`;
     await supabase
       .from("reservation_checkout_sessions")
-      .update({ paystack_reference: psReference, updated_at: new Date().toISOString() })
+      .update({
+        paystack_reference: psReference,
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", sessionId);
 
     const callbackBase = Deno.env.get("PAYSTACK_CALLBACK_BASE") ??
       "https://business.usemingla.com/pay/callback";
-    const callbackUrl =
-      `${callbackBase}?rcs=${encodeURIComponent(sessionId)}&bst=${encodeURIComponent(buyerStatusToken)}`;
+    const callbackUrl = `${callbackBase}?rcs=${
+      encodeURIComponent(sessionId)
+    }&bst=${encodeURIComponent(buyerStatusToken)}`;
 
     let psInit: { authorization_url: string; reference: string };
     try {
@@ -530,9 +609,16 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
         ),
       });
     } catch (err) {
-      await failReservationSession(supabase, sessionId, String((err as Error)?.message ?? err));
+      await failReservationSession(
+        supabase,
+        sessionId,
+        String((err as Error)?.message ?? err),
+      );
       return jsonResponse(
-        { error: "paystack_initialize_failed", detail: String((err as Error)?.message ?? err) },
+        {
+          error: "paystack_initialize_failed",
+          detail: String((err as Error)?.message ?? err),
+        },
         502,
       );
     }
@@ -560,8 +646,8 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
   const rawRegion = typeof pricing.pricing_region === "string"
     ? pricing.pricing_region.trim().toUpperCase()
     : "";
-  const regionIsEnabled =
-    (ENABLED_PRICING_REGIONS as readonly string[]).includes(rawRegion);
+  const regionIsEnabled = (ENABLED_PRICING_REGIONS as readonly string[])
+    .includes(rawRegion);
   const pricingRegion = (regionIsEnabled ? rawRegion : "GB") as PricingRegion;
   const regionUnmappedForceFlatAbsorb = !regionIsEnabled;
 
@@ -592,7 +678,10 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
   let taxBasis: TaxBasis = "unresolved_flat_absorb";
   let amountTotalCents = buyerSubtotal.buyerSubtotalCents;
   let taxCents = 0;
-  if (pricing.pass_tax && !regionUnmappedForceFlatAbsorb && taxBehavior === "inclusive") {
+  if (
+    pricing.pass_tax && !regionUnmappedForceFlatAbsorb &&
+    taxBehavior === "inclusive"
+  ) {
     // inclusive region (GB/EU/CH): the VAT is inside the subtotal; extract the
     // display portion via the region divisor (the engine owns the amount math).
     const divisor = inclusiveVatDivisorForRegion(pricingRegion);
@@ -633,6 +722,14 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
   if (sessionId === null) {
     return jsonResponse({ error: "reservation_session_failed" }, 500);
   }
+
+  // ISSUE-865 PR1 WP-2 — thread the ad click_id onto the session, DECOUPLED from
+  // the fatal insert (fail-open; a missing column never blocks the reservation).
+  void persistReservationAttributionClickId(
+    supabase as never,
+    sessionId,
+    attributionClickId,
+  );
 
   // ── WEB → hosted Stripe Checkout Session. ────────────────────────────────────
   if (surface === "web") {
@@ -734,11 +831,16 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     let customer = searchResult.data[0] ?? null;
     if (customer === null) {
       const customerIdemKey =
-        `mingla_resv_customer:${stripeAccountId}:${await sha256Hex(buyerEmail)}`;
+        `mingla_resv_customer:${stripeAccountId}:${await sha256Hex(
+          buyerEmail,
+        )}`;
       customer = await stripeForCustomer.customers.create(
         {
           email: buyerEmail,
-          metadata: { mingla_buyer_email: buyerEmail, mingla_origin: "venue_reservation_create_native" },
+          metadata: {
+            mingla_buyer_email: buyerEmail,
+            mingla_origin: "venue_reservation_create_native",
+          },
         },
         { idempotencyKey: customerIdemKey, stripeAccount: stripeAccountId },
       );
@@ -749,7 +851,8 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
       {
         apiVersion: STRIPE_API_VERSION,
         stripeAccount: stripeAccountId,
-        idempotencyKey: `mingla_resv_ephkey:${stripeAccountId}:${customerId}:${Date.now()}`,
+        idempotencyKey:
+          `mingla_resv_ephkey:${stripeAccountId}:${customerId}:${Date.now()}`,
       },
     );
     customerEphemeralKeySecret = String(ephemeralKey.secret ?? "");
@@ -787,7 +890,10 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     // @ts-ignore -- Stripe SDK namespace is runtime-provided in Deno.
     paymentIntent = await stripe.paymentIntents.create(
       piCreateBody,
-      { idempotencyKey: `venue_reservation:${sessionId}`, stripeAccount: stripeAccountId },
+      {
+        idempotencyKey: `venue_reservation:${sessionId}`,
+        stripeAccount: stripeAccountId,
+      },
     );
   } catch (err) {
     const failure = classifyStripePaymentIntentCreateFailure(err);
@@ -812,7 +918,10 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
         await cancelPaymentIntentIfClientAvailable(stripe, paymentIntent.id);
       } catch { /* best-effort */ }
     }
-    return jsonResponse({ error: "payment_session_persist_failed", detail: persistErr.message }, 500);
+    return jsonResponse({
+      error: "payment_session_persist_failed",
+      detail: persistErr.message,
+    }, 500);
   }
 
   return jsonResponse({
