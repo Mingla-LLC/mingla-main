@@ -35,6 +35,10 @@ on:
       # ---- Thread A source (a revert here must run the gate) ----
       - "packages/location-input/src/MapboxAddressInput.tsx"
       - "mingla-business/src/components/event/CreatorStep1Basics.tsx"
+      # ---- Thread A iOS-regression source (defer reveal to keyboard-shown; a revert must run the gate) ----
+      - "mingla-business/src/components/event/EventCreatorWizard.tsx"
+      - "mingla-business/src/components/rsvp/RsvpCreatorWizard.tsx"
+      - "mingla-business/src/components/event/EditPublishedScreen.tsx"
       # ---- Thread B source (a revert here must run the gate) ----
       - "mingla-business/src/components/ui/WebDateTimeInput.tsx"
       - "mingla-business/src/components/event/CreatorStep2When.tsx"
@@ -48,6 +52,7 @@ on:
       - "mingla-business/src/components/location/__tests__/mapboxAddressInputKeyboardCap.adversarial.1027.test.ts"
       - "mingla-business/src/components/event/__tests__/creatorStep1DescriptionOnFocusReveal.1027.test.ts"
       - "mingla-business/src/components/event/__tests__/creatorStep1DescriptionOnFocusReveal.adversarial.1027.test.tsx"
+      - "mingla-business/src/components/event/__tests__/creatorDescriptionRevealDeferred.1027.regression.test.ts"
       # ---- Thread B tests (implementor happy-path + tester adversarial) ----
       - "mingla-business/src/components/event/__tests__/orch_1027_web_datetime_native_input.test.tsx"
       - "mingla-business/src/components/event/__tests__/orch_1027_web_datetime_structural.test.ts"
@@ -59,6 +64,10 @@ on:
       # ---- Thread A source (a revert here must run the gate) ----
       - "packages/location-input/src/MapboxAddressInput.tsx"
       - "mingla-business/src/components/event/CreatorStep1Basics.tsx"
+      # ---- Thread A iOS-regression source (defer reveal to keyboard-shown; a revert must run the gate) ----
+      - "mingla-business/src/components/event/EventCreatorWizard.tsx"
+      - "mingla-business/src/components/rsvp/RsvpCreatorWizard.tsx"
+      - "mingla-business/src/components/event/EditPublishedScreen.tsx"
       # ---- Thread B source (a revert here must run the gate) ----
       - "mingla-business/src/components/ui/WebDateTimeInput.tsx"
       - "mingla-business/src/components/event/CreatorStep2When.tsx"
@@ -72,6 +81,7 @@ on:
       - "mingla-business/src/components/location/__tests__/mapboxAddressInputKeyboardCap.adversarial.1027.test.ts"
       - "mingla-business/src/components/event/__tests__/creatorStep1DescriptionOnFocusReveal.1027.test.ts"
       - "mingla-business/src/components/event/__tests__/creatorStep1DescriptionOnFocusReveal.adversarial.1027.test.tsx"
+      - "mingla-business/src/components/event/__tests__/creatorDescriptionRevealDeferred.1027.regression.test.ts"
       # ---- Thread B tests (implementor happy-path + tester adversarial) ----
       - "mingla-business/src/components/event/__tests__/orch_1027_web_datetime_native_input.test.tsx"
       - "mingla-business/src/components/event/__tests__/orch_1027_web_datetime_structural.test.ts"
@@ -125,6 +135,15 @@ jobs:
         run: >
           npx jest
           src/components/event/__tests__/creatorStep1DescriptionOnFocusReveal.adversarial.1027.test.tsx
+          --runInBand
+      # Symptom 2b — iOS regression: reveal DEFERS to keyboard-shown via the
+      # react-native-keyboard-controller library (not a bare-rAF scrollToEnd that
+      # over-scrolled the multiline off-screen on iOS); asserts BEHAVIOR + no raw
+      # Keyboard.addListener. Fails-on-revert on restoring the immediate scroll.
+      - name: "Symptom 2b — iOS regression (deferred reveal via keyboard library, fails-on-revert)"
+        run: >
+          npx jest
+          src/components/event/__tests__/creatorDescriptionRevealDeferred.1027.regression.test.ts
           --runInBand
 
   thread-b-web-datetime:
