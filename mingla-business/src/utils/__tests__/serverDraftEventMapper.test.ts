@@ -120,7 +120,7 @@ const draft = (patch: Partial<DraftEvent> = {}): DraftEvent => ({
 const rowFromPayload = (
   source: DraftEvent,
   theme: Record<string, unknown>,
-  currency: string | null = source.currency ?? "GBP",
+  currency: string | null = source.currency ?? null,
 ): ServerDraftEventRow => ({
   id: source.id,
   brand_id: source.brandId,
@@ -174,7 +174,7 @@ describe("serverDraftEventMapper", () => {
     expect(payload.cover_media_credit).toBe("GIPHY");
     expect(payload.cover_media_credit_url).toBe("https://giphy.com");
     expect(payload.cover_media_alt).toBe("Dancing cover GIF");
-    expect(payload.currency).toBe("GBP");
+    expect(payload.currency).toBeNull();
     expect(hydrated.coverMediaUrl).toBe(source.coverMediaUrl);
     expect(hydrated.coverMediaType).toBe("gif");
     expect(hydrated.coverMediaProvider).toBe("giphy");
@@ -182,31 +182,38 @@ describe("serverDraftEventMapper", () => {
     expect(hydrated.coverMediaCredit).toBe("GIPHY");
     expect(hydrated.coverMediaCreditUrl).toBe("https://giphy.com");
     expect(hydrated.coverMediaAlt).toBe("Dancing cover GIF");
-    expect(hydrated.currency).toBe("GBP");
+    expect(hydrated.currency).toBeNull();
   });
 
-  test("normalizes null-currency inserts and server draft JSON to GBP", () => {
+  test("persists null-currency inserts and server draft JSON as null", () => {
     const source = draft({ currency: null });
     const payload = draftToServerInsert(source, "user-1", "draft-currency");
-    const businessDraft = payload.theme.business_draft as { currency: string };
+    const businessDraft = payload.theme.business_draft as {
+      currency: string | null;
+    };
 
-    expect(payload.currency).toBe("GBP");
-    expect(businessDraft.currency).toBe("GBP");
+    // #962 — a pre-bank brand has NO currency; the write path must persist
+    // NULL, never manufacture GBP (migration 0769 "NULL means not set").
+    expect(payload.currency).toBeNull();
+    expect(businessDraft.currency).toBeNull();
   });
 
-  test("normalizes null-currency updates while preserving uploaded cover media", () => {
+  test("persists null-currency updates as null while preserving uploaded cover media", () => {
     const source = draft({
       coverMediaType: "video",
       coverMediaUrl: "https://cdn.example.com/cover.mov",
       currency: null,
     });
     const payload = draftToServerUpdate(source, {});
-    const businessDraft = payload.theme.business_draft as { currency: string };
+    const businessDraft = payload.theme.business_draft as {
+      currency: string | null;
+    };
 
-    expect(payload.currency).toBe("GBP");
+    // #962 — null persists as null on the update leg too.
+    expect(payload.currency).toBeNull();
     expect(payload.cover_media_url).toBe("https://cdn.example.com/cover.mov");
     expect(payload.cover_media_type).toBe("video");
-    expect(businessDraft.currency).toBe("GBP");
+    expect(businessDraft.currency).toBeNull();
   });
 
   test("preserves explicit event currency through update and hydration", () => {
@@ -434,5 +441,64 @@ describe("serverDraftEventMapper", () => {
     expect(complete.rsvpContributionEnabled).toBe(true);
     expect(complete.rsvpContributionSuggestedCents).toBe(2500);
     expect(complete.rsvpContributionMinCents).toBe(500);
+  });
+
+  // ---------------------------------------------------------------------------
+  // #962 [pre-bank-currency-degbp] R1 — write-path round-trip persists NULL, not
+  // a fabricated "GBP". A pre-bank brand genuinely has default_currency = NULL
+  // (migration 0769 "NULL means not set; do not imply GBP"). The mapper is the
+  // ONLY thing that used to override eventDrafts.resolveDraftCurrencyForSave's
+  // correct null, stamping normalizeCurrency() → "GBP" onto both the top-level
+  // events.currency column AND theme.business_draft.currency — making the GBP
+  // sticky in the DB. This guards the fix at serverDraftEventMapper.ts:344/633/
+  // 673 (currencyCodeOrNull, not normalizeCurrency). Append-only.
+  //
+  // FAILS-ON-REVERT (true line-deletion, proven in the implementation report):
+  //   revert any of :344/:633/:673 to normalizeCurrency(draft.currency) →
+  //   the null assertions below become "GBP" and FAIL.
+  // ---------------------------------------------------------------------------
+  test("#962 R1 — a null-currency draft persists NULL on insert (column + theme.business_draft)", () => {
+    const source = draft({ currency: null });
+    const payload = draftToServerInsert(source, "user-1", "draft-962-insert");
+    const businessDraft = payload.theme.business_draft as {
+      currency: string | null;
+    };
+
+    // Top-level events.currency column → NULL.
+    expect(payload.currency).toBeNull();
+    // theme.business_draft.currency (the buildBusinessDraftPayload leg) → null.
+    expect(businessDraft.currency).toBeNull();
+    // Never the fabricated fallback.
+    expect(payload.currency).not.toBe("GBP");
+    expect(businessDraft.currency).not.toBe("GBP");
+  });
+
+  test("#962 R1 — a null-currency draft persists NULL on update (column + theme.business_draft)", () => {
+    const source = draft({ currency: null });
+    const payload = draftToServerUpdate(source, {});
+    const businessDraft = payload.theme.business_draft as {
+      currency: string | null;
+    };
+
+    expect(payload.currency).toBeNull();
+    expect(businessDraft.currency).toBeNull();
+    expect(payload.currency).not.toBe("GBP");
+    expect(businessDraft.currency).not.toBe("GBP");
+  });
+
+  test("#962 R1 — a REAL currency still round-trips unchanged through both write legs", () => {
+    // The other half of the contract: honoring a set currency is NOT weakened.
+    const source = draft({ currency: "usd" });
+    const insert = draftToServerInsert(source, "user-1", "draft-962-set");
+    const update = draftToServerUpdate(source, {});
+
+    expect(insert.currency).toBe("USD");
+    expect((insert.theme.business_draft as { currency: string | null }).currency).toBe(
+      "USD",
+    );
+    expect(update.currency).toBe("USD");
+    expect((update.theme.business_draft as { currency: string | null }).currency).toBe(
+      "USD",
+    );
   });
 });
