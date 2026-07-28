@@ -15,9 +15,9 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 444,
-  "selfTestWiredFloor": 250,
-  "unenforcedCap": 4,
+  "expectedStrictGrepMjsFiles": 446,
+  "selfTestWiredFloor": 253,
+  "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
   "externalGateDirs": [],
@@ -2670,12 +2670,30 @@
     {
       "script": ".github/scripts/strict-grep/orch-0770-event-cover-video-processing.mjs",
       "kind": "file",
-      "enforcement": "unenforced",
-      "invocation": null,
-      "modes": [],
-      "selfTest": "none",
-      "jobKeys": [],
-      "reason": "HELD unenforced by ORCH-1400 Phase 1 (D-4 + D-7): expectations pin the pre-META-1270 client pipeline while the guarded TUS/Bunny event-cover upload surface is LIVE — rewrite the expectations against eventCoverVideoTusPatch.ts + the event-cover-video-* function family; deletion prohibited. Wire only once the rewritten run is green."
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "orch-0770-event-cover-video-processing"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/orch-0770b-bunny-webhook-family.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "orch-0770b-bunny-webhook-family"
+      ]
     },
     {
       "script": ".github/scripts/strict-grep/orch-0776-video-processing-status-bridge.mjs",
@@ -2693,12 +2711,16 @@
     {
       "script": ".github/scripts/strict-grep/orch-0776a-video-upload-progress-honesty.mjs",
       "kind": "file",
-      "enforcement": "unenforced",
-      "invocation": null,
-      "modes": [],
-      "selfTest": "none",
-      "jobKeys": [],
-      "reason": "HELD unenforced by ORCH-1400 Phase 1 (D-4 + D-7): expectations pin the pre-META-1270 Expo createUploadTask path while real byte-progress honesty is live under TUS — rewrite the expectations against the TUS/Bunny pipeline (same target as orch-0770); deletion prohibited. Wire only once the rewritten run is green."
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "orch-0776a-video-upload-progress-honesty"
+      ]
     },
     {
       "script": ".github/scripts/strict-grep/orch-0776d-cancelled-at-schema.mjs",
@@ -5477,6 +5499,17 @@
     },
     {
       "script": ".github/scripts/strict-grep/__tests__/orch-1400-ratchet-frontier.adversarial.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/__tests__/orch-964-tus-bunny-gate.tester.test.mjs",
       "kind": "file",
       "enforcement": "batch:A",
       "invocation": "node --test",

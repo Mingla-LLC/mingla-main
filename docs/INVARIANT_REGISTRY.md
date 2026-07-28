@@ -65,6 +65,18 @@
 
 ---
 
+## ACTIVE — issue #964 (TUS/Bunny event-cover upload pipeline gate coverage — CLOSED 2026-07-27, PR #1297)
+
+> Registered DRAFT at issue #964 [tus-gate-coverage] IMPLEMENT (ORCH-1400 Phase 1b). CI/gate-coverage only — NO product/edge-fn/migration/deploy change. The live event-cover video upload path is TUS → Bunny (post-META-1270 / #966, CLOSED); the two strict-grep gates that nominally guarded video upload (`orch-0770`, `orch-0776a`) pinned pre-Bunny (Cloudinary-era / Expo `createUploadTask`) shapes that matched 0 times in live code and were held `unenforced`, so the surface users exercise had no coverage. This work REWROTE both gates against the live Bunny invariants (upload-intent presign + `_shared` budgets + config + PublicEventPage in `orch-0770`; client byte-progress honesty in `orch-0776a`), ADDED a dedicated webhook-authenticity gate (`orch-0770b`), and WIRED all three into `MANIFEST.json` (`batch:A`, self-test `wired`). Gate deletion was prohibited (rewrite in place); every still-live assert was preserved and every dead Cloudinary assert dropped (its removal is D-7's domain, #966). ACTIVE at CLOSE (PR #1297 merged; independent tester PASS — implementor self-test fails-on-revert + adversarial reintroduction/secret-leak companion `orch-964-tus-bunny-gate.tester.test.mjs`). Cross-ref: SPEC + implementation + test-verdict reports on issue #964.
+
+### I-964-TUS-BUNNY-GATE-ENFORCED (ACTIVE)
+- **Rule:** The live TUS/Bunny event-cover upload pipeline (client byte-progress honesty, upload-intent Bunny presign + AccessKey-never-to-client, and webhook v1/hmac-sha256 signature verification + fail-closed finalize) is guarded by enforced, self-testing strict-grep gates `orch-0770` / `orch-0776a` / `orch-0770b`. These gates FAIL if a live Bunny invariant is dropped or a Cloudinary-era shape is reintroduced. Deletion is prohibited; wiring is ratcheted (`selfTestWiredFloor` ≥ 253, `unenforcedCap` ≤ 3).
+- **CI enforcement:** the three gates are registered in `.github/scripts/strict-grep/MANIFEST.json` as `enforcement: "batch:A"`, `selfTest: "wired"`, modes `["self-test","plain"]`, so `run-batch.mjs --class A` runs each in both live and self-test modes on every PR; `meta-1383-manifest-parity.mjs` (P3 count = 446, P6 selfTest matches source, P7 wired ≥ 253, P8 unenforced ≤ 3) keeps them wired and honest; `tests-append-only.yml` blocks any silent shrink of the registry.
+- **Regression test:** each gate's `--self-test` proves PASS on the live shape and FAIL on every dropped live invariant AND on a reintroduced Cloudinary/secret-leak shape; the named live fails-on-revert is proven by deleting `verifyBunnyWebhookSignature` from the webhook (`orch-0770b` → exit 1), `protocol: "tus"` from upload-intent (`orch-0770` → exit 1), and the `(bytesSent / bytesTotal) * 100` byte math from the service (`orch-0776a` → exit 1), each restoring to exit 0. The tester adds an independent adversarial companion (`__tests__/orch-964-tus-bunny-gate.tester.test.mjs`) that imports the exported `scan()` and feeds Cloudinary-reintroduction / AccessKey-leak fixtures. Append-only.
+- **Established:** ACTIVE 2026-07-27 at issue #964 CLOSE (PR #1297 merged; independent tester PASS).
+
+---
+
 ## DRAFT — issue #1184 (Campaign Builder video Phase A — IN FLIGHT)
 
 ### I-PROPOSED-1184-CREATIVE-PREPARE-RESUMABLE (DRAFT)
