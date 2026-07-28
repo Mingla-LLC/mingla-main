@@ -797,7 +797,11 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
           <KpiTile label="Attendees" value={formatCount(brand.stats.attendees)} sub="all time" style={styles.statCell} />
           <KpiTile
             label="GMV"
-            value={formatCurrencyRound(brand.stats.rev, brand.defaultCurrency ?? "GBP")}
+            value={
+              brand.defaultCurrency !== undefined
+                ? formatCurrencyRound(brand.stats.rev, brand.defaultCurrency)
+                : "—"
+            }
             sub="all time"
             style={styles.statCell}
           />

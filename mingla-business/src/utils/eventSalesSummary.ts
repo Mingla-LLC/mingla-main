@@ -1,6 +1,6 @@
 import type { TicketStub } from "../store/draftEventStore";
 import type { OrderRecord } from "../store/orderStore";
-import { formatCount, formatCurrencyRound, normalizeCurrency } from "./currency";
+import { formatCount, formatCurrencyRound, currencyCodeOrNull } from "./currency";
 import {
   summarizeEventMoney,
   type CurrencyMismatch,
@@ -10,7 +10,9 @@ export interface EventSalesSummary {
   eventId: string;
   soldCount: number;
   onlineRevenue: number;
-  displayCurrency: string;
+  // #962 G3 — null when the brand has no established currency (pre-bank);
+  // the revenue label is then "—" (never a fabricated GBP).
+  displayCurrency: string | null;
   mismatches: CurrencyMismatch[];
   finiteCapacity: number | null;
   hasUnlimitedTickets: boolean;
@@ -74,7 +76,10 @@ export const buildEventSalesSummary = ({
   orders,
   hasError = false,
 }: EventSalesSummaryInput): EventSalesSummary => {
-  const displayCurrency = normalizeCurrency(eventCurrency ?? brandDefaultCurrency);
+  // #962 G3 — null-safe: null when the brand has no established currency.
+  // summarizeEventMoney accepts null and normalizes internally for its
+  // (0-order, pre-bank) computation; the DISPLAY label hides when null.
+  const displayCurrency = currencyCodeOrNull(eventCurrency ?? brandDefaultCurrency);
   const { finiteCapacity, hasUnlimitedTickets } = summarizeTicketCapacity(tickets);
   const soldCount = getEventTicketsSold(orders);
   const moneySummary = summarizeEventMoney({
@@ -103,9 +108,11 @@ export const buildEventSalesSummary = ({
       ? `${formatCount(soldCount)} / ${formatCount(finiteCapacity)}`
       : `${formatCount(soldCount)} sold`;
   const revenueLabel =
-    moneySummary.mismatches.length > 0 && moneySummary.onlineRevenue === 0
-      ? "Currency review"
-      : formatCurrencyRound(moneySummary.onlineRevenue, displayCurrency);
+    displayCurrency === null
+      ? "—"
+      : moneySummary.mismatches.length > 0 && moneySummary.onlineRevenue === 0
+        ? "Currency review"
+        : formatCurrencyRound(moneySummary.onlineRevenue, displayCurrency);
 
   return {
     eventId,

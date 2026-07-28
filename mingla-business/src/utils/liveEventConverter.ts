@@ -124,7 +124,11 @@ export const convertDraftToLiveEvent = (
     coverMediaCredit: draft.coverMediaCredit,
     coverMediaCreditUrl: draft.coverMediaCreditUrl,
     coverMediaAlt: draft.coverMediaAlt,
-    currency: draft.currency ?? brand.defaultCurrency ?? "GBP",
+    // #962 G1 (LOAD-BEARING) — never manufacture GBP. A pre-bank brand has no
+    // currency (brands.default_currency = NULL); carry null through so every
+    // downstream display surface resolves `currencyCodeOrNull` and hides the
+    // price. A real draft/brand currency is honored.
+    currency: draft.currency ?? brand.defaultCurrency ?? null,
     tickets: draft.tickets,
     visibility: draft.visibility,
     requireApproval: draft.requireApproval,

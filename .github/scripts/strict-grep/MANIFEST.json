@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 447,
-  "selfTestWiredFloor": 262,
+  "expectedStrictGrepMjsFiles": 448,
+  "selfTestWiredFloor": 263,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -6332,6 +6332,18 @@
     },
     {
       "script": ".github/scripts/strict-grep/issue-1180-honest-payout-copy.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-0962-prebank-no-gbp.mjs",
       "kind": "file",
       "enforcement": "batch:A",
       "invocation": "node",

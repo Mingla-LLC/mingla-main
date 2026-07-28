@@ -113,10 +113,18 @@ describe("ORCH-1143 — honest data + currency (SC-6)", () => {
     // Scanned cell is the honest-empty dash; never a fabricated number.
     expect(CARD).toContain("<Text style={styles.statValue}>—</Text>");
     expect(CARD).toContain("Scanned");
-    // revenue uses the offering currency ?? brand default (no NEW hardcoded GBP
-    // introduced by this ORCH; the metricsById builder threads currency).
-    expect(HOME).toContain(
+    // #962 [pre-bank currency de-GBP] — G2 removed the fabricated `?? "GBP"`
+    // revenue fallback (a pre-bank brand has NO currency). Revenue is now
+    // currency-aware via currencyCodeOrNull and the label hides ("—") when the
+    // brand has no established currency. The old GBP-manufacturing source
+    // strings are GONE — this test pins the de-GBP'd shape.
+    expect(HOME).toContain("currencyCodeOrNull(");
+    expect(HOME).toContain("view.currency ?? currentBrand?.defaultCurrency");
+    expect(HOME).not.toContain(
       "view.currency ?? currentBrand?.defaultCurrency ?? \"GBP\"",
+    );
+    expect(HOME).not.toContain(
+      "event.currency ?? currentBrand.defaultCurrency ?? \"GBP\"",
     );
   });
 });

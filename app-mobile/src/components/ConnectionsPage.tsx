@@ -240,7 +240,7 @@ async function fetchGroupEventMetaByIds(eventIds: string[]): Promise<Map<string,
             musicGenres: Array.isArray(event.music_genres) ? event.music_genres : [],
             priceMin: null,
             priceMax: null,
-            currency: event.currency ?? 'GBP',
+            currency: event.currency ?? 'USD',
             publicBuyerUrl: buildGroupEventPublicUrl(
               {
                 id: event.id,
