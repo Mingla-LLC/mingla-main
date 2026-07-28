@@ -26,8 +26,10 @@
  *   7. ok=false → reject dialog "Refund first" with "Open Orders" CTA
  *      (stub: routes Cycle-9c-toast until 9c builds Orders ledger)
  *
- * Keyboard handling: full Cycle 3 wizard pattern (Keyboard listeners +
- * dynamic paddingBottom + scrollToEnd via requestAnimationFrame).
+ * Keyboard handling: SmartScrollView (KeyboardAwareScrollView) auto-scrolls the
+ * focused input; the description reveal (issue #1027) is deferred to the
+ * keyboard-shown signal via the library's useKeyboardIsVisible() (no bespoke
+ * Keyboard listeners — orch-0892 gate).
  *
  * Per ORCH-0704 v2 spec §3.4.5 + §3.4.6.
  */
@@ -40,14 +42,16 @@ import React, {
   useState,
 } from "react";
 import {
+  Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 // ORCH-0892-B v2: ScrollView via SmartScrollView wrapper. Keyboard listener
-// + state + auto-insets DELETED. useKeyboardIsVisible() preserves dock-hide.
-// Per SPEC §7.F.
+// + state + auto-insets DELETED. useKeyboardIsVisible() preserves dock-hide and
+// (issue #1027) drives the deferred description-reveal scroll — no bespoke
+// Keyboard.addListener (orch-0892 gate). Per SPEC §7.F.
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -354,12 +358,60 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
   // for child-callback compatibility (KAS refines focus-scroll on top).
   const keyboardVisible = useKeyboardIsVisible();
   const scrollViewRef = useRef<ScrollView | null>(null);
+  // issue #1027 (iOS description-reveal REGRESSION) — deferred scroll-to-bottom,
+  // mirroring the create wizards. The edit screen shares the `scrollToBottom`
+  // contract with the same step bodies (CreatorStep1Basics description,
+  // CreatorStep3Where online-URL). WHY the defer is load-bearing on native:
+  // SmartScrollView (KeyboardAwareScrollView) appends a
+  // `paddingBottom: keyboardHeight + 1` spacer on keyboard show (KAS source
+  // index.tsx:405-430); `scrollToEnd` only lands the focused field above the
+  // keyboard once that spacer exists. A bare-rAF scrollToEnd fired before the
+  // keyboard rose and fought KAS → nondeterministic over-scroll on iOS.
+  //
+  // We defer the reveal to the CANONICAL keyboard primitive
+  // `useKeyboardIsVisible()` (react-native-keyboard-controller `useKeyboardState`,
+  // whose isVisible flips true on `keyboardDidShow` — AFTER the spacer is
+  // applied), NOT a bespoke `Keyboard.addListener` (forbidden by the orch-0892
+  // gate). Its web wrapper is a library-free constant false, so the web bundle
+  // stays clean and the deferred effect is inert on web.
+  // I-PROPOSED-1027-WIZARD-REVEAL-DEFERRED-TO-KEYBOARD-SHOWN.
+  const pendingScrollToBottomRef = useRef<boolean>(false);
+  const keyboardVisibleRef = useRef<boolean>(keyboardVisible);
 
-  const scrollToBottom = useCallback((): void => {
+  const performScrollToEnd = useCallback((): void => {
     requestAnimationFrame((): void => {
       scrollViewRef.current?.scrollToEnd({ animated: true });
     });
   }, []);
+
+  const scrollToBottom = useCallback((): void => {
+    // Web scrolls immediately (plain ScrollView, no KAS spacer). On native, if
+    // the keyboard is ALREADY up the spacer is applied so scroll now; otherwise
+    // ARM the pending flag and let the keyboard-visible effect below fire once
+    // the keyboard has finished rising (padded content height).
+    if (Platform.OS === "web" || keyboardVisibleRef.current) {
+      performScrollToEnd();
+      return;
+    }
+    pendingScrollToBottomRef.current = true;
+  }, [performScrollToEnd]);
+
+  // Consume the pending reveal when `useKeyboardIsVisible()` flips true — the
+  // library's keyboardDidShow-backed signal, delivered AFTER the KAS
+  // paddingBottom spacer is applied. On web the hook is a constant false
+  // (library-free wrapper), so this effect is inert there.
+  useEffect(() => {
+    keyboardVisibleRef.current = keyboardVisible;
+    if (keyboardVisible) {
+      if (pendingScrollToBottomRef.current) {
+        pendingScrollToBottomRef.current = false;
+        performScrollToEnd();
+      }
+    } else {
+      // keyboard dismissed — drop any stale pending reveal.
+      pendingScrollToBottomRef.current = false;
+    }
+  }, [keyboardVisible, performScrollToEnd]);
 
   // ---- Sold-count context (server-backed) ----------------------------------
   // Was an ORCH-0704 stub that read the empty client order store and returned
