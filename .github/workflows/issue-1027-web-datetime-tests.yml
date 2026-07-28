@@ -1,0 +1,97 @@
+name: Issue 1027 Web Date/Time Native Input Tests
+
+# issue #1027 [keyboard-input-reachability] — Thread B (business WEB date/time).
+#
+# WHY THIS GATE EXISTS: on desktop Chrome the event/RSVP "When" step drove
+# date/time through a hidden 1×1 opacity:0 pointer-events:none <input> triggered
+# by showPicker()/.click() — the calendar opened detached + un-dismissable and
+# the time rows were dead taps (Seth confirmed: "clicking out does not close it,
+# and the times don't work"). Three more surfaces rendered
+# @react-native-community/datetimepicker (which has NO web build) on web → a hard
+# silent no-op. The fix renders ONE shared, visible, hit-testable native <input>
+# (ui/WebDateTimeInput) on web across every surface. These suites are the
+# fails-on-revert lock (I-PROPOSED-1027-WEB-NATIVE-DATE-INPUT).
+#
+# WITHOUT THIS WORKFLOW the render suite could go DARK (the ORCH-1383 trap): the
+# render proof requires react-test-renderer, which is a TEST-ONLY renderer kept
+# out of package.json — it must be installed --no-save. Same shape/rationale as
+# issue-1044-auth-failure-capture-tests.yml.
+#
+# EXPLICIT registry (never a glob). Invokes no .mjs under
+# .github/scripts/strict-grep/, so MANIFEST.json totality and parity are
+# untouched.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mingla-business/src/components/ui/WebDateTimeInput.tsx"
+      - "mingla-business/src/components/event/CreatorStep2When.tsx"
+      - "mingla-business/src/components/event/MultiDateOverrideSheet.tsx"
+      - "mingla-business/src/components/checkout/intake/IntakeQuestionRenderers.tsx"
+      - "mingla-business/src/components/trip/PaymentPlanEditor.tsx"
+      - "mingla-business/src/components/trip/BookingDeadlinePicker.tsx"
+      - "mingla-business/src/components/marketing/ComposerStepWhen.tsx"
+      - "mingla-business/src/components/event/__tests__/orch_1027_web_datetime_native_input.test.tsx"
+      - "mingla-business/src/components/event/__tests__/orch_1027_web_datetime_structural.test.ts"
+      - "mingla-business/src/utils/__tests__/orch_1089_signedin_event_creator_wizard.test.ts"
+      - ".github/workflows/issue-1027-web-datetime-tests.yml"
+  pull_request:
+    paths:
+      - "mingla-business/src/components/ui/WebDateTimeInput.tsx"
+      - "mingla-business/src/components/event/CreatorStep2When.tsx"
+      - "mingla-business/src/components/event/MultiDateOverrideSheet.tsx"
+      - "mingla-business/src/components/checkout/intake/IntakeQuestionRenderers.tsx"
+      - "mingla-business/src/components/trip/PaymentPlanEditor.tsx"
+      - "mingla-business/src/components/trip/BookingDeadlinePicker.tsx"
+      - "mingla-business/src/components/marketing/ComposerStepWhen.tsx"
+      - "mingla-business/src/components/event/__tests__/orch_1027_web_datetime_native_input.test.tsx"
+      - "mingla-business/src/components/event/__tests__/orch_1027_web_datetime_structural.test.ts"
+      - "mingla-business/src/utils/__tests__/orch_1089_signedin_event_creator_wizard.test.ts"
+      - ".github/workflows/issue-1027-web-datetime-tests.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-1027-business-jest:
+    name: "#1027 BIZ: web date/time renders a visible native input that commits (fails-on-revert)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      # react-test-renderer is a TEST-ONLY renderer, deliberately NOT an app dep;
+      # the render suite mounts the REAL CreatorStep2When and needs it. --no-save
+      # keeps it out of the lockfile (same as mingla-business-jest-suite.yml).
+      - name: Install test-only renderer (react-test-renderer, --no-save)
+        run: npm install --no-save react-test-renderer@19.1.0
+      # IMPLEMENTOR happy-path RENDER proof — Seth's two symptoms (dead time
+      # rows + un-dismissable date) driven to green on the WEB target.
+      - name: Run issue-1027 render proof (implementor happy-path)
+        run: >
+          npx jest
+          src/components/event/__tests__/orch_1027_web_datetime_native_input.test.tsx
+          --runInBand
+      # Adversarial STRUCTURAL guard across all 7 fixed surfaces + native parity.
+      - name: Run issue-1027 structural guard (all surfaces + native parity)
+        run: >
+          npx jest
+          src/components/event/__tests__/orch_1027_web_datetime_structural.test.ts
+          --runInBand
+      # The ORCH-1089 wizard-parity suite carries the migrated marker (showPicker
+      # → WebDateTimeInput) under [TEST-MOD-APPROVED ORCH-1027]; keep it green.
+      - name: Run ORCH-1089 wizard parity suite (migrated marker stays green)
+        run: >
+          npx jest
+          src/utils/__tests__/orch_1089_signedin_event_creator_wizard.test.ts
+          --runInBand
