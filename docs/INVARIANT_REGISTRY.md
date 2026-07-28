@@ -6451,7 +6451,7 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 > shared `CoverGalleryRow` renders card 0 = the cover (video poster + ▶ badge when the cover is a video) + cards
 > 1..N = the gallery, as the body's first row. Orchestrator owns the flip to ACTIVE at CLOSE.
 
-### I-PROPOSED-868-GALLERY-ADDITIVE-INDEPENDENT (DRAFT)
+### I-868-GALLERY-ADDITIVE-INDEPENDENT (ACTIVE)
 - **Rule:** `events.cover_media_gallery` holds ADDITIONAL cover items and is INDEPENDENT of
   `cover_media_url` / `cover_media_type` (the primary cover, image OR video, at sequence index 0). NO write path
   syncs, derives, or clears one from the other: the additive writers (`setEventCoverGallery`,
@@ -6465,20 +6465,20 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   `cover_media_gallery`; plus `mingla-business/src/services/__tests__/coverGalleryPersist.test.ts`
   (`draftToServerUpdate` leaves the cover fields unchanged when a gallery is set; a video cover + a photo gallery
   coexist; `setEventCoverGallery` writes ONLY `cover_media_gallery`).
-- **Status:** DRAFT until the implementation is merged and independent tester PASS is recorded; flips ACTIVE at #868 CLOSE.
+- **Status:** ACTIVE (merged #868, PR #1333, 2026-07-28; Seth on-device PASS + adversarial tester PASS).
 - **Established:** DRAFT 2026-07-28 at issue #868 IMPLEMENT.
 
-### I-PROPOSED-868-GALLERY-NO-VIDEO (DRAFT)
+### I-868-GALLERY-NO-VIDEO (ACTIVE)
 - **Rule:** `cover_media_gallery` items are `image` / `gif` ONLY (`type ∈ {image, gif}`, never `video`). A video lives
   ONLY in the cover fields (index 0) and COEXISTS with a photo/GIF gallery. The authoring manager (CoverPicker
   "Additional photos") appends only image/GIF items (the video picker only ever sets the primary cover); the shared
   `CoverGalleryRow` renders gallery items via `item.type` and never passes `mediaType="video"` for a gallery card.
 - **Enforcement:** `coverGalleryRow.test.ts` T-7 (gallery typed image/GIF; no `mediaType="video"` in the row) + the
   adversarial coexistence test (tester, at CLOSE) driving a video cover + a 3-photo gallery through publish→read-back.
-- **Status:** DRAFT until CLOSE.
+- **Status:** ACTIVE (merged #868, PR #1333, 2026-07-28).
 - **Established:** DRAFT 2026-07-28 at issue #868 IMPLEMENT.
 
-### I-PROPOSED-868-HERO-SEQUENCE (DRAFT)
+### I-868-HERO-SEQUENCE (ACTIVE)
 - **Rule:** the hero pinned pager + `CoverGalleryRow` render the sequence `[cover] ++ cover_media_gallery`; card/page 0
   is the cover (a ▶ badge only when the cover is a video); the pager + row engage ONLY when
   `cover_media_gallery.length ≥ 1` (empty ⇒ single-cover behavior BYTE-IDENTICAL, for BOTH image and video covers).
@@ -6495,5 +6495,5 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   Pass 2: `coverGalleryPager.test.ts` (page 0 = coverNode, pages 1..N, offset→index, empty ⇒ page-0-only) +
   `pass2ConsumerAuthoringWiring.test.ts` (each consumer screen wires the pager + row in gallery mode, single cover
   byte-identical when empty) + the strict-grep gate legs (7)/(8)/(9).
-- **Status:** DRAFT until CLOSE.
+- **Status:** ACTIVE (merged #868, PR #1333, 2026-07-28).
 - **Established:** DRAFT 2026-07-28 at issue #868 IMPLEMENT (Pass 1); consumer coverage added Pass 2 (2026-07-28).
