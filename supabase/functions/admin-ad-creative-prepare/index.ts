@@ -4,6 +4,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import type { AdConnectionRow } from "../_shared/adChannel.ts";
 import type { AdCreativeRow } from "../_shared/adCreative.ts";
+import { CreativeUploadError } from "../_shared/adCreative.ts";
 import {
   assertCreativeCdnConfigured,
   capabilityFor,
@@ -488,6 +489,20 @@ serve(async (req: Request): Promise<Response> => {
           { "Retry-After": String(retryAfter) },
         );
       }
+      // #1288: the user-facing envelope stays generic (provider_init_failed / 502),
+      // but the real provider failure was previously never logged, so the live sweep
+      // saw only an opaque 502. Surface the machine-readable code + message (for a
+      // CreativeUploadError the code lives in `.detail`, NOT `.code`) to the server
+      // log only. Prepare-adapter messages carry an HTTP status + scrubbed body —
+      // never tokens/bodies/env values (scrubCreativeSecrets already redacted them).
+      console.error(
+        "[admin-ad-creative-prepare] initiate failed:",
+        error instanceof CreativeUploadError
+          ? `${error.platform}/${error.detail}: ${error.message}`
+          : error instanceof Error
+          ? error.message
+          : String(error),
+      );
       const fromStatus = row.current_status;
       const result = await cas(
         {

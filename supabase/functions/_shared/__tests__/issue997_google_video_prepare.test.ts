@@ -20,6 +20,7 @@ import {
 } from "https://deno.land/std@0.190.0/testing/asserts.ts";
 import type { AdConnectionRow } from "../adChannel.ts";
 import type { AdCreativeRow } from "../adCreative.ts";
+import { CreativeUploadError } from "../adCreative.ts";
 import {
   capabilityFor,
   isPreparationPlatform,
@@ -368,4 +369,191 @@ Deno.test("ISSUE-997 D2 guardrail: Google video CREATE is now WIRED (Demand Gen)
   assertEquals(src.includes("googleCreateDemandGenVideoCampaign"), true);
   assertStringIncludes(src, "youtube_video_id");
   assertStringIncludes(src, 'objective: "DEMAND_GEN"');
+});
+
+// ── ISSUE-1288: Google video PREPARE finalize + masked-error regressions ──────
+// The documented Google Ads YouTube resumable upload contract requires the START
+// body to carry the video metadata (UNLISTED privacy + title) and the data/finalize
+// leg to be a PUT with `Authorization: Bearer <token>`. The shipped adapter sent an
+// empty START body and a POST with NO auth on the data leg — deterministic failure
+// after a 200 START. The endpoint then masked every failure as a generic 502 and
+// never logged the real CreativeUploadError. These tests pin all three seams.
+
+/**
+ * Env + fetch stub whose UPLOAD-SESSION response is caller-supplied — used to drive
+ * the finalize-FAILURE path. initiate() throws before check(), so no poll payload
+ * is needed. Mirrors withEnvAndFetch's env scaffolding exactly.
+ */
+function withEnvAndUploadResponse(
+  uploadResponseFactory: () => Response,
+  fn: (calls: RecordedCall[]) => Promise<void>,
+): () => Promise<void> {
+  return async () => {
+    const prior = new Map<string, string | undefined>();
+    for (const [name, value] of Object.entries(GOOGLE_ENV)) {
+      prior.set(name, Deno.env.get(name));
+      Deno.env.set(name, value);
+    }
+    for (const name of ["GOOGLE_ADS_API_BASE", "GOOGLE_ADS_API_VERSION"]) {
+      prior.set(name, Deno.env.get(name));
+      Deno.env.delete(name);
+    }
+    resetGoogleTokenCacheForTests();
+    const calls: RecordedCall[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch =
+      ((input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        const url = typeof input === "string"
+          ? input
+          : input instanceof URL
+          ? input.href
+          : input.url;
+        calls.push({ url, init });
+        if (url.includes("oauth2.googleapis.com/token")) {
+          return Promise.resolve(mintResponse());
+        }
+        if (url.includes("youTubeVideoUploads:create")) {
+          return Promise.resolve(
+            new Response(JSON.stringify({}), {
+              status: 200,
+              headers: { "X-Goog-Upload-URL": UPLOAD_SESSION_URL },
+            }),
+          );
+        }
+        if (url === UPLOAD_SESSION_URL) {
+          return Promise.resolve(uploadResponseFactory());
+        }
+        return Promise.resolve(new Response("unexpected", { status: 500 }));
+      }) as typeof fetch;
+    try {
+      await fn(calls);
+    } finally {
+      globalThis.fetch = originalFetch;
+      for (const [name, value] of prior) {
+        if (value !== undefined) Deno.env.set(name, value);
+        else Deno.env.delete(name);
+      }
+      resetGoogleTokenCacheForTests();
+    }
+  };
+}
+
+// ── 6. #1288: data leg is PUT + Bearer; START body carries UNLISTED metadata ──
+// Fails-on-revert: reverting the data leg to POST/no-auth, or the START body to {},
+// fails these assertions.
+Deno.test(
+  "ISSUE-1288: initiate uses PUT+Authorization on the finalize leg and sends UNLISTED START metadata",
+  withEnvAndFetch({ state: "PENDING" }, async (calls) => {
+    const { hooks } = recordingHooks();
+    await PREPARE_PROVIDER_ADAPTERS.google.initiate(ASSET, CONN, BYTES, hooks);
+
+    // RC-1 / RC-3: the data/finalize leg is a PUT carrying the bearer token.
+    const uploadCall = calls.find((c) => c.url === UPLOAD_SESSION_URL);
+    assert(uploadCall, "the resumable session URL must receive the data leg");
+    assertEquals(uploadCall!.init?.method, "PUT");
+    const uploadHeaders = new Headers(uploadCall!.init?.headers);
+    assert(
+      (uploadHeaders.get("Authorization") ?? "").startsWith("Bearer "),
+      "the finalize leg must carry Authorization: Bearer <token>",
+    );
+    assertEquals(
+      uploadHeaders.get("X-Goog-Upload-Command"),
+      "upload, finalize",
+    );
+
+    // RC-2: the START body is the documented metadata, not {}.
+    const startCall = calls.find((c) =>
+      c.url.includes("youTubeVideoUploads:create")
+    );
+    assert(startCall, "a resumable-create call must be made");
+    const startBody = JSON.parse(String(startCall!.init?.body)) as {
+      customer_id?: unknown;
+      you_tube_video_upload?: {
+        video_title?: unknown;
+        video_privacy?: unknown;
+      };
+    };
+    assertEquals(startBody.customer_id, "3623860476");
+    assertEquals(startBody.you_tube_video_upload?.video_privacy, "UNLISTED");
+    assert(
+      typeof startBody.you_tube_video_upload?.video_title === "string" &&
+        (startBody.you_tube_video_upload!.video_title as string).length > 0,
+      "the START body must carry a non-empty video_title",
+    );
+  }),
+);
+
+// ── 7. #1288: a 4xx finalize surfaces the real reason with the body SCRUBBED ──
+// Fails-on-revert: reverting the finalize guard to the bare-status message (no
+// scrubbed body read) fails this — the message loses the reason + redaction.
+Deno.test(
+  "ISSUE-1288: a 401 finalize throws google_yt_upload_failed with the status + a SCRUBBED body (no token leak)",
+  withEnvAndUploadResponse(
+    () =>
+      new Response(
+        "invalid authentication credentials Bearer ya29.SECRET-TOKEN-abcdefghijklmnop",
+        { status: 401 },
+      ),
+    async () => {
+      const { hooks } = recordingHooks();
+      let thrown: unknown;
+      try {
+        await PREPARE_PROVIDER_ADAPTERS.google.initiate(
+          ASSET,
+          CONN,
+          BYTES,
+          hooks,
+        );
+      } catch (e) {
+        thrown = e;
+      }
+      assert(
+        thrown instanceof CreativeUploadError,
+        "must throw CreativeUploadError",
+      );
+      assertEquals(
+        (thrown as CreativeUploadError).detail,
+        "google_yt_upload_failed",
+      );
+      const msg = (thrown as CreativeUploadError).message;
+      // The HTTP status pins RC-1 (401/403 auth) vs RC-2 (400 metadata).
+      assertStringIncludes(msg, "401");
+      assertStringIncludes(msg, "invalid authentication credentials");
+      // A Bearer token in the provider body is redacted before it reaches the log.
+      assertStringIncludes(msg, "Bearer [redacted]");
+      assert(
+        !msg.includes("ya29.SECRET-TOKEN"),
+        "a raw bearer token must never appear in the surfaced error",
+      );
+    },
+  ),
+);
+
+// ── 8. #1288: the endpoint logs the real initiate failure; envelope stays generic ─
+// Fails-on-revert: removing the console.error in the initiate catch fails this.
+Deno.test("ISSUE-1288: the prepare endpoint console.errors the real initiate failure while keeping the generic envelope", async () => {
+  const src = await Deno.readTextFile(
+    new URL("../../admin-ad-creative-prepare/index.ts", import.meta.url),
+  );
+  // The initiate catch surfaces the real provider error to the SERVER log.
+  assertStringIncludes(src, "[admin-ad-creative-prepare] initiate failed:");
+  assertStringIncludes(src, "console.error(");
+  // It reads the machine-readable code from CreativeUploadError.detail (NOT .code).
+  assertStringIncludes(src, "error instanceof CreativeUploadError");
+  assertStringIncludes(src, "error.detail");
+  // CreativeUploadError must be imported into the endpoint to be instanceof-checked.
+  assertStringIncludes(
+    src,
+    'import { CreativeUploadError } from "../_shared/adCreative.ts";',
+  );
+  // The log fires AFTER the specific-error early returns and BEFORE the generic
+  // provider_init_failed CAS, and the user-facing envelope stays generic (502).
+  const rateLimitIdx = src.indexOf("error instanceof ProviderRateLimitError");
+  const logIdx = src.indexOf("[admin-ad-creative-prepare] initiate failed:");
+  const genericCodeIdx = src.indexOf('error_code: "provider_init_failed"');
+  assert(
+    rateLimitIdx > -1 && logIdx > rateLimitIdx && genericCodeIdx > logIdx,
+    "the log must sit inside the initiate catch, before the generic CAS",
+  );
+  assertStringIncludes(src, "502,");
 });

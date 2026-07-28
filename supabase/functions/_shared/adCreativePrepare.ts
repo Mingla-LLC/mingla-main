@@ -4,6 +4,7 @@ import {
   CreativeByteSourceError,
   CreativeUploadError,
   mintSnapAccessToken,
+  scrubCreativeSecrets,
   SNAP_API_BASE,
   SNAP_CHUNK_BYTES,
   SNAP_MAX_CHUNKS,
@@ -1124,7 +1125,7 @@ function googleAdsAuthHeaders(client: GoogleClient): Record<string, string> {
 }
 
 const googlePrepareAdapter: PrepareProviderAdapter = {
-  initiate: async (_asset, connection, bytes, hooks, deps = {}) => {
+  initiate: async (asset, connection, bytes, hooks, deps = {}) => {
     const client = await resolveGoogleClient(connection);
     const fetchImpl = deps.fetchImpl ?? fetch;
     const startResponse = await fetchImpl(
@@ -1138,7 +1139,19 @@ const googlePrepareAdapter: PrepareProviderAdapter = {
           "X-Goog-Upload-Command": "start",
           "X-Goog-Upload-Header-Content-Length": String(bytes.video.byteLength),
         },
-        body: JSON.stringify({}),
+        // #1288: the documented Google Ads YouTube resumable START body carries
+        // the video metadata + privacy — an empty {} left the session without the
+        // required UNLISTED metadata, so the guardrail comment above ("UNLISTED
+        // video") was never actually enforced in the request. video_title is the
+        // creative name; description is static + brand-safe (no PII).
+        body: JSON.stringify({
+          customer_id: client.customerId,
+          you_tube_video_upload: {
+            video_title: asset.name,
+            video_description: "Mingla ad creative",
+            video_privacy: "UNLISTED",
+          },
+        }),
       },
     );
     if (!startResponse.ok) {
@@ -1156,19 +1169,32 @@ const googlePrepareAdapter: PrepareProviderAdapter = {
         "YouTube resumable start returned no X-Goog-Upload-URL header.",
       );
     }
+    // #1288: the documented Google Ads YouTube resumable data/finalize leg is a
+    // PUT that carries `Authorization: Bearer <token>` — the Google Ads upload URL
+    // (unlike a generic pre-signed GCS session URL) requires the bearer token on
+    // the data leg. The prior POST with no Authorization deterministically failed
+    // after a 200 START (RC-1/RC-3). Per doc the data leg needs ONLY the bearer —
+    // NOT developer-token / login-customer-id.
     const uploadResponse = await fetchImpl(uploadUrl, {
-      method: "POST",
+      method: "PUT",
       headers: {
+        Authorization: `Bearer ${client.accessToken}`,
         "X-Goog-Upload-Command": "upload, finalize",
         "X-Goog-Upload-Offset": "0",
       },
       body: bytes.video as unknown as BodyInit,
     });
     if (!uploadResponse.ok) {
+      // #1288: surface WHY Google rejected so ONE re-capture is decisive
+      // (401 "invalid authentication credentials" ⇒ RC-1 vs 400 metadata ⇒ RC-2).
+      // scrubCreativeSecrets redacts any Bearer/meta token before it reaches logs.
+      const failBody = scrubCreativeSecrets(
+        (await uploadResponse.text()).slice(0, 300),
+      );
       throw new CreativeUploadError(
         "google",
         "google_yt_upload_failed",
-        `YouTube resumable upload/finalize failed: HTTP ${uploadResponse.status}.`,
+        `YouTube resumable upload/finalize failed: HTTP ${uploadResponse.status} ${failBody}`,
       );
     }
     const uploadPayload = await responseJson(uploadResponse);
