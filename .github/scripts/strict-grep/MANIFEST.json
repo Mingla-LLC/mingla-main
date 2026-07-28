@@ -6648,6 +6648,32 @@
       ]
     },
     {
+      "script": "app-mobile/scripts/ci/issue-0963-consumer-currency-no-gbp-fallback-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "issue-0963-consumer-currency-no-gbp-fallback-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/issue-0963-consumer-currency-no-gbp-fallback.tester-adversarial.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "issue-0963-consumer-currency-no-gbp-fallback.tester-adversarial"
+      ]
+    },
+    {
       "script": "app-mobile/scripts/ci/orch-1039-collab-gate-check.mjs",
       "kind": "file",
       "enforcement": "batch:D",
