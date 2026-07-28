@@ -15,7 +15,7 @@
  * map stays in set-equality + byte-exact label-parity with that canonical file,
  * so a drift (a renamed / dropped / added slug on either side) fails CI.
  *
- * Cross-taxonomy slugs are unique across party/vibe/music (45 slugs, 45 unique,
+ * Cross-taxonomy slugs are unique across party/vibe/music (49 slugs, 49 unique,
  * zero collisions — verified + enforced by the drift gate), so a single flat map
  * is safe and unambiguous. Keys are quoted uniformly so the drift gate parses
  * every `"slug": "label"` pair with one rule.
@@ -56,13 +56,17 @@ export const TAXONOMY_LABELS: Readonly<Record<string, string>> = {
   "vibrant": "Vibrant",
   "retro": "Retro",
   "futuristic": "Futuristic",
-  // MUSIC_GENRES (14) — eventTaxonomy.ts:83-98
+  // MUSIC_GENRES (18) — eventTaxonomy.ts:83-102
   "electronic-edm": "Electronic/EDM",
+  "house": "House",
   "hiphop-rap": "Hip-Hop/Rap",
   "pop": "Pop",
   "rock": "Rock",
   "latin": "Latin",
   "afrobeats": "Afrobeats",
+  "afro-house": "Afro House",
+  "amapiano": "Amapiano",
+  "gospel": "Gospel",
   "rnb-soul": "R&B/Soul",
   "disco-funk": "Disco/Funk",
   "reggae-dancehall": "Reggae/Dancehall",

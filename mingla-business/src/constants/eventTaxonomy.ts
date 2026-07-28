@@ -82,11 +82,15 @@ export const VIBE_TAGS: readonly VibeTagOption[] = [
 
 export const MUSIC_GENRES: readonly MusicGenreOption[] = [
   { slug: "electronic-edm",   label: "Electronic/EDM",   tmSlug: "dance-electronic" },
+  { slug: "house",            label: "House",            tmSlug: null },
   { slug: "hiphop-rap",       label: "Hip-Hop/Rap",      tmSlug: "hiphop-rap" },
   { slug: "pop",              label: "Pop",              tmSlug: "pop" },
   { slug: "rock",             label: "Rock",             tmSlug: "rock" },
   { slug: "latin",            label: "Latin",            tmSlug: "latin" },
   { slug: "afrobeats",        label: "Afrobeats",        tmSlug: "afro" },
+  { slug: "afro-house",       label: "Afro House",       tmSlug: null },
+  { slug: "amapiano",         label: "Amapiano",         tmSlug: null },
+  { slug: "gospel",           label: "Gospel",           tmSlug: null },
   { slug: "rnb-soul",         label: "R&B/Soul",         tmSlug: "rnb" },
   { slug: "disco-funk",       label: "Disco/Funk",       tmSlug: null },
   { slug: "reggae-dancehall", label: "Reggae/Dancehall", tmSlug: "reggae" },
