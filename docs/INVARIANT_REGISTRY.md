@@ -6472,11 +6472,18 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 - **Rule:** the hero pinned pager + `CoverGalleryRow` render the sequence `[cover] ++ cover_media_gallery`; card/page 0
   is the cover (a ▶ badge only when the cover is a video); the pager + row engage ONLY when
   `cover_media_gallery.length ≥ 1` (empty ⇒ single-cover behavior BYTE-IDENTICAL, for BOTH image and video covers).
-  A single `activeIndex` in `ParallaxCoverShell` owns the shown item; swipe (onScroll) and card-tap (scrollTo) both
-  drive it. `EventCoverMedia`, `coverMediaPresentation.ts` / `eventCoverMediaRules.ts` resolve* helpers, the z-index /
-  seam / aspect constants, and `CountAwareGallery` are UNCHANGED.
+  A single `activeIndex` owns the shown item; swipe (onScroll) and card-tap (scrollTo) both drive it. On buyer-web +
+  business the pager lives in `ParallaxCoverShell`; on the CONSUMER app (Pass 2 §M.1 — the 3 detail screens hand-roll
+  their own pinned cover, they do NOT mount `ParallaxCoverShell`) the SAME sequence is rendered by the shared
+  `CoverGalleryPager` (page 0 = the screen's EXISTING `<EventCoverMedia>` passed in as `coverNode`, UNCHANGED) +
+  `CoverGalleryRow` as the body's first child. `EventCoverMedia`, `coverMediaPresentation.ts` /
+  `eventCoverMediaRules.ts` resolve* helpers, the z-index / seam / aspect constants, and `CountAwareGallery` are
+  UNCHANGED on every surface.
 - **Enforcement:** `packages/offering-rendering/__tests__/parallaxCoverGallery.test.ts` (byte-identical guard:
   `coverRender = sequenceActive ? coverPager : coverMedia`; row before `{children}`; single-owner activeIndex) +
-  `coverGalleryRow.test.ts` (null when empty; 1+N cards; card 0 = cover; ▶ only for a video cover; active ring+badge).
+  `coverGalleryRow.test.ts` (null when empty; 1+N cards; card 0 = cover; ▶ only for a video cover; active ring+badge) +
+  Pass 2: `coverGalleryPager.test.ts` (page 0 = coverNode, pages 1..N, offset→index, empty ⇒ page-0-only) +
+  `pass2ConsumerAuthoringWiring.test.ts` (each consumer screen wires the pager + row in gallery mode, single cover
+  byte-identical when empty) + the strict-grep gate legs (7)/(8)/(9).
 - **Status:** DRAFT until CLOSE.
-- **Established:** DRAFT 2026-07-28 at issue #868 IMPLEMENT.
+- **Established:** DRAFT 2026-07-28 at issue #868 IMPLEMENT (Pass 1); consumer coverage added Pass 2 (2026-07-28).
