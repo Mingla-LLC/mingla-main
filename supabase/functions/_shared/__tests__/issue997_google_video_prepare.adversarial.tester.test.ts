@@ -1252,3 +1252,358 @@ Deno.test("ADV #1288: the endpoint initiate-catch log is platform-agnostic, orde
     'import { CreativeUploadError } from "../_shared/adCreative.ts";',
   );
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ISSUE-1292 — INDEPENDENT TESTER adversarial additions (the GAQL READY-poll FIX)
+//
+// DIFFERENT ANGLE from BOTH the implementor happy-path (§3 of issue997_google_video_
+// prepare.test.ts drove PROCESSED→ready + the enum variants) AND the pre-existing
+// adversarial §2 above (which proved the ref-fallback lands in the WHERE clause +
+// snake_case video_id + one-poll). #1292 shipped precisely because a lenient mock
+// returned green while the REAL wire-request 404'd, so this block attacks the two
+// dimensions a lenient stub can hide:
+//
+//   (A) REQUEST WIRE-SHAPE — the exact request that must succeed against real Google:
+//       the poll is a POST to {apiBase}/{apiVersion}/customers/{customerId}/
+//       googleAds:search (customerId in the PATH, the resource in the BODY not the
+//       URL), carrying the FULL Ads auth (Bearer + developer-token + login-customer-
+//       id) + a JSON content-type, with a GAQL SELECT that PROJECTS video_id AND
+//       state (not just FROM). Drop any of these and a real search 401s / returns no
+//       videoId — exactly #1292's failure class — yet a header/URL-blind stub stays
+//       green. NONE of these are asserted anywhere above.
+//   (B) PARSER IS STRUCTURALLY UN-FOOLABLE — the OLD flat {state,videoId} blob (the
+//       pre-#1292 fake shape) must NOT satisfy the parser; hostile envelopes
+//       (multi-result, snake ENVELOPE key, wrong inner key, non-array `results`, a
+//       bare JSON array, a parseable Ads ERROR body on a non-2xx, the real HTML 404)
+//       resolve to the SAFE verdict (ready-from-[0] / processing) — never a crash,
+//       never a false ready, never a false terminal.
+//   (C) REVERT-TRAP, POSITIVE FORM — during a check() the OLD non-routable GET on
+//       …/youTubeVideoUploads/{id} is NEVER issued.
+//
+// Pure/hermetic: globalThis.fetch is stubbed; ZERO network / provider calls / ad
+// objects / spend. Reuses withGoogle / searchEnvelope / recordingHooks / google()
+// from above; adds withGoogleRawSearch for bodies the envelope helper cannot express.
+
+/**
+ * Raw control over the GAQL-search leg (status + exact body TEXT) — for response
+ * shapes searchEnvelope() cannot express: a FLAT blob with no `results`, a non-array
+ * `results`, a bare JSON array, a parseable Ads ERROR body on a non-2xx, the real
+ * front-door HTML 404. A check() calls only oauth-mint + the search POST, so only
+ * those two legs are stubbed (initiate is never reached here).
+ */
+function withGoogleRawSearch(
+  searchStatus: number,
+  searchBodyText: string,
+  fn: (calls: RecordedCall[]) => Promise<void>,
+): () => Promise<void> {
+  return async () => {
+    const prior = new Map<string, string | undefined>();
+    for (const [name, value] of Object.entries(GOOGLE_ENV)) {
+      prior.set(name, Deno.env.get(name));
+      Deno.env.set(name, value);
+    }
+    for (const name of ["GOOGLE_ADS_API_BASE", "GOOGLE_ADS_API_VERSION"]) {
+      prior.set(name, Deno.env.get(name));
+      Deno.env.delete(name);
+    }
+    resetGoogleTokenCacheForTests();
+    const calls: RecordedCall[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch =
+      ((input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        const url = typeof input === "string"
+          ? input
+          : input instanceof URL
+          ? input.href
+          : input.url;
+        calls.push({ url, init });
+        if (url.includes("oauth2.googleapis.com/token")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({ access_token: "ya29.raw", expires_in: 3600 }),
+              { status: 200, headers: { "Content-Type": "application/json" } },
+            ),
+          );
+        }
+        if (url.includes("googleAds:search")) {
+          return Promise.resolve(
+            new Response(searchBodyText, { status: searchStatus }),
+          );
+        }
+        return Promise.resolve(new Response("unexpected", { status: 500 }));
+      }) as typeof fetch;
+    try {
+      await fn(calls);
+    } finally {
+      globalThis.fetch = originalFetch;
+      for (const [name, value] of prior) {
+        if (value !== undefined) Deno.env.set(name, value);
+        else Deno.env.delete(name);
+      }
+      resetGoogleTokenCacheForTests();
+    }
+  };
+}
+
+// ── (A) REQUEST WIRE-SHAPE — the parts a real Google search 401s / starves on ──
+
+Deno.test(
+  "ADV-1292: poll URL is customers/{customerId}/googleAds:search — customerId in the PATH, the resource NOT in the URL",
+  withGoogle({ pollPayload: { state: "PENDING" } }, async (calls) => {
+    await google().check(
+      RESOURCE_NAME,
+      { upload_resource_name: RESOURCE_NAME },
+      GOOGLE_CONN,
+    );
+    const poll = calls.find((c) => c.url.includes("googleAds:search"));
+    assert(poll, "a googleAds:search poll must be issued");
+    assertStringIncludes(poll!.url, "customers/3623860476/googleAds:search");
+    // The resource name is a BODY (WHERE) argument, never a URL path segment — a
+    // regression that puts it back in the path IS the #1292 non-routable GET.
+    assertEquals(
+      poll!.url.includes("youTubeVideoUploads/upl"),
+      false,
+      "the upload resource id must not appear in the poll URL",
+    );
+  }),
+);
+
+Deno.test(
+  "ADV-1292: poll POST carries the FULL Ads auth (Bearer + developer-token + login-customer-id) + JSON content-type",
+  withGoogle({ pollPayload: { state: "PENDING" } }, async (calls) => {
+    await google().check(
+      RESOURCE_NAME,
+      { upload_resource_name: RESOURCE_NAME },
+      GOOGLE_CONN,
+    );
+    const poll = calls.find((c) => c.url.includes("googleAds:search"));
+    assert(poll, "a googleAds:search poll must be issued");
+    const h = new Headers(poll!.init?.headers);
+    // Drop any of these and the REAL Ads search returns 401/403 — the same green-but-
+    // broken class as #1292. The stub above ignores headers, so only this asserts them.
+    assert(
+      (h.get("Authorization") ?? "").startsWith("Bearer "),
+      "search POST must carry Authorization: Bearer",
+    );
+    assertEquals(h.get("developer-token"), "test-dev-token");
+    assertEquals(h.get("login-customer-id"), "8284700017");
+    assertEquals(h.get("Content-Type"), "application/json");
+  }),
+);
+
+Deno.test(
+  "ADV-1292: the GAQL SELECT projects you_tube_video_upload.video_id AND .state (not merely FROM)",
+  withGoogle({ pollPayload: { state: "PENDING" } }, async (calls) => {
+    await google().check(
+      RESOURCE_NAME,
+      { upload_resource_name: RESOURCE_NAME },
+      GOOGLE_CONN,
+    );
+    const poll = calls.find((c) => c.url.includes("googleAds:search"));
+    const q = String(
+      (JSON.parse(String(poll?.init?.body)) as { query?: unknown }).query ?? "",
+    );
+    // Dropping video_id from the projection starves the READY harvest even with
+    // FROM/WHERE correct — a lenient stub that injects videoId anyway never catches it.
+    assertStringIncludes(q, "you_tube_video_upload.video_id");
+    assertStringIncludes(q, "you_tube_video_upload.state");
+  }),
+);
+
+// ── (B) PARSER IS STRUCTURALLY UN-FOOLABLE ────────────────────────────────────
+
+Deno.test(
+  "ADV-1292: a FLAT {state:PROCESSED,videoId} blob (the pre-#1292 fake shape) is NOT ready — stays processing",
+  withGoogleRawSearch(
+    200,
+    JSON.stringify({ state: "PROCESSED", videoId: "flat-would-have-passed" }),
+    async () => {
+      const res = await google().check(
+        RESOURCE_NAME,
+        { upload_resource_name: RESOURCE_NAME },
+        GOOGLE_CONN,
+      );
+      // The old mock blind spot, encoded: a flat top-level shape can NEVER satisfy the
+      // results[].youTubeVideoUpload parser. (This assertion fails on a parse revert.)
+      assertEquals(res, { state: "processing", retryAfterSeconds: 10 });
+    },
+  ),
+);
+
+Deno.test(
+  "ADV-1292: MULTIPLE results — the verdict is read from results[0], never a later row",
+  withGoogle(
+    {
+      pollResults: [
+        {
+          youTubeVideoUpload: {
+            resourceName: RESOURCE_NAME,
+            state: "PROCESSED",
+            videoId: "first-row",
+          },
+        },
+        {
+          youTubeVideoUpload: {
+            resourceName: RESOURCE_NAME,
+            state: "PROCESSED",
+            videoId: "second-row",
+          },
+        },
+      ],
+    },
+    async () => {
+      const res = await google().check(
+        RESOURCE_NAME,
+        { upload_resource_name: RESOURCE_NAME },
+        GOOGLE_CONN,
+      );
+      assertEquals(res, {
+        state: "ready",
+        preview: null,
+        mergeExtra: { youtube_video_id: "first-row" },
+      });
+    },
+  ),
+);
+
+Deno.test(
+  "ADV-1292: a snake_case ENVELOPE key results[].you_tube_video_upload also resolves ready",
+  withGoogle(
+    {
+      pollResults: [
+        {
+          you_tube_video_upload: {
+            resourceName: RESOURCE_NAME,
+            state: "PROCESSED",
+            videoId: "snake-envelope",
+          },
+        },
+      ],
+    },
+    async () => {
+      const res = await google().check(
+        RESOURCE_NAME,
+        { upload_resource_name: RESOURCE_NAME },
+        GOOGLE_CONN,
+      );
+      assertEquals(res, {
+        state: "ready",
+        preview: null,
+        mergeExtra: { youtube_video_id: "snake-envelope" },
+      });
+    },
+  ),
+);
+
+Deno.test(
+  "ADV-1292: results[0] with NEITHER youTubeVideoUpload nor you_tube_video_upload stays processing",
+  withGoogle(
+    { pollResults: [{ someOtherResource: { state: "PROCESSED", videoId: "x" } }] },
+    async () => {
+      const res = await google().check(
+        RESOURCE_NAME,
+        { upload_resource_name: RESOURCE_NAME },
+        GOOGLE_CONN,
+      );
+      assertEquals(res, { state: "processing", retryAfterSeconds: 10 });
+    },
+  ),
+);
+
+Deno.test(
+  "ADV-1292: a NON-ARRAY `results` (object) stays processing, never a crash",
+  withGoogleRawSearch(
+    200,
+    JSON.stringify({
+      results: { youTubeVideoUpload: { state: "PROCESSED", videoId: "obj" } },
+    }),
+    async () => {
+      const res = await google().check(
+        RESOURCE_NAME,
+        { upload_resource_name: RESOURCE_NAME },
+        GOOGLE_CONN,
+      );
+      assertEquals(res, { state: "processing", retryAfterSeconds: 10 });
+    },
+  ),
+);
+
+Deno.test(
+  "ADV-1292: a bare JSON-array search body (no `results` object) stays processing, never a crash",
+  withGoogleRawSearch(
+    200,
+    JSON.stringify([{ youTubeVideoUpload: { state: "PROCESSED", videoId: "arr" } }]),
+    async () => {
+      const res = await google().check(
+        RESOURCE_NAME,
+        { upload_resource_name: RESOURCE_NAME },
+        GOOGLE_CONN,
+      );
+      assertEquals(res, { state: "processing", retryAfterSeconds: 10 });
+    },
+  ),
+);
+
+Deno.test(
+  "ADV-1292: a parseable Ads ERROR body on a non-2xx (401) is TOLERANT → processing, never a false terminal",
+  withGoogleRawSearch(
+    401,
+    JSON.stringify({
+      error: {
+        code: 401,
+        status: "UNAUTHENTICATED",
+        message: "Request had invalid authentication credentials.",
+      },
+    }),
+    async () => {
+      const res = await google().check(
+        RESOURCE_NAME,
+        { upload_resource_name: RESOURCE_NAME },
+        GOOGLE_CONN,
+      );
+      // No `results` in the error envelope => processing (retry), NEVER
+      // google_yt_processing_failed. A transient/auth blip must not burn the ref.
+      assertEquals(res, { state: "processing", retryAfterSeconds: 10 });
+    },
+  ),
+);
+
+Deno.test(
+  "ADV-1292: the real front-door HTML 404 (unparseable) on the search leg stays processing",
+  withGoogleRawSearch(
+    404,
+    "<!DOCTYPE html><html><head><title>Error 404 (Not Found)</title></head></html>",
+    async () => {
+      const res = await google().check(
+        RESOURCE_NAME,
+        { upload_resource_name: RESOURCE_NAME },
+        GOOGLE_CONN,
+      );
+      assertEquals(res, { state: "processing", retryAfterSeconds: 10 });
+    },
+  ),
+);
+
+// ── (C) REVERT-TRAP, POSITIVE FORM ────────────────────────────────────────────
+
+Deno.test(
+  "ADV-1292: check() NEVER issues a GET to the non-routable …/youTubeVideoUploads/{id} path",
+  withGoogle(
+    { pollPayload: { state: "PROCESSED", videoId: "yt-ok" } },
+    async (calls) => {
+      await google().check(
+        RESOURCE_NAME,
+        { upload_resource_name: RESOURCE_NAME },
+        GOOGLE_CONN,
+      );
+      // The #1292 bug WAS a GET on the upload resource. Prove it is gone: no recorded
+      // call is a GET whose URL carries the upload resource name. (Reverting check() to
+      // the GET transport makes exactly this call → this fails.)
+      const badGet = calls.find((c) => {
+        const method = (c.init?.method ?? "GET").toUpperCase();
+        return method === "GET" && c.url.includes(RESOURCE_NAME);
+      });
+      assertEquals(badGet, undefined);
+    },
+  ),
+);
