@@ -1049,17 +1049,26 @@ export async function googleCreateFullCampaign(
 // path ships, so there is NO conversion-tracking dependency. The prepared UNLISTED
 // YouTube video (external_ref_extra.youtube_video_id from the D1 prepare adapter)
 // rides as its OWN assetOperation (youtubeVideoAsset), referenced by the
-// demandGenVideoResponsiveAd. NO cover / thumbnail (YouTube auto-generates one)
-// and NO logo (logoImages is OPTIONAL for the video responsive ad — omitted).
-// PAUSED at every level; validateOnly threads natively (Google honors
-// validateOnly:true → zero objects), the key D de-risking lever TikTok/Snap lack.
+// demandGenVideoResponsiveAd. NO cover / thumbnail (YouTube auto-generates one),
+// but a demandGenVideoResponsiveAd REQUIRES >=1 square (1:1) logo image asset —
+// so a logo assetOperation (imageAsset, the embedded square Mingla PNG) rides
+// too and is referenced by logoImages. PAUSED at every level; validateOnly
+// threads natively (Google honors validateOnly:true → zero objects), the key D
+// de-risking lever TikTok/Snap lack.
 //
-// [SUSPECTED — Google Ads v24] the exact demandGenVideoResponsiveAd required-field
-// set + char caps, adGroup no-`type`, and targetSpend acceptance on a zero-
-// conversion account are pinned by a native validateOnly:true mutate BEFORE any
-// object exists (the §4 probe — a separate orchestrator acceptance step). The wire
-// SHAPE below is the documented v24 contract; deleting containsEuPoliticalAdvertising
-// or flipping any status off PAUSED is a fails-on-revert target of the D2 suite.
+// [LIVE-VALIDATED — Google Ads v24 AND v25 — issue #1303] the corrected wire
+// shape below was proven to HTTP 200 by native validateOnly:true mutates on the
+// live account (zero objects, zero spend). #1303 pinned THREE root causes in the
+// original #997-D2 doc-sourced-but-never-live-validated shape and fixed all three:
+//   RC-1 geo criteria belong at the AD-GROUP level (Demand Gen defaults to
+//        upgraded_targeting=true) — campaign-level geo is REJECTED
+//        (requestError.UNKNOWN, the masked #1303 symptom). Do NOT set
+//        upgradedTargeting (not a settable v24/v25 field — rely on the default).
+//   RC-2 the ad REQUIRES a non-empty ad.name (unlike Search RSA).
+//   RC-3 logoImages is REQUIRED (>=1), not optional.
+// Deleting containsEuPoliticalAdvertising, moving geo back to campaign level,
+// dropping ad.name, or dropping logoImages are each fails-on-revert targets of
+// the D2 suite (each reproduces a live Google rejection).
 
 export const GOOGLE_DEMAND_GEN_BUSINESS_NAME_MAX = 25;
 export const GOOGLE_DEMAND_GEN_HEADLINE_MAX_CHARS = 40;
@@ -1084,6 +1093,13 @@ export interface GoogleDemandGenVideoInput {
   descriptions: string[];
   /** The prepared YouTube video id (external_ref_extra.youtube_video_id — D1). */
   youtubeVideoId: string;
+  /**
+   * REQUIRED square (1:1) logo image, base64-encoded PNG bytes — a
+   * demandGenVideoResponsiveAd rejects (collectionSizeError: TOO_FEW) without >=1
+   * logo asset (#1303 RC-3). Supply MINGLA_SQUARE_LOGO_PNG_BASE64 from
+   * _shared/adDemandGenLogo.ts; the builder fails closed on an empty value.
+   */
+  logoImageData: string;
   /** Resolved numeric criterion ids (GR-37 — resolver output, never raw names). */
   geoTargetCriterionIds: string[];
   /** googleAds:mutate validateOnly passthrough — zero objects created. */
@@ -1169,22 +1185,29 @@ export function validateGoogleDemandGenAd(input: {
 
 /**
  * Demand Gen temp ids (negative, unique, defined-before-referenced). The YouTube
- * video ASSET gets its own temp id so the adGroupAd can reference it —
- * budget(-1) → campaign(-2) → video asset(-3) → adGroup(-4) → adGroupAd.
+ * video AND the square logo each get their own asset temp id so the adGroupAd can
+ * reference them. Accepted op order (live-validated, #1303): budget(-1) →
+ * campaign(-2) → video asset(-3) → logo asset(-5) → adGroup(-4) →
+ * adGroupCriterion(location)×N → adGroupAd.
  */
 const DG_TEMP_BUDGET_ID = -1;
 const DG_TEMP_CAMPAIGN_ID = -2;
 const DG_TEMP_VIDEO_ASSET_ID = -3;
 const DG_TEMP_AD_GROUP_ID = -4;
+const DG_TEMP_LOGO_ASSET_ID = -5;
 
 /**
  * Builds the Demand Gen video op list, define-before-reference. Diffs from the
  * SEARCH builder (buildGoogleMutateOperations): advertisingChannelType
  * "DEMAND_GEN" (no subtype); NO networkSettings (does not apply to Demand Gen — a
  * Search-style networkSettings is REJECTED); a separate assetOperation carrying
- * the prepared youtubeVideoId; the adGroup takes NO `type`; the ad is a
- * demandGenVideoResponsiveAd (businessName/headlines/longHeadlines/descriptions/
- * videos — NO logoImages). All PAUSED (ad group ENABLED under the PAUSED parent).
+ * the prepared youtubeVideoId AND a second assetOperation carrying the square
+ * logo image; the adGroup takes NO `type`; geo criteria are emitted at the
+ * AD-GROUP level (Demand Gen's default upgraded_targeting rejects campaign-level
+ * geo — #1303 RC-1); the ad is a demandGenVideoResponsiveAd with a non-empty
+ * `name` (#1303 RC-2), businessName/headlines/longHeadlines/descriptions/videos,
+ * and a REQUIRED logoImages (#1303 RC-3). All PAUSED (ad group ENABLED under the
+ * PAUSED parent). Live-validated to HTTP 200 on v24 AND v25.
  */
 export function buildGoogleDemandGenMutateOperations(
   customerId: string,
@@ -1193,7 +1216,20 @@ export function buildGoogleDemandGenMutateOperations(
   const budgetResource = `customers/${customerId}/campaignBudgets/${DG_TEMP_BUDGET_ID}`;
   const campaignResource = `customers/${customerId}/campaigns/${DG_TEMP_CAMPAIGN_ID}`;
   const videoAssetResource = `customers/${customerId}/assets/${DG_TEMP_VIDEO_ASSET_ID}`;
+  const logoAssetResource = `customers/${customerId}/assets/${DG_TEMP_LOGO_ASSET_ID}`;
   const adGroupResource = `customers/${customerId}/adGroups/${DG_TEMP_AD_GROUP_ID}`;
+
+  // #1303 RC-3: logoImages is REQUIRED — fail closed on a missing/empty logo so a
+  // create can never emit a body Google rejects (collectionSizeError: TOO_FEW).
+  const logoImageData = input.logoImageData?.trim();
+  if (!logoImageData) {
+    throw new AdApiError({
+      platform: "google",
+      code: "demand_gen_logo_missing",
+      message:
+        "A Demand Gen video responsive ad requires a square logo image — logoImageData was empty. Supply MINGLA_SQUARE_LOGO_PNG_BASE64.",
+    });
+  }
 
   const operations: Record<string, unknown>[] = [];
 
@@ -1236,25 +1272,26 @@ export function buildGoogleDemandGenMutateOperations(
   }
   operations.push({ campaignOperation: { create: campaign } });
 
-  // 3. Geo criteria — resolved numeric ids only (GR-37).
-  for (const criterionId of input.geoTargetCriterionIds) {
-    operations.push({
-      campaignCriterionOperation: {
-        create: {
-          campaign: campaignResource,
-          location: { geoTargetConstant: `geoTargetConstants/${criterionId}` },
-        },
-      },
-    });
-  }
-
-  // 4. YouTube video ASSET — the prepared UNLISTED video, referenced by the ad.
+  // 3. YouTube video ASSET — the prepared UNLISTED video, referenced by the ad.
   operations.push({
     assetOperation: {
       create: {
         resourceName: videoAssetResource,
         name: `${input.name} — video`,
         youtubeVideoAsset: { youtubeVideoId: input.youtubeVideoId },
+      },
+    },
+  });
+
+  // 4. Logo image ASSET (#1303 RC-3) — a square (1:1) imageAsset the
+  //    demandGenVideoResponsiveAd REQUIRES via logoImages. Base64 PNG bytes on
+  //    the Google Ads Asset.image_asset `data` bytes field.
+  operations.push({
+    assetOperation: {
+      create: {
+        resourceName: logoAssetResource,
+        name: `${input.name} — logo`,
+        imageAsset: { data: logoImageData },
       },
     },
   });
@@ -1272,14 +1309,31 @@ export function buildGoogleDemandGenMutateOperations(
     },
   });
 
-  // 6. The Demand Gen video responsive ad — PAUSED; finalUrls = [canonical
-  //    dest_url]. NO logoImages (OPTIONAL — omitted; YouTube auto-thumbnail).
+  // 6. Geo criteria at the AD-GROUP level (#1303 RC-1) — Demand Gen defaults to
+  //    upgraded_targeting=true, which moves location targeting to the ad group;
+  //    campaign-level geo is REJECTED (requestError.UNKNOWN). Resolved numeric ids
+  //    only (GR-37). upgradedTargeting is NOT set (not a settable field — default).
+  for (const criterionId of input.geoTargetCriterionIds) {
+    operations.push({
+      adGroupCriterionOperation: {
+        create: {
+          adGroup: adGroupResource,
+          location: { geoTargetConstant: `geoTargetConstants/${criterionId}` },
+        },
+      },
+    });
+  }
+
+  // 7. The Demand Gen video responsive ad — PAUSED; finalUrls = [canonical
+  //    dest_url]. #1303 RC-2: ad.name is REQUIRED (unlike Search RSA). #1303 RC-3:
+  //    logoImages references the square logo asset (>=1 required).
   operations.push({
     adGroupAdOperation: {
       create: {
         adGroup: adGroupResource,
         status: "PAUSED",
         ad: {
+          name: `${input.name} — ad`,
           finalUrls: [input.finalUrl],
           demandGenVideoResponsiveAd: {
             businessName: { text: input.businessName.trim() },
@@ -1287,6 +1341,7 @@ export function buildGoogleDemandGenMutateOperations(
             longHeadlines: input.longHeadlines.map((text) => ({ text: text.trim() })),
             descriptions: input.descriptions.map((text) => ({ text: text.trim() })),
             videos: [{ asset: videoAssetResource }],
+            logoImages: [{ asset: logoAssetResource }],
           },
         },
       },

@@ -27,6 +27,7 @@ on:
       - "supabase/functions/admin-ad-create-campaign/**"
       - "supabase/functions/admin-ad-creative-prepare/**"
       - "supabase/functions/_shared/__tests__/issue997_google_video_create.test.ts"
+      - "supabase/functions/_shared/__tests__/issue1303_demand_gen_create.tester.test.ts"
       - "supabase/functions/_shared/__tests__/issue997_google_video_prepare*.test.ts"
       - "supabase/functions/_shared/__tests__/issue997_tiktok_video_create*.test.ts"
       - "supabase/functions/_shared/__tests__/issue1184_video_prepare*.test.ts"
@@ -67,7 +68,8 @@ jobs:
         run: |
           deno fmt --check \
             supabase/functions/_shared/__tests__/issue997_google_video_create.test.ts \
-            supabase/functions/_shared/__tests__/issue997_google_video_create.adversarial.tester.test.ts
+            supabase/functions/_shared/__tests__/issue997_google_video_create.adversarial.tester.test.ts \
+            supabase/functions/_shared/__tests__/issue1303_demand_gen_create.tester.test.ts
       - name: Type-check the changed edge modules
         run: |
           deno check \
@@ -85,6 +87,7 @@ jobs:
           files=(
             supabase/functions/_shared/__tests__/issue997_google_video_create.test.ts
             supabase/functions/_shared/__tests__/issue997_google_video_create.adversarial.tester.test.ts
+            supabase/functions/_shared/__tests__/issue1303_demand_gen_create.tester.test.ts
             supabase/functions/_shared/__tests__/issue997_google_video_prepare.test.ts
             supabase/functions/_shared/__tests__/issue997_google_video_prepare.adversarial.tester.test.ts
             supabase/functions/_shared/__tests__/issue997_tiktok_video_create.test.ts
