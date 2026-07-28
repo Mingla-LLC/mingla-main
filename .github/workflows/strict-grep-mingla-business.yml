@@ -232,6 +232,7 @@ concurrency:
 #   orch-0908-chat-mention-mute-respected  ->  orch-0908-chat-mention-mute-respected.mjs
 #   orch-0909-positional-shared-deck-adversarial  ->  orch-0909-adversarial-check.mjs
 #   orch-0909-positional-shared-deck-regression  ->  orch-0909-regression-check.mjs
+#   orch-0910-chat-payload-curated-aware  ->  orch-0910-chat-payload-curated-aware.mjs
 #   orch-0913-no-tabs-on-dashboards  ->  orch-0913-no-tabs-on-dashboards.mjs, i-bottomsheet-inline-scroll-binding.mjs, orch-1055-nav-tab-rank-gate.mjs
 #   orch-0947-trip-spots-tickets-not-orders  ->  orch-0947-trip-spots-tickets-not-orders.mjs
 #   orch-0948-waitlist-feature  ->  orch-0948-waitlist-feature.mjs

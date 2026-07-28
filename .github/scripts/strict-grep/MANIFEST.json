@@ -17,7 +17,7 @@
   ],
   "expectedStrictGrepMjsFiles": 444,
   "selfTestWiredFloor": 250,
-  "unenforcedCap": 5,
+  "unenforcedCap": 4,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
   "externalGateDirs": [],
@@ -3447,12 +3447,13 @@
     {
       "script": ".github/scripts/strict-grep/orch-0910-chat-payload-curated-aware.mjs",
       "kind": "file",
-      "enforcement": "unenforced",
-      "invocation": null,
-      "modes": [],
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
       "selfTest": "none",
-      "jobKeys": [],
-      "reason": "HELD unenforced by ORCH-1400 Phase 1: exits 1 live — buildCardDataPayload no longer synthesizes top-level curated image/images from stops (1/8 checks fail; potential curated collab-card image regression). Routed as discovery D-5. Wire only once its live run is green."
+      "jobKeys": []
     },
     {
       "script": ".github/scripts/strict-grep/orch-0913-no-tabs-on-dashboards.mjs",
