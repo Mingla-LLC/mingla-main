@@ -1560,6 +1560,9 @@ export interface LiveTripPatch {
   pricing_tiers?: TripPricingTierInput[];
   cover_media_url?: string | null;
   cover_media_type?: "image" | "video" | "gif" | null;
+  // issue #868 [cover-gallery] — ADDITIONAL image/GIF items; biz_update_live_trip
+  // §5a writes it (Pass 1 §G.4). Independent of the cover fields.
+  cover_media_gallery?: OfferingGalleryImage[];
   cover_media_provider?: string | null;
   cover_media_source_url?: string | null;
   cover_media_credit?: string | null;

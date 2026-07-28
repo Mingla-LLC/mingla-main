@@ -145,6 +145,7 @@ import type { TripDayDraft } from "./TripDayEditor";
 import type { InclusionDraft } from "./TripCreatorStep3Inclusions";
 import type { EventCoverMediaType } from "../../store/draftEventStore";
 import type { EventCoverMediaProvider } from "../../types/eventCoverProvider";
+import type { OfferingGalleryImage } from "@mingla/offering-rendering";
 
 // ---- Section configuration -----------------------------------------
 
@@ -208,6 +209,8 @@ interface LocalTripEditState {
   // Cover
   coverMediaUrl: string | null;
   coverMediaType: EventCoverMediaType | null;
+  // issue #868 [cover-gallery] — ADDITIONAL image/GIF items (default []).
+  coverGallery: OfferingGalleryImage[];
   coverMediaProvider: EventCoverMediaProvider | null;
   coverMediaSourceUrl: string | null;
   coverMediaCredit: string | null;
@@ -290,6 +293,8 @@ function tripToLocalEditState(trip: Trip): LocalTripEditState {
     },
     coverMediaUrl: trip.coverMediaUrl,
     coverMediaType: coverType,
+    // issue #868 [cover-gallery] — seed the ADDITIONAL photos from the trip row.
+    coverGallery: trip.coverGallery ?? [],
     coverMediaProvider: null,
     coverMediaSourceUrl: null,
     coverMediaCredit: null,
@@ -534,6 +539,14 @@ function buildLiveTripPatch(
   // Cover (7-field)
   if (state.coverMediaUrl !== trip.coverMediaUrl) {
     patch.cover_media_url = state.coverMediaUrl;
+  }
+  // issue #868 [cover-gallery] — the ADDITIONAL photos, dirtied INDEPENDENTLY of
+  // the cover fields, sent to biz_update_live_trip (§G.4) as cover_media_gallery.
+  if (
+    JSON.stringify(state.coverGallery ?? []) !==
+    JSON.stringify(trip.coverGallery ?? [])
+  ) {
+    patch.cover_media_gallery = state.coverGallery ?? [];
   }
   if (
     state.coverMediaType !==
@@ -833,6 +846,8 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
       ...prev,
       coverMediaUrl: patch.coverMediaUrl,
       coverMediaType: patch.coverMediaType,
+      // issue #868 [cover-gallery] — carry the ADDITIONAL photos into edit state.
+      coverGallery: patch.coverGallery ?? [],
       coverMediaProvider: patch.coverMediaProvider,
       coverMediaSourceUrl: patch.coverMediaSourceUrl,
       coverMediaCredit: patch.coverMediaCredit,
@@ -1592,6 +1607,8 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                   coverMediaCredit: editState.coverMediaCredit,
                   coverMediaCreditUrl: editState.coverMediaCreditUrl,
                   coverMediaAlt: editState.coverMediaAlt,
+                  // issue #868 [cover-gallery] — seed the manager from edit state.
+                  coverGallery: editState.coverGallery,
                 }}
                 onCoverChange={handleCoverChange}
                 onShowToast={showToast}
