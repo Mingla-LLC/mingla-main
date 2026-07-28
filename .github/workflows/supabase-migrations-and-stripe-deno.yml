@@ -233,6 +233,11 @@ jobs:
             # ISSUE-996 — independent tester runtime guard: A1-A6 execute behind
             # a non-egressing global-fetch sentinel.
             supabase/functions/_shared/__tests__/issue_996_a5_no_global_fetch.tester.test.ts
+            # ISSUE-1267 — Google Ads the 5th conversion lane: upload wire shape,
+            # Enhanced-Conversions ids, two-tier value, validateOnly, fail-open, and
+            # google_ads_status IN the redelivery-dedup gate (hermetic — injected
+            # resolveClient/requestImpl seams, no global fetch).
+            supabase/functions/_shared/__tests__/issue_1267_google_conversion_lane.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then

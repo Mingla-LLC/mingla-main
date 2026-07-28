@@ -40,6 +40,7 @@ import { sendMetaConversion } from "./metaCapi.ts";
 import { sendTikTokConversion } from "./tiktokEvents.ts";
 import { sendSnapConversion } from "./snapCapi.ts";
 import { sendRedditConversion } from "./redditCapi.ts";
+import { sendGoogleConversion } from "./googleConversionUpload.ts";
 
 // ── Shared contract types (imported by the 4 senders, type-only — no cycle) ───
 
@@ -47,7 +48,7 @@ export type SendStatus = "sent" | "failed" | "skipped";
 export type Lane = "consumer" | "business";
 export type Surface = "web" | "ios" | "android";
 export type EventType = "purchase" | "reservation" | "lead" | "view";
-export type Channel = "meta" | "tiktok" | "snap" | "reddit";
+export type Channel = "meta" | "tiktok" | "snap" | "reddit" | "google";
 
 /** The normalized conversion the senders POST. PII is already hashed (SC-9). */
 export interface ConversionSendInput {
@@ -71,6 +72,18 @@ export interface SenderConnection {
   pixelId: string | null;
   tokenEnvVar: string | null; // env-var NAME — never a value
   lane?: Lane | null;
+  /**
+   * ISSUE-1267 (google lane only): the conversion-action resource name from
+   * ad_connections.extra.conversion_action_resource. Config, NOT a secret. The 4
+   * CAPI senders ignore it.
+   */
+  conversionActionResource?: string | null;
+  /**
+   * ISSUE-1267 (google lane only): consent-mode signals (config-driven). Present
+   * only when configured on the connection; absent → Google treats it as
+   * UNSPECIFIED. The 4 CAPI senders ignore it.
+   */
+  consent?: { adUserData?: string; adPersonalization?: string } | null;
 }
 
 export interface SenderDeps {
@@ -134,6 +147,9 @@ const DEFAULT_SENDERS: Record<Channel, SenderFn> = {
   tiktok: sendTikTokConversion,
   snap: sendSnapConversion,
   reddit: sendRedditConversion,
+  // ISSUE-1267 — the 5th lane: a click-conversion UPLOAD, not an event POST, but
+  // it rides this same fan-out with the same fail-open sender contract.
+  google: sendGoogleConversion,
 };
 
 const STATUS_COL: Record<Channel, string> = {
@@ -141,6 +157,7 @@ const STATUS_COL: Record<Channel, string> = {
   tiktok: "tiktok_events_status",
   snap: "snap_capi_status",
   reddit: "reddit_capi_status",
+  google: "google_ads_status", // ISSUE-1267
 };
 
 /** Per-channel canonical event name — MUST match the browser pixel's event. */
@@ -152,6 +169,11 @@ const CHANNEL_EVENT_NAME: Record<
   tiktok: { purchase: "CompletePayment", reservation: "CompleteRegistration" },
   snap: { purchase: "PURCHASE", reservation: "SAVE" },
   reddit: { purchase: "Purchase", reservation: "Lead" },
+  // ISSUE-1267 — Google keys on the conversion-action RESOURCE, not an event-name
+  // string, so this name is cosmetic for the google sender (it ignores eventName);
+  // kept for map-shape parity so the fan-out's CHANNEL_EVENT_NAME[channel] lookup
+  // never dereferences undefined.
+  google: { purchase: "Purchase", reservation: "Schedule" },
 };
 
 // ── Hashing (SC-9) — byte-identical to the WP-A attribution-capture idiom ─────
@@ -488,6 +510,38 @@ async function resolveSenderConnection(
         tokenEnvVar: str(extra.capi_env_var) ?? "REDDIT_ADS_CAPI_TOKEN",
         lane,
       };
+    case "google": {
+      // ISSUE-1267 — Google auth is OAuth (resolveGoogleClient), NOT an env-var
+      // token, and it keys on a conversion-action RESOURCE, not a pixel id. The
+      // resource lives in extra.conversion_action_resource (config, not a secret);
+      // until the admin one-shot writes it, the sender soft-skips 'pending_config'.
+      const g = (extra.google && typeof extra.google === "object")
+        ? extra.google as Record<string, unknown>
+        : {};
+      const consentRaw = ((extra.consent ?? g.consent) ?? null) as
+        | Record<string, unknown>
+        | null;
+      const adUserData = consentRaw
+        ? str(consentRaw.ad_user_data) ?? str(consentRaw.adUserData)
+        : null;
+      const adPersonalization = consentRaw
+        ? str(consentRaw.ad_personalization) ??
+          str(consentRaw.adPersonalization)
+        : null;
+      return {
+        pixelId: null,
+        tokenEnvVar: null,
+        lane,
+        conversionActionResource: str(extra.conversion_action_resource) ??
+          str(g.conversion_action_resource),
+        consent: (adUserData || adPersonalization)
+          ? {
+            adUserData: adUserData ?? undefined,
+            adPersonalization: adPersonalization ?? undefined,
+          }
+          : null,
+      };
+    }
   }
 }
 
@@ -527,7 +581,11 @@ export async function fireAdConversion(
     const { data: existing } = await supabase
       .from("ad_conversions")
       .select(
-        "event_id, meta_capi_status, tiktok_events_status, snap_capi_status, reddit_capi_status",
+        // ISSUE-1267 CRITICAL: google_ads_status MUST be projected here — the
+        // per-channel gate below reads it to decide whether Google still needs to
+        // fire. Omit it and Google appears perpetually 'pending' on every
+        // re-delivered webhook and re-fires the upload every time.
+        "event_id, meta_capi_status, tiktok_events_status, snap_capi_status, reddit_capi_status, google_ads_status",
       )
       .eq("event_id", key)
       .maybeSingle();
@@ -538,10 +596,25 @@ export async function fireAdConversion(
       tiktok: (existingRow?.[STATUS_COL.tiktok] ?? "pending") === "pending",
       snap: (existingRow?.[STATUS_COL.snap] ?? "pending") === "pending",
       reddit: (existingRow?.[STATUS_COL.reddit] ?? "pending") === "pending",
+      // ISSUE-1267 — Google is the 5th lane, added AFTER the ad_conversions row
+      // shape was first set. Semantics, by construction:
+      //   • fresh conversion (no row)          → fires (existingRow is null → true)
+      //   • row with google_ads_status='pending' (post-migration DEFAULT, incl.
+      //     rows that predate the google lane and were back-filled to 'pending')
+      //                                         → fires exactly once, then settles
+      //   • row with google_ads_status='sent'|'failed'|'skipped'
+      //                                         → NOT re-fired (dedup)
+      //   • row missing the column entirely (undefined) → treated as SETTLED, so a
+      //     legacy projection can never spuriously re-fire Google. Post-migration
+      //     every real row carries the NOT-NULL DEFAULT 'pending' string, so a
+      //     genuinely-unfired lane is still caught — ONLY the literal 'pending'
+      //     string marks it pending. (Kept distinct from the ?? 'pending' default
+      //     above precisely so an absent value ≠ a fresh-pending value.)
+      google: existingRow ? existingRow[STATUS_COL.google] === "pending" : true,
     };
     if (
       existingRow && !channelPending.meta && !channelPending.tiktok &&
-      !channelPending.snap && !channelPending.reddit
+      !channelPending.snap && !channelPending.reddit && !channelPending.google
     ) {
       return { ok: true, eventId: key, deduped: true, results: [] };
     }
@@ -581,7 +654,15 @@ export async function fireAdConversion(
     //    bounded, fail-open). Non-Meta channels never receive fbc/fbp.
     const eventTimeMs = now();
     const attempts: { channel: Channel; run: Promise<SenderResult> }[] = [];
-    for (const channel of ["meta", "tiktok", "snap", "reddit"] as Channel[]) {
+    for (
+      const channel of [
+        "meta",
+        "tiktok",
+        "snap",
+        "reddit",
+        "google",
+      ] as Channel[]
+    ) {
       if (!channelPending[channel]) continue;
       const conn = await resolveSenderConnection(supabase, channel, lane);
       const sendInput: ConversionSendInput = {

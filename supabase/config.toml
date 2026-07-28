@@ -490,6 +490,16 @@ verify_jwt = true
 [functions.admin-ad-targeting-search]
 verify_jwt = true
 
+# ISSUE-1267 [Google Ads — the 5th server-side conversion lane] — the admin
+# one-shot that provisions the Google conversion action (customers/{id}/
+# conversionActions:mutate, category PURCHASE / UPLOAD_CLICKS / ONE_PER_CLICK) and
+# stores the returned resource name in ad_connections.extra (CONFIG, not a secret),
+# plus validateOnly dry-runs of both the mutate and the uploadClickConversions
+# lane. Same gate as the WP1 fns: verify_jwt=true, then the in-code admin_users
+# active gate (403). NO token/secret ever appears in a response, row, or log.
+[functions.admin-ad-google-provision-conversion]
+verify_jwt = true
+
 # ISSUE-865 WP-A [Attribution & reservation-conversion tracking] — the anon
 # buyer-surface capture endpoint. verify_jwt=false because it is called from the
 # anon public web landing AND (post-finalize, server-to-server) from the WP-B
