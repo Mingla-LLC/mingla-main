@@ -334,6 +334,12 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   const [pendingMakeCoverIndex, setPendingMakeCoverIndex] = useState<number | null>(
     null,
   );
+  // issue #868 [cover-gallery], M.3 — GIF/Photos tab target: "cover" (default,
+  // today's behavior byte-identical) OR "gallery" (append the provider pick to the
+  // additional photos, never touch the cover fields).
+  const [providerAddTarget, setProviderAddTarget] = useState<"cover" | "gallery">(
+    "cover",
+  );
   const GALLERY_MAX = 8;
 
   useEffect(() => {
@@ -479,6 +485,22 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       onCoverChange({ ...localCoverRef.current, coverGallery: next });
     },
     [onCoverChange],
+  );
+
+  // issue #868 M.3 — append ONE image/GIF item to the gallery (clamp at max). The
+  // shared append path for BOTH the device "Add photo" and the provider (GIF/Photos)
+  // tiles when the target is "gallery". Never touches the cover fields.
+  const appendGalleryItem = useCallback(
+    (item: OfferingGalleryImage): void => {
+      if (galleryRef.current.length >= GALLERY_MAX) {
+        onShowToast(`Up to ${GALLERY_MAX} extra photos.`);
+        return;
+      }
+      commitGallery([...galleryRef.current, item]);
+      lightHaptic();
+      onShowToast("Photo added to gallery.");
+    },
+    [commitGallery, onShowToast],
   );
 
   // Add ONE image/GIF from the device library to the gallery (never a video).
@@ -1231,6 +1253,46 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         </View>
       ) : null}
 
+      {/* issue #868 M.3 — "Add to: Cover · Gallery" for the GIF/Photos tabs. Default
+          Cover (byte-identical to today). Gallery appends the tapped provider item
+          to the additional photos (never touches the cover fields). */}
+      {(activeTab === "gif" || activeTab === "stock") ? (
+        <View style={styles.addTargetRow} accessibilityRole="tablist">
+          <Text style={styles.addTargetLabel}>Add to</Text>
+          {(["cover", "gallery"] as const).map((target) => {
+            const isActive = providerAddTarget === target;
+            return (
+              <Pressable
+                key={target}
+                onPress={() => {
+                  tickHaptic();
+                  setProviderAddTarget(target);
+                }}
+                disabled={disabled}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: isActive, disabled }}
+                accessibilityLabel={
+                  target === "cover" ? "Add to cover" : "Add to gallery"
+                }
+                style={[
+                  styles.addTargetChip,
+                  isActive && styles.addTargetChipActive,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.addTargetChipLabel,
+                    isActive && styles.addTargetChipLabelActive,
+                  ]}
+                >
+                  {target === "cover" ? "Cover" : "Gallery"}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+
       {/* Tab bodies */}
       {activeTab === "library" ? (
         <LibraryTab
@@ -1272,7 +1334,17 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           selectedGiphyId={selectedGiphyId}
           selectedPexelsId={null}
           onSelectGiphy={(r) => {
-            void selectGiphy(r);
+            // issue #868 M.3 — Gallery mode appends; Cover mode = today's behavior.
+            if (providerAddTarget === "gallery") {
+              appendGalleryItem({
+                url: r.mediaUrl,
+                type: "gif",
+                alt: r.alt,
+                credit: r.credit,
+              });
+            } else {
+              void selectGiphy(r);
+            }
           }}
           onSelectPexels={() => {}}
           onRetry={() => {
@@ -1296,7 +1368,17 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           selectedPexelsId={selectedPexelsId}
           onSelectGiphy={() => {}}
           onSelectPexels={(r) => {
-            void selectPexels(r);
+            // issue #868 M.3 — Gallery mode appends; Cover mode = today's behavior.
+            if (providerAddTarget === "gallery") {
+              appendGalleryItem({
+                url: r.mediaUrl,
+                type: "image",
+                alt: r.alt,
+                credit: r.credit,
+              });
+            } else {
+              void selectPexels(r);
+            }
           }}
           onRetry={() => {
             if (query.trim().length >= 2) void runProviderSearch();
@@ -2114,6 +2196,41 @@ const styles = StyleSheet.create({
     color: textTokens.tertiary,
     textAlign: "center",
     marginTop: spacing.sm,
+  },
+  // issue #868 [cover-gallery] M.3 — provider "Add to: Cover · Gallery" control.
+  addTargetRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    marginBottom: spacing.md,
+  },
+  addTargetLabel: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: textTokens.tertiary,
+    marginRight: spacing.xs,
+  },
+  addTargetChip: {
+    minHeight: 32,
+    paddingHorizontal: spacing.md,
+    justifyContent: "center",
+    borderRadius: radiusTokens.full,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    backgroundColor: glass.tint.profileBase,
+  },
+  addTargetChipActive: {
+    borderColor: accent.border,
+    backgroundColor: accent.tint,
+  },
+  addTargetChipLabel: {
+    fontSize: typography.buttonMd.fontSize,
+    lineHeight: typography.buttonMd.lineHeight,
+    fontWeight: "600",
+    color: textTokens.secondary,
+  },
+  addTargetChipLabelActive: {
+    color: accent.warm,
   },
   // issue #868 [cover-gallery] — Additional-photos manager.
   gallerySection: {
