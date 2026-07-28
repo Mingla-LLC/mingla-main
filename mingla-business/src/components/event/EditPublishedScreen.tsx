@@ -40,6 +40,8 @@ import React, {
   useState,
 } from "react";
 import {
+  Keyboard,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -354,12 +356,51 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
   // for child-callback compatibility (KAS refines focus-scroll on top).
   const keyboardVisible = useKeyboardIsVisible();
   const scrollViewRef = useRef<ScrollView | null>(null);
+  // issue #1027 (iOS description-reveal REGRESSION) — deferred scroll-to-bottom,
+  // mirroring the create wizards. The edit screen shares the `scrollToBottom`
+  // contract with the same step bodies (CreatorStep1Basics description,
+  // CreatorStep3Where online-URL). WHY the defer is load-bearing on native:
+  // SmartScrollView (KeyboardAwareScrollView) appends a
+  // `paddingBottom: keyboardHeight + 1` spacer on keyboard show (KAS source
+  // index.tsx:405-430); `scrollToEnd` only lands the focused field above the
+  // keyboard once that spacer exists. A bare-rAF scrollToEnd fired before the
+  // keyboard rose and fought KAS → nondeterministic over-scroll on iOS.
+  // Deferring to `keyboardDidShow` runs it against the padded content height.
+  // I-PROPOSED-1027-WIZARD-REVEAL-DEFERRED-TO-KEYBOARD-SHOWN.
+  const pendingScrollToBottomRef = useRef<boolean>(false);
+  const keyboardShownRef = useRef<boolean>(false);
 
-  const scrollToBottom = useCallback((): void => {
+  const performScrollToEnd = useCallback((): void => {
     requestAnimationFrame((): void => {
       scrollViewRef.current?.scrollToEnd({ animated: true });
     });
   }, []);
+
+  const scrollToBottom = useCallback((): void => {
+    if (Platform.OS === "web" || keyboardShownRef.current) {
+      performScrollToEnd();
+      return;
+    }
+    pendingScrollToBottomRef.current = true;
+  }, [performScrollToEnd]);
+
+  useEffect(() => {
+    if (Platform.OS === "web") return undefined;
+    const showSub = Keyboard.addListener("keyboardDidShow", (): void => {
+      keyboardShownRef.current = true;
+      if (!pendingScrollToBottomRef.current) return;
+      pendingScrollToBottomRef.current = false;
+      performScrollToEnd();
+    });
+    const hideSub = Keyboard.addListener("keyboardDidHide", (): void => {
+      keyboardShownRef.current = false;
+      pendingScrollToBottomRef.current = false;
+    });
+    return (): void => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [performScrollToEnd]);
 
   // ---- Sold-count context (server-backed) ----------------------------------
   // Was an ORCH-0704 stub that read the empty client order store and returned

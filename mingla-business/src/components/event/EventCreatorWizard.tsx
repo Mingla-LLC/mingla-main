@@ -30,6 +30,7 @@ import {
   AppState,
   Image,
   Keyboard,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -320,26 +321,61 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   // doesn't reliably scroll-to-focused-input for multiline TextInputs
   // in this nested layout (verified by smoke 2026-04-30).
   const scrollViewRef = useRef<ScrollView | null>(null);
-  // Deferred scroll-to-bottom — set by step bodies on input focus,
-  // consumed in a useEffect once the keyboard has actually risen and
-  // the ScrollView's paddingBottom has been applied. Without deferral,
-  // scrollToEnd runs against the OLD content height (no padding yet),
-  // landing the focused input far above the keyboard with a huge gap.
+  // issue #1027 (iOS description-reveal REGRESSION) — deferred scroll-to-bottom.
+  // Set by step bodies on input focus (Step 1 Description, Step 3 online-URL),
+  // consumed on `keyboardDidShow`. WHY the defer is load-bearing on native:
+  // SmartScrollView is a KeyboardAwareScrollView that, on keyboard show, appends
+  // a `paddingBottom: keyboardHeight + 1` spacer to its content (KAS source
+  // index.tsx:405-430). `scrollToEnd` only lands the focused field ABOVE the
+  // keyboard once that spacer exists. The previous fix fired `scrollToEnd` in a
+  // bare requestAnimationFrame (~16ms after focus) BEFORE the keyboard rose and
+  // BEFORE the spacer was applied, so it scrolled against the pre-keyboard
+  // content height and then FOUGHT KAS's own caret-scroll — a nondeterministic
+  // race that over-scrolled the tall multiline ABOVE the viewport on iOS (Seth's
+  // physical iPhone: description not visible at all) while Android's soft-input
+  // handling absorbed it. Deferring to `keyboardDidShow` runs `scrollToEnd`
+  // against the PADDED content height so the ENTIRE description box lands just
+  // above the keyboard on both platforms — no race, no over-scroll.
+  // I-PROPOSED-1027-WIZARD-REVEAL-DEFERRED-TO-KEYBOARD-SHOWN.
   const pendingScrollToBottomRef = useRef<boolean>(false);
+  const keyboardShownRef = useRef<boolean>(false);
 
-  // ORCH-0892-B v2: keyboard listener + keyboardHeight-driven
-  // scrollToBottom plumbing DELETED. KAS via SmartScrollView computes
-  // focused-input overlap and scrolls precisely above the keyboard
-  // automatically. scrollToBottom is preserved as a passthrough so
-  // child components (CreatorStep1Basics on Description focus, etc.)
-  // can still request a scrollToEnd explicitly — KAS's per-focus
-  // scroll then refines from that position. pendingScrollToBottomRef
-  // retained as a kept-for-future hook; safe no-op when unused.
-  const scrollToBottom = useCallback((): void => {
+  const performScrollToEnd = useCallback((): void => {
     requestAnimationFrame((): void => {
       scrollViewRef.current?.scrollToEnd({ animated: true });
     });
   }, []);
+
+  const scrollToBottom = useCallback((): void => {
+    // Web has no soft keyboard and SmartScrollView is a plain ScrollView there
+    // (no KAS spacer) — scroll immediately, preserving the prior web behavior.
+    // On native, if the keyboard is ALREADY up the spacer padding is already
+    // applied, so scroll now; otherwise defer until `keyboardDidShow` fires so
+    // scrollToEnd runs against the padded content height (see ref comment above).
+    if (Platform.OS === "web" || keyboardShownRef.current) {
+      performScrollToEnd();
+      return;
+    }
+    pendingScrollToBottomRef.current = true;
+  }, [performScrollToEnd]);
+
+  useEffect(() => {
+    if (Platform.OS === "web") return undefined;
+    const showSub = Keyboard.addListener("keyboardDidShow", (): void => {
+      keyboardShownRef.current = true;
+      if (!pendingScrollToBottomRef.current) return;
+      pendingScrollToBottomRef.current = false;
+      performScrollToEnd();
+    });
+    const hideSub = Keyboard.addListener("keyboardDidHide", (): void => {
+      keyboardShownRef.current = false;
+      pendingScrollToBottomRef.current = false;
+    });
+    return (): void => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [performScrollToEnd]);
 
   // META-ORCH-1076 — provider-neutral payout readiness drives the paid-publish
   // gate, so a connected Paystack brand publishes like a Stripe-active one.
