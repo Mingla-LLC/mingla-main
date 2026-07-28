@@ -65,6 +65,9 @@ interface SessionRow {
   buyer_status_token_hash: string | null;
   status: "pending" | "completed" | "expired" | "failed";
   reservation_id: string | null;
+  // ISSUE-865 PR1 WP-2 — first-party ad click_id threaded at reservation-create
+  // (nullable; present only for ad-attributed reservations).
+  attribution_click_id: string | null;
 }
 
 serve(wrapEdgeHandler("venue-reservation-confirm", async (req) => {
@@ -98,7 +101,10 @@ serve(wrapEdgeHandler("venue-reservation-confirm", async (req) => {
     .eq("id", sessionId)
     .maybeSingle();
   if (sessionErr !== null) {
-    return jsonResponse({ error: "session_lookup_failed", detail: sessionErr.message }, 500);
+    return jsonResponse({
+      error: "session_lookup_failed",
+      detail: sessionErr.message,
+    }, 500);
   }
   if (sessionRow === null) {
     return jsonResponse({ error: "session_not_found" }, 404);
@@ -131,8 +137,10 @@ serve(wrapEdgeHandler("venue-reservation-confirm", async (req) => {
   // (Paystack confirm is verified by the paystack-webhook → a future fn; for
   // 2.2a the Stripe verify is the proven seam. NG fee venues confirm via the
   // webhook arm — flagged in the report.)
-  if (!session.stripe_payment_intent_id && session.stripe_checkout_session_id &&
-      session.stripe_account_id) {
+  if (
+    !session.stripe_payment_intent_id && session.stripe_checkout_session_id &&
+    session.stripe_account_id
+  ) {
     // hosted Checkout (web): resolve the PI from the checkout session first.
     try {
       const stripe = stripeTicketCheckout();
@@ -148,12 +156,18 @@ serve(wrapEdgeHandler("venue-reservation-confirm", async (req) => {
       if (piId) {
         await supabase
           .from("reservation_checkout_sessions")
-          .update({ stripe_payment_intent_id: piId, updated_at: new Date().toISOString() })
+          .update({
+            stripe_payment_intent_id: piId,
+            updated_at: new Date().toISOString(),
+          })
           .eq("id", sessionId);
         session.stripe_payment_intent_id = piId;
       }
     } catch (err) {
-      console.error("[venue-reservation-confirm] checkout session retrieve failed", err);
+      console.error(
+        "[venue-reservation-confirm] checkout session retrieve failed",
+        err,
+      );
       return jsonResponse({ error: "stripe_unavailable" }, 502);
     }
   }
@@ -178,14 +192,21 @@ serve(wrapEdgeHandler("venue-reservation-confirm", async (req) => {
     return jsonResponse({ error: "stripe_unavailable" }, 502);
   }
 
-  if (piStatus === "processing" || piStatus === "requires_action" ||
-      piStatus === "requires_confirmation" || piStatus === "requires_payment_method") {
+  if (
+    piStatus === "processing" || piStatus === "requires_action" ||
+    piStatus === "requires_confirmation" ||
+    piStatus === "requires_payment_method"
+  ) {
     return jsonResponse({ status: "pending", reservationId: null });
   }
   if (piStatus !== "succeeded") {
     await supabase
       .from("reservation_checkout_sessions")
-      .update({ status: "failed", failure_reason: `pi_status_${piStatus}`, updated_at: new Date().toISOString() })
+      .update({
+        status: "failed",
+        failure_reason: `pi_status_${piStatus}`,
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", sessionId);
     return jsonResponse({ status: "failed", reservationId: null });
   }
@@ -216,12 +237,22 @@ serve(wrapEdgeHandler("venue-reservation-confirm", async (req) => {
       // actual refund executes via refund-order (reuse) — wired in 2.2b/2.2c.
       await supabase
         .from("reservation_checkout_sessions")
-        .update({ status: "failed", failure_reason: "slot_unavailable_after_charge_refund_due", updated_at: new Date().toISOString() })
+        .update({
+          status: "failed",
+          failure_reason: "slot_unavailable_after_charge_refund_due",
+          updated_at: new Date().toISOString(),
+        })
         .eq("id", sessionId);
       return jsonResponse({ error: "slot_unavailable", refundDue: true }, 409);
     }
-    console.error("[venue-reservation-confirm] reservation finalize failed", finalizeErr);
-    return jsonResponse({ error: "reservation_create_failed", detail: msg }, 409);
+    console.error(
+      "[venue-reservation-confirm] reservation finalize failed",
+      finalizeErr,
+    );
+    return jsonResponse(
+      { error: "reservation_create_failed", detail: msg },
+      409,
+    );
   }
   // The RPC returns TABLE(reservation reservations, session_id uuid); PostgREST
   // surfaces it as a one-row array with a nested `reservation` composite.
@@ -231,19 +262,28 @@ serve(wrapEdgeHandler("venue-reservation-confirm", async (req) => {
   const reservationRow = finalRow?.reservation ?? null;
   const reservationId = String(reservationRow?.id ?? "");
   if (!reservationId) {
-    console.error("[venue-reservation-confirm] finalize returned no reservation id", finalized);
+    console.error(
+      "[venue-reservation-confirm] finalize returned no reservation id",
+      finalized,
+    );
     return jsonResponse({ error: "reservation_create_failed" }, 409);
   }
 
   // ISSUE-865 WP-B — ad-conversion CAPI send for a confirmed venue reservation.
   // FIRE-AND-FORGET (NOT awaited) so the guest's confirmation is never delayed
-  // — this is the guest's tap→confirm wait. event_type = 'reservation',
-  // event_id = reservationId (deduped with the browser reservation pixel).
-  // Idempotent + fail-open.
+  // — this is the guest's tap→confirm wait. Idempotent + fail-open.
+  //
+  // PR1 WP-2 TWO-TIER: this is the FEE (paid) reservation confirm, so it fires
+  // the value'd Purchase branch (eventType 'purchase' → Meta 'Purchase', TikTok
+  // 'CompletePayment', … carrying the fee amount). Free RSVPs fire the lead-type
+  // branch from venue-reservation-create instead. event_id = reservationId
+  // (deduped with the browser reservation pixel). The threaded click_id lets the
+  // send resolve reservation → touch → campaign.
   void fireAdConversion(supabase as never, {
     reservationId,
     surface: "web",
-    eventType: "reservation",
+    eventType: "purchase",
+    clickId: session.attribution_click_id ?? null,
   }).catch((adConvErr) => {
     console.warn(
       "[venue-reservation-confirm] ad-conversion fire failed (non-fatal):",

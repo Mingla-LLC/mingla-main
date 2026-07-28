@@ -612,6 +612,45 @@ export function fireAdPurchase(
   );
 }
 
+/**
+ * ISSUE-865 PR1 WP-2 — Reservation fire (the LEAD-type twin of fireAdPurchase).
+ * The founder-locked two-tier: a FREE RSVP is a lead-type event, NOT a value'd
+ * Purchase — Meta 'Schedule' / TikTok 'CompleteRegistration' / Snap 'SAVE' /
+ * Reddit 'Lead'. `eventId` MUST be the Mingla reservation id (the shared
+ * event_id) so it dedups the exact pair with the server CAPI lead send. Value is
+ * optional and defaults to £0 (a free RSVP carries no revenue). No-op pre-consent
+ * (consent-gated on adPixelsBootstrapped) / when no pixel loaded; never throws.
+ */
+export function fireAdReservation(
+  eventId: string,
+  props: { value?: number; currency?: string } = {},
+): void {
+  if (!adPixelsBootstrapped || !eventId) return;
+  const value = props.value;
+  const currency = props.currency;
+  safePixel(() =>
+    window.fbq?.("track", "Schedule", definedProps({ value, currency }), { eventID: eventId })
+  );
+  safePixel(() =>
+    window.ttq?.track?.(
+      "CompleteRegistration",
+      definedProps({ value, currency, content_type: "product" }),
+      { event_id: eventId },
+    )
+  );
+  safePixel(() =>
+    window.snaptr?.("track", "SAVE", definedProps({
+      price: value,
+      currency,
+      transaction_id: eventId,
+      client_dedup_id: eventId,
+    }))
+  );
+  safePixel(() =>
+    window.rdt?.("track", "Lead", definedProps({ value, currency, conversion_id: eventId }))
+  );
+}
+
 // ── Click-id capture + first-party threading storage ──────────────────────────
 
 interface StoredAdClick {
@@ -664,6 +703,10 @@ export function captureAdClickIds(dest?: CaptureAdClickDest): void {
     const gclid = params.get("gclid");
     const rdtCid = params.get("rdt_cid");
     const afCId = params.get("af_c_id") ?? params.get("c_id");
+    // ISSUE-865 PR1 WP-1 — first-party campaign param. Forwarded to
+    // attribution-capture, which resolves mc_id/af_c_id → ad_campaigns → the
+    // touch's campaign_id + brand_id (per-campaign ROI).
+    const mcId = params.get("mc_id");
     const utm: Record<string, string> = {};
     for (const k of ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"]) {
       const v = params.get(k);
@@ -682,8 +725,8 @@ export function captureAdClickIds(dest?: CaptureAdClickDest): void {
       ? "google"
       : "other";
     // No ad signal on this URL → nothing to record (byte-identical to no-op).
-    if (external === null && afCId === null && Object.keys(utm).length === 0) return;
-    void postAttributionTouch({ network, externalClickId: external, afCId, utm, dest }).then((clickId) => {
+    if (external === null && afCId === null && mcId === null && Object.keys(utm).length === 0) return;
+    void postAttributionTouch({ network, externalClickId: external, afCId, mcId, utm, dest }).then((clickId) => {
       if (clickId !== null) storeClickId(clickId);
     });
   } catch (err) {
@@ -697,6 +740,7 @@ interface PostTouchInput {
   network: string;
   externalClickId: string | null;
   afCId: string | null;
+  mcId?: string | null;
   utm: Record<string, string>;
   dest?: CaptureAdClickDest;
 }
@@ -720,6 +764,7 @@ export async function postAttributionTouch(input: PostTouchInput): Promise<strin
         network: input.network,
         external_click_id: input.externalClickId,
         af_c_id: input.afCId,
+        mc_id: input.mcId ?? null,
         utm: input.utm,
         dest: input.dest
           ? {
