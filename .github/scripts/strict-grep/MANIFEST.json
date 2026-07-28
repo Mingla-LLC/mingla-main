@@ -15,7 +15,7 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 445,
+  "expectedStrictGrepMjsFiles": 446,
   "selfTestWiredFloor": 253,
   "unenforcedCap": 2,
   "fixtureCap": 10,
@@ -5499,6 +5499,17 @@
     },
     {
       "script": ".github/scripts/strict-grep/__tests__/orch-1400-ratchet-frontier.adversarial.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/__tests__/orch-964-tus-bunny-gate.tester.test.mjs",
       "kind": "file",
       "enforcement": "batch:A",
       "invocation": "node --test",
