@@ -59,7 +59,7 @@ const maybeRevert = (source) => {
     .replace(/cardBubbleIntentChip/g, "cardBubbleIntentChip_REMOVED")
     .replace(/isIntentCard && intentStopCount > 0/g, "false && intentStopCount > 0")
     // collab save: strip image synth
-    .replace(/image: \(c\.stops as any\[\] \| undefined\)\?\.find/g, "image_REMOVED: (c.stops as any[] | undefined)?.find")
+    .replace(/image: \(c\.stops as any\[\] \| undefined\)\?\.find/g, "image_REMOVED: (c.stops as any[] | undefined)?.findREVERTED")
     // migration: strip RAISE EXCEPTION on row-count
     .replace(/RAISE EXCEPTION 'ORCH-0910 backfill: messages/g, "RAISE NOTICE 'ORCH-0910 SKIPPED: messages")
     .replace(/RAISE EXCEPTION 'ORCH-0910 backfill: board_saved_cards/g, "RAISE NOTICE 'ORCH-0910 SKIPPED: board_saved_cards");
@@ -181,9 +181,9 @@ const migrationSrc = maybeRevert(read("supabase/migrations/20260722000000_orch_0
   const id = "T-23";
   const label = "all-null stop imageUrl produces undefined image (no fabricated value, honest fallback to bookmark)";
   // collabSaveCard: use of typeof s.imageUrl === 'string' AND length > 0 in the find predicate
-  const collabFindGuard = /\.find\?\.\(s => typeof s\?\.imageUrl === 'string' && s\.imageUrl\.length > 0\)/;
+  const collabFindGuard = /\.find\?\.\(\s*\(?s\)?\s*=>\s*typeof s\?\.imageUrl === ['"]string['"] && s\.imageUrl\.length > 0/;
   // trim: same predicate
-  const trimFindGuard = /\.find\?\.\(\(s: any\) => typeof s\?\.imageUrl === 'string' && s\.imageUrl\.length > 0\)/;
+  const trimFindGuard = /\.find\?\.\(\s*\(s: any\)\s*=>\s*typeof s\?\.imageUrl === ['"]string['"] && s\.imageUrl\.length > 0/;
   // bubble: effectiveImage falls back to cp.image (which may also be null), and the
   // `effectiveImage ?` ternary chooses the bookmark placeholder branch on falsy
   const bubbleEffectivePattern = /const effectiveImage = isIntentCard \? intentHeroImage : cp\.image;/;
@@ -215,7 +215,7 @@ const migrationSrc = maybeRevert(read("supabase/migrations/20260722000000_orch_0
   // Adapter must do the same (already covered structurally elsewhere, but verifying interaction)
   const adapterLegacyRead = /raw\.stops \?\? legacy\.stops/;
   // intent chip render is conditional on cp.cardType OR cp.stops being non-empty
-  const intentDetect = /isIntentCard = cp\.cardType === 'curated' \|\| \(Array\.isArray\(\(cp as any\)\.stops\) && \(cp as any\)\.stops\.length > 0\)/;
+  const intentDetect = /isIntentCard = cp\.cardType === ['"]curated['"] \|\| \(Array\.isArray\(\(cp as any\)\.stops\) && \(cp as any\)\.stops\.length > 0\)/;
   if (!bubbleCardTypeRead.test(bubbleSrc)) {
     fail(id, label, "MessageBubble normalizer doesn't read cardType from legacy nested card_data — legacy rows would skip intent layout");
   } else if (!bubbleStopsRead.test(bubbleSrc)) {

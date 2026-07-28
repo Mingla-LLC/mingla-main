@@ -47,6 +47,7 @@ const maybeRevert = (source) => {
     .replace(/trimmed\.stops = trimmed\.stops\.map\(s => \(\{ \.\.\.s, placeType: undefined \}\)\);/g, "trimmed.stops_REMOVED = trimmed.stops.map(s => ({ ...s, placeType_REMOVED: undefined }));")
     .replace(/\(stop\.placeType \?\? 'place'\)\.replace/g, "stop.placeType.replace")
     .replace(/image: \(c\.stops as any\[\] \| undefined\)\?\.find/g, "image_REMOVED: (c.stops as any[] | undefined)?.find")
+    .replace(/c\.cardType === ["']curated["']/g, "c.cardType === 'curatedREVERTED'")
     .replace(/const cardType = \(raw\.cardType \?\? legacy\.cardType\) === 'curated'/g, "const cardType_REMOVED = (raw.cardType ?? legacy.cardType) === 'curated'")
     .replace(/card\.placeId \?\? \(card as any\)\.source\?\.placeId/g, "(card as any).source?.placeId")
     .replace(/haversineKm\(viewerLoc\.lat, viewerLoc\.lng, targetLat, targetLng\)/g, "haversineKm_REMOVED(viewerLoc.lat, viewerLoc.lng, targetLat, targetLng)")
@@ -249,25 +250,25 @@ check(
   "T-01 [FAILS-ON-REVERT KEY] trimCardPayload curated happy path keeps image/cardType/stops",
   /firstStopImage = card\.stops\?\.find/.test(files.messaging) &&
     /if \(firstStopImage\) trimmed\.image = firstStopImage/.test(files.messaging) &&
-    /trimmed\.cardType = 'curated'/.test(files.messaging) &&
+    /trimmed\.cardType = ['"]curated['"]/.test(files.messaging) &&
     /trimmed\.stops = card\.stops\.map/.test(files.messaging) &&
-    /placeName: String\(s\.placeName \?\? ''\)\.slice\(0, 100\)/.test(files.messaging) &&
+    /placeName: String\(s\.placeName \?\? ['"]['"]\)\.slice\(0, 100\)/.test(files.messaging) &&
     /estimatedDurationMinutes: Number\(s\.estimatedDurationMinutes\) \|\| 45/.test(files.messaging),
   "Reverting the curated trim branch must fail this check.",
 );
 
 check(
   "T-06 buildCardDataPayload curated synths top-level image/images from stops",
-  /c\.cardType === 'curated'/.test(files.collab) &&
+  /c\.cardType === ['"]curated['"]/.test(files.collab) &&
     /image: \(c\.stops as any\[\] \| undefined\)\?\.find/.test(files.collab) &&
-    /images: \(c\.stops as any\[\] \| undefined\)[\s\S]+?\.filter\(\(url\): url is string/.test(files.collab) &&
+    /images: \(c\.stops as any\[\] \| undefined\)[\s\S]+?\.filter\(\s*\(url\): url is string/.test(files.collab) &&
     /\.slice\(0, 6\)/.test(files.collab),
   "Collab lock-in card_data must expose image/images before the RPC spreads it into chat.",
 );
 
 check(
   "T-07 adapter passes cardType + stops to ExpandedCardData",
-  /const cardType = \(raw\.cardType \?\? legacy\.cardType\) === 'curated'/.test(files.adapter) &&
+  /const cardType = \(raw\.cardType \?\? legacy\.cardType\) === ['"]curated['"]/.test(files.adapter) &&
     /cardType,\s*\n\s*stops: raw\.stops \?\? legacy\.stops/.test(files.adapter) &&
     /tagline: raw\.tagline \?\? legacy\.tagline/.test(files.adapter) &&
     /estimatedDurationMinutes: raw\.estimatedDurationMinutes \?\? legacy\.estimatedDurationMinutes/.test(files.adapter),
@@ -294,7 +295,7 @@ check(
 
 check(
   "T-14 MessageBubble renders intent layout with first-stop image and stops chip",
-  /const isIntentCard = cp\.cardType === 'curated'/.test(files.bubble) &&
+  /const isIntentCard = cp\.cardType === ['"]curated['"]/.test(files.bubble) &&
     /const intentHeroImage = isIntentCard \? \(\(cp as any\)\.stops\?\.\[0\]\?\.imageUrl \?\? cp\.image\) : cp\.image/.test(files.bubble) &&
     /const effectiveImage = isIntentCard \? intentHeroImage : cp\.image/.test(files.bubble) &&
     /styles\.cardBubbleIntentChip/.test(files.bubble) &&
@@ -326,18 +327,18 @@ check(
 
 check(
   "T-25 [FAILS-ON-REVERT KEY] TrimmedCuratedStop carries modal-read fields and timeline helper is null-safe",
-  /stopLabel\?: 'Start Here' \| 'Then' \| 'End With' \| 'Explore' \| 'Optional';/.test(files.messaging) &&
+  /stopLabel\?: ['"]Start Here['"] \| ['"]Then['"] \| ['"]End With['"] \| ['"]Explore['"] \| ['"]Optional['"];/.test(files.messaging) &&
     /placeType\?: string;/.test(files.messaging) &&
     /aiDescription\?: string;/.test(files.messaging) &&
     /travelModeFromPreviousStop\?: string \| null;/.test(files.messaging) &&
-    /stopLabel: typeof s\.stopLabel === 'string' \? s\.stopLabel : undefined/.test(files.messaging) &&
-    /placeType: typeof s\.placeType === 'string' \? s\.placeType\.slice\(0, 80\) : undefined/.test(files.messaging) &&
-    /aiDescription: typeof s\.aiDescription === 'string' \? s\.aiDescription\.slice\(0, 300\) : undefined/.test(files.messaging) &&
-    /travelModeFromPreviousStop: typeof s\.travelModeFromPreviousStop === 'string' \? s\.travelModeFromPreviousStop : null/.test(files.messaging) &&
+    /stopLabel: typeof s\.stopLabel === ['"]string['"] \? s\.stopLabel : undefined/.test(files.messaging) &&
+    /placeType: typeof s\.placeType === ['"]string['"] \? s\.placeType\.slice\(0, 80\) : undefined/.test(files.messaging) &&
+    /aiDescription: typeof s\.aiDescription === ['"]string['"] \? s\.aiDescription\.slice\(0, 300\) : undefined/.test(files.messaging) &&
+    /travelModeFromPreviousStop: typeof s\.travelModeFromPreviousStop === ['"]string['"] \? s\.travelModeFromPreviousStop : null/.test(files.messaging) &&
     /stop\.stopLabel \?\? `Stop \$\{stepNumber\}`/.test(files.timeline) &&
-    /\(stop\.placeType \?\? 'place'\)\.replace\(/.test(files.timeline) &&
-    /address: stop\.address \?\? ''/.test(files.timeline) &&
-    /address: nextStop\.address \?\? ''/.test(files.timeline),
+    /\(stop\.placeType \?\? ['"]place['"]\)\.replace\(/.test(files.timeline) &&
+    /address: stop\.address \?\? ['"]['"]/.test(files.timeline) &&
+    /address: nextStop\.address \?\? ['"]['"]/.test(files.timeline),
   "Trimmed stops must carry every field read by the curated modal path, and future dropped fields must not crash curatedStopsToTimeline.",
 );
 
