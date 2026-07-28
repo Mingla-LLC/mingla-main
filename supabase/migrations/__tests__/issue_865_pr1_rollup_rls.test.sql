@@ -59,6 +59,25 @@ begin
   end if;
 end $$;
 
+-- ── T-2b · anon must NOT hold EXECUTE (ORCH-1392 SECURITY DEFINER anon gate) ───
+-- Supabase default-privileges grant EXECUTE to anon on new public functions; the
+-- migration REVOKEs it. authenticated MUST retain EXECUTE (the app calls it).
+do $$
+begin
+  if has_function_privilege('anon', 'public.brand_conversion_rollup(uuid)', 'EXECUTE') then
+    raise exception 'T-2b FAIL: anon can EXECUTE brand_conversion_rollup (SECURITY DEFINER anon leak)';
+  end if;
+  if has_function_privilege('anon', 'public.ad_campaign_conversion_rollup(uuid)', 'EXECUTE') then
+    raise exception 'T-2b FAIL: anon can EXECUTE ad_campaign_conversion_rollup (SECURITY DEFINER anon leak)';
+  end if;
+  if not has_function_privilege('authenticated', 'public.brand_conversion_rollup(uuid)', 'EXECUTE') then
+    raise exception 'T-2b FAIL: authenticated cannot EXECUTE brand_conversion_rollup';
+  end if;
+  if not has_function_privilege('authenticated', 'public.ad_campaign_conversion_rollup(uuid)', 'EXECUTE') then
+    raise exception 'T-2b FAIL: authenticated cannot EXECUTE ad_campaign_conversion_rollup';
+  end if;
+end $$;
+
 -- ── T-3 · brand-scoped SELECT RLS policies exist (alongside admin-read) ───────
 do $$
 begin

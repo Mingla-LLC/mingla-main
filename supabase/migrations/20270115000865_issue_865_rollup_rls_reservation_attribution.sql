@@ -338,10 +338,17 @@ COMMENT ON FUNCTION public.ad_campaign_conversion_rollup(uuid) IS
   'ISSUE-865 PR1 WP-3/WP-4: per-campaign ad-conversion rollup feeding the admin "Conversions & ROI" panel. SECURITY DEFINER + internal authorization (admin any; brand member only their campaign; NULL campaign = admin-only all-campaigns). spend_cents is NULL (no in-DB spend source yet — #863) so the panel never fabricates ROAS. Two-tier value semantics via SUM(COALESCE(value_cents,0)).';
 
 -- ════════════════════════════════════════════════════════════════════════
--- 5. Grants — authenticated may EXECUTE (the functions self-authorize).
+-- 5. Grants — ONLY authenticated may EXECUTE (the functions self-authorize).
 -- ════════════════════════════════════════════════════════════════════════
+-- ORCH-1392 (I-PROPOSED-1392-NO-UNALLOWLISTED-ANON-DEFINER): a SECURITY DEFINER
+-- function in `public` must NOT be anon-EXECUTE-able. Supabase's default
+-- privileges GRANT EXECUTE to `anon` DIRECTLY on every new public function, so a
+-- bare `REVOKE ... FROM PUBLIC` is NOT enough — anon keeps its direct grant. We
+-- REVOKE from PUBLIC **and** anon explicitly, then grant only to authenticated.
+-- These rollups are read by the biz owner / admin under their OWN auth (never
+-- anon, never a service-role edge caller), so authenticated is the only grantee.
 
-REVOKE ALL ON FUNCTION public.brand_conversion_rollup(uuid) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.ad_campaign_conversion_rollup(uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.brand_conversion_rollup(uuid) TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.ad_campaign_conversion_rollup(uuid) TO authenticated, service_role;
+REVOKE EXECUTE ON FUNCTION public.brand_conversion_rollup(uuid) FROM PUBLIC, anon;
+REVOKE EXECUTE ON FUNCTION public.ad_campaign_conversion_rollup(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.brand_conversion_rollup(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.ad_campaign_conversion_rollup(uuid) TO authenticated;
