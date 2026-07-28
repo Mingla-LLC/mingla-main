@@ -170,7 +170,9 @@ describe("#962 R4.G18 — reconciliation CSV omits the currency code when unset"
   test("null currency → preamble carries NO currency code (no GBP)", () => {
     const csv = serializeGuestsToCsv([], summary(null));
     expect(csv).toContain("# Revenue: gross 0.00");
-    expect(csv).not.toMatch(/# Revenue: gross 0\.00 [A-Z]{3}/);
+    // NO trailing code after the amount — a reverted serializer would append
+    // " null"/" GBP" (a space then a non-space) right after "0.00".
+    expect(csv).not.toMatch(/# Revenue: gross 0\.00 \S/);
     expect(csv).not.toContain("GBP");
   });
 
