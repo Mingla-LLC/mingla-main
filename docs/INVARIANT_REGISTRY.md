@@ -7,21 +7,21 @@
 
 ---
 
-## DRAFT — issue #890 (crash reporting Sentry lit up on production business web — IN FLIGHT, registered at IMPLEMENT 2026-07-28)
+## ACTIVE — issue #890 (crash reporting Sentry lit up on production business web — CLOSED 2026-07-28, PR #1324, tester CONDITIONAL PASS + live-fire verified in prod Sentry)
 
 > Registered DRAFT at issue #890 [sentry-web-dark] IMPLEMENT (branch `890-sentry-web-dark`). Business web shipped with crash reporting DARK: `mingla-business/src/diagnostics/sentry.ts` was a deliberate no-op stub (ORCH-0886, to stop `@sentry/browser`'s `window`-at-module-load from crashing the Expo Router static-SSR export), and no DSN reached the Vercel build env. Two gaps close together: (A) a real, EXPORT-SAFE web SDK behind the stub — `@sentry/browser@10.12.0` (the exact version `@sentry/react-native@7.2.0` already pins) loaded ONLY via a lazy dynamic `import("@sentry/browser")` inside `init()`, guarded by `typeof window !== "undefined"` and DSN-present, so nothing touches `window` at module-load and `expo export -p web` stays exit-0 (proven: the SDK/`/envelope/` transport lands in a code-split route chunk, NOT `_layout`); (B) the orchestrator provisions `EXPO_PUBLIC_SENTRY_DSN` in the `mingla-business` Vercel project (Production + Preview) at DEPLOY, and a build-time guard hard-fails a keyless PRODUCTION web build while allowing preview/local. Native iOS/Android (`sentry.native.ts` + `@sentry/react-native` + the `app.config.ts` expo plugin) and `app/_layout.tsx` are byte-identical. The orchestrator flips DRAFT → ACTIVE at CLOSE after independent tester PASS. Cross-ref: INVESTIGATION + SPEC + IMPLEMENTATION reports on issue #890.
 
-### I-PROPOSED-890-A WEB_SENTRY_LAZY_WINDOW_SAFE (DRAFT)
+### I-PROPOSED-890-A WEB_SENTRY_LAZY_WINDOW_SAFE (ACTIVE)
 - **Rule:** A web Sentry SDK (`@sentry/browser`) may be loaded ONLY via a lazy dynamic `import("@sentry/browser")` inside `mingla-business/src/diagnostics/sentry.ts`, guarded by `typeof window !== "undefined"`. NO top-level/static import of a web Sentry SDK — `import … from "@sentry/browser"`, side-effect `import "@sentry/browser"`, or `require("@sentry/browser")` — anywhere in the web graph (`mingla-business/app` + `mingla-business/src`). This preserves the ORCH-0886 invariant that the web bundle never touches `window` at module-load, so the Expo Router static-render export pass (Node, no `window`) never crashes. Mirrors I-PROPOSED-AE (`@stripe/stripe-react-native` behind `.native` boundaries); gate precedent ORCH-0778 / ORCH-1296.
 - **CI enforcement:** `.github/scripts/strict-grep/issue-890-web-sentry-lazy-only.mjs` — scans the web graph, FAILS on any static `@sentry/browser` import, and positively asserts `sentry.ts` contains BOTH a dynamic `import("@sentry/browser")` and a `typeof window` guard (so a stub revert fails RED). Carve-out job `issue-890-web-sentry-lazy-only` in `.github/workflows/strict-grep-mingla-business.yml` runs it `--self-test` (1 GOOD + 2 BAD fixtures) then plain; registered `job:` in `MANIFEST.json` (P9-checked).
 - **Regression test:** the gate `--self-test` (static-import BAD fixture + stub-shape BAD fixture) + `mingla-business/src/diagnostics/__tests__/sentry.web.issue890.test.ts` (jsdom-free node env; `init` delegates to the mocked real SDK, `captureException` returns the event id). Fails-on-revert: restoring the no-op stub makes both the gate positive-assertion and the jest delegation/event-id assertions go RED.
-- **Established:** DRAFT 2026-07-28 at issue #890 IMPLEMENT; flip ACTIVE at CLOSE after independent tester PASS.
+- **Established:** ACTIVE 2026-07-28 at issue #890 CLOSE (PR #1324, tester CONDITIONAL PASS; live-fire event `issue-890-livefire-1785257194918` received in prod Sentry `mingla-business`); registered DRAFT at IMPLEMENT.
 
-### I-PROPOSED-890-B PROD_WEB_SENTRY_DSN_PRESENT (DRAFT)
+### I-PROPOSED-890-B PROD_WEB_SENTRY_DSN_PRESENT (ACTIVE)
 - **Rule:** A Vercel **production** web build of `mingla-business` MUST fail when `EXPO_PUBLIC_SENTRY_DSN` is absent — `EXPO_PUBLIC_*` is inlined at build time, so a keyless production build would bake out an empty DSN and ship crash reporting DARK. Preview / branch / local builds only warn (the DSN may legitimately be absent there — required carve-out; must not break local dev or Vercel preview).
 - **CI enforcement:** `mingla-business/scripts/ci/require-sentry-dsn-on-prod-web.mjs`, wired FIRST in `mingla-business/vercel.json` `buildCommand` (`node scripts/ci/require-sentry-dsn-on-prod-web.mjs && npx expo export -p web && …`). Exits 1 with a FATAL message when the DSN is absent AND `VERCEL==="1" && VERCEL_ENV==="production"`; warns + exits 0 otherwise.
 - **Regression test:** run the guard three ways — `VERCEL=1 VERCEL_ENV=production` no DSN → exit 1 + FATAL; `VERCEL=1 VERCEL_ENV=preview` no DSN → exit 0; DSN set → exit 0.
-- **Established:** DRAFT 2026-07-28 at issue #890 IMPLEMENT; flip ACTIVE at CLOSE after independent tester PASS.
+- **Established:** ACTIVE 2026-07-28 at issue #890 CLOSE (PR #1324, tester CONDITIONAL PASS; live-fire event `issue-890-livefire-1785257194918` received in prod Sentry `mingla-business`); registered DRAFT at IMPLEMENT.
 
 ---
 
