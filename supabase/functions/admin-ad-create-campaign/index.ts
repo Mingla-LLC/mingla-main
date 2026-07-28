@@ -99,6 +99,9 @@ import {
   validateGoogleFinalUrl,
   validateGoogleRsa,
 } from "../_shared/google.ts";
+// #1303 RC-3: the REQUIRED square logo image for the Demand Gen video responsive
+// ad — embedded base64 PNG (public brand asset, self-contained in the edge deploy).
+import { MINGLA_SQUARE_LOGO_PNG_BASE64 } from "../_shared/adDemandGenLogo.ts";
 import { forwardGeocodeText } from "../_shared/mapboxGeocode.ts";
 import {
   assertTikTokIdentityAllowed,
@@ -712,6 +715,8 @@ serve(async (req: Request): Promise<Response> => {
         longHeadlines: longHeadlinesGV,
         descriptions: descriptionsGV,
         youtubeVideoId: youtubeVideoIdGV,
+        // #1303 RC-3: the REQUIRED square logo image asset (base64 PNG bytes).
+        logoImageData: MINGLA_SQUARE_LOGO_PNG_BASE64,
         geoTargetCriterionIds: geoTargetCriterionIdsGV,
         validateOnly: validateOnlyG,
       };

@@ -26,17 +26,19 @@
  *      the real-create parse extracts the numeric campaign / adGroup ids and the
  *      `{adGroupId}~{adId}` composite ad id.
  *   4. Builder CARDINALITY — 0 geo criteria (no criterion op) and N=3 geo criteria
- *      (3 criterion ops, each bound to the campaign temp resource), and a
- *      GENERALIZED define-before-reference invariant (every temp resourceName
- *      referenced by an op is DEFINED by an earlier op); plus the optional
- *      trackingUrlTemplate is OMITTED (never injected null/empty) when absent.
+ *      (3 AD-GROUP criterion ops, each bound to the ad-group temp resource — #1303
+ *      RC-1), and a GENERALIZED define-before-reference invariant (every temp
+ *      resourceName referenced by an op is DEFINED by an earlier op, incl. the
+ *      logo asset); plus the optional trackingUrlTemplate is OMITTED (never
+ *      injected null/empty) when absent.
  *
  * fails-on-revert: recorded in the tester QA report (revert the seam → the named
  * test goes RED → restore → GREEN).
  *
  * Pure/mocked-runtime only. NO live provider/network call, NO ad object, NO spend.
- * The DEMAND_GEN wire shape stays [SUSPECTED — Google Ads v24]; the LIVE
- * validate_only acceptance probe is a SEPARATE orchestrator step, not this gate.
+ * The DEMAND_GEN wire shape is LIVE-VALIDATED (#1303 — validateOnly:true HTTP 200
+ * on v24 AND v25); the tester's post-deploy live validate_only ACCEPT re-confirm is
+ * a SEPARATE orchestrator/tester step, not this gate.
  *
  * Run: deno test --allow-env --allow-read \
  *   supabase/functions/_shared/__tests__/issue997_google_video_create.adversarial.tester.test.ts
@@ -61,6 +63,7 @@ import {
   resetGoogleTokenCacheForTests,
   validateGoogleDemandGenAd,
 } from "../google.ts";
+import { MINGLA_SQUARE_LOGO_PNG_BASE64 } from "../adDemandGenLogo.ts";
 
 const CUSTOMER_ID = "3623860476";
 
@@ -74,6 +77,8 @@ const GOOD_INPUT: GoogleDemandGenVideoInput = {
   longHeadlines: ["Book the long-form headline that runs a bit longer here"],
   descriptions: ["A real Mingla event you can book today.", "Limited."],
   youtubeVideoId: "dQw4w9WgXcQ",
+  // #1303 RC-3: the REQUIRED square logo image (base64 PNG bytes).
+  logoImageData: MINGLA_SQUARE_LOGO_PNG_BASE64,
   geoTargetCriterionIds: ["1006886"],
 };
 
@@ -455,35 +460,42 @@ Deno.test("ADV D2 create fn: a real create parses the numeric campaign/adGroup i
 
 // ── 4. Builder cardinality + generalized define-before-reference ──────────────
 
-Deno.test("ADV D2 builder: ZERO geo criteria → no campaignCriterionOperation, and define-before-reference still holds", () => {
+Deno.test("ADV D2 builder: ZERO geo criteria → no geo criterion op at all, and define-before-reference still holds (incl. the logo asset)", () => {
   const ops = buildGoogleDemandGenMutateOperations(CUSTOMER_ID, {
     ...GOOD_INPUT,
     geoTargetCriterionIds: [],
   });
+  // #1303: video asset + logo asset both ride; geo (when present) is ad-group level.
   const keys = ops.map((o) => Object.keys(o)[0]);
   assertEquals(keys, [
     "campaignBudgetOperation",
     "campaignOperation",
     "assetOperation",
+    "assetOperation",
     "adGroupOperation",
     "adGroupAdOperation",
   ]);
+  // No geo → neither a campaign- nor an ad-group-level criterion op.
+  assertEquals(ops.filter((o) => "campaignCriterionOperation" in o).length, 0);
+  assertEquals(ops.filter((o) => "adGroupCriterionOperation" in o).length, 0);
   assertGeneralizedDefineBeforeReference(ops);
 });
 
-Deno.test("ADV D2 builder: N=3 geo criteria → 3 criterion ops, each bound to the campaign temp resource", () => {
+Deno.test("ADV D2 builder: N=3 geo criteria → 3 AD-GROUP criterion ops (#1303 RC-1), each bound to the ad-group temp resource", () => {
   const ops = buildGoogleDemandGenMutateOperations(CUSTOMER_ID, {
     ...GOOD_INPUT,
     geoTargetCriterionIds: ["1006886", "1013962", "2840"],
   });
-  const criterionOps = ops.filter((o) => "campaignCriterionOperation" in o);
+  // #1303 RC-1: geo lives at the AD-GROUP level — NOT the campaign level.
+  assertEquals(ops.filter((o) => "campaignCriterionOperation" in o).length, 0);
+  const criterionOps = ops.filter((o) => "adGroupCriterionOperation" in o);
   assertEquals(criterionOps.length, 3);
-  const campaignRes = opOfType(ops, "campaignOperation")!
+  const adGroupRes = opOfType(ops, "adGroupOperation")!
     .resourceName as string;
   for (const c of criterionOps) {
-    const create = (c.campaignCriterionOperation as Record<string, unknown>)
+    const create = (c.adGroupCriterionOperation as Record<string, unknown>)
       .create as Record<string, unknown>;
-    assertEquals(create.campaign, campaignRes);
+    assertEquals(create.adGroup, adGroupRes);
     const loc = create.location as Record<string, unknown>;
     assertStringIncludes(
       loc.geoTargetConstant as string,
