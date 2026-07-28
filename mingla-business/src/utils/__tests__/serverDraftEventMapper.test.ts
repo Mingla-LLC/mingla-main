@@ -1,3 +1,12 @@
+// ORCH-0962 [pre-bank currency de-GBP] — the currency assertions in this file
+// were inverted (prior `.toBe("GBP")` → `.toBeNull()`) because they encoded the
+// BUG behavior: the draft write path used to fabricate "GBP" for a pre-bank brand
+// that genuinely has no currency (`brands.default_currency = NULL`, migration
+// 0769 "NULL means not set; do not imply GBP"). The mapper now persists NULL via
+// `currencyCodeOrNull`, so the correct expectation is null. The explicit
+// `draft({ currency: "usd" })` round-trip test is UNCHANGED — a SET currency must
+// still round-trip verbatim. Sanctioned test correction:
+// [TEST-MOD-APPROVED ORCH-0962]
 import { describe, expect, test } from "@jest/globals";
 
 import type { DraftEvent, TicketStub } from "../../store/draftEventStore";
