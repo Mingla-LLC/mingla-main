@@ -11,6 +11,11 @@
 export { ParallaxCoverShell } from "./ParallaxCoverShell";
 export type { ParallaxCoverShellProps } from "./ParallaxCoverShell";
 
+// issue #868 [cover-gallery] — the beneath-cover ordered card row over the full
+// [cover] ++ gallery hero sequence (card 0 = cover). Injected by ParallaxCoverShell.
+export { CoverGalleryRow } from "./CoverGalleryRow";
+export type { CoverGalleryRowProps } from "./CoverGalleryRow";
+
 export { OfferingChrome } from "./OfferingChrome";
 export type { OfferingChromeProps } from "./OfferingChrome";
 

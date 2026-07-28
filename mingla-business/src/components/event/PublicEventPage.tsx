@@ -867,7 +867,31 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
               content={event.description.slice(0, 160) || event.name}
             />
             <meta property="og:title" content={event.name} />
+            {/* issue #868 [cover-gallery] — mandate H: the RSVP web <Head> was
+                missing og:image (only the event/trip SSR paths had one), so RSVP
+                share cards fell back to a blank preview. ADD-ONLY: reads the
+                UNCHANGED cover (eventOgImageUrl → coverMediaUrl or the
+                /og/event/{id}.png fallback); the gallery is irrelevant to share. */}
+            <meta
+              property="og:description"
+              content={event.description.slice(0, 200) || event.name}
+            />
             <meta property="og:url" content={canonicalUrl(event)} />
+            <meta
+              property="og:image"
+              content={eventOgImageUrl({
+                eventId: event.id,
+                coverMediaUrl: event.coverMediaUrl,
+              })}
+            />
+            <meta name="twitter:card" content="summary_large_image" />
+            <meta
+              name="twitter:image"
+              content={eventOgImageUrl({
+                eventId: event.id,
+                coverMediaUrl: event.coverMediaUrl,
+              })}
+            />
             <link rel="canonical" href={canonicalUrl(event)} />
           </Head>
         ) : null}

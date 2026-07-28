@@ -123,6 +123,8 @@ export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
             initialCredit={initial.coverMediaCredit}
             initialCreditUrl={initial.coverMediaCreditUrl}
             initialAlt={initial.coverMediaAlt}
+            // issue #868 [cover-gallery] — the ADDITIONAL image/GIF items.
+            initialCoverGallery={initial.coverGallery}
             onCoverChange={handleCoverChange}
             onShowToast={onShowToast}
             disabled={disabled}

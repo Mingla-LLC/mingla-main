@@ -174,9 +174,10 @@ export interface Trip {
   coverMediaType: string | null;
   /**
    * issue #868 [cover-gallery] — ADDITIONAL image/GIF cover-gallery items,
-   * INDEPENDENT of coverMediaUrl/coverMediaType. Default [] on legacy rows.
+   * INDEPENDENT of coverMediaUrl/coverMediaType. Optional + default-safe: the
+   * mapper always sets [] (legacy rows → []); consumers read `?? []`.
    */
-  coverGallery: OfferingGalleryImage[];
+  coverGallery?: OfferingGalleryImage[];
   businessTrip: TripBusinessTrip;
   days: TripDay[];
   pricingTiers: TripPricingTier[];

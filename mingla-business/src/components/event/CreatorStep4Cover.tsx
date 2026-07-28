@@ -87,6 +87,9 @@ export const CreatorStep4Cover: React.FC<CreatorStep4CoverProps> = ({
         coverMediaCredit: patch.coverMediaCredit,
         coverMediaCreditUrl: patch.coverMediaCreditUrl,
         coverMediaAlt: patch.coverMediaAlt,
+        // issue #868 [cover-gallery] — persist the ADDITIONAL photos into the
+        // draft (autosave + publish carry cover_media_gallery independently).
+        coverGallery: patch.coverGallery ?? [],
       });
     },
     [updateDraft],
@@ -179,6 +182,8 @@ export const CreatorStep4Cover: React.FC<CreatorStep4CoverProps> = ({
           coverMediaCredit: draft.coverMediaCredit ?? null,
           coverMediaCreditUrl: draft.coverMediaCreditUrl ?? null,
           coverMediaAlt: draft.coverMediaAlt ?? null,
+          // issue #868 [cover-gallery] — seed the manager from the draft.
+          coverGallery: draft.coverGallery ?? [],
         }}
         initialCoverHue={draft.coverHue}
         onCoverChange={handleCoverChange}

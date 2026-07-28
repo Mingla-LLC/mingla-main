@@ -323,10 +323,11 @@ export interface DraftEvent {
   coverMediaAlt?: string | null;
   /**
    * issue #868 [cover-gallery] — ADDITIONAL image/GIF cover-gallery items (hero
-   * indices 1..N), ordered. INDEPENDENT of the cover fields above. Default [] on
-   * every predating draft (persist v12→v13 backfill) ⇒ single-cover behavior.
+   * indices 1..N), ordered. INDEPENDENT of the cover fields above. Optional +
+   * default-safe: DEFAULT_DRAFT_FIELDS sets [] and the persist v12→v13 backfill
+   * fills legacy drafts; every read defaults `?? []` ⇒ single-cover behavior.
    */
-  coverGallery: OfferingGalleryImage[];
+  coverGallery?: OfferingGalleryImage[];
   // Step 5 — Tickets
   /** ISO 4217 event commerce currency. Null means server should use brand default. */
   currency?: string | null;

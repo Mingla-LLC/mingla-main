@@ -42,6 +42,7 @@
 
 import React from "react";
 import {
+  Dimensions,
   Platform,
   ScrollView,
   StyleSheet,
@@ -55,16 +56,23 @@ import {
 
 import { EventCoverMedia } from "./EventCoverMedia";
 import { ThemeEntranceAnimation } from "./ThemeEntranceAnimation";
+import { CoverGalleryRow } from "./CoverGalleryRow";
 import { type ResolvedTheme } from "./designTokens";
 import { type ThemePalette } from "./themePalette";
+import { type OfferingGalleryImage } from "./types";
 
 import { OfferingChrome } from "./OfferingChrome";
 import { useResponsiveLayout } from "./useResponsiveLayout";
 
 // react-native-web honors CSS position values RN's types omit. This cast is the
 // single sanctioned escape hatch for the parallax pin + the sticky panel.
+// issue #868 — extended with the horizontal scroll-snap CSS props RN's ViewStyle
+// omits but react-native-web honors, for the web cover pager (independent axes).
 type WebViewStyle = ViewStyle & {
   position?: ViewStyle["position"] | "fixed" | "sticky";
+  overflowX?: "auto" | "hidden" | "scroll" | "visible";
+  scrollSnapType?: string;
+  scrollSnapAlign?: string;
 };
 const webStyle = (style: WebViewStyle): StyleProp<ViewStyle> =>
   style as StyleProp<ViewStyle>;
@@ -135,6 +143,15 @@ export interface ParallaxCoverShellProps {
    * contained hero uses a fixed 21/9). Absent ⇒ byte-identical to today.
    */
   coverAspectRatio?: number;
+  /**
+   * issue #868 [cover-gallery] — the ADDITIONAL image/GIF gallery items (hero
+   * indices 1..N). The pinned cover becomes a swipeable pager over the sequence
+   * [cover] ++ galleryImages (page 0 = the existing cover, incl. a VIDEO cover,
+   * UNCHANGED), and a CoverGalleryRow is rendered as the body's first row. Absent
+   * / empty ⇒ BYTE-IDENTICAL to today (single cover, no pager, no row) for BOTH
+   * image and video covers.
+   */
+  galleryImages?: OfferingGalleryImage[];
   testID?: string;
 }
 
@@ -163,10 +180,60 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
   closeAccessibilityLabel,
   hideCloseOnWeb = false,
   coverAspectRatio = 4 / 5,
+  galleryImages,
   testID,
 }) => {
   const { isDesktop, isWeb } = useResponsiveLayout();
   const Scroll = ScrollComponent ?? ScrollView;
+
+  // issue #868 [cover-gallery] — hero sequence = [cover] ++ gallery. The pager +
+  // beneath-cover row engage ONLY when there is at least one ADDITIONAL image
+  // (sequence length > 1). Otherwise every path below renders BYTE-IDENTICALLY to
+  // today (single cover — image OR video — no pager, no row).
+  const gallery = React.useMemo(
+    () =>
+      (galleryImages ?? []).filter(
+        (g): g is OfferingGalleryImage =>
+          typeof g?.url === "string" && g.url.length > 0,
+      ),
+    [galleryImages],
+  );
+  const sequenceActive = gallery.length >= 1;
+  // Single owner of the shown-item state: 0 = cover, i = gallery[i-1].
+  const [activeIndex, setActiveIndex] = React.useState(0);
+  // Cover box width for page sizing + tap-driven scrollTo. Seeded to the window
+  // width (the full-bleed cover) so native pages have a real width on first paint;
+  // refined by onLayout (desktop's contained hero is narrower).
+  const [coverWidth, setCoverWidth] = React.useState(
+    () => Dimensions.get("window").width,
+  );
+  const pagerRef = React.useRef<ScrollView>(null);
+
+  const handlePagerScroll = React.useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>): void => {
+      const w = event.nativeEvent.layoutMeasurement.width || coverWidth;
+      if (w <= 0) return;
+      const next = Math.round(event.nativeEvent.contentOffset.x / w);
+      setActiveIndex((cur) => (cur === next ? cur : next));
+    },
+    [coverWidth],
+  );
+
+  const handlePagerLayout = React.useCallback(
+    (event: LayoutChangeEvent): void => {
+      const w = event.nativeEvent.layout.width;
+      setCoverWidth((cur) => (w > 0 && w !== cur ? w : cur));
+    },
+    [],
+  );
+
+  const selectSequenceIndex = React.useCallback(
+    (index: number): void => {
+      setActiveIndex(index);
+      pagerRef.current?.scrollTo({ x: index * coverWidth, animated: true });
+    },
+    [coverWidth],
+  );
 
   const chrome = (
     <OfferingChrome
@@ -207,6 +274,78 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
     />
   );
 
+  // issue #868 — in gallery mode the pinned cover becomes a horizontal pager over
+  // the sequence [cover] ++ gallery. Page 0 is the EXISTING coverMedia UNCHANGED
+  // (a video cover autoplays/loops/mutes exactly as today); pages 1..N are the
+  // gallery images sized to the full cover box. When NOT in gallery mode,
+  // coverRender IS the single coverMedia (byte-identical to today).
+  const coverPageStyle: StyleProp<ViewStyle> = {
+    width: coverWidth,
+    height: "100%",
+  };
+  const coverPager = (
+    <ScrollView
+      ref={pagerRef}
+      horizontal
+      pagingEnabled
+      showsHorizontalScrollIndicator={false}
+      onScroll={handlePagerScroll}
+      scrollEventThrottle={16}
+      onLayout={handlePagerLayout}
+      style={
+        isWeb
+          ? webStyle({
+              width: "100%",
+              height: "100%",
+              overflowX: "auto",
+              scrollSnapType: "x mandatory",
+            })
+          : styles.coverPager
+      }
+    >
+      <View
+        style={[
+          coverPageStyle,
+          isWeb ? webStyle({ scrollSnapAlign: "start" }) : null,
+        ]}
+      >
+        {coverMedia}
+      </View>
+      {gallery.map((item, i) => (
+        <View
+          key={`cover-seq-${i + 1}`}
+          style={[
+            coverPageStyle,
+            isWeb ? webStyle({ scrollSnapAlign: "start" }) : null,
+          ]}
+        >
+          <EventCoverMedia
+            mediaUrl={item.url}
+            mediaType={item.type ?? "image"}
+            height="100%"
+            width="100%"
+          />
+        </View>
+      ))}
+    </ScrollView>
+  );
+  const coverRender = sequenceActive ? coverPager : coverMedia;
+
+  // The beneath-cover card row (card 0 = the cover). Rendered as the body's FIRST
+  // row inside the scrolling body so it scrolls away over the pinned pager. Returns
+  // null when there are no additional photos (single-cover behavior unchanged).
+  const galleryRow = sequenceActive ? (
+    <CoverGalleryRow
+      cover={{ url: coverMediaUrl, type: coverMediaType }}
+      gallery={gallery}
+      activeIndex={activeIndex}
+      onSelect={selectSequenceIndex}
+      palette={palette}
+      variant={isDesktop ? "desktop" : "phone"}
+      testID={testID !== undefined ? `${testID}-gallery-row` : undefined}
+    />
+  ) : null;
+
   const entrance = (
     <ThemeEntranceAnimation theme={theme} sessionKey={entranceAnimationKey} />
   );
@@ -223,9 +362,9 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.desktopShell}>
-            {/* contained cover */}
+            {/* contained cover (pager in gallery mode) */}
             <View style={styles.desktopHero}>
-              {coverMedia}
+              {coverRender}
               <View style={styles.desktopHeroOverlay} pointerEvents="none" />
               {entrance}
               <View
@@ -254,7 +393,10 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
 
             {/* two-column grid */}
             <View style={styles.desktopGrid}>
-              <View style={styles.desktopLeft}>{children}</View>
+              <View style={styles.desktopLeft}>
+                {galleryRow}
+                {children}
+              </View>
               {stickyPanel != null ? (
                 <View
                   style={webStyle({
@@ -277,7 +419,10 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
   if (isWeb) {
     return (
       <View style={[styles.webPhoneHost, { backgroundColor: palette.page }]} testID={testID}>
-        {/* pinned cover (lowest layer) */}
+        {/* pinned cover (lowest layer). issue #868 — pointerEvents becomes "auto"
+            in gallery mode so the horizontal scroll-snap pager receives swipes
+            (independent of the body's vertical scroll axis); "none" otherwise
+            (byte-identical to today). */}
         <View
           style={webStyle({
             position: "fixed",
@@ -289,9 +434,9 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
             overflow: "hidden",
             backgroundColor: "#000",
           })}
-          pointerEvents="none"
+          pointerEvents={sequenceActive ? "auto" : "none"}
         >
-          {coverMedia}
+          {coverRender}
           <View style={styles.coverScrim} pointerEvents="none" />
           {entrance}
         </View>
@@ -332,8 +477,14 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
           onLayout={onScrollViewLayout}
         >
           {/* flow spacer holding the pinned cover height (matches the cover
-              aspect ratio so the body seam sits at the cover's bottom edge) */}
-          <View style={[styles.webPhoneSpacer, { aspectRatio: coverAspectRatio }]} />
+              aspect ratio so the body seam sits at the cover's bottom edge).
+              issue #868 — pointerEvents "none" in gallery mode so horizontal
+              swipes over the cover region reach the pinned pager behind the body;
+              default (undefined) otherwise (byte-identical to today). */}
+          <View
+            style={[styles.webPhoneSpacer, { aspectRatio: coverAspectRatio }]}
+            pointerEvents={sequenceActive ? "none" : undefined}
+          />
           {/* body slides up over the cover (middle layer) */}
           <View
             style={webStyle({
@@ -353,6 +504,8 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
             {stateBanner != null ? (
               <View style={styles.phoneBannerWrap}>{stateBanner}</View>
             ) : null}
+            {/* issue #868 — the beneath-cover card row is the body's FIRST row. */}
+            {galleryRow}
             {children}
           </View>
         </Scroll>
@@ -363,9 +516,15 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
   // ===================== NATIVE (single-column immersive) =====================
   return (
     <View style={[styles.nativeHost, { backgroundColor: palette.page }]} testID={testID}>
-      {/* pinned cover behind the scroll */}
-      <View style={[styles.nativeCover, { aspectRatio: coverAspectRatio }]} pointerEvents="none">
-        {coverMedia}
+      {/* pinned cover behind the scroll. issue #868 — pointerEvents "auto" in
+          gallery mode so the horizontal pager can receive swipes; "none"
+          otherwise (byte-identical to today). Row-tap → scrollTo is the
+          guaranteed control regardless of native gesture routing. */}
+      <View
+        style={[styles.nativeCover, { aspectRatio: coverAspectRatio }]}
+        pointerEvents={sequenceActive ? "auto" : "none"}
+      >
+        {coverRender}
         <View style={styles.coverScrim} pointerEvents="none" />
         {entrance}
       </View>
@@ -381,7 +540,13 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
         scrollEventThrottle={16}
         onLayout={onScrollViewLayout}
       >
-        <View style={[styles.nativeSpacer, { aspectRatio: coverAspectRatio }]} />
+        {/* issue #868 — spacer is pointerEvents "none" in gallery mode so the
+            pinned pager behind the body receives horizontal swipes; default
+            otherwise (byte-identical to today). */}
+        <View
+          style={[styles.nativeSpacer, { aspectRatio: coverAspectRatio }]}
+          pointerEvents={sequenceActive ? "none" : undefined}
+        />
         <View
           style={[
             styles.nativeBody,
@@ -394,6 +559,8 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
           {stateBanner != null ? (
             <View style={styles.phoneBannerWrap}>{stateBanner}</View>
           ) : null}
+          {/* issue #868 — the beneath-cover card row is the body's FIRST row. */}
+          {galleryRow}
           {children}
         </View>
       </Scroll>
@@ -529,6 +696,11 @@ const styles = StyleSheet.create({
     zIndex: CHROME_Z,
   },
   // ---- shared ----
+  // issue #868 — the horizontal cover pager fills the cover box (native).
+  coverPager: {
+    width: "100%",
+    height: "100%",
+  },
   coverScrim: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.22)",
