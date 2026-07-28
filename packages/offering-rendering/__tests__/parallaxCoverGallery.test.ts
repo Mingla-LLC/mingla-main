@@ -50,5 +50,24 @@ Deno.test("T-4 renders CoverGalleryRow as the body's first row (before children)
     /const\s+\[activeIndex,\s*setActiveIndex\]\s*=\s*React\.useState\(0\)/.test(SRC),
     "single owner of the shown-item state",
   );
-  assert(/pagerRef\.current\?\.scrollTo/.test(SRC), "tap drives scrollTo");
+  // Pass 3 — the pager DRIVES the scroll from activeIndex (useEffect), not a direct
+  // tap-time scrollTo that fought onScroll.
+  assert(/pagerRef\.current\?\.scrollTo\(\{ x: activeIndex \* coverWidth/.test(SRC), "pager drives scrollTo from activeIndex");
+});
+
+Deno.test("T-5 BUG 1 — shell pager commits the shown index ONLY ON SETTLE (debounced), never on intermediate onScroll frames", () => {
+  assert(/const programmaticRef = React\.useRef\(false\)/.test(SRC), "programmatic-scroll guard");
+  // Commit is debounced (settle), guarded, and only when the settled index differs.
+  assert(/settleTimerRef\.current = setTimeout\(/.test(SRC), "debounced settle commit");
+  assert(/if \(programmaticRef\.current\) \{\s*\n\s*programmaticRef\.current = false;\s*\n\s*return;/.test(SRC), "programmatic settle suppressed");
+  assert(/if \(settled !== activeRef\.current\)/.test(SRC), "commit only when the settled index differs");
+  // selectSequenceIndex must NOT itself scrollTo (that flickered — BUG 1).
+  assert(/const selectSequenceIndex = React\.useCallback\(\(index: number\): void => \{\s*\n\s*setActiveIndex\(index\);\s*\n\s*\}/.test(SRC), "tap only sets the index");
+});
+
+Deno.test("T-6 BUG 2 — shell cover pager has tap chevrons (guaranteed control)", () => {
+  assert(/<ShellChevron dir="left"/.test(SRC));
+  assert(/<ShellChevron dir="right"/.test(SRC));
+  assert(/onPress=\{goToPrevPage\}/.test(SRC));
+  assert(/onPress=\{goToNextPage\}/.test(SRC));
 });

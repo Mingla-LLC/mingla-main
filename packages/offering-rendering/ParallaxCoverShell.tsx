@@ -44,6 +44,7 @@ import React from "react";
 import {
   Dimensions,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   View,
@@ -53,6 +54,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from "react-native";
+import Svg, { Path } from "react-native-svg";
 
 import { EventCoverMedia } from "./EventCoverMedia";
 import { ThemeEntranceAnimation } from "./ThemeEntranceAnimation";
@@ -76,6 +78,19 @@ type WebViewStyle = ViewStyle & {
 };
 const webStyle = (style: WebViewStyle): StyleProp<ViewStyle> =>
   style as StyleProp<ViewStyle>;
+
+// issue #868 Pass 3 — cover-pager tap chevron (BUG 2 guaranteed control).
+const ShellChevron: React.FC<{ dir: "left" | "right" }> = ({ dir }) => (
+  <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+    <Path
+      d={dir === "left" ? "M15 18l-6-6 6-6" : "M9 6l6 6-6 6"}
+      stroke="#FFFFFF"
+      strokeWidth={2.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </Svg>
+);
 
 const SHELL_MAX_WIDTH = 1200;
 const STICKY_PANEL_WIDTH = 360;
@@ -208,13 +223,53 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
     () => Dimensions.get("window").width,
   );
   const pagerRef = React.useRef<ScrollView>(null);
+  // Pass 3 — BUG 1: activeIndex COMMITS ONLY ON SETTLE, never on intermediate
+  // onScroll frames (those bounced the ring through every page during an animated
+  // scrollTo). `programmaticRef` suppresses a tap/chevron scroll's settle;
+  // `lastIndexRef` stops the scroll-drive useEffect from re-firing on a swipe-driven
+  // change; `settleTimerRef` debounces the settle (works on web scroll-snap where
+  // there is no onMomentumScrollEnd AND native pagingEnabled).
+  const programmaticRef = React.useRef(false);
+  const lastIndexRef = React.useRef(0);
+  const activeRef = React.useRef(activeIndex);
+  activeRef.current = activeIndex;
+  const settleTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // The pager DRIVES the scroll from the controlled activeIndex (tap/chevron path) —
+  // the single place a programmatic scroll starts, so the guard is exact.
+  React.useEffect(() => {
+    if (coverWidth <= 0) return;
+    if (activeIndex === lastIndexRef.current) return;
+    lastIndexRef.current = activeIndex;
+    programmaticRef.current = true;
+    pagerRef.current?.scrollTo({ x: activeIndex * coverWidth, animated: true });
+  }, [activeIndex, coverWidth]);
+  React.useEffect(
+    () => () => {
+      if (settleTimerRef.current !== null) clearTimeout(settleTimerRef.current);
+    },
+    [],
+  );
 
   const handlePagerScroll = React.useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>): void => {
       const w = event.nativeEvent.layoutMeasurement.width || coverWidth;
-      if (w <= 0) return;
-      const next = Math.round(event.nativeEvent.contentOffset.x / w);
-      setActiveIndex((cur) => (cur === next ? cur : next));
+      const offsetX = event.nativeEvent.contentOffset.x;
+      // Commit on SETTLE only (debounced). A programmatic (tap/chevron) settle is
+      // suppressed by the guard; a user SWIPE settle commits ONCE — no flicker.
+      if (settleTimerRef.current !== null) clearTimeout(settleTimerRef.current);
+      settleTimerRef.current = setTimeout(() => {
+        if (programmaticRef.current) {
+          programmaticRef.current = false;
+          return;
+        }
+        if (w <= 0) return;
+        const settled = Math.round(offsetX / w);
+        if (settled !== activeRef.current) {
+          lastIndexRef.current = settled;
+          setActiveIndex(settled);
+        }
+      }, 130);
     },
     [coverWidth],
   );
@@ -227,13 +282,17 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
     [],
   );
 
-  const selectSequenceIndex = React.useCallback(
-    (index: number): void => {
-      setActiveIndex(index);
-      pagerRef.current?.scrollTo({ x: index * coverWidth, animated: true });
-    },
-    [coverWidth],
-  );
+  // Tap a card / chevron → set the shown index; the useEffect drives the scroll.
+  // No direct scrollTo here (that fought onScroll and flickered — BUG 1).
+  const selectSequenceIndex = React.useCallback((index: number): void => {
+    setActiveIndex(index);
+  }, []);
+  const goToPrevPage = React.useCallback((): void => {
+    setActiveIndex((cur) => (cur > 0 ? cur - 1 : cur));
+  }, []);
+  const goToNextPage = React.useCallback((): void => {
+    setActiveIndex((cur) => (cur < gallery.length ? cur + 1 : cur));
+  }, [gallery.length]);
 
   const chrome = (
     <OfferingChrome
@@ -284,50 +343,78 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
     height: "100%",
   };
   const coverPager = (
-    <ScrollView
-      ref={pagerRef}
-      horizontal
-      pagingEnabled
-      showsHorizontalScrollIndicator={false}
-      onScroll={handlePagerScroll}
-      scrollEventThrottle={16}
-      onLayout={handlePagerLayout}
-      style={
-        isWeb
-          ? webStyle({
-              width: "100%",
-              height: "100%",
-              overflowX: "auto",
-              scrollSnapType: "x mandatory",
-            })
-          : styles.coverPager
-      }
-    >
-      <View
-        style={[
-          coverPageStyle,
-          isWeb ? webStyle({ scrollSnapAlign: "start" }) : null,
-        ]}
+    <View style={styles.coverPager}>
+      <ScrollView
+        ref={pagerRef}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onScroll={handlePagerScroll}
+        scrollEventThrottle={16}
+        onLayout={handlePagerLayout}
+        style={
+          isWeb
+            ? webStyle({
+                width: "100%",
+                height: "100%",
+                overflowX: "auto",
+                scrollSnapType: "x mandatory",
+              })
+            : styles.coverPager
+        }
       >
-        {coverMedia}
-      </View>
-      {gallery.map((item, i) => (
         <View
-          key={`cover-seq-${i + 1}`}
           style={[
             coverPageStyle,
             isWeb ? webStyle({ scrollSnapAlign: "start" }) : null,
           ]}
         >
-          <EventCoverMedia
-            mediaUrl={item.url}
-            mediaType={item.type ?? "image"}
-            height="100%"
-            width="100%"
-          />
+          {coverMedia}
         </View>
-      ))}
-    </ScrollView>
+        {gallery.map((item, i) => (
+          <View
+            key={`cover-seq-${i + 1}`}
+            style={[
+              coverPageStyle,
+              isWeb ? webStyle({ scrollSnapAlign: "start" }) : null,
+            ]}
+          >
+            <EventCoverMedia
+              mediaUrl={item.url}
+              mediaType={item.type ?? "image"}
+              height="100%"
+              width="100%"
+            />
+          </View>
+        ))}
+      </ScrollView>
+      {/* Pass 3 — BUG 2 (SPEC §M.1c) — tap chevrons page cover↔photos as the
+          guaranteed control (native swipe can be captured by an ancestor scroll). */}
+      {activeIndex > 0 ? (
+        <Pressable
+          onPress={goToPrevPage}
+          accessibilityRole="button"
+          accessibilityLabel="Previous photo"
+          hitSlop={10}
+          style={[styles.pagerChevron, styles.pagerChevronLeft]}
+          testID={testID !== undefined ? `${testID}-cover-prev` : undefined}
+        >
+          <ShellChevron dir="left" />
+        </Pressable>
+      ) : null}
+      {activeIndex < gallery.length ? (
+        <Pressable
+          onPress={goToNextPage}
+          accessibilityRole="button"
+          accessibilityLabel="Next photo"
+          hitSlop={10}
+          style={[styles.pagerChevron, styles.pagerChevronRight]}
+          testID={testID !== undefined ? `${testID}-cover-next` : undefined}
+        >
+          <ShellChevron dir="right" />
+        </Pressable>
+      ) : null}
+    </View>
   );
   const coverRender = sequenceActive ? coverPager : coverMedia;
 
@@ -700,6 +787,25 @@ const styles = StyleSheet.create({
   coverPager: {
     width: "100%",
     height: "100%",
+  },
+  // issue #868 Pass 3 — cover-pager tap chevrons (BUG 2).
+  pagerChevron: {
+    position: "absolute",
+    top: "50%",
+    marginTop: -18,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.42)",
+    zIndex: 4,
+  },
+  pagerChevronLeft: {
+    left: 12,
+  },
+  pagerChevronRight: {
+    right: 12,
   },
   coverScrim: {
     ...StyleSheet.absoluteFillObject,

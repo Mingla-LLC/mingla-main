@@ -38,7 +38,6 @@ import {
   ActivityIndicator,
   Dimensions,
   Pressable,
-  ScrollView,
   Share,
   StyleSheet,
   Text,
@@ -258,7 +257,6 @@ export default function ConsumerExperienceDetailScreen({
   const [coverWidth, setCoverWidth] = useState<number>(
     () => Dimensions.get("window").width,
   );
-  const coverPagerRef = useRef<ScrollView>(null);
 
   // ORCH-1341 — "Who's going" guest-list sheet visibility (declared before the
   // loading/error early returns per the Rules of Hooks).
@@ -802,9 +800,9 @@ export default function ConsumerExperienceDetailScreen({
     (g) => typeof g?.url === "string" && g.url.length > 0,
   );
   const galleryActive = coverGallery.length >= 1;
+  // issue #868 Pass 3 — the pager OWNS scrolling (settle-guard, BUG 1).
   const selectCoverIndex = (index: number): void => {
     setCoverIndex(index);
-    coverPagerRef.current?.scrollTo({ x: index * coverWidth, animated: true });
   };
   const coverMediaNode = (
     <EventCoverMedia
@@ -986,7 +984,6 @@ export default function ConsumerExperienceDetailScreen({
               gallery={coverGallery}
               activeIndex={coverIndex}
               onActiveIndexChange={setCoverIndex}
-              scrollRef={coverPagerRef}
               width={coverWidth}
             />
           ) : (

@@ -50,7 +50,6 @@ import {
   Linking,
   Platform,
   Pressable,
-  ScrollView,
   Share,
   StyleSheet,
   Text,
@@ -294,7 +293,6 @@ export default function ConsumerEventDetailScreen({
   const [coverWidth, setCoverWidth] = useState<number>(
     () => Dimensions.get("window").width,
   );
-  const coverPagerRef = useRef<ScrollView>(null);
   const [muted, setMuted] = useState<boolean>(true);
 
   // ORCH-1341 — "Who's going" guest-list sheet visibility. Both branches share
@@ -915,9 +913,10 @@ export default function ConsumerEventDetailScreen({
     (g) => typeof g?.url === "string" && g.url.length > 0,
   );
   const galleryActive = coverGallery.length >= 1;
+  // issue #868 Pass 3 — the pager OWNS scrolling (it drives scrollTo from
+  // activeIndex with a settle-guard, BUG 1). The row just sets the shown index.
   const selectCoverIndex = (index: number): void => {
     setCoverIndex(index);
-    coverPagerRef.current?.scrollTo({ x: index * coverWidth, animated: true });
   };
   // The screen's EXISTING cover node — UNCHANGED (video-capable). Reused as page 0
   // of the pager in gallery mode, or rendered alone when the gallery is empty.
@@ -1064,7 +1063,6 @@ export default function ConsumerEventDetailScreen({
               gallery={coverGallery}
               activeIndex={coverIndex}
               onActiveIndexChange={setCoverIndex}
-              scrollRef={coverPagerRef}
               width={coverWidth}
             />
           ) : (
