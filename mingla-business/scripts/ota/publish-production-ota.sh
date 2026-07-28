@@ -15,12 +15,16 @@
 #   2. SAFE FLAGS. Per-platform only (never `--platform all`), `--branch
 #      production`, `--non-interactive`.
 #
-# ⚠ COMMS-0063 / COMMS-0052: business-app OTAs have EMPIRICALLY BRICKED launch
-#   (an applied OTA stuck the splash screen; rolled back to embedded). Business
-#   delivery is NATIVE-BUILD-ONLY until ORCH-1261's appVersion/runtimeVersion bump
-#   AND a verified on-device OTA-apply test. This script is the canonical wrapper
-#   for WHEN OTA is re-enabled — running it does not by itself make OTA safe; a
-#   real-device apply test is still required first.
+# OTA IS ENABLED (resolved). Production business OTA ships pure-JS / zero-native-
+#   module-delta changes through THIS script. The 2026-07-02 stuck-on-splash brick
+#   (COMMS-0063/0052) was a NATIVE-MODULE DELTA — the OTA bundle referenced
+#   posthog-react-native, absent from the shipped binary — plus a wrong-key handshake
+#   (#990). Both are solved: this script forces --environment production (correct
+#   pk_live_ + Sentry DSN), and ORCH-1384's on-device pre-OTA smoke (2026-07-18,
+#   physical Samsung) proved the cumulative bundle has ZERO native-module delta vs the
+#   shipped 1.1.2 binary. SAFE to OTA any pure-JS / zero-native-delta change; keep
+#   `eas update:roll-back-to-embedded` ready. A change that ADDS/BUMPS a native module
+#   or touches app.json / native config needs a full `eas build`, NOT an OTA.
 #
 # Usage: scripts/ota/publish-production-ota.sh <ios|android> "<update message>"
 
