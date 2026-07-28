@@ -130,6 +130,8 @@ jobs:
         run: >
           node --experimental-strip-types --test
           src/hooks/__tests__/useAuthSimple.authFailureCapture.adversarial.issue1044.test.ts
-      # I-SENTRY-SINGLE-INIT — the consumer change adds a CAPTURE, never an INIT.
-      - name: I-SENTRY-SINGLE-INIT still green
-        run: bash scripts/ci/check-single-sentry-init.sh
+      # I-SENTRY-SINGLE-INIT enforcement moved to app-mobile/scripts/ci/check-single-sentry-init.mjs,
+      # registered in MANIFEST.json (strict-grep run-batch class A) by issue #967 — it now runs on
+      # EVERY PR instead of only when this path-gated auth workflow fires. The old
+      # `bash scripts/ci/check-single-sentry-init.sh` step was removed here to avoid a dangling
+      # reference to the deleted .sh.

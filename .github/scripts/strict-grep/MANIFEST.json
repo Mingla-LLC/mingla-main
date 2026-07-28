@@ -15,12 +15,14 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 446,
-  "selfTestWiredFloor": 253,
+  "expectedStrictGrepMjsFiles": 447,
+  "selfTestWiredFloor": 262,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
-  "externalGateDirs": [],
+  "externalGateDirs": [
+    "app-mobile/scripts/ci"
+  ],
   "gates": [
     {
       "script": ".github/scripts/strict-grep/i-proposed-966-cover-video-provider-bunny-only.mjs",
@@ -5520,6 +5522,17 @@
       "jobKeys": []
     },
     {
+      "script": ".github/scripts/strict-grep/__tests__/orch-967-p11-external-totality.tester.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:B",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
       "script": ".github/scripts/strict-grep/__tests__/issue-955-p0-batch1-selftest-coupling.adversarial.test.mjs",
       "kind": "file",
       "enforcement": "batch:A",
@@ -6387,6 +6400,600 @@
       ],
       "selfTest": "none",
       "jobKeys": []
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-0751-revenuecat-logout-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-0751-revenuecat-logout-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-0897-a-regression-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-0897-a-regression-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-0901-adversarial-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-0901-adversarial-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-0904-adversarial-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-0904-adversarial-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-0904-regression-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-0904-regression-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-0906-client-hotfix-adversarial-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-0906-client-hotfix-adversarial-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-0906-client-hotfix-regression-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-0906-client-hotfix-regression-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-0908-chat-mention-card-tag-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-0908-chat-mention-card-tag-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-0908-combined-regression-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-0908-combined-regression-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-0943-regression-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-0943-regression-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-0964-logout-cache-regression-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-0964-logout-cache-regression-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/meta-orch-1002-android-glass-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "meta-orch-1002-android-glass-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/meta-orch-1002-android-glass-adversarial-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "meta-orch-1002-android-glass-adversarial-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1016-trips-discovery-service-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1016-trips-discovery-service-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1028-launch-city-gate-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:D",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1028-launch-city-gate-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1028-scroll-policy-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:D",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1028-scroll-policy-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1034-currency-de-gbp-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1034-currency-de-gbp-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1034-currency-de-gbp.tester-adversarial.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1034-currency-de-gbp.tester-adversarial"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1039-collab-gate-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:D",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1039-collab-gate-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1049-matches-sheet-bottom-inset-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1049-matches-sheet-bottom-inset-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1054-matches-expanded-card-parity-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1054-matches-expanded-card-parity-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1058-regression-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:B",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1058-regression-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1125-regression-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1125-regression-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1148-2-2b-reserve-teardown-swallow-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1148-2-2b-reserve-teardown-swallow-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1148-reserve-sheet-mount-on-open-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1148-reserve-sheet-mount-on-open-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1149-inapp-browser-bottom-anchored.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain",
+        "self-test"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "orch-1149-inapp-browser-bottom-anchored"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1161-notif-prefs-matrix-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:D",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1161-notif-prefs-matrix-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1171-keyboard-done-bar-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1171-keyboard-done-bar-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1163-rsvp-going-calendar-qr-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1163-rsvp-going-calendar-qr-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1163-rsvp-going-confirm-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1163-rsvp-going-confirm-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1163-rsvp-guest-notify-match-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1163-rsvp-guest-notify-match-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1163-rsvp-one-read-path-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1163-rsvp-one-read-path-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1163-rsvp-one-shared-body-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1163-rsvp-one-shared-body-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1163-rsvp-plus-one-per-guest-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1163-rsvp-plus-one-per-guest-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1163-rsvp-shell-agnostic-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1163-rsvp-shell-agnostic-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/check-active-tab-only.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain",
+        "self-test"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "i-only-active-tab-mounted"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/check-i18n-lazy-load.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain",
+        "self-test"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "i-locales-lazy-load"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/check-no-inline-map-in-appcontent.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain",
+        "self-test"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "i-no-inline-map-in-appcontent"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/check-no-native-driver-false.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain",
+        "self-test"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "i-animations-native-driver-default"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/check-render-counter-present.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain",
+        "self-test"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "orch-0679-render-counter-present"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/check-single-sentry-init.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain",
+        "self-test"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "i-sentry-single-init"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/check-tabs-memo-wrapped.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain",
+        "self-test"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "i-tab-screens-memoized"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/check-zustand-persist-debounced.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain",
+        "self-test"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "i-zustand-persist-debounced"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-0901-regression-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-0901-regression-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1240-dual-account-deletion-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1240-dual-account-deletion-check"
+      ]
     }
   ]
 }
