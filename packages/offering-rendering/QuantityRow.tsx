@@ -139,8 +139,13 @@ export interface QuantityRowProps {
   formatCurrency: (value: number, currency: string) => string;
   /** Color tokens. Defaults mirror the mingla-business public buyer page. */
   theme?: QuantityRowTheme;
-  /** Optional fallback when `ticket.currency` is undefined. Default "GBP". */
-  fallbackCurrency?: string;
+  /**
+   * Optional fallback when `ticket.currency` is unset. `null` (the default,
+   * issue #962) means NO established currency — a priced tier renders "—" and
+   * `formatCurrency` is NEVER called with a fabricated code. Pass a real ISO
+   * 4217 code only when one is genuinely established for the brand.
+   */
+  fallbackCurrency?: string | null;
   /** Called when a sold-out waitlist-enabled row is tapped. */
   onJoinWaitlist?: (ticketId: string) => void;
   /**
@@ -162,7 +167,7 @@ export const QuantityRow: React.FC<QuantityRowProps> = ({
   renderPlusIcon,
   formatCurrency,
   theme,
-  fallbackCurrency = "GBP",
+  fallbackCurrency = null,
   onJoinWaitlist,
   installmentNote,
 }) => {
@@ -249,9 +254,16 @@ export const QuantityRow: React.FC<QuantityRowProps> = ({
   // 0-priced ticket on a NULL-currency event NEVER reaches the formatter with
   // a fabricated fallback code (free renders before any currency formatting).
   const effectivePrice = ticket.priceAllInGbp ?? ticket.priceGbp ?? 0;
+  // issue #962 — a priced tier with NO established currency (ticket.currency null
+  // AND fallbackCurrency null, e.g. a pre-bank brand) renders "—" and NEVER calls
+  // formatCurrency with a fabricated code. Free tiers still render "Free" before
+  // any currency resolution (issue #1014).
+  const resolvedCurrency = ticket.currency ?? fallbackCurrency;
   const priceText = ticket.isFree || effectivePrice === 0
     ? "Free"
-    : formatCurrency(effectivePrice, ticket.currency ?? fallbackCurrency);
+    : resolvedCurrency === null
+      ? "—"
+      : formatCurrency(effectivePrice, resolvedCurrency);
   // Quiet "incl. VAT & fees" treatment ONLY when all-in differs from base
   // (a passed switch grossed it up). All-absorb / free => plain price, no suffix.
   const showInclusive =

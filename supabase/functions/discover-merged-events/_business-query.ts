@@ -126,7 +126,11 @@ export function mapRpcRowToCard(row: RpcRow): BusinessEventCard {
     priceMax,
     displayPriceCents: (row.display_price_cents as number | null) ?? null,
     displayCurrency: (row.pricing_currency as string | null) ?? null,
-    currency: String(row.currency ?? "GBP"),
+    // issue #962 — a null-currency (pre-bank) row falls back to USD to
+    // byte-match the /e/ cold seed (publicEventSeedService.ts `row.currency ??
+    // "USD"`), so the SAME event shows the SAME symbol in the deck and via the
+    // shared link. Kills the GBP-vs-USD split-brain; GBP is never fabricated.
+    currency: String(row.currency ?? "USD"),
     publicBuyerUrl: `${BUSINESS_BUYER_DOMAIN}/e/${brandSlug}/${eventSlug}`,
     // ORCH-1150 — carry the offering discriminator so the consumer deck renders
     // Going/Not-going for an RSVP instead of Book. Only opted-in discoverable

@@ -126,7 +126,6 @@ export const QuantityRow: React.FC<QuantityRowProps> = ({
       renderPlusIcon={renderPlusIcon}
       formatCurrency={formatCurrency}
       theme={MINGLA_BUSINESS_THEME}
-      fallbackCurrency="GBP"
       onJoinWaitlist={onJoinWaitlist}
       installmentNote={installmentNote}
     />

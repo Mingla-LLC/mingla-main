@@ -304,7 +304,13 @@ describe("event draft currency persistence", () => {
     expect(updatePayloads[0]?.currency).toBe("CAD");
   });
 
-  test("autosave final fallback is GBP for fully legacy null-currency rows", async () => {
+  // ORCH-0962 [pre-bank currency de-GBP] — corrected from the prior
+  // `.toBe("GBP")`, which asserted the BUG: a fully-null (pre-bank) draft used to
+  // have GBP fabricated by the mapper's `normalizeCurrency`. `resolveDraftCurrencyForSave`
+  // already returns null (draft→server→brand-default, all null pre-bank); the mapper
+  // now persists that null via `currencyCodeOrNull` (issue #962), so the autosave
+  // payload for a fully-null row is NULL, never GBP. [TEST-MOD-APPROVED ORCH-0962]
+  test("autosave final fallback is NULL for fully legacy null-currency rows", async () => {
     const draft = baseDraft({ currency: null });
     const updatePayloads: Record<string, unknown>[] = [];
 
@@ -319,7 +325,7 @@ describe("event draft currency persistence", () => {
 
     await autosaveServerDraft(draft);
 
-    expect(updatePayloads[0]?.currency).toBe("GBP");
+    expect(updatePayloads[0]?.currency).toBeNull();
   });
 
   test("autosave preserves explicit draft currency over server and brand defaults", async () => {

@@ -13,7 +13,7 @@ import {
   type EventCoverMediaProvider,
 } from "../types/eventCoverProvider";
 import type { LiveEvent } from "../store/liveEventStore";
-import { normalizeCurrency } from "./currency";
+import { currencyCodeOrNull } from "./currency";
 import {
   themeOverridesFromColumns,
   themeOverridesToColumns,
@@ -88,7 +88,7 @@ export interface ServerDraftEventInsert {
   cover_media_credit: string | null;
   cover_media_credit_url: string | null;
   cover_media_alt: string | null;
-  currency: string;
+  currency: string | null;
   is_online: boolean;
   is_recurring: boolean;
   is_multi_date: boolean;
@@ -118,7 +118,7 @@ export interface ServerDraftEventUpdate {
   cover_media_credit: string | null;
   cover_media_credit_url: string | null;
   cover_media_alt: string | null;
-  currency: string;
+  currency: string | null;
   is_online: boolean;
   is_recurring: boolean;
   is_multi_date: boolean;
@@ -176,7 +176,7 @@ export interface BusinessDraftPayload {
     creditUrl: string | null;
     alt: string | null;
   };
-  currency: string;
+  currency: string | null;
   whenMode: WhenMode;
   when: {
     date: string | null;
@@ -341,7 +341,7 @@ const buildBusinessDraftPayload = (
     creditUrl: draft.coverMediaCreditUrl ?? null,
     alt: draft.coverMediaAlt ?? null,
   },
-  currency: normalizeCurrency(draft.currency),
+  currency: currencyCodeOrNull(draft.currency),
   whenMode: draft.whenMode,
   when: {
     date: draft.date,
@@ -630,7 +630,7 @@ export const draftToServerInsert = (
     draft.coverMediaUrl === null ? null : draft.coverMediaCreditUrl ?? null,
   cover_media_alt:
     draft.coverMediaUrl === null ? null : draft.coverMediaAlt ?? null,
-  currency: normalizeCurrency(draft.currency),
+  currency: currencyCodeOrNull(draft.currency),
   is_online: draft.format === "online" || draft.format === "hybrid",
   is_recurring: draft.whenMode === "recurring",
   is_multi_date: draft.whenMode === "multi_date",
@@ -670,7 +670,7 @@ export const draftToServerUpdate = (
     draft.coverMediaUrl === null ? null : draft.coverMediaCreditUrl ?? null,
   cover_media_alt:
     draft.coverMediaUrl === null ? null : draft.coverMediaAlt ?? null,
-  currency: normalizeCurrency(draft.currency),
+  currency: currencyCodeOrNull(draft.currency),
   is_online: draft.format === "online" || draft.format === "hybrid",
   is_recurring: draft.whenMode === "recurring",
   is_multi_date: draft.whenMode === "multi_date",
