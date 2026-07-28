@@ -53,7 +53,7 @@ const opaqueTileBg = (palette: ThemePalette): string =>
   Platform.select({ android: "#1A1A1C", default: palette.card }) ?? palette.card;
 
 const PlayBadge: React.FC = () => (
-  <View style={styles.playBadge} pointerEvents="none">
+  <View style={styles.playBadge} pointerEvents="none" testID="cover-play-badge">
     <Svg width={12} height={12} viewBox="0 0 24 24" fill="none">
       <Path d="M8 5v14l11-7z" fill="#FFFFFF" />
     </Svg>
@@ -66,6 +66,7 @@ const CheckBadge: React.FC<{ palette: ThemePalette }> = ({ palette }) => (
   <View
     style={[styles.checkBadge, { backgroundColor: palette.accent }]}
     pointerEvents="none"
+    testID="cover-active-check"
   >
     <Svg width={10} height={10} viewBox="0 0 24 24" fill="none">
       <Path

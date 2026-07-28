@@ -23,6 +23,7 @@ import {
   isThemeColor,
   isThemeFontSlug,
   type ThemeInput,
+  type OfferingGalleryImage,
 } from "@mingla/offering-rendering";
 import { parseClaimedVenueHours } from "../utils/venuePublicHours";
 import { buildVenueGalleryPhotoUrls } from "../utils/venuePublicPhotos";
@@ -95,6 +96,8 @@ interface BusinessPublicEventViewRow {
   recurrence_rules: unknown;
   cover_media_url: string | null;
   cover_media_type: "image" | "video" | "gif" | null;
+  // issue #868 [cover-gallery] — additive; absent on legacy rows → mapped to [].
+  cover_media_gallery?: OfferingGalleryImage[] | null;
   cover_media_provider: EventCoverMediaProvider | null;
   cover_media_source_url: string | null;
   cover_media_credit: string | null;
@@ -1038,6 +1041,10 @@ export const publicEventViewRowToEvent = (
     coverHue,
     coverMediaUrl: row.cover_media_url,
     coverMediaType: row.cover_media_type,
+    // issue #868 [cover-gallery] — additive; [] on legacy rows (rule 9).
+    coverGallery: Array.isArray(row.cover_media_gallery)
+      ? row.cover_media_gallery
+      : [],
     coverMediaProvider: asEventCoverMediaProvider(row.cover_media_provider),
     coverMediaSourceUrl: asStringOrNull(row.cover_media_source_url),
     coverMediaCredit: asStringOrNull(row.cover_media_credit),

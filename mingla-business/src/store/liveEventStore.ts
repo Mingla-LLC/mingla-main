@@ -39,7 +39,7 @@ import type {
   EventCoverMediaType,
 } from "./draftEventStore";
 import type { EventCoverMediaProvider } from "../types/eventCoverProvider";
-import type { ThemeInput } from "@mingla/offering-rendering";
+import type { ThemeInput, OfferingGalleryImage } from "@mingla/offering-rendering";
 import { useEventEditLogStore } from "./eventEditLogStore";
 import { useOrderStore } from "./orderStore";
 import type { SoldCountContext } from "./orderStoreHelpers";
@@ -289,6 +289,12 @@ export interface LiveEvent {
   coverMediaCredit?: string | null;
   coverMediaCreditUrl?: string | null;
   coverMediaAlt?: string | null;
+  /**
+   * issue #868 [cover-gallery] — ADDITIONAL image/GIF cover-gallery items,
+   * INDEPENDENT of the cover fields above. Optional + default-safe ([] when
+   * absent). Threaded to the shared renderer via mapLiveEventToPublicEvent.
+   */
+  coverGallery?: OfferingGalleryImage[];
   /**
    * ISO 4217 immutable commerce currency for this published event.
    * #962 — nullable: a pre-bank brand has NO currency (brands.default_currency

@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 449,
-  "selfTestWiredFloor": 264,
+  "expectedStrictGrepMjsFiles": 450,
+  "selfTestWiredFloor": 265,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -7046,6 +7046,18 @@
       "jobKeys": [
         "orch-1240-dual-account-deletion-check"
       ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-0868-cover-gallery.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
     }
   ]
 }

@@ -219,6 +219,10 @@ const mapLiveEventToPublicEvent = (event: LiveEvent): PublicEventProps => {
         ? safeCoverMediaType
         : null,
     coverCredit,
+    // issue #868 [cover-gallery] — thread the ADDITIONAL image/GIF items to the
+    // shared renderer (ParallaxCoverShell pager + CoverGalleryRow). [] = single
+    // cover (byte-identical). Independent of the cover fields above.
+    coverGallery: event.coverGallery ?? [],
     tickets: event.tickets.map(mapTicket),
     // issue #1014 — NULL passthrough, no fabricated GBP: a published
     // NULL-currency event is free-only by schema (paid tickets always carry a
