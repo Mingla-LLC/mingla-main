@@ -449,6 +449,8 @@ export type {
   EventStatus,
   TicketVisibility,
   TicketAvailableAt,
+  // issue #868 [cover-gallery] — ADDITIONAL image/GIF cover-gallery item type.
+  OfferingGalleryImage,
 } from "./types";
 export type {
   ResolvedTheme,

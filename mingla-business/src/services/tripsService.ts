@@ -16,7 +16,7 @@
  */
 
 import { supabase } from "./supabase";
-import type { ThemeInput } from "@mingla/offering-rendering";
+import type { ThemeInput, OfferingGalleryImage } from "@mingla/offering-rendering";
 import { themeOverridesFromColumns } from "./offeringTheme";
 import type { BrandRole } from "../store/currentBrandStore";
 // META-ORCH-1235 — settle-guarantee for the Hub trips full-screen gate.
@@ -172,6 +172,11 @@ export interface Trip {
   timezone: string;
   coverMediaUrl: string | null;
   coverMediaType: string | null;
+  /**
+   * issue #868 [cover-gallery] — ADDITIONAL image/GIF cover-gallery items,
+   * INDEPENDENT of coverMediaUrl/coverMediaType. Default [] on legacy rows.
+   */
+  coverGallery: OfferingGalleryImage[];
   businessTrip: TripBusinessTrip;
   days: TripDay[];
   pricingTiers: TripPricingTier[];
@@ -250,6 +255,11 @@ export interface TripBasicsPatch {
   businessTrip?: Partial<TripBusinessTrip>;
   coverMediaUrl?: string | null;
   coverMediaType?: "image" | "video" | "gif" | null;
+  /**
+   * issue #868 [cover-gallery] — ADDITIONAL image/GIF gallery items. Additive +
+   * INDEPENDENT: written only when present; the cover-field writes stay unchanged.
+   */
+  coverGallery?: OfferingGalleryImage[];
   timezone?: string;
 }
 
@@ -379,6 +389,8 @@ interface EventRow {
   timezone: string;
   cover_media_url: string | null;
   cover_media_type: string | null;
+  // issue #868 [cover-gallery] — additive; absent on legacy rows → mapped to [].
+  cover_media_gallery?: OfferingGalleryImage[] | null;
   destination_text?: string | null;
   departure_text?: string | null; // ORCH-1016 canonical departure column
   theme: Record<string, unknown> | null;
@@ -593,6 +605,10 @@ function mapTrip(
     timezone: event.timezone,
     coverMediaUrl: event.cover_media_url,
     coverMediaType: event.cover_media_type,
+    // issue #868 [cover-gallery] — additive; [] on legacy rows (rule 9).
+    coverGallery: Array.isArray(event.cover_media_gallery)
+      ? event.cover_media_gallery
+      : [],
     businessTrip: readBusinessTrip(
       event.theme,
       ticketTypes[0]?.quantity_total ?? null,
@@ -1004,6 +1020,9 @@ export async function updateTripBasics(
   if (patch.description !== undefined) update.description = patch.description;
   if (patch.coverMediaUrl !== undefined) update.cover_media_url = patch.coverMediaUrl;
   if (patch.coverMediaType !== undefined) update.cover_media_type = patch.coverMediaType;
+  // issue #868 [cover-gallery] — additive gallery write; the cover-field writes
+  // above stay UNCHANGED (no sync/derive between the two).
+  if (patch.coverGallery !== undefined) update.cover_media_gallery = patch.coverGallery;
   if (patch.timezone !== undefined) update.timezone = patch.timezone;
 
   // theme.business_trip merge — read current, jsonb_set-style merge in JS

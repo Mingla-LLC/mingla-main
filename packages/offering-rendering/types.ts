@@ -14,6 +14,23 @@ import type { ResolvedTheme, ThemeInput } from "./designTokens";
 
 export type EventCoverMediaType = "image" | "video" | "gif";
 export type EventFormat = "in-person" | "online" | "hybrid";
+
+/**
+ * issue #868 [cover-gallery] — ONE ADDITIONAL cover-gallery item (hero index
+ * 1..N). Image/GIF ONLY — never "video": a video lives ONLY in the primary
+ * cover fields (coverMediaUrl/coverMediaType) at sequence index 0 and COEXISTS
+ * with a photo gallery. The renderer reads `url` + `type`; the rest is opaque
+ * round-tripped metadata (mirrors the DB {url,type?,alt?,credit?,w?,h?} shape;
+ * no DB CHECK on item shape, exactly like trip_days.media).
+ */
+export interface OfferingGalleryImage {
+  url: string;
+  type?: "image" | "gif"; // never "video"; default "image"
+  alt?: string | null;
+  credit?: string | null;
+  width?: number | null;
+  height?: number | null;
+}
 export type EventStatus = "draft" | "published" | "ended" | "cancelled";
 export type TicketVisibility = "visible" | "hidden" | "disabled";
 export type TicketAvailableAt = "online" | "door" | "both";
@@ -92,6 +109,16 @@ export interface PublicEventProps {
   coverMediaUrl: string | null;
   coverMediaType: EventCoverMediaType | null;
   coverCredit: string | null;
+  /**
+   * issue #868 [cover-gallery] — ADDITIONAL image/GIF cover-gallery items (hero
+   * indices 1..N), INDEPENDENT of coverMediaUrl/coverMediaType (the primary
+   * cover, image OR video, at index 0). ADDITIVE + default-safe: `[]` / undefined
+   * on every predating constructor ⇒ single-cover behavior (no row, no pager). At
+   * least one gallery item enables the swipeable pinned pager over [cover] ++
+   * gallery + the beneath-cover CoverGalleryRow. Never mirrors/derives from the
+   * cover fields.
+   */
+  coverGallery?: OfferingGalleryImage[];
 
   // Tickets
   tickets: PublicTicketProps[];

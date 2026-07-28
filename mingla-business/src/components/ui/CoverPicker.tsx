@@ -119,6 +119,9 @@ import { Icon } from "./Icon";
 import { EventCoverMedia, type EventCoverMediaErrorEvent } from "./EventCoverMedia";
 import { useAuth } from "../../context/AuthContext";
 import type { CoverTarget } from "./coverTarget";
+// issue #868 [cover-gallery] — the ADDITIONAL image/GIF gallery item type
+// (shared package is the single owner of the offering-render prop contract).
+import type { OfferingGalleryImage } from "@mingla/offering-rendering";
 
 export type { CoverTarget } from "./coverTarget";
 
@@ -154,6 +157,14 @@ export interface CoverPatch {
   coverMediaCredit: string | null;
   coverMediaCreditUrl: string | null;
   coverMediaAlt: string | null;
+  /**
+   * issue #868 [cover-gallery] — ADDITIONAL image/GIF cover-gallery items,
+   * ordered, hero indices 1..N. OPTIONAL + default-safe: absent/[] ⇒ single-cover
+   * behavior (every existing host that builds a CoverPatch is unchanged). The 7
+   * cover fields above are UNCHANGED and INDEPENDENT — no field of one is derived
+   * from the other (the ONE exception is the user-initiated "Make cover" action).
+   */
+  coverGallery?: OfferingGalleryImage[];
 }
 
 export interface CoverPickerProps {

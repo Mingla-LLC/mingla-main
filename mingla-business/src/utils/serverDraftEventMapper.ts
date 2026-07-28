@@ -12,6 +12,9 @@ import {
   asEventCoverMediaProvider,
   type EventCoverMediaProvider,
 } from "../types/eventCoverProvider";
+// issue #868 [cover-gallery] — the additional-photos item type; drafts carry it
+// through autosave (draftToServerUpdate) AND publish (same mapper output).
+import type { OfferingGalleryImage } from "@mingla/offering-rendering";
 import type { LiveEvent } from "../store/liveEventStore";
 import { currencyCodeOrNull } from "./currency";
 import {
@@ -39,6 +42,8 @@ export interface ServerDraftEventRow {
   cover_media_credit?: string | null;
   cover_media_credit_url?: string | null;
   cover_media_alt?: string | null;
+  // issue #868 [cover-gallery] — additive; absent on legacy rows → mapped to [].
+  cover_media_gallery?: OfferingGalleryImage[] | null;
   currency?: string | null;
   is_online: boolean;
   is_recurring: boolean;
@@ -88,6 +93,9 @@ export interface ServerDraftEventInsert {
   cover_media_credit: string | null;
   cover_media_credit_url: string | null;
   cover_media_alt: string | null;
+  // issue #868 [cover-gallery] — additive gallery persisted on draft autosave
+  // AND publish (same mapper output feeds both). Independent of the cover fields.
+  cover_media_gallery: OfferingGalleryImage[];
   currency: string | null;
   is_online: boolean;
   is_recurring: boolean;
@@ -118,6 +126,9 @@ export interface ServerDraftEventUpdate {
   cover_media_credit: string | null;
   cover_media_credit_url: string | null;
   cover_media_alt: string | null;
+  // issue #868 [cover-gallery] — additive gallery persisted on draft autosave
+  // AND publish (same mapper output feeds both). Independent of the cover fields.
+  cover_media_gallery: OfferingGalleryImage[];
   currency: string | null;
   is_online: boolean;
   is_recurring: boolean;
@@ -630,6 +641,10 @@ export const draftToServerInsert = (
     draft.coverMediaUrl === null ? null : draft.coverMediaCreditUrl ?? null,
   cover_media_alt:
     draft.coverMediaUrl === null ? null : draft.coverMediaAlt ?? null,
+  // issue #868 [cover-gallery] — INDEPENDENT of the cover URL: the extra-photos
+  // gallery persists even when there is no cover (a gallery coexists with any
+  // cover). Default [] preserves single-cover behavior.
+  cover_media_gallery: draft.coverGallery ?? [],
   currency: currencyCodeOrNull(draft.currency),
   is_online: draft.format === "online" || draft.format === "hybrid",
   is_recurring: draft.whenMode === "recurring",
@@ -670,6 +685,9 @@ export const draftToServerUpdate = (
     draft.coverMediaUrl === null ? null : draft.coverMediaCreditUrl ?? null,
   cover_media_alt:
     draft.coverMediaUrl === null ? null : draft.coverMediaAlt ?? null,
+  // issue #868 [cover-gallery] — INDEPENDENT additive gallery (persists on both
+  // draft autosave and publish; never derived from / gated on the cover URL).
+  cover_media_gallery: draft.coverGallery ?? [],
   currency: currencyCodeOrNull(draft.currency),
   is_online: draft.format === "online" || draft.format === "hybrid",
   is_recurring: draft.whenMode === "recurring",
@@ -827,6 +845,11 @@ export const serverRowToDraft = (row: ServerDraftEventRow): DraftEvent => {
         : asStringOrNull(
             row.cover_media_alt ?? asRecord(businessDraft.coverProvider).alt,
           ),
+    // issue #868 [cover-gallery] — additive; [] on legacy rows (rule 9). Read
+    // back INDEPENDENTLY of the cover URL (a gallery can exist with no cover).
+    coverGallery: Array.isArray(row.cover_media_gallery)
+      ? row.cover_media_gallery
+      : [],
     currency:
       asStringOrNull(businessDraft.currency) ?? asStringOrNull(row.currency) ?? null,
     // ORCH-1006 — read pricing switches from top-level columns. null = inherit.
