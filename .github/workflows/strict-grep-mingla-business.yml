@@ -586,6 +586,22 @@ jobs:
       - name: Run ORCH-0778 gate
         run: node .github/scripts/strict-grep/orch-0778-web-stripe-native-import-gate.mjs
 
+  # #890 — carve-out (asserts its own job key + npm/workflow wiring, like ORCH-0778).
+  # Keeps @sentry/browser out of the web graph except as the lazy dynamic import()
+  # inside src/diagnostics/sentry.ts, and fails RED on revert to the no-op stub.
+  issue-890-web-sentry-lazy-only:
+    name: "#890: web @sentry/browser is lazy dynamic-import only (no static import; no stub revert)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the #890 gate
+        run: node .github/scripts/strict-grep/issue-890-web-sentry-lazy-only.mjs --self-test
+      - name: Run #890 gate
+        run: node .github/scripts/strict-grep/issue-890-web-sentry-lazy-only.mjs
+
   orch-0885-a-no-bottomnav-on-wide-desktop:
     name: "ORCH-0885-A: No BottomNav outside (tabs)/_layout.tsx + desktop gate via hook only"
     runs-on: ubuntu-latest
