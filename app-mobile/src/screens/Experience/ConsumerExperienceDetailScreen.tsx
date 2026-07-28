@@ -36,7 +36,6 @@ import React, {
 } from "react";
 import {
   ActivityIndicator,
-  Dimensions,
   Pressable,
   Share,
   StyleSheet,
@@ -254,9 +253,6 @@ export default function ConsumerExperienceDetailScreen({
   // issue #868 [cover-gallery], M.1b — single owner of the shown hero item (shared
   // by the cover pager + the row). Before the early-returns to preserve hook order.
   const [coverIndex, setCoverIndex] = useState<number>(0);
-  const [coverWidth, setCoverWidth] = useState<number>(
-    () => Dimensions.get("window").width,
-  );
 
   // ORCH-1341 — "Who's going" guest-list sheet visibility (declared before the
   // loading/error early returns per the Rules of Hooks).
@@ -984,7 +980,6 @@ export default function ConsumerExperienceDetailScreen({
               gallery={coverGallery}
               activeIndex={coverIndex}
               onActiveIndexChange={setCoverIndex}
-              width={coverWidth}
             />
           ) : (
             coverMediaNode

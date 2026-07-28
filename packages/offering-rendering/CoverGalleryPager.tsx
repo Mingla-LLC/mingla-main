@@ -1,53 +1,41 @@
-// CoverGalleryPager — issue #868 [cover-gallery], Section M.1a (+ Pass 3 fixes).
+// CoverGalleryPager — issue #868 [cover-gallery], Section M.1a (+ Pass 3/4 fixes).
 //
-// A pinned horizontal pager over the hero sequence [cover] ++ gallery, for the
-// consumer detail screens (which hand-roll their own pinned cover instead of
-// mounting ParallaxCoverShell). Page 0 is the screen's EXISTING <EventCoverMedia>
-// passed in verbatim as `coverNode` (video-capable, byte-identical — the screen
-// keeps owning the cover props + mute state); pages 1..N are the ADDITIONAL
-// image/GIF gallery items. A single `activeIndex` (owned by the screen and shared
-// with CoverGalleryRow) is the source of truth.
+// The pinned cover for the consumer detail screens (which hand-roll their own
+// pinned cover behind a gorhom BottomSheetScrollView instead of mounting
+// ParallaxCoverShell). It shows the hero sequence [cover] ++ gallery, controlled
+// by a single `activeIndex` owned by the screen (shared with CoverGalleryRow).
 //
-// Pass 3 — BUG 1 (active-tick flicker): the shown index COMMITS ONLY ON SETTLE
-// (onMomentumScrollEnd), NEVER on intermediate onScroll frames (those bounced the
-// ring through every page during an animated scrollTo). The pager DRIVES the
-// scroll from the controlled `activeIndex` (useEffect) and sets a
-// `programmaticRef` guard so a tap/chevron scroll's settle is suppressed — only a
-// user SWIPE settle commits, exactly once.
-//
-// Pass 3 — BUG 2 (native swipe captured by the gorhom BottomSheetScrollView): tap
-// CHEVRONS are added as the guaranteed paging control (SPEC §M.1c fallback) so the
-// cover pages cover↔photos even where the horizontal swipe is intercepted by the
-// vertical scroll responder. Row-tap remains a control too; web swipe still works.
+// Pass 4 — DETERMINISTIC single-item render (fixes "the cover never pages"). A
+// horizontal pagingEnabled ScrollView pinned BEHIND the vertical gorhom sheet
+// could not lay out / scrollTo its pages (the sheet owns the scroll surface), so
+// the displayed image was stuck on page 0 even though the row's tick moved. We
+// now render ONLY `sequence[activeIndex]` directly: activeIndex 0 = the screen's
+// EXISTING <EventCoverMedia> `coverNode` (video-capable, byte-identical); i =
+// gallery[i-1] via EventCoverMedia. A chevron tap / row-card tap changes
+// activeIndex → the cover RE-RENDERS the new image, deterministically. No
+// horizontal scroll, so no RISK-1 gesture arbitration and no tick flicker
+// (there is no intermediate scroll offset to commit). Finger-swipe on the cover
+// is intentionally dropped here (secondary per the architecture); the chevrons +
+// row-cards are the controls.
 //
 // Pure: react-native + react-native-svg + @mingla/offering-rendering only
-// (I-MOR-0827). Reuses the EXISTING EventCoverMedia for gallery pages; adds NO new
-// presentation resolver.
+// (I-MOR-0827). Reuses the EXISTING EventCoverMedia; adds NO new presentation resolver.
 
-import React, { useEffect, useRef } from "react";
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  View,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
-} from "react-native";
+import React from "react";
+import { Pressable, StyleSheet, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
 
 import { EventCoverMedia } from "./EventCoverMedia";
 import { type OfferingGalleryImage } from "./types";
 
 export interface CoverGalleryPagerProps {
-  /** page 0 — the screen's EXISTING <EventCoverMedia> (unchanged, video-capable). */
+  /** sequence index 0 — the screen's EXISTING <EventCoverMedia> (unchanged, video-capable). */
   coverNode: React.ReactNode;
-  /** pages 1..N — image/GIF gallery items. */
+  /** sequence indices 1..N — image/GIF gallery items. */
   gallery: OfferingGalleryImage[];
-  /** shown page: 0 = cover, i = gallery[i-1]. Owned by the screen (shared with the row). */
+  /** shown item: 0 = cover, i = gallery[i-1]. Owned by the screen (shared with the row). */
   activeIndex: number;
   onActiveIndexChange: (index: number) => void;
-  /** measured cover-box width for paging math (page = one screen width). */
-  width: number;
   testID?: string;
 }
 
@@ -68,88 +56,48 @@ export const CoverGalleryPager: React.FC<CoverGalleryPagerProps> = ({
   gallery,
   activeIndex,
   onActiveIndexChange,
-  width,
   testID,
 }) => {
-  const scrollViewRef = useRef<ScrollView>(null);
-  // BUG 1 guard: true while the pager itself is animating to a tap/chevron target,
-  // so the resulting settle does NOT re-commit (no ring bounce).
-  const programmaticRef = useRef(false);
-  // The last index the pager scrolled to (so the useEffect no-ops on a swipe-driven
-  // activeIndex change and does not double-scroll / re-arm the guard).
-  const lastIndexRef = useRef(activeIndex);
-  const activeRef = useRef(activeIndex);
-  activeRef.current = activeIndex;
+  const lastIndex = gallery.length; // sequence indices are 0..gallery.length
+  // Clamp defensively so a stale/out-of-range index never renders a blank cover.
+  const clamped =
+    activeIndex < 0 ? 0 : activeIndex > lastIndex ? lastIndex : activeIndex;
+  const item = clamped === 0 ? undefined : gallery[clamped - 1];
 
-  // Drive the scroll to the controlled activeIndex (tap/chevron). This is the ONLY
-  // place a programmatic scroll starts, so the guard is exact.
-  useEffect(() => {
-    if (width <= 0) return;
-    if (activeIndex === lastIndexRef.current) return;
-    lastIndexRef.current = activeIndex;
-    programmaticRef.current = true;
-    scrollViewRef.current?.scrollTo({ x: activeIndex * width, animated: true });
-  }, [activeIndex, width]);
-
-  // BUG 1: commit the shown index ONLY on settle. A programmatic (tap/chevron)
-  // settle is suppressed by the guard; a user SWIPE settle commits ONCE.
-  const handleSettle = (
-    event: NativeSyntheticEvent<NativeScrollEvent>,
-  ): void => {
-    if (programmaticRef.current) {
-      programmaticRef.current = false;
-      return;
-    }
-    const w = event.nativeEvent.layoutMeasurement.width || width;
-    if (w <= 0) return;
-    const settled = Math.round(event.nativeEvent.contentOffset.x / w);
-    if (settled !== activeRef.current) {
-      lastIndexRef.current = settled;
-      onActiveIndexChange(settled);
-    }
-  };
-
-  const lastIndex = gallery.length; // pages are 0..gallery.length
   const goPrev = (): void => {
-    if (activeIndex > 0) onActiveIndexChange(activeIndex - 1);
+    if (clamped > 0) onActiveIndexChange(clamped - 1);
   };
   const goNext = (): void => {
-    if (activeIndex < lastIndex) onActiveIndexChange(activeIndex + 1);
+    if (clamped < lastIndex) onActiveIndexChange(clamped + 1);
   };
 
-  const pageStyle = { width, height: "100%" as const };
-
   return (
-    <View style={styles.pager}>
-      <ScrollView
-        ref={scrollViewRef}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        // BUG 1 — commit on settle only (never intermediate onScroll frames).
-        onMomentumScrollEnd={handleSettle}
-        scrollEventThrottle={16}
-        style={styles.pager}
-        testID={testID}
-      >
-        {/* page 0 — the EXISTING cover, untouched (video autoplays as today). */}
-        <View style={pageStyle}>{coverNode}</View>
-        {/* pages 1..N — the additional image/GIF items. */}
-        {gallery.map((item, i) => (
-          <View key={`cover-page-${i + 1}`} style={pageStyle}>
-            <EventCoverMedia
-              mediaUrl={item.url}
-              mediaType={item.type ?? "image"}
-              height="100%"
-              width="100%"
-            />
-          </View>
-        ))}
-      </ScrollView>
+    <View style={styles.pager} testID={testID}>
+      {/* DETERMINISTIC: render ONLY sequence[activeIndex]. Changing activeIndex
+          re-renders the new image — no ScrollView to fight the vertical sheet. */}
+      {item === undefined ? (
+        <View
+          style={styles.page}
+          testID={testID !== undefined ? `${testID}-page-cover` : undefined}
+        >
+          {coverNode}
+        </View>
+      ) : (
+        <View
+          style={styles.page}
+          testID={testID !== undefined ? `${testID}-page-${clamped}` : undefined}
+        >
+          <EventCoverMedia
+            mediaUrl={item.url}
+            mediaType={item.type ?? "image"}
+            height="100%"
+            width="100%"
+          />
+        </View>
+      )}
 
-      {/* BUG 2 fallback (SPEC §M.1c) — tap chevrons page cover↔photos even where a
-          native horizontal swipe is captured by the pinned-behind gorhom scroll. */}
-      {activeIndex > 0 ? (
+      {/* Tap chevrons page cover↔photos (the guaranteed, gesture-free control). */}
+      {clamped > 0 ? (
         <Pressable
           onPress={goPrev}
           accessibilityRole="button"
@@ -161,7 +109,7 @@ export const CoverGalleryPager: React.FC<CoverGalleryPagerProps> = ({
           <ChevronIcon dir="left" />
         </Pressable>
       ) : null}
-      {activeIndex < lastIndex ? (
+      {clamped < lastIndex ? (
         <Pressable
           onPress={goNext}
           accessibilityRole="button"
@@ -179,6 +127,10 @@ export const CoverGalleryPager: React.FC<CoverGalleryPagerProps> = ({
 
 const styles = StyleSheet.create({
   pager: {
+    width: "100%",
+    height: "100%",
+  },
+  page: {
     width: "100%",
     height: "100%",
   },

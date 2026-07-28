@@ -58,7 +58,6 @@ import React, {
 import {
   AccessibilityInfo,
   ActivityIndicator,
-  Dimensions,
   Platform,
   Pressable,
   Share,
@@ -363,9 +362,6 @@ export default function ConsumerTripDetailScreen({
   // issue #868 [cover-gallery], M.1b — single owner of the shown hero item (shared
   // by the cover pager + the row). Before the early-returns to preserve hook order.
   const [coverIndex, setCoverIndex] = useState<number>(0);
-  const [coverWidth, setCoverWidth] = useState<number>(
-    () => Dimensions.get("window").width,
-  );
   useEffect(() => {
     let mounted = true;
     void AccessibilityInfo.isReduceMotionEnabled().then((value) => {
@@ -1018,7 +1014,6 @@ export default function ConsumerTripDetailScreen({
               gallery={coverGallery}
               activeIndex={coverIndex}
               onActiveIndexChange={setCoverIndex}
-              width={coverWidth}
             />
           ) : (
             coverMediaNode

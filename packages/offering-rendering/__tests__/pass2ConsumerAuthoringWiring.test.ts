@@ -34,11 +34,10 @@ const screenWiring = (src: string, label: string): void => {
   assert(/<CoverGalleryRow/.test(src), `${label}: CoverGalleryRow`);
   // Spacer pointerEvents none in gallery mode (swipe reaches the pinned pager).
   assert(/pointerEvents=\{galleryActive \? "none" : undefined\}/.test(src), `${label}: coverSpacer pointerEvents`);
-  // Pass 3 — single owner of the shown item; the pager OWNS scrolling (settle-guard,
-  // BUG 1), so the screen just sets the index (no direct scrollTo fighting onScroll).
-  assert(/onActiveIndexChange=\{setCoverIndex\}/.test(src), `${label}: pager drives the shown index`);
-  assert(/width=\{coverWidth\}/.test(src), `${label}: measured cover width fed to the pager`);
-  assert(!/coverPagerRef\.current\?\.scrollTo/.test(src), `${label}: screen no longer fights onScroll with a direct scrollTo`);
+  // Pass 4 — single owner of the shown item; the pager renders sequence[activeIndex]
+  // deterministically, so the screen just sets the index (no scrollTo, no width).
+  assert(/onActiveIndexChange=\{setCoverIndex\}/.test(src), `${label}: pager driven by the shown index`);
+  assert(!/coverPagerRef/.test(src), `${label}: no pager scroll ref (deterministic render)`);
 };
 
 Deno.test("T-EVENT consumer event/RSVP screen wires the pager + row (byte-identical when empty)", () => {

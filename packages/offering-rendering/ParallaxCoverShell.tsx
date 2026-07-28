@@ -42,7 +42,6 @@
 
 import React from "react";
 import {
-  Dimensions,
   Platform,
   Pressable,
   ScrollView,
@@ -216,74 +215,18 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
   const sequenceActive = gallery.length >= 1;
   // Single owner of the shown-item state: 0 = cover, i = gallery[i-1].
   const [activeIndex, setActiveIndex] = React.useState(0);
-  // Cover box width for page sizing + tap-driven scrollTo. Seeded to the window
-  // width (the full-bleed cover) so native pages have a real width on first paint;
-  // refined by onLayout (desktop's contained hero is narrower).
-  const [coverWidth, setCoverWidth] = React.useState(
-    () => Dimensions.get("window").width,
-  );
-  const pagerRef = React.useRef<ScrollView>(null);
-  // Pass 3 — BUG 1: activeIndex COMMITS ONLY ON SETTLE, never on intermediate
-  // onScroll frames (those bounced the ring through every page during an animated
-  // scrollTo). `programmaticRef` suppresses a tap/chevron scroll's settle;
-  // `lastIndexRef` stops the scroll-drive useEffect from re-firing on a swipe-driven
-  // change; `settleTimerRef` debounces the settle (works on web scroll-snap where
-  // there is no onMomentumScrollEnd AND native pagingEnabled).
-  const programmaticRef = React.useRef(false);
-  const lastIndexRef = React.useRef(0);
-  const activeRef = React.useRef(activeIndex);
-  activeRef.current = activeIndex;
-  const settleTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Pass 4 — DETERMINISTIC render (fixes "the cover never pages"): a horizontal
+  // pagingEnabled ScrollView pinned behind the body ScrollView could not reliably
+  // scrollTo its pages, so the shown image was stuck on page 0. The cover now
+  // renders ONLY sequence[activeIndex]; a tap/chevron changes activeIndex → the
+  // cover re-renders the new image. No scroll machinery, no flicker (no scroll
+  // offset to commit), and no RISK-1 gesture arbitration.
+  const lastIndex = gallery.length; // sequence indices 0..gallery.length
+  const activeSequenceItem =
+    activeIndex <= 0 ? undefined : gallery[activeIndex - 1];
 
-  // The pager DRIVES the scroll from the controlled activeIndex (tap/chevron path) —
-  // the single place a programmatic scroll starts, so the guard is exact.
-  React.useEffect(() => {
-    if (coverWidth <= 0) return;
-    if (activeIndex === lastIndexRef.current) return;
-    lastIndexRef.current = activeIndex;
-    programmaticRef.current = true;
-    pagerRef.current?.scrollTo({ x: activeIndex * coverWidth, animated: true });
-  }, [activeIndex, coverWidth]);
-  React.useEffect(
-    () => () => {
-      if (settleTimerRef.current !== null) clearTimeout(settleTimerRef.current);
-    },
-    [],
-  );
-
-  const handlePagerScroll = React.useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>): void => {
-      const w = event.nativeEvent.layoutMeasurement.width || coverWidth;
-      const offsetX = event.nativeEvent.contentOffset.x;
-      // Commit on SETTLE only (debounced). A programmatic (tap/chevron) settle is
-      // suppressed by the guard; a user SWIPE settle commits ONCE — no flicker.
-      if (settleTimerRef.current !== null) clearTimeout(settleTimerRef.current);
-      settleTimerRef.current = setTimeout(() => {
-        if (programmaticRef.current) {
-          programmaticRef.current = false;
-          return;
-        }
-        if (w <= 0) return;
-        const settled = Math.round(offsetX / w);
-        if (settled !== activeRef.current) {
-          lastIndexRef.current = settled;
-          setActiveIndex(settled);
-        }
-      }, 130);
-    },
-    [coverWidth],
-  );
-
-  const handlePagerLayout = React.useCallback(
-    (event: LayoutChangeEvent): void => {
-      const w = event.nativeEvent.layout.width;
-      setCoverWidth((cur) => (w > 0 && w !== cur ? w : cur));
-    },
-    [],
-  );
-
-  // Tap a card / chevron → set the shown index; the useEffect drives the scroll.
-  // No direct scrollTo here (that fought onScroll and flickered — BUG 1).
+  // Tap a card / chevron → set the shown index. That's all — the deterministic
+  // render below picks up sequence[activeIndex].
   const selectSequenceIndex = React.useCallback((index: number): void => {
     setActiveIndex(index);
   }, []);
@@ -291,8 +234,8 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
     setActiveIndex((cur) => (cur > 0 ? cur - 1 : cur));
   }, []);
   const goToNextPage = React.useCallback((): void => {
-    setActiveIndex((cur) => (cur < gallery.length ? cur + 1 : cur));
-  }, [gallery.length]);
+    setActiveIndex((cur) => (cur < lastIndex ? cur + 1 : cur));
+  }, [lastIndex]);
 
   const chrome = (
     <OfferingChrome
@@ -333,63 +276,26 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
     />
   );
 
-  // issue #868 — in gallery mode the pinned cover becomes a horizontal pager over
-  // the sequence [cover] ++ gallery. Page 0 is the EXISTING coverMedia UNCHANGED
-  // (a video cover autoplays/loops/mutes exactly as today); pages 1..N are the
-  // gallery images sized to the full cover box. When NOT in gallery mode,
-  // coverRender IS the single coverMedia (byte-identical to today).
-  const coverPageStyle: StyleProp<ViewStyle> = {
-    width: coverWidth,
-    height: "100%",
-  };
+  // issue #868 (Pass 4) — in gallery mode the pinned cover renders ONLY
+  // sequence[activeIndex] (index 0 = the EXISTING coverMedia UNCHANGED — a video
+  // cover autoplays/loops/mutes exactly as today; i = gallery[i-1]). A tap/chevron
+  // changes activeIndex → the cover re-renders the new image, DETERMINISTICALLY
+  // (no horizontal ScrollView pinned behind the body scroll, which could not
+  // reliably scrollTo). When NOT in gallery mode, coverRender IS the single
+  // coverMedia (byte-identical to today).
   const coverPager = (
     <View style={styles.coverPager}>
-      <ScrollView
-        ref={pagerRef}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onScroll={handlePagerScroll}
-        scrollEventThrottle={16}
-        onLayout={handlePagerLayout}
-        style={
-          isWeb
-            ? webStyle({
-                width: "100%",
-                height: "100%",
-                overflowX: "auto",
-                scrollSnapType: "x mandatory",
-              })
-            : styles.coverPager
-        }
-      >
-        <View
-          style={[
-            coverPageStyle,
-            isWeb ? webStyle({ scrollSnapAlign: "start" }) : null,
-          ]}
-        >
-          {coverMedia}
-        </View>
-        {gallery.map((item, i) => (
-          <View
-            key={`cover-seq-${i + 1}`}
-            style={[
-              coverPageStyle,
-              isWeb ? webStyle({ scrollSnapAlign: "start" }) : null,
-            ]}
-          >
-            <EventCoverMedia
-              mediaUrl={item.url}
-              mediaType={item.type ?? "image"}
-              height="100%"
-              width="100%"
-            />
-          </View>
-        ))}
-      </ScrollView>
-      {/* Pass 3 — BUG 2 (SPEC §M.1c) — tap chevrons page cover↔photos as the
-          guaranteed control (native swipe can be captured by an ancestor scroll). */}
+      {activeSequenceItem === undefined ? (
+        coverMedia
+      ) : (
+        <EventCoverMedia
+          mediaUrl={activeSequenceItem.url}
+          mediaType={activeSequenceItem.type ?? "image"}
+          height="100%"
+          width="100%"
+        />
+      )}
+      {/* Pass 3/4 — tap chevrons page cover↔photos as the guaranteed control. */}
       {activeIndex > 0 ? (
         <Pressable
           onPress={goToPrevPage}
@@ -402,7 +308,7 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
           <ShellChevron dir="left" />
         </Pressable>
       ) : null}
-      {activeIndex < gallery.length ? (
+      {activeIndex < lastIndex ? (
         <Pressable
           onPress={goToNextPage}
           accessibilityRole="button"

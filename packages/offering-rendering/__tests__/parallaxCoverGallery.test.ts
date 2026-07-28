@@ -36,11 +36,15 @@ Deno.test("T-2 engages the pager + row ONLY when the sequence has >1 item (byte-
   assert(/const\s+galleryRow\s*=\s*sequenceActive\s*\?/.test(SRC));
 });
 
-Deno.test("T-3 pages over [cover] ++ gallery: page 0 = existing coverMedia, pages 1..N = gallery images", () => {
-  assert(/\{coverMedia\}/.test(SRC), "page 0 reuses the UNCHANGED coverMedia");
-  assert(/gallery\.map\(\(item, i\) =>/.test(SRC));
-  assert(/mediaType=\{item\.type \?\? "image"\}/.test(SRC));
-  assert(/horizontal\s*\n\s*pagingEnabled/.test(SRC), "horizontal paging pager");
+Deno.test("T-3 DETERMINISTIC — the shell cover renders ONLY sequence[activeIndex] (index 0 = existing coverMedia)", () => {
+  // Pass 4 — the active item is selected purely from activeIndex; index 0 = the
+  // UNCHANGED coverMedia, else EventCoverMedia for that gallery item.
+  assert(/const activeSequenceItem =\s*\n\s*activeIndex <= 0 \? undefined : gallery\[activeIndex - 1\]/.test(SRC), "active item = gallery[activeIndex-1]");
+  assert(/activeSequenceItem === undefined \? \(\s*\n\s*coverMedia/.test(SRC), "index 0 = the UNCHANGED coverMedia");
+  assert(/<EventCoverMedia\s*\n\s*mediaUrl=\{activeSequenceItem\.url\}/.test(SRC), "index i renders gallery[i-1]");
+  // No horizontal pager ScrollView pinned behind the body scroll (it could not scrollTo).
+  assert(!/onScroll=\{handlePagerScroll\}/.test(SRC), "no scroll-driven pager");
+  assert(!/pagerRef\.current\?\.scrollTo/.test(SRC), "no programmatic scrollTo (deterministic render)");
 });
 
 Deno.test("T-4 renders CoverGalleryRow as the body's first row (before children); single-owner activeIndex", () => {
@@ -50,24 +54,21 @@ Deno.test("T-4 renders CoverGalleryRow as the body's first row (before children)
     /const\s+\[activeIndex,\s*setActiveIndex\]\s*=\s*React\.useState\(0\)/.test(SRC),
     "single owner of the shown-item state",
   );
-  // Pass 3 — the pager DRIVES the scroll from activeIndex (useEffect), not a direct
-  // tap-time scrollTo that fought onScroll.
-  assert(/pagerRef\.current\?\.scrollTo\(\{ x: activeIndex \* coverWidth/.test(SRC), "pager drives scrollTo from activeIndex");
-});
-
-Deno.test("T-5 BUG 1 — shell pager commits the shown index ONLY ON SETTLE (debounced), never on intermediate onScroll frames", () => {
-  assert(/const programmaticRef = React\.useRef\(false\)/.test(SRC), "programmatic-scroll guard");
-  // Commit is debounced (settle), guarded, and only when the settled index differs.
-  assert(/settleTimerRef\.current = setTimeout\(/.test(SRC), "debounced settle commit");
-  assert(/if \(programmaticRef\.current\) \{\s*\n\s*programmaticRef\.current = false;\s*\n\s*return;/.test(SRC), "programmatic settle suppressed");
-  assert(/if \(settled !== activeRef\.current\)/.test(SRC), "commit only when the settled index differs");
-  // selectSequenceIndex must NOT itself scrollTo (that flickered — BUG 1).
+  // Tap/chevron only sets the index; the deterministic render picks it up.
   assert(/const selectSequenceIndex = React\.useCallback\(\(index: number\): void => \{\s*\n\s*setActiveIndex\(index\);\s*\n\s*\}/.test(SRC), "tap only sets the index");
 });
 
-Deno.test("T-6 BUG 2 — shell cover pager has tap chevrons (guaranteed control)", () => {
+Deno.test("T-5 flicker-free — the shown index has NO intermediate scroll commit (no scroll offset to bounce the ring)", () => {
+  // With the deterministic render there is no onScroll/onMomentumScrollEnd commit
+  // path at all — the ring reflects activeIndex directly, so it cannot flicker.
+  assert(!/onMomentumScrollEnd/.test(SRC), "no momentum-end commit");
+  assert(!/settleTimerRef/.test(SRC), "no debounced scroll commit");
+});
+
+Deno.test("T-6 shell cover has tap chevrons that change activeIndex (guaranteed control)", () => {
   assert(/<ShellChevron dir="left"/.test(SRC));
   assert(/<ShellChevron dir="right"/.test(SRC));
   assert(/onPress=\{goToPrevPage\}/.test(SRC));
   assert(/onPress=\{goToNextPage\}/.test(SRC));
+  assert(/const goToNextPage = React\.useCallback\(\(\): void => \{\s*\n\s*setActiveIndex\(\(cur\) => \(cur < lastIndex \? cur \+ 1 : cur\)\)/.test(SRC), "next advances activeIndex");
 });

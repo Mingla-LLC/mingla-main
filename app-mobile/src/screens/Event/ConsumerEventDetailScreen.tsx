@@ -46,7 +46,6 @@ import React, {
 } from "react";
 import {
   ActivityIndicator,
-  Dimensions,
   Linking,
   Platform,
   Pressable,
@@ -290,9 +289,6 @@ export default function ConsumerEventDetailScreen({
   // (0 = cover, i = gallery[i-1]) shared by the cover pager + the row. Placed with
   // the other hooks (before the loading early-returns) to preserve hook order.
   const [coverIndex, setCoverIndex] = useState<number>(0);
-  const [coverWidth, setCoverWidth] = useState<number>(
-    () => Dimensions.get("window").width,
-  );
   const [muted, setMuted] = useState<boolean>(true);
 
   // ORCH-1341 — "Who's going" guest-list sheet visibility. Both branches share
@@ -1063,7 +1059,6 @@ export default function ConsumerEventDetailScreen({
               gallery={coverGallery}
               activeIndex={coverIndex}
               onActiveIndexChange={setCoverIndex}
-              width={coverWidth}
             />
           ) : (
             coverMediaNode
