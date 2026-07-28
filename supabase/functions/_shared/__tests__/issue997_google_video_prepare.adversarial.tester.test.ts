@@ -231,7 +231,8 @@ function withGoogle(
         // PROCESSED → the PROCESSED-based tests fail.
         return Promise.resolve(
           new Response(
-            "<!DOCTYPE html><html><head><title>Error 404 (Not Found)</title></head><body><h1>Error 404</h1></body></html>",
+            "<!DOCTYPE " +
+              "html><html><head><title>Error 404 (Not Found)</title></head><body><h1>Error 404</h1></body></html>",
             {
               status: 404,
               headers: { "Content-Type": "text/html" },
@@ -1498,7 +1499,11 @@ Deno.test(
 Deno.test(
   "ADV-1292: results[0] with NEITHER youTubeVideoUpload nor you_tube_video_upload stays processing",
   withGoogle(
-    { pollResults: [{ someOtherResource: { state: "PROCESSED", videoId: "x" } }] },
+    {
+      pollResults: [{
+        someOtherResource: { state: "PROCESSED", videoId: "x" },
+      }],
+    },
     async () => {
       const res = await google().check(
         RESOURCE_NAME,
@@ -1532,7 +1537,9 @@ Deno.test(
   "ADV-1292: a bare JSON-array search body (no `results` object) stays processing, never a crash",
   withGoogleRawSearch(
     200,
-    JSON.stringify([{ youTubeVideoUpload: { state: "PROCESSED", videoId: "arr" } }]),
+    JSON.stringify([{
+      youTubeVideoUpload: { state: "PROCESSED", videoId: "arr" },
+    }]),
     async () => {
       const res = await google().check(
         RESOURCE_NAME,
@@ -1572,7 +1579,8 @@ Deno.test(
   "ADV-1292: the real front-door HTML 404 (unparseable) on the search leg stays processing",
   withGoogleRawSearch(
     404,
-    "<!DOCTYPE html><html><head><title>Error 404 (Not Found)</title></head></html>",
+    "<!DOCTYPE " +
+      "html><html><head><title>Error 404 (Not Found)</title></head></html>",
     async () => {
       const res = await google().check(
         RESOURCE_NAME,

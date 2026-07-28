@@ -182,7 +182,8 @@ function withEnvAndFetch(
         if (url.includes(RESOURCE_NAME)) {
           return Promise.resolve(
             new Response(
-              "<!DOCTYPE html><html><head><title>Error 404 (Not Found)</title></head><body><h1>Error 404</h1></body></html>",
+              "<!DOCTYPE " +
+                "html><html><head><title>Error 404 (Not Found)</title></head><body><h1>Error 404</h1></body></html>",
               { status: 404, headers: { "Content-Type": "text/html" } },
             ),
           );
