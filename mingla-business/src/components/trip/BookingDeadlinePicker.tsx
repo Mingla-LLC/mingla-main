@@ -30,6 +30,10 @@ import {
   spacing,
   text as textTokens,
 } from "../../constants/designSystem";
+// issue #1027 Thread B — the ONE shared visible-native-input for web date/time.
+// Class 2 fix: @react-native-community/datetimepicker has NO web build, so the
+// booking-deadline picker was broken on web.
+import { WebDateTimeInput } from "../ui/WebDateTimeInput";
 
 export interface BookingDeadlinePickerProps {
   /** ISO timestamptz string, or null = no deadline set. */
@@ -62,6 +66,16 @@ function formatDeadlineForDisplay(
   } catch {
     return iso;
   }
+}
+
+// issue #1027 Thread B — ISO instant → `YYYY-MM-DDTHH:MM` local wall-clock for
+// the web `datetime-local` input (mirrors the native picker, which also spins in
+// device-local time; the brand-timezone label is display-only on the chip).
+function isoToDatetimeLocal(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number): string => `${n}`.padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 export const BookingDeadlinePicker: React.FC<BookingDeadlinePickerProps> = ({
@@ -174,6 +188,28 @@ export const BookingDeadlinePicker: React.FC<BookingDeadlinePickerProps> = ({
     }
   }, [value]);
 
+  // issue #1027 Thread B (Class 2) — web `datetime-local` commits on change. The
+  // browser gives a naive local wall-clock; `new Date(v)` reads it in the
+  // browser's local zone and `.toISOString()` stamps the instant — byte-parity
+  // with the native path (device-local Date → toISOString).
+  const handleWebDeadlineChange = useCallback(
+    (v: string): void => {
+      if (v.length === 0) return;
+      const picked = new Date(v);
+      if (Number.isNaN(picked.getTime())) return;
+      const err = validatePending(picked.getTime(), tripStartIso);
+      if (err !== null) {
+        setValidationError(err);
+        return;
+      }
+      setValidationError(null);
+      onChange(picked.toISOString());
+      setPickerOpen(false);
+      setPendingDate(null);
+    },
+    [onChange, tripStartIso],
+  );
+
   const currentValueDate =
     pendingDate ??
     (value !== null ? new Date(value) : new Date(Date.now() + 60 * 60 * 1000));
@@ -244,7 +280,28 @@ export const BookingDeadlinePicker: React.FC<BookingDeadlinePickerProps> = ({
         </View>
       )}
 
-      {toggleOn && pickerOpen && (
+      {toggleOn && pickerOpen && Platform.OS === "web" && (
+        /* issue #1027 Thread B (Class 2) — visible native datetime-local input
+           on web; commits on change (native DateTimePicker has no web build). */
+        <View style={styles.pickerWrap}>
+          <WebDateTimeInput
+            type="datetime-local"
+            value={isoToDatetimeLocal(currentValueDate.toISOString())}
+            min={isoToDatetimeLocal(minDate.toISOString())}
+            max={
+              maxDate !== undefined
+                ? isoToDatetimeLocal(maxDate.toISOString())
+                : undefined
+            }
+            ariaLabel="Pick booking deadline date and time"
+            hasError={validationError !== null}
+            testID="booking-deadline-web"
+            onChangeValue={handleWebDeadlineChange}
+          />
+        </View>
+      )}
+
+      {toggleOn && pickerOpen && Platform.OS !== "web" && (
         <View style={styles.pickerWrap}>
           {pendingDate !== null && (
             <Text style={styles.pendingPreview}>
