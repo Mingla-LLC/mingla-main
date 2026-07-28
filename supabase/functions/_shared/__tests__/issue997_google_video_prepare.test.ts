@@ -89,12 +89,31 @@ function mintResponse(): Response {
 }
 
 /**
+ * #1292: the documented v24 GAQL search envelope for a `you_tube_video_upload` row
+ * (Google Ads REST = camelCase `results[].youTubeVideoUpload`). This is the ONLY
+ * shape the fixed check() parser reads — a flat `{ state, videoId }` blob can never
+ * satisfy it, so the pre-#1292 mock blind spot is now structurally impossible.
+ * `upload` is the inner row (state + video_id); `null` = empty results (row not yet
+ * materialized).
+ */
+function searchEnvelope(
+  upload: Record<string, unknown> | null,
+): Record<string, unknown> {
+  return upload === null ? { results: [] } : {
+    results: [{
+      youTubeVideoUpload: { resourceName: RESOURCE_NAME, ...upload },
+    }],
+  };
+}
+
+/**
  * Stubs env + globalThis.fetch (google.ts::resolveGoogleClient mints via the
  * global fetch, not an injectable dep — so the adapter runs entirely through this
- * stub). `pollPayload` drives the check() poll response.
+ * stub). `upload` is the inner `you_tube_video_upload` row (or `null` for empty
+ * results) that the check() GAQL-search poll response is built from.
  */
 function withEnvAndFetch(
-  pollPayload: Record<string, unknown>,
+  upload: Record<string, unknown> | null,
   fn: (calls: RecordedCall[]) => Promise<void>,
 ): () => Promise<void> {
   return async () => {
@@ -138,12 +157,35 @@ function withEnvAndFetch(
             }),
           );
         }
-        if (url.includes(RESOURCE_NAME)) {
+        // #1292: the CORRECT v24 poll transport — a GAQL search POST for the
+        // you_tube_video_upload row. The stub asserts the request shape so a pass is
+        // ONLY achievable against the real transport + envelope (never a flat blob at
+        // a GET URL the real API 404s).
+        if (url.includes("googleAds:search")) {
+          assertEquals(init?.method, "POST");
+          const q = String(
+            (JSON.parse(String(init?.body)) as { query?: unknown }).query ?? "",
+          );
+          assertStringIncludes(q, "FROM you_tube_video_upload");
+          assertStringIncludes(q, RESOURCE_NAME);
           return Promise.resolve(
-            new Response(JSON.stringify(pollPayload), {
+            new Response(JSON.stringify(searchEnvelope(upload)), {
               status: 200,
               headers: { "Content-Type": "application/json" },
             }),
+          );
+        }
+        // REVERT-TRAP: the OLD non-routable GET on …/youTubeVideoUploads/{id}. Google's
+        // real front door answers it with generic HTML 404 (not an Ads JSON NOT_FOUND).
+        // If check() is reverted to the GET transport the poll routes here → HTML 404 →
+        // responseJson {} → never PROCESSED → the ready assertions below FAIL on revert.
+        if (url.includes(RESOURCE_NAME)) {
+          return Promise.resolve(
+            new Response(
+              "<!DOCTYPE " +
+                "html><html><head><title>Error 404 (Not Found)</title></head><body><h1>Error 404</h1></body></html>",
+              { status: 404, headers: { "Content-Type": "text/html" } },
+            ),
           );
         }
         return Promise.resolve(new Response("unexpected", { status: 500 }));
@@ -262,8 +304,9 @@ Deno.test(
   }),
 );
 
-// ── 3. check: ONE poll per call; PROCESSED → ready carrying youtube_video_id ──
-// Fails-on-revert: removing the mergeExtra youtube_video_id return fails this.
+// ── 3. check: ONE GAQL-search poll per call; PROCESSED → ready + youtube_video_id ─
+// Fails-on-revert: reverting to the GET transport (the revert-trap HTML-404s it) or
+// removing the mergeExtra youtube_video_id return fails these.
 Deno.test(
   "ISSUE-997 D1: check() PROCESSED returns ready with mergeExtra.youtube_video_id (one poll)",
   withEnvAndFetch(
@@ -279,11 +322,19 @@ Deno.test(
         preview: null,
         mergeExtra: { youtube_video_id: "yt-d1-123" },
       });
-      // Exactly ONE poll GET against the resource (mint may add one token call).
-      const pollCalls = calls.filter((c) =>
-        c.url.includes(RESOURCE_NAME) && !c.url.includes(":create")
+      // Exactly ONE googleAds:search POST querying you_tube_video_upload was made
+      // (reverting check() to the GET transport records ZERO search POSTs → fails).
+      const searchCalls = calls.filter((c) =>
+        c.url.includes("googleAds:search") && c.init?.method === "POST"
       );
-      assertEquals(pollCalls.length, 1);
+      assertEquals(searchCalls.length, 1);
+      assertStringIncludes(
+        String(
+          (JSON.parse(String(searchCalls[0].init?.body)) as { query?: unknown })
+            .query,
+        ),
+        "FROM you_tube_video_upload",
+      );
     },
   ),
 );
@@ -327,6 +378,20 @@ Deno.test(
       state: "terminal",
       terminalCode: "google_yt_video_id_missing",
     });
+  }),
+);
+
+// #1292 defensive: empty search results (the row has not yet materialized) must
+// stay processing, never a false terminal — mirrors the real API returning no rows.
+Deno.test(
+  "ISSUE-997 D1: check() with EMPTY search results stays processing (row not yet materialized)",
+  withEnvAndFetch(null, async () => {
+    const result = await PREPARE_PROVIDER_ADAPTERS.google.check(
+      RESOURCE_NAME,
+      { upload_resource_name: RESOURCE_NAME },
+      CONN,
+    );
+    assertEquals(result, { state: "processing", retryAfterSeconds: 10 });
   }),
 );
 
