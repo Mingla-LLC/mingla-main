@@ -1,0 +1,115 @@
+# QUOTED name: an unquoted leading '#' would truncate the workflow name to "Issue".
+name: "Issue 1020 discover geo-radius fallback"
+
+# Explicit paths registry (NOT a glob). This repo has NO test auto-discovery —
+# .test.sql / .test.ts run ONLY when a per-issue workflow names them, so the
+# migration, ALL FOUR test files, the four edge-fn sources, and this workflow
+# itself are enumerated so any touch of the #1020 surface re-gates the suite.
+on:
+  push:
+    paths:
+      - "supabase/migrations/20270117001020_issue_1020_discover_city_geo_fallback.sql"
+      - "supabase/migrations/__tests__/issue_1020_discover_geo_fallback.test.sql"
+      - "supabase/migrations/__tests__/issue_1020_discover_geo_fallback_adversarial_pg17.test.sql"
+      - "supabase/functions/discover-merged-events/__tests__/issue_1020_geo_threading.test.ts"
+      - "supabase/functions/discover-merged-events/__tests__/issue_1020_cache_key_geo.test.ts"
+      - "supabase/functions/discover-merged-events/_business-query.ts"
+      - "supabase/functions/discover-merged-events/_build-response.ts"
+      - "supabase/functions/discover-merged-events/index.ts"
+      - "supabase/functions/discover-merged-events/_cache.ts"
+      - ".github/workflows/issue-1020-discover-geo-fallback-tests.yml"
+  pull_request:
+    paths:
+      - "supabase/migrations/20270117001020_issue_1020_discover_city_geo_fallback.sql"
+      - "supabase/migrations/__tests__/issue_1020_discover_geo_fallback.test.sql"
+      - "supabase/migrations/__tests__/issue_1020_discover_geo_fallback_adversarial_pg17.test.sql"
+      - "supabase/functions/discover-merged-events/__tests__/issue_1020_geo_threading.test.ts"
+      - "supabase/functions/discover-merged-events/__tests__/issue_1020_cache_key_geo.test.ts"
+      - "supabase/functions/discover-merged-events/_business-query.ts"
+      - "supabase/functions/discover-merged-events/_build-response.ts"
+      - "supabase/functions/discover-merged-events/index.ts"
+      - "supabase/functions/discover-merged-events/_cache.ts"
+      - ".github/workflows/issue-1020-discover-geo-fallback-tests.yml"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # PG17 proof — the REAL runtime proof that the public.-qualified geo predicate
+  # resolves under SET search_path='' (supabase/postgres ships PostGIS in public).
+  # Applies EVERY migration in sorted order, then runs BOTH .test.sql files:
+  # the implementor happy-path and the tester adversarial.
+  # ---------------------------------------------------------------------------
+  issue-1020-pg17:
+    name: "Issue 1020 geo-radius fallback proof (PG17)"
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ format('issue-1020-ci-{0}', github.run_id) }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for PostgreSQL 17
+        env:
+          PGPASSWORD: ${{ format('issue-1020-ci-{0}', github.run_id) }}
+        run: |
+          for i in {1..90}; do
+            if psql -h localhost -U postgres -d postgres -Atc \
+              "SELECT to_regnamespace('vault') IS NOT NULL AND to_regrole('supabase_admin') IS NOT NULL" \
+              2>/dev/null | grep -qx t; then
+              echo "postgres ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "postgres did not become ready in 90s"
+          exit 1
+      - name: Apply all migrations in timestamp order
+        env:
+          PGPASSWORD: ${{ format('issue-1020-ci-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 \
+            | sort -z \
+            | while IFS= read -r -d '' migration; do
+                echo "::group::Applying $migration"
+                psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$migration"
+                echo "::endgroup::"
+              done
+      - name: Execute issue 1020 geo-fallback proof (implementor happy-path)
+        env:
+          PGPASSWORD: ${{ format('issue-1020-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_1020_discover_geo_fallback.test.sql
+      - name: Execute issue 1020 geo-fallback proof (tester adversarial)
+        env:
+          PGPASSWORD: ${{ format('issue-1020-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_1020_discover_geo_fallback_adversarial_pg17.test.sql
+
+  # ---------------------------------------------------------------------------
+  # Deno proof — pinned to the CI-canonical 1.46.x. Runs BOTH .test.ts files:
+  # the implementor edge-fn threading test and the tester cache-key sentinel.
+  # ---------------------------------------------------------------------------
+  issue-1020-deno:
+    name: "Issue 1020 edge-fn threading + cache-key (Deno 1.46)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: "1.46.x"
+      - name: Run edge-fn threading + cache-key tests
+        run: >-
+          deno test --allow-read --allow-env
+          supabase/functions/discover-merged-events/__tests__/issue_1020_geo_threading.test.ts
+          supabase/functions/discover-merged-events/__tests__/issue_1020_cache_key_geo.test.ts

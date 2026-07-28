@@ -77,6 +77,12 @@ export async function buildDiscoverMergedResponse(
     musicGenreSlugs,
     offset: businessOffset,
     limit: size,
+    // issue #1020 — thread the browsed metro center/radius into the business RPC
+    // so its geo-radius OR-fallback surfaces sub-municipality venues. Absent coords
+    // → undefined ?? null → SQL NULL → city-only behavior, unchanged.
+    centerLat: city.fallbackLat ?? null,
+    centerLng: city.fallbackLng ?? null,
+    radiusKm: city.fallbackRadiusKm ?? null,
   });
 
   const ticketmasterPromise = (async () => {
