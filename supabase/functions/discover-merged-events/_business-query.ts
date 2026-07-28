@@ -23,6 +23,12 @@ export interface DiscoverBusinessQueryParams {
   musicGenreSlugs: string[];
   offset: number;
   limit: number;
+  // issue #1020 — browsed metro center + radius for the geo-radius OR-fallback in
+  // pg_discover_business_events. Null coords flow to SQL NULL → the RPC's geo
+  // predicate guard is false → city-only behavior, unchanged.
+  centerLat: number | null;
+  centerLng: number | null;
+  radiusKm: number | null;
 }
 
 type RpcRow = Record<string, unknown>;
@@ -152,6 +158,9 @@ export async function fetchDiscoverBusinessEvents(
     p_music_genres: params.musicGenreSlugs.length > 0 ? params.musicGenreSlugs : null,
     p_offset: params.offset,
     p_limit: params.limit,
+    p_center_lat: params.centerLat,
+    p_center_lng: params.centerLng,
+    p_radius_km: params.radiusKm,
   });
 
   if (error) {
