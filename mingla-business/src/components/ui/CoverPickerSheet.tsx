@@ -18,8 +18,15 @@
  * Per SPEC_ORCH-0989 §3.1/§4.1 + SPEC_ORCH-0989_..._DESIGN.md §2.
  */
 
-import React, { useCallback, useEffect, useState } from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import React, { Suspense, useCallback, useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Image,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 // ORCH-0892-B v2 sheet-consumer contract: the body scroll routes through the
 // SmartScrollView wrapper (KAS on native) so the GIF/Stock search input
@@ -34,10 +41,23 @@ import {
 } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { Button } from "./Button";
-import { CoverPicker, type CoverPatch } from "./CoverPicker";
+import { type CoverPatch } from "./CoverPicker";
 import type { CoverTarget } from "./coverTarget";
 import { Icon } from "./Icon";
 import { Sheet } from "./Sheet";
+
+// issue #868 [cover-gallery] — ORCH-1083 web bundle-budget fix. CoverPicker is
+// the heavy authoring picker (device/GIPHY/Pexels/video-trim + the #868 gallery
+// manager, ~35 KB on web). CoverPickerSheet is its SOLE runtime importer, so a
+// static import forced the whole picker into Metro's eager `__common` boot chunk
+// — where #868's gallery-manager growth tipped it past the 2.30 MB cap. Deferring
+// it to its own async web chunk (React.lazy) pulls all of it OUT of the boot path
+// (native keeps it inline — Metro RN doesn't split, so it loads instantly). It is
+// only ever mounted inside this Sheet (opened on user action), so a Suspense
+// fallback is the natural, correct UX. Type-only `CoverPatch` above stays erased.
+const CoverPicker = React.lazy(() =>
+  import("./CoverPicker").then((m) => ({ default: m.CoverPicker })),
+);
 
 export interface CoverPickerSheetProps {
   visible: boolean;
@@ -113,24 +133,32 @@ export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <CoverPicker
-            target={target}
-            initialCoverHue={initialCoverHue}
-            initialMediaUrl={initial.coverMediaUrl}
-            initialMediaType={initial.coverMediaType}
-            initialProvider={initial.coverMediaProvider}
-            initialSourceUrl={initial.coverMediaSourceUrl}
-            initialCredit={initial.coverMediaCredit}
-            initialCreditUrl={initial.coverMediaCreditUrl}
-            initialAlt={initial.coverMediaAlt}
-            // issue #868 [cover-gallery] — the ADDITIONAL image/GIF items.
-            initialCoverGallery={initial.coverGallery}
-            onCoverChange={handleCoverChange}
-            onShowToast={onShowToast}
-            disabled={disabled}
-            isWideDesktop={isWideDesktop}
-            onCoverVideoProcessingChange={onCoverVideoProcessingChange}
-          />
+          <Suspense
+            fallback={
+              <View style={styles.pickerLoading} testID="cover-picker-loading">
+                <ActivityIndicator color={textTokens.secondary} />
+              </View>
+            }
+          >
+            <CoverPicker
+              target={target}
+              initialCoverHue={initialCoverHue}
+              initialMediaUrl={initial.coverMediaUrl}
+              initialMediaType={initial.coverMediaType}
+              initialProvider={initial.coverMediaProvider}
+              initialSourceUrl={initial.coverMediaSourceUrl}
+              initialCredit={initial.coverMediaCredit}
+              initialCreditUrl={initial.coverMediaCreditUrl}
+              initialAlt={initial.coverMediaAlt}
+              // issue #868 [cover-gallery] — the ADDITIONAL image/GIF items.
+              initialCoverGallery={initial.coverGallery}
+              onCoverChange={handleCoverChange}
+              onShowToast={onShowToast}
+              disabled={disabled}
+              isWideDesktop={isWideDesktop}
+              onCoverVideoProcessingChange={onCoverVideoProcessingChange}
+            />
+          </Suspense>
         </ScrollView>
 
         {/* META-ORCH-1009 Sub-E + META-ORCH-1059: an explicit confirm button
@@ -213,6 +241,13 @@ const styles = StyleSheet.create({
   },
   bodyContent: {
     paddingBottom: spacing.lg,
+  },
+  // issue #868 — Suspense fallback while the deferred CoverPicker web chunk loads
+  // (native resolves instantly). Keeps the sheet body from collapsing mid-load.
+  pickerLoading: {
+    minHeight: 240,
+    alignItems: "center",
+    justifyContent: "center",
   },
   footer: {
     paddingTop: spacing.sm,
