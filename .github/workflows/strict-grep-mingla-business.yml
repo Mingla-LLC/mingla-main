@@ -509,7 +509,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          # Node 22 (issue #967): class D hosts the app-mobile test-runner gates that
+          # spawn `node --experimental-strip-types --test <logic>.ts` (orch-1028 launch-city,
+          # orch-1028 scroll-policy, orch-1039 collab-gate, orch-1161 notif-prefs). That flag
+          # was added in Node 22.6 and errors on Node 20. Their .ts tests import only
+          # dependency-free pure-logic modules, so no npm install is needed here. The two
+          # pre-existing class-D npm-script gates are node-version-agnostic file checks.
+          node-version: "22"
       - name: Run class D suites (batched)
         run: node .github/scripts/strict-grep/run-batch.mjs --class D
       - name: Upload class D gate results
