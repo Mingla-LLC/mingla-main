@@ -4,7 +4,9 @@ import { StyleSheet, Text, View, type View as ViewInstance } from "react-native"
 import { spacing, text, typography } from "../../constants/designSystem";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { Sheet } from "../ui/Sheet";
-import { UNMOUNT_DELAY_MS } from "../ui/SheetMobile";
+
+// Keep focus restoration beyond every canonical close/unmount animation.
+const FOCUS_RETURN_DELAY_MS = 320;
 
 export interface PublicVenueReservationSheetProps {
   visible: boolean;
@@ -45,7 +47,7 @@ export function PublicVenueReservationSheet({
       } else {
         onDismissed?.();
       }
-    }, UNMOUNT_DELAY_MS);
+    }, FOCUS_RETURN_DELAY_MS);
 
     return (): void => {
       clearTimeout(timer);

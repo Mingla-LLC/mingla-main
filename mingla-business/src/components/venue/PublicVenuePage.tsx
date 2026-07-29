@@ -149,7 +149,8 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
   const hasMenu = menuItemCount > 0;
   const canOpenReservationSheet =
     reservabilityState === "ready" &&
-    reservable?.reservable === true &&
+    reservable !== null &&
+    reservable.reservable === true &&
     reservable.venueId !== null;
   const reservationUiContext = useMemo(
     () => ({ hasMenu, canOpenReservationSheet }),

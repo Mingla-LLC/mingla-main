@@ -18,16 +18,15 @@ describe("issue #1380 accessibility and clean-install rework", () => {
     expect(tabs).toContain("{...webAriaSelected}");
   });
 
-  test("focus returns only after the canonical Sheet delayed unmount and next frame", () => {
+  test("focus returns only after the maximum Sheet unmount window and next frame", () => {
     const page = readBusiness("src/components/venue/PublicVenuePage.tsx");
     const wrapper = readBusiness(
       "src/components/venue/PublicVenueReservationSheet.tsx",
     );
+    const delayMatch = /const FOCUS_RETURN_DELAY_MS = (\d+);/.exec(wrapper);
 
-    expect(wrapper).toContain(
-      'import { UNMOUNT_DELAY_MS } from "../ui/SheetMobile"',
-    );
-    expect(wrapper).toContain("}, UNMOUNT_DELAY_MS);");
+    expect(Number(delayMatch?.[1])).toBeGreaterThan(280);
+    expect(wrapper).toContain("}, FOCUS_RETURN_DELAY_MS);");
     expect(wrapper).toContain("requestAnimationFrame(() => onDismissed?.())");
     expect(wrapper).toContain("cancelAnimationFrame(frame)");
     expect(page).toContain(
