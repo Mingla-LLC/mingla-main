@@ -9,8 +9,13 @@
  * symlink so no react-native is pulled into this node-env suite):
  *
  *   computeShowFreeTextRow  — TIMING: never during loading_suggestions /
- *                             suggestions_open / fetching_details; shown on
- *                             no_results (primary) + idle-after-typing full addr.
+ *                             fetching_details; shown on no_results (primary) +
+ *                             idle-after-typing full addr. Issue #1363 CHANGE 1:
+ *                             ALSO shown while a live suggestion list is open
+ *                             (`suggestions_open`) when the text is full-length —
+ *                             Mapbox can't resolve granular NG addresses, so the
+ *                             brand must be able to commit their typed text even
+ *                             with junk suggestions on screen.
  *   resolveFreeTextRowStyle — ACCENT: accent text + icon + pill when an `action`
  *                             token is injected (business); exact muted fallback
  *                             when absent (consumer) → byte-identical.
@@ -20,8 +25,10 @@
  *    "shown on no_results" assertion FAILS.
  *  - Delete the accent branch in resolveFreeTextRowStyle ⇒ the "accent applied
  *    when the action token is passed" assertion FAILS.
+ *  - Re-adding `suggestions_open` to the early false-return (the pre-CHANGE-1
+ *    behavior) ⇒ the "SHOWN while suggestions open + full-length" assertion FAILS.
  *  - Reverting the whitelist to the old `trimmedLength >= 1` any-status rule ⇒
- *    the "hidden during loading_suggestions / suggestions_open" assertions FAIL.
+ *    the "hidden during loading_suggestions / fetching_details" assertions FAIL.
  */
 
 // Imported via a filesystem-relative path (NOT the `@mingla/location-input`
@@ -51,8 +58,23 @@ describe("Issue #1363 F2 — free-text ACTION row TIMING (never competes with su
     expect(show({ statusKind: "loading_suggestions" })).toBe(false);
   });
 
-  it("is HIDDEN while an active suggestion list is open", () => {
-    expect(show({ statusKind: "suggestions_open" })).toBe(false);
+  // Issue #1363 (CHANGE 1 — free-text-on-suggestions): the action row now ALSO
+  // shows WHILE a live suggestion list is open, as long as the typed text is
+  // full-length — Mapbox routinely returns junk suggestions for un-indexed NG
+  // addresses, so the brand must be able to commit what they typed. The host
+  // frames it as a clearly-separated "or use what you typed" alternative BELOW
+  // the list. Fails-on-revert: re-adding suggestions_open to the early
+  // false-return flips this back to false.
+  it("is SHOWN while an active suggestion list is open when the text is full-length (CHANGE 1)", () => {
+    expect(show({ statusKind: "suggestions_open" })).toBe(true);
+  });
+
+  it("is HIDDEN while suggestions are open but the text is below minQueryLength", () => {
+    expect(show({ statusKind: "suggestions_open", trimmedLength: 2 })).toBe(false);
+  });
+
+  it("is HIDDEN right after a pick even with suggestions open (justPicked wins)", () => {
+    expect(show({ statusKind: "suggestions_open", justPicked: true })).toBe(false);
   });
 
   it("is HIDDEN while a picked place's details are being fetched", () => {

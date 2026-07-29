@@ -130,6 +130,10 @@ const BUSINESS_COPY: LocationInputCopy = {
   // renders `Use this address: "<typed text>"` (still echoes the typed text).
   freeTextPrefix: "Use this address:",
   pinDropLabel: "Can't find it? Drop a pin on the map",
+  // Issue #1363 (CHANGE 1) — framing caption shown above the "Use this address"
+  // action WHEN Mapbox suggestions are also on screen, so the brand can commit
+  // their typed NG address without it looking like one of the suggestions.
+  freeTextOverSuggestionsLabel: "or use what you typed",
 };
 
 const invoke = (fn: string, options: { body: Record<string, unknown> }) =>

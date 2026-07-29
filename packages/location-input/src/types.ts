@@ -133,4 +133,12 @@ export interface LocationInputCopy {
    * rendered when the host passes `onOpenPinDrop`.
    */
   pinDropLabel?: string;
+  /**
+   * Issue #1363 (CHANGE 1) — tiny framing caption rendered ABOVE the free-text
+   * "Use …" row WHEN a live suggestion list is ALSO visible, so the action reads
+   * as a clearly-separated alternative and never as one of the suggestions.
+   * OPTIONAL; defaults to "or use what you typed". Only rendered when the host
+   * passes `allowFreeText` AND the field is in `suggestions_open`.
+   */
+  freeTextOverSuggestionsLabel?: string;
 }

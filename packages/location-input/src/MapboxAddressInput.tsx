@@ -718,9 +718,42 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
     icon: tokens.icon.leading,
   });
   const showPinRow = onOpenPinDrop !== undefined;
+  // Issue #1363 (CHANGE 1 — free-text-on-suggestions) — when the "Use …" action
+  // shows WHILE a live suggestion list is open, frame it as a clearly-separated
+  // alternative BELOW the list (a hairline + a tiny "or use what you typed"
+  // caption) so it never reads as one of the suggestions. Only when suggestions
+  // are actually on screen; on `no_results`/`idle` there is no list to separate
+  // from, so the plain accent action stands alone as today.
+  const showOrFraming = showFreeTextRow && status.kind === "suggestions_open";
   const assistFooter =
     showFreeTextRow || showPinRow ? (
       <View style={{ marginTop: 4, gap: 2 }}>
+        {showOrFraming ? (
+          <View style={styles.assistDivider}>
+            <View
+              style={[
+                styles.assistDividerLine,
+                { backgroundColor: tokens.dropdown.border },
+              ]}
+            />
+            <Text
+              style={{
+                color: tokens.status.text,
+                fontSize: tokens.status.fontSize,
+                lineHeight: tokens.status.lineHeight,
+                fontWeight: "600",
+              }}
+            >
+              {copy.freeTextOverSuggestionsLabel ?? "or use what you typed"}
+            </Text>
+            <View
+              style={[
+                styles.assistDividerLine,
+                { backgroundColor: tokens.dropdown.border },
+              ]}
+            />
+          </View>
+        ) : null}
         {showFreeTextRow ? (
           <Pressable
             onPress={() => onFreeText?.(trimmedValue)}
@@ -895,6 +928,20 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 10,
     paddingHorizontal: 4,
+  },
+  // Issue #1363 (CHANGE 1) — "─ or use what you typed ─" framing above the
+  // free-text action when a live suggestion list is also visible.
+  assistDivider: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 6,
+    marginBottom: 2,
+    paddingHorizontal: 4,
+  },
+  assistDividerLine: {
+    flex: 1,
+    height: 1,
   },
   cardShadow: {
     shadowColor: "#000",
