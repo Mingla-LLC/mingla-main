@@ -1,4 +1,4 @@
-import { reconcileInitialVenueTab } from "@mingla/brand-rendering/PublicVenueTabs";
+import { reconcileInitialVenueTab } from "@mingla/brand-rendering/publicVenueTabState";
 
 describe("issue #1365 PublicVenueTabs initial analytics behavior", () => {
   test("emits once for the initial route tab and once when that route state changes", () => {

@@ -5,9 +5,14 @@ import type {
   ResolvedTheme,
   ThemePalette,
 } from "@mingla/offering-rendering";
+import {
+  reconcileInitialVenueTab,
+  type PublicVenueTab,
+} from "./publicVenueTabState";
+
+export type { PublicVenueTab } from "./publicVenueTabState";
 
 type Surface = ReturnType<typeof offeringSurfaceStyles>;
-export type PublicVenueTab = "overview" | "menu" | "reservations";
 
 export interface PublicVenueTabsProps {
   initialTab?: PublicVenueTab;
@@ -19,31 +24,6 @@ export interface PublicVenueTabsProps {
   surface: Surface;
   theme: ResolvedTheme;
   onTabViewed?: (tab: PublicVenueTab) => void;
-}
-
-export interface InitialVenueTabTransition {
-  activeTab: PublicVenueTab;
-  lastInitialTab: PublicVenueTab;
-  shouldEmit: boolean;
-}
-
-export function reconcileInitialVenueTab(
-  activeTab: PublicVenueTab,
-  lastInitialTab: PublicVenueTab | null,
-  safeInitialTab: PublicVenueTab,
-): InitialVenueTabTransition {
-  if (lastInitialTab === safeInitialTab) {
-    return {
-      activeTab,
-      lastInitialTab,
-      shouldEmit: false,
-    };
-  }
-  return {
-    activeTab: safeInitialTab,
-    lastInitialTab: safeInitialTab,
-    shouldEmit: true,
-  };
 }
 
 const LABELS: Record<PublicVenueTab, string> = {
