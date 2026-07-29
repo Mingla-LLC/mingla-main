@@ -45,6 +45,11 @@ interface MapboxAddressInputProps {
   error?: string;
   placeholder?: string;
   accessibilityLabel?: string;
+  // Issue #1363 [three-tier address] — optional Tier-2 free-text + Tier-3 pin
+  // affordances. All default-off; omitting them keeps today's pick-only field.
+  allowFreeText?: boolean;
+  onFreeText?: (text: string) => void;
+  onOpenPinDrop?: () => void;
 }
 
 // Business token bundle — reproduces the pre-extraction dark-glass StyleSheet.
@@ -110,6 +115,10 @@ const BUSINESS_COPY: LocationInputCopy = {
   noResults: "No matches — try a broader search.",
   offline: "Couldn't reach search. Tap to try again.",
   pickError: "Couldn't fetch address details. Tap to try again.",
+  // Issue #1363 — Tier-2/Tier-3 assist-footer copy (only rendered when the host
+  // passes allowFreeText / onOpenPinDrop).
+  freeTextPrefix: "Use",
+  pinDropLabel: "Can't find it? Drop a pin on the map",
 };
 
 const invoke = (fn: string, options: { body: Record<string, unknown> }) =>
@@ -123,6 +132,9 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
   error,
   placeholder = "Pick a place",
   accessibilityLabel = "Address",
+  allowFreeText,
+  onFreeText,
+  onOpenPinDrop,
 }) => {
   const tokens = useMemo(() => BUSINESS_TOKENS, []);
   return (
@@ -140,6 +152,9 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
       copy={BUSINESS_COPY}
       minQueryLength={3}
       leadingIcon="location"
+      allowFreeText={allowFreeText}
+      onFreeText={onFreeText}
+      onOpenPinDrop={onOpenPinDrop}
     />
   );
 };

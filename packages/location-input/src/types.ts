@@ -101,4 +101,17 @@ export interface LocationInputCopy {
   offline: string;
   /** retrieve threw (e.g. "Couldn't fetch that place. Tap to try again."). */
   pickError: string;
+  /**
+   * Issue #1363 — prefix for the Tier-2 free-text commit row; the field renders
+   * `${freeTextPrefix} "${value}"`. OPTIONAL; defaults to "Use" when undefined.
+   * Only rendered when the host passes `allowFreeText`. Consumer hosts omit it
+   * (and `allowFreeText`) → byte-identical render.
+   */
+  freeTextPrefix?: string;
+  /**
+   * Issue #1363 — label for the Tier-3 pin-drop row (e.g. "Can't find it? Drop a
+   * pin on the map"). OPTIONAL; defaults to that string when undefined. Only
+   * rendered when the host passes `onOpenPinDrop`.
+   */
+  pinDropLabel?: string;
 }

@@ -192,6 +192,27 @@ export interface MapboxAddressInputProps {
   proximity?: string;
   /** suggest `limit` override (≤10). Default (omitted) → edge default 5. */
   suggestLimit?: number;
+
+  // ── Issue #1363 [three-tier address] · Tier-2 free-text + Tier-3 pin ────────
+  // All OPTIONAL + default-off. When every one is absent the assist footer is
+  // omitted entirely and the field renders BYTE-IDENTICALLY (every app-mobile
+  // consumer host passes none → consumer stays unchanged).
+  /**
+   * When true, the field renders a "Use '<typed text>'" affordance so the host
+   * can accept free text as the display address (Tier 2). Default false → today.
+   */
+  allowFreeText?: boolean;
+  /**
+   * Fires when the user commits free text (taps the "Use '<text>'" row). The
+   * host writes the display address AND kicks off a background forward-geocode.
+   */
+  onFreeText?: (text: string) => void;
+  /**
+   * When provided, the field renders a "Can't find it? Drop a pin" affordance
+   * that calls this. The HOST opens the PinDropSheet and wires its result.
+   * Omitted → no pin affordance (consumer default).
+   */
+  onOpenPinDrop?: () => void;
 }
 
 type Status =
@@ -224,10 +245,17 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
   autoFocus = false,
   proximity,
   suggestLimit,
+  allowFreeText = false,
+  onFreeText,
+  onOpenPinDrop,
 }) => {
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const [focused, setFocused] = useState(false);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Issue #1363 — set true right after a successful pick, reset on the next
+  // keystroke. Used ONLY to hide the Tier-2 free-text row immediately after a
+  // pick (so the picked address doesn't re-offer "Use '<address>'").
+  const justPicked = useRef<boolean>(false);
   // One Mapbox session token per typing session; reused across suggest→retrieve.
   const sessionToken = useRef<string>(newMapboxSessionToken());
 
@@ -333,6 +361,9 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
 
   const handleChangeText = useCallback(
     (next: string): void => {
+      // Issue #1363 — any keystroke means the value is no longer a just-picked
+      // address, so the Tier-2 free-text row may show again.
+      justPicked.current = false;
       onChangeText(next);
       clearDebounceTimer();
       if (next.trim().length < minQueryLength) {
@@ -388,6 +419,9 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
           invoke,
         });
         onPick(details);
+        // Issue #1363 — a completed pick hides the Tier-2 free-text row until
+        // the next keystroke.
+        justPicked.current = true;
         setStatus({ kind: "idle" });
         fireHaptic("success");
         // Rotate the session token AFTER a completed suggest→retrieve pair.
@@ -653,6 +687,88 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
       inlineContent
     );
 
+  // ── Issue #1363 — Tier-2 free-text + Tier-3 pin "assist footer" ────────────
+  // Rendered as a sibling BELOW the field/error (and the suggestion list), NOT
+  // inside the dropdown card — so it shows in both card + inline dropdown modes
+  // and regardless of whether the dropdown is open. When BOTH rows are hidden
+  // the whole footer is omitted → BYTE-IDENTICAL render for consumer hosts that
+  // pass neither `allowFreeText` nor `onOpenPinDrop`.
+  const trimmedValue = value.trim();
+  const showFreeTextRow =
+    allowFreeText === true &&
+    onFreeText !== undefined &&
+    trimmedValue.length >= 1 &&
+    !justPicked.current &&
+    status.kind !== "fetching_details";
+  const showPinRow = onOpenPinDrop !== undefined;
+  const assistFooter =
+    showFreeTextRow || showPinRow ? (
+      <View style={{ marginTop: 4, gap: 2 }}>
+        {showFreeTextRow ? (
+          <Pressable
+            onPress={() => onFreeText?.(trimmedValue)}
+            accessibilityRole="button"
+            accessibilityLabel={`${copy.freeTextPrefix ?? "Use"} "${trimmedValue}"`}
+            hitSlop={8}
+            style={({ pressed }) => [
+              styles.assistRow,
+              pressed ? { opacity: 0.6 } : null,
+            ]}
+          >
+            <IconComponent
+              name="location-outline"
+              size={16}
+              color={tokens.icon.leading}
+            />
+            <Text
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              style={{
+                flex: 1,
+                color: tokens.status.text,
+                fontSize: tokens.status.fontSize,
+                lineHeight: tokens.status.lineHeight,
+              }}
+            >
+              {`${copy.freeTextPrefix ?? "Use"} "${trimmedValue}"`}
+            </Text>
+          </Pressable>
+        ) : null}
+        {showPinRow ? (
+          <Pressable
+            onPress={() => onOpenPinDrop?.()}
+            accessibilityRole="button"
+            accessibilityLabel={
+              copy.pinDropLabel ?? "Can't find it? Drop a pin on the map"
+            }
+            hitSlop={8}
+            style={({ pressed }) => [
+              styles.assistRow,
+              pressed ? { opacity: 0.6 } : null,
+            ]}
+          >
+            <IconComponent
+              name="location"
+              size={16}
+              color={tokens.icon.leading}
+            />
+            <Text
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              style={{
+                flex: 1,
+                color: tokens.status.text,
+                fontSize: tokens.status.fontSize,
+                lineHeight: tokens.status.lineHeight,
+              }}
+            >
+              {copy.pinDropLabel ?? "Can't find it? Drop a pin on the map"}
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
+    ) : null;
+
   return (
     <View>
       <View style={fieldStyle}>
@@ -747,11 +863,20 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
       ) : null}
 
       {wrappedList}
+
+      {assistFooter}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
+  assistRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+  },
   cardShadow: {
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
