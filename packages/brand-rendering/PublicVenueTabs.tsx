@@ -1,4 +1,10 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import type {
   offeringSurfaceStyles,
@@ -16,6 +22,7 @@ type Surface = ReturnType<typeof offeringSurfaceStyles>;
 
 export interface PublicVenueTabsProps {
   initialTab?: PublicVenueTab;
+  activeTab?: PublicVenueTab;
   hasMenu: boolean;
   overview: React.ReactNode;
   menu: React.ReactNode;
@@ -23,7 +30,12 @@ export interface PublicVenueTabsProps {
   palette: ThemePalette;
   surface: Surface;
   theme: ResolvedTheme;
+  onTabChange?: (tab: PublicVenueTab) => void;
   onTabViewed?: (tab: PublicVenueTab) => void;
+}
+
+export interface PublicVenueTabsHandle {
+  focusTab: (tab: PublicVenueTab) => void;
 }
 
 const LABELS: Record<PublicVenueTab, string> = {
@@ -37,32 +49,67 @@ const LABELS: Record<PublicVenueTab, string> = {
  * reuses the same pill shape and theme inputs as PublicBrandPage; adapters own
  * data, navigation, and booking side effects.
  */
-export function PublicVenueTabs({
-  initialTab = "overview",
-  hasMenu,
-  overview,
-  menu,
-  reservations,
-  palette,
-  surface,
-  theme,
-  onTabViewed,
-}: PublicVenueTabsProps): React.ReactElement {
+export const PublicVenueTabs = forwardRef<
+  PublicVenueTabsHandle,
+  PublicVenueTabsProps
+>(function PublicVenueTabs(
+  {
+    initialTab = "overview",
+    activeTab: controlledActiveTab,
+    hasMenu,
+    overview,
+    menu,
+    reservations,
+    palette,
+    surface,
+    theme,
+    onTabChange,
+    onTabViewed,
+  },
+  ref,
+): React.ReactElement {
   const tabs: PublicVenueTab[] = hasMenu
     ? ["overview", "menu", "reservations"]
     : ["overview", "reservations"];
   const safeInitial = tabs.includes(initialTab) ? initialTab : "overview";
-  const [activeTab, setActiveTab] = useState<PublicVenueTab>(safeInitial);
+  const isControlled = controlledActiveTab !== undefined;
+  const [uncontrolledActiveTab, setUncontrolledActiveTab] =
+    useState<PublicVenueTab>(safeInitial);
+  const activeTab =
+    controlledActiveTab !== undefined && tabs.includes(controlledActiveTab)
+      ? controlledActiveTab
+      : isControlled
+        ? "overview"
+        : uncontrolledActiveTab;
   const lastInitialViewed = useRef<PublicVenueTab | null>(null);
   const onTabViewedRef = useRef(onTabViewed);
+  const tabRefs = useRef<
+    Partial<Record<PublicVenueTab, React.ElementRef<typeof Pressable>>>
+  >({});
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      focusTab: (tab: PublicVenueTab): void => {
+        tabRefs.current[tab]?.focus();
+      },
+    }),
+    [],
+  );
 
   useEffect(() => {
     onTabViewedRef.current = onTabViewed;
   }, [onTabViewed]);
 
   useEffect(() => {
-    if (!tabs.includes(activeTab)) setActiveTab("overview");
-  }, [activeTab, hasMenu]);
+    if (
+      !isControlled &&
+      uncontrolledActiveTab === "menu" &&
+      !hasMenu
+    ) {
+      setUncontrolledActiveTab("overview");
+    }
+  }, [hasMenu, isControlled, uncontrolledActiveTab]);
 
   useEffect(() => {
     const transition = reconcileInitialVenueTab(
@@ -71,8 +118,8 @@ export function PublicVenueTabs({
       safeInitial,
     );
     lastInitialViewed.current = transition.lastInitialTab;
-    if (transition.activeTab !== activeTab) {
-      setActiveTab(transition.activeTab);
+    if (!isControlled && transition.activeTab !== uncontrolledActiveTab) {
+      setUncontrolledActiveTab(transition.activeTab);
     }
     if (transition.shouldEmit) {
       onTabViewedRef.current?.(safeInitial);
@@ -83,7 +130,10 @@ export function PublicVenueTabs({
   }, [safeInitial]);
 
   const select = (tab: PublicVenueTab): void => {
-    setActiveTab(tab);
+    if (!isControlled) {
+      setUncontrolledActiveTab(tab);
+    }
+    onTabChange?.(tab);
     onTabViewed?.(tab);
   };
 
@@ -100,6 +150,9 @@ export function PublicVenueTabs({
           return (
             <Pressable
               key={tab}
+              ref={(node) => {
+                tabRefs.current[tab] = node ?? undefined;
+              }}
               onPress={() => select(tab)}
               accessibilityRole="tab"
               accessibilityLabel={LABELS[tab]}
@@ -137,7 +190,7 @@ export function PublicVenueTabs({
       </View>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   tabs: {

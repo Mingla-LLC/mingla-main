@@ -22,7 +22,14 @@
  * PublicMenuSections renderer (one owner — the brand page's Menu composition).
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import {
   Image,
   Linking,
@@ -43,6 +50,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 // The type-only barrel import below is erased at compile time (safe).
 import { PublicMenuSections } from "@mingla/brand-rendering/PublicMenuSections";
 import { PublicVenueTabs } from "@mingla/brand-rendering/PublicVenueTabs";
+import type { PublicVenueTabsHandle } from "@mingla/brand-rendering/PublicVenueTabs";
 import type { PublicMenuGroup, PublicVenueTab } from "@mingla/brand-rendering";
 import {
   ParallaxCoverShell,
@@ -68,6 +76,12 @@ import type { BrandHourEntry } from "../../types/brand";
 import { useThemeFont } from "../../theme/useThemeFont";
 import { ShareModal } from "../ui/ShareModal";
 import { GuestVenueReservation } from "./GuestVenueReservation";
+import { PublicVenueReservationSheet } from "./PublicVenueReservationSheet";
+import {
+  createPublicVenueReservationUiState,
+  normalizePublicVenueReservationUiState,
+  publicVenueReservationUiReducer,
+} from "./publicVenueReservationUiState";
 import { captureWeb } from "../../analytics/webAnalytics";
 
 export interface PublicVenuePageProps {
@@ -131,7 +145,49 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
   const [muted, setMuted] = useState<boolean>(true);
   // META-ORCH-1290(C) §6.1 — About pitch clamp/expand state.
   const [aboutExpanded, setAboutExpanded] = useState<boolean>(false);
-  const [requestedTab, setRequestedTab] = useState<PublicVenueTab>(initialTab);
+  const menuItemCount = menu.reduce((sum, group) => sum + group.items.length, 0);
+  const hasMenu = menuItemCount > 0;
+  const canOpenReservationSheet =
+    reservabilityState === "ready" &&
+    reservable?.reservable === true &&
+    reservable.venueId !== null;
+  const reservationUiContext = useMemo(
+    () => ({ hasMenu, canOpenReservationSheet }),
+    [canOpenReservationSheet, hasMenu],
+  );
+  const [reservationUiState, dispatchReservationUi] = useReducer(
+    publicVenueReservationUiReducer,
+    initialTab,
+    (tab) =>
+      createPublicVenueReservationUiState(tab, reservationUiContext),
+  );
+  const normalizedReservationUiState =
+    normalizePublicVenueReservationUiState(
+      reservationUiState,
+      reservationUiContext,
+    );
+  const publicVenueTabsRef = useRef<PublicVenueTabsHandle | null>(null);
+  const analyticsSurface =
+    Platform.OS === "web" ? "buyer_web" : "business_preview";
+
+  useEffect(() => {
+    dispatchReservationUi({
+      type: "INITIAL_TAB_CHANGED",
+      tab: initialTab,
+      context: reservationUiContext,
+    });
+    // Reservability changes normalize through ENVIRONMENT_CHANGED below; they
+    // must not replay the route's initial tab over a user's current selection.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasMenu, initialTab]);
+
+  useEffect(() => {
+    dispatchReservationUi({
+      type: "ENVIRONMENT_CHANGED",
+      context: reservationUiContext,
+    });
+  }, [reservationUiContext]);
+
   const toggleAboutExpanded = useCallback((): void => {
     setAboutExpanded((v) => !v);
   }, []);
@@ -192,17 +248,58 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
   }, [router, venue.brandSlug]);
 
   const handleReserve = useCallback((): void => {
-    setRequestedTab("reservations");
+    if (
+      !canOpenReservationSheet ||
+      normalizedReservationUiState.reservationSheetOpen ||
+      normalizedReservationUiState.activeTab === "reservations"
+    ) {
+      return;
+    }
+    dispatchReservationUi({
+      type: "RESERVE_CTA_PRESSED",
+      context: reservationUiContext,
+    });
     captureWeb("public_venue_reservation_started", {
-      surface: Platform.OS === "web" ? "buyer_web" : "business_preview",
+      surface: analyticsSurface,
       brand_id: venue.brandId,
       venue_id: venue.id,
       source_tab: "sticky_cta",
     });
-  }, [venue.brandId, venue.id]);
+  }, [
+    analyticsSurface,
+    canOpenReservationSheet,
+    normalizedReservationUiState.activeTab,
+    normalizedReservationUiState.reservationSheetOpen,
+    reservationUiContext,
+    venue.brandId,
+    venue.id,
+  ]);
+
+  const handleReservationSheetClose = useCallback((): void => {
+    dispatchReservationUi({
+      type: "RESERVATION_SHEET_CLOSED",
+      context: reservationUiContext,
+    });
+    setTimeout(() => {
+      publicVenueTabsRef.current?.focusTab("reservations");
+    }, 0);
+  }, [reservationUiContext]);
+
+  const handleVenueTabChange = useCallback(
+    (tab: PublicVenueTab): void => {
+      dispatchReservationUi({
+        type: "TAB_SELECTED",
+        tab,
+        context: reservationUiContext,
+      });
+    },
+    [reservationUiContext],
+  );
 
   // ── §6.7 reserve display gate — fail closed. ─────────────────────────────
-  const showReserve = reservable !== null && reservable.reservable === true;
+  const showReserveCta =
+    canOpenReservationSheet &&
+    normalizedReservationUiState.activeTab !== "reservations";
 
   const hours = venue.hours;
   const today = todayWeekday();
@@ -213,8 +310,6 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
       : null;
 
   const gallery = venue.galleryPhotoUrls;
-  const menuItemCount = menu.reduce((sum, g) => sum + g.items.length, 0);
-
   // META-ORCH-1290(C) §6.1/§6.2 — the owner-authored pitch. Empty/whitespace →
   // treated as absent so the About section, desktop clamp, and pitch-first meta
   // all fall back honestly (no fabricated prose anywhere).
@@ -431,6 +526,7 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
         venueId={reservable.venueId}
         brandId={venue.brandId}
         currency={reservable.currency}
+        analyticsSurface={analyticsSurface}
       />
     ) : (
       <View style={styles.reservationState}>
@@ -486,7 +582,7 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
   );
 
   const reserveBar =
-    showReserve && !isDesktop ? (
+    showReserveCta && !isDesktop ? (
       <View
         style={[
           styles.reserveBarWrap,
@@ -501,7 +597,7 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
     ) : null;
 
   const reserveBarClearance =
-    showReserve && !isDesktop
+    showReserveCta && !isDesktop
       ? 52 + 16 + insets.bottom + 8
       : insets.bottom + 24;
 
@@ -567,7 +663,7 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
             Share
           </Text>
         </Pressable>
-        {showReserve ? reserveCta : null}
+        {showReserveCta ? reserveCta : null}
       </View>
     </View>
   ) : null;
@@ -586,8 +682,10 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
     <View style={styles.body}>
       {!isDesktop ? identityBlock : null}
       <PublicVenueTabs
-        initialTab={requestedTab}
-        hasMenu={menuItemCount > 0}
+        ref={publicVenueTabsRef}
+        initialTab={initialTab}
+        activeTab={normalizedReservationUiState.activeTab}
+        hasMenu={hasMenu}
         palette={palette}
         surface={surface}
         theme={resolvedTheme}
@@ -601,17 +699,22 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
           </View>
         }
         menu={menuBlock}
-        reservations={reservationsBlock}
-        onTabViewed={(tab) => {
+        reservations={
+          normalizedReservationUiState.reservationSheetOpen
+            ? null
+            : reservationsBlock
+        }
+        onTabChange={handleVenueTabChange}
+        onTabViewed={(tab: PublicVenueTab) => {
           if (tab === "overview") {
             captureWeb("public_venue_overview_viewed", {
-              surface: Platform.OS === "web" ? "buyer_web" : "business_preview",
+              surface: analyticsSurface,
               brand_id: venue.brandId,
               venue_id: venue.id,
             });
           } else if (tab === "menu") {
             captureWeb("public_venue_menu_viewed", {
-              surface: Platform.OS === "web" ? "buyer_web" : "business_preview",
+              surface: analyticsSurface,
               brand_id: venue.brandId,
               venue_id: venue.id,
             });
@@ -668,6 +771,12 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
         {bodyContent}
       </ParallaxCoverShell>
       {reserveBar}
+      <PublicVenueReservationSheet
+        visible={normalizedReservationUiState.reservationSheetOpen}
+        onClose={handleReservationSheetClose}
+      >
+        {reservationsBlock}
+      </PublicVenueReservationSheet>
       <ShareModal
         visible={shareModalVisible}
         onClose={() => setShareModalVisible(false)}
