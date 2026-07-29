@@ -805,20 +805,24 @@ Deno.test("ISSUE-1184 adversarial [structural]: prepare returns cached 200 for s
 });
 
 // ── 10. [structural] Create-path safety: Meta/Snap/TikTok/Google, all PAUSED ───
-Deno.test("ISSUE-1184 adversarial [structural]: create is Meta/Snap/TikTok/Google video, only Reddit fail closed, all PAUSED", async () => {
+Deno.test("ISSUE-1184 adversarial [structural]: create is Meta/Snap/TikTok/Google/Reddit video, all PAUSED", async () => {
   const src = await Deno.readTextFile(
     new URL("../../admin-ad-create-campaign/index.ts", import.meta.url),
   );
-  // [TEST-MOD-APPROVED ORCH-0997] #997 C wired TikTok paused-video create and #997
-  // D2 wired Google Demand Gen video create — so the TikTok AND Google phase-A 422s
-  // are gone. Only Reddit still fails closed for video (exactly ONE remaining 422).
-  assertEquals(src.match(/video_create_not_available_phase_a/g)?.length, 1);
-  assertMatch(
-    src,
-    new RegExp(
-      `creativeR\\.kind === "video"[\\s\\S]{0,140}video_create_not_available_phase_a`,
-    ),
+  // [TEST-MOD-APPROVED ORCH-1185] #1185 wired Reddit paused-video create — the LAST
+  // platform still fail-closed. #997 C/D2 had already wired TikTok + Google; Reddit
+  // was the final blanket phase-A 422. It is now GONE, so NO
+  // video_create_not_available_phase_a seam remains anywhere. Reddit video resolves
+  // the #866 clip (mp4_master_url + poster) into a type:"VIDEO" post.
+  assert(
+    !src.includes("video_create_not_available_phase_a"),
+    "no video-create phase-A 422 may remain — every platform is wired",
   );
+  assertStringIncludes(
+    src,
+    'const creativeKindR = creativeR.kind === "video" ? "video" : "image";',
+  );
+  assertStringIncludes(src, "reddit_video_library_required");
   // TikTok video now resolves a READY ref (video_id + cover) instead of failing closed.
   assertStringIncludes(src, 'const creativeKindT = creativeT.kind === "video" ? "video" : "image";');
   assertStringIncludes(src, "creative_ref_incomplete");

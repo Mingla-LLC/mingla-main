@@ -21,13 +21,16 @@ const okChannels = (platforms) =>
 
 describe("ISSUE-997 D2 · Google Demand Gen video create is wired through the builder", () => {
   // Fails-on-revert: restoring VIDEO_CREATE_ENABLED.google to false fails this.
-  it("VIDEO_CREATE_ENABLED turns google ON (meta/snap/tiktok unchanged; only reddit OFF)", () => {
+  // [TEST-MOD-APPROVED ORCH-1185] #1185 wired Reddit paused-video create (the last
+  // platform still OFF), so the D2-era "only reddit OFF" assertion is obsolete —
+  // every platform is now ON.
+  it("VIDEO_CREATE_ENABLED turns google ON (every platform ON — reddit wired by #1185)", () => {
     assert.equal(VIDEO_CREATE_ENABLED.google, true);
     assert.equal(VIDEO_CREATE_ENABLED.meta, true);
     assert.equal(VIDEO_CREATE_ENABLED.snapchat, true);
     assert.equal(VIDEO_CREATE_ENABLED.tiktok, true);
-    // Reddit is the ONLY platform still fail-closed for video create.
-    assert.equal(VIDEO_CREATE_ENABLED.reddit, false);
+    // Reddit is now wired too (#1185) — no platform is fail-closed for video create.
+    assert.equal(VIDEO_CREATE_ENABLED.reddit, true);
   });
 
   // Fails-on-revert: removing "google" from VIDEO_CREATE_PLATFORMS fails this.
@@ -46,7 +49,10 @@ describe("ISSUE-997 D2 · Google Demand Gen video create is wired through the bu
     assert.equal(emptyPreparation("tiktok").capability, "preview_only");
   });
 
-  it("a READY google video channel is BUILDABLE; only reddit stays excluded", () => {
+  // [TEST-MOD-APPROVED ORCH-1185] #1185 wired Reddit as a no-prepare video platform,
+  // so reddit builds from its #866-hosted clip with no prep row and is no longer
+  // excluded. Google (this file's subject) is unaffected.
+  it("a READY google video channel is BUILDABLE; reddit builds too (no prep row needed)", () => {
     const { buildable, excluded } = partitionFundedCreative({
       fundedPlatforms: ["meta", "snapchat", "tiktok", "google", "reddit"],
       channels: okChannels(["meta", "snapchat", "tiktok", "google", "reddit"]),
@@ -56,13 +62,13 @@ describe("ISSUE-997 D2 · Google Demand Gen video create is wired through the bu
         snapchat: { state: "ready" },
         tiktok: { state: "ready" },
         google: { state: "ready" },
+        // reddit: no prep row — it needs none (no-prepare platform)
       },
     });
     assert.ok(buildable.includes("google"), "READY google video must be buildable");
-    assert.deepEqual(buildable.sort(), ["google", "meta", "snapchat", "tiktok"]);
-    // Reddit is the ONLY excluded platform now — video_not_creatable.
-    assert.deepEqual(excluded.map((e) => e.platform), ["reddit"]);
-    assert.equal(excluded.find((e) => e.platform === "reddit").reason, "video_not_creatable");
+    assert.deepEqual(buildable.sort(), ["google", "meta", "reddit", "snapchat", "tiktok"]);
+    // No platform is excluded now — reddit builds without preparation.
+    assert.deepEqual(excluded, []);
   });
 
   it("a NOT-READY google video channel is excluded as preparation_<state>, never approximation_only", () => {

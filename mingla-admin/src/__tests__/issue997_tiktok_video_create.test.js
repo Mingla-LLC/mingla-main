@@ -20,16 +20,16 @@ const okChannels = (platforms) =>
 
 describe("ISSUE-997 C · TikTok video create is wired through the builder", () => {
   // Fails-on-revert: restoring VIDEO_CREATE_ENABLED.tiktok to false fails this.
-  // [TEST-MOD-APPROVED ORCH-0997] D2 wired Google video create, so the C-era
-  // "google still OFF / google excluded approximation_only" assertions are
-  // obsolete — updated to the new truth (google ON + buildable), keeping tiktok
-  // (this file's subject) and reddit fail-closed intact.
-  it("VIDEO_CREATE_ENABLED turns tiktok ON (meta/snap/google unchanged; only reddit OFF)", () => {
+  // [TEST-MOD-APPROVED ORCH-1185] #1185 wired Reddit paused-video create (the last
+  // platform still OFF), so the C/D2-era "only reddit OFF" assertion is obsolete —
+  // updated to the new truth (every platform ON), keeping tiktok (this file's
+  // subject) buildable.
+  it("VIDEO_CREATE_ENABLED turns tiktok ON (every platform ON — reddit wired by #1185)", () => {
     assert.equal(VIDEO_CREATE_ENABLED.tiktok, true);
     assert.equal(VIDEO_CREATE_ENABLED.meta, true);
     assert.equal(VIDEO_CREATE_ENABLED.snapchat, true);
     assert.equal(VIDEO_CREATE_ENABLED.google, true);
-    assert.equal(VIDEO_CREATE_ENABLED.reddit, false);
+    assert.equal(VIDEO_CREATE_ENABLED.reddit, true);
   });
 
   // Fails-on-revert: removing "tiktok" from VIDEO_CREATE_PLATFORMS fails this.
@@ -37,7 +37,11 @@ describe("ISSUE-997 C · TikTok video create is wired through the builder", () =
     assert.deepEqual([...VIDEO_CREATE_PLATFORMS], ["meta", "snapchat", "tiktok", "google"]);
   });
 
-  it("a READY tiktok video channel is BUILDABLE; only reddit stays excluded", () => {
+  // [TEST-MOD-APPROVED ORCH-1185] #1185 wired Reddit as a no-prepare video platform
+  // (it builds from the #866-hosted clip with no prep row), so reddit is no longer
+  // excluded here — it joins the buildable set. TikTok (this file's subject) is
+  // unaffected.
+  it("a READY tiktok video channel is BUILDABLE; reddit builds too (no prep row needed)", () => {
     const { buildable, excluded } = partitionFundedCreative({
       fundedPlatforms: ["meta", "snapchat", "tiktok", "google", "reddit"],
       channels: okChannels(["meta", "snapchat", "tiktok", "google", "reddit"]),
@@ -47,12 +51,12 @@ describe("ISSUE-997 C · TikTok video create is wired through the builder", () =
         snapchat: { state: "ready" },
         tiktok: { state: "ready" },
         google: { state: "ready" },
+        // reddit: no prep row — it needs none (no-prepare platform)
       },
     });
     assert.ok(buildable.includes("tiktok"), "READY tiktok video must be buildable");
-    assert.deepEqual(buildable.sort(), ["google", "meta", "snapchat", "tiktok"]);
-    assert.deepEqual(excluded.map((e) => e.platform), ["reddit"]);
-    assert.equal(excluded.find((e) => e.platform === "reddit").reason, "video_not_creatable");
+    assert.deepEqual(buildable.sort(), ["google", "meta", "reddit", "snapchat", "tiktok"]);
+    assert.deepEqual(excluded, []);
   });
 
   it("a NOT-READY tiktok video channel is excluded as preparation_<state>, never preview_only", () => {

@@ -26,9 +26,10 @@
  *      objects (native Google validate).
  *   4. The admin-ad-create-campaign Google video sub-branch (SOURCE assertions):
  *      READY-ref-required (google/video/content_hash/status=ready + youtube_video_id),
- *      validate_only zero-object, objective "DEMAND_GEN" persisted PAUSED — and
- *      Reddit video create still fail-closed (video_create_not_available_phase_a
- *      now appears exactly ONCE, bound to the Reddit guard).
+ *      validate_only zero-object, objective "DEMAND_GEN" persisted PAUSED. (Reddit
+ *      video create was the last fail-closed platform; #1185 wired it, so
+ *      video_create_not_available_phase_a no longer appears anywhere — see the
+ *      TEST-MOD-APPROVED ORCH-1185 guardrail below.)
  *
  * The DEMAND_GEN wire shape is LIVE-VALIDATED (#1303 pinned three root causes in
  * the original doc-sourced #997-D2 shape — geo level, ad.name, logoImages — and
@@ -679,14 +680,18 @@ Deno.test("D2 create branch: validate_only creates + persists nothing", async ()
   );
 });
 
-Deno.test("D2 guardrail: Reddit video create STILL fail-closed — video_create_not_available_phase_a now appears exactly ONCE (Reddit only)", async () => {
+Deno.test("D2/#1185 guardrail: Reddit video create is now WIRED — video_create_not_available_phase_a appears ZERO times (no platform fails closed)", async () => {
   const src = await createSource();
-  // D1/C asserted TWO (Google + Reddit). D2 wires Google, so exactly ONE remains.
-  assertEquals(src.match(/video_create_not_available_phase_a/g)?.length, 1);
-  // And it is bound to the Reddit video guard.
+  // [TEST-MOD-APPROVED ORCH-1185] D1/C asserted TWO (Google + Reddit). D2 wired
+  // Google → ONE; #1185 wired Reddit → ZERO. The Reddit branch now resolves the
+  // #866-hosted clip into a type:"VIDEO" structured-post ad instead of a 422.
   assert(
-    /creativeR\.kind === "video"[\s\S]{0,160}video_create_not_available_phase_a/
-      .test(src),
-    "the Reddit video-create branch must still fail closed (422)",
+    !src.includes("video_create_not_available_phase_a"),
+    "no video-create phase-A 422 may remain — every platform is wired",
   );
+  // The Reddit video seam is the #866-library resolve (mp4_master_url + poster) →
+  // a type:"VIDEO" structured-post build.
+  assertStringIncludes(src, "reddit_video_library_required");
+  assertStringIncludes(src, '.select("id, kind, mp4_master_url, poster_url")');
+  assertStringIncludes(src, 'type: "VIDEO"');
 });

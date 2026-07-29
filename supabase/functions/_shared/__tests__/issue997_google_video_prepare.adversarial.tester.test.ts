@@ -836,16 +836,20 @@ Deno.test("ADV D2 guardrail: the create module consumes the prepared youtube_vid
     googleBranch,
     '.eq("content_hash", libCreativeGV.content_hash)',
   );
-  // The google branch no longer fail-closes; only Reddit does.
+  // The google branch no longer fail-closes.
   assert(
     !googleBranch.includes("video_create_not_available_phase_a"),
     "google video create must no longer fail closed",
   );
+  // [TEST-MOD-APPROVED ORCH-1185] #1185 wired Reddit paused-video create — so the
+  // "Reddit still fail-closed (422)" assertion is obsolete. The Reddit branch now
+  // resolves the #866-hosted clip into a type:"VIDEO" post; NO video-create 422
+  // remains anywhere.
   assert(
-    /creativeR\.kind === "video"[\s\S]{0,200}video_create_not_available_phase_a/
-      .test(src),
-    "Reddit video create must still fail closed (422)",
+    !src.includes("video_create_not_available_phase_a"),
+    "no video-create phase-A 422 may remain — Reddit is wired too (#1185)",
   );
+  assertStringIncludes(src, "reddit_video_library_required");
 });
 
 // ══════════════════════════════════════════════════════════════════════════════

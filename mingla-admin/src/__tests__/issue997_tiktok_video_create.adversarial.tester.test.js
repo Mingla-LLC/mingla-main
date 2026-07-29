@@ -35,12 +35,13 @@ const allReady = (platforms) =>
 
 describe("ISSUE-997 C/D2 adversarial · only Reddit video create can NEVER build", () => {
   // [TEST-MOD-APPROVED ORCH-0997] D2 wired Google Demand Gen video create, so the
-  // C-era "Google + Reddit can NEVER build" invariant is superseded — a READY google
-  // now builds. THE core safety invariant is re-pointed to REDDIT (the last
-  // fail-closed platform): even handed a READY prep AND a passing channel, Reddit
-  // must land in `excluded`, never `buildable`. Fails-on-revert: flipping creativeGate
-  // VIDEO_CREATE_ENABLED.reddit → true makes reddit buildable here → RED.
-  it("a READY google builds; only reddit stays excluded with a READY prep and passing channels", () => {
+  // [TEST-MOD-APPROVED ORCH-1185] #1185 wired Reddit paused-video create as the FIRST
+  // no-prepare video platform: given a passing channel it builds from its #866-hosted
+  // clip with no prep handoff. The C/D2-era "reddit can NEVER build" invariant is
+  // superseded — every funded platform now builds. Fails-on-revert: reverting
+  // creativeGate VIDEO_CREATE_ENABLED.reddit → false, OR dropping the
+  // VIDEO_CREATE_NO_PREPARE skip, drops reddit from `buildable` here → RED.
+  it("a READY google builds; reddit builds too (no-prepare) with passing channels", () => {
     const { buildable, excluded } = partitionFundedCreative({
       fundedPlatforms: ALL,
       channels: okChannels(ALL),
@@ -48,14 +49,16 @@ describe("ISSUE-997 C/D2 adversarial · only Reddit video create can NEVER build
       preparationByPlatform: allReady(ALL),
     });
     assert.equal(buildable.includes("google"), true, "a READY google must build (Demand Gen)");
-    assert.equal(buildable.includes("reddit"), false, "reddit must never build a video");
-    const reasonOf = (p) => excluded.find((e) => e.platform === p)?.reason;
-    assert.equal(reasonOf("reddit"), "video_not_creatable");
-    // The flag table enables google, keeps reddit OFF (frozen — see below).
+    assert.equal(
+      buildable.includes("reddit"),
+      true,
+      "reddit builds from its #866-hosted clip (no prepare)",
+    );
     assert.equal(VIDEO_CREATE_ENABLED.google, true);
-    assert.equal(VIDEO_CREATE_ENABLED.reddit, false);
-    // tiktok + google + meta + snap all build; only reddit is excluded.
-    assert.deepEqual(buildable.sort(), ["google", "meta", "snapchat", "tiktok"]);
+    assert.equal(VIDEO_CREATE_ENABLED.reddit, true);
+    // Every funded platform builds; nothing excluded.
+    assert.deepEqual(buildable.sort(), ["google", "meta", "reddit", "snapchat", "tiktok"]);
+    assert.deepEqual(excluded, []);
   });
 
   it("videoPreparationGate keeps reddit excluded even when marked READY in rows; a READY google continues", () => {
@@ -132,19 +135,21 @@ describe("ISSUE-997 C adversarial · a READY tiktok prep is NOT a free pass", ()
 });
 
 describe("ISSUE-997 C adversarial · gate tables are immutable + partition is total", () => {
-  // [TEST-MOD-APPROVED ORCH-0997] google is now creatable, so the frozen-off target
-  // is REDDIT — enabling it at runtime must be a no-op.
-  it("VIDEO_CREATE_ENABLED / VIDEO_CREATE_PLATFORMS are frozen — enabling reddit is a no-op", () => {
+  // [TEST-MOD-APPROVED ORCH-1185] #1185 wired reddit ON as a NO-PREPARE platform, so
+  // it is VIDEO_CREATE_ENABLED yet stays OUT of the prepare queue VIDEO_CREATE_PLATFORMS.
+  // The immutability invariant is re-pointed: a runtime write can neither turn reddit
+  // OFF in the enable table nor smuggle it INTO the prepare queue.
+  it("VIDEO_CREATE_ENABLED / VIDEO_CREATE_PLATFORMS are frozen — runtime mutation is a no-op", () => {
     assert.ok(Object.isFrozen(VIDEO_CREATE_ENABLED));
     assert.ok(Object.isFrozen(VIDEO_CREATE_PLATFORMS));
-    // Attempt to smuggle reddit on at runtime — must not stick.
+    // Attempt to mutate at runtime — must not stick.
     try {
-      VIDEO_CREATE_ENABLED.reddit = true;
-      VIDEO_CREATE_PLATFORMS.push("reddit");
+      VIDEO_CREATE_ENABLED.reddit = false; // cannot turn reddit off
+      VIDEO_CREATE_PLATFORMS.push("reddit"); // cannot add reddit to the prepare queue
     } catch {
       // strict mode throws on a frozen write — also acceptable.
     }
-    assert.equal(VIDEO_CREATE_ENABLED.reddit, false);
+    assert.equal(VIDEO_CREATE_ENABLED.reddit, true);
     // google stays wired ON (frozen).
     assert.equal(VIDEO_CREATE_ENABLED.google, true);
     assert.equal(VIDEO_CREATE_PLATFORMS.includes("reddit"), false);

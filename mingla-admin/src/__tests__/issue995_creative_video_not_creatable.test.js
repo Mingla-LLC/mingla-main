@@ -39,22 +39,24 @@ const allPassing = ALL.map((platform) => ({ platform, ok: true, needsTranscode: 
 
 // ── P1: #1184 narrows the former blanket block to exact READY platforms ──────
 describe("ISSUE-995 rework · Phase A video create remains platform-honest", () => {
-  // [TEST-MOD-APPROVED ORCH-0997] #997 C wired TikTok and #997 D2 wired Google
-  // (Demand Gen) paused-video create, so the "google: false" assertion is now
-  // superseded too — only reddit remains fail-closed for video.
-  it("video create is enabled for Meta, Snapchat, TikTok, and Google (#997 C/D2)", () => {
+  // [TEST-MOD-APPROVED ORCH-1185] #997 C/D2 wired TikTok + Google, and #1185 wired
+  // Reddit paused-video create — so the "reddit: false" assertion is now superseded
+  // too. Every platform is video-creatable.
+  it("video create is enabled for every platform (Meta/Snap/TikTok/Google + Reddit via #1185)", () => {
     assert.deepEqual(VIDEO_CREATE_ENABLED, {
       meta: true,
       snapchat: true,
       tiktok: true,
       google: true,
-      reddit: false,
+      reddit: true,
     });
   });
 
-  // [TEST-MOD-APPROVED ORCH-0997] TikTok now becomes buildable from a READY prep,
-  // exactly like Meta/Snap; only Google/Reddit remain excluded for video.
-  it("exact READY Meta/Snap/TikTok rows become buildable (#997 C)", () => {
+  // [TEST-MOD-APPROVED ORCH-1185] Reddit is a NO-PREPARE video platform (#1185): it
+  // builds from its #866-hosted clip with no prep row, so a READY Meta/Snap/TikTok
+  // set now ALSO includes reddit as buildable; only Google (no ready prep here) stays
+  // excluded.
+  it("exact READY Meta/Snap/TikTok rows become buildable — reddit joins (no prep needed)", () => {
     const { buildable, excluded } = partitionFundedCreative({
       fundedPlatforms: ALL,
       channels: allPassing,
@@ -65,8 +67,8 @@ describe("ISSUE-995 rework · Phase A video create remains platform-honest", () 
         tiktok: { state: "ready" },
       },
     });
-    assert.deepEqual(buildable.sort(), ["meta", "snapchat", "tiktok"]);
-    assert.deepEqual(excluded.map((e) => e.platform).sort(), ["google", "reddit"]);
+    assert.deepEqual(buildable.sort(), ["meta", "reddit", "snapchat", "tiktok"]);
+    assert.deepEqual(excluded.map((e) => e.platform).sort(), ["google"]);
   });
 
   it("the partition stays TOTAL for video (buildable ∪ excluded = funded)", () => {

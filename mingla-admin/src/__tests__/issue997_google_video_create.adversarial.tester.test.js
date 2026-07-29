@@ -175,21 +175,23 @@ describe("ISSUE-997 D2 ADV · google readiness gates create; reddit never can", 
     assert.deepEqual(ready.excluded, []);
   });
 
-  it("reddit fed a READY prep is STILL excluded — the create gate is readiness-INDEPENDENT for a non-creatable platform", () => {
+  // [TEST-MOD-APPROVED ORCH-1185] #1185 wired Reddit as a NO-PREPARE video platform,
+  // so the build gate (partitionFundedCreative) now ADMITS reddit — while the PREPARE
+  // surface (videoPreparationGate / readyVideoSubset) correctly still excludes it, as
+  // reddit never joins the preparation flow. That divergence is intended, not a leak:
+  // reddit builds from its #866-hosted clip without preparing.
+  it("reddit builds via the create gate (no-prepare) yet is absent from the PREPARE surface — an intended divergence", () => {
     const { buildable, excluded } = partitionFundedCreative({
       fundedPlatforms: ["reddit", "google"],
       channels: okChannels(["reddit", "google"]),
       kind: "video",
-      // Reddit's prep is READY, yet reddit is not in VIDEO_CREATE_ENABLED.
-      preparationByPlatform: { reddit: { state: "ready" }, google: { state: "ready" } },
+      preparationByPlatform: { google: { state: "ready" } }, // reddit needs no prep row
     });
-    assert.equal(buildable.includes("reddit"), false, "reddit can never build a video");
+    assert.equal(buildable.includes("reddit"), true, "reddit builds without preparation (#1185)");
     assert.ok(buildable.includes("google"));
-    assert.equal(
-      excluded.find((e) => e.platform === "reddit").reason,
-      "video_not_creatable",
-    );
-    // And the gate surface agrees: reddit is video_excluded, google is READY.
+    assert.deepEqual(excluded, []);
+    // The PREPARE surface is a DIFFERENT gate: reddit is not a prepare platform, so it
+    // is video_excluded there and never in the ready subset — this is correct.
     const gate = videoPreparationGate({
       fundedPlatforms: ["reddit", "google"],
       rows: { reddit: { state: "ready" }, google: { state: "ready" } },

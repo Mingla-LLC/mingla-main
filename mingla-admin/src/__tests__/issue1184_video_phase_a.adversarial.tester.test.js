@@ -2,8 +2,9 @@
 // regression (admin). DIFFERENT ANGLE than the implementor happy-path suite
 // (issue1184_video_phase_a.test.js): that file proves the sequential/subset
 // happy path and a positive terminal-502 normalization; this file ATTACKS the
-// negative space — create-path safety (TikTok/Google/Reddit can NEVER build a
-// video even when "ready"), the ready-gate, terminal-state queue stop, the
+// negative space — create-path safety (the ready-gate admits only wired platforms;
+// TikTok/Google build only from a READY prep; Reddit builds as a NO-PREPARE platform
+// per ORCH-1185), the ready-gate, terminal-state queue stop, the
 // terminal-502 guard BOUNDARIES (so a cached 200 / 503 / non-failed body is
 // never mis-normalized into a duplicate alert), generation-freshness discard of
 // a stale slow response for the SAME creative, and the client Bunny-poster SSRF
@@ -42,11 +43,12 @@ const okChannel = (platform) => ({
   needsTranscode: false,
 });
 
-describe("ISSUE-1184 adversarial: create is Meta/Snap/TikTok/Google video; only Reddit can NEVER build a video (#997 C/D2)", () => {
-  // [TEST-MOD-APPROVED ORCH-0997] #997 C wired TikTok and #997 D2 wired Google
-  // (Demand Gen), so a READY tiktok AND a READY google now BUILD. Only Reddit stays
-  // hard-excluded — the negative-space guard on IT is intact.
-  it("builds a READY TikTok and a READY Google too, but still excludes Reddit even when its prep says ready (#997 C/D2)", () => {
+describe("ISSUE-1184 adversarial: create is Meta/Snap/TikTok/Google/Reddit video (#997 C/D2 + #1185)", () => {
+  // [TEST-MOD-APPROVED ORCH-1185] #997 C/D2 wired TikTok + Google, and #1185 wired
+  // Reddit paused-video create as a NO-PREPARE platform (it builds from its
+  // #866-hosted clip). So a READY tiktok/google now build AND reddit builds too —
+  // the last hard-excluded platform is gone; every funded platform builds.
+  it("builds a READY TikTok, a READY Google, AND Reddit (no-prepare) — every funded platform builds", () => {
     const funded = ["meta", "snapchat", "tiktok", "google", "reddit"];
     const channels = funded.map(okChannel);
     const rows = Object.fromEntries(funded.map((p) => [p, { state: "ready" }]));
@@ -56,15 +58,15 @@ describe("ISSUE-1184 adversarial: create is Meta/Snap/TikTok/Google video; only 
       kind: "video",
       preparationByPlatform: rows,
     });
-    assert.deepEqual(buildable.sort(), ["google", "meta", "snapchat", "tiktok"]);
+    assert.deepEqual(buildable.sort(), ["google", "meta", "reddit", "snapchat", "tiktok"]);
     const reasonOf = (p) => excluded.find((e) => e.platform === p)?.reason;
     assert.equal(reasonOf("tiktok"), undefined); // READY tiktok now builds
     assert.equal(reasonOf("google"), undefined); // READY google now builds (Demand Gen)
-    assert.equal(reasonOf("reddit"), "video_not_creatable");
-    // Belt-and-braces: the flag table enables tiktok + google, still forbids reddit.
+    assert.equal(reasonOf("reddit"), undefined); // reddit builds (no-prepare) — #1185
+    // Belt-and-braces: the flag table enables every platform.
     assert.equal(VIDEO_CREATE_ENABLED.tiktok, true);
     assert.equal(VIDEO_CREATE_ENABLED.google, true);
-    assert.equal(VIDEO_CREATE_ENABLED.reddit, false);
+    assert.equal(VIDEO_CREATE_ENABLED.reddit, true);
   });
 
   it("gates Meta/Snap on an exact READY preparation — non-ready is excluded, not built", () => {
