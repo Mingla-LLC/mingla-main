@@ -1327,6 +1327,7 @@ export async function handler(req: Request): Promise<Response> {
         });
         const notifySender = EMAIL_SENDERS.noreply;
         assertNotResendSandbox(notifySender);
+        // no-attachment: the founder lead-notify is plain transactional HTML (links only, no file).
         const notifyRes = await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: {
