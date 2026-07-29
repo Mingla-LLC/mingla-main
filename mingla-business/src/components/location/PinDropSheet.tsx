@@ -44,6 +44,10 @@ import {
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
 import { buildStaticMapUrl } from "../../utils/mapboxStaticImage";
+import {
+  PIN_DROP_DEFAULT_SATELLITE,
+  pinDropMapStyle,
+} from "../../utils/pinDropMapStyle";
 import { staticMapPixelToLngLat } from "../../utils/staticMapPixelToLngLat";
 
 export interface PinDropSheetProps {
@@ -91,17 +95,22 @@ export const PinDropSheet: React.FC<PinDropSheetProps> = ({
 
   const [center, setCenter] = useState<{ lat: number; lng: number }>(seededCenter);
   const [zoomIndex, setZoomIndex] = useState<number>(seededZoomIndex);
+  // Issue #1363 (CHANGE 3) — satellite imagery is the DEFAULT so the brand can
+  // visually find their building/junction where there are no street labels; a
+  // toggle drops to the plain dark map when the imagery is noisy.
+  const [satelliteOn, setSatelliteOn] = useState<boolean>(PIN_DROP_DEFAULT_SATELLITE);
   const [layout, setLayout] = useState<{ w: number; h: number }>({
     w: 0,
     h: MAP_HEIGHT,
   });
 
   // Re-seed each time the sheet opens (a new open should start from the host's
-  // latest seed, not a stale prior session's center).
+  // latest seed, not a stale prior session's center). Also reset to satellite.
   useEffect(() => {
     if (visible) {
       setCenter(seededCenter);
       setZoomIndex(seededZoomIndex);
+      setSatelliteOn(PIN_DROP_DEFAULT_SATELLITE);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
@@ -115,6 +124,10 @@ export const PinDropSheet: React.FC<PinDropSheetProps> = ({
     width: layout.w > 0 ? Math.round(layout.w) : 350,
     height: MAP_HEIGHT,
     accentHex,
+    // CHANGE 3 — request satellite-streets (imagery + labels) or the dark map.
+    // The `style` param already flows through buildStaticMapUrl → the static-map
+    // edge fn's ALLOWED_STYLES; no proxy change (additive, OTA-shippable).
+    style: pinDropMapStyle(satelliteOn),
   });
 
   const onMapLayout = (e: LayoutChangeEvent): void => {
@@ -194,6 +207,27 @@ export const PinDropSheet: React.FC<PinDropSheetProps> = ({
                   accessibilityLabel="Static map for pin placement"
                 />
               </Pressable>
+
+              {/* Issue #1363 (CHANGE 3) — Satellite / Map toggle. Satellite is the
+                  default (imagery to spot the building); tap to drop to the dark
+                  vector map. Top-left, clear of the bottom-right zoom controls. */}
+              <View style={styles.styleToggleWrap} pointerEvents="box-none">
+                <Pressable
+                  onPress={() => setSatelliteOn((v) => !v)}
+                  accessibilityRole="switch"
+                  accessibilityState={{ checked: satelliteOn }}
+                  accessibilityLabel={
+                    satelliteOn ? "Switch to map view" : "Switch to satellite view"
+                  }
+                  hitSlop={8}
+                  style={styles.styleToggleBtn}
+                >
+                  <Icon name="globe" size={14} color="#fff" />
+                  <Text style={styles.styleToggleText}>
+                    {satelliteOn ? "Map" : "Satellite"}
+                  </Text>
+                </Pressable>
+              </View>
 
               {/* Fixed center reticle — "you are setting THIS point". */}
               <View pointerEvents="none" style={styles.reticleWrap}>
@@ -347,6 +381,25 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 999,
+  },
+  styleToggleWrap: {
+    position: "absolute",
+    left: spacing.sm,
+    top: spacing.sm,
+  },
+  styleToggleBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    height: 32,
+    borderRadius: radiusTokens.md,
+    backgroundColor: "rgba(0,0,0,0.55)",
+  },
+  styleToggleText: {
+    fontSize: typography.caption.fontSize,
+    color: "#fff",
+    fontWeight: "600",
   },
   zoomCol: {
     position: "absolute",
