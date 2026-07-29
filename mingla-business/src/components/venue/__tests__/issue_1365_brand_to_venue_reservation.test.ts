@@ -38,7 +38,10 @@ describe("issue #1365 Brand → venue reservation journey", () => {
     expect(migration).toContain("JOIN public.venue_listings v");
     expect(migration).toContain("v.id = m.venue_id");
     expect(migration).toContain("v.claim_status = 'verified'");
+    expect(migration).toContain("[TRANSITIONAL]");
+    expect(migration).toContain("IF v_venue_count = 1 THEN");
     expect(migration).toContain("menu_venue_required");
+    expect(migration).toContain("menu_venue_ambiguous");
   });
 
   test("buyer-web and consumer app both mount the shared venue tabs", () => {

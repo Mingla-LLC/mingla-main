@@ -1,6 +1,8 @@
 -- Issue #1365 happy-path SQL contract. Run after the migration in a disposable
 -- database. The assertions intentionally inspect the deployed definitions so
 -- reverting venue ownership or the exact-venue public join fails.
+BEGIN;
+
 DO $test$
 DECLARE
   v_view text;
@@ -34,3 +36,90 @@ BEGIN
   END IF;
 END;
 $test$;
+
+-- Rollout compatibility: installed pre-#1365 clients omit venue_id. One venue
+-- (including a not-yet-verified venue) is unambiguous and must keep saving;
+-- multiple venues must never be guessed.
+INSERT INTO auth.users (id, email)
+VALUES
+  ('a1365aaa-0000-4000-8000-000000000001', 'issue1365-single@test.local'),
+  ('a1365bbb-0000-4000-8000-000000000002', 'issue1365-multi@test.local'),
+  ('a1365ccc-0000-4000-8000-000000000003', 'issue1365-zero@test.local');
+
+INSERT INTO public.creator_accounts (id)
+VALUES
+  ('a1365aaa-0000-4000-8000-000000000001'),
+  ('a1365bbb-0000-4000-8000-000000000002'),
+  ('a1365ccc-0000-4000-8000-000000000003');
+
+INSERT INTO public.brands (id, account_id, slug, name, created_at, updated_at)
+VALUES
+  ('b1365aaa-0000-4000-8000-000000000001', 'a1365aaa-0000-4000-8000-000000000001',
+   'issue1365single', 'Issue 1365 Single', now(), now()),
+  ('b1365bbb-0000-4000-8000-000000000002', 'a1365bbb-0000-4000-8000-000000000002',
+   'issue1365multi', 'Issue 1365 Multi', now(), now()),
+  ('b1365ccc-0000-4000-8000-000000000003', 'a1365ccc-0000-4000-8000-000000000003',
+   'issue1365zero', 'Issue 1365 Zero', now(), now());
+
+INSERT INTO public.venue_listings (
+  id, brand_id, slug, name, lat, lng, venue_category, claim_status
+)
+VALUES
+  ('c1365aaa-0000-4000-8000-000000000001', 'b1365aaa-0000-4000-8000-000000000001',
+   'singlepending', 'Single Pending', 51.5, -0.1, 'restaurant', 'pending_review'),
+  ('c1365bbb-0000-4000-8000-000000000002', 'b1365bbb-0000-4000-8000-000000000002',
+   'multiverified', 'Multi Verified', 40.7, -74.0, 'restaurant', 'verified'),
+  ('c1365bbb-0000-4000-8000-000000000003', 'b1365bbb-0000-4000-8000-000000000002',
+   'multipending', 'Multi Pending', 40.8, -73.9, 'play', 'pending_review');
+
+DO $compat$
+DECLARE
+  v_menu_id uuid;
+  v_venue_id uuid;
+BEGIN
+  -- Legacy INSERT omits venue_id; the only venue is assigned even before
+  -- verification. It remains private because public_menus_view is verified-only.
+  INSERT INTO public.menus (brand_id, name)
+  VALUES ('b1365aaa-0000-4000-8000-000000000001', 'Legacy insert')
+  RETURNING id, venue_id INTO v_menu_id, v_venue_id;
+
+  IF v_venue_id <> 'c1365aaa-0000-4000-8000-000000000001'::uuid THEN
+    RAISE EXCEPTION 'issue_1365: legacy single-venue insert was not assigned';
+  END IF;
+
+  -- Explicitly clear venue_id to model an old update payload. The same exact
+  -- venue must be restored rather than rejecting the save.
+  UPDATE public.menus
+     SET venue_id = NULL, description = 'Legacy update'
+   WHERE id = v_menu_id
+  RETURNING venue_id INTO v_venue_id;
+
+  IF v_venue_id <> 'c1365aaa-0000-4000-8000-000000000001'::uuid THEN
+    RAISE EXCEPTION 'issue_1365: legacy single-venue update was not assigned';
+  END IF;
+
+  BEGIN
+    INSERT INTO public.menus (brand_id, name)
+    VALUES ('b1365bbb-0000-4000-8000-000000000002', 'Ambiguous legacy insert');
+    RAISE EXCEPTION 'issue_1365: multi-venue legacy insert unexpectedly succeeded';
+  EXCEPTION
+    WHEN raise_exception THEN
+      IF SQLERRM <> 'menu_venue_ambiguous' THEN
+        RAISE;
+      END IF;
+  END;
+
+  BEGIN
+    INSERT INTO public.menus (brand_id, name)
+    VALUES ('b1365ccc-0000-4000-8000-000000000003', 'No venue legacy insert');
+    RAISE EXCEPTION 'issue_1365: zero-venue legacy insert unexpectedly succeeded';
+  EXCEPTION
+    WHEN raise_exception THEN
+      IF SQLERRM <> 'menu_venue_required' THEN
+        RAISE;
+      END IF;
+  END;
+END;
+$compat$;
+
+ROLLBACK;
