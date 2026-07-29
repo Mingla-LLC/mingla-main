@@ -3,6 +3,8 @@ import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { fetchPublicVenueSlots } from "../services/venueGuestReservationService";
 import type { AvailableSlot } from "../types/venueReservation";
 
+// Anon-safe: reads public reservation availability through the canonical
+// self-authorizing venue availability edge function on public venue pages.
 export const publicVenueAvailabilityKeys = {
   all: ["publicVenueAvailability"] as const,
   slots: (venueId: string, date: string, partySize: number) =>

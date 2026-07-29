@@ -1,4 +1,8 @@
-import { useQuery, type UseQueryResult } from "@tanstack/react-query";
+import {
+  useQueries,
+  useQuery,
+  type UseQueryResult,
+} from "@tanstack/react-query";
 import {
   resolveTheme,
   isThemeAnimationSlug,
@@ -22,6 +26,8 @@ import { supabase } from "../services/supabase";
 export const consumerBrandKeys = {
   all: ["consumerBrand"] as const,
   bySlug: (slug: string) => [...consumerBrandKeys.all, slug] as const,
+  venuesBySlug: (slug: string) =>
+    [...consumerBrandKeys.all, "venues", slug] as const,
 };
 
 interface PublicBrandRow {
@@ -138,7 +144,6 @@ export interface ConsumerBrandDetail {
   upcomingHasMore: boolean;
   /** ORCH-1186-C — DISPLAY-ONLY menu groups (verified venues only; [] else). */
   menu: PublicMenuGroup[];
-  venues: PublicBrandVenueSummary[];
   resolvedTheme: ResolvedTheme;
 }
 
@@ -334,37 +339,24 @@ const getBrandBySlug = async (
   if (brandData === null) return null;
 
   const brand = mapBrand(brandData as PublicBrandRow);
-  const [
-    eventResult,
-    tripResult,
-    experienceResult,
-    upcomingResult,
-    venueResult,
-  ] = await Promise.all([
-    supabase
-      .from("business_public_events_view")
-      .select("*")
-      .eq("brand_slug", slug)
-      .order("published_at", { ascending: false, nullsFirst: false }),
-    supabase.rpc("pg_public_trips_by_brand", { p_brand_slug: slug }),
-    supabase.rpc("pg_public_experiences_by_brand", { p_brand_slug: slug }),
-    supabase.rpc("pg_public_brand_upcoming", {
-      p_brand_slug: slug,
-      p_limit: 30,
-    }),
-    supabase
-      .from("venue_public_view")
-      .select(
-        "id, slug, name, address, city, cover_media_url, pool_photo_urls, place_pool_id",
-      )
-      .eq("brand_slug", slug)
-      .order("created_at", { ascending: true }),
-  ]);
+  const [eventResult, tripResult, experienceResult, upcomingResult] =
+    await Promise.all([
+      supabase
+        .from("business_public_events_view")
+        .select("*")
+        .eq("brand_slug", slug)
+        .order("published_at", { ascending: false, nullsFirst: false }),
+      supabase.rpc("pg_public_trips_by_brand", { p_brand_slug: slug }),
+      supabase.rpc("pg_public_experiences_by_brand", { p_brand_slug: slug }),
+      supabase.rpc("pg_public_brand_upcoming", {
+        p_brand_slug: slug,
+        p_limit: 30,
+      }),
+    ]);
   if (eventResult.error !== null) throw eventResult.error;
   if (tripResult.error !== null) throw tripResult.error;
   if (experienceResult.error !== null) throw experienceResult.error;
   if (upcomingResult.error !== null) throw upcomingResult.error;
-  if (venueResult.error !== null) throw venueResult.error;
 
   const allEventRows = ((eventResult.data ?? []) as PublicEventRow[]).filter(
     (row) => row.event_type === "event",
@@ -420,42 +412,6 @@ const getBrandBySlug = async (
   const upcoming = (
     upcomingHasMore ? upcomingRows.slice(0, 30) : upcomingRows
   ).map(mapUpcoming);
-  const venues = await Promise.all(
-    ((venueResult.data ?? []) as PublicVenueRow[]).map(
-      async (row): Promise<PublicBrandVenueSummary> => {
-        let reservationState: PublicBrandVenueSummary["reservationState"] =
-          "unavailable";
-        if (row.place_pool_id !== null) {
-          const { data, error } = await supabase.rpc(
-            "pg_venue_reservable_for_place",
-            { p_place_pool_id: row.place_pool_id },
-          );
-          if (error !== null) {
-            reservationState = "error";
-          } else {
-            const resolved = (Array.isArray(data) ? data[0] : data) as
-              { reservable?: boolean } | undefined;
-            reservationState =
-              resolved?.reservable === true ? "available" : "unavailable";
-          }
-        }
-        return {
-          id: row.id,
-          slug: row.slug,
-          name: row.name,
-          address: row.address,
-          city: row.city,
-          photoUrl:
-            row.cover_media_url ??
-            (Array.isArray(row.pool_photo_urls)
-              ? (row.pool_photo_urls[0] ?? null)
-              : null),
-          placePoolId: row.place_pool_id,
-          reservationState,
-        };
-      },
-    ),
-  );
   return {
     brand,
     events,
@@ -465,9 +421,36 @@ const getBrandBySlug = async (
     upcomingHasMore,
     // Issue #1365: public menus are fetched only after an exact venue resolves.
     menu: [],
-    venues,
     resolvedTheme: resolveTheme(brand.theme, null),
   };
+};
+
+const getPublicBrandVenues = async (
+  slug: string,
+): Promise<PublicBrandVenueSummary[]> => {
+  const { data, error } = await supabase
+    .from("venue_public_view")
+    .select(
+      "id, slug, name, address, city, cover_media_url, pool_photo_urls, place_pool_id",
+    )
+    .eq("brand_slug", slug)
+    .order("created_at", { ascending: true });
+  if (error !== null) throw error;
+
+  return ((data ?? []) as PublicVenueRow[]).map((row) => ({
+    id: row.id,
+    slug: row.slug,
+    name: row.name,
+    address: row.address,
+    city: row.city,
+    photoUrl:
+      row.cover_media_url ??
+      (Array.isArray(row.pool_photo_urls)
+        ? (row.pool_photo_urls[0] ?? null)
+        : null),
+    placePoolId: row.place_pool_id,
+    reservationState: row.place_pool_id === null ? "unavailable" : "loading",
+  }));
 };
 
 export const useBrandBySlug = (
@@ -483,4 +466,75 @@ export const useBrandBySlug = (
       return getBrandBySlug(slug);
     },
   });
+};
+
+interface PublicBrandVenuesQuery {
+  data: PublicBrandVenueSummary[];
+  isLoading: boolean;
+  isFetching: boolean;
+  isError: boolean;
+  refetch: () => void;
+}
+
+export const usePublicBrandVenues = (
+  slug: string | null,
+): PublicBrandVenuesQuery => {
+  const enabled = slug !== null && slug.trim().length > 0;
+  const venuesQuery = useQuery({
+    queryKey: enabled
+      ? consumerBrandKeys.venuesBySlug(slug)
+      : consumerBrandKeys.all,
+    enabled,
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      if (!enabled || slug === null) return [];
+      return getPublicBrandVenues(slug);
+    },
+  });
+  const venues = venuesQuery.data ?? [];
+  const reservabilityQueries = useQueries({
+    queries: venues.map((venue) => ({
+      queryKey: [
+        ...consumerBrandKeys.venuesBySlug(slug ?? "none"),
+        "reservability",
+        venue.id,
+        venue.placePoolId,
+      ],
+      enabled: typeof venue.placePoolId === "string",
+      staleTime: 60 * 1000,
+      queryFn: async (): Promise<
+        PublicBrandVenueSummary["reservationState"]
+      > => {
+        if (typeof venue.placePoolId !== "string") return "unavailable";
+        const result = await supabase.rpc("pg_venue_reservable_for_place", {
+          p_place_pool_id: venue.placePoolId,
+        });
+        if (result.error !== null) return "error";
+        const resolved = (
+          Array.isArray(result.data) ? result.data[0] : result.data
+        ) as { reservable?: boolean } | undefined;
+        return resolved?.reservable === true ? "available" : "unavailable";
+      },
+    })),
+  });
+  const data: PublicBrandVenueSummary[] = venues.map((venue, index) => ({
+    ...venue,
+    reservationState:
+      typeof venue.placePoolId !== "string"
+        ? "unavailable"
+        : (reservabilityQueries[index]?.data ?? "loading"),
+  }));
+
+  return {
+    data,
+    isLoading: venuesQuery.isLoading,
+    isFetching:
+      venuesQuery.isFetching ||
+      reservabilityQueries.some((query) => query.isFetching),
+    isError: venuesQuery.isError,
+    refetch: () => {
+      void venuesQuery.refetch();
+      for (const query of reservabilityQueries) void query.refetch();
+    },
+  };
 };

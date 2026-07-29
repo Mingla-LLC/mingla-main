@@ -174,7 +174,7 @@ export interface PublicBrandCallbacks {
   onOpenExperience?: (experience: PublicBrandExperience) => void;
   onOpenUpcoming?: (item: PublicBrandUpcoming) => void;
   onOpenExternal?: (url: string) => void;
-  // META-ORCH-1255(C) — a Locations card tap → /b/{brandSlug}/v/{venueSlug}.
+  // Issue #1365 — a Reservations venue card tap → the public venue page.
   onOpenVenue?: (venue: PublicBrandVenueSummary) => void;
   onReservationsTabViewed?: () => void;
   onRetryVenues?: () => void;
@@ -190,7 +190,7 @@ export interface PublicBrandPageProps {
   upcoming?: PublicBrandUpcoming[];
   upcomingHasMore?: boolean;
   venue?: PublicVenueDetail | null;
-  // META-ORCH-1255(C) — verified venues for the "Locations" section (SC-12).
+  // Issue #1365 — verified venues for the Reservations tab.
   // Absent / [] ⇒ section omitted (real-data-only).
   venues?: PublicBrandVenueSummary[];
   venuesLoadState?: "loading" | "ready" | "error";

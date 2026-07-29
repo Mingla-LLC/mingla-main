@@ -108,12 +108,12 @@ export default function PublicBrandRoute(): React.ReactElement {
       venuesLoadState={
         brandVenuesQuery.isError
           ? "error"
-          : brandVenuesQuery.isLoading
+          : brandVenuesQuery.isLoading || brandVenuesQuery.isFetching
             ? "loading"
             : "ready"
       }
       onRetryVenues={() => {
-        void brandVenuesQuery.refetch();
+        brandVenuesQuery.refetch();
       }}
     />
   );

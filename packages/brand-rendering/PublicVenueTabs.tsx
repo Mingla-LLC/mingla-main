@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import type {
   offeringSurfaceStyles,
@@ -19,6 +19,31 @@ export interface PublicVenueTabsProps {
   surface: Surface;
   theme: ResolvedTheme;
   onTabViewed?: (tab: PublicVenueTab) => void;
+}
+
+export interface InitialVenueTabTransition {
+  activeTab: PublicVenueTab;
+  lastInitialTab: PublicVenueTab;
+  shouldEmit: boolean;
+}
+
+export function reconcileInitialVenueTab(
+  activeTab: PublicVenueTab,
+  lastInitialTab: PublicVenueTab | null,
+  safeInitialTab: PublicVenueTab,
+): InitialVenueTabTransition {
+  if (lastInitialTab === safeInitialTab) {
+    return {
+      activeTab,
+      lastInitialTab,
+      shouldEmit: false,
+    };
+  }
+  return {
+    activeTab: safeInitialTab,
+    lastInitialTab: safeInitialTab,
+    shouldEmit: true,
+  };
 }
 
 const LABELS: Record<PublicVenueTab, string> = {
@@ -48,13 +73,33 @@ export function PublicVenueTabs({
     : ["overview", "reservations"];
   const safeInitial = tabs.includes(initialTab) ? initialTab : "overview";
   const [activeTab, setActiveTab] = useState<PublicVenueTab>(safeInitial);
+  const lastInitialViewed = useRef<PublicVenueTab | null>(null);
+  const onTabViewedRef = useRef(onTabViewed);
+
+  useEffect(() => {
+    onTabViewedRef.current = onTabViewed;
+  }, [onTabViewed]);
 
   useEffect(() => {
     if (!tabs.includes(activeTab)) setActiveTab("overview");
   }, [activeTab, hasMenu]);
 
   useEffect(() => {
-    setActiveTab(safeInitial);
+    const transition = reconcileInitialVenueTab(
+      activeTab,
+      lastInitialViewed.current,
+      safeInitial,
+    );
+    lastInitialViewed.current = transition.lastInitialTab;
+    if (transition.activeTab !== activeTab) {
+      setActiveTab(transition.activeTab);
+    }
+    if (transition.shouldEmit) {
+      onTabViewedRef.current?.(safeInitial);
+    }
+    // activeTab is intentionally excluded: user tab changes must not replay the
+    // route-initial event or snap back to the route's initial tab.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [safeInitial]);
 
   const select = (tab: PublicVenueTab): void => {

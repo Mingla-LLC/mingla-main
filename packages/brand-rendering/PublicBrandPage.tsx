@@ -309,7 +309,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   // non-venues / unverified venues, so the Menu tab simply does not appear.
   const visibleTabs = useMemo<Tab[]>(() => {
     const tabs: Tab[] = ["about"];
-    if (venues.length > 0 || venuesLoadState === "error") {
+    if (venues.length > 0 || venuesLoadState !== "ready") {
       tabs.push("reservations");
     }
     if (upcoming.length > 0 || upcomingHasMore) tabs.push("upcoming");
@@ -1408,8 +1408,8 @@ const EmptyPane: React.FC<{ copy: string; palette: ThemePalette }> = ({
   </View>
 );
 
-// META-ORCH-1255(C) — Locations section (rendered with the About pane;
-// SC-12). One pressable card per VERIFIED venue → /b/{brandSlug}/v/{venueSlug}
+// Issue #1365 — Reservations tab venue list. One pressable card per VERIFIED
+// venue → /b/{brandSlug}/v/{venueSlug}
 // via onOpenVenue. 0 venues → renders nothing (real-data-only). Inline param
 // annotation (not React.FC) so the section stays fully typed under every
 // consumer tsconfig.
@@ -1446,6 +1446,17 @@ const ReservationsPane = ({
             Try again
           </Text>
         </Pressable>
+      </View>
+    );
+  }
+  if (loadState === "loading" && venues.length === 0) {
+    return (
+      <View style={styles.venueErrorWrap}>
+        <Text
+          style={[styles.reservationsTitle, { color: palette.primaryText }]}
+        >
+          Checking reservations…
+        </Text>
       </View>
     );
   }
@@ -1899,7 +1910,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginTop: 8,
   },
-  // META-ORCH-1255(C) — Locations section (About pane).
+  // Issue #1365 — Reservations tab venue list.
   locationsWrap: {
     marginTop: 28,
     gap: 10,

@@ -42,11 +42,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 // module into the EAGER __common boot chunk (ORCH-1083 bundle-budget breach).
 // The type-only barrel import below is erased at compile time (safe).
 import { PublicMenuSections } from "@mingla/brand-rendering/PublicMenuSections";
-import {
-  PublicVenueTabs,
-  type PublicMenuGroup,
-  type PublicVenueTab,
-} from "@mingla/brand-rendering";
+import { PublicVenueTabs } from "@mingla/brand-rendering/PublicVenueTabs";
+import type { PublicMenuGroup, PublicVenueTab } from "@mingla/brand-rendering";
 import {
   ParallaxCoverShell,
   buildStaticMapUrl,

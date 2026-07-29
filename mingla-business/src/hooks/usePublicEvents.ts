@@ -1,4 +1,8 @@
-import { useQuery, type UseQueryResult } from "@tanstack/react-query";
+import {
+  useQueries,
+  useQuery,
+  type UseQueryResult,
+} from "@tanstack/react-query";
 
 import {
   fetchPublicBrandVenueStates,
@@ -155,11 +159,19 @@ export const usePublicVenueReservable = (
   });
 };
 
+interface PublicBrandVenuesQuery {
+  data: PublicVenueSummary[];
+  isLoading: boolean;
+  isFetching: boolean;
+  isError: boolean;
+  refetch: () => void;
+}
+
 export const usePublicBrandVenues = (
   brandSlug: string | null,
-): UseQueryResult<PublicVenueSummary[]> => {
+): PublicBrandVenuesQuery => {
   const enabled = brandSlug !== null;
-  return useQuery<PublicVenueSummary[]>({
+  const venuesQuery = useQuery<PublicVenueSummary[]>({
     queryKey: enabled ? publicEventKeys.brandVenues(brandSlug) : DISABLED_KEY,
     enabled,
     staleTime: PUBLIC_STALE_TIME_MS,
@@ -168,4 +180,44 @@ export const usePublicBrandVenues = (
       return fetchPublicBrandVenueStates(brandSlug);
     },
   });
+  const venues = venuesQuery.data ?? [];
+  const reservabilityQueries = useQueries({
+    queries: venues.map((venue) => ({
+      queryKey:
+        typeof venue.placePoolId === "string"
+          ? publicEventKeys.venueReservable(venue.placePoolId)
+          : DISABLED_KEY,
+      enabled: typeof venue.placePoolId === "string",
+      staleTime: PUBLIC_STALE_TIME_MS,
+      queryFn: async (): Promise<PublicVenueSummary["reservationState"]> => {
+        if (typeof venue.placePoolId !== "string") return "unavailable";
+        try {
+          const resolved = await getPublicVenueReservable(venue.placePoolId);
+          return resolved.reservable ? "available" : "unavailable";
+        } catch {
+          return "error";
+        }
+      },
+    })),
+  });
+  const data: PublicVenueSummary[] = venues.map((venue, index) => ({
+    ...venue,
+    reservationState:
+      typeof venue.placePoolId !== "string"
+        ? "unavailable"
+        : (reservabilityQueries[index]?.data ?? "loading"),
+  }));
+
+  return {
+    data,
+    isLoading: venuesQuery.isLoading,
+    isFetching:
+      venuesQuery.isFetching ||
+      reservabilityQueries.some((query) => query.isFetching),
+    isError: venuesQuery.isError,
+    refetch: () => {
+      void venuesQuery.refetch();
+      for (const query of reservabilityQueries) void query.refetch();
+    },
+  };
 };

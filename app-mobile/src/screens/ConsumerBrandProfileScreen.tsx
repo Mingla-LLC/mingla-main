@@ -12,7 +12,7 @@ import {
   type PublicBrandVenueSummary,
 } from "@mingla/brand-rendering";
 
-import { useBrandBySlug } from "../hooks/useBrandBySlug";
+import { useBrandBySlug, usePublicBrandVenues } from "../hooks/useBrandBySlug";
 import { postHogService } from "../services/postHogService";
 
 export default function ConsumerBrandProfileScreen(): React.ReactElement {
@@ -20,7 +20,9 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ slug: string | string[] }>();
   const slug = Array.isArray(params.slug) ? params.slug[0] : params.slug;
-  const query = useBrandBySlug(typeof slug === "string" ? slug : null);
+  const publicSlug = typeof slug === "string" ? slug : null;
+  const query = useBrandBySlug(publicSlug);
+  const venuesQuery = usePublicBrandVenues(publicSlug);
 
   const handleShare = useCallback((): void => {
     if (typeof slug !== "string") return;
@@ -65,7 +67,14 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
       upcoming={detail.upcoming}
       upcomingHasMore={detail.upcomingHasMore}
       menu={detail.menu}
-      venues={detail.venues}
+      venues={venuesQuery.data ?? []}
+      venuesLoadState={
+        venuesQuery.isLoading || venuesQuery.isFetching
+          ? "loading"
+          : venuesQuery.isError
+            ? "error"
+            : "ready"
+      }
       theme={detail.resolvedTheme}
       // ORCH-1155 Known-Issue #1: feed the device safe-area top inset into the
       // shared shell's fixed chrome so the X / Share buttons clear the notch /
@@ -108,8 +117,11 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
           postHogService.capture("brand_reservations_tab_viewed", {
             surface: "consumer_native",
             brand_id: detail.brand.id,
-            venue_count: detail.venues.length,
+            venue_count: venuesQuery.data?.length ?? 0,
           });
+        },
+        onRetryVenues: () => {
+          venuesQuery.refetch();
         },
         onOpenVenue: (venue: PublicBrandVenueSummary) => {
           postHogService.capture("brand_venue_selected", {

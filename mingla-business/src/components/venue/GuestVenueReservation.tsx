@@ -14,6 +14,13 @@ import {
   getStoredClickAttribution,
 } from "../../analytics/webAnalytics";
 import {
+  PhoneInput,
+  getCountryByCode,
+  getDefaultCountryCode,
+  type PhoneInputIconName,
+  type PhoneInputTheme,
+} from "@mingla/phone-input";
+import {
   radius,
   semantic,
   spacing,
@@ -22,7 +29,9 @@ import {
 } from "../../constants/designSystem";
 import { usePublicVenueAvailability } from "../../hooks/usePublicVenueAvailability";
 import { createGuestVenueReservation } from "../../services/venueGuestReservationService";
+import { composeE164 } from "../../utils/phone";
 import { Button } from "../ui/Button";
+import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 
 interface GuestVenueReservationProps {
@@ -30,6 +39,25 @@ interface GuestVenueReservationProps {
   brandId: string;
   currency: string | null;
 }
+
+const RESERVATION_PHONE_THEME: PhoneInputTheme = {
+  backgroundPrimary: "#0c0e12",
+  textPrimary: "rgba(255, 255, 255, 0.96)",
+  textTertiary: "rgba(255, 255, 255, 0.52)",
+  borderDefault: "rgba(255, 255, 255, 0.14)",
+  borderFocused: "#eb7825",
+  borderError: "#ef4444",
+  searchBackground: "rgba(255, 255, 255, 0.06)",
+  rowPressedBackground: "rgba(255, 255, 255, 0.04)",
+  divider: "rgba(255, 255, 255, 0.08)",
+  accessoryBackground: "rgba(12, 14, 18, 0.95)",
+  accessoryBorder: "rgba(255, 255, 255, 0.08)",
+  accent: "#eb7825",
+  errorText: "#ef4444",
+};
+const INVALID_PHONE_COPY = "Enter a valid phone number.";
+const RESERVATION_FAILURE_COPY =
+  "We couldn’t start your reservation. Check your details and try again.";
 
 const dateOptions = (): { value: string; label: string }[] => {
   const now = new Date();
@@ -63,7 +91,9 @@ export function GuestVenueReservation({
   const [selectedUtc, setSelectedUtc] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
+  const [phoneCountry, setPhoneCountry] = useState(getDefaultCountryCode());
+  const [phoneLocal, setPhoneLocal] = useState("");
+  const [phoneTouched, setPhoneTouched] = useState(false);
   const [occasion, setOccasion] = useState("");
   const [notes, setNotes] = useState("");
   const [marketingOptIn, setMarketingOptIn] = useState(false);
@@ -74,6 +104,8 @@ export function GuestVenueReservation({
   const availability = usePublicVenueAvailability(venueId, date, partySize);
   const slots = availability.data ?? [];
   const selectedSlot = slots.find((slot) => slot.slotStartUtc === selectedUtc);
+  const phoneDialCode = getCountryByCode(phoneCountry)?.dialCode ?? "+1";
+  const normalizedPhone = composeE164(phoneDialCode, phoneLocal);
 
   useEffect(() => {
     if (availability.data === undefined) return;
@@ -81,8 +113,6 @@ export function GuestVenueReservation({
       surface: "buyer_web",
       brand_id: brandId,
       venue_id: venueId,
-      available_slot_count: availability.data.filter((slot) => !slot.isFull)
-        .length,
     });
   }, [availability.data, brandId, venueId]);
 
@@ -91,10 +121,13 @@ export function GuestVenueReservation({
       selectedUtc === null ||
       name.trim().length < 2 ||
       !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ||
-      phone.trim().length < 7
+      normalizedPhone === null
     ) {
+      setPhoneTouched(true);
       setError(
-        "Choose a time and enter a valid name, email, and phone number.",
+        normalizedPhone === null
+          ? INVALID_PHONE_COPY
+          : "Choose a time and enter a valid name and email.",
       );
       return;
     }
@@ -115,7 +148,7 @@ export function GuestVenueReservation({
         buyer: {
           name: name.trim(),
           email: email.trim(),
-          phone: phone.trim(),
+          phone: normalizedPhone,
           marketingOptIn,
         },
         occasion: occasion.trim() || null,
@@ -141,12 +174,8 @@ export function GuestVenueReservation({
         throw new Error("The payment page could not open. Try again.");
       }
       await Linking.openURL(redirect);
-    } catch (reason) {
-      setError(
-        reason instanceof Error
-          ? reason.message
-          : "We couldn’t start your reservation. Try again.",
-      );
+    } catch {
+      setError(RESERVATION_FAILURE_COPY);
       captureWeb("venue_reservation_failed", {
         surface: "buyer_web",
         brand_id: brandId,
@@ -208,6 +237,7 @@ export function GuestVenueReservation({
               setSelectedUtc(null);
             }}
             accessibilityRole="button"
+            accessibilityLabel={`Select ${option.label}`}
             accessibilityState={{ selected: date === option.value }}
             style={[styles.chip, date === option.value && styles.chipSelected]}
           >
@@ -252,6 +282,9 @@ export function GuestVenueReservation({
                 });
               }}
               accessibilityRole="button"
+              accessibilityLabel={`Select ${slot.slotLocalLabel}${
+                slot.isFull ? ", full" : ""
+              }`}
               accessibilityState={{
                 disabled: slot.isFull,
                 selected: selectedUtc === slot.slotStartUtc,
@@ -285,11 +318,54 @@ export function GuestVenueReservation({
             placeholder="Email"
             accessibilityLabel="Email"
           />
-          <Input
-            value={phone}
-            onChangeText={setPhone}
-            placeholder="+44 7700 900000"
-            accessibilityLabel="Phone number"
+          <PhoneInput
+            value={phoneLocal}
+            countryCode={phoneCountry}
+            onChangePhone={(next) => {
+              setPhoneLocal(next);
+              setPhoneTouched(true);
+            }}
+            onChangeCountry={(next) => {
+              setPhoneCountry(next);
+              setPhoneTouched(true);
+            }}
+            error={
+              phoneTouched && normalizedPhone === null
+                ? INVALID_PHONE_COPY
+                : null
+            }
+            disabled={submitting}
+            iconRenderer={(
+              name: PhoneInputIconName,
+              iconProps: { size: number; color: string },
+            ) => {
+              const iconName =
+                name === "chevronDown"
+                  ? "chevD"
+                  : name === "checkmark"
+                    ? "check"
+                    : name === "close"
+                      ? "close"
+                      : "search";
+              return (
+                <Icon
+                  name={iconName}
+                  size={iconProps.size}
+                  color={iconProps.color}
+                />
+              );
+            }}
+            labels={{
+              phonePlaceholder: "Phone number",
+              countryButtonAccessibilityLabel: (countryName) =>
+                `Country code, ${countryName}, tap to change`,
+              phoneInputAccessibilityLabel: "Phone number, required",
+              doneButton: "Done",
+              pickerTitle: "Select Country",
+              pickerSearchPlaceholder: "Search country or dial code",
+              pickerCloseAccessibilityLabel: "Close country picker",
+            }}
+            theme={RESERVATION_PHONE_THEME}
           />
           <Input
             value={occasion}

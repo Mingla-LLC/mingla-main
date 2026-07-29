@@ -886,7 +886,11 @@ export const fetchPublicBrandVenues = async (
   }));
 };
 
-/** Issue #1365 — verified venue cards enriched with the existing resolver. */
+/**
+ * Issue #1365 — verified venue cards returned immediately. Reservability is
+ * resolved progressively by the sibling hook so one slow venue cannot hold
+ * back the entire list.
+ */
 export const fetchPublicBrandVenueStates = async (
   brandSlug: string,
 ): Promise<PublicVenueSummary[]> => {
@@ -899,48 +903,34 @@ export const fetchPublicBrandVenueStates = async (
     .order("created_at", { ascending: true });
   if (error !== null) throw error;
 
-  return Promise.all(
-    (
-      (data ?? []) as Array<
-        Pick<
-          VenuePublicViewRow,
-          | "id"
-          | "slug"
-          | "name"
-          | "address"
-          | "city"
-          | "cover_media_url"
-          | "pool_photo_urls"
-          | "place_pool_id"
-        >
+  return (
+    (data ?? []) as Array<
+      Pick<
+        VenuePublicViewRow,
+        | "id"
+        | "slug"
+        | "name"
+        | "address"
+        | "city"
+        | "cover_media_url"
+        | "pool_photo_urls"
+        | "place_pool_id"
       >
-    ).map(async (row): Promise<PublicVenueSummary> => {
-      let reservationState: PublicVenueSummary["reservationState"] =
-        "unavailable";
-      if (row.place_pool_id !== null) {
-        try {
-          const resolved = await getPublicVenueReservable(row.place_pool_id);
-          reservationState = resolved.reservable ? "available" : "unavailable";
-        } catch {
-          reservationState = "error";
-        }
-      }
-      return {
-        id: row.id,
-        slug: row.slug,
-        name: row.name,
-        address: asStringOrNull(row.address),
-        city: asStringOrNull(row.city),
-        photoUrl:
-          asStringOrNull(row.cover_media_url) ??
-          (Array.isArray(row.pool_photo_urls) && row.pool_photo_urls.length > 0
-            ? row.pool_photo_urls[0]
-            : null),
-        placePoolId: row.place_pool_id,
-        reservationState,
-      };
-    }),
-  );
+    >
+  ).map((row): PublicVenueSummary => ({
+    id: row.id,
+    slug: row.slug,
+    name: row.name,
+    address: asStringOrNull(row.address),
+    city: asStringOrNull(row.city),
+    photoUrl:
+      asStringOrNull(row.cover_media_url) ??
+      (Array.isArray(row.pool_photo_urls) && row.pool_photo_urls.length > 0
+        ? row.pool_photo_urls[0]
+        : null),
+    placePoolId: row.place_pool_id,
+    reservationState: row.place_pool_id === null ? "unavailable" : "loading",
+  }));
 };
 
 export const claimedVenueRowToBrand = (

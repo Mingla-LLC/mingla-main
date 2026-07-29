@@ -37,20 +37,22 @@ BEGIN
 END;
 $test$;
 
--- Rollout compatibility: installed pre-#1365 clients omit venue_id. One venue
--- (including a not-yet-verified venue) is unambiguous and must keep saving;
--- multiple venues must never be guessed.
+-- Rollout compatibility: installed pre-#1365 clients omit venue_id. Prefer one
+-- verified venue even with a non-public sibling; otherwise one total venue is
+-- unambiguous. Two verified venues must never be guessed.
 INSERT INTO auth.users (id, email)
 VALUES
   ('a1365aaa-0000-4000-8000-000000000001', 'issue1365-single@test.local'),
   ('a1365bbb-0000-4000-8000-000000000002', 'issue1365-multi@test.local'),
-  ('a1365ccc-0000-4000-8000-000000000003', 'issue1365-zero@test.local');
+  ('a1365ccc-0000-4000-8000-000000000003', 'issue1365-zero@test.local'),
+  ('a1365ddd-0000-4000-8000-000000000004', 'issue1365-ambiguous@test.local');
 
 INSERT INTO public.creator_accounts (id)
 VALUES
   ('a1365aaa-0000-4000-8000-000000000001'),
   ('a1365bbb-0000-4000-8000-000000000002'),
-  ('a1365ccc-0000-4000-8000-000000000003');
+  ('a1365ccc-0000-4000-8000-000000000003'),
+  ('a1365ddd-0000-4000-8000-000000000004');
 
 INSERT INTO public.brands (id, account_id, slug, name, created_at, updated_at)
 VALUES
@@ -59,7 +61,9 @@ VALUES
   ('b1365bbb-0000-4000-8000-000000000002', 'a1365bbb-0000-4000-8000-000000000002',
    'issue1365multi', 'Issue 1365 Multi', now(), now()),
   ('b1365ccc-0000-4000-8000-000000000003', 'a1365ccc-0000-4000-8000-000000000003',
-   'issue1365zero', 'Issue 1365 Zero', now(), now());
+   'issue1365zero', 'Issue 1365 Zero', now(), now()),
+  ('b1365ddd-0000-4000-8000-000000000004', 'a1365ddd-0000-4000-8000-000000000004',
+   'issue1365ambiguous', 'Issue 1365 Ambiguous', now(), now());
 
 INSERT INTO public.venue_listings (
   id, brand_id, slug, name, lat, lng, venue_category, claim_status
@@ -70,7 +74,11 @@ VALUES
   ('c1365bbb-0000-4000-8000-000000000002', 'b1365bbb-0000-4000-8000-000000000002',
    'multiverified', 'Multi Verified', 40.7, -74.0, 'restaurant', 'verified'),
   ('c1365bbb-0000-4000-8000-000000000003', 'b1365bbb-0000-4000-8000-000000000002',
-   'multipending', 'Multi Pending', 40.8, -73.9, 'play', 'pending_review');
+   'multipending', 'Multi Pending', 40.8, -73.9, 'play', 'pending_review'),
+  ('c1365ddd-0000-4000-8000-000000000004', 'b1365ddd-0000-4000-8000-000000000004',
+   'firstverified', 'First Verified', 34.0, -118.2, 'restaurant', 'verified'),
+  ('c1365ddd-0000-4000-8000-000000000005', 'b1365ddd-0000-4000-8000-000000000004',
+   'secondverified', 'Second Verified', 34.1, -118.3, 'play', 'verified');
 
 DO $compat$
 DECLARE
@@ -98,10 +106,20 @@ BEGIN
     RAISE EXCEPTION 'issue_1365: legacy single-venue update was not assigned';
   END IF;
 
+  -- Production shape: one verified venue plus a pending sibling must resolve
+  -- to the verified venue so the existing public menu remains available.
+  INSERT INTO public.menus (brand_id, name)
+  VALUES ('b1365bbb-0000-4000-8000-000000000002', 'Verified preference')
+  RETURNING venue_id INTO v_venue_id;
+
+  IF v_venue_id <> 'c1365bbb-0000-4000-8000-000000000002'::uuid THEN
+    RAISE EXCEPTION 'issue_1365: sole verified venue was not preferred';
+  END IF;
+
   BEGIN
     INSERT INTO public.menus (brand_id, name)
-    VALUES ('b1365bbb-0000-4000-8000-000000000002', 'Ambiguous legacy insert');
-    RAISE EXCEPTION 'issue_1365: multi-venue legacy insert unexpectedly succeeded';
+    VALUES ('b1365ddd-0000-4000-8000-000000000004', 'Ambiguous legacy insert');
+    RAISE EXCEPTION 'issue_1365: two-verified legacy insert unexpectedly succeeded';
   EXCEPTION
     WHEN raise_exception THEN
       IF SQLERRM <> 'menu_venue_ambiguous' THEN

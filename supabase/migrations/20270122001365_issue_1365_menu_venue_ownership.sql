@@ -14,19 +14,32 @@ CREATE INDEX IF NOT EXISTS menus_venue_id_idx
 CREATE INDEX IF NOT EXISTS menus_venue_active_idx
   ON public.menus (venue_id) WHERE is_active;
 
--- A brand with exactly one venue has one unambiguous identity owner regardless
--- of claim state. Assigning pending/suspended/rejected rows is safe because the
--- public view below still exposes VERIFIED venues only.
-WITH one_venue AS (
-  SELECT brand_id, (array_agg(id ORDER BY created_at, id))[1] AS venue_id
+-- Prefer the one verified/public venue even when non-public sibling rows exist.
+-- If none are verified, exactly one total venue is still unambiguous for a
+-- pre-verification brand. Every other shape remains unassigned and private.
+WITH venue_resolution AS (
+  SELECT brand_id,
+         count(*) AS total_count,
+         count(*) FILTER (WHERE claim_status = 'verified') AS verified_count,
+         (array_agg(id ORDER BY created_at, id))[1] AS only_venue_id,
+         (array_agg(id ORDER BY created_at, id)
+           FILTER (WHERE claim_status = 'verified'))[1] AS verified_venue_id
   FROM public.venue_listings
   GROUP BY brand_id
-  HAVING count(*) = 1
+),
+resolved_venue AS (
+  SELECT brand_id,
+         CASE
+           WHEN verified_count = 1 THEN verified_venue_id
+           WHEN verified_count = 0 AND total_count = 1 THEN only_venue_id
+         END AS venue_id
+  FROM venue_resolution
 )
 UPDATE public.menus m
-SET venue_id = ovv.venue_id
-FROM one_venue ovv
-WHERE m.brand_id = ovv.brand_id
+SET venue_id = rv.venue_id
+FROM resolved_venue rv
+WHERE m.brand_id = rv.brand_id
+  AND rv.venue_id IS NOT NULL
   AND m.venue_id IS NULL;
 
 DROP TRIGGER IF EXISTS menus_venue_brand_match ON public.menus;
@@ -39,22 +52,33 @@ RETURNS trigger
 LANGUAGE plpgsql
 AS $function$
 DECLARE
-  v_venue_count integer;
+  v_total_count integer;
+  v_verified_count integer;
   v_only_venue_id uuid;
+  v_verified_venue_id uuid;
 BEGIN
   -- [TRANSITIONAL] Installed pre-#1365 Business clients omit venue_id. During
   -- OTA propagation, preserve their save path only where venue ownership is
   -- mathematically unambiguous. Exit after the minimum supported Business
   -- build always sends venue_id.
   IF NEW.venue_id IS NULL THEN
-    SELECT count(*), (array_agg(v.id ORDER BY v.created_at, v.id))[1]
-      INTO v_venue_count, v_only_venue_id
+    SELECT count(*),
+           count(*) FILTER (WHERE v.claim_status = 'verified'),
+           (array_agg(v.id ORDER BY v.created_at, v.id))[1],
+           (array_agg(v.id ORDER BY v.created_at, v.id)
+             FILTER (WHERE v.claim_status = 'verified'))[1]
+      INTO v_total_count, v_verified_count,
+           v_only_venue_id, v_verified_venue_id
       FROM public.venue_listings v
      WHERE v.brand_id = NEW.brand_id;
 
-    IF v_venue_count = 1 THEN
+    IF v_verified_count = 1 THEN
+      NEW.venue_id := v_verified_venue_id;
+    ELSIF v_verified_count > 1 THEN
+      RAISE EXCEPTION 'menu_venue_ambiguous';
+    ELSIF v_total_count = 1 THEN
       NEW.venue_id := v_only_venue_id;
-    ELSIF v_venue_count = 0 THEN
+    ELSIF v_total_count = 0 THEN
       RAISE EXCEPTION 'menu_venue_required';
     ELSE
       RAISE EXCEPTION 'menu_venue_ambiguous';
@@ -66,9 +90,10 @@ $function$;
 
 COMMENT ON FUNCTION public.tg_issue_1365_menu_requires_venue() IS
   '[TRANSITIONAL] #1365 rollout seam: legacy menu writes without venue_id are '
-  'assigned only when the brand has exactly one venue row (any claim state). '
-  'Zero venues raise menu_venue_required; multiple venues raise '
-  'menu_venue_ambiguous. Public exposure remains verified-only.';
+  'assigned to exactly one verified venue, or to exactly one total venue when '
+  'none are verified. Zero venues raise menu_venue_required; multiple verified '
+  'or otherwise ambiguous venues raise menu_venue_ambiguous. Public exposure '
+  'remains verified-only.';
 
 DROP TRIGGER IF EXISTS menus_require_venue_on_write ON public.menus;
 CREATE TRIGGER menus_require_venue_on_write

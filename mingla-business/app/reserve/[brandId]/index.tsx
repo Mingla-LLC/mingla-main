@@ -1,6 +1,7 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import {
   spacing,
@@ -12,7 +13,10 @@ import { Button } from "../../../src/components/ui/Button";
 export default function VenueReservationCancelledRoute(): React.ReactElement {
   const router = useRouter();
   return (
-    <View style={styles.host}>
+    <SafeAreaView
+      style={styles.host}
+      edges={["top", "bottom", "left", "right"]}
+    >
       <Text style={styles.title}>Payment cancelled</Text>
       <Text style={styles.body}>
         You haven’t been charged. Return to the venue when you’re ready to pick
@@ -25,7 +29,7 @@ export default function VenueReservationCancelledRoute(): React.ReactElement {
           else router.replace("/" as never);
         }}
       />
-    </View>
+    </SafeAreaView>
   );
 }
 

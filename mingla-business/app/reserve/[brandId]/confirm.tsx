@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { captureWeb } from "../../../src/analytics/webAnalytics";
 import {
@@ -74,7 +75,10 @@ export default function VenueReservationConfirmRoute(): React.ReactElement {
   }, [confirm]);
 
   return (
-    <View style={styles.host}>
+    <SafeAreaView
+      style={styles.host}
+      edges={["top", "bottom", "left", "right"]}
+    >
       {state === "loading" ? (
         <>
           <ActivityIndicator />
@@ -104,7 +108,7 @@ export default function VenueReservationConfirmRoute(): React.ReactElement {
           <Button label="Try again" onPress={() => void confirm()} />
         </>
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 

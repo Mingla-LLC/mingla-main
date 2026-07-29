@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -52,6 +52,37 @@ export default function ConsumerPublicVenueScreen(): React.ReactElement {
   const [muted, setMuted] = useState(true);
 
   const venue = query.data ?? null;
+  const captureVenueFunnel = useCallback(
+    (
+      event:
+        | "venue_availability_result_viewed"
+        | "venue_reservation_slot_selected"
+        | "venue_reservation_failed",
+      resultClass?: "phone_invalid" | "create_failed",
+    ): void => {
+      if (venue === null) return;
+      postHogService.capture(event, {
+        surface: "consumer_native",
+        brand_id: venue.brandId,
+        venue_id: venue.id,
+        ...(resultClass === undefined ? {} : { result_class: resultClass }),
+      });
+    },
+    [venue],
+  );
+  const onAvailabilityResultViewed = useCallback(
+    () => captureVenueFunnel("venue_availability_result_viewed"),
+    [captureVenueFunnel],
+  );
+  const onSlotSelected = useCallback(
+    () => captureVenueFunnel("venue_reservation_slot_selected"),
+    [captureVenueFunnel],
+  );
+  const onReservationFailed = useCallback(
+    (resultClass: "phone_invalid" | "create_failed") =>
+      captureVenueFunnel("venue_reservation_failed", resultClass),
+    [captureVenueFunnel],
+  );
   const theme = useMemo(
     () => resolveTheme(venue?.theme ?? null, null),
     [venue?.theme],
@@ -240,18 +271,18 @@ export default function ConsumerPublicVenueScreen(): React.ReactElement {
             surface={surface}
             theme={theme}
             onTabViewed={(tab) => {
-              postHogService.capture(
-                tab === "menu"
-                  ? "public_venue_menu_viewed"
-                  : tab === "reservations"
-                    ? "public_venue_reservations_viewed"
+              if (tab === "menu" || tab === "overview") {
+                postHogService.capture(
+                  tab === "menu"
+                    ? "public_venue_menu_viewed"
                     : "public_venue_overview_viewed",
-                {
-                  surface: "consumer_native",
-                  brand_id: venue.brandId,
-                  venue_id: venue.id,
-                },
-              );
+                  {
+                    surface: "consumer_native",
+                    brand_id: venue.brandId,
+                    venue_id: venue.id,
+                  },
+                );
+              }
             }}
           />
         </View>
@@ -264,6 +295,9 @@ export default function ConsumerPublicVenueScreen(): React.ReactElement {
           brandId={venue.brandId}
           venueName={venue.name}
           currency={venue.reservability.currency}
+          onAvailabilityResultViewed={onAvailabilityResultViewed}
+          onSlotSelected={onSlotSelected}
+          onReservationFailed={onReservationFailed}
           onReserved={() => {
             setReserveOpen(false);
             setReserved(true);
