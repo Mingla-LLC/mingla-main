@@ -585,11 +585,19 @@ export async function fireAdConversion(
         // per-channel gate below reads it to decide whether Google still needs to
         // fire. Omit it and Google appears perpetually 'pending' on every
         // re-delivered webhook and re-fires the upload every time.
-        "event_id, meta_capi_status, tiktok_events_status, snap_capi_status, reddit_capi_status, google_ads_status",
+        //
+        // ISSUE-855 / #865 UNDERCOUNT REPAIR: the attribution columns
+        // (brand_id, order_id, value_cents, currency, mingla_event_id) are ALSO
+        // projected so the post-upsert backfill (step 4b) can COALESCE-fill ONLY
+        // the columns the EARLY browser row left NULL — without ever clobbering an
+        // already-set value.
+        "event_id, brand_id, order_id, value_cents, currency, mingla_event_id, meta_capi_status, tiktok_events_status, snap_capi_status, reddit_capi_status, google_ads_status",
       )
       .eq("event_id", key)
       .maybeSingle();
-    const existingRow = existing as Record<string, string> | null;
+    const existingRow = existing as
+      | Record<string, string | number | null>
+      | null;
 
     const channelPending: Record<Channel, boolean> = {
       meta: (existingRow?.[STATUS_COL.meta] ?? "pending") === "pending",
@@ -649,6 +657,55 @@ export async function fireAdConversion(
         onConflict: "event_id",
         ignoreDuplicates: true,
       });
+
+    // 4b. ISSUE-855 / #865 UNDERCOUNT REPAIR — COALESCE-backfill the attribution
+    //     columns the browser's EARLY row left NULL.
+    //
+    //     The browser writes an early, idempotent ad_conversions row at
+    //     checkout-success (webAnalytics.web.ts::postAttributionConversion →
+    //     attribution-capture::recordConversion) that ALWAYS carries brand_id /
+    //     order_id / mingla_event_id = NULL (the browser never holds them) and
+    //     only optionally sets value_cents/currency. Because the upsert above is
+    //     ON CONFLICT (event_id) DO NOTHING, when that browser row WINS the race
+    //     the authoritative values resolved here would otherwise stay NULL forever
+    //     — silently UNDERCOUNTING brand_conversion_rollup (WHERE brand_id =
+    //     p_brand_id) and the live "Customers Mingla drove" tile.
+    //
+    //     When a row ALREADY existed at the step-2 read, fill each of the five
+    //     attribution columns — but ONLY where the stored value IS NULL (per-column
+    //     COALESCE decided from the step-2 snapshot) and where THIS fire actually
+    //     resolved a value. This NEVER clobbers an already-set value (e.g. a
+    //     brand_id a prior server fire wrote) and NEVER nulls a value the browser
+    //     already set. The per-channel *_status columns are deliberately EXCLUDED,
+    //     so the redelivery-dedup gate is untouched and NO re-send is triggered
+    //     (a re-delivered webhook whose channels are all settled already returns
+    //     `deduped` at step 2 above and never reaches here). Concurrency-safe: the
+    //     only other writer of these columns for a given event_id is another server
+    //     fire for the SAME order/reservation, which resolves the identical values.
+    if (existingRow) {
+      const backfill: Record<string, unknown> = {};
+      if (existingRow.brand_id == null && ctx.brandId != null) {
+        backfill.brand_id = ctx.brandId;
+      }
+      if (existingRow.order_id == null && ctx.orderId != null) {
+        backfill.order_id = ctx.orderId;
+      }
+      if (existingRow.value_cents == null && ctx.valueCents != null) {
+        backfill.value_cents = ctx.valueCents;
+      }
+      if (existingRow.currency == null && ctx.currency != null) {
+        backfill.currency = ctx.currency;
+      }
+      if (existingRow.mingla_event_id == null && ctx.minglaEventId != null) {
+        backfill.mingla_event_id = ctx.minglaEventId;
+      }
+      if (Object.keys(backfill).length > 0) {
+        await supabase
+          .from("ad_conversions")
+          .update(backfill)
+          .eq("event_id", key);
+      }
+    }
 
     // 5. Fan out to each channel whose status is still pending (parallel,
     //    bounded, fail-open). Non-Meta channels never receive fbc/fbp.
