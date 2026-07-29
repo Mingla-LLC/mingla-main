@@ -9,16 +9,20 @@ import {
   type PublicBrandExperience,
   type PublicBrandTrip,
   type PublicBrandUpcoming,
+  type PublicBrandVenueSummary,
 } from "@mingla/brand-rendering";
 
-import { useBrandBySlug } from "../hooks/useBrandBySlug";
+import { useBrandBySlug, usePublicBrandVenues } from "../hooks/useBrandBySlug";
+import { postHogService } from "../services/postHogService";
 
 export default function ConsumerBrandProfileScreen(): React.ReactElement {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ slug: string | string[] }>();
   const slug = Array.isArray(params.slug) ? params.slug[0] : params.slug;
-  const query = useBrandBySlug(typeof slug === "string" ? slug : null);
+  const publicSlug = typeof slug === "string" ? slug : null;
+  const query = useBrandBySlug(publicSlug);
+  const venuesQuery = usePublicBrandVenues(publicSlug);
 
   const handleShare = useCallback((): void => {
     if (typeof slug !== "string") return;
@@ -52,16 +56,26 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
     );
   }
 
+  const detail = query.data;
+
   return (
     <PublicBrandPage
-      brand={query.data.brand}
-      events={query.data.events}
-      trips={query.data.trips}
-      experiences={query.data.experiences}
-      upcoming={query.data.upcoming}
-      upcomingHasMore={query.data.upcomingHasMore}
-      menu={query.data.menu}
-      theme={query.data.resolvedTheme}
+      brand={detail.brand}
+      events={detail.events}
+      trips={detail.trips}
+      experiences={detail.experiences}
+      upcoming={detail.upcoming}
+      upcomingHasMore={detail.upcomingHasMore}
+      menu={detail.menu}
+      venues={venuesQuery.data ?? []}
+      venuesLoadState={
+        venuesQuery.isLoading || venuesQuery.isFetching
+          ? "loading"
+          : venuesQuery.isError
+            ? "error"
+            : "ready"
+      }
+      theme={detail.resolvedTheme}
       // ORCH-1155 Known-Issue #1: feed the device safe-area top inset into the
       // shared shell's fixed chrome so the X / Share buttons clear the notch /
       // status bar on native (the shell adds its own +12 gap, giving an
@@ -69,6 +83,7 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
       // ConsumerExperienceDetailScreen native chrome). Web/business unchanged:
       // the business adapter passes its own offset; web safe-area top is 0.
       chromeTopOffset={insets.top}
+      contentBottomInset={insets.bottom + 24}
       callbacks={{
         onClose: () => router.back(),
         onShare: handleShare,
@@ -96,6 +111,30 @@ export default function ConsumerBrandProfileScreen(): React.ReactElement {
                 : `/e/${item.brandSlug}/${item.offeringSlug}`;
           void WebBrowser.openBrowserAsync(
             `https://business.usemingla.com${path}`,
+          );
+        },
+        onReservationsTabViewed: () => {
+          postHogService.capture("brand_reservations_tab_viewed", {
+            surface: "consumer_native",
+            brand_id: detail.brand.id,
+            venue_count: venuesQuery.data?.length ?? 0,
+          });
+        },
+        onRetryVenues: () => {
+          venuesQuery.refetch();
+        },
+        onOpenVenue: (venue: PublicBrandVenueSummary) => {
+          postHogService.capture("brand_venue_selected", {
+            surface: "consumer_native",
+            brand_id: detail.brand.id,
+            venue_id: venue.id,
+            reservable_state: venue.reservationState ?? "error",
+            source_tab: "reservations",
+          });
+          router.push(
+            `/b/${detail.brand.slug}/v/${venue.slug}${
+              venue.reservationState === "available" ? "?tab=reservations" : ""
+            }`,
           );
         },
       }}

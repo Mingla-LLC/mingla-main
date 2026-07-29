@@ -1,7 +1,11 @@
-import { useQuery, type UseQueryResult } from "@tanstack/react-query";
+import {
+  useQueries,
+  useQuery,
+  type UseQueryResult,
+} from "@tanstack/react-query";
 
 import {
-  fetchPublicBrandVenues,
+  fetchPublicBrandVenueStates,
   getPublicBrandBySlug,
   getPublicEventById,
   getPublicEventBySlug,
@@ -41,7 +45,7 @@ export const publicEventKeys = {
     venueSlug: string,
   ): readonly ["public-events", "venue-by-slug", string, string] =>
     [...publicEventKeys.all, "venue-by-slug", brandSlug, venueSlug] as const,
-  // META-ORCH-1255(C) — the brand page "Locations" list (SC-12).
+  // Issue #1365 — the brand page Reservations venue list.
   brandVenues: (
     brandSlug: string,
   ): readonly ["public-events", "brand", string, "venues"] =>
@@ -127,10 +131,9 @@ export const usePublicVenueBySlug = (
 };
 
 /**
- * META-ORCH-1255(C) — the brand page "Locations" list (SC-12). A SIBLING
- * fetch rather than a getPublicBrandBySlug re-shape: the append-only ve4
- * suite pins that function's exact from() call set + `venue` overlay shape
- * (see the Leg C report deviation ledger).
+ * Issue #1365 — the brand page Reservations venue list. A SIBLING
+ * fetch rather than a getPublicBrandBySlug re-shape so venue availability can
+ * load and retry independently from the established Brand content.
  */
 /**
  * META-ORCH-1255(C) — reserve display gate for the anon venue page (§6.7).
@@ -156,17 +159,65 @@ export const usePublicVenueReservable = (
   });
 };
 
+interface PublicBrandVenuesQuery {
+  data: PublicVenueSummary[];
+  isLoading: boolean;
+  isFetching: boolean;
+  isError: boolean;
+  refetch: () => void;
+}
+
 export const usePublicBrandVenues = (
   brandSlug: string | null,
-): UseQueryResult<PublicVenueSummary[]> => {
+): PublicBrandVenuesQuery => {
   const enabled = brandSlug !== null;
-  return useQuery<PublicVenueSummary[]>({
+  const venuesQuery = useQuery<PublicVenueSummary[]>({
     queryKey: enabled ? publicEventKeys.brandVenues(brandSlug) : DISABLED_KEY,
     enabled,
     staleTime: PUBLIC_STALE_TIME_MS,
     queryFn: async (): Promise<PublicVenueSummary[]> => {
       if (!enabled || brandSlug === null) return [];
-      return fetchPublicBrandVenues(brandSlug);
+      return fetchPublicBrandVenueStates(brandSlug);
     },
   });
+  const venues = venuesQuery.data ?? [];
+  const reservabilityQueries = useQueries({
+    queries: venues.map((venue) => ({
+      queryKey:
+        typeof venue.placePoolId === "string"
+          ? publicEventKeys.venueReservable(venue.placePoolId)
+          : DISABLED_KEY,
+      enabled: typeof venue.placePoolId === "string",
+      staleTime: PUBLIC_STALE_TIME_MS,
+      queryFn: async (): Promise<PublicVenueSummary["reservationState"]> => {
+        if (typeof venue.placePoolId !== "string") return "unavailable";
+        try {
+          const resolved = await getPublicVenueReservable(venue.placePoolId);
+          return resolved.reservable ? "available" : "unavailable";
+        } catch {
+          return "error";
+        }
+      },
+    })),
+  });
+  const data: PublicVenueSummary[] = venues.map((venue, index) => ({
+    ...venue,
+    reservationState:
+      typeof venue.placePoolId !== "string"
+        ? "unavailable"
+        : (reservabilityQueries[index]?.data ?? "loading"),
+  }));
+
+  return {
+    data,
+    isLoading: venuesQuery.isLoading,
+    isFetching:
+      venuesQuery.isFetching ||
+      reservabilityQueries.some((query) => query.isFetching),
+    isError: venuesQuery.isError,
+    refetch: () => {
+      void venuesQuery.refetch();
+      for (const query of reservabilityQueries) void query.refetch();
+    },
+  };
 };

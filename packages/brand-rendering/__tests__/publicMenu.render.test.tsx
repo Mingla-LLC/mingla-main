@@ -24,9 +24,16 @@ const brandPage = fs.readFileSync(
   path.join(__dirname, "..", "PublicBrandPage.tsx"),
   "utf8",
 );
+// [TEST-MOD-APPROVED ORCH-1365] Public menus now belong to the exact public
+// venue page. Preserve the display-only menu contract here and retarget the tab
+// ownership assertions from PublicBrandPage to PublicVenueTabs.
 // META-ORCH-1255(R2): the menu renderer's own module (moved verbatim).
 const menuSections = fs.readFileSync(
   path.join(__dirname, "..", "PublicMenuSections.tsx"),
+  "utf8",
+);
+const venueTabs = fs.readFileSync(
+  path.join(__dirname, "..", "PublicVenueTabs.tsx"),
   "utf8",
 );
 const types = fs.readFileSync(path.join(__dirname, "..", "types.ts"), "utf8");
@@ -50,7 +57,9 @@ describe("ORCH-1186-C public Menu tab", () => {
     expect(menuTabBlock).toContain("groups.map");
     expect(menuTabBlock).toContain("group.items.map");
     // Currency-formatted price via the package-local formatter.
-    expect(menuTabBlock).toContain("formatMenuPrice(item.priceCents, item.currency)");
+    expect(menuTabBlock).toContain(
+      "formatMenuPrice(item.priceCents, item.currency)",
+    );
     // Section header is an a11y header; price uses primaryText (not accent).
     expect(menuTabBlock).toContain('accessibilityRole="header"');
   });
@@ -74,17 +83,16 @@ describe("ORCH-1186-C public Menu tab", () => {
     expect(menuTabBlock).not.toMatch(/price on request/i);
   });
 
-  test("T-PUB-2 — Menu tab appears ONLY when there is >=1 available item, immediately after About", () => {
-    // visibleTabs seeds About then pushes menu when there are items.
-    expect(brandPage).toContain('const tabs: Tab[] = ["about"];');
-    expect(brandPage).toContain('if (menuItemCount > 0) tabs.push("menu");');
-    // menu push comes BEFORE the offering pushes (right after about).
-    const menuPush = brandPage.indexOf('tabs.push("menu")');
-    const upcomingPush = brandPage.indexOf('tabs.push("upcoming")');
-    expect(menuPush).toBeGreaterThan(0);
-    expect(upcomingPush).toBeGreaterThan(menuPush);
-    // menuItemCount sums available items across groups.
-    expect(brandPage).toContain("menu.reduce((sum, group) => sum + group.items.length, 0)");
+  test("T-PUB-2 — Venue Menu appears only with items, between Overview and Reservations", () => {
+    expect(venueTabs).toContain("const tabs: PublicVenueTab[] = hasMenu");
+    expect(venueTabs).toContain('["overview", "menu", "reservations"]');
+    expect(venueTabs).toContain('["overview", "reservations"]');
+    const menuIndex = venueTabs.indexOf('"menu", "reservations"');
+    expect(menuIndex).toBeGreaterThan(0);
+
+    // Brand pages no longer aggregate venue-owned menus.
+    expect(brandPage).not.toContain('tabs.push("menu")');
+    expect(brandPage).not.toContain('activeTab === "menu"');
   });
 
   test("T-INV-1 — the MenuTab block carries NO buyable control (display-only, SC-7)", () => {
@@ -103,7 +111,9 @@ describe("ORCH-1186-C public Menu tab", () => {
     expect(types).toContain("export interface PublicMenuItem");
     expect(types).toContain("menu?: PublicMenuGroup[];");
     expect(indexTs).toContain("PublicMenuGroup");
-    expect(brandPage).toMatch(/\|\s*"menu"/);
-    expect(brandPage).toContain('menu: "Menu"');
+    expect(venueTabs).toContain("export type PublicVenueTab =");
+    expect(venueTabs).toMatch(/\|\s*"menu"/);
+    expect(venueTabs).toContain('menu: "Menu"');
+    expect(indexTs).toContain("PublicVenueTabs");
   });
 });

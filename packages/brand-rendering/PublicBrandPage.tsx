@@ -65,7 +65,6 @@ import { spacing } from "./designTokens";
 // META-ORCH-1255(R2) — the DISPLAY-ONLY menu renderer lives in its own module
 // so the venue public page can share it WITHOUT dragging this whole file into
 // the eager __common chunk (ORCH-1083 bundle budget). Composition unchanged.
-import { PublicMenuSections } from "./PublicMenuSections";
 import type {
   PublicBrand,
   PublicBrandEvent,
@@ -76,16 +75,10 @@ import type {
   PublicBrandUpcoming,
   PublicBrandVenueSummary,
   PublicMediaType,
-  PublicMenuGroup,
 } from "./types";
 
 type Tab =
-  | "about"
-  | "menu"
-  | "upcoming"
-  | "events"
-  | "trips"
-  | "experiences";
+  "about" | "reservations" | "upcoming" | "events" | "trips" | "experiences";
 type SocialKind =
   | "website"
   | "instagram"
@@ -217,7 +210,7 @@ const openUrl = (url: string): void => {
 
 const tabLabel: Record<Tab, string> = {
   about: "About",
-  menu: "Menu",
+  reservations: "Reservations",
   upcoming: "Upcoming",
   events: "Events",
   trips: "Trips",
@@ -246,7 +239,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   upcomingHasMore = false,
   venue = null,
   venues = [],
-  menu = [],
+  venuesLoadState = "ready",
   theme,
   // hideFloatingChrome is retained for back-compat with the props type; both live
   // callers (business adapter + consumer screen) pass it falsy, and the shell
@@ -254,6 +247,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   // a later ORCH. (Spec D-2.)
   hideFloatingChrome = false,
   chromeTopOffset,
+  contentBottomInset = 24,
   callbacks,
 }) => {
   void hideFloatingChrome;
@@ -270,7 +264,10 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     () => createThemePalette(resolvedTheme),
     [resolvedTheme],
   );
-  const surface = useMemo<Surface>(() => offeringSurfaceStyles(palette), [palette]);
+  const surface = useMemo<Surface>(
+    () => offeringSurfaceStyles(palette),
+    [palette],
+  );
   const themedFont = { fontFamily: resolvedTheme.fontFamilyValue };
 
   const upcomingEvents = useMemo(
@@ -310,16 +307,11 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   // ORCH-1186-C — total available menu items across all groups (chip count +
   // visibility gate). The view already filters to available items; menu is [] for
   // non-venues / unverified venues, so the Menu tab simply does not appear.
-  const menuItemCount = useMemo<number>(
-    () => menu.reduce((sum, group) => sum + group.items.length, 0),
-    [menu],
-  );
-
   const visibleTabs = useMemo<Tab[]>(() => {
     const tabs: Tab[] = ["about"];
-    // ORCH-1186-C — Menu immediately after About (a venue's menu is core
-    // identity), only when there is ≥1 available item.
-    if (menuItemCount > 0) tabs.push("menu");
+    if (venues.length > 0 || venuesLoadState !== "ready") {
+      tabs.push("reservations");
+    }
     if (upcoming.length > 0 || upcomingHasMore) tabs.push("upcoming");
     if (upcomingEvents.length > 0 || pastEvents.length > 0) tabs.push("events");
     if (upcomingTrips.length > 0 || pastTrips.length > 0) tabs.push("trips");
@@ -327,13 +319,14 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     return tabs;
   }, [
     experiences.length,
-    menuItemCount,
     pastEvents.length,
     pastTrips.length,
     upcoming.length,
     upcomingEvents.length,
     upcomingHasMore,
     upcomingTrips.length,
+    venues.length,
+    venuesLoadState,
   ]);
 
   // State-guard: if the active offering bucket empties, snap to About (index 0).
@@ -427,7 +420,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
       : null;
 
   const countForTab = (tab: Tab): number | undefined => {
-    if (tab === "menu") return menuItemCount;
+    if (tab === "reservations") return venues.length;
     if (tab === "upcoming") return upcoming.length;
     if (tab === "events") return upcomingEvents.length + pastEvents.length;
     if (tab === "trips") return upcomingTrips.length + pastTrips.length;
@@ -481,6 +474,13 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     />
   ) : null;
 
+  const handleTabSelect = (tab: Tab): void => {
+    setActiveTab(tab);
+    if (tab === "reservations") {
+      callbacks.onReservationsTabViewed?.();
+    }
+  };
+
   const tabBar = (
     <TabBar
       tabs={visibleTabs}
@@ -490,13 +490,20 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
       theme={resolvedTheme}
       isDesktop={isDesktop}
       countForTab={countForTab}
-      onSelect={setActiveTab}
+      onSelect={handleTabSelect}
     />
   );
 
   const activePane =
-    activeTab === "menu" ? (
-      <PublicMenuSections groups={menu} palette={palette} surface={surface} theme={resolvedTheme} />
+    activeTab === "reservations" ? (
+      <ReservationsPane
+        venues={venues}
+        palette={palette}
+        surface={surface}
+        onOpenVenue={callbacks.onOpenVenue}
+        loadState={venuesLoadState}
+        onRetry={callbacks.onRetryVenues}
+      />
     ) : activeTab === "upcoming" ? (
       <UpcomingList
         rows={upcoming}
@@ -540,24 +547,13 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         onPress={callbacks.onOpenExperience}
       />
     ) : (
-      <>
-        <AboutTab
-          brand={brand}
-          theme={resolvedTheme}
-          palette={palette}
-          surface={surface}
-          onExternal={onExternal}
-        />
-        {/* META-ORCH-1255(C) — Locations (SC-12): every VERIFIED venue of the
-            brand, each linking to its per-venue public page. Renders nothing
-            at 0 venues (real-data-only). */}
-        <LocationsSection
-          venues={venues}
-          palette={palette}
-          surface={surface}
-          onOpenVenue={callbacks.onOpenVenue}
-        />
-      </>
+      <AboutTab
+        brand={brand}
+        theme={resolvedTheme}
+        palette={palette}
+        surface={surface}
+        onExternal={onExternal}
+      />
     );
 
   // ---- body (left column / phone flow) ----
@@ -619,7 +615,9 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         </Pressable>
         {showFeaturedTeaser ? (
           <View style={styles.deskNextWrap}>
-            <Text style={[styles.deskNextLabel, { color: palette.tertiaryText }]}>
+            <Text
+              style={[styles.deskNextLabel, { color: palette.tertiaryText }]}
+            >
               Next up
             </Text>
             <NextOfferingTeaser
@@ -641,9 +639,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   const heroTitle = isDesktop ? (
     <>
       <Text style={[styles.heroTitle, themedFont]}>{brand.displayName}</Text>
-      {address !== null ? (
-        <Text style={styles.heroAddr}>{address}</Text>
-      ) : null}
+      {address !== null ? <Text style={styles.heroAddr}>{address}</Text> : null}
     </>
   ) : undefined;
 
@@ -665,7 +661,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
       heroTitle={heroTitle}
       stickyPanel={stickyPanel}
       safeAreaTop={chromeTopOffset ?? 0}
-      contentBottomInset={0}
+      contentBottomInset={contentBottomInset}
       testID="orch-1155-public-brand"
     >
       {bodyContent}
@@ -979,9 +975,7 @@ const EventMiniCard: React.FC<{
           </Text>
         ) : null}
         {pinCta && !past ? (
-          <View
-            style={[styles.buyPill, { backgroundColor: palette.accent }]}
-          >
+          <View style={[styles.buyPill, { backgroundColor: palette.accent }]}>
             <Text style={[styles.buyPillLabel, { color: palette.accentText }]}>
               Buy tickets
             </Text>
@@ -1030,7 +1024,9 @@ const NextOfferingTeaser: React.FC<{
         </Text>
       </View>
       <View style={styles.nextTeaserAction}>
-        <Text style={[styles.nextTeaserActionText, { color: palette.accentText }]}>
+        <Text
+          style={[styles.nextTeaserActionText, { color: palette.accentText }]}
+        >
           View
         </Text>
       </View>
@@ -1176,7 +1172,9 @@ const TripMiniCard: React.FC<{
           )}
           {trip.bookingsClosed ? (
             <View style={[styles.badge, surface.cardStrong]}>
-              <Text style={[styles.badgeLabel, { color: palette.secondaryText }]}>
+              <Text
+                style={[styles.badgeLabel, { color: palette.secondaryText }]}
+              >
                 Booking closed
               </Text>
             </View>
@@ -1290,7 +1288,15 @@ const ExperienceList: React.FC<{
   isDesktop: boolean;
   emptyCopy: string;
   onPress?: (experience: PublicBrandExperience) => void;
-}> = ({ experiences, theme, palette, surface, isDesktop, emptyCopy, onPress }) => {
+}> = ({
+  experiences,
+  theme,
+  palette,
+  surface,
+  isDesktop,
+  emptyCopy,
+  onPress,
+}) => {
   if (experiences.length === 0) {
     return <EmptyPane copy={emptyCopy} palette={palette} />;
   }
@@ -1402,27 +1408,68 @@ const EmptyPane: React.FC<{ copy: string; palette: ThemePalette }> = ({
   </View>
 );
 
-// META-ORCH-1255(C) — Locations section (rendered with the About pane;
-// SC-12). One pressable card per VERIFIED venue → /b/{brandSlug}/v/{venueSlug}
+// Issue #1365 — Reservations tab venue list. One pressable card per VERIFIED
+// venue → /b/{brandSlug}/v/{venueSlug}
 // via onOpenVenue. 0 venues → renders nothing (real-data-only). Inline param
 // annotation (not React.FC) so the section stays fully typed under every
 // consumer tsconfig.
-const LocationsSection = ({
+const ReservationsPane = ({
   venues,
   palette,
   surface,
   onOpenVenue,
+  loadState,
+  onRetry,
 }: {
   venues: PublicBrandVenueSummary[];
   palette: ThemePalette;
   surface: Surface;
   onOpenVenue?: (venue: PublicBrandVenueSummary) => void;
+  loadState: "loading" | "ready" | "error";
+  onRetry?: () => void;
 }): React.ReactElement | null => {
+  if (loadState === "error") {
+    return (
+      <View style={styles.venueErrorWrap}>
+        <Text
+          style={[styles.reservationsTitle, { color: palette.primaryText }]}
+        >
+          We couldn’t load this brand’s venues.
+        </Text>
+        <Pressable
+          onPress={onRetry}
+          accessibilityRole="button"
+          accessibilityLabel="Try loading venues again"
+          style={[styles.retryButton, { backgroundColor: palette.accent }]}
+        >
+          <Text style={[styles.retryLabel, { color: palette.accentText }]}>
+            Try again
+          </Text>
+        </Pressable>
+      </View>
+    );
+  }
+  if (loadState === "loading" && venues.length === 0) {
+    return (
+      <View style={styles.venueErrorWrap}>
+        <Text
+          style={[styles.reservationsTitle, { color: palette.primaryText }]}
+        >
+          Checking reservations…
+        </Text>
+      </View>
+    );
+  }
   if (venues.length === 0) return null;
   return (
     <View style={styles.locationsWrap}>
-      <Text style={[styles.locationsLabel, { color: palette.tertiaryText }]}>
-        LOCATIONS
+      <Text style={[styles.reservationsTitle, { color: palette.primaryText }]}>
+        Choose a venue
+      </Text>
+      <Text
+        style={[styles.reservationsSupport, { color: palette.tertiaryText }]}
+      >
+        Pick a location to see its menu and available times.
       </Text>
       {venues.map((v: PublicBrandVenueSummary) => {
         const addrLine = v.address ?? v.city;
@@ -1460,6 +1507,25 @@ const LocationsSection = ({
                   {addrLine}
                 </Text>
               ) : null}
+              <Text
+                style={[
+                  styles.venueStatus,
+                  {
+                    color:
+                      v.reservationState === "available"
+                        ? palette.accent
+                        : palette.tertiaryText,
+                  },
+                ]}
+              >
+                {v.reservationState === "available"
+                  ? "Reservations available"
+                  : v.reservationState === "loading"
+                    ? "Checking reservations…"
+                    : v.reservationState === "error"
+                      ? "Check venue details"
+                      : "Not taking reservations right now"}
+              </Text>
             </View>
             <Text style={[styles.venueChev, { color: palette.tertiaryText }]}>
               ›
@@ -1503,9 +1569,7 @@ const AboutTab: React.FC<{
           {tagline}
         </Text>
       ) : null}
-      {bio !== null ? (
-        <ClampedBio text={bio} palette={palette} />
-      ) : null}
+      {bio !== null ? <ClampedBio text={bio} palette={palette} /> : null}
       {hasContact ? (
         <View style={styles.contactWrap}>
           {email !== undefined ? (
@@ -1515,7 +1579,9 @@ const AboutTab: React.FC<{
               accessibilityLabel={`Email ${email}`}
               style={[styles.contactRow, surface.card]}
             >
-              <Text style={[styles.contactLabel, { color: palette.tertiaryText }]}>
+              <Text
+                style={[styles.contactLabel, { color: palette.tertiaryText }]}
+              >
                 Email
               </Text>
               <Text style={[styles.contactVal, { color: palette.primaryText }]}>
@@ -1530,7 +1596,9 @@ const AboutTab: React.FC<{
               accessibilityLabel={`Call ${phone}`}
               style={[styles.contactRow, surface.card]}
             >
-              <Text style={[styles.contactLabel, { color: palette.tertiaryText }]}>
+              <Text
+                style={[styles.contactLabel, { color: palette.tertiaryText }]}
+              >
                 Phone
               </Text>
               <Text style={[styles.contactVal, { color: palette.primaryText }]}>
@@ -1842,7 +1910,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginTop: 8,
   },
-  // META-ORCH-1255(C) — Locations section (About pane).
+  // Issue #1365 — Reservations tab venue list.
   locationsWrap: {
     marginTop: 28,
     gap: 10,
@@ -1852,6 +1920,16 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     fontWeight: "700",
     letterSpacing: 1.4,
+  },
+  reservationsTitle: {
+    fontSize: 19,
+    lineHeight: 24,
+    fontWeight: "800",
+  },
+  reservationsSupport: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 4,
   },
   venueRow: {
     flexDirection: "row",
@@ -1878,6 +1956,27 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     marginTop: 2,
+  },
+  venueStatus: {
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: "700",
+    marginTop: 4,
+  },
+  venueErrorWrap: {
+    gap: 16,
+    paddingVertical: 20,
+  },
+  retryButton: {
+    minHeight: 44,
+    alignSelf: "flex-start",
+    justifyContent: "center",
+    borderRadius: 12,
+    paddingHorizontal: 18,
+  },
+  retryLabel: {
+    fontSize: 14,
+    fontWeight: "800",
   },
   venueChev: {
     fontSize: 22,

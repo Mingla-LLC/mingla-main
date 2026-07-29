@@ -15,7 +15,7 @@
  * experience_stops / the snap-menu parser (I-PROPOSED-1186C-MENU-NOT-EXPERIENCE-STOPS).
  */
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { UtensilsCrossed } from "lucide-react-native";
 
@@ -54,11 +54,13 @@ const MANAGER_PLUS_RANK = BRAND_ROLE_RANK.event_manager; // 40
 
 export interface VenueMenuModuleProps {
   brandId: string | null;
+  venueId?: string | null;
   testID?: string;
 }
 
 export function VenueMenuModule({
   brandId,
+  venueId = null,
   testID,
 }: VenueMenuModuleProps): React.ReactElement {
   const brand = useCurrentBrand();
@@ -73,15 +75,15 @@ export function VenueMenuModule({
   // The stored value is untouched.
   const brandHasCurrency = currencyCodeOrNull(brand?.defaultCurrency) !== null;
 
-  const menusQuery = useBrandMenus(brandId);
-  const menus = menusQuery.data ?? [];
+  const menusQuery = useBrandMenus(brandId, venueId);
+  const menus = useMemo(() => menusQuery.data ?? [], [menusQuery.data]);
 
-  const upsertMenu = useUpsertMenu(brandId);
-  const deleteMenu = useDeleteMenu(brandId);
-  const reorderMenus = useReorderMenus(brandId);
-  const upsertItem = useUpsertMenuItem(brandId);
-  const deleteItem = useDeleteMenuItem(brandId);
-  const reorderItems = useReorderMenuItems(brandId);
+  const upsertMenu = useUpsertMenu(brandId, venueId);
+  const deleteMenu = useDeleteMenu(brandId, venueId);
+  const reorderMenus = useReorderMenus(brandId, venueId);
+  const upsertItem = useUpsertMenuItem(brandId, venueId);
+  const deleteItem = useDeleteMenuItem(brandId, venueId);
+  const reorderItems = useReorderMenuItems(brandId, venueId);
 
   // ---- sheet state ----
   const [categorySheetOpen, setCategorySheetOpen] = useState<boolean>(false);
@@ -105,9 +107,7 @@ export function VenueMenuModule({
     (input: { name: string; description: string | null }): void => {
       setSaveError(false);
       const nextSort =
-        editingCategory !== null
-          ? editingCategory.sortOrder
-          : menus.length;
+        editingCategory !== null ? editingCategory.sortOrder : menus.length;
       upsertMenu.mutate(
         {
           id: editingCategory?.id,
@@ -166,7 +166,7 @@ export function VenueMenuModule({
       const nextSort =
         editingItem !== null
           ? editingItem.sortOrder
-          : parentMenu?.items.length ?? 0;
+          : (parentMenu?.items.length ?? 0);
       upsertItem.mutate(
         {
           id: editingItem?.id,
@@ -252,10 +252,7 @@ export function VenueMenuModule({
   if (menusQuery.isLoading) {
     return (
       <View style={styles.host} testID={testID ?? "venue-menu-module"}>
-        <Text
-          style={styles.intro}
-          accessibilityLiveRegion="polite"
-        >
+        <Text style={styles.intro} accessibilityLiveRegion="polite">
           Loading your menu…
         </Text>
         <View style={styles.skeletonWrap} testID="venue-menu-skeleton-wrap">
@@ -280,7 +277,7 @@ export function VenueMenuModule({
     return (
       <View style={styles.host} testID={testID ?? "venue-menu-module"}>
         <Text style={styles.errorNote}>
-          Couldn't load your menu. Pull to refresh or try again.
+          Couldn&apos;t load your menu. Pull to refresh or try again.
         </Text>
       </View>
     );
@@ -338,7 +335,7 @@ export function VenueMenuModule({
 
       {saveError ? (
         <Text style={styles.errorNote} testID="venue-menu-error">
-          Couldn't save. Check your connection and try again.
+          Couldn&apos;t save. Check your connection and try again.
         </Text>
       ) : null}
 
@@ -558,10 +555,7 @@ function TextControl({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={label}
-      style={({ pressed }) => [
-        styles.textControl,
-        pressed && styles.pressed,
-      ]}
+      style={({ pressed }) => [styles.textControl, pressed && styles.pressed]}
       testID={testID}
     >
       <Text style={styles.textControlLabel}>{glyph}</Text>

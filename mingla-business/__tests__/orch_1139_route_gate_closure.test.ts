@@ -49,17 +49,12 @@ const NON_ROUTE_FILES = new Set([
 ]);
 
 type Bucket =
-  | "gated-default"
-  | "buyer-exempt"
-  | "connect-seller-exempt"
-  | "invite-exempt";
+  "gated-default" | "buyer-exempt" | "connect-seller-exempt" | "invite-exempt";
 
 // Strip the no-trailing-slash form of each prefix into a Set of bare segments.
 const bareSet = (prefixes: readonly string[]): Set<string> =>
   new Set(
-    prefixes.map((p) =>
-      p.endsWith("/") && p.length > 1 ? p.slice(0, -1) : p,
-    ),
+    prefixes.map((p) => (p.endsWith("/") && p.length > 1 ? p.slice(0, -1) : p)),
   );
 
 const CONNECT = bareSet(SELF_AUTHENTICATING_CONNECT_ROUTE_PREFIXES);
@@ -98,7 +93,7 @@ const enumerateRoutes = (): string[] => {
 // SEEDED expected classification — the verified §5 inventory at ORCH-1139 close.
 // Buyer prefixes here are SINGLE-LETTER / short segments that ALSO appear as
 // app/ subdirectories (e/ t/ b/ exp/ checkout/ checkout-trip/ checkout-experience/
-// o/ booking/) → those directories are the buyer-exempt routes.
+// reserve/ o/ booking/) → those directories are the buyer-exempt routes.
 const EXPECTED: Record<string, Bucket> = {
   // --- connect-seller-exempt (6) ---
   "connect-onboarding": "connect-seller-exempt",
@@ -110,7 +105,7 @@ const EXPECTED: Record<string, Bucket> = {
   // --- invite-exempt (2) ---
   "accept-brand-invitation": "invite-exempt",
   "accept-scanner-invitation": "invite-exempt",
-  // --- buyer-exempt (9 — directory segments) ---
+  // --- buyer-exempt (10 — directory segments) ---
   e: "buyer-exempt",
   t: "buyer-exempt",
   b: "buyer-exempt",
@@ -118,6 +113,7 @@ const EXPECTED: Record<string, Bucket> = {
   checkout: "buyer-exempt",
   "checkout-trip": "buyer-exempt",
   "checkout-experience": "buyer-exempt",
+  reserve: "buyer-exempt",
   o: "buyer-exempt",
   booking: "buyer-exempt",
   // --- gated-default (everything else) ---
@@ -163,9 +159,7 @@ describe("ORCH-1139 T-C1 (closure) — every app/ route is classified into exact
 
   test("no route lives in two exemption sets simultaneously", () => {
     for (const route of liveRoutes) {
-      const exemptHits = classify(route).filter(
-        (b) => b !== "gated-default",
-      );
+      const exemptHits = classify(route).filter((b) => b !== "gated-default");
       expect(exemptHits.length).toBeLessThanOrEqual(1);
     }
   });
