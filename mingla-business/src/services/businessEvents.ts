@@ -974,6 +974,15 @@ export interface PatchEventTaxonomyInput {
    * leaves location_text unchanged.
    */
   locationText: string | null;
+  /**
+   * Issue #1363 G2: how the coordinate was captured — "exact" (Mapbox pick /
+   * pin) or "approximate" (free-text forward-geocode). Forwarded to the RPC's
+   * p_coordinate_precision; the RPC writes it to events.coordinate_precision
+   * ONLY when a new coordinate (locationGeo) is supplied, else preserves the
+   * existing value. Omit / null / undefined → "" → NULL ("unknown"), which
+   * renders exactly as today (no fabricated precision, rule 9).
+   */
+  coordinatePrecision?: "exact" | "approximate" | null;
 }
 
 interface PatchEventTaxonomyResponse {
@@ -1003,6 +1012,10 @@ export const patchPublishedEventTaxonomy = async (
       p_location_lat: input.locationGeo?.lat ?? null,
       p_location_lng: input.locationGeo?.lng ?? null,
       p_location_text: input.locationText,
+      // Issue #1363 G2: forward coordinate precision (empty string → NULL in
+      // the RPC). Written to events.coordinate_precision only when a new
+      // coordinate is supplied.
+      p_coordinate_precision: input.coordinatePrecision ?? "",
     },
   );
 
