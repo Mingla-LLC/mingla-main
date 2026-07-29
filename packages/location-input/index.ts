@@ -28,7 +28,19 @@ export type {
 
 export type {
   LocationInputTokens,
+  LocationInputAction,
   LocationInputCopy,
   LocationInputIcon,
   LocationInputIconName,
 } from "./src/types";
+
+// Issue #1363 (device-UX F2) — pure assist-footer helpers (timing + accent),
+// exported so hosts + tests can exercise the free-text ACTION-row logic.
+export {
+  computeShowFreeTextRow,
+  resolveFreeTextRowStyle,
+} from "./src/assistFooter";
+export type {
+  AssistFooterStatusKind,
+  FreeTextRowStyle,
+} from "./src/assistFooter";

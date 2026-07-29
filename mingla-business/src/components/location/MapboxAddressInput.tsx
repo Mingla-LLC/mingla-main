@@ -107,6 +107,16 @@ const BUSINESS_TOKENS: LocationInputTokens = {
     fontSize: typography.caption.fontSize,
     lineHeight: typography.caption.lineHeight,
   },
+  // Issue #1363 (device-UX F2) — brand-accent treatment for the Tier-2 free-text
+  // ACTION row so it reads as a tappable button (orange text + icon + a subtle
+  // tinted, bordered pill), visually distinct from the muted suggestion/status
+  // rows. Consumer bundles omit `action` → the shared field falls back to the
+  // muted styling → byte-identical consumer render.
+  action: {
+    text: accent.warm, // #eb7825 brand action
+    bg: accent.tint, // subtle warm pill fill
+    border: accent.border, // warm pill border
+  },
 };
 
 const BUSINESS_COPY: LocationInputCopy = {
@@ -116,8 +126,9 @@ const BUSINESS_COPY: LocationInputCopy = {
   offline: "Couldn't reach search. Tap to try again.",
   pickError: "Couldn't fetch address details. Tap to try again.",
   // Issue #1363 — Tier-2/Tier-3 assist-footer copy (only rendered when the host
-  // passes allowFreeText / onOpenPinDrop).
-  freeTextPrefix: "Use",
+  // passes allowFreeText / onOpenPinDrop). F2 device-UX: clearer action phrasing —
+  // renders `Use this address: "<typed text>"` (still echoes the typed text).
+  freeTextPrefix: "Use this address:",
   pinDropLabel: "Can't find it? Drop a pin on the map",
 };
 

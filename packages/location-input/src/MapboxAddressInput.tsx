@@ -65,6 +65,10 @@ import type {
   LocationInputIcon,
   LocationInputTokens,
 } from "./types";
+import {
+  computeShowFreeTextRow,
+  resolveFreeTextRowStyle,
+} from "./assistFooter";
 
 const AUTOCOMPLETE_DEBOUNCE_MS = 250;
 
@@ -694,12 +698,25 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
   // the whole footer is omitted → BYTE-IDENTICAL render for consumer hosts that
   // pass neither `allowFreeText` nor `onOpenPinDrop`.
   const trimmedValue = value.trim();
-  const showFreeTextRow =
-    allowFreeText === true &&
-    onFreeText !== undefined &&
-    trimmedValue.length >= 1 &&
-    !justPicked.current &&
-    status.kind !== "fetching_details";
+  // Issue #1363 (device-UX F2) — TIMING: the action row must never compete with
+  // a live suggestion list. It shows on `no_results` (primary) + idle-after-typing
+  // with a full address; NEVER during loading_suggestions / suggestions_open /
+  // fetching_details. Pure rule in ./assistFooter (unit-tested, fails-on-revert).
+  const showFreeTextRow = computeShowFreeTextRow({
+    allowFreeText: allowFreeText === true,
+    hasOnFreeText: onFreeText !== undefined,
+    justPicked: justPicked.current,
+    statusKind: status.kind,
+    trimmedLength: trimmedValue.length,
+    minQueryLength,
+  });
+  // Issue #1363 (device-UX F2) — ACCENT: when the host injects `tokens.action`
+  // (business = brand orange) the row renders as an accent pill button; without
+  // it (consumer) → the exact muted fallback → byte-identical render.
+  const freeTextRowStyle = resolveFreeTextRowStyle(tokens.action, {
+    text: tokens.status.text,
+    icon: tokens.icon.leading,
+  });
   const showPinRow = onOpenPinDrop !== undefined;
   const assistFooter =
     showFreeTextRow || showPinRow ? (
@@ -712,22 +729,24 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
             hitSlop={8}
             style={({ pressed }) => [
               styles.assistRow,
+              freeTextRowStyle.pill,
               pressed ? { opacity: 0.6 } : null,
             ]}
           >
             <IconComponent
               name="location-outline"
               size={16}
-              color={tokens.icon.leading}
+              color={freeTextRowStyle.iconColor}
             />
             <Text
               numberOfLines={1}
               ellipsizeMode="tail"
               style={{
                 flex: 1,
-                color: tokens.status.text,
+                color: freeTextRowStyle.textColor,
                 fontSize: tokens.status.fontSize,
                 lineHeight: tokens.status.lineHeight,
+                fontWeight: freeTextRowStyle.fontWeight,
               }}
             >
               {`${copy.freeTextPrefix ?? "Use"} "${trimmedValue}"`}
