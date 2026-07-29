@@ -189,6 +189,64 @@ Deno.test("classifyEntrySource: no referrer + no ad signal → 'direct'", () => 
   );
 });
 
+// ═══ SECURITY: registrable-domain SUFFIX match, NEVER label-inclusion ══════════
+// An attacker who owns 'attacker.net' can put 'google.com' anywhere as a LABEL;
+// suffix matching means the REGISTRABLE domain must be ours. These MUST be 'unknown'.
+Deno.test("classifyEntrySource: attacker lookalikes NEVER match a brand → 'unknown'", () => {
+  for (
+    const h of [
+      "google.com.attacker.net", // brand label present, registrable = attacker.net
+      "instagram.evil.com",
+      "x.com.evil.net",
+      "facebook.com.phish.io",
+      "notgoogle-evil.com",
+      "mygoogle.com",
+      "l.instagram.com.evil.io",
+      "xn--ggle-0nda.com", // punycode homoglyph lookalike, not our domain
+      "xn--80ak6aa92e.com", // punycode, unrelated
+    ]
+  ) {
+    assertEquals(
+      classifyEntrySource({ hasAdSignal: false, referrerHost: h }),
+      "unknown",
+      h,
+    );
+  }
+});
+
+// Real subdomains of our brand domains MUST still classify (suffix match).
+Deno.test("classifyEntrySource: real subdomains still classify (suffix match)", () => {
+  assertEquals(
+    classifyEntrySource({
+      hasAdSignal: false,
+      referrerHost: "l.instagram.com",
+    }),
+    "social",
+  );
+  assertEquals(
+    classifyEntrySource({ hasAdSignal: false, referrerHost: "m.facebook.com" }),
+    "social",
+  );
+  assertEquals(
+    classifyEntrySource({
+      hasAdSignal: false,
+      referrerHost: "www.google.co.uk",
+    }),
+    "search",
+  );
+  assertEquals(
+    classifyEntrySource({
+      hasAdSignal: false,
+      referrerHost: "news.google.com",
+    }),
+    "search",
+  );
+  assertEquals(
+    classifyEntrySource({ hasAdSignal: false, referrerHost: "google.com.ng" }),
+    "search",
+  );
+});
+
 // ═══ recordTouch integration — organic/search/social visits now RECORDED ══════
 Deno.test("recordTouch: a SOCIAL visit (no ad signal) records a touch with entry_source:'social' + host", async () => {
   const { client, inserted } = fakeClient();

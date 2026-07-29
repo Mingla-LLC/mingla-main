@@ -281,58 +281,84 @@ export type EntrySource =
   | "direct"
   | "unknown";
 
-// Brand LABELS matched as a dot-delimited label of the host (so 'google.co.uk',
-// 'news.google.com', 'l.instagram.com' all match, but 'mygoogle.com' /
-// 'notgoogle-evil.com' do NOT — the label must be exact). Multi-TLD engines
-// (google/yahoo/yandex/…) are covered by label match without a PSL.
-const SEARCH_LABELS: readonly string[] = [
-  "google",
-  "bing",
-  "duckduckgo",
-  "yahoo",
-  "ecosia",
-  "baidu",
-  "yandex",
-  "qwant",
-  "startpage",
-  "ask",
-  "aol",
-  "naver",
-  "seznam",
-  "brave", // brave search (search.brave.com); low-stakes bucketing only
+// REGISTRABLE-DOMAIN suffix set. A host matches ONLY when it equals the domain OR
+// is a subdomain of it (host === d || host.endsWith('.'+d)) — NEVER label-inclusion.
+// This classifies real subdomains ('l.instagram.com', 'www.google.co.uk',
+// 'm.facebook.com') while REJECTING attacker lookalikes ('google.com.attacker.net',
+// 'instagram.evil.com', 'x.com.evil.net', 'mygoogle.com' → unknown). Multi-TLD
+// engines (google/yahoo/yandex) enumerate their common registrable domains — a
+// maintained set (Mingla's markets: US/UK/NG covered); an unlisted rare ccTLD is
+// honestly 'unknown', never a security bypass.
+const SEARCH_DOMAINS: readonly string[] = [
+  "google.com",
+  "google.co.uk",
+  "google.de",
+  "google.fr",
+  "google.es",
+  "google.it",
+  "google.nl",
+  "google.ca",
+  "google.com.au",
+  "google.co.in",
+  "google.co.jp",
+  "google.com.br",
+  "google.ru",
+  "google.pl",
+  "google.ie",
+  "google.com.ng",
+  "google.co.za",
+  "google.com.mx",
+  "google.co.kr",
+  "google.com.tr",
+  "google.se",
+  "google.ch",
+  "bing.com",
+  "duckduckgo.com",
+  "yahoo.com",
+  "search.yahoo.com",
+  "yahoo.co.uk",
+  "yahoo.co.jp",
+  "ecosia.org",
+  "baidu.com",
+  "yandex.com",
+  "yandex.ru",
+  "qwant.com",
+  "startpage.com",
+  "ask.com",
+  "aol.com",
+  "naver.com",
+  "seznam.cz",
+  "search.brave.com",
 ];
-const SOCIAL_LABELS: readonly string[] = [
-  "instagram",
-  "tiktok",
-  "facebook",
-  "messenger",
-  "twitter",
-  "snapchat",
-  "reddit",
-  "threads",
-  "youtube",
-  "linkedin",
-  "pinterest",
-  "whatsapp",
-  "telegram",
-  "discord",
-  "tumblr",
-  "twitch",
-  "weibo",
-];
-// Short shorteners / exact hosts that have NO safe single label to match on
-// (a bare 't'/'x' label would false-positive on unrelated hosts).
-const SOCIAL_EXACT: readonly string[] = [
-  "x.com",
-  "t.co",
+const SOCIAL_DOMAINS: readonly string[] = [
+  "instagram.com",
+  "instagr.am",
+  "tiktok.com",
+  "facebook.com",
   "fb.com",
   "fb.me",
-  "lnkd.in",
+  "m.facebook.com",
+  "messenger.com",
+  "twitter.com",
+  "x.com",
+  "t.co",
+  "snapchat.com",
+  "reddit.com",
+  "threads.net",
+  "youtube.com",
   "youtu.be",
-  "instagr.am",
+  "linkedin.com",
+  "lnkd.in",
+  "pinterest.com",
   "pin.it",
+  "whatsapp.com",
   "wa.me",
+  "telegram.org",
   "t.me",
+  "discord.com",
+  "tumblr.com",
+  "twitch.tv",
+  "weibo.com",
 ];
 // A Mingla-owned referrer host = internal navigation = organic (Mingla-driven).
 // Suffix match covers www / go / biz / careers subdomains.
@@ -379,16 +405,18 @@ export function deriveReferrerHost(referrer: unknown): string | null {
   return host;
 }
 
-function hasLabel(host: string, labels: readonly string[]): boolean {
-  const parts = host.split(".");
-  for (const l of labels) {
-    if (parts.includes(l)) return true;
-  }
-  return false;
+/**
+ * Registrable-domain SUFFIX match: true only when `host` IS `d` or a subdomain of
+ * `d` (host === d || host.endsWith('.'+d)). Never label-inclusion — so
+ * 'google.com.attacker.net' / 'instagram.evil.com' / 'x.com.evil.net' do NOT match
+ * (the attacker domain is the registrable one), while real subdomains do.
+ */
+function matchesDomain(host: string, domains: readonly string[]): boolean {
+  return domains.some((d) => host === d || host.endsWith("." + d));
 }
 
 function isMinglaHost(host: string): boolean {
-  return MINGLA_SUFFIXES.some((s) => host === s || host.endsWith("." + s));
+  return matchesDomain(host, MINGLA_SUFFIXES);
 }
 
 /**
@@ -404,10 +432,8 @@ export function classifyEntrySource(input: {
   const host = input.referrerHost;
   if (host) {
     if (isMinglaHost(host)) return "organic";
-    if (hasLabel(host, SEARCH_LABELS)) return "search";
-    if (SOCIAL_EXACT.includes(host) || hasLabel(host, SOCIAL_LABELS)) {
-      return "social";
-    }
+    if (matchesDomain(host, SEARCH_DOMAINS)) return "search";
+    if (matchesDomain(host, SOCIAL_DOMAINS)) return "social";
     return "unknown"; // referred by some other site — honestly not categorised
   }
   return "direct";
