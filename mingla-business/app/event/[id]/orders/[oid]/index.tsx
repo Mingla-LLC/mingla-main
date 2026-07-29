@@ -39,6 +39,7 @@ import type { OrderRecord, OrderStatus, RefundRecord } from "../../../../../src/
 import type { CheckoutPaymentMethod } from "../../../../../src/components/checkout/CartContext";
 import { useManagedEventRoute } from "../../../../../src/hooks/useManagedEventRoute";
 import { formatCurrency } from "../../../../../src/utils/currency";
+import { deferAfterDismiss } from "../../../../../src/utils/deferAfterDismiss";
 import { useEventOrderById } from "../../../../../src/hooks/useEventOrders";
 import { resendTicketConfirmation } from "../../../../../src/services/ticketCheckoutService";
 import { useCurrentBrandRole } from "../../../../../src/hooks/useCurrentBrandRole";
@@ -539,8 +540,14 @@ export default function OrderDetailRoute(): React.ReactElement {
           order={order}
           onClose={() => setRefundSheetMode(null)}
           onSuccess={(amountGbp) => {
-            showToast(`Refunded ${formatCurrency(amountGbp, order.currency)}`);
+            // #1360: close the sheet FIRST, then defer the confirmation toast
+            // past the sheet's unmount window so it isn't dropped by iOS's
+            // one-modal-at-a-time refusal (I-PROPOSED-1360-PAYMENT-CONFIRM-
+            // DEFERRED-PAST-DISMISSAL).
             setRefundSheetMode(null);
+            deferAfterDismiss(() =>
+              showToast(`Refunded ${formatCurrency(amountGbp, order.currency)}`),
+            );
           }}
         />
       ) : null}
@@ -552,8 +559,11 @@ export default function OrderDetailRoute(): React.ReactElement {
         buyerName={order.buyer.name}
         onClose={() => setCancelDialogVisible(false)}
         onSuccess={() => {
-          showToast("Order cancelled");
+          // #1360: close the dialog FIRST, then defer the confirmation toast
+          // past the Modal's unmount window (I-PROPOSED-1360-PAYMENT-CONFIRM-
+          // DEFERRED-PAST-DISMISSAL).
           setCancelDialogVisible(false);
+          deferAfterDismiss(() => showToast("Order cancelled"));
         }}
       />
 
