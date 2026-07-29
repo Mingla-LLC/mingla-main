@@ -43,26 +43,35 @@ describe("CoverPicker dedicated trimmer wiring", () => {
     });
   });
 
-  // [TEST-MOD-APPROVED ORCH-1001] Repointed: the native trimmer wiring
-  // (onCancelTrimming + settle(resolve(null))) moved out of CoverPicker.tsx
-  // into the Metro platform-split module coverPickerVideoTrimEditor.ts so the
-  // native-only `react-native-video-trim` import never reaches the web bundle
-  // (the ORCH-0989 white-page crash). The cancel→no-upload CONTRACT is
-  // unchanged — it now spans the editor module (cancel resolves null) and
-  // CoverPicker.tsx (early-return before videoUpload.start). Both halves verified.
-  test("T-AMEND9-02 trimmer cancel resolves without starting an upload", () => {
+  // [TEST-MOD-APPROVED issue #1338] Repointed (was ORCH-1001): issue #1338
+  // fixed the SILENT bail. The old CoverPicker assertion pinned the exact
+  // `if (isNative && trimResult === null) return;` line — the very silent-close
+  // being removed. The cancel→no-upload CONTRACT is preserved but now surfaces
+  // an in-sheet notice: the trim call is gated on `needsNativeTrim`, and a null
+  // (genuine cancel) sets `setVideoPickNotice` + early-returns BEFORE the upload.
+  // The editor-side assertions (onCancelTrimming + settle(resolve(null)) + the
+  // no-top-level-value-import guard) remain valid and are unchanged.
+  test("T-AMEND9-02 trimmer cancel surfaces an in-sheet notice without starting an upload", () => {
     const editor = repoFile("src/components/ui/coverPickerVideoTrimEditor.ts");
     const picker = repoFile("src/components/ui/CoverPicker.tsx");
 
-    // Editor module: cancel handler resolves null.
+    // Editor module: cancel handler resolves null (UNCHANGED contract).
     expect(editor.indexOf("videoTrim.onCancelTrimming")).toBeGreaterThan(-1);
     expect(editor).toContain("settle(() => resolve(null))");
 
-    // CoverPicker: the early-return on a null trim result precedes the upload.
-    const cancelReturnIndex = picker.indexOf("if (isNative && trimResult === null) return;");
+    // CoverPicker (#1338): the trim call is gated on needsNativeTrim, and a null
+    // trim result surfaces an in-sheet cancel notice + early-returns before the
+    // upload. The old silent `if (isNative && trimResult === null) return;` is gone.
+    expect(picker).not.toContain(
+      "if (isNative && trimResult === null) return;",
+    );
+    expect(picker).toContain("if (needsNativeTrim) {");
+    const cancelNoticeIndex = picker.indexOf(
+      "No video added — trim to 29 seconds or pick a shorter clip.",
+    );
     const uploadStartIndex = picker.indexOf("await videoUpload.start(uploadFile);");
-    expect(cancelReturnIndex).toBeGreaterThan(-1);
-    expect(uploadStartIndex).toBeGreaterThan(cancelReturnIndex);
+    expect(cancelNoticeIndex).toBeGreaterThan(-1);
+    expect(uploadStartIndex).toBeGreaterThan(cancelNoticeIndex);
 
     // The native-only import is gone from CoverPicker; it lives only in the split module.
     expect(picker).not.toMatch(/from\s+["']react-native-video-trim["']/);

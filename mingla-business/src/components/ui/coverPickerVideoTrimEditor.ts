@@ -36,6 +36,11 @@ type VideoTrimSpec = {
   onFinishTrimming: (
     callback: (payload: VideoTrimFinishPayload) => void,
   ) => VideoTrimSubscription;
+  // issue #1338 — `react-native-video-trim@8.1.0` exposes an `onShow` event
+  // (NativeVideoTrim.d.ts:363 `readonly onShow: EventEmitter<void>`) that fires
+  // when the trim editor actually presents. Optional here so a stale dev build
+  // that predates the event degrades gracefully (watchdog simply stays unarmed).
+  onShow?: (callback: () => void) => VideoTrimSubscription;
 };
 
 type ShowEditorOptions = {
@@ -57,6 +62,17 @@ const unavailableNativeTrimError = (cause?: unknown): Error => {
     `Video trimming requires an updated Mingla Business native build with the VideoTrim module installed. ${detail}`,
   );
 };
+
+// issue #1338 — bounded watchdog for a trim editor that never presents. On iOS
+// New Arch the OS silently refuses to present a 2nd native modal while the cover
+// sheet modal is up (root cause proven via idevicesyslog), leaving `showEditor`
+// with NO callback → the promise would hang forever and pin the picker's
+// `uploading` state. 2.5s comfortably exceeds the OS present transition while
+// still failing fast enough to show an actionable in-sheet error.
+const PRESENTATION_WATCHDOG_MS = 2500;
+
+const presentationFailedError = (): Error =>
+  new Error("The trim screen didn't open. Try again, or pick a shorter clip.");
 
 const loadNativeVideoTrim = (): {
   showEditor: (uri: string, options: ShowEditorOptions) => void;
@@ -100,10 +116,22 @@ export const trimVideoWithDedicatedEditor = (
 
     const { showEditor, videoTrim } = nativeVideoTrim;
     const subscriptions: VideoTrimSubscription[] = [];
+    // issue #1338 — presentation state + watchdog. `presented` flips true the
+    // instant the native editor is visible (onShow); the watchdog only fires
+    // when the editor NEVER presents, so a legitimate (arbitrarily long) trim
+    // session is never interrupted.
+    let presented = false;
+    let watchdog: ReturnType<typeof setTimeout> | null = null;
     let settled = false;
     const settle = (handler: () => void): void => {
       if (settled) return;
       settled = true;
+      // issue #1338 — a normal outcome (finish/cancel/error) must cancel the
+      // watchdog so it can never fire a late spurious reject.
+      if (watchdog !== null) {
+        clearTimeout(watchdog);
+        watchdog = null;
+      }
       subscriptions.forEach((subscription) => subscription.remove());
       handler();
     };
@@ -129,6 +157,27 @@ export const trimVideoWithDedicatedEditor = (
           );
         }),
       );
+      // issue #1338 — arm the watchdog ONLY when the build exposes `onShow`.
+      // With onShow we can safely disarm the timer once the editor is confirmed
+      // visible; without it (stale build), a naive post-showEditor timeout would
+      // abort a legitimate trim session, so we fall back to present-after-
+      // dismissal (CoverPicker.tsx) alone and leave the watchdog unarmed.
+      if (typeof videoTrim.onShow === "function") {
+        subscriptions.push(
+          videoTrim.onShow(() => {
+            presented = true;
+            if (watchdog !== null) {
+              clearTimeout(watchdog);
+              watchdog = null;
+            }
+          }),
+        );
+        watchdog = setTimeout(() => {
+          if (!presented) {
+            settle(() => reject(presentationFailedError()));
+          }
+        }, PRESENTATION_WATCHDOG_MS);
+      }
       // react-native-video-trim docs:
       // https://github.com/maitrungduc1410/react-native-video-trim
       showEditor(uri, {

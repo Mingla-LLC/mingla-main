@@ -29,6 +29,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ActivityIndicator,
   Image,
+  InteractionManager,
   Platform,
   Pressable,
   StyleSheet,
@@ -82,6 +83,7 @@ import {
   buildTrimmedVideoUploadFile,
   normalizePickerDurationMs,
   resolveRawClipUploadUri,
+  type VideoTrimFinishPayload,
 } from "./coverPickerVideoTrimUpload";
 import {
   searchGiphyEventCovers,
@@ -208,6 +210,19 @@ const warnHaptic = (): void => {
   void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
 };
 
+// issue #1338 — present-after-dismissal. expo-image-picker's
+// launchImageLibraryAsync promise can resolve BEFORE the picker's native
+// dismiss transition finishes on iOS; presenting the trim modal in that window
+// is refused by iOS New Arch ("already presenting"). Drain RN interactions,
+// then settle past the ~250ms iOS modal dismiss animation.
+const PICKER_DISMISS_SETTLE_MS = 350;
+const waitForPickerDismissal = (): Promise<void> =>
+  new Promise((resolve) => {
+    InteractionManager.runAfterInteractions(() => {
+      setTimeout(resolve, PICKER_DISMISS_SETTLE_MS);
+    });
+  });
+
 export const CoverPicker: React.FC<CoverPickerProps> = ({
   target,
   initialCoverHue = 0,
@@ -235,6 +250,13 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   const [activeTab, setActiveTab] = useState<CoverTabId>("library");
   const [uploading, setUploading] = useState(false);
   const [mediaDisplayError, setMediaDisplayError] = useState<string | null>(null);
+  // issue #1338 — in-sheet feedback channel for the cover-VIDEO flow. Rendered
+  // INSIDE LibraryTab (never a root-portal Toast, which iOS drops while the
+  // CoverPickerSheet modal is up). tone drives info (warm) vs error (semantic).
+  const [videoPickNotice, setVideoPickNotice] = useState<{
+    tone: "info" | "error";
+    text: string;
+  } | null>(null);
 
   // Video upload hook — event/trip writes events.cover_media_url; brand writes
   // brands.cover_media_url (via the apply step on ready). For brand, eventRowId
@@ -416,8 +438,9 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       coverMediaCreditUrl: UPLOAD_EVENT_COVER_PROVIDER_METADATA.creditUrl,
       coverMediaAlt: "Uploaded video cover",
     });
-    onShowToast("Video cover updated.");
-  }, [emitChange, onShowToast, videoUpload.processedUrl, videoUpload.stage.phase]);
+    // issue #1338 — success feedback renders in-sheet, never via the root Toast.
+    setVideoPickNotice({ tone: "info", text: "Video cover added." });
+  }, [emitChange, videoUpload.processedUrl, videoUpload.stage.phase]);
 
   // ----- Device image/GIF + video pickers --------------------------------
 
@@ -675,6 +698,8 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     if (!validateEventRowId()) return;
 
     setUploading(true);
+    // issue #1338 — an image/GIF pick clears any stale video-flow notice.
+    setVideoPickNotice(null);
     let pickedAssets: Parameters<typeof revokeCoverPickedAssets>[0] = [];
     try {
       const result = await launchCoverImagePicker();
@@ -800,13 +825,19 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     // straight to the duration guard below; clips within the ceiling upload
     // as-is on both desktop AND mobile web (Bunny TUS accepts browser uploads).
     if (!isAuthReady) {
-      onShowToast("Finishing sign-in before upload. Try again in a moment.");
+      // issue #1338 — in-sheet notice, never a root Toast (iOS drops it here).
+      setVideoPickNotice({
+        tone: "info",
+        text: "Finishing sign-in — try again in a moment.",
+      });
       return;
     }
     if (!(await ensureMediaPermission())) return;
     if (!validateEventRowId()) return;
 
     setUploading(true);
+    // issue #1338 — clear any stale notice from a prior attempt.
+    setVideoPickNotice(null);
     try {
       const result = await launchCoverVideoPicker();
       if (result.canceled || result.assets.length === 0) return;
@@ -816,13 +847,33 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       revokeCoverPickedAssets(pickedVideoAssetsRef.current);
       pickedVideoAssetsRef.current = result.assets;
       const asset = result.assets[0];
-      // Web has no native trimmer (SC-7-Web-4): use the raw asset, no crash.
-      // On web `trimVideoWithDedicatedEditor` resolves to a no-op stub, but we
-      // still gate on `isNative` so the raw clip flows straight to upload.
-      const trimResult = isNative
-        ? await trimVideoWithDedicatedEditor(asset.uri, EVENT_COVER_MAX_VIDEO_DURATION_MS)
-        : null;
-      if (isNative && trimResult === null) return;
+      // issue #1338 — trim ONLY when a native clip is over the source ceiling.
+      // Within-ceiling native clips and ALL web clips upload RAW (mirrors the
+      // ORCH-1307 web path), which keeps the flaky native trim modal out of the
+      // common short-clip path entirely.
+      const sourceDurationMs = normalizePickerDurationMs(asset.duration);
+      const needsNativeTrim =
+        isNative && sourceDurationMs > EVENT_COVER_SOURCE_CEILING_MS;
+
+      let trimResult: VideoTrimFinishPayload | null = null;
+      if (needsNativeTrim) {
+        // issue #1338 — present the trim editor ONLY after the OS photo picker
+        // has fully dismissed, so iOS New Arch never refuses a 2nd stacked modal.
+        await waitForPickerDismissal();
+        // The single-line trim call is pinned by the orch-0978 strict-grep C1
+        // gate (exact substring match); prettier-ignore stops printWidth (80)
+        // from re-wrapping it across lines and re-breaking the gate.
+        // prettier-ignore
+        trimResult = await trimVideoWithDedicatedEditor(asset.uri, EVENT_COVER_MAX_VIDEO_DURATION_MS);
+        if (trimResult === null) {
+          // Genuine user cancel (Back). NEVER silent (issue #1338).
+          setVideoPickNotice({
+            tone: "info",
+            text: "No video added — trim to 29 seconds or pick a shorter clip.",
+          });
+          return;
+        }
+      }
       const uploadFile =
         trimResult !== null
           ? await buildTrimmedVideoUploadFile({
@@ -846,7 +897,11 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
             };
       const { durationMs } = uploadFile;
       if (durationMs <= 0) {
-        onShowToast("Could not read this video's duration. Try another clip.");
+        // issue #1338 — in-sheet, never a root Toast.
+        setVideoPickNotice({
+          tone: "error",
+          text: "Could not read this video's duration. Try another clip.",
+        });
         return;
       }
       if (durationMs > EVENT_COVER_SOURCE_CEILING_MS) {
@@ -859,23 +914,34 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         // rare safety net ("trim to 29s"). On web there is NO trimmer — a raw
         // over-ceiling clip is a dead end, so give an actionable web message
         // instead of asking for a trim the browser can't do.
-        onShowToast(
-          isNative
+        // issue #1338 — in-sheet, never a root Toast; literals preserved verbatim.
+        setVideoPickNotice({
+          tone: "error",
+          text: isNative
             ? "Please trim to 29 seconds first."
             : "This video is over 30 seconds. Pick a shorter clip, or trim it in the Mingla Business app.",
-        );
+        });
         return;
       }
       if (uploadFile.bytes <= 0) {
-        onShowToast("Could not read this video's size. Try another clip.");
+        // issue #1338 — in-sheet, never a root Toast.
+        setVideoPickNotice({
+          tone: "error",
+          text: "Could not read this video's size. Try another clip.",
+        });
         return;
       }
       lastVideoUploadFileRef.current = uploadFile;
       await videoUpload.start(uploadFile);
     } catch (error) {
-      onShowToast(
-        error instanceof Error ? error.message : "Video cover upload failed. Try again.",
-      );
+      // issue #1338 — in-sheet, never a root Toast.
+      setVideoPickNotice({
+        tone: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Video cover upload failed. Try again.",
+      });
     } finally {
       // ORCH-1308: do NOT revoke the picked blob here — the "try again" retry
       // re-reads it (web fetch(blob:uri)). It is retained via
@@ -888,7 +954,6 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     ensureMediaPermission,
     isAuthReady,
     isNative,
-    onShowToast,
     uploading,
     validateEventRowId,
     videoUpload,
@@ -1131,6 +1196,8 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     }
     setMediaDisplayError(null);
+    // issue #1338 — removing the cover clears any lingering video-flow notice.
+    setVideoPickNotice(null);
     // Emit the null patch. For brand the parent (BrandEditView /
     // BrandCreationFlow) mirrors into its draft and persists the cleared
     // cover on Save (the brand save path already writes cover_media_url).
@@ -1320,6 +1387,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           onRetryVideo={retryVideoCoverUpload}
           onMediaError={handleMediaRenderError}
           mediaDisplayError={mediaDisplayError}
+          videoPickNotice={videoPickNotice}
         />
       ) : null}
 
@@ -1438,6 +1506,8 @@ const LibraryTab: React.FC<{
   onRetryVideo: () => void;
   onMediaError: (e: EventCoverMediaErrorEvent) => void;
   mediaDisplayError: string | null;
+  // issue #1338 — in-sheet feedback for the cover-VIDEO flow (never a root Toast).
+  videoPickNotice: { tone: "info" | "error"; text: string } | null;
 }> = ({
   hasCover,
   hue,
@@ -1459,6 +1529,7 @@ const LibraryTab: React.FC<{
   onRetryVideo,
   onMediaError,
   mediaDisplayError,
+  videoPickNotice,
 }) => (
   <View>
     <View style={[styles.coverPreview, hasCover && !activeVideoUpload && styles.coverPreviewSelected]}>
@@ -1567,6 +1638,24 @@ const LibraryTab: React.FC<{
                 style={styles.retryButton}
               />
             ) : null}
+          </View>
+        ) : null}
+
+        {/* issue #1338 — in-sheet cover-VIDEO feedback (cancel/over-cap/failure/
+            added). Renders INSIDE CoverPickerSheet's Sheet — a plain View/Text,
+            NOT a native <Modal>, so iOS never drops it while the sheet is up. */}
+        {videoPickNotice !== null ? (
+          <View style={styles.videoNoticeRow}>
+            <Text
+              accessibilityRole="alert"
+              style={
+                videoPickNotice.tone === "error"
+                  ? styles.mediaErrorText
+                  : styles.videoNoticeInfoText
+              }
+            >
+              {videoPickNotice.text}
+            </Text>
           </View>
         ) : null}
 
@@ -2089,6 +2178,19 @@ const styles = StyleSheet.create({
   videoErrorRow: {
     gap: spacing.xs,
     marginTop: spacing.xs,
+  },
+  // issue #1338 — in-sheet cover-video notice (info tone). Errors reuse
+  // styles.mediaErrorText (semantic.error); info uses the warm accent.
+  videoNoticeRow: {
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  videoNoticeInfoText: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: accent.warm,
+    marginTop: spacing.xs,
+    fontWeight: "600",
   },
   retryButton: {
     alignSelf: "flex-start",
