@@ -57,8 +57,11 @@ const RESERVATION_PHONE_THEME: PhoneInputTheme = {
   errorText: "#ef4444",
 };
 const INVALID_PHONE_COPY = "Enter a valid phone number.";
+const INVALID_NAME_COPY = "Enter your name.";
+const INVALID_EMAIL_COPY = "Enter a valid email address.";
 const RESERVATION_FAILURE_COPY =
   "We couldn’t start your reservation. Check your details and try again.";
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const dateOptions = (): { value: string; label: string }[] => {
   const now = new Date();
@@ -92,7 +95,11 @@ export function GuestVenueReservation({
   const [date, setDate] = useState<string | null>(dates[0]?.value ?? null);
   const [selectedUtc, setSelectedUtc] = useState<string | null>(null);
   const [name, setName] = useState("");
+  const [nameTouched, setNameTouched] = useState(false);
+  const [nameServerInvalid, setNameServerInvalid] = useState(false);
   const [email, setEmail] = useState("");
+  const [emailTouched, setEmailTouched] = useState(false);
+  const [emailServerInvalid, setEmailServerInvalid] = useState(false);
   const [phoneCountry, setPhoneCountry] = useState(getDefaultCountryCode());
   const [phoneLocal, setPhoneLocal] = useState("");
   const [phoneTouched, setPhoneTouched] = useState(false);
@@ -108,6 +115,11 @@ export function GuestVenueReservation({
   const selectedSlot = slots.find((slot) => slot.slotStartUtc === selectedUtc);
   const phoneDialCode = getCountryByCode(phoneCountry)?.dialCode ?? "+1";
   const normalizedPhone = composeE164(phoneDialCode, phoneLocal);
+  const normalizedName = name.trim();
+  const normalizedEmail = email.trim();
+  const nameInvalid = normalizedName.length < 2;
+  const emailInvalid = !EMAIL_PATTERN.test(normalizedEmail);
+  const contactInvalid = nameInvalid || emailInvalid;
 
   useEffect(() => {
     if (availability.data === undefined) return;
@@ -119,18 +131,15 @@ export function GuestVenueReservation({
   }, [analyticsSurface, availability.data, brandId, venueId]);
 
   const submit = async (): Promise<void> => {
+    if (nameInvalid) setNameTouched(true);
+    if (emailInvalid) setEmailTouched(true);
     if (
       selectedUtc === null ||
-      name.trim().length < 2 ||
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ||
+      contactInvalid ||
       normalizedPhone === null
     ) {
       setPhoneTouched(true);
-      setError(
-        normalizedPhone === null
-          ? INVALID_PHONE_COPY
-          : "Choose a time and enter a valid name and email.",
-      );
+      setError(normalizedPhone === null ? INVALID_PHONE_COPY : null);
       return;
     }
     setSubmitting(true);
@@ -148,8 +157,8 @@ export function GuestVenueReservation({
         reservedForUtc: selectedUtc,
         partySize,
         buyer: {
-          name: name.trim(),
-          email: email.trim(),
+          name: normalizedName,
+          email: normalizedEmail,
           phone: normalizedPhone,
           marketingOptIn,
         },
@@ -176,8 +185,20 @@ export function GuestVenueReservation({
         throw new Error("The payment page could not open. Try again.");
       }
       await Linking.openURL(redirect);
-    } catch {
-      setError(RESERVATION_FAILURE_COPY);
+    } catch (caught) {
+      const errorCode =
+        caught instanceof Error ? caught.message : RESERVATION_FAILURE_COPY;
+      if (errorCode === "buyer_name_required") {
+        setNameTouched(true);
+        setNameServerInvalid(true);
+        setError(null);
+      } else if (errorCode === "buyer_email_invalid") {
+        setEmailTouched(true);
+        setEmailServerInvalid(true);
+        setError(null);
+      } else {
+        setError(RESERVATION_FAILURE_COPY);
+      }
       captureWeb("venue_reservation_failed", {
         surface: analyticsSurface,
         brand_id: brandId,
@@ -307,19 +328,49 @@ export function GuestVenueReservation({
       )}
       {selectedSlot !== undefined ? (
         <View style={styles.form}>
+          <Text style={styles.label}>NAME · REQUIRED</Text>
           <Input
             value={name}
-            onChangeText={setName}
+            onChangeText={(next: string) => {
+              setName(next);
+              setNameServerInvalid(false);
+            }}
+            onBlur={() => setNameTouched(true)}
             placeholder="Name"
+            aria-label="Name, required"
             accessibilityLabel="Name"
           />
+          {nameTouched && (nameInvalid || nameServerInvalid) ? (
+            <Text
+              style={styles.fieldError}
+              accessibilityRole="alert"
+              accessibilityLiveRegion="polite"
+            >
+              {INVALID_NAME_COPY}
+            </Text>
+          ) : null}
+          <Text style={styles.label}>EMAIL · REQUIRED</Text>
           <Input
             value={email}
-            onChangeText={setEmail}
+            onChangeText={(next: string) => {
+              setEmail(next);
+              setEmailServerInvalid(false);
+            }}
+            onBlur={() => setEmailTouched(true)}
             variant="email"
             placeholder="Email"
+            aria-label="Email, required"
             accessibilityLabel="Email"
           />
+          {emailTouched && (emailInvalid || emailServerInvalid) ? (
+            <Text
+              style={styles.fieldError}
+              accessibilityRole="alert"
+              accessibilityLiveRegion="polite"
+            >
+              {INVALID_EMAIL_COPY}
+            </Text>
+          ) : null}
           <PhoneInput
             value={phoneLocal}
             countryCode={phoneCountry}
@@ -395,7 +446,7 @@ export function GuestVenueReservation({
             size="lg"
             fullWidth
             loading={submitting}
-            disabled={submitting}
+            disabled={submitting || contactInvalid}
             onPress={() => void submit()}
           />
         </View>
@@ -445,6 +496,7 @@ const styles = StyleSheet.create({
   },
   disabled: { opacity: 0.4 },
   form: { gap: spacing.sm, marginTop: spacing.md },
+  fieldError: { ...typography.bodySm, color: semantic.error },
   optIn: {
     flexDirection: "row",
     alignItems: "center",

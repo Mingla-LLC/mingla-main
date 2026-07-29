@@ -1346,6 +1346,11 @@ measured browser/device bottom inset; no fixed zero-inset fallback is allowed.
 - **Enforcement:** issue #1380 implementor happy-path state/render/analytics suites plus the tester-owned adversarial interaction/accessibility suite; both require fails-on-revert proof in the CI-wired `mingla-business jest (full suite)` job.
 - **Established:** ACTIVE after independent tester PASS, all-green PR #1383, and production verification on desktop and phone-width Academy Street Bistro public pages.
 
+### I-PROPOSED-1386-PUBLIC-VENUE-REQUIRED-CONTACT (DRAFT)
+**Rule:** The shared public-web venue reservation form must visibly and accessibly identify name and email as required, expose touched field-level errors that clear on correction, disable confirmation while either contact field is locally invalid, and retain a defensive pre-network guard. Phone validation, reservation availability, payment redirects, and the authoritative edge validation contract remain unchanged.
+- **Enforcement:** issue #1386 append-only happy-path tests plus the existing issue #1380 reservation interaction and analytics suites; the #1386 test must fail when the contact correction is reverted and pass when restored.
+- **Established:** DRAFT at issue #1386 implementation; independent tester verification is required before activation.
+
 ### I-PROPOSED-1155-ABOUT-FIRST-DEFAULT (ACTIVE)
 - **Rule:** The public brand page's About tab is the FIRST tab and the DEFAULT-selected tab (never Upcoming).
 - **Enforcement:** strict-grep + the brand-rendering tests (`packages/brand-rendering/__tests__/orch_1155_brand_redesign.test.tsx`); CI green on #516.
