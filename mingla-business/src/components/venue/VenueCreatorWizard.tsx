@@ -354,6 +354,8 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
           lng: st.lng,
           city: st.city,
           countryCode: st.countryCode,
+          // Issue #1363 — precision rides the create RPC (exact | approximate).
+          coordinatePrecision: st.coordinatePrecision ?? null,
           address: st.formattedAddress.trim(),
           venueCategory: st.venueCategory,
           contact: {

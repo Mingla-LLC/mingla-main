@@ -28,6 +28,7 @@ import DateTimePicker, {
 
 import {
   radius as radiusTokens,
+  semantic,
   spacing,
   text as textTokens,
   typography,
@@ -43,8 +44,13 @@ import { ThemeSheet } from "../theme/ThemeSheet";
 // consumer reads it as a Google id). Mapbox Search Box /suggest returns POIs
 // by name (no `types` filter): https://docs.mapbox.com/api/search/search-box/#get-suggestions
 import { MapboxAddressInput } from "../location/MapboxAddressInput";
-// ORCH-1118 — trip location must be a confirmed Mapbox pick before publish/save
-// (I-PROPOSED-TRIP-LOCATION-MAPBOX-VALIDATED). Do not loosen.
+import { PinDropSheet } from "../location/PinDropSheet";
+import {
+  resolveFreeTextLocation,
+  resolvePinLocation,
+} from "../../utils/resolveApproxLocation";
+// ORCH-1118 — trip location must be a confirmed pick/geocode/pin before
+// publish/save (Issue #1363 loosened the placeId requirement to a coordinate).
 import {
   departureLocationValidated,
   destinationLocationValidated,
@@ -71,6 +77,11 @@ export interface Step1Draft {
   departureLocationText: string | null;
   departureLat: number | null;
   departureLng: number | null;
+  // Issue #1363 [three-tier address] — how each coordinate was captured:
+  // "exact" (pick/pin) | "approximate" (free-text) | null. Carried into
+  // theme.business_trip.{departure,destination}CoordinatePrecision at publish.
+  destinationCoordinatePrecision?: "exact" | "approximate" | null;
+  departureCoordinatePrecision?: "exact" | "approximate" | null;
   capacity: number | null;
   /**
    * ORCH-0876 — cover media for the trip (mirror of the events table
@@ -177,6 +188,15 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
   onShowToast,
   showAddressErrors = false,
 }) => {
+  // Issue #1363 [three-tier address] — one pin-drop host shared by both fields;
+  // `pinTarget` names which field the confirmed coordinate lands on. Per-field
+  // non-silent hints on a failed free-text geocode (rule 3).
+  const [pinTarget, setPinTarget] = useState<"departure" | "destination" | null>(
+    null,
+  );
+  const [departureHint, setDepartureHint] = useState<string | null>(null);
+  const [destinationHint, setDestinationHint] = useState<string | null>(null);
+
   // ORCH-1118 — inline "pick from suggestions" errors. Revealed only after a
   // blocked publish attempt (showAddressErrors). Empty OR dirty → error.
   const departureError =
@@ -437,35 +457,69 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
         <MapboxAddressInput
           value={draft.departureLocationText ?? ""}
           accessibilityLabel="Departing from"
-          // ORCH-1118 — typing nulls the structured fields so the planner must
-          // confirm a real Mapbox pick (mirrors ExperienceStopCard). Do not loosen.
-          onChangeText={(v) =>
+          allowFreeText
+          // Issue #1363 — typing nulls the structured fields; the coordinate can
+          // then come from a pick, free-text forward-geocode, or a dropped pin.
+          onChangeText={(v) => {
+            setDepartureHint(null);
             onChange({
               departureLocationText: v,
               departurePlaceId: null,
               departureLat: null,
               departureLng: null,
-            })
-          }
+              departureCoordinatePrecision: null,
+            });
+          }}
+          onFreeText={(v) => {
+            setDepartureHint(null);
+            onChange({ departureLocationText: v });
+            void (async () => {
+              const approx = await resolveFreeTextLocation(v);
+              if (approx !== null) {
+                onChange({
+                  departureLat: approx.lat,
+                  departureLng: approx.lng,
+                  departureCoordinatePrecision: "approximate",
+                });
+              } else {
+                onChange({
+                  departureLat: null,
+                  departureLng: null,
+                  departureCoordinatePrecision: null,
+                });
+                setDepartureHint(
+                  "We couldn't find that. Drop a pin to set the exact spot.",
+                );
+              }
+            })();
+          }}
+          onOpenPinDrop={() => setPinTarget("departure")}
           onPick={(place) => {
+            setDepartureHint(null);
             onChange({
               departurePlaceId: place.placeId,
               departureLocationText: place.formattedAddress,
               departureLat: place.location.lat,
               departureLng: place.location.lng,
+              departureCoordinatePrecision: "exact",
             });
           }}
           onClear={() => {
+            setDepartureHint(null);
             onChange({
               departurePlaceId: null,
               departureLocationText: null,
               departureLat: null,
               departureLng: null,
+              departureCoordinatePrecision: null,
             });
           }}
           error={departureError}
           placeholder="e.g. Washington, DC, USA"
         />
+        {departureHint !== null ? (
+          <Text style={styles.locationHint}>{departureHint}</Text>
+        ) : null}
       </View>
 
       {/* Destination via the Mapbox picker (ORCH-1079) */}
@@ -474,36 +528,116 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
         <MapboxAddressInput
           value={draft.destinationLocationText ?? ""}
           accessibilityLabel="Destination"
-          // ORCH-1118 — typing nulls the structured fields so the planner must
-          // confirm a real Mapbox pick (mirrors ExperienceStopCard). Do not loosen.
-          onChangeText={(v) =>
+          allowFreeText
+          // Issue #1363 — coordinate from pick / free-text / pin.
+          onChangeText={(v) => {
+            setDestinationHint(null);
             onChange({
               destinationLocationText: v,
               destinationPlaceId: null,
               destinationLat: null,
               destinationLng: null,
-            })
-          }
+              destinationCoordinatePrecision: null,
+            });
+          }}
+          onFreeText={(v) => {
+            setDestinationHint(null);
+            onChange({ destinationLocationText: v });
+            void (async () => {
+              const approx = await resolveFreeTextLocation(v);
+              if (approx !== null) {
+                onChange({
+                  destinationLat: approx.lat,
+                  destinationLng: approx.lng,
+                  destinationCoordinatePrecision: "approximate",
+                });
+              } else {
+                onChange({
+                  destinationLat: null,
+                  destinationLng: null,
+                  destinationCoordinatePrecision: null,
+                });
+                setDestinationHint(
+                  "We couldn't find that. Drop a pin to set the exact spot.",
+                );
+              }
+            })();
+          }}
+          onOpenPinDrop={() => setPinTarget("destination")}
           onPick={(place) => {
+            setDestinationHint(null);
             onChange({
               destinationPlaceId: place.placeId,
               destinationLocationText: place.formattedAddress,
               destinationLat: place.location.lat,
               destinationLng: place.location.lng,
+              destinationCoordinatePrecision: "exact",
             });
           }}
           onClear={() => {
+            setDestinationHint(null);
             onChange({
               destinationPlaceId: null,
               destinationLocationText: null,
               destinationLat: null,
               destinationLng: null,
+              destinationCoordinatePrecision: null,
             });
           }}
           error={destinationError}
           placeholder="e.g. Tulum, Quintana Roo, Mexico"
         />
+        {destinationHint !== null ? (
+          <Text style={styles.locationHint}>{destinationHint}</Text>
+        ) : null}
       </View>
+
+      {/* Issue #1363 — shared pin-drop host; the confirmed coordinate lands on
+          whichever field opened it (departure vs destination). */}
+      <PinDropSheet
+        visible={pinTarget !== null}
+        initialLat={
+          pinTarget === "destination" ? draft.destinationLat : draft.departureLat
+        }
+        initialLng={
+          pinTarget === "destination" ? draft.destinationLng : draft.departureLng
+        }
+        onCancel={() => setPinTarget(null)}
+        onConfirm={(pinLat, pinLng) => {
+          const target = pinTarget;
+          setPinTarget(null);
+          if (target === null) return;
+          void (async () => {
+            const resolved = await resolvePinLocation(pinLat, pinLng);
+            if (resolved === null) return;
+            if (target === "departure") {
+              setDepartureHint(null);
+              onChange({
+                departureLat: resolved.lat,
+                departureLng: resolved.lng,
+                departurePlaceId: null,
+                departureCoordinatePrecision: "exact",
+                ...((draft.departureLocationText ?? "").trim().length === 0 &&
+                resolved.formattedAddress !== null
+                  ? { departureLocationText: resolved.formattedAddress }
+                  : {}),
+              });
+            } else {
+              setDestinationHint(null);
+              onChange({
+                destinationLat: resolved.lat,
+                destinationLng: resolved.lng,
+                destinationPlaceId: null,
+                destinationCoordinatePrecision: "exact",
+                ...((draft.destinationLocationText ?? "").trim().length === 0 &&
+                resolved.formattedAddress !== null
+                  ? { destinationLocationText: resolved.formattedAddress }
+                  : {}),
+              });
+            }
+          })();
+        }}
+      />
 
       {/* Capacity */}
       <View style={styles.fieldGroup}>
@@ -699,6 +833,12 @@ const styles = StyleSheet.create({
     lineHeight: typography.caption.lineHeight,
     fontWeight: "600",
     color: textTokens.secondary,
+  },
+  // Issue #1363 — non-silent inline hint on a failed free-text geocode (rule 3).
+  locationHint: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: semantic.warning,
   },
   textInput: {
     height: 48,

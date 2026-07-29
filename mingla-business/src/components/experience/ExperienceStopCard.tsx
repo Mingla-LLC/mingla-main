@@ -31,6 +31,11 @@ import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import { MapboxAddressInput } from "../location/MapboxAddressInput";
+import { PinDropSheet } from "../location/PinDropSheet";
+import {
+  resolveFreeTextLocation,
+  resolvePinLocation,
+} from "../../utils/resolveApproxLocation";
 import type { PlaceDetails } from "../../services/mapboxGeocodeService";
 import {
   labelForIndex,
@@ -79,6 +84,10 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
   const isFirst = i === 0;
   const isLast = i === n - 1;
   const showAddress = locationMode === "per_stop" || i === 0;
+  // Issue #1363 [three-tier address] — per-card pin-drop host + non-silent hint.
+  // Local state is fine here: only the card being edited re-renders (memoized).
+  const [pinVisible, setPinVisible] = React.useState(false);
+  const [addrHint, setAddrHint] = React.useState<string | null>(null);
   const nameError = showErrors && stop.placeName.trim().length === 0;
   const descError =
     showErrors && stop.description.trim().length === 0
@@ -158,7 +167,9 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
             <MapboxAddressInput
               value={stop.address}
               accessibilityLabel={`Stop ${i + 1} address`}
-              onChangeText={(v) =>
+              allowFreeText
+              onChangeText={(v) => {
+                setAddrHint(null);
                 onPatch(cid, {
                   address: v,
                   placeId: null,
@@ -167,9 +178,37 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
                   countryCode: null,
                   lat: null,
                   lng: null,
-                })
-              }
-              onPick={(d: PlaceDetails) =>
+                  coordinatePrecision: null,
+                });
+              }}
+              onFreeText={(v) => {
+                // Tier 2 — accept the typed text, then forward-geocode coarse
+                // coords. placeId stays null (a real coordinate satisfies the
+                // loosened stop gate).
+                setAddrHint(null);
+                onPatch(cid, { address: v });
+                void (async () => {
+                  const approx = await resolveFreeTextLocation(v);
+                  if (approx !== null) {
+                    onPatch(cid, {
+                      city: approx.city,
+                      region: approx.region,
+                      countryCode: approx.countryCode,
+                      lat: approx.lat,
+                      lng: approx.lng,
+                      coordinatePrecision: "approximate",
+                    });
+                  } else {
+                    onPatch(cid, { lat: null, lng: null, coordinatePrecision: null });
+                    setAddrHint(
+                      "We couldn't find that. Drop a pin to set the exact spot.",
+                    );
+                  }
+                })();
+              }}
+              onOpenPinDrop={() => setPinVisible(true)}
+              onPick={(d: PlaceDetails) => {
+                setAddrHint(null);
                 onPatch(cid, {
                   address: d.formattedAddress,
                   placeId: d.placeId,
@@ -178,9 +217,11 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
                   countryCode: d.countryCode,
                   lat: d.location.lat,
                   lng: d.location.lng,
-                })
-              }
-              onClear={() =>
+                  coordinatePrecision: "exact",
+                });
+              }}
+              onClear={() => {
+                setAddrHint(null);
                 onPatch(cid, {
                   address: "",
                   placeId: null,
@@ -189,9 +230,41 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
                   countryCode: null,
                   lat: null,
                   lng: null,
-                })
-              }
+                  coordinatePrecision: null,
+                });
+              }}
               error={addrError}
+            />
+            {addrHint !== null ? (
+              <Text style={styles.inlineError}>{addrHint}</Text>
+            ) : null}
+            <PinDropSheet
+              visible={pinVisible}
+              initialLat={stop.lat}
+              initialLng={stop.lng}
+              accentHex={accent.warm}
+              onCancel={() => setPinVisible(false)}
+              onConfirm={(pinLat, pinLng) => {
+                setPinVisible(false);
+                setAddrHint(null);
+                void (async () => {
+                  const resolved = await resolvePinLocation(pinLat, pinLng);
+                  if (resolved === null) return;
+                  onPatch(cid, {
+                    city: resolved.city,
+                    region: resolved.region,
+                    countryCode: resolved.countryCode,
+                    lat: resolved.lat,
+                    lng: resolved.lng,
+                    placeId: null,
+                    coordinatePrecision: "exact",
+                    ...(stop.address.trim().length === 0 &&
+                    resolved.formattedAddress !== null
+                      ? { address: resolved.formattedAddress }
+                      : {}),
+                  });
+                })();
+              }}
             />
           </>
         ) : (

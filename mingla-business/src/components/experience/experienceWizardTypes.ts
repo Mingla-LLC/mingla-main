@@ -21,6 +21,12 @@ export interface ExperienceStopDraft {
   countryCode: string | null;
   lat: number | null;
   lng: number | null;
+  /**
+   * Issue #1363 [three-tier address] — how lat/lng was captured: "exact" (Tier-1
+   * pick / Tier-3 pin) or "approximate" (Tier-2 free-text forward-geocode); null
+   * when unset. Persisted to experience_stops.coordinate_precision.
+   */
+  coordinatePrecision?: "exact" | "approximate" | null;
   /** ≤5; imageUrls[0] = primary. */
   imageUrls: string[];
   /** "HH:mm" local, or null. */
@@ -54,6 +60,7 @@ export const emptyStop = (): ExperienceStopDraft => ({
   countryCode: null,
   lat: null,
   lng: null,
+  coordinatePrecision: null,
   imageUrls: [],
   startTime: null,
   priceMajor: "0.00",
@@ -68,9 +75,24 @@ export const labelForIndex = (i: number, n: number): string => {
   return "THEN";
 };
 
-/** A stop is location-valid when it carries a confirmed pick (placeId set). */
+/**
+ * A stop is location-valid when it carries a REAL COORDINATE (from a pick,
+ * free-text forward-geocode, OR a dropped pin) alongside a display address.
+ *
+ * Issue #1363 (OQ-2, Seth-approved 2026-07-29) — SUPERSEDES the prior pick-only
+ * predicate (placeId required). The invariant's intent — every stop carries a
+ * real coordinate — is PRESERVED (lat/lng still required); only the Mapbox-
+ * placeId-required MECHANISM is dropped, so an un-indexed place located via
+ * free-text/pin is valid. (Revises I-PROPOSED-1363-COORD-FROM-ANY-TIER.)
+ *
+ * ⚠ NOTE: the experience PUBLISH RPC `biz_publish_experience` still enforces a
+ * server-side `place_id` guard (`stop_address_unvalidated`) — loosening it is a
+ * documented follow-up outside this issue's allowlist (see IMPLEMENTATION report
+ * gap G1). This client predicate is loosened per the SPEC; the server guard must
+ * be loosened by the paired RPC amendment before a pin-only stop can publish.
+ */
 export const stopHasValidatedLocation = (s: ExperienceStopDraft): boolean =>
-  s.placeId !== null && s.lat !== null && s.lng !== null;
+  s.lat !== null && s.lng !== null && s.address.trim().length > 0;
 
 /** CHANGE 3 — a stop has a valid (non-empty, ≤280) description. */
 export const stopHasValidDescription = (s: ExperienceStopDraft): boolean => {

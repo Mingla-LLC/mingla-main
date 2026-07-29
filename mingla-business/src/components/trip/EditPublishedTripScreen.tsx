@@ -69,6 +69,7 @@ import {
   canvas,
   glass,
   radius as radiusTokens,
+  semantic,
   spacing,
   text as textTokens,
   typography,
@@ -126,6 +127,11 @@ import {
 // ORCH-1118 — published-edit departure + destination must be confirmed Mapbox
 // picks before save. Swap the legacy plain TextInputs for the shared picker.
 import { MapboxAddressInput } from "../location/MapboxAddressInput";
+import { PinDropSheet } from "../location/PinDropSheet";
+import {
+  resolveFreeTextLocation,
+  resolvePinLocation,
+} from "../../utils/resolveApproxLocation";
 import {
   departureLocationValidated,
   destinationLocationValidated,
@@ -199,6 +205,10 @@ interface LocalTripEditState {
   departureLocationText: string | null;
   departureLat: number | null;
   departureLng: number | null;
+  // Issue #1363 [three-tier address] — capture precision (exact | approximate |
+  // null); carried into theme.business_trip.* on save.
+  destinationCoordinatePrecision: "exact" | "approximate" | null;
+  departureCoordinatePrecision: "exact" | "approximate" | null;
   capacity: number | null;
   // Itinerary
   days: TripDayDraft[];
@@ -250,6 +260,9 @@ function tripToLocalEditState(trip: Trip): LocalTripEditState {
     departureLocationText: trip.businessTrip.departureLocationText,
     departureLat: trip.businessTrip.departureLat,
     departureLng: trip.businessTrip.departureLng,
+    // Issue #1363 — precision is transient capture-side (existing coord present).
+    destinationCoordinatePrecision: null,
+    departureCoordinatePrecision: null,
     capacity: trip.businessTrip.capacity,
     days: trip.days.map((d) => ({
       ordinal: d.ordinal,
@@ -368,6 +381,8 @@ function buildLiveTripPatch(
     departureLocationText: string | null;
     departureLat: number | null;
     departureLng: number | null;
+    destinationCoordinatePrecision: "exact" | "approximate" | null;
+    departureCoordinatePrecision: "exact" | "approximate" | null;
     capacity: number | null;
   }> = {};
   if (state.startAt !== trip.businessTrip.startAt) bt.startAt = state.startAt;
@@ -404,6 +419,14 @@ function buildLiveTripPatch(
   }
   if (state.departureLng !== trip.businessTrip.departureLng) {
     bt.departureLng = state.departureLng;
+  }
+  // Issue #1363 — persist capture precision only when it was set this session
+  // (non-null). Rides the same theme.business_trip merge as the coords above.
+  if (state.destinationCoordinatePrecision !== null) {
+    bt.destinationCoordinatePrecision = state.destinationCoordinatePrecision;
+  }
+  if (state.departureCoordinatePrecision !== null) {
+    bt.departureCoordinatePrecision = state.departureCoordinatePrecision;
   }
   if (state.capacity !== trip.businessTrip.capacity) {
     bt.capacity = state.capacity;
@@ -668,6 +691,13 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
     [trip],
   );
   const [editState, setEditState] = useState<LocalTripEditState>(initialState);
+
+  // Issue #1363 [three-tier address] — shared pin-drop host + per-field hints.
+  const [pinTarget, setPinTarget] = useState<"departure" | "destination" | null>(
+    null,
+  );
+  const [departureHint, setDepartureHint] = useState<string | null>(null);
+  const [destinationHint, setDestinationHint] = useState<string | null>(null);
 
   // ORCH-0876 P1-1 (QA rework, 2026-05-19): only re-seed local edit state
   // when the route lands on a DIFFERENT trip.id, not on every prop reference
@@ -1375,30 +1405,63 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                   value={editState.departureLocationText ?? ""}
                   accessibilityLabel="Departing from"
                   placeholder="e.g. Washington, DC, USA"
-                  onChangeText={(v) =>
+                  allowFreeText
+                  onChangeText={(v) => {
+                    setDepartureHint(null);
                     updateBasics({
                       departureLocationText: v.trim().length === 0 ? null : v,
                       departurePlaceId: null,
                       departureLat: null,
                       departureLng: null,
-                    })
-                  }
-                  onPick={(place) =>
+                      departureCoordinatePrecision: null,
+                    });
+                  }}
+                  onFreeText={(v) => {
+                    setDepartureHint(null);
+                    updateBasics({
+                      departureLocationText: v.trim().length === 0 ? null : v,
+                    });
+                    void (async () => {
+                      const approx = await resolveFreeTextLocation(v);
+                      if (approx !== null) {
+                        updateBasics({
+                          departureLat: approx.lat,
+                          departureLng: approx.lng,
+                          departureCoordinatePrecision: "approximate",
+                        });
+                      } else {
+                        updateBasics({
+                          departureLat: null,
+                          departureLng: null,
+                          departureCoordinatePrecision: null,
+                        });
+                        setDepartureHint(
+                          "We couldn't find that. Drop a pin to set the exact spot.",
+                        );
+                      }
+                    })();
+                  }}
+                  onOpenPinDrop={() => setPinTarget("departure")}
+                  onPick={(place) => {
+                    setDepartureHint(null);
                     updateBasics({
                       departurePlaceId: place.placeId,
                       departureLocationText: place.formattedAddress,
                       departureLat: place.location.lat,
                       departureLng: place.location.lng,
-                    })
-                  }
-                  onClear={() =>
+                      departureCoordinatePrecision: "exact",
+                    });
+                  }}
+                  onClear={() => {
+                    setDepartureHint(null);
                     updateBasics({
                       departurePlaceId: null,
                       departureLocationText: null,
                       departureLat: null,
                       departureLng: null,
-                    })
-                  }
+                      departureCoordinatePrecision: null,
+                    });
+                  }}
                   error={
                     showEditAddressErrors &&
                     !departureLocationValidated(
@@ -1411,6 +1474,9 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                       : undefined
                   }
                 />
+                {departureHint !== null ? (
+                  <Text style={styles.editAddressHint}>{departureHint}</Text>
+                ) : null}
               </View>
               <View style={styles.fieldGroup} testID="edit-trip-destination">
                 <Text style={styles.fieldLabel}>Destination</Text>
@@ -1418,30 +1484,63 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                   value={editState.destinationLocationText ?? ""}
                   accessibilityLabel="Destination"
                   placeholder="e.g. Tulum, Quintana Roo, Mexico"
-                  onChangeText={(v) =>
+                  allowFreeText
+                  onChangeText={(v) => {
+                    setDestinationHint(null);
                     updateBasics({
                       destinationLocationText: v.trim().length === 0 ? null : v,
                       destinationPlaceId: null,
                       destinationLat: null,
                       destinationLng: null,
-                    })
-                  }
-                  onPick={(place) =>
+                      destinationCoordinatePrecision: null,
+                    });
+                  }}
+                  onFreeText={(v) => {
+                    setDestinationHint(null);
+                    updateBasics({
+                      destinationLocationText: v.trim().length === 0 ? null : v,
+                    });
+                    void (async () => {
+                      const approx = await resolveFreeTextLocation(v);
+                      if (approx !== null) {
+                        updateBasics({
+                          destinationLat: approx.lat,
+                          destinationLng: approx.lng,
+                          destinationCoordinatePrecision: "approximate",
+                        });
+                      } else {
+                        updateBasics({
+                          destinationLat: null,
+                          destinationLng: null,
+                          destinationCoordinatePrecision: null,
+                        });
+                        setDestinationHint(
+                          "We couldn't find that. Drop a pin to set the exact spot.",
+                        );
+                      }
+                    })();
+                  }}
+                  onOpenPinDrop={() => setPinTarget("destination")}
+                  onPick={(place) => {
+                    setDestinationHint(null);
                     updateBasics({
                       destinationPlaceId: place.placeId,
                       destinationLocationText: place.formattedAddress,
                       destinationLat: place.location.lat,
                       destinationLng: place.location.lng,
-                    })
-                  }
-                  onClear={() =>
+                      destinationCoordinatePrecision: "exact",
+                    });
+                  }}
+                  onClear={() => {
+                    setDestinationHint(null);
                     updateBasics({
                       destinationPlaceId: null,
                       destinationLocationText: null,
                       destinationLat: null,
                       destinationLng: null,
-                    })
-                  }
+                      destinationCoordinatePrecision: null,
+                    });
+                  }}
                   error={
                     showEditAddressErrors &&
                     !destinationLocationValidated(
@@ -1454,7 +1553,61 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                       : undefined
                   }
                 />
+                {destinationHint !== null ? (
+                  <Text style={styles.editAddressHint}>{destinationHint}</Text>
+                ) : null}
               </View>
+
+              {/* Issue #1363 — shared pin-drop host; confirmed coordinate lands
+                  on whichever field opened it (departure vs destination). */}
+              <PinDropSheet
+                visible={pinTarget !== null}
+                initialLat={
+                  pinTarget === "destination"
+                    ? editState.destinationLat
+                    : editState.departureLat
+                }
+                initialLng={
+                  pinTarget === "destination"
+                    ? editState.destinationLng
+                    : editState.departureLng
+                }
+                onCancel={() => setPinTarget(null)}
+                onConfirm={(pinLat, pinLng) => {
+                  const target = pinTarget;
+                  setPinTarget(null);
+                  if (target === null) return;
+                  void (async () => {
+                    const resolved = await resolvePinLocation(pinLat, pinLng);
+                    if (resolved === null) return;
+                    if (target === "departure") {
+                      setDepartureHint(null);
+                      updateBasics({
+                        departureLat: resolved.lat,
+                        departureLng: resolved.lng,
+                        departurePlaceId: null,
+                        departureCoordinatePrecision: "exact",
+                        ...((editState.departureLocationText ?? "").trim().length ===
+                          0 && resolved.formattedAddress !== null
+                          ? { departureLocationText: resolved.formattedAddress }
+                          : {}),
+                      });
+                    } else {
+                      setDestinationHint(null);
+                      updateBasics({
+                        destinationLat: resolved.lat,
+                        destinationLng: resolved.lng,
+                        destinationPlaceId: null,
+                        destinationCoordinatePrecision: "exact",
+                        ...((editState.destinationLocationText ?? "").trim()
+                          .length === 0 && resolved.formattedAddress !== null
+                          ? { destinationLocationText: resolved.formattedAddress }
+                          : {}),
+                      });
+                    }
+                  })();
+                }}
+              />
               <View style={styles.fieldGroup}>
                 <Text style={styles.fieldLabel}>Capacity</Text>
                 <TextInput
@@ -1926,6 +2079,12 @@ const styles = StyleSheet.create({
     lineHeight: typography.caption.lineHeight,
     fontWeight: "600",
     color: textTokens.secondary,
+  },
+  // Issue #1363 — non-silent inline hint on a failed free-text geocode (rule 3).
+  editAddressHint: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: semantic.warning,
   },
   textInput: {
     height: 48,

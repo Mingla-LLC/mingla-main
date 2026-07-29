@@ -22,6 +22,7 @@ import {
   canvas,
   glass,
   radius,
+  semantic,
   spacing,
   text as textTokens,
   typography,
@@ -57,6 +58,11 @@ import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 // Mapbox Search Box /suggest returns POIs/businesses by name (no `types` filter):
 // https://docs.mapbox.com/api/search/search-box/#get-suggestions
 import { MapboxAddressInput } from "../location/MapboxAddressInput";
+import { PinDropSheet } from "../location/PinDropSheet";
+import {
+  resolveFreeTextLocation,
+  resolvePinLocation,
+} from "../../utils/resolveApproxLocation";
 import { parseVenuePlaceResult } from "../../utils/parseVenuePlaceResult";
 import type { PlaceDetails } from "../../services/mapboxGeocodeService";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
@@ -337,13 +343,20 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
     retry: () => void;
   } | null>(null);
   const [coverPickerVisible, setCoverPickerVisible] = useState(false);
+  // Issue #1363 [three-tier address] — pin-drop host + non-silent inline hint.
+  const [pinVisible, setPinVisible] = useState(false);
+  const [addrHint, setAddrHint] = useState<string | null>(null);
   // ORCH-1081 — partner-mode Step 5 form state.
   const [inviteeEmail, setInviteeEmail] = useState("");
   const [inviteeNote, setInviteeNote] = useState("");
   const [invitePending, setInvitePending] = useState(false);
 
-  const addressValidated =
-    address.trim().length > 0 && addrMeta.lat !== null && addrMeta.lng !== null;
+  // Issue #1363 [three-tier address] (OQ-4, Seth-approved) — brand address is
+  // OPTIONAL (a Skip escape exists) and its coordinate only PRE-FILLS venues, so
+  // Continue now accepts typed text WITHOUT coordinates. Coords stay best-effort:
+  // free-text forward-geocode / pin fill them when available (persistAddress
+  // already attaches geo only when present), but they never gate Continue.
+  const addressValidated = address.trim().length > 0;
 
   const accountId = user?.id ?? null;
   const trimmedName = name.trim();
@@ -724,7 +737,9 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
                 brands with no fixed address. */}
             <MapboxAddressInput
               value={address}
+              allowFreeText
               onChangeText={(t) => {
+                setAddrHint(null);
                 setAddress(t);
                 setAddrMeta({
                   lat: null,
@@ -734,8 +749,41 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
                   googlePlaceId: null,
                 });
               }}
+              onFreeText={(t) => {
+                // Tier 2 — accept typed text (Continue no longer needs coords);
+                // best-effort forward-geocode fills the venue-prefill coordinate.
+                setAddrHint(null);
+                setAddress(t);
+                void (async () => {
+                  const approx = await resolveFreeTextLocation(t);
+                  if (approx !== null) {
+                    // ORCH-1079 LOCKED (§3.B): googlePlaceId stays null.
+                    setAddrMeta({
+                      lat: approx.lat,
+                      lng: approx.lng,
+                      city: approx.city,
+                      countryCode: approx.countryCode,
+                      googlePlaceId: null,
+                    });
+                  } else {
+                    // Non-silent, but Continue still works (brand coord optional).
+                    setAddrMeta({
+                      lat: null,
+                      lng: null,
+                      city: null,
+                      countryCode: null,
+                      googlePlaceId: null,
+                    });
+                    setAddrHint(
+                      "Saved as typed. Drop a pin to add exact coordinates (optional).",
+                    );
+                  }
+                })();
+              }}
+              onOpenPinDrop={() => setPinVisible(true)}
               onPick={(details: PlaceDetails): void => {
                 const p = parseVenuePlaceResult(details);
+                setAddrHint(null);
                 setAddress(p.formattedAddress);
                 // ORCH-1079 LOCKED (§3.B): write geo identically but set
                 // googlePlaceId: null — the Mapbox mapbox_id (`p.placeId`) is
@@ -749,6 +797,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
                 });
               }}
               onClear={(): void => {
+                setAddrHint(null);
                 setAddress("");
                 setAddrMeta({
                   lat: null,
@@ -759,6 +808,40 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
                 });
               }}
               placeholder={BRAND_CREATION_COPY.step2.addressPlaceholder}
+            />
+            {addrHint !== null ? (
+              <Text style={styles.addressHint} accessibilityLiveRegion="polite">
+                {addrHint}
+              </Text>
+            ) : null}
+            <PinDropSheet
+              visible={pinVisible}
+              initialLat={addrMeta.lat}
+              initialLng={addrMeta.lng}
+              accentHex={accent.warm}
+              onCancel={() => setPinVisible(false)}
+              onConfirm={(pinLat, pinLng) => {
+                setPinVisible(false);
+                setAddrHint(null);
+                void (async () => {
+                  const resolved = await resolvePinLocation(pinLat, pinLng);
+                  if (resolved === null) return;
+                  // ORCH-1079 LOCKED (§3.B): googlePlaceId stays null.
+                  setAddrMeta({
+                    lat: resolved.lat,
+                    lng: resolved.lng,
+                    city: resolved.city,
+                    countryCode: resolved.countryCode,
+                    googlePlaceId: null,
+                  });
+                  if (
+                    address.trim().length === 0 &&
+                    resolved.formattedAddress !== null
+                  ) {
+                    setAddress(resolved.formattedAddress);
+                  }
+                })();
+              }}
             />
             {/* META-ORCH-1232 (H1) — persistent inline error + Retry on an
                 address-save write failure (NOT a lone auto-dismiss toast). */}
@@ -1089,6 +1172,13 @@ const styles = StyleSheet.create({
     fontSize: typography.body.fontSize,
     lineHeight: typography.body.lineHeight,
     color: textTokens.secondary,
+  },
+  // Issue #1363 — inline hint under the address field (best-effort coords).
+  addressHint: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: semantic.warning,
+    marginTop: spacing.xs,
   },
   label: {
     fontSize: typography.bodySm.fontSize,

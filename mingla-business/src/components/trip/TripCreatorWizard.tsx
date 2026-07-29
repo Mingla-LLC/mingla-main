@@ -235,6 +235,10 @@ export function tripToStep1Draft(trip: Trip): Step1Draft {
     departureLocationText: trip.businessTrip.departureLocationText,
     departureLat: trip.businessTrip.departureLat,
     departureLng: trip.businessTrip.departureLng,
+    // Issue #1363 — precision is a transient capture-side signal; existing trips
+    // predate it, so seed null (the coordinate itself is already present).
+    destinationCoordinatePrecision: null,
+    departureCoordinatePrecision: null,
     capacity: trip.businessTrip.capacity,
     // ORCH-0876 — cover media seeded from current trip row.
     coverMediaUrl: trip.coverMediaUrl,
@@ -1202,6 +1206,13 @@ export const TripCreatorWizard: React.FC<TripCreatorWizardProps> = ({
               departureLocationText: step1Draft.departureLocationText,
               departureLat: step1Draft.departureLat,
               departureLng: step1Draft.departureLng,
+              // Issue #1363 — precision rides theme.business_trip.* (JSON; no
+              // column). The publish RPC preserves unknown business_trip keys, so
+              // this persists with no RPC change.
+              destinationCoordinatePrecision:
+                step1Draft.destinationCoordinatePrecision ?? null,
+              departureCoordinatePrecision:
+                step1Draft.departureCoordinatePrecision ?? null,
               capacity: step1Draft.capacity,
             },
           },

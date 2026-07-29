@@ -35,6 +35,11 @@ import { Input } from "../ui/Input";
 // MapboxAddressInput is a drop-in for AddressAutocompleteInput (same props +
 // the same PlaceDetails boundary: formattedAddress / city / location).
 import { MapboxAddressInput } from "../location/MapboxAddressInput";
+import { PinDropSheet } from "../location/PinDropSheet";
+import {
+  resolveFreeTextLocation,
+  resolvePinLocation,
+} from "../../utils/resolveApproxLocation";
 import type { PlaceDetails } from "../../services/mapboxGeocodeService";
 // ORCH-1186 (salvaged from ORCH-1158 Issue 3 [wizard-map-preview]) — the SAME
 // proven static-map builder the trip/experience previews use. As of ORCH-1165
@@ -58,6 +63,10 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
   const venueError = showErrors ? errorForKey(errors, "venueName") : undefined;
   const addressError = showErrors ? errorForKey(errors, "address") : undefined;
   const onlineError = showErrors ? errorForKey(errors, "onlineUrl") : undefined;
+
+  // Issue #1363 [three-tier address] — pin-drop host + non-silent inline hint.
+  const [pinVisible, setPinVisible] = React.useState(false);
+  const [addrHint, setAddrHint] = React.useState<string | null>(null);
 
   const showInPerson = draft.format === "in_person" || draft.format === "hybrid";
   const showOnline = draft.format === "online" || draft.format === "hybrid";
@@ -90,19 +99,55 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
             <Text style={styles.fieldLabel}>Address</Text>
             <MapboxAddressInput
               value={draft.address ?? ""}
-              onChangeText={(v) => updateDraft({ address: v, city: null, locationGeo: null })}
+              allowFreeText
+              onChangeText={(v) => {
+                setAddrHint(null);
+                updateDraft({ address: v, city: null, locationGeo: null, coordinatePrecision: null });
+              }}
+              onFreeText={(v) => {
+                // Tier 2 — accept the typed text; background forward-geocode
+                // derives the city (the event gate) + coarse coords.
+                setAddrHint(null);
+                updateDraft({ address: v });
+                void (async () => {
+                  const approx = await resolveFreeTextLocation(v);
+                  if (approx !== null && approx.city !== null) {
+                    updateDraft({
+                      city: approx.city,
+                      locationGeo: { lat: approx.lat, lng: approx.lng },
+                      coordinatePrecision: "approximate",
+                    });
+                  } else {
+                    // rule 3 — non-silent: city stays null (gate blocked); point
+                    // the host at the pin / a more specific city.
+                    updateDraft({ city: null, locationGeo: null, coordinatePrecision: null });
+                    setAddrHint(
+                      "We couldn't place that. Drop a pin, or add the city (e.g. “Yaba, Lagos”).",
+                    );
+                  }
+                })();
+              }}
+              onOpenPinDrop={() => setPinVisible(true)}
               onPick={(details: PlaceDetails): void => {
+                setAddrHint(null);
                 updateDraft({
                   address: details.formattedAddress,
                   city: details.city,
                   locationGeo: details.location,
+                  coordinatePrecision: "exact",
                 });
               }}
               onClear={(): void => {
-                updateDraft({ address: null, city: null, locationGeo: null });
+                setAddrHint(null);
+                updateDraft({ address: null, city: null, locationGeo: null, coordinatePrecision: null });
               }}
               error={addressError}
             />
+            {addrHint !== null ? (
+              <Text style={styles.addrHint} accessibilityLiveRegion="polite">
+                {addrHint}
+              </Text>
+            ) : null}
           </View>
 
           {/* Hide-address toggle — replaces the static helper text from
@@ -153,11 +198,17 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
               runtime, we show the honest "pick an address" empty state — never a
               fake tile. */}
           {(() => {
+            // Issue #1363 — honest precision rendering (no fabricated precision,
+            // rule 9): an APPROXIMATE (free-text) coordinate renders at a lower
+            // zoom + an "Approximate location" caption so the preview never
+            // implies a false pinpoint. Exact (pick/pin) / null renders precise.
+            const isApprox = draft.coordinatePrecision === "approximate";
             const mapUrl = buildStaticMapUrl({
               lat: draft.locationGeo?.lat ?? null,
               lng: draft.locationGeo?.lng ?? null,
               accentHex: accent.warm,
               height: 160,
+              zoom: isApprox ? 11 : 14,
             });
             return mapUrl !== null ? (
               <View style={styles.mapWrap}>
@@ -168,16 +219,57 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
                   accessibilityLabel={`Map of ${draft.address ?? "the venue"}`}
                 />
                 <View style={styles.mapPin} />
+                {isApprox ? (
+                  <View style={styles.approxBadge}>
+                    <Icon name="location" size={12} color={textTokens.primary} />
+                    <Text style={styles.approxBadgeText}>Approximate location</Text>
+                  </View>
+                ) : null}
               </View>
             ) : (
               <View style={[styles.mapWrap, styles.mapEmpty]}>
                 <Icon name="location" size={22} color={textTokens.quaternary} />
                 <Text style={styles.mapEmptyText}>
-                  Pick an address to preview the map
+                  Pick an address, use what you typed, or drop a pin
                 </Text>
               </View>
             );
           })()}
+
+          {/* Issue #1363 — Tier-3 pin-drop host (static tap-to-place). On confirm
+              the coordinate is authoritative; reverse-geocode fills the city (the
+              event gate). If no city is derivable, we keep city null + say so —
+              honesty over guessing. */}
+          <PinDropSheet
+            visible={pinVisible}
+            initialLat={draft.locationGeo?.lat ?? null}
+            initialLng={draft.locationGeo?.lng ?? null}
+            accentHex={accent.warm}
+            onCancel={() => setPinVisible(false)}
+            onConfirm={(pinLat, pinLng) => {
+              setPinVisible(false);
+              setAddrHint(null);
+              void (async () => {
+                const resolved = await resolvePinLocation(pinLat, pinLng);
+                if (resolved === null) return;
+                updateDraft({
+                  city: resolved.city,
+                  locationGeo: { lat: resolved.lat, lng: resolved.lng },
+                  coordinatePrecision: "exact",
+                  ...(draft.address === null || draft.address.trim().length === 0
+                    ? resolved.formattedAddress !== null
+                      ? { address: resolved.formattedAddress }
+                      : {}
+                    : {}),
+                });
+                if (resolved.city === null) {
+                  setAddrHint(
+                    "We couldn't read the city for that point — pick a spot nearer a town.",
+                  );
+                }
+              })();
+            }}
+          />
 
           {/* Privacy info card */}
           <GlassCard variant="base" padding={spacing.md} style={styles.infoCard}>
@@ -244,6 +336,31 @@ const styles = StyleSheet.create({
     lineHeight: typography.caption.lineHeight,
     color: textTokens.tertiary,
     marginTop: spacing.xs,
+  },
+  // Issue #1363 — non-silent inline hint on a failed free-text geocode (rule 3).
+  addrHint: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: semantic.warning,
+    marginTop: spacing.xs,
+  },
+  // Issue #1363 — "Approximate location" badge over an approximate-precision map.
+  approxBadge: {
+    position: "absolute",
+    top: spacing.xs,
+    left: spacing.xs,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radiusTokens.full,
+    backgroundColor: "rgba(0,0,0,0.6)",
+  },
+  approxBadgeText: {
+    fontSize: typography.caption.fontSize,
+    color: textTokens.primary,
+    fontWeight: "500",
   },
   inputError: {
     borderColor: semantic.error,

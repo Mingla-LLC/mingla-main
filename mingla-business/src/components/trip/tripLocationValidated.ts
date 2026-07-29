@@ -18,14 +18,25 @@
  */
 
 /**
- * A trip location field is "picked" when it carries a confirmed Mapbox place:
- * placeId + lat + lng all non-null. Free-typed text leaves these null.
+ * A trip location field is "located" when it carries a REAL COORDINATE — from a
+ * Mapbox pick, a free-text forward-geocode, OR a dropped pin. lat + lng both
+ * non-null.
+ *
+ * Issue #1363 (OQ-2, Seth-approved 2026-07-29) — SUPERSEDES the prior pick-only
+ * rule (placeId required) and its "Do not loosen" lock above. The invariant's
+ * intent — every trip departure/destination carries a real coordinate — is
+ * PRESERVED (lat/lng still required); only the Mapbox-placeId-required MECHANISM
+ * is dropped so an un-indexed place located by free-text/pin is valid. The
+ * `placeId` param is retained for call-site signature compatibility but is no
+ * longer read. (Revises I-PROPOSED-TRIP-LOCATION-MAPBOX-VALIDATED /
+ * I-PROPOSED-1363-COORD-FROM-ANY-TIER.) The trip PUBLISH RPC gates only on
+ * destination TEXT, so this loosening works end-to-end with no server change.
  */
 export const tripPlacePicked = (
-  placeId: string | null,
+  _placeId: string | null,
   lat: number | null,
   lng: number | null,
-): boolean => placeId !== null && lat !== null && lng !== null;
+): boolean => lat !== null && lng !== null;
 
 /**
  * Destination is REQUIRED for publish/save → valid IFF a real pick. Empty or
