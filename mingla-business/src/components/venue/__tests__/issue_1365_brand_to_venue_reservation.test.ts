@@ -32,7 +32,7 @@ describe("issue #1365 Brand → venue reservation journey", () => {
 
   test("database contract owns menus by venue and keeps ambiguous legacy rows private", () => {
     const migration = readRepo(
-      "supabase/migrations/20270120001365_issue_1365_menu_venue_ownership.sql",
+      "supabase/migrations/20270122001365_issue_1365_menu_venue_ownership.sql",
     );
     expect(migration).toContain("ADD COLUMN IF NOT EXISTS venue_id uuid NULL");
     expect(migration).toContain("JOIN public.venue_listings v");
