@@ -1,0 +1,35 @@
+diff --git a/node_modules/expo-image-picker/ios/MediaHandler.swift b/node_modules/expo-image-picker/ios/MediaHandler.swift
+index 6e4fbe1..0df0142 100644
+--- a/node_modules/expo-image-picker/ios/MediaHandler.swift
++++ b/node_modules/expo-image-picker/ios/MediaHandler.swift
+@@ -310,10 +310,16 @@ internal struct MediaHandler {
+         let fileExtension = getFileExtension(from: originalFilename)
+         let destinationUrl = try generateUrl(withFileExtension: fileExtension)
+ 
++        // #1348: expo-image-picker VIDEO writeData MUST set isNetworkAccessAllowed=true — options: nil
++        // defaults it false, so iCloud-optimized ("Optimize iPhone Storage") videos fail
++        // PHPhotosErrorDomain 3164 (networkAccessRequired) at pick time (sealed by device syslog,
++        // 0.006s instant refusal). Permitting network access lets assetsd download the iCloud original.
++        let resourceOptions = PHAssetResourceRequestOptions()
++        resourceOptions.isNetworkAccessAllowed = true
+         try await PHAssetResourceManager.default().writeData(
+           for: resource,
+           toFile: destinationUrl,
+-          options: nil
++          options: resourceOptions
+         )
+ 
+         let mimeType = getMimeType(from: destinationUrl.pathExtension)
+@@ -389,7 +395,11 @@ internal struct MediaHandler {
+ 
+           // Stream the resource into our cache directory. This API is asynchronous but doesn't require
+           // a temporary file like `loadFileRepresentation`.
+-          try await PHAssetResourceManager.default().writeData(for: resource, toFile: destinationUrl, options: nil)
++          // #1348: set isNetworkAccessAllowed=true (options: nil defaults it false) so iCloud-optimized
++          // videos download instead of failing PHPhotosErrorDomain 3164 (networkAccessRequired).
++          let resourceOptions = PHAssetResourceRequestOptions()
++          resourceOptions.isNetworkAccessAllowed = true
++          try await PHAssetResourceManager.default().writeData(for: resource, toFile: destinationUrl, options: resourceOptions)
+ 
+           // Build and return the result using the helper.
+           let mimeType = getMimeType(from: destinationUrl.pathExtension)
