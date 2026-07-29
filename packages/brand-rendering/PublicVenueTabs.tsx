@@ -5,7 +5,14 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import type {
   offeringSurfaceStyles,
   ResolvedTheme,
@@ -147,6 +154,8 @@ export const PublicVenueTabs = forwardRef<
       >
         {tabs.map((tab) => {
           const active = tab === activeTab;
+          const webAriaSelected =
+            Platform.OS === "web" ? { "aria-selected": active } : {};
           return (
             <Pressable
               key={tab}
@@ -157,6 +166,7 @@ export const PublicVenueTabs = forwardRef<
               accessibilityRole="tab"
               accessibilityLabel={LABELS[tab]}
               accessibilityState={{ selected: active }}
+              {...webAriaSelected}
               style={[
                 styles.chip,
                 surface.card,

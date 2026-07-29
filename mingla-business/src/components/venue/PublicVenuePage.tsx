@@ -280,10 +280,11 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
       type: "RESERVATION_SHEET_CLOSED",
       context: reservationUiContext,
     });
-    setTimeout(() => {
-      publicVenueTabsRef.current?.focusTab("reservations");
-    }, 0);
   }, [reservationUiContext]);
+
+  const handleReservationSheetDismissed = useCallback((): void => {
+    publicVenueTabsRef.current?.focusTab("reservations");
+  }, []);
 
   const handleVenueTabChange = useCallback(
     (tab: PublicVenueTab): void => {
@@ -774,6 +775,7 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
       <PublicVenueReservationSheet
         visible={normalizedReservationUiState.reservationSheetOpen}
         onClose={handleReservationSheetClose}
+        onDismissed={handleReservationSheetDismissed}
       >
         {reservationsBlock}
       </PublicVenueReservationSheet>

@@ -4,19 +4,23 @@ import { StyleSheet, Text, View, type View as ViewInstance } from "react-native"
 import { spacing, text, typography } from "../../constants/designSystem";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { Sheet } from "../ui/Sheet";
+import { UNMOUNT_DELAY_MS } from "../ui/SheetMobile";
 
 export interface PublicVenueReservationSheetProps {
   visible: boolean;
   onClose: () => void;
+  onDismissed?: () => void;
   children: React.ReactNode;
 }
 
 export function PublicVenueReservationSheet({
   visible,
   onClose,
+  onDismissed,
   children,
 }: PublicVenueReservationSheetProps): React.ReactElement {
   const headingRef = useRef<ViewInstance | null>(null);
+  const wasVisibleRef = useRef(visible);
 
   useEffect(() => {
     if (!visible) return;
@@ -25,6 +29,31 @@ export function PublicVenueReservationSheet({
     }, 0);
     return (): void => clearTimeout(timer);
   }, [visible]);
+
+  useEffect(() => {
+    if (visible) {
+      wasVisibleRef.current = true;
+      return;
+    }
+    if (!wasVisibleRef.current) return;
+    wasVisibleRef.current = false;
+
+    let frame: number | null = null;
+    const timer = setTimeout(() => {
+      if (typeof requestAnimationFrame === "function") {
+        frame = requestAnimationFrame(() => onDismissed?.());
+      } else {
+        onDismissed?.();
+      }
+    }, UNMOUNT_DELAY_MS);
+
+    return (): void => {
+      clearTimeout(timer);
+      if (frame !== null && typeof cancelAnimationFrame === "function") {
+        cancelAnimationFrame(frame);
+      }
+    };
+  }, [onDismissed, visible]);
 
   return (
     <Sheet
