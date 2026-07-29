@@ -77,6 +77,11 @@ import {
   gateCaptionFor,
 } from "../../../src/utils/permissionGates";
 import { formatRelativeTime } from "../../../src/utils/relativeTime";
+// #1369 (folded-in D-1, Tier-3 class of #1342) — defer the "Partner
+// disconnected" success toast past the sheet's unmount window so its native
+// <Modal> presents from a now-free root VC instead of racing the closing
+// MemberDetailSheet's modal (same close→toast race as #1360).
+import { deferAfterDismiss } from "../../../src/utils/deferAfterDismiss";
 
 interface DisplayEntry {
   id: string;
@@ -423,7 +428,13 @@ export default function BrandTeamRoute(): React.ReactElement {
             : null
         }
         viewerIsOwner={currentRole === "brand_owner"}
-        onPartnerDisconnected={() => setToast("Partner disconnected")}
+        onPartnerDisconnected={() =>
+          // #1369 D-1 — the sheet's handleDisconnectConfirm already called
+          // onClose() (close-first); defer the success toast past the sheet's
+          // unmount window so its native <Modal> isn't dropped racing the
+          // closing MemberDetailSheet's modal (same class as #1360).
+          deferAfterDismiss(() => setToast("Partner disconnected"))
+        }
       />
 
       <Toast
