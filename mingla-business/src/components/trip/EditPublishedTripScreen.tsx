@@ -129,6 +129,7 @@ import {
 import { MapboxAddressInput } from "../location/MapboxAddressInput";
 import { PinDropSheet } from "../location/PinDropSheet";
 import {
+  isFreeTextResolveStale,
   resolveFreeTextLocation,
   resolvePinLocation,
 } from "../../utils/resolveApproxLocation";
@@ -698,6 +699,10 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
   );
   const [departureHint, setDepartureHint] = useState<string | null>(null);
   const [destinationHint, setDestinationHint] = useState<string | null>(null);
+  // Issue #1363 P3-2 — latest-wins guards: the text currently committed to each
+  // field, so a superseded free-text geocode can't patch a stale coordinate.
+  const committedDepartureRef = useRef(editState.departureLocationText ?? "");
+  const committedDestinationRef = useRef(editState.destinationLocationText ?? "");
 
   // ORCH-0876 P1-1 (QA rework, 2026-05-19): only re-seed local edit state
   // when the route lands on a DIFFERENT trip.id, not on every prop reference
@@ -1408,6 +1413,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                   allowFreeText
                   onChangeText={(v) => {
                     setDepartureHint(null);
+                    committedDepartureRef.current = v;
                     updateBasics({
                       departureLocationText: v.trim().length === 0 ? null : v,
                       departurePlaceId: null,
@@ -1418,11 +1424,15 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                   }}
                   onFreeText={(v) => {
                     setDepartureHint(null);
+                    committedDepartureRef.current = v;
                     updateBasics({
                       departureLocationText: v.trim().length === 0 ? null : v,
                     });
                     void (async () => {
                       const approx = await resolveFreeTextLocation(v);
+                      // Issue #1363 P3-2 — drop a superseded resolve.
+                      if (isFreeTextResolveStale(v, committedDepartureRef.current))
+                        return;
                       if (approx !== null) {
                         updateBasics({
                           departureLat: approx.lat,
@@ -1444,6 +1454,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                   onOpenPinDrop={() => setPinTarget("departure")}
                   onPick={(place) => {
                     setDepartureHint(null);
+                    committedDepartureRef.current = place.formattedAddress;
                     updateBasics({
                       departurePlaceId: place.placeId,
                       departureLocationText: place.formattedAddress,
@@ -1454,6 +1465,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                   }}
                   onClear={() => {
                     setDepartureHint(null);
+                    committedDepartureRef.current = "";
                     updateBasics({
                       departurePlaceId: null,
                       departureLocationText: null,
@@ -1487,6 +1499,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                   allowFreeText
                   onChangeText={(v) => {
                     setDestinationHint(null);
+                    committedDestinationRef.current = v;
                     updateBasics({
                       destinationLocationText: v.trim().length === 0 ? null : v,
                       destinationPlaceId: null,
@@ -1497,11 +1510,17 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                   }}
                   onFreeText={(v) => {
                     setDestinationHint(null);
+                    committedDestinationRef.current = v;
                     updateBasics({
                       destinationLocationText: v.trim().length === 0 ? null : v,
                     });
                     void (async () => {
                       const approx = await resolveFreeTextLocation(v);
+                      // Issue #1363 P3-2 — drop a superseded resolve.
+                      if (
+                        isFreeTextResolveStale(v, committedDestinationRef.current)
+                      )
+                        return;
                       if (approx !== null) {
                         updateBasics({
                           destinationLat: approx.lat,
@@ -1523,6 +1542,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                   onOpenPinDrop={() => setPinTarget("destination")}
                   onPick={(place) => {
                     setDestinationHint(null);
+                    committedDestinationRef.current = place.formattedAddress;
                     updateBasics({
                       destinationPlaceId: place.placeId,
                       destinationLocationText: place.formattedAddress,
@@ -1533,6 +1553,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                   }}
                   onClear={() => {
                     setDestinationHint(null);
+                    committedDestinationRef.current = "";
                     updateBasics({
                       destinationPlaceId: null,
                       destinationLocationText: null,

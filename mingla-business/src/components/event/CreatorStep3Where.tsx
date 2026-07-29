@@ -37,6 +37,7 @@ import { Input } from "../ui/Input";
 import { MapboxAddressInput } from "../location/MapboxAddressInput";
 import { PinDropSheet } from "../location/PinDropSheet";
 import {
+  isFreeTextResolveStale,
   resolveFreeTextLocation,
   resolvePinLocation,
 } from "../../utils/resolveApproxLocation";
@@ -67,6 +68,9 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
   // Issue #1363 [three-tier address] — pin-drop host + non-silent inline hint.
   const [pinVisible, setPinVisible] = React.useState(false);
   const [addrHint, setAddrHint] = React.useState<string | null>(null);
+  // Issue #1363 P3-2 — latest-wins guard: the address text currently committed
+  // to the field, so a superseded free-text geocode can't patch a stale city.
+  const committedAddrRef = React.useRef(draft.address ?? "");
 
   const showInPerson = draft.format === "in_person" || draft.format === "hybrid";
   const showOnline = draft.format === "online" || draft.format === "hybrid";
@@ -102,15 +106,19 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
               allowFreeText
               onChangeText={(v) => {
                 setAddrHint(null);
+                committedAddrRef.current = v;
                 updateDraft({ address: v, city: null, locationGeo: null, coordinatePrecision: null });
               }}
               onFreeText={(v) => {
                 // Tier 2 — accept the typed text; background forward-geocode
                 // derives the city (the event gate) + coarse coords.
                 setAddrHint(null);
+                committedAddrRef.current = v;
                 updateDraft({ address: v });
                 void (async () => {
                   const approx = await resolveFreeTextLocation(v);
+                  // Issue #1363 P3-2 — drop a superseded resolve.
+                  if (isFreeTextResolveStale(v, committedAddrRef.current)) return;
                   if (approx !== null && approx.city !== null) {
                     updateDraft({
                       city: approx.city,
@@ -130,6 +138,7 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
               onOpenPinDrop={() => setPinVisible(true)}
               onPick={(details: PlaceDetails): void => {
                 setAddrHint(null);
+                committedAddrRef.current = details.formattedAddress;
                 updateDraft({
                   address: details.formattedAddress,
                   city: details.city,
@@ -139,6 +148,7 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
               }}
               onClear={(): void => {
                 setAddrHint(null);
+                committedAddrRef.current = "";
                 updateDraft({ address: null, city: null, locationGeo: null, coordinatePrecision: null });
               }}
               error={addressError}

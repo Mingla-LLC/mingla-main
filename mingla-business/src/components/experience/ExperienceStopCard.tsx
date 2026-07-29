@@ -33,6 +33,7 @@ import { Input } from "../ui/Input";
 import { MapboxAddressInput } from "../location/MapboxAddressInput";
 import { PinDropSheet } from "../location/PinDropSheet";
 import {
+  isFreeTextResolveStale,
   resolveFreeTextLocation,
   resolvePinLocation,
 } from "../../utils/resolveApproxLocation";
@@ -88,6 +89,9 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
   // Local state is fine here: only the card being edited re-renders (memoized).
   const [pinVisible, setPinVisible] = React.useState(false);
   const [addrHint, setAddrHint] = React.useState<string | null>(null);
+  // Issue #1363 P3-2 — latest-wins guard: the stop address currently committed,
+  // so a superseded free-text geocode can't patch a stale coord for this stop.
+  const committedAddrRef = React.useRef(stop.address);
   const nameError = showErrors && stop.placeName.trim().length === 0;
   const descError =
     showErrors && stop.description.trim().length === 0
@@ -170,6 +174,7 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
               allowFreeText
               onChangeText={(v) => {
                 setAddrHint(null);
+                committedAddrRef.current = v;
                 onPatch(cid, {
                   address: v,
                   placeId: null,
@@ -186,9 +191,12 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
                 // coords. placeId stays null (a real coordinate satisfies the
                 // loosened stop gate).
                 setAddrHint(null);
+                committedAddrRef.current = v;
                 onPatch(cid, { address: v });
                 void (async () => {
                   const approx = await resolveFreeTextLocation(v);
+                  // Issue #1363 P3-2 — drop a superseded resolve.
+                  if (isFreeTextResolveStale(v, committedAddrRef.current)) return;
                   if (approx !== null) {
                     onPatch(cid, {
                       city: approx.city,
@@ -209,6 +217,7 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
               onOpenPinDrop={() => setPinVisible(true)}
               onPick={(d: PlaceDetails) => {
                 setAddrHint(null);
+                committedAddrRef.current = d.formattedAddress;
                 onPatch(cid, {
                   address: d.formattedAddress,
                   placeId: d.placeId,
@@ -222,6 +231,7 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
               }}
               onClear={() => {
                 setAddrHint(null);
+                committedAddrRef.current = "";
                 onPatch(cid, {
                   address: "",
                   placeId: null,

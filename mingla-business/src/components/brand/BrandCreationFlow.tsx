@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 // orch-strict-grep-allow orch-0892 — META-ORCH-0972 Sub-B BrandCreationFlow is a 4-step universal brand creation flow; keyboard-input fields (brand name, bio, address) sit at top of viewport and are not scroll-occluded by the on-screen keyboard. SmartScrollView migration deferred to a dedicated keyboard-hygiene follow-up ORCH.
 import {
   Pressable,
@@ -60,6 +60,7 @@ import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 import { MapboxAddressInput } from "../location/MapboxAddressInput";
 import { PinDropSheet } from "../location/PinDropSheet";
 import {
+  isFreeTextResolveStale,
   resolveFreeTextLocation,
   resolvePinLocation,
 } from "../../utils/resolveApproxLocation";
@@ -346,6 +347,9 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   // Issue #1363 [three-tier address] — pin-drop host + non-silent inline hint.
   const [pinVisible, setPinVisible] = useState(false);
   const [addrHint, setAddrHint] = useState<string | null>(null);
+  // Issue #1363 P3-2 — latest-wins guard: the address text currently committed,
+  // so a superseded free-text geocode can't patch a stale prefill coordinate.
+  const committedAddrRef = useRef("");
   // ORCH-1081 — partner-mode Step 5 form state.
   const [inviteeEmail, setInviteeEmail] = useState("");
   const [inviteeNote, setInviteeNote] = useState("");
@@ -740,6 +744,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
               allowFreeText
               onChangeText={(t) => {
                 setAddrHint(null);
+                committedAddrRef.current = t;
                 setAddress(t);
                 setAddrMeta({
                   lat: null,
@@ -753,9 +758,12 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
                 // Tier 2 — accept typed text (Continue no longer needs coords);
                 // best-effort forward-geocode fills the venue-prefill coordinate.
                 setAddrHint(null);
+                committedAddrRef.current = t;
                 setAddress(t);
                 void (async () => {
                   const approx = await resolveFreeTextLocation(t);
+                  // Issue #1363 P3-2 — drop a superseded resolve.
+                  if (isFreeTextResolveStale(t, committedAddrRef.current)) return;
                   if (approx !== null) {
                     // ORCH-1079 LOCKED (§3.B): googlePlaceId stays null.
                     setAddrMeta({
@@ -784,6 +792,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
               onPick={(details: PlaceDetails): void => {
                 const p = parseVenuePlaceResult(details);
                 setAddrHint(null);
+                committedAddrRef.current = p.formattedAddress;
                 setAddress(p.formattedAddress);
                 // ORCH-1079 LOCKED (§3.B): write geo identically but set
                 // googlePlaceId: null — the Mapbox mapbox_id (`p.placeId`) is
@@ -798,6 +807,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
               }}
               onClear={(): void => {
                 setAddrHint(null);
+                committedAddrRef.current = "";
                 setAddress("");
                 setAddrMeta({
                   lat: null,

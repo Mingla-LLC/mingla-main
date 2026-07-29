@@ -20,6 +20,7 @@ import {
 } from "../../constants/designSystem";
 import { parseVenuePlaceResult } from "../../utils/parseVenuePlaceResult";
 import {
+  isFreeTextResolveStale,
   resolveFreeTextLocation,
   resolvePinLocation,
 } from "../../utils/resolveApproxLocation";
@@ -45,6 +46,10 @@ export const VenueStep1Address: React.FC<VenueStep1AddressProps> = ({
   // nothing (rule 3): the coordinate stays null and the brand is pointed at the
   // persistent "drop a pin" row. Cleared on any successful resolve/pick/clear.
   const [locationHint, setLocationHint] = React.useState<string | null>(null);
+  // Issue #1363 P3-2 — latest-wins guard: tracks the address text currently
+  // committed to the field so a slow, superseded free-text forward-geocode can
+  // never patch a stale coordinate after the brand re-typed / picked / cleared.
+  const committedAddrRef = React.useRef(formattedAddress);
 
   const error =
     showErrors &&
@@ -65,15 +70,20 @@ export const VenueStep1Address: React.FC<VenueStep1AddressProps> = ({
           setLocationHint(null);
           // ORCH-1079 LOCKED dedup guard: null the address/geo but NEVER
           // `googlePlaceId`. Issue #1363 adds coordinatePrecision to the reset.
+          committedAddrRef.current = t;
           patch({ formattedAddress: t, lat: null, lng: null, city: null, countryCode: null, coordinatePrecision: null });
         }}
         onFreeText={(t) => {
           // Tier 2 — accept the typed text as the display address, then derive
           // coarse coords in the background. NEVER touch googlePlaceId (ORCH-1079).
           setLocationHint(null);
+          committedAddrRef.current = t;
           patch({ formattedAddress: t });
           void (async () => {
             const approx = await resolveFreeTextLocation(t);
+            // Issue #1363 P3-2 — drop a superseded resolve (brand re-typed /
+            // picked / cleared while this geocode was in flight).
+            if (isFreeTextResolveStale(t, committedAddrRef.current)) return;
             if (approx !== null) {
               patch({
                 lat: approx.lat,
@@ -95,6 +105,7 @@ export const VenueStep1Address: React.FC<VenueStep1AddressProps> = ({
         onPick={(details: PlaceDetails): void => {
           const p = parseVenuePlaceResult(details);
           setLocationHint(null);
+          committedAddrRef.current = p.formattedAddress;
           // ORCH-1079 LOCKED dedup guard (§3.C): patch ONLY the address/geo —
           // NEVER `googlePlaceId`. On the CLAIM path the pool-derived Google id
           // (set by prefillDraftFromPoolMatch) MUST survive a Step-1 address
@@ -117,6 +128,7 @@ export const VenueStep1Address: React.FC<VenueStep1AddressProps> = ({
           // `googlePlaceId` — that would wipe the pool-derived dedup key on the
           // claim path. Only address/geo reset.
           setLocationHint(null);
+          committedAddrRef.current = "";
           patch({
             formattedAddress: "",
             lat: null,

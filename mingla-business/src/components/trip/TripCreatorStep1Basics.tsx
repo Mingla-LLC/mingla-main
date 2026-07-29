@@ -12,7 +12,7 @@
  * text entry. Mirrors the picker pattern in CreatorStep2When.tsx.
  */
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Modal,
   Platform,
@@ -46,6 +46,7 @@ import { ThemeSheet } from "../theme/ThemeSheet";
 import { MapboxAddressInput } from "../location/MapboxAddressInput";
 import { PinDropSheet } from "../location/PinDropSheet";
 import {
+  isFreeTextResolveStale,
   resolveFreeTextLocation,
   resolvePinLocation,
 } from "../../utils/resolveApproxLocation";
@@ -196,6 +197,10 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
   );
   const [departureHint, setDepartureHint] = useState<string | null>(null);
   const [destinationHint, setDestinationHint] = useState<string | null>(null);
+  // Issue #1363 P3-2 — latest-wins guards: the text currently committed to each
+  // field, so a superseded free-text geocode can't patch a stale coordinate.
+  const committedDepartureRef = useRef(draft.departureLocationText ?? "");
+  const committedDestinationRef = useRef(draft.destinationLocationText ?? "");
 
   // ORCH-1118 — inline "pick from suggestions" errors. Revealed only after a
   // blocked publish attempt (showAddressErrors). Empty OR dirty → error.
@@ -462,6 +467,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           // then come from a pick, free-text forward-geocode, or a dropped pin.
           onChangeText={(v) => {
             setDepartureHint(null);
+            committedDepartureRef.current = v;
             onChange({
               departureLocationText: v,
               departurePlaceId: null,
@@ -472,9 +478,12 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           }}
           onFreeText={(v) => {
             setDepartureHint(null);
+            committedDepartureRef.current = v;
             onChange({ departureLocationText: v });
             void (async () => {
               const approx = await resolveFreeTextLocation(v);
+              // Issue #1363 P3-2 — drop a superseded resolve.
+              if (isFreeTextResolveStale(v, committedDepartureRef.current)) return;
               if (approx !== null) {
                 onChange({
                   departureLat: approx.lat,
@@ -496,6 +505,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           onOpenPinDrop={() => setPinTarget("departure")}
           onPick={(place) => {
             setDepartureHint(null);
+            committedDepartureRef.current = place.formattedAddress;
             onChange({
               departurePlaceId: place.placeId,
               departureLocationText: place.formattedAddress,
@@ -506,6 +516,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           }}
           onClear={() => {
             setDepartureHint(null);
+            committedDepartureRef.current = "";
             onChange({
               departurePlaceId: null,
               departureLocationText: null,
@@ -532,6 +543,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           // Issue #1363 — coordinate from pick / free-text / pin.
           onChangeText={(v) => {
             setDestinationHint(null);
+            committedDestinationRef.current = v;
             onChange({
               destinationLocationText: v,
               destinationPlaceId: null,
@@ -542,9 +554,12 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           }}
           onFreeText={(v) => {
             setDestinationHint(null);
+            committedDestinationRef.current = v;
             onChange({ destinationLocationText: v });
             void (async () => {
               const approx = await resolveFreeTextLocation(v);
+              // Issue #1363 P3-2 — drop a superseded resolve.
+              if (isFreeTextResolveStale(v, committedDestinationRef.current)) return;
               if (approx !== null) {
                 onChange({
                   destinationLat: approx.lat,
@@ -566,6 +581,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           onOpenPinDrop={() => setPinTarget("destination")}
           onPick={(place) => {
             setDestinationHint(null);
+            committedDestinationRef.current = place.formattedAddress;
             onChange({
               destinationPlaceId: place.placeId,
               destinationLocationText: place.formattedAddress,
@@ -576,6 +592,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           }}
           onClear={() => {
             setDestinationHint(null);
+            committedDestinationRef.current = "";
             onChange({
               destinationPlaceId: null,
               destinationLocationText: null,

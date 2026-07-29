@@ -56,6 +56,23 @@ const isFiniteNumber = (v: unknown): v is number =>
   typeof v === "number" && Number.isFinite(v);
 
 /**
+ * Latest-wins guard for the fire-and-forget free-text resolve (issue #1363 P3-2).
+ *
+ * `resolveFreeTextLocation` is un-cancellable, so a SLOW earlier forward-geocode
+ * can resolve AFTER the user has re-typed, picked a suggestion, or cleared the
+ * field — and would otherwise patch a coordinate for text the field no longer
+ * shows (a stale coordinate landing on the draft). A host records the text it is
+ * resolving and, when the async result returns, calls this with the field's
+ * CURRENTLY-committed text: a `true` return means the resolve was superseded and
+ * the host MUST drop it (patch nothing). Whitespace-insensitive; equal text is
+ * never stale, so the common (non-racing) path is a no-op.
+ */
+export const isFreeTextResolveStale = (
+  resolvedForText: string,
+  committedTextNow: string,
+): boolean => resolvedForText.trim() !== committedTextNow.trim();
+
+/**
  * Tier-2 — forward-geocode free text to a coarse coordinate. Returns null when
  * the query is empty, the geocoder throws, or the result has no finite coords
  * (never a fabricated coordinate). A hit carries `precision: "approximate"`.
