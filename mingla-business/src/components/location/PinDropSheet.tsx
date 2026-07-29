@@ -23,6 +23,7 @@ import {
   Image,
   LayoutChangeEvent,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -31,6 +32,8 @@ import {
 
 import {
   accent,
+  androidOpaque,
+  ariThread,
   glass,
   radius as radiusTokens,
   semantic,
@@ -266,7 +269,15 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   sheet: {
-    backgroundColor: glass.tint.profileElevated,
+    // Issue #1363 (device-UX F1) — the glass tint is a translucent iOS-backdrop-
+    // blur surface; Android/web have no backdrop blur here (no BlurView) so it
+    // rendered see-through and the content behind bled through. iOS keeps the
+    // glass tint byte-for-byte; every other platform gets the SOLID, opaque
+    // elevated surface (ariThread.composerSurface #191c21 — a documented
+    // ANDROID_GLASS_USES_OPAQUE_FALLBACK fill, no alpha → nothing bleeds through).
+    // The 0.6 backdrop scrim, radius, and layout are unchanged.
+    backgroundColor:
+      Platform.OS === "ios" ? glass.tint.profileElevated : ariThread.composerSurface,
     borderTopLeftRadius: radiusTokens.xl,
     borderTopRightRadius: radiusTokens.xl,
     paddingHorizontal: spacing.lg,
@@ -300,8 +311,13 @@ const styles = StyleSheet.create({
     height: MAP_HEIGHT,
     borderRadius: radiusTokens.lg,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    // Issue #1363 (device-UX F1) — same iOS-glass / opaque-elsewhere split as the
+    // sheet so the map frame (visible in the "Map unavailable" state + the 1px
+    // border) is fully opaque on Android/web. iOS unchanged.
+    borderColor:
+      Platform.OS === "ios" ? glass.border.profileBase : androidOpaque.rowBorder,
+    backgroundColor:
+      Platform.OS === "ios" ? glass.tint.profileBase : androidOpaque.rowFill,
     overflow: "hidden",
     position: "relative",
     alignItems: "center",
