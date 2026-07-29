@@ -38,6 +38,7 @@ interface GuestVenueReservationProps {
   venueId: string;
   brandId: string;
   currency: string | null;
+  analyticsSurface: "buyer_web" | "business_preview";
 }
 
 const RESERVATION_PHONE_THEME: PhoneInputTheme = {
@@ -84,6 +85,7 @@ export function GuestVenueReservation({
   venueId,
   brandId,
   currency,
+  analyticsSurface,
 }: GuestVenueReservationProps): React.ReactElement {
   const dates = useMemo(dateOptions, []);
   const [partySize, setPartySize] = useState(2);
@@ -110,11 +112,11 @@ export function GuestVenueReservation({
   useEffect(() => {
     if (availability.data === undefined) return;
     captureWeb("venue_availability_result_viewed", {
-      surface: "buyer_web",
+      surface: analyticsSurface,
       brand_id: brandId,
       venue_id: venueId,
     });
-  }, [availability.data, brandId, venueId]);
+  }, [analyticsSurface, availability.data, brandId, venueId]);
 
   const submit = async (): Promise<void> => {
     if (
@@ -133,8 +135,8 @@ export function GuestVenueReservation({
     }
     setSubmitting(true);
     setError(null);
-    captureWeb("public_venue_reservation_started", {
-      surface: "buyer_web",
+    captureWeb("public_venue_reservation_submitted", {
+      surface: analyticsSurface,
       brand_id: brandId,
       venue_id: venueId,
       currency,
@@ -158,7 +160,7 @@ export function GuestVenueReservation({
       if (result.kind === "free_completed") {
         setCompletedId(result.reservationId);
         captureWeb("venue_reservation_completed", {
-          surface: "buyer_web",
+          surface: analyticsSurface,
           brand_id: brandId,
           venue_id: venueId,
           free_paid: "free",
@@ -177,7 +179,7 @@ export function GuestVenueReservation({
     } catch {
       setError(RESERVATION_FAILURE_COPY);
       captureWeb("venue_reservation_failed", {
-        surface: "buyer_web",
+        surface: analyticsSurface,
         brand_id: brandId,
         venue_id: venueId,
         result_class: "create_failed",
@@ -276,7 +278,7 @@ export function GuestVenueReservation({
               onPress={() => {
                 setSelectedUtc(slot.slotStartUtc);
                 captureWeb("venue_reservation_slot_selected", {
-                  surface: "buyer_web",
+                  surface: analyticsSurface,
                   brand_id: brandId,
                   venue_id: venueId,
                 });
@@ -321,11 +323,11 @@ export function GuestVenueReservation({
           <PhoneInput
             value={phoneLocal}
             countryCode={phoneCountry}
-            onChangePhone={(next) => {
+            onChangePhone={(next: string) => {
               setPhoneLocal(next);
               setPhoneTouched(true);
             }}
-            onChangeCountry={(next) => {
+            onChangeCountry={(next: string) => {
               setPhoneCountry(next);
               setPhoneTouched(true);
             }}
@@ -357,7 +359,7 @@ export function GuestVenueReservation({
             }}
             labels={{
               phonePlaceholder: "Phone number",
-              countryButtonAccessibilityLabel: (countryName) =>
+              countryButtonAccessibilityLabel: (countryName: string) =>
                 `Country code, ${countryName}, tap to change`,
               phoneInputAccessibilityLabel: "Phone number, required",
               doneButton: "Done",
