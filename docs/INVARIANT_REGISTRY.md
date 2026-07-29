@@ -7,6 +7,27 @@
 
 ---
 
+## ACTIVE — issue #1338 (business video cover picker silently failed on a real iPhone — trim-only-over-cap + present-after-dismissal + in-sheet feedback — CLOSED 2026-07-29, PR #1344, shipped via prod OTA iOS + Android)
+
+> Registered DRAFT at issue #1338 SPEC. On a physical iPhone, tapping a video to set an event/trip/brand/venue cover closed the OS photo picker and attached nothing, with no error. Root cause, proven live by capturing the phone's own system log during two production retries: the business app runs React Native's New Architecture where every sheet/toast/popup is a separate iOS modal, and iOS silently refuses to open a second modal while one is up — so after the picker closed, the follow-on step was dropped and even the error toast (itself a modal) could not show. Compounded by code that always routed every clip through a flaky native trim editor and then silently gave up when it returned nothing. Fix direction: within-ceiling native clips (≤33s) and all web clips upload raw with no trim screen (web-path parity); the trim editor opens only for over-ceiling native clips and only after the picker fully dismisses (bounded watchdog so it can never hang `uploading`); and every user-facing outcome renders inside the sheet where iOS cannot drop it. Device-verified on the iOS simulator + a physical Samsung across short/long/cancel with zero "already presenting" collisions, including the never-before-exercised direct-upload path proven byte-for-byte on both platforms. The broader app-wide modal-collision class (17 real spots across 15 surfaces) is tracked separately in #1342. The orchestrator flips DRAFT → ACTIVE at CLOSE after independent tester PASS. Cross-ref: INVESTIGATE + SPEC + IMPLEMENTATION + TEST + CLOSE comments on issue #1338.
+
+### I-PROPOSED-1338-COVER-VIDEO-TRIM-ONLY-OVER-CAP (ACTIVE)
+- **Rule:** The native trim editor is invoked ONLY for native clips whose measured duration exceeds `EVENT_COVER_SOURCE_CEILING_MS` (33000ms); within-ceiling native clips and all web clips upload raw via `resolveRawClipUploadUri`.
+- **Enforcement:** `.github/scripts/strict-grep/orch-0978-video-cap-29s.mjs` C1 + `CoverPicker.trimOnlyOverCap.issue1338.test.ts` (T-1338-01/02), fails-on-revert.
+- **Established:** DRAFT at #1338 SPEC; ACTIVE at #1338 CLOSE 2026-07-29.
+
+### I-PROPOSED-1338-COVER-FLOW-FEEDBACK-IN-SHEET (ACTIVE)
+- **Rule:** Every user-facing outcome of the cover-VIDEO pick/trim/upload flow renders inside `CoverPicker`/`CoverPickerSheet` via inline state (`videoPickNotice`/`mediaDisplayError`), never via a root-portal `Toast` or native-`<Modal>` sibling (which iOS drops while the sheet modal is up).
+- **Enforcement:** `CoverPicker.videoReadyIdempotency.test.ts` + source-grep in `CoverPicker.trimOnlyOverCap.issue1338.test.ts` (T-1338-03), fails-on-revert.
+- **Established:** DRAFT at #1338 SPEC; ACTIVE at #1338 CLOSE 2026-07-29. Note: preserves I-SUB-SHEET-INSIDE-PARENT.
+
+### I-PROPOSED-1338-COVER-TRIM-PRESENT-AFTER-DISMISSAL (ACTIVE)
+- **Rule:** The native trim editor is presented only after the OS photo picker has fully dismissed (`waitForPickerDismissal` = InteractionManager.runAfterInteractions + settle), and a bounded `onShow` watchdog guarantees the trim promise always settles (never hangs `uploading`).
+- **Enforcement:** `coverPickerVideoTrimEditor.presentWatchdog.issue1338.test.ts` + tester `coverPickerVideoTrimEditor.settleRace.adversarial.tester.issue1338.test.ts` (T-1338-04/05), fails-on-revert.
+- **Established:** DRAFT at #1338 SPEC; ACTIVE at #1338 CLOSE 2026-07-29.
+
+---
+
 ## ACTIVE — issue #1020 (events vanished from metro city-browse when the venue's town label ≠ the browsed city — CLOSED 2026-07-28, PR #1334, tester PASS + live-fire verified on prod)
 
 > Registered DRAFT at issue #1020 [city-browse-geo-fallback] SPEC. Consumer event discovery (`pg_discover_business_events`, the single RPC behind the `discover-merged-events` edge fn read by consumer iOS + Android) filtered city membership by exact string equality `e.city = ANY(p_cities)` only — so a venue geocoded to a sub-municipality label ("Zaventem") never matched a greater-metro browse ("Brussels"), and a NULL-city event matched nothing anywhere. The Lagos landmine: venues geocoding as Lekki/Ikeja/Victoria Island/Yaba would vanish from a "Lagos" browse identically. Fix direction (b): widen the predicate to `e.city = ANY(p_cities) OR ST_DWithin(location_geo pin, browsed center, radius)`, threading the browsed center/radius the client already sends into the RPC, and fold the geo inputs into the discover cache key. Zero stored-data mutation; auto-covers every multi-municipality metro. The orchestrator flips DRAFT → ACTIVE at CLOSE after independent tester PASS. Cross-ref: INVESTIGATE + SPEC + IMPLEMENTATION + TEST + CLOSE comments on issue #1020.
