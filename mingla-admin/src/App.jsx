@@ -22,6 +22,8 @@ import { DeckScoreTunerPage } from "./pages/DeckScoreTunerPage";
 import { PricingPage } from "./pages/PricingPage";
 import { LaunchCitiesPage } from "./pages/LaunchCitiesPage";
 import { BetaLeadsPage } from "./pages/BetaLeadsPage";
+// ISSUE-1354 — Tool Leads: all free-tool submissions + report detail (#/tool-leads).
+import { ToolLeadsPage } from "./pages/ToolLeadsPage";
 import { StripeModePage } from "./pages/StripeModePage";
 // META-ORCH-1104 Phase 2 — admin support desk (queue + thread + agents).
 import { SupportDeskPage } from "./pages/SupportDeskPage";
@@ -66,6 +68,8 @@ const PAGES = {
   placepool: PlacePoolManagementPage,
   "launch-cities": LaunchCitiesPage,
   "beta-leads": BetaLeadsPage,
+  // ISSUE-1354: all free-tool submissions + report detail (hash route #/tool-leads).
+  "tool-leads": ToolLeadsPage,
   claims: ClaimsPage,
   // META-ORCH-1104 Phase 2 — #/support support desk.
   support: SupportDeskPage,

@@ -97,6 +97,12 @@ const GUARDED_DEFINER_FNS = [
   "admin_update_venue_reservation_settings",
   "admin_update_venue_capacity_rule",
   "admin_set_reservation_status",
+  // ISSUE-1354 [Admin Tool Leads console — READ-ONLY]: the 2 tool_leads read-RPCs
+  // (list + detail) behind the admin "Tool Leads" page. READ-ONLY but each
+  // is_admin_user() guard MUST be the first statement. Reverting
+  // 20270119001354_issue_1354_tool_leads_admin_rpc.sql removes these fns → FAIL.
+  "admin_tool_leads_list",
+  "admin_tool_lead_get",
 ];
 
 function fnBody(src, name) {
@@ -244,7 +250,17 @@ if (process.argv.includes("--self-test")) {
         "begin if not public.is_admin_user() then raise exception 'not_authorized'; end if; return '{}'::jsonb; end; $$;\n",
     )
     .join("");
-  const reads = getPerson + offerings1273 + moneyFns + identity1276 + money1278 + offerings1277;
+  // ISSUE-1354: the 2 READ-ONLY tool_leads read-RPCs — registered above (guard MUST
+  // be first). Included in the good/other-subject fixtures so the self-test isolates
+  // the intended violation instead of tripping on missing registry fns.
+  const toolLeads1354 = ["admin_tool_leads_list", "admin_tool_lead_get"]
+    .map(
+      (n) =>
+        `create or replace function public.${n}() returns jsonb language plpgsql stable security definer as $$ declare v jsonb; begin if not public.is_admin_user() then raise exception 'not_authorized'; end if; return '{}'::jsonb; end; $$;\n`,
+    )
+    .join("");
+  const reads = getPerson + offerings1273 + moneyFns + identity1276 + money1278 + offerings1277 +
+    toolLeads1354;
 
   // GOOD: all guard-first.
   let f = [];
