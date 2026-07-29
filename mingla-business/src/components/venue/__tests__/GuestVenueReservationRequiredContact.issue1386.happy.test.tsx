@@ -126,7 +126,9 @@ const invoke = (
   callback(value);
 };
 
-const renderSelectedForm = async (): Promise<TestRendererInstance> => {
+const renderSelectedForm = async (
+  analyticsSurface: "buyer_web" | "business_preview" = "buyer_web",
+): Promise<TestRendererInstance> => {
   let tree!: TestRendererInstance;
   await TestRenderer.act(async () => {
     tree = TestRenderer.create(
@@ -134,7 +136,7 @@ const renderSelectedForm = async (): Promise<TestRendererInstance> => {
         venueId="venue-1386"
         brandId="brand-1386"
         currency="USD"
-        analyticsSurface="buyer_web"
+        analyticsSurface={analyticsSurface}
       />,
     );
   });
@@ -157,6 +159,16 @@ describe("issue #1386 required reservation contact", () => {
     const name = findByProp(tree.root, "aria-label", "Name, required");
     const email = findByProp(tree.root, "aria-label", "Email, required");
 
+    expect(name.props.accessibilityLabel).toBe("Name, required");
+    expect(email.props.accessibilityLabel).toBe("Email, required");
+    expect(
+      tree.root.findAll(
+        (node) =>
+          node.type === "Input" &&
+          (node.props.accessibilityLabel === "Name" ||
+            node.props.accessibilityLabel === "Email"),
+      ),
+    ).toHaveLength(0);
     expect(findText(tree.root, "NAME · REQUIRED")).toHaveLength(1);
     expect(findText(tree.root, "EMAIL · REQUIRED")).toHaveLength(1);
     expect(
@@ -185,6 +197,38 @@ describe("issue #1386 required reservation contact", () => {
         accessibilityLiveRegion: "polite",
       }),
     );
+
+    await TestRenderer.act(async () => {
+      invoke(name, "onChangeText", "Ada");
+      invoke(email, "onChangeText", "ada@example.com");
+    });
+    expect(findText(tree.root, "Enter your name.")).toHaveLength(0);
+    expect(findText(tree.root, "Enter a valid email address.")).toHaveLength(0);
+    expect(
+      findByProp(tree.root, "label", "Confirm reservation").props.disabled,
+    ).toBe(false);
+    await unmount(tree);
+  });
+
+  test("business preview exposes the same exact required-contact contract", async () => {
+    const tree = await renderSelectedForm("business_preview");
+    const name = findByProp(tree.root, "aria-label", "Name, required");
+    const email = findByProp(tree.root, "aria-label", "Email, required");
+
+    expect(name.props.accessibilityLabel).toBe("Name, required");
+    expect(email.props.accessibilityLabel).toBe("Email, required");
+    expect(findText(tree.root, "NAME · REQUIRED")).toHaveLength(1);
+    expect(findText(tree.root, "EMAIL · REQUIRED")).toHaveLength(1);
+    expect(
+      findByProp(tree.root, "label", "Confirm reservation").props.disabled,
+    ).toBe(true);
+
+    await TestRenderer.act(async () => {
+      invoke(name, "onBlur");
+      invoke(email, "onBlur");
+    });
+    expect(findText(tree.root, "Enter your name.")).toHaveLength(1);
+    expect(findText(tree.root, "Enter a valid email address.")).toHaveLength(1);
 
     await TestRenderer.act(async () => {
       invoke(name, "onChangeText", "Ada");

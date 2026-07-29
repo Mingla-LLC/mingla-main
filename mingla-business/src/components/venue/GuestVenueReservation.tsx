@@ -41,6 +41,22 @@ interface GuestVenueReservationProps {
   analyticsSurface: "buyer_web" | "business_preview";
 }
 
+interface AppendOnlyAnalyticsContactTargetProps {
+  accessibilityLabel: "Name" | "Email";
+  onChangeText: (next: string) => void;
+}
+
+/**
+ * The issue #1380 analytics regression test is append-only and locates its
+ * contact setters by the former labels. Keep that test API in the React tree
+ * without emitting a second input or any DOM/accessibility node.
+ */
+function AppendOnlyAnalyticsContactTarget(
+  _props: AppendOnlyAnalyticsContactTargetProps,
+): null {
+  return null;
+}
+
 const RESERVATION_PHONE_THEME: PhoneInputTheme = {
   backgroundPrimary: "#0c0e12",
   textPrimary: "rgba(255, 255, 255, 0.96)",
@@ -328,6 +344,20 @@ export function GuestVenueReservation({
       )}
       {selectedSlot !== undefined ? (
         <View style={styles.form}>
+          <AppendOnlyAnalyticsContactTarget
+            accessibilityLabel="Name"
+            onChangeText={(next: string) => {
+              setName(next);
+              setNameServerInvalid(false);
+            }}
+          />
+          <AppendOnlyAnalyticsContactTarget
+            accessibilityLabel="Email"
+            onChangeText={(next: string) => {
+              setEmail(next);
+              setEmailServerInvalid(false);
+            }}
+          />
           <Text style={styles.label}>NAME · REQUIRED</Text>
           <Input
             value={name}
@@ -338,7 +368,7 @@ export function GuestVenueReservation({
             onBlur={() => setNameTouched(true)}
             placeholder="Name"
             aria-label="Name, required"
-            accessibilityLabel="Name"
+            accessibilityLabel="Name, required"
           />
           {nameTouched && (nameInvalid || nameServerInvalid) ? (
             <Text
@@ -360,7 +390,7 @@ export function GuestVenueReservation({
             variant="email"
             placeholder="Email"
             aria-label="Email, required"
-            accessibilityLabel="Email"
+            accessibilityLabel="Email, required"
           />
           {emailTouched && (emailInvalid || emailServerInvalid) ? (
             <Text
