@@ -14,9 +14,10 @@
 //   - a READY google video IS buildable (Demand Gen), but ONLY through the READY
 //     gate: a not-ready google is excluded as preparation_<state>, never a
 //     fabricated success.
-//   - reddit can NEVER build a video, at any preparation state (the last
-//     fail-closed platform).
-//   - readyVideoSubset / videoPreparationGate surface google (never reddit).
+//   - reddit builds a video at ANY preparation state (ORCH-1185 wired it as a
+//     NO-PREPARE platform; prep state is irrelevant to it) — while the PREPARE
+//     surface (readyVideoSubset / videoPreparationGate) still surfaces google and
+//     never reddit, because reddit does not join the preparation flow.
 //
 // Pure/source-only; zero provider calls, zero ad objects, zero spend.
 import { describe, it } from "node:test";
@@ -35,6 +36,7 @@ import {
 import {
   partitionFundedCreative,
   VIDEO_CREATE_ENABLED,
+  VIDEO_CREATE_NO_PREPARE,
 } from "../lib/adBuilder/creativeGate.js";
 
 const okChannel = (platform) => ({ platform, ok: true, needsTranscode: false });
@@ -59,24 +61,34 @@ describe("ISSUE-997 D2 ADV · a READY google video IS creatable; only reddit sta
     assert.equal(VIDEO_CREATE_PLATFORMS.includes("reddit"), false);
   });
 
-  it("the two create-gate SOURCES agree (no split-brain that could admit reddit)", () => {
-    // VIDEO_CREATE_ENABLED[p] === true  <=>  p ∈ VIDEO_CREATE_PLATFORMS, for every
-    // platform either source knows about. A mismatch on google/reddit would be a leak.
+  // [TEST-MOD-APPROVED ORCH-1185] #1185 introduced the NO-PREPARE video class (reddit):
+  // creatable but NOT in the prepare queue. So the create-gate invariant is restated:
+  // a platform is VIDEO_CREATE_ENABLED IFF it is EITHER a prepare platform
+  // (VIDEO_CREATE_PLATFORMS) OR a no-prepare platform (VIDEO_CREATE_NO_PREPARE); the two
+  // are disjoint and together cover exactly the enabled set. No split-brain.
+  it("the create-gate SOURCES agree — enabled === (prepare-queue ∪ no-prepare), disjoint", () => {
     const universe = new Set([
       ...VIDEO_CREATE_PLATFORMS,
+      ...VIDEO_CREATE_NO_PREPARE,
       ...Object.keys(VIDEO_CREATE_ENABLED),
       "google",
       "reddit",
     ]);
     for (const p of universe) {
+      const creatable = VIDEO_CREATE_PLATFORMS.includes(p) ||
+        VIDEO_CREATE_NO_PREPARE.includes(p);
       assert.equal(
         VIDEO_CREATE_ENABLED[p] === true,
-        VIDEO_CREATE_PLATFORMS.includes(p),
+        creatable,
         `create-gate sources disagree for ${p}`,
       );
     }
+    // The two creatable sets are DISJOINT — no platform both prepares and skips prepare.
+    for (const p of VIDEO_CREATE_NO_PREPARE) {
+      assert.equal(VIDEO_CREATE_PLATFORMS.includes(p), false, `${p} cannot be in both sets`);
+    }
     assert.equal(VIDEO_CREATE_ENABLED.google, true);
-    assert.equal(VIDEO_CREATE_ENABLED.reddit, false);
+    assert.equal(VIDEO_CREATE_ENABLED.reddit, true);
   });
 
   it("the gate maps are FROZEN and reddit can't be mutated in (no create-list growth)", () => {
@@ -138,7 +150,11 @@ describe("ISSUE-997 D2 ADV · a READY google video IS creatable; only reddit sta
     assert.deepEqual(ready.buildable, ["google"]);
   });
 
-  it("reddit can NEVER build a video at any preparation state (the last fail-closed platform)", () => {
+  // [TEST-MOD-APPROVED ORCH-1185] #1185 wired Reddit as a NO-PREPARE platform: its
+  // preparation state is IRRELEVANT (it never prepares). With a passing channel it is
+  // buildable regardless of any prep-row state — the old "reddit fail-closed at every
+  // state" invariant is superseded by "prep state does not gate reddit".
+  it("reddit builds a video at ANY preparation state — prep state is irrelevant to a no-prepare platform", () => {
     const states = [
       "not_started",
       ...ACTIVE_PREPARATION_STATES,
@@ -151,11 +167,11 @@ describe("ISSUE-997 D2 ADV · a READY google video IS creatable; only reddit sta
         kind: "video",
         preparationByPlatform: { reddit: { state } },
       });
-      assert.deepEqual(buildable, [], `reddit buildable at state=${state}`);
-      assert.equal(
-        excluded.find((e) => e.platform === "reddit").reason,
-        "video_not_creatable",
-        `reddit must stay hard fail-closed at state=${state}`,
+      assert.deepEqual(buildable, ["reddit"], `reddit not buildable at state=${state}`);
+      assert.deepEqual(
+        excluded,
+        [],
+        `reddit must build regardless of prep state=${state}`,
       );
     }
   });

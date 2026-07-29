@@ -157,7 +157,7 @@ export function VideoPreparationPanel({
 
           {fundedPlatforms.includes("reddit") && (
             <p className="text-xs text-[var(--color-text-secondary)]">
-              Reddit video is not included in Phase A. It will not be prepared or built in this campaign.
+              Reddit video builds directly from the hosted clip — no per-platform preparation is needed. Its preview is a Mingla approximation (Reddit has no video-ad preview API). The paused ad is created on launch.
             </p>
           )}
 

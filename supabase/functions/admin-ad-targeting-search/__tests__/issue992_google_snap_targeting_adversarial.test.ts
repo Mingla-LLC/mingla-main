@@ -297,9 +297,17 @@ Deno.test("adv H: #1184 four-anchor Snap threading is intact (targeting input �
 
 Deno.test("adv H: create fn preserves the #1184 video 422 guard + geocode NULL-DROP (never fabricates)", async () => {
   const src = await Deno.readTextFile(new URL("../../admin-ad-create-campaign/index.ts", import.meta.url));
-  // The #1184 Google video-create guard must NOT be disturbed by #992.
-  assert(src.includes('if (creativeG.kind === "video")'), "Google video guard present");
-  assert(src.includes("video_create_not_available_phase_a"), "Google video 422 error preserved");
+  // The Google video-create branch must NOT be disturbed by #992.
+  // [TEST-MOD-APPROVED ORCH-1185] The stale "422 error preserved" assertion is
+  // obsolete: #997 D2 wired Google video create and #1185 wired Reddit — so NO
+  // video_create_not_available_phase_a 422 remains anywhere. The invariant #992
+  // must preserve is that the Google video branch still exists and routes to a real
+  // Demand Gen create (never a fabricated "Created"), which is what this now asserts.
+  assert(src.includes('if (creativeG.kind === "video")'), "Google video branch present");
+  assert(
+    src.includes("googleCreateDemandGenVideoCampaign"),
+    "Google video routes to a real Demand Gen create (never fabricated)",
+  );
   // The Snap circle geocode drops the circle on a null geocode — never fabricates.
   assert(/if \(!coords\) continue;/.test(src), "null geocode must drop the circle (Constitution #3)");
   assert(src.includes("forwardGeocodeText"), "circles geocoded server-side");

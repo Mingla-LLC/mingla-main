@@ -413,22 +413,23 @@ Deno.test("ISSUE-997 D1: the prepare endpoint folds checked.mergeExtra into exte
   );
 });
 
-// ── 5. GUARDRAIL: post-D2, Google video create is WIRED; only Reddit fail-closed ─
-// [TEST-MOD-APPROVED ORCH-0997] D2 wired Google Demand Gen video create, so the
-// D1-era "Google create stays fail-closed" assertion is obsolete. Updated to the
-// new truth (Google now builds; the Demand Gen create fn is wired), while KEEPING
-// the Reddit fail-closed assertion (the last remaining video create 422).
-Deno.test("ISSUE-997 D2 guardrail: Google video CREATE is now WIRED (Demand Gen); only Reddit stays fail-closed", async () => {
+// ── 5. GUARDRAIL: post-D2, Google video create is WIRED (Demand Gen) ─────────────
+// [TEST-MOD-APPROVED ORCH-1185] D2 wired Google Demand Gen video create; #1185 then
+// wired Reddit paused-video create (the last platform still closed). So the "only
+// Reddit stays fail-closed" assertion is now obsolete — NO video-create 422 remains
+// anywhere. Updated to the new truth (Google builds via Demand Gen; Reddit builds
+// via the #866-hosted structured-post) while keeping the Google Demand Gen wiring.
+Deno.test("ISSUE-997 D2 guardrail: Google video CREATE is WIRED (Demand Gen); Reddit is wired too (#1185) — no fail-closed 422 remains", async () => {
   const src = await Deno.readTextFile(
     new URL("../../admin-ad-create-campaign/index.ts", import.meta.url),
   );
-  // Exactly ONE video create fail-closed seam remains: Reddit.
-  assertEquals(src.match(/video_create_not_available_phase_a/g)?.length, 1);
+  // No video-create fail-closed seam remains — every platform is wired.
   assert(
-    /creativeR\.kind === "video"[\s\S]{0,160}video_create_not_available_phase_a/
-      .test(src),
-    "the Reddit video-create branch must still fail closed",
+    !src.includes("video_create_not_available_phase_a"),
+    "no video-create phase-A 422 may remain — every platform is wired",
   );
+  // Reddit video is wired: it resolves the #866 clip into a type:"VIDEO" post.
+  assertStringIncludes(src, "reddit_video_library_required");
   // D2 built: the Demand Gen create fn is wired into the create branch, consuming
   // the D1-prepared youtube_video_id.
   assertEquals(src.includes("googleCreateDemandGenVideoCampaign"), true);

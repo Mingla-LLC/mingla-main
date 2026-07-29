@@ -419,19 +419,18 @@ async function createSource(): Promise<string> {
   );
 }
 
-Deno.test("ISSUE-997 C/D2 adversarial [structural]: only Reddit video create stays hard fail-closed (Google is now Demand Gen wired)", async () => {
+Deno.test("ISSUE-997 C/D2/#1185 adversarial [structural]: NO video create stays hard fail-closed — Reddit is now wired too", async () => {
   const src = await createSource();
-  // [TEST-MOD-APPROVED ORCH-0997] D2 wired Google Demand Gen video create, so the
-  // C-era "Google + Reddit stay fail-closed" assertion is obsolete. Exactly ONE
-  // blanket phase-A 422 remains — Reddit; the Google guard is now the Demand Gen
-  // create branch. Reddit fail-closed stays asserted.
-  assertEquals(src.match(/video_create_not_available_phase_a/g)?.length, 1);
-  // The remaining 422 is bound to the Reddit video guard.
+  // [TEST-MOD-APPROVED ORCH-1185] D2 wired Google Demand Gen video create; #1185
+  // then wired Reddit paused-video create (the last platform still closed). So the
+  // "only Reddit stays fail-closed" assertion is obsolete — ZERO blanket phase-A
+  // 422s remain. Reddit's guard is now the #866-hosted structured-post video build.
   assert(
-    /creativeR\.kind === "video"[\s\S]{0,120}video_create_not_available_phase_a/
-      .test(src),
-    "Reddit video must fail closed",
+    !src.includes("video_create_not_available_phase_a"),
+    "no video-create phase-A 422 may remain — every platform is wired",
   );
+  // Reddit video is now wired (no 422): it resolves the #866 clip → type:"VIDEO".
+  assertStringIncludes(src, "reddit_video_library_required");
   // The SINGLE_VIDEO (TikTok) seam must NOT appear in the Google or Reddit branches;
   // Google video is a Demand Gen ad (demandGenVideoResponsiveAd), not SINGLE_VIDEO.
   const gStart = src.indexOf('if (platform === "google")');

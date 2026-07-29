@@ -1,0 +1,120 @@
+name: ISSUE-1185 Reddit Video Create Tests
+
+# Phase B of the Campaign Builder video program (#997 parent) — Reddit paused-video
+# create. Reddit is the FIRST no-prepare video platform: it downloads and rehosts the
+# canonical hosted master MP4 + poster straight from the #866 library clip, so the
+# create branch resolves the library row directly and builds a type:"VIDEO"
+# structured-post ad, PAUSED at every level, through the existing redditCreateFullChain
+# (reddit.ts is unchanged). This landed alongside sanctioned [TEST-MOD-APPROVED
+# ORCH-1185] flips of the prior #1184/#997/#995/#992 "Reddit still fail-closed"
+# assertions (Reddit was the last platform still closed for video).
+#
+# The sibling ad-engine Deno suites (#862/#866/#927/#1002 + reddit/adChannel/
+# adCreative*) run HERE because this PR edits their shared surfaces (the create fan-out
+# + the admin builder gate) and no general workflow runs them together.
+
+on:
+  push:
+    branches: [main, "issue-1185-reddit-video"]
+    paths:
+      - "supabase/functions/admin-ad-create-campaign/**"
+      - "supabase/functions/_shared/reddit.ts"
+      - "supabase/functions/_shared/adChannel.ts"
+      - "supabase/functions/_shared/adCreative.ts"
+      - "supabase/functions/_shared/adCreativeMatrix.ts"
+      - "supabase/functions/_shared/__tests__/issue1185_reddit_video_create.test.ts"
+      - "supabase/functions/_shared/__tests__/issue997_*.test.ts"
+      - "supabase/functions/_shared/__tests__/issue1184_video_prepare*.test.ts"
+      - "supabase/functions/_shared/__tests__/reddit.test.ts"
+      - "supabase/functions/_shared/__tests__/issue86*_wp*.test.ts"
+      - "supabase/functions/_shared/__tests__/issue927_*.test.ts"
+      - "supabase/functions/_shared/__tests__/issue1002_*.test.ts"
+      - "supabase/functions/admin-ad-targeting-search/**"
+      - "mingla-admin/src/**"
+      - ".github/workflows/issue-1185-reddit-video-tests.yml"
+  pull_request:
+    paths:
+      - "supabase/functions/**"
+      - "mingla-admin/src/**"
+      - ".github/workflows/issue-1185-reddit-video-tests.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  edge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: Format-check the NEW #1185 Deno test file (NARROW gate — #1184 Option 1 precedent)
+        # Scoped to ONLY the new #1185 Deno file this PR introduces (it passes
+        # `deno fmt --check` under Deno 1.46.x and 2.7.x). Enumerated explicitly and
+        # NOT globbed: a directory glob would pull in pre-existing legacy files that
+        # are intentionally NOT reformatted (e.g. admin-ad-create-campaign/index.ts).
+        # Edited legacy files stay protected by `deno check` + the suites below +
+        # `git diff --check`.
+        run: |
+          deno fmt --check \
+            supabase/functions/_shared/__tests__/issue1185_reddit_video_create.test.ts
+      - name: Type-check the changed edge module
+        run: |
+          deno check \
+            supabase/functions/admin-ad-create-campaign/index.ts
+      - name: Run ISSUE-1185 edge regression + the TEST-MODded #1184/#997/#992 suites + sibling ad-engine suites
+        # The #1185 suite proves the Reddit video seam (422 lifted, #866 resolve →
+        # type:"VIDEO", PAUSED, redditCreateFullChain). The #1184/#997 suites prove
+        # Meta/Snap/TikTok/Google video stays intact with the sanctioned ORCH-1185
+        # reddit flips. The sibling suites prove the shared-module edits did not
+        # regress #862/#866/#927/#1002. --no-check matches the broad edge job and the
+        # #992 targeting workflow (issue992 carries a pre-existing line-75 `in`-operator
+        # type note under strict type-check); type-safety for the changed module is the
+        # dedicated `deno check` step above.
+        run: |
+          deno test --allow-env --allow-read --no-check \
+            supabase/functions/_shared/__tests__/issue1185_reddit_video_create.test.ts \
+            supabase/functions/_shared/__tests__/reddit.test.ts \
+            supabase/functions/_shared/__tests__/issue927_create_fn_tiktok_reddit_branches.test.ts \
+            supabase/functions/_shared/__tests__/issue1184_video_prepare.test.ts \
+            supabase/functions/_shared/__tests__/issue1184_video_prepare_adversarial.tester.test.ts \
+            supabase/functions/_shared/__tests__/issue997_tiktok_video_create.test.ts \
+            supabase/functions/_shared/__tests__/issue997_tiktok_video_create.adversarial.tester.test.ts \
+            supabase/functions/_shared/__tests__/issue997_google_video_create.test.ts \
+            supabase/functions/_shared/__tests__/issue997_google_video_prepare.test.ts \
+            supabase/functions/_shared/__tests__/issue997_google_video_prepare.adversarial.tester.test.ts \
+            supabase/functions/admin-ad-targeting-search/__tests__/issue992_google_snap_targeting_adversarial.test.ts \
+            supabase/functions/_shared/__tests__/issue862_wp1_tester_adversarial.test.ts \
+            supabase/functions/_shared/__tests__/issue866_wp3_tester_adversarial.test.ts \
+            supabase/functions/_shared/__tests__/issue1002_multi_destination_fanout.test.ts \
+            supabase/functions/_shared/__tests__/adChannel.test.ts \
+            supabase/functions/_shared/__tests__/adCreative.test.ts \
+            supabase/functions/_shared/__tests__/adCreativeMatrix.test.ts
+
+  admin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ISSUE-1185 admin regression + the TEST-MODded #1184/#997/#995 suites + #1002 sibling
+        working-directory: mingla-admin
+        run: |
+          node --test \
+            src/__tests__/issue1185_reddit_video_gate.test.js \
+            src/__tests__/issue1184_video_phase_a.test.js \
+            src/__tests__/issue1184_video_phase_a.adversarial.tester.test.js \
+            src/__tests__/issue995_creative_video_not_creatable.test.js \
+            src/__tests__/issue995_creative_video_honesty.tester_adversarial.test.js \
+            src/__tests__/issue997_tiktok_video_create.test.js \
+            src/__tests__/issue997_tiktok_video_create.adversarial.tester.test.js \
+            src/__tests__/issue997_google_video_create.test.js \
+            src/__tests__/issue997_google_video_create.adversarial.tester.test.js \
+            src/__tests__/issue997_google_video_prepare.test.js \
+            src/__tests__/issue997_google_video_prepare.adversarial.tester.test.js \
+            src/__tests__/issue1002_multi_destination.test.js

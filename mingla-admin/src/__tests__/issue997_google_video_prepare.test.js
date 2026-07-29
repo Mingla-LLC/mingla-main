@@ -50,13 +50,16 @@ describe("ISSUE-997 D1 · Google video preparation is wired; create stays fail-c
   // IS now in the video-create subset and a prepared-READY google IS buildable),
   // keeping meta/snap/tiktok intact and reddit still fail-closed. The D1
   // PREPARATION_ORDER + queued-google tests above are untouched.
-  it("VIDEO_CREATE_PLATFORMS / VIDEO_CREATE_ENABLED now INCLUDE google (D2 create wired); only reddit OFF", () => {
+  // [TEST-MOD-APPROVED ORCH-1185] #1185 wired Reddit paused-video create — so the
+  // "reddit OFF" assertion is superseded. Reddit stays OUT of VIDEO_CREATE_PLATFORMS
+  // (the PREPARE queue) because it is a NO-PREPARE platform; it is VIDEO_CREATE_ENABLED.
+  it("VIDEO_CREATE_PLATFORMS is the prepare queue (no reddit); VIDEO_CREATE_ENABLED includes reddit (#1185)", () => {
     assert.deepEqual([...VIDEO_CREATE_PLATFORMS], ["meta", "snapchat", "tiktok", "google"]);
     assert.equal(VIDEO_CREATE_ENABLED.google, true);
     assert.equal(VIDEO_CREATE_ENABLED.meta, true);
     assert.equal(VIDEO_CREATE_ENABLED.snapchat, true);
     assert.equal(VIDEO_CREATE_ENABLED.tiktok, true);
-    assert.equal(VIDEO_CREATE_ENABLED.reddit, false);
+    assert.equal(VIDEO_CREATE_ENABLED.reddit, true);
   });
 
   it("a prepared-READY google video is now BUILDABLE alongside tiktok", () => {

@@ -2806,9 +2806,16 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     const creativeR = (body.creative ?? {}) as Record<string, unknown>;
-    if (creativeR.kind === "video") {
-      return json({ error: "video_create_not_available_phase_a" }, 422);
-    }
+    // ISSUE-1185 [Reddit video Phase B]: Reddit VIDEO create. Unlike
+    // Meta/Snap/TikTok/Google — which PREPARE-upload the video to the platform and
+    // consume a READY ref — Reddit downloads and rehosts from a PUBLIC master URL
+    // (§5.5, identical to the IMAGE path). So there is NO prepare/READY-ref step:
+    // the canonical hosted MP4 (mp4_master_url) + poster (poster_url) come straight
+    // off the #866 library row (kind:"video"), resolved by creative_library_id in
+    // step (4) below. buildRedditStructuredPostJobBody already emits creative.video
+    // + creative.thumbnail for type:"VIDEO", and redditCreateFullChain runs it
+    // PAUSED at every level (G-1) — the reddit.ts adapter needs no change.
+    const creativeKindR = creativeR.kind === "video" ? "video" : "image";
     // ISSUE-979 Bug 3: the global compliance intent reaches Reddit's create path
     // now. Reddit has no AI-disclosure and no special-ad-category field —
     // documented + observable, never silently dropped.
@@ -2821,13 +2828,35 @@ serve(async (req: Request): Promise<Response> => {
     if (!headlineR) {
       return json({ error: "validation_error", detail: "creative_headline_required" }, 400);
     }
-    const imageUrlR = typeof creativeR.image_url === "string" ? creativeR.image_url.trim() : "";
-    if (!imageUrlR) {
+    // Media presence — pure input validation (400/422 BEFORE any provider call).
+    // IMAGE takes a public master URL inline; VIDEO takes the #866 library row id
+    // (the create endpoint never receives inline video bytes — payload.js A1).
+    const imageUrlR = creativeKindR === "image" &&
+        typeof creativeR.image_url === "string"
+      ? creativeR.image_url.trim()
+      : "";
+    const creativeLibraryIdR = creativeKindR === "video" &&
+        typeof creativeR.creative_library_id === "string"
+      ? creativeR.creative_library_id.trim()
+      : "";
+    if (creativeKindR === "image" && !imageUrlR) {
       return json({
         error: "validation_error",
         detail:
           "creative_media_required — Reddit v1 is the IMAGE structured-post variant; pass creative.image_url (a public master URL — Reddit downloads and rehosts, §5.5).",
       }, 400);
+    }
+    if (creativeKindR === "video" && !creativeLibraryIdR) {
+      // ISSUE-1185: Reddit has NO per-platform prepare step — the clip is served to
+      // Reddit straight from the #866 library (mp4_master_url + poster_url). The
+      // honest requirement is a creative-library clip id, NOT the siblings'
+      // "video_preparation_required" (which would imply a prepare handoff Reddit
+      // never performs).
+      return json({
+        error: "reddit_video_library_required",
+        detail:
+          'Reddit VIDEO create needs a #866 creative-library clip (kind:"video" with mp4_master_url + poster_url) — pass creative.creative_library_id. Reddit downloads the master MP4 and its poster directly; there is no per-platform preparation step.',
+      }, 422);
     }
     // §5.1 (GR-29): Reddit CTAs are Title-Case display strings, VERBATIM —
     // never uppercased, never shared with another channel's normalizer.
@@ -2884,14 +2913,68 @@ serve(async (req: Request): Promise<Response> => {
 
     // (4) Creative validation (§5 — copy caps, Title-Case CTA enum, and the
     // §5.4 destination policy: display_url must match; NO OneLink can reach a
-    // Reddit create body — D-P1 bridge-page rejection class).
-    const creativeInputR: RedditCreativeBuildInput = {
-      type: "IMAGE",
-      headline: headlineR,
-      destinationUrl: destUrlR,
-      callToAction: ctaR,
-      imageUrl: imageUrlR,
-    };
+    // Reddit create body — D-P1 bridge-page rejection class). For VIDEO (#1185)
+    // the canonical hosted MP4 + poster are resolved off the #866 library row
+    // FIRST (a DB read, never a provider call); IMAGE keeps its inline master URL.
+    let creativeInputR: RedditCreativeBuildInput;
+    if (creativeKindR === "video") {
+      const { data: libCreativeR } = await supabase
+        .from("ad_creatives")
+        .select("id, kind, mp4_master_url, poster_url")
+        .eq("id", creativeLibraryIdR)
+        .maybeSingle();
+      if (!libCreativeR) {
+        return json({ error: "creative_not_found", detail: "creative_library_id does not resolve" }, 422);
+      }
+      if (libCreativeR.kind !== "video") {
+        return json({
+          error: "creative_kind_mismatch",
+          detail: 'creative_library_id is not a video creative (kind must be "video").',
+        }, 422);
+      }
+      // §5.5: Reddit downloads the master MP4 from a PUBLIC URL — mp4_master_url is
+      // the direct-MP4 byte source (Bunny serves HLS, not a downloadable MP4; #866
+      // A1-3). poster_url is REQUIRED for a Reddit VIDEO post (#866 A1-8c / AC-R-25),
+      // and the ad_creatives_video_source DB CHECK guarantees BOTH are non-null for
+      // kind:"video" — we re-assert here so a legacy/partial row fails closed (422)
+      // instead of building a bad create body.
+      const videoUrlR = typeof libCreativeR.mp4_master_url === "string"
+        ? libCreativeR.mp4_master_url.trim()
+        : "";
+      const posterUrlR = typeof libCreativeR.poster_url === "string"
+        ? libCreativeR.poster_url.trim()
+        : "";
+      if (!videoUrlR) {
+        return json({
+          error: "reddit_video_master_missing",
+          detail:
+            "The video creative has no mp4_master_url — Reddit needs a direct-MP4 public URL to download (#866 A1-3). Re-record the clip through admin-ad-creative-upload.",
+        }, 422);
+      }
+      if (!posterUrlR) {
+        return json({
+          error: "reddit_video_poster_missing",
+          detail:
+            "The video creative has no poster_url — a Reddit VIDEO post REQUIRES a thumbnail (#866 A1-8c / AC-R-25).",
+        }, 422);
+      }
+      creativeInputR = {
+        type: "VIDEO",
+        headline: headlineR,
+        destinationUrl: destUrlR,
+        callToAction: ctaR,
+        videoUrl: videoUrlR,
+        thumbnailUrl: posterUrlR,
+      };
+    } else {
+      creativeInputR = {
+        type: "IMAGE",
+        headline: headlineR,
+        destinationUrl: destUrlR,
+        callToAction: ctaR,
+        imageUrl: imageUrlR,
+      };
+    }
     const creativeCheckR = validateRedditCreative(creativeInputR);
     if (!creativeCheckR.ok) {
       return json({ error: creativeCheckR.detail, detail: creativeCheckR.message }, 422);

@@ -40,16 +40,33 @@
  * ISSUE-997 D2: Google video create is now wired too — a Google video walks to a
  * READY google ref (D1 YouTube resumable upload → external_ref_extra.
  * youtube_video_id), and the admin-ad-create-campaign Google Demand Gen branch
- * builds a PAUSED demandGenVideoResponsiveAd from it. ONLY Reddit video create
- * remains fail-closed (no wired create path).
+ * builds a PAUSED demandGenVideoResponsiveAd from it.
+ * ISSUE-1185 [Reddit video Phase B]: Reddit video create is now wired too — but
+ * WITHOUT a prepare step. Reddit downloads and rehosts the master MP4 + poster
+ * straight from the #866 library clip (mp4_master_url + poster_url), so the
+ * admin-ad-create-campaign Reddit branch builds a PAUSED type:"VIDEO"
+ * structured-post ad directly from the library row. Every platform is now
+ * video-creatable.
  */
 export const VIDEO_CREATE_ENABLED = Object.freeze({
   meta: true,
   snapchat: true,
   tiktok: true,
   google: true,
-  reddit: false,
+  reddit: true,
 });
+
+/**
+ * ISSUE-1185: platforms that create video with NO per-platform preparation step.
+ * Meta/Snap/TikTok/Google upload the clip to the provider and wait for a READY
+ * ref (see VIDEO_CREATE_PLATFORMS in preparationState.js). Reddit does NOT — it
+ * is handed the canonical hosted master URL + poster off the #866 library clip
+ * and downloads/rehosts them itself. For these platforms the build gate skips the
+ * preparation-ready requirement; the recorded #866 video row (which always
+ * carries mp4_master_url + poster_url — the ad_creatives_video_source DB CHECK)
+ * is sufficient, and server-side validation (the byte-probe matrix) still gates.
+ */
+export const VIDEO_CREATE_NO_PREPARE = Object.freeze(["reddit"]);
 
 /**
  * A funded channel is buildable ONLY if its server validation passed with NO
@@ -95,9 +112,10 @@ export function partitionFundedCreative({
     // build path itself; validation + placement previews still render.
     if (kind === "video") {
       if (VIDEO_CREATE_ENABLED[platform] !== true) {
-        // ISSUE-997 C/D2: tiktok AND google are now VIDEO_CREATE_ENABLED, so they
-        // never reach this exclusion branch — only reddit (video_not_creatable)
-        // remains unwired for video.
+        // ISSUE-997 C/D2 + ISSUE-1185: meta/snap/tiktok/google/reddit are all now
+        // VIDEO_CREATE_ENABLED, so no funded platform reaches this exclusion branch
+        // in the current config — it stays as the honest guard for any future
+        // platform whose video create is not yet wired.
         excluded.push({
           platform,
           reason: "video_not_creatable",
@@ -105,7 +123,15 @@ export function partitionFundedCreative({
         });
         continue;
       }
-      if (preparationByPlatform[platform]?.state !== "ready") {
+      // ISSUE-1185: a no-prepare platform (Reddit) creates video straight from the
+      // #866 library clip's hosted master URL + poster — it never goes through the
+      // per-platform preparation handoff, so the preparation-ready gate does not
+      // apply. Its readiness is decided solely by the byte-probe matrix
+      // (creativeReady below); Reddit video requires a poster, enforced there.
+      if (
+        !VIDEO_CREATE_NO_PREPARE.includes(platform) &&
+        preparationByPlatform[platform]?.state !== "ready"
+      ) {
         excluded.push({
           platform,
           reason: `preparation_${preparationByPlatform[platform]?.state ?? "not_started"}`,
