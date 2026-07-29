@@ -35,6 +35,11 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { wrapEdgeHandler } from "../_shared/structuredLog.ts";
 // ISSUE-865 WP-B — post-finalize ad-conversion hook (idempotent + fail-open).
 import { fireAdConversion } from "../_shared/adConversionFire.ts";
+// ISSUE-1326 — Paystack (NG) fast-path verify + the SHARED reservation finalize
+// (the SAME path the paystack-webhook router uses; webhook = primary truth, this
+// is the fast poll resolution). ONE finalize code path, not two.
+import { paystackVerifyTransaction } from "../_shared/paystack.ts";
+import { finalizeVerifiedPaystackReservation } from "../_shared/reservationPaystackFinalize.ts";
 import { stripeTicketCheckout } from "../_shared/stripe.ts";
 import {
   jsonResponse,
@@ -131,6 +136,83 @@ serve(wrapEdgeHandler("venue-reservation-confirm", async (req) => {
   }
   if (session.status === "failed" || session.status === "expired") {
     return jsonResponse({ status: "failed", reservationId: null });
+  }
+
+  // ISSUE-1326 — PAYSTACK (NG) FAST-PATH. A Paystack-routed reservation carries a
+  // paystack_reference and NO Stripe fields, so the Stripe slow-path below would
+  // return `pending` FOREVER (stripe_payment_intent_id/account_id are NULL). The
+  // charge.success webhook is the primary source of truth; this is the fast poll
+  // resolution so the native app doesn't spin on "your reservation will appear
+  // shortly." Verify the charge directly, then finalize via the SHARED helper
+  // (the SAME provider-neutral + idempotent RPC the webhook uses — belt-and-
+  // suspenders: whichever wins the race mints exactly one reservation).
+  if (
+    session.paystack_reference && !session.stripe_payment_intent_id &&
+    !session.stripe_account_id
+  ) {
+    let txn: Record<string, unknown>;
+    try {
+      txn = await paystackVerifyTransaction(session.paystack_reference);
+    } catch (err) {
+      // Verify unavailable / not yet resolved → keep the client polling (the
+      // webhook remains the authority). NOT a terminal failure.
+      console.warn(
+        "[venue-reservation-confirm] paystack verify unavailable (poll again)",
+        err instanceof Error ? err.message : String(err),
+      );
+      return jsonResponse({ status: "pending", reservationId: null });
+    }
+    const txnStatus = String(txn?.status ?? "").toLowerCase();
+    if (txnStatus !== "success") {
+      // Charge not (yet) successful → poll again. The webhook owns the terminal
+      // failure/expiry path; confirm never marks a Paystack session failed here.
+      return jsonResponse({ status: "pending", reservationId: null });
+    }
+    const outcome = await finalizeVerifiedPaystackReservation(
+      supabase as never,
+      session,
+      session.paystack_reference,
+      Number(txn?.amount ?? NaN),
+      String(txn?.currency ?? ""),
+      // FIRE-AND-FORGET the conversion: this is the guest's tap→confirm fast
+      // poll (it usually wins the race vs the webhook), so the response must
+      // NEVER block on the ad-conversion fan-out (up to ~8s per live channel).
+      // Mirrors this fn's Stripe path (`void fireAdConversion(...)`).
+      false,
+    );
+    switch (outcome.kind) {
+      case "finalized":
+      case "replayed": {
+        const reservationId = outcome.reservationId;
+        if (reservationId) {
+          return jsonResponse({
+            status: "completed",
+            reservationId,
+            reservedForUtc: session.reserved_for,
+            partySize: session.party_size,
+            brandId: session.brand_id,
+            guestCancelToken: session.guest_cancel_token ?? undefined,
+            receiptUrl: `/o/${reservationId}`,
+          });
+        }
+        // Replayed with no linked id yet (a webhook mid-mint) → poll again.
+        return jsonResponse({ status: "pending", reservationId: null });
+      }
+      case "amount_mismatch":
+      case "currency_mismatch":
+        // The helper marked the session failed + audited. Terminal.
+        return jsonResponse({ status: "failed", reservationId: null });
+      case "slot_unavailable_refund_due":
+        return jsonResponse(
+          { error: "slot_unavailable", refundDue: true },
+          409,
+        );
+      case "finalize_error":
+        return jsonResponse(
+          { error: "reservation_create_failed", detail: outcome.message },
+          409,
+        );
+    }
   }
 
   // Slow-path: verify the charge succeeded on the connected account.

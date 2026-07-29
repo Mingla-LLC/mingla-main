@@ -126,6 +126,13 @@ export const KNOWN_STATIC_SLUGS: readonly string[] = [
   // mirrors the ticket charge guards; contribution marked failed, no order).
   "paystack.contribution_amount_mismatch",
   "paystack.contribution_currency_mismatch",
+  // ISSUE-1326 [ng-reservation-finalize] — Paystack (NG) paid venue-reservation
+  // finalize guards emitted by _shared/reservationPaystackFinalize (amount/
+  // currency mismatch → session failed; slot-taken-after-charge → session failed
+  // + MANUAL-refund marker while the #1175 venue-refund rail is dark).
+  "paystack.reservation_amount_mismatch",
+  "paystack.reservation_currency_mismatch",
+  "paystack.reservation_slot_unavailable_refund_due",
   "paystack.webhook_unhandled_event",
   // META-ORCH-1076 Phase 2 — Paystack (NG) payout onboarding + management.
   "paystack.subaccount_created",
@@ -214,6 +221,29 @@ export const resolveAuditActionLabel = (action: string): AuditActionLabel => {
         detail: "The paid currency was not NGN; the contribution was marked failed.",
         category: "orders",
         iconHint: "shield",
+      };
+    // ISSUE-1326 [ng-reservation-finalize] — Paystack (NG) paid venue-reservation
+    // finalize guards emitted by _shared/reservationPaystackFinalize.
+    case "paystack.reservation_amount_mismatch":
+      return {
+        title: "Paystack reservation amount mismatch",
+        detail: "The paid amount did not match the reservation total; the reservation session was marked failed and NOT minted.",
+        category: "orders",
+        iconHint: "shield",
+      };
+    case "paystack.reservation_currency_mismatch":
+      return {
+        title: "Paystack reservation currency mismatch",
+        detail: "The paid currency was not NGN; the reservation session was marked failed and NOT minted.",
+        category: "orders",
+        iconHint: "shield",
+      };
+    case "paystack.reservation_slot_unavailable_refund_due":
+      return {
+        title: "Paystack reservation needs manual refund",
+        detail: "The slot was taken between charge and finalize. Funds were captured but no reservation was minted; a MANUAL refund is required (the Paystack venue-refund rail is currently dark).",
+        category: "orders",
+        iconHint: "flag",
       };
     case "paystack.webhook_unhandled_event":
       return {
