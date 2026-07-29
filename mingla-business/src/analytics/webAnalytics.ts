@@ -57,3 +57,6 @@ export const postAttributionTouch = async (
   _input: unknown,
 ): Promise<string | null> => null;
 export const postAttributionConversion = noopVoid;
+// ISSUE-855 PR-2 — referrer host is a web-only concept; native has no
+// document.referrer. No-op keeps the .web/.native export surface at parity.
+export const readReferrerHost = (): string | null => null;

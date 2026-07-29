@@ -58,6 +58,11 @@ interface CaptureBody {
   // resolves it → campaign_id + brand_id so per-campaign ROI is unblocked.
   mc_id?: string;
   af_uid?: string;
+  // ISSUE-855 PR-2 — the HOST of document.referrer (host only; the browser strips
+  // path/query/fragment before sending — SC-8/SC-9). Drives entry_source. A full
+  // URL is tolerated (deriveReferrerHost re-parses it) but the web client never
+  // sends one.
+  referrer?: string;
   utm?: Record<string, unknown>;
   dest?: {
     page_type?: "event" | "trip" | "brand" | "venue";
@@ -260,6 +265,154 @@ async function resolveCampaignFromParam(
   }
 }
 
+// ── ISSUE-855 PR-2 · entry_source classification (referrer host → source) ─────
+//
+// Server-side, forward-only. The touch's entry_source is derived from an ad
+// click-id (=> 'ad', takes precedence) else the referrer HOST against a
+// maintained host-set. Never fabricates: a referrer we cannot categorise is
+// 'unknown'; an empty referrer with no ad signal is 'direct'. The allowed set is
+// pinned by the DB CHECK (ad|search|social|organic|direct|unknown).
+
+export type EntrySource =
+  | "ad"
+  | "search"
+  | "social"
+  | "organic"
+  | "direct"
+  | "unknown";
+
+// Brand LABELS matched as a dot-delimited label of the host (so 'google.co.uk',
+// 'news.google.com', 'l.instagram.com' all match, but 'mygoogle.com' /
+// 'notgoogle-evil.com' do NOT — the label must be exact). Multi-TLD engines
+// (google/yahoo/yandex/…) are covered by label match without a PSL.
+const SEARCH_LABELS: readonly string[] = [
+  "google",
+  "bing",
+  "duckduckgo",
+  "yahoo",
+  "ecosia",
+  "baidu",
+  "yandex",
+  "qwant",
+  "startpage",
+  "ask",
+  "aol",
+  "naver",
+  "seznam",
+  "brave", // brave search (search.brave.com); low-stakes bucketing only
+];
+const SOCIAL_LABELS: readonly string[] = [
+  "instagram",
+  "tiktok",
+  "facebook",
+  "messenger",
+  "twitter",
+  "snapchat",
+  "reddit",
+  "threads",
+  "youtube",
+  "linkedin",
+  "pinterest",
+  "whatsapp",
+  "telegram",
+  "discord",
+  "tumblr",
+  "twitch",
+  "weibo",
+];
+// Short shorteners / exact hosts that have NO safe single label to match on
+// (a bare 't'/'x' label would false-positive on unrelated hosts).
+const SOCIAL_EXACT: readonly string[] = [
+  "x.com",
+  "t.co",
+  "fb.com",
+  "fb.me",
+  "lnkd.in",
+  "youtu.be",
+  "instagr.am",
+  "pin.it",
+  "wa.me",
+  "t.me",
+];
+// A Mingla-owned referrer host = internal navigation = organic (Mingla-driven).
+// Suffix match covers www / go / biz / careers subdomains.
+const MINGLA_SUFFIXES: readonly string[] = [
+  "usemingla.com",
+  "mingla.app",
+];
+
+/**
+ * Reduce any referrer input to a bare, lowercased HOST — no path/query/fragment
+ * (SC-8/SC-9). Accepts a full URL OR an already-bare host (the web client sends
+ * the host; this stays robust for any other caller). Returns null when there is
+ * nothing host-shaped to store.
+ */
+export function deriveReferrerHost(referrer: unknown): string | null {
+  if (typeof referrer !== "string") return null;
+  const raw = referrer.trim();
+  if (raw.length === 0) return null;
+  let host = "";
+  try {
+    host = new URL(raw).hostname;
+  } catch {
+    host = "";
+  }
+  // Fall back to a manual parse when there was no scheme (URL throws) OR the input
+  // was opaque (e.g. "host:443/path" parses as a scheme → empty hostname).
+  if (host.length === 0) {
+    host = raw
+      .replace(/^[a-z][a-z0-9+.-]*:\/\//i, "") // strip scheme://
+      .split("/")[0]
+      .split("?")[0]
+      .split("#")[0];
+    const at = host.lastIndexOf("@"); // strip any userinfo
+    if (at >= 0) host = host.slice(at + 1);
+    const colon = host.indexOf(":"); // strip port
+    if (colon >= 0) host = host.slice(0, colon);
+  }
+  host = host.trim().toLowerCase();
+  if (host.startsWith("www.")) host = host.slice(4);
+  // Defense-in-depth: a host is host-shaped only — never let a path/PII through.
+  if (host.length === 0 || host.length > 253 || !/^[a-z0-9.-]+$/.test(host)) {
+    return null;
+  }
+  return host;
+}
+
+function hasLabel(host: string, labels: readonly string[]): boolean {
+  const parts = host.split(".");
+  for (const l of labels) {
+    if (parts.includes(l)) return true;
+  }
+  return false;
+}
+
+function isMinglaHost(host: string): boolean {
+  return MINGLA_SUFFIXES.some((s) => host === s || host.endsWith("." + s));
+}
+
+/**
+ * Classify the visit source. Precedence: an ad click-id/campaign always wins (an
+ * ad click that also carries a social referrer is still 'ad'); then the referrer
+ * host; then direct (no referrer, no ad signal). Never fabricates.
+ */
+export function classifyEntrySource(input: {
+  hasAdSignal: boolean;
+  referrerHost: string | null;
+}): EntrySource {
+  if (input.hasAdSignal) return "ad";
+  const host = input.referrerHost;
+  if (host) {
+    if (isMinglaHost(host)) return "organic";
+    if (hasLabel(host, SEARCH_LABELS)) return "search";
+    if (SOCIAL_EXACT.includes(host) || hasLabel(host, SOCIAL_LABELS)) {
+      return "social";
+    }
+    return "unknown"; // referred by some other site — honestly not categorised
+  }
+  return "direct";
+}
+
 // ── Handler (exported for runtime tests) ─────────────────────────────────────
 
 export async function handleCapture(
@@ -420,6 +573,17 @@ async function recordTouch(
   const mcId = typeof body.mc_id === "string" && body.mc_id ? body.mc_id : null;
   const campaign = await resolveCampaignFromParam(client, mcId ?? afCId);
 
+  // ISSUE-855 PR-2 — classify the visit source. An ad click-id / resolved
+  // campaign / ad network (network !== 'other') => 'ad'; else the referrer host.
+  const externalClickId = typeof body.external_click_id === "string" &&
+      body.external_click_id
+    ? body.external_click_id
+    : null;
+  const referrerHost = deriveReferrerHost(body.referrer);
+  const hasAdSignal = externalClickId !== null || afCId !== null ||
+    mcId !== null || campaign.campaignId !== null || network !== "other";
+  const entrySource = classifyEntrySource({ hasAdSignal, referrerHost });
+
   const row = {
     click_id: clickId,
     network,
@@ -450,6 +614,9 @@ async function recordTouch(
     surface,
     user_id: typeof body.user_id === "string" ? body.user_id : null,
     af_uid: typeof body.af_uid === "string" ? body.af_uid : null,
+    // ISSUE-855 PR-2 — the source classification + host (host only, no PII).
+    entry_source: entrySource,
+    referrer_host: referrerHost,
     ua_hash: uaHash,
     ip_hash: ipHash,
   };

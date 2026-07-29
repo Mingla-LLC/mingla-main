@@ -724,17 +724,53 @@ export function captureAdClickIds(dest?: CaptureAdClickDest): void {
       : gclid
       ? "google"
       : "other";
-    // No ad signal on this URL → nothing to record (byte-identical to no-op).
-    if (external === null && afCId === null && mcId === null && Object.keys(utm).length === 0) return;
-    void postAttributionTouch({ network, externalClickId: external, afCId, mcId, utm, dest }).then((clickId) => {
-      if (clickId !== null) storeClickId(clickId);
-    });
+    // ISSUE-855 PR-2 — the referrer HOST (host only; strips path/query/fragment,
+    // so no PII leaves the browser). Lets the server classify search / social /
+    // organic / direct beyond ad-vs-organic.
+    const refHost = readReferrerHost();
+    // Record a touch when there is SOMETHING to attribute: an ad signal, a UTM,
+    // OR a referrer host. A truly bare visit (no ad param, no utm, no referrer)
+    // stays a byte-identical no-op.
+    if (
+      external === null && afCId === null && mcId === null &&
+      Object.keys(utm).length === 0 && refHost === null
+    ) {
+      return;
+    }
+    void postAttributionTouch({ network, externalClickId: external, afCId, mcId, utm, dest, referrer: refHost })
+      .then((clickId) => {
+        // FIRST-TOUCH-WINS: keep the click_id of the FIRST attributable touch this
+        // session so a later internal navigation (referrer = a Mingla host →
+        // organic) can never clobber the ad click that actually drove the visit.
+        if (clickId !== null && getStoredClickAttribution().clickId === null) {
+          storeClickId(clickId);
+        }
+      });
   } catch (err) {
     console.warn("[webAnalytics] captureAdClickIds failed (non-fatal):", err);
   }
 }
 
 // ── attribution-capture POSTs (first-party, fire-and-forget, no PII egress) ───
+
+/**
+ * ISSUE-855 PR-2 — the HOST of document.referrer ONLY (never the path/query/
+ * fragment, so no PII leaves the browser). Returns null for a direct visit (empty
+ * referrer), an app webview with no referrer, or any unparseable value. The server
+ * (attribution-capture) turns this host into entry_source.
+ */
+export function readReferrerHost(): string | null {
+  if (!hasWindow()) return null;
+  try {
+    const ref = (window.document as { referrer?: string } | undefined)?.referrer;
+    if (typeof ref !== "string" || ref.length === 0) return null;
+    let host = new URL(ref).hostname.toLowerCase();
+    if (host.startsWith("www.")) host = host.slice(4);
+    return host.length > 0 ? host : null;
+  } catch {
+    return null;
+  }
+}
 
 interface PostTouchInput {
   network: string;
@@ -743,6 +779,8 @@ interface PostTouchInput {
   mcId?: string | null;
   utm: Record<string, string>;
   dest?: CaptureAdClickDest;
+  // ISSUE-855 PR-2 — referrer host only (no PII); forwarded for entry_source.
+  referrer?: string | null;
 }
 
 /** POST a touch to attribution-capture; returns the server click_id (or null). */
@@ -765,6 +803,7 @@ export async function postAttributionTouch(input: PostTouchInput): Promise<strin
         external_click_id: input.externalClickId,
         af_c_id: input.afCId,
         mc_id: input.mcId ?? null,
+        referrer: input.referrer ?? null,
         utm: input.utm,
         dest: input.dest
           ? {
