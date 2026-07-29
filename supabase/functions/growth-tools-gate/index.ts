@@ -50,6 +50,12 @@ const REPLY_TO = "support@usemingla.com";
 const CTA_URL = "https://biz.usemingla.com/ZSCW?pid=tool_venues&c=tool_venues";
 const CTA_LABEL = "Claim your venue on Mingla";
 
+// ISSUE-1354 — founder notification on email unlock (the report_ready →
+// gated_email transition). Recipient is a code const — NO new Supabase secret
+// (COMMS-0122 capacity). The deep-link opens the admin "Tool Leads" console.
+const LEAD_NOTIFY_TO = "seth@usemingla.com";
+const ADMIN_TOOL_LEADS_URL = "https://admin.usemingla.com/#/tool-leads";
+
 // Mirror the careers-apply transport regex.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -1059,6 +1065,116 @@ export function buildReportEmail(report: Record<string, unknown>): {
   };
 }
 
+// ── ISSUE-1354 founder-notify builder ───────────────────────────────────────
+// Pure + exported (the regression test imports it). Maps the tool to its
+// friendly product name and pulls 1-3 defensive report highlights (each guarded,
+// skipped cleanly when absent). The visitor's exact tokenized report link and a
+// deep-link to the admin Tool Leads console are both included. Rendered through
+// renderShell at the call site (mirrors the visitor path). Never throws on a
+// missing field; every interpolated string is escaped via escapeHtml.
+export function buildLeadNotifyEmail(
+  args: {
+    tool: "venues" | "events" | "trips" | "experiences";
+    email: string;
+    report: Record<string, unknown>;
+    reportLink: string;
+    adminUrl: string;
+    whenIso: string;
+  },
+): { subject: string; bodyHtml: string; text: string } {
+  const { tool, email, report, reportLink, adminUrl, whenIso } = args;
+  const friendly = tool === "events"
+    ? "Event Turnout Predictor"
+    : tool === "trips"
+    ? "Quote Any Trip"
+    : tool === "experiences"
+    ? "Undercharging Audit"
+    : "Venue Website Grader";
+
+  // 1-3 defensive report highlights per tool (each guarded; absent → skipped).
+  const highlights: string[] = [];
+  if (tool === "venues") {
+    const scores = asRecord(report.scores);
+    const grade = asString(scores.grade);
+    const overall = asNumber(scores.overall);
+    if (grade) highlights.push(`Grade: ${grade}`);
+    if (overall !== null) highlights.push(`Overall score: ${overall}`);
+  } else if (tool === "events") {
+    const forecast = asRecord(report.forecast);
+    const lo = asNumber(forecast.total_low);
+    const hi = asNumber(forecast.total_high);
+    if (lo !== null && hi !== null) {
+      highlights.push(`Forecast turnout: ${lo}–${hi}`);
+    }
+  } else if (tool === "trips") {
+    const plan = asRecord(report.plan);
+    const ppp = asNumber(plan.recommended_price_per_person);
+    if (ppp !== null) highlights.push(`Recommended price / person: ${ppp}`);
+  } else if (tool === "experiences") {
+    const audit = asRecord(report.audit);
+    const verdict = asString(audit.verdict);
+    const amount = asNumber(audit.headline_amount);
+    if (verdict) highlights.push(`Verdict: ${verdict}`);
+    if (amount !== null) highlights.push(`Headline amount: ${amount}`);
+  }
+
+  const subject = `New lead: ${friendly} — ${email}`;
+
+  const sections: string[] = [];
+  sections.push(
+    `<h1 style="margin:0 0 6px 0;font-size:22px;line-height:1.25;color:${BRAND_INK};font-weight:700;">New ${
+      escapeHtml(friendly)
+    } lead</h1>`,
+  );
+  sections.push(
+    `<p style="margin:0 0 4px 0;font-size:15px;color:${BRAND_INK};font-weight:600;">${
+      escapeHtml(email)
+    }</p>`,
+  );
+  sections.push(
+    `<p style="margin:0 0 16px 0;font-size:13px;color:${BRAND_MUTED};">Unlocked ${
+      escapeHtml(whenIso)
+    }</p>`,
+  );
+  if (highlights.length > 0) {
+    sections.push(
+      `<ul style="margin:0 0 16px 0;padding-left:18px;">${
+        highlights
+          .map((h) =>
+            `<li style="margin:0 0 4px 0;font-size:14px;line-height:1.5;color:${BRAND_INK};">${
+              escapeHtml(h)
+            }</li>`
+          )
+          .join("")
+      }</ul>`,
+    );
+  }
+  sections.push(
+    `<p style="margin:0 0 12px 0;font-size:14px;line-height:1.5;color:${BRAND_INK};">The lead's report: <a href="${
+      escapeHtml(reportLink)
+    }" style="color:${BRAND_ORANGE_BUTTON};font-weight:600;">open the exact link they received</a></p>`,
+  );
+  sections.push(
+    `<p style="margin:0 0 4px 0;font-size:14px;line-height:1.5;color:${BRAND_INK};"><a href="${
+      escapeHtml(adminUrl)
+    }" style="color:${BRAND_ORANGE_BUTTON};font-weight:600;">View all in Admin → Tool Leads</a></p>`,
+  );
+
+  const textLines: string[] = [];
+  textLines.push(`New ${friendly} lead`, email, `Unlocked ${whenIso}`, "");
+  for (const h of highlights) textLines.push(h);
+  if (highlights.length > 0) textLines.push("");
+  textLines.push(
+    "The lead's report (the exact link they received):",
+    reportLink,
+    "",
+    "View all in Admin -> Tool Leads:",
+    adminUrl,
+  );
+
+  return { subject, bodyHtml: sections.join("\n"), text: textLines.join("\n") };
+}
+
 // ── HTTP entry ───────────────────────────────────────────────────────────────
 export async function handler(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") {
@@ -1182,6 +1298,64 @@ export async function handler(req: Request): Promise<Response> {
       console.error("[growth-tools-gate] RESEND_API_KEY missing");
       return json({ error: "email_failed" }, 502);
     }
+
+    // ── ISSUE-1354 — founder notification (best-effort). Fires ONCE per lead on
+    //    the report_ready → gated_email transition: `status` is the PRIOR status
+    //    read above, so re-gates (prior status gated_email/emailed) never
+    //    re-notify, and the anonymous run — which never reaches this function —
+    //    never notifies. Entirely wrapped in try/catch that only console.errors:
+    //    a throw or a non-ok Resend response MUST NOT change the visitor's HTTP
+    //    response or the visitor report email below. Reuses the already-validated
+    //    resendKey + the same no-reply sender identity; adds no new secret.
+    if (status === "report_ready") {
+      try {
+        const notify = buildLeadNotifyEmail({
+          tool,
+          email,
+          report: report as Record<string, unknown>,
+          reportLink,
+          adminUrl: ADMIN_TOOL_LEADS_URL,
+          whenIso: new Date().toISOString(),
+        });
+        const notifyHtml = renderShell({
+          preheader: notify.subject,
+          bodyHtml: notify.bodyHtml,
+          supportEmail: Deno.env.get("SUPPORT_EMAIL") ?? REPLY_TO,
+          logoUrl: minglaLogoUrl(),
+          footerAddress: resolveRuntimeString("mingla_footer_address", "MINGLA_FOOTER_ADDRESS") ??
+            "Mingla, hello@usemingla.com",
+        });
+        const notifySender = EMAIL_SENDERS.noreply;
+        assertNotResendSandbox(notifySender);
+        const notifyRes = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${resendKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            from: formatSenderHeader(notifySender),
+            to: [LEAD_NOTIFY_TO],
+            reply_to: email,
+            subject: notify.subject,
+            html: notifyHtml,
+            text: notify.text,
+          }),
+        });
+        if (!notifyRes.ok) {
+          console.error(
+            "[growth-tools-gate] founder notify failed",
+            notifyRes.status,
+          );
+        }
+      } catch (e) {
+        console.error(
+          "[growth-tools-gate] founder notify threw",
+          e instanceof Error ? e.message : String(e),
+        );
+      }
+    }
+
     // #1154 — the growth-tools funnel gets its own no-reply identity instead of
     // the shared `system` sender (a payments@ identity in prod). reply_to below
     // still routes replies to support@.
