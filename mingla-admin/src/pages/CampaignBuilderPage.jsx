@@ -171,6 +171,13 @@ export function CampaignBuilderPage() {
     googleDescriptions: ["", ""],
     keywords: [],
     negativeKeywords: [],
+    // ISSUE-1282 [Google video bespoke copy] — a Google VIDEO (Demand Gen) ad can
+    // carry operator-written long headlines (≤90) + an optional business name
+    // (≤25). Empty by default → payload.js sends nothing and the create branch
+    // derives the fallback (RSA headlines / title-cased brand slug), exactly as
+    // before. Only surfaced in StepCopy on the Google-video path.
+    googleLongHeadlines: [""],
+    googleBusinessName: "",
   });
   const [specialAdCategory, setSpecialAdCategory] = useState("NONE");
   const [name, setName] = useState("");
@@ -832,7 +839,14 @@ export function CampaignBuilderPage() {
             />
           )}
           {stepId === "copy" && (
-            <StepCopy copy={copy} onCopyChange={setCopy} channelRows={plannedRows} />
+            <StepCopy
+              copy={copy}
+              onCopyChange={setCopy}
+              channelRows={plannedRows}
+              /* ISSUE-1282: the Google-video (Demand Gen) bespoke long-headline +
+                 business-name fields render ONLY when the creative is a video. */
+              isVideo={creative.kind === "video"}
+            />
           )}
           {stepId === "policy" && (
             <StepPolicy
