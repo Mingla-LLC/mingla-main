@@ -1322,18 +1322,24 @@
 
 ## ACTIVE — ORCH-1155 (public brand page — Direction-A redesign + all-surface parity, 2026-06-17, PR #516)
 
-### I-PROPOSED-1365-BRAND-RESERVATIONS-RESOLVE-VENUE-FIRST (DRAFT)
+### I-PROPOSED-1365-BRAND-RESERVATIONS-RESOLVE-VENUE-FIRST (ACTIVE — issue #1365 CLOSE 2026-07-29, PR #1375)
 **Rule:** A Brand page may list verified public venues, but it never exposes
 ambiguous brand-level availability or booking. Availability and reservation
 actions activate only after one exact venue resolves.
+- **Enforcement:** shared Brand renderer/adapters plus append-only Brand-to-venue and tester state-isolation tests.
+- **Established:** ACTIVE after independent iOS, physical Samsung, and buyer-web verification on issue #1365.
 
-### I-PROPOSED-1365-PUBLIC-MENU-VENUE-ISOLATION (DRAFT)
+### I-PROPOSED-1365-PUBLIC-MENU-VENUE-ISOLATION (ACTIVE — issue #1365 CLOSE 2026-07-29, PR #1375)
 **Rule:** A public venue Menu returns only active menu items whose parent menu
 is assigned to that exact verified venue. Unassigned legacy menus stay private.
+- **Enforcement:** exact venue-keyed public view, write guards, and append-only PostgreSQL isolation regression.
+- **Established:** ACTIVE after the production menu mapped to its sole verified venue with zero pending-venue exposure.
 
-### I-PROPOSED-1365-PUBLIC-SAFE-AREA-CLEARANCE (DRAFT)
+### I-PROPOSED-1365-PUBLIC-SAFE-AREA-CLEARANCE (ACTIVE — issue #1365 CLOSE 2026-07-29, PR #1375)
 **Rule:** Public Brand and venue final content plus sticky controls clear the
 measured browser/device bottom inset; no fixed zero-inset fallback is allowed.
+- **Enforcement:** shared runtime inset contract, public-route safe-area gates, and physical Samsung/browser visual proof.
+- **Established:** ACTIVE after the reservation action cleared Android navigation and mobile Safari safe areas.
 
 ### I-PROPOSED-1155-ABOUT-FIRST-DEFAULT (ACTIVE)
 - **Rule:** The public brand page's About tab is the FIRST tab and the DEFAULT-selected tab (never Upcoming).
