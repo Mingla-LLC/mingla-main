@@ -1341,10 +1341,10 @@ measured browser/device bottom inset; no fixed zero-inset fallback is allowed.
 - **Enforcement:** shared runtime inset contract, public-route safe-area gates, and physical Samsung/browser visual proof.
 - **Established:** ACTIVE after the reservation action cleared Android navigation and mobile Safari safe areas.
 
-### I-PROPOSED-1380-PUBLIC-VENUE-RESERVE-CTA-SHEET (DRAFT — issue #1380 implementation)
+### I-PROPOSED-1380-PUBLIC-VENUE-RESERVE-CTA-SHEET (ACTIVE)
 **Rule:** On a reservable public venue page the Reserve CTA exists only off the Reservations tab; activating it atomically selects Reservations and opens one canonical responsive Sheet containing the existing guest reservation flow. Dismissal leaves Reservations active, returns focus to its tab, and never mounts a duplicate reservation engine.
 - **Enforcement:** issue #1380 implementor happy-path state/render/analytics suites plus the tester-owned adversarial interaction/accessibility suite; both require fails-on-revert proof in the CI-wired `mingla-business jest (full suite)` job.
-- **Established:** DRAFT during issue #1380 implementation; flip ACTIVE only after independent tester PASS, merged production-web deployment, and verified CLOSE.
+- **Established:** ACTIVE after independent tester PASS, all-green PR #1383, and production verification on desktop and phone-width Academy Street Bistro public pages.
 
 ### I-PROPOSED-1155-ABOUT-FIRST-DEFAULT (ACTIVE)
 - **Rule:** The public brand page's About tab is the FIRST tab and the DEFAULT-selected tab (never Upcoming).
