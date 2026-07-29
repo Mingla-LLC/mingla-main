@@ -184,7 +184,13 @@ export const trimVideoWithDedicatedEditor = (
         maxDuration: maxDurationMs,
         saveButtonText: "Use clip",
         cancelButtonText: "Back",
-        enablePreciseTrimming: true,
+        // issue #1350 — keyframe stream-copy (-c copy), NOT a frame-accurate
+        // re-encode. `true` forces a full h264 re-encode of the whole trimmed
+        // span (slow on iOS, and the source of the Android h264_mediacodec
+        // "rc 1" export failure). A cover never needs frame-accurate cut points
+        // and Bunny re-compresses server-side (I-966), so the re-encode is
+        // wasted work. `false` is the library default.
+        enablePreciseTrimming: false,
       });
     } catch (error) {
       settle(() => reject(error));

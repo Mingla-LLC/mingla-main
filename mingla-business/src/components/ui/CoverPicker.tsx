@@ -210,6 +210,42 @@ const warnHaptic = (): void => {
   void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
 };
 
+// issue #1348 — map a raw pick/trim failure to friendly in-sheet copy so the
+// scary system string (e.g. "PHPhotosErrorDomain error 3164") never reaches the
+// user. Defensive substring match on error.message; first match wins; non-Error
+// throws fall through to the generic clause. Cancel (Back) never reaches here —
+// it early-returns with an info notice upstream, so no cancel becomes an error.
+const friendlyVideoCoverError = (error: unknown): string => {
+  const raw = error instanceof Error ? error.message : "";
+  const message = raw.toLowerCase();
+  // A never-presented trim editor already throws friendly copy
+  // (presentationFailedError, "The trim screen didn't open…") — pass through.
+  if (message.includes("trim screen didn't open")) {
+    return raw;
+  }
+  // iCloud-only / network-required asset (expo PHPhotosErrorDomain 3164).
+  if (
+    message.includes("3164") ||
+    message.includes("phphotoserrordomain") ||
+    message.includes("networkaccessrequired") ||
+    message.includes("icloud")
+  ) {
+    return "This video is saved in iCloud. Open it in Photos to download it to your phone, then try again.";
+  }
+  // Trim / FFmpeg export failure (react-native-video-trim onError; rc 1).
+  if (
+    message.includes("video trim failed") ||
+    message.includes("video trim") ||
+    message.includes("trimming_failed") ||
+    message.includes("command failed") ||
+    message.includes("rc 1")
+  ) {
+    return "Couldn't trim this video. Try another clip.";
+  }
+  // Generic fallback (incl. non-Error throw) — never the raw system message.
+  return "Couldn't add this video. Try another clip.";
+};
+
 // issue #1338 — present-after-dismissal. expo-image-picker's
 // launchImageLibraryAsync promise can resolve BEFORE the picker's native
 // dismiss transition finishes on iOS; presenting the trim modal in that window
@@ -935,12 +971,10 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       await videoUpload.start(uploadFile);
     } catch (error) {
       // issue #1338 — in-sheet, never a root Toast.
+      // issue #1348 — friendly copy, never the raw system message.
       setVideoPickNotice({
         tone: "error",
-        text:
-          error instanceof Error
-            ? error.message
-            : "Video cover upload failed. Try again.",
+        text: friendlyVideoCoverError(error),
       });
     } finally {
       // ORCH-1308: do NOT revoke the picked blob here — the "try again" retry
