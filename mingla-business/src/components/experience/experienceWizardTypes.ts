@@ -85,11 +85,12 @@ export const labelForIndex = (i: number, n: number): string => {
  * placeId-required MECHANISM is dropped, so an un-indexed place located via
  * free-text/pin is valid. (Revises I-PROPOSED-1363-COORD-FROM-ANY-TIER.)
  *
- * ⚠ NOTE: the experience PUBLISH RPC `biz_publish_experience` still enforces a
- * server-side `place_id` guard (`stop_address_unvalidated`) — loosening it is a
- * documented follow-up outside this issue's allowlist (see IMPLEMENTATION report
- * gap G1). This client predicate is loosened per the SPEC; the server guard must
- * be loosened by the paired RPC amendment before a pin-only stop can publish.
+ * SERVER PARITY: the experience PUBLISH RPC `biz_publish_experience` now matches
+ * this predicate — as of issue #1363 amendment G1 (migration 20270121001363,
+ * live) both the first-stop guard and the per-stop loop require lat + lng ONLY;
+ * the old `place_id` requirement is DROPPED. So a free-text / pin stop with a
+ * null place_id publishes, while a stop with a null lat/lng is still rejected
+ * server-side (`stop_address_unvalidated`). Client and server are aligned.
  */
 export const stopHasValidatedLocation = (s: ExperienceStopDraft): boolean =>
   s.lat !== null && s.lng !== null && s.address.trim().length > 0;
