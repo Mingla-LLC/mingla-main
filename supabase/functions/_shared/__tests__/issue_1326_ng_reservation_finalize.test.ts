@@ -52,6 +52,10 @@ interface FakeState {
   // so the fire no-ops (context_unresolved) → zero senders, zero network — the
   // count alone proves the helper DID (or did NOT) invoke the conversion fire.
   fireInvocations: number;
+  // Optional gate: when set, resolveReservationContext's `from('reservations')`
+  // read (the fire's FIRST await) blocks until this promise resolves. Used to
+  // prove the await/void fire-mode without any timing measurement.
+  fireGate?: Promise<void>;
   finalizeImpl: (args: Record<string, unknown>) => Promise<
     { data: unknown; error: { message: string } | null }
   >;
@@ -76,9 +80,13 @@ function makeFakeSupabase(state: FakeState) {
         else if (table === "reservation_checkout_sessions") {
           data = state.reservationSession;
         } else if (table === "reservations") {
-          // resolveReservationContext's first read — count + return null so the
-          // fire no-ops immediately (no senders, no network).
+          // resolveReservationContext's first read — count (proves the fire was
+          // invoked) + return null so the fire no-ops (context_unresolved → no
+          // senders, no network). If gated, block the RESOLUTION until released.
           state.fireInvocations += 1;
+          if (state.fireGate) {
+            return state.fireGate.then(() => ({ data: null, error: null }));
+          }
           data = null;
         } else if (table === "ad_conversions") data = null;
         else if (table === "ad_connections") data = null;
@@ -325,4 +333,87 @@ Deno.test("helper · already-linked session short-circuits to replayed (no mint,
   assertEquals(outcome.kind, "replayed");
   assertEquals(state.finalizeCalls, 0);
   assertEquals(state.fireInvocations, 0);
+});
+
+// ─── Fire-mode (P2 guest-latency defect fix): the mint/guards/idempotency are
+//     identical, but the CONFIRM fast-path must NOT block on the conversion
+//     fan-out, while the WEBHOOK reliably awaits it. Proven with a gated fire
+//     (no timing measurement — a race vs a bounded timer). ────────────────────
+
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
+
+Deno.test({
+  name:
+    "fire-mode · awaitConversion=false (CONFIRM) → mint returns WITHOUT waiting on a hanging conversion fire",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    const gate = deferred();
+    const state = baseState();
+    state.fireGate = gate.promise; // the fire's first read hangs until released
+    const supabase = makeFakeSupabase(state);
+
+    const p = finalizeVerifiedPaystackReservation(
+      supabase,
+      state.reservationSession!,
+      RESV_REF,
+      537500,
+      "NGN",
+      false, // confirm fast-path
+    );
+    // If the helper AWAITED the (gated) fire, it could not win this race.
+    const winner = await Promise.race([
+      p.then((o) => ({ tag: "returned", kind: o.kind })),
+      new Promise<{ tag: string; kind?: string }>((res) =>
+        setTimeout(() => res({ tag: "blocked" }), 1000)
+      ),
+    ]);
+    assertEquals(winner.tag, "returned"); // returned while the fire is still gated
+    assertEquals(winner.kind, "finalized");
+    assertEquals(state.finalizeCalls, 1); // the mint DID happen
+    assertEquals(state.fireInvocations, 1); // the fire WAS invoked (background)
+
+    // Release + drain so the background fire completes cleanly.
+    gate.resolve();
+    await p;
+    await new Promise((r) => setTimeout(r, 0));
+  },
+});
+
+Deno.test({
+  name:
+    "fire-mode · awaitConversion=true (WEBHOOK) → mint does NOT return until the conversion fire completes",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    const gate = deferred();
+    const state = baseState();
+    state.fireGate = gate.promise;
+    const supabase = makeFakeSupabase(state);
+
+    const p = finalizeVerifiedPaystackReservation(
+      supabase,
+      state.reservationSession!,
+      RESV_REF,
+      537500,
+      "NGN",
+      true, // webhook reliable sender
+    );
+    const winner1 = await Promise.race([
+      p.then(() => "returned"),
+      new Promise<string>((res) => setTimeout(() => res("blocked"), 100)),
+    ]);
+    assertEquals(winner1, "blocked"); // still awaiting the gated fire
+
+    gate.resolve();
+    const outcome = await p; // now it completes
+    assertEquals(outcome.kind, "finalized");
+    assertEquals(state.fireInvocations, 1);
+  },
 });

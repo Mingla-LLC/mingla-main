@@ -6,25 +6,31 @@
 // showed "your reservation will appear shortly" and it never did.
 //
 // This drives the REAL venue-reservation-confirm handler (captured via the
-// ORCH-1205 serve-shim import map) against a fully-stubbed network: the Paystack
-// verify GET succeeds, the SHARED finalize RPC mints, and confirm returns
-// { status: "completed", reservationId }. Proves the fast poll now resolves.
+// ORCH-1205 serve-shim import map) against a fully-stubbed network:
+//   1. a Paystack session + verified-success charge → the SHARED finalize RPC
+//      mints and confirm returns { completed, reservationId }; and
+//   2. the confirm fast-path is FIRE-AND-FORGET — it returns WITHOUT blocking on
+//      the ad-conversion fan-out (P2 guest-latency defect fix), even when that
+//      fan-out hangs.
 //
 // Run (repo root):
 //   SUPABASE_URL=https://example-test.supabase.co \
 //   SUPABASE_SERVICE_ROLE_KEY=test-service-role-key-not-real \
+//   PAYSTACK_MODE=test PAYSTACK_SECRET_KEY_TEST=sk_test_issue1326_confirm_secret \
 //   deno test --import-map=supabase/functions/_shared/__tests__/_importmap.test.json \
 //     --allow-read --allow-env --allow-net \
 //     supabase/functions/_shared/__tests__/issue_1326_confirm_paystack.test.ts
 //
 // FAILS-ON-REVERT: deleting the Paystack branch in venue-reservation-confirm/
 // index.ts makes the handler return { status: "pending" } (no reservationId) →
-// this test's completed/reservationId assertions go RED.
+// the completed/reservationId assertions go RED. Reverting the confirm fire to
+// `awaitConversion=true` (awaited) makes the fire-and-forget test's race resolve
+// "blocked" → RED.
 import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.190.0/testing/asserts.ts";
-import { getCapturedHandler, resetCapturedHandler } from "./_serveShim.ts";
+import { getCapturedHandler } from "./_serveShim.ts";
 
 const SUPA_URL = "https://example-test.supabase.co";
 const SECRET = "sk_test_issue1326_confirm_secret";
@@ -38,6 +44,12 @@ Deno.env.set("SUPABASE_URL", SUPA_URL);
 Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key-not-real");
 Deno.env.set("PAYSTACK_MODE", "test");
 Deno.env.set("PAYSTACK_SECRET_KEY_TEST", SECRET);
+
+// Capture the REAL handler ONCE — the module is import-cached, so serve() (hence
+// the shim capture) runs exactly once. Each test swaps the fetch stub before it
+// invokes the captured handler.
+await import("../../venue-reservation-confirm/index.ts");
+const HANDLER = getCapturedHandler();
 
 async function sha256Hex(input: string): Promise<string> {
   const digest = await crypto.subtle.digest(
@@ -56,12 +68,54 @@ function jsonOk(body: unknown, status = 200): Response {
   });
 }
 
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
+
+async function makePendingPaystackSession(): Promise<Record<string, unknown>> {
+  return {
+    id: SESSION_ID,
+    brand_id: "bbbbbbbb-1111-2222-3333-444444444444",
+    reserved_for: "2026-08-01T19:00:00.000Z",
+    party_size: 2,
+    buyer_name: "Ada Test",
+    buyer_email: "ada@example.com",
+    buyer_phone_e164: "+2348000000000",
+    occasion: null,
+    guest_notes: null,
+    amount_cents: AMOUNT_KOBO,
+    currency: "NGN",
+    stripe_payment_intent_id: null,
+    stripe_checkout_session_id: null,
+    stripe_account_id: null,
+    paystack_reference: REFERENCE,
+    created_via: "app",
+    consumer_user_id: null,
+    guest_cancel_token: "cancel-tok-1",
+    buyer_status_token_hash: await sha256Hex(BUYER_TOKEN),
+    status: "pending",
+    reservation_id: null,
+    attribution_click_id: null,
+  };
+}
+
 interface HitLog {
   verifyHit: boolean;
   finalizeHit: boolean;
 }
 
-function installFetchStub(session: Record<string, unknown>, log: HitLog) {
+function installFetchStub(
+  session: Record<string, unknown>,
+  log: HitLog,
+  // Optional gate: when set, the ad-conversion fire's FIRST read
+  // (GET /rest/v1/reservations) blocks until this resolves — lets a test prove
+  // confirm returns WITHOUT waiting on the (voided) conversion fan-out.
+  fireReservationsGate?: Promise<void>,
+) {
   const realFetch = globalThis.fetch;
   globalThis.fetch = (
     input: Request | URL | string,
@@ -72,6 +126,15 @@ function installFetchStub(session: Record<string, unknown>, log: HitLog) {
       : (input instanceof URL ? input.href : input.url);
     const method = (init?.method ??
       (input instanceof Request ? input.method : "GET")).toUpperCase();
+
+    // The ad-conversion fire (voided by confirm) reads the reservations row
+    // first — gate it when a test wants to prove non-blocking return.
+    if (
+      fireReservationsGate &&
+      url.startsWith(`${SUPA_URL}/rest/v1/reservations?`)
+    ) {
+      return fireReservationsGate.then(() => jsonOk([]));
+    }
 
     // Paystack verify — the ONLY paystack surface confirm touches.
     if (url.startsWith("https://api.paystack.co/transaction/verify/")) {
@@ -117,55 +180,29 @@ function installFetchStub(session: Record<string, unknown>, log: HitLog) {
   };
 }
 
+function confirmRequest(): Request {
+  return new Request("https://edge.test/venue-reservation-confirm", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      reservationDraftId: SESSION_ID,
+      buyerStatusToken: BUYER_TOKEN,
+    }),
+  });
+}
+
 Deno.test({
   name:
     "confirm · Paystack session + verified success → SHARED finalize mints → { completed, reservationId } (not pending forever)",
   sanitizeOps: false,
   sanitizeResources: false,
   fn: async () => {
-    resetCapturedHandler();
-    const session = {
-      id: SESSION_ID,
-      brand_id: "bbbbbbbb-1111-2222-3333-444444444444",
-      reserved_for: "2026-08-01T19:00:00.000Z",
-      party_size: 2,
-      buyer_name: "Ada Test",
-      buyer_email: "ada@example.com",
-      buyer_phone_e164: "+2348000000000",
-      occasion: null,
-      guest_notes: null,
-      amount_cents: AMOUNT_KOBO,
-      currency: "NGN",
-      stripe_payment_intent_id: null,
-      stripe_checkout_session_id: null,
-      stripe_account_id: null,
-      paystack_reference: REFERENCE,
-      created_via: "app",
-      consumer_user_id: null,
-      guest_cancel_token: "cancel-tok-1",
-      buyer_status_token_hash: await sha256Hex(BUYER_TOKEN),
-      status: "pending",
-      reservation_id: null,
-      attribution_click_id: null,
-    };
+    assert(HANDLER !== null, "venue-reservation-confirm handler captured");
+    const session = await makePendingPaystackSession();
     const log: HitLog = { verifyHit: false, finalizeHit: false };
     const restore = installFetchStub(session, log);
     try {
-      await import("../../venue-reservation-confirm/index.ts");
-      const handler = getCapturedHandler();
-      assert(handler !== null, "venue-reservation-confirm handler captured");
-
-      const res = await handler!(
-        new Request("https://edge.test/venue-reservation-confirm", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            reservationDraftId: SESSION_ID,
-            buyerStatusToken: BUYER_TOKEN,
-          }),
-        }),
-      );
-
+      const res = await HANDLER!(confirmRequest());
       assertEquals(res.status, 200);
       const body = await res.json();
       assertEquals(body.status, "completed");
@@ -173,6 +210,44 @@ Deno.test({
       assert(log.verifyHit, "Paystack verify was called");
       assert(log.finalizeHit, "the shared pg_finalize_guest_reservation ran");
     } finally {
+      restore();
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "confirm · Paystack fast-path is FIRE-AND-FORGET → returns { completed } WITHOUT blocking on a hanging conversion fan-out (P2 latency fix)",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    assert(HANDLER !== null, "venue-reservation-confirm handler captured");
+    const session = await makePendingPaystackSession();
+    const log: HitLog = { verifyHit: false, finalizeHit: false };
+    const gate = deferred(); // the fire's reservations read hangs until released
+    const restore = installFetchStub(session, log, gate.promise);
+    try {
+      const handled = HANDLER!(confirmRequest());
+      // If confirm AWAITED the fire, this race could not resolve "returned"
+      // (the fire is gated open).
+      const winner = await Promise.race([
+        handled.then(() => "returned"),
+        new Promise<string>((res) => setTimeout(() => res("blocked"), 1500)),
+      ]);
+      assertEquals(winner, "returned");
+      const res = await handled;
+      assertEquals(res.status, 200);
+      const body = await res.json();
+      assertEquals(body.status, "completed");
+      assertEquals(body.reservationId, RESERVATION_ID);
+      assert(
+        log.finalizeHit,
+        "the mint still ran (guest got their reservation)",
+      );
+    } finally {
+      // Release the gated background fire, drain a tick, then restore.
+      gate.resolve();
+      await new Promise((r) => setTimeout(r, 0));
       restore();
     }
   },

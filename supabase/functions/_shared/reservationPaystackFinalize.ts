@@ -73,6 +73,19 @@ export type ReservationFinalizeOutcome =
  * @param reference         the Paystack reference (the text PI/idempotency key).
  * @param verifiedAmountSubunits  verified txn amount in kobo.
  * @param verifiedCurrency  verified txn currency (any case).
+ * @param awaitConversion   whether to AWAIT the post-mint ad-conversion fire.
+ *   The mint / guards / idempotency are identical either way — ONLY the fire's
+ *   await differs:
+ *     • WEBHOOK (true): await it. The webhook is the reliable background sender
+ *       with no human waiting, and awaiting keeps the fire inside the webhook's
+ *       lifecycle so it actually runs to completion.
+ *     • CONFIRM (false): fire-and-forget. Confirm is the guest's tap→confirm
+ *       fast poll (it usually WINS the race vs the webhook), so the response
+ *       must NEVER block on the conversion fan-out (up to ~8s per live channel).
+ *       Mirrors confirm's Stripe path (`void fireAdConversion(...)`); the browser
+ *       reservation pixel fires the same event_id client-side (deduped), so the
+ *       void'd server fire is belt-and-suspenders.
+ *   Either way the fire is fail-open and never affects the mint/outcome.
  */
 export async function finalizeVerifiedPaystackReservation(
   supabase: SupabaseClient,
@@ -80,6 +93,7 @@ export async function finalizeVerifiedPaystackReservation(
   reference: string,
   verifiedAmountSubunits: number,
   verifiedCurrency: string,
+  awaitConversion = true,
 ): Promise<ReservationFinalizeOutcome> {
   // 1. IDEMPOTENT SHORT-CIRCUIT (before any guard / mint / fire). A redelivered
   //    webhook (or a confirm racing the webhook) must re-mint NOTHING and
@@ -197,23 +211,29 @@ export async function finalizeVerifiedPaystackReservation(
     };
   }
 
-  // 4. FIRE the #865 two-tier ad-conversion on the minted reservation. STRICTLY
-  //    fire-and-forget / fail-open: awaited (no human waiting in the webhook)
-  //    but wrapped — a conversion failure NEVER affects the finalize or the ack
-  //    (the helper never throws). Mirrors venue-reservation-confirm's fire
-  //    (surface 'web', eventType 'purchase' — the paid/value'd branch).
-  try {
-    await fireAdConversion(supabase as never, {
-      reservationId,
-      surface: "web",
-      eventType: "purchase",
-      clickId: session.attribution_click_id ?? null,
-    });
-  } catch (adConvErr) {
-    console.warn(
-      "[reservationPaystackFinalize] ad-conversion fire threw (non-fatal):",
-      adConvErr instanceof Error ? adConvErr.message : String(adConvErr),
-    );
+  // 4. FIRE the #865 two-tier ad-conversion on the minted reservation. Fail-open
+  //    (this wrapper never throws — a conversion failure NEVER affects the
+  //    finalize/outcome). surface 'web', eventType 'purchase' (the paid/value'd
+  //    branch). The caller decides whether to AWAIT it (see @param
+  //    awaitConversion): the webhook awaits (reliable background sender); confirm
+  //    fire-and-forgets so the guest's fast poll is never blocked on the fan-out.
+  const firePromise = (async () => {
+    try {
+      await fireAdConversion(supabase as never, {
+        reservationId,
+        surface: "web",
+        eventType: "purchase",
+        clickId: session.attribution_click_id ?? null,
+      });
+    } catch (adConvErr) {
+      console.warn(
+        "[reservationPaystackFinalize] ad-conversion fire threw (non-fatal):",
+        adConvErr instanceof Error ? adConvErr.message : String(adConvErr),
+      );
+    }
+  })();
+  if (awaitConversion) {
+    await firePromise;
   }
 
   return { kind: "finalized", reservationId };

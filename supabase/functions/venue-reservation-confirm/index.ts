@@ -174,6 +174,11 @@ serve(wrapEdgeHandler("venue-reservation-confirm", async (req) => {
       session.paystack_reference,
       Number(txn?.amount ?? NaN),
       String(txn?.currency ?? ""),
+      // FIRE-AND-FORGET the conversion: this is the guest's tap→confirm fast
+      // poll (it usually wins the race vs the webhook), so the response must
+      // NEVER block on the ad-conversion fan-out (up to ~8s per live channel).
+      // Mirrors this fn's Stripe path (`void fireAdConversion(...)`).
+      false,
     );
     switch (outcome.kind) {
       case "finalized":

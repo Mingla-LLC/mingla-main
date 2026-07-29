@@ -202,6 +202,10 @@ export async function handlePaystackChargeSuccess(
         reference,
         verifiedAmount,
         verifiedCurrency,
+        // AWAIT the conversion fire: the webhook is the reliable background
+        // sender with no human waiting, and awaiting keeps it inside the
+        // webhook's lifecycle so it actually runs.
+        true,
       );
       switch (outcome.kind) {
         case "finalized":
