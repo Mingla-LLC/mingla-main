@@ -1087,6 +1087,165 @@ export function filterTikTokCityRegions(
   return cities.slice(0, limit);
 }
 
+// ── City geo resolution via tool/targeting/search (ISSUE-1289) ────────────────
+// PROVEN live 2026-07-29 (MCP tool_targeting_search, advertiser
+// 7627974536397766673): the CITY-filter over tool/region (filterTikTokCityRegions
+// above) could NOT resolve major US cities. In TikTok's US taxonomy the levels are
+// COUNTRY → PROVINCE (state) → CITY (**county**) → DISTRICT (**the actual
+// municipality**), and DMAs come back at PROVINCE level in tool/region
+// ("New York,DMA®"). So "New York" the city is a DISTRICT (geo_id 5128581) and
+// NEVER appears in a level==="CITY" filter — the search returned zero matches and
+// the create path silently fell back to country (#1289). tool/targeting/search
+// FUZZY_SEARCH is TikTok's purpose-built keyword→location_id endpoint: it returns
+// city (DISTRICT), county (CITY) AND DMA tags with numeric geo_ids usable directly
+// as adgroup location_ids (docs: "returned location IDs can be passed to
+// location_ids"), country-scoped and relevance-ordered. GB legitimately returns
+// EMPTY (T-P2 — no sub-country geo) → the caller emits an HONEST country-fallback
+// warning, never a silent widen.
+
+/** City-like geo levels surfaced for a "city" search (never COUNTRY/PROVINCE/ZIP_CODE). */
+export const TIKTOK_CITY_GEO_TYPES: readonly string[] = ["CITY", "DISTRICT", "DMA"];
+
+export interface TikTokLocationTag {
+  geoId: string;
+  geoType: string;
+  regionCode: string;
+  description: string | null;
+  name: string;
+  status: string | null;
+}
+
+/**
+ * Tolerant parser over a tool/targeting/search FUZZY_SEARCH payload
+ * (targeting_tag_list). Only GEO tags with a numeric geo_id + a name survive;
+ * null / non-object / ISP entries are SKIPPED (never a raw TypeError — mirrors
+ * parseTikTokRegions' tolerant-parser contract).
+ */
+export function parseTikTokTargetingSearch(payload: unknown): TikTokLocationTag[] {
+  const record = (payload ?? {}) as Record<string, unknown>;
+  const raw = (Array.isArray(record.targeting_tag_list)
+    ? record.targeting_tag_list
+    : Array.isArray(record.list)
+    ? record.list
+    : []) as Record<string, unknown>[];
+  const tags: TikTokLocationTag[] = [];
+  for (const entry of raw) {
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const geo = entry.geo;
+    if (geo === null || typeof geo !== "object" || Array.isArray(geo)) continue;
+    const geoRec = geo as Record<string, unknown>;
+    const idRaw = geoRec.geo_id;
+    const geoId = typeof idRaw === "string"
+      ? idRaw
+      : typeof idRaw === "number"
+      ? String(idRaw)
+      : "";
+    if (!geoId || !NUMERIC_ID_REGEX.test(geoId)) continue;
+    const name = typeof entry.name === "string" ? entry.name : "";
+    if (!name) continue;
+    const statusInfo = (entry.status_info ?? {}) as Record<string, unknown>;
+    tags.push({
+      geoId,
+      geoType: typeof geoRec.geo_type === "string" ? geoRec.geo_type.toUpperCase() : "",
+      regionCode: typeof geoRec.region_code === "string" ? geoRec.region_code.toUpperCase() : "",
+      description: typeof geoRec.description === "string" ? geoRec.description : null,
+      name,
+      status: typeof statusInfo.status === "string" ? statusInfo.status.toUpperCase() : null,
+    });
+  }
+  return tags;
+}
+
+/** Strip TikTok's ",DMA®" suffix so a DMA tag name-matches the typed city text. */
+function normalizeTikTokTagName(name: string): string {
+  return name.replace(/,\s*DMA®?\s*$/i, "").trim().toLowerCase();
+}
+
+/** description-based rank: the actual municipality first, then DMA, then county. */
+function tikTokCityDescriptionRank(tag: TikTokLocationTag): number {
+  const d = (tag.description ?? "").toLowerCase();
+  if (d === "city") return 0;
+  if (tag.geoType === "DMA" || d.startsWith("dma")) return 1;
+  if (d === "county") return 2;
+  return 3;
+}
+
+/**
+ * Pure filter + ranker over parsed targeting-search tags. Keeps ENABLED,
+ * city-like (CITY/DISTRICT/DMA), country-scoped tags; ranks exact name matches
+ * (DMA suffix stripped) first, then the actual municipality (description "City")
+ * ahead of DMA and county, then alphabetical. Numeric geo_ids only — so the
+ * chosen id drops straight into adgroup location_ids (never widened to country).
+ */
+export function pickTikTokCityMatches(
+  tags: readonly TikTokLocationTag[],
+  opts: { country?: string; q?: string; limit?: number } = {},
+): TikTokLocationTag[] {
+  const country = (opts.country ?? "").trim().toUpperCase();
+  const q = (opts.q ?? "").trim().toLowerCase();
+  const limit = opts.limit ?? 15;
+  const matches = tags.filter((t) => {
+    // A DISABLED / unavailable tag must never be offered as targetable.
+    if (t.status !== null && t.status !== "ENABLED") return false;
+    if (!TIKTOK_CITY_GEO_TYPES.includes(t.geoType)) return false;
+    if (country && t.regionCode !== country) return false;
+    return true;
+  });
+  const rankName = (t: TikTokLocationTag): number => {
+    if (q.length === 0) return 2;
+    const n = normalizeTikTokTagName(t.name);
+    if (n === q) return 0;
+    if (n.startsWith(q)) return 1;
+    return 2;
+  };
+  matches.sort((a, b) => {
+    const an = rankName(a);
+    const bn = rankName(b);
+    if (an !== bn) return an - bn;
+    const ad = tikTokCityDescriptionRank(a);
+    const bd = tikTokCityDescriptionRank(b);
+    if (ad !== bd) return ad - bd;
+    return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+  });
+  return matches.slice(0, limit);
+}
+
+/**
+ * Live tool/targeting/search read (FUZZY_SEARCH, POST) → the city location_ids
+ * source for the Campaign Builder Audience step. Returns the ranked city-like
+ * matches (pickTikTokCityMatches). READ-ONLY — creates nothing. promotion_type
+ * is REQUIRED for TRAFFIC/LEAD_GENERATION/APP_PROMOTION/WEB_CONVERSIONS/
+ * PRODUCT_SALES and MUST be omitted for REACH/VIDEO_VIEWS/ENGAGEMENT.
+ */
+export async function tiktokSearchCityLocations(
+  client: TikTokClient,
+  opts: {
+    q: string;
+    country?: string;
+    objective?: string;
+    promotionType?: string;
+    placements?: readonly string[];
+    limit?: number;
+  },
+): Promise<TikTokLocationTag[]> {
+  const objective = opts.objective ?? "TRAFFIC";
+  const params: Record<string, unknown> = {
+    advertiser_id: client.advertiserId,
+    objective_type: objective,
+    placements: opts.placements ?? TIKTOK_DEFAULT_PLACEMENTS,
+    search_type: "FUZZY_SEARCH",
+    keywords: [opts.q],
+    geo_types: TIKTOK_CITY_GEO_TYPES,
+    ...(opts.country ? { region_codes: [opts.country.trim().toUpperCase()] } : {}),
+  };
+  if (!["REACH", "VIDEO_VIEWS", "ENGAGEMENT"].includes(objective)) {
+    params.promotion_type = opts.promotionType ?? "WEBSITE";
+  }
+  const data = await tiktokApi(client, "POST", "tool/targeting/search/", params);
+  const tags = parseTikTokTargetingSearch(data);
+  return pickTikTokCityMatches(tags, { country: opts.country, q: opts.q, limit: opts.limit });
+}
+
 export interface TikTokInterestCategory {
   id: string;
   name: string;
