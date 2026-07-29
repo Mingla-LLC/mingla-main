@@ -18,7 +18,7 @@ import {
 } from "../publicEventsService";
 import type { TicketStub } from "../../store/draftEventStore";
 
-const queryBuilder = <T,>(
+const queryBuilder = <T>(
   terminal: "maybeSingle" | "order",
   result: { data: T; error: Error | null },
 ) => {
@@ -140,7 +140,9 @@ const row = (patch: Record<string, unknown> = {}): Record<string, unknown> => ({
   ...patch,
 });
 
-const brandRow = (patch: Record<string, unknown> = {}): Record<string, unknown> => ({
+const brandRow = (
+  patch: Record<string, unknown> = {},
+): Record<string, unknown> => ({
   id: "brand-1",
   slug: "brand-3",
   name: "Brand 3",
@@ -197,8 +199,12 @@ describe("public event view mapper", () => {
       cover_media_credit_url: "https://giphy.com",
       cover_media_alt: "Looping party GIF",
     });
-    const brandEvent = publicEventViewRowToEvent(providerRow as never, [ticket()]);
-    const checkoutEvent = publicEventViewRowToEvent(providerRow as never, [ticket()]);
+    const brandEvent = publicEventViewRowToEvent(providerRow as never, [
+      ticket(),
+    ]);
+    const checkoutEvent = publicEventViewRowToEvent(providerRow as never, [
+      ticket(),
+    ]);
 
     expect(brandEvent.date).toBe("2026-05-08");
     expect(brandEvent.doorsOpen).toBe("21:00");
@@ -308,10 +314,10 @@ describe("public brand lookup", () => {
     expect(detail?.events).toEqual([]);
     expect(brandQuery.eq).toHaveBeenCalledWith("slug", "brand-3");
     expect(eventsQuery.eq).toHaveBeenCalledWith("brand_slug", "brand-3");
-    // #1062 Wave 2 / B2 — ORCH-1186-C added a 4th from() call: the
-    // public_menus_view DISPLAY-ONLY menu fetch (claimed + brands + events +
-    // menus). Was 3 pre-menu.
-    expect(mockFrom).toHaveBeenCalledTimes(4);
+    // [TEST-MOD-APPROVED ORCH-1365] Brand pages no longer aggregate venue
+    // menus. An exact venue route owns the public_menus_view read.
+    expect(mockFrom).toHaveBeenCalledTimes(3);
+    expect(mockFrom).not.toHaveBeenCalledWith("public_menus_view");
   });
 
   test("returns null only when the brand profile row is missing", async () => {
@@ -443,7 +449,9 @@ describe("ORCH-0962 public brand migration", () => {
       sql.indexOf("COMMENT ON VIEW public.business_public_brands_view"),
     );
 
-    expect(businessBrandViewSql).toContain("CREATE OR REPLACE VIEW public.business_public_brands_view");
+    expect(businessBrandViewSql).toContain(
+      "CREATE OR REPLACE VIEW public.business_public_brands_view",
+    );
     expect(businessBrandViewSql).toContain("slug");
     expect(businessBrandViewSql).toContain("cover_media_url");
     expect(businessBrandViewSql).toMatch(/\bcontact_email\b/);

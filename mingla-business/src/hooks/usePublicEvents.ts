@@ -1,7 +1,7 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
 import {
-  fetchPublicBrandVenues,
+  fetchPublicBrandVenueStates,
   getPublicBrandBySlug,
   getPublicEventById,
   getPublicEventBySlug,
@@ -41,7 +41,7 @@ export const publicEventKeys = {
     venueSlug: string,
   ): readonly ["public-events", "venue-by-slug", string, string] =>
     [...publicEventKeys.all, "venue-by-slug", brandSlug, venueSlug] as const,
-  // META-ORCH-1255(C) — the brand page "Locations" list (SC-12).
+  // Issue #1365 — the brand page Reservations venue list.
   brandVenues: (
     brandSlug: string,
   ): readonly ["public-events", "brand", string, "venues"] =>
@@ -127,10 +127,9 @@ export const usePublicVenueBySlug = (
 };
 
 /**
- * META-ORCH-1255(C) — the brand page "Locations" list (SC-12). A SIBLING
- * fetch rather than a getPublicBrandBySlug re-shape: the append-only ve4
- * suite pins that function's exact from() call set + `venue` overlay shape
- * (see the Leg C report deviation ledger).
+ * Issue #1365 — the brand page Reservations venue list. A SIBLING
+ * fetch rather than a getPublicBrandBySlug re-shape so venue availability can
+ * load and retry independently from the established Brand content.
  */
 /**
  * META-ORCH-1255(C) — reserve display gate for the anon venue page (§6.7).
@@ -166,7 +165,7 @@ export const usePublicBrandVenues = (
     staleTime: PUBLIC_STALE_TIME_MS,
     queryFn: async (): Promise<PublicVenueSummary[]> => {
       if (!enabled || brandSlug === null) return [];
-      return fetchPublicBrandVenues(brandSlug);
+      return fetchPublicBrandVenueStates(brandSlug);
     },
   });
 };

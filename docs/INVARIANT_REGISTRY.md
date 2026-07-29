@@ -1322,6 +1322,19 @@
 
 ## ACTIVE — ORCH-1155 (public brand page — Direction-A redesign + all-surface parity, 2026-06-17, PR #516)
 
+### I-PROPOSED-1365-BRAND-RESERVATIONS-RESOLVE-VENUE-FIRST (DRAFT)
+**Rule:** A Brand page may list verified public venues, but it never exposes
+ambiguous brand-level availability or booking. Availability and reservation
+actions activate only after one exact venue resolves.
+
+### I-PROPOSED-1365-PUBLIC-MENU-VENUE-ISOLATION (DRAFT)
+**Rule:** A public venue Menu returns only active menu items whose parent menu
+is assigned to that exact verified venue. Unassigned legacy menus stay private.
+
+### I-PROPOSED-1365-PUBLIC-SAFE-AREA-CLEARANCE (DRAFT)
+**Rule:** Public Brand and venue final content plus sticky controls clear the
+measured browser/device bottom inset; no fixed zero-inset fallback is allowed.
+
 ### I-PROPOSED-1155-ABOUT-FIRST-DEFAULT (ACTIVE)
 - **Rule:** The public brand page's About tab is the FIRST tab and the DEFAULT-selected tab (never Upcoming).
 - **Enforcement:** strict-grep + the brand-rendering tests (`packages/brand-rendering/__tests__/orch_1155_brand_redesign.test.tsx`); CI green on #516.

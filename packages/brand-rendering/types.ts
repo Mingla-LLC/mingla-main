@@ -132,7 +132,7 @@ export interface PublicVenueDetail {
   venueCategory: "restaurant" | "play" | "creative_and_arts" | null;
 }
 
-// META-ORCH-1255(C) — one row of the brand page "Locations" section (SC-12).
+// Issue #1365 — one row of the Brand page Reservations venue list.
 // Data comes from the anon-safe venue_public_view (verified venues only);
 // the adapter maps + passes it in. [] / undefined → the section is omitted.
 export interface PublicBrandVenueSummary {
@@ -142,6 +142,8 @@ export interface PublicBrandVenueSummary {
   address: string | null;
   city: string | null;
   photoUrl: string | null;
+  placePoolId?: string | null;
+  reservationState?: "loading" | "available" | "unavailable" | "error";
 }
 
 // ORCH-1186-C — DISPLAY-ONLY venue menu shapes (no ordering/cart/payment).
@@ -174,6 +176,8 @@ export interface PublicBrandCallbacks {
   onOpenExternal?: (url: string) => void;
   // META-ORCH-1255(C) — a Locations card tap → /b/{brandSlug}/v/{venueSlug}.
   onOpenVenue?: (venue: PublicBrandVenueSummary) => void;
+  onReservationsTabViewed?: () => void;
+  onRetryVenues?: () => void;
 }
 
 export interface PublicBrandPageProps {
@@ -189,10 +193,13 @@ export interface PublicBrandPageProps {
   // META-ORCH-1255(C) — verified venues for the "Locations" section (SC-12).
   // Absent / [] ⇒ section omitted (real-data-only).
   venues?: PublicBrandVenueSummary[];
+  venuesLoadState?: "loading" | "ready" | "error";
   // ORCH-1186-C — DISPLAY-ONLY menu groups. Absent / [] ⇒ no Menu tab.
   menu?: PublicMenuGroup[];
   theme?: ResolvedTheme;
   hideFloatingChrome?: boolean;
   chromeTopOffset?: number;
+  /** Runtime/browser bottom inset plus the page's 24pt breathing room. */
+  contentBottomInset?: number;
   callbacks: PublicBrandCallbacks;
 }

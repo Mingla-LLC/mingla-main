@@ -42,7 +42,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 // module into the EAGER __common boot chunk (ORCH-1083 bundle-budget breach).
 // The type-only barrel import below is erased at compile time (safe).
 import { PublicMenuSections } from "@mingla/brand-rendering/PublicMenuSections";
-import type { PublicMenuGroup } from "@mingla/brand-rendering";
+import {
+  PublicVenueTabs,
+  type PublicMenuGroup,
+  type PublicVenueTab,
+} from "@mingla/brand-rendering";
 import {
   ParallaxCoverShell,
   buildStaticMapUrl,
@@ -66,6 +70,8 @@ import type {
 import type { BrandHourEntry } from "../../types/brand";
 import { useThemeFont } from "../../theme/useThemeFont";
 import { ShareModal } from "../ui/ShareModal";
+import { GuestVenueReservation } from "./GuestVenueReservation";
+import { captureWeb } from "../../analytics/webAnalytics";
 
 export interface PublicVenuePageProps {
   venue: PublicVenue;
@@ -73,14 +79,10 @@ export interface PublicVenuePageProps {
   menu: PublicMenuGroup[];
   /** Anon display gate; not-reservable / unknown → NO reserve bar. */
   reservable: PublicVenueReservable | null;
+  reservabilityState?: "loading" | "ready" | "error";
+  initialTab?: PublicVenueTab;
+  onRetryReservability?: () => void;
 }
-
-// [TRANSITIONAL] v1 reserve CTA = app handoff (DESIGN §6.7 alternative — no
-// anon WEB reserve flow exists yet; the `/reserve/{brandId}` success routes
-// referenced by venue-reservation-create have no page). The Mingla app link
-// (marketing site with store links) is the only real destination today.
-// Exit condition: a buyer-web guest reserve flow ORCH re-points this CTA.
-const RESERVE_APP_HANDOFF_URL = "https://usemingla.com";
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -90,7 +92,9 @@ const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const META_MAX = 155;
 const clampPitchForMeta = (text: string): string => {
   const flat = text.replace(/\s+/g, " ").trim();
-  return flat.length > META_MAX ? `${flat.slice(0, META_MAX - 1).trimEnd()}…` : flat;
+  return flat.length > META_MAX
+    ? `${flat.slice(0, META_MAX - 1).trimEnd()}…`
+    : flat;
 };
 
 // META-ORCH-1290(C) §6.1 — "Read more" heuristic (mirrors BrandProfileView's
@@ -119,6 +123,9 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
   venue,
   menu,
   reservable,
+  reservabilityState = "ready",
+  initialTab = "overview",
+  onRetryReservability,
 }) => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -127,6 +134,7 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
   const [muted, setMuted] = useState<boolean>(true);
   // META-ORCH-1290(C) §6.1 — About pitch clamp/expand state.
   const [aboutExpanded, setAboutExpanded] = useState<boolean>(false);
+  const [requestedTab, setRequestedTab] = useState<PublicVenueTab>(initialTab);
   const toggleAboutExpanded = useCallback((): void => {
     setAboutExpanded((v) => !v);
   }, []);
@@ -139,10 +147,7 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
     () => createThemePalette(resolvedTheme),
     [resolvedTheme],
   );
-  const surface = useMemo(
-    () => offeringSurfaceStyles(palette),
-    [palette],
-  );
+  const surface = useMemo(() => offeringSurfaceStyles(palette), [palette]);
   useThemeFont(resolvedTheme.fontFamilyValue);
   const themedFont = { fontFamily: resolvedTheme.fontFamilyValue };
 
@@ -190,8 +195,14 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
   }, [router, venue.brandSlug]);
 
   const handleReserve = useCallback((): void => {
-    void Linking.openURL(RESERVE_APP_HANDOFF_URL).catch(() => undefined);
-  }, []);
+    setRequestedTab("reservations");
+    captureWeb("public_venue_reservation_started", {
+      surface: Platform.OS === "web" ? "buyer_web" : "business_preview",
+      brand_id: venue.brandId,
+      venue_id: venue.id,
+      source_tab: "sticky_cta",
+    });
+  }, [venue.brandId, venue.id]);
 
   // ── §6.7 reserve display gate — fail closed. ─────────────────────────────
   const showReserve = reservable !== null && reservable.reservable === true;
@@ -321,7 +332,9 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
           pressed && styles.pressed,
         ]}
       >
-        <Text style={[styles.addressCardLabel, { color: palette.tertiaryText }]}>
+        <Text
+          style={[styles.addressCardLabel, { color: palette.tertiaryText }]}
+        >
           WHERE YOU&apos;LL BE
         </Text>
         <Text style={[styles.addressCardValue, { color: palette.primaryText }]}>
@@ -393,6 +406,43 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
       </View>
     ) : null;
 
+  const reservationsBlock =
+    reservabilityState === "loading" ? (
+      <View style={styles.reservationState}>
+        <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>
+          Finding open tables…
+        </Text>
+      </View>
+    ) : reservabilityState === "error" ? (
+      <View style={styles.reservationState}>
+        <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>
+          We couldn’t check reservations right now.
+        </Text>
+        <Pressable
+          onPress={onRetryReservability}
+          accessibilityRole="button"
+          accessibilityLabel="Try checking reservations again"
+          style={[styles.stateRetry, { backgroundColor: palette.accent }]}
+        >
+          <Text style={[styles.stateRetryText, { color: palette.accentText }]}>
+            Try again
+          </Text>
+        </Pressable>
+      </View>
+    ) : reservable?.reservable === true && reservable.venueId !== null ? (
+      <GuestVenueReservation
+        venueId={reservable.venueId}
+        brandId={venue.brandId}
+        currency={reservable.currency}
+      />
+    ) : (
+      <View style={styles.reservationState}>
+        <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>
+          This venue isn’t taking reservations right now.
+        </Text>
+      </View>
+    );
+
   const galleryBlock =
     gallery.length > 0 ? (
       <View style={styles.galleryWrap}>
@@ -425,7 +475,7 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
     <Pressable
       onPress={handleReserve}
       accessibilityRole="button"
-      accessibilityLabel="Reserve a table in the Mingla app"
+      accessibilityLabel="Reserve a table"
       style={({ pressed }) => [
         styles.reserveCta,
         { backgroundColor: palette.accent },
@@ -454,7 +504,9 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
     ) : null;
 
   const reserveBarClearance =
-    showReserve && !isDesktop ? 52 + 16 + insets.bottom + 8 : 0;
+    showReserve && !isDesktop
+      ? 52 + 16 + insets.bottom + 8
+      : insets.bottom + 24;
 
   // ── §6.10 desktop sticky panel ────────────────────────────────────────────
   const stickyPanel = isDesktop ? (
@@ -476,7 +528,11 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
             in-body aboutBlock on the left column. Hidden when empty. */}
         {hasPitch ? (
           <Text
-            style={[styles.deskPitch, themedFont, { color: palette.secondaryText }]}
+            style={[
+              styles.deskPitch,
+              themedFont,
+              { color: palette.secondaryText },
+            ]}
             numberOfLines={2}
           >
             {pitchText}
@@ -519,9 +575,7 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
     </View>
   ) : null;
 
-  const heroEyebrow = (
-    <Text style={styles.heroEyebrow}>Verified venue</Text>
-  );
+  const heroEyebrow = <Text style={styles.heroEyebrow}>Verified venue</Text>;
   const heroTitle = isDesktop ? (
     <>
       <Text style={[styles.heroTitle, themedFont]}>{venue.name}</Text>
@@ -534,12 +588,39 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
   const bodyContent = (
     <View style={styles.body}>
       {!isDesktop ? identityBlock : null}
-      {aboutBlock}
-      {mapBlock}
-      {addressCard}
-      {hoursBlock}
-      {menuBlock}
-      {galleryBlock}
+      <PublicVenueTabs
+        initialTab={requestedTab}
+        hasMenu={menuItemCount > 0}
+        palette={palette}
+        surface={surface}
+        theme={resolvedTheme}
+        overview={
+          <View style={styles.tabPane}>
+            {aboutBlock}
+            {mapBlock}
+            {addressCard}
+            {hoursBlock}
+            {galleryBlock}
+          </View>
+        }
+        menu={menuBlock}
+        reservations={reservationsBlock}
+        onTabViewed={(tab) => {
+          if (tab === "overview") {
+            captureWeb("public_venue_overview_viewed", {
+              surface: Platform.OS === "web" ? "buyer_web" : "business_preview",
+              brand_id: venue.brandId,
+              venue_id: venue.id,
+            });
+          } else if (tab === "menu") {
+            captureWeb("public_venue_menu_viewed", {
+              surface: Platform.OS === "web" ? "buyer_web" : "business_preview",
+              brand_id: venue.brandId,
+              venue_id: venue.id,
+            });
+          }
+        }}
+      />
     </View>
   );
 
@@ -607,6 +688,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#0c0e12",
   },
   body: {
+    gap: 20,
+  },
+  tabPane: {
     gap: 20,
   },
   // ---- identity (§6.2) ----
@@ -792,6 +876,21 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.85,
+  },
+  reservationState: {
+    gap: 14,
+    paddingVertical: 20,
+  },
+  stateRetry: {
+    minHeight: 44,
+    alignSelf: "flex-start",
+    justifyContent: "center",
+    borderRadius: 12,
+    paddingHorizontal: 18,
+  },
+  stateRetryText: {
+    fontSize: 14,
+    fontWeight: "800",
   },
   // ---- desktop hero + panel (§6.10) ----
   heroEyebrow: {

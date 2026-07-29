@@ -13,6 +13,7 @@ import type {
   PublicBrandExperience,
   PublicBrandTrip,
   PublicBrandUpcoming,
+  PublicBrandVenueSummary,
   PublicMenuGroup,
 } from "@mingla/brand-rendering";
 
@@ -137,51 +138,20 @@ export interface ConsumerBrandDetail {
   upcomingHasMore: boolean;
   /** ORCH-1186-C — DISPLAY-ONLY menu groups (verified venues only; [] else). */
   menu: PublicMenuGroup[];
+  venues: PublicBrandVenueSummary[];
   resolvedTheme: ResolvedTheme;
 }
 
-// ORCH-1186-C — flat row from the anon-safe security-definer public_menus_view.
-// app-mobile reads the view directly (it does not import mingla-business
-// services); this is byte-distinct from the snap-menu parser / experience_stops
-// (I-PROPOSED-1186C-MENU-NOT-EXPERIENCE-STOPS).
-interface PublicMenuRow {
+interface PublicVenueRow {
   id: string;
-  menu_id: string;
-  menu_name: string;
-  menu_description: string | null;
-  menu_sort_order: number;
-  item_name: string;
-  item_description: string | null;
-  price_cents: number | null;
-  currency: string;
-  item_sort_order: number;
+  slug: string;
+  name: string;
+  address: string | null;
+  city: string | null;
+  cover_media_url: string | null;
+  pool_photo_urls: string[] | null;
+  place_pool_id: string | null;
 }
-
-const groupPublicMenuRows = (rows: PublicMenuRow[]): PublicMenuGroup[] => {
-  const groups: PublicMenuGroup[] = [];
-  const byMenuId = new Map<string, PublicMenuGroup>();
-  for (const row of rows) {
-    let group = byMenuId.get(row.menu_id);
-    if (group === undefined) {
-      group = {
-        menuId: row.menu_id,
-        menuName: row.menu_name,
-        menuDescription: row.menu_description,
-        items: [],
-      };
-      byMenuId.set(row.menu_id, group);
-      groups.push(group);
-    }
-    group.items.push({
-      id: row.id,
-      name: row.item_name,
-      description: row.item_description,
-      priceCents: row.price_cents,
-      currency: row.currency,
-    });
-  }
-  return groups;
-};
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value)
@@ -282,9 +252,7 @@ const mapEvent = (
     venueName: row.location_text,
     format: row.is_online ? "online" : "in_person",
     coverHue:
-      typeof businessEvent.coverHue === "number"
-        ? businessEvent.coverHue
-        : 25,
+      typeof businessEvent.coverHue === "number" ? businessEvent.coverHue : 25,
     coverMediaUrl: row.cover_media_url,
     coverMediaType: row.cover_media_type,
     currency: row.currency,
@@ -366,34 +334,37 @@ const getBrandBySlug = async (
   if (brandData === null) return null;
 
   const brand = mapBrand(brandData as PublicBrandRow);
-  const [eventResult, tripResult, experienceResult, upcomingResult, menuResult] =
-    await Promise.all([
-      supabase
-        .from("business_public_events_view")
-        .select("*")
-        .eq("brand_slug", slug)
-        .order("published_at", { ascending: false, nullsFirst: false }),
-      supabase.rpc("pg_public_trips_by_brand", { p_brand_slug: slug }),
-      supabase.rpc("pg_public_experiences_by_brand", { p_brand_slug: slug }),
-      supabase.rpc("pg_public_brand_upcoming", {
-        p_brand_slug: slug,
-        p_limit: 30,
-      }),
-      // ORCH-1186-C — DISPLAY-ONLY menu (verified venues only; [] otherwise).
-      supabase
-        .from("public_menus_view")
-        .select(
-          "id, menu_id, menu_name, menu_description, menu_sort_order, item_name, item_description, price_cents, currency, item_sort_order",
-        )
-        .eq("brand_slug", slug)
-        .order("menu_sort_order", { ascending: true })
-        .order("item_sort_order", { ascending: true }),
-    ]);
+  const [
+    eventResult,
+    tripResult,
+    experienceResult,
+    upcomingResult,
+    venueResult,
+  ] = await Promise.all([
+    supabase
+      .from("business_public_events_view")
+      .select("*")
+      .eq("brand_slug", slug)
+      .order("published_at", { ascending: false, nullsFirst: false }),
+    supabase.rpc("pg_public_trips_by_brand", { p_brand_slug: slug }),
+    supabase.rpc("pg_public_experiences_by_brand", { p_brand_slug: slug }),
+    supabase.rpc("pg_public_brand_upcoming", {
+      p_brand_slug: slug,
+      p_limit: 30,
+    }),
+    supabase
+      .from("venue_public_view")
+      .select(
+        "id, slug, name, address, city, cover_media_url, pool_photo_urls, place_pool_id",
+      )
+      .eq("brand_slug", slug)
+      .order("created_at", { ascending: true }),
+  ]);
   if (eventResult.error !== null) throw eventResult.error;
   if (tripResult.error !== null) throw tripResult.error;
   if (experienceResult.error !== null) throw experienceResult.error;
   if (upcomingResult.error !== null) throw upcomingResult.error;
-  if (menuResult.error !== null) throw menuResult.error;
+  if (venueResult.error !== null) throw venueResult.error;
 
   const allEventRows = ((eventResult.data ?? []) as PublicEventRow[]).filter(
     (row) => row.event_type === "event",
@@ -441,13 +412,50 @@ const getBrandBySlug = async (
   );
   const events = rows.map((row) => mapEvent(row, ticketMap.get(row.id) ?? []));
   const trips = ((tripResult.data ?? []) as PublicTripRow[]).map(mapTrip);
-  const experiences = ((experienceResult.data ?? []) as PublicExperienceRow[])
-    .map(mapExperience);
+  const experiences = (
+    (experienceResult.data ?? []) as PublicExperienceRow[]
+  ).map(mapExperience);
   const upcomingRows = (upcomingResult.data ?? []) as PublicUpcomingRow[];
   const upcomingHasMore = upcomingRows.length > 30;
-  const upcoming = (upcomingHasMore ? upcomingRows.slice(0, 30) : upcomingRows)
-    .map(mapUpcoming);
-  const menu = groupPublicMenuRows((menuResult.data ?? []) as PublicMenuRow[]);
+  const upcoming = (
+    upcomingHasMore ? upcomingRows.slice(0, 30) : upcomingRows
+  ).map(mapUpcoming);
+  const venues = await Promise.all(
+    ((venueResult.data ?? []) as PublicVenueRow[]).map(
+      async (row): Promise<PublicBrandVenueSummary> => {
+        let reservationState: PublicBrandVenueSummary["reservationState"] =
+          "unavailable";
+        if (row.place_pool_id !== null) {
+          const { data, error } = await supabase.rpc(
+            "pg_venue_reservable_for_place",
+            { p_place_pool_id: row.place_pool_id },
+          );
+          if (error !== null) {
+            reservationState = "error";
+          } else {
+            const resolved = (Array.isArray(data) ? data[0] : data) as
+              { reservable?: boolean } | undefined;
+            reservationState =
+              resolved?.reservable === true ? "available" : "unavailable";
+          }
+        }
+        return {
+          id: row.id,
+          slug: row.slug,
+          name: row.name,
+          address: row.address,
+          city: row.city,
+          photoUrl:
+            row.cover_media_url ??
+            (Array.isArray(row.pool_photo_urls)
+              ? (row.pool_photo_urls[0] ?? null)
+              : null),
+          placePoolId: row.place_pool_id,
+          reservationState,
+        };
+      },
+    ),
+  );
   return {
     brand,
     events,
@@ -455,7 +463,9 @@ const getBrandBySlug = async (
     experiences,
     upcoming,
     upcomingHasMore,
-    menu,
+    // Issue #1365: public menus are fetched only after an exact venue resolves.
+    menu: [],
+    venues,
     resolvedTheme: resolveTheme(brand.theme, null),
   };
 };

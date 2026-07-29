@@ -37,6 +37,7 @@ export default function PublicVenueRoute(): React.ReactElement {
   const params = useLocalSearchParams<{
     brandSlug: string | string[];
     venueSlug: string | string[];
+    tab?: string | string[];
   }>();
   const brandSlug = Array.isArray(params.brandSlug)
     ? params.brandSlug[0]
@@ -44,6 +45,7 @@ export default function PublicVenueRoute(): React.ReactElement {
   const venueSlug = Array.isArray(params.venueSlug)
     ? params.venueSlug[0]
     : params.venueSlug;
+  const requestedTab = Array.isArray(params.tab) ? params.tab[0] : params.tab;
 
   const venueQuery = usePublicVenueBySlug(
     typeof brandSlug === "string" ? brandSlug : null,
@@ -51,10 +53,11 @@ export default function PublicVenueRoute(): React.ReactElement {
   );
   const venue = venueQuery.data ?? null;
 
-  // Brand menu ([TRANSITIONAL-3] menus are brand-level) — fetched only once
-  // the venue resolved (a not-found page needs no menu round-trip).
+  // Exact venue-owned menu — fetched only once the venue resolves (a
+  // not-found page needs no menu round-trip).
   const menusQuery = usePublicMenus(
     venue !== null && typeof brandSlug === "string" ? brandSlug : null,
+    venue !== null && typeof venueSlug === "string" ? venueSlug : null,
   );
 
   // §6.7 reserve display gate — place-keyed, anon-safe. Disabled without a
@@ -117,6 +120,17 @@ export default function PublicVenueRoute(): React.ReactElement {
       venue={venue}
       menu={menusQuery.data ?? []}
       reservable={reservableQuery.data ?? null}
+      reservabilityState={
+        reservableQuery.isError
+          ? "error"
+          : reservableQuery.isLoading
+            ? "loading"
+            : "ready"
+      }
+      initialTab={requestedTab === "reservations" ? "reservations" : "overview"}
+      onRetryReservability={() => {
+        void reservableQuery.refetch();
+      }}
     />
   );
 }
