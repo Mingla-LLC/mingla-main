@@ -41,6 +41,13 @@ export type IconName =
   | "moreH"
   | "flash"
   | "location"
+  // Issue #1363 (device-UX) — Ionicons-style aliases the shared
+  // @mingla/location-input field passes to the injected Icon (suggestion rows,
+  // the free-text "Use this address" pill, the offline status). The consumer
+  // Icon (Ionicons) has these natively; this business set lacked them, so they
+  // rendered the fallback SQUARE. Aliased to existing glyphs — no new imports.
+  | "location-outline"
+  | "cloud-offline-outline"
   | "clock"
   | "ticket"
   | "eye"
@@ -190,6 +197,20 @@ const RENDERERS: Record<IconName, Renderer> = {
       <Path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z" />
       <Circle cx="12" cy="10" r="3" />
     </>
+  ),
+  // Issue #1363 (device-UX) — reuse the SAME outline pin as `location` (the
+  // shared field's Ionicons `location-outline`). Identical stroked glyph.
+  "location-outline": () => (
+    <>
+      <Path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z" />
+      <Circle cx="12" cy="10" r="3" />
+    </>
+  ),
+  // Issue #1363 (device-UX) — the offline status row ("Couldn't reach search.
+  // Tap to try again."). Reuses the existing `refund` circular retry/refresh
+  // arrow — it reinforces the row's tap-to-retry action. No new import.
+  "cloud-offline-outline": () => (
+    <Path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5" />
   ),
   clock: () => (
     <>
