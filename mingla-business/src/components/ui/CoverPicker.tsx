@@ -860,10 +860,11 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         // issue #1338 — present the trim editor ONLY after the OS photo picker
         // has fully dismissed, so iOS New Arch never refuses a 2nd stacked modal.
         await waitForPickerDismissal();
-        trimResult = await trimVideoWithDedicatedEditor(
-          asset.uri,
-          EVENT_COVER_MAX_VIDEO_DURATION_MS,
-        );
+        // The single-line trim call is pinned by the orch-0978 strict-grep C1
+        // gate (exact substring match); prettier-ignore stops printWidth (80)
+        // from re-wrapping it across lines and re-breaking the gate.
+        // prettier-ignore
+        trimResult = await trimVideoWithDedicatedEditor(asset.uri, EVENT_COVER_MAX_VIDEO_DURATION_MS);
         if (trimResult === null) {
           // Genuine user cancel (Back). NEVER silent (issue #1338).
           setVideoPickNotice({
