@@ -14,8 +14,10 @@
  *            London,NJ + London,Ontario ABOVE London,England; PROVEN 2026-07-20).
  *            The same call admin-ad-preflight P6 runs green.
  *     Meta   interest: /search?type=adinterest → flexible_spec interest ids.
- *   - TikTok city: tool/region (level==="CITY") filtered by country → location_ids.
- *     TikTok interest: tool/interest_category → interest_category_ids.
+ *   - TikTok city: tool/targeting/search FUZZY_SEARCH (city/district/DMA) →
+ *     numeric location_ids (ISSUE-1289 — the old tool/region level==="CITY" filter
+ *     could not see US municipalities, which are DISTRICT-level, so it silently
+ *     fell back to country). TikTok interest: tool/interest_category → ids.
  *   - Google city: geoTargetConstants:suggest (countryCode-scoped, exact-name
  *            confirmation — the create path re-resolves by name at build time).
  *   - Reddit interest/community: Reddit targeting takes NAMES (the serializer
@@ -56,11 +58,10 @@ import {
   resolveMetaClient,
 } from "../_shared/meta.ts";
 import {
-  filterTikTokCityRegions,
   filterTikTokInterestCategories,
   resolveTikTokClient,
   tiktokFetchInterestCategories,
-  tiktokFetchRegions,
+  tiktokSearchCityLocations,
 } from "../_shared/tiktok.ts";
 import {
   resolveGoogleClient,
@@ -162,17 +163,31 @@ async function resolveTikTok(
   if (!conn) throw new AdNotConnectedError("tiktok", "tiktok_not_connected");
   const client = resolveTikTokClient(conn);
   if (kind === "city") {
-    const regions = await tiktokFetchRegions(client, { objective: "TRAFFIC" });
-    const cities = filterTikTokCityRegions(regions, { country: country ?? undefined, q });
+    // ISSUE-1289: resolve via tool/targeting/search FUZZY_SEARCH (city/district/
+    // DMA geo_ids), NOT the tool/region level==="CITY" filter — that filter could
+    // not see US municipalities (they are DISTRICT-level) so "New York" returned
+    // zero matches and the create path silently fell back to country. geo_id ==
+    // adgroup location_id; an empty result (e.g. GB — no sub-country geo) is an
+    // HONEST country fallback, surfaced below, never a silent widen.
+    const cities = await tiktokSearchCityLocations(client, { q, country: country ?? undefined });
     const results = cities.map((r) => ({
-      id: r.locationId,
-      name: r.name ?? r.locationId,
-      meta: { location_id: r.locationId, region_code: r.regionCode, level: r.level },
+      id: r.geoId,
+      name: r.name,
+      meta: {
+        location_id: r.geoId,
+        region_code: r.regionCode,
+        geo_type: r.geoType,
+        description: r.description,
+      },
     }));
     return {
       results,
       ...(results.length === 0
-        ? { warning: `TikTok has no city match for "${q}"${country ? ` in ${country}` : ""} — it falls back to country targeting.` }
+        ? {
+          warning: `TikTok has no city-level match for "${q}"${
+            country ? ` in ${country}` : ""
+          } — this campaign will target the country instead.`,
+        }
         : {}),
     };
   }
