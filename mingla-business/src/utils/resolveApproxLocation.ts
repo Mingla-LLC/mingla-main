@@ -105,6 +105,35 @@ export async function resolveFreeTextLocation(
 }
 
 /**
+ * Issue #1363 (CHANGE 2 — pin-drop auto-center). Pick the best coarse center to
+ * OPEN the PinDropSheet over, so the map starts over the right area (never a blank
+ * world view) and the brand just nudges to the exact spot:
+ *   1. the field's OWN coordinate when it already has one (a prior pick / pin /
+ *      committed free-text) — no geocode needed;
+ *   2. else a forward-geocode of the typed text — the best coarse location Mapbox
+ *      CAN give (e.g. "port harcourt" → the city center) for an un-indexed address;
+ *   3. else null → the sheet opens at its wide default and the brand zooms in.
+ *
+ * Returns ONLY a MAP-CENTER SEED — it NEVER commits a coordinate to the draft (the
+ * pin's own "Use this location" confirm does that, via resolvePinLocation). So
+ * opening + cancelling the pin changes nothing; typing "port harcourt" and tapping
+ * "Drop a pin" opens the map over Port Harcourt without altering the field.
+ */
+export async function resolvePinSeed(
+  fieldLat: number | null,
+  fieldLng: number | null,
+  typedText: string,
+  deps: ForwardDep = {},
+): Promise<{ lat: number | null; lng: number | null }> {
+  if (isFiniteNumber(fieldLat) && isFiniteNumber(fieldLng)) {
+    return { lat: fieldLat, lng: fieldLng };
+  }
+  const approx = await resolveFreeTextLocation(typedText, deps);
+  if (approx !== null) return { lat: approx.lat, lng: approx.lng };
+  return { lat: null, lng: null };
+}
+
+/**
  * Tier-3 — a dropped pin's coordinate is authoritative (`precision: "exact"`).
  * Reverse-geocode fills city/region/country when possible; on failure the
  * coordinate still stands and those fields are NULL (never guessed). Returns

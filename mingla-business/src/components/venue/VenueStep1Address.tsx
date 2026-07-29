@@ -23,6 +23,7 @@ import {
   isFreeTextResolveStale,
   resolveFreeTextLocation,
   resolvePinLocation,
+  resolvePinSeed,
 } from "../../utils/resolveApproxLocation";
 import { useDraftVenueStore } from "../../store/draftVenueStore";
 import { MapboxAddressInput } from "../location/MapboxAddressInput";
@@ -42,6 +43,16 @@ export const VenueStep1Address: React.FC<VenueStep1AddressProps> = ({
   const patch = useDraftVenueStore((s) => s.patch);
 
   const [pinVisible, setPinVisible] = React.useState(false);
+  // Issue #1363 (CHANGE 2 — pin auto-center): the coarse center the PinDropSheet
+  // opens over. Seeded from the field's own coordinate when set, else a
+  // forward-geocode of the typed address, so tapping "Drop a pin" after typing
+  // an un-indexed NG address opens the map over the right city — never a blank
+  // world view. Only a map seed; the field's coordinate is untouched until the
+  // pin is confirmed.
+  const [pinSeed, setPinSeed] = React.useState<{
+    lat: number | null;
+    lng: number | null;
+  }>({ lat: null, lng: null });
   // Issue #1363 — non-silent inline hint when a free-text forward-geocode finds
   // nothing (rule 3): the coordinate stays null and the brand is pointed at the
   // persistent "drop a pin" row. Cleared on any successful resolve/pick/clear.
@@ -101,7 +112,15 @@ export const VenueStep1Address: React.FC<VenueStep1AddressProps> = ({
             }
           })();
         }}
-        onOpenPinDrop={() => setPinVisible(true)}
+        onOpenPinDrop={() => {
+          // CHANGE 2 — forward-geocode the typed text first so the pin opens
+          // centered on the best coarse location before showing the sheet.
+          void (async () => {
+            const seed = await resolvePinSeed(lat, lng, formattedAddress);
+            setPinSeed(seed);
+            setPinVisible(true);
+          })();
+        }}
         onPick={(details: PlaceDetails): void => {
           const p = parseVenuePlaceResult(details);
           setLocationHint(null);
@@ -149,8 +168,8 @@ export const VenueStep1Address: React.FC<VenueStep1AddressProps> = ({
 
       <PinDropSheet
         visible={pinVisible}
-        initialLat={lat}
-        initialLng={lng}
+        initialLat={pinSeed.lat}
+        initialLng={pinSeed.lng}
         onCancel={() => setPinVisible(false)}
         onConfirm={(pinLat, pinLng) => {
           setPinVisible(false);

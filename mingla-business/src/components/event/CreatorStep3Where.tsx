@@ -40,6 +40,7 @@ import {
   isFreeTextResolveStale,
   resolveFreeTextLocation,
   resolvePinLocation,
+  resolvePinSeed,
 } from "../../utils/resolveApproxLocation";
 import type { PlaceDetails } from "../../services/mapboxGeocodeService";
 // ORCH-1186 (salvaged from ORCH-1158 Issue 3 [wizard-map-preview]) — the SAME
@@ -67,6 +68,13 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
 
   // Issue #1363 [three-tier address] — pin-drop host + non-silent inline hint.
   const [pinVisible, setPinVisible] = React.useState(false);
+  // Issue #1363 (CHANGE 2 — pin auto-center): coarse center the pin opens over,
+  // seeded from the field coord or a forward-geocode of the typed text so the
+  // map opens over the right area (never a blank world view). Map-seed only.
+  const [pinSeed, setPinSeed] = React.useState<{
+    lat: number | null;
+    lng: number | null;
+  }>({ lat: null, lng: null });
   const [addrHint, setAddrHint] = React.useState<string | null>(null);
   // Issue #1363 P3-2 — latest-wins guard: the address text currently committed
   // to the field, so a superseded free-text geocode can't patch a stale city.
@@ -135,7 +143,18 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
                   }
                 })();
               }}
-              onOpenPinDrop={() => setPinVisible(true)}
+              onOpenPinDrop={() => {
+                // CHANGE 2 — seed the pin center from the typed address first.
+                void (async () => {
+                  const seed = await resolvePinSeed(
+                    draft.locationGeo?.lat ?? null,
+                    draft.locationGeo?.lng ?? null,
+                    draft.address ?? "",
+                  );
+                  setPinSeed(seed);
+                  setPinVisible(true);
+                })();
+              }}
               onPick={(details: PlaceDetails): void => {
                 setAddrHint(null);
                 committedAddrRef.current = details.formattedAddress;
@@ -252,8 +271,8 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
               honesty over guessing. */}
           <PinDropSheet
             visible={pinVisible}
-            initialLat={draft.locationGeo?.lat ?? null}
-            initialLng={draft.locationGeo?.lng ?? null}
+            initialLat={pinSeed.lat}
+            initialLng={pinSeed.lng}
             accentHex={accent.warm}
             onCancel={() => setPinVisible(false)}
             onConfirm={(pinLat, pinLng) => {

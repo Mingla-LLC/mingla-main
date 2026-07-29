@@ -36,6 +36,7 @@ import {
   isFreeTextResolveStale,
   resolveFreeTextLocation,
   resolvePinLocation,
+  resolvePinSeed,
 } from "../../utils/resolveApproxLocation";
 import type { PlaceDetails } from "../../services/mapboxGeocodeService";
 import {
@@ -88,6 +89,12 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
   // Issue #1363 [three-tier address] — per-card pin-drop host + non-silent hint.
   // Local state is fine here: only the card being edited re-renders (memoized).
   const [pinVisible, setPinVisible] = React.useState(false);
+  // Issue #1363 (CHANGE 2 — pin auto-center): coarse center the pin opens over,
+  // seeded from this stop's coord or a forward-geocode of the typed address.
+  const [pinSeed, setPinSeed] = React.useState<{
+    lat: number | null;
+    lng: number | null;
+  }>({ lat: null, lng: null });
   const [addrHint, setAddrHint] = React.useState<string | null>(null);
   // Issue #1363 P3-2 — latest-wins guard: the stop address currently committed,
   // so a superseded free-text geocode can't patch a stale coord for this stop.
@@ -214,7 +221,18 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
                   }
                 })();
               }}
-              onOpenPinDrop={() => setPinVisible(true)}
+              onOpenPinDrop={() => {
+                // CHANGE 2 — seed the pin center from the typed stop address.
+                void (async () => {
+                  const seed = await resolvePinSeed(
+                    stop.lat,
+                    stop.lng,
+                    stop.address,
+                  );
+                  setPinSeed(seed);
+                  setPinVisible(true);
+                })();
+              }}
               onPick={(d: PlaceDetails) => {
                 setAddrHint(null);
                 committedAddrRef.current = d.formattedAddress;
@@ -250,8 +268,8 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
             ) : null}
             <PinDropSheet
               visible={pinVisible}
-              initialLat={stop.lat}
-              initialLng={stop.lng}
+              initialLat={pinSeed.lat}
+              initialLng={pinSeed.lng}
               accentHex={accent.warm}
               onCancel={() => setPinVisible(false)}
               onConfirm={(pinLat, pinLng) => {

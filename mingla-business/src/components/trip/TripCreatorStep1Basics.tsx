@@ -49,6 +49,7 @@ import {
   isFreeTextResolveStale,
   resolveFreeTextLocation,
   resolvePinLocation,
+  resolvePinSeed,
 } from "../../utils/resolveApproxLocation";
 // ORCH-1118 — trip location must be a confirmed pick/geocode/pin before
 // publish/save (Issue #1363 loosened the placeId requirement to a coordinate).
@@ -194,6 +195,41 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
   // non-silent hints on a failed free-text geocode (rule 3).
   const [pinTarget, setPinTarget] = useState<"departure" | "destination" | null>(
     null,
+  );
+  // Issue #1363 (CHANGE 2 — pin auto-center): coarse center the pin opens over,
+  // seeded (per opened field) from that field's coord or a forward-geocode of
+  // its typed text so the map opens over the right area, never a blank world view.
+  const [pinSeed, setPinSeed] = useState<{
+    lat: number | null;
+    lng: number | null;
+  }>({ lat: null, lng: null });
+  const openPinDrop = useCallback(
+    (target: "departure" | "destination") => {
+      void (async () => {
+        const seed =
+          target === "destination"
+            ? await resolvePinSeed(
+                draft.destinationLat,
+                draft.destinationLng,
+                draft.destinationLocationText ?? "",
+              )
+            : await resolvePinSeed(
+                draft.departureLat,
+                draft.departureLng,
+                draft.departureLocationText ?? "",
+              );
+        setPinSeed(seed);
+        setPinTarget(target);
+      })();
+    },
+    [
+      draft.departureLat,
+      draft.departureLng,
+      draft.departureLocationText,
+      draft.destinationLat,
+      draft.destinationLng,
+      draft.destinationLocationText,
+    ],
   );
   const [departureHint, setDepartureHint] = useState<string | null>(null);
   const [destinationHint, setDestinationHint] = useState<string | null>(null);
@@ -502,7 +538,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
               }
             })();
           }}
-          onOpenPinDrop={() => setPinTarget("departure")}
+          onOpenPinDrop={() => openPinDrop("departure")}
           onPick={(place) => {
             setDepartureHint(null);
             committedDepartureRef.current = place.formattedAddress;
@@ -578,7 +614,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
               }
             })();
           }}
-          onOpenPinDrop={() => setPinTarget("destination")}
+          onOpenPinDrop={() => openPinDrop("destination")}
           onPick={(place) => {
             setDestinationHint(null);
             committedDestinationRef.current = place.formattedAddress;
@@ -613,12 +649,8 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           whichever field opened it (departure vs destination). */}
       <PinDropSheet
         visible={pinTarget !== null}
-        initialLat={
-          pinTarget === "destination" ? draft.destinationLat : draft.departureLat
-        }
-        initialLng={
-          pinTarget === "destination" ? draft.destinationLng : draft.departureLng
-        }
+        initialLat={pinSeed.lat}
+        initialLng={pinSeed.lng}
         onCancel={() => setPinTarget(null)}
         onConfirm={(pinLat, pinLng) => {
           const target = pinTarget;

@@ -63,6 +63,7 @@ import {
   isFreeTextResolveStale,
   resolveFreeTextLocation,
   resolvePinLocation,
+  resolvePinSeed,
 } from "../../utils/resolveApproxLocation";
 import { parseVenuePlaceResult } from "../../utils/parseVenuePlaceResult";
 import type { PlaceDetails } from "../../services/mapboxGeocodeService";
@@ -346,6 +347,12 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   const [coverPickerVisible, setCoverPickerVisible] = useState(false);
   // Issue #1363 [three-tier address] — pin-drop host + non-silent inline hint.
   const [pinVisible, setPinVisible] = useState(false);
+  // Issue #1363 (CHANGE 2 — pin auto-center): coarse center the pin opens over,
+  // seeded from the field coord or a forward-geocode of the typed address.
+  const [pinSeed, setPinSeed] = useState<{
+    lat: number | null;
+    lng: number | null;
+  }>({ lat: null, lng: null });
   const [addrHint, setAddrHint] = useState<string | null>(null);
   // Issue #1363 P3-2 — latest-wins guard: the address text currently committed,
   // so a superseded free-text geocode can't patch a stale prefill coordinate.
@@ -788,7 +795,18 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
                   }
                 })();
               }}
-              onOpenPinDrop={() => setPinVisible(true)}
+              onOpenPinDrop={() => {
+                // CHANGE 2 — seed the pin center from the typed brand address.
+                void (async () => {
+                  const seed = await resolvePinSeed(
+                    addrMeta.lat,
+                    addrMeta.lng,
+                    address,
+                  );
+                  setPinSeed(seed);
+                  setPinVisible(true);
+                })();
+              }}
               onPick={(details: PlaceDetails): void => {
                 const p = parseVenuePlaceResult(details);
                 setAddrHint(null);
@@ -826,8 +844,8 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
             ) : null}
             <PinDropSheet
               visible={pinVisible}
-              initialLat={addrMeta.lat}
-              initialLng={addrMeta.lng}
+              initialLat={pinSeed.lat}
+              initialLng={pinSeed.lng}
               accentHex={accent.warm}
               onCancel={() => setPinVisible(false)}
               onConfirm={(pinLat, pinLng) => {
