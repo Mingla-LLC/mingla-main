@@ -31,6 +31,7 @@ const TARGETS = new Set([
   "src/components/analytics/CustomersMinglaDroveSection.tsx",
   "src/components/analytics/RegularsSection.tsx",
   "src/components/analytics/__tests__/BrandAnalyticsScreen.issue874.render.test.tsx",
+  "src/components/analytics/__tests__/RegularsSection.issue874.render.test.tsx",
   "src/store/liveEventStore.ts",
   "src/utils/liveEventConverter.ts",
   "src/utils/__tests__/issue_0962_prebank_display_no_gbp.test.ts",

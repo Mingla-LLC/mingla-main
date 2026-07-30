@@ -9,6 +9,7 @@ module.exports = {
   testMatch: [
     "**/__tests__/AnalyticsHomeTile.issue874.render.test.tsx",
     "**/__tests__/BrandAnalyticsScreen.issue874.render.test.tsx",
+    "**/__tests__/RegularsSection.issue874.render.test.tsx",
     "**/__tests__/home.issue874.render.test.tsx",
   ],
   haste: {

@@ -10,6 +10,9 @@ import { phMaskProps } from "../../analytics/phMask";
 import type { BrandRegularsRollup } from "../../services/brandAnalyticsService";
 import { GlassCard } from "../ui/GlassCard";
 
+export const formatRegularsCount = (count: number): string =>
+  `${count.toLocaleString("en-GB")} ${count === 1 ? "regular" : "regulars"}`;
+
 export const RegularsSection: React.FC<{ data: BrandRegularsRollup }> = ({
   data,
 }) => (
@@ -21,7 +24,7 @@ export const RegularsSection: React.FC<{ data: BrandRegularsRollup }> = ({
       <Text style={styles.window}>All time</Text>
     </View>
     <Text style={styles.summary}>
-      {`${data.regularsCount.toLocaleString("en-GB")} regulars`}
+      {formatRegularsCount(data.regularsCount)}
     </Text>
     <Text style={styles.helper}>
       Customers who booked or RSVP&apos;d across more than one listing or reservation.
