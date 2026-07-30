@@ -19,7 +19,7 @@
  * See SPEC_ORCH-1150 §5.4 + SPEC_ORCH-1334 §4E.
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -54,6 +54,7 @@ import {
   useSetRsvpStatus,
 } from "../../hooks/useRsvpApprovals";
 import type { RsvpGuest, RsvpSourceValue } from "../../services/rsvpApprovals";
+import { deferAfterDismiss } from "../../utils/deferAfterDismiss";
 import { RsvpGuestDetailSheet } from "./RsvpGuestDetailSheet";
 
 const ROW_BG = Platform.select({
@@ -198,6 +199,18 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
   const [removeTarget, setRemoveTarget] = useState<RsvpGuest | null>(null);
   // ORCH-1334 — the guest whose detail sheet is open (null = closed).
   const [selectedGuest, setSelectedGuest] = useState<RsvpGuest | null>(null);
+  // #1376 [rsvp-console-modal-fix] Bug 2 — the sheet's OWN error notice, driven
+  // into a <Toast> nested INSIDE RsvpGuestDetailSheet's <Sheet> (null = hidden).
+  // Sheet approve/deny failures route here (not the console-root sibling <Toast>,
+  // which iOS New-Arch drops while the sheet modal is up).
+  const [sheetNotice, setSheetNotice] = useState<string | null>(null);
+  // #1376 SC-1b — mirror the latest open-sheet guest so the DEFERRED remove-confirm
+  // (handleSheetRemove) can bail if a new sheet re-opened within the ~340ms defer
+  // window, never presenting a ConfirmDialog over a freshly re-opened sheet.
+  const selectedGuestRef = useRef<RsvpGuest | null>(selectedGuest);
+  useEffect(() => {
+    selectedGuestRef.current = selectedGuest;
+  }, [selectedGuest]);
 
   const guests = useMemo<RsvpGuest[]>(() => data ?? [], [data]);
   const pending = useMemo(() => guests.filter((g) => g.approvalStatus === "pending"), [guests]);
@@ -268,19 +281,25 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
   }, [bulkApprove, showToast]);
 
   // ORCH-1334 — sheet-scoped host actions. Approve/Deny fire the mutation and
-  // close the sheet on success; Remove closes the sheet FIRST, then opens the
-  // existing confirm dialog (no modal-over-modal).
+  // close the sheet on success; Remove closes the sheet FIRST, then defers the
+  // confirm dialog past the sheet's dismissal (no modal-over-modal).
+  //
+  // #1376 [rsvp-console-modal-fix] Bug 2 — on FAILURE the sheet stays OPEN by
+  // design (the host retries in-context), so the error can't be deferred past a
+  // dismissal that never happens; it routes to the sheet's own nested <Toast>
+  // via setSheetNotice, NOT the console-root sibling showToast (which iOS drops
+  // while the sheet modal is up).
   const handleSheetApprove = useCallback(
     (g: RsvpGuest): void => {
       setStatus.mutate(
         { rsvpId: g.id, status: "approved" },
         {
           onSuccess: () => setSelectedGuest(null),
-          onError: () => showToast(`Couldn't update ${g.displayName}. Try again.`),
+          onError: () => setSheetNotice(`Couldn't update ${g.displayName}. Try again.`),
         },
       );
     },
-    [setStatus, showToast],
+    [setStatus],
   );
 
   const handleSheetDeny = useCallback(
@@ -289,16 +308,36 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
         { rsvpId: g.id, status: "denied" },
         {
           onSuccess: () => setSelectedGuest(null),
-          onError: () => showToast(`Couldn't update ${g.displayName}. Try again.`),
+          onError: () => setSheetNotice(`Couldn't update ${g.displayName}. Try again.`),
         },
       );
     },
-    [setStatus, showToast],
+    [setStatus],
   );
 
+  // #1376 Bug 1 — close-then-DEFER (NOT nest). Close the detail sheet FIRST, then
+  // open the SHARED remove ConfirmDialog only AFTER the sheet's native modal has
+  // fully dismissed, via the shipped deferAfterDismiss helper (#1360). Opening the
+  // sibling ConfirmDialog in the SAME tick makes its <Modal> contend for the
+  // screen-root VC during the sheet's 280ms unmount window and iOS New-Arch drops
+  // it — the confirm never appears (device-proven on #1376). We do NOT nest the
+  // ConfirmDialog inside the sheet because it is SHARED with the row-level Remove
+  // (no sheet open there); only the sheet path's timing is fixed.
+  // SC-1b guard: skip the confirm if a new sheet re-opened within the defer window.
   const handleSheetRemove = useCallback((g: RsvpGuest): void => {
     setSelectedGuest(null);
-    setRemoveTarget(g);
+    deferAfterDismiss(() => {
+      if (selectedGuestRef.current === null) {
+        setRemoveTarget(g);
+      }
+    });
+  }, []);
+
+  // #1376 Bug 2 — open a guest's detail sheet, clearing any stale sheet notice so
+  // a prior approve/deny error never re-appears over a freshly opened sheet.
+  const handleSelectGuest = useCallback((g: RsvpGuest): void => {
+    setSheetNotice(null);
+    setSelectedGuest(g);
   }, []);
 
   // ORCH-1334 — one row: a press-isolated tappable body (avatar + name + source
@@ -311,7 +350,7 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
             styles.rowBody,
             pressed ? { backgroundColor: ROW_BG_PRESSED, opacity: 0.92 } : null,
           ]}
-          onPress={() => setSelectedGuest(g)}
+          onPress={() => handleSelectGuest(g)}
           accessibilityRole="button"
           accessibilityLabel={`${g.displayName}, ${
             g.source === "app" ? "on Mingla" : "RSVP'd on web"
@@ -337,7 +376,7 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
         {trailing}
       </View>
     ),
-    [],
+    [handleSelectGuest],
   );
 
   const renderHeader = (): React.ReactElement => (
@@ -495,6 +534,8 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
         onDeny={handleSheetDeny}
         onRemove={handleSheetRemove}
         isActionPending={setStatus.isPending}
+        notice={sheetNotice}
+        onNoticeDismiss={() => setSheetNotice(null)}
       />
 
       <ConfirmDialog
