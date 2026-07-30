@@ -138,6 +138,24 @@ const stringOrThrow = (value: unknown, rpcName: string): string => {
   return value;
 };
 
+const MASKED_EMAIL_RE =
+  /^[^\s@*]\*{3}@[^\s@.*]\*{3}(?:\.[^\s@.*]+)?$/;
+const MASKED_EMAIL_FALLBACK_RE = /^[^\s@*]\*{3}$/;
+const MASKED_PHONE_RE = /^\*{3}\d{4}$/;
+
+const maskedContactOrThrow = (value: unknown, rpcName: string): string => {
+  const maskedContact = stringOrThrow(value, rpcName);
+  if (
+    maskedContact !== "***" &&
+    !MASKED_EMAIL_RE.test(maskedContact) &&
+    !MASKED_EMAIL_FALLBACK_RE.test(maskedContact) &&
+    !MASKED_PHONE_RE.test(maskedContact)
+  ) {
+    throw new BrandAnalyticsContractError(rpcName);
+  }
+  return maskedContact;
+};
+
 const brandIdOrThrow = (
   value: unknown,
   expectedBrandId: string,
@@ -243,7 +261,7 @@ export function normalizeBrandRegularsRollup(
   const topRegulars = row.top_regulars.map((rawRegular) => {
     const regular = objectOrThrow(rawRegular, rpcName);
     return {
-      maskedContact: stringOrThrow(regular.masked_contact, rpcName),
+      maskedContact: maskedContactOrThrow(regular.masked_contact, rpcName),
       bookingsAndRsvps: countOrThrow(regular.visits, rpcName),
       listings: countOrThrow(regular.listings, rpcName),
     };
@@ -281,12 +299,31 @@ const normalizePatternView = (
       throw new BrandAnalyticsContractError(rpcName);
     }
     seen.add(key);
+    const bookingsAndRsvps = countOrThrow(bucket.commitments, rpcName);
+    if (bookingsAndRsvps === 0) {
+      throw new BrandAnalyticsContractError(rpcName);
+    }
     return {
       key,
       label,
-      bookingsAndRsvps: countOrThrow(bucket.commitments, rpcName),
+      bookingsAndRsvps,
     };
   });
+  const sampleCommitments = countOrThrow(view.sample_commitments, rpcName);
+  const distinctDates = countOrThrow(view.distinct_dates, rpcName);
+  const positiveBuckets = countOrThrow(view.positive_buckets, rpcName);
+  if (positiveBuckets !== buckets.length) {
+    throw new BrandAnalyticsContractError(rpcName);
+  }
+  if (
+    (state === "no_data" || state === "unauthorized") &&
+    (sampleCommitments !== 0 ||
+      distinctDates !== 0 ||
+      positiveBuckets !== 0 ||
+      buckets.length !== 0)
+  ) {
+    throw new BrandAnalyticsContractError(rpcName);
+  }
   const rawWinner = view.winner;
   let winner: CustomerPatternBucket | null = null;
   if (state === "winner") {
@@ -307,9 +344,9 @@ const normalizePatternView = (
   }
   return {
     state: state as PatternState,
-    sampleCommitments: countOrThrow(view.sample_commitments, rpcName),
-    distinctDates: countOrThrow(view.distinct_dates, rpcName),
-    positiveBuckets: countOrThrow(view.positive_buckets, rpcName),
+    sampleCommitments,
+    distinctDates,
+    positiveBuckets,
     winner,
     buckets,
   };

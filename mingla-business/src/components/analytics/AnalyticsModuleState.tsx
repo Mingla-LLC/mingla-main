@@ -46,7 +46,7 @@ export const AnalyticsModuleError: React.FC<{
 export const RefreshFailureBanner: React.FC<{ onRetry: () => void }> = ({
   onRetry,
 }) => (
-  <View style={styles.banner} accessibilityLiveRegion="polite">
+  <View style={styles.banner}>
     <Text style={styles.bannerText}>Couldn&apos;t refresh analytics</Text>
     <Pressable
       onPress={onRetry}

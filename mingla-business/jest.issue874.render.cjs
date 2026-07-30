@@ -13,6 +13,8 @@ module.exports = {
     ],
   },
   testMatch: [
+    "**/__tests__/analytics.issue874.tester.adversarial.render.test.tsx",
+    "**/__tests__/BrandAnalyticsA11y.issue874.tester.adversarial.render.test.tsx",
     "**/__tests__/AnalyticsHomeTile.issue874.render.test.tsx",
     "**/__tests__/BrandAnalyticsScreen.issue874.render.test.tsx",
     "**/__tests__/RegularsSection.issue874.render.test.tsx",

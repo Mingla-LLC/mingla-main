@@ -25,14 +25,14 @@ const PatternCard: React.FC<{
         {title}
       </Text>
       {view.state === "no_data" ? (
-        <View style={styles.state}>
+        <View style={styles.state} accessibilityLiveRegion="polite">
           <Text style={styles.stateTitle}>No booking pattern yet</Text>
           <Text style={styles.body}>
             Mingla will show patterns here after customers book or RSVP.
           </Text>
         </View>
       ) : view.state === "more_data_needed" ? (
-        <View style={styles.state}>
+        <View style={styles.state} accessibilityLiveRegion="polite">
           <Text style={styles.stateTitle}>More data needed</Text>
           <Text style={styles.body}>
             We need at least 10 Mingla bookings or RSVPs across 3 dates before
@@ -41,7 +41,7 @@ const PatternCard: React.FC<{
           <Text style={styles.sample}>{sample}</Text>
         </View>
       ) : view.state === "no_clear_pattern" ? (
-        <View style={styles.state}>
+        <View style={styles.state} accessibilityLiveRegion="polite">
           <Text style={styles.stateTitle}>No clear pattern yet</Text>
           <Text style={styles.body}>
             Your customer choices are still spread across days, times, or

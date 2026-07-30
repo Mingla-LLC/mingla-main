@@ -61,11 +61,15 @@ export const BrandAnalyticsScreen: React.FC<BrandAnalyticsScreenProps> = ({
   const patterns = useBrandCustomerPatternsRollup(brand.id, callerEnabled);
   const [isManualRefreshing, setIsManualRefreshing] = useState(false);
   const [refreshFailed, setRefreshFailed] = useState(false);
+  const [refreshAnnouncement, setRefreshAnnouncement] = useState<
+    string | null
+  >(null);
   const openedTracked = useRef(false);
 
   useEffect(() => {
     openedTracked.current = false;
     setRefreshFailed(false);
+    setRefreshAnnouncement(null);
   }, [brand.id]);
 
   useEffect(() => {
@@ -93,6 +97,7 @@ export const BrandAnalyticsScreen: React.FC<BrandAnalyticsScreenProps> = ({
     if (isManualRefreshing) return;
     setIsManualRefreshing(true);
     setRefreshFailed(false);
+    setRefreshAnnouncement("Updating analytics");
     const settled = await Promise.allSettled([
       totals.refetch(),
       regulars.refetch(),
@@ -108,6 +113,13 @@ export const BrandAnalyticsScreen: React.FC<BrandAnalyticsScreenProps> = ({
       successes === 3 ? "success" : successes === 0 ? "error" : "partial";
     setRefreshFailed(successes < 3);
     captureBusinessAnalyticsRefreshed(result);
+    setRefreshAnnouncement(
+      result === "success"
+        ? "Analytics updated"
+        : result === "partial"
+          ? "Analytics partly updated"
+          : "Analytics couldn't be updated",
+    );
     setIsManualRefreshing(false);
   }, [isManualRefreshing, patterns, regulars, totals]);
 
@@ -165,10 +177,13 @@ export const BrandAnalyticsScreen: React.FC<BrandAnalyticsScreenProps> = ({
           <Text style={styles.intro} accessibilityRole="header">
             {`See how customers find and choose ${brand.displayName}.`}
           </Text>
-          <View accessibilityLiveRegion="polite">
-            {isManualRefreshing ? (
-              <Text style={styles.updating}>Updating…</Text>
-            ) : null}
+          <View
+            accessibilityLiveRegion="polite"
+            testID="analytics-refresh-announcement"
+          >
+            {refreshAnnouncement === null ? null : (
+              <Text style={styles.updating}>{refreshAnnouncement}</Text>
+            )}
           </View>
         </View>
         {isWideDesktop ? (
