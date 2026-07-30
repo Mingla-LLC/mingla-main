@@ -44,6 +44,10 @@ import {
   paystackRefundTransaction,
   persistPaystackRefundOutcome,
 } from "../_shared/paystackRefunds.ts";
+import {
+  runSourceRefundOperation,
+  type SourceRefundOperation,
+} from "../_shared/sourceRefundControlPlane.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -117,7 +121,9 @@ async function buildRemainingManifest(
     .from("order_line_items")
     .select("id, quantity, total_cents")
     .eq("order_id", orderId);
-  if (itemsErr) throw new Error(`line_items_lookup_failed: ${itemsErr.message}`);
+  if (itemsErr) {
+    throw new Error(`line_items_lookup_failed: ${itemsErr.message}`);
+  }
   if (!items || items.length === 0) return [];
 
   const { data: refunds, error: refundsErr } = await supabase
@@ -125,12 +131,15 @@ async function buildRemainingManifest(
     .select("id, status, metadata")
     .eq("order_id", orderId)
     .in("status", ["pending", "succeeded"]);
-  if (refundsErr) throw new Error(`refunds_lookup_failed: ${refundsErr.message}`);
+  if (refundsErr) {
+    throw new Error(`refunds_lookup_failed: ${refundsErr.message}`);
+  }
 
   // Exclude THIS cancellation refund; only "other" refunds reduce the remaining.
   const otherRefundIds = (refunds ?? [])
     .filter((r: Record<string, unknown>) =>
-      ((r.metadata as Record<string, unknown> | null)?.idempotency_key ?? "") !==
+      ((r.metadata as Record<string, unknown> | null)?.idempotency_key ??
+        "") !==
         idemKey
     )
     .map((r: Record<string, unknown>) => String(r.id));
@@ -141,7 +150,9 @@ async function buildRemainingManifest(
       .from("refund_line_items")
       .select("order_line_item_id, quantity, amount_cents")
       .in("refund_id", otherRefundIds);
-    if (rliErr) throw new Error(`refund_lines_lookup_failed: ${rliErr.message}`);
+    if (rliErr) {
+      throw new Error(`refund_lines_lookup_failed: ${rliErr.message}`);
+    }
     for (const rli of rlis ?? []) {
       const key = String(rli.order_line_item_id);
       const acc = doneByLine.get(key) ?? { qty: 0, amt: 0 };
@@ -214,7 +225,9 @@ async function refundOneOrder(
     const msg = (pendingError?.message ?? "admin_refund_order_failed")
       .toLowerCase();
     // Order already fully refunded by someone else → buyer has their money.
-    if (msg.includes("order_not_refundable") || msg.includes("refund_amount_zero")) {
+    if (
+      msg.includes("order_not_refundable") || msg.includes("refund_amount_zero")
+    ) {
       return { result: "refunded", refundId: row.refund_id };
     }
     return {
@@ -278,7 +291,9 @@ async function refundOneOrder(
   if (brandErr || !brandRow) {
     return {
       result: "failed_retryable",
-      error: `connected_account_lookup_failed: ${brandErr?.message ?? "no row"}`,
+      error: `connected_account_lookup_failed: ${
+        brandErr?.message ?? "no row"
+      }`,
       refundId,
     };
   }
@@ -298,11 +313,10 @@ async function refundOneOrder(
   const brandsRow = Array.isArray(brandsJoined)
     ? brandsJoined[0] ?? null
     : brandsJoined;
-  const connectedAccountId =
-    typeof brandsRow?.stripe_connect_id === "string" &&
+  const connectedAccountId = typeof brandsRow?.stripe_connect_id === "string" &&
       brandsRow.stripe_connect_id.length > 0
-      ? brandsRow.stripe_connect_id
-      : null;
+    ? brandsRow.stripe_connect_id
+    : null;
   const paymentProvider = brandsRow?.payment_provider === "paystack"
     ? "paystack"
     : "stripe";
@@ -428,7 +442,9 @@ async function refundOneOrder(
     }
   }
 
-  if (providerRefund.status === "failed" || providerRefund.status === "canceled") {
+  if (
+    providerRefund.status === "failed" || providerRefund.status === "canceled"
+  ) {
     await supabase.rpc("admin_refund_order_commit", {
       p_refund_id: refundId,
       p_stripe_refund_id: providerRefund.id,
@@ -564,8 +580,40 @@ serve(async (req: Request): Promise<Response> => {
     if (msg.includes("event_not_found")) {
       return json({ error: "event_not_found" }, 404);
     }
-    console.error("[event-cancel-refund-fanout] prepare failed", prepError.message);
+    console.error(
+      "[event-cancel-refund-fanout] prepare failed",
+      prepError.message,
+    );
     return json({ error: "prepare_failed", detail: prepError.message }, 500);
+  }
+
+  // RSVP contributions have no order. Prepare their typed source refunds after
+  // the same cancelled-event precondition, then let the shared sweep remain the
+  // correctness backstop if this best-effort kickoff cannot reach a provider.
+  const { data: rsvpOperations, error: rsvpPrepareError } = await supabase.rpc(
+    "prepare_event_cancel_rsvp_source_refunds",
+    { p_event_id: eventId },
+  );
+  if (rsvpPrepareError) {
+    console.error("event_cancel_rsvp_refund_prepare_failed", {
+      event_id: eventId,
+      error_code: "rsvp_prepare_failed",
+    });
+    return json({ error: "rsvp_prepare_failed" }, 500);
+  }
+  let rsvpRefundsPrepared = 0;
+  for (const operation of (rsvpOperations ?? []) as SourceRefundOperation[]) {
+    rsvpRefundsPrepared++;
+    try {
+      await runSourceRefundOperation(supabase, operation);
+    } catch (caught) {
+      console.warn("event_cancel_rsvp_refund_deferred", {
+        refund_id: operation.id,
+        error_code: caught instanceof Error
+          ? caught.message.split(":")[0]
+          : "runner_failed",
+      });
+    }
   }
 
   // ── 2. Drain: claim a batch, refund each object in its own try/catch, mark. ──
@@ -581,7 +629,10 @@ serve(async (req: Request): Promise<Response> => {
       { p_event_id: eventId, p_limit: CLAIM_BATCH },
     );
     if (claimError) {
-      console.error("[event-cancel-refund-fanout] claim failed", claimError.message);
+      console.error(
+        "[event-cancel-refund-fanout] claim failed",
+        claimError.message,
+      );
       return json({ error: "claim_failed", detail: claimError.message }, 500);
     }
     const rows = (claimed ?? []) as ProgressRow[];
@@ -620,10 +671,12 @@ serve(async (req: Request): Promise<Response> => {
 
   return json({
     event_id: eventId,
-    run_status: runRow?.status ?? (prep as Record<string, unknown>)?.run_status ??
+    run_status: runRow?.status ??
+      (prep as Record<string, unknown>)?.run_status ??
       "unknown",
     total_objects: runRow?.total_objects ?? 0,
     refunded,
+    rsvp_refunds_prepared: rsvpRefundsPrepared,
     failed_retryable: failedRetryable,
     failed,
   });

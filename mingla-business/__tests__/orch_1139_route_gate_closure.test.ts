@@ -105,7 +105,7 @@ const EXPECTED: Record<string, Bucket> = {
   // --- invite-exempt (2) ---
   "accept-brand-invitation": "invite-exempt",
   "accept-scanner-invitation": "invite-exempt",
-  // --- buyer-exempt (10 — directory segments) ---
+  // --- buyer-exempt (11 — directory segments) ---
   e: "buyer-exempt",
   t: "buyer-exempt",
   b: "buyer-exempt",
@@ -114,6 +114,7 @@ const EXPECTED: Record<string, Bucket> = {
   "checkout-trip": "buyer-exempt",
   "checkout-experience": "buyer-exempt",
   reserve: "buyer-exempt",
+  refund: "buyer-exempt",
   o: "buyer-exempt",
   booking: "buyer-exempt",
   // --- gated-default (everything else) ---

@@ -76,6 +76,7 @@ const EXPECTED_BUYER = [
   "/checkout-trip/",
   "/checkout-experience/",
   "/reserve/",
+  "/refund/",
   "/o/",
   "/booking/",
 ].sort();
@@ -141,14 +142,24 @@ function runSelfTest() {
     f++;
   }
   // F3 — prefix snapshot compare
-  const goodCold = `export const PUBLIC_BUYER_ROUTE_PREFIXES = ["/e/","/t/","/b/","/exp/","/checkout/","/checkout-trip/","/checkout-experience/","/reserve/","/o/","/booking/"];`;
+  const goodCold = `export const PUBLIC_BUYER_ROUTE_PREFIXES = ["/e/","/t/","/b/","/exp/","/checkout/","/checkout-trip/","/checkout-experience/","/reserve/","/refund/","/o/","/booking/"];`;
   const badCold = `export const PUBLIC_BUYER_ROUTE_PREFIXES = ["/e/","/t/"];`;
+  const badMissingRefund = `export const PUBLIC_BUYER_ROUTE_PREFIXES = ["/e/","/t/","/b/","/exp/","/checkout/","/checkout-trip/","/checkout-experience/","/reserve/","/o/","/booking/"];`;
+  const badRefundsLookalike = `export const PUBLIC_BUYER_ROUTE_PREFIXES = ["/e/","/t/","/b/","/exp/","/checkout/","/checkout-trip/","/checkout-experience/","/reserve/","/refunds/","/o/","/booking/"];`;
   if (!eqSet(extractPrefixList(goodCold, "PUBLIC_BUYER_ROUTE_PREFIXES"), EXPECTED_BUYER)) {
     console.error("SELF-TEST FAIL: good buyer-prefix snapshot mismatch");
     f++;
   }
   if (eqSet(extractPrefixList(badCold, "PUBLIC_BUYER_ROUTE_PREFIXES"), EXPECTED_BUYER)) {
     console.error("SELF-TEST FAIL: shrunk buyer-prefix list falsely matched snapshot");
+    f++;
+  }
+  if (eqSet(extractPrefixList(badMissingRefund, "PUBLIC_BUYER_ROUTE_PREFIXES"), EXPECTED_BUYER)) {
+    console.error("SELF-TEST FAIL: snapshot missing exact /refund/ member falsely matched");
+    f++;
+  }
+  if (eqSet(extractPrefixList(badRefundsLookalike, "PUBLIC_BUYER_ROUTE_PREFIXES"), EXPECTED_BUYER)) {
+    console.error("SELF-TEST FAIL: /refunds/ lookalike falsely matched exact /refund/ member");
     f++;
   }
   if (f > 0) {

@@ -324,6 +324,11 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     const guestCancelToken = surface === "web"
       ? randomBuyerStatusToken()
       : null;
+    // This zero-value credential row has no settlement currency. Preserve a
+    // configured venue currency when present; otherwise use ISO 4217 "no
+    // currency" rather than fabricating USD/GBP discovery or refund semantics.
+    const freeSessionCurrency = settings.fee_currency?.trim().toUpperCase() ||
+      "XXX";
     const { data: created, error: createErr } = await supabase.rpc(
       "pg_create_guest_reservation",
       {
@@ -340,7 +345,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
         p_fee_currency: null,
         p_payment_intent_id: null,
         p_payment_status: "none",
-        p_guest_cancel_token: guestCancelToken,
+        p_guest_cancel_token: null,
         p_occasion: occasion,
         p_guest_notes: guestNotes,
         p_status: "confirmed",
@@ -354,6 +359,40 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
       unknown
     >;
     const reservationId = String(row.id ?? "");
+    if (guestCancelToken && reservationId) {
+      const { error: freeSessionError } = await supabase.from(
+        "reservation_checkout_sessions",
+      ).insert({
+        brand_id: brandId,
+        venue_id: venueId,
+        reserved_for: reservedForIso,
+        party_size: partySize,
+        buyer_name: buyerName,
+        buyer_email: buyerEmail,
+        buyer_phone_e164: buyerPhoneE164,
+        occasion,
+        guest_notes: guestNotes,
+        marketing_opt_in: marketingOptIn,
+        amount_cents: 0,
+        currency: freeSessionCurrency,
+        created_via: "web",
+        consumer_user_id: null,
+        guest_cancel_token: null,
+        guest_cancel_token_hash: `v1:${await sha256Hex(guestCancelToken)}`,
+        buyer_status_token_hash: await sha256Hex(guestCancelToken),
+        application_fee_amount_cents: 0,
+        pricing_breakdown: null,
+        status: "completed",
+        reservation_id: reservationId,
+      });
+      if (freeSessionError) {
+        console.error("free_reservation_guest_credential_persist_failed", {
+          reservation_id: reservationId,
+          error_code: freeSessionError.code,
+        });
+        return jsonResponse({ error: "reservation_session_failed" }, 500);
+      }
+    }
 
     // ISSUE-865 PR1 WP-2 TWO-TIER — a completed FREE RSVP fires the LEAD-type
     // conversion (eventType 'reservation' → Meta 'Schedule' / TikTok
@@ -468,7 +507,9 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
   });
 
   const buyerStatusToken = randomBuyerStatusToken();
-  const guestCancelToken = surface === "web" ? randomBuyerStatusToken() : null;
+  // #1221: one plaintext is held only by the browser/in-memory response. The
+  // checkout session stores only the versioned SHA-256 credential hash.
+  const guestCancelToken = surface === "web" ? buyerStatusToken : null;
 
   // ── PAYSTACK ARM (NG) — same provider-neutral reuse as ticket-checkout. ──────
   if (providerRouting.provider === "paystack") {
@@ -555,6 +596,8 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
       consumerUserId: userId,
       guestCancelToken,
       buyerStatusTokenHash: await sha256Hex(buyerStatusToken),
+      applicationFeeAmountCents: psSubtotal.miglaFeeCents,
+      pricingBreakdown: psBreakdown,
     });
     if (sessionId === null) {
       return jsonResponse({ error: "reservation_session_failed" }, 500);
@@ -717,6 +760,8 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     consumerUserId: userId,
     guestCancelToken,
     buyerStatusTokenHash: await sha256Hex(buyerStatusToken),
+    applicationFeeAmountCents,
+    pricingBreakdown,
     stripeAccountId,
   });
   if (sessionId === null) {
@@ -1005,6 +1050,8 @@ interface SessionInsert {
   consumerUserId: string | null;
   guestCancelToken: string | null;
   buyerStatusTokenHash: string;
+  applicationFeeAmountCents: number;
+  pricingBreakdown: PricingBreakdown;
   stripeAccountId?: string | null;
 }
 
@@ -1032,8 +1079,13 @@ async function insertReservationSession(
       currency: s.currency.toUpperCase(),
       created_via: s.createdVia,
       consumer_user_id: s.consumerUserId,
-      guest_cancel_token: s.guestCancelToken,
+      guest_cancel_token: null,
+      guest_cancel_token_hash: s.guestCancelToken
+        ? `v1:${await sha256Hex(s.guestCancelToken)}`
+        : null,
       buyer_status_token_hash: s.buyerStatusTokenHash,
+      application_fee_amount_cents: s.applicationFeeAmountCents,
+      pricing_breakdown: s.pricingBreakdown,
       stripe_account_id: s.stripeAccountId ?? null,
       status: "pending",
       expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),

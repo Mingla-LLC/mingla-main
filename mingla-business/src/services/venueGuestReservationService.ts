@@ -32,8 +32,8 @@ async function extractFunctionError(
   }
   const message = (error as { message?: unknown }).message;
   return typeof message === "string" &&
-    message.length > 0 &&
-    !message.startsWith("Edge Function returned")
+      message.length > 0 &&
+      !message.startsWith("Edge Function returned")
     ? message
     : fallback;
 }
@@ -58,32 +58,92 @@ export interface GuestReservationInput {
 
 export type GuestReservationResult =
   | {
-      kind: "free_completed";
-      reservationId: string;
-      reservedForUtc: string;
-      partySize: number;
-      brandId: string;
-    }
+    kind: "free_completed";
+    reservationId: string;
+    reservedForUtc: string;
+    partySize: number;
+    brandId: string;
+  }
   | {
-      kind: "requires_web_redirect";
-      reservationDraftId: string;
-      buyerStatusToken: string;
-      hostedCheckoutUrl: string | null;
-      totalCents: number;
-      currency: string;
-    }
+    kind: "requires_web_redirect";
+    reservationDraftId: string;
+    buyerStatusToken: string;
+    hostedCheckoutUrl: string | null;
+    totalCents: number;
+    currency: string;
+  }
   | {
-      kind: "requires_paystack_redirect";
-      reservationDraftId: string;
-      buyerStatusToken: string;
-      authorizationUrl: string;
-      totalCents: number;
-      currency: string;
-    };
+    kind: "requires_paystack_redirect";
+    reservationDraftId: string;
+    buyerStatusToken: string;
+    authorizationUrl: string;
+    totalCents: number;
+    currency: string;
+  };
 
 export interface GuestReservationConfirmResult {
   status: "completed" | "pending" | "failed";
   reservationId: string | null;
+  guestCancelToken?: string;
+}
+
+export interface GuestVenueRefundSummary {
+  refund_id: string;
+  buyer_state: string;
+  fee_state: string;
+  financial_state: string;
+  amount_cents: number;
+  currency: string;
+  updated_at: string;
+  attentionDeliveryState?: "parked" | "recovery_required" | null;
+  attentionRecoveryCode?:
+    | "delivery_acceptance_unknown"
+    | "delivery_undelivered"
+    | null;
+}
+
+export async function fetchGuestVenueRefund(input: {
+  reservationId: string;
+  guestToken: string;
+}): Promise<GuestVenueRefundSummary | null> {
+  const { data, error } = await supabase.functions.invoke(
+    "venue-reservation-refund-status",
+    { body: input },
+  );
+  if (error) throw error;
+  return (data?.refund ?? null) as GuestVenueRefundSummary | null;
+}
+
+export async function cancelGuestVenueReservation(input: {
+  reservationId: string;
+  guestToken: string;
+}): Promise<{ refund: GuestVenueRefundSummary | null }> {
+  const { data, error } = await supabase.functions.invoke(
+    "venue-reservation-cancel",
+    { body: input },
+  );
+  if (error) throw error;
+  return { refund: (data?.refund ?? null) as GuestVenueRefundSummary | null };
+}
+
+export async function submitGuestRefundAttention(input: {
+  refundId: string;
+  attentionToken: string;
+  accountNumber: string;
+  bankId: string;
+}): Promise<{ state: string }> {
+  const { data, error } = await supabase.functions.invoke(
+    "source-refund-attention",
+    {
+      body: {
+        mode: "submit_paystack_details",
+        currency: "NGN",
+        ...input,
+      },
+    },
+  );
+  if (error) throw error;
+  return data as { state: string };
 }
 
 export async function fetchPublicVenueSlots(
@@ -115,23 +175,24 @@ export async function fetchPublicVenueSlots(
 export async function createGuestVenueReservation(
   input: GuestReservationInput,
 ): Promise<GuestReservationResult> {
-  const { data, error } =
-    await supabase.functions.invoke<GuestReservationResult>(
-      "venue-reservation-create",
-      {
-        body: {
-          venueId: input.venueId,
-          brandId: input.brandId,
-          surface: "web",
-          reservedForUtc: input.reservedForUtc,
-          partySize: input.partySize,
-          buyer: input.buyer,
-          occasion: input.occasion ?? null,
-          guestNotes: input.guestNotes ?? null,
-          attributionClickId: input.attributionClickId ?? null,
-        },
+  const { data, error } = await supabase.functions.invoke<
+    GuestReservationResult
+  >(
+    "venue-reservation-create",
+    {
+      body: {
+        venueId: input.venueId,
+        brandId: input.brandId,
+        surface: "web",
+        reservedForUtc: input.reservedForUtc,
+        partySize: input.partySize,
+        buyer: input.buyer,
+        occasion: input.occasion ?? null,
+        guestNotes: input.guestNotes ?? null,
+        attributionClickId: input.attributionClickId ?? null,
       },
-    );
+    },
+  );
   if (error !== null) {
     throw new Error(
       await extractFunctionError(
@@ -140,8 +201,9 @@ export async function createGuestVenueReservation(
       ),
     );
   }
-  if (data === null)
+  if (data === null) {
     throw new Error("The reservation service returned no result.");
+  }
   return data;
 }
 
@@ -149,11 +211,12 @@ export async function confirmGuestVenueReservation(input: {
   reservationDraftId: string;
   buyerStatusToken: string;
 }): Promise<GuestReservationConfirmResult> {
-  const { data, error } =
-    await supabase.functions.invoke<GuestReservationConfirmResult>(
-      "venue-reservation-confirm",
-      { body: input },
-    );
+  const { data, error } = await supabase.functions.invoke<
+    GuestReservationConfirmResult
+  >(
+    "venue-reservation-confirm",
+    { body: input },
+  );
   if (error !== null) {
     throw new Error(
       await extractFunctionError(
@@ -162,7 +225,8 @@ export async function confirmGuestVenueReservation(input: {
       ),
     );
   }
-  if (data === null)
+  if (data === null) {
     throw new Error("The confirmation service returned no result.");
+  }
   return data;
 }

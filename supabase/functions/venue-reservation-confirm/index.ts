@@ -66,7 +66,7 @@ interface SessionRow {
   paystack_reference: string | null;
   created_via: "app" | "web";
   consumer_user_id: string | null;
-  guest_cancel_token: string | null;
+  guest_cancel_token_hash: string | null;
   buyer_status_token_hash: string | null;
   status: "pending" | "completed" | "expired" | "failed";
   reservation_id: string | null;
@@ -130,7 +130,11 @@ serve(wrapEdgeHandler("venue-reservation-confirm", async (req) => {
       reservedForUtc: session.reserved_for,
       partySize: session.party_size,
       brandId: session.brand_id,
-      guestCancelToken: session.guest_cancel_token ?? undefined,
+      // #1221: rotate from the token just proven on this confirmation replay;
+      // no raw token is read from storage.
+      guestCancelToken: session.created_via === "web"
+        ? buyerStatusToken
+        : undefined,
       receiptUrl: `/o/${session.reservation_id}`,
     });
   }
@@ -191,7 +195,9 @@ serve(wrapEdgeHandler("venue-reservation-confirm", async (req) => {
             reservedForUtc: session.reserved_for,
             partySize: session.party_size,
             brandId: session.brand_id,
-            guestCancelToken: session.guest_cancel_token ?? undefined,
+            guestCancelToken: session.created_via === "web"
+              ? buyerStatusToken
+              : undefined,
             receiptUrl: `/o/${reservationId}`,
           });
         }
@@ -379,7 +385,9 @@ serve(wrapEdgeHandler("venue-reservation-confirm", async (req) => {
     reservedForUtc: session.reserved_for,
     partySize: session.party_size,
     brandId: session.brand_id,
-    guestCancelToken: session.guest_cancel_token ?? undefined,
+    guestCancelToken: session.created_via === "web"
+      ? buyerStatusToken
+      : undefined,
     receiptUrl: `/o/${reservationId}`,
   });
 }, {

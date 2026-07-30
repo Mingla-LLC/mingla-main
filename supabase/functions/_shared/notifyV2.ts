@@ -12,6 +12,7 @@ import { pushAdapter } from "./adapters/pushAdapter.ts";
 import { emailAdapter } from "./adapters/emailAdapter.ts";
 import { smsAdapter } from "./adapters/smsAdapter.ts";
 import { renderCategoryMessage } from "./notifyTemplates.ts";
+import { notificationSafeError } from "./notificationSafeError.ts";
 
 // Minimal subset of the supabase-js client surface the v2 core uses, so the core
 // is unit-testable with a fake client.
@@ -24,11 +25,16 @@ export interface MinimalClient {
       };
     };
     insert: (row: Record<string, unknown>) => {
-      select?: (cols: string) => { single: () => Promise<{ data: unknown; error: unknown }> };
+      select?: (
+        cols: string,
+      ) => { single: () => Promise<{ data: unknown; error: unknown }> };
     } & Promise<{ data: unknown; error: unknown }>;
     update?: (row: Record<string, unknown>) => {
       eq: (col: string, val: unknown) => {
-        eq: (col: string, val: unknown) => Promise<{ data: unknown; error: unknown }>;
+        eq: (
+          col: string,
+          val: unknown,
+        ) => Promise<{ data: unknown; error: unknown }>;
       };
     };
   };
@@ -45,6 +51,7 @@ export interface DispatchV2Input {
   payload: Record<string, unknown>;
   idempotency_key: string;
   country_code?: string | null;
+  requested_channel?: "inapp" | "push" | "email" | "sms" | null;
 }
 
 export interface CategoryRow {
@@ -59,7 +66,14 @@ export interface DispatchV2Result {
   success: boolean;
   duplicate?: boolean;
   notificationId?: string | null;
-  deliveries?: Array<{ channel: string; status: string; providerMessageId: string | null; segments?: number }>;
+  deliveries?: Array<
+    {
+      channel: string;
+      status: string;
+      providerMessageId: string | null;
+      segments?: number;
+    }
+  >;
   reason?: string;
 }
 
@@ -110,7 +124,10 @@ export async function dispatchV2(
       })
       // deno-lint-ignore no-explicit-any
       .select?.("id")
-      .single() as unknown as { data: { id: string } | null; error: { code?: string } | null };
+      .single() as unknown as {
+        data: { id: string } | null;
+        error: { code?: string } | null;
+      };
     if (insertRes.error) {
       if (insertRes.error.code === "23505") {
         return { success: true, duplicate: true, notificationId: null };
@@ -148,14 +165,22 @@ export async function dispatchV2(
   //    inapp), if can_send passes, fire the adapter. ALL fire — no waterfall.
   const contactEmail = isEmail(input.contact) ? input.contact! : null;
   const contactPhone = isPhone(input.contact) ? input.contact! : null;
-  const brandName = String(input.payload.brand_name ?? input.payload.brand ?? "Mingla");
+  const brandName = String(
+    input.payload.brand_name ?? input.payload.brand ?? "Mingla",
+  );
 
   const tasks: Array<Promise<void>> = [];
 
-  for (const channel of cat.default_channels) {
+  const requestedChannels = input.requested_channel
+    ? [input.requested_channel]
+    : cat.default_channels;
+  for (const channel of requestedChannels) {
     if (channel === "inapp") continue;
-    const contactForChannel =
-      channel === "email" ? contactEmail : channel === "sms" ? contactPhone : null;
+    const contactForChannel = channel === "email"
+      ? contactEmail
+      : channel === "sms"
+      ? contactPhone
+      : null;
 
     // can_send gate (the single chokepoint). push/inapp pass with contact=null.
     const { data: allowedData } = await client.rpc("can_send", {
@@ -166,8 +191,19 @@ export async function dispatchV2(
     });
     const allowed = allowedData === true;
     if (!allowed) {
-      await writeDelivery(client, nid, channel, "suppressed", CHANNEL_PROVIDER[channel], "can_send_denied");
-      deliveries.push({ channel, status: "suppressed", providerMessageId: null });
+      await writeDelivery(
+        client,
+        nid,
+        channel,
+        "suppressed",
+        CHANNEL_PROVIDER[channel],
+        "can_send_denied",
+      );
+      deliveries.push({
+        channel,
+        status: "suppressed",
+        providerMessageId: null,
+      });
       continue;
     }
 
@@ -180,8 +216,19 @@ export async function dispatchV2(
           data: { ...input.payload, category_key: input.category_key },
           routingType: input.category_key,
         });
-        await writeDelivery(client, nid, "push", r.status, CHANNEL_PROVIDER.push, r.error ?? null);
-        deliveries.push({ channel: "push", status: r.status, providerMessageId: r.providerMessageId });
+        await writeDelivery(
+          client,
+          nid,
+          "push",
+          r.status,
+          CHANNEL_PROVIDER.push,
+          r.error ?? null,
+        );
+        deliveries.push({
+          channel: "push",
+          status: r.status,
+          providerMessageId: r.providerMessageId,
+        });
       })());
     } else if (channel === "email" && contactEmail) {
       tasks.push((async () => {
@@ -190,8 +237,20 @@ export async function dispatchV2(
           title: rendered.email.subject,
           body: rendered.email.body,
         });
-        await writeDelivery(client, nid, "email", r.status, CHANNEL_PROVIDER.email, r.error ?? null, r.providerMessageId);
-        deliveries.push({ channel: "email", status: r.status, providerMessageId: r.providerMessageId });
+        await writeDelivery(
+          client,
+          nid,
+          "email",
+          r.status,
+          CHANNEL_PROVIDER.email,
+          r.error ?? null,
+          r.providerMessageId,
+        );
+        deliveries.push({
+          channel: "email",
+          status: r.status,
+          providerMessageId: r.providerMessageId,
+        });
       })());
     } else if (channel === "sms" && contactPhone) {
       tasks.push((async () => {
@@ -201,12 +260,33 @@ export async function dispatchV2(
           message: rendered.sms,
           countryCode: input.country_code,
         });
-        await writeDelivery(client, nid, "sms", r.status, CHANNEL_PROVIDER.sms, r.error ?? null, r.providerMessageId, r.segments);
-        deliveries.push({ channel: "sms", status: r.status, providerMessageId: r.providerMessageId, segments: r.segments });
+        await writeDelivery(
+          client,
+          nid,
+          "sms",
+          r.status,
+          CHANNEL_PROVIDER.sms,
+          r.error ?? null,
+          r.providerMessageId,
+          r.segments,
+        );
+        deliveries.push({
+          channel: "sms",
+          status: r.status,
+          providerMessageId: r.providerMessageId,
+          segments: r.segments,
+        });
       })());
     } else {
       // Channel allowed but no contact for it — record skipped (no silent drop).
-      await writeDelivery(client, nid, channel, "skipped", CHANNEL_PROVIDER[channel], "no_contact");
+      await writeDelivery(
+        client,
+        nid,
+        channel,
+        "skipped",
+        CHANNEL_PROVIDER[channel],
+        "no_contact",
+      );
       deliveries.push({ channel, status: "skipped", providerMessageId: null });
     }
   }
@@ -214,6 +294,259 @@ export async function dispatchV2(
   await Promise.all(tasks);
 
   return { success: true, notificationId, deliveries };
+}
+
+export interface SourceRefundChannelInput extends DispatchV2Input {
+  requested_channel: "inapp" | "push" | "email" | "sms";
+  delivery_id: string;
+  delivery_claim_id: string;
+  attention_url?: string | null;
+}
+
+export async function dispatchSourceRefundChannel(
+  client: MinimalClient,
+  input: SourceRefundChannelInput,
+): Promise<{
+  success: boolean;
+  outcome:
+    | "accepted"
+    | "suppressed"
+    | "skipped"
+    | "definitive_unsent_retryable"
+    | "terminal_unsent"
+    | "acceptance_unknown";
+  providerMessageId: string | null;
+  safeCode: string | null;
+}> {
+  const { data: catData } = await client.from("notification_categories")
+    .select("*").eq("key", input.category_key).maybeSingle();
+  const cat = catData as CategoryRow | null;
+  if (!cat?.active || !cat.default_channels.includes(input.requested_channel)) {
+    return {
+      success: false,
+      outcome: "terminal_unsent",
+      providerMessageId: null,
+      safeCode: "dispatch_rejected",
+    };
+  }
+  const channel = input.requested_channel;
+  const { data: allowed } = await client.rpc("can_send", {
+    p_user_id: input.user_id ?? null,
+    p_category_key: input.category_key,
+    p_channel: channel,
+    p_contact: input.contact ?? null,
+  });
+  if (allowed !== true) {
+    return {
+      success: true,
+      outcome: "suppressed",
+      providerMessageId: null,
+      safeCode: "can_send_denied",
+    };
+  }
+  const rendered = renderCategoryMessage(input.category_key, input.payload);
+  const actionSuffix = input.attention_url
+    ? `\n\nContinue securely: ${input.attention_url}`
+    : "";
+  if (channel === "inapp") {
+    if (!input.user_id) {
+      return {
+        success: true,
+        outcome: "skipped",
+        providerMessageId: null,
+        safeCode: "no_contact",
+      };
+    }
+    const result = await client.from("notifications").insert({
+      user_id: input.user_id,
+      type: input.category_key,
+      title: rendered.push.title,
+      body: rendered.push.body,
+      data: {
+        ...input.payload,
+        category_key: input.category_key,
+        ...(input.attention_url ? { attention_url: input.attention_url } : {}),
+      },
+      idempotency_key: input.idempotency_key,
+    }) as unknown as { error: { code?: string } | null };
+    if (result.error?.code === "23505") {
+      return {
+        success: true,
+        outcome: "accepted",
+        providerMessageId: null,
+        safeCode: null,
+      };
+    }
+    return result.error
+      ? {
+        success: false,
+        outcome: "definitive_unsent_retryable",
+        providerMessageId: null,
+        safeCode: "dispatch_unavailable",
+      }
+      : {
+        success: true,
+        outcome: "accepted",
+        providerMessageId: null,
+        safeCode: null,
+      };
+  }
+  if (channel === "push") {
+    if (!input.user_id) {
+      return {
+        success: true,
+        outcome: "skipped",
+        providerMessageId: null,
+        safeCode: "no_contact",
+      };
+    }
+    await markSourceRefundProviderIo(client, input);
+    const result = await pushAdapter.send({
+      userId: input.user_id,
+      title: rendered.push.title,
+      body: `${rendered.push.body}${actionSuffix}`,
+      data: {
+        ...input.payload,
+        ...(input.attention_url ? { attention_url: input.attention_url } : {}),
+      },
+      routingType: input.category_key,
+    });
+    return adapterOutcome(result, channel);
+  }
+  if (!input.contact) {
+    return {
+      success: true,
+      outcome: "skipped",
+      providerMessageId: null,
+      safeCode: "no_contact",
+    };
+  }
+  if (channel === "email") {
+    const providerIdempotencyKey = await sourceRefundResendIdempotencyKey(
+      input.idempotency_key,
+    );
+    const result = await emailAdapter.send({
+      to: input.contact,
+      title: rendered.email.subject,
+      body: `${rendered.email.body}${actionSuffix}`,
+      ...(input.attention_url
+        ? { cta: { label: "Continue refund", url: input.attention_url } }
+        : {}),
+      idempotencyKey: providerIdempotencyKey,
+      beforeProviderIo: async () => {
+        await markSourceRefundProviderIo(client, input);
+      },
+    });
+    return adapterOutcome(result, channel);
+  }
+  const result = await smsAdapter.send({
+    to: input.contact,
+    brandName: String(input.payload.brand_name ?? "Mingla"),
+    message: `${rendered.sms}${actionSuffix}`,
+    countryCode: input.country_code,
+    beforeProviderIo: async () => {
+      await markSourceRefundProviderIo(client, input);
+    },
+  });
+  return adapterOutcome(result, channel);
+}
+
+async function markSourceRefundProviderIo(
+  client: MinimalClient,
+  input: SourceRefundChannelInput,
+): Promise<void> {
+  const { data, error } = await client.rpc(
+    "mark_source_refund_notification_provider_io",
+    {
+      p_delivery_id: input.delivery_id,
+      p_claim_id: input.delivery_claim_id,
+      p_now: new Date().toISOString(),
+    },
+  );
+  if (error || data !== true) throw new Error("source_provider_io_not_marked");
+}
+
+export async function sourceRefundResendIdempotencyKey(
+  logicalKey: string,
+): Promise<string> {
+  const digest = new Uint8Array(
+    await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(logicalKey),
+    ),
+  );
+  let binary = "";
+  for (const byte of digest) binary += String.fromCharCode(byte);
+  const encoded = btoa(binary).replaceAll("+", "-").replaceAll("/", "_")
+    .replace(/=+$/, "");
+  return `source-refund-email/${encoded}`;
+}
+
+function adapterOutcome(result: {
+  ok: boolean;
+  status: string;
+  providerMessageId: string | null;
+  error?: string;
+}, channel: "push" | "email" | "sms"): {
+  success: boolean;
+  outcome:
+    | "accepted"
+    | "suppressed"
+    | "skipped"
+    | "definitive_unsent_retryable"
+    | "terminal_unsent"
+    | "acceptance_unknown";
+  providerMessageId: string | null;
+  safeCode: string | null;
+} {
+  const safe = result.error ? notificationSafeError(result.error) : null;
+  if (result.ok && result.status === "sent") {
+    return {
+      success: true,
+      outcome: "accepted",
+      providerMessageId: result.providerMessageId,
+      safeCode: null,
+    };
+  }
+  if (result.status === "skipped") {
+    return {
+      success: true,
+      outcome: "skipped",
+      providerMessageId: null,
+      safeCode: safe ?? "provider_kill_switch_off",
+    };
+  }
+  if (
+    safe === "provider_rejected" || safe === "invalid_recipient" ||
+    safe === "recipient_opted_out"
+  ) {
+    return {
+      success: false,
+      outcome: "terminal_unsent",
+      providerMessageId: null,
+      safeCode: safe,
+    };
+  }
+  if (
+    safe === "provider_config_missing" ||
+    safe === "provider_rate_limited" ||
+    (channel === "email" &&
+      (safe === "provider_unavailable" || safe === "provider_timeout" ||
+        safe === "provider_protocol_error"))
+  ) {
+    return {
+      success: false,
+      outcome: "definitive_unsent_retryable",
+      providerMessageId: null,
+      safeCode: safe,
+    };
+  }
+  return {
+    success: false,
+    outcome: "acceptance_unknown",
+    providerMessageId: null,
+    safeCode: safe ?? "provider_unavailable",
+  };
 }
 
 // Anon/guest path: no inbox row (notifications.user_id NOT NULL). REWORK (P2-2):
@@ -233,11 +566,17 @@ async function dispatchAnon(
   const deliveries: DispatchV2Result["deliveries"] = [];
   const contactEmail = isEmail(input.contact) ? input.contact! : null;
   const contactPhone = isPhone(input.contact) ? input.contact! : null;
-  const brandName = String(input.payload.brand_name ?? input.payload.brand ?? "Mingla");
+  const brandName = String(
+    input.payload.brand_name ?? input.payload.brand ?? "Mingla",
+  );
 
   for (const channel of cat.default_channels) {
     if (channel === "inapp" || channel === "push") continue; // no user → no inbox/push
-    const contactForChannel = channel === "email" ? contactEmail : channel === "sms" ? contactPhone : null;
+    const contactForChannel = channel === "email"
+      ? contactEmail
+      : channel === "sms"
+      ? contactPhone
+      : null;
     if (!contactForChannel) continue;
 
     const { data: allowedData } = await client.rpc("can_send", {
@@ -250,38 +589,88 @@ async function dispatchAnon(
       // Record the suppression in the ledger too (no silent gap). A dedupe
       // collision here is harmless — the row already exists.
       await insertGuestDelivery(
-        client, input.idempotency_key, channel, contactForChannel,
-        "suppressed", CHANNEL_PROVIDER[channel], "can_send_denied", null, null,
+        client,
+        input.idempotency_key,
+        channel,
+        contactForChannel,
+        "suppressed",
+        CHANNEL_PROVIDER[channel],
+        "can_send_denied",
+        null,
+        null,
       );
-      deliveries.push({ channel, status: "suppressed", providerMessageId: null });
+      deliveries.push({
+        channel,
+        status: "suppressed",
+        providerMessageId: null,
+      });
       continue;
     }
 
     // Claim the (idempotency_key, channel) dedupe slot BEFORE sending. A 23505
     // means a prior/concurrent drain tick already sent this channel → skip.
     const claim = await insertGuestDelivery(
-      client, input.idempotency_key, channel, contactForChannel,
-      "queued", CHANNEL_PROVIDER[channel], null, null, null,
+      client,
+      input.idempotency_key,
+      channel,
+      contactForChannel,
+      "queued",
+      CHANNEL_PROVIDER[channel],
+      null,
+      null,
+      null,
     );
     if (claim.duplicate) {
-      deliveries.push({ channel, status: "duplicate", providerMessageId: null });
+      deliveries.push({
+        channel,
+        status: "duplicate",
+        providerMessageId: null,
+      });
       continue;
     }
 
     if (channel === "email") {
-      const r = await emailAdapter.send({ to: contactEmail!, title: rendered.email.subject, body: rendered.email.body });
+      const r = await emailAdapter.send({
+        to: contactEmail!,
+        title: rendered.email.subject,
+        body: rendered.email.body,
+      });
       await updateGuestDelivery(
-        client, input.idempotency_key, channel,
-        r.status, r.providerMessageId ?? null, r.error ?? null, undefined,
+        client,
+        input.idempotency_key,
+        channel,
+        r.status,
+        r.providerMessageId ?? null,
+        r.error ?? null,
+        undefined,
       );
-      deliveries.push({ channel: "email", status: r.status, providerMessageId: r.providerMessageId });
+      deliveries.push({
+        channel: "email",
+        status: r.status,
+        providerMessageId: r.providerMessageId,
+      });
     } else if (channel === "sms") {
-      const r = await smsAdapter.send({ to: contactPhone!, brandName, message: rendered.sms, countryCode: input.country_code });
+      const r = await smsAdapter.send({
+        to: contactPhone!,
+        brandName,
+        message: rendered.sms,
+        countryCode: input.country_code,
+      });
       await updateGuestDelivery(
-        client, input.idempotency_key, channel,
-        r.status, r.providerMessageId ?? null, r.error ?? null, r.segments,
+        client,
+        input.idempotency_key,
+        channel,
+        r.status,
+        r.providerMessageId ?? null,
+        r.error ?? null,
+        r.segments,
       );
-      deliveries.push({ channel: "sms", status: r.status, providerMessageId: r.providerMessageId, segments: r.segments });
+      deliveries.push({
+        channel: "sms",
+        status: r.status,
+        providerMessageId: r.providerMessageId,
+        segments: r.segments,
+      });
     }
   }
 

@@ -413,7 +413,7 @@ describe("issue #1386 tester adversarial reservation contact contract", () => {
     const source = readFileSync(edgePath, "utf8");
 
     expect(createHash("sha256").update(source).digest("hex")).toBe(
-      "ddceffc7dcaeb142c86bc9adf83b3c621a0db076fe97e705d388fa6d541ecca0",
+      "c667d748dc6a1339d8501a55a0175a19ad2f12373f2ac19067a5e5cbb4046262",
     );
     const venueGate = source.indexOf('return jsonResponse({ error: "venue_id_required"');
     const partyGate = source.indexOf('return jsonResponse({ error: "party_size_invalid"');

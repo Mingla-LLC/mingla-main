@@ -29,6 +29,7 @@ import type {
   Reservation,
   ReservationAction,
 } from "../../types/venueReservation";
+import { SourceRefundStatusChip } from "../refunds/SourceRefundStatusChip";
 
 function localLabel(iso: string): string {
   const d = new Date(iso);
@@ -108,6 +109,11 @@ export function ReservationDetailSheet({
           <Text style={styles.statusLabel}>Status:</Text>
           <Text style={styles.statusValue}>{pres.label}</Text>
         </View>
+        {reservation.refund ? (
+          <SourceRefundStatusChip refund={reservation.refund} />
+        ) : (
+          <Text style={styles.terminalNote}>No refund has been requested.</Text>
+        )}
         {reservation.guestNotes != null ? (
           <Text style={styles.note}>“{reservation.guestNotes}”</Text>
         ) : null}

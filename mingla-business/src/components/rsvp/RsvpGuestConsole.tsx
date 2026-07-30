@@ -56,6 +56,9 @@ import {
 import type { RsvpGuest, RsvpSourceValue } from "../../services/rsvpApprovals";
 import { deferAfterDismiss } from "../../utils/deferAfterDismiss";
 import { RsvpGuestDetailSheet } from "./RsvpGuestDetailSheet";
+import { SourceRefundStatusChip } from "../refunds/SourceRefundStatusChip";
+import { useEventRsvpContributionRefunds } from "../../hooks/useRsvpContributionRefunds";
+import { requestRsvpContributionRefund } from "../../services/sourceRefundService";
 
 const ROW_BG = Platform.select({
   ios: glass.tint.profileBase,
@@ -191,6 +194,8 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
   const { data, isLoading, isError, refetch } = useRsvpGuestList(eventId);
   const setStatus = useSetRsvpStatus(eventId);
   const bulkApprove = useBulkApproveRsvps(eventId);
+  const contributionRefunds = useEventRsvpContributionRefunds(eventId);
+  const [refundPendingId, setRefundPendingId] = useState<string | null>(null);
 
   const [toast, setToast] = useState<{ visible: boolean; message: string }>({
     visible: false,
@@ -224,6 +229,15 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
   const maybe = useMemo(
     () => guests.filter((g) => g.rsvpStatus === "maybe"),
     [guests],
+  );
+  const contributionByRsvp = useMemo(
+    () =>
+      new Map(
+        (contributionRefunds.data ?? [])
+          .filter((item) => item.rsvpId !== null)
+          .map((item) => [item.rsvpId as string, item]),
+      ),
+    [contributionRefunds.data],
   );
 
   const showToast = useCallback((message: string): void => {
@@ -340,6 +354,23 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
     setSelectedGuest(g);
   }, []);
 
+  const handleRefundContribution = useCallback(
+    (contributionId: string): void => {
+      setRefundPendingId(contributionId);
+      void requestRsvpContributionRefund({
+        contributionId,
+        mode: "discretionary",
+        reason: "Organizer-approved RSVP contribution refund",
+      }).then(async () => {
+        await contributionRefunds.refetch();
+        showToast("Contribution refund requested.");
+      }).catch(() => {
+        showToast("Couldn't request this refund. Try again.");
+      }).finally(() => setRefundPendingId(null));
+    },
+    [contributionRefunds, showToast],
+  );
+
   // ORCH-1334 — one row: a press-isolated tappable body (avatar + name + source
   // badge, opens the sheet) SIBLING to the trailing action/status cluster.
   const renderRow = useCallback(
@@ -373,10 +404,17 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
             </View>
           </View>
         </Pressable>
-        {trailing}
+        <View style={styles.refundTrailing}>
+          {contributionByRsvp.get(g.id)?.refund ? (
+            <SourceRefundStatusChip
+              refund={contributionByRsvp.get(g.id)!.refund!}
+            />
+          ) : null}
+          {trailing}
+        </View>
       </View>
     ),
-    [handleSelectGuest],
+    [contributionByRsvp, handleSelectGuest],
   );
 
   const renderHeader = (): React.ReactElement => (
@@ -536,6 +574,14 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
         isActionPending={setStatus.isPending}
         notice={sheetNotice}
         onNoticeDismiss={() => setSheetNotice(null)}
+        contributionId={selectedGuest
+          ? contributionByRsvp.get(selectedGuest.id)?.contributionId ?? null
+          : null}
+        refund={selectedGuest
+          ? contributionByRsvp.get(selectedGuest.id)?.refund ?? null
+          : null}
+        onRefundContribution={handleRefundContribution}
+        isRefundPending={refundPendingId !== null}
       />
 
       <ConfirmDialog
@@ -611,6 +657,10 @@ const styles = StyleSheet.create({
     backgroundColor: ROW_BG,
     borderWidth: 1,
     borderColor: glass.border.profileBase,
+  },
+  refundTrailing: {
+    alignItems: "flex-end",
+    gap: spacing.xs,
   },
   // ORCH-1334 — the tappable body is its OWN press target (Constitution #1: the
   // trailing action cluster is a sibling, never swallowed by the body press).

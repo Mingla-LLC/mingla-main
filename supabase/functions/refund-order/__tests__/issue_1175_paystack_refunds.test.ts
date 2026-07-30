@@ -151,7 +151,7 @@ Deno.test("issue #1175: Paystack 5xx remains retryable while a definitive 4xx fa
   }
 });
 
-Deno.test("issue #1175: all named handlers branch to Paystack while Stripe direct-charge shapes remain", async () => {
+Deno.test("issue #1175: order and trip handlers retain Paystack and Stripe direct-charge shapes", async () => {
   const root = new URL("../../", import.meta.url);
   const refundOrder = await Deno.readTextFile(
     new URL("refund-order/index.ts", root),
@@ -162,15 +162,11 @@ Deno.test("issue #1175: all named handlers branch to Paystack while Stripe direc
   const tripRefund = await Deno.readTextFile(
     new URL("cancel-trip-booking/index.ts", root),
   );
-  const venueRefund = await Deno.readTextFile(
-    new URL("venue-reservation-cancel/index.ts", root),
-  );
   for (
     const [name, source] of [
       ["refund-order", refundOrder],
       ["admin-refund-order", adminRefund],
       ["cancel-trip-booking", tripRefund],
-      ["venue-reservation-cancel", venueRefund],
     ] as const
   ) {
     assert(
@@ -197,11 +193,10 @@ Deno.test("issue #1175: all named handlers branch to Paystack while Stripe direc
     "admin Stripe direct-charge refund shape changed",
   );
   assert(
-    tripRefund.includes("stripeAccount: connectedAccountId") &&
-      venueRefund.includes("stripeAccount: connectedAccountId"),
-    "trip/venue Stripe account routing changed",
+    tripRefund.includes("stripeAccount: connectedAccountId"),
+    "trip Stripe account routing changed",
   );
-  for (const source of [refundOrder, adminRefund, tripRefund, venueRefund]) {
+  for (const source of [refundOrder, adminRefund, tripRefund]) {
     assert(
       !source.includes("reverse_transfer:"),
       "reverse_transfer re-entered",

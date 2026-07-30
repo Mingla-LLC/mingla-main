@@ -6,7 +6,11 @@ import { getTranslatedNotification } from "../_shared/push-translations.ts";
 // The legacy type-based path below is left BYTE-IDENTICAL — the v2 branch is an
 // early, additive return. Exit condition: when all senders migrate onto v2 and
 // the legacy contract is retired (CLOSE-time cleanup, §5.7).
-import { dispatchV2, type DispatchV2Input } from "../_shared/notifyV2.ts";
+import {
+  dispatchSourceRefundChannel,
+  dispatchV2,
+  type DispatchV2Input,
+} from "../_shared/notifyV2.ts";
 import {
   assertNotResendSandbox,
   EMAIL_SENDERS,
@@ -16,9 +20,9 @@ import {
 } from "../_shared/email/index.ts";
 import {
   dispatchIdempotentLegacyEmail,
-  isExactServiceBearer,
   type EmailDeliveryClaim,
   type EmailDeliveryCompletionOutcome,
+  isExactServiceBearer,
   type ResendAttempt,
   type ResendEmailPayload,
 } from "../_shared/legacyEmailIdempotency.ts";
@@ -34,6 +38,37 @@ function jsonResponse(body: object, status = 200) {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+function sourceDispatchResponse(
+  result: Awaited<ReturnType<typeof dispatchSourceRefundChannel>>,
+): Response {
+  if (result.outcome === "accepted") {
+    return jsonResponse({
+      success: true,
+      outcome: "accepted",
+      providerMessageId: result.providerMessageId,
+    }, 200);
+  }
+  if (result.outcome === "definitive_unsent_retryable") {
+    return jsonResponse({
+      success: false,
+      outcome: "retryable",
+      reason: result.safeCode ?? "unknown_failure",
+    }, 503);
+  }
+  if (result.outcome === "acceptance_unknown") {
+    return jsonResponse({
+      success: false,
+      outcome: "ambiguous_parked",
+      reason: "delivery_ambiguous",
+    }, 202);
+  }
+  return jsonResponse({
+    success: false,
+    outcome: "terminal_unsent",
+    reason: result.safeCode ?? "dispatch_rejected",
+  }, 422);
 }
 
 // ORCH-0785 — Resend sender constant resolved via EMAIL_SENDERS.system.
@@ -167,8 +202,8 @@ async function dispatchDurableLegacyEmail(
     {
       recipient: input.recipient,
       logicalIdempotencyKey: input.idempotencyKey,
-      recipientHmacSecret:
-        Deno.env.get("NOTIFICATION_RECIPIENT_HMAC_SECRET") ?? "",
+      recipientHmacSecret: Deno.env.get("NOTIFICATION_RECIPIENT_HMAC_SECRET") ??
+        "",
       payload: input.payload,
     },
     {
@@ -189,8 +224,9 @@ async function dispatchDurableLegacyEmail(
         }
         const row = claim as Record<string, unknown> | null;
         return {
-          action: String(row?.action ?? "in_progress") as
-            EmailDeliveryClaim["action"],
+          action: String(
+            row?.action ?? "in_progress",
+          ) as EmailDeliveryClaim["action"],
           deliveryId: typeof row?.delivery_id === "string"
             ? row.delivery_id
             : null,
@@ -206,8 +242,8 @@ async function dispatchDurableLegacyEmail(
           {
             p_delivery_id: completionInput.deliveryId,
             p_claim_id: completionInput.claimId,
-            p_outcome:
-              completionInput.outcome as EmailDeliveryCompletionOutcome,
+            p_outcome: completionInput
+              .outcome as EmailDeliveryCompletionOutcome,
             p_provider_message_id: completionInput.providerMessageId,
             p_error_reason: completionInput.errorReason,
             p_now: new Date().toISOString(),
@@ -312,15 +348,24 @@ serve(async (req) => {
     // ── Validate auth (service role calls only) ─────────────────────────────
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
-      return jsonResponse({ error: "Missing or invalid Authorization header" }, 401);
+      return jsonResponse(
+        { error: "Missing or invalid Authorization header" },
+        401,
+      );
     }
 
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get(
+      "SUPABASE_SERVICE_ROLE_KEY",
+    )!;
 
     // Admin client (service role) for all DB operations
     const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
     });
 
     // ── Parse & validate input ──────────────────────────────────────────────
@@ -331,17 +376,71 @@ serve(async (req) => {
     // simultaneous-send path (DEC-185). A caller that sends `type` (legacy) falls
     // through to the byte-identical legacy path below. Exit condition: legacy
     // contract retired at CLOSE (§5.7).
-    if (payload && typeof payload.category_key === "string" && payload.category_key.length > 0) {
+    if (
+      payload && typeof payload.category_key === "string" &&
+      payload.category_key.length > 0
+    ) {
+      if (payload.category_key.startsWith("source_refund_")) {
+        try {
+          if (
+            payload.contract_version !== 9 ||
+            !isExactServiceBearer(authHeader, SUPABASE_SERVICE_ROLE_KEY) ||
+            !["inapp", "push", "email", "sms"].includes(
+              payload.requested_channel,
+            ) ||
+            typeof payload.delivery_id !== "string" ||
+            typeof payload.delivery_claim_id !== "string"
+          ) {
+            return jsonResponse({
+              success: false,
+              outcome: "terminal_unsent",
+              reason: "dispatch_rejected",
+            }, 422);
+          }
+          const result = await dispatchSourceRefundChannel(
+            adminClient as unknown as Parameters<
+              typeof dispatchSourceRefundChannel
+            >[0],
+            {
+              category_key: payload.category_key,
+              user_id: payload.user_id ?? null,
+              contact: payload.contact ?? null,
+              payload: (payload.payload ?? {}) as Record<string, unknown>,
+              idempotency_key: String(payload.idempotency_key ?? ""),
+              country_code: payload.country_code ?? null,
+              requested_channel: payload.requested_channel,
+              delivery_id: payload.delivery_id,
+              delivery_claim_id: payload.delivery_claim_id,
+              attention_url: typeof payload.attention_url === "string"
+                ? payload.attention_url
+                : null,
+            },
+          );
+          return sourceDispatchResponse(result);
+        } catch {
+          return jsonResponse({
+            success: false,
+            outcome: "source_dispatch_failed",
+            reason: "source_dispatch_failed",
+          }, 500);
+        }
+      }
       const v2Input: DispatchV2Input = {
         user_id: payload.user_id ?? payload.userId ?? null,
         contact: payload.contact ?? null,
         category_key: payload.category_key,
         payload: (payload.payload ?? {}) as Record<string, unknown>,
-        idempotency_key: String(payload.idempotency_key ?? payload.idempotencyKey ?? ""),
+        idempotency_key: String(
+          payload.idempotency_key ?? payload.idempotencyKey ?? "",
+        ),
         country_code: payload.country_code ?? null,
+        requested_channel: payload.requested_channel ?? null,
       };
       if (!v2Input.idempotency_key) {
-        return jsonResponse({ success: false, reason: "idempotency_key required for v2" }, 400);
+        return jsonResponse({
+          success: false,
+          reason: "idempotency_key required for v2",
+        }, 400);
       }
 
       // Record the transactional consent for this moment if not already present
@@ -373,7 +472,10 @@ serve(async (req) => {
             });
           }
         } catch (consentErr) {
-          console.warn("[notify-dispatch v2] consent record write failed (non-fatal):", consentErr);
+          console.warn(
+            "[notify-dispatch v2] consent record write failed (non-fatal):",
+            consentErr,
+          );
         }
       }
 
@@ -405,15 +507,21 @@ serve(async (req) => {
 
     if ((!userId && !emailTo) || !type || !title || !body) {
       return jsonResponse(
-        { success: false, reason: "Missing required fields: userId/emailTo, type, title, body" },
-        400
+        {
+          success: false,
+          reason: "Missing required fields: userId/emailTo, type, title, body",
+        },
+        400,
       );
     }
     if (
       emailTo &&
       !isExactServiceBearer(authHeader, SUPABASE_SERVICE_ROLE_KEY)
     ) {
-      return jsonResponse({ success: false, reason: "unauthorized_email_dispatch" }, 401);
+      return jsonResponse({
+        success: false,
+        reason: "unauthorized_email_dispatch",
+      }, 401);
     }
     if (
       emailTo &&
@@ -460,9 +568,7 @@ serve(async (req) => {
           manualReview: false,
           emailSent: true,
           providerMessageId: result.providerMessageId,
-          reason: result.duplicate
-            ? "already_accepted"
-            : "provider_accepted",
+          reason: result.duplicate ? "already_accepted" : "provider_accepted",
         });
       }
       if (result.outcome === "manual_review") {
@@ -579,7 +685,10 @@ serve(async (req) => {
             .maybeSingle();
           if (!concurrent?.id) {
             return jsonResponse(
-              { success: false, reason: "notification_idempotency_lookup_failed" },
+              {
+                success: false,
+                reason: "notification_idempotency_lookup_failed",
+              },
               500,
             );
           }
@@ -588,7 +697,7 @@ serve(async (req) => {
           console.error("[notify-dispatch] Insert error:", insertError);
           return jsonResponse(
             { success: false, reason: "Failed to insert notification" },
-            500
+            500,
           );
         }
       } else {
@@ -687,7 +796,9 @@ serve(async (req) => {
     // collaboration_invite_* are NOT included — they fire before the recipient
     // is a participant (no mute row exists) or to the inviter (different context).
     if (SESSION_SCOPED_TYPES.has(type)) {
-      const sessionId = (data as Record<string, unknown>)?.sessionId as string | undefined;
+      const sessionId = (data as Record<string, unknown>)?.sessionId as
+        | string
+        | undefined;
       if (sessionId) {
         const { data: muteRow } = await adminClient
           .from("session_participants")
@@ -698,7 +809,7 @@ serve(async (req) => {
 
         if (muteRow?.notifications_muted === true) {
           console.info(
-            `[notify-dispatch] session muted, skipping push for user ${userId} session ${sessionId} type ${type}`
+            `[notify-dispatch] session muted, skipping push for user ${userId} session ${sessionId} type ${type}`,
           );
           return jsonResponse({
             success: true,
@@ -791,7 +902,9 @@ serve(async (req) => {
 
     let pushSent = false;
     try {
-      pushSent = await sendPush(pushPayload as unknown as Parameters<typeof sendPush>[0]);
+      pushSent = await sendPush(
+        pushPayload as unknown as Parameters<typeof sendPush>[0],
+      );
     } catch (pushErr) {
       console.warn("[notify-dispatch] Push send failed:", pushErr);
     }
@@ -816,7 +929,7 @@ serve(async (req) => {
     const message = err instanceof Error ? err.message : String(err);
     return jsonResponse(
       { success: false, reason: message || "Internal server error" },
-      500
+      500,
     );
   }
 });

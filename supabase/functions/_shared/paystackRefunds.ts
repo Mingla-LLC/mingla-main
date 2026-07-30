@@ -19,6 +19,9 @@ export interface PaystackRefundResult {
   id: string;
   amount: number;
   status: string;
+  currency: string | null;
+  integration: string | null;
+  transaction: string | null;
   replayed: boolean;
 }
 
@@ -26,6 +29,13 @@ export type PaystackRefundOutcomeStatus =
   | "accepted"
   | "processed"
   | "failed";
+
+export type PaystackRefundCanonicalState =
+  | "provider_pending"
+  | "needs_attention"
+  | "processed"
+  | "failed_retryable"
+  | "failed_terminal";
 
 interface PaystackRefundOutcomeWriteResult {
   error: { message?: string } | null;
@@ -38,6 +48,9 @@ interface RefundRecord {
   amount?: number;
   status?: string;
   merchant_note?: string;
+  currency?: string;
+  integration?: unknown;
+  transaction?: unknown;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -48,6 +61,40 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function refundRecord(value: unknown): RefundRecord {
   return asRecord(value) as RefundRecord;
+}
+
+function providerIdentity(value: unknown): string | null {
+  if (typeof value === "string" || typeof value === "number") {
+    const normalized = String(value);
+    return normalized.length > 0 && normalized.length <= 128
+      ? normalized
+      : null;
+  }
+  const record = asRecord(value);
+  for (const key of ["id", "reference", "transaction_reference"]) {
+    if (typeof record[key] === "string" || typeof record[key] === "number") {
+      const normalized = String(record[key]);
+      if (normalized.length > 0 && normalized.length <= 128) return normalized;
+    }
+  }
+  return null;
+}
+
+function resultFromRecord(
+  row: RefundRecord,
+  replayed: boolean,
+): PaystackRefundResult {
+  return {
+    id: row.id === undefined ? "" : String(row.id),
+    amount: Number(row.amount ?? NaN),
+    status: typeof row.status === "string" ? row.status : "",
+    currency: typeof row.currency === "string"
+      ? row.currency.toUpperCase()
+      : null,
+    integration: providerIdentity(row.integration),
+    transaction: providerIdentity(row.transaction),
+    replayed,
+  };
 }
 
 async function readJson(res: Response): Promise<Record<string, unknown>> {
@@ -87,12 +134,7 @@ async function findExistingRefund(params: {
       Number(row.amount ?? NaN) === params.amountSubunits)
   );
   if (!match) return null;
-  return {
-    id: String(match.id ?? `paystack-refund:${params.merchantNote}`),
-    amount: Number(match.amount ?? params.amountSubunits ?? 0),
-    status: String(match.status ?? "pending"),
-    replayed: true,
-  };
+  return resultFromRecord(match, true);
 }
 
 export async function createPaystackRefund(params: {
@@ -144,6 +186,9 @@ export async function createPaystackRefund(params: {
         id: `paystack:transaction_reversed:${params.transaction}`,
         amount: 0,
         status: "processed",
+        currency: params.currency?.toUpperCase() ?? "NGN",
+        integration: null,
+        transaction: params.transaction,
         replayed: true,
       };
     }
@@ -154,11 +199,16 @@ export async function createPaystackRefund(params: {
   }
 
   const row = refundRecord(json.data);
+  const result = resultFromRecord(row, false);
   return {
-    id: String(row.id ?? `paystack-refund:${params.merchantNote}`),
-    amount: Number(row.amount ?? params.amountSubunits ?? 0),
-    status: String(row.status ?? "pending"),
-    replayed: false,
+    ...result,
+    id: result.id || `paystack-refund:${params.merchantNote}`,
+    amount: Number.isFinite(result.amount)
+      ? result.amount
+      : params.amountSubunits ?? 0,
+    status: result.status || "pending",
+    currency: result.currency ?? params.currency?.toUpperCase() ?? "NGN",
+    transaction: result.transaction ?? params.transaction,
   };
 }
 
@@ -169,6 +219,106 @@ export function paystackRefundOutcomeStatus(
   if (normalized === "processed") return "processed";
   if (normalized === "failed" || normalized === "canceled") return "failed";
   return "accepted";
+}
+
+export function paystackRefundCanonicalState(
+  providerStatus: string | null,
+): PaystackRefundCanonicalState {
+  switch ((providerStatus ?? "").trim().toLowerCase()) {
+    case "processed":
+      return "processed";
+    case "needs-attention":
+    case "needs_attention":
+      return "needs_attention";
+    case "failed":
+    case "canceled":
+      return "failed_terminal";
+    case "pending":
+    case "processing":
+    case "accepted":
+      return "provider_pending";
+    default:
+      return "failed_retryable";
+  }
+}
+
+export async function retryPaystackRefundWithCustomerDetails(params: {
+  refundId: string;
+  currency: string;
+  accountNumber: string;
+  bankId: string;
+}): Promise<PaystackRefundResult> {
+  if (params.currency !== "NGN") {
+    throw new PaystackApiError("invalid_currency", 422);
+  }
+  if (!/^[0-9]{10}$/.test(params.accountNumber)) {
+    throw new PaystackApiError("invalid_account_number", 422);
+  }
+  if (!/^[0-9]{1,10}$/.test(params.bankId)) {
+    throw new PaystackApiError("invalid_bank_id", 422);
+  }
+  const secret = resolvePaystackSecretKey();
+  const res = await fetch(
+    `${PAYSTACK_BASE_URL}/refund/retry_with_customer_details/${
+      encodeURIComponent(params.refundId)
+    }`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${secret}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        refund_account_details: {
+          currency: "NGN",
+          account_number: params.accountNumber,
+          bank_id: params.bankId,
+        },
+      }),
+    },
+  );
+  const json = await readJson(res);
+  if (res.status !== 200 || json.status !== true) {
+    throw new PaystackApiError(
+      "Paystack attention recovery failed",
+      res.status,
+    );
+  }
+  const row = refundRecord(json.data);
+  const result = resultFromRecord(row, true);
+  if (
+    result.id !== params.refundId ||
+    !Number.isSafeInteger(result.amount) ||
+    result.amount < 0 ||
+    result.currency !== "NGN" ||
+    !result.integration ||
+    !result.transaction ||
+    !["pending", "processing", "processed"].includes(
+      result.status.trim().toLowerCase(),
+    )
+  ) {
+    throw new PaystackApiError("Paystack attention recovery mismatch", 502);
+  }
+  return result;
+}
+
+export async function getPaystackRefund(
+  refundId: string,
+): Promise<PaystackRefundResult> {
+  if (!/^[A-Za-z0-9._:-]{1,128}$/.test(refundId)) {
+    throw new PaystackApiError("invalid_refund_id", 422);
+  }
+  const secret = resolvePaystackSecretKey();
+  const res = await fetch(
+    `${PAYSTACK_BASE_URL}/refund/${encodeURIComponent(refundId)}`,
+    { headers: { Authorization: `Bearer ${secret}` } },
+  );
+  const json = await readJson(res);
+  if (!res.ok || json.status !== true) {
+    throw new PaystackApiError("Paystack refund lookup failed", res.status);
+  }
+  const row = refundRecord(json.data);
+  return resultFromRecord(row, true);
 }
 
 export async function persistPaystackRefundOutcome(
