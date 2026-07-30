@@ -28,7 +28,9 @@ jobs:
           deno check supabase/functions/venue-organic-capture/index.ts
           deno check supabase/functions/attribution-capture/index.ts
           deno check supabase/functions/venue-reservation-create/index.ts
-          deno test --allow-read supabase/functions/venue-organic-capture/__tests__/issue1421_source_contract.test.ts
+          deno test --allow-read \
+            supabase/functions/venue-organic-capture/__tests__/issue1421_source_contract.test.ts \
+            supabase/functions/venue-organic-capture/__tests__/issue1421_tester_expiry_surface.adversarial.test.ts
       - name: Focused Business tests
         working-directory: mingla-business
         run: npx jest --config jest.issue1421.render.cjs --runInBand
