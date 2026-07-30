@@ -103,6 +103,9 @@ const INVARIANT_CONVERT = [
   // #874 Home Analytics order/marker refresh contract -> updated ORCH-0974 gate.
   "app/(tabs)/__tests__/home.orch_0974.test.tsx",
   "app/(tabs)/__tests__/home.orch_0974.adversarial.test.tsx",
+  // #1403 removes the obsolete brand ad tile; opposite invariant is enforced
+  // by issue-1403-listing-insights-wiring.mjs.
+  "src/components/venue/__tests__/venueAdsDrivenTile.issue865pr1.test.ts",
 ];
 
 // Render/RTL suites mis-swept into the default node/ts-jest config. Each imports a

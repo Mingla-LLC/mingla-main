@@ -47,7 +47,10 @@ import {
   type ActivityEvent,
 } from "../../../src/components/event/EventDetailActivityRow";
 import { EventDetailTicketTypeRow } from "../../../src/components/event/EventDetailTicketTypeRow";
-import { buildOfferingDashboardTiles } from "../../../src/components/offering/offeringDashboardTiles";
+import {
+  buildOfferingDashboardTiles,
+  withListingInsights,
+} from "../../../src/components/offering/offeringDashboardTiles";
 import { summarizeEventMoney } from "../../../src/utils/moneySummary";
 import { currencyCodeOrNull } from "../../../src/utils/currency";
 import { useEventOrders } from "../../../src/hooks/useEventOrders";
@@ -64,6 +67,8 @@ import {
   useSoftDeleteTrip,
 } from "../../../src/hooks/useTrips";
 import { useTripOrders } from "../../../src/hooks/useTripOrders";
+import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
+import { isScannerOnlyRank } from "../../../src/utils/navTabGate";
 // ORCH-0873 [Tr3 Stage 2 UI] — Money tab data.
 import { useInstallmentsForBrandTrips } from "../../../src/hooks/useOrderInstallments";
 import type { OrderInstallmentForBrand } from "../../../src/services/orderInstallmentsService";
@@ -152,6 +157,12 @@ export default function TripDashboardRoute(): React.ReactElement {
     typeof eventId === "string" ? eventId : null,
   );
   const brandId = tripQuery.data?.brandId ?? null;
+  const currentBrandRole = useCurrentBrandRole(brandId);
+  const canShowListingInsights =
+    !currentBrandRole.isLoading &&
+    !currentBrandRole.isError &&
+    currentBrandRole.role !== null &&
+    !isScannerOnlyRank(currentBrandRole.rank);
   const installmentsQuery = useInstallmentsForBrandTrips(brandId, {
     tripEventId: typeof eventId === "string" ? eventId : undefined,
   });
@@ -297,7 +308,10 @@ export default function TripDashboardRoute(): React.ReactElement {
       }),
     [recordOrdersQuery.data, tripIdForMoney, tripQuery.data],
   );
-  const dashboardTiles = useMemo(() => buildOfferingDashboardTiles("trip"), []);
+  const dashboardTiles = useMemo(
+    () => withListingInsights(buildOfferingDashboardTiles("trip")),
+    [],
+  );
 
   if (typeof eventId !== "string" || eventId.length === 0) {
     return (
@@ -478,6 +492,9 @@ export default function TripDashboardRoute(): React.ReactElement {
           onPress={() => router.push(`/trip/${trip.id}/edit` as never)}
         />
         {dashboardTiles.map((tile) => {
+          if (tile.key === "insights" && !canShowListingInsights) {
+            return null;
+          }
           if (
             tile.requiresPublicPage &&
             (trip.brandSlug === null || trip.brandSlug.length === 0)
@@ -489,6 +506,11 @@ export default function TripDashboardRoute(): React.ReactElement {
               key={tile.key}
               icon={tile.icon}
               label={tile.label}
+              accessibilityLabel={
+                tile.key === "insights"
+                  ? `Open Insights for ${trip.title}`
+                  : tile.accessibilityLabel
+              }
               sub={
                 tile.key === "guests"
                   ? `${ticketsSold} ${ticketsSold === 1 ? "traveler" : "travelers"}`

@@ -125,6 +125,9 @@ const EXPECTED: Record<string, Bucket> = {
   brand: "gated-default",
   event: "gated-default",
   experience: "gated-default",
+  // [TEST-MOD-APPROVED ORCH-1403] — private listing Insights is an authenticated
+  // route and is intentionally absent from every public/connect/invite exemption.
+  insights: "gated-default",
   partner: "gated-default",
   // [ORCH-1062 drift-update] The `app/rsvp` authed RSVP creator route
   // (create / [id]/{index,edit,guests,preview}; shipped ORCH-1355/#831,

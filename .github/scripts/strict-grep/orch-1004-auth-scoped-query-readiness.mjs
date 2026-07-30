@@ -141,6 +141,9 @@ const AUTH_SCOPED_HOOK_FILES = [
   "usePlaceDiscoveryPriceRange.ts",
   // #1390 — group/list reads are auth.uid()-owned Stay reservations.
   "useStayGuest.ts",
+  // #1403 — private listing and exact-venue aggregate RPCs.
+  "useListingInsights.ts",
+  "useVenueReservationMetrics.ts",
 ];
 
 // ── Public / dual-use hooks. These MUST NOT be gated — buyer-web anon reads
