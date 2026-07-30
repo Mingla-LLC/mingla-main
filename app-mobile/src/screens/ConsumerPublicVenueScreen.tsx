@@ -1,4 +1,10 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   Image,
@@ -25,6 +31,7 @@ import {
 import { VenueReserveSheet } from "../components/expandedCard/VenueReserveSheet";
 import { usePublicVenue } from "../hooks/usePublicVenue";
 import { postHogService } from "../services/postHogService";
+import { ConsumerStayGuestExperience } from "../components/stay/ConsumerStayGuestExperience";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -50,8 +57,18 @@ export default function ConsumerPublicVenueScreen(): React.ReactElement {
   const [reserveOpen, setReserveOpen] = useState(false);
   const [reserved, setReserved] = useState(false);
   const [muted, setMuted] = useState(true);
+  const stayViewFired = useRef(false);
 
   const venue = query.data ?? null;
+  useEffect(() => {
+    if (venue?.venueCategory !== "stay" || stayViewFired.current) return;
+    stayViewFired.current = true;
+    postHogService.capture("stay_viewed", {
+      surface: "consumer_native",
+      brand_id: venue.brandId,
+      venue_id: venue.id,
+    });
+  }, [venue]);
   const captureVenueFunnel = useCallback(
     (
       event:
@@ -108,13 +125,16 @@ export default function ConsumerPublicVenueScreen(): React.ReactElement {
   }
 
   const initialTab: PublicVenueTab =
-    requested === "reservations" && venue.reservability.state === "available"
+    requested === "reservations" &&
+      (venue.venueCategory === "stay" ||
+        venue.reservability.state === "available")
       ? "reservations"
       : "overview";
   const menuCount = venue.menu.reduce(
     (sum, group) => sum + group.items.length,
     0,
   );
+  const isStay = venue.venueCategory === "stay";
 
   const overview = (
     <View style={styles.pane}>
@@ -162,8 +182,18 @@ export default function ConsumerPublicVenueScreen(): React.ReactElement {
     </View>
   );
 
-  const reservations =
-    venue.reservability.state === "available" ? (
+  const reservations = isStay ? (
+    <View style={styles.pane}>
+      <ConsumerStayGuestExperience
+        venueId={venue.id}
+        venueName={venue.name}
+        brandId={venue.brandId}
+        palette={palette}
+        surface={surface}
+        theme={theme}
+      />
+    </View>
+  ) : venue.reservability.state === "available" ? (
       <View style={styles.pane}>
         {reserved ? (
           <Text style={[styles.title, { color: palette.primaryText }]}>
@@ -256,7 +286,7 @@ export default function ConsumerPublicVenueScreen(): React.ReactElement {
           </Text>
           <PublicVenueTabs
             initialTab={initialTab}
-            hasMenu={menuCount > 0}
+            hasMenu={!isStay && menuCount > 0}
             overview={overview}
             menu={
               <PublicMenuSections
@@ -270,7 +300,7 @@ export default function ConsumerPublicVenueScreen(): React.ReactElement {
             palette={palette}
             surface={surface}
             theme={theme}
-            onTabViewed={(tab) => {
+            onTabViewed={(tab: PublicVenueTab) => {
               if (tab === "menu" || tab === "overview") {
                 postHogService.capture(
                   tab === "menu"
@@ -287,7 +317,7 @@ export default function ConsumerPublicVenueScreen(): React.ReactElement {
           />
         </View>
       </ParallaxCoverShell>
-      {venue.reservability.state === "available" ? (
+      {!isStay && venue.reservability.state === "available" ? (
         <VenueReserveSheet
           visible={reserveOpen}
           onClose={() => setReserveOpen(false)}

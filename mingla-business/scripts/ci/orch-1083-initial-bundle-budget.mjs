@@ -61,7 +61,17 @@ const CEILING_RAW_BYTES = Number(process.env.ORCH_1083_CEILING ?? 9_405_478);
 // organic boot growth, not re-bloat. Per the "future ORCH" note above, the real
 // __common tightening is tracked as its OWN ORCH (registered from this PR).
 // Cap raised to 2.30 MB (~45 KB headroom over current) — the tripwire stays live.
-const COMMON_CAP_BYTES = Number(process.env.ORCH_1083_COMMON_CAP ?? 2_300_000);
+//
+// ORCH-1390 rebaseline 2026-07-30: the cross-surface Stay launch adds one shared
+// domain contract (exact-currency parsing, Room/Place cart invariants, query
+// keys) plus @stripe/stripe-js's small official remote-script loader. Both the
+// 930-line booking renderer and the Payment Element implementation are behind
+// nested React.lazy boundaries and emit dedicated Stay chunks; the prior
+// @stripe/react-stripe-js wrapper was removed after it proved unnecessary.
+// Measured __common is 2,309,350 B. Raising the cap by only 20 KB preserves
+// ~10 KB of tripwire headroom without duplicating Stay rules between the public
+// booking and reservation-management routes.
+const COMMON_CAP_BYTES = Number(process.env.ORCH_1083_COMMON_CAP ?? 2_320_000);
 
 // The four deferred specifiers (must NOT appear in the initial-payload scripts).
 const DEFERRED_SPECIFIERS = [

@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-07-30 — Added dark-launched Stay guest booking across buyer web and Explorer iOS/Android: guests can select multiple Rooms and priced Places in one exact-currency reservation, complete Instant or Request flows, pay safely, manage cancellations/refunds, and find the itinerary in Calendar; all Stay rollout flags remain off. (#1390, PR #1417)
 - 2026-07-30 — Mingla Business now shows private brand Analytics on Home and a dedicated iOS, Android, and web screen with customer totals and source mix, privacy-masked regulars, and truthful weekday, time, and offering-type patterns. (#874, PR #1412)
 - 2026-07-30 — Stay reservations now have server-authoritative Stripe and Paystack payments, per-Room and priced-Place cancellations and refunds, event-anchored payouts, dispute protection, and push/email/text updates; commerce remains dark until rollout gates clear. (#1389, PR #1415)
 - 2026-07-30 — Stay guests can reserve multiple Rooms and priced Places in one same-property group, with server-authoritative bank/currency pricing, atomic no-oversell inventory holds, and whole-group instant or Request confirmation; payment execution remains staged for #1389. (#1388, PR #1413)

@@ -88,6 +88,12 @@ import type {
 // ORCH-1163 [rsvp-shared-body] — the consumer RSVP row (cover + "RSVP · Going"
 // pill + View-RSVP → RsvpPassSheet).
 import RsvpCalendarRow from "./RsvpCalendarRow";
+import StayCalendarRow from "./StayCalendarRow";
+import {
+  stayGuestKeys,
+  type MyStayReservationGroup,
+} from "@mingla/brand-rendering/stayGuest";
+import { useMyStayReservations } from "../../hooks/useStayGuest";
 // META-ORCH-1148 2.2b: the signed-in user's venue reservations, folded into the
 // existing Active/Archive buckets as a THIRD unified-row kind.
 import ReservationCalendarRow from "./ReservationCalendarRow";
@@ -114,6 +120,12 @@ type UnifiedRow =
     sortAt: number;
     reservation: MyReservationRow;
   }
+  | {
+    kind: "stay";
+    key: string;
+    sortAt: number;
+    group: MyStayReservationGroup;
+  }
   // ORCH-1163 [rsvp-shared-body] — a "Going" RSVP (own primary or a plus-one row).
   | { kind: "rsvp"; key: string; sortAt: number; rsvp: ConsumerRsvpRow };
 
@@ -126,6 +138,24 @@ function reservationEffectiveEndMs(reservedFor: string): number {
   const startMs = Date.parse(reservedFor);
   if (!Number.isFinite(startMs)) return Number.NaN;
   return startMs + RESERVATION_DEFAULT_DURATION_MIN * 60_000;
+}
+
+function stayStartMs(group: MyStayReservationGroup): number {
+  const timestamps = group.lines.flatMap((line) =>
+    [line.roomCheckIn, line.placeStartsAt]
+      .map((value) => value ? Date.parse(value) : Number.NaN)
+      .filter(Number.isFinite)
+  );
+  return timestamps.length > 0 ? Math.min(...timestamps) : Number.NaN;
+}
+
+function stayEndMs(group: MyStayReservationGroup): number {
+  const timestamps = group.lines.flatMap((line) =>
+    [line.roomCheckOut, line.placeEndsAt]
+      .map((value) => value ? Date.parse(value) : Number.NaN)
+      .filter(Number.isFinite)
+  );
+  return timestamps.length > 0 ? Math.max(...timestamps) : Number.NaN;
 }
 
 interface CalendarEntry extends Partial<CanonicalDiscoveryPrice> {
@@ -323,6 +353,11 @@ const CalendarTab = ({
   const reservationsQuery = useMyReservations(user?.id);
   const myReservations = reservationsQuery.data ?? [];
 
+  // ISSUE-1390 — Stay reservations join the same consumer itinerary instead
+  // of becoming a separate, undiscoverable booking silo.
+  const staysQuery = useMyStayReservations(user?.id ?? null);
+  const myStays = useMemo(() => staysQuery.data ?? [], [staysQuery.data]);
+
   // ORCH-1163 [rsvp-shared-body] — the signed-in user's "Going" RSVPs (own +
   // plus-one rows). Folded into the same Active/Archive buckets below.
   const goingRsvpsQuery = useMyGoingRsvps(user?.id);
@@ -345,9 +380,12 @@ const CalendarTab = ({
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
-    await queryClient.invalidateQueries({
-      queryKey: ["calendarEntries", user?.id],
-    });
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: ["calendarEntries", user?.id],
+      }),
+      queryClient.invalidateQueries({ queryKey: stayGuestKeys.all }),
+    ]);
     setIsRefreshing(false);
   }, [queryClient, user?.id]);
 
@@ -647,6 +685,26 @@ const CalendarTab = ({
     return { activeReservations: active, archiveReservations: archive };
   }, [myReservations]);
 
+  const { activeStays, archiveStays } = useMemo(() => {
+    const now = Date.now();
+    const active: MyStayReservationGroup[] = [];
+    const archive: MyStayReservationGroup[] = [];
+    for (const group of myStays) {
+      const terminal = [
+        "declined",
+        "request_expired",
+        "cancelled",
+      ].includes(group.state);
+      const endMs = stayEndMs(group);
+      if (terminal || (Number.isFinite(endMs) && endMs < now)) {
+        archive.push(group);
+      } else {
+        active.push(group);
+      }
+    }
+    return { activeStays: active, archiveStays: archive };
+  }, [myStays]);
+
   // ORCH-1163 [rsvp-shared-body] — bucket "Going" RSVPs on the event's effective
   // end (end_at when present, else start_at). Past events drop into Archive; a
   // null/unparseable date keeps the row Active (mirrors the ticket bucketing).
@@ -792,6 +850,54 @@ const CalendarTab = ({
     [archiveRsvps, filterRsvps],
   );
 
+  const filterStays = useCallback(
+    (groups: MyStayReservationGroup[]): MyStayReservationGroup[] => {
+      const query = searchQuery.trim().toLowerCase();
+      return groups.filter((group) => {
+        if (
+          query &&
+          !group.venueName.toLowerCase().includes(query) &&
+          !group.brandName.toLowerCase().includes(query) &&
+          !group.publicReference.toLowerCase().includes(query)
+        ) {
+          return false;
+        }
+        if (selectedWhen === "all") return true;
+        const timestamp = stayStartMs(group);
+        if (!Number.isFinite(timestamp)) return false;
+        const scheduled = new Date(timestamp);
+        const now = new Date();
+        const sameDay =
+          scheduled.getFullYear() === now.getFullYear() &&
+          scheduled.getMonth() === now.getMonth() &&
+          scheduled.getDate() === now.getDate();
+        if (selectedWhen === "today") return sameDay;
+        if (selectedWhen === "this_week") {
+          const start = new Date(now);
+          start.setDate(now.getDate() - now.getDay());
+          start.setHours(0, 0, 0, 0);
+          const end = new Date(start);
+          end.setDate(start.getDate() + 7);
+          return scheduled >= start && scheduled < end;
+        }
+        if (selectedWhen === "this_month") {
+          return scheduled.getFullYear() === now.getFullYear() &&
+            scheduled.getMonth() === now.getMonth();
+        }
+        return selectedWhen !== "upcoming" || scheduled >= now;
+      });
+    },
+    [searchQuery, selectedWhen],
+  );
+  const filteredActiveStays = useMemo(
+    () => filterStays(activeStays),
+    [activeStays, filterStays],
+  );
+  const filteredArchiveStays = useMemo(
+    () => filterStays(archiveStays),
+    [archiveStays, filterStays],
+  );
+
   // ORCH-0842: unified rows = calendar entries + ticket orders, sorted
   // ascending by date (soonest first; null-date entries go to the bottom).
   const unifiedActiveRows = useMemo<UnifiedRow[]>(() => {
@@ -828,6 +934,17 @@ const CalendarTab = ({
         reservation,
       });
     }
+    for (const group of filteredActiveStays) {
+      const timestamp = stayStartMs(group);
+      rows.push({
+        kind: "stay",
+        key: `stay:${group.groupId}`,
+        sortAt: Number.isFinite(timestamp)
+          ? timestamp
+          : Number.POSITIVE_INFINITY,
+        group,
+      });
+    }
     for (const rsvp of filteredActiveRsvps) {
       const ts = rsvp.masterDateUtc
         ? Date.parse(rsvp.masterDateUtc)
@@ -845,6 +962,7 @@ const CalendarTab = ({
     filteredActiveEntries,
     filteredActiveBusinessOrders,
     activeReservations,
+    filteredActiveStays,
     filteredActiveRsvps,
   ]);
 
@@ -882,6 +1000,17 @@ const CalendarTab = ({
         reservation,
       });
     }
+    for (const group of filteredArchiveStays) {
+      const timestamp = stayStartMs(group);
+      rows.push({
+        kind: "stay",
+        key: `stay:${group.groupId}`,
+        sortAt: Number.isFinite(timestamp)
+          ? timestamp
+          : Number.NEGATIVE_INFINITY,
+        group,
+      });
+    }
     for (const rsvp of filteredArchiveRsvps) {
       const ts = rsvp.masterDateUtc
         ? Date.parse(rsvp.masterDateUtc)
@@ -900,6 +1029,7 @@ const CalendarTab = ({
     filteredArchiveEntries,
     filteredArchiveBusinessOrders,
     archiveReservations,
+    filteredArchiveStays,
     filteredArchiveRsvps,
   ]);
 
@@ -2846,6 +2976,15 @@ const CalendarTab = ({
                     />
                   );
                 }
+                if (row.kind === "stay") {
+                  return (
+                    <StayCalendarRow
+                      key={row.key}
+                      group={row.group}
+                      animation={animation}
+                    />
+                  );
+                }
                 if (row.kind === "rsvp") {
                   return (
                     <RsvpCalendarRow
@@ -2923,6 +3062,15 @@ const CalendarTab = ({
                       reservation={row.reservation}
                       animation={animation}
                       onPress={handleReservationPress}
+                    />
+                  );
+                }
+                if (row.kind === "stay") {
+                  return (
+                    <StayCalendarRow
+                      key={row.key}
+                      group={row.group}
+                      animation={animation}
                     />
                   );
                 }

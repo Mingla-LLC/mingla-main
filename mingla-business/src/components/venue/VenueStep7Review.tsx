@@ -27,6 +27,7 @@ const CAT_LABEL: Record<VenueCategory, string> = {
   restaurant: "Restaurant",
   play: "Play",
   creative_and_arts: "Creative & arts",
+  stay: "Stay",
 };
 
 export interface VenueStep7ReviewProps {

@@ -768,7 +768,8 @@ const asVenueCategory = (value: unknown): VenueCategory | null => {
   if (
     value === "restaurant" ||
     value === "play" ||
-    value === "creative_and_arts"
+    value === "creative_and_arts" ||
+    value === "stay"
   ) {
     return value;
   }

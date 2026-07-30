@@ -31,6 +31,7 @@ import {
   usePublicVenueReservable,
 } from "../../../../src/hooks/usePublicEvents";
 import { usePublicMenus } from "../../../../src/hooks/useMenus";
+import { usePublicStayDetail } from "../../../../src/hooks/usePublicStayDetail";
 import { PublicVenuePage } from "../../../../src/components/venue/PublicVenuePage";
 import { PublicVenueNotFound } from "../../../../src/components/venue/PublicVenueNotFound";
 
@@ -53,19 +54,33 @@ export default function PublicVenueRoute(): React.ReactElement {
     typeof venueSlug === "string" ? venueSlug : null,
   );
   const venue = venueQuery.data ?? null;
+  const stayQuery = usePublicStayDetail(
+    venue?.id ?? null,
+    venue?.venueCategory === "stay",
+  );
 
   // Exact venue-owned menu — fetched only once the venue resolves (a
   // not-found page needs no menu round-trip).
   const menusQuery = usePublicMenus(
-    venue !== null && typeof brandSlug === "string" ? brandSlug : null,
-    venue !== null && typeof venueSlug === "string" ? venueSlug : null,
+    venue !== null &&
+        venue.venueCategory !== "stay" &&
+        typeof brandSlug === "string"
+      ? brandSlug
+      : null,
+    venue !== null &&
+        venue.venueCategory !== "stay" &&
+        typeof venueSlug === "string"
+      ? venueSlug
+      : null,
   );
 
   // §6.7 reserve display gate — place-keyed, anon-safe. Disabled without a
   // linked place; error → not reservable (fail closed, no dead CTA).
-  const reservableQuery = usePublicVenueReservable(venue?.placePoolId ?? null);
+  const reservableQuery = usePublicVenueReservable(
+    venue?.venueCategory === "stay" ? null : venue?.placePoolId ?? null,
+  );
   const discoveryPriceQuery = usePublicVenueDiscoveryPrice(
-    venue?.placePoolId ?? null,
+    venue?.venueCategory === "stay" ? null : venue?.placePoolId ?? null,
   );
 
   // §6.8 — the secondary "See {brand} →" link renders only when the PARENT
@@ -89,6 +104,15 @@ export default function PublicVenueRoute(): React.ReactElement {
       slug: typeof venueSlug === "string" ? venueSlug : null,
     });
   }, [brandSlug, venueSlug]);
+
+  useEffect(() => {
+    if (venue?.venueCategory !== "stay") return;
+    captureWeb("stay_viewed", {
+      surface: "buyer_web",
+      brand_id: venue.brandId,
+      venue_id: venue.id,
+    });
+  }, [venue?.brandId, venue?.id, venue?.venueCategory]);
 
   if (venueQuery.isLoading || venueQuery.isFetching) {
     return (
@@ -136,6 +160,18 @@ export default function PublicVenueRoute(): React.ReactElement {
       onRetryReservability={() => {
         void reservableQuery.refetch();
       }}
+      stayState={
+        venue.venueCategory !== "stay"
+          ? undefined
+          : stayQuery.isLoading
+            ? "loading"
+            : stayQuery.isError
+              ? "error"
+              : stayQuery.data === null
+                ? "unavailable"
+                : "ready"
+      }
+      stayDetail={stayQuery.data ?? null}
     />
   );
 }

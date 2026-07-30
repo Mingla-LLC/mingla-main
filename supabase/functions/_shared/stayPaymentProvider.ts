@@ -7,6 +7,7 @@ export type PreparedStayPayment = {
   attemptId: string;
   groupId: string;
   provider: "stripe" | "paystack";
+  providerPaymentRef?: string | null;
   connectedAccountRef: string | null;
   amountMinor: string;
   currencyCode: string;
@@ -75,7 +76,10 @@ export async function createStayPaymentSession(
     prepared.applicationFeeMinor,
   );
   const currency = prepared.currencyCode.trim().toLowerCase();
-  if (!/^[a-z]{3}$/.test(currency) || prepared.state !== "created") {
+  if (
+    !/^[a-z]{3}$/.test(currency) ||
+    !["created", "pending"].includes(prepared.state)
+  ) {
     throw new Error("stay_invalid_provider_preparation");
   }
 
@@ -84,6 +88,54 @@ export async function createStayPaymentSession(
       throw new Error("stay_stripe_account_required");
     }
     const stripe = (dependencies.createStripe ?? stripeTicketCheckout)();
+    if (prepared.state === "pending") {
+      if (!prepared.providerPaymentRef?.startsWith("pi_")) {
+        throw new Error("stay_invalid_provider_preparation");
+      }
+      let intent: Record<string, unknown>;
+      try {
+        // orch-strict-grep-allow stripe-no-idempotency-key — read-only lookup
+        // of the payment intent already bound to this Stay attempt.
+        intent = await stripe.paymentIntents.retrieve(
+          prepared.providerPaymentRef,
+          {},
+          { stripeAccount: prepared.connectedAccountRef },
+        ) as Record<string, unknown>;
+      } catch {
+        throw new Error("stay_payment_resume_unavailable");
+      }
+      const metadata = intent.metadata as Record<string, unknown> | undefined;
+      const clientSecret = String(intent.client_secret ?? "");
+      const status = String(intent.status ?? "");
+      if (
+        String(intent.id ?? "") !== prepared.providerPaymentRef ||
+        intent.amount !== amount ||
+        String(intent.currency ?? "").toLowerCase() !== currency ||
+        metadata?.mingla_purpose !== "stay_reservation" ||
+        metadata?.stay_group_id !== prepared.groupId ||
+        metadata?.stay_payment_attempt_id !== prepared.attemptId ||
+        !clientSecret
+      ) {
+        throw new Error("stay_invalid_provider_preparation");
+      }
+      if (
+        ["succeeded", "processing", "canceled"].includes(status)
+      ) {
+        throw new Error("stay_payment_already_pending");
+      }
+      return {
+        kind: "requires_payment",
+        provider: "stripe",
+        attemptId: prepared.attemptId,
+        providerPaymentRef: prepared.providerPaymentRef,
+        clientSecret,
+        publishableKey: (dependencies.publishableKey ??
+          resolvePublishableKey)(),
+        stripeAccountId: prepared.connectedAccountRef,
+        amountMinor: prepared.amountMinor,
+        currencyCode: prepared.currencyCode,
+      };
+    }
     const body: Record<string, unknown> = {
       amount,
       currency,
@@ -119,6 +171,9 @@ export async function createStayPaymentSession(
     };
   }
 
+  if (prepared.state === "pending") {
+    throw new Error("stay_payment_already_pending");
+  }
   if (
     prepared.currencyCode.toUpperCase() !== "NGN" ||
     !prepared.buyerEmail ||

@@ -52,6 +52,7 @@ import { PublicMenuSections } from "@mingla/brand-rendering/PublicMenuSections";
 import { PublicVenueTabs } from "@mingla/brand-rendering/PublicVenueTabs";
 import type { PublicVenueTabsHandle } from "@mingla/brand-rendering/PublicVenueTabs";
 import type { PublicMenuGroup, PublicVenueTab } from "@mingla/brand-rendering";
+import type { PublicStayDetail } from "@mingla/brand-rendering/stayGuest";
 import {
   ParallaxCoverShell,
   buildStaticMapUrl,
@@ -86,6 +87,15 @@ import {
 import { captureWeb } from "../../analytics/webAnalytics";
 import { formatSourceRange } from "../../utils/currencyFormatter";
 
+// #1390: Stay booking includes its own renderer and Stripe Payment Element.
+// Keep that product-specific bulk off the shared buyer-web boot path and load it
+// only after a verified Stay venue reaches its reservations surface.
+const BuyerStayGuestExperience = React.lazy(() =>
+  import("../stay/BuyerStayGuestExperience").then((module) => ({
+    default: module.BuyerStayGuestExperience,
+  })),
+);
+
 export interface PublicVenuePageProps {
   venue: PublicVenue;
   discoveryPrice: PublicVenueDiscoveryPrice | null;
@@ -96,6 +106,8 @@ export interface PublicVenuePageProps {
   reservabilityState?: "loading" | "ready" | "error";
   initialTab?: PublicVenueTab;
   onRetryReservability?: () => void;
+  stayState?: "loading" | "ready" | "unavailable" | "error";
+  stayDetail?: PublicStayDetail | null;
 }
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -141,6 +153,8 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
   reservabilityState = "ready",
   initialTab = "overview",
   onRetryReservability,
+  stayState,
+  stayDetail = null,
 }) => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -149,13 +163,16 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
   const [muted, setMuted] = useState<boolean>(true);
   // META-ORCH-1290(C) §6.1 — About pitch clamp/expand state.
   const [aboutExpanded, setAboutExpanded] = useState<boolean>(false);
+  const isStay = venue.venueCategory === "stay";
   const menuItemCount = menu.reduce((sum, group) => sum + group.items.length, 0);
-  const hasMenu = menuItemCount > 0;
+  const hasMenu = !isStay && menuItemCount > 0;
   const canOpenReservationSheet =
-    reservabilityState === "ready" &&
-    reservable !== null &&
-    reservable.reservable === true &&
-    reservable.venueId !== null;
+    isStay
+      ? stayState === "ready"
+      : reservabilityState === "ready" &&
+        reservable !== null &&
+        reservable.reservable === true &&
+        reservable.venueId !== null;
   const reservationUiContext = useMemo(
     () => ({ hasMenu, canOpenReservationSheet }),
     [canOpenReservationSheet, hasMenu],
@@ -362,7 +379,7 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
       ) : null}
     </View>
   );
-  const discoveryPriceBlock = discoveryPrice !== null ? (
+  const discoveryPriceBlock = !isStay && discoveryPrice !== null ? (
     <Text style={[styles.aboutBody, themedFont, { color: palette.secondaryText }]}>
       Typical spend · {formatSourceRange({
         minMinor: discoveryPrice.minMinor,
@@ -514,8 +531,27 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
       </View>
     ) : null;
 
-  const reservationsBlock =
-    reservabilityState === "loading" ? (
+  const reservationsBlock = isStay ? (
+    <React.Suspense
+      fallback={
+        <View style={styles.reservationState}>
+          <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>
+            Loading Stay availability…
+          </Text>
+        </View>
+      }
+    >
+      <BuyerStayGuestExperience
+        venueId={venue.id}
+        brandId={venue.brandId}
+        detail={stayDetail}
+        state={stayState ?? "unavailable"}
+        palette={palette}
+        surface={surface}
+        theme={resolvedTheme}
+      />
+    </React.Suspense>
+  ) : reservabilityState === "loading" ? (
       <View style={styles.reservationState}>
         <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>
           Finding open tables…
@@ -584,7 +620,7 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
     <Pressable
       onPress={handleReserve}
       accessibilityRole="button"
-      accessibilityLabel="Reserve a table"
+      accessibilityLabel={isStay ? "Reserve this Stay" : "Reserve a table"}
       style={({ pressed }) => [
         styles.reserveCta,
         { backgroundColor: palette.accent },
@@ -592,7 +628,7 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
       ]}
     >
       <Text style={[styles.reserveCtaLabel, { color: palette.accentText }]}>
-        Reserve a table
+        {isStay ? "Reserve this Stay" : "Reserve a table"}
       </Text>
     </Pressable>
   );

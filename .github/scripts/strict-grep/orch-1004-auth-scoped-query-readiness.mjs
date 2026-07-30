@@ -139,6 +139,8 @@ const AUTH_SCOPED_HOOK_FILES = [
   // would cache an RLS-empty success and hide the canonical currency/range.
   "useBrandDiscoveryCurrency.ts",
   "usePlaceDiscoveryPriceRange.ts",
+  // #1390 — group/list reads are auth.uid()-owned Stay reservations.
+  "useStayGuest.ts",
   // #1403 — private listing and exact-venue aggregate RPCs.
   "useListingInsights.ts",
   "useVenueReservationMetrics.ts",
@@ -157,6 +159,7 @@ const PUBLIC_HOOK_ALLOWLIST = [
   ["useTripTierAllIn.ts", "fetchTierAllInCents → pg_public_event_tier_allin SECURITY DEFINER public RPC; anon buyer-web trip checkout route (ORCH-1147)"],
   ["usePublicExperience.ts", "anon-readable published experience via public read path; buyer-web experience page (no useAuth, no sign-in)"],
   ["usePublicVenueAvailability.ts", "anon-safe availability read via the canonical self-authorizing venue edge function on public venue pages (#1365)"],
+  ["usePublicStayDetail.ts", "anon-safe verified Stay detail via the STAY_PUBLIC_PAGES-gated SECURITY DEFINER projection (#1390)"],
 ];
 const ALLOWLIST_SET = new Set(PUBLIC_HOOK_ALLOWLIST.map(([f]) => f));
 
