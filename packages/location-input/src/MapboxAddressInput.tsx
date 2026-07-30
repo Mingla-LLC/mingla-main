@@ -264,6 +264,9 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const [focused, setFocused] = useState(false);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Issue #1363 SC-10 — every user action advances this monotonic generation.
+  // Async suggest/retrieve completions may mutate state only while still current.
+  const requestGeneration = useRef(0);
   const [pendingSelectedLabel, setPendingSelectedLabel] = useState<string | null>(
     null,
   );
@@ -297,6 +300,7 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
 
   useEffect((): (() => void) => {
     return (): void => {
+      requestGeneration.current += 1;
       clearDebounceTimer();
     };
   }, [clearDebounceTimer]);
@@ -377,6 +381,7 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
 
   const handleChangeText = useCallback(
     (next: string): void => {
+      const generation = ++requestGeneration.current;
       // Issue #1363 — any keystroke means the value is no longer a just-picked
       // address, so the Tier-2 free-text row may show again.
       justPicked.current = false;
@@ -409,6 +414,7 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
                   { invoke },
                   { proximity, limit: suggestLimit },
                 );
+          if (generation !== requestGeneration.current) return;
           if (results.length === 0) {
             setStatus({ kind: "no_results" });
             announce(copy.noResults);
@@ -416,6 +422,7 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
             setStatus({ kind: "suggestions_open", results });
           }
         } catch {
+          if (generation !== requestGeneration.current) return;
           // autocompleteMapbox itself swallows; this guards the unexpected.
           setStatus({ kind: "offline" });
           announce(copy.offline);
@@ -427,6 +434,7 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
 
   const handlePickSuggestion = useCallback(
     async (s: PlaceAutocompleteSuggestion): Promise<void> => {
+      const generation = ++requestGeneration.current;
       clearDebounceTimer();
       fireHaptic("selection");
       const label =
@@ -437,6 +445,7 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
         const details = await retrieveMapboxPlace(s.placeId, sessionToken.current, {
           invoke,
         });
+        if (generation !== requestGeneration.current) return;
         onPick(details, label);
         // Issue #1363 — a completed pick hides the Tier-2 free-text row until
         // the next keystroke.
@@ -447,6 +456,7 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
         // Rotate the session token AFTER a completed suggest→retrieve pair.
         sessionToken.current = newMapboxSessionToken();
       } catch (e: unknown) {
+        if (generation !== requestGeneration.current) return;
         const message = e instanceof Error ? e.message : "MAPBOX_UNKNOWN";
         console.warn("[MapboxAddressInput] pick failure:", message);
         fireHaptic("error");
@@ -457,12 +467,14 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
   );
 
   const handleClear = useCallback((): void => {
+    requestGeneration.current += 1;
     clearDebounceTimer();
     setStatus({ kind: "idle" });
     onClear();
   }, [clearDebounceTimer, onClear]);
 
   const handleChangeSelected = useCallback((): void => {
+    requestGeneration.current += 1;
     clearDebounceTimer();
     setPendingSelectedLabel(null);
     setStatus({ kind: "idle" });
@@ -471,6 +483,7 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
   }, [clearDebounceTimer, onChangeSelected]);
 
   const handleRetry = useCallback((): void => {
+    requestGeneration.current += 1;
     setStatus({ kind: "idle" });
   }, []);
 
@@ -746,6 +759,7 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
         {showFreeTextRow ? (
           <Pressable
             onPress={() => {
+              requestGeneration.current += 1;
               clearDebounceTimer();
               setStatus({ kind: "idle" });
               onFreeText?.(value);

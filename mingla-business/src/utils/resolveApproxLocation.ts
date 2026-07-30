@@ -32,6 +32,24 @@ export interface HierarchyDep {
   ) => Promise<HierarchicalForwardResult>;
 }
 
+export interface LocationRequestGeneration {
+  current: number;
+}
+
+/** Invalidate every older async completion and return the new request generation. */
+export const advanceLocationRequestGeneration = (
+  generation: LocationRequestGeneration,
+): number => {
+  generation.current += 1;
+  return generation.current;
+};
+
+/** Label equality is insufficient: only the newest unique generation may commit. */
+export const isLocationRequestGenerationCurrent = (
+  generation: LocationRequestGeneration,
+  captured: number,
+): boolean => generation.current === captured;
+
 const validCoordinate = (lat: number, lng: number): boolean =>
   Number.isFinite(lat) &&
   Number.isFinite(lng) &&

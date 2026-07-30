@@ -13,6 +13,14 @@ const venueSource = fs.readFileSync(
   path.resolve(ROOT, "mingla-business/src/components/venue/VenueStep1Address.tsx"),
   "utf8",
 );
+const generationGuardHosts = [
+  "mingla-business/src/components/venue/VenueStep1Address.tsx",
+  "mingla-business/src/components/event/CreatorStep3Where.tsx",
+  "mingla-business/src/components/experience/ExperienceStopCard.tsx",
+  "mingla-business/src/components/trip/TripCreatorStep1Basics.tsx",
+  "mingla-business/src/components/trip/EditPublishedTripScreen.tsx",
+  "mingla-business/src/components/brand/BrandCreationFlow.tsx",
+];
 
 describe("Issue #1363 pinless selected address", () => {
   test("free text uses the exact locked copy and preserves the raw controlled label", () => {
@@ -68,4 +76,14 @@ describe("Issue #1363 pinless selected address", () => {
       venueStepError("s0", { ...located, lat: null, lng: null }),
     ).toBe("Address is missing location.");
   });
+
+  test.each(generationGuardHosts)(
+    "%s uses generation plus label guards for async hierarchy completion",
+    (relativePath) => {
+      const source = fs.readFileSync(path.resolve(ROOT, relativePath), "utf8");
+      expect(source).toContain("advanceLocationRequestGeneration");
+      expect(source).toContain("isLocationRequestGenerationCurrent");
+      expect(source).toContain("isFreeTextResolveStale");
+    },
+  );
 });

@@ -1,6 +1,8 @@
 import { describe, expect, jest, test } from "@jest/globals";
 import {
+  advanceLocationRequestGeneration,
   isFreeTextResolveStale,
+  isLocationRequestGenerationCurrent,
   resolveFreeTextLocation,
 } from "../utils/resolveApproxLocation";
 import {
@@ -101,5 +103,32 @@ describe("Issue #1363 hierarchy client contract", () => {
   test("trip authoring accepts hierarchy coordinates without a provider placeId", () => {
     expect(destinationLocationValidated("Lagos", null, 6.455, 3.384)).toBe(true);
     expect(departureLocationValidated("Abuja", null, 9.076, 7.399)).toBe(true);
+  });
+
+  test("X and a later same-label commit invalidate a delayed free-text completion", async () => {
+    let finishOld: ((value: string) => void) | undefined;
+    const oldResult = new Promise<string>((resolve) => {
+      finishOld = resolve;
+    });
+    const generation = { current: 0 };
+    const oldGeneration = advanceLocationRequestGeneration(generation);
+    const committed: string[] = [];
+    const oldCompletion = oldResult.then((label) => {
+      if (isLocationRequestGenerationCurrent(generation, oldGeneration)) {
+        committed.push(label);
+      }
+    });
+
+    // X invalidates request 1; request 2 deliberately reuses the same label.
+    advanceLocationRequestGeneration(generation);
+    const newGeneration = advanceLocationRequestGeneration(generation);
+    const sameLabel = "Lagos, Nigeria";
+    if (isLocationRequestGenerationCurrent(generation, newGeneration)) {
+      committed.push(sameLabel);
+    }
+    finishOld?.(sameLabel);
+    await oldCompletion;
+
+    expect(committed).toEqual([sameLabel]);
   });
 });

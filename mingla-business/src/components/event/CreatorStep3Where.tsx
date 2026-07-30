@@ -36,7 +36,9 @@ import { Input } from "../ui/Input";
 // the same PlaceDetails boundary: formattedAddress / city / location).
 import { MapboxAddressInput } from "../location/MapboxAddressInput";
 import {
+  advanceLocationRequestGeneration,
   isFreeTextResolveStale,
+  isLocationRequestGenerationCurrent,
   resolveFreeTextLocation,
 } from "../../utils/resolveApproxLocation";
 import type { PlaceDetails } from "../../services/mapboxGeocodeService";
@@ -71,10 +73,12 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
   // Issue #1363 P3-2 — latest-wins guard: the address text currently committed
   // to the field, so a superseded free-text geocode can't patch a stale city.
   const committedAddrRef = React.useRef(draft.address ?? "");
+  const requestGenerationRef = React.useRef(0);
   const savedCityRef = React.useRef(draft.city);
 
   const resolveCommittedText = React.useCallback(
     (rawLabel: string): void => {
+      const generation = advanceLocationRequestGeneration(requestGenerationRef);
       committedAddrRef.current = rawLabel;
       setSelectionState("resolving");
       updateDraft({
@@ -88,7 +92,10 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
           const resolution = await resolveFreeTextLocation(rawLabel, {
             city: savedCityRef.current,
           });
-          if (isFreeTextResolveStale(rawLabel, committedAddrRef.current)) return;
+          if (
+            !isLocationRequestGenerationCurrent(requestGenerationRef, generation) ||
+            isFreeTextResolveStale(rawLabel, committedAddrRef.current)
+          ) return;
           if (
             resolution.status === "needs_context" ||
             resolution.location.city === null
@@ -105,7 +112,10 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
           savedCityRef.current = approx.city;
           setSelectionState("selected");
         } catch {
-          if (!isFreeTextResolveStale(rawLabel, committedAddrRef.current)) {
+          if (
+            isLocationRequestGenerationCurrent(requestGenerationRef, generation) &&
+            !isFreeTextResolveStale(rawLabel, committedAddrRef.current)
+          ) {
             setSelectionState("error");
           }
         }
@@ -149,11 +159,13 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
               selectionState={selectionState}
               selectedLabel={draft.address ?? ""}
               onChangeText={(v) => {
+                advanceLocationRequestGeneration(requestGenerationRef);
                 committedAddrRef.current = v;
                 updateDraft({ address: v, city: null, locationGeo: null, coordinatePrecision: null });
               }}
               onFreeText={resolveCommittedText}
               onPick={(details: PlaceDetails, selectedLabel?: string): void => {
+                advanceLocationRequestGeneration(requestGenerationRef);
                 const label = selectedLabel ?? details.formattedAddress;
                 committedAddrRef.current = label;
                 updateDraft({
@@ -166,6 +178,7 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
                 setSelectionState("selected");
               }}
               onChangeSelected={() => {
+                advanceLocationRequestGeneration(requestGenerationRef);
                 committedAddrRef.current = draft.address ?? "";
                 setSelectionState("editing");
                 updateDraft({
@@ -175,6 +188,7 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
                 });
               }}
               onClear={(): void => {
+                advanceLocationRequestGeneration(requestGenerationRef);
                 committedAddrRef.current = "";
                 setSelectionState("editing");
                 updateDraft({ address: null, city: null, locationGeo: null, coordinatePrecision: null });

@@ -128,7 +128,9 @@ import {
 // picks before save. Swap the legacy plain TextInputs for the shared picker.
 import { MapboxAddressInput } from "../location/MapboxAddressInput";
 import {
+  advanceLocationRequestGeneration,
   isFreeTextResolveStale,
+  isLocationRequestGenerationCurrent,
   resolveFreeTextLocation,
 } from "../../utils/resolveApproxLocation";
 import type { LocationSelectionState } from "@mingla/location-input";
@@ -712,6 +714,8 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
   // field, so a superseded free-text geocode can't patch a stale coordinate.
   const committedDepartureRef = useRef(editState.departureLocationText ?? "");
   const committedDestinationRef = useRef(editState.destinationLocationText ?? "");
+  const departureRequestGenerationRef = useRef(0);
+  const destinationRequestGenerationRef = useRef(0);
   const departureContextRef = useRef<{
     city: string | null;
     countryCode: string | null;
@@ -874,6 +878,9 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
   );
   const resolveDeparture = useCallback(
     (rawLabel: string): void => {
+      const generation = advanceLocationRequestGeneration(
+        departureRequestGenerationRef,
+      );
       committedDepartureRef.current = rawLabel;
       setDepartureSelectionState("resolving");
       updateBasics({
@@ -889,7 +896,13 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
             rawLabel,
             departureContextRef.current,
           );
-          if (isFreeTextResolveStale(rawLabel, committedDepartureRef.current)) return;
+          if (
+            !isLocationRequestGenerationCurrent(
+              departureRequestGenerationRef,
+              generation,
+            ) ||
+            isFreeTextResolveStale(rawLabel, committedDepartureRef.current)
+          ) return;
           if (resolution.status === "needs_context") {
             setDepartureSelectionState("needs_context");
             return;
@@ -906,7 +919,13 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
           };
           setDepartureSelectionState("selected");
         } catch {
-          if (!isFreeTextResolveStale(rawLabel, committedDepartureRef.current)) {
+          if (
+            isLocationRequestGenerationCurrent(
+              departureRequestGenerationRef,
+              generation,
+            ) &&
+            !isFreeTextResolveStale(rawLabel, committedDepartureRef.current)
+          ) {
             setDepartureSelectionState("error");
           }
         }
@@ -916,6 +935,9 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
   );
   const resolveDestination = useCallback(
     (rawLabel: string): void => {
+      const generation = advanceLocationRequestGeneration(
+        destinationRequestGenerationRef,
+      );
       committedDestinationRef.current = rawLabel;
       setDestinationSelectionState("resolving");
       updateBasics({
@@ -931,7 +953,13 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
             rawLabel,
             destinationContextRef.current,
           );
-          if (isFreeTextResolveStale(rawLabel, committedDestinationRef.current)) return;
+          if (
+            !isLocationRequestGenerationCurrent(
+              destinationRequestGenerationRef,
+              generation,
+            ) ||
+            isFreeTextResolveStale(rawLabel, committedDestinationRef.current)
+          ) return;
           if (resolution.status === "needs_context") {
             setDestinationSelectionState("needs_context");
             return;
@@ -948,7 +976,13 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
           };
           setDestinationSelectionState("selected");
         } catch {
-          if (!isFreeTextResolveStale(rawLabel, committedDestinationRef.current)) {
+          if (
+            isLocationRequestGenerationCurrent(
+              destinationRequestGenerationRef,
+              generation,
+            ) &&
+            !isFreeTextResolveStale(rawLabel, committedDestinationRef.current)
+          ) {
             setDestinationSelectionState("error");
           }
         }
@@ -1514,6 +1548,9 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                   selectionState={departureSelectionState}
                   selectedLabel={editState.departureLocationText ?? ""}
                   onChangeText={(v) => {
+                    advanceLocationRequestGeneration(
+                      departureRequestGenerationRef,
+                    );
                     committedDepartureRef.current = v;
                     updateBasics({
                       departureLocationText: v.trim().length === 0 ? null : v,
@@ -1525,6 +1562,9 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                   }}
                   onFreeText={resolveDeparture}
                   onPick={(place, selectedLabel) => {
+                    advanceLocationRequestGeneration(
+                      departureRequestGenerationRef,
+                    );
                     const label = selectedLabel ?? place.formattedAddress;
                     committedDepartureRef.current = label;
                     updateBasics({
@@ -1541,6 +1581,9 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                     setDepartureSelectionState("selected");
                   }}
                   onChangeSelected={() => {
+                    advanceLocationRequestGeneration(
+                      departureRequestGenerationRef,
+                    );
                     committedDepartureRef.current =
                       editState.departureLocationText ?? "";
                     setDepartureSelectionState("editing");
@@ -1552,6 +1595,9 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                     });
                   }}
                   onClear={() => {
+                    advanceLocationRequestGeneration(
+                      departureRequestGenerationRef,
+                    );
                     committedDepartureRef.current = "";
                     setDepartureSelectionState("editing");
                     updateBasics({
@@ -1585,6 +1631,9 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                   selectionState={destinationSelectionState}
                   selectedLabel={editState.destinationLocationText ?? ""}
                   onChangeText={(v) => {
+                    advanceLocationRequestGeneration(
+                      destinationRequestGenerationRef,
+                    );
                     committedDestinationRef.current = v;
                     updateBasics({
                       destinationLocationText: v.trim().length === 0 ? null : v,
@@ -1596,6 +1645,9 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                   }}
                   onFreeText={resolveDestination}
                   onPick={(place, selectedLabel) => {
+                    advanceLocationRequestGeneration(
+                      destinationRequestGenerationRef,
+                    );
                     const label = selectedLabel ?? place.formattedAddress;
                     committedDestinationRef.current = label;
                     updateBasics({
@@ -1612,6 +1664,9 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                     setDestinationSelectionState("selected");
                   }}
                   onChangeSelected={() => {
+                    advanceLocationRequestGeneration(
+                      destinationRequestGenerationRef,
+                    );
                     committedDestinationRef.current =
                       editState.destinationLocationText ?? "";
                     setDestinationSelectionState("editing");
@@ -1623,6 +1678,9 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                     });
                   }}
                   onClear={() => {
+                    advanceLocationRequestGeneration(
+                      destinationRequestGenerationRef,
+                    );
                     committedDestinationRef.current = "";
                     setDestinationSelectionState("editing");
                     updateBasics({

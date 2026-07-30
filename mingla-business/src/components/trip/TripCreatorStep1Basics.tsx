@@ -45,7 +45,9 @@ import { ThemeSheet } from "../theme/ThemeSheet";
 // by name (no `types` filter): https://docs.mapbox.com/api/search/search-box/#get-suggestions
 import { MapboxAddressInput } from "../location/MapboxAddressInput";
 import {
+  advanceLocationRequestGeneration,
   isFreeTextResolveStale,
+  isLocationRequestGenerationCurrent,
   resolveFreeTextLocation,
 } from "../../utils/resolveApproxLocation";
 import type { LocationSelectionState } from "@mingla/location-input";
@@ -208,6 +210,8 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
   // field, so a superseded free-text geocode can't patch a stale coordinate.
   const committedDepartureRef = useRef(draft.departureLocationText ?? "");
   const committedDestinationRef = useRef(draft.destinationLocationText ?? "");
+  const departureRequestGenerationRef = useRef(0);
+  const destinationRequestGenerationRef = useRef(0);
   const departureContextRef = useRef<{
     city: string | null;
     countryCode: string | null;
@@ -219,6 +223,9 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
 
   const resolveDeparture = useCallback(
     (rawLabel: string): void => {
+      const generation = advanceLocationRequestGeneration(
+        departureRequestGenerationRef,
+      );
       committedDepartureRef.current = rawLabel;
       setDepartureSelectionState("resolving");
       onChange({
@@ -234,7 +241,13 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
             rawLabel,
             departureContextRef.current,
           );
-          if (isFreeTextResolveStale(rawLabel, committedDepartureRef.current)) return;
+          if (
+            !isLocationRequestGenerationCurrent(
+              departureRequestGenerationRef,
+              generation,
+            ) ||
+            isFreeTextResolveStale(rawLabel, committedDepartureRef.current)
+          ) return;
           if (resolution.status === "needs_context") {
             setDepartureSelectionState("needs_context");
             return;
@@ -251,7 +264,13 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           };
           setDepartureSelectionState("selected");
         } catch {
-          if (!isFreeTextResolveStale(rawLabel, committedDepartureRef.current)) {
+          if (
+            isLocationRequestGenerationCurrent(
+              departureRequestGenerationRef,
+              generation,
+            ) &&
+            !isFreeTextResolveStale(rawLabel, committedDepartureRef.current)
+          ) {
             setDepartureSelectionState("error");
           }
         }
@@ -262,6 +281,9 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
 
   const resolveDestination = useCallback(
     (rawLabel: string): void => {
+      const generation = advanceLocationRequestGeneration(
+        destinationRequestGenerationRef,
+      );
       committedDestinationRef.current = rawLabel;
       setDestinationSelectionState("resolving");
       onChange({
@@ -277,7 +299,13 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
             rawLabel,
             destinationContextRef.current,
           );
-          if (isFreeTextResolveStale(rawLabel, committedDestinationRef.current)) return;
+          if (
+            !isLocationRequestGenerationCurrent(
+              destinationRequestGenerationRef,
+              generation,
+            ) ||
+            isFreeTextResolveStale(rawLabel, committedDestinationRef.current)
+          ) return;
           if (resolution.status === "needs_context") {
             setDestinationSelectionState("needs_context");
             return;
@@ -294,7 +322,13 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           };
           setDestinationSelectionState("selected");
         } catch {
-          if (!isFreeTextResolveStale(rawLabel, committedDestinationRef.current)) {
+          if (
+            isLocationRequestGenerationCurrent(
+              destinationRequestGenerationRef,
+              generation,
+            ) &&
+            !isFreeTextResolveStale(rawLabel, committedDestinationRef.current)
+          ) {
             setDestinationSelectionState("error");
           }
         }
@@ -574,11 +608,15 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
               departurePlaceId: null,
               departureLat: null,
               departureLng: null,
-              departureCoordinatePrecision: null,
+              departureCoordinatePrecision: (
+                advanceLocationRequestGeneration(departureRequestGenerationRef),
+                null
+              ),
             })
           }
           onFreeText={resolveDeparture}
           onPick={(place, selectedLabel) => {
+            advanceLocationRequestGeneration(departureRequestGenerationRef);
             // Compatibility note: departureLocationText: place.formattedAddress
             // was the old mapping; the selected row label now wins when supplied.
             const label = selectedLabel ?? place.formattedAddress;
@@ -597,6 +635,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
             setDepartureSelectionState("selected");
           }}
           onChangeSelected={() => {
+            advanceLocationRequestGeneration(departureRequestGenerationRef);
             committedDepartureRef.current = draft.departureLocationText ?? "";
             setDepartureSelectionState("editing");
             onChange({
@@ -607,6 +646,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
             });
           }}
           onClear={() => {
+            advanceLocationRequestGeneration(departureRequestGenerationRef);
             committedDepartureRef.current = "";
             setDepartureSelectionState("editing");
             onChange({
@@ -638,11 +678,15 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
               destinationPlaceId: null,
               destinationLat: null,
               destinationLng: null,
-              destinationCoordinatePrecision: null,
+              destinationCoordinatePrecision: (
+                advanceLocationRequestGeneration(destinationRequestGenerationRef),
+                null
+              ),
             })
           }
           onFreeText={resolveDestination}
           onPick={(place, selectedLabel) => {
+            advanceLocationRequestGeneration(destinationRequestGenerationRef);
             // Compatibility note: destinationLocationText: place.formattedAddress
             // was the old mapping; the selected row label now wins when supplied.
             const label = selectedLabel ?? place.formattedAddress;
@@ -661,6 +705,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
             setDestinationSelectionState("selected");
           }}
           onChangeSelected={() => {
+            advanceLocationRequestGeneration(destinationRequestGenerationRef);
             committedDestinationRef.current = draft.destinationLocationText ?? "";
             setDestinationSelectionState("editing");
             onChange({
@@ -671,6 +716,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
             });
           }}
           onClear={() => {
+            advanceLocationRequestGeneration(destinationRequestGenerationRef);
             committedDestinationRef.current = "";
             setDestinationSelectionState("editing");
             onChange({

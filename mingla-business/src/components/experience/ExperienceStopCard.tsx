@@ -32,7 +32,9 @@ import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import { MapboxAddressInput } from "../location/MapboxAddressInput";
 import {
+  advanceLocationRequestGeneration,
   isFreeTextResolveStale,
+  isLocationRequestGenerationCurrent,
   resolveFreeTextLocation,
 } from "../../utils/resolveApproxLocation";
 import type { PlaceDetails } from "../../services/mapboxGeocodeService";
@@ -93,12 +95,14 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
   // Issue #1363 P3-2 — latest-wins guard: the stop address currently committed,
   // so a superseded free-text geocode can't patch a stale coord for this stop.
   const committedAddrRef = React.useRef(stop.address);
+  const requestGenerationRef = React.useRef(0);
   const savedContextRef = React.useRef({
     city: stop.city,
     countryCode: stop.countryCode,
   });
   const resolveCommittedText = React.useCallback(
     (rawLabel: string): void => {
+      const generation = advanceLocationRequestGeneration(requestGenerationRef);
       committedAddrRef.current = rawLabel;
       setSelectionState("resolving");
       onPatch(cid, {
@@ -117,7 +121,10 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
             rawLabel,
             savedContextRef.current,
           );
-          if (isFreeTextResolveStale(rawLabel, committedAddrRef.current)) return;
+          if (
+            !isLocationRequestGenerationCurrent(requestGenerationRef, generation) ||
+            isFreeTextResolveStale(rawLabel, committedAddrRef.current)
+          ) return;
           if (resolution.status === "needs_context") {
             setSelectionState("needs_context");
             return;
@@ -137,7 +144,10 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
           };
           setSelectionState("selected");
         } catch {
-          if (!isFreeTextResolveStale(rawLabel, committedAddrRef.current)) {
+          if (
+            isLocationRequestGenerationCurrent(requestGenerationRef, generation) &&
+            !isFreeTextResolveStale(rawLabel, committedAddrRef.current)
+          ) {
             setSelectionState("error");
           }
         }
@@ -228,6 +238,7 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
               selectionState={selectionState}
               selectedLabel={stop.address}
               onChangeText={(v) => {
+                advanceLocationRequestGeneration(requestGenerationRef);
                 committedAddrRef.current = v;
                 onPatch(cid, {
                   address: v,
@@ -242,6 +253,7 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
               }}
               onFreeText={resolveCommittedText}
               onPick={(d: PlaceDetails, selectedLabel?: string) => {
+                advanceLocationRequestGeneration(requestGenerationRef);
                 const label = selectedLabel ?? d.formattedAddress;
                 committedAddrRef.current = label;
                 onPatch(cid, {
@@ -261,6 +273,7 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
                 setSelectionState("selected");
               }}
               onChangeSelected={() => {
+                advanceLocationRequestGeneration(requestGenerationRef);
                 committedAddrRef.current = stop.address;
                 setSelectionState("editing");
                 onPatch(cid, {
@@ -274,6 +287,7 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
                 });
               }}
               onClear={() => {
+                advanceLocationRequestGeneration(requestGenerationRef);
                 committedAddrRef.current = "";
                 setSelectionState("editing");
                 onPatch(cid, {

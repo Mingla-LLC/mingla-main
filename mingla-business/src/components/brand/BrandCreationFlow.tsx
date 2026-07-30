@@ -59,7 +59,9 @@ import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 // https://docs.mapbox.com/api/search/search-box/#get-suggestions
 import { MapboxAddressInput } from "../location/MapboxAddressInput";
 import {
+  advanceLocationRequestGeneration,
   isFreeTextResolveStale,
+  isLocationRequestGenerationCurrent,
   resolveFreeTextLocation,
 } from "../../utils/resolveApproxLocation";
 import { parseVenuePlaceResult } from "../../utils/parseVenuePlaceResult";
@@ -348,12 +350,16 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   // Issue #1363 P3-2 — latest-wins guard: the address text currently committed,
   // so a superseded free-text geocode can't patch a stale prefill coordinate.
   const committedAddrRef = useRef("");
+  const addressRequestGenerationRef = useRef(0);
   const savedContextRef = useRef<{
     city: string | null;
     countryCode: string | null;
   }>({ city: null, countryCode: null });
   const resolveCommittedAddress = useCallback(
     (rawLabel: string): void => {
+      const generation = advanceLocationRequestGeneration(
+        addressRequestGenerationRef,
+      );
       committedAddrRef.current = rawLabel;
       setAddress(rawLabel);
       setAddressSelectionState("resolving");
@@ -370,7 +376,13 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
             rawLabel,
             savedContextRef.current,
           );
-          if (isFreeTextResolveStale(rawLabel, committedAddrRef.current)) return;
+          if (
+            !isLocationRequestGenerationCurrent(
+              addressRequestGenerationRef,
+              generation,
+            ) ||
+            isFreeTextResolveStale(rawLabel, committedAddrRef.current)
+          ) return;
           if (resolution.status === "needs_context") {
             setAddressSelectionState("needs_context");
             return;
@@ -389,7 +401,13 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
           };
           setAddressSelectionState("selected");
         } catch {
-          if (!isFreeTextResolveStale(rawLabel, committedAddrRef.current)) {
+          if (
+            isLocationRequestGenerationCurrent(
+              addressRequestGenerationRef,
+              generation,
+            ) &&
+            !isFreeTextResolveStale(rawLabel, committedAddrRef.current)
+          ) {
             setAddressSelectionState("error");
           }
         }
@@ -529,6 +547,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   }, [address, addrMeta, persistAddress, updateState]);
 
   const handleSkipAddress = useCallback((): void => {
+    advanceLocationRequestGeneration(addressRequestGenerationRef);
     setAddress("");
     committedAddrRef.current = "";
     setAddressSelectionState("editing");
@@ -794,6 +813,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
               selectionState={addressSelectionState}
               selectedLabel={address}
               onChangeText={(t) => {
+                advanceLocationRequestGeneration(addressRequestGenerationRef);
                 committedAddrRef.current = t;
                 setAddress(t);
                 setAddrMeta({
@@ -806,6 +826,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
               }}
               onFreeText={resolveCommittedAddress}
               onPick={(details: PlaceDetails, selectedLabel?: string): void => {
+                advanceLocationRequestGeneration(addressRequestGenerationRef);
                 const p = parseVenuePlaceResult(details);
                 const label = selectedLabel ?? p.formattedAddress;
                 committedAddrRef.current = label;
@@ -827,6 +848,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
                 setAddressSelectionState("selected");
               }}
               onChangeSelected={() => {
+                advanceLocationRequestGeneration(addressRequestGenerationRef);
                 committedAddrRef.current = address;
                 setAddressSelectionState("editing");
                 setAddrMeta({
@@ -838,6 +860,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
                 });
               }}
               onClear={(): void => {
+                advanceLocationRequestGeneration(addressRequestGenerationRef);
                 committedAddrRef.current = "";
                 setAddressSelectionState("editing");
                 setAddress("");

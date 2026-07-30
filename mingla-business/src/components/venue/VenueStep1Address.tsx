@@ -11,7 +11,9 @@ import { StyleSheet, Text, View } from "react-native";
 import { spacing, text as textTokens, typography } from "../../constants/designSystem";
 import { parseVenuePlaceResult } from "../../utils/parseVenuePlaceResult";
 import {
+  advanceLocationRequestGeneration,
   isFreeTextResolveStale,
+  isLocationRequestGenerationCurrent,
   resolveFreeTextLocation,
 } from "../../utils/resolveApproxLocation";
 import { useDraftVenueStore } from "../../store/draftVenueStore";
@@ -43,10 +45,12 @@ export const VenueStep1Address: React.FC<VenueStep1AddressProps> = ({
   // committed to the field so a slow, superseded free-text forward-geocode can
   // never patch a stale coordinate after the brand re-typed / picked / cleared.
   const committedAddrRef = React.useRef(formattedAddress);
+  const requestGenerationRef = React.useRef(0);
   const savedContextRef = React.useRef({ city, countryCode });
 
   const resolveCommittedText = React.useCallback(
     (rawLabel: string): void => {
+      const generation = advanceLocationRequestGeneration(requestGenerationRef);
       setSelectionState("resolving");
       committedAddrRef.current = rawLabel;
       patch({
@@ -63,7 +67,10 @@ export const VenueStep1Address: React.FC<VenueStep1AddressProps> = ({
             rawLabel,
             savedContextRef.current,
           );
-          if (isFreeTextResolveStale(rawLabel, committedAddrRef.current)) return;
+          if (
+            !isLocationRequestGenerationCurrent(requestGenerationRef, generation) ||
+            isFreeTextResolveStale(rawLabel, committedAddrRef.current)
+          ) return;
           if (resolution.status === "needs_context") {
             setSelectionState("needs_context");
             return;
@@ -82,7 +89,10 @@ export const VenueStep1Address: React.FC<VenueStep1AddressProps> = ({
           };
           setSelectionState("selected");
         } catch {
-          if (!isFreeTextResolveStale(rawLabel, committedAddrRef.current)) {
+          if (
+            isLocationRequestGenerationCurrent(requestGenerationRef, generation) &&
+            !isFreeTextResolveStale(rawLabel, committedAddrRef.current)
+          ) {
             setSelectionState("error");
           }
         }
@@ -109,6 +119,7 @@ export const VenueStep1Address: React.FC<VenueStep1AddressProps> = ({
         selectionState={selectionState}
         selectedLabel={formattedAddress}
         onChangeText={(t) => {
+          advanceLocationRequestGeneration(requestGenerationRef);
           // ORCH-1079 LOCKED dedup guard: null the address/geo but NEVER
           // `googlePlaceId`. Issue #1363 adds coordinatePrecision to the reset.
           committedAddrRef.current = t;
@@ -116,6 +127,7 @@ export const VenueStep1Address: React.FC<VenueStep1AddressProps> = ({
         }}
         onFreeText={resolveCommittedText}
         onPick={(details: PlaceDetails, selectedLabel?: string): void => {
+          advanceLocationRequestGeneration(requestGenerationRef);
           const p = parseVenuePlaceResult(details);
           const label = selectedLabel ?? p.formattedAddress;
           committedAddrRef.current = label;
@@ -141,6 +153,7 @@ export const VenueStep1Address: React.FC<VenueStep1AddressProps> = ({
           setSelectionState("selected");
         }}
         onChangeSelected={() => {
+          advanceLocationRequestGeneration(requestGenerationRef);
           committedAddrRef.current = formattedAddress;
           setSelectionState("editing");
           patch({
@@ -152,6 +165,7 @@ export const VenueStep1Address: React.FC<VenueStep1AddressProps> = ({
           });
         }}
         onClear={(): void => {
+          advanceLocationRequestGeneration(requestGenerationRef);
           // ORCH-1079 LOCKED (§3.C): clearing the field MUST NOT null
           // `googlePlaceId` — that would wipe the pool-derived dedup key on the
           // claim path. Only address/geo reset.
