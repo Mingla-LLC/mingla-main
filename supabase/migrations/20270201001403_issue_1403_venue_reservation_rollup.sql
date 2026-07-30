@@ -162,8 +162,10 @@ BEGIN
         CASE
           WHEN v_offset_min IS NOT NULL
             THEN 'UTC'
-              || CASE WHEN v_offset_min >= 0 THEN '+' ELSE '' END
-              || (v_offset_min / 60)::text
+              || CASE WHEN v_offset_min >= 0 THEN '+' ELSE '-' END
+              || lpad((abs(v_offset_min) / 60)::text, 2, '0')
+              || ':'
+              || lpad((abs(v_offset_min) % 60)::text, 2, '0')
           ELSE 'UTC'
         END
       ),

@@ -33,6 +33,7 @@ jest.mock("../../../analytics/businessAnalyticsEvents", () => ({
   captureBusinessListingInsightsRefreshed: jest.fn(),
 }));
 
+import { captureBusinessListingInsightsOpened } from "../../../analytics/businessAnalyticsEvents";
 import { ListingInsightsScreen } from "../ListingInsightsScreen";
 
 const identity = {
@@ -87,6 +88,10 @@ const rollup: {
 };
 
 describe("issue #1403 Listing Insights native render", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
   const allText = (tree: RenderTree): string =>
     tree.root
       .findAll((node) => typeof node.props.children === "string")
@@ -154,5 +159,59 @@ describe("issue #1403 Listing Insights native render", () => {
     expect(output).toContain("No paid booking value yet");
     expect(output).toContain("No source mix yet");
     expect(output).not.toContain("Couldn't load");
+    expect(captureBusinessListingInsightsOpened).toHaveBeenCalledWith(
+      "event",
+      "direct",
+      false,
+    );
+  });
+
+  it("does not emit listing-opened analytics for an unauthorized envelope", async () => {
+    await TestRenderer.act(async () => {
+      TestRenderer.create(
+        <ListingInsightsScreen
+          identity={identity as never}
+          rollup={{
+            ...rollup,
+            data: { ...rollup.data, authorized: false },
+          } as never}
+          entryPoint="direct"
+          onBack={jest.fn()}
+          onBackToListings={jest.fn()}
+        />,
+      );
+    });
+    expect(captureBusinessListingInsightsOpened).not.toHaveBeenCalled();
+  });
+
+  it("renders a role request failure as retryable and retries only role access", async () => {
+    const retryAccess = jest.fn();
+    let tree: RenderTree | null = null;
+    await TestRenderer.act(async () => {
+      tree = TestRenderer.create(
+        <ListingInsightsScreen
+          identity={{ ...identity, data: undefined } as never}
+          rollup={{ ...rollup, data: undefined } as never}
+          entryPoint="direct"
+          onBack={jest.fn()}
+          onBackToListings={jest.fn()}
+          accessError
+          onRetryAccess={retryAccess}
+        />,
+      );
+    });
+    const output = allText(tree!);
+    expect(output).toContain("Couldn't load listing insights");
+    expect(output).not.toContain("Insights unavailable");
+    const retryButton = tree!.root.findAll(
+      (node) =>
+        node.props.accessibilityRole === "button" &&
+        typeof node.props.onPress === "function",
+    )[0];
+    await TestRenderer.act(async () => {
+      (retryButton.props.onPress as () => void)();
+    });
+    expect(retryAccess).toHaveBeenCalledTimes(1);
+    expect(rollup.refetch).not.toHaveBeenCalled();
   });
 });

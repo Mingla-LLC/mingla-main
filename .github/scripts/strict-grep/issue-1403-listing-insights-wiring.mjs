@@ -76,6 +76,22 @@ const check = (files) => {
   );
   requireOrder(
     venue,
+    [
+      "reservationsQuery.data?.authorized !== true",
+      "trackedReservationScope.current = scope",
+      "captureBusinessVenueReservationsViewed",
+    ],
+    `${PATHS.venue}: reservation viewed analytics must wait for an authorized envelope`,
+    failures,
+  );
+  requirePattern(
+    venue,
+    /setReservationRefreshStatus\("updating"\)[\s\S]*setReservationRefreshStatus\(succeeded \? "success" : "error"\)/,
+    `${PATHS.venue}: reservation refresh live status lifecycle missing`,
+    failures,
+  );
+  requireOrder(
+    venue,
     [">Revenue<", "<VenueReservationsCard", ">Slow hours<"],
     `${PATHS.venue}: required Revenue < Reservations < Slow hours order missing`,
     failures,
@@ -134,8 +150,14 @@ const check = (files) => {
     );
     requirePattern(
       source,
-      /isScannerOnlyRank/,
-      `${manualPath}: scanner-only entry-point exclusion missing`,
+      /const canShowListingInsights\s*=\s*!currentBrandRole\.isLoading\s*&&\s*!currentBrandRole\.isError\s*&&\s*currentBrandRole\.role !== null\s*&&\s*!isScannerOnlyRank\s*\(\s*currentBrandRole\.rank\s*\)/,
+      `${manualPath}: role loading/error/scanner fail-closed entry gate missing`,
+      failures,
+    );
+    requirePattern(
+      source,
+      /\{\s*canShowListingInsights\s*\?\s*\(\s*<ActionTile[\s\S]*?label="Insights"/,
+      `${manualPath}: Insights tile does not consume the fail-closed role gate`,
       failures,
     );
     requirePattern(
@@ -161,8 +183,14 @@ const check = (files) => {
     );
     requirePattern(
       source,
-      /tile\.key === "insights"\s*&&\s*isScannerOnlyRank\s*\(\s*currentBrandRole\.rank\s*\)/,
-      `${consumerPath}: scanner-only Insights exclusion missing`,
+      /const canShowListingInsights\s*=\s*!currentBrandRole\.isLoading\s*&&\s*!currentBrandRole\.isError\s*&&\s*currentBrandRole\.role !== null\s*&&\s*!isScannerOnlyRank\s*\(\s*currentBrandRole\.rank\s*\)/,
+      `${consumerPath}: role loading/error/scanner fail-closed entry gate missing`,
+      failures,
+    );
+    requirePattern(
+      source,
+      /tile\.key === "insights"\s*&&\s*!canShowListingInsights/,
+      `${consumerPath}: composed Insights tile does not consume the fail-closed role gate`,
       failures,
     );
     requirePattern(
@@ -192,6 +220,30 @@ const check = (files) => {
   );
   requirePattern(
     route,
+    /const rankSettled\s*=\s*hasCurrentBrandHydrated\s*&&\s*currentBrand !== null\s*&&\s*!role\.isLoading\s*&&\s*!role\.isError\s*&&\s*role\.role !== null/,
+    `${PATHS.route}: hydration/brand/role settlement gate missing`,
+    failures,
+  );
+  requirePattern(
+    route,
+    /accessError=\{\s*hasCurrentBrandHydrated[\s\S]*role\.isError[\s\S]*onRetryAccess=\{\(\) => \{[\s\S]*role\.refetch\(\)/,
+    `${PATHS.route}: retryable role request failure wiring missing`,
+    failures,
+  );
+  requirePattern(
+    route,
+    /const membershipDenied\s*=[\s\S]*role\.role === null[\s\S]*forceUnavailable=\{[\s\S]*membershipDenied/,
+    `${PATHS.route}: successful no-membership direct-load denial missing`,
+    failures,
+  );
+  requirePattern(
+    route,
+    /const CANONICAL_UUID\s*=[\s\S]*CANONICAL_UUID\.test\(value\)[\s\S]*forceUnavailable=\{\s*id === null \|\|/,
+    `${PATHS.route}: malformed/missing listing IDs must fail before reads`,
+    failures,
+  );
+  requirePattern(
+    route,
     /router\.replace\(identityProbe\.data\.detailRoute/,
     `${PATHS.route}: direct-load canonical detail fallback missing`,
     failures,
@@ -214,6 +266,18 @@ const check = (files) => {
     screen,
     /minglaDroveCount/,
     `${PATHS.screen}: server-authoritative total missing`,
+    failures,
+  );
+  requirePattern(
+    screen,
+    /rollup\.data\?\.authorized !== true[\s\S]*trackedId\.current = identity\.data\.id[\s\S]*captureBusinessListingInsightsOpened/,
+    `${PATHS.screen}: listing-opened analytics must wait for an authorized envelope`,
+    failures,
+  );
+  requirePattern(
+    screen,
+    /accessError[\s\S]*onRetryAccess\?\.\(\)/,
+    `${PATHS.screen}: role request error Retry handler missing`,
     failures,
   );
   if (/byPlatform|by_platform|campaign/i.test(screen)) {
@@ -411,10 +475,40 @@ if (process.argv.includes("--self-test")) {
   );
   if (
     !check(scannerLeak).some((failure) =>
-      failure.includes("scanner-only Insights exclusion missing"),
+      failure.includes("role loading/error/scanner fail-closed entry gate missing"),
     )
   ) {
     selfFailures.push("scanner-only Insights leak was not detected");
+  }
+
+  const coldLoadLeak = new Map(good);
+  coldLoadLeak.set(
+    PATHS.event,
+    coldLoadLeak
+      .get(PATHS.event)
+      .replace("!currentBrandRole.isLoading &&\n    ", ""),
+  );
+  if (
+    !check(coldLoadLeak).some((failure) =>
+      failure.includes("role loading/error/scanner fail-closed entry gate missing"),
+    )
+  ) {
+    selfFailures.push("cold-loading role Insights leak was not detected");
+  }
+
+  const roleErrorLeak = new Map(good);
+  roleErrorLeak.set(
+    PATHS.rsvp,
+    roleErrorLeak
+      .get(PATHS.rsvp)
+      .replace("!currentBrandRole.isError &&\n    ", ""),
+  );
+  if (
+    !check(roleErrorLeak).some((failure) =>
+      failure.includes("role loading/error/scanner fail-closed entry gate missing"),
+    )
+  ) {
+    selfFailures.push("role-query-error Insights leak was not detected");
   }
 
   const staticAccessibility = new Map(good);
@@ -435,12 +529,75 @@ if (process.argv.includes("--self-test")) {
     selfFailures.push("static Insights accessibility copy was not detected");
   }
 
+  const hydrationLeak = new Map(good);
+  hydrationLeak.set(
+    PATHS.route,
+    hydrationLeak
+      .get(PATHS.route)
+      .replace("hasCurrentBrandHydrated &&\n    currentBrand !== null &&\n    ", ""),
+  );
+  if (
+    !check(hydrationLeak).some((failure) =>
+      failure.includes("hydration/brand/role settlement gate missing"),
+    )
+  ) {
+    selfFailures.push("pre-hydration listing read was not detected");
+  }
+
+  const malformedIdLeak = new Map(good);
+  malformedIdLeak.set(
+    PATHS.route,
+    malformedIdLeak
+      .get(PATHS.route)
+      .replace("CANONICAL_UUID.test(value)", "value.trim().length > 0"),
+  );
+  if (
+    !check(malformedIdLeak).some((failure) =>
+      failure.includes("malformed/missing listing IDs"),
+    )
+  ) {
+    selfFailures.push("malformed listing ID leak was not detected");
+  }
+
+  const unauthorizedListingAnalytics = new Map(good);
+  unauthorizedListingAnalytics.set(
+    PATHS.screen,
+    unauthorizedListingAnalytics
+      .get(PATHS.screen)
+      .replace("rollup.data?.authorized !== true", "rollup.data === undefined"),
+  );
+  if (
+    !check(unauthorizedListingAnalytics).some((failure) =>
+      failure.includes("listing-opened analytics must wait"),
+    )
+  ) {
+    selfFailures.push("unauthorized listing analytics leak was not detected");
+  }
+
+  const unauthorizedVenueAnalytics = new Map(good);
+  unauthorizedVenueAnalytics.set(
+    PATHS.venue,
+    unauthorizedVenueAnalytics
+      .get(PATHS.venue)
+      .replace(
+        "reservationsQuery.data?.authorized !== true",
+        "reservationsQuery.data === undefined",
+      ),
+  );
+  if (
+    !check(unauthorizedVenueAnalytics).some((failure) =>
+      failure.includes("reservation viewed analytics must wait"),
+    )
+  ) {
+    selfFailures.push("unauthorized venue analytics leak was not detected");
+  }
+
   if (selfFailures.length > 0) {
     console.error("issue #1403 wiring self-test failed");
     selfFailures.forEach((failure) => console.error(`- ${failure}`));
     process.exit(1);
   }
-  console.log("issue #1403 wiring self-test PASS (9/9 cases)");
+  console.log("issue #1403 wiring self-test PASS (15/15 cases)");
   process.exit(0);
 }
 

@@ -140,6 +140,11 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
 
   const experience = detailQuery.data ?? null;
   const currentBrandRole = useCurrentBrandRole(experience?.brandId ?? null);
+  const canShowListingInsights =
+    !currentBrandRole.isLoading &&
+    !currentBrandRole.isError &&
+    currentBrandRole.role !== null &&
+    !isScannerOnlyRank(currentBrandRole.rank);
 
   const subline = useMemo(() => {
     if (experience === null) return "";
@@ -348,10 +353,7 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
             }
           />
           {tiles.map((tile) => {
-            if (
-              tile.key === "insights" &&
-              isScannerOnlyRank(currentBrandRole.rank)
-            ) {
+            if (tile.key === "insights" && !canShowListingInsights) {
               return null;
             }
             if (tile.requiresPublicPage && !hasPublicPage) return null;

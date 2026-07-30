@@ -38,10 +38,19 @@ BEGIN
     'anon',
     'public.reservation_metrics_rollup(uuid,uuid)',
     'EXECUTE'
-  ) OR has_function_privilege(
-    'PUBLIC',
-    'public.reservation_metrics_rollup(uuid,uuid)',
-    'EXECUTE'
+  ) OR EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_proc function_proc
+    CROSS JOIN LATERAL pg_catalog.aclexplode(
+      COALESCE(
+        function_proc.proacl,
+        pg_catalog.acldefault('f', function_proc.proowner)
+      )
+    ) acl
+    WHERE function_proc.oid =
+      'public.reservation_metrics_rollup(uuid,uuid)'::regprocedure::oid
+      AND acl.grantee = 0
+      AND acl.privilege_type = 'EXECUTE'
   ) OR NOT has_function_privilege(
     'authenticated',
     'public.reservation_metrics_rollup(uuid,uuid)',
@@ -202,6 +211,11 @@ BEGIN
       'sub', '00000000-1403-4000-8000-000000000001',
       'role', 'authenticated'
     )::text,
+    true
+  );
+  PERFORM set_config(
+    'request.jwt.claim.sub',
+    '00000000-1403-4000-8000-000000000001',
     true
   );
   v_a := public.reservation_metrics_rollup(

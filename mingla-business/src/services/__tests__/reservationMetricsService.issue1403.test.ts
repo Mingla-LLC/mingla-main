@@ -57,6 +57,55 @@ describe("issue #1403 venue reservation service", () => {
   });
 
   it.each([
+    ["forged", "iana"],
+    ["America/New_York", "offset"],
+    ["UTC+5", "offset"],
+    ["UTC+05:60", "offset"],
+    ["UTC+14:30", "offset"],
+    ["UTC+05:30", "utc"],
+  ])(
+    "rejects malformed or inconsistent timezone pair %s/%s",
+    (resolvedTimezone, timezoneConfidence) => {
+      expect(() =>
+        normalizeVenueReservationMetrics(
+          {
+            ...valid,
+            resolved_timezone: resolvedTimezone,
+            tz_confidence: timezoneConfidence,
+          },
+          BRAND,
+          VENUE,
+        ),
+      ).toThrow(ReservationMetricsUnavailableError);
+    },
+  );
+
+  it.each([
+    ["Asia/Kolkata", "iana"],
+    ["UTC", "iana"],
+    ["GMT", "iana"],
+    ["CET", "iana"],
+    ["UTC+05:30", "offset"],
+    ["UTC-03:30", "offset"],
+    ["UTC", "utc"],
+  ])(
+    "accepts canonical timezone pair %s/%s",
+    (resolvedTimezone, timezoneConfidence) => {
+      const result = normalizeVenueReservationMetrics(
+        {
+          ...valid,
+          resolved_timezone: resolvedTimezone,
+          tz_confidence: timezoneConfidence,
+        },
+        BRAND,
+        VENUE,
+      );
+      expect(result.resolvedTimezone).toBe(resolvedTimezone);
+      expect(result.timezoneConfidence).toBe(timezoneConfidence);
+    },
+  );
+
+  it.each([
     { ...valid, brand_id: "wrong" },
     { ...valid, venue_id: "wrong" },
     { ...valid, covers_30d: -1 },
@@ -69,6 +118,21 @@ describe("issue #1403 venue reservation service", () => {
       resolved_timezone: null,
       tz_confidence: null,
       by_source: [],
+      value_cents_30d: {},
+      value_cents_lifetime: {},
+    },
+    {
+      ...valid,
+      authorized: false,
+      covers_30d: 0,
+      covers_lifetime: 0,
+      avg_party_size: 0,
+      no_show_rate: 0,
+      resolved_timezone: null,
+      tz_confidence: null,
+      by_source: [
+        { source: "future_native_source", reservations: 999, covers: 999 },
+      ],
       value_cents_30d: {},
       value_cents_lifetime: {},
     },

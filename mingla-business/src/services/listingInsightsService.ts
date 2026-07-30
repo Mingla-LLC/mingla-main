@@ -195,6 +195,7 @@ export const fetchListingInsightsIdentity = async (
   try {
     response = await withTimeout(
       supabase
+        // orch-strict-grep-allow events-type-filter — canonical identity lookup deliberately supports approved event|trip|experience|rsvp types and strictly validates event_type after read; this is not a listing query missing type scope.
         .from("events")
         .select("id, brand_id, title, event_type, status")
         .eq("id", id)

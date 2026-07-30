@@ -52,6 +52,30 @@ interface VenueReservationsCardProps {
   onRetry: () => void;
 }
 
+export type VenueReservationRefreshStatus =
+  | "updating"
+  | "success"
+  | "error"
+  | null;
+
+const REFRESH_STATUS_COPY: Record<
+  Exclude<VenueReservationRefreshStatus, null>,
+  string
+> = {
+  updating: "Updating reservations…",
+  success: "Reservations updated",
+  error: "Couldn't refresh reservations",
+};
+
+export const VenueReservationRefreshAnnouncement: React.FC<{
+  status: VenueReservationRefreshStatus;
+}> = ({ status }) =>
+  status === null ? null : (
+    <View accessibilityLiveRegion="polite">
+      <Text style={styles.refreshAnnouncement}>{REFRESH_STATUS_COPY[status]}</Text>
+    </View>
+  );
+
 export const VenueReservationsCard: React.FC<VenueReservationsCardProps> = ({
   query,
   onRetry,
@@ -282,6 +306,12 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: glass.border.profileBase,
+  },
+  refreshAnnouncement: {
+    color: textTokens.secondary,
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    marginBottom: spacing.sm,
   },
 });
 

@@ -84,6 +84,32 @@ const currencyMapOrThrow = (value: unknown): Record<string, number> => {
   return normalized;
 };
 
+const isIanaTimezone = (value: string): boolean => {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value }).format();
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const isCanonicalOffset = (value: string): boolean => {
+  const match = /^UTC([+-])(\d{2}):(\d{2})$/.exec(value);
+  if (match === null) return false;
+  const hours = Number(match[2]);
+  const minutes = Number(match[3]);
+  return hours < 14 ? minutes < 60 : hours === 14 && minutes === 0;
+};
+
+const isValidTimezonePair = (
+  timezone: string,
+  confidence: ReservationTimezoneConfidence,
+): boolean => {
+  if (confidence === "iana") return isIanaTimezone(timezone);
+  if (confidence === "offset") return isCanonicalOffset(timezone);
+  return timezone === "UTC";
+};
+
 export const normalizeVenueReservationMetrics = (
   raw: unknown,
   expectedBrandId: string,
@@ -152,13 +178,22 @@ export const normalizeVenueReservationMetrics = (
       result.coversLifetime !== 0 ||
       result.averagePartySize !== 0 ||
       result.noShowRate !== 0 ||
-      result.bySource.length !== 0 ||
+      row.by_source.length !== 0 ||
       Object.keys(result.valueCents30d).length !== 0 ||
       Object.keys(result.valueCentsLifetime).length !== 0)
   ) {
     throw new ReservationMetricsUnavailableError();
   }
   if (authorized && (resolvedTimezone === null || confidence === null)) {
+    throw new ReservationMetricsUnavailableError();
+  }
+  if (
+    authorized &&
+    !isValidTimezonePair(
+      resolvedTimezone as string,
+      confidence as ReservationTimezoneConfidence,
+    )
+  ) {
     throw new ReservationMetricsUnavailableError();
   }
   return result;

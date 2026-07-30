@@ -5,6 +5,71 @@ on:
   workflow_dispatch:
 
 jobs:
+  issue-1403-venue-rollup-pg17:
+    name: Issue 1403 venue rollup proof (PG17)
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ format('issue-1403-ci-{0}', github.run_id) }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for PostgreSQL 17
+        env:
+          PGPASSWORD: ${{ format('issue-1403-ci-{0}', github.run_id) }}
+        run: |
+          for i in {1..90}; do
+            if psql -h localhost -U postgres -d postgres -Atc \
+              "SELECT to_regnamespace('vault') IS NOT NULL AND to_regrole('supabase_admin') IS NOT NULL" \
+              2>/dev/null | grep -qx t; then
+              echo "postgres ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "postgres did not become ready in 90s"
+          exit 1
+      - name: Apply all migrations in timestamp order
+        env:
+          PGPASSWORD: ${{ format('issue-1403-ci-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 \
+            | sort -z \
+            | while IFS= read -r -d '' migration; do
+                echo "::group::Applying $migration"
+                psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$migration"
+                echo "::endgroup::"
+              done
+      - name: Execute issue 1403 venue rollup proof
+        env:
+          PGPASSWORD: ${{ format('issue-1403-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_1403_venue_reservation_rollup.test.sql
+      - name: Execute issue 1403 implementor adversarial proof
+        env:
+          PGPASSWORD: ${{ format('issue-1403-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_1403_venue_reservation_rollup.adversarial.test.sql
+      - name: Execute issue 1403 tester adversarial proof
+        env:
+          PGPASSWORD: ${{ format('issue-1403-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_1403_venue_reservation_rollup.tester.adversarial.test.sql
+
   issue-1403-listing-insights:
     runs-on: ubuntu-latest
     timeout-minutes: 35
@@ -37,6 +102,7 @@ jobs:
           useListingInsights.issue1403
           useVenueReservationMetrics.issue1403
           businessAnalyticsEvents.issue1403
+          listingInsightsRoleGate.issue1403
       - name: Native render contracts
         run: npx jest --config jest.issue1403.render.cjs --runInBand
       - name: Web render contracts
@@ -53,6 +119,9 @@ jobs:
         run: node scripts/ci/select-source-text-pins.mjs --check
       - name: Quarantine policy audit
         run: node ../.github/scripts/strict-grep/orch-1047-quarantine-list-is-source-pins-only.mjs
+      - name: Install manifest parser dependency
+        working-directory: .
+        run: npm install --no-save yaml
       - name: Manifest totality/parity
         run: node ../.github/scripts/strict-grep/meta-1383-manifest-parity.mjs
       - name: Manifest ratchet frontier

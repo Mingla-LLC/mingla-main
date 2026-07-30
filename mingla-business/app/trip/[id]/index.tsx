@@ -158,6 +158,11 @@ export default function TripDashboardRoute(): React.ReactElement {
   );
   const brandId = tripQuery.data?.brandId ?? null;
   const currentBrandRole = useCurrentBrandRole(brandId);
+  const canShowListingInsights =
+    !currentBrandRole.isLoading &&
+    !currentBrandRole.isError &&
+    currentBrandRole.role !== null &&
+    !isScannerOnlyRank(currentBrandRole.rank);
   const installmentsQuery = useInstallmentsForBrandTrips(brandId, {
     tripEventId: typeof eventId === "string" ? eventId : undefined,
   });
@@ -487,10 +492,7 @@ export default function TripDashboardRoute(): React.ReactElement {
           onPress={() => router.push(`/trip/${trip.id}/edit` as never)}
         />
         {dashboardTiles.map((tile) => {
-          if (
-            tile.key === "insights" &&
-            isScannerOnlyRank(currentBrandRole.rank)
-          ) {
+          if (tile.key === "insights" && !canShowListingInsights) {
             return null;
           }
           if (

@@ -93,6 +93,11 @@ export default function RsvpDetailScreen(): React.ReactElement {
   const draftEvent = useDraftById(id);
   const brand = routeEvent.brand;
   const currentBrandRole = useCurrentBrandRole(brand?.id ?? null);
+  const canShowListingInsights =
+    !currentBrandRole.isLoading &&
+    !currentBrandRole.isError &&
+    currentBrandRole.role !== null &&
+    !isScannerOnlyRank(currentBrandRole.rank);
 
   // ----- Going-count source (SPEC F-2) -------------------------------
   // useManagedEventRoute → fetchBusinessEventById returns rsvpGoingCount: 0,
@@ -344,7 +349,7 @@ export default function RsvpDetailScreen(): React.ReactElement {
             sub={guestsSub}
             onPress={handleGuests}
           />
-          {!isScannerOnlyRank(currentBrandRole.rank) ? (
+          {canShowListingInsights ? (
             <ActionTile
               icon="chart"
               label="Insights"

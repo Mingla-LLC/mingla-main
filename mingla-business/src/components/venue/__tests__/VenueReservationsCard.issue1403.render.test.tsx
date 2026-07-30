@@ -1,7 +1,8 @@
 import React from "react";
 
 interface RenderNode {
-  props: { children?: unknown };
+  type?: unknown;
+  props: { children?: unknown; accessibilityLiveRegion?: unknown };
 }
 interface RenderTree {
   root: { findAll: (predicate: (node: RenderNode) => boolean) => RenderNode[] };
@@ -11,7 +12,10 @@ const TestRenderer = require("react-test-renderer") as {
   act: (callback: () => Promise<void> | void) => Promise<void>;
 };
 jest.mock("../../../services/supabase", () => ({ supabase: {} }));
-import { VenueReservationsCard } from "../VenueReservationsCard";
+import {
+  VenueReservationRefreshAnnouncement,
+  VenueReservationsCard,
+} from "../VenueReservationsCard";
 
 describe("issue #1403 venue Reservations card", () => {
   const allText = (tree: RenderTree): string =>
@@ -94,4 +98,28 @@ describe("issue #1403 venue Reservations card", () => {
     expect(output).not.toContain("0%");
     expect(output).not.toContain("No reservation performance yet");
   });
+
+  it.each([
+    ["updating", "Updating reservations…"],
+    ["success", "Reservations updated"],
+    ["error", "Couldn't refresh reservations"],
+  ] as const)(
+    "announces the %s refresh state exactly once",
+    async (status, expectedCopy) => {
+      let tree: RenderTree | null = null;
+      await TestRenderer.act(async () => {
+        tree = TestRenderer.create(
+          <VenueReservationRefreshAnnouncement status={status} />,
+        );
+      });
+      expect(allText(tree!)).toContain(expectedCopy);
+      expect(
+        tree!.root.findAll(
+          (node) =>
+            typeof node.type === "string" &&
+            node.props.accessibilityLiveRegion === "polite",
+        ),
+      ).toHaveLength(1);
+    },
+  );
 });

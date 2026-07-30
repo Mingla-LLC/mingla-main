@@ -73,6 +73,8 @@ interface ListingInsightsScreenProps {
   onBack: () => void;
   onBackToListings: () => void;
   forceUnavailable?: boolean;
+  accessError?: boolean;
+  onRetryAccess?: () => void;
 }
 
 export const ListingInsightsScreen: React.FC<ListingInsightsScreenProps> = ({
@@ -82,6 +84,8 @@ export const ListingInsightsScreen: React.FC<ListingInsightsScreenProps> = ({
   onBack,
   onBackToListings,
   forceUnavailable = false,
+  accessError = false,
+  onRetryAccess,
 }) => {
   const { isWideDesktop } = useResponsiveLayout();
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -98,7 +102,7 @@ export const ListingInsightsScreen: React.FC<ListingInsightsScreenProps> = ({
   useEffect(() => {
     if (
       identity.data === undefined ||
-      rollup.data === undefined ||
+      rollup.data?.authorized !== true ||
       trackedId.current === identity.data.id
     ) {
       return;
@@ -107,7 +111,7 @@ export const ListingInsightsScreen: React.FC<ListingInsightsScreenProps> = ({
     captureBusinessListingInsightsOpened(
       identity.data.listingType,
       entryPoint,
-      rollup.data.authorized && rollup.data.minglaDroveCount > 0,
+      rollup.data.minglaDroveCount > 0,
     );
   }, [entryPoint, identity.data, rollup.data]);
 
@@ -164,6 +168,7 @@ export const ListingInsightsScreen: React.FC<ListingInsightsScreenProps> = ({
   }
 
   const initialRequestError =
+    accessError ||
     identity.isError ||
     (rollup.isError && rollup.data === undefined && identity.data !== undefined);
   if (initialRequestError) {
@@ -182,7 +187,9 @@ export const ListingInsightsScreen: React.FC<ListingInsightsScreenProps> = ({
           <Pressable
             accessibilityRole="button"
             onPress={() => {
-              if (identity.isError) {
+              if (accessError) {
+                onRetryAccess?.();
+              } else if (identity.isError) {
                 void identity.refetch();
               } else {
                 void rollup.refetch();

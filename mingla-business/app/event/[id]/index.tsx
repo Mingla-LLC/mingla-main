@@ -117,8 +117,13 @@ export default function EventDetailScreen(): React.ReactElement {
 
   // Cycle 13a J-T6 G1: gate Edit / End sales / Cancel / Delete on EDIT_EVENT.
   // Hook ordering: ALL hooks run on every render before any early-return shell.
-  const { rank: currentRank } = useCurrentBrandRole(brand?.id ?? null);
-  const canEditEvent = canPerformAction(currentRank, "EDIT_EVENT");
+  const currentBrandRole = useCurrentBrandRole(brand?.id ?? null);
+  const canEditEvent = canPerformAction(currentBrandRole.rank, "EDIT_EVENT");
+  const canShowListingInsights =
+    !currentBrandRole.isLoading &&
+    !currentBrandRole.isError &&
+    currentBrandRole.role !== null &&
+    !isScannerOnlyRank(currentBrandRole.rank);
 
   // ----- Defensive: draft → redirect to edit ---------------------
   useEffect(() => {
@@ -734,7 +739,7 @@ export default function EventDetailScreen(): React.ReactElement {
             sub={`${totalGuestCount} ${totalGuestCount === 1 ? "guest" : "guests"}`}
             onPress={handleGuests}
           />
-          {!isScannerOnlyRank(currentRank) ? (
+          {canShowListingInsights ? (
             <ActionTile
               icon="chart"
               label="Insights"

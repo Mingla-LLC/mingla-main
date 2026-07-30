@@ -18,7 +18,7 @@
  * only, NO charting library (SPEC NG-6). See SPEC §4.5 + the DESIGN section.
  */
 import { useRouter } from "expo-router";
-import React, { useCallback, useEffect, useMemo, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   RefreshControl,
@@ -65,7 +65,11 @@ import {
 } from "./venueIntelligence";
 import { useVenueIntelligence } from "../../hooks/useVenueIntelligence";
 import { VENUE_SCROLL_NAV_CLEARANCE } from "./venueShellScroll";
-import { VenueReservationsCard } from "./VenueReservationsCard";
+import {
+  VenueReservationRefreshAnnouncement,
+  VenueReservationsCard,
+  type VenueReservationRefreshStatus,
+} from "./VenueReservationsCard";
 import {
   captureBusinessVenueReservationsRefreshed,
   captureBusinessVenueReservationsViewed,
@@ -108,6 +112,8 @@ export function VenueIntelligenceModule({
     isAuthReady,
   );
   const trackedReservationScope = useRef<string | null>(null);
+  const [reservationRefreshStatus, setReservationRefreshStatus] =
+    useState<VenueReservationRefreshStatus>(null);
 
   useEffect(() => {
     const scope =
@@ -115,19 +121,17 @@ export function VenueIntelligenceModule({
     if (
       scope === null ||
       trackedReservationScope.current === scope ||
-      (reservationsQuery.isLoading && reservationsQuery.data === undefined)
+      reservationsQuery.data?.authorized !== true
     ) {
       return;
     }
     trackedReservationScope.current = scope;
     captureBusinessVenueReservationsViewed(
-      reservationsQuery.data?.authorized === true &&
-        reservationsQuery.data.bySource.some((source) => source.reservations > 0),
+      reservationsQuery.data.bySource.some((source) => source.reservations > 0),
     );
   }, [
     brandId,
     reservationsQuery.data,
-    reservationsQuery.isLoading,
     venueId,
   ]);
 
@@ -157,6 +161,7 @@ export function VenueIntelligenceModule({
     <RefreshControl
       refreshing={query.isFetching && !query.isLoading}
       onRefresh={() => {
+        setReservationRefreshStatus("updating");
         void Promise.allSettled([
           query.refetch(),
           reservationsQuery.refetch(),
@@ -169,6 +174,7 @@ export function VenueIntelligenceModule({
           captureBusinessVenueReservationsRefreshed(
             succeeded ? "success" : "error",
           );
+          setReservationRefreshStatus(succeeded ? "success" : "error");
         });
       }}
       tintColor={accent.warm}
@@ -195,6 +201,7 @@ export function VenueIntelligenceModule({
         showsVerticalScrollIndicator={false}
         refreshControl={refreshControl}
       >
+        <VenueReservationRefreshAnnouncement status={reservationRefreshStatus} />
         <GlassCard variant="base" padding={spacing.lg}>
           <Flag size={24} color={semantic.error} />
           <Text style={styles.tileTitle}>Couldn&apos;t load your insights</Text>
@@ -227,6 +234,7 @@ export function VenueIntelligenceModule({
         showsVerticalScrollIndicator={false}
         refreshControl={refreshControl}
       >
+        <VenueReservationRefreshAnnouncement status={reservationRefreshStatus} />
         <GlassCard variant="elevated" padding={spacing.lg}>
           <Text style={styles.tileTitle}>No venue insights yet</Text>
           <Text style={styles.bodySm}>
@@ -297,6 +305,7 @@ export function VenueIntelligenceModule({
       showsVerticalScrollIndicator={false}
       refreshControl={refreshControl}
     >
+      <VenueReservationRefreshAnnouncement status={reservationRefreshStatus} />
       {/* ORCH-1190 #7 — Message your guests (relocated from Settings). Top of
           Overview, manager-plus gated, reuse-only composer deep-link. */}
       {canBlast && brandId !== null ? (

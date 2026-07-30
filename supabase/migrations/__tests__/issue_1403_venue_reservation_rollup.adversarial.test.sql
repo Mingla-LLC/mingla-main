@@ -34,7 +34,15 @@ BEGIN
 
   PERFORM set_config(
     'request.jwt.claims',
-    json_build_object('sub', gen_random_uuid(), 'role', 'authenticated')::text,
+    json_build_object(
+      'sub', '00000000-1403-4000-8000-000000000999',
+      'role', 'authenticated'
+    )::text,
+    true
+  );
+  PERFORM set_config(
+    'request.jwt.claim.sub',
+    '00000000-1403-4000-8000-000000000999',
     true
   );
   v_false_missing := public.reservation_metrics_rollup(

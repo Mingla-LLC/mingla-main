@@ -30,6 +30,7 @@ const TARGETS = new Set([
   "src/components/analytics/ListingInsightsScreen.tsx",
   "src/components/analytics/__tests__/ListingInsightsScreen.issue1403.render.test.tsx",
   "src/components/analytics/__tests__/ListingInsightsScreen.issue1403.web.render.test.tsx",
+  "src/components/analytics/__tests__/listingInsightsRoleGate.issue1403.adversarial.test.ts",
   "src/components/venue/VenueReservationsCard.tsx",
   "src/components/venue/__tests__/VenueReservationsCard.issue1403.render.test.tsx",
   "src/components/venue/VenueIntelligenceModule.tsx",
@@ -46,16 +47,34 @@ const normalizePath = (raw, businessRoot) =>
     ),
   );
 
-const normalizeMessage = (lines, repoRoot, businessRoot) =>
-  lines
-    .join("\n")
-    .replaceAll("\\", "/")
-    .replaceAll(`${slashes(businessRoot)}/`, "<business>/")
-    .replaceAll(`${slashes(repoRoot)}/`, "<repo>/")
-    .replace(/\(\d+,\d+\)/g, "(line,column)")
-    .trimEnd();
+const normalizeMessage = (
+  lines,
+  repoRoot,
+  businessRoot,
+  alternateRoots = [],
+) => {
+  let normalized = lines.join("\n").replaceAll("\\", "/");
+  for (const root of [
+    businessRoot,
+    ...alternateRoots.map((item) => item.businessRoot),
+  ]) {
+    normalized = normalized.replaceAll(`${slashes(root)}/`, "<business>/");
+  }
+  for (const root of [
+    repoRoot,
+    ...alternateRoots.map((item) => item.repoRoot),
+  ]) {
+    normalized = normalized.replaceAll(`${slashes(root)}/`, "<repo>/");
+  }
+  return normalized.replace(/\(\d+,\d+\)/g, "(line,column)").trimEnd();
+};
 
-export function parseDiagnostics(output, repoRoot, businessRoot) {
+export function parseDiagnostics(
+  output,
+  repoRoot,
+  businessRoot,
+  alternateRoots = [],
+) {
   const lines = output.replaceAll("\r\n", "\n").split("\n");
   const diagnostics = [];
   const parsedIndexes = new Set();
@@ -73,7 +92,12 @@ export function parseDiagnostics(output, repoRoot, businessRoot) {
     diagnostics.push({
       path: normalizePath(match[1], businessRoot),
       code: `TS${match[4]}`,
-      message: normalizeMessage(messageLines, repoRoot, businessRoot),
+      message: normalizeMessage(
+        messageLines,
+        repoRoot,
+        businessRoot,
+        alternateRoots,
+      ),
     });
     index = cursor - 1;
   }
@@ -169,12 +193,38 @@ const selfTest = () => {
       parse(""),
       parse("error TS5083: Cannot read file 'missing-tsconfig.json'."),
     ).failures.length > 0,
+    compareDiagnostics(
+      parseDiagnostics(
+        synthetic(
+          "src/legacy.ts",
+          "TS7016",
+          "Types resolved from /current/repo/mingla-business/node_modules/pkg/index.js",
+        ),
+        "/base/repo",
+        "/base/repo/mingla-business",
+        [
+          {
+            repoRoot: "/current/repo",
+            businessRoot: "/current/repo/mingla-business",
+          },
+        ],
+      ),
+      parseDiagnostics(
+        synthetic(
+          "src/legacy.ts",
+          "TS7016",
+          "Types resolved from /current/repo/mingla-business/node_modules/pkg/index.js",
+        ),
+        "/current/repo",
+        "/current/repo/mingla-business",
+      ),
+    ).failures.length === 0,
   ];
   if (cases.some((passed) => !passed)) {
     console.error("issue #1403 typecheck delta self-test FAIL");
     return 1;
   }
-  console.log("issue #1403 typecheck delta self-test PASS (6/6 cases)");
+  console.log("issue #1403 typecheck delta self-test PASS (7/7 cases)");
   return 0;
 };
 
@@ -253,11 +303,13 @@ const compare = (baseRef, outputArg) => {
       `${currentRun.stdout}${currentRun.stderr}`,
       REPO_ROOT,
       BUSINESS_ROOT,
+      [{ repoRoot: baseRoot, businessRoot: baseBusiness }],
     );
     const baseParsed = parseDiagnostics(
       `${baseRun.stdout}${baseRun.stderr}`,
       baseRoot,
       baseBusiness,
+      [{ repoRoot: REPO_ROOT, businessRoot: BUSINESS_ROOT }],
     );
     validateRun("current", currentRun, currentParsed);
     validateRun("base", baseRun, baseParsed);
