@@ -16,7 +16,7 @@
 const addLiveEventMock = jest.fn();
 let brandDefaultCurrencyForCache: string | undefined = undefined;
 
-jest.mock("../../hooks/useBrands", () => ({
+jest.mock("../../hooks/brandCache", () => ({
   getBrandFromCache: jest.fn(() => ({
     id: "b1",
     slug: "brand",

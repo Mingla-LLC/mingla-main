@@ -6,6 +6,7 @@ import {
   sanitizeBusinessAnalyticsEntryPoint,
 } from "../../src/analytics/businessAnalyticsEvents";
 import { BrandAnalyticsScreen } from "../../src/components/analytics/BrandAnalyticsScreen";
+import { SafeScreen } from "../../src/components/ui/SafeScreen";
 
 export default function AnalyticsRoute(): React.ReactElement | null {
   const router = useRouter();
@@ -30,13 +31,15 @@ export default function AnalyticsRoute(): React.ReactElement | null {
   };
 
   return (
-    <BrandAnalyticsScreen
-      brand={brand}
-      rank={role.rank}
-      roleLoading={role.isLoading}
-      entryPoint={sanitizeBusinessAnalyticsEntryPoint(params.entry)}
-      onBack={back}
-      onBackToHome={() => router.replace("/(tabs)/home" as never)}
-    />
+    <SafeScreen>
+      <BrandAnalyticsScreen
+        brand={brand}
+        rank={role.rank}
+        roleLoading={role.isLoading}
+        entryPoint={sanitizeBusinessAnalyticsEntryPoint(params.entry)}
+        onBack={back}
+        onBackToHome={() => router.replace("/(tabs)/home" as never)}
+      />
+    </SafeScreen>
   );
 }

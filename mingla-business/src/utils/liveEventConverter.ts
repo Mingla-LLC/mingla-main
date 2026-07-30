@@ -19,7 +19,7 @@ import {
   type LiveEvent,
 } from "../store/liveEventStore";
 import type { DraftEvent } from "../store/draftEventStore";
-import { getBrandFromCache } from "../hooks/useBrands";
+import { getBrandFromCache } from "../hooks/brandCache";
 import { generateEventSlug, sanitizeSlugForUrl } from "./eventSlug";
 import { generateLiveEventId } from "./liveEventId";
 

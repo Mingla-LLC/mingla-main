@@ -15,6 +15,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Prepare typecheck comparison evidence
+        run: |
+          mkdir -p "$RUNNER_TEMP/issue874-typecheck"
+          printf '%s\n' \
+            'Typecheck comparison did not complete; inspect the preceding failed step.' \
+            > "$RUNNER_TEMP/issue874-typecheck/INCOMPLETE.txt"
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -24,7 +30,7 @@ jobs:
       - name: Install render-only test dependencies
         run: npm install --no-save react-test-renderer@19.1.0 @testing-library/react-native
       - name: Pure contract tests
-        run: npm test -- --runInBand brandAnalyticsService.issue874 useBrandAnalytics.issue874 businessAnalyticsEvents.issue874
+        run: npm test -- --runInBand brandAnalyticsService.issue874 useBrandAnalytics.issue874 businessAnalyticsEvents.issue874 brandCache.issue874
       - name: Native render contracts
         run: npx jest --config jest.issue874.render.cjs --runInBand
       - name: Web render contracts
@@ -72,6 +78,9 @@ jobs:
             'src/services/__tests__/brandAnalyticsService.issue874.test.ts' \
             'src/hooks/useBrandAnalytics.ts' \
             'src/hooks/__tests__/useBrandAnalytics.issue874.test.tsx' \
+            'src/hooks/brandCache.ts' \
+            'src/hooks/__tests__/brandCache.issue874.test.ts' \
+            'src/hooks/useBrands.ts' \
             'src/analytics/businessAnalyticsEvents.ts' \
             'src/analytics/__tests__/businessAnalyticsEvents.issue874.test.ts' \
             'src/components/home/AnalyticsHomeTile.tsx' \
@@ -81,5 +90,9 @@ jobs:
             'src/components/analytics/CustomerPatternsSection.tsx' \
             'src/components/analytics/CustomersMinglaDroveSection.tsx' \
             'src/components/analytics/RegularsSection.tsx' \
-            'src/components/analytics/__tests__/BrandAnalyticsScreen.issue874.render.test.tsx'
+            'src/components/analytics/__tests__/BrandAnalyticsScreen.issue874.render.test.tsx' \
+            'src/store/liveEventStore.ts' \
+            'src/utils/liveEventConverter.ts' \
+            'src/utils/__tests__/issue_0962_prebank_display_no_gbp.test.ts' \
+            'src/utils/__tests__/issue_0962_r5_adversarial_prebank_display.test.ts'
       - run: npx expo export -p web

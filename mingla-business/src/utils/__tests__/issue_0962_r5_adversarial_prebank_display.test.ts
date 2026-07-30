@@ -28,7 +28,7 @@ import { describe, expect, jest, test } from "@jest/globals";
 
 // --- converter needs the brand cache + live-event store (mocked) -------------
 let brandDefaultCurrencyForCache: string | undefined = undefined;
-jest.mock("../../hooks/useBrands", () => ({
+jest.mock("../../hooks/brandCache", () => ({
   getBrandFromCache: jest.fn(() => ({
     id: "00000000-0000-4000-8000-000000000002",
     slug: "brand",

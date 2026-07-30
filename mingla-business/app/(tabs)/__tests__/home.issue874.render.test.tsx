@@ -247,7 +247,8 @@ describe("issue #874 Home integration real render", () => {
   ])("renders Last 7 days, Analytics, Live, then Upcoming on %s", async (_, wide) => {
     mockIsWideDesktop = wide;
     const screen = await render(<HomeTab />);
-    const order = renderedOrder(screen.container as unknown as TestNode);
+    expect(screen.root).not.toBeNull();
+    const order = renderedOrder(screen.root as unknown as TestNode);
     expect(order.indexOf("last7")).toBeGreaterThan(-1);
     expect(order.indexOf("analytics")).toBeGreaterThan(order.indexOf("last7"));
     expect(order.indexOf("live")).toBeGreaterThan(order.indexOf("analytics"));
@@ -263,7 +264,8 @@ describe("issue #874 Home integration real render", () => {
       counts: { active: 1, total: 1 },
     };
     const screen = await render(<HomeTab />);
-    const root = screen.container as unknown as TestNode;
+    expect(screen.root).not.toBeNull();
+    const root = screen.root as unknown as TestNode;
     expect(findNodes(root, (node) => node.type === "AnalyticsHomeTile")).toHaveLength(1);
     expect(findNodes(root, (node) => node.type === "LiveOfferingCard")).toHaveLength(0);
     expect(findNodes(root, (node) => node.type === "UpcomingListItem")).toHaveLength(1);
@@ -277,7 +279,8 @@ describe("issue #874 Home integration real render", () => {
       counts: { active: 3, total: 3 },
     };
     const screen = await render(<HomeTab />);
-    const root = screen.container as unknown as TestNode;
+    expect(screen.root).not.toBeNull();
+    const root = screen.root as unknown as TestNode;
     expect(findNodes(root, (node) => node.type === "LiveOfferingCard")).toHaveLength(2);
     fireEvent.press(
       findNodes(root, (node) => node.type === "AnalyticsHomeTile")[0] as never,

@@ -18,6 +18,9 @@ const TARGETS = new Set([
   "src/services/__tests__/brandAnalyticsService.issue874.test.ts",
   "src/hooks/useBrandAnalytics.ts",
   "src/hooks/__tests__/useBrandAnalytics.issue874.test.tsx",
+  "src/hooks/brandCache.ts",
+  "src/hooks/__tests__/brandCache.issue874.test.ts",
+  "src/hooks/useBrands.ts",
   "src/analytics/businessAnalyticsEvents.ts",
   "src/analytics/__tests__/businessAnalyticsEvents.issue874.test.ts",
   "src/components/home/AnalyticsHomeTile.tsx",
@@ -28,6 +31,10 @@ const TARGETS = new Set([
   "src/components/analytics/CustomersMinglaDroveSection.tsx",
   "src/components/analytics/RegularsSection.tsx",
   "src/components/analytics/__tests__/BrandAnalyticsScreen.issue874.render.test.tsx",
+  "src/store/liveEventStore.ts",
+  "src/utils/liveEventConverter.ts",
+  "src/utils/__tests__/issue_0962_prebank_display_no_gbp.test.ts",
+  "src/utils/__tests__/issue_0962_r5_adversarial_prebank_display.test.ts",
 ]);
 const PRIMARY_DIAGNOSTIC =
   /^(.*)\((\d+),(\d+)\): error TS(\d+):(?:\s?(.*))$/;
@@ -351,6 +358,8 @@ function runComparison(baseRef, outputDirArg) {
       path.join(outputDir, "comparison-summary.json"),
       `${JSON.stringify(summary, null, 2)}\n`,
     );
+    const incompleteMarker = path.join(outputDir, "INCOMPLETE.txt");
+    if (fs.existsSync(incompleteMarker)) fs.unlinkSync(incompleteMarker);
 
     console.log(
       `issue-874 typecheck delta: base exit=${String(summary.baseExit)} diagnostics=${summary.baseDiagnostics}; ` +

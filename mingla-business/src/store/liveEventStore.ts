@@ -52,7 +52,7 @@ import {
   deriveChannelFlags,
   notifyEventChanged,
 } from "../services/eventChangeNotifier";
-import { getBrandFromCache } from "../hooks/useBrands";
+import { getBrandFromCache } from "../hooks/brandCache";
 
 export type LiveEventStatus = "scheduled" | "live" | "cancelled" | "ended";
 
