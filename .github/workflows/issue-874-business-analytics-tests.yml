@@ -1,0 +1,85 @@
+name: Issue #874 Business Analytics
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  issue-874-business-analytics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      - name: Install render-only test dependencies
+        run: npm install --no-save react-test-renderer@19.1.0 @testing-library/react-native
+      - name: Pure contract tests
+        run: npm test -- --runInBand brandAnalyticsService.issue874 useBrandAnalytics.issue874 businessAnalyticsEvents.issue874
+      - name: Native render contracts
+        run: npx jest --config jest.issue874.render.cjs --runInBand
+      - name: Web render contracts
+        run: npx jest --config jest.issue874.web.render.cjs --runInBand
+      - name: Auth-ready query gate
+        run: npm run test:orch-1004
+      - name: Home single-scroll gate
+        run: node ../.github/scripts/strict-grep/orch-0974-home-mobile-lock-pane.mjs
+      - name: Source-pin partition audit
+        run: node scripts/ci/select-source-text-pins.mjs --check
+      - name: Quarantine policy audit
+        run: node ../.github/scripts/strict-grep/orch-1047-quarantine-list-is-source-pins-only.mjs
+      - name: Last-seven-days gate self-test
+        run: node ../.github/scripts/strict-grep/orch-0816-last-7-days-binds-rev7d.mjs --self-test
+      - name: Last-seven-days gate
+        run: node ../.github/scripts/strict-grep/orch-0816-last-7-days-binds-rev7d.mjs
+      - name: Currency fallback gate self-test
+        run: node ../.github/scripts/strict-grep/issue-0962-prebank-no-gbp.mjs --self-test
+      - name: Currency fallback gate
+        run: node ../.github/scripts/strict-grep/issue-0962-prebank-no-gbp.mjs
+      - name: Typecheck delta guard self-test
+        run: node scripts/ci/issue-874-typecheck-delta.mjs --self-test
+      - name: Typecheck full graph against exact PR base
+        env:
+          ISSUE_874_BASE_REF: ${{ github.event.pull_request.base.sha || 'origin/main' }}
+        run: >-
+          node scripts/ci/issue-874-typecheck-delta.mjs
+          --base "$ISSUE_874_BASE_REF"
+          --output-dir "$RUNNER_TEMP/issue874-typecheck"
+      - name: Upload typecheck comparison evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue-874-typecheck-comparison
+          path: ${{ runner.temp }}/issue874-typecheck
+          if-no-files-found: error
+      - name: Scoped issue lint
+        run: |
+          npx eslint \
+            'app/(tabs)/_layout.tsx' \
+            'app/(tabs)/home.tsx' \
+            'app/(tabs)/analytics.tsx' \
+            'app/(tabs)/__tests__/home.issue874.render.test.tsx' \
+            'src/services/brandAnalyticsService.ts' \
+            'src/services/__tests__/brandAnalyticsService.issue874.test.ts' \
+            'src/hooks/useBrandAnalytics.ts' \
+            'src/hooks/__tests__/useBrandAnalytics.issue874.test.tsx' \
+            'src/analytics/businessAnalyticsEvents.ts' \
+            'src/analytics/__tests__/businessAnalyticsEvents.issue874.test.ts' \
+            'src/components/home/AnalyticsHomeTile.tsx' \
+            'src/components/home/__tests__/AnalyticsHomeTile.issue874.render.test.tsx' \
+            'src/components/analytics/AnalyticsModuleState.tsx' \
+            'src/components/analytics/BrandAnalyticsScreen.tsx' \
+            'src/components/analytics/CustomerPatternsSection.tsx' \
+            'src/components/analytics/CustomersMinglaDroveSection.tsx' \
+            'src/components/analytics/RegularsSection.tsx' \
+            'src/components/analytics/__tests__/BrandAnalyticsScreen.issue874.render.test.tsx'
+      - run: npx expo export -p web

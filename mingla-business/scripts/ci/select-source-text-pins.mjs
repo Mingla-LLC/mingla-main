@@ -100,6 +100,9 @@ const INVARIANT_CONVERT = [
   "src/wrappers/__tests__/orch_1165_keyboard_toolbar_mount_coverage.test.ts",
   // Trip confirm black-screen fix: hasCs reads URL only; no realtimePending hero.
   "app/checkout-trip/[tripEventId]/__tests__/orch_0911_trip_confirm_loading_state.adversarial.test.tsx",
+  // #874 Home Analytics order/marker refresh contract -> updated ORCH-0974 gate.
+  "app/(tabs)/__tests__/home.orch_0974.test.tsx",
+  "app/(tabs)/__tests__/home.orch_0974.adversarial.test.tsx",
 ];
 
 // Render/RTL suites mis-swept into the default node/ts-jest config. Each imports a
