@@ -85,6 +85,7 @@ import {
 } from "./publicVenueReservationUiState";
 import { captureWeb } from "../../analytics/webAnalytics";
 import { formatSourceRange } from "../../utils/currencyFormatter";
+import { BuyerStayGuestExperience } from "../stay/BuyerStayGuestExperience";
 
 export interface PublicVenuePageProps {
   venue: PublicVenue;
@@ -96,6 +97,7 @@ export interface PublicVenuePageProps {
   reservabilityState?: "loading" | "ready" | "error";
   initialTab?: PublicVenueTab;
   onRetryReservability?: () => void;
+  stayState?: "loading" | "ready" | "unavailable" | "error";
 }
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -141,6 +143,7 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
   reservabilityState = "ready",
   initialTab = "overview",
   onRetryReservability,
+  stayState,
 }) => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -149,13 +152,16 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
   const [muted, setMuted] = useState<boolean>(true);
   // META-ORCH-1290(C) §6.1 — About pitch clamp/expand state.
   const [aboutExpanded, setAboutExpanded] = useState<boolean>(false);
+  const isStay = venue.venueCategory === "stay";
   const menuItemCount = menu.reduce((sum, group) => sum + group.items.length, 0);
-  const hasMenu = menuItemCount > 0;
+  const hasMenu = !isStay && menuItemCount > 0;
   const canOpenReservationSheet =
-    reservabilityState === "ready" &&
-    reservable !== null &&
-    reservable.reservable === true &&
-    reservable.venueId !== null;
+    isStay
+      ? stayState === "ready"
+      : reservabilityState === "ready" &&
+        reservable !== null &&
+        reservable.reservable === true &&
+        reservable.venueId !== null;
   const reservationUiContext = useMemo(
     () => ({ hasMenu, canOpenReservationSheet }),
     [canOpenReservationSheet, hasMenu],
@@ -362,7 +368,7 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
       ) : null}
     </View>
   );
-  const discoveryPriceBlock = discoveryPrice !== null ? (
+  const discoveryPriceBlock = !isStay && discoveryPrice !== null ? (
     <Text style={[styles.aboutBody, themedFont, { color: palette.secondaryText }]}>
       Typical spend · {formatSourceRange({
         minMinor: discoveryPrice.minMinor,
@@ -514,8 +520,15 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
       </View>
     ) : null;
 
-  const reservationsBlock =
-    reservabilityState === "loading" ? (
+  const reservationsBlock = isStay ? (
+    <BuyerStayGuestExperience
+      venueId={venue.id}
+      brandId={venue.brandId}
+      palette={palette}
+      surface={surface}
+      theme={resolvedTheme}
+    />
+  ) : reservabilityState === "loading" ? (
       <View style={styles.reservationState}>
         <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>
           Finding open tables…
@@ -584,7 +597,7 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
     <Pressable
       onPress={handleReserve}
       accessibilityRole="button"
-      accessibilityLabel="Reserve a table"
+      accessibilityLabel={isStay ? "Reserve this Stay" : "Reserve a table"}
       style={({ pressed }) => [
         styles.reserveCta,
         { backgroundColor: palette.accent },
@@ -592,7 +605,7 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
       ]}
     >
       <Text style={[styles.reserveCtaLabel, { color: palette.accentText }]}>
-        Reserve a table
+        {isStay ? "Reserve this Stay" : "Reserve a table"}
       </Text>
     </Pressable>
   );

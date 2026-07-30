@@ -137,6 +137,11 @@ function validPayload(value: unknown): value is RequestBody {
     return typeof payload.groupId === "string" &&
       UUID.test(payload.groupId) &&
       validKey(payload.idempotencyKey) &&
+      (
+        payload.surface === undefined ||
+        payload.surface === "native" ||
+        payload.surface === "web"
+      ) &&
       body.expectedVersion !== undefined &&
       body.expectedVersion !== null;
   }
@@ -342,6 +347,7 @@ export async function handleStayReservations(
       },
     );
     if (prepareError) return errorResponse(prepareError, requestId);
+    const paymentSurface = payload.surface === "web" ? "web" : "native";
 
     let session: StayPaymentSession;
     try {
@@ -352,6 +358,25 @@ export async function handleStayReservations(
         String(payload.idempotencyKey),
       );
     } catch (providerError) {
+      const providerCode = providerError instanceof Error
+        ? providerError.message
+        : String(providerError);
+      if (
+        providerCode === "stay_payment_already_pending" ||
+        providerCode === "stay_payment_resume_unavailable"
+      ) {
+        return json(
+          providerCode === "stay_payment_already_pending" ? 409 : 503,
+          {
+            kind: "error",
+            code: providerCode,
+            message: providerCode === "stay_payment_already_pending"
+              ? "This payment is already in progress. Wait for confirmation before trying again."
+              : "The existing payment could not be reopened. Try again shortly.",
+            requestId,
+          },
+        );
+      }
       const attemptId = String(
         (prepared as PreparedStayPayment)?.attemptId ?? "",
       );
@@ -365,9 +390,7 @@ export async function handleStayReservations(
       console.error(JSON.stringify({
         event: "stay_payment_provider_create_failed",
         requestId,
-        message: providerError instanceof Error
-          ? providerError.message
-          : String(providerError),
+        message: providerCode,
       }));
       return json(502, {
         kind: "error",
@@ -394,6 +417,12 @@ export async function handleStayReservations(
       });
       return errorResponse(bindError, requestId);
     }
+    console.info(JSON.stringify({
+      event: "stay_payment_session_ready",
+      provider: session.provider,
+      surface: paymentSurface,
+      requestId,
+    }));
     return json(200, { kind: "success", data: session, requestId });
   }
 

@@ -133,6 +133,9 @@ const EXPECTED: Record<string, Bucket> = {
   // (PUBLIC_BUYER / SELF_AUTHENTICATING_CONNECT / INVITE_ACCEPT), so it is
   // gated-default — proven from coldLoadAuthGates membership.
   rsvp: "gated-default",
+  // ORCH-1390 guest reservation lifecycle is authenticated and therefore
+  // remains behind the root auth gate; public Stay discovery lives under /b/.
+  stay: "gated-default",
   support: "gated-default",
   trip: "gated-default",
   venue: "gated-default",

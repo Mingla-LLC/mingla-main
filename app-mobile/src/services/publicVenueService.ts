@@ -15,6 +15,7 @@ export interface ConsumerPublicVenue {
   brandName: string;
   slug: string;
   name: string;
+  venueCategory: "restaurant" | "play" | "creative_and_arts" | "stay" | null;
   address: string | null;
   city: string | null;
   coverMediaUrl: string | null;
@@ -42,6 +43,12 @@ interface VenueRow {
   brand_name: string;
   slug: string;
   name: string;
+  venue_category:
+    | "restaurant"
+    | "play"
+    | "creative_and_arts"
+    | "stay"
+    | null;
   address: string | null;
   city: string | null;
   cover_media_url: string | null;
@@ -125,16 +132,18 @@ export async function fetchConsumerPublicVenue(
   const row = data as VenueRow;
 
   const [menuResult, reservableResult] = await Promise.all([
-    supabase
-      .from("public_menus_view")
-      .select(
-        "id, menu_id, menu_name, menu_description, item_name, item_description, price_cents, currency, menu_sort_order, item_sort_order",
-      )
-      .eq("brand_slug", brandSlug)
-      .eq("venue_slug", venueSlug)
-      .order("menu_sort_order", { ascending: true })
-      .order("item_sort_order", { ascending: true }),
-    row.place_pool_id === null
+    row.venue_category === "stay"
+      ? Promise.resolve({ data: [], error: null })
+      : supabase
+        .from("public_menus_view")
+        .select(
+          "id, menu_id, menu_name, menu_description, item_name, item_description, price_cents, currency, menu_sort_order, item_sort_order",
+        )
+        .eq("brand_slug", brandSlug)
+        .eq("venue_slug", venueSlug)
+        .order("menu_sort_order", { ascending: true })
+        .order("item_sort_order", { ascending: true }),
+    row.place_pool_id === null || row.venue_category === "stay"
       ? Promise.resolve({ data: null, error: null })
       : supabase.rpc("pg_venue_reservable_for_place", {
           p_place_pool_id: row.place_pool_id,
@@ -178,6 +187,7 @@ export async function fetchConsumerPublicVenue(
     brandName: row.brand_name,
     slug: row.slug,
     name: row.name,
+    venueCategory: row.venue_category,
     address: row.address,
     city: row.city,
     coverMediaUrl: row.cover_media_url,

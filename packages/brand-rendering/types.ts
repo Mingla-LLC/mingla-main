@@ -129,7 +129,7 @@ export interface PublicBrandUpcoming {
 export interface PublicVenueDetail {
   isVerifiedVenue: true;
   city: string | null;
-  venueCategory: "restaurant" | "play" | "creative_and_arts" | null;
+  venueCategory: "restaurant" | "play" | "creative_and_arts" | "stay" | null;
 }
 
 // Issue #1365 — one row of the Brand page Reservations venue list.
