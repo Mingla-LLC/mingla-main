@@ -31,6 +31,7 @@ export interface VenueOrganicCaptureDeps {
   now: () => Date;
   randomUUID: () => string;
   randomToken: () => string;
+  journeyTokenForEventId?: (eventId: string) => Promise<string>;
 }
 
 const SURFACES: readonly Surface[] = [
@@ -81,6 +82,24 @@ async function sha256Hex(input: string): Promise<string> {
     new TextEncoder().encode(input),
   );
   return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function hmacSha256Hex(secret: string, input: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(input),
+  );
+  return Array.from(new Uint8Array(signature))
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
 }
@@ -182,24 +201,47 @@ export async function handleVenueOrganicCapture(
     if (eventType !== "page_view") {
       return json(req, { accepted: false, reason: "journey_required" });
     }
-    journeyToken = deps.randomToken();
-    const { data: created, error } = await deps.client
+    journeyToken = deps.journeyTokenForEventId !== undefined
+      ? await deps.journeyTokenForEventId(eventId)
+      : deps.randomToken();
+    const tokenHash = await sha256Hex(journeyToken);
+    const { error: upsertError } = await deps.client
       .from("venue_organic_journeys")
-      .insert({
+      .upsert({
         id: deps.randomUUID(),
-        token_hash: await sha256Hex(journeyToken),
+        token_hash: tokenHash,
         brand_id: brandId,
         venue_id: venueId,
         entry_source: source,
         surface,
-      })
-      .select("id")
-      .single();
-    if (error !== null || created === null) {
-      console.error("[venue-organic-capture] journey insert failed", error);
+      }, { onConflict: "token_hash", ignoreDuplicates: true });
+    if (upsertError !== null) {
+      console.error(
+        "[venue-organic-capture] journey upsert failed",
+        upsertError,
+      );
       return json(req, { accepted: false, reason: "capture_unavailable" });
     }
-    journeyId = String(created.id);
+    const { data: recovered, error: recoverError } = await deps.client
+      .from("venue_organic_journeys")
+      .select("id, brand_id, venue_id, surface, expires_at")
+      .eq("token_hash", tokenHash)
+      .maybeSingle();
+    if (
+      recoverError !== null ||
+      recovered === null ||
+      String(recovered.brand_id) !== brandId ||
+      String(recovered.venue_id) !== venueId ||
+      String(recovered.surface) !== surface ||
+      Date.parse(String(recovered.expires_at)) <= deps.now().getTime()
+    ) {
+      console.error(
+        "[venue-organic-capture] journey recovery failed",
+        recoverError,
+      );
+      return json(req, { accepted: false, reason: "capture_unavailable" });
+    }
+    journeyId = String(recovered.id);
   }
 
   const { error: eventError } = await deps.client
@@ -242,6 +284,11 @@ if (import.meta.main) {
         return Array.from(bytes)
           .map((byte) => byte.toString(16).padStart(2, "0"))
           .join("");
+      },
+      journeyTokenForEventId: (eventId) => {
+        const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+        if (!key) throw new Error("supabase_config_missing");
+        return hmacSha256Hex(key, `venue-organic-journey:${eventId}`);
       },
     })
   );

@@ -58,6 +58,7 @@ function captureHarness(): {
   state: FakeState;
 } {
   const state: FakeState = { journeys: [], events: new Map() };
+  let randomTokenCount = 0;
   const venues = [
     {
       id: "22222222-2222-4222-8222-222222222222",
@@ -113,6 +114,18 @@ function captureHarness(): {
           row: Record<string, unknown>,
           _options: Record<string, unknown>,
         ) {
+          if (table === "venue_organic_journeys") {
+            const tokenHash = String(row.token_hash);
+            if (!state.journeys.some((journey) =>
+              journey.token_hash === tokenHash
+            )) {
+              state.journeys.push({
+                ...row,
+                expires_at: "2026-07-31T22:00:00.000Z",
+              });
+            }
+            return { error: null };
+          }
           const id = String(row.id);
           if (!state.events.has(id)) state.events.set(id, row);
           return { error: null };
@@ -127,7 +140,8 @@ function captureHarness(): {
       client: client as unknown as VenueOrganicCaptureDeps["client"],
       now: () => new Date("2026-07-30T22:00:00.000Z"),
       randomUUID: () => "44444444-4444-4444-8444-444444444444",
-      randomToken: () => "opaque-token-a",
+      randomToken: () => `random-token-${randomTokenCount++}`,
+      journeyTokenForEventId: async () => "opaque-token-a",
     },
   };
 }
@@ -155,6 +169,16 @@ function request(
   });
 }
 
+async function tokenHash(token: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(token),
+  );
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 Deno.test("#1421 handle accepts a proven journey and dedupes event IDs", async () => {
   const { deps, state } = captureHarness();
   const first = await handleVenueOrganicCapture(request({}, "198.51.100.1"), deps);
@@ -171,6 +195,45 @@ Deno.test("#1421 handle accepts a proven journey and dedupes event IDs", async (
   assertEquals((await duplicate.json()).accepted, true);
   assertEquals(state.journeys.length, 1);
   assertEquals(state.events.size, 1);
+});
+
+Deno.test("#1421 lost initial response reuses one journey and later stages", async () => {
+  const { deps, state } = captureHarness();
+  const initial = request({}, "198.51.100.10");
+  const retry = request({}, "198.51.100.10");
+  const first = await handleVenueOrganicCapture(initial, deps);
+  const second = await handleVenueOrganicCapture(retry, deps);
+  const firstBody = await first.json();
+  const secondBody = await second.json();
+
+  assertEquals(firstBody, secondBody);
+  assertEquals(state.journeys.length, 1);
+  assertEquals(state.events.size, 1);
+  const journeyId = String(state.journeys[0].id);
+  assertEquals(
+    state.journeys[0].token_hash,
+    await tokenHash(String(secondBody.journeyToken)),
+  );
+  assertEquals(
+    String(state.events.get("55555555-5555-4555-8555-555555555555")?.journey_id),
+    journeyId,
+  );
+
+  const menu = await handleVenueOrganicCapture(
+    request({
+      eventId: "77777777-7777-4777-8777-777777777777",
+      eventType: "menu_open",
+      journeyToken: secondBody.journeyToken,
+    }, "198.51.100.10"),
+    deps,
+  );
+  assertEquals((await menu.json()).accepted, true);
+  assertEquals(state.journeys.length, 1);
+  assertEquals(state.events.size, 2);
+  assertEquals(
+    String(state.events.get("77777777-7777-4777-8777-777777777777")?.journey_id),
+    journeyId,
+  );
 });
 
 Deno.test("#1421 handle rejects paid/unknown sources and cross-venue tokens", async () => {

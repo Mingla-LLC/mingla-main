@@ -46,6 +46,22 @@ function load() {
   );
 }
 
+function functionBody(source, functionName) {
+  const declaration = source.indexOf(`function ${functionName}`);
+  if (declaration < 0) return "";
+  const open = source.indexOf("{", declaration);
+  if (open < 0) return "";
+  let depth = 0;
+  for (let index = open; index < source.length; index += 1) {
+    if (source[index] === "{") depth += 1;
+    if (source[index] === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(open + 1, index);
+    }
+  }
+  return "";
+}
+
 function validate(files) {
   const failures = [];
   const get = (file) => files.get(file) ?? "";
@@ -76,6 +92,15 @@ function validate(files) {
     }
   }
   const buyer = get(PATHS.buyer);
+  const buyerPolicy = get(PATHS.buyerPolicy);
+  const eventPolicyBody = functionBody(
+    buyerPolicy,
+    "runBuyerVenueOrganicCapture",
+  );
+  const settlementPolicyBody = functionBody(
+    buyerPolicy,
+    "settleBuyerVenueOrganicCapture",
+  );
   if (
     !buyer.includes('analyticsSurface = "business_preview"') ||
     !buyer.includes("runBuyerVenueOrganicCapture(analyticsSurface") ||
@@ -83,10 +108,15 @@ function validate(files) {
     !get(PATHS.buyerRoute).includes('analyticsSurface="buyer_web"') ||
     !get(PATHS.buyerAvailability).includes(
       "runBuyerVenueOrganicCapture(analyticsSurface",
-    ) ||
-    !get(PATHS.buyerPolicy).includes('surface !== "buyer_web"')
+    )
   ) {
     failures.push("buyer organic capture is not fail-closed for Business preview");
+  }
+  if (!eventPolicyBody.includes('surface !== "buyer_web"')) {
+    failures.push("buyer event capture function lost its preview guard");
+  }
+  if (!settlementPolicyBody.includes('surface !== "buyer_web"')) {
+    failures.push("buyer settlement function lost its preview guard");
   }
   if (
     !get(PATHS.buyerCapture).includes(
@@ -141,6 +171,16 @@ function validate(files) {
     !capture.includes('reason: "source_ineligible"')
   ) {
     failures.push("public capture source/surface allowlist is not fail-closed");
+  }
+  if (
+    !capture.includes("journeyTokenForEventId") ||
+    !capture.includes('onConflict: "token_hash"') ||
+    !get(PATHS.edgeTest).includes(
+      "lost initial response reuses one journey and later stages",
+    ) ||
+    !get(PATHS.edgeTest).includes("assertEquals(firstBody, secondBody)")
+  ) {
+    failures.push("initial page settlement retry is not journey-idempotent");
   }
   const migration = get(PATHS.migration);
   for (const required of [
@@ -206,7 +246,10 @@ if (process.argv.includes("--self-test")) {
     PATHS.buyerAvailability,
     'runBuyerVenueOrganicCapture(analyticsSurface "availability_shown"',
   );
-  good.set(PATHS.buyerPolicy, 'surface !== "buyer_web"');
+  good.set(
+    PATHS.buyerPolicy,
+    'export function runBuyerVenueOrganicCapture() { if (surface !== "buyer_web") return; } export function settleBuyerVenueOrganicCapture() { if (surface !== "buyer_web") return; }',
+  );
   good.set(
     PATHS.buyerCapture,
     'settleVenueOrganicJourneyOnConsent pendingStarts "page_view"',
@@ -230,7 +273,11 @@ if (process.argv.includes("--self-test")) {
   good.set(PATHS.service, 'supabase.rpc("venue_organic_engagement_rollup"');
   good.set(
     PATHS.capture,
-    'surface !== "buyer_web" reason: "source_unproven" ["search", "social", "organic", "direct"] reason: "source_ineligible"',
+    'surface !== "buyer_web" reason: "source_unproven" ["search", "social", "organic", "direct"] reason: "source_ineligible" journeyTokenForEventId onConflict: "token_hash"',
+  );
+  good.set(
+    PATHS.edgeTest,
+    'handleVenueOrganicCapture reason: "source_ineligible" reason: "journey_invalid" lost initial response reuses one journey and later stages assertEquals(firstBody, secondBody)',
   );
   good.set(
     PATHS.migration,
@@ -245,6 +292,30 @@ if (process.argv.includes("--self-test")) {
   bad.set(PATHS.module, "Coming soon");
   bad.set(PATHS.capture, "");
   if (validate(bad).length < 2) throw new Error("bad fixture escaped");
+  const missingEventGuard = new Map(good);
+  missingEventGuard.set(
+    PATHS.buyerPolicy,
+    'export function runBuyerVenueOrganicCapture() { capture(); } export function settleBuyerVenueOrganicCapture() { if (surface !== "buyer_web") return; }',
+  );
+  if (
+    !validate(missingEventGuard).includes(
+      "buyer event capture function lost its preview guard",
+    )
+  ) {
+    throw new Error("event preview guard revert escaped");
+  }
+  const missingSettlementGuard = new Map(good);
+  missingSettlementGuard.set(
+    PATHS.buyerPolicy,
+    'export function runBuyerVenueOrganicCapture() { if (surface !== "buyer_web") return; } export function settleBuyerVenueOrganicCapture() { settle(); }',
+  );
+  if (
+    !validate(missingSettlementGuard).includes(
+      "buyer settlement function lost its preview guard",
+    )
+  ) {
+    throw new Error("settlement preview guard revert escaped");
+  }
   console.log("issue-1421 venue organic insights self-test: PASS");
   process.exit(0);
 }
