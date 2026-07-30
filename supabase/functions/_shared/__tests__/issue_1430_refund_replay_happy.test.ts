@@ -24,13 +24,14 @@ function paystackVerify(
   reference: string,
   id: number,
   amount: number,
+  state = "success",
 ): Response {
   return json({
     status: true,
     data: {
       id,
       reference,
-      status: "success",
+      status: state,
       currency: "NGN",
       amount,
     },
@@ -68,7 +69,14 @@ Deno.test("#1430 Paystack verifies the reference, reconciles by numeric ID, and 
     const method = init?.method ?? "GET";
     calls.push({ method, url });
     if (url.includes(`/transaction/verify/${reference}`)) {
-      return Promise.resolve(paystackVerify(reference, transactionId, 10000));
+      return Promise.resolve(
+        paystackVerify(
+          reference,
+          transactionId,
+          10000,
+          providerVisible ? "reversal-pending" : "success",
+        ),
+      );
     }
     if (method === "GET") {
       assertStringIncludes(

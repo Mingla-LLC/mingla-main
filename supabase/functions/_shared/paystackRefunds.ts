@@ -56,7 +56,17 @@ interface RefundRecord {
 interface VerifiedTransactionIdentity {
   id: number;
   amount: number;
+  state: PaystackRefundReconciliationState;
 }
+
+type PaystackRefundReconciliationState =
+  | "success"
+  | "reversal-pending"
+  | "reversed";
+
+const PAYSTACK_REFUND_RECONCILIATION_STATES = new Set<
+  PaystackRefundReconciliationState
+>(["success", "reversal-pending", "reversed"]);
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object"
@@ -143,13 +153,17 @@ async function resolveTransactionIdentity(params: {
   const currency = typeof row.currency === "string"
     ? row.currency.toUpperCase()
     : null;
+  const state = typeof row.status === "string" ? row.status : null;
   if (
     row.reference !== params.reference ||
-    row.status !== "success" ||
     id === null ||
     typeof amount !== "number" ||
     !Number.isSafeInteger(amount) ||
     amount < 0 ||
+    state === null ||
+    !PAYSTACK_REFUND_RECONCILIATION_STATES.has(
+      state as PaystackRefundReconciliationState,
+    ) ||
     (params.currency !== undefined &&
       currency !== params.currency.toUpperCase())
   ) {
@@ -158,7 +172,11 @@ async function resolveTransactionIdentity(params: {
       502,
     );
   }
-  return { id, amount };
+  return {
+    id,
+    amount,
+    state: state as PaystackRefundReconciliationState,
+  };
 }
 
 async function findExistingRefund(params: {
@@ -195,6 +213,29 @@ async function findExistingRefund(params: {
   return resultFromRecord(match, true);
 }
 
+async function resolveAndFindExistingRefund(params: {
+  transaction: string;
+  merchantNote: string;
+  amountSubunits?: number;
+  currency?: string;
+  providerRefundId?: string | null;
+}): Promise<{
+  identity: VerifiedTransactionIdentity;
+  existing: PaystackRefundResult | null;
+}> {
+  const identity = await resolveTransactionIdentity({
+    reference: params.transaction,
+    currency: params.currency,
+  });
+  const existing = await findExistingRefund({
+    transactionId: identity.id,
+    merchantNote: params.merchantNote,
+    amountSubunits: params.amountSubunits ?? identity.amount,
+    providerRefundId: params.providerRefundId,
+  });
+  return { identity, existing };
+}
+
 export async function reconcilePaystackRefund(params: {
   transaction: string;
   merchantNote: string;
@@ -202,16 +243,7 @@ export async function reconcilePaystackRefund(params: {
   currency?: string;
   providerRefundId?: string | null;
 }): Promise<PaystackRefundResult | null> {
-  const identity = await resolveTransactionIdentity({
-    reference: params.transaction,
-    currency: params.currency,
-  });
-  return await findExistingRefund({
-    transactionId: identity.id,
-    merchantNote: params.merchantNote,
-    amountSubunits: params.amountSubunits ?? identity.amount,
-    providerRefundId: params.providerRefundId,
-  });
+  return (await resolveAndFindExistingRefund(params)).existing;
 }
 
 function isDuplicateRefundSignal(
@@ -241,8 +273,14 @@ export async function createPaystackRefund(params: {
       422,
     );
   }
-  const existing = await reconcilePaystackRefund(params);
-  if (existing) return existing;
+  const reconciliation = await resolveAndFindExistingRefund(params);
+  if (reconciliation.existing) return reconciliation.existing;
+  if (reconciliation.identity.state !== "success") {
+    throw new PaystackApiError(
+      "paystack_refund_transaction_state_ambiguous",
+      409,
+    );
+  }
 
   const secret = resolvePaystackSecretKey();
   const res = await fetch(`${PAYSTACK_BASE_URL}/refund`, {
@@ -266,8 +304,18 @@ export async function createPaystackRefund(params: {
   const replaySignal = `${providerCode} ${message}`.toLowerCase();
   if (!res.ok || json.status !== true) {
     if (isDuplicateRefundSignal(res.status, providerCode, message)) {
-      const reconciled = await reconcilePaystackRefund(params);
-      if (reconciled) return reconciled;
+      const duplicateReconciliation = await resolveAndFindExistingRefund(
+        params,
+      );
+      if (duplicateReconciliation.existing) {
+        return duplicateReconciliation.existing;
+      }
+      if (duplicateReconciliation.identity.state !== "success") {
+        throw new PaystackApiError(
+          "paystack_refund_transaction_state_ambiguous",
+          409,
+        );
+      }
       throw new PaystackApiError(
         "paystack_refund_duplicate_ambiguous",
         409,

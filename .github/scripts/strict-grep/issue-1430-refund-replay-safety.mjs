@@ -3,7 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const root = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../..",
+);
 
 const paths = {
   paystack: "supabase/functions/_shared/paystackRefunds.ts",
@@ -11,10 +14,17 @@ const paths = {
   manifest: "supabase/secrets.manifest.json",
   happy:
     "supabase/functions/_shared/__tests__/issue_1430_refund_replay_happy.test.ts",
+  adversarial:
+    "supabase/functions/_shared/__tests__/issue_1430_refund_replay.tester.adversarial.test.ts",
+  workflow: ".github/workflows/issue-1430-refund-replay-tests.yml",
 };
 
 function requireToken(source, token, label, failures) {
   if (!source.includes(token)) failures.push(`${label}: missing ${token}`);
+}
+
+function forbidToken(source, token, label, failures) {
+  if (source.includes(token)) failures.push(`${label}: forbidden ${token}`);
 }
 
 function requireOrder(source, tokens, label, failures) {
@@ -32,48 +42,76 @@ function requireOrder(source, tokens, label, failures) {
 export function violations(files) {
   const failures = [];
   const paystack = files.paystack ?? "";
-  requireOrder(paystack, [
-    "async function resolveTransactionIdentity",
-    "/transaction/verify/",
-    "async function findExistingRefund",
-    "transaction: String(params.transactionId)",
-    "export async function reconcilePaystackRefund",
-    "const identity = await resolveTransactionIdentity",
-    "return await findExistingRefund",
-    "export async function createPaystackRefund",
-    "const existing = await reconcilePaystackRefund(params)",
-    'fetch(`${PAYSTACK_BASE_URL}/refund`',
-  ], "paystack verify -> numeric list -> conditional POST", failures);
-  for (const token of [
-    "providerTransactionId(row.transaction) === params.transactionId",
-    "row.merchant_note === params.merchantNote",
-    "Number(row.amount ?? NaN) === params.amountSubunits",
-    "isDuplicateRefundSignal(res.status, providerCode, message)",
-    "const reconciled = await reconcilePaystackRefund(params)",
-    '"paystack_refund_duplicate_ambiguous"',
-    "error.status === 409",
-  ]) {
-    requireToken(paystack, token, "paystack replay identity", failures);
+  requireOrder(
+    paystack,
+    [
+      "async function resolveTransactionIdentity",
+      "/transaction/verify/",
+      "async function findExistingRefund",
+      "transaction: String(params.transactionId)",
+      "async function resolveAndFindExistingRefund",
+      "const identity = await resolveTransactionIdentity",
+      "const existing = await findExistingRefund",
+      "export async function reconcilePaystackRefund",
+      "export async function createPaystackRefund",
+      "const reconciliation = await resolveAndFindExistingRefund(params)",
+      "if (reconciliation.existing) return reconciliation.existing",
+      'if (reconciliation.identity.state !== "success")',
+      "fetch(`${PAYSTACK_BASE_URL}/refund`",
+    ],
+    "paystack verify -> approved-state list -> success-only POST",
+    failures,
+  );
+  for (
+    const token of [
+      'type PaystackRefundReconciliationState =\n  | "success"\n  | "reversal-pending"\n  | "reversed"',
+      '>(["success", "reversal-pending", "reversed"])',
+      "state === null",
+      "!PAYSTACK_REFUND_RECONCILIATION_STATES.has(",
+      "providerTransactionId(row.transaction) === params.transactionId",
+      "row.merchant_note === params.merchantNote",
+      "Number(row.amount ?? NaN) === params.amountSubunits",
+      '"paystack_refund_transaction_state_ambiguous"',
+      "isDuplicateRefundSignal(res.status, providerCode, message)",
+      "const duplicateReconciliation = await resolveAndFindExistingRefund(",
+      'if (duplicateReconciliation.identity.state !== "success")',
+      '"paystack_refund_duplicate_ambiguous"',
+      "error.status === 409",
+    ]
+  ) {
+    requireToken(
+      paystack,
+      token,
+      "paystack state and replay authority",
+      failures,
+    );
   }
 
   const control = files.control ?? "";
-  requireOrder(control, [
-    "try {",
-    "feeId = await proveStripeApplicationFee(client, operation)",
-    "if (!isStripeFeeIdentityPermissionDenied(error)) throw error",
-    '"stripe_fee_identity_permission_denied"',
-    "return;",
-    'if (operation.buyer_state !== "processed")',
-    "stripe.refunds.create",
-  ], "Stripe permission denial must return before buyer POST", failures);
-  for (const token of [
-    'row.type === "StripePermissionError"',
-    "row.statusCode === 401",
-    "row.statusCode === 403",
-    '"needs_attention"',
-    "0,",
-    "null,",
-  ]) {
+  requireOrder(
+    control,
+    [
+      "try {",
+      "feeId = await proveStripeApplicationFee(client, operation)",
+      "if (!isStripeFeeIdentityPermissionDenied(error)) throw error",
+      '"stripe_fee_identity_permission_denied"',
+      "return;",
+      'if (operation.buyer_state !== "processed")',
+      "stripe.refunds.create",
+    ],
+    "Stripe permission denial must return before buyer POST",
+    failures,
+  );
+  for (
+    const token of [
+      'row.type === "StripePermissionError"',
+      "row.statusCode === 401",
+      "row.statusCode === 403",
+      '"needs_attention"',
+      "0,",
+      "null,",
+    ]
+  ) {
     requireToken(control, token, "Stripe durable denial", failures);
   }
 
@@ -122,7 +160,9 @@ export function violations(files) {
     }
   }
   if (records.size !== 89) {
-    failures.push(`manifest: exact record count must be 89, got ${records.size}`);
+    failures.push(
+      `manifest: exact record count must be 89, got ${records.size}`,
+    );
   }
   const activeException = (manifest.exceptions ?? []).filter((exception) =>
     exception.issue === 1430 &&
@@ -135,16 +175,67 @@ export function violations(files) {
   }
 
   const happy = files.happy ?? "";
-  for (const token of [
-    "replays without a second POST",
-    "duplicate ambiguity reconciles exact identity",
-    "mismatched duplicate remains retryable ambiguity",
-    "identity mismatch fails before refund reconciliation or POST",
-    "null fee identity proves the connected-account chain",
-    "permission denial records a safe fee state before any buyer refund POST",
-  ]) {
+  for (
+    const token of [
+      "replays without a second POST",
+      'providerVisible ? "reversal-pending" : "success"',
+      "assertEquals(calls.map((call) => call.method), [",
+      "duplicate ambiguity reconciles exact identity",
+      "mismatched duplicate remains retryable ambiguity",
+      "identity mismatch fails before refund reconciliation or POST",
+      "null fee identity proves the connected-account chain",
+      "permission denial records a safe fee state before any buyer refund POST",
+    ]
+  ) {
     requireToken(happy, token, "runtime regression guard", failures);
   }
+
+  const adversarial = files.adversarial ?? "";
+  for (
+    const token of [
+      "substituted transaction identity stays ambiguous with no extra POST",
+      "persisted refund identity cannot be substituted during read-only adoption",
+      "reversal-pending exact identity is read-only adopted",
+      "reversal-pending empty and mismatched rows stay retryable with zero POST",
+      "reversed exact row adopts while absent identity never POSTs",
+      "success with no exact row is the sole fresh POST authority",
+      "unknown or malformed identity fails before list and POST",
+      "duplicate recovery re-verifies reversal-pending and adopts only exact identity",
+      "assertEquals(posts, 1)",
+      'assertEquals(methods, ["GET", "GET", "POST", "GET", "GET"])',
+      'providerRefundId: "provider-refund-authoritative"',
+      "assertEquals(match, null)",
+    ]
+  ) {
+    requireToken(
+      adversarial,
+      token,
+      "tester provider-identity adversarial guard",
+      failures,
+    );
+  }
+
+  const workflow = files.workflow ?? "";
+  for (
+    const token of [
+      '"supabase/functions/_shared/paystackRefunds.ts"',
+      '"supabase/functions/_shared/sourceRefundControlPlane.ts"',
+      '".github/scripts/strict-grep/issue-1430-refund-replay-safety.mjs"',
+      '".github/workflows/issue-1430-refund-replay-tests.yml"',
+      "issue_1430_refund_replay_happy.test.ts",
+      "issue_1430_refund_replay.tester.adversarial.test.ts",
+      "deno-version: v2.7.14",
+      "deno test --allow-env --allow-read --allow-net=deno.land,esm.sh",
+    ]
+  ) {
+    requireToken(workflow, token, "blocking runtime CI wiring", failures);
+  }
+  forbidToken(
+    workflow,
+    "continue-on-error:",
+    "blocking runtime CI wiring",
+    failures,
+  );
   return failures;
 }
 
@@ -183,10 +274,26 @@ function selfTest() {
     {
       key: "paystack",
       value: valid.paystack.replace(
-        "const reconciled = await reconcilePaystackRefund(params)",
-        "const reconciled = null",
+        '>(["success", "reversal-pending", "reversed"])',
+        '>(["success"])',
       ),
-      expected: "const reconciled = await reconcilePaystackRefund(params)",
+      expected: "reversal-pending",
+    },
+    {
+      key: "paystack",
+      value: valid.paystack.replace(
+        'if (reconciliation.identity.state !== "success")',
+        'if (reconciliation.identity.state !== "reversal-pending")',
+      ),
+      expected: 'reconciliation.identity.state !== "success"',
+    },
+    {
+      key: "paystack",
+      value: valid.paystack.replace(
+        'if (duplicateReconciliation.identity.state !== "success")',
+        'if (duplicateReconciliation.identity.state !== "reversed")',
+      ),
+      expected: 'duplicateReconciliation.identity.state !== "success"',
     },
     {
       key: "control",
@@ -223,10 +330,34 @@ function selfTest() {
     {
       key: "happy",
       value: valid.happy.replace(
-        "replays without a second POST",
-        "replays after another POST",
+        'providerVisible ? "reversal-pending" : "success"',
+        '"success"',
       ),
-      expected: "replays without a second POST",
+      expected: 'providerVisible ? "reversal-pending" : "success"',
+    },
+    {
+      key: "adversarial",
+      value: valid.adversarial.replace(
+        "reversal-pending exact identity is read-only adopted",
+        "reversal-pending exact identity is disabled",
+      ),
+      expected: "reversal-pending exact identity is read-only adopted",
+    },
+    {
+      key: "workflow",
+      value: valid.workflow.replaceAll(
+        "issue_1430_refund_replay_happy.test.ts",
+        "issue_1430_refund_replay_happy.disabled.ts",
+      ),
+      expected: "issue_1430_refund_replay_happy.test.ts",
+    },
+    {
+      key: "workflow",
+      value: valid.workflow.replaceAll(
+        "issue_1430_refund_replay.tester.adversarial.test.ts",
+        "issue_1430_refund_replay.tester.adversarial.disabled.ts",
+      ),
+      expected: "issue_1430_refund_replay.tester.adversarial.test.ts",
     },
   ];
   for (const reversion of reversions) {

@@ -9,6 +9,12 @@ import {
 
 const manifest = JSON.parse(readFileSync(DEFAULT_MANIFEST, "utf8"));
 const exceptionWindowNow = Date.parse("2026-08-01T00:00:00Z");
+const postRolloutIssue1430Names = new Set([
+  "NOTIFICATION_RECIPIENT_HMAC_SECRET",
+  "PAYOUT_HOLD_ONBOARD_FLIP",
+  "PAYOUT_RELEASE_EXECUTE",
+  "SOURCE_REFUNDS_POST_DISABLED",
+]);
 
 function clone(value) {
   return structuredClone(value);
@@ -44,17 +50,27 @@ test("issue #1203: a pre-rollout live audit is exact and drift remains fail-clos
   const transition = clone(manifest);
   transition.rollout.live_audit_mode = "transition";
   transition.rollout.transition_stage = "pre_rollout";
-  // Keep this historical transition fixture inside Supabase's 100-name limit
-  // now that the enforced target itself contains four additional names.
-  transition.rollout.legacy_names =
-    transition.rollout.legacy_names.slice(0, 17);
+  transition.secrets = transition.secrets.filter((record) =>
+    !postRolloutIssue1430Names.has(record.name)
+  );
   const target = transition.secrets.map((record) => record.name);
   const pending = new Set(transition.rollout.pending_bundle_names);
+  assert.equal(target.length, 85);
+  assert.equal(pending.size, 6);
+  assert.equal(transition.rollout.legacy_names.length, 20);
   const preRolloutNames = [
     ...target.filter((name) => !pending.has(name)),
     ...transition.rollout.legacy_names,
   ];
-  transition.rollout.expected_user_managed_count = preRolloutNames.length;
+  for (const legacyName of transition.rollout.legacy_names) {
+    assert.equal(
+      preRolloutNames.filter((name) => name === legacyName).length,
+      1,
+    );
+  }
+  assert.equal(preRolloutNames.length, 99);
+  assert.ok(preRolloutNames.length <= 100);
+  transition.rollout.expected_user_managed_count = 99;
   const expected = auditSecretBudget({
     manifest: transition,
     liveNames: preRolloutNames,
