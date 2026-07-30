@@ -7,6 +7,7 @@ import { handleStayReservations } from "./index.ts";
 
 Deno.env.set("SUPABASE_URL", "http://127.0.0.1:54321");
 Deno.env.set("SUPABASE_ANON_KEY", "test-anon-key");
+Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key");
 
 const venueId = "00000000-1388-4000-8000-000000000004";
 const quoteId = "00000000-1388-4000-8000-000000000080";
@@ -194,4 +195,141 @@ Deno.test("invalid caller request ID is replaced with a server UUID", async () =
     String(rpcRequestId),
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
   );
+});
+
+Deno.test("Stay payment uses prepared server money then service-role binds provider identity", async () => {
+  const groupId = "00000000-1389-4000-8000-000000000101";
+  const attemptId = "00000000-1389-4000-8000-000000000102";
+  const calls: Array<{ lane: string; name: string; params: Record<string, unknown> }> = [];
+  const response = await handleStayReservations(
+    new Request("http://local/stay-reservations", {
+      method: "POST",
+      headers: { authorization: "Bearer guest-token" },
+      body: JSON.stringify({
+        action: "create_payment",
+        expectedVersion: 4,
+        payload: {
+          groupId,
+          idempotencyKey: "stay-payment-1389",
+          amountMinor: "1",
+          currencyCode: "USD",
+          connectedAccountRef: "acct_attacker",
+        },
+      }),
+    }),
+    {
+      createRpcClient: () => ({
+        rpc: (name, params) => {
+          calls.push({ lane: "user", name, params });
+          return Promise.resolve({
+            data: {
+              attemptId,
+              groupId,
+              provider: "stripe",
+              state: "created",
+              connectedAccountRef: "acct_server",
+              amountMinor: "42000",
+              currencyCode: "NGN",
+              applicationFeeMinor: "4200",
+              buyerEmail: "guest@example.test",
+            },
+            error: null,
+          });
+        },
+      }),
+      createServiceRpcClient: () => ({
+        rpc: (name, params) => {
+          calls.push({ lane: "service", name, params });
+          return Promise.resolve({ data: {}, error: null });
+        },
+      }),
+      createPaymentSession: (prepared) => {
+        assertEquals(prepared.amountMinor, "42000");
+        assertEquals(prepared.currencyCode, "NGN");
+        assertEquals(prepared.connectedAccountRef, "acct_server");
+        return Promise.resolve({
+          kind: "requires_payment",
+          provider: "stripe",
+          attemptId,
+          providerPaymentRef: "pi_stay_1389",
+          clientSecret: "pi_stay_1389_secret",
+          publishableKey: "pk_test_1389",
+          stripeAccountId: "acct_server",
+          amountMinor: "42000",
+          currencyCode: "NGN",
+        });
+      },
+    },
+  );
+  assertEquals(response.status, 200);
+  assertObjectMatch(calls[0], {
+    lane: "user",
+    name: "issue_1389_prepare_payment",
+    params: {
+      p_group_id: groupId,
+      p_idempotency_key: "stay-payment-1389",
+      p_expected_group_version: 4,
+    },
+  });
+  assertObjectMatch(calls[1], {
+    lane: "service",
+    name: "issue_1389_bind_payment_attempt",
+    params: {
+      p_attempt_id: attemptId,
+      p_provider_payment_ref: "pi_stay_1389",
+    },
+  });
+});
+
+Deno.test("ambiguous provider creation preserves inventory for reconciliation", async () => {
+  const groupId = "00000000-1389-4000-8000-000000000111";
+  const attemptId = "00000000-1389-4000-8000-000000000112";
+  let failureParams: Record<string, unknown> | null = null;
+  const response = await handleStayReservations(
+    new Request("http://local/stay-reservations", {
+      method: "POST",
+      headers: { authorization: "Bearer guest-token" },
+      body: JSON.stringify({
+        action: "create_payment",
+        expectedVersion: 2,
+        payload: { groupId, idempotencyKey: "stay-payment-timeout-1389" },
+      }),
+    }),
+    {
+      createRpcClient: () => ({
+        rpc: () =>
+          Promise.resolve({
+            data: {
+              attemptId,
+              groupId,
+              provider: "stripe",
+              state: "created",
+              connectedAccountRef: "acct_server",
+              amountMinor: "10000",
+              currencyCode: "USD",
+              applicationFeeMinor: "1000",
+              buyerEmail: "guest@example.test",
+            },
+            error: null,
+          }),
+      }),
+      createServiceRpcClient: () => ({
+        rpc: (name, params) => {
+          if (name === "issue_1389_record_payment_create_failure") {
+            failureParams = params;
+          }
+          return Promise.resolve({ data: {}, error: null });
+        },
+      }),
+      createPaymentSession: () => {
+        throw new Error("network_timeout_after_submit");
+      },
+    },
+  );
+  assertEquals(response.status, 502);
+  assertObjectMatch(failureParams ?? {}, {
+    p_attempt_id: attemptId,
+    p_failure_code: "provider_create_ambiguous",
+    p_ambiguous: true,
+  });
 });

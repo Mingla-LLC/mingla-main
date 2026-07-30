@@ -16,7 +16,10 @@ export type SourceRefundState =
 
 export interface SourceRefundOperation {
   id: string;
-  source_type: "venue_reservation" | "rsvp_contribution";
+  source_type:
+    | "venue_reservation"
+    | "rsvp_contribution"
+    | "stay_reservation";
   source_id: string;
   subject_id: string;
   brand_id: string;
@@ -101,6 +104,17 @@ async function record(
       buyerUserId = data?.consumer_user_id ?? null;
       buyerEmail = data?.guest_email ?? null;
       buyerPhone = data?.guest_phone_e164 ?? null;
+    } else if (operation.source_type === "stay_reservation") {
+      const { data } = await client.from("stay_reservation_groups")
+        .select("user_id,guest_snapshot")
+        .eq("id", operation.subject_id).maybeSingle();
+      const guest = data?.guest_snapshot &&
+          typeof data.guest_snapshot === "object"
+        ? data.guest_snapshot as Record<string, unknown>
+        : {};
+      buyerUserId = data?.user_id ?? null;
+      buyerEmail = typeof guest.email === "string" ? guest.email : null;
+      buyerPhone = typeof guest.phone === "string" ? guest.phone : null;
     } else {
       const { data } = await client.from("event_rsvp_contributions")
         .select("user_id,guest_email")
@@ -135,6 +149,8 @@ async function record(
         amountLabel,
         sourceLabel: operation.source_type === "venue_reservation"
           ? "Venue reservation"
+          : operation.source_type === "stay_reservation"
+          ? "Stay reservation"
           : "RSVP contribution",
       });
     } catch {

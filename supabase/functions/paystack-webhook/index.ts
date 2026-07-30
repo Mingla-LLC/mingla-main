@@ -49,6 +49,10 @@ import { dispatchTicketConfirmation } from "../_shared/ticketCheckout.ts";
 // META-ORCH-1161 §7.1 — buyer purchase-confirmation push (the Paystack-equivalent
 // of the Stripe finalize path). Email stays owned by dispatchTicketConfirmation.
 import { fireBuyerPurchaseConfirmationPush } from "../_shared/businessNotifyTriggers.ts";
+import {
+  handleStayPaystackChargeSuccess,
+  isStayPaystackCharge,
+} from "../_shared/stayPaymentWebhook.ts";
 
 // Match the stripe-webhook retry-budget posture.
 const MAX_WEBHOOK_ATTEMPTS = 6;
@@ -196,19 +200,28 @@ serve(async (req) => {
     | null = null;
   try {
     if (eventName === "charge.success") {
-      const result = await handlePaystackChargeSuccess(
-        supabase,
-        data,
-        paystackVerifyTransaction,
-      );
-      if (result.status === "finalized" || result.status === "replayed") {
-        finalizedOrderId = result.orderId ?? null;
-        if (finalizedOrderId) {
-          splitFanOut = {
-            reference,
-            orderId: finalizedOrderId,
-            paidAtIso: result.paidAtIso ?? null,
-          };
+      if (isStayPaystackCharge(data)) {
+        await handleStayPaystackChargeSuccess(
+          supabase,
+          data,
+          providerEventId,
+          paystackVerifyTransaction,
+        );
+      } else {
+        const result = await handlePaystackChargeSuccess(
+          supabase,
+          data,
+          paystackVerifyTransaction,
+        );
+        if (result.status === "finalized" || result.status === "replayed") {
+          finalizedOrderId = result.orderId ?? null;
+          if (finalizedOrderId) {
+            splitFanOut = {
+              reference,
+              orderId: finalizedOrderId,
+              paidAtIso: result.paidAtIso ?? null,
+            };
+          }
         }
       }
     } else if (

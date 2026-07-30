@@ -87,7 +87,7 @@ test("reservation internals are forced-RLS and direct-client dark", () => {
   );
 });
 
-test("edge and business client expose only the bounded #1388 action set", () => {
+test("edge and business client preserve the #1388 actions without client-side confirmation", () => {
   for (const action of [
     "quote",
     "create_group",
@@ -98,7 +98,7 @@ test("edge and business client expose only the bounded #1388 action set", () => 
     assert.match(edge, new RegExp(`"${action}"`));
     assert.match(service, new RegExp(`"${action}"`));
   }
-  assert.doesNotMatch(edge, /\bcreate_payment\b|\bconfirm_payment\b/);
+  assert.doesNotMatch(edge, /\bconfirm_payment\b/);
   assert.match(edge, /MAX_REQUEST_BYTES = 262_144/);
   assert.match(edge, /biz_manage_stay_reservation/);
   assert.match(service, /"stay-reservations"/);

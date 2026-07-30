@@ -75,6 +75,76 @@ export function renderCategoryMessage(
   const eventTitle = str(payload.event_title ?? payload.title, "your event");
 
   switch (categoryKey) {
+    case "stay_request_received":
+    case "stay_request_action_needed":
+    case "stay_reconciliation_attention": {
+      const body = str(
+        payload.body,
+        "A Stay reservation needs your attention.",
+      );
+      return {
+        push: { title: "Stay reservation update", body },
+        email: { subject: "Stay reservation update", body },
+        sms: `Mingla: ${body}`,
+      };
+    }
+    case "stay_payment_required": {
+      const deadline = str(payload.payment_deadline);
+      const body = deadline
+        ? `Your Stay request was approved. Complete payment by ${deadline}.`
+        : "Your Stay request was approved. Complete payment to confirm.";
+      return {
+        push: { title: "Your Stay is ready for payment", body },
+        email: { subject: "Complete your Mingla Stay reservation", body },
+        sms: `Mingla: ${body}`,
+      };
+    }
+    case "stay_request_declined": {
+      const body = "The property declined your Stay reservation request.";
+      return {
+        push: { title: "Stay request declined", body },
+        email: { subject: "Your Mingla Stay request", body },
+        sms: `Mingla: ${body}`,
+      };
+    }
+    case "stay_reservation_confirmed": {
+      const body = "Your selected Rooms and Places are confirmed.";
+      return {
+        push: { title: "Stay confirmed", body },
+        email: { subject: "Your Mingla Stay is confirmed", body },
+        sms: `Mingla: ${body}`,
+      };
+    }
+    case "stay_reservation_cancelled": {
+      const body = "Your selected Rooms and Places were cancelled.";
+      return {
+        push: { title: "Stay reservation cancelled", body },
+        email: { subject: "Your Mingla Stay cancellation", body },
+        sms: `Mingla: ${body}`,
+      };
+    }
+    case "stay_refund_state": {
+      const amount = fmtAmount(payload);
+      const body = amount
+        ? `Your ${amount} Stay refund has been issued.`
+        : "Your Stay refund status was updated.";
+      return {
+        push: { title: "Stay refund update", body },
+        email: { subject: "Your Mingla Stay refund", body },
+        sms: `Mingla: ${body}`,
+      };
+    }
+    case "stay_reservation_reminder": {
+      const body = str(
+        payload.body,
+        "Your Mingla Stay reservation is coming up.",
+      );
+      return {
+        push: { title: "Your Stay is coming up", body },
+        email: { subject: "Your Mingla Stay reminder", body },
+        sms: `Mingla: ${body}`,
+      };
+    }
     case "source_refund_buyer_state": {
       const message = str(payload.message, "Your refund is processing.");
       return {

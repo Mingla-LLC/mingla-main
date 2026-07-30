@@ -19,6 +19,7 @@ parentheses for traceability.
 
 ## Shipped
 - 2026-07-30 — Mingla Business now shows private brand Analytics on Home and a dedicated iOS, Android, and web screen with customer totals and source mix, privacy-masked regulars, and truthful weekday, time, and offering-type patterns. (#874, PR #1412)
+- 2026-07-30 — Stay reservations now have server-authoritative Stripe and Paystack payments, per-Room and priced-Place cancellations and refunds, event-anchored payouts, dispute protection, and push/email/text updates; commerce remains dark until rollout gates clear. (#1389, PR #1415)
 - 2026-07-30 — Stay guests can reserve multiple Rooms and priced Places in one same-property group, with server-authoritative bank/currency pricing, atomic no-oversell inventory holds, and whole-group instant or Request confirmation; payment execution remains staged for #1389. (#1388, PR #1413)
 - 2026-07-30 — Added the canonical Stay inventory foundation for hotels, resorts, guest houses, lodges, serviced apartments, and short-stay apartments: brands can securely model bulk-created Rooms and bookable Places with images, prices, fees, policies, staff permissions, future availability, instant/request confirmation, and bank/currency-gated publishing. (#1387, PR #1411)
 - 2026-07-30 — Customer-pattern analytics now validates schedule timezones through an indexed snapshot instead of scanning PostgreSQL’s full timezone catalog on every call; all 11 guarded production calls completed in under 33 ms. (#1406, PR #1408)
