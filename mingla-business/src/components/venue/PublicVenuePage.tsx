@@ -52,6 +52,7 @@ import { PublicMenuSections } from "@mingla/brand-rendering/PublicMenuSections";
 import { PublicVenueTabs } from "@mingla/brand-rendering/PublicVenueTabs";
 import type { PublicVenueTabsHandle } from "@mingla/brand-rendering/PublicVenueTabs";
 import type { PublicMenuGroup, PublicVenueTab } from "@mingla/brand-rendering";
+import type { PublicStayDetail } from "@mingla/brand-rendering/stayGuest";
 import {
   ParallaxCoverShell,
   buildStaticMapUrl,
@@ -85,7 +86,15 @@ import {
 } from "./publicVenueReservationUiState";
 import { captureWeb } from "../../analytics/webAnalytics";
 import { formatSourceRange } from "../../utils/currencyFormatter";
-import { BuyerStayGuestExperience } from "../stay/BuyerStayGuestExperience";
+
+// #1390: Stay booking includes its own renderer and Stripe Payment Element.
+// Keep that product-specific bulk off the shared buyer-web boot path and load it
+// only after a verified Stay venue reaches its reservations surface.
+const BuyerStayGuestExperience = React.lazy(() =>
+  import("../stay/BuyerStayGuestExperience").then((module) => ({
+    default: module.BuyerStayGuestExperience,
+  })),
+);
 
 export interface PublicVenuePageProps {
   venue: PublicVenue;
@@ -98,6 +107,7 @@ export interface PublicVenuePageProps {
   initialTab?: PublicVenueTab;
   onRetryReservability?: () => void;
   stayState?: "loading" | "ready" | "unavailable" | "error";
+  stayDetail?: PublicStayDetail | null;
 }
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -144,6 +154,7 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
   initialTab = "overview",
   onRetryReservability,
   stayState,
+  stayDetail = null,
 }) => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -521,13 +532,25 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
     ) : null;
 
   const reservationsBlock = isStay ? (
-    <BuyerStayGuestExperience
-      venueId={venue.id}
-      brandId={venue.brandId}
-      palette={palette}
-      surface={surface}
-      theme={resolvedTheme}
-    />
+    <React.Suspense
+      fallback={
+        <View style={styles.reservationState}>
+          <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>
+            Loading Stay availability…
+          </Text>
+        </View>
+      }
+    >
+      <BuyerStayGuestExperience
+        venueId={venue.id}
+        brandId={venue.brandId}
+        detail={stayDetail}
+        state={stayState ?? "unavailable"}
+        palette={palette}
+        surface={surface}
+        theme={resolvedTheme}
+      />
+    </React.Suspense>
   ) : reservabilityState === "loading" ? (
       <View style={styles.reservationState}>
         <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>

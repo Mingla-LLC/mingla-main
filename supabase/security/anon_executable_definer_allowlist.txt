@@ -14,7 +14,7 @@
 # INVESTIGATION_ORCH-1392 bucket (definer_privilege_gate_inventory.csv). Format:
 # `proname(identity_args)` exactly as pg_get_function_identity_arguments renders.
 #
-# Signature count: 187 (intended-public 19, internally-gated 109, predicate/read-helper 56, PostGIS 3).
+# Signature count: 188 (intended-public 20, internally-gated 109, predicate/read-helper 56, PostGIS 3).
 
 # === INTENDED-PUBLIC READS (power anonymous public pages / checkout / signup) — INVESTIGATION F-8 / SPEC §4.4 ===
 biz_ticket_checkout_create_session(p_event_id uuid, p_buyer_user_id uuid, p_buyer_name text, p_buyer_email text, p_buyer_phone_e164 text, p_marketing_opt_in boolean, p_lines jsonb, p_idempotency_key text, p_expires_at timestamp with time zone, p_application_fee_amount_cents integer, p_payment_plan_choice text)
@@ -30,6 +30,8 @@ pg_public_experience_by_slug(p_brand_slug text, p_experience_slug text)
 pg_public_experiences_by_brand(p_brand_slug text)
 pg_public_rsvp_by_slug(p_brand_slug text, p_event_slug text)
 pg_public_social_proof(p_event_id uuid)
+# #1390: gated public Stay pages need published Room/Place inventory; the RPC returns only verified live listings when STAY_PUBLIC_PAGES is enabled and otherwise fails closed.
+pg_public_stay_details(p_venue_id uuid)
 pg_public_ticket_types_remaining(p_event_id uuid)
 pg_public_trip_by_slug(p_brand_slug text, p_event_slug text)
 pg_public_trips_by_brand(p_brand_slug text)

@@ -17,7 +17,6 @@ import type {
 
 import {
   buildStayRoomCartAllocations,
-  formatStayMoney,
   isValidStayDateRange,
   stayCheckoutMode,
   validateStayGuestCart,
@@ -27,6 +26,7 @@ import {
   type StayGuestCheckoutInput,
   type StayQuote,
 } from "./stayGuest";
+import { formatStayMoney } from "./stayGuestMoney";
 
 type Surface = ReturnType<typeof offeringSurfaceStyles>;
 

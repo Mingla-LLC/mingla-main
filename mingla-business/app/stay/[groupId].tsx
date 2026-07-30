@@ -12,9 +12,9 @@ import { useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StayReservationDetail } from "@mingla/brand-rendering/StayReservationDetail";
 import {
-  formatStayMoney,
   type StayPaymentSession,
 } from "@mingla/brand-rendering/stayGuest";
+import { formatStayMoney } from "@mingla/brand-rendering/stayGuestMoney";
 import {
   createThemePalette,
   resolveTheme,

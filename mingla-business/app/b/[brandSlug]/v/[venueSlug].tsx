@@ -171,6 +171,7 @@ export default function PublicVenueRoute(): React.ReactElement {
                 ? "unavailable"
                 : "ready"
       }
+      stayDetail={stayQuery.data ?? null}
     />
   );
 }

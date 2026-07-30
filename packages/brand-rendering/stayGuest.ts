@@ -281,28 +281,7 @@ export interface MyStayReservationGroup {
   }>;
 }
 
-export const stayGuestKeys = {
-  all: ["stayGuest"] as const,
-  detail: (venueId: string) => [...stayGuestKeys.all, "detail", venueId] as const,
-  search: (
-    venueId: string,
-    checkIn: string,
-    checkOut: string,
-    adults: number,
-    children: number,
-  ) =>
-    [
-      ...stayGuestKeys.all,
-      "search",
-      venueId,
-      checkIn,
-      checkOut,
-      adults,
-      children,
-    ] as const,
-  group: (groupId: string) => [...stayGuestKeys.all, "group", groupId] as const,
-  mine: (userId: string) => [...stayGuestKeys.all, "mine", userId] as const,
-};
+export { stayGuestKeys } from "./stayGuestKeys";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -539,27 +518,7 @@ export function validateStayGuestCart(input: {
   return null;
 }
 
-export function formatStayMoney(
-  amountMinor: string,
-  currencyCode: string,
-  locale?: string,
-): string {
-  if (!/^(0|[1-9]\d*)$/.test(amountMinor) || !/^[A-Z]{3}$/.test(currencyCode)) {
-    return "Price unavailable";
-  }
-  const amount = Number(amountMinor);
-  if (!Number.isSafeInteger(amount)) return `${currencyCode} ${amountMinor}`;
-  const digits = new Intl.NumberFormat(locale, {
-    style: "currency",
-    currency: currencyCode,
-  }).resolvedOptions().maximumFractionDigits ?? 2;
-  return new Intl.NumberFormat(locale, {
-    style: "currency",
-    currency: currencyCode,
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  }).format(amount / 10 ** digits);
-}
+export { formatStayMoney } from "./stayGuestMoney";
 
 export function stayCheckoutMode(
   detail: PublicStayDetail,

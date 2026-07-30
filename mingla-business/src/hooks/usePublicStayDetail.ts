@@ -1,10 +1,8 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
-import {
-  stayGuestKeys,
-  type PublicStayDetail,
-} from "@mingla/brand-rendering/stayGuest";
+import type { PublicStayDetail } from "@mingla/brand-rendering/stayGuest";
+import { stayGuestKeys } from "@mingla/brand-rendering/stayGuestKeys";
 
-import { fetchPublicStayDetail } from "../services/stayGuestService";
+import { fetchPublicStayDetail } from "../services/publicStayDetailService";
 
 const DISABLED = ["stayGuest", "public-disabled"] as const;
 

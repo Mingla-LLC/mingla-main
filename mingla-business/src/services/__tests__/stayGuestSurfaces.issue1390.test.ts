@@ -42,9 +42,10 @@ describe("Issue #1390 Stay guest surface contracts", () => {
     const webPayment = read(
       "mingla-business/src/components/stay/StayStripePayment.web.tsx",
     );
-    expect(webPayment).toContain("@stripe/react-stripe-js");
-    expect(webPayment).toContain("PaymentElement");
+    expect(webPayment).toContain("@stripe/stripe-js");
+    expect(webPayment).toContain('elements.create("payment")');
     expect(webPayment).toContain("stripeAccount: session.stripeAccountId");
+    expect(webPayment).not.toContain("@stripe/react-stripe-js");
     expect(webPayment).not.toContain("@stripe/stripe-react-native");
 
     for (
@@ -61,6 +62,35 @@ describe("Issue #1390 Stay guest surface contracts", () => {
       expect(nativePayment).toContain("googlePay:");
       expect(nativePayment).toContain("currencyCode: payment.currencyCode");
     }
+  });
+
+  test("Stay booking and Payment Element remain off the shared buyer-web boot path", () => {
+    const venuePage = read(
+      "mingla-business/src/components/venue/PublicVenuePage.tsx",
+    );
+    const buyerStay = read(
+      "mingla-business/src/components/stay/BuyerStayGuestExperience.tsx",
+    );
+    const renderingBarrel = read("packages/brand-rendering/index.ts");
+    expect(venuePage).toContain("React.lazy(() =>");
+    expect(venuePage).toContain(
+      'import("../stay/BuyerStayGuestExperience")',
+    );
+    expect(venuePage).not.toContain(
+      'import { BuyerStayGuestExperience } from "../stay/BuyerStayGuestExperience"',
+    );
+    expect(renderingBarrel).not.toContain(
+      'from "./StayGuestBooking"',
+    );
+    expect(renderingBarrel).not.toContain(
+      'from "./StayReservationDetail"',
+    );
+    expect(renderingBarrel).not.toContain('from "./stayGuest"');
+    expect(buyerStay).toContain("React.lazy(() =>");
+    expect(buyerStay).toContain('import("./StayStripePayment")');
+    expect(buyerStay).not.toContain(
+      'import { StayStripePayment } from "./StayStripePayment"',
+    );
   });
 
   test("reservation management exposes lifecycle, receipt, refunds, and accessible actions", () => {

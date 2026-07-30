@@ -1,12 +1,10 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  PaymentElement,
-  Elements,
-  useElements,
-  useStripe,
-} from "@stripe/react-stripe-js";
-import { loadStripe } from "@stripe/stripe-js";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+  loadStripe,
+  type Stripe,
+  type StripeElements,
+  type StripePaymentElement,
+} from "@stripe/stripe-js";
 
 import type { StayPaymentSession } from "@mingla/brand-rendering/stayGuest";
 
@@ -23,42 +21,66 @@ export function StayStripePayment({
   accent,
   onComplete,
 }: Props): React.ReactElement {
-  const stripe = useMemo(
+  const stripePromise = useMemo(
     () =>
       loadStripe(session.publishableKey, {
         stripeAccount: session.stripeAccountId,
       }),
     [session.publishableKey, session.stripeAccountId],
   );
-  return (
-    <Elements
-      stripe={stripe}
-      options={{
-        clientSecret: session.clientSecret,
-        appearance: {
-          theme: "night",
-          variables: { colorPrimary: accent, borderRadius: "12px" },
-        },
-      }}
-    >
-      <StayStripePaymentForm groupId={groupId} onComplete={onComplete} />
-    </Elements>
-  );
-}
-
-function StayStripePaymentForm({
-  groupId,
-  onComplete,
-}: {
-  groupId: string;
-  onComplete: () => void;
-}): React.ReactElement {
-  const stripe = useStripe();
-  const elements = useElements();
+  const mountRef = useRef<HTMLDivElement | null>(null);
+  const stripeRef = useRef<Stripe | null>(null);
+  const elementsRef = useRef<StripeElements | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    let disposed = false;
+    let paymentElement: StripePaymentElement | null = null;
+    setReady(false);
+    setError(null);
+
+    void stripePromise
+      .then((stripe) => {
+        if (disposed) return;
+        if (stripe === null || mountRef.current === null) {
+          setError("Secure payment could not be loaded.");
+          return;
+        }
+        const elements = stripe.elements({
+          clientSecret: session.clientSecret,
+          appearance: {
+            theme: "night",
+            variables: { colorPrimary: accent, borderRadius: "12px" },
+          },
+        });
+        paymentElement = elements.create("payment");
+        paymentElement.on("ready", () => {
+          if (!disposed) setReady(true);
+        });
+        paymentElement.on("loaderror", () => {
+          if (!disposed) setError("Secure payment could not be loaded.");
+        });
+        paymentElement.mount(mountRef.current);
+        stripeRef.current = stripe;
+        elementsRef.current = elements;
+      })
+      .catch(() => {
+        if (!disposed) setError("Secure payment could not be loaded.");
+      });
+
+    return () => {
+      disposed = true;
+      paymentElement?.destroy();
+      stripeRef.current = null;
+      elementsRef.current = null;
+    };
+  }, [accent, session.clientSecret, stripePromise]);
+
   const pay = async (): Promise<void> => {
+    const stripe = stripeRef.current;
+    const elements = elementsRef.current;
     if (!stripe || !elements || submitting) return;
     setSubmitting(true);
     setError(null);
@@ -78,41 +100,43 @@ function StayStripePaymentForm({
   };
 
   return (
-    <View style={styles.host}>
-      <PaymentElement />
+    <div style={styles.host}>
+      <div ref={mountRef} />
       {error ? (
-        <Text accessibilityRole="alert" style={styles.error}>
+        <p role="alert" style={styles.error}>
           {error}
-        </Text>
+        </p>
       ) : null}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Pay for Stay reservation"
-        accessibilityState={{ disabled: submitting || !stripe || !elements }}
-        disabled={submitting || !stripe || !elements}
-        onPress={() => {
+      <button
+        type="button"
+        aria-label="Pay for Stay reservation"
+        disabled={submitting || !ready}
+        onClick={() => {
           void pay();
         }}
-        style={[styles.button, (submitting || !stripe) && styles.disabled]}
+        style={{
+          ...styles.button,
+          opacity: submitting || !ready ? 0.55 : 1,
+        }}
       >
-        <Text style={styles.buttonText}>
-          {submitting ? "Processing securely…" : "Pay securely"}
-        </Text>
-      </Pressable>
-    </View>
+        {submitting ? "Processing securely…" : "Pay securely"}
+      </button>
+    </div>
   );
 }
 
-const styles = StyleSheet.create({
-  host: { gap: 16 },
-  error: { color: "#ef4444", fontSize: 13, lineHeight: 18 },
+const styles: Record<string, React.CSSProperties> = {
+  host: { display: "grid", gap: 16 },
+  error: { color: "#ef4444", fontSize: 13, lineHeight: "18px", margin: 0 },
   button: {
     minHeight: 52,
     borderRadius: 999,
+    border: 0,
     backgroundColor: "#eb7825",
-    alignItems: "center",
-    justifyContent: "center",
+    cursor: "pointer",
+    color: "#ffffff",
+    fontSize: 15,
+    fontWeight: 900,
+    padding: "0 24px",
   },
-  buttonText: { color: "#ffffff", fontSize: 15, fontWeight: "900" },
-  disabled: { opacity: 0.55 },
-});
+};

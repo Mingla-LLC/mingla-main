@@ -10,10 +10,10 @@ import {
 import type { ThemePalette } from "@mingla/offering-rendering";
 
 import {
-  formatStayMoney,
   type StayCancelPreview,
   type StayReservationGroup,
 } from "./stayGuest";
+import { formatStayMoney } from "./stayGuestMoney";
 
 export function StayReservationDetail({
   group,

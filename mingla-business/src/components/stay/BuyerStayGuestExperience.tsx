@@ -3,11 +3,12 @@ import { Linking, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { StayGuestBooking } from "@mingla/brand-rendering/StayGuestBooking";
 import {
-  formatStayMoney,
+  type PublicStayDetail,
   type StayGuestCheckoutInput,
   type StayPaymentSession,
   type StayQuote,
 } from "@mingla/brand-rendering/stayGuest";
+import { formatStayMoney } from "@mingla/brand-rendering/stayGuestMoney";
 import type {
   offeringSurfaceStyles,
   ResolvedTheme,
@@ -15,28 +16,38 @@ import type {
 } from "@mingla/offering-rendering";
 
 import { captureWeb } from "../../analytics/webAnalytics";
-import { usePublicStayDetail } from "../../hooks/usePublicStayDetail";
 import { stayGuestService } from "../../services/stayGuestService";
 import { supabase } from "../../services/supabase";
-import { StayStripePayment } from "./StayStripePayment";
+
+// Payment Element and Stripe.js are needed only after an instant reservation
+// group has been created. This second lazy boundary keeps both SDKs out of the
+// shared boot chunk and out of Request-to-book sessions entirely.
+const StayStripePayment = React.lazy(() =>
+  import("./StayStripePayment").then((module) => ({
+    default: module.StayStripePayment,
+  })),
+);
 
 type Surface = ReturnType<typeof offeringSurfaceStyles>;
 
 export function BuyerStayGuestExperience({
   venueId,
   brandId,
+  detail,
+  state,
   palette,
   surface,
   theme,
 }: {
   venueId: string;
   brandId: string;
+  detail: PublicStayDetail | null;
+  state: "loading" | "ready" | "unavailable" | "error";
   palette: ThemePalette;
   surface: Surface;
   theme: ResolvedTheme;
 }): React.ReactElement {
   const router = useRouter();
-  const detailQuery = usePublicStayDetail(venueId, true);
   const [checkout, setCheckout] = useState<StayGuestCheckoutInput | null>(null);
   const [quote, setQuote] = useState<StayQuote | null>(null);
   const [payment, setPayment] = useState<StayPaymentSession | null>(null);
@@ -138,37 +149,37 @@ export function BuyerStayGuestExperience({
         <Text style={[styles.body, { color: palette.secondaryText }]}>
           Your Room and Place inventory is held while you complete payment.
         </Text>
-        <StayStripePayment
-          session={payment}
-          groupId={groupId}
-          accent={palette.accent}
-          onComplete={() => {
-            captureWeb("stay_payment_completed", {
-              surface: "buyer_web",
-              brand_id: brandId,
-              venue_id: venueId,
-              group_id: groupId,
-              provider: "stripe",
-            });
-            router.replace(`/stay/${groupId}?payment=returned` as never);
-          }}
-        />
+        <React.Suspense
+          fallback={
+            <Text style={[styles.body, { color: palette.secondaryText }]}>
+              Loading secure payment…
+            </Text>
+          }
+        >
+          <StayStripePayment
+            session={payment}
+            groupId={groupId}
+            accent={palette.accent}
+            onComplete={() => {
+              captureWeb("stay_payment_completed", {
+                surface: "buyer_web",
+                brand_id: brandId,
+                venue_id: venueId,
+                group_id: groupId,
+                provider: "stripe",
+              });
+              router.replace(`/stay/${groupId}?payment=returned` as never);
+            }}
+          />
+        </React.Suspense>
       </View>
     );
   }
 
   return (
     <StayGuestBooking
-      detail={detailQuery.data ?? null}
-      state={
-        detailQuery.isLoading
-          ? "loading"
-          : detailQuery.isError
-            ? "error"
-            : detailQuery.data === null
-              ? "unavailable"
-              : "ready"
-      }
+      detail={detail}
+      state={state}
       palette={palette}
       surface={surface}
       theme={theme}
@@ -176,7 +187,7 @@ export function BuyerStayGuestExperience({
       errorMessage={error}
       quote={quote}
       onRetry={() => {
-        void detailQuery.refetch();
+        if (typeof window !== "undefined") window.location.reload();
       }}
       onSubmit={prepareQuote}
       onConfirmQuote={confirm}

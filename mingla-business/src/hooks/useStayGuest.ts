@@ -1,15 +1,13 @@
-import {
-  stayGuestKeys,
-  type MyStayReservationGroup,
-  type StayReservationGroup,
+import type {
+  MyStayReservationGroup,
+  StayReservationGroup,
 } from "@mingla/brand-rendering/stayGuest";
+import { stayGuestKeys } from "@mingla/brand-rendering/stayGuestKeys";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
 import { useAuth } from "../context/AuthContext";
-import {
-  fetchMyStayReservations,
-  stayGuestService,
-} from "../services/stayGuestService";
+import { fetchMyStayReservations } from "../services/myStayReservationsService";
+import { stayGuestService } from "../services/stayGuestService";
 
 const DISABLED = ["stayGuest", "disabled"] as const;
 
