@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 452,
-  "selfTestWiredFloor": 267,
+  "expectedStrictGrepMjsFiles": 454,
+  "selfTestWiredFloor": 269,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -5514,6 +5514,20 @@
       "jobKeys": []
     },
     {
+      "script": ".github/scripts/strict-grep/__tests__/issue-1221-source-refund-control-plane.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-1221-source-refund-control-plane"
+      ]
+    },
+    {
       "script": ".github/scripts/strict-grep/__tests__/orch-1400-ratchet-frontier.adversarial.test.mjs",
       "kind": "file",
       "enforcement": "batch:A",
@@ -5613,6 +5627,20 @@
       "selfTest": "wired",
       "jobKeys": [
         "orch-1385-workspace-deps-declared"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1221-source-refund-control-plane.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-1221-source-refund-control-plane"
       ]
     },
     {

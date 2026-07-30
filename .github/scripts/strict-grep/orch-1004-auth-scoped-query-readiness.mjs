@@ -117,6 +117,7 @@ const AUTH_SCOPED_HOOK_FILES = [
   "useVenueIntelligence.ts",
   "useVenueReservationSettings.ts",
   "useVenueReservations.ts",
+  "useRsvpContributionRefunds.ts",
   "useVenueTables.ts",
   "useVenueWaitlist.ts",
   // ── ORCH-1331 [partner Paystack payout rail] — reads the caller's OWN

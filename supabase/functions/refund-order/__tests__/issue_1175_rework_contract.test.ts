@@ -99,13 +99,10 @@ Deno.test("issue #1175 rework: exact-floor partial and sub-floor full refund kee
   }
 });
 
-Deno.test("issue #1175 rework: trip and venue retries preserve durable identity after cancellation", async () => {
+Deno.test("issue #1175 rework: trip retries preserve durable identity after cancellation", async () => {
   const functionsRoot = new URL("../../", import.meta.url);
   const trip = await Deno.readTextFile(
     new URL("cancel-trip-booking/index.ts", functionsRoot),
-  );
-  const venue = await Deno.readTextFile(
-    new URL("venue-reservation-cancel/index.ts", functionsRoot),
   );
   const migration = await Deno.readTextFile(
     new URL(
@@ -129,17 +126,5 @@ Deno.test("issue #1175 rework: trip and venue retries preserve durable identity 
     migration.includes("'paystack_retry',true") &&
       migration.includes("a.status IN ('pending','accepted','processed')"),
     "trip cancellation has no durable retry branch",
-  );
-  assert(
-    venue.includes('"pg_resume_my_paystack_reservation_refund"') &&
-      migration.includes(
-        "CREATE OR REPLACE FUNCTION public.pg_resume_my_paystack_reservation_refund",
-      ),
-    "venue cancellation has no authenticated retry branch",
-  );
-  assert(
-    venue.includes("p_source_id: paystackSourceId") &&
-      venue.includes('.select("id, paystack_reference")'),
-    "venue attempt does not use the checkout-session ledger identity",
   );
 });

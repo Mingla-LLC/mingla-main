@@ -43,20 +43,20 @@ test("issue #1203: a pre-rollout live audit is exact and drift remains fail-clos
   const transition = clone(manifest);
   transition.rollout.live_audit_mode = "transition";
   transition.rollout.transition_stage = "pre_rollout";
-  transition.rollout.expected_user_managed_count = 100;
   const target = transition.secrets.map((record) => record.name);
   const pending = new Set(transition.rollout.pending_bundle_names);
   const preRolloutNames = [
     ...target.filter((name) => !pending.has(name)),
     ...transition.rollout.legacy_names,
   ];
+  transition.rollout.expected_user_managed_count = preRolloutNames.length;
   const expected = auditSecretBudget({
     manifest: transition,
     liveNames: preRolloutNames,
     liveAudit: true,
   });
   assert.equal(expected.ok, true);
-  assert.equal(expected.count, 100);
+  assert.equal(expected.count, preRolloutNames.length);
   assert.match(expected.warnings.join("\n"), /secret_budget_transition/);
 
   const drifted = auditSecretBudget({

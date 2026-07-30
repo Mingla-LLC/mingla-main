@@ -42,6 +42,8 @@ import type {
   RsvpSourceValue,
   RsvpStatusValue,
 } from "../../services/rsvpApprovals";
+import type { SourceRefundSummary } from "../../types/venueReservation";
+import { SourceRefundStatusChip } from "../refunds/SourceRefundStatusChip";
 
 // ORCH-1334 — avatar helpers copied inline (byte-for-byte from
 // app/event/[id]/guests/index.tsx:88-101 per SPEC §4E-10; NOT refactored into a
@@ -178,6 +180,10 @@ export interface RsvpGuestDetailSheetProps {
   // console-root sibling Toast, which iOS drops while the sheet modal is up.
   notice: string | null;
   onNoticeDismiss: () => void;
+  contributionId?: string | null;
+  refund?: SourceRefundSummary | null;
+  onRefundContribution?: (contributionId: string) => void;
+  isRefundPending?: boolean;
 }
 
 export const RsvpGuestDetailSheet: React.FC<RsvpGuestDetailSheetProps> = ({
@@ -190,6 +196,10 @@ export const RsvpGuestDetailSheet: React.FC<RsvpGuestDetailSheetProps> = ({
   isActionPending,
   notice,
   onNoticeDismiss,
+  contributionId = null,
+  refund = null,
+  onRefundContribution,
+  isRefundPending = false,
 }) => {
   // The Sheet stays mounted through its close animation, during which `guest`
   // may already be null — render an empty body then (the Sheet animates out).
@@ -280,6 +290,31 @@ export const RsvpGuestDetailSheet: React.FC<RsvpGuestDetailSheetProps> = ({
               <Text style={styles.meta}>No contact on file.</Text>
             )}
           </View>
+
+          {refund ? (
+            <View style={styles.block}>
+              <SectionLabel>CONTRIBUTION REFUND</SectionLabel>
+              <SourceRefundStatusChip refund={refund} />
+              <Text style={styles.meta}>
+                Provider acceptance and Mingla&apos;s fee reversal are tracked
+                separately until both are reconciled.
+              </Text>
+            </View>
+          ) : contributionId && onRefundContribution ? (
+            <View style={styles.block}>
+              <SectionLabel>CONTRIBUTION</SectionLabel>
+              <Button
+                label="Refund contribution"
+                variant="secondary"
+                size="md"
+                loading={isRefundPending}
+                disabled={isRefundPending}
+                onPress={() => onRefundContribution(contributionId)}
+                accessibilityLabel={`Refund ${guest.displayName}'s contribution`}
+                testID="rsvp-sheet-refund-contribution"
+              />
+            </View>
+          ) : null}
 
           {/* Host actions — state-gated (mirror the row actions) */}
           {guest.approvalStatus === "pending" ? (

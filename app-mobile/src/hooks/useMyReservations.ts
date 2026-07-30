@@ -1,6 +1,7 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
 import { supabase } from "../services/supabase";
+import type { ReservationRefundSummary } from "../components/activity/ReservationRefundStatus";
 
 /**
  * useMyReservations — META-ORCH-1148 sub-ORCH 2.2b (SPEC §4.D / §4.E.1).
@@ -35,6 +36,7 @@ export interface MyReservationRow {
   occasion: string | null;
   guest_notes: string | null;
   created_at: string;
+  refund?: ReservationRefundSummary | null;
 }
 
 interface RawBrandJoin {
@@ -81,6 +83,19 @@ async function fetchMyReservations(
     .order("reserved_for", { ascending: false });
   if (error !== null) throw error;
   const rows = (data ?? []) as RawReservationRow[];
+  const { data: refundRows, error: refundError } = rows.length > 0
+    ? await supabase.rpc("pg_my_source_refund_summaries", {
+      p_source_type: "venue_reservation",
+      p_subject_ids: rows.map((row) => row.id),
+    })
+    : { data: [], error: null };
+  if (refundError !== null) throw refundError;
+  const refundByReservation = new Map(
+    ((refundRows ?? []) as ReservationRefundSummary[]).map((refund) => [
+      refund.subject_id,
+      refund,
+    ]),
+  );
   return rows.map((r) => {
     const brand = Array.isArray(r.brands) ? r.brands[0] : r.brands;
     return {
@@ -104,6 +119,7 @@ async function fetchMyReservations(
       occasion: r.occasion,
       guest_notes: r.guest_notes,
       created_at: r.created_at,
+      refund: refundByReservation.get(r.id) ?? null,
     };
   });
 }
@@ -123,21 +139,16 @@ export function useMyReservations(
 /**
  * Cancel one of the caller's OWN reservations via the venue-reservation-cancel
  * edge function (META-ORCH-1148 2.2g). The fn calls the SECURITY DEFINER
- * pg_cancel_my_reservation AS THE USER (auth.uid() enforces ownership + a legal
- * transition + computes refund eligibility), then — when eligible (paid &&
- * fee_refundable && before the venue's cancel cutoff) — EXECUTES the Stripe
- * deposit refund on the brand's connected account and flips payment_status to
- * 'refunded'. Cancellation is always allowed for an upcoming reservation; the
- * cutoff governs only the refund (Seth 2026-06-17). A refund-side failure still
- * returns cancelled:true (the seat is freed) with refunded:false + refundError.
+ * typed cancellation/refund boundary. Cancellation is durable even when the
+ * provider leg is nonterminal; callers receive the canonical refund summary
+ * and must never infer success from an HTTP 2xx.
  */
 export async function cancelMyReservation(
   reservationId: string,
 ): Promise<{
   refundEligible: boolean;
-  refunded: boolean;
-  refundAmountCents: number;
   status: string;
+  refund: ReservationRefundSummary | null;
 }> {
   const { data, error } = await supabase.functions.invoke(
     "venue-reservation-cancel",
@@ -147,13 +158,11 @@ export async function cancelMyReservation(
   const res = (data ?? {}) as {
     status?: string;
     refundEligible?: boolean;
-    refunded?: boolean;
-    refundAmountCents?: number;
+    refund?: ReservationRefundSummary | null;
   };
   return {
     refundEligible: res.refundEligible === true,
-    refunded: res.refunded === true,
-    refundAmountCents: typeof res.refundAmountCents === "number" ? res.refundAmountCents : 0,
     status: res.status ?? "cancelled",
+    refund: res.refund ?? null,
   };
 }

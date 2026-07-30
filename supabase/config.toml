@@ -436,6 +436,26 @@ verify_jwt = true
 [functions.admin-refund-order]
 verify_jwt = true
 
+# ISSUE-1221 — typed Venue/RSVP refund control plane. Provider posting is
+# service-worker only; read/action surfaces authenticate again inside the Edge.
+[functions.source-refund-sweep]
+verify_jwt = false
+
+[functions.venue-reservation-refund-status]
+verify_jwt = false
+
+[functions.source-refund-action]
+verify_jwt = true
+
+[functions.source-refund-attention]
+verify_jwt = false
+
+[functions.admin-source-refund-action]
+verify_jwt = true
+
+[functions.admin-source-refund-operations]
+verify_jwt = true
+
 [functions.admin-stripe-connect-action]
 verify_jwt = true
 

@@ -42,7 +42,9 @@ function fmtAmount(payload: Record<string, unknown>): string {
 // Locale-aware-friendly but deterministic for tests (en-US, UTC-stable display
 // would require the venue tz — the thin slice passes pre-formatted date/time in
 // payload when available, else derives a simple split).
-function fmtDate(payload: Record<string, unknown>): { date: string; time: string } {
+function fmtDate(
+  payload: Record<string, unknown>,
+): { date: string; time: string } {
   if (payload.date && payload.time) {
     return { date: str(payload.date), time: str(payload.time) };
   }
@@ -50,8 +52,14 @@ function fmtDate(payload: Record<string, unknown>): { date: string; time: string
   if (!iso) return { date: "", time: "" };
   const d = new Date(iso);
   if (isNaN(d.getTime())) return { date: "", time: "" };
-  const date = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  const date = d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+  const time = d.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
   return { date, time };
 }
 
@@ -67,6 +75,26 @@ export function renderCategoryMessage(
   const eventTitle = str(payload.event_title ?? payload.title, "your event");
 
   switch (categoryKey) {
+    case "source_refund_buyer_state": {
+      const message = str(payload.message, "Your refund is processing.");
+      return {
+        push: { title: "Refund update", body: message },
+        email: { subject: "Your Mingla refund update", body: message },
+        sms: message,
+      };
+    }
+    case "source_refund_brand_state": {
+      const message = str(payload.message, "A refund needs review.");
+      const operationId = str(payload.operation_id);
+      return {
+        push: { title: "Refund operation update", body: message },
+        email: {
+          subject: "Mingla refund operation update",
+          body: `${message}\n\nOperation ID: ${operationId}`,
+        },
+        sms: `${message} Operation ID: ${operationId}`,
+      };
+    }
     case "buyer_reservation_changed":
       // COPY §3.1
       return {
@@ -76,20 +104,24 @@ export function renderCategoryMessage(
         },
         email: {
           subject: `Your ${brand} reservation changed`,
-          body:
-            `Your reservation at ${brand} has been updated.\n\n` +
+          body: `Your reservation at ${brand} has been updated.\n\n` +
             `It's now ${date} at ${time}, party of ${party}.\n\n` +
             `See the details in the Mingla app.`,
         },
-        sms: `${brand}: Your reservation changed - now ${date} ${time}, party of ${party}.`,
+        sms:
+          `${brand}: Your reservation changed - now ${date} ${time}, party of ${party}.`,
       };
 
     case "buyer_reservation_confirmed":
       return {
-        push: { title: "Reservation confirmed", body: `${brand}: ${date} ${time}, party of ${party}.` },
+        push: {
+          title: "Reservation confirmed",
+          body: `${brand}: ${date} ${time}, party of ${party}.`,
+        },
         email: {
           subject: `Your ${brand} reservation is confirmed`,
-          body: `Your table for ${party} is confirmed at ${brand} on ${date} at ${time}.\n\nSee you there!`,
+          body:
+            `Your table for ${party} is confirmed at ${brand} on ${date} at ${time}.\n\nSee you there!`,
         },
         sms: `${brand}: Table for ${party} confirmed ${date} ${time}.`,
       };
@@ -97,12 +129,17 @@ export function renderCategoryMessage(
     case "buyer_reservation_cancelled":
       // COPY §3.2
       return {
-        push: { title: "Reservation cancelled", body: `${brand}: your ${date} reservation was cancelled.` },
+        push: {
+          title: "Reservation cancelled",
+          body: `${brand}: your ${date} reservation was cancelled.`,
+        },
         email: {
           subject: `Your ${brand} reservation was cancelled`,
-          body: `Your reservation at ${brand} for ${date} was cancelled.\n\nQuestions? Contact the venue.`,
+          body:
+            `Your reservation at ${brand} for ${date} was cancelled.\n\nQuestions? Contact the venue.`,
         },
-        sms: `${brand}: Your reservation for ${date} was cancelled. Questions? Contact the venue.`,
+        sms:
+          `${brand}: Your reservation for ${date} was cancelled. Questions? Contact the venue.`,
       };
 
     case "buyer_event_reminder":
@@ -115,11 +152,11 @@ export function renderCategoryMessage(
           },
           email: {
             subject: `${eventTitle} starts in 2 hours`,
-            body:
-              `${eventTitle} starts in 2 hours at ${time}.\n\n` +
+            body: `${eventTitle} starts in 2 hours at ${time}.\n\n` +
               `See you soon! Details are in the Mingla app.`,
           },
-          sms: `${brand}: ${eventTitle} starts in 2 hours at ${time}. See you soon!`,
+          sms:
+            `${brand}: ${eventTitle} starts in 2 hours at ${time}. See you soon!`,
         };
       }
       return {
@@ -129,8 +166,7 @@ export function renderCategoryMessage(
         },
         email: {
           subject: `${eventTitle} is tomorrow`,
-          body:
-            `${eventTitle} is tomorrow at ${time}.\n\n` +
+          body: `${eventTitle} is tomorrow at ${time}.\n\n` +
             `See you there! Details are in the Mingla app.`,
         },
         sms: `${brand}: ${eventTitle} is tomorrow at ${time}. See you there!`,
@@ -150,7 +186,8 @@ export function renderCategoryMessage(
               `Your reservation at ${brand} is in 2 hours at ${time}, party of ${party}.\n\n` +
               `See you soon!`,
           },
-          sms: `${brand}: Your reservation is in 2 hours at ${time}, party of ${party}.`,
+          sms:
+            `${brand}: Your reservation is in 2 hours at ${time}, party of ${party}.`,
         };
       }
       return {
@@ -164,7 +201,8 @@ export function renderCategoryMessage(
             `Reminder - your reservation at ${brand} is tomorrow at ${time}, party of ${party}.\n\n` +
             `See you there!`,
         },
-        sms: `${brand}: Reminder - your reservation is tomorrow at ${time}, party of ${party}.`,
+        sms:
+          `${brand}: Reminder - your reservation is tomorrow at ${time}, party of ${party}.`,
       };
 
     case "buyer_purchase_confirmation": {
@@ -175,15 +213,16 @@ export function renderCategoryMessage(
       return {
         push: {
           title: `You're in for ${eventTitle}`,
-          body: `${brand}: ${date} at ${time} - your tickets are in the Mingla app.`,
+          body:
+            `${brand}: ${date} at ${time} - your tickets are in the Mingla app.`,
         },
         email: {
           subject: `Your ${brand} tickets for ${eventTitle}`,
-          body:
-            `You're confirmed for ${eventTitle}. ` +
+          body: `You're confirmed for ${eventTitle}. ` +
             `Your ticket and calendar invite are attached, and everything lives in the Mingla app.`,
         },
-        sms: `${brand}: You're in for ${eventTitle} on ${date}. Tickets in the Mingla app.`,
+        sms:
+          `${brand}: You're in for ${eventTitle} on ${date}. Tickets in the Mingla app.`,
       };
     }
 
@@ -197,11 +236,11 @@ export function renderCategoryMessage(
         },
         email: {
           subject: `Your ${brand} refund has been issued`,
-          body:
-            `Your refund of ${amount} from ${brand} has been issued.\n\n` +
+          body: `Your refund of ${amount} from ${brand} has been issued.\n\n` +
             `It should appear on your statement in 5-10 days.`,
         },
-        sms: `${brand}: Your refund of ${amount} has been issued and should appear in 5-10 days.`,
+        sms:
+          `${brand}: Your refund of ${amount} has been issued and should appear in 5-10 days.`,
       };
     }
 
@@ -210,15 +249,16 @@ export function renderCategoryMessage(
       return {
         push: {
           title: "Order cancelled",
-          body: `${brand}: your ${eventTitle} order was cancelled; payment refunded.`,
+          body:
+            `${brand}: your ${eventTitle} order was cancelled; payment refunded.`,
         },
         email: {
           subject: `Your ${brand} order was cancelled`,
-          body:
-            `Your order for ${eventTitle} at ${brand} was cancelled.\n\n` +
+          body: `Your order for ${eventTitle} at ${brand} was cancelled.\n\n` +
             `Any payment will be refunded.`,
         },
-        sms: `${brand}: Your order for ${eventTitle} was cancelled. Any payment will be refunded.`,
+        sms:
+          `${brand}: Your order for ${eventTitle} was cancelled. Any payment will be refunded.`,
       };
 
     case "buyer_contribution_receipt": {
@@ -235,8 +275,7 @@ export function renderCategoryMessage(
         },
         email: {
           subject: `Thanks for chipping in to ${eventTitle} 💛`,
-          body:
-            `Thank you for chipping in ${amount} to ${eventTitle}.\n\n` +
+          body: `Thank you for chipping in ${amount} to ${eventTitle}.\n\n` +
             `Your gift is confirmed. This is a thank-you, not a bill — there is nothing more to pay.\n\n` +
             `See you there!`,
         },
@@ -269,8 +308,14 @@ export function renderCategoryMessage(
     default:
       // Generic fallback — never fabricate; render a plain notice from payload.
       return {
-        push: { title: str(payload.title, "Mingla update"), body: str(payload.body, "") },
-        email: { subject: str(payload.title, "Mingla update"), body: str(payload.body, "") },
+        push: {
+          title: str(payload.title, "Mingla update"),
+          body: str(payload.body, ""),
+        },
+        email: {
+          subject: str(payload.title, "Mingla update"),
+          body: str(payload.body, ""),
+        },
         sms: `${brand}: ${str(payload.body, "You have a new update.")}`,
       };
   }

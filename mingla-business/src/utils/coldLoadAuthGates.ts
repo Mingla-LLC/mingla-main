@@ -228,6 +228,7 @@ export const PUBLIC_BUYER_ROUTE_PREFIXES = [
   "/checkout-trip/", // /checkout-trip/[tripEventId]/… — trip guest checkout
   "/checkout-experience/", // /checkout-experience/[experienceEventId]/… — experience guest checkout
   "/reserve/", // /reserve/[brandId]/confirm — venue reservation payment return
+  "/refund/", // /refund/[refundId]/attention — token-authorized guest refund recovery
   "/o/", // /o/[orderId] — buyer order receipt (post-purchase, anon-tolerant per I-21)
   "/booking/", // /booking/[orderId]/cancel — buyer cancel-from-email (anon-buyer-tolerant)
 ] as const;

@@ -271,6 +271,31 @@ export type ReservationSource =
 /** payment_status (manual bookings are FREE → 'none'). */
 export type ReservationPaymentStatus = "none" | "paid" | "refunded";
 
+export type SourceRefundState =
+  | "queued"
+  | "provider_pending"
+  | "needs_attention"
+  | "processed"
+  | "failed_retryable"
+  | "failed_terminal";
+
+export interface SourceRefundSummary {
+  refundId: string;
+  sourceType: "venue_reservation" | "rsvp_contribution";
+  subjectId: string;
+  refundKind: string;
+  buyerState: SourceRefundState;
+  feeState: SourceRefundState | "not_required";
+  financialState: "pending" | "needs_attention" | "reconciled" | "failed_terminal";
+  amountCents: number;
+  currency: string;
+  requestedAt: string;
+  updatedAt: string;
+  processedAt: string | null;
+  opsStatus: "none" | "needs_review" | "escalated" | "resolved";
+  canRetry: boolean;
+}
+
 /**
  * The segmented list views (Design IA §4.4) — NOT a 3rd nav level; a segmented
  * control inside the Reservations module. Each maps to a status filter.
@@ -307,6 +332,7 @@ export interface Reservation {
   feeCurrency: string | null;
   paymentStatus: ReservationPaymentStatus;
   createdAt: string;
+  refund?: SourceRefundSummary | null;
 }
 
 /** Manual-create payload for biz_reservation_create. */

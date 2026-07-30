@@ -31,6 +31,15 @@ export default function VenueReservationConfirmRoute(): React.ReactElement {
     ? params.bst[0]
     : params.bst;
   const [state, setState] = useState<State>("loading");
+  const [manageReservationId, setManageReservationId] = useState<string | null>(null);
+  const [manageToken, setManageToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    // #1221: provider return credentials do not remain in query/history.
+    const clean = `${window.location.pathname}${window.location.hash}`;
+    window.history.replaceState(null, "", clean);
+  }, []);
 
   const confirm = useCallback(async (): Promise<void> => {
     if (
@@ -54,6 +63,8 @@ export default function VenueReservationConfirmRoute(): React.ReactElement {
             : "error",
       );
       if (result.status === "completed") {
+        setManageReservationId(result.reservationId);
+        setManageToken(result.guestCancelToken ?? buyerStatusToken);
         captureWeb("venue_reservation_completed", {
           surface: "buyer_web",
           brand_id: typeof brandId === "string" ? brandId : null,
@@ -91,6 +102,18 @@ export default function VenueReservationConfirmRoute(): React.ReactElement {
             Confirmation has been sent to your email.
           </Text>
           <Button label="Done" onPress={() => router.replace("/" as never)} />
+          {manageReservationId && manageToken ? (
+            <Button
+              label="Manage reservation"
+              onPress={() => {
+                if (typeof window !== "undefined") {
+                  window.location.assign(
+                    `/reserve/${brandId}/manage#reservationId=${encodeURIComponent(manageReservationId)}&token=${encodeURIComponent(manageToken)}`,
+                  );
+                }
+              }}
+            />
+          ) : null}
         </>
       ) : state === "pending" ? (
         <>

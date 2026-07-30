@@ -123,8 +123,15 @@ serve(async (req) => {
   const supabase = serviceClient();
 
   // ---- Idempotent inbox (reuse payment_webhook_events) ----
-  // Paystack has no evt_… id; derive a stable key from event + reference.
-  const idempotencyKey = `paystack:${eventName}:${reference}`;
+  // #1221: Paystack documents no event/delivery id. The only durable envelope
+  // identity is SHA-256 of the exact signature-verified request bytes.
+  const bodyDigest = Array.from(
+    new Uint8Array(
+      await crypto.subtle.digest("SHA-256", new TextEncoder().encode(rawBody)),
+    ),
+  ).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  const providerEventId = `paystack:${bodyDigest}`;
+  const idempotencyKey = providerEventId;
 
   const { data: existingRow, error: selectError } = await supabase
     .from("payment_webhook_events")
@@ -163,6 +170,10 @@ serve(async (req) => {
         stripe_event_id: idempotencyKey,
         type: eventName,
         payload: event,
+        provider: "paystack",
+        provider_event_type: eventName,
+        provider_event_id: providerEventId,
+        match_status: "not_applicable",
         processed: false,
         retry_count: 0,
         retries_exhausted: false,
@@ -219,17 +230,17 @@ serve(async (req) => {
     } else if (eventName === "refund.failed") {
       await handlePaystackRefundEvent(supabase, "refund.failed", data);
     } else if (
-      eventName === "refund.pending" || eventName === "refund.processing"
+      eventName === "refund.pending" || eventName === "refund.processing" ||
+      eventName === "refund.needs-attention"
     ) {
-      // ORCH-1331 — audited no-op (only refund.processed moves the ledger).
-      await writeAudit(supabase, {
-        user_id: null,
-        brand_id: null,
-        action: "paystack.webhook_unhandled_refund_state",
-        target_type: "paystack_webhook_event",
-        target_id: idempotencyKey,
-        after: { event: eventName, reference },
-      });
+      await handlePaystackRefundEvent(
+        supabase,
+        eventName as
+          | "refund.pending"
+          | "refund.processing"
+          | "refund.needs-attention",
+        data,
+      );
     } else {
       // Unhandled event — audit + no-op (Phase 1 only routes charge.success).
       await writeAudit(supabase, {
@@ -243,6 +254,23 @@ serve(async (req) => {
     }
   } catch (err) {
     processingError = err instanceof Error ? err.message : String(err);
+    if (processingError.includes("source_refund_exact_match_missing")) {
+      await supabase.from("payment_webhook_events").update({
+        match_status: "unmatched",
+        match_reason_code: "source_refund_exact_match_missing",
+        first_response_due_at: new Date(Date.now() + 4 * 60 * 60 * 1000)
+          .toISOString(),
+      }).eq("id", eventRowId);
+    } else if (
+      processingError.includes("source_refund_provider_evidence_mismatch")
+    ) {
+      await supabase.from("payment_webhook_events").update({
+        match_status: "mismatched",
+        match_reason_code: "source_refund_provider_evidence_mismatch",
+        first_response_due_at: new Date(Date.now() + 4 * 60 * 60 * 1000)
+          .toISOString(),
+      }).eq("id", eventRowId);
+    }
     console.error(
       `[paystack-webhook] processing failed for ${eventName} reference=${reference}:`,
       processingError,

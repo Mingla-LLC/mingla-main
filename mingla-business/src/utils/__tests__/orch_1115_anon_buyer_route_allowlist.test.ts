@@ -68,6 +68,9 @@ const PUBLIC_ROUTE_SAMPLES: string[] = [
   "/checkout-experience/exp-event-3/payment",
   "/reserve/brand-9",
   "/reserve/brand-9/confirm",
+  "/refund",
+  "/refund/",
+  "/refund/123e4567-e89b-12d3-a456-426614174000/attention",
   "/o/order-77",
   "/booking/order-77/cancel",
 ];
@@ -125,6 +128,9 @@ describe("ORCH-1115 T-3 (edge) — segment-safety: lookalike paths must NOT matc
     "/booking-x",
     "/reserved",
     "/reserve-x",
+    "/refunded/x",
+    "/refunds/x",
+    "/refund-evil/x",
     "/events",
     "/trips",
     "/branded",
@@ -159,6 +165,8 @@ describe("ORCH-1115 T-4 (edge) — trailing slash + bare prefix both match", () 
     "/checkout-experience/",
     "/reserve/",
     "/reserve",
+    "/refund/",
+    "/refund",
     "/o/",
     "/o",
     "/booking/",
@@ -233,7 +241,7 @@ describe("ORCH-1115 T-8 (regression) — ORCH-1103 '/' loop guard intact", () =>
 });
 
 describe("ORCH-1115 T-9 (single source of truth) — exactly one allowlist; web + native both consult it", () => {
-  test("PUBLIC_BUYER_ROUTE_PREFIXES contains exactly the 10 spec'd prefixes", () => {
+  test("PUBLIC_BUYER_ROUTE_PREFIXES contains exactly the 11 spec'd prefixes", () => {
     expect([...PUBLIC_BUYER_ROUTE_PREFIXES]).toEqual([
       "/e/",
       "/t/",
@@ -243,6 +251,7 @@ describe("ORCH-1115 T-9 (single source of truth) — exactly one allowlist; web 
       "/checkout-trip/",
       "/checkout-experience/",
       "/reserve/",
+      "/refund/",
       "/o/",
       "/booking/",
     ]);
