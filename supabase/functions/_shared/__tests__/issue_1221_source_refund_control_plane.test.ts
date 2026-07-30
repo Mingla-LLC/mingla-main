@@ -81,7 +81,10 @@ Deno.test("#1221 deterministic attention tokens are purpose separated and stored
 Deno.test("#1221 client-IP fingerprinting accepts only the canonical first public proxy hop", () => {
   assertEquals(sourceRefundClientIp("8.8.8.8, 10.0.0.1"), "8.8.8.8");
   assertEquals(sourceRefundClientIp("10.0.0.1, 8.8.8.8"), null);
-  assertEquals(canonicalPublicIpLiteral("2001:4860:4860::8888"), "2001:4860:4860::8888");
+  assertEquals(
+    canonicalPublicIpLiteral("2001:4860:4860::8888"),
+    "2001:4860:4860::8888",
+  );
   assertEquals(canonicalPublicIpLiteral("2001:db8::1"), null);
 });
 
@@ -212,10 +215,32 @@ Deno.test("#1221 adopted Paystack attempt reconciles its persisted identity with
     input: string | URL | Request,
     init?: RequestInit,
   ) => {
+    const url = String(input);
     calls.push({
       method: init?.method ?? "GET",
-      url: String(input),
+      url,
     });
+    if (url.includes("/transaction/verify/legacy-transaction")) {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            status: true,
+            data: {
+              id: 1221001,
+              reference: "legacy-transaction",
+              status: "success",
+              currency: "NGN",
+              amount: 10000,
+            },
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      );
+    }
+    assertStringIncludes(url, "/refund?transaction=1221001&perPage=100");
     return Promise.resolve(
       new Response(
         JSON.stringify({
@@ -225,6 +250,7 @@ Deno.test("#1221 adopted Paystack attempt reconciles its persisted identity with
             merchant_note: persistedMerchantNote,
             amount: 10000,
             status: "processed",
+            transaction: 1221001,
           }],
         }),
         {
@@ -263,9 +289,14 @@ Deno.test("#1221 adopted Paystack attempt reconciles its persisted identity with
         provider_refund_id: "legacy-provider-refund",
       } satisfies SourceRefundOperation,
     );
-    assertEquals(calls.length, 1);
+    assertEquals(calls.length, 2);
     assertEquals(calls[0].method, "GET");
-    assertStringIncludes(calls[0].url, "transaction=legacy-transaction");
+    assertStringIncludes(
+      calls[0].url,
+      "/transaction/verify/legacy-transaction",
+    );
+    assertEquals(calls[1].method, "GET");
+    assertStringIncludes(calls[1].url, "transaction=1221001");
     const committed = rpcs.find((entry) =>
       entry.fn === "record_source_refund_provider_event"
     );

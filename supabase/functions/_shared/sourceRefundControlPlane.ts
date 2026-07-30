@@ -1,8 +1,8 @@
 import { stripeTicketRefund } from "./stripe.ts";
-import { PAYSTACK_BASE_URL, resolvePaystackSecretKey } from "./paystack.ts";
 import {
   createPaystackRefund,
   paystackRefundCanonicalState,
+  reconcilePaystackRefund,
 } from "./paystackRefunds.ts";
 import { enqueueSourceRefundNotifications } from "./sourceRefundNotifications.ts";
 
@@ -201,37 +201,13 @@ async function reconcileAdoptedPaystackAttempt(params: {
   amount: number;
   status: string;
 }> {
-  const secret = resolvePaystackSecretKey();
-  const query = new URLSearchParams({
+  const match = await reconcilePaystackRefund({
     transaction: params.operation.provider_payment_reference,
-    perPage: "100",
+    merchantNote: params.merchantNote,
+    amountSubunits: params.operation.buyer_refund_requested_cents,
+    currency: params.operation.currency,
+    providerRefundId: params.providerOperationId,
   });
-  const response = await fetch(
-    `${PAYSTACK_BASE_URL}/refund?${query.toString()}`,
-    { headers: { Authorization: `Bearer ${secret}` } },
-  );
-  let body: Record<string, unknown> = {};
-  try {
-    const decoded = await response.json();
-    if (decoded && typeof decoded === "object") {
-      body = decoded as Record<string, unknown>;
-    }
-  } catch {
-    // A malformed provider response is retryable ambiguity, never POST authority.
-  }
-  if (!response.ok || body.status !== true || !Array.isArray(body.data)) {
-    throw new Error("adopted_paystack_reconciliation_failed");
-  }
-  const match = body.data.find((candidate) => {
-    if (!candidate || typeof candidate !== "object") return false;
-    const row = candidate as Record<string, unknown>;
-    const exactProviderId = params.providerOperationId === null ||
-      String(row.id ?? "") === params.providerOperationId;
-    return exactProviderId &&
-      String(row.merchant_note ?? "") === params.merchantNote &&
-      Number(row.amount ?? NaN) ===
-        params.operation.buyer_refund_requested_cents;
-  }) as Record<string, unknown> | undefined;
   if (!match) {
     return {
       id: params.providerOperationId,
@@ -240,10 +216,19 @@ async function reconcileAdoptedPaystackAttempt(params: {
     };
   }
   return {
-    id: String(match.id ?? params.providerOperationId ?? ""),
-    amount: Number(match.amount ?? 0),
-    status: String(match.status ?? ""),
+    id: match.id || params.providerOperationId,
+    amount: match.amount,
+    status: match.status,
   };
+}
+
+function isStripeFeeIdentityPermissionDenied(error: unknown): boolean {
+  const row = error && typeof error === "object"
+    ? error as Record<string, unknown>
+    : {};
+  return row.type === "StripePermissionError" ||
+    row.statusCode === 401 ||
+    row.statusCode === 403;
 }
 
 async function proveStripeApplicationFee(
@@ -335,7 +320,28 @@ export async function runSourceRefundOperation(
     operation.fee_reversal_required_cents > 0 &&
     !operation.stripe_application_fee_id
   ) {
-    const feeId = await proveStripeApplicationFee(client, operation);
+    let feeId: string | null;
+    try {
+      feeId = await proveStripeApplicationFee(client, operation);
+    } catch (error) {
+      if (!isStripeFeeIdentityPermissionDenied(error)) throw error;
+      const attempt = await ensureAttempt(
+        client,
+        operation,
+        "application_fee_reversal",
+      );
+      await record(
+        client,
+        operation,
+        "application_fee_reversal",
+        attempt.attemptNo,
+        "needs_attention",
+        0,
+        null,
+        "stripe_fee_identity_permission_denied",
+      );
+      return;
+    }
     if (!feeId) {
       const attempt = await ensureAttempt(
         client,
