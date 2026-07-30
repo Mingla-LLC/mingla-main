@@ -2,6 +2,7 @@ import React, {
   forwardRef,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -22,6 +23,17 @@ import {
   reconcileInitialVenueTab,
   type PublicVenueTab,
 } from "./publicVenueTabState";
+
+// This package is source-linked into both apps. Their isolated typecheck
+// sandboxes resolve React peers from the app root, while files under packages/
+// cannot discover that peer directly. Keep one package-local React bridge on
+// this established module so additional shared renderers reuse the same typed
+// runtime instead of creating unresolved peer-module diagnostics.
+export const BrandRenderingReact = React;
+export const useBrandRenderingMemo = useMemo;
+export const useBrandRenderingState = useState;
+export type BrandRenderingReactElement = React.ReactElement;
+export type BrandRenderingReactNode = React.ReactNode;
 
 export type { PublicVenueTab } from "./publicVenueTabState";
 

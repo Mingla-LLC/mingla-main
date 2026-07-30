@@ -1,4 +1,3 @@
-import React, { useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -14,6 +13,12 @@ import {
   type StayReservationGroup,
 } from "./stayGuest";
 import { formatStayMoney } from "./stayGuestMoney";
+import {
+  BrandRenderingReact as React,
+  useBrandRenderingState as useState,
+  type BrandRenderingReactElement,
+  type BrandRenderingReactNode,
+} from "./PublicVenueTabs";
 
 export function StayReservationDetail({
   group,
@@ -41,7 +46,7 @@ export function StayReservationDetail({
     preview: StayCancelPreview,
     reason: string,
   ) => void | Promise<void>;
-}): React.ReactElement {
+}): BrandRenderingReactElement {
   const [selected, setSelected] = useState<string[]>([]);
   const [preview, setPreview] = useState<StayCancelPreview | null>(null);
   const [reason, setReason] = useState("");
@@ -202,9 +207,9 @@ export function StayReservationDetail({
             accessibilityState={lineCanCancel ? { checked } : undefined}
             disabled={!lineCanCancel || preview !== null}
             onPress={() =>
-              setSelected((current) =>
+              setSelected((current: string[]) =>
                 checked
-                  ? current.filter((id) => id !== line.lineId)
+                  ? current.filter((id: string) => id !== line.lineId)
                   : [...current, line.lineId]
               )}
             style={[
@@ -371,7 +376,7 @@ function ReceiptRow({
   currency: string;
   palette: ThemePalette;
   strong?: boolean;
-}): React.ReactElement {
+}): BrandRenderingReactElement {
   return (
     <View style={styles.receiptRow}>
       <Text
@@ -477,9 +482,9 @@ function StateCard({
   children,
   palette,
 }: {
-  children: React.ReactNode;
+  children: BrandRenderingReactNode;
   palette: ThemePalette;
-}): React.ReactElement {
+}): BrandRenderingReactElement {
   return (
     <View style={[styles.hero, { backgroundColor: palette.card }]}>
       {children}
@@ -497,7 +502,7 @@ function Action({
   palette: ThemePalette;
   onPress: () => void;
   disabled?: boolean;
-}): React.ReactElement {
+}): BrandRenderingReactElement {
   return (
     <Pressable
       accessibilityRole="button"

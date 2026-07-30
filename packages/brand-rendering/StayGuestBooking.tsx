@@ -1,4 +1,3 @@
-import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -27,6 +26,12 @@ import {
   type StayQuote,
 } from "./stayGuest";
 import { formatStayMoney } from "./stayGuestMoney";
+import {
+  BrandRenderingReact as React,
+  useBrandRenderingMemo as useMemo,
+  useBrandRenderingState as useState,
+  type BrandRenderingReactElement,
+} from "./PublicVenueTabs";
 
 type Surface = ReturnType<typeof offeringSurfaceStyles>;
 
@@ -81,7 +86,7 @@ export function StayGuestBooking({
   onConfirmQuote,
   onEditQuote,
   onAnalytics,
-}: StayGuestBookingProps): React.ReactElement {
+}: StayGuestBookingProps): BrandRenderingReactElement {
   const [activeKind, setActiveKind] = useState<"room" | "place">("room");
   const [checkIn, setCheckIn] = useState(isoDateFromOffset(1));
   const [checkOut, setCheckOut] = useState(isoDateFromOffset(2));
@@ -164,7 +169,8 @@ export function StayGuestBooking({
   ]);
 
   const selectionCount = lines.reduce(
-    (sum, line) => sum + (line.kind === "room" ? line.quantity : 1),
+    (sum: number, line: StayGuestCartLineInput) =>
+      sum + (line.kind === "room" ? line.quantity : 1),
     0,
   );
   const mode = detail === null ? "instant" : stayCheckoutMode(detail, lines);
@@ -436,7 +442,7 @@ export function StayGuestBooking({
             quantity={roomQuantities[offering.id] ?? 0}
             selectedWindowIds={placeSelections[offering.id] ?? []}
             onQuantityChange={(quantity) => {
-              setRoomQuantities((current) => ({
+              setRoomQuantities((current: Record<string, number>) => ({
                 ...current,
                 [offering.id]: quantity,
               }));
@@ -449,10 +455,12 @@ export function StayGuestBooking({
             onWindowSelect={(windowId) => {
               const selected =
                 (placeSelections[offering.id] ?? []).includes(windowId);
-              setPlaceSelections((current) => ({
+              setPlaceSelections((current: Record<string, string[]>) => ({
                 ...current,
                 [offering.id]: selected
-                  ? (current[offering.id] ?? []).filter((id) => id !== windowId)
+                  ? (current[offering.id] ?? []).filter(
+                      (id: string) => id !== windowId,
+                    )
                   : [...(current[offering.id] ?? []), windowId],
               }));
               onAnalytics?.("stay_cart_changed", {
@@ -534,7 +542,7 @@ function MoneyRow({
   amount: string;
   currency: string;
   palette: ThemePalette;
-}): React.ReactElement {
+}): BrandRenderingReactElement {
   return (
     <View style={styles.moneyRow}>
       <Text style={[styles.body, { color: palette.secondaryText }]}>{label}</Text>
@@ -563,7 +571,7 @@ function OfferingCard({
   onQuantityChange: (quantity: number) => void;
   onWindowSelect: (windowId: string) => void;
   onViewed: () => void;
-}): React.ReactElement {
+}): BrandRenderingReactElement {
   const cover = offering.media.find((media) => media.isCover) ?? offering.media[0];
   const gallery = offering.media.filter((media) => media.url !== cover?.url);
   return (
@@ -746,7 +754,7 @@ function Counter({
   maximum: number;
   palette: ThemePalette;
   onChange: (value: number) => void;
-}): React.ReactElement {
+}): BrandRenderingReactElement {
   return (
     <View style={styles.counter}>
       <Text style={[styles.fieldLabel, { color: palette.tertiaryText }]}>
@@ -798,7 +806,7 @@ function Field({
   onChange: (value: string) => void;
   palette: ThemePalette;
   placeholder?: string;
-}): React.ReactElement {
+}): BrandRenderingReactElement {
   return (
     <View style={styles.field}>
       <Text style={[styles.fieldLabel, { color: palette.tertiaryText }]}>
@@ -834,7 +842,7 @@ function ActionButton({
   palette: ThemePalette;
   onPress: () => void;
   disabled?: boolean;
-}): React.ReactElement {
+}): BrandRenderingReactElement {
   return (
     <Pressable
       accessibilityRole="button"
