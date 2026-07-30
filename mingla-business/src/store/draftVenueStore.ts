@@ -253,6 +253,9 @@ const sameHours = (a: BrandHourEntry[], b: BrandHourEntry[]): boolean => {
   return key(a) === key(b);
 };
 
+const sameTierSet = (a: string[], b: string[]): boolean =>
+  a.length === b.length && [...a].sort().join(",") === [...b].sort().join(",");
+
 const textProvenance = (
   current: string,
   adopted: string | null,
@@ -312,8 +315,17 @@ export const provenanceFor = (
       return textProvenance(d.website, a.website);
     case "price": {
       const hasSourceMoney = (d.discoveryPriceMinInput ?? "").trim().length > 0;
-      if (!hasSourceMoney) return null;
-      return a.priceTiers.length > 0 ? "edited" : "new";
+      if (hasSourceMoney) {
+        return a.priceTiers.length > 0 ? "edited" : "new";
+      }
+      // Pre-#1384 claim drafts can still carry the legacy tier selection.
+      // Preserve their review/provenance behavior until the operator replaces
+      // the tier with an exact source-money range.
+      if (a.priceTiers.length === 0) {
+        return d.priceTiers.length > 0 ? "new" : null;
+      }
+      if (d.priceTiers.length === 0) return null;
+      return sameTierSet(d.priceTiers, a.priceTiers) ? "adopted" : "edited";
     }
     default: {
       const exhaustive: never = field;

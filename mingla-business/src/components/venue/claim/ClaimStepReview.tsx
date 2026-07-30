@@ -177,15 +177,21 @@ export function buildClaimReviewRows(
       stepId: "c6",
     });
   }
-  if ((d.discoveryPriceMinInput ?? "").trim().length > 0) {
+  const discoveryPriceMinInput = (d.discoveryPriceMinInput ?? "").trim();
+  const discoveryPriceMaxInput = (d.discoveryPriceMaxInput ?? "").trim();
+  if (discoveryPriceMinInput.length > 0 || d.priceTiers.length > 0) {
     push({
       key: "price",
       label: "Price range",
-      value: `${(d.discoveryPriceMinInput ?? "").trim()}${
-        (d.discoveryPriceMaxInput ?? "").trim().length > 0
-          ? `–${(d.discoveryPriceMaxInput ?? "").trim()}`
-          : "+"
-      }${currencyCode ? ` ${currencyCode}` : ""}`,
+      value: discoveryPriceMinInput.length > 0
+        ? `${discoveryPriceMinInput}${
+          discoveryPriceMaxInput.length > 0
+            ? `–${discoveryPriceMaxInput}`
+            : "+"
+        }${currencyCode ? ` ${currencyCode}` : ""}`
+        : d.priceTiers
+          .map((tier) => tier.charAt(0).toUpperCase() + tier.slice(1))
+          .join(" · "),
       group: groupFromProvenance(provenanceFor("price", d), null),
       stepId: "c7",
     });

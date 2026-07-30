@@ -132,6 +132,7 @@ export const ClaimStepPrice: React.FC<ClaimStepPriceProps> = ({
         </Text>
         <Pressable
           accessibilityRole="button"
+          accessibilityLabel="Retry loading brand currency"
           onPress={() => void stateQuery.refetch()}
           style={styles.retry}
         >
@@ -289,6 +290,7 @@ export const ClaimStepPrice: React.FC<ClaimStepPriceProps> = ({
           <View style={styles.actionGroup}>
             <Pressable
               accessibilityRole="button"
+              accessibilityLabel="Review converted price ranges"
               disabled={busy}
               onPress={() => void reviewConversion()}
               style={styles.primaryAction}
@@ -300,6 +302,7 @@ export const ClaimStepPrice: React.FC<ClaimStepPriceProps> = ({
             </Pressable>
             <Pressable
               accessibilityRole="button"
+              accessibilityLabel="Re-enter price ranges"
               disabled={busy || reconciliationRanges.isLoading}
               onPress={() => {
                 setActionError(null);
@@ -348,6 +351,7 @@ export const ClaimStepPrice: React.FC<ClaimStepPriceProps> = ({
             })}
             <Pressable
               accessibilityRole="button"
+              accessibilityLabel="Apply converted price ranges"
               disabled={busy}
               onPress={() => void applyConversion()}
               style={styles.primaryAction}
@@ -411,6 +415,7 @@ export const ClaimStepPrice: React.FC<ClaimStepPriceProps> = ({
             })}
             <Pressable
               accessibilityRole="button"
+              accessibilityLabel="Save all re-entered price ranges"
               accessibilityState={{ disabled: !canSubmitReentry || busy }}
               disabled={!canSubmitReentry || busy}
               onPress={() => void applyReentry()}
