@@ -1,0 +1,95 @@
+name: Issue #1403 Listing Insights
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  issue-1403-listing-insights:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Prepare typecheck comparison evidence
+        run: |
+          mkdir -p "$RUNNER_TEMP/issue1403-typecheck"
+          printf '%s\n' \
+            'Typecheck comparison did not complete; inspect the preceding failed step.' \
+            > "$RUNNER_TEMP/issue1403-typecheck/INCOMPLETE.txt"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      - name: Install render-only test dependencies
+        run: npm install --no-save react-test-renderer@19.1.0
+      - name: Pure contracts
+        run: >-
+          npm test -- --runInBand
+          listingInsightsService.issue1403
+          reservationMetricsService.issue1403
+          useListingInsights.issue1403
+          useVenueReservationMetrics.issue1403
+          businessAnalyticsEvents.issue1403
+      - name: Native render contracts
+        run: npx jest --config jest.issue1403.render.cjs --runInBand
+      - name: Web render contracts
+        run: npx jest --config jest.issue1403.web.render.cjs --runInBand
+      - name: Listing and venue wiring gate self-test
+        run: node ../.github/scripts/strict-grep/issue-1403-listing-insights-wiring.mjs --self-test
+      - name: Listing and venue wiring gate
+        run: node ../.github/scripts/strict-grep/issue-1403-listing-insights-wiring.mjs
+      - name: Auth-ready query gate self-test
+        run: node ../.github/scripts/strict-grep/orch-1004-auth-scoped-query-readiness.mjs --self-test
+      - name: Auth-ready query gate
+        run: node ../.github/scripts/strict-grep/orch-1004-auth-scoped-query-readiness.mjs
+      - name: Source-pin partition audit
+        run: node scripts/ci/select-source-text-pins.mjs --check
+      - name: Quarantine policy audit
+        run: node ../.github/scripts/strict-grep/orch-1047-quarantine-list-is-source-pins-only.mjs
+      - name: Manifest totality/parity
+        run: node ../.github/scripts/strict-grep/meta-1383-manifest-parity.mjs
+      - name: Manifest ratchet frontier
+        run: node --test ../.github/scripts/strict-grep/__tests__/orch-1400-ratchet-frontier.adversarial.test.mjs
+      - name: Typecheck comparator self-test
+        run: node scripts/ci/issue-1403-typecheck-delta.mjs --self-test
+      - name: Typecheck full graph against exact PR base
+        env:
+          ISSUE_1403_BASE_REF: ${{ github.event.pull_request.base.sha || 'origin/main' }}
+        run: >-
+          node scripts/ci/issue-1403-typecheck-delta.mjs
+          --base "$ISSUE_1403_BASE_REF"
+          --output-dir "$RUNNER_TEMP/issue1403-typecheck"
+      - name: Upload typecheck comparison evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue-1403-typecheck-comparison
+          path: ${{ runner.temp }}/issue1403-typecheck
+          if-no-files-found: error
+      - name: Scoped issue lint
+        run: |
+          npx eslint \
+            app/insights/'[id].tsx' \
+            app/event/'[id]'/index.tsx \
+            app/trip/'[id]'/index.tsx \
+            app/experience/'[id]'/index.tsx \
+            app/rsvp/'[id]'/index.tsx \
+            src/components/analytics/ListingInsightsScreen.tsx \
+            src/components/venue/VenueReservationsCard.tsx \
+            src/components/venue/VenueIntelligenceModule.tsx \
+            src/services/listingInsightsService.ts \
+            src/services/reservationMetricsService.ts \
+            src/hooks/useListingInsights.ts \
+            src/hooks/useVenueReservationMetrics.ts \
+            src/analytics/businessAnalyticsEvents.ts
+      - name: Full Business Jest
+        run: npx jest --runInBand
+      - name: Expo web export
+        run: npx expo export -p web --output-dir /tmp/issue-1403-web

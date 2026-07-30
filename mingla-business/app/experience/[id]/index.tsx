@@ -55,11 +55,16 @@ import {
   OfferingManageSheet,
   buildOfferingManageActions,
 } from "../../../src/components/offering/OfferingManageSheet";
-import { buildOfferingDashboardTiles } from "../../../src/components/offering/offeringDashboardTiles";
+import {
+  buildOfferingDashboardTiles,
+  withListingInsights,
+} from "../../../src/components/offering/offeringDashboardTiles";
 import { ExperienceStopsGalleryTile } from "../../../src/components/offering/ExperienceStopsGalleryTile";
 import { useExperienceDetail } from "../../../src/hooks/useExperienceDetail";
 import { useCancelBusinessEvent } from "../../../src/hooks/useBusinessEvents";
 import { useEventOrders } from "../../../src/hooks/useEventOrders";
+import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
+import { isScannerOnlyRank } from "../../../src/utils/navTabGate";
 import { summarizeEventMoney } from "../../../src/utils/moneySummary";
 import { offeringActivityFromOrders } from "../../../src/utils/offeringActivityFromOrders";
 import { formatExperienceDateSubline } from "../../../src/utils/experienceDateSubline";
@@ -134,6 +139,7 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
   }>({ visible: false, kind: "info", message: "" });
 
   const experience = detailQuery.data ?? null;
+  const currentBrandRole = useCurrentBrandRole(experience?.brandId ?? null);
 
   const subline = useMemo(() => {
     if (experience === null) return "";
@@ -188,7 +194,10 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
         0,
       );
   }, [allOrders, experience]);
-  const tiles = useMemo(() => buildOfferingDashboardTiles("experience"), []);
+  const tiles = useMemo(
+    () => withListingInsights(buildOfferingDashboardTiles("experience")),
+    [],
+  );
 
   if (typeof eventId !== "string" || eventId.length === 0) {
     return (
@@ -339,12 +348,23 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
             }
           />
           {tiles.map((tile) => {
+            if (
+              tile.key === "insights" &&
+              isScannerOnlyRank(currentBrandRole.rank)
+            ) {
+              return null;
+            }
             if (tile.requiresPublicPage && !hasPublicPage) return null;
             return (
               <ActionTile
                 key={tile.key}
                 icon={tile.icon}
                 label={tile.label}
+                accessibilityLabel={
+                  tile.key === "insights"
+                    ? `Open Insights for ${experience.title}`
+                    : tile.accessibilityLabel
+                }
                 sub={
                   tile.key === "orders"
                     ? `${soldCount} sold`

@@ -57,6 +57,8 @@ import { ActionTile } from "../../../src/components/event/ActionTile";
 import { EventDetailHeroStatusPill } from "../../../src/components/event/EventDetailHeroStatusPill";
 import { useManagedEventRoute } from "../../../src/hooks/useManagedEventRoute";
 import { useBusinessEventsForBrand } from "../../../src/hooks/useBusinessEvents";
+import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
+import { isScannerOnlyRank } from "../../../src/utils/navTabGate";
 
 // ----- Status derivation (mirrors event/[id]/index.tsx) ---------------
 type EventStatus = "live" | "upcoming" | "past";
@@ -90,6 +92,7 @@ export default function RsvpDetailScreen(): React.ReactElement {
   const resolvedLiveEvent = routeEvent.event;
   const draftEvent = useDraftById(id);
   const brand = routeEvent.brand;
+  const currentBrandRole = useCurrentBrandRole(brand?.id ?? null);
 
   // ----- Going-count source (SPEC F-2) -------------------------------
   // useManagedEventRoute → fetchBusinessEventById returns rsvpGoingCount: 0,
@@ -341,6 +344,17 @@ export default function RsvpDetailScreen(): React.ReactElement {
             sub={guestsSub}
             onPress={handleGuests}
           />
+          {!isScannerOnlyRank(currentBrandRole.rank) ? (
+            <ActionTile
+              icon="chart"
+              label="Insights"
+              sub="Customers Mingla drove"
+              accessibilityLabel={`Open Insights for ${event.name}`}
+              onPress={() =>
+                router.push(`/insights/${event.id}?entry=detail_action` as never)
+              }
+            />
+          ) : null}
           <ActionTile icon="edit" label="Edit" onPress={handleEdit} />
           {/* ORCH-1150 (D-8) — Group chat + Blasts are comms (not money):
               re-added after D-4 dropped them. They reuse the event-scoped

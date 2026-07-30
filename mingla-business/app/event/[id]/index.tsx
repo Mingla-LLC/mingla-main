@@ -80,6 +80,7 @@ import {
 } from "../../../src/hooks/useBusinessEvents";
 import { useEventOrders } from "../../../src/hooks/useEventOrders";
 import { canPerformAction } from "../../../src/utils/permissionGates";
+import { isScannerOnlyRank } from "../../../src/utils/navTabGate";
 
 const CANCEL_PROCESSING_MS = 1200;
 const cancelSleep = (ms: number): Promise<void> =>
@@ -733,6 +734,17 @@ export default function EventDetailScreen(): React.ReactElement {
             sub={`${totalGuestCount} ${totalGuestCount === 1 ? "guest" : "guests"}`}
             onPress={handleGuests}
           />
+          {!isScannerOnlyRank(currentRank) ? (
+            <ActionTile
+              icon="chart"
+              label="Insights"
+              sub="Customers Mingla drove"
+              accessibilityLabel={`Open Insights for ${event.name}`}
+              onPress={() =>
+                router.push(`/insights/${event.id}?entry=detail_action` as never)
+              }
+            />
+          ) : null}
           {/* ORCH-0815-A2-ui (DEC-149) — event-context Marketing entry.
               Renamed "Buyers" → "Blasts" + icon `users` → `send` for
               consistency with the bottom-nav Blast tab. */}
