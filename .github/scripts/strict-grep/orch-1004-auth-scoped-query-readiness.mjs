@@ -132,6 +132,10 @@ const AUTH_SCOPED_HOOK_FILES = [
   // #865 — brand's own ad-conversion rollup, auth.uid()-scoped RPC
   // (brand_conversion_rollup self-authorizes via biz_is_brand_member_for_read_for_caller).
   "useBrandConversionRollup.ts",
+  // #1384 — both reads are brand-team/auth.uid()-scoped. A pre-auth request
+  // would cache an RLS-empty success and hide the canonical currency/range.
+  "useBrandDiscoveryCurrency.ts",
+  "usePlaceDiscoveryPriceRange.ts",
 ];
 
 // ── Public / dual-use hooks. These MUST NOT be gated — buyer-web anon reads

@@ -4,6 +4,13 @@
 
 BEGIN;
 
+-- The canonical admin gate predates hardened empty-search-path callers and
+-- its body references admin_users without schema qualification. Pin its own
+-- trusted lookup path so every #1384 SECURITY DEFINER RPC can keep
+-- `search_path = ''` while still using the one constitutional admin gate.
+ALTER FUNCTION public.is_admin_user()
+  SET search_path TO pg_catalog, public;
+
 CREATE TABLE public.supported_brand_currencies (
   code character(3) PRIMARY KEY,
   minor_unit_exponent smallint NOT NULL
@@ -1230,9 +1237,12 @@ GRANT EXECUTE ON FUNCTION public.issue_1384_save_discovery_price_range(
   uuid, uuid, uuid, bigint, bigint, character, bigint, text, uuid
 ) TO authenticated, service_role;
 
--- One Admin statement owns legacy place fields, AI categories, and canonical
+-- One Admin statement owns legitimate legacy place fields and canonical
 -- discovery money. CAS is checked before any mutation; every exception rolls
 -- the whole statement back, eliminating the former partial-commit sequence.
+-- p_ai_categories stays in the RPC contract for deployed-client compatibility
+-- but is deliberately inert: I-CATEGORY-DERIVED-ON-DROP forbids recreating or
+-- writing that removed place_pool interpretation column.
 CREATE OR REPLACE FUNCTION public.issue_1384_admin_update_place_and_discovery_range(
   p_place_pool_id uuid,
   p_name text,
@@ -1290,15 +1300,6 @@ BEGIN
     p_is_active,
     p_price_tiers
   ) INTO v_place_result;
-
-  UPDATE public.place_pool
-  SET ai_categories = CASE
-        WHEN COALESCE(pg_catalog.cardinality(p_ai_categories), 0) = 0
-        THEN NULL
-        ELSE p_ai_categories
-      END,
-      updated_at = now()
-  WHERE id = p_place_pool_id;
 
   IF v_existing.place_pool_id IS NOT NULL
      AND v_existing.status = 'active' THEN

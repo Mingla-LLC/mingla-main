@@ -165,7 +165,8 @@ export function venueStepError(
     case "s7":
       if (d.discoveryPriceMinInput === undefined) {
         // [TRANSITIONAL] pre-#1384 test/persisted draft compatibility. Live
-        // drafts are normalized to an explicit empty source-money input.
+        // drafts are normalized to an explicit empty source-money input. EXIT
+        // when all pre-#1384 persisted venue drafts have expired.
         return d.priceTiers.length === 0 ? "Add a typical spend." : null;
       }
       if (d.discoveryPriceMinInput.trim().length === 0) {

@@ -39,6 +39,10 @@ import { CATEGORY_LABELS, CATEGORY_COLORS, ALL_CATEGORIES } from "../constants/c
 import { SeedTab } from "../components/seeding/SeedTab";
 import { RefreshTab } from "../components/seeding/RefreshTab";
 import { HARD_CAP_USD, formatCost, TILE_RADIUS_OPTIONS } from "../lib/seedingFormat";
+import {
+  adminDiscoveryRangeErrorMessage,
+  buildAdminDiscoveryRangeUpdate,
+} from "../lib/deckCardPreviewRules";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -422,55 +426,35 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
   };
 
   const handleSave = async () => {
-    const range = place.place_discovery_price_ranges;
-    const reason = editForm.discovery_edit_reason.trim();
-    if (reason.length < 3) {
+    // buildAdminDiscoveryRangeUpdate owns p_expected_version and p_actor_reason
+    // so the page cannot split the reason/CAS contract across multiple writes.
+    const update = buildAdminDiscoveryRangeUpdate({
+      place,
+      editForm,
+      requestId: crypto.randomUUID(),
+    });
+    if (!update.ok) {
       addToast({
         variant: "error",
-        title: "Reason required",
-        description: "Enter a human-readable audit reason before saving.",
+        title: update.code === "admin_reason_required"
+          ? "Reason required"
+          : "Invalid discovery range",
+        description: update.message,
       });
       return;
-    }
-    let minMinor = null;
-    let maxMinor = null;
-    if (range?.status === "active") {
-      minMinor = Number(editForm.discovery_min_minor);
-      maxMinor = editForm.discovery_max_minor.trim() === ""
-        ? null
-        : Number(editForm.discovery_max_minor);
-      if (
-        !Number.isSafeInteger(minMinor) || minMinor < 0 ||
-        (maxMinor !== null && (!Number.isSafeInteger(maxMinor) || maxMinor < minMinor))
-      ) {
-        addToast({
-          variant: "error",
-          title: "Invalid discovery range",
-          description: "Use non-negative integer minor units; max must be at least min.",
-        });
-        return;
-      }
     }
 
     setSaving(true);
     const { error: saveError } = await supabase.rpc(
       "issue_1384_admin_update_place_and_discovery_range",
-      {
-        p_place_pool_id: place.id,
-        p_name: editForm.name || null,
-        p_price_tier: editForm.price_tiers?.[0] || null,
-        p_price_tiers: editForm.price_tiers || [],
-        p_is_active: editForm.is_active,
-        p_ai_categories: editForm.ai_categories || [],
-        p_source_min_minor: minMinor,
-        p_source_max_minor: maxMinor,
-        p_expected_version: range?.status === "active" ? range.version : null,
-        p_actor_reason: reason,
-        p_request_id: crypto.randomUUID(),
-      },
+      update.params,
     );
     if (saveError) {
-      addToast({ variant: "error", title: "Save failed", description: saveError.message });
+      addToast({
+        variant: "error",
+        title: "Save failed",
+        description: adminDiscoveryRangeErrorMessage(saveError),
+      });
       setSaving(false);
       return;
     }

@@ -25,9 +25,24 @@ function requestId(req: Request): string {
   return req.headers.get("x-request-id") ?? crypto.randomUUID();
 }
 
+type FxRpcClient = {
+  rpc: (
+    name: string,
+    params?: Record<string, unknown>,
+  ) => Promise<{ data: unknown; error: { message?: string } | null }>;
+};
+
+export type RefreshFxDependencies = {
+  createRpcClient?: (
+    url: string,
+    serviceRoleKey: string,
+  ) => FxRpcClient;
+};
+
 export async function handleRefreshFxRates(
   req: Request,
   fetchImpl: typeof fetch = fetch,
+  dependencies: RefreshFxDependencies = {},
 ): Promise<Response> {
   const id = requestId(req);
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -57,9 +72,10 @@ export async function handleRefreshFxRates(
     });
   }
 
-  const admin = createClient(supabaseUrl, serviceRoleKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
+  const admin = dependencies.createRpcClient?.(supabaseUrl, serviceRoleKey) ??
+    createClient(supabaseUrl, serviceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    }) as unknown as FxRpcClient;
   const { data: supported, error: supportedError } = await admin.rpc(
     "issue_1384_supported_currencies",
   );

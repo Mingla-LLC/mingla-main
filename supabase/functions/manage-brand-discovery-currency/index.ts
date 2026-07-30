@@ -32,6 +32,22 @@ type RequestBody = {
   reason?: string;
 };
 
+type RpcError = { message?: string; code?: string };
+type CurrencyRpcClient = {
+  rpc: (
+    name: string,
+    params: Record<string, unknown>,
+  ) => Promise<{ data: unknown; error: RpcError | null }>;
+};
+
+export type ManageBrandCurrencyDependencies = {
+  createRpcClient?: (
+    url: string,
+    anonKey: string,
+    authHeader: string,
+  ) => CurrencyRpcClient;
+};
+
 function json(status: number, body: Record<string, unknown>): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -105,7 +121,10 @@ function mapRpcError(
   });
 }
 
-export async function handleManageBrandCurrency(req: Request): Promise<Response> {
+export async function handleManageBrandCurrency(
+  req: Request,
+  dependencies: ManageBrandCurrencyDependencies = {},
+): Promise<Response> {
   const requestId = req.headers.get("x-request-id") ?? crypto.randomUUID();
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") {
@@ -151,10 +170,11 @@ export async function handleManageBrandCurrency(req: Request): Promise<Response>
       requestId,
     });
   }
-  const client = createClient(url, anonKey, {
-    global: { headers: { Authorization: auth } },
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
+  const client = dependencies.createRpcClient?.(url, anonKey, auth) ??
+    createClient(url, anonKey, {
+      global: { headers: { Authorization: auth } },
+      auth: { autoRefreshToken: false, persistSession: false },
+    }) as unknown as CurrencyRpcClient;
 
   let rpcName = "";
   let params: Record<string, unknown> = {};

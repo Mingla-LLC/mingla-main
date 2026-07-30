@@ -50,6 +50,69 @@ export function canonicalVenuePriceLabel(placeData) {
     : `${format(min)}–${format(max)}`;
 }
 
+export function buildAdminDiscoveryRangeUpdate({
+  place,
+  editForm,
+  requestId,
+}) {
+  const range = place?.place_discovery_price_ranges ?? null;
+  const reason = String(editForm?.discovery_edit_reason ?? "").trim();
+  if (reason.length < 3) {
+    return {
+      ok: false,
+      code: "admin_reason_required",
+      message: "Enter a human-readable audit reason before saving.",
+    };
+  }
+  let minMinor = null;
+  let maxMinor = null;
+  if (range?.status === "active") {
+    minMinor = Number(editForm.discovery_min_minor);
+    maxMinor = String(editForm.discovery_max_minor ?? "").trim() === ""
+      ? null
+      : Number(editForm.discovery_max_minor);
+    if (
+      !Number.isSafeInteger(minMinor) ||
+      minMinor < 0 ||
+      (maxMinor !== null &&
+        (!Number.isSafeInteger(maxMinor) || maxMinor < minMinor))
+    ) {
+      return {
+        ok: false,
+        code: "invalid_range",
+        message: "Use non-negative integer minor units; max must be at least min.",
+      };
+    }
+  }
+  return {
+    ok: true,
+    params: {
+      p_place_pool_id: place.id,
+      p_name: editForm.name || null,
+      p_price_tier: editForm.price_tiers?.[0] || null,
+      p_price_tiers: editForm.price_tiers || [],
+      p_is_active: editForm.is_active,
+      p_ai_categories: editForm.ai_categories || [],
+      p_source_min_minor: minMinor,
+      p_source_max_minor: maxMinor,
+      p_expected_version: range?.status === "active" ? range.version : null,
+      p_actor_reason: reason,
+      p_request_id: requestId,
+    },
+  };
+}
+
+export function adminDiscoveryRangeErrorMessage(error) {
+  const raw = String(error?.message ?? "");
+  if (raw.includes("range_version_conflict")) {
+    return "This price range changed. Reload the place and review the latest revision.";
+  }
+  if (raw.includes("admin_reason_required")) {
+    return "Enter a human-readable audit reason before saving.";
+  }
+  return raw || "The place could not be updated.";
+}
+
 /** Exact native rule: show rating only when it is a positive number. */
 export function showRating(rating) {
   return typeof rating === "number" && rating > 0;

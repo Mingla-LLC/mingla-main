@@ -6,6 +6,7 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 
+import { useAuth } from "../context/AuthContext";
 import {
   getBrandDiscoveryCurrencyState,
   setBrandProvisionalCurrency,
@@ -28,10 +29,12 @@ export const brandDiscoveryCurrencyKeys = {
 export function useBrandDiscoveryCurrency(
   brandId: string | null,
 ): UseQueryResult<BrandDiscoveryCurrencyState, Error> {
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady && brandId !== null;
   return useQuery({
     queryKey: brandDiscoveryCurrencyKeys.detail(brandId ?? ""),
     queryFn: () => getBrandDiscoveryCurrencyState(brandId ?? ""),
-    enabled: brandId !== null,
+    enabled,
     staleTime: 0,
     refetchOnWindowFocus: true,
   });

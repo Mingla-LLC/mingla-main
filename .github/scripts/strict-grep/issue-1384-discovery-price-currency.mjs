@@ -5,79 +5,309 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
-const required = {
-  migration: [
-    "CREATE TABLE public.place_discovery_price_ranges",
-    "CREATE TABLE public.fx_rate_snapshots",
-    "CREATE OR REPLACE FUNCTION public.issue_1384_query_servable_places_by_signal",
-    "p_price_filter_currency character(3) DEFAULT NULL",
-    "ORDER BY ps.score DESC, pp.review_count DESC NULLS LAST",
-    "LIMIT p_limit",
-    "CREATE OR REPLACE FUNCTION public.issue_1384_admin_update_place_and_discovery_range",
-    "admin_reason_required",
-    "WHEN default_currency IS NULL",
-    "THEN v_rec.to_currency_code",
-    "supported_brand_currencies c",
-    "public.pg_brand_can_collect",
-  ],
-  discover: [
-    "supportedCurrencyCodes",
-    "requestedDisplayCurrency && supportedCurrencyCodes.has",
-    "issue_1384_query_servable_places_by_signal",
-    "p_price_filter_min_minor: priceFilterMinMinor",
-    "p_fx_snapshot_id: fxSnapshotId",
-    "metadata: {",
-    "fxSnapshotId",
-    "FX_UNAVAILABLE",
-  ],
-  deck: [
-    "fxSnapshotId: string | null",
-    "data.metadata?.fxSnapshotId",
-    "displayCurrency: params.displayCurrency",
-    "fxSnapshotId: params.fxSnapshotId",
-  ],
-  context: [
-    "const [pinnedFxSnapshotId",
-    "activeDeck.fxSnapshotId",
-    "displayCurrency: explicitViewerCurrency",
-    "fxSnapshotId: pinnedFxSnapshotId",
-    "const prefetchKey = buildDeckQueryKey",
-    "queryKey: prefetchKey",
-    "queryClient.setQueryData(key, activeDeck.response)",
-  ],
-  carriers: [
-    "canonicalDiscoveryPriceFields(cardData)",
-    "...canonicalDiscoveryPriceFields(card)",
-    "\"sourceMinMinor\"",
-    "\"fxSnapshotId\"",
-  ],
-  renderers: [
-    "canonicalDiscoveryPriceDetail",
-    "Rates by ExchangeRate-API",
-    "discoveryPrice={card}",
-    "if (entry.experience?.cardType !== 'curated') return false",
-    "Keep their legacy display isolated from createEventFromCard above",
-  ],
-  admin: [
-    "issue_1384_admin_update_place_and_discovery_range",
-    "Audit reason (required)",
-    "source_type",
-    "updated_by",
-    "actor_id",
-    "p_expected_version",
-  ],
-  adminRenderer: [
-    "canonicalVenuePriceLabel",
-    "const price = canonicalVenuePriceLabel(placeData)",
-  ],
+const rules = {
+  migration: {
+    required: [
+      "ALTER FUNCTION public.is_admin_user()",
+      "SET search_path TO pg_catalog, public",
+      "CREATE TABLE public.place_discovery_price_ranges",
+      "CREATE TABLE public.fx_rate_snapshots",
+      "CREATE OR REPLACE FUNCTION public.issue_1384_query_servable_places_by_signal",
+      "p_price_filter_currency character(3) DEFAULT NULL",
+      "ORDER BY ps.score DESC, pp.review_count DESC NULLS LAST",
+      "LIMIT p_limit",
+      "CREATE OR REPLACE FUNCTION public.issue_1384_admin_update_place_and_discovery_range",
+      "admin_reason_required",
+      "WHEN default_currency IS NULL",
+      "THEN v_rec.to_currency_code",
+      "public.pg_brand_can_collect",
+    ],
+  },
+  discover: {
+    required: [
+      "supportedCurrencyCodes",
+      "requestedDisplayCurrency && supportedCurrencyCodes.has",
+      "issue_1384_query_servable_places_by_signal",
+      "p_price_filter_min_minor: priceFilterMinMinor",
+      "p_fx_snapshot_id: fxSnapshotId",
+      "fxSnapshotId",
+      "FX_UNAVAILABLE",
+    ],
+  },
+  deck: {
+    required: [
+      "fxSnapshotId: string | null",
+      "data.metadata?.fxSnapshotId",
+      "displayCurrency: params.displayCurrency",
+      "fxSnapshotId: params.fxSnapshotId",
+      "priceTier: undefined",
+    ],
+  },
+  recommendationType: {
+    required: ["sourceMinMinor?: number | null", "fxSnapshotId?: string | null"],
+  },
+  expandedType: {
+    required: ["Partial<CanonicalDiscoveryPrice>"],
+  },
+  priceHelper: {
+    required: [
+      "canonicalDiscoveryPriceFields",
+      "canonicalDiscoveryPriceDetail",
+      "https://www.exchangerate-api.com/",
+      "sourceMinMinor",
+      "fxSnapshotId",
+    ],
+  },
+  savedMapper: {
+    required: ["...canonicalDiscoveryPriceFields(c)"],
+  },
+  holidayMapper: {
+    required: ["...canonicalDiscoveryPriceFields(c)"],
+  },
+  holidayService: {
+    required: ["CanonicalDiscoveryPrice", "Partial<CanonicalDiscoveryPrice>"],
+  },
+  calendarService: {
+    required: [
+      "\"sourceMinMinor\"",
+      "\"fxSnapshotId\"",
+      "(card as any).cardType === 'curated'",
+    ],
+  },
+  pairedMap: {
+    required: ["...canonicalDiscoveryPriceFields(cardData)"],
+  },
+  collabSave: {
+    required: ["...canonicalDiscoveryPriceFields(card)"],
+  },
+  appState: {
+    required: ["...canonicalDiscoveryPriceFields(cardData)"],
+  },
+  savedTab: {
+    required: [
+      "...canonicalDiscoveryPriceFields(card)",
+      "priceTier: isCurated ? card.priceTier : undefined",
+    ],
+  },
+  calendarTab: {
+    required: [
+      "...canonicalDiscoveryPriceFields(",
+      "if (entry.experience?.cardType !== 'curated') return false",
+      "priceTier: isCurated ?",
+    ],
+  },
+  actionButtons: {
+    required: ["...canonicalDiscoveryPriceFields(card)"],
+  },
+  deckHook: {
+    required: ["fxSnapshotId: query.data?.fxSnapshotId ?? null"],
+  },
+  context: {
+    required: [
+      "const [pinnedFxSnapshotId",
+      "activeDeck.fxSnapshotId",
+      "displayCurrency: explicitViewerCurrency",
+      "fxSnapshotId: pinnedFxSnapshotId",
+      "const prefetchKey = buildDeckQueryKey",
+      "queryKey: prefetchKey",
+      "queryClient.setQueryData(key, activeDeck.response)",
+    ],
+  },
+  cardInfo: {
+    required: [
+      "canonicalDiscoveryPriceDetail(",
+      "discoveryPrice as CanonicalDiscoveryPrice | undefined",
+      "Rates by ExchangeRate-API",
+    ],
+    venueOnly: true,
+  },
+  share: {
+    required: [
+      "canonicalDiscoveryPriceDetail(experienceData)",
+      "Rates by ExchangeRate-API",
+    ],
+    venueOnly: true,
+  },
+  expandedModal: {
+    required: [
+      "discoveryPrice={card}",
+      "priceRange={canonicalDiscoveryPriceDetail(card)?.source}",
+    ],
+    scope: [
+      "/* Timeline Section (for Take a Stroll cards) */",
+      "{/* Action Buttons */}",
+    ],
+    exclusion:
+      "Curated stop/alternative and event/experience branches outside this named venue timeline scope retain their separate pricing domain.",
+  },
+  deviceCalendar: {
+    required: [
+      "canonicalDiscoveryPriceDetail(card)",
+      "Rates by ExchangeRate-API",
+      "Keep their legacy display isolated from createEventFromCard above",
+    ],
+    scope: [
+      "static createEventFromCard(",
+      "static createEventFromCuratedCard(",
+    ],
+    exclusion:
+      "createEventFromCuratedExperience is explicitly excluded: it owns curated itinerary estimates, not single-venue discovery money.",
+  },
+  personGrid: {
+    required: ["{priceRange ? (", "{priceRange}"],
+    venueOnly: true,
+  },
+  holidayView: {
+    required: [
+      "priceRange={c.priceRange ?? null}",
+      "holidayCardToExpandedCardData(c",
+    ],
+    venueOnly: true,
+  },
+  swipeable: {
+    required: [
+      "{nextCard.priceRange ? (",
+      "{currentRec.priceRange ? (",
+    ],
+    venueOnly: true,
+    forbid: [
+      "fabricated dollar/pound literal",
+      "device/client FX authority",
+      "rate-one fallback",
+      "tier threshold money",
+      "tier/Google ordinal venue money",
+    ],
+    exclusion:
+      "Brand experience and curated branches are explicitly excluded and may retain their separate event/itinerary currency arguments.",
+  },
+  board: {
+    required: ["{cardData.priceRange ? (", "{cardData.priceRange}"],
+    venueOnly: true,
+    forbid: [
+      "fabricated dollar/pound literal",
+      "hardcoded USD/GBP authority",
+      "rate-one fallback",
+      "tier threshold money",
+      "tier/Google ordinal venue money",
+    ],
+    exclusion:
+      "The earlier isCurated branch is explicitly excluded and retains curated itinerary estimates.",
+  },
+  admin: {
+    required: [
+      "issue_1384_admin_update_place_and_discovery_range",
+      "Audit reason (required)",
+      "source_type",
+      "updated_by",
+      "actor_id",
+    ],
+  },
+  adminRules: {
+    required: [
+      "canonicalVenuePriceLabel",
+      "buildAdminDiscoveryRangeUpdate",
+      "p_expected_version",
+      "p_actor_reason",
+    ],
+  },
+  adminPreview: {
+    required: [
+      "canonicalVenuePriceLabel",
+      "const price = canonicalVenuePriceLabel(placeData)",
+    ],
+    venueOnly: true,
+  },
+  buyerService: {
+    required: [
+      "place_discovery_range_for_viewer",
+      "source_min_minor",
+      "source_currency_code",
+    ],
+  },
+  buyerPage: {
+    required: ["formatSourceRange({", "discoveryPrice.minMinor"],
+    venueOnly: true,
+  },
+  buyerRoute: {
+    required: [
+      "usePublicVenueDiscoveryPrice(",
+      "discoveryPrice={discoveryPriceQuery.data ?? null}",
+    ],
+  },
+  businessCurrency: {
+    required: [
+      "parseMajorToMinor",
+      "formatSourceRange",
+      "minorUnitExponent",
+    ],
+  },
+  businessAuthoring: {
+    required: [
+      "saveDiscoveryPriceRange",
+      "sourceMinMinor",
+      "currencyCode",
+      "expectedVersion",
+    ],
+  },
 };
+
+const forbiddenVenueAuthority = [
+  {
+    label: "fabricated dollar/pound literal",
+    pattern: /(["'])(?:[$£]{1,4}|[^"'\n]*[$£]\s?\d[^"'\n]*)\1/,
+  },
+  {
+    label: "hardcoded USD/GBP authority",
+    pattern: /(?:currency|currencyCode|sourceCurrency|displayCurrency)\s*[:=]\s*(["'])(?:USD|GBP)\1/,
+  },
+  {
+    label: "device/client FX authority",
+    pattern: /(?:currencyService|getCurrencyRate|getRate\(|convertBetween\()/,
+  },
+  {
+    label: "rate-one fallback",
+    pattern: /\brate\b\s*(?:\|\||\?\?)\s*1(?:\.0)?\b/,
+  },
+  {
+    label: "tier threshold money",
+    pattern: /\b(?:min|max)\s*:\s*(?:0|50|150|300)\b/,
+  },
+  {
+    label: "tier/Google ordinal venue money",
+    pattern:
+      /(?:tierRangeLabel|formatTierLabel|googleLevelToTierSlug)\(\s*(?:card|cardData|currentRec|nextCard|entry|experience|discoveryPrice)\b/,
+  },
+];
+
+function scopedSource(name, source, rule, failures) {
+  if (!rule.scope) return source;
+  const [startToken, endToken] = rule.scope;
+  const start = source.indexOf(startToken);
+  const end = source.indexOf(endToken, start + startToken.length);
+  if (start < 0 || end < 0 || end <= start) {
+    failures.push(`${name}: venue scope markers missing`);
+    return "";
+  }
+  return source.slice(start, end);
+}
 
 export function violations(files) {
   const failures = [];
-  for (const [name, tokens] of Object.entries(required)) {
+  for (const [name, rule] of Object.entries(rules)) {
     const source = files[name] ?? "";
-    for (const token of tokens) {
+    for (const token of rule.required) {
       if (!source.includes(token)) failures.push(`${name}: missing ${token}`);
+    }
+    if (rule.venueOnly || rule.scope) {
+      const venueSource = scopedSource(name, source, rule, failures);
+      const applicable = rule.forbid ??
+        forbiddenVenueAuthority.map((forbidden) => forbidden.label);
+      for (const forbidden of forbiddenVenueAuthority) {
+        if (!applicable.includes(forbidden.label)) continue;
+        if (forbidden.pattern.test(venueSource)) {
+          failures.push(`${name}: ${forbidden.label} reintroduced`);
+        }
+      }
     }
   }
 
@@ -98,34 +328,59 @@ export function violations(files) {
   if (/queryKey:\s*\[\s*["']deck-cards["']/.test(prefetchBlock)) {
     failures.push("context: hand-built deck prefetch/cache key reintroduced");
   }
-  if (/googleLevelToTierSlug/.test(files.deviceCalendar ?? "")) {
-    failures.push("deviceCalendar: live venue Google-tier money fallback reintroduced");
-  }
-  if (/priceRange:\s*[^,;]+\|\|\s*['"]Free['"]/.test(files.carriers ?? "")) {
-    failures.push("carriers: absent canonical venue data must not become Free");
-  }
   return failures;
 }
 
 function selfTest() {
-  const valid = Object.fromEntries(
-    Object.entries(required).map(([name, tokens]) => [name, tokens.join("\n")]),
-  );
+  const valid = {};
+  for (const [name, rule] of Object.entries(rules)) {
+    const required = rule.required.join("\n");
+    valid[name] = rule.scope
+      ? `${rule.scope[0]}\n${required}\n${rule.scope[1]}`
+      : required;
+  }
   valid.admin = `const handleSave = async () => {\n${valid.admin}\n};\n// META-ORCH-1009 Sub-D`;
   valid.context = `const handleDeckCardProgress = () => {\n${valid.context}\n};\n// ── Sync deck cards`;
-  valid.deviceCalendar = "canonicalDiscoveryPriceDetail(card)";
-  if (violations(valid).length !== 0) {
-    throw new Error(`valid fixture rejected: ${violations(valid).join("; ")}`);
+  const baseline = violations(valid);
+  if (baseline.length !== 0) {
+    throw new Error(`valid fixture rejected: ${baseline.join("; ")}`);
   }
-  for (const [name, tokens] of Object.entries(required)) {
-    for (const token of tokens) {
-      const broken = { ...valid, [name]: valid[name].split(token).join("") };
-      if (!violations(broken).some((item) => item.includes(`missing ${token}`))) {
-        throw new Error(`controlled reversion was not caught: ${name}/${token}`);
+  for (const [name, rule] of Object.entries(rules)) {
+    for (const token of rule.required) {
+      const broken = {
+        ...valid,
+        [name]: valid[name].split(token).join(""),
+      };
+      if (!violations(broken).some((item) => item === `${name}: missing ${token}`)) {
+        throw new Error(`controlled reversion not caught: ${name}/${token}`);
       }
     }
   }
-  const reversions = [
+
+  const sourceReversions = [
+    {
+      key: "cardInfo",
+      value: `${valid.cardInfo}\nconst priceDetail = { source: "$$", approximate: null };`,
+      expected: "fabricated dollar/pound",
+    },
+    {
+      key: "deviceCalendar",
+      value: valid.deviceCalendar.replace(
+        "canonicalDiscoveryPriceDetail(card)",
+        "canonicalDiscoveryPriceDetail(card)\ngetCurrencyRate(card.currency)",
+      ),
+      expected: "device/client FX",
+    },
+    {
+      key: "share",
+      value: `${valid.share}\nconst rate = input.rate || 1;`,
+      expected: "rate-one",
+    },
+    {
+      key: "personGrid",
+      value: `${valid.personGrid}\nconst tier = { min: 50, max: 150 };`,
+      expected: "tier threshold",
+    },
     {
       key: "admin",
       value: valid.admin.replace(
@@ -142,68 +397,71 @@ function selfTest() {
       ),
       expected: "hand-built",
     },
-    {
-      key: "deviceCalendar",
-      value: "googleLevelToTierSlug(card.priceLevel)",
-      expected: "Google-tier",
-    },
   ];
-  for (const fixture of reversions) {
+  for (const fixture of sourceReversions) {
     const broken = { ...valid, [fixture.key]: fixture.value };
     if (!violations(broken).some((item) => item.includes(fixture.expected))) {
-      throw new Error(`controlled pattern reversion not caught: ${fixture.expected}`);
+      throw new Error(`source reversion not caught: ${fixture.expected}`);
     }
   }
-  console.log("issue-1384 self-test PASS");
+  console.log(
+    `issue-1384 self-test PASS (${sourceReversions.length} true-source reversions)`,
+  );
 }
 
 function read(relative) {
   return fs.readFileSync(path.join(root, relative), "utf8");
 }
 
+const paths = {
+  migration: "supabase/migrations/20270129001384_issue_1384_discovery_price_currency.sql",
+  discover: "supabase/functions/discover-cards/index.ts",
+  deck: "app-mobile/src/services/deckService.ts",
+  recommendationType: "app-mobile/src/types/recommendation.ts",
+  expandedType: "app-mobile/src/types/expandedCardTypes.ts",
+  priceHelper: "app-mobile/src/utils/priceTiers.ts",
+  savedMapper: "app-mobile/src/components/utils/savedCardToExpandedCardData.ts",
+  holidayMapper: "app-mobile/src/components/utils/holidayCardToExpandedCardData.ts",
+  holidayService: "app-mobile/src/services/holidayCardsService.ts",
+  calendarService: "app-mobile/src/services/calendarService.ts",
+  pairedMap: "app-mobile/src/hooks/usePairedMapSavedCards.ts",
+  collabSave: "app-mobile/src/components/helpers/collabSaveCard.ts",
+  appState: "app-mobile/src/components/AppStateManager.tsx",
+  savedTab: "app-mobile/src/components/activity/SavedTab.tsx",
+  calendarTab: "app-mobile/src/components/activity/CalendarTab.tsx",
+  actionButtons: "app-mobile/src/components/expandedCard/ActionButtons.tsx",
+  deckHook: "app-mobile/src/hooks/useDeckCards.ts",
+  context: "app-mobile/src/contexts/RecommendationsContext.tsx",
+  cardInfo: "app-mobile/src/components/expandedCard/CardInfoSection.tsx",
+  share: "app-mobile/src/components/ShareModal.tsx",
+  expandedModal: "app-mobile/src/components/ExpandedCardModal.tsx",
+  deviceCalendar: "app-mobile/src/services/deviceCalendarService.ts",
+  personGrid: "app-mobile/src/components/PersonGridCard.tsx",
+  holidayView: "app-mobile/src/components/PersonHolidayView.tsx",
+  swipeable: "app-mobile/src/components/SwipeableCards.tsx",
+  board: "app-mobile/src/components/board/SwipeableSessionCards.tsx",
+  admin: "mingla-admin/src/pages/PlacePoolManagementPage.jsx",
+  adminRules: "mingla-admin/src/lib/deckCardPreviewRules.js",
+  adminPreview: "mingla-admin/src/components/DeckCardPreview.jsx",
+  buyerService: "mingla-business/src/services/publicEventsService.ts",
+  buyerPage: "mingla-business/src/components/venue/PublicVenuePage.tsx",
+  buyerRoute: "mingla-business/app/b/[brandSlug]/v/[venueSlug].tsx",
+  businessCurrency: "mingla-business/src/utils/currencyFormatter.ts",
+  businessAuthoring: "mingla-business/src/services/businessPlaceAuthoringService.ts",
+};
+
 if (process.argv.includes("--self-test")) {
   selfTest();
 } else {
-  const files = {
-    migration: read("supabase/migrations/20270129001384_issue_1384_discovery_price_currency.sql"),
-    discover: read("supabase/functions/discover-cards/index.ts"),
-    deck: read("app-mobile/src/services/deckService.ts"),
-    context: read("app-mobile/src/contexts/RecommendationsContext.tsx"),
-    carriers: [
-      read("app-mobile/src/utils/priceTiers.ts"),
-      read("app-mobile/src/types/expandedCardTypes.ts"),
-      read("app-mobile/src/components/utils/savedCardToExpandedCardData.ts"),
-      read("app-mobile/src/components/utils/holidayCardToExpandedCardData.ts"),
-      read("app-mobile/src/services/holidayCardsService.ts"),
-      read("app-mobile/src/services/calendarService.ts"),
-      read("app-mobile/src/hooks/usePairedMapSavedCards.ts"),
-      read("app-mobile/src/components/helpers/collabSaveCard.ts"),
-      read("app-mobile/src/components/AppStateManager.tsx"),
-      read("app-mobile/src/components/activity/SavedTab.tsx"),
-      read("app-mobile/src/components/activity/CalendarTab.tsx"),
-      read("app-mobile/src/components/expandedCard/ActionButtons.tsx"),
-    ].join("\n"),
-    renderers: [
-      read("app-mobile/src/components/expandedCard/CardInfoSection.tsx"),
-      read("app-mobile/src/components/ShareModal.tsx"),
-      read("app-mobile/src/components/ExpandedCardModal.tsx"),
-      read("app-mobile/src/services/deviceCalendarService.ts"),
-      read("app-mobile/src/components/activity/CalendarTab.tsx"),
-    ].join("\n"),
-    deviceCalendar: read("app-mobile/src/services/deviceCalendarService.ts"),
-    admin: [
-      read("mingla-admin/src/pages/PlacePoolManagementPage.jsx"),
-      read("mingla-admin/src/services/adminClaimsService.js"),
-    ].join("\n"),
-    adminRenderer: [
-      read("mingla-admin/src/lib/deckCardPreviewRules.js"),
-      read("mingla-admin/src/components/DeckCardPreview.jsx"),
-    ].join("\n"),
-  };
+  const files = Object.fromEntries(
+    Object.entries(paths).map(([name, relative]) => [name, read(relative)]),
+  );
   const failures = violations(files);
   if (failures.length > 0) {
     console.error(failures.join("\n"));
     process.exit(1);
   }
-  console.log("issue-1384 discovery price currency gate PASS");
+  console.log(
+    `issue-1384 discovery price currency gate PASS (${Object.keys(paths).length} independently enforced files)`,
+  );
 }

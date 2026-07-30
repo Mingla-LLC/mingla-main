@@ -1,5 +1,6 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
+import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabase";
 
 export interface PlaceDiscoveryPriceRangeRow {
@@ -28,9 +29,11 @@ export const placeDiscoveryPriceRangeKeys = {
 export function usePlaceDiscoveryPriceRange(
   placePoolId: string | null,
 ): UseQueryResult<PlaceDiscoveryPriceRangeRow | null, Error> {
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady && placePoolId !== null;
   return useQuery({
     queryKey: placeDiscoveryPriceRangeKeys.detail(placePoolId ?? ""),
-    enabled: placePoolId !== null,
+    enabled,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("place_discovery_price_ranges")
