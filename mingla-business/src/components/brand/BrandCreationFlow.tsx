@@ -548,6 +548,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
 
   const handleSkipAddress = useCallback((): void => {
     advanceLocationRequestGeneration(addressRequestGenerationRef);
+    savedContextRef.current = { city: null, countryCode: null };
     setAddress("");
     committedAddrRef.current = "";
     setAddressSelectionState("editing");
@@ -814,6 +815,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
               selectedLabel={address}
               onChangeText={(t) => {
                 advanceLocationRequestGeneration(addressRequestGenerationRef);
+                savedContextRef.current = { city: null, countryCode: null };
                 committedAddrRef.current = t;
                 setAddress(t);
                 setAddrMeta({
@@ -849,6 +851,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
               }}
               onChangeSelected={() => {
                 advanceLocationRequestGeneration(addressRequestGenerationRef);
+                savedContextRef.current = { city: null, countryCode: null };
                 committedAddrRef.current = address;
                 setAddressSelectionState("editing");
                 setAddrMeta({
@@ -861,6 +864,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
               }}
               onClear={(): void => {
                 advanceLocationRequestGeneration(addressRequestGenerationRef);
+                savedContextRef.current = { city: null, countryCode: null };
                 committedAddrRef.current = "";
                 setAddressSelectionState("editing");
                 setAddress("");

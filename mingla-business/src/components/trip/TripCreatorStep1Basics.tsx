@@ -610,6 +610,10 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
               departureLng: null,
               departureCoordinatePrecision: (
                 advanceLocationRequestGeneration(departureRequestGenerationRef),
+                (departureContextRef.current = {
+                  city: null,
+                  countryCode: null,
+                }),
                 null
               ),
             })
@@ -636,6 +640,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           }}
           onChangeSelected={() => {
             advanceLocationRequestGeneration(departureRequestGenerationRef);
+            departureContextRef.current = { city: null, countryCode: null };
             committedDepartureRef.current = draft.departureLocationText ?? "";
             setDepartureSelectionState("editing");
             onChange({
@@ -647,6 +652,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           }}
           onClear={() => {
             advanceLocationRequestGeneration(departureRequestGenerationRef);
+            departureContextRef.current = { city: null, countryCode: null };
             committedDepartureRef.current = "";
             setDepartureSelectionState("editing");
             onChange({
@@ -680,6 +686,10 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
               destinationLng: null,
               destinationCoordinatePrecision: (
                 advanceLocationRequestGeneration(destinationRequestGenerationRef),
+                (destinationContextRef.current = {
+                  city: null,
+                  countryCode: null,
+                }),
                 null
               ),
             })
@@ -706,6 +716,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           }}
           onChangeSelected={() => {
             advanceLocationRequestGeneration(destinationRequestGenerationRef);
+            destinationContextRef.current = { city: null, countryCode: null };
             committedDestinationRef.current = draft.destinationLocationText ?? "";
             setDestinationSelectionState("editing");
             onChange({
@@ -717,6 +728,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           }}
           onClear={() => {
             advanceLocationRequestGeneration(destinationRequestGenerationRef);
+            destinationContextRef.current = { city: null, countryCode: null };
             committedDestinationRef.current = "";
             setDestinationSelectionState("editing");
             onChange({

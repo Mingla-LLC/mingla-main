@@ -1551,6 +1551,10 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                     advanceLocationRequestGeneration(
                       departureRequestGenerationRef,
                     );
+                    departureContextRef.current = {
+                      city: null,
+                      countryCode: null,
+                    };
                     committedDepartureRef.current = v;
                     updateBasics({
                       departureLocationText: v.trim().length === 0 ? null : v,
@@ -1584,6 +1588,10 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                     advanceLocationRequestGeneration(
                       departureRequestGenerationRef,
                     );
+                    departureContextRef.current = {
+                      city: null,
+                      countryCode: null,
+                    };
                     committedDepartureRef.current =
                       editState.departureLocationText ?? "";
                     setDepartureSelectionState("editing");
@@ -1598,6 +1606,10 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                     advanceLocationRequestGeneration(
                       departureRequestGenerationRef,
                     );
+                    departureContextRef.current = {
+                      city: null,
+                      countryCode: null,
+                    };
                     committedDepartureRef.current = "";
                     setDepartureSelectionState("editing");
                     updateBasics({
@@ -1634,6 +1646,10 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                     advanceLocationRequestGeneration(
                       destinationRequestGenerationRef,
                     );
+                    destinationContextRef.current = {
+                      city: null,
+                      countryCode: null,
+                    };
                     committedDestinationRef.current = v;
                     updateBasics({
                       destinationLocationText: v.trim().length === 0 ? null : v,
@@ -1667,6 +1683,10 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                     advanceLocationRequestGeneration(
                       destinationRequestGenerationRef,
                     );
+                    destinationContextRef.current = {
+                      city: null,
+                      countryCode: null,
+                    };
                     committedDestinationRef.current =
                       editState.destinationLocationText ?? "";
                     setDestinationSelectionState("editing");
@@ -1681,6 +1701,10 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                     advanceLocationRequestGeneration(
                       destinationRequestGenerationRef,
                     );
+                    destinationContextRef.current = {
+                      city: null,
+                      countryCode: null,
+                    };
                     committedDestinationRef.current = "";
                     setDestinationSelectionState("editing");
                     updateBasics({
