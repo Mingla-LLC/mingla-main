@@ -1,11 +1,11 @@
 -- ============================================================================
--- Issue #1363 — Three-tier address field (pick → free-text → pin-drop)
+-- Issue #1363 — selected address with approximate automatic coordinates
 -- SPEC §7.3 — coordinate-precision persistence (no fabricated precision, rule 9).
 --
 -- ADDITIVE + NULLABLE. Existing rows default NULL ("unknown") and render exactly
 -- as today (no backfill). Two persisted values only:
---   'exact'       — Tier-1 Mapbox pick OR Tier-3 pin (a point the brand set).
---   'approximate' — Tier-2 free-text forward-geocode (often city-level).
+--   'exact'       — legacy exact coordinates captured before this amendment.
+--   'approximate' — automatically resolved selected-address coordinates.
 --
 -- Tables touched (SPEC §7.3):
 --   * venue_listings      — written by biz_create_venue_listing (new param).
@@ -19,7 +19,7 @@
 --     CoordinatePrecision (JSON; no column) — nothing to add here.
 --
 -- The venue RPC's location_required guard is PRESERVED unchanged (satisfied with
--- a real coordinate from pick / forward-geocode / pin, never removed).
+-- a real coordinate from selected-address hierarchy resolution, never removed).
 -- ============================================================================
 
 -- ── 1. Additive nullable columns ───────────────────────────────────────────
@@ -36,8 +36,8 @@ ALTER TABLE public.experience_stops
   CHECK (coordinate_precision IN ('exact', 'approximate'));
 
 COMMENT ON COLUMN public.venue_listings.coordinate_precision IS
-  'Issue #1363: how the lat/lng was captured — ''exact'' (Mapbox pick / pin) or '
-  '''approximate'' (free-text forward-geocode). NULL = unknown (pre-1363 rows). '
+  'Issue #1363: how the lat/lng was captured — legacy ''exact'' or '
+  '''approximate'' selected-address hierarchy resolution. NULL = unknown. '
   'Drives honest map zoom + "Approximate location" caption; never fabricated.';
 COMMENT ON COLUMN public.events.coordinate_precision IS
   'Issue #1363: coordinate precision for the event location (see venue_listings).';

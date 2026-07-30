@@ -19,6 +19,7 @@ import React, { useMemo } from "react";
 import {
   MapboxAddressInput as SharedMapboxAddressInput,
   type LocationInputCopy,
+  type LocationSelectionState,
   type LocationInputTokens,
   type PlaceDetails,
 } from "@mingla/location-input";
@@ -32,7 +33,7 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
-import { Icon } from "../ui/Icon";
+import { Icon, type IconName } from "../ui/Icon";
 import { supabase } from "../../services/supabase";
 
 export type { PlaceDetails };
@@ -40,16 +41,17 @@ export type { PlaceDetails };
 interface MapboxAddressInputProps {
   value: string;
   onChangeText: (next: string) => void;
-  onPick: (details: PlaceDetails) => void;
+  onPick: (details: PlaceDetails, selectedLabel?: string) => void;
   onClear: () => void;
   error?: string;
   placeholder?: string;
   accessibilityLabel?: string;
-  // Issue #1363 [three-tier address] — optional Tier-2 free-text + Tier-3 pin
-  // affordances. All default-off; omitting them keeps today's pick-only field.
+  // Issue #1363 — business-only selected-address mode. All default-off.
   allowFreeText?: boolean;
   onFreeText?: (text: string) => void;
-  onOpenPinDrop?: () => void;
+  selectionState?: LocationSelectionState;
+  selectedLabel?: string | null;
+  onChangeSelected?: () => void;
 }
 
 // Business token bundle — reproduces the pre-extraction dark-glass StyleSheet.
@@ -125,19 +127,24 @@ const BUSINESS_COPY: LocationInputCopy = {
   noResults: "No matches — try a broader search.",
   offline: "Couldn't reach search. Tap to try again.",
   pickError: "Couldn't fetch address details. Tap to try again.",
-  // Issue #1363 — Tier-2/Tier-3 assist-footer copy (only rendered when the host
-  // passes allowFreeText / onOpenPinDrop). F2 device-UX: clearer action phrasing —
-  // renders `Use this address: "<typed text>"` (still echoes the typed text).
-  freeTextPrefix: "Use this address:",
-  pinDropLabel: "Can't find it? Drop a pin on the map",
-  // Issue #1363 (CHANGE 1) — framing caption shown above the "Use this address"
-  // action WHEN Mapbox suggestions are also on screen, so the brand can commit
-  // their typed NG address without it looking like one of the suggestions.
-  freeTextOverSuggestionsLabel: "or use what you typed",
 };
 
 const invoke = (fn: string, options: { body: Record<string, unknown> }) =>
   supabase.functions.invoke(fn, options);
+
+const LocationInputIcon: React.FC<{
+  name: string;
+  size: number;
+  color: string;
+}> = ({ name, size, color }) => {
+  const mappedName: IconName =
+    name === "location-outline"
+      ? "location"
+      : name === "cloud-offline-outline"
+        ? "refund"
+        : (name as IconName);
+  return <Icon name={mappedName} size={size} color={color} />;
+};
 
 export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
   value,
@@ -149,7 +156,9 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
   accessibilityLabel = "Address",
   allowFreeText,
   onFreeText,
-  onOpenPinDrop,
+  selectionState,
+  selectedLabel,
+  onChangeSelected,
 }) => {
   const tokens = useMemo(() => BUSINESS_TOKENS, []);
   return (
@@ -162,14 +171,16 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
       placeholder={placeholder}
       accessibilityLabel={accessibilityLabel}
       tokens={tokens}
-      IconComponent={Icon}
+      IconComponent={LocationInputIcon}
       invoke={invoke}
       copy={BUSINESS_COPY}
       minQueryLength={3}
       leadingIcon="location"
       allowFreeText={allowFreeText}
       onFreeText={onFreeText}
-      onOpenPinDrop={onOpenPinDrop}
+      selectionState={selectionState}
+      selectedLabel={selectedLabel}
+      onChangeSelected={onChangeSelected}
     />
   );
 };

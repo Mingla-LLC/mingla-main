@@ -975,8 +975,8 @@ export interface PatchEventTaxonomyInput {
    */
   locationText: string | null;
   /**
-   * Issue #1363 G2: how the coordinate was captured — "exact" (Mapbox pick /
-   * pin) or "approximate" (free-text forward-geocode). Forwarded to the RPC's
+   * Issue #1363 G2: legacy coordinates may be "exact"; selected-address
+   * hierarchy resolution is "approximate". Forwarded to the RPC's
    * p_coordinate_precision; the RPC writes it to events.coordinate_precision
    * ONLY when a new coordinate (locationGeo) is supplied, else preserves the
    * existing value. Omit / null / undefined → "" → NULL ("unknown"), which

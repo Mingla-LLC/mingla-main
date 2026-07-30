@@ -58,15 +58,13 @@ import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 // Mapbox Search Box /suggest returns POIs/businesses by name (no `types` filter):
 // https://docs.mapbox.com/api/search/search-box/#get-suggestions
 import { MapboxAddressInput } from "../location/MapboxAddressInput";
-import { PinDropSheet } from "../location/PinDropSheet";
 import {
   isFreeTextResolveStale,
   resolveFreeTextLocation,
-  resolvePinLocation,
-  resolvePinSeed,
 } from "../../utils/resolveApproxLocation";
 import { parseVenuePlaceResult } from "../../utils/parseVenuePlaceResult";
 import type { PlaceDetails } from "../../services/mapboxGeocodeService";
+import type { LocationSelectionState } from "@mingla/location-input";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 
 export interface BrandCreationFlowProps {
@@ -345,18 +343,60 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
     retry: () => void;
   } | null>(null);
   const [coverPickerVisible, setCoverPickerVisible] = useState(false);
-  // Issue #1363 [three-tier address] — pin-drop host + non-silent inline hint.
-  const [pinVisible, setPinVisible] = useState(false);
-  // Issue #1363 (CHANGE 2 — pin auto-center): coarse center the pin opens over,
-  // seeded from the field coord or a forward-geocode of the typed address.
-  const [pinSeed, setPinSeed] = useState<{
-    lat: number | null;
-    lng: number | null;
-  }>({ lat: null, lng: null });
-  const [addrHint, setAddrHint] = useState<string | null>(null);
+  const [addressSelectionState, setAddressSelectionState] =
+    useState<LocationSelectionState>("editing");
   // Issue #1363 P3-2 — latest-wins guard: the address text currently committed,
   // so a superseded free-text geocode can't patch a stale prefill coordinate.
   const committedAddrRef = useRef("");
+  const savedContextRef = useRef<{
+    city: string | null;
+    countryCode: string | null;
+  }>({ city: null, countryCode: null });
+  const resolveCommittedAddress = useCallback(
+    (rawLabel: string): void => {
+      committedAddrRef.current = rawLabel;
+      setAddress(rawLabel);
+      setAddressSelectionState("resolving");
+      setAddrMeta({
+        lat: null,
+        lng: null,
+        city: null,
+        countryCode: null,
+        googlePlaceId: null,
+      });
+      void (async () => {
+        try {
+          const resolution = await resolveFreeTextLocation(
+            rawLabel,
+            savedContextRef.current,
+          );
+          if (isFreeTextResolveStale(rawLabel, committedAddrRef.current)) return;
+          if (resolution.status === "needs_context") {
+            setAddressSelectionState("needs_context");
+            return;
+          }
+          const approx = resolution.location;
+          setAddrMeta({
+            lat: approx.lat,
+            lng: approx.lng,
+            city: approx.city,
+            countryCode: approx.countryCode,
+            googlePlaceId: null,
+          });
+          savedContextRef.current = {
+            city: approx.city,
+            countryCode: approx.countryCode,
+          };
+          setAddressSelectionState("selected");
+        } catch {
+          if (!isFreeTextResolveStale(rawLabel, committedAddrRef.current)) {
+            setAddressSelectionState("error");
+          }
+        }
+      })();
+    },
+    [],
+  );
   // ORCH-1081 — partner-mode Step 5 form state.
   const [inviteeEmail, setInviteeEmail] = useState("");
   const [inviteeNote, setInviteeNote] = useState("");
@@ -490,6 +530,8 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
 
   const handleSkipAddress = useCallback((): void => {
     setAddress("");
+    committedAddrRef.current = "";
+    setAddressSelectionState("editing");
     setAddrMeta({ lat: null, lng: null, city: null, countryCode: null, googlePlaceId: null });
     updateState({ type: "setAddress", address: null });
   }, [updateState]);
@@ -749,8 +791,9 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
             <MapboxAddressInput
               value={address}
               allowFreeText
+              selectionState={addressSelectionState}
+              selectedLabel={address}
               onChangeText={(t) => {
-                setAddrHint(null);
                 committedAddrRef.current = t;
                 setAddress(t);
                 setAddrMeta({
@@ -761,57 +804,12 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
                   googlePlaceId: null,
                 });
               }}
-              onFreeText={(t) => {
-                // Tier 2 — accept typed text (Continue no longer needs coords);
-                // best-effort forward-geocode fills the venue-prefill coordinate.
-                setAddrHint(null);
-                committedAddrRef.current = t;
-                setAddress(t);
-                void (async () => {
-                  const approx = await resolveFreeTextLocation(t);
-                  // Issue #1363 P3-2 — drop a superseded resolve.
-                  if (isFreeTextResolveStale(t, committedAddrRef.current)) return;
-                  if (approx !== null) {
-                    // ORCH-1079 LOCKED (§3.B): googlePlaceId stays null.
-                    setAddrMeta({
-                      lat: approx.lat,
-                      lng: approx.lng,
-                      city: approx.city,
-                      countryCode: approx.countryCode,
-                      googlePlaceId: null,
-                    });
-                  } else {
-                    // Non-silent, but Continue still works (brand coord optional).
-                    setAddrMeta({
-                      lat: null,
-                      lng: null,
-                      city: null,
-                      countryCode: null,
-                      googlePlaceId: null,
-                    });
-                    setAddrHint(
-                      "Saved as typed. Drop a pin to add exact coordinates (optional).",
-                    );
-                  }
-                })();
-              }}
-              onOpenPinDrop={() => {
-                // CHANGE 2 — seed the pin center from the typed brand address.
-                void (async () => {
-                  const seed = await resolvePinSeed(
-                    addrMeta.lat,
-                    addrMeta.lng,
-                    address,
-                  );
-                  setPinSeed(seed);
-                  setPinVisible(true);
-                })();
-              }}
-              onPick={(details: PlaceDetails): void => {
+              onFreeText={resolveCommittedAddress}
+              onPick={(details: PlaceDetails, selectedLabel?: string): void => {
                 const p = parseVenuePlaceResult(details);
-                setAddrHint(null);
-                committedAddrRef.current = p.formattedAddress;
-                setAddress(p.formattedAddress);
+                const label = selectedLabel ?? p.formattedAddress;
+                committedAddrRef.current = label;
+                setAddress(label);
                 // ORCH-1079 LOCKED (§3.B): write geo identically but set
                 // googlePlaceId: null — the Mapbox mapbox_id (`p.placeId`) is
                 // IGNORED so it never pollutes `brands.google_place_id`.
@@ -822,10 +820,26 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
                   countryCode: p.countryCode,
                   googlePlaceId: null,
                 });
+                savedContextRef.current = {
+                  city: p.city,
+                  countryCode: p.countryCode,
+                };
+                setAddressSelectionState("selected");
+              }}
+              onChangeSelected={() => {
+                committedAddrRef.current = address;
+                setAddressSelectionState("editing");
+                setAddrMeta({
+                  lat: null,
+                  lng: null,
+                  city: null,
+                  countryCode: null,
+                  googlePlaceId: null,
+                });
               }}
               onClear={(): void => {
-                setAddrHint(null);
                 committedAddrRef.current = "";
+                setAddressSelectionState("editing");
                 setAddress("");
                 setAddrMeta({
                   lat: null,
@@ -836,40 +850,6 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
                 });
               }}
               placeholder={BRAND_CREATION_COPY.step2.addressPlaceholder}
-            />
-            {addrHint !== null ? (
-              <Text style={styles.addressHint} accessibilityLiveRegion="polite">
-                {addrHint}
-              </Text>
-            ) : null}
-            <PinDropSheet
-              visible={pinVisible}
-              initialLat={pinSeed.lat}
-              initialLng={pinSeed.lng}
-              accentHex={accent.warm}
-              onCancel={() => setPinVisible(false)}
-              onConfirm={(pinLat, pinLng) => {
-                setPinVisible(false);
-                setAddrHint(null);
-                void (async () => {
-                  const resolved = await resolvePinLocation(pinLat, pinLng);
-                  if (resolved === null) return;
-                  // ORCH-1079 LOCKED (§3.B): googlePlaceId stays null.
-                  setAddrMeta({
-                    lat: resolved.lat,
-                    lng: resolved.lng,
-                    city: resolved.city,
-                    countryCode: resolved.countryCode,
-                    googlePlaceId: null,
-                  });
-                  if (
-                    address.trim().length === 0 &&
-                    resolved.formattedAddress !== null
-                  ) {
-                    setAddress(resolved.formattedAddress);
-                  }
-                })();
-              }}
             />
             {/* META-ORCH-1232 (H1) — persistent inline error + Retry on an
                 address-save write failure (NOT a lone auto-dismiss toast). */}

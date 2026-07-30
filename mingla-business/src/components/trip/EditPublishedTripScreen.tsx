@@ -127,13 +127,11 @@ import {
 // ORCH-1118 — published-edit departure + destination must be confirmed Mapbox
 // picks before save. Swap the legacy plain TextInputs for the shared picker.
 import { MapboxAddressInput } from "../location/MapboxAddressInput";
-import { PinDropSheet } from "../location/PinDropSheet";
 import {
   isFreeTextResolveStale,
   resolveFreeTextLocation,
-  resolvePinLocation,
-  resolvePinSeed,
 } from "../../utils/resolveApproxLocation";
+import type { LocationSelectionState } from "@mingla/location-input";
 import {
   departureLocationValidated,
   destinationLocationValidated,
@@ -207,8 +205,8 @@ interface LocalTripEditState {
   departureLocationText: string | null;
   departureLat: number | null;
   departureLng: number | null;
-  // Issue #1363 [three-tier address] — capture precision (exact | approximate |
-  // null); carried into theme.business_trip.* on save.
+  // Issue #1363 — legacy precision may be exact; selected-address resolution is
+  // approximate; null means unset. Carried into theme.business_trip.* on save.
   destinationCoordinatePrecision: "exact" | "approximate" | null;
   departureCoordinatePrecision: "exact" | "approximate" | null;
   capacity: number | null;
@@ -694,51 +692,34 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
   );
   const [editState, setEditState] = useState<LocalTripEditState>(initialState);
 
-  // Issue #1363 [three-tier address] — shared pin-drop host + per-field hints.
-  const [pinTarget, setPinTarget] = useState<"departure" | "destination" | null>(
-    null,
-  );
-  // Issue #1363 (CHANGE 2 — pin auto-center): coarse center the pin opens over,
-  // seeded (per opened field) from that field's coord or a forward-geocode of
-  // its typed text so the map opens over the right area, never a blank world view.
-  const [pinSeed, setPinSeed] = useState<{
-    lat: number | null;
-    lng: number | null;
-  }>({ lat: null, lng: null });
-  const openPinDrop = useCallback(
-    (target: "departure" | "destination") => {
-      void (async () => {
-        const seed =
-          target === "destination"
-            ? await resolvePinSeed(
-                editState.destinationLat,
-                editState.destinationLng,
-                editState.destinationLocationText ?? "",
-              )
-            : await resolvePinSeed(
-                editState.departureLat,
-                editState.departureLng,
-                editState.departureLocationText ?? "",
-              );
-        setPinSeed(seed);
-        setPinTarget(target);
-      })();
-    },
-    [
-      editState.departureLat,
-      editState.departureLng,
-      editState.departureLocationText,
-      editState.destinationLat,
-      editState.destinationLng,
-      editState.destinationLocationText,
-    ],
-  );
-  const [departureHint, setDepartureHint] = useState<string | null>(null);
-  const [destinationHint, setDestinationHint] = useState<string | null>(null);
+  const [departureSelectionState, setDepartureSelectionState] =
+    useState<LocationSelectionState>(
+      editState.departureLocationText?.trim() &&
+          editState.departureLat !== null &&
+          editState.departureLng !== null
+        ? "selected"
+        : "editing",
+    );
+  const [destinationSelectionState, setDestinationSelectionState] =
+    useState<LocationSelectionState>(
+      editState.destinationLocationText?.trim() &&
+          editState.destinationLat !== null &&
+          editState.destinationLng !== null
+        ? "selected"
+        : "editing",
+    );
   // Issue #1363 P3-2 — latest-wins guards: the text currently committed to each
   // field, so a superseded free-text geocode can't patch a stale coordinate.
   const committedDepartureRef = useRef(editState.departureLocationText ?? "");
   const committedDestinationRef = useRef(editState.destinationLocationText ?? "");
+  const departureContextRef = useRef<{
+    city: string | null;
+    countryCode: string | null;
+  }>({ city: null, countryCode: null });
+  const destinationContextRef = useRef<{
+    city: string | null;
+    countryCode: string | null;
+  }>({ city: null, countryCode: null });
 
   // ORCH-0876 P1-1 (QA rework, 2026-05-19): only re-seed local edit state
   // when the route lands on a DIFFERENT trip.id, not on every prop reference
@@ -890,6 +871,90 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
       setEditState((prev) => ({ ...prev, ...patch }));
     },
     [],
+  );
+  const resolveDeparture = useCallback(
+    (rawLabel: string): void => {
+      committedDepartureRef.current = rawLabel;
+      setDepartureSelectionState("resolving");
+      updateBasics({
+        departureLocationText: rawLabel,
+        departurePlaceId: null,
+        departureLat: null,
+        departureLng: null,
+        departureCoordinatePrecision: null,
+      });
+      void (async () => {
+        try {
+          const resolution = await resolveFreeTextLocation(
+            rawLabel,
+            departureContextRef.current,
+          );
+          if (isFreeTextResolveStale(rawLabel, committedDepartureRef.current)) return;
+          if (resolution.status === "needs_context") {
+            setDepartureSelectionState("needs_context");
+            return;
+          }
+          const approx = resolution.location;
+          updateBasics({
+            departureLat: approx.lat,
+            departureLng: approx.lng,
+            departureCoordinatePrecision: "approximate",
+          });
+          departureContextRef.current = {
+            city: approx.city,
+            countryCode: approx.countryCode,
+          };
+          setDepartureSelectionState("selected");
+        } catch {
+          if (!isFreeTextResolveStale(rawLabel, committedDepartureRef.current)) {
+            setDepartureSelectionState("error");
+          }
+        }
+      })();
+    },
+    [updateBasics],
+  );
+  const resolveDestination = useCallback(
+    (rawLabel: string): void => {
+      committedDestinationRef.current = rawLabel;
+      setDestinationSelectionState("resolving");
+      updateBasics({
+        destinationLocationText: rawLabel,
+        destinationPlaceId: null,
+        destinationLat: null,
+        destinationLng: null,
+        destinationCoordinatePrecision: null,
+      });
+      void (async () => {
+        try {
+          const resolution = await resolveFreeTextLocation(
+            rawLabel,
+            destinationContextRef.current,
+          );
+          if (isFreeTextResolveStale(rawLabel, committedDestinationRef.current)) return;
+          if (resolution.status === "needs_context") {
+            setDestinationSelectionState("needs_context");
+            return;
+          }
+          const approx = resolution.location;
+          updateBasics({
+            destinationLat: approx.lat,
+            destinationLng: approx.lng,
+            destinationCoordinatePrecision: "approximate",
+          });
+          destinationContextRef.current = {
+            city: approx.city,
+            countryCode: approx.countryCode,
+          };
+          setDestinationSelectionState("selected");
+        } catch {
+          if (!isFreeTextResolveStale(rawLabel, committedDestinationRef.current)) {
+            setDestinationSelectionState("error");
+          }
+        }
+      })();
+    },
+    [updateBasics],
   );
   const handleDaysChange = useCallback(
     (days: TripDayDraft[]): void => {
@@ -1432,13 +1497,12 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                   testID="edit-trip-description"
                 />
               </View>
-              {/* ORCH-1118 — Departing from (origin), ABOVE Destination. Swapped
-                  the legacy plain TextInput for the shared Mapbox picker so the
-                  planner must confirm a real pick (placeId + lat + lng); typing
-                  nulls the structured fields. The ORCH-1016 trigger syncs
+              {/* ORCH-1118 — Departing from (origin), ABOVE Destination. The
+                  shared selected-address field resolves a coordinate
+                  automatically; typing nulls the structured fields. The
+                  ORCH-1016 trigger syncs
                   theme.business_trip.departureLocationText/Lat/Lng →
-                  events.departure_text/geo (unchanged). Do not loosen
-                  (I-PROPOSED-TRIP-LOCATION-MAPBOX-VALIDATED). testID lives on the
+                  events.departure_text/geo (unchanged). testID lives on the
                   wrapping View (the picker wrapper takes no testID prop). */}
               <View style={styles.fieldGroup} testID="edit-trip-departure">
                 <Text style={styles.fieldLabel}>Departing from</Text>
@@ -1447,8 +1511,9 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                   accessibilityLabel="Departing from"
                   placeholder="e.g. Washington, DC, USA"
                   allowFreeText
+                  selectionState={departureSelectionState}
+                  selectedLabel={editState.departureLocationText ?? ""}
                   onChangeText={(v) => {
-                    setDepartureHint(null);
                     committedDepartureRef.current = v;
                     updateBasics({
                       departureLocationText: v.trim().length === 0 ? null : v,
@@ -1458,50 +1523,37 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                       departureCoordinatePrecision: null,
                     });
                   }}
-                  onFreeText={(v) => {
-                    setDepartureHint(null);
-                    committedDepartureRef.current = v;
-                    updateBasics({
-                      departureLocationText: v.trim().length === 0 ? null : v,
-                    });
-                    void (async () => {
-                      const approx = await resolveFreeTextLocation(v);
-                      // Issue #1363 P3-2 — drop a superseded resolve.
-                      if (isFreeTextResolveStale(v, committedDepartureRef.current))
-                        return;
-                      if (approx !== null) {
-                        updateBasics({
-                          departureLat: approx.lat,
-                          departureLng: approx.lng,
-                          departureCoordinatePrecision: "approximate",
-                        });
-                      } else {
-                        updateBasics({
-                          departureLat: null,
-                          departureLng: null,
-                          departureCoordinatePrecision: null,
-                        });
-                        setDepartureHint(
-                          "We couldn't find that. Drop a pin to set the exact spot.",
-                        );
-                      }
-                    })();
-                  }}
-                  onOpenPinDrop={() => openPinDrop("departure")}
-                  onPick={(place) => {
-                    setDepartureHint(null);
-                    committedDepartureRef.current = place.formattedAddress;
+                  onFreeText={resolveDeparture}
+                  onPick={(place, selectedLabel) => {
+                    const label = selectedLabel ?? place.formattedAddress;
+                    committedDepartureRef.current = label;
                     updateBasics({
                       departurePlaceId: place.placeId,
-                      departureLocationText: place.formattedAddress,
+                      departureLocationText: label,
                       departureLat: place.location.lat,
                       departureLng: place.location.lng,
-                      departureCoordinatePrecision: "exact",
+                      departureCoordinatePrecision: "approximate",
+                    });
+                    departureContextRef.current = {
+                      city: place.city,
+                      countryCode: place.countryCode,
+                    };
+                    setDepartureSelectionState("selected");
+                  }}
+                  onChangeSelected={() => {
+                    committedDepartureRef.current =
+                      editState.departureLocationText ?? "";
+                    setDepartureSelectionState("editing");
+                    updateBasics({
+                      departurePlaceId: null,
+                      departureLat: null,
+                      departureLng: null,
+                      departureCoordinatePrecision: null,
                     });
                   }}
                   onClear={() => {
-                    setDepartureHint(null);
                     committedDepartureRef.current = "";
+                    setDepartureSelectionState("editing");
                     updateBasics({
                       departurePlaceId: null,
                       departureLocationText: null,
@@ -1522,9 +1574,6 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                       : undefined
                   }
                 />
-                {departureHint !== null ? (
-                  <Text style={styles.editAddressHint}>{departureHint}</Text>
-                ) : null}
               </View>
               <View style={styles.fieldGroup} testID="edit-trip-destination">
                 <Text style={styles.fieldLabel}>Destination</Text>
@@ -1533,8 +1582,9 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                   accessibilityLabel="Destination"
                   placeholder="e.g. Tulum, Quintana Roo, Mexico"
                   allowFreeText
+                  selectionState={destinationSelectionState}
+                  selectedLabel={editState.destinationLocationText ?? ""}
                   onChangeText={(v) => {
-                    setDestinationHint(null);
                     committedDestinationRef.current = v;
                     updateBasics({
                       destinationLocationText: v.trim().length === 0 ? null : v,
@@ -1544,52 +1594,37 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                       destinationCoordinatePrecision: null,
                     });
                   }}
-                  onFreeText={(v) => {
-                    setDestinationHint(null);
-                    committedDestinationRef.current = v;
-                    updateBasics({
-                      destinationLocationText: v.trim().length === 0 ? null : v,
-                    });
-                    void (async () => {
-                      const approx = await resolveFreeTextLocation(v);
-                      // Issue #1363 P3-2 — drop a superseded resolve.
-                      if (
-                        isFreeTextResolveStale(v, committedDestinationRef.current)
-                      )
-                        return;
-                      if (approx !== null) {
-                        updateBasics({
-                          destinationLat: approx.lat,
-                          destinationLng: approx.lng,
-                          destinationCoordinatePrecision: "approximate",
-                        });
-                      } else {
-                        updateBasics({
-                          destinationLat: null,
-                          destinationLng: null,
-                          destinationCoordinatePrecision: null,
-                        });
-                        setDestinationHint(
-                          "We couldn't find that. Drop a pin to set the exact spot.",
-                        );
-                      }
-                    })();
-                  }}
-                  onOpenPinDrop={() => openPinDrop("destination")}
-                  onPick={(place) => {
-                    setDestinationHint(null);
-                    committedDestinationRef.current = place.formattedAddress;
+                  onFreeText={resolveDestination}
+                  onPick={(place, selectedLabel) => {
+                    const label = selectedLabel ?? place.formattedAddress;
+                    committedDestinationRef.current = label;
                     updateBasics({
                       destinationPlaceId: place.placeId,
-                      destinationLocationText: place.formattedAddress,
+                      destinationLocationText: label,
                       destinationLat: place.location.lat,
                       destinationLng: place.location.lng,
-                      destinationCoordinatePrecision: "exact",
+                      destinationCoordinatePrecision: "approximate",
+                    });
+                    destinationContextRef.current = {
+                      city: place.city,
+                      countryCode: place.countryCode,
+                    };
+                    setDestinationSelectionState("selected");
+                  }}
+                  onChangeSelected={() => {
+                    committedDestinationRef.current =
+                      editState.destinationLocationText ?? "";
+                    setDestinationSelectionState("editing");
+                    updateBasics({
+                      destinationPlaceId: null,
+                      destinationLat: null,
+                      destinationLng: null,
+                      destinationCoordinatePrecision: null,
                     });
                   }}
                   onClear={() => {
-                    setDestinationHint(null);
                     committedDestinationRef.current = "";
+                    setDestinationSelectionState("editing");
                     updateBasics({
                       destinationPlaceId: null,
                       destinationLocationText: null,
@@ -1610,53 +1645,7 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
                       : undefined
                   }
                 />
-                {destinationHint !== null ? (
-                  <Text style={styles.editAddressHint}>{destinationHint}</Text>
-                ) : null}
               </View>
-
-              {/* Issue #1363 — shared pin-drop host; confirmed coordinate lands
-                  on whichever field opened it (departure vs destination). */}
-              <PinDropSheet
-                visible={pinTarget !== null}
-                initialLat={pinSeed.lat}
-                initialLng={pinSeed.lng}
-                onCancel={() => setPinTarget(null)}
-                onConfirm={(pinLat, pinLng) => {
-                  const target = pinTarget;
-                  setPinTarget(null);
-                  if (target === null) return;
-                  void (async () => {
-                    const resolved = await resolvePinLocation(pinLat, pinLng);
-                    if (resolved === null) return;
-                    if (target === "departure") {
-                      setDepartureHint(null);
-                      updateBasics({
-                        departureLat: resolved.lat,
-                        departureLng: resolved.lng,
-                        departurePlaceId: null,
-                        departureCoordinatePrecision: "exact",
-                        ...((editState.departureLocationText ?? "").trim().length ===
-                          0 && resolved.formattedAddress !== null
-                          ? { departureLocationText: resolved.formattedAddress }
-                          : {}),
-                      });
-                    } else {
-                      setDestinationHint(null);
-                      updateBasics({
-                        destinationLat: resolved.lat,
-                        destinationLng: resolved.lng,
-                        destinationPlaceId: null,
-                        destinationCoordinatePrecision: "exact",
-                        ...((editState.destinationLocationText ?? "").trim()
-                          .length === 0 && resolved.formattedAddress !== null
-                          ? { destinationLocationText: resolved.formattedAddress }
-                          : {}),
-                      });
-                    }
-                  })();
-                }}
-              />
               <View style={styles.fieldGroup}>
                 <Text style={styles.fieldLabel}>Capacity</Text>
                 <TextInput
@@ -1869,6 +1858,10 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
     [
       editState,
       showEditAddressErrors,
+      departureSelectionState,
+      destinationSelectionState,
+      resolveDeparture,
+      resolveDestination,
       // ORCH-1122 [trip-edit cover dead-tap] — the cover section body renders
       // <CoverPickerSheet visible={coverPickerVisible}> and the "Change cover"
       // button inside this memoized callback. Omitting coverPickerVisible left

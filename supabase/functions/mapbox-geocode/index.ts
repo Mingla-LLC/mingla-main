@@ -89,7 +89,10 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 // ORCH-1365 [location-search-relevance] — trailing-country parser for the
 // CONSUMER place-search action ONLY. NEVER used by the business `suggest` path.
-import { parseTrailingCountry } from "./countryNames.ts";
+import {
+  COUNTRY_NAME_TO_ISO,
+  parseTrailingCountry,
+} from "./countryNames.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -113,7 +116,13 @@ interface RequestBody {
   // (place-type filter + trailing-country strip + `country` ISO bias, NO
   // proximity for the Preferences field). The business `suggest` action is
   // UNCHANGED and byte-identical (INV-3 / ORCH-1079).
-  action?: "suggest" | "suggest_places" | "retrieve" | "reverse" | "forward";
+  action?:
+    | "suggest"
+    | "suggest_places"
+    | "retrieve"
+    | "reverse"
+    | "forward"
+    | "forward_hierarchy";
   query?: string;
   mapbox_id?: string;
   session_token?: string;
@@ -139,6 +148,10 @@ interface RequestBody {
   //   proximity "longitude,latitude" (or "ip"); limit ≤ 10.
   proximity?: string;
   limit?: number;
+  saved_context?: {
+    city?: string;
+    country_code?: string;
+  };
 }
 
 /**
@@ -300,6 +313,8 @@ interface MapboxFeature {
   geometry?: { coordinates?: [number, number] }; // [lng, lat]
   properties?: {
     mapbox_id?: string;
+    name?: string;
+    feature_type?: string;
     full_address?: string;
     place_formatted?: string;
     context?: {
@@ -763,6 +778,352 @@ async function handleForward(
   return jsonResponse({ details });
 }
 
+type HierarchyMatchLevel = "place" | "city" | "country";
+type HierarchyDetails = {
+  lat: number;
+  lng: number;
+  city: string | null;
+  region: string | null;
+  countryCode: string | null;
+};
+
+const HIERARCHY_ADMIN_TYPES =
+  "place,city,locality,district,neighborhood";
+const STREET_DESIGNATORS = new Set([
+  "avenue",
+  "close",
+  "court",
+  "drive",
+  "expressway",
+  "highway",
+  "lane",
+  "road",
+  "street",
+  "way",
+]);
+
+/** Comparison-only normalization. The caller's original label is never changed. */
+export function normalizeHierarchyName(value: string): string {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("en")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+export function explicitCountryIso(query: string): string | null {
+  const normalized = normalizeHierarchyName(query);
+  if (normalized.length === 0) return null;
+  const tokens = normalized.split(" ");
+  for (let count = Math.min(5, tokens.length); count >= 1; count -= 1) {
+    const candidate = tokens.slice(tokens.length - count).join(" ");
+    const iso = COUNTRY_NAME_TO_ISO[candidate];
+    if (iso) return iso.toUpperCase();
+  }
+  const lastToken = query.trim().split(/[\s,]+/).at(-1)?.toUpperCase() ?? "";
+  return /^[A-Z]{2}$/.test(lastToken) ? lastToken : null;
+}
+
+function stripExplicitCountry(query: string, iso: string | null): string {
+  if (iso === null) return query.trim();
+  const pieces = query.split(",").map((piece) => piece.trim()).filter(Boolean);
+  if (pieces.length > 1 && explicitCountryIso(pieces.at(-1) ?? "") === iso) {
+    return pieces.slice(0, -1).join(", ");
+  }
+  const tokens = query.trim().split(/\s+/);
+  for (let count = Math.min(5, tokens.length); count >= 1; count -= 1) {
+    if (explicitCountryIso(tokens.slice(-count).join(" ")) === iso) {
+      return tokens.slice(0, -count).join(" ");
+    }
+  }
+  return query.trim();
+}
+
+function isSafeLocalityCandidate(value: string): boolean {
+  const normalized = normalizeHierarchyName(value);
+  if (normalized.length === 0 || /\d/.test(normalized)) return false;
+  const words = normalized.split(" ");
+  return !words.every((word) => STREET_DESIGNATORS.has(word));
+}
+
+/** Only user-supplied suffixes become locality authority. */
+export function deriveHierarchyLocalities(query: string): string[] {
+  const countryIso = explicitCountryIso(query);
+  const withoutCountry = stripExplicitCountry(query, countryIso);
+  const commaParts = withoutCountry
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const candidates: string[] = [];
+  if (commaParts.length > 1) {
+    for (const part of commaParts.slice(1).reverse()) {
+      if (isSafeLocalityCandidate(part)) candidates.push(part);
+    }
+  }
+  const trailingTokens = withoutCountry.trim().split(/\s+/).filter(Boolean);
+  for (let count = 1; count <= Math.min(3, trailingTokens.length); count += 1) {
+    const candidate = trailingTokens.slice(-count).join(" ");
+    if (isSafeLocalityCandidate(candidate)) candidates.push(candidate);
+  }
+  return [...new Map(
+    candidates.map((candidate) => [normalizeHierarchyName(candidate), candidate]),
+  ).values()];
+}
+
+function featureCoordinates(
+  feature: MapboxFeature,
+): { lat: number; lng: number } | null {
+  const coords = feature.geometry?.coordinates;
+  const lng = coords?.[0];
+  const lat = coords?.[1];
+  if (
+    typeof lat !== "number" ||
+    typeof lng !== "number" ||
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lng) ||
+    lat < -90 ||
+    lat > 90 ||
+    lng < -180 ||
+    lng > 180 ||
+    (lat === 0 && lng === 0)
+  ) {
+    return null;
+  }
+  return { lat, lng };
+}
+
+function featureCountryCode(feature: MapboxFeature): string | null {
+  const code = feature.properties?.context?.country?.country_code;
+  return typeof code === "string" && /^[a-z]{2}$/i.test(code)
+    ? code.toUpperCase()
+    : null;
+}
+
+function featureAdministrativeNames(feature: MapboxFeature): string[] {
+  const context = feature.properties?.context;
+  return [
+    context?.place?.name,
+    context?.locality?.name,
+    context?.district?.name,
+    context?.region?.name,
+  ]
+    .filter((name): name is string => typeof name === "string")
+    .map(normalizeHierarchyName)
+    .filter(Boolean);
+}
+
+function featureToHierarchyDetails(
+  feature: MapboxFeature,
+  matchLevel: HierarchyMatchLevel,
+): HierarchyDetails | null {
+  const coords = featureCoordinates(feature);
+  if (coords === null) return null;
+  const context = feature.properties?.context;
+  const featureName =
+    typeof feature.properties?.name === "string"
+      ? feature.properties.name
+      : null;
+  const city =
+    matchLevel === "country"
+      ? null
+      : context?.place?.name ??
+        context?.locality?.name ??
+        context?.district?.name ??
+        (matchLevel === "city" ? featureName : null);
+  return {
+    ...coords,
+    city: city ?? null,
+    region: context?.region?.name ?? null,
+    countryCode: featureCountryCode(feature),
+  };
+}
+
+export function hierarchyFeatureMatches(params: {
+  feature: MapboxFeature;
+  localityCandidates: string[];
+  requiredCountryIso: string | null;
+  requireLocality: boolean;
+  includeFeatureName?: boolean;
+}): boolean {
+  const {
+    feature,
+    localityCandidates,
+    requiredCountryIso,
+    requireLocality,
+    includeFeatureName = false,
+  } = params;
+  if (featureCoordinates(feature) === null) return false;
+  const countryCode = featureCountryCode(feature);
+  if (
+    requiredCountryIso !== null &&
+    countryCode !== requiredCountryIso.toUpperCase()
+  ) {
+    return false;
+  }
+  if (!requireLocality) return true;
+  const adminNames = new Set(featureAdministrativeNames(feature));
+  if (includeFeatureName && typeof feature.properties?.name === "string") {
+    adminNames.add(normalizeHierarchyName(feature.properties.name));
+  }
+  return localityCandidates.some((candidate) =>
+    adminNames.has(normalizeHierarchyName(candidate))
+  );
+}
+
+export function buildHierarchyForwardUrl(params: {
+  base: string;
+  token: string;
+  query: string;
+  types?: string;
+  countryIso?: string | null;
+}): string {
+  let url =
+    `${params.base}/forward?q=${encodeURIComponent(params.query.trim())}` +
+    `&access_token=${encodeURIComponent(params.token)}`;
+  if (params.types) url += `&types=${encodeURIComponent(params.types)}`;
+  if (params.countryIso) {
+    url += `&country=${encodeURIComponent(params.countryIso.toLowerCase())}`;
+  }
+  return `${url}&limit=10`;
+}
+
+async function fetchHierarchyFeatures(
+  url: string,
+): Promise<MapboxFeature[] | Response> {
+  let upstream: Response;
+  try {
+    upstream = await fetch(url, { method: "GET" });
+  } catch (error) {
+    console.error("[mapbox-geocode] forward_hierarchy fetch error:", error);
+    return jsonResponse({ error: "forward_hierarchy_exception" }, 502);
+  }
+  if (!upstream.ok) {
+    return jsonResponse(
+      { error: `mapbox_${upstream.status}` },
+      upstream.status >= 500 ? 502 : upstream.status,
+    );
+  }
+  const data = (await upstream.json()) as RetrieveRawResponse;
+  return data.features ?? [];
+}
+
+async function handleForwardHierarchy(
+  token: string,
+  query: string,
+  savedContext: RequestBody["saved_context"],
+): Promise<Response> {
+  const rawQuery = query.trim();
+  if (rawQuery.length === 0) {
+    return jsonResponse({ details: null, reason: "needs_context" });
+  }
+  const explicitIso = explicitCountryIso(rawQuery);
+  const savedIso =
+    typeof savedContext?.country_code === "string" &&
+      /^[a-z]{2}$/i.test(savedContext.country_code)
+      ? savedContext.country_code.toUpperCase()
+      : null;
+  const requiredIso = explicitIso ?? savedIso;
+  const localities = deriveHierarchyLocalities(rawQuery);
+  if (savedContext?.city?.trim()) localities.push(savedContext.city.trim());
+
+  const placeResult = await fetchHierarchyFeatures(
+    buildHierarchyForwardUrl({
+      base: MAPBOX_SEARCHBOX_BASE,
+      token,
+      query: rawQuery,
+      countryIso: requiredIso,
+    }),
+  );
+  if (placeResult instanceof Response) return placeResult;
+  const acceptedPlace = localities.length > 0
+    ? placeResult.find((feature) =>
+      hierarchyFeatureMatches({
+        feature,
+        localityCandidates: localities,
+        requiredCountryIso: requiredIso,
+        requireLocality: true,
+      })
+    )
+    : undefined;
+  if (acceptedPlace) {
+    const details = featureToHierarchyDetails(acceptedPlace, "place");
+    if (details !== null) {
+      return jsonResponse({
+        details,
+        matchLevel: "place",
+        matchedQuery: rawQuery,
+      });
+    }
+  }
+
+  for (const locality of localities) {
+    const cityResult = await fetchHierarchyFeatures(
+      buildHierarchyForwardUrl({
+        base: MAPBOX_SEARCHBOX_BASE,
+        token,
+        query: locality,
+        types: HIERARCHY_ADMIN_TYPES,
+        countryIso: requiredIso,
+      }),
+    );
+    if (cityResult instanceof Response) return cityResult;
+    const acceptedCity = cityResult.find((feature) =>
+      hierarchyFeatureMatches({
+        feature,
+        localityCandidates: [locality],
+        requiredCountryIso: requiredIso,
+        requireLocality: true,
+        includeFeatureName: true,
+      })
+    );
+    if (acceptedCity) {
+      const details = featureToHierarchyDetails(acceptedCity, "city");
+      if (details !== null) {
+        return jsonResponse({
+          details,
+          matchLevel: "city",
+          matchedQuery: locality,
+        });
+      }
+    }
+  }
+
+  const acceptedCityCountry = requiredIso;
+  if (acceptedCityCountry !== null) {
+    const countryResult = await fetchHierarchyFeatures(
+      buildHierarchyForwardUrl({
+        base: MAPBOX_SEARCHBOX_BASE,
+        token,
+        query: acceptedCityCountry,
+        types: "country",
+        countryIso: acceptedCityCountry,
+      }),
+    );
+    if (countryResult instanceof Response) return countryResult;
+    const acceptedCountry = countryResult.find((feature) =>
+      hierarchyFeatureMatches({
+        feature,
+        localityCandidates: [],
+        requiredCountryIso: acceptedCityCountry,
+        requireLocality: false,
+      })
+    );
+    if (acceptedCountry) {
+      const details = featureToHierarchyDetails(acceptedCountry, "country");
+      if (details !== null) {
+        return jsonResponse({
+          details: { ...details, city: null },
+          matchLevel: "country",
+          matchedQuery: acceptedCityCountry,
+        });
+      }
+    }
+  }
+  return jsonResponse({ details: null, reason: "needs_context" });
+}
+
 export async function handler(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -828,6 +1189,12 @@ export async function handler(req: Request): Promise<Response> {
       );
     case "forward":
       return handleForward(token, body.query ?? "", searchOpts);
+    case "forward_hierarchy":
+      return handleForwardHierarchy(
+        token,
+        body.query ?? "",
+        body.saved_context,
+      );
     default:
       return jsonResponse({ error: "invalid_request" }, 400);
   }

@@ -124,11 +124,9 @@ export function venueStepError(
     //    Pitch step (s6/c5). ─────────────────────────────────────────────
     case "s0":
       if (d.formattedAddress.trim().length === 0) return "Address is required.";
-      // Issue #1363 — the coordinate can now come from a pick, a free-text
-      // forward-geocode, OR a dropped pin; the gate itself is UNCHANGED (still
-      // requires lat/lng, satisfying the DB location_required guard). Copy only.
+      // Issue #1363 — selected addresses still require a safely resolved point.
       if (d.lat === null || d.lng === null)
-        return "Add the location — pick a suggestion or drop a pin.";
+        return "Address is missing location.";
       return null;
     case "s1": {
       if (d.displayName.trim().length === 0) return "Venue name is required.";
@@ -198,9 +196,8 @@ export function venueStepError(
       return d.venueCategory === null ? "Pick a category to continue." : null;
     case "c1": {
       if (d.formattedAddress.trim().length === 0) return "Address is required.";
-      // Issue #1363 — coordinate from pick / free-text / pin (gate unchanged).
       if (d.lat === null || d.lng === null)
-        return "Add the location — pick a suggestion or drop a pin.";
+        return "Address is missing location.";
       if (d.displayName.trim().length === 0) return "Venue name is required.";
       if (d.slug.trim().length === 0) return "URL slug is required.";
       return null;

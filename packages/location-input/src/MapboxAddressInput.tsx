@@ -139,7 +139,7 @@ export interface MapboxAddressInputProps {
   /** Fires on every keystroke so the parent can keep its address in sync. */
   onChangeText: (next: string) => void;
   /** Fires when the user picks a suggestion AND retrieve succeeds. */
-  onPick: (details: PlaceDetails) => void;
+  onPick: (details: PlaceDetails, selectedLabel?: string) => void;
   /** Fires when the user clears the field (X icon). Parent zeroes address+geo. */
   onClear: () => void;
   /** Inline error from parent-side validation (host-owned). */
@@ -197,7 +197,7 @@ export interface MapboxAddressInputProps {
   /** suggest `limit` override (≤10). Default (omitted) → edge default 5. */
   suggestLimit?: number;
 
-  // ── Issue #1363 [three-tier address] · Tier-2 free-text + Tier-3 pin ────────
+  // ── Issue #1363 [pinless selected-address mode] ────────────────────────────
   // All OPTIONAL + default-off. When every one is absent the assist footer is
   // omitted entirely and the field renders BYTE-IDENTICALLY (every app-mobile
   // consumer host passes none → consumer stays unchanged).
@@ -207,17 +207,23 @@ export interface MapboxAddressInputProps {
    */
   allowFreeText?: boolean;
   /**
-   * Fires when the user commits free text (taps the "Use '<text>'" row). The
-   * host writes the display address AND kicks off a background forward-geocode.
+   * Fires with the raw controlled value when the user commits free text.
    */
   onFreeText?: (text: string) => void;
-  /**
-   * When provided, the field renders a "Can't find it? Drop a pin" affordance
-   * that calls this. The HOST opens the PinDropSheet and wires its result.
-   * Omitted → no pin affordance (consumer default).
-   */
-  onOpenPinDrop?: () => void;
+  /** Controlled business-only selected-address state. Omitted = legacy picker. */
+  selectionState?: LocationSelectionState;
+  /** Authoritative label shown in the selected-address pill. */
+  selectedLabel?: string | null;
+  /** X-to-change callback. The host clears committed location metadata. */
+  onChangeSelected?: () => void;
 }
+
+export type LocationSelectionState =
+  | "editing"
+  | "resolving"
+  | "selected"
+  | "needs_context"
+  | "error";
 
 type Status =
   | { kind: "idle" }
@@ -251,11 +257,17 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
   suggestLimit,
   allowFreeText = false,
   onFreeText,
-  onOpenPinDrop,
+  selectionState = "editing",
+  selectedLabel = null,
+  onChangeSelected,
 }) => {
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const [focused, setFocused] = useState(false);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [pendingSelectedLabel, setPendingSelectedLabel] = useState<string | null>(
+    null,
+  );
+  const [focusRevision, setFocusRevision] = useState(0);
   // Issue #1363 — set true right after a successful pick, reset on the next
   // keystroke. Used ONLY to hide the Tier-2 free-text row immediately after a
   // pick (so the picked address doesn't re-offer "Use '<address>'").
@@ -417,16 +429,20 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
     async (s: PlaceAutocompleteSuggestion): Promise<void> => {
       clearDebounceTimer();
       fireHaptic("selection");
+      const label =
+        s.fullAddress.trim().length > 0 ? s.fullAddress : s.displayName;
+      setPendingSelectedLabel(label);
       setStatus({ kind: "fetching_details" });
       try {
         const details = await retrieveMapboxPlace(s.placeId, sessionToken.current, {
           invoke,
         });
-        onPick(details);
+        onPick(details, label);
         // Issue #1363 — a completed pick hides the Tier-2 free-text row until
         // the next keystroke.
         justPicked.current = true;
         setStatus({ kind: "idle" });
+        setPendingSelectedLabel(null);
         fireHaptic("success");
         // Rotate the session token AFTER a completed suggest→retrieve pair.
         sessionToken.current = newMapboxSessionToken();
@@ -445,6 +461,14 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
     setStatus({ kind: "idle" });
     onClear();
   }, [clearDebounceTimer, onClear]);
+
+  const handleChangeSelected = useCallback((): void => {
+    clearDebounceTimer();
+    setPendingSelectedLabel(null);
+    setStatus({ kind: "idle" });
+    onChangeSelected?.();
+    setFocusRevision((current) => current + 1);
+  }, [clearDebounceTimer, onChangeSelected]);
 
   const handleRetry = useCallback((): void => {
     setStatus({ kind: "idle" });
@@ -691,12 +715,12 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
       inlineContent
     );
 
-  // ── Issue #1363 — Tier-2 free-text + Tier-3 pin "assist footer" ────────────
+  // ── Issue #1363 — selected free-text assist footer ────────────────────────
   // Rendered as a sibling BELOW the field/error (and the suggestion list), NOT
   // inside the dropdown card — so it shows in both card + inline dropdown modes
   // and regardless of whether the dropdown is open. When BOTH rows are hidden
   // the whole footer is omitted → BYTE-IDENTICAL render for consumer hosts that
-  // pass neither `allowFreeText` nor `onOpenPinDrop`.
+  // do not opt into `allowFreeText`.
   const trimmedValue = value.trim();
   // Issue #1363 (device-UX F2) — TIMING: the action row must never compete with
   // a live suggestion list. It shows on `no_results` (primary) + idle-after-typing
@@ -708,7 +732,6 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
     justPicked: justPicked.current,
     statusKind: status.kind,
     trimmedLength: trimmedValue.length,
-    minQueryLength,
   });
   // Issue #1363 (device-UX F2) — ACCENT: when the host injects `tokens.action`
   // (business = brand orange) the row renders as an accent pill button; without
@@ -717,48 +740,18 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
     text: tokens.status.text,
     icon: tokens.icon.leading,
   });
-  const showPinRow = onOpenPinDrop !== undefined;
-  // Issue #1363 (CHANGE 1 — free-text-on-suggestions) — when the "Use …" action
-  // shows WHILE a live suggestion list is open, frame it as a clearly-separated
-  // alternative BELOW the list (a hairline + a tiny "or use what you typed"
-  // caption) so it never reads as one of the suggestions. Only when suggestions
-  // are actually on screen; on `no_results`/`idle` there is no list to separate
-  // from, so the plain accent action stands alone as today.
-  const showOrFraming = showFreeTextRow && status.kind === "suggestions_open";
   const assistFooter =
-    showFreeTextRow || showPinRow ? (
+    showFreeTextRow ? (
       <View style={{ marginTop: 4, gap: 2 }}>
-        {showOrFraming ? (
-          <View style={styles.assistDivider}>
-            <View
-              style={[
-                styles.assistDividerLine,
-                { backgroundColor: tokens.dropdown.border },
-              ]}
-            />
-            <Text
-              style={{
-                color: tokens.status.text,
-                fontSize: tokens.status.fontSize,
-                lineHeight: tokens.status.lineHeight,
-                fontWeight: "600",
-              }}
-            >
-              {copy.freeTextOverSuggestionsLabel ?? "or use what you typed"}
-            </Text>
-            <View
-              style={[
-                styles.assistDividerLine,
-                { backgroundColor: tokens.dropdown.border },
-              ]}
-            />
-          </View>
-        ) : null}
         {showFreeTextRow ? (
           <Pressable
-            onPress={() => onFreeText?.(trimmedValue)}
+            onPress={() => {
+              clearDebounceTimer();
+              setStatus({ kind: "idle" });
+              onFreeText?.(value);
+            }}
             accessibilityRole="button"
-            accessibilityLabel={`${copy.freeTextPrefix ?? "Use"} "${trimmedValue}"`}
+            accessibilityLabel="Can't find it in the list? Use what you typed."
             hitSlop={8}
             style={({ pressed }) => [
               styles.assistRow,
@@ -782,44 +775,120 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
                 fontWeight: freeTextRowStyle.fontWeight,
               }}
             >
-              {`${copy.freeTextPrefix ?? "Use"} "${trimmedValue}"`}
-            </Text>
-          </Pressable>
-        ) : null}
-        {showPinRow ? (
-          <Pressable
-            onPress={() => onOpenPinDrop?.()}
-            accessibilityRole="button"
-            accessibilityLabel={
-              copy.pinDropLabel ?? "Can't find it? Drop a pin on the map"
-            }
-            hitSlop={8}
-            style={({ pressed }) => [
-              styles.assistRow,
-              pressed ? { opacity: 0.6 } : null,
-            ]}
-          >
-            <IconComponent
-              name="location"
-              size={16}
-              color={tokens.icon.leading}
-            />
-            <Text
-              numberOfLines={1}
-              ellipsizeMode="tail"
-              style={{
-                flex: 1,
-                color: tokens.status.text,
-                fontSize: tokens.status.fontSize,
-                lineHeight: tokens.status.lineHeight,
-              }}
-            >
-              {copy.pinDropLabel ?? "Can't find it? Drop a pin on the map"}
+              {"Can't find it in the list? Use what you typed."}
             </Text>
           </Pressable>
         ) : null}
       </View>
     ) : null;
+
+  const effectiveSelectionState: LocationSelectionState =
+    selectionState !== "editing"
+      ? selectionState
+      : status.kind === "fetching_details"
+        ? "resolving"
+        : status.kind === "pick_error" && pendingSelectedLabel !== null
+          ? "error"
+          : "editing";
+  const effectiveSelectedLabel =
+    selectedLabel ?? pendingSelectedLabel ?? (value.length > 0 ? value : null);
+
+  if (
+    effectiveSelectionState !== "editing" &&
+    effectiveSelectedLabel !== null
+  ) {
+    const stateMessage =
+      effectiveSelectionState === "resolving"
+        ? "Placing address…"
+        : effectiveSelectionState === "needs_context"
+          ? "Add a city or country so we can place this approximately."
+          : effectiveSelectionState === "error"
+            ? "We couldn't place this yet. Try again."
+            : null;
+    return (
+      <View>
+        <View
+          accessibilityLiveRegion="polite"
+          style={[fieldStyle, styles.selectedPill]}
+        >
+          {effectiveSelectionState === "resolving" ? (
+            <ActivityIndicator size="small" color={tokens.spinner} />
+          ) : (
+            <IconComponent
+              name="location-outline"
+              size={18}
+              color={tokens.icon.leading}
+            />
+          )}
+          <Text
+            accessibilityLabel={effectiveSelectedLabel}
+            numberOfLines={2}
+            style={[
+              styles.selectedLabel,
+              {
+                color: tokens.text.input,
+                fontSize: tokens.row.primaryFontSize,
+                lineHeight: tokens.row.primaryLineHeight,
+              },
+            ]}
+          >
+            {effectiveSelectedLabel}
+          </Text>
+          <Pressable
+            onPress={handleChangeSelected}
+            accessibilityRole="button"
+            accessibilityLabel="Change address"
+            accessibilityHint="Returns to address search."
+            hitSlop={8}
+            style={({ pressed }) => [
+              styles.changeAddressButton,
+              pressed ? { opacity: 0.6 } : null,
+            ]}
+          >
+            <IconComponent name="close" size={18} color={tokens.icon.clear} />
+          </Pressable>
+        </View>
+        {stateMessage !== null ? (
+          <View style={styles.selectedStatusRow}>
+            <Text
+              accessibilityLiveRegion="polite"
+              style={{
+                flex: 1,
+                color:
+                  effectiveSelectionState === "error"
+                    ? tokens.error.text
+                    : tokens.status.text,
+                fontSize: tokens.status.fontSize,
+                lineHeight: tokens.status.lineHeight,
+              }}
+            >
+              {stateMessage}
+            </Text>
+            {effectiveSelectionState === "error" ? (
+              <Pressable
+                onPress={() => onFreeText?.(effectiveSelectedLabel)}
+                accessibilityRole="button"
+                accessibilityLabel="Retry placing address"
+                style={({ pressed }) => [
+                  styles.retryButton,
+                  pressed ? { opacity: 0.6 } : null,
+                ]}
+              >
+                <Text
+                  style={{
+                    color: tokens.action?.text ?? tokens.text.input,
+                    fontWeight: "600",
+                  }}
+                >
+                  Retry
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
+      </View>
+    );
+  }
 
   return (
     <View>
@@ -830,6 +899,7 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
           color={tokens.icon.leading}
         />
         <TextInput
+          key={`location-input-${focusRevision}`}
           value={value}
           onChangeText={handleChangeText}
           onFocus={() => setFocused(true)}
@@ -838,7 +908,7 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
           placeholderTextColor={tokens.text.placeholder}
           autoCorrect={false}
           autoCapitalize="words"
-          autoFocus={autoFocus}
+          autoFocus={autoFocus || focusRevision > 0}
           // ORCH-1365 (F-6) — text-clip fix. Removed the forced `lineHeight:24`
           // (it capped the single-line box so descenders like g/y/p clipped at
           // the bottom); the platform now computes the line box and reserves
@@ -929,19 +999,30 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 4,
   },
-  // Issue #1363 (CHANGE 1) — "─ or use what you typed ─" framing above the
-  // free-text action when a live suggestion list is also visible.
-  assistDivider: {
+  selectedPill: {
+    minHeight: 52,
+  },
+  selectedLabel: {
+    flex: 1,
+  },
+  changeAddressButton: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  selectedStatusRow: {
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    marginTop: 6,
-    marginBottom: 2,
-    paddingHorizontal: 4,
+    gap: 12,
+    marginTop: 4,
   },
-  assistDividerLine: {
-    flex: 1,
-    height: 1,
+  retryButton: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
   },
   cardShadow: {
     shadowColor: "#000",

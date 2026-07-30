@@ -152,7 +152,7 @@ export interface CreateVenueListingInput {
   lng: number;
   city: string | null;
   countryCode: string | null;
-  /** Issue #1363 — "exact" (pick/pin) | "approximate" (free-text) | null. */
+  /** Issue #1363 — legacy "exact", selected-address "approximate", or null. */
   coordinatePrecision?: "exact" | "approximate" | null;
   address: string;
   venueCategory: VenueCategory;

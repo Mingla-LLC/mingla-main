@@ -613,6 +613,31 @@ jobs:
             sleep 10
           done
 
+  issue-1363-address-hierarchy-regressions:
+    name: "Issue #1363: pinless selected address + context-validated hierarchy"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: Install business dependencies
+        working-directory: mingla-business
+        run: npm ci
+      - name: Run issue #1363 business regressions
+        working-directory: mingla-business
+        run: npx jest orch_1363 --runInBand
+      - name: Run issue #1363 hierarchy Deno regression
+        run: >-
+          deno test --allow-read --allow-net --no-check
+          supabase/functions/mapbox-geocode/__tests__/mapboxHierarchicalForward.issue1363.test.ts
+          supabase/migrations/__tests__/issue_1363_publish_precision_g1_g2.test.ts
+
   orch-1363-curated-stroll-deno-tests:
     name: "Deno unit tests for ORCH-1363 take-a-stroll reachable-first-stop (I-PROPOSED-1363-STANDARD-FIRST-STOP-REACHABLE)"
     runs-on: ubuntu-latest

@@ -115,10 +115,7 @@ describe("ORCH-1186 wizard map preview — CreatorStep3Where wiring", () => {
   });
 
   test("renders the honest empty state (no fabricated tile) when no URL", () => {
-    // [TEST-MOD-APPROVED ORCH-1363] — the empty-state copy was updated for the
-    // three-tier field (now names free-text + pin, not only "pick an address").
-    // The honest-empty-state intent (rule 9 — no fabricated tile) is unchanged.
-    expect(SRC).toContain("Pick an address, use what you typed, or drop a pin");
+    expect(SRC).toContain("Pick an address to preview the map");
     // The old striped placeholder must NOT come back (rule 9).
     expect(SRC).not.toContain("mapStripes");
     expect(SRC).not.toContain("map preview");

@@ -44,15 +44,13 @@ import { ThemeSheet } from "../theme/ThemeSheet";
 // consumer reads it as a Google id). Mapbox Search Box /suggest returns POIs
 // by name (no `types` filter): https://docs.mapbox.com/api/search/search-box/#get-suggestions
 import { MapboxAddressInput } from "../location/MapboxAddressInput";
-import { PinDropSheet } from "../location/PinDropSheet";
 import {
   isFreeTextResolveStale,
   resolveFreeTextLocation,
-  resolvePinLocation,
-  resolvePinSeed,
 } from "../../utils/resolveApproxLocation";
-// ORCH-1118 — trip location must be a confirmed pick/geocode/pin before
-// publish/save (Issue #1363 loosened the placeId requirement to a coordinate).
+import type { LocationSelectionState } from "@mingla/location-input";
+// ORCH-1118 — trip location must have a confirmed automatically resolved
+// coordinate before publish/save.
 import {
   departureLocationValidated,
   destinationLocationValidated,
@@ -79,8 +77,8 @@ export interface Step1Draft {
   departureLocationText: string | null;
   departureLat: number | null;
   departureLng: number | null;
-  // Issue #1363 [three-tier address] — how each coordinate was captured:
-  // "exact" (pick/pin) | "approximate" (free-text) | null. Carried into
+  // Issue #1363 — legacy values may be "exact"; selected-address coordinates
+  // are "approximate"; null means unset. Carried into
   // theme.business_trip.{departure,destination}CoordinatePrecision at publish.
   destinationCoordinatePrecision?: "exact" | "approximate" | null;
   departureCoordinatePrecision?: "exact" | "approximate" | null;
@@ -190,53 +188,120 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
   onShowToast,
   showAddressErrors = false,
 }) => {
-  // Issue #1363 [three-tier address] — one pin-drop host shared by both fields;
-  // `pinTarget` names which field the confirmed coordinate lands on. Per-field
-  // non-silent hints on a failed free-text geocode (rule 3).
-  const [pinTarget, setPinTarget] = useState<"departure" | "destination" | null>(
-    null,
-  );
-  // Issue #1363 (CHANGE 2 — pin auto-center): coarse center the pin opens over,
-  // seeded (per opened field) from that field's coord or a forward-geocode of
-  // its typed text so the map opens over the right area, never a blank world view.
-  const [pinSeed, setPinSeed] = useState<{
-    lat: number | null;
-    lng: number | null;
-  }>({ lat: null, lng: null });
-  const openPinDrop = useCallback(
-    (target: "departure" | "destination") => {
-      void (async () => {
-        const seed =
-          target === "destination"
-            ? await resolvePinSeed(
-                draft.destinationLat,
-                draft.destinationLng,
-                draft.destinationLocationText ?? "",
-              )
-            : await resolvePinSeed(
-                draft.departureLat,
-                draft.departureLng,
-                draft.departureLocationText ?? "",
-              );
-        setPinSeed(seed);
-        setPinTarget(target);
-      })();
-    },
-    [
-      draft.departureLat,
-      draft.departureLng,
-      draft.departureLocationText,
-      draft.destinationLat,
-      draft.destinationLng,
-      draft.destinationLocationText,
-    ],
-  );
-  const [departureHint, setDepartureHint] = useState<string | null>(null);
-  const [destinationHint, setDestinationHint] = useState<string | null>(null);
+  const [departureSelectionState, setDepartureSelectionState] =
+    useState<LocationSelectionState>(
+      draft.departureLocationText?.trim() &&
+          draft.departureLat !== null &&
+          draft.departureLng !== null
+        ? "selected"
+        : "editing",
+    );
+  const [destinationSelectionState, setDestinationSelectionState] =
+    useState<LocationSelectionState>(
+      draft.destinationLocationText?.trim() &&
+          draft.destinationLat !== null &&
+          draft.destinationLng !== null
+        ? "selected"
+        : "editing",
+    );
   // Issue #1363 P3-2 — latest-wins guards: the text currently committed to each
   // field, so a superseded free-text geocode can't patch a stale coordinate.
   const committedDepartureRef = useRef(draft.departureLocationText ?? "");
   const committedDestinationRef = useRef(draft.destinationLocationText ?? "");
+  const departureContextRef = useRef<{
+    city: string | null;
+    countryCode: string | null;
+  }>({ city: null, countryCode: null });
+  const destinationContextRef = useRef<{
+    city: string | null;
+    countryCode: string | null;
+  }>({ city: null, countryCode: null });
+
+  const resolveDeparture = useCallback(
+    (rawLabel: string): void => {
+      committedDepartureRef.current = rawLabel;
+      setDepartureSelectionState("resolving");
+      onChange({
+        departureLocationText: rawLabel,
+        departurePlaceId: null,
+        departureLat: null,
+        departureLng: null,
+        departureCoordinatePrecision: null,
+      });
+      void (async () => {
+        try {
+          const resolution = await resolveFreeTextLocation(
+            rawLabel,
+            departureContextRef.current,
+          );
+          if (isFreeTextResolveStale(rawLabel, committedDepartureRef.current)) return;
+          if (resolution.status === "needs_context") {
+            setDepartureSelectionState("needs_context");
+            return;
+          }
+          const approx = resolution.location;
+          onChange({
+            departureLat: approx.lat,
+            departureLng: approx.lng,
+            departureCoordinatePrecision: "approximate",
+          });
+          departureContextRef.current = {
+            city: approx.city,
+            countryCode: approx.countryCode,
+          };
+          setDepartureSelectionState("selected");
+        } catch {
+          if (!isFreeTextResolveStale(rawLabel, committedDepartureRef.current)) {
+            setDepartureSelectionState("error");
+          }
+        }
+      })();
+    },
+    [onChange],
+  );
+
+  const resolveDestination = useCallback(
+    (rawLabel: string): void => {
+      committedDestinationRef.current = rawLabel;
+      setDestinationSelectionState("resolving");
+      onChange({
+        destinationLocationText: rawLabel,
+        destinationPlaceId: null,
+        destinationLat: null,
+        destinationLng: null,
+        destinationCoordinatePrecision: null,
+      });
+      void (async () => {
+        try {
+          const resolution = await resolveFreeTextLocation(
+            rawLabel,
+            destinationContextRef.current,
+          );
+          if (isFreeTextResolveStale(rawLabel, committedDestinationRef.current)) return;
+          if (resolution.status === "needs_context") {
+            setDestinationSelectionState("needs_context");
+            return;
+          }
+          const approx = resolution.location;
+          onChange({
+            destinationLat: approx.lat,
+            destinationLng: approx.lng,
+            destinationCoordinatePrecision: "approximate",
+          });
+          destinationContextRef.current = {
+            city: approx.city,
+            countryCode: approx.countryCode,
+          };
+          setDestinationSelectionState("selected");
+        } catch {
+          if (!isFreeTextResolveStale(rawLabel, committedDestinationRef.current)) {
+            setDestinationSelectionState("error");
+          }
+        }
+      })();
+    },
+    [onChange],
+  );
 
   // ORCH-1118 — inline "pick from suggestions" errors. Revealed only after a
   // blocked publish attempt (showAddressErrors). Empty OR dirty → error.
@@ -499,10 +564,11 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           value={draft.departureLocationText ?? ""}
           accessibilityLabel="Departing from"
           allowFreeText
-          // Issue #1363 — typing nulls the structured fields; the coordinate can
-          // then come from a pick, free-text forward-geocode, or a dropped pin.
+          selectionState={departureSelectionState}
+          selectedLabel={draft.departureLocationText ?? ""}
+          // Issue #1363 — typing nulls the structured fields until the selected
+          // address resolves automatically.
           onChangeText={(v) => {
-            setDepartureHint(null);
             committedDepartureRef.current = v;
             onChange({
               departureLocationText: v,
@@ -512,47 +578,38 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
               departureCoordinatePrecision: null,
             });
           }}
-          onFreeText={(v) => {
-            setDepartureHint(null);
-            committedDepartureRef.current = v;
-            onChange({ departureLocationText: v });
-            void (async () => {
-              const approx = await resolveFreeTextLocation(v);
-              // Issue #1363 P3-2 — drop a superseded resolve.
-              if (isFreeTextResolveStale(v, committedDepartureRef.current)) return;
-              if (approx !== null) {
-                onChange({
-                  departureLat: approx.lat,
-                  departureLng: approx.lng,
-                  departureCoordinatePrecision: "approximate",
-                });
-              } else {
-                onChange({
-                  departureLat: null,
-                  departureLng: null,
-                  departureCoordinatePrecision: null,
-                });
-                setDepartureHint(
-                  "We couldn't find that. Drop a pin to set the exact spot.",
-                );
-              }
-            })();
-          }}
-          onOpenPinDrop={() => openPinDrop("departure")}
-          onPick={(place) => {
-            setDepartureHint(null);
-            committedDepartureRef.current = place.formattedAddress;
+          onFreeText={resolveDeparture}
+          onPick={(place, selectedLabel) => {
+            // Compatibility note: departureLocationText: place.formattedAddress
+            // was the old mapping; the selected row label now wins when supplied.
+            const label = selectedLabel ?? place.formattedAddress;
+            committedDepartureRef.current = label;
             onChange({
               departurePlaceId: place.placeId,
-              departureLocationText: place.formattedAddress,
+              departureLocationText: label,
               departureLat: place.location.lat,
               departureLng: place.location.lng,
-              departureCoordinatePrecision: "exact",
+              departureCoordinatePrecision: "approximate",
+            });
+            departureContextRef.current = {
+              city: place.city,
+              countryCode: place.countryCode,
+            };
+            setDepartureSelectionState("selected");
+          }}
+          onChangeSelected={() => {
+            committedDepartureRef.current = draft.departureLocationText ?? "";
+            setDepartureSelectionState("editing");
+            onChange({
+              departurePlaceId: null,
+              departureLat: null,
+              departureLng: null,
+              departureCoordinatePrecision: null,
             });
           }}
           onClear={() => {
-            setDepartureHint(null);
             committedDepartureRef.current = "";
+            setDepartureSelectionState("editing");
             onChange({
               departurePlaceId: null,
               departureLocationText: null,
@@ -564,9 +621,6 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           error={departureError}
           placeholder="e.g. Washington, DC, USA"
         />
-        {departureHint !== null ? (
-          <Text style={styles.locationHint}>{departureHint}</Text>
-        ) : null}
       </View>
 
       {/* Destination via the Mapbox picker (ORCH-1079) */}
@@ -576,9 +630,10 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           value={draft.destinationLocationText ?? ""}
           accessibilityLabel="Destination"
           allowFreeText
-          // Issue #1363 — coordinate from pick / free-text / pin.
+          selectionState={destinationSelectionState}
+          selectedLabel={draft.destinationLocationText ?? ""}
+          // Issue #1363 — coordinate comes from automatic hierarchy resolution.
           onChangeText={(v) => {
-            setDestinationHint(null);
             committedDestinationRef.current = v;
             onChange({
               destinationLocationText: v,
@@ -588,47 +643,38 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
               destinationCoordinatePrecision: null,
             });
           }}
-          onFreeText={(v) => {
-            setDestinationHint(null);
-            committedDestinationRef.current = v;
-            onChange({ destinationLocationText: v });
-            void (async () => {
-              const approx = await resolveFreeTextLocation(v);
-              // Issue #1363 P3-2 — drop a superseded resolve.
-              if (isFreeTextResolveStale(v, committedDestinationRef.current)) return;
-              if (approx !== null) {
-                onChange({
-                  destinationLat: approx.lat,
-                  destinationLng: approx.lng,
-                  destinationCoordinatePrecision: "approximate",
-                });
-              } else {
-                onChange({
-                  destinationLat: null,
-                  destinationLng: null,
-                  destinationCoordinatePrecision: null,
-                });
-                setDestinationHint(
-                  "We couldn't find that. Drop a pin to set the exact spot.",
-                );
-              }
-            })();
-          }}
-          onOpenPinDrop={() => openPinDrop("destination")}
-          onPick={(place) => {
-            setDestinationHint(null);
-            committedDestinationRef.current = place.formattedAddress;
+          onFreeText={resolveDestination}
+          onPick={(place, selectedLabel) => {
+            // Compatibility note: destinationLocationText: place.formattedAddress
+            // was the old mapping; the selected row label now wins when supplied.
+            const label = selectedLabel ?? place.formattedAddress;
+            committedDestinationRef.current = label;
             onChange({
               destinationPlaceId: place.placeId,
-              destinationLocationText: place.formattedAddress,
+              destinationLocationText: label,
               destinationLat: place.location.lat,
               destinationLng: place.location.lng,
-              destinationCoordinatePrecision: "exact",
+              destinationCoordinatePrecision: "approximate",
+            });
+            destinationContextRef.current = {
+              city: place.city,
+              countryCode: place.countryCode,
+            };
+            setDestinationSelectionState("selected");
+          }}
+          onChangeSelected={() => {
+            committedDestinationRef.current = draft.destinationLocationText ?? "";
+            setDestinationSelectionState("editing");
+            onChange({
+              destinationPlaceId: null,
+              destinationLat: null,
+              destinationLng: null,
+              destinationCoordinatePrecision: null,
             });
           }}
           onClear={() => {
-            setDestinationHint(null);
             committedDestinationRef.current = "";
+            setDestinationSelectionState("editing");
             onChange({
               destinationPlaceId: null,
               destinationLocationText: null,
@@ -640,53 +686,7 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           error={destinationError}
           placeholder="e.g. Tulum, Quintana Roo, Mexico"
         />
-        {destinationHint !== null ? (
-          <Text style={styles.locationHint}>{destinationHint}</Text>
-        ) : null}
       </View>
-
-      {/* Issue #1363 — shared pin-drop host; the confirmed coordinate lands on
-          whichever field opened it (departure vs destination). */}
-      <PinDropSheet
-        visible={pinTarget !== null}
-        initialLat={pinSeed.lat}
-        initialLng={pinSeed.lng}
-        onCancel={() => setPinTarget(null)}
-        onConfirm={(pinLat, pinLng) => {
-          const target = pinTarget;
-          setPinTarget(null);
-          if (target === null) return;
-          void (async () => {
-            const resolved = await resolvePinLocation(pinLat, pinLng);
-            if (resolved === null) return;
-            if (target === "departure") {
-              setDepartureHint(null);
-              onChange({
-                departureLat: resolved.lat,
-                departureLng: resolved.lng,
-                departurePlaceId: null,
-                departureCoordinatePrecision: "exact",
-                ...((draft.departureLocationText ?? "").trim().length === 0 &&
-                resolved.formattedAddress !== null
-                  ? { departureLocationText: resolved.formattedAddress }
-                  : {}),
-              });
-            } else {
-              setDestinationHint(null);
-              onChange({
-                destinationLat: resolved.lat,
-                destinationLng: resolved.lng,
-                destinationPlaceId: null,
-                destinationCoordinatePrecision: "exact",
-                ...((draft.destinationLocationText ?? "").trim().length === 0 &&
-                resolved.formattedAddress !== null
-                  ? { destinationLocationText: resolved.formattedAddress }
-                  : {}),
-              });
-            }
-          })();
-        }}
-      />
 
       {/* Capacity */}
       <View style={styles.fieldGroup}>

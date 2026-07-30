@@ -105,8 +105,8 @@ export interface DraftVenueState {
   city: string | null;
   countryCode: string | null;
   /**
-   * Issue #1363 — how lat/lng was captured: "exact" (Tier-1 pick / Tier-3 pin)
-   * or "approximate" (Tier-2 free-text forward-geocode); null when unset. Rides
+   * Issue #1363 — how lat/lng was captured. Legacy values may be "exact";
+   * selected-address resolution is "approximate"; null when unset. Rides
    * the create RPC + drives honest map rendering (no fabricated precision, rule
    * 9). Optional at the type level so a pre-1363 persisted v3 blob rehydrates via
    * `?? null` (additive — no persist-version bump).

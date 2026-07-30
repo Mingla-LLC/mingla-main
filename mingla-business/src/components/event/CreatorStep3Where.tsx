@@ -35,14 +35,12 @@ import { Input } from "../ui/Input";
 // MapboxAddressInput is a drop-in for AddressAutocompleteInput (same props +
 // the same PlaceDetails boundary: formattedAddress / city / location).
 import { MapboxAddressInput } from "../location/MapboxAddressInput";
-import { PinDropSheet } from "../location/PinDropSheet";
 import {
   isFreeTextResolveStale,
   resolveFreeTextLocation,
-  resolvePinLocation,
-  resolvePinSeed,
 } from "../../utils/resolveApproxLocation";
 import type { PlaceDetails } from "../../services/mapboxGeocodeService";
+import type { LocationSelectionState } from "@mingla/location-input";
 // ORCH-1186 (salvaged from ORCH-1158 Issue 3 [wizard-map-preview]) — the SAME
 // proven static-map builder the trip/experience previews use. As of ORCH-1165
 // the static map is fetched through the vendor-NEUTRAL `static-map` Supabase
@@ -66,19 +64,55 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
   const addressError = showErrors ? errorForKey(errors, "address") : undefined;
   const onlineError = showErrors ? errorForKey(errors, "onlineUrl") : undefined;
 
-  // Issue #1363 [three-tier address] — pin-drop host + non-silent inline hint.
-  const [pinVisible, setPinVisible] = React.useState(false);
-  // Issue #1363 (CHANGE 2 — pin auto-center): coarse center the pin opens over,
-  // seeded from the field coord or a forward-geocode of the typed text so the
-  // map opens over the right area (never a blank world view). Map-seed only.
-  const [pinSeed, setPinSeed] = React.useState<{
-    lat: number | null;
-    lng: number | null;
-  }>({ lat: null, lng: null });
-  const [addrHint, setAddrHint] = React.useState<string | null>(null);
+  const [selectionState, setSelectionState] =
+    React.useState<LocationSelectionState>(
+      draft.address?.trim() && draft.city ? "selected" : "editing",
+    );
   // Issue #1363 P3-2 — latest-wins guard: the address text currently committed
   // to the field, so a superseded free-text geocode can't patch a stale city.
   const committedAddrRef = React.useRef(draft.address ?? "");
+  const savedCityRef = React.useRef(draft.city);
+
+  const resolveCommittedText = React.useCallback(
+    (rawLabel: string): void => {
+      committedAddrRef.current = rawLabel;
+      setSelectionState("resolving");
+      updateDraft({
+        address: rawLabel,
+        city: null,
+        locationGeo: null,
+        coordinatePrecision: null,
+      });
+      void (async () => {
+        try {
+          const resolution = await resolveFreeTextLocation(rawLabel, {
+            city: savedCityRef.current,
+          });
+          if (isFreeTextResolveStale(rawLabel, committedAddrRef.current)) return;
+          if (
+            resolution.status === "needs_context" ||
+            resolution.location.city === null
+          ) {
+            setSelectionState("needs_context");
+            return;
+          }
+          const approx = resolution.location;
+          updateDraft({
+            city: approx.city,
+            locationGeo: { lat: approx.lat, lng: approx.lng },
+            coordinatePrecision: "approximate",
+          });
+          savedCityRef.current = approx.city;
+          setSelectionState("selected");
+        } catch {
+          if (!isFreeTextResolveStale(rawLabel, committedAddrRef.current)) {
+            setSelectionState("error");
+          }
+        }
+      })();
+    },
+    [updateDraft],
+  );
 
   const showInPerson = draft.format === "in_person" || draft.format === "hybrid";
   const showOnline = draft.format === "online" || draft.format === "hybrid";
@@ -112,71 +146,41 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
             <MapboxAddressInput
               value={draft.address ?? ""}
               allowFreeText
+              selectionState={selectionState}
+              selectedLabel={draft.address ?? ""}
               onChangeText={(v) => {
-                setAddrHint(null);
                 committedAddrRef.current = v;
                 updateDraft({ address: v, city: null, locationGeo: null, coordinatePrecision: null });
               }}
-              onFreeText={(v) => {
-                // Tier 2 — accept the typed text; background forward-geocode
-                // derives the city (the event gate) + coarse coords.
-                setAddrHint(null);
-                committedAddrRef.current = v;
-                updateDraft({ address: v });
-                void (async () => {
-                  const approx = await resolveFreeTextLocation(v);
-                  // Issue #1363 P3-2 — drop a superseded resolve.
-                  if (isFreeTextResolveStale(v, committedAddrRef.current)) return;
-                  if (approx !== null && approx.city !== null) {
-                    updateDraft({
-                      city: approx.city,
-                      locationGeo: { lat: approx.lat, lng: approx.lng },
-                      coordinatePrecision: "approximate",
-                    });
-                  } else {
-                    // rule 3 — non-silent: city stays null (gate blocked); point
-                    // the host at the pin / a more specific city.
-                    updateDraft({ city: null, locationGeo: null, coordinatePrecision: null });
-                    setAddrHint(
-                      "We couldn't place that. Drop a pin, or add the city (e.g. “Yaba, Lagos”).",
-                    );
-                  }
-                })();
-              }}
-              onOpenPinDrop={() => {
-                // CHANGE 2 — seed the pin center from the typed address first.
-                void (async () => {
-                  const seed = await resolvePinSeed(
-                    draft.locationGeo?.lat ?? null,
-                    draft.locationGeo?.lng ?? null,
-                    draft.address ?? "",
-                  );
-                  setPinSeed(seed);
-                  setPinVisible(true);
-                })();
-              }}
-              onPick={(details: PlaceDetails): void => {
-                setAddrHint(null);
-                committedAddrRef.current = details.formattedAddress;
+              onFreeText={resolveCommittedText}
+              onPick={(details: PlaceDetails, selectedLabel?: string): void => {
+                const label = selectedLabel ?? details.formattedAddress;
+                committedAddrRef.current = label;
                 updateDraft({
-                  address: details.formattedAddress,
+                  address: label,
                   city: details.city,
                   locationGeo: details.location,
-                  coordinatePrecision: "exact",
+                  coordinatePrecision: "approximate",
+                });
+                savedCityRef.current = details.city;
+                setSelectionState("selected");
+              }}
+              onChangeSelected={() => {
+                committedAddrRef.current = draft.address ?? "";
+                setSelectionState("editing");
+                updateDraft({
+                  city: null,
+                  locationGeo: null,
+                  coordinatePrecision: null,
                 });
               }}
               onClear={(): void => {
-                setAddrHint(null);
                 committedAddrRef.current = "";
+                setSelectionState("editing");
                 updateDraft({ address: null, city: null, locationGeo: null, coordinatePrecision: null });
               }}
               error={addressError}
             />
-            {addrHint !== null ? (
-              <Text style={styles.addrHint} accessibilityLiveRegion="polite">
-                {addrHint}
-              </Text>
-            ) : null}
           </View>
 
           {/* Hide-address toggle — replaces the static helper text from
@@ -225,12 +229,12 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
               <Image>. REAL-DATA-ONLY (rule 9): until an address is picked
               (draft.locationGeo === null) OR the proxy base URL is absent at
               runtime, we show the honest "pick an address" empty state — never a
-              fake tile. */}
+              fake tile. Pick an address to preview the map. */}
           {(() => {
             // Issue #1363 — honest precision rendering (no fabricated precision,
             // rule 9): an APPROXIMATE (free-text) coordinate renders at a lower
             // zoom + an "Approximate location" caption so the preview never
-            // implies a false pinpoint. Exact (pick/pin) / null renders precise.
+            // implies a false pinpoint. Legacy exact / null renders precise.
             const isApprox = draft.coordinatePrecision === "approximate";
             const mapUrl = buildStaticMapUrl({
               lat: draft.locationGeo?.lat ?? null,
@@ -257,48 +261,13 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
               </View>
             ) : (
               <View style={[styles.mapWrap, styles.mapEmpty]}>
-                <Icon name="location" size={22} color={textTokens.quaternary} />
-                <Text style={styles.mapEmptyText}>
-                  Pick an address, use what you typed, or drop a pin
-                </Text>
+                    <Icon name="location" size={22} color={textTokens.quaternary} />
+                    <Text style={styles.mapEmptyText}>
+                      Pick an address to preview the map
+                    </Text>
               </View>
             );
           })()}
-
-          {/* Issue #1363 — Tier-3 pin-drop host (static tap-to-place). On confirm
-              the coordinate is authoritative; reverse-geocode fills the city (the
-              event gate). If no city is derivable, we keep city null + say so —
-              honesty over guessing. */}
-          <PinDropSheet
-            visible={pinVisible}
-            initialLat={pinSeed.lat}
-            initialLng={pinSeed.lng}
-            accentHex={accent.warm}
-            onCancel={() => setPinVisible(false)}
-            onConfirm={(pinLat, pinLng) => {
-              setPinVisible(false);
-              setAddrHint(null);
-              void (async () => {
-                const resolved = await resolvePinLocation(pinLat, pinLng);
-                if (resolved === null) return;
-                updateDraft({
-                  city: resolved.city,
-                  locationGeo: { lat: resolved.lat, lng: resolved.lng },
-                  coordinatePrecision: "exact",
-                  ...(draft.address === null || draft.address.trim().length === 0
-                    ? resolved.formattedAddress !== null
-                      ? { address: resolved.formattedAddress }
-                      : {}
-                    : {}),
-                });
-                if (resolved.city === null) {
-                  setAddrHint(
-                    "We couldn't read the city for that point — pick a spot nearer a town.",
-                  );
-                }
-              })();
-            }}
-          />
 
           {/* Privacy info card */}
           <GlassCard variant="base" padding={spacing.md} style={styles.infoCard}>

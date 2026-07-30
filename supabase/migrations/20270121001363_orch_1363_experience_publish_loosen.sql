@@ -9,7 +9,7 @@
 --   (a) The publish-time stop-address guard (single-location first-stop check
 --       AND the per_stop loop) now requires a REAL COORDINATE (lat + lng
 --       non-null) ONLY. The Mapbox `place_id` non-null requirement is DROPPED —
---       a free-text forward-geocode or a dropped pin yields a real coordinate
+--       selected-address hierarchy resolution yields a real coordinate
 --       with a null place_id, which is the exact flow issue #1363 exists to
 --       enable. Location coverage is STILL guaranteed by the lat/lng check
 --       (I-PROPOSED-1363-COORD-FROM-ANY-TIER supersedes the pick-only predicate;
@@ -28,7 +28,7 @@
 -- place_id / coordinate guard: the only location requirement is a non-null
 -- free-text `destinationLocationText` (RAISE 'trip_destination_required'); the
 -- destinationPlaceId / destinationLat / destinationLng theme keys are stripped
--- post-publish, never required. A pin/free-text trip already publishes. Trip
+-- post-publish, never required. A selected-address trip already publishes. Trip
 -- coordinate precision rides events.theme.business_trip.{departure,destination}
 -- CoordinatePrecision (JSON), which the theme-strip preserves — no RPC change.
 --
@@ -36,7 +36,7 @@
 -- needed. location_required / all other publish guards / every write are
 -- preserved byte-for-behavior. DO NOT auto-apply — the orchestrator applies
 -- 20270120001363 + this + the G2 migration together under the safe-migration
--- protocol, then curl-verifies a free-text/pin experience publishes.
+-- protocol, then curl-verifies a selected-address experience publishes.
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION public.biz_publish_experience(p_event_id uuid, p_payload jsonb, p_publish boolean DEFAULT false)
@@ -254,9 +254,9 @@ BEGIN
   IF p_publish THEN
     IF v_location_mode = 'single' THEN
       -- issue #1363 G1: require a REAL COORDINATE (lat + lng) ONLY. The Mapbox
-      -- place_id non-null requirement is dropped — free-text forward-geocode /
-      -- pin-drop yields a real coordinate with a null place_id (the flow #1363
-      -- exists to enable). Location coverage is still guaranteed by lat/lng.
+      -- place_id non-null requirement is dropped — free text yields a real
+      -- approximate coordinate with a null place_id. Location coverage is still
+      -- guaranteed by lat/lng.
       IF (v_stops->0->>'lat') IS NULL
          OR (v_stops->0->>'lng') IS NULL THEN
         RAISE EXCEPTION 'stop_address_unvalidated';

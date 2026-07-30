@@ -13,11 +13,12 @@
 import {
   autocompleteMapbox as sharedAutocomplete,
   retrieveMapboxPlace as sharedRetrieve,
-  forwardGeocodeMapbox as sharedForward,
-  reverseGeocodeMapbox as sharedReverse,
+  forwardHierarchyMapbox as sharedForwardHierarchy,
   newMapboxSessionToken,
   type PlaceAutocompleteSuggestion,
   type PlaceDetails,
+  type HierarchicalForwardResult,
+  type SavedLocationContext,
 } from "@mingla/location-input";
 import { supabase } from "./supabase";
 
@@ -41,24 +42,10 @@ export function retrieveMapboxPlace(
   return sharedRetrieve(placeId, sessionToken, { invoke });
 }
 
-/**
- * Issue #1363 — Tier-2 free-text → coords. Business-bound wrapper over the
- * shared `forwardGeocodeMapbox`; THROWS on failure (empty/unindexed query)
- * exactly like the shared primitive, so callers can distinguish "no match"
- * (→ leave lat/lng null + surface "drop a pin", rule 3) from a real coordinate.
- */
-export function forwardGeocodeMapbox(query: string): Promise<PlaceDetails> {
-  return sharedForward(query, { invoke });
-}
-
-/**
- * Issue #1363 — Tier-3 pin → address. Business-bound wrapper over the shared
- * `reverseGeocodeMapbox`; THROWS on failure. Used to fill city/region/country
- * from a dropped pin's coordinate (the coordinate itself is authoritative).
- */
-export function reverseGeocodeMapbox(
-  latitude: number,
-  longitude: number,
-): Promise<PlaceDetails> {
-  return sharedReverse(latitude, longitude, { invoke });
+/** Issue #1363 — safe place → city → country resolution. */
+export function forwardHierarchyMapbox(
+  query: string,
+  savedContext: SavedLocationContext = {},
+): Promise<HierarchicalForwardResult> {
+  return sharedForwardHierarchy(query, savedContext, { invoke });
 }

@@ -31,6 +31,8 @@ import { assert } from "jsr:@std/assert@1";
 
 const G1_MIGRATION =
   "supabase/migrations/20270121001363_orch_1363_experience_publish_loosen.sql";
+const G0_MIGRATION =
+  "supabase/migrations/20270120001363_orch_1363_coordinate_precision.sql";
 const G2_MIGRATION =
   "supabase/migrations/20270121001364_orch_1363_event_precision_persist.sql";
 // The trip publish RPC's latest definition lives in the #868 migration; the trip
@@ -40,8 +42,30 @@ const TRIP_SOURCE =
   "supabase/migrations/20270116000871_issue_868_cover_gallery_trip_exp_publish.sql";
 
 const g1Sql = await Deno.readTextFile(G1_MIGRATION);
+const g0Sql = await Deno.readTextFile(G0_MIGRATION);
 const g2Sql = await Deno.readTextFile(G2_MIGRATION);
 const tripSql = await Deno.readTextFile(TRIP_SOURCE);
+
+Deno.test("G0: venue location_required guard and nullable precision enum remain", () => {
+  const body = fnBody(g0Sql, "biz_create_venue_listing");
+  assert(
+    /RAISE EXCEPTION 'location_required'/.test(body),
+    "venue RPC still rejects missing coordinates",
+  );
+  assert(
+    /CHECK \(coordinate_precision IN \('exact', 'approximate'\)\)/.test(
+      g0Sql,
+    ),
+    "legacy exact and new approximate values remain readable",
+  );
+});
+
+Deno.test("Amendment 2 migrations contain no manual-placement semantics", () => {
+  const combined = `${g0Sql}\n${g1Sql}\n${g2Sql}`.toLocaleLowerCase("en");
+  assert(!combined.includes("pin-drop"), "migration comments do not name pin-drop");
+  assert(!combined.includes("drop a pin"), "migration comments do not name pin copy");
+  assert(!combined.includes("satellite"), "migration comments do not name imagery");
+});
 
 /**
  * Slice the body of a named CREATE OR REPLACE FUNCTION, bounded by its own

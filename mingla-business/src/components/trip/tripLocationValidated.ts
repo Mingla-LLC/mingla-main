@@ -18,22 +18,25 @@
  */
 
 /**
- * A trip location field is "located" when it carries a REAL COORDINATE — from a
- * Mapbox pick, a free-text forward-geocode, OR a dropped pin. lat + lng both
- * non-null.
+ * `tripPlacePicked` preserves the older exported pick predicate for compatibility
+ * with its existing direct callers and tests.
  *
  * Issue #1363 (OQ-2, Seth-approved 2026-07-29) — SUPERSEDES the prior pick-only
  * rule (placeId required) and its "Do not loosen" lock above. The invariant's
  * intent — every trip departure/destination carries a real coordinate — is
- * PRESERVED (lat/lng still required); only the Mapbox-placeId-required MECHANISM
- * is dropped so an un-indexed place located by free-text/pin is valid. The
- * `placeId` param is retained for call-site signature compatibility but is no
- * longer read. (Revises I-PROPOSED-TRIP-LOCATION-MAPBOX-VALIDATED /
+ * PRESERVED (lat/lng still required); authoring validators now use coordinates
+ * rather than placeId as their mechanism. (Revises
+ * I-PROPOSED-TRIP-LOCATION-MAPBOX-VALIDATED /
  * I-PROPOSED-1363-COORD-FROM-ANY-TIER.) The trip PUBLISH RPC gates only on
  * destination TEXT, so this loosening works end-to-end with no server change.
  */
 export const tripPlacePicked = (
-  _placeId: string | null,
+  placeId: string | null,
+  lat: number | null,
+  lng: number | null,
+): boolean => placeId !== null && lat !== null && lng !== null;
+
+const tripCoordinatesPresent = (
   lat: number | null,
   lng: number | null,
 ): boolean => lat !== null && lng !== null;
@@ -45,10 +48,10 @@ export const tripPlacePicked = (
  */
 export const destinationLocationValidated = (
   _text: string | null,
-  placeId: string | null,
+  _placeId: string | null,
   lat: number | null,
   lng: number | null,
-): boolean => tripPlacePicked(placeId, lat, lng);
+): boolean => tripCoordinatesPresent(lat, lng);
 
 /**
  * [DECISION-REVISED 2026-06-12] Departure is HARD-REQUIRED + VALIDATED. Valid
@@ -58,10 +61,10 @@ export const destinationLocationValidated = (
  */
 export const departureLocationValidated = (
   _text: string | null,
-  placeId: string | null,
+  _placeId: string | null,
   lat: number | null,
   lng: number | null,
-): boolean => tripPlacePicked(placeId, lat, lng);
+): boolean => tripCoordinatesPresent(lat, lng);
 
 // Inline-error copy — single source, reused on both authoring screens + tests.
 // Provider-neutral (no payment-provider names; COMMS-0021 satisfied trivially).

@@ -22,9 +22,8 @@ export interface ExperienceStopDraft {
   lat: number | null;
   lng: number | null;
   /**
-   * Issue #1363 [three-tier address] — how lat/lng was captured: "exact" (Tier-1
-   * pick / Tier-3 pin) or "approximate" (Tier-2 free-text forward-geocode); null
-   * when unset. Persisted to experience_stops.coordinate_precision.
+   * Issue #1363 — how lat/lng was captured. Legacy rows may be "exact"; all
+   * selected-address resolutions are "approximate". Null means unset.
    */
   coordinatePrecision?: "exact" | "approximate" | null;
   /** ≤5; imageUrls[0] = primary. */
@@ -76,19 +75,19 @@ export const labelForIndex = (i: number, n: number): string => {
 };
 
 /**
- * A stop is location-valid when it carries a REAL COORDINATE (from a pick,
- * free-text forward-geocode, OR a dropped pin) alongside a display address.
+ * A stop is location-valid when it carries an automatically resolved coordinate
+ * alongside the selected display address.
  *
  * Issue #1363 (OQ-2, Seth-approved 2026-07-29) — SUPERSEDES the prior pick-only
  * predicate (placeId required). The invariant's intent — every stop carries a
  * real coordinate — is PRESERVED (lat/lng still required); only the Mapbox-
- * placeId-required MECHANISM is dropped, so an un-indexed place located via
- * free-text/pin is valid. (Revises I-PROPOSED-1363-COORD-FROM-ANY-TIER.)
+ * placeId-required MECHANISM is dropped, so an un-indexed selected address is
+ * valid. (Revises I-PROPOSED-1363-COORD-FROM-ANY-TIER.)
  *
  * SERVER PARITY: the experience PUBLISH RPC `biz_publish_experience` now matches
  * this predicate — as of issue #1363 amendment G1 (migration 20270121001363,
  * live) both the first-stop guard and the per-stop loop require lat + lng ONLY;
- * the old `place_id` requirement is DROPPED. So a free-text / pin stop with a
+ * the old `place_id` requirement is DROPPED. So a selected-address stop with a
  * null place_id publishes, while a stop with a null lat/lng is still rejected
  * server-side (`stop_address_unvalidated`). Client and server are aligned.
  */

@@ -1,13 +1,10 @@
 /**
  * ORCH-1118 [trip from/destination fields must be Mapbox-validated addresses]
  *
- * [TEST-MOD-APPROVED ORCH-1363] — Issue #1363 (OQ-2, Seth-approved 2026-07-29)
- * SUPERSEDES the pick-only (placeId-required) contract. The REVISED contract:
- * BOTH departure and destination are valid when a REAL COORDINATE is present
- * (lat + lng non-null) — from a pick, a free-text forward-geocode, OR a dropped
- * pin. A Mapbox `placeId` is NO LONGER required. Empty text and coordinate-less
- * (typed-but-unlocated) text are STILL invalid for BOTH fields (a real
- * coordinate is still guaranteed — the invariant's intent is preserved).
+ * Unit tests for the shared trip-location predicate. The contract: BOTH
+ * departure and destination are valid ONLY when a real Mapbox pick is present
+ * (placeId + lat + lng all non-null). Empty text and dirty (typed-but-unpicked)
+ * text are BOTH invalid for BOTH fields.
  *
  * Fails-on-revert: T-2/T-3 fail if either field helper is loosened to accept
  * text-without-coords (e.g. reverting departure to an "empty is valid" branch).
@@ -27,18 +24,11 @@ describe("ORCH-1118 — tripLocationValidated predicate", () => {
     expect(tripPlacePicked("mb.1", 21.1, -87.4)).toBe(true);
   });
 
-  test("T-1: tripPlacePicked rejects any MISSING COORDINATE (lat/lng)", () => {
+  test("T-1: tripPlacePicked rejects any missing coordinate", () => {
+    expect(tripPlacePicked(null, 21.1, -87.4)).toBe(false);
     expect(tripPlacePicked("mb.1", null, -87.4)).toBe(false);
     expect(tripPlacePicked("mb.1", 21.1, null)).toBe(false);
     expect(tripPlacePicked(null, null, null)).toBe(false);
-  });
-
-  // [TEST-MOD-APPROVED ORCH-1363] — REVISED contract: a real coordinate WITHOUT a
-  // Mapbox placeId (free-text forward-geocode / pin) is now VALID. The prior
-  // assertion `tripPlacePicked(null, 21.1, -87.4) === false` encoded the
-  // superseded pick-only rule (OQ-2).
-  test("T-1 (#1363): tripPlacePicked accepts a coordinate WITHOUT a placeId", () => {
-    expect(tripPlacePicked(null, 21.1, -87.4)).toBe(true);
   });
 
   test("T-2: destination rejects text-without-coords (dirty)", () => {

@@ -120,25 +120,4 @@ export interface LocationInputCopy {
   offline: string;
   /** retrieve threw (e.g. "Couldn't fetch that place. Tap to try again."). */
   pickError: string;
-  /**
-   * Issue #1363 — prefix for the Tier-2 free-text commit row; the field renders
-   * `${freeTextPrefix} "${value}"`. OPTIONAL; defaults to "Use" when undefined.
-   * Only rendered when the host passes `allowFreeText`. Consumer hosts omit it
-   * (and `allowFreeText`) → byte-identical render.
-   */
-  freeTextPrefix?: string;
-  /**
-   * Issue #1363 — label for the Tier-3 pin-drop row (e.g. "Can't find it? Drop a
-   * pin on the map"). OPTIONAL; defaults to that string when undefined. Only
-   * rendered when the host passes `onOpenPinDrop`.
-   */
-  pinDropLabel?: string;
-  /**
-   * Issue #1363 (CHANGE 1) — tiny framing caption rendered ABOVE the free-text
-   * "Use …" row WHEN a live suggestion list is ALSO visible, so the action reads
-   * as a clearly-separated alternative and never as one of the suggestions.
-   * OPTIONAL; defaults to "or use what you typed". Only rendered when the host
-   * passes `allowFreeText` AND the field is in `suggestions_open`.
-   */
-  freeTextOverSuggestionsLabel?: string;
 }

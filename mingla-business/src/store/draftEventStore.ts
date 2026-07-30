@@ -306,9 +306,9 @@ export interface DraftEvent {
    */
   locationGeo: { lat: number; lng: number } | null;
   /**
-   * Issue #1363 [three-tier address] — how locationGeo was captured: "exact"
-   * (Tier-1 pick / Tier-3 pin) or "approximate" (Tier-2 free-text forward-
-   * geocode); null when unset. Drives honest map zoom + "Approximate location"
+   * Issue #1363 — how locationGeo was captured. Legacy values may be "exact";
+   * selected-address resolution is "approximate"; null when unset. Drives
+   * honest map zoom + "Approximate location"
    * caption on the wizard preview (no fabricated precision, rule 9). Optional +
    * default-safe: DEFAULT_DRAFT_FIELDS sets null and every read defaults `?? null`
    * ⇒ additive, no persist-version bump. NOTE: persisting to `events.

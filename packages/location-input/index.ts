@@ -11,18 +11,25 @@
  */
 
 export { MapboxAddressInput } from "./src/MapboxAddressInput";
-export type { MapboxAddressInputProps } from "./src/MapboxAddressInput";
+export type {
+  MapboxAddressInputProps,
+  LocationSelectionState,
+} from "./src/MapboxAddressInput";
 
 export {
   autocompleteMapbox,
   retrieveMapboxPlace,
   reverseGeocodeMapbox,
   forwardGeocodeMapbox,
+  forwardHierarchyMapbox,
   newMapboxSessionToken,
 } from "./src/mapboxGeocodeService";
 export type {
   PlaceAutocompleteSuggestion,
   PlaceDetails,
+  SavedLocationContext,
+  HierarchicalPlaceDetails,
+  HierarchicalForwardResult,
   InvokeFn,
 } from "./src/mapboxGeocodeService";
 

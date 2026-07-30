@@ -31,14 +31,12 @@ import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import { MapboxAddressInput } from "../location/MapboxAddressInput";
-import { PinDropSheet } from "../location/PinDropSheet";
 import {
   isFreeTextResolveStale,
   resolveFreeTextLocation,
-  resolvePinLocation,
-  resolvePinSeed,
 } from "../../utils/resolveApproxLocation";
 import type { PlaceDetails } from "../../services/mapboxGeocodeService";
+import type { LocationSelectionState } from "@mingla/location-input";
 import {
   labelForIndex,
   stopHasValidatedLocation,
@@ -86,19 +84,67 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
   const isFirst = i === 0;
   const isLast = i === n - 1;
   const showAddress = locationMode === "per_stop" || i === 0;
-  // Issue #1363 [three-tier address] — per-card pin-drop host + non-silent hint.
-  // Local state is fine here: only the card being edited re-renders (memoized).
-  const [pinVisible, setPinVisible] = React.useState(false);
-  // Issue #1363 (CHANGE 2 — pin auto-center): coarse center the pin opens over,
-  // seeded from this stop's coord or a forward-geocode of the typed address.
-  const [pinSeed, setPinSeed] = React.useState<{
-    lat: number | null;
-    lng: number | null;
-  }>({ lat: null, lng: null });
-  const [addrHint, setAddrHint] = React.useState<string | null>(null);
+  const [selectionState, setSelectionState] =
+    React.useState<LocationSelectionState>(
+      stop.address.trim() && stop.lat !== null && stop.lng !== null
+        ? "selected"
+        : "editing",
+    );
   // Issue #1363 P3-2 — latest-wins guard: the stop address currently committed,
   // so a superseded free-text geocode can't patch a stale coord for this stop.
   const committedAddrRef = React.useRef(stop.address);
+  const savedContextRef = React.useRef({
+    city: stop.city,
+    countryCode: stop.countryCode,
+  });
+  const resolveCommittedText = React.useCallback(
+    (rawLabel: string): void => {
+      committedAddrRef.current = rawLabel;
+      setSelectionState("resolving");
+      onPatch(cid, {
+        address: rawLabel,
+        placeId: null,
+        city: null,
+        region: null,
+        countryCode: null,
+        lat: null,
+        lng: null,
+        coordinatePrecision: null,
+      });
+      void (async () => {
+        try {
+          const resolution = await resolveFreeTextLocation(
+            rawLabel,
+            savedContextRef.current,
+          );
+          if (isFreeTextResolveStale(rawLabel, committedAddrRef.current)) return;
+          if (resolution.status === "needs_context") {
+            setSelectionState("needs_context");
+            return;
+          }
+          const approx = resolution.location;
+          onPatch(cid, {
+            city: approx.city,
+            region: approx.region,
+            countryCode: approx.countryCode,
+            lat: approx.lat,
+            lng: approx.lng,
+            coordinatePrecision: "approximate",
+          });
+          savedContextRef.current = {
+            city: approx.city,
+            countryCode: approx.countryCode,
+          };
+          setSelectionState("selected");
+        } catch {
+          if (!isFreeTextResolveStale(rawLabel, committedAddrRef.current)) {
+            setSelectionState("error");
+          }
+        }
+      })();
+    },
+    [cid, onPatch],
+  );
   const nameError = showErrors && stop.placeName.trim().length === 0;
   const descError =
     showErrors && stop.description.trim().length === 0
@@ -179,8 +225,9 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
               value={stop.address}
               accessibilityLabel={`Stop ${i + 1} address`}
               allowFreeText
+              selectionState={selectionState}
+              selectedLabel={stop.address}
               onChangeText={(v) => {
-                setAddrHint(null);
                 committedAddrRef.current = v;
                 onPatch(cid, {
                   address: v,
@@ -193,63 +240,42 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
                   coordinatePrecision: null,
                 });
               }}
-              onFreeText={(v) => {
-                // Tier 2 — accept the typed text, then forward-geocode coarse
-                // coords. placeId stays null (a real coordinate satisfies the
-                // loosened stop gate).
-                setAddrHint(null);
-                committedAddrRef.current = v;
-                onPatch(cid, { address: v });
-                void (async () => {
-                  const approx = await resolveFreeTextLocation(v);
-                  // Issue #1363 P3-2 — drop a superseded resolve.
-                  if (isFreeTextResolveStale(v, committedAddrRef.current)) return;
-                  if (approx !== null) {
-                    onPatch(cid, {
-                      city: approx.city,
-                      region: approx.region,
-                      countryCode: approx.countryCode,
-                      lat: approx.lat,
-                      lng: approx.lng,
-                      coordinatePrecision: "approximate",
-                    });
-                  } else {
-                    onPatch(cid, { lat: null, lng: null, coordinatePrecision: null });
-                    setAddrHint(
-                      "We couldn't find that. Drop a pin to set the exact spot.",
-                    );
-                  }
-                })();
-              }}
-              onOpenPinDrop={() => {
-                // CHANGE 2 — seed the pin center from the typed stop address.
-                void (async () => {
-                  const seed = await resolvePinSeed(
-                    stop.lat,
-                    stop.lng,
-                    stop.address,
-                  );
-                  setPinSeed(seed);
-                  setPinVisible(true);
-                })();
-              }}
-              onPick={(d: PlaceDetails) => {
-                setAddrHint(null);
-                committedAddrRef.current = d.formattedAddress;
+              onFreeText={resolveCommittedText}
+              onPick={(d: PlaceDetails, selectedLabel?: string) => {
+                const label = selectedLabel ?? d.formattedAddress;
+                committedAddrRef.current = label;
                 onPatch(cid, {
-                  address: d.formattedAddress,
+                  address: label,
                   placeId: d.placeId,
                   city: d.city,
                   region: d.region,
                   countryCode: d.countryCode,
                   lat: d.location.lat,
                   lng: d.location.lng,
-                  coordinatePrecision: "exact",
+                  coordinatePrecision: "approximate",
+                });
+                savedContextRef.current = {
+                  city: d.city,
+                  countryCode: d.countryCode,
+                };
+                setSelectionState("selected");
+              }}
+              onChangeSelected={() => {
+                committedAddrRef.current = stop.address;
+                setSelectionState("editing");
+                onPatch(cid, {
+                  placeId: null,
+                  city: null,
+                  region: null,
+                  countryCode: null,
+                  lat: null,
+                  lng: null,
+                  coordinatePrecision: null,
                 });
               }}
               onClear={() => {
-                setAddrHint(null);
                 committedAddrRef.current = "";
+                setSelectionState("editing");
                 onPatch(cid, {
                   address: "",
                   placeId: null,
@@ -262,37 +288,6 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
                 });
               }}
               error={addrError}
-            />
-            {addrHint !== null ? (
-              <Text style={styles.inlineError}>{addrHint}</Text>
-            ) : null}
-            <PinDropSheet
-              visible={pinVisible}
-              initialLat={pinSeed.lat}
-              initialLng={pinSeed.lng}
-              accentHex={accent.warm}
-              onCancel={() => setPinVisible(false)}
-              onConfirm={(pinLat, pinLng) => {
-                setPinVisible(false);
-                setAddrHint(null);
-                void (async () => {
-                  const resolved = await resolvePinLocation(pinLat, pinLng);
-                  if (resolved === null) return;
-                  onPatch(cid, {
-                    city: resolved.city,
-                    region: resolved.region,
-                    countryCode: resolved.countryCode,
-                    lat: resolved.lat,
-                    lng: resolved.lng,
-                    placeId: null,
-                    coordinatePrecision: "exact",
-                    ...(stop.address.trim().length === 0 &&
-                    resolved.formattedAddress !== null
-                      ? { address: resolved.formattedAddress }
-                      : {}),
-                  });
-                })();
-              }}
             />
           </>
         ) : (
