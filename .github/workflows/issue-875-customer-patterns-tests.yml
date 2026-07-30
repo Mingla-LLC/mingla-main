@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   issue-875-customer-patterns-pg17:
-    name: Issue #875 customer commitment patterns (PG17)
+    name: "Issue #875 customer commitment patterns (PG17)"
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
