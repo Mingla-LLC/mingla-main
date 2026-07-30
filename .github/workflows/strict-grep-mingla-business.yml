@@ -440,7 +440,7 @@ jobs:
           version: 2.98.2
       - name: Run class A gates (batched)
         run: node .github/scripts/strict-grep/run-batch.mjs --class A
-      - name: "Issue #1384: Edge currency state and FX executable suites"
+      - name: "Issues #1384/#1397: Edge currency state and FX executable suites"
         run: |
           deno check \
             supabase/functions/_shared/discoveryPrice.ts \
@@ -451,19 +451,23 @@ jobs:
             supabase/functions/admin-review-venue-claim/index.ts \
             supabase/functions/_shared/discoveryPrice.issue1384.test.ts \
             supabase/functions/_shared/fxRates.issue1384.test.ts \
+            supabase/functions/_shared/fxRates.issue1397.test.ts \
             supabase/functions/discover-cards/index.issue1384.test.ts \
             supabase/functions/manage-brand-discovery-currency/index.test.ts \
             supabase/functions/refresh-fx-rates/index.test.ts \
+            supabase/functions/refresh-fx-rates/index.issue1397.test.ts \
             supabase/functions/admin-review-venue-claim/__tests__/issue_1384_discovery_price_approval_persistence.test.ts
 
           deno test --allow-env --allow-read \
             supabase/functions/_shared/discoveryPrice.issue1384.test.ts \
             supabase/functions/_shared/fxRates.issue1384.test.ts \
+            supabase/functions/_shared/fxRates.issue1397.test.ts \
             supabase/functions/discover-cards/index.issue1384.test.ts \
             supabase/functions/manage-brand-discovery-currency/index.test.ts \
             supabase/functions/refresh-fx-rates/index.test.ts \
+            supabase/functions/refresh-fx-rates/index.issue1397.test.ts \
             supabase/functions/admin-review-venue-claim/__tests__/issue_1384_discovery_price_approval_persistence.test.ts
-      - name: "Issue #1384: disposable PostgreSQL 17 replay and SQL matrix"
+      - name: "Issues #1384/#1397: disposable PostgreSQL 17 replay and SQL matrix"
         shell: bash
         run: |
           set -euo pipefail
@@ -584,13 +588,20 @@ jobs:
           docker exec "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -c "DO \$\$ DECLARE v int := current_setting('server_version_num')::int; BEGIN IF v < 170000 OR v >= 180000 THEN RAISE EXCEPTION 'PostgreSQL 17 required, got server_version_num=%', v; END IF; END \$\$;"
 
+          # The #1397 migration owns an idempotent cron re-registration and must
+          # remain replay-safe after the full migration chain has already applied.
+          docker exec -i "$db_container" \
+            psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f - \
+            < supabase/migrations/20270130001397_issue_1397_fx_refresh_eol_cron.sql
+
           for sql_test in \
             supabase/migrations/__tests__/issue_1384_discovery_price_currency.test.sql \
             supabase/migrations/__tests__/issue_1384_discovery_price_currency.tester_adversarial.test.sql \
-            supabase/migrations/__tests__/issue_1384_discovery_price_currency_executable.test.sql
+            supabase/migrations/__tests__/issue_1384_discovery_price_currency_executable.test.sql \
+            supabase/migrations/__tests__/issue_1397_fx_refresh_eol_cron.test.sql
           do
             [[ -f "$sql_test" ]] || {
-              echo "missing #1384 SQL test: $sql_test" >&2
+              echo "missing #1384/#1397 SQL test: $sql_test" >&2
               exit 1
             }
             docker exec -i "$db_container" \

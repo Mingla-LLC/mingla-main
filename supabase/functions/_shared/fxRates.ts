@@ -10,7 +10,7 @@ export interface SupportedCurrency {
 export interface ValidatedFxPayload {
   providerUpdatedAt: string;
   providerNextUpdateAt: string;
-  providerEolAt: string;
+  providerEolAt: string | null;
   rates: Record<string, number>;
   canonicalPayload: string;
 }
@@ -31,6 +31,14 @@ function unixSecondsToIso(value: unknown, field: string): string {
   const date = new Date(value * 1000);
   if (!Number.isFinite(date.getTime())) throw new Error(`invalid_${field}`);
   return date.toISOString();
+}
+
+function providerEolToIso(value: unknown): string | null {
+  // Open V6 documents 0 as "no announced end of life". Persist that absence
+  // faithfully; manufacturing a future timestamp would turn unknown data into
+  // false provider authority.
+  if (value === 0) return null;
+  return unixSecondsToIso(value, "provider_eol_at");
 }
 
 function canonicalJson(value: Record<string, unknown>): string {
@@ -62,8 +70,11 @@ export function validateFxProviderPayload(
     raw.time_next_update_unix,
     "provider_next_update_at",
   );
-  const providerEolAt = unixSecondsToIso(raw.time_eol_unix, "provider_eol_at");
-  if (new Date(providerEolAt).getTime() <= now.getTime()) {
+  const providerEolAt = providerEolToIso(raw.time_eol_unix);
+  if (
+    providerEolAt !== null &&
+    new Date(providerEolAt).getTime() <= now.getTime()
+  ) {
     throw new Error("provider_data_expired");
   }
   if (
