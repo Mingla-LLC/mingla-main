@@ -145,10 +145,10 @@ describe("issue #1380 guest reservation analytics", () => {
     });
 
     const name = tree.root.findAll(
-      (node) => node.props.accessibilityLabel === "Name",
+      (node) => node.props.accessibilityLabel === "Name, required",
     )[0];
     const email = tree.root.findAll(
-      (node) => node.props.accessibilityLabel === "Email",
+      (node) => node.props.accessibilityLabel === "Email, required",
     )[0];
     await TestRenderer.act(async () => {
       invoke(name, "onChangeText", "Seth");
