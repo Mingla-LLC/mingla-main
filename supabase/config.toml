@@ -1,5 +1,11 @@
 project_id = "gqnoajqerqhnvulmnyvv"
 
+[functions.refresh-fx-rates]
+verify_jwt = false
+
+[functions.manage-brand-discovery-currency]
+verify_jwt = true
+
 [functions.payout-release-sweep]
 verify_jwt = false
 

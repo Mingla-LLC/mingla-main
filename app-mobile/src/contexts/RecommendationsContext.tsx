@@ -16,7 +16,13 @@ import { supabase } from "../services/supabase";
 import { useCardsCache } from "./CardsCacheContext";
 import { useUserLocation } from "../hooks/useUserLocation";
 import { useUserPreferences } from "../hooks/useUserPreferences";
-import { useDeckCards, buildDeckQueryKey } from "../hooks/useDeckCards";
+import {
+  DECK_LAST_KEY,
+  DECK_LAST_LOCATION_KEY,
+  persistFirstDeckPageController,
+  prefetchDeckPageController,
+  useDeckCards,
+} from "../hooks/useDeckCards";
 import { cachedLocationSync } from "../hooks/useUserLocation";
 import { deckService } from "../services/deckService";
 import type { CollabDeadEndPayload } from "../services/deckService";
@@ -181,6 +187,7 @@ export const RecommendationsProvider: React.FC<
 }) => {
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [batchSeed, setBatchSeed] = useState(0);
+  const [pinnedFxSnapshotId, setPinnedFxSnapshotId] = useState<string | undefined>();
   const [isModeTransitioning, setIsModeTransitioning] = useState(false);
   const [hasCompletedFetchForCurrentMode, setHasCompletedFetchForCurrentMode] =
     useState(false);
@@ -237,8 +244,6 @@ export const RecommendationsProvider: React.FC<
   // On cold start, loads the last-used deck query key from AsyncStorage.
   // Only set if the persisted location matches current GPS hint (within 3dp
   // rounding = ~110m). Prevents wrong-city cards. See ORCH-0391 precedence report.
-  const DECK_LAST_KEY = '@mingla/lastDeckQueryKey';
-  const DECK_LAST_LOCATION_KEY = '@mingla/lastDeckLocation';
   const [lastDeckKey, setLastDeckKey] = useState<readonly unknown[] | null>(null);
 
   useEffect(() => {
@@ -281,6 +286,12 @@ export const RecommendationsProvider: React.FC<
   } = useAppStore();
 
   const user = useAppStore((state) => state.user);
+  // Missing viewer preference is intentionally undefined. The server then
+  // returns exact source money; this path must never silently choose USD.
+  const explicitViewerCurrency = useAppStore((state) => {
+    const currency = state.profile?.currency?.trim().toUpperCase();
+    return currency && /^[A-Z]{3}$/.test(currency) ? currency : undefined;
+  });
 
   // ── ORCH-0490 Phase 2.3: Logout / user-swap registry clear ──────────
   // Constitutional #6: logout must clear all private state. The registry
@@ -728,6 +739,8 @@ export const RecommendationsProvider: React.FC<
       batchSeedReady,
     excludeCardIds: [],
     lastKnownQueryKey: lastDeckKey,
+    displayCurrency: explicitViewerCurrency,
+    fxSnapshotId: pinnedFxSnapshotId,
     // No `mode` field — legacy key shape.
   });
 
@@ -753,6 +766,8 @@ export const RecommendationsProvider: React.FC<
       batchSeedReady,
     excludeCardIds: [],
     lastKnownQueryKey: isSoloMode ? lastDeckKey : null,
+    displayCurrency: explicitViewerCurrency,
+    fxSnapshotId: pinnedFxSnapshotId,
   });
 
   // ORCH-0909: flag-on COLLAB hook — slim positional contract.
@@ -810,6 +825,19 @@ export const RecommendationsProvider: React.FC<
   // Applies to both solo and collab — both flow through useDeckCards.
   const soloCuratedEmptyReason = activeDeck.curatedEmptyReason;
 
+  // Page one chooses the snapshot. Every later page, cache key, and prefetch
+  // echoes that immutable ID so membership and displayed conversion cannot
+  // drift if rates rotate mid-session.
+  useEffect(() => {
+    if (
+      isSoloMode &&
+      activeDeck.fxSnapshotId &&
+      activeDeck.fxSnapshotId !== pinnedFxSnapshotId
+    ) {
+      setPinnedFxSnapshotId(activeDeck.fxSnapshotId);
+    }
+  }, [activeDeck.fxSnapshotId, isSoloMode, pinnedFxSnapshotId]);
+
   // ── ORCH-0391: Persist deck key + location on first successful solo load ──
   // Enables instant cold-start render on next app open (if location matches).
   const deckPersistFiredRef = useRef(false);
@@ -818,24 +846,17 @@ export const RecommendationsProvider: React.FC<
       soloDeckCards.length > 0 &&
       activeDeckLocation &&
       activeDeckParams &&
+      activeDeck.response &&
       isSoloMode &&
       !deckPersistFiredRef.current
     ) {
       deckPersistFiredRef.current = true;
-      // ORCH-0490 Phase 2.3: pass `mode: 'solo'` when flag-on so the persisted
-      // key shape matches the hook's key shape. Flag-off omits `mode` to
-      // preserve the pre-2.3 legacy shape. If the flag flips between sessions
-      // (e.g. OTA rolling the flag to true for prod), the first cold launch
-      // post-flip sees a shape mismatch and cold-starts through the fetch
-      // path (one-time skeleton). Acceptable for dark-ship rollout.
-      // ORCH-0902 CR-7: this branch is solo-only (isSoloMode check above);
-      // read categories/intents from the solo source directly to avoid the
-      // collab-shape `{sessionId, currentPosition, ...}` union creeping in.
       const soloParams = stableDeckParams;
-      const key = buildDeckQueryKey({
-        ...(FEATURE_FLAG_PER_CONTEXT_DECK_STATE ? { mode: 'solo' as const } : {}),
-        lat: activeDeckLocation.lat,
-        lng: activeDeckLocation.lng,
+      void persistFirstDeckPageController({
+        ...(FEATURE_FLAG_PER_CONTEXT_DECK_STATE
+          ? { mode: 'solo' as const }
+          : {}),
+        location: activeDeckLocation,
         categories: soloParams?.categories ?? [],
         intents: soloParams?.intents ?? [],
         travelMode: effectiveTravelMode,
@@ -845,13 +866,23 @@ export const RecommendationsProvider: React.FC<
         dateOption: effectiveDateOption,
         batchSeed,
         excludeCardIds: [],
+        displayCurrency: explicitViewerCurrency,
+        fxSnapshotId: activeDeck.fxSnapshotId ?? pinnedFxSnapshotId,
+        response: activeDeck.response,
+      }, {
+        queryClient,
+        storage: AsyncStorage,
+      }).then((persistedKey) => {
+        setLastDeckKey(persistedKey);
+        if (__DEV__) {
+          console.log('[Deck] Persisted deck key + location for cold-start cache');
+        }
+      }).catch((error: unknown) => {
+        console.warn(
+          '[Deck] Failed to persist first deck page',
+          error instanceof Error ? error.message : String(error),
+        );
       });
-      AsyncStorage.setItem(DECK_LAST_KEY, JSON.stringify(key)).catch(() => {});
-      AsyncStorage.setItem(DECK_LAST_LOCATION_KEY, JSON.stringify({
-        lat: Math.round(activeDeckLocation.lat * 1000) / 1000,
-        lng: Math.round(activeDeckLocation.lng * 1000) / 1000,
-      })).catch(() => {});
-      if (__DEV__) console.log('[Deck] Persisted deck key + location for cold-start cache');
     }
   }, [soloDeckCards.length, activeDeckLocation?.lat, activeDeckLocation?.lng, isSoloMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -975,6 +1006,8 @@ export const RecommendationsProvider: React.FC<
       // naturally trigger a refetch. No need to manually invalidate.
       setBatchSeedReady(false); // Block queries until batchSeed is confirmed 0
       setBatchSeed(0);
+      setPinnedFxSnapshotId(undefined);
+      deckPersistFiredRef.current = false;
       setIsExhausted(false);
       setHasCompletedFetchForCurrentMode(false);
       setRecommendations(EMPTY_CARDS);
@@ -1089,39 +1122,34 @@ export const RecommendationsProvider: React.FC<
         ? normalizeDateTime(rawDatetimePref)
         : undefined;
 
-      const prefetchLat = Math.round(activeDeckLocation.lat * 1000) / 1000;
-      const prefetchLng = Math.round(activeDeckLocation.lng * 1000) / 1000;
-      queryClient.prefetchQuery({
-        queryKey: [
-          'deck-cards',
-          prefetchLat, prefetchLng,
-          prefetchCategories.sort().join(','),
-          prefetchIntents.sort().join(','),
-          prefetchTravelMode,
-          prefetchConstraintType,
-          prefetchConstraintValue,
-          prefetchDatetimePref,
-          prefetchDateOption,
-          nextSeed,
-          '', // no exclusions
-        ],
-        queryFn: () => deckService.fetchDeck({
-          location: activeDeckLocation,
-          categories: prefetchCategories,
-          intents: prefetchIntents,
-          travelMode: prefetchTravelMode,
-          travelConstraintType: prefetchConstraintType,
-          travelConstraintValue: prefetchConstraintValue,
-          datetimePref: prefetchDatetimePref,
-          dateOption: prefetchDateOption,
-          batchSeed: nextSeed,
-          limit: 10000,
-          excludeCardIds: [],
-        }),
-        staleTime: 5 * 60 * 1000,
+      void prefetchDeckPageController({
+        ...(FEATURE_FLAG_PER_CONTEXT_DECK_STATE
+          ? { mode: 'solo' as const }
+          : {}),
+        location: activeDeckLocation,
+        categories: prefetchCategories,
+        intents: prefetchIntents,
+        travelMode: prefetchTravelMode,
+        travelConstraintType: prefetchConstraintType,
+        travelConstraintValue: prefetchConstraintValue,
+        datetimePref: prefetchDatetimePref,
+        dateOption: prefetchDateOption,
+        batchSeed: nextSeed,
+        excludeCardIds: [],
+        displayCurrency: explicitViewerCurrency,
+        fxSnapshotId: activeDeck.fxSnapshotId ?? pinnedFxSnapshotId,
+        limit: 10000,
+      }, {
+        queryClient,
+        fetchDeck: (request) => deckService.fetchDeck(request),
+      }).catch((error: unknown) => {
+        console.warn(
+          '[Deck] Next-page prefetch failed',
+          error instanceof Error ? error.message : String(error),
+        );
       });
     }
-  }, [batchSeed, hasMoreCards, activeDeckLocation, activeDeckParams, isSoloMode, isCollaborationMode, resolvedSessionId, userPrefs, queryClient]);
+  }, [batchSeed, hasMoreCards, activeDeckLocation, activeDeckParams, isSoloMode, isCollaborationMode, resolvedSessionId, userPrefs, queryClient, explicitViewerCurrency, pinnedFxSnapshotId]);
 
   // ── Sync deck cards to recommendations state (unified for solo + collab) ──
   // Infinite deck: APPEND new page results to accumulated cards instead of replacing.
@@ -1370,6 +1398,8 @@ export const RecommendationsProvider: React.FC<
       setHasCompletedFetchForCurrentMode(false);
       previousDeckIdsRef.current = '';
       setBatchSeed(0);
+      setPinnedFxSnapshotId(undefined);
+      deckPersistFiredRef.current = false;
       prefetchFiredRef.current = false;
       setIsExhausted(false);
       // ORCH-0443: Suppress the next AsyncStorage read so it can't override this reset.

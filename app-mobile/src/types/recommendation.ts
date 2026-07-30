@@ -22,6 +22,31 @@ export interface Recommendation {
   image: string;
   images: string[];
   priceRange: string;
+  priceRangeStatus?:
+    | "active"
+    | "legacy_unresolved"
+    | "reconciliation_required"
+    | "unset"
+    | null;
+  sourceMinMinor?: number | null;
+  sourceMaxMinor?: number | null;
+  sourceCurrencyCode?: string | null;
+  sourceMinorUnitExponent?: number | null;
+  displayMinMinor?: number | null;
+  displayMaxMinor?: number | null;
+  displayCurrencyCode?: string | null;
+  displayMinorUnitExponent?: number | null;
+  priceIsApproximate?: boolean;
+  fxSnapshotId?: string | null;
+  fxProvider?: string | null;
+  fxProviderUpdatedAt?: string | null;
+  fxFreshness?:
+    | "fresh"
+    | "stale_soft"
+    | "expired"
+    | "not_needed"
+    | "unavailable"
+    | null;
   // ORCH-0659/0660: honest null when distance/travel-time can't be computed
   // (missing user GPS, missing place lat/lng). UI hides the badge on null
   // — never fabricate "nearby" or "0 min".

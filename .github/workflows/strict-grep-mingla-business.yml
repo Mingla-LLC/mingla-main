@@ -432,8 +432,175 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.98.2
       - name: Run class A gates (batched)
         run: node .github/scripts/strict-grep/run-batch.mjs --class A
+      - name: "Issue #1384: Edge currency state and FX executable suites"
+        run: |
+          deno check \
+            supabase/functions/_shared/discoveryPrice.ts \
+            supabase/functions/_shared/fxRates.ts \
+            supabase/functions/discover-cards/index.ts \
+            supabase/functions/manage-brand-discovery-currency/index.ts \
+            supabase/functions/refresh-fx-rates/index.ts \
+            supabase/functions/admin-review-venue-claim/index.ts \
+            supabase/functions/_shared/discoveryPrice.issue1384.test.ts \
+            supabase/functions/_shared/fxRates.issue1384.test.ts \
+            supabase/functions/discover-cards/index.issue1384.test.ts \
+            supabase/functions/manage-brand-discovery-currency/index.test.ts \
+            supabase/functions/refresh-fx-rates/index.test.ts \
+            supabase/functions/admin-review-venue-claim/__tests__/issue_1384_discovery_price_approval_persistence.test.ts
+
+          deno test --allow-env --allow-read \
+            supabase/functions/_shared/discoveryPrice.issue1384.test.ts \
+            supabase/functions/_shared/fxRates.issue1384.test.ts \
+            supabase/functions/discover-cards/index.issue1384.test.ts \
+            supabase/functions/manage-brand-discovery-currency/index.test.ts \
+            supabase/functions/refresh-fx-rates/index.test.ts \
+            supabase/functions/admin-review-venue-claim/__tests__/issue_1384_discovery_price_approval_persistence.test.ts
+      - name: "Issue #1384: disposable PostgreSQL 17 replay and SQL matrix"
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          sql_root="$(mktemp -d /tmp/issue-1384-sql.XXXXXX)"
+          cleanup_issue_1384_sql() {
+            supabase stop --workdir "$sql_root" --no-backup --yes || true
+          }
+          trap cleanup_issue_1384_sql EXIT
+
+          supabase init --workdir "$sql_root" --yes
+          source_migrations="$GITHUB_WORKSPACE/supabase/migrations"
+          target_migrations="$sql_root/supabase/migrations"
+          rsync -a "$source_migrations/" "$target_migrations/"
+
+          sql_count() {
+            find "$1" -maxdepth 1 -type f -name '*.sql' -print0 |
+              awk 'BEGIN { RS="\0" } NF { count += 1 } END { print count + 0 }'
+          }
+
+          sql_digest_multiset() {
+            while IFS= read -r -d '' sql_file; do
+              sha256sum "$sql_file" | awk '{ print $1 }'
+            done < <(find "$1" -maxdepth 1 -type f -name '*.sql' -print0)
+          }
+
+          source_count="$(sql_count "$source_migrations")"
+          source_digests="$(sql_digest_multiset "$source_migrations" | LC_ALL=C sort)"
+
+          move_unique_migration() {
+            local source_path="$1"
+            local target_path="$2"
+            [[ -f "$source_path" ]] || {
+              echo "missing migration rename source: $source_path" >&2
+              exit 1
+            }
+            [[ ! -e "$target_path" ]] || {
+              echo "migration rename target already exists: $target_path" >&2
+              exit 1
+            }
+            mv -- "$source_path" "$target_path"
+            [[ ! -e "$source_path" && -f "$target_path" ]] || {
+              echo "migration rename did not complete: $source_path -> $target_path" >&2
+              exit 1
+            }
+          }
+
+          # Collision-safe pair 1: vacate 000001 before moving refund into it.
+          move_unique_migration \
+            "$target_migrations/20260612000001_tr4_revoke_rpc_anon_grants.sql" \
+            "$target_migrations/20260612000002_tr4_revoke_rpc_anon_grants.sql"
+          move_unique_migration \
+            "$target_migrations/20260612000000_tr4_refund_tiers_booking_deadline.sql" \
+            "$target_migrations/20260612000001_tr4_refund_tiers_booking_deadline.sql"
+
+          # Four independent duplicate-prefix normalizations.
+          move_unique_migration \
+            "$target_migrations/20260615000000_orch_426_discover_cache_gzip.sql" \
+            "$target_migrations/20260615010000_orch_426_discover_cache_gzip.sql"
+          move_unique_migration \
+            "$target_migrations/20261012000000_orch_1150_rsvp_maybe.sql" \
+            "$target_migrations/20261012010000_orch_1150_rsvp_maybe.sql"
+          move_unique_migration \
+            "$target_migrations/20261113000000_orch_1172_rsvp_edit_privacy_settings.sql" \
+            "$target_migrations/20261113010000_orch_1172_rsvp_edit_privacy_settings.sql"
+          move_unique_migration \
+            "$target_migrations/20261116000000_orch_1187_reconcile_stuck_checkouts_cron.sql" \
+            "$target_migrations/20261116010000_orch_1187_reconcile_stuck_checkouts_cron.sql"
+
+          # Collision-safe pair 2: vacate 000001 before moving orders into it.
+          move_unique_migration \
+            "$target_migrations/20261117000001_orch_1188_finalize_persist_event_date_id.sql" \
+            "$target_migrations/20261117000002_orch_1188_finalize_persist_event_date_id.sql"
+          move_unique_migration \
+            "$target_migrations/20261117000000_orch_1188_orders_event_date_id.sql" \
+            "$target_migrations/20261117000001_orch_1188_orders_event_date_id.sql"
+
+          target_count="$(sql_count "$target_migrations")"
+          target_digests="$(sql_digest_multiset "$target_migrations" | LC_ALL=C sort)"
+          [[ "$target_count" -eq "$source_count" ]] || {
+            echo "migration SQL count changed: source=$source_count target=$target_count" >&2
+            exit 1
+          }
+          [[ "$target_digests" == "$source_digests" ]] || {
+            echo "migration SQL body digest multiset changed" >&2
+            exit 1
+          }
+
+          duplicate_prefixes="$(
+            find "$target_migrations" -maxdepth 1 -type f -name '*.sql' -print0 |
+              while IFS= read -r -d '' sql_file; do
+                basename "$sql_file" | cut -c1-14
+              done |
+              LC_ALL=C sort |
+              uniq -d
+          )"
+          [[ -z "$duplicate_prefixes" ]] || {
+            echo "duplicate migration prefixes remain:" >&2
+            printf '%s\n' "$duplicate_prefixes" >&2
+            exit 1
+          }
+
+          supabase start --workdir "$sql_root" \
+            --exclude gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor \
+            --yes
+
+          db_container="$(
+            docker ps \
+              --filter "label=com.supabase.cli.project=$(basename "$sql_root")" \
+              --format '{{.Names}}' |
+              awk '/^supabase_db_/ { print; exit }'
+          )"
+          [[ -n "$db_container" ]] || {
+            echo "disposable PostgreSQL container not found" >&2
+            exit 1
+          }
+
+          docker exec "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -c "DO \$\$ DECLARE v int := current_setting('server_version_num')::int; BEGIN IF v < 170000 OR v >= 180000 THEN RAISE EXCEPTION 'PostgreSQL 17 required, got server_version_num=%', v; END IF; END \$\$;"
+
+          for sql_test in \
+            supabase/migrations/__tests__/issue_1384_discovery_price_currency.test.sql \
+            supabase/migrations/__tests__/issue_1384_discovery_price_currency.tester_adversarial.test.sql \
+            supabase/migrations/__tests__/issue_1384_discovery_price_currency_executable.test.sql
+          do
+            [[ -f "$sql_test" ]] || {
+              echo "missing #1384 SQL test: $sql_test" >&2
+              exit 1
+            }
+            docker exec -i "$db_container" \
+              psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f - < "$sql_test"
+          done
+      - name: "Issue #1384: Admin reason and revision-CAS suites"
+        run: |
+          node --test \
+            mingla-admin/src/lib/__tests__/issue1384DiscoveryPriceAdminExecutable.test.js \
+            mingla-admin/src/lib/__tests__/issue1384DiscoveryPriceAdmin.test.js
       - name: Upload class A gate results
         if: always()
         uses: actions/upload-artifact@v4
@@ -485,6 +652,13 @@ jobs:
       - name: Install mingla-business deps
         working-directory: mingla-business
         run: npm install --no-save
+      - name: "Issue #1384: Business authoring and buyer rendering suite"
+        working-directory: mingla-business
+        run: |
+          npx jest --runInBand \
+            src/services/__tests__/issue1384DiscoveryCurrencyExecutable.test.ts \
+            src/components/venue/claim/__tests__/ClaimStepPrice.issue1384.executable.test.tsx \
+            src/components/venue/__tests__/issue1384DiscoveryPriceAuthoringExecutable.test.ts
       - name: Run expo export -p web (capture stderr)
         working-directory: mingla-business
         env:
@@ -516,6 +690,17 @@ jobs:
           # dependency-free pure-logic modules, so no npm install is needed here. The two
           # pre-existing class-D npm-script gates are node-version-agnostic file checks.
           node-version: "22"
+      - name: Install app-mobile test dependencies
+        working-directory: app-mobile
+        run: npm install --no-save
+      - name: "Issue #1384: consumer carrier and runtime-parity suites"
+        working-directory: app-mobile
+        run: |
+          npx jest --runInBand \
+            src/components/utils/__tests__/discoveryPriceCarriers.issue1384.test.ts \
+            src/services/__tests__/deckService.issue1384.test.ts \
+            src/utils/__tests__/priceTiers.issue1384.test.ts \
+            src/utils/__tests__/discoveryPriceRuntimeParity.issue1384.test.ts
       - name: Run class D suites (batched)
         run: node .github/scripts/strict-grep/run-batch.mjs --class D
       - name: Upload class D gate results

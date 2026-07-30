@@ -163,8 +163,27 @@ export function venueStepError(
     }
     // ORCH-1304 — the create Pitch step (s6) is removed; no s6 branch remains.
     case "s7":
-      // Mirror claim c7: at least one price range.
-      return d.priceTiers.length === 0 ? "Pick at least one price range." : null;
+      if (d.discoveryPriceMinInput === undefined) {
+        // [TRANSITIONAL] pre-#1384 test/persisted draft compatibility. Live
+        // drafts are normalized to an explicit empty source-money input. EXIT
+        // when all pre-#1384 persisted venue drafts have expired.
+        return d.priceTiers.length === 0 ? "Add a typical spend." : null;
+      }
+      if (d.discoveryPriceMinInput.trim().length === 0) {
+        return "Add a typical spend.";
+      }
+      if (!/^\d+(?:\.\d{1,3})?$/.test(d.discoveryPriceMinInput.trim())) {
+        return "Enter a valid typical spend.";
+      }
+      if (
+        (d.discoveryPriceMaxInput ?? "").trim().length > 0 &&
+        !/^\d+(?:\.\d{1,3})?$/.test(
+          (d.discoveryPriceMaxInput ?? "").trim(),
+        )
+      ) {
+        return "Enter a valid upper amount.";
+      }
+      return null;
     case "s8":
       return null; // Bookings — off is a valid keep; never blocks (mirror c8).
     case "s9":
@@ -209,7 +228,24 @@ export function venueStepError(
       return null;
     }
     case "c7":
-      return d.priceTiers.length === 0 ? "Pick at least one price range." : null;
+      if (d.discoveryPriceMinInput === undefined) {
+        return d.priceTiers.length === 0 ? "Add a typical spend." : null;
+      }
+      if (d.discoveryPriceMinInput.trim().length === 0) {
+        return "Add a typical spend.";
+      }
+      if (!/^\d+(?:\.\d{1,3})?$/.test(d.discoveryPriceMinInput.trim())) {
+        return "Enter a valid typical spend.";
+      }
+      if (
+        (d.discoveryPriceMaxInput ?? "").trim().length > 0 &&
+        !/^\d+(?:\.\d{1,3})?$/.test(
+          (d.discoveryPriceMaxInput ?? "").trim(),
+        )
+      ) {
+        return "Enter a valid upper amount.";
+      }
+      return null;
     case "c8":
       return null; // Off is a valid keep — this step can never block.
     case "c9":

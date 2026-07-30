@@ -10,10 +10,12 @@ import {
   getPublicEventById,
   getPublicEventBySlug,
   getPublicVenueBySlug,
+  getPublicVenueDiscoveryPrice,
   getPublicVenueReservable,
   type PublicBrandDetail,
   type PublicEventDetail,
   type PublicVenue,
+  type PublicVenueDiscoveryPrice,
   type PublicVenueReservable,
   type PublicVenueSummary,
 } from "../services/publicEventsService";
@@ -156,6 +158,22 @@ export const usePublicVenueReservable = (
       }
       return getPublicVenueReservable(placePoolId);
     },
+  });
+};
+
+export const usePublicVenueDiscoveryPrice = (
+  placePoolId: string | null,
+): UseQueryResult<PublicVenueDiscoveryPrice | null> => {
+  const enabled = placePoolId !== null && placePoolId.length > 0;
+  return useQuery({
+    queryKey: enabled
+      ? [...publicEventKeys.all, "venue-discovery-price", placePoolId]
+      : DISABLED_KEY,
+    enabled,
+    staleTime: PUBLIC_STALE_TIME_MS,
+    queryFn: () => enabled && placePoolId !== null
+      ? getPublicVenueDiscoveryPrice(placePoolId)
+      : Promise.resolve(null),
   });
 };
 

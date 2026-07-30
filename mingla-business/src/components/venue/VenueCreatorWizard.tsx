@@ -52,6 +52,7 @@ import {
 import { useCreateVenueListing } from "../../hooks/useVenueListings";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import {
+  commitNewVenueDiscoveryRange,
   fetchVenuePipelineState,
   syncGallery,
   upsertTier1Place,
@@ -385,13 +386,10 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
           description: st.description.trim(),
           hours: st.hours,
           // META-ORCH-1290 Leg B (D-1) — the folded create wizard now collects
-          // website/price/gallery too, so the CREATE branch passes them as well
-          // (Leg A §A3.1 stage payload reads website/priceTiers → tier2 seed,
-          // adoptedGalleryUrls → business_gallery_urls when the place row is a
-          // linked/seeded pool). A pure create-from-scratch INSERT stages the
-          // draft blob only, so submit ALSO calls syncGallery below.
+          // website/gallery too. Issue #1384 removes discovery money from the
+          // tier staging blob; both create and claim save one canonical range
+          // after place/venue identity resolves below.
           website: st.website.trim() || null,
-          priceTiers: st.priceTiers,
           adoptedGalleryUrls:
             claimMode && claim !== null
               ? claim.keptGalleryUrls
@@ -412,6 +410,17 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
       if (tier1.place_pool_id.length === 0) {
         throw new Error("place_pool_link_missing");
       }
+      if (venueId === null) {
+        throw new Error("venue_link_missing");
+      }
+
+      await commitNewVenueDiscoveryRange({
+        brandId: currentBrand.id,
+        venueId,
+        placePoolId: tier1.place_pool_id,
+        priceMinInput: st.discoveryPriceMinInput ?? "",
+        priceMaxInput: st.discoveryPriceMaxInput ?? "",
+      });
 
       if (claimMode) {
         // ORCH-1263 — claim success: the standard pending card state (DESIGN

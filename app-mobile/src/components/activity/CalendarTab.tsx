@@ -37,6 +37,10 @@ import { CustomPaywallScreen } from "../CustomPaywallScreen";
 import { useKeyboard } from "../../hooks/useKeyboard";
 import { KEYBOARD_TOOLBAR_HEIGHT } from "../../wrappers/keyboardConstants";
 import { useTranslation } from 'react-i18next';
+import {
+  canonicalDiscoveryPriceFields,
+  type CanonicalDiscoveryPrice,
+} from "../../utils/priceTiers";
 // ORCH-1019 F-1: curated reschedule validation routes through the canonical
 // shared validator (extractWeekdayText + isPlaceOpenAt), same as SavedTab.
 import { checkAllCuratedStopsOpen } from "../../utils/curatedStopsAvailability";
@@ -103,7 +107,7 @@ function reservationEffectiveEndMs(reservedFor: string): number {
   return startMs + RESERVATION_DEFAULT_DURATION_MIN * 60_000;
 }
 
-interface CalendarEntry {
+interface CalendarEntry extends Partial<CanonicalDiscoveryPrice> {
   id: string;
   title: string;
   category: string;
@@ -505,7 +509,10 @@ const CalendarTab = ({
 
     const matchesTier = (entry: CalendarEntry) => {
       if (selectedTier === 'all') return true;
-      const tier = entry.experience?.priceTier || '';
+      // Tier filtering is confined to curated itineraries. Venue discovery
+      // prices are numeric, currency-bearing ranges and never tier-derived.
+      if (entry.experience?.cardType !== 'curated') return false;
+      const tier = entry.experience.priceTier || '';
       return tier === selectedTier;
     };
 
@@ -1823,6 +1830,9 @@ const CalendarTab = ({
       reviewCount: experience.reviewCount || entry.reviewCount || 0,
       // [ORCH-0649 — INVARIANT I-NO-FABRICATED-DISPLAY-N/A] no "N/A" fabrication.
       priceRange: experience.priceRange || entry.priceRange || undefined,
+      ...canonicalDiscoveryPriceFields(
+        Object.keys(experience).length > 0 ? experience : entry,
+      ),
       distance: (experience as any).distance || "",
       travelTime: experience.travelTime || undefined,
       address: experience.address || entry.address || "",
@@ -1846,7 +1856,6 @@ const CalendarTab = ({
           saves: 0,
           shares: 0,
         },
-      priceTier: ((experience as any).priceTier || (entry as any).priceTier) as ExpandedCardData['priceTier'],
       location:
         (experience as any).location ||
         ((experience as any).lat && (experience as any).lng
@@ -1879,7 +1888,7 @@ const CalendarTab = ({
     // ORCH-0408 Phase 4: Record expand — counter + user interaction log (fire-and-forget)
     recordCardExpand((entry as any).card_id || entry.id, {
       category: experience.category || (entry as any).category,
-      priceTier: (experience as any).priceTier || null,
+      priceTier: isCurated ? (experience as any).priceTier || null : null,
       isCurated: !!(experience as any).stops,
     });
 
@@ -2555,6 +2564,9 @@ const CalendarTab = ({
       rating: entry.experience?.rating || entry.rating,
       reviewCount: entry.experience?.reviewCount || entry.reviewCount,
       priceRange: entry.experience?.priceRange || entry.priceRange,
+      ...canonicalDiscoveryPriceFields(
+        (entry.experience || entry) as Record<string, unknown>,
+      ),
       travelTime: entry.experience?.travelTime,
       description: entry.experience?.description || entry.description,
       fullDescription:

@@ -18,6 +18,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import type { VenueCategory } from "../../types/brand";
+import { useBrandDiscoveryCurrency } from "../../hooks/useBrandDiscoveryCurrency";
 import { useDraftVenueStore } from "../../store/draftVenueStore";
 import { Button } from "../ui/Button";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
@@ -26,13 +27,6 @@ const CAT_LABEL: Record<VenueCategory, string> = {
   restaurant: "Restaurant",
   play: "Play",
   creative_and_arts: "Creative & arts",
-};
-
-const PRICE_TIER_LABEL: Record<string, string> = {
-  chill: "Chill",
-  comfy: "Comfy",
-  bougie: "Bougie",
-  lavish: "Lavish",
 };
 
 export interface VenueStep7ReviewProps {
@@ -47,16 +41,21 @@ export const VenueStep7Review: React.FC<VenueStep7ReviewProps> = ({
   onSubmit,
 }) => {
   const d = useDraftVenueStore();
+  const currencyState = useBrandDiscoveryCurrency(d.activeBrandId);
+  const currencyCode = currencyState.data?.currencyCode ?? null;
   const cover = d.coverChoice ?? null;
   const gallery = d.galleryUrls ?? [];
   const pitch = d.description.trim();
   const contact = [d.contactEmail.trim(), d.contactPhone.trim(), d.website.trim()]
     .filter((s) => s.length > 0)
     .join(" · ");
-  const priceLabel =
-    d.priceTiers.length > 0
-      ? d.priceTiers.map((t) => PRICE_TIER_LABEL[t] ?? t).join(", ")
-      : "—";
+  const priceLabel = (d.discoveryPriceMinInput ?? "").trim().length > 0
+    ? `${(d.discoveryPriceMinInput ?? "").trim()}${
+        (d.discoveryPriceMaxInput ?? "").trim().length > 0
+          ? `–${(d.discoveryPriceMaxInput ?? "").trim()}`
+          : "+"
+      }${currencyCode ? ` ${currencyCode}` : ""}`
+    : "—";
 
   return (
     <View style={styles.host}>

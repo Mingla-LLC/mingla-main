@@ -37,12 +37,10 @@ import { useHolidayCategories } from "../hooks/useHolidayCategories";
 import { usePairedSaves } from "../hooks/usePairedSaves";
 import { usePairedUserVisits } from "../hooks/useVisits";
 import { getCategoryIcon, getCategoryColor, getReadableCategoryName } from "../utils/categoryUtils";
-import { PriceTierSlug, formatTierLabel } from "../constants/priceTiers";
-import { useLocalePreferences } from "../hooks/useLocalePreferences";
-import { getCurrencySymbol, getCurrencyRate } from "./utils/formatters";
 import { ordinal } from "../utils/ordinalSuffix";
 import { s, vs, ms, SCREEN_WIDTH } from "../utils/responsive";
 import { colors } from "../constants/designSystem";
+import type { PriceTierSlug } from "../constants/priceTiers";
 import CalendarButton from "./CalendarButton";
 import ShuffleButton from "./ShuffleButton";
 import PersonTabBar from "./PersonTabBar";
@@ -416,9 +414,6 @@ function CardRow({
   yearsElapsed?: number;
 }) {
   const { t } = useTranslation(['social', 'common']);
-  const { currency } = useLocalePreferences();
-  const currencySymbol = getCurrencySymbol(currency);
-  const currencyRate = getCurrencyRate(currency);
   const allCards = enabled ? (sectionData?.cards ?? []) : [];
   const pairedCards = allCards;
 
@@ -505,13 +500,13 @@ function CardRow({
               category={c.category}
               imageUrl={c.imageUrl}
               rating={c.rating}
-              priceRange={c.priceTier ? formatTierLabel(c.priceTier as PriceTierSlug, currencySymbol, currencyRate) : null}
+              priceRange={c.priceRange ?? null}
               isCurated={c.cardType === "curated"}
               experienceType={c.experienceType}
               stops={c.stops}
               onPress={() =>
                 onCardPress?.(
-                  holidayCardToExpandedCardData(c, { travelMode, currencySymbol, currencyRate }),
+                  holidayCardToExpandedCardData(c, { travelMode }),
                 )
               }
             />

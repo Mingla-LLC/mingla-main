@@ -23,8 +23,10 @@ export {
  * @property {string} name
  * @property {string[]|null} stored_photo_urls
  * @property {number|null} rating
- * @property {string|null} price_level
- * @property {unknown} price_tiers
+ * @property {number|null} source_min_minor
+ * @property {number|null} source_max_minor
+ * @property {string|null} source_currency_code
+ * @property {number|null} source_minor_unit_exponent
  * @property {string|null} generative_summary
  * @property {string|null} primary_type
  * @property {string[]|null} types
@@ -36,7 +38,33 @@ export {
 
 const TUNER_PLACE_SELECT =
   "id, name, stored_photo_urls, rating, price_level, price_tiers, generative_summary, " +
-  "primary_type, types, lat, lng, is_servable, is_active, address, city";
+  "primary_type, types, lat, lng, is_servable, is_active, address, city, " +
+  "place_discovery_price_ranges(source_min_minor,source_max_minor,source_currency_code,status)";
+
+async function attachCanonicalPriceMetadata(rows) {
+  const { data: currencies, error } = await supabase.rpc(
+    "issue_1384_supported_currencies",
+  );
+  if (error) throw error;
+  const exponents = new Map(
+    (currencies ?? []).map((row) => [row.code, row.minor_unit_exponent]),
+  );
+  return (rows ?? []).map((row) => {
+    const range = Array.isArray(row.place_discovery_price_ranges)
+      ? row.place_discovery_price_ranges[0]
+      : row.place_discovery_price_ranges;
+    if (range?.status !== "active") return row;
+    return {
+      ...row,
+      source_min_minor: Number(range.source_min_minor),
+      source_max_minor:
+        range.source_max_minor === null ? null : Number(range.source_max_minor),
+      source_currency_code: range.source_currency_code,
+      source_minor_unit_exponent:
+        exponents.get(range.source_currency_code) ?? null,
+    };
+  });
+}
 
 /**
  * Search servable (already-live) venues by name or address. Standalone tuner
@@ -57,7 +85,7 @@ export async function searchServableVenues(query, limit = 20) {
     .order("name", { ascending: true })
     .limit(limit);
   if (error) throw error;
-  return data ?? [];
+  return attachCanonicalPriceMetadata(data ?? []);
 }
 
 /**
@@ -72,7 +100,8 @@ export async function getPlacePreviewCard(placePoolId) {
     .eq("id", placePoolId)
     .maybeSingle();
   if (error) throw error;
-  return data ?? null;
+  const [row] = await attachCanonicalPriceMetadata(data ? [data] : []);
+  return row ?? null;
 }
 
 /**

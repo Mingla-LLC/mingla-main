@@ -421,7 +421,9 @@ export async function approveGoLiveWithAuthoredApply(
   return { ok: true, applied_keys: appliedKeys, goLive };
 }
 
-serve(async (req) => {
+export async function handleAdminReviewVenueClaim(
+  req: Request,
+): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -991,4 +993,8 @@ serve(async (req) => {
       500,
     );
   }
-});
+}
+
+if (import.meta.main) {
+  serve(handleAdminReviewVenueClaim);
+}

@@ -7,7 +7,6 @@ import {
 // ORCH-0634: scoreCards / scorePoolCards / stableHash removed — signal_score
 // IS the match score now (no chip-match heuristic re-ranking on top).
 import { isInCohort } from '../_shared/signalScorer.ts';
-import { googleLevelToTierSlug } from '../_shared/priceTiers.ts';
 // ORCH-0634: multi-chip signal fan-out helper. Replaces the deprecated
 // card_pool pipeline as the singles serving source. See
 // Mingla_Artifacts/outputs/SPEC_ORCH-0634_SIGNAL_ONLY_SERVING_AND_INTERLEAVE.md.
@@ -516,6 +515,8 @@ function interleaveExperiencesIntoDeck(
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+const DISCOVERY_PRICE_RANGE_V2_SERVE =
+  Deno.env.get('DISCOVERY_PRICE_RANGE_V2_SERVE') === 'true';
 
 const SESSION_INTENT_IDS = new Set([
   'adventurous',
@@ -855,7 +856,11 @@ function transformServablePlaceToCard(
   signalId?: string,
 ): any {
   const storedPhotos = Array.isArray(row.stored_photo_urls) ? row.stored_photo_urls : [];
-  const tier = googleLevelToTierSlug(row.price_level);
+  const price = DISCOVERY_PRICE_RANGE_V2_SERVE &&
+      row.__discoveryPrice &&
+      typeof row.__discoveryPrice === 'object'
+    ? row.__discoveryPrice
+    : null;
 
   // ORCH-1068 (F-5): a business-authored venue's stored_photo_urls[0] can be a
   // Cloudinary cover VIDEO (.mp4) that the deck's still-image hero (ExpoImage)
@@ -890,8 +895,25 @@ function transformServablePlaceToCard(
     lng: row.lng,
     rating: row.rating,
     reviewCount: row.review_count,
-    priceLevel: row.price_level,
-    priceTier: tier,
+    // Issue #1384: Google ordinals and legacy tiers are not money. V2 returns
+    // canonical source/display fields; rollback hides the numeric band rather
+    // than reconstructing dollars.
+    priceLevel: null,
+    priceTier: null,
+    priceRangeStatus: price?.price_range_status ?? null,
+    sourceMinMinor: price?.source_min_minor ?? null,
+    sourceMaxMinor: price?.source_max_minor ?? null,
+    sourceCurrencyCode: price?.source_currency_code ?? null,
+    sourceMinorUnitExponent: price?.source_minor_unit_exponent ?? null,
+    displayMinMinor: price?.display_min_minor ?? null,
+    displayMaxMinor: price?.display_max_minor ?? null,
+    displayCurrencyCode: price?.display_currency_code ?? null,
+    displayMinorUnitExponent: price?.display_minor_unit_exponent ?? null,
+    priceIsApproximate: price?.price_is_approximate === true,
+    fxSnapshotId: price?.fx_snapshot_id ?? null,
+    fxProvider: price?.fx_provider ?? null,
+    fxProviderUpdatedAt: price?.fx_provider_updated_at ?? null,
+    fxFreshness: price?.fx_freshness ?? 'unavailable',
     image: heroImage, // ORCH-1068: first non-video url (real photo, not stock fallback)
     images: storedPhotos, // full ordered list unchanged (cover-video stays available)
     openingHours: row.opening_hours ?? null,
@@ -922,6 +944,85 @@ function transformServablePlaceToCard(
     _signal_contributions: row.signal_contributions,
     _ai_score_raw: row.ai_score_raw,
   };
+}
+
+async function attachDiscoveryPrices(
+  client: any,
+  rows: any[],
+  displayCurrency: string | null,
+  requestedSnapshotId: string | null = null,
+  filterCurrency: string | null = null,
+): Promise<any[]> {
+  if (!DISCOVERY_PRICE_RANGE_V2_SERVE || rows.length === 0) return rows;
+  const { data: supportedRows } = await client.rpc(
+    'issue_1384_supported_currencies',
+  );
+  const exponents = new Map<string, number>();
+  for (const item of Array.isArray(supportedRows) ? supportedRows : []) {
+    if (
+      typeof item?.code === 'string' &&
+      Number.isInteger(item?.minor_unit_exponent)
+    ) {
+      exponents.set(item.code, item.minor_unit_exponent);
+    }
+  }
+  let snapshotId: string | null = requestedSnapshotId;
+  if ((displayCurrency !== null || filterCurrency !== null) && snapshotId === null) {
+    const { data: snapshots, error: snapshotError } = await client.rpc(
+      'fx_latest_servable_snapshot',
+      { p_at: new Date().toISOString() },
+    );
+    if (!snapshotError && Array.isArray(snapshots)) {
+      snapshotId = snapshots[0]?.snapshot_id ?? null;
+    }
+  }
+  const ids = rows.map((row) => row.place_id ?? row.id);
+  const project = async (currency: string | null) => {
+    const { data, error } = await client.rpc(
+      'place_discovery_ranges_for_viewer',
+      {
+        p_place_pool_ids: ids,
+        p_display_currency: currency,
+        p_snapshot: snapshotId,
+      },
+    );
+    if (error) throw new Error('DISCOVERY_PRICE_PROJECTION_FAILED');
+    return new Map(
+      (Array.isArray(data) ? data : []).map((item) => [item.place_pool_id, item]),
+    );
+  };
+  const displayMap = await project(displayCurrency);
+  const filterMap = filterCurrency !== null && filterCurrency !== displayCurrency
+    ? await project(filterCurrency)
+    : displayMap;
+  return rows.map((row) => {
+    const rawProjected: any = displayMap.get(row.place_id ?? row.id) ?? null;
+    if (
+      requestedSnapshotId !== null &&
+      displayCurrency !== null &&
+      rawProjected?.source_currency_code !== displayCurrency &&
+      rawProjected?.display_currency_code !== displayCurrency
+    ) {
+      throw new Error('FX_UNAVAILABLE');
+    }
+    const projected = rawProjected === null
+      ? null
+      : {
+          ...rawProjected,
+          source_minor_unit_exponent:
+            exponents.get(rawProjected.source_currency_code) ?? null,
+          display_minor_unit_exponent:
+            exponents.get(rawProjected.display_currency_code) ?? null,
+        };
+    const filterProjected =
+      filterMap.get(row.place_id ?? row.id) ?? rawProjected;
+    return {
+      ...row,
+      __discoveryPrice: projected,
+      __filterDiscoveryPrice: filterProjected,
+      __fxSnapshotId: snapshotId,
+    };
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1200,8 +1301,13 @@ async function handleDeterministicV2(args: {
     const circle = Array.isArray(agg.circles) && agg.circles.length > 0
       ? agg.circles[0]
       : { lat: data.lat ?? 0, lng: data.lng ?? 0, travel_mode: 'walking' };
+    const [pricedRow] = await attachDiscoveryPrices(
+      supabaseAdmin,
+      [{ ...data, place_id: data.id, signal_score: 0, signal_contributions: {} }],
+      null,
+    );
     return transformServablePlaceToCard(
-      { ...data, place_id: data.id, signal_score: 0, signal_contributions: {} },
+      pricedRow,
       resolveCategories(agg.categories ?? [])[0] ?? 'Group pick',
       circle.lat,
       circle.lng,
@@ -1609,7 +1715,12 @@ async function handleDeterministicV2(args: {
     );
   }
 
-  const candidateCards = unseenRows.map((row: any) => {
+  const pricedUnseenRows = await attachDiscoveryPrices(
+    supabaseAdmin,
+    unseenRows,
+    null,
+  );
+  const candidateCards = pricedUnseenRows.map((row: any) => {
     let closest = agg.circles[0];
     let closestKm = haversineKm(closest.lat, closest.lng, row.lat ?? 0, row.lng ?? 0);
     for (let i = 1; i < agg.circles.length; i++) {
@@ -1979,8 +2090,109 @@ async function handleDeterministicV2(args: {
   });
 }
 
+interface DiscoveryFxContextInput {
+  requestedDisplayCurrency: string | null;
+  requestedFxSnapshotId: string | null;
+  priceFilterCurrency: string | null;
+}
+
+interface DiscoveryFxContextDependencies {
+  client?: any;
+  nowMs?: () => number;
+}
+
+interface DiscoveryFxContext {
+  displayCurrency: string | null;
+  fxSnapshotId: string | null;
+}
+
+interface DiscoverCardsDependencies {
+  adminClient?: any;
+  nowMs?: () => number;
+}
+
+export async function resolveDiscoveryFxContext(
+  input: DiscoveryFxContextInput,
+  dependencies: DiscoveryFxContextDependencies = {},
+): Promise<DiscoveryFxContext> {
+  const client = dependencies.client ??
+    createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+  const nowMs = dependencies.nowMs ?? Date.now;
+  const { data: supportedCurrencyRows, error: supportedCurrencyError } =
+    await client.rpc('issue_1384_supported_currencies');
+  if (supportedCurrencyError) {
+    throw new Error('DISCOVERY_PRICE_CURRENCY_AUTHORITY_UNAVAILABLE');
+  }
+  const supportedCurrencyCodes = new Set(
+    (Array.isArray(supportedCurrencyRows) ? supportedCurrencyRows : [])
+      .map((row: any) => row?.code)
+      .filter((code: unknown): code is string => typeof code === 'string'),
+  );
+  // Unsupported viewer display preference is non-authoritative and degrades
+  // to exact source money. Numeric filters are binding, so unsupported filter
+  // currency fails closed rather than returning an unfiltered deck.
+  const displayCurrency =
+    input.requestedDisplayCurrency &&
+      supportedCurrencyCodes.has(input.requestedDisplayCurrency)
+      ? input.requestedDisplayCurrency
+      : null;
+  if (
+    input.priceFilterCurrency !== null &&
+    !supportedCurrencyCodes.has(input.priceFilterCurrency)
+  ) {
+    throw new Error('FX_UNAVAILABLE');
+  }
+
+  let fxSnapshotId: string | null = input.requestedFxSnapshotId;
+  if (input.requestedFxSnapshotId !== null) {
+    const { data: requestedSnapshot, error: requestedSnapshotError } =
+      await client
+        .from('fx_rate_snapshots')
+        .select('id,status,expires_at')
+        .eq('id', input.requestedFxSnapshotId)
+        .in('status', ['active', 'superseded'])
+        .maybeSingle();
+    if (
+      requestedSnapshotError ||
+      !requestedSnapshot ||
+      Date.parse(requestedSnapshot.expires_at) < nowMs()
+    ) {
+      throw new Error('FX_UNAVAILABLE');
+    }
+  } else if (
+    displayCurrency !== null || input.priceFilterCurrency !== null
+  ) {
+    const { data: snapshots, error: snapshotError } = await client.rpc(
+      'fx_latest_servable_snapshot',
+      { p_at: new Date(nowMs()).toISOString() },
+    );
+    if (!snapshotError && Array.isArray(snapshots)) {
+      fxSnapshotId = snapshots[0]?.snapshot_id ?? null;
+    }
+    if (input.priceFilterCurrency !== null && fxSnapshotId === null) {
+      throw new Error('FX_UNAVAILABLE');
+    }
+  }
+
+  return { displayCurrency, fxSnapshotId };
+}
+
+export function discoveryFxErrorResponse(error: unknown): Response | null {
+  if ((error as Error)?.message !== 'FX_UNAVAILABLE') return null;
+  return new Response(
+    JSON.stringify({ kind: 'error', code: 'FX_UNAVAILABLE', cards: [] }),
+    {
+      status: 503,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    },
+  );
+}
+
 // ── Main Handler ────────────────────────────────────────────────────────────
-serve(async (req: Request) => {
+export async function handleDiscoverCards(
+  req: Request,
+  dependencies: DiscoverCardsDependencies = {},
+): Promise<Response> {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -2056,7 +2268,54 @@ serve(async (req: Request) => {
       excludeCardIds: rawExcludeCardIds = [],
       dateWindows,  // ORCH-0446: array of date windows (legacy; unused in solo)
       sessionId,    // legacy field; always undefined here post-ORCH-0902 routing
+      displayCurrency: rawDisplayCurrency,
+      fxSnapshotId: rawFxSnapshotId,
+      priceFilterMinMinor: rawPriceFilterMinMinor,
+      priceFilterMaxMinor: rawPriceFilterMaxMinor,
+      priceFilterCurrency: rawPriceFilterCurrency,
     } = body;
+    const requestedDisplayCurrency =
+      typeof rawDisplayCurrency === 'string' &&
+      /^[A-Z]{3}$/.test(rawDisplayCurrency.trim().toUpperCase())
+        ? rawDisplayCurrency.trim().toUpperCase()
+        : null;
+    const requestedFxSnapshotId =
+      typeof rawFxSnapshotId === 'string' &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(rawFxSnapshotId)
+        ? rawFxSnapshotId
+        : null;
+    const priceFilterCurrency =
+      typeof rawPriceFilterCurrency === 'string' &&
+      /^[A-Z]{3}$/.test(rawPriceFilterCurrency.trim().toUpperCase())
+        ? rawPriceFilterCurrency.trim().toUpperCase()
+        : null;
+    const priceFilterMinMinor = Number.isSafeInteger(rawPriceFilterMinMinor) &&
+        rawPriceFilterMinMinor >= 0
+      ? rawPriceFilterMinMinor
+      : null;
+    const priceFilterMaxMinor = Number.isSafeInteger(rawPriceFilterMaxMinor) &&
+        rawPriceFilterMaxMinor >= 0
+      ? rawPriceFilterMaxMinor
+      : null;
+    if (
+      (rawPriceFilterMinMinor != null || rawPriceFilterMaxMinor != null) &&
+      (
+        priceFilterCurrency === null ||
+        (rawPriceFilterMinMinor != null && priceFilterMinMinor === null) ||
+        (rawPriceFilterMaxMinor != null && priceFilterMaxMinor === null) ||
+        (priceFilterMinMinor !== null && priceFilterMaxMinor !== null &&
+          priceFilterMaxMinor < priceFilterMinMinor)
+      )
+    ) {
+      return new Response(JSON.stringify({
+        kind: 'error',
+        code: 'INVALID_PRICE_FILTER',
+        cards: [],
+      }), {
+        status: 422,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     // Accept all string IDs — can be Google Place IDs or card_pool UUIDs
     const excludeCardIds: string[] = Array.isArray(rawExcludeCardIds)
@@ -2092,7 +2351,17 @@ serve(async (req: Request) => {
 
     console.log(`[discover-cards] solo request: categories=[${categories}], batchSeed=${batchSeed}, limit=${limit}, mode=${travelMode}${dateWindows ? `, dateWindows=[${dateWindows}]` : ''}`);
 
-    const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+    const supabaseAdmin = dependencies.adminClient ??
+      createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+    const { displayCurrency, fxSnapshotId } =
+      await resolveDiscoveryFxContext(
+        {
+          requestedDisplayCurrency,
+          requestedFxSnapshotId,
+          priceFilterCurrency,
+        },
+        { client: supabaseAdmin, nowMs: dependencies.nowMs },
+      );
 
     // ── Extract userId from JWT sub claim ──────────────────────────────────
     // ORCH-0474: verify_jwt:true at the platform gate already validated signature,
@@ -2320,7 +2589,7 @@ serve(async (req: Request) => {
     const perChipRpcLimit = Math.max(20, Math.min(100, limit * 2));
     const rpcResults = await Promise.all(
       rpcTasks.map((task) =>
-        supabaseAdmin.rpc('query_servable_places_by_signal', {
+        supabaseAdmin.rpc('issue_1384_query_servable_places_by_signal', {
           p_signal_id: task.signalId,
           p_filter_min: task.filterMin,
           p_lat: location.lat,
@@ -2328,7 +2597,11 @@ serve(async (req: Request) => {
           p_radius_m: radiusMeters,
           p_exclude_place_ids: excludeCardIds,
           p_limit: perChipRpcLimit,
-        }).then((res) => ({ task, res })),
+          p_price_filter_min_minor: priceFilterMinMinor,
+          p_price_filter_max_minor: priceFilterMaxMinor,
+          p_price_filter_currency: priceFilterCurrency,
+          p_fx_snapshot_id: fxSnapshotId,
+        }).then((res: any) => ({ task, res })),
       ),
     );
 
@@ -2387,8 +2660,12 @@ serve(async (req: Request) => {
       perChipSorted.set(chip, arr);
     }
 
-    // Step 8: round-robin one-card-per-chip, cap at `limit`.
-    const interleavedRows = roundRobinByChip({ perChip: perChipSorted, totalLimit: limit });
+    // Step 8: preserve enough candidates for server-side price filtering
+    // before the response limit is applied.
+    const interleavedRows = roundRobinByChip({
+      perChip: perChipSorted,
+      totalLimit: Math.max(limit, categories.length * perChipRpcLimit),
+    });
 
     // ORCH-1065: fetch deck-eligible brand experiences ONCE (best-effort). Hoisted
     // ABOVE the zero-row branch so "auto-surface every published experience" holds
@@ -2430,6 +2707,7 @@ serve(async (req: Request) => {
             hasMore: false,
             poolSize: expOnly.length,
             batchSeed: batchSeed ?? 0,
+            fxSnapshotId,
           },
           sourceBreakdown: {
             fromPool: expOnly.length,
@@ -2457,7 +2735,31 @@ serve(async (req: Request) => {
     // honest haversine distance + per-mode travel-time. Track null-coord rows
     // for one aggregated warning per request.
     let _placesMissingCoords = 0;
-    const rawCards = interleavedRows.map((row: any) => {
+    const pricedRows = await attachDiscoveryPrices(
+      supabaseAdmin,
+      interleavedRows,
+      displayCurrency,
+      fxSnapshotId,
+      priceFilterCurrency,
+    );
+    const priceFilteredRows = priceFilterCurrency === null
+      ? pricedRows
+      : pricedRows.filter((row: any) => {
+        const projected = row.__filterDiscoveryPrice;
+        if (projected?.price_range_status !== 'active') return false;
+        if (
+          projected.source_currency_code !== priceFilterCurrency &&
+          projected.display_currency_code !== priceFilterCurrency
+        ) {
+          throw new Error('FX_UNAVAILABLE');
+        }
+        const min = projected.display_min_minor ?? projected.source_min_minor;
+        const max = projected.display_max_minor ?? projected.source_max_minor;
+        if (!Number.isSafeInteger(Number(min))) return false;
+        return (max === null || Number(max) >= (priceFilterMinMinor ?? 0)) &&
+          (priceFilterMaxMinor === null || Number(min) <= priceFilterMaxMinor);
+      });
+    const rawCards = priceFilteredRows.map((row: any) => {
       const card = transformServablePlaceToCard(
         row,
         row.__displayCategory ?? categories[0],
@@ -2509,7 +2811,8 @@ serve(async (req: Request) => {
     // handleDeterministicV2 before this code runs. We do NOT call scorePoolCards
     // because the signal_score IS the match score; re-scoring would throw
     // away signal ranking in favor of chip-match heuristics.
-    const finalCards = hoursFilteredCards;
+    const hasMorePriceCandidates = hoursFilteredCards.length > limit;
+    const finalCards = hoursFilteredCards.slice(0, limit);
 
     // ORCH-1065: front-load brand-authored experiences onto the deck — they LEAD
     // the deck (index 0..n-1, ahead of curated/singles) in stable RPC order
@@ -2530,9 +2833,13 @@ serve(async (req: Request) => {
       total: mergedCards.length,
       source: 'signal-serving-v2-multi-chip',
       metadata: {
-        hasMore: finalCards.length === limit,
+        hasMore: hasMorePriceCandidates || finalCards.length === limit,
         poolSize: mergedCards.length,
         batchSeed: batchSeed ?? 0,
+        fxSnapshotId:
+          finalCards.find((card: any) => card.fxSnapshotId)?.fxSnapshotId ??
+          pricedRows[0]?.__fxSnapshotId ??
+          fxSnapshotId,
         perChipBreakdown,
       },
       sourceBreakdown: {
@@ -2554,9 +2861,15 @@ serve(async (req: Request) => {
 
   } catch (err) {
     console.error('[discover-cards] Unhandled error:', err);
+    const fxError = discoveryFxErrorResponse(err);
+    if (fxError !== null) return fxError;
     return new Response(
       JSON.stringify({ error: (err as any)?.message || 'Internal error', cards: [] }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
-});
+}
+
+if (import.meta.main) {
+  serve((req) => handleDiscoverCards(req));
+}

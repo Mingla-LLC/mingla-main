@@ -3,6 +3,7 @@
  */
 
 import type { BrandHourEntry, VenueCategory } from "../types/brand";
+import { parseMajorToMinor } from "../utils/currencyFormatter";
 import { supabase } from "./supabase";
 
 export interface Tier1PlaceDraft {
@@ -129,6 +130,288 @@ export interface AiSignalScore {
 }
 
 type PipelineErrorBody = { kind?: string; code?: string; message?: string };
+
+export interface BrandDiscoverySupportedCurrency {
+  code: string;
+  minorUnitExponent: number;
+  railSource: string;
+}
+
+export interface BrandCurrencyReconciliation {
+  id: string;
+  from_currency_code: string | null;
+  to_currency_code: string;
+  status: "pending";
+  initiated_at: string;
+}
+
+export interface BrandDiscoveryCurrencyState {
+  brandId: string;
+  stateVersion: number;
+  authority: "settlement" | "provisional" | "unset";
+  currencyCode: string | null;
+  canAuthorRange: boolean;
+  canAcceptPaidReservations: boolean;
+  supportedCurrencies: BrandDiscoverySupportedCurrency[];
+  reconciliation: BrandCurrencyReconciliation | null;
+}
+
+type CurrencyActionResponse<T> = {
+  kind: "ok";
+  data: T;
+  requestId: string;
+};
+
+export class BrandCurrencyActionError extends Error {
+  readonly code: string;
+
+  constructor(code: string, message?: string) {
+    super(message ?? code.replaceAll("_", " "));
+    this.name = "BrandCurrencyActionError";
+    this.code = code;
+  }
+}
+
+async function brandCurrencyInvokeError(
+  error: { message?: string; context?: unknown } | null,
+  fallback: string,
+): Promise<BrandCurrencyActionError> {
+  if (error === null) return new BrandCurrencyActionError(fallback);
+  const context = error.context;
+  if (
+    context !== null &&
+    context !== undefined &&
+    typeof (context as Response).json === "function"
+  ) {
+    try {
+      const parsed = (await (context as Response).json()) as PipelineErrorBody;
+      if (typeof parsed.code === "string" && parsed.code.length > 0) {
+        return new BrandCurrencyActionError(parsed.code, parsed.message);
+      }
+    } catch {
+      // Preserve a stable fallback below when the edge response is unreadable.
+    }
+  }
+  return new BrandCurrencyActionError(
+    fallback,
+    error.message ?? fallback.replaceAll("_", " "),
+  );
+}
+
+async function invokeCurrencyAction<T>(
+  body: Record<string, unknown>,
+): Promise<T> {
+  const { data, error } = await supabase.functions.invoke(
+    "manage-brand-discovery-currency",
+    { body },
+  );
+  if (error !== null) {
+    throw await brandCurrencyInvokeError(
+      error,
+      "brand_currency_request_failed",
+    );
+  }
+  const response = data as CurrencyActionResponse<T> | PipelineErrorBody;
+  if ((response as PipelineErrorBody).kind === "error") {
+    const typedError = response as PipelineErrorBody;
+    throw new BrandCurrencyActionError(
+      typedError.code ?? "brand_currency_request_failed",
+      typedError.message,
+    );
+  }
+  return (response as CurrencyActionResponse<T>).data;
+}
+
+export function getBrandDiscoveryCurrencyState(
+  brandId: string,
+): Promise<BrandDiscoveryCurrencyState> {
+  return invokeCurrencyAction<BrandDiscoveryCurrencyState>({
+    action: "get_state",
+    brandId,
+  });
+}
+
+export function setBrandProvisionalCurrency(input: {
+  brandId: string;
+  currencyCode: string;
+  expectedStateVersion: number;
+}): Promise<BrandDiscoveryCurrencyState> {
+  return invokeCurrencyAction<BrandDiscoveryCurrencyState>({
+    action: "set_provisional_currency",
+    brandId: input.brandId,
+    currencyCode: input.currencyCode,
+    expectedStateVersion: input.expectedStateVersion,
+  });
+}
+
+export interface BrandCurrencyReconciliationPreviewRange {
+  placePoolId: string;
+  venueId: string | null;
+  expectedVersion: number;
+  sourceMinMinor: number;
+  sourceMaxMinor: number | null;
+  sourceCurrencyCode: string;
+  proposedMinMinor: number;
+  proposedMaxMinor: number | null;
+}
+
+export interface BrandCurrencyReconciliationPreview {
+  reconciliationId: string;
+  fromCurrencyCode: string | null;
+  toCurrencyCode: string;
+  snapshot: {
+    id: string;
+    provider: string;
+    providerUpdatedAt: string;
+    freshness: string;
+  };
+  ranges: BrandCurrencyReconciliationPreviewRange[];
+}
+
+export interface ResolveBrandCurrencyRange {
+  placePoolId: string;
+  expectedVersion: number;
+  currencyCode?: string;
+  sourceMinMinor?: number;
+  sourceMaxMinor?: number | null;
+}
+
+export function previewBrandCurrencyReconciliation(input: {
+  brandId: string;
+  reconciliationId: string;
+}): Promise<BrandCurrencyReconciliationPreview> {
+  return invokeCurrencyAction<BrandCurrencyReconciliationPreview>({
+    action: "preview_reconciliation",
+    brandId: input.brandId,
+    reconciliationId: input.reconciliationId,
+    decision: "convert",
+  });
+}
+
+export function resolveBrandCurrencyReconciliation(input: {
+  brandId: string;
+  reconciliationId: string;
+  decision: "convert" | "reenter" | "accept_no_ranges";
+  fxSnapshotId: string | null;
+  ranges: ResolveBrandCurrencyRange[];
+}): Promise<BrandDiscoveryCurrencyState> {
+  return invokeCurrencyAction<BrandDiscoveryCurrencyState>({
+    action: "resolve_reconciliation",
+    brandId: input.brandId,
+    reconciliationId: input.reconciliationId,
+    decision: input.decision,
+    fxSnapshotId: input.fxSnapshotId,
+    ranges: input.ranges,
+  });
+}
+
+export async function saveDiscoveryPriceRange(input: {
+  brandId: string;
+  venueId: string;
+  placePoolId: string;
+  sourceMinMinor: number;
+  sourceMaxMinor: number | null;
+  currencyCode: string;
+  expectedVersion?: number | null;
+}): Promise<void> {
+  await invokeCurrencyAction<Record<string, unknown>>({
+    action: "save_discovery_price_range",
+    brandId: input.brandId,
+    venueId: input.venueId,
+    placePoolId: input.placePoolId,
+    sourceMinMinor: input.sourceMinMinor,
+    sourceMaxMinor: input.sourceMaxMinor,
+    currencyCode: input.currencyCode,
+    expectedVersion: input.expectedVersion ?? null,
+  });
+}
+
+export interface CommitVenueDiscoveryRangeInput {
+  brandId: string;
+  venueId: string;
+  placePoolId: string;
+  priceMinInput: string;
+  priceMaxInput: string;
+}
+
+interface CommitVenueDiscoveryRangeDependencies {
+  getCurrencyState?: typeof getBrandDiscoveryCurrencyState;
+  parseInput?: typeof parseMajorToMinor;
+  saveRange?: typeof saveDiscoveryPriceRange;
+}
+
+async function commitVenueDiscoveryRange(
+  input: CommitVenueDiscoveryRangeInput,
+  expectedVersion: number | null,
+  dependencies: CommitVenueDiscoveryRangeDependencies = {},
+): Promise<void> {
+  const getCurrencyState =
+    dependencies.getCurrencyState ?? getBrandDiscoveryCurrencyState;
+  const parseInput = dependencies.parseInput ?? parseMajorToMinor;
+  const saveRange = dependencies.saveRange ?? saveDiscoveryPriceRange;
+  const currencyState = await getCurrencyState(input.brandId);
+  const currencyCode = currencyState.currencyCode;
+  const currencyMetadata = currencyState.supportedCurrencies.find(
+    (candidate) => candidate.code === currencyCode,
+  );
+  if (
+    currencyCode === null ||
+    currencyMetadata === undefined ||
+    !currencyState.canAuthorRange
+  ) {
+    throw new Error("Choose or reconcile your brand currency first.");
+  }
+  const sourceMinMinor = parseInput(
+    input.priceMinInput,
+    currencyMetadata.minorUnitExponent,
+  );
+  const sourceMaxMinor = input.priceMaxInput.trim().length === 0
+    ? null
+    : parseInput(
+        input.priceMaxInput,
+        currencyMetadata.minorUnitExponent,
+      );
+  if (
+    sourceMinMinor === null ||
+    (input.priceMaxInput.trim().length > 0 && sourceMaxMinor === null) ||
+    (sourceMaxMinor !== null && sourceMaxMinor < sourceMinMinor)
+  ) {
+    throw new Error("Check the price range and try again.");
+  }
+  await saveRange({
+    brandId: input.brandId,
+    venueId: input.venueId,
+    placePoolId: input.placePoolId,
+    sourceMinMinor,
+    sourceMaxMinor,
+    currencyCode,
+    expectedVersion,
+  });
+}
+
+export function commitNewVenueDiscoveryRange(
+  input: CommitVenueDiscoveryRangeInput,
+  dependencies: CommitVenueDiscoveryRangeDependencies = {},
+): Promise<void> {
+  return commitVenueDiscoveryRange(input, null, dependencies);
+}
+
+export function commitExistingVenueDiscoveryRange(
+  input: CommitVenueDiscoveryRangeInput & { expectedVersion: number },
+  dependencies: CommitVenueDiscoveryRangeDependencies = {},
+): Promise<void> {
+  if (
+    !Number.isSafeInteger(input.expectedVersion) ||
+    input.expectedVersion < 1
+  ) {
+    throw new Error("Reload the current price range and try again.");
+  }
+  return commitVenueDiscoveryRange(
+    input,
+    input.expectedVersion,
+    dependencies,
+  );
+}
 
 function assertPipelineOk<T extends { kind: string }>(
   body: T | PipelineErrorBody,

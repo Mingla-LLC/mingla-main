@@ -49,6 +49,16 @@ const CLAIM_SELECT = `
     ai_signal_scores_veto,
     business_authoring_inputs,
     business_recommend_edit_count
+  ),
+  discovery_price:place_discovery_price_ranges!venue_id (
+    status,
+    source_min_minor,
+    source_max_minor,
+    source_currency_code,
+    source_type,
+    version,
+    updated_by,
+    updated_at
   )
 `;
 

@@ -123,6 +123,13 @@ export interface DraftVenueState {
   /** ORCH-1263 — claim c7 price tiers. META-ORCH-1290 Leg B — the folded create
    *  wizard (s7) now collects these too (no longer deck-readiness-owned). */
   priceTiers: string[];
+  /**
+   * Issue #1384 source-money input only. These are unsaved input strings, not
+   * server state; currency authority is fetched separately for every render
+   * and submit.
+   */
+  discoveryPriceMinInput?: string;
+  discoveryPriceMaxInput?: string;
   /** ORCH-1263 — claim c8 reservations intent (switch always starts OFF). */
   wantsReservations: boolean;
   /**
@@ -170,6 +177,8 @@ const initial: DraftVenueState = {
   description: "",
   website: "",
   priceTiers: [],
+  discoveryPriceMinInput: "",
+  discoveryPriceMaxInput: "",
   wantsReservations: false,
   galleryUrls: [],
   coverChoice: null,
@@ -203,6 +212,8 @@ const pickDraft = (s: DraftVenueState): DraftVenueState => ({
   description: s.description,
   website: s.website,
   priceTiers: s.priceTiers,
+  discoveryPriceMinInput: s.discoveryPriceMinInput ?? "",
+  discoveryPriceMaxInput: s.discoveryPriceMaxInput ?? "",
   wantsReservations: s.wantsReservations,
   // META-ORCH-1290 — `?? []`/`?? null` tolerates a pre-1290 persisted blob.
   galleryUrls: s.galleryUrls ?? [],
@@ -303,6 +314,13 @@ export const provenanceFor = (
     case "website":
       return textProvenance(d.website, a.website);
     case "price": {
+      const hasSourceMoney = (d.discoveryPriceMinInput ?? "").trim().length > 0;
+      if (hasSourceMoney) {
+        return a.priceTiers.length > 0 ? "edited" : "new";
+      }
+      // Pre-#1384 claim drafts can still carry the legacy tier selection.
+      // Preserve their review/provenance behavior until the operator replaces
+      // the tier with an exact source-money range.
       if (a.priceTiers.length === 0) {
         return d.priceTiers.length > 0 ? "new" : null;
       }
