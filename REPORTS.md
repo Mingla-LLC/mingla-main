@@ -18,6 +18,8 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-07-30 — Production FX refresh now accepts the provider’s documented no-EOL response without inventing a date, seeds a complete canonical snapshot, and refreshes it daily through a service-authorized scheduler. (#1397, PR #1398)
+- 2026-07-30 — Venue discovery price ranges now follow each brand’s real or provisional currency across Business, Explorer, buyer web, and Admin; canonical server FX conversion is live with explicit unresolved legacy data and no fabricated dollar fallback. (#1384, PR #1396)
 - 2026-07-30 — Public venue reservation forms now clearly mark Name and Email as required, show separate accessible field errors, and keep Confirm disabled until both are valid, while preserving the existing reservation engine, phone validation, availability, payments, and sheet behavior. (#1386, PR #1393)
 - 2026-07-29 — Fixed the floating Reserve a table button on public venue pages: it now opens the existing guest reservation flow in a responsive sheet, stays hidden while Reservations is selected, returns keyboard focus after closing, and restores on Overview/Menu without changing availability, payment, or confirmation behavior. (#1380, PR #1383)
 - 2026-07-29 — Brand pages now show a Reservations tab with every live venue; each venue opens its own public Overview, venue-specific Menu, and real reservation flow with phone safe-area clearance across the consumer app, business preview, and buyer web. (#1365, PR #1375)
