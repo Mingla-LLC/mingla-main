@@ -34,11 +34,28 @@ export function violations(files) {
     "providerEolAt !== null",
     'throw new Error("provider_data_expired")',
   ], "parser", failures);
+  const parser = files.parser ?? "";
+  const canonicalStart = parser.indexOf(
+    "const canonicalPayload = canonicalJson({",
+  );
+  const canonicalEnd = parser.indexOf("\n  return {", canonicalStart);
+  const canonicalBlock = canonicalStart >= 0 && canonicalEnd > canonicalStart
+    ? parser.slice(canonicalStart, canonicalEnd)
+    : "";
+  if (!canonicalBlock.includes("\n    providerEolAt,\n")) {
+    failures.push(
+      "parser: validated EOL disconnected from canonical payload",
+    );
+  }
   includesAll(files.parserTest ?? "", [
     "assertEquals(first.providerEolAt, null)",
     "assertEquals(JSON.parse(first.canonicalPayload).providerEolAt, null)",
     "preserves a positive future provider EOL",
     "fails closed for a past nonzero provider EOL",
+    "canonical hash distinguishes no EOL from an announced future EOL",
+    "assertNotEquals(sentinel.canonicalPayload, future.canonicalPayload)",
+    "await sha256Hex(repeatedSentinel.canonicalPayload)",
+    "await sha256Hex(future.canonicalPayload)",
   ], "parserTest", failures);
   includesAll(files.handler ?? "", [
     "p_provider_eol_at: validated.providerEolAt",
@@ -141,6 +158,14 @@ function selfTest() {
         "providerEolAt === null ||",
       ),
       expected: "providerEolAt !== null",
+    },
+    {
+      key: "parser",
+      value: valid.parser.replace(
+        "    providerEolAt,\n    rates: canonicalJson(rates),",
+        "    providerEolAt: null,\n    rates: canonicalJson(rates),",
+      ),
+      expected: "validated EOL disconnected from canonical payload",
     },
     {
       key: "migration",

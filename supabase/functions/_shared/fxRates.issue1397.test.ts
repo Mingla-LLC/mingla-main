@@ -1,5 +1,6 @@
 import {
   assertEquals,
+  assertNotEquals,
   assertRejects,
   assertThrows,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
@@ -77,4 +78,38 @@ Deno.test("issue 1397 rejects invalid negative or missing EOL data", async () =>
       "invalid_provider_eol_at",
     );
   }
+});
+
+Deno.test("issue 1397 canonical hash distinguishes no EOL from an announced future EOL", async () => {
+  const sentinel = validateFxProviderPayload(
+    { ...BASE_PAYLOAD, time_eol_unix: 0 },
+    SUPPORTED,
+    NOW,
+  );
+  const repeatedSentinel = validateFxProviderPayload(
+    { ...BASE_PAYLOAD, time_eol_unix: 0 },
+    SUPPORTED,
+    NOW,
+  );
+  const future = validateFxProviderPayload(
+    { ...BASE_PAYLOAD, time_eol_unix: 1785585600 },
+    SUPPORTED,
+    NOW,
+  );
+
+  assertEquals(JSON.parse(sentinel.canonicalPayload).providerEolAt, null);
+  assertEquals(
+    JSON.parse(future.canonicalPayload).providerEolAt,
+    "2026-08-01T12:00:00.000Z",
+  );
+  assertEquals(sentinel.canonicalPayload, repeatedSentinel.canonicalPayload);
+  assertEquals(
+    await sha256Hex(sentinel.canonicalPayload),
+    await sha256Hex(repeatedSentinel.canonicalPayload),
+  );
+  assertNotEquals(sentinel.canonicalPayload, future.canonicalPayload);
+  assertNotEquals(
+    await sha256Hex(sentinel.canonicalPayload),
+    await sha256Hex(future.canonicalPayload),
+  );
 });
