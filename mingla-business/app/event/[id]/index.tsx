@@ -80,6 +80,7 @@ import {
 } from "../../../src/hooks/useBusinessEvents";
 import { useEventOrders } from "../../../src/hooks/useEventOrders";
 import { canPerformAction } from "../../../src/utils/permissionGates";
+import { isScannerOnlyRank } from "../../../src/utils/navTabGate";
 
 const CANCEL_PROCESSING_MS = 1200;
 const cancelSleep = (ms: number): Promise<void> =>
@@ -116,8 +117,13 @@ export default function EventDetailScreen(): React.ReactElement {
 
   // Cycle 13a J-T6 G1: gate Edit / End sales / Cancel / Delete on EDIT_EVENT.
   // Hook ordering: ALL hooks run on every render before any early-return shell.
-  const { rank: currentRank } = useCurrentBrandRole(brand?.id ?? null);
-  const canEditEvent = canPerformAction(currentRank, "EDIT_EVENT");
+  const currentBrandRole = useCurrentBrandRole(brand?.id ?? null);
+  const canEditEvent = canPerformAction(currentBrandRole.rank, "EDIT_EVENT");
+  const canShowListingInsights =
+    !currentBrandRole.isLoading &&
+    !currentBrandRole.isError &&
+    currentBrandRole.role !== null &&
+    !isScannerOnlyRank(currentBrandRole.rank);
 
   // ----- Defensive: draft → redirect to edit ---------------------
   useEffect(() => {
@@ -733,6 +739,17 @@ export default function EventDetailScreen(): React.ReactElement {
             sub={`${totalGuestCount} ${totalGuestCount === 1 ? "guest" : "guests"}`}
             onPress={handleGuests}
           />
+          {canShowListingInsights ? (
+            <ActionTile
+              icon="chart"
+              label="Insights"
+              sub="Customers Mingla drove"
+              accessibilityLabel={`Open Insights for ${event.name}`}
+              onPress={() =>
+                router.push(`/insights/${event.id}?entry=detail_action` as never)
+              }
+            />
+          ) : null}
           {/* ORCH-0815-A2-ui (DEC-149) — event-context Marketing entry.
               Renamed "Buyers" → "Blasts" + icon `users` → `send` for
               consistency with the bottom-nav Blast tab. */}

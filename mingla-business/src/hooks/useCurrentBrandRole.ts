@@ -54,6 +54,7 @@ export interface CurrentBrandRoleState {
   permissionsOverride: Record<string, unknown>;
   isLoading: boolean;
   isError: boolean;
+  refetch: () => Promise<unknown>;
 }
 
 // ORCH-0740 Cycle 1: tightened from 5min to 30s.
@@ -104,7 +105,7 @@ export const useCurrentBrandRole = (
       ? null
       : (brandList.find((b) => b.id === brandId)?.role ?? null);
 
-  const { data, isLoading, isError } = useQuery<QueryResult>({
+  const { data, isLoading, isError, refetch } = useQuery<QueryResult>({
     queryKey: enabled
       ? brandRoleKeys.byBrand(brandId, userId)
       : DISABLED_KEY,
@@ -161,6 +162,7 @@ export const useCurrentBrandRole = (
   let role: BrandRole | null = data?.role ?? null;
 
   // [TRANSITIONAL] stub-mode synthesis fallback — fires when the DB chain
+  // EXIT CONDITION: remove once every brand is persisted with membership rows.
   // returns no role (typically because the brand is a local-only stub from
   // `brandList.STUB_BRANDS` and isn't persisted to the production DB yet).
   // Maps the existing local-only `Brand.role` enum to the 6-role enum:
@@ -180,5 +182,5 @@ export const useCurrentBrandRole = (
   const rank = role !== null ? BRAND_ROLE_RANK[role] : NO_MEMBERSHIP_RANK;
   const permissionsOverride = data?.permissionsOverride ?? {};
 
-  return { role, rank, permissionsOverride, isLoading, isError };
+  return { role, rank, permissionsOverride, isLoading, isError, refetch };
 };

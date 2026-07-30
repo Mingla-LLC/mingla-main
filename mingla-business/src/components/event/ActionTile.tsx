@@ -26,6 +26,7 @@ export interface ActionTileProps {
   label: string;
   sub?: string;
   primary?: boolean;
+  accessibilityLabel?: string;
   onPress: () => void;
 }
 
@@ -34,12 +35,13 @@ export const ActionTile: React.FC<ActionTileProps> = ({
   label,
   sub,
   primary = false,
+  accessibilityLabel,
   onPress,
 }) => (
   <Pressable
     onPress={onPress}
     accessibilityRole="button"
-    accessibilityLabel={label}
+    accessibilityLabel={accessibilityLabel ?? label}
     style={({ pressed }) => [
       styles.host,
       primary && styles.hostPrimary,
@@ -51,11 +53,11 @@ export const ActionTile: React.FC<ActionTileProps> = ({
       size={20}
       color={primary ? accent.warm : textTokens.primary}
     />
-    <Text style={styles.label} numberOfLines={1}>
+    <Text style={styles.label}>
       {label}
     </Text>
     {sub !== undefined ? (
-      <Text style={styles.sub} numberOfLines={1}>
+      <Text style={styles.sub}>
         {sub}
       </Text>
     ) : null}
