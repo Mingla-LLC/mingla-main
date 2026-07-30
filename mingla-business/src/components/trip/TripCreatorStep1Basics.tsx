@@ -568,16 +568,15 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           selectedLabel={draft.departureLocationText ?? ""}
           // Issue #1363 — typing nulls the structured fields until the selected
           // address resolves automatically.
-          onChangeText={(v) => {
-            committedDepartureRef.current = v;
+          onChangeText={(v) =>
             onChange({
               departureLocationText: v,
               departurePlaceId: null,
               departureLat: null,
               departureLng: null,
               departureCoordinatePrecision: null,
-            });
-          }}
+            })
+          }
           onFreeText={resolveDeparture}
           onPick={(place, selectedLabel) => {
             // Compatibility note: departureLocationText: place.formattedAddress
@@ -633,16 +632,15 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
           selectionState={destinationSelectionState}
           selectedLabel={draft.destinationLocationText ?? ""}
           // Issue #1363 — coordinate comes from automatic hierarchy resolution.
-          onChangeText={(v) => {
-            committedDestinationRef.current = v;
+          onChangeText={(v) =>
             onChange({
               destinationLocationText: v,
               destinationPlaceId: null,
               destinationLat: null,
               destinationLng: null,
               destinationCoordinatePrecision: null,
-            });
-          }}
+            })
+          }
           onFreeText={resolveDestination}
           onPick={(place, selectedLabel) => {
             // Compatibility note: destinationLocationText: place.formattedAddress

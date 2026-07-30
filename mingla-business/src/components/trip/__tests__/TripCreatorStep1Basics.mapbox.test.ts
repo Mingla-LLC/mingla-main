@@ -67,17 +67,13 @@ const wizardSrc = (): string =>
 describe("ORCH-1118 — create wizard requires confirmed Mapbox picks", () => {
   test("T-4: typing into either field nulls placeId/lat/lng (both onChangeText)", () => {
     const s = src();
-    // [TEST-MOD-APPROVED ORCH-1363] — the onChangeText handlers gained a block body
-    // (setDepartureHint/setDestinationHint reset + a coordinatePrecision:null
-    // reset for the three-tier field). The regexes are updated to the new shape;
-    // they STILL assert typing nulls placeId/lat/lng (the ORCH-1118 intent).
     // Departure onChangeText nulls its structured fields.
     expect(s).toMatch(
-      /onChangeText=\{\(v\)\s*=>\s*\{[\s\S]*?onChange\(\{\s*\n?\s*departureLocationText:\s*v,\s*\n?\s*departurePlaceId:\s*null,\s*\n?\s*departureLat:\s*null,\s*\n?\s*departureLng:\s*null,/,
+      /onChangeText=\{\(v\)\s*=>\s*\n?\s*onChange\(\{\s*\n?\s*departureLocationText:\s*v,\s*\n?\s*departurePlaceId:\s*null,\s*\n?\s*departureLat:\s*null,\s*\n?\s*departureLng:\s*null,/,
     );
     // Destination onChangeText nulls its structured fields.
     expect(s).toMatch(
-      /onChangeText=\{\(v\)\s*=>\s*\{[\s\S]*?onChange\(\{\s*\n?\s*destinationLocationText:\s*v,\s*\n?\s*destinationPlaceId:\s*null,\s*\n?\s*destinationLat:\s*null,\s*\n?\s*destinationLng:\s*null,/,
+      /onChangeText=\{\(v\)\s*=>\s*\n?\s*onChange\(\{\s*\n?\s*destinationLocationText:\s*v,\s*\n?\s*destinationPlaceId:\s*null,\s*\n?\s*destinationLat:\s*null,\s*\n?\s*destinationLng:\s*null,/,
     );
     // The old text-only handlers must be GONE (fails-on-revert).
     expect(s).not.toContain("onChangeText={(v) => onChange({ departureLocationText: v })}");
