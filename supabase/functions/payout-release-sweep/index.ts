@@ -842,7 +842,6 @@ export async function handlePayoutReleaseSweep(
     return json({ error: "fee_candidate_read_failed" }, 500);
   }
   let capturedFees = 0;
-  let capturedStayFees = 0;
   for (const candidate of (candidates ?? []) as FeeCandidate[]) {
     try {
       const fee = await deps.resolveProviderFee(candidate);
@@ -857,7 +856,7 @@ export async function handlePayoutReleaseSweep(
           },
         );
         if (recordError) throw recordError;
-        capturedStayFees++;
+        capturedFees++;
       } else {
         const { error: feeError } = await admin.from(
           "payout_source_fee_snapshots",
@@ -908,7 +907,6 @@ export async function handlePayoutReleaseSweep(
       ok: true,
       dark: true,
       capturedFees,
-      capturedStayFees,
       alertDelivery,
       result: data ?? {},
     });
@@ -1026,7 +1024,6 @@ export async function handlePayoutReleaseSweep(
     ok: true,
     dark: false,
     capturedFees,
-    capturedStayFees,
     alertDelivery: {
       claimed: alertDelivery.claimed + newAlertDelivery.claimed,
       providerAccepted: alertDelivery.providerAccepted +
