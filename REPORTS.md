@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-07-30 — Fixed the business RSVP guest console silently dropping its Remove confirmation and approve/deny error feedback while a guest sheet was open. The sheet now fully dismisses before the shared Remove dialog opens, while errors stay visible inside the open sheet; verified on an iOS simulator and physical Samsung with zero post-fix modal-presentation refusals and three fails-on-revert regression suites. This completes the #1342 native-modal collision sweep. Business app; shipped via production OTA for iOS and Android. (#1376, PR #1379)
 - 2026-07-30 — Production FX refresh now accepts the provider’s documented no-EOL response without inventing a date, seeds a complete canonical snapshot, and refreshes it daily through a service-authorized scheduler. (#1397, PR #1398)
 - 2026-07-30 — Venue discovery price ranges now follow each brand’s real or provisional currency across Business, Explorer, buyer web, and Admin; canonical server FX conversion is live with explicit unresolved legacy data and no fabricated dollar fallback. (#1384, PR #1396)
 - 2026-07-30 — Public venue reservation forms now clearly mark Name and Email as required, show separate accessible field errors, and keep Confirm disabled until both are valid, while preserving the existing reservation engine, phone validation, availability, payments, and sheet behavior. (#1386, PR #1393)
