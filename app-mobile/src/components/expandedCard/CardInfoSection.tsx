@@ -2,8 +2,7 @@ import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { Icon } from "../ui/Icon";
 import { parseAndFormatDistance } from "../utils/formatters";
-import { PriceTierSlug, tierLabel, tierRangeLabel, googleLevelToTierSlug, TIER_BY_SLUG } from "../../constants/priceTiers";
-import { getCurrencySymbol, getCurrencyRate } from "../utils/formatters";
+import { PriceTierSlug } from "../../constants/priceTiers";
 import { useTranslation } from "react-i18next";
 import { getReadableCategoryName } from "../../utils/categoryUtils";
 
@@ -48,19 +47,10 @@ export default function CardInfoSection({
   travelMode,
   measurementSystem,
   priceRange,
-  priceTier,
-  priceLevel,
   description,
   tip,
-  currency = 'USD',
 }: CardInfoSectionProps) {
   const { t } = useTranslation(['expanded_details', 'common']);
-  const resolvedTier = priceTier ?? googleLevelToTierSlug(priceLevel);
-  const tierData = TIER_BY_SLUG[resolvedTier];
-  const currencySymbol = getCurrencySymbol(currency || 'USD');
-  const currencyRate = getCurrencyRate(currency || 'USD');
-  const tierDisplayText = `${tierLabel(resolvedTier)} · ${tierRangeLabel(resolvedTier, currencySymbol, currencyRate)}`;
-  const tierIcon = tierData?.icon ?? 'cash-outline';
   // Get category icon component
   const getCategoryIcon = () => {
     if (categoryIcon) {
@@ -149,12 +139,12 @@ export default function CardInfoSection({
             <Text style={styles.metricPillText}>{travelTime}</Text>
           </View>
         )}
-        {resolvedTier && (
+        {priceRange ? (
           <View style={styles.metricPill}>
-            <Icon name={tierIcon} size={12} color="#eb7825" />
-            <Text style={styles.metricPillText}>{tierDisplayText}</Text>
+            <Icon name="cash-outline" size={12} color="#eb7825" />
+            <Text style={styles.metricPillText}>{priceRange}</Text>
           </View>
-        )}
+        ) : null}
       </View>
 
       {/* Description */}

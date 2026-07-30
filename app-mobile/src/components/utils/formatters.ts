@@ -159,7 +159,8 @@ export function getCurrencySymbol(currencyCode: string = 'USD'): string {
  * @returns Formatted price range string in target currency
  */
 export function formatPriceRange(priceRange: string | undefined, currencyCode: string = 'USD', sourceCurrency: string = 'USD'): string {
-  if (!priceRange || priceRange.includes('undefined') || priceRange.includes('NaN')) return 'Free';
+  // Missing discovery money is unknown, never implicitly free.
+  if (!priceRange || priceRange.includes('undefined') || priceRange.includes('NaN')) return '';
 
   // Handle "Free" or non-numeric ranges
   if (priceRange.toLowerCase() === 'free' || priceRange === '-') {

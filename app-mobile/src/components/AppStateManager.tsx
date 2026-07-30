@@ -572,7 +572,7 @@ export function useAppState() {
           sourceDetails: cardData.sessionName
             ? `From ${cardData.sessionName}`
             : i18n.t('common:solo_experience'),
-          priceRange: cardData.priceRange || "TBD",
+          priceRange: cardData.priceRange || "",
           description: cardData.description || "",
           fullDescription:
             cardData.fullDescription || cardData.description || "",

@@ -70,6 +70,7 @@ import {
 } from "../../constants/publicUrls";
 import type {
   PublicVenue,
+  PublicVenueDiscoveryPrice,
   PublicVenueReservable,
 } from "../../services/publicEventsService";
 import type { BrandHourEntry } from "../../types/brand";
@@ -83,9 +84,11 @@ import {
   publicVenueReservationUiReducer,
 } from "./publicVenueReservationUiState";
 import { captureWeb } from "../../analytics/webAnalytics";
+import { formatSourceRange } from "../../utils/currencyFormatter";
 
 export interface PublicVenuePageProps {
   venue: PublicVenue;
+  discoveryPrice: PublicVenueDiscoveryPrice | null;
   /** ORCH-1186-C shared shape — the BRAND's menu ([TRANSITIONAL-3]). */
   menu: PublicMenuGroup[];
   /** Anon display gate; not-reservable / unknown → NO reserve bar. */
@@ -132,6 +135,7 @@ const hoursLineFor = (entry: BrandHourEntry): string =>
 
 export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
   venue,
+  discoveryPrice,
   menu,
   reservable,
   reservabilityState = "ready",
@@ -358,6 +362,16 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
       ) : null}
     </View>
   );
+  const discoveryPriceBlock = discoveryPrice !== null ? (
+    <Text style={[styles.aboutBody, themedFont, { color: palette.secondaryText }]}>
+      Typical spend · {formatSourceRange({
+        minMinor: discoveryPrice.minMinor,
+        maxMinor: discoveryPrice.maxMinor,
+        currencyCode: discoveryPrice.currencyCode,
+        exponent: discoveryPrice.minorUnitExponent,
+      })}
+    </Text>
+  ) : null;
 
   // ── §6.1 About / pitch — the venue's voice, right under the identity ──────
   // Themed prose (palette + brand font), 4-line clamp + Read more. Hidden
@@ -693,6 +707,7 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
         theme={resolvedTheme}
         overview={
           <View style={styles.tabPane}>
+            {discoveryPriceBlock}
             {aboutBlock}
             {mapBlock}
             {addressCard}

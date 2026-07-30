@@ -32,8 +32,7 @@ import { toastManager } from "../ui/Toast";
 import { getUserLocale } from "../../utils/localeUtils";
 import { DeviceCalendarService } from "@/src/services/deviceCalendarService";
 import ProposeDateTimeModal from "./ProposeDateTimeModal"; // dark bottom sheet
-import { formatPriceRange, formatCurrency, getCurrencySymbol, getCurrencyRate } from "../utils/formatters";
-import { PriceTierSlug, TIER_BY_SLUG, formatTierLabel } from '../../constants/priceTiers';
+import { formatCurrency } from "../utils/formatters";
 import { HapticFeedback } from "../../utils/hapticFeedback";
 import type { CuratedStop } from "../../types/curatedExperience";
 import { isPlaceOpenNow, extractWeekdayText } from "../../utils/openingHoursUtils";
@@ -1282,7 +1281,7 @@ const SavedTab = ({
         images: cardToSchedule.images?.length ? cardToSchedule.images : [cardToSchedule.image].filter(Boolean),
         rating: cardToSchedule.rating || 4.5,
         reviewCount: cardToSchedule.reviewCount || 0,
-        priceRange: cardToSchedule.priceRange || "Varies",
+        priceRange: cardToSchedule.priceRange || "",
         distance: (cardToSchedule as any).distance || "",
         travelTime: cardToSchedule.travelTime || "15 min",
         address: cardToSchedule.address || "",
@@ -1829,11 +1828,11 @@ const SavedTab = ({
                       </Text>
                     </View>
                   )}
-                  <Text style={styles.priceText} numberOfLines={1} ellipsizeMode="tail">
-                    {card.priceTier && TIER_BY_SLUG[card.priceTier as PriceTierSlug]
-                      ? formatTierLabel(card.priceTier as PriceTierSlug, getCurrencySymbol(accountPreferences?.currency || "USD"), getCurrencyRate(accountPreferences?.currency || "USD"))
-                      : card.priceRange ? formatPriceRange(card.priceRange, accountPreferences?.currency || "USD") : 'Varies'}
-                  </Text>
+                  {card.priceRange ? (
+                    <Text style={styles.priceText} numberOfLines={1} ellipsizeMode="tail">
+                      {card.priceRange}
+                    </Text>
+                  ) : null}
                 </View>
                 <Icon name="chevron-forward" size={16} color="#9ca3af" />
               </View>

@@ -22,6 +22,8 @@ export interface HolidayCard {
   lat: number | null;
   lng: number | null;
   priceTier: string | null;
+  /** Server-formatted canonical source/converted range; absent stays hidden. */
+  priceRange?: string | null;
   description: string | null;
   cardType: "single" | "curated";
   tagline: string | null;

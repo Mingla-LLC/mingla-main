@@ -7,28 +7,28 @@
  * - hero is a real photo OR an honest "No photo yet" placeholder — never faked;
  *   '__backfill_failed__' sentinel counts as no-photo
  * - distance / travel time are NEVER produced here (admin has no buyer geo)
- * - price label derives from real price_tiers / price_level only; null → hidden
+ * - price label derives only from the canonical source-currency range
  */
 
-export const PRICE_LEVEL_LABEL = {
-  PRICE_LEVEL_FREE: "Free",
-  PRICE_LEVEL_INEXPENSIVE: "$",
-  PRICE_LEVEL_MODERATE: "$$",
-  PRICE_LEVEL_EXPENSIVE: "$$$",
-  PRICE_LEVEL_VERY_EXPENSIVE: "$$$$",
-};
-
-/** Tier label from price_tiers (array) or price_level (enum). null → hidden. */
+/** Canonical minor-unit source range. Legacy Google ordinals are not money. */
 export function priceLabel(placeData) {
   if (!placeData) return null;
-  const tiers = placeData.price_tiers;
-  if (Array.isArray(tiers) && tiers.length > 0) {
-    const n = Math.max(1, Math.min(4, tiers.length));
-    return "$".repeat(n);
-  }
-  const lvl = placeData.price_level;
-  if (typeof lvl === "string" && PRICE_LEVEL_LABEL[lvl]) return PRICE_LEVEL_LABEL[lvl];
-  return null;
+  const min = placeData.source_min_minor;
+  const max = placeData.source_max_minor;
+  const code = placeData.source_currency_code;
+  const exponent = placeData.source_minor_unit_exponent ?? 2;
+  if (!Number.isSafeInteger(min) || min < 0 || typeof code !== "string") return null;
+  if (max !== null && max !== undefined && (!Number.isSafeInteger(max) || max < min)) return null;
+  if (min === 0 && max === 0) return "Free";
+  const format = (minor) => new Intl.NumberFormat("en", {
+    style: "currency",
+    currency: code,
+    minimumFractionDigits: exponent,
+    maximumFractionDigits: exponent,
+  }).format(minor / (10 ** exponent));
+  return max === null || max === undefined
+    ? `${format(min)}+`
+    : `${format(min)}–${format(max)}`;
 }
 
 /** Exact native rule: show rating only when it is a positive number. */

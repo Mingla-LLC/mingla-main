@@ -23,6 +23,7 @@ import type { CollabDeadEndPayload } from "../services/deckService";
 import { computePrefsHash, normalizeDateTime } from "../utils/cardConverters";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAppStore } from "../store/appStore";
+import { useLocalePreferences } from "../hooks/useLocalePreferences";
 import { Recommendation } from "../types/recommendation";
 import { normalizeCategoryArray } from '../utils/categoryUtils';
 // ORCH-0490 Phase 2.3: per-context deck state registry + feature flag.
@@ -281,6 +282,7 @@ export const RecommendationsProvider: React.FC<
   } = useAppStore();
 
   const user = useAppStore((state) => state.user);
+  const localePreferences = useLocalePreferences();
 
   // ── ORCH-0490 Phase 2.3: Logout / user-swap registry clear ──────────
   // Constitutional #6: logout must clear all private state. The registry
@@ -728,6 +730,7 @@ export const RecommendationsProvider: React.FC<
       batchSeedReady,
     excludeCardIds: [],
     lastKnownQueryKey: lastDeckKey,
+    displayCurrency: localePreferences.currency,
     // No `mode` field — legacy key shape.
   });
 
@@ -753,6 +756,7 @@ export const RecommendationsProvider: React.FC<
       batchSeedReady,
     excludeCardIds: [],
     lastKnownQueryKey: isSoloMode ? lastDeckKey : null,
+    displayCurrency: localePreferences.currency,
   });
 
   // ORCH-0909: flag-on COLLAB hook — slim positional contract.

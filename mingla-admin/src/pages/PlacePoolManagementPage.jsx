@@ -369,6 +369,7 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
   const [editForm, setEditForm] = useState({
     name: "", price_tiers: [], seeding_category: "", is_active: true,
     ai_categories: [],
+    discovery_min_minor: "", discovery_max_minor: "",
   });
   const [saving, setSaving] = useState(false);
   // META-ORCH-1009 Sub-D — admin per-place re-evaluation. Pending state
@@ -398,6 +399,10 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
       seeding_category: place.seeding_category || "",
       is_active: place.is_active,
       ai_categories: place.ai_categories || [],
+      discovery_min_minor:
+        place.place_discovery_price_ranges?.source_min_minor?.toString() ?? "",
+      discovery_max_minor:
+        place.place_discovery_price_ranges?.source_max_minor?.toString() ?? "",
     });
   }, [open, place]);
 
@@ -437,6 +442,45 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
       ai_categories: editForm.ai_categories.length > 0 ? editForm.ai_categories : null,
     }).eq("id", place.id);
     if (aiErr) { addToast({ variant: "error", title: "AI fields save failed", description: aiErr.message }); setSaving(false); return; }
+
+    const range = place.place_discovery_price_ranges;
+    if (range?.status === "active") {
+      const minMinor = Number(editForm.discovery_min_minor);
+      const maxMinor = editForm.discovery_max_minor.trim() === ""
+        ? null
+        : Number(editForm.discovery_max_minor);
+      if (
+        !Number.isSafeInteger(minMinor) || minMinor < 0 ||
+        (maxMinor !== null && (!Number.isSafeInteger(maxMinor) || maxMinor < minMinor))
+      ) {
+        addToast({
+          variant: "error",
+          title: "Invalid discovery range",
+          description: "Use non-negative integer minor units; max must be at least min.",
+        });
+        setSaving(false);
+        return;
+      }
+      const { error: rangeError } = await supabase.rpc(
+        "issue_1384_save_discovery_price_range",
+        {
+          p_brand_id: range.brand_id,
+          p_venue_id: range.venue_id,
+          p_place_pool_id: place.id,
+          p_source_min_minor: minMinor,
+          p_source_max_minor: maxMinor,
+          p_source_currency_code: range.source_currency_code,
+          p_expected_version: range.version,
+          p_actor_reason: "admin_edit",
+          p_request_id: crypto.randomUUID(),
+        },
+      );
+      if (rangeError) {
+        addToast({ variant: "error", title: "Price save failed", description: rangeError.message });
+        setSaving(false);
+        return;
+      }
+    }
 
     addToast({ variant: "success", title: "Place updated" }); onClose(); if (onSave) onSave();
     setSaving(false);
@@ -643,7 +687,14 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
             <h4 className="text-xs font-semibold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-2">Quality</h4>
             <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
               <div><span className="text-[var(--color-text-secondary)]">Rating:</span> {place.rating ? `★ ${place.rating}` : "—"} {place.review_count > 0 && `(${place.review_count} reviews)`}</div>
-              <div><span className="text-[var(--color-text-secondary)]">Price Tiers:</span> {(() => { const tiers = place.price_tiers?.length ? place.price_tiers : (place.price_tier ? [place.price_tier] : []); return tiers.length > 0 ? tiers.map((t) => <Badge key={t} variant="outline">{t}</Badge>) : "—"; })()}</div>
+              <div>
+                <span className="text-[var(--color-text-secondary)]">Discovery price:</span>{" "}
+                {place.place_discovery_price_ranges?.status === "active"
+                  ? `${place.place_discovery_price_ranges.source_min_minor}–${place.place_discovery_price_ranges.source_max_minor ?? "open"} minor · ${place.place_discovery_price_ranges.source_currency_code}`
+                  : place.place_discovery_price_ranges?.status === "legacy_unresolved"
+                    ? "Needs price range review"
+                    : "—"}
+              </div>
               <div><span className="text-[var(--color-text-secondary)]">Price Level:</span> {place.price_level || "—"}</div>
               {place.editorial_summary && <div className="col-span-2"><span className="text-[var(--color-text-secondary)]">Editorial:</span> {place.editorial_summary}</div>}
             </div>
@@ -668,6 +719,24 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
               </div>
             </div>
           </div>
+
+          {place.place_discovery_price_range_revisions?.length > 0 ? (
+            <div>
+              <h4 className="text-xs font-semibold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-2">
+                Discovery price revision trail
+              </h4>
+              <ul className="space-y-1 text-xs">
+                {place.place_discovery_price_range_revisions.map((revision) => (
+                  <li key={`${revision.created_at}-${revision.action}`} className="flex justify-between gap-3">
+                    <span>{revision.action}</span>
+                    <span className="text-[var(--color-text-secondary)]">
+                      {new Date(revision.created_at).toLocaleString()}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
 
           {/* META-ORCH-1009 Sub-D — Admin re-evaluate this place.
               Forces a fresh Gemini Q2 read + rescore for one place; rate-
@@ -699,7 +768,7 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
             <div className="space-y-3">
               <Input label="Name" value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} />
               <div>
-                <label className="text-xs text-[var(--color-text-secondary)]">Price Tiers (select all that apply)</label>
+                <label className="text-xs text-[var(--color-text-secondary)]">Provider price ordinals (non-monetary)</label>
                 <div className="flex flex-wrap gap-2 mt-1">
                   {PRICE_TIERS.map((t) => (
                     <button key={t} type="button"
@@ -719,6 +788,20 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
                   ))}
                 </div>
               </div>
+              {place.place_discovery_price_ranges?.status === "active" ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    label={`Discovery min · ${place.place_discovery_price_ranges.source_currency_code} minor units`}
+                    value={editForm.discovery_min_minor}
+                    onChange={(e) => setEditForm((f) => ({ ...f, discovery_min_minor: e.target.value }))}
+                  />
+                  <Input
+                    label="Discovery max minor units (blank = open)"
+                    value={editForm.discovery_max_minor}
+                    onChange={(e) => setEditForm((f) => ({ ...f, discovery_max_minor: e.target.value }))}
+                  />
+                </div>
+              ) : null}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-[var(--color-text-secondary)]">Seeding Category</label>
@@ -1441,7 +1524,10 @@ function BrowseTab({ scope, onRefresh }) {
       countryCityIds = (cityRows || []).map((r) => r.id);
     }
 
-    let q = supabase.from("place_pool").select("*", { count: "exact" });
+    let q = supabase.from("place_pool").select(
+      "*, place_discovery_price_ranges(brand_id,venue_id,status,source_min_minor,source_max_minor,source_currency_code,version,updated_at), place_discovery_price_range_revisions(action,actor_id,created_at)",
+      { count: "exact" },
+    );
     if (selectedCity) q = q.eq("city_id", selectedCity);
     else if (countryCityIds && countryCityIds.length > 0) q = q.in("city_id", countryCityIds);
     if (filters.category) q = q.contains("ai_categories", [filters.category]);
@@ -1488,8 +1574,10 @@ function BrowseTab({ scope, onRefresh }) {
     { key: "rating", label: "Rating", sortable: true, render: (_, r) => r.rating ? `★ ${r.rating}` : "—" },
     { key: "review_count", label: "Reviews", sortable: true, render: (_, r) => r.review_count || "—" },
     { key: "price_tiers", label: "Price", render: (_, r) => {
-      const tiers = r.price_tiers?.length ? r.price_tiers : (r.price_tier ? [r.price_tier] : []);
-      return tiers.length > 0 ? <div className="flex gap-0.5">{tiers.map((t) => <Badge key={t} variant="outline">{t}</Badge>)}</div> : "—";
+      const range = r.place_discovery_price_ranges;
+      if (range?.status === "legacy_unresolved") return <Badge variant="warning">Needs review</Badge>;
+      if (range?.status !== "active") return "—";
+      return `${range.source_min_minor}–${range.source_max_minor ?? "open"} minor · ${range.source_currency_code}`;
     }},
     { key: "photos", label: "Photos", render: (_, r) => {
       const n = r.stored_photo_urls?.length || 0;

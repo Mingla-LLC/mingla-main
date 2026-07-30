@@ -17,9 +17,13 @@ import {
   roundRobinInterleave,
 } from '../utils/cardConverters';
 import { getCategoryIcon } from '../utils/categoryUtils';
-import { PriceTierSlug, googleLevelToTierSlug, tierLabel } from '../constants/priceTiers';
 import type { Recommendation } from '../types/recommendation';
 import { FEATURE_FLAG_PROGRESSIVE_DELIVERY } from '../config/featureFlags';
+import {
+  canonicalDiscoveryPriceLabel,
+  type CanonicalDiscoveryPrice,
+} from '../utils/priceTiers';
+import type { PriceTierSlug } from '../constants/priceTiers';
 
 /**
  * ORCH-0490 Phase 2.2 — Source discriminant for progressive delivery.
@@ -87,6 +91,13 @@ export interface DeckParams {
   mode?: 'solo' | 'collab';
   /** ORCH-0909: participant cursor before requesting the next shared position. */
   currentPosition?: number;
+  /** Viewer display preference only. Source/payable currency is unchanged. */
+  displayCurrency?: string;
+  /** Snapshot returned by page one; continuation remains pinned to it. */
+  fxSnapshotId?: string;
+  priceFilterMinMinor?: number;
+  priceFilterMaxMinor?: number;
+  priceFilterCurrency?: string;
 }
 
 /**
@@ -197,8 +208,23 @@ export function unifiedCardToRecommendation(card: any): Recommendation {
   const distanceKm: number | null = typeof card.distanceKm === 'number' ? card.distanceKm : null;
   const travelTimeMin: number | null = typeof card.travelTimeMin === 'number' ? card.travelTimeMin : null;
 
-  const priceTier: PriceTierSlug = card.priceTier ?? googleLevelToTierSlug(card.priceLevel);
-  const priceText = tierLabel(priceTier);
+  const discoveryPrice: CanonicalDiscoveryPrice = {
+    priceRangeStatus: card.priceRangeStatus ?? null,
+    sourceMinMinor: card.sourceMinMinor ?? null,
+    sourceMaxMinor: card.sourceMaxMinor ?? null,
+    sourceCurrencyCode: card.sourceCurrencyCode ?? null,
+    sourceMinorUnitExponent: card.sourceMinorUnitExponent ?? null,
+    displayMinMinor: card.displayMinMinor ?? null,
+    displayMaxMinor: card.displayMaxMinor ?? null,
+    displayCurrencyCode: card.displayCurrencyCode ?? null,
+    displayMinorUnitExponent: card.displayMinorUnitExponent ?? null,
+    priceIsApproximate: card.priceIsApproximate === true,
+    fxSnapshotId: card.fxSnapshotId ?? null,
+    fxProvider: card.fxProvider ?? null,
+    fxProviderUpdatedAt: card.fxProviderUpdatedAt ?? null,
+    fxFreshness: card.fxFreshness ?? null,
+  };
+  const priceText = canonicalDiscoveryPriceLabel(discoveryPrice) ?? '';
 
   const category = card.category || 'Nature';
   const experienceType = category.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/__+/g, '_');
@@ -236,7 +262,8 @@ export function unifiedCardToRecommendation(card: any): Recommendation {
     reviewCount: card.reviewCount ?? 0,
     website: card.website,
     placeId: card.placeId,
-    priceTier,
+    priceTier: undefined,
+    ...discoveryPrice,
     socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
     matchFactors: {
       location: 0.5,
@@ -670,6 +697,11 @@ class DeckService {
                 excludeCardIds: params.excludeCardIds,
                 dateWindows: params.dateWindows,  // ORCH-0446: AND date intersection (collab only)
                 sessionId: params.sessionId,       // ORCH-0446: analytics tracking (collab only)
+                displayCurrency: params.displayCurrency,
+                fxSnapshotId: params.fxSnapshotId,
+                priceFilterMinMinor: params.priceFilterMinMinor,
+                priceFilterMaxMinor: params.priceFilterMaxMinor,
+                priceFilterCurrency: params.priceFilterCurrency,
               },
             }),
             timeoutPromise,

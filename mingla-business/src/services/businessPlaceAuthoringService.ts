@@ -130,6 +130,97 @@ export interface AiSignalScore {
 
 type PipelineErrorBody = { kind?: string; code?: string; message?: string };
 
+export interface BrandDiscoverySupportedCurrency {
+  code: string;
+  minorUnitExponent: number;
+  railSource: string;
+}
+
+export interface BrandCurrencyReconciliation {
+  id: string;
+  from_currency_code: string | null;
+  to_currency_code: string;
+  status: "pending";
+  initiated_at: string;
+}
+
+export interface BrandDiscoveryCurrencyState {
+  brandId: string;
+  stateVersion: number;
+  authority: "settlement" | "provisional" | "unset";
+  currencyCode: string | null;
+  canAuthorRange: boolean;
+  canAcceptPaidReservations: boolean;
+  supportedCurrencies: BrandDiscoverySupportedCurrency[];
+  reconciliation: BrandCurrencyReconciliation | null;
+}
+
+type CurrencyActionResponse<T> = {
+  kind: "ok";
+  data: T;
+  requestId: string;
+};
+
+async function invokeCurrencyAction<T>(
+  body: Record<string, unknown>,
+): Promise<T> {
+  const { data, error } = await supabase.functions.invoke(
+    "manage-brand-discovery-currency",
+    { body },
+  );
+  if (error !== null) {
+    throw await pipelineInvokeError(error, "brand_currency_request_failed");
+  }
+  const response = data as CurrencyActionResponse<T> | PipelineErrorBody;
+  return assertPipelineOk(
+    response as CurrencyActionResponse<T> | PipelineErrorBody,
+    "brand_currency_request_failed",
+  ).data;
+}
+
+export function getBrandDiscoveryCurrencyState(
+  brandId: string,
+): Promise<BrandDiscoveryCurrencyState> {
+  return invokeCurrencyAction<BrandDiscoveryCurrencyState>({
+    action: "get_state",
+    brandId,
+  });
+}
+
+export function setBrandProvisionalCurrency(input: {
+  brandId: string;
+  currencyCode: string;
+  expectedStateVersion: number;
+}): Promise<BrandDiscoveryCurrencyState> {
+  return invokeCurrencyAction<BrandDiscoveryCurrencyState>({
+    action: "set_provisional_currency",
+    brandId: input.brandId,
+    currencyCode: input.currencyCode,
+    expectedStateVersion: input.expectedStateVersion,
+  });
+}
+
+export async function saveDiscoveryPriceRange(input: {
+  brandId: string;
+  venueId: string;
+  placePoolId: string;
+  sourceMinMinor: number;
+  sourceMaxMinor: number | null;
+  currencyCode: string;
+  expectedVersion?: number | null;
+}): Promise<void> {
+  await invokeCurrencyAction<Record<string, unknown>>({
+    action: "save_discovery_price_range",
+    brandId: input.brandId,
+    venueId: input.venueId,
+    placePoolId: input.placePoolId,
+    sourceMinMinor: input.sourceMinMinor,
+    sourceMaxMinor: input.sourceMaxMinor,
+    currencyCode: input.currencyCode,
+    expectedVersion: input.expectedVersion ?? null,
+  });
+}
+
 function assertPipelineOk<T extends { kind: string }>(
   body: T | PipelineErrorBody,
   fallback: string,

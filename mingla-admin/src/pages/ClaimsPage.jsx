@@ -706,12 +706,24 @@ export function ClaimsPage() {
                 )}
               </div>
 
-              {/* META-ORCH-1062 — missing fields (price / website / submitter pitch). */}
-              {pp && (pp.price_level || pp.website || submitterPitch) ? (
+              {/* Canonical discovery money + provider metadata / submitter pitch. */}
+              {pp && (detail.discovery_price || pp.price_level || pp.website || submitterPitch) ? (
                 <div className="space-y-2">
+                  {detail.discovery_price ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="text-[var(--color-text-tertiary)]">Discovery price</div>
+                      <div>
+                        {detail.discovery_price.status === "active"
+                          ? `${detail.discovery_price.source_min_minor}–${detail.discovery_price.source_max_minor ?? "open"} minor · ${detail.discovery_price.source_currency_code}`
+                          : detail.discovery_price.status === "legacy_unresolved"
+                            ? "Needs price range review"
+                            : "Currency reconciliation required"}
+                      </div>
+                    </div>
+                  ) : null}
                   {pp.price_level ? (
                     <div className="grid grid-cols-2 gap-2">
-                      <div className="text-[var(--color-text-tertiary)]">Price level</div>
+                      <div className="text-[var(--color-text-tertiary)]">Provider price ordinal</div>
                       <div>{pp.price_level}</div>
                     </div>
                   ) : null}
@@ -830,6 +842,19 @@ export function ClaimsPage() {
                         rating: pp?.rating ?? null,
                         price_level: pp?.price_level ?? null,
                         price_tiers: pp?.price_tiers ?? null,
+                        source_min_minor:
+                          detail.discovery_price?.status === "active"
+                            ? detail.discovery_price.source_min_minor
+                            : null,
+                        source_max_minor:
+                          detail.discovery_price?.status === "active"
+                            ? detail.discovery_price.source_max_minor
+                            : null,
+                        source_currency_code:
+                          detail.discovery_price?.status === "active"
+                            ? detail.discovery_price.source_currency_code
+                            : null,
+                        source_minor_unit_exponent: 2,
                         generative_summary: pp?.generative_summary ?? null,
                         primary_type: null,
                         types: null,

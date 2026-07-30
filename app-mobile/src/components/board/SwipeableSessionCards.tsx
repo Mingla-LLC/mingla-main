@@ -15,7 +15,7 @@ import {
 } from "react-native";
 import { useTranslation } from 'react-i18next';
 import { Icon } from "../ui/Icon";
-import { formatPriceRange, parseAndFormatDistance, getCurrencySymbol, getCurrencyRate } from "../utils/formatters";
+import { parseAndFormatDistance, getCurrencySymbol, getCurrencyRate } from "../utils/formatters";
 import { PriceTierSlug, TIER_BY_SLUG, formatTierLabel } from '../../constants/priceTiers';
 import type { CuratedStop } from '../../types/curatedExperience';
 import { useSessionVoting } from "../../hooks/useSessionVoting";
@@ -530,13 +530,13 @@ export const SwipeableSessionCards: React.FC<SwipeableSessionCardsProps> = ({
                           </Text>
                         </View>
                       )}
-                      <View style={styles.detailBadge}>
-                        <Text style={styles.detailBadgeText} numberOfLines={1} ellipsizeMode="tail">
-                          {(cardData as any).priceTier && TIER_BY_SLUG[(cardData as any).priceTier as PriceTierSlug]
-                            ? formatTierLabel((cardData as any).priceTier as PriceTierSlug, getCurrencySymbol(accountPreferences?.currency), getCurrencyRate(accountPreferences?.currency))
-                            : formatPriceRange(cardData.priceRange, accountPreferences?.currency) || "$"}
-                        </Text>
-                      </View>
+                      {cardData.priceRange ? (
+                        <View style={styles.detailBadge}>
+                          <Text style={styles.detailBadgeText} numberOfLines={1} ellipsizeMode="tail">
+                            {cardData.priceRange}
+                          </Text>
+                        </View>
+                      ) : null}
                     </View>
                   </View>
                 </View>

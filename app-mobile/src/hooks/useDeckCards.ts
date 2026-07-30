@@ -57,6 +57,11 @@ export interface DeckQueryKeyParams {
   dateOption?: string;
   batchSeed: number;
   excludeCardIds?: string[];
+  displayCurrency?: string;
+  fxSnapshotId?: string;
+  priceFilterMinMinor?: number;
+  priceFilterMaxMinor?: number;
+  priceFilterCurrency?: string;
 }
 
 export function buildDeckQueryKey(params: DeckQueryKeyParams): readonly unknown[] {
@@ -94,6 +99,11 @@ export function buildDeckQueryKey(params: DeckQueryKeyParams): readonly unknown[
     params.dateOption ?? 'today',
     params.batchSeed,
     [...(params.excludeCardIds ?? [])].sort().join(','),
+    params.displayCurrency ?? null,
+    params.fxSnapshotId ?? null,
+    params.priceFilterMinMinor ?? null,
+    params.priceFilterMaxMinor ?? null,
+    params.priceFilterCurrency ?? null,
   ];
 
   // ORCH-0490 Phase 2.3: new key shape when mode='solo' explicitly.
@@ -117,6 +127,11 @@ interface UseDeckCardsParams {
   batchSeed: number;
   enabled: boolean;
   excludeCardIds?: string[];
+  displayCurrency?: string;
+  fxSnapshotId?: string;
+  priceFilterMinMinor?: number;
+  priceFilterMaxMinor?: number;
+  priceFilterCurrency?: string;
   /** Persisted query key from last session — enables instant cache read on cold start
    *  before location resolves. Only set after proximity check confirms same location.
    *  ORCH-0391. */
@@ -211,6 +226,11 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
       dateOption: params.dateOption,
       batchSeed: params.batchSeed,
       excludeCardIds: params.excludeCardIds,
+      displayCurrency: params.displayCurrency,
+      fxSnapshotId: params.fxSnapshotId,
+      priceFilterMinMinor: params.priceFilterMinMinor,
+      priceFilterMaxMinor: params.priceFilterMaxMinor,
+      priceFilterCurrency: params.priceFilterCurrency,
     });
   } else {
     queryKey = params.lastKnownQueryKey ?? ['deck-cards', null];

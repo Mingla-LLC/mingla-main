@@ -10,19 +10,10 @@
 import type { ExpandedCardData } from '../../types/expandedCardTypes';
 import type { CuratedStop } from '../../types/curatedExperience';
 import type { HolidayCard } from '../../services/holidayCardsService';
-import { PriceTierSlug, formatTierLabel } from '../../constants/priceTiers';
 import { getCategoryIcon } from '../../utils/categoryUtils';
-
-const VALID_TIERS: ReadonlySet<string> = new Set(['chill', 'comfy', 'bougie', 'lavish']);
-
-function asPriceTier(v: string | null | undefined): PriceTierSlug | null {
-  return v && VALID_TIERS.has(v) ? (v as PriceTierSlug) : null;
-}
 
 export interface HolidayCardMapOpts {
   travelMode?: string;
-  currencySymbol: string;
-  currencyRate: number;
 }
 
 /**
@@ -39,7 +30,6 @@ export function holidayCardToExpandedCardData(
   c: HolidayCard,
   opts: HolidayCardMapOpts,
 ): ExpandedCardData {
-  const priceTier = asPriceTier(c.priceTier);
   const isCurated = c.cardType === 'curated';
   // stopsData is the same generate-curated-experiences output the deck renders;
   // guarded to an array before the CuratedStop assertion (never a blind cast).
@@ -58,10 +48,8 @@ export function holidayCardToExpandedCardData(
     images: c.imageUrl ? [c.imageUrl] : [],
     rating: c.rating ?? 0,
     reviewCount: 0,
-    priceRange: priceTier
-      ? formatTierLabel(priceTier, opts.currencySymbol, opts.currencyRate)
-      : undefined,
-    priceTier: priceTier ?? undefined,
+    priceRange: c.priceRange ?? undefined,
+    priceTier: undefined,
     distance: null,
     travelMode: opts.travelMode,
     address: c.address ?? '',

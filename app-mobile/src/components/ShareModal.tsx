@@ -8,8 +8,7 @@ import { Icon } from './ui/Icon';
 import { WhatsAppLogo, InstagramLogo, TwitterLogo } from './ui/BrandIcons';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { useAppState } from './AppStateManager';
-import { formatPriceRange, parseAndFormatDistance, getCurrencySymbol, getCurrencyRate } from './utils/formatters';
-import { PriceTierSlug, TIER_BY_SLUG, formatTierLabel } from '../constants/priceTiers';
+import { parseAndFormatDistance } from './utils/formatters';
 import { colors } from '../constants/colors';
 import { mixpanelService } from '../services/mixpanelService';
 import { logAppsFlyerEvent } from '../services/appsFlyerService';
@@ -80,9 +79,11 @@ export default function ShareModal({
   const distance = rawDistance
     ? parseAndFormatDistance(rawDistance, accountPreferences?.measurementSystem)
     : t('share:card.nearby');
-  const priceRange = experienceData.priceTier && TIER_BY_SLUG[experienceData.priceTier as PriceTierSlug]
-    ? formatTierLabel(experienceData.priceTier as PriceTierSlug, getCurrencySymbol(accountPreferences?.currency), getCurrencyRate(accountPreferences?.currency))
-    : formatPriceRange(experienceData.priceRange, accountPreferences?.currency) || experienceData.price || '';
+  // Canonical discovery prices arrive formatted by the server-backed adapter.
+  // Never reinterpret a legacy tier as a dollar amount.
+  const priceRange = typeof experienceData.priceRange === 'string'
+    ? experienceData.priceRange
+    : '';
   const rating = experienceData.rating || experienceData.ratingValue || '4.8';
   const address = experienceData.address || experienceData.location?.address || experienceData.location || '';
   const description = experienceData.description || experienceData.fullDescription || '';
@@ -105,7 +106,8 @@ export default function ShareModal({
     const dayOfWeek = dateTimePreferences?.dayOfWeek || 'Weekend';
     const timeframe = dateTimePreferences?.planningTimeframe || 'This month';
     
-    return `What do you think about ${title}${address ? ` at ${address}` : ''}? It has a ${rating} star rating and costs ${priceRange}. I'm thinking we could go ${timeOfDay} on ${dayOfWeek} (${timeframe}). ${shortDescription} Let me know if you're interested!`;
+    const priceSentence = priceRange ? ` and costs ${priceRange}` : '';
+    return `What do you think about ${title}${address ? ` at ${address}` : ''}? It has a ${rating} star rating${priceSentence}. I'm thinking we could go ${timeOfDay} on ${dayOfWeek} (${timeframe}). ${shortDescription} Let me know if you're interested!`;
   };
 
   const personalizedMessage = generatePersonalizedMessage();
@@ -313,7 +315,7 @@ export default function ShareModal({
                       </View>
                       <View style={styles.metaItem}>
                         <Icon name="person-outline" size={14} color="#6b7280" />
-                        <Text style={styles.metaText}>{priceRange}</Text>
+                        {priceRange ? <Text style={styles.metaText}>{priceRange}</Text> : null}
                       </View>
                     </View>
 
@@ -338,7 +340,7 @@ export default function ShareModal({
 
                     {/* Price */}
                     <View style={styles.priceContainer}>
-                      <Text style={styles.priceText}>{priceRange}</Text>
+                      {priceRange ? <Text style={styles.priceText}>{priceRange}</Text> : null}
                       <Text style={styles.priceSubtext}>{t('share:card.per_person')}</Text>
                     </View>
                   </View>

@@ -27,6 +27,7 @@ import { captureWeb } from "../../../../src/analytics/webAnalytics";
 import {
   usePublicBrandBySlug,
   usePublicVenueBySlug,
+  usePublicVenueDiscoveryPrice,
   usePublicVenueReservable,
 } from "../../../../src/hooks/usePublicEvents";
 import { usePublicMenus } from "../../../../src/hooks/useMenus";
@@ -63,6 +64,9 @@ export default function PublicVenueRoute(): React.ReactElement {
   // §6.7 reserve display gate — place-keyed, anon-safe. Disabled without a
   // linked place; error → not reservable (fail closed, no dead CTA).
   const reservableQuery = usePublicVenueReservable(venue?.placePoolId ?? null);
+  const discoveryPriceQuery = usePublicVenueDiscoveryPrice(
+    venue?.placePoolId ?? null,
+  );
 
   // §6.8 — the secondary "See {brand} →" link renders only when the PARENT
   // brand resolves publicly. Fetched ONLY on the not-found path.
@@ -118,6 +122,7 @@ export default function PublicVenueRoute(): React.ReactElement {
   return (
     <PublicVenuePage
       venue={venue}
+      discoveryPrice={discoveryPriceQuery.data ?? null}
       menu={menusQuery.data ?? []}
       reservable={reservableQuery.data ?? null}
       reservabilityState={
