@@ -6,6 +6,9 @@ verify_jwt = false
 [functions.manage-brand-discovery-currency]
 verify_jwt = true
 
+[functions.manage-stay-inventory]
+verify_jwt = true
+
 [functions.payout-release-sweep]
 verify_jwt = false
 
