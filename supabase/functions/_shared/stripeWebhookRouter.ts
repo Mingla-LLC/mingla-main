@@ -52,6 +52,11 @@ import {
   postAppsFlyerS2SEvent,
   resolveBrandOwnerUserId,
 } from "./appsFlyerS2S.ts";
+import {
+  handleStayStripeDispute,
+  handleStayStripePaymentEvent,
+  isStayStripePaymentEvent,
+} from "./stayPaymentWebhook.ts";
 
 export const STRIPE_ROUTED_EVENT_TYPES = [
   "account.updated",
@@ -1788,6 +1793,10 @@ export async function routeStripeEvent(
     case "payment_intent.succeeded":
     case "payment_intent.payment_failed":
     case "payment_intent.canceled":
+      if (isStayStripePaymentEvent(event)) {
+        brandId = await handleStayStripePaymentEvent(supabase, event);
+        break;
+      }
       // ORCH-1291 [rsvp-chip-in]: a voluntary RSVP contribution is discriminated
       // by metadata.mingla_purpose='rsvp_contribution' and finalized via the
       // contribution RPC (NO order/ticket). Checked FIRST so the ticket path is
@@ -1833,7 +1842,11 @@ export async function routeStripeEvent(
     case "charge.dispute.created":
     case "charge.dispute.updated":
     case "charge.dispute.closed":
-      brandId = await handleChargeDispute(supabase, event);
+      {
+        const stayBrandId = await handleStayStripeDispute(supabase, event);
+        brandId = await handleChargeDispute(supabase, event);
+        if (stayBrandId) brandId = stayBrandId;
+      }
       // ORCH-1054: dispute → reverse partner split (TransferReversal if
       // already transferred; mark reversed_pending otherwise). Only fire
       // on dispute.created; updated/closed don't change the partner-share

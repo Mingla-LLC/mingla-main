@@ -5,7 +5,11 @@ export const PAYSTACK_FEE_SCHEDULE_VERSION = "verified-2026-07-24";
 
 export type Occurrence = { id: string; endAt: string };
 export type MoneyCandidate = {
-  sourceType: "order" | "rsvp_contribution" | "venue_reservation";
+  sourceType:
+    | "order"
+    | "rsvp_contribution"
+    | "venue_reservation"
+    | "stay_reservation";
   sourceId: string;
   brandId: string;
   eventId: string;
@@ -41,7 +45,10 @@ const ms = (value: string): number => {
 export function resolveLiveOccurrence(
   candidate: MoneyCandidate,
 ): Occurrence | null {
-  if (candidate.sourceType === "venue_reservation") {
+  if (
+    candidate.sourceType === "venue_reservation" ||
+    candidate.sourceType === "stay_reservation"
+  ) {
     return candidate.reservationEndAt
       ? {
         id: `reservation:${candidate.sourceId}`,
@@ -93,7 +100,10 @@ export function computePendingItems(
         candidate.minglaFeeCents - candidate.partnerShareCents -
         candidate.providerFeeCents,
     );
-    const resolvedEventDateId = candidate.sourceType === "venue_reservation"
+    const resolvedEventDateId = (
+        candidate.sourceType === "venue_reservation" ||
+        candidate.sourceType === "stay_reservation"
+      )
       ? null
       : occurrence.id;
     const occurrenceKey = resolvedEventDateId ?? occurrence.id;

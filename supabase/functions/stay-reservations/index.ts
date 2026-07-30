@@ -1,4 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import {
+  createStayPaymentSession,
+  type PreparedStayPayment,
+  type StayPaymentSession,
+} from "../_shared/stayPaymentProvider.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -15,6 +20,9 @@ const actions = new Set([
   "approve_request",
   "decline_request",
   "get_group",
+  "create_payment",
+  "cancel_preview",
+  "cancel",
 ]);
 const MAX_REQUEST_BYTES = 262_144;
 
@@ -38,6 +46,14 @@ export type StayReservationsDependencies = {
     anonKey: string,
     authHeader: string,
   ) => RpcClient;
+  createServiceRpcClient?: (
+    url: string,
+    serviceKey: string,
+  ) => RpcClient;
+  createPaymentSession?: (
+    prepared: PreparedStayPayment,
+    idempotencyKey: string,
+  ) => Promise<StayPaymentSession>;
 };
 
 function json(status: number, body: Record<string, unknown>): Response {
@@ -117,6 +133,35 @@ function validPayload(value: unknown): value is RequestBody {
       body.expectedVersion !== undefined &&
       body.expectedVersion !== null;
   }
+  if (body.action === "create_payment") {
+    return typeof payload.groupId === "string" &&
+      UUID.test(payload.groupId) &&
+      validKey(payload.idempotencyKey) &&
+      body.expectedVersion !== undefined &&
+      body.expectedVersion !== null;
+  }
+  if (body.action === "cancel_preview") {
+    return typeof payload.groupId === "string" &&
+      UUID.test(payload.groupId) &&
+      Array.isArray(payload.selectedLineIds) &&
+      payload.selectedLineIds.length >= 1 &&
+      payload.selectedLineIds.length <= 50 &&
+      payload.selectedLineIds.every((id) =>
+        typeof id === "string" && UUID.test(id)
+      ) &&
+      body.expectedVersion !== undefined &&
+      body.expectedVersion !== null;
+  }
+  if (body.action === "cancel") {
+    return typeof payload.previewId === "string" &&
+      UUID.test(payload.previewId) &&
+      typeof payload.previewHash === "string" &&
+      /^[a-f0-9]{64}$/.test(payload.previewHash) &&
+      validKey(payload.idempotencyKey) &&
+      typeof payload.reason === "string" &&
+      payload.reason.trim().length >= 3 &&
+      payload.reason.trim().length <= 500;
+  }
   return typeof payload.groupId === "string" &&
     UUID.test(payload.groupId);
 }
@@ -147,6 +192,11 @@ function errorResponse(error: RpcError, requestId: string): Response {
     "stay_inventory_changed",
     "stay_invalid_transition",
     "stay_idempotency_conflict",
+    "stay_rail_not_enabled",
+    "stay_payment_not_found",
+    "stay_payment_ambiguous",
+    "stay_cancel_preview_invalid",
+    "stay_cancel_preview_expired",
   ].find((code) => raw.includes(code));
   const code = known ?? "internal_error";
   const status = code === "unauthorized"
@@ -164,6 +214,8 @@ function errorResponse(error: RpcError, requestId: string): Response {
         "stay_reservations_unavailable",
         "stay_bank_not_ready",
         "stay_currency_mismatch",
+        "stay_rail_not_enabled",
+        "stay_payment_ambiguous",
       ].includes(code)
     ? 409
     : code === "internal_error"
@@ -262,6 +314,112 @@ export async function handleStayReservations(
     global: { headers: { Authorization: authHeader } },
     auth: { autoRefreshToken: false, persistSession: false },
   }) as unknown as RpcClient;
+  const payload = body.payload as Record<string, unknown>;
+
+  if (body.action === "create_payment") {
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    if (!serviceKey) {
+      return json(500, {
+        kind: "error",
+        code: "internal_error",
+        message: "Stay payments are unavailable.",
+        requestId,
+      });
+    }
+    const service = dependencies.createServiceRpcClient?.(
+      url,
+      serviceKey,
+    ) ?? createClient(url, serviceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    }) as unknown as RpcClient;
+    const { data: prepared, error: prepareError } = await client.rpc(
+      "issue_1389_prepare_payment",
+      {
+        p_group_id: payload.groupId,
+        p_idempotency_key: payload.idempotencyKey,
+        p_expected_group_version: body.expectedVersion,
+        p_request_id: requestId,
+      },
+    );
+    if (prepareError) return errorResponse(prepareError, requestId);
+
+    let session: StayPaymentSession;
+    try {
+      session = await (
+        dependencies.createPaymentSession ?? createStayPaymentSession
+      )(
+        prepared as PreparedStayPayment,
+        String(payload.idempotencyKey),
+      );
+    } catch (providerError) {
+      const attemptId = String(
+        (prepared as PreparedStayPayment)?.attemptId ?? "",
+      );
+      if (UUID.test(attemptId)) {
+        await service.rpc("issue_1389_record_payment_create_failure", {
+          p_attempt_id: attemptId,
+          p_failure_code: "provider_create_ambiguous",
+          p_ambiguous: true,
+        });
+      }
+      console.error(JSON.stringify({
+        event: "stay_payment_provider_create_failed",
+        requestId,
+        message: providerError instanceof Error
+          ? providerError.message
+          : String(providerError),
+      }));
+      return json(502, {
+        kind: "error",
+        code: "stay_payment_ambiguous",
+        message:
+          "We couldn’t confirm the payment session. No retry will be made automatically.",
+        requestId,
+      });
+    }
+    const { error: bindError } = await service.rpc(
+      "issue_1389_bind_payment_attempt",
+      {
+        p_attempt_id: session.attemptId,
+        p_provider_payment_ref: session.providerPaymentRef,
+        p_provider_charge_ref: null,
+        p_request_id: requestId,
+      },
+    );
+    if (bindError) {
+      await service.rpc("issue_1389_record_payment_create_failure", {
+        p_attempt_id: session.attemptId,
+        p_failure_code: "provider_binding_ambiguous",
+        p_ambiguous: true,
+      });
+      return errorResponse(bindError, requestId);
+    }
+    return json(200, { kind: "success", data: session, requestId });
+  }
+
+  if (body.action === "cancel_preview") {
+    const { data, error } = await client.rpc("issue_1389_cancel_preview", {
+      p_group_id: payload.groupId,
+      p_selected_line_ids: payload.selectedLineIds,
+      p_expected_group_version: body.expectedVersion,
+      p_request_id: requestId,
+    });
+    if (error) return errorResponse(error, requestId);
+    return json(200, { kind: "success", data, requestId });
+  }
+
+  if (body.action === "cancel") {
+    const { data, error } = await client.rpc("issue_1389_cancel", {
+      p_preview_id: payload.previewId,
+      p_preview_hash: payload.previewHash,
+      p_idempotency_key: payload.idempotencyKey,
+      p_reason: payload.reason,
+      p_request_id: requestId,
+    });
+    if (error) return errorResponse(error, requestId);
+    return json(200, { kind: "success", data, requestId });
+  }
+
   const { data, error } = await client.rpc("biz_manage_stay_reservation", {
     p_action: body.action,
     p_payload: body.payload,

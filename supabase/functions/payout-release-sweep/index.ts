@@ -110,7 +110,11 @@ type StripeReleaseClient = {
 };
 
 type FeeCandidate = {
-  source_type: "order" | "rsvp_contribution" | "venue_reservation";
+  source_type:
+    | "order"
+    | "rsvp_contribution"
+    | "venue_reservation"
+    | "stay_reservation";
   source_id: string;
   provider: "stripe" | "paystack";
   provider_reference: string;
@@ -838,19 +842,34 @@ export async function handlePayoutReleaseSweep(
     return json({ error: "fee_candidate_read_failed" }, 500);
   }
   let capturedFees = 0;
+  let capturedStayFees = 0;
   for (const candidate of (candidates ?? []) as FeeCandidate[]) {
     try {
       const fee = await deps.resolveProviderFee(candidate);
-      const { error: feeError } = await admin.from(
-        "payout_source_fee_snapshots",
-      )
-        .upsert({
-          source_type: candidate.source_type,
-          source_id: candidate.source_id,
-          ...fee,
-        }, { onConflict: "source_type,source_id", ignoreDuplicates: true });
-      if (feeError) throw feeError;
-      capturedFees++;
+      if (candidate.source_type === "stay_reservation") {
+        const { error: recordError } = await admin.rpc(
+          "record_stay_provider_fee",
+          {
+            p_payment_attempt_id: candidate.source_id,
+            p_provider_fee_minor: fee.provider_fee_cents,
+            p_provider_balance_transaction_id:
+              fee.provider_balance_transaction_id,
+          },
+        );
+        if (recordError) throw recordError;
+        capturedStayFees++;
+      } else {
+        const { error: feeError } = await admin.from(
+          "payout_source_fee_snapshots",
+        )
+          .upsert({
+            source_type: candidate.source_type,
+            source_id: candidate.source_id,
+            ...fee,
+          }, { onConflict: "source_type,source_id", ignoreDuplicates: true });
+        if (feeError) throw feeError;
+        capturedFees++;
+      }
     } catch (error) {
       console.error("[payout-release-sweep] provider fee capture deferred", {
         sourceType: candidate.source_type,
@@ -889,6 +908,7 @@ export async function handlePayoutReleaseSweep(
       ok: true,
       dark: true,
       capturedFees,
+      capturedStayFees,
       alertDelivery,
       result: data ?? {},
     });
@@ -1006,6 +1026,7 @@ export async function handlePayoutReleaseSweep(
     ok: true,
     dark: false,
     capturedFees,
+    capturedStayFees,
     alertDelivery: {
       claimed: alertDelivery.claimed + newAlertDelivery.claimed,
       providerAccepted: alertDelivery.providerAccepted +
