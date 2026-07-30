@@ -631,7 +631,7 @@ jobs:
         run: npm ci
       - name: Run issue #1363 business regressions
         working-directory: mingla-business
-        run: npx jest orch_1363 --runInBand
+        run: NODE_PATH="$PWD/node_modules" npx jest orch_1363 --runInBand
       - name: Run issue #1363 hierarchy Deno regression
         run: >-
           deno test --allow-read --allow-net --no-check
