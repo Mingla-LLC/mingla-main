@@ -92,3 +92,27 @@ export const captureBusinessVenueReservationsRefreshed = (
   postHogService.capture("business_venue_reservations_refreshed", properties);
   captureWeb("business_venue_reservations_refreshed", properties);
 };
+
+export const captureBusinessVenueOrganicInsightsViewed = (
+  hasActivity: boolean,
+  windowComplete: boolean,
+): void => {
+  const properties = {
+    platform: platform(),
+    has_activity: hasActivity,
+    window_complete: windowComplete,
+  } as const;
+  postHogService.capture("business_venue_organic_insights_viewed", properties);
+  captureWeb("business_venue_organic_insights_viewed", properties);
+};
+
+export const captureBusinessVenueOrganicInsightsRefreshed = (
+  result: BusinessAnalyticsRefreshResult,
+): void => {
+  const properties = { platform: platform(), result } as const;
+  postHogService.capture(
+    "business_venue_organic_insights_refreshed",
+    properties,
+  );
+  captureWeb("business_venue_organic_insights_refreshed", properties);
+};

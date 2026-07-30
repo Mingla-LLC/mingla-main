@@ -21,6 +21,7 @@
 
 import { supabase } from "./supabase";
 import { extractFunctionError } from "../utils/edgeFunctionError";
+import { getVenueOrganicJourneyToken } from "./venueOrganicCaptureService";
 
 export interface VenueReservationBuyer {
   name: string;
@@ -150,6 +151,10 @@ export async function createVenueReservation(
         },
         ...(input.occasion ? { occasion: input.occasion } : {}),
         ...(input.guestNotes ? { guestNotes: input.guestNotes } : {}),
+        organicJourneyToken: getVenueOrganicJourneyToken({
+          brandId: input.brandId,
+          venueId: input.venueId,
+        }),
       },
     },
   );

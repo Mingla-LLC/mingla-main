@@ -54,6 +54,7 @@ export interface GuestReservationInput {
   occasion?: string | null;
   guestNotes?: string | null;
   attributionClickId?: string | null;
+  organicJourneyToken?: string | null;
 }
 
 export type GuestReservationResult =
@@ -190,6 +191,7 @@ export async function createGuestVenueReservation(
         occasion: input.occasion ?? null,
         guestNotes: input.guestNotes ?? null,
         attributionClickId: input.attributionClickId ?? null,
+        organicJourneyToken: input.organicJourneyToken ?? null,
       },
     },
   );

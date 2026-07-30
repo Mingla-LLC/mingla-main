@@ -144,6 +144,8 @@ const AUTH_SCOPED_HOOK_FILES = [
   // #1403 — private listing and exact-venue aggregate RPCs.
   "useListingInsights.ts",
   "useVenueReservationMetrics.ts",
+  // #1421 — exact-venue organic aggregate RPC is active-member/auth scoped.
+  "useVenueOrganicInsights.ts",
 ];
 
 // ── Public / dual-use hooks. These MUST NOT be gated — buyer-web anon reads

@@ -546,6 +546,9 @@ verify_jwt = true
 [functions.attribution-capture]
 verify_jwt = false
 
+[functions.venue-organic-capture]
+verify_jwt = false
+
 # ISSUE-1003 [Venue Website Grader growth tool — test cut] — the anonymous
 # grader page's run endpoint (place_pool typeahead search + report generation).
 # verify_jwt=false because the marketing tool surface is UNAUTHENTICATED. The

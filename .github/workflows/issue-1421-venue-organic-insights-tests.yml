@@ -1,0 +1,107 @@
+name: Issue #1421 Venue Organic Insights
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  issue-1421-venue-organic-insights:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Install Business dependencies
+        working-directory: mingla-business
+        run: npm ci
+      - name: Organic capture checks and tests
+        run: |
+          deno check supabase/functions/venue-organic-capture/index.ts
+          deno check supabase/functions/attribution-capture/index.ts
+          deno check supabase/functions/venue-reservation-create/index.ts
+          deno test --allow-read supabase/functions/venue-organic-capture/__tests__/issue1421_source_contract.test.ts
+      - name: Focused Business tests
+        working-directory: mingla-business
+        run: npx jest --config jest.issue1421.render.cjs --runInBand
+      - name: Focused Consumer capture test
+        run: node --test app-mobile/src/services/__tests__/venueOrganicCapture.issue1421.test.mjs
+      - name: Venue organic wiring self-test and gate
+        run: |
+          node .github/scripts/strict-grep/issue-1421-venue-organic-insights-wiring.mjs --self-test
+          node .github/scripts/strict-grep/issue-1421-venue-organic-insights-wiring.mjs
+      - name: Auth-ready and invariant-conversion gates
+        run: |
+          node .github/scripts/strict-grep/orch-1004-auth-scoped-query-readiness.mjs --self-test
+          node .github/scripts/strict-grep/orch-1004-auth-scoped-query-readiness.mjs
+          node mingla-business/scripts/ci/select-source-text-pins.mjs --check
+      - name: Scoped lint
+        working-directory: mingla-business
+        run: |
+          npx eslint \
+            src/components/venue/VenueIntelligenceModule.tsx \
+            src/components/venue/VenueOrganicEngagementSection.tsx \
+            src/services/venueOrganicInsightsService.ts \
+            src/services/venueOrganicCaptureService.ts \
+            src/services/venueOrganicCaptureService.web.ts \
+            src/hooks/useVenueOrganicInsights.ts \
+            src/analytics/businessAnalyticsEvents.ts
+      - name: Buyer web export
+        working-directory: mingla-business
+        run: npx expo export -p web --output-dir /tmp/issue-1421-web
+
+  issue-1421-migration-pg17:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ format('issue-1421-ci-{0}', github.run_id) }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for PostgreSQL 17
+        env:
+          PGPASSWORD: ${{ format('issue-1421-ci-{0}', github.run_id) }}
+        run: |
+          for i in {1..90}; do
+            if psql -h localhost -U postgres -d postgres -Atc \
+              "SELECT to_regnamespace('vault') IS NOT NULL AND to_regrole('supabase_admin') IS NOT NULL" \
+              2>/dev/null | grep -qx t; then
+              exit 0
+            fi
+            sleep 1
+          done
+          exit 1
+      - name: Apply all migrations
+        env:
+          PGPASSWORD: ${{ format('issue-1421-ci-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 \
+            | sort -z \
+            | while IFS= read -r -d '' migration; do
+                psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$migration"
+              done
+      - name: Execute #1421 SQL proof
+        env:
+          PGPASSWORD: ${{ format('issue-1421-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_1421_venue_organic_engagement.test.sql

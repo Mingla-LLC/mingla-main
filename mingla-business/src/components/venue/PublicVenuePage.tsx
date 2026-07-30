@@ -78,6 +78,10 @@ import type { BrandHourEntry } from "../../types/brand";
 import { useThemeFont } from "../../theme/useThemeFont";
 import { ShareModal } from "../ui/ShareModal";
 import { GuestVenueReservation } from "./GuestVenueReservation";
+import {
+  captureVenueOrganicEvent,
+  startVenueOrganicJourney,
+} from "../../services/venueOrganicCaptureService";
 import { PublicVenueReservationSheet } from "./PublicVenueReservationSheet";
 import {
   createPublicVenueReservationUiState,
@@ -287,6 +291,10 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
       venue_id: venue.id,
       source_tab: "sticky_cta",
     });
+    void captureVenueOrganicEvent(
+      { brandId: venue.brandId, venueId: venue.id },
+      "reservation_start",
+    );
   }, [
     analyticsSurface,
     canOpenReservationSheet,
@@ -765,12 +773,20 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
               brand_id: venue.brandId,
               venue_id: venue.id,
             });
+            void startVenueOrganicJourney({
+              brandId: venue.brandId,
+              venueId: venue.id,
+            });
           } else if (tab === "menu") {
             captureWeb("public_venue_menu_viewed", {
               surface: analyticsSurface,
               brand_id: venue.brandId,
               venue_id: venue.id,
             });
+            void captureVenueOrganicEvent(
+              { brandId: venue.brandId, venueId: venue.id },
+              "menu_open",
+            );
           }
         }}
       />
