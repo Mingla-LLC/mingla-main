@@ -162,6 +162,7 @@ export const useCurrentBrandRole = (
   let role: BrandRole | null = data?.role ?? null;
 
   // [TRANSITIONAL] stub-mode synthesis fallback — fires when the DB chain
+  // EXIT CONDITION: remove once every brand is persisted with membership rows.
   // returns no role (typically because the brand is a local-only stub from
   // `brandList.STUB_BRANDS` and isn't persisted to the production DB yet).
   // Maps the existing local-only `Brand.role` enum to the 6-role enum:
