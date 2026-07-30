@@ -134,6 +134,10 @@ module.exports = {
   // / react-dom / @mingla/* siblings are untouched. A test's own jest.mock()
   // overrides any map for that file.
   moduleNameMapper: {
+    // react is unresolvable FROM workspace packages/*.tsx in CI because the
+    // Business install owns the peer dependency. Point the bare specifier at
+    // that one real copy, matching the JSX-runtime repair immediately below.
+    "^react$": "<rootDir>/node_modules/react",
     // react/jsx-runtime is unresolvable FROM packages/*.tsx (no react in packages/;
     // mingla-business owns the one real copy). Point both automatic-runtime entries
     // at the REAL react — this is resolution repair, not a mock (zero faking). Fixes

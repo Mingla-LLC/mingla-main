@@ -190,6 +190,12 @@ COMMENT ON FUNCTION public.business_patch_event_taxonomy(
   'precision preserved otherwise). city_required + the location_geo write are '
   'unchanged. SECURITY DEFINER + event_manager+ role check.';
 
+REVOKE ALL ON FUNCTION public.business_patch_event_taxonomy(
+  uuid, text, text[], text[], text[], numeric, numeric, text, text
+) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.business_patch_event_taxonomy(
+  uuid, text, text[], text[], text[], numeric, numeric, text, text
+) FROM anon;
 GRANT EXECUTE ON FUNCTION public.business_patch_event_taxonomy(
   uuid, text, text[], text[], text[], numeric, numeric, text, text
 ) TO authenticated;
