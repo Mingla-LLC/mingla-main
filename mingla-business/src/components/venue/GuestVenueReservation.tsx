@@ -33,6 +33,7 @@ import {
   captureVenueOrganicEvent,
   getVenueOrganicJourneyToken,
 } from "../../services/venueOrganicCaptureService";
+import { runBuyerVenueOrganicCapture } from "../../services/venueOrganicCapturePolicy";
 import { composeE164 } from "../../utils/phone";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
@@ -132,12 +133,12 @@ export function GuestVenueReservation({
       brand_id: brandId,
       venue_id: venueId,
     });
-    if (analyticsSurface === "buyer_web") {
+    runBuyerVenueOrganicCapture(analyticsSurface, () => {
       void captureVenueOrganicEvent(
         { brandId, venueId },
         "availability_shown",
       );
-    }
+    });
   }, [analyticsSurface, availability.data, brandId, venueId]);
 
   const submit = async (): Promise<void> => {

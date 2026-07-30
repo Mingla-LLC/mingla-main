@@ -148,21 +148,22 @@ export function VenueOrganicEngagementSection({
               unpaid Mingla path.
             </Text>
           </>
-        ) : (
-          <View style={styles.metrics}>
-            <Metric label="Page views" value={data.pageViews.toLocaleString()} />
-            <Metric
-              label="Menu opens"
-              value={data.menuPublished ? data.menuOpens.toLocaleString() : "Menu not published"}
-            />
-            <Metric
-              label="Reservation starts"
-              value={data.reservationsEnabled
-                ? data.reservationStarts.toLocaleString()
-                : "Reservations not enabled"}
-            />
-          </View>
-        )}
+        ) : null}
+        <View style={styles.metrics}>
+          <Metric label="Page views" value={data.pageViews.toLocaleString()} />
+          <Metric
+            label="Menu opens"
+            value={data.menuPublished
+              ? data.menuOpens.toLocaleString()
+              : "Menu not published"}
+          />
+          <Metric
+            label="Reservation starts"
+            value={data.reservationsEnabled
+              ? data.reservationStarts.toLocaleString()
+              : "Reservations not enabled"}
+          />
+        </View>
       </GlassCard>
 
       <GlassCard variant="base" padding={spacing.lg}>

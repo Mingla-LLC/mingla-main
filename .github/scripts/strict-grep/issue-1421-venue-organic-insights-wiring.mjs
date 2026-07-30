@@ -20,8 +20,20 @@ const PATHS = {
   migration:
     "supabase/migrations/20270202001421_issue_1421_venue_organic_engagement.sql",
   buyer: "mingla-business/src/components/venue/PublicVenuePage.tsx",
+  buyerRoute:
+    "mingla-business/app/b/[brandSlug]/v/[venueSlug].tsx",
   buyerAvailability:
     "mingla-business/src/components/venue/GuestVenueReservation.tsx",
+  buyerPolicy:
+    "mingla-business/src/services/venueOrganicCapturePolicy.ts",
+  buyerCapture:
+    "mingla-business/src/services/venueOrganicCaptureService.web.ts",
+  buyerCaptureTest:
+    "mingla-business/src/services/__tests__/venueOrganicCaptureConsent.issue1421.test.ts",
+  edgeTest:
+    "supabase/functions/venue-organic-capture/__tests__/issue1421_source_contract.test.ts",
+  sqlTest:
+    "supabase/migrations/__tests__/issue_1421_venue_organic_engagement.test.sql",
   consumer: "app-mobile/src/screens/ConsumerPublicVenueScreen.tsx",
 };
 
@@ -61,6 +73,49 @@ function validate(files) {
   ]) {
     if (!get(PATHS.section).includes(copy)) {
       failures.push(`organic card contract missing: ${copy}`);
+    }
+  }
+  const buyer = get(PATHS.buyer);
+  if (
+    !buyer.includes('analyticsSurface = "business_preview"') ||
+    !buyer.includes("runBuyerVenueOrganicCapture(analyticsSurface") ||
+    !buyer.includes("settleBuyerVenueOrganicCapture(analyticsSurface") ||
+    !get(PATHS.buyerRoute).includes('analyticsSurface="buyer_web"') ||
+    !get(PATHS.buyerAvailability).includes(
+      "runBuyerVenueOrganicCapture(analyticsSurface",
+    ) ||
+    !get(PATHS.buyerPolicy).includes('surface !== "buyer_web"')
+  ) {
+    failures.push("buyer organic capture is not fail-closed for Business preview");
+  }
+  if (
+    !get(PATHS.buyerCapture).includes(
+      "settleVenueOrganicJourneyOnConsent",
+    ) ||
+    !get(PATHS.buyerCapture).includes("pendingStarts") ||
+    !get(PATHS.buyerCaptureTest).includes("toHaveBeenCalledTimes(1)") ||
+    !get(PATHS.buyerCaptureTest).includes("never before")
+  ) {
+    failures.push("post-consent page journey is not exact-once executable");
+  }
+  if (
+    !get(PATHS.edgeTest).includes("handleVenueOrganicCapture") ||
+    !get(PATHS.edgeTest).includes('reason: "source_ineligible"') ||
+    !get(PATHS.edgeTest).includes('reason: "journey_invalid"')
+  ) {
+    failures.push("public capture handler lacks executable source/mismatch proof");
+  }
+  for (const proof of [
+    "venue_organic_engagement_rollup(",
+    "dayparts",
+    "cancelled_by_guest",
+    "reservation_checkout_sessions",
+    "cleanup_venue_organic_engagement(1)",
+    "window_complete",
+    "raw privilege denial",
+  ]) {
+    if (!get(PATHS.sqlTest).includes(proof)) {
+      failures.push(`PG17 executable proof missing: ${proof}`);
     }
   }
   if (
@@ -112,8 +167,9 @@ function validate(files) {
     failures.push("reservation journey token is not threaded to checkout sessions");
   }
   const interactionSources = [
-    get(PATHS.buyer),
+    buyer,
     get(PATHS.buyerAvailability),
+    get(PATHS.buyerCapture),
     get(PATHS.consumer),
   ].join("\n");
   for (const eventType of [
@@ -142,6 +198,32 @@ if (process.argv.includes("--self-test")) {
     "Venue page activity When people browse online Organic reservation journey Unpaid activity on this venue&apos;s Mingla page.",
   );
   good.set(
+    PATHS.buyer,
+    'analyticsSurface = "business_preview" runBuyerVenueOrganicCapture(analyticsSurface settleBuyerVenueOrganicCapture(analyticsSurface "page_view" "menu_open" "reservation_start"',
+  );
+  good.set(PATHS.buyerRoute, 'analyticsSurface="buyer_web"');
+  good.set(
+    PATHS.buyerAvailability,
+    'runBuyerVenueOrganicCapture(analyticsSurface "availability_shown"',
+  );
+  good.set(PATHS.buyerPolicy, 'surface !== "buyer_web"');
+  good.set(
+    PATHS.buyerCapture,
+    'settleVenueOrganicJourneyOnConsent pendingStarts "page_view"',
+  );
+  good.set(
+    PATHS.buyerCaptureTest,
+    "toHaveBeenCalledTimes(1) never before",
+  );
+  good.set(
+    PATHS.edgeTest,
+    'handleVenueOrganicCapture reason: "source_ineligible" reason: "journey_invalid"',
+  );
+  good.set(
+    PATHS.sqlTest,
+    "venue_organic_engagement_rollup( dayparts cancelled_by_guest reservation_checkout_sessions cleanup_venue_organic_engagement(1) window_complete raw privilege denial",
+  );
+  good.set(
     PATHS.hook,
     "const enabled = isAuthReady && brandId !== null && venueId !== null; venueOrganicInsightsKeys.detail(brandId, venueId)",
   );
@@ -157,8 +239,6 @@ if (process.argv.includes("--self-test")) {
   good.set(PATHS.attribution, 'from "../_shared/entrySource.ts"');
   good.set(PATHS.classifier, "export function classifyEntrySource");
   good.set(PATHS.reservation, "organic_journey_id organicJourneyToken");
-  good.set(PATHS.buyer, '"page_view" "menu_open" "reservation_start"');
-  good.set(PATHS.buyerAvailability, '"availability_shown"');
   good.set(PATHS.consumer, "");
   if (validate(good).length !== 0) throw new Error("good fixture failed");
   const bad = new Map(good);

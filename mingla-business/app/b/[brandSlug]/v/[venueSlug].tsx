@@ -145,6 +145,7 @@ export default function PublicVenueRoute(): React.ReactElement {
 
   return (
     <PublicVenuePage
+      analyticsSurface="buyer_web"
       venue={venue}
       discoveryPrice={discoveryPriceQuery.data ?? null}
       menu={menusQuery.data ?? []}

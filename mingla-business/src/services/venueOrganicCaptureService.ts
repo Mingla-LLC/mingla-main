@@ -27,3 +27,9 @@ export function getVenueOrganicJourneyToken(
 ): string | null {
   return null;
 }
+
+export function settleVenueOrganicJourneyOnConsent(
+  _scope: VenueOrganicCaptureScope,
+): () => void {
+  return () => undefined;
+}

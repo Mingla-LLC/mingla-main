@@ -80,8 +80,13 @@ import { ShareModal } from "../ui/ShareModal";
 import { GuestVenueReservation } from "./GuestVenueReservation";
 import {
   captureVenueOrganicEvent,
-  startVenueOrganicJourney,
+  settleVenueOrganicJourneyOnConsent,
 } from "../../services/venueOrganicCaptureService";
+import {
+  runBuyerVenueOrganicCapture,
+  settleBuyerVenueOrganicCapture,
+  type VenueOrganicAnalyticsSurface,
+} from "../../services/venueOrganicCapturePolicy";
 import { PublicVenueReservationSheet } from "./PublicVenueReservationSheet";
 import {
   createPublicVenueReservationUiState,
@@ -112,6 +117,7 @@ export interface PublicVenuePageProps {
   onRetryReservability?: () => void;
   stayState?: "loading" | "ready" | "unavailable" | "error";
   stayDetail?: PublicStayDetail | null;
+  analyticsSurface?: VenueOrganicAnalyticsSurface;
 }
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -159,6 +165,7 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
   onRetryReservability,
   stayState,
   stayDetail = null,
+  analyticsSurface = "business_preview",
 }) => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -193,9 +200,6 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
       reservationUiContext,
     );
   const publicVenueTabsRef = useRef<PublicVenueTabsHandle | null>(null);
-  const analyticsSurface =
-    Platform.OS === "web" ? "buyer_web" : "business_preview";
-
   useEffect(() => {
     dispatchReservationUi({
       type: "INITIAL_TAB_CHANGED",
@@ -213,6 +217,15 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
       context: reservationUiContext,
     });
   }, [reservationUiContext]);
+
+  useEffect(() => {
+    return settleBuyerVenueOrganicCapture(analyticsSurface, () =>
+      settleVenueOrganicJourneyOnConsent({
+        brandId: venue.brandId,
+        venueId: venue.id,
+      })
+    );
+  }, [analyticsSurface, venue.brandId, venue.id]);
 
   const toggleAboutExpanded = useCallback((): void => {
     setAboutExpanded((v) => !v);
@@ -291,10 +304,12 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
       venue_id: venue.id,
       source_tab: "sticky_cta",
     });
-    void captureVenueOrganicEvent(
-      { brandId: venue.brandId, venueId: venue.id },
-      "reservation_start",
-    );
+    runBuyerVenueOrganicCapture(analyticsSurface, () => {
+      void captureVenueOrganicEvent(
+        { brandId: venue.brandId, venueId: venue.id },
+        "reservation_start",
+      );
+    });
   }, [
     analyticsSurface,
     canOpenReservationSheet,
@@ -773,20 +788,18 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
               brand_id: venue.brandId,
               venue_id: venue.id,
             });
-            void startVenueOrganicJourney({
-              brandId: venue.brandId,
-              venueId: venue.id,
-            });
           } else if (tab === "menu") {
             captureWeb("public_venue_menu_viewed", {
               surface: analyticsSurface,
               brand_id: venue.brandId,
               venue_id: venue.id,
             });
-            void captureVenueOrganicEvent(
-              { brandId: venue.brandId, venueId: venue.id },
-              "menu_open",
-            );
+            runBuyerVenueOrganicCapture(analyticsSurface, () => {
+              void captureVenueOrganicEvent(
+                { brandId: venue.brandId, venueId: venue.id },
+                "menu_open",
+              );
+            });
           }
         }}
       />

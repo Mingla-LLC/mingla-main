@@ -231,16 +231,18 @@ function serviceClient(): SupabaseClient {
   });
 }
 
-serve((req) =>
-  handleVenueOrganicCapture(req, {
-    client: serviceClient(),
-    now: () => new Date(),
-    randomUUID: () => crypto.randomUUID(),
-    randomToken: () => {
-      const bytes = crypto.getRandomValues(new Uint8Array(32));
-      return Array.from(bytes)
-        .map((byte) => byte.toString(16).padStart(2, "0"))
-        .join("");
-    },
-  })
-);
+if (import.meta.main) {
+  serve((req) =>
+    handleVenueOrganicCapture(req, {
+      client: serviceClient(),
+      now: () => new Date(),
+      randomUUID: () => crypto.randomUUID(),
+      randomToken: () => {
+        const bytes = crypto.getRandomValues(new Uint8Array(32));
+        return Array.from(bytes)
+          .map((byte) => byte.toString(16).padStart(2, "0"))
+          .join("");
+      },
+    })
+  );
+}

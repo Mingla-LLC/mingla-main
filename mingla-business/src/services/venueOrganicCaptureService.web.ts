@@ -9,6 +9,7 @@ import type {
 } from "./venueOrganicCaptureService";
 
 const STORAGE_KEY = "mingla_venue_organic_journey_v1";
+const pendingStarts = new Map<string, Promise<boolean>>();
 
 interface StoredJourney {
   brandId: string;
@@ -51,6 +52,10 @@ function writeJourney(journey: StoredJourney): void {
   }
 }
 
+function scopeKey(scope: VenueOrganicCaptureScope): string {
+  return `${scope.brandId}:${scope.venueId}`;
+}
+
 function hasAdSignal(): boolean {
   try {
     const params = new URLSearchParams(window.location.search);
@@ -68,8 +73,8 @@ function hasAdSignal(): boolean {
 async function send(
   scope: VenueOrganicCaptureScope,
   eventType: VenueOrganicCaptureEvent,
-): Promise<void> {
-  if (readStoredConsent() !== "granted") return;
+): Promise<boolean> {
+  if (readStoredConsent() !== "granted") return false;
   const current = readJourney(scope);
   try {
     const { data, error } = await supabase.functions.invoke<{
@@ -89,7 +94,7 @@ async function send(
     });
     if (error !== null) {
       console.warn("[venueOrganicCapture] capture unavailable", error);
-      return;
+      return false;
     }
     if (
       data?.accepted === true &&
@@ -98,21 +103,37 @@ async function send(
     ) {
       writeJourney({ ...scope, token: data.journeyToken });
     }
+    return data?.accepted === true;
   } catch (error) {
     console.warn("[venueOrganicCapture] capture failed (non-blocking)", error);
+    return false;
   }
+}
+
+async function ensureJourney(scope: VenueOrganicCaptureScope): Promise<boolean> {
+  if (readJourney(scope) !== null) return true;
+  const key = scopeKey(scope);
+  const pending = pendingStarts.get(key);
+  if (pending !== undefined) return pending;
+  const start = send(scope, "page_view").finally(() => {
+    pendingStarts.delete(key);
+  });
+  pendingStarts.set(key, start);
+  return start;
 }
 
 export async function startVenueOrganicJourney(
   scope: VenueOrganicCaptureScope,
 ): Promise<void> {
-  await send(scope, "page_view");
+  await ensureJourney(scope);
 }
 
 export async function captureVenueOrganicEvent(
   scope: VenueOrganicCaptureScope,
   eventType: VenueOrganicCaptureEvent,
 ): Promise<void> {
+  if (readStoredConsent() !== "granted") return;
+  if (!await ensureJourney(scope)) return;
   await send(scope, eventType);
 }
 
@@ -120,4 +141,43 @@ export function getVenueOrganicJourneyToken(
   scope: VenueOrganicCaptureScope,
 ): string | null {
   return readJourney(scope)?.token ?? null;
+}
+
+export function settleVenueOrganicJourneyOnConsent(
+  scope: VenueOrganicCaptureScope,
+): () => void {
+  let cancelled = false;
+  let listening = false;
+  const stopListening = (): void => {
+    if (!listening) return;
+    window.removeEventListener("click", afterConsentInteraction);
+    window.removeEventListener("storage", afterConsentInteraction);
+    listening = false;
+  };
+  const attempt = (): void => {
+    if (cancelled) return;
+    const consent = readStoredConsent();
+    if (consent === "granted") {
+      stopListening();
+      void ensureJourney(scope);
+      return;
+    }
+    if (consent === "denied") {
+      stopListening();
+      return;
+    }
+    if (!listening) {
+      window.addEventListener("click", afterConsentInteraction);
+      window.addEventListener("storage", afterConsentInteraction);
+      listening = true;
+    }
+  };
+  function afterConsentInteraction(): void {
+    queueMicrotask(attempt);
+  }
+  attempt();
+  return () => {
+    cancelled = true;
+    stopListening();
+  };
 }
