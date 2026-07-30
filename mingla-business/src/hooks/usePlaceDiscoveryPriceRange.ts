@@ -24,6 +24,8 @@ export const placeDiscoveryPriceRangeKeys = {
   all: ["place-discovery-price-range"] as const,
   detail: (placePoolId: string) =>
     [...placeDiscoveryPriceRangeKeys.all, placePoolId] as const,
+  reconciliation: (brandId: string) =>
+    [...placeDiscoveryPriceRangeKeys.all, "reconciliation", brandId] as const,
 };
 
 export function usePlaceDiscoveryPriceRange(
@@ -44,6 +46,31 @@ export function usePlaceDiscoveryPriceRange(
         .maybeSingle();
       if (error) throw error;
       return (data ?? null) as PlaceDiscoveryPriceRangeRow | null;
+    },
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+  });
+}
+
+export function useBrandReconciliationPriceRanges(
+  brandId: string | null,
+): UseQueryResult<PlaceDiscoveryPriceRangeRow[], Error> {
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady && brandId !== null;
+  return useQuery({
+    queryKey: placeDiscoveryPriceRangeKeys.reconciliation(brandId ?? ""),
+    enabled,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("place_discovery_price_ranges")
+        .select(
+          "place_pool_id, brand_id, venue_id, status, source_min_minor, source_max_minor, source_currency_code, source_type, version, updated_at",
+        )
+        .eq("brand_id", brandId ?? "")
+        .eq("status", "reconciliation_required")
+        .order("place_pool_id", { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as PlaceDiscoveryPriceRangeRow[];
     },
     staleTime: 0,
     refetchOnWindowFocus: true,

@@ -32,8 +32,8 @@ import {
   typography,
 } from "../../constants/designSystem";
 import {
+  commitExistingVenueDiscoveryRange,
   refreshDeckReadiness,
-  saveDiscoveryPriceRange,
   saveTier2,
   syncGallery,
   syncHeroMedia,
@@ -43,7 +43,6 @@ import { useBrandDiscoveryCurrency } from "../../hooks/useBrandDiscoveryCurrency
 import { usePlaceDiscoveryPriceRange } from "../../hooks/usePlaceDiscoveryPriceRange";
 import {
   minorToMajorInput,
-  parseMajorToMinor,
 } from "../../utils/currencyFormatter";
 import {
   pickGalleryPhotos,
@@ -360,39 +359,13 @@ export function VenueDeckReadinessSetup({
     setMessage(null);
     try {
       await saveTier2({ brandId, venueId, placePoolId, tier2: buildTier2() });
-      const currencyCode = currencyState?.currencyCode ?? null;
-      if (
-        currencyCode === null ||
-        currencyMetadata === undefined ||
-        currencyState?.canAuthorRange !== true
-      ) {
-        throw new Error("Choose or reconcile your brand currency first.");
-      }
-      const sourceMinMinor = parseMajorToMinor(
-        priceMinInput,
-        currencyMetadata.minorUnitExponent,
-      );
-      const sourceMaxMinor = priceMaxInput.trim().length === 0
-        ? null
-        : parseMajorToMinor(
-            priceMaxInput,
-            currencyMetadata.minorUnitExponent,
-          );
-      if (
-        sourceMinMinor === null ||
-        (priceMaxInput.trim().length > 0 && sourceMaxMinor === null) ||
-        (sourceMaxMinor !== null && sourceMaxMinor < sourceMinMinor)
-      ) {
-        throw new Error("Check the price range and try again.");
-      }
-      await saveDiscoveryPriceRange({
+      await commitExistingVenueDiscoveryRange({
         brandId,
         venueId,
         placePoolId,
-        sourceMinMinor,
-        sourceMaxMinor,
-        currencyCode,
-        expectedVersion: rangeQuery.data?.version ?? null,
+        priceMinInput,
+        priceMaxInput,
+        expectedVersion: rangeQuery.data?.version ?? 0,
       });
       onDone();
     } catch (error) {

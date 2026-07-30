@@ -682,4 +682,347 @@ BEGIN
 END;
 $admin$;
 
+-- R13-1/R13-2: execute the production price-aware serving RPC before LIMIT,
+-- then prove a superseded S1 remains the continuation snapshot after S2 is
+-- activated. Viewer projection must carry exact S1 conversions/provenance.
+DO $servable_snapshot_paging$
+DECLARE
+  v_expensive uuid;
+  v_s1_first uuid;
+  v_s1_second uuid;
+  v_s2_first uuid;
+  v_page record;
+  v_projection record;
+  v_s1 uuid;
+  v_s2 uuid;
+  v_s2_rates jsonb;
+BEGIN
+  INSERT INTO public.place_pool (
+    name, lat, lng, types, stored_photo_urls, is_active, is_servable
+  ) VALUES (
+    'Issue 1384 R13 expensive', 6.45, 3.47, ARRAY['restaurant'],
+    ARRAY['https://example.test/r13-expensive.jpg'], true, true
+  ) RETURNING id INTO v_expensive;
+  INSERT INTO public.place_pool (
+    name, lat, lng, types, stored_photo_urls, is_active, is_servable
+  ) VALUES (
+    'Issue 1384 R13 S1 first', 6.45, 3.47, ARRAY['restaurant'],
+    ARRAY['https://example.test/r13-s1-first.jpg'], true, true
+  ) RETURNING id INTO v_s1_first;
+  INSERT INTO public.place_pool (
+    name, lat, lng, types, stored_photo_urls, is_active, is_servable
+  ) VALUES (
+    'Issue 1384 R13 S1 second', 6.45, 3.47, ARRAY['restaurant'],
+    ARRAY['https://example.test/r13-s1-second.jpg'], true, true
+  ) RETURNING id INTO v_s1_second;
+  INSERT INTO public.place_pool (
+    name, lat, lng, types, stored_photo_urls, is_active, is_servable
+  ) VALUES (
+    'Issue 1384 R13 S2 first', 6.45, 3.47, ARRAY['restaurant'],
+    ARRAY['https://example.test/r13-s2-first.jpg'], true, true
+  ) RETURNING id INTO v_s2_first;
+
+  INSERT INTO public.place_scores (place_id, signal_id, score)
+  VALUES
+    (v_expensive, 'issue_1384_r13', 100),
+    (v_s1_first, 'issue_1384_r13', 90),
+    (v_s1_second, 'issue_1384_r13', 85),
+    (v_s2_first, 'issue_1384_r13', 80);
+
+  INSERT INTO public.place_discovery_price_ranges (
+    place_pool_id, status, source_min_minor, source_max_minor,
+    source_currency_code, source_type, source_recorded_at
+  ) VALUES
+    (v_expensive, 'active', 10000, 12000, 'USD', 'provider', now()),
+    (v_s1_first, 'active', 100, 200, 'USD', 'provider', now()),
+    (v_s1_second, 'active', 150, 220, 'USD', 'provider', now()),
+    (v_s2_first, 'active', 300, 400, 'USD', 'provider', now());
+
+  SELECT value INTO v_s1
+  FROM issue_1384_context
+  WHERE key = 'snapshot';
+
+  SELECT * INTO v_page
+  FROM public.issue_1384_query_servable_places_by_signal(
+    'issue_1384_r13', 0, 6.45, 3.47, 1000,
+    '{}'::uuid[], 1, 120000, 250000, 'NGN', v_s1
+  );
+  IF v_page.place_id IS DISTINCT FROM v_s1_first THEN
+    RAISE EXCEPTION
+      'issue_1384 executable R13: overlap was applied after rank/limit, got %',
+      v_page.place_id;
+  END IF;
+
+  SELECT * INTO v_projection
+  FROM public.place_discovery_ranges_for_viewer(
+    ARRAY[v_s1_first], 'NGN', v_s1
+  );
+  IF v_projection.source_min_minor <> 100
+     OR v_projection.source_max_minor <> 200
+     OR v_projection.source_currency_code <> 'USD'
+     OR v_projection.display_min_minor <> 100000
+     OR v_projection.display_max_minor <> 200000
+     OR v_projection.display_currency_code <> 'NGN'
+     OR v_projection.fx_snapshot_id IS DISTINCT FROM v_s1
+     OR NOT v_projection.price_is_approximate THEN
+    RAISE EXCEPTION
+      'issue_1384 executable R13: page-one S1 projection/provenance drifted';
+  END IF;
+
+  SELECT jsonb_object_agg(code::text, CASE code::text
+    WHEN 'USD' THEN 1::numeric
+    WHEN 'NGN' THEN 500::numeric
+    ELSE 2::numeric
+  END)
+  INTO v_s2_rates
+  FROM public.supported_brand_currencies
+  WHERE active;
+  PERFORM set_config('request.jwt.claim.role', 'service_role', true);
+  v_s2 := public.issue_1384_activate_fx_snapshot(
+    now() - interval '5 minutes',
+    now() + interval '23 hours',
+    now() + interval '2 days',
+    'issue-1384-executable-r13-s2',
+    v_s2_rates,
+    '{"fixture":"R13-S2"}'::jsonb
+  );
+  IF (SELECT status FROM public.fx_rate_snapshots WHERE id = v_s1)
+       <> 'superseded'
+     OR (SELECT status FROM public.fx_rate_snapshots WHERE id = v_s2)
+       <> 'active' THEN
+    RAISE EXCEPTION
+      'issue_1384 executable R13: S2 activation did not supersede S1';
+  END IF;
+
+  SELECT * INTO v_page
+  FROM public.issue_1384_query_servable_places_by_signal(
+    'issue_1384_r13', 0, 6.45, 3.47, 1000,
+    ARRAY[v_s1_first], 1, 120000, 250000, 'NGN', v_s1
+  );
+  IF v_page.place_id IS DISTINCT FROM v_s1_second THEN
+    RAISE EXCEPTION
+      'issue_1384 executable R13: S1 continuation changed under active S2, got %',
+      v_page.place_id;
+  END IF;
+  SELECT * INTO v_projection
+  FROM public.place_discovery_ranges_for_viewer(
+    ARRAY[v_s1_second], 'NGN', v_s1
+  );
+  IF v_projection.display_min_minor <> 150000
+     OR v_projection.display_max_minor <> 220000
+     OR v_projection.fx_snapshot_id IS DISTINCT FROM v_s1
+     OR v_projection.fx_provider <> 'exchange_rate_api_open_v6' THEN
+    RAISE EXCEPTION
+      'issue_1384 executable R13: continuation did not retain exact S1';
+  END IF;
+
+  SELECT * INTO v_page
+  FROM public.issue_1384_query_servable_places_by_signal(
+    'issue_1384_r13', 0, 6.45, 3.47, 1000,
+    '{}'::uuid[], 1, 120000, 250000, 'NGN', v_s2
+  );
+  IF v_page.place_id IS DISTINCT FROM v_s2_first THEN
+    RAISE EXCEPTION
+      'issue_1384 executable R13: S2 page membership did not change, got %',
+      v_page.place_id;
+  END IF;
+  SELECT * INTO v_projection
+  FROM public.place_discovery_ranges_for_viewer(
+    ARRAY[v_s2_first], 'NGN', v_s2
+  );
+  IF v_projection.display_min_minor <> 150000
+     OR v_projection.display_max_minor <> 200000
+     OR v_projection.fx_snapshot_id IS DISTINCT FROM v_s2 THEN
+    RAISE EXCEPTION
+      'issue_1384 executable R13: S2 projection/provenance drifted';
+  END IF;
+END;
+$servable_snapshot_paging$;
+
+-- R25-1: the three provider states and pending/resolved currency state are
+-- table-driven through the real payment-readiness helpers and state RPC.
+DO $payment_readiness_matrix$
+DECLARE
+  v_case record;
+  v_state jsonb;
+  v_pending uuid;
+BEGIN
+  INSERT INTO public.stripe_connect_accounts (
+    brand_id, stripe_account_id, controller_dashboard_type,
+    charges_enabled, payouts_enabled, requirements,
+    country, default_currency
+  ) VALUES (
+    '13840000-0000-4000-8000-000000000101',
+    'acct_issue_1384_r25',
+    'express',
+    true,
+    true,
+    '{}'::jsonb,
+    'GB',
+    'NGN'
+  );
+
+  FOR v_case IN
+    SELECT * FROM (VALUES
+      (
+        'stripe_ready',
+        '13840000-0000-4000-8000-000000000101'::uuid,
+        true,
+        true
+      ),
+      (
+        'paystack_ready',
+        '13840000-0000-4000-8000-000000000102'::uuid,
+        false,
+        true
+      ),
+      (
+        'missing_provider',
+        '13840000-0000-4000-8000-000000000103'::uuid,
+        false,
+        false
+      )
+    ) AS matrix(label, brand_id, can_charge, can_collect)
+  LOOP
+    IF public.pg_brand_can_charge(v_case.brand_id)
+         IS DISTINCT FROM v_case.can_charge
+       OR public.pg_brand_can_collect(v_case.brand_id)
+         IS DISTINCT FROM v_case.can_collect THEN
+      RAISE EXCEPTION
+        'issue_1384 executable R25: readiness mismatch for %',
+        v_case.label;
+    END IF;
+  END LOOP;
+
+  UPDATE public.stripe_connect_accounts
+  SET charges_enabled = false
+  WHERE brand_id = '13840000-0000-4000-8000-000000000101';
+  IF public.pg_brand_can_charge('13840000-0000-4000-8000-000000000101')
+     OR public.pg_brand_can_collect('13840000-0000-4000-8000-000000000101') THEN
+    RAISE EXCEPTION
+      'issue_1384 executable R25: disabled Stripe advertised readiness';
+  END IF;
+  UPDATE public.stripe_connect_accounts
+  SET charges_enabled = true, detached_at = now()
+  WHERE brand_id = '13840000-0000-4000-8000-000000000101';
+  IF public.pg_brand_can_charge('13840000-0000-4000-8000-000000000101')
+     OR public.pg_brand_can_collect('13840000-0000-4000-8000-000000000101') THEN
+    RAISE EXCEPTION
+      'issue_1384 executable R25: detached Stripe advertised readiness';
+  END IF;
+  UPDATE public.stripe_connect_accounts
+  SET detached_at = NULL
+  WHERE brand_id = '13840000-0000-4000-8000-000000000101';
+
+  UPDATE public.brands
+  SET default_currency = NULL
+  WHERE id = '13840000-0000-4000-8000-000000000101';
+  SET LOCAL ROLE authenticated;
+  PERFORM set_config(
+    'request.jwt.claim.sub',
+    '13840000-0000-4000-8000-000000000001',
+    true
+  );
+  v_state := public.issue_1384_brand_currency_state(
+    '13840000-0000-4000-8000-000000000101'
+  );
+  IF (v_state->>'canAcceptPaidReservations')::boolean THEN
+    RAISE EXCEPTION
+      'issue_1384 executable R25: provider bypassed settlement requirement';
+  END IF;
+  RESET ROLE;
+  UPDATE public.brands
+  SET default_currency = 'NGN'
+  WHERE id = '13840000-0000-4000-8000-000000000101';
+
+  INSERT INTO public.brand_currency_reconciliations (
+    brand_id, from_currency_code, to_currency_code, reason, status
+  ) VALUES (
+    '13840000-0000-4000-8000-000000000101',
+    'USD', 'NGN', 'bank_changed', 'pending'
+  ) RETURNING id INTO v_pending;
+
+  IF public.pg_brand_can_charge('13840000-0000-4000-8000-000000000101')
+     OR public.pg_brand_can_collect('13840000-0000-4000-8000-000000000101') THEN
+    RAISE EXCEPTION
+      'issue_1384 executable R25: pending reconciliation did not block provider';
+  END IF;
+
+  SET LOCAL ROLE authenticated;
+  PERFORM set_config(
+    'request.jwt.claim.sub',
+    '13840000-0000-4000-8000-000000000001',
+    true
+  );
+  v_state := public.issue_1384_brand_currency_state(
+    '13840000-0000-4000-8000-000000000101'
+  );
+  IF (v_state->>'canAcceptPaidReservations')::boolean
+     OR v_state#>>'{reconciliation,id}' <> v_pending::text THEN
+    RAISE EXCEPTION
+      'issue_1384 executable R25: pending state RPC advertised paid readiness';
+  END IF;
+  RESET ROLE;
+
+  UPDATE public.brand_currency_reconciliations
+  SET
+    status = 'converted',
+    decision = 'convert',
+    resolved_at = now()
+  WHERE id = v_pending;
+
+  IF NOT public.pg_brand_can_charge(
+       '13840000-0000-4000-8000-000000000101'
+     )
+     OR NOT public.pg_brand_can_collect(
+       '13840000-0000-4000-8000-000000000101'
+     ) THEN
+    RAISE EXCEPTION
+      'issue_1384 executable R25: resolved Stripe reconciliation stayed blocked';
+  END IF;
+
+  INSERT INTO public.brand_currency_reconciliations (
+    brand_id, from_currency_code, to_currency_code, reason, status
+  ) VALUES (
+    '13840000-0000-4000-8000-000000000102',
+    'USD', 'NGN', 'bank_changed', 'pending'
+  ) RETURNING id INTO v_pending;
+  IF public.pg_brand_can_charge('13840000-0000-4000-8000-000000000102')
+     OR public.pg_brand_can_collect('13840000-0000-4000-8000-000000000102') THEN
+    RAISE EXCEPTION
+      'issue_1384 executable R25: pending reconciliation did not block Paystack';
+  END IF;
+  UPDATE public.brand_currency_reconciliations
+  SET
+    status = 'converted',
+    decision = 'convert',
+    resolved_at = now()
+  WHERE id = v_pending;
+
+  IF public.pg_brand_can_charge('13840000-0000-4000-8000-000000000102')
+     OR NOT public.pg_brand_can_collect(
+       '13840000-0000-4000-8000-000000000102'
+     ) THEN
+    RAISE EXCEPTION
+      'issue_1384 executable R25: resolved Paystack reconciliation stayed blocked';
+  END IF;
+
+  SET LOCAL ROLE authenticated;
+  PERFORM set_config(
+    'request.jwt.claim.sub',
+    '13840000-0000-4000-8000-000000000002',
+    true
+  );
+  v_state := public.issue_1384_brand_currency_state(
+    '13840000-0000-4000-8000-000000000102'
+  );
+  IF NOT (v_state->>'canAcceptPaidReservations')::boolean
+     OR v_state->'reconciliation' <> 'null'::jsonb THEN
+    RAISE EXCEPTION
+      'issue_1384 executable R25: resolved state RPC stayed blocked';
+  END IF;
+  RESET ROLE;
+END;
+$payment_readiness_matrix$;
+
 ROLLBACK;

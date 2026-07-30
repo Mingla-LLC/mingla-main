@@ -448,18 +448,21 @@ jobs:
             supabase/functions/discover-cards/index.ts \
             supabase/functions/manage-brand-discovery-currency/index.ts \
             supabase/functions/refresh-fx-rates/index.ts \
+            supabase/functions/admin-review-venue-claim/index.ts \
             supabase/functions/_shared/discoveryPrice.issue1384.test.ts \
             supabase/functions/_shared/fxRates.issue1384.test.ts \
             supabase/functions/discover-cards/index.issue1384.test.ts \
             supabase/functions/manage-brand-discovery-currency/index.test.ts \
-            supabase/functions/refresh-fx-rates/index.test.ts
+            supabase/functions/refresh-fx-rates/index.test.ts \
+            supabase/functions/admin-review-venue-claim/__tests__/issue_1384_discovery_price_approval_persistence.test.ts
 
           deno test --allow-env --allow-read \
             supabase/functions/_shared/discoveryPrice.issue1384.test.ts \
             supabase/functions/_shared/fxRates.issue1384.test.ts \
             supabase/functions/discover-cards/index.issue1384.test.ts \
             supabase/functions/manage-brand-discovery-currency/index.test.ts \
-            supabase/functions/refresh-fx-rates/index.test.ts
+            supabase/functions/refresh-fx-rates/index.test.ts \
+            supabase/functions/admin-review-venue-claim/__tests__/issue_1384_discovery_price_approval_persistence.test.ts
       - name: "Issue #1384: disposable PostgreSQL 17 replay and SQL matrix"
         shell: bash
         run: |
@@ -651,7 +654,11 @@ jobs:
         run: npm install --no-save
       - name: "Issue #1384: Business authoring and buyer rendering suite"
         working-directory: mingla-business
-        run: npx jest --runInBand src/services/__tests__/issue1384DiscoveryCurrencyExecutable.test.ts
+        run: |
+          npx jest --runInBand \
+            src/services/__tests__/issue1384DiscoveryCurrencyExecutable.test.ts \
+            src/components/venue/claim/__tests__/ClaimStepPrice.issue1384.executable.test.tsx \
+            src/components/venue/__tests__/issue1384DiscoveryPriceAuthoringExecutable.test.ts
       - name: Run expo export -p web (capture stderr)
         working-directory: mingla-business
         env:

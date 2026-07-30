@@ -16,7 +16,13 @@ import { supabase } from "../services/supabase";
 import { useCardsCache } from "./CardsCacheContext";
 import { useUserLocation } from "../hooks/useUserLocation";
 import { useUserPreferences } from "../hooks/useUserPreferences";
-import { useDeckCards, buildDeckQueryKey } from "../hooks/useDeckCards";
+import {
+  DECK_LAST_KEY,
+  DECK_LAST_LOCATION_KEY,
+  persistFirstDeckPageController,
+  prefetchDeckPageController,
+  useDeckCards,
+} from "../hooks/useDeckCards";
 import { cachedLocationSync } from "../hooks/useUserLocation";
 import { deckService } from "../services/deckService";
 import type { CollabDeadEndPayload } from "../services/deckService";
@@ -238,8 +244,6 @@ export const RecommendationsProvider: React.FC<
   // On cold start, loads the last-used deck query key from AsyncStorage.
   // Only set if the persisted location matches current GPS hint (within 3dp
   // rounding = ~110m). Prevents wrong-city cards. See ORCH-0391 precedence report.
-  const DECK_LAST_KEY = '@mingla/lastDeckQueryKey';
-  const DECK_LAST_LOCATION_KEY = '@mingla/lastDeckLocation';
   const [lastDeckKey, setLastDeckKey] = useState<readonly unknown[] | null>(null);
 
   useEffect(() => {
@@ -842,24 +846,17 @@ export const RecommendationsProvider: React.FC<
       soloDeckCards.length > 0 &&
       activeDeckLocation &&
       activeDeckParams &&
+      activeDeck.response &&
       isSoloMode &&
       !deckPersistFiredRef.current
     ) {
       deckPersistFiredRef.current = true;
-      // ORCH-0490 Phase 2.3: pass `mode: 'solo'` when flag-on so the persisted
-      // key shape matches the hook's key shape. Flag-off omits `mode` to
-      // preserve the pre-2.3 legacy shape. If the flag flips between sessions
-      // (e.g. OTA rolling the flag to true for prod), the first cold launch
-      // post-flip sees a shape mismatch and cold-starts through the fetch
-      // path (one-time skeleton). Acceptable for dark-ship rollout.
-      // ORCH-0902 CR-7: this branch is solo-only (isSoloMode check above);
-      // read categories/intents from the solo source directly to avoid the
-      // collab-shape `{sessionId, currentPosition, ...}` union creeping in.
       const soloParams = stableDeckParams;
-      const key = buildDeckQueryKey({
-        ...(FEATURE_FLAG_PER_CONTEXT_DECK_STATE ? { mode: 'solo' as const } : {}),
-        lat: activeDeckLocation.lat,
-        lng: activeDeckLocation.lng,
+      void persistFirstDeckPageController({
+        ...(FEATURE_FLAG_PER_CONTEXT_DECK_STATE
+          ? { mode: 'solo' as const }
+          : {}),
+        location: activeDeckLocation,
         categories: soloParams?.categories ?? [],
         intents: soloParams?.intents ?? [],
         travelMode: effectiveTravelMode,
@@ -871,16 +868,21 @@ export const RecommendationsProvider: React.FC<
         excludeCardIds: [],
         displayCurrency: explicitViewerCurrency,
         fxSnapshotId: activeDeck.fxSnapshotId ?? pinnedFxSnapshotId,
+        response: activeDeck.response,
+      }, {
+        queryClient,
+        storage: AsyncStorage,
+      }).then((persistedKey) => {
+        setLastDeckKey(persistedKey);
+        if (__DEV__) {
+          console.log('[Deck] Persisted deck key + location for cold-start cache');
+        }
+      }).catch((error: unknown) => {
+        console.warn(
+          '[Deck] Failed to persist first deck page',
+          error instanceof Error ? error.message : String(error),
+        );
       });
-      if (activeDeck.response) {
-        queryClient.setQueryData(key, activeDeck.response);
-      }
-      AsyncStorage.setItem(DECK_LAST_KEY, JSON.stringify(key)).catch(() => {});
-      AsyncStorage.setItem(DECK_LAST_LOCATION_KEY, JSON.stringify({
-        lat: Math.round(activeDeckLocation.lat * 1000) / 1000,
-        lng: Math.round(activeDeckLocation.lng * 1000) / 1000,
-      })).catch(() => {});
-      if (__DEV__) console.log('[Deck] Persisted deck key + location for cold-start cache');
     }
   }, [soloDeckCards.length, activeDeckLocation?.lat, activeDeckLocation?.lng, isSoloMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1120,10 +1122,11 @@ export const RecommendationsProvider: React.FC<
         ? normalizeDateTime(rawDatetimePref)
         : undefined;
 
-      const prefetchKey = buildDeckQueryKey({
-        ...(FEATURE_FLAG_PER_CONTEXT_DECK_STATE ? { mode: 'solo' as const } : {}),
-        lat: activeDeckLocation.lat,
-        lng: activeDeckLocation.lng,
+      void prefetchDeckPageController({
+        ...(FEATURE_FLAG_PER_CONTEXT_DECK_STATE
+          ? { mode: 'solo' as const }
+          : {}),
+        location: activeDeckLocation,
         categories: prefetchCategories,
         intents: prefetchIntents,
         travelMode: prefetchTravelMode,
@@ -1134,26 +1137,16 @@ export const RecommendationsProvider: React.FC<
         batchSeed: nextSeed,
         excludeCardIds: [],
         displayCurrency: explicitViewerCurrency,
-        fxSnapshotId: pinnedFxSnapshotId,
-      });
-      queryClient.prefetchQuery({
-        queryKey: prefetchKey,
-        queryFn: () => deckService.fetchDeck({
-          location: activeDeckLocation,
-          categories: prefetchCategories,
-          intents: prefetchIntents,
-          travelMode: prefetchTravelMode,
-          travelConstraintType: prefetchConstraintType,
-          travelConstraintValue: prefetchConstraintValue,
-          datetimePref: prefetchDatetimePref,
-          dateOption: prefetchDateOption,
-          batchSeed: nextSeed,
-          limit: 10000,
-          excludeCardIds: [],
-          displayCurrency: explicitViewerCurrency,
-          fxSnapshotId: pinnedFxSnapshotId,
-        }),
-        staleTime: 5 * 60 * 1000,
+        fxSnapshotId: activeDeck.fxSnapshotId ?? pinnedFxSnapshotId,
+        limit: 10000,
+      }, {
+        queryClient,
+        fetchDeck: (request) => deckService.fetchDeck(request),
+      }).catch((error: unknown) => {
+        console.warn(
+          '[Deck] Next-page prefetch failed',
+          error instanceof Error ? error.message : String(error),
+        );
       });
     }
   }, [batchSeed, hasMoreCards, activeDeckLocation, activeDeckParams, isSoloMode, isCollaborationMode, resolvedSessionId, userPrefs, queryClient, explicitViewerCurrency, pinnedFxSnapshotId]);

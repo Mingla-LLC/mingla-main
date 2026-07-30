@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -14,16 +14,28 @@ import {
   typography,
 } from "../../../constants/designSystem";
 import {
+  usePreviewBrandCurrencyReconciliation,
   useBrandDiscoveryCurrency,
+  useResolveBrandCurrencyReconciliation,
   useSetBrandProvisionalCurrency,
 } from "../../../hooks/useBrandDiscoveryCurrency";
+import { useBrandReconciliationPriceRanges } from "../../../hooks/usePlaceDiscoveryPriceRange";
+import {
+  BrandCurrencyActionError,
+  type BrandCurrencyReconciliationPreview,
+} from "../../../services/businessPlaceAuthoringService";
 import { useDraftVenueStore } from "../../../store/draftVenueStore";
-import { parseMajorToMinor } from "../../../utils/currencyFormatter";
+import {
+  formatSourceRange,
+  parseMajorToMinor,
+} from "../../../utils/currencyFormatter";
 import { venueStepError } from "../venueWizardValidation";
 
 export interface ClaimStepPriceProps {
   showErrors: boolean;
 }
+
+type ReentryInputs = Record<string, { min: string; max: string }>;
 
 const currencyLabel = (code: string): string => {
   if (code === "NGN") return "Nigerian naira";
@@ -32,6 +44,21 @@ const currencyLabel = (code: string): string => {
   if (code === "EUR") return "euros";
   return code;
 };
+
+function reconciliationErrorCopy(error: Error | null): string | null {
+  if (error === null) return null;
+  const code = error instanceof BrandCurrencyActionError ? error.code : "";
+  if (code === "range_version_conflict" || code === "range_set_changed") {
+    return "Prices changed while you were reviewing them. Reload this review before continuing.";
+  }
+  if (code === "fx_snapshot_stale" || code === "fx_unavailable") {
+    return "The conversion rate expired or is unavailable. Review a fresh conversion before continuing.";
+  }
+  if (code === "incomplete_reentry" || code === "invalid_range") {
+    return "Enter a valid range for every affected place before continuing.";
+  }
+  return "We couldn’t finish the currency review. Your prices were not changed. Try again.";
+}
 
 export const ClaimStepPrice: React.FC<ClaimStepPriceProps> = ({
   showErrors,
@@ -47,6 +74,24 @@ export const ClaimStepPrice: React.FC<ClaimStepPriceProps> = ({
   const draft = useDraftVenueStore();
   const stateQuery = useBrandDiscoveryCurrency(brandId);
   const setProvisional = useSetBrandProvisionalCurrency(brandId);
+  const reconciliationId = stateQuery.data?.reconciliation?.id ?? null;
+  const previewMutation = usePreviewBrandCurrencyReconciliation(
+    brandId,
+    reconciliationId,
+  );
+  const resolveMutation = useResolveBrandCurrencyReconciliation(
+    brandId,
+    reconciliationId,
+  );
+  const reconciliationRanges = useBrandReconciliationPriceRanges(
+    reconciliationId === null ? null : brandId,
+  );
+  const [preview, setPreview] =
+    useState<BrandCurrencyReconciliationPreview | null>(null);
+  const [reviewMode, setReviewMode] =
+    useState<"choices" | "conversion" | "reentry">("choices");
+  const [reentryInputs, setReentryInputs] = useState<ReentryInputs>({});
+  const [actionError, setActionError] = useState<Error | null>(null);
   const state = stateQuery.data;
   const currency = state?.currencyCode ?? null;
   const metadata = state?.supportedCurrencies.find(
@@ -132,6 +177,106 @@ export const ClaimStepPrice: React.FC<ClaimStepPriceProps> = ({
   }
 
   if (state.reconciliation !== null) {
+    const targetMetadata = state.supportedCurrencies.find(
+      (candidate) =>
+        candidate.code === state.reconciliation?.to_currency_code,
+    );
+    const targetExponent = targetMetadata?.minorUnitExponent ?? 2;
+    const currentRanges = reconciliationRanges.data ?? [];
+    const parsedReentryRanges = currentRanges.map((range) => {
+      const values = reentryInputs[range.place_pool_id] ?? { min: "", max: "" };
+      const parsedMin = parseMajorToMinor(values.min, targetExponent);
+      const parsedMax = values.max.trim().length === 0
+        ? null
+        : parseMajorToMinor(values.max, targetExponent);
+      return {
+        placePoolId: range.place_pool_id,
+        expectedVersion: range.version,
+        currencyCode: state.reconciliation?.to_currency_code ?? "",
+        sourceMinMinor: parsedMin,
+        sourceMaxMinor: parsedMax,
+        valid:
+          parsedMin !== null &&
+          (values.max.trim().length === 0 || parsedMax !== null) &&
+          (parsedMax === null || parsedMax >= parsedMin),
+      };
+    });
+    const canSubmitReentry =
+      !reconciliationRanges.isLoading &&
+      !reconciliationRanges.isError &&
+      parsedReentryRanges.length > 0 &&
+      parsedReentryRanges.every((range) => range.valid);
+    const busy = previewMutation.isPending || resolveMutation.isPending;
+    const visibleError =
+      reconciliationErrorCopy(actionError) ??
+      (reconciliationRanges.isError
+        ? "We couldn’t load every affected price. Reload before continuing."
+        : null);
+
+    const reviewConversion = async (): Promise<void> => {
+      setActionError(null);
+      try {
+        const nextPreview = await previewMutation.mutateAsync();
+        setPreview(nextPreview);
+        setReviewMode("conversion");
+      } catch (error) {
+        setActionError(
+          error instanceof Error ? error : new Error("preview_failed"),
+        );
+      }
+    };
+
+    const applyConversion = async (): Promise<void> => {
+      if (preview === null) return;
+      setActionError(null);
+      try {
+        await resolveMutation.mutateAsync({
+          decision: "convert",
+          fxSnapshotId: preview.snapshot.id,
+          ranges: [...preview.ranges]
+            .sort((left, right) =>
+              left.placePoolId.localeCompare(right.placePoolId))
+            .map((range) => ({
+              placePoolId: range.placePoolId,
+              expectedVersion: range.expectedVersion,
+            })),
+        });
+        setPreview(null);
+        setReviewMode("choices");
+      } catch (error) {
+        setActionError(
+          error instanceof Error ? error : new Error("conversion_failed"),
+        );
+      }
+    };
+
+    const applyReentry = async (): Promise<void> => {
+      if (!canSubmitReentry) return;
+      setActionError(null);
+      try {
+        await resolveMutation.mutateAsync({
+          decision: "reenter",
+          fxSnapshotId: null,
+          ranges: parsedReentryRanges
+            .sort((left, right) =>
+              left.placePoolId.localeCompare(right.placePoolId))
+            .map((range) => ({
+              placePoolId: range.placePoolId,
+              expectedVersion: range.expectedVersion,
+              currencyCode: range.currencyCode,
+              sourceMinMinor: range.sourceMinMinor as number,
+              sourceMaxMinor: range.sourceMaxMinor,
+            })),
+        });
+        setReviewMode("choices");
+        setReentryInputs({});
+      } catch (error) {
+        setActionError(
+          error instanceof Error ? error : new Error("reentry_failed"),
+        );
+      }
+    };
+
     return (
       <View style={styles.host}>
         <Text style={styles.labelCap}>PRICE RANGE NEEDS REVIEW</Text>
@@ -140,9 +285,149 @@ export const ClaimStepPrice: React.FC<ClaimStepPriceProps> = ({
           Review existing {state.reconciliation.from_currency_code ?? "source"}
           {" "}ranges before accepting paid reservations.
         </Text>
-        <Text style={styles.helper}>
-          Use Payments to review and convert or re-enter every affected range.
-        </Text>
+        {reviewMode === "choices" ? (
+          <View style={styles.actionGroup}>
+            <Pressable
+              accessibilityRole="button"
+              disabled={busy}
+              onPress={() => void reviewConversion()}
+              style={styles.primaryAction}
+              testID="issue1384-review-convert"
+            >
+              <Text style={styles.primaryActionText}>
+                {previewMutation.isPending ? "Loading conversion…" : "Review and convert"}
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              disabled={busy || reconciliationRanges.isLoading}
+              onPress={() => {
+                setActionError(null);
+                setReviewMode("reentry");
+              }}
+              style={styles.secondaryAction}
+              testID="issue1384-review-reenter"
+            >
+              <Text style={styles.secondaryActionText}>Re-enter prices</Text>
+            </Pressable>
+          </View>
+        ) : null}
+        {reviewMode === "conversion" && preview !== null ? (
+          <View style={styles.reviewPanel} testID="issue1384-conversion-preview">
+            <Text style={styles.helper}>
+              Conversion rate: {preview.snapshot.provider} · {preview.snapshot.id}
+            </Text>
+            {preview.ranges.map((range) => {
+              const sourceMetadata = state.supportedCurrencies.find(
+                (candidate) => candidate.code === range.sourceCurrencyCode,
+              );
+              return (
+                <View key={range.placePoolId} style={styles.rangeCard}>
+                  <Text style={styles.fieldLabel}>{range.placePoolId}</Text>
+                  <Text style={styles.helper}>
+                    Source: {formatSourceRange({
+                      minMinor: range.sourceMinMinor,
+                      maxMinor: range.sourceMaxMinor,
+                      currencyCode: range.sourceCurrencyCode,
+                      exponent: sourceMetadata?.minorUnitExponent ?? 2,
+                    })}
+                  </Text>
+                  <Text style={styles.helper}>
+                    Proposed: {formatSourceRange({
+                      minMinor: range.proposedMinMinor,
+                      maxMinor: range.proposedMaxMinor,
+                      currencyCode: preview.toCurrencyCode,
+                      exponent: targetExponent,
+                    })}
+                  </Text>
+                  <Text style={styles.helper}>
+                    Version {range.expectedVersion}
+                  </Text>
+                </View>
+              );
+            })}
+            <Pressable
+              accessibilityRole="button"
+              disabled={busy}
+              onPress={() => void applyConversion()}
+              style={styles.primaryAction}
+              testID="issue1384-apply-conversion"
+            >
+              <Text style={styles.primaryActionText}>
+                {resolveMutation.isPending ? "Applying…" : "Apply conversion"}
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
+        {reviewMode === "reentry" ? (
+          <View style={styles.reviewPanel} testID="issue1384-reentry-form">
+            <Text style={styles.helper}>
+              Enter every affected range in {state.reconciliation.to_currency_code}.
+            </Text>
+            {currentRanges.map((range) => {
+              const values = reentryInputs[range.place_pool_id] ??
+                { min: "", max: "" };
+              return (
+                <View key={range.place_pool_id} style={styles.rangeCard}>
+                  <Text style={styles.fieldLabel}>
+                    {range.place_pool_id} · Version {range.version}
+                  </Text>
+                  <TextInput
+                    accessibilityLabel={`Minimum for ${range.place_pool_id} in ${state.reconciliation?.to_currency_code}`}
+                    keyboardType="decimal-pad"
+                    onChangeText={(value) =>
+                      setReentryInputs((current) => ({
+                        ...current,
+                        [range.place_pool_id]: {
+                          ...(current[range.place_pool_id] ??
+                            { min: "", max: "" }),
+                          min: value,
+                        },
+                      }))}
+                    placeholder="Minimum"
+                    style={styles.reentryInput}
+                    testID={`issue1384-reentry-min-${range.place_pool_id}`}
+                    value={values.min}
+                  />
+                  <TextInput
+                    accessibilityLabel={`Maximum for ${range.place_pool_id} in ${state.reconciliation?.to_currency_code}`}
+                    keyboardType="decimal-pad"
+                    onChangeText={(value) =>
+                      setReentryInputs((current) => ({
+                        ...current,
+                        [range.place_pool_id]: {
+                          ...(current[range.place_pool_id] ??
+                            { min: "", max: "" }),
+                          max: value,
+                        },
+                      }))}
+                    placeholder="Maximum (optional)"
+                    style={styles.reentryInput}
+                    testID={`issue1384-reentry-max-${range.place_pool_id}`}
+                    value={values.max}
+                  />
+                </View>
+              );
+            })}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ disabled: !canSubmitReentry || busy }}
+              disabled={!canSubmitReentry || busy}
+              onPress={() => void applyReentry()}
+              style={styles.primaryAction}
+              testID="issue1384-apply-reentry"
+            >
+              <Text style={styles.primaryActionText}>
+                {resolveMutation.isPending ? "Saving…" : "Save all prices"}
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
+        {visibleError !== null ? (
+          <Text style={styles.err} testID="issue1384-reconciliation-error">
+            {visibleError}
+          </Text>
+        ) : null}
       </View>
     );
   }
@@ -277,6 +562,54 @@ const styles = StyleSheet.create({
   retryText: {
     color: textTokens.primary,
     fontWeight: "700",
+  },
+  actionGroup: {
+    gap: spacing.sm,
+  },
+  reviewPanel: {
+    gap: spacing.sm,
+  },
+  rangeCard: {
+    gap: spacing.xs,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+    padding: spacing.md,
+  },
+  primaryAction: {
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 24,
+    backgroundColor: textTokens.primary,
+    paddingHorizontal: spacing.lg,
+  },
+  primaryActionText: {
+    color: "#000000",
+    fontSize: typography.bodySm.fontSize,
+    fontWeight: "700",
+  },
+  secondaryAction: {
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.22)",
+    paddingHorizontal: spacing.lg,
+  },
+  secondaryActionText: {
+    color: textTokens.primary,
+    fontSize: typography.bodySm.fontSize,
+    fontWeight: "700",
+  },
+  reentryInput: {
+    minHeight: 46,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+    color: textTokens.primary,
+    paddingHorizontal: spacing.md,
   },
 });
 

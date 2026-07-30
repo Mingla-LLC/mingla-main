@@ -8,8 +8,18 @@
  * receives ready-to-use Recommendation[] directly.
  */
 import { useMemo } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { deckService, DeckResponse, DeckServerPath, mergeCardsByIdPreservingOrder } from '../services/deckService';
+import {
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from '@tanstack/react-query';
+import {
+  deckService,
+  type DeckParams,
+  type DeckResponse,
+  type DeckServerPath,
+  mergeCardsByIdPreservingOrder,
+} from '../services/deckService';
 import type { Recommendation } from '../types/recommendation';
 import { normalizeDateTime } from '../utils/cardConverters';
 
@@ -95,7 +105,7 @@ export function buildDeckQueryKey(params: DeckQueryKeyParams): readonly unknown[
     params.travelMode,
     params.travelConstraintType,
     params.travelConstraintValue,
-    nd,
+    nd ?? null,
     params.dateOption ?? 'today',
     params.batchSeed,
     [...(params.excludeCardIds ?? [])].sort().join(','),
@@ -115,7 +125,126 @@ export function buildDeckQueryKey(params: DeckQueryKeyParams): readonly unknown[
   return ['deck-cards', ...tail] as const;
 }
 
-interface UseDeckCardsParams {
+export const DECK_LAST_KEY = '@mingla/lastDeckQueryKey';
+export const DECK_LAST_LOCATION_KEY = '@mingla/lastDeckLocation';
+
+export interface SoloDeckQueryPlanInput {
+  mode?: 'solo';
+  location: { lat: number; lng: number };
+  categories: string[];
+  intents: string[];
+  travelMode: string;
+  travelConstraintType: 'time';
+  travelConstraintValue: number;
+  datetimePref?: string;
+  dateOption?: string;
+  batchSeed: number;
+  excludeCardIds?: string[];
+  displayCurrency?: string;
+  fxSnapshotId?: string;
+  priceFilterMinMinor?: number;
+  priceFilterMaxMinor?: number;
+  priceFilterCurrency?: string;
+  limit?: number;
+}
+
+export interface SoloDeckQueryPlan {
+  queryKey: readonly unknown[];
+  request: DeckParams;
+}
+
+export function buildSoloDeckQueryPlan(
+  input: SoloDeckQueryPlanInput,
+): SoloDeckQueryPlan {
+  const request: DeckParams = {
+    mode: input.mode,
+    location: input.location,
+    categories: input.categories,
+    intents: input.intents,
+    travelMode: input.travelMode,
+    travelConstraintType: input.travelConstraintType,
+    travelConstraintValue: input.travelConstraintValue,
+    datetimePref: input.datetimePref,
+    dateOption: input.dateOption,
+    batchSeed: input.batchSeed,
+    excludeCardIds: input.excludeCardIds,
+    displayCurrency: input.displayCurrency,
+    fxSnapshotId: input.fxSnapshotId,
+    priceFilterMinMinor: input.priceFilterMinMinor,
+    priceFilterMaxMinor: input.priceFilterMaxMinor,
+    priceFilterCurrency: input.priceFilterCurrency,
+    limit: input.limit,
+  };
+  return {
+    queryKey: buildDeckQueryKey({
+      mode: input.mode,
+      lat: input.location.lat,
+      lng: input.location.lng,
+      categories: input.categories,
+      intents: input.intents,
+      travelMode: input.travelMode,
+      travelConstraintType: input.travelConstraintType,
+      travelConstraintValue: input.travelConstraintValue,
+      datetimePref: input.datetimePref,
+      dateOption: input.dateOption,
+      batchSeed: input.batchSeed,
+      excludeCardIds: input.excludeCardIds,
+      displayCurrency: input.displayCurrency,
+      fxSnapshotId: input.fxSnapshotId,
+      priceFilterMinMinor: input.priceFilterMinMinor,
+      priceFilterMaxMinor: input.priceFilterMaxMinor,
+      priceFilterCurrency: input.priceFilterCurrency,
+    }),
+    request,
+  };
+}
+
+export async function prefetchDeckPageController(
+  input: SoloDeckQueryPlanInput,
+  dependencies: {
+    queryClient: QueryClient;
+    fetchDeck: (request: DeckParams) => Promise<DeckResponse>;
+  },
+): Promise<SoloDeckQueryPlan> {
+  const plan = buildSoloDeckQueryPlan(input);
+  await dependencies.queryClient.prefetchQuery({
+    queryKey: plan.queryKey,
+    queryFn: () => dependencies.fetchDeck(plan.request),
+    staleTime: 5 * 60 * 1000,
+  });
+  return plan;
+}
+
+interface DeckStorage {
+  setItem(key: string, value: string): Promise<void>;
+}
+
+export async function persistFirstDeckPageController(
+  input: SoloDeckQueryPlanInput & { response: DeckResponse },
+  dependencies: {
+    queryClient: QueryClient;
+    storage: DeckStorage;
+  },
+): Promise<readonly unknown[]> {
+  const plan = buildSoloDeckQueryPlan(input);
+  dependencies.queryClient.setQueryData(plan.queryKey, input.response);
+  await Promise.all([
+    dependencies.storage.setItem(
+      DECK_LAST_KEY,
+      JSON.stringify(plan.queryKey),
+    ),
+    dependencies.storage.setItem(
+      DECK_LAST_LOCATION_KEY,
+      JSON.stringify({
+        lat: Math.round(input.location.lat * 1000) / 1000,
+        lng: Math.round(input.location.lng * 1000) / 1000,
+      }),
+    ),
+  ]);
+  return plan.queryKey;
+}
+
+export interface UseDeckCardsParams {
   location: { lat: number; lng: number } | null;
   categories: string[];
   intents?: string[];
@@ -147,6 +276,47 @@ interface UseDeckCardsParams {
   mode?: 'solo' | 'collab';
   /** ORCH-0909: required when mode === 'collab'. Current positional cursor. */
   currentPosition?: number;
+}
+
+export function resolveDeckQueryKey(
+  params: UseDeckCardsParams,
+): readonly unknown[] {
+  if (params.mode === 'collab') {
+    return buildDeckQueryKey({
+      mode: 'collab',
+      sessionId: params.sessionId,
+      currentPosition: params.currentPosition ?? 0,
+      lat: 0,
+      lng: 0,
+      categories: [],
+      intents: [],
+      travelMode: '',
+      travelConstraintType: '',
+      travelConstraintValue: 0,
+      batchSeed: 0,
+    });
+  }
+  if (params.location) {
+    return buildSoloDeckQueryPlan({
+      mode: params.mode,
+      location: params.location,
+      categories: params.categories,
+      intents: params.intents ?? [],
+      travelMode: params.travelMode,
+      travelConstraintType: params.travelConstraintType,
+      travelConstraintValue: params.travelConstraintValue,
+      datetimePref: params.datetimePref,
+      dateOption: params.dateOption,
+      batchSeed: params.batchSeed,
+      excludeCardIds: params.excludeCardIds,
+      displayCurrency: params.displayCurrency,
+      fxSnapshotId: params.fxSnapshotId,
+      priceFilterMinMinor: params.priceFilterMinMinor,
+      priceFilterMaxMinor: params.priceFilterMaxMinor,
+      priceFilterCurrency: params.priceFilterCurrency,
+    }).queryKey;
+  }
+  return params.lastKnownQueryKey ?? ['deck-cards', null];
 }
 
 export interface UseDeckCardsResult {
@@ -195,48 +365,7 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
   // For solo + legacy the key includes location/category/travel/etc. as before.
   // On cold start before location resolves, use lastKnownQueryKey (from persisted
   // session state, proximity-checked) to read hydrated cache instantly. ORCH-0391.
-  let queryKey: readonly unknown[];
-  if (isCollab) {
-    queryKey = buildDeckQueryKey({
-      mode: 'collab',
-      sessionId: params.sessionId,
-      currentPosition: params.currentPosition ?? 0,
-      // Solo fields below are ignored by the collab branch in buildDeckQueryKey.
-      lat: 0,
-      lng: 0,
-      categories: [],
-      intents: [],
-      travelMode: '',
-      travelConstraintType: '',
-      travelConstraintValue: 0,
-      batchSeed: 0,
-    });
-  } else if (location) {
-    queryKey = buildDeckQueryKey({
-      // ORCH-0490 Phase 2.3: thread mode + sessionId for new key shape.
-      // Undefined when flag-off caller doesn't provide them — legacy shape.
-      mode: params.mode,
-      sessionId: params.sessionId,
-      lat: location.lat,
-      lng: location.lng,
-      categories: params.categories,
-      intents: params.intents ?? [],
-      travelMode: params.travelMode,
-      travelConstraintType: params.travelConstraintType,
-      travelConstraintValue: params.travelConstraintValue,
-      datetimePref: params.datetimePref,
-      dateOption: params.dateOption,
-      batchSeed: params.batchSeed,
-      excludeCardIds: params.excludeCardIds,
-      displayCurrency: params.displayCurrency,
-      fxSnapshotId: params.fxSnapshotId,
-      priceFilterMinMinor: params.priceFilterMinMinor,
-      priceFilterMaxMinor: params.priceFilterMaxMinor,
-      priceFilterCurrency: params.priceFilterCurrency,
-    });
-  } else {
-    queryKey = params.lastKnownQueryKey ?? ['deck-cards', null];
-  }
+  const queryKey = resolveDeckQueryKey(params);
 
   const query = useQuery<DeckResponse>({
     queryKey,

@@ -483,7 +483,27 @@ export function discoverCardsPayloadToRecommendations(data: any): Recommendation
   });
 }
 
-class DeckService {
+export interface DeckServiceDependencies {
+  invoke?: typeof trackedInvoke;
+  curatedService?: Pick<
+    typeof curatedExperiencesService,
+    'generateCuratedExperiences'
+  >;
+}
+
+export class DeckService {
+  private readonly invoke: typeof trackedInvoke;
+  private readonly curatedService: Pick<
+    typeof curatedExperiencesService,
+    'generateCuratedExperiences'
+  >;
+
+  constructor(dependencies: DeckServiceDependencies = {}) {
+    this.invoke = dependencies.invoke ?? trackedInvoke;
+    this.curatedService =
+      dependencies.curatedService ?? curatedExperiencesService;
+  }
+
   private resolvePills(categories: string[], dedicatedIntents?: string[]): {
     pills: DeckPill[];
     categoryFilters: string[];
@@ -686,7 +706,7 @@ class DeckService {
           });
 
           const { data, error } = await Promise.race([
-            trackedInvoke('discover-cards', {
+            this.invoke('discover-cards', {
               body: {
                 categories: categoryNames,
                 location: params.location,
@@ -797,7 +817,7 @@ class DeckService {
             // ORCH-0677 RC-2: response is now { cards, summary? }. summary is
             // present only when cards is empty; carries the server's empty
             // verdict (pool_empty | no_viable_anchor | pipeline_error).
-            const response = await curatedExperiencesService.generateCuratedExperiences({
+            const response = await this.curatedService.generateCuratedExperiences({
               experienceType: pill.id as any,
               location: curatedLocation,
               travelMode: params.travelMode,
@@ -1095,7 +1115,7 @@ class DeckService {
       });
 
       const { data, error } = await Promise.race([
-        trackedInvoke('discover-cards', {
+        this.invoke('discover-cards', {
           body: {
             session_id: sessionId,
             current_position: params.currentPosition ?? 0,

@@ -2090,8 +2090,109 @@ async function handleDeterministicV2(args: {
   });
 }
 
+interface DiscoveryFxContextInput {
+  requestedDisplayCurrency: string | null;
+  requestedFxSnapshotId: string | null;
+  priceFilterCurrency: string | null;
+}
+
+interface DiscoveryFxContextDependencies {
+  client?: any;
+  nowMs?: () => number;
+}
+
+interface DiscoveryFxContext {
+  displayCurrency: string | null;
+  fxSnapshotId: string | null;
+}
+
+interface DiscoverCardsDependencies {
+  adminClient?: any;
+  nowMs?: () => number;
+}
+
+export async function resolveDiscoveryFxContext(
+  input: DiscoveryFxContextInput,
+  dependencies: DiscoveryFxContextDependencies = {},
+): Promise<DiscoveryFxContext> {
+  const client = dependencies.client ??
+    createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+  const nowMs = dependencies.nowMs ?? Date.now;
+  const { data: supportedCurrencyRows, error: supportedCurrencyError } =
+    await client.rpc('issue_1384_supported_currencies');
+  if (supportedCurrencyError) {
+    throw new Error('DISCOVERY_PRICE_CURRENCY_AUTHORITY_UNAVAILABLE');
+  }
+  const supportedCurrencyCodes = new Set(
+    (Array.isArray(supportedCurrencyRows) ? supportedCurrencyRows : [])
+      .map((row: any) => row?.code)
+      .filter((code: unknown): code is string => typeof code === 'string'),
+  );
+  // Unsupported viewer display preference is non-authoritative and degrades
+  // to exact source money. Numeric filters are binding, so unsupported filter
+  // currency fails closed rather than returning an unfiltered deck.
+  const displayCurrency =
+    input.requestedDisplayCurrency &&
+      supportedCurrencyCodes.has(input.requestedDisplayCurrency)
+      ? input.requestedDisplayCurrency
+      : null;
+  if (
+    input.priceFilterCurrency !== null &&
+    !supportedCurrencyCodes.has(input.priceFilterCurrency)
+  ) {
+    throw new Error('FX_UNAVAILABLE');
+  }
+
+  let fxSnapshotId: string | null = input.requestedFxSnapshotId;
+  if (input.requestedFxSnapshotId !== null) {
+    const { data: requestedSnapshot, error: requestedSnapshotError } =
+      await client
+        .from('fx_rate_snapshots')
+        .select('id,status,expires_at')
+        .eq('id', input.requestedFxSnapshotId)
+        .in('status', ['active', 'superseded'])
+        .maybeSingle();
+    if (
+      requestedSnapshotError ||
+      !requestedSnapshot ||
+      Date.parse(requestedSnapshot.expires_at) < nowMs()
+    ) {
+      throw new Error('FX_UNAVAILABLE');
+    }
+  } else if (
+    displayCurrency !== null || input.priceFilterCurrency !== null
+  ) {
+    const { data: snapshots, error: snapshotError } = await client.rpc(
+      'fx_latest_servable_snapshot',
+      { p_at: new Date(nowMs()).toISOString() },
+    );
+    if (!snapshotError && Array.isArray(snapshots)) {
+      fxSnapshotId = snapshots[0]?.snapshot_id ?? null;
+    }
+    if (input.priceFilterCurrency !== null && fxSnapshotId === null) {
+      throw new Error('FX_UNAVAILABLE');
+    }
+  }
+
+  return { displayCurrency, fxSnapshotId };
+}
+
+export function discoveryFxErrorResponse(error: unknown): Response | null {
+  if ((error as Error)?.message !== 'FX_UNAVAILABLE') return null;
+  return new Response(
+    JSON.stringify({ kind: 'error', code: 'FX_UNAVAILABLE', cards: [] }),
+    {
+      status: 503,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    },
+  );
+}
+
 // ── Main Handler ────────────────────────────────────────────────────────────
-serve(async (req: Request) => {
+export async function handleDiscoverCards(
+  req: Request,
+  dependencies: DiscoverCardsDependencies = {},
+): Promise<Response> {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -2250,60 +2351,17 @@ serve(async (req: Request) => {
 
     console.log(`[discover-cards] solo request: categories=[${categories}], batchSeed=${batchSeed}, limit=${limit}, mode=${travelMode}${dateWindows ? `, dateWindows=[${dateWindows}]` : ''}`);
 
-    const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-
-    const { data: supportedCurrencyRows, error: supportedCurrencyError } =
-      await supabaseAdmin.rpc('issue_1384_supported_currencies');
-    if (supportedCurrencyError) {
-      throw new Error('DISCOVERY_PRICE_CURRENCY_AUTHORITY_UNAVAILABLE');
-    }
-    const supportedCurrencyCodes = new Set(
-      (Array.isArray(supportedCurrencyRows) ? supportedCurrencyRows : [])
-        .map((row: any) => row?.code)
-        .filter((code: unknown): code is string => typeof code === 'string'),
-    );
-    // Unsupported viewer display preference is non-authoritative and degrades
-    // to exact source money. Numeric filters are binding, so unsupported filter
-    // currency fails closed rather than returning an unfiltered deck.
-    const displayCurrency =
-      requestedDisplayCurrency && supportedCurrencyCodes.has(requestedDisplayCurrency)
-        ? requestedDisplayCurrency
-        : null;
-    if (
-      priceFilterCurrency !== null &&
-      !supportedCurrencyCodes.has(priceFilterCurrency)
-    ) {
-      throw new Error('FX_UNAVAILABLE');
-    }
-
-    let fxSnapshotId: string | null = requestedFxSnapshotId;
-    if (requestedFxSnapshotId !== null) {
-      const { data: requestedSnapshot, error: requestedSnapshotError } =
-        await supabaseAdmin
-          .from('fx_rate_snapshots')
-          .select('id,status,expires_at')
-          .eq('id', requestedFxSnapshotId)
-          .in('status', ['active', 'superseded'])
-          .maybeSingle();
-      if (
-        requestedSnapshotError ||
-        !requestedSnapshot ||
-        Date.parse(requestedSnapshot.expires_at) < Date.now()
-      ) {
-        throw new Error('FX_UNAVAILABLE');
-      }
-    } else if (displayCurrency !== null || priceFilterCurrency !== null) {
-      const { data: snapshots, error: snapshotError } = await supabaseAdmin.rpc(
-        'fx_latest_servable_snapshot',
-        { p_at: new Date().toISOString() },
+    const supabaseAdmin = dependencies.adminClient ??
+      createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+    const { displayCurrency, fxSnapshotId } =
+      await resolveDiscoveryFxContext(
+        {
+          requestedDisplayCurrency,
+          requestedFxSnapshotId,
+          priceFilterCurrency,
+        },
+        { client: supabaseAdmin, nowMs: dependencies.nowMs },
       );
-      if (!snapshotError && Array.isArray(snapshots)) {
-        fxSnapshotId = snapshots[0]?.snapshot_id ?? null;
-      }
-      if (priceFilterCurrency !== null && fxSnapshotId === null) {
-        throw new Error('FX_UNAVAILABLE');
-      }
-    }
 
     // ── Extract userId from JWT sub claim ──────────────────────────────────
     // ORCH-0474: verify_jwt:true at the platform gate already validated signature,
@@ -2543,7 +2601,7 @@ serve(async (req: Request) => {
           p_price_filter_max_minor: priceFilterMaxMinor,
           p_price_filter_currency: priceFilterCurrency,
           p_fx_snapshot_id: fxSnapshotId,
-        }).then((res) => ({ task, res })),
+        }).then((res: any) => ({ task, res })),
       ),
     );
 
@@ -2803,15 +2861,15 @@ serve(async (req: Request) => {
 
   } catch (err) {
     console.error('[discover-cards] Unhandled error:', err);
-    if ((err as Error)?.message === 'FX_UNAVAILABLE') {
-      return new Response(
-        JSON.stringify({ kind: 'error', code: 'FX_UNAVAILABLE', cards: [] }),
-        { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      );
-    }
+    const fxError = discoveryFxErrorResponse(err);
+    if (fxError !== null) return fxError;
     return new Response(
       JSON.stringify({ error: (err as any)?.message || 'Internal error', cards: [] }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
-});
+}
+
+if (import.meta.main) {
+  serve((req) => handleDiscoverCards(req));
+}

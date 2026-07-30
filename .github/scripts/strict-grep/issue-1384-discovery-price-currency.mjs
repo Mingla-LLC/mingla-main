@@ -26,12 +26,25 @@ const rules = {
   discover: {
     required: [
       "supportedCurrencyCodes",
-      "requestedDisplayCurrency && supportedCurrencyCodes.has",
+      "supportedCurrencyCodes.has(input.requestedDisplayCurrency)",
       "issue_1384_query_servable_places_by_signal",
       "p_price_filter_min_minor: priceFilterMinMinor",
       "p_fx_snapshot_id: fxSnapshotId",
       "fxSnapshotId",
       "FX_UNAVAILABLE",
+      "export async function handleDiscoverCards",
+      "await resolveDiscoveryFxContext(",
+      "const fxError = discoveryFxErrorResponse(err)",
+      "if (import.meta.main)",
+      "serve((req) => handleDiscoverCards(req))",
+    ],
+  },
+  adminHandler: {
+    required: [
+      "export async function handleAdminReviewVenueClaim",
+      "await approveGoLiveWithAuthoredApply(",
+      "if (import.meta.main)",
+      "serve(handleAdminReviewVenueClaim)",
     ],
   },
   deck: {
@@ -108,9 +121,8 @@ const rules = {
       "activeDeck.fxSnapshotId",
       "displayCurrency: explicitViewerCurrency",
       "fxSnapshotId: pinnedFxSnapshotId",
-      "const prefetchKey = buildDeckQueryKey",
-      "queryKey: prefetchKey",
-      "queryClient.setQueryData(key, activeDeck.response)",
+      "prefetchDeckPageController",
+      "persistFirstDeckPageController",
     ],
   },
   cardInfo: {
@@ -247,6 +259,23 @@ const rules = {
       "sourceMinMinor",
       "currencyCode",
       "expectedVersion",
+      "commitNewVenueDiscoveryRange",
+      "commitExistingVenueDiscoveryRange",
+    ],
+  },
+  venueWizard: {
+    required: [
+      "const handleSubmit = useCallback(async (): Promise<void> =>",
+      "await commitNewVenueDiscoveryRange({",
+      "if (tier1.place_pool_id.length === 0)",
+      "if (venueId === null)",
+    ],
+  },
+  venueReadiness: {
+    required: [
+      "const handleSaveChanges = useCallback(async (): Promise<void> =>",
+      "await commitExistingVenueDiscoveryRange({",
+      "onDone();",
     ],
   },
 };
@@ -291,6 +320,20 @@ function scopedSource(name, source, rule, failures) {
   return source.slice(start, end);
 }
 
+function boundedSource(source, startToken, endToken, label, failures) {
+  const start = source.indexOf(startToken);
+  const end = source.indexOf(endToken, start + startToken.length);
+  if (start < 0 || end < 0 || end <= start) {
+    failures.push(`${label}: callsite scope markers missing`);
+    return "";
+  }
+  return source.slice(start, end);
+}
+
+function occurrenceCount(source, token) {
+  return source.split(token).length - 1;
+}
+
 export function violations(files) {
   const failures = [];
   for (const [name, rule] of Object.entries(rules)) {
@@ -321,12 +364,127 @@ export function violations(files) {
   if (/from\(["']place_pool["']\)\.update/.test(adminSave)) {
     failures.push("admin: partial AI category mutation reintroduced");
   }
-  const prefetchBlock = (files.context ?? "").slice(
-    (files.context ?? "").indexOf("const handleDeckCardProgress"),
-    (files.context ?? "").indexOf("// ── Sync deck cards"),
+  const discoverHandler = boundedSource(
+    files.discover ?? "",
+    "export async function handleDiscoverCards",
+    "if (import.meta.main)",
+    "discover",
+    failures,
   );
-  if (/queryKey:\s*\[\s*["']deck-cards["']/.test(prefetchBlock)) {
+  if (!discoverHandler.includes("await resolveDiscoveryFxContext(")) {
+    failures.push("discover: live handler disconnected from FX resolver");
+  }
+  if (!discoverHandler.includes("discoveryFxErrorResponse(err)")) {
+    failures.push("discover: live handler disconnected from FX error mapper");
+  }
+
+  const adminHandler = boundedSource(
+    files.adminHandler ?? "",
+    "export async function handleAdminReviewVenueClaim",
+    "if (import.meta.main)",
+    "adminHandler",
+    failures,
+  );
+  if (!adminHandler.includes("await approveGoLiveWithAuthoredApply(")) {
+    failures.push("adminHandler: live approve branch disconnected from wrapper");
+  }
+
+  const context = files.context ?? "";
+  const persistBlock = boundedSource(
+    context,
+    "// ── ORCH-0391: Persist deck key + location on first successful solo load",
+    "// ORCH-0446:",
+    "context persistence",
+    failures,
+  );
+  if (!persistBlock.includes("persistFirstDeckPageController(")) {
+    failures.push("context: first-success persistence controller disconnected");
+  }
+  if (
+    persistBlock.includes("setQueryData(") ||
+    persistBlock.includes("buildDeckQueryKey(") ||
+    persistBlock.includes("DECK_LAST_KEY") ||
+    persistBlock.includes("DECK_LAST_LOCATION_KEY")
+  ) {
+    failures.push("context: manual first-success deck persistence reintroduced");
+  }
+  const prefetchBlock = boundedSource(
+    context,
+    "const handleDeckCardProgress",
+    "// ── Sync deck cards",
+    "context prefetch",
+    failures,
+  );
+  if (!prefetchBlock.includes("prefetchDeckPageController(")) {
+    failures.push("context: next-page prefetch controller disconnected");
+  }
+  if (
+    prefetchBlock.includes("prefetchQuery(") ||
+    prefetchBlock.includes("buildDeckQueryKey(") ||
+    /queryKey:\s*\[\s*["']deck-cards["']/.test(prefetchBlock)
+  ) {
     failures.push("context: hand-built deck prefetch/cache key reintroduced");
+  }
+
+  const wizard = files.venueWizard ?? "";
+  const wizardSubmit = boundedSource(
+    wizard,
+    "const handleSubmit = useCallback(async (): Promise<void> =>",
+    "const body =",
+    "venueWizard",
+    failures,
+  );
+  const newCommit = "await commitNewVenueDiscoveryRange({";
+  const commitIndex = wizardSubmit.indexOf(newCommit);
+  const placeCheckIndex = wizardSubmit.indexOf(
+    "if (tier1.place_pool_id.length === 0)",
+  );
+  const venueCheckIndex = wizardSubmit.indexOf("if (venueId === null)");
+  const resetAfterIndex = wizardSubmit.indexOf(
+    "useDraftVenueStore.getState().reset(",
+    commitIndex,
+  );
+  const doneAfterIndex = wizardSubmit.indexOf("onDone(", commitIndex);
+  if (
+    occurrenceCount(wizardSubmit, newCommit) !== 1 ||
+    commitIndex <= placeCheckIndex ||
+    commitIndex <= venueCheckIndex ||
+    resetAfterIndex <= commitIndex ||
+    doneAfterIndex <= commitIndex
+  ) {
+    failures.push(
+      "venueWizard: canonical new-range commit order/await cardinality drifted",
+    );
+  }
+  const tierOneStage = boundedSource(
+    wizardSubmit,
+    "const tier1 = await upsertTier1Place({",
+    "if (tier1.place_pool_id.length === 0)",
+    "venueWizard tier-one",
+    failures,
+  );
+  if (
+    /discoveryPrice|priceMinInput|priceMaxInput|priceTiers/.test(tierOneStage)
+  ) {
+    failures.push("venueWizard: discovery money restaged in tier one");
+  }
+
+  const readiness = boundedSource(
+    files.venueReadiness ?? "",
+    "const handleSaveChanges = useCallback(async (): Promise<void> =>",
+    "const handleRefresh =",
+    "venueReadiness",
+    failures,
+  );
+  const existingCommit = "await commitExistingVenueDiscoveryRange({";
+  if (
+    occurrenceCount(readiness, existingCommit) !== 1 ||
+    readiness.indexOf(existingCommit) < 0 ||
+    readiness.indexOf("onDone();") <= readiness.indexOf(existingCommit)
+  ) {
+    failures.push(
+      "venueReadiness: canonical existing-range commit order/await cardinality drifted",
+    );
   }
   return failures;
 }
@@ -340,7 +498,31 @@ function selfTest() {
       : required;
   }
   valid.admin = `const handleSave = async () => {\n${valid.admin}\n};\n// META-ORCH-1009 Sub-D`;
-  valid.context = `const handleDeckCardProgress = () => {\n${valid.context}\n};\n// ── Sync deck cards`;
+  valid.discover =
+    `${valid.discover}\nexport async function handleDiscoverCards() {\n` +
+    "await resolveDiscoveryFxContext();\n" +
+    "discoveryFxErrorResponse(err);\n}\nif (import.meta.main) {}";
+  valid.adminHandler =
+    `${valid.adminHandler}\nexport async function handleAdminReviewVenueClaim() {\n` +
+    "await approveGoLiveWithAuthoredApply();\n}\nif (import.meta.main) {}";
+  valid.context =
+    `${valid.context}\n` +
+    "// ── ORCH-0391: Persist deck key + location on first successful solo load\n" +
+    "persistFirstDeckPageController();\n// ORCH-0446:\n" +
+    "const handleDeckCardProgress = () => {\nprefetchDeckPageController();\n};\n" +
+    "// ── Sync deck cards";
+  valid.venueWizard =
+    "const handleSubmit = useCallback(async (): Promise<void> => {\n" +
+    "const tier1 = await upsertTier1Place({});\n" +
+    "if (tier1.place_pool_id.length === 0) {}\n" +
+    "if (venueId === null) {}\n" +
+    "await commitNewVenueDiscoveryRange({});\n" +
+    "useDraftVenueStore.getState().reset();\nonDone();\n});\n" +
+    "const body = () => {};";
+  valid.venueReadiness =
+    "const handleSaveChanges = useCallback(async (): Promise<void> => {\n" +
+    "await commitExistingVenueDiscoveryRange({});\nonDone();\n});\n" +
+    "const handleRefresh = () => {};";
   const baseline = violations(valid);
   if (baseline.length !== 0) {
     throw new Error(`valid fixture rejected: ${baseline.join("; ")}`);
@@ -397,6 +579,78 @@ function selfTest() {
       ),
       expected: "hand-built",
     },
+    {
+      key: "discover",
+      value: valid.discover.replace(
+        "await resolveDiscoveryFxContext(",
+        "await disconnectedFxContext(",
+      ),
+      expected: "live handler disconnected from FX resolver",
+    },
+    {
+      key: "discover",
+      value: valid.discover.replace(
+        "discoveryFxErrorResponse(err)",
+        "disconnectedFxErrorResponse(err)",
+      ),
+      expected: "live handler disconnected from FX error mapper",
+    },
+    {
+      key: "adminHandler",
+      value: valid.adminHandler.replace(
+        "await approveGoLiveWithAuthoredApply(",
+        "await disconnectedApprovalWrapper(",
+      ),
+      expected: "live approve branch disconnected from wrapper",
+    },
+    {
+      key: "context",
+      value: valid.context.replace(
+        "const handleDeckCardProgress = () => {\nprefetchDeckPageController();",
+        "const handleDeckCardProgress = () => {\ndisconnectedPrefetch();",
+      ),
+      expected: "next-page prefetch controller disconnected",
+    },
+    {
+      key: "context",
+      value: valid.context.replace(
+        "// ── ORCH-0391: Persist deck key + location on first successful solo load\npersistFirstDeckPageController();",
+        "// ── ORCH-0391: Persist deck key + location on first successful solo load\ndisconnectedPersistence();",
+      ),
+      expected: "first-success persistence controller disconnected",
+    },
+    {
+      key: "venueWizard",
+      value: valid.venueWizard.replace(
+        "await commitNewVenueDiscoveryRange({});",
+        "commitNewVenueDiscoveryRange({});",
+      ),
+      expected: "canonical new-range commit order/await cardinality drifted",
+    },
+    {
+      key: "venueWizard",
+      value: valid.venueWizard.replace(
+        "await commitNewVenueDiscoveryRange({});\nuseDraftVenueStore.getState().reset();\nonDone();",
+        "useDraftVenueStore.getState().reset();\nonDone();\nawait commitNewVenueDiscoveryRange({});",
+      ),
+      expected: "canonical new-range commit order/await cardinality drifted",
+    },
+    {
+      key: "venueReadiness",
+      value: valid.venueReadiness.replace(
+        "await commitExistingVenueDiscoveryRange({});",
+        "commitExistingVenueDiscoveryRange({});",
+      ),
+      expected: "canonical existing-range commit order/await cardinality drifted",
+    },
+    {
+      key: "venueReadiness",
+      value: valid.venueReadiness.replace(
+        "await commitExistingVenueDiscoveryRange({});\nonDone();",
+        "onDone();\nawait commitExistingVenueDiscoveryRange({});",
+      ),
+      expected: "canonical existing-range commit order/await cardinality drifted",
+    },
   ];
   for (const fixture of sourceReversions) {
     const broken = { ...valid, [fixture.key]: fixture.value };
@@ -441,6 +695,7 @@ const paths = {
   swipeable: "app-mobile/src/components/SwipeableCards.tsx",
   board: "app-mobile/src/components/board/SwipeableSessionCards.tsx",
   admin: "mingla-admin/src/pages/PlacePoolManagementPage.jsx",
+  adminHandler: "supabase/functions/admin-review-venue-claim/index.ts",
   adminRules: "mingla-admin/src/lib/deckCardPreviewRules.js",
   adminPreview: "mingla-admin/src/components/DeckCardPreview.jsx",
   buyerService: "mingla-business/src/services/publicEventsService.ts",
@@ -448,6 +703,8 @@ const paths = {
   buyerRoute: "mingla-business/app/b/[brandSlug]/v/[venueSlug].tsx",
   businessCurrency: "mingla-business/src/utils/currencyFormatter.ts",
   businessAuthoring: "mingla-business/src/services/businessPlaceAuthoringService.ts",
+  venueWizard: "mingla-business/src/components/venue/VenueCreatorWizard.tsx",
+  venueReadiness: "mingla-business/src/components/venue/VenueDeckReadinessSetup.tsx",
 };
 
 if (process.argv.includes("--self-test")) {
