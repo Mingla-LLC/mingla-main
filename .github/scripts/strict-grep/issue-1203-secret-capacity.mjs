@@ -132,8 +132,8 @@ export function check({
   }
   if (manifest) {
     const names = manifest.secrets?.map((record) => record.name) ?? [];
-    if (names.length !== 85 || new Set(names).size !== 85) {
-      violations.push(`${MANIFEST}:target_must_be_85_unique_names`);
+    if (names.length !== 89 || new Set(names).size !== 89) {
+      violations.push(`${MANIFEST}:target_must_be_89_unique_names`);
     }
     const serializedKeys = [];
     const walk = (value) => {
@@ -208,7 +208,7 @@ function selfTest() {
       }];`,
     auditSource: 'spawnSync("supabase", [], { stdio: ["ignore", "pipe", "pipe"] });',
     manifestText: JSON.stringify({
-      secrets: Array.from({ length: 85 }, (_, index) => ({ name: `SYNTH_${index}` })),
+      secrets: Array.from({ length: 89 }, (_, index) => ({ name: `SYNTH_${index}` })),
     }),
     clientFiles: [{ path: "app-mobile/src/ok.ts", text: "export const ok = true;" }],
     backendFiles,

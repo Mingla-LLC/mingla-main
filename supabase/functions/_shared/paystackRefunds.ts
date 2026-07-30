@@ -53,6 +53,21 @@ interface RefundRecord {
   transaction?: unknown;
 }
 
+interface VerifiedTransactionIdentity {
+  id: number;
+  amount: number;
+  state: PaystackRefundReconciliationState;
+}
+
+type PaystackRefundReconciliationState =
+  | "success"
+  | "reversal-pending"
+  | "reversed";
+
+const PAYSTACK_REFUND_RECONCILIATION_STATES = new Set<
+  PaystackRefundReconciliationState
+>(["success", "reversal-pending", "reversed"]);
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object"
     ? value as Record<string, unknown>
@@ -80,6 +95,15 @@ function providerIdentity(value: unknown): string | null {
   return null;
 }
 
+function providerTransactionId(value: unknown): number | null {
+  const candidate = typeof value === "number" ? value : asRecord(value).id;
+  return typeof candidate === "number" &&
+      Number.isSafeInteger(candidate) &&
+      candidate > 0
+    ? candidate
+    : null;
+}
+
 function resultFromRecord(
   row: RefundRecord,
   replayed: boolean,
@@ -105,14 +129,65 @@ async function readJson(res: Response): Promise<Record<string, unknown>> {
   }
 }
 
+async function resolveTransactionIdentity(params: {
+  reference: string;
+  currency?: string;
+}): Promise<VerifiedTransactionIdentity> {
+  const secret = resolvePaystackSecretKey();
+  const res = await fetch(
+    `${PAYSTACK_BASE_URL}/transaction/verify/${
+      encodeURIComponent(params.reference)
+    }`,
+    { headers: { Authorization: `Bearer ${secret}` } },
+  );
+  const json = await readJson(res);
+  if (!res.ok || json.status !== true) {
+    throw new PaystackApiError(
+      "Paystack transaction identity verification failed",
+      res.status,
+    );
+  }
+  const row = asRecord(json.data);
+  const id = providerTransactionId(row.id);
+  const amount = row.amount;
+  const currency = typeof row.currency === "string"
+    ? row.currency.toUpperCase()
+    : null;
+  const state = typeof row.status === "string" ? row.status : null;
+  if (
+    row.reference !== params.reference ||
+    id === null ||
+    typeof amount !== "number" ||
+    !Number.isSafeInteger(amount) ||
+    amount < 0 ||
+    state === null ||
+    !PAYSTACK_REFUND_RECONCILIATION_STATES.has(
+      state as PaystackRefundReconciliationState,
+    ) ||
+    (params.currency !== undefined &&
+      currency !== params.currency.toUpperCase())
+  ) {
+    throw new PaystackApiError(
+      "Paystack transaction identity mismatch",
+      502,
+    );
+  }
+  return {
+    id,
+    amount,
+    state: state as PaystackRefundReconciliationState,
+  };
+}
+
 async function findExistingRefund(params: {
-  transaction: string;
+  transactionId: number;
   merchantNote: string;
-  amountSubunits?: number;
+  amountSubunits: number;
+  providerRefundId?: string | null;
 }): Promise<PaystackRefundResult | null> {
   const secret = resolvePaystackSecretKey();
   const query = new URLSearchParams({
-    transaction: params.transaction,
+    transaction: String(params.transactionId),
     perPage: "100",
   });
   const res = await fetch(`${PAYSTACK_BASE_URL}/refund?${query.toString()}`, {
@@ -121,20 +196,66 @@ async function findExistingRefund(params: {
   const json = await readJson(res);
   if (!res.ok || json.status !== true) {
     throw new PaystackApiError(
-      `Paystack refund reconciliation failed (${res.status}): ${
-        typeof json.message === "string" ? json.message : "unknown error"
-      }`,
+      "Paystack refund reconciliation failed",
       res.status,
     );
   }
   const rows = Array.isArray(json.data) ? json.data.map(refundRecord) : [];
-  const match = rows.find((row) =>
-    row.merchant_note === params.merchantNote &&
-    (params.amountSubunits === undefined ||
-      Number(row.amount ?? NaN) === params.amountSubunits)
-  );
+  const match = rows.find((row) => {
+    const refundId = row.id === undefined ? "" : String(row.id);
+    return providerTransactionId(row.transaction) === params.transactionId &&
+      row.merchant_note === params.merchantNote &&
+      Number(row.amount ?? NaN) === params.amountSubunits &&
+      (params.providerRefundId == null ||
+        refundId === params.providerRefundId);
+  });
   if (!match) return null;
   return resultFromRecord(match, true);
+}
+
+async function resolveAndFindExistingRefund(params: {
+  transaction: string;
+  merchantNote: string;
+  amountSubunits?: number;
+  currency?: string;
+  providerRefundId?: string | null;
+}): Promise<{
+  identity: VerifiedTransactionIdentity;
+  existing: PaystackRefundResult | null;
+}> {
+  const identity = await resolveTransactionIdentity({
+    reference: params.transaction,
+    currency: params.currency,
+  });
+  const existing = await findExistingRefund({
+    transactionId: identity.id,
+    merchantNote: params.merchantNote,
+    amountSubunits: params.amountSubunits ?? identity.amount,
+    providerRefundId: params.providerRefundId,
+  });
+  return { identity, existing };
+}
+
+export async function reconcilePaystackRefund(params: {
+  transaction: string;
+  merchantNote: string;
+  amountSubunits?: number;
+  currency?: string;
+  providerRefundId?: string | null;
+}): Promise<PaystackRefundResult | null> {
+  return (await resolveAndFindExistingRefund(params)).existing;
+}
+
+function isDuplicateRefundSignal(
+  responseStatus: number,
+  providerCode: string,
+  message: string,
+): boolean {
+  if (responseStatus !== 400) return false;
+  const signal = `${providerCode} ${message}`.trim().toLowerCase();
+  return signal.includes("already exist") ||
+    signal.includes("already_exists") ||
+    signal.includes("duplicate");
 }
 
 export async function createPaystackRefund(params: {
@@ -152,8 +273,14 @@ export async function createPaystackRefund(params: {
       422,
     );
   }
-  const existing = await findExistingRefund(params);
-  if (existing) return existing;
+  const reconciliation = await resolveAndFindExistingRefund(params);
+  if (reconciliation.existing) return reconciliation.existing;
+  if (reconciliation.identity.state !== "success") {
+    throw new PaystackApiError(
+      "paystack_refund_transaction_state_ambiguous",
+      409,
+    );
+  }
 
   const secret = resolvePaystackSecretKey();
   const res = await fetch(`${PAYSTACK_BASE_URL}/refund`, {
@@ -176,6 +303,24 @@ export async function createPaystackRefund(params: {
   const providerCode = typeof json.code === "string" ? json.code : "";
   const replaySignal = `${providerCode} ${message}`.toLowerCase();
   if (!res.ok || json.status !== true) {
+    if (isDuplicateRefundSignal(res.status, providerCode, message)) {
+      const duplicateReconciliation = await resolveAndFindExistingRefund(
+        params,
+      );
+      if (duplicateReconciliation.existing) {
+        return duplicateReconciliation.existing;
+      }
+      if (duplicateReconciliation.identity.state !== "success") {
+        throw new PaystackApiError(
+          "paystack_refund_transaction_state_ambiguous",
+          409,
+        );
+      }
+      throw new PaystackApiError(
+        "paystack_refund_duplicate_ambiguous",
+        409,
+      );
+    }
     if (
       params.amountSubunits === undefined &&
       res.status === 400 &&
@@ -193,7 +338,7 @@ export async function createPaystackRefund(params: {
       };
     }
     throw new PaystackApiError(
-      `Paystack refund failed (${res.status}): ${message || "unknown error"}`,
+      "Paystack refund failed",
       res.status,
     );
   }
@@ -346,7 +491,10 @@ export function paystackRefundTransaction(
 
 export function isRetryablePaystackRefundError(error: unknown): boolean {
   if (!(error instanceof PaystackApiError)) return true;
-  return error.status === 408 || error.status === 429 || error.status >= 500;
+  return error.status === 408 ||
+    error.status === 409 ||
+    error.status === 429 ||
+    error.status >= 500;
 }
 
 export function isPaystackRefundBelowMinimumError(error: unknown): boolean {

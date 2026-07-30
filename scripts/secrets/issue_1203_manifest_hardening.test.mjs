@@ -8,6 +8,13 @@ import {
 } from "./audit-supabase-secret-budget.mjs";
 
 const manifest = JSON.parse(readFileSync(DEFAULT_MANIFEST, "utf8"));
+const exceptionWindowNow = Date.parse("2026-08-01T00:00:00Z");
+const postRolloutIssue1430Names = new Set([
+  "NOTIFICATION_RECIPIENT_HMAC_SECRET",
+  "PAYOUT_HOLD_ONBOARD_FLIP",
+  "PAYOUT_RELEASE_EXECUTE",
+  "SOURCE_REFUNDS_POST_DISABLED",
+]);
 
 function clone(value) {
   return structuredClone(value);
@@ -43,17 +50,32 @@ test("issue #1203: a pre-rollout live audit is exact and drift remains fail-clos
   const transition = clone(manifest);
   transition.rollout.live_audit_mode = "transition";
   transition.rollout.transition_stage = "pre_rollout";
+  transition.secrets = transition.secrets.filter((record) =>
+    !postRolloutIssue1430Names.has(record.name)
+  );
   const target = transition.secrets.map((record) => record.name);
   const pending = new Set(transition.rollout.pending_bundle_names);
+  assert.equal(target.length, 85);
+  assert.equal(pending.size, 6);
+  assert.equal(transition.rollout.legacy_names.length, 20);
   const preRolloutNames = [
     ...target.filter((name) => !pending.has(name)),
     ...transition.rollout.legacy_names,
   ];
-  transition.rollout.expected_user_managed_count = preRolloutNames.length;
+  for (const legacyName of transition.rollout.legacy_names) {
+    assert.equal(
+      preRolloutNames.filter((name) => name === legacyName).length,
+      1,
+    );
+  }
+  assert.equal(preRolloutNames.length, 99);
+  assert.ok(preRolloutNames.length <= 100);
+  transition.rollout.expected_user_managed_count = 99;
   const expected = auditSecretBudget({
     manifest: transition,
     liveNames: preRolloutNames,
     liveAudit: true,
+    nowMs: exceptionWindowNow,
   });
   assert.equal(expected.ok, true);
   assert.equal(expected.count, preRolloutNames.length);
@@ -63,22 +85,25 @@ test("issue #1203: a pre-rollout live audit is exact and drift remains fail-clos
     manifest: transition,
     liveNames: preRolloutNames.slice(1),
     liveAudit: true,
+    nowMs: exceptionWindowNow,
   });
   assert.equal(drifted.ok, false);
   assert.match(drifted.failures.join("\n"), /missing_live_name/);
   assert.match(drifted.failures.join("\n"), /transition_count/);
 });
 
-test("issue #1203: enforced live audit uses only the final 85-name target", () => {
+test("issue #1203: enforced live audit uses only the final 89-name target", () => {
   const enforced = clone(manifest);
   enforced.rollout.live_audit_mode = "enforced";
-  enforced.rollout.expected_user_managed_count = 85;
+  enforced.rollout.expected_user_managed_count = 89;
   const target = enforced.secrets.map((record) => record.name);
+  assert.equal(target.length, 89);
   assert.equal(
     auditSecretBudget({
       manifest: enforced,
       liveNames: target,
       liveAudit: true,
+      nowMs: exceptionWindowNow,
     }).ok,
     true,
   );
@@ -86,6 +111,7 @@ test("issue #1203: enforced live audit uses only the final 85-name target", () =
     manifest: enforced,
     liveNames: [...target, enforced.rollout.legacy_names[0]],
     liveAudit: true,
+    nowMs: exceptionWindowNow,
   });
   assert.equal(legacyLeak.ok, false);
   assert.match(legacyLeak.failures.join("\n"), /unexpected_live_name/);
