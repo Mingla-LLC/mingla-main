@@ -305,6 +305,17 @@ export interface DraftEvent {
    * Persisted to `events.location_geo` at publish.
    */
   locationGeo: { lat: number; lng: number } | null;
+  /**
+   * Issue #1363 — how locationGeo was captured. Legacy values may be "exact";
+   * selected-address resolution is "approximate"; null when unset. Drives
+   * honest map zoom + "Approximate location"
+   * caption on the wizard preview (no fabricated precision, rule 9). Optional +
+   * default-safe: DEFAULT_DRAFT_FIELDS sets null and every read defaults `?? null`
+   * ⇒ additive, no persist-version bump. NOTE: persisting to `events.
+   * coordinate_precision` at publish is a documented follow-up (event-publish RPC
+   * is outside this issue's allowlist).
+   */
+  coordinatePrecision?: "exact" | "approximate" | null;
   /** Used when format ∈ {"online", "hybrid"}. */
   onlineUrl: string | null;
   /** When true (default), address hidden until ticket purchase. */
@@ -457,6 +468,8 @@ const DEFAULT_DRAFT_FIELDS: Omit<
   // ORCH-0824: city + locationGeo populated by Google Places autocomplete.
   city: null,
   locationGeo: null,
+  // Issue #1363 — precision of locationGeo (exact | approximate | null).
+  coordinatePrecision: null,
   onlineUrl: null,
   hideAddressUntilTicket: true,
   coverHue: 25,

@@ -18,14 +18,28 @@
  */
 
 /**
- * A trip location field is "picked" when it carries a confirmed Mapbox place:
- * placeId + lat + lng all non-null. Free-typed text leaves these null.
+ * `tripPlacePicked` preserves the older exported pick predicate for compatibility
+ * with its existing direct callers and tests.
+ *
+ * Issue #1363 (OQ-2, Seth-approved 2026-07-29) — SUPERSEDES the prior pick-only
+ * rule (placeId required) and its "Do not loosen" lock above. The invariant's
+ * intent — every trip departure/destination carries a real coordinate — is
+ * PRESERVED (lat/lng still required); authoring validators now use coordinates
+ * rather than placeId as their mechanism. (Revises
+ * I-PROPOSED-TRIP-LOCATION-MAPBOX-VALIDATED /
+ * I-PROPOSED-1363-COORD-FROM-ANY-TIER.) The trip PUBLISH RPC gates only on
+ * destination TEXT, so this loosening works end-to-end with no server change.
  */
 export const tripPlacePicked = (
   placeId: string | null,
   lat: number | null,
   lng: number | null,
 ): boolean => placeId !== null && lat !== null && lng !== null;
+
+const tripCoordinatesPresent = (
+  lat: number | null,
+  lng: number | null,
+): boolean => lat !== null && lng !== null;
 
 /**
  * Destination is REQUIRED for publish/save → valid IFF a real pick. Empty or
@@ -34,10 +48,10 @@ export const tripPlacePicked = (
  */
 export const destinationLocationValidated = (
   _text: string | null,
-  placeId: string | null,
+  _placeId: string | null,
   lat: number | null,
   lng: number | null,
-): boolean => tripPlacePicked(placeId, lat, lng);
+): boolean => tripCoordinatesPresent(lat, lng);
 
 /**
  * [DECISION-REVISED 2026-06-12] Departure is HARD-REQUIRED + VALIDATED. Valid
@@ -47,10 +61,10 @@ export const destinationLocationValidated = (
  */
 export const departureLocationValidated = (
   _text: string | null,
-  placeId: string | null,
+  _placeId: string | null,
   lat: number | null,
   lng: number | null,
-): boolean => tripPlacePicked(placeId, lat, lng);
+): boolean => tripCoordinatesPresent(lat, lng);
 
 // Inline-error copy — single source, reused on both authoring screens + tests.
 // Provider-neutral (no payment-provider names; COMMS-0021 satisfied trivially).

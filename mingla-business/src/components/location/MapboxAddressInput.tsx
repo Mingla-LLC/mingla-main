@@ -19,6 +19,7 @@ import React, { useMemo } from "react";
 import {
   MapboxAddressInput as SharedMapboxAddressInput,
   type LocationInputCopy,
+  type LocationSelectionState,
   type LocationInputTokens,
   type PlaceDetails,
 } from "@mingla/location-input";
@@ -32,7 +33,7 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
-import { Icon } from "../ui/Icon";
+import { Icon, type IconName } from "../ui/Icon";
 import { supabase } from "../../services/supabase";
 
 export type { PlaceDetails };
@@ -40,11 +41,17 @@ export type { PlaceDetails };
 interface MapboxAddressInputProps {
   value: string;
   onChangeText: (next: string) => void;
-  onPick: (details: PlaceDetails) => void;
+  onPick: (details: PlaceDetails, selectedLabel?: string) => void;
   onClear: () => void;
   error?: string;
   placeholder?: string;
   accessibilityLabel?: string;
+  // Issue #1363 — business-only selected-address mode. All default-off.
+  allowFreeText?: boolean;
+  onFreeText?: (text: string) => void;
+  selectionState?: LocationSelectionState;
+  selectedLabel?: string | null;
+  onChangeSelected?: () => void;
 }
 
 // Business token bundle — reproduces the pre-extraction dark-glass StyleSheet.
@@ -102,6 +109,16 @@ const BUSINESS_TOKENS: LocationInputTokens = {
     fontSize: typography.caption.fontSize,
     lineHeight: typography.caption.lineHeight,
   },
+  // Issue #1363 (device-UX F2) — brand-accent treatment for the Tier-2 free-text
+  // ACTION row so it reads as a tappable button (orange text + icon + a subtle
+  // tinted, bordered pill), visually distinct from the muted suggestion/status
+  // rows. Consumer bundles omit `action` → the shared field falls back to the
+  // muted styling → byte-identical consumer render.
+  action: {
+    text: accent.warm, // #eb7825 brand action
+    bg: accent.tint, // subtle warm pill fill
+    border: accent.border, // warm pill border
+  },
 };
 
 const BUSINESS_COPY: LocationInputCopy = {
@@ -115,6 +132,20 @@ const BUSINESS_COPY: LocationInputCopy = {
 const invoke = (fn: string, options: { body: Record<string, unknown> }) =>
   supabase.functions.invoke(fn, options);
 
+const LocationInputIcon: React.FC<{
+  name: string;
+  size: number;
+  color: string;
+}> = ({ name, size, color }) => {
+  const mappedName: IconName =
+    name === "location-outline"
+      ? "location"
+      : name === "cloud-offline-outline"
+        ? "refund"
+        : (name as IconName);
+  return <Icon name={mappedName} size={size} color={color} />;
+};
+
 export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
   value,
   onChangeText,
@@ -123,6 +154,11 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
   error,
   placeholder = "Pick a place",
   accessibilityLabel = "Address",
+  allowFreeText,
+  onFreeText,
+  selectionState,
+  selectedLabel,
+  onChangeSelected,
 }) => {
   const tokens = useMemo(() => BUSINESS_TOKENS, []);
   return (
@@ -135,11 +171,16 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
       placeholder={placeholder}
       accessibilityLabel={accessibilityLabel}
       tokens={tokens}
-      IconComponent={Icon}
+      IconComponent={LocationInputIcon}
       invoke={invoke}
       copy={BUSINESS_COPY}
       minQueryLength={3}
       leadingIcon="location"
+      allowFreeText={allowFreeText}
+      onFreeText={onFreeText}
+      selectionState={selectionState}
+      selectedLabel={selectedLabel}
+      onChangeSelected={onChangeSelected}
     />
   );
 };

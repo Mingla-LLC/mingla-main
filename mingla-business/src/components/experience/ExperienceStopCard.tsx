@@ -31,7 +31,14 @@ import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import { MapboxAddressInput } from "../location/MapboxAddressInput";
+import {
+  advanceLocationRequestGeneration,
+  isFreeTextResolveStale,
+  isLocationRequestGenerationCurrent,
+  resolveFreeTextLocation,
+} from "../../utils/resolveApproxLocation";
 import type { PlaceDetails } from "../../services/mapboxGeocodeService";
+import type { LocationSelectionState } from "@mingla/location-input";
 import {
   labelForIndex,
   stopHasValidatedLocation,
@@ -79,6 +86,75 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
   const isFirst = i === 0;
   const isLast = i === n - 1;
   const showAddress = locationMode === "per_stop" || i === 0;
+  const [selectionState, setSelectionState] =
+    React.useState<LocationSelectionState>(
+      stop.address.trim() && stop.lat !== null && stop.lng !== null
+        ? "selected"
+        : "editing",
+    );
+  // Issue #1363 P3-2 — latest-wins guard: the stop address currently committed,
+  // so a superseded free-text geocode can't patch a stale coord for this stop.
+  const committedAddrRef = React.useRef(stop.address);
+  const requestGenerationRef = React.useRef(0);
+  const savedContextRef = React.useRef({
+    city: stop.city,
+    countryCode: stop.countryCode,
+  });
+  const resolveCommittedText = React.useCallback(
+    (rawLabel: string): void => {
+      const generation = advanceLocationRequestGeneration(requestGenerationRef);
+      committedAddrRef.current = rawLabel;
+      setSelectionState("resolving");
+      onPatch(cid, {
+        address: rawLabel,
+        placeId: null,
+        city: null,
+        region: null,
+        countryCode: null,
+        lat: null,
+        lng: null,
+        coordinatePrecision: null,
+      });
+      void (async () => {
+        try {
+          const resolution = await resolveFreeTextLocation(
+            rawLabel,
+            savedContextRef.current,
+          );
+          if (
+            !isLocationRequestGenerationCurrent(requestGenerationRef, generation) ||
+            isFreeTextResolveStale(rawLabel, committedAddrRef.current)
+          ) return;
+          if (resolution.status === "needs_context") {
+            setSelectionState("needs_context");
+            return;
+          }
+          const approx = resolution.location;
+          onPatch(cid, {
+            city: approx.city,
+            region: approx.region,
+            countryCode: approx.countryCode,
+            lat: approx.lat,
+            lng: approx.lng,
+            coordinatePrecision: "approximate",
+          });
+          savedContextRef.current = {
+            city: approx.city,
+            countryCode: approx.countryCode,
+          };
+          setSelectionState("selected");
+        } catch {
+          if (
+            isLocationRequestGenerationCurrent(requestGenerationRef, generation) &&
+            !isFreeTextResolveStale(rawLabel, committedAddrRef.current)
+          ) {
+            setSelectionState("error");
+          }
+        }
+      })();
+    },
+    [cid, onPatch],
+  );
   const nameError = showErrors && stop.placeName.trim().length === 0;
   const descError =
     showErrors && stop.description.trim().length === 0
@@ -158,7 +234,12 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
             <MapboxAddressInput
               value={stop.address}
               accessibilityLabel={`Stop ${i + 1} address`}
-              onChangeText={(v) =>
+              allowFreeText
+              selectionState={selectionState}
+              selectedLabel={stop.address}
+              onChangeText={(v) => {
+                advanceLocationRequestGeneration(requestGenerationRef);
+                committedAddrRef.current = v;
                 onPatch(cid, {
                   address: v,
                   placeId: null,
@@ -167,20 +248,48 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
                   countryCode: null,
                   lat: null,
                   lng: null,
-                })
-              }
-              onPick={(d: PlaceDetails) =>
+                  coordinatePrecision: null,
+                });
+              }}
+              onFreeText={resolveCommittedText}
+              onPick={(d: PlaceDetails, selectedLabel?: string) => {
+                advanceLocationRequestGeneration(requestGenerationRef);
+                const label = selectedLabel ?? d.formattedAddress;
+                committedAddrRef.current = label;
                 onPatch(cid, {
-                  address: d.formattedAddress,
+                  address: label,
                   placeId: d.placeId,
                   city: d.city,
                   region: d.region,
                   countryCode: d.countryCode,
                   lat: d.location.lat,
                   lng: d.location.lng,
-                })
-              }
-              onClear={() =>
+                  coordinatePrecision: "approximate",
+                });
+                savedContextRef.current = {
+                  city: d.city,
+                  countryCode: d.countryCode,
+                };
+                setSelectionState("selected");
+              }}
+              onChangeSelected={() => {
+                advanceLocationRequestGeneration(requestGenerationRef);
+                committedAddrRef.current = stop.address;
+                setSelectionState("editing");
+                onPatch(cid, {
+                  placeId: null,
+                  city: null,
+                  region: null,
+                  countryCode: null,
+                  lat: null,
+                  lng: null,
+                  coordinatePrecision: null,
+                });
+              }}
+              onClear={() => {
+                advanceLocationRequestGeneration(requestGenerationRef);
+                committedAddrRef.current = "";
+                setSelectionState("editing");
                 onPatch(cid, {
                   address: "",
                   placeId: null,
@@ -189,8 +298,9 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
                   countryCode: null,
                   lat: null,
                   lng: null,
-                })
-              }
+                  coordinatePrecision: null,
+                });
+              }}
               error={addrError}
             />
           </>

@@ -104,6 +104,14 @@ export interface DraftVenueState {
   lng: number | null;
   city: string | null;
   countryCode: string | null;
+  /**
+   * Issue #1363 — how lat/lng was captured. Legacy values may be "exact";
+   * selected-address resolution is "approximate"; null when unset. Rides
+   * the create RPC + drives honest map rendering (no fabricated precision, rule
+   * 9). Optional at the type level so a pre-1363 persisted v3 blob rehydrates via
+   * `?? null` (additive — no persist-version bump).
+   */
+  coordinatePrecision?: "exact" | "approximate" | null;
   hours: BrandHourEntry[];
   contactEmail: string;
   contactPhone: string;
@@ -169,6 +177,7 @@ const initial: DraftVenueState = {
   lng: null,
   city: null,
   countryCode: null,
+  coordinatePrecision: null,
   hours: defaultBrandHoursWeek(),
   contactEmail: "",
   contactPhone: "",
@@ -203,6 +212,8 @@ const pickDraft = (s: DraftVenueState): DraftVenueState => ({
   lng: s.lng,
   city: s.city,
   countryCode: s.countryCode,
+  // Issue #1363 — `?? null` tolerates a pre-1363 persisted v3 blob (field absent).
+  coordinatePrecision: s.coordinatePrecision ?? null,
   hours: s.hours,
   contactEmail: s.contactEmail,
   contactPhone: s.contactPhone,

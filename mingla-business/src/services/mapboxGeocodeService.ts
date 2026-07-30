@@ -13,9 +13,12 @@
 import {
   autocompleteMapbox as sharedAutocomplete,
   retrieveMapboxPlace as sharedRetrieve,
+  forwardHierarchyMapbox as sharedForwardHierarchy,
   newMapboxSessionToken,
   type PlaceAutocompleteSuggestion,
   type PlaceDetails,
+  type HierarchicalForwardResult,
+  type SavedLocationContext,
 } from "@mingla/location-input";
 import { supabase } from "./supabase";
 
@@ -37,4 +40,12 @@ export function retrieveMapboxPlace(
   sessionToken: string,
 ): Promise<PlaceDetails> {
   return sharedRetrieve(placeId, sessionToken, { invoke });
+}
+
+/** Issue #1363 — safe place → city → country resolution. */
+export function forwardHierarchyMapbox(
+  query: string,
+  savedContext: SavedLocationContext = {},
+): Promise<HierarchicalForwardResult> {
+  return sharedForwardHierarchy(query, savedContext, { invoke });
 }

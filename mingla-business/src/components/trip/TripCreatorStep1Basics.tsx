@@ -12,7 +12,7 @@
  * text entry. Mirrors the picker pattern in CreatorStep2When.tsx.
  */
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Modal,
   Platform,
@@ -28,6 +28,7 @@ import DateTimePicker, {
 
 import {
   radius as radiusTokens,
+  semantic,
   spacing,
   text as textTokens,
   typography,
@@ -43,8 +44,15 @@ import { ThemeSheet } from "../theme/ThemeSheet";
 // consumer reads it as a Google id). Mapbox Search Box /suggest returns POIs
 // by name (no `types` filter): https://docs.mapbox.com/api/search/search-box/#get-suggestions
 import { MapboxAddressInput } from "../location/MapboxAddressInput";
-// ORCH-1118 — trip location must be a confirmed Mapbox pick before publish/save
-// (I-PROPOSED-TRIP-LOCATION-MAPBOX-VALIDATED). Do not loosen.
+import {
+  advanceLocationRequestGeneration,
+  isFreeTextResolveStale,
+  isLocationRequestGenerationCurrent,
+  resolveFreeTextLocation,
+} from "../../utils/resolveApproxLocation";
+import type { LocationSelectionState } from "@mingla/location-input";
+// ORCH-1118 — trip location must have a confirmed automatically resolved
+// coordinate before publish/save.
 import {
   departureLocationValidated,
   destinationLocationValidated,
@@ -71,6 +79,11 @@ export interface Step1Draft {
   departureLocationText: string | null;
   departureLat: number | null;
   departureLng: number | null;
+  // Issue #1363 — legacy values may be "exact"; selected-address coordinates
+  // are "approximate"; null means unset. Carried into
+  // theme.business_trip.{departure,destination}CoordinatePrecision at publish.
+  destinationCoordinatePrecision?: "exact" | "approximate" | null;
+  departureCoordinatePrecision?: "exact" | "approximate" | null;
   capacity: number | null;
   /**
    * ORCH-0876 — cover media for the trip (mirror of the events table
@@ -177,6 +190,153 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
   onShowToast,
   showAddressErrors = false,
 }) => {
+  const [departureSelectionState, setDepartureSelectionState] =
+    useState<LocationSelectionState>(
+      draft.departureLocationText?.trim() &&
+          draft.departureLat !== null &&
+          draft.departureLng !== null
+        ? "selected"
+        : "editing",
+    );
+  const [destinationSelectionState, setDestinationSelectionState] =
+    useState<LocationSelectionState>(
+      draft.destinationLocationText?.trim() &&
+          draft.destinationLat !== null &&
+          draft.destinationLng !== null
+        ? "selected"
+        : "editing",
+    );
+  // Issue #1363 P3-2 — latest-wins guards: the text currently committed to each
+  // field, so a superseded free-text geocode can't patch a stale coordinate.
+  const committedDepartureRef = useRef(draft.departureLocationText ?? "");
+  const committedDestinationRef = useRef(draft.destinationLocationText ?? "");
+  const departureRequestGenerationRef = useRef(0);
+  const destinationRequestGenerationRef = useRef(0);
+  const departureContextRef = useRef<{
+    city: string | null;
+    countryCode: string | null;
+  }>({ city: null, countryCode: null });
+  const destinationContextRef = useRef<{
+    city: string | null;
+    countryCode: string | null;
+  }>({ city: null, countryCode: null });
+
+  const resolveDeparture = useCallback(
+    (rawLabel: string): void => {
+      const generation = advanceLocationRequestGeneration(
+        departureRequestGenerationRef,
+      );
+      committedDepartureRef.current = rawLabel;
+      setDepartureSelectionState("resolving");
+      onChange({
+        departureLocationText: rawLabel,
+        departurePlaceId: null,
+        departureLat: null,
+        departureLng: null,
+        departureCoordinatePrecision: null,
+      });
+      void (async () => {
+        try {
+          const resolution = await resolveFreeTextLocation(
+            rawLabel,
+            departureContextRef.current,
+          );
+          if (
+            !isLocationRequestGenerationCurrent(
+              departureRequestGenerationRef,
+              generation,
+            ) ||
+            isFreeTextResolveStale(rawLabel, committedDepartureRef.current)
+          ) return;
+          if (resolution.status === "needs_context") {
+            setDepartureSelectionState("needs_context");
+            return;
+          }
+          const approx = resolution.location;
+          onChange({
+            departureLat: approx.lat,
+            departureLng: approx.lng,
+            departureCoordinatePrecision: "approximate",
+          });
+          departureContextRef.current = {
+            city: approx.city,
+            countryCode: approx.countryCode,
+          };
+          setDepartureSelectionState("selected");
+        } catch {
+          if (
+            isLocationRequestGenerationCurrent(
+              departureRequestGenerationRef,
+              generation,
+            ) &&
+            !isFreeTextResolveStale(rawLabel, committedDepartureRef.current)
+          ) {
+            setDepartureSelectionState("error");
+          }
+        }
+      })();
+    },
+    [onChange],
+  );
+
+  const resolveDestination = useCallback(
+    (rawLabel: string): void => {
+      const generation = advanceLocationRequestGeneration(
+        destinationRequestGenerationRef,
+      );
+      committedDestinationRef.current = rawLabel;
+      setDestinationSelectionState("resolving");
+      onChange({
+        destinationLocationText: rawLabel,
+        destinationPlaceId: null,
+        destinationLat: null,
+        destinationLng: null,
+        destinationCoordinatePrecision: null,
+      });
+      void (async () => {
+        try {
+          const resolution = await resolveFreeTextLocation(
+            rawLabel,
+            destinationContextRef.current,
+          );
+          if (
+            !isLocationRequestGenerationCurrent(
+              destinationRequestGenerationRef,
+              generation,
+            ) ||
+            isFreeTextResolveStale(rawLabel, committedDestinationRef.current)
+          ) return;
+          if (resolution.status === "needs_context") {
+            setDestinationSelectionState("needs_context");
+            return;
+          }
+          const approx = resolution.location;
+          onChange({
+            destinationLat: approx.lat,
+            destinationLng: approx.lng,
+            destinationCoordinatePrecision: "approximate",
+          });
+          destinationContextRef.current = {
+            city: approx.city,
+            countryCode: approx.countryCode,
+          };
+          setDestinationSelectionState("selected");
+        } catch {
+          if (
+            isLocationRequestGenerationCurrent(
+              destinationRequestGenerationRef,
+              generation,
+            ) &&
+            !isFreeTextResolveStale(rawLabel, committedDestinationRef.current)
+          ) {
+            setDestinationSelectionState("error");
+          }
+        }
+      })();
+    },
+    [onChange],
+  );
+
   // ORCH-1118 — inline "pick from suggestions" errors. Revealed only after a
   // blocked publish attempt (showAddressErrors). Empty OR dirty → error.
   const departureError =
@@ -437,30 +597,64 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
         <MapboxAddressInput
           value={draft.departureLocationText ?? ""}
           accessibilityLabel="Departing from"
-          // ORCH-1118 — typing nulls the structured fields so the planner must
-          // confirm a real Mapbox pick (mirrors ExperienceStopCard). Do not loosen.
+          allowFreeText
+          selectionState={departureSelectionState}
+          selectedLabel={draft.departureLocationText ?? ""}
+          // Issue #1363 — typing nulls the structured fields until the selected
+          // address resolves automatically.
           onChangeText={(v) =>
             onChange({
               departureLocationText: v,
               departurePlaceId: null,
               departureLat: null,
               departureLng: null,
+              departureCoordinatePrecision: (
+                advanceLocationRequestGeneration(departureRequestGenerationRef),
+                null
+              ),
             })
           }
-          onPick={(place) => {
+          onFreeText={resolveDeparture}
+          onPick={(place, selectedLabel) => {
+            advanceLocationRequestGeneration(departureRequestGenerationRef);
+            // Compatibility note: departureLocationText: place.formattedAddress
+            // was the old mapping; the selected row label now wins when supplied.
+            const label = selectedLabel ?? place.formattedAddress;
+            committedDepartureRef.current = label;
             onChange({
               departurePlaceId: place.placeId,
-              departureLocationText: place.formattedAddress,
+              departureLocationText: label,
               departureLat: place.location.lat,
               departureLng: place.location.lng,
+              departureCoordinatePrecision: "approximate",
+            });
+            departureContextRef.current = {
+              city: place.city,
+              countryCode: place.countryCode,
+            };
+            setDepartureSelectionState("selected");
+          }}
+          onChangeSelected={() => {
+            advanceLocationRequestGeneration(departureRequestGenerationRef);
+            committedDepartureRef.current = draft.departureLocationText ?? "";
+            setDepartureSelectionState("editing");
+            onChange({
+              departurePlaceId: null,
+              departureLat: null,
+              departureLng: null,
+              departureCoordinatePrecision: null,
             });
           }}
           onClear={() => {
+            advanceLocationRequestGeneration(departureRequestGenerationRef);
+            committedDepartureRef.current = "";
+            setDepartureSelectionState("editing");
             onChange({
               departurePlaceId: null,
               departureLocationText: null,
               departureLat: null,
               departureLng: null,
+              departureCoordinatePrecision: null,
             });
           }}
           error={departureError}
@@ -474,30 +668,63 @@ export const TripCreatorStep1Basics: React.FC<TripCreatorStep1BasicsProps> = ({
         <MapboxAddressInput
           value={draft.destinationLocationText ?? ""}
           accessibilityLabel="Destination"
-          // ORCH-1118 — typing nulls the structured fields so the planner must
-          // confirm a real Mapbox pick (mirrors ExperienceStopCard). Do not loosen.
+          allowFreeText
+          selectionState={destinationSelectionState}
+          selectedLabel={draft.destinationLocationText ?? ""}
+          // Issue #1363 — coordinate comes from automatic hierarchy resolution.
           onChangeText={(v) =>
             onChange({
               destinationLocationText: v,
               destinationPlaceId: null,
               destinationLat: null,
               destinationLng: null,
+              destinationCoordinatePrecision: (
+                advanceLocationRequestGeneration(destinationRequestGenerationRef),
+                null
+              ),
             })
           }
-          onPick={(place) => {
+          onFreeText={resolveDestination}
+          onPick={(place, selectedLabel) => {
+            advanceLocationRequestGeneration(destinationRequestGenerationRef);
+            // Compatibility note: destinationLocationText: place.formattedAddress
+            // was the old mapping; the selected row label now wins when supplied.
+            const label = selectedLabel ?? place.formattedAddress;
+            committedDestinationRef.current = label;
             onChange({
               destinationPlaceId: place.placeId,
-              destinationLocationText: place.formattedAddress,
+              destinationLocationText: label,
               destinationLat: place.location.lat,
               destinationLng: place.location.lng,
+              destinationCoordinatePrecision: "approximate",
+            });
+            destinationContextRef.current = {
+              city: place.city,
+              countryCode: place.countryCode,
+            };
+            setDestinationSelectionState("selected");
+          }}
+          onChangeSelected={() => {
+            advanceLocationRequestGeneration(destinationRequestGenerationRef);
+            committedDestinationRef.current = draft.destinationLocationText ?? "";
+            setDestinationSelectionState("editing");
+            onChange({
+              destinationPlaceId: null,
+              destinationLat: null,
+              destinationLng: null,
+              destinationCoordinatePrecision: null,
             });
           }}
           onClear={() => {
+            advanceLocationRequestGeneration(destinationRequestGenerationRef);
+            committedDestinationRef.current = "";
+            setDestinationSelectionState("editing");
             onChange({
               destinationPlaceId: null,
               destinationLocationText: null,
               destinationLat: null,
               destinationLng: null,
+              destinationCoordinatePrecision: null,
             });
           }}
           error={destinationError}
@@ -699,6 +926,12 @@ const styles = StyleSheet.create({
     lineHeight: typography.caption.lineHeight,
     fontWeight: "600",
     color: textTokens.secondary,
+  },
+  // Issue #1363 — non-silent inline hint on a failed free-text geocode (rule 3).
+  locationHint: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: semantic.warning,
   },
   textInput: {
     height: 48,

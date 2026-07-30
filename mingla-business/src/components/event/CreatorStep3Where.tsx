@@ -35,7 +35,14 @@ import { Input } from "../ui/Input";
 // MapboxAddressInput is a drop-in for AddressAutocompleteInput (same props +
 // the same PlaceDetails boundary: formattedAddress / city / location).
 import { MapboxAddressInput } from "../location/MapboxAddressInput";
+import {
+  advanceLocationRequestGeneration,
+  isFreeTextResolveStale,
+  isLocationRequestGenerationCurrent,
+  resolveFreeTextLocation,
+} from "../../utils/resolveApproxLocation";
 import type { PlaceDetails } from "../../services/mapboxGeocodeService";
+import type { LocationSelectionState } from "@mingla/location-input";
 // ORCH-1186 (salvaged from ORCH-1158 Issue 3 [wizard-map-preview]) — the SAME
 // proven static-map builder the trip/experience previews use. As of ORCH-1165
 // the static map is fetched through the vendor-NEUTRAL `static-map` Supabase
@@ -58,6 +65,64 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
   const venueError = showErrors ? errorForKey(errors, "venueName") : undefined;
   const addressError = showErrors ? errorForKey(errors, "address") : undefined;
   const onlineError = showErrors ? errorForKey(errors, "onlineUrl") : undefined;
+
+  const [selectionState, setSelectionState] =
+    React.useState<LocationSelectionState>(
+      draft.address?.trim() && draft.city ? "selected" : "editing",
+    );
+  // Issue #1363 P3-2 — latest-wins guard: the address text currently committed
+  // to the field, so a superseded free-text geocode can't patch a stale city.
+  const committedAddrRef = React.useRef(draft.address ?? "");
+  const requestGenerationRef = React.useRef(0);
+  const savedCityRef = React.useRef(draft.city);
+
+  const resolveCommittedText = React.useCallback(
+    (rawLabel: string): void => {
+      const generation = advanceLocationRequestGeneration(requestGenerationRef);
+      committedAddrRef.current = rawLabel;
+      setSelectionState("resolving");
+      updateDraft({
+        address: rawLabel,
+        city: null,
+        locationGeo: null,
+        coordinatePrecision: null,
+      });
+      void (async () => {
+        try {
+          const resolution = await resolveFreeTextLocation(rawLabel, {
+            city: savedCityRef.current,
+          });
+          if (
+            !isLocationRequestGenerationCurrent(requestGenerationRef, generation) ||
+            isFreeTextResolveStale(rawLabel, committedAddrRef.current)
+          ) return;
+          if (
+            resolution.status === "needs_context" ||
+            resolution.location.city === null
+          ) {
+            setSelectionState("needs_context");
+            return;
+          }
+          const approx = resolution.location;
+          updateDraft({
+            city: approx.city,
+            locationGeo: { lat: approx.lat, lng: approx.lng },
+            coordinatePrecision: "approximate",
+          });
+          savedCityRef.current = approx.city;
+          setSelectionState("selected");
+        } catch {
+          if (
+            isLocationRequestGenerationCurrent(requestGenerationRef, generation) &&
+            !isFreeTextResolveStale(rawLabel, committedAddrRef.current)
+          ) {
+            setSelectionState("error");
+          }
+        }
+      })();
+    },
+    [updateDraft],
+  );
 
   const showInPerson = draft.format === "in_person" || draft.format === "hybrid";
   const showOnline = draft.format === "online" || draft.format === "hybrid";
@@ -90,16 +155,43 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
             <Text style={styles.fieldLabel}>Address</Text>
             <MapboxAddressInput
               value={draft.address ?? ""}
-              onChangeText={(v) => updateDraft({ address: v, city: null, locationGeo: null })}
-              onPick={(details: PlaceDetails): void => {
+              allowFreeText
+              selectionState={selectionState}
+              selectedLabel={draft.address ?? ""}
+              onChangeText={(v) => {
+                advanceLocationRequestGeneration(requestGenerationRef);
+                committedAddrRef.current = v;
+                updateDraft({ address: v, city: null, locationGeo: null, coordinatePrecision: null });
+              }}
+              onFreeText={resolveCommittedText}
+              onPick={(details: PlaceDetails, selectedLabel?: string): void => {
+                advanceLocationRequestGeneration(requestGenerationRef);
+                const label = selectedLabel ?? details.formattedAddress;
+                committedAddrRef.current = label;
                 updateDraft({
-                  address: details.formattedAddress,
+                  address: label,
                   city: details.city,
                   locationGeo: details.location,
+                  coordinatePrecision: "approximate",
+                });
+                savedCityRef.current = details.city;
+                setSelectionState("selected");
+              }}
+              onChangeSelected={() => {
+                advanceLocationRequestGeneration(requestGenerationRef);
+                committedAddrRef.current = draft.address ?? "";
+                setSelectionState("editing");
+                updateDraft({
+                  city: null,
+                  locationGeo: null,
+                  coordinatePrecision: null,
                 });
               }}
               onClear={(): void => {
-                updateDraft({ address: null, city: null, locationGeo: null });
+                advanceLocationRequestGeneration(requestGenerationRef);
+                committedAddrRef.current = "";
+                setSelectionState("editing");
+                updateDraft({ address: null, city: null, locationGeo: null, coordinatePrecision: null });
               }}
               error={addressError}
             />
@@ -151,13 +243,19 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
               <Image>. REAL-DATA-ONLY (rule 9): until an address is picked
               (draft.locationGeo === null) OR the proxy base URL is absent at
               runtime, we show the honest "pick an address" empty state — never a
-              fake tile. */}
+              fake tile. Pick an address to preview the map. */}
           {(() => {
+            // Issue #1363 — honest precision rendering (no fabricated precision,
+            // rule 9): an APPROXIMATE (free-text) coordinate renders at a lower
+            // zoom + an "Approximate location" caption so the preview never
+            // implies a false pinpoint. Legacy exact / null renders precise.
+            const isApprox = draft.coordinatePrecision === "approximate";
             const mapUrl = buildStaticMapUrl({
               lat: draft.locationGeo?.lat ?? null,
               lng: draft.locationGeo?.lng ?? null,
               accentHex: accent.warm,
               height: 160,
+              zoom: isApprox ? 11 : 14,
             });
             return mapUrl !== null ? (
               <View style={styles.mapWrap}>
@@ -168,13 +266,19 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
                   accessibilityLabel={`Map of ${draft.address ?? "the venue"}`}
                 />
                 <View style={styles.mapPin} />
+                {isApprox ? (
+                  <View style={styles.approxBadge}>
+                    <Icon name="location" size={12} color={textTokens.primary} />
+                    <Text style={styles.approxBadgeText}>Approximate location</Text>
+                  </View>
+                ) : null}
               </View>
             ) : (
               <View style={[styles.mapWrap, styles.mapEmpty]}>
-                <Icon name="location" size={22} color={textTokens.quaternary} />
-                <Text style={styles.mapEmptyText}>
-                  Pick an address to preview the map
-                </Text>
+                    <Icon name="location" size={22} color={textTokens.quaternary} />
+                    <Text style={styles.mapEmptyText}>
+                      Pick an address to preview the map
+                    </Text>
               </View>
             );
           })()}
@@ -244,6 +348,31 @@ const styles = StyleSheet.create({
     lineHeight: typography.caption.lineHeight,
     color: textTokens.tertiary,
     marginTop: spacing.xs,
+  },
+  // Issue #1363 — non-silent inline hint on a failed free-text geocode (rule 3).
+  addrHint: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: semantic.warning,
+    marginTop: spacing.xs,
+  },
+  // Issue #1363 — "Approximate location" badge over an approximate-precision map.
+  approxBadge: {
+    position: "absolute",
+    top: spacing.xs,
+    left: spacing.xs,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radiusTokens.full,
+    backgroundColor: "rgba(0,0,0,0.6)",
+  },
+  approxBadgeText: {
+    fontSize: typography.caption.fontSize,
+    color: textTokens.primary,
+    fontWeight: "500",
   },
   inputError: {
     borderColor: semantic.error,

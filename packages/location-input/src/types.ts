@@ -87,6 +87,25 @@ export interface LocationInputTokens {
     fontSize: number;
     lineHeight: number;
   };
+  /**
+   * Issue #1363 (device-UX F2) — OPTIONAL accent treatment for the Tier-2
+   * "Use '<address>'" free-text ACTION row, so it reads as a tappable button
+   * (accent text + accent leading icon + a subtle tinted/bordered pill) instead
+   * of muted status text. When ABSENT (every consumer host passes no `action`)
+   * the row falls back to the muted `status.text` styling → the render is
+   * BYTE-IDENTICAL to before. Only the business host injects it (brand orange).
+   */
+  action?: LocationInputAction;
+}
+
+/** Issue #1363 — accent tokens for the free-text ACTION row (optional). */
+export interface LocationInputAction {
+  /** Accent text + leading-icon color (brand orange #eb7825). */
+  text: string;
+  /** Optional subtle tinted pill background. */
+  bg?: string;
+  /** Optional pill border color. */
+  border?: string;
 }
 
 /** Field-state copy — host injects so consumer/business voice can differ. */
