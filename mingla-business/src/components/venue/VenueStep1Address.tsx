@@ -120,6 +120,7 @@ export const VenueStep1Address: React.FC<VenueStep1AddressProps> = ({
         selectedLabel={formattedAddress}
         onChangeText={(t) => {
           advanceLocationRequestGeneration(requestGenerationRef);
+          savedContextRef.current = { city: null, countryCode: null };
           // ORCH-1079 LOCKED dedup guard: null the address/geo but NEVER
           // `googlePlaceId`. Issue #1363 adds coordinatePrecision to the reset.
           committedAddrRef.current = t;
@@ -154,6 +155,7 @@ export const VenueStep1Address: React.FC<VenueStep1AddressProps> = ({
         }}
         onChangeSelected={() => {
           advanceLocationRequestGeneration(requestGenerationRef);
+          savedContextRef.current = { city: null, countryCode: null };
           committedAddrRef.current = formattedAddress;
           setSelectionState("editing");
           patch({
@@ -166,6 +168,7 @@ export const VenueStep1Address: React.FC<VenueStep1AddressProps> = ({
         }}
         onClear={(): void => {
           advanceLocationRequestGeneration(requestGenerationRef);
+          savedContextRef.current = { city: null, countryCode: null };
           // ORCH-1079 LOCKED (§3.C): clearing the field MUST NOT null
           // `googlePlaceId` — that would wipe the pool-derived dedup key on the
           // claim path. Only address/geo reset.

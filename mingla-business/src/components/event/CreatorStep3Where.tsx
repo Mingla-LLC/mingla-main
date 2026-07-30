@@ -160,6 +160,7 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
               selectedLabel={draft.address ?? ""}
               onChangeText={(v) => {
                 advanceLocationRequestGeneration(requestGenerationRef);
+                savedCityRef.current = null;
                 committedAddrRef.current = v;
                 updateDraft({ address: v, city: null, locationGeo: null, coordinatePrecision: null });
               }}
@@ -179,6 +180,7 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
               }}
               onChangeSelected={() => {
                 advanceLocationRequestGeneration(requestGenerationRef);
+                savedCityRef.current = null;
                 committedAddrRef.current = draft.address ?? "";
                 setSelectionState("editing");
                 updateDraft({
@@ -189,6 +191,7 @@ export const CreatorStep3Where: React.FC<StepBodyProps> = ({
               }}
               onClear={(): void => {
                 advanceLocationRequestGeneration(requestGenerationRef);
+                savedCityRef.current = null;
                 committedAddrRef.current = "";
                 setSelectionState("editing");
                 updateDraft({ address: null, city: null, locationGeo: null, coordinatePrecision: null });

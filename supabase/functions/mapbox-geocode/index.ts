@@ -309,7 +309,7 @@ interface RetrieveContextEntry {
   region_code_full?: string;
 }
 
-interface MapboxFeature {
+export interface MapboxFeature {
   geometry?: { coordinates?: [number, number] }; // [lng, lat]
   properties?: {
     mapbox_id?: string;
@@ -914,7 +914,14 @@ function featureAdministrativeNames(feature: MapboxFeature): string[] {
     .filter(Boolean);
 }
 
-function featureToHierarchyDetails(
+const HIERARCHY_CITY_FEATURE_TYPES = new Set([
+  "place",
+  "city",
+  "locality",
+  "district",
+]);
+
+export function featureToHierarchyDetails(
   feature: MapboxFeature,
   matchLevel: HierarchyMatchLevel,
 ): HierarchyDetails | null {
@@ -925,19 +932,63 @@ function featureToHierarchyDetails(
     typeof feature.properties?.name === "string"
       ? feature.properties.name
       : null;
+  const featureType = normalizeHierarchyName(
+    feature.properties?.feature_type ?? "",
+  );
+  const featureOwnsCity =
+    matchLevel === "city" || HIERARCHY_CITY_FEATURE_TYPES.has(featureType);
   const city =
     matchLevel === "country"
       ? null
       : context?.place?.name ??
         context?.locality?.name ??
         context?.district?.name ??
-        (matchLevel === "city" ? featureName : null);
+        (featureOwnsCity ? featureName : null);
   return {
     ...coords,
     city: city ?? null,
     region: context?.region?.name ?? null,
     countryCode: featureCountryCode(feature),
   };
+}
+
+/** Saved context is authority only when the new query independently names it. */
+export function hierarchyQueryContainsName(
+  query: string,
+  contextName: string,
+): boolean {
+  const queryTokens = normalizeHierarchyName(query).split(" ").filter(Boolean);
+  const contextTokens = normalizeHierarchyName(contextName)
+    .split(" ")
+    .filter(Boolean);
+  if (contextTokens.length === 0 || contextTokens.length > queryTokens.length) {
+    return false;
+  }
+  return queryTokens.some((_, start) =>
+    contextTokens.every((token, offset) => queryTokens[start + offset] === token)
+  );
+}
+
+export function savedHierarchyContextForQuery(
+  query: string,
+  savedContext:
+    | { city?: string | null; country_code?: string | null }
+    | null
+    | undefined,
+): { city: string | null; countryIso: string | null } {
+  const city =
+    typeof savedContext?.city === "string" && savedContext.city.trim().length > 0
+      ? savedContext.city.trim()
+      : null;
+  if (city === null || !hierarchyQueryContainsName(query, city)) {
+    return { city: null, countryIso: null };
+  }
+  const countryIso =
+    typeof savedContext?.country_code === "string" &&
+      /^[a-z]{2}$/i.test(savedContext.country_code)
+      ? savedContext.country_code.toUpperCase()
+      : null;
+  return { city, countryIso };
 }
 
 export function hierarchyFeatureMatches(params: {
@@ -1019,14 +1070,15 @@ async function handleForwardHierarchy(
     return jsonResponse({ details: null, reason: "needs_context" });
   }
   const explicitIso = explicitCountryIso(rawQuery);
-  const savedIso =
-    typeof savedContext?.country_code === "string" &&
-      /^[a-z]{2}$/i.test(savedContext.country_code)
-      ? savedContext.country_code.toUpperCase()
-      : null;
-  const requiredIso = explicitIso ?? savedIso;
+  const usableSavedContext = savedHierarchyContextForQuery(
+    rawQuery,
+    savedContext,
+  );
+  const requiredIso = explicitIso ?? usableSavedContext.countryIso;
   const localities = deriveHierarchyLocalities(rawQuery);
-  if (savedContext?.city?.trim()) localities.push(savedContext.city.trim());
+  if (usableSavedContext.city !== null) {
+    localities.push(usableSavedContext.city);
+  }
 
   const placeResult = await fetchHierarchyFeatures(
     buildHierarchyForwardUrl({

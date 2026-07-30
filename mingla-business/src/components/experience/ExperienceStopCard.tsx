@@ -239,6 +239,7 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
               selectedLabel={stop.address}
               onChangeText={(v) => {
                 advanceLocationRequestGeneration(requestGenerationRef);
+                savedContextRef.current = { city: null, countryCode: null };
                 committedAddrRef.current = v;
                 onPatch(cid, {
                   address: v,
@@ -274,6 +275,7 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
               }}
               onChangeSelected={() => {
                 advanceLocationRequestGeneration(requestGenerationRef);
+                savedContextRef.current = { city: null, countryCode: null };
                 committedAddrRef.current = stop.address;
                 setSelectionState("editing");
                 onPatch(cid, {
@@ -288,6 +290,7 @@ const ExperienceStopCardImpl: React.FC<ExperienceStopCardProps> = ({
               }}
               onClear={() => {
                 advanceLocationRequestGeneration(requestGenerationRef);
+                savedContextRef.current = { city: null, countryCode: null };
                 committedAddrRef.current = "";
                 setSelectionState("editing");
                 onPatch(cid, {
