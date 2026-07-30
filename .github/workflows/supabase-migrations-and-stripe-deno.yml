@@ -26,6 +26,8 @@ on:
       - "supabase/functions/_shared/**"
       - "supabase/functions/_shared/__tests__/**"
       - "supabase/functions/__tests__/**"
+      # ISSUE-1387 — Stay inventory management endpoint and hermetic contract test.
+      - "supabase/functions/manage-stay-inventory/**"
       # ORCH-1270 — marketing-send edge fn + its strict-grep gates.
       - "supabase/functions/marketing-send/**"
       - ".github/scripts/strict-grep/i-proposed-1270-*.mjs"
@@ -83,6 +85,8 @@ on:
       - "supabase/migrations/**"
       - "supabase/functions/_shared/**"
       - "supabase/functions/__tests__/**"
+      # ISSUE-1387 — Stay inventory management endpoint and hermetic contract test.
+      - "supabase/functions/manage-stay-inventory/**"
       # ORCH-1270 — marketing-send edge fn + its strict-grep gates.
       - "supabase/functions/marketing-send/**"
       - ".github/scripts/strict-grep/i-proposed-1270-*.mjs"
@@ -194,6 +198,10 @@ jobs:
             psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$f"
             echo "::endgroup::"
           done
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1387_stay_inventory.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1387_stay_inventory.adversarial.test.sql
 
   deno-tests:
     name: "Deno unit tests for Stripe shared modules"
@@ -244,6 +252,8 @@ jobs:
             # currency/mingla_event_id (only when NULL, never clobbering, never
             # touching the *_status dedup gate). Hermetic — spy senders + fake supabase.
             supabase/functions/_shared/__tests__/issue_855_pr0_conversion_brand_backfill.test.ts
+            # ISSUE-1387 — JWT gate, canonical action envelope, and error hygiene.
+            supabase/functions/manage-stay-inventory/index.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then
