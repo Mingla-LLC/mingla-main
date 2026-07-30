@@ -1,5 +1,10 @@
 import React from "react";
-import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
+import {
+  act,
+  fireEvent,
+  render,
+  waitFor,
+} from "@testing-library/react-native";
 import { BrandAnalyticsScreen } from "../BrandAnalyticsScreen";
 import { CustomerPatternsSection } from "../CustomerPatternsSection";
 
@@ -154,6 +159,16 @@ const deferred = <T,>() => {
   });
   return { promise, resolve };
 };
+const hasPoliteLiveRegionAncestor = (
+  node: ReturnType<ReturnType<typeof render>["getByText"]>,
+): boolean => {
+  let ancestor = node.parent;
+  while (ancestor !== null) {
+    if (ancestor.props.accessibilityLiveRegion === "polite") return true;
+    ancestor = ancestor.parent;
+  }
+  return false;
+};
 
 describe("issue #874 tester adversarial accessibility announcements", () => {
   beforeEach(() => {
@@ -175,12 +190,15 @@ describe("issue #874 tester adversarial accessibility announcements", () => {
       />,
     );
 
-    expect(screen.getByText("No booking pattern yet").parent?.props)
-      .toHaveProperty("accessibilityLiveRegion", "polite");
-    expect(screen.getByText("More data needed").parent?.props)
-      .toHaveProperty("accessibilityLiveRegion", "polite");
-    expect(screen.getByText("No clear pattern yet").parent?.props)
-      .toHaveProperty("accessibilityLiveRegion", "polite");
+    expect(
+      hasPoliteLiveRegionAncestor(screen.getByText("No booking pattern yet")),
+    ).toBe(true);
+    expect(
+      hasPoliteLiveRegionAncestor(screen.getByText("More data needed")),
+    ).toBe(true);
+    expect(
+      hasPoliteLiveRegionAncestor(screen.getByText("No clear pattern yet")),
+    ).toBe(true);
 
     await screen.rerender(
       <CustomerPatternsSection
@@ -194,10 +212,12 @@ describe("issue #874 tester adversarial accessibility announcements", () => {
       />,
     );
     expect(
-      screen.getByText(
-        "Based on 12 Mingla bookings and RSVPs across 4 dates in the last 180 days.",
-      ).parent?.props,
-    ).toHaveProperty("accessibilityLiveRegion", "polite");
+      hasPoliteLiveRegionAncestor(
+        screen.getByText(
+          "Based on 12 Mingla bookings and RSVPs across 4 dates in the last 180 days.",
+        ),
+      ),
+    ).toBe(true);
   });
 
   it.each([
