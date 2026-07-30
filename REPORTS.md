@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-07-30 — Stay guests can reserve multiple Rooms and priced Places in one same-property group, with server-authoritative bank/currency pricing, atomic no-oversell inventory holds, and whole-group instant or Request confirmation; payment execution remains staged for #1389. (#1388, PR #1413)
 - 2026-07-30 — Added the canonical Stay inventory foundation for hotels, resorts, guest houses, lodges, serviced apartments, and short-stay apartments: brands can securely model bulk-created Rooms and bookable Places with images, prices, fees, policies, staff permissions, future availability, instant/request confirmation, and bank/currency-gated publishing. (#1387, PR #1411)
 - 2026-07-30 — Customer-pattern analytics now validates schedule timezones through an indexed snapshot instead of scanning PostgreSQL’s full timezone catalog on every call; all 11 guarded production calls completed in under 33 ms. (#1406, PR #1408)
 - 2026-07-30 — Business analytics now has a private production rollup for customer commitment patterns by weekday, daypart, and offering type, with truthful sparse-data states and no fabricated winner, attendance, money, or PII. (#875, PR #1405)
