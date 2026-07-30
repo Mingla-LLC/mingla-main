@@ -7,6 +7,9 @@ DECLARE
   v_rls_count integer;
   v_reconcile text;
   v_activate text;
+  v_resolve text;
+  v_admin_atomic text;
+  v_price_aware text;
 BEGIN
   SELECT count(*) INTO v_policy_count
   FROM pg_policies
@@ -56,6 +59,39 @@ BEGIN
      OR v_activate NOT LIKE '%incomplete_fx_snapshot%'
      OR v_activate NOT LIKE '%status = ''superseded''%' THEN
     RAISE EXCEPTION 'issue_1384 adversarial: atomic FX activation guard incomplete';
+  END IF;
+
+  SELECT pg_get_functiondef(
+    'public.issue_1384_resolve_reconciliation(uuid,uuid,text,uuid,jsonb,uuid)'::regprocedure
+  ) INTO v_resolve;
+  IF v_resolve NOT LIKE '%WHEN default_currency IS NULL%'
+     OR v_resolve NOT LIKE '%v_rec.reason = ''provisional_changed''%'
+     OR v_resolve NOT LIKE '%THEN v_rec.to_currency_code%' THEN
+    RAISE EXCEPTION
+      'issue_1384 adversarial: provisional target is lost after reconciliation';
+  END IF;
+
+  SELECT pg_get_functiondef(
+    'public.issue_1384_admin_update_place_and_discovery_range(uuid,text,text,text[],boolean,text[],bigint,bigint,bigint,text,uuid)'::regprocedure
+  ) INTO v_admin_atomic;
+  IF v_admin_atomic NOT LIKE '%admin_reason_required%'
+     OR v_admin_atomic NOT LIKE '%range_version_conflict%'
+     OR v_admin_atomic NOT LIKE '%admin_edit_place%'
+     OR v_admin_atomic NOT LIKE '%issue_1384_save_discovery_price_range%' THEN
+    RAISE EXCEPTION
+      'issue_1384 adversarial: Admin edit is not one reasoned CAS transaction';
+  END IF;
+
+  SELECT pg_get_functiondef(
+    'public.issue_1384_query_servable_places_by_signal(text,numeric,double precision,double precision,double precision,uuid[],integer,bigint,bigint,character,uuid)'::regprocedure
+  ) INTO v_price_aware;
+  IF position('p_price_filter_currency' IN v_price_aware) = 0
+     OR position('ORDER BY ps.score' IN v_price_aware) = 0
+     OR position('LIMIT p_limit' IN v_price_aware) = 0
+     OR position('p_price_filter_currency' IN v_price_aware)
+        > position('ORDER BY ps.score' IN v_price_aware) THEN
+    RAISE EXCEPTION
+      'issue_1384 adversarial: filter is not inside the pre-order/pre-limit RPC';
   END IF;
 END;
 $test$;

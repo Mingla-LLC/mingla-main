@@ -26,17 +26,45 @@ export interface CanonicalDiscoveryPrice {
     | null;
 }
 
+/**
+ * Copy only the server-owned venue discovery-price contract across persistence
+ * and UI carriers. This deliberately excludes `priceTier`, Google price level,
+ * and preformatted strings so no carrier can recreate money from an ordinal.
+ */
+export function canonicalDiscoveryPriceFields(
+  value: object | null | undefined,
+): Partial<CanonicalDiscoveryPrice> {
+  if (!value) return {};
+  const carrier = value as Partial<CanonicalDiscoveryPrice>;
+  return {
+    priceRangeStatus: carrier.priceRangeStatus,
+    sourceMinMinor: carrier.sourceMinMinor,
+    sourceMaxMinor: carrier.sourceMaxMinor,
+    sourceCurrencyCode: carrier.sourceCurrencyCode,
+    sourceMinorUnitExponent: carrier.sourceMinorUnitExponent,
+    displayMinMinor: carrier.displayMinMinor,
+    displayMaxMinor: carrier.displayMaxMinor,
+    displayCurrencyCode: carrier.displayCurrencyCode,
+    displayMinorUnitExponent: carrier.displayMinorUnitExponent,
+    priceIsApproximate: carrier.priceIsApproximate === true,
+    fxSnapshotId: carrier.fxSnapshotId,
+    fxProvider: carrier.fxProvider,
+    fxProviderUpdatedAt: carrier.fxProviderUpdatedAt,
+    fxFreshness: carrier.fxFreshness,
+  };
+}
+
 function validMoney(
-  amount: number | null,
-  currency: string | null,
-  exponent: number | null,
+  amount: number | null | undefined,
+  currency: string | null | undefined,
+  exponent: number | null | undefined,
 ): boolean {
-  return amount !== null &&
+  return typeof amount === "number" &&
     Number.isSafeInteger(amount) &&
     amount >= 0 &&
-    currency !== null &&
+    typeof currency === "string" &&
     /^[A-Z]{3}$/.test(currency) &&
-    exponent !== null &&
+    typeof exponent === "number" &&
     Number.isInteger(exponent) &&
     exponent >= 0 &&
     exponent <= 3;
@@ -68,7 +96,7 @@ function formatRange(
 }
 
 export function canonicalDiscoveryPriceLabel(
-  price: CanonicalDiscoveryPrice | null | undefined,
+  price: Partial<CanonicalDiscoveryPrice> | null | undefined,
 ): string | null {
   if (
     !price ||
@@ -92,21 +120,21 @@ export function canonicalDiscoveryPriceLabel(
   ) {
     return `Approx. ${formatRange(
       price.displayMinMinor as number,
-      price.displayMaxMinor,
+      price.displayMaxMinor ?? null,
       price.displayCurrencyCode as string,
       price.displayMinorUnitExponent as number,
     )}`;
   }
   return formatRange(
     price.sourceMinMinor as number,
-    price.sourceMaxMinor,
+    price.sourceMaxMinor ?? null,
     price.sourceCurrencyCode as string,
     price.sourceMinorUnitExponent as number,
   );
 }
 
 export function canonicalDiscoveryPriceDetail(
-  price: CanonicalDiscoveryPrice | null | undefined,
+  price: Partial<CanonicalDiscoveryPrice> | null | undefined,
 ): {
   source: string;
   approximate: string | null;
@@ -126,7 +154,7 @@ export function canonicalDiscoveryPriceDetail(
   }
   const source = formatRange(
     price.sourceMinMinor as number,
-    price.sourceMaxMinor,
+    price.sourceMaxMinor ?? null,
     price.sourceCurrencyCode as string,
     price.sourceMinorUnitExponent as number,
   );
@@ -139,7 +167,7 @@ export function canonicalDiscoveryPriceDetail(
       )
     ? formatRange(
         price.displayMinMinor as number,
-        price.displayMaxMinor,
+        price.displayMaxMinor ?? null,
         price.displayCurrencyCode as string,
         price.displayMinorUnitExponent as number,
       )
@@ -147,7 +175,7 @@ export function canonicalDiscoveryPriceDetail(
   return {
     source,
     approximate: converted,
-    ratesDate: price.fxProviderUpdatedAt,
+    ratesDate: price.fxProviderUpdatedAt ?? null,
     attributionUrl: converted !== null
       ? "https://www.exchangerate-api.com/"
       : null,

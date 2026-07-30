@@ -101,4 +101,60 @@ BEGIN
 END;
 $math$;
 
+DO $serving$
+DECLARE
+  v_expensive uuid;
+  v_matching uuid;
+  v_row record;
+BEGIN
+  INSERT INTO public.place_pool (
+    name, lat, lng, types, stored_photo_urls, is_active, is_servable
+  ) VALUES (
+    'Issue 1384 expensive first', 6.45, 3.47, ARRAY['restaurant'],
+    ARRAY['https://example.test/expensive.jpg'], true, true
+  ) RETURNING id INTO v_expensive;
+  INSERT INTO public.place_pool (
+    name, lat, lng, types, stored_photo_urls, is_active, is_servable
+  ) VALUES (
+    'Issue 1384 matching second', 6.45, 3.47, ARRAY['restaurant'],
+    ARRAY['https://example.test/matching.jpg'], true, true
+  ) RETURNING id INTO v_matching;
+
+  INSERT INTO public.place_scores (place_id, signal_id, score)
+  VALUES
+    (v_expensive, 'issue_1384_filter', 100),
+    (v_matching, 'issue_1384_filter', 90);
+  INSERT INTO public.place_discovery_price_ranges (
+    place_pool_id, status, source_min_minor, source_max_minor,
+    source_currency_code, source_type, source_recorded_at
+  ) VALUES
+    (v_expensive, 'active', 1000, 2000, 'NGN', 'provider', now()),
+    (v_matching, 'active', 100, 200, 'NGN', 'provider', now());
+
+  SELECT * INTO v_row
+  FROM public.issue_1384_query_servable_places_by_signal(
+    'issue_1384_filter', 0, 6.45, 3.47, 1000,
+    '{}'::uuid[], 1, 0, 500, 'NGN', NULL
+  );
+  IF v_row.place_id IS DISTINCT FROM v_matching THEN
+    RAISE EXCEPTION
+      'issue_1384: price overlap was applied after rank/limit, got %',
+      v_row.place_id;
+  END IF;
+
+  SELECT * INTO v_row
+  FROM public.place_discovery_range_for_viewer(
+    v_matching, 'JPY', NULL
+  );
+  IF v_row.source_currency_code <> 'NGN'
+     OR v_row.source_min_minor <> 100
+     OR v_row.display_currency_code IS NOT NULL
+     OR v_row.display_min_minor IS NOT NULL
+     OR v_row.price_is_approximate THEN
+    RAISE EXCEPTION
+      'issue_1384: unsupported viewer currency did not degrade source-only';
+  END IF;
+END;
+$serving$;
+
 ROLLBACK;

@@ -457,6 +457,25 @@ BEGIN
     RETURN;
   END IF;
 
+  -- Viewer preference is not settlement truth. An unknown/unsupported viewer
+  -- currency degrades to exact source money instead of failing the deck.
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.supported_brand_currencies c
+    WHERE c.code = p_display_currency
+      AND c.active
+  ) THEN
+    RETURN QUERY SELECT
+      v_range.status,
+      v_range.source_min_minor,
+      v_range.source_max_minor,
+      v_range.source_currency_code,
+      NULL::bigint, NULL::bigint, NULL::character(3),
+      false, NULL::uuid, NULL::text, NULL::timestamptz,
+      'unavailable'::text;
+    RETURN;
+  END IF;
+
   IF p_snapshot IS NULL THEN
     SELECT * INTO v_snapshot
       FROM public.fx_latest_servable_snapshot(now());
@@ -576,6 +595,143 @@ REVOKE ALL ON FUNCTION public.place_discovery_ranges_for_viewer(
 GRANT EXECUTE ON FUNCTION public.place_discovery_ranges_for_viewer(
   uuid[], character, uuid
 ) TO anon, authenticated, service_role;
+
+-- Price-aware solo serving contract. The canonical overlap predicate lives in
+-- the same SQL statement as ranking/limit, so no post-cap filtering can hide
+-- otherwise eligible venues.
+CREATE OR REPLACE FUNCTION public.issue_1384_query_servable_places_by_signal(
+  p_signal_id text,
+  p_filter_min numeric,
+  p_lat double precision,
+  p_lng double precision,
+  p_radius_m double precision,
+  p_exclude_place_ids uuid[] DEFAULT '{}'::uuid[],
+  p_limit integer DEFAULT 20,
+  p_price_filter_min_minor bigint DEFAULT NULL,
+  p_price_filter_max_minor bigint DEFAULT NULL,
+  p_price_filter_currency character(3) DEFAULT NULL,
+  p_fx_snapshot_id uuid DEFAULT NULL
+) RETURNS TABLE(
+  place_id uuid,
+  google_place_id text,
+  name text,
+  address text,
+  lat double precision,
+  lng double precision,
+  rating numeric,
+  review_count integer,
+  price_level text,
+  price_range_start_cents integer,
+  price_range_end_cents integer,
+  opening_hours jsonb,
+  website text,
+  photos jsonb,
+  stored_photo_urls text[],
+  types text[],
+  primary_type text,
+  generative_summary text,
+  signal_score numeric,
+  signal_contributions jsonb,
+  ai_reasoning jsonb,
+  ai_score_raw numeric
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+  SELECT
+    pp.id,
+    pp.google_place_id,
+    pp.name,
+    pp.address,
+    pp.lat,
+    pp.lng,
+    pp.rating,
+    pp.review_count,
+    pp.price_level,
+    pp.price_range_start_cents,
+    pp.price_range_end_cents,
+    pp.opening_hours,
+    pp.website,
+    pp.photos,
+    pp.stored_photo_urls,
+    pp.types,
+    pp.primary_type,
+    pp.generative_summary,
+    ps.score,
+    ps.contributions,
+    pp.ai_signal_scores -> p_signal_id,
+    NULLIF(
+      pp.ai_signal_scores -> p_signal_id ->> 'score_0_to_100',
+      ''
+    )::numeric
+  FROM public.place_pool pp
+  JOIN public.place_scores ps
+    ON ps.place_id = pp.id
+   AND ps.signal_id = p_signal_id
+  CROSS JOIN LATERAL public.place_discovery_range_for_viewer(
+    pp.id,
+    p_price_filter_currency,
+    p_fx_snapshot_id
+  ) filtered_price
+  WHERE pp.is_servable = true
+    AND pp.is_active = true
+    AND ps.score >= p_filter_min
+    AND pp.stored_photo_urls IS NOT NULL
+    AND pg_catalog.array_length(pp.stored_photo_urls, 1) > 0
+    AND NOT (
+      pg_catalog.array_length(pp.stored_photo_urls, 1) = 1
+      AND pp.stored_photo_urls[1] = '__backfill_failed__'
+    )
+    AND (
+      6371000.0 * 2.0 * pg_catalog.asin(pg_catalog.sqrt(
+        pg_catalog.power(pg_catalog.sin(pg_catalog.radians(pp.lat - p_lat) / 2.0), 2) +
+        pg_catalog.cos(pg_catalog.radians(p_lat)) *
+        pg_catalog.cos(pg_catalog.radians(pp.lat)) *
+        pg_catalog.power(pg_catalog.sin(pg_catalog.radians(pp.lng - p_lng) / 2.0), 2)
+      ))
+    ) <= p_radius_m
+    AND NOT (pp.id = ANY(COALESCE(p_exclude_place_ids, '{}'::uuid[])))
+    AND (
+      p_price_filter_currency IS NULL
+      OR (
+        filtered_price.price_range_status = 'active'
+        AND COALESCE(
+          filtered_price.display_currency_code,
+          filtered_price.source_currency_code
+        ) = p_price_filter_currency
+        AND (
+          COALESCE(
+            filtered_price.display_max_minor,
+            filtered_price.source_max_minor
+          ) IS NULL
+          OR COALESCE(
+              filtered_price.display_max_minor,
+              filtered_price.source_max_minor
+            ) >= COALESCE(p_price_filter_min_minor, 0)
+        )
+        AND (
+          p_price_filter_max_minor IS NULL
+          OR COALESCE(
+            filtered_price.display_min_minor,
+            filtered_price.source_min_minor
+          ) <= p_price_filter_max_minor
+        )
+      )
+    )
+  ORDER BY ps.score DESC, pp.review_count DESC NULLS LAST
+  LIMIT p_limit;
+$function$;
+
+REVOKE ALL ON FUNCTION public.issue_1384_query_servable_places_by_signal(
+  text, numeric, double precision, double precision, double precision,
+  uuid[], integer, bigint, bigint, character, uuid
+) FROM public, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_1384_query_servable_places_by_signal(
+  text, numeric, double precision, double precision, double precision,
+  uuid[], integer, bigint, bigint, character, uuid
+) TO service_role;
 
 CREATE OR REPLACE FUNCTION public.issue_1384_append_range_revision()
 RETURNS trigger
@@ -1074,6 +1230,109 @@ GRANT EXECUTE ON FUNCTION public.issue_1384_save_discovery_price_range(
   uuid, uuid, uuid, bigint, bigint, character, bigint, text, uuid
 ) TO authenticated, service_role;
 
+-- One Admin statement owns legacy place fields, AI categories, and canonical
+-- discovery money. CAS is checked before any mutation; every exception rolls
+-- the whole statement back, eliminating the former partial-commit sequence.
+CREATE OR REPLACE FUNCTION public.issue_1384_admin_update_place_and_discovery_range(
+  p_place_pool_id uuid,
+  p_name text,
+  p_price_tier text,
+  p_price_tiers text[],
+  p_is_active boolean,
+  p_ai_categories text[],
+  p_source_min_minor bigint,
+  p_source_max_minor bigint,
+  p_expected_version bigint,
+  p_actor_reason text,
+  p_request_id uuid DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+DECLARE
+  v_existing public.place_discovery_price_ranges%ROWTYPE;
+  v_saved public.place_discovery_price_ranges%ROWTYPE;
+  v_place_result jsonb;
+BEGIN
+  -- Authorization is deliberately the first state-dependent operation.
+  IF auth.uid() IS NULL OR NOT public.is_admin_user() THEN
+    RAISE EXCEPTION 'forbidden' USING ERRCODE = '42501';
+  END IF;
+  IF pg_catalog.length(pg_catalog.btrim(COALESCE(p_actor_reason, ''))) < 3 THEN
+    RAISE EXCEPTION 'admin_reason_required' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT * INTO v_existing
+  FROM public.place_discovery_price_ranges r
+  WHERE r.place_pool_id = p_place_pool_id
+  FOR UPDATE;
+
+  IF FOUND AND v_existing.status = 'active' THEN
+    IF p_expected_version IS NULL
+       OR v_existing.version <> p_expected_version THEN
+      RAISE EXCEPTION 'range_version_conflict' USING ERRCODE = '40001';
+    END IF;
+    IF p_source_min_minor IS NULL OR p_source_min_minor < 0
+       OR (p_source_max_minor IS NOT NULL
+           AND p_source_max_minor < p_source_min_minor) THEN
+      RAISE EXCEPTION 'invalid_range' USING ERRCODE = '22023';
+    END IF;
+  ELSIF p_expected_version IS NOT NULL THEN
+    RAISE EXCEPTION 'range_version_conflict' USING ERRCODE = '40001';
+  END IF;
+
+  SELECT public.admin_edit_place(
+    p_place_pool_id,
+    p_name,
+    p_price_tier,
+    p_is_active,
+    p_price_tiers
+  ) INTO v_place_result;
+
+  UPDATE public.place_pool
+  SET ai_categories = CASE
+        WHEN COALESCE(pg_catalog.cardinality(p_ai_categories), 0) = 0
+        THEN NULL
+        ELSE p_ai_categories
+      END,
+      updated_at = now()
+  WHERE id = p_place_pool_id;
+
+  IF v_existing.place_pool_id IS NOT NULL
+     AND v_existing.status = 'active' THEN
+    SELECT * INTO v_saved
+    FROM public.issue_1384_save_discovery_price_range(
+      v_existing.brand_id,
+      v_existing.venue_id,
+      p_place_pool_id,
+      p_source_min_minor,
+      p_source_max_minor,
+      v_existing.source_currency_code,
+      p_expected_version,
+      pg_catalog.btrim(p_actor_reason),
+      p_request_id
+    );
+  END IF;
+
+  RETURN jsonb_build_object(
+    'place', v_place_result,
+    'discoveryPrice', CASE
+      WHEN v_saved.place_pool_id IS NULL THEN NULL
+      ELSE to_jsonb(v_saved)
+    END
+  );
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.issue_1384_admin_update_place_and_discovery_range(
+  uuid, text, text, text[], boolean, text[], bigint, bigint, bigint, text, uuid
+) FROM public, anon;
+GRANT EXECUTE ON FUNCTION public.issue_1384_admin_update_place_and_discovery_range(
+  uuid, text, text, text[], boolean, text[], bigint, bigint, bigint, text, uuid
+) TO authenticated, service_role;
+
 CREATE OR REPLACE FUNCTION public.issue_1384_preview_reconciliation(
   p_brand_id uuid,
   p_reconciliation_id uuid
@@ -1334,7 +1593,12 @@ BEGIN
     WHERE id = p_reconciliation_id;
 
   UPDATE public.brands
-    SET provisional_currency_code = NULL
+    SET provisional_currency_code = CASE
+      WHEN default_currency IS NULL
+        AND v_rec.reason = 'provisional_changed'
+      THEN v_rec.to_currency_code
+      ELSE NULL
+    END
     WHERE id = p_brand_id;
 
   RETURN public.issue_1384_brand_currency_state(p_brand_id);

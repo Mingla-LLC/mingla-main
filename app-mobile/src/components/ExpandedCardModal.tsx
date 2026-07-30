@@ -23,6 +23,7 @@ import { ExpandedCardModalProps, ExpandedCardData } from "../types/expandedCardT
 import type { CuratedExperienceCard, CuratedStop } from '../types/curatedExperience';
 import { formatDistanceFromMeters, formatPriceRange, formatCurrency } from "./utils/formatters";
 import { tierLabel, tierRangeLabel, TIER_BY_SLUG, PriceTierSlug } from '../constants/priceTiers';
+import { canonicalDiscoveryPriceDetail } from '../utils/priceTiers';
 import { curatedStopsToTimeline } from "../utils/curatedToTimeline";
 import { extractWeekdayText } from "../utils/openingHoursUtils";
 import { getReadableCategoryName, getCategoryIcon } from "../utils/categoryUtils";  // ORCH-0685
@@ -2059,9 +2060,7 @@ export default function ExpandedCardModal({
                   travelTime={viewerTravelTime ?? card.travelTime}
                   travelMode={card.travelMode ?? effectiveTravelMode}
                   measurementSystem={accountPreferences?.measurementSystem}
-                  priceRange={card.priceRange}
-                  priceTier={card.priceTier}
-                  priceLevel={undefined}
+                  discoveryPrice={card}
                   description={card.description}
                   tip={card.tip}
                   currency={accountPreferences?.currency}
@@ -2299,7 +2298,7 @@ export default function ExpandedCardModal({
                     category={getReadableCategoryName(card.category)}
                     title={card.title}
                     address={card.address}
-                    priceRange={card.priceRange}
+                    priceRange={canonicalDiscoveryPriceDetail(card)?.source}
                     travelTime={viewerTravelTime ?? card.travelTime ?? undefined}
                     strollTimeline={strollData.timeline}
                     routeDuration={strollData.route?.duration}
@@ -2313,7 +2312,7 @@ export default function ExpandedCardModal({
                     category={getReadableCategoryName(card.category)}
                     title={card.title}
                     address={card.address}
-                    priceRange={card.priceRange}
+                    priceRange={canonicalDiscoveryPriceDetail(card)?.source}
                     travelTime={viewerTravelTime ?? card.travelTime ?? undefined}
                     strollTimeline={picnicData.timeline}
                     routeDuration={picnicData.route?.duration}

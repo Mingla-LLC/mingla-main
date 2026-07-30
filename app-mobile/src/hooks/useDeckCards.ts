@@ -161,6 +161,8 @@ export interface UseDeckCardsResult {
   isPlaceholderData: boolean;
   isFullBatchLoaded: boolean;
   hasMore: boolean;
+  fxSnapshotId: string | null;
+  response?: DeckResponse;
   error: Error | null;
   refetch: () => void;
   /** ORCH-0474: Which server code path produced this result. Consumers branch
@@ -266,6 +268,7 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
             activePills: prev?.activePills ?? [],
             total: (prev?.cards?.length ?? 0) + cards.length,
             hasMore: prev?.hasMore ?? true,
+            fxSnapshotId: prev?.fxSnapshotId ?? null,
             // ORCH-0474 + ORCH-0486: serverPath from prev is preserved — the
             // final fetchDeck return replaces this with the authoritative
             // discriminant. During partial delivery we default to 'pipeline'
@@ -316,6 +319,8 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
     isPlaceholderData: query.isPlaceholderData,
     isFullBatchLoaded: !query.isLoading && !query.isFetching && hasData,
     hasMore: query.data?.hasMore ?? true,
+    fxSnapshotId: query.data?.fxSnapshotId ?? null,
+    response: query.data,
     error: query.error as Error | null,
     refetch: query.refetch,
     serverPath: resolvedServerPath,
@@ -324,5 +329,5 @@ export function useDeckCards(params: UseDeckCardsParams): UseDeckCardsResult {
     // staying on INITIAL_LOADING. `undefined` for non-empty/mixed decks.
     curatedEmptyReason: query.data?.curatedEmptyReason,
     collabDeadEndPayload: query.data?.collabDeadEndPayload,
-  }), [cards, activePills, query.data?.deckMode, query.data?.hasMore, query.data?.curatedEmptyReason, query.data?.collabDeadEndPayload, query.isLoading, query.isFetching, query.isPlaceholderData, hasData, query.error, query.refetch, resolvedServerPath]);
+  }), [cards, activePills, query.data, query.isLoading, query.isFetching, query.isPlaceholderData, hasData, query.error, query.refetch, resolvedServerPath]);
 }

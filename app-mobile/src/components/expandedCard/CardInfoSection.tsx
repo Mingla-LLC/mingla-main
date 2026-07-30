@@ -1,10 +1,13 @@
 import React from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, Linking } from "react-native";
 import { Icon } from "../ui/Icon";
 import { parseAndFormatDistance } from "../utils/formatters";
-import { PriceTierSlug } from "../../constants/priceTiers";
 import { useTranslation } from "react-i18next";
 import { getReadableCategoryName } from "../../utils/categoryUtils";
+import {
+  canonicalDiscoveryPriceDetail,
+  type CanonicalDiscoveryPrice,
+} from "../../utils/priceTiers";
 
 interface CardInfoSectionProps {
   title: string;
@@ -16,9 +19,7 @@ interface CardInfoSectionProps {
   travelTime?: string | null;
   travelMode?: string;
   measurementSystem?: "Metric" | "Imperial";
-  priceRange?: string;
-  priceTier?: PriceTierSlug;
-  priceLevel?: string | number | null;
+  discoveryPrice?: Partial<CanonicalDiscoveryPrice>;
   description?: string;
   tip?: string | null;
   currency?: string;
@@ -46,11 +47,14 @@ export default function CardInfoSection({
   travelTime,
   travelMode,
   measurementSystem,
-  priceRange,
+  discoveryPrice,
   description,
   tip,
 }: CardInfoSectionProps) {
   const { t } = useTranslation(['expanded_details', 'common']);
+  const priceDetail = canonicalDiscoveryPriceDetail(
+    discoveryPrice as CanonicalDiscoveryPrice | undefined,
+  );
   // Get category icon component
   const getCategoryIcon = () => {
     if (categoryIcon) {
@@ -139,13 +143,33 @@ export default function CardInfoSection({
             <Text style={styles.metricPillText}>{travelTime}</Text>
           </View>
         )}
-        {priceRange ? (
+        {priceDetail ? (
           <View style={styles.metricPill}>
             <Icon name="cash-outline" size={12} color="#eb7825" />
-            <Text style={styles.metricPillText}>{priceRange}</Text>
+            <Text style={styles.metricPillText}>{priceDetail.source}</Text>
           </View>
         ) : null}
       </View>
+
+      {priceDetail?.approximate ? (
+        <View style={styles.priceProvenance}>
+          <Text style={styles.priceApproximate}>
+            Approx. {priceDetail.approximate}
+            {priceDetail.ratesDate
+              ? ` · rates from ${new Date(priceDetail.ratesDate).toLocaleDateString()}`
+              : ""}
+          </Text>
+          {priceDetail.attributionUrl ? (
+            <Text
+              accessibilityRole="link"
+              style={styles.priceAttribution}
+              onPress={() => Linking.openURL(priceDetail.attributionUrl as string)}
+            >
+              Rates by ExchangeRate-API
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
 
       {/* Description */}
       {description && <Text style={styles.description}>{description}</Text>}
@@ -215,6 +239,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     color: "#92400e",
+  },
+  priceProvenance: {
+    marginTop: -8,
+    marginBottom: 16,
+  },
+  priceApproximate: {
+    fontSize: 12,
+    color: "#6b7280",
+  },
+  priceAttribution: {
+    fontSize: 12,
+    color: "#d97706",
+    textDecorationLine: "underline",
+    marginTop: 2,
   },
   description: {
     fontSize: 15,

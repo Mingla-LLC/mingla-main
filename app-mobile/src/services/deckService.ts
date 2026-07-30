@@ -142,6 +142,8 @@ export interface DeckResponse {
   activePills: string[];
   total: number;
   hasMore: boolean;
+  /** Server-selected FX snapshot for this page; continuation must echo it. */
+  fxSnapshotId: string | null;
   serverPath: DeckServerPath;
   // ORCH-0677 RC-2: when curated-only deck returns 0 cards, this carries the
   // server's verdict so RecommendationsContext can route to EMPTY UI state.
@@ -636,6 +638,7 @@ class DeckService {
     const { pills, categoryFilters } = this.resolvePills(params.categories, params.intents);
     const limit = params.limit ?? 20;
     let hasMoreFromEdge = true;
+    let selectedFxSnapshotId: string | null = params.fxSnapshotId ?? null;
     // ORCH-0474: Capture the server's path discriminant so the hook can route
     // UI on it. Category fetch wins over curated — curated-only decks end up
     // 'pipeline' (server didn't run for the deck-cards key).
@@ -710,6 +713,10 @@ class DeckService {
           if (!error && data?.cards) {
             const cards = discoverCardsPayloadToRecommendations(data);
             hasMoreFromEdge = data.metadata?.hasMore ?? true;
+            selectedFxSnapshotId =
+              typeof data.metadata?.fxSnapshotId === 'string'
+                ? data.metadata.fxSnapshotId
+                : selectedFxSnapshotId;
             // ORCH-0474: Capture serverPath discriminant from the response.
             const rawPath = data.sourceBreakdown?.path;
             if (
@@ -1047,6 +1054,7 @@ class DeckService {
       activePills: pills.map(p => p.id),
       total: interleaved.length,
       hasMore: hasMoreFromEdge,
+      fxSnapshotId: selectedFxSnapshotId,
       serverPath: finalServerPath,
       curatedEmptyReason,
     };
@@ -1150,6 +1158,7 @@ class DeckService {
         total: cards.length,
         // Collab v2 returns the FULL deck in one shot; no pagination.
         hasMore: false,
+        fxSnapshotId: null,
         serverPath,
         curatedEmptyReason: deadEndReason as any,
         collabDeadEndPayload,

@@ -9,7 +9,9 @@
 // ORCH-0684 HF-2 cleanup: dropped unused `supabase, supabaseUrl` re-imports
 // per Constitution #8. The original ORCH-0573 backlog comment is now resolved.
 
-export interface HolidayCard {
+import type { CanonicalDiscoveryPrice } from "../utils/priceTiers";
+
+export interface HolidayCard extends Partial<CanonicalDiscoveryPrice> {
   id: string;
   title: string;
   category: string;

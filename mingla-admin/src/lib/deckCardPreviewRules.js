@@ -7,11 +7,30 @@
  * - hero is a real photo OR an honest "No photo yet" placeholder — never faked;
  *   '__backfill_failed__' sentinel counts as no-photo
  * - distance / travel time are NEVER produced here (admin has no buyer geo)
- * - price label derives only from the canonical source-currency range
+ * - the live venue preview uses canonicalVenuePriceLabel exclusively
  */
 
-/** Canonical minor-unit source range. Legacy Google ordinals are not money. */
 export function priceLabel(placeData) {
+  if (!placeData) return null;
+  const tiers = placeData.price_tiers;
+  if (Array.isArray(tiers) && tiers.length > 0) {
+    const n = Math.max(1, Math.min(4, tiers.length));
+    return "$".repeat(n);
+  }
+  const labels = {
+    PRICE_LEVEL_FREE: "Free",
+    PRICE_LEVEL_INEXPENSIVE: "$",
+    PRICE_LEVEL_MODERATE: "$$",
+    PRICE_LEVEL_EXPENSIVE: "$$$",
+    PRICE_LEVEL_VERY_EXPENSIVE: "$$$$",
+  };
+  return typeof placeData.price_level === "string"
+    ? labels[placeData.price_level] ?? null
+    : null;
+}
+
+/** Canonical minor-unit source range. Legacy Google ordinals are not money. */
+export function canonicalVenuePriceLabel(placeData) {
   if (!placeData) return null;
   const min = placeData.source_min_minor;
   const max = placeData.source_max_minor;

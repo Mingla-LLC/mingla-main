@@ -2173,12 +2173,12 @@ serve(async (req: Request) => {
       priceFilterMaxMinor: rawPriceFilterMaxMinor,
       priceFilterCurrency: rawPriceFilterCurrency,
     } = body;
-    const displayCurrency =
+    const requestedDisplayCurrency =
       typeof rawDisplayCurrency === 'string' &&
       /^[A-Z]{3}$/.test(rawDisplayCurrency.trim().toUpperCase())
         ? rawDisplayCurrency.trim().toUpperCase()
         : null;
-    const fxSnapshotId =
+    const requestedFxSnapshotId =
       typeof rawFxSnapshotId === 'string' &&
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(rawFxSnapshotId)
         ? rawFxSnapshotId
@@ -2251,6 +2251,59 @@ serve(async (req: Request) => {
     console.log(`[discover-cards] solo request: categories=[${categories}], batchSeed=${batchSeed}, limit=${limit}, mode=${travelMode}${dateWindows ? `, dateWindows=[${dateWindows}]` : ''}`);
 
     const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
+    const { data: supportedCurrencyRows, error: supportedCurrencyError } =
+      await supabaseAdmin.rpc('issue_1384_supported_currencies');
+    if (supportedCurrencyError) {
+      throw new Error('DISCOVERY_PRICE_CURRENCY_AUTHORITY_UNAVAILABLE');
+    }
+    const supportedCurrencyCodes = new Set(
+      (Array.isArray(supportedCurrencyRows) ? supportedCurrencyRows : [])
+        .map((row: any) => row?.code)
+        .filter((code: unknown): code is string => typeof code === 'string'),
+    );
+    // Unsupported viewer display preference is non-authoritative and degrades
+    // to exact source money. Numeric filters are binding, so unsupported filter
+    // currency fails closed rather than returning an unfiltered deck.
+    const displayCurrency =
+      requestedDisplayCurrency && supportedCurrencyCodes.has(requestedDisplayCurrency)
+        ? requestedDisplayCurrency
+        : null;
+    if (
+      priceFilterCurrency !== null &&
+      !supportedCurrencyCodes.has(priceFilterCurrency)
+    ) {
+      throw new Error('FX_UNAVAILABLE');
+    }
+
+    let fxSnapshotId: string | null = requestedFxSnapshotId;
+    if (requestedFxSnapshotId !== null) {
+      const { data: requestedSnapshot, error: requestedSnapshotError } =
+        await supabaseAdmin
+          .from('fx_rate_snapshots')
+          .select('id,status,expires_at')
+          .eq('id', requestedFxSnapshotId)
+          .in('status', ['active', 'superseded'])
+          .maybeSingle();
+      if (
+        requestedSnapshotError ||
+        !requestedSnapshot ||
+        Date.parse(requestedSnapshot.expires_at) < Date.now()
+      ) {
+        throw new Error('FX_UNAVAILABLE');
+      }
+    } else if (displayCurrency !== null || priceFilterCurrency !== null) {
+      const { data: snapshots, error: snapshotError } = await supabaseAdmin.rpc(
+        'fx_latest_servable_snapshot',
+        { p_at: new Date().toISOString() },
+      );
+      if (!snapshotError && Array.isArray(snapshots)) {
+        fxSnapshotId = snapshots[0]?.snapshot_id ?? null;
+      }
+      if (priceFilterCurrency !== null && fxSnapshotId === null) {
+        throw new Error('FX_UNAVAILABLE');
+      }
+    }
 
     // ── Extract userId from JWT sub claim ──────────────────────────────────
     // ORCH-0474: verify_jwt:true at the platform gate already validated signature,
@@ -2478,7 +2531,7 @@ serve(async (req: Request) => {
     const perChipRpcLimit = Math.max(20, Math.min(100, limit * 2));
     const rpcResults = await Promise.all(
       rpcTasks.map((task) =>
-        supabaseAdmin.rpc('query_servable_places_by_signal', {
+        supabaseAdmin.rpc('issue_1384_query_servable_places_by_signal', {
           p_signal_id: task.signalId,
           p_filter_min: task.filterMin,
           p_lat: location.lat,
@@ -2486,6 +2539,10 @@ serve(async (req: Request) => {
           p_radius_m: radiusMeters,
           p_exclude_place_ids: excludeCardIds,
           p_limit: perChipRpcLimit,
+          p_price_filter_min_minor: priceFilterMinMinor,
+          p_price_filter_max_minor: priceFilterMaxMinor,
+          p_price_filter_currency: priceFilterCurrency,
+          p_fx_snapshot_id: fxSnapshotId,
         }).then((res) => ({ task, res })),
       ),
     );
@@ -2592,6 +2649,7 @@ serve(async (req: Request) => {
             hasMore: false,
             poolSize: expOnly.length,
             batchSeed: batchSeed ?? 0,
+            fxSnapshotId,
           },
           sourceBreakdown: {
             fromPool: expOnly.length,

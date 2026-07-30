@@ -11,6 +11,7 @@ import type { ExpandedCardData } from '../../types/expandedCardTypes';
 import type { CuratedStop } from '../../types/curatedExperience';
 import type { HolidayCard } from '../../services/holidayCardsService';
 import { getCategoryIcon } from '../../utils/categoryUtils';
+import { canonicalDiscoveryPriceFields } from '../../utils/priceTiers';
 
 export interface HolidayCardMapOpts {
   travelMode?: string;
@@ -49,7 +50,7 @@ export function holidayCardToExpandedCardData(
     rating: c.rating ?? 0,
     reviewCount: 0,
     priceRange: c.priceRange ?? undefined,
-    priceTier: undefined,
+    ...canonicalDiscoveryPriceFields(c),
     distance: null,
     travelMode: opts.travelMode,
     address: c.address ?? '',

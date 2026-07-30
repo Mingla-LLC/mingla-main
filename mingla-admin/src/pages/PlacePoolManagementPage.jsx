@@ -370,6 +370,7 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
     name: "", price_tiers: [], seeding_category: "", is_active: true,
     ai_categories: [],
     discovery_min_minor: "", discovery_max_minor: "",
+    discovery_edit_reason: "",
   });
   const [saving, setSaving] = useState(false);
   // META-ORCH-1009 Sub-D — admin per-place re-evaluation. Pending state
@@ -403,6 +404,7 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
         place.place_discovery_price_ranges?.source_min_minor?.toString() ?? "",
       discovery_max_minor:
         place.place_discovery_price_ranges?.source_max_minor?.toString() ?? "",
+      discovery_edit_reason: "",
     });
   }, [open, place]);
 
@@ -420,33 +422,21 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
   };
 
   const handleSave = async () => {
-    setSaving(true);
-    // Save basic fields via RPC (handles cascade to card_pool)
-    const { error: rpcErr } = await supabase.rpc("admin_edit_place", {
-      p_place_id: place.id,
-      p_name: editForm.name || null,
-      p_price_tier: editForm.price_tiers?.[0] || null,
-      p_price_tiers: editForm.price_tiers || [],
-      p_seeding_category: editForm.seeding_category || null,
-      p_is_active: editForm.is_active,
-    });
-    if (rpcErr) { addToast({ variant: "error", title: "Save failed", description: rpcErr.message }); setSaving(false); return; }
-
-    // ORCH-0640 ch08 + ORCH-0646: the servable-flag + validation-timestamp columns
-    // were dropped in ch13 (see migration 20260425000004). Three related AI-era
-    // columns (reason / primary_identity / confidence) STILL EXIST on place_pool
-    // but the pipeline that populated them was archived — they are now stale-data
-    // only. Only ai_categories is actively editable (admin-driven classification).
-    // Bouncer is the authoritative quality gate going forward.
-    const { error: aiErr } = await supabase.from("place_pool").update({
-      ai_categories: editForm.ai_categories.length > 0 ? editForm.ai_categories : null,
-    }).eq("id", place.id);
-    if (aiErr) { addToast({ variant: "error", title: "AI fields save failed", description: aiErr.message }); setSaving(false); return; }
-
     const range = place.place_discovery_price_ranges;
+    const reason = editForm.discovery_edit_reason.trim();
+    if (reason.length < 3) {
+      addToast({
+        variant: "error",
+        title: "Reason required",
+        description: "Enter a human-readable audit reason before saving.",
+      });
+      return;
+    }
+    let minMinor = null;
+    let maxMinor = null;
     if (range?.status === "active") {
-      const minMinor = Number(editForm.discovery_min_minor);
-      const maxMinor = editForm.discovery_max_minor.trim() === ""
+      minMinor = Number(editForm.discovery_min_minor);
+      maxMinor = editForm.discovery_max_minor.trim() === ""
         ? null
         : Number(editForm.discovery_max_minor);
       if (
@@ -458,28 +448,31 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
           title: "Invalid discovery range",
           description: "Use non-negative integer minor units; max must be at least min.",
         });
-        setSaving(false);
         return;
       }
-      const { error: rangeError } = await supabase.rpc(
-        "issue_1384_save_discovery_price_range",
-        {
-          p_brand_id: range.brand_id,
-          p_venue_id: range.venue_id,
-          p_place_pool_id: place.id,
-          p_source_min_minor: minMinor,
-          p_source_max_minor: maxMinor,
-          p_source_currency_code: range.source_currency_code,
-          p_expected_version: range.version,
-          p_actor_reason: "admin_edit",
-          p_request_id: crypto.randomUUID(),
-        },
-      );
-      if (rangeError) {
-        addToast({ variant: "error", title: "Price save failed", description: rangeError.message });
-        setSaving(false);
-        return;
-      }
+    }
+
+    setSaving(true);
+    const { error: saveError } = await supabase.rpc(
+      "issue_1384_admin_update_place_and_discovery_range",
+      {
+        p_place_pool_id: place.id,
+        p_name: editForm.name || null,
+        p_price_tier: editForm.price_tiers?.[0] || null,
+        p_price_tiers: editForm.price_tiers || [],
+        p_is_active: editForm.is_active,
+        p_ai_categories: editForm.ai_categories || [],
+        p_source_min_minor: minMinor,
+        p_source_max_minor: maxMinor,
+        p_expected_version: range?.status === "active" ? range.version : null,
+        p_actor_reason: reason,
+        p_request_id: crypto.randomUUID(),
+      },
+    );
+    if (saveError) {
+      addToast({ variant: "error", title: "Save failed", description: saveError.message });
+      setSaving(false);
+      return;
     }
 
     addToast({ variant: "success", title: "Place updated" }); onClose(); if (onSave) onSave();
@@ -695,6 +688,9 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
                     ? "Needs price range review"
                     : "—"}
               </div>
+              <div><span className="text-[var(--color-text-secondary)]">Source type:</span> {place.place_discovery_price_ranges?.source_type || "—"}</div>
+              <div><span className="text-[var(--color-text-secondary)]">Version:</span> {place.place_discovery_price_ranges?.version ?? "—"}</div>
+              <div><span className="text-[var(--color-text-secondary)]">Last actor:</span> {place.place_discovery_price_ranges?.updated_by || "—"}</div>
               <div><span className="text-[var(--color-text-secondary)]">Price Level:</span> {place.price_level || "—"}</div>
               {place.editorial_summary && <div className="col-span-2"><span className="text-[var(--color-text-secondary)]">Editorial:</span> {place.editorial_summary}</div>}
             </div>
@@ -728,7 +724,7 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
               <ul className="space-y-1 text-xs">
                 {place.place_discovery_price_range_revisions.map((revision) => (
                   <li key={`${revision.created_at}-${revision.action}`} className="flex justify-between gap-3">
-                    <span>{revision.action}</span>
+                    <span>{revision.action} · actor {revision.actor_id || "system"}</span>
                     <span className="text-[var(--color-text-secondary)]">
                       {new Date(revision.created_at).toLocaleString()}
                     </span>
@@ -802,6 +798,12 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
                   />
                 </div>
               ) : null}
+              <Input
+                label="Audit reason (required)"
+                value={editForm.discovery_edit_reason}
+                onChange={(e) => setEditForm((f) => ({ ...f, discovery_edit_reason: e.target.value }))}
+                placeholder="Why are you changing this place?"
+              />
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-[var(--color-text-secondary)]">Seeding Category</label>
@@ -1525,7 +1527,7 @@ function BrowseTab({ scope, onRefresh }) {
     }
 
     let q = supabase.from("place_pool").select(
-      "*, place_discovery_price_ranges(brand_id,venue_id,status,source_min_minor,source_max_minor,source_currency_code,version,updated_at), place_discovery_price_range_revisions(action,actor_id,created_at)",
+      "*, place_discovery_price_ranges(brand_id,venue_id,status,source_min_minor,source_max_minor,source_currency_code,source_type,version,updated_by,updated_at), place_discovery_price_range_revisions(action,actor_id,created_at)",
       { count: "exact" },
     );
     if (selectedCity) q = q.eq("city_id", selectedCity);

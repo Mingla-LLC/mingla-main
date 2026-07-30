@@ -35,19 +35,14 @@ describe("hasRealHero (SC-5 — honest no-photo placeholder, never faked)", () =
 describe("priceLabel (real data only; null → hidden)", () => {
   it("null place → null", () => assert.equal(priceLabel(null), null));
   it("no price data → null", () => assert.equal(priceLabel({}), null));
-  it("legacy Google ordinals are not interpreted as dollars", () =>
-    assert.equal(priceLabel({ price_level: "PRICE_LEVEL_MODERATE" }), null));
-  it("formats an NGN source range from minor units", () =>
-    assert.equal(priceLabel({
-      source_min_minor: 125000,
-      source_max_minor: 250000,
-      source_currency_code: "NGN",
-      source_minor_unit_exponent: 2,
-    }), "NGN 1,250.00–NGN 2,500.00"));
-  it("says Free only for an explicit zero-to-zero range", () =>
-    assert.equal(priceLabel({
-      source_min_minor: 0,
-      source_max_minor: 0,
-      source_currency_code: "USD",
-    }), "Free"));
+  it("price_level enum → glyphs", () =>
+    assert.equal(priceLabel({ price_level: "PRICE_LEVEL_MODERATE" }), "$$"));
+  it("very expensive → $$$$", () =>
+    assert.equal(priceLabel({ price_level: "PRICE_LEVEL_VERY_EXPENSIVE" }), "$$$$"));
+  it("price_tiers array → glyph count (capped at 4)", () => {
+    assert.equal(priceLabel({ price_tiers: [{}, {}] }), "$$");
+    assert.equal(priceLabel({ price_tiers: [{}, {}, {}, {}, {}, {}] }), "$$$$");
+  });
+  it("unknown price_level → null (not faked)", () =>
+    assert.equal(priceLabel({ price_level: "PRICE_LEVEL_BOGUS" }), null));
 });

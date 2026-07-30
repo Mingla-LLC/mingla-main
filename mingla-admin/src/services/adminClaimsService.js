@@ -55,7 +55,9 @@ const CLAIM_SELECT = `
     source_min_minor,
     source_max_minor,
     source_currency_code,
+    source_type,
     version,
+    updated_by,
     updated_at
   )
 `;

@@ -13,6 +13,7 @@ import { colors } from '../constants/colors';
 import { mixpanelService } from '../services/mixpanelService';
 import { logAppsFlyerEvent } from '../services/appsFlyerService';
 import { buildReferralLink, type ShareEntity } from '../services/oneLinkShare';
+import { canonicalDiscoveryPriceDetail } from '../utils/priceTiers';
 // ISSUE-1001 — the real wordmark replaces the red-dot + "Mingla" text badge.
 import { MINGLA_WORDMARK } from '@mingla/brand-assets';
 
@@ -79,10 +80,17 @@ export default function ShareModal({
   const distance = rawDistance
     ? parseAndFormatDistance(rawDistance, accountPreferences?.measurementSystem)
     : t('share:card.nearby');
-  // Canonical discovery prices arrive formatted by the server-backed adapter.
-  // Never reinterpret a legacy tier as a dollar amount.
-  const priceRange = typeof experienceData.priceRange === 'string'
-    ? experienceData.priceRange
+  const venuePrice = canonicalDiscoveryPriceDetail(experienceData);
+  const isCuratedItinerary =
+    experienceData.cardType === 'curated' || Array.isArray(experienceData.stops);
+  // Venue shares always lead with exact source money. Curated itinerary
+  // estimates remain a separate domain and may use their existing summary.
+  const priceRange = venuePrice?.source ??
+    (isCuratedItinerary && typeof experienceData.priceRange === 'string'
+      ? experienceData.priceRange
+      : '');
+  const approximatePrice = venuePrice?.approximate
+    ? `Approx. ${venuePrice.approximate}${venuePrice.ratesDate ? ` · rates from ${new Date(venuePrice.ratesDate).toLocaleDateString()}` : ''}`
     : '';
   const rating = experienceData.rating || experienceData.ratingValue || '4.8';
   const address = experienceData.address || experienceData.location?.address || experienceData.location || '';
@@ -106,7 +114,9 @@ export default function ShareModal({
     const dayOfWeek = dateTimePreferences?.dayOfWeek || 'Weekend';
     const timeframe = dateTimePreferences?.planningTimeframe || 'This month';
     
-    const priceSentence = priceRange ? ` and costs ${priceRange}` : '';
+    const priceSentence = priceRange
+      ? ` and costs ${priceRange}${approximatePrice ? ` (${approximatePrice})` : ''}`
+      : '';
     return `What do you think about ${title}${address ? ` at ${address}` : ''}? It has a ${rating} star rating${priceSentence}. I'm thinking we could go ${timeOfDay} on ${dayOfWeek} (${timeframe}). ${shortDescription} Let me know if you're interested!`;
   };
 
@@ -313,10 +323,12 @@ export default function ShareModal({
                         <Icon name="location-outline" size={14} color="#6b7280" />
                         <Text style={styles.metaText}>{distance}</Text>
                       </View>
-                      <View style={styles.metaItem}>
-                        <Icon name="person-outline" size={14} color="#6b7280" />
-                        {priceRange ? <Text style={styles.metaText}>{priceRange}</Text> : null}
-                      </View>
+                      {priceRange ? (
+                        <View style={styles.metaItem}>
+                          <Icon name="cash-outline" size={14} color="#6b7280" />
+                          <Text style={styles.metaText}>{priceRange}</Text>
+                        </View>
+                      ) : null}
                     </View>
 
                     {/* Suggested Schedule */}
@@ -341,6 +353,18 @@ export default function ShareModal({
                     {/* Price */}
                     <View style={styles.priceContainer}>
                       {priceRange ? <Text style={styles.priceText}>{priceRange}</Text> : null}
+                      {approximatePrice ? (
+                        <Text style={styles.priceSubtext}>{approximatePrice}</Text>
+                      ) : null}
+                      {venuePrice?.attributionUrl ? (
+                        <Text
+                          accessibilityRole="link"
+                          style={styles.priceAttribution}
+                          onPress={() => Linking.openURL(venuePrice.attributionUrl as string)}
+                        >
+                          Rates by ExchangeRate-API
+                        </Text>
+                      ) : null}
                       <Text style={styles.priceSubtext}>{t('share:card.per_person')}</Text>
                     </View>
                   </View>
@@ -608,6 +632,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: colors.primary,
+  },
+  priceAttribution: {
+    color: "#d97706",
+    fontSize: 11,
+    textDecorationLine: "underline",
+    marginTop: 2,
   },
   priceSubtext: {
     fontSize: 14,
