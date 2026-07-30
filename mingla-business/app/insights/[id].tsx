@@ -1,4 +1,5 @@
 import React from "react";
+import { StyleSheet } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useAuth } from "../../src/context/AuthContext";
@@ -22,6 +23,7 @@ import {
 } from "../../src/analytics/businessAnalyticsEvents";
 import { ListingInsightsScreen } from "../../src/components/analytics/ListingInsightsScreen";
 import { SafeScreen } from "../../src/components/ui/SafeScreen";
+import { canvas } from "../../src/constants/designSystem";
 
 const CANONICAL_UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -94,7 +96,7 @@ export default function ListingInsightsRoute(): React.ReactElement {
   };
 
   return (
-    <SafeScreen>
+    <SafeScreen style={styles.host}>
       <ListingInsightsScreen
         identity={identityProbe}
         rollup={insights.rollup}
@@ -118,3 +120,10 @@ export default function ListingInsightsRoute(): React.ReactElement {
     </SafeScreen>
   );
 }
+
+const styles = StyleSheet.create({
+  host: {
+    flex: 1,
+    backgroundColor: canvas.discover,
+  },
+});
