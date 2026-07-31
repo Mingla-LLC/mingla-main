@@ -100,7 +100,8 @@ Deno.test("ORCH-1163 §G — dialog/popup copy + package isolation (no designSys
   assertStringIncludes(dialog, 'testID="orch-1163-rsvp-going-confirm-dialog"');
   assertStringIncludes(dialog, "Confirm I'm going");
   assertStringIncludes(popup, 'testID="orch-1163-rsvp-success-popup"');
-  assertStringIncludes(popup, "You're going!");
+  // [TEST-MOD-APPROVED ORCH-1447] Founder-approved RSVP confirmation copy.
+  assertStringIncludes(popup, "You’re on the list");
   for (const f of [dialog, popup]) {
     // Strip comments — the doc comment legitimately NAMES "designSystem" while
     // asserting it must NOT be imported. Bind to actual import statements.

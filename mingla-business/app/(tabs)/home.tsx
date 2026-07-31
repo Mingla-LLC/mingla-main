@@ -377,10 +377,10 @@ export default function HomeTab(): React.ReactElement {
       return {
         queryKey: ["rsvpCheckinSummary", eventId],
         queryFn: async () => {
-          const { fetchRsvpCheckinSummary } = await import(
-            "../../src/services/scanRsvpService"
+          const { fetchHomeRsvpCheckinSummary } = await import(
+            "../../src/services/homeRsvpSummaryService"
           );
-          return fetchRsvpCheckinSummary(eventId);
+          return fetchHomeRsvpCheckinSummary(eventId);
         },
         staleTime: 15_000,
         refetchInterval: 30_000,

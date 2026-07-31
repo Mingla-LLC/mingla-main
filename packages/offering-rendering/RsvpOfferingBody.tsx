@@ -50,7 +50,7 @@
  * bar never diverge. The decision LOGIC stays in RsvpMomentumDecision (single owner).
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import {
   Image,
   LayoutAnimation,
@@ -77,14 +77,16 @@ import { type PublicBrandProps, type PublicEventProps } from "./types";
 import { type ResolvedTheme } from "./designTokens";
 import { normalizeCityCountry } from "./normalizeCityCountry";
 import { RsvpMomentumDecision } from "./RsvpMomentumDecision";
-import { RsvpGoingConfirmDialog } from "./RsvpGoingConfirmDialog";
-import { RsvpSuccessPopup, type RsvpConfirmationDetails } from "./RsvpSuccessPopup";
-import { RsvpDetailsModal } from "./RsvpDetailsModal";
-import { RsvpChipInPanel, type ChipInPanelState } from "./RsvpChipInPanel";
+import type { RsvpConfirmationDetails } from "./RsvpSuccessPopup";
+import type { ChipInPanelState } from "./RsvpChipInPanel";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^\+?[0-9\s()-]{7,20}$/;
 const ABOUT_COLLAPSE_THRESHOLD = 160;
+const RsvpGoingConfirmDialog = React.lazy(() => import("./RsvpGoingConfirmDialog"));
+const RsvpDetailsModal = React.lazy(() => import("./RsvpDetailsModal"));
+const RsvpChipInPanel = React.lazy(() => import("./RsvpChipInPanel"));
+const RsvpSuccessPopup = React.lazy(() => import("./RsvpSuccessPopup"));
 
 if (
   Platform.OS === "android" &&
@@ -890,19 +892,21 @@ export const useRsvpOfferingState = (
     ) : null;
 
   const confirmDialog = (
-    <RsvpGoingConfirmDialog
-      visible={confirmOpen}
-      palette={palette}
-      theme={theme}
-      brandDisplayName={brand?.displayName ?? "the host"}
-      eventName={event.name.length > 0 ? event.name : "this event"}
-      dateLine={event.dateLine}
-      plusGuests={guests.map((g) => ({ name: g.name.trim() }))}
-      submitting={submitting}
-      errorText={confirmError}
-      onConfirm={() => void onConfirmGoing()}
-      onCancel={() => setConfirmOpen(false)}
-    />
+    <Suspense fallback={null}>
+      <RsvpGoingConfirmDialog
+        visible={confirmOpen}
+        palette={palette}
+        theme={theme}
+        brandDisplayName={brand?.displayName ?? "the host"}
+        eventName={event.name.length > 0 ? event.name : "this event"}
+        dateLine={event.dateLine}
+        plusGuests={guests.map((g) => ({ name: g.name.trim() }))}
+        submitting={submitting}
+        errorText={confirmError}
+        onConfirm={() => void onConfirmGoing()}
+        onCancel={() => setConfirmOpen(false)}
+      />
+    </Suspense>
   );
 
   // ── ORCH-1291 [rsvp-chip-in] — build the chip-in panel node (both mounts read
@@ -926,28 +930,30 @@ export const useRsvpOfferingState = (
     // but the builder itself never renders money without a real currency.
     if (chipCurrency === null) return null;
     return (
-    <RsvpChipInPanel
-      palette={palette}
-      theme={theme}
-      currency={chipCurrency}
-      hostShortName={chipHostName}
-      suggestedCents={chipSuggestedCents}
-      minCents={chipMinCents}
-      state={chipInState}
-      amountCents={chipAmountCents}
-      onAmountChange={(c) => {
-        setChipAmountCents(c);
-        clearChipError();
-      }}
-      onPreset={(c) => {
-        setChipAmountCents(c);
-        clearChipError();
-      }}
-      onSubmit={() => void runChipIn()}
-      errorText={chipError}
-      isWeb={Platform.OS === "web"}
-      testID={mountTestID}
-    />
+      <Suspense fallback={null}>
+        <RsvpChipInPanel
+          palette={palette}
+          theme={theme}
+          currency={chipCurrency}
+          hostShortName={chipHostName}
+          suggestedCents={chipSuggestedCents}
+          minCents={chipMinCents}
+          state={chipInState}
+          amountCents={chipAmountCents}
+          onAmountChange={(c) => {
+            setChipAmountCents(c);
+            clearChipError();
+          }}
+          onPreset={(c) => {
+            setChipAmountCents(c);
+            clearChipError();
+          }}
+          onSubmit={() => void runChipIn()}
+          errorText={chipError}
+          isWeb={Platform.OS === "web"}
+          testID={mountTestID}
+        />
+      </Suspense>
     );
   };
 
@@ -959,16 +965,18 @@ export const useRsvpOfferingState = (
     successDetails.status !== "waitlisted";
 
   const successPopup = (
-    <RsvpSuccessPopup
-      visible={successDetails !== null}
-      palette={palette}
-      theme={theme}
-      details={successDetails}
-      showCalendarNudge={isLoggedIn}
-      onDownloadPass={props.onDownloadPass}
-      onClose={() => setSuccessDetails(null)}
-      chipInPanel={popupChipEligible ? buildChipPanel("orch-1291-rsvp-chipin-panel-popup") : undefined}
-    />
+    <Suspense fallback={null}>
+      <RsvpSuccessPopup
+        visible={successDetails !== null}
+        palette={palette}
+        theme={theme}
+        details={successDetails}
+        showCalendarNudge={isLoggedIn}
+        onDownloadPass={props.onDownloadPass}
+        onClose={() => setSuccessDetails(null)}
+        chipInPanel={popupChipEligible ? buildChipPanel("orch-1291-rsvp-chipin-panel-popup") : undefined}
+      />
+    </Suspense>
   );
 
   // Inline §5.5 mount — SAME {going} gate (SC-2). Rendered between the §5
@@ -989,19 +997,21 @@ export const useRsvpOfferingState = (
         ? "Mark Can't go"
         : "Continue";
   const detailsModal = (
-    <RsvpDetailsModal
-      visible={detailsOpen}
-      palette={palette}
-      theme={theme}
-      contactForm={contactForm}
-      guestForms={pendingDecision !== "not_going" ? guestForms : null}
-      errorNode={errorNode}
-      continueLabel={detailsContinueLabel}
-      continueEnabled={contactReady}
-      submitting={submitting}
-      onContinue={onDetailsContinue}
-      onCancel={closeDetails}
-    />
+    <Suspense fallback={null}>
+      <RsvpDetailsModal
+        visible={detailsOpen}
+        palette={palette}
+        theme={theme}
+        contactForm={contactForm}
+        guestForms={pendingDecision !== "not_going" ? guestForms : null}
+        errorNode={errorNode}
+        continueLabel={detailsContinueLabel}
+        continueEnabled={contactReady}
+        submitting={submitting}
+        onContinue={onDetailsContinue}
+        onCancel={closeDetails}
+      />
+    </Suspense>
   );
 
   return {

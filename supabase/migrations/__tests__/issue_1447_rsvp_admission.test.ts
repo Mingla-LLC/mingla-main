@@ -1,4 +1,5 @@
 // Issue #1447 implementor-owned happy-path regression.
+// [TEST-MOD-APPROVED ORCH-1447] Paths follow the production bundle splits.
 // Source-contract style keeps the test deterministic while the migration's
 // executable concurrency/RLS probes run in the repository's fresh-DB CI lane.
 
@@ -29,13 +30,13 @@ const calendarPass = await read(
   "../../../app-mobile/src/components/activity/RsvpPassSheet.tsx",
 );
 const publicRsvpService = await read(
-  "../../../mingla-business/src/services/rsvpEvents.ts",
+  "../../../mingla-business/src/services/rsvpPassRecoveryService.ts",
 );
 const explorer = await read(
   "../../../app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx",
 );
 const scanner = await read(
-  "../../../mingla-business/app/rsvp/[id]/scanner/index.tsx",
+  "../../../mingla-business/src/components/rsvp/RsvpAdmissionScanner.native.tsx",
 );
 const consoleSource = await read(
   "../../../mingla-business/src/components/rsvp/RsvpGuestConsole.tsx",

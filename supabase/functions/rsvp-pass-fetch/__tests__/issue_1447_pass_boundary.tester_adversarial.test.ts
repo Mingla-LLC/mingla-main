@@ -1,4 +1,5 @@
 // Issue #1447 tester-owned adversarial guard.
+// [TEST-MOD-APPROVED ORCH-1447] Bind to the split recovery client module.
 // Angle: one authorization barrier must protect both metadata and PDF
 // representations, and anonymous recovery secrets must remain fragment-only.
 
@@ -18,7 +19,7 @@ const recoveryRoute = await read(
   "../../../../mingla-business/app/rsvp/pass.tsx",
 );
 const publicClient = await read(
-  "../../../../mingla-business/src/services/rsvpEvents.ts",
+  "../../../../mingla-business/src/services/rsvpPassRecoveryService.ts",
 );
 const explorerClient = await read(
   "../../../../app-mobile/src/services/rsvpDeckService.ts",

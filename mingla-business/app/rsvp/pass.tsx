@@ -4,8 +4,9 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 import {
   fetchPublicRsvpPassMetadata,
   fetchPublicRsvpPassPdf,
-} from "../../src/services/rsvpEvents";
+} from "../../src/services/rsvpPassRecoveryService";
 import { captureWeb } from "../../src/analytics/webAnalytics";
+import { SafeScreen } from "../../src/components/ui/SafeScreen";
 
 const QrCode = React.lazy(() => import("react-native-qrcode-svg"));
 type PassData = Awaited<ReturnType<typeof fetchPublicRsvpPassMetadata>>;
@@ -66,7 +67,11 @@ export default function RsvpPassRecoveryRoute(): React.ReactElement {
       });
   }, [pass, proof]);
   return (
-    <View style={styles.host} testID="issue-1447-rsvp-pass-recovery">
+    <SafeScreen
+      edges={["top", "bottom"]}
+      style={styles.host}
+      testID="issue-1447-rsvp-pass-recovery"
+    >
       <View style={styles.card}>
         <Text style={styles.brand}>Mingla</Text>
         <Text style={styles.title}>Your RSVP invite</Text>
@@ -95,7 +100,7 @@ export default function RsvpPassRecoveryRoute(): React.ReactElement {
           </>
         ) : <ActivityIndicator color="#ff6b2c" />}
       </View>
-    </View>
+    </SafeScreen>
   );
 }
 const styles = StyleSheet.create({

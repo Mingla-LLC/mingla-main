@@ -1,12 +1,13 @@
 /**
  * /rsvp/[id]/scanner — Issue #1447 web camera fallback.
  *
- * The native scanner (./index.tsx) statically imports `expo-camera`
+ * The native scanner component statically imports `expo-camera`
  * (`CameraView`, `useCameraPermissions`) + `expo-haptics`. `expo-camera`'s
  * `CameraView` has no working barcode-scan path on web — `onBarcodeScanned`
  * is native-only — so on a phone browser the route either dead-ends on a
  * camera-permission gate that leads nowhere, or ships native camera refs
- * into the web bundle. Metro resolves THIS `.web.tsx` for the web export,
+ * into the web bundle. Metro resolves this generic file for web while native
+ * resolves the `.native.tsx` implementation,
  * so the native `expo-camera`/`expo-haptics` imports never land in the web
  * bundle at all (same hygiene as coverPickerVideoTrimEditor.web.ts and the
  * connect-* .web.tsx route splits).
@@ -17,8 +18,7 @@
  * lens, honor the replacement-event redirect, and offer a clear way forward
  * (back to the event dashboard). No camera, no permission prompt, no crash.
  *
- * The native iOS/Android scanner (./index.tsx) is intentionally left
- * byte-unchanged — it is the primary scan surface.
+ * The native iOS/Android scanner remains the primary scan surface.
  */
 
 import React, { useCallback, useEffect } from "react";
@@ -29,13 +29,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   spacing,
   text as textTokens,
-} from "../../../../src/constants/designSystem";
-import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute";
+} from "../../constants/designSystem";
+import { useManagedEventRoute } from "../../hooks/useManagedEventRoute";
 
-import { Button } from "../../../../src/components/ui/Button";
-import { EmptyState } from "../../../../src/components/ui/EmptyState";
-import { Icon } from "../../../../src/components/ui/Icon";
-import { IconChrome } from "../../../../src/components/ui/IconChrome";
+import { Button } from "../ui/Button";
+import { EmptyState } from "../ui/EmptyState";
+import { Icon } from "../ui/Icon";
+import { IconChrome } from "../ui/IconChrome";
 
 export default function ScannerCameraWebRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();

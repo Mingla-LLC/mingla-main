@@ -59,6 +59,7 @@ jest.mock("expo-router", () => ({
 }));
 jest.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({ invalidateQueries: mockInvalidateQueries }),
+  useQueries: () => [],
 }));
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),

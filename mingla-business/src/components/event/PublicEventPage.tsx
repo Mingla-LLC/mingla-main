@@ -90,10 +90,10 @@ import type { GuestFunnelEntity } from "../../services/guestFunnelLink";
 
 const SeeWhosGoingGate = React.lazy(() => import("./SeeWhosGoingGate"));
 import {
-  fetchPublicRsvpPassPdf,
   submitPublicRsvp,
   submitRsvpContribution,
 } from "../../services/rsvpEvents";
+import { fetchPublicRsvpPassPdf } from "../../services/rsvpPassRecoveryService";
 // ORCH-1339 — cross-entity social proof (pg_public_social_proof, ORCH-1338;
 // anon-safe RPC — this page is anon-tolerant). Keys from the entity factory.
 import { useQuery } from "@tanstack/react-query";
