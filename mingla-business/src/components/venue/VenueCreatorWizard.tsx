@@ -293,6 +293,35 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
       // create s3 gallery (claim carries its own kept+added set).
       const createGalleryUrls = st.galleryUrls ?? [];
 
+      // ORCH-1263 D-C/R-7 (DESIGN §8.3) — half-claim RESUME-NOT-RECREATE: when
+      // an own listing row already exists for this place, never re-insert.
+      // The pre-check runs BEFORE createVenue (own-row 23505 can't happen).
+      let venueId: string | null = null;
+      let resumedCreatePlacePoolId: string | null = null;
+      if (claimMode && st.placePoolId !== null) {
+        const own = await findOwnListingForPlace(
+          currentBrand.id,
+          st.placePoolId,
+        );
+        const pipe = own !== null
+          ? await fetchVenuePipelineState(own.id)
+          : null;
+        const plan = resolveClaimSubmitPlan(
+          own?.id ?? null,
+          pipe?.tier1_completed_at ?? null,
+        );
+        if (plan.kind === "already-submitted") {
+          // Claim already fully submitted — route to the venue, not a
+          // duplicate submit.
+          onDone(null, plan.venueId, st.displayName.trim());
+          useDraftVenueStore.getState().reset(currentBrand.id);
+          return;
+        }
+        if (plan.kind === "resume") {
+          venueId = plan.venueId; // reuse the row, re-run tier-1 only.
+        }
+      }
+
       const createVenueRecord = async (): Promise<string> => {
         // Resolve a guaranteed available slug only when there is no remembered
         // row to resume. A retry must never advance the slug and insert again.
@@ -326,11 +355,6 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
         });
       };
 
-      // ORCH-1263 D-C/R-7 (DESIGN §8.3) — half-claim RESUME-NOT-RECREATE: when
-      // an own listing row already exists for this place, never re-insert.
-      // The pre-check runs BEFORE createVenue (own-row 23505 can't happen).
-      let venueId: string | null = null;
-      let resumedCreatePlacePoolId: string | null = null;
       if (!claimMode) {
         const acquired = await acquireVenueForSubmission(
           {
@@ -346,29 +370,6 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
         );
         venueId = acquired.venueId;
         resumedCreatePlacePoolId = acquired.placePoolId;
-      }
-      if (claimMode && st.placePoolId !== null) {
-        const own = await findOwnListingForPlace(
-          currentBrand.id,
-          st.placePoolId,
-        );
-        const pipe = own !== null
-          ? await fetchVenuePipelineState(own.id)
-          : null;
-        const plan = resolveClaimSubmitPlan(
-          own?.id ?? null,
-          pipe?.tier1_completed_at ?? null,
-        );
-        if (plan.kind === "already-submitted") {
-          // Claim already fully submitted — route to the venue, not a
-          // duplicate submit.
-          onDone(null, plan.venueId, st.displayName.trim());
-          useDraftVenueStore.getState().reset(currentBrand.id);
-          return;
-        }
-        if (plan.kind === "resume") {
-          venueId = plan.venueId; // reuse the row, re-run tier-1 only.
-        }
       }
 
       if (venueId === null) {
@@ -428,6 +429,9 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
               : {}),
           },
         });
+        if (tier1.place_pool_id.length === 0) {
+          throw new Error("place_pool_link_missing");
+        }
         authoringPlacePoolId = tier1.place_pool_id;
       }
       if (authoringPlacePoolId.length === 0) {
