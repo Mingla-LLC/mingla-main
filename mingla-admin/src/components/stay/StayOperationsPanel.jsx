@@ -4,6 +4,7 @@ import { EntityListView } from "../entity/EntityListView";
 import { EntityDetailView } from "../entity/EntityDetailView";
 import { HighRiskActionModal } from "../entity/HighRiskActionModal";
 import { Badge } from "../ui/Badge";
+import { StaySnapshotStatus } from "./StaySnapshotStatus";
 import {
   getAdminStayGroup,
   listAdminStayOperations,
@@ -103,7 +104,7 @@ function groupSections(bundle) {
         field("Request deadline", group.requestDeadline, (value) => value ? formatDateTime(value) : "—"),
         field("Payment deadline", group.paymentDeadline, (value) => value ? formatDateTime(value) : "—"),
         field("Version", bundle.version),
-        field("Snapshot", bundle.snapshotAt, formatDateTime),
+        field("Snapshot health", null, () => <StaySnapshotStatus snapshotAt={bundle.snapshotAt} />),
       ],
     },
     {
@@ -328,7 +329,7 @@ export function StayOperationsPanel() {
         />
         {selectedAlert.issueKind === "materialization_failed" && (
           <div className="flex justify-end">
-            <button type="button" className="text-sm underline text-[var(--color-brand-500)]" onClick={() => setMaterializeOpen(true)}>
+            <button type="button" className="min-h-11 px-2 inline-flex items-center text-sm underline text-[var(--color-brand-500)]" onClick={() => setMaterializeOpen(true)}>
               Retry from retained schedule evidence
             </button>
           </div>

@@ -1,4 +1,5 @@
 import { Badge } from "../ui/Badge";
+import { StaySnapshotStatus } from "./StaySnapshotStatus";
 
 function field(label, value, render) {
   return { label, value, render };
@@ -66,7 +67,7 @@ function offeringFields(offering, currencyCode, onPause) {
     ...(offering.status === "live" && onPause ? [field("Support action", null, () => (
       <button
         type="button"
-        className="text-xs underline text-[var(--color-brand-500)]"
+        className="min-h-11 px-2 inline-flex items-center text-xs underline text-[var(--color-brand-500)]"
         onClick={() => onPause(offering)}
       >
         Pause this offering
@@ -100,7 +101,7 @@ export function buildStayVenueSections(bundle, { onPause } = {}) {
         field("Check-in / check-out", settings ? `${settings.checkInTime} / ${settings.checkOutTime}` : null),
         field("Timezone", settings?.timezone),
         field("Settings version", settings?.version),
-        field("Snapshot", bundle?.snapshotAt),
+        field("Snapshot health", null, () => <StaySnapshotStatus snapshotAt={bundle?.snapshotAt} />),
       ],
     },
     {

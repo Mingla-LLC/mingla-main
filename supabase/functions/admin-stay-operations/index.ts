@@ -201,6 +201,7 @@ async function reconcilePayment(
 
   let providerState = "unknown";
   let finalize: Record<string, unknown> | null = null;
+  let failureCode: string | null = null;
   let chargeRef: string | null = null;
   if (provider === "stripe") {
     const connectedAccount = String(attempt.connected_account_ref ?? "");
@@ -219,7 +220,8 @@ async function reconcilePayment(
     }
     const metadata = objectRecord(intent.metadata);
     providerState = String(intent.status ?? "unknown");
-    const amount = Number(intent.amount_received ?? intent.amount);
+    const authorizedAmount = Number(intent.amount ?? intent.amount_received);
+    const receivedAmount = Number(intent.amount_received ?? 0);
     const currency = String(intent.currency ?? "").toUpperCase();
     chargeRef = objectId(intent.latest_charge);
     if (
@@ -227,7 +229,8 @@ async function reconcilePayment(
       metadata.mingla_purpose !== "stay_reservation" ||
       metadata.stay_group_id !== groupId ||
       metadata.stay_payment_attempt_id !== paymentAttemptId ||
-      amount !== expectedAmount || currency !== expectedCurrency
+      authorizedAmount !== expectedAmount || currency !== expectedCurrency ||
+      (providerState === "succeeded" && receivedAmount !== expectedAmount)
     ) {
       return json(409, { error: "provider_evidence_mismatch", requestId });
     }
@@ -239,7 +242,7 @@ async function reconcilePayment(
         p_provider_event_type: "admin.provider_read.succeeded",
         p_provider_payment_ref: paymentRef,
         p_provider_charge_ref: chargeRef,
-        p_amount_minor: amount,
+        p_amount_minor: receivedAmount,
         p_currency_code: currency,
         p_provider_fee_minor: null,
         p_event_fingerprint: null,
@@ -247,22 +250,9 @@ async function reconcilePayment(
     } else if (
       ["canceled", "requires_payment_method"].includes(providerState)
     ) {
-      const { error } = await context.service.rpc(
-        "issue_1389_record_payment_create_failure",
-        {
-          p_attempt_id: paymentAttemptId,
-          p_failure_code: providerState === "canceled"
-            ? "provider_payment_cancelled"
-            : "provider_payment_failed",
-          p_ambiguous: false,
-        },
-      );
-      if (error) {
-        return json(409, {
-          error: safeRpcCode(error, "payment_convergence_failed"),
-          requestId,
-        });
-      }
+      failureCode = providerState === "canceled"
+        ? "provider_payment_cancelled"
+        : "provider_payment_failed";
     }
   } else if (provider === "paystack") {
     let verified: Record<string, unknown>;
@@ -312,23 +302,33 @@ async function reconcilePayment(
         p_event_fingerprint: null,
       };
     } else if (["failed", "abandoned", "reversed"].includes(providerState)) {
-      const { error } = await context.service.rpc(
-        "issue_1389_record_payment_create_failure",
-        {
-          p_attempt_id: paymentAttemptId,
-          p_failure_code: "provider_payment_failed",
-          p_ambiguous: false,
-        },
-      );
-      if (error) {
-        return json(409, {
-          error: safeRpcCode(error, "payment_convergence_failed"),
-          requestId,
-        });
-      }
+      failureCode = "provider_payment_failed";
     }
   } else {
     return json(409, { error: "stay_provider_unsupported", requestId });
+  }
+
+  // The audit is the fail-closed gate: no payment state may change unless the
+  // support action itself is durably attributable first.
+  try {
+    await audit(
+      context,
+      "stay.payment_provider_reconcile",
+      "stay_payment_attempt",
+      paymentAttemptId,
+      reason,
+      {
+        before: { state: attempt.state },
+        providerEvidence: { provider, state: providerState },
+        requestedConvergence: finalize
+          ? "provider_success"
+          : failureCode
+          ? "provider_failure"
+          : "no_state_change",
+      },
+    );
+  } catch {
+    return json(500, { error: "audit_failed", requestId });
   }
 
   let result: unknown = { state: attempt.state };
@@ -344,22 +344,22 @@ async function reconcilePayment(
       });
     }
     result = finalized.data;
-  }
-  try {
-    await audit(
-      context,
-      "stay.payment_provider_reconcile",
-      "stay_payment_attempt",
-      paymentAttemptId,
-      reason,
+  } else if (failureCode) {
+    const failure = await context.service.rpc(
+      "issue_1389_record_payment_create_failure",
       {
-        before: { state: attempt.state },
-        providerEvidence: { provider, state: providerState },
-        after: { converged: Boolean(finalize) },
+        p_attempt_id: paymentAttemptId,
+        p_failure_code: failureCode,
+        p_ambiguous: false,
       },
     );
-  } catch {
-    return json(500, { error: "audit_failed", requestId });
+    if (failure.error) {
+      return json(409, {
+        error: safeRpcCode(failure.error, "payment_convergence_failed"),
+        requestId,
+      });
+    }
+    result = failure.data;
   }
   return json(200, { kind: "success", providerState, data: result, requestId });
 }

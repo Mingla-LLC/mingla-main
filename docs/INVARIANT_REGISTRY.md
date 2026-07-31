@@ -6778,6 +6778,10 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   Paystack subaccount-settled charges. The two `issue1427.alert.test.ts` suites prove fail-soft,
   replay-safe alert capture without guest/request/database-detail leakage. The Admin Node suite
   proves the existing-shell entry points, Rooms/Places inspection, masked support detail, and
-  bounded actions.
+  bounded actions. Independent tester suites `index.tester.adversarial.test.ts`,
+  `issue1427_admin_stay_support.tester.adversarial.test.js`, and the server-rendered
+  `issue1427_admin_stay_support.render.tester.test.mjs` prove cancelled-provider convergence,
+  audit-before-mutation fail-closed behavior, exact retained-metadata allowlists, safe restricted
+  errors, stale snapshot warnings, brand-currency rendering, and real Room/Place UI output.
 - **Established:** DRAFT 2026-07-31 at issue #1427 IMPLEMENT; orchestrator flips ACTIVE only after
   independent tester PASS, merge, production migration/Edge deployment, and runtime verification.

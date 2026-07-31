@@ -5,7 +5,7 @@ export async function getAdminStayVenue(venueId) {
     "issue_1427_admin_stay_venue_projection",
     { p_venue_id: venueId },
   );
-  if (error) throw new Error(error.message || "Failed to load this Stay.");
+  if (error) throw new Error(mapStayAdminReadError(error, "Failed to load this Stay."));
   return data;
 }
 
@@ -19,7 +19,7 @@ export async function listAdminStayOperations({ search, filters = {}, page = 0, 
       p_offset: page * pageSize,
     },
   );
-  if (error) throw new Error(error.message || "Failed to load Stay operations.");
+  if (error) throw new Error(mapStayAdminReadError(error, "Failed to load Stay operations."));
   return { rows: data?.rows ?? [], total: Number(data?.total) || 0, counts: data?.counts ?? {} };
 }
 
@@ -28,7 +28,7 @@ export async function getAdminStayGroup(groupId) {
     "issue_1427_admin_stay_group_projection",
     { p_group_id: groupId },
   );
-  if (error) throw new Error(error.message || "Failed to load this Stay reservation.");
+  if (error) throw new Error(mapStayAdminReadError(error, "Failed to load this Stay reservation."));
   return data;
 }
 
@@ -82,5 +82,15 @@ export function mapStayAdminError(error) {
   if (message.includes("stay_notification_retry_unavailable")) return "There are no failed Stay notifications to retry.";
   if (message.includes("stay_alert_evidence_incomplete")) return "This alert does not contain enough original evidence for a safe retry.";
   if (message.includes("stay_invalid_transition")) return "That action is no longer valid for the current state.";
-  return message || "The Stay support action failed. Reload and try again.";
+  return "The Stay support action failed. Reload and try again.";
+}
+
+export function mapStayAdminReadError(error, fallback) {
+  const message = error?.message || "";
+  if (message.includes("not_authorized") || message.includes("forbidden")) {
+    return "Active Admin access is required.";
+  }
+  if (message.includes("stay_venue_not_found")) return "This Stay no longer exists.";
+  if (message.includes("stay_group_not_found")) return "This Stay reservation no longer exists.";
+  return fallback;
 }

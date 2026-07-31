@@ -49,19 +49,27 @@ jobs:
         run: |
           deno check \
             supabase/functions/admin-stay-operations/index.ts \
+            supabase/functions/admin-stay-operations/index.tester.adversarial.test.ts \
             supabase/functions/stay-reservations/index.ts \
             supabase/functions/manage-stay-inventory/index.ts
           deno test --allow-env --allow-net=deno.land,esm.sh \
             supabase/functions/admin-stay-operations/index.test.ts \
+            supabase/functions/admin-stay-operations/index.tester.adversarial.test.ts \
             supabase/functions/stay-reservations/issue1427.alert.test.ts \
             supabase/functions/manage-stay-inventory/issue1427.alert.test.ts
       - name: Test Admin Stay contracts
-        run: node --test mingla-admin/src/__tests__/issue1427_admin_stay_support.test.js
+        run: |
+          node --test \
+            mingla-admin/src/__tests__/issue1427_admin_stay_support.test.js \
+            mingla-admin/src/__tests__/issue1427_admin_stay_support.tester.adversarial.test.js \
+            mingla-admin/src/__tests__/issue1427_admin_stay_support.render.tester.test.mjs
       - name: Scoped Admin lint
         working-directory: mingla-admin
         run: |
           npx eslint \
             src/services/stayAdminService.js \
+            src/components/stay/staySnapshotState.js \
+            src/components/stay/StaySnapshotStatus.jsx \
             src/components/stay/StayVenueSections.jsx \
             src/components/stay/StayOperationsPanel.jsx \
             src/pages/VenuesConsolePage.jsx \

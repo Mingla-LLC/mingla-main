@@ -4,6 +4,70 @@
 
 BEGIN;
 
+CREATE OR REPLACE FUNCTION public.issue_1427_alert_metadata_is_safe(
+  p_alert_kind text,
+  p_safe_metadata jsonb
+)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+  SELECT jsonb_typeof(COALESCE(p_safe_metadata, '{}'::jsonb)) = 'object'
+    AND NOT jsonb_path_exists(
+      COALESCE(p_safe_metadata, '{}'::jsonb),
+      '$.* ? (@.type() == "object" || @.type() == "array")'
+    )
+    AND (
+      (
+        p_alert_kind = 'inventory_changed'
+        AND NOT EXISTS (
+          SELECT 1 FROM jsonb_object_keys(
+            COALESCE(p_safe_metadata, '{}'::jsonb)
+          ) metadata_key
+          WHERE metadata_key <> 'action'
+        )
+        AND (
+          NOT COALESCE(p_safe_metadata, '{}'::jsonb) ? 'action'
+          OR (
+            jsonb_typeof(p_safe_metadata->'action') = 'string'
+            AND char_length(p_safe_metadata->>'action') BETWEEN 1 AND 64
+          )
+        )
+      )
+      OR (
+        p_alert_kind = 'materialization_failed'
+        AND NOT EXISTS (
+          SELECT 1 FROM jsonb_object_keys(
+            COALESCE(p_safe_metadata, '{}'::jsonb)
+          ) metadata_key
+          WHERE metadata_key NOT IN (
+            'scheduleRuleId', 'fromDate', 'toDate', 'expectedVersion',
+            'errorCode'
+          )
+        )
+        AND COALESCE(p_safe_metadata->>'errorCode', '') = 'materialization_failed'
+        AND (
+          NOT p_safe_metadata ? 'scheduleRuleId'
+          OR jsonb_typeof(p_safe_metadata->'scheduleRuleId') IN ('string', 'null')
+        )
+        AND (
+          NOT p_safe_metadata ? 'fromDate'
+          OR jsonb_typeof(p_safe_metadata->'fromDate') IN ('string', 'null')
+        )
+        AND (
+          NOT p_safe_metadata ? 'toDate'
+          OR jsonb_typeof(p_safe_metadata->'toDate') IN ('string', 'null')
+        )
+        AND (
+          NOT p_safe_metadata ? 'expectedVersion'
+          OR jsonb_typeof(p_safe_metadata->'expectedVersion') IN ('number', 'null')
+        )
+      )
+    );
+$function$;
+
 CREATE TABLE public.stay_operations_alerts (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   alert_key text NOT NULL UNIQUE
@@ -18,13 +82,7 @@ CREATE TABLE public.stay_operations_alerts (
   offering_id uuid REFERENCES public.stay_offerings(id) ON DELETE RESTRICT,
   request_id uuid,
   safe_metadata jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (
-    jsonb_typeof(safe_metadata) = 'object'
-    AND NOT (safe_metadata ?| ARRAY[
-      'authorization', 'clientSecret', 'client_secret', 'contact', 'email',
-      'guest', 'guestToken', 'guest_token', 'phone', 'providerPayload',
-      'provider_secret', 'rawBody', 'raw_body', 'statusToken', 'status_token',
-      'storageObjectId', 'storageObjectName', 'token'
-    ])
+    public.issue_1427_alert_metadata_is_safe(alert_kind, safe_metadata)
   ),
   created_at timestamptz NOT NULL DEFAULT now()
 );
@@ -92,13 +150,22 @@ BEGIN
   IF p_alert_kind NOT IN ('inventory_changed', 'materialization_failed')
      OR p_severity NOT IN ('warning', 'critical')
      OR char_length(pg_catalog.btrim(COALESCE(p_alert_key, ''))) NOT BETWEEN 8 AND 240
-     OR jsonb_typeof(COALESCE(p_safe_metadata, '{}'::jsonb)) <> 'object'
-     OR COALESCE(p_safe_metadata, '{}'::jsonb) ?| ARRAY[
-       'authorization', 'clientSecret', 'client_secret', 'contact', 'email',
-       'guest', 'guestToken', 'guest_token', 'phone', 'providerPayload',
-       'provider_secret', 'rawBody', 'raw_body', 'statusToken', 'status_token',
-       'storageObjectId', 'storageObjectName', 'token'
-     ] THEN
+     OR NOT public.issue_1427_alert_metadata_is_safe(
+       p_alert_kind, COALESCE(p_safe_metadata, '{}'::jsonb)
+     )
+     OR EXISTS (
+       SELECT 1 FROM jsonb_object_keys(
+         COALESCE(p_safe_metadata, '{}'::jsonb)
+       ) metadata_key
+       WHERE metadata_key NOT IN (
+         'action', 'scheduleRuleId', 'fromDate', 'toDate',
+         'expectedVersion', 'errorCode'
+       )
+     )
+     OR jsonb_path_exists(
+       COALESCE(p_safe_metadata, '{}'::jsonb),
+       '$.* ? (@.type() == "object" || @.type() == "array")'
+     ) THEN
     RAISE EXCEPTION 'stay_invalid_payload' USING ERRCODE = '22023';
   END IF;
   INSERT INTO public.stay_operations_alerts (
@@ -994,12 +1061,16 @@ $function$;
 REVOKE ALL ON FUNCTION public.issue_1427_record_stay_operation_alert(
   text, text, text, uuid, uuid, uuid, uuid, jsonb
 ) FROM public, anon, authenticated;
+REVOKE ALL ON FUNCTION public.issue_1427_alert_metadata_is_safe(text, jsonb)
+  FROM public, anon, authenticated;
 REVOKE ALL ON FUNCTION public.issue_1427_resolve_stay_operation_alert(
   uuid, text, uuid, uuid
 ) FROM public, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_1427_record_stay_operation_alert(
   text, text, text, uuid, uuid, uuid, uuid, jsonb
 ) TO service_role;
+GRANT EXECUTE ON FUNCTION public.issue_1427_alert_metadata_is_safe(text, jsonb)
+  TO service_role;
 GRANT EXECUTE ON FUNCTION public.issue_1427_resolve_stay_operation_alert(
   uuid, text, uuid, uuid
 ) TO service_role;
