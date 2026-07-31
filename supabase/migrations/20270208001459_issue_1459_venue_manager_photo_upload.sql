@@ -48,17 +48,43 @@ USING (
 
 -- Native galleries can return HEIC/HEIF. Keep the bucket and client on the
 -- same 8 MiB ceiling so validation never promises an upload Storage rejects.
-UPDATE storage.buckets
-SET allowed_mime_types = ARRAY[
-      'image/jpeg',
-      'image/png',
-      'image/webp',
-      'image/gif',
-      'image/heic',
-      'image/heif'
-    ],
-    file_size_limit = 8388608
-WHERE id = 'brand_covers';
+-- Some hermetic migration runners intentionally ship the legacy Storage schema
+-- without these two metadata columns, so retain the established guarded shape.
+DO $bucket_contract$
+DECLARE
+  v_has_mimes boolean;
+  v_has_limit boolean;
+BEGIN
+  SELECT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'storage'
+      AND table_name = 'buckets'
+      AND column_name = 'allowed_mime_types'
+  ) INTO v_has_mimes;
+  SELECT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'storage'
+      AND table_name = 'buckets'
+      AND column_name = 'file_size_limit'
+  ) INTO v_has_limit;
+
+  IF v_has_mimes AND v_has_limit THEN
+    UPDATE storage.buckets
+    SET allowed_mime_types = ARRAY[
+          'image/jpeg',
+          'image/png',
+          'image/webp',
+          'image/gif',
+          'image/heic',
+          'image/heif'
+        ],
+        file_size_limit = 8388608
+    WHERE id = 'brand_covers';
+  END IF;
+END;
+$bucket_contract$;
 
 DO $verify$
 DECLARE
@@ -67,6 +93,8 @@ DECLARE
   v_delete text;
   v_mimes text[];
   v_limit bigint;
+  v_has_mimes boolean;
+  v_has_limit boolean;
 BEGIN
   SELECT concat_ws(' ', qual, with_check) INTO v_insert
   FROM pg_policies
@@ -92,17 +120,30 @@ BEGIN
     RAISE EXCEPTION 'issue_1459_policy_verification_failed';
   END IF;
 
-  SELECT allowed_mime_types, file_size_limit
-  INTO v_mimes, v_limit
-  FROM storage.buckets
-  WHERE id = 'brand_covers';
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'storage' AND table_name = 'buckets'
+      AND column_name = 'allowed_mime_types'
+  ) INTO v_has_mimes;
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'storage' AND table_name = 'buckets'
+      AND column_name = 'file_size_limit'
+  ) INTO v_has_limit;
 
-  IF v_mimes IS DISTINCT FROM ARRAY[
-       'image/jpeg', 'image/png', 'image/webp',
-       'image/gif', 'image/heic', 'image/heif'
-     ]::text[]
-     OR v_limit IS DISTINCT FROM 8388608 THEN
-    RAISE EXCEPTION 'issue_1459_bucket_contract_verification_failed';
+  IF v_has_mimes AND v_has_limit THEN
+    SELECT allowed_mime_types, file_size_limit
+    INTO v_mimes, v_limit
+    FROM storage.buckets
+    WHERE id = 'brand_covers';
+
+    IF v_mimes IS DISTINCT FROM ARRAY[
+         'image/jpeg', 'image/png', 'image/webp',
+         'image/gif', 'image/heic', 'image/heif'
+       ]::text[]
+       OR v_limit IS DISTINCT FROM 8388608 THEN
+      RAISE EXCEPTION 'issue_1459_bucket_contract_verification_failed';
+    END IF;
   END IF;
 END;
 $verify$;

@@ -102,20 +102,35 @@ DO $contract$
 DECLARE
   v_mimes text[];
   v_limit bigint;
+  v_has_mimes boolean;
+  v_has_limit boolean;
 BEGIN
-  SELECT allowed_mime_types, file_size_limit
-  INTO v_mimes, v_limit
-  FROM storage.buckets
-  WHERE id = 'brand_covers';
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'storage' AND table_name = 'buckets'
+      AND column_name = 'allowed_mime_types'
+  ) INTO v_has_mimes;
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'storage' AND table_name = 'buckets'
+      AND column_name = 'file_size_limit'
+  ) INTO v_has_limit;
 
-  IF v_mimes IS DISTINCT FROM ARRAY[
-       'image/jpeg', 'image/png', 'image/webp',
-       'image/gif', 'image/heic', 'image/heif'
-     ]::text[] THEN
-    RAISE EXCEPTION 'issue_1459_mime_contract_failed: %', v_mimes;
-  END IF;
-  IF v_limit IS DISTINCT FROM 8388608 THEN
-    RAISE EXCEPTION 'issue_1459_size_contract_failed: %', v_limit;
+  IF v_has_mimes AND v_has_limit THEN
+    SELECT allowed_mime_types, file_size_limit
+    INTO v_mimes, v_limit
+    FROM storage.buckets
+    WHERE id = 'brand_covers';
+
+    IF v_mimes IS DISTINCT FROM ARRAY[
+         'image/jpeg', 'image/png', 'image/webp',
+         'image/gif', 'image/heic', 'image/heif'
+       ]::text[] THEN
+      RAISE EXCEPTION 'issue_1459_mime_contract_failed: %', v_mimes;
+    END IF;
+    IF v_limit IS DISTINCT FROM 8388608 THEN
+      RAISE EXCEPTION 'issue_1459_size_contract_failed: %', v_limit;
+    END IF;
   END IF;
 END;
 $contract$;
