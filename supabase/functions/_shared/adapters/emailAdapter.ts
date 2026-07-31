@@ -19,6 +19,7 @@ export interface EmailSendInput {
   cta?: { label: string; url: string };
   idempotencyKey?: string;
   beforeProviderIo?: () => Promise<void>;
+  attachments?: Array<{ filename: string; content: string }>;
 }
 
 export const emailAdapter = {
@@ -65,9 +66,6 @@ export const emailAdapter = {
 
     try {
       await input.beforeProviderIo?.();
-      // no-attachment: META-ORCH-1161 transactional notification emails (reservation
-      // changed/cancelled, reminders, refunds, order-cancelled) carry no PDF/file —
-      // the ticket-PDF/.ics path stays in ticket-confirmation-dispatch (ORCH-0785-A).
       const res = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
@@ -83,6 +81,9 @@ export const emailAdapter = {
           subject: rendered.subject,
           html: rendered.html,
           text: rendered.text,
+          ...(input.attachments && input.attachments.length > 0
+            ? { attachments: input.attachments }
+            : {}),
         }),
       });
       if (!res.ok) {

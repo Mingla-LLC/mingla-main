@@ -1,42 +1,22 @@
-/**
- * ORCH-1150 — rsvp-notify
+/** Issue #1447 — durable RSVP notification delivery worker.
  *
- * Multi-channel transactional fan-out for the RSVP notification pipeline.
- * verify_jwt=true (config.toml) — service-role-invoked only; NOT a public route.
- *
- * Given a queue row (`{ notificationId }`) OR `{ eventId, rsvpId, templateKey }`,
- * it resolves the guest + event, then attempts EVERY channel for which the guest
- * has a usable address/token (A4-NEW-2 — NOT push-only for app users):
- *   - push  — if user_id is set (consumer app, via OneSignal external_id)
- *   - email — guest_email (link guest) OR the app user's verified auth email
- *   - sms   — guest_phone (link guest) OR a profile phone if present
- * Each channel is independent + NON-BLOCKING (Constitution #3): a failure in one
- * never aborts the others or throws. The queue row ends `sent` when ≥1 channel
- * succeeds, `failed_retryable` if all transiently failed, `failed_terminal` on a
- * permanent failure, `skipped` when no channel had an address.
- *
- * REUSES the three existing clients (do NOT add new providers):
- *   - sendPush            from _shared/push-utils.ts:95
- *   - Resend send         cloned from notify-dispatch/index.ts:84-138
- *   - Twilio send         cloned from ticket-confirmation-dispatch/index.ts:123-170
- *
- * ORCH-1150: do NOT merge back into the event/ticket notification path — RSVP
- * notify is TRANSACTIONAL (the guest's own RSVP action), outside marketing-consent.
+ * Claims one row per applicable channel with SKIP LOCKED, routes every send
+ * through the unified notification dispatcher, and completes each lease
+ * independently. Required email/SMS/in-app rows determine parent completion;
+ * push remains a best-effort companion. No destination or provider status is
+ * exposed to guest clients.
  */
-
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { sendPush } from "../_shared/push-utils.ts";
-import { fanOutChannels } from "./fanout.ts";
-import {
-  assertNotResendSandbox,
-  EMAIL_SENDERS,
-  formatSenderHeader,
-  renderTransactionalEmail,
-} from "../_shared/email/index.ts";
-// ORCH-1163 [rsvp-shared-body] — the rsvp_pass branch attaches the recipient's
-// signed RSVP entry QR as a PDF (mirrors how tickets ride a PDF attachment).
+import { dispatchRsvpChannel } from "../_shared/notifyV2.ts";
 import { buildRsvpPassPdf } from "../_shared/ticketPdf.ts";
+import { qrTokenPepper } from "../_shared/ticketCheckout.ts";
+import { isRsvpNotifyServiceRequest } from "./rsvpNotifyAuth.ts";
+import {
+  deriveRsvpRecoveryToken,
+  rsvpRecoveryUrl,
+  sha256Hex,
+} from "../_shared/rsvpPass.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -45,260 +25,27 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+type Channel = "email" | "sms" | "in_app" | "push";
 type TemplateKey =
+  | "rsvp_acknowledgement"
+  | "rsvp_pass"
   | "rsvp_event_updated"
   | "rsvp_waitlist_promoted"
   | "rsvp_approved"
   | "rsvp_denied"
-  | "rsvp_removed"
-  // ORCH-1163 [rsvp-shared-body] — per-recipient "you're going" pass: email
-  // (QR PDF attachment) + push for the matched plus-one / signed-in primary.
-  | "rsvp_pass";
-
-interface CopyBlock {
-  pushTitle: string;
-  pushBody: string;
-  sms: string;
-  emailSubject: string;
-  emailBody: string;
+  | "rsvp_removed";
+interface Claim {
+  delivery_id: string;
+  notification_id: string;
+  channel: Channel;
+  attempt_count: number;
+  lease_id: string;
+  template_key: TemplateKey;
+  payload: Record<string, unknown>;
+  idempotency_key: string;
 }
-
-function buildCopy(
-  template: TemplateKey,
-  ctx: {
-    eventTitle: string;
-    brandName: string;
-    link: string;
-    // ORCH-1163 — rsvp_pass email body carries the human date + venue lines
-    // (sourced from the queue payload; null when the host gave none).
-    dateLine?: string | null;
-    venueLine?: string | null;
-  },
-): CopyBlock {
-  const { eventTitle, brandName, link } = ctx;
-  switch (template) {
-    case "rsvp_pass": {
-      // ORCH-1163 [rsvp-shared-body] — "you're going" pass copy. Email body =
-      // event name + dateLine + venueLine + "Hosted by {brand}". Push points the
-      // recipient at their Calendar where the RSVP + entry QR live.
-      const lines = [
-        eventTitle,
-        ...(ctx.dateLine ? [ctx.dateLine] : []),
-        ...(ctx.venueLine ? [ctx.venueLine] : []),
-        `Hosted by ${brandName}`,
-      ];
-      return {
-        pushTitle: `You're going to ${eventTitle}`,
-        pushBody: "Find your RSVP + entry QR in your Calendar.",
-        sms: `${brandName}: you're going to ${eventTitle}. Your entry QR is in your email + Calendar.`,
-        emailSubject: `You're going to ${eventTitle}`,
-        emailBody: lines.join("\n\n"),
-      };
-    }
-    case "rsvp_event_updated":
-      return {
-        pushTitle: `Plans changed: ${eventTitle}`,
-        pushBody: "The host updated this event — tap for details.",
-        sms: `${brandName}: ${eventTitle} was updated. See the latest: ${link}`,
-        emailSubject: `${eventTitle} — updated details`,
-        emailBody: `The host updated ${eventTitle}. See the latest: ${link}`,
-      };
-    case "rsvp_waitlist_promoted":
-      return {
-        pushTitle: `You're in! ${eventTitle}`,
-        pushBody: "A spot opened — you're going.",
-        sms: `${brandName}: a spot opened at ${eventTitle} — you're in! ${link}`,
-        emailSubject: `You're off the waitlist for ${eventTitle}`,
-        emailBody: `Good news — a spot opened and you're now going to ${eventTitle}. ${link}`,
-      };
-    case "rsvp_approved":
-      return {
-        pushTitle: `You're approved: ${eventTitle}`,
-        pushBody: "The host approved your RSVP — see you there.",
-        sms: `${brandName}: you're approved for ${eventTitle}! ${link}`,
-        emailSubject: `You're approved for ${eventTitle}`,
-        emailBody: `The host approved your RSVP for ${eventTitle}. ${link}`,
-      };
-    case "rsvp_denied":
-      return {
-        pushTitle: `RSVP update: ${eventTitle}`,
-        pushBody: "The host couldn't fit your RSVP this time.",
-        sms: `${brandName}: the host couldn't fit your RSVP for ${eventTitle}.`,
-        emailSubject: `About your RSVP to ${eventTitle}`,
-        emailBody: `Unfortunately the host couldn't confirm your RSVP for ${eventTitle} this time.`,
-      };
-    case "rsvp_removed":
-      return {
-        pushTitle: `Update: ${eventTitle}`,
-        pushBody: "The host has removed you from this event.",
-        sms: `${brandName}: the host has removed you from ${eventTitle}.`,
-        emailSubject: `About your RSVP to ${eventTitle}`,
-        emailBody: `The host has removed you from ${eventTitle}. If you think this was a mistake, reach out to them.`,
-      };
-  }
-}
-
-// Resend send — cloned from notify-dispatch/index.ts:84-138. Do NOT write a new client.
-async function sendResendEmail(
-  to: string,
-  subject: string,
-  body: string,
-): Promise<{ ok: boolean; error?: string }> {
-  const key = Deno.env.get("RESEND_API_KEY");
-  if (!key) return { ok: false, error: "RESEND_API_KEY missing" };
-  const sender = EMAIL_SENDERS.system;
-  try {
-    assertNotResendSandbox(sender);
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
-  }
-  let rendered;
-  try {
-    rendered = renderTransactionalEmail({
-      variant: "generic_notification",
-      recipient: { name: null, email: to },
-      body: {
-        variant: "generic_notification",
-        title: subject,
-        paragraphs: body.split("\n\n"),
-        cta: null,
-      },
-    });
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
-  }
-  try {
-    // no-attachment: RSVP notifications are transactional event-update notices (going/waitlist/approval/removal) — plain HTML, no PDF/file artifact. RSVP has no ticket/order document to attach.
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: formatSenderHeader(rendered.from),
-        to: [to],
-        subject: rendered.subject,
-        html: rendered.html,
-        text: rendered.text,
-      }),
-    });
-    if (!res.ok) {
-      return { ok: false, error: `Resend ${res.status}: ${await res.text()}` };
-    }
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
-  }
-}
-
-// ORCH-1163 [rsvp-shared-body] — Resend send WITH a PDF attachment, for the
-// rsvp_pass branch (the recipient's signed entry QR rides as a PDF, mirroring
-// how tickets attach their PDF). Body HTML rendered via the SAME shared
-// renderTransactionalEmail generic_notification template; sender = tickets
-// (same as ticket confirmations). Cloned from
-// ticket-confirmation-dispatch/index.ts:86-121 — do NOT write a new client.
-async function sendResendEmailWithRsvpPass(input: {
-  to: string;
-  recipientName: string | null;
-  subject: string;
-  body: string;
-  attachment: { filename: string; content: string };
-}): Promise<{ ok: boolean; error?: string }> {
-  const key = Deno.env.get("RESEND_API_KEY");
-  if (!key) return { ok: false, error: "RESEND_API_KEY missing" };
-  const sender = EMAIL_SENDERS.tickets;
-  try {
-    assertNotResendSandbox(sender);
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
-  }
-  let rendered;
-  try {
-    rendered = renderTransactionalEmail({
-      variant: "generic_notification",
-      recipient: { name: input.recipientName, email: input.to },
-      body: {
-        variant: "generic_notification",
-        title: input.subject,
-        paragraphs: input.body.split("\n\n"),
-        cta: null,
-      },
-      sender, // tickets — same sender ticket-confirmation-dispatch uses.
-    });
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
-  }
-  try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: formatSenderHeader(rendered.from),
-        to: [input.to],
-        subject: rendered.subject,
-        html: rendered.html,
-        text: rendered.text,
-        attachments: [
-          { filename: input.attachment.filename, content: input.attachment.content },
-        ],
-      }),
-    });
-    if (!res.ok) {
-      return { ok: false, error: `Resend ${res.status}: ${await res.text()}` };
-    }
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
-  }
-}
-
-// Twilio send — cloned from ticket-confirmation-dispatch/index.ts:123-170.
-async function sendTwilioSms(
-  to: string,
-  body: string,
-): Promise<{ ok: boolean; error?: string }> {
-  const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
-  const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
-  const messagingServiceSid = Deno.env.get("TWILIO_MESSAGING_SERVICE_SID");
-  if (!accountSid || !authToken || !messagingServiceSid) {
-    return { ok: false, error: "twilio_env_missing" };
-  }
-  const statusSecret = Deno.env.get("TWILIO_STATUS_CALLBACK_SECRET");
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const statusCallback =
-    statusSecret && supabaseUrl
-      ? `${supabaseUrl}/functions/v1/twilio-message-status?secret=${encodeURIComponent(statusSecret)}`
-      : undefined;
-  const params = new URLSearchParams({
-    To: to,
-    MessagingServiceSid: messagingServiceSid,
-    Body: body,
-  });
-  if (statusCallback) params.set("StatusCallback", statusCallback);
-  try {
-    const response = await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
-      {
-        method: "POST",
-        headers: {
-          authorization: `Basic ${btoa(`${accountSid}:${authToken}`)}`,
-          "content-type": "application/x-www-form-urlencoded",
-        },
-        body: params,
-      },
-    );
-    if (!response.ok) {
-      return { ok: false, error: `Twilio ${response.status}: ${await response.text()}` };
-    }
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
-  }
-}
+// deno-lint-ignore no-explicit-any
+type AdminClient = ReturnType<typeof createClient<any, "public", any>>;
 
 function json(status: number, body: Record<string, unknown>): Response {
   return new Response(JSON.stringify(body), {
@@ -306,337 +53,320 @@ function json(status: number, body: Record<string, unknown>): Response {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }
+const text = (value: unknown): string | null =>
+  typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 
-// ORCH-1163 [rsvp-shared-body] — rsvp_pass handler. The producer
-// (public-submit-rsvp) enqueues ONE row per going recipient (primary + each
-// guest) carrying a self-contained payload, so this branch never re-resolves
-// from event_rsvps. EMAIL always fires (the recipient's signed entry QR rides
-// as a PDF attachment, mirroring tickets). PUSH fires ONLY for a matched
-// plus-one (payload.matchedUserId) OR the signed-in primary (role==='primary'
-// + payload.primaryUserId) — unmatched guests get email-only. Each channel is
-// isolated; the queue row's idempotency_key (unique) is the de-dupe guard.
-// deno-lint-ignore no-explicit-any
-type AdminClient = ReturnType<typeof createClient<any, "public", any>>;
+function copyFor(
+  template: TemplateKey,
+  p: Record<string, unknown>,
+  link: string,
+) {
+  const event = text(p.eventName) ?? "your event";
+  const brand = text(p.brandName) ?? "Mingla";
+  const state = text(p.status);
+  const approval = text(p.approvalStatus);
+  switch (template) {
+    case "rsvp_pass":
+      return {
+        title: `You're going to ${event}`,
+        body: [event, text(p.dateLine), text(p.venueLine), `Hosted by ${brand}`]
+          .filter(Boolean).join("\n\n"),
+        sms:
+          `${brand}: your RSVP for ${event} is confirmed. Open your secure invite: ${link}`,
+      };
+    case "rsvp_acknowledgement": {
+      const label = state === "waitlisted"
+        ? "You're on the waitlist"
+        : approval === "pending"
+        ? "Your RSVP is pending host approval"
+        : state === "maybe"
+        ? "We saved your Maybe"
+        : state === "not_going"
+        ? "Your RSVP is updated"
+        : "Your RSVP is confirmed";
+      return {
+        title: `${label}: ${event}`,
+        body: `${label} for ${event}.`,
+        sms: `${brand}: ${label.toLowerCase()} for ${event}. ${link}`,
+      };
+    }
+    case "rsvp_event_updated":
+      return {
+        title: `Plans changed: ${event}`,
+        body: "The host updated this event.",
+        sms: `${brand}: ${event} was updated. ${link}`,
+      };
+    case "rsvp_waitlist_promoted":
+      return {
+        title: `You're in! ${event}`,
+        body: "A spot opened — you're going.",
+        sms: `${brand}: a spot opened at ${event}. ${link}`,
+      };
+    case "rsvp_approved":
+      return {
+        title: `You're approved: ${event}`,
+        body: "The host approved your RSVP.",
+        sms: `${brand}: you're approved for ${event}. ${link}`,
+      };
+    case "rsvp_denied":
+      return {
+        title: `RSVP update: ${event}`,
+        body: "The host couldn't fit your RSVP this time.",
+        sms: `${brand}: the host couldn't fit your RSVP for ${event}.`,
+      };
+    case "rsvp_removed":
+      return {
+        title: `Update: ${event}`,
+        body: "The host removed you from this event.",
+        sms: `${brand}: the host removed you from ${event}.`,
+      };
+  }
+}
 
-async function handleRsvpPass(
+async function passStillEligible(
   admin: AdminClient,
-  notificationId: string,
-  queueRow: {
-    event_id: string;
-    rsvp_id: string | null;
-    payload: unknown;
-    recipient: string | null;
-  },
-): Promise<Response> {
-  const p = (queueRow.payload ?? {}) as Record<string, unknown>;
-  const str = (v: unknown): string | null =>
-    typeof v === "string" && v.length > 0 ? v : null;
+  p: Record<string, unknown>,
+): Promise<boolean> {
+  const rsvpId = text(p.rsvpId) ?? text(p.rsvp_id);
+  if (!rsvpId) return false;
+  const { data: rsvp } = await admin.from("event_rsvps")
+    .select("event_id,rsvp_status,approval_status")
+    .eq("id", rsvpId).maybeSingle();
+  if (
+    !rsvp || rsvp.rsvp_status !== "going" || rsvp.approval_status !== "approved"
+  ) return false;
+  const { data: event } = await admin.from("events")
+    .select("status,deleted_at").eq("id", rsvp.event_id).maybeSingle();
+  return !!event && event.deleted_at === null && event.status !== "cancelled";
+}
 
-  const recipientEmail = str(p.recipientEmail) ?? str(queueRow.recipient);
-  const recipientName = str(p.recipientName);
-  const qrCode = str(p.qrCode);
-  const matchedUserId = str(p.matchedUserId);
-  const eventName = str(p.eventName) ?? "your event";
-  const dateLine = str(p.dateLine);
-  const venueLine = str(p.venueLine);
-  const brandName = str(p.brandName) ?? "Mingla";
-  const role = str(p.role) ?? "guest";
-  const primaryUserId = str(p.primaryUserId);
-  const brandId = str(p.brandId);
-  const deepLink = str(p.deepLink) ?? "https://usemingla.com";
+async function recoveryLinkFor(
+  admin: AdminClient,
+  p: Record<string, unknown>,
+): Promise<string | null> {
+  const entityId = text(p.entityId);
+  if (!entityId) return null;
+  const table = text(p.role) === "guest" ? "event_rsvp_guests" : "event_rsvps";
+  try {
+    const { data: row } = await admin.from(table)
+      .select("pass_recovery_token_hash,pass_recovery_token_created_at")
+      .eq("id", entityId).maybeSingle();
+    const current = row as {
+      pass_recovery_token_hash?: string | null;
+      pass_recovery_token_created_at?: string | null;
+    } | null;
+    const createdAt = current?.pass_recovery_token_created_at ??
+      text(p.recoveryCreatedAt) ?? new Date().toISOString();
+    const token = await deriveRsvpRecoveryToken({
+      entityId,
+      createdAtIso: createdAt,
+      pepper: qrTokenPepper(),
+    });
+    const tokenHash = await sha256Hex(token);
+    if (
+      current?.pass_recovery_token_created_at !== createdAt ||
+      current?.pass_recovery_token_hash !== tokenHash
+    ) {
+      const { error } = await admin.from(table).update({
+        pass_recovery_token_hash: tokenHash,
+        pass_recovery_token_created_at: createdAt,
+      }).eq("id", entityId);
+      if (error) return null;
+    }
+    return rsvpRecoveryUrl(
+      table === "event_rsvp_guests" ? "guest" : "primary",
+      entityId,
+      token,
+    );
+  } catch {
+    return null;
+  }
+}
 
-  const copy = buildCopy("rsvp_pass", {
-    eventTitle: eventName,
-    brandName,
-    link: deepLink,
-    dateLine,
-    venueLine,
+async function complete(
+  admin: AdminClient,
+  claim: Claim,
+  status: "sent" | "failed_retryable" | "failed_terminal" | "ambiguous",
+  providerId: string | null,
+  safeCode: string | null,
+) {
+  const { error } = await admin.rpc("finish_rsvp_notification_delivery", {
+    p_delivery_id: claim.delivery_id,
+    p_lease_id: claim.lease_id,
+    p_status: status,
+    p_provider_message_id: providerId,
+    p_safe_error_code: safeCode,
   });
+  if (error) {
+    console.error(
+      "[rsvp-notify] finish failed",
+      claim.delivery_id,
+      error.message,
+    );
+  }
+  console.info(JSON.stringify({
+    event: "rsvp_notification_channel_result",
+    notificationId: claim.notification_id,
+    channel: claim.channel,
+    outcome: status,
+    attempt: claim.attempt_count,
+    providerCode: safeCode,
+  }));
+}
 
-  // Push target: a matched plus-one, or the signed-in primary. Unmatched → none.
-  const pushUserId =
-    matchedUserId ?? (role === "primary" ? primaryUserId : null);
-
-  const { outcome, anySucceeded, status: nextStatus } = await fanOutChannels({
-    push:
-      pushUserId !== null
-        ? async (): Promise<boolean> => {
-            const ok = await sendPush({
-              targetUserId: pushUserId,
-              title: copy.pushTitle,
-              body: copy.pushBody,
-              app: "consumer",
-              data: { deepLink, type: "rsvp_pass" },
-            });
-            // In-app inbox mirror (same shape rsvp-notify uses elsewhere).
-            try {
-              await admin.from("notifications").insert({
-                user_id: pushUserId,
-                type: "rsvp_pass",
-                title: copy.pushTitle,
-                body: copy.pushBody,
-                deep_link: deepLink,
-                data: { deepLink },
-                brand_id: brandId,
-                related_id: queueRow.event_id,
-                related_type: "rsvp_event",
-              });
-            } catch (inboxErr) {
-              console.warn("[rsvp-notify] rsvp_pass inbox insert failed (non-fatal)", String(inboxErr));
-            }
-            return ok;
-          }
-        : null,
-    // Email: the recipient's signed entry QR as a PDF attachment. Build is
-    // inside the sender closure so a PDF failure is isolated to the email
-    // channel (never aborts push).
-    email:
-      recipientEmail !== null && qrCode !== null
-        ? async (): Promise<boolean> => {
-            let pdf;
-            try {
-              pdf = await buildRsvpPassPdf({
-                eventTitle: eventName,
-                dateLine,
-                venueLine,
-                brandName,
-                attendeeName: recipientName,
-                qrPayload: qrCode,
-              });
-            } catch (pdfErr) {
-              console.warn("[rsvp-notify] rsvp_pass pdf build failed (isolated)", String(pdfErr));
-              return false;
-            }
-            const r = await sendResendEmailWithRsvpPass({
-              to: recipientEmail,
-              recipientName,
-              subject: copy.emailSubject,
-              body: copy.emailBody,
-              attachment: { filename: pdf.filename, content: pdf.contentBase64 },
-            });
-            if (!r.ok) console.warn("[rsvp-notify] rsvp_pass email failed (isolated)", r.error);
-            return r.ok;
-          }
-        : null,
-    sms: null, // rsvp_pass is email (QR PDF) + push; no SMS.
+async function classifyFailure(
+  admin: AdminClient,
+  claim: Claim,
+  safeCode: string,
+): Promise<void> {
+  const { error } = await admin.rpc("classify_rsvp_notification_failure", {
+    p_delivery_id: claim.delivery_id,
+    p_lease_id: claim.lease_id,
+    p_safe_error_code: safeCode,
   });
+  if (error) {
+    console.error(
+      "[rsvp-notify] classify failed",
+      claim.delivery_id,
+      error.message,
+    );
+  }
+}
 
-  console.log(
-    `[rsvp-notify] rsvp_pass rsvp=${queueRow.rsvp_id} role=${role} ` +
-      `push=${outcome.push} email=${outcome.email} -> ${nextStatus}`,
-  );
-
-  const nowIso = new Date().toISOString();
-  await admin
-    .from("rsvp_notifications")
-    .update({
-      status: nextStatus,
-      sent_at: anySucceeded ? nowIso : null,
-      updated_at: nowIso,
-    })
-    .eq("id", notificationId);
-
-  return json(200, { ok: anySucceeded, channels: outcome, status: nextStatus });
+async function processClaim(admin: AdminClient, claim: Claim): Promise<void> {
+  const p = claim.payload ?? {};
+  if (
+    claim.template_key === "rsvp_pass" && !(await passStillEligible(admin, p))
+  ) {
+    await complete(admin, claim, "failed_terminal", null, "rsvp_not_eligible");
+    return;
+  }
+  const userId = text(p.matchedUserId) ?? text(p.primaryUserId);
+  const contact = claim.channel === "email"
+    ? text(p.recipientEmail)
+    : claim.channel === "sms"
+    ? text(p.recipientPhone)
+    : null;
+  const defaultLink = text(p.deepLink) ?? "https://usemingla.com";
+  const needsRecoveryLink = claim.template_key === "rsvp_pass" &&
+    (claim.channel === "email" || claim.channel === "sms");
+  const recoveryLink = needsRecoveryLink
+    ? await recoveryLinkFor(admin, p)
+    : null;
+  if (
+    claim.template_key === "rsvp_pass" && claim.channel === "sms" &&
+    !recoveryLink
+  ) {
+    await complete(
+      admin,
+      claim,
+      "failed_retryable",
+      null,
+      "rsvp_recovery_unavailable",
+    );
+    return;
+  }
+  const authenticatedPassLink = claim.template_key === "rsvp_pass" && userId
+    ? `mingla://calendar/${
+      encodeURIComponent(text(p.rsvpId) ?? text(p.rsvp_id) ?? "")
+    }`
+    : defaultLink;
+  const link = recoveryLink ?? authenticatedPassLink;
+  const copy = copyFor(claim.template_key, p, link);
+  let attachment: { filename: string; content: string } | null = null;
+  if (claim.template_key === "rsvp_pass" && claim.channel === "email") {
+    const qrCode = text(p.qrCode);
+    if (!qrCode) {
+      await complete(admin, claim, "failed_retryable", null, "rsvp_qr_missing");
+      return;
+    }
+    try {
+      const pdf = await buildRsvpPassPdf({
+        eventTitle: text(p.eventName) ?? "your event",
+        dateLine: text(p.dateLine),
+        venueLine: text(p.venueLine),
+        brandName: text(p.brandName) ?? "Mingla",
+        attendeeName: text(p.recipientName),
+        qrPayload: qrCode,
+      });
+      attachment = { filename: pdf.filename, content: pdf.contentBase64 };
+    } catch {
+      await complete(admin, claim, "failed_retryable", null, "rsvp_pdf_failed");
+      return;
+    }
+  }
+  try {
+    const result = await dispatchRsvpChannel(
+      admin as unknown as Parameters<typeof dispatchRsvpChannel>[0],
+      {
+        channel: claim.channel,
+        user_id: userId,
+        contact,
+        category_key: claim.template_key === "rsvp_pass"
+          ? "rsvp_pass"
+          : "rsvp_acknowledgement",
+        payload: p,
+        idempotency_key: claim.idempotency_key,
+        title: copy.title,
+        body: copy.body,
+        sms_body: copy.sms,
+        deep_link: link,
+        attachment,
+        delivery_id: claim.delivery_id,
+        lease_id: claim.lease_id,
+      },
+    );
+    await complete(
+      admin,
+      claim,
+      result.outcome === "sent"
+        ? "sent"
+        : result.outcome === "ambiguous"
+        ? "ambiguous"
+        : result.outcome === "terminal"
+        ? "failed_terminal"
+        : "failed_retryable",
+      result.providerMessageId,
+      result.safeCode,
+    );
+  } catch {
+    await classifyFailure(admin, claim, "dispatch_unavailable");
+  }
 }
 
 serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
-  if (req.method !== "POST") {
-    return json(405, { error: "method_not_allowed" });
-  }
-
+  if (req.method !== "POST") return json(405, { error: "method_not_allowed" });
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   if (!supabaseUrl || !serviceKey) {
-    console.error("[rsvp-notify] missing SUPABASE_URL / service key");
     return json(500, { error: "server_misconfigured" });
   }
-
-  let reqBody: { notificationId?: string };
+  const authorization = req.headers.get("Authorization");
+  if (!isRsvpNotifyServiceRequest(authorization, serviceKey)) {
+    return json(401, { error: "unauthorized" });
+  }
+  let notificationId: string | null = null;
   try {
-    reqBody = (await req.json()) as { notificationId?: string };
+    const body = await req.json() as { notificationId?: unknown };
+    notificationId = text(body.notificationId);
   } catch {
     return json(400, { error: "invalid_json" });
   }
-  const notificationId =
-    typeof reqBody.notificationId === "string" ? reqBody.notificationId : "";
-  if (notificationId.length === 0) {
-    return json(400, { error: "notification_id_required" });
-  }
-
   const admin = createClient(supabaseUrl, serviceKey, {
     auth: { persistSession: false },
   });
-
-  // 1. Load the queue row.
-  const { data: queueRow, error: queueErr } = await admin
-    .from("rsvp_notifications")
-    .select("id, event_id, rsvp_id, template_key, status, payload, recipient")
-    .eq("id", notificationId)
-    .single();
-  if (queueErr || !queueRow) {
-    console.error("[rsvp-notify] queue row not found", notificationId);
-    return json(404, { error: "queue_row_not_found" });
-  }
-  if (queueRow.status === "sent") {
-    return json(200, { ok: true, reason: "already_sent" });
-  }
-
-  // ORCH-1163 [rsvp-shared-body] — rsvp_pass: per-RECIPIENT "you're going" pass.
-  // Self-contained from the payload (one row per recipient: primary + each
-  // guest); does NOT re-resolve from event_rsvps. Email always (QR PDF
-  // attachment); push only when matchedUserId OR the signed-in primary.
-  if (queueRow.template_key === "rsvp_pass") {
-    return await handleRsvpPass(admin, notificationId, queueRow);
-  }
-
-  // 2. Resolve the guest + event.
-  const { data: rsvpRow } = await admin
-    .from("event_rsvps")
-    .select("id, user_id, guest_name, guest_email, guest_phone")
-    .eq("id", queueRow.rsvp_id)
-    .maybeSingle();
-  const { data: eventRow } = await admin
-    .from("events")
-    .select("id, title, brand_id, slug")
-    .eq("id", queueRow.event_id)
-    .single();
-
-  if (!eventRow) {
-    await admin
-      .from("rsvp_notifications")
-      .update({ status: "failed_terminal", last_error: "event_not_found", updated_at: new Date().toISOString() })
-      .eq("id", notificationId);
-    return json(200, { ok: false, reason: "event_not_found" });
-  }
-
-  let brandName = "Mingla";
-  const { data: brandRow } = await admin
-    .from("brands")
-    .select("slug, name")
-    .eq("id", eventRow.brand_id)
-    .maybeSingle();
-  if (brandRow?.name) brandName = brandRow.name;
-
-  const link = brandRow?.slug
-    ? `https://usemingla.com/e/${brandRow.slug}/${eventRow.slug}`
-    : "https://usemingla.com";
-  const copy = buildCopy(queueRow.template_key as TemplateKey, {
-    eventTitle: eventRow.title ?? "your event",
-    brandName,
-    link,
-  });
-
-  // 3. Resolve every available channel address/token.
-  const userId: string | null = rsvpRow?.user_id ?? null;
-  let email: string | null = rsvpRow?.guest_email ?? null;
-  let phone: string | null = rsvpRow?.guest_phone ?? null;
-
-  // App-user guest: resolve verified auth email (never user_metadata) + profile phone.
-  if (userId !== null) {
-    try {
-      const { data: au } = await admin.auth.admin.getUserById(userId);
-      const authEmail = au?.user?.email ?? null;
-      const identityEmail =
-        (au?.user?.identities ?? [])
-          .map((i) => (i.identity_data as { email?: string } | null)?.email)
-          .find((e): e is string => typeof e === "string" && e.length > 0) ?? null;
-      if (email === null) email = authEmail ?? identityEmail;
-    } catch (err) {
-      console.warn("[rsvp-notify] auth email resolve failed", String(err));
-    }
-    if (phone === null) {
-      try {
-        const { data: profile } = await admin
-          .from("profiles")
-          .select("phone")
-          .eq("id", userId)
-          .maybeSingle();
-        if (profile && typeof (profile as { phone?: string }).phone === "string") {
-          phone = (profile as { phone?: string }).phone ?? null;
-        }
-      } catch {
-        // profile phone is optional.
-      }
-    }
-  }
-
-  // 4. Fan out — each channel independent + non-blocking (via the pure helper).
-  const { outcome, anySucceeded, status: nextStatus } = await fanOutChannels({
-    push:
-      userId !== null
-        ? async (): Promise<boolean> => {
-            const ok = await sendPush({
-              targetUserId: userId,
-              title: copy.pushTitle,
-              body: copy.pushBody,
-              app: "consumer",
-              data: { deepLink: link, type: queueRow.template_key },
-            });
-            // In-app inbox row (mirror notify-dispatch); non-blocking.
-            try {
-              await admin.from("notifications").insert({
-                user_id: userId,
-                type: queueRow.template_key,
-                title: copy.pushTitle,
-                body: copy.pushBody,
-                deep_link: link,
-                data: { deepLink: link },
-                brand_id: eventRow.brand_id,
-                related_id: eventRow.id,
-                related_type: "rsvp_event",
-              });
-            } catch (inboxErr) {
-              console.warn("[rsvp-notify] inbox insert failed (non-fatal)", String(inboxErr));
-            }
-            return ok;
-          }
-        : null,
-    email:
-      email !== null && email.length > 0
-        ? async (): Promise<boolean> => {
-            const r = await sendResendEmail(email!, copy.emailSubject, copy.emailBody);
-            if (!r.ok) console.warn("[rsvp-notify] email failed (isolated)", r.error);
-            return r.ok;
-          }
-        : null,
-    sms:
-      phone !== null && phone.length > 0
-        ? async (): Promise<boolean> => {
-            const r = await sendTwilioSms(phone!, copy.sms);
-            if (!r.ok) console.warn("[rsvp-notify] sms failed (isolated)", r.error);
-            return r.ok;
-          }
-        : null,
-  });
-
-  console.log(
-    `[rsvp-notify] ${queueRow.template_key} rsvp=${queueRow.rsvp_id} ` +
-      `push=${outcome.push} email=${outcome.email} sms=${outcome.sms} -> ${nextStatus}`,
+  const { data, error } = await admin.rpc(
+    "claim_rsvp_notification_deliveries",
+    {
+      p_notification_id: notificationId,
+      p_limit: notificationId ? 8 : 50,
+    },
   );
-
-  const nowIso = new Date().toISOString();
-  await admin
-    .from("rsvp_notifications")
-    .update({
-      status: nextStatus,
-      sent_at: anySucceeded ? nowIso : null,
-      attempt_count: (typeof (queueRow as { attempt_count?: number }).attempt_count === "number"
-        ? (queueRow as { attempt_count?: number }).attempt_count!
-        : 0) + 1,
-      updated_at: nowIso,
-    })
-    .eq("id", notificationId);
-
-  // Mark the rsvp row's notified_at (idempotency aid).
-  if (rsvpRow?.id) {
-    await admin
-      .from("event_rsvps")
-      .update({ notified_at: nowIso })
-      .eq("id", rsvpRow.id);
-  }
-
-  return json(200, { ok: anySucceeded, channels: outcome, status: nextStatus });
+  if (error) return json(500, { error: "delivery_claim_failed" });
+  const claims = (data ?? []) as Claim[];
+  await Promise.all(claims.map((claim) => processClaim(admin, claim)));
+  return json(200, { ok: true, claimed: claims.length });
 });

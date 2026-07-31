@@ -303,6 +303,179 @@ export interface SourceRefundChannelInput extends DispatchV2Input {
   attention_url?: string | null;
 }
 
+export interface RsvpChannelInput {
+  channel: "in_app" | "push" | "email" | "sms";
+  user_id: string | null;
+  contact: string | null;
+  category_key: "rsvp_acknowledgement" | "rsvp_pass";
+  payload: Record<string, unknown>;
+  idempotency_key: string;
+  title: string;
+  body: string;
+  sms_body: string;
+  deep_link: string;
+  attachment?: { filename: string; content: string } | null;
+  delivery_id: string;
+  lease_id: string;
+}
+
+/** Issue #1447: RSVP's claimed channel rows still use the unified dispatcher
+ * adapters and mandatory can_send chokepoint. The caller owns the durable RSVP
+ * lease; this function owns only policy + provider I/O. */
+export async function dispatchRsvpChannel(
+  client: MinimalClient,
+  input: RsvpChannelInput,
+): Promise<{
+  outcome: "sent" | "retryable" | "terminal" | "ambiguous";
+  providerMessageId: string | null;
+  safeCode: string | null;
+}> {
+  const policyChannel = input.channel === "in_app" ? "inapp" : input.channel;
+  const { data: catData } = await client.from("notification_categories")
+    .select("*").eq("key", input.category_key).maybeSingle();
+  const category = catData as CategoryRow | null;
+  if (!category?.active || !category.default_channels.includes(policyChannel)) {
+    return {
+      outcome: "terminal",
+      providerMessageId: null,
+      safeCode: "dispatch_rejected",
+    };
+  }
+  const { data: allowed } = await client.rpc("can_send", {
+    p_user_id: input.user_id,
+    p_category_key: input.category_key,
+    p_channel: policyChannel,
+    p_contact: input.contact,
+  });
+  if (allowed !== true) {
+    return {
+      outcome: "terminal",
+      providerMessageId: null,
+      safeCode: "can_send_denied",
+    };
+  }
+  if (input.channel === "in_app") {
+    if (!input.user_id) {
+      return {
+        outcome: "terminal",
+        providerMessageId: null,
+        safeCode: "no_contact",
+      };
+    }
+    const inserted = await client.from("notifications").insert({
+      user_id: input.user_id,
+      type: input.category_key,
+      title: input.title,
+      body: input.body,
+      data: { ...input.payload, deepLink: input.deep_link },
+      idempotency_key: `${input.idempotency_key}:in_app`,
+    }) as unknown as { error: { code?: string } | null };
+    return !inserted.error || inserted.error.code === "23505"
+      ? { outcome: "sent", providerMessageId: null, safeCode: null }
+      : {
+        outcome: "retryable",
+        providerMessageId: null,
+        safeCode: "dispatch_unavailable",
+      };
+  }
+  let result: {
+    ok: boolean;
+    status: string;
+    providerMessageId: string | null;
+    error?: string;
+  };
+  if (input.channel === "push") {
+    if (!input.user_id) {
+      return {
+        outcome: "terminal",
+        providerMessageId: null,
+        safeCode: "no_contact",
+      };
+    }
+    result = await pushAdapter.send({
+      userId: input.user_id,
+      title: input.title,
+      body: input.body,
+      data: { ...input.payload, deepLink: input.deep_link },
+      routingType: input.category_key,
+      beforeProviderIo: async () => {
+        await markRsvpProviderIo(client, input);
+      },
+    });
+  } else if (input.channel === "email") {
+    if (!input.contact) {
+      return {
+        outcome: "terminal",
+        providerMessageId: null,
+        safeCode: "no_contact",
+      };
+    }
+    result = await emailAdapter.send({
+      to: input.contact,
+      title: input.title,
+      body: input.body,
+      cta: { label: "View RSVP", url: input.deep_link },
+      idempotencyKey: `${input.idempotency_key}:email`,
+      ...(input.attachment ? { attachments: [input.attachment] } : {}),
+    });
+  } else {
+    if (!input.contact) {
+      return {
+        outcome: "terminal",
+        providerMessageId: null,
+        safeCode: "no_contact",
+      };
+    }
+    result = await smsAdapter.send({
+      to: input.contact,
+      brandName: String(input.payload.brandName ?? "Mingla"),
+      message: input.sms_body,
+      countryCode: input.contact.startsWith("+234") ? "NG" : "US",
+      beforeProviderIo: async () => {
+        await markRsvpProviderIo(client, input);
+      },
+    });
+  }
+  if (result.ok && result.status === "sent") {
+    return {
+      outcome: "sent",
+      providerMessageId: result.providerMessageId,
+      safeCode: null,
+    };
+  }
+  const safe = result.error
+    ? notificationSafeError(result.error)
+    : "provider_unavailable";
+  const terminal = result.status === "skipped" ||
+    safe === "invalid_recipient" ||
+    safe === "recipient_opted_out" || safe === "provider_rejected";
+  const definitiveRetry = safe === "provider_config_missing" ||
+    safe === "provider_rate_limited" || input.channel === "email";
+  return {
+    outcome: terminal
+      ? "terminal"
+      : definitiveRetry
+      ? "retryable"
+      : "ambiguous",
+    providerMessageId: null,
+    safeCode: safe,
+  };
+}
+
+async function markRsvpProviderIo(
+  client: MinimalClient,
+  input: RsvpChannelInput,
+): Promise<void> {
+  const { data, error } = await client.rpc(
+    "mark_rsvp_notification_provider_io",
+    {
+      p_delivery_id: input.delivery_id,
+      p_lease_id: input.lease_id,
+    },
+  );
+  if (error || data !== true) throw new Error("rsvp_provider_io_not_marked");
+}
+
 export async function dispatchSourceRefundChannel(
   client: MinimalClient,
   input: SourceRefundChannelInput,

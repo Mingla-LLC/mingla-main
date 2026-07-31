@@ -149,25 +149,23 @@ export type {
   RsvpOfferingDecisionDockProps,
   RsvpGuestContact,
   RsvpSubmitResult,
+  RsvpPassCredential,
+  RsvpAnonymousRecovery,
   ChipInResult,
   // ORCH-1295 [chip-in-post-payment-polish] — BUG 2 host-supplied phone field.
   RsvpPhoneFieldRenderArgs,
   RsvpPhoneFieldRenderer,
 } from "./RsvpOfferingBody";
-export { RsvpGoingConfirmDialog } from "./RsvpGoingConfirmDialog";
 export type { RsvpGoingConfirmDialogProps } from "./RsvpGoingConfirmDialog";
 // ORCH-1163-R3 — the floating-bar "Add your details" modal (self-sufficient
 // contact + +1 forms; one decision owner, two entry points).
-export { RsvpDetailsModal } from "./RsvpDetailsModal";
 export type { RsvpDetailsModalProps } from "./RsvpDetailsModal";
-export { RsvpSuccessPopup } from "./RsvpSuccessPopup";
 export type {
   RsvpSuccessPopupProps,
   RsvpConfirmationDetails,
 } from "./RsvpSuccessPopup";
 // ORCH-1291 [rsvp-chip-in] — the shared voluntary-gift panel + the payment
 // hand-off type (surfaces provide onChipIn; the body mounts the panel).
-export { RsvpChipInPanel } from "./RsvpChipInPanel";
 export type { RsvpChipInPanelProps, ChipInPanelState } from "./RsvpChipInPanel";
 
 // ORCH-1138 [trip-page-redesign] — shared "City, Country" route-leg normalizer

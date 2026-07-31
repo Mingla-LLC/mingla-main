@@ -7,15 +7,16 @@
  * On a going RSVP, public-submit-rsvp ENQUEUES/DISPATCHES one `rsvp_pass` per
  * recipient (idempotency key `rsvp_pass:...`) and hands the actual email/push to the
  * EXISTING rsvp-notify edge fn — it spins up NO new email client (no `new Resend(`,
- * no raw api.onesignal.com POST). rsvp-notify owns the `rsvp_pass` branch: it calls
- * the existing sendPush() and reuses _shared/ticketPdf to attach the entry QR.
+ * no raw api.onesignal.com POST). rsvp-notify owns the `rsvp_pass` branch: it routes
+ * through the shared dispatcher + push adapter, which calls the existing sendPush(),
+ * and reuses _shared/ticketPdf to attach the entry QR.
  * Verified-account matching reads auth.identities (email_verified) + phone_confirmed_at
  * — NEVER user_metadata/raw_user_meta_data. The matched guest sees the going RSVP in
  * their own Calendar (fetch_user_going_rsvps returns 'primary' AND 'guest' rows).
  *
  * Structural source-string gate. FAIL-ON-REVERT: introduce a new email client, drop
- * the rsvp_pass branch / sendPush / ticketPdf reuse, read user_metadata in the
- * resolver, or drop a UNION role and a check fails.
+ * the rsvp_pass branch / dispatcher → pushAdapter → sendPush chain / ticketPdf
+ * reuse, read user_metadata in the resolver, or drop a UNION role and a check fails.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -45,6 +46,8 @@ const check = (name, pass, detail) => checks.push({ name, pass, detail });
 
 const submitFn = read("supabase/functions/public-submit-rsvp/index.ts");
 const notifyFn = read("supabase/functions/rsvp-notify/index.ts");
+const notifyDispatcher = read("supabase/functions/_shared/notifyV2.ts");
+const pushAdapter = read("supabase/functions/_shared/adapters/pushAdapter.ts");
 const mig = read(
   "supabase/migrations/20261016000001_orch_1163_event_rsvp_guests.sql",
 );
@@ -76,9 +79,11 @@ check(
   "rsvp-notify/index.ts must branch on the rsvp_pass template",
 );
 check(
-  "T5 rsvp-notify reuses the existing sendPush()",
-  /sendPush\s*\(/.test(notifyFn),
-  "rsvp-notify/index.ts must call the existing sendPush()",
+  "T5 rsvp-notify reuses the shared dispatcher and existing sendPush()",
+  /dispatchRsvpChannel\s*\(/.test(notifyFn) &&
+    /pushAdapter\.send\s*\(/.test(notifyDispatcher) &&
+    /sendPush\s*\(/.test(pushAdapter),
+  "rsvp-notify/index.ts must dispatch through notifyV2, whose push adapter calls the existing sendPush()",
 );
 check(
   "T6 rsvp-notify reuses _shared/ticketPdf for the QR pass",
