@@ -56,6 +56,10 @@ describe("Issue #1469 Stay authoring permission parity", () => {
       'if (!canManageInventory) throw new Error("forbidden")',
     );
     expect(manager).toContain('testID="stay-finance-permission-copy"');
+    expect(manager).toContain(
+      'maxAdults: kind === "room" ? asPositiveInteger(maxGuests) : undefined',
+    );
+    expect(manager).toContain('maxChildren: kind === "room" ? 0 : undefined');
   });
 
   it("lets finance-only staff save money without a forbidden metadata update", () => {

@@ -341,6 +341,8 @@ function OfferingEditor({
         capacity: sharedCapacity ? asPositiveInteger(capacity) : undefined,
         minGuests: 1,
         maxGuests: asPositiveInteger(maxGuests),
+        maxAdults: kind === "room" ? asPositiveInteger(maxGuests) : undefined,
+        maxChildren: kind === "room" ? 0 : undefined,
         placePricingBasis: kind === "place" ? "per_booking" : undefined,
         amenities: splitList(amenities),
         accessScope:

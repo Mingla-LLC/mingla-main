@@ -113,7 +113,9 @@ BEGIN
         "inventoryBasis":"pooled_units",
         "unitNamingMode":"interchangeable",
         "quantity":1,
-        "maxGuests":2
+        "maxGuests":2,
+        "maxAdults":2,
+        "maxChildren":0
       }]
     }'::jsonb,
     NULL,
@@ -144,6 +146,8 @@ BEGIN
           "inventoryBasis":"pooled_units",
           "quantity":1,
           "maxGuests":2,
+          "maxAdults":2,
+          "maxChildren":0,
           "price":{"amountMinor":25000,"currencyCode":"USD"}
         }]
       }'::jsonb,
@@ -285,6 +289,7 @@ BEGIN
         "inventoryBasis":"exclusive_units",
         "quantity":1,
         "maxGuests":4,
+        "placePricingBasis":"per_booking",
         "price":{"amountMinor":15000,"currencyCode":"USD"}
       }]
     }'::jsonb,
