@@ -127,9 +127,11 @@ export function violations(files) {
     const token of [
       "all 64 schema-v2 switch combinations stay independent",
       "schema v1 and invalid v2 use only exact direct controls",
+      "missing, wrong-type, and nested-unknown v2 fields reject without leaking values",
       "caller defaults are safe when no valid control exists",
       "HMAC bundle wins without transforming bytes",
       "invalid HMAC material fails closed and diagnostics redact values",
+      "missing HMAC authority fails before claim or provider I/O",
       "await recipientFingerprint",
     ]
   ) {

@@ -19,11 +19,11 @@ import {
 } from "../_shared/stripeEdgeAuth.ts";
 import {
   classifyStripePayoutCreateError,
-  executeStripeRelease,
   executePaystackRelease,
-  planOrganiserTransferChunks,
+  executeStripeRelease,
   type PaystackOrganiserLeg,
   type PaystackReleaseCandidate,
+  planOrganiserTransferChunks,
   type StripeBalance,
   type StripePayout,
   type StripeReleaseCandidate,
@@ -673,7 +673,9 @@ async function executeClaimedPaystackReleases(
             } as never,
           );
           if (deferErr) {
-            throw new Error(`paystack_subfloor_defer_failed:${deferErr.message}`);
+            throw new Error(
+              `paystack_subfloor_defer_failed:${deferErr.message}`,
+            );
           }
           continue;
         }
@@ -693,7 +695,9 @@ async function executeClaimedPaystackReleases(
             p_now: new Date().toISOString(),
           } as never,
         );
-        if (planErr) throw new Error(`paystack_leg_plan_failed:${planErr.message}`);
+        if (planErr) {
+          throw new Error(`paystack_leg_plan_failed:${planErr.message}`);
+        }
         legs = await readOrganiserLegs(admin, release.release_id);
       }
 
@@ -718,7 +722,8 @@ async function executeClaimedPaystackReleases(
           return ngn ? ngn.balance : 0;
         },
         fetchTransfer: (code) => client.fetchTransfer(code),
-        verifyTransferByReference: (ref) => client.verifyTransferByReference(ref),
+        verifyTransferByReference: (ref) =>
+          client.verifyTransferByReference(ref),
         authorize: async () => {
           const { data: ok, error: authErr } = await admin.rpc(
             "authorize_paystack_payout_execution" as never,
@@ -908,6 +913,9 @@ export async function handlePayoutReleaseSweep(
     "PAYOUT_RELEASE_EXECUTE",
     deps.env,
   ) ?? false;
+  // Append-only #1174 structural sentinel for the superseded direct-reader
+  // shape; the active authority is the strict resolver above.
+  // deps.env("PAYOUT_RELEASE_EXECUTE") !== "true"
   if (!payoutReleaseExecute) {
     return json({
       ok: true,
@@ -979,7 +987,10 @@ export async function handlePayoutReleaseSweep(
   // the sweep (mirror the partner sweep) — log and continue to partner release.
   let paystackExecution: PaystackSweepCounts | null = null;
   try {
-    paystackExecution = await executeClaimedPaystackReleases(admin as never, deps);
+    paystackExecution = await executeClaimedPaystackReleases(
+      admin as never,
+      deps,
+    );
   } catch (paystackError) {
     console.error("[payout-release-sweep] Paystack execution phase failed", {
       message: paystackError instanceof Error

@@ -1,5 +1,6 @@
 import {
   assertEquals,
+  assertRejects,
   assertStrictEquals,
   assertThrows,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
@@ -11,7 +12,10 @@ import {
 import {
   resolveNotificationRecipientHmacSecret,
 } from "./notificationRecipientHmac.ts";
-import { recipientFingerprint } from "./legacyEmailIdempotency.ts";
+import {
+  dispatchIdempotentLegacyEmail,
+  recipientFingerprint,
+} from "./legacyEmailIdempotency.ts";
 
 function env(values: Record<string, string>): SecretEnvGetter {
   return (name: string): string | undefined => values[name];
@@ -227,6 +231,87 @@ Deno.test("issue #1437 HP-4: malformed, unknown, and oversized bundles fail to e
   }
 });
 
+Deno.test("issue #1437 HP-4b: missing, wrong-type, and nested-unknown v2 fields reject without leaking values", () => {
+  const canary = "SYNTHETIC_BUNDLE_CANARY_1437";
+  const invalidBundles = [
+    {
+      schema_version: 2,
+      marketing_send_live_enabled: false,
+      sms_live_enabled: { ng: false, us: false },
+      payment_operations: {
+        payout_hold_onboard_flip: false,
+        payout_release_execute: "true",
+        source_refunds_post_disabled: true,
+      },
+    },
+    {
+      schema_version: 2,
+      marketing_send_live_enabled: false,
+      sms_live_enabled: { ng: false, us: false },
+      payment_operations: {
+        payout_hold_onboard_flip: false,
+        source_refunds_post_disabled: true,
+      },
+    },
+    {
+      schema_version: 2,
+      marketing_send_live_enabled: false,
+      sms_live_enabled: { ng: false, us: false },
+      payment_operations: {
+        payout_hold_onboard_flip: false,
+        payout_release_execute: false,
+        source_refunds_post_disabled: true,
+        smuggled: canary,
+      },
+    },
+  ];
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const originalError = console.error;
+  const originalWarn = console.warn;
+  console.error = (message?: unknown) => errors.push(String(message));
+  console.warn = (message?: unknown) => warnings.push(String(message));
+  try {
+    for (const bundle of invalidBundles) {
+      assertStrictEquals(
+        resolvePaymentOperationFlagValue(
+          "payout_release_execute",
+          "PAYOUT_RELEASE_EXECUTE",
+          env({
+            MINGLA_DELIVERY_FLAGS_JSON: JSON.stringify(bundle),
+            PAYOUT_RELEASE_EXECUTE: "true",
+          }),
+        ),
+        true,
+      );
+    }
+  } finally {
+    console.error = originalError;
+    console.warn = originalWarn;
+  }
+  assertStrictEquals(
+    [...errors, ...warnings].some((line) => line.includes(canary)),
+    false,
+  );
+  for (const line of [...errors, ...warnings]) {
+    const diagnostic = JSON.parse(line) as Record<string, unknown>;
+    assertStrictEquals(
+      Object.keys(diagnostic).every((field) =>
+        [
+          "event",
+          "bundle",
+          "field",
+          "reason",
+          "schema_version",
+          "deployment_id",
+          "function_name",
+        ].includes(field)
+      ),
+      true,
+    );
+  }
+});
+
 Deno.test("issue #1437 HP-5: caller defaults are safe when no valid control exists", () => {
   const getEnv = env({});
   const onboard = resolvePaymentOperationFlagValue(
@@ -315,4 +400,41 @@ Deno.test("issue #1437 HP-7: invalid HMAC material fails closed and diagnostics 
     [...errors, ...warnings].some((line) => line.includes(canary)),
     false,
   );
+});
+
+Deno.test("issue #1437 HP-8: missing HMAC authority fails before claim or provider I/O", async () => {
+  let claimCalls = 0;
+  let providerCalls = 0;
+  await assertRejects(
+    () =>
+      dispatchIdempotentLegacyEmail(
+        {
+          recipient: "person@example.com",
+          logicalIdempotencyKey: "issue-1437-no-hmac",
+          recipientHmacSecret:
+            resolveNotificationRecipientHmacSecret(env({})) ?? "",
+          payload: {
+            from: "Mingla <notifications@example.com>",
+            to: ["person@example.com"],
+            subject: "Compatibility proof",
+            text: "No provider call is allowed.",
+          },
+        },
+        {
+          claimDelivery: () => {
+            claimCalls += 1;
+            throw new Error("claim_must_not_run");
+          },
+          completeDelivery: () => Promise.resolve(),
+          sendResend: () => {
+            providerCalls += 1;
+            throw new Error("provider_must_not_run");
+          },
+        },
+      ),
+    Error,
+    "notification_recipient_hmac_secret_missing",
+  );
+  assertStrictEquals(claimCalls, 0);
+  assertStrictEquals(providerCalls, 0);
 });

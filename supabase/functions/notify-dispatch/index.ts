@@ -30,6 +30,10 @@ import {
   resolveNotificationRecipientHmacSecret,
 } from "../_shared/notificationRecipientHmac.ts";
 
+// Phase-A compatibility reader for NOTIFICATION_RECIPIENT_HMAC_SECRET is
+// owned by resolveNotificationRecipientHmacSecret; the direct name remains
+// present in the manifest until #1436 completes the private bundle rollout.
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
