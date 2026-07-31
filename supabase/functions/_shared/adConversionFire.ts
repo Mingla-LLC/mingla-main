@@ -106,6 +106,8 @@ export interface FireAdConversionInput {
   orderId?: string | null;
   /** Venue reservation conversion — the reservation id (the dedup event_id). */
   reservationId?: string | null;
+  /** Stay reservation group conversion — the exact multi-room/place group. */
+  stayGroupId?: string | null;
   surface?: Surface; // default 'web'
   lane?: Lane; // buyer conversions are consumer-lane by default
   eventType?: EventType; // default 'purchase' (order); reservations auto-tier (below)
@@ -268,6 +270,7 @@ interface ConversionContext {
   brandId: string | null;
   minglaEventId: string | null;
   orderId: string | null;
+  stayGroupId: string | null;
   clickId: string | null;
   eventSourceUrl: string | null;
 }
@@ -341,6 +344,7 @@ async function resolveOrderContext(
     brandId,
     minglaEventId,
     orderId,
+    stayGroupId: null,
     clickId,
     eventSourceUrl: input.eventSourceUrl ?? null,
   };
@@ -410,7 +414,64 @@ async function resolveReservationContext(
     brandId: (row.brand_id as string | null) ?? null,
     minglaEventId: null,
     orderId: null,
+    stayGroupId: null,
     clickId,
+    eventSourceUrl: input.eventSourceUrl ?? null,
+  };
+}
+
+async function resolveStayContext(
+  supabase: SupabaseClient,
+  stayGroupId: string,
+  input: FireAdConversionInput,
+): Promise<ConversionContext | null> {
+  const { data: group, error } = await supabase
+    .from("stay_reservation_groups")
+    .select(
+      "id,brand_id,venue_id,currency_code,total_minor,guest_snapshot,attribution_click_id,state",
+    )
+    .eq("id", stayGroupId)
+    .maybeSingle();
+  if (error || !group) return null;
+  const row = group as Record<string, unknown>;
+  const { data: refunds } = await supabase
+    .from("stay_refunds")
+    .select("amount_minor")
+    .eq("group_id", stayGroupId)
+    .eq("state", "succeeded");
+  const refunded = Array.isArray(refunds)
+    ? refunds.reduce((sum, refund) => {
+      const amount = Number(
+        (refund as { amount_minor?: unknown }).amount_minor ?? 0,
+      );
+      return sum + (Number.isSafeInteger(amount) && amount > 0 ? amount : 0);
+    }, 0)
+    : 0;
+  const total = Number(row.total_minor ?? 0);
+  if (!Number.isSafeInteger(total) || total < 0) return null;
+  const guest = row.guest_snapshot && typeof row.guest_snapshot === "object"
+    ? row.guest_snapshot as Record<string, unknown>
+    : {};
+  const email = typeof guest.email === "string" ? guest.email : null;
+  const phone = typeof guest.phone === "string"
+    ? guest.phone
+    : typeof guest.phoneE164 === "string"
+    ? guest.phoneE164
+    : null;
+  return {
+    eventId: stayGroupId,
+    eventType: input.eventType ?? "purchase",
+    valueCents: Math.max(0, total - refunded),
+    currency: typeof row.currency_code === "string" ? row.currency_code : null,
+    hashedEmail: email ? await sha256Hex(normEmail(email)) : null,
+    hashedPhone: phone ? await sha256Hex(normPhone(phone)) : null,
+    brandId: typeof row.brand_id === "string" ? row.brand_id : null,
+    minglaEventId: null,
+    orderId: null,
+    stayGroupId,
+    clickId: typeof row.attribution_click_id === "string"
+      ? row.attribution_click_id
+      : null,
     eventSourceUrl: input.eventSourceUrl ?? null,
   };
 }
@@ -563,17 +624,20 @@ export async function fireAdConversion(
   };
 
   try {
-    const key = (input.orderId ?? input.reservationId ?? "").trim();
+    const key =
+      (input.orderId ?? input.reservationId ?? input.stayGroupId ?? "").trim();
     if (!key) return { ok: false, reason: "no_conversion_key" };
 
     // 1. Resolve the conversion context (order OR reservation).
     const ctx = input.orderId
       ? await resolveOrderContext(supabase, input.orderId, input)
-      : await resolveReservationContext(
+      : input.reservationId
+      ? await resolveReservationContext(
         supabase,
-        input.reservationId as string,
+        input.reservationId,
         input,
-      );
+      )
+      : await resolveStayContext(supabase, input.stayGroupId as string, input);
     if (!ctx) return { ok: false, eventId: key, reason: "context_unresolved" };
 
     // 2. Idempotency read: if the row exists and NO channel is still pending,
@@ -591,7 +655,7 @@ export async function fireAdConversion(
         // projected so the post-upsert backfill (step 4b) can COALESCE-fill ONLY
         // the columns the EARLY browser row left NULL — without ever clobbering an
         // already-set value.
-        "event_id, brand_id, order_id, value_cents, currency, mingla_event_id, meta_capi_status, tiktok_events_status, snap_capi_status, reddit_capi_status, google_ads_status",
+        "event_id, brand_id, order_id, stay_group_id, value_cents, currency, mingla_event_id, meta_capi_status, tiktok_events_status, snap_capi_status, reddit_capi_status, google_ads_status",
       )
       .eq("event_id", key)
       .maybeSingle();
@@ -641,6 +705,7 @@ export async function fireAdConversion(
       surface,
       lane,
       order_id: ctx.orderId,
+      stay_group_id: ctx.stayGroupId,
       brand_id: ctx.brandId,
       mingla_event_id: ctx.minglaEventId,
       click_id: ctx.clickId,
@@ -689,6 +754,9 @@ export async function fireAdConversion(
       }
       if (existingRow.order_id == null && ctx.orderId != null) {
         backfill.order_id = ctx.orderId;
+      }
+      if (existingRow.stay_group_id == null && ctx.stayGroupId != null) {
+        backfill.stay_group_id = ctx.stayGroupId;
       }
       if (existingRow.value_cents == null && ctx.valueCents != null) {
         backfill.value_cents = ctx.valueCents;

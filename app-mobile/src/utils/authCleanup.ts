@@ -10,6 +10,7 @@ import {
   clearAppsFlyerUserId,
   resetAppsFlyerDeviceCache,
 } from "../services/appsFlyerService";
+import { clearNativeAdAttribution } from "../services/nativeAdAttributionService";
 
 type CleanupOptions = {
   reason: string;
@@ -83,6 +84,7 @@ export async function performPrivateAuthCleanup(options: CleanupOptions): Promis
     try {
       clearAppsFlyerUserId();
       resetAppsFlyerDeviceCache();
+      void clearNativeAdAttribution();
     } catch (error) {
       console.warn(`[AUTH_CLEANUP] AppsFlyer clear failed (${reason}):`, error);
     }

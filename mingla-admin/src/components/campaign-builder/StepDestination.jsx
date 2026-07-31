@@ -21,10 +21,15 @@ import { AlertCard } from "../ui/Card";
 import { SearchInput } from "../ui/SearchInput";
 import { Button } from "../ui/Button";
 import { Skeleton } from "../ui/Skeleton";
-import { listBrandDestinations, listEventDestinations } from "../../services/adDestinationsService";
+import {
+  listBrandDestinations,
+  listEventDestinations,
+  listStayDestinations,
+} from "../../services/adDestinationsService";
 
 const TABS = [
   { id: "event", label: "Event pages" },
+  { id: "venue", label: "Stay pages" },
   { id: "brand", label: "Brand pages" },
 ];
 
@@ -35,7 +40,11 @@ function destKey(row) {
 
 export function StepDestination({ destinations, onDestinationsChange }) {
   const selected = Array.isArray(destinations) ? destinations : [];
-  const [tab, setTab] = useState(selected[0]?.page_type === "brand" ? "brand" : "event");
+  const [tab, setTab] = useState(
+    ["event", "venue", "brand"].includes(selected[0]?.page_type)
+      ? selected[0].page_type
+      : "event",
+  );
   const [search, setSearch] = useState("");
   const [rows, setRows] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -47,7 +56,9 @@ export function StepDestination({ destinations, onDestinationsChange }) {
     try {
       const result = tab === "event"
         ? await listEventDestinations({ search })
-        : await listBrandDestinations({ search });
+        : tab === "venue"
+          ? await listStayDestinations({ search })
+          : await listBrandDestinations({ search });
       setRows(result.rows);
     } catch (err) {
       setError(err.message);
@@ -131,7 +142,7 @@ export function StepDestination({ destinations, onDestinationsChange }) {
 
       {!loading && !error && rows && rows.length === 0 && (
         <AlertCard variant="info" title="No live pages match">
-          Nothing public and upcoming matches that search. Publish the page first, or clear the search.
+          Nothing public and eligible matches that search. Publish the page first, or clear the search.
         </AlertCard>
       )}
 

@@ -9,6 +9,7 @@ import {
 
 import { supabase } from "./supabase";
 import { randomId } from "../utils/randomId";
+import { getStoredClickAttribution } from "../analytics/webAnalytics";
 
 type StayEnvelope<T> =
   | { kind: "success"; data: T; requestId: string }
@@ -94,12 +95,14 @@ export const stayGuestService = {
     quote: StayQuote,
     guest: StayGuestCheckoutInput["guest"],
   ): Promise<StayReservationGroup> {
+    const attributionClickId = getStoredClickAttribution().clickId;
     return invoke({
       action: "create_group",
       payload: {
         quoteId: quote.quoteId,
         guest,
         idempotencyKey: idempotencyKey("group"),
+        ...(attributionClickId ? { attributionClickId } : {}),
       },
       expectedVersion: quote.version,
     });

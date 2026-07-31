@@ -1,4 +1,6 @@
 // deno-lint-ignore-file no-explicit-any
+import { fireAdConversion } from "./adConversionFire.ts";
+
 type ServiceClient = any;
 
 type StripeEvent = {
@@ -40,6 +42,9 @@ export async function handleStayStripePaymentEvent(
     ? metadata.stay_payment_attempt_id
     : null;
   if (!attemptId) throw new Error("stay_payment_attempt_identity_missing");
+  const groupId = typeof metadata.stay_group_id === "string"
+    ? metadata.stay_group_id
+    : null;
 
   if (event.type === "payment_intent.succeeded") {
     const charges = intent.charges as
@@ -52,7 +57,10 @@ export async function handleStayStripePaymentEvent(
     const currency = typeof intent.currency === "string"
       ? intent.currency.toUpperCase()
       : "";
-    if (!Number.isSafeInteger(amount) || amount <= 0 || !/^[A-Z]{3}$/.test(currency)) {
+    if (
+      !Number.isSafeInteger(amount) || amount <= 0 ||
+      !/^[A-Z]{3}$/.test(currency)
+    ) {
       throw new Error("stay_provider_evidence_invalid");
     }
     const { error } = await client.rpc("issue_1389_finalize_payment", {
@@ -68,6 +76,13 @@ export async function handleStayStripePaymentEvent(
     });
     if (error) {
       throw new Error(`stay_payment_finalize_failed:${error.message}`);
+    }
+    if (groupId) {
+      await fireAdConversion(client, {
+        stayGroupId: groupId,
+        surface: "web",
+        lane: "consumer",
+      });
     }
   } else {
     const { error } = await client.rpc(
@@ -87,7 +102,7 @@ export async function handleStayStripePaymentEvent(
 
   const { data } = await client.from("stay_reservation_groups")
     .select("brand_id")
-    .eq("id", String(metadata.stay_group_id ?? ""))
+    .eq("id", groupId ?? "")
     .maybeSingle();
   return typeof data?.brand_id === "string" ? data.brand_id : null;
 }
@@ -188,6 +203,11 @@ export async function handleStayPaystackChargeSuccess(
     ? metadata.stay_group_id
     : null;
   if (!groupId) return null;
+  await fireAdConversion(client, {
+    stayGroupId: groupId,
+    surface: "web",
+    lane: "consumer",
+  });
   const { data } = await client.from("stay_reservation_groups")
     .select("brand_id")
     .eq("id", groupId)

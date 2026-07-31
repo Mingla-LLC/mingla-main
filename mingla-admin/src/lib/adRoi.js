@@ -11,15 +11,22 @@
  * test idiom (pure-logic modules + fs source assertions).
  */
 
-/** Sum a { currency: cents } map into total cents (currency-agnostic total). */
+/** Legacy aggregate retained for callers that only need a raw counter. */
 export function totalValueCents(valueByCurrency) {
   if (!valueByCurrency || typeof valueByCurrency !== "object") return 0;
-  let sum = 0;
-  for (const v of Object.values(valueByCurrency)) {
-    const n = Number(v);
-    if (Number.isFinite(n)) sum += n;
-  }
-  return sum;
+  return Object.values(valueByCurrency).reduce((sum, raw) => {
+    const value = Number(raw);
+    return Number.isFinite(value) ? sum + value : sum;
+  }, 0);
+}
+
+/** Money is comparable only when every unit belongs to one currency. */
+export function comparableValueCents(valueByCurrency) {
+  if (!valueByCurrency || typeof valueByCurrency !== "object") return null;
+  const entries = Object.entries(valueByCurrency).filter(([, raw]) =>
+    Number.isFinite(Number(raw))
+  );
+  return entries.length === 1 ? Number(entries[0][1]) : null;
 }
 
 /**
@@ -52,7 +59,7 @@ export function toCampaignRoiView(raw) {
   const row = raw && typeof raw === "object" ? raw : {};
   const conversions = Number(row.conversions) || 0;
   const valueByCurrency = row.value_cents && typeof row.value_cents === "object" ? row.value_cents : {};
-  const valueCents = totalValueCents(valueByCurrency);
+  const valueCents = comparableValueCents(valueByCurrency);
   const spendCents = row.spend_cents === null || row.spend_cents === undefined
     ? null
     : Number(row.spend_cents);
@@ -72,7 +79,7 @@ export function toCampaignRoiView(raw) {
     valueByCurrency,
     valueCents,
     spendCents,
-    roas: computeRoas(valueCents, spendCents),
+    roas: valueCents === null ? null : computeRoas(valueCents, spendCents),
     costPerResultCents: computeCostPerResult(spendCents, conversions),
     byPlatform,
     sendHealth: {

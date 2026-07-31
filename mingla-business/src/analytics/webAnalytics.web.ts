@@ -713,6 +713,7 @@ export function captureAdClickIds(dest?: CaptureAdClickDest): void {
       if (v !== null && v.length > 0) utm[k] = v;
     }
     const external = fbclid ?? ttclid ?? sccid ?? gclid ?? rdtCid ?? null;
+    const utmSource = (utm.utm_source ?? "").toLowerCase();
     const network = fbclid
       ? "meta"
       : ttclid
@@ -722,6 +723,16 @@ export function captureAdClickIds(dest?: CaptureAdClickDest): void {
       : rdtCid
       ? "reddit"
       : gclid
+      ? "google"
+      : utmSource === "facebook" || utmSource === "meta"
+      ? "meta"
+      : utmSource === "tiktok"
+      ? "tiktok"
+      : utmSource === "snapchat" || utmSource === "snap"
+      ? "snapchat"
+      : utmSource === "reddit"
+      ? "reddit"
+      : utmSource === "google"
       ? "google"
       : "other";
     // ISSUE-855 PR-2 — the referrer HOST (host only; strips path/query/fragment,

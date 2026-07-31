@@ -627,6 +627,7 @@ serve(async (req: Request): Promise<Response> => {
       }
       const destUrlGV = resolvedDestinationGV.canonical_url;
       const destEventIdGV = resolvedDestinationGV.event_id;
+      const destVenueIdGV = resolvedDestinationGV.venue_id;
       const finalUrlCheckGV = validateGoogleFinalUrl(destUrlGV);
       if (!finalUrlCheckGV.ok) {
         return json({ error: finalUrlCheckGV.detail, detail: finalUrlCheckGV.message }, 422);
@@ -770,6 +771,7 @@ serve(async (req: Request): Promise<Response> => {
             dest_brand_slug: brandSlugGV,
             dest_entity_slug: entitySlugGV || null,
             dest_event_id: destEventIdGV,
+            dest_venue_id: destVenueIdGV,
             dest_url: destUrlGV,
             dest_smart_link: trackingUrlTemplateGV,
             dest_group_id: destGroupId,
@@ -1082,6 +1084,7 @@ serve(async (req: Request): Promise<Response> => {
     }
     const destUrlG = resolvedDestinationG.canonical_url;
     const destEventIdG = resolvedDestinationG.event_id;
+    const destVenueIdG = resolvedDestinationG.venue_id;
 
     // A4.f/GR-73: finalUrls = [canonical dest_url] — https, ≤2,084 bytes.
     const finalUrlCheck = validateGoogleFinalUrl(destUrlG);
@@ -1241,6 +1244,7 @@ serve(async (req: Request): Promise<Response> => {
           dest_brand_slug: brandSlugG,
           dest_entity_slug: entitySlugG || null,
           dest_event_id: destEventIdG,
+          dest_venue_id: destVenueIdG,
           dest_url: destUrlG,
           dest_smart_link: trackingUrlTemplate, // A4.f-demoted slot: tracking template, never the creative link
           dest_group_id: destGroupId, // ISSUE-1002: shared fan-out group (NULL for single-destination)
@@ -1651,9 +1655,11 @@ serve(async (req: Request): Promise<Response> => {
     }
     const destUrlS = resolvedDestinationS.canonical_url;
     const destEventIdS = resolvedDestinationS.event_id;
+    const destVenueIdS = resolvedDestinationS.venue_id;
+    const snapTrackedDestUrlS = `${destUrlS}${destUrlS.includes("?") ? "&" : "?"}mc_id={{campaign.id}}`;
     // GR-54 + destination policy v1: the web-view URL is the canonical page
     // (https, ≤2048) — NEVER the OneLink (D-P1).
-    const webViewUrlCheck = validateSnapchatWebViewUrl(destUrlS);
+    const webViewUrlCheck = validateSnapchatWebViewUrl(snapTrackedDestUrlS);
     if (!webViewUrlCheck.ok) {
       return json({ error: webViewUrlCheck.detail, detail: webViewUrlCheck.message }, 422);
     }
@@ -1804,7 +1810,7 @@ serve(async (req: Request): Promise<Response> => {
       },
     };
     const creativeInputS: CreateCreativeInput & SnapchatCreateCreativeExtensions = {
-      destUrl: destUrlS, // A4.f/A1.1(5): the AD-VISIBLE destination — never the OneLink
+      destUrl: snapTrackedDestUrlS, // canonical page + documented Snap campaign macro
       message: headlineS, // interface-required; Snap creatives carry headline, not message
       headline: headlineS,
       callToActionType: ctaS,
@@ -1888,6 +1894,7 @@ serve(async (req: Request): Promise<Response> => {
           dest_brand_slug: brandSlugS,
           dest_entity_slug: entitySlugS || null,
           dest_event_id: destEventIdS,
+          dest_venue_id: destVenueIdS,
           dest_url: destUrlS,
           // A4.f-demoted slot: stored for attribution reference, never sent to Snap.
           dest_smart_link: snapSmartLink,
@@ -2295,6 +2302,7 @@ serve(async (req: Request): Promise<Response> => {
     }
     const destUrlT = resolvedDestinationT.canonical_url;
     const destEventIdT = resolvedDestinationT.event_id;
+    const destVenueIdT = resolvedDestinationT.venue_id;
     // A1.0-5 (PROOF D-P1): the ad-visible landing_page_url is the canonical
     // page — NEVER the OneLink; attribution rides in utm_params.
     const landingCheckT = validateTikTokLandingPageUrl(destUrlT);
@@ -2599,6 +2607,7 @@ serve(async (req: Request): Promise<Response> => {
           dest_brand_slug: brandSlugT,
           dest_entity_slug: entitySlugT || null,
           dest_event_id: destEventIdT,
+          dest_venue_id: destVenueIdT,
           dest_url: destUrlT,
           // A4.f-demoted slot: stored for attribution reference, never sent to TikTok.
           dest_smart_link: tiktokSmartLink,
@@ -2910,6 +2919,7 @@ serve(async (req: Request): Promise<Response> => {
     }
     const destUrlR = resolvedDestinationR.canonical_url;
     const destEventIdR = resolvedDestinationR.event_id;
+    const destVenueIdR = resolvedDestinationR.venue_id;
 
     // (4) Creative validation (§5 — copy caps, Title-Case CTA enum, and the
     // §5.4 destination policy: display_url must match; NO OneLink can reach a
@@ -3070,6 +3080,7 @@ serve(async (req: Request): Promise<Response> => {
           dest_brand_slug: brandSlugR,
           dest_entity_slug: entitySlugR || null,
           dest_event_id: destEventIdR,
+          dest_venue_id: destVenueIdR,
           dest_url: destUrlR,
           // A4.f-demoted slot: stored for attribution reference, never sent to Reddit.
           dest_smart_link: redditSmartLink,
@@ -3454,6 +3465,7 @@ serve(async (req: Request): Promise<Response> => {
   }
   const destUrl = resolvedDestination.canonical_url;
   const destEventId = resolvedDestination.event_id;
+  const destVenueId = resolvedDestination.venue_id;
 
   const conversionDomain = conversionDomainFromUrl(destUrl);
   const adapter = getAdapter(platform);
@@ -3606,6 +3618,7 @@ serve(async (req: Request): Promise<Response> => {
         dest_brand_slug: brandSlug,
         dest_entity_slug: entitySlug || null,
         dest_event_id: destEventId,
+        dest_venue_id: destVenueId,
         dest_url: destUrl,
         dest_smart_link: destSmartLink,
         dest_group_id: destGroupId, // ISSUE-1002: shared fan-out group (NULL for single-destination)

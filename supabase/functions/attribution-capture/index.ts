@@ -232,11 +232,23 @@ async function resolveCampaignFromParam(
   };
   if (!externalCampaignId) return empty;
   try {
-    const { data: campaign, error } = await client
+    let { data: campaign, error } = await client
       .from("ad_campaigns")
       .select("id, connection_id, platform, dest_brand_slug")
       .eq("external_campaign_id", externalCampaignId)
       .maybeSingle();
+    if (
+      (!campaign || error) &&
+      /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(externalCampaignId)
+    ) {
+      const byId = await client
+        .from("ad_campaigns")
+        .select("id, connection_id, platform, dest_brand_slug")
+        .eq("id", externalCampaignId)
+        .maybeSingle();
+      campaign = byId.data;
+      error = byId.error;
+    }
     if (error || !campaign) return empty;
     const c = campaign as {
       id?: string;
@@ -405,7 +417,23 @@ async function recordTouch(
   body: CaptureBody,
 ): Promise<Response> {
   const surface = oneOf<Surface>(body.surface, SURFACES) ?? "web";
-  const network = oneOf<Network>(body.network, NETWORKS) ?? "other";
+  const utmSource = typeof body.utm?.utm_source === "string"
+    ? body.utm.utm_source.trim().toLowerCase()
+    : "";
+  const utmNetwork: Network | null =
+    utmSource === "facebook" || utmSource === "meta"
+      ? "meta"
+      : utmSource === "tiktok"
+      ? "tiktok"
+      : utmSource === "snapchat" || utmSource === "snap"
+      ? "snapchat"
+      : utmSource === "google"
+      ? "google"
+      : utmSource === "reddit"
+      ? "reddit"
+      : null;
+  const network = oneOf<Network>(body.network, NETWORKS) ?? utmNetwork ??
+    "other";
   const lane = oneOf<Lane>(body.lane, LANES);
   const platform = oneOf<Platform>(body.platform, PLATFORMS) ??
     (network !== "other" ? (network as Platform) : null);
@@ -432,7 +460,20 @@ async function recordTouch(
     ? body.af_c_id
     : null;
   const mcId = typeof body.mc_id === "string" && body.mc_id ? body.mc_id : null;
-  const campaign = await resolveCampaignFromParam(client, mcId ?? afCId);
+  const utmCampaign = typeof body.utm?.utm_campaign === "string"
+    ? body.utm.utm_campaign.trim()
+    : "";
+  const utmMedium = typeof body.utm?.utm_medium === "string"
+    ? body.utm.utm_medium.trim().toLowerCase()
+    : "";
+  const guardedUtmCampaign =
+    network !== "other" && utmMedium === "paid" && utmCampaign
+      ? utmCampaign
+      : null;
+  const campaign = await resolveCampaignFromParam(
+    client,
+    mcId ?? afCId ?? guardedUtmCampaign,
+  );
 
   // ISSUE-855 PR-2 — classify the visit source. An ad click-id / resolved
   // campaign / ad network (network !== 'other') => 'ad'; else the referrer host.

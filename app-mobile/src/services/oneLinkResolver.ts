@@ -26,7 +26,7 @@ export type OneLinkDestination =
   | { kind: 'entity'; entity: 'brand'; brandSlug: string; referralCode?: string }
   | {
       kind: 'entity';
-      entity: 'event' | 'trip' | 'experience';
+      entity: 'event' | 'trip' | 'experience' | 'venue';
       brandSlug: string;
       entitySlug: string;
       referralCode?: string;
@@ -75,11 +75,12 @@ export function resolveOneLinkDestination(data: Record<string, any>): OneLinkDes
 
       case 'event':
       case 'trip':
-      case 'experience': {
+      case 'experience':
+      case 'venue': {
         // Never a half-formed route: both slugs are required, else `null`
         // (SPEC §B.5.1 — never push `/e/brand/undefined`).
         if (!sub1 || !sub2) return null;
-        const entity = rawType as 'event' | 'trip' | 'experience';
+        const entity = rawType as 'event' | 'trip' | 'experience' | 'venue';
         const dest: Exclude<
           Extract<OneLinkDestination, { kind: 'entity' }>,
           { entity: 'brand' }
