@@ -6759,9 +6759,9 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 - **Established:** ACTIVE 2026-07-31 at issue #1426 CLOSE after Android, iOS, SQL, Edge, strict-gate,
   and independent adversarial verification; all Stay launch flags remain dark for #1392.
 
-## DRAFT — issue #1427 (least-privilege Admin Stay support)
+## ACTIVE — issue #1427 (least-privilege Admin Stay support)
 
-### I-1427-ADMIN-STAY-SUPPORT (DRAFT)
+### I-1427-ADMIN-STAY-SUPPORT (ACTIVE)
 - **Rule:** Mingla Admin supports Stay inside the existing Venues and Money ledger shells. Admin
   inspection uses server-whitelisted projections: guest identity is masked; raw notification
   contacts/payloads, event metadata, storage identifiers, checksums, and provider payloads are not
@@ -6783,5 +6783,6 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   `issue1427_admin_stay_support.render.tester.test.mjs` prove cancelled-provider convergence,
   audit-before-mutation fail-closed behavior, exact retained-metadata allowlists, safe restricted
   errors, stale snapshot warnings, brand-currency rendering, and real Room/Place UI output.
-- **Established:** DRAFT 2026-07-31 at issue #1427 IMPLEMENT; orchestrator flips ACTIVE only after
-  independent tester PASS, merge, production migration/Edge deployment, and runtime verification.
+- **Established:** ACTIVE 2026-07-31 at issue #1427 CLOSE after independent tester PASS, all-green
+  PR #1450 merge, production migration and Edge deployment, and exact Admin production rollout;
+  all seven Stay launch flags remained dark for #1392.
