@@ -145,11 +145,11 @@ export function violations(files) {
     failures.push("manifest: invalid JSON");
     manifest = {};
   }
-  if (manifest.rollout?.expected_user_managed_count !== 89) {
-    failures.push("manifest: Phase A must keep expected count at 89");
+  if (manifest.rollout?.expected_user_managed_count !== 85) {
+    failures.push("manifest: Phase B must enforce expected count at 85");
   }
-  const records = new Set(
-    (manifest.secrets ?? []).map((record) => record.name),
+  const records = new Map(
+    (manifest.secrets ?? []).map((record) => [record.name, record]),
   );
   for (
     const name of [
@@ -159,9 +159,29 @@ export function violations(files) {
       "SOURCE_REFUNDS_POST_DISABLED",
     ]
   ) {
-    if (!records.has(name)) {
-      failures.push(`manifest: Phase A direct name missing: ${name}`);
+    if (records.has(name)) {
+      failures.push(`manifest: Phase B retired direct name present: ${name}`);
     }
+  }
+  const delivery = records.get("MINGLA_DELIVERY_FLAGS_JSON");
+  for (
+    const field of [
+      "payout_hold_onboard_flip",
+      "payout_release_execute",
+      "source_refunds_post_disabled",
+    ]
+  ) {
+    if (!delivery?.bundle_fields?.some((entry) => entry.name === field)) {
+      failures.push(`manifest: Phase B payment field missing: ${field}`);
+    }
+  }
+  const conversion = records.get("AD_CONVERSION_TOKENS");
+  if (
+    !conversion?.bundle_fields?.some((entry) =>
+      entry.name === "NOTIFICATION_RECIPIENT_HMAC_SECRET"
+    )
+  ) {
+    failures.push("manifest: Phase B notification HMAC field missing");
   }
 
   const workflow = files.workflow ?? "";
@@ -262,6 +282,14 @@ function selfTest() {
       key: "workflow",
       value: `${valid.workflow}\ncontinue-on-error: true\n`,
       expected: "continue-on-error",
+    },
+    {
+      key: "manifest",
+      value: valid.manifest.replace(
+        '"secrets": [',
+        '"secrets": [{"name":"NOTIFICATION_RECIPIENT_HMAC_SECRET"},',
+      ),
+      expected: "retired direct name present",
     },
   ];
   for (const reversion of reversions) {

@@ -7,24 +7,34 @@
 
 ---
 
-## DRAFT — issue #1437 (temporary payment controls into existing bundles — IN PROGRESS)
+## ACTIVE — issue #1436 (temporary secret-capacity exception retired at 85 names)
 
-### I-PROPOSED-1437-BUNDLED-CONTROLS-PRESERVE-FAIL-SAFE-AUTHORITY (DRAFT)
-- **Rule:** `MINGLA_DELIVERY_FLAGS_JSON` schema v1 remains readable unchanged; schema v2 adds exactly the three independent `payment_operations` booleans. During migration, valid schema-v2 fields win and every other bundle state falls back only to its exact direct name. Missing or invalid onboarding and payout-execution controls resolve false; missing or invalid source-refund disabled control resolves true. The notification-recipient HMAC resolves byte-for-byte from `AD_CONVERSION_TOKENS` first, then its exact direct name, and missing/invalid material fails before provider HTTP. No diagnostic may expose secret material, length, prefix, or digest.
-- **Enforcement:** `.github/scripts/strict-grep/issue-1437-secret-bundle-compatibility.mjs` pins the strict schemas, exact legacy mappings, four production call sites, safe defaults, unchanged Phase-A manifest, runtime proof, and blocking CI wiring; `--self-test` performs true-source reversions across each clause.
-- **Implementor happy-path proof:** `supabase/functions/_shared/issue_1437_secret_bundle_compatibility.test.ts` proves schema-v1 parity, all 64 independent schema-v2 combinations, bundle-first authority, exact direct fallback, safe defaults, HMAC byte preservation/fingerprint parity, fail-closed invalid material, and redacted diagnostics. Existing #1203 and #1221 suites run in the same blocking workflow.
-- **Established:** DRAFT at issue #1437 IMPLEMENT. Flips ACTIVE only after independent tester PASS and CLOSE.
+### I-PROPOSED-1436-SECRET-CAPACITY-EXIT (ACTIVE)
+- **Rule:** Production has exactly 85 user-managed Supabase secret names under the enforced manifest and no #1430 capacity exception. `MINGLA_DELIVERY_FLAGS_JSON` schema v2 owns three independent strict payment-operation booleans; missing or invalid financial authority fails safe (no onboarding flip, no payout execution, source-refund provider POSTs disabled). `AD_CONVERSION_TOKENS.NOTIFICATION_RECIPIENT_HMAC_SECRET` owns the exact untransformed current notification-recipient HMAC material and missing/invalid material fails before provider HTTP. Historical fingerprint material must be preserved whenever dependent deliveries or pending intents exist; replacement without a previous key is allowed only after a value-blind production gate proves zero dependent deliveries and zero pending intents, followed by one operator-only send and identical retries proving one provider acceptance before and after direct-name removal. The retired direct names `SOURCE_REFUNDS_POST_DISABLED`, `PAYOUT_RELEASE_EXECUTE`, `PAYOUT_HOLD_ONBOARD_FLIP`, and `NOTIFICATION_RECIPIENT_HMAC_SECRET` remain absent unless a new approved bounded migration issue explicitly restores one.
+- **Enforcement:** `supabase/secrets.manifest.json` pins exact 85-name authority and zero exceptions; `.github/scripts/strict-grep/issue-1436-secret-capacity-exit.mjs`, the strengthened #1203 capacity gate, and the strengthened #1430 refund-replay gate pin bundle ownership, safe defaults, retired-name absence, and provider replay safety. The scheduled/manual names-only audit requires exact manifest parity without raw CLI output.
+- **Regression:** `scripts/secrets/issue_1436_secret_capacity_exit.test.mjs` proves exact set parity, both bundle owners, and fail-closed return of any retired name. The #1437 happy/adversarial runtime suite continues to prove all 64 payment combinations, strict schema handling, raw HMAC preservation, redacted diagnostics, and safe defaults. Every structural gate has controlled true-source reversions.
+- **Established:** ACTIVE at issue #1436 CLOSE after #1437 independent PASS and exact merged deployment, private bundle migration, four individually verified unsets, exact 85-name live audit, and independent #1436 tester PASS.
 
 ---
 
-## DRAFT — issue #1430 (test refund replay safety — IN REVIEW)
+## ACTIVE — issue #1437 (temporary payment controls into existing bundles — CLOSED 2026-07-31, PR #1438)
 
-### I-PROPOSED-1430-REFUND-REPLAY-USES-PROVIDER-IDENTITY (DRAFT)
+### I-PROPOSED-1437-BUNDLED-CONTROLS-PRESERVE-FAIL-SAFE-AUTHORITY (ACTIVE)
+- **Rule:** `MINGLA_DELIVERY_FLAGS_JSON` schema v1 remains readable unchanged; schema v2 adds exactly the three independent `payment_operations` booleans. During migration, valid schema-v2 fields win and every other bundle state falls back only to its exact direct name. Missing or invalid onboarding and payout-execution controls resolve false; missing or invalid source-refund disabled control resolves true. The notification-recipient HMAC resolves byte-for-byte from `AD_CONVERSION_TOKENS` first, then its exact direct name, and missing/invalid material fails before provider HTTP. No diagnostic may expose secret material, length, prefix, or digest.
+- **Enforcement:** `.github/scripts/strict-grep/issue-1437-secret-bundle-compatibility.mjs` pins the strict schemas, exact legacy mappings, four production call sites, safe defaults, unchanged Phase-A manifest, runtime proof, and blocking CI wiring; `--self-test` performs true-source reversions across each clause.
+- **Implementor happy-path proof:** `supabase/functions/_shared/issue_1437_secret_bundle_compatibility.test.ts` proves schema-v1 parity, all 64 independent schema-v2 combinations, bundle-first authority, exact direct fallback, safe defaults, HMAC byte preservation/fingerprint parity, fail-closed invalid material, and redacted diagnostics. Existing #1203 and #1221 suites run in the same blocking workflow.
+- **Established:** DRAFT at issue #1437 IMPLEMENT; ACTIVE at CLOSE after independent tester PASS, all-green merge `b17fb8f9f`, exact eight-function production deployment, downloaded-source parity, preserved JWT posture, and value-blind fail-safe runtime proof.
+
+---
+
+## ACTIVE — issue #1430 (test refund replay safety — CLOSED 2026-07-30, PR #1433)
+
+### I-PROPOSED-1430-REFUND-REPLAY-USES-PROVIDER-IDENTITY (ACTIVE)
 - **Rule:** A refund replay MUST prove and use the provider's canonical payment identity before it reconciles or posts money. For Paystack, the public transaction reference is verified first and must resolve to the exact reference, currency, safe positive numeric transaction ID, non-negative safe integer amount, and one approved transaction state. Exactly `success`, `reversal-pending`, and `reversed` may perform read-only numeric-ID refund reconciliation; adoption additionally requires the exact transaction identity, merchant note, amount, and any persisted provider refund ID. Only `success` plus no exact row may authorize a fresh refund POST. `reversal-pending` or `reversed` without an exact row remains retryable ambiguity with zero POSTs, and any unknown or malformed state fails before both list and POST. Duplicate recovery re-verifies under the same split. For Stripe, a missing application-fee ID must be proven through the exact PaymentIntent → Charge → Application Fee chain before either refund leg posts; a permission denial on those identity reads records a durable redacted `needs_attention` fee state and returns before any buyer refund POST.
 - **Enforcement:** `.github/scripts/strict-grep/issue-1430-refund-replay-safety.mjs` pins provider-identity-first ordering, the three-state read-only reconciliation allowlist, `success`-only POST authority, exact reconciliation, duplicate ambiguity, Stripe's no-money permission-denial path, both runtime guards' dedicated blocking workflow, and the associated exact secret-manifest contract; its `--self-test` performs true-source reversions for every pinned clause.
 - **Implementor happy-path proof:** `supabase/functions/_shared/__tests__/issue_1430_refund_replay_happy.test.ts` proves first-call `success` POST followed by immediate `reversal-pending` exact adoption with one total POST, exact lost-response adoption, retryable mismatch, pre-POST identity mismatch, Stripe PaymentIntent → Charge → Fee proof before both refund legs, processed replay without new provider calls, and durable Stripe permission denial with no refund POST.
 - **Tester-adversarial:** `supabase/functions/_shared/__tests__/issue_1430_refund_replay.tester.adversarial.test.ts` independently proves the approved-state authority matrix, fail-closed unknown/malformed identity, duplicate recovery after `reversal-pending`, transaction/refund-ID substitution resistance, and zero unauthorized POSTs; `.github/workflows/issue-1430-refund-replay-tests.yml` executes both implementor and tester runtime guards in blocking CI.
-- **Established:** DRAFT at issue #1430 SPEC and Binding Amendment 4; provider-state authority refined by Binding Amendment 5. Flips ACTIVE only at CLOSE after independent tester PASS.
+- **Established:** DRAFT at issue #1430 SPEC and Binding Amendment 4; provider-state authority refined by Binding Amendment 5; ACTIVE at CLOSE after independent tester PASS, all-green PR #1433 merge, exact production deployment, and no-extra-POST runtime proof.
 
 ---
 
@@ -6469,29 +6479,34 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 
 ---
 
-## DRAFT — issue #1203 (Supabase secret capacity and bounded compatibility bundles)
+## ACTIVE — issue #1203 (Supabase secret capacity and bounded compatibility bundles)
 
-### I-PROPOSED-1203-SECRET-CAPACITY (DRAFT)
+### I-PROPOSED-1203-SECRET-CAPACITY (ACTIVE)
 
 - **Rule:** Production operates at no more than 85 user-managed Supabase secret names normally
   and never above 90 under an approved, unexpired exception. Every user-managed name has
   names-only manifest ownership, backup ownership, readers, secure source type, and review
   metadata. Values, digests, credential prefixes, and raw CLI metadata never enter the repository,
-  issues, chat, logs, audit artifacts, or CI output. The five compatibility bundles use strict
-  `schema_version: 1` allowlists and independent fields; provider credentials and Stripe RAK roles
-  remain separate.
+  issues, chat, logs, audit artifacts, or CI output. The bounded operational bundles use strict
+  schemas and independent fields: four remain schema v1 and `MINGLA_DELIVERY_FLAGS_JSON` uses
+  schema v2 for its three exact payment-operation booleans while retaining schema-v1 read
+  compatibility. Credential material remains in approved credential envelopes with field-level
+  ownership; provider credentials and Stripe RAK roles remain separate.
 - **Enforcement:** Daily/manual live names-only audit plus pull-request manifest audit in
   `.github/workflows/supabase-secret-budget.yml`; parser validation in
   `supabase/functions/_shared/secretBundle.ts` and `_shared/runtimeConfig.ts`; batch-A guard
   `.github/scripts/strict-grep/issue-1203-secret-capacity.mjs` prevents runtime-bundle field growth,
-  client exposure, raw CLI output, and manifest shrink/drift.
+  client exposure, raw CLI output, manifest shrink/drift, and payment-operation mapping drift;
+  `.github/scripts/strict-grep/issue-1436-secret-capacity-exit.mjs` pins the exact 85-name final
+  state and retired-direct-name absence.
 - **Regression:** Additive Deno happy-path/legacy-fallback tests and Node capacity tests, with
   strict-grep synthetic self-tests and implementor fail-on-revert/pass-on-restore proof. The
   independent tester adds malformed/smuggling/order/parity adversarial coverage before activation.
-- **Status:** DRAFT until the implementation is merged, the approved secret choreography reaches
-  exactly 85 user-managed names, independent tester PASS is recorded, and the required soak is
-  clean.
-- **Established:** DRAFT 2026-07-24 at issue #1203 implementation.
+- **Status:** ACTIVE. Production is enforced at exactly 85 user-managed names with 15 free slots
+  and no capacity exception; any future 86–90 state requires a new approved bounded issue.
+- **Established:** DRAFT 2026-07-24 at issue #1203 implementation; ACTIVE at issue #1436 CLOSE
+  after the temporary #1430 names were consolidated into existing authorities, removed one by
+  one, live-audited, and independently verified.
 
 ---
 

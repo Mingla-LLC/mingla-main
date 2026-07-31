@@ -122,8 +122,8 @@ export function violations(files) {
     failures.push("manifest: invalid JSON");
     manifest = {};
   }
-  if (manifest.rollout?.expected_user_managed_count !== 89) {
-    failures.push("manifest: expected user-managed count must be 89");
+  if (manifest.rollout?.expected_user_managed_count !== 85) {
+    failures.push("manifest: expected user-managed count must be 85");
   }
   if (manifest.policy?.normal_ceiling !== 85) {
     failures.push("manifest: normal ceiling must remain 85");
@@ -134,44 +134,44 @@ export function violations(files) {
   const records = new Map(
     (manifest.secrets ?? []).map((record) => [record.name, record]),
   );
-  for (
-    const [name, reader] of [
-      [
-        "NOTIFICATION_RECIPIENT_HMAC_SECRET",
-        "supabase/functions/notify-dispatch/index.ts",
-      ],
-      [
-        "PAYOUT_HOLD_ONBOARD_FLIP",
-        "supabase/functions/brand-stripe-onboard/index.ts",
-      ],
-      [
-        "PAYOUT_RELEASE_EXECUTE",
-        "supabase/functions/payout-release-sweep/index.ts",
-      ],
-      [
-        "SOURCE_REFUNDS_POST_DISABLED",
-        "supabase/functions/_shared/sourceRefundControlPlane.ts",
-      ],
-    ]
-  ) {
-    const record = records.get(name);
-    if (!record || !record.readers?.includes(reader)) {
-      failures.push(`manifest: ${name} exact reader metadata missing`);
+  const retiredDirectNames = [
+    "NOTIFICATION_RECIPIENT_HMAC_SECRET",
+    "PAYOUT_HOLD_ONBOARD_FLIP",
+    "PAYOUT_RELEASE_EXECUTE",
+    "SOURCE_REFUNDS_POST_DISABLED",
+  ];
+  for (const name of retiredDirectNames) {
+    if (records.has(name)) {
+      failures.push(`manifest: retired direct compatibility name present: ${name}`);
     }
   }
-  if (records.size !== 89) {
+  const delivery = records.get("MINGLA_DELIVERY_FLAGS_JSON");
+  for (
+    const field of [
+      "payout_hold_onboard_flip",
+      "payout_release_execute",
+      "source_refunds_post_disabled",
+    ]
+  ) {
+    if (!delivery?.bundle_fields?.some((entry) => entry.name === field)) {
+      failures.push(`manifest: bundled payment authority missing: ${field}`);
+    }
+  }
+  const conversion = records.get("AD_CONVERSION_TOKENS");
+  if (
+    !conversion?.bundle_fields?.some((entry) =>
+      entry.name === "NOTIFICATION_RECIPIENT_HMAC_SECRET"
+    )
+  ) {
+    failures.push("manifest: bundled notification HMAC authority missing");
+  }
+  if (records.size !== 85) {
     failures.push(
-      `manifest: exact record count must be 89, got ${records.size}`,
+      `manifest: exact record count must be 85, got ${records.size}`,
     );
   }
-  const activeException = (manifest.exceptions ?? []).filter((exception) =>
-    exception.issue === 1430 &&
-    exception.owner === "Platform Engineering" &&
-    exception.approved_by === "sethogieva" &&
-    typeof exception.expires_at === "string"
-  );
-  if (activeException.length !== 1 || manifest.exceptions?.length !== 1) {
-    failures.push("manifest: exact #1430 bounded exception missing");
+  if (!Array.isArray(manifest.exceptions) || manifest.exceptions.length !== 0) {
+    failures.push("manifest: #1430 capacity exception must be absent");
   }
 
   const happy = files.happy ?? "";
@@ -314,18 +314,34 @@ function selfTest() {
     {
       key: "manifest",
       value: valid.manifest.replace(
-        '"expected_user_managed_count": 89',
         '"expected_user_managed_count": 85',
+        '"expected_user_managed_count": 89',
       ),
       expected: "expected user-managed count",
     },
     {
       key: "manifest",
       value: valid.manifest.replace(
-        '"name":"SOURCE_REFUNDS_POST_DISABLED"',
-        '"name":"SOURCE_REFUNDS_POST_ENABLED"',
+        '"name":"source_refunds_post_disabled"',
+        '"name":"source_refunds_post_enabled"',
       ),
-      expected: "SOURCE_REFUNDS_POST_DISABLED",
+      expected: "bundled payment authority missing",
+    },
+    {
+      key: "manifest",
+      value: valid.manifest.replace(
+        '"secrets": [',
+        '"secrets": [{"name":"SOURCE_REFUNDS_POST_DISABLED","readers":[]},',
+      ),
+      expected: "retired direct compatibility name present",
+    },
+    {
+      key: "manifest",
+      value: valid.manifest.replace(
+        '"exceptions": [],',
+        '"exceptions": [{"issue":1430}],',
+      ),
+      expected: "#1430 capacity exception must be absent",
     },
     {
       key: "happy",
@@ -384,6 +400,6 @@ if (process.argv.includes("--self-test")) {
     process.exit(1);
   }
   console.log(
-    "issue-1430 refund replay safety gate PASS (provider identity, dark Stripe failure, exact 89-name manifest)",
+    "issue-1430 refund replay safety gate PASS (provider identity, dark Stripe failure, bundled authority, exact 85-name manifest)",
   );
 }
