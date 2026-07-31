@@ -576,7 +576,8 @@ export interface DestinationRef {
  * Mirrors the create-time destination gate (§4.4b): an event destination must
  * still resolve in business_public_events_view with status scheduled|live
  * (the view also exposes ended/cancelled — paid traffic must never point at
- * one); a brand destination must still resolve in business_public_brands_view.
+ * one); a Stay venue must still resolve in the flag-gated public Stay ad view;
+ * a brand destination must still resolve in business_public_brands_view.
  * Unknown/uncreatable page types are NOT public (fail-close).
  */
 export async function destinationStillPublicLive(
@@ -602,7 +603,17 @@ export async function destinationStillPublicLive(
       .maybeSingle();
     return Boolean(data);
   }
-  // trip/venue have no public read model yet (create fails-close on them too).
+  if (dest.dest_page_type === "venue") {
+    if (!dest.dest_entity_slug) return false;
+    const { data } = await db
+      .from("ad_public_stay_destinations_view")
+      .select("id")
+      .eq("brand_slug", dest.dest_brand_slug)
+      .eq("slug", dest.dest_entity_slug)
+      .maybeSingle();
+    return Boolean(data);
+  }
+  // Unknown/uncreatable page types remain fail-closed.
   return false;
 }
 
