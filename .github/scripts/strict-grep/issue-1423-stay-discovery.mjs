@@ -14,6 +14,7 @@ const files = {
   service: "app-mobile/src/services/staysDiscoveryService.ts",
   hook: "app-mobile/src/hooks/useDiscoverStays.ts",
   store: "app-mobile/src/store/appStore.ts",
+  allowlist: "supabase/security/anon_executable_definer_allowlist.txt",
   happyTest: "app-mobile/src/components/discover/__tests__/issue1423StayDiscovery.test.mjs",
   adversarialTest: "app-mobile/src/components/discover/__tests__/issue1423StayDiscovery.tester.adversarial.test.mjs",
 };
@@ -65,6 +66,9 @@ const required = {
     "discoverActiveTab: 'events' | 'trips' | 'stays'",
     "discoverStayFilters",
     "discover_stays",
+  ],
+  allowlist: [
+    "pg_public_stays_discover(p_destination_query text, p_check_in date, p_check_out date, p_adults integer, p_children integer, p_rooms integer, p_property_kinds text[], p_amenities text[], p_confirmation_mode text, p_limit integer, p_offset integer)",
   ],
   happyTest: ["exactly the four approved Stay filter entry points"],
   adversarialTest: ["database negative space excludes non-public and consumed supply"],
