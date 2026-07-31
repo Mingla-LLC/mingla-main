@@ -18,6 +18,9 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-07-31 — Permitted brand staff can now submit pending-review venue and Stay listings for their own brand, with Stay-specific rooms-and-places setup copy and actionable permission errors; lower roles and cross-brand writes remain blocked. (#1463, PR #1464)
+- 2026-07-31 — Fixed venue creation losing or misreading a saved draft when the current brand loaded late; the wizard now resumes the correct brand, preserves parked drafts, and loads the real payout currency. (#1461, PR #1462)
+- 2026-07-31 — Venue managers can now upload, update, and remove listing photos from real devices, including HEIC/HEIF images up to the canonical 8 MiB limit, without escaping their own brand. (#1459, PR #1460)
 - 2026-07-31 — Added Stay pages to Mingla’s existing five-platform ad system, with public-and-reservable destination validation, first-touch buyer-web and Explorer attribution, multi-Room/Place booking and refund conversion proof, and an Admin funnel that keeps every amount in its original currency; rollout flags remain off. (#1431, PR #1454)
 - 2026-07-31 — Added dark-launched Stay discovery to Explorer iOS/Android and buyer web through the existing Discover and public venue paths, with canonical Room-and-Place cards, truthful exact-currency prices, deep links, and feature-flag-safe empty states. (#1423, PR #1453)
 - 2026-07-31 — Organisers can now scan RSVP QR passes from live-event Home cards and RSVP guest tools, while anonymous and Explorer guests receive confirmation plus recoverable QR/PDF passes through email, text, in-app, and push; production database, Edge Functions, Business web, and both apps are deployed. (#1447, PR #1452)
