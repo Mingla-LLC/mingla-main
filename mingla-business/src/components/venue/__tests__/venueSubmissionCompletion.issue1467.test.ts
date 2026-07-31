@@ -45,9 +45,19 @@ describe("Issue #1467 visible venue submission completion", () => {
       "utf8",
     );
     expect(source).toMatch(
-      /onDone\(null, venueId, st\.displayName\.trim\(\)\);\s+useDraftVenueStore\.getState\(\)\.reset\(currentBrand\.id\)/,
+      /onDone\(null, venueId, st\.displayName\.trim\(\), false\);\s+useDraftVenueStore\.getState\(\)\.reset\(currentBrand\.id\)/,
     );
     expect(source).toContain("submissionVenueId: id");
     expect(source).toContain("placePoolId: authoringPlacePoolId");
+  });
+
+  it("keeps the live-listing message exclusive to claim/adoption success", () => {
+    const route = readFileSync(
+      join(__dirname, "..", "..", "..", "..", "app", "venue", "create.tsx"),
+      "utf8",
+    );
+    expect(route).toContain("setSuccessWasClaim(wasClaim)");
+    expect(route).toContain("Your listing is not live yet.");
+    expect(route).toContain("successWasClaim");
   });
 });

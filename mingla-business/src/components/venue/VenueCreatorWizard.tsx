@@ -116,13 +116,14 @@ export interface VenueCreatorWizardProps {
    * Optional warning when venue was created but cover upload failed.
    * META-ORCH-1255 — also hands back the created venue id so the success
    * screen can route to the new venue's management page.
-   * ORCH-1263 — `claimName` is set on CLAIM submits so the success screen can
-   * render the DESIGN §8.1 copy ("That's it — {name} is in review").
+   * ORCH-1263 / #1467 — `submittedName` renders the exact listing on success;
+   * `wasClaim` keeps the claim-only "listing stays live" copy off new venues.
    */
   onDone: (
     coverWarning?: string | null,
     venueId?: string | null,
-    claimName?: string | null,
+    submittedName?: string | null,
+    wasClaim?: boolean,
   ) => void;
   onClose: () => void;
 }
@@ -313,7 +314,7 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
         if (plan.kind === "already-submitted") {
           // Claim already fully submitted — route to the venue, not a
           // duplicate submit.
-          onDone(null, plan.venueId, st.displayName.trim());
+          onDone(null, plan.venueId, st.displayName.trim(), true);
           useDraftVenueStore.getState().reset(currentBrand.id);
           return;
         }
@@ -452,7 +453,7 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
       if (claimMode) {
         // ORCH-1263 — claim success: the standard pending card state (DESIGN
         // §8.1); NO inline deck-readiness leg (resume route serves it later).
-        onDone(null, venueId, st.displayName.trim());
+        onDone(null, venueId, st.displayName.trim(), true);
         useDraftVenueStore.getState().reset(currentBrand.id);
         return;
       }
@@ -478,7 +479,7 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
           // non-blocking — the pitch/photos are editable on the listing page.
         }
       }
-      onDone(null, venueId, st.displayName.trim());
+      onDone(null, venueId, st.displayName.trim(), false);
       useDraftVenueStore.getState().reset(currentBrand.id);
       return;
     } catch (e) {
