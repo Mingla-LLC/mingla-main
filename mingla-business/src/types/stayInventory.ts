@@ -164,15 +164,128 @@ export interface StayOfferingRecord {
   id: string;
   kind: StayOfferingKind;
   name: string;
+  summary?: string | null;
   description: string;
+  confirmation_mode: StayBookingMode;
+  inventory_basis: StayInventoryBasis;
+  unit_naming_mode: StayUnitNamingMode;
+  quantity?: number | null;
+  capacity?: number | null;
+  min_guests: number;
+  max_guests: number;
+  max_adults?: number | null;
+  max_children?: number | null;
+  place_pricing_basis?: StayPlacePricingBasis | null;
+  amenities?: string[];
+  safety_rules?: string[];
+  accessibility_features?: string[];
+  access_scope: StayAccessScope;
   status: StayOfferingStatus;
   version: number;
-  currentPrice?: Record<string, unknown> | null;
-  currentPolicy?: Record<string, unknown> | null;
-  media?: Record<string, unknown>[];
-  units?: Record<string, unknown>[];
+  currentPrice?: StayPriceRecord | null;
+  currentFees?: StayFeeRecord[];
+  currentPolicy?: StayPolicyRecord | null;
+  media?: StayMediaRecord[];
+  units?: StayUnitRecord[];
+  roomNights?: StayRoomNightRecord[];
+  placeScheduleRules?: StayPlaceScheduleRuleRecord[];
+  placeWindows?: StayPlaceWindowRecord[];
+  nextAvailability?: string | null;
   hasOpenAvailability?: boolean;
   [key: string]: unknown;
+}
+
+export interface StayPriceRecord {
+  id: string;
+  amount_minor: number;
+  currency_code: string;
+  pricing_unit: string;
+  version_number: number;
+}
+
+export interface StayFeeRecord {
+  id: string;
+  fee_key: string;
+  label: string;
+  fee_kind: "mandatory_fee" | "tax";
+  calculation: StayFeeInput["calculation"];
+  amount_minor?: number | null;
+  basis_points?: number | null;
+  currency_code?: string | null;
+  display_mode: "included" | "separate";
+  refund_treatment: "refundable" | "nonrefundable" | "same_as_line";
+}
+
+export interface StayPolicyRecord {
+  id: string;
+  cancellation_policy: string;
+  free_cancel_cutoff_minutes: number;
+  late_refund_basis_points: number;
+  no_show_refund_basis_points: number;
+  operator_cancel_refund_basis_points: number;
+  request_terms?: string | null;
+  house_rules?: string | null;
+  version_number: number;
+}
+
+export interface StayMediaRecord {
+  id: string;
+  storage_bucket_id: "brand_covers";
+  storage_object_name: string;
+  alt_text?: string | null;
+  sort_order: number;
+  is_cover: boolean;
+  status: "pending" | "ready" | "failed";
+}
+
+export interface StayUnitRecord {
+  id: string;
+  name: string;
+  external_reference?: string | null;
+  status: "active" | "paused" | "archived";
+  version: number;
+}
+
+export interface StayRoomNightRecord {
+  id: string;
+  local_date: string;
+  sellable_quantity: number;
+  price_override_minor?: number | null;
+  currency_code?: string | null;
+  stop_sell: boolean;
+  minimum_nights: number;
+  maximum_nights?: number | null;
+  version: number;
+}
+
+export interface StayPlaceScheduleRuleRecord {
+  id: string;
+  mode: "fixed_slots" | "repeating_windows" | "full_day";
+  timezone: string;
+  local_start_date: string;
+  local_end_date?: string | null;
+  weekdays: number[];
+  local_start_time?: string | null;
+  local_end_time?: string | null;
+  slot_duration_minutes?: number | null;
+  slot_interval_minutes?: number | null;
+  full_day_start_time?: string | null;
+  full_day_end_time?: string | null;
+  active: boolean;
+  version: number;
+}
+
+export interface StayPlaceWindowRecord {
+  id: string;
+  local_date: string;
+  starts_at: string;
+  ends_at: string;
+  sellable_units?: number | null;
+  sellable_capacity?: number | null;
+  price_override_minor?: number | null;
+  currency_code?: string | null;
+  stop_sell: boolean;
+  version: number;
 }
 
 export interface StayBulkJobResult {
