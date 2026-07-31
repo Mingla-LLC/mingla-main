@@ -1,0 +1,117 @@
+name: "Issue #1463 permitted staff venue submit"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mingla-business/src/components/venue/claim/ClaimStepBookings.tsx"
+      - "mingla-business/src/components/venue/venueBookingSetupCopy.ts"
+      - "mingla-business/src/components/venue/__tests__/ClaimStepBookings.issue1463.test.ts"
+      - "mingla-business/src/utils/sanitizeAuthoringError.ts"
+      - "mingla-business/src/utils/__tests__/sanitizeAuthoringError.issue1463.test.ts"
+      - "supabase/migrations/20270208001463_issue_1463_permitted_staff_venue_submit.sql"
+      - "supabase/migrations/__tests__/issue_1463_permitted_staff_venue_submit.*"
+      - ".github/workflows/issue-1463-permitted-staff-venue-submit-tests.yml"
+  pull_request:
+    paths:
+      - "mingla-business/src/components/venue/claim/ClaimStepBookings.tsx"
+      - "mingla-business/src/components/venue/venueBookingSetupCopy.ts"
+      - "mingla-business/src/components/venue/__tests__/ClaimStepBookings.issue1463.test.ts"
+      - "mingla-business/src/utils/sanitizeAuthoringError.ts"
+      - "mingla-business/src/utils/__tests__/sanitizeAuthoringError.issue1463.test.ts"
+      - "supabase/migrations/20270208001463_issue_1463_permitted_staff_venue_submit.sql"
+      - "supabase/migrations/__tests__/issue_1463_permitted_staff_venue_submit.*"
+      - ".github/workflows/issue-1463-permitted-staff-venue-submit-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  contracts-and-client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+        working-directory: mingla-business
+      - name: Prove role, grant, copy, and error contracts
+        run: >
+          deno test --allow-read
+          supabase/migrations/__tests__/issue_1463_permitted_staff_venue_submit.test.ts
+      - name: Prove category copy and structured errors
+        working-directory: mingla-business
+        run: >
+          npx jest
+          src/components/venue/__tests__/ClaimStepBookings.issue1463.test.ts
+          src/utils/__tests__/sanitizeAuthoringError.issue1463.test.ts
+          src/utils/__tests__/sanitizeAuthoringError.test.ts
+          --runInBand
+      - name: Lint changed client boundaries
+        working-directory: mingla-business
+        run: >
+          npx eslint
+          src/components/venue/claim/ClaimStepBookings.tsx
+          src/components/venue/venueBookingSetupCopy.ts
+          src/components/venue/__tests__/ClaimStepBookings.issue1463.test.ts
+          src/utils/sanitizeAuthoringError.ts
+          src/utils/__tests__/sanitizeAuthoringError.issue1463.test.ts
+
+  postgres-17-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ format('issue-1463-ci-{0}', github.run_id) }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for PostgreSQL 17
+        env:
+          PGPASSWORD: ${{ format('issue-1463-ci-{0}', github.run_id) }}
+        run: |
+          for i in {1..90}; do
+            if psql -h localhost -U postgres -d postgres -Atc \
+              "SELECT to_regnamespace('vault') IS NOT NULL AND to_regrole('supabase_admin') IS NOT NULL" \
+              2>/dev/null | grep -qx t; then
+              exit 0
+            fi
+            sleep 1
+          done
+          exit 1
+      - name: Apply all migrations
+        env:
+          PGPASSWORD: ${{ format('issue-1463-ci-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 \
+            | sort -z \
+            | while IFS= read -r -d '' migration; do
+                psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$migration"
+              done
+      - name: Execute manager, cross-brand, lower-role, and grant proof
+        env:
+          PGPASSWORD: ${{ format('issue-1463-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_1463_permitted_staff_venue_submit.test.sql
