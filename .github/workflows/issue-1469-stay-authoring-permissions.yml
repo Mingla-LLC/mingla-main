@@ -100,3 +100,9 @@ jobs:
         run: >-
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
           -f supabase/migrations/__tests__/issue_1469_stay_authoring_permissions.test.sql
+      - name: Preserve the original inventory-versus-finance boundary
+        env:
+          PGPASSWORD: ${{ format('issue-1469-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_1387_stay_inventory.test.sql
