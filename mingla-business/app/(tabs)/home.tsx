@@ -91,7 +91,6 @@ import { useLiveSectionCollapseStore } from "../../src/store/liveSectionCollapse
 import type { DraftEvent } from "../../src/store/draftEventStore";
 import type { LiveEvent } from "../../src/store/liveEventStore";
 import type { Trip } from "../../src/services/tripsService";
-import { fetchRsvpCheckinSummary } from "../../src/services/scanRsvpService";
 // ORCH-0865 REWORK 5 — canonical routing helper, ban hardcoded /event/{id}
 import { routeForEventRowDefensive } from "../../src/utils/routeForEventRow";
 import { tripToLiveEvent } from "../../src/utils/tripToLiveEvent";
@@ -377,7 +376,12 @@ export default function HomeTab(): React.ReactElement {
       const eventId = view.serverEventId ?? item.id;
       return {
         queryKey: ["rsvpCheckinSummary", eventId],
-        queryFn: () => fetchRsvpCheckinSummary(eventId),
+        queryFn: async () => {
+          const { fetchRsvpCheckinSummary } = await import(
+            "../../src/services/scanRsvpService"
+          );
+          return fetchRsvpCheckinSummary(eventId);
+        },
         staleTime: 15_000,
         refetchInterval: 30_000,
       };
