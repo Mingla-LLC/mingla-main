@@ -14,6 +14,10 @@ export type DeliveryFlagField =
   | "marketing_send_live_enabled"
   | "sms_live_enabled.ng"
   | "sms_live_enabled.us";
+export type PaymentOperationFlagField =
+  | "payout_hold_onboard_flip"
+  | "payout_release_execute"
+  | "source_refunds_post_disabled";
 export type AlertRecipientField =
   | "api_health"
   | "stripe_disputes"
@@ -61,6 +65,14 @@ const DELIVERY_FLAG_LEGACY_NAMES: Record<DeliveryFlagField, string> = {
   marketing_send_live_enabled: "MARKETING_SEND_LIVE_ENABLED",
   "sms_live_enabled.ng": "SMS_LIVE_ENABLED_NG",
   "sms_live_enabled.us": "SMS_LIVE_ENABLED_US",
+};
+const PAYMENT_OPERATION_FLAG_LEGACY_NAMES: Record<
+  PaymentOperationFlagField,
+  string
+> = {
+  payout_hold_onboard_flip: "PAYOUT_HOLD_ONBOARD_FLIP",
+  payout_release_execute: "PAYOUT_RELEASE_EXECUTE",
+  source_refunds_post_disabled: "SOURCE_REFUNDS_POST_DISABLED",
 };
 const ALERT_RECIPIENT_LEGACY_NAMES: Record<AlertRecipientField, string> = {
   api_health: "API_HEALTH_ALERT_EMAILS",
@@ -215,24 +227,59 @@ function parseSenderBundle(
 }
 
 type DeliveryFlags = {
+  schema_version: 1 | 2;
   marketing_send_live_enabled: boolean;
   sms_live_enabled: { ng: boolean; us: boolean };
+  payment_operations?: Record<PaymentOperationFlagField, boolean>;
 };
 
 function parseDeliveryBundle(raw: string): ParseResult<DeliveryFlags> {
-  const base = parseObject(raw, [
+  if (new TextEncoder().encode(raw).byteLength >= MAX_BUNDLE_BYTES) {
+    return { ok: false, reason: "oversized" };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { ok: false, reason: "invalid_json" };
+  }
+  if (!isRecord(parsed)) return { ok: false, reason: "not_object" };
+  const version = parsed.schema_version;
+  if (version !== 1 && version !== 2) {
+    return {
+      ok: false,
+      reason: "schema_version",
+      schemaVersion: boundedSchemaVersion(version),
+    };
+  }
+  const allowed = new Set([
+    "schema_version",
     "marketing_send_live_enabled",
     "sms_live_enabled",
+    ...(version === 2 ? ["payment_operations"] : []),
   ]);
-  if (!base.ok) return base;
-  if (typeof base.value.marketing_send_live_enabled !== "boolean") {
+  if (Object.keys(parsed).some((field) => !allowed.has(field))) {
+    return { ok: false, reason: "unknown_field", field: "unknown" };
+  }
+  for (
+    const field of [
+      "marketing_send_live_enabled",
+      "sms_live_enabled",
+      ...(version === 2 ? ["payment_operations"] : []),
+    ]
+  ) {
+    if (!Object.hasOwn(parsed, field)) {
+      return { ok: false, reason: "missing_field", field };
+    }
+  }
+  if (typeof parsed.marketing_send_live_enabled !== "boolean") {
     return {
       ok: false,
       reason: "wrong_type",
       field: "marketing_send_live_enabled",
     };
   }
-  const sms = base.value.sms_live_enabled;
+  const sms = parsed.sms_live_enabled;
   if (!isRecord(sms)) {
     return { ok: false, reason: "wrong_type", field: "sms_live_enabled" };
   }
@@ -246,11 +293,64 @@ function parseDeliveryBundle(raw: string): ParseResult<DeliveryFlags> {
   if (typeof sms.ng !== "boolean" || typeof sms.us !== "boolean") {
     return { ok: false, reason: "wrong_type", field: "sms_live_enabled" };
   }
+  let paymentOperations:
+    | Record<PaymentOperationFlagField, boolean>
+    | undefined;
+  if (version === 2) {
+    const operations = parsed.payment_operations;
+    if (!isRecord(operations)) {
+      return {
+        ok: false,
+        reason: "wrong_type",
+        field: "payment_operations",
+      };
+    }
+    const operationFields = [
+      "payout_hold_onboard_flip",
+      "payout_release_execute",
+      "source_refunds_post_disabled",
+    ] as const;
+    if (
+      Object.keys(operations).some((field) =>
+        !operationFields.includes(field as PaymentOperationFlagField)
+      )
+    ) {
+      return {
+        ok: false,
+        reason: "unknown_field",
+        field: "payment_operations",
+      };
+    }
+    for (const field of operationFields) {
+      if (!Object.hasOwn(operations, field)) {
+        return {
+          ok: false,
+          reason: "missing_field",
+          field: `payment_operations.${field}`,
+        };
+      }
+      if (typeof operations[field] !== "boolean") {
+        return {
+          ok: false,
+          reason: "wrong_type",
+          field: `payment_operations.${field}`,
+        };
+      }
+    }
+    paymentOperations = {
+      payout_hold_onboard_flip: operations.payout_hold_onboard_flip as boolean,
+      payout_release_execute: operations.payout_release_execute as boolean,
+      source_refunds_post_disabled: operations
+        .source_refunds_post_disabled as boolean,
+    };
+  }
   return {
     ok: true,
     value: {
-      marketing_send_live_enabled: base.value.marketing_send_live_enabled,
+      schema_version: version,
+      marketing_send_live_enabled: parsed.marketing_send_live_enabled,
       sms_live_enabled: { ng: sms.ng, us: sms.us },
+      payment_operations: paymentOperations,
     },
   };
 }
@@ -391,6 +491,32 @@ export function resolveDeliveryFlagValue(
       : result.value.sms_live_enabled.us;
   }
   return fallback(bundle, field, legacyName, result, getEnv);
+}
+
+function parseLegacyBoolean(value: string | undefined): boolean | undefined {
+  if (value?.toLowerCase() === "true") return true;
+  if (value?.toLowerCase() === "false") return false;
+  return undefined;
+}
+
+export function resolvePaymentOperationFlagValue(
+  field: PaymentOperationFlagField,
+  legacyName: string,
+  getEnv: SecretEnvGetter = defaultGetEnv,
+): boolean | undefined {
+  assertLegacyMapping(
+    field,
+    legacyName,
+    PAYMENT_OPERATION_FLAG_LEGACY_NAMES[field],
+  );
+  const bundle = "MINGLA_DELIVERY_FLAGS_JSON";
+  const raw = getEnv(bundle);
+  const result = raw ? parseDeliveryBundle(raw) : null;
+  if (result?.ok && result.value.schema_version === 2) {
+    return result.value.payment_operations?.[field];
+  }
+  const legacy = fallback(bundle, field, legacyName, result, getEnv);
+  return parseLegacyBoolean(legacy);
 }
 
 export function resolveAlertRecipientValue(

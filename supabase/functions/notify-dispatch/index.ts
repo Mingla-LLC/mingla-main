@@ -26,6 +26,13 @@ import {
   type ResendAttempt,
   type ResendEmailPayload,
 } from "../_shared/legacyEmailIdempotency.ts";
+import {
+  resolveNotificationRecipientHmacSecret,
+} from "../_shared/notificationRecipientHmac.ts";
+
+// Phase-A compatibility reader for NOTIFICATION_RECIPIENT_HMAC_SECRET is
+// owned by resolveNotificationRecipientHmacSecret; the direct name remains
+// present in the manifest until #1436 completes the private bundle rollout.
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -202,8 +209,7 @@ async function dispatchDurableLegacyEmail(
     {
       recipient: input.recipient,
       logicalIdempotencyKey: input.idempotencyKey,
-      recipientHmacSecret: Deno.env.get("NOTIFICATION_RECIPIENT_HMAC_SECRET") ??
-        "",
+      recipientHmacSecret: resolveNotificationRecipientHmacSecret() ?? "",
       payload: input.payload,
     },
     {

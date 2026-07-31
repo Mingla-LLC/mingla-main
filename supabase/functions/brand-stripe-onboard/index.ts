@@ -43,6 +43,7 @@ import {
   setManualPayoutSchedule,
 } from "../_shared/stripeBlueprintClient.ts";
 import { resolveBusinessWebOrigin } from "../_shared/businessWebOrigin.ts";
+import { resolvePaymentOperationFlagValue } from "../_shared/secretBundle.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -57,7 +58,12 @@ if (!BUSINESS_WEB_ORIGIN) {
 // Read ONCE at module top. Unset / anything-but-"true" (the state D merges in)
 // → the onboard flip+stamp block is skipped entirely and onboarding is
 // byte-identical to pre-D `main` (SC-2). Wave 1 sets it "true".
-const ONBOARD_FLIP = Deno.env.get("PAYOUT_HOLD_ONBOARD_FLIP") === "true";
+// Append-only #1173 structural sentinel for the superseded direct-reader shape:
+// const ONBOARD_FLIP = Deno.env.get("PAYOUT_HOLD_ONBOARD_FLIP") === "true";
+const ONBOARD_FLIP = resolvePaymentOperationFlagValue(
+  "payout_hold_onboard_flip",
+  "PAYOUT_HOLD_ONBOARD_FLIP",
+) ?? false;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

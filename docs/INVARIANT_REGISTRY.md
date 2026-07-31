@@ -7,6 +7,16 @@
 
 ---
 
+## DRAFT — issue #1437 (temporary payment controls into existing bundles — IN PROGRESS)
+
+### I-PROPOSED-1437-BUNDLED-CONTROLS-PRESERVE-FAIL-SAFE-AUTHORITY (DRAFT)
+- **Rule:** `MINGLA_DELIVERY_FLAGS_JSON` schema v1 remains readable unchanged; schema v2 adds exactly the three independent `payment_operations` booleans. During migration, valid schema-v2 fields win and every other bundle state falls back only to its exact direct name. Missing or invalid onboarding and payout-execution controls resolve false; missing or invalid source-refund disabled control resolves true. The notification-recipient HMAC resolves byte-for-byte from `AD_CONVERSION_TOKENS` first, then its exact direct name, and missing/invalid material fails before provider HTTP. No diagnostic may expose secret material, length, prefix, or digest.
+- **Enforcement:** `.github/scripts/strict-grep/issue-1437-secret-bundle-compatibility.mjs` pins the strict schemas, exact legacy mappings, four production call sites, safe defaults, unchanged Phase-A manifest, runtime proof, and blocking CI wiring; `--self-test` performs true-source reversions across each clause.
+- **Implementor happy-path proof:** `supabase/functions/_shared/issue_1437_secret_bundle_compatibility.test.ts` proves schema-v1 parity, all 64 independent schema-v2 combinations, bundle-first authority, exact direct fallback, safe defaults, HMAC byte preservation/fingerprint parity, fail-closed invalid material, and redacted diagnostics. Existing #1203 and #1221 suites run in the same blocking workflow.
+- **Established:** DRAFT at issue #1437 IMPLEMENT. Flips ACTIVE only after independent tester PASS and CLOSE.
+
+---
+
 ## DRAFT — issue #1430 (test refund replay safety — IN REVIEW)
 
 ### I-PROPOSED-1430-REFUND-REPLAY-USES-PROVIDER-IDENTITY (DRAFT)
