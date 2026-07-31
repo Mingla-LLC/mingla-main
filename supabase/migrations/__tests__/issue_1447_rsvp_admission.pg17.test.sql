@@ -1,4 +1,8 @@
 \set ON_ERROR_STOP on
+\if :{?issue1447_db_password}
+\else
+\set issue1447_db_password 'postgres'
+\endif
 CREATE EXTENSION IF NOT EXISTS dblink;
 BEGIN;
 
@@ -241,8 +245,17 @@ COMMIT;
 
 -- Two real database connections contend for the same due delivery. The first
 -- holds its transaction open; the second must SKIP LOCKED and claim nothing.
-SET ROLE postgres;
-SELECT dblink_connect_u('issue1447_claim','dbname=postgres');
+SELECT dblink_connect(
+  'issue1447_claim',
+  format(
+    'hostaddr=%s port=%s dbname=%s user=%s password=%s',
+    inet_server_addr(),
+    inet_server_port(),
+    current_database(),
+    session_user,
+    :'issue1447_db_password'
+  )
+);
 SELECT dblink_exec('issue1447_claim','BEGIN');
 CREATE TEMP TABLE issue1447_remote_claim AS
 SELECT * FROM dblink(
@@ -264,7 +277,6 @@ DO $$ BEGIN
 END $$;
 SELECT dblink_exec('issue1447_claim','ROLLBACK');
 SELECT dblink_disconnect('issue1447_claim');
-RESET ROLE;
 
 -- Disposable-CI cleanup also keeps the proof replayable by hand.
 BEGIN;

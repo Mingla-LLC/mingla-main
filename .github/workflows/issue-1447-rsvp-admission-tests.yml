@@ -138,4 +138,5 @@ jobs:
           PGPASSWORD: ${{ format('issue-1447-ci-{0}', github.run_id) }}
         run: >-
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -v issue1447_db_password="$PGPASSWORD"
           -f supabase/migrations/__tests__/issue_1447_rsvp_admission.pg17.test.sql
