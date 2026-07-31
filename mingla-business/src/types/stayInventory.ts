@@ -91,6 +91,10 @@ export interface CreateStayOfferingInput {
 
 export interface StaySettingsInput {
   propertyKind?: StayPropertyKind | null;
+  summary?: string | null;
+  amenities?: string[];
+  accessibilityFeatures?: string[];
+  arrivalInstructions?: string | null;
   timezone: string;
   defaultBookingMode: StayBookingMode;
   checkInTime: string;
@@ -106,6 +110,7 @@ export interface StaySettingsInput {
 export type StayInventoryAction =
   | "get"
   | "save_settings"
+  | "publish_stay"
   | "create_offering"
   | "update_offering"
   | "replace_units"
@@ -130,8 +135,44 @@ export interface StayInventorySnapshot {
     name: string;
     category: "stay";
   };
-  settings: Record<string, unknown> | null;
-  offerings: Array<Record<string, unknown>>;
+  settings: StaySettingsRecord | null;
+  offerings: StayOfferingRecord[];
+}
+
+export interface StaySettingsRecord {
+  venue_id: string;
+  brand_id: string;
+  property_kind: StayPropertyKind | null;
+  summary?: string | null;
+  amenities?: string[];
+  accessibility_features?: string[];
+  arrival_instructions?: string | null;
+  timezone: string;
+  default_booking_mode: StayBookingMode;
+  check_in_time: string;
+  check_out_time: string;
+  instant_payment_hold_minutes: number;
+  request_response_hours: number;
+  approved_payment_minutes: number;
+  booking_horizon_days: number;
+  booking_state: "draft" | "review" | "active" | "paused";
+  house_rules: string | null;
+  version: number;
+}
+
+export interface StayOfferingRecord {
+  id: string;
+  kind: StayOfferingKind;
+  name: string;
+  description: string;
+  status: StayOfferingStatus;
+  version: number;
+  currentPrice?: Record<string, unknown> | null;
+  currentPolicy?: Record<string, unknown> | null;
+  media?: Record<string, unknown>[];
+  units?: Record<string, unknown>[];
+  hasOpenAvailability?: boolean;
+  [key: string]: unknown;
 }
 
 export interface StayBulkJobResult {
@@ -142,7 +183,7 @@ export interface StayBulkJobResult {
     succeeded_count: number;
     failed_count: number;
   };
-  items: Array<Record<string, unknown>>;
+  items: Record<string, unknown>[];
   replayed: boolean;
 }
 
@@ -150,6 +191,6 @@ export interface StayCurrencyReconciliationInput {
   reconciliationId: string;
   decision: "convert" | "reenter" | "accept_no_ranges";
   fxSnapshotId?: string | null;
-  ranges?: Array<Record<string, unknown>>;
-  stayItems?: Array<Record<string, unknown>>;
+  ranges?: Record<string, unknown>[];
+  stayItems?: Record<string, unknown>[];
 }

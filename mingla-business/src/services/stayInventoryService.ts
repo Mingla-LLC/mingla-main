@@ -14,6 +14,31 @@ interface SuccessEnvelope<T> {
   requestId: string;
 }
 
+async function stayInventoryError(error: {
+  message?: string;
+  context?: unknown;
+}): Promise<Error> {
+  const context = error.context;
+  if (
+    context !== null &&
+    context !== undefined &&
+    typeof (context as Response).json === "function"
+  ) {
+    try {
+      const body = (await (context as Response).json()) as {
+        code?: string;
+        message?: string;
+      };
+      if (typeof body.code === "string") {
+        return new Error(body.code);
+      }
+    } catch {
+      // Preserve the provider-safe fallback below.
+    }
+  }
+  return new Error(error.message ?? "stay_inventory_request_failed");
+}
+
 export async function manageStayInventory<T>(input: {
   action: StayInventoryAction;
   venueId: string;
@@ -31,7 +56,7 @@ export async function manageStayInventory<T>(input: {
       },
     },
   );
-  if (error) throw error;
+  if (error) throw await stayInventoryError(error);
   if (!data || data.kind !== "success") {
     throw new Error("The Stay inventory service returned no result.");
   }
@@ -56,6 +81,17 @@ export function saveStaySettings(input: {
     action: "save_settings",
     venueId: input.venueId,
     payload: input.settings as unknown as Record<string, unknown>,
+    expectedVersion: input.expectedVersion,
+  });
+}
+
+export function publishStay(input: {
+  venueId: string;
+  expectedVersion: number;
+}): Promise<{ inventory: StayInventorySnapshot }> {
+  return manageStayInventory({
+    action: "publish_stay",
+    venueId: input.venueId,
     expectedVersion: input.expectedVersion,
   });
 }

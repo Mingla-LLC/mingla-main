@@ -15,5 +15,6 @@ export function mapMinglaSlugToVenueCategory(
 ): VenueCategory {
   if (minglaSlug === PLAY_SLUG) return "play";
   if (minglaSlug === CREATIVE_SLUG) return "creative_and_arts";
+  if (minglaSlug === "stay") return "stay";
   return "restaurant";
 }

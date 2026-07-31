@@ -11,6 +11,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const actions = new Set([
   "get",
   "save_settings",
+  "publish_stay",
   "create_offering",
   "update_offering",
   "replace_units",
@@ -107,6 +108,8 @@ function errorResponse(
     "stay_unit_quantity_exceeded",
     "stay_units_require_archive",
     "stay_settings_required",
+    "stay_authoring_disabled",
+    "stay_venue_not_approved",
     "stay_date_outside_horizon",
     "stay_place_window_not_found",
     "stay_idempotency_conflict",
@@ -135,6 +138,8 @@ function errorResponse(
         "paid_currency_not_ready",
         "stay_publish_incomplete",
         "stay_live_cover_required",
+        "stay_authoring_disabled",
+        "stay_venue_not_approved",
       ].includes(code)
     ? 409
     : code === "fx_unavailable"
@@ -245,13 +250,26 @@ export async function handleManageStayInventory(
     auth: { autoRefreshToken: false, persistSession: false },
   }) as unknown as RpcClient;
 
-  const { data, error } = await client.rpc("biz_manage_stay_inventory", {
-    p_action: body.action,
-    p_venue_id: body.venueId,
-    p_payload: body.payload ?? {},
-    p_expected_version: body.expectedVersion ?? null,
-    p_request_id: requestId,
-  });
+  const { data, error } = body.action === "publish_stay"
+    ? await client.rpc("biz_publish_stay", {
+      p_venue_id: body.venueId,
+      p_expected_version: body.expectedVersion ?? null,
+      p_request_id: requestId,
+    })
+    : body.action === "save_settings"
+    ? await client.rpc("biz_save_stay_settings_v2", {
+      p_venue_id: body.venueId,
+      p_payload: body.payload ?? {},
+      p_expected_version: body.expectedVersion ?? null,
+      p_request_id: requestId,
+    })
+    : await client.rpc("biz_manage_stay_inventory", {
+      p_action: body.action,
+      p_venue_id: body.venueId,
+      p_payload: body.payload ?? {},
+      p_expected_version: body.expectedVersion ?? null,
+      p_request_id: requestId,
+    });
   if (error) return errorResponse(error, requestId);
 
   console.info(JSON.stringify({
