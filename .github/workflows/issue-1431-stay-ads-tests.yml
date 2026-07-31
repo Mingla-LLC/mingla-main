@@ -1,4 +1,4 @@
-name: Issue #1431 Stay ads and booking attribution
+name: "Issue #1431 Stay ads and booking attribution"
 
 on:
   push:
