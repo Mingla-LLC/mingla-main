@@ -15,6 +15,8 @@ const paths = {
   runbook: "docs/runbooks/SUPABASE_SECRET_CAPACITY.md",
   invariant: "docs/INVARIANT_REGISTRY.md",
   test: "scripts/secrets/issue_1436_secret_capacity_exit.test.mjs",
+  adversarialTest:
+    "scripts/secrets/issue_1436_secret_capacity_exit.adversarial.test.mjs",
   workflow: ".github/workflows/supabase-secret-budget.yml",
 };
 
@@ -148,7 +150,7 @@ export function violations(files) {
     failures,
   );
   for (const token of [
-    "issue_1436_secret_capacity_exit.test.mjs",
+    "scripts/secrets/issue_1436_*.test.mjs",
     "supabase/functions/_shared/issue_1437_*.test.ts",
     "issue-1436-secret-capacity-exit.mjs --self-test",
     "issue-1436-secret-capacity-exit.mjs",
@@ -159,6 +161,12 @@ export function violations(files) {
     files.test ?? "",
     "any retired direct-name return fails closed",
     "final-state regression test",
+    failures,
+  );
+  requireToken(
+    files.adversarialTest ?? "",
+    "same-count direct-name substitution cannot bypass exact-set parity",
+    "tester adversarial regression test",
     failures,
   );
   if ((files.workflow ?? "").includes("continue-on-error:")) {
@@ -282,8 +290,10 @@ function selfTest() {
       "schema v2 NOTIFICATION_RECIPIENT_HMAC_SECRET SOURCE_REFUNDS_POST_DISABLED PAYOUT_RELEASE_EXECUTE PAYOUT_HOLD_ONBOARD_FLIP exactly 85",
     invariant: "I-PROPOSED-1436-SECRET-CAPACITY-EXIT (ACTIVE)",
     test: "any retired direct-name return fails closed",
+    adversarialTest:
+      "same-count direct-name substitution cannot bypass exact-set parity",
     workflow:
-      "issue_1436_secret_capacity_exit.test.mjs supabase/functions/_shared/issue_1437_*.test.ts issue-1436-secret-capacity-exit.mjs --self-test issue-1436-secret-capacity-exit.mjs",
+      "scripts/secrets/issue_1436_*.test.mjs supabase/functions/_shared/issue_1437_*.test.ts issue-1436-secret-capacity-exit.mjs --self-test issue-1436-secret-capacity-exit.mjs",
     productionSources: [
       {
         path: "supabase/functions/_shared/notificationRecipientHmac.ts",
