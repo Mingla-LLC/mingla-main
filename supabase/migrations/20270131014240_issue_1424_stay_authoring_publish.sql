@@ -399,7 +399,6 @@ BEGIN
   FOR UPDATE;
   IF NOT FOUND OR p_expected_version IS NULL
      OR v_settings.version <> p_expected_version
-     OR v_settings.property_kind IS NULL
      OR char_length(pg_catalog.btrim(COALESCE(v_settings.summary, ''))) < 20
      OR v_settings.check_in_time = v_settings.check_out_time THEN
     RAISE EXCEPTION 'stay_publish_incomplete' USING ERRCODE = 'P0001';

@@ -49,6 +49,10 @@ import type {
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { VenueMenuModule } from "../venue/VenueMenuModule";
+import {
+  isStaySettingsComplete,
+  isStaySettingsFormValid,
+} from "./staySettingsReadiness";
 
 export type StayModule =
   "overview" | "rooms_places" | "availability_pricing" | "menu" | "settings";
@@ -94,17 +98,6 @@ const splitTags = (value: string): string[] =>
 
 const joinTags = (value: string[] | undefined): string =>
   (value ?? []).join(", ");
-
-function settingsComplete(settings: StaySettingsRecord | null): boolean {
-  return (
-    settings !== null &&
-    settings.property_kind !== null &&
-    (settings.summary ?? "").trim().length >= 20 &&
-    settings.timezone.trim().length > 0 &&
-    settings.check_in_time.length > 0 &&
-    settings.check_out_time.length > 0
-  );
-}
 
 function publishErrorCopy(error: Error | null): string | null {
   if (error === null) return null;
@@ -191,7 +184,7 @@ function StayOverview({
   const snapshot = inventory.data ?? null;
   const settings = snapshot?.settings ?? null;
   const offerings = snapshot?.offerings ?? [];
-  const basicsReady = settingsComplete(settings);
+  const basicsReady = isStaySettingsComplete(settings);
   const detailsReady =
     (settings?.amenities?.length ?? 0) > 0 ||
     (settings?.accessibility_features?.length ?? 0) > 0;
@@ -303,8 +296,8 @@ function StayOverview({
           title="Stay basics"
           detail={
             basicsReady
-              ? "Property type, summary, local time and arrival times saved"
-              : "Add property type, summary, timezone and arrival times"
+              ? "Summary, local time and arrival times saved"
+              : "Add a summary, timezone and arrival times"
           }
           complete={basicsReady}
           onPress={() => onSelect("settings")}
@@ -450,13 +443,12 @@ function StaySettings({ venueId }: StaySettingsProps): React.ReactElement {
     setHouseRules(settings.house_rules ?? "");
   }, [settings]);
 
-  const valid =
-    propertyKind !== null &&
-    summary.trim().length >= 20 &&
-    timezone.trim().length > 0 &&
-    /^\d{2}:\d{2}$/.test(checkIn) &&
-    /^\d{2}:\d{2}$/.test(checkOut) &&
-    checkIn !== checkOut;
+  const valid = isStaySettingsFormValid({
+    summary,
+    timezone,
+    checkIn,
+    checkOut,
+  });
 
   const submit = (): void => {
     if (!valid) return;
@@ -498,12 +490,13 @@ function StaySettings({ venueId }: StaySettingsProps): React.ReactElement {
       </Text>
 
       <GlassCard variant="base" style={styles.formCard}>
-        <Text style={styles.fieldLabel}>Property type</Text>
+        <Text style={styles.fieldLabel}>Property type (optional)</Text>
         <View style={styles.chipWrap}>
           {PROPERTY_KINDS.map((kind) => (
             <Pressable
               key={kind.id}
               accessibilityRole="radio"
+              accessibilityLabel={kind.label}
               accessibilityState={{ checked: propertyKind === kind.id }}
               onPress={() => setPropertyKind(kind.id)}
               style={[
@@ -566,6 +559,11 @@ function StaySettings({ venueId }: StaySettingsProps): React.ReactElement {
             <Pressable
               key={value}
               accessibilityRole="radio"
+              accessibilityLabel={
+                value === "instant"
+                  ? "Instant confirmation"
+                  : "Request confirmation"
+              }
               accessibilityState={{ checked: mode === value }}
               onPress={() => setMode(value)}
               style={[styles.modeCard, mode === value && styles.modeCardActive]}
