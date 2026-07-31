@@ -3,7 +3,11 @@ export type StayReservationAction =
   | "create_group"
   | "approve_request"
   | "decline_request"
-  | "get_group";
+  | "get_group"
+  | "list_staff_groups"
+  | "get_staff_group"
+  | "cancel_preview"
+  | "cancel";
 
 export type StayRoomAllocationInput = {
   adults: number;
@@ -65,19 +69,19 @@ export type StayQuoteLine = {
   offering: Record<string, unknown>;
   price: Record<string, unknown>;
   policy: Record<string, unknown>;
-  allocations: Array<{
+  allocations: {
     ordinal: number;
     adults: number;
     children: number;
     namedUnitPreference: string | null;
-  }>;
-  fees: Array<{
+  }[];
+  fees: {
     name: string;
     kind: "mandatory_fee" | "tax";
     amountMinor: string;
     includedInBase: boolean;
     refundTreatment: "refundable" | "nonrefundable" | "same_as_line";
-  }>;
+  }[];
 };
 
 export type StayQuote = {
@@ -135,13 +139,13 @@ export type StayReservationGroup = {
     expiresAt: string;
     version: number;
   };
-  events: Array<{
+  events: {
     eventType: string;
     actorType: "guest" | "staff" | "admin" | "service";
     metadata: Record<string, unknown>;
     createdAt: string;
-  }>;
-  lines: Array<{
+  }[];
+  lines: {
     lineId: string;
     offeringId: string;
     kind: "room" | "place";
@@ -162,7 +166,108 @@ export type StayReservationGroup = {
     offering: Record<string, unknown>;
     price: Record<string, unknown>;
     policy: Record<string, unknown>;
-  }>;
+  }[];
+};
+
+export type StayStaffPermissions = {
+  canView: boolean;
+  canRespond: boolean;
+  canCancel: boolean;
+  canViewFinance: boolean;
+};
+
+export type StayStaffReservationSummary = {
+  groupId: string;
+  publicReference: string;
+  venueId: string;
+  brandId: string;
+  currencyCode: string;
+  mode: "instant" | "request";
+  state: StayReservationGroup["state"];
+  guest: StayGuestInput;
+  totalMinor: string;
+  lineCount: number;
+  roomCount: number;
+  placeCount: number;
+  requestDeadline: string | null;
+  paymentDeadline: string | null;
+  paymentState: string | null;
+  refundState: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type StayStaffReservationList = {
+  permissions: StayStaffPermissions;
+  groups: StayStaffReservationSummary[];
+};
+
+export type StayStaffReservationGroup = Omit<StayReservationGroup, "lines"> & {
+  permissions: StayStaffPermissions;
+  payment: {
+    state: string;
+    provider: "stripe" | "paystack";
+    amountMinor: string;
+    applicationFeeMinor: string | null;
+    succeededAt: string | null;
+    updatedAt: string;
+  } | null;
+  refunds: {
+    refundId: string;
+    state: string;
+    amountMinor: string;
+    reason: string;
+    requestedByType: "guest" | "staff" | "admin" | "system";
+    createdAt: string;
+    updatedAt: string;
+  }[];
+  lines: (StayReservationGroup["lines"][number] & {
+      schedule: Record<string, unknown>;
+      allocations: {
+        ordinal: number;
+        adults: number;
+        children: number;
+        namedUnitPreference: string | null;
+      }[];
+      fees: {
+        name: string;
+        kind: "mandatory_fee" | "tax";
+        amountMinor: string;
+        includedInBase: boolean;
+        refundTreatment: "refundable" | "nonrefundable" | "same_as_line";
+      }[];
+    })[];
+};
+
+export type StayCancelPreview = {
+  previewId: string;
+  previewHash: string;
+  groupId: string;
+  groupVersion: number;
+  selectedLineIds: string[];
+  amountMinor: string;
+  retainedAmountMinor: string;
+  currencyCode: string;
+  expiresAt: string;
+  allocations: (Record<string, unknown> & {
+      reservationLineId: string;
+      amountMinor: string;
+    })[];
+  inventoryRelease: {
+    lineCount: number;
+    commitmentCount: number;
+    roomNightQuantity: number;
+    placeQuantity: number;
+  };
+  payoutEffect: {
+    applicationFeeReversalMinor: string;
+    organizerLiabilityMinor: string;
+    alreadyReleasedMinor: string;
+    payoutReversalMinor: string;
+    futureReleaseReductionMinor: string;
+    requiresPayoutReversal: boolean;
+  };
 };
 
 export type StayReservationEnvelope<T> =
