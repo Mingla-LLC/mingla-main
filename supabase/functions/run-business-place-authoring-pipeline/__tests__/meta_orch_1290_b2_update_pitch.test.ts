@@ -4,7 +4,7 @@
 //
 // Invariant: I-PROPOSED-1290-PITCH-WRITES-VIA-PIPELINE-ACTION —
 //   the pitch write is a USER action on the authoring pipeline (requireUser →
-//   loadOwnedBrand → loadOwnedVenue), COLUMN-SCOPED to the pitch only, and the
+//   loadManagedBrand → loadOwnedVenue), COLUMN-SCOPED to the pitch only, and the
 //   apply-vs-stage split is decided SERVER-SIDE via placeWriteMode. It writes NO
 //   serving/scoring column (is_servable / ai_signal_scores / etc.).
 //
