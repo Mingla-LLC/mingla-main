@@ -70,6 +70,7 @@ jobs:
             src/services/stayAdminService.js \
             src/components/stay/staySnapshotState.js \
             src/components/stay/StaySnapshotStatus.jsx \
+            src/components/stay/StayPauseOfferingModal.jsx \
             src/components/stay/StayVenueSections.jsx \
             src/components/stay/StayOperationsPanel.jsx \
             src/pages/VenuesConsolePage.jsx \

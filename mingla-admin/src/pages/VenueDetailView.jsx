@@ -13,9 +13,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { EntityDetailView } from "../components/entity/EntityDetailView";
 import { EntityEditModal } from "../components/entity/EntityEditModal";
-import { HighRiskActionModal } from "../components/entity/HighRiskActionModal";
 import { Badge } from "../components/ui/Badge";
 import { buildStayVenueSections } from "../components/stay/StayVenueSections";
+import { StayPauseOfferingModal } from "../components/stay/StayPauseOfferingModal";
 import {
   getVenue,
   getVenueReservationSettings,
@@ -29,7 +29,7 @@ import {
   setReservationStatus,
   mapVenueWriteError,
 } from "../services/venuesService";
-import { getAdminStayVenue, pauseAdminStayOffering } from "../services/stayAdminService";
+import { getAdminStayVenue } from "../services/stayAdminService";
 import { formatDate, formatDateTime } from "../lib/formatters";
 
 function money(cents, currency) {
@@ -487,24 +487,10 @@ export function VenueDetailView({ venueId, onBack }) {
         />
       )}
 
-      <HighRiskActionModal
-        open={a?.kind === "stayPauseOffering"}
+      <StayPauseOfferingModal
+        action={a}
         onClose={closeAction}
-        title={`Pause ${a?.label || "Stay offering"}`}
-        description="Stops new reservations for this Room or Place. It does not alter existing holds, commitments, prices, or money records."
-        confirmLabel="Pause offering"
-        destructive
-        confirmPhrase="PAUSE"
-        successMessage="Stay offering paused."
-        onConfirm={async ({ reason }) => {
-          await pauseAdminStayOffering({
-            offeringId: a.targetId,
-            expectedVersion: a.expectedVersion,
-            reason,
-          });
-          closeAction();
-          await load();
-        }}
+        onReload={load}
       />
     </div>
   );
