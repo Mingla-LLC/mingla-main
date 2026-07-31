@@ -35,6 +35,7 @@ SELECT '[
   {"weekday":5,"open_time":"10:00","close_time":"16:00","is_closed":false},
   {"weekday":6,"open_time":null,"close_time":null,"is_closed":true}
 ]'::jsonb AS value;
+GRANT SELECT ON issue_1463_hours TO authenticated;
 
 -- The canonical venue manager can create one pending-review Stay for Brand A.
 SET LOCAL ROLE authenticated;
