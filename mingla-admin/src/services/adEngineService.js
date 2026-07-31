@@ -144,6 +144,13 @@ export async function getCampaignConversions(campaignId) {
   });
 }
 
+/** Admin-only attributed Stay request/booking/refund funnel. */
+export async function getStayCampaignRollup(campaignId) {
+  return supabase.rpc("admin_stay_ad_campaign_rollup", {
+    p_campaign_id: campaignId,
+  });
+}
+
 /**
  * ISSUE-989 [Campaign Builder real targeting] — admin-ad-targeting-search: turn
  * a typed city/interest NAME into per-platform targeting keys/ids. READ-ONLY,

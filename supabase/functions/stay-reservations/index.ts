@@ -164,6 +164,15 @@ function validPayload(value: unknown): value is RequestBody {
     return typeof payload.quoteId === "string" &&
       UUID.test(payload.quoteId) &&
       validKey(payload.idempotencyKey) &&
+      (
+        payload.attributionClickId === undefined ||
+        (
+          typeof payload.attributionClickId === "string" &&
+          payload.attributionClickId.trim().length >= 8 &&
+          payload.attributionClickId.trim().length <= 200 &&
+          !/\s/.test(payload.attributionClickId)
+        )
+      ) &&
       body.expectedVersion !== undefined &&
       body.expectedVersion !== null &&
       !!payload.guest &&

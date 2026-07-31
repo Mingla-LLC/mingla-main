@@ -25,6 +25,7 @@ import {
   campaignAction,
   getCampaignConversions,
   getCampaignDetail,
+  getStayCampaignRollup,
   listCampaigns,
   parseEdgeError,
   syncCampaigns,
@@ -40,6 +41,31 @@ function centsToUsd(cents) {
   const n = Number(cents);
   if (!Number.isFinite(n)) return "—";
   return `$${(n / 100).toFixed(2)}`;
+}
+
+function formatMinor(currency, minor) {
+  const value = Number(minor);
+  if (!/^[A-Z]{3}$/.test(currency) || !Number.isFinite(value)) return "—";
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency,
+    }).format(value / 100);
+  } catch {
+    return `${currency} ${(value / 100).toFixed(2)}`;
+  }
+}
+
+function CurrencyRows({ values }) {
+  const rows = values && typeof values === "object" ? Object.entries(values) : [];
+  if (rows.length === 0) return <span>—</span>;
+  return (
+    <div className="space-y-1">
+      {rows.map(([currency, minor]) => (
+        <div key={currency}>{formatMinor(currency, minor)}</div>
+      ))}
+    </div>
+  );
 }
 
 function campaignIdFromHash() {
@@ -60,6 +86,9 @@ export function CampaignsPage() {
   // ISSUE-865 PR1 WP-4 — per-campaign conversions & ROI (the detail panel feed).
   const [roi, setRoi] = useState(null);
   const [roiLoading, setRoiLoading] = useState(false);
+  const [stayRollup, setStayRollup] = useState(null);
+  const [stayRollupLoading, setStayRollupLoading] = useState(false);
+  const [stayRollupError, setStayRollupError] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -123,6 +152,24 @@ export function CampaignsPage() {
   useEffect(() => {
     loadConversions(selectedId);
   }, [selectedId, loadConversions]);
+
+  useEffect(() => {
+    if (!selectedId || detail?.dest_page_type !== "venue") {
+      setStayRollup(null);
+      setStayRollupError(null);
+      return;
+    }
+    let active = true;
+    setStayRollupLoading(true);
+    setStayRollupError(null);
+    void getStayCampaignRollup(selectedId).then(({ data, error }) => {
+      if (!active) return;
+      setStayRollup(error ? null : data);
+      setStayRollupError(error?.message ?? null);
+      setStayRollupLoading(false);
+    });
+    return () => { active = false; };
+  }, [detail?.dest_page_type, selectedId]);
 
   const handleAction = async (campaign, action) => {
     setRowBusy((prev) => ({ ...prev, [campaign.id]: action }));
@@ -330,6 +377,54 @@ export function CampaignsPage() {
         </SectionCard>
       )}
 
+      {selectedId && detail?.dest_page_type === "venue" && (
+        <SectionCard
+          title="Stay booking funnel"
+          subtitle="Only bookings attributed to this Stay campaign are included. Money stays in its original brand currency."
+        >
+          {stayRollupLoading ? (
+            <div className="flex items-center gap-2 text-[var(--color-text-secondary)]">
+              <Spinner size="sm" /> Loading Stay bookings…
+            </div>
+          ) : stayRollupError ? (
+            <AlertCard variant="error" title="Stay bookings could not load">
+              {stayRollupError}
+            </AlertCard>
+          ) : !stayRollup ? (
+            <p className="text-sm text-[var(--color-text-secondary)]">Stay booking data is unavailable.</p>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                {[
+                  ["Visits", stayRollup.visits],
+                  ["Reservation requests", stayRollup.reservationRequests],
+                  ["Approved requests", stayRollup.approvedRequests],
+                  ["Confirmed bookings", stayRollup.confirmedBookings],
+                  ["Cancellations", stayRollup.cancellations],
+                ].map(([label, value]) => (
+                  <div key={label} className="border border-[var(--gray-200)] rounded-lg p-3">
+                    <div className="text-[var(--color-text-tertiary)] text-xs uppercase">{label}</div>
+                    <div className="text-xl font-semibold">{Number(value) || 0}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {[
+                  ["Gross bookings", stayRollup.grossByCurrency],
+                  ["Refunds", stayRollup.refundsByCurrency],
+                  ["Net bookings", stayRollup.netByCurrency],
+                ].map(([label, values]) => (
+                  <div key={label} className="border border-[var(--gray-200)] rounded-lg p-3">
+                    <div className="text-[var(--color-text-tertiary)] text-xs uppercase mb-1">{label}</div>
+                    <div className="text-lg font-semibold"><CurrencyRows values={values} /></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </SectionCard>
+      )}
+
       {/* ISSUE-865 PR1 WP-4 — Conversions & ROI (below Ad sets & ads). Reads the
           per-campaign ad_campaign_conversion_rollup RPC. Spend/ROAS are shown ONLY
           when a real spend figure exists (spend_cents) — never fabricated. */}
@@ -356,7 +451,7 @@ export function CampaignsPage() {
                 </div>
                 <div className="border border-[var(--gray-200)] rounded-lg p-3">
                   <div className="text-[var(--color-text-tertiary)] text-xs uppercase">Attributed value</div>
-                  <div className="text-xl font-semibold">{centsToUsd(roi.valueCents)}</div>
+                  <div className="text-xl font-semibold"><CurrencyRows values={roi.valueByCurrency} /></div>
                 </div>
                 <div className="border border-[var(--gray-200)] rounded-lg p-3">
                   <div className="text-[var(--color-text-tertiary)] text-xs uppercase">Spend</div>
@@ -392,7 +487,7 @@ export function CampaignsPage() {
                   >
                     <div>{PLATFORM_LABELS[p.platform] ?? p.platform}</div>
                     <div className="text-right">{p.conversions}</div>
-                    <div className="text-right">{centsToUsd(p.valueCents)}</div>
+                    <div className="text-right">—</div>
                     <div className="text-right text-[var(--color-text-secondary)]">
                       {p.sent} / {p.failed}
                     </div>

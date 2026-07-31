@@ -473,7 +473,7 @@ export function applySpecialAdCategoryRestrictions(
 
 /** A4.g url_tags UTM template — without it PostHog/GA are blind to paid traffic. */
 export const META_URL_TAGS =
-  "utm_source=facebook&utm_medium=paid&utm_campaign={{campaign.name}}&utm_content={{ad.name}}&placement={{placement}}";
+  "utm_source=facebook&utm_medium=paid&utm_campaign={{campaign.name}}&utm_content={{ad.name}}&placement={{placement}}&mc_id={{campaign.id}}";
 
 /** §4.4b default bid strategy — the only value WP1 accepts (cap strategies need bid_amount). */
 export const META_DEFAULT_BID_STRATEGY = "LOWEST_COST_WITHOUT_CAP";

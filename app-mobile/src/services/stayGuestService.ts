@@ -11,6 +11,7 @@ import {
 } from "@mingla/brand-rendering/stayGuest";
 
 import { supabase } from "./supabase";
+import { getStoredNativeAdClickId } from "./nativeAdAttributionService";
 
 type StayEnvelope<T> =
   | { kind: "success"; data: T; requestId: string }
@@ -119,16 +120,18 @@ export const stayGuestService = {
     });
   },
 
-  createGroup(
+  async createGroup(
     quote: StayQuote,
     guest: StayGuestCheckoutInput["guest"],
   ): Promise<StayReservationGroup> {
+    const attributionClickId = await getStoredNativeAdClickId();
     return invoke({
       action: "create_group",
       payload: {
         quoteId: quote.quoteId,
         guest,
         idempotencyKey: idempotencyKey("group"),
+        ...(attributionClickId ? { attributionClickId } : {}),
       },
       expectedVersion: quote.version,
     });

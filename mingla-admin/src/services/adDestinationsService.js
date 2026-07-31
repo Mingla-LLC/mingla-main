@@ -37,6 +37,10 @@ export function brandUrl(brandSlug) {
   return `${PUBLIC_WEB_ORIGIN}/b/${brandSlug}`;
 }
 
+export function stayUrl(brandSlug, slug) {
+  return `${PUBLIC_WEB_ORIGIN}/b/${brandSlug}/v/${slug}`;
+}
+
 const PAGE_SIZE = 24;
 
 /**
@@ -94,6 +98,32 @@ export async function listBrandDestinations({ search = "", page = 0 } = {}) {
       cover_media_url: row.profile_photo_url,
       page_type: "brand",
       dest_url: brandUrl(row.slug),
+    })),
+    total: count ?? 0,
+  };
+}
+
+/** List only server-proven public and reservable Stay pages. */
+export async function listStayDestinations({ search = "", page = 0 } = {}) {
+  let query = supabase
+    .from("ad_public_stay_destinations_view")
+    .select(
+      "id, title, slug, brand_slug, brand_name, city, country_code, cover_media_url",
+      { count: "exact" },
+    )
+    .order("title", { ascending: true })
+    .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
+  if (search.trim()) {
+    const escaped = search.trim().replaceAll("%", "\\%").replaceAll("_", "\\_");
+    query = query.or(`title.ilike.%${escaped}%,brand_name.ilike.%${escaped}%,city.ilike.%${escaped}%`);
+  }
+  const { data, error, count } = await query;
+  if (error) throw new Error(`Stay destination list failed: ${error.message}`);
+  return {
+    rows: (data ?? []).map((row) => ({
+      ...row,
+      page_type: "venue",
+      dest_url: stayUrl(row.brand_slug, row.slug),
     })),
     total: count ?? 0,
   };

@@ -33,17 +33,21 @@ import { usePublicVenue } from "../hooks/usePublicVenue";
 import { postHogService } from "../services/postHogService";
 import { captureVenueOrganicEvent } from "../services/venueOrganicCaptureService";
 import { ConsumerStayGuestExperience } from "../components/stay/ConsumerStayGuestExperience";
+import { captureNativeStayRouteAttribution } from "../services/nativeAdAttributionService";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+type VenueRouteParams = {
+  [key: string]: string | string[] | undefined;
+  brandSlug: string | string[];
+  venueSlug: string | string[];
+  tab?: string | string[];
+};
 
 export default function ConsumerPublicVenueScreen(): React.ReactElement {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{
-    brandSlug: string | string[];
-    venueSlug: string | string[];
-    tab?: string | string[];
-  }>();
+  const params = useLocalSearchParams<VenueRouteParams>();
   const brandSlug = Array.isArray(params.brandSlug)
     ? params.brandSlug[0]
     : params.brandSlug;
@@ -59,6 +63,14 @@ export default function ConsumerPublicVenueScreen(): React.ReactElement {
   const [reserved, setReserved] = useState(false);
   const [muted, setMuted] = useState(true);
   const stayViewFired = useRef(false);
+  const attributionFired = useRef(false);
+
+  useEffect(() => {
+    if (attributionFired.current) return;
+    if (typeof brandSlug !== "string" || typeof venueSlug !== "string") return;
+    attributionFired.current = true;
+    void captureNativeStayRouteAttribution({ brandSlug, venueSlug, params });
+  }, [brandSlug, params, venueSlug]);
 
   const venue = query.data ?? null;
   useEffect(() => {

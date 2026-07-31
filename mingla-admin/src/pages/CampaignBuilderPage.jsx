@@ -627,7 +627,7 @@ export function CampaignBuilderPage() {
       const destBody = {
         page_type: dest.page_type,
         brand_slug: dest.brand_slug,
-        entity_slug: dest.page_type === "event" ? dest.slug : null,
+        entity_slug: dest.page_type === "brand" ? null : dest.slug,
       };
       // Each fanned-out ad carries its own name (base name + destination title) so
       // the created campaigns stay distinguishable; a single-destination build

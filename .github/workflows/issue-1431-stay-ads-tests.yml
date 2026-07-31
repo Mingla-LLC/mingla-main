@@ -1,0 +1,133 @@
+name: "Issue #1431 Stay ads and booking attribution"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app-mobile/**"
+      - "mingla-admin/**"
+      - "mingla-business/**"
+      - "supabase/functions/**"
+      - "supabase/migrations/20270206001431_issue_1431_stay_ads_attribution.sql"
+      - "supabase/migrations/__tests__/issue_1431_stay_ads_attribution.test.sql"
+      - ".github/workflows/issue-1431-stay-ads-tests.yml"
+  pull_request:
+    paths:
+      - "app-mobile/**"
+      - "mingla-admin/**"
+      - "mingla-business/**"
+      - "supabase/functions/**"
+      - "supabase/migrations/20270206001431_issue_1431_stay_ads_attribution.sql"
+      - "supabase/migrations/__tests__/issue_1431_stay_ads_attribution.test.sql"
+      - ".github/workflows/issue-1431-stay-ads-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: Run Admin and native source contracts
+        run: >
+          node --test
+          mingla-admin/src/__tests__/issue1431_stay_ads_happy.test.js
+          app-mobile/src/services/__tests__/nativeAdAttribution.issue1431.test.mjs
+      - name: Run strict destination and OneLink contracts
+        run: >
+          deno test --allow-env
+          supabase/functions/_shared/adDestination.issue1431.test.ts
+          supabase/functions/_shared/__tests__/issue_1431_stay_conversion.test.ts
+          supabase/functions/_shared/__tests__/issue_1431_stay_conversion.tester_adversarial.test.ts
+          app-mobile/src/services/__tests__/oneLinkResolver.issue1431.test.ts
+      - name: Type-check changed Edge functions
+        run: >
+          deno check
+          supabase/functions/_shared/adDestination.ts
+          supabase/functions/_shared/adConversionFire.ts
+          supabase/functions/_shared/stayPaymentWebhook.ts
+          supabase/functions/attribution-capture/index.ts
+          supabase/functions/stay-reservations/index.ts
+          supabase/functions/admin-ad-create-campaign/index.ts
+
+  admin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mingla-admin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mingla-admin/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: >
+          npx eslint
+          src/components/campaign-builder/StepDestination.jsx
+          src/pages/CampaignBuilderPage.jsx
+          src/services/adDestinationsService.js
+          src/services/adEngineService.js
+          src/lib/adRoi.js
+
+  buyer-web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      - run: >
+          npx eslint
+          'app/b/[brandSlug]/v/[venueSlug].tsx'
+          src/analytics/webAnalytics.web.ts
+          src/services/stayGuestService.ts
+      - run: npx expo export --platform web --output-dir /tmp/issue-1431-buyer-web
+
+  consumer-native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: app-mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: app-mobile/package-lock.json
+      - run: npm ci
+      - run: >
+          npx eslint
+          src/screens/ConsumerPublicVenueScreen.tsx
+          src/services/nativeAdAttributionService.ts
+          src/services/stayGuestService.ts
+          src/services/oneLinkResolver.ts
+          src/services/appsFlyerService.ts
+          src/utils/authCleanup.ts
+          app/index.tsx
+      - run: npx expo export --platform ios --output-dir /tmp/issue-1431-ios
+      - run: npx expo export --platform android --output-dir /tmp/issue-1431-android

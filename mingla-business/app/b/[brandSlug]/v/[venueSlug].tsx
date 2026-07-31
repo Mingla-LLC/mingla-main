@@ -23,7 +23,10 @@ import {
   text as textTokens,
 } from "../../../../src/constants/designSystem";
 // META-ORCH-1187 LEG 2 — buyer-web public-offering view capture (web-only).
-import { captureWeb } from "../../../../src/analytics/webAnalytics";
+import {
+  captureAdClickIds,
+  captureWeb,
+} from "../../../../src/analytics/webAnalytics";
 import {
   usePublicBrandBySlug,
   usePublicVenueBySlug,
@@ -94,6 +97,7 @@ export default function PublicVenueRoute(): React.ReactElement {
   // META-ORCH-1187 LEG 2 — fire `web_public_offering_viewed` once on mount.
   // Web-only (no-op on native).
   const viewFiredRef = useRef<boolean>(false);
+  const attributionFiredRef = useRef<boolean>(false);
   useEffect(() => {
     if (viewFiredRef.current) return;
     viewFiredRef.current = true;
@@ -102,6 +106,17 @@ export default function PublicVenueRoute(): React.ReactElement {
       brand_slug: typeof brandSlug === "string" ? brandSlug : null,
       venue_slug: typeof venueSlug === "string" ? venueSlug : null,
       slug: typeof venueSlug === "string" ? venueSlug : null,
+    });
+  }, [brandSlug, venueSlug]);
+
+  useEffect(() => {
+    if (attributionFiredRef.current) return;
+    if (typeof brandSlug !== "string" || typeof venueSlug !== "string") return;
+    attributionFiredRef.current = true;
+    captureAdClickIds({
+      pageType: "venue",
+      brandSlug,
+      entitySlug: venueSlug,
     });
   }, [brandSlug, venueSlug]);
 
