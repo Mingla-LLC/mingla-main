@@ -113,7 +113,8 @@ export default function VenueCreateRoute(): React.ReactElement {
   // META-ORCH-1255 — the created venue id, so Done lands on ITS management page.
   const [createdVenueId, setCreatedVenueId] = useState<string | null>(null);
   // ORCH-1263 — claim submit success renders the §8.1 pending copy.
-  const [claimSuccessName, setClaimSuccessName] = useState<string | null>(null);
+  const [successName, setSuccessName] = useState<string | null>(null);
+  const [successWasClaim, setSuccessWasClaim] = useState(false);
   // ORCH-1263 — per-match YES state: detail fetch in flight / failed / the
   // place turned out unavailable mid-race (blocked-card swap backstop).
   const [yesLoadingId, setYesLoadingId] = useState<string | null>(null);
@@ -173,6 +174,7 @@ export default function VenueCreateRoute(): React.ReactElement {
       activeDraftBrandId,
       hasPoolContext: fromPoolParam || placePoolId !== null,
       workingName,
+      submissionCompleted: phase === "success",
     });
     if (brandId === null) return;
     // Scoped reset only. The no-argument reset remains reserved for logout;
@@ -186,6 +188,7 @@ export default function VenueCreateRoute(): React.ReactElement {
     fromPoolParam,
     hydrated,
     placePoolId,
+    phase,
     reset,
     workingName,
   ]);
@@ -293,10 +296,11 @@ export default function VenueCreateRoute(): React.ReactElement {
     return (
       <VenueCreatorWizard
         onClose={handleClose}
-        onDone={(warning, venueId, claimName) => {
+        onDone={(warning, venueId, submittedName, wasClaim = false) => {
           setCoverWarning(warning ?? null);
           setCreatedVenueId(venueId ?? null);
-          setClaimSuccessName(claimName ?? null);
+          setSuccessName(submittedName ?? null);
+          setSuccessWasClaim(wasClaim);
           setPhase("success");
         }}
       />
@@ -304,7 +308,6 @@ export default function VenueCreateRoute(): React.ReactElement {
   }
 
   if (phase === "success") {
-    const isClaimSuccess = claimSuccessName !== null;
     return (
       <View
         style={[
@@ -314,14 +317,14 @@ export default function VenueCreateRoute(): React.ReactElement {
       >
         <View style={styles.successInner}>
           <Text style={styles.successTitle}>
-            {isClaimSuccess
-              ? `That's it — ${claimSuccessName} is in review`
-              : "Your venue is being prepared"}
+            {successName !== null
+              ? `That's it — ${successName} is in review`
+              : "Your venue is in review"}
           </Text>
           <Text style={styles.successBody}>
-            {isClaimSuccess
+            {successWasClaim
               ? "Your listing stays live while we verify it's really you. Approval usually lands within 4 business hours."
-              : "We created the venue record and started the deck-readiness pipeline."}
+              : "Your listing is not live yet. You can finish its setup in Venue Hub while Mingla reviews it."}
           </Text>
           {coverWarning !== null ? (
             <Text style={styles.successWarning}>{coverWarning}</Text>

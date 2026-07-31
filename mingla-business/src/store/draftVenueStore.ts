@@ -155,6 +155,13 @@ export interface DraftVenueState {
     type: "image" | "video" | "gif";
     isNew: boolean;
   } | null;
+  /**
+   * Issue #1467 — the own-brand pending venue row already created for this
+   * submission saga. Persisted immediately after the create RPC so a failed
+   * downstream Tier 1/gallery/currency step resumes this row instead of
+   * inserting a duplicate. Optional for backwards-compatible v3 hydration.
+   */
+  submissionVenueId?: string | null;
   /** ORCH-1263 — non-null ⇔ claim mode (10-step wizard variant). */
   claim: DraftVenueClaim | null;
   /**
@@ -191,6 +198,7 @@ const initial: DraftVenueState = {
   wantsReservations: false,
   galleryUrls: [],
   coverChoice: null,
+  submissionVenueId: null,
   claim: null,
   step: 0,
 };
@@ -229,6 +237,7 @@ const pickDraft = (s: DraftVenueState): DraftVenueState => ({
   // META-ORCH-1290 — `?? []`/`?? null` tolerates a pre-1290 persisted blob.
   galleryUrls: s.galleryUrls ?? [],
   coverChoice: s.coverChoice ?? null,
+  submissionVenueId: s.submissionVenueId ?? null,
   // ORCH-1263 — the claim block must survive activateBrand stash/restore.
   claim: s.claim,
   step: s.step,
@@ -238,6 +247,7 @@ const pickDraft = (s: DraftVenueState): DraftVenueState => ({
 export const draftVenueInProgress = (d: DraftVenueState): boolean =>
   d.displayName.trim().length > 0 ||
   d.workingName.trim().length > 0 ||
+  (d.submissionVenueId ?? null) !== null ||
   d.step > 0;
 
 // ─── ORCH-1263 — computed provenance (DESIGN §3; never stored) ──────────────
