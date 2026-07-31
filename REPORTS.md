@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-07-31 — Added Stay pages to Mingla’s existing five-platform ad system, with public-and-reservable destination validation, first-touch buyer-web and Explorer attribution, multi-Room/Place booking and refund conversion proof, and an Admin funnel that keeps every amount in its original currency; rollout flags remain off. (#1431, PR #1454)
 - 2026-07-31 — Added dark-launched Stay discovery to Explorer iOS/Android and buyer web through the existing Discover and public venue paths, with canonical Room-and-Place cards, truthful exact-currency prices, deep links, and feature-flag-safe empty states. (#1423, PR #1453)
 - 2026-07-31 — Added dark-launched Stay operations to Mingla Admin inside the existing Venues and Money shells, with safe property, Room, Place, reservation, payment, refund, payout, notification, and failure inspection plus audited reconciliation actions; production backend is deployed and all Stay launch flags remain off. (#1427, PR #1451)
 - 2026-07-31 — Added dark-launched Stay reservation management to Mingla Business across iOS, Android, and web: permissioned brand staff can inspect one Room-and-Place group, approve or decline the whole request, track payment and reconciliation, and review exact refund, retained amount, inventory, and payout effects before cancelling all or selected lines. (#1426, PR #1449)
