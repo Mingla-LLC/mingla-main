@@ -112,7 +112,7 @@ type Action =
   | "sync_hero_media"
   | "sync_gallery"
   // META-ORCH-1290 (B2 addendum): owner edits the listing/deck-readiness pitch.
-  // USER action (requireUser → loadOwnedBrand → loadOwnedVenue) — column-scoped
+  // USER action (requireUser → loadManagedBrand → loadOwnedVenue) — column-scoped
   // write of the pitch ONLY, replacing Leg B's direct client place_pool RLS
   // UPDATE (blocker B-2). See handleUpdatePitch.
   | "update_pitch"
@@ -601,7 +601,13 @@ export async function requireServiceRole(req: Request): Promise<
   return { serviceClient };
 }
 
-async function loadOwnedBrand(
+// Issue #1465: venue authoring is a brand-management capability, not an
+// account-owner-only capability. Keep the same canonical rank threshold used
+// by venue creation and scanner management; publication/approval stay behind
+// their separate gates.
+const RANK_EVENT_MANAGER = 40;
+
+export async function loadManagedBrand(
   client: SupabaseClient,
   brandId: string,
   userId: string,
@@ -616,14 +622,33 @@ async function loadOwnedBrand(
   if (error) return errorResponse(500, "BRAND_READ_FAILED", error.message);
   if (!data) return errorResponse(404, "BRAND_NOT_FOUND", "Brand not found");
   const brand = data as OwnedBrand;
-  if (brand.account_id !== userId) {
-    return errorResponse(403, "FORBIDDEN", "Brand not owned by caller");
+
+  // The service-role client cannot rely on auth.uid(), so ask the canonical
+  // two-argument rank function about the authenticated user explicitly.
+  const { data: rankRow, error: rankError } = await client.rpc(
+    "biz_brand_effective_rank",
+    { p_brand_id: brandId, p_user_id: userId },
+  );
+  if (rankError) {
+    return errorResponse(
+      500,
+      "BRAND_ROLE_READ_FAILED",
+      "Could not verify brand permission",
+    );
+  }
+  const callerRank = typeof rankRow === "number" ? rankRow : 0;
+  if (callerRank < RANK_EVENT_MANAGER) {
+    return errorResponse(
+      403,
+      "FORBIDDEN",
+      "Caller cannot manage venue listings for this brand",
+    );
   }
   return brand;
 }
 
 // META-ORCH-1255 Leg A: load the venue row and assert it belongs to the authed
-// brand (loadOwnedBrand already proved the caller owns the brand).
+// brand (loadManagedBrand already proved the caller may manage the brand).
 // META-ORCH-1290 (B2 addendum): exported (was module-private) so the
 // update_pitch ownership-rejection test can drive the exact assertion (a venue
 // whose brand_id != the authed brand → 403). No behavior change from `export`.
@@ -1965,7 +1990,7 @@ export async function handleSyncHeroMedia(
   // clobbered brands.cover_media_url — two venues fought over the parent
   // brand's cover. `client` is the service-role client (venue_listings has no
   // client write policy by design); ownership was asserted upstream by
-  // loadOwnedBrand → loadOwnedVenue. mediaType is constrained by the
+  // loadManagedBrand → loadOwnedVenue. mediaType is constrained by the
   // RequestBody union (image|video|gif|null), matching the M1 CHECK.
   const { error: venueCoverErr } = await client
     .from("venue_listings")
@@ -2027,7 +2052,7 @@ async function handleSyncGallery(
 // row via PostgREST (self-publish `is_servable=true`, forge `ai_signal_scores`),
 // bypassing admin approval + the bouncer + scoring — a violation of the authored-
 // writes-are-RPC/service-role-only architecture (META-ORCH-1255/1263). This USER
-// action moves the write server-side (requireUser → loadOwnedBrand →
+// action moves the write server-side (requireUser → loadManagedBrand →
 // loadOwnedVenue asserted the caller owns the venue in the dispatch pre-amble)
 // and COLUMN-SCOPES it: it writes ONLY the pitch, and NEVER a serving/scoring
 // column (no `is_servable`, no `ai_signal_scores`, nothing else)
@@ -2052,7 +2077,7 @@ export async function handleUpdatePitch(
   venue: OwnedVenue,
   body: RequestBody,
 ): Promise<Response> {
-  void brand; // ownership already asserted upstream (loadOwnedBrand→loadOwnedVenue).
+  void brand; // management authority asserted upstream (loadManagedBrand→loadOwnedVenue).
   const placePoolId = body.place_pool_id ?? venue.place_pool_id;
   if (!isUuid(placePoolId)) {
     return errorResponse(400, "BAD_REQUEST", "place_pool_id is required");
@@ -2116,7 +2141,7 @@ export async function handleUpdatePitch(
 // (handleEvaluateSignals). Column-scoped to business_authoring_inputs.tier2
 // (merged, never clobbering sibling staging); writes NO serving column and calls
 // NO Gemini (I-1263-NO-LIVE-PLACE-MUTATION-PRE-APPROVE). Ownership was already
-// asserted upstream (requireUser → loadOwnedBrand → loadOwnedVenue).
+// asserted upstream (requireUser → loadManagedBrand → loadOwnedVenue).
 export async function handleSaveTier2(
   client: SupabaseClient,
   brand: OwnedBrand,
@@ -2352,7 +2377,11 @@ Deno.serve(async (req) => {
   if (!isUuid(body.venue_id)) {
     return errorResponse(400, "BAD_REQUEST", "venue_id must be a uuid");
   }
-  const brand = await loadOwnedBrand(userResult.serviceClient, body.brand_id, userResult.userId);
+  const brand = await loadManagedBrand(
+    userResult.serviceClient,
+    body.brand_id,
+    userResult.userId,
+  );
   if (brand instanceof Response) return brand;
   const venue = await loadOwnedVenue(userResult.serviceClient, body.venue_id, brand);
   if (venue instanceof Response) return venue;
@@ -2381,7 +2410,7 @@ Deno.serve(async (req) => {
     }
     // META-ORCH-1290 (B2 addendum): owner-authed pitch edit — column-scoped,
     // replaces Leg B's direct client place_pool RLS UPDATE. Uses the SAME
-    // requireUser + loadOwnedBrand + loadOwnedVenue ownership gate above.
+    // requireUser + loadManagedBrand + loadOwnedVenue authority gate above.
     if (body.action === "update_pitch") {
       return await handleUpdatePitch(userResult.serviceClient, brand, venue, body);
     }

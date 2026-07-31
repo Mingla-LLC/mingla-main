@@ -672,8 +672,9 @@ export async function fetchVenuePitchSource(
  * `ai_signal_scores`), bypassing admin approval + the bouncer + scoring — a
  * violation of the authored-writes-are-RPC/service-role-only architecture
  * (META-ORCH-1255/1263). This now INVOKES the `update_pitch` pipeline action,
- * which owns all authored writes: it asserts ownership (requireUser →
- * loadOwnedBrand → loadOwnedVenue) and column-scopes the write to the pitch
+ * which owns all authored writes: it asserts brand-management authority
+ * (requireUser → loadManagedBrand → loadOwnedVenue) and column-scopes the write
+ * to the pitch
  * ONLY. The stage-vs-apply split is decided SERVER-SIDE via `placeWriteMode`
  * (apply → `place_pool.generative_summary`; stage → the staged
  * `business_authoring_inputs.tier1.description`), so the client can no longer
