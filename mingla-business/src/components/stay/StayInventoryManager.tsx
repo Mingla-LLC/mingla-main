@@ -121,11 +121,13 @@ function Choice({
   selected,
   onPress,
   testID,
+  disabled = false,
 }: {
   label: string;
   selected: boolean;
   onPress: () => void;
   testID: string;
+  disabled?: boolean;
 }): React.ReactElement {
   return (
     <Pressable
@@ -133,8 +135,13 @@ function Choice({
       accessibilityState={{ checked: selected }}
       accessibilityLabel={label}
       onPress={onPress}
+      disabled={disabled}
       testID={testID}
-      style={[styles.choice, selected && styles.choiceActive]}
+      style={[
+        styles.choice,
+        selected && styles.choiceActive,
+        disabled && styles.choiceDisabled,
+      ]}
     >
       <Text style={[styles.choiceText, selected && styles.choiceTextActive]}>
         {label}
@@ -151,6 +158,7 @@ function LabeledInput({
   multiline = false,
   keyboardType,
   testID,
+  editable = true,
 }: {
   label: string;
   value: string;
@@ -159,6 +167,7 @@ function LabeledInput({
   multiline?: boolean;
   keyboardType?: "default" | "numeric" | "decimal-pad";
   testID: string;
+  editable?: boolean;
 }): React.ReactElement {
   return (
     <View style={styles.field}>
@@ -171,7 +180,12 @@ function LabeledInput({
         placeholderTextColor={textTokens.tertiary}
         keyboardType={keyboardType}
         multiline={multiline}
-        style={[styles.input, multiline && styles.multiline]}
+        editable={editable}
+        style={[
+          styles.input,
+          multiline && styles.multiline,
+          !editable && styles.inputDisabled,
+        ]}
         testID={testID}
       />
     </View>
@@ -182,6 +196,8 @@ interface OfferingEditorProps {
   brandId: string;
   venueId: string;
   existing?: StayOfferingRecord | null;
+  canManageInventory: boolean;
+  canManageFinance: boolean;
   onClose: () => void;
 }
 
@@ -189,6 +205,8 @@ function OfferingEditor({
   brandId,
   venueId,
   existing = null,
+  canManageInventory,
+  canManageFinance,
   onClose,
 }: OfferingEditorProps): React.ReactElement {
   const queryClient = useQueryClient();
@@ -259,16 +277,19 @@ function OfferingEditor({
       if (names.length === 0 || names.some((item) => item.length === 0)) {
         throw new Error("name_required");
       }
-      if (Number(price) > 0 && currencyCode === null) {
+      if (canManageFinance && Number(price) > 0 && currencyCode === null) {
         throw new Error("stay_currency_required");
       }
       const count = asPositiveInteger(quantity);
       const parsedUnits = splitList(unitNames);
-      if (namedUnits && parsedUnits.length !== count) {
+      if (canManageInventory && namedUnits && parsedUnits.length !== count) {
         throw new Error("named_units_incomplete");
       }
       const fees: CreateStayOfferingInput["fees"] =
-        feeLabel.trim() && Number(feeAmount) > 0 && currencyCode
+        canManageFinance &&
+        feeLabel.trim() &&
+        Number(feeAmount) > 0 &&
+        currencyCode
           ? [
               {
                 feeKey: `custom_${feeLabel
@@ -286,18 +307,19 @@ function OfferingEditor({
               },
             ]
           : [];
-      const policyInput: CreateStayOfferingInput["policy"] = policy.trim()
-        ? {
-            cancellationPolicy: policy.trim(),
-            noShowRefundBasisPoints: Math.max(
-              0,
-              Math.min(10000, Math.round(Number(noShowPercent) * 100)),
-            ),
-            operatorCancelRefundBasisPoints: 10000,
-          }
-        : undefined;
+      const policyInput: CreateStayOfferingInput["policy"] =
+        canManageFinance && policy.trim()
+          ? {
+              cancellationPolicy: policy.trim(),
+              noShowRefundBasisPoints: Math.max(
+                0,
+                Math.min(10000, Math.round(Number(noShowPercent) * 100)),
+              ),
+              operatorCancelRefundBasisPoints: 10000,
+            }
+          : undefined;
       const priceInput: CreateStayOfferingInput["price"] =
-        Number(price) > 0 && currencyCode
+        canManageFinance && Number(price) > 0 && currencyCode
           ? {
               amountMinor: minorFromMajor(Number(price), currencyCode),
               currencyCode,
@@ -328,30 +350,40 @@ function OfferingEditor({
         units: namedUnits
           ? parsedUnits.map((unitName) => ({ name: unitName }))
           : undefined,
-        media,
+        media: canManageInventory ? media : [],
         price: priceInput,
         fees,
         policy: policyInput,
       });
 
       if (existing) {
-        let inventory = (
-          await updateStayOffering({
+        let inventory =
+          queryClient.getQueryData<StayInventorySnapshot>(
+            stayInventoryKeys.detail(venueId),
+          ) ??
+          (await manageStayInventory<StayInventorySnapshot>({
+            action: "get",
             venueId,
-            offeringId: existing.id,
-            expectedVersion: existing.version,
-            patch: {
-              name: names[0],
-              description: description.trim(),
-              confirmationMode,
-              amenities: splitList(amenities),
-              accessScope:
-                kind === "place" && overnightOnly
-                  ? "overnight_guests_only"
-                  : "public",
-            },
-          })
-        ).inventory;
+          }));
+        if (canManageInventory) {
+          inventory = (
+            await updateStayOffering({
+              venueId,
+              offeringId: existing.id,
+              expectedVersion: existing.version,
+              patch: {
+                name: names[0],
+                description: description.trim(),
+                confirmationMode,
+                amenities: splitList(amenities),
+                accessScope:
+                  kind === "place" && overnightOnly
+                    ? "overnight_guests_only"
+                    : "public",
+              },
+            })
+          ).inventory;
+        }
         const nextVersion = (): number => {
           const current = inventory.offerings.find(
             (item) => item.id === existing.id,
@@ -359,7 +391,7 @@ function OfferingEditor({
           if (!current) throw new Error("stay_offering_not_found");
           return current.version;
         };
-        if (priceInput) {
+        if (canManageFinance && priceInput) {
           inventory = (
             await setStayOfferingPrice({
               venueId,
@@ -369,7 +401,7 @@ function OfferingEditor({
             })
           ).inventory;
         }
-        if (policyInput) {
+        if (canManageFinance && policyInput) {
           inventory = (
             await setStayOfferingPolicy({
               venueId,
@@ -379,15 +411,17 @@ function OfferingEditor({
             })
           ).inventory;
         }
-        inventory = (
-          await replaceStayOfferingFees({
-            venueId,
-            offeringId: existing.id,
-            expectedVersion: nextVersion(),
-            fees,
-          })
-        ).inventory;
-        if (namedUnits) {
+        if (canManageFinance) {
+          inventory = (
+            await replaceStayOfferingFees({
+              venueId,
+              offeringId: existing.id,
+              expectedVersion: nextVersion(),
+              fees,
+            })
+          ).inventory;
+        }
+        if (canManageInventory && namedUnits) {
           inventory = (
             await replaceStayUnits({
               venueId,
@@ -397,7 +431,7 @@ function OfferingEditor({
             })
           ).inventory;
         }
-        for (const photo of media) {
+        for (const photo of canManageInventory ? media : []) {
           inventory = (
             await attachStayOfferingMedia({
               venueId,
@@ -409,6 +443,7 @@ function OfferingEditor({
         }
         return inventory;
       }
+      if (!canManageInventory) throw new Error("forbidden");
       if (bulk) {
         const response = await bulkCreateStayOfferings({
           venueId,
@@ -515,6 +550,12 @@ function OfferingEditor({
           <Text style={styles.helper}>
             Drafts stay private until every server readiness check passes.
           </Text>
+          {!canManageInventory && canManageFinance ? (
+            <Text style={styles.warning}>
+              Your role can manage prices, fees and policies, but not Room or
+              Place details.
+            </Text>
+          ) : null}
         </View>
         <Pressable
           accessibilityRole="button"
@@ -564,6 +605,7 @@ function OfferingEditor({
             onChangeText={setBulkNames}
             placeholder={"One name per line"}
             multiline
+            editable={canManageInventory}
             testID="stay-bulk-names"
           />
         ) : (
@@ -572,6 +614,7 @@ function OfferingEditor({
             value={name}
             onChangeText={setName}
             placeholder={kind === "room" ? "Ocean suite" : "Pool cabana"}
+            editable={canManageInventory}
             testID="stay-offering-name"
           />
         )}
@@ -581,6 +624,7 @@ function OfferingEditor({
           onChangeText={setDescription}
           placeholder="What guests are reserving"
           multiline
+          editable={canManageInventory}
           testID="stay-offering-description"
         />
         <LabeledInput
@@ -588,6 +632,7 @@ function OfferingEditor({
           value={amenities}
           onChangeText={setAmenities}
           placeholder="Wi-Fi, air conditioning, accessible entrance"
+          editable={canManageInventory}
           testID="stay-offering-amenities"
         />
         <View style={styles.choices}>
@@ -595,12 +640,14 @@ function OfferingEditor({
             label="Instant"
             selected={confirmationMode === "instant"}
             onPress={() => setConfirmationMode("instant")}
+            disabled={!canManageInventory}
             testID="stay-offering-instant"
           />
           <Choice
             label="Request"
             selected={confirmationMode === "request"}
             onPress={() => setConfirmationMode("request")}
+            disabled={!canManageInventory}
             testID="stay-offering-request"
           />
         </View>
@@ -610,12 +657,14 @@ function OfferingEditor({
               label="Exclusive units"
               selected={!sharedCapacity}
               onPress={() => setSharedCapacity(false)}
+              disabled={!canManageInventory}
               testID="stay-place-exclusive"
             />
             <Choice
               label="Shared capacity"
               selected={sharedCapacity}
               onPress={() => setSharedCapacity(true)}
+              disabled={!canManageInventory}
               testID="stay-place-capacity"
             />
           </View>
@@ -628,6 +677,7 @@ function OfferingEditor({
               onChangeText={setQuantity}
               placeholder="1"
               keyboardType="numeric"
+              editable={canManageInventory}
               testID="stay-offering-quantity"
             />
           ) : (
@@ -637,6 +687,7 @@ function OfferingEditor({
               onChangeText={setCapacity}
               placeholder="10"
               keyboardType="numeric"
+              editable={canManageInventory}
               testID="stay-offering-capacity"
             />
           )}
@@ -646,6 +697,7 @@ function OfferingEditor({
             onChangeText={setMaxGuests}
             placeholder="2"
             keyboardType="numeric"
+            editable={canManageInventory}
             testID="stay-offering-guests"
           />
         </View>
@@ -656,12 +708,14 @@ function OfferingEditor({
                 label="Interchangeable"
                 selected={!namedUnits}
                 onPress={() => setNamedUnits(false)}
+                disabled={!canManageInventory}
                 testID="stay-units-pooled"
               />
               <Choice
                 label="Named units"
                 selected={namedUnits}
                 onPress={() => setNamedUnits(true)}
+                disabled={!canManageInventory}
                 testID="stay-units-named"
               />
             </View>
@@ -672,6 +726,7 @@ function OfferingEditor({
                 onChangeText={setUnitNames}
                 placeholder="Room 101\nRoom 102"
                 multiline
+                editable={canManageInventory}
                 testID="stay-unit-names"
               />
             ) : null}
@@ -683,109 +738,124 @@ function OfferingEditor({
               label="Public"
               selected={!overnightOnly}
               onPress={() => setOvernightOnly(false)}
+              disabled={!canManageInventory}
               testID="stay-place-public"
             />
             <Choice
               label="Overnight guests only"
               selected={overnightOnly}
               onPress={() => setOvernightOnly(true)}
+              disabled={!canManageInventory}
               testID="stay-place-overnight-only"
             />
           </View>
         ) : null}
-        <View style={styles.twoCol}>
-          <LabeledInput
-            label={`Base price${currencyCode ? ` (${currencyCode})` : ""}`}
-            value={price}
-            onChangeText={setPrice}
-            placeholder="0.00"
-            keyboardType="decimal-pad"
-            testID="stay-offering-price"
-          />
-          <LabeledInput
-            label="Fee amount"
-            value={feeAmount}
-            onChangeText={setFeeAmount}
-            placeholder="0.00"
-            keyboardType="decimal-pad"
-            testID="stay-offering-fee-amount"
-          />
-        </View>
-        <LabeledInput
-          label="Optional fee name"
-          value={feeLabel}
-          onChangeText={setFeeLabel}
-          placeholder="Resort fee"
-          testID="stay-offering-fee-label"
-        />
-        <LabeledInput
-          label="Cancellation policy"
-          value={policy}
-          onChangeText={setPolicy}
-          placeholder="Free cancellation until 48 hours before arrival"
-          multiline
-          testID="stay-offering-policy"
-        />
-        <LabeledInput
-          label="No-show refund percent"
-          value={noShowPercent}
-          onChangeText={setNoShowPercent}
-          placeholder="0"
-          keyboardType="numeric"
-          testID="stay-offering-no-show"
-        />
-        <View style={styles.photoBlock}>
-          <Text style={styles.label}>Photos</Text>
-          <Text style={styles.helper}>
-            Add up to 20. The first successful upload becomes the cover.
-          </Text>
-          <Button
-            label={uploading ? "Uploading…" : "Add photos"}
-            onPress={addPhotos}
-            loading={uploading}
-            variant="secondary"
-            size="sm"
-            testID="stay-offering-add-photos"
-          />
-          {existing ? (
-            <View style={styles.mediaStrip}>
-              {(existing.media ?? [])
-                .filter((item) => !removedMediaIds.includes(item.id))
-                .map((item) => (
-                  <View key={item.id} style={styles.mediaThumbWrap}>
-                    <Image
-                      source={{
-                        uri: stayOfferingMediaUrl(item.storage_object_name),
-                      }}
-                      accessibilityLabel={
-                        item.alt_text ?? `${existing.name} photo`
-                      }
-                      style={styles.mediaThumb}
-                    />
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={`Remove ${item.alt_text ?? "photo"}`}
-                      disabled={removeMedia.isPending}
-                      onPress={() => removeMedia.mutate(item.id)}
-                      style={styles.mediaRemove}
-                      testID={`stay-media-remove-${item.id}`}
-                    >
-                      <X size={14} color={textTokens.primary} />
-                    </Pressable>
-                  </View>
-                ))}
+        {canManageFinance ? (
+          <>
+            <View style={styles.twoCol}>
+              <LabeledInput
+                label={`Base price${currencyCode ? ` (${currencyCode})` : ""}`}
+                value={price}
+                onChangeText={setPrice}
+                placeholder="0.00"
+                keyboardType="decimal-pad"
+                testID="stay-offering-price"
+              />
+              <LabeledInput
+                label="Fee amount"
+                value={feeAmount}
+                onChangeText={setFeeAmount}
+                placeholder="0.00"
+                keyboardType="decimal-pad"
+                testID="stay-offering-fee-amount"
+              />
             </View>
-          ) : null}
-          <Text style={styles.helper}>
-            {(existing?.media?.length ?? 0) + media.length} total after save
+            <LabeledInput
+              label="Optional fee name"
+              value={feeLabel}
+              onChangeText={setFeeLabel}
+              placeholder="Resort fee"
+              testID="stay-offering-fee-label"
+            />
+            <LabeledInput
+              label="Cancellation policy"
+              value={policy}
+              onChangeText={setPolicy}
+              placeholder="Free cancellation until 48 hours before arrival"
+              multiline
+              testID="stay-offering-policy"
+            />
+            <LabeledInput
+              label="No-show refund percent"
+              value={noShowPercent}
+              onChangeText={setNoShowPercent}
+              placeholder="0"
+              keyboardType="numeric"
+              testID="stay-offering-no-show"
+            />
+          </>
+        ) : (
+          <Text style={styles.warning} testID="stay-finance-permission-copy">
+            Pricing, fees and cancellation policies require Stay finance
+            permission. You can save this as an unpriced draft.
           </Text>
-          {mediaError ? <Text style={styles.error}>{mediaError}</Text> : null}
-          {removeMedia.isError ? (
-            <Text style={styles.error}>{mutationCopy(removeMedia.error)}</Text>
-          ) : null}
-        </View>
+        )}
+        {canManageInventory ? (
+          <View style={styles.photoBlock}>
+            <Text style={styles.label}>Photos</Text>
+            <Text style={styles.helper}>
+              Add up to 20. The first successful upload becomes the cover.
+            </Text>
+            <Button
+              label={uploading ? "Uploading…" : "Add photos"}
+              onPress={addPhotos}
+              loading={uploading}
+              variant="secondary"
+              size="sm"
+              testID="stay-offering-add-photos"
+            />
+            {existing ? (
+              <View style={styles.mediaStrip}>
+                {(existing.media ?? [])
+                  .filter((item) => !removedMediaIds.includes(item.id))
+                  .map((item) => (
+                    <View key={item.id} style={styles.mediaThumbWrap}>
+                      <Image
+                        source={{
+                          uri: stayOfferingMediaUrl(item.storage_object_name),
+                        }}
+                        accessibilityLabel={
+                          item.alt_text ?? `${existing.name} photo`
+                        }
+                        style={styles.mediaThumb}
+                      />
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Remove ${item.alt_text ?? "photo"}`}
+                        disabled={removeMedia.isPending}
+                        onPress={() => removeMedia.mutate(item.id)}
+                        style={styles.mediaRemove}
+                        testID={`stay-media-remove-${item.id}`}
+                      >
+                        <X size={14} color={textTokens.primary} />
+                      </Pressable>
+                    </View>
+                  ))}
+              </View>
+            ) : null}
+            <Text style={styles.helper}>
+              {(existing?.media?.length ?? 0) + media.length} total after save
+            </Text>
+            {mediaError ? <Text style={styles.error}>{mediaError}</Text> : null}
+            {removeMedia.isError ? (
+              <Text style={styles.error}>
+                {mutationCopy(removeMedia.error)}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
       </GlassCard>
-      {currencyCode === null ? (
+      {canManageFinance && currencyCode === null ? (
         <Text style={styles.error}>
           Choose the brand’s provisional currency or connect its bank before
           adding prices.
@@ -801,7 +871,7 @@ function OfferingEditor({
         }
         onPress={() => save.mutate()}
         loading={save.isPending}
-        disabled={uploading}
+        disabled={uploading || (!canManageInventory && !canManageFinance)}
         fullWidth
         testID="stay-offering-save"
       />
@@ -813,10 +883,14 @@ function OfferingRow({
   offering,
   venueId,
   onEdit,
+  canManageInventory,
+  canManageFinance,
 }: {
   offering: StayOfferingRecord;
   venueId: string;
   onEdit: () => void;
+  canManageInventory: boolean;
+  canManageFinance: boolean;
 }): React.ReactElement {
   const queryClient = useQueryClient();
   const errors = stayOfferingReadinessErrors(offering);
@@ -896,15 +970,17 @@ function OfferingRow({
         <Text style={styles.error}>{mutationCopy(statusMutation.error)}</Text>
       ) : null}
       <View style={styles.actions}>
-        <Button
-          label="Edit"
-          onPress={onEdit}
-          variant="secondary"
-          size="sm"
-          leadingIcon="edit"
-          testID={`stay-edit-${offering.id}`}
-        />
-        {offering.status === "live" ? (
+        {canManageInventory || canManageFinance ? (
+          <Button
+            label={canManageInventory ? "Edit" : "Pricing"}
+            onPress={onEdit}
+            variant="secondary"
+            size="sm"
+            leadingIcon="edit"
+            testID={`stay-edit-${offering.id}`}
+          />
+        ) : null}
+        {canManageInventory && offering.status === "live" ? (
           <Button
             label="Pause"
             onPress={() => statusMutation.mutate("paused")}
@@ -913,7 +989,7 @@ function OfferingRow({
             loading={statusMutation.isPending}
             testID={`stay-pause-${offering.id}`}
           />
-        ) : (
+        ) : canManageInventory ? (
           <Button
             label="Make live"
             onPress={() => statusMutation.mutate("live")}
@@ -922,7 +998,7 @@ function OfferingRow({
             loading={statusMutation.isPending}
             testID={`stay-live-${offering.id}`}
           />
-        )}
+        ) : null}
       </View>
     </GlassCard>
   );
@@ -932,10 +1008,12 @@ function AvailabilityManager({
   venueId,
   offerings,
   timezone,
+  canManageFinance,
 }: {
   venueId: string;
   offerings: StayOfferingRecord[];
   timezone: string;
+  canManageFinance: boolean;
 }): React.ReactElement {
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState(offerings[0]?.id ?? "");
@@ -1130,14 +1208,16 @@ function AvailabilityManager({
             keyboardType="numeric"
             testID="stay-night-quantity"
           />
-          <LabeledInput
-            label={`Price override${currencyCode ? ` (${currencyCode})` : ""}`}
-            value={overridePrice}
-            onChangeText={setOverridePrice}
-            placeholder="Optional"
-            keyboardType="decimal-pad"
-            testID="stay-night-price"
-          />
+          {canManageFinance ? (
+            <LabeledInput
+              label={`Price override${currencyCode ? ` (${currencyCode})` : ""}`}
+              value={overridePrice}
+              onChangeText={setOverridePrice}
+              placeholder="Optional"
+              keyboardType="decimal-pad"
+              testID="stay-night-price"
+            />
+          ) : null}
         </View>
       ) : (
         <>
@@ -1176,14 +1256,16 @@ function AvailabilityManager({
               placeholder="17:00"
               testID="stay-place-end-time"
             />
-            <LabeledInput
-              label={`Price override${currencyCode ? ` (${currencyCode})` : ""}`}
-              value={overridePrice}
-              onChangeText={setOverridePrice}
-              placeholder="Optional"
-              keyboardType="decimal-pad"
-              testID="stay-place-price"
-            />
+            {canManageFinance ? (
+              <LabeledInput
+                label={`Price override${currencyCode ? ` (${currencyCode})` : ""}`}
+                value={overridePrice}
+                onChangeText={setOverridePrice}
+                placeholder="Optional"
+                keyboardType="decimal-pad"
+                testID="stay-place-price"
+              />
+            ) : null}
           </View>
         </>
       )}
@@ -1207,6 +1289,12 @@ function AvailabilityManager({
         The server checks dates, quantities, permissions, currency and edit
         versions before saving.
       </Text>
+      {!canManageFinance ? (
+        <Text style={styles.warning} testID="stay-availability-finance-copy">
+          Your inventory changes will use the saved base price. Price overrides
+          require Stay finance permission.
+        </Text>
+      ) : null}
       <View style={styles.calendarList}>
         <Text style={styles.label}>Current calendar</Text>
         {selected.kind === "room" ? (
@@ -1280,6 +1368,10 @@ export function StayInventoryManager({
     () => inventory.data?.offerings ?? [],
     [inventory.data?.offerings],
   );
+  const canManageInventory =
+    inventory.data?.permissions.canManageInventory ?? false;
+  const canManageFinance =
+    inventory.data?.permissions.canManageFinance ?? false;
   const filtered = useMemo(
     () =>
       offerings.filter((offering) =>
@@ -1319,6 +1411,8 @@ export function StayInventoryManager({
         brandId={brandId}
         venueId={venueId}
         existing={editor === "new" ? null : editor}
+        canManageInventory={canManageInventory}
+        canManageFinance={canManageFinance}
         onClose={() => setEditor(null)}
       />
     );
@@ -1348,6 +1442,7 @@ export function StayInventoryManager({
           <Button
             label="Add"
             onPress={() => setEditor("new")}
+            disabled={!canManageInventory}
             size="sm"
             testID="stay-inventory-add"
           />
@@ -1355,6 +1450,15 @@ export function StayInventoryManager({
       </View>
       {mode === "inventory" ? (
         <>
+          {!canManageInventory ? (
+            <Text
+              style={styles.warning}
+              testID="stay-inventory-permission-copy"
+            >
+              Your role can view Rooms and Places, but Stay inventory permission
+              is required to add or change them.
+            </Text>
+          ) : null}
           <TextInput
             accessibilityLabel="Search Rooms and Places"
             value={search}
@@ -1393,6 +1497,7 @@ export function StayInventoryManager({
               <Button
                 label="Add Room or Place"
                 onPress={() => setEditor("new")}
+                disabled={!canManageInventory}
                 testID="stay-inventory-empty-add"
               />
             </GlassCard>
@@ -1403,6 +1508,8 @@ export function StayInventoryManager({
                 offering={offering}
                 venueId={venueId}
                 onEdit={() => setEditor(offering)}
+                canManageInventory={canManageInventory}
+                canManageFinance={canManageFinance}
               />
             ))
           )}
@@ -1410,11 +1517,22 @@ export function StayInventoryManager({
       ) : (
         <GlassCard variant="base" style={styles.form}>
           <CalendarDays size={26} color={accent.warm} />
-          <AvailabilityManager
-            venueId={venueId}
-            offerings={offerings}
-            timezone={inventory.data?.settings?.timezone ?? "UTC"}
-          />
+          {canManageInventory ? (
+            <AvailabilityManager
+              venueId={venueId}
+              offerings={offerings}
+              timezone={inventory.data?.settings?.timezone ?? "UTC"}
+              canManageFinance={canManageFinance}
+            />
+          ) : (
+            <Text
+              style={styles.warning}
+              testID="stay-availability-permission-copy"
+            >
+              Stay inventory permission is required to open Room nights or Place
+              windows.
+            </Text>
+          )}
         </GlassCard>
       )}
     </ScrollView>
@@ -1462,6 +1580,7 @@ const styles = StyleSheet.create({
     color: textTokens.primary,
   },
   multiline: { minHeight: 92, textAlignVertical: "top" },
+  inputDisabled: { opacity: 0.55 },
   twoCol: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   choices: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   choice: {
@@ -1476,6 +1595,7 @@ const styles = StyleSheet.create({
     borderColor: accent.warm,
     backgroundColor: "rgba(235,120,37,0.14)",
   },
+  choiceDisabled: { opacity: 0.55 },
   choiceText: { ...typography.bodySm, color: textTokens.secondary },
   choiceTextActive: { color: accent.warm, fontWeight: "700" },
   photoBlock: { gap: spacing.sm },

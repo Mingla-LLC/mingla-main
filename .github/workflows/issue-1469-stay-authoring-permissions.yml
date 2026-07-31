@@ -1,0 +1,102 @@
+name: "Issue #1469 Stay authoring permissions"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mingla-business/src/components/stay/StayInventoryManager.tsx"
+      - "mingla-business/src/components/stay/__tests__/stayAuthoringPermissions.issue1469.test.ts"
+      - "mingla-business/src/types/stayInventory.ts"
+      - "supabase/migrations/20270209001469_issue_1469_stay_authoring_permissions.sql"
+      - "supabase/migrations/__tests__/issue_1469_stay_authoring_permissions.test.sql"
+      - ".github/workflows/issue-1469-stay-authoring-permissions.yml"
+  pull_request:
+    paths:
+      - "mingla-business/src/components/stay/StayInventoryManager.tsx"
+      - "mingla-business/src/components/stay/__tests__/stayAuthoringPermissions.issue1469.test.ts"
+      - "mingla-business/src/types/stayInventory.ts"
+      - "supabase/migrations/20270209001469_issue_1469_stay_authoring_permissions.sql"
+      - "supabase/migrations/__tests__/issue_1469_stay_authoring_permissions.test.sql"
+      - ".github/workflows/issue-1469-stay-authoring-permissions.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  client-permission-parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+        working-directory: mingla-business
+      - name: Prove server-driven controls and split-safe writes
+        working-directory: mingla-business
+        run: >
+          npx jest
+          src/components/stay/__tests__/stayAuthoringPermissions.issue1469.test.ts
+          --runInBand
+      - name: Lint changed Business boundaries
+        working-directory: mingla-business
+        run: >
+          npx eslint
+          src/components/stay/StayInventoryManager.tsx
+          src/components/stay/__tests__/stayAuthoringPermissions.issue1469.test.ts
+          src/types/stayInventory.ts
+
+  postgres-17-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ format('issue-1469-ci-{0}', github.run_id) }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for PostgreSQL 17
+        env:
+          PGPASSWORD: ${{ format('issue-1469-ci-{0}', github.run_id) }}
+        run: |
+          for i in {1..90}; do
+            if psql -h localhost -U postgres -d postgres -Atc \
+              "SELECT to_regnamespace('vault') IS NOT NULL AND to_regrole('supabase_admin') IS NOT NULL" \
+              2>/dev/null | grep -qx t; then
+              exit 0
+            fi
+            sleep 1
+          done
+          exit 1
+      - name: Apply all migrations
+        env:
+          PGPASSWORD: ${{ format('issue-1469-ci-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 \
+            | sort -z \
+            | while IFS= read -r -d '' migration; do
+                psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$migration"
+              done
+      - name: Execute split authority, override and projection proof
+        env:
+          PGPASSWORD: ${{ format('issue-1469-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_1469_stay_authoring_permissions.test.sql

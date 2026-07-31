@@ -135,6 +135,11 @@ export interface StayInventorySnapshot {
     name: string;
     category: "stay";
   };
+  permissions: {
+    canRead: boolean;
+    canManageInventory: boolean;
+    canManageFinance: boolean;
+  };
   settings: StaySettingsRecord | null;
   offerings: StayOfferingRecord[];
 }
