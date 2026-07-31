@@ -27,6 +27,7 @@ import { type ResolvedTheme } from "./designTokens";
 import type { RsvpAnonymousRecovery, RsvpPassCredential } from "./RsvpOfferingBody";
 
 // Keep the sizeable SVG QR renderer out of the initial buyer-web bundle.
+// @ts-expect-error -- the host apps provide this workspace peer dependency.
 const QrCode = React.lazy(() => import("react-native-qrcode-svg"));
 
 /** Shared confirmation-details type (exported from the barrel). */
@@ -78,16 +79,19 @@ const Row: React.FC<{
   </View>
 );
 
-export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = ({
-  visible,
-  palette,
-  theme,
-  details,
-  showCalendarNudge,
-  onClose,
-  chipInPanel,
-  onDownloadPass,
-}) => {
+export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = (
+  props: RsvpSuccessPopupProps,
+) => {
+  const {
+    visible,
+    palette,
+    theme,
+    details,
+    showCalendarNudge,
+    onClose,
+    chipInPanel,
+    onDownloadPass,
+  } = props;
   const boldFamily = boldFontFamily(theme);
   const { height: windowHeight } = useWindowDimensions();
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
@@ -95,11 +99,17 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = ({
   const [downloadError, setDownloadError] = useState<string | null>(null);
   if (details === null) return null;
 
-  const eligibleCredentials = details.credentials.filter((item) => item.qrCode !== null);
-  const selected = eligibleCredentials.find((item) => item.entityId === selectedEntityId) ??
+  const eligibleCredentials = details.credentials.filter(
+    (item: RsvpPassCredential) => item.qrCode !== null,
+  );
+  const selected = eligibleCredentials.find(
+    (item: RsvpPassCredential) => item.entityId === selectedEntityId,
+  ) ??
     eligibleCredentials[0] ?? null;
   const selectedRecovery = selected === null ? null :
-    details.anonymousRecovery.find((item) => item.entityId === selected.entityId) ?? null;
+    details.anonymousRecovery.find(
+      (item: RsvpAnonymousRecovery) => item.entityId === selected.entityId,
+    ) ?? null;
 
   const title =
     details.status === "waitlisted"
@@ -163,7 +173,7 @@ export const RsvpSuccessPopup: React.FC<RsvpSuccessPopupProps> = ({
             <View style={styles.passBlock} testID="issue-1447-rsvp-pass-block">
               {eligibleCredentials.length > 1 ? (
                 <View style={styles.partyTabs}>
-                  {eligibleCredentials.map((credential) => (
+                  {eligibleCredentials.map((credential: RsvpPassCredential) => (
                     <Pressable
                       key={credential.entityId}
                       onPress={() => setSelectedEntityId(credential.entityId)}

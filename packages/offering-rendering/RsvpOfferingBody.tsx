@@ -335,13 +335,13 @@ export const useRsvpOfferingState = (
   // replacement; once the three fields are complete the completion form folds
   // away and the existing RSVP shape remains unchanged.
   useEffect(() => {
-    setGuestName((current) => current.trim() || props.initialGuestName || "");
+    setGuestName((current: string) => current.trim() || props.initialGuestName || "");
   }, [props.initialGuestName]);
   useEffect(() => {
-    setGuestEmail((current) => current.trim() || props.initialGuestEmail || "");
+    setGuestEmail((current: string) => current.trim() || props.initialGuestEmail || "");
   }, [props.initialGuestEmail]);
   useEffect(() => {
-    setGuestPhone((current) => current.trim() || props.initialGuestPhone || "");
+    setGuestPhone((current: string) => current.trim() || props.initialGuestPhone || "");
   }, [props.initialGuestPhone]);
   // ORCH-1295 — country + local-digits state for the injected picker (unused when
   // renderPhoneField is absent). Lifted here so the field stays controlled across
