@@ -1,6 +1,12 @@
 \set ON_ERROR_STOP on
 BEGIN;
 
+-- #1392 makes the reservation boundary default-dark. This success-path
+-- fixture opens only read/write inside its rollback-only transaction.
+UPDATE public.feature_flags
+SET is_enabled = true
+WHERE flag_key IN ('STAY_RESERVE_READS', 'STAY_RESERVE_WRITES');
+
 DO $catalog$
 DECLARE
   v_function text;
@@ -345,6 +351,10 @@ END;
 $cross_brand_denial$;
 
 SELECT set_config('role', 'postgres', true);
+-- Restore the release posture before the existing dark-launch assertion.
+UPDATE public.feature_flags
+SET is_enabled = false
+WHERE flag_key IN ('STAY_RESERVE_READS', 'STAY_RESERVE_WRITES');
 DO $dark_launch$
 BEGIN
   IF EXISTS (

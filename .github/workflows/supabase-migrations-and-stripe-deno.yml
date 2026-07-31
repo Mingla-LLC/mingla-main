@@ -198,13 +198,6 @@ jobs:
             psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$f"
             echo "::endgroup::"
           done
-          # The legacy #1388 behavioral fixture exercises successful quote and
-          # group creation. #1392 makes those dark by default, so explicitly
-          # open only its two tested boundaries in this disposable CI database.
-          # The #1392 tests below set all Stay flags dark inside their own
-          # transaction and prove both operations fail closed before rollback.
-          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c \
-            "UPDATE public.feature_flags SET is_enabled = true WHERE flag_key IN ('STAY_RESERVE_READS', 'STAY_RESERVE_WRITES');"
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1387_stay_inventory.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
