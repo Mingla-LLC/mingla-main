@@ -58,6 +58,51 @@ export type StayReservationsDependencies = {
   ) => Promise<StayPaymentSession>;
 };
 
+async function captureInventoryChangedAlert(
+  error: RpcError,
+  payload: Record<string, unknown>,
+  action: string,
+  requestId: string,
+  dependencies: StayReservationsDependencies,
+): Promise<void> {
+  if (!(error.message ?? "").includes("stay_inventory_changed")) return;
+  const url = Deno.env.get("SUPABASE_URL") ?? "";
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  if (!url || !serviceKey) return;
+  const service = dependencies.createServiceRpcClient?.(url, serviceKey) ??
+    createClient(url, serviceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    }) as unknown as RpcClient;
+  const groupId =
+    typeof payload.groupId === "string" && UUID.test(payload.groupId)
+      ? payload.groupId
+      : null;
+  const venueId =
+    typeof payload.venueId === "string" && UUID.test(payload.venueId)
+      ? payload.venueId
+      : null;
+  const { error: alertError } = await service.rpc(
+    "issue_1427_record_stay_operation_alert",
+    {
+      p_alert_key: `stay:inventory_changed:${requestId}`,
+      p_alert_kind: "inventory_changed",
+      p_severity: "critical",
+      p_venue_id: venueId,
+      p_group_id: groupId,
+      p_offering_id: null,
+      p_request_id: requestId,
+      p_safe_metadata: { action },
+    },
+  );
+  if (alertError) {
+    console.warn(JSON.stringify({
+      event: "stay_operation_alert_capture_failed",
+      kind: "inventory_changed",
+      requestId,
+    }));
+  }
+}
+
 function json(status: number, body: Record<string, unknown>): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -351,7 +396,16 @@ export async function handleStayReservations(
         p_request_id: requestId,
       },
     );
-    if (prepareError) return errorResponse(prepareError, requestId);
+    if (prepareError) {
+      await captureInventoryChangedAlert(
+        prepareError,
+        payload,
+        body.action,
+        requestId,
+        dependencies,
+      );
+      return errorResponse(prepareError, requestId);
+    }
     const paymentSurface = payload.surface === "web" ? "web" : "native";
 
     let session: StayPaymentSession;
@@ -492,7 +546,16 @@ export async function handleStayReservations(
     p_expected_version: body.expectedVersion ?? null,
     p_request_id: requestId,
   });
-  if (error) return errorResponse(error, requestId);
+  if (error) {
+    await captureInventoryChangedAlert(
+      error,
+      payload,
+      body.action ?? "unknown",
+      requestId,
+      dependencies,
+    );
+    return errorResponse(error, requestId);
+  }
 
   console.info(JSON.stringify({
     event: "stay_reservation_action",

@@ -8,6 +8,7 @@ const corsHeaders = {
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const actions = new Set([
   "get",
   "save_settings",
@@ -66,7 +67,67 @@ export type ManageStayInventoryDependencies = {
     anonKey: string,
     authHeader: string,
   ) => RpcClient;
+  createServiceRpcClient?: (
+    url: string,
+    serviceKey: string,
+  ) => RpcClient;
 };
+
+async function captureMaterializationAlert(
+  _error: RpcError,
+  body: RequestBody,
+  requestId: string,
+  dependencies: ManageStayInventoryDependencies,
+): Promise<void> {
+  if (body.action !== "materialize_place_windows") return;
+  const url = Deno.env.get("SUPABASE_URL") ?? "";
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  if (!url || !serviceKey) return;
+  const service = dependencies.createServiceRpcClient?.(url, serviceKey) ??
+    createClient(url, serviceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    }) as unknown as RpcClient;
+  const payload = body.payload ?? {};
+  const offeringId =
+    typeof payload.offeringId === "string" && UUID.test(payload.offeringId)
+      ? payload.offeringId
+      : null;
+  const safeMetadata = {
+    scheduleRuleId: typeof payload.scheduleRuleId === "string" &&
+        UUID.test(payload.scheduleRuleId)
+      ? payload.scheduleRuleId
+      : null,
+    fromDate:
+      typeof payload.fromDate === "string" && ISO_DATE.test(payload.fromDate)
+        ? payload.fromDate
+        : null,
+    toDate: typeof payload.toDate === "string" && ISO_DATE.test(payload.toDate)
+      ? payload.toDate
+      : null,
+    expectedVersion: body.expectedVersion ?? null,
+    errorCode: "materialization_failed",
+  };
+  const { error: alertError } = await service.rpc(
+    "issue_1427_record_stay_operation_alert",
+    {
+      p_alert_key: `stay:materialization_failed:${requestId}`,
+      p_alert_kind: "materialization_failed",
+      p_severity: "warning",
+      p_venue_id: body.venueId,
+      p_group_id: null,
+      p_offering_id: offeringId,
+      p_request_id: requestId,
+      p_safe_metadata: safeMetadata,
+    },
+  );
+  if (alertError) {
+    console.warn(JSON.stringify({
+      event: "stay_operation_alert_capture_failed",
+      kind: "materialization_failed",
+      requestId,
+    }));
+  }
+}
 
 function json(status: number, body: Record<string, unknown>): Response {
   return new Response(JSON.stringify(body), {
@@ -170,7 +231,10 @@ export async function handleManageStayInventory(
   req: Request,
   dependencies: ManageStayInventoryDependencies = {},
 ): Promise<Response> {
-  const requestId = req.headers.get("x-request-id") ?? crypto.randomUUID();
+  const callerRequestId = req.headers.get("x-request-id") ?? "";
+  const requestId = UUID.test(callerRequestId)
+    ? callerRequestId
+    : crypto.randomUUID();
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -270,7 +334,10 @@ export async function handleManageStayInventory(
       p_expected_version: body.expectedVersion ?? null,
       p_request_id: requestId,
     });
-  if (error) return errorResponse(error, requestId);
+  if (error) {
+    await captureMaterializationAlert(error, body, requestId, dependencies);
+    return errorResponse(error, requestId);
+  }
 
   console.info(JSON.stringify({
     event: "stay_inventory_managed",

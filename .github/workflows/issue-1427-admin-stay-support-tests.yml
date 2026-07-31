@@ -1,0 +1,85 @@
+name: Issue #1427 Admin Stay support
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mingla-admin/**"
+      - "supabase/functions/admin-stay-operations/**"
+      - "supabase/functions/stay-reservations/**"
+      - "supabase/functions/manage-stay-inventory/**"
+      - "supabase/migrations/20270204001448_issue_1427_admin_stay_support.sql"
+      - ".github/scripts/strict-grep/issue-1427-admin-stay-support.mjs"
+      - ".github/workflows/issue-1427-admin-stay-support-tests.yml"
+  pull_request:
+    paths:
+      - "mingla-admin/**"
+      - "supabase/functions/admin-stay-operations/**"
+      - "supabase/functions/stay-reservations/**"
+      - "supabase/functions/manage-stay-inventory/**"
+      - "supabase/migrations/20270204001448_issue_1427_admin_stay_support.sql"
+      - ".github/scripts/strict-grep/issue-1427-admin-stay-support.mjs"
+      - ".github/workflows/issue-1427-admin-stay-support-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-1427-admin-stay-support:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-admin/package-lock.json
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.7.14
+      - name: Install Admin dependencies
+        working-directory: mingla-admin
+        run: npm ci
+      - name: Check and test Stay Edge Functions
+        run: |
+          deno check \
+            supabase/functions/admin-stay-operations/index.ts \
+            supabase/functions/admin-stay-operations/index.tester.adversarial.test.ts \
+            supabase/functions/stay-reservations/index.ts \
+            supabase/functions/manage-stay-inventory/index.ts
+          deno test --allow-env --allow-net=deno.land,esm.sh \
+            supabase/functions/admin-stay-operations/index.test.ts \
+            supabase/functions/admin-stay-operations/index.tester.adversarial.test.ts \
+            supabase/functions/stay-reservations/issue1427.alert.test.ts \
+            supabase/functions/manage-stay-inventory/issue1427.alert.test.ts
+      - name: Test Admin Stay contracts
+        run: |
+          node --test \
+            mingla-admin/src/__tests__/issue1427_admin_stay_support.test.js \
+            mingla-admin/src/__tests__/issue1427_admin_stay_support.tester.adversarial.test.js \
+            mingla-admin/src/__tests__/issue1427_admin_stay_support.render.tester.test.mjs
+      - name: Scoped Admin lint
+        working-directory: mingla-admin
+        run: |
+          npx eslint \
+            src/services/stayAdminService.js \
+            src/components/stay/staySnapshotState.js \
+            src/components/stay/StaySnapshotStatus.jsx \
+            src/components/stay/StayPauseOfferingModal.jsx \
+            src/components/stay/StayVenueSections.jsx \
+            src/components/stay/StayOperationsPanel.jsx \
+            src/pages/VenuesConsolePage.jsx \
+            src/pages/VenueDetailView.jsx \
+            src/pages/BusinessMoneyLedgerPage.jsx
+      - name: Build Admin
+        working-directory: mingla-admin
+        run: npm run build
+      - name: Run issue invariant
+        run: |
+          node .github/scripts/strict-grep/issue-1427-admin-stay-support.mjs --self-test
+          node .github/scripts/strict-grep/issue-1427-admin-stay-support.mjs
