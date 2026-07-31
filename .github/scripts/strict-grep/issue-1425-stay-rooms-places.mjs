@@ -94,6 +94,11 @@ function check(source) {
       `${files.manager} bypasses the managed Stay inventory boundary`,
     );
   }
+  if ((source.migration ?? "").includes("night.id")) {
+    failures.push(
+      `${files.migration} orders Room nights by nonexistent night.id`,
+    );
+  }
   if (
     (source.shell ?? "").includes(
       "Single and bulk Room/Place editors attach here",
@@ -138,6 +143,12 @@ if (process.argv.includes("--self-test")) {
     manager: `${good.manager}\nsupabase.from("stay_offerings")`,
   };
   if (check(directWrite).length === 0) process.exit(1);
+  reversions += 1;
+  const invalidRoomNightOrder = {
+    ...good,
+    migration: `${good.migration}\nORDER BY night.local_date, night.id`,
+  };
+  if (check(invalidRoomNightOrder).length === 0) process.exit(1);
   reversions += 1;
   console.log(`issue-1425 self-test PASS (${reversions} reversions)`);
   process.exit(0);

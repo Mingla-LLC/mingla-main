@@ -87,7 +87,7 @@ BEGIN
             WHEN offering.kind = 'room' THEN COALESCE((
               SELECT jsonb_agg(
                 to_jsonb(night)
-                ORDER BY night.local_date, night.id
+                ORDER BY night.local_date
               )
               FROM public.stay_room_nights night
               WHERE night.offering_id = offering.id
