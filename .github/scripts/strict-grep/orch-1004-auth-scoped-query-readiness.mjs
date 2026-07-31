@@ -144,6 +144,8 @@ const AUTH_SCOPED_HOOK_FILES = [
   "usePlaceDiscoveryPriceRange.ts",
   // #1390 — group/list reads are auth.uid()-owned Stay reservations.
   "useStayGuest.ts",
+  // #1426 — staff queue/detail RPCs are accepted-brand/auth.uid()-scoped.
+  "useStayStaffReservations.ts",
   // #1403 — private listing and exact-venue aggregate RPCs.
   "useListingInsights.ts",
   "useVenueReservationMetrics.ts",
