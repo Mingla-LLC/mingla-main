@@ -26,6 +26,9 @@ import {
   type ResendAttempt,
   type ResendEmailPayload,
 } from "../_shared/legacyEmailIdempotency.ts";
+import {
+  resolveNotificationRecipientHmacSecret,
+} from "../_shared/notificationRecipientHmac.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -202,8 +205,7 @@ async function dispatchDurableLegacyEmail(
     {
       recipient: input.recipient,
       logicalIdempotencyKey: input.idempotencyKey,
-      recipientHmacSecret: Deno.env.get("NOTIFICATION_RECIPIENT_HMAC_SECRET") ??
-        "",
+      recipientHmacSecret: resolveNotificationRecipientHmacSecret() ?? "",
       payload: input.payload,
     },
     {

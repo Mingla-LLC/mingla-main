@@ -5,6 +5,7 @@ import {
   reconcilePaystackRefund,
 } from "./paystackRefunds.ts";
 import { enqueueSourceRefundNotifications } from "./sourceRefundNotifications.ts";
+import { resolvePaymentOperationFlagValue } from "./secretBundle.ts";
 
 export type SourceRefundState =
   | "queued"
@@ -45,7 +46,11 @@ type ServiceClient = any;
 const KILL_SWITCH = "SOURCE_REFUNDS_POST_DISABLED";
 
 export function sourceRefundPostsEnabled(): boolean {
-  return (Deno.env.get(KILL_SWITCH) ?? "false").toLowerCase() !== "true";
+  const postsDisabled = resolvePaymentOperationFlagValue(
+    "source_refunds_post_disabled",
+    KILL_SWITCH,
+  ) ?? true;
+  return postsDisabled === false;
 }
 
 function stripeState(status: string | null | undefined): SourceRefundState {

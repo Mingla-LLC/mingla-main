@@ -30,6 +30,7 @@ import {
   type StripeReleaseResult,
 } from "./engine.ts";
 import { releasePartnerSplitsForOrganiserRelease } from "./partnerRelease.ts";
+import { resolvePaymentOperationFlagValue } from "../_shared/secretBundle.ts";
 
 const json = (body: Record<string, unknown>, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -902,7 +903,12 @@ export async function handlePayoutReleaseSweep(
   // #1172 ships DARK. The code path exists for test/R2 verification, but
   // production execution remains off until the orchestrator explicitly sets
   // PAYOUT_RELEASE_EXECUTE=true after the required soak gate.
-  if (deps.env("PAYOUT_RELEASE_EXECUTE") !== "true") {
+  const payoutReleaseExecute = resolvePaymentOperationFlagValue(
+    "payout_release_execute",
+    "PAYOUT_RELEASE_EXECUTE",
+    deps.env,
+  ) ?? false;
+  if (!payoutReleaseExecute) {
     return json({
       ok: true,
       dark: true,
