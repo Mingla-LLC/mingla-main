@@ -18,18 +18,16 @@ response into GitHub, chat, logs, artifacts, or this file.
 - Review names monthly. Escalate an expired, unexpected, missing, duplicate, or consumerless
   name immediately regardless of the count.
 
-The pull-request audit validates the 85-name target manifest offline. The scheduled/manual
+The pull-request audit validates the exact 85-name target manifest offline. The scheduled/manual
 workflow uses the dedicated least-privilege `SUPABASE_SECRET_AUDIT_ACCESS_TOKEN` only at live
 runtime and emits sorted names/reasons/counts, never raw CLI output. Until that separately
 authorized credential exists, the live step records an explicit warning and does not invoke the
 CLI.
 
-`supabase/secrets.manifest.json` deliberately starts in `transition` / `pre_rollout` mode. In
-that state the live audit requires exact parity with the known 100-name pre-rollout set: the five
-pending bundle names must be absent and the 20 approved legacy/stale names must be present. It
-does not treat the count alone as a final-policy breach, but any missing, extra, or count-drifted
-name still fails. After the approved stages reach 85, change `live_audit_mode` to `enforced` in a
-reviewed PR; enforced mode accepts only the final manifest set and applies the 85/90 ceilings.
+`supabase/secrets.manifest.json` is in `enforced` / `complete` mode. The live audit accepts only
+the exact 85-name manifest set and applies the 85/90 ceilings. The historical `transition` /
+`pre_rollout` mode remains test-covered solely to prove the original #1203 consolidation math; it
+is not an authorized production state.
 
 ## Ownership and secure re-entry
 
@@ -41,67 +39,97 @@ controlled operating record, or secure vault.
 Supabase does not provide a plaintext value readback suitable for repacking. Never scrape
 metadata, compare or publish digests, deploy an exfiltration function, or infer two settings are
 semantically identical because their stored metadata matches. If the authoritative source is
-missing, stop. Rotate/recreate through the provider under a separately approved plan.
+missing, stop. Rotation requires a separately approved plan. For a recipient-fingerprint HMAC,
+replacement without a previous key is permitted only under the zero-row epoch protocol below.
 
 Stripe restricted keys remain separate by role and environment. Follow Stripe's
 [API key security guidance](https://docs.stripe.com/keys-best-practices) and
 [restricted-key guidance](https://docs.stripe.com/keys) so each service retains the minimum
 permissions and an independent rotation boundary.
 
-## Five bounded bundles
+## Bounded bundles and the credential envelope
 
-Only these version-1 objects are permitted:
+These objects are permitted:
 
 - `MINGLA_PAYMENT_MODES_JSON`: independent `stripe_mode` and `paystack_mode`.
 - `MINGLA_EMAIL_SENDERS_JSON`: independent `admin_from`, `system_from`, and `ticket_from`.
-- `MINGLA_DELIVERY_FLAGS_JSON`: independent marketing, Nigeria SMS, and US SMS booleans.
+- `MINGLA_DELIVERY_FLAGS_JSON` schema v2: the original independent marketing, Nigeria SMS,
+  and US SMS booleans plus an exact `payment_operations` object containing independent
+  `payout_hold_onboard_flip`, `payout_release_execute`, and
+  `source_refunds_post_disabled` JSON booleans. Schema v1 remains readable for rollback, but
+  production authority is v2.
 - `MINGLA_ALERT_RECIPIENTS_JSON`: independent API-health, Stripe-dispute, and
   Stripe-webhook-failure lists.
 - `MINGLA_RUNTIME_CONFIG_JSON`: exactly the eight non-credential fields enforced by
   `_shared/runtimeConfig.ts`.
+- `AD_CONVERSION_TOKENS`: the existing private credential envelope. In addition to its existing
+  independently named fields, it owns `NOTIFICATION_RECIPIENT_HMAC_SECRET` as exact raw material.
+  The resolver never trims, normalizes, logs, rotates, or returns that value.
 
 Do not put provider credentials, RAKs, account IDs, webhook/signing material, origins,
-sender IDs, app IDs, or payment keys into a bundle. Every reader prefers its own bundle field
-and falls back only to its exact legacy name during the compatibility window. Invalid bundles
-produce redacted field/reason telemetry and never invent a value.
+sender IDs, app IDs, or payment keys into an operational bundle. Credential material belongs
+only in an approved credential envelope with field-level ownership. Every compatibility reader
+prefers its own bundle field and may fall back only to its exact legacy name during a reviewed
+migration window. Invalid bundles produce redacted field/reason telemetry and never invent a
+value. Missing/invalid onboarding and payout authority resolve false; missing/invalid
+source-refund authority resolves disabled=true.
 
 ## No-downtime sequence
 
-Every mutation and live-fire step requires contemporaneous approval. Code merge alone does not
-authorize any secret or provider change.
+Every mutation and live-fire step requires issue-bound authorization. Code merge alone does not
+authorize a secret, provider, or operational-boolean change.
 
-1. Reconstruct all five objects privately from authoritative sources. Run the strict validators.
-   Record only bundle name, schema version, byte length, field-name set, and PASS/FAIL.
-2. After the Stripe ownership/use/recoverability gate and separate approval, retire only the
-   consumerless KYC reminder Supabase name. Keep its provider key valid for the separately
-   approved 14-day recovery window.
-3. After approval, set the runtime bundle while all eight legacy names remain. Merge and deploy
-   compatibility readers from the reviewed `origin/main` commit, verify deployment identity,
-   live-fire applicable owners, and require a clean 72-hour soak.
-4. After separate approval, unset exactly the eight runtime-config legacy names recorded in
-   issue #1203. The count moves to 92.
-5. After approval, set the four semantic bundles while all 11 semantic legacy names remain.
-   Redeploy exact affected functions, live-fire every independent rail/role/region/domain, and
-   require another clean 72-hour soak.
-6. After separate approval, unset exactly the 11 semantic legacy names recorded in issue #1203.
-   Confirm 85 user-managed names plus seven platform defaults, repeat live-fire, and monitor for
-   seven days.
-7. Keep compatibility for at least two successful full deploys and 30 days. Removing fallbacks
-   requires separate review. Stripe provider-key expiration is a separate irreversible approval
-   no earlier than day 14.
+1. Reconstruct the complete current object only from its named provider dashboard, approved
+   private operating record, or secure vault. Supabase plaintext readback, runtime exfiltration,
+   value inference, and digest comparison are forbidden.
+2. Build replacements in memory and validate without echoing. Allowed evidence is bundle name,
+   schema version, sorted field-name set, minimum-valid PASS, and parser PASS/FAIL.
+3. Deploy strict bundle-first compatibility readers from an exact merged commit while every
+   superseded direct name remains present. Verify downloaded live source and JWT posture.
+4. Set the existing bundle name before removing any direct name. Run value-blind runtime checks
+   proving every rail retains its prior behavior.
+5. Remove only the approved direct names, one at a time, verifying after each. For the #1436
+   exit the locked order is: `SOURCE_REFUNDS_POST_DISABLED`, `PAYOUT_RELEASE_EXECUTE`,
+   `PAYOUT_HOLD_ONBOARD_FLIP`, then `NOTIFICATION_RECIPIENT_HMAC_SECRET`.
+6. Run the exact names-only audit. The #1436 exit is complete only at exactly 85 user-managed
+   names, 15 free slots, no exception, and no missing or unexpected name.
+7. Merge repository truth only after live truth exists and independent testing passes. Removing
+   compatibility code requires a separate reviewed issue.
 
 A partial or concurrent deployment, deployment-commit mismatch, parser/missing-field event,
 unknown ownership, missing source, or failed live-fire blocks every unset.
 
+## Notification HMAC zero-row epoch
+
+Historical recipient fingerprints must retain the exact HMAC material that created them. If the
+current material is unavailable, do not infer recipients, rewrite fingerprints, expose a hash
+oracle, or add a second reader. A replacement epoch is allowed only when one value-blind
+transaction proves zero HMAC-backed notification deliveries in every queued, failed, claimed,
+provider-accepted, or open-provider-window state and zero pending payout alert intents.
+
+Generate at least 32 random bytes privately, persist the exact replacement immediately in the
+approved secure master source and `AD_CONVERSION_TOKENS`, and keep the direct compatibility name
+until one operator-only transactional email plus an identical retry proves exactly one provider
+acceptance and one durable terminal row. After the direct name is removed, a third identical retry
+must return the same durable provider identity with no additional provider request. Report only
+counts and PASS/FAIL; never report the recipient, logical key, row/provider identity, fingerprint,
+payload hash, value, digest, prefix, or length.
+
+After the controlled row exists, rollback must keep the new epoch: repair the bundle from the
+secure master source or restore the exact new value under the direct compatibility name. Never
+restore an unavailable old value. Any dependent row before rotation, identity conflict,
+acceptance ambiguity, duplicate provider request, or inability to restore the new value is an
+immediate stop for manual review.
+
 ## Rollback order
 
-Before a legacy unset, rollback removes only the new bundle; untouched legacy names resume
-without a code rollback.
+Before a direct unset, rollback restores the prior bundle from its authoritative source; all
+direct names remain available.
 
-After a legacy unset, restore every affected legacy name from its authoritative secure source
-first, verify the old path, and only then remove the failing bundle. Never remove a bundle while
-its legacy names are absent, restore one field from another field's current value, or assume
-equality.
+After a direct unset, restore that exact direct value from its authoritative secure source first,
+verify the direct path, and only then restore or remove a bundle. Never remove a bundle while a
+superseded direct name is absent, restore one field from another field's current value, or assume
+equality. Notification HMAC replacement additionally requires the zero-row epoch protocol above.
 
 ## Audit commands
 

@@ -53,6 +53,9 @@ const FIELD_LEGACY_MAPPINGS = [
   ["marketing_send_live_enabled", "MARKETING_SEND_LIVE_ENABLED"],
   ["sms_live_enabled.ng", "SMS_LIVE_ENABLED_NG"],
   ["sms_live_enabled.us", "SMS_LIVE_ENABLED_US"],
+  ["payout_hold_onboard_flip", "PAYOUT_HOLD_ONBOARD_FLIP"],
+  ["payout_release_execute", "PAYOUT_RELEASE_EXECUTE"],
+  ["source_refunds_post_disabled", "SOURCE_REFUNDS_POST_DISABLED"],
   ["api_health", "API_HEALTH_ALERT_EMAILS"],
   ["stripe_disputes", "STRIPE_DISPUTE_ALERT_EMAILS"],
   ["stripe_webhook_failures", "STRIPE_WEBHOOK_FAILURE_ALERT_EMAILS"],
@@ -71,6 +74,9 @@ const CONSUMER_CONTRACTS = [
   ["supabase/functions/_shared/email/senders.ts", "resolveEmailSenderValue"],
   ["supabase/functions/marketing-send/index.ts", "resolveDeliveryFlagValue"],
   ["supabase/functions/_shared/adapters/smsAdapter.ts", "resolveDeliveryFlagValue"],
+  ["supabase/functions/brand-stripe-onboard/index.ts", "resolvePaymentOperationFlagValue"],
+  ["supabase/functions/payout-release-sweep/index.ts", "resolvePaymentOperationFlagValue"],
+  ["supabase/functions/_shared/sourceRefundControlPlane.ts", "resolvePaymentOperationFlagValue"],
   ["supabase/functions/api-health-probe/index.ts", "resolveAlertRecipientValue"],
   ["supabase/functions/_shared/stripeDisputeHandlers.ts", "resolveAlertRecipientValue"],
   ["supabase/functions/stripe-webhook/index.ts", "resolveAlertRecipientValue"],
@@ -90,6 +96,12 @@ const CONSUMER_CONTRACTS = [
   ["supabase/functions/invite-brand-member/index.ts", "resolveRuntimeString"],
   ["supabase/functions/partner-reissue-invitation/index.ts", "resolveRuntimeString"],
 ];
+
+function executableSource(source) {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+}
 
 export function check({
   runtimeSource,
@@ -132,8 +144,8 @@ export function check({
   }
   if (manifest) {
     const names = manifest.secrets?.map((record) => record.name) ?? [];
-    if (names.length !== 89 || new Set(names).size !== 89) {
-      violations.push(`${MANIFEST}:target_must_be_89_unique_names`);
+    if (names.length !== 85 || new Set(names).size !== 85) {
+      violations.push(`${MANIFEST}:target_must_be_85_unique_names`);
     }
     const serializedKeys = [];
     const walk = (value) => {
@@ -172,7 +184,7 @@ export function check({
       }
       const directRead = `Deno.env.get("${legacy}")`;
       for (const file of productionFiles) {
-        if (file.text.includes(directRead)) {
+        if (executableSource(file.text).includes(directRead)) {
           violations.push(`${file.path}:legacy_direct_read:${legacy}`);
         }
       }
@@ -208,7 +220,7 @@ function selfTest() {
       }];`,
     auditSource: 'spawnSync("supabase", [], { stdio: ["ignore", "pipe", "pipe"] });',
     manifestText: JSON.stringify({
-      secrets: Array.from({ length: 89 }, (_, index) => ({ name: `SYNTH_${index}` })),
+      secrets: Array.from({ length: 85 }, (_, index) => ({ name: `SYNTH_${index}` })),
     }),
     clientFiles: [{ path: "app-mobile/src/ok.ts", text: "export const ok = true;" }],
     backendFiles,
@@ -252,7 +264,31 @@ function selfTest() {
       ),
     }).every((violation) => !violation.includes("migrated_consumer_missing"))
   ) throw new Error("consumer_regression_fixture_passed");
-  console.log("issue-1203 secret-capacity self-test OK (6/6 cases).");
+  if (
+    check({
+      ...clean,
+      backendFiles: [
+        ...backendFiles,
+        {
+          path: "supabase/functions/commentedSentinel.ts",
+          text: '// Deno.env.get("PAYOUT_RELEASE_EXECUTE")',
+        },
+      ],
+    }).length !== 0
+  ) throw new Error("commented_direct_reader_fixture_failed");
+  if (
+    check({
+      ...clean,
+      backendFiles: [
+        ...backendFiles,
+        {
+          path: "supabase/functions/activeDirectReader.ts",
+          text: 'Deno.env.get("PAYOUT_RELEASE_EXECUTE")',
+        },
+      ],
+    }).every((violation) => !violation.includes("legacy_direct_read"))
+  ) throw new Error("active_direct_reader_fixture_passed");
+  console.log("issue-1203 secret-capacity self-test OK (8/8 cases).");
 }
 
 function trackedClientFiles() {

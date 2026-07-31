@@ -9,12 +9,6 @@ import {
 
 const manifest = JSON.parse(readFileSync(DEFAULT_MANIFEST, "utf8"));
 const exceptionWindowNow = Date.parse("2026-08-01T00:00:00Z");
-const postRolloutIssue1430Names = new Set([
-  "NOTIFICATION_RECIPIENT_HMAC_SECRET",
-  "PAYOUT_HOLD_ONBOARD_FLIP",
-  "PAYOUT_RELEASE_EXECUTE",
-  "SOURCE_REFUNDS_POST_DISABLED",
-]);
 
 function clone(value) {
   return structuredClone(value);
@@ -50,9 +44,6 @@ test("issue #1203: a pre-rollout live audit is exact and drift remains fail-clos
   const transition = clone(manifest);
   transition.rollout.live_audit_mode = "transition";
   transition.rollout.transition_stage = "pre_rollout";
-  transition.secrets = transition.secrets.filter((record) =>
-    !postRolloutIssue1430Names.has(record.name)
-  );
   const target = transition.secrets.map((record) => record.name);
   const pending = new Set(transition.rollout.pending_bundle_names);
   assert.equal(target.length, 85);
@@ -92,12 +83,12 @@ test("issue #1203: a pre-rollout live audit is exact and drift remains fail-clos
   assert.match(drifted.failures.join("\n"), /transition_count/);
 });
 
-test("issue #1203: enforced live audit uses only the final 89-name target", () => {
+test("issue #1203: enforced live audit uses only the final 85-name target", () => {
   const enforced = clone(manifest);
   enforced.rollout.live_audit_mode = "enforced";
-  enforced.rollout.expected_user_managed_count = 89;
+  enforced.rollout.expected_user_managed_count = 85;
   const target = enforced.secrets.map((record) => record.name);
-  assert.equal(target.length, 89);
+  assert.equal(target.length, 85);
   assert.equal(
     auditSecretBudget({
       manifest: enforced,
