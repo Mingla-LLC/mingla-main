@@ -99,6 +99,31 @@ test("a forward jump to all flags still requires each intervening proof", () => 
   }
 });
 
+test("forward movement cannot land on an invented stage or reuse stale rail proof", () => {
+  const invented = exact("STAY_VENUE_AUTHORING", "STAY_NOTIFICATIONS");
+  assert.match(
+    validate(invented).errors.join("\n"),
+    /five approved stages/,
+  );
+
+  const stripeLive = exact(
+    "STAY_VENUE_AUTHORING",
+    "STAY_PUBLIC_PAGES",
+    "STAY_RESERVE_READS",
+    "STAY_RESERVE_WRITES",
+    "STAY_STRIPE_COMMERCE",
+    "STAY_NOTIFICATIONS",
+  );
+  const addPaystack = validate(exact(...STAY_FLAG_KEYS), {
+    currentFlags: stripeLive,
+    currentRefundPostingEnabled: true,
+    nextRefundPostingEnabled: true,
+    evidence: { stripeUsdReady: false },
+  });
+  assert.equal(addPaystack.ok, false);
+  assert.match(addPaystack.errors.join("\n"), /USD\/Stripe/);
+});
+
 test("rollback may remove writes under bad evidence but cannot turn refunds off", () => {
   const live = exact(...STAY_FLAG_KEYS);
   const stopped = { ...live, STAY_RESERVE_WRITES: false };

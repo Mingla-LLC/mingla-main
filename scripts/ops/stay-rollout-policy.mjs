@@ -109,6 +109,11 @@ export function validateStayRolloutTransition({
   const disabling = STAY_FLAG_KEYS.filter(
     (key) => current.value[key] && !next.value[key],
   );
+  const nextStage = stayStage(next.value);
+
+  if (enabling.length > 0 && nextStage === "TRANSITIONAL") {
+    errors.push("forward rollout must land on one of the five approved stages");
+  }
 
   if (next.value.STAY_PUBLIC_PAGES && !next.value.STAY_VENUE_AUTHORING) {
     errors.push("public pages require Stay authoring");
@@ -141,21 +146,19 @@ export function validateStayRolloutTransition({
     }
   }
 
-  if (
-    enabling.includes("STAY_PUBLIC_PAGES") && !proof.value.releaseFixtureReady
-  ) {
-    errors.push("public pages require a verified release fixture");
+  if (enabling.length > 0) {
+    if (next.value.STAY_PUBLIC_PAGES && !proof.value.releaseFixtureReady) {
+      errors.push("public pages require a verified release fixture");
+    }
+    if (
+      next.value.STAY_NOTIFICATIONS &&
+      !proof.value.notificationDeliveryReady
+    ) errors.push("notifications require delivery proof");
+    if (next.value.STAY_STRIPE_COMMERCE && !proof.value.stripeUsdReady) {
+      errors.push("Stripe commerce requires independent USD/Stripe proof");
+    }
   }
-  if (
-    enabling.includes("STAY_NOTIFICATIONS") &&
-    !proof.value.notificationDeliveryReady
-  ) errors.push("notifications require delivery proof");
-  if (
-    enabling.includes("STAY_STRIPE_COMMERCE") && !proof.value.stripeUsdReady
-  ) {
-    errors.push("Stripe commerce requires independent USD/Stripe proof");
-  }
-  if (enabling.includes("STAY_PAYSTACK_COMMERCE")) {
+  if (enabling.length > 0 && next.value.STAY_PAYSTACK_COMMERCE) {
     if (!proof.value.paystackNgnReady) {
       errors.push("Paystack commerce requires independent NGN/Paystack proof");
     }
@@ -185,7 +188,7 @@ export function validateStayRolloutTransition({
   return {
     ok: errors.length === 0,
     errors,
-    stage: stayStage(next.value),
+    stage: nextStage,
     enabling,
     disabling,
   };
