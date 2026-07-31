@@ -13,7 +13,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { EntityDetailView } from "../components/entity/EntityDetailView";
 import { EntityEditModal } from "../components/entity/EntityEditModal";
+import { HighRiskActionModal } from "../components/entity/HighRiskActionModal";
 import { Badge } from "../components/ui/Badge";
+import { buildStayVenueSections } from "../components/stay/StayVenueSections";
 import {
   getVenue,
   getVenueReservationSettings,
@@ -27,6 +29,7 @@ import {
   setReservationStatus,
   mapVenueWriteError,
 } from "../services/venuesService";
+import { getAdminStayVenue, pauseAdminStayOffering } from "../services/stayAdminService";
 import { formatDate, formatDateTime } from "../lib/formatters";
 
 function money(cents, currency) {
@@ -62,7 +65,7 @@ const RESERVATION_STATUS_OPTIONS = [
   { value: "waitlisted", label: "Waitlisted" },
 ];
 
-const CATEGORY_VARIANT = { restaurant: "info", play: "brand", creative_and_arts: "warning" };
+const CATEGORY_VARIANT = { restaurant: "info", play: "brand", creative_and_arts: "warning", stay: "success" };
 const CLAIM_VARIANT = {
   verified: "success",
   pending_review: "warning",
@@ -106,6 +109,16 @@ function RowAction({ onClick, children }) {
 }
 
 function venueSections(data, cb) {
+  if (data.stay) {
+    return buildStayVenueSections(data.stay, {
+      onPause: (offering) => cb?.dispatch?.({
+        kind: "stayPauseOffering",
+        targetId: offering.id,
+        label: offering.name,
+        expectedVersion: offering.version,
+      }),
+    });
+  }
   const v = data.venue || {};
   const rs = data.settings;
   const sections = [];
@@ -335,6 +348,11 @@ export function VenueDetailView({ venueId, onBack }) {
         setError("No venue found for this ID.");
         return;
       }
+      if (venue.venue_category === "stay") {
+        const stay = await getAdminStayVenue(venueId);
+        setData({ venue, stay });
+        return;
+      }
       const [settings, tables, capacityRules, blackouts, waitlist, reservations] = await Promise.all([
         getVenueReservationSettings(venueId),
         getVenueTables(venueId),
@@ -468,6 +486,26 @@ export function VenueDetailView({ venueId, onBack }) {
           }}
         />
       )}
+
+      <HighRiskActionModal
+        open={a?.kind === "stayPauseOffering"}
+        onClose={closeAction}
+        title={`Pause ${a?.label || "Stay offering"}`}
+        description="Stops new reservations for this Room or Place. It does not alter existing holds, commitments, prices, or money records."
+        confirmLabel="Pause offering"
+        destructive
+        confirmPhrase="PAUSE"
+        successMessage="Stay offering paused."
+        onConfirm={async ({ reason }) => {
+          await pauseAdminStayOffering({
+            offeringId: a.targetId,
+            expectedVersion: a.expectedVersion,
+            reason,
+          });
+          closeAction();
+          await load();
+        }}
+      />
     </div>
   );
 }

@@ -15,6 +15,9 @@ verify_jwt = true
 [functions.stay-reservation-sweep]
 verify_jwt = false
 
+[functions.admin-stay-operations]
+verify_jwt = true
+
 [functions.payout-release-sweep]
 verify_jwt = false
 

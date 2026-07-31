@@ -6758,3 +6758,26 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   test proves the Edge boundary routes staff reads/actions/cancellation only through #1426 wrappers.
 - **Established:** ACTIVE 2026-07-31 at issue #1426 CLOSE after Android, iOS, SQL, Edge, strict-gate,
   and independent adversarial verification; all Stay launch flags remain dark for #1392.
+
+## DRAFT — issue #1427 (least-privilege Admin Stay support)
+
+### I-1427-ADMIN-STAY-SUPPORT (DRAFT)
+- **Rule:** Mingla Admin supports Stay inside the existing Venues and Money ledger shells. Admin
+  inspection uses server-whitelisted projections: guest identity is masked; raw notification
+  contacts/payloads, event metadata, storage identifiers, checksums, and provider payloads are not
+  returned. Provider reconciliation accepts only a stored payment-attempt ID and Admin reason,
+  retrieves Stripe or Paystack truth server-side, verifies purpose/group/attempt/amount/currency/
+  settlement identity, and converges through the existing Stay payment and source-refund control
+  planes. Inventory/materialization failures are retained in forced-RLS, append-only alert tables.
+  All Admin writes are reason-gated and audited; issue #1427 never enables a Stay launch flag.
+- **Enforcement:** `.github/scripts/strict-grep/issue-1427-admin-stay-support.mjs` (manifest batch A,
+  self-test wired) plus `.github/workflows/issue-1427-admin-stay-support-tests.yml` running the
+  focused Admin source contracts, scoped lint/build, Edge type checks, and behavioral suites.
+- **Regression test:** `supabase/functions/admin-stay-operations/index.test.ts` proves Admin auth,
+  exact request shapes, matching provider evidence, single audit, and refusal of mismatched or
+  Paystack subaccount-settled charges. The two `issue1427.alert.test.ts` suites prove fail-soft,
+  replay-safe alert capture without guest/request/database-detail leakage. The Admin Node suite
+  proves the existing-shell entry points, Rooms/Places inspection, masked support detail, and
+  bounded actions.
+- **Established:** DRAFT 2026-07-31 at issue #1427 IMPLEMENT; orchestrator flips ACTIVE only after
+  independent tester PASS, merge, production migration/Edge deployment, and runtime verification.
