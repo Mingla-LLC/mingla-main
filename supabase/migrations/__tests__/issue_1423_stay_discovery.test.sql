@@ -45,13 +45,13 @@ INSERT INTO public.venue_listings (
   (
     '00000000-1423-4000-8000-000000000003',
     '00000000-1423-4000-8000-000000000002',
-    'lagoon-resort-1423', 'Lagoon Resort', '1 Water Street', 'Lagos', 'NG',
+    'lagoonresort1423', 'Lagoon Resort', '1 Water Street', 'Lagos', 'NG',
     6.45, 3.47, 'stay', 'verified'
   ),
   (
     '00000000-1423-4000-8000-000000000004',
     '00000000-1423-4000-8000-000000000002',
-    'draft-resort-1423', 'Unverified Resort', '2 Water Street', 'Lagos', 'NG',
+    'draftresort1423', 'Unverified Resort', '2 Water Street', 'Lagos', 'NG',
     6.46, 3.48, 'stay', 'pending_review'
   );
 
