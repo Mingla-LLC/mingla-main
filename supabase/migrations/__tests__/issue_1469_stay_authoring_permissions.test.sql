@@ -109,6 +109,7 @@ BEGIN
         "kind":"room",
         "name":"Permission-safe room",
         "description":"Created without money by inventory staff.",
+        "confirmationMode":"request",
         "inventoryBasis":"pooled_units",
         "unitNamingMode":"interchangeable",
         "quantity":1,
@@ -139,6 +140,7 @@ BEGIN
         "items":[{
           "kind":"room",
           "name":"Forbidden priced room",
+          "confirmationMode":"request",
           "inventoryBasis":"pooled_units",
           "quantity":1,
           "maxGuests":2,
@@ -279,6 +281,7 @@ BEGIN
         "kind":"place",
         "name":"Owner priced cabana",
         "description":"Combined authority remains available to the owner.",
+        "confirmationMode":"instant",
         "inventoryBasis":"exclusive_units",
         "quantity":1,
         "maxGuests":4,
