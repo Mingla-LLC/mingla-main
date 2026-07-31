@@ -173,6 +173,7 @@ export default function VenueCreateRoute(): React.ReactElement {
       activeDraftBrandId,
       hasPoolContext: fromPoolParam || placePoolId !== null,
       workingName,
+      submissionCompleted: phase === "success",
     });
     if (brandId === null) return;
     // Scoped reset only. The no-argument reset remains reserved for logout;
@@ -186,6 +187,7 @@ export default function VenueCreateRoute(): React.ReactElement {
     fromPoolParam,
     hydrated,
     placePoolId,
+    phase,
     reset,
     workingName,
   ]);

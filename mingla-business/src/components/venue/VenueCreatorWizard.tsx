@@ -59,9 +59,11 @@ import {
 } from "../../services/businessPlaceAuthoringService";
 import {
   PlaceClaimConflictError,
+  fetchVenueListing,
   findOwnListingForPlace,
 } from "../../services/venueListingsService";
 import { sanitizeAuthoringError } from "../../utils/sanitizeAuthoringError";
+import { acquireVenueForSubmission } from "./venueSubmissionResume";
 // META-ORCH-1290 Leg B (D-1) — the create post-submit deck-readiness NAV is
 // RETIRED: create is now ONE folded submission that lands directly on the
 // management page "In review" (the durable-route builder import is gone). The
@@ -266,11 +268,8 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
       setShowErr(true);
       return;
     }
-    if (
-      st.lat === null ||
-      st.lng === null ||
-      st.venueCategory === null
-    ) {
+    const { lat, lng, venueCategory } = st;
+    if (lat === null || lng === null || venueCategory === null) {
       setSubmitErr("Some required fields are missing. Go back and check.");
       return;
     }
@@ -294,10 +293,60 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
       // create s3 gallery (claim carries its own kept+added set).
       const createGalleryUrls = st.galleryUrls ?? [];
 
+      const createVenueRecord = async (): Promise<string> => {
+        // Resolve a guaranteed available slug only when there is no remembered
+        // row to resume. A retry must never advance the slug and insert again.
+        const resolvedSlug = await resolveAvailableVenueSlug(
+          st.displayName.trim(),
+          st.slug.trim() || null,
+          currentBrand.id,
+        );
+        return createVenue.mutateAsync({
+          brandId: currentBrand.id,
+          name: st.displayName.trim(),
+          slug: resolvedSlug,
+          tagline: st.tagline.trim() || undefined,
+          description: st.description.trim(),
+          placePoolId: st.placePoolId,
+          googlePlaceId: st.googlePlaceId,
+          lat,
+          lng,
+          city: st.city,
+          countryCode: st.countryCode,
+          coordinatePrecision: st.coordinatePrecision ?? null,
+          address: st.formattedAddress.trim(),
+          venueCategory,
+          contact: {
+            email: st.contactEmail.trim() || undefined,
+            phone: st.contactPhone.trim() || undefined,
+          },
+          coverMediaUrl: coverChoice?.url ?? null,
+          coverMediaType: coverChoice?.type ?? null,
+          hours: st.hours,
+        });
+      };
+
       // ORCH-1263 D-C/R-7 (DESIGN §8.3) — half-claim RESUME-NOT-RECREATE: when
       // an own listing row already exists for this place, never re-insert.
       // The pre-check runs BEFORE createVenue (own-row 23505 can't happen).
       let venueId: string | null = null;
+      let resumedCreatePlacePoolId: string | null = null;
+      if (!claimMode) {
+        const acquired = await acquireVenueForSubmission(
+          {
+            brandId: currentBrand.id,
+            rememberedVenueId: st.submissionVenueId ?? null,
+          },
+          {
+            fetchVenue: fetchVenueListing,
+            createVenue: createVenueRecord,
+            rememberVenue: (id) =>
+              useDraftVenueStore.getState().patch({ submissionVenueId: id }),
+          },
+        );
+        venueId = acquired.venueId;
+        resumedCreatePlacePoolId = acquired.placePoolId;
+      }
       if (claimMode && st.placePoolId !== null) {
         const own = await findOwnListingForPlace(
           currentBrand.id,
@@ -313,8 +362,8 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
         if (plan.kind === "already-submitted") {
           // Claim already fully submitted — route to the venue, not a
           // duplicate submit.
-          useDraftVenueStore.getState().reset(currentBrand.id);
           onDone(null, plan.venueId, st.displayName.trim());
+          useDraftVenueStore.getState().reset(currentBrand.id);
           return;
         }
         if (plan.kind === "resume") {
@@ -331,85 +380,57 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
         // else advances suffixes, with a timestamp fallback that cannot run out.
         // META-ORCH-1255(R) — scoped to the CURRENT brand: venue slug truth is
         // `venue_listings UNIQUE (brand_id, slug)`, not the brands table.
-        const resolvedSlug = await resolveAvailableVenueSlug(
-          st.displayName.trim(),
-          st.slug.trim() || null,
-          currentBrand.id,
-        );
-
-        // META-ORCH-1255 — create the venue LISTING under the CURRENT brand.
-        // NO brand insert, NO active-brand switch (the operator stays where they
-        // are; the new venue appears in this brand's Hub venue tab).
-        // ORCH-1263 §B4.2 — the claim's chosen cover rides the create RPC
-        // (venue row = hero truth, 1255(C) D-C); create path stays null.
-        venueId = await createVenue.mutateAsync({
-          brandId: currentBrand.id,
-          name: st.displayName.trim(),
-          slug: resolvedSlug,
-          tagline: st.tagline.trim() || undefined,
-          description: st.description.trim(),
-          placePoolId: st.placePoolId,
-          googlePlaceId: st.googlePlaceId,
-          lat: st.lat,
-          lng: st.lng,
-          city: st.city,
-          countryCode: st.countryCode,
-          // Issue #1363 — precision rides the create RPC (exact | approximate).
-          coordinatePrecision: st.coordinatePrecision ?? null,
-          address: st.formattedAddress.trim(),
-          venueCategory: st.venueCategory,
-          contact: {
-            email: st.contactEmail.trim() || undefined,
-            phone: st.contactPhone.trim() || undefined,
-          },
-          coverMediaUrl: coverChoice?.url ?? null,
-          coverMediaType: coverChoice?.type ?? null,
-          hours: st.hours,
-        });
+        // Claim mode keeps its proven place-keyed resume path above. Only a
+        // first-time claim reaches this create callback.
+        venueId = await createVenueRecord();
       }
 
-      const tier1 = await upsertTier1Place({
-        brandId: currentBrand.id,
-        venueId,
-        selectedPlacePoolId: st.placePoolId,
-        draft: {
-          name: st.displayName.trim(),
-          address: st.formattedAddress.trim(),
-          lat: st.lat,
-          lng: st.lng,
-          city: st.city,
-          countryCode: st.countryCode,
-          venueCategory: st.venueCategory,
-          coverMediaUrl: coverChoice?.url ?? null,
-          coverMediaType: coverChoice?.type ?? null,
-          // META-ORCH-1290 D-4 — tagline collapsed into the single Pitch field;
-          // the wizard no longer collects a tagline (vestigial empty string).
-          tagline: st.tagline.trim(),
-          description: st.description.trim(),
-          hours: st.hours,
-          // META-ORCH-1290 Leg B (D-1) — the folded create wizard now collects
-          // website/gallery too. Issue #1384 removes discovery money from the
-          // tier staging blob; both create and claim save one canonical range
-          // after place/venue identity resolves below.
-          website: st.website.trim() || null,
-          adoptedGalleryUrls:
-            claimMode && claim !== null
-              ? claim.keptGalleryUrls
-              : createGalleryUrls,
-          // adoption provenance is claim-only (create has nothing to adopt).
-          ...(claimMode && claim !== null
-            ? {
-                adoption: {
-                  source: "place_pool" as const,
-                  adoptedAt: claim.adoptedAt,
-                  summarySource: claim.adopted.summarySource,
-                  wantsReservations: st.wantsReservations,
-                },
-              }
-            : {}),
-        },
-      });
-      if (tier1.place_pool_id.length === 0) {
+      let authoringPlacePoolId = resumedCreatePlacePoolId;
+      if (authoringPlacePoolId === null) {
+        const tier1 = await upsertTier1Place({
+          brandId: currentBrand.id,
+          venueId,
+          selectedPlacePoolId: st.placePoolId,
+          draft: {
+            name: st.displayName.trim(),
+            address: st.formattedAddress.trim(),
+            lat,
+            lng,
+            city: st.city,
+            countryCode: st.countryCode,
+            venueCategory,
+            coverMediaUrl: coverChoice?.url ?? null,
+            coverMediaType: coverChoice?.type ?? null,
+            // META-ORCH-1290 D-4 — tagline collapsed into the single Pitch field;
+            // the wizard no longer collects a tagline (vestigial empty string).
+            tagline: st.tagline.trim(),
+            description: st.description.trim(),
+            hours: st.hours,
+            // META-ORCH-1290 Leg B (D-1) — the folded create wizard now collects
+            // website/gallery too. Issue #1384 removes discovery money from the
+            // tier staging blob; both create and claim save one canonical range
+            // after place/venue identity resolves below.
+            website: st.website.trim() || null,
+            adoptedGalleryUrls:
+              claimMode && claim !== null
+                ? claim.keptGalleryUrls
+                : createGalleryUrls,
+            // adoption provenance is claim-only (create has nothing to adopt).
+            ...(claimMode && claim !== null
+              ? {
+                  adoption: {
+                    source: "place_pool" as const,
+                    adoptedAt: claim.adoptedAt,
+                    summarySource: claim.adopted.summarySource,
+                    wantsReservations: st.wantsReservations,
+                  },
+                }
+              : {}),
+          },
+        });
+        authoringPlacePoolId = tier1.place_pool_id;
+      }
+      if (authoringPlacePoolId.length === 0) {
         throw new Error("place_pool_link_missing");
       }
       if (venueId === null) {
@@ -419,7 +440,7 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
       await commitNewVenueDiscoveryRange({
         brandId: currentBrand.id,
         venueId,
-        placePoolId: tier1.place_pool_id,
+        placePoolId: authoringPlacePoolId,
         priceMinInput: st.discoveryPriceMinInput ?? "",
         priceMaxInput: st.discoveryPriceMaxInput ?? "",
       });
@@ -427,8 +448,8 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
       if (claimMode) {
         // ORCH-1263 — claim success: the standard pending card state (DESIGN
         // §8.1); NO inline deck-readiness leg (resume route serves it later).
-        useDraftVenueStore.getState().reset(currentBrand.id);
         onDone(null, venueId, st.displayName.trim());
+        useDraftVenueStore.getState().reset(currentBrand.id);
         return;
       }
 
@@ -446,15 +467,15 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
           await syncGallery({
             brandId: currentBrand.id,
             venueId,
-            placePoolId: tier1.place_pool_id,
+            placePoolId: authoringPlacePoolId,
             galleryUrls: createGalleryUrls,
           });
         } catch {
           // non-blocking — the pitch/photos are editable on the listing page.
         }
       }
-      useDraftVenueStore.getState().reset(currentBrand.id);
       onDone(null, venueId, st.displayName.trim());
+      useDraftVenueStore.getState().reset(currentBrand.id);
       return;
     } catch (e) {
       if (e instanceof SlugCollisionError) {
@@ -495,7 +516,7 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
     } finally {
       setSubmitting(false);
     }
-  }, [createVenue, currentBrand, onDone, router, setStep, user?.id]);
+  }, [createVenue, currentBrand, onDone, setStep, user?.id]);
 
   const body = ((): React.ReactElement => {
     switch (stepId) {

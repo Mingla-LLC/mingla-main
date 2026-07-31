@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-07-31 — Venue submission retries now reuse the same pending row after downstream failures, preserve brand-scoped recovery, and keep the success screen visible with an exact Venue Hub handoff. (#1467, PR #1468)
 - 2026-07-31 — Permitted brand staff can now complete the secure venue-authoring pipeline for their own listings while lower roles, cross-brand venues, approval, and publication remain blocked. (#1465, PR #1466)
 - 2026-07-31 — Permitted brand staff can now submit pending-review venue and Stay listings for their own brand, with Stay-specific rooms-and-places setup copy and actionable permission errors; lower roles and cross-brand writes remain blocked. (#1463, PR #1464)
 - 2026-07-31 — Fixed venue creation losing or misreading a saved draft when the current brand loaded late; the wizard now resumes the correct brand, preserves parked drafts, and loads the real payout currency. (#1461, PR #1462)

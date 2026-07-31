@@ -7,6 +7,8 @@ interface VenueDraftBrandActivationInput {
 interface VenueDraftBrandResetInput extends VenueDraftBrandActivationInput {
   hasPoolContext: boolean;
   workingName: string;
+  /** Issue #1467 — post-submit success is terminal until Done is pressed. */
+  submissionCompleted?: boolean;
 }
 
 /**
@@ -34,9 +36,11 @@ export function venueDraftBrandToReset({
   activeDraftBrandId,
   hasPoolContext,
   workingName,
+  submissionCompleted = false,
 }: VenueDraftBrandResetInput): string | null {
   if (
     !hydrated ||
+    submissionCompleted ||
     currentBrandId === null ||
     activeDraftBrandId !== currentBrandId ||
     hasPoolContext ||
