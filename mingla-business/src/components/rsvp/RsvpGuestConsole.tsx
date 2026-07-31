@@ -185,6 +185,20 @@ export interface RsvpGuestConsoleProps {
 const isConfirmed = (g: RsvpGuest): boolean =>
   g.rsvpStatus === "going" && g.approvalStatus === "approved";
 
+const checkinLine = (guest: RsvpGuest): string | null => {
+  if (!isConfirmed(guest)) return null;
+  const total = 1 + guest.plusCount;
+  const checked = (guest.checkedInAt ? 1 : 0) + guest.plusCheckedInCount;
+  const sorted = [guest.checkedInAt, ...guest.plusCheckins.map((item) => item.checkedInAt)]
+    .filter((value): value is string => typeof value === "string")
+    .sort();
+  const latest = sorted[sorted.length - 1];
+  const time = latest ? new Date(latest).toLocaleTimeString(undefined, {
+    hour: "numeric", minute: "2-digit",
+  }) : null;
+  return `${checked} of ${total} checked in${time ? ` · ${time} by scanner` : ""}`;
+};
+
 export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
   eventId,
   eventTitle,
@@ -196,6 +210,7 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
   const bulkApprove = useBulkApproveRsvps(eventId);
   const contributionRefunds = useEventRsvpContributionRefunds(eventId);
   const [refundPendingId, setRefundPendingId] = useState<string | null>(null);
+  const [checkinFilter, setCheckinFilter] = useState<"all" | "not_checked_in" | "checked_in">("all");
 
   const [toast, setToast] = useState<{ visible: boolean; message: string }>({
     visible: false,
@@ -220,6 +235,11 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
   const guests = useMemo<RsvpGuest[]>(() => data ?? [], [data]);
   const pending = useMemo(() => guests.filter((g) => g.approvalStatus === "pending"), [guests]);
   const going = useMemo(() => guests.filter(isConfirmed), [guests]);
+  const visibleGoing = useMemo(() => going.filter((guest) => {
+    if (checkinFilter === "all") return true;
+    const checked = (guest.checkedInAt ? 1 : 0) + guest.plusCheckedInCount;
+    return checkinFilter === "checked_in" ? checked > 0 : checked === 0;
+  }), [checkinFilter, going]);
   const waitlisted = useMemo(
     () => guests.filter((g) => g.rsvpStatus === "waitlisted"),
     [guests],
@@ -402,6 +422,11 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
                 </Text>
               ) : null}
             </View>
+            {checkinLine(g) ? (
+              <Text style={styles.checkinTruth} numberOfLines={1}>
+                {checkinLine(g)}
+              </Text>
+            ) : null}
           </View>
         </Pressable>
         <View style={styles.refundTrailing}>
@@ -458,6 +483,29 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
         contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + spacing.xl }]}
         showsVerticalScrollIndicator={false}
       >
+        <View style={styles.checkinFilters} accessible accessibilityLabel="Check-in filters">
+          {([
+            ["all", "All"],
+            ["not_checked_in", "Not checked in"],
+            ["checked_in", "Checked in"],
+          ] as const).map(([value, label]) => (
+            <Pressable
+              key={value}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: checkinFilter === value }}
+              accessibilityLabel={`${label} guests`}
+              onPress={() => setCheckinFilter(value)}
+              style={[styles.checkinFilter, checkinFilter === value && styles.checkinFilterActive]}
+              testID={`issue-1447-checkin-filter-${value}`}
+            >
+              <Text style={[
+                styles.checkinFilterText,
+                checkinFilter === value && styles.checkinFilterTextActive,
+              ]}>{label}</Text>
+            </Pressable>
+          ))}
+        </View>
+
         {/* Pending section */}
         {pending.length > 0 ? (
           <View style={styles.section}>
@@ -505,10 +553,12 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
         {/* Going section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Going ({going.length})</Text>
-          {going.length === 0 ? (
-            <Text style={styles.emptySub}>No one&apos;s confirmed yet.</Text>
+          {visibleGoing.length === 0 ? (
+            <Text style={styles.emptySub}>
+              {going.length === 0 ? "No one's confirmed yet." : "No guests match this check-in filter."}
+            </Text>
           ) : (
-            going.map((g) =>
+            visibleGoing.map((g) =>
               renderRow(
                 g,
                 <Pressable
@@ -627,6 +677,15 @@ const styles = StyleSheet.create({
   chromeSpacer: { width: 36 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md },
   body: { paddingHorizontal: spacing.md, paddingTop: spacing.md, gap: spacing.lg },
+  checkinFilters: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
+  checkinFilter: {
+    minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.md,
+    borderRadius: radiusTokens.full, borderWidth: 1, borderColor: glass.border.profileBase,
+    backgroundColor: glass.tint.profileBase,
+  },
+  checkinFilterActive: { borderColor: accent.warm, backgroundColor: "rgba(235,120,37,0.14)" },
+  checkinFilterText: { color: textTokens.secondary, fontSize: typography.caption.fontSize, fontWeight: "700" },
+  checkinFilterTextActive: { color: accent.warm },
   section: { gap: spacing.sm },
   sectionHeaderRow: {
     flexDirection: "row",
@@ -695,6 +754,13 @@ const styles = StyleSheet.create({
     minWidth: 0,
     fontSize: typography.caption.fontSize,
     color: textTokens.tertiary,
+  },
+  checkinTruth: {
+    marginTop: 3,
+    fontSize: typography.micro.fontSize,
+    lineHeight: typography.micro.lineHeight,
+    color: semantic.success,
+    fontWeight: "600",
   },
   badge: {
     paddingHorizontal: spacing.xs + 2,

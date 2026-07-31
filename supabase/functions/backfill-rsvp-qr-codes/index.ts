@@ -99,41 +99,18 @@ serve(async (req: Request): Promise<Response> => {
     return json(500, { error: "backfill_failed" });
   }
 
-  // 3. Drain: invoke rsvp-notify per still-pending QR rsvp_pass row.
-  //    ORCH-1206 (I-3) — the backfill now enqueues under the CANONICAL keyspace
-  //    `rsvp_pass:<rsvpId>:<guestId|primary>` (the same key the submit + approve
-  //    paths use), so the old ORCH-1203 backfill-only prefix filter would miss every
-  //    backfilled/approved pass. Drain ALL still-pending rsvp_pass rows instead
-  //    (template_key='rsvp_pass' + status='pending'). The status='pending' guard
-  //    already excludes already-sent rows, and rsvp-notify short-circuits any
-  //    row that flipped to 'sent' between this query and the invoke — so we
-  //    never double-invoke a sent pass. Cap the batch so a tick stays bounded.
+  // 3. Drain through the delivery worker. It owns bounded SKIP LOCKED claims,
+  // stale-lease recovery, retry backoff, and every RSVP template/channel — the
+  // cron must not preselect only parent rows or only pending passes.
   let drained = 0;
   let drainFailed = 0;
   try {
-    const { data: pendingRows } = await admin
-      .from("rsvp_notifications")
-      .select("id")
-      .eq("template_key", "rsvp_pass")
-      .eq("status", "pending")
-      .order("created_at", { ascending: true })
-      .limit(200);
-
-    for (const row of (pendingRows ?? []) as Array<{ id: string }>) {
-      try {
-        await admin.functions.invoke("rsvp-notify", {
-          body: { notificationId: row.id },
-        });
-        drained += 1;
-      } catch (invokeErr) {
-        // Row stays pending for the next 15-min tick; non-fatal.
-        drainFailed += 1;
-        console.warn(
-          "[backfill-rsvp-qr-codes] rsvp-notify invoke failed",
-          String(invokeErr),
-        );
-      }
-    }
+    const { data: drainData, error: drainError } = await admin.functions.invoke(
+      "rsvp-notify",
+      { body: {} },
+    );
+    if (drainError) throw drainError;
+    drained = Number((drainData as { claimed?: number } | null)?.claimed ?? 0);
   } catch (err) {
     console.warn("[backfill-rsvp-qr-codes] drain query failed", String(err));
   }

@@ -361,6 +361,23 @@ export const isSelfAuthenticatedExemptRoute = (
   });
 };
 
+/** Issue #1447 — the one RSVP route that is safe without a Business session.
+ * It resolves nothing from ambient auth: the edge function requires the
+ * high-entropy fragment credential and rechecks current RSVP eligibility.
+ * Keep this exact so organizer routes under `/rsvp/[id]` remain protected. */
+export const RSVP_PASS_RECOVERY_ROUTE = "/rsvp/pass" as const;
+
+export const isRsvpPassRecoveryRoute = (
+  pathname: string | null | undefined,
+): boolean => {
+  if (typeof pathname !== "string") return false;
+  const trimmed = pathname.trim();
+  const normalized = trimmed.length > 1 && trimmed.endsWith("/")
+    ? trimmed.slice(0, -1)
+    : trimmed;
+  return normalized === RSVP_PASS_RECOVERY_ROUTE;
+};
+
 /**
  * REDIRECT-TO-SIGN-IN, loop-safe + public-buyer-aware — ORCH-1103 + ORCH-1115.
  *
@@ -404,7 +421,8 @@ export const shouldRedirectToSignInFromRoute = ({
   shouldRedirectToSignIn({ isWeb, loading, hasUser, hasStoredWebSession }) &&
   !isSignInRoute(pathname) &&
   !isPublicBuyerRoute(pathname) &&
-  !isSelfAuthenticatedExemptRoute(pathname);
+  !isSelfAuthenticatedExemptRoute(pathname) &&
+  !isRsvpPassRecoveryRoute(pathname);
 
 /**
  * The companion LOADING gate — ORCH-1102.

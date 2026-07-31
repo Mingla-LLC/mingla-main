@@ -89,7 +89,11 @@ import { captureWeb } from "../../analytics/webAnalytics";
 import type { GuestFunnelEntity } from "../../services/guestFunnelLink";
 
 const SeeWhosGoingGate = React.lazy(() => import("./SeeWhosGoingGate"));
-import { submitPublicRsvp, submitRsvpContribution } from "../../services/rsvpEvents";
+import {
+  fetchPublicRsvpPassPdf,
+  submitPublicRsvp,
+  submitRsvpContribution,
+} from "../../services/rsvpEvents";
 // ORCH-1339 — cross-entity social proof (pg_public_social_proof, ORCH-1338;
 // anon-safe RPC — this page is anon-tolerant). Keys from the entity factory.
 import { useQuery } from "@tanstack/react-query";
@@ -676,6 +680,8 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       approvalStatus: "pending" | "approved";
       rsvpId: string;
       confirmationToken: string | null;
+      credentials: import("@mingla/offering-rendering").RsvpPassCredential[];
+      anonymousRecovery: import("@mingla/offering-rendering").RsvpAnonymousRecovery[];
     }> => {
       // ORCH-1291 [rsvp-chip-in] — remember the just-submitted guest contact so an
       // anon web chip-in (a SEPARATE voluntary action AFTER the free RSVP) can
@@ -686,7 +692,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         name: input.guestName,
         email: input.guestEmail,
       };
-      return submitPublicRsvp({
+      const result = await submitPublicRsvp({
         eventId: event.id,
         rsvpStatus: input.rsvpStatus,
         guestName: input.guestName,
@@ -695,9 +701,48 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         plusCount: input.plusCount,
         guests: input.guests,
       });
+      captureWeb("rsvp_acknowledgement_viewed", {
+        surface: "anonymous_web",
+        status: result.status,
+        approval: result.approvalStatus,
+      });
+      if (result.credentials.length > 0) {
+        captureWeb("rsvp_pass_viewed", { surface: "anonymous_web_success" });
+      }
+      return result;
     },
     [event.id],
   );
+
+  const handleDownloadRsvpPass = useCallback(async (
+    credential: import("@mingla/offering-rendering").RsvpPassCredential,
+    recovery: import("@mingla/offering-rendering").RsvpAnonymousRecovery | null,
+  ): Promise<void> => {
+    const surface = "anonymous_web_success";
+    captureWeb("rsvp_pass_pdf_requested", { surface });
+    try {
+      const pdf = await fetchPublicRsvpPassPdf(
+        credential.entityType,
+        credential.entityId,
+        recovery?.recoveryToken ?? null,
+      );
+      if (Platform.OS !== "web" || typeof document === "undefined") {
+        throw new Error("rsvp_pdf_web_only");
+      }
+      const objectUrl = URL.createObjectURL(pdf.blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = pdf.filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(objectUrl);
+      captureWeb("rsvp_pass_pdf_result", { surface, outcome: "success" });
+    } catch (error) {
+      captureWeb("rsvp_pass_pdf_result", { surface, outcome: "failure" });
+      throw error;
+    }
+  }, [event.id]);
 
   // ORCH-1291 [rsvp-chip-in] — the buyer-web payment hand-off for a voluntary
   // gift. surface:'web' → the edge fn returns a hosted Stripe Checkout URL (or a
@@ -966,6 +1011,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           onOpenMaps={openMapsForQuery}
           staticMapUrl={staticMapUrl}
           onSubmit={rsvpSubmit}
+          onDownloadPass={handleDownloadRsvpPass}
           // ORCH-1163-R3 — this FLOATING_BAR_CLEARANCE + insets.bottom expression is
           // the scroll-runway FLOOR (byte-identical to the event page). The RSVP bar
           // is TALLER + variable than the event Get-tickets bar, so FoundationRsvpPreview

@@ -50,7 +50,7 @@
  * bar never diverge. The decision LOGIC stays in RsvpMomentumDecision (single owner).
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Image,
   LayoutAnimation,
@@ -178,6 +178,23 @@ export interface RsvpSubmitResult {
   approvalStatus: "pending" | "approved";
   rsvpId: string;
   confirmationToken: string | null;
+  acknowledgement?: "accepted" | "pending_approval" | "waitlisted" | "maybe" | "not_going";
+  credentials?: RsvpPassCredential[];
+  anonymousRecovery?: RsvpAnonymousRecovery[];
+}
+
+export interface RsvpPassCredential {
+  entityType: "primary" | "guest";
+  entityId: string;
+  displayName: string;
+  qrCode: string | null;
+  pdfFetchRef: string;
+}
+export interface RsvpAnonymousRecovery {
+  entityType: "primary" | "guest";
+  entityId: string;
+  recoveryToken: string | null;
+  recoveryUrl: string | null;
 }
 
 export interface RsvpOfferingBodyProps {
@@ -187,6 +204,15 @@ export interface RsvpOfferingBodyProps {
   theme: ResolvedTheme;
   config: RsvpOfferingConfig;
   isLoggedIn: boolean;
+  initialGuestName?: string;
+  initialGuestEmail?: string;
+  initialGuestPhone?: string;
+  /** Explorer requires complete email+phone snapshots even when authenticated. */
+  requirePrimaryContact?: boolean;
+  onDownloadPass?: (
+    credential: RsvpPassCredential,
+    recovery: RsvpAnonymousRecovery | null,
+  ) => Promise<void>;
   onSubmit: (input: {
     rsvpStatus: "going" | "not_going" | "maybe";
     guestName: string;
@@ -297,11 +323,24 @@ export const useRsvpOfferingState = (
   const surface = offeringSurfaceStyles(palette);
   const boldFamily = boldFontFamily(theme);
 
-  const [guestName, setGuestName] = useState("");
-  const [guestEmail, setGuestEmail] = useState("");
+  const [guestName, setGuestName] = useState(props.initialGuestName ?? "");
+  const [guestEmail, setGuestEmail] = useState(props.initialGuestEmail ?? "");
   // `guestPhone` remains the single submitted value (a composed E.164 when the
   // country picker is injected, else the raw text the guest typed).
-  const [guestPhone, setGuestPhone] = useState("");
+  const [guestPhone, setGuestPhone] = useState(props.initialGuestPhone ?? "");
+  // Explorer can finish resolving the signed-in profile after this shared hook
+  // mounts. Adopt those canonical values only while the guest has not typed a
+  // replacement; once the three fields are complete the completion form folds
+  // away and the existing RSVP shape remains unchanged.
+  useEffect(() => {
+    setGuestName((current) => current.trim() || props.initialGuestName || "");
+  }, [props.initialGuestName]);
+  useEffect(() => {
+    setGuestEmail((current) => current.trim() || props.initialGuestEmail || "");
+  }, [props.initialGuestEmail]);
+  useEffect(() => {
+    setGuestPhone((current) => current.trim() || props.initialGuestPhone || "");
+  }, [props.initialGuestPhone]);
   // ORCH-1295 — country + local-digits state for the injected picker (unused when
   // renderPhoneField is absent). Lifted here so the field stays controlled across
   // BOTH contact-form mounts (inline body + details modal) without divergence.
@@ -378,11 +417,12 @@ export const useRsvpOfferingState = (
     ],
   );
 
+  const primaryContactComplete =
+    guestName.trim().length > 0 &&
+    EMAIL_RE.test(guestEmail.trim()) &&
+    PHONE_RE.test(guestPhone.trim());
   const primaryValid =
-    isLoggedIn ||
-    (guestName.trim().length > 0 &&
-      EMAIL_RE.test(guestEmail.trim()) &&
-      PHONE_RE.test(guestPhone.trim()));
+    (isLoggedIn && props.requirePrimaryContact !== true) || primaryContactComplete;
   const plusCount = config.allowPlusOnes ? guests.length : 0;
   const guestsValid = guests.every(
     (g) =>
@@ -561,6 +601,8 @@ export const useRsvpOfferingState = (
               : "going",
         plusGuests: guests.map((g) => ({ name: g.name.trim() })),
         confirmationToken: result.confirmationToken,
+        credentials: result.credentials ?? [],
+        anonymousRecovery: result.anonymousRecovery ?? [],
       });
     } catch (err) {
       setConfirmError(mapErrorCode(err instanceof Error ? err.message : String(err)));
@@ -663,7 +705,8 @@ export const useRsvpOfferingState = (
                 : "Anyone with the link can RSVP.";
 
   const showContactForm =
-    !isLoggedIn &&
+    (!isLoggedIn ||
+      (props.requirePrimaryContact === true && !primaryContactComplete)) &&
     !goingResolved &&
     !pendingResolved &&
     !waitlistedResolved &&
@@ -922,6 +965,7 @@ export const useRsvpOfferingState = (
       theme={theme}
       details={successDetails}
       showCalendarNudge={isLoggedIn}
+      onDownloadPass={props.onDownloadPass}
       onClose={() => setSuccessDetails(null)}
       chipInPanel={popupChipEligible ? buildChipPanel("orch-1291-rsvp-chipin-panel-popup") : undefined}
     />

@@ -33,7 +33,7 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandDeleteSheet } from "../../src/components/brand/BrandDeleteSheet";
@@ -91,6 +91,7 @@ import { useLiveSectionCollapseStore } from "../../src/store/liveSectionCollapse
 import type { DraftEvent } from "../../src/store/draftEventStore";
 import type { LiveEvent } from "../../src/store/liveEventStore";
 import type { Trip } from "../../src/services/tripsService";
+import { fetchRsvpCheckinSummary } from "../../src/services/scanRsvpService";
 // ORCH-0865 REWORK 5 — canonical routing helper, ban hardcoded /event/{id}
 import { routeForEventRowDefensive } from "../../src/utils/routeForEventRow";
 import { tripToLiveEvent } from "../../src/utils/tripToLiveEvent";
@@ -367,6 +368,44 @@ export default function HomeTab(): React.ReactElement {
     summaryEvents,
     currentBrand?.defaultCurrency,
   );
+  const liveRsvpItems = liveItems.filter(
+    (item) => (item.source as LiveEvent).event_type === "rsvp",
+  );
+  const liveRsvpSummaryQueries = useQueries({
+    queries: liveRsvpItems.map((item) => {
+      const view = item.source as LiveEvent;
+      const eventId = view.serverEventId ?? item.id;
+      return {
+        queryKey: ["rsvpCheckinSummary", eventId],
+        queryFn: () => fetchRsvpCheckinSummary(eventId),
+        staleTime: 15_000,
+        refetchInterval: 30_000,
+      };
+    }),
+  });
+  const liveRsvpSummaryById = useMemo(() => {
+    const map: Record<string, {
+      going: number;
+      capacity: number | null;
+      checkedInValue: string;
+    }> = {};
+    liveRsvpItems.forEach((item, index) => {
+      const source = item.source as LiveEvent;
+      const query = liveRsvpSummaryQueries[index];
+      map[item.id] = query?.data
+        ? {
+          going: query.data.going,
+          capacity: query.data.capacity,
+          checkedInValue: query.data.checkedIn.toLocaleString("en-GB"),
+        }
+        : {
+          going: source.rsvpGoingCount ?? 0,
+          capacity: source.rsvpCapacity ?? null,
+          checkedInValue: query?.isError ? "Unavailable" : "—",
+        };
+    });
+    return map;
+  }, [liveRsvpItems, liveRsvpSummaryQueries]);
 
   // ORCH-1143 — per-live-card display metrics, keyed by offering id. Generalizes
   // the former single-item `liveHeroMetrics` over the live array. Currency stays
@@ -375,6 +414,24 @@ export default function HomeTab(): React.ReactElement {
   const liveMetricsById = useMemo<Record<string, LiveCardMetrics>>(() => {
     const map: Record<string, LiveCardMetrics> = {};
     for (const view of liveEventViews) {
+      if (view.event_type === "rsvp") {
+        const summary = liveRsvpSummaryById[view.id] ?? {
+          going: view.rsvpGoingCount ?? 0,
+          capacity: view.rsvpCapacity ?? null,
+          checkedInValue: "—",
+        };
+        map[view.id] = {
+          mode: "rsvp",
+          revenueLabel: "",
+          soldValue: summary.going.toLocaleString("en-GB"),
+          capacityLabel: summary.capacity === null ? "Unlimited" : summary.capacity.toLocaleString("en-GB"),
+          capacity: summary.capacity,
+          progress: summary.capacity !== null && summary.capacity > 0
+            ? Math.min(1, summary.going / summary.capacity) : 0,
+          checkedInValue: summary.checkedInValue,
+        };
+        continue;
+      }
       const capacity = finiteTicketCapacity(view);
       const salesSummary = eventSalesSummaries[view.id];
       const soldCount = salesSummary?.soldCount ?? 0;
@@ -400,7 +457,7 @@ export default function HomeTab(): React.ReactElement {
       };
     }
     return map;
-  }, [liveEventViews, currentBrand?.defaultCurrency, eventSalesSummaries]);
+  }, [liveEventViews, currentBrand?.defaultCurrency, eventSalesSummaries, liveRsvpSummaryById]);
 
   // ORCH-1038: the no-brand / choose-brand / add-venue / deck-readiness /
   // rule-ladder / offering-chooser logic now lives in the shared useBusinessTodos
@@ -415,9 +472,13 @@ export default function HomeTab(): React.ReactElement {
   // I-PROPOSED-ORCH1143-LIVE-SCAN-ALL-KINDS.
   const handleScanPress = useCallback(
     (id: string): void => {
-      router.push(`/event/${id}/scanner` as never);
+      const item = liveItems.find((candidate) => candidate.id === id);
+      const route = (item?.source as LiveEvent | undefined)?.event_type === "rsvp"
+        ? `/rsvp/${id}/scanner`
+        : `/event/${id}/scanner`;
+      router.push(route as never);
     },
-    [router],
+    [router, liveItems],
   );
 
   // ORCH-1143 — live-section accordion collapse, persisted + hydration-gated

@@ -4,7 +4,8 @@
  * Renders one of the signed-in user's "Going" RSVPs inside the consumer Calendar
  * tab, alongside calendar entries + business orders + reservations. Tapping
  * "View RSVP" opens the RsvpPassSheet (venue + the per-entity QR pass + change/
- * cancel). RSVP is ticketless — there is NO PDF / payment surface here.
+ * cancel). RSVP remains ticketless and exposes its own canonical PDF pass;
+ * there is no order/payment surface here.
  *
  * Mirrors BusinessEventCalendarRow's prop/animation shape (cover thumb + "On
  * Mingla" badge + title + subtitle + a status pill + a "View" CTA) so the row

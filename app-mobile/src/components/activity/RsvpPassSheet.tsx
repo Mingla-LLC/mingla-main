@@ -4,14 +4,14 @@
  * The consumer's RSVP "pass": a dark BaseBottomSheet (wrapInRNModal, z-stacked
  * above the floating tab bar) showing the venue block, the per-entity check-in QR
  * (when the host minted one), the guest's display name + Going/Pending status,
- * and a change/cancel action. RSVP is ticketless — there is NO PDF / download
- * here (unlike the ticket TicketPdfSheet it's modeled on).
+ * PDF download/share actions, and a change/cancel action. RSVP remains
+ * ticketless; every pass comes from the canonical RSVP credential rows.
  *
  * Plus-one rows (role="guest") CANNOT cancel the party — the cancel CTA is hidden
  * and replaced by an "Ask {host} to update" note (only the primary owns the RSVP).
  */
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
@@ -26,14 +26,22 @@ import {
 import { BaseBottomSheet } from "../ui/BaseBottomSheet";
 import QRCode from "react-native-qrcode-svg";
 import { useQueryClient } from "@tanstack/react-query";
+import * as FileSystem from "expo-file-system/legacy";
+import * as Sharing from "expo-sharing";
 
 import { Icon } from "../ui/Icon";
 import type { ConsumerRsvpRow } from "../../services/calendarService";
-import { submitDeckRsvp } from "../../services/rsvpDeckService";
+import {
+  fetchRsvpPartyPasses,
+  fetchRsvpPassPdf,
+  submitDeckRsvp,
+} from "../../services/rsvpDeckService";
+import type { RsvpPassCredential } from "@mingla/offering-rendering";
 import { useAppStore } from "../../store/appStore";
 import { toastManager } from "../ui/Toast";
 // ORCH-0877 — centralized consumer-side date formatter.
 import { formatEventDateLine } from "../../utils/eventDateDisplay";
+import { postHogService } from "../../services/postHogService";
 
 interface RsvpPassSheetProps {
   visible: boolean;
@@ -74,12 +82,62 @@ export const RsvpPassSheet: React.FC<RsvpPassSheetProps> = ({
   const queryClient = useQueryClient();
   const { width: windowWidth } = useWindowDimensions();
   const [cancelling, setCancelling] = useState<boolean>(false);
+  const [downloading, setDownloading] = useState<boolean>(false);
+  const [sharing, setSharing] = useState<boolean>(false);
+  const [partyLoading, setPartyLoading] = useState<boolean>(false);
+  const [partyError, setPartyError] = useState<string | null>(null);
+  const [selectedEntityId, setSelectedEntityId] = useState<string>(
+    row.guestId ?? row.rsvpId,
+  );
+  const fallbackCredential = useMemo<RsvpPassCredential | null>(() =>
+    row.qrCode
+      ? {
+          entityType: row.guestId ? "guest" : "primary",
+          entityId: row.guestId ?? row.rsvpId,
+          displayName: row.displayName ?? "You",
+          qrCode: row.qrCode,
+          pdfFetchRef: row.guestId ?? row.rsvpId,
+        }
+      : null, [row.displayName, row.guestId, row.qrCode, row.rsvpId]);
+  const [credentials, setCredentials] = useState<RsvpPassCredential[]>([]);
 
   const pageWidth = Math.max(0, windowWidth - SHEET_HORIZONTAL_PADDING * 2);
   const qrSize = Math.max(160, Math.min(pageWidth - 32, 360));
 
   const isPending = row.approvalStatus === "pending";
   const isGuest = row.role === "guest";
+  const selectedCredential = credentials.find(
+    (item) => item.entityId === selectedEntityId,
+  ) ?? credentials[0] ?? null;
+
+  const loadParty = useCallback((): void => {
+    if (!visible || !fallbackCredential || isPending) return;
+    setPartyLoading(true);
+    setPartyError(null);
+    void fetchRsvpPartyPasses(row.rsvpId)
+      .then((party) => {
+        setCredentials(party);
+        if (party.length === 0) {
+          setPartyError("This RSVP pass is no longer active.");
+          return;
+        }
+        setSelectedEntityId((current) =>
+          party.some((item) => item.entityId === current) ? current : party[0].entityId
+        );
+      })
+      .catch(() => {
+        setCredentials([]);
+        setPartyError("Couldn't verify this RSVP pass.");
+      })
+      .finally(() => setPartyLoading(false));
+  }, [fallbackCredential, isPending, row.rsvpId, visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+    setCredentials([]);
+    setSelectedEntityId(row.guestId ?? row.rsvpId);
+    loadParty();
+  }, [fallbackCredential, loadParty, row.guestId, row.rsvpId, visible]);
 
   const dateLine = formatEventDateLine({
     masterDateUtc: row.masterDateUtc,
@@ -126,6 +184,60 @@ export const RsvpPassSheet: React.FC<RsvpPassSheetProps> = ({
       }
     })();
   }, [cancelling, isGuest, row.eventId, user?.id, queryClient, onClose]);
+
+  const preparePdf = useCallback(async (
+    pass: RsvpPassCredential,
+  ): Promise<string> => {
+    const result = await fetchRsvpPassPdf(pass.entityId, null, pass.entityType);
+    const filename = result.pdf.filename.replace(/[^a-zA-Z0-9._-]/g, "-");
+    const uri = `${FileSystem.cacheDirectory ?? ""}${filename}`;
+    await FileSystem.writeAsStringAsync(uri, result.pdf.contentBase64, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    return uri;
+  }, []);
+
+  const handleDownload = useCallback((): void => {
+    if (downloading || !selectedCredential?.qrCode) return;
+    void (async () => {
+      setDownloading(true);
+      const surface = "explorer_calendar";
+      postHogService.capture("rsvp_pass_pdf_requested", { surface });
+      try {
+        const uri = await preparePdf(selectedCredential);
+        if (!(await Sharing.isAvailableAsync())) throw new Error("sharing_unavailable");
+        await Sharing.shareAsync(uri, {
+          mimeType: "application/pdf", dialogTitle: "Save RSVP invite", UTI: "com.adobe.pdf",
+        });
+        postHogService.capture("rsvp_pass_pdf_result", { surface, outcome: "success" });
+      } catch {
+        postHogService.capture("rsvp_pass_pdf_result", { surface, outcome: "failure" });
+        toastManager.show("Couldn't download the RSVP invite. Try again.", "warning");
+      } finally {
+        setDownloading(false);
+      }
+    })();
+  }, [downloading, preparePdf, selectedCredential]);
+
+  const handleShare = useCallback((): void => {
+    if (sharing || !selectedCredential?.qrCode) return;
+    void (async () => {
+      setSharing(true);
+      try {
+        const uri = await preparePdf(selectedCredential);
+        if (!(await Sharing.isAvailableAsync())) throw new Error("sharing_unavailable");
+        await Sharing.shareAsync(uri, {
+          mimeType: "application/pdf",
+          dialogTitle: "Share RSVP invite",
+          UTI: "com.adobe.pdf",
+        });
+      } catch {
+        toastManager.show("Couldn't share the RSVP invite. Try again.", "warning");
+      } finally {
+        setSharing(false);
+      }
+    })();
+  }, [preparePdf, selectedCredential, sharing]);
 
   const renderVenue = (): React.ReactNode => {
     if (row.venue.isOnline) {
@@ -185,7 +297,7 @@ export const RsvpPassSheet: React.FC<RsvpPassSheetProps> = ({
       snapPoints={RSVP_PASS_SNAP_POINTS}
       wrapInRNModal
       backgroundStyle={RSVP_PASS_BACKGROUND_STYLE}
-      scrollMode="view"
+      scrollMode="scroll"
       accessibilityLabel={`RSVP pass for ${row.eventTitle}`}
     >
       <View style={styles.card}>
@@ -217,13 +329,44 @@ export const RsvpPassSheet: React.FC<RsvpPassSheetProps> = ({
 
         {renderVenue()}
 
-        {row.qrCode ? (
+        {partyLoading ? <ActivityIndicator size="small" color="#eb7825" /> : null}
+        {partyError ? (
+          <View style={styles.partyErrorRow}>
+            <Text style={styles.partyError}>{partyError}</Text>
+            <Pressable onPress={loadParty} accessibilityRole="button">
+              <Text style={styles.partyRetry}>Try again</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        {selectedCredential?.qrCode ? (
           <>
+            {credentials.length > 1 ? (
+              <View style={styles.partyTabs} testID="issue-1447-calendar-party-tabs">
+                {credentials.map((pass) => {
+                  const selected = pass.entityId === selectedCredential.entityId;
+                  return (
+                    <Pressable
+                      key={pass.entityId}
+                      onPress={() => setSelectedEntityId(pass.entityId)}
+                      accessibilityRole="tab"
+                      accessibilityState={{ selected }}
+                      accessibilityLabel={`${pass.displayName}, ${pass.entityType}`}
+                      style={[styles.partyTab, selected && styles.partyTabSelected]}
+                    >
+                      <Text style={[styles.partyTabText, selected && styles.partyTabTextSelected]}>
+                        {pass.displayName} · {pass.entityType === "primary" ? "Primary" : "Guest"}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : null}
             <Text style={styles.qrLabel}>Show at door</Text>
             <View style={styles.qrPage}>
               <View style={styles.qrCodeWrap}>
                 <QRCode
-                  value={row.qrCode}
+                  value={selectedCredential.qrCode}
                   size={qrSize}
                   backgroundColor="#fff"
                   color="#0c0e12"
@@ -235,7 +378,7 @@ export const RsvpPassSheet: React.FC<RsvpPassSheetProps> = ({
 
         <View style={styles.passRow}>
           <Text style={styles.passName} numberOfLines={1}>
-            {row.displayName ?? "You"}
+            {selectedCredential?.displayName ?? row.displayName ?? "You"}
           </Text>
           <Text
             style={[
@@ -246,6 +389,37 @@ export const RsvpPassSheet: React.FC<RsvpPassSheetProps> = ({
             {isPending ? "Pending" : "Going"}
           </Text>
         </View>
+
+        {selectedCredential?.qrCode ? (
+          <View style={styles.passActions}>
+            <Pressable
+              style={[styles.downloadButton, downloading && styles.cancelButtonBusy]}
+              onPress={handleDownload}
+              disabled={downloading || sharing}
+              accessibilityRole="button"
+              accessibilityLabel="Download RSVP pass PDF"
+              testID="issue-1447-calendar-rsvp-download"
+            >
+              {downloading ? <ActivityIndicator size="small" color="#fff" /> :
+                <Icon name="download-outline" size={18} color="#fff" />}
+              <Text style={styles.cancelButtonLabel}>
+                {downloading ? "Preparing…" : "Download PDF"}
+              </Text>
+            </Pressable>
+            <Pressable
+              style={[styles.downloadButton, sharing && styles.cancelButtonBusy]}
+              onPress={handleShare}
+              disabled={sharing || downloading}
+              accessibilityRole="button"
+              accessibilityLabel="Share RSVP pass"
+              testID="issue-1447-calendar-rsvp-share"
+            >
+              {sharing ? <ActivityIndicator size="small" color="#fff" /> :
+                <Icon name="share-outline" size={18} color="#fff" />}
+              <Text style={styles.cancelButtonLabel}>{sharing ? "Preparing…" : "Share"}</Text>
+            </Pressable>
+          </View>
+        ) : null}
 
         {isGuest ? (
           <Text style={styles.guestNote}>
@@ -360,6 +534,21 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     marginBottom: 10,
   },
+  partyTabs: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 14 },
+  partyTab: {
+    minHeight: 44,
+    justifyContent: "center",
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+    paddingHorizontal: 12,
+  },
+  partyTabSelected: { backgroundColor: "rgba(235,120,37,0.18)", borderColor: "#eb7825" },
+  partyTabText: { color: "rgba(255,255,255,0.62)", fontSize: 12, fontWeight: "700" },
+  partyTabTextSelected: { color: "#fff" },
+  partyErrorRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 12 },
+  partyError: { flex: 1, color: "rgba(255,255,255,0.62)", fontSize: 12 },
+  partyRetry: { color: "#eb7825", fontSize: 12, fontWeight: "800" },
   qrPage: {
     alignItems: "center",
     gap: 10,
@@ -415,6 +604,12 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     backgroundColor: "rgba(227,84,60,0.9)",
   },
+  downloadButton: {
+    flex: 1, minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
+    paddingHorizontal: 10, paddingVertical: 12, borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.12)",
+  },
+  passActions: { flexDirection: "row", gap: 10, marginTop: 16 },
   cancelButtonBusy: {
     opacity: 0.7,
   },

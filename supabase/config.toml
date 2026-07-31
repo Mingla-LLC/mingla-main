@@ -348,6 +348,16 @@ verify_jwt = true
 [functions.rsvp-notify]
 verify_jwt = true
 
+# Issue #1447 — organiser/scanner RSVP admission. The gateway verifies the JWT;
+# the RPC independently uses auth.uid() for event-scoped authorization.
+[functions.scan-rsvp]
+verify_jwt = true
+
+# Issue #1447 — authenticated owner or anonymous fragment-token RSVP pass/PDF.
+# Anonymous recovery is validated inside the function, so the gateway is open.
+[functions.rsvp-pass-fetch]
+verify_jwt = false
+
 # META-ORCH-1161 Sub-A.2 — record-consent is the SHARED bundled-consent writer
 # called by BOTH the consumer onboarding (authenticated) AND the anonymous buyer
 # checkout (anon), so verify_jwt=false (anon-tolerant). It writes consent_records

@@ -149,6 +149,8 @@ export type {
   RsvpOfferingDecisionDockProps,
   RsvpGuestContact,
   RsvpSubmitResult,
+  RsvpPassCredential,
+  RsvpAnonymousRecovery,
   ChipInResult,
   // ORCH-1295 [chip-in-post-payment-polish] — BUG 2 host-supplied phone field.
   RsvpPhoneFieldRenderArgs,
