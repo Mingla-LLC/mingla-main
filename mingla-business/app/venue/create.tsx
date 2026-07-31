@@ -11,7 +11,7 @@
  * §8.1 pending copy.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 // ORCH-0892-B v2: ScrollView via SmartScrollView wrapper (KAS native /
 // passthrough web). KeyboardAvoidingView removed. Per SPEC §7.F.
@@ -42,6 +42,10 @@ import { usePoolMatchSearch } from "../../src/hooks/usePoolMatchSearch";
 import { useCurrentBrand } from "../../src/hooks/useCurrentBrand";
 import { useFeatureFlag } from "../../src/hooks/useFeatureFlag";
 import { useDraftVenueStore } from "../../src/store/draftVenueStore";
+import {
+  venueDraftBrandToActivate,
+  venueDraftBrandToReset,
+} from "../../src/components/venue/venueCreateBrandLifecycle";
 import {
   fetchPlaceAdoptionDetail,
   PlaceNotAvailableError,
@@ -89,6 +93,7 @@ export default function VenueCreateRoute(): React.ReactElement {
   // META-ORCH-1255 — the wizard drafts + creates under the CURRENT brand.
   const currentBrand = useCurrentBrand();
   const activateBrand = useDraftVenueStore((s) => s.activateBrand);
+  const activeDraftBrandId = useDraftVenueStore((s) => s.activeBrandId);
   const reset = useDraftVenueStore((s) => s.reset);
   const patch = useDraftVenueStore((s) => s.patch);
   const workingName = useDraftVenueStore((s) => s.workingName);
@@ -124,8 +129,6 @@ export default function VenueCreateRoute(): React.ReactElement {
   const [hydrated, setHydrated] = useState<boolean>(() =>
     useDraftVenueStore.persist.hasHydrated(),
   );
-  const phaseResumedRef = useRef(false);
-
   useEffect(() => {
     if (hydrated) return undefined;
     const unsub = useDraftVenueStore.persist.onFinishHydration(() => {
@@ -137,19 +140,25 @@ export default function VenueCreateRoute(): React.ReactElement {
     return unsub;
   }, [hydrated]);
 
-  // Once hydrated, recompute the resume phase from the now-real persisted draft
-  // (the useState initializer ran pre-hydration against defaults).
-  // META-ORCH-1255 — FIRST activate the current brand's draft slot (per-brand
-  // multi-draft store v2): the resume phase must read THIS brand's draft, not
-  // whichever brand drafted last.
+  // #1461 — a current brand can resolve after hydration. Never mark resume as
+  // complete while it is null: activate the arriving (or newly switched) brand
+  // first, then derive the phase from that brand's now-active draft.
   useEffect(() => {
-    if (!hydrated || phaseResumedRef.current) return;
-    phaseResumedRef.current = true;
-    if (currentBrand !== null) {
-      activateBrand(currentBrand.id);
-    }
+    const brandId = venueDraftBrandToActivate({
+      hydrated,
+      currentBrandId: currentBrand?.id ?? null,
+      activeDraftBrandId,
+    });
+    if (brandId === null) return;
+    activateBrand(brandId);
     setPhase(resolveInitialPhase(fromPoolParam));
-  }, [activateBrand, currentBrand, fromPoolParam, hydrated]);
+  }, [
+    activateBrand,
+    activeDraftBrandId,
+    currentBrand?.id,
+    fromPoolParam,
+    hydrated,
+  ]);
 
   const {
     matches: poolMatches,
@@ -158,19 +167,28 @@ export default function VenueCreateRoute(): React.ReactElement {
   } = usePoolMatchSearch(phase === "gate" ? workingName : "");
 
   useEffect(() => {
-    // Gate on hydration — pre-hydration the store reads defaults, which would
-    // reset() and wipe a legitimately-persisted in-progress draft on cold start.
-    if (!hydrated) return;
-    if (fromPoolParam || useDraftVenueStore.getState().placePoolId !== null) {
-      return;
-    }
-    if (useDraftVenueStore.getState().workingName.trim().length > 0) {
-      return;
-    }
-    reset();
+    const brandId = venueDraftBrandToReset({
+      hydrated,
+      currentBrandId: currentBrand?.id ?? null,
+      activeDraftBrandId,
+      hasPoolContext: fromPoolParam || placePoolId !== null,
+      workingName,
+    });
+    if (brandId === null) return;
+    // Scoped reset only. The no-argument reset remains reserved for logout;
+    // routine venue entry must never erase another brand's parked draft.
+    reset(brandId);
     setPhase("gate");
     setPoolNote(null);
-  }, [fromPoolParam, hydrated, reset]);
+  }, [
+    activeDraftBrandId,
+    currentBrand?.id,
+    fromPoolParam,
+    hydrated,
+    placePoolId,
+    reset,
+    workingName,
+  ]);
 
   useEffect(() => {
     if (!isAuthReady) return;
@@ -259,9 +277,9 @@ export default function VenueCreateRoute(): React.ReactElement {
   const handleStartOver = useCallback((): void => {
     if (currentBrand !== null) {
       reset(currentBrand.id);
-    } else {
-      reset();
     }
+    // A missing current brand is a loading/no-brand state. Never turn this
+    // route-local action into the global draft wipe reserved for logout.
     setConfirmStartOver(false);
     setPhase("gate");
     setPoolNote(null);

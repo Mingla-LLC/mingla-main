@@ -259,7 +259,10 @@ const sameHours = (a: BrandHourEntry[], b: BrandHourEntry[]): boolean => {
   const key = (rows: BrandHourEntry[]): string =>
     [...rows]
       .sort((x, y) => x.weekday - y.weekday)
-      .map((r) => `${r.weekday}|${r.isClosed ? "c" : `${r.openTime ?? ""}-${r.closeTime ?? ""}`}`)
+      .map(
+        (r) =>
+          `${r.weekday}|${r.isClosed ? "c" : `${r.openTime ?? ""}-${r.closeTime ?? ""}`}`,
+      )
       .join(";");
   return key(a) === key(b);
 };
@@ -384,7 +387,13 @@ export const useDraftVenueStore = create<DraftVenueStore>()(
           if (s.activeBrandId !== null) {
             drafts[s.activeBrandId] = pickDraft(s);
           }
-          const next = drafts[brandId] ?? blankDraft();
+          // #1461 — current-brand resolution can legitimately happen after a
+          // persisted, formerly-unscoped draft has hydrated. Adopt those live
+          // top-level fields into the first arriving brand instead of replacing
+          // the operator's in-progress venue with a blank draft.
+          const next =
+            drafts[brandId] ??
+            (s.activeBrandId === null ? pickDraft(s) : blankDraft());
           delete drafts[brandId];
           return { ...next, activeBrandId: brandId, drafts };
         }),
