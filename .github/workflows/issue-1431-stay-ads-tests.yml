@@ -50,6 +50,7 @@ jobs:
           deno test --allow-env
           supabase/functions/_shared/adDestination.issue1431.test.ts
           supabase/functions/_shared/__tests__/issue_1431_stay_conversion.test.ts
+          supabase/functions/_shared/__tests__/issue_1431_stay_conversion.tester_adversarial.test.ts
           app-mobile/src/services/__tests__/oneLinkResolver.issue1431.test.ts
       - name: Type-check changed Edge functions
         run: >

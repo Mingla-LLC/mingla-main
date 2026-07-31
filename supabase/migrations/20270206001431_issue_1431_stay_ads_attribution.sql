@@ -93,6 +93,9 @@ ALTER TABLE public.stay_ad_lifecycle_events ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "stay ad lifecycle admin can read"
   ON public.stay_ad_lifecycle_events FOR SELECT
   USING (public.is_admin_user());
+-- The baseline grants new public tables to anon/authenticated by default.
+-- Remove that ambient access before assigning this private ledger's narrow ACLs.
+REVOKE ALL ON public.stay_ad_lifecycle_events FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON public.stay_ad_lifecycle_events TO authenticated;
 GRANT ALL ON public.stay_ad_lifecycle_events TO service_role;
 
