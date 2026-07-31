@@ -7,6 +7,76 @@
 
 ---
 
+## ACTIVE — issue #1221 (venue and RSVP refund control plane — CLOSED 2026-07-31, PR #1400)
+
+### I-PROPOSED-1221-ONE-TYPED-REFUND-TRUTH (ACTIVE)
+- **Rule:** `source_refunds.id` is the single venue-reservation/RSVP-contribution refund-operation truth across provider attempts, source projection, payout/debt effects, notifications, and Operations recovery. No source table, client, webhook, or provider adapter may independently mark a refund terminal.
+- **Enforcement:** `20270131001221_issue_1221_source_refund_control_plane.sql` owns the operation, attempt, event, allocation, and recovery topology; `.github/scripts/strict-grep/issue-1221-source-refund-control-plane.mjs` pins the sole migration and canonical control-plane path.
+- **Regression:** The paired `issue_1221_source_refund_control_plane` SQL and Edge happy/adversarial suites prove one operation identity through creation, claim, provider transition, projection, and replay.
+- **Established:** DRAFT in the binding #1221 SPEC; ACTIVE at CLOSE after PR #1400 all-green merge, production migration/function rollout, #1430 provider replay PASS, and #1436 final capacity PASS.
+
+### I-PROPOSED-1221-ORIGINAL-MONEY-ONLY (ACTIVE)
+- **Rule:** Refund amount and currency are derived under lock from the canonical paid source. Client, display, default, converted, or newly supplied money values never enter venue/RSVP refund creation.
+- **Enforcement:** The #1221 migration/RPC contract derives immutable paid subunits and currency; the strict gate rejects client-owned amount/currency authority and preserves server-owned provider inputs.
+- **Regression:** The paired SQL and shared Edge suites cover altered amount/currency, partial/full bounds, invalid source state, and cross-provider currency rejection.
+- **Established:** ACTIVE at #1221 CLOSE after independent SQL/Edge tester PASS and real TEST-provider amount verification.
+
+### I-PROPOSED-1221-INITIATED-IS-NOT-PROCESSED (ACTIVE)
+- **Rule:** Provider initiation, acknowledgement, pending, or unknown status is never treated as processed. Only verified Stripe success or Paystack processed truth may commit the terminal source projection, processed notification, or post-release liability.
+- **Enforcement:** The canonical Stripe/Paystack routers and provider-event RPC own transition mapping; source projection is downstream of the verified database `processed` transition.
+- **Regression:** The #1221 shared/webhook happy/adversarial suites and #1430 provider-state matrix prove pending, ambiguous, malformed, and permission-denied paths remain nonterminal.
+- **Established:** ACTIVE at #1221 CLOSE after both rails converged in TEST without a premature terminal projection.
+
+### I-PROPOSED-1221-RETRY-WITHOUT-DOUBLE-REFUND (ACTIVE)
+- **Rule:** Ambiguous retries reuse the same operation/attempt/provider identity. A new provider POST is permitted only after definitive failure and renewed authorization; a replay may never manufacture a second refund.
+- **Enforcement:** Attempt uniqueness, reconcile-before-POST ordering, canonical provider identity, and success-only POST authority are pinned by the #1221 and #1430 strict gates.
+- **Regression:** The #1221 control-plane suites plus #1430 implementor/tester runtime guards prove lost-response adoption, immediate replay, duplicate ambiguity, identity substitution rejection, and no-extra-POST behavior.
+- **Established:** ACTIVE at #1221 CLOSE after Stripe and Paystack TEST replays returned the same provider operations with exactly one POST per refund leg.
+
+### I-PROPOSED-1221-UNRESOLVED-REFUND-NEVER-RELEASES (ACTIVE)
+- **Rule:** Queued, pending, attention, ambiguous, and failed refund obligations block the affected payout amount; only processed refund subunits may reduce a release.
+- **Enforcement:** The migration's shared advisory-lock and ledger-allocation contracts coordinate refund and payout state so an unresolved obligation cannot race a release.
+- **Regression:** The paired SQL happy/adversarial suites exercise refund-versus-release concurrency, unresolved holds, processed reductions, and replay.
+- **Established:** ACTIVE at #1221 CLOSE after disposable PostgreSQL 17 concurrency proof and independent tester PASS.
+
+### I-PROPOSED-1221-POST-RELEASE-ONE-LIABILITY (ACTIVE)
+- **Rule:** A processed post-release venue/RSVP refund creates at most one bounded organiser adjustment/debt effect, never more than the organiser cash actually delivered and never once per replay.
+- **Enforcement:** `source_refund_ledger_allocations` and its unique operation allocation key own the bounded liability; clients and provider adapters cannot write it directly.
+- **Regression:** The #1221 SQL concurrency/replay suites prove one allocation, cash-delivered bounds, both provider rails, and repeated webhook/worker safety.
+- **Established:** ACTIVE at #1221 CLOSE after migration verification and independent allocation/debt regression PASS.
+
+### I-PROPOSED-1221-GUEST-REFUND-TOKEN-BOUND (ACTIVE)
+- **Rule:** Anonymous venue-refund cancellation, status, and attention recovery require the matching reservation token. Public callers receive no unscoped lookup and no distinguishable secret/state oracle; only a protected hash is stored.
+- **Enforcement:** `guestReservationToken.ts`, guest-facing Edge handlers, FORCE-RLS/grant boundaries, and the approved `/refund/` route classification preserve token-bound authority.
+- **Regression:** The venue-confirm guest-token suite, buyer-route tests, SQL grant tests, and adversarial wrong/missing/rotated-token cases execute in blocking CI.
+- **Established:** ACTIVE at #1221 CLOSE after guest-route reachability and negative-auth tester PASS.
+
+### I-PROPOSED-1221-NOTIFICATION-IS-NONAUTHORITATIVE (ACTIVE)
+- **Rule:** Push, email, and SMS reflect committed refund truth but can never advance, roll back, or fabricate money state. Delivery failure remains retryable/observable without changing the refund.
+- **Enforcement:** The source-refund outbox/delivery ledger and `sourceRefundNotifications.ts` consume committed events; `notify-dispatch`/`notify-outbox-drain` require their existing exact service authorization before claim or provider I/O.
+- **Regression:** The safe-boundary, dual-pool, service-role authorization, attention, and notification happy/adversarial suites prove ordering, idempotency, redaction, and nonauthoritative failure.
+- **Established:** ACTIVE at #1221 CLOSE after the P0 authorization rework, independent true-reversion proof, and exact production deployment.
+
+### I-PROPOSED-1221-REFUND-ACTIONS-TENANT-AUDITED (ACTIVE)
+- **Rule:** Brand staff may act only on their own brand with the required permission. Admin recovery actions are bounded, active-Admin authorized, state/generation/claim checked, and exactly audited; nobody may manually mark a refund processed.
+- **Enforcement:** Guard-first service-only Admin RPCs/Edge functions, immutable query snapshots/cursors, RLS/grants, and audit records own Operations access; browser Admin never holds service authority.
+- **Regression:** Admin SQL/Edge/UI happy/adversarial suites cover cross-tenant denial, stale generation, expired claim, protected guest override, concurrent unseen rows, and forbidden processed mutation.
+- **Established:** ACTIVE at #1221 CLOSE after SC-27 executable unseen-row proof and independent Admin authorization PASS.
+
+### I-PROPOSED-1221-STAY-ADAPTER-NO-INVENTORY-REUSE (ACTIVE)
+- **Rule:** Stay commerce may consume the typed paid-source refund adapter, but it may not reuse restaurant table/reservation inventory or create a second refund truth. Stay activation remains independently gated.
+- **Enforcement:** The source-type constraints and #1221 strict gate keep venue reservation, RSVP contribution, and future Stay paid-source adapters explicit while preserving their separate inventory owners.
+- **Regression:** The #1221 boundary suites and Stay commerce gates reject unsupported source types, cross-source identity substitution, and restaurant-inventory reuse.
+- **Established:** ACTIVE at #1221 CLOSE; Stay remains dark until #1392 independently proves its own end-to-end activation gates.
+
+### I-PROPOSED-1221-ORDERS-UNCHANGED (ACTIVE)
+- **Rule:** Existing order, ticket, and trip refund paths, provider markers, and payout behavior remain unchanged by the venue/RSVP control plane.
+- **Enforcement:** The #1221 strict gate pins the new source-refund boundary while existing #1175/#1179 order refund routers and tests remain the authority for orders.
+- **Regression:** Existing order/Paystack/Stripe refund suites run alongside the #1221 happy/adversarial tests in blocking CI and fail on cross-path semantic drift.
+- **Established:** ACTIVE at #1221 CLOSE after all legacy refund suites and both provider rails passed on the merged/deployed implementation.
+
+---
+
 ## ACTIVE — issue #1436 (temporary secret-capacity exception retired at 85 names)
 
 ### I-PROPOSED-1436-SECRET-CAPACITY-EXIT (ACTIVE)

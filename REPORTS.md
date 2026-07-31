@@ -19,6 +19,8 @@ parentheses for traceability.
 
 ## Shipped
 - 2026-07-30 — Returned production to the normal Supabase secret budget by moving temporary payout, onboarding, refund, and notification controls into existing secure bundles; behavior stayed ON/ON/DISABLED, notification retries remained one-send-only, and the live audit is exactly 85 names with 15 free slots. (#1436, PR #1439)
+- 2026-07-30 — Made Stripe and Paystack refund retries provider-identity-safe: an immediate replay now adopts the original refund instead of posting money twice, permission failures stop before money movement, and production remains fail-closed until activation. (#1430, PR #1433)
+- 2026-07-30 — Venue reservations and RSVP contributions now share one terminally reliable refund control plane across Stripe and Paystack, with original-currency amounts, replay safety, payout/debt convergence, audited Operations recovery, guest status, and notifications; the system is deployed and provider-proven dark. (#1221, PR #1400)
 - 2026-07-30 — Venue owners now see consented organic page views, menu opens, reservation starts, availability checks, completed reservations, and online browsing dayparts directly in each venue Overview, with honest zero states instead of “Coming soon.” (#1421, PR #1434)
 - 2026-07-30 — Fixed listing Insights rendering on a light background; it now keeps Mingla’s canonical dark canvas and readable text and glass across Business web, iOS, and Android. (#1420, PR #1432)
 - 2026-07-30 — Completed Mingla’s Full Rooms analytics program: Business now attributes customers and value to truthful sources, shows private brand patterns and regulars, and gives every listing and venue its own conversion or reservation proof across iOS, Android, and web. (#855, PR #1416)
