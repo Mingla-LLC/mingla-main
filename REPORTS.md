@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-07-30 — Returned production to the normal Supabase secret budget by moving temporary payout, onboarding, refund, and notification controls into existing secure bundles; behavior stayed ON/ON/DISABLED, notification retries remained one-send-only, and the live audit is exactly 85 names with 15 free slots. (#1436, PR #1439)
 - 2026-07-30 — Venue owners now see consented organic page views, menu opens, reservation starts, availability checks, completed reservations, and online browsing dayparts directly in each venue Overview, with honest zero states instead of “Coming soon.” (#1421, PR #1434)
 - 2026-07-30 — Fixed listing Insights rendering on a light background; it now keeps Mingla’s canonical dark canvas and readable text and glass across Business web, iOS, and Android. (#1420, PR #1432)
 - 2026-07-30 — Completed Mingla’s Full Rooms analytics program: Business now attributes customers and value to truthful sources, shows private brand patterns and regulars, and gives every listing and venue its own conversion or reservation proof across iOS, Android, and web. (#855, PR #1416)
