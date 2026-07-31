@@ -6786,3 +6786,26 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 - **Established:** ACTIVE 2026-07-31 at issue #1427 CLOSE after independent tester PASS, all-green
   PR #1450 merge, production migration and Edge deployment, and exact Admin production rollout;
   all seven Stay launch flags remained dark for #1392.
+
+## DRAFT — issue #1423 (Stays in consumer Discover)
+
+### I-1423-STAY-DISCOVERY (DRAFT)
+- **Rule:** Stays is the third option inside the existing consumer Discover capsule, never a new
+  bottom tab or parallel discovery page. Its public RPC returns only verified Stay venues with
+  active settings and live overnight Rooms backed by current policy, source-brand-currency price,
+  ready cover, and future inventory. Date searches enforce every requested night, multi-room guest
+  capacity, minimum/maximum stay rules, stop-sell, and sellable quantity after active/reconciliation
+  holds and active commitments. Cards never invent ratings, scarcity, conversion, or availability;
+  the existing Stay quote remains the final authority. Events and Trips retain their existing
+  filters, scrolling, coach marks, analytics, and entry points. Issue #1423 never enables a Stay flag.
+- **Enforcement:** manifest batch-A gate
+  `.github/scripts/strict-grep/issue-1423-stay-discovery.mjs` with wired synthetic self-test;
+  `.github/workflows/issue-1423-stay-discovery-tests.yml` for scoped consumer tests, lint, and both
+  native bundles; and executable PostgreSQL happy/adversarial suites registered in
+  `.github/workflows/supabase-migrations-and-stripe-deno.yml`.
+- **Regression test:** the SQL suite proves dark behavior, verified-only NGN projection,
+  multi-room/night capacity and stop-sell, bounded hostile inputs, public ACLs, wildcard escaping,
+  and the no-USD/GBP/hold/commitment negative space. The append-only consumer Node pair proves the
+  exact capsule/filter/navigation/state/analytics contract and unchanged Events/Trips branches.
+- **Established:** DRAFT 2026-07-31 at issue #1423 IMPLEMENT. Flips ACTIVE only after independent
+  iOS/Android/runtime/database verification and CLOSE; production Stay flags remain owned by #1392.

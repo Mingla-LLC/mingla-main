@@ -1,0 +1,66 @@
+name: Issue #1423 Consumer Stay discovery
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app-mobile/src/components/DiscoverScreen.tsx"
+      - "app-mobile/src/components/discover/Stay*.tsx"
+      - "app-mobile/src/components/discover/StaysContent.tsx"
+      - "app-mobile/src/components/discover/__tests__/issue1423StayDiscovery*.mjs"
+      - "app-mobile/src/hooks/useDiscoverStays.ts"
+      - "app-mobile/src/services/staysDiscoveryService.ts"
+      - "app-mobile/src/store/appStore.ts"
+      - "supabase/migrations/20270205001423_issue_1423_stay_discovery.sql"
+      - ".github/workflows/issue-1423-stay-discovery-tests.yml"
+  pull_request:
+    paths:
+      - "app-mobile/src/components/DiscoverScreen.tsx"
+      - "app-mobile/src/components/discover/Stay*.tsx"
+      - "app-mobile/src/components/discover/StaysContent.tsx"
+      - "app-mobile/src/components/discover/__tests__/issue1423StayDiscovery*.mjs"
+      - "app-mobile/src/hooks/useDiscoverStays.ts"
+      - "app-mobile/src/services/staysDiscoveryService.ts"
+      - "app-mobile/src/store/appStore.ts"
+      - "supabase/migrations/20270205001423_issue_1423_stay_discovery.sql"
+      - ".github/workflows/issue-1423-stay-discovery-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  consumer-stay-discovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: app-mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: app-mobile/package-lock.json
+      - run: npm ci
+      - name: Run happy and adversarial Stay discovery contracts
+        run: >
+          node --test
+          src/components/discover/__tests__/issue1423StayDiscovery.test.mjs
+          src/components/discover/__tests__/issue1423StayDiscovery.tester.adversarial.test.mjs
+      - name: Lint the Stay discovery slice
+        run: >
+          npx eslint
+          src/components/discover/StayCard.tsx
+          src/components/discover/StayFilterChips.tsx
+          src/components/discover/StaysContent.tsx
+          src/hooks/useDiscoverStays.ts
+          src/services/staysDiscoveryService.ts
+      - name: Bundle iOS consumer app
+        run: npx expo export --platform ios --output-dir /tmp/issue-1423-ios
+      - name: Bundle Android consumer app
+        run: npx expo export --platform android --output-dir /tmp/issue-1423-android
