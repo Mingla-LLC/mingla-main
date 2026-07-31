@@ -212,6 +212,8 @@ jobs:
             -f supabase/migrations/__tests__/issue_1390_stay_guest_reads.adversarial.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1424_stay_authoring.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1424_stay_authoring.tester_adversarial.test.sql
 
   deno-tests:
     name: "Deno unit tests for Stripe shared modules"
