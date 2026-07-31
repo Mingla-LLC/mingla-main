@@ -2,8 +2,11 @@ import type {
   CreateStayOfferingInput,
   StayBulkJobResult,
   StayCurrencyReconciliationInput,
+  StayFeeInput,
   StayInventoryAction,
   StayInventorySnapshot,
+  StayMediaInput,
+  StayPriceInput,
   StaySettingsInput,
 } from "../types/stayInventory";
 import { supabase } from "./supabase";
@@ -104,6 +107,191 @@ export function createStayOffering(input: {
     action: "create_offering",
     venueId: input.venueId,
     payload: input.offering as unknown as Record<string, unknown>,
+  });
+}
+
+export function updateStayOffering(input: {
+  venueId: string;
+  offeringId: string;
+  expectedVersion: number;
+  patch: Partial<CreateStayOfferingInput>;
+}): Promise<{ inventory: StayInventorySnapshot; offeringId: string }> {
+  return manageStayInventory({
+    action: "update_offering",
+    venueId: input.venueId,
+    expectedVersion: input.expectedVersion,
+    payload: {
+      offeringId: input.offeringId,
+      ...input.patch,
+    } as Record<string, unknown>,
+  });
+}
+
+export function replaceStayUnits(input: {
+  venueId: string;
+  offeringId: string;
+  expectedVersion: number;
+  units: { name: string; externalReference?: string }[];
+}): Promise<{ inventory: StayInventorySnapshot }> {
+  return manageStayInventory({
+    action: "replace_units",
+    venueId: input.venueId,
+    expectedVersion: input.expectedVersion,
+    payload: { offeringId: input.offeringId, units: input.units },
+  });
+}
+
+export function changeStayOfferingStatus(input: {
+  venueId: string;
+  offeringId: string;
+  expectedVersion: number;
+  status: "draft" | "live" | "paused" | "archived";
+}): Promise<{ inventory: StayInventorySnapshot }> {
+  return manageStayInventory({
+    action: "change_status",
+    venueId: input.venueId,
+    expectedVersion: input.expectedVersion,
+    payload: { offeringId: input.offeringId, status: input.status },
+  });
+}
+
+export function setStayOfferingPolicy(input: {
+  venueId: string;
+  offeringId: string;
+  expectedVersion: number;
+  policy: NonNullable<CreateStayOfferingInput["policy"]>;
+}): Promise<{ inventory: StayInventorySnapshot }> {
+  return manageStayInventory({
+    action: "set_policy",
+    venueId: input.venueId,
+    expectedVersion: input.expectedVersion,
+    payload: { offeringId: input.offeringId, ...input.policy },
+  });
+}
+
+export function setStayOfferingPrice(input: {
+  venueId: string;
+  offeringId: string;
+  expectedVersion: number;
+  price: StayPriceInput;
+}): Promise<{ inventory: StayInventorySnapshot }> {
+  return manageStayInventory({
+    action: "set_price",
+    venueId: input.venueId,
+    expectedVersion: input.expectedVersion,
+    payload: { offeringId: input.offeringId, ...input.price },
+  });
+}
+
+export function replaceStayOfferingFees(input: {
+  venueId: string;
+  offeringId: string;
+  expectedVersion: number;
+  fees: StayFeeInput[];
+}): Promise<{ inventory: StayInventorySnapshot }> {
+  return manageStayInventory({
+    action: "replace_fees",
+    venueId: input.venueId,
+    expectedVersion: input.expectedVersion,
+    payload: { offeringId: input.offeringId, fees: input.fees },
+  });
+}
+
+export function attachStayOfferingMedia(input: {
+  venueId: string;
+  offeringId: string;
+  expectedVersion: number;
+  media: StayMediaInput;
+}): Promise<{ inventory: StayInventorySnapshot }> {
+  return manageStayInventory({
+    action: "attach_media",
+    venueId: input.venueId,
+    expectedVersion: input.expectedVersion,
+    payload: { offeringId: input.offeringId, ...input.media },
+  });
+}
+
+export function reorderStayOfferingMedia(input: {
+  venueId: string;
+  offeringId: string;
+  expectedVersion: number;
+  mediaIds: string[];
+}): Promise<{ inventory: StayInventorySnapshot }> {
+  return manageStayInventory({
+    action: "reorder_media",
+    venueId: input.venueId,
+    expectedVersion: input.expectedVersion,
+    payload: {
+      offeringId: input.offeringId,
+      mediaIds: input.mediaIds,
+    },
+  });
+}
+
+export function removeStayOfferingMedia(input: {
+  venueId: string;
+  mediaId: string;
+  expectedVersion: number;
+}): Promise<{ inventory: StayInventorySnapshot }> {
+  return manageStayInventory({
+    action: "remove_media",
+    venueId: input.venueId,
+    expectedVersion: input.expectedVersion,
+    payload: { mediaId: input.mediaId },
+  });
+}
+
+export function upsertStayRoomNights(input: {
+  venueId: string;
+  offeringId: string;
+  nights: Record<string, unknown>[];
+}): Promise<{ inventory: StayInventorySnapshot }> {
+  return manageStayInventory({
+    action: "upsert_room_nights",
+    venueId: input.venueId,
+    payload: { offeringId: input.offeringId, nights: input.nights },
+  });
+}
+
+export function upsertStayPlaceSchedule(input: {
+  venueId: string;
+  offeringId: string;
+  expectedVersion?: number | null;
+  schedule: Record<string, unknown>;
+}): Promise<{ inventory: StayInventorySnapshot }> {
+  return manageStayInventory({
+    action: "upsert_place_schedule",
+    venueId: input.venueId,
+    expectedVersion: input.expectedVersion,
+    payload: { offeringId: input.offeringId, ...input.schedule },
+  });
+}
+
+export function materializeStayPlaceWindows(input: {
+  venueId: string;
+  scheduleRuleId: string;
+  fromDate: string;
+  toDate: string;
+}): Promise<{ inventory: StayInventorySnapshot }> {
+  return manageStayInventory({
+    action: "materialize_place_windows",
+    venueId: input.venueId,
+    payload: {
+      scheduleRuleId: input.scheduleRuleId,
+      fromDate: input.fromDate,
+      toDate: input.toDate,
+    },
+  });
+}
+
+export function upsertStayPlaceWindows(input: {
+  venueId: string;
+  windows: Record<string, unknown>[];
+}): Promise<{ inventory: StayInventorySnapshot }> {
+  return manageStayInventory({
+    action: "upsert_place_windows",
+    venueId: input.venueId,
+    payload: { windows: input.windows },
   });
 }
 

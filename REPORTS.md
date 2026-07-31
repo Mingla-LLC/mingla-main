@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-07-31 — Added dark-launched Rooms & Places management for Stay businesses across iOS, Android, and web: staff can create one or many drafts, add photos and named units, set exact-currency prices/fees/policies, manage Room nights and scheduled Place windows, apply blackouts/overrides, and see truthful readiness blockers through the existing permission-safe inventory engine. (#1425, PR #1448)
 - 2026-07-30 — Added dark-launched Stay venue authoring to Mingla Business across iOS, Android, and web, with one canonical Stay category, optional property type, real bank/currency and publish-readiness gates, and direct management paths for Rooms, Places, availability, menus, and settings. (#1424, PR #1446)
 - 2026-07-30 — Made Stripe and Paystack refund retries replay-safe by proving the provider’s exact payment identity and reusing the same refund instead of risking a second one; TEST replay passed, LIVE reads passed without writes, and production refund posting remains disabled. (#1430, PR #1433)
 - 2026-07-30 — Returned production to the normal Supabase secret budget by moving temporary payout, onboarding, refund, and notification controls into existing secure bundles; behavior stayed ON/ON/DISABLED, notification retries remained one-send-only, and the live audit is exactly 85 names with 15 free slots. (#1436, PR #1439)

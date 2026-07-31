@@ -44,11 +44,11 @@ import type {
   StayBookingMode,
   StayPropertyKind,
   StaySettingsInput,
-  StaySettingsRecord,
 } from "../../types/stayInventory";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { VenueMenuModule } from "../venue/VenueMenuModule";
+import { StayInventoryManager } from "./StayInventoryManager";
 import {
   isStaySettingsComplete,
   isStaySettingsFormValid,
@@ -663,48 +663,6 @@ function Field({
   );
 }
 
-function InventoryStatus({
-  venueId,
-  kind,
-}: {
-  venueId: string;
-  kind: "inventory" | "availability";
-}): React.ReactElement {
-  const inventory = useStayInventory(venueId);
-  const count = inventory.data?.offerings.length ?? 0;
-  return (
-    <ScrollView contentContainerStyle={styles.page}>
-      <Text style={styles.pageTitle}>
-        {kind === "inventory" ? "Rooms & Places" : "Availability & pricing"}
-      </Text>
-      <Text style={styles.helper}>
-        {kind === "inventory"
-          ? `${count} offering${count === 1 ? "" : "s"} currently belongs to this Stay.`
-          : "Room nights and Place windows use the same server-authoritative inventory engine."}
-      </Text>
-      <GlassCard variant="base" style={styles.placeholderCard}>
-        {kind === "inventory" ? (
-          <BedDouble size={30} color={accent.warm} />
-        ) : (
-          <CalendarDays size={30} color={accent.warm} />
-        )}
-        <Text style={styles.cardTitle}>
-          {kind === "inventory"
-            ? count === 0
-              ? "No Rooms or Places yet"
-              : "Inventory is ready to manage"
-            : "Availability is not guessed on the device"}
-        </Text>
-        <Text style={styles.helper}>
-          {kind === "inventory"
-            ? "Single and bulk Room/Place editors attach here without creating a second venue."
-            : "Open quantity, prices, restrictions and scheduled Place windows are stored against this exact Stay."}
-        </Text>
-      </GlassCard>
-    </ScrollView>
-  );
-}
-
 export interface StaySuiteShellProps {
   brandId: string;
   venueId: string;
@@ -773,9 +731,10 @@ export function StaySuiteShell({
             <VenueMenuModule brandId={brandId} venueId={venueId} />
           </ScrollView>
         ) : (
-          <InventoryStatus
+          <StayInventoryManager
+            brandId={brandId}
             venueId={venueId}
-            kind={
+            mode={
               activeModule === "rooms_places" ? "inventory" : "availability"
             }
           />
