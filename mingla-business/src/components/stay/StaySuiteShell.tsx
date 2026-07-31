@@ -49,13 +49,19 @@ import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { VenueMenuModule } from "../venue/VenueMenuModule";
 import { StayInventoryManager } from "./StayInventoryManager";
+import { StayReservationsModule } from "./StayReservationsModule";
 import {
   isStaySettingsComplete,
   isStaySettingsFormValid,
 } from "./staySettingsReadiness";
 
 export type StayModule =
-  "overview" | "rooms_places" | "availability_pricing" | "menu" | "settings";
+  | "overview"
+  | "rooms_places"
+  | "availability_pricing"
+  | "reservations"
+  | "menu"
+  | "settings";
 
 const MODULES: readonly {
   id: StayModule;
@@ -69,6 +75,7 @@ const MODULES: readonly {
     label: "Availability & pricing",
     icon: CalendarDays,
   },
+  { id: "reservations", label: "Reservations", icon: FileCheck2 },
   { id: "menu", label: "Menus", icon: Utensils },
   { id: "settings", label: "Settings", icon: Settings },
 ];
@@ -730,6 +737,8 @@ export function StaySuiteShell({
           <ScrollView contentContainerStyle={styles.page}>
             <VenueMenuModule brandId={brandId} venueId={venueId} />
           </ScrollView>
+        ) : activeModule === "reservations" ? (
+          <StayReservationsModule venueId={venueId} />
         ) : (
           <StayInventoryManager
             brandId={brandId}

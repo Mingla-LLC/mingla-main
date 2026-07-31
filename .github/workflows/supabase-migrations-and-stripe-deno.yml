@@ -216,6 +216,8 @@ jobs:
             -f supabase/migrations/__tests__/issue_1424_stay_authoring.tester_adversarial.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1425_stay_inventory_projection.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1426_stay_staff_reservations.test.sql
 
   deno-tests:
     name: "Deno unit tests for Stripe shared modules"
@@ -273,6 +275,10 @@ jobs:
             # ISSUE-1390 — payment retry resumes one bound attempt across both apps.
             supabase/functions/stay-reservations/paymentResume.issue1390.test.ts
             supabase/functions/_shared/stayPaymentResume.issue1390.test.ts
+            # ISSUE-1426 — staff queue, whole-group response, and reviewed cancellation routing.
+            supabase/functions/stay-reservations/businessManagement.issue1426.test.ts
+            # ISSUE-1426 TESTER — auth boundary, permission/version mapping, and DB-detail redaction.
+            supabase/functions/stay-reservations/businessManagement.issue1426.tester.adversarial.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then

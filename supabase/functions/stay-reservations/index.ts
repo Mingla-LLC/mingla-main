@@ -20,6 +20,8 @@ const actions = new Set([
   "approve_request",
   "decline_request",
   "get_group",
+  "list_staff_groups",
+  "get_staff_group",
   "create_payment",
   "cancel_preview",
   "cancel",
@@ -166,6 +168,9 @@ function validPayload(value: unknown): value is RequestBody {
       typeof payload.reason === "string" &&
       payload.reason.trim().length >= 3 &&
       payload.reason.trim().length <= 500;
+  }
+  if (body.action === "list_staff_groups") {
+    return typeof payload.venueId === "string" && UUID.test(payload.venueId);
   }
   return typeof payload.groupId === "string" &&
     UUID.test(payload.groupId);
@@ -427,7 +432,7 @@ export async function handleStayReservations(
   }
 
   if (body.action === "cancel_preview") {
-    const { data, error } = await client.rpc("issue_1389_cancel_preview", {
+    const { data, error } = await client.rpc("issue_1426_cancel_preview", {
       p_group_id: payload.groupId,
       p_selected_line_ids: payload.selectedLineIds,
       p_expected_group_version: body.expectedVersion,
@@ -438,11 +443,43 @@ export async function handleStayReservations(
   }
 
   if (body.action === "cancel") {
-    const { data, error } = await client.rpc("issue_1389_cancel", {
+    const { data, error } = await client.rpc("issue_1426_cancel", {
       p_preview_id: payload.previewId,
       p_preview_hash: payload.previewHash,
       p_idempotency_key: payload.idempotencyKey,
       p_reason: payload.reason,
+      p_request_id: requestId,
+    });
+    if (error) return errorResponse(error, requestId);
+    return json(200, { kind: "success", data, requestId });
+  }
+
+  if (body.action === "list_staff_groups") {
+    const { data, error } = await client.rpc(
+      "issue_1426_list_staff_stay_reservations",
+      { p_venue_id: payload.venueId },
+    );
+    if (error) return errorResponse(error, requestId);
+    return json(200, { kind: "success", data, requestId });
+  }
+
+  if (body.action === "get_staff_group") {
+    const { data, error } = await client.rpc(
+      "issue_1426_staff_group_projection",
+      { p_group_id: payload.groupId },
+    );
+    if (error) return errorResponse(error, requestId);
+    return json(200, { kind: "success", data, requestId });
+  }
+
+  if (
+    body.action === "approve_request" || body.action === "decline_request"
+  ) {
+    const { data, error } = await client.rpc("issue_1426_manage_request", {
+      p_action: body.action,
+      p_group_id: payload.groupId,
+      p_expected_version: body.expectedVersion,
+      p_idempotency_key: payload.idempotencyKey,
       p_request_id: requestId,
     });
     if (error) return errorResponse(error, requestId);

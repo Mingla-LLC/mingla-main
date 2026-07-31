@@ -6,6 +6,9 @@ import type {
   StayReservationAction,
   StayReservationEnvelope,
   StayReservationGroup,
+  StayCancelPreview,
+  StayStaffReservationGroup,
+  StayStaffReservationList,
 } from "../types/stayReservation";
 
 type InvokeInput = {
@@ -128,6 +131,54 @@ export const stayReservationService = {
     return invoke<StayReservationGroup>({
       action: "get_group",
       payload: { groupId },
+    });
+  },
+
+  listStaffGroups(venueId: string): Promise<StayStaffReservationList> {
+    return invoke<StayStaffReservationList>({
+      action: "list_staff_groups",
+      payload: { venueId },
+    });
+  },
+
+  getStaffGroup(groupId: string): Promise<StayStaffReservationGroup> {
+    return invoke<StayStaffReservationGroup>({
+      action: "get_staff_group",
+      payload: { groupId },
+    });
+  },
+
+  cancelPreview(input: {
+    groupId: string;
+    selectedLineIds: string[];
+    expectedVersion: number;
+  }): Promise<StayCancelPreview> {
+    return invoke<StayCancelPreview>({
+      action: "cancel_preview",
+      payload: {
+        groupId: input.groupId,
+        selectedLineIds: input.selectedLineIds,
+      },
+      expectedVersion: input.expectedVersion,
+    });
+  },
+
+  cancel(input: {
+    previewId: string;
+    previewHash: string;
+    reason: string;
+    idempotencyKey: string;
+  }): Promise<{
+    refundId: string;
+    groupId: string;
+    state: string;
+    amountMinor: string;
+    currencyCode: string;
+    group: StayReservationGroup;
+  }> {
+    return invoke({
+      action: "cancel",
+      payload: input,
     });
   },
 };

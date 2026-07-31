@@ -6738,3 +6738,23 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   byte-identical when empty) + the strict-grep gate legs (7)/(8)/(9).
 - **Status:** ACTIVE (merged #868, PR #1333, 2026-07-28).
 - **Established:** DRAFT 2026-07-28 at issue #868 IMPLEMENT (Pass 1); consumer coverage added Pass 2 (2026-07-28).
+
+## ACTIVE — issue #1426 (permission-safe Stay reservation management)
+
+### I-1426-STAY-STAFF-RESERVATIONS (ACTIVE)
+- **Rule:** A Stay reservation is managed as one server-owned Room-and-Place group. Brand staff may
+  inspect, approve, decline, or cancel only when their accepted brand role grants that exact action
+  and a `stay.<action>` override has not denied it. Approval and decline are whole-group only;
+  payment, refund, retained amount, inventory release, payout impact, and reconciliation truth are
+  projected by server RPCs. Clients never mark a group paid/refunded and issue #1426 never enables a
+  Stay launch flag.
+- **Enforcement:** `.github/scripts/strict-grep/issue-1426-stay-reservations.mjs` (manifest batch A,
+  self-test wired), `supabase/migrations/__tests__/issue_1426_stay_staff_reservations.test.sql`, and
+  `supabase/functions/stay-reservations/businessManagement.issue1426.test.ts` plus the independent
+  `businessManagement.issue1426.tester.adversarial.test.ts` security/error-boundary suite.
+- **Regression test:** The executable SQL creates a real two-Room request through the existing cart,
+  proves exact queue/detail money and allocations, whole-group payment-gated approval, deny-only
+  permission overrides, cross-brand denial, authenticated-only RPC ACLs, and dark flags. The Deno
+  test proves the Edge boundary routes staff reads/actions/cancellation only through #1426 wrappers.
+- **Established:** ACTIVE 2026-07-31 at issue #1426 CLOSE after Android, iOS, SQL, Edge, strict-gate,
+  and independent adversarial verification; all Stay launch flags remain dark for #1392.
