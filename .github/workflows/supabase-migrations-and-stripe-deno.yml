@@ -277,6 +277,8 @@ jobs:
             supabase/functions/_shared/stayPaymentResume.issue1390.test.ts
             # ISSUE-1426 — staff queue, whole-group response, and reviewed cancellation routing.
             supabase/functions/stay-reservations/businessManagement.issue1426.test.ts
+            # ISSUE-1426 TESTER — auth boundary, permission/version mapping, and DB-detail redaction.
+            supabase/functions/stay-reservations/businessManagement.issue1426.tester.adversarial.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then
