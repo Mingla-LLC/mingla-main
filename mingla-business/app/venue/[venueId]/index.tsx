@@ -34,6 +34,7 @@ import { ArrowLeft } from "lucide-react-native";
 
 import { VenueClaimFeedbackSheet } from "../../../src/components/brand/VenueClaimFeedbackSheet";
 import { VenueClaimStatusBanner } from "../../../src/components/brand/VenueClaimStatusBanner";
+import { StaySuiteShell } from "../../../src/components/stay/StaySuiteShell";
 import { ListingStatusChip } from "../../../src/components/venue/ListingStatusChip";
 import { VenueModulePillRow } from "../../../src/components/venue/VenueModulePillRow";
 import { VenueSuiteShell } from "../../../src/components/venue/VenueSuiteShell";
@@ -109,8 +110,13 @@ export default function VenueManagementPage(): React.ReactElement {
   const followUpAt = venue?.claimFollowUpAt ?? null;
   const hasFollowUp =
     (venue?.claimStatus === "pending_review" ||
-      venue?.claimStatus === "suspended") && Boolean(followUpAt);
-  const openFeedbackCount = useVenueClaimOpenCount(brandId, venueId, followUpAt);
+      venue?.claimStatus === "suspended") &&
+    Boolean(followUpAt);
+  const openFeedbackCount = useVenueClaimOpenCount(
+    brandId,
+    venueId,
+    followUpAt,
+  );
   const [feedbackVisible, setFeedbackVisible] = useState<boolean>(false);
   const [toast, setToast] = useState<{
     kind: "success" | "error";
@@ -199,7 +205,9 @@ export default function VenueManagementPage(): React.ReactElement {
         </View>
       </View>
 
-      {!isWideDesktop && venueSelectModule !== null ? (
+      {!isWideDesktop &&
+      venue.venueCategory !== "stay" &&
+      venueSelectModule !== null ? (
         <VenueModulePillRow
           modules={venueVisibleModules}
           activeModule={venueActiveModule}
@@ -220,7 +228,16 @@ export default function VenueManagementPage(): React.ReactElement {
         </View>
       ) : null}
 
-      <VenueSuiteShell brandId={brandId} venueId={venueId} focus={focus} />
+      {venue.venueCategory === "stay" && brandId !== null ? (
+        <StaySuiteShell
+          brandId={brandId}
+          venueId={venueId}
+          venueName={venue.name}
+          venueApproved={venue.claimStatus === "verified"}
+        />
+      ) : (
+        <VenueSuiteShell brandId={brandId} venueId={venueId} focus={focus} />
+      )}
 
       <VenueClaimFeedbackSheet
         visible={feedbackVisible}

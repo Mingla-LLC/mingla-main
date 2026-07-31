@@ -12,12 +12,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 // ORCH-0892-B v2: ScrollView via SmartScrollView wrapper (KAS native /
 // passthrough web). KeyboardAvoidingView removed. Per SPEC §7.F.
 import { ScrollView } from "../../src/wrappers/SmartScrollView";
@@ -45,6 +40,7 @@ import { IconChrome } from "../../src/components/ui/IconChrome";
 import { Input } from "../../src/components/ui/Input";
 import { usePoolMatchSearch } from "../../src/hooks/usePoolMatchSearch";
 import { useCurrentBrand } from "../../src/hooks/useCurrentBrand";
+import { useFeatureFlag } from "../../src/hooks/useFeatureFlag";
 import { useDraftVenueStore } from "../../src/store/draftVenueStore";
 import {
   fetchPlaceAdoptionDetail,
@@ -60,9 +56,7 @@ import type { VenueCategory } from "../../src/types/brand";
 
 type Phase = "gate" | "category" | "wizard" | "success";
 
-function resolveInitialPhase(
-  fromPoolParam: boolean,
-): Phase {
+function resolveInitialPhase(fromPoolParam: boolean): Phase {
   const st = useDraftVenueStore.getState();
   // ?pool=1 continues to mean wizard-resume for pool-linked drafts (claim or
   // legacy — the durable deep-link contract).
@@ -103,6 +97,8 @@ export default function VenueCreateRoute(): React.ReactElement {
   const claimDraft = useDraftVenueStore((s) => s.claim);
   const draftStep = useDraftVenueStore((s) => s.step);
   const draftDisplayName = useDraftVenueStore((s) => s.displayName);
+  const stayAuthoringFlag = useFeatureFlag("STAY_VENUE_AUTHORING");
+  const stayAuthoringEnabled = stayAuthoringFlag.data === true;
 
   const [phase, setPhase] = useState<Phase>(() =>
     resolveInitialPhase(fromPoolParam),
@@ -238,9 +234,8 @@ export default function VenueCreateRoute(): React.ReactElement {
 
   const handleContinueAnyway = useCallback(
     (match: PoolMatch): void => {
-      const { photoUris: _legacy, ...prefill } = prefillDraftFromPoolMatch(
-        match,
-      );
+      const { photoUris: _legacy, ...prefill } =
+        prefillDraftFromPoolMatch(match);
       patch(prefill);
       setPoolNote(null);
       setPhase("wizard");
@@ -293,7 +288,12 @@ export default function VenueCreateRoute(): React.ReactElement {
   if (phase === "success") {
     const isClaimSuccess = claimSuccessName !== null;
     return (
-      <View style={[styles.root, { paddingTop: insets.top, paddingHorizontal: spacing.lg }]}>
+      <View
+        style={[
+          styles.root,
+          { paddingTop: insets.top, paddingHorizontal: spacing.lg },
+        ]}
+      >
         <View style={styles.successInner}>
           <Text style={styles.successTitle}>
             {isClaimSuccess
@@ -428,7 +428,8 @@ export default function VenueCreateRoute(): React.ReactElement {
             ) : null}
             <Text style={styles.h1}>What’s your venue called?</Text>
             <Text style={styles.sub}>
-              We’ll check our directory so we can prefill your listing when we know you.
+              We’ll check our directory so we can prefill your listing when we
+              know you.
             </Text>
             <Input
               variant="text"
@@ -472,7 +473,9 @@ export default function VenueCreateRoute(): React.ReactElement {
                 ))}
               </View>
             ) : null}
-            {poolNote !== null ? <Text style={styles.warn}>{poolNote}</Text> : null}
+            {poolNote !== null ? (
+              <Text style={styles.warn}>{poolNote}</Text>
+            ) : null}
             <Button
               label="Continue without a match"
               variant="primary"
@@ -495,6 +498,8 @@ export default function VenueCreateRoute(): React.ReactElement {
             <VenueCategoryPicker
               value={venueCategory}
               onChange={(v: VenueCategory) => patch({ venueCategory: v })}
+              includeStay={stayAuthoringEnabled}
+              stayDisabled={!stayAuthoringEnabled}
               testID="venue-category-picker"
             />
             {/* B1: fullWidth makes Continue stretch to the same insets as the
@@ -505,7 +510,10 @@ export default function VenueCreateRoute(): React.ReactElement {
               variant="primary"
               size="lg"
               fullWidth
-              disabled={venueCategory === null}
+              disabled={
+                venueCategory === null ||
+                (venueCategory === "stay" && !stayAuthoringEnabled)
+              }
               onPress={handleCategoryContinue}
             />
           </>

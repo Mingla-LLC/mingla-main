@@ -17,8 +17,12 @@ import {
   typography,
 } from "../../../constants/designSystem";
 import type { VenueCategory } from "../../../types/brand";
-import { provenanceFor, useDraftVenueStore } from "../../../store/draftVenueStore";
+import {
+  provenanceFor,
+  useDraftVenueStore,
+} from "../../../store/draftVenueStore";
 import { VenueCategoryPicker } from "../../brand/VenueCategoryPicker";
+import { useFeatureFlag } from "../../../hooks/useFeatureFlag";
 import { ProvenanceChip } from "../../ui/ProvenanceChip";
 
 const CAT_LABEL: Record<VenueCategory, string> = {
@@ -35,16 +39,19 @@ export interface ClaimStepCategoryProps {
 export const ClaimStepCategory: React.FC<ClaimStepCategoryProps> = ({
   showErrors,
 }) => {
+  const stayAuthoringFlag = useFeatureFlag("STAY_VENUE_AUTHORING");
   const draft = useDraftVenueStore();
   const patch = useDraftVenueStore((s) => s.patch);
   const confident = draft.claim?.adopted.categoryConfident === true;
-  const adoptedLabel = draft.claim !== null && confident
-    ? CAT_LABEL[draft.claim.adopted.category]
-    : null;
+  const adoptedLabel =
+    draft.claim !== null && confident
+      ? CAT_LABEL[draft.claim.adopted.category]
+      : null;
   const chip = provenanceFor("category", draft);
-  const err = showErrors && draft.venueCategory === null
-    ? "Pick a category to continue."
-    : null;
+  const err =
+    showErrors && draft.venueCategory === null
+      ? "Pick a category to continue."
+      : null;
 
   return (
     <View style={styles.host}>
@@ -60,6 +67,10 @@ export const ClaimStepCategory: React.FC<ClaimStepCategoryProps> = ({
       <VenueCategoryPicker
         value={draft.venueCategory}
         onChange={(v: VenueCategory) => patch({ venueCategory: v })}
+        includeStay={
+          stayAuthoringFlag.data === true || draft.venueCategory === "stay"
+        }
+        stayDisabled={stayAuthoringFlag.data !== true}
         testID="claim-category-picker"
       />
       {err !== null ? <Text style={styles.err}>{err}</Text> : null}

@@ -138,6 +138,9 @@ const AUTH_SCOPED_HOOK_FILES = [
   // #1384 — both reads are brand-team/auth.uid()-scoped. A pre-auth request
   // would cache an RLS-empty success and hide the canonical currency/range.
   "useBrandDiscoveryCurrency.ts",
+  // Issue #1424: Stay authoring reads flags and inventory only after auth settles.
+  "useFeatureFlag.ts",
+  "useStayInventory.ts",
   "usePlaceDiscoveryPriceRange.ts",
   // #1390 — group/list reads are auth.uid()-owned Stay reservations.
   "useStayGuest.ts",

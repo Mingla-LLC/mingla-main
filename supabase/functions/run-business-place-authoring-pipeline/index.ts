@@ -123,7 +123,7 @@ type Action =
   // META-ORCH-1290 D-2: approve-time 16-signal eval, invoked service-to-service
   // by admin-review-venue-claim (service-role auth branch) — never user-callable.
   | "evaluate_signals";
-type VenueCategory = "restaurant" | "play" | "creative_and_arts";
+type VenueCategory = "restaurant" | "play" | "creative_and_arts" | "stay";
 
 // META-ORCH-1009 Sub-E: a self-listed/claimed venue must upload 5–20 gallery
 // photos (in addition to the hero) before it can go live. The min is a hard
@@ -261,6 +261,14 @@ function categoryTypes(category: VenueCategory | null | undefined): {
   }
   if (category === "creative_and_arts") {
     return { primaryType: "art_gallery", types: ["art_gallery", "point_of_interest"] };
+  }
+  if (category === "stay") {
+    // Google/provider vocabulary is translated once at this boundary. Mingla's
+    // internal category and domain remain canonical `stay`.
+    return {
+      primaryType: "lodging",
+      types: ["lodging", "point_of_interest", "establishment"],
+    };
   }
   return { primaryType: "restaurant", types: ["restaurant", "food", "point_of_interest"] };
 }

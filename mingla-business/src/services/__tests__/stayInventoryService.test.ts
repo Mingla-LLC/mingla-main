@@ -9,7 +9,9 @@ jest.mock("../supabase", () => ({
 import {
   bulkCreateStayOfferings,
   createStayOffering,
+  publishStay,
   resolveStayCurrencyReconciliation,
+  saveStaySettings,
 } from "../stayInventoryService";
 
 describe("Stay inventory service", () => {
@@ -144,5 +146,66 @@ describe("Stay inventory service", () => {
     });
     expect(mockInvoke.mock.calls[0][1].body.payload.stayItems).toHaveLength(2);
     expect(mockInvoke.mock.calls[0][1].body.payload.ranges).toEqual([]);
+  });
+
+  it("saves property settings and publishes with optimistic version authority", async () => {
+    mockInvoke.mockResolvedValue({
+      data: {
+        kind: "success",
+        data: { inventory: { settings: { version: 5 } } },
+        requestId: "request-4",
+      },
+      error: null,
+    });
+    await saveStaySettings({
+      venueId: "venue-1",
+      expectedVersion: 3,
+      settings: {
+        propertyKind: "hotel",
+        summary: "A complete city-centre Stay property summary.",
+        timezone: "Africa/Lagos",
+        defaultBookingMode: "request",
+        checkInTime: "15:00",
+        checkOutTime: "11:00",
+        amenities: ["Wi-Fi"],
+      },
+    });
+    await publishStay({ venueId: "venue-1", expectedVersion: 5 });
+
+    expect(mockInvoke.mock.calls[0][1].body).toEqual({
+      action: "save_settings",
+      venueId: "venue-1",
+      payload: expect.objectContaining({
+        propertyKind: "hotel",
+        timezone: "Africa/Lagos",
+      }),
+      expectedVersion: 3,
+    });
+    expect(mockInvoke.mock.calls[1][1].body).toEqual({
+      action: "publish_stay",
+      venueId: "venue-1",
+      payload: {},
+      expectedVersion: 5,
+    });
+  });
+
+  it("surfaces the server's stable publish code without leaking response detail", async () => {
+    mockInvoke.mockResolvedValue({
+      data: null,
+      error: {
+        message: "Edge Function returned a non-2xx status code",
+        context: new Response(
+          JSON.stringify({
+            code: "paid_currency_not_ready",
+            detail: "private-provider-detail",
+          }),
+          { status: 409 },
+        ),
+      },
+    });
+
+    await expect(
+      publishStay({ venueId: "venue-1", expectedVersion: 5 }),
+    ).rejects.toThrow("paid_currency_not_ready");
   });
 });
