@@ -34,6 +34,15 @@ import {
   type SupabaseClient,
 } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
+import {
+  classifyEntrySource,
+  deriveReferrerHost,
+} from "../_shared/entrySource.ts";
+export {
+  classifyEntrySource,
+  deriveReferrerHost,
+  type EntrySource,
+} from "../_shared/entrySource.ts";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -263,180 +272,6 @@ async function resolveCampaignFromParam(
   } catch {
     return empty;
   }
-}
-
-// ── ISSUE-855 PR-2 · entry_source classification (referrer host → source) ─────
-//
-// Server-side, forward-only. The touch's entry_source is derived from an ad
-// click-id (=> 'ad', takes precedence) else the referrer HOST against a
-// maintained host-set. Never fabricates: a referrer we cannot categorise is
-// 'unknown'; an empty referrer with no ad signal is 'direct'. The allowed set is
-// pinned by the DB CHECK (ad|search|social|organic|direct|unknown).
-
-export type EntrySource =
-  | "ad"
-  | "search"
-  | "social"
-  | "organic"
-  | "direct"
-  | "unknown";
-
-// REGISTRABLE-DOMAIN suffix set. A host matches ONLY when it equals the domain OR
-// is a subdomain of it (host === d || host.endsWith('.'+d)) — NEVER label-inclusion.
-// This classifies real subdomains ('l.instagram.com', 'www.google.co.uk',
-// 'm.facebook.com') while REJECTING attacker lookalikes ('google.com.attacker.net',
-// 'instagram.evil.com', 'x.com.evil.net', 'mygoogle.com' → unknown). Multi-TLD
-// engines (google/yahoo/yandex) enumerate their common registrable domains — a
-// maintained set (Mingla's markets: US/UK/NG covered); an unlisted rare ccTLD is
-// honestly 'unknown', never a security bypass.
-const SEARCH_DOMAINS: readonly string[] = [
-  "google.com",
-  "google.co.uk",
-  "google.de",
-  "google.fr",
-  "google.es",
-  "google.it",
-  "google.nl",
-  "google.ca",
-  "google.com.au",
-  "google.co.in",
-  "google.co.jp",
-  "google.com.br",
-  "google.ru",
-  "google.pl",
-  "google.ie",
-  "google.com.ng",
-  "google.co.za",
-  "google.com.mx",
-  "google.co.kr",
-  "google.com.tr",
-  "google.se",
-  "google.ch",
-  "bing.com",
-  "duckduckgo.com",
-  "yahoo.com",
-  "search.yahoo.com",
-  "yahoo.co.uk",
-  "yahoo.co.jp",
-  "ecosia.org",
-  "baidu.com",
-  "yandex.com",
-  "yandex.ru",
-  "qwant.com",
-  "startpage.com",
-  "ask.com",
-  "aol.com",
-  "naver.com",
-  "seznam.cz",
-  "search.brave.com",
-];
-const SOCIAL_DOMAINS: readonly string[] = [
-  "instagram.com",
-  "instagr.am",
-  "tiktok.com",
-  "facebook.com",
-  "fb.com",
-  "fb.me",
-  "m.facebook.com",
-  "messenger.com",
-  "twitter.com",
-  "x.com",
-  "t.co",
-  "snapchat.com",
-  "reddit.com",
-  "threads.net",
-  "youtube.com",
-  "youtu.be",
-  "linkedin.com",
-  "lnkd.in",
-  "pinterest.com",
-  "pin.it",
-  "whatsapp.com",
-  "wa.me",
-  "telegram.org",
-  "t.me",
-  "discord.com",
-  "tumblr.com",
-  "twitch.tv",
-  "weibo.com",
-];
-// A Mingla-owned referrer host = internal navigation = organic (Mingla-driven).
-// Suffix match covers www / go / biz / careers subdomains.
-const MINGLA_SUFFIXES: readonly string[] = [
-  "usemingla.com",
-  "mingla.app",
-];
-
-/**
- * Reduce any referrer input to a bare, lowercased HOST — no path/query/fragment
- * (SC-8/SC-9). Accepts a full URL OR an already-bare host (the web client sends
- * the host; this stays robust for any other caller). Returns null when there is
- * nothing host-shaped to store.
- */
-export function deriveReferrerHost(referrer: unknown): string | null {
-  if (typeof referrer !== "string") return null;
-  const raw = referrer.trim();
-  if (raw.length === 0) return null;
-  let host = "";
-  try {
-    host = new URL(raw).hostname;
-  } catch {
-    host = "";
-  }
-  // Fall back to a manual parse when there was no scheme (URL throws) OR the input
-  // was opaque (e.g. "host:443/path" parses as a scheme → empty hostname).
-  if (host.length === 0) {
-    host = raw
-      .replace(/^[a-z][a-z0-9+.-]*:\/\//i, "") // strip scheme://
-      .split("/")[0]
-      .split("?")[0]
-      .split("#")[0];
-    const at = host.lastIndexOf("@"); // strip any userinfo
-    if (at >= 0) host = host.slice(at + 1);
-    const colon = host.indexOf(":"); // strip port
-    if (colon >= 0) host = host.slice(0, colon);
-  }
-  host = host.trim().toLowerCase();
-  if (host.startsWith("www.")) host = host.slice(4);
-  // Defense-in-depth: a host is host-shaped only — never let a path/PII through.
-  if (host.length === 0 || host.length > 253 || !/^[a-z0-9.-]+$/.test(host)) {
-    return null;
-  }
-  return host;
-}
-
-/**
- * Registrable-domain SUFFIX match: true only when `host` IS `d` or a subdomain of
- * `d` (host === d || host.endsWith('.'+d)). Never label-inclusion — so
- * 'google.com.attacker.net' / 'instagram.evil.com' / 'x.com.evil.net' do NOT match
- * (the attacker domain is the registrable one), while real subdomains do.
- */
-function matchesDomain(host: string, domains: readonly string[]): boolean {
-  return domains.some((d) => host === d || host.endsWith("." + d));
-}
-
-function isMinglaHost(host: string): boolean {
-  return matchesDomain(host, MINGLA_SUFFIXES);
-}
-
-/**
- * Classify the visit source. Precedence: an ad click-id/campaign always wins (an
- * ad click that also carries a social referrer is still 'ad'); then the referrer
- * host; then direct (no referrer, no ad signal). Never fabricates.
- */
-export function classifyEntrySource(input: {
-  hasAdSignal: boolean;
-  referrerHost: string | null;
-}): EntrySource {
-  if (input.hasAdSignal) return "ad";
-  const host = input.referrerHost;
-  if (host) {
-    if (isMinglaHost(host)) return "organic";
-    if (matchesDomain(host, SEARCH_DOMAINS)) return "search";
-    if (matchesDomain(host, SOCIAL_DOMAINS)) return "social";
-    return "unknown"; // referred by some other site — honestly not categorised
-  }
-  return "direct";
 }
 
 // ── Handler (exported for runtime tests) ─────────────────────────────────────

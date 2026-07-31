@@ -160,6 +160,10 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
       body.attributionClickId.trim()
     ? body.attributionClickId.trim()
     : null;
+  const organicJourneyToken = typeof body.organicJourneyToken === "string" &&
+      body.organicJourneyToken.trim()
+    ? body.organicJourneyToken.trim()
+    : null;
 
   const uuidRe =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -238,6 +242,33 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     }
     venueId = String((rows[0] as { id: unknown }).id);
     brandId = legacyBrandId;
+  }
+
+  // #1421 — organic attribution is deliberately fail-open. An absent, invalid,
+  // expired, or cross-venue token suppresses attribution and never blocks a
+  // legitimate reservation.
+  let organicJourneyId: string | null = null;
+  if (organicJourneyToken !== null) {
+    try {
+      const { data: journey } = await supabase
+        .from("venue_organic_journeys")
+        .select("id, brand_id, venue_id, expires_at")
+        .eq("token_hash", await sha256Hex(organicJourneyToken))
+        .maybeSingle();
+      if (
+        journey !== null &&
+        String(journey.brand_id) === brandId &&
+        String(journey.venue_id) === venueId &&
+        Date.parse(String(journey.expires_at)) > Date.now()
+      ) {
+        organicJourneyId = String(journey.id);
+      }
+    } catch (error) {
+      console.warn(
+        "[venue-reservation-create] organic journey ignored (non-fatal)",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
   }
 
   // ── (1) The venue must be reservable (settings are PER VENUE, M3). ──────────
@@ -384,6 +415,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
         pricing_breakdown: null,
         status: "completed",
         reservation_id: reservationId,
+        organic_journey_id: organicJourneyId,
       });
       if (freeSessionError) {
         console.error("free_reservation_guest_credential_persist_failed", {
@@ -598,6 +630,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
       buyerStatusTokenHash: await sha256Hex(buyerStatusToken),
       applicationFeeAmountCents: psSubtotal.miglaFeeCents,
       pricingBreakdown: psBreakdown,
+      organicJourneyId,
     });
     if (sessionId === null) {
       return jsonResponse({ error: "reservation_session_failed" }, 500);
@@ -763,6 +796,7 @@ serve(wrapEdgeHandler("venue-reservation-create", async (req) => {
     applicationFeeAmountCents,
     pricingBreakdown,
     stripeAccountId,
+    organicJourneyId,
   });
   if (sessionId === null) {
     return jsonResponse({ error: "reservation_session_failed" }, 500);
@@ -1053,6 +1087,7 @@ interface SessionInsert {
   applicationFeeAmountCents: number;
   pricingBreakdown: PricingBreakdown;
   stripeAccountId?: string | null;
+  organicJourneyId: string | null;
 }
 
 // deno-lint-ignore no-explicit-any
@@ -1089,6 +1124,7 @@ async function insertReservationSession(
       stripe_account_id: s.stripeAccountId ?? null,
       status: "pending",
       expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      organic_journey_id: s.organicJourneyId,
     })
     .select("id")
     .single();

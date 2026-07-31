@@ -106,6 +106,9 @@ const INVARIANT_CONVERT = [
   // #1403 removes the obsolete brand ad tile; opposite invariant is enforced
   // by issue-1403-listing-insights-wiring.mjs.
   "src/components/venue/__tests__/venueAdsDrivenTile.issue865pr1.test.ts",
+  // #1421 replaces the placeholder-pinning rule with the CI-wired truthful
+  // organic-insight gate and behavioral/render coverage.
+  "src/components/venue/__tests__/venueIntelligence.noFabrication.test.ts",
 ];
 
 // Render/RTL suites mis-swept into the default node/ts-jest config. Each imports a

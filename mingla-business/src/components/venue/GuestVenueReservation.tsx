@@ -29,6 +29,11 @@ import {
 } from "../../constants/designSystem";
 import { usePublicVenueAvailability } from "../../hooks/usePublicVenueAvailability";
 import { createGuestVenueReservation } from "../../services/venueGuestReservationService";
+import {
+  captureVenueOrganicEvent,
+  getVenueOrganicJourneyToken,
+} from "../../services/venueOrganicCaptureService";
+import { runBuyerVenueOrganicCapture } from "../../services/venueOrganicCapturePolicy";
 import { composeE164 } from "../../utils/phone";
 import { Button } from "../ui/Button";
 import { Icon } from "../ui/Icon";
@@ -128,6 +133,12 @@ export function GuestVenueReservation({
       brand_id: brandId,
       venue_id: venueId,
     });
+    runBuyerVenueOrganicCapture(analyticsSurface, () => {
+      void captureVenueOrganicEvent(
+        { brandId, venueId },
+        "availability_shown",
+      );
+    });
   }, [analyticsSurface, availability.data, brandId, venueId]);
 
   const submit = async (): Promise<void> => {
@@ -165,6 +176,7 @@ export function GuestVenueReservation({
         occasion: occasion.trim() || null,
         guestNotes: notes.trim() || null,
         attributionClickId: getStoredClickAttribution().clickId,
+        organicJourneyToken: getVenueOrganicJourneyToken({ brandId, venueId }),
       });
       if (result.kind === "free_completed") {
         setCompletedId(result.reservationId);

@@ -31,6 +31,7 @@ import {
 import { VenueReserveSheet } from "../components/expandedCard/VenueReserveSheet";
 import { usePublicVenue } from "../hooks/usePublicVenue";
 import { postHogService } from "../services/postHogService";
+import { captureVenueOrganicEvent } from "../services/venueOrganicCaptureService";
 import { ConsumerStayGuestExperience } from "../components/stay/ConsumerStayGuestExperience";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -88,8 +89,16 @@ export default function ConsumerPublicVenueScreen(): React.ReactElement {
     [venue],
   );
   const onAvailabilityResultViewed = useCallback(
-    () => captureVenueFunnel("venue_availability_result_viewed"),
-    [captureVenueFunnel],
+    () => {
+      captureVenueFunnel("venue_availability_result_viewed");
+      if (venue !== null) {
+        void captureVenueOrganicEvent(
+          { brandId: venue.brandId, venueId: venue.id },
+          "availability_shown",
+        );
+      }
+    },
+    [captureVenueFunnel, venue],
   );
   const onSlotSelected = useCallback(
     () => captureVenueFunnel("venue_reservation_slot_selected"),
@@ -212,6 +221,10 @@ export default function ConsumerPublicVenueScreen(): React.ReactElement {
                   brand_id: venue.brandId,
                   venue_id: venue.id,
                 });
+                void captureVenueOrganicEvent(
+                  { brandId: venue.brandId, venueId: venue.id },
+                  "reservation_start",
+                );
               }}
               accessibilityRole="button"
               accessibilityLabel="Find a table"
@@ -311,6 +324,10 @@ export default function ConsumerPublicVenueScreen(): React.ReactElement {
                     brand_id: venue.brandId,
                     venue_id: venue.id,
                   },
+                );
+                void captureVenueOrganicEvent(
+                  { brandId: venue.brandId, venueId: venue.id },
+                  tab === "menu" ? "menu_open" : "page_view",
                 );
               }
             }}
