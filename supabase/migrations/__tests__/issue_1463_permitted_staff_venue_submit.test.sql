@@ -36,6 +36,8 @@ SELECT '[
   {"weekday":6,"open_time":null,"close_time":null,"is_closed":true}
 ]'::jsonb AS value;
 GRANT SELECT ON issue_1463_hours TO authenticated;
+CREATE TEMP TABLE issue_1463_result (venue_id uuid NOT NULL);
+GRANT INSERT, SELECT ON issue_1463_result TO authenticated;
 
 -- The canonical venue manager can create one pending-review Stay for Brand A.
 SET LOCAL ROLE authenticated;
@@ -58,6 +60,7 @@ BEGIN
     'stay', 'stay-1463@example.test', '+19195550146',
     '', '', v_hours, NULL, 'approximate'
   );
+  INSERT INTO issue_1463_result (venue_id) VALUES (v_venue_id);
 
   SELECT count(*) INTO v_count
   FROM public.venue_listings
@@ -76,12 +79,6 @@ BEGIN
     RAISE EXCEPTION 'issue_1463_manager_stay_hours_expected_7_got_%', v_count;
   END IF;
 
-  IF NOT EXISTS (
-    SELECT 1 FROM public.brand_place_pipeline_state
-    WHERE venue_id = v_venue_id AND status = 'draft'
-  ) THEN
-    RAISE EXCEPTION 'issue_1463_manager_stay_pipeline_missing';
-  END IF;
 END;
 $manager_create$;
 
@@ -159,6 +156,20 @@ END;
 $owner_create$;
 
 RESET ROLE;
+
+DO $server_residue$
+DECLARE
+  v_venue_id uuid;
+BEGIN
+  SELECT venue_id INTO v_venue_id FROM issue_1463_result LIMIT 1;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.brand_place_pipeline_state
+    WHERE venue_id = v_venue_id AND status = 'draft'
+  ) THEN
+    RAISE EXCEPTION 'issue_1463_manager_stay_pipeline_missing';
+  END IF;
+END;
+$server_residue$;
 
 DO $grants$
 BEGIN
