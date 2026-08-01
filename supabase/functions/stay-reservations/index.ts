@@ -375,6 +375,9 @@ export async function handleStayReservations(
       requestId,
     });
   }
+  // Issue #1456 deployment-generation marker: no runtime behavior change. This
+  // ensures the already-merged #1473 auth gate receives a fresh immutable bundle
+  // after Supabase retained an older bundle behind a duplicate-deployment 409.
   const accessToken = authHeader.replace(/^Bearer\s+/i, "").trim();
   let authenticatedUserId: string | null = null;
   if (accessToken !== anonKey) {
