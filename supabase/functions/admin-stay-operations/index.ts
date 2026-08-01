@@ -105,7 +105,7 @@ async function defaultResolveAdmin(
   const { data: { user }, error } = await service.auth.getUser(token);
   if (error || !user?.id || !user.email) return null;
   const { data: admin } = await service.from("admin_users")
-    .select("id,user_id,status").eq("user_id", user.id).eq("status", "active")
+    .select("id,status").eq("email", user.email).eq("status", "active")
     .maybeSingle();
   if (!admin) return null;
   return {

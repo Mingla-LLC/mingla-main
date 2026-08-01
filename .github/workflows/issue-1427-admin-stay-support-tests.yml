@@ -49,11 +49,13 @@ jobs:
         run: |
           deno check \
             supabase/functions/admin-stay-operations/index.ts \
+            supabase/functions/admin-stay-operations/issue1478.adminIdentity.test.ts \
             supabase/functions/admin-stay-operations/index.tester.adversarial.test.ts \
             supabase/functions/stay-reservations/index.ts \
             supabase/functions/manage-stay-inventory/index.ts
-          deno test --allow-env --allow-net=deno.land,esm.sh \
+          deno test --allow-env --allow-read --allow-net=deno.land,esm.sh \
             supabase/functions/admin-stay-operations/index.test.ts \
+            supabase/functions/admin-stay-operations/issue1478.adminIdentity.test.ts \
             supabase/functions/admin-stay-operations/index.tester.adversarial.test.ts \
             supabase/functions/stay-reservations/issue1427.alert.test.ts \
             supabase/functions/manage-stay-inventory/issue1427.alert.test.ts
