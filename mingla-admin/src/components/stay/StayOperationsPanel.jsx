@@ -44,8 +44,8 @@ function money(minor, currency) {
   }
 }
 
-function field(label, value, render) {
-  return { label, value, render };
+function field(label, value, render, key) {
+  return { label, value, render, key };
 }
 
 function badge(value, variant = "default") {
@@ -173,11 +173,21 @@ function groupSections(bundle) {
     },
     {
       label: `Notifications (${notifications.length})`,
-      fields: notifications.length ? notifications.map((item) => field(item.categoryKey, `${item.channel || "auto"} · ${item.status} · ${item.attempts} attempt(s)`)) : [field("Delivery", "No Stay notifications")],
+      fields: notifications.length ? notifications.map((item) => field(
+        item.categoryKey,
+        `${item.channel || "auto"} · ${item.status} · ${item.attempts} attempt(s)`,
+        undefined,
+        `notification-${item.id}`,
+      )) : [field("Delivery", "No Stay notifications")],
     },
     {
       label: `Immutable timeline (${timeline.length})`,
-      fields: timeline.length ? timeline.map((event) => field(event.eventType, `${event.actorType} · ${formatDateTime(event.createdAt)}`)) : [field("Timeline", "No events")],
+      fields: timeline.length ? timeline.map((event) => field(
+        event.eventType,
+        `${event.actorType} · ${formatDateTime(event.createdAt)}`,
+        undefined,
+        `timeline-${event.id}`,
+      )) : [field("Timeline", "No events")],
     },
   ];
 }
