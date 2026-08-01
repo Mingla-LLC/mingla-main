@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-07-31 — Stay quote requests now verify a real signed-in Mingla user before touching reservation data, so signed-out guests get the intended sign-in response instead of a server error without weakening reservation permissions. (#1473, PR #1474)
 - 2026-07-31 — Fixed one-off reservable Place availability failing from the Stay manager and made saved Room nights render with stable calendar identities, without widening inventory or finance permissions. (#1471, PR #1472)
 - 2026-07-31 — Stay staff now see and submit only the Room, Place, availability, pricing, fee, and policy changes their server permissions allow, so inventory and finance roles can complete their separate steps without forbidden dead ends. (#1469, PR #1470)
 - 2026-07-31 — Venue submission retries now reuse the same pending row after downstream failures, preserve brand-scoped recovery, and keep the success screen visible with an exact Venue Hub handoff. (#1467, PR #1468)

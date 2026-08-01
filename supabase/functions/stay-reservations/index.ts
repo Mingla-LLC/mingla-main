@@ -43,6 +43,11 @@ type RpcClient = {
 };
 
 export type StayReservationsDependencies = {
+  authenticateUser?: (
+    url: string,
+    anonKey: string,
+    accessToken: string,
+  ) => Promise<string | null>;
   createRpcClient?: (
     url: string,
     anonKey: string,
@@ -367,6 +372,33 @@ export async function handleStayReservations(
       kind: "error",
       code: "internal_error",
       message: "Stay reservations are unavailable.",
+      requestId,
+    });
+  }
+  const accessToken = authHeader.replace(/^Bearer\s+/i, "").trim();
+  let authenticatedUserId: string | null = null;
+  if (accessToken !== anonKey) {
+    try {
+      authenticatedUserId = dependencies.authenticateUser
+        ? await dependencies.authenticateUser(url, anonKey, accessToken)
+        : dependencies.createRpcClient
+        ? "dependency-authenticated-user"
+        : await (async () => {
+          const authClient = createClient(url, anonKey, {
+            auth: { autoRefreshToken: false, persistSession: false },
+          });
+          const { data, error } = await authClient.auth.getUser(accessToken);
+          return error ? null : data.user?.id ?? null;
+        })();
+    } catch {
+      authenticatedUserId = null;
+    }
+  }
+  if (!authenticatedUserId) {
+    return json(401, {
+      kind: "error",
+      code: "unauthorized",
+      message: "Sign in to reserve this Stay.",
       requestId,
     });
   }
