@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-07-31 — Stay payment reconciliation now recognizes active Admins through the deployed email identity contract, restoring audited Stripe and Paystack provider-truth recovery without weakening the Admin gate. (#1478, PR #1479)
 - 2026-07-31 — Admin now keeps repeated Stay notification and timeline rows distinct, so complete support evidence renders reliably without browser identity collisions. (#1476, PR #1477)
 - 2026-07-31 — Edge Function deployment now treats only Supabase’s exact already-current response as an idempotent success, continues to later functions, and still stops on every other failure without changing JWT settings. (#1456, PR #1475)
 - 2026-07-31 — Stay quote requests now verify a real signed-in Mingla user before touching reservation data, so signed-out guests get the intended sign-in response instead of a server error without weakening reservation permissions. (#1473, PR #1474)
