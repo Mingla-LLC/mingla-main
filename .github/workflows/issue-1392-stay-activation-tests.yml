@@ -66,6 +66,7 @@ jobs:
           supabase/functions/stay-reservations/businessManagement.issue1426.test.ts
           supabase/functions/stay-reservations/businessManagement.issue1426.tester.adversarial.test.ts
           supabase/functions/admin-stay-operations/index.test.ts
+          supabase/functions/admin-stay-operations/issue1478.adminIdentity.test.ts
           supabase/functions/admin-stay-operations/index.tester.adversarial.test.ts
           supabase/functions/_shared/stayPaymentProvider.test.ts
           supabase/functions/_shared/stayPaymentWebhook.test.ts
@@ -81,6 +82,7 @@ jobs:
           supabase/functions/manage-stay-inventory/index.ts
           supabase/functions/stay-reservations/index.ts
           supabase/functions/admin-stay-operations/index.ts
+          supabase/functions/admin-stay-operations/issue1478.adminIdentity.test.ts
           supabase/functions/_shared/stayPaymentWebhook.ts
           supabase/functions/_shared/sourceRefundControlPlane.ts
 
