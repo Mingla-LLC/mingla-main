@@ -69,6 +69,11 @@ import {
   stayOfferingReadinessErrors,
   type StayInventoryFilter,
 } from "./stayInventoryPresentation";
+import {
+  buildStayPlaceSchedule,
+  stayRoomNightCalendarKey,
+  type StayPlaceScheduleMode,
+} from "./stayAvailabilityContracts";
 
 const FILTERS: readonly { id: StayInventoryFilter; label: string }[] = [
   { id: "all", label: "All" },
@@ -1029,9 +1034,7 @@ function AvailabilityManager({
   const [overridePrice, setOverridePrice] = useState("");
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("17:00");
-  const [mode, setMode] = useState<
-    "fixed_slots" | "repeating_windows" | "full_day"
-  >("fixed_slots");
+  const [mode, setMode] = useState<StayPlaceScheduleMode>("fixed_slots");
   const currencyCode = selected?.currentPrice?.currency_code ?? null;
 
   const save = useMutation({
@@ -1104,21 +1107,15 @@ function AvailabilityManager({
       const scheduled = await upsertStayPlaceSchedule({
         venueId,
         offeringId: selected.id,
-        schedule: {
+        schedule: buildStayPlaceSchedule({
           mode,
           timezone,
-          localStartDate: fromDate,
-          localEndDate: mode === "fixed_slots" ? fromDate : toDate,
-          weekdays: mode === "fixed_slots" ? [] : [0, 1, 2, 3, 4, 5, 6],
-          localStartTime: mode === "full_day" ? undefined : startTime,
-          localEndTime: mode === "full_day" ? undefined : endTime,
-          fullDayStartTime: mode === "full_day" ? startTime : undefined,
-          fullDayEndTime: mode === "full_day" ? endTime : undefined,
-          slotDurationMinutes: mode === "repeating_windows" ? 60 : undefined,
-          slotIntervalMinutes: mode === "repeating_windows" ? 60 : undefined,
-          dstFoldPolicy: "reject",
-          active: !stopSell,
-        },
+          fromDate,
+          toDate,
+          startTime,
+          endTime,
+          stopSell,
+        }),
       });
       if (stopSell) return scheduled;
       const updated = scheduled.inventory.offerings.find(
@@ -1302,7 +1299,10 @@ function AvailabilityManager({
         {selected.kind === "room" ? (
           (selected.roomNights ?? []).length > 0 ? (
             (selected.roomNights ?? []).slice(0, 40).map((night) => (
-              <View key={night.id} style={styles.calendarRow}>
+              <View
+                key={stayRoomNightCalendarKey(selected.id, night.local_date)}
+                style={styles.calendarRow}
+              >
                 <Text style={styles.calendarDate}>{night.local_date}</Text>
                 <Text style={styles.helper}>
                   {night.stop_sell
