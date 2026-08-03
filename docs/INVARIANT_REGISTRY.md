@@ -7013,9 +7013,17 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   self-test (regression guard)" (no `paths:` filter) running
   `node .github/scripts/test-append-only-check.js --self-test`. No strict-grep gate and
   no `MANIFEST.json` change (COMMS-0125 / COMMS-0126 rebase hazard).
-- **Regression test:** **62 cases** in `selfTest()` — 35 grammar cases and 27 git
-  scenarios (T1–T18 pre-existing byte-unchanged; T19–T27 added here). Supersedes the
-  "53 cases" count in `I-1505-APPEND-ONLY-FAILS-CLOSED`. Append-only.
+- **Regression test:** **63 cases** in `selfTest()` — 35 grammar cases and 28 git
+  scenarios (T1–T18 pre-existing byte-unchanged; T19–T27 added at IMPLEMENT; T28 added
+  at TEST). Supersedes the "53 cases" count in `I-1505-APPEND-ONLY-FAILS-CLOSED`.
+  Append-only.
+- **TEST status (2026-08-03) — NOT yet satisfied.** Independent adversarial verification
+  returned FAIL. The suite currently reports **62 passed / 1 failed**: tester case T28
+  pins an ordinary-work regression in which a change that removes nothing is refused on
+  the unoverridable branch, contradicting the blast-radius reasoning above. A second
+  defect, in how the measurement is scoped to a path, is recorded out of band under the
+  disclosure handling for this issue and is not described here. Both must be resolved and
+  the suite returned to all-green before this invariant may flip ACTIVE.
 - **Reachability basis (blast radius):** across this repo's ENTIRE history, 3241 unique
   blobs have existed at a test-pattern path. Exactly **4** are binary to git, and they
   are **3 distinct ordinary TypeScript adversarial test sources** that embed a literal

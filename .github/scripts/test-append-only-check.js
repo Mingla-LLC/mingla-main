@@ -1484,6 +1484,37 @@ function scenarioT27() {
   }
 }
 
+// T28 (#1510, TESTER ADVERSARIAL — the other side of T22) — T22 proves an unrenderable
+// test file survives an additions-only edit and a token-authorised removal. Those are not
+// the only ordinary things that happen to a test file: its METADATA can change while its
+// CONTENT does not. T12 and T16 already pin that shape as ordinary work and hold it green,
+// but only for files git renders as text — no case holds it for the three real unrenderable
+// sources this repository actually maintains. A change that removes NOTHING must never be
+// refused, and the refusal branch is unoverridable by design, so a false refusal here has no
+// way out at all: not a token, not a re-run, nothing short of editing the file's test data.
+// That is precisely the outcome T22 exists to forbid, reached from a direction T22 does not
+// look.
+function scenarioT28() {
+  const { dir, g, write } = makeTempRepo();
+  try {
+    write("a.test.ts", CONTROL_BYTE_DATA_LINE + FOUR_ASSERTIONS);
+    g("add", "-A");
+    g("commit", "-q", "-m", "base");
+    g("branch", "-M", "main");
+    g("checkout", "-q", "-b", "feature");
+
+    // Metadata only: byte-identical content, executable bit set. Forced through the
+    // index so the scenario is deterministic regardless of core.fileMode.
+    fs.chmodSync(nodePath.join(dir, "a.test.ts"), 0o755);
+    g("add", "-A");
+    g("update-index", "--chmod=+x", "a.test.ts");
+    g("commit", "-q", "-m", "set the executable bit, content untouched — NO token");
+    return runCheckIn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 function selfTest() {
   let failures = 0;
   let total = 0;
@@ -1898,6 +1929,15 @@ function selfTest() {
     t27.status === 1 && t27Refuses && t27Tally,
     "T27 (#1510, the durable half): when git reports a test path as CHANGED and then yields no countable line diff for it, the gate REFUSES instead of assuming zero — even with BOTH valid override tokens on the tip, because an unmeasured count cannot be attested by anyone. The defect class is answering 'I could not measure this' with 'therefore zero'; individual routes come and go, this terminal cannot",
     `check exited ${t27.status} (expected 1); refused=${t27Refuses}; tally 0/1=${t27Tally}`,
+  );
+
+  const t28 = scenarioT28();
+  const t28Green = /✅[^\n]*MODIFIED[^\n]*a\.test\.ts/.test(t28.out);
+  const t28NoRefusal = !t28.out.includes("❌");
+  check(
+    t28.status === 0 && t28Green && t28NoRefusal,
+    "T28 (#1510, tester adversarial — the other side of T22): a change that alters a test file's METADATA and none of its CONTENT removes nothing, so it must stay GREEN even when the file is one git declines to render as text. T12/T16 pin this shape as ordinary work but only for renderable files, and the three real unrenderable sources this repository maintains are covered by no other case. The refusal branch is unoverridable by design, so a false refusal here has no way out at all — the outcome T22 exists to forbid, reached from a direction T22 does not look",
+    `check exited ${t28.status} (expected 0); stayed green=${t28Green}; no refusal printed=${t28NoRefusal}`,
   );
 
   console.log("");
