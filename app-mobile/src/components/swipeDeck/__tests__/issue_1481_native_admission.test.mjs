@@ -17,21 +17,15 @@ function assertStableNativeAdmission(sources) {
   assert.doesNotMatch(handler, /key=\{currentRec\.id\}/, 'current-card promotion remounts the native handler');
   assert.doesNotMatch(handler, /enabled=\{deckSwipe\.handlerEnabled\}/, 'phase toggles native handler eligibility');
   assert.doesNotMatch(handler, /pointerEvents=\{deckSwipe\.phase/, 'phase toggles the gesture host pointer target');
+  assert.doesNotMatch(handler, /deckSwipe\.phase/, 'rendered phase decisions reconcile the native handler subtree');
+  assert.doesNotMatch(sources.controller, /setRenderedPhase/, 'gesture phase is mirrored into React state');
+  assert.match(sources.controller, /const isIdle = useCallback\(\(\): boolean => phaseRef\.current === 'IDLE'/);
+  assert.match(sources.swipeable, /pendingAccessibilityFocusRef\.current \|\| !deckSwipe\.isIdle\(\)/);
   assert.match(sources.controller, /if \(!canAdmitDeckInput\(phaseRef\.current\)/);
   assert.match(
     sources.controller,
     /phaseRef\.current === 'EXITING' && !fastForwardPendingExit\(\)/,
     'a delivered successor BEGAN is recovered through exact pending-exit settlement',
-  );
-  assert.match(
-    sources.controller,
-    /const disposition = gestureDispositionRef\.current;[\s\S]{0,900}canRecoverUnobservedDeckEnd\([\s\S]{0,500}oldState === State\.ACTIVE/,
-    'a native ACTIVE to END sequence whose BEGAN was coalesced must retain terminal admission',
-  );
-  assert.match(
-    sources.controller,
-    /gestureDispositionRef\.current = 'rejected';[\s\S]{0,140}rejectInput\(\)/,
-    'an explicitly rejected BEGAN must remain rejected at terminal END',
   );
   assert.match(
     sources.controller,
@@ -260,6 +254,15 @@ test('source guard rejects every superseded native availability root independent
   );
   assert.throws(() => assertStableNativeAdmission({ ...source, swipeable: enabledMutant }), /eligibility/);
 
+  const renderedPhaseMutant = source.controller.replace(
+    "const phaseRef = useRef<DeckSwipePhase>('IDLE');",
+    "const [phase, setRenderedPhase] = useState<DeckSwipePhase>('IDLE');\n  const phaseRef = useRef<DeckSwipePhase>('IDLE');",
+  );
+  assert.throws(
+    () => assertStableNativeAdmission({ ...source, controller: renderedPhaseMutant }),
+    /mirrored into React state/,
+  );
+
   const layoutMutant = `${source.controller}\nconst pendingSettlementRef = useRef(null);`;
   assert.throws(() => assertStableNativeAdmission({ ...source, controller: layoutMutant }), /layout or timer/);
 
@@ -281,12 +284,4 @@ test('source guard rejects every superseded native availability root independent
     /stopped native callback/,
   );
 
-  const droppedTerminalRecoveryMutant = source.controller.replace(
-    'canRecoverUnobservedDeckEnd({',
-    'canRecoverDisabledDeckEnd({',
-  );
-  assert.throws(
-    () => assertStableNativeAdmission({ ...source, controller: droppedTerminalRecoveryMutant }),
-    /ACTIVE to END/,
-  );
 });

@@ -5,7 +5,6 @@ import test from 'node:test';
 import {
   canAdmitDeckInput,
   canFastForwardDeckExit,
-  canRecoverUnobservedDeckEnd,
   consumeDeckTokenIntent,
   deckCommitTokenKey,
   isCurrentDeckCompletion,
@@ -96,34 +95,6 @@ test('exit fast-forward is exact-card, exact-epoch, mounted, and EXITING-only', 
   assert.equal(canFastForwardDeckExit({ ...base, currentCardId: null }), false);
 });
 
-test('terminal recovery admits only an unobserved native ACTIVE to END sequence', () => {
-  const base = {
-    mounted: true,
-    phase: 'IDLE',
-    currentCardId: 'card-a',
-    disposition: null,
-    endedFromActive: true,
-  };
-  assert.equal(canRecoverUnobservedDeckEnd(base), true);
-  assert.equal(canRecoverUnobservedDeckEnd({ ...base, disposition: 'admitted' }), false);
-  assert.equal(canRecoverUnobservedDeckEnd({ ...base, disposition: 'rejected' }), false);
-  assert.equal(canRecoverUnobservedDeckEnd({ ...base, endedFromActive: false }), false);
-  assert.equal(canRecoverUnobservedDeckEnd({ ...base, phase: 'SNAPPING' }), false);
-  assert.equal(canRecoverUnobservedDeckEnd({ ...base, phase: 'COMMITTING' }), false);
-  assert.equal(canRecoverUnobservedDeckEnd({ ...base, currentCardId: null }), false);
-  assert.equal(canRecoverUnobservedDeckEnd({ ...base, mounted: false }), false);
-
-  let admissions = 0;
-  let commits = 0;
-  for (let sequence = 0; sequence < 60; sequence += 1) {
-    assert.equal(canRecoverUnobservedDeckEnd(base), true);
-    admissions += 1;
-    commits += 1;
-  }
-  assert.equal(admissions, 60);
-  assert.equal(commits, 60);
-});
-
 test('commit identity is stable and direction-specific', () => {
   const right = deckCommitTokenKey({ cardId: 'card-a', direction: 'right', epoch: 5 });
   assert.equal(right, '5:card-a:right');
@@ -202,9 +173,11 @@ test('production deck has one native-driver owner and no forbidden competing pri
   );
   assert.equal(
     (controllerSource.match(/epochRef\.current = nextDeckGestureEpoch\(epochRef\.current\)/g) ?? []).length,
-    3,
-    'native BEGAN, recovered native END, and accessibility admission must each allocate a generation',
+    2,
+    'native BEGAN and accessibility admission must each allocate a generation',
   );
+  assert.doesNotMatch(controllerSource, /setRenderedPhase|canRecoverUnobservedDeckEnd|issue1481-probe/);
+  assert.match(controllerSource, /const isIdle = useCallback\(\(\): boolean => phaseRef\.current === 'IDLE'/);
   assert.match(controllerSource, /lastRequestedCommitKeyRef = useRef<string \| null>\(null\)/);
   assert.doesNotMatch(controllerSource, /requestedCommitKeysRef|new Set<string>\(\)/);
   assert.match(swipeableSource, /lastCommittedTokenKeyRef = useRef<string \| null>\(null\)/);

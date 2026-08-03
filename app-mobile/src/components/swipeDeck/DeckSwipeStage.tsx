@@ -40,8 +40,9 @@ interface DeckSwipeStageProps extends UseDeckSwipeControllerOptions {
 }
 
 /**
- * The only React owner of gesture phase. Parent deck/provider/history consumers
- * do not render for DRAGGING → EXITING → COMMITTING → IDLE transitions.
+ * The isolated gesture owner. Nominal phase transitions stay ref-only, so
+ * neither this boundary nor the native handler subtree re-renders for
+ * DRAGGING → EXITING → COMMITTING → IDLE. Only delayed-anomaly UI is stateful.
  */
 export const DeckSwipeStage = memo(forwardRef<DeckSwipeStageHandle, DeckSwipeStageProps>(
   function DeckSwipeStage(props, ref) {

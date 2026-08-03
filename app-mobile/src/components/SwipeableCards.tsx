@@ -3142,12 +3142,11 @@ export default function SwipeableCards({
               accessibilityRole="button"
               accessibilityLabel={currentRec.title}
               accessibilityHint={`${t('cards:expanded.save')}. ${t('cards:swipeable.pass')}. ${t('cards:expanded.more_details')}.`}
-              accessibilityState={{ disabled: deckSwipe.phase !== 'IDLE' }}
-              accessibilityActions={deckSwipe.phase === 'IDLE' ? [
+              accessibilityActions={[
                 { name: 'save', label: t('cards:expanded.save') },
                 { name: 'pass', label: t('cards:swipeable.pass') },
                 { name: 'expand', label: t('cards:expanded.more_details') },
-              ] : []}
+              ]}
               onAccessibilityAction={(event) => {
                 const action = event.nativeEvent.actionName;
                 if (action === 'save' || action === 'pass') {
@@ -3156,12 +3155,12 @@ export default function SwipeableCards({
                     action === 'save' ? 'right' : 'left',
                   );
                   if (!accepted) pendingAccessibilityFocusRef.current = false;
-                } else if (action === 'expand' && deckSwipe.phase === 'IDLE') {
+                } else if (action === 'expand') {
                   deckSwipe.requestTapExpand();
                 }
               }}
               onLayout={() => {
-                if (!pendingAccessibilityFocusRef.current || deckSwipe.phase !== 'IDLE') return;
+                if (!pendingAccessibilityFocusRef.current || !deckSwipe.isIdle()) return;
                 const node = findNodeHandle(cardAccessibilityRef.current);
                 if (node == null) return;
                 pendingAccessibilityFocusRef.current = false;
@@ -3206,7 +3205,6 @@ export default function SwipeableCards({
             <TouchableOpacity
               activeOpacity={1}
               onPress={() => deckSwipe.requestTapExpand()}
-              disabled={deckSwipe.phase !== 'IDLE'}
               accessible={false}
               style={StyleSheet.absoluteFill}
             >
