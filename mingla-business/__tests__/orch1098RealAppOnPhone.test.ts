@@ -113,7 +113,13 @@ describe("ORCH-1098 Stage 3 — real Business app boots on phone browsers", () =
     });
 
     it("keeps the SPA fallback so /home serves the real Expo route", () => {
-      const fallback = vercel.rewrites.find((r) => r.source === "/(.*)");
+      // [TEST-MOD-APPROVED 1485] (CI token form: [TEST-MOD-APPROVED ORCH-1485])
+      // Issue #1485 [web-missing-chunk-404]: the SPA fallback literal now
+      // excludes /_expo/static/. /home is not a static asset path, so it still
+      // matches the fallback and still serves the real Expo route.
+      const fallback = vercel.rewrites.find(
+        (r) => r.source === "/((?!_expo/static/).*)",
+      );
       expect(fallback).toBeDefined();
       expect(fallback?.destination).toBe("/");
     });

@@ -19,18 +19,61 @@
 //
 // Runs after `expo export -p web` (see vercel.json buildCommand). Fails open:
 // never breaks the build.
+//
+// ---------------------------------------------------------------------------
+// Issue #1485 [web-missing-chunk-404] P2-1: ONE recovery decision, TWO owners.
+//
+// Business web has two places that can react to a failed chunk:
+//
+//   1. THIS inline <head> script — runs BEFORE any bundle exists, and is the
+//      ONLY thing that can see a *resource* `error` (a `<script src>` that
+//      404s, including the ENTRY bundle itself). A resource error carries no
+//      `event.message`, only `event.target.src`, so `chunkReloadGuard` — which
+//      keys entirely off `event.message` / `event.error.message` AND ships
+//      inside the very bundle that failed — can never cover this class. It is
+//      kept for exactly that reason (INVESTIGATION D-3).
+//   2. `src/diagnostics/chunkReloadGuard.ts` — post-boot, sees script-execution
+//      and dynamic-import failures by message text.
+//
+// They MUST NOT both act on one failure and MUST NOT double-reload, so they
+// share ONE decision record: the same sessionStorage key and the same 10s
+// time-based cooldown as `chunkReloadGuard`'s `RELOAD_TS_KEY` /
+// `RELOAD_COOLDOWN_MS`. Whichever owner fires first stamps the shared key and
+// reloads; the other reads the stamp in the same tick and stands down. The
+// literals are pinned equal to the guard's by
+// `__tests__/issue1485_p2_1_one_chunk_recovery_owner.test.ts` (the inline
+// script cannot import anything — it is <head>-blocking, ES5, dependency-free).
+//
+// Two behaviours were REMOVED here because they destroyed the user's URL. Both
+// used a replace-navigation to a hard-coded dashboard route (the retired
+// "recovered" query form, deliberately not repeated verbatim so the CI pin in
+// `src/utils/__tests__/orch_1090_mobile_web_chunk_auth_recovery.test.ts` can
+// scan this whole file for it):
+//   * the second-failure branch replace-navigated away, ejecting an anonymous
+//     buyer off `/checkout/<eventId>` onto the AUTHENTICATED brand dashboard
+//     and erasing the checkout URL from history — the back button could not
+//     bring it back;
+//   * the `catch` fallback did the same on the FIRST failure whenever
+//     sessionStorage threw (private / blocked-storage browsers).
+// Recovery now only ever reloads the CURRENT url, and blocked storage fails
+// safe: no reload, no navigation, ever.
+// ---------------------------------------------------------------------------
 
 import { existsSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 
 const HTML_PATH = "dist/index.html";
 const MARKER = "mingla-mobile-web-no-blur";
 const CHUNK_RECOVERY_MARKER = "mingla-mobile-web-chunk-recovery";
+// #1485 P2-1: the SHARED cooldown record — must stay byte-equal to
+// chunkReloadGuard.ts's RELOAD_TS_KEY / RELOAD_COOLDOWN_MS (CI-pinned).
+const CHUNK_RECOVERY_KEY = "mingla:last-chunk-reload";
+const CHUNK_RECOVERY_COOLDOWN_MS = 10000;
 const JS_CACHE_BUST_MARKER = "orch1091-js-cache-bust";
 const JS_CACHE_BUST_PARAM = "orch1091";
 const STYLE_TAG =
   `<style id="${MARKER}">@media (max-width:767px){*,*::before,*::after{` +
   `-webkit-backdrop-filter:none !important;backdrop-filter:none !important}}</style>`;
-const CHUNK_RECOVERY_SCRIPT = `<script id="${CHUNK_RECOVERY_MARKER}">(function(){function isChunkUrl(value){return typeof value==="string"&&value.indexOf("/_expo/static/js/web/")!==-1&&/\\.js(?:$|[?#])/.test(value)}function recover(reason){try{var key="mingla-mobile-web-chunk-recovery";var last=sessionStorage.getItem(key);var now=String(Date.now());if(last){console.warn("[mobile-web] chunk recovery already attempted",reason);location.replace("/home?recovered=chunk");return}sessionStorage.setItem(key,now);console.warn("[mobile-web] stale chunk detected; reloading",reason);location.reload()}catch(_e){location.replace("/home?recovered=chunk")}}window.addEventListener("error",function(event){var target=event&&event.target;var src=target&&(target.src||target.href);if(isChunkUrl(src)){recover(src)}} ,true);window.addEventListener("unhandledrejection",function(event){var reason=event&&event.reason;var text=String(reason&&((reason.message||reason.name)||reason)||"");if(/Loading chunk|loadBundleAsync|ChunkLoadError|Importing a module script failed|Failed to fetch dynamically imported module/i.test(text)){recover(text)}});})();</script>`;
+const CHUNK_RECOVERY_SCRIPT = `<script id="${CHUNK_RECOVERY_MARKER}">(function(){var KEY="${CHUNK_RECOVERY_KEY}";var LEGACY_KEY="${CHUNK_RECOVERY_MARKER}";var COOLDOWN_MS=${CHUNK_RECOVERY_COOLDOWN_MS};try{var boot=window.sessionStorage;var carried=boot.getItem(LEGACY_KEY);if(carried!==null){if(boot.getItem(KEY)===null){boot.setItem(KEY,carried)}boot.removeItem(LEGACY_KEY)}}catch(_m){/* storage blocked: nothing to migrate, and nothing to recover with */}function isChunkUrl(value){return typeof value==="string"&&value.indexOf("/_expo/static/js/web/")!==-1&&/\\.js(?:$|[?#])/.test(value)}function recover(reason){try{var store=window.sessionStorage;var now=Date.now();var last=Number(store.getItem(KEY)||0);if(isFinite(last)&&now-last<COOLDOWN_MS){console.warn("[mobile-web] chunk recovery suppressed by the shared cooldown",reason);return}store.setItem(KEY,String(now));console.warn("[mobile-web] stale chunk detected; reloading",reason);window.location.reload()}catch(_e){console.warn("[mobile-web] chunk recovery unavailable (sessionStorage blocked); not reloading",reason)}}window.addEventListener("error",function(event){var target=event&&event.target;var src=target&&(target.src||target.href);if(isChunkUrl(src)){recover(src)}} ,true);window.addEventListener("unhandledrejection",function(event){var reason=event&&event.reason;var text=String(reason&&((reason.message||reason.name)||reason)||"");if(/Loading chunk|loadBundleAsync|ChunkLoadError|Importing a module script failed|Failed to fetch dynamically imported module/i.test(text)){recover(text)}});})();</script>`;
 
 function normalizeExpoWebScriptFilenames(html) {
   const srcs = [...html.matchAll(/(\/_expo\/static\/js\/web\/[^"?]+\.js)(?:\?[^"]*)?/g)].map(

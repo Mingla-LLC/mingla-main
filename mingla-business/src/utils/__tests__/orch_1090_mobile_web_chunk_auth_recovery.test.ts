@@ -14,13 +14,24 @@ describe("ORCH-1090 mobile web chunk/auth recovery", () => {
   // contract — the genuinely orthogonal, KEPT part of ORCH-1090 — is preserved
   // in the two tests below.
 
+  // [TEST-MOD-APPROVED ORCH-1485] Issue #1485 P2-1 removed the recovery
+  // script's second-failure `location.replace("/home?…")` branch (and the
+  // identical `catch` fallback). Both destroyed the user's URL: an anonymous
+  // buyer on `/checkout/<eventId>` was hard-redirected to the AUTHENTICATED
+  // brand dashboard with the checkout URL erased from history. The `toContain`
+  // pin on that redirect string is REPLACED — not deleted, not weakened — by
+  // the strictly stronger inverse pin plus a pin on the shared cooldown record
+  // that took its place. Full behavioural coverage (30 cases, incl. the
+  // two-owner no-double-reload proof) lives in the append-only
+  // `__tests__/issue1485_p2_1_one_chunk_recovery_owner.test.ts`.
   test("post-export HTML injection recovers stale async route chunks before app boot", () => {
     const source = repoFile("scripts/inject-mobile-blur-css.mjs");
 
     expect(source).toContain("mingla-mobile-web-chunk-recovery");
     expect(source).toContain("/_expo/static/js/web/");
     expect(source).toContain("location.reload()");
-    expect(source).toContain("/home?recovered=chunk");
+    expect(source).not.toContain("/home?recovered=chunk");
+    expect(source).toContain("mingla:last-chunk-reload");
     expect(source).toContain("unhandledrejection");
     expect(source).toContain("ChunkLoadError");
   });

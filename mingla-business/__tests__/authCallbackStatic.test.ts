@@ -14,8 +14,12 @@ describe("ORCH-1086 static web auth callback", () => {
     const callbackIndex = vercel.rewrites.findIndex(
       (rewrite) => rewrite.source === "/auth/callback",
     );
+    // [TEST-MOD-APPROVED 1485] (CI token form: [TEST-MOD-APPROVED ORCH-1485])
+    // Issue #1485 [web-missing-chunk-404]: the SPA fallback literal now excludes
+    // /_expo/static/. The assertion below is unchanged — /auth/callback must
+    // still be ordered BEFORE the fallback.
     const fallbackIndex = vercel.rewrites.findIndex(
-      (rewrite) => rewrite.source === "/(.*)",
+      (rewrite) => rewrite.source === "/((?!_expo/static/).*)",
     );
 
     expect(callbackIndex).toBeGreaterThanOrEqual(0);
