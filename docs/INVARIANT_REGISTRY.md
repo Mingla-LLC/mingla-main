@@ -6923,3 +6923,62 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   `TEST-RENAME-APPROVED` tokens across 193 historical commits in this repo are still
   accepted — zero legacy regressions.
 - **Established:** DRAFT at issue #1495 SPEC 2026-08-03. Flips ACTIVE at CLOSE.
+
+## DRAFT — issue #1505 (append-only gate fails closed on typechange + unmodelled statuses)
+
+### I-PROPOSED-1505-APPEND-ONLY-FAILS-CLOSED (DRAFT)
+- **Rule:** the append-only gate's status dispatch FAILS CLOSED. Git status `T`
+  (typechange: regular file ↔ symlink ↔ submodule gitlink) on a test path is refused
+  **unconditionally and direction-agnostically** — no override token of any grammar
+  bypasses it, because a typechange annihilates every assertion exactly as a status-`D`
+  deletion does, and `MOD_TOKEN` attests to reviewed line deletions, never to whole-file
+  annihilation. Any status the dispatch does not explicitly model is likewise
+  **refused, never passed** — the terminal branch may never again be `passes += 1`.
+  The `A`/`D`/`M`/`R` dispositions and the token grammars are unchanged; `D` remains
+  unoverridable.
+- **Enforcement:** `.github/workflows/tests-append-only.yml` step "Append-only gate
+  self-test (regression guard)" (no `paths:` filter) running
+  `node .github/scripts/test-append-only-check.js --self-test`. No strict-grep gate and
+  no `MANIFEST.json` change (COMMS-0125 / COMMS-0126 rebase hazard).
+- **Regression test:** 48 cases in `selfTest()` — 35 grammar cases and 13 git scenarios
+  (T1–T8 pre-existing byte-unchanged; T9–T13 added here). Supersedes the "43 cases"
+  count in `I-1495-TESTMOD-TOKEN-DUAL-GRAMMAR`. T9 pins the core repro (a test file
+  replaced by a symlink is refused even with BOTH valid new-form tokens on the commit);
+  T10 pins direction-agnosticism (symlink → regular file refused too); T11 pins the
+  fail-closed default against three unmodelled statuses (`X`, `M100`, `C100`) fed
+  through a PATH-prefixed `git` shim that passes every other invocation through to the
+  real binary; T12 is the blast-radius negative control (a mode-only `chmod +x` is
+  status `M` with 0 deleted lines, plus an additions-only edit, a new test file and a
+  `__tests__/` fixture append — all green with NO token); T13 extends the #1495 SC-6
+  message-hygiene invariant over the two NEW branches, asserting neither `TYPECHANGE`
+  nor `UNRECOGNISED` output matches `MOD_TOKEN` or `RENAME_TOKEN`. Fails-on-revert
+  proven: reverting the dispatch alone yields 44 passed / 4 failed (T9, T10, T11, T13).
+  T12 is a negative control, green in both directions. Append-only.
+- **Tester adversarial coverage (added at TEST, #1505):** the suite is **53 cases — 35
+  grammar cases and 18 git scenarios** (T1–T13 above byte-unchanged; T14–T18 appended
+  at TEST). This count supersedes the "48 cases" figure in the line above. T14 pins the
+  **submodule-gitlink leg** of the `T` arm, which the docblock promises but T9/T10 never
+  produced, and pins it against BOTH legacy token grammars plus the #1058 §4a same-file
+  cross-commit attribution route — the one route that genuinely does launder `M`-arm
+  deletions — proving the `T` arm never consults `fileHasToken` at all. T15 pins the
+  fail-closed default at the **boundary of the `T` arm itself** (`U`, the score-suffixed
+  `T100`, a lowercased `t`, and an EMPTY status: all refused, zero passes, with the
+  offending status echoed verbatim, even with both current-form tokens on the tip), so
+  an exact-match `===` cannot silently become a prefix match. T16 is a **second
+  negative control** disjoint from T12, covering the shapes T12 cannot see — the mode
+  flip in the other direction (`100755 → 100644`), a MERGE COMMIT inside the PR range,
+  a CRLF rewrite under this repo's real `* text=auto`, a relocated `__tests__/`
+  directory and a brand-new `__tests__/` tree — all green with no token. T17 pins that
+  a refusal is **per entry, not a whole-run abort**: a typechange beside an
+  additions-only edit and a new file reddens only itself, tally exactly 2 passed / 1
+  failed. T18 extends T13 to assert both new messages still hand the operator a
+  **concrete way forward** (a red gate nobody can act on is a gate somebody disables)
+  while still leaking no live override token. Fails-on-revert re-proven independently at
+  TEST: reverting the dispatch alone with all 53 cases intact yields **45 passed / 8
+  failed** (T9, T10, T11, T13, T14, T15, T17, T18); T12 and T16 stay green in both
+  directions by design. Append-only.
+- **Reachability basis:** across this repo's whole history, only `A` / `M` / `D` / `R###`
+  have ever occurred on a test path; `T` / `C` / `U` / `X` / `B` are zero. `origin/main`
+  has zero symlinks, zero gitlinks, no `.gitmodules`, and zero executable-bit test files.
+  Failing closed therefore cannot red-light any workflow this repo has ever had.
+- **Established:** DRAFT at issue #1505 SPEC 2026-08-03. Flips ACTIVE at CLOSE.
