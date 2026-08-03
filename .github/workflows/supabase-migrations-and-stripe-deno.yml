@@ -380,6 +380,15 @@ jobs:
             # source_refunds.ops_status to needs_review, a false alarm on a live
             # money path the day NG rows genuinely say NG.
             supabase/functions/notify-outbox-drain/issue1529.sourceCountry.test.ts
+            # Issue #1529 T-3 — adapter routing and ZERO-HTTP under the operator
+            # decision that the DESTINATION NUMBER is the routing authority
+            # (Seth, 2026-08-03). Pins the production case nothing covered: a
+            # +234 handset carrying a NULL or an outright wrong "US" label
+            # resolves NG, is gated by sms_live_enabled.ng, and makes ZERO
+            # Twilio calls; a genuine +1 keeps the byte-identical Twilio path;
+            # an unmapped calling code fails closed with zero HTTP to either
+            # provider.
+            supabase/functions/_shared/adapters/smsAdapter.issue1529.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then

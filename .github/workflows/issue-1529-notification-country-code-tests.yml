@@ -63,12 +63,16 @@ jobs:
             supabase/functions/notify-dispatch/index.ts \
             supabase/functions/notify-outbox-drain/index.ts \
             supabase/functions/marketing-send/index.ts
-      - name: Prove the derivation contract and the refund-path skip
+      - name: Prove the derivation contract, adapter routing, and the refund-path skip
         run: |
           deno test --allow-env --allow-net --allow-read --no-check \
             supabase/functions/_shared/e164Country.issue1529.test.ts \
+            supabase/functions/_shared/adapters/smsAdapter.issue1529.test.ts \
             supabase/functions/notify-outbox-drain/issue1529.sourceCountry.test.ts
-      - name: Prove #1518 still holds, byte for byte and unmodified
+      # #1518's channel contract is NOT relaxed by #1529. The routing INPUT
+      # changed (destination number, not label); the NG channel, the Twilio
+      # parameter shape, and the fail-closed contract are untouched.
+      - name: Prove #1518's channel and fail-closed contracts still hold
         run: |
           deno test --allow-env --allow-net --allow-read --no-check \
             supabase/functions/_shared/adapters/smsAdapter.issue1518.test.ts \
