@@ -28,10 +28,10 @@
  *       height, caps a height, or clips. A box no ancestor constrains cannot
  *       overflow, whatever the viewport does.
  *
- *  X-4  THE PAIR ARITHMETIC. "Don't regress the two-column pairs" is asserted as
- *       a real sum against the real tokens at the real phone width, not as
- *       "flexBasis is 220" — and that sum says the pair now WRAPS at 390pt,
- *       which the browser confirms. Recorded as a baseline, not hidden.
+ *  X-4  THE PAIR ARITHMETIC, against the real tokens at 390pt AND 320pt — and
+ *       against the HYPOTHETICAL MAIN SIZE (basis clamped by `minWidth`), which
+ *       is what `flexWrap` actually breaks on. Reading the basis alone is what
+ *       made the first tuning wrong.
  *
  *  CHIP-* / NB-* BOUNDARY ATTACKS, including a 400-case fuzz over the chip
  *       reducer. Not "does 500 work" but "is there ANY input that gets an empty,
@@ -48,7 +48,16 @@
  *       wearing different clothes) and that the editor still closes exactly once
  *       on the eventual success.
  *
+ * RE-BASELINED at `57394a88e`: X-1/X-1b/X-4 previously encoded the two P2
+ * defects as exact baselines and went red the moment they were fixed — by
+ * design. They now pin the FIXED contract, with the same adversarial shape:
+ * X-1 stays an exact-empty match, X-1b asserts the stacked-field SET is
+ * singular rather than checking one field by name, and X-4 asserts the clamped
+ * line fits at both phone widths.
+ *
  * FAILS-ON-REVERT (verified by true line deletion, hashes in the QA verdict):
+ *   `stay-offering-no-show` span back to `num`                   => X-1 FAILS
+ *   `fieldNum` basis back to the desktop width                   => X-4 FAILS
  *   `fieldStack` -> `{ flex: 1, minWidth: 140, gap }`            => X-1 FAILS
  *   `multiline`  -> add `maxHeight: 96`                          => X-3 FAILS
  *   `namedUnitsActive` -> `namedUnits`                           => D4-1 FAILS
@@ -228,7 +237,7 @@ import type { ViewStyle } from "react-native";
 
 import {
   spacing,
-  stayFieldNumBasis,
+  stayFieldNumMaxWidth,
   stayFieldNumMinWidth,
   stayProseMaxWidth,
 } from "../../../constants/designSystem";
@@ -467,31 +476,22 @@ const COLUMN_FLEX_ALLOWED = new Set<string>([
 ]);
 
 /**
- * KNOWN, REPORTED, UNFIXED — the baseline X-1 measures against.
+ * ZERO KNOWN VIOLATIONS — re-baselined at `57394a88e` after the P2-1 fix.
  *
- * This is NOT an exemption and NOT an opinion that the entry is acceptable. It
- * is the tester's QA finding written down where it cannot be forgotten:
+ * HISTORY, kept because the next person needs it. At `d20209afb` this array
+ * held exactly one entry: `stay-offering-no-show-field`. "If a guest never
+ * turns up, refund" carried `span="num"`, but it is NOT inside `styles.row` —
+ * it sits directly in the money section's column after the policy box. So
+ * `fieldNum`'s width measure resolved against the HEIGHT and the box rendered
+ * 220pt tall against a ~90pt sibling: ~114pt of dead space, on every surface,
+ * and a live violation of the `I-AXIS-SCOPED-FLEX` invariant this very issue
+ * stages. The fix was one word, `span="stack"`.
  *
- *   `stay-offering-no-show` ("If a guest never turns up, refund") is declared
- *   `span="num"` at `StayInventoryManager.tsx` in the "What it costs" section,
- *   but it is NOT inside `styles.row` — it is stacked directly in the section's
- *   column, after the `stay-offering-policy` box. `fieldNum` carries
- *   `flexBasis: 220` + `flexShrink: 1`, so in that column those keys resolve
- *   against the HEIGHT. That is the #1501 defect class itself, surviving in the
- *   very change that exists to delete it, and it violates the
- *   `I-AXIS-SCOPED-FLEX` invariant this issue stages as DRAFT.
- *
- *   The fix is one word: `span="num"` -> `span="stack"`.
- *
- * X-1 is written as an EXACT-MATCH baseline rather than an allow-list on
- * purpose. Adding a new violation fails it (the protection this suite exists
- * for), and FIXING the known one also fails it — with a message telling you to
- * empty this array. A test that silently keeps passing after the bug is fixed
- * is how a stale exemption becomes permanent.
+ * It is EMPTY and must stay empty. This is an exact-match baseline, not an
+ * allow-list: a new entry fails X-1, and there is nothing legitimate to park
+ * here — a field that shares a column's main axis is the bug, by definition.
  */
-const KNOWN_AXIS_VIOLATIONS: readonly string[] = [
-  "stay-offering-no-show-field",
-];
+const KNOWN_AXIS_VIOLATIONS: readonly string[] = [];
 
 // ---------------------------------------------------------------------------
 // STATE SWEEP — every editor configuration the operator can actually produce.
@@ -683,35 +683,54 @@ describe("#1501 X — the axis defect is unreachable, not merely renamed", () =>
     });
   });
 
-  it("X-1b — the known violation really IS the row measure in a column", async () => {
-    // Documents the reported defect precisely enough that the fix is obvious
-    // and its blast radius is bounded: ONE field, the row-only numeric measure,
-    // stacked in the money section's column.
-    const tree = await mountState(sweepStates()[0]);
-    const audited = auditTree(tree);
-    const offender = audited.find(
-      (node) => node.testID === "stay-offering-no-show-field",
-    );
-    expect(offender).toBeDefined();
-    const found = offender as AuditedNode;
-    // It is the ROW-ONLY measure…
-    expect(found.style.flexBasis).toBe(stayFieldNumBasis);
-    expect(found.style.minWidth).toBe(stayFieldNumMinWidth);
-    // …applied under a COLUMN, which is exactly what #1501 exists to delete.
-    expect(found.parentDirection).toBe("column");
-    // Its siblings in the same section got the stack measure right, so this is
-    // a single call-site slip and not a systemic misunderstanding.
-    for (const testID of [
-      "stay-offering-fee-label-field",
-      "stay-offering-policy-field",
-    ]) {
-      const sibling = audited.find((node) => node.testID === testID);
-      expect(sibling?.parentDirection).toBe("column");
-      expect(sibling?.style.flexBasis).toBeUndefined();
-      expect(sibling?.style.flexGrow).toBeUndefined();
-      expect(sibling?.style.width).toBe("100%");
+  it("X-1b — every stacked field resolves ONE identical measure, in all states", async () => {
+    // RE-BASELINED at `57394a88e`. Before the fix this test pinned the defect:
+    // `stay-offering-no-show-field` carrying `fieldNum`'s 220pt basis under a
+    // column. Now it pins the property that makes the defect unrepresentable —
+    // and it is deliberately STRONGER than "the refund field is a stack".
+    //
+    // A per-field assertion ("field X uses the stack measure") has to be
+    // written once per field and is therefore only as complete as whoever
+    // remembered to add a line. This asserts the SET instead: gather every
+    // `*-field` wrapper laid out in a column, across the whole 18-state sweep,
+    // and require that they all resolve the SAME object. A new stacked field
+    // is covered the moment it renders, with nothing to remember; and a
+    // one-off measure on any single one of them — the exact shape of the
+    // shipped bug — makes the set size 2 and fails here.
+    const seen = new Map<string, string[]>();
+    let checked = 0;
+    for (const state of sweepStates()) {
+      const tree = await mountState(state);
+      for (const node of auditTree(tree)) {
+        if (node.testID === undefined) continue;
+        if (!node.testID.endsWith("-field")) continue;
+        if (node.parentDirection !== "column") continue;
+        checked += 1;
+        const shape = JSON.stringify({
+          width: node.style.width,
+          minWidth: node.style.minWidth,
+          flex: node.style.flex ?? null,
+          flexGrow: node.style.flexGrow ?? null,
+          flexBasis: node.style.flexBasis ?? null,
+        });
+        seen.set(shape, [...(seen.get(shape) ?? []), node.testID]);
+      }
+      await unmount(tree);
     }
-    await unmount(tree);
+    // Not vacuous: the sweep really walked a lot of stacked fields.
+    expect(checked).toBeGreaterThanOrEqual(60);
+    // EXACTLY ONE shape, and it is the axis-free stack measure.
+    expect([...seen.keys()]).toEqual([
+      JSON.stringify({
+        width: "100%",
+        minWidth: 0,
+        flex: null,
+        flexGrow: null,
+        flexBasis: null,
+      }),
+    ]);
+    // And the field that was wrong is demonstrably inside that set now.
+    expect([...seen.values()][0]).toContain("stay-offering-no-show-field");
   });
 
   it("X-2 — no full-width box is dropped into a ROW (Amendment 1's crush)", async () => {
@@ -788,7 +807,7 @@ describe("#1501 X — the axis defect is unreachable, not merely renamed", () =>
     expect(checked).toBeGreaterThanOrEqual(18);
   });
 
-  it("X-4 — the phone pair arithmetic (REPORTED: it wraps at 390pt)", async () => {
+  it("X-4 — the numeric pair shares ONE line at 390pt and at 320pt", async () => {
     mockIsWideDesktop = false;
     const tree = await mount(<OfferingEditor {...BASE_PROPS} />);
     const audited = auditTree(tree);
@@ -813,42 +832,60 @@ describe("#1501 X — the axis defect is unreachable, not merely renamed", () =>
       "stay-offering-quantity-field",
       "stay-offering-guests-field",
     ]);
+    // RE-BASELINED at `57394a88e`. These are read from the RENDERED style, not
+    // from the token, so swapping what a token points at cannot fake it.
     for (const child of children) {
-      expect(child.style.flexGrow).toBe(0);
-      expect(child.style.flexBasis).toBe(stayFieldNumBasis);
+      // Zero basis + grow: the pair SHARES the line instead of each demanding
+      // its full desktop width up front. That single change is the P2-2 fix.
+      expect(child.style.flexBasis).toBe(0);
+      expect(child.style.flexGrow).toBe(1);
+      expect(child.style.maxWidth).toBe(stayFieldNumMaxWidth);
       expect(child.style.minWidth).toBe(stayFieldNumMinWidth);
     }
-    // THE ARITHMETIC, at the real phone width with the real gutters:
-    // `PAGE_BASE.padding` is `spacing.md` on both sides and `GlassCard`'s
-    // default inner padding is `spacing.md` on both sides, so a phone row has
-    // 326pt of content box.
-    const PHONE_WIDTH = 390;
-    const available = PHONE_WIDTH - spacing.md * 2 - spacing.md * 2;
-    expect(available).toBe(326);
 
-    // REPORTED DEFECT — the pair DOES wrap at 390pt.
+    // THE ARITHMETIC, at the real phone widths with the real gutters:
+    // `PAGE_BASE.padding` is `spacing.md` both sides and `GlassCard`'s default
+    // inner padding is `spacing.md` both sides.
     //
-    // `flexWrap` decides on the FLEX BASE SIZE, before any shrinking: a line
-    // that cannot hold both bases breaks, and the wrapped item then has a whole
-    // line to itself and never shrinks at all. `flexShrink: 1` therefore does
-    // NOT rescue a 220pt basis here — 220 + 220 + 16 = 456 > 326, so Quantity
-    // and Guests stack.
-    //
-    // `origin/main` did not: `field: { flex: 1 }` is `flexBasis: 0`, so both
-    // bases fit on one line (0 + 0 + gap <= 326) and then GREW to ~159 each,
-    // which is how the pair was side by side before this change. Measured in a
-    // real browser at 390: Quantity y=1634 h=106, Guests y=1756 — two rows,
-    // both still 220 wide (i.e. never shrunk), confirming the wrap.
-    //
-    // Written as an exact baseline, like X-1: if the basis is retuned so the
-    // pair fits again, THIS TEST FAILS and tells you to update it.
-    const MAIN_BASIS_BEFORE_1501 = 0;
-    expect(stayFieldNumMinWidth * 2 + spacing.md).toBeLessThanOrEqual(available);
-    expect({
-      wrapsAt390: stayFieldNumBasis * 2 + spacing.md > available,
-      wouldHaveWrappedOnMain:
-        MAIN_BASIS_BEFORE_1501 * 2 + spacing.sm > available,
-    }).toEqual({ wrapsAt390: true, wouldHaveWrappedOnMain: false });
+    // The wrap test is NOT the basis — it is the hypothetical main size, which
+    // flexbox clamps by `minWidth`. That is the subtlety the original tuning
+    // missed: with a 220 basis the line broke at 220+220+16=456 > 326 and
+    // `flexShrink` never engaged, because a wrapped item owns its whole line.
+    // With a zero basis the clamp floor is `minWidth`, so the real question is
+    // whether TWO MINIMUMS plus the gap fit — and it must hold at 320 too, not
+    // just 390, which is why `stayFieldNumMinWidth` came down to 112.
+    const gutters = spacing.md * 2 + spacing.md * 2;
+    const cases = [
+      { phone: 390, available: 390 - gutters },
+      { phone: 320, available: 320 - gutters },
+    ];
+    expect(cases.map((c) => c.available)).toEqual([326, 256]);
+
+    for (const { phone, available } of cases) {
+      const clampedLine = stayFieldNumMinWidth * 2 + spacing.md;
+      const shareEach = (available - spacing.md) / 2;
+      expect({
+        phone,
+        fitsOneLine: clampedLine <= available,
+        shareAtLeastMin: shareEach >= stayFieldNumMinWidth,
+        cappedBelowDesktop: shareEach < stayFieldNumMaxWidth,
+      }).toEqual({
+        phone,
+        fitsOneLine: true,
+        shareAtLeastMin: true,
+        cappedBelowDesktop: true,
+      });
+    }
+    // 155pt each at 390, 120pt at 320 — the claimed figures, derived not quoted.
+    expect(Math.floor((326 - spacing.md) / 2)).toBe(155);
+    expect(Math.floor((256 - spacing.md) / 2)).toBe(120);
+
+    // REGRESSION TRIPWIRE. Re-introducing a desktop-width flex BASIS — the
+    // shape that shipped and stacked both pairs on every phone — breaks the
+    // line at both widths. Stated as arithmetic so the reason survives even if
+    // someone only reads this line.
+    expect(stayFieldNumMaxWidth * 2 + spacing.md).toBeGreaterThan(326);
+    expect(stayFieldNumMaxWidth * 2 + spacing.md).toBeGreaterThan(256);
     await unmount(tree);
   });
 });
