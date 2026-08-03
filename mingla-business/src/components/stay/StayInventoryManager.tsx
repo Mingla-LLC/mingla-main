@@ -17,10 +17,13 @@ import {
   radius,
   semantic,
   spacing,
+  stayInventoryMaxWidth,
+  suiteFormMaxWidth,
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
 import { useBrandDiscoveryCurrency } from "../../hooks/useBrandDiscoveryCurrency";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import {
   stayInventoryKeys,
   useStayInventory,
@@ -214,6 +217,8 @@ function OfferingEditor({
   canManageFinance,
   onClose,
 }: OfferingEditorProps): React.ReactElement {
+  // #1484 — desktop gate ONLY via the canonical hook (I-DESKTOP-GATE-VIA-HOOK).
+  const { isWideDesktop } = useResponsiveLayout();
   const queryClient = useQueryClient();
   const currency = useBrandDiscoveryCurrency(brandId);
   const currencyCode = currency.data?.currencyCode ?? null;
@@ -548,7 +553,10 @@ function OfferingEditor({
         : null;
 
   return (
-    <ScrollView contentContainerStyle={styles.page}>
+    <ScrollView
+      contentContainerStyle={isWideDesktop ? styles.pageForm : styles.page}
+      testID="stay-offering-editor-scroll"
+    >
       <View style={styles.titleRow}>
         <View style={styles.flex}>
           <Text style={styles.title}>
@@ -1362,6 +1370,8 @@ export function StayInventoryManager({
   venueId: string;
   mode: "inventory" | "availability";
 }): React.ReactElement {
+  // #1484 — desktop gate ONLY via the canonical hook (I-DESKTOP-GATE-VIA-HOOK).
+  const { isWideDesktop } = useResponsiveLayout();
   const inventory = useStayInventory(venueId);
   const [filter, setFilter] = useState<StayInventoryFilter>("all");
   const [search, setSearch] = useState("");
@@ -1420,7 +1430,10 @@ export function StayInventoryManager({
     );
   }
   return (
-    <ScrollView contentContainerStyle={styles.page}>
+    <ScrollView
+      contentContainerStyle={isWideDesktop ? styles.pageDesktop : styles.page}
+      testID="stay-inventory-list-scroll"
+    >
       {inventory.isError ? (
         <View style={styles.offlineBanner}>
           <Text style={styles.warning}>
@@ -1541,14 +1554,44 @@ export function StayInventoryManager({
   );
 }
 
+/** Geometry shared by every page measure below (see the note on `page`). */
+const PAGE_BASE = {
+  padding: spacing.md,
+  paddingBottom: spacing.xxl * 3,
+  gap: spacing.md,
+  width: "100%",
+} as const;
+
 const styles = StyleSheet.create({
+  // #1484 — COMPLETE, MUTUALLY EXCLUSIVE measures; exactly ONE is selected.
+  // NEVER layered as `[page, <override setting maxWidth to undefined>]` — on
+  // react-native-web such an override does not clear the base declaration (the
+  // base's atomic `r-maxWidth-*` class survives into the DOM), so the cap
+  // silently persists. Omitting the KEY is the only form the web resolver
+  // honours. (ORCH-1184 did exactly this for `desktopCentered`, which is why
+  // the venue suite was never affected.)
   page: {
-    padding: spacing.md,
-    paddingBottom: spacing.xxl * 3,
-    gap: spacing.md,
-    maxWidth: 900,
-    width: "100%",
+    ...PAGE_BASE,
+    // Phone / web-phone readable measure (unchanged; tokenised).
+    maxWidth: stayInventoryMaxWidth,
     alignSelf: "center",
+  },
+  // WIDE DESKTOP, the Rooms & Places / Availability LIST: no `maxWidth` key at
+  // all — the shared SuiteDesktopShell workspace owns the gutters and the left
+  // anchor, so the list fills the workspace instead of leaving a dead gutter.
+  pageDesktop: {
+    ...PAGE_BASE,
+    alignSelf: "flex-start",
+  },
+  // WIDE DESKTOP, the embedded `OfferingEditor` EDITABLE FORM. "Fill the
+  // screen" is right for tables and wrong for forms: a text field stretched
+  // across a 2,000px monitor is unusable. The editor keeps the same readable
+  // measure as Stay Settings (`suiteFormMaxWidth`), left-anchored — while the
+  // surrounding LIST stays uncapped. That distinction is the point.
+  pageForm: {
+    ...PAGE_BASE,
+    maxWidth: suiteFormMaxWidth,
+    alignSelf: "flex-start",
   },
   center: {
     flex: 1,

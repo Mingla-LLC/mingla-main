@@ -35,24 +35,13 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
-  accent,
-  glass,
-  radius,
   spacing,
   text as textTokens,
   typography,
-  venueRailWidth,
 } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import {
@@ -61,6 +50,8 @@ import {
 } from "../../hooks/useVenueReservationSettings";
 import { useVenueSuiteStore } from "../../store/venueSuiteStore";
 import type { VenueModule } from "../../types/venueReservation";
+import type { SuiteDesktopModule } from "../suite/SuiteDesktopShell";
+import { SuiteDesktopShell } from "../suite/SuiteDesktopShell";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { VenueAvailabilityModule } from "./VenueAvailabilityModule";
@@ -143,6 +134,22 @@ export function VenueSuiteShell({
   // Views, so the shell supplies the scroll container + clearance for them.
   const workspaceSelfScrolls = moduleSelfScrolls(activeModule);
 
+  // Issue #1484 — the shared desktop shell takes `{ key, label }` rows and a
+  // string-keyed `onSelect`. Ordering stays venue-owned (band grouping); the
+  // select handler resolves the string back through `visibleModules`, so an
+  // unknown key can never write a bogus module into state (no `as` cast).
+  const railModules = useMemo(
+    () => deriveVenueRailModules(visibleModules),
+    [visibleModules],
+  );
+  const handleRailSelect = useCallback(
+    (key: string): void => {
+      const next = visibleModules.find((m) => m === key);
+      if (next !== undefined) setActiveModule(next);
+    },
+    [visibleModules],
+  );
+
   const renderWorkspace = (): React.ReactElement => {
     if (activeModule === "overview") {
       // ORCH-1186-B — the Overview slot is now the venue INTELLIGENCE dashboard
@@ -210,34 +217,26 @@ export function VenueSuiteShell({
   };
 
   // ----- Web desktop: two-column master rail + workspace. -----
+  // Issue #1484 [stay-desktop-shell] — the layout itself now lives in the
+  // SHARED `SuiteDesktopShell` (decision D2) so the Stay suite renders the
+  // identical rail + full-width workspace instead of its own phone-first
+  // template. The rendered output here is UNCHANGED: same `desktopHost` /
+  // `desktopCentered` / `desktopRail` / `desktopWorkspace` tree, same
+  // `venue-suite-shell-desktop` + `venue-rail-<module>` testIDs, same
+  // tablist/tab a11y roles, same width math (NO maxWidth cap — ORCH-1184).
   if (isWideDesktop) {
     return (
-      <View style={styles.desktopHost} testID="venue-suite-shell-desktop">
-        <View style={styles.desktopCentered}>
-          <View style={styles.desktopRail} accessibilityRole="tablist">
-            <DesktopRail
-              modules={visibleModules}
-              activeModule={activeModule}
-              onSelect={setActiveModule}
-            />
-          </View>
-          <View style={styles.desktopWorkspace}>
-            {workspaceSelfScrolls ? (
-              // Overview self-scrolls; avoid nesting a second ScrollView.
-              renderWorkspace()
-            ) : (
-              <ScrollView
-                contentContainerStyle={[
-                  styles.desktopScroll,
-                  { paddingBottom: scrollBottomPad },
-                ]}
-              >
-                {renderWorkspace()}
-              </ScrollView>
-            )}
-          </View>
-        </View>
-      </View>
+      <SuiteDesktopShell
+        modules={railModules}
+        activeModule={activeModule}
+        onSelect={handleRailSelect}
+        workspaceSelfScrolls={workspaceSelfScrolls}
+        scrollBottomPad={scrollBottomPad}
+        railTestIdPrefix="venue-rail-"
+        testID="venue-suite-shell-desktop"
+      >
+        {renderWorkspace()}
+      </SuiteDesktopShell>
     );
   }
 
@@ -268,142 +267,28 @@ export function VenueSuiteShell({
   );
 }
 
-interface DesktopRailProps {
-  modules: readonly VenueModule[];
-  activeModule: VenueModule;
-  onSelect: (m: VenueModule) => void;
-}
-
-function DesktopRail({
-  modules,
-  activeModule,
-  onSelect,
-}: DesktopRailProps): React.ReactElement {
-  // Band grouping drives ORDER only (ORCH-1184 removed the Command/Booking
-  // captions): Command band (A) then Booking band (B). C/D absent in 2.0.
+/**
+ * Rail ORDER (ORCH-1184 removed the Command/Booking captions, so the bands now
+ * drive order ONLY): Overview (command) first, then the Booking band, then the
+ * remaining command modules (Menu, Settings). Bands C/D are absent in 2.0.
+ *
+ * Issue #1484 — this derivation stayed in the venue shell (it is venue-band
+ * specific); only the RENDERING moved to `SuiteDesktopShell`. The emitted list
+ * is identical to what the old local `DesktopRail` mapped over.
+ */
+export function deriveVenueRailModules(
+  modules: readonly VenueModule[],
+): SuiteDesktopModule[] {
   const command = modules.filter((m) => VENUE_MODULES[m].band === "command");
   const booking = modules.filter((m) => VENUE_MODULES[m].band === "booking");
-  // Keep Overview (command) first, then Booking band, then Settings (command).
   const orderedCommandTop = command.filter((m) => m === "overview");
   const orderedCommandBottom = command.filter((m) => m !== "overview");
-
-  const renderRow = (m: VenueModule): React.ReactElement => {
-    const isActive = m === activeModule;
-    return (
-      <Pressable
-        key={m}
-        accessibilityRole="tab"
-        accessibilityState={{ selected: isActive }}
-        accessibilityLabel={`${VENUE_MODULES[m].label} module`}
-        onPress={() => onSelect(m)}
-        style={[styles.railRow, isActive ? styles.railRowActive : null]}
-        testID={`venue-rail-${m}`}
-      >
-        {isActive ? <View style={styles.railActiveBar} /> : null}
-        <Text
-          style={[styles.railLabel, isActive ? styles.railLabelActive : null]}
-        >
-          {VENUE_MODULES[m].label}
-        </Text>
-      </Pressable>
-    );
-  };
-
-  // ORCH-1184 — the grey uppercase "Command" / "Booking" section captions are
-  // removed; the rail now reads as ONE clean, uniformly-spaced list (Overview,
-  // booking band, Settings). The band grouping still drives ORDER (Overview
-  // first, booking band, Settings last) but is no longer surfaced as a caption.
-  return (
-    <View style={styles.railInner}>
-      {orderedCommandTop.map(renderRow)}
-      {booking.map(renderRow)}
-      {orderedCommandBottom.map(renderRow)}
-    </View>
+  return [...orderedCommandTop, ...booking, ...orderedCommandBottom].map(
+    (m) => ({ key: m, label: VENUE_MODULES[m].label }),
   );
 }
 
 const styles = StyleSheet.create({
-  // desktop
-  desktopHost: {
-    flex: 1,
-  },
-  desktopCentered: {
-    flex: 1,
-    flexDirection: "row",
-    width: "100%",
-    // ORCH-1184 — the workspace FILLS the page width (Seth's decision). The old
-    // `maxWidth: venueSuiteMaxWidth` (1200) cap stopped the two-column block at
-    // 1200px on wide monitors, leaving dead right-side canvas (the "weird black
-    // bar"). The cap is removed so the block expands to the full available page
-    // width; the rail stays fixed-width and the `flex:1` workspace absorbs the
-    // extra width (settings cards get wider). We KEEP the LEFT anchor and the
-    // `paddingHorizontal: spacing.md` edge gutters — the block shares the Hub
-    // chrome's exact left edge (TopBar / To-Do / sub-nav, all left-aligned to
-    // `spacing.md` in hub/_layout.tsx), so the rail still sits flush under the
-    // nav, now with no right-side dead space.
-    alignSelf: "flex-start",
-    paddingHorizontal: spacing.md,
-  },
-  desktopRail: {
-    width: venueRailWidth,
-    paddingTop: spacing.xs,
-    // Hairline divider separating the rail from the workspace, top-aligned with
-    // the content. Subtle (matches the app's restrained desktop chrome), opaque
-    // safe on Android.
-    borderRightWidth: StyleSheet.hairlineWidth,
-    borderRightColor: glass.border.profileBase,
-    paddingRight: spacing.sm,
-  },
-  railInner: {
-    // ORCH-1184 — the Command/Booking captions were removed, so the rail is one
-    // uniformly-spaced list. `gap` now applies evenly between every item (the
-    // captions' former `paddingTop: spacing.md` no longer opens a gap between
-    // the Overview group and the booking band).
-    gap: spacing.xxs,
-  },
-  railRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    // Tighter, consistent vertical rhythm (was sm/16h) and a snug left grid.
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radius.md,
-    ...Platform.select({ web: { cursor: "pointer" }, default: {} }),
-  },
-  railRowActive: {
-    // 2.0.1 polish — sleeker selected state. The old `accent.tint` (warm @0.28
-    // alpha) read as a heavy brown fill. The app's restrained convention is a
-    // faint neutral surface + the warm accent reserved for the edge bar + label,
-    // so the active row now uses the elevated glass surface (opaque-safe rgba)
-    // and the warm signal lives in `railActiveBar` + `railLabelActive`.
-    backgroundColor: glass.tint.profileElevated,
-  },
-  railActiveBar: {
-    position: "absolute",
-    left: 0,
-    top: spacing.xs,
-    bottom: spacing.xs,
-    width: 3,
-    borderRadius: radius.full,
-    backgroundColor: accent.warm,
-  },
-  railLabel: {
-    ...typography.body,
-    color: textTokens.secondary,
-  },
-  railLabelActive: {
-    color: textTokens.primary,
-    fontWeight: "600",
-  },
-  desktopWorkspace: {
-    flex: 1,
-    // Balanced gutter between the rail and the workspace (paired with the rail's
-    // `paddingRight: spacing.sm` + hairline → a coherent, symmetric seam).
-    paddingLeft: spacing.lg,
-  },
-  desktopScroll: {
-    // paddingBottom supplied inline (insets.bottom + 120) for nav clearance.
-  },
   // phone / native
   phoneHost: {
     flex: 1,
