@@ -7009,9 +7009,9 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   Failing closed therefore cannot red-light any workflow this repo has ever had.
 - **Established:** DRAFT at issue #1505 SPEC 2026-08-03. Flips ACTIVE at CLOSE.
 
-## DRAFT — issue #1510 (append-only gate measures deletions rather than inferring them)
+## ACTIVE — issue #1510 (append-only gate measures deletions rather than inferring them)
 
-### I-PROPOSED-1510-DELETION-COUNT-IS-MEASURED (DRAFT)
+### I-1510-DELETION-COUNT-IS-MEASURED (ACTIVE)
 - **Rule:** the append-only gate's deleted-line count for a status-`M` test path is
   **measured**, never inferred from an empty parse. `countDeletedLines` reads
   `git diff --numstat`, whose `deleted` column is immune to the `diff`/`binary`/`-diff`
