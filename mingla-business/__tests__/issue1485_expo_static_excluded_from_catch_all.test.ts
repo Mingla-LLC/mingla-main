@@ -51,7 +51,18 @@ const CATCH_ALL_SOURCE = "/((?!_expo/static/).*)";
  * `CATCH_ALL_SOURCE` to. Verified in the #1485 INVESTIGATION by running the real
  * compiler over the real config.
  */
-const COMPILED_CATCH_ALL = /^(?:\/((?!_expo\/static\/).*))$/;
+const COMPILED_CATCH_ALL_SOURCE = "^(?:/((?!_expo/static/).*))$";
+
+const shippedCatchAll = vercel.rewrites[vercel.rewrites.length - 1];
+
+/**
+ * Compiled FROM the shipped config, never from a local constant — otherwise a
+ * revert of `vercel.json` would leave T1.2/T1.3 green and the fails-on-revert
+ * contract would be a lie. For a `source` with no `:named` parameters (asserted
+ * below) path-to-regexp@6 wraps the raw path in `^(?:…)$` verbatim, which is
+ * exactly the compiler output the INVESTIGATION captured.
+ */
+const COMPILED_CATCH_ALL = new RegExp(`^(?:${shippedCatchAll.source})$`);
 
 const sourceIndex = (source: string): number =>
   vercel.rewrites.findIndex((rewrite) => rewrite.source === source);
@@ -66,6 +77,15 @@ describe("#1485 T1 — /_expo/static/ is excluded from the SPA catch-all", () =>
     const last = vercel.rewrites[vercel.rewrites.length - 1];
     expect(last.source).toBe(CATCH_ALL_SOURCE);
     expect(last.destination).toBe("/");
+    // The source carries no `:named` parameter, so the compiled form below is a
+    // faithful emulation AND the destination can never be rewritten to
+    // "/?path=$1" by the named-parameter trap.
+    expect(last.source).not.toMatch(/:\w+\(/);
+    // `RegExp.prototype.source` escapes `/` as `\/`; unescape so the comparison
+    // reads as the INVESTIGATION recorded the compiler's output.
+    expect(COMPILED_CATCH_ALL.source.replace(/\\\//g, "/")).toBe(
+      COMPILED_CATCH_ALL_SOURCE,
+    );
   });
 
   test("T1.2 — every real deep link still matches the catch-all", () => {
