@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -8,6 +8,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import type { ViewStyle } from "react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { BedDouble, CalendarDays, Check, X } from "lucide-react-native";
 
@@ -15,9 +16,18 @@ import {
   accent,
   glass,
   radius,
+  optionCardMinHeight,
+  optionCardMinWidth,
   semantic,
   spacing,
+  stayEditorFormMaxWidth,
+  stayEditorSummaryMinWidth,
+  stayEditorSummaryWidth,
+  stayFieldNumMaxWidth,
+  stayFieldNumMinWidth,
+  stayFieldPairMinWidth,
   stayInventoryMaxWidth,
+  stayProseMaxWidth,
   suiteFormMaxWidth,
   text as textTokens,
   typography,
@@ -66,9 +76,14 @@ import {
 import { randomId } from "../../utils/randomId";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { Button } from "../ui/Button";
+import { ChipInput } from "../ui/ChipInput";
+import type { IconName } from "../ui/Icon";
 import { GlassCard } from "../ui/GlassCard";
+import { NameBuilder } from "../ui/NameBuilder";
+import { OptionCard } from "../ui/OptionCard";
 import {
   matchesStayInventoryFilter,
+  stayDraftReadiness,
   stayOfferingReadinessErrors,
   type StayInventoryFilter,
 } from "./stayInventoryPresentation";
@@ -92,13 +107,19 @@ const asPositiveInteger = (value: string, fallback = 1): number => {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
 };
 
-const splitList = (value: string): string[] => [
-  ...new Set(
-    value
-      .split(/[\n,]/)
-      .map((item) => item.trim())
-      .filter(Boolean),
-  ),
+/**
+ * #1501 §9 — the list normaliser. `amenities` / `bulkNames` / `unitNames` are
+ * `string[]` in component state now (they used to be newline/comma strings
+ * parsed by `splitList`), but the SHAPE emitted to the server is unchanged:
+ * trimmed, de-duplicated, empties dropped, order preserved. `makeOffering`'s
+ * `CreateStayOfferingInput` is byte-identical for identical operator input.
+ *
+ * Side benefit: an amenity that CONTAINS a comma ("bed, sofa and desk") used to
+ * split into two on load, because `existing.amenities` was seeded with
+ * `.join(", ")` and re-split. Arrays never round-trip through a delimiter.
+ */
+const normalizeList = (values: readonly string[]): string[] => [
+  ...new Set(values.map((item) => item.trim()).filter(Boolean)),
 ];
 
 function mutationCopy(error: unknown): string {
@@ -122,6 +143,397 @@ function mutationCopy(error: unknown): string {
     return "Finish the listed readiness items before making this live.";
   }
   return "That change did not save. Check your connection and try again.";
+}
+
+/**
+ * #1501 §3 — THE TERMINOLOGY CONTRACT. Approved by Seth 2026-08-03, verbatim.
+ *
+ * Seth's report was blunt: "the terminology on the add form — don't know what
+ * it means. I need to understand it." Every toggle pair used to be bare jargon
+ * with zero helper text (Single/Bulk, Instant/Request, Interchangeable/Named
+ * units, Exclusive units/Shared capacity, Public/Overnight guests only), and
+ * the underlying meaning existed only in the source.
+ *
+ * These strings ARE the fix. They are a contract, not a suggestion — a silent
+ * revert to jargon fails `stayTerminology.issue1501.test.ts`. Nothing here
+ * changes what the server stores; the data contract is byte-identical.
+ */
+interface OptionCopy {
+  readonly label: string;
+  readonly helper: string;
+  /** Concrete instance of the abstraction. Omitted where it would be noise. */
+  readonly example?: string;
+}
+
+type StayChoiceId =
+  | "room"
+  | "place"
+  | "addOne"
+  | "addSeveral"
+  | "instant"
+  | "request"
+  | "bookedWhole"
+  | "sharedSpots"
+  | "interchangeable"
+  | "named"
+  | "publicAccess"
+  | "overnightOnly";
+
+const STAY_CHOICE_COPY: Record<StayChoiceId, OptionCopy> = {
+  room: {
+    label: "Room",
+    helper: "A space with a bed, booked by the night.",
+    example: "Ocean-view double, Suite 4",
+  },
+  place: {
+    label: "Place",
+    helper: "Any other space guests can reserve — no bed involved.",
+    example: "Pool cabana, spa room, private dining table",
+  },
+  addOne: {
+    label: "Add one",
+    helper: "Create a single Room or Place.",
+  },
+  addSeveral: {
+    label: "Add several",
+    helper:
+      "Create many at once. They share every setting below — only the names differ.",
+    example: "20 rooms in one go",
+  },
+  instant: {
+    label: "Confirmed instantly",
+    helper: "The guest books and it’s theirs straight away. You do nothing.",
+  },
+  request: {
+    label: "You approve first",
+    helper:
+      "The guest asks; it’s held for you until you say yes in Reservations.",
+  },
+  bookedWhole: {
+    label: "Booked whole",
+    helper: "One booking takes the entire space. Nobody else is in it.",
+    example: "a cabana one group has to themselves",
+  },
+  sharedSpots: {
+    label: "Shared by the spot",
+    helper: "You sell individual spots until the space is full.",
+    example: "10 yoga mats sold as 10 separate bookings",
+  },
+  interchangeable: {
+    label: "Any one will do",
+    helper:
+      "You have several identical ones. Mingla gives the guest whichever is free.",
+    example: "8 identical standard doubles",
+  },
+  named: {
+    label: "Each one is named",
+    helper:
+      "Every one has its own name or number, and Mingla tracks exactly which the guest gets.",
+    example: "Room 101, Room 102, Room 103",
+  },
+  publicAccess: {
+    label: "Anyone can book",
+    helper:
+      "Shows to everyone on Mingla, whether they’re staying with you or not.",
+  },
+  overnightOnly: {
+    label: "Only guests staying here",
+    helper:
+      "Hidden from the public. Bookable only by someone who already has a room here.",
+  },
+};
+
+/** Field labels + the helper sentence that explains each one (#1501 §3). */
+const STAY_FIELD_COPY = {
+  name: {
+    label: "Name",
+    helper: "What guests will see in search and on the booking page.",
+  },
+  names: {
+    label: "Names",
+    helper:
+      "One per name — build them with the pattern below, or type your own.",
+  },
+  description: {
+    label: "Description",
+    helper:
+      "What the guest is actually getting. Two or three lines is plenty.",
+  },
+  amenities: {
+    label: "What’s included",
+    helper: "Tap what this has. Type anything else and press enter.",
+  },
+  quantity: {
+    label: "How many you have",
+    helper: "The number of identical ones you can sell for the same night.",
+    /**
+     * A cabana is not sold by the night. Kind-aware exactly like Price is
+     * ("Price per night" / "Price per booking") — the approved table carries one
+     * helper because it was written for Rooms, and reading it on a Place was
+     * simply wrong on screen.
+     */
+    placeHelper: "The number of identical ones you can sell at the same time.",
+    /** D-5: when each one is named, the count is the name count. */
+    derivedHelper: "Set by the names below.",
+  },
+  capacity: {
+    label: "Total spots",
+    helper: "The most people who can share this space at the same time.",
+  },
+  maxGuests: {
+    label: "Guests per booking",
+    helper: "The most people allowed on one booking.",
+  },
+  unitNames: {
+    label: "Name each one",
+    helper: "Every unit needs its own name.",
+  },
+  price: {
+    label: "Price per night",
+    placeLabel: "Price per booking",
+    helper: "What one booking costs before extra charges and tax.",
+  },
+  feeLabel: {
+    label: "Extra charge name",
+    helper:
+      "One extra charge added to every booking. Leave both blank if you don’t have one.",
+  },
+  feeAmount: {
+    label: "Extra charge amount",
+    helper: "Added on top of the price, shown to the guest as its own line.",
+  },
+  policy: {
+    label: "Cancellation policy",
+    helper: "In your own words. Guests read this before they pay.",
+  },
+  noShow: {
+    label: "If a guest never turns up, refund",
+    helper:
+      "0 means you keep the full amount. 100 means they get everything back.",
+  },
+} as const;
+
+/**
+ * #1501 §4.1 — kind-aware quick adds for "What's included". A hotelier should
+ * be tapping, not typing, for the twenty things every room has.
+ */
+const ROOM_AMENITIES: readonly string[] = [
+  "Wi-Fi",
+  "Air conditioning",
+  "Ensuite",
+  "Balcony",
+  "Sea view",
+  "Accessible entrance",
+  "Kitchenette",
+  "TV",
+  "Safe",
+  "Workspace",
+];
+
+/** The same idea for a Place: no bed, so the vocabulary is different. */
+const PLACE_AMENITIES: readonly string[] = [
+  "Wi-Fi",
+  "Shade",
+  "Sun loungers",
+  "Towels",
+  "Outdoor shower",
+  "Accessible entrance",
+  "Private entrance",
+  "Sound system",
+  "Heating",
+  "Table service",
+];
+
+/**
+ * "Every unit needs its own name. You have {n} to name." — the count is live,
+ * so the operator always knows how far through the list they are.
+ */
+const unitNamesHelper = (count: number): string =>
+  `${STAY_FIELD_COPY.unitNames.helper} You have ${count} to name.`;
+
+/**
+ * One glyph per approved term. Icons carry no meaning on their own — they are a
+ * recognition aid on a form an operator fills 40 times in a row.
+ *
+ * These are names from the IN-APP `Icon` roster, NOT `lucide-react-native`, and
+ * that is a bundle-budget requirement rather than a preference. On web the
+ * lucide shim deep-`require`s every registered glyph at module scope and lands
+ * in Metro's EAGER `__common` chunk, so a glyph registered for this editor is
+ * downloaded by every business-web visitor before anything renders — even
+ * though the editor is behind a lazy route. Registering 10 lucide glyphs here
+ * cost 8,746 eager bytes and blew the ORCH-1083 budget. `Icon`'s 69 SVG glyphs
+ * are already in `__common` (Button depends on it), so these cost nothing.
+ */
+const STAY_CHOICE_ICON: Record<StayChoiceId, IconName> = {
+  room: "home",
+  place: "location",
+  addOne: "plus",
+  addSeveral: "grid",
+  instant: "flash",
+  // The guest asks and it waits for you — an inbox, not a lightning bolt.
+  request: "inbox",
+  bookedWhole: "shield",
+  sharedSpots: "users",
+  // "Any one will do" — the units are interchangeable.
+  interchangeable: "swap",
+  named: "tag",
+  publicAccess: "globe",
+  // Bookable only by someone who already holds a reservation here.
+  overnightOnly: "ticket",
+};
+
+/**
+ * #1501 §3 — an explained choice, rendered as the shared `OptionCard`. The copy
+ * comes from ONE contract table, so a term can never drift between the label,
+ * the helper and the screen-reader hint.
+ */
+function ChoiceCard({
+  id,
+  selected,
+  onPress,
+  testID,
+  disabled = false,
+}: {
+  id: StayChoiceId;
+  selected: boolean;
+  onPress: () => void;
+  testID: string;
+  disabled?: boolean;
+}): React.ReactElement {
+  const copy = STAY_CHOICE_COPY[id];
+  return (
+    <OptionCard
+      label={copy.label}
+      helper={copy.helper}
+      example={copy.example}
+      icon={STAY_CHOICE_ICON[id]}
+      selected={selected}
+      onPress={onPress}
+      disabled={disabled}
+      testID={testID}
+    />
+  );
+}
+
+/**
+ * #1501 §5 — THE EDITOR'S DESKTOP GEOMETRY, in one place.
+ *
+ * Returns the COMPLETE style objects the editor applies — never an override
+ * that sets a key to `undefined`, because react-native-web keeps the base
+ * style's atomic class in the DOM and the cap silently survives (that is
+ * exactly how #1484 shipped broken). Callers SELECT between whole objects.
+ *
+ * `showRail` is a CONTAINER query, not a viewport query. The Stay workspace is
+ * ~252pt narrower than the viewport: at a 1440 viewport there are ~1156pt of
+ * container, and 760 + 32 + 320 = 1112 fits with 44 to spare; at 1280 there are
+ * ~996 and it does not, so the summary stacks above the CTA instead. Nothing is
+ * lost, only reflowed.
+ *
+ * Exported so the web-resolver proof can render THESE EXACT OBJECTS through the
+ * real react-native-web style compiler. A `ReactDOMServer.renderToStaticMarkup`
+ * pass never fires `onLayout`, so the split branch is otherwise unreachable
+ * from an SSR render — and a width contract that is only checked by
+ * react-test-renderer is the #1484 blind spot all over again.
+ */
+export function stayEditorLayout(input: {
+  isWideDesktop: boolean;
+  containerWidth: number;
+}): {
+  showRail: boolean;
+  page: ViewStyle;
+  body: ViewStyle;
+  formColumn: ViewStyle;
+  rail: ViewStyle;
+} {
+  const showRail =
+    input.isWideDesktop && input.containerWidth >= stayEditorSummaryMinWidth;
+  if (!input.isWideDesktop) {
+    return {
+      showRail: false,
+      page: styles.page,
+      body: styles.editorStack,
+      formColumn: styles.formColumn,
+      rail: styles.summaryRailInRow,
+    };
+  }
+  if (!showRail) {
+    return {
+      showRail: false,
+      page: styles.pageForm,
+      body: styles.editorStack,
+      formColumn: styles.formColumn,
+      rail: styles.summaryRailInRow,
+    };
+  }
+  return {
+    showRail: true,
+    page: styles.pageEditorSplit,
+    body: styles.editorSplitRow,
+    formColumn: styles.formColumnInRow,
+    rail: styles.summaryRailInRow,
+  };
+}
+
+/**
+ * #1501 §2 — the six sections, in the order a hotelier reasons: what it is ->
+ * how guests book it -> how many -> what it costs -> photos. One long
+ * undifferentiated stack of inputs was the second thing Seth flagged.
+ */
+const STAY_SECTION_COPY = {
+  start: {
+    title: "Start here",
+    caption: "Two quick choices, then the details.",
+  },
+  identity: {
+    title: "What it is",
+    caption: "The part guests read before they book.",
+  },
+  booking: {
+    title: "How guests book it",
+    caption: "Who can book, and what happens when they do.",
+  },
+  inventory: {
+    title: "How many you have",
+    caption: "Your inventory for one date.",
+  },
+  money: {
+    title: "What it costs",
+    caption: "Prices and rules guests see before they pay.",
+  },
+  photos: {
+    title: "Photos",
+    caption: "The first one becomes the cover.",
+  },
+} as const;
+
+function Section({
+  title,
+  caption,
+  testID,
+  children,
+}: {
+  title: string;
+  caption: string;
+  testID: string;
+  children: React.ReactNode;
+}): React.ReactElement {
+  return (
+    <View style={styles.section} testID={testID}>
+      {/* A real heading, so a screen reader can jump between the six sections
+          instead of walking every field. */}
+      <Text
+        accessibilityRole="header"
+        accessibilityLabel={`${title}. ${caption}`}
+        style={styles.sectionTitle}
+      >
+        {title}
+      </Text>
+      <Text style={styles.sectionCaption}>{caption}</Text>
+      <GlassCard variant="base" style={styles.form}>
+        {children}
+      </GlassCard>
+    </View>
+  );
 }
 
 function Choice({
@@ -158,8 +570,33 @@ function Choice({
   );
 }
 
+/**
+ * #1501 §1 — the AXIS a field is laid out on. `styles.field` used to be ONE
+ * style (`{ flex: 1, minWidth: 140 }`) applied in BOTH a row context (where
+ * `flex: 1` shares the WIDTH — correct) and stacked in a column context (where
+ * the identical declaration shares the HEIGHT — the overlap bug). There is no
+ * single style that is right in both, so the axis is now a REQUIRED decision at
+ * every call site and each style names the one context it is legal in.
+ *
+ *   stack — stacked directly in a column; carries NO flex-axis key at all.
+ *   pair  — a TEXT field inside `styles.row`; grows into the leftover space.
+ *   num   — a NUMERIC field inside `styles.row`; fixed basis, never grows.
+ *
+ * See invariant I-AXIS-SCOPED-FLEX.
+ */
+type FieldSpan = "stack" | "pair" | "num";
+
+/** Complete, mutually exclusive measures — selected, never layered. */
+function fieldSpanStyle(span: FieldSpan): ViewStyle {
+  if (span === "pair") return styles.fieldPair;
+  if (span === "num") return styles.fieldNum;
+  return styles.fieldStack;
+}
+
 function LabeledInput({
   label,
+  helper,
+  span,
   value,
   onChangeText,
   placeholder,
@@ -169,6 +606,14 @@ function LabeledInput({
   editable = true,
 }: {
   label: string;
+  /**
+   * Always present (#1501 §1 field anatomy: label -> helper -> input -> error).
+   * The helper sits ABOVE the input so the operator reads the explanation
+   * before deciding what to type.
+   */
+  helper?: string;
+  /** REQUIRED — a new field cannot compile without choosing an axis. */
+  span: FieldSpan;
   value: string;
   onChangeText: (value: string) => void;
   placeholder: string;
@@ -178,10 +623,15 @@ function LabeledInput({
   editable?: boolean;
 }): React.ReactElement {
   return (
-    <View style={styles.field}>
+    // `-field` suffix: the WRAPPER carries the axis measure, and the axis
+    // regression proof has to read the wrapper, not the input (#1501 §1.4).
+    // Additive — every pre-existing testID is preserved verbatim on the input.
+    <View style={fieldSpanStyle(span)} testID={`${testID}-field`}>
       <Text style={styles.label}>{label}</Text>
+      {helper ? <Text style={styles.fieldHelper}>{helper}</Text> : null}
       <TextInput
         accessibilityLabel={label}
+        accessibilityHint={helper}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
@@ -209,7 +659,16 @@ interface OfferingEditorProps {
   onClose: () => void;
 }
 
-function OfferingEditor({
+/**
+ * EXPORTED for the #1501 web-resolver regression proof only. The editor is
+ * reached in the product exclusively through `StayInventoryManager`'s own
+ * state; a `ReactDOMServer.renderToStaticMarkup` pass cannot press "Add", and a
+ * react-test-renderer suite is structurally blind to react-native-web's class
+ * resolution — which is exactly how #1484 shipped broken. Rendering the editor
+ * directly through the REAL RNW style compiler is the only way to assert on the
+ * CSS the browser actually applies.
+ */
+export function OfferingEditor({
   brandId,
   venueId,
   existing = null,
@@ -225,7 +684,7 @@ function OfferingEditor({
   const [kind, setKind] = useState<StayOfferingKind>(existing?.kind ?? "room");
   const [bulk, setBulk] = useState(false);
   const [name, setName] = useState(existing?.name ?? "");
-  const [bulkNames, setBulkNames] = useState("");
+  const [bulkNames, setBulkNames] = useState<string[]>([]);
   const [description, setDescription] = useState(existing?.description ?? "");
   const [quantity, setQuantity] = useState(String(existing?.quantity ?? 1));
   const [capacity, setCapacity] = useState(String(existing?.capacity ?? 10));
@@ -257,11 +716,11 @@ function OfferingEditor({
       ? String(existing.currentPolicy.no_show_refund_basis_points / 100)
       : "0",
   );
-  const [amenities, setAmenities] = useState(
-    (existing?.amenities ?? []).join(", "),
+  const [amenities, setAmenities] = useState<string[]>(
+    existing?.amenities ?? [],
   );
-  const [unitNames, setUnitNames] = useState(
-    (existing?.units ?? []).map((unit) => unit.name).join("\n"),
+  const [unitNames, setUnitNames] = useState<string[]>(
+    (existing?.units ?? []).map((unit) => unit.name),
   );
   const [confirmationMode, setConfirmationMode] = useState<StayBookingMode>(
     existing?.confirmation_mode ?? "request",
@@ -280,19 +739,62 @@ function OfferingEditor({
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [resultCopy, setResultCopy] = useState<string | null>(null);
+  // #1501 §5 — the rail threshold is a CONTAINER query fed by `onLayout`, not a
+  // viewport query. The Stay workspace is ~252pt narrower than the viewport, so
+  // a viewport threshold would promise a rail that does not fit. 0 until the
+  // first layout pass, which correctly means "no rail yet".
+  const [editorWidth, setEditorWidth] = useState(0);
+
+  // ── D-4 (APPROVED) ────────────────────────────────────────────────────────
+  // "Add several" FORCES "Any one will do". Bulk + named units used to write
+  // the IDENTICAL unit-name list into every one of the N offerings, because
+  // `makeOffering` closes over one `parsedUnits`. That is a data trap, not a
+  // feature — so the identity group is hidden in bulk and the mode is derived,
+  // never read straight from state.
+  const namedUnitsActive = namedUnits && !bulk;
+  // ── D-5 (APPROVED) ────────────────────────────────────────────────────────
+  // "How many you have" is DERIVED from the name count when each one is named,
+  // and rendered read-only. The server already requires
+  // `quantity === units.length`; deriving it deletes that error class.
+  const derivedQuantity = namedUnitsActive
+    ? String(normalizeList(unitNames).length)
+    : quantity;
+  // #1501 — the partial-failure banner is mirrored in a ref so `onSuccess`
+  // reads THIS attempt's outcome instead of whatever the last render captured.
+  const resultCopyRef = useRef<string | null>(null);
+  const showResult = (copy: string | null): void => {
+    resultCopyRef.current = copy;
+    setResultCopy(copy);
+  };
 
   const save = useMutation({
+    // #1501 (spec §7 open question 2) — `resultCopy` was WRITE-ONCE. A bulk
+    // partial failure set it, `onSuccess` only closes the editor when it is
+    // null, and nothing ever cleared it — so every later successful save in
+    // that session silently refused to close, with no error to explain it.
+    // Clearing it at the START of each mutate makes the banner describe THIS
+    // attempt only.
+    onMutate: () => {
+      showResult(null);
+    },
     mutationFn: async (): Promise<StayInventorySnapshot> => {
-      const names = bulk ? splitList(bulkNames) : [name.trim()];
+      const names = bulk ? normalizeList(bulkNames) : [name.trim()];
       if (names.length === 0 || names.some((item) => item.length === 0)) {
         throw new Error("name_required");
       }
       if (canManageFinance && Number(price) > 0 && currencyCode === null) {
         throw new Error("stay_currency_required");
       }
-      const count = asPositiveInteger(quantity);
-      const parsedUnits = splitList(unitNames);
-      if (canManageInventory && namedUnits && parsedUnits.length !== count) {
+      const parsedUnits = normalizeList(unitNames);
+      // D-5 (approved): "How many you have" is DERIVED from the named list, so
+      // the server's `quantity === units.length` requirement cannot be violated
+      // and the `named_units_incomplete` error class is deleted rather than
+      // explained. The only thing left to check is that a named offering has at
+      // least one name.
+      const count = namedUnitsActive
+        ? parsedUnits.length
+        : asPositiveInteger(quantity);
+      if (canManageInventory && namedUnitsActive && parsedUnits.length === 0) {
         throw new Error("named_units_incomplete");
       }
       const fees: CreateStayOfferingInput["fees"] =
@@ -346,7 +848,7 @@ function OfferingEditor({
             : sharedCapacity
               ? "shared_capacity"
               : "exclusive_units",
-        unitNamingMode: namedUnits ? "named" : "interchangeable",
+        unitNamingMode: namedUnitsActive ? "named" : "interchangeable",
         quantity: sharedCapacity ? undefined : count,
         capacity: sharedCapacity ? asPositiveInteger(capacity) : undefined,
         minGuests: 1,
@@ -354,12 +856,12 @@ function OfferingEditor({
         maxAdults: kind === "room" ? asPositiveInteger(maxGuests) : undefined,
         maxChildren: kind === "room" ? 0 : undefined,
         placePricingBasis: kind === "place" ? "per_booking" : undefined,
-        amenities: splitList(amenities),
+        amenities: normalizeList(amenities),
         accessScope:
           kind === "place" && overnightOnly
             ? "overnight_guests_only"
             : "public",
-        units: namedUnits
+        units: namedUnitsActive
           ? parsedUnits.map((unitName) => ({ name: unitName }))
           : undefined,
         media: canManageInventory ? media : [],
@@ -387,7 +889,7 @@ function OfferingEditor({
                 name: names[0],
                 description: description.trim(),
                 confirmationMode,
-                amenities: splitList(amenities),
+                amenities: normalizeList(amenities),
                 accessScope:
                   kind === "place" && overnightOnly
                     ? "overnight_guests_only"
@@ -433,7 +935,7 @@ function OfferingEditor({
             })
           ).inventory;
         }
-        if (canManageInventory && namedUnits) {
+        if (canManageInventory && namedUnitsActive) {
           inventory = (
             await replaceStayUnits({
               venueId,
@@ -463,7 +965,7 @@ function OfferingEditor({
           items: names.map(makeOffering),
         });
         if (response.job.failed_count > 0) {
-          setResultCopy(
+          showResult(
             `${response.job.succeeded_count} created; ${response.job.failed_count} need review. Nothing was auto-published.`,
           );
         }
@@ -482,7 +984,7 @@ function OfferingEditor({
     },
     onSuccess: (inventory) => {
       queryClient.setQueryData(stayInventoryKeys.detail(venueId), inventory);
-      if (resultCopy === null) onClose();
+      if (resultCopyRef.current === null) onClose();
     },
   });
   const removeMedia = useMutation({
@@ -547,14 +1049,151 @@ function OfferingEditor({
     ["name_required", "named_units_incomplete"].includes(save.error.message)
       ? save.error.message === "name_required"
         ? "Add a name for every Room or Place."
-        : "Add exactly one name for every private unit."
+        : "Each one is named, so add at least one name below."
       : save.isError
         ? mutationCopy(save.error)
         : null;
 
+  // #1501 §5 — the readiness checklist the summary rail shows, mirroring
+  // `stayOfferingReadinessErrors` label-for-label so a draft and a saved row
+  // never describe the same requirement two different ways.
+  const readiness = stayDraftReadiness({
+    description,
+    photoCount: (existing?.media?.length ?? 0) + media.length,
+    hasPrice: canManageFinance && Number(price) > 0 && currencyCode !== null,
+    hasPolicy: canManageFinance && policy.trim().length > 0,
+    namedUnits: namedUnitsActive,
+    unitNameCount: unitNames.length,
+  });
+
+  const draftNames = bulk ? normalizeList(bulkNames) : [name.trim()].filter(Boolean);
+  const draftCount = bulk ? draftNames.length : 1;
+  const kindLabel = kind === "room" ? "Room" : "Place";
+  const ctaLabel = existing
+    ? "Save changes"
+    : bulk
+      ? "Create drafts"
+      : "Create draft";
+
+  // The rail renders only when the CONTAINER can actually hold
+  // form column + gap + rail. Below the threshold the same summary stacks above
+  // the CTA — nothing is lost, only reflowed.
+  const layout = stayEditorLayout({
+    isWideDesktop,
+    containerWidth: editorWidth,
+  });
+  const showRail = layout.showRail;
+
+  const summary = (
+    <View style={styles.summaryBody} testID="stay-offering-summary">
+      <Text style={styles.summaryEyebrow}>You’re creating</Text>
+      <Text style={styles.summaryHeadline}>
+        {`${draftCount} ${kindLabel} draft${draftCount === 1 ? "" : "s"}`}
+      </Text>
+      {draftNames.length > 0 ? (
+        <Text style={styles.summaryNames} testID="stay-offering-summary-names">
+          {draftNames.length > 4
+            ? `${draftNames.slice(0, 3).join(", ")} … ${draftNames[draftNames.length - 1]}`
+            : draftNames.join(", ")}
+        </Text>
+      ) : (
+        <Text style={styles.summaryNames}>
+          {bulk ? "Add the names below." : "Give it a name below."}
+        </Text>
+      )}
+      <View style={styles.summaryFacts}>
+        <Text style={styles.summaryFact}>
+          {canManageFinance && Number(price) > 0 && currencyCode
+            ? formatCurrency(
+                minorFromMajor(Number(price), currencyCode),
+                currencyCode,
+                true,
+              )
+            : "No price yet"}
+        </Text>
+        <Text style={styles.summaryFact}>
+          {confirmationMode === "instant"
+            ? STAY_CHOICE_COPY.instant.label
+            : STAY_CHOICE_COPY.request.label}
+        </Text>
+        <Text style={styles.summaryFact}>
+          {`Up to ${asPositiveInteger(maxGuests)} per booking`}
+        </Text>
+        <Text style={styles.summaryFact}>
+          {amenities.length > 0
+            ? `${amenities.length} thing${amenities.length === 1 ? "" : "s"} included`
+            : "Nothing included yet"}
+        </Text>
+        <Text style={styles.summaryFact}>
+          {`${(existing?.media?.length ?? 0) + media.length} photo${
+            (existing?.media?.length ?? 0) + media.length === 1 ? "" : "s"
+          }`}
+        </Text>
+      </View>
+      <Text style={styles.summaryEyebrow}>Before these can go live</Text>
+      <View style={styles.summaryChecks} testID="stay-offering-readiness">
+        {readiness.map((item) => (
+          <Text
+            key={item.id}
+            // The glyph is decoration: a screen reader announces "check mark"
+            // or "white circle", which says nothing. State it in words.
+            accessibilityLabel={`${item.label}: ${item.done ? "done" : "still to do"}`}
+            // Never red: an unfinished draft is not an error.
+            style={item.done ? styles.checkDone : styles.checkPending}
+            testID={`stay-readiness-${item.id}`}
+          >
+            {`${item.done ? "✓" : "○"} ${item.label}`}
+          </Text>
+        ))}
+      </View>
+      {canManageFinance && currencyCode === null ? (
+        <Text
+          accessibilityRole="alert"
+          accessibilityLiveRegion="polite"
+          style={styles.error}
+          testID="stay-offering-currency-blocker"
+        >
+          Set this brand’s currency, or connect its bank account, before you add
+          prices.
+        </Text>
+      ) : null}
+      {localValidation ? (
+        <Text
+          accessibilityRole="alert"
+          accessibilityLiveRegion="assertive"
+          style={styles.error}
+          testID="stay-offering-error"
+        >
+          {localValidation}
+        </Text>
+      ) : null}
+      {resultCopy ? (
+        <Text
+          accessibilityRole="alert"
+          accessibilityLiveRegion="polite"
+          style={styles.warning}
+          testID="stay-offering-result"
+        >
+          {resultCopy}
+        </Text>
+      ) : null}
+      {/* EXACTLY ONE CTA renders at a time, so `stay-offering-save` is never
+          ambiguous to an operator, a screen reader, or a test. */}
+      <Button
+        label={ctaLabel}
+        onPress={() => save.mutate()}
+        loading={save.isPending}
+        disabled={uploading || (!canManageInventory && !canManageFinance)}
+        fullWidth
+        testID="stay-offering-save"
+      />
+    </View>
+  );
+
   return (
     <ScrollView
-      contentContainerStyle={isWideDesktop ? styles.pageForm : styles.page}
+      contentContainerStyle={layout.page}
+      onLayout={(event) => setEditorWidth(event.nativeEvent.layout.width)}
       testID="stay-offering-editor-scroll"
     >
       <View style={styles.titleRow}>
@@ -563,7 +1202,8 @@ function OfferingEditor({
             {existing ? `Edit ${existing.name}` : "Add Rooms or Places"}
           </Text>
           <Text style={styles.helper}>
-            Drafts stay private until every server readiness check passes.
+            Nothing here can be booked yet. Fill in the details, then make it
+            live from the list.
           </Text>
           {!canManageInventory && canManageFinance ? (
             <Text style={styles.warning}>
@@ -580,316 +1220,436 @@ function OfferingEditor({
           <X size={22} color={textTokens.secondary} />
         </Pressable>
       </View>
-      {!existing ? (
-        <>
-          <View style={styles.choices}>
-            <Choice
-              label="Room"
-              selected={kind === "room"}
-              onPress={() => setKind("room")}
-              testID="stay-add-room"
-            />
-            <Choice
-              label="Place"
-              selected={kind === "place"}
-              onPress={() => setKind("place")}
-              testID="stay-add-place"
-            />
-          </View>
-          <View style={styles.choices}>
-            <Choice
-              label="Single"
-              selected={!bulk}
-              onPress={() => setBulk(false)}
-              testID="stay-add-single"
-            />
-            <Choice
-              label="Bulk"
-              selected={bulk}
-              onPress={() => setBulk(true)}
-              testID="stay-add-bulk"
-            />
-          </View>
-        </>
-      ) : null}
-      <GlassCard variant="base" style={styles.form}>
-        {bulk ? (
-          <LabeledInput
-            label={`${kind === "room" ? "Room" : "Place"} names`}
-            value={bulkNames}
-            onChangeText={setBulkNames}
-            placeholder={"One name per line"}
-            multiline
-            editable={canManageInventory}
-            testID="stay-bulk-names"
-          />
-        ) : (
-          <LabeledInput
-            label="Name"
-            value={name}
-            onChangeText={setName}
-            placeholder={kind === "room" ? "Ocean suite" : "Pool cabana"}
-            editable={canManageInventory}
-            testID="stay-offering-name"
-          />
-        )}
-        <LabeledInput
-          label="Description"
-          value={description}
-          onChangeText={setDescription}
-          placeholder="What guests are reserving"
-          multiline
-          editable={canManageInventory}
-          testID="stay-offering-description"
-        />
-        <LabeledInput
-          label="Amenities"
-          value={amenities}
-          onChangeText={setAmenities}
-          placeholder="Wi-Fi, air conditioning, accessible entrance"
-          editable={canManageInventory}
-          testID="stay-offering-amenities"
-        />
-        <View style={styles.choices}>
-          <Choice
-            label="Instant"
-            selected={confirmationMode === "instant"}
-            onPress={() => setConfirmationMode("instant")}
-            disabled={!canManageInventory}
-            testID="stay-offering-instant"
-          />
-          <Choice
-            label="Request"
-            selected={confirmationMode === "request"}
-            onPress={() => setConfirmationMode("request")}
-            disabled={!canManageInventory}
-            testID="stay-offering-request"
-          />
-        </View>
-        {kind === "place" ? (
-          <View style={styles.choices}>
-            <Choice
-              label="Exclusive units"
-              selected={!sharedCapacity}
-              onPress={() => setSharedCapacity(false)}
-              disabled={!canManageInventory}
-              testID="stay-place-exclusive"
-            />
-            <Choice
-              label="Shared capacity"
-              selected={sharedCapacity}
-              onPress={() => setSharedCapacity(true)}
-              disabled={!canManageInventory}
-              testID="stay-place-capacity"
-            />
-          </View>
-        ) : null}
-        <View style={styles.twoCol}>
-          {!sharedCapacity ? (
-            <LabeledInput
-              label="Quantity"
-              value={quantity}
-              onChangeText={setQuantity}
-              placeholder="1"
-              keyboardType="numeric"
-              editable={canManageInventory}
-              testID="stay-offering-quantity"
-            />
+      <View
+        style={layout.body}
+        testID="stay-offering-layout"
+      >
+        <View
+          style={layout.formColumn}
+          testID="stay-offering-form-column"
+        >
+          {!existing ? (
+            <Section
+              title={STAY_SECTION_COPY.start.title}
+              caption={STAY_SECTION_COPY.start.caption}
+              testID="stay-section-start"
+            >
+              <View style={styles.choices}>
+                <ChoiceCard
+                  id="room"
+                  selected={kind === "room"}
+                  onPress={() => setKind("room")}
+                  testID="stay-add-room"
+                />
+                <ChoiceCard
+                  id="place"
+                  selected={kind === "place"}
+                  onPress={() => setKind("place")}
+                  testID="stay-add-place"
+                />
+              </View>
+              <View style={styles.choices}>
+                <ChoiceCard
+                  id="addOne"
+                  selected={!bulk}
+                  onPress={() => setBulk(false)}
+                  testID="stay-add-single"
+                />
+                <ChoiceCard
+                  id="addSeveral"
+                  selected={bulk}
+                  onPress={() => setBulk(true)}
+                  testID="stay-add-bulk"
+                />
+              </View>
+            </Section>
           ) : (
-            <LabeledInput
-              label="Capacity"
-              value={capacity}
-              onChangeText={setCapacity}
-              placeholder="10"
-              keyboardType="numeric"
-              editable={canManageInventory}
-              testID="stay-offering-capacity"
-            />
+            // Edit mode: `updateStayOffering` omits `kind`, so the type cannot
+            // change after creation. A read-only strip states what it is
+            // instead of offering a control that would silently do nothing.
+            <View style={styles.chipStrip} testID="stay-offering-kind-strip">
+              <Text style={styles.chipStripText}>
+                {existing.kind === "room"
+                  ? STAY_CHOICE_COPY.room.label
+                  : STAY_CHOICE_COPY.place.label}
+              </Text>
+              <Text style={styles.chipStripText}>
+                {existing.confirmation_mode === "instant"
+                  ? STAY_CHOICE_COPY.instant.label
+                  : STAY_CHOICE_COPY.request.label}
+              </Text>
+              <Text style={styles.chipStripText}>
+                {existing.unit_naming_mode === "named"
+                  ? STAY_CHOICE_COPY.named.label
+                  : STAY_CHOICE_COPY.interchangeable.label}
+              </Text>
+            </View>
           )}
-          <LabeledInput
-            label="Maximum guests"
-            value={maxGuests}
-            onChangeText={setMaxGuests}
-            placeholder="2"
-            keyboardType="numeric"
-            editable={canManageInventory}
-            testID="stay-offering-guests"
-          />
-        </View>
-        {!sharedCapacity ? (
-          <>
-            <View style={styles.choices}>
-              <Choice
-                label="Interchangeable"
-                selected={!namedUnits}
-                onPress={() => setNamedUnits(false)}
-                disabled={!canManageInventory}
-                testID="stay-units-pooled"
-              />
-              <Choice
-                label="Named units"
-                selected={namedUnits}
-                onPress={() => setNamedUnits(true)}
-                disabled={!canManageInventory}
-                testID="stay-units-named"
-              />
-            </View>
-            {namedUnits ? (
-              <LabeledInput
-                label="Private unit names"
-                value={unitNames}
-                onChangeText={setUnitNames}
-                placeholder="Room 101\nRoom 102"
-                multiline
+
+          <Section
+            title={STAY_SECTION_COPY.identity.title}
+            caption={STAY_SECTION_COPY.identity.caption}
+            testID="stay-section-identity"
+          >
+            {bulk ? (
+              <NameBuilder
+                label={STAY_FIELD_COPY.names.label}
+                helper={STAY_FIELD_COPY.names.helper}
+                values={bulkNames}
+                onChange={setBulkNames}
+                placeholder={
+                  kind === "room" ? "Ocean-view double" : "Pool cabana"
+                }
+                patternPlaceholder={kind === "room" ? "Room" : "Cabana"}
                 editable={canManageInventory}
-                testID="stay-unit-names"
+                testID="stay-bulk-names"
               />
-            ) : null}
-          </>
-        ) : null}
-        {kind === "place" ? (
-          <View style={styles.choices}>
-            <Choice
-              label="Public"
-              selected={!overnightOnly}
-              onPress={() => setOvernightOnly(false)}
-              disabled={!canManageInventory}
-              testID="stay-place-public"
-            />
-            <Choice
-              label="Overnight guests only"
-              selected={overnightOnly}
-              onPress={() => setOvernightOnly(true)}
-              disabled={!canManageInventory}
-              testID="stay-place-overnight-only"
-            />
-          </View>
-        ) : null}
-        {canManageFinance ? (
-          <>
-            <View style={styles.twoCol}>
+            ) : (
               <LabeledInput
-                label={`Base price${currencyCode ? ` (${currencyCode})` : ""}`}
-                value={price}
-                onChangeText={setPrice}
-                placeholder="0.00"
-                keyboardType="decimal-pad"
-                testID="stay-offering-price"
+                span="stack"
+                label={STAY_FIELD_COPY.name.label}
+                helper={STAY_FIELD_COPY.name.helper}
+                value={name}
+                onChangeText={setName}
+                placeholder={
+                  kind === "room" ? "Ocean-view double" : "Pool cabana"
+                }
+                editable={canManageInventory}
+                testID="stay-offering-name"
               />
-              <LabeledInput
-                label="Fee amount"
-                value={feeAmount}
-                onChangeText={setFeeAmount}
-                placeholder="0.00"
-                keyboardType="decimal-pad"
-                testID="stay-offering-fee-amount"
+            )}
+            <LabeledInput
+              span="stack"
+              label={STAY_FIELD_COPY.description.label}
+              helper={STAY_FIELD_COPY.description.helper}
+              value={description}
+              onChangeText={setDescription}
+              placeholder="What guests are reserving"
+              multiline
+              editable={canManageInventory}
+              testID="stay-offering-description"
+            />
+            <ChipInput
+              label={STAY_FIELD_COPY.amenities.label}
+              helper={STAY_FIELD_COPY.amenities.helper}
+              values={amenities}
+              onChange={setAmenities}
+              suggestions={kind === "room" ? ROOM_AMENITIES : PLACE_AMENITIES}
+              placeholder="Anything else? Type it and press enter"
+              editable={canManageInventory}
+              testID="stay-offering-amenities"
+            />
+          </Section>
+
+          <Section
+            title={STAY_SECTION_COPY.booking.title}
+            caption={STAY_SECTION_COPY.booking.caption}
+            testID="stay-section-booking"
+          >
+            <View style={styles.choices}>
+              <ChoiceCard
+                id="instant"
+                selected={confirmationMode === "instant"}
+                onPress={() => setConfirmationMode("instant")}
+                disabled={!canManageInventory}
+                testID="stay-offering-instant"
+              />
+              <ChoiceCard
+                id="request"
+                selected={confirmationMode === "request"}
+                onPress={() => setConfirmationMode("request")}
+                disabled={!canManageInventory}
+                testID="stay-offering-request"
               />
             </View>
-            <LabeledInput
-              label="Optional fee name"
-              value={feeLabel}
-              onChangeText={setFeeLabel}
-              placeholder="Resort fee"
-              testID="stay-offering-fee-label"
-            />
-            <LabeledInput
-              label="Cancellation policy"
-              value={policy}
-              onChangeText={setPolicy}
-              placeholder="Free cancellation until 48 hours before arrival"
-              multiline
-              testID="stay-offering-policy"
-            />
-            <LabeledInput
-              label="No-show refund percent"
-              value={noShowPercent}
-              onChangeText={setNoShowPercent}
-              placeholder="0"
-              keyboardType="numeric"
-              testID="stay-offering-no-show"
-            />
-          </>
-        ) : (
-          <Text style={styles.warning} testID="stay-finance-permission-copy">
-            Pricing, fees and cancellation policies require Stay finance
-            permission. You can save this as an unpriced draft.
-          </Text>
-        )}
-        {canManageInventory ? (
-          <View style={styles.photoBlock}>
-            <Text style={styles.label}>Photos</Text>
-            <Text style={styles.helper}>
-              Add up to 20. The first successful upload becomes the cover.
-            </Text>
-            <Button
-              label={uploading ? "Uploading…" : "Add photos"}
-              onPress={addPhotos}
-              loading={uploading}
-              variant="secondary"
-              size="sm"
-              testID="stay-offering-add-photos"
-            />
-            {existing ? (
-              <View style={styles.mediaStrip}>
-                {(existing.media ?? [])
-                  .filter((item) => !removedMediaIds.includes(item.id))
-                  .map((item) => (
-                    <View key={item.id} style={styles.mediaThumbWrap}>
-                      <Image
-                        source={{
-                          uri: stayOfferingMediaUrl(item.storage_object_name),
-                        }}
-                        accessibilityLabel={
-                          item.alt_text ?? `${existing.name} photo`
-                        }
-                        style={styles.mediaThumb}
-                      />
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={`Remove ${item.alt_text ?? "photo"}`}
-                        disabled={removeMedia.isPending}
-                        onPress={() => removeMedia.mutate(item.id)}
-                        style={styles.mediaRemove}
-                        testID={`stay-media-remove-${item.id}`}
-                      >
-                        <X size={14} color={textTokens.primary} />
-                      </Pressable>
-                    </View>
-                  ))}
+            {kind === "place" ? (
+              <View style={styles.choices}>
+                <ChoiceCard
+                  id="publicAccess"
+                  selected={!overnightOnly}
+                  onPress={() => setOvernightOnly(false)}
+                  disabled={!canManageInventory}
+                  testID="stay-place-public"
+                />
+                <ChoiceCard
+                  id="overnightOnly"
+                  selected={overnightOnly}
+                  onPress={() => setOvernightOnly(true)}
+                  disabled={!canManageInventory}
+                  testID="stay-place-overnight-only"
+                />
               </View>
             ) : null}
-            <Text style={styles.helper}>
-              {(existing?.media?.length ?? 0) + media.length} total after save
-            </Text>
-            {mediaError ? <Text style={styles.error}>{mediaError}</Text> : null}
-            {removeMedia.isError ? (
-              <Text style={styles.error}>
-                {mutationCopy(removeMedia.error)}
-              </Text>
+          </Section>
+
+          <Section
+            title={STAY_SECTION_COPY.inventory.title}
+            caption={STAY_SECTION_COPY.inventory.caption}
+            testID="stay-section-inventory"
+          >
+            {kind === "place" ? (
+              <View style={styles.choices}>
+                <ChoiceCard
+                  id="bookedWhole"
+                  selected={!sharedCapacity}
+                  onPress={() => setSharedCapacity(false)}
+                  disabled={!canManageInventory}
+                  testID="stay-place-exclusive"
+                />
+                <ChoiceCard
+                  id="sharedSpots"
+                  selected={sharedCapacity}
+                  onPress={() => setSharedCapacity(true)}
+                  disabled={!canManageInventory}
+                  testID="stay-place-capacity"
+                />
+              </View>
             ) : null}
+            <View style={styles.row} testID="stay-offering-count-row">
+              {!sharedCapacity ? (
+                <LabeledInput
+                  span="num"
+                  label={STAY_FIELD_COPY.quantity.label}
+                  // D-5 (APPROVED): derived from the named list, so the
+                  // server's `quantity === units.length` rule cannot break.
+                  helper={
+                    namedUnitsActive
+                      ? STAY_FIELD_COPY.quantity.derivedHelper
+                      : kind === "room"
+                        ? STAY_FIELD_COPY.quantity.helper
+                        : STAY_FIELD_COPY.quantity.placeHelper
+                  }
+                  value={derivedQuantity}
+                  onChangeText={setQuantity}
+                  placeholder="1"
+                  keyboardType="numeric"
+                  editable={canManageInventory && !namedUnitsActive}
+                  testID="stay-offering-quantity"
+                />
+              ) : (
+                <LabeledInput
+                  span="num"
+                  label={STAY_FIELD_COPY.capacity.label}
+                  helper={STAY_FIELD_COPY.capacity.helper}
+                  value={capacity}
+                  onChangeText={setCapacity}
+                  placeholder="10"
+                  keyboardType="numeric"
+                  editable={canManageInventory}
+                  testID="stay-offering-capacity"
+                />
+              )}
+              <LabeledInput
+                span="num"
+                label={STAY_FIELD_COPY.maxGuests.label}
+                helper={STAY_FIELD_COPY.maxGuests.helper}
+                value={maxGuests}
+                onChangeText={setMaxGuests}
+                placeholder="2"
+                keyboardType="numeric"
+                editable={canManageInventory}
+                testID="stay-offering-guests"
+              />
+            </View>
+            {!sharedCapacity ? (
+              bulk ? (
+                // D-4 (APPROVED): naming individual units while adding several
+                // would write the SAME list into every offering. Hidden, not
+                // disabled — an option you cannot use is noise.
+                <Text style={styles.helper} testID="stay-units-bulk-note">
+                  Naming individual units is available after you create them.
+                </Text>
+              ) : (
+                <>
+                  <View style={styles.choices}>
+                    <ChoiceCard
+                      id="interchangeable"
+                      selected={!namedUnits}
+                      onPress={() => setNamedUnits(false)}
+                      disabled={!canManageInventory}
+                      testID="stay-units-pooled"
+                    />
+                    <ChoiceCard
+                      id="named"
+                      selected={namedUnits}
+                      onPress={() => setNamedUnits(true)}
+                      disabled={!canManageInventory}
+                      testID="stay-units-named"
+                    />
+                  </View>
+                  {namedUnitsActive ? (
+                    <NameBuilder
+                      label={STAY_FIELD_COPY.unitNames.label}
+                      helper={unitNamesHelper(unitNames.length)}
+                      values={unitNames}
+                      onChange={setUnitNames}
+                      placeholder={kind === "room" ? "Room 101" : "Cabana 1"}
+                      patternPlaceholder={kind === "room" ? "Room" : "Cabana"}
+                      editable={canManageInventory}
+                      testID="stay-unit-names"
+                    />
+                  ) : null}
+                </>
+              )
+            ) : null}
+          </Section>
+
+          <Section
+            title={STAY_SECTION_COPY.money.title}
+            caption={STAY_SECTION_COPY.money.caption}
+            testID="stay-section-money"
+          >
+            {canManageFinance ? (
+              <>
+                <View style={styles.row} testID="stay-offering-price-row">
+                  <LabeledInput
+                    span="num"
+                    label={`${
+                      kind === "room"
+                        ? STAY_FIELD_COPY.price.label
+                        : STAY_FIELD_COPY.price.placeLabel
+                    }${currencyCode ? ` (${currencyCode})` : ""}`}
+                    helper={STAY_FIELD_COPY.price.helper}
+                    value={price}
+                    onChangeText={setPrice}
+                    placeholder="0.00"
+                    keyboardType="decimal-pad"
+                    testID="stay-offering-price"
+                  />
+                  <LabeledInput
+                    span="num"
+                    label={STAY_FIELD_COPY.feeAmount.label}
+                    helper={STAY_FIELD_COPY.feeAmount.helper}
+                    value={feeAmount}
+                    onChangeText={setFeeAmount}
+                    placeholder="0.00"
+                    keyboardType="decimal-pad"
+                    testID="stay-offering-fee-amount"
+                  />
+                </View>
+                <LabeledInput
+                  span="stack"
+                  label={STAY_FIELD_COPY.feeLabel.label}
+                  helper={STAY_FIELD_COPY.feeLabel.helper}
+                  value={feeLabel}
+                  onChangeText={setFeeLabel}
+                  placeholder="Resort fee"
+                  testID="stay-offering-fee-label"
+                />
+                <LabeledInput
+                  span="stack"
+                  label={STAY_FIELD_COPY.policy.label}
+                  helper={STAY_FIELD_COPY.policy.helper}
+                  value={policy}
+                  onChangeText={setPolicy}
+                  placeholder="Free cancellation until 48 hours before arrival"
+                  multiline
+                  testID="stay-offering-policy"
+                />
+                <LabeledInput
+                  // #1501 P2-1 — STACK, not num. This field is NOT inside
+                  // `styles.row`; it sits directly in the money section's
+                  // column, after the policy box. `fieldNum` carries a WIDTH
+                  // measure, and in a column that resolves against the HEIGHT —
+                  // which rendered a 220pt-tall box with ~114pt of dead space
+                  // under it. That is the exact bug class this issue exists to
+                  // delete, and a live violation of I-AXIS-SCOPED-FLEX.
+                  span="stack"
+                  label={STAY_FIELD_COPY.noShow.label}
+                  helper={STAY_FIELD_COPY.noShow.helper}
+                  value={noShowPercent}
+                  onChangeText={setNoShowPercent}
+                  placeholder="0"
+                  keyboardType="numeric"
+                  testID="stay-offering-no-show"
+                />
+              </>
+            ) : (
+              <Text
+                style={styles.warning}
+                testID="stay-finance-permission-copy"
+              >
+                Pricing, fees and cancellation policies require Stay finance
+                permission. You can save this as an unpriced draft.
+              </Text>
+            )}
+          </Section>
+
+          {canManageInventory ? (
+            <Section
+              title={STAY_SECTION_COPY.photos.title}
+              caption={STAY_SECTION_COPY.photos.caption}
+              testID="stay-section-photos"
+            >
+              <View style={styles.photoBlock}>
+                <Text style={styles.helper}>
+                  Add up to 20. The first successful upload becomes the cover.
+                </Text>
+                <Button
+                  label={uploading ? "Uploading…" : "Add photos"}
+                  onPress={addPhotos}
+                  loading={uploading}
+                  variant="secondary"
+                  size="sm"
+                  testID="stay-offering-add-photos"
+                />
+                {existing ? (
+                  <View style={styles.mediaStrip}>
+                    {(existing.media ?? [])
+                      .filter((item) => !removedMediaIds.includes(item.id))
+                      .map((item) => (
+                        <View key={item.id} style={styles.mediaThumbWrap}>
+                          <Image
+                            source={{
+                              uri: stayOfferingMediaUrl(
+                                item.storage_object_name,
+                              ),
+                            }}
+                            accessibilityLabel={
+                              item.alt_text ?? `${existing.name} photo`
+                            }
+                            style={styles.mediaThumb}
+                          />
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel={`Remove ${item.alt_text ?? "photo"}`}
+                            disabled={removeMedia.isPending}
+                            onPress={() => removeMedia.mutate(item.id)}
+                            style={styles.mediaRemove}
+                            testID={`stay-media-remove-${item.id}`}
+                          >
+                            <X size={14} color={textTokens.primary} />
+                          </Pressable>
+                        </View>
+                      ))}
+                  </View>
+                ) : null}
+                <Text style={styles.helper}>
+                  {(existing?.media?.length ?? 0) + media.length} total after
+                  save
+                </Text>
+                {mediaError ? (
+                  <Text style={styles.error}>{mediaError}</Text>
+                ) : null}
+                {removeMedia.isError ? (
+                  <Text style={styles.error}>
+                    {mutationCopy(removeMedia.error)}
+                  </Text>
+                ) : null}
+              </View>
+            </Section>
+          ) : null}
+
+          {/* Below the rail threshold the SAME summary stacks here, directly
+              above the CTA. Nothing is lost, only reflowed. */}
+          {showRail ? null : summary}
+        </View>
+        {showRail ? (
+          <View style={layout.rail} testID="stay-offering-rail">
+            {summary}
           </View>
         ) : null}
-      </GlassCard>
-      {canManageFinance && currencyCode === null ? (
-        <Text style={styles.error}>
-          Choose the brand’s provisional currency or connect its bank before
-          adding prices.
-        </Text>
-      ) : null}
-      {localValidation ? (
-        <Text style={styles.error}>{localValidation}</Text>
-      ) : null}
-      {resultCopy ? <Text style={styles.warning}>{resultCopy}</Text> : null}
-      <Button
-        label={
-          existing ? "Save changes" : bulk ? "Create drafts" : "Create draft"
-        }
-        onPress={() => save.mutate()}
-        loading={save.isPending}
-        disabled={uploading || (!canManageInventory && !canManageFinance)}
-        fullWidth
-        testID="stay-offering-save"
-      />
+      </View>
     </ScrollView>
   );
 }
@@ -1189,8 +1949,9 @@ function AvailabilityManager({
           />
         ))}
       </View>
-      <View style={styles.twoCol}>
+      <View style={styles.row}>
         <LabeledInput
+          span="pair"
           label={selected.kind === "room" ? "First night" : "Start date"}
           value={fromDate}
           onChangeText={setFromDate}
@@ -1198,6 +1959,7 @@ function AvailabilityManager({
           testID="stay-availability-from"
         />
         <LabeledInput
+          span="pair"
           label={selected.kind === "room" ? "Last night" : "End date"}
           value={toDate}
           onChangeText={setToDate}
@@ -1206,8 +1968,9 @@ function AvailabilityManager({
         />
       </View>
       {selected.kind === "room" ? (
-        <View style={styles.twoCol}>
+        <View style={styles.row}>
           <LabeledInput
+            span="num"
             label="Sellable rooms"
             value={quantity}
             onChangeText={setQuantity}
@@ -1217,6 +1980,7 @@ function AvailabilityManager({
           />
           {canManageFinance ? (
             <LabeledInput
+              span="num"
               label={`Price override${currencyCode ? ` (${currencyCode})` : ""}`}
               value={overridePrice}
               onChangeText={setOverridePrice}
@@ -1248,8 +2012,9 @@ function AvailabilityManager({
               testID="stay-place-full-day"
             />
           </View>
-          <View style={styles.twoCol}>
+          <View style={styles.row}>
             <LabeledInput
+              span="num"
               label="Starts"
               value={startTime}
               onChangeText={setStartTime}
@@ -1257,6 +2022,7 @@ function AvailabilityManager({
               testID="stay-place-start-time"
             />
             <LabeledInput
+              span="num"
               label="Ends"
               value={endTime}
               onChangeText={setEndTime}
@@ -1265,6 +2031,7 @@ function AvailabilityManager({
             />
             {canManageFinance ? (
               <LabeledInput
+                span="num"
                 label={`Price override${currencyCode ? ` (${currencyCode})` : ""}`}
                 value={overridePrice}
                 onChangeText={setOverridePrice}
@@ -1593,6 +2360,83 @@ const styles = StyleSheet.create({
     maxWidth: suiteFormMaxWidth,
     alignSelf: "flex-start",
   },
+  // #1501 §5 — WIDE DESKTOP *with room for the summary rail*. The PAGE releases
+  // its cap here and the measure discipline moves onto the form COLUMN
+  // (`formColumnInRow`, capped at `stayEditorFormMaxWidth`), because a page
+  // capped at 720 cannot hold 760 + 32 + 320. This is what unlocks the rail and
+  // answers "it doesn't fill the space" WITHOUT producing a 1,400pt-wide text
+  // input. Below the container threshold the editor keeps `pageForm` exactly as
+  // it shipped. Complete objects, selected — never an override.
+  pageEditorSplit: {
+    ...PAGE_BASE,
+    alignSelf: "flex-start",
+  },
+  // The editor body: form column beside the rail, or one stacked column.
+  editorSplitRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    columnGap: spacing.xl,
+    width: "100%",
+  },
+  editorStack: { width: "100%", minWidth: 0, gap: spacing.lg },
+  // STACK measure — no flex-axis key (I-AXIS-SCOPED-FLEX).
+  formColumn: { width: "100%", minWidth: 0, gap: spacing.lg },
+  // ROW-ONLY: the readable measure of the form column itself. `flexShrink: 1`
+  // + `flexBasis: 0` + `flexGrow: 1` means it takes everything the rail leaves,
+  // up to its own cap.
+  formColumnInRow: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
+    minWidth: 0,
+    maxWidth: stayEditorFormMaxWidth,
+    gap: spacing.lg,
+  },
+  // ROW-ONLY: fixed rail. `position: "sticky"` is deliberately NOT used — RN
+  // has no such value and RN-web support is unverified; a non-sticky rail is
+  // correct without it.
+  summaryRailInRow: {
+    flexGrow: 0,
+    flexShrink: 0,
+    flexBasis: stayEditorSummaryWidth,
+    width: stayEditorSummaryWidth,
+  },
+  section: { gap: spacing.xs },
+  sectionTitle: { ...typography.h3, color: textTokens.primary },
+  sectionCaption: {
+    ...typography.bodySm,
+    color: textTokens.secondary,
+    marginBottom: spacing.xs,
+    maxWidth: stayProseMaxWidth,
+  },
+  summaryBody: { gap: spacing.sm },
+  summaryEyebrow: {
+    ...typography.labelCap,
+    color: textTokens.tertiary,
+    textTransform: "uppercase",
+  },
+  summaryHeadline: { ...typography.h3, color: textTokens.primary },
+  summaryNames: {
+    ...typography.bodySm,
+    color: textTokens.secondary,
+    maxWidth: stayProseMaxWidth,
+  },
+  summaryFacts: { gap: spacing.xxs },
+  summaryFact: { ...typography.bodySm, color: textTokens.secondary },
+  summaryChecks: { gap: spacing.xxs },
+  // NEVER red on either branch: an unfinished draft is not an error.
+  checkDone: { ...typography.bodySm, color: semantic.success },
+  checkPending: { ...typography.bodySm, color: textTokens.tertiary },
+  chipStrip: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  chipStripText: {
+    ...typography.caption,
+    color: textTokens.secondary,
+    borderRadius: radius.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: glass.border.profileBase,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
   center: {
     flex: 1,
     alignItems: "center",
@@ -1610,9 +2454,55 @@ const styles = StyleSheet.create({
   cardTitle: { ...typography.h3, color: textTokens.primary },
   helper: { ...typography.bodySm, color: textTokens.secondary },
   label: { ...typography.bodySm, color: textTokens.primary, fontWeight: "700" },
+  // #1501 §1 field anatomy — the helper sits between the LABEL and the INPUT,
+  // never between an input and the next label (that ambiguity is what made the
+  // old stack read as chaos). Capped at the prose measure so it wraps like
+  // prose rather than running the width of a desktop column.
+  fieldHelper: {
+    ...typography.caption,
+    color: textTokens.secondary,
+    maxWidth: stayProseMaxWidth,
+  },
   flex: { flex: 1, minWidth: 0 },
   form: { gap: spacing.md },
-  field: { flex: 1, minWidth: 140, gap: spacing.xs },
+  // ── #1501 §1 — AXIS-SCOPED FIELD MEASURES (I-AXIS-SCOPED-FLEX) ───────────
+  // The deleted `field: { flex: 1, minWidth: 140, gap: spacing.xs }` carried a
+  // flex-axis key and was applied under TWO different `flexDirection` contexts.
+  // In `styles.form` (a column) `flex: 1` told every field to take an equal
+  // share of the container HEIGHT; a field whose input carries `minHeight: 96`
+  // then rendered taller than its allotted box, overflowed its own `View`, and
+  // the next field's label painted on top. Same bug class as #1484's
+  // `flexBasis: 320`. Each entry below is legal under exactly ONE
+  // `flexDirection`, and its NAME says which.
+  //
+  // STACK — column context. NO flex-axis key at all, so nothing can ever
+  // resolve against the cross axis again.
+  fieldStack: { width: "100%", minWidth: 0, gap: spacing.xs },
+  // PAIR — a TEXT field inside `styles.row`. Grows into whatever the numeric
+  // siblings leave behind (`flexBasis: 0` + `flexGrow: 1`).
+  fieldPair: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
+    minWidth: stayFieldPairMinWidth,
+    gap: spacing.xs,
+  },
+  // NUM — a NUMERIC field inside `styles.row`. It shares the line and grows
+  // into it, CAPPED at the desktop measure — it does not demand that measure up
+  // front. A `flexBasis: 220` here read correctly on desktop and wrapped both
+  // numeric pairs onto separate rows on every phone (#1501 P2-2), because
+  // `flexWrap` decides on the flex BASE size before any shrinking and a wrapped
+  // item then owns its whole line, so `flexShrink` never engaged. Zero basis +
+  // `maxWidth` gives the same desktop box and keeps the pair side by side at
+  // 390pt and 320pt.
+  fieldNum: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
+    minWidth: stayFieldNumMinWidth,
+    maxWidth: stayFieldNumMaxWidth,
+    gap: spacing.xs,
+  },
   input: {
     minHeight: 46,
     borderRadius: radius.md,
@@ -1624,9 +2514,27 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: textTokens.primary,
   },
-  multiline: { minHeight: 92, textAlignVertical: "top" },
+  // PROSE inputs are capped at a readable measure. Without the cap a
+  // description box on a wide desktop column becomes a single unreadable line.
+  multiline: {
+    minHeight: 96,
+    maxWidth: stayProseMaxWidth,
+    textAlignVertical: "top",
+    paddingTop: spacing.sm,
+  },
   inputDisabled: { opacity: 0.55 },
-  twoCol: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  // #1501 §1 — `twoCol` renamed to `row` because it is not always two columns;
+  // it is THE row context, and it is the only place a `fieldPair`/`fieldNum`
+  // measure is legal. `alignItems: "flex-start"` is LOAD-BEARING: RN's default
+  // `stretch` makes every child as tall as the tallest sibling, which is the
+  // second-order version of the same overlap bug.
+  row: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    columnGap: spacing.md,
+    rowGap: spacing.md,
+    alignItems: "flex-start",
+  },
   choices: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   choice: {
     borderRadius: radius.full,
@@ -1643,6 +2551,23 @@ const styles = StyleSheet.create({
   choiceDisabled: { opacity: 0.55 },
   choiceText: { ...typography.bodySm, color: textTokens.secondary },
   choiceTextActive: { color: accent.warm, fontWeight: "700" },
+  // #1501 §3 — an EXPLAINED choice is a card, not a pill: it has to hold a
+  // label, a helper sentence and an example without truncating any of them.
+  // ROW-ONLY (I-AXIS-SCOPED-FLEX): the name says `Row` because the flex-axis
+  // keys below are only meaningful inside `styles.choices`
+  // (`flexDirection: "row"`). Never apply this in a column.
+  choiceRowCard: {
+    borderRadius: radius.lg,
+    minHeight: optionCardMinHeight,
+    minWidth: optionCardMinWidth,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
+    gap: spacing.xxs,
+    paddingVertical: spacing.md,
+  },
+  choiceHelper: { ...typography.caption, color: textTokens.secondary },
+  choiceExample: { ...typography.caption, color: textTokens.tertiary },
   photoBlock: { gap: spacing.sm },
   mediaStrip: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   mediaThumbWrap: { position: "relative" },

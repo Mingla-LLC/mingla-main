@@ -7,6 +7,31 @@
 
 ---
 
+## DRAFT — issue #1501 (Add Rooms or Places: fields overlapped because one style was applied on two axes)
+
+> Registered DRAFT at issue #1501 [add-rooms-form] IMPLEMENT. The orchestrator flips DRAFT → ACTIVE at CLOSE after independent tester PASS.
+>
+> `mingla-business/src/components/stay/StayInventoryManager.tsx:1615` shipped `field: { flex: 1, minWidth: 140, gap: spacing.xs }` and applied it in TWO different `flexDirection` contexts. Inside `styles.twoCol` (`flexDirection: "row"`) `flex: 1` correctly means "share the WIDTH" and produced the intended 50/50 pairs. Stacked directly in `styles.form` (`gap: spacing.md`, RN's default `flexDirection: "column"`) the IDENTICAL declaration means "share the HEIGHT": every field was told to take an equal share of the container height, a field whose input carried `multiline: { minHeight: 92 }` rendered taller than its allotted box, overflowed its own `View`, and the FOLLOWING field's label painted on top of it. Seth saw "Description" running under the **Amenities** label and "Cancellation policy" under **No-show refund percent** on the shipped desktop build.
+>
+> **This is the second time this bug class shipped.** #1484's Stay Overview readiness grid authored `flexBasis: 320` for a row and had it silently resolve against the column axis. A layout value written for one axis, reused in the other, is not a typo — it is a class, and it needs a rule.
+>
+> Fix (#1501 §1 + SPEC AMENDMENT 1): `styles.field` DELETED; replaced by three complete, mutually exclusive, axis-scoped measures that are SELECTED, never layered — `fieldStack` (column context, carrying NO flex-axis key at all), `fieldPair` (row context, `flexGrow:1/flexShrink:1/flexBasis:0`), `fieldNum` (row context, `flexGrow:0` + explicit `flexBasis`). `LabeledInput` gains a REQUIRED `span` prop so a new field cannot compile without choosing an axis, and `twoCol` is renamed `row` and given `alignItems: "flex-start"` (RN's default `stretch` is the second-order version of the same bug). Cross-ref: the INVESTIGATION, DESIGN SPEC, SPEC AMENDMENT 1 and IMPLEMENTATION comments on issue #1501.
+
+### I-AXIS-SCOPED-FLEX (DRAFT)
+- **Rule:** A `StyleSheet` entry carrying ANY flex-axis key (`flex`, `flexGrow`, `flexShrink`, `flexBasis`) must be applied under exactly ONE `flexDirection` context, and its name must declare which. Additionally: any field in a multi-field row must declare an EXPLICIT basis — `flex: 1` on every sibling is not a layout. Numeric/fixed-width fields take a fixed basis and the text field takes the remainder, never the reverse.
+- **Enforcement:** `LabeledInput`'s `span: FieldSpan` prop is REQUIRED at the type level, so TypeScript rejects a field that has not chosen an axis; `stayEditorLayout` returns complete style objects rather than overrides; row-only styles are named for their context (`fieldPair`, `fieldNum`, `formColumnInRow`, `summaryRailInRow`, `choiceRowCard`, `patternPrefix`/`patternNum`, `OptionCard.cardInRow`).
+- **Regression:** `mingla-business/src/components/stay/__tests__/stayFieldAxis.issue1501.render.test.tsx` (A-1…A-6, react-test-renderer: every stacked field resolves with no flex-axis key; numeric row fields declare an explicit basis) **and** `stayFieldAxis.issue1501.web.render.test.tsx` (V-0…W-4, the REAL react-native-web resolver: no `r-flexGrow-*`/`r-flexShrink-*`/`r-flexBasis-*` atom reaches a stacked wrapper, with an explicit vacuity guard). A react-test-renderer suite alone is structurally blind to RNW class resolution — that blindness is exactly how #1484 shipped broken, so BOTH are required. `stayTestIdContract.issue1501.test.ts` ID-4/ID-5 additionally pin that `styles.field` cannot return and that the override-with-`undefined` pattern never reappears.
+- **Established:** DRAFT at issue #1501 IMPLEMENT 2026-08-03. Flips ACTIVE at CLOSE after independent tester PASS.
+
+### I-PROPOSED-1501-LAZY-SCREEN-ICONS-ARE-NOT-EAGER (DRAFT)
+- **Rule:** Registering a glyph in `mingla-business/src/shims/lucideReactNativeWebStub.js` is a GLOBAL, PERMANENT addition to the business-web **boot payload** — never a local decision. On web `metro.config.js` aliases `lucide-react-native` to that shim, the shim deep-`require`s every entry of `USED_ICONS` at module scope, and the shim is reachable from the eager boot path, so Metro places it (and every glyph in it) in the eager `__common` chunk. A screen behind a lazy route must therefore draw its glyphs from the in-app `Icon` roster (`src/components/ui/Icon.tsx`), which is already in `__common` because `Button` depends on it and so costs zero marginal eager bytes. A new lucide glyph is legitimate ONLY for a surface that is itself eager, and only with a measured before/after `__common` delta recorded in the work item.
+- **Evidence:** #1501's first pass registered 10 glyphs for the Stay offering editor — a lazy route. Measured against `origin/main` @ `c3cc5e7af`, the eager `__common` chunk went **2,316,555 B → 2,325,301 B (+8,746 B)** and breached the ORCH-1083 cap (2,320,000 B). The three new components were never in the boot payload; they were correctly code-split into the lazy Stay chunk throughout. Moving the glyphs to the in-app roster recovered **7,676 B** (`__common` = 2,317,625 B, guard PASS) with no cap change and no module split.
+- **Enforcement:** `OptionCard`'s `icon` prop is an `IconName` (a name from the in-app roster), not a component, so a lucide glyph cannot be passed through it; the bundle-budget guard `mingla-business/scripts/ci/orch-1083-initial-bundle-budget.mjs` runs against the export in `.github/workflows/issue-1501-add-rooms-form-tests.yml`.
+- **Regression:** `mingla-business/src/components/ui/__tests__/OptionCard.iconSource.issue1501.test.ts` (I-0…I-4): the three new `ui/` inputs import no lucide glyph; the Stay editor's lucide imports are exactly the four that pre-date #1501; every choice glyph resolves against the real exported `IconName` union; the shim's used-set is untouched.
+- **Established:** DRAFT at issue #1501 IMPLEMENT 2026-08-03 (added at PR #1507 review, after the budget check went red). Flips ACTIVE at CLOSE after independent tester PASS.
+
+---
+
 ## ACTIVE — issue #1221 (venue and RSVP refund control plane — CLOSED 2026-07-31, PR #1400)
 
 ### I-PROPOSED-1221-ONE-TYPED-REFUND-TRUTH (ACTIVE)
