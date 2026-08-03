@@ -6992,11 +6992,19 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   attributes, to textconv and to external diff drivers. When and only when `--numstat`
   reports the blob undiffable (`-`), the count is recovered from
   `git diff --unified=0 --text`, counting `-` lines **inside hunks only**. If that
-  recovery yields no hunk at all while `--numstat` reports the path as changed, the
-  measurement FAILED and the entry is **refused unconditionally** — a count that was
-  never taken is not a count of zero, and no override token bypasses it. Both git
-  invocations pass the path as an **argv element** (`execFileSync`), never interpolated
-  into a shell string, so a path can neither execute code nor alter the diff scope.
+  recovery yields no hunk, the pre-image and post-image blob object ids are compared:
+  identical ids mean the CONTENT did not change and only the file mode moved, so the
+  count is **zero** — a change that removes nothing is never refused. Only when the
+  content did change and nothing countable was produced has the measurement FAILED, and
+  that entry is **refused unconditionally** — a count that was never taken is not a
+  count of zero, and no override token bypasses it.
+  Every git invocation in this gate passes paths as **argv elements** (`execFileSync`)
+  and runs under **`--literal-pathspecs`**, so a path is data in both senses: it is
+  never interpreted as program text, and it is never matched as a pattern. Both
+  properties are enforced in the single shared runner rather than at each call site, and
+  no shell-string git runner remains in the file. This scoping guarantee covers the
+  token-attribution log as well as the measurement, so an attestation written for one
+  file can never be read as covering another.
   The `A`/`D`/`R`/`T`/unmodelled dispositions and both token grammars are unchanged;
   `D` and `T` remain unoverridable.
 - **Why:** pre-fix, `countDeletedLines` inferred "0 deletions" from "no `-` lines
@@ -7013,17 +7021,21 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   self-test (regression guard)" (no `paths:` filter) running
   `node .github/scripts/test-append-only-check.js --self-test`. No strict-grep gate and
   no `MANIFEST.json` change (COMMS-0125 / COMMS-0126 rebase hazard).
-- **Regression test:** **63 cases** in `selfTest()` — 35 grammar cases and 28 git
+- **Regression test:** **66 cases** in `selfTest()` — 35 grammar cases and 31 git
   scenarios (T1–T18 pre-existing byte-unchanged; T19–T27 added at IMPLEMENT; T28 added
-  at TEST). Supersedes the "53 cases" count in `I-1505-APPEND-ONLY-FAILS-CLOSED`.
-  Append-only.
-- **TEST status (2026-08-03) — NOT yet satisfied.** Independent adversarial verification
-  returned FAIL. The suite currently reports **62 passed / 1 failed**: tester case T28
-  pins an ordinary-work regression in which a change that removes nothing is refused on
-  the unoverridable branch, contradicting the blast-radius reasoning above. A second
-  defect, in how the measurement is scoped to a path, is recorded out of band under the
-  disclosure handling for this issue and is not described here. Both must be resolved and
-  the suite returned to all-green before this invariant may flip ACTIVE.
+  at TEST; T29–T31 added at REWORK). Supersedes the "53 cases" count in
+  `I-1505-APPEND-ONLY-FAILS-CLOSED`. Append-only.
+- **TEST status (2026-08-03) — REWORKED, both findings resolved.** Independent
+  adversarial verification returned FAIL on two counts, both in how the path reached git
+  rather than in how the count was taken. (1) A change that removes nothing — only a
+  file's mode moved — was refused on the unoverridable branch, contradicting the
+  blast-radius reasoning below; the blob-object-id comparison in the Rule above resolves
+  it, and tester case T28 plus T31 hold it, T31 additionally pinning that the
+  short-circuit does not swallow real removals when a mode change accompanies them.
+  (2) The measurement and the token attribution were scoped to a path that git matched
+  as a PATTERN, so both could be answered for a different file; literal pathspec
+  matching in the shared runner resolves it, and T29/T30 hold it. Suite returned to
+  **66 passed / 0 failed**.
 - **Reachability basis (blast radius):** across this repo's ENTIRE history, 3241 unique
   blobs have existed at a test-pattern path. Exactly **4** are binary to git, and they
   are **3 distinct ordinary TypeScript adversarial test sources** that embed a literal
