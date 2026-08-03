@@ -18,6 +18,7 @@ import {
   semantic,
   spacing,
   stayInventoryMaxWidth,
+  suiteFormMaxWidth,
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
@@ -555,8 +556,9 @@ function OfferingEditor({
     <ScrollView
       contentContainerStyle={[
         styles.page,
-        isWideDesktop ? styles.pageWide : null,
+        isWideDesktop ? styles.pageForm : null,
       ]}
+      testID="stay-offering-editor-scroll"
     >
       <View style={styles.titleRow}>
         <View style={styles.flex}>
@@ -1436,6 +1438,7 @@ export function StayInventoryManager({
         styles.page,
         isWideDesktop ? styles.pageWide : null,
       ]}
+      testID="stay-inventory-list-scroll"
     >
       {inventory.isError ? (
         <View style={styles.offlineBanner}>
@@ -1573,6 +1576,17 @@ const styles = StyleSheet.create({
   // centred 900 column with symmetric dead gutters.
   pageWide: {
     maxWidth: undefined,
+    alignSelf: "flex-start",
+  },
+  // #1484 (orchestrator REVIEW follow-up) — WIDE DESKTOP ONLY, for the
+  // `OfferingEditor` EDITABLE FORM embedded in this module. "Fill the screen"
+  // is right for tables and wrong for forms: a text field stretched across a
+  // 2,000px monitor is unusable. The editor therefore keeps the same readable
+  // measure as Stay Settings (`suiteFormMaxWidth`), left-anchored — while the
+  // surrounding Rooms & Places / Availability LIST content stays uncapped
+  // (`pageWide` above). That distinction is the point; do not merge the two.
+  pageForm: {
+    maxWidth: suiteFormMaxWidth,
     alignSelf: "flex-start",
   },
   center: {

@@ -211,6 +211,40 @@ import { VenueSuiteShell } from "../../venue/VenueSuiteShell";
 
 type Flat = Record<string, unknown>;
 
+/**
+ * Minimal shape of a react-test-renderer instance. `@types/react-test-renderer`
+ * is not installed (the renderer is a --no-save test-only dep), so annotate the
+ * traversal callbacks explicitly rather than inherit `any`.
+ */
+interface RenderNode {
+  type: unknown;
+  props: Record<string, unknown>;
+  findAllByType: (component: unknown) => RenderNode[];
+}
+
+const nodes = (tree: ReturnType<typeof render>): RenderNode[] =>
+  tree.UNSAFE_root.findAll(() => true) as unknown as RenderNode[];
+
+/**
+ * The REAL flattened `contentContainerStyle` of the module's page ScrollView —
+ * identified by the page padding every Stay module page style carries.
+ */
+function pageMeasure(tree: ReturnType<typeof render>): Flat | undefined {
+  return nodes(tree)
+    .filter(
+      (node) =>
+        node.props?.contentContainerStyle !== undefined &&
+        typeof node.type !== "string",
+    )
+    .map(
+      (node): Flat =>
+        (StyleSheet.flatten(
+          node.props.contentContainerStyle as never,
+        ) ?? {}) as Flat,
+    )
+    .find((flat: Flat) => flat.paddingBottom !== undefined);
+}
+
 const STAY_PROPS = {
   brandId: "brand-1484",
   venueId: "venue-1484",
@@ -246,11 +280,11 @@ function railLabels(
 ): string[] {
   const seen = new Set<string>();
   const labels: string[] = [];
-  tree.UNSAFE_root
-    .findAll(
+  nodes(tree)
+    .filter(
       (node) =>
         typeof node.props?.testID === "string" &&
-        node.props.testID.startsWith(prefix),
+        (node.props.testID as string).startsWith(prefix),
     )
     .forEach((node) => {
       const id = node.props.testID as string;
@@ -342,17 +376,7 @@ describe("#1484 — Stay suite adopts the shared desktop shell", () => {
     const overview = render(<StaySuiteShell {...STAY_PROPS} />);
     // Sanity: the Overview body actually rendered before we read its measure.
     expect(overview.getByText("Stay overview")).toBeTruthy();
-    const overviewScroll = overview.UNSAFE_root
-      .findAll(
-        (node) =>
-          node.props?.contentContainerStyle !== undefined &&
-          typeof node.type !== "string",
-      )
-      .map(
-        (node) =>
-          (StyleSheet.flatten(node.props.contentContainerStyle) ?? {}) as Flat,
-      )
-      .find((flat) => flat.paddingBottom !== undefined);
+    const overviewScroll = pageMeasure(overview);
     expect(overviewScroll).toBeDefined();
     expect(overviewScroll?.maxWidth).toBeUndefined();
     expect(overviewScroll?.alignSelf).toBe("flex-start");
@@ -361,17 +385,7 @@ describe("#1484 — Stay suite adopts the shared desktop shell", () => {
     overview.unmount();
     const settings = render(<StaySuiteShell {...STAY_PROPS} />);
     fireEvent.press(settings.getByTestId("stay-rail-settings"));
-    const settingsScroll = settings.UNSAFE_root
-      .findAll(
-        (node) =>
-          node.props?.contentContainerStyle !== undefined &&
-          typeof node.type !== "string",
-      )
-      .map(
-        (node) =>
-          (StyleSheet.flatten(node.props.contentContainerStyle) ?? {}) as Flat,
-      )
-      .find((flat) => flat.paddingBottom !== undefined);
+    const settingsScroll = pageMeasure(settings);
     expect(settingsScroll?.maxWidth).toBe(suiteFormMaxWidth);
     expect(settingsScroll?.alignSelf).toBe("flex-start");
   });
@@ -391,17 +405,7 @@ describe("#1484 — Stay suite adopts the shared desktop shell", () => {
     expect(r.queryAllByTestId(/^stay-rail-/)).toHaveLength(0);
 
     // ...and the Overview page keeps today's exact centred readable measure.
-    const page = r.UNSAFE_root
-      .findAll(
-        (node) =>
-          node.props?.contentContainerStyle !== undefined &&
-          typeof node.type !== "string",
-      )
-      .map(
-        (node) =>
-          (StyleSheet.flatten(node.props.contentContainerStyle) ?? {}) as Flat,
-      )
-      .find((flat) => flat.paddingBottom !== undefined);
+    const page = pageMeasure(r);
     expect(page?.maxWidth).toBe(stayPageMaxWidth);
     expect(page?.alignSelf).toBe("center");
   });

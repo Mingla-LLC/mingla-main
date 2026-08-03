@@ -36,6 +36,7 @@ module.exports = {
   },
   testMatch: [
     "**/__tests__/staySuiteShell.issue1484.desktopShell.render.test.tsx",
+    "**/__tests__/stayInventoryManager.issue1484.formMeasure.render.test.tsx",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|@react-native-community|@testing-library|test-renderer|react-clone-referenced-element|@react-native-async-storage|expo|@expo|react-native-safe-area-context|@gorhom|react-native-svg|lucide-react-native)",
