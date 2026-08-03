@@ -29,6 +29,11 @@ module.exports = {
   testMatch: [
     "**/__tests__/staySuiteShell.issue1484.desktopShell.render.test.tsx",
     "**/__tests__/stayInventoryManager.issue1484.formMeasure.render.test.tsx",
+    // TESTER-owned adversarial suite (issue #1484 verdict). Registered here so
+    // it runs in the SAME `Issue #1484 Stay Desktop Shell` workflow job and is
+    // never dark — the exact failure mode this branch had to report for
+    // `venueSuiteShell.orch1184.fullwidth.adversarial.render.test.tsx` (#1486).
+    "**/__tests__/suiteDesktopShell.issue1484.boundary.adversarial.render.test.tsx",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|@react-native-community|test-renderer|react-clone-referenced-element|@react-native-async-storage|expo|@expo|react-native-safe-area-context|@gorhom|react-native-svg|lucide-react-native)",
