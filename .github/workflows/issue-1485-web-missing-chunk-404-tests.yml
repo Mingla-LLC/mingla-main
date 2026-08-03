@@ -1,0 +1,89 @@
+name: "Issue #1485 web missing chunk 404"
+
+# #1485 [web-missing-chunk-404] — PR-blocking gate on the two files that decide
+# whether a missing business-web JavaScript chunk kills the route.
+#
+# WHY A DEDICATED WORKFLOW. `mingla-business`'s default jest config is exercised
+# only by a full `npx jest` that no workflow performs, so a suite registered
+# nowhere protects nothing. The three pre-existing `vercel.json` suites this
+# issue edits (`orch1003.assetCaching.adversarial`, `authCallbackStatic`,
+# `orch1098RealAppOnPhone`) are in exactly that position. This workflow wires
+# them, plus the new #1485 suites, to the paths that can break them.
+#
+# WHY NOT THE STRICT-GREP BATCH. The #1485 SPEC holds
+# `.github/scripts/strict-grep/**` and `MANIFEST.json` on the DO-NOT-TOUCH list:
+# adding a gate would put this PR in the `expectedStrictGrepMjsFiles` /
+# `selfTestWiredFloor` rebase-conflict path (COMMS-0125 / COMMS-0126) for zero
+# benefit — the gate here parses JSON and runs a real module, it is not a grep.
+#
+# WHAT THIS GATE DOES *NOT* PROVE. It cannot prove the DEPLOYED behaviour. Vercel
+# compiles `rewrites` at build time; CI only pins the source string and the regex
+# it is known to compile to. The deployed truth (SC-1…SC-6) is captured by the
+# tester with raw `curl -sSI` against https://business.usemingla.com AFTER the
+# production build reaches READY and takes the alias.
+#
+# EXPLICIT registry (never a glob) — add a guarded path by appending it below.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mingla-business/vercel.json"
+      - "mingla-business/src/diagnostics/chunkReloadGuard.ts"
+      - "mingla-business/__tests__/issue1485_expo_static_excluded_from_catch_all.test.ts"
+      - "mingla-business/__tests__/issue1485_deep_links_never_404.tester.adversarial.test.ts"
+      - "mingla-business/src/diagnostics/__tests__/chunkReloadGuard.issue1485.test.ts"
+      - "mingla-business/__tests__/orch1003.assetCaching.adversarial.test.ts"
+      - "mingla-business/__tests__/authCallbackStatic.test.ts"
+      - "mingla-business/__tests__/orch1098RealAppOnPhone.test.ts"
+      - ".github/workflows/issue-1485-web-missing-chunk-404-tests.yml"
+  pull_request:
+    paths:
+      - "mingla-business/vercel.json"
+      - "mingla-business/src/diagnostics/chunkReloadGuard.ts"
+      - "mingla-business/__tests__/issue1485_expo_static_excluded_from_catch_all.test.ts"
+      - "mingla-business/__tests__/issue1485_deep_links_never_404.tester.adversarial.test.ts"
+      - "mingla-business/src/diagnostics/__tests__/chunkReloadGuard.issue1485.test.ts"
+      - "mingla-business/__tests__/orch1003.assetCaching.adversarial.test.ts"
+      - "mingla-business/__tests__/authCallbackStatic.test.ts"
+      - "mingla-business/__tests__/orch1098RealAppOnPhone.test.ts"
+      - ".github/workflows/issue-1485-web-missing-chunk-404-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  static-asset-never-html:
+    name: "#1485: /_expo/static/ excluded from the SPA catch-all + guard recovers"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      # The tester-owned adversarial suite
+      # (issue1485_deep_links_never_404.tester.adversarial.test.ts) is listed
+      # here ahead of its arrival: jest treats positional args as path patterns,
+      # so an unmatched pattern is a no-op until the file lands, and the gate
+      # picks it up automatically the moment it does.
+      - name: "Prove a missing asset 404s and every deep link still routes"
+        run: >-
+          npx jest
+          __tests__/issue1485_expo_static_excluded_from_catch_all.test.ts
+          __tests__/issue1485_deep_links_never_404.tester.adversarial.test.ts
+          src/diagnostics/__tests__/chunkReloadGuard.issue1485.test.ts
+          __tests__/orch1003.assetCaching.adversarial.test.ts
+          __tests__/authCallbackStatic.test.ts
+          __tests__/orch1098RealAppOnPhone.test.ts
+          --runInBand
