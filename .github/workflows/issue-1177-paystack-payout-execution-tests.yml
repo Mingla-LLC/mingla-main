@@ -1,0 +1,66 @@
+name: "#1177 Paystack Payout Execution Tests"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/functions/payout-release-sweep/**"
+      - "supabase/functions/_shared/paystack.ts"
+      - "supabase/functions/_shared/paystackOrganiserRelease.ts"
+      - "supabase/functions/paystack-webhook/**"
+      - ".github/workflows/issue-1177-paystack-payout-execution-tests.yml"
+  pull_request:
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/functions/payout-release-sweep/**"
+      - "supabase/functions/_shared/paystack.ts"
+      - "supabase/functions/_shared/paystackOrganiserRelease.ts"
+      - "supabase/functions/paystack-webhook/**"
+      - ".github/workflows/issue-1177-paystack-payout-execution-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-1177-paystack-payout-execution:
+    name: "#1177 Paystack organiser payout execution"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: Apply every migration to clean PostgreSQL 17 (validates the H migration)
+        run: |
+          issue1177_db_password="$(openssl rand -hex 24)"
+          docker run --name issue1177-postgres \
+            -e POSTGRES_PASSWORD="$issue1177_db_password" \
+            -d supabase/postgres:17.4.1.075
+          for attempt in {1..90}; do
+            state="$(docker inspect --format \
+              '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' \
+              issue1177-postgres)"
+            if [ "$state" = "healthy" ]; then
+              break
+            fi
+            sleep 1
+          done
+          for migration_file in supabase/migrations/*.sql; do
+            docker exec -i issue1177-postgres \
+              psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+              < "$migration_file"
+          done
+      - name: Run the #1177 organiser Paystack execution behavior tests
+        run: |
+          deno test --allow-read --allow-env --allow-net --no-check \
+            supabase/functions/payout-release-sweep/__tests__/issue_1177_paystack_organiser_release.test.ts \
+            supabase/functions/payout-release-sweep/__tests__/issue_1177_paystack_organiser_release_adversarial.test.ts
+      - name: Remove disposable database
+        if: always()
+        run: docker rm -f issue1177-postgres || true

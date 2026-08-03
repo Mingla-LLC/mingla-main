@@ -12,8 +12,11 @@ import {
   asEventCoverMediaProvider,
   type EventCoverMediaProvider,
 } from "../types/eventCoverProvider";
+// issue #868 [cover-gallery] — the additional-photos item type; drafts carry it
+// through autosave (draftToServerUpdate) AND publish (same mapper output).
+import type { OfferingGalleryImage } from "@mingla/offering-rendering";
 import type { LiveEvent } from "../store/liveEventStore";
-import { normalizeCurrency } from "./currency";
+import { currencyCodeOrNull } from "./currency";
 import {
   themeOverridesFromColumns,
   themeOverridesToColumns,
@@ -39,6 +42,8 @@ export interface ServerDraftEventRow {
   cover_media_credit?: string | null;
   cover_media_credit_url?: string | null;
   cover_media_alt?: string | null;
+  // issue #868 [cover-gallery] — additive; absent on legacy rows → mapped to [].
+  cover_media_gallery?: OfferingGalleryImage[] | null;
   currency?: string | null;
   is_online: boolean;
   is_recurring: boolean;
@@ -88,7 +93,10 @@ export interface ServerDraftEventInsert {
   cover_media_credit: string | null;
   cover_media_credit_url: string | null;
   cover_media_alt: string | null;
-  currency: string;
+  // issue #868 [cover-gallery] — additive gallery persisted on draft autosave
+  // AND publish (same mapper output feeds both). Independent of the cover fields.
+  cover_media_gallery: OfferingGalleryImage[];
+  currency: string | null;
   is_online: boolean;
   is_recurring: boolean;
   is_multi_date: boolean;
@@ -118,7 +126,10 @@ export interface ServerDraftEventUpdate {
   cover_media_credit: string | null;
   cover_media_credit_url: string | null;
   cover_media_alt: string | null;
-  currency: string;
+  // issue #868 [cover-gallery] — additive gallery persisted on draft autosave
+  // AND publish (same mapper output feeds both). Independent of the cover fields.
+  cover_media_gallery: OfferingGalleryImage[];
+  currency: string | null;
   is_online: boolean;
   is_recurring: boolean;
   is_multi_date: boolean;
@@ -176,7 +187,7 @@ export interface BusinessDraftPayload {
     creditUrl: string | null;
     alt: string | null;
   };
-  currency: string;
+  currency: string | null;
   whenMode: WhenMode;
   when: {
     date: string | null;
@@ -341,7 +352,7 @@ const buildBusinessDraftPayload = (
     creditUrl: draft.coverMediaCreditUrl ?? null,
     alt: draft.coverMediaAlt ?? null,
   },
-  currency: normalizeCurrency(draft.currency),
+  currency: currencyCodeOrNull(draft.currency),
   whenMode: draft.whenMode,
   when: {
     date: draft.date,
@@ -630,7 +641,11 @@ export const draftToServerInsert = (
     draft.coverMediaUrl === null ? null : draft.coverMediaCreditUrl ?? null,
   cover_media_alt:
     draft.coverMediaUrl === null ? null : draft.coverMediaAlt ?? null,
-  currency: normalizeCurrency(draft.currency),
+  // issue #868 [cover-gallery] — INDEPENDENT of the cover URL: the extra-photos
+  // gallery persists even when there is no cover (a gallery coexists with any
+  // cover). Default [] preserves single-cover behavior.
+  cover_media_gallery: draft.coverGallery ?? [],
+  currency: currencyCodeOrNull(draft.currency),
   is_online: draft.format === "online" || draft.format === "hybrid",
   is_recurring: draft.whenMode === "recurring",
   is_multi_date: draft.whenMode === "multi_date",
@@ -670,7 +685,10 @@ export const draftToServerUpdate = (
     draft.coverMediaUrl === null ? null : draft.coverMediaCreditUrl ?? null,
   cover_media_alt:
     draft.coverMediaUrl === null ? null : draft.coverMediaAlt ?? null,
-  currency: normalizeCurrency(draft.currency),
+  // issue #868 [cover-gallery] — INDEPENDENT additive gallery (persists on both
+  // draft autosave and publish; never derived from / gated on the cover URL).
+  cover_media_gallery: draft.coverGallery ?? [],
+  currency: currencyCodeOrNull(draft.currency),
   is_online: draft.format === "online" || draft.format === "hybrid",
   is_recurring: draft.whenMode === "recurring",
   is_multi_date: draft.whenMode === "multi_date",
@@ -827,6 +845,11 @@ export const serverRowToDraft = (row: ServerDraftEventRow): DraftEvent => {
         : asStringOrNull(
             row.cover_media_alt ?? asRecord(businessDraft.coverProvider).alt,
           ),
+    // issue #868 [cover-gallery] — additive; [] on legacy rows (rule 9). Read
+    // back INDEPENDENTLY of the cover URL (a gallery can exist with no cover).
+    coverGallery: Array.isArray(row.cover_media_gallery)
+      ? row.cover_media_gallery
+      : [],
     currency:
       asStringOrNull(businessDraft.currency) ?? asStringOrNull(row.currency) ?? null,
     // ORCH-1006 — read pricing switches from top-level columns. null = inherit.
@@ -861,11 +884,28 @@ export const serverRowToDraft = (row: ServerDraftEventRow): DraftEvent => {
     rsvpApprovalMode:
       businessDraft.rsvpApprovalMode === "manual" ? "manual" : "auto",
     rsvpDiscoverable: asBoolean(businessDraft.rsvpDiscoverable, false),
+    // ORCH-1291 / #1026 — chip-in host-controls round-trip from
+    // business_draft (write leg at buildBusinessDraftPayload `:378-380`).
+    // Omitting these reads let the autosave echo wipe chip-in to blank ~700ms
+    // after the host set it, and a wiped draft published with chip-in OFF.
+    // Legacy/pre-ORCH-1291 blobs lack the keys → default false/null (never
+    // undefined, which JSON.stringify would then drop from the next payload).
+    rsvpContributionEnabled: asBoolean(businessDraft.rsvpContributionEnabled, false),
+    rsvpContributionSuggestedCents:
+      typeof businessDraft.rsvpContributionSuggestedCents === "number" &&
+      Number.isFinite(businessDraft.rsvpContributionSuggestedCents)
+        ? businessDraft.rsvpContributionSuggestedCents
+        : null,
+    rsvpContributionMinCents:
+      typeof businessDraft.rsvpContributionMinCents === "number" &&
+      Number.isFinite(businessDraft.rsvpContributionMinCents)
+        ? businessDraft.rsvpContributionMinCents
+        : null,
     lastStepReached: asNumber(businessDraft.lastStepReached, 0),
     status: "draft",
     clientRevision: asNumber(businessDraft.clientRevision, 0),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     ...(legacyLocalDraftId !== null ? { legacyLocalDraftId } : {}),
-  } as DraftEvent;
+  } satisfies DraftEvent;
 };

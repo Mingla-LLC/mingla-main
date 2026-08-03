@@ -43,7 +43,7 @@ import { useEventEditLogStore } from "../../../src/store/eventEditLogStore";
 import { formatDraftDateLine } from "../../../src/utils/eventDateDisplay";
 import { deriveLiveStatus } from "../../../src/utils/eventLifecycle";
 import { computeMasterStartAtUtc } from "../../../src/utils/eventDateMath";
-import { formatCurrency } from "../../../src/utils/currency";
+import { formatCurrency, currencyCodeOrNull } from "../../../src/utils/currency";
 import { summarizeEventMoney } from "../../../src/utils/moneySummary";
 import { eventPublicUrl } from "../../../src/constants/publicUrls";
 
@@ -80,6 +80,7 @@ import {
 } from "../../../src/hooks/useBusinessEvents";
 import { useEventOrders } from "../../../src/hooks/useEventOrders";
 import { canPerformAction } from "../../../src/utils/permissionGates";
+import { isScannerOnlyRank } from "../../../src/utils/navTabGate";
 
 const CANCEL_PROCESSING_MS = 1200;
 const cancelSleep = (ms: number): Promise<void> =>
@@ -116,8 +117,13 @@ export default function EventDetailScreen(): React.ReactElement {
 
   // Cycle 13a J-T6 G1: gate Edit / End sales / Cancel / Delete on EDIT_EVENT.
   // Hook ordering: ALL hooks run on every render before any early-return shell.
-  const { rank: currentRank } = useCurrentBrandRole(brand?.id ?? null);
-  const canEditEvent = canPerformAction(currentRank, "EDIT_EVENT");
+  const currentBrandRole = useCurrentBrandRole(brand?.id ?? null);
+  const canEditEvent = canPerformAction(currentBrandRole.rank, "EDIT_EVENT");
+  const canShowListingInsights =
+    !currentBrandRole.isLoading &&
+    !currentBrandRole.isError &&
+    currentBrandRole.role !== null &&
+    !isScannerOnlyRank(currentBrandRole.rank);
 
   // ----- Defensive: draft → redirect to edit ---------------------
   useEffect(() => {
@@ -420,7 +426,11 @@ export default function EventDetailScreen(): React.ReactElement {
     return cents / 100;
   }, [allOrderEntries, event]);
   const doorRevenue = moneySummary.doorRevenue;
-  const displayCurrency = event?.currency ?? brand?.defaultCurrency ?? moneySummary.expectedCurrency;
+  // #962 N1 — DISPLAY currency, severed from moneySummary.expectedCurrency
+  // (which normalizes to a fabricated "GBP" for a pre-bank brand). The money
+  // COMPUTATION at :386 is untouched; this only governs what the KpiCard + door
+  // sub-label render, hiding the price ("—") when the brand has no currency.
+  const displayCurrency = currencyCodeOrNull(event?.currency ?? brand?.defaultCurrency);
   // Per-tier sold count map — stable ref via raw entries + useMemo (same
   // pattern as Cycle 9c rework v2 fix; avoids infinite-loop on
   // getSoldCountByTier returning a fresh object each call).
@@ -568,12 +578,21 @@ export default function EventDetailScreen(): React.ReactElement {
       const buyerName =
         sale.buyerName.trim().length > 0 ? sale.buyerName : "Walk-up";
       for (const r of sale.refunds) {
+        // #962 N3 — never render a fabricated £: formatCurrency coerces a blank
+        // sale.currency to GBP via normalizeCurrency. sale.currency is real in
+        // practice (paid door sales are gated behind a set currency), guarded
+        // here for the gate + seam defense.
+        const doorRefundCode = currencyCodeOrNull(sale.currency);
         events.push({
           kind: "event_door_refund",
           saleId: sale.id,
           refundId: r.id,
           buyerName,
-          summary: `${buyerName} — refunded ${formatCurrency(r.amountGbp, sale.currency)} (door)`,
+          summary: `${buyerName} — refunded ${
+            doorRefundCode
+              ? formatCurrency(r.amountGbp, sale.currency)
+              : String(r.amountGbp)
+          } (door)`,
           amountGbp: r.amountGbp,
           currency: sale.currency,
           at: r.refundedAt,
@@ -720,6 +739,17 @@ export default function EventDetailScreen(): React.ReactElement {
             sub={`${totalGuestCount} ${totalGuestCount === 1 ? "guest" : "guests"}`}
             onPress={handleGuests}
           />
+          {canShowListingInsights ? (
+            <ActionTile
+              icon="chart"
+              label="Insights"
+              sub="Customers Mingla drove"
+              accessibilityLabel={`Open Insights for ${event.name}`}
+              onPress={() =>
+                router.push(`/insights/${event.id}?entry=detail_action` as never)
+              }
+            />
+          ) : null}
           {/* ORCH-0815-A2-ui (DEC-149) — event-context Marketing entry.
               Renamed "Buyers" → "Blasts" + icon `users` → `send` for
               consistency with the bottom-nav Blast tab. */}
@@ -752,7 +782,11 @@ export default function EventDetailScreen(): React.ReactElement {
             <ActionTile
               icon="ticket"
               label="Door Sales"
-              sub={`${doorSoldCount} sold · ${formatCurrency(doorRevenue, displayCurrency)}`}
+              sub={`${doorSoldCount} sold${
+                displayCurrency !== null
+                  ? ` · ${formatCurrency(doorRevenue, displayCurrency)}`
+                  : ""
+              }`}
               onPress={handleDoorSales}
             />
           ) : null}

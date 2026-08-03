@@ -4,7 +4,11 @@
 // never touches OneSignal HTTP directly. Resolves consumer-vs-business app via
 // resolveOneSignalApp(type) (a category maps to a `type` for routing).
 
-import { resolveOneSignalApp, sendPush } from "../push-utils.ts";
+import {
+  hasOneSignalCredentials,
+  resolveOneSignalApp,
+  sendPush,
+} from "../push-utils.ts";
 import type { AdapterResult } from "./smsAdapter.ts";
 
 export interface PushSendInput {
@@ -14,6 +18,7 @@ export interface PushSendInput {
   data?: Record<string, unknown>;
   // Routing key — `business.*`/`stripe.*` → business app, else consumer.
   routingType?: string;
+  beforeProviderIo?: () => Promise<void>;
 }
 
 export const pushAdapter = {
@@ -21,31 +26,32 @@ export const pushAdapter = {
     if (!input.userId) {
       return { ok: false, status: "skipped", providerMessageId: null, error: "no_user_id" };
     }
-    try {
-      const ok = await sendPush({
-        targetUserId: input.userId,
-        title: input.title,
-        body: input.body,
-        data: input.data ?? {},
-        app: resolveOneSignalApp(input.routingType ?? null),
-        iosBadgeType: "Increase",
-        iosBadgeCount: 1,
-      });
-      // sendPush returns a boolean (no provider message id surfaced); record
-      // sent/failed accordingly. No silent failure — failed is a real status.
-      return {
-        ok,
-        status: ok ? "sent" : "failed",
-        providerMessageId: null,
-        error: ok ? undefined : "push_not_delivered",
-      };
-    } catch (err) {
+    const app = resolveOneSignalApp(input.routingType ?? null);
+    if (!hasOneSignalCredentials(app)) {
       return {
         ok: false,
         status: "failed",
         providerMessageId: null,
-        error: err instanceof Error ? err.message : String(err),
+        error: "provider_config_missing",
       };
     }
+    const ok = await sendPush({
+      targetUserId: input.userId,
+      title: input.title,
+      body: input.body,
+      data: input.data ?? {},
+      app,
+      iosBadgeType: "Increase",
+      iosBadgeCount: 1,
+      beforeProviderIo: input.beforeProviderIo,
+    });
+    // sendPush absorbs provider/network failures, but deliberately lets a
+    // durable-marker failure escape so the worker can classify it as unsent.
+    return {
+      ok,
+      status: ok ? "sent" : "failed",
+      providerMessageId: null,
+      error: ok ? undefined : "push_not_delivered",
+    };
   },
 };

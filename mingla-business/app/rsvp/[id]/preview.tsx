@@ -68,8 +68,9 @@ import { eventCoverProviderCreditLabel } from "../../../src/types/eventCoverProv
  * Mirrors `PublicEventPage.mapLiveEventToPublicEvent` field-for-field, with two
  * RSVP/preview adjustments: zero `tickets` (RSVP carries no tiers) and empty
  * `brandSlug`/`eventSlug` (a draft has no published slug; the preview never
- * shares — `onShare` is a toast). `currency` is a placeholder ("GBP") never read
- * by `RsvpPublicBody`.
+ * shares — `onShare` is a toast). `currency` carries the draft's REAL currency
+ * (null when the pre-bank brand has none, issue #962 — never a fabricated
+ * "GBP"); `RsvpPublicBody` reads it null-safely and hides chip-in when unset.
  */
 const mapDraftToPublicEvent = (draft: DraftEvent): PublicEventProps => {
   const coverVideoUnsafe = isLegacyUnsafeEventCoverVideoUrl(
@@ -113,7 +114,7 @@ const mapDraftToPublicEvent = (draft: DraftEvent): PublicEventProps => {
         : null,
     coverCredit,
     tickets: [],
-    currency: "GBP",
+    currency: draft.currency ?? null,
     // ORCH-1157 [rsvp-public-redesign] — pass the draft's party types so the
     // preview renders the Direction-C vibe chips. goingCount stays 0 (set in the
     // config below) → the shared momentum unit shows the honest zero-state.

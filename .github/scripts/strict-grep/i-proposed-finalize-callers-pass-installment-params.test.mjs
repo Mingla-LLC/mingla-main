@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
 
@@ -9,9 +10,10 @@ const SCRIPT = new URL(
   "./i-proposed-finalize-callers-pass-installment-params.mjs",
   import.meta.url,
 );
+const SCRIPT_PATH = fileURLToPath(SCRIPT);
 
 test("ORCH-0921 T-08 - strict-grep gate passes the post-fix codebase", () => {
-  const output = execFileSync(process.execPath, [SCRIPT.pathname], {
+  const output = execFileSync(process.execPath, [SCRIPT_PATH], {
     encoding: "utf8",
   });
   assert.match(output, /0 violations/);
@@ -37,7 +39,7 @@ test("ORCH-0921 T-09 - strict-grep gate fails a fixture caller missing p_install
   try {
     const result = spawnSync(
       process.execPath,
-      [SCRIPT.pathname, "--scan-dir", join(root, "supabase", "functions")],
+      [SCRIPT_PATH, "--scan-dir", join(root, "supabase", "functions")],
       { encoding: "utf8" },
     );
     assert.equal(result.status, 1);

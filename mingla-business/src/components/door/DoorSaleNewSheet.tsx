@@ -64,7 +64,7 @@ import type { LiveEvent } from "../../store/liveEventStore";
 import type { TicketStub } from "../../store/draftEventStore";
 import { useScanStore } from "../../store/scanStore";
 import { expandDoorTickets } from "../../utils/expandDoorTickets";
-import { formatCurrency } from "../../utils/currency";
+import { formatCurrency, currencyCodeOrNull } from "../../utils/currency";
 
 import { Button } from "../ui/Button";
 import { Sheet } from "../ui/Sheet";
@@ -165,6 +165,14 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
   const [notes, setNotes] = useState<string>("");
   const [submitting, setSubmitting] = useState<boolean>(false);
 
+  // #962 G5 / OQ-2(a) — a door sale freezes its currency onto the record
+  // (DoorSaleRecord.currency is NOT NULL). Pre-condition the record path behind
+  // a set currency so a sale is NEVER frozen with a fabricated GBP. A pre-bank
+  // brand (no established currency) sees "Add your bank to record paid sales".
+  const eventCurrencyCode = currencyCodeOrNull(event.currency);
+  const fmtDoorMoney = (v: number): string =>
+    eventCurrencyCode === null ? "—" : formatCurrency(v, eventCurrencyCode);
+
   // Reset on visible flip → true
   useEffect(() => {
     if (visible) {
@@ -214,7 +222,10 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
               ticketTypeId: tier.id,
               ticketName: tier.name.length > 0 ? tier.name : "Untitled tier",
               unitPrice: unit,
-              currency: tier.currency ?? event.currency ?? "GBP",
+              // #962 G5 — never freeze a fabricated GBP. This local line
+              // currency is vestigial (the recorded sale uses the event's real
+              // currency at submit); empty when unset.
+              currency: currencyCodeOrNull(tier.currency ?? event.currency) ?? "",
               isFree: tier.isFree,
               quantity: safeQty,
             },
@@ -253,10 +264,16 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
     paymentMethodValid &&
     emailValid &&
     phoneValid &&
-    notesValid;
+    notesValid &&
+    // #962 G5 / OQ-2(a) — cannot record a paid sale without an established
+    // currency; a sale must never freeze a fabricated GBP.
+    eventCurrencyCode !== null;
 
   const handleConfirm = useCallback(async (): Promise<void> => {
     if (!canSubmit) return;
+    // #962 G5 — narrow: guaranteed non-null by canSubmit, asserted here so the
+    // frozen record currency is always the event's REAL code.
+    if (eventCurrencyCode === null) return;
     setSubmitting(true);
     try {
       await sleep(PROCESSING_MS);
@@ -281,7 +298,9 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
         })),
         totalGbpAtSale: total,
         totalAtSale: total,
-        currency: event.currency ?? "GBP",
+        // #962 G5 — freeze the event's REAL currency (guaranteed non-null by the
+        // canSubmit + early-return guard above). Never a fabricated GBP.
+        currency: eventCurrencyCode,
         notes: notes.trim(),
       });
       // Decision #5 + HIDDEN-1 contract — fire N scan records AFTER recordSale
@@ -312,6 +331,7 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
   }, [
     canSubmit,
     event.id,
+    eventCurrencyCode,
     brandId,
     operatorAccountId,
     buyerName,
@@ -370,10 +390,15 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
               {pickableTiers.map((tier) => {
                 const lineQty =
                   lines.find((l) => l.ticketTypeId === tier.id)?.quantity ?? 0;
+                // #962 G5 — hide the tier price ("—") when neither the tier nor
+                // the event has an established currency; never a fabricated £.
+                const tierCode = currencyCodeOrNull(
+                  tier.currency ?? event.currency,
+                );
                 const priceLabel = tier.isFree
                   ? "Free"
-                  : tier.priceGbp !== null
-                    ? formatCurrency(tier.priceGbp, tier.currency ?? event.currency ?? "GBP")
+                  : tier.priceGbp !== null && tierCode !== null
+                    ? formatCurrency(tier.priceGbp, tierCode)
                     : "—";
                 return (
                   <View key={tier.id} style={styles.tierRow}>
@@ -427,7 +452,7 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
                   {totalQty} ticket{totalQty === 1 ? "" : "s"}
                 </Text>
                 <Text style={styles.cartSummaryValue}>
-                  {formatCurrency(total, event.currency ?? "GBP")}
+                  {fmtDoorMoney(total)}
                 </Text>
               </View>
             </View>
@@ -581,8 +606,13 @@ export const DoorSaleNewSheet: React.FC<DoorSaleNewSheetProps> = ({
         <View style={styles.dock}>
           <View style={styles.dockTotalRow}>
             <Text style={styles.dockTotalLabel}>Total</Text>
-            <Text style={styles.dockTotalValue}>{formatCurrency(total, event.currency ?? "GBP")}</Text>
+            <Text style={styles.dockTotalValue}>{fmtDoorMoney(total)}</Text>
           </View>
+          {eventCurrencyCode === null ? (
+            <Text style={styles.currencyGateHint}>
+              Add your bank to record paid sales.
+            </Text>
+          ) : null}
           <Button
             label={submitting ? "Recording..." : "Record sale"}
             onPress={handleConfirm}
@@ -936,6 +966,13 @@ const styles = StyleSheet.create({
   },
   dockSpacer: {
     height: spacing.sm,
+  },
+  // #962 G5 — pre-bank currency gate hint above the Record CTA.
+  currencyGateHint: {
+    fontSize: 13,
+    color: textTokens.secondary,
+    marginBottom: spacing.sm,
+    textAlign: "center",
   },
 
   // Section header reuses (deprecated)

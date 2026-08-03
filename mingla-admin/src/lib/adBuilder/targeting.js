@@ -12,9 +12,25 @@
  *   { platform:'meta'|'tiktok'|'reddit', id, name }
  */
 
+/**
+ * ISSUE-992 (3b) SEAM — Google affinity/in-market audiences are account/policy-
+ * gated (Seth decision G-4): if the live validate_only eligibility probe fails,
+ * flip this to false to ship 3a (Google age/gender + both Snap pieces) ALONE.
+ * It is the single switch that removes Google from the interest typeahead and
+ * stops the payload from sending `targeting.audiences` — nothing else changes.
+ */
+export const GOOGLE_AUDIENCES_ENABLED = true;
+
 /** Platforms whose city/interest taxonomy the search proxy resolves. */
-export const CITY_SEARCH_PLATFORMS = ["meta", "tiktok", "google"];
-export const INTEREST_SEARCH_PLATFORMS = ["meta", "tiktok", "reddit"];
+export const CITY_SEARCH_PLATFORMS = ["meta", "tiktok", "google", "snapchat"];
+export const INTEREST_SEARCH_PLATFORMS = [
+  "meta",
+  "tiktok",
+  "reddit",
+  "snapchat",
+  // 3b (G-4 seam): Google audiences only when eligibility holds.
+  ...(GOOGLE_AUDIENCES_ENABLED ? ["google"] : []),
+];
 
 // ── Radius (Meta city radius: 1-50 mi / 1-80 km) ──────────────────────────────
 export const DEFAULT_RADIUS_MI = 10;
@@ -53,6 +69,17 @@ export function snapGendersFor(gender) {
   if (gender === "women") return ["FEMALE"];
   if (gender === "men") return ["MALE"];
   return undefined; // All → omit
+}
+
+/**
+ * ISSUE-992 (3a) Google TARGET gender(s) — MALE|FEMALE. The server excludes the
+ * OPPOSITE (Google demographics are all-included; you restrict by exclusion).
+ * All → undefined (no gender criteria — broad build byte-identical).
+ */
+export function googleGendersFor(gender) {
+  if (gender === "women") return ["FEMALE"];
+  if (gender === "men") return ["MALE"];
+  return undefined;
 }
 
 // ── City chips → per-platform geo shapes ──────────────────────────────────────
@@ -113,6 +140,25 @@ export function redditInterestNamesFrom(interests) {
     .filter(Boolean);
 }
 
+/**
+ * ISSUE-992 (3b) Google affinity/in-market audience ids (user_interest_id —
+ * numeric strings). Empty when GOOGLE_AUDIENCES_ENABLED is off (G-4 seam) so
+ * the payload never sends `audiences`.
+ */
+export function googleAudienceIdsFrom(interests) {
+  if (!GOOGLE_AUDIENCES_ENABLED) return [];
+  return interestsForPlatform(interests, "google")
+    .map((i) => String(i.id).trim())
+    .filter(Boolean);
+}
+
+/** ISSUE-992 (3a) Snap SCLS interest-segment category ids (string ids). */
+export function snapInterestCategoryIdsFrom(interests) {
+  return interestsForPlatform(interests, "snapchat")
+    .map((i) => String(i.id).trim())
+    .filter(Boolean);
+}
+
 // ── Snapchat demographics (age/gender — STRINGS; closes the silent drop) ───────
 
 /**
@@ -133,4 +179,39 @@ export function snapDemographicsFrom({ ageMin, ageMax, gender } = {}) {
   // min_age is mandatory on every entry — default to "18" if only gender/max set.
   if (entry.min_age === undefined) entry.min_age = "18";
   return [entry];
+}
+
+// ── ISSUE-992 Google demographics + Snap circles ──────────────────────────────
+
+/**
+ * ISSUE-992 (3a) Google age/gender → { age_min?, age_max?, genders? }. The
+ * server maps age_min/age_max to Google's FIXED 10-year bands (G-1 widening) by
+ * EXCLUDING the bands outside the range. Send NOTHING when the request doesn't
+ * narrow within Google's targetable span (youngest band 18-24, top 65+) and
+ * gender is "all" — so a broad build stays byte-identical. Returns null then.
+ */
+export function googleDemographicsFrom({ ageMin, ageMax, gender } = {}) {
+  const out = {};
+  const min = Number(ageMin);
+  const max = Number(ageMax);
+  if (Number.isFinite(min) && min > 18) out.age_min = min; // Google floor is 18
+  if (Number.isFinite(max) && max < 65) out.age_max = max; // 65 = open top band
+  const genders = googleGendersFor(gender);
+  if (genders) out.genders = genders;
+  if (out.age_min === undefined && out.age_max === undefined && !out.genders) return null;
+  return out;
+}
+
+/**
+ * ISSUE-992 (3a) Snap city circles → [{ name, country_code, radius, unit }].
+ * NAME + country only (NOT coords) — the create edge fn geocodes server-side so
+ * lat/lng never touch the browser. Radius reuses the Meta clamp (Snap accepts
+ * the same 1-50mi/1-80km range; confirm the min at the PAUSED probe).
+ */
+export function snapCirclesFrom(cities, radius = DEFAULT_RADIUS_MI, unit = "mile") {
+  if (!Array.isArray(cities)) return [];
+  const r = clampRadius(radius, unit);
+  return cities
+    .filter((c) => c?.label && c?.country)
+    .map((c) => ({ name: String(c.label), country_code: String(c.country), radius: r, unit }));
 }

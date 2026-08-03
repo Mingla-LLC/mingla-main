@@ -13,6 +13,7 @@
  */
 
 import { supabase, invokeWithRefresh } from "../lib/supabase";
+import { normalizePreparationInvoke } from "../lib/adBuilder/preparationState";
 
 /** Extract { status, body } from a supabase.functions.invoke error (SC-7). */
 export async function parseEdgeError(error) {
@@ -130,6 +131,27 @@ export async function getCampaignDetail(campaignId) {
 }
 
 /**
+ * ISSUE-865 PR1 WP-4 — per-campaign conversions & ROI for the campaign-detail
+ * "Conversions & ROI" panel. Reads the SECURITY DEFINER, self-authorizing
+ * `ad_campaign_conversion_rollup(p_campaign_id)` RPC (conversions, attributed
+ * value per currency, by-platform, send health; spend_cents is NULL — no in-DB
+ * spend source yet, so the panel never fabricates ROAS). Returns the raw
+ * { data, error } (the page toasts the error), matching this service's contract.
+ */
+export async function getCampaignConversions(campaignId) {
+  return supabase.rpc("ad_campaign_conversion_rollup", {
+    p_campaign_id: campaignId,
+  });
+}
+
+/** Admin-only attributed Stay request/booking/refund funnel. */
+export async function getStayCampaignRollup(campaignId) {
+  return supabase.rpc("admin_stay_ad_campaign_rollup", {
+    p_campaign_id: campaignId,
+  });
+}
+
+/**
  * ISSUE-989 [Campaign Builder real targeting] — admin-ad-targeting-search: turn
  * a typed city/interest NAME into per-platform targeting keys/ids. READ-ONLY,
  * admin-gated server-side (no platform token reaches this client). Fail-open:
@@ -150,4 +172,38 @@ export async function searchTargeting({ platform, kind, q, country, lane = "cons
  */
 export async function creativeUpload(payload) {
   return invokeWithRefresh("admin-ad-creative-upload", { body: payload });
+}
+
+// ── ISSUE-1184 [Video Phase A] ──────────────────────────────────────────────
+
+/**
+ * Preparation is one platform per call. A newly discovered provider-terminal
+ * result is deliberately returned by the edge as a canonical 502 envelope;
+ * normalize that envelope into authoritative row data so the UI can render
+ * Retry immediately instead of replacing it with a generic transport error.
+ */
+export async function prepareVideoCreative(payload) {
+  const result = await invokeWithRefresh("admin-ad-creative-prepare", { body: payload });
+  if (!result.error) return result;
+  const parsed = await parseEdgeError(result.error);
+  return normalizePreparationInvoke(result, parsed);
+}
+
+export function startVideoPreparation(input) {
+  return prepareVideoCreative({ ...input, action: "start" });
+}
+
+export function checkVideoPreparation(input) {
+  return prepareVideoCreative({ ...input, action: "status" });
+}
+
+export function retryVideoPreparation(input) {
+  return prepareVideoCreative({ ...input, action: "retry" });
+}
+
+/** Real previews exist only for Meta and TikTok; Snap/Google remain local. */
+export async function requestVideoPreview(payload) {
+  const result = await invokeWithRefresh("admin-ad-preview", { body: payload });
+  if (!result.error) return result;
+  return { ...result, parsedError: await parseEdgeError(result.error) };
 }

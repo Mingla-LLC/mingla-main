@@ -385,15 +385,42 @@ describe("payload — negative space", () => {
     requestId: "r",
   };
 
-  it("the Google body carries NO Meta-shaped fields at all (CTA, objective, optimization, image, genders, ages)", () => {
+  it("the Google body carries NO genuinely-Meta-only fields (CTA, objective, optimization, image, billing) — but MAY carry age/gender when the wizard sets them (#992)", () => {
+    // ISSUE-992 (Wave 3 — [TEST-MOD-APPROVED ORCH-0992]) OVERTURNS the deferral
+    // this scan encoded: `genders`/`age_min`/`age_max` are NO LONGER Meta-only —
+    // Google now legitimately consumes age/gender at create (3a). The list below
+    // is now the genuinely-Meta-only / other-platform fields that must STILL
+    // never appear on a Google Search body (A4.b: no CTA; no objective/
+    // optimization/billing; RSAs carry no image_url; no special-ad-category).
     const json = JSON.stringify(buildCreatePayload("google", state));
-    for (const banned of ["call_to_action_type", "optimization_goal", "objective", "image_url", "billing_event", "genders", "age_min", "special_ad_categor"]) {
+    for (const banned of ["call_to_action_type", "optimization_goal", "objective", "image_url", "billing_event", "special_ad_categor"]) {
       assert.ok(!json.includes(banned), `google payload must not carry ${banned}`);
     }
     const payload = buildCreatePayload("google", state);
     assert.deepEqual(payload.creative.headlines, ["a", "b"], "entries trimmed, empties dropped");
     assert.deepEqual(payload.keywords, ["k"]);
     assert.equal("negative_keywords" in payload, false, "empty negatives omitted entirely");
+    // NEW TRUTH: `state` picks gender women (age full 18-65) → Google carries the
+    // requested gender, and does NOT fabricate an age bound it was never given.
+    assert.deepEqual(payload.targeting.genders, ["FEMALE"]);
+    assert.equal("age_min" in payload.targeting, false, "full 18-65 age → no age bound fabricated");
+    assert.equal("age_max" in payload.targeting, false);
+    // A narrowed request travels; an all/broad request fabricates NOTHING
+    // (anti-fabrication intent preserved — Google carries these ONLY when set).
+    const narrowed = buildCreatePayload("google", {
+      ...state,
+      audience: { ...state.audience, ageMin: 25, ageMax: 40, gender: "men" },
+    }).targeting;
+    assert.equal(narrowed.age_min, 25);
+    assert.equal(narrowed.age_max, 40);
+    assert.deepEqual(narrowed.genders, ["MALE"]);
+    const broad = buildCreatePayload("google", {
+      ...state,
+      audience: { ...state.audience, ageMin: 18, ageMax: 65, gender: "all" },
+    }).targeting;
+    for (const f of ["age_min", "age_max", "genders"]) {
+      assert.equal(f in broad, false, `broad Google build must not fabricate ${f}`);
+    }
   });
 
   it("Meta gender mapping: women→[2], men→[1], all→field omitted", () => {

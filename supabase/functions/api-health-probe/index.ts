@@ -1066,9 +1066,6 @@ serve(async (req) => {
     // A genuine API/auth outage still pages via the synthetic probeStripe/probePaystack.
     await webhookFreshness("stripe", "payment_webhook_events", "created_at", false);
     await webhookFreshness("paystack", "payment_webhook_events", "created_at", false);
-    // cloudinary webhook-freshness is INFORMATIONAL only (never alerts) — retained
-    // so append-only ORCH-1213 tests pass; Cloudinary probing itself is retired.
-    await webhookFreshness("cloudinary", "event_cover_video_jobs", "created_at", false);
     // META-ORCH-1270 (Phase 2) — bunny cover-video webhook freshness (informational,
     // low volume — never drives failedTick/alerting; the usage alarm is the pager).
     await webhookFreshness("bunny", "event_cover_video_jobs", "created_at", false);
@@ -1161,9 +1158,6 @@ function evaluateBalance(
   let crit = typeof bal.crit === "number" ? bal.crit : null;
   if (warn == null) {
     if (bal.kind === "twilio_balance") warn = num("API_HEALTH_TWILIO_MIN_BALANCE", 25);
-    // META-ORCH-1270 — Cloudinary RETIRED: no probe emits cloudinary_used_pct;
-    // thresholds retained only so append-only ORCH-1201 tests keep passing.
-    else if (bal.kind === "cloudinary_used_pct") { warn = num("API_HEALTH_CLOUDINARY_WARN_PCT", 80); if (crit == null) crit = num("API_HEALTH_CLOUDINARY_CRIT_PCT", 100); }
     // META-ORCH-1270 (Phase 2) — Bunny usage %: env-overridable warn 60 / crit 85.
     else if (bal.kind === "bunny_usage_pct") { warn = num("API_HEALTH_BUNNY_WARN_PCT", 60); if (crit == null) crit = num("API_HEALTH_BUNNY_CRIT_PCT", 85); }
   }

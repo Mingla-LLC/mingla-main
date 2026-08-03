@@ -79,8 +79,12 @@ jobs:
           deno-version: "1.46.x"
       # EXPLICIT registry — the ISSUE-989 edge-fn suite: Meta/TikTok city+interest
       # parsers/filters, the create-path consumption shapes, config registration.
-      # Hermetic (no network — pure parsers over fixture payloads + fs reads).
+      # Plus the ISSUE-1289 TikTok city-targeting suite (tool/targeting/search
+      # FUZZY_SEARCH resolves US municipalities the old tool/region CITY filter
+      # missed — the silent country-fallback fix). Hermetic (pure parsers over
+      # fixture payloads + a fetch-mocked resolver + fs reads).
       - name: Run ISSUE-989 targeting-search Deno tests
         run: >
           deno test --allow-read --allow-env --no-check
           supabase/functions/admin-ad-targeting-search/__tests__/issue989_targeting_search.test.ts
+          supabase/functions/admin-ad-targeting-search/__tests__/issue1289_tiktok_city_targeting.test.ts

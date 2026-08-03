@@ -325,3 +325,66 @@ export function createRecipientAccountLink(
     },
   });
 }
+
+// ── #1173 (sub-issue D) — event-anchored payout schedule flip ────────────────
+export type PayoutScheduleInterval = "manual" | "daily";
+
+/**
+ * #1173 (sub-issue D, #1013 initiative) — flip a v2-created connected account's
+ * payout schedule between Stripe's default `daily` auto-sweep and `manual`
+ * (event-anchored hold), so sale proceeds accrue on the connected account
+ * instead of sweeping out daily. This is the Stripe half of event-anchored
+ * payouts; the already-live ledger/sweep (B/#1171, C/#1172) counts only
+ * post-cutover money.
+ *
+ * Shape (proven live at implement time on our exact v2 account — S-H1/S-H9 and
+ * the #1173 STOP-AND-AMEND test-mode RAK-scope probe: manual & daily both 200):
+ *  - `POST /v1/accounts/{id}` — the `/v1/` prefix makes `stripeBlueprintRequest`
+ *    form-urlencode the body (`settings[payouts][schedule][interval]=...`);
+ *    Stripe rejects JSON on v1.
+ *  - `apiVersion: STRIPE_API_VERSION` ("dahlia") — REQUIRED. This is a v1 path,
+ *    so we pin the v1 API version exactly as `createAccountSession` does for its
+ *    own v1 call; the default blueprint preview version is v2-only.
+ *  - `STRIPE_RAK_ONBOARD` — the Connect account-write restricted key. It already
+ *    creates v2 accounts; the payout-schedule write falls under the same Connect
+ *    account-write scope (probe-confirmed). Do NOT add a new RAK role.
+ *
+ * Idempotency: setting the same interval again is a Stripe no-op — natural
+ * idempotency (I-1013-RETRY-KEEPS-REFERENCE). The caller supplies the key.
+ */
+export function setPayoutScheduleInterval(
+  accountId: string,
+  interval: PayoutScheduleInterval,
+  idempotencyKey: string,
+): Promise<StripeV2Account> {
+  return stripeBlueprintRequest<StripeV2Account>({
+    method: "POST",
+    path: `/v1/accounts/${accountId}`,
+    envVarNames: ["STRIPE_RAK_ONBOARD"],
+    apiVersion: STRIPE_API_VERSION,
+    idempotencyKey,
+    body: {
+      settings: { payouts: { schedule: { interval } } },
+    },
+  });
+}
+
+/** Flip a connected account to a manual (event-anchored hold) payout schedule. */
+export function setManualPayoutSchedule(
+  accountId: string,
+  idempotencyKey: string,
+): Promise<StripeV2Account> {
+  return setPayoutScheduleInterval(accountId, "manual", idempotencyKey);
+}
+
+/**
+ * Restore a connected account to Stripe's default `daily` auto-sweep — the
+ * documented per-brand rollback lever (compensation on stamp failure + admin
+ * `direction:"rollback"`).
+ */
+export function restoreDailyPayoutSchedule(
+  accountId: string,
+  idempotencyKey: string,
+): Promise<StripeV2Account> {
+  return setPayoutScheduleInterval(accountId, "daily", idempotencyKey);
+}

@@ -79,6 +79,7 @@ export interface FoundationRsvpPreviewProps {
   // a country-code-aware phone field (@mingla/phone-input). Absent → plain field.
   renderPhoneField?: RsvpPhoneFieldRenderer;
   defaultPhoneCountry?: string;
+  onDownloadPass?: import("@mingla/offering-rendering").RsvpOfferingBodyProps["onDownloadPass"];
   contentBottomInset?: number;
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   onScrollViewLayout?: (event: LayoutChangeEvent) => void;
@@ -107,6 +108,7 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
     contributionState,
     renderPhoneField,
     defaultPhoneCountry,
+    onDownloadPass,
     contentBottomInset = 96,
     onScroll,
     onScrollViewLayout,
@@ -148,6 +150,7 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
     contributionState,
     renderPhoneField,
     defaultPhoneCountry,
+    onDownloadPass,
     onOpenBrand,
     onOpenMaps,
     staticMapUrl,
@@ -190,6 +193,8 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
         coverMediaUrl={event.coverMediaUrl}
         coverMediaType={coverType}
         coverHue={event.coverHue}
+        // issue #868 [cover-gallery] — ADDITIONAL image/GIF gallery items.
+        galleryImages={event.coverGallery}
         entranceAnimationKey={`rsvp:${event.id}`}
         muted={muted}
         onToggleMute={onToggleMute}

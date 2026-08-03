@@ -76,7 +76,10 @@ export interface ModalProps {
 const ENTRY_DURATION = 200;
 const EXIT_DURATION = 160;
 const SCRIM_COLOR = "rgba(0, 0, 0, 0.5)";
-const UNMOUNT_DELAY_MS = 200; // 160ms exit anim + 40ms safety
+// #1360: exported (export-only, no behavior change) so deferAfterDismiss can
+// import the dialog's own unmount window as a single source of truth for the
+// payment-confirmation toast defer delay.
+export const UNMOUNT_DELAY_MS = 200; // 160ms exit anim + 40ms safety
 
 // ORCH-1136 R3: dispatcher. Web renders the compositor-CSS-transition variant
 // (ModalWeb — zero reanimated hooks); native renders the byte-identical

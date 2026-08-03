@@ -39,7 +39,7 @@ import type {
   EventCoverMediaType,
 } from "./draftEventStore";
 import type { EventCoverMediaProvider } from "../types/eventCoverProvider";
-import type { ThemeInput } from "@mingla/offering-rendering";
+import type { ThemeInput, OfferingGalleryImage } from "@mingla/offering-rendering";
 import { useEventEditLogStore } from "./eventEditLogStore";
 import { useOrderStore } from "./orderStore";
 import type { SoldCountContext } from "./orderStoreHelpers";
@@ -52,7 +52,7 @@ import {
   deriveChannelFlags,
   notifyEventChanged,
 } from "../services/eventChangeNotifier";
-import { getBrandFromCache } from "../hooks/useBrands";
+import { getBrandFromCache } from "../hooks/brandCache";
 
 export type LiveEventStatus = "scheduled" | "live" | "cancelled" | "ended";
 
@@ -289,8 +289,20 @@ export interface LiveEvent {
   coverMediaCredit?: string | null;
   coverMediaCreditUrl?: string | null;
   coverMediaAlt?: string | null;
-  /** ISO 4217 immutable commerce currency for this published event. */
-  currency?: string;
+  /**
+   * issue #868 [cover-gallery] — ADDITIONAL image/GIF cover-gallery items,
+   * INDEPENDENT of the cover fields above. Optional + default-safe ([] when
+   * absent). Threaded to the shared renderer via mapLiveEventToPublicEvent.
+   */
+  coverGallery?: OfferingGalleryImage[];
+  /**
+   * ISO 4217 immutable commerce currency for this published event.
+   * #962 — nullable: a pre-bank brand has NO currency (brands.default_currency
+   * = NULL, migration 0769). The converter (liveEventConverter.ts) writes null
+   * when neither the draft nor the brand has an established currency; display
+   * surfaces resolve via `currencyCodeOrNull` and hide the price when null.
+   */
+  currency?: string | null;
   /**
    * ORCH-1006 Slice 3 — server-computed all-in (tax/fee-inclusive) lowest-tier
    * price in CENTS, sourced from business_public_events_view. Null when no

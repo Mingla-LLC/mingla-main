@@ -79,6 +79,13 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
+export const getSupabaseFunctionHeaders = (
+  bearer?: string | null,
+): Record<string, string> => ({
+  apikey: supabaseAnonKey,
+  Authorization: `Bearer ${bearer ?? supabaseAnonKey}`,
+});
+
 /**
  * Drop-in replacement for supabase.functions.invoke() that logs the full
  * request and response to Metro terminal in dev.

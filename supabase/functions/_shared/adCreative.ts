@@ -93,6 +93,7 @@ export interface AdCreativeRow {
   byte_size: number | null;
   has_audio: boolean | null;
   content_hash: string;
+  poster_content_hash?: string | null;
   ai_generated: boolean;
   variants: Record<string, CreativeVariantSlot>;
   status: "active" | "archived";
@@ -108,7 +109,7 @@ export interface CreativeRefRow {
   external_ref: string | null;
   external_ref_extra: Record<string, unknown>;
   content_hash: string;
-  status: "pending" | "uploading" | "ready" | "failed";
+  status: "pending" | "uploading" | "processing" | "ready" | "failed" | "timed_out";
   error: string | null;
   uploaded_at: string | null;
   /**

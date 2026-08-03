@@ -170,103 +170,112 @@ export const MemberDetailSheet: React.FC<MemberDetailSheetProps> = ({
     : `${entry.inviteeName} will lose access to this brand. They can be re-invited later.`;
 
   return (
-    <>
-      <Sheet visible={visible} onClose={onClose} snapPoint="half">
-        <ScrollView
-          contentContainerStyle={styles.body}
-          showsVerticalScrollIndicator={false}
-        >
-          <Text style={styles.title}>{entry.inviteeName}</Text>
-          <Text style={styles.email}>{entry.inviteeEmail}</Text>
+    <Sheet visible={visible} onClose={onClose} snapPoint="half">
+      <ScrollView
+        contentContainerStyle={styles.body}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={styles.title}>{entry.inviteeName}</Text>
+        <Text style={styles.email}>{entry.inviteeEmail}</Text>
 
-          <View style={styles.rolePillRow}>
-            <View style={styles.rolePill}>
-              <Text style={styles.rolePillText}>
-                {roleDisplayName(entry.role)}
-              </Text>
-            </View>
-            {isPartnerRow ? (
-              <View style={styles.partnerBadge}>
-                <Icon name="award" size={10} color={accent.warm} />
-                <Text style={styles.partnerBadgeText}>Mingla Partner</Text>
-              </View>
-            ) : null}
-          </View>
-
-          <Text style={styles.statusText}>{statusText}</Text>
-
-          <View style={styles.descriptionCard}>
-            <Text style={styles.descriptionLabel}>What this role does</Text>
-            <Text style={styles.descriptionText}>
-              {roleDescription(entry.role)}
+        <View style={styles.rolePillRow}>
+          <View style={styles.rolePill}>
+            <Text style={styles.rolePillText}>
+              {roleDisplayName(entry.role)}
             </Text>
           </View>
+          {isPartnerRow ? (
+            <View style={styles.partnerBadge}>
+              <Icon name="award" size={10} color={accent.warm} />
+              <Text style={styles.partnerBadgeText}>Mingla Partner</Text>
+            </View>
+          ) : null}
+        </View>
 
-          {showPartnerDisconnect ? (
-            <View style={styles.actions}>
-              <Button
-                label="Disconnect partner"
-                onPress={() => {
-                  setDisconnectError(null);
-                  setDisconnectConfirmVisible(true);
-                }}
-                variant="destructive"
-                size="lg"
-                fullWidth
-                testID="member-detail-disconnect-partner"
-                accessibilityLabel="Disconnect partner"
-              />
-              <View style={styles.actionSpacer} />
-              <Button
-                label="Cancel"
-                onPress={onClose}
-                variant="ghost"
-                size="md"
-                fullWidth
-                accessibilityLabel="Close member detail"
-              />
-            </View>
-          ) : (isPending || isAccepted) ? (
-            <View style={styles.actions}>
-              <Button
-                label={actionLabel}
-                onPress={() => setConfirmVisible(true)}
-                variant="destructive"
-                size="lg"
-                fullWidth
-                disabled={!canAct}
-                accessibilityLabel={actionLabel}
-              />
-              {!canAct ? (
-                <Text style={styles.gateCaption}>
-                  {gateCaptionFor(action)}
-                </Text>
-              ) : null}
-              <View style={styles.actionSpacer} />
-              <Button
-                label="Cancel"
-                onPress={onClose}
-                variant="ghost"
-                size="md"
-                fullWidth
-                accessibilityLabel="Close member detail"
-              />
-            </View>
-          ) : (
-            <View style={styles.actions}>
-              <Button
-                label="Close"
-                onPress={onClose}
-                variant="ghost"
-                size="md"
-                fullWidth
-                accessibilityLabel="Close member detail"
-              />
-            </View>
-          )}
-        </ScrollView>
-      </Sheet>
+        <Text style={styles.statusText}>{statusText}</Text>
 
+        <View style={styles.descriptionCard}>
+          <Text style={styles.descriptionLabel}>What this role does</Text>
+          <Text style={styles.descriptionText}>
+            {roleDescription(entry.role)}
+          </Text>
+        </View>
+
+        {showPartnerDisconnect ? (
+          <View style={styles.actions}>
+            <Button
+              label="Disconnect partner"
+              onPress={() => {
+                setDisconnectError(null);
+                setDisconnectConfirmVisible(true);
+              }}
+              variant="destructive"
+              size="lg"
+              fullWidth
+              testID="member-detail-disconnect-partner"
+              accessibilityLabel="Disconnect partner"
+            />
+            <View style={styles.actionSpacer} />
+            <Button
+              label="Cancel"
+              onPress={onClose}
+              variant="ghost"
+              size="md"
+              fullWidth
+              accessibilityLabel="Close member detail"
+            />
+          </View>
+        ) : (isPending || isAccepted) ? (
+          <View style={styles.actions}>
+            <Button
+              label={actionLabel}
+              onPress={() => setConfirmVisible(true)}
+              variant="destructive"
+              size="lg"
+              fullWidth
+              disabled={!canAct}
+              accessibilityLabel={actionLabel}
+            />
+            {!canAct ? (
+              <Text style={styles.gateCaption}>
+                {gateCaptionFor(action)}
+              </Text>
+            ) : null}
+            <View style={styles.actionSpacer} />
+            <Button
+              label="Cancel"
+              onPress={onClose}
+              variant="ghost"
+              size="md"
+              fullWidth
+              accessibilityLabel="Close member detail"
+            />
+          </View>
+        ) : (
+          <View style={styles.actions}>
+            <Button
+              label="Close"
+              onPress={onClose}
+              variant="ghost"
+              size="md"
+              fullWidth
+              accessibilityLabel="Close member detail"
+            />
+          </View>
+        )}
+      </ScrollView>
+
+      {/* #1369 (Tier 2 of #1342) — I-PROPOSED-1369-TEAM-MEMBER-CONFIRM-NESTED-IN-SHEET:
+          BOTH ConfirmDialogs MUST render as JSX descendants of this <Sheet>
+          subtree (never root siblings of it). On iOS New-Arch a confirm rendered
+          as a sibling of the open sheet contends for the screen-root VC the
+          sheet's modal already holds, so UIKit drops it ("already presenting")
+          and the confirm never appears. Nested, each presents from the sheet's
+          OWN modal VC (which iOS stacks); Cancel returns to the still-open sheet,
+          and the disconnect confirm's inline errorMessage / confirmLoading /
+          closeDisabled require the sheet to persist underneath. Matches the
+          InviteBrandMemberSheet / InvitePendingSheet / #1356 CoverPickerSheet
+          template. Do NOT move these back out to a root sibling of the Sheet. */}
       <ConfirmDialog
         visible={confirmVisible}
         onClose={() => setConfirmVisible(false)}
@@ -298,7 +307,7 @@ export const MemberDetailSheet: React.FC<MemberDetailSheetProps> = ({
         errorMessage={disconnectError}
         confirmTestID="member-detail-disconnect-confirm"
       />
-    </>
+    </Sheet>
   );
 };
 

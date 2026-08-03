@@ -274,14 +274,10 @@ Deno.test("R2 T2 — evaluateBalanceForSignal: stripe/paystack ALWAYS null (incl
   assertEquals(p.balanceLow, null);
 });
 
-Deno.test("R2 T3 — evaluateBalanceForSignal: cloudinary 747.88% ⇒ low + crit severity", () => {
-  const r = evaluateBalanceForSignal("cloudinary", { used_percent: 747.88 }, { kind: "cloudinary_used_pct", warn: 80, crit: 100 });
-  assertEquals(r.balanceLow, true);
-  assertEquals(r.severity, "crit");
-  // 50% used ⇒ not low
-  const ok = evaluateBalanceForSignal("cloudinary", { used_percent: 50 }, { kind: "cloudinary_used_pct", warn: 80, crit: 100 });
-  assertEquals(ok.balanceLow, false);
-});
+// #966 [TEST-MOD-APPROVED ORCH-0966] — the `cloudinary_used_pct` balance case was
+// removed from evaluateBalanceForSignal with the retired Cloudinary probe (no
+// probe emits that kind). Its R2 T3 test is retired here. Twilio/Bunny/processor
+// severity math below is unaffected.
 
 Deno.test("R2 T4 — evaluateBalanceForSignal: twilio 14.53 low @ warn 25; 30 ⇒ false", () => {
   const low = evaluateBalanceForSignal("twilio", { balance: 14.53, currency: "USD" }, { kind: "twilio_balance", warn: 25, crit: 5 });
@@ -377,7 +373,7 @@ Deno.test("STATUS_PAGE_URLS keys are a subset of monitored services (canonical)"
   const seeded = new Set([
     "stripe", "paystack", "gemini", "openai", "mapbox", "google_places",
     "ticketmaster", "serper", "pexels", "giphy", "onesignal_consumer",
-    "onesignal_business", "resend", "twilio", "cloudinary", "supabase",
+    "onesignal_business", "resend", "twilio", "supabase",
     "vercel", "exchangerate", "thumio", "revenuecat", "posthog", "mixpanel",
     "sentry", "appsflyer", "ga4",
   ]);

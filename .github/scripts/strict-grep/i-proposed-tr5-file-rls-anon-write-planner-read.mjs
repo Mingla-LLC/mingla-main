@@ -11,6 +11,13 @@
  * statements. Source-grade gate (DB-level enforcement is the real protection;
  * this is the textual proof of intent + protection against accidental removal
  * in a future migration).
+ *
+ * `--self-test` proves fail-on-revert (mirrors i-1272-identity-admin-read.mjs):
+ * the pure `check(migrationsBody, failures)` is exercised with a GOOD fixture
+ * (all 4 policies) and ≥2 DISTINCT BAD fixtures (a dropped policy each). The
+ * disk-reading main path concatenates every migration and calls the SAME
+ * `check(...)`; behavior-preserving refactor (a policy is "present" iff it
+ * appears quoted in ANY migration, exactly as before).
  */
 
 import fs from "node:fs";
@@ -30,31 +37,81 @@ const REQUIRED_POLICIES = [
   "trip_intake_files_service_role_all",
 ];
 
+/**
+ * Pure verdict. `migrationsBody` = the concatenation of every migration's
+ * source. A policy is satisfied iff its quoted name (double- or single-quoted)
+ * appears anywhere in the body. Pushes one string per missing policy into
+ * `failures`.
+ */
+function check(migrationsBody, failures) {
+  for (const policy of REQUIRED_POLICIES) {
+    if (
+      !migrationsBody.includes(`"${policy}"`) &&
+      !migrationsBody.includes(`'${policy}'`)
+    ) {
+      failures.push(`missing CREATE POLICY "${policy}"`);
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────── self-test
+if (process.argv.includes("--self-test")) {
+  const self = [];
+
+  const policyStmt = (name) =>
+    `CREATE POLICY "${name}" ON storage.objects FOR ALL USING (bucket_id = 'trip_intake_files');`;
+
+  // GOOD: all 4 policies present → silent.
+  const good = REQUIRED_POLICIES.map(policyStmt).join("\n") + "\n";
+  let f = [];
+  check(good, f);
+  if (f.length) self.push("GOOD fixture wrongly flagged: " + f.join("; "));
+
+  // BAD1 (revert-style): the planner-read-brand-scoped policy dropped → fires.
+  const bad1 = REQUIRED_POLICIES.filter((p) => p !== "trip_intake_files_planner_read")
+    .map(policyStmt)
+    .join("\n") + "\n";
+  f = [];
+  check(bad1, f);
+  if (f.length === 0) self.push("BAD1 (planner-read policy dropped) not flagged");
+
+  // BAD2 (regression, different angle): the anon-write-own policy dropped → fires.
+  const bad2 = REQUIRED_POLICIES.filter((p) => p !== "trip_intake_files_anon_buyer_insert")
+    .map(policyStmt)
+    .join("\n") + "\n";
+  f = [];
+  check(bad2, f);
+  if (f.length === 0) self.push("BAD2 (anon-write-own policy dropped) not flagged");
+
+  if (self.length) {
+    console.error("I-PROPOSED-TR5-INTAKE-FILE-RLS-ANON-WRITE-PLANNER-READ self-test FAIL:");
+    self.forEach((m) => console.error("  - " + m));
+    process.exit(1);
+  }
+  console.log("I-PROPOSED-TR5-INTAKE-FILE-RLS-ANON-WRITE-PLANNER-READ self-test PASS (3/3 cases).");
+  process.exit(0);
+}
+
+// ─────────────────────────────────────────────────────────────── main path
 if (!fs.existsSync(MIGRATIONS_DIR)) {
   console.error(`I-PROPOSED-TR5-INTAKE-FILE-RLS-ANON-WRITE-PLANNER-READ: migrations dir not found at ${MIGRATIONS_DIR}`);
   process.exit(1);
 }
 
 const files = fs.readdirSync(MIGRATIONS_DIR).filter(f => f.endsWith(".sql"));
+const migrationsBody = files
+  .map((file) => fs.readFileSync(path.join(MIGRATIONS_DIR, file), "utf8"))
+  .join("\n");
 
-const found = new Set();
-for (const file of files) {
-  const src = fs.readFileSync(path.join(MIGRATIONS_DIR, file), "utf8");
-  for (const policy of REQUIRED_POLICIES) {
-    if (src.includes(`"${policy}"`) || src.includes(`'${policy}'`)) {
-      found.add(policy);
-    }
-  }
-}
+const failures = [];
+check(migrationsBody, failures);
 
-const missing = REQUIRED_POLICIES.filter(p => !found.has(p));
-
-if (missing.length > 0) {
+if (failures.length > 0) {
   console.error(
-    `I-PROPOSED-TR5-INTAKE-FILE-RLS-ANON-WRITE-PLANNER-READ: ${missing.length} required RLS policies missing across all migrations:`,
+    `I-PROPOSED-TR5-INTAKE-FILE-RLS-ANON-WRITE-PLANNER-READ: ${failures.length} required RLS policies missing across all migrations:`,
   );
-  for (const p of missing) {
-    console.error(`  - CREATE POLICY "${p}"`);
+  for (const msg of failures) {
+    console.error(`  - ${msg}`);
   }
   console.error(
     `\nFix: ensure all 4 policies are declared in a migration under supabase/migrations/. See SPEC_ORCH-0880 §4.1.E for canonical declarations.\n`,
@@ -63,6 +120,6 @@ if (missing.length > 0) {
 }
 
 console.log(
-  `I-PROPOSED-TR5-INTAKE-FILE-RLS-ANON-WRITE-PLANNER-READ: ${found.size}/${REQUIRED_POLICIES.length} required RLS policies present`,
+  `I-PROPOSED-TR5-INTAKE-FILE-RLS-ANON-WRITE-PLANNER-READ: ${REQUIRED_POLICIES.length}/${REQUIRED_POLICIES.length} required RLS policies present`,
 );
 process.exit(0);

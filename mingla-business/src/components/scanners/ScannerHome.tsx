@@ -70,13 +70,14 @@ const formatStart = (item: UpcomingItem): string => {
 
 interface ScannerEventRowProps {
   item: UpcomingItem;
-  onOpen: (eventId: string) => void;
+  onOpen: (item: UpcomingItem) => void;
 }
 
 const ScannerEventRow: React.FC<ScannerEventRowProps> = ({ item, onOpen }) => {
   const handlePress = useCallback((): void => {
-    onOpen(item.id);
-  }, [item.id, onOpen]);
+    onOpen(item);
+  }, [item, onOpen]);
+  const isRsvp = (item.source as { event_type?: string }).event_type === "rsvp";
   return (
     <Pressable
       onPress={handlePress}
@@ -91,11 +92,11 @@ const ScannerEventRow: React.FC<ScannerEventRowProps> = ({ item, onOpen }) => {
               {itemName(item)}
             </Text>
             <Text style={styles.rowMeta} numberOfLines={1}>
-              {formatStart(item)}
+              {isRsvp ? `RSVP · ${formatStart(item)}` : formatStart(item)}
             </Text>
           </View>
           <View style={styles.rowCta}>
-            <Pill variant="accent">Scan</Pill>
+            <Pill variant="accent">{isRsvp ? "Scan guests" : "Scan"}</Pill>
             <Icon name="chevR" size={20} color={accent.warm} />
           </View>
         </View>
@@ -115,8 +116,11 @@ export const ScannerHome: React.FC = () => {
   const events = (upcoming.items ?? []).filter((it) => it.kind === "event");
 
   const handleOpen = useCallback(
-    (eventId: string): void => {
-      router.push(`/event/${eventId}/scanner` as never);
+    (item: UpcomingItem): void => {
+      const isRsvp = (item.source as { event_type?: string }).event_type === "rsvp";
+      router.push((isRsvp
+        ? `/rsvp/${item.id}/scanner`
+        : `/event/${item.id}/scanner`) as never);
     },
     [router],
   );

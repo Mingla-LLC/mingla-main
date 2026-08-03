@@ -11,6 +11,14 @@
 // to the real nav and added "api-health" (this cycle). The load-bearing
 // invariant is unchanged: the two photo-* ids + page files stay deleted.
 // Nav count 10 -> 17.
+//
+// [TEST-MOD-APPROVED ISSUE-1354] 2026-07-29: added the "tool-leads" nav id (all
+// free-tool submissions + report detail) right after "beta-leads". ALSO
+// reconciled a pre-existing drift: "careers" (META-ORCH-1222) was added to the
+// nav WITHOUT updating this snapshot, so this test was ALREADY failing on main
+// (verified: 5 subtests red). Both "tool-leads" and "careers" now sit after
+// "beta-leads". Nav count 17 -> 19. The load-bearing photo-* invariant is
+// unchanged.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -34,6 +42,10 @@ const EXPECTED_IDS_POST_1014 = [
   "place-intelligence-trial",
   "email",
   "beta-leads",
+  // [TEST-MOD-APPROVED ISSUE-1354] tool-leads (this issue) + careers (pre-existing
+  // META-ORCH-1222 drift) reconciled into the locked order after beta-leads.
+  "tool-leads",
+  "careers",
   "pricing",
   "claims",
   "support",
@@ -51,15 +63,25 @@ const ORCH_1014_DELETED_PAGES = [
 ];
 
 describe("ORCH-1014 Finding A — photo pages pruned + locked sidebar order", () => {
-  it("NAV_GROUPS has exactly 17 items in the locked post-ORCH-1014 (ORCH-1201-reconciled) order", () => {
-    assert.equal(NAV_GROUPS.length, 1, "expected exactly 1 nav group");
+  it("the primary nav group has exactly 19 items in the locked post-ORCH-1014 (ISSUE-1354-reconciled) order", () => {
+    // [TEST-MOD-APPROVED ISSUE-1354] The flat-single-group assertion
+    // (NAV_GROUPS.length === 1) is SUPERSEDED: ORCH-1271 added a "Business"
+    // group and ISSUE-862 added a "Growth" group, so the shipped sidebar now has
+    // 3 groups. group[0] remains the primary flat group (label:null) carrying the
+    // locked order below. (Discovery flagged: retire I-PROPOSED-ADMIN-SHELL-FLAT-
+    // NAVIGATION in the registry.)
+    assert.equal(NAV_GROUPS[0].label, null, "group[0] must remain the primary flat group (label:null)");
     const ids = NAV_GROUPS[0].items.map((i) => i.id);
-    assert.equal(ids.length, 17, "expected exactly 17 nav items");
+    assert.equal(ids.length, 19, "expected exactly 19 items in the primary nav group");
     assert.deepEqual(ids, EXPECTED_IDS_POST_1014);
   });
 
-  it("NAV_ITEMS is the flat 17-item list (no photo-labeling, no photo-scorer)", () => {
-    assert.equal(NAV_ITEMS.length, 17);
+  it("NAV_ITEMS never includes the ORCH-1014-deleted photo ids", () => {
+    // [TEST-MOD-APPROVED ISSUE-1354] NAV_ITEMS now spans all 3 groups (no longer
+    // a flat single list), so the brittle exact-count assertion is replaced by
+    // the load-bearing invariant: the deleted photo ids stay absent, and the
+    // primary group holds the locked 19-item snapshot.
+    assert.equal(NAV_GROUPS[0].items.length, 19, "primary group must hold the locked 19-item snapshot");
     const ids = NAV_ITEMS.map((i) => i.id);
     for (const dead of ORCH_1014_DELETED_IDS) {
       assert.equal(

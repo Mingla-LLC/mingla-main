@@ -167,6 +167,7 @@ concurrency:
 #   meta-orch-1236-pricing-currency-canonical  ->  meta-orch-1236-pricing-currency-canonical.mjs
 #   meta-orch-1281-marketing-sms-wave2  ->  i-proposed-1283-no-rcs-tab.mjs, i-proposed-1282-mms-media-url-publicly-fetchable.mjs, orch-0815-b-composer-and-send.mjs
 #   meta-orch-1290-venue-authoring-one-submission  ->  i-proposed-1290-no-business-signal-scores-pre-approve.mjs, i-proposed-1290-pitch-consumer-facing.mjs, i-proposed-1290-pitch-via-pipeline.mjs
+#   orch-0756a-active-brand-recovery  ->  orch-0756a-active-brand-recovery.mjs
 #   orch-0776-video-processing-status-bridge  ->  orch-0776-video-processing-status-bridge.mjs
 #   orch-0776d-cancelled-at-schema  ->  orch-0776d-cancelled-at-schema.mjs
 #   orch-0777-ticket-checkout-production  ->  orch-0777-ticket-checkout-production.mjs
@@ -231,6 +232,7 @@ concurrency:
 #   orch-0908-chat-mention-mute-respected  ->  orch-0908-chat-mention-mute-respected.mjs
 #   orch-0909-positional-shared-deck-adversarial  ->  orch-0909-adversarial-check.mjs
 #   orch-0909-positional-shared-deck-regression  ->  orch-0909-regression-check.mjs
+#   orch-0910-chat-payload-curated-aware  ->  orch-0910-chat-payload-curated-aware.mjs
 #   orch-0913-no-tabs-on-dashboards  ->  orch-0913-no-tabs-on-dashboards.mjs, i-bottomsheet-inline-scroll-binding.mjs, orch-1055-nav-tab-rank-gate.mjs
 #   orch-0947-trip-spots-tickets-not-orders  ->  orch-0947-trip-spots-tickets-not-orders.mjs
 #   orch-0948-waitlist-feature  ->  orch-0948-waitlist-feature.mjs
@@ -430,8 +432,186 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.98.2
       - name: Run class A gates (batched)
         run: node .github/scripts/strict-grep/run-batch.mjs --class A
+      - name: "Issues #1384/#1397: Edge currency state and FX executable suites"
+        run: |
+          deno check \
+            supabase/functions/_shared/discoveryPrice.ts \
+            supabase/functions/_shared/fxRates.ts \
+            supabase/functions/discover-cards/index.ts \
+            supabase/functions/manage-brand-discovery-currency/index.ts \
+            supabase/functions/refresh-fx-rates/index.ts \
+            supabase/functions/admin-review-venue-claim/index.ts \
+            supabase/functions/_shared/discoveryPrice.issue1384.test.ts \
+            supabase/functions/_shared/fxRates.issue1384.test.ts \
+            supabase/functions/_shared/fxRates.issue1397.test.ts \
+            supabase/functions/discover-cards/index.issue1384.test.ts \
+            supabase/functions/manage-brand-discovery-currency/index.test.ts \
+            supabase/functions/refresh-fx-rates/index.test.ts \
+            supabase/functions/refresh-fx-rates/index.issue1397.test.ts \
+            supabase/functions/admin-review-venue-claim/__tests__/issue_1384_discovery_price_approval_persistence.test.ts
+
+          deno test --allow-env --allow-read \
+            supabase/functions/_shared/discoveryPrice.issue1384.test.ts \
+            supabase/functions/_shared/fxRates.issue1384.test.ts \
+            supabase/functions/_shared/fxRates.issue1397.test.ts \
+            supabase/functions/discover-cards/index.issue1384.test.ts \
+            supabase/functions/manage-brand-discovery-currency/index.test.ts \
+            supabase/functions/refresh-fx-rates/index.test.ts \
+            supabase/functions/refresh-fx-rates/index.issue1397.test.ts \
+            supabase/functions/admin-review-venue-claim/__tests__/issue_1384_discovery_price_approval_persistence.test.ts
+      - name: "Issues #1384/#1397: disposable PostgreSQL 17 replay and SQL matrix"
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          sql_root="$(mktemp -d /tmp/issue-1384-sql.XXXXXX)"
+          cleanup_issue_1384_sql() {
+            supabase stop --workdir "$sql_root" --no-backup --yes || true
+          }
+          trap cleanup_issue_1384_sql EXIT
+
+          supabase init --workdir "$sql_root" --yes
+          source_migrations="$GITHUB_WORKSPACE/supabase/migrations"
+          target_migrations="$sql_root/supabase/migrations"
+          rsync -a "$source_migrations/" "$target_migrations/"
+
+          sql_count() {
+            find "$1" -maxdepth 1 -type f -name '*.sql' -print0 |
+              awk 'BEGIN { RS="\0" } NF { count += 1 } END { print count + 0 }'
+          }
+
+          sql_digest_multiset() {
+            while IFS= read -r -d '' sql_file; do
+              sha256sum "$sql_file" | awk '{ print $1 }'
+            done < <(find "$1" -maxdepth 1 -type f -name '*.sql' -print0)
+          }
+
+          source_count="$(sql_count "$source_migrations")"
+          source_digests="$(sql_digest_multiset "$source_migrations" | LC_ALL=C sort)"
+
+          move_unique_migration() {
+            local source_path="$1"
+            local target_path="$2"
+            [[ -f "$source_path" ]] || {
+              echo "missing migration rename source: $source_path" >&2
+              exit 1
+            }
+            [[ ! -e "$target_path" ]] || {
+              echo "migration rename target already exists: $target_path" >&2
+              exit 1
+            }
+            mv -- "$source_path" "$target_path"
+            [[ ! -e "$source_path" && -f "$target_path" ]] || {
+              echo "migration rename did not complete: $source_path -> $target_path" >&2
+              exit 1
+            }
+          }
+
+          # Collision-safe pair 1: vacate 000001 before moving refund into it.
+          move_unique_migration \
+            "$target_migrations/20260612000001_tr4_revoke_rpc_anon_grants.sql" \
+            "$target_migrations/20260612000002_tr4_revoke_rpc_anon_grants.sql"
+          move_unique_migration \
+            "$target_migrations/20260612000000_tr4_refund_tiers_booking_deadline.sql" \
+            "$target_migrations/20260612000001_tr4_refund_tiers_booking_deadline.sql"
+
+          # Four independent duplicate-prefix normalizations.
+          move_unique_migration \
+            "$target_migrations/20260615000000_orch_426_discover_cache_gzip.sql" \
+            "$target_migrations/20260615010000_orch_426_discover_cache_gzip.sql"
+          move_unique_migration \
+            "$target_migrations/20261012000000_orch_1150_rsvp_maybe.sql" \
+            "$target_migrations/20261012010000_orch_1150_rsvp_maybe.sql"
+          move_unique_migration \
+            "$target_migrations/20261113000000_orch_1172_rsvp_edit_privacy_settings.sql" \
+            "$target_migrations/20261113010000_orch_1172_rsvp_edit_privacy_settings.sql"
+          move_unique_migration \
+            "$target_migrations/20261116000000_orch_1187_reconcile_stuck_checkouts_cron.sql" \
+            "$target_migrations/20261116010000_orch_1187_reconcile_stuck_checkouts_cron.sql"
+
+          # Collision-safe pair 2: vacate 000001 before moving orders into it.
+          move_unique_migration \
+            "$target_migrations/20261117000001_orch_1188_finalize_persist_event_date_id.sql" \
+            "$target_migrations/20261117000002_orch_1188_finalize_persist_event_date_id.sql"
+          move_unique_migration \
+            "$target_migrations/20261117000000_orch_1188_orders_event_date_id.sql" \
+            "$target_migrations/20261117000001_orch_1188_orders_event_date_id.sql"
+
+          target_count="$(sql_count "$target_migrations")"
+          target_digests="$(sql_digest_multiset "$target_migrations" | LC_ALL=C sort)"
+          [[ "$target_count" -eq "$source_count" ]] || {
+            echo "migration SQL count changed: source=$source_count target=$target_count" >&2
+            exit 1
+          }
+          [[ "$target_digests" == "$source_digests" ]] || {
+            echo "migration SQL body digest multiset changed" >&2
+            exit 1
+          }
+
+          duplicate_prefixes="$(
+            find "$target_migrations" -maxdepth 1 -type f -name '*.sql' -print0 |
+              while IFS= read -r -d '' sql_file; do
+                basename "$sql_file" | cut -c1-14
+              done |
+              LC_ALL=C sort |
+              uniq -d
+          )"
+          [[ -z "$duplicate_prefixes" ]] || {
+            echo "duplicate migration prefixes remain:" >&2
+            printf '%s\n' "$duplicate_prefixes" >&2
+            exit 1
+          }
+
+          supabase start --workdir "$sql_root" \
+            --exclude gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor \
+            --yes
+
+          db_container="$(
+            docker ps \
+              --filter "label=com.supabase.cli.project=$(basename "$sql_root")" \
+              --format '{{.Names}}' |
+              awk '/^supabase_db_/ { print; exit }'
+          )"
+          [[ -n "$db_container" ]] || {
+            echo "disposable PostgreSQL container not found" >&2
+            exit 1
+          }
+
+          docker exec "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -c "DO \$\$ DECLARE v int := current_setting('server_version_num')::int; BEGIN IF v < 170000 OR v >= 180000 THEN RAISE EXCEPTION 'PostgreSQL 17 required, got server_version_num=%', v; END IF; END \$\$;"
+
+          # The #1397 migration owns an idempotent cron re-registration and must
+          # remain replay-safe after the full migration chain has already applied.
+          docker exec -i "$db_container" \
+            psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f - \
+            < supabase/migrations/20270130001397_issue_1397_fx_refresh_eol_cron.sql
+
+          for sql_test in \
+            supabase/migrations/__tests__/issue_1384_discovery_price_currency.test.sql \
+            supabase/migrations/__tests__/issue_1384_discovery_price_currency.tester_adversarial.test.sql \
+            supabase/migrations/__tests__/issue_1384_discovery_price_currency_executable.test.sql \
+            supabase/migrations/__tests__/issue_1397_fx_refresh_eol_cron.test.sql
+          do
+            [[ -f "$sql_test" ]] || {
+              echo "missing #1384/#1397 SQL test: $sql_test" >&2
+              exit 1
+            }
+            docker exec -i "$db_container" \
+              psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f - < "$sql_test"
+          done
+      - name: "Issue #1384: Admin reason and revision-CAS suites"
+        run: |
+          node --test \
+            mingla-admin/src/lib/__tests__/issue1384DiscoveryPriceAdminExecutable.test.js \
+            mingla-admin/src/lib/__tests__/issue1384DiscoveryPriceAdmin.test.js
       - name: Upload class A gate results
         if: always()
         uses: actions/upload-artifact@v4
@@ -483,6 +663,13 @@ jobs:
       - name: Install mingla-business deps
         working-directory: mingla-business
         run: npm install --no-save
+      - name: "Issue #1384: Business authoring and buyer rendering suite"
+        working-directory: mingla-business
+        run: |
+          npx jest --runInBand \
+            src/services/__tests__/issue1384DiscoveryCurrencyExecutable.test.ts \
+            src/components/venue/claim/__tests__/ClaimStepPrice.issue1384.executable.test.tsx \
+            src/components/venue/__tests__/issue1384DiscoveryPriceAuthoringExecutable.test.ts
       - name: Run expo export -p web (capture stderr)
         working-directory: mingla-business
         env:
@@ -507,7 +694,24 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          # Node 22 (issue #967): class D hosts the app-mobile test-runner gates that
+          # spawn `node --experimental-strip-types --test <logic>.ts` (orch-1028 launch-city,
+          # orch-1028 scroll-policy, orch-1039 collab-gate, orch-1161 notif-prefs). That flag
+          # was added in Node 22.6 and errors on Node 20. Their .ts tests import only
+          # dependency-free pure-logic modules, so no npm install is needed here. The two
+          # pre-existing class-D npm-script gates are node-version-agnostic file checks.
+          node-version: "22"
+      - name: Install app-mobile test dependencies
+        working-directory: app-mobile
+        run: npm install --no-save
+      - name: "Issue #1384: consumer carrier and runtime-parity suites"
+        working-directory: app-mobile
+        run: |
+          npx jest --runInBand \
+            src/components/utils/__tests__/discoveryPriceCarriers.issue1384.test.ts \
+            src/services/__tests__/deckService.issue1384.test.ts \
+            src/utils/__tests__/priceTiers.issue1384.test.ts \
+            src/utils/__tests__/discoveryPriceRuntimeParity.issue1384.test.ts
       - name: Run class D suites (batched)
         run: node .github/scripts/strict-grep/run-batch.mjs --class D
       - name: Upload class D gate results
@@ -573,8 +777,26 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+      - name: Self-test the ORCH-0778 gate
+        run: node .github/scripts/strict-grep/orch-0778-web-stripe-native-import-gate.mjs --self-test
       - name: Run ORCH-0778 gate
         run: node .github/scripts/strict-grep/orch-0778-web-stripe-native-import-gate.mjs
+
+  # #890 — carve-out (asserts its own job key + npm/workflow wiring, like ORCH-0778).
+  # Keeps @sentry/browser out of the web graph except as the lazy dynamic import()
+  # inside src/diagnostics/sentry.ts, and fails RED on revert to the no-op stub.
+  issue-890-web-sentry-lazy-only:
+    name: "#890: web @sentry/browser is lazy dynamic-import only (no static import; no stub revert)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Self-test the #890 gate
+        run: node .github/scripts/strict-grep/issue-890-web-sentry-lazy-only.mjs --self-test
+      - name: Run #890 gate
+        run: node .github/scripts/strict-grep/issue-890-web-sentry-lazy-only.mjs
 
   orch-0885-a-no-bottomnav-on-wide-desktop:
     name: "ORCH-0885-A: No BottomNav outside (tabs)/_layout.tsx + desktop gate via hook only"

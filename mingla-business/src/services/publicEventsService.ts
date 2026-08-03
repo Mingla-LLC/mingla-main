@@ -1,7 +1,6 @@
 import type { PublicMenuGroup } from "@mingla/brand-rendering";
 
 import { supabase } from "./supabase";
-import { fetchPublicMenus } from "./publicMenusService";
 import type {
   DraftEventFormat,
   DraftEventVisibility,
@@ -23,6 +22,7 @@ import {
   isThemeColor,
   isThemeFontSlug,
   type ThemeInput,
+  type OfferingGalleryImage,
 } from "@mingla/offering-rendering";
 import { parseClaimedVenueHours } from "../utils/venuePublicHours";
 import { buildVenueGalleryPhotoUrls } from "../utils/venuePublicPhotos";
@@ -95,6 +95,8 @@ interface BusinessPublicEventViewRow {
   recurrence_rules: unknown;
   cover_media_url: string | null;
   cover_media_type: "image" | "video" | "gif" | null;
+  // issue #868 [cover-gallery] — additive; absent on legacy rows → mapped to [].
+  cover_media_gallery?: OfferingGalleryImage[] | null;
   cover_media_provider: EventCoverMediaProvider | null;
   cover_media_source_url: string | null;
   cover_media_credit: string | null;
@@ -298,6 +300,44 @@ export interface PublicVenue {
   pitch: string | null;
 }
 
+export interface PublicVenueDiscoveryPrice {
+  minMinor: number;
+  maxMinor: number | null;
+  currencyCode: string;
+  minorUnitExponent: number;
+}
+
+export async function getPublicVenueDiscoveryPrice(
+  placePoolId: string,
+): Promise<PublicVenueDiscoveryPrice | null> {
+  const [{ data: projected, error }, { data: currencies, error: currencyError }] =
+    await Promise.all([
+      supabase.rpc("place_discovery_range_for_viewer", {
+        p_place_pool_id: placePoolId,
+        p_display_currency: null,
+        p_snapshot: null,
+      }),
+      supabase.rpc("issue_1384_supported_currencies"),
+    ]);
+  if (error || currencyError) throw error ?? currencyError;
+  const row = Array.isArray(projected) ? projected[0] : projected;
+  if (
+    row?.price_range_status !== "active" ||
+    !Number.isSafeInteger(Number(row.source_min_minor)) ||
+    typeof row.source_currency_code !== "string"
+  ) return null;
+  const metadata = Array.isArray(currencies)
+    ? currencies.find((item) => item.code === row.source_currency_code)
+    : null;
+  if (!Number.isInteger(metadata?.minor_unit_exponent)) return null;
+  return {
+    minMinor: Number(row.source_min_minor),
+    maxMinor: row.source_max_minor === null ? null : Number(row.source_max_minor),
+    currencyCode: row.source_currency_code,
+    minorUnitExponent: metadata.minor_unit_exponent,
+  };
+}
+
 /** META-ORCH-1255(C) — one row of the brand page "Locations" section. */
 export interface PublicVenueSummary {
   id: string;
@@ -306,6 +346,8 @@ export interface PublicVenueSummary {
   address: string | null;
   city: string | null;
   photoUrl: string | null;
+  placePoolId?: string | null;
+  reservationState?: "loading" | "available" | "unavailable" | "error";
 }
 
 interface TicketTypeRow {
@@ -726,7 +768,8 @@ const asVenueCategory = (value: unknown): VenueCategory | null => {
   if (
     value === "restaurant" ||
     value === "play" ||
-    value === "creative_and_arts"
+    value === "creative_and_arts" ||
+    value === "stay"
   ) {
     return value;
   }
@@ -850,14 +893,22 @@ export const fetchPublicBrandVenues = async (
 ): Promise<PublicVenueSummary[]> => {
   const { data, error } = await supabase
     .from("venue_public_view")
-    .select("id, slug, name, address, city, cover_media_url, pool_photo_urls, created_at")
+    .select(
+      "id, slug, name, address, city, cover_media_url, pool_photo_urls, created_at",
+    )
     .eq("brand_slug", brandSlug)
     .order("created_at", { ascending: true });
   if (error !== null) throw error;
   const rows = (data ?? []) as Array<
     Pick<
       VenuePublicViewRow,
-      "id" | "slug" | "name" | "address" | "city" | "cover_media_url" | "pool_photo_urls"
+      | "id"
+      | "slug"
+      | "name"
+      | "address"
+      | "city"
+      | "cover_media_url"
+      | "pool_photo_urls"
     >
   >;
   return rows.map((row) => ({
@@ -871,6 +922,53 @@ export const fetchPublicBrandVenues = async (
       (Array.isArray(row.pool_photo_urls) && row.pool_photo_urls.length > 0
         ? row.pool_photo_urls[0]
         : null),
+  }));
+};
+
+/**
+ * Issue #1365 — verified venue cards returned immediately. Reservability is
+ * resolved progressively by the sibling hook so one slow venue cannot hold
+ * back the entire list.
+ */
+export const fetchPublicBrandVenueStates = async (
+  brandSlug: string,
+): Promise<PublicVenueSummary[]> => {
+  const { data, error } = await supabase
+    .from("venue_public_view")
+    .select(
+      "id, slug, name, address, city, cover_media_url, pool_photo_urls, place_pool_id, created_at",
+    )
+    .eq("brand_slug", brandSlug)
+    .order("created_at", { ascending: true });
+  if (error !== null) throw error;
+
+  return (
+    (data ?? []) as Array<
+      Pick<
+        VenuePublicViewRow,
+        | "id"
+        | "slug"
+        | "name"
+        | "address"
+        | "city"
+        | "cover_media_url"
+        | "pool_photo_urls"
+        | "place_pool_id"
+      >
+    >
+  ).map((row): PublicVenueSummary => ({
+    id: row.id,
+    slug: row.slug,
+    name: row.name,
+    address: asStringOrNull(row.address),
+    city: asStringOrNull(row.city),
+    photoUrl:
+      asStringOrNull(row.cover_media_url) ??
+      (Array.isArray(row.pool_photo_urls) && row.pool_photo_urls.length > 0
+        ? row.pool_photo_urls[0]
+        : null),
+    placePoolId: row.place_pool_id,
+    reservationState: row.place_pool_id === null ? "unavailable" : "loading",
   }));
 };
 
@@ -935,7 +1033,11 @@ const ticketRowToTicketStub = (row: TicketTypeRow): PublicTicketTypeRecord => ({
   capacity: row.quantity_total,
   isFree: row.is_free,
   isUnlimited: row.is_unlimited,
-  visibility: row.is_hidden ? "hidden" : row.is_disabled ? "disabled" : "public",
+  visibility: row.is_hidden
+    ? "hidden"
+    : row.is_disabled
+      ? "disabled"
+      : "public",
   displayOrder: row.display_order,
   approvalRequired: row.requires_approval,
   passwordProtected: row.password_protected,
@@ -967,7 +1069,11 @@ const parseLocationGeoPoint = (
     const m = g.match(/^\(([-\d.]+),([-\d.]+)\)$/);
     return m ? { lng: Number(m[1]), lat: Number(m[2]) } : null;
   }
-  if (typeof g === "object" && typeof g.x === "number" && typeof g.y === "number") {
+  if (
+    typeof g === "object" &&
+    typeof g.x === "number" &&
+    typeof g.y === "number"
+  ) {
     return { lng: g.x, lat: g.y };
   }
   return null;
@@ -1038,6 +1144,10 @@ export const publicEventViewRowToEvent = (
     coverHue,
     coverMediaUrl: row.cover_media_url,
     coverMediaType: row.cover_media_type,
+    // issue #868 [cover-gallery] — additive; [] on legacy rows (rule 9).
+    coverGallery: Array.isArray(row.cover_media_gallery)
+      ? row.cover_media_gallery
+      : [],
     coverMediaProvider: asEventCoverMediaProvider(row.cover_media_provider),
     coverMediaSourceUrl: asStringOrNull(row.cover_media_source_url),
     coverMediaCredit: asStringOrNull(row.cover_media_credit),
@@ -1099,7 +1209,8 @@ export const publicEventViewRowToEvent = (
     // the shared body's guest panel renders on web (report §10.A). Inert defaults
     // keep every free RSVP unchanged.
     rsvpContributionEnabled: row.rsvp_contribution_enabled ?? false,
-    rsvpContributionSuggestedCents: row.rsvp_contribution_suggested_cents ?? null,
+    rsvpContributionSuggestedCents:
+      row.rsvp_contribution_suggested_cents ?? null,
     rsvpContributionMinCents: row.rsvp_contribution_min_cents ?? null,
     // ORCH-1157 [rsvp-public-redesign] — surface party types / vibe tags from the
     // anon view so the Direction-C RSVP page renders vibe chips. Default [] (rule
@@ -1176,9 +1287,7 @@ const asStringArray = (value: unknown): string[] =>
     ? value.filter((v): v is string => typeof v === "string")
     : [];
 
-const asLatLng = (
-  value: unknown,
-): { lat: number; lng: number } | null => {
+const asLatLng = (value: unknown): { lat: number; lng: number } | null => {
   if (value === null || typeof value !== "object") return null;
   const obj = value as { lat?: unknown; lng?: unknown };
   return typeof obj.lat === "number" &&
@@ -1306,9 +1415,7 @@ const resolveEventBookable = async (
 // Batched readiness for a set of brand ids (the brand-page event feed drop).
 // Returns the subset that CAN charge. On error returns an empty set so the
 // caller can fail closed for paid rows.
-const fetchReadyBrandIds = async (
-  brandIds: string[],
-): Promise<Set<string>> => {
+const fetchReadyBrandIds = async (brandIds: string[]): Promise<Set<string>> => {
   if (brandIds.length === 0) return new Set<string>();
   const { data, error } = await supabase.rpc("pg_brands_can_charge", {
     p_brand_ids: brandIds,
@@ -1433,7 +1540,9 @@ export const fetchPublicBrandEvents = async (
     (row) => row.event_type === "event",
   );
 
-  const eventTickets = await Promise.all(rows.map((row) => fetchTickets(row.id)));
+  const eventTickets = await Promise.all(
+    rows.map((row) => fetchTickets(row.id)),
+  );
 
   // ORCH-1076 I-PAID-SUPPLY-REQUIRES-CHARGES-ENABLED — drop PAID events from a
   // brand that can't charge from the public brand-page event feed (the view is
@@ -1466,8 +1575,9 @@ export const fetchPublicBrandTrips = async (
   brandSlug: string,
 ): Promise<PublicTripCard[]> => {
   // orch-strict-grep-allow events-type-filter — RPC pins event_type='trip' server-side.
-  const { data, error } = await supabase
-    .rpc("pg_public_trips_by_brand", { p_brand_slug: brandSlug });
+  const { data, error } = await supabase.rpc("pg_public_trips_by_brand", {
+    p_brand_slug: brandSlug,
+  });
 
   if (error !== null) throw error;
   const rows = (data ?? []) as PublicTripCardRow[];
@@ -1517,8 +1627,9 @@ const upcomingRowToCard = (row: PublicUpcomingRowRaw): PublicUpcomingRow => ({
 export const fetchPublicBrandExperiences = async (
   brandSlug: string,
 ): Promise<PublicExperienceCard[]> => {
-  const { data, error } = await supabase
-    .rpc("pg_public_experiences_by_brand", { p_brand_slug: brandSlug });
+  const { data, error } = await supabase.rpc("pg_public_experiences_by_brand", {
+    p_brand_slug: brandSlug,
+  });
 
   if (error !== null) throw error;
   return ((data ?? []) as PublicExperienceCardRow[]).map(experienceRowToCard);
@@ -1549,7 +1660,7 @@ export const fetchPublicBrandUpcoming = async (
     hasMore,
     nextCursor:
       hasMore && pageRows.length > 0
-        ? pageRows[pageRows.length - 1]?.startsAt ?? null
+        ? (pageRows[pageRows.length - 1]?.startsAt ?? null)
         : null,
   };
 };
@@ -1578,17 +1689,12 @@ export const getPublicBrandBySlug = async (
   if (brandData === null) return null;
 
   const brandRow = brandData as BusinessPublicBrandViewRow;
-  const [eventsAll, tripsAll, experiences, upcomingPage, menu] =
-    await Promise.all([
-      fetchPublicBrandEvents(brandSlug),
-      fetchPublicBrandTrips(brandSlug),
-      fetchPublicBrandExperiences(brandSlug),
-      fetchPublicBrandUpcoming(brandSlug),
-      // ORCH-1186-C — DISPLAY-ONLY menu (verified venues only; [] otherwise).
-      // Cheap unconditional fetch on the SSR-safe definer view; non-venues
-      // return [] so no Menu tab renders.
-      fetchPublicMenus(brandSlug),
-    ]);
+  const [eventsAll, tripsAll, experiences, upcomingPage] = await Promise.all([
+    fetchPublicBrandEvents(brandSlug),
+    fetchPublicBrandTrips(brandSlug),
+    fetchPublicBrandExperiences(brandSlug),
+    fetchPublicBrandUpcoming(brandSlug),
+  ]);
 
   const events = eventsAll.filter((event) => event.status !== "ended");
   const pastEvents = eventsAll.filter((event) => event.status === "ended");
@@ -1604,13 +1710,15 @@ export const getPublicBrandBySlug = async (
   return {
     brand:
       venueRow !== null
-        ? claimedVenueRowToBrand(venueRow, eventCount + tripCount + experiences.length)
+        ? claimedVenueRowToBrand(
+            venueRow,
+            eventCount + tripCount + experiences.length,
+          )
         : publicBrandViewRowToBrand(
             brandRow,
             eventCount + tripCount + experiences.length,
           ),
-    venue:
-      venueRow !== null ? claimedVenueRowToPublicVenue(venueRow) : null,
+    venue: venueRow !== null ? claimedVenueRowToPublicVenue(venueRow) : null,
     events,
     pastEvents,
     trips,
@@ -1620,7 +1728,9 @@ export const getPublicBrandBySlug = async (
     upcomingHasMore: upcomingPage.hasMore,
     upcomingNextCursor: upcomingPage.nextCursor,
     upcomingCount: upcomingPage.rows.length,
-    menu,
+    // ORCH-1365 — menus are exact-venue content, fetched by the public venue
+    // route. Keep the legacy field empty while older consumers migrate.
+    menu: [],
   };
 };
 
@@ -1764,7 +1874,8 @@ export const getPublicTripById = async (
       end_at: string | null;
     } | null) ?? null;
   const tripStartAt =
-    masterDate?.start_at ?? (typeof bt.startAt === "string" ? bt.startAt : null);
+    masterDate?.start_at ??
+    (typeof bt.startAt === "string" ? bt.startAt : null);
   const tripEndAt =
     masterDate?.end_at ?? (typeof bt.endAt === "string" ? bt.endAt : null);
 
@@ -1802,9 +1913,12 @@ export const getPublicTripById = async (
       departureLocationText:
         typeof (event as { departure_text?: string | null }).departure_text ===
           "string" &&
-        (((event as { departure_text?: string | null }).departure_text ?? "") as string)
-          .trim().length > 0
-          ? ((event as { departure_text?: string | null }).departure_text ?? null)
+        (
+          ((event as { departure_text?: string | null }).departure_text ??
+            "") as string
+        ).trim().length > 0
+          ? ((event as { departure_text?: string | null }).departure_text ??
+            null)
           : typeof bt.departureLocationText === "string"
             ? bt.departureLocationText
             : null,
@@ -1814,24 +1928,21 @@ export const getPublicTripById = async (
         typeof bt.departureLng === "number" ? bt.departureLng : null,
       capacity: typeof bt.capacity === "number" ? bt.capacity : null,
     },
-    days: days.map(
-      (d): TripDay => ({
-        id: d.id,
-        eventId: d.event_id,
-        ordinal: d.ordinal,
-        title: d.title,
-        narrative: d.narrative,
-        date: d.date,
-        stops: Array.isArray(d.stops) ? d.stops : [],
-        media: coerceTripDayMedia(d.media),
-      }),
-    ),
+    days: days.map((d): TripDay => ({
+      id: d.id,
+      eventId: d.event_id,
+      ordinal: d.ordinal,
+      title: d.title,
+      narrative: d.narrative,
+      date: d.date,
+      stops: Array.isArray(d.stops) ? d.stops : [],
+      media: coerceTripDayMedia(d.media),
+    })),
     pricingTiers: tiers.map((t): TripPricingTier => {
       const tt = ticketsById.get(t.ticket_type_id);
       const installmentSchedule =
         (t.tier_metadata?.installments as
-          | TripPricingTier["installmentSchedule"]
-          | undefined) ?? null;
+          TripPricingTier["installmentSchedule"] | undefined) ?? null;
       const isUnlimited = tt?.is_unlimited ?? false;
       // ORCH-0946 — null when unlimited or unknown; otherwise GREATEST(total - sold, 0).
       const ticketsRemaining = isUnlimited
@@ -1863,15 +1974,13 @@ export const getPublicTripById = async (
         })(),
       };
     }),
-    inclusions: inclusions.map(
-      (i): TripInclusion => ({
-        id: i.id,
-        eventId: i.event_id,
-        kind: i.kind,
-        item: i.item,
-        ordinal: i.ordinal,
-      }),
-    ),
+    inclusions: inclusions.map((i): TripInclusion => ({
+      id: i.id,
+      eventId: i.event_id,
+      kind: i.kind,
+      item: i.item,
+      ordinal: i.ordinal,
+    })),
     createdAt: event.created_at,
     updatedAt: event.updated_at,
     // ORCH-0875 [Tr4 Refund Tiers + Booking Deadline] fields — read directly

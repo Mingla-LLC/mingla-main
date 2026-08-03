@@ -62,10 +62,18 @@ const root = process.cwd().endsWith("mingla-marketing")
  * A single-owner invariant that only guards ONE of the two owners is not a
  * single-owner invariant. Both are listed here; adding a third copy of this
  * idiom anywhere means adding it here too.
+ *
+ * ISSUE-903 — THREE owners now. mingla-admin is a standalone Vite JS app with NO
+ * import path to mingla-marketing/lib/open-external.ts or mingla-business's helper
+ * (see mingla-admin/eslint.config.js — flat browser config, no TS, no path map),
+ * so per the same owner-per-package precedent it carries its OWN
+ * mingla-admin/src/lib/openExternal.js, shape-validated here under R1–R4 exactly
+ * like the other two.
  */
 const TARGETS = [
   "mingla-marketing/lib/open-external.ts",
   "mingla-business/src/services/guestFunnelLink.ts",
+  "mingla-admin/src/lib/openExternal.js",
 ];
 
 const stripComments = (src) =>
@@ -112,6 +120,103 @@ function checkModule(rawSrc, failures, TARGET = "mingla-marketing/lib/open-exter
         `fallback must fire ONLY when open() returned null. An unconditional assign( is ` +
         `exactly the ORCH-1381 ADDENDUM D-B double-navigation bug.`,
     );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// ISSUE-903 — repo-wide inline-re-roll BAN.
+//
+// The old gate only shape-validated the owner files (checkModule R1–R4). That
+// left the real hole: nothing stopped a NEW inline `window.open(…, noopener|
+// noreferrer)` re-roll from appearing anywhere else — which is exactly how
+// mingla-admin's two call sites came to exist un-guarded. This ban closes it:
+// a call site opens an external tab ONLY by calling its package's openExternal
+// owner; any inline re-roll outside a registered owner fails CI, repo-wide.
+//
+// The predicate REUSES R1's EXACT regex (byte-identical to the test at the R1
+// check above) — so it already catches `noopener,noreferrer`, `noreferrer`-only,
+// `noopener`-only, and EVERY case variant. It never fires on a bare
+// `window.open(dest, "_blank")` (the legitimate calendar.ts shape) and never on
+// the pattern inside a comment (comment-stripped first).
+// ---------------------------------------------------------------------------
+const containsInlineReRoll = (rawSrc) =>
+  /\.open\([^)\n]*\bno(?:opener|referrer)\b[^)\n]*\)/i.test(stripComments(rawSrc));
+
+// Product dirs the ban polices. `.github/` is deliberately OUT of this list: the
+// gate scripts quote the banned pattern in string-literal self-test fixtures that
+// comment-stripping does NOT remove, and they are protected by their own
+// self-tests, never by this scan.
+const SCAN_ROOTS = [
+  "mingla-admin/src",
+  "mingla-business/src",
+  "mingla-marketing",
+  "app-mobile/src",
+  "packages",
+];
+const SCAN_EXTENSIONS = new Set([".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"]);
+// A hit inside any of these path segments is NOT a failure (build output / vendored).
+const SCAN_EXCLUDED_SEGMENTS = ["node_modules", "dist", "build", ".next", ".expo", "coverage"];
+
+function isExcludedFromScan(relPath) {
+  // The registered owners legitimately QUOTE the pattern in their docblocks and
+  // are already shape-validated by R1–R4.
+  if (TARGETS.includes(relPath)) return true;
+  const segments = relPath.split(path.sep);
+  if (segments.some((s) => SCAN_EXCLUDED_SEGMENTS.includes(s))) return true;
+  // Test files intentionally embed the bug pattern as string-literal fixtures
+  // (e.g. mingla-business/src/services/__tests__/orch_1382_*.test.ts) — the marketing
+  // + business owner tests do this on purpose.
+  if (segments.includes("__tests__")) return true;
+  const base = segments[segments.length - 1];
+  if (base.includes(".test.") || base.includes(".tester.")) return true;
+  return false;
+}
+
+function scanForInlineReRolls(failures) {
+  const lineRe = /\.open\([^)\n]*\bno(?:opener|referrer)\b[^)\n]*\)/i;
+  for (const scanRoot of SCAN_ROOTS) {
+    const absRoot = path.join(root, scanRoot);
+    if (!fs.existsSync(absRoot)) continue;
+    const stack = [absRoot];
+    while (stack.length > 0) {
+      const current = stack.pop();
+      for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+        const abs = path.join(current, entry.name);
+        if (entry.isDirectory()) {
+          if (!SCAN_EXCLUDED_SEGMENTS.includes(entry.name)) stack.push(abs);
+          continue;
+        }
+        if (!entry.isFile()) continue;
+        if (!SCAN_EXTENSIONS.has(path.extname(entry.name))) continue;
+        const rel = path.relative(root, abs);
+        if (isExcludedFromScan(rel)) continue;
+        const raw = fs.readFileSync(abs, "utf8");
+        if (!containsInlineReRoll(raw)) continue;
+        // Name the offending line(s) after a whole-file comment-strip. If a
+        // multi-line block comment shifts the numbering, fall back to file-level —
+        // the failure is pushed either way (the fire decision is authoritative
+        // above via containsInlineReRoll).
+        const strippedLines = stripComments(raw).split("\n");
+        let located = false;
+        strippedLines.forEach((line, i) => {
+          if (lineRe.test(line)) {
+            located = true;
+            failures.push(
+              `${rel}:${i + 1}: inline window.open(…, noopener|noreferrer) re-roll OUTSIDE a ` +
+                `registered openExternal owner — this reships the ORCH-1381 null-return-on-` +
+                `success double-navigation trap. Open external tabs ONLY by calling this ` +
+                `package's openExternal owner.`,
+            );
+          }
+        });
+        if (!located) {
+          failures.push(
+            `${rel}: inline window.open(…, noopener|noreferrer) re-roll OUTSIDE a registered ` +
+              `openExternal owner — route it through this package's openExternal owner.`,
+          );
+        }
+      }
+    }
   }
 }
 
@@ -253,12 +358,64 @@ export function openExternal(dest: string, w: Window = window): void {
     selfFailures.push("banned pattern inside a COMMENT wrongly flagged (comment-strip broken): " + JSON.stringify(run(commented)));
   }
 
+  // ISSUE-903 — the mingla-admin owner's FIXED shape (JS, SSR guard, injectable w,
+  // else-branch fallback) must PASS R1–R4.
+  const adminFixed = `
+export function openExternal(dest, w = typeof window === "undefined" ? undefined : window) {
+  if (w === undefined) return;
+  const win = w.open(dest, "_blank");
+  if (win) {
+    win.opener = null;
+  } else {
+    w.location.assign(dest);
+  }
+}
+`;
+  if (run(adminFixed).length !== 0) {
+    selfFailures.push("the FIXED mingla-admin openExternal wrongly flagged: " + JSON.stringify(run(adminFixed)));
+  }
+
+  // ISSUE-903 — the EXACT shape the two admin call sites shipped inline before this
+  // pass (noopener,noreferrer + unconditional fallback). It must fire (R1).
+  const adminShipped = `
+export function openExternal(dest, w = typeof window === "undefined" ? undefined : window) {
+  const win = w.open(dest, "_blank", "noopener,noreferrer");
+  if (!win) w.location.assign(dest);
+}
+`;
+  if (run(adminShipped).length === 0) selfFailures.push("the pre-fix mingla-admin openExternal shape (ISSUE-903) not flagged");
+
+  // ISSUE-903 — the repo-wide inline-re-roll BAN predicate. Hermetic: string inputs,
+  // no FS. Reuses R1's regex, so it must fire on every re-roll (incl. UPPERCASE) and
+  // pass on the routed call, a bare open, and the pattern inside comments.
+  if (!containsInlineReRoll("const win = window.open(dest, '_blank', 'NOOPENER')")) {
+    selfFailures.push("ban predicate MISSED an UPPERCASE 'NOOPENER' re-roll (tester's §7 plant)");
+  }
+  if (!containsInlineReRoll('window.open(url, "_blank", "noopener,noreferrer")')) {
+    selfFailures.push("ban predicate MISSED the exact admin 'noopener,noreferrer' shape being removed");
+  }
+  if (!containsInlineReRoll('window.open(url, "_blank", "noreferrer")')) {
+    selfFailures.push("ban predicate MISSED a 'noreferrer'-only re-roll (half-fix trap)");
+  }
+  if (containsInlineReRoll("openExternal(dest)")) {
+    selfFailures.push("ban predicate WRONGLY fired on the routed openExternal( call");
+  }
+  if (containsInlineReRoll("window.open(dest, '_blank')")) {
+    selfFailures.push("ban predicate WRONGLY fired on a BARE window.open (the legitimate calendar.ts shape)");
+  }
+  if (containsInlineReRoll("// window.open(url, '_blank', 'noopener,noreferrer')")) {
+    selfFailures.push("ban predicate WRONGLY fired on the pattern inside a // comment (comment-strip broken)");
+  }
+  if (containsInlineReRoll("/* window.open(url, '_blank', 'noopener,noreferrer') */")) {
+    selfFailures.push("ban predicate WRONGLY fired on the pattern inside a /* */ block (comment-strip broken)");
+  }
+
   if (selfFailures.length) {
     console.error("ORCH-1381 open-external-no-double-nav self-test FAIL:");
     selfFailures.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
-  console.log("ORCH-1381/1382 open-external-no-double-nav self-test PASS (12/12 cases,\n  incl. the noreferrer-only trap, the UPPERCASE case-insensitivity case, an\n  unconditional-sibling case only R3 catches, and BOTH the live mingla-business\n  broken shape and its fixed shape).");
+  console.log("ORCH-1381/1382/ISSUE-903 open-external-no-double-nav self-test PASS (21/21 cases,\n  incl. the noreferrer-only trap, the UPPERCASE case-insensitivity case, an\n  unconditional-sibling case only R3 catches, BOTH the live mingla-business broken\n  shape and its fixed shape, the mingla-admin fixed + pre-fix shapes, and the 7-case\n  repo-wide inline-re-roll ban predicate suite — fires on every re-roll incl.\n  UPPERCASE, passes on the routed call / a bare open / the pattern inside comments).");
   process.exit(0);
 }
 
@@ -273,24 +430,34 @@ for (const TARGET of TARGETS) {
   checkModule(fs.readFileSync(abs, "utf8"), failures, TARGET);
 }
 
+// ISSUE-903 — repo-wide inline-re-roll ban: FAIL on any inline window.open(…,
+// noopener|noreferrer) outside a registered owner. Joins the same aggregated
+// report + non-zero exit as the per-owner shape checks above.
+scanForInlineReRolls(failures);
+
 if (failures.length > 0) {
   console.error(
-    "ORCH-1381/1382 (I-PROPOSED-1381-OPEN-EXTERNAL-SINGLE-OWNER, extended to mingla-business)\n" +
-      "FAIL — each package's openExternal is the ONE owner of opening an external\n" +
-      "destination for that package (mingla-business has NO import path to mingla-marketing,\n" +
-      "so there are legitimately TWO owners and BOTH are guarded). It must open with a BARE\n" +
+    "ORCH-1381/1382/ISSUE-903 (I-PROPOSED-1381-OPEN-EXTERNAL-SINGLE-OWNER, extended to\n" +
+      "mingla-business and mingla-admin) FAIL — each package's openExternal is the ONE owner\n" +
+      "of opening an external destination for that package (neither mingla-business nor\n" +
+      "mingla-admin has an import path to mingla-marketing, so there are legitimately THREE\n" +
+      "owners and ALL THREE are guarded). An owner must open with a BARE\n" +
       "window.open(dest,'_blank') (NEVER noopener/noreferrer — either token makes open()\n" +
       "return null even on success, firing the fallback on every tap and double-navigating\n" +
       "the page), sever win.opener = null to keep the noopener security property, and fall\n" +
-      "back to location.assign( ONLY in the else-branch of a successful open.\n\nFailures:\n  " +
+      "back to location.assign( ONLY in the else-branch of a successful open. NO product\n" +
+      "file outside a registered owner may re-roll window.open(…, noopener|noreferrer)\n" +
+      "inline — open external tabs by calling that package's openExternal.\n\nFailures:\n  " +
       failures.join("\n  "),
   );
   process.exit(1);
 }
 console.log(
-  `ORCH-1381/1382 PASS — both openExternal owners (${TARGETS.join(", ")})\n` +
+  `ORCH-1381/1382/ISSUE-903 PASS — all three openExternal owners (${TARGETS.join(", ")})\n` +
     "open with a bare window.open(dest,'_blank'),\n" +
-    "carries no noopener/noreferrer feature string (which would null the return even on\n" +
-    "success and double-navigate), severs win.opener = null for tabnabbing safety, and\n" +
-    "keeps the location.assign( popup-block fallback strictly in the else-branch.",
+    "carry no noopener/noreferrer feature string (which would null the return even on\n" +
+    "success and double-navigate), sever win.opener = null for tabnabbing safety, and\n" +
+    "keep the location.assign( popup-block fallback strictly in the else-branch — AND no\n" +
+    "product file outside a registered owner re-rolls window.open(…, noopener|noreferrer)\n" +
+    "inline (scanned: " + SCAN_ROOTS.join(", ") + ").",
 );

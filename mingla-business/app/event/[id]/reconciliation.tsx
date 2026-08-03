@@ -58,7 +58,7 @@ import {
   canPerformAction,
   gateCaptionFor,
 } from "../../../src/utils/permissionGates";
-import { formatCurrency } from "../../../src/utils/currency";
+import { formatCurrency, currencyCodeOrNull } from "../../../src/utils/currency";
 import { formatDraftDateLine } from "../../../src/utils/eventDateDisplay";
 import { deriveLiveStatus } from "../../../src/utils/eventLifecycle";
 import { computeMasterStartAtUtc } from "../../../src/utils/eventDateMath";
@@ -110,7 +110,10 @@ export default function ReconciliationRoute(): React.ReactElement {
       // ORCH-0828: pass timezone-aware UTC instant (not date-only string).
       status: deriveLiveStatus(event, computeMasterStartAtUtc(event)),
       eventName: event.name,
-      currency: event.currency ?? "GBP",
+      // #962 G4 — computation input only: a valid-or-undefined code so
+      // computeReconciliation's mismatch math is unaffected (a pre-bank brand
+      // has 0 sales). The DISPLAY currency below is resolved null-safe.
+      currency: currencyCodeOrNull(event.currency) ?? undefined,
       orderEntries: allOrderEntries,
       doorEntries: allDoorEntries,
       compEntries: allCompEntries,
@@ -339,14 +342,14 @@ export default function ReconciliationRoute(): React.ReactElement {
         <TicketsSection
           summary={summary}
           hasAnyData={hasAnyData}
-          currency={event.currency ?? "GBP"}
+          currency={currencyCodeOrNull(event.currency)}
         />
 
         {/* REVENUE section */}
         <RevenueSection
           summary={summary}
           hasAnyData={hasAnyData}
-          currency={event.currency ?? "GBP"}
+          currency={currencyCodeOrNull(event.currency)}
         />
 
         {/* SCANS section */}
@@ -436,7 +439,9 @@ const HeadlineBanner: React.FC<HeadlineBannerProps> = ({
 interface TicketsSectionProps {
   summary: ReconciliationSummary;
   hasAnyData: boolean;
-  currency: string;
+  // #962 G4 — null when the brand has no established currency; money subvalues
+  // are then omitted (never a fabricated £).
+  currency: string | null;
 }
 
 const TicketsSection: React.FC<TicketsSectionProps> = ({
@@ -449,12 +454,20 @@ const TicketsSection: React.FC<TicketsSectionProps> = ({
     <SectionRow
       label="Online sold"
       value={hasAnyData ? `${summary.onlineLiveTickets}` : "—"}
-      subValue={hasAnyData ? formatCurrency(summary.onlineRevenue, currency) : ""}
+      subValue={
+        hasAnyData && currency !== null
+          ? formatCurrency(summary.onlineRevenue, currency)
+          : ""
+      }
     />
     <SectionRow
       label="Door sold"
       value={hasAnyData ? `${summary.doorLiveTickets}` : "—"}
-      subValue={hasAnyData ? formatCurrency(summary.doorRevenue, currency) : ""}
+      subValue={
+        hasAnyData && currency !== null
+          ? formatCurrency(summary.doorRevenue, currency)
+          : ""
+      }
     />
     <SectionRow
       label="Comps"
@@ -476,7 +489,9 @@ const TicketsSection: React.FC<TicketsSectionProps> = ({
 interface RevenueSectionProps {
   summary: ReconciliationSummary;
   hasAnyData: boolean;
-  currency: string;
+  // #962 G4 — null when the brand has no established currency; money rows render
+  // "—" (never a fabricated £). A pre-bank brand has 0 sales so all amounts are 0.
+  currency: string | null;
 }
 
 const RevenueSection: React.FC<RevenueSectionProps> = ({
@@ -487,6 +502,9 @@ const RevenueSection: React.FC<RevenueSectionProps> = ({
   // ORCH-0796 — real Stripe application_fee from order rows; null when no online activity.
   // Door revenue contributes 1.0 net (cash; card_reader/NFC fee schedules ship when Terminal SDK lands).
   const stripeFeeOnline = summary.stripeFeeOnlineMajor;
+  // #962 G4 — hide the money glyph when the brand has no established currency.
+  const fmt = (v: number): string =>
+    currency === null ? "—" : formatCurrency(v, currency);
 
   return (
     <View style={styles.section}>
@@ -494,72 +512,80 @@ const RevenueSection: React.FC<RevenueSectionProps> = ({
       {/* Online methods */}
       <SectionRow
         label="Card (online)"
-        value={formatCurrency(summary.revenueByMethod.card, currency)}
+        value={fmt(summary.revenueByMethod.card)}
       />
       <SectionRow
         label="Apple Pay"
-        value={formatCurrency(summary.revenueByMethod.apple_pay, currency)}
+        value={fmt(summary.revenueByMethod.apple_pay)}
       />
       <SectionRow
         label="Google Pay"
-        value={formatCurrency(summary.revenueByMethod.google_pay, currency)}
+        value={fmt(summary.revenueByMethod.google_pay)}
       />
       <SectionRow
         label="Free (online)"
-        value={formatCurrency(summary.revenueByMethod.free, currency)}
+        value={fmt(summary.revenueByMethod.free)}
       />
       {/* Door methods */}
       <SectionRow
         label="Cash (door)"
-        value={formatCurrency(summary.revenueByMethod.cash, currency)}
+        value={fmt(summary.revenueByMethod.cash)}
       />
       <SectionRow
         label="Card reader (door)"
-        value={formatCurrency(summary.revenueByMethod.card_reader, currency)}
+        value={fmt(summary.revenueByMethod.card_reader)}
         hint="B-cycle"
       />
       <SectionRow
         label="NFC tap (door)"
-        value={formatCurrency(summary.revenueByMethod.nfc, currency)}
+        value={fmt(summary.revenueByMethod.nfc)}
         hint="B-cycle"
       />
       <SectionRow
         label="Manual (door)"
-        value={formatCurrency(summary.revenueByMethod.manual, currency)}
+        value={fmt(summary.revenueByMethod.manual)}
       />
       <SectionDivider />
-      <SectionRow label="Gross" value={formatCurrency(summary.grossRevenue, currency)} />
+      <SectionRow label="Gross" value={fmt(summary.grossRevenue)} />
       <SectionRow
         label="Refunded (online)"
-        value={`−${formatCurrency(summary.onlineRefunded, currency)}`}
+        value={
+          currency === null
+            ? "—"
+            : `−${formatCurrency(summary.onlineRefunded, currency)}`
+        }
         variant="warn"
       />
       <SectionRow
         label="Refunded (door)"
-        value={`−${formatCurrency(summary.doorRefunded, currency)}`}
+        value={
+          currency === null
+            ? "—"
+            : `−${formatCurrency(summary.doorRefunded, currency)}`
+        }
         variant="warn"
       />
       <SectionDivider />
       <SectionRow
         label="NET"
-        value={hasAnyData ? formatCurrency(summary.grossRevenue, currency) : "—"}
+        value={hasAnyData ? fmt(summary.grossRevenue) : "—"}
         variant="big"
       />
       <SectionRow
         label="Stripe fee (online)"
         value={
-          stripeFeeOnline !== null
+          stripeFeeOnline !== null && currency !== null
             ? `−${formatCurrency(stripeFeeOnline, currency)}`
             : "—"
         }
         variant="muted"
       />
-      <SectionRow label="Door fee" value={formatCurrency(0, currency)} variant="muted" />
+      <SectionRow label="Door fee" value={fmt(0)} variant="muted" />
       <SectionRow
         label="EXPECTED PAYOUT"
         value={
           summary.expectedPayoutMajor !== null
-            ? formatCurrency(summary.expectedPayoutMajor, currency)
+            ? fmt(summary.expectedPayoutMajor)
             : "—"
         }
         variant="mid"

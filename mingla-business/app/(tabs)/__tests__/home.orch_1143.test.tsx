@@ -75,10 +75,11 @@ describe("ORCH-1143 — live carousel maps off liveItems (all kinds)", () => {
   });
 });
 
-describe("ORCH-1143 — scan parity on EVERY live kind (T10 fails-on-revert)", () => {
-  test("T1/T9: scan handler routes EVERY kind to /event/{id}/scanner with NO kind gate", () => {
-    // handler takes an id and pushes the shared scanner route.
-    expect(HOME).toContain("router.push(`/event/${id}/scanner` as never)");
+describe("ORCH-1143/#1447 — scan parity on EVERY live kind", () => {
+  test("T1/T9: scan handler routes RSVP to its scanner and every ticketed kind to the shared scanner", () => {
+    expect(HOME).toContain('?.event_type === "rsvp"');
+    expect(HOME).toContain("? `/rsvp/${id}/scanner`");
+    expect(HOME).toContain(": `/event/${id}/scanner`");
     // NO event-only gate on the scan affordance anywhere in home.
     expect(HOME).not.toContain("primaryLiveItem.kind === \"event\"");
     expect(HOME).not.toContain("showScanAction");
@@ -110,13 +111,22 @@ describe("ORCH-1143 — scan parity on EVERY live kind (T10 fails-on-revert)", (
 
 describe("ORCH-1143 — honest data + currency (SC-6)", () => {
   test("SC-6: Scanned tile stays '—' (Constitution #9), revenue is currency-aware", () => {
-    // Scanned cell is the honest-empty dash; never a fabricated number.
-    expect(CARD).toContain("<Text style={styles.statValue}>—</Text>");
+    // Ticketed Scanned stays honest-empty; RSVP only shows server-confirmed
+    // checked-in truth and falls back to a dash while unavailable.
+    expect(CARD).toContain('isRsvp ? metrics.checkedInValue ?? "—" : "—"');
     expect(CARD).toContain("Scanned");
-    // revenue uses the offering currency ?? brand default (no NEW hardcoded GBP
-    // introduced by this ORCH; the metricsById builder threads currency).
-    expect(HOME).toContain(
+    // #962 [pre-bank currency de-GBP] — G2 removed the fabricated `?? "GBP"`
+    // revenue fallback (a pre-bank brand has NO currency). Revenue is now
+    // currency-aware via currencyCodeOrNull and the label hides ("—") when the
+    // brand has no established currency. The old GBP-manufacturing source
+    // strings are GONE — this test pins the de-GBP'd shape.
+    expect(HOME).toContain("currencyCodeOrNull(");
+    expect(HOME).toContain("view.currency ?? currentBrand?.defaultCurrency");
+    expect(HOME).not.toContain(
       "view.currency ?? currentBrand?.defaultCurrency ?? \"GBP\"",
+    );
+    expect(HOME).not.toContain(
+      "event.currency ?? currentBrand.defaultCurrency ?? \"GBP\"",
     );
   });
 });

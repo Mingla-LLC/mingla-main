@@ -35,7 +35,14 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -129,7 +136,6 @@ export function VenueSuiteShell({
     });
   }, [setEnabled]);
 
-
   // Overview mounts the VenueIntelligenceModule, which OWNS its own ScrollView
   // (with its own `insets.bottom + 120` clearance) — so the shell must NOT wrap
   // it in a second, outer ScrollView (nested same-axis scroll = the "doesn't
@@ -186,8 +192,7 @@ export function VenueSuiteShell({
     // (independent of the reservations toggle). Renders inside the shell's
     // ScrollView (moduleSelfScrolls("menu") === false), like Settings.
     if (activeModule === "menu") {
-      // [TRANSITIONAL-3] menus stay brand-level — no venueId.
-      return <VenueMenuModule brandId={brandId} />;
+      return <VenueMenuModule brandId={brandId} venueId={venueId} />;
     }
     // 2.1a — Tables + Availability LIVE. 2.1b — Reservations + Waitlist LIVE.
     // The whole booking band is now real operator UI (no ComingSoon left).
@@ -209,10 +214,7 @@ export function VenueSuiteShell({
     return (
       <View style={styles.desktopHost} testID="venue-suite-shell-desktop">
         <View style={styles.desktopCentered}>
-          <View
-            style={styles.desktopRail}
-            accessibilityRole="tablist"
-          >
+          <View style={styles.desktopRail} accessibilityRole="tablist">
             <DesktopRail
               modules={visibleModules}
               activeModule={activeModule}
@@ -299,10 +301,7 @@ function DesktopRail({
       >
         {isActive ? <View style={styles.railActiveBar} /> : null}
         <Text
-          style={[
-            styles.railLabel,
-            isActive ? styles.railLabelActive : null,
-          ]}
+          style={[styles.railLabel, isActive ? styles.railLabelActive : null]}
         >
           {VENUE_MODULES[m].label}
         </Text>

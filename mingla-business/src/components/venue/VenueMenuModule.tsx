@@ -15,7 +15,7 @@
  * experience_stops / the snap-menu parser (I-PROPOSED-1186C-MENU-NOT-EXPERIENCE-STOPS).
  */
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { UtensilsCrossed } from "lucide-react-native";
 
@@ -32,7 +32,11 @@ import { Button } from "../ui/Button";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { BRAND_ROLE_RANK } from "../../utils/brandRole";
-import { formatCurrency, normalizeCurrency } from "../../utils/currency";
+import {
+  formatCurrency,
+  normalizeCurrency,
+  currencyCodeOrNull,
+} from "../../utils/currency";
 import {
   useBrandMenus,
   useDeleteMenu,
@@ -50,27 +54,36 @@ const MANAGER_PLUS_RANK = BRAND_ROLE_RANK.event_manager; // 40
 
 export interface VenueMenuModuleProps {
   brandId: string | null;
+  venueId?: string | null;
   testID?: string;
 }
 
 export function VenueMenuModule({
   brandId,
+  venueId = null,
   testID,
 }: VenueMenuModuleProps): React.ReactElement {
   const brand = useCurrentBrand();
   const { rank } = useCurrentBrandRole(brandId);
   const canMutate = rank >= MANAGER_PLUS_RANK;
+  // KEEP — `menu_items.currency` is text NOT NULL (migration 20261118000000);
+  // the stored value cannot be null without a migration (#962 §7 D-5 follow-up,
+  // tracked in #1305). This feeds the WRITE + the MenuItemSheet math prop.
   const currency = normalizeCurrency(brand?.defaultCurrency);
+  // #962 VM1 — DISPLAY gate only: suppress the menu-price DISPLAY when the brand
+  // has no established currency so a pre-bank brand never SEES a fabricated £.
+  // The stored value is untouched.
+  const brandHasCurrency = currencyCodeOrNull(brand?.defaultCurrency) !== null;
 
-  const menusQuery = useBrandMenus(brandId);
-  const menus = menusQuery.data ?? [];
+  const menusQuery = useBrandMenus(brandId, venueId);
+  const menus = useMemo(() => menusQuery.data ?? [], [menusQuery.data]);
 
-  const upsertMenu = useUpsertMenu(brandId);
-  const deleteMenu = useDeleteMenu(brandId);
-  const reorderMenus = useReorderMenus(brandId);
-  const upsertItem = useUpsertMenuItem(brandId);
-  const deleteItem = useDeleteMenuItem(brandId);
-  const reorderItems = useReorderMenuItems(brandId);
+  const upsertMenu = useUpsertMenu(brandId, venueId);
+  const deleteMenu = useDeleteMenu(brandId, venueId);
+  const reorderMenus = useReorderMenus(brandId, venueId);
+  const upsertItem = useUpsertMenuItem(brandId, venueId);
+  const deleteItem = useDeleteMenuItem(brandId, venueId);
+  const reorderItems = useReorderMenuItems(brandId, venueId);
 
   // ---- sheet state ----
   const [categorySheetOpen, setCategorySheetOpen] = useState<boolean>(false);
@@ -94,9 +107,7 @@ export function VenueMenuModule({
     (input: { name: string; description: string | null }): void => {
       setSaveError(false);
       const nextSort =
-        editingCategory !== null
-          ? editingCategory.sortOrder
-          : menus.length;
+        editingCategory !== null ? editingCategory.sortOrder : menus.length;
       upsertMenu.mutate(
         {
           id: editingCategory?.id,
@@ -155,7 +166,7 @@ export function VenueMenuModule({
       const nextSort =
         editingItem !== null
           ? editingItem.sortOrder
-          : parentMenu?.items.length ?? 0;
+          : (parentMenu?.items.length ?? 0);
       upsertItem.mutate(
         {
           id: editingItem?.id,
@@ -241,10 +252,7 @@ export function VenueMenuModule({
   if (menusQuery.isLoading) {
     return (
       <View style={styles.host} testID={testID ?? "venue-menu-module"}>
-        <Text
-          style={styles.intro}
-          accessibilityLiveRegion="polite"
-        >
+        <Text style={styles.intro} accessibilityLiveRegion="polite">
           Loading your menu…
         </Text>
         <View style={styles.skeletonWrap} testID="venue-menu-skeleton-wrap">
@@ -269,7 +277,7 @@ export function VenueMenuModule({
     return (
       <View style={styles.host} testID={testID ?? "venue-menu-module"}>
         <Text style={styles.errorNote}>
-          Couldn't load your menu. Pull to refresh or try again.
+          Couldn&apos;t load your menu. Pull to refresh or try again.
         </Text>
       </View>
     );
@@ -327,7 +335,7 @@ export function VenueMenuModule({
 
       {saveError ? (
         <Text style={styles.errorNote} testID="venue-menu-error">
-          Couldn't save. Check your connection and try again.
+          Couldn&apos;t save. Check your connection and try again.
         </Text>
       ) : null}
 
@@ -382,7 +390,9 @@ export function VenueMenuModule({
               accessibilityLabel={`${item.name}, ${
                 item.priceCents === null
                   ? "price on request"
-                  : formatCurrency(item.priceCents, item.currency, true)
+                  : brandHasCurrency
+                    ? formatCurrency(item.priceCents, item.currency, true)
+                    : "—"
               }, ${item.isAvailable ? "available" : "hidden"}`}
             >
               <View style={styles.itemLeft}>
@@ -398,10 +408,12 @@ export function VenueMenuModule({
               <View style={styles.itemRight}>
                 {item.priceCents === null ? (
                   <Text style={styles.priceOnRequest}>Price on request</Text>
-                ) : (
+                ) : brandHasCurrency ? (
                   <Text style={styles.itemPrice}>
                     {formatCurrency(item.priceCents, item.currency, true)}
                   </Text>
+                ) : (
+                  <Text style={styles.itemPrice}>—</Text>
                 )}
                 <View
                   style={[
@@ -487,6 +499,7 @@ export function VenueMenuModule({
         onClose={() => setItemSheetOpen(false)}
         item={editingItem}
         currency={currency}
+        brandHasCurrency={brandHasCurrency}
         onSave={handleSaveItem}
         saving={upsertItem.isPending}
         onDelete={canMutate ? handleDeleteItem : undefined}
@@ -542,10 +555,7 @@ function TextControl({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={label}
-      style={({ pressed }) => [
-        styles.textControl,
-        pressed && styles.pressed,
-      ]}
+      style={({ pressed }) => [styles.textControl, pressed && styles.pressed]}
       testID={testID}
     >
       <Text style={styles.textControlLabel}>{glyph}</Text>

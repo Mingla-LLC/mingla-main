@@ -31,7 +31,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { DEFAULT_TAKE_RATE_BPS } from "../../constants/pricing";
-import { formatCurrencyRound } from "../../utils/currency";
+import { formatCurrencyRound, currencyCodeOrNull } from "../../utils/currency";
 import { useBrand, brandKeys } from "../../hooks/useBrands";
 import {
   setBrandPricingDefaults,
@@ -100,15 +100,15 @@ export const BrandPricingDefaultsView: React.FC<
     );
   }
 
-  // ORCH-1006 — defaults always display in the brand's Stripe currency once
-  // Stripe is set (brands.default_currency is populated only after connect);
-  // fall back to GBP (the pricing region) when no currency is set yet.
-  const displayCurrency = brand.defaultCurrency ?? "GBP";
-  const exampleOrder = formatCurrencyRound(
-    EXAMPLE_ORDER_CENTS,
-    displayCurrency,
-    true,
-  );
+  // ORCH-1006 / #962 G7 — defaults display in the brand's Stripe currency once
+  // Stripe is set (brands.default_currency is populated only after connect).
+  // Before that (pre-bank) the brand has NO currency: render the example amount
+  // as a PLAIN NUMBER with no symbol (OQ-3 decision); never manufacture GBP.
+  const displayCurrency = currencyCodeOrNull(brand.defaultCurrency);
+  const exampleOrder =
+    displayCurrency !== null
+      ? formatCurrencyRound(EXAMPLE_ORDER_CENTS, displayCurrency, true)
+      : String(Math.round(EXAMPLE_ORDER_CENTS / 100));
 
   return (
     <ScrollView

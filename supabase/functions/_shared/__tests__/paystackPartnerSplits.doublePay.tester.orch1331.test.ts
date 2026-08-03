@@ -442,6 +442,24 @@ function scriptedDeps(pw: PaystackWorld): PaystackPartnerSplitDeps {
       pw.notifies.push(input);
       return Promise.resolve();
     }) as any,
+    // [TEST-MOD-APPROVED ORCH-1030] #1030 [partner verify-by-reference] — the
+    // sweep now reconciles a code-less pending row BY REFERENCE before any
+    // re-initiate. Model verify against the SAME transfersByReference idempotency
+    // map this file's double-pay defense rests on: a reference actually sent to
+    // Paystack resolves to its transfer; a never-sent reference (the bumped a1
+    // after a definitive a0 failure) is a genuine 404 not-found → definitive →
+    // the sweep falls through to initiate a1, exactly as SC-9/DP-7 assert.
+    // Additions-only; NO existing double-pay assertion is weakened.
+    verifyTransferByReference: (reference: string) => {
+      const existing = pw.transfersByReference.get(reference);
+      if (existing) return Promise.resolve({ ...existing, reference });
+      return Promise.reject(
+        new PaystackApiError(
+          "Paystack verify-transfer-by-reference failed (404): Transfer not found",
+          404,
+        ),
+      );
+    },
   };
 }
 

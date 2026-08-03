@@ -1,7 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {
   corsHeaders,
-  coverVideoProvider,
   destroyCoverVideoAsset,
   isValidUuid,
   jsonResponse,
@@ -12,7 +11,7 @@ import {
   requireUserId,
   serviceRoleClient,
 } from "../_shared/eventCoverVideo.ts";
-// META-ORCH-1270 — Bunny provider branch (Cloudinary path unchanged).
+// #966 — Bunny is the sole cover-video provider (Cloudinary ack path removed).
 import { bunnyGetVideo } from "../_shared/bunnyStream.ts";
 
 type ProviderUploadResponse = {
@@ -26,23 +25,6 @@ type ProviderUploadResponse = {
 
 const safeString = (value: unknown): string | null =>
   typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
-
-const safeNumber = (value: unknown): number | null => {
-  const parsed = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-};
-
-const sanitizeProviderUpload = (
-  providerUploadResponse: ProviderUploadResponse | null | undefined,
-): Record<string, unknown> => ({
-  acknowledged_at: new Date().toISOString(),
-  asset_id: safeString(providerUploadResponse?.asset_id),
-  bytes: safeNumber(providerUploadResponse?.bytes),
-  duration: safeNumber(providerUploadResponse?.duration),
-  format: safeString(providerUploadResponse?.format),
-  public_id: safeString(providerUploadResponse?.public_id),
-  resource_type: safeString(providerUploadResponse?.resource_type),
-});
 
 const mergeProviderPayload = (
   existing: unknown,
@@ -146,131 +128,91 @@ export const handleEventCoverVideoSourceUploaded = async (
     return jsonResponse(mapEventCoverVideoStatus(job));
   }
 
-  // META-ORCH-1270 — Bunny branch: IGNORE the client-declared providerUpload
-  // payload; read the truth from Bunny (real bytes, real status). The Vector-C
-  // source byte cap is enforced HERE against Bunny's storageSize, never the
-  // client number. Cloudinary branch below is unchanged.
-  if (coverVideoProvider() === "bunny") {
-    const guid = safeString(job.source_asset_id);
-    const video = await deps.bunnyGetVideo(guid ?? "");
-    if (!video.ok) {
-      // The video may not be registered yet — keep the job at source_uploading
-      // and return its mapped status so the client re-acks / polls.
-      console.log("[event-cover-video-source-uploaded]", JSON.stringify({
-        jobId: job.id,
-        reason: video.reason,
-        requestId,
-        stage: "bunny_get_pending",
-      }));
-      return jsonResponse(mapEventCoverVideoStatus(job));
-    }
-    const storageSize =
-      typeof video.video.storageSize === "number" ? video.video.storageSize : 0;
-    if (storageSize > MAX_SOURCE_VIDEO_BYTES) {
-      await deps.destroyCoverVideoAsset(job);
-      const { data: failedJob } = await supabase
-        .from("event_cover_video_jobs")
-        .update({
-          status: "failed",
-          completed_at: new Date().toISOString(),
-          failure_code: "source_over_cap",
-          failure_message: "Video source exceeded the maximum allowed size.",
-        })
-        .eq("id", job.id)
-        .select("*")
-        .maybeSingle();
-      console.warn("[event-cover-video-source-uploaded]", JSON.stringify({
-        jobId: job.id,
-        maxSourceBytes: MAX_SOURCE_VIDEO_BYTES,
-        requestId,
-        stage: "bunny_source_over_cap",
-        storageSize,
-      }));
-      return jsonResponse(
-        {
-          error: "source_over_cap",
-          detail: "source_over_cap",
-          status: mapEventCoverVideoStatus(failedJob ?? job),
-        },
-        413,
-      );
-    }
-    const bunnySourceUpload: Record<string, unknown> = {
-      acknowledged_at: new Date().toISOString(),
-      storageSize,
-      length: typeof video.video.length === "number" ? video.video.length : null,
-      bunny_status: video.video.status,
-    };
-    const { data: bunnyUpdatedJob, error: bunnyUpdateError } = await supabase
-      .from("event_cover_video_jobs")
-      .update({
-        provider_payload: mergeProviderPayload(job.provider_payload, bunnySourceUpload),
-        status: "source_uploaded",
-      })
-      .eq("id", job.id)
-      .eq("status", "source_uploading")
-      .select("*")
-      .maybeSingle();
-    if (bunnyUpdateError || !bunnyUpdatedJob) {
-      console.error("[event-cover-video-source-uploaded]", JSON.stringify({
-        code: bunnyUpdateError?.code,
-        jobId: job.id,
-        message: bunnyUpdateError?.message,
-        requestId,
-        stage: "bunny_source_uploaded_update_failed",
-      }));
-      return jsonResponse(
-        { error: "internal_error", detail: "source_uploaded_update_failed" },
-        500,
-      );
-    }
+  // #966 — Bunny is the sole cover-video provider: IGNORE the client-declared
+  // providerUpload payload; read the truth from Bunny (real bytes, real status).
+  // The Vector-C source byte cap is enforced HERE against Bunny's storageSize,
+  // never the client number. (The Cloudinary ack tail was removed as dead
+  // residue post-META-1270.)
+  const guid = safeString(job.source_asset_id);
+  const video = await deps.bunnyGetVideo(guid ?? "");
+  if (!video.ok) {
+    // The video may not be registered yet — keep the job at source_uploading
+    // and return its mapped status so the client re-acks / polls.
     console.log("[event-cover-video-source-uploaded]", JSON.stringify({
       jobId: job.id,
+      reason: video.reason,
       requestId,
-      stage: "bunny_source_uploaded_acknowledged",
-      status: bunnyUpdatedJob.status,
+      stage: "bunny_get_pending",
     }));
-    return jsonResponse(mapEventCoverVideoStatus(bunnyUpdatedJob));
+    return jsonResponse(mapEventCoverVideoStatus(job));
   }
-
-  const sourceUpload = sanitizeProviderUpload(body.providerUploadResponse);
-  const sourcePublicId = safeString(body.providerUploadResponse?.public_id);
-  const sourceAssetId = safeString(body.providerUploadResponse?.asset_id);
-  const { data: updatedJob, error: updateError } = await supabase
+  const storageSize =
+    typeof video.video.storageSize === "number" ? video.video.storageSize : 0;
+  if (storageSize > MAX_SOURCE_VIDEO_BYTES) {
+    await deps.destroyCoverVideoAsset(job);
+    const { data: failedJob } = await supabase
+      .from("event_cover_video_jobs")
+      .update({
+        status: "failed",
+        completed_at: new Date().toISOString(),
+        failure_code: "source_over_cap",
+        failure_message: "Video source exceeded the maximum allowed size.",
+      })
+      .eq("id", job.id)
+      .select("*")
+      .maybeSingle();
+    console.warn("[event-cover-video-source-uploaded]", JSON.stringify({
+      jobId: job.id,
+      maxSourceBytes: MAX_SOURCE_VIDEO_BYTES,
+      requestId,
+      stage: "bunny_source_over_cap",
+      storageSize,
+    }));
+    return jsonResponse(
+      {
+        error: "source_over_cap",
+        detail: "source_over_cap",
+        status: mapEventCoverVideoStatus(failedJob ?? job),
+      },
+      413,
+    );
+  }
+  const bunnySourceUpload: Record<string, unknown> = {
+    acknowledged_at: new Date().toISOString(),
+    storageSize,
+    length: typeof video.video.length === "number" ? video.video.length : null,
+    bunny_status: video.video.status,
+  };
+  const { data: bunnyUpdatedJob, error: bunnyUpdateError } = await supabase
     .from("event_cover_video_jobs")
     .update({
-      provider_payload: mergeProviderPayload(job.provider_payload, sourceUpload),
-      ...(sourceAssetId !== null ? { source_asset_id: sourceAssetId } : {}),
-      ...(sourcePublicId !== null ? { source_public_id: sourcePublicId } : {}),
+      provider_payload: mergeProviderPayload(job.provider_payload, bunnySourceUpload),
       status: "source_uploaded",
     })
     .eq("id", job.id)
     .eq("status", "source_uploading")
     .select("*")
     .maybeSingle();
-  if (updateError || !updatedJob) {
+  if (bunnyUpdateError || !bunnyUpdatedJob) {
     console.error("[event-cover-video-source-uploaded]", JSON.stringify({
-      code: updateError?.code,
-      details: updateError?.details,
-      hint: updateError?.hint,
+      code: bunnyUpdateError?.code,
       jobId: job.id,
-      message: updateError?.message,
+      message: bunnyUpdateError?.message,
       requestId,
-      stage: "source_uploaded_update_failed",
+      stage: "bunny_source_uploaded_update_failed",
     }));
     return jsonResponse(
       { error: "internal_error", detail: "source_uploaded_update_failed" },
       500,
     );
   }
-
   console.log("[event-cover-video-source-uploaded]", JSON.stringify({
     jobId: job.id,
     requestId,
-    stage: "source_uploaded_acknowledged",
-    status: updatedJob.status,
+    stage: "bunny_source_uploaded_acknowledged",
+    status: bunnyUpdatedJob.status,
   }));
-  return jsonResponse(mapEventCoverVideoStatus(updatedJob));
+  return jsonResponse(mapEventCoverVideoStatus(bunnyUpdatedJob));
 };
 
 if (import.meta.main) {

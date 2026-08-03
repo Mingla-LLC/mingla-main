@@ -41,6 +41,7 @@
  *    install target.
  */
 
+// orch-strict-grep-allow safearea-on-fullscreen-routes — all render paths are center-anchored cards (justifyContent:center); no top-anchored chrome
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,

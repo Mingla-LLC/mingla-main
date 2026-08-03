@@ -13,6 +13,7 @@ const SURFACES = [
   "mingla-business/app/accept-brand-invitation.tsx",
   "mingla-business/app/accept-brand-invitation/success.tsx",
   "mingla-business/src/components/invite/BusinessAppDownloadCta.tsx",
+  "mingla-business/src/components/brand/BrandBankConnectBody.web.tsx",
   "mingla-business/src/components/brand/BrandOnboardView.tsx",
   "mingla-business/src/components/brand/BrandPaymentsView.tsx",
   "mingla-business/src/components/brand/BrandStripeDetachConfirmSheet.tsx",

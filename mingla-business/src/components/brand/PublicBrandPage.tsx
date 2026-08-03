@@ -14,6 +14,7 @@ import {
   type PublicMenuGroup,
 } from "@mingla/brand-rendering";
 import { resolveTheme, type ResolvedTheme } from "@mingla/offering-rendering";
+import { captureWeb } from "../../analytics/webAnalytics";
 
 import {
   brandOgImageUrl,
@@ -46,10 +47,12 @@ interface PublicBrandPageProps {
   upcomingHasMore?: boolean;
   venue?: PublicVenueDetail | null;
   /**
-   * META-ORCH-1255(C) — verified venues for the "Locations" section (SC-12),
-   * mapped from venue_public_view by the route. Absent / [] → section omitted.
+   * Issue #1365 — verified venues for the Reservations tab, mapped from the
+   * anon-safe venue_public_view by the route.
    */
   venues?: PublicBrandVenueSummary[];
+  venuesLoadState?: "loading" | "ready" | "error";
+  onRetryVenues?: () => void;
   /** ORCH-1186-C — DISPLAY-ONLY menu groups (shared shape; passed through). */
   menu?: PublicMenuGroup[];
   resolvedTheme?: ResolvedTheme;
@@ -168,6 +171,8 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   upcomingHasMore = false,
   venue = null,
   venues = [],
+  venuesLoadState = "ready",
+  onRetryVenues,
   menu = [],
   resolvedTheme,
 }) => {
@@ -182,7 +187,10 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
   useThemeFont(theme.fontFamilyValue);
   const sharedBrand = useMemo(() => mapBrand(brand), [brand]);
   const sharedEvents = useMemo(() => events.map(mapEvent), [events]);
-  const sharedPastEvents = useMemo(() => pastEvents.map(mapEvent), [pastEvents]);
+  const sharedPastEvents = useMemo(
+    () => pastEvents.map(mapEvent),
+    [pastEvents],
+  );
   const sharedTrips = useMemo(() => trips.map(mapTrip), [trips]);
   const sharedPastTrips = useMemo(() => pastTrips.map(mapTrip), [pastTrips]);
   const sharedExperiences = useMemo(
@@ -232,14 +240,25 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
     [router],
   );
 
-  // META-ORCH-1255(C) — Locations card tap → the per-venue public page.
+  // Issue #1365 — Reservations card tap → the per-venue public page.
   const handleOpenVenue = useCallback(
     (item: PublicBrandVenueSummary): void => {
+      captureWeb("brand_venue_selected", {
+        surface: Platform.OS === "web" ? "buyer_web" : "business_preview",
+        brand_id: brand.id,
+        venue_id: item.id,
+        reservable_state: item.reservationState ?? "error",
+        source_tab: "reservations",
+      });
+      const path = venuePublicPath({
+        brandSlug: brand.slug,
+        venueSlug: item.slug,
+      });
       router.push(
-        venuePublicPath({ brandSlug: brand.slug, venueSlug: item.slug }) as never,
+        `${path}${item.reservationState === "available" ? "?tab=reservations" : ""}` as never,
       );
     },
-    [brand.slug, router],
+    [brand.id, brand.slug, router],
   );
 
   const handleOpenUpcoming = useCallback(
@@ -287,7 +306,9 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
           <meta property="og:title" content={pageTitle} />
           <meta
             property="og:description"
-            content={brand.bio?.slice(0, 200) ?? brand.tagline ?? metaDescription}
+            content={
+              brand.bio?.slice(0, 200) ?? brand.tagline ?? metaDescription
+            }
           />
           <meta property="og:url" content={canonicalUrl(brand)} />
           <meta
@@ -302,7 +323,9 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
           <meta name="twitter:title" content={brand.displayName} />
           <meta
             name="twitter:description"
-            content={brand.bio?.slice(0, 200) ?? brand.tagline ?? brand.displayName}
+            content={
+              brand.bio?.slice(0, 200) ?? brand.tagline ?? brand.displayName
+            }
           />
           <meta
             name="twitter:image"
@@ -325,6 +348,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         upcomingHasMore={upcomingHasMore}
         menu={menu}
         venues={venues}
+        venuesLoadState={venuesLoadState}
         venue={
           venue === null
             ? null
@@ -336,6 +360,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
         }
         theme={theme}
         chromeTopOffset={insets.top + 8}
+        contentBottomInset={insets.bottom + 24}
         callbacks={{
           onClose: handleClose,
           onShare: () => setShareModalVisible(true),
@@ -344,6 +369,14 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
           onOpenExperience: handleOpenExperience,
           onOpenUpcoming: handleOpenUpcoming,
           onOpenVenue: handleOpenVenue,
+          onRetryVenues,
+          onReservationsTabViewed: () => {
+            captureWeb("brand_reservations_tab_viewed", {
+              surface: Platform.OS === "web" ? "buyer_web" : "business_preview",
+              brand_id: brand.id,
+              venue_count: venues.length,
+            });
+          },
         }}
       />
       <ShareModal

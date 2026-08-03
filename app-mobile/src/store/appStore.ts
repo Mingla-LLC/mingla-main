@@ -195,6 +195,7 @@ interface AppState {
   // Spec §3-§4 (SPEC_ORCH-0679_WAVE2_8_PATH_B_TAB_MOUNT_UNMOUNT.md).
   tabScroll: {
     discover_main: number;
+    discover_stays: number;
     connections_friends: number;
     connections_add: number;
     connections_blocked: number;
@@ -209,6 +210,19 @@ interface AppState {
   // `segment` is a DiscoverSegmentSlug ("music" | "sports" in M1). Loose strings here
   // to avoid circular import — typed narrowing happens at the DiscoverScreen consumer.
   discoverFilters: { date: string; segment: string; genre: string } | null;
+  // Issue #1423 — session-only Stay discovery state. It is deliberately absent
+  // from partialize, like every other tab registry value.
+  discoverStayFilters: {
+    destinationQuery: string | null;
+    checkIn: string | null;
+    checkOut: string | null;
+    adults: number;
+    children: number;
+    rooms: number;
+    propertyKinds: string[];
+    amenities: string[];
+    confirmationMode: 'request' | 'instant' | null;
+  } | null;
   // Saved filters
   savedFilters: {
     searchQuery: string;
@@ -221,8 +235,8 @@ interface AppState {
   connectionsActivePanel: 'friends' | 'add' | 'blocked' | null;
   connectionsFriendsModalTab: 'friend-list' | 'requests' | 'add' | null;
   likesActiveTab: 'saved' | 'calendar';
-  // ORCH-1016 — Discover Events/Trips pill selection, preserved across tab unmount.
-  discoverActiveTab: 'events' | 'trips';
+  // ORCH-1016 / #1423 — Discover capsule selection across tab unmount.
+  discoverActiveTab: 'events' | 'trips' | 'stays';
 
   // Actions
   setAuth: (user: User | null) => void;
@@ -251,11 +265,12 @@ interface AppState {
   // ─── ORCH-0679 Wave 2.8 Path B — Tab registry setters ──────────────────────
   setTabScroll: (key: keyof AppState['tabScroll'], y: number) => void;
   setDiscoverFilters: (filters: AppState['discoverFilters']) => void;
+  setDiscoverStayFilters: (filters: AppState['discoverStayFilters']) => void;
   setSavedFilters: (filters: AppState['savedFilters']) => void;
   setConnectionsActivePanel: (panel: AppState['connectionsActivePanel']) => void;
   setConnectionsFriendsModalTab: (tab: AppState['connectionsFriendsModalTab']) => void;
   setLikesActiveTab: (tab: 'saved' | 'calendar') => void;
-  setDiscoverActiveTab: (tab: 'events' | 'trips') => void;
+  setDiscoverActiveTab: (tab: 'events' | 'trips' | 'stays') => void;
 
   // Utilities
   clearUserData: () => void;
@@ -289,6 +304,7 @@ export const useAppStore = create<AppState>()(
       // ─── ORCH-0679 Wave 2.8 Path B — Tab registry initial state ──────────
       tabScroll: {
         discover_main: 0,
+        discover_stays: 0,
         connections_friends: 0,
         connections_add: 0,
         connections_blocked: 0,
@@ -298,6 +314,7 @@ export const useAppStore = create<AppState>()(
         profile: 0,
       },
       discoverFilters: null,
+      discoverStayFilters: null,
       savedFilters: null,
       connectionsActivePanel: null,
       connectionsFriendsModalTab: null,
@@ -380,6 +397,7 @@ export const useAppStore = create<AppState>()(
           };
         }),
       setDiscoverFilters: (discoverFilters) => set({ discoverFilters }),
+      setDiscoverStayFilters: (discoverStayFilters) => set({ discoverStayFilters }),
       setSavedFilters: (savedFilters) => set({ savedFilters }),
       setConnectionsActivePanel: (connectionsActivePanel) => set({ connectionsActivePanel }),
       setConnectionsFriendsModalTab: (connectionsFriendsModalTab) => set({ connectionsFriendsModalTab }),
@@ -421,6 +439,7 @@ export const useAppStore = create<AppState>()(
           // ORCH-0679 Wave 2.8: clear tab registry on logout (Constitution #6)
           tabScroll: {
             discover_main: 0,
+            discover_stays: 0,
             connections_friends: 0,
             connections_add: 0,
             connections_blocked: 0,
@@ -430,6 +449,7 @@ export const useAppStore = create<AppState>()(
             profile: 0,
           },
           discoverFilters: null,
+          discoverStayFilters: null,
           savedFilters: null,
           connectionsActivePanel: null,
           connectionsFriendsModalTab: null,

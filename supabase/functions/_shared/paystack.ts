@@ -476,6 +476,66 @@ export async function paystackFetchTransfer(
 }
 
 /**
+ * GET /transfer/verify/{reference} — resolve a transfer when only the reference
+ * is known (the initiate response was lost). Issue #1177 / #1030 fix: the
+ * organiser payout sweep reconciles by transfer-code first, then by reference,
+ * BEFORE any re-initiate, so a dropped initiate response can never double-pay or
+ * loop. Paystack returns the transfer object incl. `status`, `transfer_code`,
+ * and fee fields. https://paystack.com/docs/api/transfer/#verify
+ */
+export async function paystackVerifyTransferByReference(
+  reference: string,
+): Promise<Record<string, unknown>> {
+  const secret = resolvePaystackSecretKey();
+  const _t0 = Date.now();
+  const res = await fetch(
+    `${PAYSTACK_BASE_URL}/transfer/verify/${encodeURIComponent(reference)}`,
+    { headers: { Authorization: `Bearer ${secret}` } },
+  );
+  void recordApiCall("paystack", res.ok, Date.now() - _t0, res.status); // ORCH-1201 Layer-C
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || json?.status !== true) {
+    throw new PaystackApiError(
+      `Paystack verify-transfer-by-reference failed (${res.status}): ${json?.message ?? "unknown error"}`,
+      res.status,
+    );
+  }
+  return json.data as Record<string, unknown>;
+}
+
+export interface PaystackBalanceRow {
+  currency: string;
+  balance: number; // subunits (kobo for NGN)
+}
+
+/**
+ * GET /balance — the integration's per-currency available balance. Issue #1177:
+ * used ONLY as a ceiling before organiser Transfers (never to compute a release
+ * amount — I-1013-LEDGER-ONLY-RELEASE). `data` is a per-currency ARRAY; callers
+ * select the NGN row. https://paystack.com/docs/api/transfer/#balance
+ */
+export async function paystackGetBalance(): Promise<PaystackBalanceRow[]> {
+  const secret = resolvePaystackSecretKey();
+  const _t0 = Date.now();
+  const res = await fetch(`${PAYSTACK_BASE_URL}/balance`, {
+    headers: { Authorization: `Bearer ${secret}` },
+  });
+  void recordApiCall("paystack", res.ok, Date.now() - _t0, res.status); // ORCH-1201 Layer-C
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || json?.status !== true) {
+    throw new PaystackApiError(
+      `Paystack balance failed (${res.status}): ${json?.message ?? "unknown error"}`,
+      res.status,
+    );
+  }
+  const rows = Array.isArray(json.data) ? json.data : [];
+  return rows.map((row: Record<string, unknown>) => ({
+    currency: String(row.currency ?? "").toUpperCase(),
+    balance: Number(row.balance ?? 0),
+  }));
+}
+
+/**
  * Verify the x-paystack-signature header.
  * HMAC-SHA512 of the RAW request body using the SECRET key, hex-encoded.
  * https://paystack.com/docs/payments/webhooks/

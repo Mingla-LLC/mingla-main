@@ -40,6 +40,7 @@ import { sendMetaConversion } from "./metaCapi.ts";
 import { sendTikTokConversion } from "./tiktokEvents.ts";
 import { sendSnapConversion } from "./snapCapi.ts";
 import { sendRedditConversion } from "./redditCapi.ts";
+import { sendGoogleConversion } from "./googleConversionUpload.ts";
 
 // ── Shared contract types (imported by the 4 senders, type-only — no cycle) ───
 
@@ -47,7 +48,7 @@ export type SendStatus = "sent" | "failed" | "skipped";
 export type Lane = "consumer" | "business";
 export type Surface = "web" | "ios" | "android";
 export type EventType = "purchase" | "reservation" | "lead" | "view";
-export type Channel = "meta" | "tiktok" | "snap" | "reddit";
+export type Channel = "meta" | "tiktok" | "snap" | "reddit" | "google";
 
 /** The normalized conversion the senders POST. PII is already hashed (SC-9). */
 export interface ConversionSendInput {
@@ -71,6 +72,18 @@ export interface SenderConnection {
   pixelId: string | null;
   tokenEnvVar: string | null; // env-var NAME — never a value
   lane?: Lane | null;
+  /**
+   * ISSUE-1267 (google lane only): the conversion-action resource name from
+   * ad_connections.extra.conversion_action_resource. Config, NOT a secret. The 4
+   * CAPI senders ignore it.
+   */
+  conversionActionResource?: string | null;
+  /**
+   * ISSUE-1267 (google lane only): consent-mode signals (config-driven). Present
+   * only when configured on the connection; absent → Google treats it as
+   * UNSPECIFIED. The 4 CAPI senders ignore it.
+   */
+  consent?: { adUserData?: string; adPersonalization?: string } | null;
 }
 
 export interface SenderDeps {
@@ -93,11 +106,20 @@ export interface FireAdConversionInput {
   orderId?: string | null;
   /** Venue reservation conversion — the reservation id (the dedup event_id). */
   reservationId?: string | null;
+  /** Stay reservation group conversion — the exact multi-room/place group. */
+  stayGroupId?: string | null;
   surface?: Surface; // default 'web'
   lane?: Lane; // buyer conversions are consumer-lane by default
-  eventType?: EventType; // default 'purchase' (order) / 'reservation' (venue)
+  eventType?: EventType; // default 'purchase' (order); reservations auto-tier (below)
   eventSourceUrl?: string | null;
   testEventCode?: string | null;
+  /**
+   * ISSUE-865 PR1 WP-2 — the first-party ad click_id, passed inline by a caller
+   * that already holds it (the FREE-RSVP reservation-create path has no checkout
+   * session to read from). Takes precedence over the session-join lookup. NULL /
+   * absent for non-ad traffic.
+   */
+  clickId?: string | null;
 }
 
 export interface FireAdConversionResult {
@@ -127,6 +149,9 @@ const DEFAULT_SENDERS: Record<Channel, SenderFn> = {
   tiktok: sendTikTokConversion,
   snap: sendSnapConversion,
   reddit: sendRedditConversion,
+  // ISSUE-1267 — the 5th lane: a click-conversion UPLOAD, not an event POST, but
+  // it rides this same fan-out with the same fail-open sender contract.
+  google: sendGoogleConversion,
 };
 
 const STATUS_COL: Record<Channel, string> = {
@@ -134,14 +159,23 @@ const STATUS_COL: Record<Channel, string> = {
   tiktok: "tiktok_events_status",
   snap: "snap_capi_status",
   reddit: "reddit_capi_status",
+  google: "google_ads_status", // ISSUE-1267
 };
 
 /** Per-channel canonical event name — MUST match the browser pixel's event. */
-const CHANNEL_EVENT_NAME: Record<Channel, { purchase: string; reservation: string }> = {
+const CHANNEL_EVENT_NAME: Record<
+  Channel,
+  { purchase: string; reservation: string }
+> = {
   meta: { purchase: "Purchase", reservation: "Schedule" },
   tiktok: { purchase: "CompletePayment", reservation: "CompleteRegistration" },
   snap: { purchase: "PURCHASE", reservation: "SAVE" },
   reddit: { purchase: "Purchase", reservation: "Lead" },
+  // ISSUE-1267 — Google keys on the conversion-action RESOURCE, not an event-name
+  // string, so this name is cosmetic for the google sender (it ignores eventName);
+  // kept for map-shape parity so the fan-out's CHANNEL_EVENT_NAME[channel] lookup
+  // never dereferences undefined.
+  google: { purchase: "Purchase", reservation: "Schedule" },
 };
 
 // ── Hashing (SC-9) — byte-identical to the WP-A attribution-capture idiom ─────
@@ -191,6 +225,39 @@ export async function persistAttributionClickId(
   }
 }
 
+/**
+ * ISSUE-865 PR1 WP-2 — the reservation twin of persistAttributionClickId. Writes
+ * the ad click_id onto a reservation_checkout_sessions row, DECOUPLED from the
+ * fatal session INSERT (venue-reservation-create must never 409 a reservation on
+ * a missing `attribution_click_id` column — the ticket P2-1 lesson). A missing
+ * column / any write failure is SWALLOWED; the reservation completes normally,
+ * attribution is simply skipped. NEVER throws. Returns void.
+ */
+export async function persistReservationAttributionClickId(
+  supabase: SupabaseClient,
+  reservationSessionId: string,
+  clickId: string | null,
+): Promise<void> {
+  if (clickId === null || clickId.length === 0) return; // non-ad traffic → no-op
+  try {
+    const { error } = await supabase
+      .from("reservation_checkout_sessions")
+      .update({ attribution_click_id: clickId })
+      .eq("id", reservationSessionId);
+    if (error) {
+      console.warn(
+        "[adConversionFire] reservation attribution_click_id persist skipped (non-fatal):",
+        error.message,
+      );
+    }
+  } catch (err) {
+    console.warn(
+      "[adConversionFire] reservation attribution_click_id persist threw (non-fatal):",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+}
+
 // ── Internal resolution shapes ────────────────────────────────────────────────
 
 interface ConversionContext {
@@ -203,6 +270,7 @@ interface ConversionContext {
   brandId: string | null;
   minglaEventId: string | null;
   orderId: string | null;
+  stayGroupId: string | null;
   clickId: string | null;
   eventSourceUrl: string | null;
 }
@@ -229,7 +297,9 @@ async function resolveOrderContext(
 ): Promise<ConversionContext | null> {
   const { data: order, error } = await supabase
     .from("orders")
-    .select("id, event_id, total_cents, currency, buyer_email, buyer_phone, payment_status")
+    .select(
+      "id, event_id, total_cents, currency, buyer_email, buyer_phone, payment_status",
+    )
     .eq("id", orderId)
     .maybeSingle();
   if (error || !order) return null;
@@ -255,7 +325,9 @@ async function resolveOrderContext(
     .eq("order_id", orderId)
     .not("attribution_click_id", "is", null)
     .maybeSingle();
-  clickId = (sess as { attribution_click_id?: string } | null)?.attribution_click_id ?? null;
+  clickId =
+    (sess as { attribution_click_id?: string } | null)?.attribution_click_id ??
+      null;
 
   const email = (row.buyer_email as string | null) ?? null;
   const phone = (row.buyer_phone as string | null) ?? null;
@@ -263,13 +335,16 @@ async function resolveOrderContext(
   return {
     eventId: orderId,
     eventType: input.eventType ?? "purchase",
-    valueCents: typeof row.total_cents === "number" ? (row.total_cents as number) : null,
+    valueCents: typeof row.total_cents === "number"
+      ? (row.total_cents as number)
+      : null,
     currency: (row.currency as string | null) ?? null,
     hashedEmail: email ? await sha256Hex(normEmail(email)) : null,
     hashedPhone: phone ? await sha256Hex(normPhone(phone)) : null,
     brandId,
     minglaEventId,
     orderId,
+    stayGroupId: null,
     clickId,
     eventSourceUrl: input.eventSourceUrl ?? null,
   };
@@ -282,24 +357,121 @@ async function resolveReservationContext(
 ): Promise<ConversionContext | null> {
   const { data: resv, error } = await supabase
     .from("reservations")
-    .select("id, brand_id, fee_cents, fee_currency, guest_email, guest_phone_e164, payment_status")
+    .select(
+      "id, brand_id, fee_cents, fee_currency, guest_email, guest_phone_e164, payment_status",
+    )
     .eq("id", reservationId)
     .maybeSingle();
   if (error || !resv) return null;
   const row = resv as Record<string, unknown>;
   const email = (row.guest_email as string | null) ?? null;
   const phone = (row.guest_phone_e164 as string | null) ?? null;
+
+  // ISSUE-865 PR1 WP-2 TWO-TIER (founder-locked): a PAID venue reservation is a
+  // value'd Purchase (carries fee amount+currency); a free RSVP is a lead-type
+  // event (Meta 'Schedule' / TikTok 'CompleteRegistration' / …) at £0. An
+  // EXPLICIT input.eventType always wins (back-compat: an adversarial caller can
+  // force the reservation/lead branch even on a paid row); otherwise the tier is
+  // derived from payment_status + fee.
+  const feeCents = typeof row.fee_cents === "number"
+    ? (row.fee_cents as number)
+    : null;
+  const paymentStatus = (row.payment_status as string | null) ?? null;
+  const isPaidReservation = paymentStatus === "paid" && (feeCents ?? 0) > 0;
+  const eventType: EventType = input.eventType ??
+    (isPaidReservation ? "purchase" : "reservation");
+  // A lead-type conversion carries £0 (SUM in the rollup counts only paid value);
+  // only the value'd Purchase carries the fee amount.
+  const valueCents = eventType === "purchase" ? feeCents : 0;
+
+  // ISSUE-865 PR1 WP-2 — resolve the threaded click_id: the caller's inline
+  // override (the free path holds it) first, else the reservation checkout
+  // session (the fee path threaded it at create). Best-effort, fail-open.
+  let clickId: string | null =
+    typeof input.clickId === "string" && input.clickId ? input.clickId : null;
+  if (!clickId) {
+    try {
+      const { data: sess } = await supabase
+        .from("reservation_checkout_sessions")
+        .select("attribution_click_id")
+        .eq("reservation_id", reservationId)
+        .not("attribution_click_id", "is", null)
+        .maybeSingle();
+      clickId = (sess as { attribution_click_id?: string } | null)
+        ?.attribution_click_id ?? null;
+    } catch {
+      clickId = null;
+    }
+  }
+
   return {
     eventId: reservationId,
-    eventType: input.eventType ?? "reservation",
-    valueCents: typeof row.fee_cents === "number" ? (row.fee_cents as number) : null,
+    eventType,
+    valueCents,
     currency: (row.fee_currency as string | null) ?? null,
     hashedEmail: email ? await sha256Hex(normEmail(email)) : null,
     hashedPhone: phone ? await sha256Hex(normPhone(phone)) : null,
     brandId: (row.brand_id as string | null) ?? null,
     minglaEventId: null,
     orderId: null,
-    clickId: null,
+    stayGroupId: null,
+    clickId,
+    eventSourceUrl: input.eventSourceUrl ?? null,
+  };
+}
+
+async function resolveStayContext(
+  supabase: SupabaseClient,
+  stayGroupId: string,
+  input: FireAdConversionInput,
+): Promise<ConversionContext | null> {
+  const { data: group, error } = await supabase
+    .from("stay_reservation_groups")
+    .select(
+      "id,brand_id,venue_id,currency_code,total_minor,guest_snapshot,attribution_click_id,state",
+    )
+    .eq("id", stayGroupId)
+    .maybeSingle();
+  if (error || !group) return null;
+  const row = group as Record<string, unknown>;
+  const { data: refunds } = await supabase
+    .from("stay_refunds")
+    .select("amount_minor")
+    .eq("group_id", stayGroupId)
+    .eq("state", "succeeded");
+  const refunded = Array.isArray(refunds)
+    ? refunds.reduce((sum, refund) => {
+      const amount = Number(
+        (refund as { amount_minor?: unknown }).amount_minor ?? 0,
+      );
+      return sum + (Number.isSafeInteger(amount) && amount > 0 ? amount : 0);
+    }, 0)
+    : 0;
+  const total = Number(row.total_minor ?? 0);
+  if (!Number.isSafeInteger(total) || total < 0) return null;
+  const guest = row.guest_snapshot && typeof row.guest_snapshot === "object"
+    ? row.guest_snapshot as Record<string, unknown>
+    : {};
+  const email = typeof guest.email === "string" ? guest.email : null;
+  const phone = typeof guest.phone === "string"
+    ? guest.phone
+    : typeof guest.phoneE164 === "string"
+    ? guest.phoneE164
+    : null;
+  return {
+    eventId: stayGroupId,
+    eventType: input.eventType ?? "purchase",
+    valueCents: Math.max(0, total - refunded),
+    currency: typeof row.currency_code === "string" ? row.currency_code : null,
+    hashedEmail: email ? await sha256Hex(normEmail(email)) : null,
+    hashedPhone: phone ? await sha256Hex(normPhone(phone)) : null,
+    brandId: typeof row.brand_id === "string" ? row.brand_id : null,
+    minglaEventId: null,
+    orderId: null,
+    stayGroupId,
+    clickId: typeof row.attribution_click_id === "string"
+      ? row.attribution_click_id
+      : null,
     eventSourceUrl: input.eventSourceUrl ?? null,
   };
 }
@@ -319,14 +491,18 @@ async function resolveTouch(
   if (!clickId) return empty;
   const { data: touch } = await supabase
     .from("ad_attribution_touches")
-    .select("id, connection_id, campaign_id, network, external_click_id, created_at")
+    .select(
+      "id, connection_id, campaign_id, network, external_click_id, created_at",
+    )
     .eq("click_id", clickId)
     .maybeSingle();
   if (!touch) return empty;
   const t = touch as Record<string, unknown>;
   const network = (t.network as string | null) ?? null;
   const externalClickId = (t.external_click_id as string | null) ?? null;
-  const createdAt = t.created_at ? Date.parse(t.created_at as string) : Date.now();
+  const createdAt = t.created_at
+    ? Date.parse(t.created_at as string)
+    : Date.now();
   return {
     touchId: (t.id as string | null) ?? null,
     connectionId: (t.connection_id as string | null) ?? null,
@@ -334,7 +510,12 @@ async function resolveTouch(
     network,
     externalClickId,
     // fbc is only meaningful for a Meta click id.
-    fbc: network === "meta" ? reconstructFbc(externalClickId, isNaN(createdAt) ? Date.now() : createdAt) : null,
+    fbc: network === "meta"
+      ? reconstructFbc(
+        externalClickId,
+        isNaN(createdAt) ? Date.now() : createdAt,
+      )
+      : null,
   };
 }
 
@@ -351,15 +532,20 @@ async function resolveSenderConnection(
     .eq("platform", dbPlatform)
     .eq("lane", lane)
     .maybeSingle();
-  const extra = ((data as { extra?: Record<string, unknown> } | null)?.extra ?? {}) as Record<string, unknown>;
-  const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
+  const extra = ((data as { extra?: Record<string, unknown> } | null)?.extra ??
+    {}) as Record<string, unknown>;
+  const str = (
+    v: unknown,
+  ): string | null => (typeof v === "string" && v ? v : null);
 
   switch (platform) {
     case "meta":
       return {
         pixelId: str(extra.dataset_id) ?? str(extra.pixel_id),
         tokenEnvVar: str(extra.capi_env_var) ??
-          (lane === "business" ? "META_MINGLABIZ_CAPI_ACCESS_TOKEN" : "META_CAPI_ACCESS_TOKEN"),
+          (lane === "business"
+            ? "META_MINGLABIZ_CAPI_ACCESS_TOKEN"
+            : "META_CAPI_ACCESS_TOKEN"),
         lane,
       };
     case "tiktok":
@@ -372,7 +558,9 @@ async function resolveSenderConnection(
       return {
         pixelId: str(extra.pixel_id),
         tokenEnvVar: str(extra.capi_env_var) ??
-          (lane === "business" ? "SNAPCHAT_MINGLABIZ_CAPI_TOKEN" : "SNAPCHAT_CAPI_TOKEN"),
+          (lane === "business"
+            ? "SNAPCHAT_MINGLABIZ_CAPI_TOKEN"
+            : "SNAPCHAT_CAPI_TOKEN"),
         lane,
       };
     case "reddit":
@@ -383,6 +571,38 @@ async function resolveSenderConnection(
         tokenEnvVar: str(extra.capi_env_var) ?? "REDDIT_ADS_CAPI_TOKEN",
         lane,
       };
+    case "google": {
+      // ISSUE-1267 — Google auth is OAuth (resolveGoogleClient), NOT an env-var
+      // token, and it keys on a conversion-action RESOURCE, not a pixel id. The
+      // resource lives in extra.conversion_action_resource (config, not a secret);
+      // until the admin one-shot writes it, the sender soft-skips 'pending_config'.
+      const g = (extra.google && typeof extra.google === "object")
+        ? extra.google as Record<string, unknown>
+        : {};
+      const consentRaw = ((extra.consent ?? g.consent) ?? null) as
+        | Record<string, unknown>
+        | null;
+      const adUserData = consentRaw
+        ? str(consentRaw.ad_user_data) ?? str(consentRaw.adUserData)
+        : null;
+      const adPersonalization = consentRaw
+        ? str(consentRaw.ad_personalization) ??
+          str(consentRaw.adPersonalization)
+        : null;
+      return {
+        pixelId: null,
+        tokenEnvVar: null,
+        lane,
+        conversionActionResource: str(extra.conversion_action_resource) ??
+          str(g.conversion_action_resource),
+        consent: (adUserData || adPersonalization)
+          ? {
+            adUserData: adUserData ?? undefined,
+            adPersonalization: adPersonalization ?? undefined,
+          }
+          : null,
+      };
+    }
   }
 }
 
@@ -404,31 +624,70 @@ export async function fireAdConversion(
   };
 
   try {
-    const key = (input.orderId ?? input.reservationId ?? "").trim();
+    const key =
+      (input.orderId ?? input.reservationId ?? input.stayGroupId ?? "").trim();
     if (!key) return { ok: false, reason: "no_conversion_key" };
 
     // 1. Resolve the conversion context (order OR reservation).
     const ctx = input.orderId
       ? await resolveOrderContext(supabase, input.orderId, input)
-      : await resolveReservationContext(supabase, input.reservationId as string, input);
+      : input.reservationId
+      ? await resolveReservationContext(
+        supabase,
+        input.reservationId,
+        input,
+      )
+      : await resolveStayContext(supabase, input.stayGroupId as string, input);
     if (!ctx) return { ok: false, eventId: key, reason: "context_unresolved" };
 
     // 2. Idempotency read: if the row exists and NO channel is still pending,
     //    a prior fire already sent — a re-delivered webhook re-sends nothing.
     const { data: existing } = await supabase
       .from("ad_conversions")
-      .select("event_id, meta_capi_status, tiktok_events_status, snap_capi_status, reddit_capi_status")
+      .select(
+        // ISSUE-1267 CRITICAL: google_ads_status MUST be projected here — the
+        // per-channel gate below reads it to decide whether Google still needs to
+        // fire. Omit it and Google appears perpetually 'pending' on every
+        // re-delivered webhook and re-fires the upload every time.
+        //
+        // ISSUE-855 / #865 UNDERCOUNT REPAIR: the attribution columns
+        // (brand_id, order_id, value_cents, currency, mingla_event_id) are ALSO
+        // projected so the post-upsert backfill (step 4b) can COALESCE-fill ONLY
+        // the columns the EARLY browser row left NULL — without ever clobbering an
+        // already-set value.
+        "event_id, brand_id, order_id, stay_group_id, value_cents, currency, mingla_event_id, meta_capi_status, tiktok_events_status, snap_capi_status, reddit_capi_status, google_ads_status",
+      )
       .eq("event_id", key)
       .maybeSingle();
-    const existingRow = existing as Record<string, string> | null;
+    const existingRow = existing as
+      | Record<string, string | number | null>
+      | null;
 
     const channelPending: Record<Channel, boolean> = {
       meta: (existingRow?.[STATUS_COL.meta] ?? "pending") === "pending",
       tiktok: (existingRow?.[STATUS_COL.tiktok] ?? "pending") === "pending",
       snap: (existingRow?.[STATUS_COL.snap] ?? "pending") === "pending",
       reddit: (existingRow?.[STATUS_COL.reddit] ?? "pending") === "pending",
+      // ISSUE-1267 — Google is the 5th lane, added AFTER the ad_conversions row
+      // shape was first set. Semantics, by construction:
+      //   • fresh conversion (no row)          → fires (existingRow is null → true)
+      //   • row with google_ads_status='pending' (post-migration DEFAULT, incl.
+      //     rows that predate the google lane and were back-filled to 'pending')
+      //                                         → fires exactly once, then settles
+      //   • row with google_ads_status='sent'|'failed'|'skipped'
+      //                                         → NOT re-fired (dedup)
+      //   • row missing the column entirely (undefined) → treated as SETTLED, so a
+      //     legacy projection can never spuriously re-fire Google. Post-migration
+      //     every real row carries the NOT-NULL DEFAULT 'pending' string, so a
+      //     genuinely-unfired lane is still caught — ONLY the literal 'pending'
+      //     string marks it pending. (Kept distinct from the ?? 'pending' default
+      //     above precisely so an absent value ≠ a fresh-pending value.)
+      google: existingRow ? existingRow[STATUS_COL.google] === "pending" : true,
     };
-    if (existingRow && !channelPending.meta && !channelPending.tiktok && !channelPending.snap && !channelPending.reddit) {
+    if (
+      existingRow && !channelPending.meta && !channelPending.tiktok &&
+      !channelPending.snap && !channelPending.reddit && !channelPending.google
+    ) {
       return { ok: true, eventId: key, deduped: true, results: [] };
     }
 
@@ -439,12 +698,14 @@ export async function fireAdConversion(
     const conversionRow = {
       event_id: key,
       event_type: ctx.eventType,
-      event_name: CHANNEL_EVENT_NAME.meta[ctx.eventType === "reservation" ? "reservation" : "purchase"],
+      event_name: CHANNEL_EVENT_NAME
+        .meta[ctx.eventType === "reservation" ? "reservation" : "purchase"],
       value_cents: ctx.valueCents,
       currency: ctx.currency,
       surface,
       lane,
       order_id: ctx.orderId,
+      stay_group_id: ctx.stayGroupId,
       brand_id: ctx.brandId,
       mingla_event_id: ctx.minglaEventId,
       click_id: ctx.clickId,
@@ -457,18 +718,83 @@ export async function fireAdConversion(
     };
     await supabase
       .from("ad_conversions")
-      .upsert(conversionRow, { onConflict: "event_id", ignoreDuplicates: true });
+      .upsert(conversionRow, {
+        onConflict: "event_id",
+        ignoreDuplicates: true,
+      });
+
+    // 4b. ISSUE-855 / #865 UNDERCOUNT REPAIR — COALESCE-backfill the attribution
+    //     columns the browser's EARLY row left NULL.
+    //
+    //     The browser writes an early, idempotent ad_conversions row at
+    //     checkout-success (webAnalytics.web.ts::postAttributionConversion →
+    //     attribution-capture::recordConversion) that ALWAYS carries brand_id /
+    //     order_id / mingla_event_id = NULL (the browser never holds them) and
+    //     only optionally sets value_cents/currency. Because the upsert above is
+    //     ON CONFLICT (event_id) DO NOTHING, when that browser row WINS the race
+    //     the authoritative values resolved here would otherwise stay NULL forever
+    //     — silently UNDERCOUNTING brand_conversion_rollup (WHERE brand_id =
+    //     p_brand_id) and the live "Customers Mingla drove" tile.
+    //
+    //     When a row ALREADY existed at the step-2 read, fill each of the five
+    //     attribution columns — but ONLY where the stored value IS NULL (per-column
+    //     COALESCE decided from the step-2 snapshot) and where THIS fire actually
+    //     resolved a value. This NEVER clobbers an already-set value (e.g. a
+    //     brand_id a prior server fire wrote) and NEVER nulls a value the browser
+    //     already set. The per-channel *_status columns are deliberately EXCLUDED,
+    //     so the redelivery-dedup gate is untouched and NO re-send is triggered
+    //     (a re-delivered webhook whose channels are all settled already returns
+    //     `deduped` at step 2 above and never reaches here). Concurrency-safe: the
+    //     only other writer of these columns for a given event_id is another server
+    //     fire for the SAME order/reservation, which resolves the identical values.
+    if (existingRow) {
+      const backfill: Record<string, unknown> = {};
+      if (existingRow.brand_id == null && ctx.brandId != null) {
+        backfill.brand_id = ctx.brandId;
+      }
+      if (existingRow.order_id == null && ctx.orderId != null) {
+        backfill.order_id = ctx.orderId;
+      }
+      if (existingRow.stay_group_id == null && ctx.stayGroupId != null) {
+        backfill.stay_group_id = ctx.stayGroupId;
+      }
+      if (existingRow.value_cents == null && ctx.valueCents != null) {
+        backfill.value_cents = ctx.valueCents;
+      }
+      if (existingRow.currency == null && ctx.currency != null) {
+        backfill.currency = ctx.currency;
+      }
+      if (existingRow.mingla_event_id == null && ctx.minglaEventId != null) {
+        backfill.mingla_event_id = ctx.minglaEventId;
+      }
+      if (Object.keys(backfill).length > 0) {
+        await supabase
+          .from("ad_conversions")
+          .update(backfill)
+          .eq("event_id", key);
+      }
+    }
 
     // 5. Fan out to each channel whose status is still pending (parallel,
     //    bounded, fail-open). Non-Meta channels never receive fbc/fbp.
     const eventTimeMs = now();
     const attempts: { channel: Channel; run: Promise<SenderResult> }[] = [];
-    for (const channel of ["meta", "tiktok", "snap", "reddit"] as Channel[]) {
+    for (
+      const channel of [
+        "meta",
+        "tiktok",
+        "snap",
+        "reddit",
+        "google",
+      ] as Channel[]
+    ) {
       if (!channelPending[channel]) continue;
       const conn = await resolveSenderConnection(supabase, channel, lane);
       const sendInput: ConversionSendInput = {
         eventId: key,
-        eventName: CHANNEL_EVENT_NAME[channel][ctx.eventType === "reservation" ? "reservation" : "purchase"],
+        eventName: CHANNEL_EVENT_NAME[channel][
+          ctx.eventType === "reservation" ? "reservation" : "purchase"
+        ],
         valueCents: ctx.valueCents,
         currency: ctx.currency,
         eventSourceUrl: ctx.eventSourceUrl,
@@ -476,31 +802,47 @@ export async function fireAdConversion(
         hashedPhone: ctx.hashedPhone,
         fbc: channel === "meta" ? touch.fbc : null,
         fbp: null, // fbp is a browser-only cookie; not reconstructable server-side
-        externalClickId: touch.network === channel ? touch.externalClickId : null,
+        externalClickId: touch.network === channel
+          ? touch.externalClickId
+          : null,
         clientIpAddress: null, // the webhook has no buyer browser IP/UA
         clientUserAgent: null,
         eventTimeMs,
         testEventCode: input.testEventCode ?? null,
       };
-      attempts.push({ channel, run: senders[channel](sendInput, conn, senderDeps) });
+      attempts.push({
+        channel,
+        run: senders[channel](sendInput, conn, senderDeps),
+      });
     }
 
     const settled = await Promise.allSettled(attempts.map((a) => a.run));
     const results: SenderResult[] = settled.map((s, i) =>
-      s.status === "fulfilled"
-        ? s.value
-        : { channel: attempts[i].channel, status: "failed" as const, reason: "sender_threw" }
+      s.status === "fulfilled" ? s.value : {
+        channel: attempts[i].channel,
+        status: "failed" as const,
+        reason: "sender_threw",
+      }
     );
 
     // 6. Persist per-channel outcomes (never store a token in provider_response).
-    const statusUpdate: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    const statusUpdate: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
     const providerResponse: Record<string, unknown> = {};
     for (const r of results) {
       statusUpdate[STATUS_COL[r.channel]] = r.status;
-      providerResponse[r.channel] = { status: r.status, reason: r.reason ?? null, http: r.httpStatus ?? null };
+      providerResponse[r.channel] = {
+        status: r.status,
+        reason: r.reason ?? null,
+        http: r.httpStatus ?? null,
+      };
     }
     statusUpdate.provider_response = providerResponse;
-    await supabase.from("ad_conversions").update(statusUpdate).eq("event_id", key);
+    await supabase.from("ad_conversions").update(statusUpdate).eq(
+      "event_id",
+      key,
+    );
 
     return { ok: true, eventId: key, deduped: false, results };
   } catch (err) {

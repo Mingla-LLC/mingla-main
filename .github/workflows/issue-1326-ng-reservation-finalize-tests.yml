@@ -1,0 +1,106 @@
+name: "Issue #1326 — NG Paystack venue-reservation finalize"
+
+# ISSUE-1326 (money-critical) — a paid Nigerian (Paystack) venue reservation is
+# CHARGED but was never minted, never refunded: the charge.success router
+# resolved the reference against event_rsvp_contributions then
+# ticket_checkout_sessions only, so a reservation reference (persisted in
+# reservation_checkout_sessions.paystack_reference) matched NEITHER → `orphan`.
+#
+# This job is the SOLE CI enforcement of the fix (I-CLOSE regression-protection
+# HARD MUST — these test files run in NO other workflow). Filters cover the
+# guarded SOURCE trees, not just the tests, so a revert of the finalize branch /
+# helper / confirm fast-path re-triggers the guard.
+#
+#   - issue_1326_ng_reservation_finalize.test.ts — drives the REAL exported
+#     handlePaystackChargeSuccess (injected verifier + fake supabase): a paid NG
+#     reservation charge.success finalizes (NOT orphan) + fires exactly one
+#     conversion; a redelivered webhook replays (no double-mint/double-fire);
+#     amount/currency mismatch fails without minting; a slot taken after charge
+#     is marked for MANUAL refund (no mint, no crash). Fails-on-revert of the
+#     reservation branch (T1→orphan) and the guards.
+#   - issue_1326_confirm_paystack.test.ts — drives the REAL
+#     venue-reservation-confirm handler (ORCH-1205 serve-shim import map + a
+#     stubbed network): a Paystack session with a verified-success charge now
+#     resolves to { completed, reservationId } via the SAME shared finalize,
+#     instead of returning `pending` forever. Fails-on-revert of the confirm
+#     Paystack fast-path.
+
+on:
+  push:
+    branches: [main, Seth]
+    paths:
+      - "supabase/functions/_shared/reservationPaystackFinalize.ts"
+      - "supabase/functions/_shared/paystackWebhookRouter.ts"
+      - "supabase/functions/venue-reservation-confirm/**"
+      - "supabase/functions/_shared/__tests__/issue_1326_ng_reservation_finalize.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_1326_confirm_paystack.test.ts"
+      - ".github/workflows/issue-1326-ng-reservation-finalize-tests.yml"
+  pull_request:
+    paths:
+      - "supabase/functions/_shared/reservationPaystackFinalize.ts"
+      - "supabase/functions/_shared/paystackWebhookRouter.ts"
+      - "supabase/functions/venue-reservation-confirm/**"
+      - "supabase/functions/_shared/__tests__/issue_1326_ng_reservation_finalize.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_1326_confirm_paystack.test.ts"
+      - ".github/workflows/issue-1326-ng-reservation-finalize-tests.yml"
+
+# ORCH-1383 — cancel a superseded PR run; main runs always complete.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-1326-reservation-finalize-deno-tests:
+    name: "NG Paystack reservation finalize + confirm fast-path (Deno)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: Run #1326 router + helper finalize tests
+        env:
+          # Inert defaults — the tests use a fake supabase / injected verifier
+          # and never reach a real Supabase/Paystack instance. These keep the
+          # env-presence guards in the shared imports (adConversionFire ->
+          # senders) from throwing at module load.
+          SUPABASE_URL: "https://example-test.supabase.co"
+          SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key-not-real"
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if deno test --allow-env --allow-net --allow-read --no-check \
+              supabase/functions/_shared/__tests__/issue_1326_ng_reservation_finalize.test.ts; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "#1326 finalize Deno tests failed after 3 attempts (esm.sh flake?)"
+              exit 1
+            fi
+            echo "#1326 finalize Deno tests failed (attempt ${attempt}), retrying in 10s..."
+            sleep 10
+          done
+      - name: Run #1326 venue-reservation-confirm Paystack fast-path RUNTIME test (serve-shim import map)
+        env:
+          # The confirm handler's paystackVerifyTransaction reads PAYSTACK_MODE +
+          # PAYSTACK_SECRET_KEY_TEST; the GET to api.paystack.co is stubbed via a
+          # global fetch shim (NO live Paystack call — LIVE mode, real money).
+          SUPABASE_URL: "https://example-test.supabase.co"
+          SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key-not-real"
+          PAYSTACK_MODE: "test"
+          PAYSTACK_SECRET_KEY_TEST: "sk_test_issue1326_confirm_secret"
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if deno test --import-map=supabase/functions/_shared/__tests__/_importmap.test.json \
+              --allow-read --allow-env --allow-net --no-check \
+              supabase/functions/_shared/__tests__/issue_1326_confirm_paystack.test.ts; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "#1326 confirm Paystack test failed after 3 attempts (esm.sh flake?)"
+              exit 1
+            fi
+            echo "#1326 confirm Paystack test failed (attempt ${attempt}), retrying in 10s..."
+            sleep 10
+          done

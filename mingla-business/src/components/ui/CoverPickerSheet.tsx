@@ -18,8 +18,15 @@
  * Per SPEC_ORCH-0989 §3.1/§4.1 + SPEC_ORCH-0989_..._DESIGN.md §2.
  */
 
-import React, { useCallback, useEffect, useState } from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import React, { Suspense, useCallback, useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Image,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 // ORCH-0892-B v2 sheet-consumer contract: the body scroll routes through the
 // SmartScrollView wrapper (KAS on native) so the GIF/Stock search input
@@ -34,10 +41,53 @@ import {
 } from "../../constants/designSystem";
 import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { Button } from "./Button";
-import { CoverPicker, type CoverPatch } from "./CoverPicker";
+import { type CoverPatch } from "./CoverPicker";
 import type { CoverTarget } from "./coverTarget";
 import { Icon } from "./Icon";
 import { Sheet } from "./Sheet";
+// issue #1356 [cover-nested-toast] — Tier 1 of #1342. The cover feedback Toast
+// is rendered INSIDE this Sheet (see the nested <Toast> below), never forwarded
+// to the parent's root-level sibling Toast.
+import { Toast } from "./Toast";
+import type { ToastKind } from "./toastTimings";
+
+// issue #868 [cover-gallery] — ORCH-1083 web bundle-budget fix. CoverPicker is
+// the heavy authoring picker (device/GIPHY/Pexels/video-trim + the #868 gallery
+// manager, ~35 KB on web). CoverPickerSheet is its SOLE runtime importer, so a
+// static import forced the whole picker into Metro's eager `__common` boot chunk
+// — where #868's gallery-manager growth tipped it past the 2.30 MB cap. Deferring
+// it to its own async web chunk (React.lazy) pulls all of it OUT of the boot path
+// (native keeps it inline — Metro RN doesn't split, so it loads instantly). It is
+// only ever mounted inside this Sheet (opened on user action), so a Suspense
+// fallback is the natural, correct UX. Type-only `CoverPatch` above stays erased.
+const CoverPicker = React.lazy(() =>
+  import("./CoverPicker").then((m) => ({ default: m.CoverPicker })),
+);
+
+// issue #1356 [cover-nested-toast] — the picker's onShowToast(msg) seam carries
+// no explicit kind, but cover UPLOAD FAILURES must keep the red "error" styling.
+// Infer the kind from the message text against a fixed error-signal set (SPEC
+// §4): any match → "error"; everything else → neutral "info" (matches the
+// parents' historical static "info" kind, so per-message inference is
+// parity-preserving, never a regression). Lowercased substring match.
+const COVER_TOAST_ERROR_SIGNALS: readonly string[] = [
+  "fail",
+  "error",
+  "permission",
+  "couldn't",
+  "could not",
+  "too large",
+  "30 mb",
+  "needs a server",
+  "try again",
+];
+
+export const inferKind = (message: string): ToastKind => {
+  const lower = message.toLowerCase();
+  return COVER_TOAST_ERROR_SIGNALS.some((signal) => lower.includes(signal))
+    ? "error"
+    : "info";
+};
 
 export interface CoverPickerSheetProps {
   visible: boolean;
@@ -49,6 +99,12 @@ export interface CoverPickerSheetProps {
   /** Cover hue fallback for the empty preview (0..360). */
   initialCoverHue?: number;
   onCoverChange: (patch: CoverPatch) => void;
+  // issue #1356 [cover-nested-toast]: retained on the interface for API
+  // compatibility (all 11 parent mounts still pass it — zero parent edits), but
+  // the sheet NO LONGER forwards it to CoverPicker. Cover feedback now routes to
+  // the nested <Toast> below (handleShowToast) so it presents from the Sheet's
+  // own modal VC instead of the screen-root VC. It MUST NOT be re-wired to drive
+  // a root-level sibling Toast (that is the exact #1356/#1342 bug).
   onShowToast: (msg: string) => void;
   disabled?: boolean;
   onCoverVideoProcessingChange?: (isProcessing: boolean) => void;
@@ -61,11 +117,28 @@ export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
   initial,
   initialCoverHue = 0,
   onCoverChange,
-  onShowToast,
+  // onShowToast is intentionally NOT destructured — see the interface note.
+  // Cover feedback is owned by the nested <Toast> (handleShowToast), never the
+  // parent's root-level sibling Toast.
   disabled = false,
   onCoverVideoProcessingChange,
 }) => {
   const { isWideDesktop } = useResponsiveLayout();
+
+  // issue #1356 [cover-nested-toast] — local toast state driving the nested
+  // <Toast> at the bottom of this Sheet's subtree. The picker's onShowToast
+  // messages land here instead of the parent's root Toast (which iOS New-Arch
+  // silently drops as a second modal on the screen-root VC — the proven #1356
+  // "already presenting" refusal).
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    kind: ToastKind;
+  }>({ visible: false, message: "", kind: "info" });
+
+  const handleShowToast = useCallback((message: string): void => {
+    setToast({ visible: true, message, kind: inferKind(message) });
+  }, []);
 
   // META-ORCH-1059 [cover picker selected-state]: track the live selection so
   // the bottom confirm button can show a thumbnail of the chosen cover and read
@@ -113,22 +186,35 @@ export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <CoverPicker
-            target={target}
-            initialCoverHue={initialCoverHue}
-            initialMediaUrl={initial.coverMediaUrl}
-            initialMediaType={initial.coverMediaType}
-            initialProvider={initial.coverMediaProvider}
-            initialSourceUrl={initial.coverMediaSourceUrl}
-            initialCredit={initial.coverMediaCredit}
-            initialCreditUrl={initial.coverMediaCreditUrl}
-            initialAlt={initial.coverMediaAlt}
-            onCoverChange={handleCoverChange}
-            onShowToast={onShowToast}
-            disabled={disabled}
-            isWideDesktop={isWideDesktop}
-            onCoverVideoProcessingChange={onCoverVideoProcessingChange}
-          />
+          <Suspense
+            fallback={
+              <View style={styles.pickerLoading} testID="cover-picker-loading">
+                <ActivityIndicator color={textTokens.secondary} />
+              </View>
+            }
+          >
+            <CoverPicker
+              target={target}
+              initialCoverHue={initialCoverHue}
+              initialMediaUrl={initial.coverMediaUrl}
+              initialMediaType={initial.coverMediaType}
+              initialProvider={initial.coverMediaProvider}
+              initialSourceUrl={initial.coverMediaSourceUrl}
+              initialCredit={initial.coverMediaCredit}
+              initialCreditUrl={initial.coverMediaCreditUrl}
+              initialAlt={initial.coverMediaAlt}
+              // issue #868 [cover-gallery] — the ADDITIONAL image/GIF items.
+              initialCoverGallery={initial.coverGallery}
+              onCoverChange={handleCoverChange}
+              // issue #1356 [cover-nested-toast] — route to the LOCAL handler so
+              // feedback renders via the nested <Toast> below (inside this Sheet),
+              // NOT the parent's root sibling Toast that iOS drops.
+              onShowToast={handleShowToast}
+              disabled={disabled}
+              isWideDesktop={isWideDesktop}
+              onCoverVideoProcessingChange={onCoverVideoProcessingChange}
+            />
+          </Suspense>
         </ScrollView>
 
         {/* META-ORCH-1009 Sub-E + META-ORCH-1059: an explicit confirm button
@@ -179,6 +265,25 @@ export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
             />
           )}
         </View>
+
+        {/* issue #1356 [cover-nested-toast] — Tier 1 of #1342. Cover
+            confirmation/error feedback renders from THIS Toast, a JSX descendant
+            of the open <Sheet> (I-SUB-SHEET-INSIDE-PARENT), so its native
+            <Modal> presents from the Sheet's own modal VC — NOT the screen-root
+            VC. The old wiring forwarded onShowToast to the parent's root-level
+            sibling Toast; on iOS New-Arch that is a SECOND modal on the screen
+            root, which UIKit refuses with "Attempt to present … which is already
+            presenting …" and every cover toast was silently dropped (proven on
+            the iOS sim). Nesting it here is the fix, matching the proven
+            ShareModal / JoinWaitlistSheet pattern. The video flow keeps its
+            inline videoPickNotice banner (#1338/#1350) — untouched. */}
+        <Toast
+          visible={toast.visible}
+          kind={toast.kind}
+          message={toast.message}
+          onDismiss={(): void => setToast((t) => ({ ...t, visible: false }))}
+          testID="cover-picker-sheet-toast"
+        />
       </View>
     </Sheet>
   );
@@ -211,6 +316,13 @@ const styles = StyleSheet.create({
   },
   bodyContent: {
     paddingBottom: spacing.lg,
+  },
+  // issue #868 — Suspense fallback while the deferred CoverPicker web chunk loads
+  // (native resolves instantly). Keeps the sheet body from collapsing mid-load.
+  pickerLoading: {
+    minHeight: 240,
+    alignItems: "center",
+    justifyContent: "center",
   },
   footer: {
     paddingTop: spacing.sm,

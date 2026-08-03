@@ -29,7 +29,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   AppState,
   Image,
-  Keyboard,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -37,8 +37,10 @@ import {
 } from "react-native";
 // ORCH-0892-B v2: ScrollView via SmartScrollView wrapper. Keyboard listener
 // + keyboardVisible/keyboardHeight state + auto-insets DELETED. KAS handles
-// focused-input scroll. useKeyboardIsVisible() preserves dock-hide UX.
-// Keyboard import retained for Keyboard.dismiss(). Per SPEC §7.F.
+// focused-input scroll. useKeyboardIsVisible() preserves dock-hide UX and
+// (issue #1027) drives the deferred description-reveal scroll — no bespoke
+// Keyboard.addListener (orch-0892 gate); the library primitive expresses it
+// cleanly. Per SPEC §7.F.
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { useKeyboardIsVisible } from "../../wrappers/useKeyboardIsVisible";
 import { useRouter } from "expo-router";
@@ -320,26 +322,70 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
   // doesn't reliably scroll-to-focused-input for multiline TextInputs
   // in this nested layout (verified by smoke 2026-04-30).
   const scrollViewRef = useRef<ScrollView | null>(null);
-  // Deferred scroll-to-bottom — set by step bodies on input focus,
-  // consumed in a useEffect once the keyboard has actually risen and
-  // the ScrollView's paddingBottom has been applied. Without deferral,
-  // scrollToEnd runs against the OLD content height (no padding yet),
-  // landing the focused input far above the keyboard with a huge gap.
+  // issue #1027 (iOS description-reveal REGRESSION) — deferred scroll-to-bottom.
+  // Set by step bodies on input focus (Step 1 Description, Step 3 online-URL),
+  // consumed when the keyboard finishes rising. WHY the defer is load-bearing on
+  // native: SmartScrollView is a KeyboardAwareScrollView that, on keyboard show,
+  // appends a `paddingBottom: keyboardHeight + 1` spacer to its content (KAS
+  // source index.tsx:405-430). `scrollToEnd` only lands the focused field ABOVE
+  // the keyboard once that spacer exists. The previous fix fired `scrollToEnd` in
+  // a bare requestAnimationFrame (~16ms after focus) BEFORE the keyboard rose and
+  // BEFORE the spacer was applied, so it scrolled against the pre-keyboard content
+  // height and then FOUGHT KAS's own caret-scroll — a nondeterministic race that
+  // over-scrolled the tall multiline ABOVE the viewport on iOS (Seth's physical
+  // iPhone: description not visible at all) while Android's soft-input handling
+  // absorbed it. We defer the reveal to the moment the keyboard is fully shown so
+  // `scrollToEnd` runs against the PADDED content height — the whole description
+  // box lands just above the keyboard on both platforms, no race, no over-scroll.
+  //
+  // The "keyboard fully shown" trigger is the repo's CANONICAL keyboard primitive
+  // `useKeyboardIsVisible()` — react-native-keyboard-controller's `useKeyboardState`,
+  // whose `isVisible` flips true on `keyboardDidShow` (AFTER the KAS spacer is
+  // applied) — NOT a bespoke `Keyboard.addListener` (forbidden by the orch-0892
+  // gate). Its web wrapper is a library-free constant `false`, so the web bundle
+  // stays clean and the deferred effect is inert on web (web scrolls immediately
+  // in scrollToBottom below).
+  // I-PROPOSED-1027-WIZARD-REVEAL-DEFERRED-TO-KEYBOARD-SHOWN.
   const pendingScrollToBottomRef = useRef<boolean>(false);
+  const keyboardVisibleRef = useRef<boolean>(keyboardVisible);
 
-  // ORCH-0892-B v2: keyboard listener + keyboardHeight-driven
-  // scrollToBottom plumbing DELETED. KAS via SmartScrollView computes
-  // focused-input overlap and scrolls precisely above the keyboard
-  // automatically. scrollToBottom is preserved as a passthrough so
-  // child components (CreatorStep1Basics on Description focus, etc.)
-  // can still request a scrollToEnd explicitly — KAS's per-focus
-  // scroll then refines from that position. pendingScrollToBottomRef
-  // retained as a kept-for-future hook; safe no-op when unused.
-  const scrollToBottom = useCallback((): void => {
+  const performScrollToEnd = useCallback((): void => {
     requestAnimationFrame((): void => {
       scrollViewRef.current?.scrollToEnd({ animated: true });
     });
   }, []);
+
+  const scrollToBottom = useCallback((): void => {
+    // Web has no soft keyboard and SmartScrollView is a plain ScrollView there
+    // (no KAS spacer) — scroll immediately, preserving the prior web behavior.
+    // On native, if the keyboard is ALREADY up the spacer padding is already
+    // applied, so scroll now; otherwise ARM the pending flag and let the
+    // keyboard-visible effect below fire scrollToEnd once the keyboard has
+    // finished rising (padded content height).
+    if (Platform.OS === "web" || keyboardVisibleRef.current) {
+      performScrollToEnd();
+      return;
+    }
+    pendingScrollToBottomRef.current = true;
+  }, [performScrollToEnd]);
+
+  // Consume the pending reveal when `useKeyboardIsVisible()` flips true — the
+  // library's keyboardDidShow-backed signal, delivered AFTER the KAS
+  // paddingBottom spacer is applied (the correct moment for scrollToEnd). On web
+  // the hook is a constant false (library-free wrapper), so this effect is inert
+  // there and the immediate web branch in scrollToBottom handles the scroll.
+  useEffect(() => {
+    keyboardVisibleRef.current = keyboardVisible;
+    if (keyboardVisible) {
+      if (pendingScrollToBottomRef.current) {
+        pendingScrollToBottomRef.current = false;
+        performScrollToEnd();
+      }
+    } else {
+      // keyboard dismissed — drop any stale pending reveal.
+      pendingScrollToBottomRef.current = false;
+    }
+  }, [keyboardVisible, performScrollToEnd]);
 
   // META-ORCH-1076 — provider-neutral payout readiness drives the paid-publish
   // gate, so a connected Paystack brand publishes like a Stripe-active one.

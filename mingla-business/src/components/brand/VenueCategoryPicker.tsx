@@ -1,5 +1,5 @@
 /**
- * Ve1 — category pills (Restaurant / Play / Creative and arts).
+ * Ve1 + #1424 — category pills. Stay remains server-flagged until activation.
  */
 
 import React from "react";
@@ -29,31 +29,50 @@ const OPTIONS: {
   },
 ];
 
+const STAY_OPTION: (typeof OPTIONS)[number] = {
+  id: "stay",
+  label: "Stay",
+  description: "Hotels, resorts & short stays · Reserve rooms and places",
+};
+
 export interface VenueCategoryPickerProps {
   value: VenueCategory | null;
   onChange: (next: VenueCategory) => void;
+  /** Server-owned STAY_VENUE_AUTHORING gate. Defaults false (fail closed). */
+  includeStay?: boolean;
+  /** Keeps an already-selected draft visible without allowing a gated submit. */
+  stayDisabled?: boolean;
   testID?: string;
 }
 
 export const VenueCategoryPicker: React.FC<VenueCategoryPickerProps> = ({
   value,
   onChange,
+  includeStay = false,
+  stayDisabled = false,
   testID,
 }) => {
+  const visibleOptions =
+    includeStay || value === "stay" ? [...OPTIONS, STAY_OPTION] : OPTIONS;
   return (
     <View style={styles.host} testID={testID}>
-      {OPTIONS.map((opt) => {
+      {visibleOptions.map((opt) => {
         const selected = value === opt.id;
+        const disabled = opt.id === "stay" && stayDisabled;
         return (
           <Pressable
             key={opt.id}
             onPress={() => onChange(opt.id)}
+            disabled={disabled}
             accessibilityRole="button"
-            accessibilityLabel={`${opt.label}. ${opt.description}`}
-            accessibilityState={{ selected }}
+            accessibilityLabel={`${opt.label}. ${opt.description}${
+              disabled ? ". Temporarily unavailable" : ""
+            }`}
+            accessibilityState={{ selected, disabled }}
             style={({ pressed }) => [
               styles.cardOuter,
               pressed && styles.pressed,
+              disabled && styles.disabled,
             ]}
           >
             <GlassCard
@@ -85,6 +104,9 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.88,
+  },
+  disabled: {
+    opacity: 0.5,
   },
   title: {
     fontSize: typography.body.fontSize,

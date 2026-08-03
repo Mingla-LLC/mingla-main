@@ -85,15 +85,24 @@ import {
 } from "../_shared/meta.ts";
 import {
   GOOGLE_GEO_COUNTRY_CONSTANTS,
+  googleAgeRangesForRange,
+  googleCreateDemandGenVideoCampaign,
   googleCreateFullCampaign,
+  type GoogleDemandGenVideoInput,
+  GOOGLE_GENDER_TYPES,
   type GoogleKeywordInput,
   normalizeGoogleKeywords,
   type ResolvedGeoTarget,
   resolveGoogleClient,
   suggestGeoTargetConstants,
+  validateGoogleDemandGenAd,
   validateGoogleFinalUrl,
   validateGoogleRsa,
 } from "../_shared/google.ts";
+// #1303 RC-3: the REQUIRED square logo image for the Demand Gen video responsive
+// ad — embedded base64 PNG (public brand asset, self-contained in the edge deploy).
+import { MINGLA_SQUARE_LOGO_PNG_BASE64 } from "../_shared/adDemandGenLogo.ts";
+import { forwardGeocodeText } from "../_shared/mapboxGeocode.ts";
 import {
   assertTikTokIdentityAllowed,
   resolveTikTokGeo,
@@ -109,6 +118,7 @@ import {
   validateTikTokLocationIds,
   validateTikTokName,
   validateTikTokObjective,
+  validateTikTokVideoDuration,
   normalizeTikTokInterestCategoryIds,
 } from "../_shared/tiktok.ts";
 import {
@@ -123,7 +133,9 @@ import {
 } from "../_shared/reddit.ts";
 import {
   buildSnapchatReviewDetail,
+  type SnapchatCircleGeo,
   SNAPCHAT_BID_STRATEGIES,
+  SNAPCHAT_CIRCLE_UNITS,
   SNAPCHAT_DEFAULT_BID_STRATEGY,
   SNAPCHAT_DEFAULT_OPTIMIZATION_GOAL,
   SNAPCHAT_MIN_ADSQUAD_BUDGET_MICRO,
@@ -144,12 +156,13 @@ import {
   validateSnapchatVideoDuration,
   validateSnapchatWebViewUrl,
 } from "../_shared/snapchat.ts";
-import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "../_shared/businessWebOrigin.ts";
+import {
+  AdDestinationError,
+  resolveAdDestination,
+} from "../_shared/adDestination.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const BUSINESS_WEB_ORIGIN = (Deno.env.get("BUSINESS_WEB_ORIGIN") ?? "").trim() ||
-  PRODUCTION_BUSINESS_WEB_ORIGIN;
 
 /** A1 smart-link host + template (consumer OneLink w36m on go.usemingla.com — LIVE). */
 const ONELINK_BASE = "https://go.usemingla.com/w36m";
@@ -234,11 +247,29 @@ function buildGoogleTrackingUrlTemplate(input: {
   return `${ONELINK_BASE}?${params.join("&")}`;
 }
 
+/**
+ * ISSUE-997 D2: derive a Demand Gen businessName (≤25) from the resolved brand
+ * slug when the payload carries no explicit `creative.business_name`
+ * ("smoke-and-rhythm" → "Smoke And Rhythm", capped at 25). A DERIVED value is
+ * truncated (never a 422); an EXPLICIT value is validated (422 if >25) by
+ * validateGoogleDemandGenAd. Falls back to "Mingla" for an empty slug so the
+ * REQUIRED field is never blank.
+ */
+function deriveGoogleBusinessName(brandSlug: string): string {
+  const titled = brandSlug
+    .split("-")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ")
+    .trim();
+  const name = titled || "Mingla";
+  return name.slice(0, 25);
+}
+
 interface DestinationInput {
   page_type?: string;
   brand_slug?: string;
   entity_slug?: string;
-  event_id?: string;
 }
 
 /**
@@ -251,11 +282,8 @@ interface DestinationInput {
  * `destination`), plus a shared `destination_group_id` that ties the whole
  * fan-out together (persisted as ad_campaigns.dest_group_id).
  *
- * This ONE resolver replaces the 5×-copy-pasted `(body.destination ?? {})` pick
- * (ISSUE-977 Lane C discovery #2) and adds array tolerance. It deliberately does
- * NOT merge the five per-platform resolve-against-view blocks below — those are
- * genuinely platform-specific (different views/columns/URL builders) and merging
- * them would be an over-refactor that risks the Wave 0–3 behaviour.
+ * This picker provides the exact descriptor consumed by the shared
+ * `_shared/adDestination.ts` public/live resolver in all five branches.
  *
  * Backward compatible: a body with only the singular `destination` (every
  * pre-1002 caller, and every single-destination build) resolves byte-identically.
@@ -414,6 +442,462 @@ serve(async (req: Request): Promise<Response> => {
 
     // (1) Pure input validation — all 422s BEFORE any provider call.
     const creativeG = (body.creative ?? {}) as Record<string, unknown>;
+    if (creativeG.kind === "video") {
+      // ══ ISSUE-997 D2: Google Demand Gen VIDEO create ══════════════════════════
+      // Google video is a DISTINCT campaign type (DEMAND_GEN) — this sub-branch is
+      // fully self-contained and EARLY-RETURNS before the SEARCH+RSA validators
+      // below (a video payload has no keywords). Like TikTok C, create is a pure
+      // READY-ref CONSUMER: it NEVER uploads media inline — the D1 prepare adapter
+      // walks the video to a READY google ref carrying external_ref_extra.
+      // youtube_video_id. PAUSED at every level; validate_only threads NATIVELY
+      // (Google validate → zero objects, unlike TikTok/Snap).
+      documentComplianceDrop("google", body.compliance);
+
+      // (1a) Require the prepared library ref (create never uploads inline).
+      const creativeLibraryIdGV = typeof creativeG.creative_library_id === "string"
+        ? creativeG.creative_library_id.trim()
+        : "";
+      if (!creativeLibraryIdGV) {
+        return json({ error: "video_preparation_required" }, 422);
+      }
+
+      // (1b) Destination gates (page_type/brand_slug) — the finalUrl, businessName
+      //      derivation, and geo all need them (mirror the SEARCH branch).
+      const destinationGV = pickCallDestination(body);
+      const pageTypeGV = destinationGV.page_type ?? "";
+      const brandSlugGV = typeof destinationGV.brand_slug === "string"
+        ? destinationGV.brand_slug.trim()
+        : "";
+      const entitySlugGV = typeof destinationGV.entity_slug === "string"
+        ? destinationGV.entity_slug.trim()
+        : "";
+      if (!["event", "trip", "brand", "venue"].includes(pageTypeGV)) {
+        return json({ error: "validation_error", detail: "destination_page_type_invalid" }, 400);
+      }
+      if (!brandSlugGV) {
+        return json({ error: "validation_error", detail: "destination_brand_slug_required" }, 400);
+      }
+
+      // (1c) Demand Gen ad copy — businessName (≤25), ≥1 headline (≤40), ≥1 long
+      //      headline (≤90), ≥1 description (≤90). Keywords are NOT collected for
+      //      Demand Gen (audience-based). longHeadlines / businessName DEFAULT from
+      //      the RSA headlines / brand slug when the payload sends no explicit ones
+      //      (wiring explicit long_headlines/business_name into the admin payload is
+      //      a follow-up — see the D2 report); an explicit value overrides and is
+      //      validated by validateGoogleDemandGenAd.
+      const headlinesGV = (Array.isArray(creativeG.headlines) ? creativeG.headlines : [])
+        .filter((h): h is string => typeof h === "string" && h.trim().length > 0)
+        .map((h) => h.trim());
+      const descriptionsGV = (Array.isArray(creativeG.descriptions) ? creativeG.descriptions : [])
+        .filter((d): d is string => typeof d === "string" && d.trim().length > 0)
+        .map((d) => d.trim());
+      const longHeadlinesGV = Array.isArray(creativeG.long_headlines)
+        ? (creativeG.long_headlines as unknown[])
+          .filter((h): h is string => typeof h === "string" && h.trim().length > 0)
+          .map((h) => h.trim())
+        : headlinesGV;
+      const businessNameGV =
+        typeof creativeG.business_name === "string" && creativeG.business_name.trim()
+          ? creativeG.business_name.trim()
+          : deriveGoogleBusinessName(brandSlugGV);
+      const demandGenCheck = validateGoogleDemandGenAd({
+        businessName: businessNameGV,
+        headlines: headlinesGV,
+        longHeadlines: longHeadlinesGV,
+        descriptions: descriptionsGV,
+      });
+      if (!demandGenCheck.ok) {
+        return json({ error: demandGenCheck.detail, detail: demandGenCheck.message }, 422);
+      }
+
+      // (1d) Targeting — countries required; named locations validated (SEARCH mirror).
+      const targetingGV = (body.targeting ?? {}) as Record<string, unknown>;
+      const countriesGV = targetingGV.countries;
+      if (
+        !Array.isArray(countriesGV) || countriesGV.length === 0 ||
+        countriesGV.some((c) => typeof c !== "string" || !c.trim())
+      ) {
+        return json({ error: "validation_error", detail: "targeting_countries_required" }, 400);
+      }
+      const countryCodesGV = (countriesGV as string[]).map((c) => c.trim().toUpperCase());
+      const locationsGV = Array.isArray(targetingGV.locations)
+        ? targetingGV.locations as Record<string, unknown>[]
+        : [];
+      for (const location of locationsGV) {
+        if (
+          typeof location.name !== "string" || !location.name.trim() ||
+          typeof location.country_code !== "string" || !location.country_code.trim()
+        ) {
+          return json({
+            error: "validation_error",
+            detail: "targeting_location_invalid — each location needs { name, country_code }",
+          }, 400);
+        }
+      }
+
+      // (2) Connection (fail-close): absent/broken → 409 google_not_provisioned.
+      const { data: gconnRowGV } = await supabase
+        .from("ad_connections")
+        .select("*")
+        .eq("platform", "google")
+        .eq("lane", lane)
+        .maybeSingle();
+      if (!gconnRowGV || !gconnRowGV.connected || gconnRowGV.status !== "connected") {
+        return json({ error: "google_not_provisioned" }, 409);
+      }
+      const gconnGV = gconnRowGV as unknown as AdConnectionRow;
+
+      // Idempotency (request_id): replay returns the existing row.
+      if (requestIdG && !validateOnlyG) {
+        const { data: existingGV } = await supabase
+          .from("ad_campaigns")
+          .select("*")
+          .eq("connection_id", gconnGV.id)
+          .eq("request_id", requestIdG)
+          .maybeSingle();
+        if (existingGV) return json({ campaign: existingGV, idempotent_replay: true });
+      }
+
+      // (3) READY-ref resolve — the exact current-hash READY google VIDEO ref (D1):
+      //     platform=google / lane / this advertiser / external_kind=video /
+      //     content_hash match / status=ready, carrying external_ref_extra.
+      //     youtube_video_id. create NEVER uploads inline (mirror TikTok C / Snap).
+      const { data: libCreativeGV } = await supabase
+        .from("ad_creatives")
+        .select("id, kind, content_hash")
+        .eq("id", creativeLibraryIdGV)
+        .maybeSingle();
+      if (!libCreativeGV) {
+        return json({ error: "creative_not_found", detail: "creative_library_id does not resolve" }, 422);
+      }
+      if (libCreativeGV.kind !== "video") {
+        return json({ error: "creative_kind_mismatch" }, 422);
+      }
+      const { data: refGV } = await supabase
+        .from("ad_creative_platform_refs")
+        .select("external_ref, external_ref_extra, status, content_hash")
+        .eq("creative_id", creativeLibraryIdGV)
+        .eq("platform", "google")
+        .eq("lane", lane)
+        .eq("external_account_id", gconnGV.external_account_id)
+        .eq("external_kind", "video")
+        .eq("content_hash", libCreativeGV.content_hash)
+        .eq("status", "ready")
+        .maybeSingle();
+      if (!refGV || refGV.status !== "ready" || !refGV.external_ref) {
+        return json({
+          error: "creative_not_uploaded",
+          detail:
+            "No READY google VIDEO ref for this creative on this advertiser — prepare it through admin-ad-creative-prepare (google) first; create never uploads inline.",
+        }, 422);
+      }
+      if (
+        refGV.content_hash && libCreativeGV.content_hash &&
+        refGV.content_hash !== libCreativeGV.content_hash
+      ) {
+        return json({
+          error: "creative_ref_stale",
+          detail:
+            "The google video ref was prepared from different bytes than the creative's current content_hash — re-prepare through admin-ad-creative-prepare.",
+        }, 422);
+      }
+      // A Demand Gen video ad needs the PREPARED youtube_video_id (D1 folds it into
+      // external_ref_extra on the READY transition). A ref missing it fails closed.
+      const refExtraGV = (refGV.external_ref_extra ?? {}) as Record<string, unknown>;
+      const youtubeVideoIdGV = typeof refExtraGV.youtube_video_id === "string"
+        ? refExtraGV.youtube_video_id
+        : "";
+      if (!youtubeVideoIdGV) {
+        return json({
+          error: "creative_ref_incomplete",
+          detail:
+            "The google video ref is missing external_ref_extra.youtube_video_id — re-prepare through admin-ad-creative-prepare.",
+        }, 422);
+      }
+
+      // (4) Destination resolve — READ-ONLY, public + live only.
+      let resolvedDestinationGV;
+      try {
+        resolvedDestinationGV = await resolveAdDestination(supabase, destinationGV);
+      } catch (err) {
+        if (err instanceof AdDestinationError) {
+          return json({ error: err.code, detail: err.message }, err.status);
+        }
+        return json({ error: "destination_lookup_failed" }, 503);
+      }
+      const destUrlGV = resolvedDestinationGV.canonical_url;
+      const destEventIdGV = resolvedDestinationGV.event_id;
+      const destVenueIdGV = resolvedDestinationGV.venue_id;
+      const finalUrlCheckGV = validateGoogleFinalUrl(destUrlGV);
+      if (!finalUrlCheckGV.ok) {
+        return json({ error: finalUrlCheckGV.detail, detail: finalUrlCheckGV.message }, 422);
+      }
+
+      // (5) Geo resolution — numeric criterion ids (mirror SEARCH); PRESENCE.
+      const resolvedLocationsGV: ResolvedGeoTarget[] = [];
+      try {
+        if (locationsGV.length > 0) {
+          const gclientGV = await resolveGoogleClient(gconnGV);
+          for (const location of locationsGV) {
+            const nameL = (location.name as string).trim();
+            const countryCodeL = (location.country_code as string).trim().toUpperCase();
+            const resolved = await suggestGeoTargetConstants(gclientGV, {
+              name: nameL,
+              countryCode: countryCodeL,
+            });
+            if (!resolved) {
+              return json({
+                error: "geo_not_resolvable",
+                detail:
+                  `"${nameL}" did not resolve to an ENABLED geo target constant in ${countryCodeL} (countryCode-scoped suggest — GR-37).`,
+              }, 422);
+            }
+            resolvedLocationsGV.push(resolved);
+          }
+        }
+      } catch (err) {
+        if (err instanceof AdNotConnectedError) {
+          return json(
+            { error: err.detail === "google_not_provisioned" ? "google_not_provisioned" : "google_not_connected" },
+            err.detail === "google_not_provisioned" ? 409 : 424,
+          );
+        }
+        if (err instanceof AdApiError) {
+          return json({ error: "geo_not_resolvable", detail: err.toJSON() }, 422);
+        }
+        throw err;
+      }
+      let geoTargetCriterionIdsGV: string[];
+      const geoTargetingRecordGV: Record<string, unknown> = {
+        countries: countryCodesGV,
+        positive_geo_target_type: "PRESENCE",
+      };
+      if (resolvedLocationsGV.length > 0) {
+        geoTargetCriterionIdsGV = resolvedLocationsGV.map((l) => l.criterionId);
+        geoTargetingRecordGV.locations = resolvedLocationsGV.map((l) => ({
+          criterion_id: l.criterionId,
+          name: l.name,
+          canonical_name: l.canonicalName,
+          country_code: l.countryCode,
+          target_type: l.targetType,
+        }));
+      } else {
+        const unresolvedGV = countryCodesGV.filter((code) => !GOOGLE_GEO_COUNTRY_CONSTANTS[code]);
+        if (unresolvedGV.length > 0) {
+          return json({
+            error: "geo_not_resolvable",
+            detail:
+              `Country code(s) ${unresolvedGV.join(", ")} are not in the verified seed constants (US/GB/NG — A1.3 GR-37). Add a CSV-verified constant or target a named location instead.`,
+          }, 422);
+        }
+        geoTargetCriterionIdsGV = countryCodesGV.map(
+          (code) => GOOGLE_GEO_COUNTRY_CONSTANTS[code].criterionId,
+        );
+        geoTargetingRecordGV.country_criterion_ids = geoTargetCriterionIdsGV;
+      }
+      // Record the Demand Gen shape in the persisted targeting jsonb (surface + audit).
+      geoTargetingRecordGV.demand_gen = true;
+      geoTargetingRecordGV.youtube_video_id = youtubeVideoIdGV;
+      geoTargetingRecordGV.business_name = businessNameGV;
+
+      const trackingUrlTemplateGV = buildGoogleTrackingUrlTemplate({
+        pageType: pageTypeGV,
+        brandSlug: brandSlugGV,
+        entitySlug: entitySlugGV || null,
+      });
+
+      const demandGenInput: GoogleDemandGenVideoInput = {
+        name,
+        dailyBudgetCents: amountCents as number,
+        finalUrl: destUrlGV,
+        trackingUrlTemplate: trackingUrlTemplateGV,
+        businessName: businessNameGV,
+        headlines: headlinesGV,
+        longHeadlines: longHeadlinesGV,
+        descriptions: descriptionsGV,
+        youtubeVideoId: youtubeVideoIdGV,
+        // #1303 RC-3: the REQUIRED square logo image asset (base64 PNG bytes).
+        logoImageData: MINGLA_SQUARE_LOGO_PNG_BASE64,
+        geoTargetCriterionIds: geoTargetCriterionIdsGV,
+        validateOnly: validateOnlyG,
+      };
+
+      // (6) The atomic Demand Gen mutate — validateOnly passthrough validates the
+      //     EXACT same body with ZERO objects created (native Google validate).
+      try {
+        const createdGV = await googleCreateDemandGenVideoCampaign(gconnGV, demandGenInput);
+        if (validateOnlyG) {
+          return json({
+            validated: true,
+            validated_layers: [
+              "campaign_budget",
+              "campaign",
+              "geo_criteria",
+              "video_asset",
+              "ad_group",
+              "ad",
+            ],
+            skipped_layers: [],
+            request_id: createdGV.requestId,
+            detail: "validate_only — nothing created on the platform, nothing persisted.",
+          });
+        }
+
+        // Best-effort delivery read-back (sync repairs it).
+        let deliveryStatusGV: string | null = null;
+        try {
+          const adapterGV = getAdapter("google");
+          const statusGV = await adapterGV.getStatus(gconnGV, "campaign", createdGV.externalCampaignId);
+          deliveryStatusGV = statusGV.effectiveStatus;
+        } catch {
+          deliveryStatusGV = null;
+        }
+
+        // (7) Persist ONE campaign+ad_set+ad row set — objective DEMAND_GEN, PAUSED.
+        const { data: campaignRowGV, error: campaignErrGV } = await supabase
+          .from("ad_campaigns")
+          .insert({
+            connection_id: gconnGV.id,
+            platform: "google",
+            external_campaign_id: createdGV.externalCampaignId,
+            name,
+            objective: "DEMAND_GEN", // normalized-per-platform: the advertising channel type
+            status: "PAUSED",
+            daily_budget_cents: amountCents,
+            delivery_status: deliveryStatusGV,
+            status_synced_at: new Date().toISOString(),
+            targeting: geoTargetingRecordGV,
+            dest_page_type: pageTypeGV,
+            dest_brand_slug: brandSlugGV,
+            dest_entity_slug: entitySlugGV || null,
+            dest_event_id: destEventIdGV,
+            dest_venue_id: destVenueIdGV,
+            dest_url: destUrlGV,
+            dest_smart_link: trackingUrlTemplateGV,
+            dest_group_id: destGroupId,
+            request_id: requestIdG,
+            created_by: user.id,
+          })
+          .select("*")
+          .single();
+
+        let adSetRowGV: Record<string, unknown> | null = null;
+        let adRowGV: Record<string, unknown> | null = null;
+        let persistErrGV = campaignErrGV;
+        if (!persistErrGV && campaignRowGV) {
+          const { data, error } = await supabase
+            .from("ad_sets")
+            .insert({
+              campaign_id: campaignRowGV.id,
+              external_adset_id: createdGV.externalAdSetId,
+              name: `${name} — ad group`,
+              targeting: geoTargetingRecordGV,
+              budget_cents: null, // budget lives on the campaign budget resource
+              optimization_goal: "MAXIMIZE_CLICKS", // targetSpend = maximize clicks (GR-55)
+              bid_strategy: "TARGET_SPEND",
+              billing_event: null,
+              // PAUSED parent + ENABLED ad group — the paused campaign gates delivery.
+              status: "ACTIVE",
+            })
+            .select("*")
+            .single();
+          adSetRowGV = data;
+          persistErrGV = error;
+        }
+        if (!persistErrGV && adSetRowGV) {
+          const { data, error } = await supabase
+            .from("ads")
+            .insert({
+              ad_set_id: adSetRowGV.id,
+              external_ad_id: createdGV.externalAdId,
+              external_creative_id: null, // demandGenVideoResponsiveAd is inline on the ad
+              name: `${name} — ad`,
+              status: "PAUSED",
+              review_status: null, // sync fills approval_status + review_detail (G-3)
+            })
+            .select("*")
+            .single();
+          adRowGV = data;
+          persistErrGV = error;
+        }
+
+        if (persistErrGV) {
+          // Never a half-written DB row set. Everything on Google is PAUSED (zero
+          // spend) and natively consistent; no delete path (REMOVED is permanent),
+          // so the audit row carries the IDs for manual reconciliation.
+          if (campaignRowGV) await supabase.from("ad_campaigns").delete().eq("id", campaignRowGV.id);
+          await supabase.from("ad_status_events").insert({
+            campaign_id: null,
+            platform: "google",
+            entity: "campaign",
+            action: "create_failed",
+            actor: user.id,
+            to_status: null,
+            external_ids: {
+              external_campaign_id: createdGV.externalCampaignId,
+              external_adset_id: createdGV.externalAdSetId,
+              external_ad_id: createdGV.externalAdId,
+              budget_resource_name: createdGV.budgetResourceName,
+            },
+            provider_response: {
+              db_error: persistErrGV.message,
+              request_id: createdGV.requestId,
+              note: "google demand-gen objects exist PAUSED (atomic create succeeded; DB persist failed) — reconcile manually",
+            },
+          });
+          console.error("[admin-ad-create-campaign] google demand-gen persist failed:", persistErrGV.message);
+          return json({ error: "internal_error", detail: "db_persist_failed_google_objects_paused" }, 500);
+        }
+
+        await supabase.from("ad_status_events").insert({
+          campaign_id: campaignRowGV.id,
+          platform: "google",
+          entity: "campaign",
+          action: "create",
+          actor: user.id,
+          from_status: null,
+          to_status: "PAUSED",
+          external_ids: {
+            external_campaign_id: createdGV.externalCampaignId,
+            external_adset_id: createdGV.externalAdSetId,
+            external_ad_id: createdGV.externalAdId,
+            budget_resource_name: createdGV.budgetResourceName,
+          },
+          provider_response: createdGV.requestId ? { request_id: createdGV.requestId } : null,
+        });
+
+        return json({ campaign: campaignRowGV, ad_set: adSetRowGV, ad: adRowGV });
+      } catch (err) {
+        if (err instanceof AdNotConnectedError) {
+          return json(
+            { error: err.detail === "google_not_provisioned" ? "google_not_provisioned" : "google_not_connected" },
+            err.detail === "google_not_provisioned" ? 409 : 424,
+          );
+        }
+        if (err instanceof AdApiError) {
+          // partialFailure:false — the WHOLE request failed; nothing exists on
+          // Google (native atomicity), so there are no partial IDs to reconcile.
+          await supabase.from("ad_status_events").insert({
+            campaign_id: null,
+            platform: "google",
+            entity: "campaign",
+            action: "create_failed",
+            actor: user.id,
+            external_ids: null,
+            provider_response: { step: "atomic_mutate_demand_gen", ...err.toJSON() },
+          });
+          return json({
+            error: "google_create_failed",
+            detail: err.toJSON(),
+            step: "atomic_mutate_demand_gen",
+            rolled_back: null, // nothing to roll back — the mutate is all-or-nothing
+          }, 502);
+        }
+        const detailGV = err instanceof Error ? err.message : String(err);
+        console.error("[admin-ad-create-campaign] google demand-gen unexpected:", detailGV);
+        return json({ error: "internal_error" }, 500);
+      }
+    }
     // ISSUE-979 Bug 3: the global compliance intent reaches Google's create path
     // now. Google has no general special-ad-category field and no RSA AI field —
     // documented + observable, never silently dropped.
@@ -471,6 +955,82 @@ serve(async (req: Request): Promise<Response> => {
       }
     }
 
+    // ── ISSUE-992 (3a) age/gender demographics + (3b) affinity/in-market
+    //    audiences — ALL 422/400s pre-flight, BEFORE any provider call.
+    //    Google demographics default all-included; the create fn expresses a
+    //    narrowed target as NEGATIVE ad-group criteria for the buckets outside
+    //    it (G-1 bucket-widening ACCEPTED). Age/gender UNDETERMINED stay
+    //    INCLUDED (G-2 — excludeUndetermined* flags default false). Full-range
+    //    + all-gender emits NOTHING (broad build byte-identical). ──────────────
+    let googleAgeRanges: string[] | undefined;
+    let googleGenders: string[] | undefined;
+    let googleUserInterestIds: string[] | undefined;
+    let googleDemographicsRecord: Record<string, unknown> | undefined;
+    {
+      const ageMinRaw = targetingG.age_min;
+      const ageMaxRaw = targetingG.age_max;
+      if (ageMinRaw !== undefined || ageMaxRaw !== undefined) {
+        const min = Number(ageMinRaw);
+        const max = Number(ageMaxRaw);
+        if (
+          (ageMinRaw !== undefined && (!Number.isInteger(min) || min < 13 || min > 65)) ||
+          (ageMaxRaw !== undefined && (!Number.isInteger(max) || max < 13 || max > 65))
+        ) {
+          return json({
+            error: "validation_error",
+            detail: "targeting_age_invalid — age_min/age_max must be integers 13-65",
+          }, 400);
+        }
+        if (ageMinRaw !== undefined && ageMaxRaw !== undefined && min > max) {
+          return json({
+            error: "validation_error",
+            detail: "targeting_age_range_invalid — age_min must be ≤ age_max",
+          }, 400);
+        }
+        googleAgeRanges = googleAgeRangesForRange(
+          ageMinRaw !== undefined ? min : undefined,
+          ageMaxRaw !== undefined ? max : undefined,
+        );
+        googleDemographicsRecord = {
+          ...(ageMinRaw !== undefined ? { age_min: min } : {}),
+          ...(ageMaxRaw !== undefined ? { age_max: max } : {}),
+        };
+      }
+      const gendersRaw = targetingG.genders;
+      if (gendersRaw !== undefined) {
+        if (
+          !Array.isArray(gendersRaw) ||
+          gendersRaw.some((g) => !(GOOGLE_GENDER_TYPES as readonly string[]).includes(String(g)))
+        ) {
+          return json({
+            error: "validation_error",
+            detail: `targeting_genders_invalid — genders ⊆ {${GOOGLE_GENDER_TYPES.join(",")}}`,
+          }, 400);
+        }
+        const uniq = [...new Set(gendersRaw.map((g) => String(g)))];
+        // A single-gender target restricts; both genders = "all" → no criteria.
+        if (uniq.length === 1) {
+          googleGenders = uniq;
+          googleDemographicsRecord = { ...(googleDemographicsRecord ?? {}), genders: uniq };
+        }
+      }
+      // 3b audiences — numeric-string user_interest ids; junk dropped (never
+      // fabricated). G-4 seam: an empty/absent list ⇒ zero audience ops, so 3a
+      // ships unaffected if audiences turn out account/policy-gated.
+      const audiencesRaw = targetingG.audiences;
+      if (audiencesRaw !== undefined) {
+        if (!Array.isArray(audiencesRaw)) {
+          return json({
+            error: "validation_error",
+            detail: "targeting_audiences_invalid — expected an array of numeric-string ids",
+          }, 400);
+        }
+        const ids = [...new Set(audiencesRaw.map((a) => String(a).trim()))]
+          .filter((id) => /^\d+$/.test(id));
+        if (ids.length > 0) googleUserInterestIds = ids;
+      }
+    }
+
     const destinationG = pickCallDestination(body); // ISSUE-1002: singular or destinations[0]
     const pageTypeG = destinationG.page_type ?? "";
     const brandSlugG = typeof destinationG.brand_slug === "string"
@@ -513,33 +1073,18 @@ serve(async (req: Request): Promise<Response> => {
 
     // (3) Destination resolve — READ-ONLY, public + live only (§4.4b; the
     //     GR-52 sync re-checker re-asserts this same gate for the ad's life).
-    let destUrlG: string;
-    let destEventIdG: string | null = null;
-    if (pageTypeG === "event") {
-      if (!entitySlugG) {
-        return json({ error: "validation_error", detail: "destination_entity_slug_required" }, 400);
+    let resolvedDestinationG;
+    try {
+      resolvedDestinationG = await resolveAdDestination(supabase, destinationG);
+    } catch (err) {
+      if (err instanceof AdDestinationError) {
+        return json({ error: err.code, detail: err.message }, err.status);
       }
-      const { data: eventRow } = await supabase
-        .from("business_public_events_view")
-        .select("id, brand_slug, slug, status")
-        .eq("brand_slug", brandSlugG)
-        .eq("slug", entitySlugG)
-        .in("status", ["scheduled", "live"])
-        .maybeSingle();
-      if (!eventRow) return json({ error: "destination_not_public" }, 422);
-      destUrlG = `${BUSINESS_WEB_ORIGIN}/e/${brandSlugG}/${entitySlugG}`;
-      destEventIdG = String(eventRow.id);
-    } else if (pageTypeG === "brand") {
-      const { data: brandRow } = await supabase
-        .from("business_public_brands_view")
-        .select("id, slug")
-        .eq("slug", brandSlugG)
-        .maybeSingle();
-      if (!brandRow) return json({ error: "destination_not_public" }, 422);
-      destUrlG = `${BUSINESS_WEB_ORIGIN}/b/${brandSlugG}`;
-    } else {
-      return json({ error: "destination_not_public", detail: "dest_page_type_not_supported_wp1" }, 422);
+      return json({ error: "destination_lookup_failed" }, 503);
     }
+    const destUrlG = resolvedDestinationG.canonical_url;
+    const destEventIdG = resolvedDestinationG.event_id;
+    const destVenueIdG = resolvedDestinationG.venue_id;
 
     // A4.f/GR-73: finalUrls = [canonical dest_url] — https, ≤2,084 bytes.
     const finalUrlCheck = validateGoogleFinalUrl(destUrlG);
@@ -611,6 +1156,10 @@ serve(async (req: Request): Promise<Response> => {
       );
       geoTargetingRecord.country_criterion_ids = geoTargetCriterionIds;
     }
+    // ISSUE-992: state the applied demographics/audiences in the persisted
+    // targeting jsonb (so the campaign surface + audit reflect them).
+    if (googleDemographicsRecord) geoTargetingRecord.demographics = googleDemographicsRecord;
+    if (googleUserInterestIds) geoTargetingRecord.audiences = googleUserInterestIds;
 
     const trackingUrlTemplate = buildGoogleTrackingUrlTemplate({
       pageType: pageTypeG,
@@ -629,6 +1178,14 @@ serve(async (req: Request): Promise<Response> => {
       keywords,
       negativeKeywords,
       geoTargetCriterionIds,
+      // ISSUE-992 (3a): target age bands + gender → the create fn emits the
+      // NEGATIVE demographic-exclusion criteria; (3b): positive audiences.
+      ...(googleAgeRanges ? { ageRanges: googleAgeRanges } : {}),
+      ...(googleGenders ? { genders: googleGenders } : {}),
+      ...(googleUserInterestIds ? { userInterestIds: googleUserInterestIds } : {}),
+      // G-2 (Seth-approved): keep AGE/GENDER UNDETERMINED INCLUDED.
+      excludeUndeterminedAge: false,
+      excludeUndeterminedGender: false,
       validateOnly: validateOnlyG,
     };
 
@@ -637,9 +1194,22 @@ serve(async (req: Request): Promise<Response> => {
     try {
       const created = await googleCreateFullCampaign(gconn, createInput);
       if (validateOnlyG) {
+        // ISSUE-992: the validate_only mutate proves the exact demographic /
+        // audience criterion body (G-4 account-eligibility probe path) — zero
+        // objects created. Layers reflect what was actually in the mutate.
+        const validatedLayersG = [
+          "campaign_budget",
+          "campaign",
+          "geo_criteria",
+          "ad_group",
+          "ad",
+          "keywords",
+        ];
+        if (googleDemographicsRecord) validatedLayersG.push("demographics");
+        if (googleUserInterestIds) validatedLayersG.push("audiences");
         return json({
           validated: true,
-          validated_layers: ["campaign_budget", "campaign", "geo_criteria", "ad_group", "ad", "keywords"],
+          validated_layers: validatedLayersG,
           skipped_layers: [],
           request_id: created.requestId,
           detail: "validate_only — nothing created on the platform, nothing persisted.",
@@ -674,6 +1244,7 @@ serve(async (req: Request): Promise<Response> => {
           dest_brand_slug: brandSlugG,
           dest_entity_slug: entitySlugG || null,
           dest_event_id: destEventIdG,
+          dest_venue_id: destVenueIdG,
           dest_url: destUrlG,
           dest_smart_link: trackingUrlTemplate, // A4.f-demoted slot: tracking template, never the creative link
           dest_group_id: destGroupId, // ISSUE-1002: shared fan-out group (NULL for single-destination)
@@ -923,6 +1494,48 @@ serve(async (req: Request): Promise<Response> => {
       return json({ error: demographicsCheck.detail, detail: demographicsCheck.message }, 422);
     }
 
+    // ── ISSUE-992 (3a): city circles + SCLS interest segments (pre-flight
+    //    422/400s BEFORE any provider call). Circles carry a place NAME +
+    //    country_code (NOT coords) — the create path geocodes server-side (§4),
+    //    so no lat/lng ever touches the browser. ──────────────────────────────
+    const rawCirclesS = Array.isArray(targetingS.circles)
+      ? targetingS.circles as Record<string, unknown>[]
+      : [];
+    const circleInputsS: { name: string; country_code: string; radius: number; unit: string }[] = [];
+    for (const c of rawCirclesS) {
+      const cName = typeof c.name === "string" ? c.name.trim() : "";
+      const cCountry = typeof c.country_code === "string" ? c.country_code.trim() : "";
+      const cRadius = Number(c.radius);
+      const cUnit = typeof c.unit === "string" ? c.unit.trim() : "";
+      if (!cName || !cCountry) {
+        return json({
+          error: "validation_error",
+          detail: "targeting_circle_invalid — each circle needs { name, country_code }",
+        }, 400);
+      }
+      if (!Number.isFinite(cRadius) || cRadius <= 0) {
+        return json({
+          error: "validation_error",
+          detail: "targeting_circle_radius_invalid — radius must be a positive number",
+        }, 422);
+      }
+      if (!(SNAPCHAT_CIRCLE_UNITS as readonly string[]).includes(cUnit)) {
+        return json({
+          error: "validation_error",
+          detail: `targeting_circle_unit_invalid — unit ∈ {${SNAPCHAT_CIRCLE_UNITS.join(",")}}`,
+        }, 422);
+      }
+      circleInputsS.push({
+        name: cName,
+        country_code: cCountry,
+        radius: Math.round(cRadius),
+        unit: cUnit,
+      });
+    }
+    const snapInterestIdsS = Array.isArray(targetingS.interests)
+      ? [...new Set((targetingS.interests as unknown[]).map((i) => String(i).trim()))].filter(Boolean)
+      : [];
+
     const creativeS = (body.creative ?? {}) as Record<string, unknown>;
     // ISSUE-979 Bug 3: the global compliance intent reaches Snapchat's create
     // path now. Snapchat has no AI-disclosure and no special-ad-category field —
@@ -1031,42 +1644,28 @@ serve(async (req: Request): Promise<Response> => {
 
     // (4) Destination resolve — READ-ONLY, public + live only (§4.4b; the
     //     GR-52 sync re-checker re-asserts this same gate for the ad's life).
-    let destUrlS: string;
-    let destEventIdS: string | null = null;
-    if (pageTypeS === "event") {
-      if (!entitySlugS) {
-        return json({ error: "validation_error", detail: "destination_entity_slug_required" }, 400);
+    let resolvedDestinationS;
+    try {
+      resolvedDestinationS = await resolveAdDestination(supabase, destinationS);
+    } catch (err) {
+      if (err instanceof AdDestinationError) {
+        return json({ error: err.code, detail: err.message }, err.status);
       }
-      const { data: eventRow } = await supabase
-        .from("business_public_events_view")
-        .select("id, brand_slug, slug, status")
-        .eq("brand_slug", brandSlugS)
-        .eq("slug", entitySlugS)
-        .in("status", ["scheduled", "live"])
-        .maybeSingle();
-      if (!eventRow) return json({ error: "destination_not_public" }, 422);
-      destUrlS = `${BUSINESS_WEB_ORIGIN}/e/${brandSlugS}/${entitySlugS}`;
-      destEventIdS = String(eventRow.id);
-    } else if (pageTypeS === "brand") {
-      const { data: brandRow } = await supabase
-        .from("business_public_brands_view")
-        .select("id, slug")
-        .eq("slug", brandSlugS)
-        .maybeSingle();
-      if (!brandRow) return json({ error: "destination_not_public" }, 422);
-      destUrlS = `${BUSINESS_WEB_ORIGIN}/b/${brandSlugS}`;
-    } else {
-      return json({ error: "destination_not_public", detail: "dest_page_type_not_supported_wp1" }, 422);
+      return json({ error: "destination_lookup_failed" }, 503);
     }
+    const destUrlS = resolvedDestinationS.canonical_url;
+    const destEventIdS = resolvedDestinationS.event_id;
+    const destVenueIdS = resolvedDestinationS.venue_id;
+    const snapTrackedDestUrlS = `${destUrlS}${destUrlS.includes("?") ? "&" : "?"}mc_id={{campaign.id}}`;
     // GR-54 + destination policy v1: the web-view URL is the canonical page
     // (https, ≤2048) — NEVER the OneLink (D-P1).
-    const webViewUrlCheck = validateSnapchatWebViewUrl(destUrlS);
+    const webViewUrlCheck = validateSnapchatWebViewUrl(snapTrackedDestUrlS);
     if (!webViewUrlCheck.ok) {
       return json({ error: webViewUrlCheck.detail, detail: webViewUrlCheck.message }, 422);
     }
 
-    // (5) Media resolve — the adapter NEVER uploads; media comes from the #866
-    //     creative library (uploadToSnap) or an explicit top_snap_media_id.
+    // (5) Media resolve — Phase A videos must use the exact prepared ref.
+    const creativeKindS = creativeS.kind === "video" ? "video" : "image";
     let topSnapMediaIdS = typeof creativeS.top_snap_media_id === "string"
       ? creativeS.top_snap_media_id.trim()
       : "";
@@ -1074,14 +1673,29 @@ serve(async (req: Request): Promise<Response> => {
       ? creativeS.creative_library_id.trim()
       : "";
     let creativeLibraryRowIdS: string | null = null;
+    if (creativeKindS === "video" && !creativeLibraryIdS) {
+      return json({ error: "video_preparation_required" }, 422);
+    }
+    if (creativeKindS === "video") topSnapMediaIdS = "";
     if (!topSnapMediaIdS && creativeLibraryIdS) {
       const { data: libCreative } = await supabase
         .from("ad_creatives")
         .select("id, kind, content_hash, duration_seconds")
         .eq("id", creativeLibraryIdS)
         .maybeSingle();
+      // #927 s3 contract: the not-found gate fires ONLY when the row genuinely
+      // does not resolve. An existing library row with no READY #866 ref must
+      // fall through to the ref check below and return creative_not_uploaded —
+      // NOT be reclassified as creative_not_found. A `status !== "active"`
+      // clause here would break that contract for the image path (the #866
+      // mock seeds a row with no status field), so it lives on NEITHER gate.
+      // The authoritative usability gate is the READY-ref check
+      // (external_kind + content_hash + status="ready"), asserted below.
       if (!libCreative) {
         return json({ error: "creative_not_found", detail: "creative_library_id does not resolve" }, 422);
+      }
+      if (creativeKindS === "video" && libCreative.kind !== "video") {
+        return json({ error: "creative_kind_mismatch" }, 422);
       }
       const { data: ref } = await supabase
         .from("ad_creative_platform_refs")
@@ -1090,6 +1704,9 @@ serve(async (req: Request): Promise<Response> => {
         .eq("platform", "snapchat")
         .eq("lane", lane)
         .eq("external_account_id", sconn.external_account_id)
+        .eq("external_kind", libCreative.kind)
+        .eq("content_hash", libCreative.content_hash)
+        .eq("status", "ready")
         .maybeSingle();
       if (!ref || ref.status !== "ready" || !ref.external_ref) {
         return json({
@@ -1158,6 +1775,23 @@ serve(async (req: Request): Promise<Response> => {
       ...(typeof spendCapCentsS === "number" ? { spendCapCents: spendCapCentsS } : {}),
       ...(typeof body.promotion_type === "string" ? { promotionType: body.promotion_type } : {}),
     };
+    // ISSUE-992 (3a): create-time SERVER geocode of each city circle — the
+    // MAPBOX_ACCESS_TOKEN + every coordinate stay strictly server-side. A null
+    // geocode DROPS that circle (never fabricates a location — Constitution #3);
+    // if every circle misses, buildSnapchatAdSquadBody falls back to country-only.
+    const geocodedCirclesS: SnapchatCircleGeo[] = [];
+    for (const circle of circleInputsS) {
+      const coords = await forwardGeocodeText(`${circle.name}, ${circle.country_code}`);
+      if (!coords) continue; // geocode miss → this city drops to country targeting
+      geocodedCirclesS.push({
+        country_code: circle.country_code,
+        latitude: coords.lat,
+        longitude: coords.lng,
+        radius: circle.radius,
+        unit: circle.unit,
+      });
+    }
+
     const adSetInputS: CreateAdSetInput = {
       name: `${name} — ad squad`,
       optimizationGoal: optimizationGoalS,
@@ -1166,6 +1800,9 @@ serve(async (req: Request): Promise<Response> => {
       targeting: {
         countries: countryCodesS,
         demographics: demographicsS,
+        // ISSUE-992 (3a): geocoded circles → circle geos; SCLS interest ids.
+        ...(geocodedCirclesS.length > 0 ? { circles: geocodedCirclesS } : {}),
+        ...(snapInterestIdsS.length > 0 ? { interests: snapInterestIdsS } : {}),
         budget_mode: "daily",
         bid_strategy: bidStrategyS,
         ...(typeof bidCentsS === "number" ? { bid_cents: bidCentsS } : {}),
@@ -1173,7 +1810,7 @@ serve(async (req: Request): Promise<Response> => {
       },
     };
     const creativeInputS: CreateCreativeInput & SnapchatCreateCreativeExtensions = {
-      destUrl: destUrlS, // A4.f/A1.1(5): the AD-VISIBLE destination — never the OneLink
+      destUrl: snapTrackedDestUrlS, // canonical page + documented Snap campaign macro
       message: headlineS, // interface-required; Snap creatives carry headline, not message
       headline: headlineS,
       callToActionType: ctaS,
@@ -1233,6 +1870,10 @@ serve(async (req: Request): Promise<Response> => {
       const targetingRecordS: Record<string, unknown> = {
         countries: countryCodesS,
         demographics: demographicsS, // GR-39: min_age "18" default, strings
+        // ISSUE-992 (3a): the applied circle geos + SCLS interests (states what
+        // actually shipped — geocoded circles only; missed cities dropped).
+        ...(geocodedCirclesS.length > 0 ? { circles: geocodedCirclesS } : {}),
+        ...(snapInterestIdsS.length > 0 ? { interests: snapInterestIdsS } : {}),
       };
 
       // (7) Persist ONE campaign+ad_set+ad row set (only now that all IDs exist).
@@ -1253,6 +1894,7 @@ serve(async (req: Request): Promise<Response> => {
           dest_brand_slug: brandSlugS,
           dest_entity_slug: entitySlugS || null,
           dest_event_id: destEventIdS,
+          dest_venue_id: destVenueIdS,
           dest_url: destUrlS,
           // A4.f-demoted slot: stored for attribution reference, never sent to Snap.
           dest_smart_link: snapSmartLink,
@@ -1519,6 +2161,12 @@ serve(async (req: Request): Promise<Response> => {
     const bidPriceCentsT = bidPriceCentsRawT as number | undefined;
 
     const creativeT = (body.creative ?? {}) as Record<string, unknown>;
+    // ISSUE-997 C: TikTok paused-video create. The blanket phase-A 422 is lifted;
+    // the video media-resolve (READY ref → video_id + cover image_id + 5–60 s
+    // duration gate) runs in the media block below, mirroring the Meta/Snap video
+    // branches. Everything else (PAUSED, targeting, persist) is byte-identical to
+    // the image path.
+    const creativeKindT = creativeT.kind === "video" ? "video" : "image";
     // ISSUE-979 Bug 3: the global compliance intent reaches TikTok's create path
     // now. TikTok's aigc_disclosure_type is CUSTOMIZED_USER-only (unreachable,
     // T-P6) and it has no special-ad-category field — documented + observable,
@@ -1643,33 +2291,18 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     // (4) Destination resolve — READ-ONLY, public + live only (§4.4b).
-    let destUrlT: string;
-    let destEventIdT: string | null = null;
-    if (pageTypeT === "event") {
-      if (!entitySlugT) {
-        return json({ error: "validation_error", detail: "destination_entity_slug_required" }, 400);
+    let resolvedDestinationT;
+    try {
+      resolvedDestinationT = await resolveAdDestination(supabase, destinationT);
+    } catch (err) {
+      if (err instanceof AdDestinationError) {
+        return json({ error: err.code, detail: err.message }, err.status);
       }
-      const { data: eventRow } = await supabase
-        .from("business_public_events_view")
-        .select("id, brand_slug, slug, status")
-        .eq("brand_slug", brandSlugT)
-        .eq("slug", entitySlugT)
-        .in("status", ["scheduled", "live"])
-        .maybeSingle();
-      if (!eventRow) return json({ error: "destination_not_public" }, 422);
-      destUrlT = `${BUSINESS_WEB_ORIGIN}/e/${brandSlugT}/${entitySlugT}`;
-      destEventIdT = String(eventRow.id);
-    } else if (pageTypeT === "brand") {
-      const { data: brandRow } = await supabase
-        .from("business_public_brands_view")
-        .select("id, slug")
-        .eq("slug", brandSlugT)
-        .maybeSingle();
-      if (!brandRow) return json({ error: "destination_not_public" }, 422);
-      destUrlT = `${BUSINESS_WEB_ORIGIN}/b/${brandSlugT}`;
-    } else {
-      return json({ error: "destination_not_public", detail: "dest_page_type_not_supported_wp1" }, 422);
+      return json({ error: "destination_lookup_failed" }, 503);
     }
+    const destUrlT = resolvedDestinationT.canonical_url;
+    const destEventIdT = resolvedDestinationT.event_id;
+    const destVenueIdT = resolvedDestinationT.venue_id;
     // A1.0-5 (PROOF D-P1): the ad-visible landing_page_url is the canonical
     // page — NEVER the OneLink; attribution rides in utm_params.
     const landingCheckT = validateTikTokLandingPageUrl(destUrlT);
@@ -1677,16 +2310,89 @@ serve(async (req: Request): Promise<Response> => {
       return json({ error: landingCheckT.detail, detail: landingCheckT.message }, 422);
     }
 
-    // (5) Media resolve — an explicit Asset-Library image_id, a #866 library
-    // ref (external_ref_extra.image_id), or an image_url to upload AFTER the
-    // validate gate (UPLOAD_BY_URL — GR-58).
+    // (5) Media resolve — for VIDEO (#997 C): a #866 library ref that
+    // admin-ad-creative-prepare (tiktok) promoted to READY, carrying BOTH
+    // external_ref_extra.video_id and .cover_image_id. For IMAGE (#866): an
+    // explicit Asset-Library image_id, a #866 library ref
+    // (external_ref_extra.image_id), or an image_url to upload AFTER the validate
+    // gate (UPLOAD_BY_URL — GR-58).
     let imageIdT = typeof creativeT.image_id === "string" ? creativeT.image_id.trim() : "";
+    let videoIdT = "";
+    // ISSUE-997 C: SINGLE_VIDEO for a prepared video, else SINGLE_IMAGE (#866).
+    const adFormatT = creativeKindT === "video" ? "SINGLE_VIDEO" : "SINGLE_IMAGE";
     const creativeLibraryIdT = typeof creativeT.creative_library_id === "string"
       ? creativeT.creative_library_id.trim()
       : "";
     const imageUrlT = typeof creativeT.image_url === "string" ? creativeT.image_url.trim() : "";
     let creativeLibraryRowIdT: string | null = null;
-    if (!imageIdT && creativeLibraryIdT) {
+    if (creativeKindT === "video") {
+      // ISSUE-997 C: video create is a pure READY-ref consumer — create NEVER
+      // uploads provider media inline (mirror Snap creative_not_uploaded contract).
+      if (!creativeLibraryIdT) {
+        return json({ error: "video_preparation_required" }, 422);
+      }
+      const { data: libCreativeVT } = await supabase
+        .from("ad_creatives")
+        .select("id, kind, content_hash, duration_seconds")
+        .eq("id", creativeLibraryIdT)
+        .maybeSingle();
+      if (!libCreativeVT) {
+        return json({ error: "creative_not_found", detail: "creative_library_id does not resolve" }, 422);
+      }
+      if (libCreativeVT.kind !== "video") {
+        return json({ error: "creative_kind_mismatch" }, 422);
+      }
+      const { data: refVT } = await supabase
+        .from("ad_creative_platform_refs")
+        .select("external_ref, external_ref_extra, status, content_hash")
+        .eq("creative_id", creativeLibraryIdT)
+        .eq("platform", "tiktok")
+        .eq("lane", lane)
+        .eq("external_account_id", tconn.external_account_id)
+        .eq("external_kind", "video")
+        .eq("content_hash", libCreativeVT.content_hash)
+        .eq("status", "ready")
+        .maybeSingle();
+      if (!refVT || refVT.status !== "ready" || !refVT.external_ref) {
+        return json({
+          error: "creative_not_uploaded",
+          detail:
+            "No READY tiktok VIDEO ref for this creative on this advertiser — prepare it through admin-ad-creative-prepare (tiktok) first; create never uploads inline.",
+        }, 422);
+      }
+      if (refVT.content_hash && libCreativeVT.content_hash && refVT.content_hash !== libCreativeVT.content_hash) {
+        // A1-1 (#866): cache validity keys on CONTENT — a stale ref must never serve.
+        return json({
+          error: "creative_ref_stale",
+          detail:
+            "The tiktok video ref was prepared from different bytes than the creative's current content_hash — re-prepare through admin-ad-creative-prepare.",
+        }, 422);
+      }
+      // A SINGLE_VIDEO ad-object needs BOTH the prepared video_id and a cover
+      // image_id (both land in external_ref_extra at prepare — #997 C 2.1). A
+      // legacy #1184 ref with only video_id fails closed here, never silently.
+      const refExtraVT = (refVT.external_ref_extra ?? {}) as Record<string, unknown>;
+      const preparedVideoIdT = typeof refExtraVT.video_id === "string" ? refExtraVT.video_id : "";
+      const coverImageIdT = typeof refExtraVT.cover_image_id === "string" ? refExtraVT.cover_image_id : "";
+      if (!preparedVideoIdT || !coverImageIdT) {
+        return json({
+          error: "creative_ref_incomplete",
+          detail:
+            "The tiktok video ref is missing external_ref_extra.video_id or cover_image_id (SINGLE_VIDEO needs BOTH) — re-prepare through admin-ad-creative-prepare.",
+        }, 422);
+      }
+      // 5–60 s ADVERTISING-POLICY duration gate (Seth-approved; T-4). A longer
+      // video uploads/creates fine, then dies in review while budget burns.
+      if (typeof libCreativeVT.duration_seconds === "number") {
+        const durationCheckVT = validateTikTokVideoDuration(libCreativeVT.duration_seconds);
+        if (!durationCheckVT.ok) {
+          return json({ error: durationCheckVT.detail, detail: durationCheckVT.message }, 422);
+        }
+      }
+      videoIdT = preparedVideoIdT;
+      imageIdT = coverImageIdT; // the cover rides in image_ids:[cover] for SINGLE_VIDEO
+      creativeLibraryRowIdT = String(libCreativeVT.id);
+    } else if (!imageIdT && creativeLibraryIdT) {
       const { data: libCreativeT } = await supabase
         .from("ad_creatives")
         .select("id, kind, content_hash")
@@ -1829,7 +2535,11 @@ serve(async (req: Request): Promise<Response> => {
       const adInputT: Omit<CreateAdInput, "externalCreativeId"> & TikTokCreateAdExtensions = {
         name: `${name} — ad`,
         adText: adTextT,
+        // SINGLE_IMAGE: the ad image. SINGLE_VIDEO (#997 C): the video cover +
+        // the prepared video_id (both from external_ref_extra at prepare).
+        adFormat: adFormatT,
         imageIds: [imageIdT],
+        ...(videoIdT ? { videoId: videoIdT } : {}),
         // A1.0-5: the canonical page is the ad-visible URL; attribution rides
         // utm_params (≤14, case-sensitive keys, TikTok serve-time macros).
         landingPageUrl: destUrlT,
@@ -1897,6 +2607,7 @@ serve(async (req: Request): Promise<Response> => {
           dest_brand_slug: brandSlugT,
           dest_entity_slug: entitySlugT || null,
           dest_event_id: destEventIdT,
+          dest_venue_id: destVenueIdT,
           dest_url: destUrlT,
           // A4.f-demoted slot: stored for attribution reference, never sent to TikTok.
           dest_smart_link: tiktokSmartLink,
@@ -1992,7 +2703,8 @@ serve(async (req: Request): Promise<Response> => {
           external_campaign_id: createdT.externalCampaignId,
           external_adset_id: createdT.externalAdSetId,
           external_ad_id: createdT.externalAdId,
-          external_image_id: imageIdT,
+          external_image_id: imageIdT, // SINGLE_VIDEO: this is the cover image_id
+          ...(videoIdT ? { external_video_id: videoIdT } : {}),
         },
         provider_response: null,
       });
@@ -2103,6 +2815,16 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     const creativeR = (body.creative ?? {}) as Record<string, unknown>;
+    // ISSUE-1185 [Reddit video Phase B]: Reddit VIDEO create. Unlike
+    // Meta/Snap/TikTok/Google — which PREPARE-upload the video to the platform and
+    // consume a READY ref — Reddit downloads and rehosts from a PUBLIC master URL
+    // (§5.5, identical to the IMAGE path). So there is NO prepare/READY-ref step:
+    // the canonical hosted MP4 (mp4_master_url) + poster (poster_url) come straight
+    // off the #866 library row (kind:"video"), resolved by creative_library_id in
+    // step (4) below. buildRedditStructuredPostJobBody already emits creative.video
+    // + creative.thumbnail for type:"VIDEO", and redditCreateFullChain runs it
+    // PAUSED at every level (G-1) — the reddit.ts adapter needs no change.
+    const creativeKindR = creativeR.kind === "video" ? "video" : "image";
     // ISSUE-979 Bug 3: the global compliance intent reaches Reddit's create path
     // now. Reddit has no AI-disclosure and no special-ad-category field —
     // documented + observable, never silently dropped.
@@ -2115,13 +2837,35 @@ serve(async (req: Request): Promise<Response> => {
     if (!headlineR) {
       return json({ error: "validation_error", detail: "creative_headline_required" }, 400);
     }
-    const imageUrlR = typeof creativeR.image_url === "string" ? creativeR.image_url.trim() : "";
-    if (!imageUrlR) {
+    // Media presence — pure input validation (400/422 BEFORE any provider call).
+    // IMAGE takes a public master URL inline; VIDEO takes the #866 library row id
+    // (the create endpoint never receives inline video bytes — payload.js A1).
+    const imageUrlR = creativeKindR === "image" &&
+        typeof creativeR.image_url === "string"
+      ? creativeR.image_url.trim()
+      : "";
+    const creativeLibraryIdR = creativeKindR === "video" &&
+        typeof creativeR.creative_library_id === "string"
+      ? creativeR.creative_library_id.trim()
+      : "";
+    if (creativeKindR === "image" && !imageUrlR) {
       return json({
         error: "validation_error",
         detail:
           "creative_media_required — Reddit v1 is the IMAGE structured-post variant; pass creative.image_url (a public master URL — Reddit downloads and rehosts, §5.5).",
       }, 400);
+    }
+    if (creativeKindR === "video" && !creativeLibraryIdR) {
+      // ISSUE-1185: Reddit has NO per-platform prepare step — the clip is served to
+      // Reddit straight from the #866 library (mp4_master_url + poster_url). The
+      // honest requirement is a creative-library clip id, NOT the siblings'
+      // "video_preparation_required" (which would imply a prepare handoff Reddit
+      // never performs).
+      return json({
+        error: "reddit_video_library_required",
+        detail:
+          'Reddit VIDEO create needs a #866 creative-library clip (kind:"video" with mp4_master_url + poster_url) — pass creative.creative_library_id. Reddit downloads the master MP4 and its poster directly; there is no per-platform preparation step.',
+      }, 422);
     }
     // §5.1 (GR-29): Reddit CTAs are Title-Case display strings, VERBATIM —
     // never uppercased, never shared with another channel's normalizer.
@@ -2164,44 +2908,83 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     // (3) Destination resolve — READ-ONLY, public + live only (§4.4b).
-    let destUrlR: string;
-    let destEventIdR: string | null = null;
-    if (pageTypeR === "event") {
-      if (!entitySlugR) {
-        return json({ error: "validation_error", detail: "destination_entity_slug_required" }, 400);
+    let resolvedDestinationR;
+    try {
+      resolvedDestinationR = await resolveAdDestination(supabase, destinationR);
+    } catch (err) {
+      if (err instanceof AdDestinationError) {
+        return json({ error: err.code, detail: err.message }, err.status);
       }
-      const { data: eventRow } = await supabase
-        .from("business_public_events_view")
-        .select("id, brand_slug, slug, status")
-        .eq("brand_slug", brandSlugR)
-        .eq("slug", entitySlugR)
-        .in("status", ["scheduled", "live"])
-        .maybeSingle();
-      if (!eventRow) return json({ error: "destination_not_public" }, 422);
-      destUrlR = `${BUSINESS_WEB_ORIGIN}/e/${brandSlugR}/${entitySlugR}`;
-      destEventIdR = String(eventRow.id);
-    } else if (pageTypeR === "brand") {
-      const { data: brandRow } = await supabase
-        .from("business_public_brands_view")
-        .select("id, slug")
-        .eq("slug", brandSlugR)
-        .maybeSingle();
-      if (!brandRow) return json({ error: "destination_not_public" }, 422);
-      destUrlR = `${BUSINESS_WEB_ORIGIN}/b/${brandSlugR}`;
-    } else {
-      return json({ error: "destination_not_public", detail: "dest_page_type_not_supported_wp1" }, 422);
+      return json({ error: "destination_lookup_failed" }, 503);
     }
+    const destUrlR = resolvedDestinationR.canonical_url;
+    const destEventIdR = resolvedDestinationR.event_id;
+    const destVenueIdR = resolvedDestinationR.venue_id;
 
     // (4) Creative validation (§5 — copy caps, Title-Case CTA enum, and the
     // §5.4 destination policy: display_url must match; NO OneLink can reach a
-    // Reddit create body — D-P1 bridge-page rejection class).
-    const creativeInputR: RedditCreativeBuildInput = {
-      type: "IMAGE",
-      headline: headlineR,
-      destinationUrl: destUrlR,
-      callToAction: ctaR,
-      imageUrl: imageUrlR,
-    };
+    // Reddit create body — D-P1 bridge-page rejection class). For VIDEO (#1185)
+    // the canonical hosted MP4 + poster are resolved off the #866 library row
+    // FIRST (a DB read, never a provider call); IMAGE keeps its inline master URL.
+    let creativeInputR: RedditCreativeBuildInput;
+    if (creativeKindR === "video") {
+      const { data: libCreativeR } = await supabase
+        .from("ad_creatives")
+        .select("id, kind, mp4_master_url, poster_url")
+        .eq("id", creativeLibraryIdR)
+        .maybeSingle();
+      if (!libCreativeR) {
+        return json({ error: "creative_not_found", detail: "creative_library_id does not resolve" }, 422);
+      }
+      if (libCreativeR.kind !== "video") {
+        return json({
+          error: "creative_kind_mismatch",
+          detail: 'creative_library_id is not a video creative (kind must be "video").',
+        }, 422);
+      }
+      // §5.5: Reddit downloads the master MP4 from a PUBLIC URL — mp4_master_url is
+      // the direct-MP4 byte source (Bunny serves HLS, not a downloadable MP4; #866
+      // A1-3). poster_url is REQUIRED for a Reddit VIDEO post (#866 A1-8c / AC-R-25),
+      // and the ad_creatives_video_source DB CHECK guarantees BOTH are non-null for
+      // kind:"video" — we re-assert here so a legacy/partial row fails closed (422)
+      // instead of building a bad create body.
+      const videoUrlR = typeof libCreativeR.mp4_master_url === "string"
+        ? libCreativeR.mp4_master_url.trim()
+        : "";
+      const posterUrlR = typeof libCreativeR.poster_url === "string"
+        ? libCreativeR.poster_url.trim()
+        : "";
+      if (!videoUrlR) {
+        return json({
+          error: "reddit_video_master_missing",
+          detail:
+            "The video creative has no mp4_master_url — Reddit needs a direct-MP4 public URL to download (#866 A1-3). Re-record the clip through admin-ad-creative-upload.",
+        }, 422);
+      }
+      if (!posterUrlR) {
+        return json({
+          error: "reddit_video_poster_missing",
+          detail:
+            "The video creative has no poster_url — a Reddit VIDEO post REQUIRES a thumbnail (#866 A1-8c / AC-R-25).",
+        }, 422);
+      }
+      creativeInputR = {
+        type: "VIDEO",
+        headline: headlineR,
+        destinationUrl: destUrlR,
+        callToAction: ctaR,
+        videoUrl: videoUrlR,
+        thumbnailUrl: posterUrlR,
+      };
+    } else {
+      creativeInputR = {
+        type: "IMAGE",
+        headline: headlineR,
+        destinationUrl: destUrlR,
+        callToAction: ctaR,
+        imageUrl: imageUrlR,
+      };
+    }
     const creativeCheckR = validateRedditCreative(creativeInputR);
     if (!creativeCheckR.ok) {
       return json({ error: creativeCheckR.detail, detail: creativeCheckR.message }, 422);
@@ -2297,6 +3080,7 @@ serve(async (req: Request): Promise<Response> => {
           dest_brand_slug: brandSlugR,
           dest_entity_slug: entitySlugR || null,
           dest_event_id: destEventIdR,
+          dest_venue_id: destVenueIdR,
           dest_url: destUrlR,
           // A4.f-demoted slot: stored for attribution reference, never sent to Reddit.
           dest_smart_link: redditSmartLink,
@@ -2493,12 +3277,20 @@ serve(async (req: Request): Promise<Response> => {
   if (!brandSlug) return json({ error: "validation_error", detail: "destination_brand_slug_required" }, 400);
 
   const creative = (body.creative ?? {}) as Record<string, unknown>;
+  const creativeKind = creative.kind === "video" ? "video" : "image";
+  const creativeLibraryId = typeof creative.creative_library_id === "string"
+    ? creative.creative_library_id.trim()
+    : "";
   const message = typeof creative.message === "string" ? creative.message.trim() : "";
   if (!message) return json({ error: "validation_error", detail: "creative_message_required" }, 400);
-  const imageUrl = typeof creative.image_url === "string" ? creative.image_url : undefined;
-  const imageHash = typeof creative.image_hash === "string" ? creative.image_hash : undefined;
-  const videoId = typeof creative.video_id === "string" ? creative.video_id : undefined;
-  if (!imageUrl && !imageHash && !videoId) {
+  let imageUrl = typeof creative.image_url === "string" ? creative.image_url : undefined;
+  let imageHash = typeof creative.image_hash === "string" ? creative.image_hash : undefined;
+  let videoId = typeof creative.video_id === "string" ? creative.video_id : undefined;
+  let videoThumbnailImageHash = typeof creative.video_thumbnail_image_hash === "string"
+    ? creative.video_thumbnail_image_hash
+    : undefined;
+  let metaCreativeLibraryRowId: string | null = null;
+  if (!imageUrl && !imageHash && !videoId && !creativeLibraryId) {
     return json({ error: "validation_error", detail: "creative_media_required" }, 400);
   }
 
@@ -2518,6 +3310,42 @@ serve(async (req: Request): Promise<Response> => {
     return json({ error: `${platform}_not_connected` }, 424);
   }
   const connection = conn as unknown as AdConnectionRow;
+
+  // Phase A video cannot accept a client-supplied provider id. Resolve the
+  // exact current-hash READY ref for this creative/account/lane.
+  if (creativeKind === "video") {
+    if (!creativeLibraryId) return json({ error: "video_preparation_required" }, 422);
+    const { data: libCreative } = await supabase
+      .from("ad_creatives")
+      .select("id, kind, status, content_hash")
+      .eq("id", creativeLibraryId)
+      .maybeSingle();
+    if (!libCreative || libCreative.kind !== "video" || libCreative.status !== "active" || !libCreative.content_hash) {
+      return json({ error: "creative_not_found" }, 422);
+    }
+    const { data: ref } = await supabase
+      .from("ad_creative_platform_refs")
+      .select("external_ref, external_ref_extra")
+      .eq("creative_id", creativeLibraryId)
+      .eq("platform", "meta")
+      .eq("lane", lane)
+      .eq("external_account_id", connection.external_account_id)
+      .eq("external_kind", "video")
+      .eq("content_hash", libCreative.content_hash)
+      .eq("status", "ready")
+      .maybeSingle();
+    const refExtra = ref?.external_ref_extra && typeof ref.external_ref_extra === "object"
+      ? ref.external_ref_extra as Record<string, unknown>
+      : {};
+    if (!ref?.external_ref || typeof refExtra.thumbnail_image_hash !== "string") {
+      return json({ error: "video_preparation_required" }, 422);
+    }
+    videoId = String(ref.external_ref);
+    videoThumbnailImageHash = refExtra.thumbnail_image_hash;
+    imageUrl = undefined;
+    imageHash = undefined;
+    metaCreativeLibraryRowId = String(libCreative.id);
+  }
 
   // Idempotency (A3 §A request_id): replay returns the existing row.
   if (requestId && !validateOnly) {
@@ -2626,37 +3454,18 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   // ── 6. Destination resolve — READ-ONLY, public + live only (§4.4b). ──────────
-  let destUrl: string;
-  let destEventId: string | null = null;
-  if (pageType === "event") {
-    if (!entitySlug) {
-      return json({ error: "validation_error", detail: "destination_entity_slug_required" }, 400);
+  let resolvedDestination;
+  try {
+    resolvedDestination = await resolveAdDestination(supabase, destination);
+  } catch (err) {
+    if (err instanceof AdDestinationError) {
+      return json({ error: err.code, detail: err.message }, err.status);
     }
-    // QA P3-6 (AC-4 "public + LIVE"): the view also exposes ended/cancelled
-    // events — paid traffic must never point at one.
-    const { data: eventRow } = await supabase
-      .from("business_public_events_view")
-      .select("id, brand_slug, slug, status")
-      .eq("brand_slug", brandSlug)
-      .eq("slug", entitySlug)
-      .in("status", ["scheduled", "live"])
-      .maybeSingle();
-    if (!eventRow) return json({ error: "destination_not_public" }, 422);
-    destUrl = `${BUSINESS_WEB_ORIGIN}/e/${brandSlug}/${entitySlug}`;
-    destEventId = String(eventRow.id);
-  } else if (pageType === "brand") {
-    const { data: brandRow } = await supabase
-      .from("business_public_brands_view")
-      .select("id, slug")
-      .eq("slug", brandSlug)
-      .maybeSingle();
-    if (!brandRow) return json({ error: "destination_not_public" }, 422);
-    destUrl = `${BUSINESS_WEB_ORIGIN}/b/${brandSlug}`;
-  } else {
-    // trip/venue public resolution has no server-side read model in WP1 —
-    // fail-close rather than guess (flagged in the WP1 report).
-    return json({ error: "destination_not_public", detail: "dest_page_type_not_supported_wp1" }, 422);
+    return json({ error: "destination_lookup_failed" }, 503);
   }
+  const destUrl = resolvedDestination.canonical_url;
+  const destEventId = resolvedDestination.event_id;
+  const destVenueId = resolvedDestination.venue_id;
 
   const conversionDomain = conversionDomainFromUrl(destUrl);
   const adapter = getAdapter(platform);
@@ -2689,9 +3498,7 @@ serve(async (req: Request): Promise<Response> => {
     imageUrl,
     imageHash,
     videoId,
-    videoThumbnailImageHash: typeof creative.video_thumbnail_image_hash === "string"
-      ? creative.video_thumbnail_image_hash
-      : undefined,
+    videoThumbnailImageHash,
     callToActionType: typeof creative.call_to_action_type === "string"
       ? creative.call_to_action_type
       : "LEARN_MORE",
@@ -2811,6 +3618,7 @@ serve(async (req: Request): Promise<Response> => {
         dest_brand_slug: brandSlug,
         dest_entity_slug: entitySlug || null,
         dest_event_id: destEventId,
+        dest_venue_id: destVenueId,
         dest_url: destUrl,
         dest_smart_link: destSmartLink,
         dest_group_id: destGroupId, // ISSUE-1002: shared fan-out group (NULL for single-destination)
@@ -2849,6 +3657,7 @@ serve(async (req: Request): Promise<Response> => {
           ad_set_id: adSetRow.id,
           external_ad_id: created.externalAdId,
           external_creative_id: created.externalCreativeId,
+          ...(metaCreativeLibraryRowId ? { creative_id: metaCreativeLibraryRowId } : {}),
           name: adInput.name,
           status: "PAUSED",
           review_status: created.reviewStatus,

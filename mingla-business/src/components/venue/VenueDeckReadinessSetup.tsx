@@ -32,12 +32,18 @@ import {
   typography,
 } from "../../constants/designSystem";
 import {
+  commitExistingVenueDiscoveryRange,
   refreshDeckReadiness,
   saveTier2,
   syncGallery,
   syncHeroMedia,
   type PipelineCoachingCard,
 } from "../../services/businessPlaceAuthoringService";
+import { useBrandDiscoveryCurrency } from "../../hooks/useBrandDiscoveryCurrency";
+import { usePlaceDiscoveryPriceRange } from "../../hooks/usePlaceDiscoveryPriceRange";
+import {
+  minorToMajorInput,
+} from "../../utils/currencyFormatter";
 import {
   pickGalleryPhotos,
   uploadGalleryPhoto,
@@ -99,15 +105,6 @@ const VIBE_SIGNALS = VENUE_SIGNALS;
 // ORCH-1304 — the old pitch-generation loader (staged copy + live website
 // screenshot) is REMOVED. Mingla writes the pitch and match scores at approve;
 // this screen only collects inputs and saves them.
-
-// WS5: price tiers mirror the consumer deck taxonomy (app-mobile priceTiers.ts).
-// Multi-select; persisted to place_pool.price_tiers + derived price_level (engine).
-const PRICE_TIERS_BIZ: ReadonlyArray<{ id: string; label: string; range: string }> = [
-  { id: "chill", label: "Chill", range: "$50 max" },
-  { id: "comfy", label: "Comfy", range: "$50–$150" },
-  { id: "bougie", label: "Bougie", range: "$150–$300" },
-  { id: "lavish", label: "Lavish", range: "$300+" },
-];
 
 // WS5: Google-Places facet yes/no questions, by venue category. ids match the
 // place_pool facet boolean columns + the edge FACET_COLUMNS.
@@ -209,11 +206,15 @@ export function VenueDeckReadinessSetup({
   const [website, setWebsite] = useState(
     stringValue(initialTier2.website, ""),
   );
-  // WS5: multi-select price tiers (Chill/Comfy/Bougie/Lavish), matching the
-  // consumer deck's price_tiers taxonomy.
-  const [priceTiers, setPriceTiers] = useState<string[]>(
-    stringArray(initialTier2.price_tiers),
+  const currencyQuery = useBrandDiscoveryCurrency(brandId);
+  const rangeQuery = usePlaceDiscoveryPriceRange(placePoolId);
+  const currencyState = currencyQuery.data;
+  const currencyMetadata = currencyState?.supportedCurrencies.find(
+    (candidate) => candidate.code === currencyState.currencyCode,
   );
+  const exponent = currencyMetadata?.minorUnitExponent ?? 2;
+  const [priceMinInput, setPriceMinInput] = useState("");
+  const [priceMaxInput, setPriceMaxInput] = useState("");
   const [selectedVibes, setSelectedVibes] = useState<string[]>(
     stringArray(initialTier2.vibe_chips),
   );
@@ -228,11 +229,21 @@ export function VenueDeckReadinessSetup({
 
   useEffect(() => {
     setWebsite(stringValue(initialTier2.website, ""));
-    setPriceTiers(stringArray(initialTier2.price_tiers));
     setSelectedVibes(stringArray(initialTier2.vibe_chips));
     setFacets(initialFacets);
     setCoaching(initialCoaching);
   }, [initialCoaching, initialFacets, initialTier2]);
+
+  useEffect(() => {
+    const range = rangeQuery.data;
+    if (range?.status !== "active" || range.source_min_minor === null) return;
+    setPriceMinInput(minorToMajorInput(range.source_min_minor, exponent));
+    setPriceMaxInput(
+      range.source_max_minor === null
+        ? ""
+        : minorToMajorInput(range.source_max_minor, exponent),
+    );
+  }, [exponent, rangeQuery.data]);
 
   useEffect(() => {
     setGallery(initialGallery);
@@ -245,7 +256,6 @@ export function VenueDeckReadinessSetup({
   const buildTier2 = useCallback(
     () => ({
       website: website.trim() || null,
-      price_tiers: priceTiers,
       vibe_chips: selectedVibes,
       facets,
       operator_inputs: {
@@ -253,14 +263,8 @@ export function VenueDeckReadinessSetup({
         description: operatorDescription,
       },
     }),
-    [operatorDescription, operatorTagline, facets, priceTiers, selectedVibes, website],
+    [operatorDescription, operatorTagline, facets, selectedVibes, website],
   );
-
-  const togglePrice = useCallback((id: string): void => {
-    setPriceTiers((prev) =>
-      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id],
-    );
-  }, []);
 
   const setFacet = useCallback((id: string, val: boolean): void => {
     setFacets((prev) => ({ ...prev, [id]: val }));
@@ -355,13 +359,32 @@ export function VenueDeckReadinessSetup({
     setMessage(null);
     try {
       await saveTier2({ brandId, venueId, placePoolId, tier2: buildTier2() });
+      await commitExistingVenueDiscoveryRange({
+        brandId,
+        venueId,
+        placePoolId,
+        priceMinInput,
+        priceMaxInput,
+        expectedVersion: rangeQuery.data?.version ?? 0,
+      });
       onDone();
     } catch (error) {
       setMessage(sanitizeAuthoringError(error, "Could not save your changes."));
     } finally {
       setBusy(null);
     }
-  }, [brandId, venueId, placePoolId, buildTier2, onDone]);
+  }, [
+    brandId,
+    venueId,
+    placePoolId,
+    buildTier2,
+    currencyMetadata,
+    currencyState,
+    onDone,
+    priceMaxInput,
+    priceMinInput,
+    rangeQuery.data?.version,
+  ]);
 
   const handleRefresh = useCallback(async (): Promise<void> => {
     setBusy("refresh");
@@ -535,30 +558,54 @@ export function VenueDeckReadinessSetup({
             keyboardType="url"
           />
 
-          {/* WS5: multi-select price tiers with $ boundaries (consumer taxonomy). */}
-          <Text style={styles.fieldLabel}>Price range (pick all that fit)</Text>
-          <View style={styles.chipRow}>
-            {PRICE_TIERS_BIZ.map((tier) => {
-              const on = priceTiers.includes(tier.id);
-              return (
-                <Pressable
-                  key={tier.id}
-                  onPress={() => togglePrice(tier.id)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: on }}
-                  accessibilityLabel={`${tier.label} ${tier.range}`}
-                  style={[styles.chip, on && styles.chipActive]}
-                >
-                  <Text style={[styles.chipText, on && styles.chipTextActive]}>
-                    {tier.label}
-                  </Text>
-                  <Text style={[styles.priceRange, on && styles.chipTextActive]}>
-                    {tier.range}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          <Text style={styles.fieldLabel}>Typical spend from</Text>
+          {currencyQuery.isError ? (
+            <Text style={styles.submitErr}>
+              We couldn’t load your brand currency. Try again.
+            </Text>
+          ) : currencyState?.reconciliation !== null &&
+            currencyState?.reconciliation !== undefined ? (
+            <Text style={styles.submitErr}>
+              Your payout currency changed. Review and reconcile existing
+              ranges before accepting paid reservations.
+            </Text>
+          ) : (
+            <>
+              <Text style={styles.fieldHint}>
+                {currencyState?.currencyCode === null ||
+                currencyState?.currencyCode === undefined
+                  ? "Choose your brand currency in Payments first."
+                  : `${currencyState.currencyCode} · ${
+                      currencyState.authority === "settlement"
+                        ? "Set by your payout account"
+                        : "Confirmed when you add a payout account"
+                    }`}
+              </Text>
+              <TextInput
+                value={priceMinInput}
+                onChangeText={setPriceMinInput}
+                placeholder="0"
+                placeholderTextColor={textTokens.tertiary}
+                style={styles.input}
+                keyboardType="decimal-pad"
+                accessibilityLabel={`Typical spend from in ${
+                  currencyState?.currencyCode ?? "brand currency"
+                }`}
+              />
+              <Text style={styles.fieldLabel}>Up to (optional)</Text>
+              <TextInput
+                value={priceMaxInput}
+                onChangeText={setPriceMaxInput}
+                placeholder="No upper limit"
+                placeholderTextColor={textTokens.tertiary}
+                style={styles.input}
+                keyboardType="decimal-pad"
+                accessibilityLabel={`Typical spend up to in ${
+                  currencyState?.currencyCode ?? "brand currency"
+                }`}
+              />
+            </>
+          )}
 
           <Text style={styles.fieldLabel}>Best for</Text>
           <Text style={styles.fieldHint}>
@@ -771,11 +818,6 @@ const styles = StyleSheet.create({
     fontSize: typography.caption.fontSize,
     color: textTokens.tertiary,
     lineHeight: 17,
-  },
-  priceRange: {
-    fontSize: typography.caption.fontSize,
-    color: textTokens.tertiary,
-    marginTop: 1,
   },
   facetRow: {
     flexDirection: "row",

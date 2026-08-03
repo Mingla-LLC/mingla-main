@@ -33,6 +33,7 @@ import {
   checkSingleCardSchedulingAvailability,
 } from "../../utils/singleCardAvailability";
 import { normalizeWebsiteUrl } from "../../utils/normalizeWebsiteUrl";
+import { canonicalDiscoveryPriceFields } from "../../utils/priceTiers";
 import { useTranslation } from "react-i18next";
 
 
@@ -532,6 +533,7 @@ export default function ActionButtons({
         rating: card.rating || 0,
         reviewCount: card.reviewCount || 0,
         priceRange: card.priceRange || '',
+        ...canonicalDiscoveryPriceFields(card),
         distance: card.distance || '',
         travelTime: card.travelTime || '',
         address: card.address || '',

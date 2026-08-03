@@ -19,7 +19,11 @@ import {
 } from "./mapMinglaSlugToVenueCategory.ts";
 import { FACET_COLUMNS } from "./authoredApply.ts";
 
-export type VenueCategorySlug = "restaurant" | "play" | "creative_and_arts";
+export type VenueCategorySlug =
+  | "restaurant"
+  | "play"
+  | "creative_and_arts"
+  | "stay";
 
 export type ClaimState = "available" | "pending" | "claimed";
 
@@ -123,7 +127,10 @@ export function rowToPoolMatch(row: PoolMatchRow): PoolMatchResult {
       ? row.photo_count
       : 0,
     claimState: normalizeClaimState(row.claim_state),
-    venueCategoryConfident: isConfidentVenueCategory(row.primary_type, row.types),
+    venueCategoryConfident: isConfidentVenueCategory(
+      row.primary_type,
+      row.types,
+    ),
   };
   assertNoForbiddenKeys(result as unknown as Record<string, unknown>);
   return result;
@@ -183,7 +190,9 @@ export interface PoolAdoptionDetail {
   venueCategoryConfident: boolean;
 }
 
-export function rowToAdoptionDetail(row: PoolAdoptionDetailRow): PoolAdoptionDetail {
+export function rowToAdoptionDetail(
+  row: PoolAdoptionDetailRow,
+): PoolAdoptionDetail {
   const photoUrls = (row.stored_photo_urls ?? []).filter(
     (u): u is string => typeof u === "string" && /^https?:\/\//i.test(u),
   );
@@ -216,7 +225,10 @@ export function rowToAdoptionDetail(row: PoolAdoptionDetailRow): PoolAdoptionDet
     reservable: row.reservable === true,
     facets,
     venueCategory: mapPoolTypesToVenueCategory(row.primary_type, row.types),
-    venueCategoryConfident: isConfidentVenueCategory(row.primary_type, row.types),
+    venueCategoryConfident: isConfidentVenueCategory(
+      row.primary_type,
+      row.types,
+    ),
   };
   assertNoForbiddenKeys(detail as unknown as Record<string, unknown>);
   assertNoForbiddenKeys(detail.facets as Record<string, unknown>);

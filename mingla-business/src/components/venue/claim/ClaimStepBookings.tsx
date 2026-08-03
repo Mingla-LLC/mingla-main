@@ -20,9 +20,11 @@ import { useDraftVenueStore } from "../../../store/draftVenueStore";
 import { BrandSwitch } from "../../ui/BrandSwitch";
 import { Icon } from "../../ui/Icon";
 import { ProvenanceChip } from "../../ui/ProvenanceChip";
+import { venueBookingSetupCopy } from "../venueBookingSetupCopy";
 
 export const ClaimStepBookings: React.FC = () => {
   const wantsReservations = useDraftVenueStore((s) => s.wantsReservations);
+  const venueCategory = useDraftVenueStore((s) => s.venueCategory);
   const reservableHint = useDraftVenueStore(
     (s) => s.claim?.adopted.reservableHint === true,
   );
@@ -46,9 +48,7 @@ export const ClaimStepBookings: React.FC = () => {
           <View style={styles.textCol}>
             <Text style={styles.label}>Take reservations on Mingla</Text>
             <Text style={styles.sub}>
-              {wantsReservations
-                ? "We'll walk you through setup after approval."
-                : "You can set tables, times and fees after you're live."}
+              {venueBookingSetupCopy(venueCategory, wantsReservations)}
             </Text>
           </View>
           <BrandSwitch

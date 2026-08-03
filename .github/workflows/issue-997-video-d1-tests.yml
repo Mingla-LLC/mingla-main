@@ -1,0 +1,136 @@
+name: ISSUE-997 D1 Google Video Prepare Tests
+
+# Scope D1 of issue #997 — Google (YouTube) video PREPARATION only: the
+# googlePrepareAdapter ported into the #1184 PrepareProviderAdapter shape, the RPC
+# platform-guard migration (+google), the READY-side mergeExtra fold, and the
+# frontend prepare-order flip. Built on the #1184 keystone + #997-C (TikTok).
+# Google video CREATE stays FAIL-CLOSED here — the Demand Gen builder + create
+# branch + gate flip are the SEPARATE 997-D2 sub-wave and are NOT covered.
+#
+# The sibling ad-engine Deno suites (#862/#866/#867/#927/#1002 + adChannel/
+# adCreative*/tiktok/google) run HERE because no general workflow runs them and
+# this PR edits their shared modules (_shared/adCreativePrepare.ts imports
+# _shared/google.ts) — C's merge was nearly halted by an unrun sibling
+# regression, so this gate runs them on every touch.
+
+on:
+  push:
+    branches: [main, "997-d1-google-video-prepare"]
+    paths:
+      - "supabase/functions/_shared/adCreativePrepare.ts"
+      - "supabase/functions/_shared/google.ts"
+      - "supabase/functions/_shared/adCreative.ts"
+      - "supabase/functions/_shared/adChannel.ts"
+      - "supabase/functions/admin-ad-create-campaign/**"
+      - "supabase/functions/admin-ad-creative-prepare/**"
+      - "supabase/functions/_shared/__tests__/issue997_google_video_prepare.test.ts"
+      - "supabase/functions/_shared/__tests__/issue997_google_video_prepare.adversarial.tester.test.ts"
+      - "supabase/functions/_shared/__tests__/issue997_tiktok_video_create*.test.ts"
+      - "supabase/functions/_shared/__tests__/issue1184_video_prepare*.test.ts"
+      - "supabase/functions/_shared/__tests__/issue86*_wp*.test.ts"
+      - "supabase/functions/_shared/__tests__/issue927_*.test.ts"
+      - "supabase/functions/_shared/__tests__/issue1002_*.test.ts"
+      - "supabase/functions/_shared/__tests__/google.test.ts"
+      - "supabase/functions/_shared/__tests__/tiktok.test.ts"
+      - "supabase/migrations/20270111001185_issue_997_google_video_prepare.sql"
+      - "supabase/migrations/__tests__/issue997_google_video_prepare_schema.test.ts"
+      - "supabase/migrations/__tests__/issue997_google_video_prepare_schema.adversarial.tester.test.ts"
+      - "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts"
+      - "supabase/config.toml"
+      - "mingla-admin/src/**"
+      - ".github/workflows/issue-997-video-d1-tests.yml"
+  pull_request:
+    paths:
+      - "supabase/functions/**"
+      - "supabase/migrations/**"
+      - "supabase/config.toml"
+      - "mingla-admin/src/**"
+      - ".github/workflows/issue-997-video-d1-tests.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  edge-and-schema:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: Format-check the NEW #997-D1 Deno test files (NARROW gate — #1184 Option 1 precedent)
+        # Scoped to ONLY the new #997-D1 Deno files this PR introduces. A directory
+        # glob would pull in pre-existing legacy files that are intentionally NOT
+        # reformatted; legacy/edited files stay protected by `deno check` +
+        # the regression suites + `git diff --check`.
+        run: |
+          deno fmt --check \
+            supabase/functions/_shared/__tests__/issue997_google_video_prepare.test.ts \
+            supabase/migrations/__tests__/issue997_google_video_prepare_schema.test.ts
+      - name: Type-check the changed edge modules
+        run: |
+          deno check \
+            supabase/functions/_shared/adCreativePrepare.ts \
+            supabase/functions/_shared/google.ts \
+            supabase/functions/admin-ad-creative-prepare/index.ts \
+            supabase/functions/admin-ad-create-campaign/index.ts
+      - name: Run ISSUE-997 D1 regressions + the #1184/#997-C suites + sibling ad-engine suites
+        # The #1184 + #997-C suites prove Meta/Snap/TikTok prepare+create stay
+        # intact. The sibling suites prove the shared-module edits
+        # (adCreativePrepare.ts now imports google.ts) did not regress
+        # #862/#866/#867/#927/#1002.
+        run: |
+          files=(
+            supabase/functions/_shared/__tests__/issue997_google_video_prepare.test.ts
+            supabase/functions/_shared/__tests__/issue997_google_video_prepare.adversarial.tester.test.ts
+            supabase/functions/_shared/__tests__/issue997_tiktok_video_create.test.ts
+            supabase/functions/_shared/__tests__/issue997_tiktok_video_create.adversarial.tester.test.ts
+            supabase/functions/_shared/__tests__/issue1184_video_prepare.test.ts
+            supabase/functions/_shared/__tests__/issue1184_video_prepare_adversarial.tester.test.ts
+            supabase/migrations/__tests__/issue997_google_video_prepare_schema.test.ts
+            supabase/migrations/__tests__/issue997_google_video_prepare_schema.adversarial.tester.test.ts
+            supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts
+            supabase/functions/_shared/__tests__/google.test.ts
+            supabase/functions/_shared/__tests__/tiktok.test.ts
+            supabase/functions/_shared/__tests__/issue867_wp2_google_flow.test.ts
+            supabase/functions/_shared/__tests__/issue867_wp2_tester_adversarial.test.ts
+            supabase/functions/_shared/__tests__/issue867_wp5_snapchat_flow.test.ts
+            supabase/functions/_shared/__tests__/issue862_wp1_rework.test.ts
+            supabase/functions/_shared/__tests__/issue862_wp1_retest_adversarial.test.ts
+            supabase/functions/_shared/__tests__/issue862_wp1_tester_adversarial.test.ts
+            supabase/functions/_shared/__tests__/issue863_wp7_tester_adversarial.test.ts
+            supabase/functions/_shared/__tests__/issue866_wp3_rework.test.ts
+            supabase/functions/_shared/__tests__/issue866_wp3_tester_adversarial.test.ts
+            supabase/functions/_shared/__tests__/issue927_create_fn_tiktok_reddit_branches.test.ts
+            supabase/functions/_shared/__tests__/issue1002_multi_destination_fanout.test.ts
+            supabase/functions/_shared/__tests__/adChannel.test.ts
+            supabase/functions/_shared/__tests__/adCreative.test.ts
+            supabase/functions/_shared/__tests__/adCreativeMatrix.test.ts
+            supabase/functions/_shared/__tests__/adCreativeProbe.test.ts
+          )
+          deno test --allow-env --allow-read "${files[@]}"
+
+  admin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ISSUE-997 D1 admin regressions + the #997-C / #1184 / #992 / #995 / #1002 siblings
+        working-directory: mingla-admin
+        run: |
+          node --test \
+            src/__tests__/issue997_google_video_prepare.test.js \
+            src/__tests__/issue997_google_video_prepare.adversarial.tester.test.js \
+            src/__tests__/issue997_tiktok_video_create.test.js \
+            src/__tests__/issue997_tiktok_video_create.adversarial.tester.test.js \
+            src/__tests__/issue1184_video_phase_a.test.js \
+            src/__tests__/issue1184_video_phase_a.adversarial.tester.test.js \
+            src/__tests__/issue995_creative_video_not_creatable.test.js \
+            src/__tests__/issue992_google_snap_targeting.test.js \
+            src/__tests__/issue989_targeting.test.js \
+            src/__tests__/issue1002_multi_destination.test.js

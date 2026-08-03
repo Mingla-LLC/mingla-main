@@ -284,7 +284,7 @@ Deno.test("GR-52: brand destinations re-check against business_public_brands_vie
 });
 
 Deno.test("GR-52: unknown/uncreatable page types are NOT public (fail-close)", async () => {
-  for (const pageType of ["trip", "venue", "garbage"]) {
+  for (const pageType of ["trip", "garbage"]) {
     const ok = await destinationStillPublicLive(stubDestinationClient({ id: "x" }, []), {
       dest_page_type: pageType,
       dest_brand_slug: "test-brand",

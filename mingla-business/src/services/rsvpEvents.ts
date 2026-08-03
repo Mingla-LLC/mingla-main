@@ -131,6 +131,9 @@ export interface SubmitPublicRsvpResult {
   rsvpId: string;
   /** ORCH-1163 §I — the signed mingla:v1:rsvp: QR (going only; null otherwise). */
   confirmationToken: string | null;
+  acknowledgement: "accepted" | "pending_approval" | "waitlisted" | "maybe" | "not_going";
+  credentials: import("@mingla/offering-rendering").RsvpPassCredential[];
+  anonymousRecovery: import("@mingla/offering-rendering").RsvpAnonymousRecovery[];
 }
 
 export const submitPublicRsvp = async (
@@ -158,12 +161,21 @@ export const submitPublicRsvp = async (
     approvalStatus?: "pending" | "approved";
     rsvpId?: string;
     confirmationToken?: string | null;
+    acknowledgement?: SubmitPublicRsvpResult["acknowledgement"];
+    credentials?: import("@mingla/offering-rendering").RsvpPassCredential[];
+    anonymousRecovery?: import("@mingla/offering-rendering").RsvpAnonymousRecovery[];
   };
   return {
     status: res.status ?? input.rsvpStatus,
     approvalStatus: res.approvalStatus ?? "approved",
     rsvpId: res.rsvpId ?? "",
     confirmationToken: res.confirmationToken ?? null,
+    acknowledgement: res.acknowledgement ??
+      (res.approvalStatus === "pending" ? "pending_approval" :
+        (res.status === "waitlisted" || res.status === "maybe" || res.status === "not_going")
+          ? res.status : "accepted"),
+    credentials: res.credentials ?? [],
+    anonymousRecovery: res.anonymousRecovery ?? [],
   };
 };
 

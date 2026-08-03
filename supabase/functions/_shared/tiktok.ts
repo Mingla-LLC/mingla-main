@@ -1087,6 +1087,165 @@ export function filterTikTokCityRegions(
   return cities.slice(0, limit);
 }
 
+// ── City geo resolution via tool/targeting/search (ISSUE-1289) ────────────────
+// PROVEN live 2026-07-29 (MCP tool_targeting_search, advertiser
+// 7627974536397766673): the CITY-filter over tool/region (filterTikTokCityRegions
+// above) could NOT resolve major US cities. In TikTok's US taxonomy the levels are
+// COUNTRY → PROVINCE (state) → CITY (**county**) → DISTRICT (**the actual
+// municipality**), and DMAs come back at PROVINCE level in tool/region
+// ("New York,DMA®"). So "New York" the city is a DISTRICT (geo_id 5128581) and
+// NEVER appears in a level==="CITY" filter — the search returned zero matches and
+// the create path silently fell back to country (#1289). tool/targeting/search
+// FUZZY_SEARCH is TikTok's purpose-built keyword→location_id endpoint: it returns
+// city (DISTRICT), county (CITY) AND DMA tags with numeric geo_ids usable directly
+// as adgroup location_ids (docs: "returned location IDs can be passed to
+// location_ids"), country-scoped and relevance-ordered. GB legitimately returns
+// EMPTY (T-P2 — no sub-country geo) → the caller emits an HONEST country-fallback
+// warning, never a silent widen.
+
+/** City-like geo levels surfaced for a "city" search (never COUNTRY/PROVINCE/ZIP_CODE). */
+export const TIKTOK_CITY_GEO_TYPES: readonly string[] = ["CITY", "DISTRICT", "DMA"];
+
+export interface TikTokLocationTag {
+  geoId: string;
+  geoType: string;
+  regionCode: string;
+  description: string | null;
+  name: string;
+  status: string | null;
+}
+
+/**
+ * Tolerant parser over a tool/targeting/search FUZZY_SEARCH payload
+ * (targeting_tag_list). Only GEO tags with a numeric geo_id + a name survive;
+ * null / non-object / ISP entries are SKIPPED (never a raw TypeError — mirrors
+ * parseTikTokRegions' tolerant-parser contract).
+ */
+export function parseTikTokTargetingSearch(payload: unknown): TikTokLocationTag[] {
+  const record = (payload ?? {}) as Record<string, unknown>;
+  const raw = (Array.isArray(record.targeting_tag_list)
+    ? record.targeting_tag_list
+    : Array.isArray(record.list)
+    ? record.list
+    : []) as Record<string, unknown>[];
+  const tags: TikTokLocationTag[] = [];
+  for (const entry of raw) {
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const geo = entry.geo;
+    if (geo === null || typeof geo !== "object" || Array.isArray(geo)) continue;
+    const geoRec = geo as Record<string, unknown>;
+    const idRaw = geoRec.geo_id;
+    const geoId = typeof idRaw === "string"
+      ? idRaw
+      : typeof idRaw === "number"
+      ? String(idRaw)
+      : "";
+    if (!geoId || !NUMERIC_ID_REGEX.test(geoId)) continue;
+    const name = typeof entry.name === "string" ? entry.name : "";
+    if (!name) continue;
+    const statusInfo = (entry.status_info ?? {}) as Record<string, unknown>;
+    tags.push({
+      geoId,
+      geoType: typeof geoRec.geo_type === "string" ? geoRec.geo_type.toUpperCase() : "",
+      regionCode: typeof geoRec.region_code === "string" ? geoRec.region_code.toUpperCase() : "",
+      description: typeof geoRec.description === "string" ? geoRec.description : null,
+      name,
+      status: typeof statusInfo.status === "string" ? statusInfo.status.toUpperCase() : null,
+    });
+  }
+  return tags;
+}
+
+/** Strip TikTok's ",DMA®" suffix so a DMA tag name-matches the typed city text. */
+function normalizeTikTokTagName(name: string): string {
+  return name.replace(/,\s*DMA®?\s*$/i, "").trim().toLowerCase();
+}
+
+/** description-based rank: the actual municipality first, then DMA, then county. */
+function tikTokCityDescriptionRank(tag: TikTokLocationTag): number {
+  const d = (tag.description ?? "").toLowerCase();
+  if (d === "city") return 0;
+  if (tag.geoType === "DMA" || d.startsWith("dma")) return 1;
+  if (d === "county") return 2;
+  return 3;
+}
+
+/**
+ * Pure filter + ranker over parsed targeting-search tags. Keeps ENABLED,
+ * city-like (CITY/DISTRICT/DMA), country-scoped tags; ranks exact name matches
+ * (DMA suffix stripped) first, then the actual municipality (description "City")
+ * ahead of DMA and county, then alphabetical. Numeric geo_ids only — so the
+ * chosen id drops straight into adgroup location_ids (never widened to country).
+ */
+export function pickTikTokCityMatches(
+  tags: readonly TikTokLocationTag[],
+  opts: { country?: string; q?: string; limit?: number } = {},
+): TikTokLocationTag[] {
+  const country = (opts.country ?? "").trim().toUpperCase();
+  const q = (opts.q ?? "").trim().toLowerCase();
+  const limit = opts.limit ?? 15;
+  const matches = tags.filter((t) => {
+    // A DISABLED / unavailable tag must never be offered as targetable.
+    if (t.status !== null && t.status !== "ENABLED") return false;
+    if (!TIKTOK_CITY_GEO_TYPES.includes(t.geoType)) return false;
+    if (country && t.regionCode !== country) return false;
+    return true;
+  });
+  const rankName = (t: TikTokLocationTag): number => {
+    if (q.length === 0) return 2;
+    const n = normalizeTikTokTagName(t.name);
+    if (n === q) return 0;
+    if (n.startsWith(q)) return 1;
+    return 2;
+  };
+  matches.sort((a, b) => {
+    const an = rankName(a);
+    const bn = rankName(b);
+    if (an !== bn) return an - bn;
+    const ad = tikTokCityDescriptionRank(a);
+    const bd = tikTokCityDescriptionRank(b);
+    if (ad !== bd) return ad - bd;
+    return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+  });
+  return matches.slice(0, limit);
+}
+
+/**
+ * Live tool/targeting/search read (FUZZY_SEARCH, POST) → the city location_ids
+ * source for the Campaign Builder Audience step. Returns the ranked city-like
+ * matches (pickTikTokCityMatches). READ-ONLY — creates nothing. promotion_type
+ * is REQUIRED for TRAFFIC/LEAD_GENERATION/APP_PROMOTION/WEB_CONVERSIONS/
+ * PRODUCT_SALES and MUST be omitted for REACH/VIDEO_VIEWS/ENGAGEMENT.
+ */
+export async function tiktokSearchCityLocations(
+  client: TikTokClient,
+  opts: {
+    q: string;
+    country?: string;
+    objective?: string;
+    promotionType?: string;
+    placements?: readonly string[];
+    limit?: number;
+  },
+): Promise<TikTokLocationTag[]> {
+  const objective = opts.objective ?? "TRAFFIC";
+  const params: Record<string, unknown> = {
+    advertiser_id: client.advertiserId,
+    objective_type: objective,
+    placements: opts.placements ?? TIKTOK_DEFAULT_PLACEMENTS,
+    search_type: "FUZZY_SEARCH",
+    keywords: [opts.q],
+    geo_types: TIKTOK_CITY_GEO_TYPES,
+    ...(opts.country ? { region_codes: [opts.country.trim().toUpperCase()] } : {}),
+  };
+  if (!["REACH", "VIDEO_VIEWS", "ENGAGEMENT"].includes(objective)) {
+    params.promotion_type = opts.promotionType ?? "WEBSITE";
+  }
+  const data = await tiktokApi(client, "POST", "tool/targeting/search/", params);
+  const tags = parseTikTokTargetingSearch(data);
+  return pickTikTokCityMatches(tags, { country: opts.country, q: opts.q, limit: opts.limit });
+}
+
 export interface TikTokInterestCategory {
   id: string;
   name: string;
@@ -1629,10 +1788,15 @@ export interface TikTokAdSpec {
   /** v1: TT_USER ONLY (assertTikTokIdentityAllowed hard-fails everything else). */
   identityType: string;
   identityId: string;
-  /** v1: SINGLE_IMAGE only; SINGLE_VIDEO is the #866 fast-follow. */
+  /** SINGLE_IMAGE (#866) or SINGLE_VIDEO (#997 C — a prepared ad video + cover). */
   adFormat?: string;
-  /** Asset-Library image ids (exactly 1 for SINGLE_IMAGE). */
+  /**
+   * SINGLE_IMAGE: exactly 1 Asset-Library image_id.
+   * SINGLE_VIDEO: exactly 1 image_id — the video COVER (external_ref_extra.cover_image_id).
+   */
   imageIds: string[];
+  /** SINGLE_VIDEO only (#997 C): the prepared ad video_id (external_ref_extra.video_id). */
+  videoId?: string;
   adText: string;
   /** TikTok CTAs are bare display strings (TIKTOK_CTA_MAP) — default "Learn more". */
   callToAction?: string;
@@ -1660,20 +1824,35 @@ export function buildTikTokAdBody(
   throwValidation(validateTikTokLandingPageUrl(spec.landingPageUrl));
   throwValidation(validateTikTokUtmParams(spec.utmParams));
 
+  // ISSUE-997 C: SINGLE_VIDEO joins SINGLE_IMAGE. Everything else (SINGLE_CAROUSEL,
+  // etc.) still hard-fails ad_format_unsupported_v1 (fails-on-revert protected).
   const adFormat = spec.adFormat ?? "SINGLE_IMAGE";
-  if (adFormat !== "SINGLE_IMAGE") {
+  if (adFormat !== "SINGLE_IMAGE" && adFormat !== "SINGLE_VIDEO") {
     throw new AdApiError({
       platform: "tiktok",
       code: "ad_format_unsupported_v1",
       message:
-        `ad_format=${adFormat} is not built in v1 — SINGLE_IMAGE only; SINGLE_VIDEO is the #866 fast-follow (its 5–60s POLICY duration validator already ships: validateTikTokVideoDuration).`,
+        `ad_format=${adFormat} is not built — only SINGLE_IMAGE (#866) and SINGLE_VIDEO (#997) are supported.`,
     });
   }
+  // Both formats carry exactly ONE image_id: SINGLE_IMAGE the ad image, SINGLE_VIDEO
+  // the video COVER (external_ref_extra.cover_image_id captured at prepare — #997 C).
   if (!Array.isArray(spec.imageIds) || spec.imageIds.length !== 1 || !spec.imageIds[0]) {
     throw new AdApiError({
       platform: "tiktok",
       code: "image_ids_invalid",
-      message: "SINGLE_IMAGE requires exactly one Asset-Library image_id (tiktokUploadImage output).",
+      message: adFormat === "SINGLE_VIDEO"
+        ? "SINGLE_VIDEO requires exactly one image_id — the video cover (external_ref_extra.cover_image_id)."
+        : "SINGLE_IMAGE requires exactly one Asset-Library image_id (tiktokUploadImage output).",
+    });
+  }
+  const videoId = typeof spec.videoId === "string" ? spec.videoId.trim() : "";
+  if (adFormat === "SINGLE_VIDEO" && !videoId) {
+    throw new AdApiError({
+      platform: "tiktok",
+      code: "video_id_required",
+      message:
+        "SINGLE_VIDEO requires a prepared video_id (external_ref_extra.video_id from admin-ad-creative-prepare).",
     });
   }
 
@@ -1683,6 +1862,9 @@ export function buildTikTokAdBody(
     identity_id: spec.identityId,
     ad_format: adFormat,
     image_ids: spec.imageIds,
+    // SINGLE_VIDEO carries the prepared ad video_id alongside the cover image_ids
+    // (SUSPECTED/DOC wire shape — pinned by the PAUSED acceptance probe downstream).
+    ...(adFormat === "SINGLE_VIDEO" ? { video_id: videoId } : {}),
     ad_text: spec.adText,
     call_to_action: spec.callToAction ?? TIKTOK_CTA_MAP.default,
     // A1.0-5 (PROOF D-P1): the ad-visible destination is the canonical public
@@ -2080,6 +2262,8 @@ export interface TikTokCreateAdExtensions {
   callToAction?: string;
   utmParams?: TikTokUtmParam[];
   adFormat?: string;
+  /** SINGLE_VIDEO only (#997 C): the prepared ad video_id. */
+  videoId?: string;
 }
 
 export const tiktokAdapter: ChannelAdapter = {
@@ -2177,6 +2361,7 @@ export const tiktokAdapter: ChannelAdapter = {
       identityId,
       adFormat: extensions.adFormat,
       imageIds: extensions.imageIds,
+      videoId: extensions.videoId,
       adText: extensions.adText,
       callToAction: extensions.callToAction,
       landingPageUrl: extensions.landingPageUrl,

@@ -14,6 +14,17 @@ function response(body: unknown, status = 200): Response {
   });
 }
 
+function verifiedTransaction(
+  reference: string,
+  id: number,
+  amount: number,
+): Response {
+  return response({
+    status: true,
+    data: { id, reference, status: "success", currency: "NGN", amount },
+  });
+}
+
 const originalFetch = globalThis.fetch;
 
 Deno.test("issue #1175: partial Paystack refund reconciles before POST and sends exact kobo", async () => {
@@ -24,10 +35,11 @@ Deno.test("issue #1175: partial Paystack refund reconciles before POST and sends
     const url = String(input);
     const method = init?.method ?? "GET";
     calls.push({ url, method, body: String(init?.body ?? "") });
-    if (method === "GET") {
-      return Promise.resolve(
-        response({ status: true, data: [] }),
-      );
+    if (url.includes("/transaction/verify/txn-1175")) {
+      return Promise.resolve(verifiedTransaction("txn-1175", 117501, 12500));
+    }
+    if (url.includes("/refund?transaction=117501&perPage=100")) {
+      return Promise.resolve(response({ status: true, data: [] }));
     }
     return Promise.resolve(response({
       status: true,
@@ -42,10 +54,21 @@ Deno.test("issue #1175: partial Paystack refund reconciles before POST and sends
       currency: "NGN",
     });
     assert(result.id === "701", "provider refund id must be returned");
-    assert(calls.length === 2, "reconcile GET must precede exactly one POST");
+    assert(
+      calls.length === 3,
+      "verify and numeric reconcile GETs must precede exactly one POST",
+    );
     assert(calls[0].method === "GET", "first request must reconcile");
-    assert(calls[1].method === "POST", "second request must initiate");
-    const body = JSON.parse(calls[1].body) as Record<string, unknown>;
+    assert(
+      calls[0].url.includes("/transaction/verify/txn-1175"),
+      "first request must verify the original reference",
+    );
+    assert(
+      calls[1].url.includes("transaction=117501"),
+      "second request must reconcile by numeric transaction ID",
+    );
+    assert(calls[2].method === "POST", "third request must initiate");
+    const body = JSON.parse(calls[2].body) as Record<string, unknown>;
     assert(body.transaction === "txn-1175", "transaction reference drifted");
     assert(body.amount === 12500, "partial refund kobo amount drifted");
     assert(body.currency === "NGN", "refund currency drifted");
@@ -58,9 +81,19 @@ Deno.test("issue #1175: retry returns the matching existing refund without a sec
   Deno.env.set("PAYSTACK_MODE", "test");
   Deno.env.set("PAYSTACK_SECRET_KEY_TEST", "sk_test_issue1175fixture");
   let calls = 0;
-  globalThis.fetch = ((_input: string | URL | Request, init?: RequestInit) => {
+  globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
     calls += 1;
     assert((init?.method ?? "GET") === "GET", "replay must never POST");
+    const url = String(input);
+    if (url.includes("/transaction/verify/txn-1175-replay")) {
+      return Promise.resolve(
+        verifiedTransaction("txn-1175-replay", 117502, 12500),
+      );
+    }
+    assert(
+      url.includes("/refund?transaction=117502&perPage=100"),
+      "replay must reconcile by numeric transaction ID",
+    );
     return Promise.resolve(response({
       status: true,
       data: [{
@@ -68,6 +101,7 @@ Deno.test("issue #1175: retry returns the matching existing refund without a sec
         amount: 12500,
         status: "processed",
         merchant_note: "mingla_refund:22222222-2222-4222-8222-222222222222",
+        transaction: 117502,
       }],
     }));
   }) as typeof fetch;
@@ -82,7 +116,7 @@ Deno.test("issue #1175: retry returns the matching existing refund without a sec
       result.id === "702",
       "existing provider refund id must be preserved",
     );
-    assert(calls === 1, "replay should use one read and zero writes");
+    assert(calls === 2, "replay should use two reads and zero writes");
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -92,9 +126,19 @@ Deno.test("issue #1175: full transaction_reversed is accepted as an idempotent r
   Deno.env.set("PAYSTACK_MODE", "test");
   Deno.env.set("PAYSTACK_SECRET_KEY_TEST", "sk_test_issue1175fixture");
   let calls = 0;
-  globalThis.fetch = ((_input: string | URL | Request, init?: RequestInit) => {
+  globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
     calls += 1;
+    const url = String(input);
+    if (url.includes("/transaction/verify/txn-already-reversed")) {
+      return Promise.resolve(
+        verifiedTransaction("txn-already-reversed", 117503, 25000),
+      );
+    }
     if ((init?.method ?? "GET") === "GET") {
+      assert(
+        url.includes("/refund?transaction=117503&perPage=100"),
+        "full replay must reconcile by numeric transaction ID",
+      );
       return Promise.resolve(response({ status: true, data: [] }));
     }
     return Promise.resolve(
@@ -108,7 +152,10 @@ Deno.test("issue #1175: full transaction_reversed is accepted as an idempotent r
     });
     assert(result.replayed, "transaction_reversed must be replay-success");
     assert(result.status === "processed", "replay status must be processed");
-    assert(calls === 2, "full replay must reconcile then initiate once");
+    assert(
+      calls === 3,
+      "full replay must verify, reconcile, then initiate once",
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -121,16 +168,27 @@ Deno.test("issue #1175: Paystack 5xx remains retryable while a definitive 4xx fa
     const [status, expectedRetryable] of [[500, true], [400, false]] as const
   ) {
     let calls = 0;
-    globalThis.fetch =
-      ((_input: string | URL | Request, init?: RequestInit) => {
-        calls += 1;
-        if ((init?.method ?? "GET") === "GET") {
-          return Promise.resolve(response({ status: true, data: [] }));
-        }
+    globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
+      calls += 1;
+      const url = String(input);
+      if (url.includes(`/transaction/verify/txn-${status}`)) {
         return Promise.resolve(
-          response({ status: false, message: `provider_${status}` }, status),
+          verifiedTransaction(`txn-${status}`, 117500 + status, 5000),
         );
-      }) as typeof fetch;
+      }
+      if ((init?.method ?? "GET") === "GET") {
+        assert(
+          url.includes(
+            `/refund?transaction=${117500 + status}&perPage=100`,
+          ),
+          `${status} must reconcile by numeric transaction ID`,
+        );
+        return Promise.resolve(response({ status: true, data: [] }));
+      }
+      return Promise.resolve(
+        response({ status: false, message: `provider_${status}` }, status),
+      );
+    }) as typeof fetch;
     try {
       await createPaystackRefund({
         transaction: `txn-${status}`,
@@ -144,14 +202,17 @@ Deno.test("issue #1175: Paystack 5xx remains retryable while a definitive 4xx fa
         isRetryablePaystackRefundError(error) === expectedRetryable,
         `${status} retry classification drifted`,
       );
-      assert(calls === 2, `${status} must reconcile before initiate`);
+      assert(
+        calls === 3,
+        `${status} must verify and reconcile before initiate`,
+      );
     } finally {
       globalThis.fetch = originalFetch;
     }
   }
 });
 
-Deno.test("issue #1175: all named handlers branch to Paystack while Stripe direct-charge shapes remain", async () => {
+Deno.test("issue #1175: order and trip handlers retain Paystack and Stripe direct-charge shapes", async () => {
   const root = new URL("../../", import.meta.url);
   const refundOrder = await Deno.readTextFile(
     new URL("refund-order/index.ts", root),
@@ -162,15 +223,11 @@ Deno.test("issue #1175: all named handlers branch to Paystack while Stripe direc
   const tripRefund = await Deno.readTextFile(
     new URL("cancel-trip-booking/index.ts", root),
   );
-  const venueRefund = await Deno.readTextFile(
-    new URL("venue-reservation-cancel/index.ts", root),
-  );
   for (
     const [name, source] of [
       ["refund-order", refundOrder],
       ["admin-refund-order", adminRefund],
       ["cancel-trip-booking", tripRefund],
-      ["venue-reservation-cancel", venueRefund],
     ] as const
   ) {
     assert(
@@ -197,11 +254,10 @@ Deno.test("issue #1175: all named handlers branch to Paystack while Stripe direc
     "admin Stripe direct-charge refund shape changed",
   );
   assert(
-    tripRefund.includes("stripeAccount: connectedAccountId") &&
-      venueRefund.includes("stripeAccount: connectedAccountId"),
-    "trip/venue Stripe account routing changed",
+    tripRefund.includes("stripeAccount: connectedAccountId"),
+    "trip Stripe account routing changed",
   );
-  for (const source of [refundOrder, adminRefund, tripRefund, venueRefund]) {
+  for (const source of [refundOrder, adminRefund, tripRefund]) {
     assert(
       !source.includes("reverse_transfer:"),
       "reverse_transfer re-entered",

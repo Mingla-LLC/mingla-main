@@ -58,6 +58,8 @@ import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { Icon } from "../ui/Icon";
 import { Sheet } from "../ui/Sheet";
+// issue #1027 Thread B — the ONE shared visible-native-input for web date/time.
+import { WebDateTimeInput } from "../ui/WebDateTimeInput";
 
 // ---- Public types ---------------------------------------------------
 
@@ -103,15 +105,10 @@ const hhmmFromDate = (d: Date): string => {
 
 type TimePickerMode = "start" | "end" | null;
 
-// Hidden HTML5 inputs for web direct-tap pickers — opacity 0 + 1×1px,
-// NOT display:none (display:none breaks showPicker()/.click()).
-const HIDDEN_WEB_INPUT_STYLE = {
-  position: "absolute",
-  width: 1,
-  height: 1,
-  opacity: 0,
-  pointerEvents: "none",
-} as const;
+// issue #1027 Thread B — the hidden 1x1 opacity-0 pointer-events-none <input> +
+// imperative browser-picker bridge is DELETED. Web renders visible native
+// <input type=time> controls via the shared WebDateTimeInput (I-PROPOSED-1027-
+// WEB-NATIVE-DATE-INPUT). iOS/Android keep the DateTimePicker Sheet/dialog flow.
 
 // ---- Component ------------------------------------------------------
 
@@ -141,10 +138,8 @@ export const MultiDateOverrideSheet: React.FC<MultiDateOverrideSheetProps> = ({
   const [pickerMode, setPickerMode] = useState<TimePickerMode>(null);
   const [tempPickerValue, setTempPickerValue] = useState<Date | null>(null);
 
-  // Web hidden input refs — tap row → showPicker()/.click() opens browser
-  // native time picker directly. No Sheet, no Done button on web.
-  const startTimeInputRef = useRef<HTMLInputElement | null>(null);
-  const endTimeInputRef = useRef<HTMLInputElement | null>(null);
+  // issue #1027 Thread B — web hidden-input refs DELETED. The Start/End rows
+  // render visible WebDateTimeInputs directly (no ref, no imperative trigger).
 
   // ORCH-0892-B v2: keyboard listener + deferred scroll plumbing DELETED.
   // KAS via SmartScrollView handles focused-input scroll automatically.
@@ -176,25 +171,10 @@ export const MultiDateOverrideSheet: React.FC<MultiDateOverrideSheetProps> = ({
 
   // ---- Time picker handlers ----
 
+  // issue #1027 Thread B — NATIVE-ONLY (iOS Sheet + Android dialog). Web rows
+  // render visible WebDateTimeInputs that commit via their own onChange.
   const handleOpenTimePicker = useCallback(
     (mode: "start" | "end"): void => {
-      // Web: trigger hidden input directly. Browser opens native time picker.
-      if (Platform.OS === "web") {
-        const ref = mode === "start" ? startTimeInputRef : endTimeInputRef;
-        const el = ref.current;
-        if (el !== null) {
-          if (typeof el.showPicker === "function") {
-            try {
-              el.showPicker();
-            } catch {
-              el.click();
-            }
-          } else {
-            el.click();
-          }
-        }
-        return;
-      }
       // Native (iOS/Android): existing Sheet/dialog flow.
       const initial = mode === "start" ? dateFromHhmm(startTime) : dateFromHhmm(endTime);
       setTempPickerValue(initial);
@@ -294,29 +274,57 @@ export const MultiDateOverrideSheet: React.FC<MultiDateOverrideSheetProps> = ({
           the main event unless you override them.
         </Text>
 
-        {/* Time row — always editable */}
+        {/* Time row — always editable.
+            issue #1027 Thread B — web renders visible native <input type=time>
+            controls; native keeps the Pressable → Sheet/dialog flow. */}
         <View style={styles.timeRow}>
           <View style={styles.timeCell}>
             <Text style={styles.fieldLabel}>Start</Text>
-            <Pressable
-              onPress={() => handleOpenTimePicker("start")}
-              accessibilityRole="button"
-              accessibilityLabel="Pick start time"
-              style={styles.pickerRow}
-            >
-              <Text style={styles.pickerValue}>{startTime}</Text>
-            </Pressable>
+            {Platform.OS === "web" ? (
+              <WebDateTimeInput
+                type="time"
+                value={startTime}
+                ariaLabel="Pick start time"
+                testID="override-start-web"
+                onChangeValue={(v) => {
+                  if (v.length === 0) return;
+                  setStartTime(v);
+                }}
+              />
+            ) : (
+              <Pressable
+                onPress={() => handleOpenTimePicker("start")}
+                accessibilityRole="button"
+                accessibilityLabel="Pick start time"
+                style={styles.pickerRow}
+              >
+                <Text style={styles.pickerValue}>{startTime}</Text>
+              </Pressable>
+            )}
           </View>
           <View style={styles.timeCell}>
             <Text style={styles.fieldLabel}>End</Text>
-            <Pressable
-              onPress={() => handleOpenTimePicker("end")}
-              accessibilityRole="button"
-              accessibilityLabel="Pick end time"
-              style={styles.pickerRow}
-            >
-              <Text style={styles.pickerValue}>{endTime}</Text>
-            </Pressable>
+            {Platform.OS === "web" ? (
+              <WebDateTimeInput
+                type="time"
+                value={endTime}
+                ariaLabel="Pick end time"
+                testID="override-end-web"
+                onChangeValue={(v) => {
+                  if (v.length === 0) return;
+                  setEndTime(v);
+                }}
+              />
+            ) : (
+              <Pressable
+                onPress={() => handleOpenTimePicker("end")}
+                accessibilityRole="button"
+                accessibilityLabel="Pick end time"
+                style={styles.pickerRow}
+              >
+                <Text style={styles.pickerValue}>{endTime}</Text>
+              </Pressable>
+            )}
           </View>
         </View>
 
@@ -483,35 +491,8 @@ export const MultiDateOverrideSheet: React.FC<MultiDateOverrideSheetProps> = ({
         />
       ) : null}
 
-      {/* Hidden HTML5 inputs for web direct-tap pickers. */}
-      {Platform.OS === "web" ? (
-        <>
-          <input
-            ref={startTimeInputRef}
-            type="time"
-            value={startTime}
-            onChange={(e) => {
-              const v = (e.target as unknown as { value: string }).value;
-              if (v.length === 0) return;
-              setStartTime(v);
-            }}
-            aria-label="Start time"
-            style={HIDDEN_WEB_INPUT_STYLE}
-          />
-          <input
-            ref={endTimeInputRef}
-            type="time"
-            value={endTime}
-            onChange={(e) => {
-              const v = (e.target as unknown as { value: string }).value;
-              if (v.length === 0) return;
-              setEndTime(v);
-            }}
-            aria-label="End time"
-            style={HIDDEN_WEB_INPUT_STYLE}
-          />
-        </>
-      ) : null}
+      {/* issue #1027 Thread B — web hidden HTML5 inputs DELETED; the Start/End
+          rows above render visible WebDateTimeInputs on web. */}
     </Sheet>
   );
 };

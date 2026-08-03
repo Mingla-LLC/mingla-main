@@ -34,18 +34,17 @@ import {
 import { generateBrandAvatarPathToken } from "../utils/brandAvatarRules";
 
 export const VENUE_GALLERY_BUCKET = "brand_covers";
-export const VENUE_GALLERY_MAX_BYTES = 10 * 1024 * 1024;
+// Must match brand_covers.file_size_limit. Keeping this client-side guard at
+// the exact bucket boundary prevents a file the app accepts from failing only
+// after the upload starts.
+export const VENUE_GALLERY_MAX_BYTES = 8 * 1024 * 1024;
 
 // META-ORCH-1009 Sub-F: the gallery accepts HEIC/HEIF too — iPhone's default photo
 // format. (The brand-avatar resolver is JPEG/PNG/WEBP only because that flow uses
 // an editing crop that re-encodes; multi-select gallery picks deliver originals,
 // which on iOS are HEIC.) Gemini vision + iOS rendering both handle HEIC.
 type GalleryMime =
-  | "image/jpeg"
-  | "image/png"
-  | "image/webp"
-  | "image/heic"
-  | "image/heif";
+  "image/jpeg" | "image/png" | "image/webp" | "image/heic" | "image/heif";
 const EXT_BY_MIME: Record<GalleryMime, string> = {
   "image/jpeg": "jpg",
   "image/png": "png",
@@ -74,7 +73,10 @@ function resolveGalleryContentType(asset: {
 }
 
 export class VenueGalleryError extends Error {
-  constructor(public code: string, message: string) {
+  constructor(
+    public code: string,
+    message: string,
+  ) {
     super(message);
     this.name = "VenueGalleryError";
   }
@@ -103,7 +105,10 @@ export async function pickGalleryPhotos(
     // any thrown error (web picker unavailable, native permission/IO failure)
     // surfaces here as a non-silent VenueGalleryError the handler shows on
     // screen (Constitution #3 — no silent failure).
-    throw new VenueGalleryError("picker_failed", "Couldn't open photos. Try again.");
+    throw new VenueGalleryError(
+      "picker_failed",
+      "Couldn't open photos. Try again.",
+    );
   }
   if (result.canceled) return [];
   return result.assets.map((a) => ({
@@ -129,16 +134,28 @@ export async function uploadGalleryPhoto(
       "That file isn't a photo we can use. Try a different image.",
     );
   }
-  if (typeof asset.fileSize === "number" && asset.fileSize > VENUE_GALLERY_MAX_BYTES) {
-    throw new VenueGalleryError("file_too_large", "Each photo must be under 10 MB.");
+  if (
+    typeof asset.fileSize === "number" &&
+    asset.fileSize > VENUE_GALLERY_MAX_BYTES
+  ) {
+    throw new VenueGalleryError(
+      "file_too_large",
+      "Each photo must be under 8 MB.",
+    );
   }
 
   const { bytes, byteLength } = await readBrandAvatarFileBytes(asset.uri);
   if (byteLength <= 0) {
-    throw new VenueGalleryError("empty_local_file", "We couldn't read that photo.");
+    throw new VenueGalleryError(
+      "empty_local_file",
+      "We couldn't read that photo.",
+    );
   }
   if (byteLength > VENUE_GALLERY_MAX_BYTES) {
-    throw new VenueGalleryError("file_too_large", "Each photo must be under 10 MB.");
+    throw new VenueGalleryError(
+      "file_too_large",
+      "Each photo must be under 8 MB.",
+    );
   }
 
   const path = `${brandId}/gallery/${generateBrandAvatarPathToken()}.${EXT_BY_MIME[contentType]}`;
@@ -146,8 +163,13 @@ export async function uploadGalleryPhoto(
     .from(VENUE_GALLERY_BUCKET)
     .upload(path, bytes, { contentType, upsert: true });
   if (error !== null) {
-    throw new VenueGalleryError("upload_failed", "Couldn't upload photo. Try again.");
+    throw new VenueGalleryError(
+      "upload_failed",
+      "Couldn't upload photo. Try again.",
+    );
   }
-  const { data } = supabase.storage.from(VENUE_GALLERY_BUCKET).getPublicUrl(path);
+  const { data } = supabase.storage
+    .from(VENUE_GALLERY_BUCKET)
+    .getPublicUrl(path);
   return data.publicUrl;
 }

@@ -26,6 +26,8 @@ on:
       - "supabase/functions/_shared/**"
       - "supabase/functions/_shared/__tests__/**"
       - "supabase/functions/__tests__/**"
+      # ISSUE-1387 — Stay inventory management endpoint and hermetic contract test.
+      - "supabase/functions/manage-stay-inventory/**"
       # ORCH-1270 — marketing-send edge fn + its strict-grep gates.
       - "supabase/functions/marketing-send/**"
       - ".github/scripts/strict-grep/i-proposed-1270-*.mjs"
@@ -83,6 +85,8 @@ on:
       - "supabase/migrations/**"
       - "supabase/functions/_shared/**"
       - "supabase/functions/__tests__/**"
+      # ISSUE-1387 — Stay inventory management endpoint and hermetic contract test.
+      - "supabase/functions/manage-stay-inventory/**"
       # ORCH-1270 — marketing-send edge fn + its strict-grep gates.
       - "supabase/functions/marketing-send/**"
       - ".github/scripts/strict-grep/i-proposed-1270-*.mjs"
@@ -194,6 +198,38 @@ jobs:
             psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$f"
             echo "::endgroup::"
           done
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1387_stay_inventory.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1387_stay_inventory.adversarial.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1388_stay_reservation.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1388_stay_reservation.adversarial.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1390_stay_guest_reads.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1390_stay_guest_reads.adversarial.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1424_stay_authoring.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1424_stay_authoring.tester_adversarial.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1425_stay_inventory_projection.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1426_stay_staff_reservations.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1423_stay_discovery.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1423_stay_discovery.tester_adversarial.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1431_stay_ads_attribution.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1392_stay_activation_guards.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1392_stay_activation_guards.tester_adversarial.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1459_venue_manager_photo_upload.test.sql
 
   deno-tests:
     name: "Deno unit tests for Stripe shared modules"
@@ -227,6 +263,34 @@ jobs:
             # ISSUE-865 WP-B/C — mingla-tester adversarial battery (real timeout
             # path, end-to-end PII hashing on the wire, cross-side dedup contract).
             supabase/functions/_shared/__tests__/issue_865_wp_bc_adversarial.tester.test.ts
+            # ISSUE-996 — implementor source guard: A5 keeps its local fetch
+            # declaration + fireAdConversion injection (no network execution).
+            supabase/functions/_shared/__tests__/issue_996_a5_hermetic_fetch.test.ts
+            # ISSUE-996 — independent tester runtime guard: A1-A6 execute behind
+            # a non-egressing global-fetch sentinel.
+            supabase/functions/_shared/__tests__/issue_996_a5_no_global_fetch.tester.test.ts
+            # ISSUE-1267 — Google Ads the 5th conversion lane: upload wire shape,
+            # Enhanced-Conversions ids, two-tier value, validateOnly, fail-open, and
+            # google_ads_status IN the redelivery-dedup gate (hermetic — injected
+            # resolveClient/requestImpl seams, no global fetch).
+            supabase/functions/_shared/__tests__/issue_1267_google_conversion_lane.test.ts
+            # ISSUE-855 PR-0 — server-fire COALESCE backfill repairs the live #865
+            # undercount: when the browser's EARLY ad_conversions row wins the race,
+            # the server fire now fills the NULL brand_id/order_id/value_cents/
+            # currency/mingla_event_id (only when NULL, never clobbering, never
+            # touching the *_status dedup gate). Hermetic — spy senders + fake supabase.
+            supabase/functions/_shared/__tests__/issue_855_pr0_conversion_brand_backfill.test.ts
+            # ISSUE-1387 — JWT gate, canonical action envelope, and error hygiene.
+            supabase/functions/manage-stay-inventory/index.test.ts
+            # ISSUE-1388 — grouped Stay cart, Request actions, and error hygiene.
+            supabase/functions/stay-reservations/index.test.ts
+            # ISSUE-1390 — payment retry resumes one bound attempt across both apps.
+            supabase/functions/stay-reservations/paymentResume.issue1390.test.ts
+            supabase/functions/_shared/stayPaymentResume.issue1390.test.ts
+            # ISSUE-1426 — staff queue, whole-group response, and reviewed cancellation routing.
+            supabase/functions/stay-reservations/businessManagement.issue1426.test.ts
+            # ISSUE-1426 TESTER — auth boundary, permission/version mapping, and DB-detail redaction.
+            supabase/functions/stay-reservations/businessManagement.issue1426.tester.adversarial.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then
@@ -595,6 +659,31 @@ jobs:
             echo "ORCH-1361 Deno tests failed (attempt ${attempt}), retrying in 10s..."
             sleep 10
           done
+
+  issue-1363-address-hierarchy-regressions:
+    name: "Issue #1363: pinless selected address + context-validated hierarchy"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: Install business dependencies
+        working-directory: mingla-business
+        run: npm ci
+      - name: Run issue #1363 business regressions
+        working-directory: mingla-business
+        run: NODE_PATH="$PWD/node_modules" npx jest orch_1363 --runInBand
+      - name: Run issue #1363 hierarchy Deno regression
+        run: >-
+          deno test --allow-read --allow-net --no-check
+          supabase/functions/mapbox-geocode/__tests__/mapboxHierarchicalForward.issue1363.test.ts
+          supabase/migrations/__tests__/issue_1363_publish_precision_g1_g2.test.ts
 
   orch-1363-curated-stroll-deno-tests:
     name: "Deno unit tests for ORCH-1363 take-a-stroll reachable-first-stop (I-PROPOSED-1363-STANDARD-FIRST-STOP-REACHABLE)"

@@ -40,6 +40,25 @@ node -e 'console.log(require("./.github/scripts/strict-grep/MANIFEST.json")
 node .github/scripts/strict-grep/run-batch.mjs --class A
 ```
 
+## ⚠️ NUL-byte files are grep-invisible — sweeps & registry greps MUST be binary-aware
+
+Plain `grep` (and `grep -r`) classify any file containing a NUL byte as
+*binary* and **silently skip its contents** — no match, exit 1, no warning.
+Git-tracked fuzz fixtures embed raw NUL bytes on purpose (e.g. a `'a\x00b'`
+hostile-input row), so a plain-`grep` ORCH-renumber sweep or registry-consistency
+scan will **quietly miss every ORCH-ID / gate reference inside them**. This
+already bit the 1383→1399 sweep: 3 stale `ORCH-1382` strings survived inside
+`mingla-marketing/lib/__tests__/links-src.tester.test.ts` because its NUL byte
+hid them from `grep` (fixed under issue #957).
+
+**Rule — any repo-wide sweep or registry-consistency scan (ORCH-renumber,
+gate-registry audit, MANIFEST parity, ID-consistency) MUST use a binary-aware
+reader:** `grep -a` / `git grep -a` / `rg --text`, or a Node/Python pass that
+reads bytes (`fs.readFileSync(f,'utf8')` / `open(f,'rb').read()`) over
+`git ls-files`. Never trust a plain `grep -r` to be exhaustive. Enforced for the
+`links-src`↔ORCH-ID class by `issue-957-nul-hidden-orch-id-consistency.mjs`,
+whose `--self-test` proves the check still fires on a NUL-hidden stale string.
+
 ## Active gates — HISTORICAL, DO NOT EXTEND
 
 > ⚠️ **This table is a partial historical record (~32 of 379 gates) and is NOT

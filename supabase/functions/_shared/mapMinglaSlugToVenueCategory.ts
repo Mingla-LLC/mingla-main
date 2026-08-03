@@ -4,13 +4,29 @@
 
 import { derivePoolCategory } from "./derivePoolCategory.ts";
 
-export type VenueCategorySlug = "restaurant" | "play" | "creative_and_arts";
+export type VenueCategorySlug =
+  | "restaurant"
+  | "play"
+  | "creative_and_arts"
+  | "stay";
 
 /** Maps place_pool primary_type + types[] to Ve1 venue_category. */
 export function mapPoolTypesToVenueCategory(
   primaryType: string | null | undefined,
   types: string[] | null | undefined,
 ): VenueCategorySlug {
+  const providerTypes = new Set(
+    [primaryType, ...(types ?? [])]
+      .filter((value): value is string => typeof value === "string")
+      .map((value) => value.toLowerCase()),
+  );
+  if (
+    providerTypes.has("lodging") ||
+    providerTypes.has("hotel") ||
+    providerTypes.has("resort")
+  ) {
+    return "stay";
+  }
   const slug = derivePoolCategory(primaryType ?? null, types ?? null);
   if (slug === "play") return "play";
   if (slug === "creative_arts") return "creative_and_arts";
@@ -38,6 +54,18 @@ export function isConfidentVenueCategory(
   primaryType: string | null | undefined,
   types: string[] | null | undefined,
 ): boolean {
+  const providerTypes = new Set(
+    [primaryType, ...(types ?? [])]
+      .filter((value): value is string => typeof value === "string")
+      .map((value) => value.toLowerCase()),
+  );
+  if (
+    providerTypes.has("lodging") ||
+    providerTypes.has("hotel") ||
+    providerTypes.has("resort")
+  ) {
+    return true;
+  }
   const slug = derivePoolCategory(primaryType ?? null, types ?? null);
   return slug !== null && CONFIDENT_SLUGS.has(slug);
 }

@@ -6,8 +6,8 @@
  * real data: orders (via the owner-only venue_intelligence_overview RPC, which
  * buckets hour/day in the venue's LOCAL timezone and revenue per-currency) and
  * ai_signal_scores. No fabrication (Constitution #9): every insufficient-data
- * tile shows an honest empty state with NO numbers/$/bars; the three roadmap
- * tiles are labeled "Coming soon" and carry NO data. All money via
+ * tile shows an honest empty state with NO numbers/$/bars. Organic engagement
+ * is forward-only, exact-venue data with independent states. All money via
  * utils/currency (Constitution #10).
  *
  * Self-scroll contract (SPEC §4.5): owns its own ScrollView with the shared
@@ -18,7 +18,7 @@
  * only, NO charting library (SPEC NG-6). See SPEC §4.5 + the DESIGN section.
  */
 import { useRouter } from "expo-router";
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   RefreshControl,
@@ -40,6 +40,9 @@ import {
 } from "../../constants/designSystem";
 import { venueSignalLabel } from "../../constants/venueSignals";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
+import { useVenueReservationMetrics } from "../../hooks/useVenueReservationMetrics";
+import { useVenueOrganicInsights } from "../../hooks/useVenueOrganicInsights";
+import { useAuth } from "../../context/AuthContext";
 import { BRAND_ROLE_RANK } from "../../utils/brandRole";
 import { buildComposeAudienceHref } from "../../utils/composeAudienceHref";
 import {
@@ -63,6 +66,18 @@ import {
 } from "./venueIntelligence";
 import { useVenueIntelligence } from "../../hooks/useVenueIntelligence";
 import { VENUE_SCROLL_NAV_CLEARANCE } from "./venueShellScroll";
+import {
+  VenueReservationRefreshAnnouncement,
+  VenueReservationsCard,
+  type VenueReservationRefreshStatus,
+} from "./VenueReservationsCard";
+import {
+  captureBusinessVenueOrganicInsightsRefreshed,
+  captureBusinessVenueOrganicInsightsViewed,
+  captureBusinessVenueReservationsRefreshed,
+  captureBusinessVenueReservationsViewed,
+} from "../../analytics/businessAnalyticsEvents";
+import { VenueOrganicEngagementSection } from "./VenueOrganicEngagementSection";
 
 const MANAGER_PLUS_RANK = BRAND_ROLE_RANK.event_manager; // 40
 
@@ -92,8 +107,62 @@ export function VenueIntelligenceModule({
 }: VenueIntelligenceModuleProps): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { isAuthReady } = useAuth();
   const query = useVenueIntelligence(brandId, venueId);
   const data = query.data ?? null;
+  const reservationsQuery = useVenueReservationMetrics(
+    brandId,
+    venueId,
+    isAuthReady,
+  );
+  const organicQuery = useVenueOrganicInsights(brandId, venueId, isAuthReady);
+  const trackedReservationScope = useRef<string | null>(null);
+  const trackedOrganicScope = useRef<string | null>(null);
+  const [reservationRefreshStatus, setReservationRefreshStatus] =
+    useState<VenueReservationRefreshStatus>(null);
+  const [organicRefreshStatus, setOrganicRefreshStatus] = useState<
+    "updating" | "success" | "error" | null
+  >(null);
+
+  useEffect(() => {
+    const scope =
+      brandId !== null && venueId !== null ? `${brandId}:${venueId}` : null;
+    if (
+      scope === null ||
+      trackedReservationScope.current === scope ||
+      reservationsQuery.data?.authorized !== true
+    ) {
+      return;
+    }
+    trackedReservationScope.current = scope;
+    captureBusinessVenueReservationsViewed(
+      reservationsQuery.data.bySource.some((source) => source.reservations > 0),
+    );
+  }, [
+    brandId,
+    reservationsQuery.data,
+    venueId,
+  ]);
+
+  useEffect(() => {
+    const scope =
+      brandId !== null && venueId !== null ? `${brandId}:${venueId}` : null;
+    const organic = organicQuery.data;
+    if (
+      scope === null ||
+      trackedOrganicScope.current === scope ||
+      organic?.authorized !== true
+    ) {
+      return;
+    }
+    trackedOrganicScope.current = scope;
+    captureBusinessVenueOrganicInsightsViewed(
+      organic.pageViews > 0 ||
+        organic.menuOpens > 0 ||
+        organic.reservationStarts > 0,
+      organic.windowComplete,
+    );
+  }, [brandId, organicQuery.data, venueId]);
 
   // ORCH-1190 #7 — "Message your guests" blast entry, RELOCATED from Settings
   // (ORCH-1186-D) to a top-of-Overview button. REUSE ONLY: deep-link into the
@@ -121,7 +190,40 @@ export function VenueIntelligenceModule({
     <RefreshControl
       refreshing={query.isFetching && !query.isLoading}
       onRefresh={() => {
-        void query.refetch();
+        setReservationRefreshStatus("updating");
+        setOrganicRefreshStatus("updating");
+        void Promise.allSettled([
+          query.refetch(),
+          reservationsQuery.refetch(),
+          organicQuery.refetch(),
+        ]).then((results) => {
+          const reservationResult = results[1];
+          const succeeded =
+            reservationResult.status === "fulfilled" &&
+            !reservationResult.value.isError &&
+            reservationResult.value.data?.authorized === true;
+          captureBusinessVenueReservationsRefreshed(
+            succeeded ? "success" : "error",
+          );
+          setReservationRefreshStatus(succeeded ? "success" : "error");
+          const organicResult = results[2];
+          const organicSucceeded =
+            organicResult.status === "fulfilled" &&
+            !organicResult.value.isError &&
+            organicResult.value.data?.authorized === true;
+          const organicPartial =
+            organicResult.status === "fulfilled" &&
+            organicResult.value.data?.authorized === true;
+          const organicStatus = organicSucceeded
+            ? "success"
+            : organicPartial
+              ? "partial"
+              : "error";
+          captureBusinessVenueOrganicInsightsRefreshed(organicStatus);
+          setOrganicRefreshStatus(
+            organicStatus === "success" ? "success" : "error",
+          );
+        });
       }}
       tintColor={accent.warm}
     />
@@ -147,6 +249,7 @@ export function VenueIntelligenceModule({
         showsVerticalScrollIndicator={false}
         refreshControl={refreshControl}
       >
+        <VenueReservationRefreshAnnouncement status={reservationRefreshStatus} />
         <GlassCard variant="base" padding={spacing.lg}>
           <Flag size={24} color={semantic.error} />
           <Text style={styles.tileTitle}>Couldn&apos;t load your insights</Text>
@@ -179,6 +282,7 @@ export function VenueIntelligenceModule({
         showsVerticalScrollIndicator={false}
         refreshControl={refreshControl}
       >
+        <VenueReservationRefreshAnnouncement status={reservationRefreshStatus} />
         <GlassCard variant="elevated" padding={spacing.lg}>
           <Text style={styles.tileTitle}>No venue insights yet</Text>
           <Text style={styles.bodySm}>
@@ -249,6 +353,16 @@ export function VenueIntelligenceModule({
       showsVerticalScrollIndicator={false}
       refreshControl={refreshControl}
     >
+      <VenueReservationRefreshAnnouncement status={reservationRefreshStatus} />
+      <Text style={styles.srOnly} accessibilityLiveRegion="polite">
+        {organicRefreshStatus === "updating"
+          ? "Updating organic engagement…"
+          : organicRefreshStatus === "success"
+            ? "Organic engagement updated"
+            : organicRefreshStatus === "error"
+              ? "Couldn't refresh organic engagement"
+              : ""}
+      </Text>
       {/* ORCH-1190 #7 — Message your guests (relocated from Settings). Top of
           Overview, manager-plus gated, reuse-only composer deep-link. */}
       {canBlast && brandId !== null ? (
@@ -336,6 +450,23 @@ export function VenueIntelligenceModule({
             </>
           )}
         </GlassCard>
+
+        <VenueReservationsCard
+          query={reservationsQuery}
+          onRetry={() => {
+            void reservationsQuery.refetch();
+          }}
+        />
+
+        <VenueOrganicEngagementSection
+          data={organicQuery.data ?? null}
+          isLoading={organicQuery.isLoading}
+          isError={organicQuery.isError}
+          isFetching={organicQuery.isFetching}
+          onRetry={() => {
+            void organicQuery.refetch();
+          }}
+        />
 
         {/* Tile B — Slow hours */}
         <GlassCard variant="base" padding={spacing.lg}>
@@ -474,57 +605,8 @@ export function VenueIntelligenceModule({
           )}
         </GlassCard>
 
-        {/* Coming-soon section divider */}
-        <Text style={styles.comingSoonDivider}>Coming soon</Text>
-
-        {/* Tile E — Busy hours (foot traffic) */}
-        <ComingSoonTile
-          title="Busy hours"
-          description="See when people actually visit, powered by live foot-traffic data."
-        />
-        {/* Tile F — Page views & taps */}
-        <ComingSoonTile
-          title="Page views & taps"
-          description="How many people viewed your venue page and tapped through."
-        />
-        {/* Tile G — Signal → bookings */}
-        <ComingSoonTile
-          title="Signal to bookings"
-          description="Which moments actually turn into bookings."
-        />
       </View>
     </ScrollView>
-  );
-}
-
-/**
- * Roadmap tile — title + "Coming soon" pill + one-line description ONLY.
- * Renders NO numbers, NO currency, NO bars (Constitution #9 / §9 no-fab grep).
- */
-function ComingSoonTile({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}): React.ReactElement {
-  return (
-    <GlassCard
-      variant="base"
-      padding={spacing.md}
-      style={styles.comingSoonCard}
-    >
-      <View
-        style={styles.comingSoonHeader}
-        accessibilityLabel={`${title}. Coming soon. ${description}`}
-      >
-        <Text style={styles.comingSoonTitle}>{title}</Text>
-        <View style={styles.comingSoonPill}>
-          <Text style={styles.comingSoonPillText}>COMING SOON</Text>
-        </View>
-      </View>
-      <Text style={styles.comingSoonDesc}>{description}</Text>
-    </GlassCard>
   );
 }
 
@@ -544,6 +626,12 @@ const styles = StyleSheet.create({
   },
   column: {
     gap: spacing.md,
+  },
+  srOnly: {
+    width: 1,
+    height: 1,
+    opacity: 0,
+    position: "absolute",
   },
 
   // Header
@@ -736,52 +824,6 @@ const styles = StyleSheet.create({
     lineHeight: typography.caption.lineHeight,
     fontWeight: "700",
     color: textTokens.primary,
-  },
-
-  // Coming soon
-  comingSoonDivider: {
-    fontSize: typography.labelCap.fontSize,
-    lineHeight: typography.labelCap.lineHeight,
-    fontWeight: typography.labelCap.fontWeight,
-    letterSpacing: typography.labelCap.letterSpacing,
-    color: textTokens.tertiary,
-    marginTop: spacing.sm,
-    marginBottom: 4,
-  },
-  comingSoonCard: {
-    opacity: 0.92,
-  },
-  comingSoonHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  comingSoonTitle: {
-    fontSize: typography.bodyLg.fontSize,
-    lineHeight: typography.bodyLg.lineHeight,
-    fontWeight: typography.bodyLg.fontWeight,
-    color: textTokens.secondary,
-    flexShrink: 1,
-  },
-  comingSoonPill: {
-    paddingVertical: 3,
-    paddingHorizontal: 8,
-    borderRadius: radius.full,
-    backgroundColor: accent.tint,
-    marginLeft: spacing.sm,
-  },
-  comingSoonPillText: {
-    fontSize: typography.micro.fontSize,
-    lineHeight: typography.micro.lineHeight,
-    fontWeight: typography.micro.fontWeight,
-    letterSpacing: typography.micro.letterSpacing,
-    color: accent.warm,
-  },
-  comingSoonDesc: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    color: textTokens.tertiary,
-    marginTop: spacing.xs,
   },
 
   // Shared

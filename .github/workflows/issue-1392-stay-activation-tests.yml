@@ -1,0 +1,105 @@
+name: "Issue #1392 Stay activation release gate"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/ops/stay-rollout-policy*.mjs"
+      - "supabase/functions/stay-reservations/**"
+      - "supabase/migrations/20270207001392_issue_1392_stay_activation_guards.sql"
+      - "supabase/migrations/__tests__/issue_1392_stay_activation_guards*.sql"
+      - ".github/workflows/issue-1392-stay-activation-tests.yml"
+  pull_request:
+    paths:
+      - "scripts/ops/stay-rollout-policy*.mjs"
+      - "supabase/functions/stay-reservations/**"
+      - "supabase/migrations/20270207001392_issue_1392_stay_activation_guards.sql"
+      - "supabase/migrations/__tests__/issue_1392_stay_activation_guards*.sql"
+      - ".github/workflows/issue-1392-stay-activation-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  rollout-policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Run implementor and independent adversarial policy tests
+        run: >
+          node --test
+          scripts/ops/stay-rollout-policy.test.mjs
+          scripts/ops/stay-rollout-policy.tester.adversarial.test.mjs
+      - name: Run all existing Stay structural gates
+        run: |
+          node .github/scripts/strict-grep/issue-1387-stay-inventory.mjs
+          node .github/scripts/strict-grep/issue-1388-stay-reservation.mjs
+          node .github/scripts/strict-grep/orch-1389-stay-commerce-rails.mjs
+          node .github/scripts/strict-grep/issue-1423-stay-discovery.mjs
+          node .github/scripts/strict-grep/issue-1424-stay-business-authoring.mjs
+          node .github/scripts/strict-grep/issue-1425-stay-rooms-places.mjs
+          node .github/scripts/strict-grep/issue-1426-stay-reservations.mjs
+          node .github/scripts/strict-grep/issue-1427-admin-stay-support.mjs
+
+  backend-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: Run Stay inventory, reservation, commerce, Admin, and ads contracts
+        run: >
+          deno test --allow-env --allow-read
+          supabase/functions/manage-stay-inventory/index.test.ts
+          supabase/functions/stay-reservations/index.test.ts
+          supabase/functions/stay-reservations/issue1392.activationGuards.test.ts
+          supabase/functions/stay-reservations/businessManagement.issue1426.test.ts
+          supabase/functions/stay-reservations/businessManagement.issue1426.tester.adversarial.test.ts
+          supabase/functions/admin-stay-operations/index.test.ts
+          supabase/functions/admin-stay-operations/issue1478.adminIdentity.test.ts
+          supabase/functions/admin-stay-operations/index.tester.adversarial.test.ts
+          supabase/functions/_shared/stayPaymentProvider.test.ts
+          supabase/functions/_shared/stayPaymentWebhook.test.ts
+          supabase/functions/_shared/stayPaymentResume.issue1390.test.ts
+          supabase/functions/_shared/stayNotifyTemplates.test.ts
+          supabase/functions/_shared/__tests__/issue_1431_stay_conversion.test.ts
+          supabase/functions/_shared/__tests__/issue_1431_stay_conversion.tester_adversarial.test.ts
+          supabase/functions/_shared/__tests__/issue_1431_stay_destination_sync_rework.test.ts
+          supabase/functions/_shared/__tests__/issue_1431_stay_destination_sync.tester_adversarial.test.ts
+      - name: Type-check the production Stay boundaries
+        run: >
+          deno check
+          supabase/functions/manage-stay-inventory/index.ts
+          supabase/functions/stay-reservations/index.ts
+          supabase/functions/admin-stay-operations/index.ts
+          supabase/functions/admin-stay-operations/issue1478.adminIdentity.test.ts
+          supabase/functions/_shared/stayPaymentWebhook.ts
+          supabase/functions/_shared/sourceRefundControlPlane.ts
+
+  client-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Run consumer and Admin source contracts
+        run: >
+          node --test
+          app-mobile/src/components/discover/__tests__/issue1423StayDiscovery.test.mjs
+          app-mobile/src/components/discover/__tests__/issue1423StayDiscovery.tester.adversarial.test.mjs
+          app-mobile/src/services/__tests__/nativeAdAttribution.issue1431.test.mjs
+          mingla-admin/src/__tests__/issue1427_admin_stay_support.test.js
+          mingla-admin/src/__tests__/issue1427_admin_stay_support.tester.adversarial.test.js
+          mingla-admin/src/__tests__/issue1431_stay_ads_happy.test.js

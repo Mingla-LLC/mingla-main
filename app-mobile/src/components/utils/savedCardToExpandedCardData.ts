@@ -31,6 +31,7 @@
 // holidayCardToExpandedCardData).
 
 import type { ExpandedCardData } from "../../types/expandedCardTypes";
+import { canonicalDiscoveryPriceFields } from "../../utils/priceTiers";
 
 /**
  * Map a saved collab card payload (`board_saved_cards.card_data`) onto a complete
@@ -86,7 +87,7 @@ export function savedCardToExpandedCardData(
     rating: num(c.rating) ?? 0,
     reviewCount: num(c.reviewCount) ?? 0,
     priceRange: str(c.priceRange),
-    priceTier: c.priceTier as ExpandedCardData["priceTier"],
+    ...canonicalDiscoveryPriceFields(c),
     distance: str(c.distance) ?? null,
     travelTime: str(c.travelTime) ?? null,
     travelMode: str(c.travelMode),

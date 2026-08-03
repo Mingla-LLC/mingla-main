@@ -31,6 +31,12 @@
  * Comments are stripped before scanning so historical references in headers
  * don't cause false positives.
  *
+ * `--self-test` proves fail-on-revert (mirrors i-1272-identity-admin-read.mjs):
+ * the pure `check(screenSrc, accordionSrc, failures)` is exercised with a GOOD
+ * fixture (specificity) and ≥2 DISTINCT BAD fixtures (sensitivity). The
+ * disk-reading main path calls the SAME `check(...)`; behavior-preserving
+ * refactor.
+ *
  * Exit codes: 0 — clean; 1 — violation.
  *
  * Per SPEC_ORCH-1120_TRIP_SETTINGS_REFUND_DEADLINE.md §9.1.
@@ -47,9 +53,6 @@ const ROOT = join(__dirname, "..", "..", "..");
 const TRIP_DIR = "mingla-business/src/components/trip";
 const SCREEN = `${TRIP_DIR}/EditPublishedTripScreen.tsx`;
 const ACCORDION = `${TRIP_DIR}/EditPublishedTripSettingsAccordion.tsx`;
-
-// The published-path files that must NOT touch the sales-unaware service.
-const NO_DIRECT_REFUND_SERVICE_FILES = [SCREEN, ACCORDION];
 
 const BANNED_DIRECT_WRITERS = [
   /\bupdateRefundPolicy\b/,
@@ -68,42 +71,96 @@ const stripComments = (src) =>
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/(^|[^:])\/\/.*$/gm, "$1");
 
-const violations = [];
-
-for (const rel of NO_DIRECT_REFUND_SERVICE_FILES) {
-  const abs = join(ROOT, rel);
-  if (!existsSync(abs)) {
-    violations.push({
-      file: rel,
-      msg: "Scoped file missing — ORCH-1120 expects this file present.",
-    });
-    continue;
-  }
-  const stripped = stripComments(readFileSync(abs, "utf8"));
-  for (const pattern of BANNED_DIRECT_WRITERS) {
-    if (pattern.test(stripped)) {
-      violations.push({
+/**
+ * Pure verdict. `screenSrc` / `accordionSrc` = raw source of the two scoped
+ * files, or `null` when the file is absent on disk. Pushes violation records
+ * ({ file, msg }) into `failures`. Behavior-preserving extraction of the
+ * original banned-writer + required-gated-save assertions.
+ */
+function check(screenSrc, accordionSrc, failures) {
+  const entries = [
+    [SCREEN, screenSrc],
+    [ACCORDION, accordionSrc],
+  ];
+  for (const [rel, src] of entries) {
+    if (src == null) {
+      failures.push({
         file: rel,
-        msg: `Banned direct refund write ${pattern} — published-trip refund/deadline edits MUST route through biz_update_live_trip (the sales-gated RPC), NEVER the sales-unaware refundPolicyService. Those functions are draft-wizard-only.`,
+        msg: "Scoped file missing — ORCH-1120 expects this file present.",
       });
+      continue;
+    }
+    const stripped = stripComments(src);
+    for (const pattern of BANNED_DIRECT_WRITERS) {
+      if (pattern.test(stripped)) {
+        failures.push({
+          file: rel,
+          msg: `Banned direct refund write ${pattern} — published-trip refund/deadline edits MUST route through biz_update_live_trip (the sales-gated RPC), NEVER the sales-unaware refundPolicyService. Those functions are draft-wizard-only.`,
+        });
+      }
     }
   }
-}
 
-// The parent screen must save through the gated RPC path (single Save button).
-{
-  const abs = join(ROOT, SCREEN);
-  if (existsSync(abs)) {
-    const stripped = stripComments(readFileSync(abs, "utf8"));
+  // The parent screen must save through the gated RPC path (single Save button).
+  if (screenSrc != null) {
+    const stripped = stripComments(screenSrc);
     const hasGatedSave = REQUIRED_IN_SCREEN.some((p) => p.test(stripped));
     if (!hasGatedSave) {
-      violations.push({
+      failures.push({
         file: SCREEN,
         msg: "Must save via `updateLiveTripFields` (or the `useUpdateLiveTripFields` hook) — the single sales-gated write path for published-trip Settings edits.",
       });
     }
   }
 }
+
+// ─────────────────────────────────────────────────────────────── self-test
+if (process.argv.includes("--self-test")) {
+  const self = [];
+
+  // GOOD: screen saves via the gated hook + call; no banned writers; accordion
+  // is a pure controlled editor → silent.
+  const goodScreen =
+    'import { useUpdateLiveTripFields } from "../../hooks/useTrips";\n' +
+    "const mutation = useUpdateLiveTripFields();\n" +
+    "const onSave = () => updateLiveTripFields(payload);\n";
+  const goodAccordion = "export const SettingsAccordion = (props) => renderEditor(props);\n";
+  let f = [];
+  check(goodScreen, goodAccordion, f);
+  if (f.length) self.push("GOOD fixture wrongly flagged: " + f.map((v) => v.file).join("; "));
+
+  // BAD1 (revert-style): a direct updateRefundPolicy( call re-added to the
+  // screen → fires (the gated save is still present).
+  const bad1Screen = goodScreen + "const r = updateRefundPolicy(newTiers);\n";
+  f = [];
+  check(bad1Screen, goodAccordion, f);
+  if (f.length === 0) self.push("BAD1 (updateRefundPolicy re-added to screen) not flagged");
+
+  // BAD2 (regression, different angle): the gated save call removed from the
+  // screen (published edits now unguarded) → fires.
+  const bad2Screen =
+    "const onSave = () => persistSomethingElse(payload);\n";
+  f = [];
+  check(bad2Screen, goodAccordion, f);
+  if (f.length === 0) self.push("BAD2 (gated updateLiveTripFields save removed) not flagged");
+
+  if (self.length) {
+    console.error("[ORCH-1120 — i-proposed-1120-published-refund-via-gated-rpc] self-test FAIL:");
+    self.forEach((m) => console.error("  - " + m));
+    process.exit(1);
+  }
+  console.log("[ORCH-1120 — i-proposed-1120-published-refund-via-gated-rpc] self-test PASS (3/3 cases).");
+  process.exit(0);
+}
+
+// ─────────────────────────────────────────────────────────────── main path
+const screenAbs = join(ROOT, SCREEN);
+const accordionAbs = join(ROOT, ACCORDION);
+const screenSrc = existsSync(screenAbs) ? readFileSync(screenAbs, "utf8") : null;
+const accordionSrc = existsSync(accordionAbs) ? readFileSync(accordionAbs, "utf8") : null;
+
+const violations = [];
+check(screenSrc, accordionSrc, violations);
 
 if (violations.length > 0) {
   console.error(

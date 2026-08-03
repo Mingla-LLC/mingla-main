@@ -187,6 +187,10 @@ export async function stripeWebhookHandler(req: Request): Promise<Response> {
         stripe_event_id: event.id,
         type: event.type,
         payload: event,
+        provider: "stripe",
+        provider_event_type: event.type,
+        provider_event_id: event.id,
+        match_status: "not_applicable",
         processed: false,
         retry_count: 0,
         retries_exhausted: false,
@@ -208,6 +212,27 @@ export async function stripeWebhookHandler(req: Request): Promise<Response> {
     await routeStripeEvent(supabase, stripe, event);
   } catch (err) {
     processingError = err instanceof Error ? err.message : String(err);
+    if (
+      processingError.includes("source_refund_exact_match_missing") ||
+      processingError.includes("source_identity_missing")
+    ) {
+      await supabase.from("payment_webhook_events").update({
+        match_status: "unmatched",
+        match_reason_code: "source_refund_exact_match_missing",
+        first_response_due_at: new Date(Date.now() + 4 * 60 * 60 * 1000)
+          .toISOString(),
+      }).eq("id", eventRowId);
+    } else if (
+      processingError.includes("source_refund_") &&
+      processingError.includes("mismatch")
+    ) {
+      await supabase.from("payment_webhook_events").update({
+        match_status: "mismatched",
+        match_reason_code: "source_refund_provider_evidence_mismatch",
+        first_response_due_at: new Date(Date.now() + 4 * 60 * 60 * 1000)
+          .toISOString(),
+      }).eq("id", eventRowId);
+    }
     logError("stripe-webhook processing failed", err, {
       fn: "stripe-webhook",
       eventId: event.id,

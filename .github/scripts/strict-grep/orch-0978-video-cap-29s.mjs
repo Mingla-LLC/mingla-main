@@ -100,28 +100,41 @@ if (!existsSync(join(root, migrationPath))) {
 
 const uploadIntent = read(uploadIntentPath);
 const webhook = read(webhookPath);
-const publicIdTemplatePattern = /event-covers\/raw\/\$\{brandId\}\/\$\{eventId\}\/\$\{job\.id\}/;
-if (!publicIdTemplatePattern.test(uploadIntent)) {
+// #966 (SPEC AMENDMENT 1): C5 re-pointed from the removed Cloudinary public_id
+// template + recoverJobIdFromPayload to the Bunny job-identity alignment that
+// carries the SAME invariant — upload-intent stamps the Bunny video GUID into
+// source_asset_id, and the webhook resolves the owning job by that GUID. Re-point,
+// not weaken: dropping either the GUID stamp or the GUID lookup still fails C5.
+if (!uploadIntent.includes("source_asset_id: create.guid")) {
   fail(
     "C5",
-    `${uploadIntentPath} must contain publicId template event-covers/raw/\${brandId}/\${eventId}/\${job.id}`,
+    `${uploadIntentPath} must stamp the Bunny video GUID into source_asset_id (source_asset_id: create.guid)`,
   );
-} else if (!webhook.includes("recoverJobIdFromPayload") && !webhook.includes("public_id.split")) {
+} else if (!/\.eq\("source_asset_id", videoGuid\)/.test(webhook)) {
   fail(
     "C5",
-    `${webhookPath} must contain public_id-based job_id recovery to match upload-intent template`,
+    `${webhookPath} must resolve the owning job by source_asset_id = VideoGuid to match the upload-intent GUID stamp`,
   );
 } else {
-  ok("C5", "Upload-intent public_id template and webhook public_id parser remain aligned");
+  ok("C5", "Upload-intent Bunny GUID stamp and webhook source_asset_id lookup remain aligned");
 }
 
-if (!webhook.includes("eagerDurationOrFallback") || !webhook.includes("trim_end_ms")) {
+// #966 (SPEC AMENDMENT 1): C6 re-pointed from the removed Cloudinary
+// `eagerDurationOrFallback` to the Bunny duration derivation, which still ties the
+// fallback to the trim columns — durationMs derives from the Bunny video length and
+// falls back to trim_end_ms - trim_start_ms. Re-point, not weaken: dropping the
+// trim-column fallback still fails C6.
+if (
+  !webhook.includes("lengthSeconds") ||
+  !webhook.includes("trim_end_ms") ||
+  !webhook.includes("trim_start_ms")
+) {
   fail(
     "C6",
-    `${webhookPath} must contain eagerDurationOrFallback and trim_end_ms duration fallback references`,
+    `${webhookPath} must derive processed duration from the Bunny video length with a trim_end_ms/trim_start_ms fallback`,
   );
 } else {
-  ok("C6", "Webhook duration fallback remains tied to job trim columns");
+  ok("C6", "Webhook duration derivation remains tied to job trim columns");
 }
 
 const sharedPath = "supabase/functions/_shared/eventCoverVideo.ts";

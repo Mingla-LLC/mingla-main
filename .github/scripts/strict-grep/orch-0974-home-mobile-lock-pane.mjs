@@ -4,8 +4,10 @@
  *
  * Enforces the proposed Home mobile lock-pane invariant:
  *   - populated mobile Home has exactly one scrolling surface: FlatList
+ *   - Analytics -> Live -> Upcoming order is preserved on wide and mobile
+ *   - the removed Active events KPI cannot return
  *   - KPI/section-header styles and spacing contract remain explicit
- *   - pull-to-refresh stays on the FlatList
+ *   - pull-to-refresh stays on the FlatList and refreshes Analytics
  *   - upcoming row rendering stays extracted to UpcomingListItem
  */
 
@@ -53,6 +55,28 @@ function countToken(source, token) {
   return source.split(token).length - 1;
 }
 
+function stripComments(source) {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+}
+
+function assertOrdered(checkId, source, anchors) {
+  let prior = -1;
+  for (const [label, token] of anchors) {
+    const index = source.indexOf(token);
+    if (index === -1) {
+      fail(checkId, `Missing ${label} anchor: ${token}`);
+      return;
+    }
+    if (index <= prior) {
+      fail(checkId, `${label} is out of order.`);
+      return;
+    }
+    prior = index;
+  }
+}
+
 function extractStyleBlock(source, key) {
   const startRe = new RegExp(`\\n\\s*${key}:\\s*\\{`);
   const match = startRe.exec(source);
@@ -74,6 +98,7 @@ const homeSource = readRequired(HOME_PATH);
 const upcomingItemSource = readRequired(UPCOMING_ITEM_PATH);
 
 if (homeSource.length > 0) {
+  const homeCode = stripComments(homeSource);
   const beginIndex = homeSource.indexOf(BEGIN);
   const endIndex = homeSource.indexOf(END);
 
@@ -84,6 +109,7 @@ if (homeSource.length > 0) {
     );
   } else {
     const scoped = homeSource.slice(beginIndex, endIndex);
+    const scopedCode = stripComments(scoped);
     const scrollViewCount = countToken(scoped, "<ScrollView");
     const flatListCount = countToken(scoped, "<FlatList");
     if (scrollViewCount !== 0 || flatListCount !== 1) {
@@ -105,6 +131,108 @@ if (homeSource.length > 0) {
         "The mobile populated FlatList must carry refreshControl= within 30 lines of its opening tag.",
       );
     }
+    for (const forbidden of [
+      "AnalyticsHomeTile",
+      "styles.mobileKpiStack",
+      "renderLiveSection()",
+      "LiveOfferingCard",
+      "liveCarousel",
+    ]) {
+      if (scopedCode.includes(forbidden)) {
+        fail(
+          "C6: marker-pane-upcoming-only",
+          `The marker-bounded Upcoming pane must not contain ${forbidden}.`,
+        );
+      }
+    }
+    assertOrdered("C6: marker-pane-upcoming-only", scopedCode, [
+      ["Upcoming header", "<Text style={styles.sectionTitle}>Upcoming</Text>"],
+      ["single FlatList", "<FlatList"],
+      ["non-live Upcoming data", "data={upcoming.nonLiveItems}"],
+    ]);
+  }
+
+  for (const forbidden of [
+    "const hasActiveEvents",
+    "{hasActiveEvents ?",
+    "const showKpiGrid",
+    "{showKpiGrid ?",
+    'label="Active events"',
+  ]) {
+    if (homeCode.includes(forbidden)) {
+      fail(
+        "C7: active-events-removed",
+        `Removed Active events presentation token returned: ${forbidden}`,
+      );
+    }
+  }
+
+  const wideStart = homeCode.indexOf("{isWideDesktop ? (");
+  const mobileStart = homeCode.indexOf(") : currentBrand === null ? null : (");
+  if (wideStart === -1 || mobileStart === -1 || mobileStart <= wideStart) {
+    fail(
+      "C8: responsive-order",
+      "Could not isolate the real wide and mobile Home JSX branches.",
+    );
+  } else {
+    const wide = homeCode.slice(wideStart, mobileStart);
+    const mobile = homeCode.slice(mobileStart);
+    assertOrdered("C8: wide-order", wide, [
+      ["wide KPI row", "style={styles.desktopKpiGrid}"],
+      ["conditional Last 7 days", "{showRevenueTile ? ("],
+      ["Last 7 days tile", 'label="Last 7 days"'],
+      ["wide Analytics tile", "<AnalyticsHomeTile"],
+      ["wide Live section", "{renderLiveSection()}"],
+      ["wide Upcoming section", "style={styles.desktopUpcomingPane}"],
+    ]);
+    assertOrdered("C8: mobile-order", mobile, [
+      ["mobile KPI outer", "style={styles.mobileKpiOuter}"],
+      ["mobile KPI stack", "style={styles.mobileKpiStack}"],
+      ["conditional Last 7 days", "{showRevenueTile ? ("],
+      ["Last 7 days tile", 'label="Last 7 days"'],
+      ["mobile Analytics tile", "<AnalyticsHomeTile"],
+      ["mobile Live section", "{renderLiveSection()}"],
+    ]);
+    const mobileLive = homeSource.lastIndexOf(
+      "{renderLiveSection()}",
+      beginIndex,
+    );
+    const mobileMarker = beginIndex;
+    if (mobileLive === -1 || mobileMarker === -1 || mobileMarker <= mobileLive) {
+      fail(
+        "C8: mobile-order",
+        "Mobile begin marker must follow Analytics and the Live section.",
+      );
+    }
+  }
+
+  if (countToken(homeCode, "<AnalyticsHomeTile") !== 2) {
+    fail(
+      "C9: analytics-two-branches",
+      "Home must render exactly one AnalyticsHomeTile in each wide/mobile branch.",
+    );
+  }
+  if (!homeCode.includes('router.push("/analytics?entry=home_tile"')) {
+    fail(
+      "C9: analytics-navigation",
+      "AnalyticsHomeTile must route to /analytics?entry=home_tile.",
+    );
+  }
+  if (
+    !homeCode.includes(
+      "brandAnalyticsKeys.minglaDrove(currentBrand.id)",
+    )
+  ) {
+    fail(
+      "C10: analytics-refresh-key",
+      "Home refresh must invalidate the current brand's mingla-drove Analytics key.",
+    );
+  }
+  if (!homeCode.includes("data={upcoming.nonLiveItems}")) {
+    fail(
+      "C5: upcoming-list-item-extracted",
+      "The mobile Upcoming FlatList must retain upcoming.nonLiveItems as its source.",
+    );
   }
 
   for (const styleKey of [

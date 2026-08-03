@@ -1,0 +1,74 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# #1293 [sprint-rollover] — nightly sweep of unfinished board items onto the
+# current sprint.
+#
+# WHAT IT DOES. Once a day, moves every board item that is NOT Done off any ENDED
+# sprint onto the current sprint, stamps a rollover count, and labels chronic
+# stragglers (chronic-carryover). The decision lives in a pure, unit-tested function
+# (.github/scripts/sprint-rollover/selectMoves.mjs); roll.mjs does the I/O.
+#
+# SHIPS DARK. The job is inert until the repo variable SPRINT_ROLLOVER_ENABLED is set
+# to 'true'. Until then every scheduled run reads the board and prints a report but
+# performs ZERO writes (effective dry-run = DRY_RUN===true OR ROLLOVER_ENABLED!==true).
+# Merging this file is therefore a safe no-op.
+#
+# GITHUB GOTCHA. `schedule` and `workflow_dispatch` only arm once this file is on the
+# DEFAULT branch (main). After merge, trigger it once via workflow_dispatch (dry_run
+# stays true by default) to confirm it reads the board green before trusting it.
+#
+# WIRING (Seth sets these before flipping live):
+#   secret  SPRINT_ROLLOVER_TOKEN     -> GH_PROJECT_TOKEN (board-write PAT: project + repo/issues)
+#   variable SPRINT_ROLLOVER_ENABLED  -> ROLLOVER_ENABLED ('true' to arm writes)
+#   variable SPRINT_ROLLOVER_TZ       -> ROLLOVER_TZ (optional; default America/New_York) (#1293)
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: Sprint Rollover
+
+on:
+  schedule:
+    # 12:00 UTC daily = 08:00 EDT / 07:00 EST — solidly the MORNING AFTER an Eastern
+    # sprint boundary, with margin (#1293: the board is operated in US Eastern, so this
+    # must land well past Eastern midnight, not UTC midnight).
+    - cron: "0 12 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Read-only dry run (no board writes)"
+        type: boolean
+        default: true
+
+# A second run while one is in flight tells us nothing new.
+concurrency:
+  group: sprint-rollover
+  cancel-in-progress: false
+
+# Board writes ride the PAT (GH_PROJECT_TOKEN), never GITHUB_TOKEN — so the workflow
+# token stays minimal.
+permissions:
+  contents: read
+
+jobs:
+  roll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Roll unfinished items onto the current sprint
+        run: node .github/scripts/sprint-rollover/roll.mjs
+        env:
+          # On schedule: DRY_RUN=false (the real gate is ROLLOVER_ENABLED).
+          # On dispatch: DRY_RUN = the boolean input (default true).
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
+          ROLLOVER_ENABLED: ${{ vars.SPRINT_ROLLOVER_ENABLED }}
+          # #1293: operating timezone for "today". Board is run in US Eastern; override
+          # via repo variable SPRINT_ROLLOVER_TZ if the operating zone ever changes.
+          ROLLOVER_TZ: ${{ vars.SPRINT_ROLLOVER_TZ || 'America/New_York' }}
+          GH_PROJECT_TOKEN: ${{ secrets.SPRINT_ROLLOVER_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}

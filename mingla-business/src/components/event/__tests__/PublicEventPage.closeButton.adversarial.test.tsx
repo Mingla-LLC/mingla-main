@@ -292,6 +292,14 @@ const renderPublicEventPage = (
           submitPublicRsvp: () => Promise.resolve(),
           submitRsvpContribution: () => Promise.resolve(),
         };
+      // [TEST-MOD-APPROVED ORCH-1447] PublicEventPage now lazy-loads the
+      // platform-split pass recovery service after a successful RSVP. The close
+      // callback cases never invoke it, so this evaluator only needs the boundary.
+      case "../../services/rsvpPassRecoveryService":
+        return {
+          fetchPublicRsvpPassPdf: () =>
+            Promise.resolve({ filename: "rsvp-pass.pdf", blob: {} }),
+        };
       case "../../services/socialProofService":
         return {
           fetchSocialProof: () => Promise.resolve(null),

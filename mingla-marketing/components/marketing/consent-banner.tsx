@@ -20,8 +20,10 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
+import { shouldRenderConsentBanner } from '@/lib/consent-banner-visibility'
 import {
   captureMarketing,
   posthogOptIn,
@@ -96,6 +98,10 @@ const EASE_OUT_QUART = [0.16, 1, 0.3, 1] as const
 
 export function ConsentBanner(): React.ReactElement | null {
   const reduced = useMinglaReducedMotion()
+  // Issue #905 — route-aware suppression. Call unconditionally alongside the
+  // other hooks (Rules of Hooks); the predicate is AND-ed into `visible` below
+  // so no hook is ever conditionally skipped.
+  const pathname = usePathname()
   // null = undecided (mount); once resolved we either show the banner or not.
   const [decision, setDecision] = useState<ConsentValue | 'pending'>('pending')
 
@@ -129,8 +135,10 @@ export function ConsentBanner(): React.ReactElement | null {
     setDecision(value)
   }
 
-  // Show only while a fresh visitor has not yet decided.
-  const visible = decision === 'pending'
+  // Show only while a fresh visitor has not yet decided AND the route allows the
+  // banner (Issue #905 — suppressed on the `/links` no-scroll viewport, where the
+  // fixed banner would obstruct the CTAs/socials with no scroll escape).
+  const visible = decision === 'pending' && shouldRenderConsentBanner(pathname)
 
   return (
     <AnimatePresence>

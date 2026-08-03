@@ -156,6 +156,12 @@ serve(async (req: Request): Promise<Response> => {
     keywords: body.keywords,
     sort: body.sort,
     timezone: requestTimezone,
+    // issue #1020 — fold the browsed geo center/radius into the cache key so two
+    // "Brussels" requests with different centers/radii don't cross-serve one
+    // radius-filtered deck (Constitution #13 — exclusion consistency).
+    fallbackLat: body.city.fallbackLat,
+    fallbackLng: body.city.fallbackLng,
+    fallbackRadiusKm: body.city.fallbackRadiusKm,
   };
   const cacheKey = buildDiscoverCacheKey(cacheParams);
 

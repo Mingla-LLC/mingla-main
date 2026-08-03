@@ -21,6 +21,7 @@ import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
 import { Icon } from "../ui/Icon";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
 import type { MyReservationRow } from "../../hooks/useMyReservations";
+import { ReservationRefundStatus } from "./ReservationRefundStatus";
 
 interface ReservationCalendarRowProps {
   reservation: MyReservationRow;
@@ -134,6 +135,9 @@ const ReservationCalendarRow: React.FC<ReservationCalendarRowProps> = ({
             {feeText === "Free" ? "Free" : `${feeText} deposit`}
           </Text>
         </View>
+        {reservation.refund ? (
+          <ReservationRefundStatus refund={reservation.refund} />
+        ) : null}
       </View>
 
       <Icon name="chevron-forward" size={20} color="#9ca3af" />

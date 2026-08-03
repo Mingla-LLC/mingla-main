@@ -812,7 +812,7 @@ Deno.test("T-13 status: the reader maps only EXACT platform vocabulary; everythi
 
 // ── T-14 — creative shape + error normalizer ─────────────────────────────────
 
-Deno.test("T-14 creative: imageIds cardinality is EXACTLY one; empty identity_id refused; SINGLE_VIDEO refused in v1", () => {
+Deno.test("T-14 creative: imageIds cardinality is EXACTLY one; empty identity_id refused; SINGLE_VIDEO now needs a prepared video_id (#997 C)", () => {
   assertThrows(
     () => buildTikTokAdBody(ADVERTISER, "2222222222", adSpec({ imageIds: [] })),
     AdApiError,
@@ -833,10 +833,14 @@ Deno.test("T-14 creative: imageIds cardinality is EXACTLY one; empty identity_id
     AdApiError,
     "identity_id is required",
   );
+  // [TEST-MOD-APPROVED ORCH-0997] #997 C wires SINGLE_VIDEO — it is no longer
+  // refused outright. Without a prepared video_id it now fails with video_id_required
+  // (a genuinely unsupported ad_format still throws ad_format_unsupported_v1 — proven
+  // in the #997 suite). The cardinality + identity guards above are UNCHANGED.
   assertThrows(
     () => buildTikTokAdBody(ADVERTISER, "2222222222", adSpec({ adFormat: "SINGLE_VIDEO" })),
     AdApiError,
-    "SINGLE_IMAGE only",
+    "SINGLE_VIDEO requires a prepared video_id",
   );
 });
 

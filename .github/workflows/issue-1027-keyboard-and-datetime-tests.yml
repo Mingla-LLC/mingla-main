@@ -1,0 +1,187 @@
+name: Issue 1027 Keyboard Reachability + Web Date/Time Tests
+
+# issue #1027 [keyboard-input-reachability] — the SINGLE per-issue regression gate
+# for BOTH threads of the create-wizard keyboard/viewport + web date/time umbrella.
+# (Consolidates the former issue-1027-web-datetime-tests.yml, which covered Thread B
+# only and left Thread A's tests wired into NO workflow — a dark safety mechanism,
+# the exact #1038/#1047 failure shape.)
+#
+# THREAD A (native keyboard/viewport reachability):
+#   - MapboxAddressInput card-mode suggestion list now caps its scroll viewport to
+#     the space above the soft keyboard (shared @mingla/location-input — 9 surfaces).
+#   - CreatorStep1Basics description field scrolls above the keyboard on focus.
+# THREAD B (business WEB date/time):
+#   - ONE shared visible native <input> (ui/WebDateTimeInput) replaces the hidden
+#     opacity:0/pointer-events:none + showPicker()/.click() bridge and the web-broken
+#     native @react-native-community/datetimepicker across 7 surfaces.
+#
+# WHY THE SOURCE PATHS ARE IN THE TRIGGER (not only the test paths): a PR that
+# REVERTS a fix touches the SOURCE file. If the trigger listed only test files, a
+# revert PR would not run this gate and would merge GREEN-by-omission. Every fixed
+# source file is therefore a trigger path — a revert runs the gate and goes RED.
+#
+# WHY react-test-renderer is installed --no-save: the render + native-parity proofs
+# mount REAL components via react-test-renderer, a TEST-ONLY renderer kept out of
+# package.json (the ORCH-1383 dark-suite trap). Same shape as
+# mingla-business-jest-suite.yml / issue-1044-auth-failure-capture-tests.yml.
+#
+# EXPLICIT registry (never a glob). Invokes no .mjs under
+# .github/scripts/strict-grep/, so MANIFEST.json totality + parity are untouched.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      # ---- Thread A source (a revert here must run the gate) ----
+      - "packages/location-input/src/MapboxAddressInput.tsx"
+      - "mingla-business/src/components/event/CreatorStep1Basics.tsx"
+      # ---- Thread A iOS-regression source (defer reveal to keyboard-shown; a revert must run the gate) ----
+      - "mingla-business/src/components/event/EventCreatorWizard.tsx"
+      - "mingla-business/src/components/rsvp/RsvpCreatorWizard.tsx"
+      - "mingla-business/src/components/event/EditPublishedScreen.tsx"
+      # ---- Thread B source (a revert here must run the gate) ----
+      - "mingla-business/src/components/ui/WebDateTimeInput.tsx"
+      - "mingla-business/src/components/event/CreatorStep2When.tsx"
+      - "mingla-business/src/components/event/MultiDateOverrideSheet.tsx"
+      - "mingla-business/src/components/checkout/intake/IntakeQuestionRenderers.tsx"
+      - "mingla-business/src/components/trip/PaymentPlanEditor.tsx"
+      - "mingla-business/src/components/trip/BookingDeadlinePicker.tsx"
+      - "mingla-business/src/components/marketing/ComposerStepWhen.tsx"
+      # ---- Thread A tests (implementor happy-path + tester adversarial) ----
+      - "mingla-business/src/components/location/__tests__/mapboxAddressInputKeyboardCap.1027.test.ts"
+      - "mingla-business/src/components/location/__tests__/mapboxAddressInputKeyboardCap.adversarial.1027.test.ts"
+      - "mingla-business/src/components/event/__tests__/creatorStep1DescriptionOnFocusReveal.1027.test.ts"
+      - "mingla-business/src/components/event/__tests__/creatorStep1DescriptionOnFocusReveal.adversarial.1027.test.tsx"
+      - "mingla-business/src/components/event/__tests__/creatorDescriptionRevealDeferred.1027.regression.test.ts"
+      # ---- Thread B tests (implementor happy-path + tester adversarial) ----
+      - "mingla-business/src/components/event/__tests__/orch_1027_web_datetime_native_input.test.tsx"
+      - "mingla-business/src/components/event/__tests__/orch_1027_web_datetime_structural.test.ts"
+      - "mingla-business/src/components/ui/__tests__/webDateTimeInput.adversarial.1027.test.tsx"
+      - "mingla-business/src/utils/__tests__/orch_1089_signedin_event_creator_wizard.test.ts"
+      - ".github/workflows/issue-1027-keyboard-and-datetime-tests.yml"
+  pull_request:
+    paths:
+      # ---- Thread A source (a revert here must run the gate) ----
+      - "packages/location-input/src/MapboxAddressInput.tsx"
+      - "mingla-business/src/components/event/CreatorStep1Basics.tsx"
+      # ---- Thread A iOS-regression source (defer reveal to keyboard-shown; a revert must run the gate) ----
+      - "mingla-business/src/components/event/EventCreatorWizard.tsx"
+      - "mingla-business/src/components/rsvp/RsvpCreatorWizard.tsx"
+      - "mingla-business/src/components/event/EditPublishedScreen.tsx"
+      # ---- Thread B source (a revert here must run the gate) ----
+      - "mingla-business/src/components/ui/WebDateTimeInput.tsx"
+      - "mingla-business/src/components/event/CreatorStep2When.tsx"
+      - "mingla-business/src/components/event/MultiDateOverrideSheet.tsx"
+      - "mingla-business/src/components/checkout/intake/IntakeQuestionRenderers.tsx"
+      - "mingla-business/src/components/trip/PaymentPlanEditor.tsx"
+      - "mingla-business/src/components/trip/BookingDeadlinePicker.tsx"
+      - "mingla-business/src/components/marketing/ComposerStepWhen.tsx"
+      # ---- Thread A tests (implementor happy-path + tester adversarial) ----
+      - "mingla-business/src/components/location/__tests__/mapboxAddressInputKeyboardCap.1027.test.ts"
+      - "mingla-business/src/components/location/__tests__/mapboxAddressInputKeyboardCap.adversarial.1027.test.ts"
+      - "mingla-business/src/components/event/__tests__/creatorStep1DescriptionOnFocusReveal.1027.test.ts"
+      - "mingla-business/src/components/event/__tests__/creatorStep1DescriptionOnFocusReveal.adversarial.1027.test.tsx"
+      - "mingla-business/src/components/event/__tests__/creatorDescriptionRevealDeferred.1027.regression.test.ts"
+      # ---- Thread B tests (implementor happy-path + tester adversarial) ----
+      - "mingla-business/src/components/event/__tests__/orch_1027_web_datetime_native_input.test.tsx"
+      - "mingla-business/src/components/event/__tests__/orch_1027_web_datetime_structural.test.ts"
+      - "mingla-business/src/components/ui/__tests__/webDateTimeInput.adversarial.1027.test.tsx"
+      - "mingla-business/src/utils/__tests__/orch_1089_signedin_event_creator_wizard.test.ts"
+      - ".github/workflows/issue-1027-keyboard-and-datetime-tests.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  thread-a-native-keyboard:
+    name: "#1027 A: keyboard-aware dropdown cap + description reveal (impl + adversarial, fails-on-revert)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      # The Symptom-2 adversarial suite mounts the REAL CreatorStep1Basics via
+      # react-test-renderer (TEST-ONLY, --no-save). The cap-execution suite needs
+      # only ts (a ts-jest dep) + node.
+      - name: Install test-only renderer (react-test-renderer, --no-save)
+        run: npm install --no-save react-test-renderer@19.1.0
+      # Symptom 1 — keyboard-aware shared dropdown cap.
+      - name: "Symptom 1 — implementor happy-path (cap formula + wiring)"
+        run: >
+          npx jest
+          src/components/location/__tests__/mapboxAddressInputKeyboardCap.1027.test.ts
+          --runInBand
+      - name: "Symptom 1 — tester ADVERSARIAL (over-constrain / no-keyboard, cap EXECUTED)"
+        run: >
+          npx jest
+          src/components/location/__tests__/mapboxAddressInputKeyboardCap.adversarial.1027.test.ts
+          --runInBand
+      # Symptom 2 — description reveal on focus.
+      - name: "Symptom 2 — implementor happy-path (onFocus wired to scrollToBottom)"
+        run: >
+          npx jest
+          src/components/event/__tests__/creatorStep1DescriptionOnFocusReveal.1027.test.ts
+          --runInBand
+      - name: "Symptom 2 — tester ADVERSARIAL (scrollToBottom undefined → no throw, EXECUTED)"
+        run: >
+          npx jest
+          src/components/event/__tests__/creatorStep1DescriptionOnFocusReveal.adversarial.1027.test.tsx
+          --runInBand
+      # Symptom 2b — iOS regression: reveal DEFERS to keyboard-shown via the
+      # react-native-keyboard-controller library (not a bare-rAF scrollToEnd that
+      # over-scrolled the multiline off-screen on iOS); asserts BEHAVIOR + no raw
+      # Keyboard.addListener. Fails-on-revert on restoring the immediate scroll.
+      - name: "Symptom 2b — iOS regression (deferred reveal via keyboard library, fails-on-revert)"
+        run: >
+          npx jest
+          src/components/event/__tests__/creatorDescriptionRevealDeferred.1027.regression.test.ts
+          --runInBand
+
+  thread-b-web-datetime:
+    name: "#1027 B: web date/time visible native input (impl + adversarial + native parity, fails-on-revert)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      # The render + native-parity proofs mount REAL components via
+      # react-test-renderer (TEST-ONLY, --no-save).
+      - name: Install test-only renderer (react-test-renderer, --no-save)
+        run: npm install --no-save react-test-renderer@19.1.0
+      - name: "Web date/time — implementor RENDER proof (main rows commit on web)"
+        run: >
+          npx jest
+          src/components/event/__tests__/orch_1027_web_datetime_native_input.test.tsx
+          --runInBand
+      - name: "Web date/time — structural guard (all 7 surfaces + native parity)"
+        run: >
+          npx jest
+          src/components/event/__tests__/orch_1027_web_datetime_structural.test.ts
+          --runInBand
+      - name: "Web date/time — tester ADVERSARIAL (empty/error/visible + NO web input leaks onto native)"
+        run: >
+          npx jest
+          src/components/ui/__tests__/webDateTimeInput.adversarial.1027.test.tsx
+          --runInBand
+      - name: "ORCH-1089 wizard parity (migrated marker showPicker → WebDateTimeInput stays green)"
+        run: >
+          npx jest
+          src/utils/__tests__/orch_1089_signedin_event_creator_wizard.test.ts
+          --runInBand

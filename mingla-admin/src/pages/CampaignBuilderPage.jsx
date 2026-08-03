@@ -32,10 +32,13 @@ import { StepCopy } from "../components/campaign-builder/StepCopy";
 import { StepPolicy } from "../components/campaign-builder/StepPolicy";
 import { StepReview } from "../components/campaign-builder/StepReview";
 import {
+  checkVideoPreparation,
   createCampaign,
   getConnection,
   parseEdgeError,
+  retryVideoPreparation,
   runPreflight,
+  startVideoPreparation,
 } from "../services/adEngineService";
 import { resolveGoalForPayload, resolveMetaObjective } from "../lib/adBuilder/objectiveResolver";
 import { classifyCreateResult } from "../lib/adBuilder/createResult";
@@ -49,6 +52,11 @@ import { runPolicyPrecheck } from "../lib/adBuilder/policyLinter";
 import { partitionFundedCreative } from "../lib/adBuilder/creativeGate";
 import { buildCreatePayload, suggestCampaignName } from "../lib/adBuilder/payload";
 import { buildLaunchSummary } from "../lib/adBuilder/launchSummary";
+import {
+  PREPARATION_ORDER,
+  retryDelayMs,
+} from "../lib/adBuilder/preparationState";
+import { areAllExpectedCreatePairsSuccessful } from "../lib/adBuilder/createProgress";
 
 const STEPS = [
   { id: "lane", label: "Lane" },
@@ -135,6 +143,25 @@ export function CampaignBuilderPage() {
     aiGenerated: false,
     name: "",
   });
+  // ISSUE-1184: server lifecycle is authoritative; this map is page-memory
+  // presentation only and is reset whenever the recorded creative identity
+  // changes. The queue runs exactly one request at a time.
+  const [preparationRows, setPreparationRows] = useState({});
+  const [preparationRunningPlatform, setPreparationRunningPlatform] = useState(null);
+  const [preparationStopped, setPreparationStopped] = useState(false);
+  const [preparationOnline, setPreparationOnline] = useState(() => navigator.onLine);
+  const preparationStopRef = useRef(false);
+  const preparationRunRef = useRef(false);
+  const terminalAnnouncementsRef = useRef(new Set());
+  useEffect(() => {
+    const update = () => setPreparationOnline(navigator.onLine);
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => {
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
+  }, []);
   const [copy, setCopy] = useState({
     primary: "",
     headline: "",
@@ -144,6 +171,13 @@ export function CampaignBuilderPage() {
     googleDescriptions: ["", ""],
     keywords: [],
     negativeKeywords: [],
+    // ISSUE-1282 [Google video bespoke copy] — a Google VIDEO (Demand Gen) ad can
+    // carry operator-written long headlines (≤90) + an optional business name
+    // (≤25). Empty by default → payload.js sends nothing and the create branch
+    // derives the fallback (RSA headlines / title-cased brand slug), exactly as
+    // before. Only surfaced in StepCopy on the Google-video path.
+    googleLongHeadlines: [""],
+    googleBusinessName: "",
   });
   const [specialAdCategory, setSpecialAdCategory] = useState("NONE");
   const [name, setName] = useState("");
@@ -322,8 +356,145 @@ export function CampaignBuilderPage() {
       // creative excludes every funded channel (preview-only), so nothing
       // misleading builds.
       kind: creative.kind,
+      preparationByPlatform: preparationRows,
     }),
-    [fundedPlatforms, creative.validation, creative.kind],
+    [fundedPlatforms, creative.validation, creative.kind, preparationRows],
+  );
+
+  useEffect(() => {
+    preparationStopRef.current = true;
+    preparationRunRef.current = false;
+    setPreparationRows({});
+    setPreparationRunningPlatform(null);
+    setPreparationStopped(false);
+    terminalAnnouncementsRef.current = new Set();
+  }, [creative.creativeRow?.id]);
+
+  const preparationPlatforms = useMemo(
+    () => PREPARATION_ORDER.filter((platform) => fundedPlatforms.includes(platform)),
+    [fundedPlatforms],
+  );
+
+  const invokePreparation = useCallback(async (platform, action, creativeId) => {
+    const input = {
+      creative_library_id: creativeId,
+      platform,
+      lane: "consumer",
+    };
+    const fn = action === "retry"
+      ? retryVideoPreparation
+      : action === "status"
+      ? checkVideoPreparation
+      : startVideoPreparation;
+    return fn(input);
+  }, []);
+
+  const runPreparationPlatform = useCallback(async (platform, firstAction, creativeId) => {
+    let action = firstAction;
+    while (!preparationStopRef.current) {
+      setPreparationRunningPlatform(platform);
+      const result = await invokePreparation(platform, action, creativeId);
+      if (creative.creativeRow?.id !== creativeId) return null;
+      if (result.error) {
+        const parsed = result.parsedError ?? await parseEdgeError(result.error);
+        setPreparationRows((prev) => ({
+          ...prev,
+          [platform]: {
+            ...(prev[platform] ?? {}),
+            platform,
+            state: "failed",
+            retryable: true,
+            error: {
+              code: parsed?.body?.error ?? "preparation_request_failed",
+              message: parsed?.message ?? "We couldn't finish the platform handoff. Nothing was created.",
+            },
+            trace_id: parsed?.body?.trace_id ?? null,
+          },
+        }));
+        return null;
+      }
+      const row = result.data;
+      setPreparationRows((prev) => ({ ...prev, [platform]: row }));
+      if (result.terminalDiscovered && !terminalAnnouncementsRef.current.has(row.trace_id)) {
+        terminalAnnouncementsRef.current.add(row.trace_id);
+        addToast({
+          variant: "error",
+          title: `${platform} couldn't prepare this video.`,
+          description: "Nothing was created. Use Retry on that platform.",
+        });
+      }
+      if (!["uploading", "processing"].includes(row?.state)) return row;
+      await new Promise((resolve) => window.setTimeout(resolve, retryDelayMs(row)));
+      action = "status";
+    }
+    return null;
+  }, [addToast, creative.creativeRow?.id, invokePreparation]);
+
+  const runPreparationQueue = useCallback(async ({ resume = false } = {}) => {
+    const creativeId = creative.creativeRow?.id;
+    if (!creativeId || preparationRunRef.current || !preparationOnline) return;
+    preparationRunRef.current = true;
+    preparationStopRef.current = false;
+    setPreparationStopped(false);
+    try {
+      for (const platform of preparationPlatforms) {
+        if (preparationStopRef.current) break;
+        const state = preparationRows[platform]?.state ?? "not_started";
+        if (state === "ready" || state === "failed" || state === "timed_out") continue;
+        const action = resume && ["uploading", "processing"].includes(state) ? "status" : "start";
+        await runPreparationPlatform(platform, action, creativeId);
+      }
+    } finally {
+      preparationRunRef.current = false;
+      setPreparationRunningPlatform(null);
+    }
+  }, [creative.creativeRow?.id, preparationOnline, preparationPlatforms, preparationRows, runPreparationPlatform]);
+
+  const stopPreparation = useCallback(() => {
+    preparationStopRef.current = true;
+    setPreparationStopped(true);
+    setPreparationRunningPlatform(null);
+  }, []);
+
+  const retryPreparation = useCallback(async (platform) => {
+    const creativeId = creative.creativeRow?.id;
+    if (!creativeId || preparationRunRef.current || !preparationOnline) return;
+    preparationRunRef.current = true;
+    preparationStopRef.current = false;
+    setPreparationStopped(false);
+    try {
+      await runPreparationPlatform(platform, "retry", creativeId);
+    } finally {
+      preparationRunRef.current = false;
+      setPreparationRunningPlatform(null);
+    }
+  }, [creative.creativeRow?.id, preparationOnline, runPreparationPlatform]);
+
+  const checkPreparation = useCallback(async (platform) => {
+    const creativeId = creative.creativeRow?.id;
+    if (!creativeId || preparationRunRef.current || !preparationOnline) return;
+    preparationRunRef.current = true;
+    preparationStopRef.current = false;
+    setPreparationStopped(false);
+    try {
+      await runPreparationPlatform(platform, "status", creativeId);
+    } finally {
+      preparationRunRef.current = false;
+      setPreparationRunningPlatform(null);
+    }
+  }, [creative.creativeRow?.id, preparationOnline, runPreparationPlatform]);
+
+  // ISSUE-1009 [partial-failure retry lockout] — the page owns completion
+  // truth because it owns all three inputs. Expected create work is exactly the
+  // current destinations × creative-buildable platforms; funded-but-excluded
+  // channels and stale result keys cannot complete or permanently block Review.
+  const allExpectedPairsSucceeded = useMemo(
+    () => areAllExpectedCreatePairsSuccessful({
+      destinations,
+      buildablePlatforms: creativePartition.buildable,
+      createResults,
+    }),
+    [destinations, creativePartition.buildable, createResults],
   );
 
   // Auto-suggest the campaign name from the first destination (editable — §4.4).
@@ -372,7 +543,9 @@ export function CampaignBuilderPage() {
         return creativePartition.buildable.length > 0;
       }
       case "copy": {
-        const funded = allocations.map((a) => a.platform);
+        const funded = creative.kind === "video"
+          ? creativePartition.buildable
+          : allocations.map((a) => a.platform);
         const validation = validateCopy(copy, funded);
         return funded.every((p) => (validation[p]?.hard ?? []).length === 0) &&
           copy.primary.trim().length > 0;
@@ -404,10 +577,8 @@ export function CampaignBuilderPage() {
             : "Upload an ad image first.";
         }
         if (!creative.validation) return "Validate the creative first.";
-        // ISSUE-995 REWORK: video ad creation isn't available yet — the builder
-        // is preview-only for video, so Next-to-build is intentionally blocked.
         if (creative.kind === "video") {
-          return "Video ad creation isn't available yet — this is a preview. Switch to an image to build a campaign.";
+          return "Prepare at least one video platform, or fix a failed platform, to continue.";
         }
         // Has media + validation, but no funded channel can build → every one failed.
         return "No funded channel can run this creative. Fix a problem above, or add a variant, to build at least one.";
@@ -456,7 +627,7 @@ export function CampaignBuilderPage() {
       const destBody = {
         page_type: dest.page_type,
         brand_slug: dest.brand_slug,
-        entity_slug: dest.page_type === "event" ? dest.slug : null,
+        entity_slug: dest.page_type === "brand" ? null : dest.slug,
       };
       // Each fanned-out ad carries its own name (base name + destination title) so
       // the created campaigns stay distinguishable; a single-destination build
@@ -556,7 +727,9 @@ export function CampaignBuilderPage() {
 
   const summary = buildLaunchSummary({
     channelRows: plannedRows,
-    allocations,
+    allocations: creative.kind === "video"
+      ? allocations.filter((a) => creativePartition.buildable.includes(a.platform))
+      : allocations,
     goalIds,
     resolvedGoal: resolvedGoalForDisplay,
     destinations: destinations.map((d) => ({ title: d.title, dest_url: d.dest_url })),
@@ -580,10 +753,21 @@ export function CampaignBuilderPage() {
       };
     })(),
     totalDailyCents: budget.totalDailyCents,
+    preparationByPlatform: preparationRows,
   });
 
   const stepId = STEPS[activeIndex].id;
   const disabledReason = nextDisabledReason();
+  const goBack = () => {
+    if (stepId === "creative" && preparationRunningPlatform && !preparationStopped) {
+      const leave = window.confirm(
+        `Leave while ${preparationRunningPlatform} is processing?\n\nNo campaign or ad will be created. The platform may keep processing the uploaded video. When you return, we’ll check its latest status.`,
+      );
+      if (!leave) return;
+      stopPreparation();
+    }
+    goTo(activeIndex - 1);
+  };
 
   return (
     <div className="space-y-4">
@@ -643,10 +827,26 @@ export function CampaignBuilderPage() {
               fundedPlatforms={fundedPlatforms}
               creativeExcluded={creativePartition.excluded}
               creativeBuildable={creativePartition.buildable}
+              preparationRows={preparationRows}
+              preparationRunningPlatform={preparationRunningPlatform}
+              preparationStopped={preparationStopped}
+              onPrepareVideo={() => runPreparationQueue()}
+              onStopPreparation={stopPreparation}
+              onResumePreparation={() => runPreparationQueue({ resume: true })}
+              onRetryPreparation={retryPreparation}
+              onCheckPreparation={checkPreparation}
+              preparationOnline={preparationOnline}
             />
           )}
           {stepId === "copy" && (
-            <StepCopy copy={copy} onCopyChange={setCopy} channelRows={plannedRows} />
+            <StepCopy
+              copy={copy}
+              onCopyChange={setCopy}
+              channelRows={plannedRows}
+              /* ISSUE-1282: the Google-video (Demand Gen) bespoke long-headline +
+                 business-name fields render ONLY when the creative is a video. */
+              isVideo={creative.kind === "video"}
+            />
           )}
           {stepId === "policy" && (
             <StepPolicy
@@ -671,6 +871,7 @@ export function CampaignBuilderPage() {
               submitting={submitting}
               validatingShapes={validatingShapes}
               createResults={createResults}
+              allExpectedPairsSucceeded={allExpectedPairsSucceeded}
               onCreate={() => runCreate({ validateOnly: false })}
               onValidateShapes={() => runCreate({ validateOnly: true })}
               onJumpToStep={jumpToStepId}
@@ -683,7 +884,7 @@ export function CampaignBuilderPage() {
               variant="secondary"
               icon={ArrowLeft}
               disabled={activeIndex === 0}
-              onClick={() => goTo(activeIndex - 1)}
+              onClick={goBack}
             >
               Back
             </Button>
@@ -710,13 +911,17 @@ export function CampaignBuilderPage() {
             brandName={firstDestination?.brand_name}
             primary={copy.primary}
             headline={copy.headline}
+            description={copy.description}
             cta={copy.cta}
             imageUrl={creative.localPreviewUrl ?? creative.publicUrl}
             destUrl={firstDestination?.dest_url}
+            creative={creative}
+            destination={firstDestination}
+            fundedPlatforms={fundedPlatforms}
+            preparationRows={preparationRows}
           />
           <p className="text-[10px] text-[var(--color-text-tertiary)] mt-2">
-            Approximation of the Facebook mobile feed. Platform-rendered previews arrive with
-            the preview endpoint.
+            Preview source is labeled above every frame.
             {destinations.length > 1 && (
               <> Showing the first of {destinations.length} destinations — each gets its own ad.</>
             )}

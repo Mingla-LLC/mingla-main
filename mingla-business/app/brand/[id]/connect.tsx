@@ -7,6 +7,7 @@
  * route graph from making the full legacy onboarding screen eager.
  */
 
+// orch-strict-grep-allow safearea-on-fullscreen-routes — redirect-only route (<Redirect>), no visible surface
 import React from "react";
 import { Redirect, useLocalSearchParams } from "expo-router";
 

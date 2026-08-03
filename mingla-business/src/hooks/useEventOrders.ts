@@ -33,6 +33,7 @@ import {
   buildEventSalesSummary,
   type EventSalesSummary,
 } from "../utils/eventSalesSummary";
+import { currencyCodeOrNull } from "../utils/currency";
 
 export const eventOrdersKeys = {
   all: ["event-orders"] as const,
@@ -43,10 +44,13 @@ export const eventOrdersKeys = {
   soldCounts: (eventIds: string[]): readonly ["event-orders", "sold-counts", string] =>
     [...eventOrdersKeys.all, "sold-counts", eventIds.slice().sort().join("|")] as const,
   salesSummary: (
+    // #962 G17 — currency is a nullable cache-key SEGMENT (not a display).
+    // `null` is stable + serializable and keeps a null-currency brand's cache
+    // distinct from a GBP brand's; never a fabricated "GBP".
     eventId: string,
-    currency: string,
+    currency: string | null,
     ticketSignature: string,
-  ): readonly ["event-orders", string, "sales-summary", string, string] =>
+  ): readonly ["event-orders", string, "sales-summary", string | null, string] =>
     [...eventOrdersKeys.all, eventId, "sales-summary", currency, ticketSignature] as const,
 };
 
@@ -134,7 +138,8 @@ export const useEventSalesSummaries = (
     queries: events.map((event) => ({
       queryKey: eventOrdersKeys.salesSummary(
         event.id,
-        event.currency ?? brandDefaultCurrency ?? "GBP",
+        // #962 G17 — null (not "GBP") for a null-currency brand; segment only.
+        currencyCodeOrNull(event.currency ?? brandDefaultCurrency),
         ticketCapacitySignature(event.tickets),
       ),
       enabled: !loading && session !== null,
