@@ -8,6 +8,7 @@ export const DECK_SWIPE_PHASES = [
 
 export type DeckSwipePhase = (typeof DECK_SWIPE_PHASES)[number];
 export type DeckSwipeDirection = 'left' | 'right';
+export type DeckGestureSequenceDisposition = 'admitted' | 'rejected' | null;
 
 export interface DeckSwipeCommitToken {
   cardId: string;
@@ -59,6 +60,31 @@ export function canFastForwardDeckExit(guard: DeckExitFastForwardGuard): boolean
     guard.phase === 'EXITING' &&
     guard.expectedEpoch === guard.currentEpoch &&
     guard.expectedCardId === guard.currentCardId
+  );
+}
+
+export interface DeckTerminalRecoveryGuard {
+  mounted: boolean;
+  phase: DeckSwipePhase;
+  currentCardId: string | null;
+  disposition: DeckGestureSequenceDisposition;
+  endedFromActive: boolean;
+}
+
+/**
+ * Android may deliver a native ACTIVE -> END sequence while its intermediate
+ * BEGAN state-change notification is coalesced before JS observes it. Recover
+ * only that unobserved sequence; an explicitly rejected BEGAN stays rejected.
+ */
+export function canRecoverUnobservedDeckEnd(
+  guard: DeckTerminalRecoveryGuard,
+): boolean {
+  return (
+    guard.mounted &&
+    guard.phase === 'IDLE' &&
+    guard.currentCardId !== null &&
+    guard.disposition === null &&
+    guard.endedFromActive
   );
 }
 

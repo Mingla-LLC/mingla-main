@@ -16,8 +16,10 @@ import {
 import {
   canAdmitDeckInput,
   canFastForwardDeckExit,
+  canRecoverUnobservedDeckEnd,
   DeckSwipeCommitToken,
   DeckCommitSettlement,
+  DeckGestureSequenceDisposition,
   DeckSwipeDirection,
   DeckSwipePhase,
   deckCommitTokenKey,
@@ -102,6 +104,7 @@ export function useDeckSwipeController(
   const delayedRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const transitionStartedAtRef = useRef(0);
   const pendingCommitRef = useRef<DeckSwipeCommitToken | null>(null);
+  const gestureDispositionRef = useRef<DeckGestureSequenceDisposition>(null);
   const latestEndYRef = useRef(0);
   // One slot is sufficient because every admission gets a fresh epoch and
   // completion validity is checked before replay detection.
@@ -142,6 +145,7 @@ export function useDeckSwipeController(
     activeAnimationRef.current?.stop();
     activeAnimationRef.current = null;
     pendingCommitRef.current = null;
+    gestureDispositionRef.current = null;
     clearTransitionTimers();
     resetPresentation();
     setPhase('IDLE');
@@ -348,16 +352,20 @@ export function useDeckSwipeController(
   }, []);
 
   const onHandlerStateChange = useCallback((event: PanGestureHandlerStateChangeEvent): void => {
-    const { state, translationX, translationY, velocityX } = event.nativeEvent;
+    const { state, oldState, translationX, translationY, velocityX } = event.nativeEvent;
     if (state === State.BEGAN) {
+      gestureDispositionRef.current = null;
       if (phaseRef.current === 'EXITING' && !fastForwardPendingExit()) {
+        gestureDispositionRef.current = 'rejected';
         rejectInput();
         return;
       }
       if (!canAdmitDeckInput(phaseRef.current) || !activeCardIdRef.current) {
+        gestureDispositionRef.current = 'rejected';
         rejectInput();
         return;
       }
+      gestureDispositionRef.current = 'admitted';
       countersRef.current.admitted += 1;
       epochRef.current = nextDeckGestureEpoch(epochRef.current);
       setPhase('DRAGGING');
@@ -365,7 +373,25 @@ export function useDeckSwipeController(
     }
 
     if (state !== State.END && state !== State.CANCELLED && state !== State.FAILED) return;
-    if (phaseRef.current !== 'DRAGGING') return;
+    const disposition = gestureDispositionRef.current;
+    gestureDispositionRef.current = null;
+    if (phaseRef.current !== 'DRAGGING') {
+      if (state !== State.END || disposition !== null) return;
+      if (phaseRef.current === 'EXITING' && !fastForwardPendingExit()) {
+        rejectInput();
+        return;
+      }
+      if (!canRecoverUnobservedDeckEnd({
+        mounted: mountedRef.current,
+        phase: phaseRef.current,
+        currentCardId: activeCardIdRef.current,
+        disposition,
+        endedFromActive: oldState === State.ACTIVE,
+      })) return;
+      countersRef.current.admitted += 1;
+      epochRef.current = nextDeckGestureEpoch(epochRef.current);
+      setPhase('DRAGGING');
+    }
     latestEndYRef.current = translationY;
 
     if (state !== State.END) {
@@ -415,6 +441,7 @@ export function useDeckSwipeController(
     activeAnimationRef.current?.stop();
     activeAnimationRef.current = null;
     pendingCommitRef.current = null;
+    gestureDispositionRef.current = null;
     clearTransitionTimers();
     resetPresentation();
     setPhase('IDLE');
@@ -436,6 +463,7 @@ export function useDeckSwipeController(
     mountedRef.current = false;
     epochRef.current += 1;
     activeAnimationRef.current?.stop();
+    gestureDispositionRef.current = null;
     clearTransitionTimers();
     optionsRef.current.onPhaseChanged('IDLE');
     optionsRef.current.onInvalidated('unmount');

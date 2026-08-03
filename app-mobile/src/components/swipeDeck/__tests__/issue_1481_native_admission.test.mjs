@@ -25,6 +25,16 @@ function assertStableNativeAdmission(sources) {
   );
   assert.match(
     sources.controller,
+    /const disposition = gestureDispositionRef\.current;[\s\S]{0,900}canRecoverUnobservedDeckEnd\([\s\S]{0,500}oldState === State\.ACTIVE/,
+    'a native ACTIVE to END sequence whose BEGAN was coalesced must retain terminal admission',
+  );
+  assert.match(
+    sources.controller,
+    /gestureDispositionRef\.current = 'rejected';[\s\S]{0,140}rejectInput\(\)/,
+    'an explicitly rejected BEGAN must remain rejected at terminal END',
+  );
+  assert.match(
+    sources.controller,
     /setPhase\('COMMITTING'\);[\s\S]{0,260}outgoingAnimation\?\.stop\(\);[\s\S]{0,260}settleCommit\(token, true\)/,
     'the stopped native callback must be stale before the shared commit path runs',
   );
@@ -253,7 +263,7 @@ test('source guard rejects every superseded native availability root independent
   const layoutMutant = `${source.controller}\nconst pendingSettlementRef = useRef(null);`;
   assert.throws(() => assertStableNativeAdmission({ ...source, controller: layoutMutant }), /layout or timer/);
 
-  const droppedBeginMutant = source.controller.replace(
+  const droppedBeginMutant = source.controller.replaceAll(
     "phaseRef.current === 'EXITING' && !fastForwardPendingExit()",
     "phaseRef.current === 'EXITING'",
   );
@@ -269,5 +279,14 @@ test('source guard rejects every superseded native availability root independent
   assert.throws(
     () => assertStableNativeAdmission({ ...source, controller: unsafeStopMutant }),
     /stopped native callback/,
+  );
+
+  const droppedTerminalRecoveryMutant = source.controller.replace(
+    'canRecoverUnobservedDeckEnd({',
+    'canRecoverDisabledDeckEnd({',
+  );
+  assert.throws(
+    () => assertStableNativeAdmission({ ...source, controller: droppedTerminalRecoveryMutant }),
+    /ACTIVE to END/,
   );
 });
