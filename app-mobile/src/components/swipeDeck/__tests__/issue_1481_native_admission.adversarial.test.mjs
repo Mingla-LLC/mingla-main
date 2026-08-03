@@ -45,3 +45,22 @@ test('production persistence has no active-cadence max-age escape hatch', () => 
     /onPhaseChanged:[\s\S]*phase === 'IDLE'[\s\S]{0,200}drainPersistence\(/,
   );
 });
+
+test('deferred swipe work cannot cross users and lifecycle exits force the owned FIFO', () => {
+  assert.match(swipeable, /const postSwipeUserIdRef = useRef<string \| undefined>\(user\?\.id\)/);
+  assert.match(
+    swipeable,
+    /postSwipeUserIdRef\.current !== user\?\.id[\s\S]{0,260}swipeQueueEpochRef\.current \+= 1;[\s\S]{0,260}postSwipeQueueRef\.current = \[\];[\s\S]{0,260}cancelPostSwipeSchedule\(\)/,
+    'a replacement identity must invalidate every old-user work item before it can drain',
+  );
+  assert.match(
+    swipeable,
+    /nextState !== 'active'[\s\S]{0,180}drainPostSwipeQueue\(true\)/,
+    'backgrounding must force the current-user FIFO instead of abandoning it behind the quiet gate',
+  );
+  assert.match(
+    swipeable,
+    /cancelPostSwipeSchedule\(\);\s*void drainPostSwipeQueue\(true\);/,
+    'unmount must cancel delayed callbacks before force-draining the owned FIFO',
+  );
+});
