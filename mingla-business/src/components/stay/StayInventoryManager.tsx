@@ -36,6 +36,9 @@ import {
   optionCardMinWidth,
   semantic,
   spacing,
+  stayEditorFormMaxWidth,
+  stayEditorSummaryMinWidth,
+  stayEditorSummaryWidth,
   stayFieldNumBasis,
   stayFieldNumMinWidth,
   stayFieldPairMinWidth,
@@ -95,6 +98,7 @@ import { NameBuilder } from "../ui/NameBuilder";
 import { OptionCard } from "../ui/OptionCard";
 import {
   matchesStayInventoryFilter,
+  stayDraftReadiness,
   stayOfferingReadinessErrors,
   type StayInventoryFilter,
 } from "./stayInventoryPresentation";
@@ -413,6 +417,119 @@ function ChoiceCard({
   );
 }
 
+/**
+ * #1501 §5 — THE EDITOR'S DESKTOP GEOMETRY, in one place.
+ *
+ * Returns the COMPLETE style objects the editor applies — never an override
+ * that sets a key to `undefined`, because react-native-web keeps the base
+ * style's atomic class in the DOM and the cap silently survives (that is
+ * exactly how #1484 shipped broken). Callers SELECT between whole objects.
+ *
+ * `showRail` is a CONTAINER query, not a viewport query. The Stay workspace is
+ * ~252pt narrower than the viewport: at a 1440 viewport there are ~1156pt of
+ * container, and 760 + 32 + 320 = 1112 fits with 44 to spare; at 1280 there are
+ * ~996 and it does not, so the summary stacks above the CTA instead. Nothing is
+ * lost, only reflowed.
+ *
+ * Exported so the web-resolver proof can render THESE EXACT OBJECTS through the
+ * real react-native-web style compiler. A `ReactDOMServer.renderToStaticMarkup`
+ * pass never fires `onLayout`, so the split branch is otherwise unreachable
+ * from an SSR render — and a width contract that is only checked by
+ * react-test-renderer is the #1484 blind spot all over again.
+ */
+export function stayEditorLayout(input: {
+  isWideDesktop: boolean;
+  containerWidth: number;
+}): {
+  showRail: boolean;
+  page: ViewStyle;
+  body: ViewStyle;
+  formColumn: ViewStyle;
+  rail: ViewStyle;
+} {
+  const showRail =
+    input.isWideDesktop && input.containerWidth >= stayEditorSummaryMinWidth;
+  if (!input.isWideDesktop) {
+    return {
+      showRail: false,
+      page: styles.page,
+      body: styles.editorStack,
+      formColumn: styles.formColumn,
+      rail: styles.summaryRailInRow,
+    };
+  }
+  if (!showRail) {
+    return {
+      showRail: false,
+      page: styles.pageForm,
+      body: styles.editorStack,
+      formColumn: styles.formColumn,
+      rail: styles.summaryRailInRow,
+    };
+  }
+  return {
+    showRail: true,
+    page: styles.pageEditorSplit,
+    body: styles.editorSplitRow,
+    formColumn: styles.formColumnInRow,
+    rail: styles.summaryRailInRow,
+  };
+}
+
+/**
+ * #1501 §2 — the six sections, in the order a hotelier reasons: what it is ->
+ * how guests book it -> how many -> what it costs -> photos. One long
+ * undifferentiated stack of inputs was the second thing Seth flagged.
+ */
+const STAY_SECTION_COPY = {
+  start: {
+    title: "Start here",
+    caption: "Two quick choices, then the details.",
+  },
+  identity: {
+    title: "What it is",
+    caption: "The part guests read before they book.",
+  },
+  booking: {
+    title: "How guests book it",
+    caption: "Who can book, and what happens when they do.",
+  },
+  inventory: {
+    title: "How many you have",
+    caption: "Your inventory for one date.",
+  },
+  money: {
+    title: "What it costs",
+    caption: "Prices and rules guests see before they pay.",
+  },
+  photos: {
+    title: "Photos",
+    caption: "The first one becomes the cover.",
+  },
+} as const;
+
+function Section({
+  title,
+  caption,
+  testID,
+  children,
+}: {
+  title: string;
+  caption: string;
+  testID: string;
+  children: React.ReactNode;
+}): React.ReactElement {
+  return (
+    <View style={styles.section} testID={testID}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      <Text style={styles.sectionCaption}>{caption}</Text>
+      <GlassCard variant="base" style={styles.form}>
+        {children}
+      </GlassCard>
+    </View>
+  );
+}
+
 function Choice({
   label,
   selected,
@@ -616,6 +733,11 @@ export function OfferingEditor({
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [resultCopy, setResultCopy] = useState<string | null>(null);
+  // #1501 §5 — the rail threshold is a CONTAINER query fed by `onLayout`, not a
+  // viewport query. The Stay workspace is ~252pt narrower than the viewport, so
+  // a viewport threshold would promise a rail that does not fit. 0 until the
+  // first layout pass, which correctly means "no rail yet".
+  const [editorWidth, setEditorWidth] = useState(0);
 
   // ── D-4 (APPROVED) ────────────────────────────────────────────────────────
   // "Add several" FORCES "Any one will do". Bulk + named units used to write
@@ -926,9 +1048,122 @@ export function OfferingEditor({
         ? mutationCopy(save.error)
         : null;
 
+  // #1501 §5 — the readiness checklist the summary rail shows, mirroring
+  // `stayOfferingReadinessErrors` label-for-label so a draft and a saved row
+  // never describe the same requirement two different ways.
+  const readiness = stayDraftReadiness({
+    description,
+    photoCount: (existing?.media?.length ?? 0) + media.length,
+    hasPrice: canManageFinance && Number(price) > 0 && currencyCode !== null,
+    hasPolicy: canManageFinance && policy.trim().length > 0,
+    namedUnits: namedUnitsActive,
+    unitNameCount: unitNames.length,
+  });
+
+  const draftNames = bulk ? normalizeList(bulkNames) : [name.trim()].filter(Boolean);
+  const draftCount = bulk ? draftNames.length : 1;
+  const kindLabel = kind === "room" ? "Room" : "Place";
+  const ctaLabel = existing
+    ? "Save changes"
+    : bulk
+      ? "Create drafts"
+      : "Create draft";
+
+  // The rail renders only when the CONTAINER can actually hold
+  // form column + gap + rail. Below the threshold the same summary stacks above
+  // the CTA — nothing is lost, only reflowed.
+  const layout = stayEditorLayout({
+    isWideDesktop,
+    containerWidth: editorWidth,
+  });
+  const showRail = layout.showRail;
+
+  const summary = (
+    <View style={styles.summaryBody} testID="stay-offering-summary">
+      <Text style={styles.summaryEyebrow}>You’re creating</Text>
+      <Text style={styles.summaryHeadline}>
+        {`${draftCount} ${kindLabel} draft${draftCount === 1 ? "" : "s"}`}
+      </Text>
+      {draftNames.length > 0 ? (
+        <Text style={styles.summaryNames} testID="stay-offering-summary-names">
+          {draftNames.length > 4
+            ? `${draftNames.slice(0, 3).join(", ")} … ${draftNames[draftNames.length - 1]}`
+            : draftNames.join(", ")}
+        </Text>
+      ) : (
+        <Text style={styles.summaryNames}>
+          {bulk ? "Add the names below." : "Give it a name below."}
+        </Text>
+      )}
+      <View style={styles.summaryFacts}>
+        <Text style={styles.summaryFact}>
+          {canManageFinance && Number(price) > 0 && currencyCode
+            ? formatCurrency(
+                minorFromMajor(Number(price), currencyCode),
+                currencyCode,
+                true,
+              )
+            : "No price yet"}
+        </Text>
+        <Text style={styles.summaryFact}>
+          {confirmationMode === "instant"
+            ? STAY_CHOICE_COPY.instant.label
+            : STAY_CHOICE_COPY.request.label}
+        </Text>
+        <Text style={styles.summaryFact}>
+          {`Up to ${asPositiveInteger(maxGuests)} per booking`}
+        </Text>
+        <Text style={styles.summaryFact}>
+          {amenities.length > 0
+            ? `${amenities.length} thing${amenities.length === 1 ? "" : "s"} included`
+            : "Nothing included yet"}
+        </Text>
+        <Text style={styles.summaryFact}>
+          {`${(existing?.media?.length ?? 0) + media.length} photo${
+            (existing?.media?.length ?? 0) + media.length === 1 ? "" : "s"
+          }`}
+        </Text>
+      </View>
+      <Text style={styles.summaryEyebrow}>Before these can go live</Text>
+      <View style={styles.summaryChecks} testID="stay-offering-readiness">
+        {readiness.map((item) => (
+          <Text
+            key={item.id}
+            // Never red: an unfinished draft is not an error.
+            style={item.done ? styles.checkDone : styles.checkPending}
+            testID={`stay-readiness-${item.id}`}
+          >
+            {`${item.done ? "✓" : "○"} ${item.label}`}
+          </Text>
+        ))}
+      </View>
+      {canManageFinance && currencyCode === null ? (
+        <Text style={styles.error}>
+          Choose the brand’s provisional currency or connect its bank before
+          adding prices.
+        </Text>
+      ) : null}
+      {localValidation ? (
+        <Text style={styles.error}>{localValidation}</Text>
+      ) : null}
+      {resultCopy ? <Text style={styles.warning}>{resultCopy}</Text> : null}
+      {/* EXACTLY ONE CTA renders at a time, so `stay-offering-save` is never
+          ambiguous to an operator, a screen reader, or a test. */}
+      <Button
+        label={ctaLabel}
+        onPress={() => save.mutate()}
+        loading={save.isPending}
+        disabled={uploading || (!canManageInventory && !canManageFinance)}
+        fullWidth
+        testID="stay-offering-save"
+      />
+    </View>
+  );
+
   return (
     <ScrollView
-      contentContainerStyle={isWideDesktop ? styles.pageForm : styles.page}
+      contentContainerStyle={layout.page}
+      onLayout={(event) => setEditorWidth(event.nativeEvent.layout.width)}
       testID="stay-offering-editor-scroll"
     >
       <View style={styles.titleRow}>
@@ -954,365 +1189,427 @@ export function OfferingEditor({
           <X size={22} color={textTokens.secondary} />
         </Pressable>
       </View>
-      {!existing ? (
-        <>
-          <View style={styles.choices}>
-            <ChoiceCard
-              id="room"
-              selected={kind === "room"}
-              onPress={() => setKind("room")}
-              testID="stay-add-room"
-            />
-            <ChoiceCard
-              id="place"
-              selected={kind === "place"}
-              onPress={() => setKind("place")}
-              testID="stay-add-place"
-            />
-          </View>
-          <View style={styles.choices}>
-            <ChoiceCard
-              id="addOne"
-              selected={!bulk}
-              onPress={() => setBulk(false)}
-              testID="stay-add-single"
-            />
-            <ChoiceCard
-              id="addSeveral"
-              selected={bulk}
-              onPress={() => setBulk(true)}
-              testID="stay-add-bulk"
-            />
-          </View>
-        </>
-      ) : null}
-      <GlassCard variant="base" style={styles.form}>
-        {bulk ? (
-          <NameBuilder
-            label={STAY_FIELD_COPY.names.label}
-            helper={STAY_FIELD_COPY.names.helper}
-            values={bulkNames}
-            onChange={setBulkNames}
-            placeholder={kind === "room" ? "Ocean-view double" : "Pool cabana"}
-            patternPlaceholder={kind === "room" ? "Room" : "Cabana"}
-            editable={canManageInventory}
-            testID="stay-bulk-names"
-          />
-        ) : (
-          <LabeledInput
-            span="stack"
-            label={STAY_FIELD_COPY.name.label}
-            helper={STAY_FIELD_COPY.name.helper}
-            value={name}
-            onChangeText={setName}
-            placeholder={
-              kind === "room" ? "Ocean-view double" : "Pool cabana"
-            }
-            editable={canManageInventory}
-            testID="stay-offering-name"
-          />
-        )}
-        <LabeledInput
-          span="stack"
-          label={STAY_FIELD_COPY.description.label}
-          helper={STAY_FIELD_COPY.description.helper}
-          value={description}
-          onChangeText={setDescription}
-          placeholder="What guests are reserving"
-          multiline
-          editable={canManageInventory}
-          testID="stay-offering-description"
-        />
-        <ChipInput
-          label={STAY_FIELD_COPY.amenities.label}
-          helper={STAY_FIELD_COPY.amenities.helper}
-          values={amenities}
-          onChange={setAmenities}
-          suggestions={
-            kind === "room" ? ROOM_AMENITIES : PLACE_AMENITIES
-          }
-          placeholder="Anything else? Type it and press enter"
-          editable={canManageInventory}
-          testID="stay-offering-amenities"
-        />
-        <View style={styles.choices}>
-          <ChoiceCard
-            id="instant"
-            selected={confirmationMode === "instant"}
-            onPress={() => setConfirmationMode("instant")}
-            disabled={!canManageInventory}
-            testID="stay-offering-instant"
-          />
-          <ChoiceCard
-            id="request"
-            selected={confirmationMode === "request"}
-            onPress={() => setConfirmationMode("request")}
-            disabled={!canManageInventory}
-            testID="stay-offering-request"
-          />
-        </View>
-        {kind === "place" ? (
-          <View style={styles.choices}>
-            <ChoiceCard
-              id="bookedWhole"
-              selected={!sharedCapacity}
-              onPress={() => setSharedCapacity(false)}
-              disabled={!canManageInventory}
-              testID="stay-place-exclusive"
-            />
-            <ChoiceCard
-              id="sharedSpots"
-              selected={sharedCapacity}
-              onPress={() => setSharedCapacity(true)}
-              disabled={!canManageInventory}
-              testID="stay-place-capacity"
-            />
-          </View>
-        ) : null}
-        <View style={styles.row} testID="stay-offering-count-row">
-          {!sharedCapacity ? (
-            <LabeledInput
-              span="num"
-              label={STAY_FIELD_COPY.quantity.label}
-              // D-5 (APPROVED): derived from the named list, so the server's
-              // `quantity === units.length` rule can never be broken.
-              helper={
-                namedUnitsActive
-                  ? STAY_FIELD_COPY.quantity.derivedHelper
-                  : STAY_FIELD_COPY.quantity.helper
-              }
-              value={derivedQuantity}
-              onChangeText={setQuantity}
-              placeholder="1"
-              keyboardType="numeric"
-              editable={canManageInventory && !namedUnitsActive}
-              testID="stay-offering-quantity"
-            />
+      <View
+        style={layout.body}
+        testID="stay-offering-layout"
+      >
+        <View
+          style={layout.formColumn}
+          testID="stay-offering-form-column"
+        >
+          {!existing ? (
+            <Section
+              title={STAY_SECTION_COPY.start.title}
+              caption={STAY_SECTION_COPY.start.caption}
+              testID="stay-section-start"
+            >
+              <View style={styles.choices}>
+                <ChoiceCard
+                  id="room"
+                  selected={kind === "room"}
+                  onPress={() => setKind("room")}
+                  testID="stay-add-room"
+                />
+                <ChoiceCard
+                  id="place"
+                  selected={kind === "place"}
+                  onPress={() => setKind("place")}
+                  testID="stay-add-place"
+                />
+              </View>
+              <View style={styles.choices}>
+                <ChoiceCard
+                  id="addOne"
+                  selected={!bulk}
+                  onPress={() => setBulk(false)}
+                  testID="stay-add-single"
+                />
+                <ChoiceCard
+                  id="addSeveral"
+                  selected={bulk}
+                  onPress={() => setBulk(true)}
+                  testID="stay-add-bulk"
+                />
+              </View>
+            </Section>
           ) : (
-            <LabeledInput
-              span="num"
-              label={STAY_FIELD_COPY.capacity.label}
-              helper={STAY_FIELD_COPY.capacity.helper}
-              value={capacity}
-              onChangeText={setCapacity}
-              placeholder="10"
-              keyboardType="numeric"
-              editable={canManageInventory}
-              testID="stay-offering-capacity"
-            />
-          )}
-          <LabeledInput
-            span="num"
-            label={STAY_FIELD_COPY.maxGuests.label}
-            helper={STAY_FIELD_COPY.maxGuests.helper}
-            value={maxGuests}
-            onChangeText={setMaxGuests}
-            placeholder="2"
-            keyboardType="numeric"
-            editable={canManageInventory}
-            testID="stay-offering-guests"
-          />
-        </View>
-        {!sharedCapacity ? (
-          <>
-            {bulk ? (
-              // D-4 (APPROVED): naming individual units while adding several
-              // would write the SAME list into every offering. Hidden, not
-              // disabled — an option you cannot use is noise.
-              <Text style={styles.helper} testID="stay-units-bulk-note">
-                Naming individual units is available after you create them.
+            // Edit mode: `updateStayOffering` omits `kind`, so the type cannot
+            // change after creation. A read-only strip states what it is
+            // instead of offering a control that would silently do nothing.
+            <View style={styles.chipStrip} testID="stay-offering-kind-strip">
+              <Text style={styles.chipStripText}>
+                {existing.kind === "room"
+                  ? STAY_CHOICE_COPY.room.label
+                  : STAY_CHOICE_COPY.place.label}
               </Text>
-            ) : (
-              <>
-                <View style={styles.choices}>
-                  <ChoiceCard
-                    id="interchangeable"
-                    selected={!namedUnits}
-                    onPress={() => setNamedUnits(false)}
-                    disabled={!canManageInventory}
-                    testID="stay-units-pooled"
-                  />
-                  <ChoiceCard
-                    id="named"
-                    selected={namedUnits}
-                    onPress={() => setNamedUnits(true)}
-                    disabled={!canManageInventory}
-                    testID="stay-units-named"
-                  />
-                </View>
-                {namedUnitsActive ? (
-                  <NameBuilder
-                    label={STAY_FIELD_COPY.unitNames.label}
-                    helper={unitNamesHelper(unitNames.length)}
-                    values={unitNames}
-                    onChange={setUnitNames}
-                    placeholder={kind === "room" ? "Room 101" : "Cabana 1"}
-                    patternPlaceholder={kind === "room" ? "Room" : "Cabana"}
-                    editable={canManageInventory}
-                    testID="stay-unit-names"
-                  />
-                ) : null}
-              </>
-            )}
-          </>
-        ) : null}
-        {kind === "place" ? (
-          <View style={styles.choices}>
-            <ChoiceCard
-              id="publicAccess"
-              selected={!overnightOnly}
-              onPress={() => setOvernightOnly(false)}
-              disabled={!canManageInventory}
-              testID="stay-place-public"
-            />
-            <ChoiceCard
-              id="overnightOnly"
-              selected={overnightOnly}
-              onPress={() => setOvernightOnly(true)}
-              disabled={!canManageInventory}
-              testID="stay-place-overnight-only"
-            />
-          </View>
-        ) : null}
-        {canManageFinance ? (
-          <>
-            <View style={styles.row} testID="stay-offering-price-row">
-              <LabeledInput
-                span="num"
-                label={`${
-                  kind === "room"
-                    ? STAY_FIELD_COPY.price.label
-                    : STAY_FIELD_COPY.price.placeLabel
-                }${currencyCode ? ` (${currencyCode})` : ""}`}
-                helper={STAY_FIELD_COPY.price.helper}
-                value={price}
-                onChangeText={setPrice}
-                placeholder="0.00"
-                keyboardType="decimal-pad"
-                testID="stay-offering-price"
+              <Text style={styles.chipStripText}>
+                {existing.confirmation_mode === "instant"
+                  ? STAY_CHOICE_COPY.instant.label
+                  : STAY_CHOICE_COPY.request.label}
+              </Text>
+              <Text style={styles.chipStripText}>
+                {existing.unit_naming_mode === "named"
+                  ? STAY_CHOICE_COPY.named.label
+                  : STAY_CHOICE_COPY.interchangeable.label}
+              </Text>
+            </View>
+          )}
+
+          <Section
+            title={STAY_SECTION_COPY.identity.title}
+            caption={STAY_SECTION_COPY.identity.caption}
+            testID="stay-section-identity"
+          >
+            {bulk ? (
+              <NameBuilder
+                label={STAY_FIELD_COPY.names.label}
+                helper={STAY_FIELD_COPY.names.helper}
+                values={bulkNames}
+                onChange={setBulkNames}
+                placeholder={
+                  kind === "room" ? "Ocean-view double" : "Pool cabana"
+                }
+                patternPlaceholder={kind === "room" ? "Room" : "Cabana"}
+                editable={canManageInventory}
+                testID="stay-bulk-names"
               />
+            ) : (
               <LabeledInput
-                span="num"
-                label={STAY_FIELD_COPY.feeAmount.label}
-                helper={STAY_FIELD_COPY.feeAmount.helper}
-                value={feeAmount}
-                onChangeText={setFeeAmount}
-                placeholder="0.00"
-                keyboardType="decimal-pad"
-                testID="stay-offering-fee-amount"
+                span="stack"
+                label={STAY_FIELD_COPY.name.label}
+                helper={STAY_FIELD_COPY.name.helper}
+                value={name}
+                onChangeText={setName}
+                placeholder={
+                  kind === "room" ? "Ocean-view double" : "Pool cabana"
+                }
+                editable={canManageInventory}
+                testID="stay-offering-name"
+              />
+            )}
+            <LabeledInput
+              span="stack"
+              label={STAY_FIELD_COPY.description.label}
+              helper={STAY_FIELD_COPY.description.helper}
+              value={description}
+              onChangeText={setDescription}
+              placeholder="What guests are reserving"
+              multiline
+              editable={canManageInventory}
+              testID="stay-offering-description"
+            />
+            <ChipInput
+              label={STAY_FIELD_COPY.amenities.label}
+              helper={STAY_FIELD_COPY.amenities.helper}
+              values={amenities}
+              onChange={setAmenities}
+              suggestions={kind === "room" ? ROOM_AMENITIES : PLACE_AMENITIES}
+              placeholder="Anything else? Type it and press enter"
+              editable={canManageInventory}
+              testID="stay-offering-amenities"
+            />
+          </Section>
+
+          <Section
+            title={STAY_SECTION_COPY.booking.title}
+            caption={STAY_SECTION_COPY.booking.caption}
+            testID="stay-section-booking"
+          >
+            <View style={styles.choices}>
+              <ChoiceCard
+                id="instant"
+                selected={confirmationMode === "instant"}
+                onPress={() => setConfirmationMode("instant")}
+                disabled={!canManageInventory}
+                testID="stay-offering-instant"
+              />
+              <ChoiceCard
+                id="request"
+                selected={confirmationMode === "request"}
+                onPress={() => setConfirmationMode("request")}
+                disabled={!canManageInventory}
+                testID="stay-offering-request"
               />
             </View>
-            <LabeledInput
-              span="stack"
-              label={STAY_FIELD_COPY.feeLabel.label}
-              helper={STAY_FIELD_COPY.feeLabel.helper}
-              value={feeLabel}
-              onChangeText={setFeeLabel}
-              placeholder="Resort fee"
-              testID="stay-offering-fee-label"
-            />
-            <LabeledInput
-              span="stack"
-              label={STAY_FIELD_COPY.policy.label}
-              helper={STAY_FIELD_COPY.policy.helper}
-              value={policy}
-              onChangeText={setPolicy}
-              placeholder="Free cancellation until 48 hours before arrival"
-              multiline
-              testID="stay-offering-policy"
-            />
-            <LabeledInput
-              span="num"
-              label={STAY_FIELD_COPY.noShow.label}
-              helper={STAY_FIELD_COPY.noShow.helper}
-              value={noShowPercent}
-              onChangeText={setNoShowPercent}
-              placeholder="0"
-              keyboardType="numeric"
-              testID="stay-offering-no-show"
-            />
-          </>
-        ) : (
-          <Text style={styles.warning} testID="stay-finance-permission-copy">
-            Pricing, fees and cancellation policies require Stay finance
-            permission. You can save this as an unpriced draft.
-          </Text>
-        )}
-        {canManageInventory ? (
-          <View style={styles.photoBlock}>
-            <Text style={styles.label}>Photos</Text>
-            <Text style={styles.helper}>
-              Add up to 20. The first successful upload becomes the cover.
-            </Text>
-            <Button
-              label={uploading ? "Uploading…" : "Add photos"}
-              onPress={addPhotos}
-              loading={uploading}
-              variant="secondary"
-              size="sm"
-              testID="stay-offering-add-photos"
-            />
-            {existing ? (
-              <View style={styles.mediaStrip}>
-                {(existing.media ?? [])
-                  .filter((item) => !removedMediaIds.includes(item.id))
-                  .map((item) => (
-                    <View key={item.id} style={styles.mediaThumbWrap}>
-                      <Image
-                        source={{
-                          uri: stayOfferingMediaUrl(item.storage_object_name),
-                        }}
-                        accessibilityLabel={
-                          item.alt_text ?? `${existing.name} photo`
-                        }
-                        style={styles.mediaThumb}
-                      />
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={`Remove ${item.alt_text ?? "photo"}`}
-                        disabled={removeMedia.isPending}
-                        onPress={() => removeMedia.mutate(item.id)}
-                        style={styles.mediaRemove}
-                        testID={`stay-media-remove-${item.id}`}
-                      >
-                        <X size={14} color={textTokens.primary} />
-                      </Pressable>
-                    </View>
-                  ))}
+            {kind === "place" ? (
+              <View style={styles.choices}>
+                <ChoiceCard
+                  id="publicAccess"
+                  selected={!overnightOnly}
+                  onPress={() => setOvernightOnly(false)}
+                  disabled={!canManageInventory}
+                  testID="stay-place-public"
+                />
+                <ChoiceCard
+                  id="overnightOnly"
+                  selected={overnightOnly}
+                  onPress={() => setOvernightOnly(true)}
+                  disabled={!canManageInventory}
+                  testID="stay-place-overnight-only"
+                />
               </View>
             ) : null}
-            <Text style={styles.helper}>
-              {(existing?.media?.length ?? 0) + media.length} total after save
-            </Text>
-            {mediaError ? <Text style={styles.error}>{mediaError}</Text> : null}
-            {removeMedia.isError ? (
-              <Text style={styles.error}>
-                {mutationCopy(removeMedia.error)}
-              </Text>
+          </Section>
+
+          <Section
+            title={STAY_SECTION_COPY.inventory.title}
+            caption={STAY_SECTION_COPY.inventory.caption}
+            testID="stay-section-inventory"
+          >
+            {kind === "place" ? (
+              <View style={styles.choices}>
+                <ChoiceCard
+                  id="bookedWhole"
+                  selected={!sharedCapacity}
+                  onPress={() => setSharedCapacity(false)}
+                  disabled={!canManageInventory}
+                  testID="stay-place-exclusive"
+                />
+                <ChoiceCard
+                  id="sharedSpots"
+                  selected={sharedCapacity}
+                  onPress={() => setSharedCapacity(true)}
+                  disabled={!canManageInventory}
+                  testID="stay-place-capacity"
+                />
+              </View>
             ) : null}
+            <View style={styles.row} testID="stay-offering-count-row">
+              {!sharedCapacity ? (
+                <LabeledInput
+                  span="num"
+                  label={STAY_FIELD_COPY.quantity.label}
+                  // D-5 (APPROVED): derived from the named list, so the
+                  // server's `quantity === units.length` rule cannot break.
+                  helper={
+                    namedUnitsActive
+                      ? STAY_FIELD_COPY.quantity.derivedHelper
+                      : STAY_FIELD_COPY.quantity.helper
+                  }
+                  value={derivedQuantity}
+                  onChangeText={setQuantity}
+                  placeholder="1"
+                  keyboardType="numeric"
+                  editable={canManageInventory && !namedUnitsActive}
+                  testID="stay-offering-quantity"
+                />
+              ) : (
+                <LabeledInput
+                  span="num"
+                  label={STAY_FIELD_COPY.capacity.label}
+                  helper={STAY_FIELD_COPY.capacity.helper}
+                  value={capacity}
+                  onChangeText={setCapacity}
+                  placeholder="10"
+                  keyboardType="numeric"
+                  editable={canManageInventory}
+                  testID="stay-offering-capacity"
+                />
+              )}
+              <LabeledInput
+                span="num"
+                label={STAY_FIELD_COPY.maxGuests.label}
+                helper={STAY_FIELD_COPY.maxGuests.helper}
+                value={maxGuests}
+                onChangeText={setMaxGuests}
+                placeholder="2"
+                keyboardType="numeric"
+                editable={canManageInventory}
+                testID="stay-offering-guests"
+              />
+            </View>
+            {!sharedCapacity ? (
+              bulk ? (
+                // D-4 (APPROVED): naming individual units while adding several
+                // would write the SAME list into every offering. Hidden, not
+                // disabled — an option you cannot use is noise.
+                <Text style={styles.helper} testID="stay-units-bulk-note">
+                  Naming individual units is available after you create them.
+                </Text>
+              ) : (
+                <>
+                  <View style={styles.choices}>
+                    <ChoiceCard
+                      id="interchangeable"
+                      selected={!namedUnits}
+                      onPress={() => setNamedUnits(false)}
+                      disabled={!canManageInventory}
+                      testID="stay-units-pooled"
+                    />
+                    <ChoiceCard
+                      id="named"
+                      selected={namedUnits}
+                      onPress={() => setNamedUnits(true)}
+                      disabled={!canManageInventory}
+                      testID="stay-units-named"
+                    />
+                  </View>
+                  {namedUnitsActive ? (
+                    <NameBuilder
+                      label={STAY_FIELD_COPY.unitNames.label}
+                      helper={unitNamesHelper(unitNames.length)}
+                      values={unitNames}
+                      onChange={setUnitNames}
+                      placeholder={kind === "room" ? "Room 101" : "Cabana 1"}
+                      patternPlaceholder={kind === "room" ? "Room" : "Cabana"}
+                      editable={canManageInventory}
+                      testID="stay-unit-names"
+                    />
+                  ) : null}
+                </>
+              )
+            ) : null}
+          </Section>
+
+          <Section
+            title={STAY_SECTION_COPY.money.title}
+            caption={STAY_SECTION_COPY.money.caption}
+            testID="stay-section-money"
+          >
+            {canManageFinance ? (
+              <>
+                <View style={styles.row} testID="stay-offering-price-row">
+                  <LabeledInput
+                    span="num"
+                    label={`${
+                      kind === "room"
+                        ? STAY_FIELD_COPY.price.label
+                        : STAY_FIELD_COPY.price.placeLabel
+                    }${currencyCode ? ` (${currencyCode})` : ""}`}
+                    helper={STAY_FIELD_COPY.price.helper}
+                    value={price}
+                    onChangeText={setPrice}
+                    placeholder="0.00"
+                    keyboardType="decimal-pad"
+                    testID="stay-offering-price"
+                  />
+                  <LabeledInput
+                    span="num"
+                    label={STAY_FIELD_COPY.feeAmount.label}
+                    helper={STAY_FIELD_COPY.feeAmount.helper}
+                    value={feeAmount}
+                    onChangeText={setFeeAmount}
+                    placeholder="0.00"
+                    keyboardType="decimal-pad"
+                    testID="stay-offering-fee-amount"
+                  />
+                </View>
+                <LabeledInput
+                  span="stack"
+                  label={STAY_FIELD_COPY.feeLabel.label}
+                  helper={STAY_FIELD_COPY.feeLabel.helper}
+                  value={feeLabel}
+                  onChangeText={setFeeLabel}
+                  placeholder="Resort fee"
+                  testID="stay-offering-fee-label"
+                />
+                <LabeledInput
+                  span="stack"
+                  label={STAY_FIELD_COPY.policy.label}
+                  helper={STAY_FIELD_COPY.policy.helper}
+                  value={policy}
+                  onChangeText={setPolicy}
+                  placeholder="Free cancellation until 48 hours before arrival"
+                  multiline
+                  testID="stay-offering-policy"
+                />
+                <LabeledInput
+                  span="num"
+                  label={STAY_FIELD_COPY.noShow.label}
+                  helper={STAY_FIELD_COPY.noShow.helper}
+                  value={noShowPercent}
+                  onChangeText={setNoShowPercent}
+                  placeholder="0"
+                  keyboardType="numeric"
+                  testID="stay-offering-no-show"
+                />
+              </>
+            ) : (
+              <Text
+                style={styles.warning}
+                testID="stay-finance-permission-copy"
+              >
+                Pricing, fees and cancellation policies require Stay finance
+                permission. You can save this as an unpriced draft.
+              </Text>
+            )}
+          </Section>
+
+          {canManageInventory ? (
+            <Section
+              title={STAY_SECTION_COPY.photos.title}
+              caption={STAY_SECTION_COPY.photos.caption}
+              testID="stay-section-photos"
+            >
+              <View style={styles.photoBlock}>
+                <Text style={styles.helper}>
+                  Add up to 20. The first successful upload becomes the cover.
+                </Text>
+                <Button
+                  label={uploading ? "Uploading…" : "Add photos"}
+                  onPress={addPhotos}
+                  loading={uploading}
+                  variant="secondary"
+                  size="sm"
+                  testID="stay-offering-add-photos"
+                />
+                {existing ? (
+                  <View style={styles.mediaStrip}>
+                    {(existing.media ?? [])
+                      .filter((item) => !removedMediaIds.includes(item.id))
+                      .map((item) => (
+                        <View key={item.id} style={styles.mediaThumbWrap}>
+                          <Image
+                            source={{
+                              uri: stayOfferingMediaUrl(
+                                item.storage_object_name,
+                              ),
+                            }}
+                            accessibilityLabel={
+                              item.alt_text ?? `${existing.name} photo`
+                            }
+                            style={styles.mediaThumb}
+                          />
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel={`Remove ${item.alt_text ?? "photo"}`}
+                            disabled={removeMedia.isPending}
+                            onPress={() => removeMedia.mutate(item.id)}
+                            style={styles.mediaRemove}
+                            testID={`stay-media-remove-${item.id}`}
+                          >
+                            <X size={14} color={textTokens.primary} />
+                          </Pressable>
+                        </View>
+                      ))}
+                  </View>
+                ) : null}
+                <Text style={styles.helper}>
+                  {(existing?.media?.length ?? 0) + media.length} total after
+                  save
+                </Text>
+                {mediaError ? (
+                  <Text style={styles.error}>{mediaError}</Text>
+                ) : null}
+                {removeMedia.isError ? (
+                  <Text style={styles.error}>
+                    {mutationCopy(removeMedia.error)}
+                  </Text>
+                ) : null}
+              </View>
+            </Section>
+          ) : null}
+
+          {/* Below the rail threshold the SAME summary stacks here, directly
+              above the CTA. Nothing is lost, only reflowed. */}
+          {showRail ? null : summary}
+        </View>
+        {showRail ? (
+          <View style={layout.rail} testID="stay-offering-rail">
+            {summary}
           </View>
         ) : null}
-      </GlassCard>
-      {canManageFinance && currencyCode === null ? (
-        <Text style={styles.error}>
-          Choose the brand’s provisional currency or connect its bank before
-          adding prices.
-        </Text>
-      ) : null}
-      {localValidation ? (
-        <Text style={styles.error}>{localValidation}</Text>
-      ) : null}
-      {resultCopy ? <Text style={styles.warning}>{resultCopy}</Text> : null}
-      <Button
-        label={
-          existing ? "Save changes" : bulk ? "Create drafts" : "Create draft"
-        }
-        onPress={() => save.mutate()}
-        loading={save.isPending}
-        disabled={uploading || (!canManageInventory && !canManageFinance)}
-        fullWidth
-        testID="stay-offering-save"
-      />
+      </View>
     </ScrollView>
   );
 }
@@ -2022,6 +2319,83 @@ const styles = StyleSheet.create({
     ...PAGE_BASE,
     maxWidth: suiteFormMaxWidth,
     alignSelf: "flex-start",
+  },
+  // #1501 §5 — WIDE DESKTOP *with room for the summary rail*. The PAGE releases
+  // its cap here and the measure discipline moves onto the form COLUMN
+  // (`formColumnInRow`, capped at `stayEditorFormMaxWidth`), because a page
+  // capped at 720 cannot hold 760 + 32 + 320. This is what unlocks the rail and
+  // answers "it doesn't fill the space" WITHOUT producing a 1,400pt-wide text
+  // input. Below the container threshold the editor keeps `pageForm` exactly as
+  // it shipped. Complete objects, selected — never an override.
+  pageEditorSplit: {
+    ...PAGE_BASE,
+    alignSelf: "flex-start",
+  },
+  // The editor body: form column beside the rail, or one stacked column.
+  editorSplitRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    columnGap: spacing.xl,
+    width: "100%",
+  },
+  editorStack: { width: "100%", minWidth: 0, gap: spacing.lg },
+  // STACK measure — no flex-axis key (I-AXIS-SCOPED-FLEX).
+  formColumn: { width: "100%", minWidth: 0, gap: spacing.lg },
+  // ROW-ONLY: the readable measure of the form column itself. `flexShrink: 1`
+  // + `flexBasis: 0` + `flexGrow: 1` means it takes everything the rail leaves,
+  // up to its own cap.
+  formColumnInRow: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
+    minWidth: 0,
+    maxWidth: stayEditorFormMaxWidth,
+    gap: spacing.lg,
+  },
+  // ROW-ONLY: fixed rail. `position: "sticky"` is deliberately NOT used — RN
+  // has no such value and RN-web support is unverified; a non-sticky rail is
+  // correct without it.
+  summaryRailInRow: {
+    flexGrow: 0,
+    flexShrink: 0,
+    flexBasis: stayEditorSummaryWidth,
+    width: stayEditorSummaryWidth,
+  },
+  section: { gap: spacing.xs },
+  sectionTitle: { ...typography.h3, color: textTokens.primary },
+  sectionCaption: {
+    ...typography.bodySm,
+    color: textTokens.secondary,
+    marginBottom: spacing.xs,
+    maxWidth: stayProseMaxWidth,
+  },
+  summaryBody: { gap: spacing.sm },
+  summaryEyebrow: {
+    ...typography.labelCap,
+    color: textTokens.tertiary,
+    textTransform: "uppercase",
+  },
+  summaryHeadline: { ...typography.h3, color: textTokens.primary },
+  summaryNames: {
+    ...typography.bodySm,
+    color: textTokens.secondary,
+    maxWidth: stayProseMaxWidth,
+  },
+  summaryFacts: { gap: spacing.xxs },
+  summaryFact: { ...typography.bodySm, color: textTokens.secondary },
+  summaryChecks: { gap: spacing.xxs },
+  // NEVER red on either branch: an unfinished draft is not an error.
+  checkDone: { ...typography.bodySm, color: semantic.success },
+  checkPending: { ...typography.bodySm, color: textTokens.tertiary },
+  chipStrip: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  chipStripText: {
+    ...typography.caption,
+    color: textTokens.secondary,
+    borderRadius: radius.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: glass.border.profileBase,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
   },
   center: {
     flex: 1,
