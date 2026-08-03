@@ -3114,9 +3114,11 @@ export default function SwipeableCards({
             })()}
 
           {/* Current Card */}
-          {/* This native handler remains mounted across card promotion. Admission
-              is owned synchronously by the controller phase ref. */}
+          {/* Android can retain a just-ended legacy RNGH handler as the card face
+              is promoted. Key the owner to the logical card so the successor
+              receives a fresh native recognizer instead of a stale touch target. */}
           <PanGestureHandler
+            key={currentRec.id}
             minDist={10}
             maxPointers={1}
             onGestureEvent={deckSwipe.onGestureEvent}
