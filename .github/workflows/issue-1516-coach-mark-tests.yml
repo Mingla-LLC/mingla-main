@@ -37,6 +37,9 @@ on:
       - "app-mobile/src/contexts/CoachMarkContext.tsx"
       - "app-mobile/src/constants/coachMarkSteps.ts"
       - "app-mobile/src/contexts/__tests__/issue-1516-coach-mark-single-process.test.tsx"
+      - "app-mobile/src/contexts/__tests__/issue-1516-coach-mark-grammar-and-blast-radius.tester-adversarial.test.tsx"
+      - "app-mobile/app/index.tsx"
+      - "supabase/migrations/20270210001516_issue_1516_normalize_coach_mark_step_grammar.sql"
       - "app-mobile/package.json"
       - ".github/workflows/issue-1516-coach-mark-tests.yml"
   pull_request:
@@ -44,6 +47,9 @@ on:
       - "app-mobile/src/contexts/CoachMarkContext.tsx"
       - "app-mobile/src/constants/coachMarkSteps.ts"
       - "app-mobile/src/contexts/__tests__/issue-1516-coach-mark-single-process.test.tsx"
+      - "app-mobile/src/contexts/__tests__/issue-1516-coach-mark-grammar-and-blast-radius.tester-adversarial.test.tsx"
+      - "app-mobile/app/index.tsx"
+      - "supabase/migrations/20270210001516_issue_1516_normalize_coach_mark_step_grammar.sql"
       - "app-mobile/package.json"
       - ".github/workflows/issue-1516-coach-mark-tests.yml"
 
@@ -74,6 +80,17 @@ jobs:
         run: npm ci
       - name: Run issue-1516 suite (implementor happy-path)
         run: npm run test:issue-1516
+      # TESTER ADVERSARIAL (#1516). Different angle from the happy-path suite: the
+      # value-grammar EDGES (COACH_STEP_COUNT / +1 / +2 / 99 / -5 / NULL), bottom-nav
+      # liveness in every state that renders nothing (Constitution #1, gate expression
+      # read out of app/index.tsx so it cannot drift), the TOUR_UNAVAILABLE public-API
+      # blast radius, unmount-during-fetch-retry, concurrent double-mount, cross-user
+      # start-delay anchor isolation, and the STEP-COUNT DRIFT TRIPWIRE — deleting the
+      # ORCH-0635 branch also deleted the runtime's ability to repair a value it does
+      # not understand, so bumping COACH_STEP_COUNT without shipping a migration must
+      # turn this job red rather than silently re-open the tour for completed users.
+      - name: Run issue-1516 suite (tester adversarial)
+        run: npm run test:issue-1516-adv
       # The pre-existing coach-mark suites must stay green UNMODIFIED — the tour's
       # step count, id bijection, measurement gating, and Android inset correction
       # are untouched by #1516.
