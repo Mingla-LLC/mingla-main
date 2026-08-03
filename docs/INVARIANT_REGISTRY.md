@@ -6809,3 +6809,42 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   exact capsule/filter/navigation/state/analytics contract and unchanged Events/Trips branches.
 - **Established:** DRAFT 2026-07-31 at issue #1423 IMPLEMENT. Flips ACTIVE only after independent
   iOS/Android/runtime/database verification and CLOSE; production Stay flags remain owned by #1392.
+
+## DRAFT — issue #1485 (business web: missing JS returns the homepage instead of a 404)
+
+### I-1485-STATIC-ASSET-NEVER-HTML (DRAFT)
+- **Rule:** On every Vercel-deployed Mingla web surface, a request for a content-hashed static
+  asset path must never resolve to an HTML document with a 2xx status. `mingla-business`'s SPA
+  catch-all rewrite is `{ "source": "/((?!_expo/static/).*)", "destination": "/" }` and stays the
+  LAST entry in `rewrites`, so a missing or evicted asset under `/_expo/static/` returns a real
+  404 while every real SPA deep link (`/`, `/e/…`, `/t/…`, `/b/…`, `/b/…/v/…`, `/checkout/…`,
+  `/insights/…`, `/rsvp/…`, `/venue/create`) and every rewrite ordered before it (the three
+  `/og/*` handlers, the four user-agent-gated bot rewrites, `/stripe-onboarding-return`,
+  `/auth/callback`) still resolve unchanged. The named-parameter lookahead form
+  (`/:path((?!…).*)`) is forbidden because it appends `?path=$1` to the destination, and the
+  string-anchored form (`/((?!^_expo/static/).*)`) is forbidden because the `^` is inert inside
+  the compiled `^(?:/(…))$` and silently restores the defect. `chunkReloadGuard` must recognise
+  BOTH the 404 signature (`ChunkLoadError`, `Loading chunk N failed`, the three dynamic-import
+  messages) and the 200-HTML signature (`Unexpected token '<'`, `Requiring unknown module`), must
+  exclude JSON-parse false positives (`is not valid JSON`, `JSON Parse error`, `JSON.parse`), and
+  must remain bounded by its 10-second `sessionStorage` cooldown so it can never reload-loop.
+- **Enforcement:** `.github/workflows/issue-1485-web-missing-chunk-404-tests.yml` (explicit
+  `paths:` registry, never a glob) running the append-only Jest suites below plus the three
+  pre-existing `vercel.json` suites whose catch-all literal this issue updates
+  (`orch1003.assetCaching.adversarial`, `authCallbackStatic`, `orch1098RealAppOnPhone`).
+  No strict-grep gate and no `MANIFEST.json` change (COMMS-0125 / COMMS-0126 rebase hazard).
+- **Regression test:** `mingla-business/__tests__/issue1485_expo_static_excluded_from_catch_all.test.ts`
+  pins the exact catch-all source/destination, proves every deep link matches and no
+  `/_expo/static/**` path does, proves rewrite ordering, and proves the ORCH-1003/ORCH-1091 header
+  contract is untouched. The independent tester suite
+  `mingla-business/__tests__/issue1485_deep_links_never_404.tester.adversarial.test.ts` derives its
+  URL set from the real `app/` route tree so future routes are covered automatically, and rejects
+  both the inert-lookahead and named-parameter forms.
+  `mingla-business/src/diagnostics/__tests__/chunkReloadGuard.issue1485.test.ts` proves one reload
+  on each new signature, no reload inside the 10s cooldown, one reload after it, no reload on the
+  V8/JSC JSON-parse messages, and no regression to the pre-existing #964 family.
+- **Established:** DRAFT 2026-08-03 at issue #1485 SPEC. Flips ACTIVE only at CLOSE, after the
+  merged production deployment (`[deploy]`-tagged squash subject) reaches READY and takes the
+  `business.usemingla.com` alias, and the tester captures live `curl -sSI` proof that a missing
+  chunk returns 404, a real chunk returns `200 application/javascript`, and every deep link,
+  bot/OG rewrite, `/stripe-onboarding-return`, and `/auth/callback` still resolve.
