@@ -10,8 +10,12 @@ import {
 } from "../types";
 import type { Recommendation } from "../types/recommendation";
 import { logger } from "../utils/logger";
+import {
+  hydrateDeckSessionHistory,
+  resetAndFlushDeckSessionHistory,
+} from './deckSessionHistoryStore';
 
-const DECK_SCHEMA_VERSION = 4; // Bump this to invalidate stale persisted deck data (v4: removed DeckBatch, added sessionSwipedCards)
+const DECK_SCHEMA_VERSION = 4;
 
 // ─── ORCH-0675 Wave 1 — Debounced AsyncStorage wrapper ──────────────────────
 // I-ZUSTAND-PERSIST-DEBOUNCED — Coalesces rapid Zustand persist writes (e.g.
@@ -159,8 +163,8 @@ interface AppState {
   // Recommendations state
   currentCardIndex: number;
 
-  // Deck session state
-  sessionSwipedCards: Recommendation[];
+  // Deck state metadata. Full swipe history lives in deckSessionHistoryStore
+  // so an append cannot serialize/fan out through this global persisted store.
   deckPrefsHash: string;
   deckSchemaVersion: number;
 
@@ -254,7 +258,6 @@ interface AppState {
   setAnalyticsOptOut: (optOut: boolean) => void;
 
   // Deck session actions
-  addSwipedCard: (card: Recommendation) => void;
   resetDeckHistory: (newPrefsHash: string) => void;
 
   // [ORCH-0504] Mutator for preferencesRefreshKey. Accepts either a new value
@@ -293,7 +296,6 @@ export const useAppStore = create<AppState>()(
       pendingInvites: [],
       isInSolo: true,
       currentCardIndex: 0,
-      sessionSwipedCards: [],
       deckPrefsHash: '',
       deckSchemaVersion: DECK_SCHEMA_VERSION,
       preferencesRefreshKey: 0, // [ORCH-0504] persisted refresh counter
@@ -404,23 +406,17 @@ export const useAppStore = create<AppState>()(
       setLikesActiveTab: (likesActiveTab) => set({ likesActiveTab }),
       setDiscoverActiveTab: (discoverActiveTab) => set({ discoverActiveTab }),
 
-      // Deck session actions
-      addSwipedCard: (card) => set((state: AppState) => {
-        const updated = [...state.sessionSwipedCards, card];
-        // Cap at 200 entries — drop oldest on overflow
-        if (updated.length > 200) {
-          return { sessionSwipedCards: updated.slice(updated.length - 200) };
-        }
-        return { sessionSwipedCards: updated };
-      }),
-
+      // Deck metadata action. History reset is explicitly paired by callers
+      // with the dedicated deckSessionHistoryStore.
       resetDeckHistory: (newPrefsHash) => set({
-        sessionSwipedCards: [],
         deckPrefsHash: newPrefsHash,
       }),
 
       // Utilities
-      clearUserData: () =>
+      clearUserData: () => {
+        // Logout clears the dedicated full-card history and forces its newest
+        // generation durable without re-entering the global persisted blob.
+        void resetAndFlushDeckSessionHistory();
         set({
           user: null,
           isAuthenticated: false,
@@ -430,7 +426,6 @@ export const useAppStore = create<AppState>()(
           pendingInvites: [],
           isInSolo: true,
           currentCardIndex: 0,
-          sessionSwipedCards: [],
           deckPrefsHash: '',
           deckSchemaVersion: DECK_SCHEMA_VERSION,
           // [ORCH-0504] Constitutional #6: logout clears everything. The next
@@ -455,7 +450,8 @@ export const useAppStore = create<AppState>()(
           connectionsFriendsModalTab: null,
           likesActiveTab: 'saved',
           discoverActiveTab: 'events',
-        }),
+        });
+      },
     })),  // end of state definition + devLoggerMiddleware
     {
       name: "mingla-mobile-storage",
@@ -471,8 +467,7 @@ export const useAppStore = create<AppState>()(
         // NOT persisted. They are refreshed from the database on every app open via
         // loadActiveSession(). Persisting them would risk showing stale session state.
         currentCardIndex: state.currentCardIndex,
-        // Deck session state — persisted across sessions
-        sessionSwipedCards: state.sessionSwipedCards,
+        // Deck metadata only. Full history has an isolated generation-stamped key.
         deckPrefsHash: state.deckPrefsHash,
         deckSchemaVersion: state.deckSchemaVersion,
         // [ORCH-0504] I-REFRESHKEY-PERSISTED — the AsyncStorage swipe-state key
@@ -485,17 +480,17 @@ export const useAppStore = create<AppState>()(
         analyticsOptOut: state.analyticsOptOut,
       }),
       onRehydrateStorage: () => (state) => {
-        // Migration safety: clear old data when schema version changes.
-        // v3→v4: deckBatches removed, sessionSwipedCards added.
+        // Migration safety: clear old deck-batch fields when schema changes.
         if (state && state.deckSchemaVersion !== DECK_SCHEMA_VERSION) {
           (state as any).deckBatches = undefined;
           (state as any).currentDeckBatchIndex = undefined;
-          state.sessionSwipedCards = [];
           state.deckSchemaVersion = DECK_SCHEMA_VERSION;
         }
-        // Ensure sessionSwipedCards exists even if hydrated from old state
-        if (state && !Array.isArray(state.sessionSwipedCards)) {
-          state.sessionSwipedCards = [];
+        // Dedicated history hydration copies a valid legacy array first. The
+        // global in-memory shape must never regain that hot-path field.
+        if (state) {
+          delete (state as Partial<AppState> & { sessionSwipedCards?: unknown })
+            .sessionSwipedCards;
         }
         // [ORCH-0504] Backward-compat guard — pre-fix storage did not persist
         // `preferencesRefreshKey`; hydrated state from those users will have
@@ -507,10 +502,11 @@ export const useAppStore = create<AppState>()(
         if (state && typeof state.preferencesRefreshKey !== 'number') {
           state.preferencesRefreshKey = 0;
         }
-        // RELIABILITY: Signal that Zustand has finished restoring persisted state.
-        // Components can now trust that `profile`, `user`, `isAuthenticated`
-        // reflect the persisted values (not just the defaults).
-        useAppStore.setState({ _hasHydrated: true });
+        // Hold the existing app hydration gate until exact deck history has
+        // either restored/migrated or safely surfaced its non-PII failure.
+        void hydrateDeckSessionHistory().finally(() => {
+          useAppStore.setState({ _hasHydrated: true });
+        });
       },
     }
   )

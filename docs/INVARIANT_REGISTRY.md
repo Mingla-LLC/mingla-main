@@ -7103,15 +7103,19 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 
 ### I-PROPOSED-1481-DECK-PERFORMANCE-BOUND (DRAFT)
 - **Rule:** Explorer steady state is bounded to two raster posters and one active current-card video,
-  only card +2 is explicitly prefetched with disk-only cache, remote hero decode long edge is at
-  most 1440 physical pixels, persistence is serialized/coalesced last-write-wins, and non-critical
-  post-swipe work is FIFO-deferred until after interaction without changing business semantics.
-- **Enforcement:** the issue workflow runs the pure decode/cache/source contract on every scoped PR;
-  independent runtime evidence must additionally satisfy the binding Samsung/iOS frame, hitch, and
-  memory budgets on #1481.
-- **Regression:** the implementor guard proves decode aspect/cap, cache roles, poster-only preview,
-  single explicit prefetch, acknowledgement ordering, persistence serialization, and post-work
-  deferral. The tester guard independently protects media cardinality, persistence ordering, and
-  hostile lifecycle sequences.
-- **Established:** DRAFT 2026-08-02 at issue #1481 IMPLEMENT. Flips ACTIVE only after all binding
-  performance/media device gates and the independent tester verdict pass.
+  with no explicit image prefetch/loadAsync; current and behind are the only bounded poster loads
+  and remote hero decode long edge is at most 1440 physical pixels. Exact ordered full-card history
+  is owned by its dedicated last-200 store, updates synchronously with card removal, never fans out
+  through the persisted global app store or RecommendationsProvider, and persists through a
+  generation-stamped trailing coalesced/serialized snapshot with lossless legacy migration and
+  lifecycle/logout flush. Non-critical business work remains FIFO-deferred after interaction.
+- **Enforcement:** the issue workflow requires and runs independent lifecycle and performance guards
+  over every scoped runtime/store/provider path. Static guards require selector isolation, a memoized
+  provider value, exact history migration/reset/flush ordering, zero explicit deck image prefetch,
+  stable memoized bounded poster sources, and media cardinality. Independent release-like evidence
+  must additionally satisfy the binding Samsung/iOS frame, hitch, memory, image, and crash budgets.
+- **Regression:** the performance guards prove exact order/rollback/last-200 behavior, 50-to-one
+  coalescing, global-store/provider isolation, migration safety, current/behind-only poster loading,
+  stable poster inputs, and production fails-on-revert independently of the lifecycle guards.
+- **Established:** DRAFT amended 2026-08-03 at issue #1481 IMPLEMENT REWORK. Flips ACTIVE only after
+  all binding release-like performance/media/device gates and the independent tester verdict pass.

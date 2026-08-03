@@ -13,6 +13,7 @@ import { supabase } from "../services/supabase";
 import { offlineService } from "../services/offlineService";
 import { inAppNotificationService } from "../services/inAppNotificationService";
 import { useAppStore } from "../store/appStore";
+import { resetDeckSessionHistory } from '../store/deckSessionHistoryStore';
 import { computePrefsHash } from "../utils/cardConverters";
 // getDisplayName removed from AppHandlers imports (ORCH-0532) —
 // was only used in the deleted collab notifyCardSaved path.
@@ -494,6 +495,7 @@ export function useAppHandlers(state: any) {
       const newHashStr = computePrefsHash(dbPreferences);
       const { deckPrefsHash, resetDeckHistory } = useAppStore.getState();
       if (newHashStr !== deckPrefsHash) {
+        resetDeckSessionHistory();
         resetDeckHistory(newHashStr);
       }
 

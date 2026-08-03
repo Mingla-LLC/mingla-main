@@ -5,12 +5,20 @@ on:
     branches: [main]
     paths:
       - "app-mobile/src/components/SwipeableCards.tsx"
+      - "app-mobile/src/components/AppHandlers.tsx"
+      - "app-mobile/src/contexts/RecommendationsContext.tsx"
+      - "app-mobile/src/store/appStore.ts"
+      - "app-mobile/src/store/deckSessionHistoryStore.ts"
       - "app-mobile/src/components/swipeDeck/**"
       - "docs/INVARIANT_REGISTRY.md"
       - ".github/workflows/issue-1481-explorer-deck-tests.yml"
   pull_request:
     paths:
       - "app-mobile/src/components/SwipeableCards.tsx"
+      - "app-mobile/src/components/AppHandlers.tsx"
+      - "app-mobile/src/contexts/RecommendationsContext.tsx"
+      - "app-mobile/src/store/appStore.ts"
+      - "app-mobile/src/store/deckSessionHistoryStore.ts"
       - "app-mobile/src/components/swipeDeck/**"
       - "docs/INVARIANT_REGISTRY.md"
       - ".github/workflows/issue-1481-explorer-deck-tests.yml"
@@ -33,8 +41,12 @@ jobs:
         run: |
           test -f app-mobile/src/components/swipeDeck/__tests__/issue_1481_swipe_lifecycle.test.mjs
           test -f app-mobile/src/components/swipeDeck/__tests__/issue_1481_swipe_lifecycle.adversarial.test.mjs
+          test -f app-mobile/src/components/swipeDeck/__tests__/issue_1481_performance_hotpath.test.mjs
+          test -f app-mobile/src/components/swipeDeck/__tests__/issue_1481_performance_hotpath.adversarial.test.mjs
       - name: Run DRAFT invariants and their synthetic self-test controls
         run: >-
           node --test
           app-mobile/src/components/swipeDeck/__tests__/issue_1481_swipe_lifecycle.test.mjs
           app-mobile/src/components/swipeDeck/__tests__/issue_1481_swipe_lifecycle.adversarial.test.mjs
+          app-mobile/src/components/swipeDeck/__tests__/issue_1481_performance_hotpath.test.mjs
+          app-mobile/src/components/swipeDeck/__tests__/issue_1481_performance_hotpath.adversarial.test.mjs

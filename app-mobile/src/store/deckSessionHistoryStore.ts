@@ -1,0 +1,269 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  AppState,
+  InteractionManager,
+  type AppStateStatus,
+} from 'react-native';
+import { create } from 'zustand';
+import type { Recommendation } from '../types/recommendation';
+
+export const DECK_SESSION_HISTORY_STORAGE_KEY = 'mingla-deck-session-history-v1';
+export const LEGACY_APP_STORAGE_KEY = 'mingla-mobile-storage';
+export const DECK_SESSION_HISTORY_CAP = 200;
+export const DECK_SESSION_HISTORY_TRAILING_MS = 250;
+
+interface DeckSessionHistorySnapshot {
+  version: 1;
+  generation: number;
+  cards: Recommendation[];
+}
+
+interface DeckSessionHistoryState {
+  cards: Recommendation[];
+  generation: number;
+  hasHydrated: boolean;
+  append: (card: Recommendation) => void;
+  rollback: (cardId: string) => void;
+  reset: () => void;
+}
+
+interface DeckSessionHistoryDiagnostics {
+  serializations: number;
+  writes: number;
+  migrations: number;
+}
+
+let pendingSnapshot: DeckSessionHistorySnapshot | null = null;
+let trailingTimer: ReturnType<typeof setTimeout> | null = null;
+let interactionHandle: ReturnType<typeof InteractionManager.runAfterInteractions> | null = null;
+let persistenceDrain: Promise<void> | null = null;
+let hydrationPromise: Promise<void> | null = null;
+let lastPersistedGeneration = -1;
+let persistenceErrorReported = false;
+let migrationErrorReported = false;
+const diagnostics: DeckSessionHistoryDiagnostics = {
+  serializations: 0,
+  writes: 0,
+  migrations: 0,
+};
+
+function reportHistoryError(kind: 'migration' | 'persistence'): void {
+  if (kind === 'migration') {
+    if (migrationErrorReported) return;
+    migrationErrorReported = true;
+  } else {
+    if (persistenceErrorReported) return;
+    persistenceErrorReported = true;
+  }
+  console.error(`[DeckSessionHistory] ${kind} failed`);
+}
+
+function isValidHistoryCard(value: unknown): value is Recommendation {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { id?: unknown }).id === 'string'
+  );
+}
+
+function capHistory(cards: Recommendation[]): Recommendation[] {
+  return cards.length > DECK_SESSION_HISTORY_CAP
+    ? cards.slice(cards.length - DECK_SESSION_HISTORY_CAP)
+    : cards;
+}
+
+function parseDedicatedSnapshot(raw: string): DeckSessionHistorySnapshot {
+  const parsed = JSON.parse(raw) as Partial<DeckSessionHistorySnapshot>;
+  if (
+    parsed.version !== 1 ||
+    !Number.isSafeInteger(parsed.generation) ||
+    (parsed.generation ?? -1) < 0 ||
+    !Array.isArray(parsed.cards) ||
+    !parsed.cards.every(isValidHistoryCard)
+  ) {
+    throw new Error('invalid dedicated history snapshot');
+  }
+  return {
+    version: 1,
+    generation: parsed.generation as number,
+    cards: capHistory(parsed.cards),
+  };
+}
+
+function parseLegacyHistory(raw: string): Recommendation[] | null {
+  const parsed = JSON.parse(raw) as { state?: { sessionSwipedCards?: unknown } };
+  const legacy = parsed?.state?.sessionSwipedCards;
+  if (legacy === undefined) return null;
+  if (!Array.isArray(legacy) || !legacy.every(isValidHistoryCard)) {
+    throw new Error('invalid legacy history');
+  }
+  return capHistory(legacy);
+}
+
+async function removeLegacyHistoryAfterMigration(): Promise<void> {
+  const raw = await AsyncStorage.getItem(LEGACY_APP_STORAGE_KEY);
+  if (!raw) return;
+  const parsed = JSON.parse(raw) as { state?: Record<string, unknown> };
+  if (
+    !parsed.state ||
+    !Object.prototype.hasOwnProperty.call(parsed.state, 'sessionSwipedCards')
+  ) return;
+  delete parsed.state.sessionSwipedCards;
+  await AsyncStorage.setItem(LEGACY_APP_STORAGE_KEY, JSON.stringify(parsed));
+}
+
+function clearSchedule(): void {
+  if (trailingTimer) clearTimeout(trailingTimer);
+  interactionHandle?.cancel();
+  trailingTimer = null;
+  interactionHandle = null;
+}
+
+async function drainPendingSnapshot(): Promise<void> {
+  if (persistenceDrain) return persistenceDrain;
+  clearSchedule();
+  const drain = async (): Promise<void> => {
+    while (pendingSnapshot) {
+      const snapshot = pendingSnapshot;
+      pendingSnapshot = null;
+      if (snapshot.generation < lastPersistedGeneration) continue;
+      try {
+        diagnostics.serializations += 1;
+        const serialized = JSON.stringify(snapshot);
+        await AsyncStorage.setItem(DECK_SESSION_HISTORY_STORAGE_KEY, serialized);
+        diagnostics.writes += 1;
+        lastPersistedGeneration = snapshot.generation;
+      } catch {
+        reportHistoryError('persistence');
+        const newerPending = pendingSnapshot as DeckSessionHistorySnapshot | null;
+        if (!newerPending || newerPending.generation < snapshot.generation) {
+          pendingSnapshot = snapshot;
+        }
+        break;
+      }
+    }
+  };
+  persistenceDrain = drain().finally(() => {
+    persistenceDrain = null;
+  });
+  return persistenceDrain;
+}
+
+function scheduleSnapshot(snapshot: DeckSessionHistorySnapshot): void {
+  pendingSnapshot = snapshot;
+  if (trailingTimer) clearTimeout(trailingTimer);
+  interactionHandle?.cancel();
+  interactionHandle = null;
+  trailingTimer = setTimeout(() => {
+    trailingTimer = null;
+    interactionHandle = InteractionManager.runAfterInteractions(() => {
+      interactionHandle = null;
+      void drainPendingSnapshot();
+    });
+  }, DECK_SESSION_HISTORY_TRAILING_MS);
+}
+
+export const useDeckSessionHistoryStore = create<DeckSessionHistoryState>((set, get) => ({
+  cards: [],
+  generation: 0,
+  hasHydrated: false,
+  append: (card): void => {
+    const state = get();
+    const cards = capHistory([...state.cards, card]);
+    const generation = state.generation + 1;
+    set({ cards, generation });
+    scheduleSnapshot({ version: 1, generation, cards });
+  },
+  rollback: (cardId): void => {
+    const state = get();
+    const rollbackIndex = state.cards.map((card) => card.id).lastIndexOf(cardId);
+    if (rollbackIndex < 0) return;
+    const cards = state.cards.filter((_, index) => index !== rollbackIndex);
+    const generation = state.generation + 1;
+    set({ cards, generation });
+    scheduleSnapshot({ version: 1, generation, cards });
+  },
+  reset: (): void => {
+    const generation = get().generation + 1;
+    const cards: Recommendation[] = [];
+    set({ cards, generation });
+    scheduleSnapshot({ version: 1, generation, cards });
+  },
+}));
+
+export function hydrateDeckSessionHistory(): Promise<void> {
+  if (hydrationPromise) return hydrationPromise;
+  hydrationPromise = (async () => {
+    try {
+      const dedicatedRaw = await AsyncStorage.getItem(DECK_SESSION_HISTORY_STORAGE_KEY);
+      if (dedicatedRaw) {
+        const snapshot = parseDedicatedSnapshot(dedicatedRaw);
+        lastPersistedGeneration = snapshot.generation;
+        useDeckSessionHistoryStore.setState({
+          cards: snapshot.cards,
+          generation: snapshot.generation,
+          hasHydrated: true,
+        });
+        try {
+          await removeLegacyHistoryAfterMigration();
+        } catch {
+          reportHistoryError('migration');
+        }
+        return;
+      }
+
+      const legacyRaw = await AsyncStorage.getItem(LEGACY_APP_STORAGE_KEY);
+      const legacyCards = legacyRaw ? parseLegacyHistory(legacyRaw) : null;
+      const cards = legacyCards ?? [];
+      const snapshot: DeckSessionHistorySnapshot = { version: 1, generation: 0, cards };
+
+      // The dedicated copy is durable before the legacy field is touched.
+      await AsyncStorage.setItem(
+        DECK_SESSION_HISTORY_STORAGE_KEY,
+        JSON.stringify(snapshot),
+      );
+      diagnostics.serializations += 1;
+      diagnostics.writes += 1;
+      if (legacyCards) diagnostics.migrations += 1;
+      lastPersistedGeneration = 0;
+      useDeckSessionHistoryStore.setState({ cards, generation: 0, hasHydrated: true });
+      if (legacyCards) await removeLegacyHistoryAfterMigration();
+    } catch {
+      // Never remove the legacy value unless the dedicated write succeeded.
+      reportHistoryError('migration');
+      useDeckSessionHistoryStore.setState({ hasHydrated: true });
+    }
+  })();
+  return hydrationPromise;
+}
+
+export function appendDeckSessionHistory(card: Recommendation): void {
+  useDeckSessionHistoryStore.getState().append(card);
+}
+
+export function resetDeckSessionHistory(): void {
+  useDeckSessionHistoryStore.getState().reset();
+}
+
+export function rollbackDeckSessionHistory(cardId: string): void {
+  useDeckSessionHistoryStore.getState().rollback(cardId);
+}
+
+export function flushDeckSessionHistory(): Promise<void> {
+  return drainPendingSnapshot();
+}
+
+export async function resetAndFlushDeckSessionHistory(): Promise<void> {
+  resetDeckSessionHistory();
+  await flushDeckSessionHistory();
+}
+
+export function getDeckSessionHistoryDiagnostics(): DeckSessionHistoryDiagnostics {
+  return { ...diagnostics };
+}
+
+AppState.addEventListener('change', (state: AppStateStatus) => {
+  if (state === 'background' || state === 'inactive') {
+    void flushDeckSessionHistory();
+  }
+});

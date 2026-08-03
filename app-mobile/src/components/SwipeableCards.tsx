@@ -139,13 +139,18 @@ import {
   DeckSwipeCommitToken,
 } from './swipeDeck/deckSwipeLifecycle';
 import {
-  DECK_PREFETCH_CACHE_POLICY,
   DECK_VISIBLE_POSTER_CACHE_POLICY,
   DeckHeroDecodeTarget,
-  deckPrefetchIndex,
   getDeckHeroDecodeTarget,
 } from './swipeDeck/deckHeroPolicy';
 import { useDeckSwipeController } from './swipeDeck/useDeckSwipeController';
+import {
+  appendDeckSessionHistory,
+  flushDeckSessionHistory,
+  hydrateDeckSessionHistory,
+  rollbackDeckSessionHistory,
+  useDeckSessionHistoryStore,
+} from '../store/deckSessionHistoryStore';
 // Re-export so existing import sites (if any) resolve from this module too.
 export { shouldCommitSwipe, SWIPE_COMMIT_DISTANCE, SWIPE_COMMIT_VELOCITY, SWIPE_COMMIT_MIN_DX };
 
@@ -332,7 +337,7 @@ const DECK_HERO_TRANSITION_MS = 220;
  * async decode window. The placeholder covers the decode gap; `CARD_FALLBACK_IMAGE`
  * is the hard-failure fallback (a real photo, distinct from the placeholder).
  */
-function CardHeroImage({
+const CardHeroImage = React.memo(function CardHeroImage({
   uri,
   style,
   decodeTarget,
@@ -345,9 +350,13 @@ function CardHeroImage({
   React.useEffect(() => {
     setSrc(uri && uri.length > 0 ? uri : CARD_FALLBACK_IMAGE);
   }, [uri]);
+  const source = React.useMemo(
+    () => ({ uri: src, width: decodeTarget.width, height: decodeTarget.height }),
+    [decodeTarget.height, decodeTarget.width, src],
+  );
   return (
     <ExpoImage
-      source={{ uri: src, width: decodeTarget.width, height: decodeTarget.height }}
+      source={source}
       style={style}
       contentFit="cover"
       cachePolicy={DECK_VISIBLE_POSTER_CACHE_POLICY}
@@ -362,7 +371,7 @@ function CardHeroImage({
       }}
     />
   );
-}
+});
 
 /**
  * ORCH-1069 — video-aware deck card hero.
@@ -384,7 +393,7 @@ function CardHeroImage({
  * the player paused on its poster (`playbackActive=false`), ready to play the
  * instant it promotes to top. Cards deeper than index 1 are never rendered by the
  * swipe stack, so at most two players exist and at most one plays. No video is
- * prefetched (the still prefetch at ~L890 is unchanged).
+ * loaded only when mounted as the bounded current/behind poster.
  *
  * META-ORCH-0991 Bug 3a (LOCKED): the `EventCoverMedia` layer is wrapped in a
  * `pointerEvents="none"` View so the native VideoView never eats the card's
@@ -794,8 +803,6 @@ export default function SwipeableCards({
     addDismissedCard,
     removeDismissedCard,
     addCardToFront,
-    addSwipedCard,
-    sessionSwipedCards,
     isExhausted,
     deckUIState,
     collabTravelMode,
@@ -820,6 +827,14 @@ export default function SwipeableCards({
     deckStateRegistry,
     activeDeckContext,
   } = useRecommendations();
+  const sessionSwipedCards = useDeckSessionHistoryStore((state) => state.cards);
+
+  useEffect(() => {
+    void hydrateDeckSessionHistory();
+    return () => {
+      void flushDeckSessionHistory();
+    };
+  }, []);
 
   const isAnyLoading = loading || isModeTransitioning || isWaitingForSessionResolution;
 
@@ -1144,24 +1159,6 @@ export default function SwipeableCards({
     return deckUIState;
   }, [deckUIState, availableRecommendations.length, isBoardSession, collabDeckDeadEndReason]);
 
-  // The current and behind posters load by rendering. Only card +2 is warmed,
-  // and it is disk-only so the preview never competes with an extra memory layer.
-  const currentCardId = availableRecommendations[0]?.id;
-  useEffect(() => {
-    const cardAfterNext = availableRecommendations[deckPrefetchIndex(0)];
-    if (cardAfterNext?.image) {
-      ExpoImage.prefetch(cardAfterNext.image, {
-        cachePolicy: DECK_PREFETCH_CACHE_POLICY,
-      }).catch((error) => {
-        if (__DEV__) {
-          console.warn('[SwipeableCards] Deck +2 poster prefetch failed', {
-            errorType: error instanceof Error ? error.name : 'unknown',
-          });
-        }
-      });
-    }
-  }, [currentCardId]);
-
   // Auto-recovery: detect dead "Pulling up more for you" state.
   // When recommendations exist but ALL are filtered by removedCards (stale persistence),
   // clear removedCards after 1.5s to escape the dead state. This is a safety net — the
@@ -1461,6 +1458,9 @@ export default function SwipeableCards({
         return;
       }
       lastCommittedTokenKeyRef.current = tokenKey;
+      // Exact full-card history is visible synchronously in the same local
+      // commit batch as promotion; only its serialization/I/O is deferred.
+      appendDeckSessionHistory(card);
       const nextRemoved = new Set(removedCardsRef.current);
       nextRemoved.add(card.id);
       removedCardsRef.current = nextRemoved;
@@ -2058,9 +2058,6 @@ export default function SwipeableCards({
   ) => {
     if (!card) return;
 
-    // Track swiped card in session history
-    addSwipedCard(card);
-
     // ORCH-0408 Phase 4: Record swipe — counter + user interaction log (fire-and-forget)
     recordCardSwipe(card.id, direction, {
       category: card.category,
@@ -2154,6 +2151,7 @@ export default function SwipeableCards({
         if (direction === 'right' && !isBoardSession) {
           const saveResult = await onCardLike(card);
           if (saveResult === false) {
+            rollbackDeckSessionHistory(card.id);
             // Preserve the existing save-failure rollback contract without
             // leaving the synchronous gesture refs or persisted snapshot one
             // render behind the visible deck.

@@ -11,9 +11,7 @@ import {
 } from '../deckSwipeLifecycle.ts';
 import {
   DECK_HERO_MAX_LONG_EDGE_PX,
-  DECK_PREFETCH_CACHE_POLICY,
   DECK_VISIBLE_POSTER_CACHE_POLICY,
-  deckPrefetchIndex,
   getDeckHeroDecodeTarget,
 } from '../deckHeroPolicy.ts';
 
@@ -166,11 +164,9 @@ test('hero policy caps physical decode while preserving rendered aspect', () => 
   const small = getDeckHeroDecodeTarget(200, 100, 2);
   assert.deepEqual(small, { width: 400, height: 200 });
   assert.equal(DECK_VISIBLE_POSTER_CACHE_POLICY, 'memory-disk');
-  assert.equal(DECK_PREFETCH_CACHE_POLICY, 'disk');
-  assert.equal(deckPrefetchIndex(0), 2);
 });
 
-test('behind layer is poster-only and +2 is the sole explicit prefetch', () => {
+test('behind layer is the sole bounded lookahead with zero explicit prefetch', () => {
   const preview = swipeableSource.slice(
     swipeableSource.indexOf('Next card is a poster-only'),
     swipeableSource.indexOf('{/* Current Card */}'),
@@ -179,10 +175,15 @@ test('behind layer is poster-only and +2 is the sole explicit prefetch', () => {
   assert.match(preview, /pointerEvents="none"/);
   assert.match(preview, /accessibilityElementsHidden/);
   assert.doesNotMatch(preview, /<CardHero\b|EventCoverMedia|TouchableOpacity/);
-  const prefetchCalls = swipeableSource.match(/ExpoImage\.prefetch\(/g) ?? [];
-  assert.equal(prefetchCalls.length, 1);
-  assert.match(swipeableSource, /availableRecommendations\[deckPrefetchIndex\(0\)\]/);
-  assert.match(swipeableSource, /cachePolicy: DECK_PREFETCH_CACHE_POLICY/);
+  assert.equal((swipeableSource.match(/ExpoImage\.prefetch\(/g) ?? []).length, 0);
+  assert.equal((swipeableSource.match(/ExpoImage\.loadAsync\(/g) ?? []).length, 0);
+  assert.doesNotMatch(swipeableSource, /deckPrefetchIndex|DECK_PREFETCH_CACHE_POLICY/);
+  assert.match(swipeableSource, /const CardHeroImage = React\.memo/);
+  assert.match(
+    swipeableSource,
+    /const source = React\.useMemo\([\s\S]*uri: src, width: decodeTarget\.width, height: decodeTarget\.height/,
+  );
+  assert.match(swipeableSource, /<ExpoImage[\s\S]*source=\{source\}/);
 });
 
 test('commit acknowledgement precedes persistence and deferred business work', () => {

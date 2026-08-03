@@ -29,6 +29,7 @@ import type { CollabDeadEndPayload } from "../services/deckService";
 import { computePrefsHash, normalizeDateTime } from "../utils/cardConverters";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAppStore } from "../store/appStore";
+import { resetDeckSessionHistory } from '../store/deckSessionHistoryStore';
 import { Recommendation } from "../types/recommendation";
 import { normalizeCategoryArray } from '../utils/categoryUtils';
 // ORCH-0490 Phase 2.3: per-context deck state registry + feature flag.
@@ -113,8 +114,6 @@ interface RecommendationsContextType {
   clearDismissedCards: () => void;
   removeDismissedCard: (card: Recommendation) => void;
   addCardToFront: (card: Recommendation) => void;
-  addSwipedCard: (card: Recommendation) => void;
-  sessionSwipedCards: Recommendation[];
   isExhausted: boolean;
   deckUIState: DeckUIState;
   /** Aggregated travel mode from collaboration session (majority vote). null in solo mode. */
@@ -277,14 +276,7 @@ export const RecommendationsProvider: React.FC<
     })();
   }, []);
 
-  // ── Deck session state (Zustand) ────────────────────────────────────
-  const {
-    addSwipedCard,
-    resetDeckHistory,
-    deckPrefsHash,
-    sessionSwipedCards,
-  } = useAppStore();
-
+  // Narrow selectors keep unrelated global-store writes out of this large provider.
   const user = useAppStore((state) => state.user);
   // Missing viewer preference is intentionally undefined. The server then
   // returns exact source money; this path must never silently choose USD.
@@ -1421,6 +1413,7 @@ export const RecommendationsProvider: React.FC<
 
       // Clear deck session state — each mode starts fresh
       const { resetDeckHistory } = useAppStore.getState();
+      resetDeckSessionHistory();
       resetDeckHistory('');
 
       // No need to wipe persisted dismissed cards — the storage key is
@@ -1915,7 +1908,7 @@ export const RecommendationsProvider: React.FC<
     hasCompletedFetchForCurrentMode;
 
   // ── Context Value ───────────────────────────────────────────────────────
-  const value: RecommendationsContextType = {
+  const value = useMemo<RecommendationsContextType>(() => ({
     recommendations,
     loading,
     isFetching,
@@ -1935,8 +1928,6 @@ export const RecommendationsProvider: React.FC<
     clearDismissedCards,
     removeDismissedCard,
     addCardToFront,
-    addSwipedCard,
-    sessionSwipedCards,
     isExhausted,
     deckUIState,
     // ORCH-0902 CR-7: "collab travel mode" is no longer a session-level
@@ -1977,7 +1968,37 @@ export const RecommendationsProvider: React.FC<
     activeDeckContext: FEATURE_FLAG_PER_CONTEXT_DECK_STATE
       ? currentContext
       : undefined,
-  };
+  }), [
+    addCardToFront,
+    addDismissedCard,
+    clearDismissedCards,
+    clearRecommendations,
+    collabDeadEndPayload,
+    currentContext,
+    deckUIState,
+    dismissedCards,
+    error,
+    handleDeckCardProgress,
+    hasCompletedInitialFetch,
+    hasMoreCards,
+    isCollaborationMode,
+    isDeckExpandingWithinContext,
+    isExhausted,
+    isFetching,
+    isModeTransitioning,
+    isRefreshingAfterPrefChange,
+    isWaitingForSessionResolution,
+    loading,
+    recommendations,
+    refreshRecommendations,
+    registry,
+    removeDismissedCard,
+    showPipelineErrorToast,
+    soloCuratedEmptyReason,
+    soloServerPath,
+    updateCardStrollData,
+    userLocation,
+  ]);
 
   return (
     <RecommendationsContext.Provider value={value}>
