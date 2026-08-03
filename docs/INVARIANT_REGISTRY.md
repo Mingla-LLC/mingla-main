@@ -7092,6 +7092,9 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   Reanimated/Worklets/worklet directives, new Gesture auto-worklet callbacks, and competing
   lifecycle state are forbidden. `[TRANSITIONAL: I-1481]` RNGH 2.x exits only through a separately
   approved Consumer gesture/dependency migration with native Fabric crash soak.
+  Every finished exit settles from its immutable token to exactly one explicit
+  `{nextCardId}` or `{exhausted:true}` result; COMMITTING may never wait for a passive render effect.
+  Gesture phase is owned by the memoized `DeckSwipeStage`, outside the deck/provider/history owner.
 - **Enforcement:** `.github/workflows/issue-1481-explorer-deck-tests.yml` requires and executes the
   exact implementor/tester Node guards; the guards source-check the sole controller and exercise a
   synthetic reverted competing-owner control.
@@ -7104,10 +7107,11 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 ### I-PROPOSED-1481-DECK-PERFORMANCE-BOUND (DRAFT)
 - **Rule:** Explorer steady state is bounded to two raster posters and one active current-card video,
   with no explicit image prefetch/loadAsync; current and behind are the only bounded poster loads
-  and remote hero decode long edge is at most 1440 physical pixels. Exact ordered full-card history
+  using disk-only cache, and remote hero decode long edge is at most 1440 physical pixels. Exact ordered full-card history
   is owned by its dedicated last-200 store, updates synchronously with card removal, never fans out
   through the persisted global app store or RecommendationsProvider, and persists through a
-  generation-stamped trailing coalesced/serialized snapshot with lossless legacy migration and
+  generation-stamped 750ms trailing plus five-second maximum-age coalesced/serialized snapshot,
+  with no normal serialization during DRAGGING/EXITING/COMMITTING, lossless legacy migration, and
   lifecycle/logout flush. Non-critical business work remains FIFO-deferred after interaction.
 - **Enforcement:** the issue workflow requires and runs independent lifecycle and performance guards
   over every scoped runtime/store/provider path. Static guards require selector isolation, a memoized

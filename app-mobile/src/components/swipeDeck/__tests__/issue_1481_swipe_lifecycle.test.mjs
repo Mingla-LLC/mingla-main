@@ -17,11 +17,13 @@ import {
 
 const swipeableUrl = new URL('../../SwipeableCards.tsx', import.meta.url);
 const controllerUrl = new URL('../useDeckSwipeController.ts', import.meta.url);
+const stageUrl = new URL('../DeckSwipeStage.tsx', import.meta.url);
 const workflowUrl = new URL('../../../../../.github/workflows/issue-1481-explorer-deck-tests.yml', import.meta.url);
 
-const [swipeableSource, controllerSource, workflowSource] = await Promise.all([
+const [swipeableSource, controllerSource, stageSource, workflowSource] = await Promise.all([
   readFile(swipeableUrl, 'utf8'),
   readFile(controllerUrl, 'utf8'),
+  readFile(stageUrl, 'utf8'),
   readFile(workflowUrl, 'utf8'),
 ]);
 
@@ -40,14 +42,17 @@ const FORBIDDEN_CONTROLLER_PATTERNS = [
   'Animated.spring',
 ];
 
-function assertSingleOwnerSource(swipeable, controller) {
-  assert.match(swipeable, /useDeckSwipeController\(\{/);
+function assertSingleOwnerSource(swipeable, controller, stage) {
+  assert.doesNotMatch(swipeable, /useDeckSwipeController\(/);
+  assert.match(stage, /useDeckSwipeController\(props\)/);
+  assert.match(stage, /export const DeckSwipeStage = memo\(forwardRef/);
   assert.match(swipeable, /<PanGestureHandler/);
   assert.match(controller, /Animated\.event<[\s\S]*translationX: positionX[\s\S]*useNativeDriver: true/);
   assert.match(controller, /onHandlerStateChange/);
   for (const pattern of FORBIDDEN_CONTROLLER_PATTERNS) {
     assert.equal(swipeable.includes(pattern), false, `SwipeableCards contains forbidden ${pattern}`);
     assert.equal(controller.includes(pattern), false, `controller contains forbidden ${pattern}`);
+    assert.equal(stage.includes(pattern), false, `stage contains forbidden ${pattern}`);
   }
 }
 
@@ -128,7 +133,7 @@ test('paywall intent is exact-token, one-shot, and inert after cancellation', ()
 });
 
 test('production deck has one native-driver owner and no forbidden competing primitive', () => {
-  assertSingleOwnerSource(swipeableSource, controllerSource);
+  assertSingleOwnerSource(swipeableSource, controllerSource, stageSource);
   assert.match(controllerSource, /DECK_EXIT_MS = 200/);
   assert.match(controllerSource, /DECK_SNAP_MS = 240/);
   assert.match(controllerSource, /Easing\.bezier\(0\.22, 1, 0\.36, 1\)/);
@@ -152,7 +157,7 @@ test('production deck has one native-driver owner and no forbidden competing pri
 
 test('single-owner source guard detects the reverted competing responder', () => {
   assert.throws(
-    () => assertSingleOwnerSource(`${swipeableSource}\nPanResponder.create({})`, controllerSource),
+    () => assertSingleOwnerSource(`${swipeableSource}\nPanResponder.create({})`, controllerSource, stageSource),
     /forbidden PanResponder/,
   );
 });
@@ -163,7 +168,7 @@ test('hero policy caps physical decode while preserving rendered aspect', () => 
   assert.ok(Math.abs(portrait.width / portrait.height - 360 / 640) < 0.002);
   const small = getDeckHeroDecodeTarget(200, 100, 2);
   assert.deepEqual(small, { width: 400, height: 200 });
-  assert.equal(DECK_VISIBLE_POSTER_CACHE_POLICY, 'memory-disk');
+  assert.equal(DECK_VISIBLE_POSTER_CACHE_POLICY, 'disk');
 });
 
 test('behind layer is the sole bounded lookahead with zero explicit prefetch', () => {
@@ -186,15 +191,17 @@ test('behind layer is the sole bounded lookahead with zero explicit prefetch', (
   assert.match(swipeableSource, /<ExpoImage[\s\S]*source=\{source\}/);
 });
 
-test('commit acknowledgement precedes persistence and deferred business work', () => {
-  const acknowledgement = swipeableSource.slice(
-    swipeableSource.indexOf('const pending = pendingCommitRef.current'),
-    swipeableSource.indexOf('useEffect(() => {', swipeableSource.indexOf('const pending = pendingCommitRef.current') + 20),
+test('immutable commit work is queued before explicit successor or terminal settlement', () => {
+  const commit = swipeableSource.slice(
+    swipeableSource.indexOf('onCommitRequested: (token:'),
+    swipeableSource.indexOf('onCommitSettled:', swipeableSource.indexOf('onCommitRequested: (token:')),
   );
-  const acknowledgeAt = acknowledgement.indexOf('acknowledgeActiveCard');
-  const persistAt = acknowledgement.indexOf('enqueuePersistenceSnapshot');
-  const workAt = acknowledgement.indexOf('enqueuePostSwipeWork');
-  assert.ok(acknowledgeAt >= 0 && persistAt > acknowledgeAt && workAt > persistAt);
+  const persistAt = commit.indexOf('enqueuePersistenceSnapshot');
+  const workAt = commit.indexOf('enqueuePostSwipeWork');
+  const settlementAt = commit.indexOf('return nextCardId ? { nextCardId } : { exhausted: true }');
+  assert.ok(persistAt >= 0 && workAt > persistAt && settlementAt > workAt);
+  assert.doesNotMatch(swipeableSource, /acknowledgeActiveCard|pendingCommitRef/);
+  assert.match(controllerSource, /activeCardIdRef\.current = 'nextCardId' in settlement/);
   assert.match(swipeableSource, /persistenceDrainRef/);
   assert.match(swipeableSource, /pendingPersistenceRef\.current = \{/);
   assert.match(swipeableSource, /InteractionManager\.runAfterInteractions/);

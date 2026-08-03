@@ -18,7 +18,7 @@ import {
 } from "react-native";
 import { PanGestureHandler } from 'react-native-gesture-handler';
 // ORCH-1042: deck hero photos render via expo-image (NOT react-native <Image>).
-// expo-image gives us a placeholder + fade transition + a managed memory-disk
+// expo-image gives us a placeholder + fade transition + a bounded disk-only
 // cache + recyclingKey so the per-card remount (`key={currentRec.id}`, ORCH-0694)
 // never flashes a bare dark `#1a1a2e` panel during async decode. Keep
 // `key={currentRec.id}` — the fix works WITH the remount, not by removing it.
@@ -136,6 +136,7 @@ import {
 } from "../utils/swipeCommit";
 import {
   consumeDeckTokenIntent,
+  DeckCommitSettlement,
   DeckSwipeCommitToken,
 } from './swipeDeck/deckSwipeLifecycle';
 import {
@@ -143,12 +144,17 @@ import {
   DeckHeroDecodeTarget,
   getDeckHeroDecodeTarget,
 } from './swipeDeck/deckHeroPolicy';
-import { useDeckSwipeController } from './swipeDeck/useDeckSwipeController';
+import {
+  DeckSwipeStage,
+  type DeckSwipeStageHandle,
+} from './swipeDeck/DeckSwipeStage';
+import type { UseDeckSwipeControllerOptions } from './swipeDeck/useDeckSwipeController';
 import {
   appendDeckSessionHistory,
   flushDeckSessionHistory,
   hydrateDeckSessionHistory,
   rollbackDeckSessionHistory,
+  setDeckSessionHistoryPersistenceBlocked,
   useDeckSessionHistoryStore,
 } from '../store/deckSessionHistoryStore';
 // Re-export so existing import sites (if any) resolve from this module too.
@@ -1077,14 +1083,11 @@ export default function SwipeableCards({
   const handleCardExpandRef = useRef<(() => Promise<void>) | null>(null);
   const removedCardIdsRef = useRef<string[]>(removedCardIds);
   const pendingPaywallRef = useRef<DeckSwipeCommitToken | null>(null);
-  const pendingCommitRef = useRef<{
-    token: DeckSwipeCommitToken;
-    card: Recommendation;
-  } | null>(null);
   const latestValidatedSwipeEpochRef = useRef(0);
   const lastCommittedTokenKeyRef = useRef<string | null>(null);
-  const pendingAccessibilityFocusRef = useRef(false);
   const promotedCardIdRef = useRef<string | null>(null);
+  const deckStageRef = useRef<DeckSwipeStageHandle | null>(null);
+  const pendingAccessibilityFocusRef = useRef(false);
   const cardAccessibilityRef = useRef<View | null>(null);
   const anomalyReasonsRef = useRef(new Set<string>());
   const swipeQueueEpochRef = useRef(0);
@@ -1108,6 +1111,7 @@ export default function SwipeableCards({
     generation: number;
   } | null>(null);
   const persistenceDrainRef = useRef<Promise<void> | null>(null);
+  const localDeckPersistenceBlockedRef = useRef(false);
 
   useEffect(() => {
     pendingPaywallRef.current = null;
@@ -1320,7 +1324,8 @@ export default function SwipeableCards({
     }, 250);
   }, [drainPostSwipeQueue]);
 
-  const drainPersistence = useCallback((): Promise<void> => {
+  const drainPersistence = useCallback((force = false): Promise<void> => {
+    if (localDeckPersistenceBlockedRef.current && !force) return Promise.resolve();
     if (persistenceDrainRef.current) return persistenceDrainRef.current;
     const drain = async (): Promise<void> => {
       while (pendingPersistenceRef.current) {
@@ -1339,7 +1344,9 @@ export default function SwipeableCards({
     };
     persistenceDrainRef.current = drain().finally(() => {
       persistenceDrainRef.current = null;
-      if (pendingPersistenceRef.current) void drainPersistence();
+      if (pendingPersistenceRef.current && !localDeckPersistenceBlockedRef.current) {
+        void drainPersistence();
+      }
     });
     return persistenceDrainRef.current;
   }, [reportDeckAnomaly]);
@@ -1363,7 +1370,7 @@ export default function SwipeableCards({
       removedCardIds,
       generation: persistenceGenerationRef.current,
     };
-    void drainPersistence();
+    if (!localDeckPersistenceBlockedRef.current) void drainPersistence();
   }, [activeDeckContextKey, currentMode, drainPersistence, getStorageKeys, refreshKey]);
 
   useEffect(() => {
@@ -1387,15 +1394,15 @@ export default function SwipeableCards({
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState !== 'active') void drainPersistence();
+      if (nextState !== 'active') void drainPersistence(true);
     });
     return () => {
       subscription.remove();
-      void drainPersistence();
+      void drainPersistence(true);
     };
   }, [drainPersistence]);
 
-  const deckSwipe = useDeckSwipeController({
+  const deckSwipeStageOptions: UseDeckSwipeControllerOptions = {
     activeCardId: currentRec?.id ?? null,
     screenWidth: SCREEN_WIDTH,
     reducedMotion,
@@ -1438,14 +1445,14 @@ export default function SwipeableCards({
       setPaywallFeature('curated_cards');
       setShowPaywall(true);
     },
-    onCommitRequested: (token: DeckSwipeCommitToken): void => {
+    onCommitRequested: (token: DeckSwipeCommitToken): DeckCommitSettlement | null => {
       const tokenKey = `${token.epoch}:${token.cardId}:${token.direction}`;
       if (
         token.epoch !== latestValidatedSwipeEpochRef.current ||
         lastCommittedTokenKeyRef.current === tokenKey
       ) {
         reportDeckAnomaly('duplicate_commit_blocked', 'COMMITTING', 0);
-        return;
+        return null;
       }
       const availableCards = recommendationsRef.current.filter(
         (rec) =>
@@ -1455,7 +1462,7 @@ export default function SwipeableCards({
       const card = availableCards[currentCardIndexRef.current];
       if (!card || card.id !== token.cardId) {
         reportDeckAnomaly('stale_completion_ignored', 'COMMITTING', 0);
-        return;
+        return null;
       }
       lastCommittedTokenKeyRef.current = tokenKey;
       // Exact full-card history is visible synchronously in the same local
@@ -1465,9 +1472,23 @@ export default function SwipeableCards({
       nextRemoved.add(card.id);
       removedCardsRef.current = nextRemoved;
       currentCardIndexRef.current = 0;
-      pendingCommitRef.current = { token, card };
+      const nextCardId = availableCards[1]?.id ?? null;
+      if (nextCardId) promotedCardIdRef.current = nextCardId;
+      enqueuePersistenceSnapshot(0, nextRemoved);
+      enqueuePostSwipeWork(async () => {
+        await handleSwipeRef.current?.(token.direction, card);
+      });
       setRemovedCards(nextRemoved);
       setCurrentCardIndex(0);
+      return nextCardId ? { nextCardId } : { exhausted: true };
+    },
+    onCommitSettled: (_token: DeckSwipeCommitToken, settlement: DeckCommitSettlement): void => {
+      if ('exhausted' in settlement) void flushDeckSessionHistory();
+    },
+    onPhaseChanged: (phase): void => {
+      localDeckPersistenceBlockedRef.current = phase !== 'IDLE';
+      setDeckSessionHistoryPersistenceBlocked(phase !== 'IDLE');
+      if (phase === 'IDLE' && pendingPersistenceRef.current) void drainPersistence();
     },
     onExpandValidated: (): boolean => {
       if (!currentRec) return false;
@@ -1487,36 +1508,15 @@ export default function SwipeableCards({
     onInvalidated: (): void => {
       pendingPaywallRef.current = null;
     },
-  });
-  const acknowledgeActiveCard = deckSwipe.acknowledgeActiveCard;
-  const invalidateDeckSwipe = deckSwipe.invalidate;
+  };
+  const invalidateDeckSwipe = useCallback((reason: string): void => {
+    deckStageRef.current?.invalidate(reason);
+  }, []);
 
   const heroDecodeTarget = useMemo(
     () => getDeckHeroDecodeTarget(heroLayout.width, heroLayout.height, PixelRatio.get()),
     [heroLayout.height, heroLayout.width],
   );
-  const delayedAnnouncementSentRef = useRef(false);
-  useEffect(() => {
-    if (!deckSwipe.isTransitionDelayed) {
-      delayedAnnouncementSentRef.current = false;
-      return;
-    }
-    if (delayedAnnouncementSentRef.current) return;
-    delayedAnnouncementSentRef.current = true;
-    AccessibilityInfo.announceForAccessibility(
-      t('cards:swipeable.curating_lineup'),
-    );
-  }, [deckSwipe.isTransitionDelayed, t]);
-  useEffect(() => {
-    if (!pendingAccessibilityFocusRef.current || deckSwipe.phase !== 'IDLE') return;
-    const timeout = setTimeout(() => {
-      const node = findNodeHandle(cardAccessibilityRef.current);
-      if (node == null) return;
-      pendingAccessibilityFocusRef.current = false;
-      AccessibilityInfo.setAccessibilityFocus(node);
-    }, 0);
-    return () => clearTimeout(timeout);
-  }, [currentRec?.id, deckSwipe.phase]);
 
   // Track card viewed when the current card changes
   const lastViewedCardIdRef = useRef<string | null>(null);
@@ -1540,23 +1540,6 @@ export default function SwipeableCards({
       });
     }
   }, [currentRec?.id, currentCardIndex]);
-
-  useEffect(() => {
-    const pending = pendingCommitRef.current;
-    if (!currentRec || !pending || currentRec.id === pending.token.cardId) return;
-    if (!acknowledgeActiveCard(currentRec.id, pending.token.epoch)) return;
-    promotedCardIdRef.current = currentRec.id;
-    pendingCommitRef.current = null;
-    enqueuePersistenceSnapshot(0, removedCardsRef.current);
-    enqueuePostSwipeWork(async () => {
-      await handleSwipeRef.current?.(pending.token.direction, pending.card);
-    });
-  }, [
-    acknowledgeActiveCard,
-    currentRec,
-    enqueuePersistenceSnapshot,
-    enqueuePostSwipeWork,
-  ]);
 
   useEffect(() => {
     if (
@@ -2961,6 +2944,13 @@ export default function SwipeableCards({
             </View>
           )}
 
+          <DeckSwipeStage
+            ref={deckStageRef}
+            {...deckSwipeStageOptions}
+            transitionDelayAnnouncement={t('cards:swipeable.curating_lineup')}
+          >
+          {(deckSwipe) => (
+          <>
           {/* Next card is a poster-only, non-interactive continuity preview. */}
           {availableRecommendations.length > 1 &&
             (() => {
@@ -3328,6 +3318,9 @@ export default function SwipeableCards({
             </View>
           </Animated.View>
           </PanGestureHandler>
+          </>
+          )}
+          </DeckSwipeStage>
         </View>
       </View>
       {/* ORCH-1063: ExpandedCardModal / DismissedCardsSheet / CustomPaywallScreen

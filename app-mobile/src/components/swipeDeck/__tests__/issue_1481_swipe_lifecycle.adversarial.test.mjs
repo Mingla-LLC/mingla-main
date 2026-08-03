@@ -115,7 +115,7 @@ test('production source keeps the rejection, media, persistence, and teardown bo
   assert.match(preview, /pointerEvents="none"/);
   assert.match(preview, /importantForAccessibility="no-hide-descendants"/);
   assert.doesNotMatch(preview, /EventCoverMedia|TouchableOpacity|<CardHero\b/);
-  assert.equal(DECK_VISIBLE_POSTER_CACHE_POLICY, 'memory-disk');
+  assert.equal(DECK_VISIBLE_POSTER_CACHE_POLICY, 'disk');
   assertMemoizedBoundedHeroSource(swipeableSource);
   assert.match(swipeableSource, /<CardHeroImage[\s\S]*decodeTarget=\{heroDecodeTarget\}/);
   assert.equal((swipeableSource.match(/ExpoImage\.prefetch\(/g) ?? []).length, 0);

@@ -209,7 +209,10 @@ test('production commit batches visible history with removal and defers only I/O
 test('dedicated generation persistence is trailing, serialized, lifecycle-flushed, and resettable', () => {
   assert.match(source.historyStore, /DECK_SESSION_HISTORY_CAP = 200/);
   assert.match(source.historyStore, /pendingSnapshot = snapshot/);
-  assert.match(source.historyStore, /setTimeout\([\s\S]*InteractionManager\.runAfterInteractions/);
+  assert.match(source.historyStore, /DECK_SESSION_HISTORY_MAX_AGE_MS = 5_000/);
+  assert.match(source.historyStore, /trailingTimer = setTimeout\([\s\S]*maxAgeTimer = setTimeout/);
+  assert.match(source.historyStore, /InteractionManager\.runAfterInteractions/);
+  assert.match(source.historyStore, /if \(persistenceBlocked && !force\)/);
   assert.match(source.historyStore, /while \(pendingSnapshot\)/);
   assert.match(source.historyStore, /snapshot\.generation < lastPersistedGeneration/);
   assert.match(source.historyStore, /JSON\.stringify\(snapshot\)/);
@@ -402,12 +405,14 @@ test('current and behind are the only stable bounded poster loads', () => {
   assert.doesNotMatch(preview, /EventCoverMedia|<CardHero\b/);
 });
 
-test('issue workflow requires all four independent guards', () => {
+test('issue workflow requires all six independent guards', () => {
   for (const filename of [
     'issue_1481_swipe_lifecycle.test.mjs',
     'issue_1481_swipe_lifecycle.adversarial.test.mjs',
     'issue_1481_performance_hotpath.test.mjs',
     'issue_1481_performance_hotpath.adversarial.test.mjs',
+    'issue_1481_release_hotpath.test.mjs',
+    'issue_1481_release_hotpath.adversarial.test.mjs',
   ]) {
     assert.match(source.workflow, new RegExp(filename.replaceAll('.', '\\.')));
   }

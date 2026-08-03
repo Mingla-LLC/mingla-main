@@ -1,5 +1,7 @@
 export const DECK_HERO_MAX_LONG_EDGE_PX = 1440;
-export const DECK_VISIBLE_POSTER_CACHE_POLICY = 'memory-disk' as const;
+// The deck owns at most the visible and behind native poster nodes. Disk-only
+// cache prevents a long session from retaining every decoded poster globally.
+export const DECK_VISIBLE_POSTER_CACHE_POLICY = 'disk' as const;
 
 export interface DeckHeroDecodeTarget {
   width: number;

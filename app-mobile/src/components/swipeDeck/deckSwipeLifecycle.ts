@@ -15,6 +15,10 @@ export interface DeckSwipeCommitToken {
   epoch: number;
 }
 
+export type DeckCommitSettlement =
+  | { nextCardId: string }
+  | { exhausted: true };
+
 export interface DeckSwipeCompletionGuard {
   finished: boolean;
   mounted: boolean;

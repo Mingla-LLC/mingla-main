@@ -10,7 +10,8 @@ import type { Recommendation } from '../types/recommendation';
 export const DECK_SESSION_HISTORY_STORAGE_KEY = 'mingla-deck-session-history-v1';
 export const LEGACY_APP_STORAGE_KEY = 'mingla-mobile-storage';
 export const DECK_SESSION_HISTORY_CAP = 200;
-export const DECK_SESSION_HISTORY_TRAILING_MS = 250;
+export const DECK_SESSION_HISTORY_TRAILING_MS = 750;
+export const DECK_SESSION_HISTORY_MAX_AGE_MS = 5_000;
 
 interface DeckSessionHistorySnapshot {
   version: 1;
@@ -35,6 +36,7 @@ interface DeckSessionHistoryDiagnostics {
 
 let pendingSnapshot: DeckSessionHistorySnapshot | null = null;
 let trailingTimer: ReturnType<typeof setTimeout> | null = null;
+let maxAgeTimer: ReturnType<typeof setTimeout> | null = null;
 let interactionHandle: ReturnType<typeof InteractionManager.runAfterInteractions> | null = null;
 let persistenceDrain: Promise<void> | null = null;
 let hydrationPromise: Promise<void> | null = null;
@@ -45,6 +47,8 @@ let queuedResetIntentVersion = 0;
 let legacyCleanupAfterGeneration: number | null = null;
 let persistenceErrorReported = false;
 let migrationErrorReported = false;
+let persistenceBlocked = false;
+let deferredDrainRequested = false;
 const diagnostics: DeckSessionHistoryDiagnostics = {
   serializations: 0,
   writes: 0,
@@ -118,12 +122,18 @@ async function removeLegacyHistoryAfterMigration(): Promise<void> {
 
 function clearSchedule(): void {
   if (trailingTimer) clearTimeout(trailingTimer);
+  if (maxAgeTimer) clearTimeout(maxAgeTimer);
   interactionHandle?.cancel();
   trailingTimer = null;
+  maxAgeTimer = null;
   interactionHandle = null;
 }
 
-async function drainPendingSnapshot(): Promise<void> {
+async function drainPendingSnapshot(force = false): Promise<void> {
+  if (persistenceBlocked && !force) {
+    deferredDrainRequested = true;
+    return;
+  }
   if (persistenceDrain) return persistenceDrain;
   clearSchedule();
   const drain = async (): Promise<void> => {
@@ -166,18 +176,33 @@ async function drainPendingSnapshot(): Promise<void> {
   return persistenceDrain;
 }
 
+function requestScheduledDrain(): void {
+  if (persistenceBlocked) {
+    deferredDrainRequested = true;
+    return;
+  }
+  interactionHandle?.cancel();
+  interactionHandle = InteractionManager.runAfterInteractions(() => {
+    interactionHandle = null;
+    void drainPendingSnapshot();
+  });
+}
+
 function scheduleSnapshot(snapshot: DeckSessionHistorySnapshot): void {
   pendingSnapshot = snapshot;
   if (trailingTimer) clearTimeout(trailingTimer);
-  interactionHandle?.cancel();
-  interactionHandle = null;
   trailingTimer = setTimeout(() => {
     trailingTimer = null;
-    interactionHandle = InteractionManager.runAfterInteractions(() => {
-      interactionHandle = null;
-      void drainPendingSnapshot();
-    });
+    requestScheduledDrain();
   }, DECK_SESSION_HISTORY_TRAILING_MS);
+  // Continuous 520ms swiping keeps moving the trailing edge. This fixed
+  // checkpoint bounds durability without turning every swipe into stringify + I/O.
+  if (!maxAgeTimer) {
+    maxAgeTimer = setTimeout(() => {
+      maxAgeTimer = null;
+      requestScheduledDrain();
+    }, DECK_SESSION_HISTORY_MAX_AGE_MS);
+  }
 }
 
 export const useDeckSessionHistoryStore = create<DeckSessionHistoryState>((set, get) => ({
@@ -199,6 +224,7 @@ export const useDeckSessionHistoryStore = create<DeckSessionHistoryState>((set, 
     const generation = state.generation + 1;
     set({ cards, generation });
     scheduleSnapshot({ version: 1, generation, cards });
+    void flushDeckSessionHistory();
   },
   reset: (): void => {
     resetIntentVersion += 1;
@@ -235,7 +261,7 @@ async function settleHydrationResets(durableGeneration: number): Promise<void> {
     queuedResetIntentVersion = intentVersion;
     legacyCleanupAfterGeneration = generation;
     scheduleSnapshot({ version: 1, generation, cards });
-    await drainPendingSnapshot();
+    await drainPendingSnapshot(true);
     knownDurableGeneration = Math.max(
       knownDurableGeneration,
       lastPersistedGeneration,
@@ -311,6 +337,7 @@ export function appendDeckSessionHistory(card: Recommendation): void {
 
 export function resetDeckSessionHistory(): void {
   useDeckSessionHistoryStore.getState().reset();
+  void hydrateDeckSessionHistory().then(() => flushDeckSessionHistory());
 }
 
 export function rollbackDeckSessionHistory(cardId: string): void {
@@ -318,7 +345,16 @@ export function rollbackDeckSessionHistory(cardId: string): void {
 }
 
 export function flushDeckSessionHistory(): Promise<void> {
-  return drainPendingSnapshot();
+  return drainPendingSnapshot(true);
+}
+
+/** Prevent normal history serialization while the native swipe transaction is active. */
+export function setDeckSessionHistoryPersistenceBlocked(blocked: boolean): void {
+  persistenceBlocked = blocked;
+  if (!blocked && deferredDrainRequested) {
+    deferredDrainRequested = false;
+    requestScheduledDrain();
+  }
 }
 
 export async function resetAndFlushDeckSessionHistory(): Promise<void> {

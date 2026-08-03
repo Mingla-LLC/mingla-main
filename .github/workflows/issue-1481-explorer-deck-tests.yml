@@ -37,12 +37,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Require both independent append-only guards
+      - name: Require all six independent append-only guards
         run: |
           test -f app-mobile/src/components/swipeDeck/__tests__/issue_1481_swipe_lifecycle.test.mjs
           test -f app-mobile/src/components/swipeDeck/__tests__/issue_1481_swipe_lifecycle.adversarial.test.mjs
           test -f app-mobile/src/components/swipeDeck/__tests__/issue_1481_performance_hotpath.test.mjs
           test -f app-mobile/src/components/swipeDeck/__tests__/issue_1481_performance_hotpath.adversarial.test.mjs
+          test -f app-mobile/src/components/swipeDeck/__tests__/issue_1481_release_hotpath.test.mjs
+          test -f app-mobile/src/components/swipeDeck/__tests__/issue_1481_release_hotpath.adversarial.test.mjs
       - name: Run DRAFT invariants and their synthetic self-test controls
         run: >-
           node --test
@@ -50,3 +52,5 @@ jobs:
           app-mobile/src/components/swipeDeck/__tests__/issue_1481_swipe_lifecycle.adversarial.test.mjs
           app-mobile/src/components/swipeDeck/__tests__/issue_1481_performance_hotpath.test.mjs
           app-mobile/src/components/swipeDeck/__tests__/issue_1481_performance_hotpath.adversarial.test.mjs
+          app-mobile/src/components/swipeDeck/__tests__/issue_1481_release_hotpath.test.mjs
+          app-mobile/src/components/swipeDeck/__tests__/issue_1481_release_hotpath.adversarial.test.mjs
