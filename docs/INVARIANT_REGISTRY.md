@@ -7083,3 +7083,35 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   maintenance of those three live files with no override, whereas measuring keeps them
   green and restores an accurate count.
 - **Established:** DRAFT at issue #1510 SPEC 2026-08-03. Flips ACTIVE at CLOSE.
+## DRAFT — issue #1481 (Explorer swipe lifecycle and deck performance)
+
+### I-PROPOSED-1481-DECK-NATIVE-DRIVER-SINGLE-OWNER (DRAFT)
+- **Rule:** Explorer has one lifecycle controller and one RNGH 2.x current-card handler. Per-frame
+  pan and transform/opacity animations use RN core Animated's native driver. Only a current
+  epoch/card `finished:true` completion may commit. PanResponder, private Animated offsets/reads,
+  Reanimated/Worklets/worklet directives, new Gesture auto-worklet callbacks, and competing
+  lifecycle state are forbidden. `[TRANSITIONAL: I-1481]` RNGH 2.x exits only through a separately
+  approved Consumer gesture/dependency migration with native Fabric crash soak.
+- **Enforcement:** `.github/workflows/issue-1481-explorer-deck-tests.yml` requires and executes the
+  exact implementor/tester Node guards; the guards source-check the sole controller and exercise a
+  synthetic reverted competing-owner control.
+- **Regression:** `issue_1481_swipe_lifecycle.test.mjs` proves nominal admission/current-token
+  completion and production wiring; the independent tester guard adds 10,000-sequence adversarial
+  lifecycle coverage before CLOSE.
+- **Established:** DRAFT 2026-08-02 at issue #1481 IMPLEMENT. Flips ACTIVE only after independent
+  iOS/Android correctness, accessibility, performance, and physical Fabric stress PASS.
+
+### I-PROPOSED-1481-DECK-PERFORMANCE-BOUND (DRAFT)
+- **Rule:** Explorer steady state is bounded to two raster posters and one active current-card video,
+  only card +2 is explicitly prefetched with disk-only cache, remote hero decode long edge is at
+  most 1440 physical pixels, persistence is serialized/coalesced last-write-wins, and non-critical
+  post-swipe work is FIFO-deferred until after interaction without changing business semantics.
+- **Enforcement:** the issue workflow runs the pure decode/cache/source contract on every scoped PR;
+  independent runtime evidence must additionally satisfy the binding Samsung/iOS frame, hitch, and
+  memory budgets on #1481.
+- **Regression:** the implementor guard proves decode aspect/cap, cache roles, poster-only preview,
+  single explicit prefetch, acknowledgement ordering, persistence serialization, and post-work
+  deferral. The tester guard independently protects media cardinality, persistence ordering, and
+  hostile lifecycle sequences.
+- **Established:** DRAFT 2026-08-02 at issue #1481 IMPLEMENT. Flips ACTIVE only after all binding
+  performance/media device gates and the independent tester verdict pass.
