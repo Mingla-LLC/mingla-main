@@ -42,6 +42,7 @@ on:
       - "mingla-business/__tests__/issue1485_expo_static_excluded_from_catch_all.test.ts"
       - "mingla-business/__tests__/issue1485_deep_links_never_404.tester.adversarial.test.ts"
       - "mingla-business/__tests__/issue1485_p2_1_one_chunk_recovery_owner.test.ts"
+      - "mingla-business/__tests__/issue1485_p2_1_recovery_never_navigates.tester.adversarial.test.ts"
       - "mingla-business/src/diagnostics/__tests__/chunkReloadGuard.issue1485.test.ts"
       - "mingla-business/__tests__/orch1003.assetCaching.adversarial.test.ts"
       - "mingla-business/__tests__/authCallbackStatic.test.ts"
@@ -59,6 +60,7 @@ on:
       - "mingla-business/__tests__/issue1485_expo_static_excluded_from_catch_all.test.ts"
       - "mingla-business/__tests__/issue1485_deep_links_never_404.tester.adversarial.test.ts"
       - "mingla-business/__tests__/issue1485_p2_1_one_chunk_recovery_owner.test.ts"
+      - "mingla-business/__tests__/issue1485_p2_1_recovery_never_navigates.tester.adversarial.test.ts"
       - "mingla-business/src/diagnostics/__tests__/chunkReloadGuard.issue1485.test.ts"
       - "mingla-business/__tests__/orch1003.assetCaching.adversarial.test.ts"
       - "mingla-business/__tests__/authCallbackStatic.test.ts"
@@ -103,6 +105,7 @@ jobs:
           __tests__/issue1485_expo_static_excluded_from_catch_all.test.ts
           __tests__/issue1485_deep_links_never_404.tester.adversarial.test.ts
           __tests__/issue1485_p2_1_one_chunk_recovery_owner.test.ts
+          __tests__/issue1485_p2_1_recovery_never_navigates.tester.adversarial.test.ts
           src/diagnostics/__tests__/chunkReloadGuard.issue1485.test.ts
           __tests__/orch1003.assetCaching.adversarial.test.ts
           __tests__/authCallbackStatic.test.ts
