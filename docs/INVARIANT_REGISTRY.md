@@ -7021,10 +7021,15 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   self-test (regression guard)" (no `paths:` filter) running
   `node .github/scripts/test-append-only-check.js --self-test`. No strict-grep gate and
   no `MANIFEST.json` change (COMMS-0125 / COMMS-0126 rebase hazard).
-- **Regression test:** **66 cases** in `selfTest()` — 35 grammar cases and 31 git
+- **Regression test:** **67 cases** in `selfTest()` — 35 grammar cases and 32 git
   scenarios (T1–T18 pre-existing byte-unchanged; T19–T27 added at IMPLEMENT; T28 added
-  at TEST; T29–T31 added at REWORK). Supersedes the "53 cases" count in
+  at TEST; T29–T31 added at REWORK; T32 added at RETEST, pinning the two rework fixes
+  where they meet inside one measurement). Supersedes the "53 cases" count in
   `I-1505-APPEND-ONLY-FAILS-CLOSED`. Append-only.
+- **Fails-on-revert, per fix (re-run independently at RETEST):** reverting the counting
+  logic alone → 58/9; the counting logic plus a shell-string runner → 55/12; literal
+  pathspec matching alone → 64/3; the blob-id comparison alone → 64/3. Every case added
+  under this invariant flips under at least one single-fix revert, so none is vacuous.
 - **TEST status (2026-08-03) — REWORKED, both findings resolved.** Independent
   adversarial verification returned FAIL on two counts, both in how the path reached git
   rather than in how the count was taken. (1) A change that removes nothing — only a

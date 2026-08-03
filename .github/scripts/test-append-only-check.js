@@ -1673,6 +1673,39 @@ function scenarioT31() {
   }
 }
 
+// T32 (#1510 rework, TESTER ADVERSARIAL — the INTERACTION) — T29/T30 pin scoping and
+// T28/T31 pin the metadata short-circuit, but each in isolation, on files the other one
+// never sees. They meet inside the same measurement: the short-circuit asks git a second
+// question about the same path, so it inherits whatever scoping that path is subject to.
+// A file that is BOTH pattern-named AND one git declines to render as text, changed in a
+// way that removes nothing, sitting beside a file the pattern would select that DOES lose
+// assertions, is the one shape where a slip in either fix is observable and a slip in
+// scoping is observable in the SECOND question rather than the first. Each must answer
+// for itself: the metadata-only file green, the sibling refused with its OWN count.
+// Fails-on-revert: dropping literal matching reads the sibling's count onto the untouched
+// file, dropping the short-circuit refuses it outright — either way the tally moves.
+function scenarioT32() {
+  const { dir, g, write } = makeTempRepo();
+  try {
+    write(PATTERNISH_PATH, CONTROL_BYTE_DATA_LINE + FOUR_ASSERTIONS);
+    write(SIBLING_PATH, FOUR_ASSERTIONS);
+    g("add", "-A");
+    g("commit", "-q", "-m", "base");
+    g("branch", "-M", "main");
+    g("checkout", "-q", "-b", "feature");
+
+    // The pattern-named, unrenderable file changes its METADATA ONLY — nothing removed.
+    // The sibling the pattern would select loses three assertions, with NO token.
+    write(SIBLING_PATH, ONE_ASSERTION);
+    g("add", "-A");
+    g("update-index", "--chmod=+x", PATTERNISH_PATH);
+    g("commit", "-q", "-m", "metadata-only beside a sibling that loses assertions — NO token");
+    return runCheckIn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 function selfTest() {
   let failures = 0;
   let total = 0;
@@ -2130,6 +2163,16 @@ function selfTest() {
     t31.status === 1 && t31SetX && t31ClearX && t31Both && t31Tally,
     "T31 (#1510 rework): on a file git declines to render as text, a metadata-only change removes nothing and stays GREEN in BOTH directions of the mode flip with no token — and the short-circuit that establishes this does NOT swallow real removals, because the same commit flips the mode on a third file that also loses three assertions and that file is still counted and refused. Exactly 2 passed / 1 failed",
     `check exited ${t31.status} (expected 1); mode set=${t31SetX}; mode cleared=${t31ClearX}; mode+removals still counted=${t31Both}; tally 2/1=${t31Tally}`,
+  );
+
+  const t32 = scenarioT32();
+  const t32Quiet = /✅[^\n]*MODIFIED[^\n]*z\[A-Z\]\.test\.ts[^\n]*additions only, 0 deleted lines/.test(t32.out);
+  const t32Sibling = /❌[^\n]*MODIFIED[^\n]*zA\.test\.ts[^\n]*3 deleted lines/.test(t32.out);
+  const t32Tally = /Append-only check: 1 passed, 1 failed\./.test(t32.out);
+  check(
+    t32.status === 1 && t32Quiet && t32Sibling && t32Tally,
+    "T32 (#1510 rework, tester adversarial — the interaction): scoping and the metadata short-circuit meet inside one measurement, because the short-circuit asks git a SECOND question about the same path and inherits that path's scoping. A file that is both pattern-named and one git declines to render as text, changed so that nothing is removed, beside a file the pattern would select that DOES lose assertions — each answers for itself: the metadata-only file stays green, the sibling is refused with its OWN count, tally exactly 1 passed / 1 failed",
+    `check exited ${t32.status} (expected 1); metadata-only file green=${t32Quiet}; sibling refused with its own count=${t32Sibling}; tally 1/1=${t32Tally}`,
   );
 
   console.log("");
