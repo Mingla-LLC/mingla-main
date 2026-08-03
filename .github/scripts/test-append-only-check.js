@@ -116,18 +116,44 @@ function isTestPath(path) {
   return TEST_FILE_PATTERNS.some((re) => re.test(path));
 }
 
-function runGit(args, opts = {}) {
+// #1510: there is deliberately NO shell-string git runner in this file any more. The
+// previous `runGit` assembled `git <args>` for a shell, and every one of its callers
+// has been converted to `runGitArgs`. It is removed rather than left unused, because an
+// available shell-string helper is how the next call site quietly reacquires both of
+// the properties this gate must not have: a path that can be interpreted, and a
+// pathspec that can glob-match a file other than the one being measured.
+
+// #1510 — the argv boundary, in BOTH of the two layers that read a path as something
+// other than a name.
+//
+// (1) `runGit` builds a SHELL command string, so any caller that embeds a repository
+//     path in it hands the shell that path's characters to interpret. `runGitArgs`
+//     passes each argument as a separate argv element via execFileSync, so the shell
+//     is not in the path at all.
+//
+// (2) argv alone is NOT enough. Everything after `--` is a PATHSPEC, and git
+//     glob-matches a pathspec by default — so a path is still a pattern, and a
+//     command scoped to one file can silently report on a different one. Every
+//     invocation therefore runs under `--literal-pathspecs`, which is a git-level
+//     option and must precede the subcommand. It is applied HERE, once, rather than at
+//     each call site, so a future call site cannot forget it: partial coverage of a
+//     boundary is the same as no coverage.
+//
+// Together these make a path DATA in every sense — it cannot change which command
+// runs, and it cannot change which paths that command reports on. Same
+// throw-on-failure shape as `runGit`, which is unchanged and keeps its other callers.
+function runGitArgs(args) {
+  const argv = ["--literal-pathspecs", ...args];
   try {
-    return execSync(`git ${args}`, {
+    return execFileSync("git", argv, {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
-      ...opts,
     });
   } catch (err) {
     const stderr = err.stderr ? err.stderr.toString() : "";
     const stdout = err.stdout ? err.stdout.toString() : "";
     throw new Error(
-      `git ${args} failed (exit ${err.status}):\n  stderr: ${stderr.trim()}\n  stdout: ${stdout.trim()}`,
+      `git ${argv.join(" ")} failed (exit ${err.status}):\n  stderr: ${stderr.trim()}\n  stdout: ${stdout.trim()}`,
     );
   }
 }
@@ -136,7 +162,7 @@ function resolveBaseRef() {
   if (process.env.GITHUB_BASE_REF) {
     const candidate = `origin/${process.env.GITHUB_BASE_REF}`;
     try {
-      runGit(`rev-parse --verify ${candidate}`);
+      runGitArgs(["rev-parse", "--verify", candidate]);
       return candidate;
     } catch {
       // fall through
@@ -144,7 +170,7 @@ function resolveBaseRef() {
   }
   if (process.env.GITHUB_EVENT_NAME === "push") {
     try {
-      runGit("rev-parse --verify HEAD~1");
+      runGitArgs(["rev-parse", "--verify", "HEAD~1"]);
       return "HEAD~1";
     } catch {
       // single-commit branch (HEAD~1 doesn't exist) — nothing to check
@@ -153,7 +179,7 @@ function resolveBaseRef() {
   }
   for (const candidate of ["origin/main", "main", "HEAD~1"]) {
     try {
-      runGit(`rev-parse --verify ${candidate}`);
+      runGitArgs(["rev-parse", "--verify", candidate]);
       return candidate;
     } catch {
       // try next
@@ -166,9 +192,13 @@ function resolveBaseRef() {
 
 function listChangedTestFiles(baseRef) {
   // git diff --name-status detects renames as R<score> oldPath\tnewPath
-  const raw = runGit(
-    `diff --name-status --find-renames ${baseRef}...HEAD --`,
-  );
+  const raw = runGitArgs([
+    "diff",
+    "--name-status",
+    "--find-renames",
+    `${baseRef}...HEAD`,
+    "--",
+  ]);
   const lines = raw.split("\n").filter(Boolean);
   const entries = [];
   for (const line of lines) {
@@ -189,16 +219,101 @@ function listChangedTestFiles(baseRef) {
   return entries;
 }
 
+// #1510 — the outcome of a FAILED measurement, distinct from a measured zero. Kept a
+// Symbol so it can never be confused with a count, coerced to one, or compared equal
+// to one by accident.
+const UNDIFFABLE = Symbol("undiffable");
+
+// #1510 — the deleted-line count is MEASURED, never inferred from an empty parse.
+//
+// Stage 1 (primary): `git diff --numstat` reports the deleted-line count for a path as
+// a NUMBER in its second column. It is a statistic git computes about the change, not
+// a rendering of it, so it is unaffected by how (or whether) the change is rendered as
+// text, and it never requires interpreting a diff line's leading characters — so no
+// deleted line whose own content begins with a dash can be mistaken for a file header.
+//
+// Stage 2 (recovery, and ONLY when stage 1 reports the count as `-`): re-read the diff
+// with `--text`, which renders a real line diff for a blob git would otherwise decline
+// to render, and count deletions INSIDE HUNKS ONLY — the `sawHunk` latch means the
+// leading file headers are excluded structurally rather than by prefix-matching, so
+// header text can never be counted as content and content can never be skipped as a
+// header.
+//
+// Stage 3 (did anything actually change?): a change can be reported for a path whose
+// CONTENT is byte-for-byte identical — only the file mode moved. Such a change removes
+// nothing, so refusing it would be a false refusal on ordinary work, and this refusal
+// is unoverridable by design, so a false one has no way out at all. Before refusing,
+// compare the pre-image and post-image blob object ids: identical ids mean the bytes
+// did not change, and the honest count is zero.
+//
+// Stage 4 (fail closed): otherwise the content DID change and the recovery still
+// produced nothing to count, so the measurement did not succeed. Return UNDIFFABLE, not
+// a number. A count that was never taken is not a count of zero.
+//
+// Every invocation passes the path as an argv element AND under literal pathspec
+// matching (see `runGitArgs`), so the measurement is scoped to this path and no other.
 function countDeletedLines(baseRef, path) {
-  const diff = runGit(
-    `diff --unified=0 ${baseRef}...HEAD -- "${path}"`,
-  );
+  const numstat = runGitArgs([
+    "diff",
+    "--numstat",
+    `${baseRef}...HEAD`,
+    "--",
+    path,
+  ]);
+  // Exactly one record is possible here: the pathspec is literal, so it names this one
+  // path and cannot glob-match a sibling whose record would sort ahead of it.
+  const record = numstat.split("\n").find((line) => line.trim() !== "");
+  // No record at all: git reports no change for this path. Genuinely zero.
+  if (!record) return 0;
+  // Columns 1 and 2 ONLY. The path column is deliberately NOT parsed — how git spells
+  // a path in its own output is a separate concern (issue #1511), and not depending on
+  // it keeps this measurement orthogonal to it.
+  const deletedField = record.split("\t")[1];
+  if (/^\d+$/.test(deletedField ?? "")) return Number(deletedField);
+
+  const rendered = runGitArgs([
+    "diff",
+    "--unified=0",
+    "--text",
+    `${baseRef}...HEAD`,
+    "--",
+    path,
+  ]);
   let deleted = 0;
-  for (const line of diff.split("\n")) {
-    if (line.startsWith("---")) continue; // file header
+  let sawHunk = false;
+  for (const line of rendered.split("\n")) {
+    if (line.startsWith("@@")) {
+      sawHunk = true;
+      continue;
+    }
+    if (!sawHunk) continue; // still in the per-file header block
     if (line.startsWith("-")) deleted += 1;
   }
-  return deleted;
+  if (sawHunk) return deleted;
+
+  // Nothing countable was rendered. Before refusing, ask git whether the CONTENT
+  // changed at all: `--raw` reports the pre-image and post-image blob object ids, and
+  // identical ids mean the bytes are the same and only the file mode moved. That
+  // removes nothing, so the honest answer is zero — refusing it would red-light
+  // ordinary maintenance with no override available.
+  const raw = runGitArgs([
+    "diff",
+    "--raw",
+    "--no-abbrev",
+    `${baseRef}...HEAD`,
+    "--",
+    path,
+  ]);
+  const rawRecord = raw.split("\n").find((line) => line.startsWith(":"));
+  if (rawRecord) {
+    // ":<srcmode> <dstmode> <srcoid> <dstoid> <status>\t<path>" — object ids only. The
+    // path column is again deliberately not parsed (that is issue #1511's layer).
+    const fields = rawRecord.slice(1).split("\t")[0].trim().split(/\s+/);
+    const [, , srcOid, dstOid] = fields;
+    const isAbsent = (oid) => !oid || /^0+$/.test(oid);
+    if (!isAbsent(srcOid) && !isAbsent(dstOid) && srcOid === dstOid) return 0;
+  }
+  return UNDIFFABLE;
 }
 
 // --- Per-file token attribution (#1058 — fixes F-1 false-red + F-2 false-green) ---
@@ -222,9 +337,16 @@ function countDeletedLines(baseRef, path) {
 // residual would require the token to name the exact file/line (a grammar change) —
 // explicitly OUT of scope to avoid over-engineering. This fix must never do worse
 // than "token attributed to a commit that touched the file."
+// #1510: the paths are argv elements, not text spliced into a shell command. Behaviour
+// is otherwise identical — same range, same pathspec, same regex.
 function fileHasToken(baseRef, paths, tokenRegex) {
-  const pathArgs = paths.map((p) => `"${p}"`).join(" ");
-  const bodies = runGit(`log ${baseRef}..HEAD --pretty=%B -- ${pathArgs}`);
+  const bodies = runGitArgs([
+    "log",
+    `${baseRef}..HEAD`,
+    "--pretty=%B",
+    "--",
+    ...paths,
+  ]);
   return tokenRegex.test(bodies);
 }
 
@@ -296,6 +418,13 @@ function main() {
       } catch (err) {
         console.error(
           `❌ MODIFIED  ${entry.path} — could not compute diff: ${err.message}`,
+        );
+        failures += 1;
+        continue;
+      }
+      if (deleted === UNDIFFABLE) {
+        console.log(
+          `❌ UNDIFFABLE ${entry.path} — git reports this test file as CHANGED but produced no line diff for it, so the number of deleted lines could not be measured. A count that was never taken is not a count of zero, so this is refused and no override token bypasses it. Restore the file to ordinary reviewable text content, or remove the attribute or diff-driver configuration that is suppressing its diff, so the gate can count the change.`,
         );
         failures += 1;
         continue;
@@ -1080,6 +1209,503 @@ function scenarioT17() {
   }
 }
 
+// --- #1510 (the deleted-line count is MEASURED, not inferred) — T19..T27 --------
+// T1..T18 all exercise arms that already existed and all assume the count itself was
+// right. These nine attack the count: the several ways a rendered diff could come back
+// with nothing to parse, the case where a path was interpreted rather than passed, the
+// ordinary work that must stay green throughout, and the terminal case where the
+// measurement genuinely does not succeed and the only honest answer is to refuse.
+
+const FOUR_ASSERTIONS =
+  "expect(a).toBe(1);\nexpect(b).toBe(2);\nexpect(c).toBe(3);\nexpect(d).toBe(4);\n";
+const ONE_ASSERTION = "expect(a).toBe(1);\n";
+
+// The shape of the THREE REAL test files in this repository that git declines to
+// render as text: ordinary TypeScript sources that carry a control byte as TEST DATA,
+// early in the file. They are why the gate measures instead of refusing (T22).
+// The control byte is written as an ESCAPE in this source on purpose: the gate
+// script must itself stay ordinary reviewable text.
+const CONTROL_BYTE_DATA_LINE =
+  'const cases = [["control byte", "a\u0000b", true]];\n';
+
+// T19 (#1510, the reported repro) — a repository configuration committed alongside the
+// change suppresses git's rendered line diff for a test path while that file's
+// assertions are removed. The count must still be measured and the entry refused, with
+// NO token. Fails-on-revert: the inferred count reads zero and the entry prints as an
+// additions-only pass, exit 0.
+function scenarioT19() {
+  const { dir, g, write } = makeTempRepo();
+  try {
+    write("a.test.ts", FOUR_ASSERTIONS);
+    g("add", "-A");
+    g("commit", "-q", "-m", "base");
+    g("branch", "-M", "main");
+    g("checkout", "-q", "-b", "feature");
+
+    write(".gitattributes", "*.test.ts binary\n");
+    write("a.test.ts", ONE_ASSERTION);
+    g("add", "-A");
+    g("commit", "-q", "-m", "suppress the rendered diff and remove three assertions — NO token");
+    return runCheckIn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// T20 (#1510) — the SAME suppression reached three different ways in one run, because
+// "review the configuration line in the PR" is not a defence for any of them: a second
+// spelling of the attribute at the repository root, the attribute in a SUBDIRECTORY
+// (attributes are per-directory; nothing requires the root file), and the attribute
+// ALREADY PRESENT ON THE BASE BRANCH with this change never touching it — that last one
+// puts nothing suspicious in the PR diff at all. All three must be measured and refused,
+// zero passes. Fails-on-revert: all three flip to an additions-only pass, exit 0.
+function scenarioT20() {
+  const { dir, g, write } = makeTempRepo();
+  try {
+    fs.mkdirSync(nodePath.join(dir, "base"));
+    fs.mkdirSync(nodePath.join(dir, "sub"));
+    // Configured on the BASE branch. The feature branch below never touches this file.
+    write("base/.gitattributes", "onbase.test.ts binary\n");
+    write("base/onbase.test.ts", FOUR_ASSERTIONS);
+    write("sub/nested.test.ts", FOUR_ASSERTIONS);
+    write("atroot.test.ts", FOUR_ASSERTIONS);
+    g("add", "-A");
+    g("commit", "-q", "-m", "base");
+    g("branch", "-M", "main");
+    g("checkout", "-q", "-b", "feature");
+
+    write(".gitattributes", "atroot.test.ts -diff\n");
+    write("sub/.gitattributes", "nested.test.ts binary\n");
+    write("atroot.test.ts", ONE_ASSERTION);
+    write("sub/nested.test.ts", ONE_ASSERTION);
+    write("base/onbase.test.ts", ONE_ASSERTION);
+    g("add", "-A");
+    g("commit", "-q", "-m", "remove assertions from three test files — NO token");
+    return runCheckIn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// T21 (#1510, the ZERO-CONFIGURATION route) — no repository configuration is involved
+// anywhere. The file's own bytes are enough to make git decline to render a line diff
+// for it, so there is nothing for a reviewer to notice and nothing for a policy about
+// configuration files to catch. The count must still be measured and the entry refused.
+// Fails-on-revert: flips to an additions-only pass, exit 0.
+function scenarioT21() {
+  const { dir, g, write } = makeTempRepo();
+  try {
+    write("a.test.ts", CONTROL_BYTE_DATA_LINE + FOUR_ASSERTIONS);
+    g("add", "-A");
+    g("commit", "-q", "-m", "base");
+    g("branch", "-M", "main");
+    g("checkout", "-q", "-b", "feature");
+
+    write("a.test.ts", CONTROL_BYTE_DATA_LINE + ONE_ASSERTION);
+    g("add", "-A");
+    g("commit", "-q", "-m", "remove three assertions — NO token, NO configuration");
+    return runCheckIn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// T22 (#1510) — THE NEGATIVE CONTROL, and the case that decides the SHAPE of this fix.
+// Three real test files in this repository are sources git declines to render as text,
+// because they carry a control byte as test data. They are ordinary TypeScript and they
+// get maintained. So the gate may NOT answer "cannot render" with "refuse": that would
+// red-light every future edit to those files — including additions-only ones — with no
+// override, and a gate that fails ordinary work gets switched off, which is strictly
+// worse than the hole it closes. Measuring keeps them working: an additions-only edit
+// passes with NO token, and a removal still passes on a valid override token, exactly as
+// for any other test file. GREEN in BOTH directions, before and after, BY DESIGN — this
+// is the scenario that forbids the simpler "refuse what cannot be rendered" fix.
+function scenarioT22() {
+  const growDir = makeTempRepo();
+  const tokenDir = makeTempRepo();
+  try {
+    // --- repo 1: additions-only maintenance, NO token → must stay green ---
+    {
+      const { g, write } = growDir;
+      write("a.test.ts", CONTROL_BYTE_DATA_LINE + FOUR_ASSERTIONS);
+      g("add", "-A");
+      g("commit", "-q", "-m", "base");
+      g("branch", "-M", "main");
+      g("checkout", "-q", "-b", "feature");
+      write("a.test.ts", `${CONTROL_BYTE_DATA_LINE}${FOUR_ASSERTIONS}expect(e).toBe(5);\n`);
+      g("add", "-A");
+      g("commit", "-q", "-m", "append one assertion — NO token");
+    }
+    // --- repo 2: a sanctioned removal → the override token must still work ---
+    {
+      const { g, write } = tokenDir;
+      write("a.test.ts", CONTROL_BYTE_DATA_LINE + FOUR_ASSERTIONS);
+      g("add", "-A");
+      g("commit", "-q", "-m", "base");
+      g("branch", "-M", "main");
+      g("checkout", "-q", "-b", "feature");
+      write("a.test.ts", CONTROL_BYTE_DATA_LINE + ONE_ASSERTION);
+      g("add", "-A");
+      g("commit", "-q", "-m", "sanctioned assertion fix", "-m", APPROVED_ISSUE_FORM);
+    }
+    const grow = runCheckIn(growDir.dir);
+    const token = runCheckIn(tokenDir.dir);
+    return { grow, token };
+  } finally {
+    fs.rmSync(growDir.dir, { recursive: true, force: true });
+    fs.rmSync(tokenDir.dir, { recursive: true, force: true });
+  }
+}
+
+// T23 (#1510) — removed lines whose OWN CONTENT begins with a dash. A rendered diff
+// marks a removal with a leading `-`, so such a line arrives looking like the file
+// header that a prefix-based parser skips, and the removal is silently swallowed. This
+// needs no configuration and no unusual bytes — a comment syntax, a command-line flag
+// in a fixture or a decrement is enough. All three removals must be counted.
+// Fails-on-revert: reinstating the prefix-based header skip reads zero, exit 0.
+function scenarioT23() {
+  const { dir, g, write } = makeTempRepo();
+  try {
+    write(
+      "a.test.ts",
+      "expect(a).toBe(1);\n-- seed the fixture table\n--force-flag\n--counter;\n",
+    );
+    g("add", "-A");
+    g("commit", "-q", "-m", "base");
+    g("branch", "-M", "main");
+    g("checkout", "-q", "-b", "feature");
+
+    write("a.test.ts", ONE_ASSERTION);
+    g("add", "-A");
+    g("commit", "-q", "-m", "remove three dash-leading lines — NO token");
+    return runCheckIn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// T24 (#1510, THE ARGV BOUNDARY) — a path must be DATA, never program text. When a path
+// is spliced into a command string, the characters in it get interpreted before git
+// ever sees them: that both runs whatever they describe on the CI runner and rewrites
+// which paths the command was scoped to, so the diff comes back empty and the entry
+// reads as an additions-only pass. Two spellings, one per repository. The assertion is
+// on the ABSENCE OF A SIDE EFFECT (a marker file), not on output — output can be made to
+// look right while something else already happened. Both entries must also be measured
+// and refused with the correct count. This is the argv boundary only; how git SPELLS a
+// path in its own output is a separate concern (issue #1511) and is untouched here.
+// Fails-on-revert: the marker appears AND the entry prints as an additions-only pass.
+function scenarioT24() {
+  const substDir = makeTempRepo();
+  const backtickDir = makeTempRepo();
+  const substName = "a$(touch marker-a).test.ts";
+  const backtickName = "b`touch marker-b`.test.ts";
+  try {
+    for (const [repo, name] of [
+      [substDir, substName],
+      [backtickDir, backtickName],
+    ]) {
+      const { dir, g } = repo;
+      fs.writeFileSync(nodePath.join(dir, name), FOUR_ASSERTIONS);
+      g("add", "-A");
+      g("commit", "-q", "-m", "base");
+      g("branch", "-M", "main");
+      g("checkout", "-q", "-b", "feature");
+      fs.writeFileSync(nodePath.join(dir, name), ONE_ASSERTION);
+      g("add", "-A");
+      g("commit", "-q", "-m", "remove three assertions — NO token");
+    }
+    const subst = runCheckIn(substDir.dir);
+    const backtick = runCheckIn(backtickDir.dir);
+    // The marker would land in the child's working directory, which is the repo root.
+    const markerA = fs.existsSync(nodePath.join(substDir.dir, "marker-a"));
+    const markerB = fs.existsSync(nodePath.join(backtickDir.dir, "marker-b"));
+    return { subst, backtick, markerA, markerB, substName, backtickName };
+  } finally {
+    fs.rmSync(substDir.dir, { recursive: true, force: true });
+    fs.rmSync(backtickDir.dir, { recursive: true, force: true });
+  }
+}
+
+// T25 (#1510, CONTAINMENT) — every #1510 scenario above runs its refusal alone in its
+// own repository, so none of them can tell whether a refusal behaves like a per-entry
+// result or like a whole-run abort. It must not swallow its innocent siblings (the
+// operator needs the whole report in one CI run) and it must not be neutralised by them
+// either. One commit carries all three shapes at once — a suppressed-diff removal, an
+// additions-only edit and a brand-new test file — with NO token anywhere, and the exact
+// tally is pinned. Fails-on-revert: the tally becomes 3 passed / 0 failed, exit 0.
+function scenarioT25() {
+  const { dir, g, write } = makeTempRepo();
+  try {
+    write("a.test.ts", FOUR_ASSERTIONS);
+    write("grow.test.ts", ONE_ASSERTION);
+    g("add", "-A");
+    g("commit", "-q", "-m", "base");
+    g("branch", "-M", "main");
+    g("checkout", "-q", "-b", "feature");
+
+    write(".gitattributes", "a.test.ts binary\n");
+    write("a.test.ts", ONE_ASSERTION);
+    write("grow.test.ts", "expect(a).toBe(1);\nexpect(b).toBe(2);\n");
+    write("fresh.test.ts", "expect(f).toBe(1);\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "a suppressed-diff removal next to ordinary work — NO token");
+    return runCheckIn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// T27 (#1510, THE DURABLE HALF) — checked after T26 because T26 reads its output.
+// The defect class is not any particular route; it is answering "I could not measure
+// this" with "therefore zero". Routes come and go with git versions, flags and file
+// contents, so the terminal behaviour is what has to be pinned: when git reports a test
+// path as CHANGED and then yields no countable line diff for it, the gate REFUSES. A
+// `git` shim on the child's PATH produces exactly that state and defers to the real
+// binary for everything else, so base-ref resolution and status detection still work.
+// The tip carries BOTH valid override tokens, because an unmeasured count cannot be
+// attested by anyone — there is nothing to attest to.
+// Fails-on-revert: a terminal that returns zero prints an additions-only pass, exit 0.
+function scenarioT27() {
+  const repo = makeTempRepo();
+  const shimDir = fs.mkdtempSync(
+    nodePath.join(os.tmpdir(), "append-only-selftest-gitshim3-"),
+  );
+  try {
+    const { dir, g, write } = repo;
+    // An ORDINARY additions-only repo: the unmeasurable state comes from the shim.
+    write("a.test.ts", "expect(a).toBe(1);\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "base");
+    g("branch", "-M", "main");
+    g("checkout", "-q", "-b", "feature");
+    write("a.test.ts", "expect(a).toBe(1);\nexpect(b).toBe(2);\n");
+    g("add", "-A");
+    g(
+      "commit",
+      "-q",
+      "-m",
+      "additions only",
+      "-m",
+      "[TEST-MOD-APPROVED #1510] [TEST-RENAME-APPROVED #1510] #1510 [append-only deletion count]",
+    );
+
+    const realGit = execSync("command -v git", { encoding: "utf8" }).trim();
+    const shim = [
+      "#!/bin/sh",
+      "stats=0",
+      "rendered=0",
+      'for arg in "$@"; do',
+      '  case "$arg" in',
+      "    --numstat) stats=1 ;;",
+      "    --text) rendered=1 ;;",
+      "  esac",
+      "done",
+      // Report the path as changed but decline to state a count for it.
+      'if [ "$stats" = 1 ]; then',
+      "  printf '%b\\n' '-\\t-\\ta.test.ts'",
+      "  exit 0",
+      "fi",
+      // Answer the recovery read with headers and no hunk at all: nothing to count.
+      'if [ "$rendered" = 1 ]; then',
+      "  printf '%b' 'diff --git a/a.test.ts b/a.test.ts\\nindex aaaaaaa..bbbbbbb 100644\\n--- a/a.test.ts\\n+++ b/a.test.ts\\n'",
+      "  exit 0",
+      "fi",
+      `exec ${JSON.stringify(realGit)} "$@"`,
+      "",
+    ].join("\n");
+    const shimPath = nodePath.join(shimDir, "git");
+    fs.writeFileSync(shimPath, shim);
+    fs.chmodSync(shimPath, 0o755);
+
+    return runCheckIn(dir, {
+      PATH: `${shimDir}${nodePath.delimiter}${process.env.PATH || ""}`,
+    });
+  } finally {
+    fs.rmSync(repo.dir, { recursive: true, force: true });
+    fs.rmSync(shimDir, { recursive: true, force: true });
+  }
+}
+
+// T28 (#1510, TESTER ADVERSARIAL — the other side of T22) — T22 proves an unrenderable
+// test file survives an additions-only edit and a token-authorised removal. Those are not
+// the only ordinary things that happen to a test file: its METADATA can change while its
+// CONTENT does not. T12 and T16 already pin that shape as ordinary work and hold it green,
+// but only for files git renders as text — no case holds it for the three real unrenderable
+// sources this repository actually maintains. A change that removes NOTHING must never be
+// refused, and the refusal branch is unoverridable by design, so a false refusal here has no
+// way out at all: not a token, not a re-run, nothing short of editing the file's test data.
+// That is precisely the outcome T22 exists to forbid, reached from a direction T22 does not
+// look.
+function scenarioT28() {
+  const { dir, g, write } = makeTempRepo();
+  try {
+    write("a.test.ts", CONTROL_BYTE_DATA_LINE + FOUR_ASSERTIONS);
+    g("add", "-A");
+    g("commit", "-q", "-m", "base");
+    g("branch", "-M", "main");
+    g("checkout", "-q", "-b", "feature");
+
+    // Metadata only: byte-identical content, executable bit set. Forced through the
+    // index so the scenario is deterministic regardless of core.fileMode.
+    fs.chmodSync(nodePath.join(dir, "a.test.ts"), 0o755);
+    g("add", "-A");
+    g("update-index", "--chmod=+x", "a.test.ts");
+    g("commit", "-q", "-m", "set the executable bit, content untouched — NO token");
+    return runCheckIn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// --- #1510 REWORK (T29..T31) --------------------------------------------------
+// Independent verification of the first pass returned FAIL on two counts, both in how
+// the path reached git rather than in how the count was taken. T29/T30 pin the first:
+// the argument after `--` is matched as a PATTERN unless told otherwise, so a
+// measurement scoped to one file could report on a different one. T31 pins the second:
+// a change that alters only a file's metadata removes nothing and must never be
+// refused, while the same change carrying real removals still must be.
+
+// A test path containing characters that are significant to pattern matching, and a
+// sibling that such a pattern also selects. The sibling sorts FIRST bytewise ("A" is
+// 0x41, "[" is 0x5B), which is what makes the confusion observable: git emits its
+// records in path order, so the sibling's record arrives ahead of the real file's.
+const PATTERNISH_PATH = "z[A-Z].test.ts";
+const SIBLING_PATH = "zA.test.ts";
+
+// T29 (#1510 rework) — THE MEASUREMENT IS SCOPED TO ONE FILE. The path handed to git
+// after `--` selects files by PATTERN by default, so a test file whose name contains
+// pattern-significant characters can be measured against a DIFFERENT file's change.
+// Here the sibling is a brand-new file that removes nothing, and its record sorts ahead
+// of the real file's, so the real file's removals read as none at all. Seventeen paths
+// in this repository carry such characters today, and a purpose-made name reaches the
+// same place without needing any of them. The count reported must belong to the file
+// named. Fails-on-revert: dropping literal matching reads the sibling's count instead
+// and the entry prints as an additions-only pass, exit 0.
+function scenarioT29() {
+  const { dir, g, write } = makeTempRepo();
+  try {
+    write(PATTERNISH_PATH, FOUR_ASSERTIONS);
+    g("add", "-A");
+    g("commit", "-q", "-m", "base");
+    g("branch", "-M", "main");
+    g("checkout", "-q", "-b", "feature");
+
+    write(PATTERNISH_PATH, ONE_ASSERTION);
+    write(SIBLING_PATH, "expect(s).toBe(1);\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "remove three assertions beside a new sibling test file — NO token");
+    return runCheckIn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// T30 (#1510 rework) — THE ATTESTATION IS SCOPED TO ONE FILE TOO. The same pattern
+// matching applies when the gate asks which commits touched a file in order to find an
+// override token, so a token legitimately covering one file could be read as covering a
+// second one whose name happens to be selected by the first one's pattern. That is the
+// cross-file laundering the whole per-file attribution design (#1058 F-2) exists to
+// prevent, reached through the argument rather than through the attribution logic. The
+// sibling's own sanctioned edit must still pass on its own token; the untokened file
+// beside it must still be refused.
+function scenarioT30() {
+  const { dir, g, write } = makeTempRepo();
+  try {
+    write(PATTERNISH_PATH, FOUR_ASSERTIONS);
+    write(SIBLING_PATH, "expect(s).toBe(1);\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "base");
+    g("branch", "-M", "main");
+    g("checkout", "-q", "-b", "feature");
+
+    // commit1: a genuinely sanctioned removal in the sibling, carrying a valid token.
+    write(SIBLING_PATH, "expect(s).toBe(2);\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "sanctioned assertion fix", "-m", APPROVED_ISSUE_FORM);
+
+    // commit2: an UNSANCTIONED removal in the other file, no token anywhere.
+    write(PATTERNISH_PATH, ONE_ASSERTION);
+    g("add", "-A");
+    g("commit", "-q", "-m", "remove three assertions — NO token");
+    return runCheckIn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// T31 (#1510 rework) — METADATA-ONLY CHANGES REMOVE NOTHING, IN BOTH DIRECTIONS, AND
+// THE SHORT-CIRCUIT THAT SAYS SO MUST NOT SWALLOW REAL REMOVALS. T28 covers one
+// direction of the mode flip on a file git declines to render as text. This covers the
+// other direction and — the part that matters — the case where a mode flip arrives
+// TOGETHER WITH real assertion removals in the same file. A short-circuit that answered
+// "metadata only, therefore zero" on content that did change would be a far worse
+// false green than the refusal it was added to prevent, so all three shapes run in one
+// commit and the tally is pinned exactly.
+// Fails-on-revert: the combined case reads zero and the tally becomes 3 passed / 0
+// failed, exit 0.
+function scenarioT31() {
+  const { dir, g, write } = makeTempRepo();
+  try {
+    write("setx.test.ts", CONTROL_BYTE_DATA_LINE + FOUR_ASSERTIONS);
+    write("clearx.test.ts", CONTROL_BYTE_DATA_LINE + FOUR_ASSERTIONS);
+    write("both.test.ts", CONTROL_BYTE_DATA_LINE + FOUR_ASSERTIONS);
+    g("add", "-A");
+    g("commit", "-q", "-m", "base");
+    // clearx starts executable so the feature branch can clear the bit.
+    g("update-index", "--chmod=+x", "clearx.test.ts");
+    g("commit", "-q", "-m", "base carries the executable bit");
+    g("branch", "-M", "main");
+    g("checkout", "-q", "-b", "feature");
+
+    // Metadata AND content: three assertions genuinely removed, so this must be counted.
+    write("both.test.ts", CONTROL_BYTE_DATA_LINE + ONE_ASSERTION);
+    g("add", "-A");
+    // Mode flips are forced through the index AFTER staging, so they are deterministic
+    // regardless of core.fileMode and are not undone by the staging step above.
+    // Metadata only, in both directions — content byte-identical, so nothing is removed.
+    g("update-index", "--chmod=+x", "setx.test.ts");
+    g("update-index", "--chmod=-x", "clearx.test.ts");
+    g("update-index", "--chmod=+x", "both.test.ts");
+    g("commit", "-q", "-m", "mode flips both ways, and one file also loses assertions — NO token");
+    return runCheckIn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// T32 (#1510 rework, TESTER ADVERSARIAL — the INTERACTION) — T29/T30 pin scoping and
+// T28/T31 pin the metadata short-circuit, but each in isolation, on files the other one
+// never sees. They meet inside the same measurement: the short-circuit asks git a second
+// question about the same path, so it inherits whatever scoping that path is subject to.
+// A file that is BOTH pattern-named AND one git declines to render as text, changed in a
+// way that removes nothing, sitting beside a file the pattern would select that DOES lose
+// assertions, is the one shape where a slip in either fix is observable and a slip in
+// scoping is observable in the SECOND question rather than the first. Each must answer
+// for itself: the metadata-only file green, the sibling refused with its OWN count.
+// Fails-on-revert: dropping literal matching reads the sibling's count onto the untouched
+// file, dropping the short-circuit refuses it outright — either way the tally moves.
+function scenarioT32() {
+  const { dir, g, write } = makeTempRepo();
+  try {
+    write(PATTERNISH_PATH, CONTROL_BYTE_DATA_LINE + FOUR_ASSERTIONS);
+    write(SIBLING_PATH, FOUR_ASSERTIONS);
+    g("add", "-A");
+    g("commit", "-q", "-m", "base");
+    g("branch", "-M", "main");
+    g("checkout", "-q", "-b", "feature");
+
+    // The pattern-named, unrenderable file changes its METADATA ONLY — nothing removed.
+    // The sibling the pattern would select loses three assertions, with NO token.
+    write(SIBLING_PATH, ONE_ASSERTION);
+    g("add", "-A");
+    g("update-index", "--chmod=+x", PATTERNISH_PATH);
+    g("commit", "-q", "-m", "metadata-only beside a sibling that loses assertions — NO token");
+    return runCheckIn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 function selfTest() {
   let failures = 0;
   let total = 0;
@@ -1364,6 +1990,189 @@ function selfTest() {
     t18Exercised && t18TypechangeWayOut && t18UnrecognisedWayOut && !t18ModLeak && !t18RenameLeak,
     "T18 (#1505 tester adversarial, SC-6 + remediation): across the gitlink refusal, all four unmodelled statuses and a mixed run, both new messages still hand the operator a concrete way forward AND still leak no live override token — a red gate nobody can act on is a gate somebody disables",
     `branches exercised=${t18Exercised}; TYPECHANGE remediation=${t18TypechangeWayOut}; UNRECOGNISED remediation=${t18UnrecognisedWayOut}; MOD leak=${t18ModLeak}; RENAME leak=${t18RenameLeak}${t18Offenders.length ? `; offending output: ${JSON.stringify(t18Offenders)}` : ""}`,
+  );
+
+  // --- #1510 git scenarios (the count is measured, not inferred) ---
+  // T1..T18 all assume the count itself was right. T19..T27 attack the count: the
+  // routes that made the parse come back empty (T19/T20/T21/T23), the path-as-program
+  // boundary (T24), the ordinary work that must stay green (T22), the blast radius of a
+  // refusal (T25), message hygiene over all of it (T26), and the fail-closed terminal
+  // when the measurement genuinely does not succeed (T27).
+  const t19 = scenarioT19();
+  const t19Refuses = /❌[^\n]*MODIFIED[^\n]*a\.test\.ts[^\n]*3 deleted lines/.test(t19.out);
+  const t19Tally = /Append-only check: 0 passed, 1 failed\./.test(t19.out);
+  check(
+    t19.status === 1 && t19Refuses && t19Tally,
+    "T19 (#1510, the reported repro): a repository configuration that suppresses the rendered diff no longer suppresses the COUNT — three removed assertions are measured and the entry is refused with NO token",
+    `check exited ${t19.status} (expected 1); 3 deleted lines measured=${t19Refuses}; tally 0/1=${t19Tally}`,
+  );
+
+  const t20 = scenarioT20();
+  const t20Root = /❌[^\n]*MODIFIED[^\n]*atroot\.test\.ts[^\n]*3 deleted lines/.test(t20.out);
+  const t20Sub = /❌[^\n]*MODIFIED[^\n]*sub\/nested\.test\.ts[^\n]*3 deleted lines/.test(t20.out);
+  const t20Base = /❌[^\n]*MODIFIED[^\n]*base\/onbase\.test\.ts[^\n]*3 deleted lines/.test(t20.out);
+  const t20Tally = /Append-only check: 0 passed, 3 failed\./.test(t20.out);
+  check(
+    t20.status === 1 && t20Root && t20Sub && t20Base && t20Tally,
+    "T20 (#1510): the same suppression reached three ways in one run — a second spelling at the repository root, the same setting in a SUBDIRECTORY, and the setting ALREADY ON THE BASE BRANCH with this change never touching it (nothing suspicious appears in the diff at all) — is measured and refused in all three, zero passes",
+    `check exited ${t20.status} (expected 1); root=${t20Root} subdirectory=${t20Sub} pre-existing-on-base=${t20Base}; tally 0/3=${t20Tally}`,
+  );
+
+  const t21 = scenarioT21();
+  const t21Refuses = /❌[^\n]*MODIFIED[^\n]*a\.test\.ts[^\n]*3 deleted lines/.test(t21.out);
+  const t21Tally = /Append-only check: 0 passed, 1 failed\./.test(t21.out);
+  check(
+    t21.status === 1 && t21Refuses && t21Tally,
+    "T21 (#1510, the zero-configuration route): a test file whose OWN BYTES make git decline to render a line diff is still counted — three removed assertions refused with no repository configuration involved anywhere, so there is nothing for a reviewer or a configuration policy to catch",
+    `check exited ${t21.status} (expected 1); 3 deleted lines measured=${t21Refuses}; tally 0/1=${t21Tally}`,
+  );
+
+  const t22 = scenarioT22();
+  const t22Grows = /✅[^\n]*MODIFIED[^\n]*a\.test\.ts[^\n]*additions only, 0 deleted lines/.test(t22.grow.out);
+  // The token half pins WHICH passing branch fired, not merely that the run exited 0.
+  // "Exit 0" cannot tell "the override token authorised a MEASURED removal" apart from
+  // "the count was silently read as zero and no token was ever consulted" — and that
+  // second reading is this issue's entire defect class, so the weak form would not
+  // substantively test anything. The Q3-decisive green-in-both-directions property
+  // rides on the additions-only half above, which is unaffected by this.
+  const t22Token = /✅[^\n]*MODIFIED[^\n]*a\.test\.ts[^\n]*3 deleted lines; override token/.test(t22.token.out);
+  check(
+    t22.grow.status === 0 && t22Grows && t22.token.status === 0 && t22Token,
+    "T22 (#1510, blast-radius negative control — THE SHIP DECIDER): the three real test files in this repository that git declines to render as text are ordinary maintained TypeScript, so the gate MEASURES rather than refuses — an additions-only edit to that shape stays GREEN with NO token, and a removal still passes on a valid override token. Green in BOTH directions by design; this is what forbids the simpler refuse-what-cannot-be-rendered fix, which would red-light live files with no override and get the gate switched off",
+    `additions-only run exited ${t22.grow.status} (expected 0), stayed green=${t22Grows}; token run exited ${t22.token.status} (expected 0), override honored=${t22Token}`,
+  );
+
+  const t23 = scenarioT23();
+  const t23Refuses = /❌[^\n]*MODIFIED[^\n]*a\.test\.ts[^\n]*3 deleted lines/.test(t23.out);
+  const t23Tally = /Append-only check: 0 passed, 1 failed\./.test(t23.out);
+  check(
+    t23.status === 1 && t23Refuses && t23Tally,
+    "T23 (#1510): removed lines whose OWN CONTENT begins with a dash are counted, not swallowed as file headers — a comment syntax, a command-line flag in a fixture or a decrement is enough, and no configuration or unusual bytes are needed to reach it",
+    `check exited ${t23.status} (expected 1); 3 deleted lines measured=${t23Refuses}; tally 0/1=${t23Tally}`,
+  );
+
+  const t24 = scenarioT24();
+  const t24SubstRefused =
+    t24.subst.out.includes("❌") &&
+    t24.subst.out.includes(t24.substName) &&
+    /3 deleted lines/.test(t24.subst.out);
+  const t24BacktickRefused =
+    t24.backtick.out.includes("❌") &&
+    t24.backtick.out.includes(t24.backtickName) &&
+    /3 deleted lines/.test(t24.backtick.out);
+  check(
+    t24.subst.status === 1 &&
+      t24.backtick.status === 1 &&
+      !t24.markerA &&
+      !t24.markerB &&
+      t24SubstRefused &&
+      t24BacktickRefused,
+    "T24 (#1510, the argv boundary): a path is DATA, never program text — two spellings of a test path built from characters a shell would interpret produce NO side effect on the runner and are each measured and refused with the correct count. Asserted on the ABSENCE OF A SIDE EFFECT, not on output, because output can be made to look right after something else has already happened",
+    `runs exited ${t24.subst.status}/${t24.backtick.status} (expected 1/1); side effect observed=${t24.markerA || t24.markerB} (expected false); refused with a measured count=${t24SubstRefused}/${t24BacktickRefused}`,
+  );
+
+  const t25 = scenarioT25();
+  const t25Refuses = /❌[^\n]*MODIFIED[^\n]*a\.test\.ts[^\n]*3 deleted lines/.test(t25.out);
+  const t25Grow = /✅[^\n]*MODIFIED[^\n]*grow\.test\.ts/.test(t25.out);
+  const t25Fresh = /✅[^\n]*ADDED[^\n]*fresh\.test\.ts/.test(t25.out);
+  const t25Tally = /Append-only check: 2 passed, 1 failed\./.test(t25.out);
+  check(
+    t25.status === 1 && t25Refuses && t25Grow && t25Fresh && t25Tally,
+    "T25 (#1510, containment): the refusal is PER ENTRY, not a whole-run abort — a suppressed-diff removal sitting beside an additions-only edit and a new test file reddens only itself, the siblings still report green, and the tally is exactly 2 passed / 1 failed",
+    `check exited ${t25.status} (expected 1); refused=${t25Refuses}; sibling MODIFIED=${t25Grow}; sibling ADDED=${t25Fresh}; tally 2/1=${t25Tally}`,
+  );
+
+  // T27's scenario is run here because T26 reads its output; its own check follows.
+  const t27 = scenarioT27();
+
+  // T26 (#1510) — SC-6 message hygiene EXTENDED over the new refusals. The standing
+  // invariant is that nothing the gate PRINTS may match an override token, so CI output
+  // pasted into a commit body can never self-authorize a removal. T5/T13/T18 cover the
+  // pre-existing branches; none of them reads these. The new message is additionally
+  // held to carrying NO DIGITS AT ALL — a placeholder respelt with real digits would be
+  // pasteable — while still naming a concrete way forward, because a red gate nobody can
+  // act on is a gate somebody disables.
+  const t26Out = `${t19.out}\n${t21.out}\n${t24.subst.out}\n${t24.backtick.out}\n${t27.out}`;
+  const t26Exercised =
+    /❌[^\n]*MODIFIED/.test(t19.out) &&
+    /❌[^\n]*MODIFIED/.test(t21.out) &&
+    t24.subst.out.includes("❌") &&
+    /❌ UNDIFFABLE/.test(t27.out);
+  const t26UndiffableLine = t27.out.split("\n").find((l) => l.includes("❌ UNDIFFABLE")) || "";
+  const t26WayOut =
+    /Restore the file to ordinary reviewable text content, or remove the attribute or diff-driver configuration that is suppressing its diff/.test(
+      t26UndiffableLine,
+    );
+  const t26NoDigits = t26UndiffableLine !== "" && !/\d/.test(t26UndiffableLine);
+  const t26ModLeak = MOD_TOKEN.test(t26Out);
+  const t26RenameLeak = RENAME_TOKEN.test(t26Out);
+  const t26Offenders = t26Out
+    .split("\n")
+    .filter((l) => MOD_TOKEN.test(l) || RENAME_TOKEN.test(l))
+    .map((l) => l.trim().slice(0, 120));
+  check(
+    t26Exercised && t26WayOut && t26NoDigits && !t26ModLeak && !t26RenameLeak,
+    "T26 (#1510, SC-6 extended): across every new refusal, nothing the gate PRINTS matches MOD_TOKEN or RENAME_TOKEN, and the unmeasurable-count message carries NO DIGITS AT ALL while still handing the operator a concrete way forward — so this gate's own output can never be pasted into a commit body to authorize the very removal it just refused",
+    `branches exercised=${t26Exercised}; remediation present=${t26WayOut}; digit-free=${t26NoDigits}; MOD leak=${t26ModLeak}; RENAME leak=${t26RenameLeak}${t26Offenders.length ? `; offending output: ${JSON.stringify(t26Offenders)}` : ""}`,
+  );
+
+  const t27Refuses = /❌ UNDIFFABLE a\.test\.ts/.test(t27.out);
+  const t27Tally = /Append-only check: 0 passed, 1 failed\./.test(t27.out);
+  check(
+    t27.status === 1 && t27Refuses && t27Tally,
+    "T27 (#1510, the durable half): when git reports a test path as CHANGED and then yields no countable line diff for it, the gate REFUSES instead of assuming zero — even with BOTH valid override tokens on the tip, because an unmeasured count cannot be attested by anyone. The defect class is answering 'I could not measure this' with 'therefore zero'; individual routes come and go, this terminal cannot",
+    `check exited ${t27.status} (expected 1); refused=${t27Refuses}; tally 0/1=${t27Tally}`,
+  );
+
+  const t28 = scenarioT28();
+  const t28Green = /✅[^\n]*MODIFIED[^\n]*a\.test\.ts/.test(t28.out);
+  const t28NoRefusal = !t28.out.includes("❌");
+  check(
+    t28.status === 0 && t28Green && t28NoRefusal,
+    "T28 (#1510, tester adversarial — the other side of T22): a change that alters a test file's METADATA and none of its CONTENT removes nothing, so it must stay GREEN even when the file is one git declines to render as text. T12/T16 pin this shape as ordinary work but only for renderable files, and the three real unrenderable sources this repository maintains are covered by no other case. The refusal branch is unoverridable by design, so a false refusal here has no way out at all — the outcome T22 exists to forbid, reached from a direction T22 does not look",
+    `check exited ${t28.status} (expected 0); stayed green=${t28Green}; no refusal printed=${t28NoRefusal}`,
+  );
+
+  // --- #1510 REWORK (T29..T31) ---
+  const t29 = scenarioT29();
+  const t29Refuses = t29.out.includes(`❌ MODIFIED  ${PATTERNISH_PATH} — 3 deleted lines`);
+  const t29Sibling = t29.out.includes(`✅ ADDED      ${SIBLING_PATH}`);
+  const t29Tally = /Append-only check: 1 passed, 1 failed\./.test(t29.out);
+  check(
+    t29.status === 1 && t29Refuses && t29Sibling && t29Tally,
+    "T29 (#1510 rework): the measurement is scoped to the file being measured — a test path containing pattern-significant characters is counted against ITS OWN change, not against a sibling that the same pattern selects and whose record git emits first. The sibling here removes nothing, so a substituted count reads as an additions-only pass while three assertions are destroyed",
+    `check exited ${t29.status} (expected 1); own count reported=${t29Refuses}; sibling passes on its own merit=${t29Sibling}; tally 1/1=${t29Tally}`,
+  );
+
+  const t30 = scenarioT30();
+  const t30Refuses = t30.out.includes(`❌ MODIFIED  ${PATTERNISH_PATH} — 3 deleted lines`);
+  const t30Sibling = t30.out.includes(`✅ MODIFIED  ${SIBLING_PATH}`);
+  const t30Tally = /Append-only check: 1 passed, 1 failed\./.test(t30.out);
+  check(
+    t30.status === 1 && t30Refuses && t30Sibling && t30Tally,
+    "T30 (#1510 rework): the override attestation is scoped to the file it was written for — a valid token covering one test file does not carry over to a second file merely because the second file's name is selected by the first one's pattern. The sibling's own sanctioned edit still passes on its own token; the untokened removals beside it are still refused",
+    `check exited ${t30.status} (expected 1); untokened file refused=${t30Refuses}; sanctioned sibling still passes=${t30Sibling}; tally 1/1=${t30Tally}`,
+  );
+
+  const t31 = scenarioT31();
+  const t31SetX = /✅[^\n]*MODIFIED[^\n]*setx\.test\.ts[^\n]*additions only, 0 deleted lines/.test(t31.out);
+  const t31ClearX = /✅[^\n]*MODIFIED[^\n]*clearx\.test\.ts[^\n]*additions only, 0 deleted lines/.test(t31.out);
+  const t31Both = /❌[^\n]*MODIFIED[^\n]*both\.test\.ts[^\n]*3 deleted lines/.test(t31.out);
+  const t31Tally = /Append-only check: 2 passed, 1 failed\./.test(t31.out);
+  check(
+    t31.status === 1 && t31SetX && t31ClearX && t31Both && t31Tally,
+    "T31 (#1510 rework): on a file git declines to render as text, a metadata-only change removes nothing and stays GREEN in BOTH directions of the mode flip with no token — and the short-circuit that establishes this does NOT swallow real removals, because the same commit flips the mode on a third file that also loses three assertions and that file is still counted and refused. Exactly 2 passed / 1 failed",
+    `check exited ${t31.status} (expected 1); mode set=${t31SetX}; mode cleared=${t31ClearX}; mode+removals still counted=${t31Both}; tally 2/1=${t31Tally}`,
+  );
+
+  const t32 = scenarioT32();
+  const t32Quiet = /✅[^\n]*MODIFIED[^\n]*z\[A-Z\]\.test\.ts[^\n]*additions only, 0 deleted lines/.test(t32.out);
+  const t32Sibling = /❌[^\n]*MODIFIED[^\n]*zA\.test\.ts[^\n]*3 deleted lines/.test(t32.out);
+  const t32Tally = /Append-only check: 1 passed, 1 failed\./.test(t32.out);
+  check(
+    t32.status === 1 && t32Quiet && t32Sibling && t32Tally,
+    "T32 (#1510 rework, tester adversarial — the interaction): scoping and the metadata short-circuit meet inside one measurement, because the short-circuit asks git a SECOND question about the same path and inherits that path's scoping. A file that is both pattern-named and one git declines to render as text, changed so that nothing is removed, beside a file the pattern would select that DOES lose assertions — each answers for itself: the metadata-only file stays green, the sibling is refused with its OWN count, tally exactly 1 passed / 1 failed",
+    `check exited ${t32.status} (expected 1); metadata-only file green=${t32Quiet}; sibling refused with its own count=${t32Sibling}; tally 1/1=${t32Tally}`,
   );
 
   console.log("");

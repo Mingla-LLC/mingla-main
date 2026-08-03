@@ -7008,3 +7008,75 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   has zero symlinks, zero gitlinks, no `.gitmodules`, and zero executable-bit test files.
   Failing closed therefore cannot red-light any workflow this repo has ever had.
 - **Established:** DRAFT at issue #1505 SPEC 2026-08-03. Flips ACTIVE at CLOSE.
+
+## DRAFT — issue #1510 (append-only gate measures deletions rather than inferring them)
+
+### I-PROPOSED-1510-DELETION-COUNT-IS-MEASURED (DRAFT)
+- **Rule:** the append-only gate's deleted-line count for a status-`M` test path is
+  **measured**, never inferred from an empty parse. `countDeletedLines` reads
+  `git diff --numstat`, whose `deleted` column is immune to the `diff`/`binary`/`-diff`
+  attributes, to textconv and to external diff drivers. When and only when `--numstat`
+  reports the blob undiffable (`-`), the count is recovered from
+  `git diff --unified=0 --text`, counting `-` lines **inside hunks only**. If that
+  recovery yields no hunk, the pre-image and post-image blob object ids are compared:
+  identical ids mean the CONTENT did not change and only the file mode moved, so the
+  count is **zero** — a change that removes nothing is never refused. Only when the
+  content did change and nothing countable was produced has the measurement FAILED, and
+  that entry is **refused unconditionally** — a count that was never taken is not a
+  count of zero, and no override token bypasses it.
+  Every git invocation in this gate passes paths as **argv elements** (`execFileSync`)
+  and runs under **`--literal-pathspecs`**, so a path is data in both senses: it is
+  never interpreted as program text, and it is never matched as a pattern. Both
+  properties are enforced in the single shared runner rather than at each call site, and
+  no shell-string git runner remains in the file. This scoping guarantee covers the
+  token-attribution log as well as the measurement, so an attestation written for one
+  file can never be read as covering another.
+  The `A`/`D`/`R`/`T`/unmodelled dispositions and both token grammars are unchanged;
+  `D` and `T` remain unoverridable.
+- **Why:** pre-fix, `countDeletedLines` inferred "0 deletions" from "no `-` lines
+  parsed". Five CI-reachable routes made git emit no line diff at all — the `binary`
+  attribute, `-diff`, a `.gitattributes` at any directory level, a `.gitattributes`
+  already on `main` that the PR never touches, and **a NUL byte in the file's first
+  8000 bytes with no `.gitattributes` anywhere** — each turning total assertion
+  annihilation into `✅ MODIFIED (additions only, 0 deleted lines)`, exit 0, with no
+  token. Two further zero-config routes shared the same root cause: deleted lines whose
+  content begins with `--` were swallowed by the `line.startsWith("---")` header skip,
+  and a path containing `$( )` or backticks was expanded by the shell, blanking the
+  pathspec (and executing the payload on the CI runner).
+- **Enforcement:** `.github/workflows/tests-append-only.yml` step "Append-only gate
+  self-test (regression guard)" (no `paths:` filter) running
+  `node .github/scripts/test-append-only-check.js --self-test`. No strict-grep gate and
+  no `MANIFEST.json` change (COMMS-0125 / COMMS-0126 rebase hazard).
+- **Regression test:** **67 cases** in `selfTest()` — 35 grammar cases and 32 git
+  scenarios (T1–T18 pre-existing byte-unchanged; T19–T27 added at IMPLEMENT; T28 added
+  at TEST; T29–T31 added at REWORK; T32 added at RETEST, pinning the two rework fixes
+  where they meet inside one measurement). Supersedes the "53 cases" count in
+  `I-1505-APPEND-ONLY-FAILS-CLOSED`. Append-only.
+- **Fails-on-revert, per fix (re-run independently at RETEST):** reverting the counting
+  logic alone → 58/9; the counting logic plus a shell-string runner → 55/12; literal
+  pathspec matching alone → 64/3; the blob-id comparison alone → 64/3. Every case added
+  under this invariant flips under at least one single-fix revert, so none is vacuous.
+- **TEST status (2026-08-03) — REWORKED, both findings resolved.** Independent
+  adversarial verification returned FAIL on two counts, both in how the path reached git
+  rather than in how the count was taken. (1) A change that removes nothing — only a
+  file's mode moved — was refused on the unoverridable branch, contradicting the
+  blast-radius reasoning below; the blob-object-id comparison in the Rule above resolves
+  it, and tester case T28 plus T31 hold it, T31 additionally pinning that the
+  short-circuit does not swallow real removals when a mode change accompanies them.
+  (2) The measurement and the token attribution were scoped to a path that git matched
+  as a PATTERN, so both could be answered for a different file; literal pathspec
+  matching in the shared runner resolves it, and T29/T30 hold it. Suite returned to
+  **66 passed / 0 failed**.
+- **Reachability basis (blast radius):** across this repo's ENTIRE history, 3241 unique
+  blobs have existed at a test-pattern path. Exactly **4** are binary to git, and they
+  are **3 distinct ordinary TypeScript adversarial test sources** that embed a literal
+  NUL as test data — `mingla-marketing/lib/__tests__/links-src.tester.test.ts`,
+  `supabase/functions/_shared/__tests__/orch_1200_email_pipeline_adversarial.test.ts`
+  and `supabase/functions/_shared/adversarial_recordApiCall.test.ts`. **Zero**
+  genuinely-binary assets have ever lived at a test path, and **no** `.gitattributes`
+  has ever set `binary`, `-diff` or `diff=` on one (the only `.gitattributes` ever
+  committed is the root `* text=auto`). Measuring rather than refusing is therefore
+  mandatory: refusing undiffable test paths would permanently red-light additions-only
+  maintenance of those three live files with no override, whereas measuring keeps them
+  green and restores an accurate count.
+- **Established:** DRAFT at issue #1510 SPEC 2026-08-03. Flips ACTIVE at CLOSE.
