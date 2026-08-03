@@ -10,23 +10,7 @@ import {
 } from "react-native";
 import type { ViewStyle } from "react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  BedDouble,
-  CalendarDays,
-  Check,
-  Copy,
-  Globe,
-  KeyRound,
-  Layers,
-  Lock,
-  Plus,
-  Tag,
-  Umbrella,
-  UserCheck,
-  Users,
-  X,
-  Zap,
-} from "lucide-react-native";
+import { BedDouble, CalendarDays, Check, X } from "lucide-react-native";
 
 import {
   accent,
@@ -93,6 +77,7 @@ import { randomId } from "../../utils/randomId";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { Button } from "../ui/Button";
 import { ChipInput } from "../ui/ChipInput";
+import type { IconName } from "../ui/Icon";
 import { GlassCard } from "../ui/GlassCard";
 import { NameBuilder } from "../ui/NameBuilder";
 import { OptionCard } from "../ui/OptionCard";
@@ -360,28 +345,34 @@ const unitNamesHelper = (count: number): string =>
   `${STAY_FIELD_COPY.unitNames.helper} You have ${count} to name.`;
 
 /**
- * One glyph per approved term. Icons carry no meaning on their own — they are
- * a recognition aid on a form an operator fills 40 times in a row. Every name
- * here is also registered in `src/shims/lucideReactNativeWebStub.js` so the
- * business WEB build ships the real glyph (I-PROPOSED-1137-BIZ-WEB-LUCIDE-REAL
- * INV-4 fails CI otherwise).
+ * One glyph per approved term. Icons carry no meaning on their own — they are a
+ * recognition aid on a form an operator fills 40 times in a row.
+ *
+ * These are names from the IN-APP `Icon` roster, NOT `lucide-react-native`, and
+ * that is a bundle-budget requirement rather than a preference. On web the
+ * lucide shim deep-`require`s every registered glyph at module scope and lands
+ * in Metro's EAGER `__common` chunk, so a glyph registered for this editor is
+ * downloaded by every business-web visitor before anything renders — even
+ * though the editor is behind a lazy route. Registering 10 lucide glyphs here
+ * cost 8,746 eager bytes and blew the ORCH-1083 budget. `Icon`'s 69 SVG glyphs
+ * are already in `__common` (Button depends on it), so these cost nothing.
  */
-const STAY_CHOICE_ICON: Record<
-  StayChoiceId,
-  React.ComponentType<{ size?: number; color?: string }>
-> = {
-  room: BedDouble,
-  place: Umbrella,
-  addOne: Plus,
-  addSeveral: Layers,
-  instant: Zap,
-  request: UserCheck,
-  bookedWhole: Lock,
-  sharedSpots: Users,
-  interchangeable: Copy,
-  named: Tag,
-  publicAccess: Globe,
-  overnightOnly: KeyRound,
+const STAY_CHOICE_ICON: Record<StayChoiceId, IconName> = {
+  room: "home",
+  place: "location",
+  addOne: "plus",
+  addSeveral: "grid",
+  instant: "flash",
+  // The guest asks and it waits for you — an inbox, not a lightning bolt.
+  request: "inbox",
+  bookedWhole: "shield",
+  sharedSpots: "users",
+  // "Any one will do" — the units are interchangeable.
+  interchangeable: "swap",
+  named: "tag",
+  publicAccess: "globe",
+  // Bookable only by someone who already holds a reservation here.
+  overnightOnly: "ticket",
 };
 
 /**

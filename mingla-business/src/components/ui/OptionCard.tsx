@@ -21,6 +21,19 @@
  * style is named `cardInRow`. A caller that stacks these in a column must not
  * reuse it.
  *
+ * ICONS COME FROM THE IN-APP `Icon` ROSTER, NEVER FROM `lucide-react-native`.
+ * This is a BUNDLE-BUDGET rule, not a taste one. On web, `metro.config.js`
+ * aliases `lucide-react-native` to `src/shims/lucideReactNativeWebStub.js`,
+ * whose `USED_ICONS` map deep-`require`s every registered glyph AT MODULE SCOPE.
+ * That shim is reachable from the eager boot path, so it lands in Metro's eager
+ * `__common` chunk — which means EVERY icon in that map is downloaded by every
+ * business-web visitor before anything renders, even when the only screen using
+ * it is behind a lazy route. Registering 10 glyphs for this one editor added
+ * 8,746 B to the boot payload and blew the ORCH-1083 budget (#1501). `Icon`'s 69
+ * SVG glyphs are ALREADY in `__common` (Button depends on it), so drawing from
+ * that roster costs ZERO marginal eager bytes. Pinned by
+ * `OptionCard.iconSource.issue1501.test.ts`.
+ *
  * Extracted into `ui/` so the Experience wizard can adopt it later; #1501 does
  * NOT refactor that wizard.
  */
@@ -42,6 +55,7 @@ import {
 } from "../../constants/designSystem";
 
 import { Icon } from "./Icon";
+import type { IconName } from "./Icon";
 
 export interface OptionCardProps {
   /** The approved term. Short, plain, no jargon. */
@@ -51,10 +65,10 @@ export interface OptionCardProps {
   /** A concrete instance of the abstraction. Omitted where it would be noise. */
   example?: string;
   /**
-   * Optional leading glyph. Accepts any icon component with the lucide shape,
-   * so the caller owns the icon vocabulary and this file stays dependency-free.
+   * Optional leading glyph, named from the in-app `Icon` roster. NOT a component
+   * prop and NOT a lucide glyph — see the bundle-budget note in the file header.
    */
-  icon?: React.ComponentType<{ size?: number; color?: string }>;
+  icon?: IconName;
   selected: boolean;
   onPress: () => void;
   disabled?: boolean;
@@ -66,7 +80,7 @@ export const OptionCard: React.FC<OptionCardProps> = ({
   label,
   helper,
   example,
-  icon: IconGlyph,
+  icon,
   selected,
   onPress,
   disabled = false,
@@ -91,8 +105,9 @@ export const OptionCard: React.FC<OptionCardProps> = ({
       ]}
     >
       <View style={styles.headRow}>
-        {IconGlyph ? (
-          <IconGlyph
+        {icon ? (
+          <Icon
+            name={icon}
             size={18}
             color={selected ? accent.warm : textTokens.secondary}
           />

@@ -71,6 +71,7 @@ jobs:
         run: >-
           npx jest --runInBand
           src/components/stay/__tests__/stayTestIdContract.issue1501.test.ts
+          src/components/ui/__tests__/OptionCard.iconSource.issue1501.test.ts
           src/components/stay/__tests__/stayAuthoringPermissions.issue1469.test.ts
           src/components/stay/__tests__/stayInventoryPresentation.issue1425.test.ts
           src/components/stay/__tests__/stayAuthoring.issue1424.test.ts
@@ -113,5 +114,14 @@ jobs:
           src/components/ui/NameBuilder.tsx
           src/constants/designSystem.ts
 
-      - name: Buyer web export (bundle still builds)
-        run: npx expo export -p web --output-dir /tmp/issue-1501-web --clear
+      # The editor is behind a lazy route, so NOTHING it adds may reach the
+      # eager `__common` boot chunk. #1501's first pass registered 10 lucide
+      # glyphs in the web shim — whose used-set is a GLOBAL EAGER registry — and
+      # put +8,746 B into the payload every business-web visitor downloads
+      # before anything renders, breaching the ORCH-1083 cap. The export now
+      # feeds the budget guard directly so that can never merge unnoticed.
+      - name: Buyer web export + ORCH-1083 boot-payload budget
+        run: |
+          npx expo export -p web --output-dir /tmp/issue-1501-web --clear
+          ORCH_1083_WEB_BUILD=/tmp/issue-1501-web \
+            node scripts/ci/orch-1083-initial-bundle-budget.mjs
