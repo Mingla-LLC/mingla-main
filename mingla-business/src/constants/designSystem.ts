@@ -67,6 +67,33 @@ export const venueRailWidth = 220 as const;
 // Settings column (left-anchored) to keep the ~65–75 char body measure.
 export const venueSettingsMaxWidth = 720 as const;
 
+// ── Issue #1484 [stay-desktop-shell] — suite page-measure tokens ────────────
+// The Stay suite now renders inside the SHARED `SuiteDesktopShell` (the same
+// rail + full-width workspace the Restaurant suite has). Its per-module width
+// rules live here so no raw layout numbers sit in the components.
+//
+// suiteFormMaxWidth — the readable-measure cap for an EDITABLE FORM column on
+// wide desktop (Stay Settings). The workspace fills the full page width, so an
+// uncapped form would stretch to an unreadable line length; this keeps the
+// ~65–75 character body measure, left-anchored. DELIBERATELY a NEW token, not a
+// revival of `venueSettingsMaxWidth` — ORCH-1190 removed that token's last
+// consumer and `venueSuitePolish.orch1190.test.ts` pins that it never returns
+// to `VenueSettingsModule`.
+export const suiteFormMaxWidth = 720 as const;
+
+// The PHONE / web-phone readable-measure caps the Stay modules already shipped
+// with (tokenised here, values unchanged, so the sub-1024px layout is
+// byte-identical). On wide desktop every one of these is released — the shared
+// shell owns the gutters and the left anchor.
+export const stayPageMaxWidth = 820 as const;
+export const stayInventoryMaxWidth = 900 as const;
+export const stayReservationsMaxWidth = 920 as const;
+
+// Minimum comfortable width for one Stay Overview readiness row when the rows
+// reflow into a multi-column grid on wide desktop. Below this the row falls
+// back to a single column (flexWrap handles it).
+export const stayOverviewRowMinWidth = 320 as const;
+
 export const shadows = {
   sm: {
     shadowColor: "#000",

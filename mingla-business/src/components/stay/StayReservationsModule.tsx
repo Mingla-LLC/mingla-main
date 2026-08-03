@@ -15,9 +15,11 @@ import {
   radius,
   semantic,
   spacing,
+  stayReservationsMaxWidth,
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import { useStayStaffReservationList } from "../../hooks/useStayStaffReservations";
 import type { StayStaffReservationSummary } from "../../types/stayReservation";
 import { ScrollView } from "../../wrappers/SmartScrollView";
@@ -181,6 +183,8 @@ export interface StayReservationsModuleProps {
 export function StayReservationsModule({
   venueId,
 }: StayReservationsModuleProps): React.ReactElement {
+  // #1484 — desktop gate ONLY via the canonical hook (I-DESKTOP-GATE-VIA-HOOK).
+  const { isWideDesktop } = useResponsiveLayout();
   const list = useStayStaffReservationList(venueId);
   const [view, setView] = useState<StayReservationView>("needs_response");
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
@@ -202,7 +206,12 @@ export function StayReservationsModule({
 
   return (
     <View style={styles.root} testID="stay-reservations-module">
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          isWideDesktop ? styles.contentWide : null,
+        ]}
+      >
         <View style={styles.headerRow}>
           <View style={styles.flexOne}>
             <Text style={styles.title}>Stay reservations</Text>
@@ -317,11 +326,20 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   content: {
     width: "100%",
-    maxWidth: 920,
+    // Phone / web-phone readable measure (unchanged; now tokenised).
+    maxWidth: stayReservationsMaxWidth,
     alignSelf: "center",
     padding: spacing.md,
     paddingBottom: spacing.xxl * 3,
     gap: spacing.md,
+  },
+  // #1484 — WIDE DESKTOP ONLY. Inside the shared SuiteDesktopShell the
+  // workspace already owns the gutters and the left anchor, so the reservations
+  // list runs UNCAPPED and left-anchored instead of a centred 920 column with
+  // symmetric dead gutters.
+  contentWide: {
+    maxWidth: undefined,
+    alignSelf: "flex-start",
   },
   headerRow: {
     flexDirection: "row",

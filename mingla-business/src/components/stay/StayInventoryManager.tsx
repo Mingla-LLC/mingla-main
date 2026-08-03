@@ -17,10 +17,12 @@ import {
   radius,
   semantic,
   spacing,
+  stayInventoryMaxWidth,
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
 import { useBrandDiscoveryCurrency } from "../../hooks/useBrandDiscoveryCurrency";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import {
   stayInventoryKeys,
   useStayInventory,
@@ -214,6 +216,8 @@ function OfferingEditor({
   canManageFinance,
   onClose,
 }: OfferingEditorProps): React.ReactElement {
+  // #1484 — desktop gate ONLY via the canonical hook (I-DESKTOP-GATE-VIA-HOOK).
+  const { isWideDesktop } = useResponsiveLayout();
   const queryClient = useQueryClient();
   const currency = useBrandDiscoveryCurrency(brandId);
   const currencyCode = currency.data?.currencyCode ?? null;
@@ -548,7 +552,12 @@ function OfferingEditor({
         : null;
 
   return (
-    <ScrollView contentContainerStyle={styles.page}>
+    <ScrollView
+      contentContainerStyle={[
+        styles.page,
+        isWideDesktop ? styles.pageWide : null,
+      ]}
+    >
       <View style={styles.titleRow}>
         <View style={styles.flex}>
           <Text style={styles.title}>
@@ -1362,6 +1371,8 @@ export function StayInventoryManager({
   venueId: string;
   mode: "inventory" | "availability";
 }): React.ReactElement {
+  // #1484 — desktop gate ONLY via the canonical hook (I-DESKTOP-GATE-VIA-HOOK).
+  const { isWideDesktop } = useResponsiveLayout();
   const inventory = useStayInventory(venueId);
   const [filter, setFilter] = useState<StayInventoryFilter>("all");
   const [search, setSearch] = useState("");
@@ -1420,7 +1431,12 @@ export function StayInventoryManager({
     );
   }
   return (
-    <ScrollView contentContainerStyle={styles.page}>
+    <ScrollView
+      contentContainerStyle={[
+        styles.page,
+        isWideDesktop ? styles.pageWide : null,
+      ]}
+    >
       {inventory.isError ? (
         <View style={styles.offlineBanner}>
           <Text style={styles.warning}>
@@ -1546,9 +1562,18 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     paddingBottom: spacing.xxl * 3,
     gap: spacing.md,
-    maxWidth: 900,
+    // Phone / web-phone readable measure (unchanged; now tokenised).
+    maxWidth: stayInventoryMaxWidth,
     width: "100%",
     alignSelf: "center",
+  },
+  // #1484 — WIDE DESKTOP ONLY. Inside the shared SuiteDesktopShell the
+  // workspace already owns the gutters and the left anchor, so Rooms & Places
+  // and Availability & pricing run UNCAPPED and left-anchored instead of a
+  // centred 900 column with symmetric dead gutters.
+  pageWide: {
+    maxWidth: undefined,
+    alignSelf: "flex-start",
   },
   center: {
     flex: 1,

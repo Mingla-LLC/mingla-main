@@ -1,0 +1,91 @@
+# Issue #1484 [stay-desktop-shell] — the Hotel/Stay manager now renders the SAME
+# desktop rail + full-width workspace as the Restaurant manager, via ONE shared
+# `src/components/suite/SuiteDesktopShell.tsx` that both suites consume.
+#
+# WHY A DEDICATED WORKFLOW: the proof has to MOUNT both shells (rail present /
+# pill row absent / resolved flattened styles), so it is a `*.render.test.tsx`.
+# `mingla-business/jest.config.cjs` deliberately excludes every
+# `*.render.test.tsx` from the default node/ts-jest suite, so without this job
+# the regression proof would be DARK. Mirrors issue-874 / issue-1036 /
+# issue-1403 / issue-1421.
+#
+# NOT a required check (not in ruleset 13549056 / 19508605) — it reports, it
+# does not gate.
+
+name: Issue #1484 Stay Desktop Shell
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: issue-1484-stay-desktop-shell-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  issue-1484-stay-desktop-shell:
+    name: Stay desktop shell (render proof + gates)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+
+      - name: Install Business dependencies
+        run: npm ci
+
+      # react-test-renderer + @testing-library/react-native are TEST-ONLY and
+      # deliberately not app dependencies; --no-save keeps them out of the lock.
+      - name: Install render-only test dependencies
+        run: npm install --no-save react-test-renderer@19.1.0 @testing-library/react-native
+
+      - name: Stay/Venue desktop shell render proof
+        run: npx jest --config jest.issue1484.render.cjs --runInBand
+
+      # The relocation amendment: the ORCH-1184 full-width contract now reads the
+      # shared shell. The protected rule (no maxWidth cap, alignSelf flex-start,
+      # paddingHorizontal kept) must stay green.
+      - name: ORCH-1184 full-width contract + venue suite contracts
+        run: >-
+          npx jest --runInBand
+          src/components/venue/__tests__/venueSuiteShell.orch1184.fullwidth.test.ts
+          src/components/venue/__tests__/venueSuitePolish.orch1190.test.ts
+          src/components/venue/__tests__/venueSuiteShell.overviewIntelligence.test.ts
+          src/components/venue/__tests__/venueShellScroll.test.ts
+          src/components/venue/__tests__/venueModules.test.ts
+          src/components/venue/__tests__/venueLucideIcons.orch1196.test.ts
+          venueTab.contract.test.ts
+
+      # I-DESKTOP-GATE-VIA-HOOK: the new Stay desktop branch must read the
+      # canonical hook, never an inlined platform+width expression.
+      - name: Desktop-gate-via-hook gate
+        working-directory: .
+        run: |
+          node .github/scripts/strict-grep/orch-0885-a-no-bottomnav-on-wide-desktop.mjs --self-test
+          node .github/scripts/strict-grep/orch-0885-a-no-bottomnav-on-wide-desktop.mjs
+
+      - name: Source-pin partition audit
+        run: node scripts/ci/select-source-text-pins.mjs --check
+
+      - name: Scoped lint
+        run: >-
+          npx eslint
+          src/components/suite/SuiteDesktopShell.tsx
+          src/components/venue/VenueSuiteShell.tsx
+          src/components/stay/StaySuiteShell.tsx
+          src/components/stay/StayReservationsModule.tsx
+          src/components/stay/StayInventoryManager.tsx
+          src/constants/designSystem.ts
+
+      - name: Buyer web export (bundle still builds)
+        run: npx expo export -p web --output-dir /tmp/issue-1484-web --clear
