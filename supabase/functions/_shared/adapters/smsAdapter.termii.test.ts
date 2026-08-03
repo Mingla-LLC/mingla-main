@@ -1,9 +1,20 @@
 // ORCH-1227 (DEC-192) — Nigeria SMS via Termii.
 //
-// Proves the country-routed dual-provider seam: NG numbers go to Termii (with
-// the dnd/generic channel mapping by messageType), every other country stays on
-// Twilio, the SMS_LIVE_ENABLED_NG kill-switch makes NG text-dark with ZERO HTTP,
-// and missing Termii env FAIL-CLOSED returns failed without a throw.
+// Proves the country-routed dual-provider seam: NG numbers go to Termii, every
+// other country stays on Twilio, the SMS_LIVE_ENABLED_NG kill-switch makes NG
+// text-dark with ZERO HTTP, and missing Termii env FAIL-CLOSED returns failed
+// without a throw.
+//
+// [TEST-MOD-APPROVED #1518] — the transactional assertion below asserted
+// `channel === "dnd"`, encoding DEC-192's mapping. That decision is SUPERSEDED:
+// Termii returns 400 "Country Inactive" on `dnd` for Nigeria (route never
+// activated on this account — proven live in #1480), so the old assertion
+// pinned a mapping that fails 100% at the provider. Both NG classes now assert
+// `generic`. The prior assertion was not merely restrictive, it was WRONG about
+// production behaviour, which is why it is amended rather than supplemented.
+// This is an INTERIM: when #1480 lands DND activation the mapping and this
+// assertion revert together. See supabase/functions/_shared/adapters/
+// smsAdapter.issue1518.test.ts for the full #1518 contract.
 //
 // fails-on-revert: verified — reverting the NG→termiiSend branch (so NG falls
 // through to twilioSend) makes the "NG happy path" test hit api.twilio.com
@@ -49,7 +60,7 @@ const ALL_KEYS = [
   "TERMII_SENDER_ID",
 ];
 
-Deno.test("smsAdapter NG: transactional → Termii /api/sms/send with channel 'dnd'", async () => {
+Deno.test("smsAdapter NG: transactional → Termii /api/sms/send with channel 'generic' (#1518 interim; was 'dnd' under DEC-192)", async () => {
   const snap = snapshotEnv(ALL_KEYS);
   setTermiiEnv();
   Deno.env.set("SMS_LIVE_ENABLED_NG", "true");
@@ -72,7 +83,9 @@ Deno.test("smsAdapter NG: transactional → Termii /api/sms/send with channel 'd
       `expected Termii send URL, got: ${capturedUrl}`,
     );
     assert(!capturedUrl.includes("api.twilio.com"), "NG must NOT hit Twilio");
-    assertEquals(capturedBody.channel, "dnd");
+    // #1518 — NG transactional rides `generic`, NOT `dnd`. This does NOT mean it
+    // reaches DND-registered numbers; it currently cannot. See smsAdapter.ts.
+    assertEquals(capturedBody.channel, "generic");
     assertEquals(capturedBody.from, "Mingla");
     assertEquals(result.status, "sent");
     assertEquals(result.providerMessageId, "tm_123");

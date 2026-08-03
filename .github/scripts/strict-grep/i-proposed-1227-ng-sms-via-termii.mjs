@@ -3,15 +3,27 @@
  * ORCH-1227 (DEC-192) — Nigeria SMS via Termii invariants.
  *
  * I-PROPOSED-1227-NG-SMS-VIA-TERMII: the smsAdapter routes NG numbers to Termii
- * behind the existing region seam (transactional→`dnd` channel, marketing→
- * `generic` channel); every other country stays Twilio; NG is still gated by the
- * SMS_LIVE_ENABLED_NG kill-switch; the termii-delivery-status webhook FAIL-CLOSED
- * verifies its signature.
+ * behind the existing region seam; every other country stays Twilio; NG is still
+ * gated by the SMS_LIVE_ENABLED_NG kill-switch; the termii-delivery-status
+ * webhook FAIL-CLOSED verifies its signature.
+ *
+ * #1518 (2026-08-03) — INTERIM channel routing, an ACCEPTED OPERATOR DECISION
+ * and NOT the intended design. DEC-192's transactional→`dnd` mapping is dead:
+ * Termii returns 400 "Country Inactive" on `dnd` for Nigeria (the route was
+ * never activated — proven live in #1480), while `generic` delivers. BOTH NG
+ * message classes therefore ride `generic`, and no NG code path may emit `dnd`.
+ * Accepted costs, recorded so nobody reads this as the target state: `generic`
+ * is blacked out for Nigerian MTN numbers 20:00-08:00 WAT; it is not the NCC
+ * DND corporate route so DND-registered recipients may never be reached; and it
+ * departs from Termii's documented guidance against transactional traffic on
+ * `generic`. REVERT when #1480 lands DND activation.
  *
  * This gate fails if:
  *   (a) the smsAdapter no longer references termiiSend / TERMII_ env, OR
  *   (b) the NG country branch (=== "NG") is removed, OR
- *   (c) the dnd/generic channel mapping is removed, OR
+ *   (c1) the NG call site stops passing "generic" unconditionally, OR
+ *   (c2) any NG code path emits the `dnd` channel again, OR
+ *   (c3) the provider-error-string `dnd` blacklisted classifier is removed, OR
  *   (d) the SMS_LIVE_ENABLED_NG kill-switch (via resolveMarketKillSwitch /
  *       SMS_LIVE_ENABLED_) is removed, OR
  *   (e) the termii-delivery-status function is missing its signature verification.
@@ -50,10 +62,62 @@ if (!existsSync(adapterPath)) {
     );
   }
 
-  // The dnd/generic channel mapping must survive.
-  if (!/["']dnd["']/.test(src) || !/["']generic["']/.test(src)) {
+  // #1518 INTERIM — NG channel selection. SUPERSEDES the DEC-192 check that
+  // required the transactional→"dnd" mapping to survive. Termii's `dnd` route
+  // returns 400 "Country Inactive" for Nigeria (never activated on this
+  // account; proven live in #1480), so BOTH NG message classes now send over
+  // `generic` and NO NG code path may emit `dnd`.
+  //
+  // Note the OLD check (`/["']dnd["']/ && /["']generic["']/`) would now pass
+  // VACUOUSLY — the string "dnd" still appears in termiiSend's channel union
+  // type and in the provider-error-string classifier — so it would have gone on
+  // asserting a mapping that no longer exists. These checks are falsifiable:
+  // restoring the `messageType === "marketing" ? "generic" : "dnd"` ternary
+  // re-introduces a bare "dnd" literal outside those two sanctioned sites and
+  // fails (c2).
+  //
+  // The channel checks below evaluate CODE, not prose — the #1518 rationale
+  // comments quote the retired "dnd" mapping verbatim on purpose so a future
+  // reader can see exactly what to restore. Mirrors the sibling 1282 gate's
+  // stripLineComments (the `[^:]` guard keeps `https://` URLs intact).
+  const code = src
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:])\/\/.*$/gm, "$1");
+
+  // (c1) the NG call site must pass the literal "generic" UNCONDITIONALLY.
+  if (!/termiiSend\(\s*to,\s*body,\s*["']generic["']\s*,?\s*\)/.test(code)) {
     failures.push(
-      `smsAdapter must keep the Termii channel mapping (transactional→"dnd", marketing→"generic") — I-PROPOSED-1227-NG-SMS-VIA-TERMII.`,
+      `smsAdapter's NG branch must call termiiSend(to, body, "generic") unconditionally — #1518 interim, both NG message classes ride Termii's generic channel because dnd 400s "Country Inactive" (I-PROPOSED-1227-NG-SMS-VIA-TERMII).`,
+    );
+  }
+
+  // (c2) no NG code path may emit `dnd` as a channel. Two sites legitimately
+  // contain the substring and are scrubbed before the check:
+  //   - termiiSend's channel union type (the #1480 revert target, unreachable),
+  //   - the `includes("dnd")` provider-ERROR-STRING classifier, which is the
+  //     honest signal that a DND-registered recipient rejected the send and
+  //     MUST stay (it classifies responses, never channel selection).
+  const scrubbed = code
+    .replace(/channel:\s*["']dnd["']\s*\|\s*["']generic["']/g, "channel: <union>")
+    .replace(/includes\(\s*["']dnd["']\s*\)/g, "includes(<provider-error-token>)");
+  if (/["']dnd["']/.test(scrubbed)) {
+    failures.push(
+      `smsAdapter must NOT emit the Termii "dnd" channel from any NG code path while the #1518 interim stands (dnd returns 400 "Country Inactive" — see #1480). Revert this gate together with the mapping when Termii activates DND — I-PROPOSED-1227-NG-SMS-VIA-TERMII.`,
+    );
+  }
+
+  // (c3) the provider-error-string `blacklisted` classifier must survive — it is
+  // the only honest signal that `generic` failed to reach a DND-registered
+  // recipient (#1518 accepted trade-off b). Explicitly NOT channel selection.
+  if (!/includes\(\s*["']dnd["']\s*\)/.test(code)) {
+    failures.push(
+      `smsAdapter must keep the termiiSend blacklisted classifier reading provider error strings for "dnd" — it is the honest signal for the #1518 DND-register trade-off (I-PROPOSED-1227-NG-SMS-VIA-TERMII).`,
+    );
+  }
+
+  if (!/["']generic["']/.test(code)) {
+    failures.push(
+      `smsAdapter must keep the Termii "generic" channel literal — I-PROPOSED-1227-NG-SMS-VIA-TERMII.`,
     );
   }
 

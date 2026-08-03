@@ -346,6 +346,13 @@ jobs:
             supabase/functions/marketing-send/orch-1270-defer.test.ts
             # ORCH-1282 — MMS media threading: US MediaUrl param + NG drops media.
             supabase/functions/__tests__/marketing_send_mms_adapter.test.ts
+            # Issue #1518 — NG transactional AND marketing both ride Termii's
+            # `generic` channel (dnd returns 400 "Country Inactive", proven live
+            # in #1480); the Twilio path stays byte-identical; transactional
+            # STOP-footer semantics unchanged. Registered here so it is NOT dark
+            # — the adjacent smsAdapter.termii.test.ts has never been wired into
+            # any workflow (see the #1518 report's Discoveries).
+            supabase/functions/_shared/adapters/smsAdapter.issue1518.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then
