@@ -71,7 +71,36 @@ const CEILING_RAW_BYTES = Number(process.env.ORCH_1083_CEILING ?? 9_405_478);
 // Measured __common is 2,309,350 B. Raising the cap by only 20 KB preserves
 // ~10 KB of tripwire headroom without duplicating Stay rules between the public
 // booking and reservation-management routes.
-const COMMON_CAP_BYTES = Number(process.env.ORCH_1083_COMMON_CAP ?? 2_320_000);
+//
+// #1503 rebaseline 2026-08-03 (issue #1503 [stay-date-pickers]): MEASURED, not
+// estimated. Baseline export of `origin/main` @ c3cc5e7af gives __common =
+// 2,316,499 B (3,501 B of headroom left); this branch gives 2,320,369 B — a
+// +3,870 B delta that lands 369 B over the old cap.
+//
+// WHAT the delta is: exactly one new module, `packages/brand-rendering/
+// stayDateRules.ts` — the pure venue-local Stay date rules (parse/format at noon
+// anchoring, `venueToday` via Intl, horizon/min-notice/ordering bounds, the
+// guest-facing copy). Metro hoists it into __common because TWO async chunks
+// import it: the lazy buyer Stay chunk (StayGuestBooking + StayDateRangeField)
+// and the business venue chunk (ui/DateField -> VenueBlackoutSheet).
+//
+// WHY it is NOT the regression this tripwire targets: nothing deferred re-entered
+// the boot path — the deferred-specifier check (Stripe web SDK / QR / fonts)
+// still PASSES, and `@react-native-community/datetimepicker` internals were
+// ALREADY in baseline __common via the six pre-existing #1027 consumers, so the
+// new picker adds no native-module weight (verified: the `.native.tsx` half is
+// absent from the web export and present in the iOS export). This is ~3.8 KB of
+// plain date arithmetic.
+//
+// WHY the module is not split to dodge the cap: SPEC #1503 §12 makes "all date
+// math lives in exactly ONE pure module" the structural safeguard against the
+// very drift this issue fixed (three competing definitions of "today" coexisting
+// across surfaces). Splitting it to save 3 KB would trade a correctness
+// invariant for bundle bytes.
+//
+// Cap raised by 10 KB to 2,330,000 B, preserving ~9.6 KB of live tripwire
+// headroom — the same increment and posture as the ORCH-1390 rebaseline above.
+const COMMON_CAP_BYTES = Number(process.env.ORCH_1083_COMMON_CAP ?? 2_330_000);
 
 // The four deferred specifiers (must NOT appear in the initial-payload scripts).
 const DEFERRED_SPECIFIERS = [

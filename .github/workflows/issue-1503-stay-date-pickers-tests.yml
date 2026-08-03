@@ -1,0 +1,178 @@
+# Issue #1503 [stay-date-pickers] — Stay dates are PICKED, not typed, and every
+# bound is VENUE-local.
+#
+# WHY THIS WORKFLOW EXISTS — two dark-suite traps this closes:
+#
+#  1. `mingla-business/jest.config.cjs` has `rootDir` = mingla-business, so
+#     NOTHING under `packages/**/__tests__` is ever swept by the default suite.
+#     The shared control and all of its date maths live in
+#     `packages/brand-rendering`, so without this job its regression proof would
+#     be a dead letter — the #1038 / #1047 failure shape.
+#
+#  2. A Stay date bug that only appears in ONE timezone is the historical
+#     failure mode here (the shipped form seeded from UTC and nobody noticed for
+#     a year). The pure suite is therefore run three times, under `TZ=UTC`,
+#     `TZ=America/New_York` and `TZ=Pacific/Auckland`.
+#
+# WHY THE SOURCE PATHS ARE IN THE TRIGGER (not only the test paths): a PR that
+# REVERTS the fix touches the SOURCE file. If the trigger listed only test
+# files, a revert PR would not run this gate and would merge GREEN-by-omission
+# (the #1027 lesson).
+#
+# The blackout/DateField native-parity proof
+# (`src/components/ui/__tests__/dateField.issue1503.test.tsx`) deliberately is
+# NOT run here — it lives in the stock `mingla-business/jest.config.cjs` sweep
+# and therefore already runs on every PR under the required
+# `mingla-business jest suite` check.
+#
+# Invokes no `.mjs` under `.github/scripts/strict-grep/`, so MANIFEST.json
+# totality and parity counters are untouched (COMMS-0126).
+#
+# NOT a required check (not in ruleset 13549056 / 19508605) — it reports, it
+# does not gate.
+
+name: Issue #1503 Stay date pickers
+
+on:
+  push:
+    branches: [main]
+    paths:
+      # ---- source (a revert here MUST run the gate) ----
+      - "packages/brand-rendering/stayDateRules.ts"
+      - "packages/brand-rendering/StayDateRangeField.tsx"
+      - "packages/brand-rendering/StayDateRangeField.native.tsx"
+      - "packages/brand-rendering/StayGuestBooking.tsx"
+      - "packages/brand-rendering/package.json"
+      - "mingla-business/src/components/ui/DateField.tsx"
+      - "mingla-business/src/components/venue/VenueBlackoutSheet.tsx"
+      # ---- tests + harness ----
+      - "packages/brand-rendering/__tests__/stayDateRules.issue1503.test.ts"
+      - "packages/brand-rendering/__tests__/stayDateRangeField.issue1503.test.tsx"
+      - "mingla-business/src/components/ui/__tests__/dateField.issue1503.test.tsx"
+      - "mingla-business/jest.issue1503.cfg.cjs"
+      - ".github/workflows/issue-1503-stay-date-pickers-tests.yml"
+  pull_request:
+    paths:
+      - "packages/brand-rendering/stayDateRules.ts"
+      - "packages/brand-rendering/StayDateRangeField.tsx"
+      - "packages/brand-rendering/StayDateRangeField.native.tsx"
+      - "packages/brand-rendering/StayGuestBooking.tsx"
+      - "packages/brand-rendering/package.json"
+      - "mingla-business/src/components/ui/DateField.tsx"
+      - "mingla-business/src/components/venue/VenueBlackoutSheet.tsx"
+      - "packages/brand-rendering/__tests__/stayDateRules.issue1503.test.ts"
+      - "packages/brand-rendering/__tests__/stayDateRangeField.issue1503.test.tsx"
+      - "mingla-business/src/components/ui/__tests__/dateField.issue1503.test.tsx"
+      - "mingla-business/jest.issue1503.cfg.cjs"
+      - ".github/workflows/issue-1503-stay-date-pickers-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  stay-date-pickers:
+    name: Stay date pickers (venue-local rules + web-resolved render proof)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+
+      - name: Install Business dependencies
+        run: npm ci
+
+      # The render proof mounts the REAL control through react-native-web via
+      # ReactDOMServer, plus react-test-renderer for the commit paths.
+      # react-test-renderer is already a devDependency; react-native-web and
+      # react-dom ship with the Expo web target.
+      - name: "Rules + render proof — TZ=UTC"
+        env:
+          TZ: UTC
+        run: npx jest --config jest.issue1503.cfg.cjs --runInBand
+
+      # A guest whose device sits BEHIND the venue.
+      - name: "Rules + render proof — TZ=America/New_York"
+        env:
+          TZ: America/New_York
+        run: npx jest --config jest.issue1503.cfg.cjs --runInBand
+
+      # A guest whose device sits a full day AHEAD of the venue — the SC-6 case.
+      - name: "Rules + render proof — TZ=Pacific/Auckland"
+        env:
+          TZ: Pacific/Auckland
+        run: npx jest --config jest.issue1503.cfg.cjs --runInBand
+
+      # SC-1-iOS / SC-1-Android / SC-9 — the OTHER half of the Platform gate.
+      - name: "Native parity + blackout same-day proof"
+        run: >-
+          npx jest --runInBand
+          src/components/ui/__tests__/dateField.issue1503.test.tsx
+
+      # SC-10 — the six existing #1027 consumers must stay byte-identical in
+      # behaviour. Their guard suite runs UNMODIFIED.
+      - name: "SC-10 — the six existing WebDateTimeInput consumers still pass"
+        run: >-
+          npx jest --runInBand
+          src/components/ui/__tests__/webDateTimeInput.adversarial.1027.test.tsx
+          src/components/event/__tests__/orch_1027_web_datetime_native_input.test.tsx
+          src/components/event/__tests__/orch_1027_web_datetime_structural.test.ts
+
+      # The blackout sheet's existing contracts (scroll bounding, venue suite
+      # polish) must not regress behind the control swap.
+      - name: "Venue suite contracts (blackout sheet host)"
+        run: >-
+          npx jest --runInBand
+          src/components/venue/__tests__/venueSuitePolish.orch1190.test.ts
+
+      - name: Package isolation gate (brand-rendering imports no app src)
+        working-directory: .
+        run: node .github/scripts/strict-grep/orch-0964-brand-rendering-self-contained.mjs
+
+      - name: No date-only UTC-midnight Date constructor
+        working-directory: .
+        run: node .github/scripts/strict-grep/orch-0828-no-date-only-string-constructor.mjs
+
+      - name: Scoped lint
+        run: >-
+          npx eslint
+          src/components/ui/DateField.tsx
+          src/components/venue/VenueBlackoutSheet.tsx
+
+      # SC-8 — the `.native.tsx` split must hold: the NATIVE half of the shared
+      # control must never reach the web bundle. Proved with a marker string
+      # that exists in `StayDateRangeField.native.tsx` and nowhere else.
+      - name: "SC-8 — web export excludes the native picker half"
+        run: |
+          set -euo pipefail
+          MARKER="stay-date-range-field-native-only-1503"
+          # NON-VACUITY GUARD FIRST. An absence grep proves nothing if the string
+          # it looks for no longer exists, so assert the tripwire is still in the
+          # native source AND still runtime-attached (a bare exported constant is
+          # dead-code-eliminated and would make the bundle grep vacuously green).
+          grep -q "$MARKER" ../packages/brand-rendering/StayDateRangeField.native.tsx
+          grep -q "nativeID={STAY_DATE_RANGE_FIELD_NATIVE_MARKER}" \
+            ../packages/brand-rendering/StayDateRangeField.native.tsx
+          npx expo export -p web --output-dir /tmp/issue-1503-web --clear
+          if grep -arq "$MARKER" /tmp/issue-1503-web; then
+            echo "::error::SC-8 FAILED — StayDateRangeField.native.tsx leaked into the web bundle."
+            exit 1
+          fi
+          echo "SC-8 PASS — the native half of the split is absent from the web export."
+
+      # The eager __common chunk is capped (ORCH-1083). The shared date-rules
+      # module is hoisted there because two async chunks import it, so this issue
+      # rebaselined the cap; keep the tripwire honest on every change here.
+      - name: "Eager __common chunk stays within the ORCH-1083 cap"
+        run: ORCH_1083_WEB_BUILD=/tmp/issue-1503-web node scripts/ci/orch-1083-initial-bundle-budget.mjs

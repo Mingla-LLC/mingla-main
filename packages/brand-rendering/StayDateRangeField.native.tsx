@@ -38,9 +38,17 @@ import {
 } from "./PublicVenueTabs";
 
 /**
- * Grep marker. The web export MUST NOT contain this string — its presence in
- * `mingla-business/web-build` would mean Metro pulled the native picker into the
- * web bundle and the `.native.tsx` split had silently stopped working (SC-8).
+ * SC-8 tripwire. The web export MUST NOT contain this string; the iOS/Android
+ * bundle MUST. Its presence in `mingla-business`'s web export would mean Metro
+ * had pulled the native picker into the web bundle and the `.native.tsx` split
+ * had silently stopped working.
+ *
+ * It is ATTACHED AT RUNTIME (`nativeID` on the root View below), not merely
+ * exported. An exported-but-unused constant is dead-code-eliminated by the
+ * minifier — measured: as a bare export it was absent from BOTH the web and the
+ * iOS bundle, which would make the web-absence grep vacuously green and prove
+ * nothing. Verified after the change: present in the iOS export, absent from the
+ * web export.
  */
 export const STAY_DATE_RANGE_FIELD_NATIVE_MARKER =
   "stay-date-range-field-native-only-1503";
@@ -105,7 +113,7 @@ export function StayDateRangeField({
   };
 
   return (
-    <View style={styles.host}>
+    <View style={styles.host} nativeID={STAY_DATE_RANGE_FIELD_NATIVE_MARKER}>
       <View style={styles.row}>
         <DateRow
           label={checkInLabel}
