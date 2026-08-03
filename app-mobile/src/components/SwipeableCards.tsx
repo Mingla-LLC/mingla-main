@@ -17,6 +17,7 @@ import {
   findNodeHandle,
 } from "react-native";
 import { GestureDetector } from 'react-native-gesture-handler';
+import Reanimated from 'react-native-reanimated';
 // ORCH-1042: deck hero photos render via expo-image (NOT react-native <Image>).
 // expo-image gives us a placeholder + fade transition + a bounded disk-only
 // cache + recyclingKey so the per-card remount (`key={currentRec.id}`, ORCH-0694)
@@ -3034,16 +3035,13 @@ export default function SwipeableCards({
               const NextCategoryIcon = getIconComponent(nextCard.categoryIcon);
 
               return (
-                <Animated.View
+                <Reanimated.View
                   style={[
                     styles.card,
                     styles.nextCard,
                     styles.cardOverlay,
                     styles.behindCardOverlay,
-                    {
-                      opacity: deckSwipe.previewOpacity,
-                      transform: [{ scale: deckSwipe.previewScale }],
-                    },
+                    deckSwipe.previewCardStyle,
                   ]}
                   pointerEvents="none"
                   accessibilityElementsHidden
@@ -3109,25 +3107,19 @@ export default function SwipeableCards({
                       <PulseDots size={8} speed={400} reducedMotion={reducedMotion} />
                     </View>
                   )}
-                </Animated.View>
+                </Reanimated.View>
               );
             })()}
 
           {/* Current Card */}
-          {/* Each promoted card receives a fresh modern recognizer. Android can
-              otherwise retain the completed recognizer against the old face. */}
-          <GestureDetector key={currentRec.id} gesture={deckSwipe.gesture}>
-          <Animated.View
+          {/* The stable recognizer and card transform run on the UI thread; JS
+              is crossed only for discrete lifecycle settlement. */}
+          <GestureDetector gesture={deckSwipe.gesture}>
+          <Reanimated.View
             style={[
               styles.card,
               styles.cardOverlay,
-              {
-                transform: [
-                  { translateX: deckSwipe.positionX },
-                  { translateY: deckSwipe.positionY },
-                  { rotate: deckSwipe.rotate },
-                ],
-              },
+              deckSwipe.currentCardStyle,
             ]}
           >
             <View style={styles.cardInner}>
@@ -3165,13 +3157,10 @@ export default function SwipeableCards({
               }}
             />
             {/* Swipe Direction Overlays */}
-            <Animated.View
+            <Reanimated.View
               style={[
                 styles.swipeOverlayRight,
-                {
-                  opacity: deckSwipe.likeOpacity,
-                  transform: [{ scale: deckSwipe.likeScale }],
-                },
+                deckSwipe.likeIndicatorStyle,
               ]}
               pointerEvents="none"
             >
@@ -3180,15 +3169,12 @@ export default function SwipeableCards({
                   {t('cards:swipeable.like')}
                 </Text>
               </View>
-            </Animated.View>
+            </Reanimated.View>
 
-            <Animated.View
+            <Reanimated.View
               style={[
                 styles.swipeOverlayLeft,
-                {
-                  opacity: deckSwipe.passOpacity,
-                  transform: [{ scale: deckSwipe.passScale }],
-                },
+                deckSwipe.passIndicatorStyle,
               ]}
               pointerEvents="none"
             >
@@ -3197,7 +3183,7 @@ export default function SwipeableCards({
                   {t('cards:swipeable.pass')}
                 </Text>
               </View>
-            </Animated.View>
+            </Reanimated.View>
 
             <TouchableOpacity
               activeOpacity={1}
@@ -3377,7 +3363,7 @@ export default function SwipeableCards({
               )}
             </TouchableOpacity>
             </View>
-          </Animated.View>
+          </Reanimated.View>
           </GestureDetector>
           </>
           )}

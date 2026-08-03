@@ -107,10 +107,12 @@ test('decode policy survives 10,000 hostile dimensions without exceeding the phy
 test('production source keeps the rejection, media, persistence, and teardown boundaries independently bounded', () => {
   assert.match(controllerSource, /if \(!canAdmitDeckInput\(phaseRef\.current\)/);
   assert.doesNotMatch(controllerSource, /handlerEnabled/);
-  assert.match(controllerSource, /activeAnimationRef\.current\?\.stop\(\)/);
+  assert.match(controllerSource, /cancelAnimation\(positionX\)/);
   assert.ok((controllerSource.match(/onInvalidated\(/g) ?? []).length >= 3);
-  assert.doesNotMatch(controllerSource, /addListener\(|PanResponder|react-native-reanimated|import[^;]*\brunOnJS\b/);
-  assert.match(controllerSource, /Gesture\.Pan\(\)[\s\S]*\.runOnJS\(true\)/);
+  assert.match(controllerSource, /react-native-reanimated/);
+  assert.match(controllerSource, /useSharedValue\(0\)/);
+  assert.doesNotMatch(controllerSource, /addListener\(|PanResponder|\.runOnJS\(true\)|positionX\.setValue/);
+  assert.match(controllerSource, /Gesture\.Pan\(\)[\s\S]*\.onUpdate[\s\S]*positionX\.value = event\.translationX/);
 
   const preview = swipeableSource.slice(
     swipeableSource.indexOf('Next card is a poster-only'),

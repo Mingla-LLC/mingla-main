@@ -199,7 +199,8 @@ test('the render hot path has a stable two-poster bound and no explicit speculat
   assert.match(files.stage, /props\.posterCards\.map\(\(card\)[\s\S]*key=\{card\.id\}[\s\S]*\{card\.poster\}/);
   assert.doesNotMatch(behind, /EventCoverMedia|<CardHero\b/);
   const current = swipeable.slice(swipeable.indexOf('{/* Current Card */}'), swipeable.indexOf('{/* Swipe Buttons */}'));
-  assert.match(current, /<GestureDetector key=\{currentRec\.id\} gesture=\{deckSwipe\.gesture\}>/);
+  assert.match(current, /<GestureDetector gesture=\{deckSwipe\.gesture\}>/);
   assert.doesNotMatch(current, /enabled=\{deckSwipe\.handlerEnabled\}/);
+  assert.match(current, /deckSwipe\.currentCardStyle/);
   assert.match(current, /<CardHero[\s\S]*image=\{currentRec\.image\}/);
 });

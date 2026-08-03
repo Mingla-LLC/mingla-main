@@ -30,9 +30,7 @@ const [swipeableSource, controllerSource, stageSource, workflowSource] = await P
 
 const FORBIDDEN_CONTROLLER_PATTERNS = [
   'PanResponder',
-  'react-native-reanimated',
   'react-native-worklets',
-  'useSharedValue',
   'flattenOffset',
   'extractOffset',
   'setOffset',
@@ -44,9 +42,11 @@ function assertSingleOwnerSource(swipeable, controller, stage) {
   assert.doesNotMatch(swipeable, /useDeckSwipeController\(/);
   assert.match(stage, /useDeckSwipeController\(props\)/);
   assert.match(stage, /export const DeckSwipeStage = memo\(forwardRef/);
-  assert.match(swipeable, /<GestureDetector key=\{currentRec\.id\} gesture=\{deckSwipe\.gesture\}>/);
+  assert.match(swipeable, /<GestureDetector gesture=\{deckSwipe\.gesture\}>/);
   assert.doesNotMatch(swipeable, /<PanGestureHandler/);
-  assert.match(controller, /Gesture\.Pan\(\)[\s\S]*\.runOnJS\(true\)[\s\S]*\.onBegin\(beginGesture\)[\s\S]*\.onUpdate[\s\S]*\.onFinalize/);
+  assert.match(controller, /from 'react-native-reanimated'/);
+  assert.match(controller, /Gesture\.Pan\(\)[\s\S]*\.onBegin[\s\S]*runOnJS\(beginGesture\)[\s\S]*\.onUpdate[\s\S]*positionX\.value = event\.translationX[\s\S]*\.onFinalize[\s\S]*runOnJS\(finalizeGesture\)/);
+  assert.doesNotMatch(controller, /\.runOnJS\(true\)|positionX\.setValue|positionY\.setValue/);
   assert.doesNotMatch(controller, /Animated\.event|onHandlerStateChange/);
   for (const pattern of FORBIDDEN_CONTROLLER_PATTERNS) {
     assert.equal(swipeable.includes(pattern), false, `SwipeableCards contains forbidden ${pattern}`);
@@ -153,7 +153,7 @@ test('production deck has one modern native owner and no competing primitive', (
   assert.match(controllerSource, /DECK_EXIT_MS = 200/);
   assert.match(controllerSource, /DECK_SNAP_MS = 240/);
   assert.match(controllerSource, /Easing\.bezier\(0\.22, 1, 0\.36, 1\)/);
-  assert.match(controllerSource, /isCurrentDeckCompletion\(\{\s*finished,/);
+  assert.match(controllerSource, /isCurrentDeckCompletion\(\{\s*finished: finished === true,/);
   assert.match(controllerSource, /setPhase\('COMMITTING'\)[\s\S]*onCommitRequested/);
   assert.match(
     controllerSource,
@@ -161,7 +161,7 @@ test('production deck has one modern native owner and no competing primitive', (
   );
   assert.match(
     controllerSource,
-    /setPhase\('COMMITTING'\);[\s\S]{0,260}outgoingAnimation\?\.stop\(\);[\s\S]{0,260}settleCommit\(token, true\)/,
+    /setPhase\('COMMITTING'\);[\s\S]{0,260}cancelAnimation\(positionX\);[\s\S]{0,260}settleCommit\(token, true\)/,
     'a delivered BEGAN makes the old callback stale before exact-token settlement',
   );
   assert.equal(

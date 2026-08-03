@@ -7,11 +7,11 @@ import React, {
 } from 'react';
 import {
   AccessibilityInfo,
-  Animated,
   type StyleProp,
   View,
   type ViewStyle,
 } from 'react-native';
+import Animated from 'react-native-reanimated';
 import type { DeckSwipeDirection } from './deckSwipeLifecycle';
 import {
   useDeckSwipeController,
@@ -76,21 +76,14 @@ export const DeckSwipeStage = memo(forwardRef<DeckSwipeStageHandle, DeckSwipeSta
               props.cardStyle,
               card.role === 'behind' ? props.nextCardStyle : null,
               card.role === 'behind'
-                ? {
+                ? [controller.previewCardStyle, {
                     zIndex: 0,
                     elevation: 0,
-                    opacity: controller.previewOpacity,
-                    transform: [{ scale: controller.previewScale }],
-                  }
-                : {
+                  }]
+                : [controller.currentCardStyle, {
                     zIndex: 2,
                     elevation: 2,
-                    transform: [
-                      { translateX: controller.positionX },
-                      { translateY: controller.positionY },
-                      { rotate: controller.rotate },
-                    ],
-                  },
+                  }],
             ]}
             pointerEvents="none"
             accessibilityElementsHidden

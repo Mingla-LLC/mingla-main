@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing } from 'react-native';
 import { Gesture } from 'react-native-gesture-handler';
+import {
+  cancelAnimation,
+  Easing,
+  Extrapolation,
+  interpolate,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { spacing } from '../../constants/designSystem';
 import {
   SWIPE_COMMIT_DISTANCE,
@@ -61,15 +70,10 @@ interface DeckSwipeCounters {
 }
 
 export interface DeckSwipeController {
-  positionX: Animated.Value;
-  positionY: Animated.Value;
-  rotate: Animated.AnimatedInterpolation<string>;
-  likeOpacity: Animated.AnimatedInterpolation<number>;
-  passOpacity: Animated.AnimatedInterpolation<number>;
-  likeScale: Animated.AnimatedInterpolation<number>;
-  passScale: Animated.AnimatedInterpolation<number>;
-  previewOpacity: Animated.AnimatedInterpolation<number>;
-  previewScale: Animated.AnimatedInterpolation<number>;
+  currentCardStyle: ReturnType<typeof useAnimatedStyle>;
+  previewCardStyle: ReturnType<typeof useAnimatedStyle>;
+  likeIndicatorStyle: ReturnType<typeof useAnimatedStyle>;
+  passIndicatorStyle: ReturnType<typeof useAnimatedStyle>;
   isTransitionDelayed: boolean;
   gesture: ReturnType<typeof Gesture.Pan>;
   requestSwipe: (direction: DeckSwipeDirection) => boolean;
@@ -82,18 +86,18 @@ export interface DeckSwipeController {
 export function useDeckSwipeController(
   options: UseDeckSwipeControllerOptions,
 ): DeckSwipeController {
-  const positionX = useRef(new Animated.Value(0)).current;
-  const positionY = useRef(new Animated.Value(0)).current;
+  const positionX = useSharedValue(0);
+  const positionY = useSharedValue(0);
   const [isTransitionDelayed, setIsTransitionDelayed] = useState(false);
   const phaseRef = useRef<DeckSwipePhase>('IDLE');
   const epochRef = useRef(0);
   const activeCardIdRef = useRef<string | null>(options.activeCardId);
   const mountedRef = useRef(true);
-  const activeAnimationRef = useRef<Animated.CompositeAnimation | null>(null);
   const watchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const delayedRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const transitionStartedAtRef = useRef(0);
   const pendingCommitRef = useRef<DeckSwipeCommitToken | null>(null);
+  const afterCenterRef = useRef<(() => void) | null>(null);
   const latestEndYRef = useRef(0);
   // One slot is sufficient because every admission gets a fresh epoch and
   // completion validity is checked before replay detection.
@@ -122,16 +126,16 @@ export function useDeckSwipeController(
   }, []);
 
   const resetPresentation = useCallback((): void => {
-    positionX.setValue(0);
-    positionY.setValue(0);
+    cancelAnimation(positionX);
+    cancelAnimation(positionY);
+    positionX.value = 0;
+    positionY.value = 0;
   }, [positionX, positionY]);
 
   const recoverCurrentEpoch = useCallback((reason: DeckSwipeAnomalyReason): void => {
     const recoveryPhase = phaseRef.current;
     const durationMs = Math.max(0, Date.now() - transitionStartedAtRef.current);
     epochRef.current += 1;
-    activeAnimationRef.current?.stop();
-    activeAnimationRef.current = null;
     pendingCommitRef.current = null;
     clearTransitionTimers();
     resetPresentation();
@@ -155,43 +159,38 @@ export function useDeckSwipeController(
     );
   }, [clearTransitionTimers, recoverCurrentEpoch]);
 
+  const completeCenter = useCallback((
+    finished: boolean | undefined,
+    animationEpoch: number,
+    expectedCardId: string | null,
+  ): void => {
+    if (
+      !finished ||
+      !mountedRef.current ||
+      animationEpoch !== epochRef.current ||
+      expectedCardId !== activeCardIdRef.current ||
+      phaseRef.current !== 'SNAPPING'
+    ) return;
+    clearTransitionTimers();
+    resetPresentation();
+    setPhase('IDLE');
+    const afterCenter = afterCenterRef.current;
+    afterCenterRef.current = null;
+    afterCenter?.();
+  }, [clearTransitionTimers, resetPresentation, setPhase]);
+
   const animateToCenter = useCallback((afterCenter?: () => void): void => {
     const animationEpoch = epochRef.current;
     const expectedCardId = activeCardIdRef.current;
+    afterCenterRef.current = afterCenter ?? null;
     setPhase('SNAPPING');
     startTransitionTimers();
-    const animation = Animated.parallel([
-      Animated.timing(positionX, {
-        toValue: 0,
-        duration: optionsRef.current.reducedMotion ? DECK_REDUCED_MS : DECK_SNAP_MS,
-        easing: DECK_EASE_OUT,
-        useNativeDriver: true,
-      }),
-      Animated.timing(positionY, {
-        toValue: 0,
-        duration: optionsRef.current.reducedMotion ? DECK_REDUCED_MS : DECK_SNAP_MS,
-        easing: DECK_EASE_OUT,
-        useNativeDriver: true,
-      }),
-    ]);
-    activeAnimationRef.current = animation;
-    animation.start(({ finished }) => {
-      if (
-        !finished ||
-        !mountedRef.current ||
-        animationEpoch !== epochRef.current ||
-        expectedCardId !== activeCardIdRef.current ||
-        phaseRef.current !== 'SNAPPING'
-      ) {
-        return;
-      }
-      activeAnimationRef.current = null;
-      clearTransitionTimers();
-      resetPresentation();
-      setPhase('IDLE');
-      afterCenter?.();
+    const duration = optionsRef.current.reducedMotion ? DECK_REDUCED_MS : DECK_SNAP_MS;
+    positionX.value = withTiming(0, { duration, easing: DECK_EASE_OUT }, (finished) => {
+      runOnJS(completeCenter)(finished, animationEpoch, expectedCardId);
     });
-  }, [clearTransitionTimers, positionX, positionY, resetPresentation, setPhase, startTransitionTimers]);
+    positionY.value = withTiming(0, { duration, easing: DECK_EASE_OUT });
+  }, [completeCenter, positionX, positionY, setPhase, startTransitionTimers]);
 
   const settleCommit = useCallback((
     token: DeckSwipeCommitToken,
@@ -210,7 +209,6 @@ export function useDeckSwipeController(
       return false;
     }
     lastRequestedCommitKeyRef.current = tokenKey;
-    activeAnimationRef.current = null;
     countersRef.current.committed += 1;
     const settlement = optionsRef.current.onCommitRequested(token);
     if (!settlement) {
@@ -236,6 +234,36 @@ export function useDeckSwipeController(
     return true;
   }, [clearTransitionTimers, recoverCurrentEpoch, resetPresentation, setPhase]);
 
+  const completeExit = useCallback((finished: boolean | undefined, token: DeckSwipeCommitToken): void => {
+    const valid = isCurrentDeckCompletion({
+      finished: finished === true,
+      mounted: mountedRef.current,
+      phase: phaseRef.current,
+      expectedEpoch: token.epoch,
+      currentEpoch: epochRef.current,
+      expectedCardId: token.cardId,
+      currentCardId: activeCardIdRef.current,
+    });
+    if (!valid) {
+      if (
+        mountedRef.current &&
+        token.epoch === epochRef.current &&
+        token.cardId === activeCardIdRef.current &&
+        phaseRef.current === 'EXITING'
+      ) {
+        countersRef.current.stale += 1;
+        optionsRef.current.onAnomaly({
+          reason: 'stale_completion_ignored',
+          phase: phaseRef.current,
+          durationMs: Math.max(0, Date.now() - transitionStartedAtRef.current),
+        });
+        animateToCenter();
+      }
+      return;
+    }
+    settleCommit(token);
+  }, [animateToCenter, settleCommit]);
+
   const beginExit = useCallback((direction: DeckSwipeDirection): boolean => {
     const cardId = activeCardIdRef.current;
     if (!cardId || phaseRef.current !== 'DRAGGING') return false;
@@ -251,53 +279,12 @@ export function useDeckSwipeController(
     const duration = optionsRef.current.reducedMotion ? DECK_REDUCED_MS : DECK_EXIT_MS;
     const targetX = (direction === 'right' ? 1 : -1) * (optionsRef.current.screenWidth + spacing.lg);
     const targetY = Math.max(-100, Math.min(100, latestEndYRef.current));
-    const animation = Animated.parallel([
-      Animated.timing(positionX, {
-        toValue: targetX,
-        duration,
-        easing: DECK_EASE_OUT,
-        useNativeDriver: true,
-      }),
-      Animated.timing(positionY, {
-        toValue: targetY,
-        duration,
-        easing: DECK_EASE_OUT,
-        useNativeDriver: true,
-      }),
-    ]);
-    activeAnimationRef.current = animation;
-    animation.start(({ finished }) => {
-      const valid = isCurrentDeckCompletion({
-        finished,
-        mounted: mountedRef.current,
-        phase: phaseRef.current,
-        expectedEpoch: token.epoch,
-        currentEpoch: epochRef.current,
-        expectedCardId: token.cardId,
-        currentCardId: activeCardIdRef.current,
-      });
-      if (!valid) {
-        if (
-          mountedRef.current &&
-          token.epoch === epochRef.current &&
-          token.cardId === activeCardIdRef.current &&
-          phaseRef.current === 'EXITING'
-        ) {
-          countersRef.current.stale += 1;
-          optionsRef.current.onAnomaly({
-            reason: 'stale_completion_ignored',
-            phase: phaseRef.current,
-            durationMs: Math.max(0, Date.now() - transitionStartedAtRef.current),
-          });
-          animateToCenter();
-        }
-        return;
-      }
-
-      settleCommit(token);
+    positionX.value = withTiming(targetX, { duration, easing: DECK_EASE_OUT }, (finished) => {
+      runOnJS(completeExit)(finished, token);
     });
+    positionY.value = withTiming(targetY, { duration, easing: DECK_EASE_OUT });
     return true;
-  }, [animateToCenter, positionX, positionY, settleCommit, setPhase, startTransitionTimers]);
+  }, [animateToCenter, completeExit, positionX, positionY, setPhase, startTransitionTimers]);
 
   const fastForwardPendingExit = useCallback((): boolean => {
     const token = pendingCommitRef.current;
@@ -313,17 +300,15 @@ export function useDeckSwipeController(
       })
     ) return false;
 
-    // Move out of EXITING before stop(): React Native may synchronously invoke
-    // the old animation callback with finished:false. That callback must see a
-    // stale phase and remain inert while the exact pending token settles once.
+    // Move out of EXITING before cancellation so the UI-thread completion sees
+    // a stale phase and remains inert while this exact token settles once.
     setPhase('COMMITTING');
-    const outgoingAnimation = activeAnimationRef.current;
-    activeAnimationRef.current = null;
-    outgoingAnimation?.stop();
+    cancelAnimation(positionX);
+    cancelAnimation(positionY);
     clearTransitionTimers();
     resetPresentation();
     return settleCommit(token, true);
-  }, [clearTransitionTimers, resetPresentation, setPhase, settleCommit]);
+  }, [clearTransitionTimers, positionX, positionY, resetPresentation, setPhase, settleCommit]);
 
   const rejectInput = useCallback((): void => {
     countersRef.current.rejected += 1;
@@ -343,12 +328,6 @@ export function useDeckSwipeController(
     epochRef.current = nextDeckGestureEpoch(epochRef.current);
     setPhase('DRAGGING');
   }, [fastForwardPendingExit, rejectInput, setPhase]);
-
-  const updateGesture = useCallback((translationX: number, translationY: number): void => {
-    if (phaseRef.current !== 'DRAGGING') return;
-    positionX.setValue(translationX);
-    positionY.setValue(translationY);
-  }, [positionX, positionY]);
 
   const finalizeGesture = useCallback((
     translationX: number,
@@ -383,14 +362,21 @@ export function useDeckSwipeController(
   const gesture = useMemo(() => Gesture.Pan()
     .minDistance(10)
     .maxPointers(1)
-    .runOnJS(true)
-    .onBegin(beginGesture)
+    .onBegin(() => {
+      runOnJS(beginGesture)();
+    })
     .onUpdate((event) => {
-      updateGesture(event.translationX, event.translationY);
+      positionX.value = event.translationX;
+      positionY.value = event.translationY;
     })
     .onFinalize((event, success) => {
-      finalizeGesture(event.translationX, event.translationY, event.velocityX, success);
-    }), [beginGesture, finalizeGesture, updateGesture]);
+      runOnJS(finalizeGesture)(
+        event.translationX,
+        event.translationY,
+        event.velocityX,
+        success,
+      );
+    }), [beginGesture, finalizeGesture, positionX, positionY]);
 
   const requestSwipe = useCallback((direction: DeckSwipeDirection): boolean => {
     if (!canAdmitDeckInput(phaseRef.current) || !activeCardIdRef.current) {
@@ -417,8 +403,6 @@ export function useDeckSwipeController(
 
   const invalidate = useCallback((reason: string): void => {
     epochRef.current += 1;
-    activeAnimationRef.current?.stop();
-    activeAnimationRef.current = null;
     pendingCommitRef.current = null;
     clearTransitionTimers();
     resetPresentation();
@@ -440,58 +424,81 @@ export function useDeckSwipeController(
   useEffect(() => () => {
     mountedRef.current = false;
     epochRef.current += 1;
-    activeAnimationRef.current?.stop();
+    cancelAnimation(positionX);
+    cancelAnimation(positionY);
     clearTransitionTimers();
     optionsRef.current.onPhaseChanged('IDLE');
     optionsRef.current.onInvalidated('unmount');
-  }, [clearTransitionTimers]);
+  }, [clearTransitionTimers, positionX, positionY]);
 
-  const rotate = useMemo(() => positionX.interpolate({
-    inputRange: [-options.screenWidth / 2, -SWIPE_COMMIT_DISTANCE, 0, SWIPE_COMMIT_DISTANCE, options.screenWidth / 2],
-    outputRange: ['-12deg', '-6deg', '0deg', '6deg', '12deg'],
-    extrapolate: 'clamp',
-  }), [options.screenWidth, positionX]);
-  const likeOpacity = useMemo(() => positionX.interpolate({
-    inputRange: [0, 16, SWIPE_COMMIT_MIN_DX, SWIPE_COMMIT_DISTANCE],
-    outputRange: [0, 0.15, 0.35, 1],
-    extrapolate: 'clamp',
-  }), [positionX]);
-  const passOpacity = useMemo(() => positionX.interpolate({
-    inputRange: [-SWIPE_COMMIT_DISTANCE, -SWIPE_COMMIT_MIN_DX, -16, 0],
-    outputRange: [1, 0.35, 0.15, 0],
-    extrapolate: 'clamp',
-  }), [positionX]);
-  const likeScale = useMemo(() => positionX.interpolate({
-    inputRange: [0, 16, SWIPE_COMMIT_DISTANCE],
-    outputRange: [0.96, 0.96, 1],
-    extrapolate: 'clamp',
-  }), [positionX]);
-  const passScale = useMemo(() => positionX.interpolate({
-    inputRange: [-SWIPE_COMMIT_DISTANCE, -16, 0],
-    outputRange: [1, 0.96, 0.96],
-    extrapolate: 'clamp',
-  }), [positionX]);
-  const previewOpacity = useMemo(() => positionX.interpolate({
-    inputRange: [-SWIPE_COMMIT_DISTANCE, -16, 0, 16, SWIPE_COMMIT_DISTANCE],
-    outputRange: [1, 0.12, 0, 0.12, 1],
-    extrapolate: 'clamp',
-  }), [positionX]);
-  const previewScale = useMemo(() => positionX.interpolate({
-    inputRange: [-SWIPE_COMMIT_DISTANCE, 0, SWIPE_COMMIT_DISTANCE],
-    outputRange: [1, 0.965, 1],
-    extrapolate: 'clamp',
-  }), [positionX]);
+  const currentCardStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: positionX.value },
+      { translateY: positionY.value },
+      {
+        rotate: `${interpolate(
+          positionX.value,
+          [-options.screenWidth / 2, -SWIPE_COMMIT_DISTANCE, 0, SWIPE_COMMIT_DISTANCE, options.screenWidth / 2],
+          [-12, -6, 0, 6, 12],
+          Extrapolation.CLAMP,
+        )}deg`,
+      },
+    ],
+  }), [options.screenWidth]);
+  const previewCardStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(
+      positionX.value,
+      [-SWIPE_COMMIT_DISTANCE, -16, 0, 16, SWIPE_COMMIT_DISTANCE],
+      [1, 0.12, 0, 0.12, 1],
+      Extrapolation.CLAMP,
+    ),
+    transform: [{
+      scale: interpolate(
+        positionX.value,
+        [-SWIPE_COMMIT_DISTANCE, 0, SWIPE_COMMIT_DISTANCE],
+        [1, 0.965, 1],
+        Extrapolation.CLAMP,
+      ),
+    }],
+  }));
+  const likeIndicatorStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(
+      positionX.value,
+      [0, 16, SWIPE_COMMIT_MIN_DX, SWIPE_COMMIT_DISTANCE],
+      [0, 0.15, 0.35, 1],
+      Extrapolation.CLAMP,
+    ),
+    transform: [{
+      scale: interpolate(
+        positionX.value,
+        [0, 16, SWIPE_COMMIT_DISTANCE],
+        [0.96, 0.96, 1],
+        Extrapolation.CLAMP,
+      ),
+    }],
+  }));
+  const passIndicatorStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(
+      positionX.value,
+      [-SWIPE_COMMIT_DISTANCE, -SWIPE_COMMIT_MIN_DX, -16, 0],
+      [1, 0.35, 0.15, 0],
+      Extrapolation.CLAMP,
+    ),
+    transform: [{
+      scale: interpolate(
+        positionX.value,
+        [-SWIPE_COMMIT_DISTANCE, -16, 0],
+        [1, 0.96, 0.96],
+        Extrapolation.CLAMP,
+      ),
+    }],
+  }));
 
   return {
-    positionX,
-    positionY,
-    rotate,
-    likeOpacity,
-    passOpacity,
-    likeScale,
-    passScale,
-    previewOpacity,
-    previewScale,
+    currentCardStyle,
+    previewCardStyle,
+    likeIndicatorStyle,
+    passIndicatorStyle,
     isTransitionDelayed,
     gesture,
     requestSwipe,
