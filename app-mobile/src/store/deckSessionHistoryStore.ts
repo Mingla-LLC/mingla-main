@@ -5,13 +5,13 @@ import {
   type AppStateStatus,
 } from 'react-native';
 import { create } from 'zustand';
+import type { DeckSwipePhase } from '../components/swipeDeck/deckSwipeLifecycle';
 import type { Recommendation } from '../types/recommendation';
 
 export const DECK_SESSION_HISTORY_STORAGE_KEY = 'mingla-deck-session-history-v1';
 export const LEGACY_APP_STORAGE_KEY = 'mingla-mobile-storage';
 export const DECK_SESSION_HISTORY_CAP = 200;
-export const DECK_SESSION_HISTORY_TRAILING_MS = 750;
-export const DECK_SESSION_HISTORY_MAX_AGE_MS = 5_000;
+export const DECK_SESSION_HISTORY_QUIET_IDLE_MS = 750;
 
 interface DeckSessionHistorySnapshot {
   version: 1;
@@ -35,8 +35,7 @@ interface DeckSessionHistoryDiagnostics {
 }
 
 let pendingSnapshot: DeckSessionHistorySnapshot | null = null;
-let trailingTimer: ReturnType<typeof setTimeout> | null = null;
-let maxAgeTimer: ReturnType<typeof setTimeout> | null = null;
+let quietTimer: ReturnType<typeof setTimeout> | null = null;
 let interactionHandle: ReturnType<typeof InteractionManager.runAfterInteractions> | null = null;
 let persistenceDrain: Promise<void> | null = null;
 let hydrationPromise: Promise<void> | null = null;
@@ -47,7 +46,8 @@ let queuedResetIntentVersion = 0;
 let legacyCleanupAfterGeneration: number | null = null;
 let persistenceErrorReported = false;
 let migrationErrorReported = false;
-let persistenceBlocked = false;
+let interactionPhase: DeckSwipePhase = 'IDLE';
+let lastInteractionAt = 0;
 let deferredDrainRequested = false;
 const diagnostics: DeckSessionHistoryDiagnostics = {
   serializations: 0,
@@ -121,23 +121,44 @@ async function removeLegacyHistoryAfterMigration(): Promise<void> {
 }
 
 function clearSchedule(): void {
-  if (trailingTimer) clearTimeout(trailingTimer);
-  if (maxAgeTimer) clearTimeout(maxAgeTimer);
+  if (quietTimer) clearTimeout(quietTimer);
   interactionHandle?.cancel();
-  trailingTimer = null;
-  maxAgeTimer = null;
+  quietTimer = null;
   interactionHandle = null;
 }
 
+function canStartNormalPersistence(): boolean {
+  return interactionPhase === 'IDLE' &&
+    Date.now() - lastInteractionAt >= DECK_SESSION_HISTORY_QUIET_IDLE_MS;
+}
+
+function scheduleQuietDrain(): void {
+  if (!pendingSnapshot || interactionPhase !== 'IDLE') return;
+  if (quietTimer) clearTimeout(quietTimer);
+  const quietForMs = Date.now() - lastInteractionAt;
+  const remainingMs = Math.max(0, DECK_SESSION_HISTORY_QUIET_IDLE_MS - quietForMs);
+  quietTimer = setTimeout(() => {
+    quietTimer = null;
+    requestScheduledDrain();
+  }, remainingMs);
+}
+
 async function drainPendingSnapshot(force = false): Promise<void> {
-  if (persistenceBlocked && !force) {
+  if (!force && !canStartNormalPersistence()) {
     deferredDrainRequested = true;
+    scheduleQuietDrain();
     return;
   }
+  deferredDrainRequested = false;
   if (persistenceDrain) return persistenceDrain;
   clearSchedule();
   const drain = async (): Promise<void> => {
     while (pendingSnapshot) {
+      if (!force && !canStartNormalPersistence()) {
+        deferredDrainRequested = true;
+        scheduleQuietDrain();
+        break;
+      }
       const snapshot = pendingSnapshot;
       pendingSnapshot = null;
       if (snapshot.generation < lastPersistedGeneration) continue;
@@ -177,8 +198,9 @@ async function drainPendingSnapshot(force = false): Promise<void> {
 }
 
 function requestScheduledDrain(): void {
-  if (persistenceBlocked) {
+  if (!canStartNormalPersistence()) {
     deferredDrainRequested = true;
+    scheduleQuietDrain();
     return;
   }
   interactionHandle?.cancel();
@@ -190,19 +212,7 @@ function requestScheduledDrain(): void {
 
 function scheduleSnapshot(snapshot: DeckSessionHistorySnapshot): void {
   pendingSnapshot = snapshot;
-  if (trailingTimer) clearTimeout(trailingTimer);
-  trailingTimer = setTimeout(() => {
-    trailingTimer = null;
-    requestScheduledDrain();
-  }, DECK_SESSION_HISTORY_TRAILING_MS);
-  // Continuous 520ms swiping keeps moving the trailing edge. This fixed
-  // checkpoint bounds durability without turning every swipe into stringify + I/O.
-  if (!maxAgeTimer) {
-    maxAgeTimer = setTimeout(() => {
-      maxAgeTimer = null;
-      requestScheduledDrain();
-    }, DECK_SESSION_HISTORY_MAX_AGE_MS);
-  }
+  scheduleQuietDrain();
 }
 
 export const useDeckSessionHistoryStore = create<DeckSessionHistoryState>((set, get) => ({
@@ -348,12 +358,17 @@ export function flushDeckSessionHistory(): Promise<void> {
   return drainPendingSnapshot(true);
 }
 
-/** Prevent normal history serialization while the native swipe transaction is active. */
-export function setDeckSessionHistoryPersistenceBlocked(blocked: boolean): void {
-  persistenceBlocked = blocked;
-  if (!blocked && deferredDrainRequested) {
+/** Require a full quiet-IDLE window before normal history serialization. */
+export function setDeckSessionHistoryInteractionPhase(phase: DeckSwipePhase): void {
+  interactionPhase = phase;
+  lastInteractionAt = Date.now();
+  if (phase !== 'IDLE') {
+    clearSchedule();
+    return;
+  }
+  if (pendingSnapshot || deferredDrainRequested) {
     deferredDrainRequested = false;
-    requestScheduledDrain();
+    scheduleQuietDrain();
   }
 }
 

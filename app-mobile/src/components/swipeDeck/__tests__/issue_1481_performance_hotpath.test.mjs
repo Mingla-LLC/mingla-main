@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
+// [TEST-MOD-APPROVED ORCH-1481 AMENDMENT-5]
+
 const urls = {
   swipeable: new URL('../../SwipeableCards.tsx', import.meta.url),
   context: new URL('../../../contexts/RecommendationsContext.tsx', import.meta.url),
@@ -206,13 +208,14 @@ test('production commit batches visible history with removal and defers only I/O
   assert.match(source.swipeable, /InteractionManager\.runAfterInteractions/);
 });
 
-test('dedicated generation persistence is trailing, serialized, lifecycle-flushed, and resettable', () => {
+test('dedicated generation persistence is quiet-IDLE gated, serialized, lifecycle-flushed, and resettable', () => {
   assert.match(source.historyStore, /DECK_SESSION_HISTORY_CAP = 200/);
   assert.match(source.historyStore, /pendingSnapshot = snapshot/);
-  assert.match(source.historyStore, /DECK_SESSION_HISTORY_MAX_AGE_MS = 5_000/);
-  assert.match(source.historyStore, /trailingTimer = setTimeout\([\s\S]*maxAgeTimer = setTimeout/);
+  assert.match(source.historyStore, /DECK_SESSION_HISTORY_QUIET_IDLE_MS = 750/);
+  assert.match(source.historyStore, /quietTimer = setTimeout/);
+  assert.doesNotMatch(source.historyStore, /DECK_SESSION_HISTORY_MAX_AGE_MS|maxAgeTimer/);
   assert.match(source.historyStore, /InteractionManager\.runAfterInteractions/);
-  assert.match(source.historyStore, /if \(persistenceBlocked && !force\)/);
+  assert.match(source.historyStore, /if \(!force && !canStartNormalPersistence\(\)\)/);
   assert.match(source.historyStore, /while \(pendingSnapshot\)/);
   assert.match(source.historyStore, /snapshot\.generation < lastPersistedGeneration/);
   assert.match(source.historyStore, /JSON\.stringify\(snapshot\)/);
@@ -406,7 +409,7 @@ test('current and behind are the only stable bounded poster loads', () => {
   assert.doesNotMatch(preview, /EventCoverMedia|<CardHero\b/);
 });
 
-test('issue workflow requires all six independent guards', () => {
+test('issue workflow requires all eight independent guards', () => {
   for (const filename of [
     'issue_1481_swipe_lifecycle.test.mjs',
     'issue_1481_swipe_lifecycle.adversarial.test.mjs',
@@ -414,6 +417,8 @@ test('issue workflow requires all six independent guards', () => {
     'issue_1481_performance_hotpath.adversarial.test.mjs',
     'issue_1481_release_hotpath.test.mjs',
     'issue_1481_release_hotpath.adversarial.test.mjs',
+    'issue_1481_native_admission.test.mjs',
+    'issue_1481_native_admission.adversarial.test.mjs',
   ]) {
     assert.match(source.workflow, new RegExp(filename.replaceAll('.', '\\.')));
   }

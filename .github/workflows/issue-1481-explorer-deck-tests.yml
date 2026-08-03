@@ -10,6 +10,7 @@ on:
       - "app-mobile/src/store/appStore.ts"
       - "app-mobile/src/store/deckSessionHistoryStore.ts"
       - "app-mobile/src/components/swipeDeck/**"
+      - "app-mobile/scripts/ci/issue-1481-parse-framestats.mjs"
       - "docs/INVARIANT_REGISTRY.md"
       - ".github/workflows/issue-1481-explorer-deck-tests.yml"
   pull_request:
@@ -20,6 +21,7 @@ on:
       - "app-mobile/src/store/appStore.ts"
       - "app-mobile/src/store/deckSessionHistoryStore.ts"
       - "app-mobile/src/components/swipeDeck/**"
+      - "app-mobile/scripts/ci/issue-1481-parse-framestats.mjs"
       - "docs/INVARIANT_REGISTRY.md"
       - ".github/workflows/issue-1481-explorer-deck-tests.yml"
 
@@ -37,7 +39,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Require all six independent append-only guards
+      - name: Require all eight independent append-only guards
         run: |
           test -f app-mobile/src/components/swipeDeck/__tests__/issue_1481_swipe_lifecycle.test.mjs
           test -f app-mobile/src/components/swipeDeck/__tests__/issue_1481_swipe_lifecycle.adversarial.test.mjs
@@ -45,6 +47,8 @@ jobs:
           test -f app-mobile/src/components/swipeDeck/__tests__/issue_1481_performance_hotpath.adversarial.test.mjs
           test -f app-mobile/src/components/swipeDeck/__tests__/issue_1481_release_hotpath.test.mjs
           test -f app-mobile/src/components/swipeDeck/__tests__/issue_1481_release_hotpath.adversarial.test.mjs
+          test -f app-mobile/src/components/swipeDeck/__tests__/issue_1481_native_admission.test.mjs
+          test -f app-mobile/src/components/swipeDeck/__tests__/issue_1481_native_admission.adversarial.test.mjs
       - name: Run DRAFT invariants and their synthetic self-test controls
         run: >-
           node --test
@@ -54,3 +58,5 @@ jobs:
           app-mobile/src/components/swipeDeck/__tests__/issue_1481_performance_hotpath.adversarial.test.mjs
           app-mobile/src/components/swipeDeck/__tests__/issue_1481_release_hotpath.test.mjs
           app-mobile/src/components/swipeDeck/__tests__/issue_1481_release_hotpath.adversarial.test.mjs
+          app-mobile/src/components/swipeDeck/__tests__/issue_1481_native_admission.test.mjs
+          app-mobile/src/components/swipeDeck/__tests__/issue_1481_native_admission.adversarial.test.mjs

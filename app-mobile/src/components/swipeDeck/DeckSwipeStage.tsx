@@ -3,7 +3,6 @@ import React, {
   memo,
   useEffect,
   useImperativeHandle,
-  useLayoutEffect,
   useRef,
 } from 'react';
 import {
@@ -47,7 +46,6 @@ interface DeckSwipeStageProps extends UseDeckSwipeControllerOptions {
 export const DeckSwipeStage = memo(forwardRef<DeckSwipeStageHandle, DeckSwipeStageProps>(
   function DeckSwipeStage(props, ref) {
     const controller = useDeckSwipeController(props);
-    const synchronizeActiveCardLayout = controller.synchronizeActiveCardLayout;
     const delayedAnnouncementSentRef = useRef(false);
 
     useImperativeHandle(ref, () => ({
@@ -65,12 +63,6 @@ export const DeckSwipeStage = memo(forwardRef<DeckSwipeStageHandle, DeckSwipeSta
       delayedAnnouncementSentRef.current = true;
       AccessibilityInfo.announceForAccessibility(props.transitionDelayAnnouncement);
     }, [controller.isTransitionDelayed, props.transitionDelayAnnouncement]);
-
-    useLayoutEffect(() => {
-      if (props.activeCardId) {
-        synchronizeActiveCardLayout(props.activeCardId);
-      }
-    }, [props.activeCardId, synchronizeActiveCardLayout]);
 
     return (
       <>

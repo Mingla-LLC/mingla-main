@@ -7086,17 +7086,20 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 ## DRAFT — issue #1481 (Explorer swipe lifecycle and deck performance)
 
 ### I-PROPOSED-1481-DECK-NATIVE-DRIVER-SINGLE-OWNER (DRAFT)
-- **Rule:** Explorer has one lifecycle controller and one RNGH 2.x current-card handler. Per-frame
+- **Rule:** Explorer has one lifecycle controller and one always-mounted/eligible RNGH 2.x
+  current-card handler whose identity survives card promotion. Native handler `key`, phase-driven
+  `enabled`, and phase-driven host `pointerEvents` toggles are forbidden; the synchronous
+  `phaseRef` is the sole overlap-admission gate. Per-frame
   pan and transform/opacity animations use RN core Animated's native driver. Only a current
   epoch/card `finished:true` completion may commit. PanResponder, private Animated offsets/reads,
   Reanimated/Worklets/worklet directives, new Gesture auto-worklet callbacks, and competing
   lifecycle state are forbidden. `[TRANSITIONAL: I-1481]` RNGH 2.x exits only through a separately
   approved Consumer gesture/dependency migration with native Fabric crash soak.
-  Every finished exit settles from its immutable token to exactly one explicit
+  Every finished exit synchronously resets presentation and settles from its immutable token to exactly one explicit
   `{nextCardId}` or `{exhausted:true}` result; COMMITTING may never wait for a passive render effect.
   Gesture phase is owned by the memoized `DeckSwipeStage`, outside the deck/provider/history owner.
 - **Enforcement:** `.github/workflows/issue-1481-explorer-deck-tests.yml` requires and executes the
-  exact implementor/tester Node guards; the guards source-check the sole controller and exercise a
+  exact eight implementor/tester Node guards; the guards source-check the sole controller and exercise a
   synthetic reverted competing-owner control.
 - **Regression:** `issue_1481_swipe_lifecycle.test.mjs` proves nominal admission/current-token
   completion and production wiring; the independent tester guard adds 10,000-sequence adversarial
@@ -7112,13 +7115,17 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   second poster. Remote hero decode long edge is at most 1440 physical pixels. Exact ordered full-card history
   is owned by its dedicated last-200 store, updates synchronously with card removal, never fans out
   through the persisted global app store or RecommendationsProvider, and persists through a
-  generation-stamped 750ms trailing plus five-second maximum-age coalesced/serialized snapshot,
-  with no normal serialization during DRAGGING/EXITING/COMMITTING, lossless legacy migration, and
-  lifecycle/logout flush. Non-critical business work remains FIFO-deferred after interaction.
+  generation-stamped coalesced/serialized snapshot only after at least 750ms of quiet IDLE;
+  active cadence has no maximum-age write escape hatch. Eligibility is rechecked immediately before
+  serialization, with lossless legacy migration and
+  terminal/lifecycle/logout forced flush. Non-critical business work remains FIFO-deferred after interaction.
 - **Enforcement:** the issue workflow requires and runs independent lifecycle and performance guards
   over every scoped runtime/store/provider path. Static guards require selector isolation, a memoized
   provider value, exact history migration/reset/flush ordering, zero explicit deck image prefetch,
-  stable memoized bounded poster sources, and media cardinality. Independent release-like evidence
+  stable memoized bounded poster sources, media cardinality, and Android framestats parsed by named
+  `Flags`, `IntendedVsync`, `FrameDeadline`, and `FrameCompleted` columns. Deadline jank is solely
+  `FrameCompleted > FrameDeadline`; raw durations supply distribution/frozen-frame metrics only.
+  Independent release-like evidence
   must additionally satisfy the binding Samsung/iOS frame, hitch, memory, image, and crash budgets.
 - **Regression:** the performance guards prove exact order/rollback/last-200 behavior, 50-to-one
   coalescing, global-store/provider isolation, migration safety, current/behind-only poster loading,

@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
+// [TEST-MOD-APPROVED ORCH-1481 AMENDMENT-5]
+
 const files = Object.fromEntries(await Promise.all(Object.entries({
   swipeable: new URL('../../SwipeableCards.tsx', import.meta.url),
   context: new URL('../../../contexts/RecommendationsContext.tsx', import.meta.url),
@@ -197,6 +199,7 @@ test('the render hot path has a stable two-poster bound and no explicit speculat
   assert.match(files.stage, /props\.posterCards\.map\(\(card\)[\s\S]*key=\{card\.id\}[\s\S]*\{card\.poster\}/);
   assert.doesNotMatch(behind, /EventCoverMedia|<CardHero\b/);
   const current = swipeable.slice(swipeable.indexOf('{/* Current Card */}'), swipeable.indexOf('{/* Swipe Buttons */}'));
-  assert.match(current, /<PanGestureHandler[\s\S]*key=\{currentRec\.id\}/);
+  assert.match(current, /<PanGestureHandler[\s\S]*onHandlerStateChange=\{deckSwipe\.onHandlerStateChange\}/);
+  assert.doesNotMatch(current, /key=\{currentRec\.id\}|enabled=\{deckSwipe\.handlerEnabled\}/);
   assert.match(current, /<CardHero[\s\S]*image=\{currentRec\.image\}/);
 });

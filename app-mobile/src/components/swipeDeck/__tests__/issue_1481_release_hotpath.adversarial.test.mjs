@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
+// [TEST-MOD-APPROVED ORCH-1481 AMENDMENT-5]
+
 const controller = await readFile(new URL('../useDeckSwipeController.ts', import.meta.url), 'utf8');
 const swipeable = await readFile(new URL('../../SwipeableCards.tsx', import.meta.url), 'utf8');
 const history = await readFile(new URL('../../../store/deckSessionHistoryStore.ts', import.meta.url), 'utf8');
@@ -34,16 +36,17 @@ test('stale, duplicate, and terminal settlement paths cannot retain COMMITTING p
   assert.match(commit, /if \(!settlement\) \{\s*recoverCurrentEpoch\('stale_completion_ignored'\)/);
   assert.match(commit, /pendingCommitRef\.current = null/);
   assert.match(commit, /activeCardIdRef\.current = 'nextCardId' in settlement[\s\S]*: null/);
-  assert.match(commit, /layoutFallbackRef\.current = setTimeout\([\s\S]*synchronizeActiveCardLayout/);
-  assert.match(controller, /const synchronizeActiveCardLayout[\s\S]*resetPresentation\(\);\s*setPhase\('IDLE'\)/);
+  assert.doesNotMatch(commit, /pendingSettlementRef|layoutFallbackRef|synchronizeActiveCardLayout/);
+  assert.match(commit, /clearTransitionTimers\(\);\s*resetPresentation\(\);\s*setPhase\('IDLE'\);\s*optionsRef\.current\.onCommitSettled/);
 });
 
-test('normal persistence cannot serialize in DRAGGING, EXITING, or COMMITTING', () => {
-  const blockedAt = history.indexOf('if (persistenceBlocked && !force)');
+test('normal persistence cannot serialize before a 750ms quiet IDLE window', () => {
+  const blockedAt = history.indexOf('if (!force && !canStartNormalPersistence())');
   const stringifyAt = history.indexOf('const serialized = JSON.stringify(snapshot)');
   assert.ok(blockedAt >= 0 && stringifyAt > blockedAt);
-  assert.match(swipeable, /onPhaseChanged: \(phase\)[\s\S]*phase !== 'IDLE'/);
-  assert.match(history, /setDeckSessionHistoryPersistenceBlocked\(blocked: boolean\)/);
+  assert.match(swipeable, /onPhaseChanged: \(phase\)[\s\S]*lastDeckInteractionAtRef\.current = Date\.now\(\)/);
+  assert.match(history, /setDeckSessionHistoryInteractionPhase\(phase: DeckSwipePhase\)/);
+  assert.match(history, /Date\.now\(\) - lastInteractionAt >= DECK_SESSION_HISTORY_QUIET_IDLE_MS/);
 });
 
 test('terminal, background, reset, rollback, and unmount retain forced durability seams', () => {

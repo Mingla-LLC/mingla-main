@@ -67,7 +67,6 @@ interface DeckSwipeCounters {
 
 export interface DeckSwipeController {
   phase: DeckSwipePhase;
-  handlerEnabled: boolean;
   positionX: Animated.Value;
   positionY: Animated.Value;
   rotate: Animated.AnimatedInterpolation<string>;
@@ -82,7 +81,6 @@ export interface DeckSwipeController {
   onHandlerStateChange: (event: PanGestureHandlerStateChangeEvent) => void;
   requestSwipe: (direction: DeckSwipeDirection) => boolean;
   requestTapExpand: () => boolean;
-  synchronizeActiveCardLayout: (cardId: string) => boolean;
   invalidate: (reason: string) => void;
   getCounters: () => DeckSwipeCounters;
 }
@@ -103,11 +101,6 @@ export function useDeckSwipeController(
   const delayedRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const transitionStartedAtRef = useRef(0);
   const pendingCommitRef = useRef<DeckSwipeCommitToken | null>(null);
-  const pendingSettlementRef = useRef<{
-    token: DeckSwipeCommitToken;
-    settlement: DeckCommitSettlement;
-  } | null>(null);
-  const layoutFallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestEndYRef = useRef(0);
   // One slot is sufficient because every admission gets a fresh epoch and
   // completion validity is checked before replay detection.
@@ -136,11 +129,6 @@ export function useDeckSwipeController(
     if (mountedRef.current) setIsTransitionDelayed(false);
   }, []);
 
-  const clearLayoutFallback = useCallback((): void => {
-    if (layoutFallbackRef.current) clearTimeout(layoutFallbackRef.current);
-    layoutFallbackRef.current = null;
-  }, []);
-
   const resetPresentation = useCallback((): void => {
     positionX.setValue(0);
     positionY.setValue(0);
@@ -153,31 +141,13 @@ export function useDeckSwipeController(
     activeAnimationRef.current?.stop();
     activeAnimationRef.current = null;
     pendingCommitRef.current = null;
-    pendingSettlementRef.current = null;
-    clearLayoutFallback();
     clearTransitionTimers();
     resetPresentation();
     setPhase('IDLE');
     if (reason === 'watchdog_recovery') countersRef.current.watchdog += 1;
     optionsRef.current.onInvalidated(reason);
     optionsRef.current.onAnomaly({ reason, phase: recoveryPhase, durationMs });
-  }, [clearLayoutFallback, clearTransitionTimers, resetPresentation, setPhase]);
-
-  const synchronizeActiveCardLayout = useCallback((cardId: string): boolean => {
-    const pending = pendingSettlementRef.current;
-    if (
-      !pending ||
-      !('nextCardId' in pending.settlement) ||
-      pending.settlement.nextCardId !== cardId ||
-      activeCardIdRef.current !== cardId
-    ) return false;
-    pendingSettlementRef.current = null;
-    clearLayoutFallback();
-    resetPresentation();
-    setPhase('IDLE');
-    optionsRef.current.onCommitSettled(pending.token, pending.settlement);
-    return true;
-  }, [clearLayoutFallback, resetPresentation, setPhase]);
+  }, [clearTransitionTimers, resetPresentation, setPhase]);
 
   const startTransitionTimers = useCallback((): void => {
     clearTransitionTimers();
@@ -320,21 +290,12 @@ export function useDeckSwipeController(
         ? settlement.nextCardId
         : null;
       clearTransitionTimers();
-      if ('nextCardId' in settlement) {
-        pendingSettlementRef.current = { token, settlement };
-        // Layout effect normally promotes in the same React commit. This short
-        // fallback guarantees the deck can never hang if that render is lost.
-        layoutFallbackRef.current = setTimeout(() => {
-          synchronizeActiveCardLayout(settlement.nextCardId);
-        }, optionsRef.current.reducedMotion ? 0 : 100);
-      } else {
-        resetPresentation();
-        setPhase('IDLE');
-        optionsRef.current.onCommitSettled(token, settlement);
-      }
+      resetPresentation();
+      setPhase('IDLE');
+      optionsRef.current.onCommitSettled(token, settlement);
     });
     return true;
-  }, [animateToCenter, clearTransitionTimers, positionX, positionY, recoverCurrentEpoch, resetPresentation, setPhase, startTransitionTimers, synchronizeActiveCardLayout]);
+  }, [animateToCenter, clearTransitionTimers, positionX, positionY, recoverCurrentEpoch, resetPresentation, setPhase, startTransitionTimers]);
 
   const onGestureEvent = useMemo(
     () => Animated.event<PanGestureHandlerGestureEvent>(
@@ -413,13 +374,11 @@ export function useDeckSwipeController(
     activeAnimationRef.current?.stop();
     activeAnimationRef.current = null;
     pendingCommitRef.current = null;
-    pendingSettlementRef.current = null;
-    clearLayoutFallback();
     clearTransitionTimers();
     resetPresentation();
     setPhase('IDLE');
     optionsRef.current.onInvalidated(reason);
-  }, [clearLayoutFallback, clearTransitionTimers, resetPresentation, setPhase]);
+  }, [clearTransitionTimers, resetPresentation, setPhase]);
 
   useEffect(() => {
     const previousCardId = activeCardIdRef.current;
@@ -436,11 +395,10 @@ export function useDeckSwipeController(
     mountedRef.current = false;
     epochRef.current += 1;
     activeAnimationRef.current?.stop();
-    clearLayoutFallback();
     clearTransitionTimers();
     optionsRef.current.onPhaseChanged('IDLE');
     optionsRef.current.onInvalidated('unmount');
-  }, [clearLayoutFallback, clearTransitionTimers]);
+  }, [clearTransitionTimers]);
 
   const rotate = useMemo(() => positionX.interpolate({
     inputRange: [-options.screenWidth / 2, -SWIPE_COMMIT_DISTANCE, 0, SWIPE_COMMIT_DISTANCE, options.screenWidth / 2],
@@ -480,7 +438,6 @@ export function useDeckSwipeController(
 
   return {
     phase,
-    handlerEnabled: phase === 'IDLE' || phase === 'DRAGGING',
     positionX,
     positionY,
     rotate,
@@ -495,7 +452,6 @@ export function useDeckSwipeController(
     onHandlerStateChange,
     requestSwipe,
     requestTapExpand,
-    synchronizeActiveCardLayout,
     invalidate,
     getCounters: () => ({ ...countersRef.current }),
   };

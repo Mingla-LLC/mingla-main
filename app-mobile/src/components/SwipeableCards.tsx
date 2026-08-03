@@ -138,6 +138,7 @@ import {
   consumeDeckTokenIntent,
   DeckCommitSettlement,
   DeckSwipeCommitToken,
+  DeckSwipePhase,
 } from './swipeDeck/deckSwipeLifecycle';
 import {
   DECK_VISIBLE_POSTER_CACHE_POLICY,
@@ -154,11 +155,13 @@ import {
   flushDeckSessionHistory,
   hydrateDeckSessionHistory,
   rollbackDeckSessionHistory,
-  setDeckSessionHistoryPersistenceBlocked,
+  setDeckSessionHistoryInteractionPhase,
   useDeckSessionHistoryStore,
 } from '../store/deckSessionHistoryStore';
 // Re-export so existing import sites (if any) resolve from this module too.
 export { shouldCommitSwipe, SWIPE_COMMIT_DISTANCE, SWIPE_COMMIT_VELOCITY, SWIPE_COMMIT_MIN_DX };
+
+const DECK_PERSISTENCE_QUIET_IDLE_MS = 750;
 
 function getTimeOfDay(): string {
   const hour = new Date().getHours();
@@ -1098,7 +1101,10 @@ export default function SwipeableCards({
     generation: number;
   } | null>(null);
   const persistenceDrainRef = useRef<Promise<void> | null>(null);
-  const localDeckPersistenceBlockedRef = useRef(false);
+  const localDeckInteractionPhaseRef = useRef<DeckSwipePhase>('IDLE');
+  const lastDeckInteractionAtRef = useRef(0);
+  const persistenceQuietTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const persistenceInteractionHandleRef = useRef<ReturnType<typeof InteractionManager.runAfterInteractions> | null>(null);
 
   useEffect(() => {
     pendingPaywallRef.current = null;
@@ -1313,10 +1319,13 @@ export default function SwipeableCards({
   }, [drainPostSwipeQueue]);
 
   const drainPersistence = useCallback((force = false): Promise<void> => {
-    if (localDeckPersistenceBlockedRef.current && !force) return Promise.resolve();
+    const isQuietIdle = (): boolean => localDeckInteractionPhaseRef.current === 'IDLE' &&
+      Date.now() - lastDeckInteractionAtRef.current >= DECK_PERSISTENCE_QUIET_IDLE_MS;
+    if (!force && !isQuietIdle()) return Promise.resolve();
     if (persistenceDrainRef.current) return persistenceDrainRef.current;
     const drain = async (): Promise<void> => {
       while (pendingPersistenceRef.current) {
+        if (!force && !isQuietIdle()) break;
         const snapshot = pendingPersistenceRef.current;
         pendingPersistenceRef.current = null;
         try {
@@ -1332,12 +1341,25 @@ export default function SwipeableCards({
     };
     persistenceDrainRef.current = drain().finally(() => {
       persistenceDrainRef.current = null;
-      if (pendingPersistenceRef.current && !localDeckPersistenceBlockedRef.current) {
-        void drainPersistence();
-      }
     });
     return persistenceDrainRef.current;
   }, [reportDeckAnomaly]);
+
+  const scheduleQuietPersistenceDrain = useCallback((): void => {
+    if (!pendingPersistenceRef.current || localDeckInteractionPhaseRef.current !== 'IDLE') return;
+    if (persistenceQuietTimerRef.current) clearTimeout(persistenceQuietTimerRef.current);
+    persistenceInteractionHandleRef.current?.cancel();
+    persistenceInteractionHandleRef.current = null;
+    const quietForMs = Date.now() - lastDeckInteractionAtRef.current;
+    const remainingMs = Math.max(0, DECK_PERSISTENCE_QUIET_IDLE_MS - quietForMs);
+    persistenceQuietTimerRef.current = setTimeout(() => {
+      persistenceQuietTimerRef.current = null;
+      persistenceInteractionHandleRef.current = InteractionManager.runAfterInteractions(() => {
+        persistenceInteractionHandleRef.current = null;
+        void drainPersistence();
+      });
+    }, remainingMs);
+  }, [drainPersistence]);
 
   const enqueuePersistenceSnapshot = useCallback((
     index: number,
@@ -1358,8 +1380,8 @@ export default function SwipeableCards({
       removedCardIds,
       generation: persistenceGenerationRef.current,
     };
-    if (!localDeckPersistenceBlockedRef.current) void drainPersistence();
-  }, [activeDeckContextKey, currentMode, drainPersistence, getStorageKeys, refreshKey]);
+    scheduleQuietPersistenceDrain();
+  }, [activeDeckContextKey, currentMode, getStorageKeys, refreshKey, scheduleQuietPersistenceDrain]);
 
   useEffect(() => {
     swipeQueueEpochRef.current += 1;
@@ -1389,6 +1411,11 @@ export default function SwipeableCards({
       void drainPersistence(true);
     };
   }, [drainPersistence]);
+
+  useEffect(() => () => {
+    if (persistenceQuietTimerRef.current) clearTimeout(persistenceQuietTimerRef.current);
+    persistenceInteractionHandleRef.current?.cancel();
+  }, []);
 
   const deckSwipeStageOptions: UseDeckSwipeControllerOptions = {
     activeCardId: currentRec?.id ?? null,
@@ -1471,12 +1498,23 @@ export default function SwipeableCards({
       return nextCardId ? { nextCardId } : { exhausted: true };
     },
     onCommitSettled: (_token: DeckSwipeCommitToken, settlement: DeckCommitSettlement): void => {
-      if ('exhausted' in settlement) void flushDeckSessionHistory();
+      if ('exhausted' in settlement) {
+        void flushDeckSessionHistory();
+        void drainPersistence(true);
+      }
     },
     onPhaseChanged: (phase): void => {
-      localDeckPersistenceBlockedRef.current = phase !== 'IDLE';
-      setDeckSessionHistoryPersistenceBlocked(phase !== 'IDLE');
-      if (phase === 'IDLE' && pendingPersistenceRef.current) void drainPersistence();
+      localDeckInteractionPhaseRef.current = phase;
+      lastDeckInteractionAtRef.current = Date.now();
+      setDeckSessionHistoryInteractionPhase(phase);
+      if (phase === 'IDLE') {
+        scheduleQuietPersistenceDrain();
+      } else {
+        if (persistenceQuietTimerRef.current) clearTimeout(persistenceQuietTimerRef.current);
+        persistenceQuietTimerRef.current = null;
+        persistenceInteractionHandleRef.current?.cancel();
+        persistenceInteractionHandleRef.current = null;
+      }
     },
     onExpandValidated: (): boolean => {
       if (!currentRec) return false;
@@ -3054,14 +3092,9 @@ export default function SwipeableCards({
             })()}
 
           {/* Current Card */}
-          {/* ORCH-0694 0694-A: per-card key forces React to mount a fresh
-              Animated.View whenever the active card changes. Combined with
-              the reset-before-state-advance pattern in the swipe-completion
-              callback below, this structurally eliminates the shared-Animated.Value
-              ghost-card bug class. */}
+          {/* This native handler remains mounted across card promotion. Admission
+              is owned synchronously by the controller phase ref. */}
           <PanGestureHandler
-            key={currentRec.id}
-            enabled={deckSwipe.handlerEnabled}
             minDist={10}
             maxPointers={1}
             onGestureEvent={deckSwipe.onGestureEvent}
@@ -3079,7 +3112,6 @@ export default function SwipeableCards({
                 ],
               },
             ]}
-            pointerEvents={deckSwipe.phase === 'IDLE' || deckSwipe.phase === 'DRAGGING' ? 'auto' : 'none'}
           >
             <View style={styles.cardInner}>
             <View

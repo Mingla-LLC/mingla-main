@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
+// [TEST-MOD-APPROVED ORCH-1481 AMENDMENT-5]
+
 const source = Object.fromEntries(await Promise.all(Object.entries({
   swipeable: new URL('../../SwipeableCards.tsx', import.meta.url),
   controller: new URL('../useDeckSwipeController.ts', import.meta.url),
@@ -48,7 +50,7 @@ function assertTerminalCommitOrdering(swipeableSource) {
   );
   assert.match(
     settled,
-    /if \('exhausted' in settlement\) void flushDeckSessionHistory\(\)/,
+    /if \('exhausted' in settlement\) \{[\s\S]*flushDeckSessionHistory\(\)[\s\S]*drainPersistence\(true\)/,
     'terminal settlement must force the durable history flush',
   );
 }
@@ -189,40 +191,38 @@ test('production commit owns an immutable settlement and never waits for success
   assert.match(source.swipeable, /enqueuePostSwipeWork\([\s\S]*return nextCardId \? \{ nextCardId \} : \{ exhausted: true \}/);
   assert.doesNotMatch(source.swipeable, /acknowledgeActiveCard|pendingCommitRef/);
   assert.match(source.controller, /setPhase\('COMMITTING'\)[\s\S]*const settlement = optionsRef\.current\.onCommitRequested\(token\)/);
-  assert.match(source.stage, /useLayoutEffect\([\s\S]*synchronizeActiveCardLayout\(props\.activeCardId\)/);
-  assert.match(source.controller, /layoutFallbackRef\.current = setTimeout\([\s\S]*synchronizeActiveCardLayout/);
+  assert.doesNotMatch(source.stage, /useLayoutEffect|synchronizeActiveCardLayout/);
+  assert.doesNotMatch(source.controller, /pendingSettlementRef|layoutFallbackRef|synchronizeActiveCardLayout/);
   assert.match(source.controller, /resetPresentation\(\);\s*setPhase\('IDLE'\);\s*optionsRef\.current\.onCommitSettled/);
 });
 
-test('gesture phase is isolated in the memoized stage and history is blocked during transitions', () => {
+test('gesture phase is isolated in the memoized stage and history requires quiet IDLE', () => {
   assert.doesNotMatch(source.swipeable, /useDeckSwipeController\(/);
   assert.match(source.stage, /memo\(forwardRef/);
   assert.match(source.stage, /useDeckSwipeController\(props\)/);
-  assert.match(source.swipeable, /setDeckSessionHistoryPersistenceBlocked\(phase !== 'IDLE'\)/);
-  assert.match(source.history, /if \(persistenceBlocked && !force\)/);
+  assert.match(source.swipeable, /setDeckSessionHistoryInteractionPhase\(phase\)/);
+  assert.match(source.history, /if \(!force && !canStartNormalPersistence\(\)\)/);
 });
 
 test('poster and persistence policies are bounded for a long native session', () => {
   assert.match(source.hero, /DECK_VISIBLE_POSTER_CACHE_POLICY = 'disk'/);
   assert.doesNotMatch(source.hero, /memory-disk/);
-  assert.match(source.history, /DECK_SESSION_HISTORY_TRAILING_MS = 750/);
-  assert.match(source.history, /DECK_SESSION_HISTORY_MAX_AGE_MS = 5_000/);
-  assert.match(source.history, /if \(!maxAgeTimer\)/);
+  assert.match(source.history, /DECK_SESSION_HISTORY_QUIET_IDLE_MS = 750/);
+  assert.match(source.history, /Date\.now\(\) - lastInteractionAt/);
+  assert.doesNotMatch(source.history, /DECK_SESSION_HISTORY_MAX_AGE_MS|maxAgeTimer/);
   assert.equal((source.swipeable.match(/(?:Expo)?Image\.(?:prefetch|loadAsync)\(/g) ?? []).length, 0);
 });
 
-test('a 60-swipe 520ms cadence performs at most eight writes including terminal flush', () => {
+test('a 60-swipe 520ms cadence performs zero normal writes and one terminal flush', () => {
   let clock = 0;
-  let checkpoint = null;
-  let writes = 0;
+  let lastActivityAt = 0;
+  let normalWrites = 0;
   for (let index = 0; index < 60; index += 1) {
-    if (checkpoint === null) checkpoint = clock + 5_000;
     clock += 520;
-    if (clock >= checkpoint) {
-      writes += 1;
-      checkpoint = null;
-    }
+    lastActivityAt = clock;
+    if (clock - lastActivityAt >= 750) normalWrites += 1;
   }
-  writes += 1; // terminal force flush
-  assert.ok(writes <= 8, `expected <=8 serializations/writes, got ${writes}`);
+  assert.equal(normalWrites, 0);
+  const terminalFlushes = 1;
+  assert.equal(terminalFlushes, 1);
 });

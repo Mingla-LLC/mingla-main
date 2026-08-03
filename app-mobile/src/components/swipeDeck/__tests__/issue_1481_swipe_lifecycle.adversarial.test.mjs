@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
+// [TEST-MOD-APPROVED ORCH-1481 AMENDMENT-5]
+
 import {
   canAdmitDeckInput,
   consumeDeckTokenIntent,
@@ -103,7 +105,8 @@ test('decode policy survives 10,000 hostile dimensions without exceeding the phy
 });
 
 test('production source keeps the rejection, media, persistence, and teardown boundaries independently bounded', () => {
-  assert.match(controllerSource, /handlerEnabled:\s*phase === 'IDLE' \|\| phase === 'DRAGGING'/);
+  assert.match(controllerSource, /if \(!canAdmitDeckInput\(phaseRef\.current\)/);
+  assert.doesNotMatch(controllerSource, /handlerEnabled/);
   assert.match(controllerSource, /activeAnimationRef\.current\?\.stop\(\)/);
   assert.ok((controllerSource.match(/onInvalidated\(/g) ?? []).length >= 3);
   assert.doesNotMatch(controllerSource, /addListener\(|PanResponder|react-native-reanimated|runOnJS/);
