@@ -22,6 +22,10 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
+// Issue #1503 [stay-date-pickers] — From/To are PICKED from a real calendar on
+// every surface (HTML5 date input on web, native dialog on iOS/Android). The
+// `From (YYYY-MM-DD)` label crutch is gone: the control now carries the format.
+import { DateField } from "../ui/DateField";
 import { Input } from "../ui/Input";
 import { Sheet } from "../ui/Sheet";
 import type {
@@ -139,32 +143,37 @@ export function VenueBlackoutSheet({
         >
           <View style={styles.dateRow}>
             <View style={styles.flex1}>
-              <Text style={styles.label}>From (YYYY-MM-DD)</Text>
-              <Input
+              <DateField
+                label="From"
                 value={dateStart}
-                onChangeText={setDateStart}
-                variant="number"
-                placeholder="2026-12-24"
-                accessibilityLabel="Blackout start date, year dash month dash day"
+                onChangeValue={setDateStart}
+                placeholder="Pick a date"
+                accessibilityLabel="Blackout start date"
+                hasError={dateStart.length > 0 && !rangeValid}
                 testID="venue-blackout-start"
               />
             </View>
             <View style={styles.flex1}>
-              <Text style={styles.label}>To (optional)</Text>
-              <Input
+              <DateField
+                label="To (optional)"
                 value={dateEnd}
-                onChangeText={setDateEnd}
-                variant="number"
+                onChangeValue={setDateEnd}
                 placeholder="Same day"
-                accessibilityLabel="Blackout end date, year dash month dash day"
+                accessibilityLabel="Blackout end date"
+                // A blackout may legitimately be a SINGLE day, so the floor is
+                // the start date itself, not the day after it. Operators also
+                // record historical closures, so there is deliberately no
+                // past-date clamp here (unlike the guest Stay picker).
+                min={ISO_DATE.test(dateStart) ? dateStart : undefined}
+                hasError={dateEnd.length > 0 && !rangeValid}
                 testID="venue-blackout-end"
               />
             </View>
           </View>
           {(dateStart.length > 0 || dateEnd.length > 0) && !rangeValid ? (
             <Text style={styles.invalid}>
-              Use YYYY-MM-DD and make sure the end date isn&apos;t before the
-              start.
+              Pick a start date, and make sure the end date isn&apos;t before
+              it.
             </Text>
           ) : null}
 
