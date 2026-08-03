@@ -1569,23 +1569,25 @@ export default function SwipeableCards({
   useEffect(() => {
     if (currentRec && currentRec.id !== lastViewedCardIdRef.current) {
       lastViewedCardIdRef.current = currentRec.id;
-      mixpanelService.trackCardViewed({
+      const view = {
         card_id: currentRec.id,
         card_title: currentRec.title,
         category: currentRec.category,
         position_in_deck: currentCardIndex,
         is_curated: (currentRec as any).cardType === 'curated',
-      });
-      // META-ORCH-1187 — behavior event (mirror of the Mixpanel site above).
-      postHogService.capture("card_viewed", {
-        card_id: currentRec.id,
-        card_title: currentRec.title,
-        category: currentRec.category,
-        position_in_deck: currentCardIndex,
-        is_curated: (currentRec as any).cardType === 'curated',
-      });
+      };
+      const trackCardViewed = async (): Promise<void> => {
+        mixpanelService.trackCardViewed(view);
+        // META-ORCH-1187 — behavior event (mirror of the Mixpanel site above).
+        postHogService.capture("card_viewed", view);
+      };
+      if (promotedCardIdRef.current === currentRec.id) {
+        enqueuePostSwipeWork(trackCardViewed);
+      } else {
+        void trackCardViewed();
+      }
     }
-  }, [currentRec?.id, currentCardIndex]);
+  }, [currentRec, currentCardIndex, enqueuePostSwipeWork]);
 
   useEffect(() => {
     if (

@@ -49,6 +49,20 @@ test('normal persistence cannot serialize before a 750ms quiet IDLE window', () 
   assert.match(history, /Date\.now\(\) - lastInteractionAt >= DECK_SESSION_HISTORY_QUIET_IDLE_MS/);
 });
 
+test('promoted-card analytics waits for the owned quiet-IDLE queue', () => {
+  const viewEffect = swipeable.slice(
+    swipeable.indexOf('// Track card viewed when the current card changes'),
+    swipeable.indexOf('// Trigger card content entrance animations'),
+  );
+  assert.match(
+    viewEffect,
+    /promotedCardIdRef\.current === currentRec\.id[\s\S]*enqueuePostSwipeWork\(trackCardViewed\)/,
+  );
+  assert.match(viewEffect, /else \{\s*void trackCardViewed\(\)/, 'initial card view remains immediate');
+  assert.equal((viewEffect.match(/mixpanelService\.trackCardViewed/g) ?? []).length, 1);
+  assert.equal((viewEffect.match(/postHogService\.capture/g) ?? []).length, 1);
+});
+
 test('terminal, background, reset, rollback, and unmount retain forced durability seams', () => {
   assert.match(swipeable, /'exhausted' in settlement[\s\S]*flushDeckSessionHistory\(\)/);
   assert.match(swipeable, /return \(\) => \{\s*void flushDeckSessionHistory\(\)/);
