@@ -10,6 +10,14 @@ name: "Issue #1485 web missing chunk 404"
 # `orch1098RealAppOnPhone`) are in exactly that position. This workflow wires
 # them, plus the new #1485 suites, to the paths that can break them.
 #
+# P2-1 EXTENSION. Part (a)'s real 404 activates the inline `<head>` recovery
+# script that `scripts/inject-mobile-blur-css.mjs` injects into
+# `dist/index.html`. It is the SECOND recovery owner alongside
+# `chunkReloadGuard`, so the build script, the four suites that read it, and the
+# `issue1485_p2_1_one_chunk_recovery_owner` behavioural suite are all wired here
+# too: the "one decision record, never a navigation" contract has to break the
+# PR, not production.
+#
 # WHY NOT THE STRICT-GREP BATCH. The #1485 SPEC holds
 # `.github/scripts/strict-grep/**` and `MANIFEST.json` on the DO-NOT-TOUCH list:
 # adding a gate would put this PR in the `expectedStrictGrepMjsFiles` /
@@ -30,23 +38,35 @@ on:
     paths:
       - "mingla-business/vercel.json"
       - "mingla-business/src/diagnostics/chunkReloadGuard.ts"
+      - "mingla-business/scripts/inject-mobile-blur-css.mjs"
       - "mingla-business/__tests__/issue1485_expo_static_excluded_from_catch_all.test.ts"
       - "mingla-business/__tests__/issue1485_deep_links_never_404.tester.adversarial.test.ts"
+      - "mingla-business/__tests__/issue1485_p2_1_one_chunk_recovery_owner.test.ts"
       - "mingla-business/src/diagnostics/__tests__/chunkReloadGuard.issue1485.test.ts"
       - "mingla-business/__tests__/orch1003.assetCaching.adversarial.test.ts"
       - "mingla-business/__tests__/authCallbackStatic.test.ts"
       - "mingla-business/__tests__/orch1098RealAppOnPhone.test.ts"
+      - "mingla-business/src/utils/__tests__/orch_1090_mobile_web_chunk_auth_recovery.test.ts"
+      - "mingla-business/src/utils/__tests__/orch_1091_mobile_web_js_cache_invalidation.test.ts"
+      - "mingla-business/src/utils/__tests__/orch_1095_business_web_interactive_parity_wave.test.ts"
+      - "mingla-business/src/utils/__tests__/orch_1096_business_web_marketing_composer_parity.test.ts"
       - ".github/workflows/issue-1485-web-missing-chunk-404-tests.yml"
   pull_request:
     paths:
       - "mingla-business/vercel.json"
       - "mingla-business/src/diagnostics/chunkReloadGuard.ts"
+      - "mingla-business/scripts/inject-mobile-blur-css.mjs"
       - "mingla-business/__tests__/issue1485_expo_static_excluded_from_catch_all.test.ts"
       - "mingla-business/__tests__/issue1485_deep_links_never_404.tester.adversarial.test.ts"
+      - "mingla-business/__tests__/issue1485_p2_1_one_chunk_recovery_owner.test.ts"
       - "mingla-business/src/diagnostics/__tests__/chunkReloadGuard.issue1485.test.ts"
       - "mingla-business/__tests__/orch1003.assetCaching.adversarial.test.ts"
       - "mingla-business/__tests__/authCallbackStatic.test.ts"
       - "mingla-business/__tests__/orch1098RealAppOnPhone.test.ts"
+      - "mingla-business/src/utils/__tests__/orch_1090_mobile_web_chunk_auth_recovery.test.ts"
+      - "mingla-business/src/utils/__tests__/orch_1091_mobile_web_js_cache_invalidation.test.ts"
+      - "mingla-business/src/utils/__tests__/orch_1095_business_web_interactive_parity_wave.test.ts"
+      - "mingla-business/src/utils/__tests__/orch_1096_business_web_marketing_composer_parity.test.ts"
       - ".github/workflows/issue-1485-web-missing-chunk-404-tests.yml"
 
 permissions:
@@ -82,8 +102,13 @@ jobs:
           npx jest
           __tests__/issue1485_expo_static_excluded_from_catch_all.test.ts
           __tests__/issue1485_deep_links_never_404.tester.adversarial.test.ts
+          __tests__/issue1485_p2_1_one_chunk_recovery_owner.test.ts
           src/diagnostics/__tests__/chunkReloadGuard.issue1485.test.ts
           __tests__/orch1003.assetCaching.adversarial.test.ts
           __tests__/authCallbackStatic.test.ts
           __tests__/orch1098RealAppOnPhone.test.ts
+          src/utils/__tests__/orch_1090_mobile_web_chunk_auth_recovery.test.ts
+          src/utils/__tests__/orch_1091_mobile_web_js_cache_invalidation.test.ts
+          src/utils/__tests__/orch_1095_business_web_interactive_parity_wave.test.ts
+          src/utils/__tests__/orch_1096_business_web_marketing_composer_parity.test.ts
           --runInBand

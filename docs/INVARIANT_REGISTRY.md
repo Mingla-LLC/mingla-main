@@ -6848,3 +6848,39 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   `business.usemingla.com` alias, and the tester captures live `curl -sSI` proof that a missing
   chunk returns 404, a real chunk returns `200 application/javascript`, and every deep link,
   bot/OG rewrite, `/stripe-onboarding-return`, and `/auth/callback` still resolve.
+
+### I-1485-ONE-CHUNK-RECOVERY-OWNER (DRAFT)
+- **Rule:** Business web has exactly ONE chunk-recovery decision, even though two components can
+  observe a failure. `mingla-business/scripts/inject-mobile-blur-css.mjs` injects an inline
+  `<head>` script into `dist/index.html` (it runs before any bundle and is the only owner that can
+  see a resource `error` — a `<script src>` that 404s, including the ENTRY bundle that
+  `chunkReloadGuard` itself ships inside), and
+  `mingla-business/src/diagnostics/chunkReloadGuard.ts` observes message-bearing script-execution
+  and dynamic-import failures. Both MUST consult the SAME `sessionStorage` record — the guard's
+  `RELOAD_TS_KEY` (`mingla:last-chunk-reload`) holding `String(Date.now())`, compared with the
+  same strict `now - last < RELOAD_COOLDOWN_MS` (10,000 ms) test — so whichever owner reaches a
+  failure first stamps the record and reloads and the other stands down in the same tick: one
+  failure can never produce two reloads. Recovery MUST NOT change the URL: no
+  `location.replace`, no `assign`, no `href` write, on ANY branch including the storage `catch`
+  fallback — a buyer's `/checkout/<eventId>` is never traded for a fixed dashboard route, because
+  a replace-navigation also erases the original URL from history. Blocked or absent
+  `sessionStorage` MUST fail safe: no reload and no navigation. The retired presence-only key
+  `mingla-mobile-web-chunk-recovery` survives only as a one-way migration source read and removed
+  by the head script at load; it must never be written as a recovery record again.
+- **Enforcement:** `.github/workflows/issue-1485-web-missing-chunk-404-tests.yml`, whose explicit
+  `paths:` registry now includes `mingla-business/scripts/inject-mobile-blur-css.mjs` and the four
+  suites that read it (`orch_1090_mobile_web_chunk_auth_recovery`,
+  `orch_1091_mobile_web_js_cache_invalidation`, `orch_1095_business_web_interactive_parity_wave`,
+  `orch_1096_business_web_marketing_composer_parity`).
+- **Regression test:** `mingla-business/__tests__/issue1485_p2_1_one_chunk_recovery_owner.test.ts`
+  (30 cases). It does not grep: it evaluates the real `CHUNK_RECOVERY_SCRIPT` template literal into
+  the exact bytes that ship in `<head>` and executes them against a synthetic window, loading the
+  REAL `chunkReloadGuard` against the SAME window and storage for the cross-owner cases. Group B
+  proves a second failure reloads zero more times and navigates nowhere; group C proves blocked,
+  write-blocked, and absent storage never reload or navigate; group D proves the two owners cannot
+  double-reload in either firing order; group E proves `chunkReloadGuard` alone cannot see a
+  resource error, so the head script's coverage is real and may not be deleted; group F pins the
+  shipped key and cooldown literals equal to the guard's constants; group G pins the one-way
+  legacy-key migration.
+- **Established:** DRAFT 2026-08-03 at issue #1485 IMPLEMENT (tester finding P2-1). Flips ACTIVE at
+  CLOSE together with `I-1485-STATIC-ASSET-NEVER-HTML`.
