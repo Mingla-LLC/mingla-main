@@ -6903,10 +6903,23 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   self-test (regression guard)" (no `paths:` filter — runs on every PR) executing
   `node .github/scripts/test-append-only-check.js --self-test`. No strict-grep gate
   and no `MANIFEST.json` change (COMMS-0125 / COMMS-0126 rebase hazard).
-- **Regression test:** the 14 grammar cases in `selfTest()` (6 pre-existing legacy
-  cases byte-unchanged + G-1..G-8) and git scenario T4. Reverting either regex to the
-  `ORCH-`-only form turns G-1/G-2/G-6 and T4's `✅ a.test.ts` assertion RED; accepting
-  the bare form turns G-3/G-7 RED; spelling a message placeholder with real digits
-  turns G-5 RED. T1/T2/T3 stay green throughout and prove the legacy grammar and the
-  #1058 whole-range per-file attribution are untouched.
+- **Regression test:** 43 cases in `selfTest()` — 35 grammar cases (6 pre-existing
+  legacy cases byte-unchanged + implementor G-1..G-8 + tester adversarial A-1..A-21)
+  and 8 git scenarios (T1..T3 pre-existing, implementor T4, tester adversarial
+  T5..T8). Mutation-verified, each mutation applied to the real script and the whole
+  suite re-run: reverting either regex to the `ORCH-`-only form turns
+  G-1/G-2/G-6/A-19/A-21 and T4/T6 RED; accepting the bare form turns G-3 RED; dropping
+  `META-ORCH` turns A-20 RED; making either regex case-insensitive turns A-11/A-18 RED;
+  relaxing the separator to `\s+` turns A-6/A-8/A-9 RED; tolerating prose before the
+  closing bracket turns A-7/A-13/A-17/A-18 RED. **Spelling a message placeholder with
+  real digits turns T5 RED — NOT G-5:** G-5 only asserts a literal against the regex
+  and never reads the messages, so T5 runs the real `main()` across every
+  operator-visible branch and asserts its actual stdout matches neither token. Handing
+  status D a `fileHasToken` escape turns T7 RED; scanning the diff instead of the
+  commit body turns T8 RED; reverting `fileHasToken` to the tip-only global boolean
+  turns T1/T2/T3/T4/T5/T6 RED. T1/T2/T3 stay green under every grammar mutation and
+  prove the legacy grammar and the #1058 whole-range per-file attribution are
+  untouched. Replayed against real history: all 194 `TEST-MOD-APPROVED` and 6
+  `TEST-RENAME-APPROVED` tokens across 193 historical commits in this repo are still
+  accepted — zero legacy regressions.
 - **Established:** DRAFT at issue #1495 SPEC 2026-08-03. Flips ACTIVE at CLOSE.
