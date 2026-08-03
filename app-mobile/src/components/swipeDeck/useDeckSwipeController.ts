@@ -15,6 +15,7 @@ import {
 } from '../../utils/swipeCommit';
 import {
   canAdmitDeckInput,
+  canFastForwardDeckExit,
   DeckSwipeCommitToken,
   DeckCommitSettlement,
   DeckSwipeDirection,
@@ -201,6 +202,49 @@ export function useDeckSwipeController(
     });
   }, [clearTransitionTimers, positionX, positionY, resetPresentation, setPhase, startTransitionTimers]);
 
+  const settleCommit = useCallback((
+    token: DeckSwipeCommitToken,
+    phaseAlreadyCommitting = false,
+  ): boolean => {
+    if (phaseAlreadyCommitting) {
+      if (phaseRef.current !== 'COMMITTING') return false;
+    } else {
+      if (phaseRef.current !== 'EXITING') return false;
+      setPhase('COMMITTING');
+    }
+
+    const tokenKey = deckCommitTokenKey(token);
+    if (lastRequestedCommitKeyRef.current === tokenKey) {
+      recoverCurrentEpoch('duplicate_commit_blocked');
+      return false;
+    }
+    lastRequestedCommitKeyRef.current = tokenKey;
+    activeAnimationRef.current = null;
+    countersRef.current.committed += 1;
+    const settlement = optionsRef.current.onCommitRequested(token);
+    if (!settlement) {
+      recoverCurrentEpoch('stale_completion_ignored');
+      return false;
+    }
+    const durationMs = Math.max(0, Date.now() - transitionStartedAtRef.current);
+    if (durationMs > 400) {
+      optionsRef.current.onAnomaly({
+        reason: 'transition_duration',
+        phase: phaseRef.current,
+        durationMs,
+      });
+    }
+    pendingCommitRef.current = null;
+    activeCardIdRef.current = 'nextCardId' in settlement
+      ? settlement.nextCardId
+      : null;
+    clearTransitionTimers();
+    resetPresentation();
+    setPhase('IDLE');
+    optionsRef.current.onCommitSettled(token, settlement);
+    return true;
+  }, [clearTransitionTimers, recoverCurrentEpoch, resetPresentation, setPhase]);
+
   const beginExit = useCallback((direction: DeckSwipeDirection): boolean => {
     const cardId = activeCardIdRef.current;
     if (!cardId || phaseRef.current !== 'DRAGGING') return false;
@@ -259,43 +303,36 @@ export function useDeckSwipeController(
         return;
       }
 
-      const tokenKey = deckCommitTokenKey(token);
-      if (lastRequestedCommitKeyRef.current === tokenKey) {
-        optionsRef.current.onAnomaly({
-          reason: 'duplicate_commit_blocked',
-          phase: phaseRef.current,
-          durationMs: Math.max(0, Date.now() - transitionStartedAtRef.current),
-        });
-        return;
-      }
-      lastRequestedCommitKeyRef.current = tokenKey;
-      activeAnimationRef.current = null;
-      setPhase('COMMITTING');
-      countersRef.current.committed += 1;
-      const settlement = optionsRef.current.onCommitRequested(token);
-      if (!settlement) {
-        recoverCurrentEpoch('stale_completion_ignored');
-        return;
-      }
-      const durationMs = Math.max(0, Date.now() - transitionStartedAtRef.current);
-      if (durationMs > 400) {
-        optionsRef.current.onAnomaly({
-          reason: 'transition_duration',
-          phase: phaseRef.current,
-          durationMs,
-        });
-      }
-      pendingCommitRef.current = null;
-      activeCardIdRef.current = 'nextCardId' in settlement
-        ? settlement.nextCardId
-        : null;
-      clearTransitionTimers();
-      resetPresentation();
-      setPhase('IDLE');
-      optionsRef.current.onCommitSettled(token, settlement);
+      settleCommit(token);
     });
     return true;
-  }, [animateToCenter, clearTransitionTimers, positionX, positionY, recoverCurrentEpoch, resetPresentation, setPhase, startTransitionTimers]);
+  }, [animateToCenter, positionX, positionY, settleCommit, setPhase, startTransitionTimers]);
+
+  const fastForwardPendingExit = useCallback((): boolean => {
+    const token = pendingCommitRef.current;
+    if (
+      !token ||
+      !canFastForwardDeckExit({
+        mounted: mountedRef.current,
+        phase: phaseRef.current,
+        expectedEpoch: token.epoch,
+        currentEpoch: epochRef.current,
+        expectedCardId: token.cardId,
+        currentCardId: activeCardIdRef.current,
+      })
+    ) return false;
+
+    // Move out of EXITING before stop(): React Native may synchronously invoke
+    // the old animation callback with finished:false. That callback must see a
+    // stale phase and remain inert while the exact pending token settles once.
+    setPhase('COMMITTING');
+    const outgoingAnimation = activeAnimationRef.current;
+    activeAnimationRef.current = null;
+    outgoingAnimation?.stop();
+    clearTransitionTimers();
+    resetPresentation();
+    return settleCommit(token, true);
+  }, [clearTransitionTimers, resetPresentation, setPhase, settleCommit]);
 
   const onGestureEvent = useMemo(
     () => Animated.event<PanGestureHandlerGestureEvent>(
@@ -313,6 +350,10 @@ export function useDeckSwipeController(
   const onHandlerStateChange = useCallback((event: PanGestureHandlerStateChangeEvent): void => {
     const { state, translationX, translationY, velocityX } = event.nativeEvent;
     if (state === State.BEGAN) {
+      if (phaseRef.current === 'EXITING' && !fastForwardPendingExit()) {
+        rejectInput();
+        return;
+      }
       if (!canAdmitDeckInput(phaseRef.current) || !activeCardIdRef.current) {
         rejectInput();
         return;
@@ -346,7 +387,7 @@ export function useDeckSwipeController(
     } else {
       animateToCenter();
     }
-  }, [animateToCenter, beginExit, rejectInput, setPhase]);
+  }, [animateToCenter, beginExit, fastForwardPendingExit, rejectInput, setPhase]);
 
   const requestSwipe = useCallback((direction: DeckSwipeDirection): boolean => {
     if (!canAdmitDeckInput(phaseRef.current) || !activeCardIdRef.current) {

@@ -18,6 +18,21 @@ function assertStableNativeAdmission(sources) {
   assert.doesNotMatch(handler, /enabled=\{deckSwipe\.handlerEnabled\}/, 'phase toggles native handler eligibility');
   assert.doesNotMatch(handler, /pointerEvents=\{deckSwipe\.phase/, 'phase toggles the gesture host pointer target');
   assert.match(sources.controller, /if \(!canAdmitDeckInput\(phaseRef\.current\)/);
+  assert.match(
+    sources.controller,
+    /phaseRef\.current === 'EXITING' && !fastForwardPendingExit\(\)/,
+    'a delivered successor BEGAN is recovered through exact pending-exit settlement',
+  );
+  assert.match(
+    sources.controller,
+    /setPhase\('COMMITTING'\);[\s\S]{0,260}outgoingAnimation\?\.stop\(\);[\s\S]{0,260}settleCommit\(token, true\)/,
+    'the stopped native callback must be stale before the shared commit path runs',
+  );
+  assert.equal(
+    (sources.controller.match(/onCommitRequested\(token\)/g) ?? []).length,
+    1,
+    'fast-forward and natural completion must not fork business settlement',
+  );
   assert.doesNotMatch(
     sources.controller,
     /pendingSettlementRef|layoutFallbackRef|synchronizeActiveCardLayout/,
@@ -182,6 +197,46 @@ test('80-120ms true overlap reaches phaseRef and rejects without mutation', () =
   }
 });
 
+test('60 delivered successor gestures fast-forward pending exits without loss or replay', () => {
+  const cards = Array.from({ length: 61 }, (_, index) => `card-${index}`);
+  let phase = 'IDLE';
+  let activeIndex = 0;
+  let epoch = 0;
+  let pending = null;
+  const admitted = [];
+  const committed = [];
+
+  const settlePending = () => {
+    assert.equal(phase, 'EXITING');
+    assert.ok(pending);
+    assert.equal(pending.epoch, epoch);
+    assert.equal(pending.cardId, cards[activeIndex]);
+    phase = 'COMMITTING';
+    committed.push(`${pending.epoch}:${pending.cardId}`);
+    activeIndex += 1;
+    pending = null;
+    phase = 'IDLE';
+  };
+
+  for (let index = 0; index < 60; index += 1) {
+    if (phase === 'EXITING') settlePending();
+    assert.equal(phase, 'IDLE');
+    epoch += 1;
+    phase = 'DRAGGING';
+    admitted.push(`${epoch}:${cards[activeIndex]}`);
+    pending = { epoch, cardId: cards[activeIndex] };
+    phase = 'EXITING';
+  }
+  settlePending();
+
+  assert.equal(admitted.length, 60);
+  assert.equal(committed.length, 60);
+  assert.equal(new Set(admitted).size, 60);
+  assert.deepEqual(committed, admitted);
+  assert.equal(activeIndex, 60);
+  assert.equal(phase, 'IDLE');
+});
+
 test('source guard rejects every superseded native availability root independently', () => {
   const handlerMutant = source.swipeable.replace(
     '<PanGestureHandler\n',
@@ -197,4 +252,22 @@ test('source guard rejects every superseded native availability root independent
 
   const layoutMutant = `${source.controller}\nconst pendingSettlementRef = useRef(null);`;
   assert.throws(() => assertStableNativeAdmission({ ...source, controller: layoutMutant }), /layout or timer/);
+
+  const droppedBeginMutant = source.controller.replace(
+    "phaseRef.current === 'EXITING' && !fastForwardPendingExit()",
+    "phaseRef.current === 'EXITING'",
+  );
+  assert.throws(
+    () => assertStableNativeAdmission({ ...source, controller: droppedBeginMutant }),
+    /delivered successor BEGAN/,
+  );
+
+  const unsafeStopMutant = source.controller.replace(
+    "setPhase('COMMITTING');\n    const outgoingAnimation",
+    'const outgoingAnimation',
+  );
+  assert.throws(
+    () => assertStableNativeAdmission({ ...source, controller: unsafeStopMutant }),
+    /stopped native callback/,
+  );
 });

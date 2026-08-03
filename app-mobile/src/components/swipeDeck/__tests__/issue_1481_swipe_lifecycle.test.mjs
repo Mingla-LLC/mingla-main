@@ -4,6 +4,7 @@ import test from 'node:test';
 
 import {
   canAdmitDeckInput,
+  canFastForwardDeckExit,
   consumeDeckTokenIntent,
   deckCommitTokenKey,
   isCurrentDeckCompletion,
@@ -77,6 +78,23 @@ test('nominal lifecycle admits only IDLE and accepts only current finished compl
   assert.equal(isCurrentDeckCompletion({ ...base, phase: 'COMMITTING' }), false);
 });
 
+test('exit fast-forward is exact-card, exact-epoch, mounted, and EXITING-only', () => {
+  const base = {
+    mounted: true,
+    phase: 'EXITING',
+    expectedEpoch: 8,
+    currentEpoch: 8,
+    expectedCardId: 'card-a',
+    currentCardId: 'card-a',
+  };
+  assert.equal(canFastForwardDeckExit(base), true);
+  assert.equal(canFastForwardDeckExit({ ...base, mounted: false }), false);
+  assert.equal(canFastForwardDeckExit({ ...base, phase: 'COMMITTING' }), false);
+  assert.equal(canFastForwardDeckExit({ ...base, currentEpoch: 9 }), false);
+  assert.equal(canFastForwardDeckExit({ ...base, currentCardId: 'card-b' }), false);
+  assert.equal(canFastForwardDeckExit({ ...base, currentCardId: null }), false);
+});
+
 test('commit identity is stable and direction-specific', () => {
   const right = deckCommitTokenKey({ cardId: 'card-a', direction: 'right', epoch: 5 });
   assert.equal(right, '5:card-a:right');
@@ -139,6 +157,20 @@ test('production deck has one native-driver owner and no forbidden competing pri
   assert.match(controllerSource, /Easing\.bezier\(0\.22, 1, 0\.36, 1\)/);
   assert.match(controllerSource, /isCurrentDeckCompletion\(\{\s*finished,/);
   assert.match(controllerSource, /setPhase\('COMMITTING'\)[\s\S]*onCommitRequested/);
+  assert.match(
+    controllerSource,
+    /phaseRef\.current === 'EXITING' && !fastForwardPendingExit\(\)/,
+  );
+  assert.match(
+    controllerSource,
+    /setPhase\('COMMITTING'\);[\s\S]{0,260}outgoingAnimation\?\.stop\(\);[\s\S]{0,260}settleCommit\(token, true\)/,
+    'a delivered BEGAN makes the old callback stale before exact-token settlement',
+  );
+  assert.equal(
+    (controllerSource.match(/onCommitRequested\(token\)/g) ?? []).length,
+    1,
+    'natural and fast-forward exit must share one business commit path',
+  );
   assert.equal(
     (controllerSource.match(/epochRef\.current = nextDeckGestureEpoch\(epochRef\.current\)/g) ?? []).length,
     2,
