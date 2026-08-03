@@ -14,11 +14,11 @@ function assertModernNativeAdmission(sources) {
     sources.swipeable.indexOf('<GestureDetector'),
     sources.swipeable.indexOf('</GestureDetector>') + '</GestureDetector>'.length,
   );
-  assert.doesNotMatch(handler, /key=\{currentRec\.id\}/, 'card promotion remounts the UI-thread recognizer');
+  assert.match(handler, /key=\{currentRec\.id\}/, 'promoted card reuses the completed UI-thread recognizer');
   assert.doesNotMatch(handler, /enabled=\{deckSwipe\.handlerEnabled\}/, 'phase toggles native handler eligibility');
   assert.doesNotMatch(handler, /pointerEvents=\{deckSwipe\.phase/, 'phase toggles the gesture host pointer target');
   assert.doesNotMatch(handler, /deckSwipe\.phase/, 'rendered phase decisions reconcile the native handler subtree');
-  assert.match(handler, /<GestureDetector gesture=\{deckSwipe\.gesture\}>/);
+  assert.match(handler, /<GestureDetector key=\{currentRec\.id\} gesture=\{deckSwipe\.gesture\}>/);
   assert.doesNotMatch(sources.controller, /setRenderedPhase/, 'gesture phase is mirrored into React state');
   assert.match(sources.controller, /from 'react-native-reanimated'/);
   assert.match(sources.controller, /useSharedValue\(0\)/);
@@ -123,6 +123,7 @@ class NativeCadenceModel {
     this.postSwipePending.push(id);
     this.commits += 1;
     this.activeCard += 1;
+    this.handlerMounts += 1;
     this.phase = 'IDLE';
     this.lastActivityAt = settledAt;
     this.settleDurations.push(settledAt - releaseAt);
@@ -170,14 +171,14 @@ function runContinuousLeg(seed) {
   return model;
 }
 
-test('production keeps one modern UI-thread native recognizer', () => {
+test('production gives every promoted card a fresh UI-thread native recognizer', () => {
   assertModernNativeAdmission(source);
 });
 
 test('60 jittered release-cadence commands admit and commit exactly with zero active writes', () => {
   for (let seed = 1; seed <= 64; seed += 1) {
     const model = runContinuousLeg(seed);
-    assert.equal(model.handlerMounts, 1);
+    assert.equal(model.handlerMounts, 61);
     assert.equal(model.admissions, 60);
     assert.equal(model.commits, 60);
     assert.equal(model.rejected, 0);
@@ -248,12 +249,12 @@ test('60 delivered successor gestures fast-forward pending exits without loss or
 });
 
 test('source guard rejects every superseded native availability root independently', () => {
-  const handlerMutant = source.swipeable.replace('<GestureDetector gesture={deckSwipe.gesture}>', '<GestureDetector key={currentRec.id} gesture={deckSwipe.gesture}>');
-  assert.throws(() => assertModernNativeAdmission({ ...source, swipeable: handlerMutant }), /remounts/);
+  const handlerMutant = source.swipeable.replace(' key={currentRec.id}', '');
+  assert.throws(() => assertModernNativeAdmission({ ...source, swipeable: handlerMutant }), /reuses/);
 
   const enabledMutant = source.swipeable.replace(
-    '<GestureDetector gesture={deckSwipe.gesture}>',
-    '<GestureDetector enabled={deckSwipe.handlerEnabled} gesture={deckSwipe.gesture}>',
+    '<GestureDetector key={currentRec.id} gesture={deckSwipe.gesture}>',
+    '<GestureDetector key={currentRec.id} enabled={deckSwipe.handlerEnabled} gesture={deckSwipe.gesture}>',
   );
   assert.throws(() => assertModernNativeAdmission({ ...source, swipeable: enabledMutant }), /eligibility/);
 

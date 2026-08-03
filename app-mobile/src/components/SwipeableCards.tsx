@@ -3112,9 +3112,9 @@ export default function SwipeableCards({
             })()}
 
           {/* Current Card */}
-          {/* The stable recognizer and card transform run on the UI thread; JS
-              is crossed only for discrete lifecycle settlement. */}
-          <GestureDetector gesture={deckSwipe.gesture}>
+          {/* Each promoted face gets fresh native admission; all drag frames and
+              transforms stay on the UI thread until discrete JS settlement. */}
+          <GestureDetector key={currentRec.id} gesture={deckSwipe.gesture}>
           <Reanimated.View
             style={[
               styles.card,
