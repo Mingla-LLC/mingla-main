@@ -26,6 +26,17 @@ import {
   type StayQuote,
 } from "./stayGuest";
 import { formatStayMoney } from "./stayGuestMoney";
+// Issue #1503 [stay-date-pickers] — dates are PICKED, never typed, and every
+// bound is venue-local. Metro swaps in StayDateRangeField.native.tsx on
+// iOS/Android; the bare module is the web-only twin.
+import { StayDateRangeField } from "./StayDateRangeField";
+import {
+  addStayDays,
+  stayDateBounds,
+  stayDateErrorMessage,
+  venueToday,
+  type StayDateRange,
+} from "./stayDateRules";
 import {
   BrandRenderingReact as React,
   useBrandRenderingMemo as useMemo,
@@ -58,12 +69,6 @@ export interface StayGuestBookingProps {
   ) => void;
 }
 
-const isoDateFromOffset = (offset: number): string => {
-  const date = new Date();
-  date.setUTCDate(date.getUTCDate() + offset);
-  return date.toISOString().slice(0, 10);
-};
-
 const labelForPricingUnit = (unit: PublicStayOffering["price"]["pricingUnit"]): string =>
   ({
     room_night: "per night",
@@ -88,8 +93,12 @@ export function StayGuestBooking({
   onAnalytics,
 }: StayGuestBookingProps): BrandRenderingReactElement {
   const [activeKind, setActiveKind] = useState<"room" | "place">("room");
-  const [checkIn, setCheckIn] = useState(isoDateFromOffset(1));
-  const [checkOut, setCheckOut] = useState(isoDateFromOffset(2));
+  // Issue #1503: dates start UNSEEDED and are seeded VENUE-LOCALLY the first
+  // time `detail` is available. The old `isoDateFromOffset` seeded from UTC, so
+  // a guest in Los Angeles at 18:00 opened the form already two days past their
+  // own tomorrow. `editedRange === null` means "the guest has not touched the
+  // dates yet", so the seed can never overwrite a real edit.
+  const [editedRange, setEditedRange] = useState<StayDateRange | null>(null);
   const [adults, setAdults] = useState(2);
   const [children, setChildren] = useState(0);
   const [roomQuantities, setRoomQuantities] = useState<Record<string, number>>({});
@@ -104,6 +113,20 @@ export function StayGuestBooking({
   const offerings = detail?.offerings ?? [];
   const rooms = offerings.filter((item) => item.kind === "room");
   const places = offerings.filter((item) => item.kind === "place");
+
+  // SPEC §4.4.2 — the default range, derived rather than stored so it can be
+  // seeded from `detail.timezone` the moment the read resolves without an
+  // effect and without ever clobbering a guest edit. Venue-local tomorrow for
+  // one night, matching what the server would call "tomorrow".
+  const seededRange = useMemo<StayDateRange>(() => {
+    if (detail === null) return { checkIn: "", checkOut: "" };
+    const firstNight = addStayDays(venueToday(detail.timezone), 1);
+    return { checkIn: firstNight, checkOut: addStayDays(firstNight, 1) };
+  }, [detail]);
+  const range = editedRange ?? seededRange;
+  const checkIn = range.checkIn;
+  const checkOut = range.checkOut;
+
   const roomAllocationPlan = useMemo(
     () =>
       buildStayRoomCartAllocations({
@@ -282,10 +305,47 @@ export function StayGuestBooking({
   }
 
   const visibleOfferings = activeKind === "room" ? rooms : places;
+
+  // SPEC §4.4.6 — the server applies
+  //   LEAST(booking_horizon_days, COALESCE(offering.max_advance_days, …))
+  // and its min-notice check PER OFFERING, while `stay_room_dates_must_match`
+  // forces every room line in one cart onto the SAME dates. So the control has
+  // to clamp to the TIGHTEST constraint across the selection — the MIN advance
+  // window and the MAX notice — or it would offer a date the server rejects.
+  const selectedRooms = rooms.filter(
+    (room) => (roomQuantities[room.id] ?? 0) > 0,
+  );
+  const selectedMaxAdvanceDays = selectedRooms.reduce<number | null>(
+    (tightest, room) =>
+      room.maxAdvanceDays === null
+        ? tightest
+        : tightest === null
+          ? room.maxAdvanceDays
+          : Math.min(tightest, room.maxAdvanceDays),
+    null,
+  );
+  const selectedMinNoticeMinutes = selectedRooms.reduce(
+    (widest, room) => Math.max(widest, room.minNoticeMinutes),
+    0,
+  );
+  const bounds = stayDateBounds({
+    timezone: detail.timezone,
+    checkInTime: detail.checkInTime,
+    bookingHorizonDays: detail.bookingHorizonDays,
+    maxAdvanceDays: selectedMaxAdvanceDays,
+    minNoticeMinutes: selectedMinNoticeMinutes,
+    checkIn,
+    checkOut,
+  });
+
+  // `isValidStayDateRange` stays as the last-resort ordering guard (it is also
+  // called by validateStayGuestCart); the richer bounds message sits alongside
+  // it, never in place of it.
   const dateError =
     !isValidStayDateRange(checkIn, checkOut)
-      ? "Check-out must be after check-in."
-      : null;
+      ? (stayDateErrorMessage(bounds.error, bounds) ??
+        "Check-out must be after check-in.")
+      : stayDateErrorMessage(bounds.error, bounds);
   const hasSelectedRoom = rooms.some(
     (room) => (roomQuantities[room.id] ?? 0) > 0,
   );
@@ -341,26 +401,17 @@ export function StayGuestBooking({
             House rules: {detail.houseRules}
           </Text>
         ) : null}
-        <View style={styles.inputRow}>
-          <Field
-            label="Check-in"
-            value={checkIn}
-            onChange={(value) => {
-              setCheckIn(value);
-              onAnalytics?.("stay_search_changed", { field: "check_in" });
-            }}
-            palette={palette}
-          />
-          <Field
-            label="Check-out"
-            value={checkOut}
-            onChange={(value) => {
-              setCheckOut(value);
-              onAnalytics?.("stay_search_changed", { field: "check_out" });
-            }}
-            palette={palette}
-          />
-        </View>
+        <StayDateRangeField
+          value={range}
+          bounds={bounds}
+          palette={palette}
+          disabled={submitting}
+          errorText={dateError}
+          onChange={(next, field) => {
+            setEditedRange(next);
+            onAnalytics?.("stay_search_changed", { field });
+          }}
+        />
         <View style={styles.inputRow}>
           <Counter
             label="Adults"
@@ -383,9 +434,8 @@ export function StayGuestBooking({
           Guest totals are distributed once across all selected Rooms and
           applied to each selected Place.
         </Text>
-        {dateError ? (
-          <Text style={styles.errorText}>{dateError}</Text>
-        ) : null}
+        {/* The range error now renders inside StayDateRangeField, directly under
+            the control that caused it — one message, not two. */}
       </View>
 
       <View style={styles.tabs} accessibilityRole="tablist">
