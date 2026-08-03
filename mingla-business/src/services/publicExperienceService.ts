@@ -36,6 +36,7 @@ import {
   isThemeColor,
   isThemeFontSlug,
   type ThemeInput,
+  type OfferingGalleryImage,
 } from "@mingla/offering-rendering";
 
 export type PublicExperienceWhenMode = "single" | "recurring" | "multi_date";
@@ -101,6 +102,8 @@ export interface PublicExperience {
   timezone: string;
   coverMediaUrl: string | null;
   coverMediaType: "image" | "video" | "gif" | null;
+  // issue #868 [cover-gallery] — ADDITIONAL image/GIF items (default []).
+  coverGallery?: OfferingGalleryImage[];
   venueText: string | null;
   whenMode: PublicExperienceWhenMode;
   recurrenceRule: RecurrenceRule | null;
@@ -570,6 +573,8 @@ interface RpcExpPayload {
   currency: string;
   coverMediaUrl: string | null;
   coverMediaType: string | null;
+  // issue #868 [cover-gallery] — RPC json coverGallery key (default []).
+  coverGallery?: OfferingGalleryImage[] | null;
   venueText: string | null;
   isRecurring: boolean;
   isMultiDate: boolean;
@@ -633,6 +638,8 @@ function mapRpcPayload(p: RpcExpPayload): PublicExperiencePayload {
     timezone: p.timezone ?? "UTC",
     coverMediaUrl: p.coverMediaUrl ?? null,
     coverMediaType: normalizeCoverType(p.coverMediaType),
+    // issue #868 [cover-gallery] — additive; [] on legacy/absent (rule 9).
+    coverGallery: Array.isArray(p.coverGallery) ? p.coverGallery : [],
     venueText: p.venueText ?? null,
     whenMode: deriveWhenMode(p.isRecurring === true, p.isMultiDate === true),
     recurrenceRule: firstRecurrenceRule(p.recurrenceRules),

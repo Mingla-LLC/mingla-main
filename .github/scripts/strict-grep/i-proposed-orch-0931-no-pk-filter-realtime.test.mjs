@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
 
@@ -9,6 +10,7 @@ const SCRIPT = new URL(
   "./i-proposed-orch-0931-no-pk-filter-realtime.mjs",
   import.meta.url,
 );
+const SCRIPT_PATH = fileURLToPath(SCRIPT);
 
 function writeFixture(root, rel, source) {
   const file = join(root, rel);
@@ -17,7 +19,7 @@ function writeFixture(root, rel, source) {
 }
 
 test("ORCH-0931 strict-grep gate passes the post-fix codebase", () => {
-  const output = execFileSync(process.execPath, [SCRIPT.pathname], {
+  const output = execFileSync(process.execPath, [SCRIPT_PATH], {
     encoding: "utf8",
   });
   assert.match(output, /0 violations/);
@@ -72,7 +74,7 @@ test("ORCH-0931 strict-grep gate fails PK id=eq filters and allows non-PK filter
       ].join("\n"),
     );
 
-    const result = spawnSync(process.execPath, [SCRIPT.pathname, "--scan-dir", srcRoot], {
+    const result = spawnSync(process.execPath, [SCRIPT_PATH, "--scan-dir", srcRoot], {
       encoding: "utf8",
     });
     assert.equal(result.status, 1);

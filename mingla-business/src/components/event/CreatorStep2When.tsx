@@ -18,7 +18,7 @@
  * Per Cycle 4 spec §3.5.
  */
 
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   Platform,
   Pressable,
@@ -76,6 +76,8 @@ import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import { Sheet } from "../ui/Sheet";
+// issue #1027 Thread B — the ONE shared visible-native-input for web date/time.
+import { WebDateTimeInput } from "../ui/WebDateTimeInput";
 
 import { CreatorStep2WhenRepeatPickerSheet } from "./CreatorStep2WhenRepeatPickerSheet";
 import {
@@ -158,17 +160,12 @@ const blankOverrides: MultiDateOverrides = {
   onlineUrl: null,
 };
 
-// Hidden HTML5 inputs for web picker triggering. Positioned absolutely
-// with opacity 0 — NOT display:none (display:none breaks showPicker()
-// and .click()). Triggered programmatically from row Pressables via
-// inputRef.current.showPicker() (with .click() fallback).
-const HIDDEN_WEB_INPUT_STYLE = {
-  position: "absolute",
-  width: 1,
-  height: 1,
-  opacity: 0,
-  pointerEvents: "none",
-} as const;
+// issue #1027 Thread B — the old hidden 1x1 opacity-0 pointer-events-none
+// <input> + imperative browser-picker bridge (and its per-mode refs) are
+// DELETED. Web now renders a real, visible, hit-testable <input> via the shared
+// WebDateTimeInput, in place of the Pressable, so the browser opens its own
+// picker anchored at the row and dismisses normally (I-PROPOSED-1027-
+// WEB-NATIVE-DATE-INPUT). iOS/Android keep the DateTimePicker Sheet/dialog flow.
 
 // Cycle 17d Stage 2 §F.2 — PRESET_OPTS / WEEKDAY_OPTS / SETPOS_OPTS moved
 // to ./CreatorStep2WhenRepeatPickerSheet.tsx along with the picker sheet JSX.
@@ -191,19 +188,8 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
   const [pickerMode, setPickerMode] = useState<PickerMode>(null);
   const [tempPickerValue, setTempPickerValue] = useState<Date | null>(null);
 
-  // ---- Web hidden input refs (one per main picker mode).
-  // Tap row → handleOpenPicker(mode) on web triggers refs[mode].showPicker()
-  // (with .click() fallback). Browser opens native picker directly — no Sheet,
-  // no Done button. Inputs render at component bottom in the JSX. ----
-  const dateInputRef = useRef<HTMLInputElement | null>(null);
-  const doorsOpenInputRef = useRef<HTMLInputElement | null>(null);
-  const endsAtInputRef = useRef<HTMLInputElement | null>(null);
-  const untilDateInputRef = useRef<HTMLInputElement | null>(null);
-
-  // ---- Web hidden input refs for AddDateSheet inner pickers ----
-  const addDateInputRef = useRef<HTMLInputElement | null>(null);
-  const addDateStartInputRef = useRef<HTMLInputElement | null>(null);
-  const addDateEndInputRef = useRef<HTMLInputElement | null>(null);
+  // issue #1027 Thread B — web hidden-input refs DELETED. Web rows now render a
+  // visible WebDateTimeInput directly (no ref, no imperative picker trigger).
 
   // ---- Sheet visibilities ----
   const [tzSheetVisible, setTzSheetVisible] = useState<boolean>(false);
@@ -311,31 +297,11 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
     ],
   );
 
+  // issue #1027 Thread B — this handler is now NATIVE-ONLY (iOS Sheet + Android
+  // dialog). Web rows render a visible WebDateTimeInput that commits via its own
+  // onChange; they never call handleOpenPicker.
   const handleOpenPicker = useCallback(
     (mode: PickerMode): void => {
-      // Web: trigger the hidden HTML5 input directly. Browser opens its
-      // native picker — no Sheet, no Done button. Selection commits via
-      // the input's onChange (renders below).
-      if (Platform.OS === "web") {
-        let ref: React.RefObject<HTMLInputElement | null> | null = null;
-        if (mode === "date") ref = dateInputRef;
-        else if (mode === "doorsOpen") ref = doorsOpenInputRef;
-        else if (mode === "endsAt") ref = endsAtInputRef;
-        else if (mode === "untilDate") ref = untilDateInputRef;
-        const el = ref?.current;
-        if (el !== null && el !== undefined) {
-          if (typeof el.showPicker === "function") {
-            try {
-              el.showPicker();
-            } catch {
-              el.click();
-            }
-          } else {
-            el.click();
-          }
-        }
-        return;
-      }
       // Native (iOS/Android): existing Sheet+spinner / dialog flow.
       let initial: Date;
       if (mode === "date") initial = dateFromIso(draft.date);
@@ -751,30 +717,11 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
 
   // ---- AddDateSheet picker handlers (separate from main pickers) ----
 
+  // issue #1027 Thread B — NATIVE-ONLY (iOS Sheet + Android dialog). The
+  // AddDateSheet web rows render visible WebDateTimeInputs that commit via their
+  // own onChange; they never call handleAddDateOpenPicker.
   const handleAddDateOpenPicker = useCallback(
     (mode: "date" | "start" | "end"): void => {
-      // Web: trigger hidden HTML5 input directly (no Sheet wrap).
-      if (Platform.OS === "web") {
-        const ref =
-          mode === "date"
-            ? addDateInputRef
-            : mode === "start"
-              ? addDateStartInputRef
-              : addDateEndInputRef;
-        const el = ref.current;
-        if (el !== null) {
-          if (typeof el.showPicker === "function") {
-            try {
-              el.showPicker();
-            } catch {
-              el.click();
-            }
-          } else {
-            el.click();
-          }
-        }
-        return;
-      }
       // Native: existing Sheet/dialog flow.
       let initial: Date;
       if (mode === "date") {
@@ -874,30 +821,50 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
       {/* Mode body */}
       {draft.whenMode === "single" || draft.whenMode === "recurring" ? (
         <>
-          {/* Date row (= event date OR first occurrence) */}
+          {/* Date row (= event date OR first occurrence).
+              issue #1027 Thread B — web renders a visible native <input> the
+              user clicks directly; native keeps the Pressable → Sheet flow. */}
           <View style={styles.field}>
             <Text style={styles.fieldLabel}>{dateRowLabel}</Text>
-            <Pressable
-              onPress={() => handleOpenPicker("date")}
-              accessibilityRole="button"
-              accessibilityLabel={`Pick ${dateRowLabel.toLowerCase()}`}
-              style={[
-                styles.pickerRow,
-                (dateError !== undefined || dayMismatchError !== undefined) &&
-                  styles.inputError,
-              ]}
-            >
-              <Text
-                style={
-                  draft.date !== null
-                    ? styles.pickerValue
-                    : styles.pickerPlaceholder
+            {Platform.OS === "web" ? (
+              <WebDateTimeInput
+                type="date"
+                value={draft.date ?? ""}
+                min={isoFromDate(new Date())}
+                ariaLabel={`Pick ${dateRowLabel.toLowerCase()}`}
+                hasError={
+                  dateError !== undefined || dayMismatchError !== undefined
                 }
+                testID="creator-when-date-web"
+                onChangeValue={(v) => {
+                  if (v.length === 0) return;
+                  const [y, m, d] = v.split("-").map(Number);
+                  commitPickerValue("date", new Date(y, m - 1, d, 0, 0, 0, 0));
+                }}
+              />
+            ) : (
+              <Pressable
+                onPress={() => handleOpenPicker("date")}
+                accessibilityRole="button"
+                accessibilityLabel={`Pick ${dateRowLabel.toLowerCase()}`}
+                style={[
+                  styles.pickerRow,
+                  (dateError !== undefined || dayMismatchError !== undefined) &&
+                    styles.inputError,
+                ]}
               >
-                {formatDateRowLabel(draft.date)}
-              </Text>
-              <Icon name="calendar" size={16} color={textTokens.tertiary} />
-            </Pressable>
+                <Text
+                  style={
+                    draft.date !== null
+                      ? styles.pickerValue
+                      : styles.pickerPlaceholder
+                  }
+                >
+                  {formatDateRowLabel(draft.date)}
+                </Text>
+                <Icon name="calendar" size={16} color={textTokens.tertiary} />
+              </Pressable>
+            )}
             {dateError !== undefined ? (
               <Text style={styles.helperError}>{dateError}</Text>
             ) : null}
@@ -906,54 +873,91 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
             ) : null}
           </View>
 
-          {/* Doors + Ends */}
+          {/* Doors + Ends.
+              issue #1027 Thread B — web renders visible native <input type=time>
+              controls (the reported "clicking the times does nothing" bug); the
+              onChange commits doorsOpen/endsAt to the draft. Native unchanged. */}
           <View style={styles.timeRow}>
             <View style={styles.timeCell}>
               <Text style={styles.fieldLabel}>Doors open</Text>
-              <Pressable
-                onPress={() => handleOpenPicker("doorsOpen")}
-                accessibilityRole="button"
-                accessibilityLabel="Pick door-open time"
-                style={[
-                  styles.pickerRow,
-                  doorsError !== undefined && styles.inputError,
-                ]}
-              >
-                <Text
-                  style={
-                    draft.doorsOpen !== null
-                      ? styles.pickerValue
-                      : styles.pickerPlaceholder
-                  }
+              {Platform.OS === "web" ? (
+                <WebDateTimeInput
+                  type="time"
+                  value={draft.doorsOpen ?? ""}
+                  ariaLabel="Pick door-open time"
+                  hasError={doorsError !== undefined}
+                  testID="creator-when-doors-web"
+                  onChangeValue={(v) => {
+                    if (v.length === 0) return;
+                    const [h, mm] = v.split(":").map(Number);
+                    const next = new Date();
+                    next.setHours(h, mm, 0, 0);
+                    commitPickerValue("doorsOpen", next);
+                  }}
+                />
+              ) : (
+                <Pressable
+                  onPress={() => handleOpenPicker("doorsOpen")}
+                  accessibilityRole="button"
+                  accessibilityLabel="Pick door-open time"
+                  style={[
+                    styles.pickerRow,
+                    doorsError !== undefined && styles.inputError,
+                  ]}
                 >
-                  {draft.doorsOpen ?? "21:00"}
-                </Text>
-              </Pressable>
+                  <Text
+                    style={
+                      draft.doorsOpen !== null
+                        ? styles.pickerValue
+                        : styles.pickerPlaceholder
+                    }
+                  >
+                    {draft.doorsOpen ?? "21:00"}
+                  </Text>
+                </Pressable>
+              )}
               {doorsError !== undefined ? (
                 <Text style={styles.helperError}>{doorsError}</Text>
               ) : null}
             </View>
             <View style={styles.timeCell}>
               <Text style={styles.fieldLabel}>Ends</Text>
-              <Pressable
-                onPress={() => handleOpenPicker("endsAt")}
-                accessibilityRole="button"
-                accessibilityLabel="Pick end time"
-                style={[
-                  styles.pickerRow,
-                  endsError !== undefined && styles.inputError,
-                ]}
-              >
-                <Text
-                  style={
-                    draft.endsAt !== null
-                      ? styles.pickerValue
-                      : styles.pickerPlaceholder
-                  }
+              {Platform.OS === "web" ? (
+                <WebDateTimeInput
+                  type="time"
+                  value={draft.endsAt ?? ""}
+                  ariaLabel="Pick end time"
+                  hasError={endsError !== undefined}
+                  testID="creator-when-ends-web"
+                  onChangeValue={(v) => {
+                    if (v.length === 0) return;
+                    const [h, mm] = v.split(":").map(Number);
+                    const next = new Date();
+                    next.setHours(h, mm, 0, 0);
+                    commitPickerValue("endsAt", next);
+                  }}
+                />
+              ) : (
+                <Pressable
+                  onPress={() => handleOpenPicker("endsAt")}
+                  accessibilityRole="button"
+                  accessibilityLabel="Pick end time"
+                  style={[
+                    styles.pickerRow,
+                    endsError !== undefined && styles.inputError,
+                  ]}
                 >
-                  {draft.endsAt ?? "03:00"}
-                </Text>
-              </Pressable>
+                  <Text
+                    style={
+                      draft.endsAt !== null
+                        ? styles.pickerValue
+                        : styles.pickerPlaceholder
+                    }
+                  >
+                    {draft.endsAt ?? "03:00"}
+                  </Text>
+                </Pressable>
+              )}
               {endsError !== undefined ? (
                 <Text style={styles.helperError}>{endsError}</Text>
               ) : null}
@@ -1142,10 +1146,10 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
         </Text>
       </View>
 
-      {/* Date/time picker — iOS Sheet wrap, Android native dialog.
-          Web is handled via hidden HTML5 inputs at the bottom of this
-          render — handleOpenPicker triggers them on web and returns early
-          before reaching this Sheet/dialog flow. */}
+      {/* Date/time picker — iOS Sheet wrap, Android native dialog. On web the
+          rows above render visible WebDateTimeInputs and commit via their own
+          onChange; this native-only Sheet/dialog never mounts on web
+          (Platform.OS gates it to ios/android). */}
       {Platform.OS === "ios" ? (
         <Sheet
           visible={pickerMode !== null}
@@ -1199,86 +1203,8 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
         />
       ) : null}
 
-      {/* Hidden HTML5 inputs for web direct-tap pickers. Triggered by
-          handleOpenPicker via showPicker()/.click() on row tap. The
-          inputs render in the DOM with opacity 0 (NOT display:none —
-          that would break programmatic triggering). Selection commits
-          via onChange directly through commitPickerValue. No Sheet,
-          no Done button on web. */}
-      {Platform.OS === "web" ? (
-        <>
-          <input
-            ref={dateInputRef}
-            type="date"
-            value={draft.date ?? ""}
-            min={isoFromDate(new Date())}
-            onChange={(e) => {
-              const v = (e.target as unknown as { value: string }).value;
-              if (v.length === 0) return;
-              const [y, m, d] = v.split("-").map(Number);
-              commitPickerValue("date", new Date(y, m - 1, d, 0, 0, 0, 0));
-            }}
-            aria-label="Event date"
-            style={HIDDEN_WEB_INPUT_STYLE}
-          />
-          <input
-            ref={doorsOpenInputRef}
-            type="time"
-            value={draft.doorsOpen ?? ""}
-            onChange={(e) => {
-              const v = (e.target as unknown as { value: string }).value;
-              if (v.length === 0) return;
-              const [h, mm] = v.split(":").map(Number);
-              const next = new Date();
-              next.setHours(h, mm, 0, 0);
-              commitPickerValue("doorsOpen", next);
-            }}
-            aria-label="Doors open time"
-            style={HIDDEN_WEB_INPUT_STYLE}
-          />
-          <input
-            ref={endsAtInputRef}
-            type="time"
-            value={draft.endsAt ?? ""}
-            onChange={(e) => {
-              const v = (e.target as unknown as { value: string }).value;
-              if (v.length === 0) return;
-              const [h, mm] = v.split(":").map(Number);
-              const next = new Date();
-              next.setHours(h, mm, 0, 0);
-              commitPickerValue("endsAt", next);
-            }}
-            aria-label="Event end time"
-            style={HIDDEN_WEB_INPUT_STYLE}
-          />
-          <input
-            ref={untilDateInputRef}
-            type="date"
-            value={
-              draft.recurrenceRule?.termination.kind === "until"
-                ? draft.recurrenceRule.termination.until
-                : ""
-            }
-            min={
-              draft.date !== null
-                ? (() => {
-                    const firstDay = dateFromIso(draft.date);
-                    firstDay.setDate(firstDay.getDate() + 1);
-                    return isoFromDate(firstDay);
-                  })()
-                : isoFromDate(new Date())
-            }
-            onChange={(e) => {
-              const v = (e.target as unknown as { value: string }).value;
-              if (v.length === 0) return;
-              const [y, m, d] = v.split("-").map(Number);
-              commitPickerValue("untilDate", new Date(y, m - 1, d, 0, 0, 0, 0));
-            }}
-            aria-label="Recurrence until date"
-            style={HIDDEN_WEB_INPUT_STYLE}
-          />
-        </>
-      ) : null}
+      {/* issue #1027 Thread B — the bottom-of-body hidden HTML5 inputs are
+          DELETED. Each web row above renders its own visible WebDateTimeInput. */}
 
       {/* Recurrence preset sheet — Cycle 17d Stage 2 §F.2 extracted */}
       <CreatorStep2WhenRepeatPickerSheet
@@ -1410,21 +1336,47 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
           {draft.recurrenceRule?.termination.kind === "until" ? (
             <View style={styles.field}>
               <Text style={styles.fieldLabel}>End on</Text>
-              <Pressable
-                onPress={() => {
-                  setTerminationSheetVisible(false);
-                  // Slight delay to let sheet close before opening picker
-                  setTimeout(() => handleOpenPicker("untilDate"), 200);
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="Pick end date"
-                style={styles.pickerRow}
-              >
-                <Text style={styles.pickerValue}>
-                  {formatDateRowLabel(draft.recurrenceRule.termination.until)}
-                </Text>
-                <Icon name="calendar" size={16} color={textTokens.tertiary} />
-              </Pressable>
+              {Platform.OS === "web" ? (
+                <WebDateTimeInput
+                  type="date"
+                  value={draft.recurrenceRule.termination.until}
+                  min={
+                    draft.date !== null
+                      ? (() => {
+                          const firstDay = dateFromIso(draft.date);
+                          firstDay.setDate(firstDay.getDate() + 1);
+                          return isoFromDate(firstDay);
+                        })()
+                      : isoFromDate(new Date())
+                  }
+                  ariaLabel="Pick recurrence end date"
+                  testID="creator-when-until-web"
+                  onChangeValue={(v) => {
+                    if (v.length === 0) return;
+                    const [y, m, d] = v.split("-").map(Number);
+                    commitPickerValue(
+                      "untilDate",
+                      new Date(y, m - 1, d, 0, 0, 0, 0),
+                    );
+                  }}
+                />
+              ) : (
+                <Pressable
+                  onPress={() => {
+                    setTerminationSheetVisible(false);
+                    // Slight delay to let sheet close before opening picker
+                    setTimeout(() => handleOpenPicker("untilDate"), 200);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Pick end date"
+                  style={styles.pickerRow}
+                >
+                  <Text style={styles.pickerValue}>
+                    {formatDateRowLabel(draft.recurrenceRule.termination.until)}
+                  </Text>
+                  <Icon name="calendar" size={16} color={textTokens.tertiary} />
+                </Pressable>
+              )}
               <Text style={styles.helperHint}>Up to 1 year out.</Text>
             </View>
           ) : null}
@@ -1452,49 +1404,91 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
         >
           <Text style={styles.sheetTitle}>Add date</Text>
 
+          {/* issue #1027 Thread B — AddDateSheet web rows are visible native
+              <input> controls; native keeps the Pressable → inline picker. */}
           <View style={styles.field}>
             <Text style={styles.fieldLabel}>Date</Text>
-            <Pressable
-              onPress={() => handleAddDateOpenPicker("date")}
-              accessibilityRole="button"
-              accessibilityLabel="Pick date"
-              style={styles.pickerRow}
-            >
-              <Text
-                style={
-                  addDateValue !== null
-                    ? styles.pickerValue
-                    : styles.pickerPlaceholder
-                }
+            {Platform.OS === "web" ? (
+              <WebDateTimeInput
+                type="date"
+                value={addDateValue ?? ""}
+                min={isoFromDate(new Date())}
+                ariaLabel="Pick date for new entry"
+                testID="creator-adddate-date-web"
+                onChangeValue={(v) => {
+                  if (v.length === 0) return;
+                  setAddDateValue(v);
+                }}
+              />
+            ) : (
+              <Pressable
+                onPress={() => handleAddDateOpenPicker("date")}
+                accessibilityRole="button"
+                accessibilityLabel="Pick date"
+                style={styles.pickerRow}
               >
-                {formatDateRowLabel(addDateValue)}
-              </Text>
-              <Icon name="calendar" size={16} color={textTokens.tertiary} />
-            </Pressable>
+                <Text
+                  style={
+                    addDateValue !== null
+                      ? styles.pickerValue
+                      : styles.pickerPlaceholder
+                  }
+                >
+                  {formatDateRowLabel(addDateValue)}
+                </Text>
+                <Icon name="calendar" size={16} color={textTokens.tertiary} />
+              </Pressable>
+            )}
           </View>
 
           <View style={styles.timeRow}>
             <View style={styles.timeCell}>
               <Text style={styles.fieldLabel}>Start</Text>
-              <Pressable
-                onPress={() => handleAddDateOpenPicker("start")}
-                accessibilityRole="button"
-                accessibilityLabel="Pick start time"
-                style={styles.pickerRow}
-              >
-                <Text style={styles.pickerValue}>{addDateStartTime}</Text>
-              </Pressable>
+              {Platform.OS === "web" ? (
+                <WebDateTimeInput
+                  type="time"
+                  value={addDateStartTime}
+                  ariaLabel="Pick start time"
+                  testID="creator-adddate-start-web"
+                  onChangeValue={(v) => {
+                    if (v.length === 0) return;
+                    setAddDateStartTime(v);
+                  }}
+                />
+              ) : (
+                <Pressable
+                  onPress={() => handleAddDateOpenPicker("start")}
+                  accessibilityRole="button"
+                  accessibilityLabel="Pick start time"
+                  style={styles.pickerRow}
+                >
+                  <Text style={styles.pickerValue}>{addDateStartTime}</Text>
+                </Pressable>
+              )}
             </View>
             <View style={styles.timeCell}>
               <Text style={styles.fieldLabel}>End</Text>
-              <Pressable
-                onPress={() => handleAddDateOpenPicker("end")}
-                accessibilityRole="button"
-                accessibilityLabel="Pick end time"
-                style={styles.pickerRow}
-              >
-                <Text style={styles.pickerValue}>{addDateEndTime}</Text>
-              </Pressable>
+              {Platform.OS === "web" ? (
+                <WebDateTimeInput
+                  type="time"
+                  value={addDateEndTime}
+                  ariaLabel="Pick end time"
+                  testID="creator-adddate-end-web"
+                  onChangeValue={(v) => {
+                    if (v.length === 0) return;
+                    setAddDateEndTime(v);
+                  }}
+                />
+              ) : (
+                <Pressable
+                  onPress={() => handleAddDateOpenPicker("end")}
+                  accessibilityRole="button"
+                  accessibilityLabel="Pick end time"
+                  style={styles.pickerRow}
+                >
+                  <Text style={styles.pickerValue}>{addDateEndTime}</Text>
+                </Pressable>
+              )}
             </View>
           </View>
 
@@ -1524,9 +1518,9 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
           </View>
         </ScrollView>
 
-        {/* AddDateSheet inner picker — iOS spinner inline / Android dialog.
-            Web is handled via hidden inputs at AddDateSheet bottom (below);
-            handleAddDateOpenPicker triggers them on web and returns early. */}
+        {/* AddDateSheet inner picker — iOS spinner inline / Android dialog. On
+            web the Date/Start/End rows above render visible WebDateTimeInputs;
+            this native-only inline picker never mounts on web. */}
         {addDatePickerMode !== null && Platform.OS === "ios" ? (
           <View style={styles.addDateInlinePicker}>
             <View style={styles.iosPickerDoneRow}>
@@ -1564,49 +1558,8 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
           />
         ) : null}
 
-        {/* Hidden HTML5 inputs for AddDateSheet web direct-tap pickers.
-            Triggered by handleAddDateOpenPicker via showPicker()/.click(). */}
-        {Platform.OS === "web" ? (
-          <>
-            <input
-              ref={addDateInputRef}
-              type="date"
-              value={addDateValue ?? ""}
-              min={isoFromDate(new Date())}
-              onChange={(e) => {
-                const v = (e.target as unknown as { value: string }).value;
-                if (v.length === 0) return;
-                setAddDateValue(v);
-              }}
-              aria-label="Date for new entry"
-              style={HIDDEN_WEB_INPUT_STYLE}
-            />
-            <input
-              ref={addDateStartInputRef}
-              type="time"
-              value={addDateStartTime}
-              onChange={(e) => {
-                const v = (e.target as unknown as { value: string }).value;
-                if (v.length === 0) return;
-                setAddDateStartTime(v);
-              }}
-              aria-label="Start time"
-              style={HIDDEN_WEB_INPUT_STYLE}
-            />
-            <input
-              ref={addDateEndInputRef}
-              type="time"
-              value={addDateEndTime}
-              onChange={(e) => {
-                const v = (e.target as unknown as { value: string }).value;
-                if (v.length === 0) return;
-                setAddDateEndTime(v);
-              }}
-              aria-label="End time"
-              style={HIDDEN_WEB_INPUT_STYLE}
-            />
-          </>
-        ) : null}
+        {/* issue #1027 Thread B — AddDateSheet hidden HTML5 inputs DELETED; the
+            Date/Start/End rows above render visible WebDateTimeInputs on web. */}
       </Sheet>
 
       {/* Timezone sheet */}

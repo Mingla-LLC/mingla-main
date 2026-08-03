@@ -26,13 +26,12 @@ export function DiningDashboardCard() {
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-text-muted">
-            Paid out this week
+            Released after your events
           </p>
           <p className="mt-1 flex items-baseline gap-1.5">
             <span className="text-4xl font-bold leading-none tracking-[-0.02em] text-text-primary tabular-nums">
               $6,240
             </span>
-            <span className="text-sm text-text-muted">straight to you</span>
           </p>
         </div>
         <span

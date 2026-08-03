@@ -66,7 +66,7 @@ const FORBIDDEN_VENDOR_TOKENS: readonly RegExp[] = [
  *
  * strict-grep-allow: vendor-token-list
  */
-const CODE_MESSAGE_TABLE: ReadonlyArray<readonly [string, string]> = [
+const CODE_MESSAGE_TABLE: readonly (readonly [string, string])[] = [
   [
     "gemini_failed:429",
     "Mingla's AI is busy right now. Please wait a moment and try again.",
@@ -87,6 +87,19 @@ const CODE_MESSAGE_TABLE: ReadonlyArray<readonly [string, string]> = [
   ["gemini_failed", GENERIC_AI_FAILURE],
 ];
 
+const USER_SAFE_SERVER_MESSAGES: Readonly<Record<string, string>> = {
+  forbidden:
+    "You don't have permission to submit venues for this brand. Ask a brand owner to update your role.",
+};
+
+function authoringErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err !== "object" || err === null || !("message" in err)) {
+    return "";
+  }
+  return typeof err.message === "string" ? err.message : "";
+}
+
 /**
  * Map a raw venue-authoring error to a user-safe message.
  *
@@ -95,12 +108,18 @@ const CODE_MESSAGE_TABLE: ReadonlyArray<readonly [string, string]> = [
  * @returns        A user-facing string that never discloses an AI vendor.
  */
 export function sanitizeAuthoringError(err: unknown, fallback: string): string {
-  const raw = err instanceof Error ? err.message : "";
+  // Supabase/PostgREST rejects with a structured plain object rather than an
+  // Error instance. Read only its string `message` field so the operator gets
+  // the same safe handling as native Error failures.
+  const raw = authoringErrorMessage(err);
 
   // No useful raw message → preserve the existing per-call fallback.
   if (raw.length === 0) {
     return fallback;
   }
+
+  const safeServerMessage = USER_SAFE_SERVER_MESSAGES[raw];
+  if (safeServerMessage !== undefined) return safeServerMessage;
 
   // Per-code mapping (longest-prefix-first, see CODE_MESSAGE_TABLE).
   for (const [codePrefix, userMessage] of CODE_MESSAGE_TABLE) {

@@ -1,0 +1,32 @@
+name: Issue #1456 Edge deploy idempotency
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/deploy-functions.yml'
+      - '.github/workflows/issue-1456-edge-deploy-idempotency.yml'
+      - 'scripts/deploy-supabase-functions.sh'
+      - 'scripts/ci/issue1456-edge-deploy-idempotency.test.mjs'
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/deploy-functions.yml'
+      - '.github/workflows/issue-1456-edge-deploy-idempotency.yml'
+      - 'scripts/deploy-supabase-functions.sh'
+      - 'scripts/ci/issue1456-edge-deploy-idempotency.test.mjs'
+
+jobs:
+  exact-duplicate-only:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      - name: Prove duplicate-only continuation and fail-closed behavior
+        run: node scripts/ci/issue1456-edge-deploy-idempotency.test.mjs

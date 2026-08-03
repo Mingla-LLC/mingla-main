@@ -1,0 +1,66 @@
+name: "#1217/#1219 NG Payout Alert-Drain & Reversal Gates"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/functions/payout-release-sweep/**"
+      - "supabase/functions/_shared/paystack.ts"
+      - "supabase/functions/_shared/paystackOrganiserRelease.ts"
+      - ".github/workflows/issue-1217-ng-alert-reversal-gates-tests.yml"
+  pull_request:
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/functions/payout-release-sweep/**"
+      - "supabase/functions/_shared/paystack.ts"
+      - "supabase/functions/_shared/paystackOrganiserRelease.ts"
+      - ".github/workflows/issue-1217-ng-alert-reversal-gates-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-1217-ng-alert-reversal-gates:
+    name: "#1217/#1219 alert-drain + reversal hardening"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: Apply every migration to clean PostgreSQL 17 (validates the #1217 migration)
+        run: |
+          issue1217_db_password="$(openssl rand -hex 24)"
+          docker run --name issue1217-postgres \
+            -e POSTGRES_PASSWORD="$issue1217_db_password" \
+            -d supabase/postgres:17.4.1.075
+          for attempt in {1..90}; do
+            state="$(docker inspect --format \
+              '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' \
+              issue1217-postgres)"
+            if [ "$state" = "healthy" ]; then
+              break
+            fi
+            sleep 1
+          done
+          for migration_file in supabase/migrations/*.sql; do
+            docker exec -i issue1217-postgres \
+              psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+              < "$migration_file"
+          done
+          docker exec -i issue1217-postgres \
+            psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            < supabase/migrations/__tests__/issue_1217_alert_drain_reversal.test.sql
+      - name: Run the #1219 reversal amount-safety + #1218 parse regression tests
+        run: |
+          deno test --allow-read --allow-env --allow-net --no-check \
+            supabase/functions/payout-release-sweep/__tests__/issue_1219_reversal_amount_safety.test.ts
+      - name: Remove disposable database
+        if: always()
+        run: docker rm -f issue1217-postgres || true

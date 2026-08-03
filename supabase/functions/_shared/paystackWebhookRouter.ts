@@ -24,6 +24,12 @@ import { writeAudit } from "./audit.ts";
 import { qrTokenPepper } from "./ticketCheckout.ts";
 // ISSUE-865 WP-B — post-finalize ad-conversion hook (idempotent + fail-open).
 import { fireAdConversion } from "./adConversionFire.ts";
+// ISSUE-1326 — the ONE finalize path for a paid NG (Paystack) venue reservation
+// (shared with venue-reservation-confirm). Guards + idempotent-mints + fires.
+import {
+  finalizeVerifiedPaystackReservation,
+  type ReservationFinalizeSession,
+} from "./reservationPaystackFinalize.ts";
 
 // Verifier is injected so tests can stub the network call deterministically.
 export type PaystackVerifier = (
@@ -37,7 +43,15 @@ export interface PaystackChargeResult {
     | "orphan"
     | "amount_mismatch"
     | "currency_mismatch"
-    | "verify_not_success";
+    | "verify_not_success"
+    // ISSUE-1326 — the paid-NG-reservation rail. These are DISTINCT from the
+    // ticket "finalized"/"replayed" statuses so the edge fn NEVER treats a
+    // reservation as an order (no dispatchTicketConfirmation, no partner-split
+    // fan-out on a reservation). No orderId is set for these.
+    | "reservation_finalized"
+    | "reservation_replayed"
+    /** Slot taken between charge and finalize — manual refund owed (#1175 dark). */
+    | "reservation_refund_due";
   orderId?: string;
   /** ORCH-1331 — verified txn paid_at (ISO), plumbed to the partner-split
    * fan-out so the partner relationship pins at sale time. Additive/optional. */
@@ -151,6 +165,67 @@ export async function handlePaystackChargeSuccess(
     throw new Error(`paystack_session_lookup_failed: ${sessionError.message}`);
   }
   if (!session) {
+    // ISSUE-1326 [ng-reservation-finalize] — BEFORE declaring an orphan, try the
+    // paid-reservation rail. venue-reservation-create persists a paid NG
+    // reservation's reference in reservation_checkout_sessions.paystack_reference
+    // (NOT the stripe_payment_intent_id slot the ticket/contribution paths use),
+    // so a reservation reference matches NEITHER path above — it fell straight to
+    // orphan (charged, never minted, never refunded). Look it up here; if it is a
+    // reservation, finalize via the SHARED provider-neutral + idempotent path
+    // (the same one venue-reservation-confirm uses) and return a reservation-
+    // specific status. Only reached when the ticket session is null, so the
+    // ticket / contribution arms and their tests are untouched.
+    const { data: rSession, error: rSessionError } = await supabase
+      .from("reservation_checkout_sessions")
+      .select(
+        "id, status, reservation_id, amount_cents, currency, attribution_click_id",
+      )
+      .eq("paystack_reference", reference)
+      .maybeSingle();
+    if (rSessionError) {
+      // Retryable — transient DB error.
+      throw new Error(
+        `paystack_reservation_lookup_failed: ${rSessionError.message}`,
+      );
+    }
+    // Guard on a real row id: a genuine match always carries `id`. (A missing
+    // row is null; a malformed/empty shape is ignored → true orphan.)
+    if (
+      rSession && typeof (rSession as { id?: unknown }).id === "string" &&
+      (rSession as { id: string }).id
+    ) {
+      const verifiedAmount = Number(txn?.amount ?? NaN);
+      const verifiedCurrency = String(txn?.currency ?? "");
+      const outcome = await finalizeVerifiedPaystackReservation(
+        supabase,
+        rSession as ReservationFinalizeSession,
+        reference,
+        verifiedAmount,
+        verifiedCurrency,
+        // AWAIT the conversion fire: the webhook is the reliable background
+        // sender with no human waiting, and awaiting keeps it inside the
+        // webhook's lifecycle so it actually runs.
+        true,
+      );
+      switch (outcome.kind) {
+        case "finalized":
+          return { status: "reservation_finalized" };
+        case "replayed":
+          return { status: "reservation_replayed" };
+        case "amount_mismatch":
+          return { status: "amount_mismatch" };
+        case "currency_mismatch":
+          return { status: "currency_mismatch" };
+        case "slot_unavailable_refund_due":
+          return { status: "reservation_refund_due" };
+        case "finalize_error":
+          // Retryable — let the inbox retry the finalize (the RPC is idempotent).
+          throw new Error(
+            `paystack_reservation_finalize_failed: ${outcome.message}`,
+          );
+      }
+    }
+
     await writeAudit(supabase, {
       user_id: null,
       brand_id: null,

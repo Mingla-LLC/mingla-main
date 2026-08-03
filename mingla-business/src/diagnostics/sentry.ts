@@ -1,44 +1,59 @@
 /**
  * Sentry platform shim — WEB side (and default fallback).
  *
- * No-op stubs that match the surface the codebase actually calls. Metro
- * picks `./sentry.native.ts` on iOS + Android (real SDK); web bundles
- * fall through to this file (stubs only).
+ * Real @sentry/browser behind a LAZY, browser-guarded dynamic import so the
+ * ORCH-0886 invariant holds: web NEVER touches `window` at module-load, so the
+ * Expo Router static-SSR export pass (Node, no `window`) never crashes (#890,
+ * proven: `npx expo export -p web` exits 0 with the SDK wired in).
  *
- * Why this stub exists (root-cause fix from ORCH-0886, 2026-05-19):
- * `@sentry/react-native` transitively imports `@sentry/browser`, whose
- * deep integrations touch `window` at module-load. That crashes Expo
- * Router's static-SSR pass in Node before any React renders. By routing
- * the import through this platform-split, web never loads the real SDK.
- *
- * Observable behavior change on web:
- * - No error reporting from the web bundle (Vercel preview + buyer-anon
- *   routes /b/{slug}, /checkout/{eventId}, /e/{brand}/{event} no longer
- *   send to Sentry). Acceptable trade-off today — no production web users
- *   yet. A future ORCH can add `@sentry/browser` as a direct web-only dep
- *   if buyer-route error coverage becomes needed.
- *
- * Mirrors the same precedent used for `StripeProviderWrapper.tsx` (web
- * Fragment passthrough vs the native real provider).
- *
- * Public surface — must stay in sync with `./sentry.native.ts`:
+ * Metro picks `./sentry.native.ts` on iOS + Android (real @sentry/react-native);
+ * web bundles fall through to this file. The two modules keep a byte-for-byte
+ * identical PUBLIC surface:
  *   - init(options)
- *   - captureException(error, context?)
+ *   - captureException(error, context?)  -> event-id string
  *   - addBreadcrumb(breadcrumb)
+ *
+ * Why the dynamic import (root-cause fix from ORCH-0886, 2026-05-19):
+ * `@sentry/browser`'s deep integrations touch `window` at module-load. A
+ * top-level/static import evaluates that in Node during the export's static
+ * render and crashes with `window is not defined` before any React renders. A
+ * dynamic `import()` INSIDE `init()`, reached only after a `typeof window`
+ * guard, is never evaluated in Node — the browser fetches + evaluates that
+ * code-split chunk only at runtime.
+ *
+ * NEVER add a top-level `import ... from "@sentry/browser"` (or `require`) here
+ * or anywhere in the web graph — it re-breaks the export. Enforced by
+ * `.github/scripts/strict-grep/issue-890-web-sentry-lazy-only.mjs`.
  */
-
-/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
+type BrowserSentry = typeof import("@sentry/browser");
+let sdk: BrowserSentry | null = null;
 
-export function init(_options?: unknown): void {
-  // no-op on web
+function isBrowser(): boolean {
+  return typeof window !== "undefined";
 }
 
-export function captureException(_error: unknown, _context?: unknown): string {
-  // no-op on web; real SDK returns the event id, we return empty string
-  return "";
+export function init(options?: unknown): void {
+  if (!isBrowser()) return; // Node static-export: never load the web SDK
+  if (!options || typeof options !== "object") return;
+  const opts = options as Record<string, unknown>;
+  if (!opts.dsn) return; // no DSN => no-op (dev / preview)
+  void import("@sentry/browser")
+    .then((mod) => {
+      sdk = mod;
+      mod.init(opts as any);
+    })
+    .catch(() => {
+      /* never surface a diagnostics-loader failure to the user */
+    });
 }
 
-export function addBreadcrumb(_breadcrumb: unknown): void {
-  // no-op on web
+export function captureException(error: unknown, context?: unknown): string {
+  if (!isBrowser() || !sdk) return "";
+  return sdk.captureException(error as any, context as any);
+}
+
+export function addBreadcrumb(breadcrumb: unknown): void {
+  if (!isBrowser() || !sdk) return;
+  sdk.addBreadcrumb(breadcrumb as any);
 }

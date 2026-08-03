@@ -128,6 +128,7 @@ export const CreatorStep1Basics: React.FC<StepBodyProps> = ({
   updateDraft,
   errors,
   showErrors,
+  scrollToBottom,
 }) => {
   const nameError = showErrors ? errorForKey(errors, "name") : undefined;
   const descError = showErrors ? errorForKey(errors, "description") : undefined;
@@ -272,6 +273,16 @@ export const CreatorStep1Basics: React.FC<StepBodyProps> = ({
           <TextInput
             value={draft.description}
             onChangeText={(v) => updateDraft({ description: v })}
+            // issue #1027 (Thread A) — the description is the bottom-most field in
+            // Basics and its box (minHeight 110) otherwise sits ~60% behind the
+            // soft keyboard on focus (KeyboardAwareScrollView reveals only the
+            // caret/top line of a tall empty multiline). Scroll the wizard body to
+            // the bottom on focus so the ENTIRE box lifts above the keyboard —
+            // the same proven pattern Step 3's online-URL field uses
+            // (CreatorStep3Where.tsx). Guarded defensively though the prop is
+            // always threaded today (StepBodyProps.scrollToBottom).
+            // I-PROPOSED-1027-WIZARD-MULTILINE-REVEALED-ON-FOCUS.
+            onFocus={() => scrollToBottom?.()}
             placeholder="What's the vibe? Doors, dress code, sound system, who it's for…"
             placeholderTextColor={textTokens.quaternary}
             multiline

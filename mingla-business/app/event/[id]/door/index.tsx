@@ -42,7 +42,11 @@ import {
 } from "../../../../src/store/doorSalesStore";
 import { useAuth } from "../../../../src/context/AuthContext";
 import { useManagedEventRoute } from "../../../../src/hooks/useManagedEventRoute";
-import { formatCurrency, normalizeCurrency } from "../../../../src/utils/currency";
+import {
+  formatCurrency,
+  normalizeCurrency,
+  currencyCodeOrNull,
+} from "../../../../src/utils/currency";
 import { summarizeEventMoney } from "../../../../src/utils/moneySummary";
 import { exportDoorSalesCsv } from "../../../../src/utils/guestCsvExport";
 import { PAYMENT_METHOD_LABELS } from "../../../../src/utils/paymentMethodLabels";
@@ -173,7 +177,9 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
   const doorMoneySummary = useMemo(
     () =>
       summarizeEventMoney({
-        expectedCurrency: event?.currency ?? "GBP",
+        // #962 G5 — computation input; summarizeEventMoney normalizes null → a
+        // valid code internally. Never manufacture a GBP display value here.
+        expectedCurrency: currencyCodeOrNull(event?.currency),
         orders: [],
         doorSales: eventSales,
       }),
@@ -350,6 +356,12 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
   }
 
   const scannerKeys = Object.keys(totalsByScanner);
+  // #962 G5 — resolve the event's REAL currency, or null when the brand has no
+  // established currency (pre-bank). Door money cells hide ("—") when null;
+  // never a fabricated £.
+  const doorDisplayCurrency = currencyCodeOrNull(event.currency);
+  const fmtDoor = (v: number): string =>
+    doorDisplayCurrency === null ? "—" : formatCurrency(v, doorDisplayCurrency);
 
   return (
     <View
@@ -437,14 +449,14 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
           <View style={styles.reconRow}>
             <Text style={styles.reconLabel}>Cash</Text>
             <Text style={styles.reconValue}>
-              {formatCurrency(totalsByMethod.cash, event.currency ?? "GBP")}
+              {fmtDoor(totalsByMethod.cash)}
             </Text>
           </View>
           <View style={styles.reconRow}>
             <View style={styles.reconLabelCol}>
               <Text style={styles.reconLabel}>Card reader</Text>
               <Text style={styles.reconLabelHint}>
-                ({formatCurrency(totalsByMethod.card_reader, event.currency ?? "GBP")} — B-cycle)
+                ({fmtDoor(totalsByMethod.card_reader)} — B-cycle)
               </Text>
             </View>
           </View>
@@ -452,14 +464,14 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
             <View style={styles.reconLabelCol}>
               <Text style={styles.reconLabel}>NFC tap</Text>
               <Text style={styles.reconLabelHint}>
-                ({formatCurrency(totalsByMethod.nfc, event.currency ?? "GBP")} — B-cycle)
+                ({fmtDoor(totalsByMethod.nfc)} — B-cycle)
               </Text>
             </View>
           </View>
           <View style={styles.reconRow}>
             <Text style={styles.reconLabel}>Manual</Text>
             <Text style={styles.reconValue}>
-              {formatCurrency(totalsByMethod.manual, event.currency ?? "GBP")}
+              {fmtDoor(totalsByMethod.manual)}
             </Text>
           </View>
 
@@ -467,13 +479,15 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
           <View style={styles.reconRow}>
             <Text style={styles.reconLabel}>Refunded</Text>
             <Text style={styles.reconValueWarn}>
-              −{formatCurrency(refundedTotal, event.currency ?? "GBP")}
+              {doorDisplayCurrency === null
+                ? "—"
+                : `−${formatCurrency(refundedTotal, doorDisplayCurrency)}`}
             </Text>
           </View>
           <View style={styles.reconRow}>
             <Text style={styles.reconLabelStrong}>NET</Text>
             <Text style={styles.reconValueStrong}>
-              {formatCurrency(netTotal, event.currency ?? "GBP")}
+              {fmtDoor(netTotal)}
             </Text>
           </View>
 
@@ -509,11 +523,11 @@ export default function EventDoorSalesListRoute(): React.ReactElement {
                     <Text style={styles.scannerName}>{scannerLabel}</Text>
                     <View style={styles.scannerSubRow}>
                       <Text style={styles.scannerSubLabel}>
-                        Cash {formatCurrency(totals.cash, event.currency ?? "GBP")} · Manual{" "}
-                        {formatCurrency(totals.manual, event.currency ?? "GBP")}
+                        Cash {fmtDoor(totals.cash)} · Manual{" "}
+                        {fmtDoor(totals.manual)}
                       </Text>
                       <Text style={styles.scannerTotal}>
-                        {formatCurrency(scannerTotal, event.currency ?? "GBP")}
+                        {fmtDoor(scannerTotal)}
                       </Text>
                     </View>
                   </View>
@@ -588,7 +602,13 @@ const DoorSaleRowCard: React.FC<DoorSaleRowCardProps> = ({ sale, onPress }) => {
   const relativeTime = formatRelativeTime(sale.recordedAt);
   const hue = hashStringToHue(sale.id);
   const initials = getInitials(buyerName);
-  const subline = `${ticketSummary} · ${formatCurrency(sale.totalGbpAtSale, sale.currency)} · ${relativeTime}`;
+  // #962 G5 — the recorded sale's own frozen currency is real (paid door sales
+  // are gated behind a set currency); null-guarded for gate-cleanliness so a
+  // blank code can never coerce to a fabricated £.
+  const saleMoney = currencyCodeOrNull(sale.currency)
+    ? formatCurrency(sale.totalGbpAtSale, sale.currency)
+    : String(sale.totalGbpAtSale);
+  const subline = `${ticketSummary} · ${saleMoney} · ${relativeTime}`;
   const pillSpec = doorPaymentPill(sale.paymentMethod, sale.status);
 
   return (

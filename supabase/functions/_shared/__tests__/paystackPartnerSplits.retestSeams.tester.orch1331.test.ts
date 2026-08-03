@@ -370,6 +370,24 @@ function scriptedDeps(pw: PW): PaystackPartnerSplitDeps {
     },
     // deno-lint-ignore no-explicit-any
     notify: (() => Promise.resolve()) as any,
+    // [TEST-MOD-APPROVED ORCH-1030] #1030 [partner verify-by-reference] — the
+    // sweep now reconciles a code-less pending row BY REFERENCE before any
+    // re-initiate. Model Paystack's verify-by-reference against the SAME
+    // byReference world these seams already use: a reference that was actually
+    // sent resolves to its transfer; a never-sent reference (e.g. the bumped
+    // a1 after a definitive a0 failure) is a genuine 404 not-found → definitive
+    // → the sweep falls through to initiate exactly as these seams assert.
+    // Additions-only; NO existing double-pay assertion is weakened.
+    verifyTransferByReference: (reference: string) => {
+      const existing = pw.byReference.get(reference);
+      if (existing) return Promise.resolve({ ...existing, reference });
+      return Promise.reject(
+        new PaystackApiError(
+          "Paystack verify-transfer-by-reference failed (404): Transfer not found",
+          404,
+        ),
+      );
+    },
   };
 }
 

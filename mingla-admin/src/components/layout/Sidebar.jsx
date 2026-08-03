@@ -36,6 +36,7 @@ import {
   Receipt,
   Landmark,
   Megaphone,
+  Wrench,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { NAV_GROUPS } from "../../lib/constants";
@@ -68,6 +69,9 @@ const ICON_MAP = {
   // ISSUE-862 WP1 — Ad Engine nav (Growth group). Same ICON_MAP registration
   // requirement as Careers/Support.
   Megaphone,
+  // ISSUE-1354 — Tool Leads nav (all free-tool submissions). Without this entry
+  // the Wrench icon silently falls back to LayoutDashboard (renderNavItem).
+  Wrench,
 };
 
 export function Sidebar({

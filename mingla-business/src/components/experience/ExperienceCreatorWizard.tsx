@@ -507,6 +507,11 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
           country_code: s.countryCode,
           lat: s.lat,
           lng: s.lng,
+          // Issue #1363 — capture precision per stop (exact | approximate | null).
+          // NOTE: the biz_publish_experience RPC must be amended to WRITE this to
+          // experience_stops.coordinate_precision + drop its place_id guard (see
+          // IMPLEMENTATION report gap G1). Passing it here is forward-safe.
+          coordinate_precision: s.coordinatePrecision ?? null,
           image_urls: s.imageUrls,
           start_time: s.startTime,
           price_cents:
@@ -531,6 +536,9 @@ export const ExperienceCreatorWizard: React.FC<ExperienceCreatorWizardProps> = (
           coverMediaCredit: cover.coverMediaCredit,
           coverMediaCreditUrl: cover.coverMediaCreditUrl,
           coverMediaAlt: cover.coverMediaAlt,
+          // issue #868 [cover-gallery] — ADDITIONAL image/GIF items. biz_publish_experience
+          // reads v_cover->'coverGallery' (§M.2). Independent of the cover fields.
+          coverGallery: cover.coverGallery ?? [],
         },
       };
     },

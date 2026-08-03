@@ -19,7 +19,13 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useRouter } from "expo-router";
 
 import {
@@ -81,6 +87,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   restaurant: "Restaurant",
   play: "Play",
   creative_and_arts: "Creative & Arts",
+  stay: "Stay",
 };
 
 interface SectionProps {
@@ -270,7 +277,8 @@ export function VenueSettingsModule({
   }, []);
 
   const handleSaveHours = useCallback((): void => {
-    if (!canMutate || hoursDraft === null || !hoursDirty || hoursInvalid) return;
+    if (!canMutate || hoursDraft === null || !hoursDirty || hoursInvalid)
+      return;
     setHoursError(false);
     upsertHours.mutate(hoursDraft, {
       onSuccess: () => {
@@ -292,7 +300,11 @@ export function VenueSettingsModule({
   }, [hoursSaved]);
 
   // ----- ORCH-1186-A: AI / photos / vibes read-only readout + entry point -----
-  const authoringCtx = useBrandPlaceAuthoringContext(brandId, placePoolId, venueId);
+  const authoringCtx = useBrandPlaceAuthoringContext(
+    brandId,
+    placePoolId,
+    venueId,
+  );
   const galleryCount = authoringCtx.data?.gallery_urls?.length ?? 0;
   const scoreRows = useMemo(() => {
     const scores = authoringCtx.data?.ai_signal_scores ?? null;
@@ -404,8 +416,8 @@ export function VenueSettingsModule({
                     accessibilityLabel="Set a fee amount above zero to charge guests"
                     testID="venue-settings-fee-needs-amount"
                   >
-                    Set an amount above 0 to charge guests. Until you do, this fee
-                    stays free.
+                    Set an amount above 0 to charge guests. Until you do, this
+                    fee stays free.
                   </Text>
                 ) : null}
               </View>
@@ -424,12 +436,13 @@ export function VenueSettingsModule({
           {/* 6 — Cancellation / no-show policy (single source = settings row). */}
           <Section title="Cancellation & no-show">
             <Text style={styles.rowSub}>
-              Cancellation cutoff: {settings?.cancelCutoffHours ?? 24} hours before
-              the reservation.
+              Cancellation cutoff: {settings?.cancelCutoffHours ?? 24} hours
+              before the reservation.
             </Text>
             <View style={styles.segment}>
               {(["forfeit", "none"] as const).map((policy) => {
-                const active = (settings?.noShowFeePolicy ?? "forfeit") === policy;
+                const active =
+                  (settings?.noShowFeePolicy ?? "forfeit") === policy;
                 return (
                   <Pressable
                     key={policy}
@@ -454,7 +467,9 @@ export function VenueSettingsModule({
                         active ? styles.segmentLabelActive : null,
                       ]}
                     >
-                      {policy === "forfeit" ? "Forfeit fee on no-show" : "No penalty"}
+                      {policy === "forfeit"
+                        ? "Forfeit fee on no-show"
+                        : "No penalty"}
                     </Text>
                   </Pressable>
                 );
@@ -470,7 +485,8 @@ export function VenueSettingsModule({
       {/* 4 — Opening hours (real editor; brand_hours is the single owner). */}
       <Section title="Opening hours">
         <Text style={styles.rowSub}>
-          These are the hours guests see — and the baseline for reservation slots.
+          These are the hours guests see — and the baseline for reservation
+          slots.
         </Text>
         {hoursQuery.isError ? (
           <Text style={styles.hoursError} testID="venue-settings-hours-error">
@@ -511,12 +527,18 @@ export function VenueSettingsModule({
               testID="venue-settings-hours-save"
             />
             {hoursSaved ? (
-              <Text style={styles.hoursSaved} testID="venue-settings-hours-saved">
+              <Text
+                style={styles.hoursSaved}
+                testID="venue-settings-hours-saved"
+              >
                 Hours saved.
               </Text>
             ) : null}
             {hoursError ? (
-              <Text style={styles.hoursError} testID="venue-settings-hours-save-error">
+              <Text
+                style={styles.hoursError}
+                testID="venue-settings-hours-save-error"
+              >
                 Couldn&apos;t save hours. Tap Save to try again.
               </Text>
             ) : null}
@@ -591,8 +613,8 @@ export function VenueSettingsModule({
       {/* 7 — Team roles scaffold (DISPLAY ONLY; mutation reuses the Team surface). */}
       <Section title="Team roles">
         <Text style={styles.rowSub}>
-          Who can manage reservations at this venue. Role assignment lives in your
-          team settings — more venue-specific roles are coming.
+          Who can manage reservations at this venue. Role assignment lives in
+          your team settings — more venue-specific roles are coming.
         </Text>
         <View style={styles.legend}>
           {ROLE_LEGEND.map((r) => (

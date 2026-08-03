@@ -125,7 +125,7 @@ function RepeatableFields({ label, values, onChange, min, max, cap, addLabel }) 
   );
 }
 
-export function StepCopy({ copy, onCopyChange, channelRows }) {
+export function StepCopy({ copy, onCopyChange, channelRows, isVideo = false }) {
   const set = (patch) => onCopyChange({ ...copy, ...patch });
   const platforms = channelRows.filter((r) => r.eligible).map((r) => r.platform);
   const googleEligible = platforms.includes("google");
@@ -261,6 +261,46 @@ export function StepCopy({ copy, onCopyChange, channelRows }) {
             onChange={(negativeKeywords) => set({ negativeKeywords })}
             placeholder="free, jobs…"
           />
+        </div>
+      )}
+
+      {/* ISSUE-1282 [Google video bespoke copy] — a Google VIDEO runs as a Demand
+          Gen ad, which takes its OWN long headlines (≤90) and a business name
+          (≤25). Today the create branch DERIVES them (long headlines reused from
+          the RSA headlines, business name from the title-cased brand slug); these
+          fields let the operator write bespoke copy instead. Shown ONLY on the
+          Google-video path. Left blank → payload.js sends nothing → the create
+          branch's derivation fallback stays intact (no behavior change). */}
+      {googleEligible && isVideo && (
+        <div className="space-y-3 p-3 rounded-xl border border-[var(--gray-200)]" data-testid="google-demand-gen-copy">
+          <p className="text-sm font-semibold">Google Video (Demand Gen)</p>
+          <p className="text-xs text-[var(--color-text-secondary)]">
+            Google runs your video as a Demand Gen ad. Write long headlines for it here — leave
+            them blank to reuse your Search headlines. The business name defaults to the brand name.
+          </p>
+          <RepeatableFields
+            label="Long headlines"
+            values={copy.googleLongHeadlines ?? [""]}
+            onChange={(googleLongHeadlines) => set({ googleLongHeadlines })}
+            min={1}
+            max={5}
+            cap={90}
+            addLabel="Add long headline"
+          />
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-sm font-medium">
+                Business name <span className="text-xs text-[var(--color-text-tertiary)]">(optional)</span>
+              </span>
+              <Counter value={copy.googleBusinessName ?? ""} cap={25} />
+            </div>
+            <Input
+              aria-label="Business name"
+              value={copy.googleBusinessName ?? ""}
+              onChange={(e) => set({ googleBusinessName: e.target.value })}
+              placeholder="Leave blank to use the brand name"
+            />
+          </div>
         </div>
       )}
 

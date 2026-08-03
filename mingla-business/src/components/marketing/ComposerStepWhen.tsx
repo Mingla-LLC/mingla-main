@@ -30,6 +30,10 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+// issue #1027 Thread B — the ONE shared visible-native-input for web date/time.
+// Class 2 fix: @react-native-community/datetimepicker has NO web build, so the
+// marketing send-schedule picker was broken on web.
+import { WebDateTimeInput } from "../ui/WebDateTimeInput";
 
 export type SendMode = "now" | "schedule";
 
@@ -166,63 +170,108 @@ export const ComposerStepWhen: React.FC<ComposerStepWhenProps> = ({
       </View>
       {mode === "schedule" ? (
         <View style={styles.scheduleHost}>
-          <View style={styles.pillRow}>
-            <Pressable
-              onPress={() =>
-                setPickerVisible(pickerVisible === "date" ? "none" : "date")
-              }
-              accessibilityRole="button"
-              accessibilityLabel={`Send date: ${dateLabel}`}
-              style={({ pressed }) => [
-                styles.pickerPill,
-                pickerVisible === "date" ? styles.pickerPillActive : null,
-                pressed ? styles.pickerPillPressed : null,
-              ]}
-            >
-              <Text style={styles.pickerPillLabel}>Date</Text>
-              <Text style={styles.pickerPillValue}>{dateLabel}</Text>
-            </Pressable>
-            <Pressable
-              onPress={() =>
-                setPickerVisible(pickerVisible === "time" ? "none" : "time")
-              }
-              accessibilityRole="button"
-              accessibilityLabel={`Send time: ${timeLabel}`}
-              style={({ pressed }) => [
-                styles.pickerPill,
-                pickerVisible === "time" ? styles.pickerPillActive : null,
-                pressed ? styles.pickerPillPressed : null,
-              ]}
-            >
-              <Text style={styles.pickerPillLabel}>Time</Text>
-              <Text style={styles.pickerPillValue}>{timeLabel}</Text>
-            </Pressable>
-          </View>
-          {pickerVisible !== "none" ? (
-            <View style={styles.pickerHost}>
-              <DateTimePicker
-                value={currentValue}
-                mode={pickerVisible}
-                display={Platform.OS === "ios" ? "spinner" : "default"}
-                onChange={handleChange(pickerVisible)}
-                themeVariant="dark"
-                minimumDate={pickerVisible === "date" ? new Date() : undefined}
-              />
-              {Platform.OS === "ios" ? (
+          {Platform.OS === "web" ? (
+            /* issue #1027 Thread B (Class 2) — visible native date + time inputs
+               on web; each commits the merged ISO via the same handleChange
+               merge logic. Native keeps the pill → DateTimePicker flow. */
+            <View style={styles.pillRow}>
+              <View style={styles.webPickerCell}>
+                <Text style={styles.pickerPillLabel}>Date</Text>
+                <WebDateTimeInput
+                  type="date"
+                  value={hasValue ? toLocalIso(currentValue).slice(0, 10) : ""}
+                  min={toLocalIso(new Date()).slice(0, 10)}
+                  ariaLabel="Send date"
+                  testID="composer-when-date-web"
+                  onChangeValue={(v) => {
+                    if (v.length === 0) return;
+                    const [y, m, d] = v.split("-").map(Number);
+                    const next = new Date(currentValue);
+                    next.setFullYear(y, m - 1, d);
+                    onScheduledForChange(toLocalIso(next));
+                  }}
+                />
+              </View>
+              <View style={styles.webPickerCell}>
+                <Text style={styles.pickerPillLabel}>Time</Text>
+                <WebDateTimeInput
+                  type="time"
+                  value={hasValue ? toLocalIso(currentValue).slice(11, 16) : ""}
+                  ariaLabel="Send time"
+                  testID="composer-when-time-web"
+                  onChangeValue={(v) => {
+                    if (v.length === 0) return;
+                    const [h, mm] = v.split(":").map(Number);
+                    const next = new Date(currentValue);
+                    next.setHours(h, mm, 0, 0);
+                    onScheduledForChange(toLocalIso(next));
+                  }}
+                />
+              </View>
+            </View>
+          ) : (
+            <>
+              <View style={styles.pillRow}>
                 <Pressable
-                  onPress={() => setPickerVisible("none")}
+                  onPress={() =>
+                    setPickerVisible(pickerVisible === "date" ? "none" : "date")
+                  }
                   accessibilityRole="button"
-                  accessibilityLabel="Done picking"
+                  accessibilityLabel={`Send date: ${dateLabel}`}
                   style={({ pressed }) => [
-                    styles.doneBtn,
-                    pressed ? styles.doneBtnPressed : null,
+                    styles.pickerPill,
+                    pickerVisible === "date" ? styles.pickerPillActive : null,
+                    pressed ? styles.pickerPillPressed : null,
                   ]}
                 >
-                  <Text style={styles.doneBtnLabel}>Done</Text>
+                  <Text style={styles.pickerPillLabel}>Date</Text>
+                  <Text style={styles.pickerPillValue}>{dateLabel}</Text>
                 </Pressable>
+                <Pressable
+                  onPress={() =>
+                    setPickerVisible(pickerVisible === "time" ? "none" : "time")
+                  }
+                  accessibilityRole="button"
+                  accessibilityLabel={`Send time: ${timeLabel}`}
+                  style={({ pressed }) => [
+                    styles.pickerPill,
+                    pickerVisible === "time" ? styles.pickerPillActive : null,
+                    pressed ? styles.pickerPillPressed : null,
+                  ]}
+                >
+                  <Text style={styles.pickerPillLabel}>Time</Text>
+                  <Text style={styles.pickerPillValue}>{timeLabel}</Text>
+                </Pressable>
+              </View>
+              {pickerVisible !== "none" ? (
+                <View style={styles.pickerHost}>
+                  <DateTimePicker
+                    value={currentValue}
+                    mode={pickerVisible}
+                    display={Platform.OS === "ios" ? "spinner" : "default"}
+                    onChange={handleChange(pickerVisible)}
+                    themeVariant="dark"
+                    minimumDate={
+                      pickerVisible === "date" ? new Date() : undefined
+                    }
+                  />
+                  {Platform.OS === "ios" ? (
+                    <Pressable
+                      onPress={() => setPickerVisible("none")}
+                      accessibilityRole="button"
+                      accessibilityLabel="Done picking"
+                      style={({ pressed }) => [
+                        styles.doneBtn,
+                        pressed ? styles.doneBtnPressed : null,
+                      ]}
+                    >
+                      <Text style={styles.doneBtnLabel}>Done</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
               ) : null}
-            </View>
-          ) : null}
+            </>
+          )}
           {validationMessage !== null && validationMessage !== undefined ? (
             <Text style={styles.validationMessage}>{validationMessage}</Text>
           ) : (
@@ -280,6 +329,11 @@ const styles = StyleSheet.create({
   pillRow: {
     flexDirection: "row",
     gap: spacing.sm,
+  },
+  // issue #1027 Thread B — web date/time cell (label + visible native input).
+  webPickerCell: {
+    flex: 1,
+    gap: 4,
   },
   pickerPill: {
     flex: 1,

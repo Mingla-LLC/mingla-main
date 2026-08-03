@@ -26,6 +26,12 @@
  *       probe. The probe text MUST include both `order_installments` and
  *       `status='scheduled'` (or `status = 'scheduled'`).
  *
+ * `--self-test` proves fail-on-revert (mirrors i-1272-identity-admin-read.mjs):
+ * the pure `check(fileEntries, failures)` is exercised with a GOOD fixture
+ * (incl. an allowlisted del → silent, for specificity) and ≥2 DISTINCT BAD
+ * fixtures (sensitivity). The disk-walking main path feeds the SAME
+ * `check(...)`; behavior-preserving refactor.
+ *
  * Exit codes:
  *   0 — clean
  *   1 — at least one violation
@@ -54,9 +60,6 @@ const PRECHECK_CONTEXT_LINES_BACK = 10;
 const ALLOWLIST_CONTEXT_LINES_BACK = 5;
 const PRECHECK_TOKENS = ["order_installments", "status"]; // must both appear
 
-let violations = 0;
-let filesScanned = 0;
-
 function* walkTs(dir) {
   let entries;
   try {
@@ -81,54 +84,124 @@ function* walkTs(dir) {
   }
 }
 
-function checkFile(file) {
-  const source = readFileSync(file, "utf8");
-  const lines = source.split("\n");
-  for (let i = 0; i < lines.length; i += 1) {
-    const line = lines[i];
-    for (const { pattern, name } of FORBIDDEN_PATTERNS) {
-      if (!pattern.test(line)) continue;
-      let allowed = false;
-      // (a) allowlist tag
-      for (let k = i - 1; k >= Math.max(0, i - ALLOWLIST_CONTEXT_LINES_BACK); k -= 1) {
-        if (lines[k].includes(ALLOWLIST_TAG)) {
-          allowed = true;
-          break;
+/**
+ * Pure verdict. `fileEntries` = [{ rel, content }] (rel = repo-relative path
+ * for reporting). Applies the allowlist + precheck exemptions here so the
+ * self-test can prove an allowlisted del stays silent. Pushes one violation
+ * record per offending call site into `failures`.
+ */
+function check(fileEntries, failures) {
+  for (const { rel, content } of fileEntries) {
+    const lines = content.split("\n");
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i];
+      for (const { pattern, name } of FORBIDDEN_PATTERNS) {
+        if (!pattern.test(line)) continue;
+        let allowed = false;
+        // (a) allowlist tag
+        for (let k = i - 1; k >= Math.max(0, i - ALLOWLIST_CONTEXT_LINES_BACK); k -= 1) {
+          if (lines[k].includes(ALLOWLIST_TAG)) {
+            allowed = true;
+            break;
+          }
         }
-      }
-      if (!allowed) {
-        // (b) precheck comment with required tokens
-        const contextStart = Math.max(0, i - PRECHECK_CONTEXT_LINES_BACK);
-        const contextText = lines.slice(contextStart, i).join("\n");
-        if (
-          PRECHECK_TOKENS.every((t) => contextText.includes(t)) &&
-          /\bSELECT\b/i.test(contextText) &&
-          /=\s*0/.test(contextText)
-        ) {
-          allowed = true;
+        if (!allowed) {
+          // (b) precheck comment with required tokens
+          const contextStart = Math.max(0, i - PRECHECK_CONTEXT_LINES_BACK);
+          const contextText = lines.slice(contextStart, i).join("\n");
+          if (
+            PRECHECK_TOKENS.every((t) => contextText.includes(t)) &&
+            /\bSELECT\b/i.test(contextText) &&
+            /=\s*0/.test(contextText)
+          ) {
+            allowed = true;
+          }
         }
+        if (allowed) continue;
+        failures.push({ rel, line: i + 1, name, lineText: line.trim() });
       }
-      if (allowed) continue;
-      violations += 1;
-      const rel = relative(REPO_ROOT, file);
-      console.error(
-        `✗ ${rel}:${i + 1} — ${name} call without installment-pending precheck or allowlist`,
-      );
-      console.error(`    > ${line.trim()}`);
-      console.error(
-        `    fix: either add the precheck SQL comment within 10 lines above, OR add allowlist:`,
-      );
-      console.error(`    // ${ALLOWLIST_TAG} — <reason>`);
     }
   }
 }
 
+// ─────────────────────────────────────────────────────────────── self-test
+if (process.argv.includes("--self-test")) {
+  const self = [];
+
+  // GOOD: an allowlisted del (silent) + a clean file with no del/detach.
+  const goodEntries = [
+    {
+      rel: "supabase/functions/erase/index.ts",
+      content:
+        "// orch-strict-grep-allow tr3-installment-customer-durability — GDPR erase after schedule complete\n" +
+        "await stripe.customers.del(customerId);\n",
+    },
+    {
+      rel: "supabase/functions/list/index.ts",
+      content: "await stripe.charges.list({ limit: 10 });\n",
+    },
+  ];
+  let f = [];
+  check(goodEntries, f);
+  if (f.length) {
+    self.push("GOOD fixture wrongly flagged: " + f.map((v) => `${v.rel}:${v.line}`).join("; "));
+  }
+
+  // BAD1 (revert-style): a stripe.customers.del( with no allowlist/precheck → fires.
+  const bad1 = [
+    {
+      rel: "supabase/functions/cleanup/index.ts",
+      content: "await stripe.customers.del(customerId);\n",
+    },
+  ];
+  f = [];
+  check(bad1, f);
+  if (f.length === 0) self.push("BAD1 (stripe.customers.del without allowlist) not flagged");
+
+  // BAD2 (regression, different angle): a stripe.paymentMethods.detach( with no
+  // allowlist/precheck → fires.
+  const bad2 = [
+    {
+      rel: "supabase/functions/revoke/index.ts",
+      content: "await stripe.paymentMethods.detach(paymentMethodId);\n",
+    },
+  ];
+  f = [];
+  check(bad2, f);
+  if (f.length === 0) self.push("BAD2 (stripe.paymentMethods.detach without allowlist) not flagged");
+
+  if (self.length) {
+    console.error("I-PROPOSED-TR3-INSTALLMENT-CUSTOMER-DURABILITY self-test FAIL:");
+    self.forEach((m) => console.error("  - " + m));
+    process.exit(1);
+  }
+  console.log("I-PROPOSED-TR3-INSTALLMENT-CUSTOMER-DURABILITY self-test PASS (3/3 cases).");
+  process.exit(0);
+}
+
+// ─────────────────────────────────────────────────────────────── main path
+let filesScanned = 0;
+const fileEntries = [];
 for (const file of walkTs(SCAN_DIR)) {
   filesScanned += 1;
-  checkFile(file);
+  fileEntries.push({ rel: relative(REPO_ROOT, file), content: readFileSync(file, "utf8") });
+}
+
+const failures = [];
+check(fileEntries, failures);
+
+for (const v of failures) {
+  console.error(
+    `✗ ${v.rel}:${v.line} — ${v.name} call without installment-pending precheck or allowlist`,
+  );
+  console.error(`    > ${v.lineText}`);
+  console.error(
+    `    fix: either add the precheck SQL comment within 10 lines above, OR add allowlist:`,
+  );
+  console.error(`    // ${ALLOWLIST_TAG} — <reason>`);
 }
 
 console.log(
-  `I-PROPOSED-TR3-INSTALLMENT-CUSTOMER-DURABILITY: scanned ${filesScanned} files, ${violations} violations`,
+  `I-PROPOSED-TR3-INSTALLMENT-CUSTOMER-DURABILITY: scanned ${filesScanned} files, ${failures.length} violations`,
 );
-process.exit(violations === 0 ? 0 : 1);
+process.exit(failures.length === 0 ? 0 : 1);

@@ -94,7 +94,12 @@ describe("ORCH-1089 signed-in Event Creator wizard parity", () => {
     expect(step1).toContain('accessibilityLabel="Event description"');
     expect(step2).toContain('type="date"');
     expect(step2).toContain('type="time"');
-    expect(step2).toContain("showPicker");
+    // issue #1027 Thread B — the hidden-input + showPicker web bridge was
+    // replaced by the shared VISIBLE native <input> (WebDateTimeInput). Assert
+    // the new mechanism instead of the removed one, so the deleted bridge is not
+    // re-guarded (see orch_1027_web_datetime_* suites for the full contract).
+    expect(step2).toContain("WebDateTimeInput");
+    expect(step2).not.toContain("showPicker");
     expect(step3).toContain("MapboxAddressInput");
     expect(step4).toContain("CoverPickerSheet");
     expect(step5).toContain("TicketTierEditSheet");

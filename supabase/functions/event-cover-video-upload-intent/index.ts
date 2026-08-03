@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import {
-  cloudinarySignature,
   corsHeaders,
   coverVideoProvider,
   destroyCoverVideoAsset,
@@ -23,15 +22,9 @@ import {
   bunnyPresignTusUpload,
   bunnyUsagePct,
 } from "../_shared/bunnyStream.ts";
+import { resolveRuntimeNumber } from "../_shared/runtimeConfig.ts";
 
 export const SOURCE_CEILING_MS = 33_000;
-
-const clampBitrate = (durationMs: number): string => {
-  const seconds = Math.max(1, Math.ceil(durationMs / 1000));
-  const targetBits = 25 * 1024 * 1024 * 8 * 0.86;
-  const kbps = Math.floor(targetBits / seconds / 1000);
-  return `${Math.max(900, Math.min(9000, kbps))}k`;
-};
 
 const logInfo = (requestId: string, stage: string, payload: Record<string, unknown> = {}) => {
   console.log("[event-cover-video-upload-intent]", JSON.stringify({
@@ -100,8 +93,10 @@ async function readBunnyUsagePercent(supabase: any): Promise<number | null> {
   if (bunnyUsageCache && Date.now() - bunnyUsageCache.atMs < BUNNY_USAGE_CACHE_TTL_MS) {
     return bunnyUsageCache.value;
   }
-  const storageCap = Number(Deno.env.get("BUNNY_STORAGE_CAP_BYTES") ?? "0");
-  const trafficCap = Number(Deno.env.get("BUNNY_TRAFFIC_CAP_BYTES") ?? "0");
+  const storageCap = resolveRuntimeNumber("bunny_storage_cap_bytes", "BUNNY_STORAGE_CAP_BYTES") ??
+    0;
+  const trafficCap = resolveRuntimeNumber("bunny_traffic_cap_bytes", "BUNNY_TRAFFIC_CAP_BYTES") ??
+    0;
   const usage = await bunnyFetchLibraryUsage();
   let value: number | null = null;
   if (usage.ok) {
@@ -169,7 +164,6 @@ const defaultDeps = {
   bunnyCreateVideo,
   bunnyPresignTusUpload,
   checkBunnyCapacity,
-  cloudinarySignature,
   providerConfigured,
   reapSupersededBunnyAssets,
   requireBrandCoverManager,
@@ -543,94 +537,11 @@ export const handleEventCoverVideoUploadIntent = async (
     });
   }
 
-  const cloudName = Deno.env.get("CLOUDINARY_CLOUD_NAME") ?? "";
-  const apiKey = Deno.env.get("CLOUDINARY_API_KEY") ?? "";
-  const timestamp = Math.floor(Date.now() / 1000).toString();
-  // ORCH-0989: brand-target uses a brandId-keyed public_id (no eventId
-  // segment); the webhook recovers job_id from either template (recoverJobIdFromPayload).
-  const publicId =
-    targetKind === "brand"
-      ? `brand-covers/raw/${brandId}/${job.id}`
-      : `event-covers/raw/${brandId}/${eventId}/${job.id}`;
-  const durationBudgetMs = Math.min(trimEndMs - trimStartMs, MAX_DURATION_MS);
-  const durationBudgetSeconds = Math.ceil(durationBudgetMs / 1000);
-  // du_<seconds> caps processed duration server-side as defense-in-depth alongside client trim.
-  // Reference: https://cloudinary.com/documentation/video_manipulation_and_delivery_reference#video_transformation_url_parameters
-  const eager = [
-    "c_limit,w_1280,h_720",
-    `du_${durationBudgetSeconds}`,
-    "vc_h264",
-    "ac_aac",
-    `br_${clampBitrate(durationBudgetMs)}`,
-    "f_mp4",
-    "q_auto:good",
-  ].join(",");
-  const eagerNotificationUrl =
-    `${Deno.env.get("SUPABASE_URL") ?? ""}/functions/v1/event-cover-video-webhook`;
-  // ORCH-0989: brand-target context carries target_kind + brand_id (no event_id);
-  // event-target keeps the original event_id-bearing context.
-  const context =
-    targetKind === "brand"
-      ? `job_id=${job.id}|target_kind=brand|brand_id=${brandId}|apply_mode=${applyMode}`
-      : `job_id=${job.id}|event_id=${eventId}|brand_id=${brandId}|apply_mode=${applyMode}`;
-  const signature = await deps.cloudinarySignature({
-    // Cloudinary signed upload params:
-    // https://cloudinary.com/documentation/upload_images
-    // https://cloudinary.com/documentation/authentication_signatures
-    context,
-    eager,
-    eager_async: "true",
-    eager_notification_url: eagerNotificationUrl,
-    public_id: publicId,
-    timestamp,
-  });
-  logInfo(requestId, "cloudinary_signature_generated", {
-    jobId: job.id,
-    publicId,
-    durationBudgetMs,
-  });
-
-  const { error: payloadUpdateError } = await supabase
-    .from("event_cover_video_jobs")
-    .update({
-      provider_payload: { public_id: publicId, eager },
-      source_public_id: publicId,
-    })
-    .eq("id", job.id);
-  if (payloadUpdateError) {
-    logWarn(requestId, "provider_payload_update_failed", {
-      code: payloadUpdateError.code,
-      details: payloadUpdateError.details,
-      hint: payloadUpdateError.hint,
-      jobId: job.id,
-      message: payloadUpdateError.message,
-    });
-  }
-  logInfo(requestId, "returned", { jobId: job.id, provider: "cloudinary" });
-
-  return jsonResponse({
-    jobId: job.id,
-    provider: "cloudinary",
-    maxDurationMs: MAX_DURATION_MS,
-    finalMaxBytes: 25 * 1024 * 1024,
-    upload: {
-      url: `https://api.cloudinary.com/v1_1/${cloudName}/video/upload`,
-      fields: {
-        // Cloudinary Upload API parameters:
-        // https://cloudinary.com/documentation/upload_images
-        // https://cloudinary.com/documentation/upload_parameters
-        api_key: apiKey,
-        context,
-        eager,
-        eager_async: "true",
-        eager_notification_url: eagerNotificationUrl,
-        public_id: publicId,
-        resource_type: "video",
-        signature,
-        timestamp,
-      },
-    },
-  });
+  // #966 — Bunny is the sole provider (`provider` is the singleton `"bunny"`), so
+  // the bunny branch above always returns. This terminal is unreachable; it exists
+  // only to satisfy the Promise<Response> return contract. The Cloudinary
+  // signature/URL response branch was removed (dead residue post-META-1270).
+  throw new Error("unreachable: cover-video provider is bunny-only (#966)");
 };
 
 if (import.meta.main) {

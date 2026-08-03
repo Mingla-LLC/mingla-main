@@ -11,13 +11,8 @@
  * §8.1 pending copy.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import React, { useCallback, useEffect, useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 // ORCH-0892-B v2: ScrollView via SmartScrollView wrapper (KAS native /
 // passthrough web). KeyboardAvoidingView removed. Per SPEC §7.F.
 import { ScrollView } from "../../src/wrappers/SmartScrollView";
@@ -45,7 +40,12 @@ import { IconChrome } from "../../src/components/ui/IconChrome";
 import { Input } from "../../src/components/ui/Input";
 import { usePoolMatchSearch } from "../../src/hooks/usePoolMatchSearch";
 import { useCurrentBrand } from "../../src/hooks/useCurrentBrand";
+import { useFeatureFlag } from "../../src/hooks/useFeatureFlag";
 import { useDraftVenueStore } from "../../src/store/draftVenueStore";
+import {
+  venueDraftBrandToActivate,
+  venueDraftBrandToReset,
+} from "../../src/components/venue/venueCreateBrandLifecycle";
 import {
   fetchPlaceAdoptionDetail,
   PlaceNotAvailableError,
@@ -60,9 +60,7 @@ import type { VenueCategory } from "../../src/types/brand";
 
 type Phase = "gate" | "category" | "wizard" | "success";
 
-function resolveInitialPhase(
-  fromPoolParam: boolean,
-): Phase {
+function resolveInitialPhase(fromPoolParam: boolean): Phase {
   const st = useDraftVenueStore.getState();
   // ?pool=1 continues to mean wizard-resume for pool-linked drafts (claim or
   // legacy — the durable deep-link contract).
@@ -95,6 +93,7 @@ export default function VenueCreateRoute(): React.ReactElement {
   // META-ORCH-1255 — the wizard drafts + creates under the CURRENT brand.
   const currentBrand = useCurrentBrand();
   const activateBrand = useDraftVenueStore((s) => s.activateBrand);
+  const activeDraftBrandId = useDraftVenueStore((s) => s.activeBrandId);
   const reset = useDraftVenueStore((s) => s.reset);
   const patch = useDraftVenueStore((s) => s.patch);
   const workingName = useDraftVenueStore((s) => s.workingName);
@@ -103,6 +102,8 @@ export default function VenueCreateRoute(): React.ReactElement {
   const claimDraft = useDraftVenueStore((s) => s.claim);
   const draftStep = useDraftVenueStore((s) => s.step);
   const draftDisplayName = useDraftVenueStore((s) => s.displayName);
+  const stayAuthoringFlag = useFeatureFlag("STAY_VENUE_AUTHORING");
+  const stayAuthoringEnabled = stayAuthoringFlag.data === true;
 
   const [phase, setPhase] = useState<Phase>(() =>
     resolveInitialPhase(fromPoolParam),
@@ -112,7 +113,8 @@ export default function VenueCreateRoute(): React.ReactElement {
   // META-ORCH-1255 — the created venue id, so Done lands on ITS management page.
   const [createdVenueId, setCreatedVenueId] = useState<string | null>(null);
   // ORCH-1263 — claim submit success renders the §8.1 pending copy.
-  const [claimSuccessName, setClaimSuccessName] = useState<string | null>(null);
+  const [successName, setSuccessName] = useState<string | null>(null);
+  const [successWasClaim, setSuccessWasClaim] = useState(false);
   // ORCH-1263 — per-match YES state: detail fetch in flight / failed / the
   // place turned out unavailable mid-race (blocked-card swap backstop).
   const [yesLoadingId, setYesLoadingId] = useState<string | null>(null);
@@ -128,8 +130,6 @@ export default function VenueCreateRoute(): React.ReactElement {
   const [hydrated, setHydrated] = useState<boolean>(() =>
     useDraftVenueStore.persist.hasHydrated(),
   );
-  const phaseResumedRef = useRef(false);
-
   useEffect(() => {
     if (hydrated) return undefined;
     const unsub = useDraftVenueStore.persist.onFinishHydration(() => {
@@ -141,19 +141,25 @@ export default function VenueCreateRoute(): React.ReactElement {
     return unsub;
   }, [hydrated]);
 
-  // Once hydrated, recompute the resume phase from the now-real persisted draft
-  // (the useState initializer ran pre-hydration against defaults).
-  // META-ORCH-1255 — FIRST activate the current brand's draft slot (per-brand
-  // multi-draft store v2): the resume phase must read THIS brand's draft, not
-  // whichever brand drafted last.
+  // #1461 — a current brand can resolve after hydration. Never mark resume as
+  // complete while it is null: activate the arriving (or newly switched) brand
+  // first, then derive the phase from that brand's now-active draft.
   useEffect(() => {
-    if (!hydrated || phaseResumedRef.current) return;
-    phaseResumedRef.current = true;
-    if (currentBrand !== null) {
-      activateBrand(currentBrand.id);
-    }
+    const brandId = venueDraftBrandToActivate({
+      hydrated,
+      currentBrandId: currentBrand?.id ?? null,
+      activeDraftBrandId,
+    });
+    if (brandId === null) return;
+    activateBrand(brandId);
     setPhase(resolveInitialPhase(fromPoolParam));
-  }, [activateBrand, currentBrand, fromPoolParam, hydrated]);
+  }, [
+    activateBrand,
+    activeDraftBrandId,
+    currentBrand?.id,
+    fromPoolParam,
+    hydrated,
+  ]);
 
   const {
     matches: poolMatches,
@@ -162,19 +168,30 @@ export default function VenueCreateRoute(): React.ReactElement {
   } = usePoolMatchSearch(phase === "gate" ? workingName : "");
 
   useEffect(() => {
-    // Gate on hydration — pre-hydration the store reads defaults, which would
-    // reset() and wipe a legitimately-persisted in-progress draft on cold start.
-    if (!hydrated) return;
-    if (fromPoolParam || useDraftVenueStore.getState().placePoolId !== null) {
-      return;
-    }
-    if (useDraftVenueStore.getState().workingName.trim().length > 0) {
-      return;
-    }
-    reset();
+    const brandId = venueDraftBrandToReset({
+      hydrated,
+      currentBrandId: currentBrand?.id ?? null,
+      activeDraftBrandId,
+      hasPoolContext: fromPoolParam || placePoolId !== null,
+      workingName,
+      submissionCompleted: phase === "success",
+    });
+    if (brandId === null) return;
+    // Scoped reset only. The no-argument reset remains reserved for logout;
+    // routine venue entry must never erase another brand's parked draft.
+    reset(brandId);
     setPhase("gate");
     setPoolNote(null);
-  }, [fromPoolParam, hydrated, reset]);
+  }, [
+    activeDraftBrandId,
+    currentBrand?.id,
+    fromPoolParam,
+    hydrated,
+    placePoolId,
+    phase,
+    reset,
+    workingName,
+  ]);
 
   useEffect(() => {
     if (!isAuthReady) return;
@@ -238,9 +255,8 @@ export default function VenueCreateRoute(): React.ReactElement {
 
   const handleContinueAnyway = useCallback(
     (match: PoolMatch): void => {
-      const { photoUris: _legacy, ...prefill } = prefillDraftFromPoolMatch(
-        match,
-      );
+      const { photoUris: _legacy, ...prefill } =
+        prefillDraftFromPoolMatch(match);
       patch(prefill);
       setPoolNote(null);
       setPhase("wizard");
@@ -264,9 +280,9 @@ export default function VenueCreateRoute(): React.ReactElement {
   const handleStartOver = useCallback((): void => {
     if (currentBrand !== null) {
       reset(currentBrand.id);
-    } else {
-      reset();
     }
+    // A missing current brand is a loading/no-brand state. Never turn this
+    // route-local action into the global draft wipe reserved for logout.
     setConfirmStartOver(false);
     setPhase("gate");
     setPoolNote(null);
@@ -280,10 +296,11 @@ export default function VenueCreateRoute(): React.ReactElement {
     return (
       <VenueCreatorWizard
         onClose={handleClose}
-        onDone={(warning, venueId, claimName) => {
+        onDone={(warning, venueId, submittedName, wasClaim = false) => {
           setCoverWarning(warning ?? null);
           setCreatedVenueId(venueId ?? null);
-          setClaimSuccessName(claimName ?? null);
+          setSuccessName(submittedName ?? null);
+          setSuccessWasClaim(wasClaim);
           setPhase("success");
         }}
       />
@@ -291,19 +308,23 @@ export default function VenueCreateRoute(): React.ReactElement {
   }
 
   if (phase === "success") {
-    const isClaimSuccess = claimSuccessName !== null;
     return (
-      <View style={[styles.root, { paddingTop: insets.top, paddingHorizontal: spacing.lg }]}>
+      <View
+        style={[
+          styles.root,
+          { paddingTop: insets.top, paddingHorizontal: spacing.lg },
+        ]}
+      >
         <View style={styles.successInner}>
           <Text style={styles.successTitle}>
-            {isClaimSuccess
-              ? `That's it — ${claimSuccessName} is in review`
-              : "Your venue is being prepared"}
+            {successName !== null
+              ? `That's it — ${successName} is in review`
+              : "Your venue is in review"}
           </Text>
           <Text style={styles.successBody}>
-            {isClaimSuccess
+            {successWasClaim
               ? "Your listing stays live while we verify it's really you. Approval usually lands within 4 business hours."
-              : "We created the venue record and started the deck-readiness pipeline."}
+              : "Your listing is not live yet. You can finish its setup in Venue Hub while Mingla reviews it."}
           </Text>
           {coverWarning !== null ? (
             <Text style={styles.successWarning}>{coverWarning}</Text>
@@ -428,7 +449,8 @@ export default function VenueCreateRoute(): React.ReactElement {
             ) : null}
             <Text style={styles.h1}>What’s your venue called?</Text>
             <Text style={styles.sub}>
-              We’ll check our directory so we can prefill your listing when we know you.
+              We’ll check our directory so we can prefill your listing when we
+              know you.
             </Text>
             <Input
               variant="text"
@@ -472,7 +494,9 @@ export default function VenueCreateRoute(): React.ReactElement {
                 ))}
               </View>
             ) : null}
-            {poolNote !== null ? <Text style={styles.warn}>{poolNote}</Text> : null}
+            {poolNote !== null ? (
+              <Text style={styles.warn}>{poolNote}</Text>
+            ) : null}
             <Button
               label="Continue without a match"
               variant="primary"
@@ -495,6 +519,8 @@ export default function VenueCreateRoute(): React.ReactElement {
             <VenueCategoryPicker
               value={venueCategory}
               onChange={(v: VenueCategory) => patch({ venueCategory: v })}
+              includeStay={stayAuthoringEnabled}
+              stayDisabled={!stayAuthoringEnabled}
               testID="venue-category-picker"
             />
             {/* B1: fullWidth makes Continue stretch to the same insets as the
@@ -505,7 +531,10 @@ export default function VenueCreateRoute(): React.ReactElement {
               variant="primary"
               size="lg"
               fullWidth
-              disabled={venueCategory === null}
+              disabled={
+                venueCategory === null ||
+                (venueCategory === "stay" && !stayAuthoringEnabled)
+              }
               onPress={handleCategoryContinue}
             />
           </>

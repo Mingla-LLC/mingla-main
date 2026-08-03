@@ -5,6 +5,11 @@ export { PublicBrandPage } from "./PublicBrandPage";
 // bundle-sensitive consumers (the venue page) use the DEEP specifier
 // "@mingla/brand-rendering/PublicMenuSections" instead of this barrel.
 export { PublicMenuSections } from "./PublicMenuSections";
+export {
+  PublicVenueTabs,
+  type PublicVenueTab,
+  type PublicVenueTabsProps,
+} from "./PublicVenueTabs";
 export type {
   PublicBrand,
   PublicBrandCallbacks,

@@ -57,6 +57,84 @@ let violations = 0;
 let filesScanned = 0;
 let readFailures = 0;
 
+/**
+ * Pure verdict. `fileEntries` = [{ rel, content }] with `rel` the repo-relative
+ * POSIX path (used for reporting). A file violates iff it imports BOTH
+ * @stripe/(react-)connect-js AND react-native-webview and carries no allowlist
+ * tag. Pushes one { rel } record per offending file into `failures`.
+ * Behavior-preserving refactor of the original scanFile logic.
+ */
+function check(fileEntries, failures) {
+  for (const { rel, content } of fileEntries) {
+    if (content.includes(ALLOWLIST_TAG)) continue;
+    if (!CONNECT_JS_REGEX.test(content)) continue;
+    if (!WEBVIEW_REGEX.test(content)) continue;
+    failures.push({ rel });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────── self-test
+if (process.argv.includes("--self-test")) {
+  const self = [];
+  const run = (entries) => {
+    const f = [];
+    check(entries, f);
+    return f;
+  };
+
+  // GOOD: a file importing only ONE of the two packages → silent (specificity).
+  let f = run([
+    {
+      rel: "mingla-business/app/connect-onboarding.tsx",
+      content: 'import { loadConnectAndInitialize } from "@stripe/connect-js";\n',
+    },
+  ]);
+  if (f.length) self.push("GOOD (connect-js only, no webview) wrongly flagged");
+
+  // BAD1 (revert-style): the DIY WebView-wrap — connect-js + react-native-webview.
+  f = run([
+    {
+      rel: "mingla-business/src/screens/OnboardWrap.tsx",
+      content:
+        'import { loadConnectAndInitialize } from "@stripe/connect-js";\n' +
+        'import { WebView } from "react-native-webview";\n',
+    },
+  ]);
+  if (f.length === 0) self.push("BAD1 (connect-js + react-native-webview) not flagged");
+
+  // BAD2 (regression, different angle): the @stripe/react-connect-js binding still
+  // wrapped in react-native-webview — proves the (react-)? alternation stays load-bearing.
+  f = run([
+    {
+      rel: "mingla-business/src/screens/OnboardWrap2.tsx",
+      content:
+        'import { ConnectComponentsProvider } from "@stripe/react-connect-js";\n' +
+        'import { WebView } from "react-native-webview";\n',
+    },
+  ]);
+  if (f.length === 0) self.push("BAD2 (react-connect-js + react-native-webview) not flagged");
+
+  // SPECIFICITY: a file importing BOTH but carrying the allowlist tag stays silent.
+  f = run([
+    {
+      rel: "mingla-business/src/screens/ApprovedWrap.tsx",
+      content:
+        "// orch-strict-grep-allow stripe-connect-js-with-webview — approved exception\n" +
+        'import { loadConnectAndInitialize } from "@stripe/connect-js";\n' +
+        'import { WebView } from "react-native-webview";\n',
+    },
+  ]);
+  if (f.length) self.push("allowlisted connect-js + webview wrongly flagged");
+
+  if (self.length) {
+    console.error("I-PROPOSED-O self-test FAIL:");
+    self.forEach((m) => console.error("  - " + m));
+    process.exit(1);
+  }
+  console.log("I-PROPOSED-O self-test PASS (4/4 cases).");
+  process.exit(0);
+}
+
 function* walkTsTsx(dir) {
   let entries;
   try {
@@ -86,8 +164,7 @@ function* walkTsTsx(dir) {
   }
 }
 
-function reportViolation(filePath) {
-  const rel = relative(REPO_ROOT, filePath).split(sep).join("/");
+function reportViolation(rel) {
   console.error(`ERROR: I-PROPOSED-O violation in ${rel}`);
   console.error(
     `  File imports BOTH @stripe/connect-js AND react-native-webview.`,
@@ -112,38 +189,36 @@ function reportViolation(filePath) {
     `  See: Mingla_Artifacts/INVARIANT_REGISTRY.md I-PROPOSED-O`,
   );
   console.error("");
-  violations += 1;
 }
 
-function scanFile(filePath) {
-  filesScanned += 1;
-  let source;
-  try {
-    source = readFileSync(filePath, "utf8");
-  } catch (err) {
-    const rel = relative(REPO_ROOT, filePath).split(sep).join("/");
-    console.error(`READ-FAIL: ${rel} — ${err.message}`);
-    readFailures += 1;
-    return;
-  }
-
-  if (source.includes(ALLOWLIST_TAG)) return;
-  if (!CONNECT_JS_REGEX.test(source)) return;
-  if (!WEBVIEW_REGEX.test(source)) return;
-
-  reportViolation(filePath);
-}
-
+const fileEntries = [];
 try {
   for (const dir of SCAN_DIRS) {
     for (const file of walkTsTsx(dir)) {
-      scanFile(file);
+      filesScanned += 1;
+      const rel = relative(REPO_ROOT, file).split(sep).join("/");
+      let source;
+      try {
+        source = readFileSync(file, "utf8");
+      } catch (err) {
+        console.error(`READ-FAIL: ${rel} — ${err.message}`);
+        readFailures += 1;
+        continue;
+      }
+      fileEntries.push({ rel, content: source });
     }
   }
 } catch (err) {
   console.error(`SCRIPT ERROR: ${err.message}`);
   process.exit(2);
 }
+
+const failures = [];
+check(fileEntries, failures);
+for (const v of failures) {
+  reportViolation(v.rel);
+}
+violations = failures.length;
 
 console.error("");
 console.error(

@@ -32,8 +32,7 @@ import { toastManager } from "../ui/Toast";
 import { getUserLocale } from "../../utils/localeUtils";
 import { DeviceCalendarService } from "@/src/services/deviceCalendarService";
 import ProposeDateTimeModal from "./ProposeDateTimeModal"; // dark bottom sheet
-import { formatPriceRange, formatCurrency, getCurrencySymbol, getCurrencyRate } from "../utils/formatters";
-import { PriceTierSlug, TIER_BY_SLUG, formatTierLabel } from '../../constants/priceTiers';
+import { formatCurrency } from "../utils/formatters";
 import { HapticFeedback } from "../../utils/hapticFeedback";
 import type { CuratedStop } from "../../types/curatedExperience";
 import { isPlaceOpenNow, extractWeekdayText } from "../../utils/openingHoursUtils";
@@ -49,6 +48,10 @@ import { CustomPaywallScreen } from "../CustomPaywallScreen";
 import type { GatedFeature } from "../../hooks/useFeatureGate";
 import { useKeyboard } from "../../hooks/useKeyboard";
 import { useTranslation } from 'react-i18next';
+import {
+  canonicalDiscoveryPriceFields,
+  type CanonicalDiscoveryPrice,
+} from "../../utils/priceTiers";
 
 function getTravelModeIcon(mode?: string): string {
   switch (mode) {
@@ -61,7 +64,7 @@ function getTravelModeIcon(mode?: string): string {
   }
 }
 
-interface SavedCard {
+interface SavedCard extends Partial<CanonicalDiscoveryPrice> {
   id: string;
   title: string;
   category: string;
@@ -301,6 +304,7 @@ const SavedTab = ({
 
     const matchesTier = (card: SavedCard) => {
       if (selectedTier === 'all') return true;
+      if ((card as any).cardType !== 'curated') return false;
       return (card as any).priceTier === selectedTier;
     };
 
@@ -1282,7 +1286,8 @@ const SavedTab = ({
         images: cardToSchedule.images?.length ? cardToSchedule.images : [cardToSchedule.image].filter(Boolean),
         rating: cardToSchedule.rating || 4.5,
         reviewCount: cardToSchedule.reviewCount || 0,
-        priceRange: cardToSchedule.priceRange || "Varies",
+        priceRange: cardToSchedule.priceRange || "",
+        ...canonicalDiscoveryPriceFields(cardToSchedule),
         distance: (cardToSchedule as any).distance || "",
         travelTime: cardToSchedule.travelTime || "15 min",
         address: cardToSchedule.address || "",
@@ -1426,6 +1431,7 @@ const SavedTab = ({
       // Pass undefined (not literal "N/A") so the renderer's truthy guard
       // hides the pill. Constitution #9 forbids fabricated display values.
       priceRange: card.priceRange || undefined,
+      ...canonicalDiscoveryPriceFields(card),
       distance: (card as any).distance || "",
       travelTime: card.travelTime || undefined,
       address: card.address || "",
@@ -1447,7 +1453,6 @@ const SavedTab = ({
         saves: card.socialStats?.saves || 0,
         shares: (card.socialStats as any)?.shares || 0,
       },
-      priceTier: card.priceTier as ExpandedCardData['priceTier'],
       location:
         (card as any).location ||
         ((card as any).lat && (card as any).lng
@@ -1482,7 +1487,7 @@ const SavedTab = ({
     // ORCH-0408 Phase 4: Record expand — counter + user interaction log (fire-and-forget)
     recordCardExpand(card.id, {
       category: card.category,
-      priceTier: card.priceTier,
+      priceTier: isCurated ? card.priceTier : undefined,
       isCurated: (card as any).cardType === 'curated',
     });
 
@@ -1829,11 +1834,11 @@ const SavedTab = ({
                       </Text>
                     </View>
                   )}
-                  <Text style={styles.priceText} numberOfLines={1} ellipsizeMode="tail">
-                    {card.priceTier && TIER_BY_SLUG[card.priceTier as PriceTierSlug]
-                      ? formatTierLabel(card.priceTier as PriceTierSlug, getCurrencySymbol(accountPreferences?.currency || "USD"), getCurrencyRate(accountPreferences?.currency || "USD"))
-                      : card.priceRange ? formatPriceRange(card.priceRange, accountPreferences?.currency || "USD") : 'Varies'}
-                  </Text>
+                  {card.priceRange ? (
+                    <Text style={styles.priceText} numberOfLines={1} ellipsizeMode="tail">
+                      {card.priceRange}
+                    </Text>
+                  ) : null}
                 </View>
                 <Icon name="chevron-forward" size={16} color="#9ca3af" />
               </View>

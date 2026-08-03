@@ -49,7 +49,7 @@ function check(label, ok, fix) {
 
 check(
   "CardPayload exposes curated discriminator and TrimmedCuratedStop",
-  /cardType\?: 'curated' \| 'single'/.test(files.messaging) &&
+  /cardType\?: ['"]curated['"] \| ['"]single['"]/.test(files.messaging) &&
     /export interface TrimmedCuratedStop/.test(files.messaging) &&
     /stops\?: TrimmedCuratedStop\[\]/.test(files.messaging),
   "Add cardType, stops, and TrimmedCuratedStop to messagingService.ts.",
@@ -57,9 +57,9 @@ check(
 
 check(
   "trimCardPayload derives image from stops and preserves curated metadata",
-  /const isCurated = card\.cardType === 'curated' \|\| Array\.isArray\(card\.stops\)/.test(files.messaging) &&
+  /const isCurated = card\.cardType === ['"]curated['"] \|\| Array\.isArray\(card\.stops\)/.test(files.messaging) &&
     /firstStopImage = card\.stops\?\.find/.test(files.messaging) &&
-    /trimmed\.cardType = 'curated'/.test(files.messaging) &&
+    /trimmed\.cardType = ['"]curated['"]/.test(files.messaging) &&
     /trimmed\.stops = card\.stops\.map/.test(files.messaging),
   "Extend trimCardPayload with curated detection, first stop image synthesis, cardType, and stops.",
 );
@@ -69,14 +69,14 @@ check(
   /trimmed\.stops = trimmed\.stops\.map\(s => \(\{ \.\.\.s, address: undefined \}\)\)/.test(files.messaging) &&
     /trimmed\.stops = trimmed\.stops\.map\(s => \(\{ \.\.\.s, travelTimeFromPreviousStopMin: undefined \}\)\)/.test(files.messaging) &&
     /trimmed\.stops = trimmed\.stops\.slice\(0, -1\)/.test(files.messaging) &&
-    !/const dropOrder[\s\S]{0,450}'image'/.test(files.messaging) &&
-    !/const dropOrder[\s\S]{0,450}'cardType'/.test(files.messaging),
+    !/const dropOrder[\s\S]{0,450}['"]image['"]/.test(files.messaging) &&
+    !/const dropOrder[\s\S]{0,450}['"]cardType['"]/.test(files.messaging),
   "Preserve image/cardType, then prune stops[].address, stops[].travelTimeFromPreviousStopMin, then tail stops.",
 );
 
 check(
   "buildCardDataPayload synthesizes curated image and images from stops",
-  /c\.cardType === 'curated'/.test(files.collab) &&
+  /c\.cardType === ['"]curated['"]/.test(files.collab) &&
     /image: \(c\.stops as any\[\] \| undefined\)\?\.find/.test(files.collab) &&
     /images: \(c\.stops as any\[\] \| undefined\)[\s\S]+?\.slice\(0, 6\)/.test(files.collab),
   "Curated collab save payload must emit top-level image and images.",
@@ -101,7 +101,7 @@ check(
 
 check(
   "MessageBubble renders intent chip using effective stop image",
-  /const isIntentCard = cp\.cardType === 'curated'/.test(files.bubble) &&
+  /const isIntentCard = cp\.cardType === ['"]curated['"]/.test(files.bubble) &&
     /const effectiveImage = isIntentCard \? intentHeroImage : cp\.image/.test(files.bubble) &&
     /cardBubbleIntentChip/.test(files.bubble) &&
     /arrow-forward/.test(files.bubble),

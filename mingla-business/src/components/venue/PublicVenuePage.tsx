@@ -22,7 +22,14 @@
  * PublicMenuSections renderer (one owner — the brand page's Menu composition).
  */
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import {
   Image,
   Linking,
@@ -42,7 +49,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 // module into the EAGER __common boot chunk (ORCH-1083 bundle-budget breach).
 // The type-only barrel import below is erased at compile time (safe).
 import { PublicMenuSections } from "@mingla/brand-rendering/PublicMenuSections";
-import type { PublicMenuGroup } from "@mingla/brand-rendering";
+import { PublicVenueTabs } from "@mingla/brand-rendering/PublicVenueTabs";
+import type { PublicVenueTabsHandle } from "@mingla/brand-rendering/PublicVenueTabs";
+import type { PublicMenuGroup, PublicVenueTab } from "@mingla/brand-rendering";
+import type { PublicStayDetail } from "@mingla/brand-rendering/stayGuest";
 import {
   ParallaxCoverShell,
   buildStaticMapUrl,
@@ -61,26 +71,54 @@ import {
 } from "../../constants/publicUrls";
 import type {
   PublicVenue,
+  PublicVenueDiscoveryPrice,
   PublicVenueReservable,
 } from "../../services/publicEventsService";
 import type { BrandHourEntry } from "../../types/brand";
 import { useThemeFont } from "../../theme/useThemeFont";
 import { ShareModal } from "../ui/ShareModal";
+import { GuestVenueReservation } from "./GuestVenueReservation";
+import {
+  captureVenueOrganicEvent,
+  settleVenueOrganicJourneyOnConsent,
+} from "../../services/venueOrganicCaptureService";
+import {
+  runBuyerVenueOrganicCapture,
+  settleBuyerVenueOrganicCapture,
+  type VenueOrganicAnalyticsSurface,
+} from "../../services/venueOrganicCapturePolicy";
+import { PublicVenueReservationSheet } from "./PublicVenueReservationSheet";
+import {
+  createPublicVenueReservationUiState,
+  normalizePublicVenueReservationUiState,
+  publicVenueReservationUiReducer,
+} from "./publicVenueReservationUiState";
+import { captureWeb } from "../../analytics/webAnalytics";
+import { formatSourceRange } from "../../utils/currencyFormatter";
+
+// #1390: Stay booking includes its own renderer and Stripe Payment Element.
+// Keep that product-specific bulk off the shared buyer-web boot path and load it
+// only after a verified Stay venue reaches its reservations surface.
+const BuyerStayGuestExperience = React.lazy(() =>
+  import("../stay/BuyerStayGuestExperience").then((module) => ({
+    default: module.BuyerStayGuestExperience,
+  })),
+);
 
 export interface PublicVenuePageProps {
   venue: PublicVenue;
+  discoveryPrice: PublicVenueDiscoveryPrice | null;
   /** ORCH-1186-C shared shape — the BRAND's menu ([TRANSITIONAL-3]). */
   menu: PublicMenuGroup[];
   /** Anon display gate; not-reservable / unknown → NO reserve bar. */
   reservable: PublicVenueReservable | null;
+  reservabilityState?: "loading" | "ready" | "error";
+  initialTab?: PublicVenueTab;
+  onRetryReservability?: () => void;
+  stayState?: "loading" | "ready" | "unavailable" | "error";
+  stayDetail?: PublicStayDetail | null;
+  analyticsSurface?: VenueOrganicAnalyticsSurface;
 }
-
-// [TRANSITIONAL] v1 reserve CTA = app handoff (DESIGN §6.7 alternative — no
-// anon WEB reserve flow exists yet; the `/reserve/{brandId}` success routes
-// referenced by venue-reservation-create have no page). The Mingla app link
-// (marketing site with store links) is the only real destination today.
-// Exit condition: a buyer-web guest reserve flow ORCH re-points this CTA.
-const RESERVE_APP_HANDOFF_URL = "https://usemingla.com";
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -90,7 +128,9 @@ const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const META_MAX = 155;
 const clampPitchForMeta = (text: string): string => {
   const flat = text.replace(/\s+/g, " ").trim();
-  return flat.length > META_MAX ? `${flat.slice(0, META_MAX - 1).trimEnd()}…` : flat;
+  return flat.length > META_MAX
+    ? `${flat.slice(0, META_MAX - 1).trimEnd()}…`
+    : flat;
 };
 
 // META-ORCH-1290(C) §6.1 — "Read more" heuristic (mirrors BrandProfileView's
@@ -117,8 +157,15 @@ const hoursLineFor = (entry: BrandHourEntry): string =>
 
 export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
   venue,
+  discoveryPrice,
   menu,
   reservable,
+  reservabilityState = "ready",
+  initialTab = "overview",
+  onRetryReservability,
+  stayState,
+  stayDetail = null,
+  analyticsSurface = "business_preview",
 }) => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -127,6 +174,59 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
   const [muted, setMuted] = useState<boolean>(true);
   // META-ORCH-1290(C) §6.1 — About pitch clamp/expand state.
   const [aboutExpanded, setAboutExpanded] = useState<boolean>(false);
+  const isStay = venue.venueCategory === "stay";
+  const menuItemCount = menu.reduce((sum, group) => sum + group.items.length, 0);
+  const hasMenu = !isStay && menuItemCount > 0;
+  const canOpenReservationSheet =
+    isStay
+      ? stayState === "ready"
+      : reservabilityState === "ready" &&
+        reservable !== null &&
+        reservable.reservable === true &&
+        reservable.venueId !== null;
+  const reservationUiContext = useMemo(
+    () => ({ hasMenu, canOpenReservationSheet }),
+    [canOpenReservationSheet, hasMenu],
+  );
+  const [reservationUiState, dispatchReservationUi] = useReducer(
+    publicVenueReservationUiReducer,
+    initialTab,
+    (tab) =>
+      createPublicVenueReservationUiState(tab, reservationUiContext),
+  );
+  const normalizedReservationUiState =
+    normalizePublicVenueReservationUiState(
+      reservationUiState,
+      reservationUiContext,
+    );
+  const publicVenueTabsRef = useRef<PublicVenueTabsHandle | null>(null);
+  useEffect(() => {
+    dispatchReservationUi({
+      type: "INITIAL_TAB_CHANGED",
+      tab: initialTab,
+      context: reservationUiContext,
+    });
+    // Reservability changes normalize through ENVIRONMENT_CHANGED below; they
+    // must not replay the route's initial tab over a user's current selection.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasMenu, initialTab]);
+
+  useEffect(() => {
+    dispatchReservationUi({
+      type: "ENVIRONMENT_CHANGED",
+      context: reservationUiContext,
+    });
+  }, [reservationUiContext]);
+
+  useEffect(() => {
+    return settleBuyerVenueOrganicCapture(analyticsSurface, () =>
+      settleVenueOrganicJourneyOnConsent({
+        brandId: venue.brandId,
+        venueId: venue.id,
+      })
+    );
+  }, [analyticsSurface, venue.brandId, venue.id]);
+
   const toggleAboutExpanded = useCallback((): void => {
     setAboutExpanded((v) => !v);
   }, []);
@@ -139,10 +239,7 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
     () => createThemePalette(resolvedTheme),
     [resolvedTheme],
   );
-  const surface = useMemo(
-    () => offeringSurfaceStyles(palette),
-    [palette],
-  );
+  const surface = useMemo(() => offeringSurfaceStyles(palette), [palette]);
   useThemeFont(resolvedTheme.fontFamilyValue);
   const themedFont = { fontFamily: resolvedTheme.fontFamilyValue };
 
@@ -190,11 +287,65 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
   }, [router, venue.brandSlug]);
 
   const handleReserve = useCallback((): void => {
-    void Linking.openURL(RESERVE_APP_HANDOFF_URL).catch(() => undefined);
+    if (
+      !canOpenReservationSheet ||
+      normalizedReservationUiState.reservationSheetOpen ||
+      normalizedReservationUiState.activeTab === "reservations"
+    ) {
+      return;
+    }
+    dispatchReservationUi({
+      type: "RESERVE_CTA_PRESSED",
+      context: reservationUiContext,
+    });
+    captureWeb("public_venue_reservation_started", {
+      surface: analyticsSurface,
+      brand_id: venue.brandId,
+      venue_id: venue.id,
+      source_tab: "sticky_cta",
+    });
+    runBuyerVenueOrganicCapture(analyticsSurface, () => {
+      void captureVenueOrganicEvent(
+        { brandId: venue.brandId, venueId: venue.id },
+        "reservation_start",
+      );
+    });
+  }, [
+    analyticsSurface,
+    canOpenReservationSheet,
+    normalizedReservationUiState.activeTab,
+    normalizedReservationUiState.reservationSheetOpen,
+    reservationUiContext,
+    venue.brandId,
+    venue.id,
+  ]);
+
+  const handleReservationSheetClose = useCallback((): void => {
+    dispatchReservationUi({
+      type: "RESERVATION_SHEET_CLOSED",
+      context: reservationUiContext,
+    });
+  }, [reservationUiContext]);
+
+  const handleReservationSheetDismissed = useCallback((): void => {
+    publicVenueTabsRef.current?.focusTab("reservations");
   }, []);
 
+  const handleVenueTabChange = useCallback(
+    (tab: PublicVenueTab): void => {
+      dispatchReservationUi({
+        type: "TAB_SELECTED",
+        tab,
+        context: reservationUiContext,
+      });
+    },
+    [reservationUiContext],
+  );
+
   // ── §6.7 reserve display gate — fail closed. ─────────────────────────────
-  const showReserve = reservable !== null && reservable.reservable === true;
+  const showReserveCta =
+    canOpenReservationSheet &&
+    normalizedReservationUiState.activeTab !== "reservations";
 
   const hours = venue.hours;
   const today = todayWeekday();
@@ -205,8 +356,6 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
       : null;
 
   const gallery = venue.galleryPhotoUrls;
-  const menuItemCount = menu.reduce((sum, g) => sum + g.items.length, 0);
-
   // META-ORCH-1290(C) §6.1/§6.2 — the owner-authored pitch. Empty/whitespace →
   // treated as absent so the About section, desktop clamp, and pitch-first meta
   // all fall back honestly (no fabricated prose anywhere).
@@ -253,6 +402,16 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
       ) : null}
     </View>
   );
+  const discoveryPriceBlock = !isStay && discoveryPrice !== null ? (
+    <Text style={[styles.aboutBody, themedFont, { color: palette.secondaryText }]}>
+      Typical spend · {formatSourceRange({
+        minMinor: discoveryPrice.minMinor,
+        maxMinor: discoveryPrice.maxMinor,
+        currencyCode: discoveryPrice.currencyCode,
+        exponent: discoveryPrice.minorUnitExponent,
+      })}
+    </Text>
+  ) : null;
 
   // ── §6.1 About / pitch — the venue's voice, right under the identity ──────
   // Themed prose (palette + brand font), 4-line clamp + Read more. Hidden
@@ -321,7 +480,9 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
           pressed && styles.pressed,
         ]}
       >
-        <Text style={[styles.addressCardLabel, { color: palette.tertiaryText }]}>
+        <Text
+          style={[styles.addressCardLabel, { color: palette.tertiaryText }]}
+        >
           WHERE YOU&apos;LL BE
         </Text>
         <Text style={[styles.addressCardValue, { color: palette.primaryText }]}>
@@ -393,6 +554,63 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
       </View>
     ) : null;
 
+  const reservationsBlock = isStay ? (
+    <React.Suspense
+      fallback={
+        <View style={styles.reservationState}>
+          <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>
+            Loading Stay availability…
+          </Text>
+        </View>
+      }
+    >
+      <BuyerStayGuestExperience
+        venueId={venue.id}
+        brandId={venue.brandId}
+        detail={stayDetail}
+        state={stayState ?? "unavailable"}
+        palette={palette}
+        surface={surface}
+        theme={resolvedTheme}
+      />
+    </React.Suspense>
+  ) : reservabilityState === "loading" ? (
+      <View style={styles.reservationState}>
+        <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>
+          Finding open tables…
+        </Text>
+      </View>
+    ) : reservabilityState === "error" ? (
+      <View style={styles.reservationState}>
+        <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>
+          We couldn’t check reservations right now.
+        </Text>
+        <Pressable
+          onPress={onRetryReservability}
+          accessibilityRole="button"
+          accessibilityLabel="Try checking reservations again"
+          style={[styles.stateRetry, { backgroundColor: palette.accent }]}
+        >
+          <Text style={[styles.stateRetryText, { color: palette.accentText }]}>
+            Try again
+          </Text>
+        </Pressable>
+      </View>
+    ) : reservable?.reservable === true && reservable.venueId !== null ? (
+      <GuestVenueReservation
+        venueId={reservable.venueId}
+        brandId={venue.brandId}
+        currency={reservable.currency}
+        analyticsSurface={analyticsSurface}
+      />
+    ) : (
+      <View style={styles.reservationState}>
+        <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>
+          This venue isn’t taking reservations right now.
+        </Text>
+      </View>
+    );
+
   const galleryBlock =
     gallery.length > 0 ? (
       <View style={styles.galleryWrap}>
@@ -425,7 +643,7 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
     <Pressable
       onPress={handleReserve}
       accessibilityRole="button"
-      accessibilityLabel="Reserve a table in the Mingla app"
+      accessibilityLabel={isStay ? "Reserve this Stay" : "Reserve a table"}
       style={({ pressed }) => [
         styles.reserveCta,
         { backgroundColor: palette.accent },
@@ -433,13 +651,13 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
       ]}
     >
       <Text style={[styles.reserveCtaLabel, { color: palette.accentText }]}>
-        Reserve a table
+        {isStay ? "Reserve this Stay" : "Reserve a table"}
       </Text>
     </Pressable>
   );
 
   const reserveBar =
-    showReserve && !isDesktop ? (
+    showReserveCta && !isDesktop ? (
       <View
         style={[
           styles.reserveBarWrap,
@@ -454,7 +672,9 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
     ) : null;
 
   const reserveBarClearance =
-    showReserve && !isDesktop ? 52 + 16 + insets.bottom + 8 : 0;
+    showReserveCta && !isDesktop
+      ? 52 + 16 + insets.bottom + 8
+      : insets.bottom + 24;
 
   // ── §6.10 desktop sticky panel ────────────────────────────────────────────
   const stickyPanel = isDesktop ? (
@@ -476,7 +696,11 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
             in-body aboutBlock on the left column. Hidden when empty. */}
         {hasPitch ? (
           <Text
-            style={[styles.deskPitch, themedFont, { color: palette.secondaryText }]}
+            style={[
+              styles.deskPitch,
+              themedFont,
+              { color: palette.secondaryText },
+            ]}
             numberOfLines={2}
           >
             {pitchText}
@@ -514,14 +738,12 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
             Share
           </Text>
         </Pressable>
-        {showReserve ? reserveCta : null}
+        {showReserveCta ? reserveCta : null}
       </View>
     </View>
   ) : null;
 
-  const heroEyebrow = (
-    <Text style={styles.heroEyebrow}>Verified venue</Text>
-  );
+  const heroEyebrow = <Text style={styles.heroEyebrow}>Verified venue</Text>;
   const heroTitle = isDesktop ? (
     <>
       <Text style={[styles.heroTitle, themedFont]}>{venue.name}</Text>
@@ -534,12 +756,53 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
   const bodyContent = (
     <View style={styles.body}>
       {!isDesktop ? identityBlock : null}
-      {aboutBlock}
-      {mapBlock}
-      {addressCard}
-      {hoursBlock}
-      {menuBlock}
-      {galleryBlock}
+      <PublicVenueTabs
+        ref={publicVenueTabsRef}
+        initialTab={initialTab}
+        activeTab={normalizedReservationUiState.activeTab}
+        hasMenu={hasMenu}
+        palette={palette}
+        surface={surface}
+        theme={resolvedTheme}
+        overview={
+          <View style={styles.tabPane}>
+            {discoveryPriceBlock}
+            {aboutBlock}
+            {mapBlock}
+            {addressCard}
+            {hoursBlock}
+            {galleryBlock}
+          </View>
+        }
+        menu={menuBlock}
+        reservations={
+          normalizedReservationUiState.reservationSheetOpen
+            ? null
+            : reservationsBlock
+        }
+        onTabChange={handleVenueTabChange}
+        onTabViewed={(tab: PublicVenueTab) => {
+          if (tab === "overview") {
+            captureWeb("public_venue_overview_viewed", {
+              surface: analyticsSurface,
+              brand_id: venue.brandId,
+              venue_id: venue.id,
+            });
+          } else if (tab === "menu") {
+            captureWeb("public_venue_menu_viewed", {
+              surface: analyticsSurface,
+              brand_id: venue.brandId,
+              venue_id: venue.id,
+            });
+            runBuyerVenueOrganicCapture(analyticsSurface, () => {
+              void captureVenueOrganicEvent(
+                { brandId: venue.brandId, venueId: venue.id },
+                "menu_open",
+              );
+            });
+          }
+        }}
+      />
     </View>
   );
 
@@ -590,6 +853,13 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
         {bodyContent}
       </ParallaxCoverShell>
       {reserveBar}
+      <PublicVenueReservationSheet
+        visible={normalizedReservationUiState.reservationSheetOpen}
+        onClose={handleReservationSheetClose}
+        onDismissed={handleReservationSheetDismissed}
+      >
+        {reservationsBlock}
+      </PublicVenueReservationSheet>
       <ShareModal
         visible={shareModalVisible}
         onClose={() => setShareModalVisible(false)}
@@ -607,6 +877,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#0c0e12",
   },
   body: {
+    gap: 20,
+  },
+  tabPane: {
     gap: 20,
   },
   // ---- identity (§6.2) ----
@@ -792,6 +1065,21 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.85,
+  },
+  reservationState: {
+    gap: 14,
+    paddingVertical: 20,
+  },
+  stateRetry: {
+    minHeight: 44,
+    alignSelf: "flex-start",
+    justifyContent: "center",
+    borderRadius: 12,
+    paddingHorizontal: 18,
+  },
+  stateRetryText: {
+    fontSize: 14,
+    fontWeight: "800",
   },
   // ---- desktop hero + panel (§6.10) ----
   heroEyebrow: {

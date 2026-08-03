@@ -1,7 +1,7 @@
 // ORCH-1292 [public-page-tag-slug-labels] — TESTER ADVERSARIAL unit test.
 //
 // DIFFERENT ANGLE from the implementor happy-path (orch_1292_taxonomy_labels.test.ts,
-// which asserts slug→label + a generic fallback + full-45 coverage). This suite
+// which asserts slug→label + a generic fallback + full-49 coverage). This suite
 // attacks BEHAVIORAL EDGES the happy-path does not:
 //
 //   1. Mixed known + unknown in ONE array → canonical labels AND Title-Case
@@ -9,7 +9,7 @@
 //   2. Cross-taxonomy NON-COLLISION — a flat map is only safe if no slug means two
 //      things. Prove every slug in each of the three canonical lists resolves to
 //      ITS OWN list's label (music "pop" is Pop, never a party/vibe value), and
-//      the union is exactly 45 unique keys.
+//      the union is exactly 49 unique keys.
 //   3. Empty-array group OMISSION — [].map(taxonomyLabel) === [] (a group with no
 //      tags contributes zero pills; the render sites' `?? []` + .map behavior).
 //   4. MAP-PRECEDENCE over fallback — for a slug where the canonical label DIFFERS
@@ -45,8 +45,8 @@ const VIBE = [
   "vibrant", "retro", "futuristic",
 ];
 const MUSIC = [
-  "electronic-edm", "hiphop-rap", "pop", "rock", "latin", "afrobeats", "rnb-soul",
-  "disco-funk", "reggae-dancehall", "indie", "country", "jazz", "classical", "mixed-variety",
+  "electronic-edm", "house", "hiphop-rap", "pop", "rock", "latin", "afrobeats", "afro-house", "amapiano",
+  "gospel", "rnb-soul", "disco-funk", "reggae-dancehall", "indie", "country", "jazz", "classical", "mixed-variety",
 ];
 
 // ───────────── 1. mixed known + unknown in one array ─────────────
@@ -63,11 +63,11 @@ Deno.test("mixed known + unknown slugs in one array → canonical + fallback coe
 
 // ───────────── 2. cross-taxonomy non-collision ─────────────
 
-Deno.test("flat map is collision-free — 45 unique slugs across the three lists", () => {
+Deno.test("flat map is collision-free — 49 unique slugs across the three lists", () => {
   const union = new Set([...PARTY, ...VIBE, ...MUSIC]);
-  assertEquals(PARTY.length + VIBE.length + MUSIC.length, 45);
-  assertEquals(union.size, 45); // no slug appears in two lists
-  assertEquals(Object.keys(TAXONOMY_LABELS).length, 45);
+  assertEquals(PARTY.length + VIBE.length + MUSIC.length, 49);
+  assertEquals(union.size, 49); // no slug appears in two lists
+  assertEquals(Object.keys(TAXONOMY_LABELS).length, 49);
 });
 
 Deno.test("each list's slugs resolve to a NON-EMPTY label; music 'pop' is 'Pop' (not shadowed)", () => {
@@ -123,6 +123,18 @@ Deno.test("adversarial malformed inputs never throw and never leak raw kebab", (
   assertEquals(taxonomyLabel(""), "");                          // empty → empty, no throw
   // idempotence on an already-resolved multi-word label passed back in
   assertEquals(taxonomyLabel("Already Resolved"), "Already Resolved"); // no hyphen → unchanged
+});
+
+// ───────────── 7. issue #857 new music genres byte-exact ─────────────
+
+Deno.test("issue #857 new music genres resolve byte-exact (house/afro-house/amapiano/gospel)", () => {
+  assertEquals(taxonomyLabel("house"), "House");
+  assertEquals(taxonomyLabel("afro-house"), "Afro House");
+  assertEquals(taxonomyLabel("amapiano"), "Amapiano");
+  assertEquals(taxonomyLabel("gospel"), "Gospel");
+  // afro-house must NOT collapse into the party-type "house-party" / vibe space,
+  // and its canonical label must win over the Title-Case fallback ("Afro House").
+  assertNotEquals(taxonomyLabel("afro-house"), taxonomyLabel("house-party"));
 });
 
 Deno.test("taxonomyLabel is a pure function — same input, same output, no mutation", () => {

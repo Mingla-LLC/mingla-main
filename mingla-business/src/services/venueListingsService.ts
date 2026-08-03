@@ -152,6 +152,8 @@ export interface CreateVenueListingInput {
   lng: number;
   city: string | null;
   countryCode: string | null;
+  /** Issue #1363 — legacy "exact", selected-address "approximate", or null. */
+  coordinatePrecision?: "exact" | "approximate" | null;
   address: string;
   venueCategory: VenueCategory;
   contact: { email?: string; phone?: string };
@@ -189,6 +191,9 @@ export async function createVenueListing(
     p_cover_media_type: input.coverMediaType ?? "",
     p_hours: brandHoursToRpcPayload(input.hours),
     p_place_pool_id: input.placePoolId ?? null,
+    // Issue #1363 — empty string → NULL server-side (RPC default); an unknown
+    // value is ignored server-side so a stale client never breaks venue create.
+    p_coordinate_precision: input.coordinatePrecision ?? "",
   });
 
   if (error !== null) {

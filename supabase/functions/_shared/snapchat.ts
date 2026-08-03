@@ -1067,6 +1067,64 @@ export function buildSnapchatCampaignBody(
   return body;
 }
 
+// ── ISSUE-992 (3a): city circles + interest segments ─────────────────────────
+//
+// Snap geo circles nest UNDER a country_code inside targeting.geos; each circle
+// is a geocoded point + radius (create-time server geocode — coords never touch
+// the browser). SCLS interest segments ride as targeting.interests. Both are
+// SUSPECTED (documented Snap Marketing API contract) — Snap has NO validate-only
+// (refuseSnapchatValidateOnly), so the exact geos/interests nesting must be
+// proven with a PAUSED create + teardown at BUILD.
+//
+// [SUSPECTED — Snap Marketing API] circle radius unit token.
+export const SNAPCHAT_CIRCLE_UNITS = ["mile", "kilometer"] as const;
+export type SnapchatCircleUnit = (typeof SNAPCHAT_CIRCLE_UNITS)[number];
+
+/** A geocoded city circle — lat/lng resolved server-side (never fabricated). */
+export interface SnapchatCircleGeo {
+  /** ISO country the city sits in (lowercased on the wire). */
+  country_code: string;
+  latitude: number;
+  longitude: number;
+  radius: number;
+  /** "mile" | "kilometer" — SUSPECTED enum, probe-confirmed at BUILD. */
+  unit: string;
+}
+
+/**
+ * Build the circle-geo array grouped by country_code (each country_code gets
+ * ONE geo entry carrying all its circles). When circles are present the picked
+ * countries are NOT added as separate country-only geos (that union would make
+ * the circle inert — the Meta city-drops-country precedent). Empty circles ⇒
+ * null so the caller keeps the existing country-only geos. Never fabricates a
+ * coordinate — index.ts drops circles whose geocode returned null before here.
+ */
+export function buildSnapchatCircleGeos(
+  circles: readonly SnapchatCircleGeo[] | null | undefined,
+): Record<string, unknown>[] | null {
+  if (!Array.isArray(circles) || circles.length === 0) return null;
+  const byCountry = new Map<string, Record<string, unknown>[]>();
+  for (const c of circles) {
+    if (
+      !Number.isFinite(c?.latitude) || !Number.isFinite(c?.longitude) ||
+      !Number.isFinite(c?.radius) || c.radius <= 0
+    ) continue;
+    const cc = String(c.country_code ?? "").trim().toLowerCase();
+    if (!cc) continue;
+    const unit = (SNAPCHAT_CIRCLE_UNITS as readonly string[]).includes(String(c.unit))
+      ? String(c.unit)
+      : "mile";
+    const list = byCountry.get(cc) ?? [];
+    list.push({ latitude: c.latitude, longitude: c.longitude, radius: c.radius, unit });
+    byCountry.set(cc, list);
+  }
+  if (byCountry.size === 0) return null;
+  return [...byCountry.entries()].map(([country_code, circleList]) => ({
+    country_code,
+    circles: circleList,
+  }));
+}
+
 export interface SnapchatAdSquadSpec {
   name: string;
   optimizationGoal: string;
@@ -1074,6 +1132,10 @@ export interface SnapchatAdSquadSpec {
   countries: string[];
   /** GR-39: defaults to [{ min_age: "18" }] when absent. */
   demographics?: Record<string, unknown>[];
+  /** ISSUE-992 (3a): geocoded city circles → circle geos under targeting.geos. */
+  circles?: SnapchatCircleGeo[];
+  /** ISSUE-992 (3a): SCLS interest-segment category ids → targeting.interests. */
+  interestCategoryIds?: string[];
   /** Minor units (cents). ABO squad budget; OMITTED under CBO. */
   budgetCents?: number;
   budgetMode?: "daily" | "lifetime";
@@ -1138,15 +1200,32 @@ export function buildSnapchatAdSquadBody(
     });
   }
 
+  // ISSUE-992 (3a): circle geos REPLACE the country-only geos when present
+  // (keeps the radius laser — a country ∪ circle union makes the circle inert);
+  // fall back to country-only when no circles geocoded. [SUSPECTED nesting.]
+  const circleGeos = buildSnapchatCircleGeos(spec.circles);
+  const geos = circleGeos ??
+    // Probe shape (§4.0): lowercase ISO country codes.
+    spec.countries.map((code) => ({ country_code: code.trim().toLowerCase() }));
+
+  const targeting: Record<string, unknown> = {
+    geos,
+    demographics,
+  };
+  // ISSUE-992 (3a): SCLS interest segments — targeting.interests:[{category_id}].
+  // DLXS (Oracle) is legacy; SCLS only for MVP. [SUSPECTED shape — probe.]
+  const interestCategoryIds = (spec.interestCategoryIds ?? [])
+    .map((id) => String(id).trim())
+    .filter(Boolean);
+  if (interestCategoryIds.length > 0) {
+    targeting.interests = [{ category_id: interestCategoryIds }];
+  }
+
   const body: Record<string, unknown> = {
     name: spec.name,
     campaign_id: campaignExternalId,
     type: "SNAP_ADS",
-    targeting: {
-      // Probe shape (§4.0): lowercase ISO country codes.
-      geos: spec.countries.map((code) => ({ country_code: code.trim().toLowerCase() })),
-      demographics,
-    },
+    targeting,
     billing_event: "IMPRESSION",
     bid_strategy: bidStrategy,
     optimization_goal: spec.optimizationGoal,
@@ -1657,6 +1736,69 @@ export async function snapchatFetchPixels(
   return pixels;
 }
 
+// ── ISSUE-992 (3a): SCLS interest-segment search (targeting dimensions) ───────
+
+export interface SnapchatInterestSegment {
+  /** SCLS category id — the value that rides in targeting.interests[].category_id. */
+  id: string;
+  name: string;
+}
+
+/**
+ * Tolerant parser over a /targeting/interests/scls page. Snap wraps each
+ * dimension as targeting_dimensions[].scls = { id, name, … }; older/edge
+ * shapes surface the object directly. [SUSPECTED shape — probe.]
+ */
+export function parseSnapchatInterests(
+  rows: readonly Record<string, unknown>[],
+): SnapchatInterestSegment[] {
+  const out: SnapchatInterestSegment[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    if (!row || typeof row !== "object") continue;
+    const scls = (row.scls ?? row.interests ?? row) as Record<string, unknown>;
+    const idRaw = scls.id ?? scls.category_id;
+    const id = typeof idRaw === "string" ? idRaw : typeof idRaw === "number" ? String(idRaw) : "";
+    const name = typeof scls.name === "string" ? scls.name : "";
+    if (!id || !name || seen.has(id)) continue;
+    seen.add(id);
+    out.push({ id, name });
+  }
+  return out;
+}
+
+/** Case-insensitive substring filter, prefix-first, capped (mirrors TikTok). Pure. */
+export function filterSnapchatInterests(
+  interests: readonly SnapchatInterestSegment[],
+  opts: { q?: string; limit?: number } = {},
+): SnapchatInterestSegment[] {
+  const q = (opts.q ?? "").trim().toLowerCase();
+  const limit = opts.limit ?? 15;
+  const matched = interests.filter((i) => q.length === 0 || i.name.toLowerCase().includes(q));
+  matched.sort((a, b) => {
+    const ap = a.name.toLowerCase().startsWith(q) ? 0 : 1;
+    const bp = b.name.toLowerCase().startsWith(q) ? 0 : 1;
+    if (ap !== bp) return ap - bp;
+    return a.name.localeCompare(b.name);
+  });
+  return matched.slice(0, limit);
+}
+
+/**
+ * ISSUE-992 (3a): fetch Snap Lifestyle Categories (SCLS) and name-filter them
+ * (mirrors tiktokFetchInterestCategories — fetch + in-memory filter). DLXS
+ * (Oracle) is legacy; SCLS only for MVP. READ-ONLY. Paged (GR-64(b) next_link).
+ * [SUSPECTED endpoint/shape — probe with a live read at BUILD.]
+ */
+export async function snapchatFetchInterests(
+  client: SnapchatClient,
+  q: string,
+  opts: { limit?: number } = {},
+): Promise<SnapchatInterestSegment[]> {
+  const rows = await snapchatCollectPages(client, "targeting/interests/scls", "targeting_dimensions");
+  return filterSnapchatInterests(parseSnapchatInterests(rows), { q, limit: opts.limit });
+}
+
 // ── Interface-input adapters (extensions ride the base A4.a shapes) ───────────
 
 /**
@@ -1667,6 +1809,10 @@ export async function snapchatFetchPixels(
 export interface SnapchatAdSquadTargetingInput {
   countries?: string[];
   demographics?: Record<string, unknown>[];
+  /** ISSUE-992 (3a): geocoded city circles (index.ts geocodes at create time). */
+  circles?: SnapchatCircleGeo[];
+  /** ISSUE-992 (3a): SCLS interest-segment category ids. */
+  interests?: string[];
   budget_mode?: "daily" | "lifetime";
   bid_strategy?: string;
   bid_cents?: number;
@@ -1765,6 +1911,10 @@ export const snapchatAdapter: ChannelAdapter = {
       optimizationGoal: input.optimizationGoal,
       countries: t.countries ?? [],
       demographics: t.demographics,
+      // ISSUE-992 (3a): circles are geocoded server-side in the create fn; SCLS
+      // interest ids ride through to targeting.interests.
+      circles: t.circles,
+      interestCategoryIds: t.interests,
       budgetCents: input.budgetCents,
       budgetMode: t.budget_mode,
       bidStrategy: t.bid_strategy,

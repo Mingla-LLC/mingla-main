@@ -43,6 +43,12 @@ export const fireAdPurchase = (
   _eventId: string,
   _props: { value?: number; currency?: string },
 ): void => {};
+// ISSUE-865 PR1 WP-2 — reservation (lead-type) browser fire is WEB-ONLY; native
+// no-op keeps the .web/.native export surface at parity (i-1378 shim gate).
+export const fireAdReservation = (
+  _eventId: string,
+  _props?: { value?: number; currency?: string },
+): void => {};
 export const adPixelsReady = (): boolean => false;
 export const getStoredClickAttribution = (): { clickId: string | null } => ({
   clickId: null,
@@ -51,3 +57,6 @@ export const postAttributionTouch = async (
   _input: unknown,
 ): Promise<string | null> => null;
 export const postAttributionConversion = noopVoid;
+// ISSUE-855 PR-2 — referrer host is a web-only concept; native has no
+// document.referrer. No-op keeps the .web/.native export surface at parity.
+export const readReferrerHost = (): string | null => null;

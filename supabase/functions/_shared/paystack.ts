@@ -24,6 +24,7 @@
 
 // ORCH-1201 — Layer-C passive health observation (fire-and-forget, best-effort).
 import { recordApiCall } from "./apiHealthLog.ts";
+import { resolvePaymentModeValue } from "./secretBundle.ts";
 
 export type PaystackMode = "test" | "live";
 
@@ -35,7 +36,7 @@ export const PAYSTACK_WEBHOOK_IPS = ["52.31.139.75", "52.49.173.169", "52.214.14
 const MODE_ENV_VAR = "PAYSTACK_MODE";
 
 export function resolvePaystackMode(): PaystackMode {
-  const raw = Deno.env.get(MODE_ENV_VAR);
+  const raw = resolvePaymentModeValue("paystack_mode", MODE_ENV_VAR);
   if (raw === undefined || raw === null || raw.trim().length === 0) {
     return "test"; // proof-slice default; Phase 0-proper throws on unset
   }
@@ -472,6 +473,66 @@ export async function paystackFetchTransfer(
     );
   }
   return json.data as Record<string, unknown>;
+}
+
+/**
+ * GET /transfer/verify/{reference} — resolve a transfer when only the reference
+ * is known (the initiate response was lost). Issue #1177 / #1030 fix: the
+ * organiser payout sweep reconciles by transfer-code first, then by reference,
+ * BEFORE any re-initiate, so a dropped initiate response can never double-pay or
+ * loop. Paystack returns the transfer object incl. `status`, `transfer_code`,
+ * and fee fields. https://paystack.com/docs/api/transfer/#verify
+ */
+export async function paystackVerifyTransferByReference(
+  reference: string,
+): Promise<Record<string, unknown>> {
+  const secret = resolvePaystackSecretKey();
+  const _t0 = Date.now();
+  const res = await fetch(
+    `${PAYSTACK_BASE_URL}/transfer/verify/${encodeURIComponent(reference)}`,
+    { headers: { Authorization: `Bearer ${secret}` } },
+  );
+  void recordApiCall("paystack", res.ok, Date.now() - _t0, res.status); // ORCH-1201 Layer-C
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || json?.status !== true) {
+    throw new PaystackApiError(
+      `Paystack verify-transfer-by-reference failed (${res.status}): ${json?.message ?? "unknown error"}`,
+      res.status,
+    );
+  }
+  return json.data as Record<string, unknown>;
+}
+
+export interface PaystackBalanceRow {
+  currency: string;
+  balance: number; // subunits (kobo for NGN)
+}
+
+/**
+ * GET /balance — the integration's per-currency available balance. Issue #1177:
+ * used ONLY as a ceiling before organiser Transfers (never to compute a release
+ * amount — I-1013-LEDGER-ONLY-RELEASE). `data` is a per-currency ARRAY; callers
+ * select the NGN row. https://paystack.com/docs/api/transfer/#balance
+ */
+export async function paystackGetBalance(): Promise<PaystackBalanceRow[]> {
+  const secret = resolvePaystackSecretKey();
+  const _t0 = Date.now();
+  const res = await fetch(`${PAYSTACK_BASE_URL}/balance`, {
+    headers: { Authorization: `Bearer ${secret}` },
+  });
+  void recordApiCall("paystack", res.ok, Date.now() - _t0, res.status); // ORCH-1201 Layer-C
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || json?.status !== true) {
+    throw new PaystackApiError(
+      `Paystack balance failed (${res.status}): ${json?.message ?? "unknown error"}`,
+      res.status,
+    );
+  }
+  const rows = Array.isArray(json.data) ? json.data : [];
+  return rows.map((row: Record<string, unknown>) => ({
+    currency: String(row.currency ?? "").toUpperCase(),
+    balance: Number(row.balance ?? 0),
+  }));
 }
 
 /**

@@ -33,6 +33,7 @@ export type OfferingTileKey =
   | "scanners"
   | "orders"
   | "guests"
+  | "insights"
   | "blasts"
   | "public"
   | "brand"
@@ -53,6 +54,32 @@ export interface OfferingTileDef {
   sub?: string;
   /** Accessibility/aria label (defaults to `label`). */
   accessibilityLabel?: string;
+}
+
+const LISTING_INSIGHTS_TILE: OfferingTileDef = {
+  key: "insights",
+  icon: "chart",
+  label: "Insights",
+  requiresPublicPage: false,
+  route: ({ id }) => `/insights/${id}?entry=detail_action`,
+  sub: "Customers Mingla drove",
+  accessibilityLabel: "Open Insights",
+};
+
+/**
+ * Add the authenticated listing-insights action without changing the legacy
+ * eight-tile builder contract consumed by older dashboard integrations.
+ */
+export function withListingInsights(
+  tiles: readonly OfferingTileDef[],
+): OfferingTileDef[] {
+  const guestsIndex = tiles.findIndex((tile) => tile.key === "guests");
+  if (guestsIndex < 0) return [...tiles];
+  return [
+    ...tiles.slice(0, guestsIndex + 1),
+    LISTING_INSIGHTS_TILE,
+    ...tiles.slice(guestsIndex + 1),
+  ];
 }
 
 /**

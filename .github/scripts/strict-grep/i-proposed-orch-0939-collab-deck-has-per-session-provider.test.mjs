@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
 
@@ -9,6 +10,7 @@ const SCRIPT = new URL(
   "./i-proposed-orch-0939-collab-deck-has-per-session-provider.mjs",
   import.meta.url,
 );
+const SCRIPT_PATH = fileURLToPath(SCRIPT);
 
 function writeFixture(root, rel, source) {
   const file = join(root, rel);
@@ -48,7 +50,7 @@ export function CollabDeckSheet({ sessionId }) {
 `;
 
 test("ORCH-0939 strict-grep gate passes the post-fix codebase", () => {
-  const output = execFileSync(process.execPath, [SCRIPT.pathname], {
+  const output = execFileSync(process.execPath, [SCRIPT_PATH], {
     encoding: "utf8",
   });
   assert.match(output, /PASS/);
@@ -59,7 +61,7 @@ test("ORCH-0939 strict-grep gate passes a positive provider-wrap fixture", () =>
   const root = mkdtempSync(join(tmpdir(), "orch-0939-provider-positive-"));
   try {
     const file = writeFixture(root, "CollabDeckSheet.tsx", positiveSource);
-    const output = execFileSync(process.execPath, [SCRIPT.pathname, "--target", file], {
+    const output = execFileSync(process.execPath, [SCRIPT_PATH, "--target", file], {
       encoding: "utf8",
     });
     assert.match(output, /PASS/);
@@ -73,7 +75,7 @@ test("ORCH-0939 strict-grep gate fails when the provider wrap is removed", () =>
   const root = mkdtempSync(join(tmpdir(), "orch-0939-provider-negative-"));
   try {
     const file = writeFixture(root, "CollabDeckSheet.tsx", negativeSource);
-    const result = spawnSync(process.execPath, [SCRIPT.pathname, "--target", file], {
+    const result = spawnSync(process.execPath, [SCRIPT_PATH, "--target", file], {
       encoding: "utf8",
     });
     assert.equal(result.status, 1);

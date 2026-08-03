@@ -22,6 +22,9 @@
  * `&& !isPublicBuyerRoute(pathname)` clause (or the constant) → T-1 flips to
  * `true` and FAILS, while T-2 (authed route) stays `true` and PASSES — proving
  * the allowlist is what suppresses the redirect, not a blanket change.
+ *
+ * [TEST-MOD-APPROVED ORCH-1365] Adds the public venue-reservation return route
+ * to the existing single-source allowlist contract.
  */
 
 import { describe, expect, test } from "@jest/globals";
@@ -63,6 +66,11 @@ const PUBLIC_ROUTE_SAMPLES: string[] = [
   "/checkout-trip/trip-event-9/buyer",
   "/checkout-experience/exp-event-3",
   "/checkout-experience/exp-event-3/payment",
+  "/reserve/brand-9",
+  "/reserve/brand-9/confirm",
+  "/refund",
+  "/refund/",
+  "/refund/123e4567-e89b-12d3-a456-426614174000/attention",
   "/o/order-77",
   "/booking/order-77/cancel",
 ];
@@ -118,6 +126,11 @@ describe("ORCH-1115 T-3 (edge) — segment-safety: lookalike paths must NOT matc
     "/checkout-thing",
     "/exposed",
     "/booking-x",
+    "/reserved",
+    "/reserve-x",
+    "/refunded/x",
+    "/refunds/x",
+    "/refund-evil/x",
     "/events",
     "/trips",
     "/branded",
@@ -150,6 +163,10 @@ describe("ORCH-1115 T-4 (edge) — trailing slash + bare prefix both match", () 
     "/exp",
     "/checkout-trip/",
     "/checkout-experience/",
+    "/reserve/",
+    "/reserve",
+    "/refund/",
+    "/refund",
     "/o/",
     "/o",
     "/booking/",
@@ -224,7 +241,7 @@ describe("ORCH-1115 T-8 (regression) — ORCH-1103 '/' loop guard intact", () =>
 });
 
 describe("ORCH-1115 T-9 (single source of truth) — exactly one allowlist; web + native both consult it", () => {
-  test("PUBLIC_BUYER_ROUTE_PREFIXES contains exactly the 9 spec'd prefixes", () => {
+  test("PUBLIC_BUYER_ROUTE_PREFIXES contains exactly the 11 spec'd prefixes", () => {
     expect([...PUBLIC_BUYER_ROUTE_PREFIXES]).toEqual([
       "/e/",
       "/t/",
@@ -233,6 +250,8 @@ describe("ORCH-1115 T-9 (single source of truth) — exactly one allowlist; web 
       "/checkout/",
       "/checkout-trip/",
       "/checkout-experience/",
+      "/reserve/",
+      "/refund/",
       "/o/",
       "/booking/",
     ]);

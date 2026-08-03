@@ -16,7 +16,7 @@
  * signed-in user server-side. Slots come ONLY from the engine (never fabricated).
  */
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -41,7 +41,10 @@ import {
   isPendingCollabPhoneValid,
 } from "../connections/pendingCollabChatUtils";
 import { useAppStore } from "../../store/appStore";
-import { useVenueAvailability, type VenueSlot } from "../../hooks/useVenueAvailability";
+import {
+  useVenueAvailability,
+  type VenueSlot,
+} from "../../hooks/useVenueAvailability";
 import { useReserveTable } from "../../hooks/useReserveTable";
 import { VenueSlotPicker } from "./VenueSlotPicker";
 
@@ -62,6 +65,12 @@ export interface VenueReserveSheetProps {
   currency: string | null;
   /** Fires after a successful booking with the new reservation id. */
   onReserved: (reservationId: string) => void;
+  /** Optional public-venue analytics seam; no guest or slot PII is passed. */
+  onAvailabilityResultViewed?: () => void;
+  onSlotSelected?: () => void;
+  onReservationFailed?: (
+    resultClass: "phone_invalid" | "create_failed",
+  ) => void;
 }
 
 type Step = "party" | "slots" | "confirm";
@@ -118,6 +127,9 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
   venueName,
   currency,
   onReserved,
+  onAvailabilityResultViewed,
+  onSlotSelected,
+  onReservationFailed,
 }) => {
   const insets = useSafeAreaInsets();
   const { user, profile } = useAppStore();
@@ -149,6 +161,11 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
     step === "slots" || step === "confirm" ? partySize : null,
   );
 
+  useEffect(() => {
+    if (slotsQuery.data === undefined) return;
+    onAvailabilityResultViewed?.();
+  }, [onAvailabilityResultViewed, slotsQuery.data]);
+
   // ORCH-1148 [consumer phone blocker] — the signed-in user's phone is sourced
   // from their profile / auth user. The store `user` now mirrors `profiles.phone`
   // (see appStore.setProfile); we also read `profile.phone` directly as a
@@ -168,10 +185,10 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
   const profilePhone = rawStoredPhone.startsWith("+")
     ? rawStoredPhone // already E.164 (profile / public buyer form)
     : /^\d{10}$/.test(rawStoredPhone) || /^1\d{10}$/.test(rawStoredPhone)
-    ? rawStoredPhone // US national (10) / US E.164 "1…" (11) — let the server add +1
-    : /^\d{6,15}$/.test(rawStoredPhone)
-    ? `+${rawStoredPhone}` // full international E.164 missing its '+' (Supabase Auth)
-    : rawStoredPhone;
+      ? rawStoredPhone // US national (10) / US E.164 "1…" (11) — let the server add +1
+      : /^\d{6,15}$/.test(rawStoredPhone)
+        ? `+${rawStoredPhone}` // full international E.164 missing its '+' (Supabase Auth)
+        : rawStoredPhone;
   const needsPhone = profilePhone.length === 0;
   const composedPhoneE164 = needsPhone
     ? buildPendingCollabPhoneE164(phoneInput, selectedCountry?.dialCode)
@@ -196,6 +213,7 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
     if (!selectedSlot || submitting) return;
     if (!phoneOk) {
       setError("Add a phone number so the venue can reach you.");
+      onReservationFailed?.("phone_invalid");
       return;
     }
     setError(null);
@@ -229,6 +247,7 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
       return;
     }
     setError(outcome.message);
+    onReservationFailed?.("create_failed");
   };
 
   return (
@@ -245,7 +264,10 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
       scrollProps={{
         contentContainerStyle: [
           styles.scrollContent,
-          { paddingBottom: BOTTOM_NAV_CONTENT_HEIGHT + Math.max(insets.bottom, 16) },
+          {
+            paddingBottom:
+              BOTTOM_NAV_CONTENT_HEIGHT + Math.max(insets.bottom, 16),
+          },
         ],
         showsVerticalScrollIndicator: false,
       }}
@@ -286,7 +308,10 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
             >
               <Icon name="remove" size={22} color="rgba(255,255,255,0.92)" />
             </Pressable>
-            <Text style={styles.stepperValue} accessibilityLabel={`Party of ${partySize}`}>
+            <Text
+              style={styles.stepperValue}
+              accessibilityLabel={`Party of ${partySize}`}
+            >
               {partySize}
             </Text>
             <Pressable
@@ -322,7 +347,10 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
                   ]}
                 >
                   <Text
-                    style={[styles.dateChipText, sel && styles.dateChipTextSelected]}
+                    style={[
+                      styles.dateChipText,
+                      sel && styles.dateChipTextSelected,
+                    ]}
                     numberOfLines={1}
                   >
                     {opt.label}
@@ -361,6 +389,7 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
             onSelect={(slot) => {
               setSelectedSlot(slot);
               setStep("confirm");
+              onSlotSelected?.();
             }}
           />
           <Pressable
@@ -428,9 +457,9 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
           </Pressable>
           <Text style={styles.confirmNote}>
             We&apos;ll hold your table for the time you picked. If this venue
-            requires a deposit{currency ? ` (in ${currency.toUpperCase()})` : ""},
-            you&apos;ll review the exact all-in amount on the next screen before
-            you pay.
+            requires a deposit
+            {currency ? ` (in ${currency.toUpperCase()})` : ""}, you&apos;ll
+            review the exact all-in amount on the next screen before you pay.
           </Text>
 
           <Pressable
@@ -449,7 +478,10 @@ export const VenueReserveSheet: React.FC<VenueReserveSheetProps> = ({
   );
 };
 
-const SummaryRow: React.FC<{ icon: string; text: string }> = ({ icon, text }) => (
+const SummaryRow: React.FC<{ icon: string; text: string }> = ({
+  icon,
+  text,
+}) => (
   <View style={styles.summaryRow}>
     <Icon name={icon} size={18} color="rgba(255,255,255,0.6)" />
     <Text style={styles.summaryText} numberOfLines={1}>

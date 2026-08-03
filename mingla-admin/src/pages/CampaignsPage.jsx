@@ -23,7 +23,9 @@ import { Spinner } from "../components/ui/Spinner";
 import { useToast } from "../context/ToastContext";
 import {
   campaignAction,
+  getCampaignConversions,
   getCampaignDetail,
+  getStayCampaignRollup,
   listCampaigns,
   parseEdgeError,
   syncCampaigns,
@@ -31,12 +33,39 @@ import {
 import { DELIVERY_BADGE_VARIANTS, mapReviewDetail } from "../lib/adBuilder/reviewDetailMap";
 import { launchConfirmCopy } from "../lib/adBuilder/budgetRules";
 import { PLATFORM_LABELS } from "../lib/adBuilder/channelPlan";
+// ISSUE-865 PR1 WP-4 — pure ROI math (ROAS/cost-per-result only from REAL spend).
+import { toCampaignRoiView } from "../lib/adRoi";
 
 function centsToUsd(cents) {
   if (typeof cents !== "number" && typeof cents !== "string") return "—";
   const n = Number(cents);
   if (!Number.isFinite(n)) return "—";
   return `$${(n / 100).toFixed(2)}`;
+}
+
+function formatMinor(currency, minor) {
+  const value = Number(minor);
+  if (!/^[A-Z]{3}$/.test(currency) || !Number.isFinite(value)) return "—";
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency,
+    }).format(value / 100);
+  } catch {
+    return `${currency} ${(value / 100).toFixed(2)}`;
+  }
+}
+
+function CurrencyRows({ values }) {
+  const rows = values && typeof values === "object" ? Object.entries(values) : [];
+  if (rows.length === 0) return <span>—</span>;
+  return (
+    <div className="space-y-1">
+      {rows.map(([currency, minor]) => (
+        <div key={currency}>{formatMinor(currency, minor)}</div>
+      ))}
+    </div>
+  );
 }
 
 function campaignIdFromHash() {
@@ -54,6 +83,12 @@ export function CampaignsPage() {
   const [rowBusy, setRowBusy] = useState({});
   const [rowWarning, setRowWarning] = useState({});
   const [launchTarget, setLaunchTarget] = useState(null);
+  // ISSUE-865 PR1 WP-4 — per-campaign conversions & ROI (the detail panel feed).
+  const [roi, setRoi] = useState(null);
+  const [roiLoading, setRoiLoading] = useState(false);
+  const [stayRollup, setStayRollup] = useState(null);
+  const [stayRollupLoading, setStayRollupLoading] = useState(false);
+  const [stayRollupError, setStayRollupError] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -96,6 +131,45 @@ export function CampaignsPage() {
   useEffect(() => {
     loadDetail(selectedId);
   }, [selectedId, loadDetail]);
+
+  // ISSUE-865 PR1 WP-4 — load the campaign's conversions & ROI rollup.
+  const loadConversions = useCallback(async (campaignId) => {
+    if (!campaignId) {
+      setRoi(null);
+      return;
+    }
+    setRoiLoading(true);
+    const { data, error } = await getCampaignConversions(campaignId);
+    if (error) {
+      addToast({ variant: "error", title: "Conversions failed", description: error.message });
+      setRoi(null);
+    } else {
+      setRoi(toCampaignRoiView(data));
+    }
+    setRoiLoading(false);
+  }, [addToast]);
+
+  useEffect(() => {
+    loadConversions(selectedId);
+  }, [selectedId, loadConversions]);
+
+  useEffect(() => {
+    if (!selectedId || detail?.dest_page_type !== "venue") {
+      setStayRollup(null);
+      setStayRollupError(null);
+      return;
+    }
+    let active = true;
+    setStayRollupLoading(true);
+    setStayRollupError(null);
+    void getStayCampaignRollup(selectedId).then(({ data, error }) => {
+      if (!active) return;
+      setStayRollup(error ? null : data);
+      setStayRollupError(error?.message ?? null);
+      setStayRollupLoading(false);
+    });
+    return () => { active = false; };
+  }, [detail?.dest_page_type, selectedId]);
 
   const handleAction = async (campaign, action) => {
     setRowBusy((prev) => ({ ...prev, [campaign.id]: action }));
@@ -298,6 +372,128 @@ export function CampaignsPage() {
                   })}
                 </div>
               ))}
+            </div>
+          )}
+        </SectionCard>
+      )}
+
+      {selectedId && detail?.dest_page_type === "venue" && (
+        <SectionCard
+          title="Stay booking funnel"
+          subtitle="Only bookings attributed to this Stay campaign are included. Money stays in its original brand currency."
+        >
+          {stayRollupLoading ? (
+            <div className="flex items-center gap-2 text-[var(--color-text-secondary)]">
+              <Spinner size="sm" /> Loading Stay bookings…
+            </div>
+          ) : stayRollupError ? (
+            <AlertCard variant="error" title="Stay bookings could not load">
+              {stayRollupError}
+            </AlertCard>
+          ) : !stayRollup ? (
+            <p className="text-sm text-[var(--color-text-secondary)]">Stay booking data is unavailable.</p>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                {[
+                  ["Visits", stayRollup.visits],
+                  ["Reservation requests", stayRollup.reservationRequests],
+                  ["Approved requests", stayRollup.approvedRequests],
+                  ["Confirmed bookings", stayRollup.confirmedBookings],
+                  ["Cancellations", stayRollup.cancellations],
+                ].map(([label, value]) => (
+                  <div key={label} className="border border-[var(--gray-200)] rounded-lg p-3">
+                    <div className="text-[var(--color-text-tertiary)] text-xs uppercase">{label}</div>
+                    <div className="text-xl font-semibold">{Number(value) || 0}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {[
+                  ["Gross bookings", stayRollup.grossByCurrency],
+                  ["Refunds", stayRollup.refundsByCurrency],
+                  ["Net bookings", stayRollup.netByCurrency],
+                ].map(([label, values]) => (
+                  <div key={label} className="border border-[var(--gray-200)] rounded-lg p-3">
+                    <div className="text-[var(--color-text-tertiary)] text-xs uppercase mb-1">{label}</div>
+                    <div className="text-lg font-semibold"><CurrencyRows values={values} /></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </SectionCard>
+      )}
+
+      {/* ISSUE-865 PR1 WP-4 — Conversions & ROI (below Ad sets & ads). Reads the
+          per-campaign ad_campaign_conversion_rollup RPC. Spend/ROAS are shown ONLY
+          when a real spend figure exists (spend_cents) — never fabricated. */}
+      {selectedId && (
+        <SectionCard
+          title="Conversions & ROI"
+          subtitle="Attributed conversions this campaign drove. ROAS shows only when real spend is connected — never estimated."
+        >
+          {roiLoading ? (
+            <div className="flex items-center gap-2 text-[var(--color-text-secondary)]">
+              <Spinner size="sm" /> Loading conversions…
+            </div>
+          ) : !roi || !roi.hasData ? (
+            <div className="text-[var(--color-text-secondary)] text-sm">
+              No attributed conversions yet. When someone clicks this campaign's ad and
+              purchases or RSVPs on Mingla, the conversion is measured and shows up here.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="border border-[var(--gray-200)] rounded-lg p-3">
+                  <div className="text-[var(--color-text-tertiary)] text-xs uppercase">Conversions</div>
+                  <div className="text-xl font-semibold">{roi.conversions}</div>
+                </div>
+                <div className="border border-[var(--gray-200)] rounded-lg p-3">
+                  <div className="text-[var(--color-text-tertiary)] text-xs uppercase">Attributed value</div>
+                  <div className="text-xl font-semibold"><CurrencyRows values={roi.valueByCurrency} /></div>
+                </div>
+                <div className="border border-[var(--gray-200)] rounded-lg p-3">
+                  <div className="text-[var(--color-text-tertiary)] text-xs uppercase">Spend</div>
+                  <div className="text-xl font-semibold">
+                    {roi.spendCents === null ? "—" : centsToUsd(roi.spendCents)}
+                  </div>
+                </div>
+                <div className="border border-[var(--gray-200)] rounded-lg p-3">
+                  <div className="text-[var(--color-text-tertiary)] text-xs uppercase">ROAS</div>
+                  <div className="text-xl font-semibold">
+                    {roi.roas === null ? "—" : `${roi.roas.toFixed(2)}×`}
+                  </div>
+                </div>
+              </div>
+
+              {roi.spendCents === null && (
+                <div className="text-[var(--color-text-tertiary)] text-xs">
+                  Connect platform spend reporting to see ROAS and cost per result.
+                </div>
+              )}
+
+              <div className="border border-[var(--gray-200)] rounded-xl overflow-hidden">
+                <div className="grid grid-cols-4 gap-2 px-3 py-2 bg-[var(--gray-50)] text-[var(--color-text-tertiary)] text-xs uppercase">
+                  <div>Platform</div>
+                  <div className="text-right">Conversions</div>
+                  <div className="text-right">Value</div>
+                  <div className="text-right">Sent / Failed</div>
+                </div>
+                {roi.byPlatform.map((p) => (
+                  <div
+                    key={p.platform}
+                    className="grid grid-cols-4 gap-2 px-3 py-2 border-t border-[var(--gray-200)] text-sm"
+                  >
+                    <div>{PLATFORM_LABELS[p.platform] ?? p.platform}</div>
+                    <div className="text-right">{p.conversions}</div>
+                    <div className="text-right">—</div>
+                    <div className="text-right text-[var(--color-text-secondary)]">
+                      {p.sent} / {p.failed}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </SectionCard>

@@ -2,31 +2,15 @@
  * /accept-brand-invitation/success — post-accept celebration screen.
  * ORCH-1081.
  *
- * Mounted from /accept-brand-invitation after a partner-setup invite is
- * accepted (transferred=true AND partner_setup=true). Renders:
+ * Legacy celebration route retained for bookmarked/in-flight links. Renders:
  *   - 🎉 hero
  *   - "Welcome to {BrandName}" + partner attribution line
- *   - Primary: "Set up {BrandName} on the web →" → /brand/{id}/payments
- *   - Secondary: the shared BusinessAppDownloadCta (ORCH-1378)
+ *   - Primary: "Add your bank" → /brand/{id}/connect
  *   - Footer: "Or come back to your email anytime."
  *
- * ─── ORCH-1378 — what the store CTA used to be, and why it was wrong ───────
- * This screen shipped a HARDCODED, NON-ATTRIBUTED, NON-DEVICE-AWARE pair of
- * buttons ("Download for iOS" / "Download for Android"), shown to EVERYONE
- * regardless of platform, opened via `window.location.href = url` — which
- * DESTROYS the page rather than opening a tab.
- *
- * Three separate defects in one control:
- *  1. NO ATTRIBUTION — plain store listings carry no `af_tranid`, so every
- *     install from this screen was invisible to AppsFlyer.
- *  2. The user had to self-identify their own platform.
- *  3. location.href killed the celebration page on the way out.
- *
- * It is now the shared, OneLink-attributed, device-aware CTA. Because the URLs
- * are gone, this file has ALSO been REMOVED from the ORCH-1342 gate's
- * GRANDFATHERED map (the gate's own entry named this as debt "needing BUSINESS_*
- * SSOT entries in a follow-up ORCH" — this is that follow-up). A grandfather
- * entry left behind after the debt is paid is a decorative guard.
+ * #948 W3 removes the app-download secondary here as well as in email. The
+ * canonical path asks for the bank first; this legacy route therefore offers
+ * only the same one-hop bank action.
  *
  * Query params (all optional except brand_id):
  *   - brand_id      — UUID of the now-owned brand. Required.
@@ -39,6 +23,7 @@
  * their own brand.
  */
 
+// orch-strict-grep-allow safearea-on-fullscreen-routes — center-anchored celebration card (justifyContent:center); no top-anchored chrome
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -49,7 +34,6 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { Button } from "../../src/components/ui/Button";
-import { BusinessAppDownloadCta } from "../../src/components/invite/BusinessAppDownloadCta";
 import {
   accent,
   canvas,
@@ -106,12 +90,19 @@ export default function AcceptBrandInvitationSuccess(): React.ReactElement {
     };
   }, [brandId]);
 
-  const handleOpenPayments = (): void => {
+  const handleOpenBankConnect = (): void => {
     if (brandId === null) {
       router.replace("/(tabs)/home" as never);
       return;
     }
-    router.replace(`/brand/${brandId}/payments` as never);
+    // #948 W4 [web-skip-download] — tag the bank screen as invite-funnel so it
+    // hides its top Back and offers Skip → {Download app | Continue on web}. The
+    // `?from=invite` literal is inlined here (rather than importing the writer
+    // from bankFirstPartnerInvite) so this legacy success route does NOT become a
+    // second eager importer of that module — which would hoist it into the eager
+    // __common chunk (ORCH-1083). The href is always bare, so a plain `?` is
+    // correct. Signal value must match bankFirstPartnerInvite.INVITE_FUNNEL_VALUE.
+    router.replace(`/brand/${brandId}/connect?from=invite` as never);
   };
 
   const displayName = brandName ?? brandSlug ?? "your brand";
@@ -129,19 +120,18 @@ export default function AcceptBrandInvitationSuccess(): React.ReactElement {
         <Text style={styles.body}>
           {partnerLine}
           {" "}
-          The next step is connecting your bank so customers can buy tickets.
+          The next step is connecting your bank so customers can pay you.
         </Text>
         {loading ? (
           <ActivityIndicator color={accent.warm} style={{ marginTop: 8 }} />
         ) : null}
         <Button
-          label={`Set up ${displayName} on the web →`}
-          onPress={handleOpenPayments}
+          label="Add your bank"
+          onPress={handleOpenBankConnect}
           variant="primary"
           size="lg"
           fullWidth
         />
-        <BusinessAppDownloadCta />
         <Text style={styles.footnote}>
           Or come back to your email anytime.
         </Text>

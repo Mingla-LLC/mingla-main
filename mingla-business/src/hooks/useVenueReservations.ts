@@ -23,6 +23,7 @@ import type {
   Reservation,
   ReservationCreateInput,
 } from "../types/venueReservation";
+import { listSourceRefundSummaries } from "../services/sourceRefundService";
 
 interface ReservationRow {
   id: string;
@@ -96,7 +97,17 @@ export const fetchVenueReservations = async (
     .order("reserved_for", { ascending: true })
     .returns<ReservationRow[]>();
   if (error !== null) throw error;
-  return (data ?? []).map(mapRow);
+  const reservations = (data ?? []).map(mapRow);
+  const refunds = await listSourceRefundSummaries({
+    brandId,
+    sourceType: "venue_reservation",
+    subjectIds: reservations.map((reservation) => reservation.id),
+  });
+  const bySubject = new Map(refunds.map((refund) => [refund.subjectId, refund]));
+  return reservations.map((reservation) => ({
+    ...reservation,
+    refund: bySubject.get(reservation.id) ?? null,
+  }));
 };
 
 export function useVenueReservations(

@@ -134,10 +134,10 @@ export const BrandStripeDetachConfirmSheet: React.FC<
             <View style={styles.warnCard}>
               <Icon name="bank" size={18} color={textTokens.tertiary} />
               <View style={styles.warnTextCol}>
-                <Text style={styles.warnTitle}>This stops ticket sales</Text>
+                <Text style={styles.warnTitle}>This stops incoming payments</Text>
                 <Text style={styles.warnBody}>
-                  Disconnecting stops {brandName} from selling tickets.
-                  Existing buyers keep their tickets. Refunds for
+                  Disconnecting stops {brandName} from taking payments.
+                  Existing buyers keep their bookings. Refunds for
                   completed sales remain visible under your refund
                   history.
                 </Text>

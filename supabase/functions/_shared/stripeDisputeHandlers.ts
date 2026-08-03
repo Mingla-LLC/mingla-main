@@ -11,6 +11,7 @@ import { formatMoneyCents } from "./stripeEdgeAuth.ts";
 // dispute_action_needed = "you must submit evidence." Recipients: owner +
 // finance. business.* routes to the business OneSignal app automatically.
 import { notifyBrandRoles } from "./businessNotifyTriggers.ts";
+import { resolveAlertRecipientValue } from "./secretBundle.ts";
 
 export interface StripeDisputeWebhookEvent {
   id: string;
@@ -94,7 +95,12 @@ function evidenceDueBy(dispute: Record<string, unknown>): string | null {
 }
 
 function alertEmailsFromEnv(): string[] {
-  const raw = Deno.env.get("STRIPE_DISPUTE_ALERT_EMAILS") ?? "";
+  const value = resolveAlertRecipientValue(
+    "stripe_disputes",
+    "STRIPE_DISPUTE_ALERT_EMAILS",
+  );
+  if (Array.isArray(value)) return value;
+  const raw = value ?? "";
   return raw.split(",").map((s) => s.trim()).filter(Boolean);
 }
 

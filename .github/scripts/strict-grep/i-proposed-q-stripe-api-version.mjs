@@ -59,6 +59,9 @@ const CANONICAL_STRIPE_CLIENT_PATH = join(
   "_shared",
   "stripe.ts",
 );
+// Repo-relative form of the canonical pin file (POSIX separators) — the exemption
+// lives inside the pure check(...) so it is behavior-preserving AND self-testable.
+const CANONICAL_STRIPE_CLIENT_REL = "supabase/functions/_shared/stripe.ts";
 
 // Match `apiVersion:` followed by a Stripe-style date string (e.g., "2026-04-30.preview"
 // or "2024-11-20.acacia"). Fence on date pattern to avoid false positives on unrelated
@@ -69,6 +72,99 @@ const INLINE_API_VERSION_REGEX =
 let violations = 0;
 let filesScanned = 0;
 let readFailures = 0;
+
+/**
+ * Pure verdict. `fileEntries` = [{ rel, content }] with `rel` the repo-relative
+ * POSIX path (used both for the canonical-file exemption and for reporting).
+ * Pushes one { rel, line, lineText } record per offending line into `failures`.
+ * Behavior-preserving refactor of the original per-line scanFile logic — same
+ * verdict on the same inputs.
+ */
+function check(fileEntries, failures) {
+  for (const { rel, content } of fileEntries) {
+    // Exempt the canonical Stripe client file (where the pin legitimately lives).
+    if (rel === CANONICAL_STRIPE_CLIENT_REL) continue;
+    // File-level allowlist tag.
+    if (content.includes(ALLOWLIST_TAG)) continue;
+
+    const lines = content.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (!INLINE_API_VERSION_REGEX.test(line)) continue;
+      // Skip comments.
+      const trimmed = line.trim();
+      if (trimmed.startsWith("//") || trimmed.startsWith("*")) continue;
+      failures.push({ rel, line: i + 1, lineText: line });
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────── self-test
+if (process.argv.includes("--self-test")) {
+  const self = [];
+  const run = (entries) => {
+    const f = [];
+    check(entries, f);
+    return f;
+  };
+
+  // GOOD: fn importing the shared pin, no inline apiVersion literal → silent.
+  let f = run([
+    {
+      rel: "supabase/functions/brand-stripe-onboard/index.ts",
+      content:
+        'import { stripe } from "../_shared/stripe.ts";\nconst client = stripe;\n',
+    },
+  ]);
+  if (f.length) self.push("GOOD (shared pin, no inline version) wrongly flagged");
+
+  // BAD1 (revert-style): the acacia inline apiVersion the gate was created to stop.
+  f = run([
+    {
+      rel: "supabase/functions/brand-stripe-onboard/index.ts",
+      content:
+        'const s = new Stripe(key, { apiVersion: "2024-11-20.acacia" });\n',
+    },
+  ]);
+  if (f.length === 0) self.push("BAD1 (inline apiVersion 2024-11-20.acacia) not flagged");
+
+  // BAD2 (regression, different angle): a DIFFERENT inline version string.
+  f = run([
+    {
+      rel: "supabase/functions/refund-order/index.ts",
+      content: '  apiVersion: "2026-04-30.preview",\n',
+    },
+  ]);
+  if (f.length === 0) self.push("BAD2 (inline apiVersion 2026-04-30.preview) not flagged");
+
+  // SPECIFICITY: a file carrying the allowlist tag stays silent even with an inline version.
+  f = run([
+    {
+      rel: "supabase/functions/test-setup/index.ts",
+      content:
+        "// orch-strict-grep-allow stripe-inline-api-version — impl preflight fixture\n" +
+        'const s = new Stripe(key, { apiVersion: "2024-11-20.acacia" });\n',
+    },
+  ]);
+  if (f.length) self.push("allowlisted inline apiVersion wrongly flagged");
+
+  // SPECIFICITY: the canonical pin file itself is exempt (that is where the pin lives).
+  f = run([
+    {
+      rel: CANONICAL_STRIPE_CLIENT_REL,
+      content: 'export const STRIPE_API_VERSION = "2024-11-20.acacia";\n',
+    },
+  ]);
+  if (f.length) self.push("canonical _shared/stripe.ts pin wrongly flagged");
+
+  if (self.length) {
+    console.error("I-PROPOSED-Q self-test FAIL:");
+    self.forEach((m) => console.error("  - " + m));
+    process.exit(1);
+  }
+  console.log("I-PROPOSED-Q self-test PASS (5/5 cases).");
+  process.exit(0);
+}
 
 function* walkTs(dir) {
   let entries;
@@ -94,8 +190,7 @@ function* walkTs(dir) {
   }
 }
 
-function reportViolation(filePath, lineNumber, lineText) {
-  const rel = relative(REPO_ROOT, filePath).split(sep).join("/");
+function reportViolation(rel, lineNumber, lineText) {
   console.error(`ERROR: I-PROPOSED-Q violation in ${rel}:${lineNumber}`);
   console.error(`  ${lineText.trim()}`);
   console.error(
@@ -111,50 +206,36 @@ function reportViolation(filePath, lineNumber, lineText) {
     `  See: Mingla_Artifacts/INVARIANT_REGISTRY.md I-PROPOSED-Q`,
   );
   console.error("");
-  violations += 1;
 }
 
-function scanFile(filePath) {
-  filesScanned += 1;
-
-  // Exempt the canonical Stripe client file
-  if (filePath === CANONICAL_STRIPE_CLIENT_PATH) return;
-
-  let source;
-  try {
-    source = readFileSync(filePath, "utf8");
-  } catch (err) {
-    const rel = relative(REPO_ROOT, filePath).split(sep).join("/");
-    console.error(`READ-FAIL: ${rel} — ${err.message}`);
-    readFailures += 1;
-    return;
-  }
-
-  if (source.includes(ALLOWLIST_TAG)) return;
-
-  const lines = source.split("\n");
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (!INLINE_API_VERSION_REGEX.test(line)) continue;
-
-    // Skip comments
-    const trimmed = line.trim();
-    if (trimmed.startsWith("//") || trimmed.startsWith("*")) continue;
-
-    reportViolation(filePath, i + 1, line);
-  }
-}
-
+const fileEntries = [];
 try {
   for (const dir of SCAN_DIRS) {
     for (const file of walkTs(dir)) {
-      scanFile(file);
+      filesScanned += 1;
+      const rel = relative(REPO_ROOT, file).split(sep).join("/");
+      let source;
+      try {
+        source = readFileSync(file, "utf8");
+      } catch (err) {
+        console.error(`READ-FAIL: ${rel} — ${err.message}`);
+        readFailures += 1;
+        continue;
+      }
+      fileEntries.push({ rel, content: source });
     }
   }
 } catch (err) {
   console.error(`SCRIPT ERROR: ${err.message}`);
   process.exit(2);
 }
+
+const failures = [];
+check(fileEntries, failures);
+for (const v of failures) {
+  reportViolation(v.rel, v.line, v.lineText);
+}
+violations = failures.length;
 
 console.error("");
 console.error(

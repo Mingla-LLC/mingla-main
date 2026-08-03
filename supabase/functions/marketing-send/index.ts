@@ -45,6 +45,7 @@ import {
 } from "../_shared/marketingEmailRender.ts";
 import { generateTrackingId, signUnsubscribeToken } from "../_shared/marketingTokens.ts";
 import { computeSegments, isValidE164, smsAdapter } from "../_shared/adapters/smsAdapter.ts";
+import { resolveDeliveryFlagValue } from "../_shared/secretBundle.ts";
 
 const BATCH_LIMIT = 10;
 const RESEND_MAX_RETRIES = 3;
@@ -237,9 +238,13 @@ serve(async (req) => {
   }
 
   // Live-broadcast gate parsing.
-  const LIVE =
-    (Deno.env.get("MARKETING_SEND_LIVE_ENABLED") ?? "false").toLowerCase() ===
-      "true";
+  const liveValue = resolveDeliveryFlagValue(
+    "marketing_send_live_enabled",
+    "MARKETING_SEND_LIVE_ENABLED",
+  );
+  const LIVE = typeof liveValue === "boolean"
+    ? liveValue
+    : (liveValue ?? "false").toLowerCase() === "true";
   const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
   if (LIVE && RESEND_API_KEY.length === 0) {
     return jsonResponse({ error: "resend_not_configured" }, 503);

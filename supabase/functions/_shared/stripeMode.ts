@@ -21,6 +21,7 @@
  */
 
 export type StripeMode = "test" | "live";
+import { resolvePaymentModeValue } from "./secretBundle.ts";
 
 export type StripeRole =
   | "ONBOARD"
@@ -37,7 +38,7 @@ export type StripeRole =
 const MODE_ENV_VAR = "MINGLA_STRIPE_MODE";
 
 function readMode(): StripeMode {
-  const raw = Deno.env.get(MODE_ENV_VAR);
+  const raw = resolvePaymentModeValue("stripe_mode", MODE_ENV_VAR);
   if (raw === undefined || raw === null || raw.trim().length === 0) {
     throw new Error(
       `${MODE_ENV_VAR} is not set in Supabase Edge Function secrets. ` +

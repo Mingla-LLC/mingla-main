@@ -59,6 +59,27 @@ export interface PlaceDetails {
   location: { lat: number; lng: number };
 }
 
+export interface SavedLocationContext {
+  city?: string | null;
+  countryCode?: string | null;
+}
+
+export interface HierarchicalPlaceDetails {
+  lat: number;
+  lng: number;
+  city: string | null;
+  region: string | null;
+  countryCode: string | null;
+}
+
+export type HierarchicalForwardResult =
+  | {
+      details: HierarchicalPlaceDetails;
+      matchLevel: "place" | "city" | "country";
+      matchedQuery: string;
+    }
+  | { details: null; reason: "needs_context" };
+
 /** The injected edge-fn invoker — each app passes its own supabase.functions.invoke. */
 export type InvokeFn = (
   fn: string,
@@ -265,4 +286,47 @@ export async function forwardGeocodeMapbox(
     throw new Error("mapbox_forward_empty_response");
   }
   return data.details as PlaceDetails;
+}
+
+/**
+ * Issue #1363 — context-validated place → city → country resolution.
+ * Expected no-safe-anchor responses are data, while provider/transport failures
+ * throw so hosts can render a distinct retry state.
+ */
+export async function forwardHierarchyMapbox(
+  query: string,
+  savedContext: SavedLocationContext,
+  deps: { invoke: InvokeFn },
+): Promise<HierarchicalForwardResult> {
+  if (query.trim().length === 0) {
+    return { details: null, reason: "needs_context" };
+  }
+  const { data, error } = await deps.invoke("mapbox-geocode", {
+    body: {
+      action: "forward_hierarchy",
+      query: query.trim(),
+      saved_context: {
+        ...(savedContext.city?.trim()
+          ? { city: savedContext.city.trim() }
+          : {}),
+        ...(savedContext.countryCode?.trim()
+          ? { country_code: savedContext.countryCode.trim().toUpperCase() }
+          : {}),
+      },
+    },
+  });
+  if (error) {
+    throw new Error(error.message ?? "mapbox_forward_hierarchy_failed");
+  }
+  if (data?.details === null && data?.reason === "needs_context") {
+    return { details: null, reason: "needs_context" };
+  }
+  if (
+    !data?.details ||
+    !["place", "city", "country"].includes(data.matchLevel) ||
+    typeof data.matchedQuery !== "string"
+  ) {
+    throw new Error("mapbox_forward_hierarchy_empty_response");
+  }
+  return data as HierarchicalForwardResult;
 }

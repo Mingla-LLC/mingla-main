@@ -4,8 +4,19 @@ import { AuthProvider } from "./context/AuthContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import { ToastProvider } from "./context/ToastContext";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { initSentry } from "./diagnostics/sentry";
 import App from "./App";
 import "./globals.css";
+
+// Crash reporting (#1322). Init once at the client entry, before render, so the
+// global window.onerror / onunhandledrejection handlers are live app-wide even
+// on the LoginScreen. DSN absent (dev / preview) => safe no-op. Events land in
+// the shared `mingla-business` Sentry project; admin is distinguished by the
+// `admin-*` environment tag (OQ-1, Option B).
+initSentry({
+  dsn: import.meta.env.VITE_SENTRY_DSN,
+  environment: import.meta.env.PROD ? "admin-production" : `admin-${import.meta.env.MODE}`,
+});
 
 function AppCrashFallback({ error, reset }) {
   return (

@@ -35,6 +35,11 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { wrapEdgeHandler } from "../_shared/structuredLog.ts";
 // ISSUE-865 WP-B — post-finalize ad-conversion hook (idempotent + fail-open).
 import { fireAdConversion } from "../_shared/adConversionFire.ts";
+// ISSUE-1326 — Paystack (NG) fast-path verify + the SHARED reservation finalize
+// (the SAME path the paystack-webhook router uses; webhook = primary truth, this
+// is the fast poll resolution). ONE finalize code path, not two.
+import { paystackVerifyTransaction } from "../_shared/paystack.ts";
+import { finalizeVerifiedPaystackReservation } from "../_shared/reservationPaystackFinalize.ts";
 import { stripeTicketCheckout } from "../_shared/stripe.ts";
 import {
   jsonResponse,
@@ -61,10 +66,13 @@ interface SessionRow {
   paystack_reference: string | null;
   created_via: "app" | "web";
   consumer_user_id: string | null;
-  guest_cancel_token: string | null;
+  guest_cancel_token_hash: string | null;
   buyer_status_token_hash: string | null;
   status: "pending" | "completed" | "expired" | "failed";
   reservation_id: string | null;
+  // ISSUE-865 PR1 WP-2 — first-party ad click_id threaded at reservation-create
+  // (nullable; present only for ad-attributed reservations).
+  attribution_click_id: string | null;
 }
 
 serve(wrapEdgeHandler("venue-reservation-confirm", async (req) => {
@@ -98,7 +106,10 @@ serve(wrapEdgeHandler("venue-reservation-confirm", async (req) => {
     .eq("id", sessionId)
     .maybeSingle();
   if (sessionErr !== null) {
-    return jsonResponse({ error: "session_lookup_failed", detail: sessionErr.message }, 500);
+    return jsonResponse({
+      error: "session_lookup_failed",
+      detail: sessionErr.message,
+    }, 500);
   }
   if (sessionRow === null) {
     return jsonResponse({ error: "session_not_found" }, 404);
@@ -119,7 +130,11 @@ serve(wrapEdgeHandler("venue-reservation-confirm", async (req) => {
       reservedForUtc: session.reserved_for,
       partySize: session.party_size,
       brandId: session.brand_id,
-      guestCancelToken: session.guest_cancel_token ?? undefined,
+      // #1221: rotate from the token just proven on this confirmation replay;
+      // no raw token is read from storage.
+      guestCancelToken: session.created_via === "web"
+        ? buyerStatusToken
+        : undefined,
       receiptUrl: `/o/${session.reservation_id}`,
     });
   }
@@ -127,12 +142,93 @@ serve(wrapEdgeHandler("venue-reservation-confirm", async (req) => {
     return jsonResponse({ status: "failed", reservationId: null });
   }
 
+  // ISSUE-1326 — PAYSTACK (NG) FAST-PATH. A Paystack-routed reservation carries a
+  // paystack_reference and NO Stripe fields, so the Stripe slow-path below would
+  // return `pending` FOREVER (stripe_payment_intent_id/account_id are NULL). The
+  // charge.success webhook is the primary source of truth; this is the fast poll
+  // resolution so the native app doesn't spin on "your reservation will appear
+  // shortly." Verify the charge directly, then finalize via the SHARED helper
+  // (the SAME provider-neutral + idempotent RPC the webhook uses — belt-and-
+  // suspenders: whichever wins the race mints exactly one reservation).
+  if (
+    session.paystack_reference && !session.stripe_payment_intent_id &&
+    !session.stripe_account_id
+  ) {
+    let txn: Record<string, unknown>;
+    try {
+      txn = await paystackVerifyTransaction(session.paystack_reference);
+    } catch (err) {
+      // Verify unavailable / not yet resolved → keep the client polling (the
+      // webhook remains the authority). NOT a terminal failure.
+      console.warn(
+        "[venue-reservation-confirm] paystack verify unavailable (poll again)",
+        err instanceof Error ? err.message : String(err),
+      );
+      return jsonResponse({ status: "pending", reservationId: null });
+    }
+    const txnStatus = String(txn?.status ?? "").toLowerCase();
+    if (txnStatus !== "success") {
+      // Charge not (yet) successful → poll again. The webhook owns the terminal
+      // failure/expiry path; confirm never marks a Paystack session failed here.
+      return jsonResponse({ status: "pending", reservationId: null });
+    }
+    const outcome = await finalizeVerifiedPaystackReservation(
+      supabase as never,
+      session,
+      session.paystack_reference,
+      Number(txn?.amount ?? NaN),
+      String(txn?.currency ?? ""),
+      // FIRE-AND-FORGET the conversion: this is the guest's tap→confirm fast
+      // poll (it usually wins the race vs the webhook), so the response must
+      // NEVER block on the ad-conversion fan-out (up to ~8s per live channel).
+      // Mirrors this fn's Stripe path (`void fireAdConversion(...)`).
+      false,
+    );
+    switch (outcome.kind) {
+      case "finalized":
+      case "replayed": {
+        const reservationId = outcome.reservationId;
+        if (reservationId) {
+          return jsonResponse({
+            status: "completed",
+            reservationId,
+            reservedForUtc: session.reserved_for,
+            partySize: session.party_size,
+            brandId: session.brand_id,
+            guestCancelToken: session.created_via === "web"
+              ? buyerStatusToken
+              : undefined,
+            receiptUrl: `/o/${reservationId}`,
+          });
+        }
+        // Replayed with no linked id yet (a webhook mid-mint) → poll again.
+        return jsonResponse({ status: "pending", reservationId: null });
+      }
+      case "amount_mismatch":
+      case "currency_mismatch":
+        // The helper marked the session failed + audited. Terminal.
+        return jsonResponse({ status: "failed", reservationId: null });
+      case "slot_unavailable_refund_due":
+        return jsonResponse(
+          { error: "slot_unavailable", refundDue: true },
+          409,
+        );
+      case "finalize_error":
+        return jsonResponse(
+          { error: "reservation_create_failed", detail: outcome.message },
+          409,
+        );
+    }
+  }
+
   // Slow-path: verify the charge succeeded on the connected account.
   // (Paystack confirm is verified by the paystack-webhook → a future fn; for
   // 2.2a the Stripe verify is the proven seam. NG fee venues confirm via the
   // webhook arm — flagged in the report.)
-  if (!session.stripe_payment_intent_id && session.stripe_checkout_session_id &&
-      session.stripe_account_id) {
+  if (
+    !session.stripe_payment_intent_id && session.stripe_checkout_session_id &&
+    session.stripe_account_id
+  ) {
     // hosted Checkout (web): resolve the PI from the checkout session first.
     try {
       const stripe = stripeTicketCheckout();
@@ -148,12 +244,18 @@ serve(wrapEdgeHandler("venue-reservation-confirm", async (req) => {
       if (piId) {
         await supabase
           .from("reservation_checkout_sessions")
-          .update({ stripe_payment_intent_id: piId, updated_at: new Date().toISOString() })
+          .update({
+            stripe_payment_intent_id: piId,
+            updated_at: new Date().toISOString(),
+          })
           .eq("id", sessionId);
         session.stripe_payment_intent_id = piId;
       }
     } catch (err) {
-      console.error("[venue-reservation-confirm] checkout session retrieve failed", err);
+      console.error(
+        "[venue-reservation-confirm] checkout session retrieve failed",
+        err,
+      );
       return jsonResponse({ error: "stripe_unavailable" }, 502);
     }
   }
@@ -178,14 +280,21 @@ serve(wrapEdgeHandler("venue-reservation-confirm", async (req) => {
     return jsonResponse({ error: "stripe_unavailable" }, 502);
   }
 
-  if (piStatus === "processing" || piStatus === "requires_action" ||
-      piStatus === "requires_confirmation" || piStatus === "requires_payment_method") {
+  if (
+    piStatus === "processing" || piStatus === "requires_action" ||
+    piStatus === "requires_confirmation" ||
+    piStatus === "requires_payment_method"
+  ) {
     return jsonResponse({ status: "pending", reservationId: null });
   }
   if (piStatus !== "succeeded") {
     await supabase
       .from("reservation_checkout_sessions")
-      .update({ status: "failed", failure_reason: `pi_status_${piStatus}`, updated_at: new Date().toISOString() })
+      .update({
+        status: "failed",
+        failure_reason: `pi_status_${piStatus}`,
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", sessionId);
     return jsonResponse({ status: "failed", reservationId: null });
   }
@@ -216,12 +325,22 @@ serve(wrapEdgeHandler("venue-reservation-confirm", async (req) => {
       // actual refund executes via refund-order (reuse) — wired in 2.2b/2.2c.
       await supabase
         .from("reservation_checkout_sessions")
-        .update({ status: "failed", failure_reason: "slot_unavailable_after_charge_refund_due", updated_at: new Date().toISOString() })
+        .update({
+          status: "failed",
+          failure_reason: "slot_unavailable_after_charge_refund_due",
+          updated_at: new Date().toISOString(),
+        })
         .eq("id", sessionId);
       return jsonResponse({ error: "slot_unavailable", refundDue: true }, 409);
     }
-    console.error("[venue-reservation-confirm] reservation finalize failed", finalizeErr);
-    return jsonResponse({ error: "reservation_create_failed", detail: msg }, 409);
+    console.error(
+      "[venue-reservation-confirm] reservation finalize failed",
+      finalizeErr,
+    );
+    return jsonResponse(
+      { error: "reservation_create_failed", detail: msg },
+      409,
+    );
   }
   // The RPC returns TABLE(reservation reservations, session_id uuid); PostgREST
   // surfaces it as a one-row array with a nested `reservation` composite.
@@ -231,19 +350,28 @@ serve(wrapEdgeHandler("venue-reservation-confirm", async (req) => {
   const reservationRow = finalRow?.reservation ?? null;
   const reservationId = String(reservationRow?.id ?? "");
   if (!reservationId) {
-    console.error("[venue-reservation-confirm] finalize returned no reservation id", finalized);
+    console.error(
+      "[venue-reservation-confirm] finalize returned no reservation id",
+      finalized,
+    );
     return jsonResponse({ error: "reservation_create_failed" }, 409);
   }
 
   // ISSUE-865 WP-B — ad-conversion CAPI send for a confirmed venue reservation.
   // FIRE-AND-FORGET (NOT awaited) so the guest's confirmation is never delayed
-  // — this is the guest's tap→confirm wait. event_type = 'reservation',
-  // event_id = reservationId (deduped with the browser reservation pixel).
-  // Idempotent + fail-open.
+  // — this is the guest's tap→confirm wait. Idempotent + fail-open.
+  //
+  // PR1 WP-2 TWO-TIER: this is the FEE (paid) reservation confirm, so it fires
+  // the value'd Purchase branch (eventType 'purchase' → Meta 'Purchase', TikTok
+  // 'CompletePayment', … carrying the fee amount). Free RSVPs fire the lead-type
+  // branch from venue-reservation-create instead. event_id = reservationId
+  // (deduped with the browser reservation pixel). The threaded click_id lets the
+  // send resolve reservation → touch → campaign.
   void fireAdConversion(supabase as never, {
     reservationId,
     surface: "web",
-    eventType: "reservation",
+    eventType: "purchase",
+    clickId: session.attribution_click_id ?? null,
   }).catch((adConvErr) => {
     console.warn(
       "[venue-reservation-confirm] ad-conversion fire failed (non-fatal):",
@@ -257,7 +385,9 @@ serve(wrapEdgeHandler("venue-reservation-confirm", async (req) => {
     reservedForUtc: session.reserved_for,
     partySize: session.party_size,
     brandId: session.brand_id,
-    guestCancelToken: session.guest_cancel_token ?? undefined,
+    guestCancelToken: session.created_via === "web"
+      ? buyerStatusToken
+      : undefined,
     receiptUrl: `/o/${reservationId}`,
   });
 }, {

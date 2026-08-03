@@ -1,0 +1,168 @@
+# Supabase Secret Capacity
+
+This runbook keeps Mingla below Supabase's 100 user-secret limit without exposing secret
+material. The committed manifest and every audit output are names-only. Never paste a value,
+digest, credential prefix, environment dump, or raw `supabase secrets list --output json`
+response into GitHub, chat, logs, artifacts, or this file.
+
+## Capacity policy
+
+- Normal ceiling: 85 user-managed names, leaving 15 slots.
+- Slots 86–90 require a linked issue, named owner, data class, reader list, secure source,
+  review/expiry date, reason an existing store is unsuitable, and explicit approval.
+- A temporary migration name expires within 72 hours unless its issue records a shorter
+  approved window.
+- 91 or more user-managed names is an unconditional blocking breach.
+- The seven platform-managed `SUPABASE_*` defaults do not count against the user budget and
+  never belong in `supabase/secrets.manifest.json`.
+- Review names monthly. Escalate an expired, unexpected, missing, duplicate, or consumerless
+  name immediately regardless of the count.
+
+The pull-request audit validates the exact 85-name target manifest offline. The scheduled/manual
+workflow uses the dedicated least-privilege `SUPABASE_SECRET_AUDIT_ACCESS_TOKEN` only at live
+runtime and emits sorted names/reasons/counts, never raw CLI output. Until that separately
+authorized credential exists, the live step records an explicit warning and does not invoke the
+CLI.
+
+`supabase/secrets.manifest.json` is in `enforced` / `complete` mode. The live audit accepts only
+the exact 85-name manifest set and applies the 85/90 ceilings. The historical `transition` /
+`pre_rollout` mode remains test-covered solely to prove the original #1203 consolidation math; it
+is not an authorized production state.
+
+## Ownership and secure re-entry
+
+Every manifest record names a primary owner, backup owner, reader set, source type, review
+interval, issue, status, and field-level owners for bundles. The manifest is an index, not a
+vault. Values are reconstructed only by an authorized person from the named provider dashboard,
+controlled operating record, or secure vault.
+
+Supabase does not provide a plaintext value readback suitable for repacking. Never scrape
+metadata, compare or publish digests, deploy an exfiltration function, or infer two settings are
+semantically identical because their stored metadata matches. If the authoritative source is
+missing, stop. Rotation requires a separately approved plan. For a recipient-fingerprint HMAC,
+replacement without a previous key is permitted only under the zero-row epoch protocol below.
+
+Stripe restricted keys remain separate by role and environment. Follow Stripe's
+[API key security guidance](https://docs.stripe.com/keys-best-practices) and
+[restricted-key guidance](https://docs.stripe.com/keys) so each service retains the minimum
+permissions and an independent rotation boundary.
+
+## Bounded bundles and the credential envelope
+
+These objects are permitted:
+
+- `MINGLA_PAYMENT_MODES_JSON`: independent `stripe_mode` and `paystack_mode`.
+- `MINGLA_EMAIL_SENDERS_JSON`: independent `admin_from`, `system_from`, and `ticket_from`.
+- `MINGLA_DELIVERY_FLAGS_JSON` schema v2: the original independent marketing, Nigeria SMS,
+  and US SMS booleans plus an exact `payment_operations` object containing independent
+  `payout_hold_onboard_flip`, `payout_release_execute`, and
+  `source_refunds_post_disabled` JSON booleans. Schema v1 remains readable for rollback, but
+  production authority is v2.
+- `MINGLA_ALERT_RECIPIENTS_JSON`: independent API-health, Stripe-dispute, and
+  Stripe-webhook-failure lists.
+- `MINGLA_RUNTIME_CONFIG_JSON`: exactly the eight non-credential fields enforced by
+  `_shared/runtimeConfig.ts`.
+- `AD_CONVERSION_TOKENS`: the existing private credential envelope. In addition to its existing
+  independently named fields, it owns `NOTIFICATION_RECIPIENT_HMAC_SECRET` as exact raw material.
+  The resolver never trims, normalizes, logs, rotates, or returns that value.
+
+Do not put provider credentials, RAKs, account IDs, webhook/signing material, origins,
+sender IDs, app IDs, or payment keys into an operational bundle. Credential material belongs
+only in an approved credential envelope with field-level ownership. Every compatibility reader
+prefers its own bundle field and may fall back only to its exact legacy name during a reviewed
+migration window. Invalid bundles produce redacted field/reason telemetry and never invent a
+value. Missing/invalid onboarding and payout authority resolve false; missing/invalid
+source-refund authority resolves disabled=true.
+
+## No-downtime sequence
+
+Every mutation and live-fire step requires issue-bound authorization. Code merge alone does not
+authorize a secret, provider, or operational-boolean change.
+
+1. Reconstruct the complete current object only from its named provider dashboard, approved
+   private operating record, or secure vault. Supabase plaintext readback, runtime exfiltration,
+   value inference, and digest comparison are forbidden.
+2. Build replacements in memory and validate without echoing. Allowed evidence is bundle name,
+   schema version, sorted field-name set, minimum-valid PASS, and parser PASS/FAIL.
+3. Deploy strict bundle-first compatibility readers from an exact merged commit while every
+   superseded direct name remains present. Verify downloaded live source and JWT posture.
+4. Set the existing bundle name before removing any direct name. Run value-blind runtime checks
+   proving every rail retains its prior behavior.
+5. Remove only the approved direct names, one at a time, verifying after each. For the #1436
+   exit the locked order is: `SOURCE_REFUNDS_POST_DISABLED`, `PAYOUT_RELEASE_EXECUTE`,
+   `PAYOUT_HOLD_ONBOARD_FLIP`, then `NOTIFICATION_RECIPIENT_HMAC_SECRET`.
+6. Run the exact names-only audit. The #1436 exit is complete only at exactly 85 user-managed
+   names, 15 free slots, no exception, and no missing or unexpected name.
+7. Merge repository truth only after live truth exists and independent testing passes. Removing
+   compatibility code requires a separate reviewed issue.
+
+A partial or concurrent deployment, deployment-commit mismatch, parser/missing-field event,
+unknown ownership, missing source, or failed live-fire blocks every unset.
+
+## Notification HMAC zero-row epoch
+
+Historical recipient fingerprints must retain the exact HMAC material that created them. If the
+current material is unavailable, do not infer recipients, rewrite fingerprints, expose a hash
+oracle, or add a second reader. A replacement epoch is allowed only when one value-blind
+transaction proves zero HMAC-backed notification deliveries in every queued, failed, claimed,
+provider-accepted, or open-provider-window state and zero pending payout alert intents.
+
+Generate at least 32 random bytes privately, persist the exact replacement immediately in the
+approved secure master source and `AD_CONVERSION_TOKENS`, and keep the direct compatibility name
+until one operator-only transactional email plus an identical retry proves exactly one provider
+acceptance and one durable terminal row. After the direct name is removed, a third identical retry
+must return the same durable provider identity with no additional provider request. Report only
+counts and PASS/FAIL; never report the recipient, logical key, row/provider identity, fingerprint,
+payload hash, value, digest, prefix, or length.
+
+After the controlled row exists, rollback must keep the new epoch: repair the bundle from the
+secure master source or restore the exact new value under the direct compatibility name. Never
+restore an unavailable old value. Any dependent row before rotation, identity conflict,
+acceptance ambiguity, duplicate provider request, or inability to restore the new value is an
+immediate stop for manual review.
+
+## Rollback order
+
+Before a direct unset, rollback restores the prior bundle from its authoritative source; all
+direct names remain available.
+
+After a direct unset, restore that exact direct value from its authoritative secure source first,
+verify the direct path, and only then restore or remove a bundle. Never remove a bundle while a
+superseded direct name is absent, restore one field from another field's current value, or assume
+equality. Notification HMAC replacement additionally requires the zero-row epoch protocol above.
+
+## Audit commands
+
+Offline target validation is safe and requires no credential:
+
+```bash
+node scripts/secrets/audit-supabase-secret-budget.mjs --manifest-only
+node --test scripts/secrets/issue_1203_*.test.mjs
+node .github/scripts/strict-grep/issue-1203-secret-capacity.mjs --self-test
+node .github/scripts/strict-grep/issue-1203-secret-capacity.mjs
+```
+
+Run the live audit through the scheduled/manual GitHub workflow. Do not run or paste raw
+secret-list output in an incident channel. Audit failures expose only names and reasons.
+
+## Recovery verification
+
+For any recovery, confirm:
+
+1. the manifest owner and backup acknowledge the source and intended environment;
+2. the object validates without echoing and is below 48 KiB;
+3. the replacement is set before any old name is removed;
+4. every affected function reports the reviewed merged deployment identity;
+5. role/rail/region/domain live-fire passes without money movement or live delivery unless
+   separately approved;
+6. redacted telemetry contains no bundle-invalid or fallback event after soak; and
+7. the live names-only audit reports the expected count and exact manifest parity.
+
+## Primary references
+
+- [Supabase Edge Function limits](https://supabase.com/docs/guides/functions/limits)
+- [Supabase Edge Function secrets and platform defaults](https://supabase.com/docs/guides/functions/secrets)
+- [Supabase CLI secret management](https://supabase.com/docs/reference/cli/supabase-secrets)
+- [Supabase Edge Function deployment](https://supabase.com/docs/guides/functions/deploy)
+- [Stripe API key security and least privilege](https://docs.stripe.com/keys-best-practices)
+- [Stripe API and restricted-key management](https://docs.stripe.com/keys)

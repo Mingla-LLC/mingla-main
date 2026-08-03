@@ -11,7 +11,7 @@ jest.mock("../supabase", () => ({
 
 import { getPublicBrandBySlug } from "../publicEventsService";
 
-const queryBuilder = <T,>(
+const queryBuilder = <T>(
   terminal: "maybeSingle" | "order",
   result: { data: T; error: Error | null },
 ) => {
@@ -89,7 +89,9 @@ const row = (patch: Record<string, unknown> = {}): Record<string, unknown> => ({
   ...patch,
 });
 
-const brandRow = (patch: Record<string, unknown> = {}): Record<string, unknown> => ({
+const brandRow = (
+  patch: Record<string, unknown> = {},
+): Record<string, unknown> => ({
   id: "brand-1",
   slug: "brand-3",
   name: "Brand 3",
@@ -184,8 +186,10 @@ describe("Ve4 public brand lookup", () => {
     expect(claimedQuery.eq).toHaveBeenCalledWith("slug", "brand-3");
     expect(brandQuery.eq).toHaveBeenCalledWith("slug", "brand-3");
     expect(eventsQuery.eq).toHaveBeenCalledWith("brand_slug", "brand-3");
-    // #1062 Wave 2 / B2 — ORCH-1186-C added a 4th from() call: public_menus_view.
-    expect(mockFrom).toHaveBeenCalledTimes(4);
+    // [TEST-MOD-APPROVED ORCH-1365] Brand pages do not aggregate venue menus;
+    // the exact venue route owns the public_menus_view read.
+    expect(mockFrom).toHaveBeenCalledTimes(3);
+    expect(mockFrom).not.toHaveBeenCalledWith("public_menus_view");
   });
 
   test("falls back to business_public_brands_view when claimed row is absent", async () => {
@@ -217,8 +221,9 @@ describe("Ve4 public brand lookup", () => {
       displayAttendeeCount: false,
     });
     expect(detail?.venue).toBeNull();
-    // #1062 Wave 2 / B2 — ORCH-1186-C added a 4th from() call: public_menus_view.
-    expect(mockFrom).toHaveBeenCalledTimes(4);
+    // [TEST-MOD-APPROVED ORCH-1365] Preserve venue-first menu ownership.
+    expect(mockFrom).toHaveBeenCalledTimes(3);
+    expect(mockFrom).not.toHaveBeenCalledWith("public_menus_view");
   });
 
   test("returns null only after claimed and business profile rows are missing", async () => {

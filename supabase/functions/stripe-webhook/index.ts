@@ -19,6 +19,7 @@ import {
 } from "../_shared/stripeWebhookSignature.ts";
 import { sendOpsAlertEmail } from "../_shared/stripeOpsAlertEmail.ts";
 import { logError } from "../_shared/structuredLog.ts";
+import { resolveAlertRecipientValue } from "../_shared/secretBundle.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -35,8 +36,13 @@ export async function notifyWebhookSignatureFailure(
   signature: string | null,
   send: typeof sendOpsAlertEmail = sendOpsAlertEmail,
 ): Promise<number> {
-  const raw = Deno.env.get("STRIPE_WEBHOOK_FAILURE_ALERT_EMAILS") ?? "";
-  const emails = raw.split(",").map((s) => s.trim()).filter(Boolean);
+  const value = resolveAlertRecipientValue(
+    "stripe_webhook_failures",
+    "STRIPE_WEBHOOK_FAILURE_ALERT_EMAILS",
+  );
+  const emails = Array.isArray(value)
+    ? value
+    : (value ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   if (emails.length === 0) return 0;
   const sigPrefix = signature?.slice(0, 20) ?? "missing";
   const subject = "⚠️ [LIVE] Stripe webhook signature failure detected";
@@ -181,6 +187,10 @@ export async function stripeWebhookHandler(req: Request): Promise<Response> {
         stripe_event_id: event.id,
         type: event.type,
         payload: event,
+        provider: "stripe",
+        provider_event_type: event.type,
+        provider_event_id: event.id,
+        match_status: "not_applicable",
         processed: false,
         retry_count: 0,
         retries_exhausted: false,
@@ -202,6 +212,27 @@ export async function stripeWebhookHandler(req: Request): Promise<Response> {
     await routeStripeEvent(supabase, stripe, event);
   } catch (err) {
     processingError = err instanceof Error ? err.message : String(err);
+    if (
+      processingError.includes("source_refund_exact_match_missing") ||
+      processingError.includes("source_identity_missing")
+    ) {
+      await supabase.from("payment_webhook_events").update({
+        match_status: "unmatched",
+        match_reason_code: "source_refund_exact_match_missing",
+        first_response_due_at: new Date(Date.now() + 4 * 60 * 60 * 1000)
+          .toISOString(),
+      }).eq("id", eventRowId);
+    } else if (
+      processingError.includes("source_refund_") &&
+      processingError.includes("mismatch")
+    ) {
+      await supabase.from("payment_webhook_events").update({
+        match_status: "mismatched",
+        match_reason_code: "source_refund_provider_evidence_mismatch",
+        first_response_due_at: new Date(Date.now() + 4 * 60 * 60 * 1000)
+          .toISOString(),
+      }).eq("id", eventRowId);
+    }
     logError("stripe-webhook processing failed", err, {
       fn: "stripe-webhook",
       eventId: event.id,

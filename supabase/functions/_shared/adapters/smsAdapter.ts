@@ -22,6 +22,8 @@
 // Invariant: I-PROPOSED-1227-NG-SMS-VIA-TERMII. The Twilio path MUST keep its
 // MessagingServiceSid usage, the SMS_LIVE_ENABLED_ kill-switch, and the
 // no-raw-`From` discipline — the I-PROPOSED-1161 CI gate still enforces all three.
+import { resolveDeliveryFlagValue } from "../secretBundle.ts";
+import { resolveRuntimeConfigValue } from "../runtimeConfig.ts";
 
 export interface AdapterResult {
   ok: boolean;
@@ -58,6 +60,7 @@ export interface SmsSendInput {
   // Transactional sends omit this (default false → single-space footer,
   // byte-identical to the prior behavior + every existing transactional test).
   stopFooterOwnLine?: boolean;
+  beforeProviderIo?: () => Promise<void>;
 }
 
 const E164_RE = /^\+[1-9][0-9]{1,14}$/;
@@ -134,7 +137,11 @@ export function resolveMarketKillSwitch(countryCode?: string | null): string {
 }
 
 function envTrue(name: string): boolean {
-  const raw = Deno.env.get(name);
+  const field = name === "SMS_LIVE_ENABLED_NG"
+    ? "sms_live_enabled.ng"
+    : "sms_live_enabled.us";
+  const raw = resolveDeliveryFlagValue(field, name);
+  if (typeof raw === "boolean") return raw;
   return raw === "true" || raw === "1";
 }
 
@@ -143,23 +150,27 @@ async function twilioSend(
   body: string,
   messagingServiceSidOverride?: string | null,
   mediaUrls?: string[],
-): Promise<{ ok: boolean; sid?: string; error?: string; blacklisted?: boolean }> {
+): Promise<
+  { ok: boolean; sid?: string; error?: string; blacklisted?: boolean }
+> {
   const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
   const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
   // Marketing send passes a separate marketing Messaging Service SID
   // (§12 Q2). When absent, fall back to the approved transactional toll-free.
-  const messagingServiceSid = messagingServiceSidOverride && messagingServiceSidOverride.length > 0
-    ? messagingServiceSidOverride
-    : Deno.env.get("TWILIO_MESSAGING_SERVICE_SID");
+  const messagingServiceSid =
+    messagingServiceSidOverride && messagingServiceSidOverride.length > 0
+      ? messagingServiceSidOverride
+      : Deno.env.get("TWILIO_MESSAGING_SERVICE_SID");
   if (!accountSid || !authToken || !messagingServiceSid) {
     return { ok: false, error: "twilio_env_missing" };
   }
   const statusSecret = Deno.env.get("TWILIO_STATUS_CALLBACK_SECRET");
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const statusCallback =
-    statusSecret && supabaseUrl
-      ? `${supabaseUrl}/functions/v1/twilio-message-status?secret=${encodeURIComponent(statusSecret)}`
-      : undefined;
+  const statusCallback = statusSecret && supabaseUrl
+    ? `${supabaseUrl}/functions/v1/twilio-message-status?secret=${
+      encodeURIComponent(statusSecret)
+    }`
+    : undefined;
   const params = new URLSearchParams({
     To: to,
     MessagingServiceSid: messagingServiceSid, // NEVER a raw From number.
@@ -196,7 +207,10 @@ async function twilioSend(
     const data = (await res.json()) as { sid?: string };
     return { ok: true, sid: data.sid };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
   }
 }
 
@@ -216,11 +230,16 @@ async function termiiSend(
   to: string,
   body: string,
   channel: "dnd" | "generic",
-): Promise<{ ok: boolean; sid?: string; error?: string; blacklisted?: boolean }> {
+): Promise<
+  { ok: boolean; sid?: string; error?: string; blacklisted?: boolean }
+> {
   const apiKey = Deno.env.get("TERMII_API_KEY");
-  const baseUrl = Deno.env.get("TERMII_BASE_URL");
+  const baseUrl = resolveRuntimeConfigValue(
+    "termii_base_url",
+    "TERMII_BASE_URL",
+  );
   const senderId = Deno.env.get("TERMII_SENDER_ID");
-  if (!apiKey || !baseUrl || !senderId) {
+  if (!apiKey || typeof baseUrl !== "string" || !baseUrl || !senderId) {
     return { ok: false, error: "termii_env_missing" };
   }
   const payload = {
@@ -247,15 +266,20 @@ async function termiiSend(
     // DND / opt-out style rejections — surface as blacklisted so the ledger can
     // suppress (mirrors Twilio's 21610 mapping).
     const lower = `${data.message ?? ""} ${text}`.toLowerCase();
-    const blacklisted =
-      lower.includes("dnd") || lower.includes("blacklist") ||
+    const blacklisted = lower.includes("dnd") || lower.includes("blacklist") ||
       lower.includes("opt out") || lower.includes("opt-out");
-    if (res.ok && typeof data.message_id === "string" && data.message_id.length > 0) {
+    if (
+      res.ok && typeof data.message_id === "string" &&
+      data.message_id.length > 0
+    ) {
       return { ok: true, sid: data.message_id };
     }
     return { ok: false, error: `Termii ${res.status}: ${text}`, blacklisted };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
   }
 }
 
@@ -263,7 +287,12 @@ export const smsAdapter = {
   async send(input: SmsSendInput): Promise<AdapterResult> {
     const to = input.to?.trim() ?? "";
     if (!isValidE164(to)) {
-      return { ok: false, status: "failed", providerMessageId: null, error: "invalid_e164" };
+      return {
+        ok: false,
+        status: "failed",
+        providerMessageId: null,
+        error: "invalid_recipient",
+      };
     }
 
     // Per-market kill-switch — return skipped WITHOUT any HTTP call when off.
@@ -273,28 +302,42 @@ export const smsAdapter = {
         ok: false,
         status: "skipped",
         providerMessageId: null,
-        error: `kill_switch_off:${killSwitch}`,
+        error: "provider_kill_switch_off",
       };
     }
 
-    const body = composeSmsBody(input.message, input.stopFooterOwnLine === true);
+    const body = composeSmsBody(
+      input.message,
+      input.stopFooterOwnLine === true,
+    );
     const segments = computeSegments(body);
 
     // ORCH-1227 (DEC-192) — country-routed dual provider behind the region seam.
     // NG → Termii (transactional→dnd, marketing→generic); everything else → Twilio.
     const cc = (input.countryCode ?? "US").toUpperCase();
+    await input.beforeProviderIo?.();
     const result = cc === "NG"
       // NG/Termii is SMS-only — media is intentionally NOT passed (ORCH-1282).
-      ? await termiiSend(to, body, input.messageType === "marketing" ? "generic" : "dnd")
+      ? await termiiSend(
+        to,
+        body,
+        input.messageType === "marketing" ? "generic" : "dnd",
+      )
       : await twilioSend(to, body, input.messagingServiceSid, input.mediaUrls);
-    if (!result.ok) {
+    if (!result.ok || !result.sid) {
       return {
         ok: false,
         status: "failed",
         providerMessageId: null,
         segments,
         blacklisted: result.blacklisted ?? false,
-        error: result.error ?? (cc === "NG" ? "termii_error" : "twilio_error"),
+        error: result.blacklisted
+          ? "recipient_opted_out"
+          : result.ok
+          ? "provider_protocol_error"
+          : result.error?.endsWith("_env_missing")
+          ? "provider_config_missing"
+          : "provider_unavailable",
       };
     }
     return {

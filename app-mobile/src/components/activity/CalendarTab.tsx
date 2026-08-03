@@ -1,32 +1,43 @@
-import React, { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
-  Text,
-  View,
-  TouchableOpacity,
-  StyleSheet,
-  Linking,
-  FlatList,
   ActivityIndicator,
-  ScrollView,
   Alert,
-  TextInput,
   Animated,
-  RefreshControl,
+  FlatList,
+  Linking,
+  Modal,
   Platform,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import * as WebBrowser from 'expo-web-browser';
+import * as WebBrowser from "expo-web-browser";
 import { getReadableCategoryName } from "../../utils/categoryUtils";
 
 const ANIMATION_DURATION = 250;
 import { Icon } from "../ui/Icon";
-import { CardFilterBar, WhenFilter } from './CardFilterBar';
+import { CardFilterBar, WhenFilter } from "./CardFilterBar";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
 import ProposeDateTimeModal from "./ProposeDateTimeModal";
 import ExpandedCardModal from "../ExpandedCardModal";
 import { mixpanelService } from "../../services/mixpanelService";
 import { logAppsFlyerEvent } from "../../services/appsFlyerService";
 import { recordCardExpand } from "../../services/cardEngagementService";
-import { ExpandedCardData, ReservationPass } from "../../types/expandedCardTypes";
+import {
+  ExpandedCardData,
+  ReservationPass,
+} from "../../types/expandedCardTypes";
 import { useAppStore } from "../../store/appStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { toastManager } from "../ui/Toast";
@@ -36,7 +47,11 @@ import { useFeatureGate } from "../../hooks/useFeatureGate";
 import { CustomPaywallScreen } from "../CustomPaywallScreen";
 import { useKeyboard } from "../../hooks/useKeyboard";
 import { KEYBOARD_TOOLBAR_HEIGHT } from "../../wrappers/keyboardConstants";
-import { useTranslation } from 'react-i18next';
+import { useTranslation } from "react-i18next";
+import {
+  type CanonicalDiscoveryPrice,
+  canonicalDiscoveryPriceFields,
+} from "../../utils/priceTiers";
 // ORCH-1019 F-1: curated reschedule validation routes through the canonical
 // shared validator (extractWeekdayText + isPlaceOpenAt), same as SavedTab.
 import { checkAllCuratedStopsOpen } from "../../utils/curatedStopsAvailability";
@@ -58,12 +73,12 @@ import { getUserLocale } from "../../utils/localeUtils";
 // Archive (mirror of saved-card archive behavior).
 import {
   useBusinessEventOrders,
-  useOrdersRealtimeSubscription,
-  useTicketsRealtimeSubscription, // ORCH-0854
   // ORCH-1163 [rsvp-shared-body] — the signed-in user's "Going" RSVPs + their
   // realtime freshness, folded in as a fourth unified-row kind.
   useMyGoingRsvps,
+  useOrdersRealtimeSubscription,
   useRsvpsRealtimeSubscription,
+  useTicketsRealtimeSubscription, // ORCH-0854
 } from "../../hooks/useCalendarEntries";
 import BusinessEventCalendarRow from "./BusinessEventCalendarRow";
 import type {
@@ -73,22 +88,44 @@ import type {
 // ORCH-1163 [rsvp-shared-body] — the consumer RSVP row (cover + "RSVP · Going"
 // pill + View-RSVP → RsvpPassSheet).
 import RsvpCalendarRow from "./RsvpCalendarRow";
+import StayCalendarRow from "./StayCalendarRow";
+import {
+  stayGuestKeys,
+  type MyStayReservationGroup,
+} from "@mingla/brand-rendering/stayGuest";
+import { useMyStayReservations } from "../../hooks/useStayGuest";
 // META-ORCH-1148 2.2b: the signed-in user's venue reservations, folded into the
 // existing Active/Archive buckets as a THIRD unified-row kind.
 import ReservationCalendarRow from "./ReservationCalendarRow";
 import {
-  useMyReservations,
+  SourceRefundAttentionSheet,
+  type SourceRefundBank,
+} from "./SourceRefundAttentionSheet";
+import {
   cancelMyReservation,
-  myReservationsKeys,
   type MyReservationRow,
+  myReservationsKeys,
+  useMyReservations,
 } from "../../hooks/useMyReservations";
+import { supabase } from "../../services/supabase";
 
 // ORCH-0842: discriminated-union row for unified Active/Archive rendering.
 // META-ORCH-1148 2.2b adds the "reservation" kind.
 type UnifiedRow =
   | { kind: "calendar"; key: string; sortAt: number; entry: CalendarEntry }
   | { kind: "ticket"; key: string; sortAt: number; row: BusinessEventRow }
-  | { kind: "reservation"; key: string; sortAt: number; reservation: MyReservationRow }
+  | {
+    kind: "reservation";
+    key: string;
+    sortAt: number;
+    reservation: MyReservationRow;
+  }
+  | {
+    kind: "stay";
+    key: string;
+    sortAt: number;
+    group: MyStayReservationGroup;
+  }
   // ORCH-1163 [rsvp-shared-body] — a "Going" RSVP (own primary or a plus-one row).
   | { kind: "rsvp"; key: string; sortAt: number; rsvp: ConsumerRsvpRow };
 
@@ -103,7 +140,25 @@ function reservationEffectiveEndMs(reservedFor: string): number {
   return startMs + RESERVATION_DEFAULT_DURATION_MIN * 60_000;
 }
 
-interface CalendarEntry {
+function stayStartMs(group: MyStayReservationGroup): number {
+  const timestamps = group.lines.flatMap((line) =>
+    [line.roomCheckIn, line.placeStartsAt]
+      .map((value) => value ? Date.parse(value) : Number.NaN)
+      .filter(Number.isFinite)
+  );
+  return timestamps.length > 0 ? Math.min(...timestamps) : Number.NaN;
+}
+
+function stayEndMs(group: MyStayReservationGroup): number {
+  const timestamps = group.lines.flatMap((line) =>
+    [line.roomCheckOut, line.placeEndsAt]
+      .map((value) => value ? Date.parse(value) : Number.NaN)
+      .filter(Number.isFinite)
+  );
+  return timestamps.length > 0 ? Math.max(...timestamps) : Number.NaN;
+}
+
+interface CalendarEntry extends Partial<CanonicalDiscoveryPrice> {
   id: string;
   title: string;
   category: string;
@@ -172,8 +227,7 @@ export interface CalendarEntryForBucketing {
 export function computeEntryEffectiveEnd(
   entry: CalendarEntryForBucketing,
 ): Date | null {
-  const startIso =
-    entry.scheduled_at ?? entry.suggestedDates?.[0] ?? null;
+  const startIso = entry.scheduled_at ?? entry.suggestedDates?.[0] ?? null;
   if (startIso === null) return null;
   const startMs = Date.parse(startIso);
   if (!Number.isFinite(startMs)) return null;
@@ -223,11 +277,12 @@ const CalendarTab = ({
   selectedEntryId,
   bottomNavTotalHeight = 0,
 }: CalendarTabProps) => {
-  const { t } = useTranslation(['activity', 'common']);
+  const { t } = useTranslation(["activity", "common"]);
   const { canAccess } = useFeatureGate();
   const { keyboardHeight } = useKeyboard({ disableLayoutAnimation: true });
-  const keyboardSpacerHeight =
-    keyboardHeight > 0 ? keyboardHeight + KEYBOARD_TOOLBAR_HEIGHT : 0;
+  const keyboardSpacerHeight = keyboardHeight > 0
+    ? keyboardHeight + KEYBOARD_TOOLBAR_HEIGHT
+    : 0;
   const [showLockedPaywall, setShowLockedPaywall] = useState(false);
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState<{
@@ -237,28 +292,53 @@ const CalendarTab = ({
   const [expandedAccordionItems, setExpandedAccordionItems] = useState<
     string[]
   >(["tickets", "active"]); // Start with Tickets + Active expanded
-  const [showProposeDateTimeModal, setShowProposeDateTimeModal] =
-    useState(false);
-  const [entryToReschedule, setEntryToReschedule] =
-    useState<CalendarEntry | null>(null);
+  const [showProposeDateTimeModal, setShowProposeDateTimeModal] = useState(
+    false,
+  );
+  const [entryToReschedule, setEntryToReschedule] = useState<
+    CalendarEntry | null
+  >(null);
   const [isExpandedModalVisible, setIsExpandedModalVisible] = useState(false);
   // ORCH-1064: re-open guard window (block re-present within 500ms of close so the
   // wrapInRNModal modal isn't re-presented mid-dismiss → intermittent freeze).
   const lastModalCloseAtRef = useRef(0);
-  const [selectedCardForExpansion, setSelectedCardForExpansion] =
-    useState<ExpandedCardData | null>(null);
+  const [selectedCardForExpansion, setSelectedCardForExpansion] = useState<
+    ExpandedCardData | null
+  >(null);
   // META-ORCH-1148 2.2f — the Confirmed reservation pass injected into the
   // ExpandedCardModal when a reservation row is tapped (null for normal cards).
-  const [reservationPassForModal, setReservationPassForModal] =
-    useState<ReservationPass | null>(null);
+  const [reservationPassForModal, setReservationPassForModal] = useState<
+    ReservationPass | null
+  >(null);
   const [isScheduling, setIsScheduling] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedWhen, setSelectedWhen] = useState<WhenFilter>('all');
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [selectedTier, setSelectedTier] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedWhen, setSelectedWhen] = useState<WhenFilter>("all");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [selectedTier, setSelectedTier] = useState<string>("all");
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [attentionRefundId, setAttentionRefundId] = useState<string | null>(
+    null,
+  );
+  const [attentionSubmitting, setAttentionSubmitting] = useState(false);
+  const [attentionError, setAttentionError] = useState<string | null>(null);
+  const [attentionDeliveryParked, setAttentionDeliveryParked] = useState(false);
+  const [attentionBanks, setAttentionBanks] = useState<SourceRefundBank[]>([]);
+  const [attentionBanksLoading, setAttentionBanksLoading] = useState(false);
   const { user } = useAppStore();
   const queryClient = useQueryClient();
+  const loadAttentionBanks = useCallback(async () => {
+    if (!attentionRefundId) return;
+    setAttentionBanksLoading(true);
+    const { data, error } = await supabase.functions.invoke(
+      "source-refund-attention",
+      { body: { mode: "banks", refundId: attentionRefundId } },
+    );
+    setAttentionBanks(error ? [] : (data?.banks ?? []));
+    setAttentionBanksLoading(false);
+  }, [attentionRefundId]);
+  useEffect(() => {
+    if (attentionRefundId) void loadAttentionBanks();
+  }, [attentionRefundId, loadAttentionBanks]);
 
   // ORCH-0829-A: business-event tickets parallel hook. Legacy
   // calendarEntries prop continues to flow from AppStateManager via
@@ -272,6 +352,11 @@ const CalendarTab = ({
   // own-read RLS). Folded into the same Active/Archive buckets below.
   const reservationsQuery = useMyReservations(user?.id);
   const myReservations = reservationsQuery.data ?? [];
+
+  // ISSUE-1390 — Stay reservations join the same consumer itinerary instead
+  // of becoming a separate, undiscoverable booking silo.
+  const staysQuery = useMyStayReservations(user?.id ?? null);
+  const myStays = useMemo(() => staysQuery.data ?? [], [staysQuery.data]);
 
   // ORCH-1163 [rsvp-shared-body] — the signed-in user's "Going" RSVPs (own +
   // plus-one rows). Folded into the same Active/Archive buckets below.
@@ -295,21 +380,23 @@ const CalendarTab = ({
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
-    await queryClient.invalidateQueries({ queryKey: ["calendarEntries", user?.id] });
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: ["calendarEntries", user?.id],
+      }),
+      queryClient.invalidateQueries({ queryKey: stayGuestKeys.all }),
+    ]);
     setIsRefreshing(false);
   }, [queryClient, user?.id]);
 
-  // META-ORCH-1148 2.2b — cancel one of MY reservations (consumer cancel RPC).
-  // Honors cancel_cutoff_hours server-side; surfaces refund eligibility.
-  // [TRANSITIONAL] Refund EXECUTION is not wired here — the RPC only FLAGS
-  // refund_eligible; the actual refund (reuse refund-order) is the 2.2c/edge-
-  // cancel seam. Exit: route through the edge cancel endpoint once it executes
-  // the refund. Tracked in IMPLEMENT_META-ORCH-1148_SUBC_2_2B.
+  // #1221 — cancel one of MY reservations and render only durable refund truth.
   const handleCancelReservation = useCallback(
     (reservation: MyReservationRow) => {
       Alert.alert(
         "Cancel this reservation?",
-        `${reservation.brand_name ?? "This venue"} · party of ${reservation.party_size}`,
+        `${
+          reservation.brand_name ?? "This venue"
+        } · party of ${reservation.party_size}`,
         [
           { text: "Keep it", style: "cancel" },
           {
@@ -318,36 +405,42 @@ const CalendarTab = ({
             onPress: () => {
               void (async () => {
                 try {
-                  const { refundEligible, refunded, refundAmountCents } =
-                    await cancelMyReservation(reservation.id);
+                  const result = await cancelMyReservation(reservation.id);
                   if (user?.id) {
                     await queryClient.invalidateQueries({
                       queryKey: myReservationsKeys.byUser(user.id),
                     });
                   }
-                  const amount =
-                    refundAmountCents > 0
-                      ? new Intl.NumberFormat(undefined, {
-                          style: "currency",
-                          currency: (reservation.fee_currency || "USD").toUpperCase(),
-                        }).format(refundAmountCents / 100)
-                      : null;
-                  const hadDeposit =
-                    (reservation.fee_cents ?? 0) > 0 &&
+                  const amount = result.refund?.amount_cents
+                    ? new Intl.NumberFormat(undefined, {
+                      style: "currency",
+                      currency: result.refund.currency,
+                    }).format(result.refund.amount_cents / 100)
+                    : null;
+                  const hadDeposit = (reservation.fee_cents ?? 0) > 0 &&
                     reservation.payment_status === "paid";
                   Alert.alert(
                     "Reservation cancelled",
-                    refunded && amount
-                      ? `Your ${amount} deposit has been refunded.`
-                      : refundEligible
-                      ? "Your deposit refund is being processed and will follow shortly."
+                    result.refund?.buyer_state === "processed" && amount
+                      ? `Your ${amount} deposit refund has been processed.`
+                      : result.refund?.buyer_state === "needs_attention"
+                      ? "Action is needed to continue your deposit refund."
+                      : result.refund
+                      ? "Your deposit refund is processing. You can track it here."
                       : hadDeposit
                       ? "Your reservation has been cancelled. Your deposit is non-refundable after the venue's cancellation cutoff."
                       : "Your reservation has been cancelled.",
                   );
+                  if (result.refund?.buyer_state === "needs_attention") {
+                    setAttentionDeliveryParked(
+                      (result.refund as typeof result.refund & {
+                        attentionDeliveryState?: string;
+                      }).attentionDeliveryState === "parked",
+                    );
+                    setAttentionRefundId(result.refund.refund_id);
+                  }
                 } catch (err) {
-                  const msg =
-                    err instanceof Error ? err.message : String(err);
+                  const msg = err instanceof Error ? err.message : String(err);
                   Alert.alert(
                     "Couldn't cancel",
                     msg.includes("cutoff")
@@ -379,7 +472,9 @@ const CalendarTab = ({
   // Animation refs
   const searchBarOpacity = useRef(new Animated.Value(0)).current;
   const searchBarSlide = useRef(new Animated.Value(-30)).current;
-  const cardAnimations = useRef<{ [key: string]: { opacity: Animated.Value; slide: Animated.Value } }>({});
+  const cardAnimations = useRef<
+    { [key: string]: { opacity: Animated.Value; slide: Animated.Value } }
+  >({});
 
   // Initialize animation for each card
   const getCardAnimation = (entryId: string) => {
@@ -442,7 +537,7 @@ const CalendarTab = ({
       const q = normalize(searchQuery);
       const title = normalize(entry.experience?.title || entry.title);
       const category = normalize(
-        entry.experience?.category || entry.category || ""
+        entry.experience?.category || entry.category || "",
       );
       const sessionName = normalize(entry.sessionName || "");
       return (
@@ -467,8 +562,7 @@ const CalendarTab = ({
       if (!scheduled) return false;
       const now = new Date();
 
-      const isSameDay =
-        scheduled.getFullYear() === now.getFullYear() &&
+      const isSameDay = scheduled.getFullYear() === now.getFullYear() &&
         scheduled.getMonth() === now.getMonth() &&
         scheduled.getDate() === now.getDate();
 
@@ -498,14 +592,17 @@ const CalendarTab = ({
     };
 
     const matchesCategory = (entry: CalendarEntry) => {
-      if (selectedCategory === 'all') return true;
-      const slug = entry.experience?.category || entry.category || '';
+      if (selectedCategory === "all") return true;
+      const slug = entry.experience?.category || entry.category || "";
       return slug === selectedCategory;
     };
 
     const matchesTier = (entry: CalendarEntry) => {
-      if (selectedTier === 'all') return true;
-      const tier = entry.experience?.priceTier || '';
+      if (selectedTier === "all") return true;
+      // Tier filtering is confined to curated itineraries. Venue discovery
+      // prices are numeric, currency-bearing ranges and never tier-derived.
+      if (entry.experience?.cardType !== 'curated') return false;
+      const tier = entry.experience.priceTier || "";
       return tier === selectedTier;
     };
 
@@ -556,8 +653,8 @@ const CalendarTab = ({
       const effectiveEndTs = Number.isFinite(endTs)
         ? endTs
         : Number.isFinite(startTs)
-          ? startTs
-          : Number.NaN;
+        ? startTs
+        : Number.NaN;
       if (Number.isFinite(effectiveEndTs) && effectiveEndTs < now) {
         archive.push(order);
       } else {
@@ -574,8 +671,7 @@ const CalendarTab = ({
     const active: MyReservationRow[] = [];
     const archive: MyReservationRow[] = [];
     for (const r of myReservations) {
-      const cancelled =
-        r.status === "cancelled_by_guest" ||
+      const cancelled = r.status === "cancelled_by_guest" ||
         r.status === "cancelled_by_venue" ||
         r.status === "no_show" ||
         r.status === "completed";
@@ -588,6 +684,26 @@ const CalendarTab = ({
     }
     return { activeReservations: active, archiveReservations: archive };
   }, [myReservations]);
+
+  const { activeStays, archiveStays } = useMemo(() => {
+    const now = Date.now();
+    const active: MyStayReservationGroup[] = [];
+    const archive: MyStayReservationGroup[] = [];
+    for (const group of myStays) {
+      const terminal = [
+        "declined",
+        "request_expired",
+        "cancelled",
+      ].includes(group.state);
+      const endMs = stayEndMs(group);
+      if (terminal || (Number.isFinite(endMs) && endMs < now)) {
+        archive.push(group);
+      } else {
+        active.push(group);
+      }
+    }
+    return { activeStays: active, archiveStays: archive };
+  }, [myStays]);
 
   // ORCH-1163 [rsvp-shared-body] — bucket "Going" RSVPs on the event's effective
   // end (end_at when present, else start_at). Past events drop into Archive; a
@@ -606,8 +722,8 @@ const CalendarTab = ({
       const effectiveEndTs = Number.isFinite(endTs)
         ? endTs
         : Number.isFinite(startTs)
-          ? startTs
-          : Number.NaN;
+        ? startTs
+        : Number.NaN;
       if (Number.isFinite(effectiveEndTs) && effectiveEndTs < now) {
         archive.push(r);
       } else {
@@ -637,8 +753,7 @@ const CalendarTab = ({
           if (!order.masterDateUtc) return false;
           const scheduled = new Date(order.masterDateUtc);
           const now = new Date();
-          const isSameDay =
-            scheduled.getFullYear() === now.getFullYear() &&
+          const isSameDay = scheduled.getFullYear() === now.getFullYear() &&
             scheduled.getMonth() === now.getMonth() &&
             scheduled.getDate() === now.getDate();
           if (selectedWhen === "today" && !isSameDay) return false;
@@ -697,8 +812,7 @@ const CalendarTab = ({
           if (!r.masterDateUtc) return false;
           const scheduled = new Date(r.masterDateUtc);
           const now = new Date();
-          const isSameDay =
-            scheduled.getFullYear() === now.getFullYear() &&
+          const isSameDay = scheduled.getFullYear() === now.getFullYear() &&
             scheduled.getMonth() === now.getMonth() &&
             scheduled.getDate() === now.getDate();
           if (selectedWhen === "today" && !isSameDay) return false;
@@ -736,15 +850,62 @@ const CalendarTab = ({
     [archiveRsvps, filterRsvps],
   );
 
+  const filterStays = useCallback(
+    (groups: MyStayReservationGroup[]): MyStayReservationGroup[] => {
+      const query = searchQuery.trim().toLowerCase();
+      return groups.filter((group) => {
+        if (
+          query &&
+          !group.venueName.toLowerCase().includes(query) &&
+          !group.brandName.toLowerCase().includes(query) &&
+          !group.publicReference.toLowerCase().includes(query)
+        ) {
+          return false;
+        }
+        if (selectedWhen === "all") return true;
+        const timestamp = stayStartMs(group);
+        if (!Number.isFinite(timestamp)) return false;
+        const scheduled = new Date(timestamp);
+        const now = new Date();
+        const sameDay =
+          scheduled.getFullYear() === now.getFullYear() &&
+          scheduled.getMonth() === now.getMonth() &&
+          scheduled.getDate() === now.getDate();
+        if (selectedWhen === "today") return sameDay;
+        if (selectedWhen === "this_week") {
+          const start = new Date(now);
+          start.setDate(now.getDate() - now.getDay());
+          start.setHours(0, 0, 0, 0);
+          const end = new Date(start);
+          end.setDate(start.getDate() + 7);
+          return scheduled >= start && scheduled < end;
+        }
+        if (selectedWhen === "this_month") {
+          return scheduled.getFullYear() === now.getFullYear() &&
+            scheduled.getMonth() === now.getMonth();
+        }
+        return selectedWhen !== "upcoming" || scheduled >= now;
+      });
+    },
+    [searchQuery, selectedWhen],
+  );
+  const filteredActiveStays = useMemo(
+    () => filterStays(activeStays),
+    [activeStays, filterStays],
+  );
+  const filteredArchiveStays = useMemo(
+    () => filterStays(archiveStays),
+    [archiveStays, filterStays],
+  );
+
   // ORCH-0842: unified rows = calendar entries + ticket orders, sorted
   // ascending by date (soonest first; null-date entries go to the bottom).
   const unifiedActiveRows = useMemo<UnifiedRow[]>(() => {
     const rows: UnifiedRow[] = [];
     for (const entry of filteredActiveEntries) {
       const iso = entry.suggestedDates?.[0];
-      const dateStr = iso ?? (entry.date && entry.time
-        ? `${entry.date}T${entry.time}`
-        : null);
+      const dateStr = iso ??
+        (entry.date && entry.time ? `${entry.date}T${entry.time}` : null);
       const ts = dateStr ? Date.parse(dateStr) : Number.NaN;
       rows.push({
         kind: "calendar",
@@ -773,6 +934,17 @@ const CalendarTab = ({
         reservation,
       });
     }
+    for (const group of filteredActiveStays) {
+      const timestamp = stayStartMs(group);
+      rows.push({
+        kind: "stay",
+        key: `stay:${group.groupId}`,
+        sortAt: Number.isFinite(timestamp)
+          ? timestamp
+          : Number.POSITIVE_INFINITY,
+        group,
+      });
+    }
     for (const rsvp of filteredActiveRsvps) {
       const ts = rsvp.masterDateUtc
         ? Date.parse(rsvp.masterDateUtc)
@@ -790,6 +962,7 @@ const CalendarTab = ({
     filteredActiveEntries,
     filteredActiveBusinessOrders,
     activeReservations,
+    filteredActiveStays,
     filteredActiveRsvps,
   ]);
 
@@ -797,9 +970,8 @@ const CalendarTab = ({
     const rows: UnifiedRow[] = [];
     for (const entry of filteredArchiveEntries) {
       const iso = entry.suggestedDates?.[0];
-      const dateStr = iso ?? (entry.date && entry.time
-        ? `${entry.date}T${entry.time}`
-        : null);
+      const dateStr = iso ??
+        (entry.date && entry.time ? `${entry.date}T${entry.time}` : null);
       const ts = dateStr ? Date.parse(dateStr) : Number.NaN;
       rows.push({
         kind: "calendar",
@@ -828,6 +1000,17 @@ const CalendarTab = ({
         reservation,
       });
     }
+    for (const group of filteredArchiveStays) {
+      const timestamp = stayStartMs(group);
+      rows.push({
+        kind: "stay",
+        key: `stay:${group.groupId}`,
+        sortAt: Number.isFinite(timestamp)
+          ? timestamp
+          : Number.NEGATIVE_INFINITY,
+        group,
+      });
+    }
     for (const rsvp of filteredArchiveRsvps) {
       const ts = rsvp.masterDateUtc
         ? Date.parse(rsvp.masterDateUtc)
@@ -846,6 +1029,7 @@ const CalendarTab = ({
     filteredArchiveEntries,
     filteredArchiveBusinessOrders,
     archiveReservations,
+    filteredArchiveStays,
     filteredArchiveRsvps,
   ]);
 
@@ -907,10 +1091,13 @@ const CalendarTab = ({
 
   const handleProposeDateTime = async (
     date: Date,
-    dateOption: "now" | "today" | "weekend" | "custom"
+    dateOption: "now" | "today" | "weekend" | "custom",
   ) => {
     if (!entryToReschedule || !user?.id) {
-      Alert.alert(t('activity:calendarTab.rescheduleErrorTitle'), t('activity:calendarTab.rescheduleError'));
+      Alert.alert(
+        t("activity:calendarTab.rescheduleErrorTitle"),
+        t("activity:calendarTab.rescheduleError"),
+      );
       setShowProposeDateTimeModal(false);
       setEntryToReschedule(null);
       return;
@@ -932,14 +1119,17 @@ const CalendarTab = ({
         const unavailableList = results
           .filter((r) => !r.isOpen)
           .map((s) => `  • ${s.stopName} — ${s.reason}`)
-          .join('\n');
+          .join("\n");
         setShowProposeDateTimeModal(false);
         Alert.alert(
-          'Not Safe to Schedule',
+          "Not Safe to Schedule",
           `Mingla could not confirm every stop is open at the time you selected:\n\n${unavailableList}\n\nPlease choose a different time when all stops are confirmed open.`,
           [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Choose New Time', onPress: () => setShowProposeDateTimeModal(true) },
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Choose New Time",
+              onPress: () => setShowProposeDateTimeModal(true),
+            },
           ],
         );
         return;
@@ -948,7 +1138,9 @@ const CalendarTab = ({
 
     setIsScheduling(true);
     try {
-      const { CalendarService } = await import("../../services/calendarService");
+      const { CalendarService } = await import(
+        "../../services/calendarService"
+      );
       const { DeviceCalendarService } = await import(
         "../../services/deviceCalendarService"
       );
@@ -966,10 +1158,13 @@ const CalendarTab = ({
 
         if (entryToReschedule.device_calendar_event_id) {
           // Direct update by stored event ID — reliable
-          const endDate = new Date(date.getTime() + (entryToReschedule.duration_minutes || 120) * 60_000);
+          const endDate = new Date(
+            date.getTime() +
+              (entryToReschedule.duration_minutes || 120) * 60_000,
+          );
           await DeviceCalendarService.updateEventOnDeviceCalendar(
             entryToReschedule.device_calendar_event_id,
-            { startDate: date, endDate }
+            { startDate: date, endDate },
           );
         } else {
           // Fallback: delete-then-recreate (for entries without stored ID)
@@ -980,11 +1175,19 @@ const CalendarTab = ({
             : null;
 
           if (oldDate && cardData.title) {
-            await DeviceCalendarService.removeEventByTitleAndDate(cardData.title, oldDate);
+            await DeviceCalendarService.removeEventByTitleAndDate(
+              cardData.title,
+              oldDate,
+            );
             // Curated cards use "Mingla Plan: StopA → StopB" title format
             if (cardData.stops?.length > 0) {
-              const stopNames = cardData.stops.map((s: any) => s.placeName || s.title).join(' → ');
-              await DeviceCalendarService.removeEventByTitleAndDate(`Mingla Plan: ${stopNames}`, oldDate);
+              const stopNames = cardData.stops.map((s: any) =>
+                s.placeName || s.title
+              ).join(" → ");
+              await DeviceCalendarService.removeEventByTitleAndDate(
+                `Mingla Plan: ${stopNames}`,
+                oldDate,
+              );
             }
           }
 
@@ -994,28 +1197,38 @@ const CalendarTab = ({
           // the initial-schedule branch at SavedTab.tsx:1415-1420. Only this
           // no-stored-ID recreate fallback is touched — the stored-ID patch
           // branch above preserves notes and is NOT modified.
-          const isCuratedEntry = Array.isArray(cardData.stops) && cardData.stops.length > 0;
+          const isCuratedEntry = Array.isArray(cardData.stops) &&
+            cardData.stops.length > 0;
           const deviceEvent = isCuratedEntry
             ? DeviceCalendarService.createEventFromCuratedCard(
-                cardData,
-                date,
-                cardData.estimatedDurationMinutes || entryToReschedule.duration_minutes || 120,
-              )
+              cardData,
+              date,
+              cardData.estimatedDurationMinutes ||
+                entryToReschedule.duration_minutes || 120,
+            )
             : DeviceCalendarService.createEventFromCard(
-                cardData, date, entryToReschedule.duration_minutes || 120
-              );
-          const newEventId = await DeviceCalendarService.addEventToDeviceCalendar(deviceEvent);
+              cardData,
+              date,
+              entryToReschedule.duration_minutes || 120,
+            );
+          const newEventId = await DeviceCalendarService
+            .addEventToDeviceCalendar(deviceEvent);
 
           // Store the new event ID for future reschedule
           if (newEventId && entryToReschedule.id) {
             CalendarService.updateEntry(entryToReschedule.id, user!.id, {
               device_calendar_event_id: newEventId,
-            }).catch((err) => console.warn('Failed to store device calendar event ID:', err));
+            }).catch((err) =>
+              console.warn("Failed to store device calendar event ID:", err)
+            );
           }
         }
       } catch (deviceCalendarError) {
         console.warn("Failed to update device calendar:", deviceCalendarError);
-        Alert.alert(t('activity:calendarTab.noteTitle'), t('activity:calendarTab.noteCalendarNotUpdated'));
+        Alert.alert(
+          t("activity:calendarTab.noteTitle"),
+          t("activity:calendarTab.noteCalendarNotUpdated"),
+        );
       }
 
       // 3. Invalidate calendar entries query to refresh the list
@@ -1029,7 +1242,7 @@ const CalendarTab = ({
         newScheduledDate: scheduledDateISO,
         dateOption,
       });
-      logAppsFlyerEvent('experience_rescheduled', {
+      logAppsFlyerEvent("experience_rescheduled", {
         af_content_type: entryToReschedule.category,
         new_date: scheduledDateISO,
         date_option: dateOption,
@@ -1037,8 +1250,10 @@ const CalendarTab = ({
 
       // 5. Show success message
       toastManager.success(
-        t('activity:calendarTab.rescheduledSuccess', { title: entryToReschedule.title || "Experience" }),
-        3000
+        t("activity:calendarTab.rescheduledSuccess", {
+          title: entryToReschedule.title || "Experience",
+        }),
+        3000,
       );
 
       // 6. Close modal and reset state
@@ -1047,9 +1262,9 @@ const CalendarTab = ({
     } catch (error: any) {
       console.error("Error rescheduling calendar entry:", error);
       Alert.alert(
-        t('activity:calendarTab.rescheduleFailed'),
+        t("activity:calendarTab.rescheduleFailed"),
         error.message ||
-          t('activity:calendarTab.rescheduleFailedMsg')
+          t("activity:calendarTab.rescheduleFailedMsg"),
       );
       setShowProposeDateTimeModal(false);
       setEntryToReschedule(null);
@@ -1061,6 +1276,16 @@ const CalendarTab = ({
   const styles = StyleSheet.create({
     container: {
       flex: 1,
+    },
+    attentionBackdrop: {
+      flex: 1,
+      justifyContent: "flex-end",
+      backgroundColor: "rgba(0,0,0,0.45)",
+    },
+    attentionPanel: {
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      backgroundColor: "#ffffff",
     },
     listContent: {
       gap: 16,
@@ -1081,12 +1306,12 @@ const CalendarTab = ({
       overflow: "hidden",
     },
     lockedCardOverflow: {
-      overflow: 'hidden',
+      overflow: "hidden",
     },
     lockedCalendarBody: {
-      backgroundColor: '#1C1C1E',
-      flexDirection: 'row',
-      alignItems: 'center',
+      backgroundColor: "#1C1C1E",
+      flexDirection: "row",
+      alignItems: "center",
       padding: 16,
       gap: 12,
     },
@@ -1094,25 +1319,25 @@ const CalendarTab = ({
       flex: 1,
     },
     lockedCalendarTitle: {
-      color: '#fff',
+      color: "#fff",
       fontSize: 14,
-      fontWeight: '600',
+      fontWeight: "600",
     },
     lockedCalendarSubtext: {
-      color: '#9CA3AF',
+      color: "#9CA3AF",
       fontSize: 12,
       marginTop: 2,
     },
     lockedCalendarUpgrade: {
-      backgroundColor: '#f97316',
+      backgroundColor: "#f97316",
       paddingHorizontal: 14,
       paddingVertical: 8,
       borderRadius: 8,
     },
     lockedCalendarUpgradeText: {
-      color: '#fff',
+      color: "#fff",
       fontSize: 13,
-      fontWeight: '600',
+      fontWeight: "600",
     },
     cardContent: {
       padding: 16,
@@ -1795,12 +2020,13 @@ const CalendarTab = ({
     // Transform CalendarEntry to ExpandedCardData format
     const experience = entry.experience || entry;
     const ExperienceIcon = getIconComponent(
-      experience.categoryIcon || entry.categoryIcon
+      experience.categoryIcon || entry.categoryIcon,
     );
 
     // Detect curated multi-stop card
     const cardData = experience || {};
-    const isCurated = Array.isArray(cardData.stops) && cardData.stops.length > 0;
+    const isCurated = Array.isArray(cardData.stops) &&
+      cardData.stops.length > 0;
 
     const expandedCardData: ExpandedCardData = {
       id: entry.id,
@@ -1809,20 +2035,24 @@ const CalendarTab = ({
       category: experience.category || entry.category || "Experience",
       categoryIcon: ExperienceIcon,
       description: experience.description || entry.description || "",
-      fullDescription:
-        experience.fullDescription ||
+      fullDescription: experience.fullDescription ||
         experience.description ||
         entry.fullDescription ||
         entry.description ||
         "",
       image: experience.image || entry.image || "",
-      images: experience.images?.length ? experience.images
-        : entry.images?.length ? entry.images
+      images: experience.images?.length
+        ? experience.images
+        : entry.images?.length
+        ? entry.images
         : [experience.image || entry.image].filter(Boolean),
       rating: experience.rating || entry.rating || 4.5,
       reviewCount: experience.reviewCount || entry.reviewCount || 0,
       // [ORCH-0649 — INVARIANT I-NO-FABRICATED-DISPLAY-N/A] no "N/A" fabrication.
       priceRange: experience.priceRange || entry.priceRange || undefined,
+      ...canonicalDiscoveryPriceFields(
+        Object.keys(experience).length > 0 ? experience : entry,
+      ),
       distance: (experience as any).distance || "",
       travelTime: experience.travelTime || undefined,
       address: experience.address || entry.address || "",
@@ -1841,14 +2071,12 @@ const CalendarTab = ({
       },
       socialStats: experience.socialStats ||
         entry.socialStats || {
-          views: 0,
-          likes: 0,
-          saves: 0,
-          shares: 0,
-        },
-      priceTier: ((experience as any).priceTier || (entry as any).priceTier) as ExpandedCardData['priceTier'],
-      location:
-        (experience as any).location ||
+        views: 0,
+        likes: 0,
+        saves: 0,
+        shares: 0,
+      },
+      location: (experience as any).location ||
         ((experience as any).lat && (experience as any).lng
           ? { lat: (experience as any).lat, lng: (experience as any).lng }
           : undefined),
@@ -1861,7 +2089,7 @@ const CalendarTab = ({
       picnicData: (experience as any).picnicData,
       // Curated fields — pass through if present
       ...(isCurated && {
-        cardType: 'curated' as const,
+        cardType: "curated" as const,
         stops: cardData.stops,
         tagline: cardData.tagline,
         pairingKey: cardData.pairingKey,
@@ -1879,7 +2107,7 @@ const CalendarTab = ({
     // ORCH-0408 Phase 4: Record expand — counter + user interaction log (fire-and-forget)
     recordCardExpand((entry as any).card_id || entry.id, {
       category: experience.category || (entry as any).category,
-      priceTier: (experience as any).priceTier || null,
+      priceTier: isCurated ? (experience as any).priceTier || null : null,
       isCurated: !!(experience as any).stops,
     });
 
@@ -1910,10 +2138,9 @@ const CalendarTab = ({
     // isVideoUrl/EventCoverMedia, so pass the cover URL regardless of type
     // (image OR video); fall back to the profile photo. (Earlier this dropped
     // video covers → the "no images" placeholder.)
-    const image =
-      reservation.brand_cover_url || reservation.brand_photo_url || "";
-    const hasCoords =
-      typeof reservation.brand_lat === "number" &&
+    const image = reservation.brand_cover_url || reservation.brand_photo_url ||
+      "";
+    const hasCoords = typeof reservation.brand_lat === "number" &&
       typeof reservation.brand_lng === "number";
     const startMs = Date.parse(reservation.reserved_for);
 
@@ -1941,21 +2168,30 @@ const CalendarTab = ({
       highlights: [],
       tags: [],
       matchScore: 0,
-      matchFactors: { location: 0, budget: 0, category: 0, time: 0, popularity: 0 },
+      matchFactors: {
+        location: 0,
+        budget: 0,
+        category: 0,
+        time: 0,
+        popularity: 0,
+      },
       socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
       priceTier: undefined,
       location: hasCoords
-        ? { lat: reservation.brand_lat as number, lng: reservation.brand_lng as number }
+        ? {
+          lat: reservation.brand_lat as number,
+          lng: reservation.brand_lng as number,
+        }
         : undefined,
       selectedDateTime: Number.isFinite(startMs)
         ? new Date(startMs)
         : new Date(),
     };
 
-    const cancellable =
-      Number.isFinite(startMs) &&
+    const cancellable = Number.isFinite(startMs) &&
       startMs > Date.now() &&
-      (reservation.status === "confirmed" || reservation.status === "requested");
+      (reservation.status === "confirmed" ||
+        reservation.status === "requested");
 
     const pass: ReservationPass = {
       reservationId: reservation.id,
@@ -1969,13 +2205,15 @@ const CalendarTab = ({
       guestNotes: reservation.guest_notes,
       venueName: reservation.brand_name,
       address: reservation.brand_address,
-      confirmationRef: `RES-${reservation.id.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      confirmationRef: `RES-${
+        reservation.id.replace(/-/g, "").slice(0, 6).toUpperCase()
+      }`,
       cancellable,
       onCancel: cancellable
         ? () => {
-            handleCloseExpandedModal();
-            handleCancelReservation(reservation);
-          }
+          handleCloseExpandedModal();
+          handleCancelReservation(reservation);
+        }
         : undefined,
     };
 
@@ -1992,7 +2230,7 @@ const CalendarTab = ({
 
   const handlePurchaseFromModal = (
     card: ExpandedCardData,
-    bookingOption: any
+    bookingOption: any,
   ) => {
     // Handle purchase if needed
     // Could open external link or show purchase flow
@@ -2015,25 +2253,26 @@ const CalendarTab = ({
 
     const formattedDate = scheduledDate
       ? scheduledDate.toLocaleDateString("en-US", {
-          weekday: "short",
-          month: "short",
-          day: "numeric",
-        })
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+      })
       : "TBD";
 
     const formattedTime = scheduledDate
       ? scheduledDate.toLocaleTimeString("en-US", {
-          hour: "numeric",
-          minute: "2-digit",
-          hour12: true,
-        })
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      })
       : "";
 
     // Get subtitle/organizer - could be from entry or experience
-    const subtitle =
-      (entry as any).organizer ||
+    const subtitle = (entry as any).organizer ||
       (entry.experience as any)?.organizer ||
-      getReadableCategoryName(entry.experience?.category || entry.category || "") ||
+      getReadableCategoryName(
+        entry.experience?.category || entry.category || "",
+      ) ||
       "Experience";
 
     // Curated cards are viewable by all tiers — no locked state needed
@@ -2087,12 +2326,16 @@ const CalendarTab = ({
                   <Icon name="calendar" size={16} color="#eb7825" />
                   <Text style={styles.eventDetailText}>{formattedDate}</Text>
                 </View>
-                {formattedTime ? (
-                  <View style={styles.eventDetailRow}>
-                    <Icon name="time" size={16} color="#eb7825" />
-                    <Text style={styles.eventDetailText}>{formattedTime}</Text>
-                  </View>
-                ) : null}
+                {formattedTime
+                  ? (
+                    <View style={styles.eventDetailRow}>
+                      <Icon name="time" size={16} color="#eb7825" />
+                      <Text style={styles.eventDetailText}>
+                        {formattedTime}
+                      </Text>
+                    </View>
+                  )
+                  : null}
                 {(() => {
                   // ORCH-1019 F-5: curated multi-stop entries surface EVERY
                   // stop's address inline (numbered rail), so the user can
@@ -2100,8 +2343,11 @@ const CalendarTab = ({
                   // expanding each stop. Non-curated entries keep the existing
                   // single location row unchanged (no regression). Built to
                   // DESIGN_ORCH-1019_F5_CALENDAR_STOP_ADDRESSES.md.
-                  const railStops = (entry.experience as any)?.stops as any[] | undefined;
-                  const isCuratedRail = Array.isArray(railStops) && railStops.length > 0;
+                  const railStops = (entry.experience as any)?.stops as
+                    | any[]
+                    | undefined;
+                  const isCuratedRail = Array.isArray(railStops) &&
+                    railStops.length > 0;
                   if (!isCuratedRail) {
                     return (
                       <View style={styles.eventDetailRow}>
@@ -2109,7 +2355,7 @@ const CalendarTab = ({
                         <Text style={styles.eventDetailText}>
                           {entry.experience?.address ||
                             entry.address ||
-                            t('activity:calendarTab.locationTBD')}
+                            t("activity:calendarTab.locationTBD")}
                         </Text>
                       </View>
                     );
@@ -2117,62 +2363,92 @@ const CalendarTab = ({
                   return (
                     <View style={styles.curatedStopRail}>
                       {railStops.map((stop, idx) => {
-                        const stopNum =
-                          typeof stop?.stopNumber === 'number' && stop.stopNumber >= 1
-                            ? stop.stopNumber
-                            : idx + 1;
-                        const label = typeof stop?.stopLabel === 'string' ? stop.stopLabel : '';
+                        const stopNum = typeof stop?.stopNumber === "number" &&
+                            stop.stopNumber >= 1
+                          ? stop.stopNumber
+                          : idx + 1;
+                        const label = typeof stop?.stopLabel === "string"
+                          ? stop.stopLabel
+                          : "";
                         const placeName =
-                          (typeof stop?.placeName === 'string' && stop.placeName) ||
-                          (typeof stop?.title === 'string' && stop.title) ||
-                          '';
-                        const addr =
-                          typeof stop?.address === 'string' ? stop.address.trim() : '';
+                          (typeof stop?.placeName === "string" &&
+                            stop.placeName) ||
+                          (typeof stop?.title === "string" && stop.title) ||
+                          "";
+                        const addr = typeof stop?.address === "string"
+                          ? stop.address.trim()
+                          : "";
                         const hasAddr = addr.length > 0;
                         return (
                           <View
                             key={`stop-${stopNum}-${idx}`}
                             style={styles.curatedStopRow}
                             accessibilityRole="text"
-                            accessibilityLabel={`Stop ${stopNum}${label ? `, ${label}` : ''}${placeName ? `, ${placeName}` : ''}, ${hasAddr ? addr : t('activity:calendarTab.locationTBD')}`}
+                            accessibilityLabel={`Stop ${stopNum}${
+                              label ? `, ${label}` : ""
+                            }${placeName ? `, ${placeName}` : ""}, ${
+                              hasAddr
+                                ? addr
+                                : t("activity:calendarTab.locationTBD")
+                            }`}
                           >
                             <View style={styles.curatedStopBadgeCol}>
                               <View style={styles.curatedStopBadge}>
-                                <Text style={styles.curatedStopBadgeText}>{stopNum}</Text>
+                                <Text style={styles.curatedStopBadgeText}>
+                                  {stopNum}
+                                </Text>
                               </View>
-                              {idx < railStops.length - 1 ? (
-                                <View
-                                  style={styles.curatedStopConnector}
-                                  importantForAccessibility="no"
-                                  accessibilityElementsHidden
-                                />
-                              ) : null}
+                              {idx < railStops.length - 1
+                                ? (
+                                  <View
+                                    style={styles.curatedStopConnector}
+                                    importantForAccessibility="no"
+                                    accessibilityElementsHidden
+                                  />
+                                )
+                                : null}
                             </View>
                             <View style={styles.curatedStopTextCol}>
-                              <Text style={styles.curatedStopMeta} numberOfLines={1}>
-                                {label ? (
-                                  <Text style={styles.curatedStopLabel}>
-                                    {label.toUpperCase()}
-                                  </Text>
-                                ) : null}
-                                {label && placeName ? (
-                                  <Text style={styles.curatedStopMiddot}> · </Text>
-                                ) : null}
-                                <Text style={styles.curatedStopName}>{placeName}</Text>
+                              <Text
+                                style={styles.curatedStopMeta}
+                                numberOfLines={1}
+                              >
+                                {label
+                                  ? (
+                                    <Text style={styles.curatedStopLabel}>
+                                      {label.toUpperCase()}
+                                    </Text>
+                                  )
+                                  : null}
+                                {label && placeName
+                                  ? (
+                                    <Text style={styles.curatedStopMiddot}>
+                                      ·
+                                    </Text>
+                                  )
+                                  : null}
+                                <Text style={styles.curatedStopName}>
+                                  {placeName}
+                                </Text>
                               </Text>
-                              {hasAddr ? (
-                                <Text
-                                  style={styles.curatedStopAddress}
-                                  numberOfLines={2}
-                                  ellipsizeMode="tail"
-                                >
-                                  {addr}
-                                </Text>
-                              ) : (
-                                <Text style={styles.curatedStopAddressTBD} numberOfLines={1}>
-                                  {t('activity:calendarTab.locationTBD')}
-                                </Text>
-                              )}
+                              {hasAddr
+                                ? (
+                                  <Text
+                                    style={styles.curatedStopAddress}
+                                    numberOfLines={2}
+                                    ellipsizeMode="tail"
+                                  >
+                                    {addr}
+                                  </Text>
+                                )
+                                : (
+                                  <Text
+                                    style={styles.curatedStopAddressTBD}
+                                    numberOfLines={1}
+                                  >
+                                    {t("activity:calendarTab.locationTBD")}
+                                  </Text>
+                                )}
                             </View>
                           </View>
                         );
@@ -2182,14 +2458,18 @@ const CalendarTab = ({
                 })()}
               </View>
 
-              {/* ORCH-0908: Source Badge — uses collaborationBadge styles for collab entries
+              {
+                /* ORCH-0908: Source Badge — uses collaborationBadge styles for collab entries
                   (previously hardcoded soloBadge regardless of source, leaving the
-                  collaborationBadge + collaborationText styles at lines 819-826 as dead code). */}
+                  collaborationBadge + collaborationText styles at lines 819-826 as dead code). */
+              }
               <View style={styles.statusIndicators}>
                 <View
                   style={[
                     styles.sessionBadge,
-                    entry.source === "solo" ? styles.soloBadge : styles.collaborationBadge,
+                    entry.source === "solo"
+                      ? styles.soloBadge
+                      : styles.collaborationBadge,
                   ]}
                 >
                   <Icon
@@ -2200,11 +2480,13 @@ const CalendarTab = ({
                   <Text
                     style={[
                       styles.sourceText,
-                      entry.source === "solo" ? styles.soloText : styles.collaborationText,
+                      entry.source === "solo"
+                        ? styles.soloText
+                        : styles.collaborationText,
                     ]}
                   >
                     {entry.source === "solo"
-                      ? t('activity:calendarTab.soloDiscovery')
+                      ? t("activity:calendarTab.soloDiscovery")
                       : `${entry.sessionName}`}
                   </Text>
                 </View>
@@ -2219,7 +2501,9 @@ const CalendarTab = ({
             <View style={styles.purchaseCard}>
               <View style={styles.purchaseHeader}>
                 <Icon name="bag" size={16} color="#059669" />
-                <Text style={styles.purchaseTitle}>{t('activity:calendarTab.purchaseDetails')}</Text>
+                <Text style={styles.purchaseTitle}>
+                  {t("activity:calendarTab.purchaseDetails")}
+                </Text>
               </View>
               <View style={styles.purchaseDetailsList}>
                 <View style={styles.purchaseDetailRow}>
@@ -2235,7 +2519,7 @@ const CalendarTab = ({
                       entry.purchaseOption.price,
                       entry.purchaseOption.currency ||
                         accountPreferences?.currency ||
-                        "USD"
+                        "USD",
                     )}
                   </Text>
                 </View>
@@ -2249,30 +2533,30 @@ const CalendarTab = ({
                 )}
                 {entry.purchaseOption.includes &&
                   entry.purchaseOption.includes.length > 0 && (
-                    <View style={styles.purchaseFeatures}>
-                      <Text style={styles.purchaseFeaturesTitle}>
-                        Includes:
-                      </Text>
-                      <View style={styles.purchaseFeaturesList}>
-                        {entry.purchaseOption.includes
-                          .slice(0, 3)
-                          .map((item: string, index: number) => (
-                            <View key={index} style={styles.purchaseFeature}>
-                              <Text style={styles.purchaseFeatureText}>
-                                {item}
-                              </Text>
-                            </View>
-                          ))}
-                        {entry.purchaseOption.includes.length > 3 && (
-                          <View style={styles.purchaseFeature}>
+                  <View style={styles.purchaseFeatures}>
+                    <Text style={styles.purchaseFeaturesTitle}>
+                      Includes:
+                    </Text>
+                    <View style={styles.purchaseFeaturesList}>
+                      {entry.purchaseOption.includes
+                        .slice(0, 3)
+                        .map((item: string, index: number) => (
+                          <View key={index} style={styles.purchaseFeature}>
                             <Text style={styles.purchaseFeatureText}>
-                              +{entry.purchaseOption.includes.length - 3} more
+                              {item}
                             </Text>
                           </View>
-                        )}
-                      </View>
+                        ))}
+                      {entry.purchaseOption.includes.length > 3 && (
+                        <View style={styles.purchaseFeature}>
+                          <Text style={styles.purchaseFeatureText}>
+                            +{entry.purchaseOption.includes.length - 3} more
+                          </Text>
+                        </View>
+                      )}
                     </View>
-                  )}
+                  </View>
+                )}
               </View>
             </View>
           </View>
@@ -2292,7 +2576,9 @@ const CalendarTab = ({
               style={styles.proposeDateButton}
             >
               <Icon name="calendar" size={18} color="white" />
-              <Text style={styles.proposeDateButtonText}>{t('activity:calendarTab.reschedule')}</Text>
+              <Text style={styles.proposeDateButtonText}>
+                {t("activity:calendarTab.reschedule")}
+              </Text>
             </TouchableOpacity>
 
             {/* Share Button - Small circular */}
@@ -2315,11 +2601,9 @@ const CalendarTab = ({
               style={styles.deleteButton}
               disabled={removingEntryId === entry.id}
             >
-              {removingEntryId === entry.id ? (
-                <ActivityIndicator size="small" color="#ef4444" />
-              ) : (
-                <Icon name="trash-outline" size={18} color="#ef4444" />
-              )}
+              {removingEntryId === entry.id
+                ? <ActivityIndicator size="small" color="#ef4444" />
+                : <Icon name="trash-outline" size={18} color="#ef4444" />}
             </TouchableOpacity>
           </View>
         </View>
@@ -2345,16 +2629,14 @@ const CalendarTab = ({
                     <>
                       <TouchableOpacity
                         onPress={() =>
-                          prevImage(entry.id, entry.experience.images.length)
-                        }
+                          prevImage(entry.id, entry.experience.images.length)}
                         style={[styles.imageNavigation, styles.leftNav]}
                       >
                         <Icon name="chevron-back" size={16} color="white" />
                       </TouchableOpacity>
                       <TouchableOpacity
                         onPress={() =>
-                          nextImage(entry.id, entry.experience.images.length)
-                        }
+                          nextImage(entry.id, entry.experience.images.length)}
                         style={[styles.imageNavigation, styles.rightNav]}
                       >
                         <Icon
@@ -2377,7 +2659,7 @@ const CalendarTab = ({
                                   : styles.inactiveIndicator,
                               ]}
                             />
-                          )
+                          ),
                         )}
                       </View>
                     </>
@@ -2399,21 +2681,21 @@ const CalendarTab = ({
 
               {entry.experience?.highlights &&
                 entry.experience.highlights.length > 0 && (
-                  <View style={styles.highlightsContainer}>
-                    <Text style={styles.sectionTitle}>Highlights</Text>
-                    <View style={styles.highlightsList}>
-                      {entry.experience.highlights.map(
-                        (highlight: string, index: number) => (
-                          <View key={index} style={styles.highlightTag}>
-                            <Text style={styles.highlightText}>
-                              {highlight}
-                            </Text>
-                          </View>
-                        )
-                      )}
-                    </View>
+                <View style={styles.highlightsContainer}>
+                  <Text style={styles.sectionTitle}>Highlights</Text>
+                  <View style={styles.highlightsList}>
+                    {entry.experience.highlights.map(
+                      (highlight: string, index: number) => (
+                        <View key={index} style={styles.highlightTag}>
+                          <Text style={styles.highlightText}>
+                            {highlight}
+                          </Text>
+                        </View>
+                      ),
+                    )}
                   </View>
-                )}
+                </View>
+              )}
 
               {/* Date & Time Details */}
               <View style={styles.scheduleDetails}>
@@ -2423,14 +2705,14 @@ const CalendarTab = ({
                   <Text style={styles.scheduleText}>
                     {entry.suggestedDates?.[0]
                       ? new Date(entry.suggestedDates[0]).toLocaleDateString(
-                          "en-US",
-                          {
-                            weekday: "long",
-                            year: "numeric",
-                            month: "long",
-                            day: "numeric",
-                          }
-                        )
+                        "en-US",
+                        {
+                          weekday: "long",
+                          year: "numeric",
+                          month: "long",
+                          day: "numeric",
+                        },
+                      )
                       : "Date to be determined"}
                   </Text>
                 </View>
@@ -2439,13 +2721,13 @@ const CalendarTab = ({
                   <Text style={styles.scheduleText}>
                     {entry.suggestedDates?.[0]
                       ? new Date(entry.suggestedDates[0]).toLocaleTimeString(
-                          "en-US",
-                          {
-                            hour: "numeric",
-                            minute: "2-digit",
-                            hour12: true,
-                          }
-                        )
+                        "en-US",
+                        {
+                          hour: "numeric",
+                          minute: "2-digit",
+                          hour12: true,
+                        },
+                      )
                       : "Time to be determined"}
                   </Text>
                 </View>
@@ -2524,12 +2806,14 @@ const CalendarTab = ({
         </View>
         <View style={styles.emptyStateTextContainer}>
           <Text style={styles.emptyStateTitle}>
-            {isActive ? t('activity:calendarTab.emptyActiveTitle') : t('activity:calendarTab.emptyArchiveTitle')}
+            {isActive
+              ? t("activity:calendarTab.emptyActiveTitle")
+              : t("activity:calendarTab.emptyArchiveTitle")}
           </Text>
           <Text style={styles.emptyStateSubtitle}>
             {isActive
-              ? t('activity:calendarTab.emptyActiveSubtitle')
-              : t('activity:calendarTab.emptyArchiveSubtitle')}
+              ? t("activity:calendarTab.emptyActiveSubtitle")
+              : t("activity:calendarTab.emptyArchiveSubtitle")}
           </Text>
         </View>
       </View>
@@ -2555,10 +2839,13 @@ const CalendarTab = ({
       rating: entry.experience?.rating || entry.rating,
       reviewCount: entry.experience?.reviewCount || entry.reviewCount,
       priceRange: entry.experience?.priceRange || entry.priceRange,
+      ...canonicalDiscoveryPriceFields(
+        (entry.experience || entry) as Record<string, unknown>,
+      ),
       travelTime: entry.experience?.travelTime,
       description: entry.experience?.description || entry.description,
-      fullDescription:
-        entry.experience?.fullDescription || entry.fullDescription,
+      fullDescription: entry.experience?.fullDescription ||
+        entry.fullDescription,
       address: entry.experience?.address || entry.address,
       openingHours: entry.experience?.openingHours,
       highlights: entry.experience?.highlights || entry.highlights,
@@ -2582,7 +2869,9 @@ const CalendarTab = ({
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#eb7825" />
-        <Text style={styles.loadingText}>{t('activity:calendarTab.loadingCalendar')}</Text>
+        <Text style={styles.loadingText}>
+          {t("activity:calendarTab.loadingCalendar")}
+        </Text>
       </View>
     );
   }
@@ -2595,7 +2884,13 @@ const CalendarTab = ({
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor="#999" />}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor="#999"
+          />
+        }
       >
         {/* Search & Filters */}
         <Animated.View
@@ -2616,8 +2911,10 @@ const CalendarTab = ({
           />
         </Animated.View>
 
-        {/* ORCH-0842: standalone "Tickets" block removed. Business orders
-            now sort-merge into the Active + Archive accordions below. */}
+        {
+          /* ORCH-0842: standalone "Tickets" block removed. Business orders
+            now sort-merge into the Active + Archive accordions below. */
+        }
 
         {/* Active Section — unified calendar entries + business-event tickets */}
         <TouchableOpacity
@@ -2627,22 +2924,21 @@ const CalendarTab = ({
               prev.includes("active")
                 ? prev.filter((i) => i !== "active")
                 : [...prev, "active"]
-            )
-          }
+            )}
           activeOpacity={0.7}
         >
           <View style={styles.accordionTitleContainer}>
-            <Text style={styles.accordionTitle}>{t('activity:calendarTab.active')}</Text>
+            <Text style={styles.accordionTitle}>
+              {t("activity:calendarTab.active")}
+            </Text>
             <Text style={styles.accordionCount}>
               ({unifiedActiveRows.length})
             </Text>
           </View>
           <Icon
-            name={
-              expandedAccordionItems.includes("active")
-                ? "chevron-down"
-                : "chevron-forward"
-            }
+            name={expandedAccordionItems.includes("active")
+              ? "chevron-down"
+              : "chevron-forward"}
             size={20}
             color="#9ca3af"
           />
@@ -2653,50 +2949,59 @@ const CalendarTab = ({
             {unifiedActiveRows.length === 0
               ? renderEmptyComponent("active")
               : unifiedActiveRows.map((row) => {
-                  const animation = getCardAnimation(row.key);
-                  if (row.kind === "calendar") {
-                    return (
-                      <Animated.View
-                        key={row.key}
-                        style={[
-                          styles.cardWrapper,
-                          {
-                            opacity: animation.opacity,
-                            transform: [{ translateY: animation.slide }],
-                          },
-                        ]}
-                      >
-                        {renderCalendarEntry({ item: row.entry })}
-                      </Animated.View>
-                    );
-                  }
-                  if (row.kind === "reservation") {
-                    return (
-                      <ReservationCalendarRow
-                        key={row.key}
-                        reservation={row.reservation}
-                        animation={animation}
-                        onPress={handleReservationPress}
-                      />
-                    );
-                  }
-                  if (row.kind === "rsvp") {
-                    return (
-                      <RsvpCalendarRow
-                        key={row.key}
-                        row={row.rsvp}
-                        animation={animation}
-                      />
-                    );
-                  }
+                const animation = getCardAnimation(row.key);
+                if (row.kind === "calendar") {
                   return (
-                    <BusinessEventCalendarRow
+                    <Animated.View
                       key={row.key}
-                      entry={row.row}
+                      style={[
+                        styles.cardWrapper,
+                        {
+                          opacity: animation.opacity,
+                          transform: [{ translateY: animation.slide }],
+                        },
+                      ]}
+                    >
+                      {renderCalendarEntry({ item: row.entry })}
+                    </Animated.View>
+                  );
+                }
+                if (row.kind === "reservation") {
+                  return (
+                    <ReservationCalendarRow
+                      key={row.key}
+                      reservation={row.reservation}
+                      animation={animation}
+                      onPress={handleReservationPress}
+                    />
+                  );
+                }
+                if (row.kind === "stay") {
+                  return (
+                    <StayCalendarRow
+                      key={row.key}
+                      group={row.group}
                       animation={animation}
                     />
                   );
-                })}
+                }
+                if (row.kind === "rsvp") {
+                  return (
+                    <RsvpCalendarRow
+                      key={row.key}
+                      row={row.rsvp}
+                      animation={animation}
+                    />
+                  );
+                }
+                return (
+                  <BusinessEventCalendarRow
+                    key={row.key}
+                    entry={row.row}
+                    animation={animation}
+                  />
+                );
+              })}
           </View>
         )}
 
@@ -2708,22 +3013,21 @@ const CalendarTab = ({
               prev.includes("archive")
                 ? prev.filter((i) => i !== "archive")
                 : [...prev, "archive"]
-            )
-          }
+            )}
           activeOpacity={0.7}
         >
           <View style={styles.accordionTitleContainer}>
-            <Text style={styles.accordionTitle}>{t('activity:calendarTab.archives')}</Text>
+            <Text style={styles.accordionTitle}>
+              {t("activity:calendarTab.archives")}
+            </Text>
             <Text style={styles.accordionCount}>
               ({unifiedArchiveRows.length})
             </Text>
           </View>
           <Icon
-            name={
-              expandedAccordionItems.includes("archive")
-                ? "chevron-down"
-                : "chevron-forward"
-            }
+            name={expandedAccordionItems.includes("archive")
+              ? "chevron-down"
+              : "chevron-forward"}
             size={20}
             color="#9ca3af"
           />
@@ -2734,50 +3038,59 @@ const CalendarTab = ({
             {unifiedArchiveRows.length === 0
               ? renderEmptyComponent("archive")
               : unifiedArchiveRows.map((row) => {
-                  const animation = getCardAnimation(row.key);
-                  if (row.kind === "calendar") {
-                    return (
-                      <Animated.View
-                        key={row.key}
-                        style={[
-                          styles.cardWrapper,
-                          {
-                            opacity: animation.opacity,
-                            transform: [{ translateY: animation.slide }],
-                          },
-                        ]}
-                      >
-                        {renderCalendarEntry({ item: row.entry })}
-                      </Animated.View>
-                    );
-                  }
-                  if (row.kind === "reservation") {
-                    return (
-                      <ReservationCalendarRow
-                        key={row.key}
-                        reservation={row.reservation}
-                        animation={animation}
-                        onPress={handleReservationPress}
-                      />
-                    );
-                  }
-                  if (row.kind === "rsvp") {
-                    return (
-                      <RsvpCalendarRow
-                        key={row.key}
-                        row={row.rsvp}
-                        animation={animation}
-                      />
-                    );
-                  }
+                const animation = getCardAnimation(row.key);
+                if (row.kind === "calendar") {
                   return (
-                    <BusinessEventCalendarRow
+                    <Animated.View
                       key={row.key}
-                      entry={row.row}
+                      style={[
+                        styles.cardWrapper,
+                        {
+                          opacity: animation.opacity,
+                          transform: [{ translateY: animation.slide }],
+                        },
+                      ]}
+                    >
+                      {renderCalendarEntry({ item: row.entry })}
+                    </Animated.View>
+                  );
+                }
+                if (row.kind === "reservation") {
+                  return (
+                    <ReservationCalendarRow
+                      key={row.key}
+                      reservation={row.reservation}
+                      animation={animation}
+                      onPress={handleReservationPress}
+                    />
+                  );
+                }
+                if (row.kind === "stay") {
+                  return (
+                    <StayCalendarRow
+                      key={row.key}
+                      group={row.group}
                       animation={animation}
                     />
                   );
-                })}
+                }
+                if (row.kind === "rsvp") {
+                  return (
+                    <RsvpCalendarRow
+                      key={row.key}
+                      row={row.rsvp}
+                      animation={animation}
+                    />
+                  );
+                }
+                return (
+                  <BusinessEventCalendarRow
+                    key={row.key}
+                    entry={row.row}
+                    animation={animation}
+                  />
+                );
+              })}
           </View>
         )}
         {keyboardSpacerHeight > 0 && (
@@ -2795,16 +3108,14 @@ const CalendarTab = ({
             setIsScheduling(false);
           }}
           card={entryToCard(entryToReschedule)}
-          isCurated={
-            Array.isArray((entryToReschedule.experience as any)?.stops) &&
-            (entryToReschedule.experience as any).stops.length > 0
-          }
-          currentScheduledDate={
-            entryToReschedule.suggestedDates?.[0] ||
+          isCurated={Array.isArray(
+            (entryToReschedule.experience as any)?.stops,
+          ) &&
+            (entryToReschedule.experience as any).stops.length > 0}
+          currentScheduledDate={entryToReschedule.suggestedDates?.[0] ||
             (entryToReschedule.date && entryToReschedule.time
               ? `${entryToReschedule.date}T${entryToReschedule.time}`
-              : null)
-          }
+              : null)}
           onProposeDateTime={handleProposeDateTime}
           isScheduling={isScheduling}
         />
@@ -2823,13 +3134,13 @@ const CalendarTab = ({
           onShare={handleShareFromModal}
           userPreferences={userPreferences}
           isSaved={true}
-          currentMode={
-            calendarEntries.find((e) => e.id === selectedCardForExpansion.id)
+          currentMode={calendarEntries.find((e) =>
+              e.id === selectedCardForExpansion.id
+            )
               ?.source === "solo"
-              ? "solo"
-              : "collaboration"
-          }
-          canAccessCurated={canAccess('curated_cards')}
+            ? "solo"
+            : "collaboration"}
+          canAccessCurated={canAccess("curated_cards")}
           onPaywallRequired={() => {
             handleCloseExpandedModal();
             setShowLockedPaywall(true);
@@ -2840,9 +3151,57 @@ const CalendarTab = ({
       <CustomPaywallScreen
         isVisible={showLockedPaywall}
         onClose={() => setShowLockedPaywall(false)}
-        userId={user?.id ?? ''}
+        userId={user?.id ?? ""}
         feature="curated_cards"
       />
+      <Modal
+        visible={attentionRefundId !== null}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setAttentionRefundId(null)}
+      >
+        <Pressable
+          style={styles.attentionBackdrop}
+          onPress={() => setAttentionRefundId(null)}
+        >
+          <Pressable style={styles.attentionPanel} onPress={() => undefined}>
+            <SourceRefundAttentionSheet
+              submitting={attentionSubmitting}
+              loadingBanks={attentionBanksLoading}
+              banks={attentionBanks}
+              error={attentionError}
+              deliveryParked={attentionDeliveryParked}
+              onRetryBanks={() => void loadAttentionBanks()}
+              onSubmit={(details) => {
+                if (!attentionRefundId) return;
+                setAttentionSubmitting(true);
+                setAttentionError(null);
+                void supabase.functions.invoke("source-refund-attention", {
+                  body: {
+                    mode: "submit_paystack_details",
+                    refundId: attentionRefundId,
+                    currency: "NGN",
+                    ...details,
+                  },
+                }).then(({ error }) => {
+                  if (error) {
+                    setAttentionError(
+                      "We couldn't submit those details. Check them and try again.",
+                    );
+                    return;
+                  }
+                  setAttentionRefundId(null);
+                  if (user?.id) {
+                    void queryClient.invalidateQueries({
+                      queryKey: myReservationsKeys.byUser(user.id),
+                    });
+                  }
+                }).finally(() => setAttentionSubmitting(false));
+              }}
+            />
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 };

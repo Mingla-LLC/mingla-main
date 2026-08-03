@@ -30,6 +30,7 @@ import type {
   SenderResult,
 } from "./adConversionFire.ts";
 import { resolveCapiToken } from "./capiTokens.ts";
+import { resolveRuntimeString } from "./runtimeConfig.ts";
 
 // Pinned per A2-6 (v25.0 shipped 2026-02-18; v21.0 is stale). Overridable by the
 // same META_API_VERSION env the ad-engine adapter (meta.ts) already reads.
@@ -38,7 +39,7 @@ const META_GRAPH_BASE = "https://graph.facebook.com";
 const DEFAULT_TIMEOUT_MS = 8_000;
 
 function metaApiVersion(getToken: (n: string) => string | undefined): string {
-  const v = getToken("META_API_VERSION");
+  const v = resolveRuntimeString("meta_api_version", "META_API_VERSION", getToken);
   return v && v.trim() ? v.trim() : META_DEFAULT_API_VERSION;
 }
 

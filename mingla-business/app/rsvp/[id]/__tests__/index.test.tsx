@@ -7,9 +7,9 @@
  *   - KEEP: hero/cover, status pill, date·venue facts, "N going" headcount,
  *     a Guests link → /rsvp/[id]/guests, Edit → /rsvp/[id]/edit, Share +
  *     public-page link /e/{brandSlug}/{eventSlug}.
- *   - DROP: revenue card, ticket types, scan/scanners/orders/door/
- *     reconciliation/blasts/group-chat tiles, activity feed, end-sales/cancel,
- *     EventManageMenu — anything reading event.tickets or revenue.
+ *   - DROP: revenue card, ticket types, ticket-order/door/reconciliation tiles,
+ *     activity feed, end-sales/cancel, and EventManageMenu — anything reading
+ *     event.tickets or revenue. RSVP admission/scanner controls are retained.
  *   - DATA HOOK (F-2): the going-count is sourced from
  *     useBusinessEventsForBrand (the Hub LIST query), NOT from
  *     fetchBusinessEventById (which zeroes rsvpGoingCount).
@@ -91,9 +91,17 @@ describe("ORCH-1150-R2 D-4 — RSVP host dashboard exists + is RSVP-tailored", (
     expect(source).not.toContain("event.tickets");
   });
 
-  test("DROP: NO scan / scanners / orders / door / reconciliation tiles", () => {
+  test("KEEP: RSVP admission controls; DROP paid-ticket/order/door/reconciliation tiles", () => {
+    expect(source).toContain('label="Scan guests"');
+    expect(source).toContain('label="Guests"');
+    expect(source).toContain('label="Scanners"');
+    expect(source.indexOf('label="Scan guests"')).toBeLessThan(
+      source.indexOf('label="Guests"'),
+    );
+    expect(source.indexOf('label="Guests"')).toBeLessThan(
+      source.indexOf('label="Scanners"'),
+    );
     expect(source).not.toContain("Scan tickets");
-    expect(source).not.toContain("Scanners");
     expect(source).not.toContain('label="Orders"');
     expect(source).not.toContain("Door Sales");
     expect(source).not.toContain("ReconciliationCtaTile");

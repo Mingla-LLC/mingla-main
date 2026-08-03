@@ -39,18 +39,41 @@ async function proveFullRefundPersistenceRecovery(
   let providerVisible = false;
   const firstManifest = { is_full_refund: true, amount_cents: 50_000 };
   const replayManifest = { is_full_refund: true, amount_cents: 50_000 };
+  const transactionId = surface === "buyer" ? 1175711 : 1175722;
+  const providerCalls: string[] = [];
 
-  globalThis.fetch = ((_input: string | URL | Request, init?: RequestInit) => {
+  globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
     const method = init?.method ?? "GET";
+    providerCalls.push(`${method} ${url}`);
+    if (url.includes(`/transaction/verify/${transaction}`)) {
+      return Promise.resolve(response({
+        status: true,
+        data: {
+          id: transactionId,
+          reference: transaction,
+          status: "success",
+          currency: "NGN",
+          amount: firstManifest.amount_cents,
+        },
+      }));
+    }
     if (method === "GET") {
+      assert(
+        url.includes(
+          `/refund?transaction=${transactionId}&perPage=100`,
+        ),
+        `${surface} did not reconcile by numeric transaction ID`,
+      );
       return Promise.resolve(response({
         status: true,
         data: providerVisible
           ? [{
             id: `${surface}-refund-provider-id`,
-            amount: 0,
+            amount: firstManifest.amount_cents,
             status: "processed",
             merchant_note: merchantNote,
+            transaction: transactionId,
           }]
           : [],
       }));
@@ -126,6 +149,15 @@ async function proveFullRefundPersistenceRecovery(
     assert(
       postBodies[0].merchant_note === merchantNote,
       `${surface} changed its immutable merchant note`,
+    );
+    assert(
+      providerCalls.length === 5 &&
+        providerCalls[0].startsWith("GET ") &&
+        providerCalls[1].startsWith("GET ") &&
+        providerCalls[2].startsWith("POST ") &&
+        providerCalls[3].startsWith("GET ") &&
+        providerCalls[4].startsWith("GET "),
+      `${surface} did not preserve verify/list/POST then verify/list replay order`,
     );
   } finally {
     globalThis.fetch = originalFetch;

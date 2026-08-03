@@ -7,15 +7,17 @@
 //   - A representative slug per taxonomy (party / vibe / music) → canonical label.
 //   - An UNKNOWN slug → Title-Case fallback (every word capitalized), never raw kebab.
 //   - Empty string → empty string (no throw).
-//   - TAXONOMY_LABELS covers all 45 canonical {slug,label} pairs (verbatim from
+//   - TAXONOMY_LABELS covers all 49 canonical {slug,label} pairs (verbatim from
 //     supabase/functions/_shared/eventTaxonomy.ts; the drift gate
 //     orch-1292-taxonomy-label-parity.mjs keeps this list honest against canonical).
 //
 // FAILS-ON-REVERT (proven by true line-deletion in the implementation report):
 //   - revert taxonomyLabel to return the raw slug (drop the TAXONOMY_LABELS lookup)
 //     → every canonical-label assertion below flips (e.g. "pool-party" !== "Pool Party").
-//   - drop/rename any TAXONOMY_LABELS pair → the 45-pair coverage loop fails, and the
+//   - drop/rename any TAXONOMY_LABELS pair → the 49-pair coverage loop fails, and the
 //     CI drift gate (orch-1292-taxonomy-label-parity.mjs) fails independently.
+//   NOTE (issue #857): MUSIC_GENRES 14 -> 18 (added house/afro-house/amapiano/gospel),
+//   so the coverage count is now 49 (15 party + 16 vibe + 18 music).
 
 import {
   assert,
@@ -71,7 +73,7 @@ Deno.test("empty string in → empty string out (no throw)", () => {
   assertEquals(taxonomyLabel(""), "");
 });
 
-// ─────────────────── full 45-pair canonical coverage ───────────────────
+// ─────────────────── full 49-pair canonical coverage ───────────────────
 
 // Verbatim from supabase/functions/_shared/eventTaxonomy.ts §7.4 (drift-gated).
 const CANONICAL_PAIRS: ReadonlyArray<readonly [string, string]> = [
@@ -108,13 +110,17 @@ const CANONICAL_PAIRS: ReadonlyArray<readonly [string, string]> = [
   ["vibrant", "Vibrant"],
   ["retro", "Retro"],
   ["futuristic", "Futuristic"],
-  // MUSIC_GENRES (14)
+  // MUSIC_GENRES (18)
   ["electronic-edm", "Electronic/EDM"],
+  ["house", "House"],
   ["hiphop-rap", "Hip-Hop/Rap"],
   ["pop", "Pop"],
   ["rock", "Rock"],
   ["latin", "Latin"],
   ["afrobeats", "Afrobeats"],
+  ["afro-house", "Afro House"],
+  ["amapiano", "Amapiano"],
+  ["gospel", "Gospel"],
   ["rnb-soul", "R&B/Soul"],
   ["disco-funk", "Disco/Funk"],
   ["reggae-dancehall", "Reggae/Dancehall"],
@@ -125,9 +131,9 @@ const CANONICAL_PAIRS: ReadonlyArray<readonly [string, string]> = [
   ["mixed-variety", "Mixed/Variety"],
 ];
 
-Deno.test("TAXONOMY_LABELS covers all 45 canonical pairs, byte-exact", () => {
-  assertEquals(CANONICAL_PAIRS.length, 45);
-  assertEquals(Object.keys(TAXONOMY_LABELS).length, 45);
+Deno.test("TAXONOMY_LABELS covers all 49 canonical pairs, byte-exact", () => {
+  assertEquals(CANONICAL_PAIRS.length, 49);
+  assertEquals(Object.keys(TAXONOMY_LABELS).length, 49);
   for (const [slug, label] of CANONICAL_PAIRS) {
     assertEquals(
       TAXONOMY_LABELS[slug],

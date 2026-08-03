@@ -304,7 +304,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
           setErrorMessage(null);
           fireHaptic("success");
           announceForAccessibility(
-            "Onboarding complete. You can publish events and accept payments now.",
+            "Onboarding complete. You can publish your offerings and accept payments now.",
           );
           break;
         case "complete-verifying":
@@ -706,7 +706,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
               </View>
               <Text style={styles.stateTitle}>You{"’"}re all set</Text>
               <Text style={styles.stateSub}>
-                Your Stripe account is active. You can publish events and
+                Your Stripe account is active. You can publish your offerings and
                 accept payments.
               </Text>
             </View>
@@ -750,11 +750,10 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
           <>
             <View style={styles.stateBlock}>
               <Text style={styles.stateTitle}>
-                Connect bank to start selling tickets
+                Connect your bank to start getting paid
               </Text>
               <Text style={styles.stateSub}>
-                Set up payments to publish events and receive money from ticket
-                sales.{"\n\n"}
+                Set up payments to publish your offerings and get paid.{"\n\n"}
                 <Text style={styles.bold}>
                   Your bank details go directly to Stripe — Mingla never sees
                   them.
@@ -863,7 +862,7 @@ export const BrandOnboardView: React.FC<BrandOnboardViewProps> = ({
               </View>
               <Text style={styles.stateTitle}>{"✓"} Set up complete</Text>
               <Text style={styles.stateSub}>
-                You can publish events and accept payments now.
+                You can publish your offerings and accept payments now.
               </Text>
             </View>
             <View style={styles.actionsCol}>

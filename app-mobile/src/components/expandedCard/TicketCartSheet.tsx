@@ -138,7 +138,7 @@ const formatMajorCurrency = (value: number, currency: string): string => {
   try {
     return new Intl.NumberFormat(undefined, {
       style: "currency",
-      currency: currency || "GBP",
+      currency: currency || "USD",
     }).format(value);
   } catch {
     return `${value.toFixed(2)} ${currency}`;
@@ -153,7 +153,7 @@ const formatCentsCurrency = (cents: number, currency: string): string => {
   try {
     return new Intl.NumberFormat(undefined, {
       style: "currency",
-      currency: currency || "GBP",
+      currency: currency || "USD",
     }).format(cents / 100);
   } catch {
     return `${(cents / 100).toFixed(2)} ${currency}`;

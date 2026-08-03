@@ -52,6 +52,11 @@ import {
   postAppsFlyerS2SEvent,
   resolveBrandOwnerUserId,
 } from "./appsFlyerS2S.ts";
+import {
+  handleStayStripeDispute,
+  handleStayStripePaymentEvent,
+  isStayStripePaymentEvent,
+} from "./stayPaymentWebhook.ts";
 
 export const STRIPE_ROUTED_EVENT_TYPES = [
   "account.updated",
@@ -76,6 +81,7 @@ export const STRIPE_ROUTED_EVENT_TYPES = [
   "person.deleted",
   "application_fee.created",
   "application_fee.refunded",
+  "application_fee.refund.updated",
   "payment_intent.succeeded",
   "payment_intent.payment_failed",
   "payment_intent.canceled",
@@ -141,7 +147,10 @@ function accountIdForEvent(event: StripeWebhookEvent): string | null {
 // unchanged — SC-10). Works on both payment_intent.succeeded (PI metadata) and
 // checkout.session.completed (session metadata carries the same marker).
 function isRsvpContributionEvent(event: StripeWebhookEvent): boolean {
-  const metadata = (event.data.object?.metadata ?? {}) as Record<string, unknown>;
+  const metadata = (event.data.object?.metadata ?? {}) as Record<
+    string,
+    unknown
+  >;
   return metadata.mingla_purpose === "rsvp_contribution";
 }
 
@@ -158,7 +167,9 @@ async function handleRsvpContributionEvent(
     ? metadata.contribution_id
     : null;
   if (!contributionId) {
-    console.error("[stripe-webhook] rsvp_contribution event missing contribution_id");
+    console.error(
+      "[stripe-webhook] rsvp_contribution event missing contribution_id",
+    );
     return null;
   }
 
@@ -166,10 +177,14 @@ async function handleRsvpContributionEvent(
   let chargeId: string | null = null;
   let methodType: string | null = null;
   if (event.type === "payment_intent.succeeded") {
-    const charges = obj.charges as { data?: Array<Record<string, unknown>> } | undefined;
+    const charges = obj.charges as
+      | { data?: Array<Record<string, unknown>> }
+      | undefined;
     const latestCharge = charges?.data?.[0] ?? null;
     chargeId = latestCharge ? objectString(latestCharge, "id") : null;
-    const pmTypes = Array.isArray(obj.payment_method_types) ? obj.payment_method_types : [];
+    const pmTypes = Array.isArray(obj.payment_method_types)
+      ? obj.payment_method_types
+      : [];
     methodType = typeof pmTypes[0] === "string" ? pmTypes[0] : null;
   } else if (event.type === "checkout.session.completed") {
     const piField = obj.payment_intent;
@@ -365,7 +380,9 @@ async function syncAccount(
           .eq("id", brandId)
           .maybeSingle();
         const brandName = (brandRow?.name as string | null) ?? "Your account";
-        const title = status === "restricted" ? "Payments paused" : "Payments back on";
+        const title = status === "restricted"
+          ? "Payments paused"
+          : "Payments back on";
         const body = status === "restricted"
           ? `${brandName}: Stripe paused payments. Tap to resolve.`
           : `${brandName} can accept payments again.`;
@@ -382,7 +399,8 @@ async function syncAccount(
           },
           relatedId: stripeAccountId,
           relatedType: "stripe_account",
-          idempotencyKey: `business.account_status_changed:${stripeAccountId}:${stateHash}`,
+          idempotencyKey:
+            `business.account_status_changed:${stripeAccountId}:${stateHash}`,
           deepLink: `mingla-business://payments`,
           roles: ["brand_owner", "finance_manager"],
         });
@@ -716,7 +734,9 @@ async function handlePayout(
       brandId,
       type: "business.payout_paid",
       title: "You got paid",
-      body: `${formatMoneyCents(payoutAmountCents, payoutCurrency)} is on its way to your bank.`,
+      body: `${
+        formatMoneyCents(payoutAmountCents, payoutCurrency)
+      } is on its way to your bank.`,
       data: {
         payoutId,
         releaseId,
@@ -842,12 +862,64 @@ async function handleRefundEvent(
   const amountCents = Number(refund.amount ?? 0);
   const currency = char3(refund.currency);
   const metadata = (refund.metadata ?? {}) as Record<string, unknown>;
+  const sourceRefundId = typeof metadata.source_refund_id === "string"
+    ? metadata.source_refund_id
+    : null;
   const idempotencyHint = typeof metadata.mingla_idempotency_key === "string"
     ? metadata.mingla_idempotency_key
     : null;
   const orderIdHint = typeof metadata.mingla_order_id === "string"
     ? metadata.mingla_order_id
     : null;
+
+  // #1221 typed Venue/RSVP refunds are resolved by immutable operation metadata
+  // before every legacy order fallback. Provider evidence must match exactly.
+  if (sourceRefundId) {
+    const { data: operation, error } = await supabase.from("source_refunds")
+      .select(
+        "id,brand_id,provider,currency,buyer_refund_requested_cents,provider_payment_reference,provider_account_reference,active_buyer_attempt_no",
+      )
+      .eq("id", sourceRefundId).eq("provider", "stripe").maybeSingle();
+    if (error || !operation) {
+      throw new Error("source_refund_exact_match_missing");
+    }
+    if (
+      paymentIntentId !== operation.provider_payment_reference ||
+      amountCents !== operation.buyer_refund_requested_cents ||
+      currency !== operation.currency ||
+      stripeAccountId !== operation.provider_account_reference
+    ) {
+      throw new Error("source_refund_provider_evidence_mismatch");
+    }
+    const nextState = refundStatus === "succeeded"
+      ? "processed"
+      : refundStatus === "requires_action"
+      ? "needs_attention"
+      : refundStatus === "failed" || refundStatus === "canceled"
+      ? "failed_terminal"
+      : "provider_pending";
+    const { error: transitionError } = await supabase.rpc(
+      "record_source_refund_provider_event",
+      {
+        p_refund_id: sourceRefundId,
+        p_leg_type: "buyer_refund",
+        p_attempt_no: Number(operation.active_buyer_attempt_no || 1),
+        p_event_key: `stripe:${event.id}:buyer_refund`,
+        p_provider_event_type: event.type,
+        p_provider_event_id: event.id,
+        p_next_state: nextState,
+        p_amount_observed_cents: amountCents,
+        p_provider_operation_id: refundId,
+        p_safe_reason_code: "stripe_verified_refund_lifecycle",
+      },
+    );
+    if (transitionError) {
+      throw new Error(
+        `source_refund_event_commit_failed:${transitionError.message}`,
+      );
+    }
+    return String(operation.brand_id);
+  }
 
   // Resolve brand (and detect detached/orphan accounts).
   let brandId: string | null = null;
@@ -964,15 +1036,19 @@ async function handleRefundEvent(
         | Array<{ title?: string }>
         | null
         | undefined;
-      const eventTitle =
-        (Array.isArray(eventsJoin) ? eventsJoin[0]?.title : eventsJoin?.title) ??
-          "a recent order";
-      const refundCurrency = (refundOrder?.currency as string | null) ?? currency;
+      const eventTitle = (Array.isArray(eventsJoin)
+        ? eventsJoin[0]?.title
+        : eventsJoin?.title) ??
+        "a recent order";
+      const refundCurrency = (refundOrder?.currency as string | null) ??
+        currency;
       await notifyBrandManagers(supabase, {
         brandId,
         type: "business.refund_processed",
         title: "Refund processed",
-        body: `${formatMoneyCents(amountCents, refundCurrency)} refunded for ${eventTitle}.`,
+        body: `${
+          formatMoneyCents(amountCents, refundCurrency)
+        } refunded for ${eventTitle}.`,
         data: {
           orderId,
           refundId,
@@ -1184,6 +1260,64 @@ async function handleApplicationFee(
   return brandId;
 }
 
+async function handleApplicationFeeRefund(
+  supabase: SupabaseClient,
+  event: StripeWebhookEvent,
+): Promise<string | null> {
+  const feeRefund = event.data.object;
+  const metadata = (feeRefund.metadata ?? {}) as Record<string, unknown>;
+  const sourceRefundId = typeof metadata.source_refund_id === "string"
+    ? metadata.source_refund_id
+    : null;
+  if (!sourceRefundId) {
+    throw new Error("application_fee_refund_source_identity_missing");
+  }
+  const feeRefundId = objectString(feeRefund, "id");
+  const feeId = objectString(feeRefund, "fee") ??
+    objectString(feeRefund, "application_fee");
+  const amount = Number(feeRefund.amount ?? 0);
+  const { data: operation, error } = await supabase.from("source_refunds")
+    .select(
+      "id,brand_id,provider,currency,fee_reversal_required_cents,stripe_application_fee_id,active_fee_attempt_no",
+    )
+    .eq("id", sourceRefundId).eq("provider", "stripe").maybeSingle();
+  if (error || !operation) throw new Error("source_refund_exact_match_missing");
+  if (
+    !feeRefundId ||
+    feeId !== operation.stripe_application_fee_id ||
+    amount !== operation.fee_reversal_required_cents
+  ) {
+    throw new Error("source_refund_fee_evidence_mismatch");
+  }
+  const status = objectString(feeRefund, "status") ?? "succeeded";
+  const nextState = status === "succeeded"
+    ? "processed"
+    : status === "failed" || status === "canceled"
+    ? "failed_terminal"
+    : "provider_pending";
+  const { error: transitionError } = await supabase.rpc(
+    "record_source_refund_provider_event",
+    {
+      p_refund_id: sourceRefundId,
+      p_leg_type: "application_fee_reversal",
+      p_attempt_no: Number(operation.active_fee_attempt_no || 1),
+      p_event_key: `stripe:${event.id}:application_fee_reversal`,
+      p_provider_event_type: event.type,
+      p_provider_event_id: event.id,
+      p_next_state: nextState,
+      p_amount_observed_cents: amount,
+      p_provider_operation_id: feeRefundId,
+      p_safe_reason_code: "stripe_verified_application_fee_refund_lifecycle",
+    },
+  );
+  if (transitionError) {
+    throw new Error(
+      `source_refund_fee_event_commit_failed:${transitionError.message}`,
+    );
+  }
+  return String(operation.brand_id);
+}
+
 async function handleTicketCheckoutPaymentIntent(
   supabase: SupabaseClient,
   event: StripeWebhookEvent,
@@ -1379,7 +1513,9 @@ async function handleTicketCheckoutPaymentIntent(
             brandId,
             eventId,
             orderId,
-            totalCents: Number(orderRow?.total_cents ?? paymentIntent.amount ?? 0),
+            totalCents: Number(
+              orderRow?.total_cents ?? paymentIntent.amount ?? 0,
+            ),
             currency: (orderRow?.currency as string | null) ??
               (typeof paymentIntent.currency === "string"
                 ? paymentIntent.currency
@@ -1651,9 +1787,16 @@ export async function routeStripeEvent(
     case "application_fee.refunded":
       brandId = await handleApplicationFee(supabase, event);
       break;
+    case "application_fee.refund.updated":
+      brandId = await handleApplicationFeeRefund(supabase, event);
+      break;
     case "payment_intent.succeeded":
     case "payment_intent.payment_failed":
     case "payment_intent.canceled":
+      if (isStayStripePaymentEvent(event)) {
+        brandId = await handleStayStripePaymentEvent(supabase, event);
+        break;
+      }
       // ORCH-1291 [rsvp-chip-in]: a voluntary RSVP contribution is discriminated
       // by metadata.mingla_purpose='rsvp_contribution' and finalized via the
       // contribution RPC (NO order/ticket). Checked FIRST so the ticket path is
@@ -1699,7 +1842,11 @@ export async function routeStripeEvent(
     case "charge.dispute.created":
     case "charge.dispute.updated":
     case "charge.dispute.closed":
-      brandId = await handleChargeDispute(supabase, event);
+      {
+        const stayBrandId = await handleStayStripeDispute(supabase, event);
+        brandId = await handleChargeDispute(supabase, event);
+        if (stayBrandId) brandId = stayBrandId;
+      }
       // ORCH-1054: dispute → reverse partner split (TransferReversal if
       // already transferred; mark reversed_pending otherwise). Only fire
       // on dispute.created; updated/closed don't change the partner-share

@@ -1,0 +1,95 @@
+name: "ISSUE-855 PR-2 source tracking (entry_source classifier + client referrer)"
+
+# ISSUE-855 PR-2 — forward-only source tracking. Two dedicated gates so the new
+# regression protection actually runs (mingla-business's default jest config is
+# NOT exercised by any full `npx jest`, and the attribution-capture Deno tests
+# ran in NO workflow before this — this job also finally brings the existing
+# attribution-capture suites under CI). The rollup SQL logic is guarded by the
+# hand-run probe supabase/migrations/__tests__/issue_855_pr2_source_tracking.test.sql
+# (the migration itself is applied by the Supabase Migrations workflow's apply job).
+#
+# The new client jest suite runs in its OWN invocation (never combined with the
+# webAnalytics.pixels.issue865 files) — the jest multi-file sequencer leaks global
+# window/fetch across those suites; each is green in isolation and in its own job.
+
+on:
+  push:
+    branches: [Seth, main]
+    paths:
+      - "supabase/functions/attribution-capture/**"
+      - "mingla-business/src/analytics/webAnalytics.web.ts"
+      - "mingla-business/src/analytics/webAnalytics.ts"
+      - "mingla-business/src/analytics/__tests__/webAnalytics.referrer.issue855pr2.test.ts"
+      - ".github/workflows/issue-855-pr2-source-tracking-tests.yml"
+  pull_request:
+    paths:
+      - "supabase/functions/attribution-capture/**"
+      - "mingla-business/src/analytics/webAnalytics.web.ts"
+      - "mingla-business/src/analytics/webAnalytics.ts"
+      - "mingla-business/src/analytics/__tests__/webAnalytics.referrer.issue855pr2.test.ts"
+      - ".github/workflows/issue-855-pr2-source-tracking-tests.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  attribution-capture-deno-tests:
+    name: "ISSUE-855 PR-2: attribution-capture entry_source classifier + existing suites (Deno)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: Run attribution-capture Deno suites
+        env:
+          # Inert defaults — every test injects a fake client (deps.getClient); no
+          # test reaches a real Supabase instance. These keep any env-presence
+          # guards from throwing.
+          SUPABASE_URL: "https://example-test.supabase.co"
+          SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key-not-real"
+        run: |
+          set -euo pipefail
+          DENO_TEST_FILES=(
+            # PR-2 (NEW) — deriveReferrerHost + classifyEntrySource per bucket +
+            # recordTouch stamps entry_source/referrer_host (organic/search/social
+            # visits now RECORDED) + NO PII (host only). Fails-on-revert of the
+            # recordTouch referrer classification.
+            supabase/functions/attribution-capture/entry_source_classification.issue855pr2.test.ts
+            # Existing keep-green suites (were unregistered — now CI-gated):
+            supabase/functions/attribution-capture/index.test.ts
+            supabase/functions/attribution-capture/index.adversarial.tester.test.ts
+            supabase/functions/attribution-capture/campaign_resolution.issue865pr1.test.ts
+          )
+          for attempt in 1 2 3; do
+            if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "attribution-capture Deno tests failed after 3 attempts (esm.sh flake?)"
+              exit 1
+            fi
+            echo "attribution-capture Deno tests failed (attempt ${attempt}), retrying in 10s..."
+            sleep 10
+          done
+
+  source-tracking-business-jest:
+    name: "ISSUE-855 PR-2: client referrer capture + first-touch-wins (jest)"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      - name: Run PR-2 client referrer suite (isolated invocation)
+        run: >
+          npx jest
+          src/analytics/__tests__/webAnalytics.referrer.issue855pr2.test.ts
+          --runInBand

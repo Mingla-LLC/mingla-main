@@ -1,0 +1,53 @@
+name: "Issue #1461 venue current-brand lifecycle"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mingla-business/app/venue/create.tsx"
+      - "mingla-business/src/store/draftVenueStore.ts"
+      - "mingla-business/src/components/venue/venueCreateBrandLifecycle.ts"
+      - "mingla-business/src/components/venue/__tests__/venueCreateBrandLifecycle.issue1461.test.ts"
+      - ".github/workflows/issue-1461-venue-current-brand-race-tests.yml"
+  pull_request:
+    paths:
+      - "mingla-business/app/venue/create.tsx"
+      - "mingla-business/src/store/draftVenueStore.ts"
+      - "mingla-business/src/components/venue/venueCreateBrandLifecycle.ts"
+      - "mingla-business/src/components/venue/__tests__/venueCreateBrandLifecycle.issue1461.test.ts"
+      - ".github/workflows/issue-1461-venue-current-brand-race-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  client-lifecycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      - name: Prove delayed brand, switch, and cross-brand preservation
+        run: >
+          npx jest
+          src/components/venue/__tests__/venueCreateBrandLifecycle.issue1461.test.ts
+          --runInBand
+      - name: Lint changed boundaries
+        run: >
+          npx eslint
+          app/venue/create.tsx
+          src/store/draftVenueStore.ts
+          src/components/venue/venueCreateBrandLifecycle.ts
+          src/components/venue/__tests__/venueCreateBrandLifecycle.issue1461.test.ts

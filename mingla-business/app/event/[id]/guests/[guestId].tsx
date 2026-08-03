@@ -36,6 +36,7 @@ import {
 } from "../../../../src/store/doorSalesStore";
 import { useAuth } from "../../../../src/context/AuthContext";
 import { formatCurrency } from "../../../../src/utils/currency";
+import { deferAfterDismiss } from "../../../../src/utils/deferAfterDismiss";
 import { expandTicketIds } from "../../../../src/utils/expandTicketIds";
 import { expandDoorTickets } from "../../../../src/utils/expandDoorTickets";
 import { PAYMENT_METHOD_LABELS } from "../../../../src/utils/paymentMethodLabels";
@@ -476,8 +477,13 @@ export default function GuestDetailRoute(): React.ReactElement {
     setRefundOpen(false);
     const refundedAmount =
       updated.refunds[updated.refunds.length - 1]?.amountGbp ?? 0;
-    showToast(
-      `Refunded ${formatCurrency(refundedAmount, updated.currency)}. ${name} stays checked in.`,
+    // #1360: defer the confirmation toast past the sheet's unmount window so
+    // iOS doesn't drop it while the closing sheet's native modal still holds
+    // the root VC (I-PROPOSED-1360-PAYMENT-CONFIRM-DEFERRED-PAST-DISMISSAL).
+    deferAfterDismiss(() =>
+      showToast(
+        `Refunded ${formatCurrency(refundedAmount, updated.currency)}. ${name} stays checked in.`,
+      ),
     );
   };
 

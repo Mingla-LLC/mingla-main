@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import type { EventCoverMediaType } from "../store/draftEventStore";
+import type { OfferingGalleryImage } from "@mingla/offering-rendering";
 import {
   EventCoverMediaError,
   EVENT_COVER_MAX_BYTES,
@@ -234,6 +235,49 @@ export const setEventCover = async (
     cover_media_url: string;
     cover_media_type: EventCoverMediaType;
   };
+};
+
+/**
+ * issue #868 [cover-gallery] — persist ONLY the additional-photos gallery.
+ *
+ * Writes `cover_media_gallery` and NOTHING else — the primary cover fields
+ * (cover_media_url/_type + provider metadata) are UNTOUCHED (setEventCover /
+ * clearEventCover own those; no write path syncs or derives one from the other,
+ * I-PROPOSED-868-GALLERY-ADDITIVE-INDEPENDENT). Keeps the same event-only guards
+ * as setEventCover (event_type='event', deleted_at IS NULL) and a persist check.
+ */
+export const setEventCoverGallery = async (
+  serverEventId: string,
+  gallery: OfferingGalleryImage[],
+): Promise<{ id: string; cover_media_gallery: OfferingGalleryImage[] }> => {
+  if (serverEventId.trim().length === 0) {
+    throw new EventCoverMediaError(
+      "missing_server_event_id",
+      "Save failed because this event is missing its server id.",
+    );
+  }
+  const { data, error } = await supabase
+    .from("events")
+    .update({
+      cover_media_gallery: gallery,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", serverEventId)
+    .eq("event_type", "event")
+    .is("deleted_at", null)
+    .select("id, cover_media_gallery")
+    .maybeSingle();
+
+  if (error !== null) {
+    throw new EventCoverMediaError("upload_failed", error.message);
+  }
+  if (data === null) {
+    throw new EventCoverMediaError(
+      "missing_server_event_id",
+      "Save failed because this event could not be found.",
+    );
+  }
+  return data as { id: string; cover_media_gallery: OfferingGalleryImage[] };
 };
 
 export const clearEventCover = async (serverEventId: string): Promise<void> => {

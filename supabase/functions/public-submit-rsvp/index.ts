@@ -23,6 +23,11 @@ import { qrTokenPepper } from "../_shared/ticketCheckout.ts";
 // ORCH-1203 GAP-C1 — surface a missing-pepper misconfig immediately. REUSE the
 // shared ops-alert helper (the same one ORCH-0956 disputes + ORCH-1201 health use).
 import { sendOpsAlertEmail } from "../_shared/stripeOpsAlertEmail.ts";
+import {
+  deriveRsvpRecoveryToken,
+  rsvpRecoveryUrl,
+  sha256Hex,
+} from "../_shared/rsvpPass.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -133,6 +138,7 @@ serve(async (req: Request): Promise<Response> => {
 
   // Resolve a logged-in app user from the bearer token, if present.
   let userId: string | null = null;
+  let verifiedUserEmail = "";
   const authHeader = req.headers.get("Authorization") ?? "";
   const token = authHeader.toLowerCase().startsWith("bearer ")
     ? authHeader.slice(7).trim()
@@ -142,6 +148,7 @@ serve(async (req: Request): Promise<Response> => {
       const { data, error } = await admin.auth.getUser(token);
       if (!error && data.user) {
         userId = data.user.id;
+        verifiedUserEmail = data.user.email?.trim() ?? "";
       }
     } catch (err) {
       // Non-fatal: fall through as an anon link guest.
@@ -149,11 +156,11 @@ serve(async (req: Request): Promise<Response> => {
     }
   }
 
-  const guestName =
+  let guestName =
     typeof body.guestName === "string" ? body.guestName.trim() : "";
-  const guestEmail =
+  let guestEmail =
     typeof body.guestEmail === "string" ? body.guestEmail.trim() : "";
-  const rawPhone =
+  let rawPhone =
     typeof body.guestPhone === "string" ? body.guestPhone.trim() : "";
 
   let normalizedPhone: string | null = null;
@@ -172,7 +179,27 @@ serve(async (req: Request): Promise<Response> => {
     if (normalizedPhone === null) {
       return json(400, { error: "rsvp_phone_invalid" });
     }
-  } else if (rawPhone.length > 0) {
+  } else {
+    // Signed-in Explorer RSVPs still require a complete canonical contact
+    // snapshot. A verified auth email is authoritative when present; profile
+    // contact follows, and body input is only a completion fallback.
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("display_name,email,phone")
+      .eq("id", userId)
+      .maybeSingle();
+    const p = (profile ?? {}) as {
+      display_name?: string | null;
+      email?: string | null;
+      phone?: string | null;
+    };
+    guestName = guestName || p.display_name?.trim() ||
+      verifiedUserEmail.split("@")[0] || "";
+    guestEmail = verifiedUserEmail || p.email?.trim() || guestEmail || "";
+    rawPhone = rawPhone || p.phone?.trim() || "";
+    if (!guestName || !EMAIL_RE.test(guestEmail) || !rawPhone) {
+      return json(400, { error: "rsvp_contact_required" });
+    }
     normalizedPhone = normalizePhone(rawPhone);
     if (normalizedPhone === null) {
       return json(400, { error: "rsvp_phone_invalid" });
@@ -271,7 +298,7 @@ serve(async (req: Request): Promise<Response> => {
     }
   }
 
-  const { data, error } = await admin.rpc("submit_event_rsvp", {
+  const { data, error } = await admin.rpc("submit_event_rsvp_with_delivery", {
     p_event_id: eventId,
     p_user_id: userId,
     p_guest_name: guestName.length > 0 ? guestName : null,
@@ -312,29 +339,29 @@ serve(async (req: Request): Promise<Response> => {
     confirmationToken?: string | null;
   };
 
-  // ORCH-1163 [rsvp-shared-body] — AFTER a successful GOING submit, dispatch a
-  // per-recipient RSVP pass (primary + each guest). REUSE rsvp-notify: enqueue
-  // one `rsvp_pass` row per recipient (self-contained payload + idempotency_key)
-  // then invoke rsvp-notify once per row. Wrapped so a notify failure NEVER
-  // fails the already-committed RSVP write.
-  //
-  // ORCH-1206 [rsvp-pass-after-approval] (C-1, I-1) — the QR entry pass is
-  // delivered IFF the recipient is going AND approved. Auto-approve events
-  // resolve straight to going+approved → pass immediate here (unchanged).
-  // MANUAL-approval events resolve to going+PENDING → NO pass yet; the host's
-  // approve RPC (host_set_rsvp_status / host_bulk_approve_rsvps) enqueues the
-  // QR pass at approval time via the shared SQL routine, using the SAME
-  // canonical idempotency key `rsvp_pass:<rsvpId>:<guestId|primary>` (I-3) so a
-  // recipient is never double-sent across submit / approve / backfill.
-  if (
-    result.status === "going" &&
-    result.approvalStatus === "approved" &&
-    typeof result.rsvpId === "string"
-  ) {
+  const passEligible = result.status === "going" && result.approvalStatus === "approved";
+
+  // Only admitted entities are provisioned or exposed. Approval/promotion
+  // workers provision recovery later from the same canonical entity rows.
+  const passEntities = passEligible && typeof result.rsvpId === "string"
+    ? await provisionPassEntities(admin, result.rsvpId, qrPepper)
+    : [];
+
+  if (typeof result.rsvpId === "string") {
+    // Drain the acknowledgement rows as well as pass rows. Delivery remains
+    // best-effort relative to the already committed RSVP write.
     try {
-      await dispatchRsvpPasses(admin, eventId, result.rsvpId, userId);
+      const { data: due } = await admin.from("rsvp_notifications")
+        .select("id")
+        .eq("rsvp_id", result.rsvpId)
+        .in("status", ["pending", "failed_retryable"]);
+      for (const row of (due ?? []) as Array<{ id: string }>) {
+        await admin.functions.invoke("rsvp-notify", {
+          body: { notificationId: row.id },
+        });
+      }
     } catch (err) {
-      console.warn("[public-submit-rsvp] rsvp pass dispatch failed (non-fatal)", String(err));
+      console.warn("[public-submit-rsvp] RSVP delivery drain failed (non-fatal)", String(err));
     }
   }
 
@@ -343,7 +370,35 @@ serve(async (req: Request): Promise<Response> => {
     status: result.status ?? rsvpStatus,
     approvalStatus: result.approvalStatus ?? "approved",
     capacityFull: result.capacityFull ?? false,
-    confirmationToken: result.confirmationToken ?? null,
+    confirmationToken: passEligible ? result.confirmationToken ?? null : null,
+    acknowledgement: result.approvalStatus === "pending"
+      ? "pending_approval"
+      : result.status === "waitlisted"
+      ? "waitlisted"
+      : result.status === "maybe"
+      ? "maybe"
+      : result.status === "not_going"
+      ? "not_going"
+      : "accepted",
+    credentials: passEligible
+      ? passEntities.map((entity) => ({
+            entityType: entity.role,
+            entityId: entity.entityId,
+            displayName: entity.displayName,
+            qrCode: entity.qrCode,
+            pdfFetchRef: entity.entityId,
+          }))
+      : [],
+    anonymousRecovery: userId === null && passEligible
+      ? passEntities.map((entity) => ({
+          entityType: entity.role,
+          entityId: entity.entityId,
+          recoveryToken: entity.recoveryToken,
+          recoveryUrl: entity.recoveryToken
+            ? rsvpRecoveryUrl(entity.role, entity.entityId, entity.recoveryToken)
+            : null,
+        }))
+      : [],
   });
 });
 
@@ -358,6 +413,71 @@ serve(async (req: Request): Promise<Response> => {
 // caller already returned 200 to the guest on the committed write.
 // deno-lint-ignore no-explicit-any
 type AdminClient = ReturnType<typeof createClient<any, "public", any>>;
+
+interface PassEntityResponse {
+  entityId: string;
+  guestId: string | null;
+  role: "primary" | "guest";
+  displayName: string;
+  qrCode: string | null;
+  recoveryToken: string | null;
+}
+
+async function provisionPassEntities(
+  admin: AdminClient,
+  rsvpId: string,
+  pepper: string | null,
+): Promise<PassEntityResponse[]> {
+  const { data: primaryRaw } = await admin.from("event_rsvps")
+    .select("id,guest_name,qr_code,pass_recovery_token_created_at")
+    .eq("id", rsvpId).maybeSingle();
+  if (!primaryRaw) return [];
+  const { data: guestsRaw } = await admin.from("event_rsvp_guests")
+    .select("id,name,qr_code,pass_recovery_token_created_at")
+    .eq("rsvp_id", rsvpId).order("created_at", { ascending: true });
+  const rows = [
+    {
+      entityId: String(primaryRaw.id), guestId: null,
+      role: "primary" as const, displayName: String(primaryRaw.guest_name ?? "Guest"),
+      qrCode: primaryRaw.qr_code as string | null,
+      createdAt: primaryRaw.pass_recovery_token_created_at as string | null,
+      table: "event_rsvps",
+    },
+    ...((guestsRaw ?? []) as Array<Record<string, unknown>>).map((g) => ({
+      entityId: String(g.id), guestId: String(g.id), role: "guest" as const,
+      displayName: String(g.name ?? "Guest"), qrCode: g.qr_code as string | null,
+      createdAt: g.pass_recovery_token_created_at as string | null,
+      table: "event_rsvp_guests",
+    })),
+  ];
+  const output: PassEntityResponse[] = [];
+  for (const row of rows) {
+    let recoveryToken: string | null = null;
+    // Every entity receives recovery material. Anonymous guests get the
+    // plaintext once in the submit response; signed-in guests never do, but the
+    // delivery worker can deterministically rebuild it for the secure SMS link.
+    if (pepper) {
+      const createdAt = row.createdAt ?? new Date().toISOString();
+      recoveryToken = await deriveRsvpRecoveryToken({
+        entityId: row.entityId, createdAtIso: createdAt, pepper,
+      });
+      const recoveryHash = await sha256Hex(recoveryToken);
+      const { error } = await admin.from(row.table).update({
+        pass_recovery_token_hash: recoveryHash,
+        pass_recovery_token_created_at: createdAt,
+      }).eq("id", row.entityId);
+      if (error) {
+        console.warn("[public-submit-rsvp] recovery hash persistence failed", error.message);
+        recoveryToken = null;
+      }
+    }
+    output.push({
+      entityId: row.entityId, guestId: row.guestId, role: row.role,
+      displayName: row.displayName, qrCode: row.qrCode, recoveryToken,
+    });
+  }
+  return output;
+}
 
 async function dispatchRsvpPasses(
   admin: AdminClient,

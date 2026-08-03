@@ -15,6 +15,14 @@ const checkedRoots = ["mingla-business/app", "mingla-business/src"];
 // the sibling bare-extension stub keeps web bundles free of any Stripe
 // React Native pull. Adding any other entry to this allowlist requires a
 // new ORCH proving web-bundle safety (web export probe + Vercel build).
+//
+// `--self-test` proves fail-on-revert (mirrors i-1272-identity-admin-read.mjs):
+// the pure `check(fileEntries, failures)` (the import-scan) is exercised with a
+// GOOD fixture (only the allowlisted .native.ts imports it) and ≥2 DISTINCT BAD
+// fixtures. The disk-walking main path feeds the SAME `check(...)` the walked
+// entries; the npm/workflow wiring assertions are behavior-preserving and
+// unchanged. This gate runs as a job:* carve-out, so its self-test is wired via
+// an explicit workflow step (see strict-grep-mingla-business.yml).
 const allowedNativeImportFiles = new Set([
   "mingla-business/src/payments/nativeCheckoutFlow.native.ts",
 ]);
@@ -22,22 +30,30 @@ const failures = [];
 const stripeReactNativeImportPattern =
   /(?:import\s+["']@stripe\/stripe-react-native["']|from\s+["']@stripe\/stripe-react-native["']|require\(\s*["']@stripe\/stripe-react-native["']\s*\)|import\(\s*["']@stripe\/stripe-react-native["']\s*\))/;
 
-const walk = (directory) => {
-  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-    if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
-    const absolutePath = path.join(directory, entry.name);
-    if (entry.isDirectory()) {
-      walk(absolutePath);
-      continue;
-    }
-    if (!/\.(ts|tsx|js|jsx)$/.test(entry.name)) continue;
-    const relativePath = path.relative(root, absolutePath);
-    const source = fs.readFileSync(absolutePath, "utf8");
+// Pure verdict. `fileEntries` = [{ relativePath, source }]. Flags any file that
+// imports @stripe/stripe-react-native unless it is on the .native allowlist.
+function check(fileEntries, failures) {
+  for (const { relativePath, source } of fileEntries) {
     if (stripeReactNativeImportPattern.test(source) && !allowedNativeImportFiles.has(relativePath)) {
       failures.push(
         `${relativePath} import-scan: @stripe/stripe-react-native must stay behind approved .native payment boundaries`,
       );
     }
+  }
+}
+
+const walk = (directory, fileEntries) => {
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
+    const absolutePath = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      walk(absolutePath, fileEntries);
+      continue;
+    }
+    if (!/\.(ts|tsx|js|jsx)$/.test(entry.name)) continue;
+    const relativePath = path.relative(root, absolutePath);
+    const source = fs.readFileSync(absolutePath, "utf8");
+    fileEntries.push({ relativePath, source });
   }
 };
 
@@ -145,9 +161,61 @@ const checkWorkflowWiring = () => {
   }
 };
 
-for (const checkedRoot of checkedRoots) {
-  walk(path.join(root, checkedRoot));
+// ─────────────────────────────────────────────────────────────── self-test
+if (process.argv.includes("--self-test")) {
+  const self = [];
+
+  // GOOD: only the allowlisted .native.ts imports @stripe/stripe-react-native;
+  // a sibling bare-extension file imports nothing → silent (specificity).
+  let f = [];
+  check(
+    [
+      {
+        relativePath: "mingla-business/src/payments/nativeCheckoutFlow.native.ts",
+        source: "import { initPaymentSheet } from '@stripe/stripe-react-native';\n",
+      },
+      {
+        relativePath: "mingla-business/src/payments/nativeCheckoutFlow.ts",
+        source: "export async function runNativeCheckout() {}\n",
+      },
+    ],
+    f,
+  );
+  if (f.length) self.push("GOOD (only allowlisted .native.ts imports it) wrongly flagged: " + f.join("; "));
+
+  // BAD1 (revert-style): a non-allowlisted src file imports the native SDK →
+  // fires.
+  f = [];
+  check(
+    [{ relativePath: "mingla-business/src/payments/checkoutGlue.ts", source: "import '@stripe/stripe-react-native';\n" }],
+    f,
+  );
+  if (f.length === 0) self.push("BAD1 (@stripe/stripe-react-native import in a non-allowlisted src file) not flagged");
+
+  // BAD2 (regression, different angle): a DIFFERENT import form —
+  // require(\"@stripe/stripe-react-native\") — in another (app) file → fires.
+  f = [];
+  check(
+    [{ relativePath: "mingla-business/app/checkout/pay.tsx", source: "const stripe = require('@stripe/stripe-react-native');\n" }],
+    f,
+  );
+  if (f.length === 0) self.push("BAD2 (require('@stripe/stripe-react-native') in another file) not flagged");
+
+  if (self.length) {
+    console.error("ORCH-0778 self-test FAIL:");
+    self.forEach((m) => console.error("  - " + m));
+    process.exit(1);
+  }
+  console.log("ORCH-0778 self-test PASS (3/3 cases).");
+  process.exit(0);
 }
+
+// ─────────────────────────────────────────────────────────────── main path
+const fileEntries = [];
+for (const checkedRoot of checkedRoots) {
+  walk(path.join(root, checkedRoot), fileEntries);
+}
+check(fileEntries, failures);
 
 checkNpmWiring();
 checkWorkflowWiring();

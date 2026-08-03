@@ -82,12 +82,14 @@ export function VenueCardList({
     return map;
   }, [settingsList.data]);
 
-  // [TRANSITIONAL-3] menus are brand-level; the count is shared across venues.
-  const menuItemCount = useMemo(
-    () =>
-      (menusQuery.data ?? []).reduce((sum, menu) => sum + menu.items.length, 0),
-    [menusQuery.data],
-  );
+  const menuItemCountByVenue = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const menu of menusQuery.data ?? []) {
+      if (typeof menu.venueId !== "string") continue;
+      counts[menu.venueId] = (counts[menu.venueId] ?? 0) + menu.items.length;
+    }
+    return counts;
+  }, [menusQuery.data]);
 
   const handleAddVenue = useCallback((): void => {
     // Intent already known — push straight to the wizard, never re-open the
@@ -109,13 +111,19 @@ export function VenueCardList({
     const count = isWideDesktop ? 4 : 3;
     return (
       <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingBottom: scrollBottomPad }]}
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingBottom: scrollBottomPad },
+        ]}
         showsVerticalScrollIndicator={false}
         testID={testID ?? "venue-card-list"}
       >
         <View style={isWideDesktop ? styles.desktopListGrid : styles.list}>
           {Array.from({ length: count }, (_, i) => (
-            <View key={i} style={isWideDesktop ? styles.desktopListCell : undefined}>
+            <View
+              key={i}
+              style={isWideDesktop ? styles.desktopListCell : undefined}
+            >
               <View style={styles.skeletonCard}>
                 <Skeleton width={76} height={92} radius="md" />
                 <View style={styles.skeletonBody}>
@@ -135,7 +143,10 @@ export function VenueCardList({
   if (listingsQuery.isError) {
     return (
       <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingBottom: scrollBottomPad }]}
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingBottom: scrollBottomPad },
+        ]}
         showsVerticalScrollIndicator={false}
         testID={testID ?? "venue-card-list"}
       >
@@ -160,7 +171,10 @@ export function VenueCardList({
   if (venues.length === 0) {
     return (
       <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingBottom: scrollBottomPad }]}
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingBottom: scrollBottomPad },
+        ]}
         showsVerticalScrollIndicator={false}
         testID={testID ?? "venue-card-list"}
       >
@@ -174,7 +188,10 @@ export function VenueCardList({
             accessibilityRole="button"
             accessibilityLabel="List your venue"
             onPress={handleAddVenue}
-            style={({ pressed }) => [styles.emptyCta, pressed ? styles.pillPressed : null]}
+            style={({ pressed }) => [
+              styles.emptyCta,
+              pressed ? styles.pillPressed : null,
+            ]}
             testID="venue-card-list-empty-cta"
           >
             <Text style={styles.emptyCtaLabel}>List your venue</Text>
@@ -187,7 +204,10 @@ export function VenueCardList({
   // ----- populated -----
   return (
     <ScrollView
-      contentContainerStyle={[styles.scroll, { paddingBottom: scrollBottomPad }]}
+      contentContainerStyle={[
+        styles.scroll,
+        { paddingBottom: scrollBottomPad },
+      ]}
       showsVerticalScrollIndicator={false}
       testID={testID ?? "venue-card-list"}
     >
@@ -201,7 +221,10 @@ export function VenueCardList({
           accessibilityLabel="Add a venue listing"
           onPress={handleAddVenue}
           hitSlop={{ top: 5, bottom: 5 }}
-          style={({ pressed }) => [styles.addPill, pressed ? styles.pillPressed : null]}
+          style={({ pressed }) => [
+            styles.addPill,
+            pressed ? styles.pillPressed : null,
+          ]}
           testID="venue-card-list-add"
         >
           <Icon name="plus" size={14} color={accent.warm} />
@@ -231,7 +254,7 @@ export function VenueCardList({
                 venue={venue}
                 status={status}
                 openFixCount={openCountsByVenue[venue.id] ?? 0}
-                menuItemCount={menuItemCount}
+                menuItemCount={menuItemCountByVenue[venue.id] ?? 0}
                 reservationsEnabled={reservationsByVenue[venue.id] === true}
                 onOpen={() => handleOpenVenue(venue.id)}
                 testID={`venue-card-${venue.id}`}
@@ -245,7 +268,10 @@ export function VenueCardList({
         accessibilityRole="button"
         accessibilityLabel="Add another venue"
         onPress={handleAddVenue}
-        style={({ pressed }) => [styles.trailingAdd, pressed ? styles.pillPressed : null]}
+        style={({ pressed }) => [
+          styles.trailingAdd,
+          pressed ? styles.pillPressed : null,
+        ]}
         testID="venue-card-list-add-trailing"
       >
         <Icon name="plus" size={14} color={textTokens.secondary} />

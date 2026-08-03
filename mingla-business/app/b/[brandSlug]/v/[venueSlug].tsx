@@ -13,6 +13,7 @@
  * indistinguishable not-found state (no state leak).
  */
 
+// orch-strict-grep-allow safearea-on-fullscreen-routes — anon public route; PublicVenuePage/PublicVenueNotFound apply insets.top; state views center-anchored
 import React, { useEffect, useRef } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
@@ -22,13 +23,18 @@ import {
   text as textTokens,
 } from "../../../../src/constants/designSystem";
 // META-ORCH-1187 LEG 2 — buyer-web public-offering view capture (web-only).
-import { captureWeb } from "../../../../src/analytics/webAnalytics";
+import {
+  captureAdClickIds,
+  captureWeb,
+} from "../../../../src/analytics/webAnalytics";
 import {
   usePublicBrandBySlug,
   usePublicVenueBySlug,
+  usePublicVenueDiscoveryPrice,
   usePublicVenueReservable,
 } from "../../../../src/hooks/usePublicEvents";
 import { usePublicMenus } from "../../../../src/hooks/useMenus";
+import { usePublicStayDetail } from "../../../../src/hooks/usePublicStayDetail";
 import { PublicVenuePage } from "../../../../src/components/venue/PublicVenuePage";
 import { PublicVenueNotFound } from "../../../../src/components/venue/PublicVenueNotFound";
 
@@ -36,6 +42,7 @@ export default function PublicVenueRoute(): React.ReactElement {
   const params = useLocalSearchParams<{
     brandSlug: string | string[];
     venueSlug: string | string[];
+    tab?: string | string[];
   }>();
   const brandSlug = Array.isArray(params.brandSlug)
     ? params.brandSlug[0]
@@ -43,22 +50,41 @@ export default function PublicVenueRoute(): React.ReactElement {
   const venueSlug = Array.isArray(params.venueSlug)
     ? params.venueSlug[0]
     : params.venueSlug;
+  const requestedTab = Array.isArray(params.tab) ? params.tab[0] : params.tab;
 
   const venueQuery = usePublicVenueBySlug(
     typeof brandSlug === "string" ? brandSlug : null,
     typeof venueSlug === "string" ? venueSlug : null,
   );
   const venue = venueQuery.data ?? null;
+  const stayQuery = usePublicStayDetail(
+    venue?.id ?? null,
+    venue?.venueCategory === "stay",
+  );
 
-  // Brand menu ([TRANSITIONAL-3] menus are brand-level) — fetched only once
-  // the venue resolved (a not-found page needs no menu round-trip).
+  // Exact venue-owned menu — fetched only once the venue resolves (a
+  // not-found page needs no menu round-trip).
   const menusQuery = usePublicMenus(
-    venue !== null && typeof brandSlug === "string" ? brandSlug : null,
+    venue !== null &&
+        venue.venueCategory !== "stay" &&
+        typeof brandSlug === "string"
+      ? brandSlug
+      : null,
+    venue !== null &&
+        venue.venueCategory !== "stay" &&
+        typeof venueSlug === "string"
+      ? venueSlug
+      : null,
   );
 
   // §6.7 reserve display gate — place-keyed, anon-safe. Disabled without a
   // linked place; error → not reservable (fail closed, no dead CTA).
-  const reservableQuery = usePublicVenueReservable(venue?.placePoolId ?? null);
+  const reservableQuery = usePublicVenueReservable(
+    venue?.venueCategory === "stay" ? null : venue?.placePoolId ?? null,
+  );
+  const discoveryPriceQuery = usePublicVenueDiscoveryPrice(
+    venue?.venueCategory === "stay" ? null : venue?.placePoolId ?? null,
+  );
 
   // §6.8 — the secondary "See {brand} →" link renders only when the PARENT
   // brand resolves publicly. Fetched ONLY on the not-found path.
@@ -71,6 +97,7 @@ export default function PublicVenueRoute(): React.ReactElement {
   // META-ORCH-1187 LEG 2 — fire `web_public_offering_viewed` once on mount.
   // Web-only (no-op on native).
   const viewFiredRef = useRef<boolean>(false);
+  const attributionFiredRef = useRef<boolean>(false);
   useEffect(() => {
     if (viewFiredRef.current) return;
     viewFiredRef.current = true;
@@ -81,6 +108,26 @@ export default function PublicVenueRoute(): React.ReactElement {
       slug: typeof venueSlug === "string" ? venueSlug : null,
     });
   }, [brandSlug, venueSlug]);
+
+  useEffect(() => {
+    if (attributionFiredRef.current) return;
+    if (typeof brandSlug !== "string" || typeof venueSlug !== "string") return;
+    attributionFiredRef.current = true;
+    captureAdClickIds({
+      pageType: "venue",
+      brandSlug,
+      entitySlug: venueSlug,
+    });
+  }, [brandSlug, venueSlug]);
+
+  useEffect(() => {
+    if (venue?.venueCategory !== "stay") return;
+    captureWeb("stay_viewed", {
+      surface: "buyer_web",
+      brand_id: venue.brandId,
+      venue_id: venue.id,
+    });
+  }, [venue?.brandId, venue?.id, venue?.venueCategory]);
 
   if (venueQuery.isLoading || venueQuery.isFetching) {
     return (
@@ -113,9 +160,34 @@ export default function PublicVenueRoute(): React.ReactElement {
 
   return (
     <PublicVenuePage
+      analyticsSurface="buyer_web"
       venue={venue}
+      discoveryPrice={discoveryPriceQuery.data ?? null}
       menu={menusQuery.data ?? []}
       reservable={reservableQuery.data ?? null}
+      reservabilityState={
+        reservableQuery.isError
+          ? "error"
+          : reservableQuery.isLoading
+            ? "loading"
+            : "ready"
+      }
+      initialTab={requestedTab === "reservations" ? "reservations" : "overview"}
+      onRetryReservability={() => {
+        void reservableQuery.refetch();
+      }}
+      stayState={
+        venue.venueCategory !== "stay"
+          ? undefined
+          : stayQuery.isLoading
+            ? "loading"
+            : stayQuery.isError
+              ? "error"
+              : stayQuery.data === null
+                ? "unavailable"
+                : "ready"
+      }
+      stayDetail={stayQuery.data ?? null}
     />
   );
 }

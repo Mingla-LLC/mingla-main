@@ -3,6 +3,7 @@ import { notifyMatch } from "../../services/boardNotificationService";
 import { mixpanelService } from "../../services/mixpanelService";
 import { toastManager } from "../ui/Toast";
 import type { Recommendation } from "../../types/recommendation";
+import { canonicalDiscoveryPriceFields } from "../../utils/priceTiers";
 
 /**
  * ORCH-0558 v3: Build the card_data JSONB payload persisted on
@@ -41,7 +42,7 @@ export function buildCardDataPayload(
     reviewCount: card.reviewCount,
     travelTime: card.travelTime,
     priceRange: card.priceRange,
-    priceTier: c.priceTier,
+    ...canonicalDiscoveryPriceFields(card),
     description: card.description,
     fullDescription: card.fullDescription,
     address: card.address,

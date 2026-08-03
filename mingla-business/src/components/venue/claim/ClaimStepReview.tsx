@@ -28,11 +28,13 @@ import { Icon } from "../../ui/Icon";
 import { ProvenanceChip } from "../../ui/ProvenanceChip";
 import type { ProvenanceChipState } from "../../ui/ProvenanceChip";
 import { removedAdoptedUrls } from "./ClaimStepPhotos";
+import { useBrandDiscoveryCurrency } from "../../../hooks/useBrandDiscoveryCurrency";
 
 const CAT_LABEL: Record<VenueCategory, string> = {
   restaurant: "Restaurant",
   play: "Play",
   creative_and_arts: "Creative & arts",
+  stay: "Stay",
 };
 
 // ─── Pure review-group builder (unit-tested — T-B7) ─────────────────────────
@@ -61,7 +63,10 @@ const groupFromProvenance = (
   return fallback;
 };
 
-export function buildClaimReviewRows(d: DraftVenueState): ClaimReviewRow[] {
+export function buildClaimReviewRows(
+  d: DraftVenueState,
+  currencyCode: string | null = null,
+): ClaimReviewRow[] {
   const rows: ClaimReviewRow[] = [];
   const claim = d.claim;
   const push = (
@@ -173,13 +178,21 @@ export function buildClaimReviewRows(d: DraftVenueState): ClaimReviewRow[] {
       stepId: "c6",
     });
   }
-  if (d.priceTiers.length > 0) {
+  const discoveryPriceMinInput = (d.discoveryPriceMinInput ?? "").trim();
+  const discoveryPriceMaxInput = (d.discoveryPriceMaxInput ?? "").trim();
+  if (discoveryPriceMinInput.length > 0 || d.priceTiers.length > 0) {
     push({
       key: "price",
       label: "Price range",
-      value: d.priceTiers
-        .map((t) => t.charAt(0).toUpperCase() + t.slice(1))
-        .join(" · "),
+      value: discoveryPriceMinInput.length > 0
+        ? `${discoveryPriceMinInput}${
+          discoveryPriceMaxInput.length > 0
+            ? `–${discoveryPriceMaxInput}`
+            : "+"
+        }${currencyCode ? ` ${currencyCode}` : ""}`
+        : d.priceTiers
+          .map((tier) => tier.charAt(0).toUpperCase() + tier.slice(1))
+          .join(" · "),
       group: groupFromProvenance(provenanceFor("price", d), null),
       stepId: "c7",
     });
@@ -234,7 +247,11 @@ export const ClaimStepReview: React.FC<ClaimStepReviewProps> = ({
   onBackToVenues,
 }) => {
   const draft = useDraftVenueStore();
-  const rows = buildClaimReviewRows(draft);
+  const currencyState = useBrandDiscoveryCurrency(draft.activeBrandId);
+  const rows = buildClaimReviewRows(
+    draft,
+    currencyState.data?.currencyCode ?? null,
+  );
 
   return (
     <View style={styles.host}>

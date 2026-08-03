@@ -22,29 +22,31 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { supabase } from "../services/supabase";
 import { fetchBrandMenus, type Menu } from "../services/menusService";
-import {
-  fetchPublicMenus,
-} from "../services/publicMenusService";
+import { fetchPublicMenus } from "../services/publicMenusService";
 import type { PublicMenuGroup } from "@mingla/brand-rendering";
 
 export const menuKeys = {
-  brandMenus: (brandId: string) => ["menus", brandId] as const,
-  publicMenus: (brandSlug: string) => ["publicMenus", brandSlug] as const,
+  brandMenus: (brandId: string, venueId?: string | null) =>
+    ["menus", brandId, venueId ?? "all"] as const,
+  publicMenus: (brandSlug: string, venueSlug: string) =>
+    ["publicMenus", brandSlug, venueSlug] as const,
 };
 
 // ---- builder read ----
 export function useBrandMenus(
   brandId: string | null,
+  venueId?: string | null,
 ): UseQueryResult<Menu[]> {
   const { isAuthReady } = useAuth();
   const enabled = isAuthReady && brandId !== null && brandId.length > 0;
   return useQuery<Menu[]>({
     queryKey: enabled
-      ? menuKeys.brandMenus(brandId)
+      ? menuKeys.brandMenus(brandId, venueId)
       : (["menus", "disabled"] as const),
     enabled,
     staleTime: 30_000,
-    queryFn: () => (enabled ? fetchBrandMenus(brandId) : Promise.resolve([])),
+    queryFn: () =>
+      enabled ? fetchBrandMenus(brandId, venueId) : Promise.resolve([]),
   });
 }
 
@@ -60,13 +62,16 @@ export interface MenuUpsertInput {
 
 export function useUpsertMenu(
   brandId: string | null,
+  venueId: string | null,
 ): UseMutationResult<void, Error, MenuUpsertInput> {
   const queryClient = useQueryClient();
   return useMutation<void, Error, MenuUpsertInput>({
     mutationFn: async (input: MenuUpsertInput): Promise<void> => {
       if (brandId === null) throw new Error("brand_required");
+      if (venueId === null) throw new Error("venue_required");
       const row: Record<string, unknown> = {
         brand_id: brandId,
+        venue_id: venueId,
         name: input.name,
         description: input.description,
         sort_order: input.sortOrder,
@@ -82,7 +87,7 @@ export function useUpsertMenu(
     onSuccess: () => {
       if (brandId !== null) {
         void queryClient.invalidateQueries({
-          queryKey: menuKeys.brandMenus(brandId),
+          queryKey: menuKeys.brandMenus(brandId, venueId),
         });
       }
     },
@@ -91,6 +96,7 @@ export function useUpsertMenu(
 
 export function useDeleteMenu(
   brandId: string | null,
+  venueId?: string | null,
 ): UseMutationResult<void, Error, string> {
   const queryClient = useQueryClient();
   return useMutation<void, Error, string>({
@@ -101,14 +107,15 @@ export function useDeleteMenu(
         .from("menus")
         .delete()
         .eq("id", menuId)
-        .eq("brand_id", brandId);
+        .eq("brand_id", brandId)
+        .eq("venue_id", venueId ?? "");
       if (error !== null) throw error as unknown as Error;
     },
     onError: () => undefined,
     onSuccess: () => {
       if (brandId !== null) {
         void queryClient.invalidateQueries({
-          queryKey: menuKeys.brandMenus(brandId),
+          queryKey: menuKeys.brandMenus(brandId, venueId),
         });
       }
     },
@@ -132,6 +139,7 @@ export interface MenuItemUpsertInput {
 
 export function useUpsertMenuItem(
   brandId: string | null,
+  venueId?: string | null,
 ): UseMutationResult<void, Error, MenuItemUpsertInput> {
   const queryClient = useQueryClient();
   return useMutation<void, Error, MenuItemUpsertInput>({
@@ -160,7 +168,7 @@ export function useUpsertMenuItem(
     onSuccess: () => {
       if (brandId !== null) {
         void queryClient.invalidateQueries({
-          queryKey: menuKeys.brandMenus(brandId),
+          queryKey: menuKeys.brandMenus(brandId, venueId),
         });
       }
     },
@@ -169,6 +177,7 @@ export function useUpsertMenuItem(
 
 export function useDeleteMenuItem(
   brandId: string | null,
+  venueId?: string | null,
 ): UseMutationResult<void, Error, string> {
   const queryClient = useQueryClient();
   return useMutation<void, Error, string>({
@@ -185,7 +194,7 @@ export function useDeleteMenuItem(
     onSuccess: () => {
       if (brandId !== null) {
         void queryClient.invalidateQueries({
-          queryKey: menuKeys.brandMenus(brandId),
+          queryKey: menuKeys.brandMenus(brandId, venueId),
         });
       }
     },
@@ -205,9 +214,18 @@ export interface SortOrderPatch {
  */
 export function useReorderMenuItems(
   brandId: string | null,
-): UseMutationResult<void, Error, { menuId: string; patches: SortOrderPatch[] }> {
+  venueId?: string | null,
+): UseMutationResult<
+  void,
+  Error,
+  { menuId: string; patches: SortOrderPatch[] }
+> {
   const queryClient = useQueryClient();
-  return useMutation<void, Error, { menuId: string; patches: SortOrderPatch[] }>({
+  return useMutation<
+    void,
+    Error,
+    { menuId: string; patches: SortOrderPatch[] }
+  >({
     mutationFn: async ({
       menuId,
       patches,
@@ -234,7 +252,7 @@ export function useReorderMenuItems(
     onSuccess: () => {
       if (brandId !== null) {
         void queryClient.invalidateQueries({
-          queryKey: menuKeys.brandMenus(brandId),
+          queryKey: menuKeys.brandMenus(brandId, venueId),
         });
       }
     },
@@ -251,6 +269,7 @@ export function useReorderMenuItems(
  */
 export function useReorderMenus(
   brandId: string | null,
+  venueId?: string | null,
 ): UseMutationResult<void, Error, SortOrderPatch[]> {
   const queryClient = useQueryClient();
   return useMutation<void, Error, SortOrderPatch[]>({
@@ -265,7 +284,8 @@ export function useReorderMenus(
           .from("menus")
           .update({ sort_order: p.sortOrder, updated_at: now })
           .eq("id", p.id)
-          .eq("brand_id", brandId);
+          .eq("brand_id", brandId)
+          .eq("venue_id", venueId ?? "");
         if (error !== null) throw error as unknown as Error;
       }
     },
@@ -273,7 +293,7 @@ export function useReorderMenus(
     onSuccess: () => {
       if (brandId !== null) {
         void queryClient.invalidateQueries({
-          queryKey: menuKeys.brandMenus(brandId),
+          queryKey: menuKeys.brandMenus(brandId, venueId),
         });
       }
     },
@@ -283,15 +303,20 @@ export function useReorderMenus(
 // ---- public read (used by the consumer app; web folds it into the batch) ----
 export function usePublicMenus(
   brandSlug: string | null,
+  venueSlug: string | null,
 ): UseQueryResult<PublicMenuGroup[]> {
-  const enabled = brandSlug !== null && brandSlug.length > 0;
+  const enabled =
+    brandSlug !== null &&
+    brandSlug.length > 0 &&
+    venueSlug !== null &&
+    venueSlug.length > 0;
   return useQuery<PublicMenuGroup[]>({
     queryKey: enabled
-      ? menuKeys.publicMenus(brandSlug)
+      ? menuKeys.publicMenus(brandSlug, venueSlug)
       : (["publicMenus", "disabled"] as const),
     enabled,
     staleTime: 60_000,
     queryFn: () =>
-      enabled ? fetchPublicMenus(brandSlug) : Promise.resolve([]),
+      enabled ? fetchPublicMenus(brandSlug, venueSlug) : Promise.resolve([]),
   });
 }

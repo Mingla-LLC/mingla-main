@@ -1,6 +1,33 @@
 project_id = "gqnoajqerqhnvulmnyvv"
 
+[functions.refresh-fx-rates]
+verify_jwt = false
+
+[functions.manage-brand-discovery-currency]
+verify_jwt = true
+
+[functions.manage-stay-inventory]
+verify_jwt = true
+
+[functions.stay-reservations]
+verify_jwt = true
+
+[functions.stay-reservation-sweep]
+verify_jwt = false
+
+[functions.admin-stay-operations]
+verify_jwt = true
+
 [functions.payout-release-sweep]
+verify_jwt = false
+
+# issue #1179 (initiative #1013 sub-issue J) [cancel-refund-fanout] — refunds every
+# order-buyer of a cancelled event exactly once. Invoked by the backstop pg_cron
+# (service-role Bearer, not a user JWT) AND by best-effort client cancel kickoffs, so
+# verify_jwt=false. Authorization is NOT a user gate — it is the status-first
+# precondition inside cancel_event_refund_prepare (event_not_cancelled ⇒ zero refunds
+# regardless of caller); the twin RPCs it calls are GRANTed to service_role only.
+[functions.event-cancel-refund-fanout]
 verify_jwt = false
 
 # ORCH-1201 — hourly API-health probe; auth via service-role Bearer (pg_cron),
@@ -321,6 +348,16 @@ verify_jwt = true
 [functions.rsvp-notify]
 verify_jwt = true
 
+# Issue #1447 — organiser/scanner RSVP admission. The gateway verifies the JWT;
+# the RPC independently uses auth.uid() for event-scoped authorization.
+[functions.scan-rsvp]
+verify_jwt = true
+
+# Issue #1447 — authenticated owner or anonymous fragment-token RSVP pass/PDF.
+# Anonymous recovery is validated inside the function, so the gateway is open.
+[functions.rsvp-pass-fetch]
+verify_jwt = false
+
 # META-ORCH-1161 Sub-A.2 — record-consent is the SHARED bundled-consent writer
 # called by BOTH the consumer onboarding (authenticated) AND the anonymous buyer
 # checkout (anon), so verify_jwt=false (anon-tolerant). It writes consent_records
@@ -421,7 +458,35 @@ verify_jwt = true
 [functions.admin-refund-order]
 verify_jwt = true
 
+# ISSUE-1221 — typed Venue/RSVP refund control plane. Provider posting is
+# service-worker only; read/action surfaces authenticate again inside the Edge.
+[functions.source-refund-sweep]
+verify_jwt = false
+
+[functions.venue-reservation-refund-status]
+verify_jwt = false
+
+[functions.source-refund-action]
+verify_jwt = true
+
+[functions.source-refund-attention]
+verify_jwt = false
+
+[functions.admin-source-refund-action]
+verify_jwt = true
+
+[functions.admin-source-refund-operations]
+verify_jwt = true
+
 [functions.admin-stripe-connect-action]
+verify_jwt = true
+
+# ISSUE-1173 (sub-issue D of #1013) — admin-gated batch migration of existing
+# Stripe organiser accounts onto (or off) a manual event-anchored payout
+# schedule. verify_jwt=true: the gateway rejects no-JWT callers (401); the fn
+# then re-verifies the JWT is a real user AND an active admin (else 403).
+# Moves NO money; creates/replaces NO Stripe account.
+[functions.admin-payout-hold-migrate]
 verify_jwt = true
 
 # ISSUE-862 WP1 [Full Rooms Ad Engine] — admin-ad-* edge fns (Meta channel +
@@ -455,6 +520,15 @@ verify_jwt = true
 [functions.admin-ad-creative-upload]
 verify_jwt = true
 
+# ISSUE-1184 [Campaign Builder video Phase A] — one-platform-at-a-time media
+# preparation plus read-only provider previews. Gateway JWT and the in-function
+# active-admin gate both run before input handling or provider access.
+[functions.admin-ad-creative-prepare]
+verify_jwt = true
+
+[functions.admin-ad-preview]
+verify_jwt = true
+
 # ISSUE-989 [Campaign Builder real targeting] — the admin-gated, READ-ONLY
 # targeting resolver the Audience step calls to turn a typed city/interest NAME
 # into per-platform targeting keys/ids (Meta adgeolocation+adinterest, TikTok
@@ -462,6 +536,16 @@ verify_jwt = true
 # name passthrough). Creates NOTHING — every branch is a search. Same gate as the
 # WP1 fns: verify_jwt=true, then the in-code admin_users active gate (403).
 [functions.admin-ad-targeting-search]
+verify_jwt = true
+
+# ISSUE-1267 [Google Ads — the 5th server-side conversion lane] — the admin
+# one-shot that provisions the Google conversion action (customers/{id}/
+# conversionActions:mutate, category PURCHASE / UPLOAD_CLICKS / ONE_PER_CLICK) and
+# stores the returned resource name in ad_connections.extra (CONFIG, not a secret),
+# plus validateOnly dry-runs of both the mutate and the uploadClickConversions
+# lane. Same gate as the WP1 fns: verify_jwt=true, then the in-code admin_users
+# active gate (403). NO token/secret ever appears in a response, row, or log.
+[functions.admin-ad-google-provision-conversion]
 verify_jwt = true
 
 # ISSUE-865 WP-A [Attribution & reservation-conversion tracking] — the anon
@@ -473,6 +557,9 @@ verify_jwt = true
 # Same anon pattern as discover-merged-events. Reads env-var NAMES only — never a
 # token VALUE (the CAPI send is WP-B).
 [functions.attribution-capture]
+verify_jwt = false
+
+[functions.venue-organic-capture]
 verify_jwt = false
 
 # ISSUE-1003 [Venue Website Grader growth tool — test cut] — the anonymous

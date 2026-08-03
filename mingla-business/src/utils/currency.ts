@@ -141,6 +141,35 @@ export const normalizeCurrency = (currency?: string | null): string => {
   return code !== undefined && code.length > 0 ? code : "GBP";
 };
 
+/**
+ * Null-safe currency coercion — the sibling of `normalizeCurrency` for the
+ * WRITE path and DISPLAY-DECISION path (issue #962).
+ *
+ * Returns the trimmed, upper-cased ISO 4217 code, or `null` when the input is
+ * unset / blank. A pre-bank brand genuinely has NO currency
+ * (`brands.default_currency = NULL`, migration 0769 "NULL means not set; do not
+ * imply GBP"), so persistence must record null and display surfaces must hide
+ * the price ("—") rather than fabricate a code.
+ *
+ * IMPORTANT — `normalizeCurrency` is the Intl crash-guard ONLY (it returns GBP
+ * to avoid `RangeError: Currency is invalid` on an empty code inside
+ * `formatCurrency`/`formatCurrencyRound`, ORCH-1152); NEVER use it for
+ * persistence or display-gating — use `currencyCodeOrNull` and hide the price
+ * when it returns null. Mirrors the already-de-GBP'd `effectiveDraftCurrency`
+ * in `moneySummary.ts`.
+ *
+ * @example currencyCodeOrNull("usd")   → "USD"
+ * @example currencyCodeOrNull("  ")     → null
+ * @example currencyCodeOrNull(null)     → null
+ * @example currencyCodeOrNull(undefined)→ null
+ */
+export const currencyCodeOrNull = (
+  currency?: string | null,
+): string | null => {
+  const code = currency?.trim().toUpperCase();
+  return code !== undefined && code.length > 0 ? code : null;
+};
+
 export const majorFromMinor = (value: number, currency: string): number =>
   value / minorUnitFactor(normalizeCurrency(currency));
 
@@ -163,6 +192,10 @@ const LOCALE_BY_CURRENCY: Record<string, string> = {
   GBP: "en-GB",
   USD: "en-US",
   CAD: "en-CA",
+  // #1180 — without an en-NG mapping, NGN amounts rendered "NGN 1,234.00"
+  // instead of "₦1,234.00" (the fallback en-GB locale has no ₦ glyph for the
+  // Nigerian payout ledger rows). en-NG gives NG organisers the correct symbol.
+  NGN: "en-NG",
   EUR: "en-IE",
   CHF: "de-CH",
   BGN: "bg-BG",

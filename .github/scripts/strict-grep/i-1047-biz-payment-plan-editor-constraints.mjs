@@ -19,10 +19,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
-const src = fs.readFileSync(
-  path.join(REPO, "mingla-business/src/components/trip/PaymentPlanEditor.tsx"),
-  "utf8",
-);
 
 const EXPECT = {
   DEPOSIT_STEP: 5,
@@ -35,15 +31,58 @@ const EXPECT = {
   DAYS_MAX: 365,
 };
 
-const violations = [];
-for (const [name, value] of Object.entries(EXPECT)) {
-  const m = src.match(new RegExp(`const\\s+${name}\\s*=\\s*(\\d+)\\b`));
-  if (!m) {
-    violations.push(`money-safety constant \`${name}\` is missing (expected ${value}).`);
-  } else if (Number(m[1]) !== value) {
-    violations.push(`\`${name}\` = ${m[1]} but the SPEC-locked value is ${value} — a silent weakening of a buyer money constraint.`);
+// Pure verdict (behavior-preserving refactor). Scans `src` for each SPEC-locked
+// money constant and pushes a human-readable string into `violations` when a
+// constant is missing or has drifted. Takes a STRING; never touches disk.
+function check(src, violations) {
+  for (const [name, value] of Object.entries(EXPECT)) {
+    const m = src.match(new RegExp(`const\\s+${name}\\s*=\\s*(\\d+)\\b`));
+    if (!m) {
+      violations.push(`money-safety constant \`${name}\` is missing (expected ${value}).`);
+    } else if (Number(m[1]) !== value) {
+      violations.push(`\`${name}\` = ${m[1]} but the SPEC-locked value is ${value} — a silent weakening of a buyer money constraint.`);
+    }
   }
 }
+
+// ─────────────────────────────────────────────────────────────── self-test
+if (process.argv.includes("--self-test")) {
+  const self = [];
+  const run = (src) => {
+    const v = [];
+    check(src, v);
+    return v;
+  };
+
+  // GOOD: every constant present at its SPEC-locked value → silent.
+  const good = Object.entries(EXPECT).map(([k, v]) => `const ${k} = ${v};`).join("\n");
+  if (run(good).length) self.push("GOOD (all 8 money constants at SPEC values) wrongly flagged");
+
+  // BAD1 (revert-style): the deposit floor is weakened to 0 → fires.
+  const bad1 = good.replace("const DEPOSIT_MIN_PCT = 10;", "const DEPOSIT_MIN_PCT = 0;");
+  if (run(bad1).length === 0) self.push("BAD1 (DEPOSIT_MIN_PCT weakened to 0) not flagged");
+
+  // BAD2 (regression, different angle): the installment hard cap is blown to 99 → fires.
+  const bad2 = good.replace("const MAX_INSTALLMENTS = 11;", "const MAX_INSTALLMENTS = 99;");
+  if (run(bad2).length === 0) self.push("BAD2 (MAX_INSTALLMENTS blown to 99) not flagged");
+
+  if (self.length) {
+    console.error("I-1047-BIZ-PAYMENT-PLAN-EDITOR-CONSTRAINTS self-test FAIL:");
+    self.forEach((m) => console.error("  - " + m));
+    process.exit(1);
+  }
+  console.log("I-1047-BIZ-PAYMENT-PLAN-EDITOR-CONSTRAINTS self-test PASS (3/3 cases).");
+  process.exit(0);
+}
+
+// ─────────────────────────────────────────────────────────────── main path
+const src = fs.readFileSync(
+  path.join(REPO, "mingla-business/src/components/trip/PaymentPlanEditor.tsx"),
+  "utf8",
+);
+
+const violations = [];
+check(src, violations);
 
 if (violations.length) {
   console.error("\nFAIL [I-1047-BIZ-PAYMENT-PLAN-EDITOR-CONSTRAINTS]:");

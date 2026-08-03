@@ -212,7 +212,12 @@ export class CalendarService {
     const allowedCardFields = [
       "id", "placeId", "title", "category", "categoryIcon", "description",
       "fullDescription", "image", "images", "rating", "reviewCount",
-      "priceRange", "priceTier", "distance", "travelTime", "address",
+      "priceRange", "distance", "travelTime", "address",
+      "priceRangeStatus", "sourceMinMinor", "sourceMaxMinor",
+      "sourceCurrencyCode", "sourceMinorUnitExponent", "displayMinMinor",
+      "displayMaxMinor", "displayCurrencyCode", "displayMinorUnitExponent",
+      "priceIsApproximate", "fxSnapshotId", "fxProvider",
+      "fxProviderUpdatedAt", "fxFreshness",
       "openingHours", "phone", "website", "highlights", "tags",
       "matchScore", "location",
       "cardType", "tagline", "stops", "totalPriceMin", "totalPriceMax",
@@ -297,7 +302,10 @@ export class CalendarService {
     // ORCH-0408 Phase 4: Record schedule — counter + user interaction log (fire-and-forget)
     recordCardSchedule(card.id, {
       category: card.category,
-      priceTier: card.priceTier,
+      priceTier:
+        ((card as any).cardType === 'curated' || !!(card as any).stops)
+          ? card.priceTier
+          : undefined,
       isCurated: !!(card as any).stops || (card as any).cardType === 'curated',
     });
 
@@ -619,5 +627,3 @@ export class CalendarService {
     );
   }
 }
-
-

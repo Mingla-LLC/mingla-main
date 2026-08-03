@@ -73,41 +73,119 @@ function* walkTs(dir) {
   }
 }
 
+/**
+ * Pure verdict. `fileEntries` = [{ rel, content }] with `rel` the repo-relative
+ * POSIX path. Any file OTHER than the validator owner that mentions refund_policy
+ * and performs a `.update(` whose ±CONTEXT_LINES context references `refund_policy:`
+ * — with no allowlist tag in the 5 lines above — is a violation. Pushes one
+ * { rel, line } record per offending call site into `failures`.
+ * Behavior-preserving refactor of the original main-loop logic.
+ */
+function check(fileEntries, failures) {
+  for (const { rel, content } of fileEntries) {
+    // Owner file is exempt — it IS the validator.
+    if (rel === OWNER_FILE_REL) continue;
+
+    // Quick prefilter — skip files that don't mention refund_policy at all.
+    if (!content.includes("refund_policy")) continue;
+
+    const lines = content.split("\n");
+    for (let i = 0; i < lines.length; i += 1) {
+      if (!UPDATE_RE.test(lines[i])) continue;
+      // Look at the surrounding context for refund_policy reference.
+      const start = Math.max(0, i - CONTEXT_LINES);
+      const end = Math.min(lines.length, i + CONTEXT_LINES + 1);
+      const context = lines.slice(start, end).join("\n");
+      if (!REFUND_POLICY_RE.test(context)) continue;
+
+      // Found a candidate violation. Check for allowlist tag in the 5 lines above.
+      const above = lines.slice(start, i).join("\n");
+      if (above.includes(ALLOWLIST_TAG)) continue;
+
+      failures.push({ rel, line: i + 1 });
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────── self-test
+if (process.argv.includes("--self-test")) {
+  const self = [];
+  const run = (entries) => {
+    const f = [];
+    check(entries, f);
+    return f;
+  };
+
+  // GOOD: the validator owner writing refund_policy (exempt) → silent.
+  let f = run([
+    {
+      rel: OWNER_FILE_REL,
+      content: 'await sb.from("events").update({ refund_policy: validated });\n',
+    },
+  ]);
+  if (f.length) self.push("GOOD (validator owner refund_policy write) wrongly flagged");
+
+  // BAD1 (revert-style): a raw events.update({ refund_policy }) outside the
+  // validator with no allowlist → fires.
+  f = run([
+    {
+      rel: "mingla-business/src/screens/EditRefund.tsx",
+      content:
+        'await sb.from("events").update({\n  refund_policy: policy,\n});\n',
+    },
+  ]);
+  if (f.length === 0) self.push("BAD1 (raw refund_policy update outside validator) not flagged");
+
+  // BAD2 (regression, different angle): a SECOND component writing refund_policy
+  // directly (single-line update) → fires.
+  f = run([
+    {
+      rel: "mingla-business/src/components/RefundAccordion.tsx",
+      content: 'const r = await client.from("events").update({ refund_policy: next });\n',
+    },
+  ]);
+  if (f.length === 0) self.push("BAD2 (second component direct refund_policy write) not flagged");
+
+  // SPECIFICITY: an allowlisted direct write stays silent.
+  f = run([
+    {
+      rel: "mingla-business/src/screens/AdminOverride.tsx",
+      content:
+        "// orch-strict-grep-allow tr4-refund-cascade-monotonicity — admin data migration\n" +
+        'await sb.from("events").update({ refund_policy: forced });\n',
+    },
+  ]);
+  if (f.length) self.push("allowlisted refund_policy write wrongly flagged");
+
+  if (self.length) {
+    console.error("[i-proposed-tr4-refund-cascade-monotonicity] self-test FAIL:");
+    self.forEach((m) => console.error("  - " + m));
+    process.exit(1);
+  }
+  console.log("[i-proposed-tr4-refund-cascade-monotonicity] self-test PASS (4/4 cases).");
+  process.exit(0);
+}
+
+// ─────────────────────────────────────────────────────────────── main path
+const fileEntries = [];
 for (const filePath of walkTs(SCAN_DIR)) {
   filesScanned += 1;
-  const relPath = relative(REPO_ROOT, filePath);
-
-  // Owner file is exempt — it IS the validator.
-  if (relPath === OWNER_FILE_REL) continue;
-
   let source;
   try {
     source = readFileSync(filePath, "utf8");
   } catch {
     continue;
   }
+  fileEntries.push({ rel: relative(REPO_ROOT, filePath), content: source });
+}
 
-  // Quick prefilter — skip files that don't mention refund_policy at all.
-  if (!source.includes("refund_policy")) continue;
-
-  const lines = source.split("\n");
-  for (let i = 0; i < lines.length; i += 1) {
-    if (!UPDATE_RE.test(lines[i])) continue;
-    // Look at the surrounding context for refund_policy reference.
-    const start = Math.max(0, i - CONTEXT_LINES);
-    const end = Math.min(lines.length, i + CONTEXT_LINES + 1);
-    const context = lines.slice(start, end).join("\n");
-    if (!REFUND_POLICY_RE.test(context)) continue;
-
-    // Found a candidate violation. Check for allowlist tag in the 5 lines above.
-    const above = lines.slice(start, i).join("\n");
-    if (above.includes(ALLOWLIST_TAG)) continue;
-
-    console.error(
-      `[i-proposed-tr4-refund-cascade-monotonicity] VIOLATION: ${relPath}:${i + 1} writes events.refund_policy outside the validator (${OWNER_FILE_REL}). Either route via refundPolicyService.updateRefundPolicy() OR add allowlist comment "// ${ALLOWLIST_TAG} — <reason>" within 5 lines above.`,
-    );
-    violations += 1;
-  }
+const failures = [];
+check(fileEntries, failures);
+violations = failures.length;
+for (const v of failures) {
+  console.error(
+    `[i-proposed-tr4-refund-cascade-monotonicity] VIOLATION: ${v.rel}:${v.line} writes events.refund_policy outside the validator (${OWNER_FILE_REL}). Either route via refundPolicyService.updateRefundPolicy() OR add allowlist comment "// ${ALLOWLIST_TAG} — <reason>" within 5 lines above.`,
+  );
 }
 
 if (violations === 0) {

@@ -16,6 +16,7 @@
 import {
   assert,
   assertEquals,
+  assertFalse,
 } from "https://deno.land/std@0.190.0/testing/asserts.ts";
 
 import {
@@ -204,7 +205,7 @@ Deno.test("charge.succeeded → resolves partner + creates Transfer with zero-FX
   assertEquals(payload.amount, 15); // round(150 * 0.10) = 15
   assertEquals(payload.currency, "usd"); // ZERO FX
   assertEquals(payload.destination, "acct_partner_test");
-  assertEquals(payload.source_transaction, "ch_test_1");
+  assertFalse("source_transaction" in payload);
   assertEquals(payload.metadata.mingla_application_fee_id, "fee_test_1");
   assertEquals(options.idempotencyKey, "partner_split_fee_test_1");
 

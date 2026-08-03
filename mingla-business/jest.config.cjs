@@ -109,7 +109,7 @@ module.exports = {
     "geminiActivitiesParser\\.contract\\.test\\.ts$", // stale source-text pin — quarantined per #1047, file retained
     "orch_1092_business_web_restoration_wave\\.test\\.ts$", // stale source-text pin — quarantined per #1047, file retained
 
-    // ---- INVARIANT_CONVERT (7) — each encoded a LOAD-BEARING rule; the rule is
+    // ---- INVARIANT_CONVERT (11) — each encoded a LOAD-BEARING rule; the rule is
     // now enforced by an ADDITIVE strict-grep gate in .github/scripts/strict-grep/
     // (registered in MANIFEST.json) that ACTUALLY RUNS in CI. The brittle jest pin
     // is quarantined ONLY because its invariant moved to a gate — enforcement is
@@ -121,6 +121,10 @@ module.exports = {
     "orch_0893a_hydration_gate\\.test\\.ts$", // invariant -> i-1047-biz-create-hydration-gate.mjs
     "orch_1165_keyboard_toolbar_mount_coverage\\.test\\.ts$", // invariant -> i-1047-biz-keyboard-toolbar-keyed-offset.mjs
     "orch_0911_trip_confirm_loading_state\\.adversarial\\.test\\.tsx$", // invariant -> i-1047-biz-trip-confirm-hascs-url-only.mjs
+    "[/\\\\]home\\.orch_0974\\.test\\.tsx$", // invariant -> updated orch-0974-home-mobile-lock-pane.mjs
+    "[/\\\\]home\\.orch_0974\\.adversarial\\.test\\.tsx$", // invariant -> updated orch-0974-home-mobile-lock-pane.mjs
+    "[/\\\\]venueAdsDrivenTile\\.issue865pr1\\.test\\.ts$", // invariant -> issue-1403-listing-insights-wiring.mjs
+    "[/\\\\]venueIntelligence\\.noFabrication\\.test\\.ts$", // invariant -> issue-1421-venue-organic-insights-wiring.mjs
   ],
   moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json"],
   // #1062 [biz-jest-residual-burndown] Wave 1 — B3a shared-harness (fix-once-
@@ -134,6 +138,10 @@ module.exports = {
   // / react-dom / @mingla/* siblings are untouched. A test's own jest.mock()
   // overrides any map for that file.
   moduleNameMapper: {
+    // react is unresolvable FROM workspace packages/*.tsx in CI because the
+    // Business install owns the peer dependency. Point the bare specifier at
+    // that one real copy, matching the JSX-runtime repair immediately below.
+    "^react$": "<rootDir>/node_modules/react",
     // react/jsx-runtime is unresolvable FROM packages/*.tsx (no react in packages/;
     // mingla-business owns the one real copy). Point both automatic-runtime entries
     // at the REAL react — this is resolution repair, not a mock (zero faking). Fixes

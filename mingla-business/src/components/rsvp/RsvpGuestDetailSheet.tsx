@@ -31,12 +31,19 @@ import {
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { Sheet } from "../ui/Sheet";
+// #1376 [rsvp-console-modal-fix] Bug 2 — the sheet's approve/deny error feedback
+// Toast is rendered INSIDE this Sheet (nested <Toast> below), never forwarded to
+// the console-root sibling Toast (which iOS New-Arch drops as a second modal on
+// the screen-root VC while the sheet modal is up). Mirrors #1356 CoverPickerSheet.
+import { Toast } from "../ui/Toast";
 import type {
   RsvpApprovalValue,
   RsvpGuest,
   RsvpSourceValue,
   RsvpStatusValue,
 } from "../../services/rsvpApprovals";
+import type { SourceRefundSummary } from "../../types/venueReservation";
+import { SourceRefundStatusChip } from "../refunds/SourceRefundStatusChip";
 
 // ORCH-1334 — avatar helpers copied inline (byte-for-byte from
 // app/event/[id]/guests/index.tsx:88-101 per SPEC §4E-10; NOT refactored into a
@@ -167,6 +174,16 @@ export interface RsvpGuestDetailSheetProps {
   onDeny: (g: RsvpGuest) => void;
   onRemove: (g: RsvpGuest) => void;
   isActionPending: boolean;
+  // #1376 Bug 2 — in-sheet error notice. null = hidden. The parent routes
+  // approve/deny failures here so the error renders from the nested <Toast>
+  // below (this Sheet's own modal VC), which iOS stacks, instead of the
+  // console-root sibling Toast, which iOS drops while the sheet modal is up.
+  notice: string | null;
+  onNoticeDismiss: () => void;
+  contributionId?: string | null;
+  refund?: SourceRefundSummary | null;
+  onRefundContribution?: (contributionId: string) => void;
+  isRefundPending?: boolean;
 }
 
 export const RsvpGuestDetailSheet: React.FC<RsvpGuestDetailSheetProps> = ({
@@ -177,6 +194,12 @@ export const RsvpGuestDetailSheet: React.FC<RsvpGuestDetailSheetProps> = ({
   onDeny,
   onRemove,
   isActionPending,
+  notice,
+  onNoticeDismiss,
+  contributionId = null,
+  refund = null,
+  onRefundContribution,
+  isRefundPending = false,
 }) => {
   // The Sheet stays mounted through its close animation, during which `guest`
   // may already be null — render an empty body then (the Sheet animates out).
@@ -268,6 +291,31 @@ export const RsvpGuestDetailSheet: React.FC<RsvpGuestDetailSheetProps> = ({
             )}
           </View>
 
+          {refund ? (
+            <View style={styles.block}>
+              <SectionLabel>CONTRIBUTION REFUND</SectionLabel>
+              <SourceRefundStatusChip refund={refund} />
+              <Text style={styles.meta}>
+                Provider acceptance and Mingla&apos;s fee reversal are tracked
+                separately until both are reconciled.
+              </Text>
+            </View>
+          ) : contributionId && onRefundContribution ? (
+            <View style={styles.block}>
+              <SectionLabel>CONTRIBUTION</SectionLabel>
+              <Button
+                label="Refund contribution"
+                variant="secondary"
+                size="md"
+                loading={isRefundPending}
+                disabled={isRefundPending}
+                onPress={() => onRefundContribution(contributionId)}
+                accessibilityLabel={`Refund ${guest.displayName}'s contribution`}
+                testID="rsvp-sheet-refund-contribution"
+              />
+            </View>
+          ) : null}
+
           {/* Host actions — state-gated (mirror the row actions) */}
           {guest.approvalStatus === "pending" ? (
             <View style={styles.actionBar}>
@@ -309,6 +357,23 @@ export const RsvpGuestDetailSheet: React.FC<RsvpGuestDetailSheetProps> = ({
           ) : null}
         </ScrollView>
       )}
+
+      {/* #1376 [rsvp-console-modal-fix] Bug 2 — approve/deny error feedback
+          renders from THIS Toast, a JSX descendant of the <Sheet>, so it
+          presents from the sheet's own modal VC (which iOS New-Arch stacks)
+          rather than the screen-root VC the sheet already holds. The old wiring
+          routed the error to the console-root sibling <Toast> — a SECOND modal
+          on the same VC — so iOS refused it ("already presenting …") and the
+          error was silently dropped while the sheet stayed open. The sheet stays
+          open on error by design (retry in-context), so this is nested, NOT
+          deferred. I-SUB-SHEET-INSIDE-PARENT. */}
+      <Toast
+        visible={notice !== null}
+        kind="error"
+        message={notice ?? ""}
+        onDismiss={onNoticeDismiss}
+        testID="rsvp-guest-detail-notice"
+      />
     </Sheet>
   );
 };
