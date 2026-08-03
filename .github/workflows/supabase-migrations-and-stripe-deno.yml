@@ -363,6 +363,23 @@ jobs:
             # messageType and provider, and the fail-closed response contract
             # against the verbatim #1480 provider envelopes.
             supabase/functions/_shared/adapters/smsAdapter.issue1518.adversarial.test.ts
+            # Issue #1529 T-5 — SQL/TypeScript parity for E.164 → ISO-2 country
+            # derivation. Reads its fixtures OUT OF the SQL test file
+            # (supabase/migrations/__tests__/issue_1529_e164_parity.test.sql) so
+            # both implementations share ONE fixture list and cannot drift.
+            # Carries a vacuity guard: zero parsed fixtures FAILS rather than
+            # passing over an empty set.
+            supabase/functions/_shared/e164Country.issue1529.test.ts
+            # Issue #1529 T-2b + T-4(drain) — the source-refund pool. Drives the
+            # real processSource with a fake client and REAL fingerprints, and
+            # asserts on the serialized notify-dispatch body: (a) an SMS dispatch
+            # carries the DERIVED country even though that pool's outbox row
+            # structurally cannot hold one (#1221 deliberately keeps recipient
+            # PII out of the outbox), and (b) a kill-switched send completes as
+            # `skipped`, never `terminal_unsent` — the latter escalates
+            # source_refunds.ops_status to needs_review, a false alarm on a live
+            # money path the day NG rows genuinely say NG.
+            supabase/functions/notify-outbox-drain/issue1529.sourceCountry.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then

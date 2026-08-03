@@ -1,0 +1,136 @@
+# QUOTED name: an unquoted leading '#' would truncate the workflow name to "Issue".
+name: "Issue #1529 notification country_code"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/20270211001529_issue_1529_notification_country_code.sql"
+      - "supabase/migrations/__tests__/issue_1529_e164_parity.test.sql"
+      - "supabase/migrations/__tests__/issue_1529_producer_catalog_audit.test.sql"
+      - "supabase/functions/_shared/e164Country.ts"
+      - "supabase/functions/_shared/e164Country.issue1529.test.ts"
+      - "supabase/functions/_shared/adapters/smsAdapter.ts"
+      - "supabase/functions/_shared/notifyV2.ts"
+      - "supabase/functions/notify-dispatch/index.ts"
+      - "supabase/functions/notify-outbox-drain/index.ts"
+      - "supabase/functions/notify-outbox-drain/issue1529.sourceCountry.test.ts"
+      - "supabase/functions/marketing-send/index.ts"
+      - ".github/workflows/issue-1529-notification-country-code-tests.yml"
+  pull_request:
+    paths:
+      - "supabase/migrations/20270211001529_issue_1529_notification_country_code.sql"
+      - "supabase/migrations/__tests__/issue_1529_e164_parity.test.sql"
+      - "supabase/migrations/__tests__/issue_1529_producer_catalog_audit.test.sql"
+      - "supabase/functions/_shared/e164Country.ts"
+      - "supabase/functions/_shared/e164Country.issue1529.test.ts"
+      - "supabase/functions/_shared/adapters/smsAdapter.ts"
+      - "supabase/functions/_shared/notifyV2.ts"
+      - "supabase/functions/notify-dispatch/index.ts"
+      - "supabase/functions/notify-outbox-drain/index.ts"
+      - "supabase/functions/notify-outbox-drain/issue1529.sourceCountry.test.ts"
+      - "supabase/functions/marketing-send/index.ts"
+      - ".github/workflows/issue-1529-notification-country-code-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # -------------------------------------------------------------------------
+  # Deno side: the shared derivation helper, its SQL-parity suite, the
+  # source-refund drain behaviour, and — critically — the #1518 suites, which
+  # must stay green UNMODIFIED. #1529 touches shared notification code, so
+  # every smsAdapter contract is re-verified here rather than assumed.
+  # -------------------------------------------------------------------------
+  issue-1529-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.7.14
+      - name: Type-check every function touched by #1529
+        run: |
+          deno check \
+            supabase/functions/_shared/e164Country.ts \
+            supabase/functions/_shared/adapters/smsAdapter.ts \
+            supabase/functions/_shared/notifyV2.ts \
+            supabase/functions/notify-dispatch/index.ts \
+            supabase/functions/notify-outbox-drain/index.ts \
+            supabase/functions/marketing-send/index.ts
+      - name: Prove the derivation contract and the refund-path skip
+        run: |
+          deno test --allow-env --allow-net --allow-read --no-check \
+            supabase/functions/_shared/e164Country.issue1529.test.ts \
+            supabase/functions/notify-outbox-drain/issue1529.sourceCountry.test.ts
+      - name: Prove #1518 still holds, byte for byte and unmodified
+        run: |
+          deno test --allow-env --allow-net --allow-read --no-check \
+            supabase/functions/_shared/adapters/smsAdapter.issue1518.test.ts \
+            supabase/functions/_shared/adapters/smsAdapter.issue1518.adversarial.test.ts \
+            supabase/functions/__tests__/orch_1161_notify_dispatch_v2.test.ts
+
+  # -------------------------------------------------------------------------
+  # SQL side: apply every migration into a real Supabase Postgres 17 and prove
+  # the producers actually write the country, that the derivation helpers agree
+  # with their TypeScript twin, and that the catalog-driven producer audit
+  # cannot pass vacuously.
+  # -------------------------------------------------------------------------
+  postgres-17-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ format('issue-1529-ci-{0}', github.run_id) }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for PostgreSQL 17
+        env:
+          PGPASSWORD: ${{ format('issue-1529-ci-{0}', github.run_id) }}
+        run: |
+          for i in {1..90}; do
+            if psql -h localhost -U postgres -d postgres -Atc \
+              "SELECT to_regnamespace('vault') IS NOT NULL AND to_regrole('supabase_admin') IS NOT NULL" \
+              2>/dev/null | grep -qx t; then
+              exit 0
+            fi
+            sleep 1
+          done
+          exit 1
+      - name: Apply all migrations
+        env:
+          PGPASSWORD: ${{ format('issue-1529-ci-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 \
+            | sort -z \
+            | while IFS= read -r -d '' migration; do
+                psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$migration"
+              done
+      - name: Prove SQL and TypeScript derive the same country from the same fixtures
+        env:
+          PGPASSWORD: ${{ format('issue-1529-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_1529_e164_parity.test.sql
+      - name: Prove every notification_outbox producer decides a country
+        env:
+          PGPASSWORD: ${{ format('issue-1529-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_1529_producer_catalog_audit.test.sql
