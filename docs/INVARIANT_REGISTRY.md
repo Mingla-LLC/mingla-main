@@ -6810,9 +6810,9 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 - **Established:** DRAFT 2026-07-31 at issue #1423 IMPLEMENT. Flips ACTIVE only after independent
   iOS/Android/runtime/database verification and CLOSE; production Stay flags remain owned by #1392.
 
-## DRAFT — issue #1485 (business web: missing JS returns the homepage instead of a 404)
+## ACTIVE — issue #1485 (business web: missing JS returns the homepage instead of a 404)
 
-### I-1485-STATIC-ASSET-NEVER-HTML (DRAFT)
+### I-1485-STATIC-ASSET-NEVER-HTML (ACTIVE)
 - **Rule:** On every Vercel-deployed Mingla web surface, a request for a content-hashed static
   asset path must never resolve to an HTML document with a 2xx status. `mingla-business`'s SPA
   catch-all rewrite is `{ "source": "/((?!_expo/static/).*)", "destination": "/" }` and stays the
@@ -6849,7 +6849,7 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   chunk returns 404, a real chunk returns `200 application/javascript`, and every deep link,
   bot/OG rewrite, `/stripe-onboarding-return`, and `/auth/callback` still resolve.
 
-### I-1485-ONE-CHUNK-RECOVERY-OWNER (DRAFT)
+### I-1485-ONE-CHUNK-RECOVERY-OWNER (ACTIVE)
 - **Rule:** Business web has exactly ONE chunk-recovery decision, even though two components can
   observe a failure. `mingla-business/scripts/inject-mobile-blur-css.mjs` injects an inline
   `<head>` script into `dist/index.html` (it runs before any bundle and is the only owner that can
