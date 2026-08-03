@@ -632,6 +632,60 @@ export const GOOGLE_SEARCH_NETWORK_SETTINGS = {
   targetPartnerSearchNetwork: false,
 } as const;
 
+// ── ISSUE-992 (3a) demographics + (3b) audiences — ad-group criteria ──────────
+//
+// Google demographics are ALL-INCLUDED by default; you restrict by adding
+// NEGATIVE `adGroupCriterion` criteria for the buckets OUTSIDE the target
+// (Google Ads v24 AdGroupCriterion.age_range / .gender). Age bands are FIXED
+// 10-year bands — a requested [min,max] INCLUDES every band it overlaps
+// (Seth decision G-1: bucket-widening ACCEPTED — never hard-clamp). Age/gender
+// UNDETERMINED buckets stay INCLUDED unless the caller opts to exclude them
+// (Seth decision G-2 — flags default false). SUSPECTED wire shape (documented
+// Google Ads v24 contract) — the create fn threads `validateOnly` so a
+// zero-object validate_only mutate proves the exact criterion body at BUILD.
+//
+// [SUSPECTED — Google Ads v24] adGroupCriterion age_range / gender enum values.
+export const GOOGLE_AGE_RANGE_TYPES = [
+  "AGE_RANGE_18_24",
+  "AGE_RANGE_25_34",
+  "AGE_RANGE_35_44",
+  "AGE_RANGE_45_54",
+  "AGE_RANGE_55_64",
+  "AGE_RANGE_65_UP",
+] as const;
+export type GoogleAgeRangeType = (typeof GOOGLE_AGE_RANGE_TYPES)[number];
+
+/** Fixed 10-year bands (65_UP is open-topped) — the G-1 overlap source. */
+export const GOOGLE_AGE_BANDS: readonly { type: GoogleAgeRangeType; min: number; max: number }[] = [
+  { type: "AGE_RANGE_18_24", min: 18, max: 24 },
+  { type: "AGE_RANGE_25_34", min: 25, max: 34 },
+  { type: "AGE_RANGE_35_44", min: 35, max: 44 },
+  { type: "AGE_RANGE_45_54", min: 45, max: 54 },
+  { type: "AGE_RANGE_55_64", min: 55, max: 64 },
+  { type: "AGE_RANGE_65_UP", min: 65, max: 200 },
+];
+
+export const GOOGLE_AGE_RANGE_UNDETERMINED = "AGE_RANGE_UNDETERMINED";
+export const GOOGLE_GENDER_TYPES = ["MALE", "FEMALE"] as const;
+export type GoogleGenderType = (typeof GOOGLE_GENDER_TYPES)[number];
+export const GOOGLE_GENDER_UNDETERMINED = "UNDETERMINED";
+
+/**
+ * G-1 (bucket-widening ACCEPTED): map a requested [ageMin, ageMax] to the
+ * TARGET (included) fixed age bands — every band whose 10-year span OVERLAPS
+ * the request is kept (mirrors tiktokAgeGroupsForRange). A request of 21-30
+ * therefore INCLUDES 18-24 + 25-34 (wider than asked — standard Google
+ * behavior; hard-clamp would silently drop 21-24). Absent bounds default to
+ * the widest span so an unset field never narrows.
+ */
+export function googleAgeRangesForRange(ageMin?: number, ageMax?: number): GoogleAgeRangeType[] {
+  const min = typeof ageMin === "number" && Number.isFinite(ageMin) ? ageMin : 0;
+  const max = typeof ageMax === "number" && Number.isFinite(ageMax) ? ageMax : 200;
+  return GOOGLE_AGE_BANDS
+    .filter((band) => band.max >= min && band.min <= max)
+    .map((band) => band.type);
+}
+
 export interface GoogleCreateFullCampaignInput {
   name: string;
   /** Minor units (cents) — converted ONCE here via centsToPlatformBudget. */
@@ -648,6 +702,27 @@ export interface GoogleCreateFullCampaignInput {
   negativeKeywords?: GoogleKeywordInput[];
   /** Resolved numeric criterion ids (GR-37 — resolver output, never raw names). */
   geoTargetCriterionIds: string[];
+  /**
+   * ISSUE-992 (3a) — the TARGET (included) age bands (GOOGLE_AGE_RANGE_TYPES);
+   * buildGoogleMutateOperations excludes the COMPLEMENT as negative criteria.
+   * Absent / all-6 → no age criteria (broad, byte-identical).
+   */
+  ageRanges?: string[];
+  /**
+   * ISSUE-992 (3a) — the TARGET gender(s) ("MALE"|"FEMALE"); a single-gender
+   * target excludes the opposite. Absent / both → no gender criteria.
+   */
+  genders?: string[];
+  /** G-2 (default false): also exclude the AGE_RANGE_UNDETERMINED bucket. */
+  excludeUndeterminedAge?: boolean;
+  /** G-2 (default false): also exclude the gender UNDETERMINED bucket. */
+  excludeUndeterminedGender?: boolean;
+  /**
+   * ISSUE-992 (3b) — affinity / in-market audience ids (user_interest_id);
+   * emitted as POSITIVE ad-group userInterest criteria. 3b is account/policy-
+   * gated (G-4) — clean seam: empty ⇒ zero audience ops (3a ships regardless).
+   */
+  userInterestIds?: string[];
   /** googleAds:mutate validateOnly passthrough — zero objects created (G-P3). */
   validateOnly?: boolean;
 }
@@ -738,6 +813,71 @@ export function buildGoogleMutateOperations(
     adGroup.cpcBidMicros = String(centsToPlatformBudget("google", input.cpcBidCents));
   }
   operations.push({ adGroupOperation: { create: adGroup } });
+
+  // 4b. ISSUE-992 (3a) demographics by EXCLUSION + (3b) audiences (POSITIVE) —
+  //     ad-group-level criteria referencing the ad group above. Demographics
+  //     are all-included by default, so a narrowed target is expressed as
+  //     NEGATIVE criteria for the buckets OUTSIDE it; a full-range/all target
+  //     emits NOTHING (byte-identical broad build). [SUSPECTED wire — probe.]
+  const targetAges = Array.isArray(input.ageRanges) ? input.ageRanges : [];
+  if (targetAges.length > 0) {
+    // Exclude every fixed band NOT in the target set (the G-1 complement).
+    for (const band of GOOGLE_AGE_RANGE_TYPES) {
+      if (targetAges.includes(band)) continue;
+      operations.push({
+        adGroupCriterionOperation: {
+          create: { adGroup: adGroupResource, negative: true, ageRange: { type: band } },
+        },
+      });
+    }
+    // G-2: UNDETERMINED stays INCLUDED unless the flag opts to exclude it.
+    if (input.excludeUndeterminedAge === true) {
+      operations.push({
+        adGroupCriterionOperation: {
+          create: {
+            adGroup: adGroupResource,
+            negative: true,
+            ageRange: { type: GOOGLE_AGE_RANGE_UNDETERMINED },
+          },
+        },
+      });
+    }
+  }
+  const targetGenders = Array.isArray(input.genders) ? input.genders : [];
+  if (targetGenders.length === 1) {
+    // Single-gender target → exclude the opposite (target women ⇒ exclude MALE).
+    const opposite = targetGenders[0] === "MALE" ? "FEMALE" : "MALE";
+    operations.push({
+      adGroupCriterionOperation: {
+        create: { adGroup: adGroupResource, negative: true, gender: { type: opposite } },
+      },
+    });
+  }
+  if (input.excludeUndeterminedGender === true) {
+    operations.push({
+      adGroupCriterionOperation: {
+        create: {
+          adGroup: adGroupResource,
+          negative: true,
+          gender: { type: GOOGLE_GENDER_UNDETERMINED },
+        },
+      },
+    });
+  }
+  // 3b audiences — POSITIVE affinity/in-market userInterest criteria (G-4 seam:
+  // empty ⇒ nothing emitted, so 3a is unaffected if audiences are account-gated).
+  for (const rawId of input.userInterestIds ?? []) {
+    const id = String(rawId).trim();
+    if (!id) continue;
+    operations.push({
+      adGroupCriterionOperation: {
+        create: {
+          adGroup: adGroupResource,
+          userInterest: { userInterestCategory: `userInterests/${id}` },
+        },
+      },
+    });
+  }
 
   // 5. The RSA ad — PAUSED; finalUrls = [canonical dest_url] (A4.f / D-P1).
   operations.push({
@@ -885,6 +1025,389 @@ export async function googleCreateFullCampaign(
       code: "unexpected_mutate_response",
       message:
         "googleAds:mutate returned OK but the campaign/adGroup/adGroupAd resource names are missing — refusing to persist an unverifiable create.",
+      traceId: requestId,
+    });
+  }
+  return {
+    validated: false,
+    externalCampaignId: idFromResourceName(names.campaignResourceName),
+    externalAdSetId: idFromResourceName(names.adGroupResourceName),
+    externalAdId: idFromResourceName(names.adGroupAdResourceName),
+    budgetResourceName: names.budgetResourceName,
+    requestId,
+  };
+}
+
+// ── ISSUE-997 D2: Google Demand Gen VIDEO campaign (a DISTINCT campaign type) ──
+//
+// A YouTube video ad is a DIFFERENT CAMPAIGN TYPE — not a new asset on the Search
+// path. googleCreateFullCampaign above is SEARCH+RSA and a video ad CANNOT ride a
+// Search campaign. This is the sibling builder: advertisingChannelType
+// "DEMAND_GEN" (Google's supported go-forward home for YouTube/Discovery video —
+// standalone Video-campaign creation is being sunset into Demand Gen), reusing the
+// SAME honest zero-conversion targetSpend (Maximize Clicks) strategy the SEARCH
+// path ships, so there is NO conversion-tracking dependency. The prepared UNLISTED
+// YouTube video (external_ref_extra.youtube_video_id from the D1 prepare adapter)
+// rides as its OWN assetOperation (youtubeVideoAsset), referenced by the
+// demandGenVideoResponsiveAd. NO cover / thumbnail (YouTube auto-generates one),
+// but a demandGenVideoResponsiveAd REQUIRES >=1 square (1:1) logo image asset —
+// so a logo assetOperation (imageAsset, the embedded square Mingla PNG) rides
+// too and is referenced by logoImages. PAUSED at every level; validateOnly
+// threads natively (Google honors validateOnly:true → zero objects), the key D
+// de-risking lever TikTok/Snap lack.
+//
+// [LIVE-VALIDATED — Google Ads v24 AND v25 — issue #1303] the corrected wire
+// shape below was proven to HTTP 200 by native validateOnly:true mutates on the
+// live account (zero objects, zero spend). #1303 pinned THREE root causes in the
+// original #997-D2 doc-sourced-but-never-live-validated shape and fixed all three:
+//   RC-1 geo criteria belong at the AD-GROUP level (Demand Gen defaults to
+//        upgraded_targeting=true) — campaign-level geo is REJECTED
+//        (requestError.UNKNOWN, the masked #1303 symptom). Do NOT set
+//        upgradedTargeting (not a settable v24/v25 field — rely on the default).
+//   RC-2 the ad REQUIRES a non-empty ad.name (unlike Search RSA).
+//   RC-3 logoImages is REQUIRED (>=1), not optional.
+// Deleting containsEuPoliticalAdvertising, moving geo back to campaign level,
+// dropping ad.name, or dropping logoImages are each fails-on-revert targets of
+// the D2 suite (each reproduces a live Google rejection).
+
+export const GOOGLE_DEMAND_GEN_BUSINESS_NAME_MAX = 25;
+export const GOOGLE_DEMAND_GEN_HEADLINE_MAX_CHARS = 40;
+export const GOOGLE_DEMAND_GEN_LONG_HEADLINE_MAX_CHARS = 90;
+export const GOOGLE_DEMAND_GEN_DESCRIPTION_MAX_CHARS = 90;
+
+export interface GoogleDemandGenVideoInput {
+  name: string;
+  /** Minor units (cents) — converted ONCE here via centsToPlatformBudget. */
+  dailyBudgetCents: number;
+  /** A4.f destination policy v1: the canonical public page — NEVER the OneLink. */
+  finalUrl: string;
+  /** The ONLY slot the OneLink may ride in — campaign level. */
+  trackingUrlTemplate?: string;
+  /** Advertiser/brand display name (≤25) — REQUIRED by the video responsive ad. */
+  businessName: string;
+  /** ≥1, each ≤40 chars. */
+  headlines: string[];
+  /** ≥1, each ≤90 chars (a NEW field the SEARCH/RSA path does not collect). */
+  longHeadlines: string[];
+  /** ≥1, each ≤90 chars. */
+  descriptions: string[];
+  /** The prepared YouTube video id (external_ref_extra.youtube_video_id — D1). */
+  youtubeVideoId: string;
+  /**
+   * REQUIRED square (1:1) logo image, base64-encoded PNG bytes — a
+   * demandGenVideoResponsiveAd rejects (collectionSizeError: TOO_FEW) without >=1
+   * logo asset (#1303 RC-3). Supply MINGLA_SQUARE_LOGO_PNG_BASE64 from
+   * _shared/adDemandGenLogo.ts; the builder fails closed on an empty value.
+   */
+  logoImageData: string;
+  /** Resolved numeric criterion ids (GR-37 — resolver output, never raw names). */
+  geoTargetCriterionIds: string[];
+  /** googleAds:mutate validateOnly passthrough — zero objects created. */
+  validateOnly?: boolean;
+}
+
+/**
+ * Demand Gen video responsive-ad copy validator (pre-call 422s): businessName
+ * ≤25, ≥1 headline ≤40, ≥1 longHeadline ≤90, ≥1 description ≤90. NO keyword
+ * validation — Demand Gen is audience-based, not keyword-based.
+ */
+export function validateGoogleDemandGenAd(input: {
+  businessName: unknown;
+  headlines: unknown;
+  longHeadlines: unknown;
+  descriptions: unknown;
+}): GoogleValidation {
+  const checkTextArray = (
+    value: unknown,
+    field: string,
+    maxChars: number,
+  ): GoogleValidation => {
+    if (!Array.isArray(value) || value.length === 0) {
+      return {
+        ok: false,
+        detail: `demand_gen_${field}_required`,
+        message: `A Demand Gen video ad needs at least one ${field.replace(/_/g, " ")}.`,
+      };
+    }
+    if (value.some((t) => typeof t !== "string" || !t.trim())) {
+      return {
+        ok: false,
+        detail: `demand_gen_${field}_invalid`,
+        message: `creative.${field} must be an array of non-empty strings.`,
+      };
+    }
+    const tooLong = (value as string[]).find((t) => t.trim().length > maxChars);
+    if (tooLong !== undefined) {
+      return {
+        ok: false,
+        detail: `demand_gen_${field}_too_long`,
+        message: `"${tooLong.trim().slice(0, 40)}" exceeds ${maxChars} characters.`,
+      };
+    }
+    return { ok: true };
+  };
+
+  if (typeof input.businessName !== "string" || !input.businessName.trim()) {
+    return {
+      ok: false,
+      detail: "demand_gen_business_name_required",
+      message: "A Demand Gen video ad needs a business name.",
+    };
+  }
+  if (input.businessName.trim().length > GOOGLE_DEMAND_GEN_BUSINESS_NAME_MAX) {
+    return {
+      ok: false,
+      detail: "demand_gen_business_name_too_long",
+      message:
+        `The business name exceeds ${GOOGLE_DEMAND_GEN_BUSINESS_NAME_MAX} characters.`,
+    };
+  }
+  const headlineCheck = checkTextArray(
+    input.headlines,
+    "headlines",
+    GOOGLE_DEMAND_GEN_HEADLINE_MAX_CHARS,
+  );
+  if (!headlineCheck.ok) return headlineCheck;
+  const longHeadlineCheck = checkTextArray(
+    input.longHeadlines,
+    "long_headlines",
+    GOOGLE_DEMAND_GEN_LONG_HEADLINE_MAX_CHARS,
+  );
+  if (!longHeadlineCheck.ok) return longHeadlineCheck;
+  const descriptionCheck = checkTextArray(
+    input.descriptions,
+    "descriptions",
+    GOOGLE_DEMAND_GEN_DESCRIPTION_MAX_CHARS,
+  );
+  if (!descriptionCheck.ok) return descriptionCheck;
+  return { ok: true };
+}
+
+/**
+ * Demand Gen temp ids (negative, unique, defined-before-referenced). The YouTube
+ * video AND the square logo each get their own asset temp id so the adGroupAd can
+ * reference them. Accepted op order (live-validated, #1303): budget(-1) →
+ * campaign(-2) → video asset(-3) → logo asset(-5) → adGroup(-4) →
+ * adGroupCriterion(location)×N → adGroupAd.
+ */
+const DG_TEMP_BUDGET_ID = -1;
+const DG_TEMP_CAMPAIGN_ID = -2;
+const DG_TEMP_VIDEO_ASSET_ID = -3;
+const DG_TEMP_AD_GROUP_ID = -4;
+const DG_TEMP_LOGO_ASSET_ID = -5;
+
+/**
+ * Builds the Demand Gen video op list, define-before-reference. Diffs from the
+ * SEARCH builder (buildGoogleMutateOperations): advertisingChannelType
+ * "DEMAND_GEN" (no subtype); NO networkSettings (does not apply to Demand Gen — a
+ * Search-style networkSettings is REJECTED); a separate assetOperation carrying
+ * the prepared youtubeVideoId AND a second assetOperation carrying the square
+ * logo image; the adGroup takes NO `type`; geo criteria are emitted at the
+ * AD-GROUP level (Demand Gen's default upgraded_targeting rejects campaign-level
+ * geo — #1303 RC-1); the ad is a demandGenVideoResponsiveAd with a non-empty
+ * `name` (#1303 RC-2), businessName/headlines/longHeadlines/descriptions/videos,
+ * and a REQUIRED logoImages (#1303 RC-3). All PAUSED (ad group ENABLED under the
+ * PAUSED parent). Live-validated to HTTP 200 on v24 AND v25.
+ */
+export function buildGoogleDemandGenMutateOperations(
+  customerId: string,
+  input: GoogleDemandGenVideoInput,
+): Record<string, unknown>[] {
+  const budgetResource = `customers/${customerId}/campaignBudgets/${DG_TEMP_BUDGET_ID}`;
+  const campaignResource = `customers/${customerId}/campaigns/${DG_TEMP_CAMPAIGN_ID}`;
+  const videoAssetResource = `customers/${customerId}/assets/${DG_TEMP_VIDEO_ASSET_ID}`;
+  const logoAssetResource = `customers/${customerId}/assets/${DG_TEMP_LOGO_ASSET_ID}`;
+  const adGroupResource = `customers/${customerId}/adGroups/${DG_TEMP_AD_GROUP_ID}`;
+
+  // #1303 RC-3: logoImages is REQUIRED — fail closed on a missing/empty logo so a
+  // create can never emit a body Google rejects (collectionSizeError: TOO_FEW).
+  const logoImageData = input.logoImageData?.trim();
+  if (!logoImageData) {
+    throw new AdApiError({
+      platform: "google",
+      code: "demand_gen_logo_missing",
+      message:
+        "A Demand Gen video responsive ad requires a square logo image — logoImageData was empty. Supply MINGLA_SQUARE_LOGO_PNG_BASE64.",
+    });
+  }
+
+  const operations: Record<string, unknown>[] = [];
+
+  // 1. Campaign budget — micros via THE one google conversion point.
+  operations.push({
+    campaignBudgetOperation: {
+      create: {
+        resourceName: budgetResource,
+        name: `${input.name} — budget`,
+        amountMicros: String(centsToPlatformBudget("google", input.dailyBudgetCents)),
+        deliveryMethod: "STANDARD",
+        explicitlyShared: false,
+      },
+    },
+  });
+
+  // 2. Campaign — PAUSED, DEMAND_GEN, targetSpend (reuse the honest zero-
+  //    conversion strategy), G-14, PRESENCE. NO networkSettings.
+  const campaign: Record<string, unknown> = {
+    resourceName: campaignResource,
+    name: input.name,
+    // GR-11: PAUSED explicitly at every level — never a default.
+    status: "PAUSED",
+    // DOC: Demand Gen takes NO advertisingChannelSubType.
+    advertisingChannelType: "DEMAND_GEN",
+    campaignBudget: budgetResource,
+    // Maximize Clicks IS a supported Demand Gen strategy → the same honest
+    // zero-conversion-history strategy the SEARCH path ships (NO conversion goal).
+    targetSpend: {},
+    // G-14: v24 REQUIRES this on every campaign create — deleting it is the
+    // fails-on-revert target of the Demand Gen G-14 test.
+    containsEuPoliticalAdvertising: GOOGLE_EU_POLITICAL_ADVERTISING_VALUE,
+    // GR-37: PRESENCE always (never PRESENCE_OR_INTEREST).
+    geoTargetTypeSetting: { positiveGeoTargetType: "PRESENCE" },
+    // NO networkSettings — it does not apply to Demand Gen.
+  };
+  if (input.trackingUrlTemplate) {
+    // The OneLink rides ONLY here — never in finalUrls.
+    campaign.trackingUrlTemplate = input.trackingUrlTemplate;
+  }
+  operations.push({ campaignOperation: { create: campaign } });
+
+  // 3. YouTube video ASSET — the prepared UNLISTED video, referenced by the ad.
+  operations.push({
+    assetOperation: {
+      create: {
+        resourceName: videoAssetResource,
+        name: `${input.name} — video`,
+        youtubeVideoAsset: { youtubeVideoId: input.youtubeVideoId },
+      },
+    },
+  });
+
+  // 4. Logo image ASSET (#1303 RC-3) — a square (1:1) imageAsset the
+  //    demandGenVideoResponsiveAd REQUIRES via logoImages. Base64 PNG bytes on
+  //    the Google Ads Asset.image_asset `data` bytes field.
+  operations.push({
+    assetOperation: {
+      create: {
+        resourceName: logoAssetResource,
+        name: `${input.name} — logo`,
+        imageAsset: { data: logoImageData },
+      },
+    },
+  });
+
+  // 5. Ad group — ENABLED under the PAUSED parent. DOC: Demand Gen ad groups take
+  //    NO `type` (SEARCH_STANDARD would be REJECTED) — omit it.
+  operations.push({
+    adGroupOperation: {
+      create: {
+        resourceName: adGroupResource,
+        name: `${input.name} — ad group`,
+        campaign: campaignResource,
+        status: "ENABLED",
+      },
+    },
+  });
+
+  // 6. Geo criteria at the AD-GROUP level (#1303 RC-1) — Demand Gen defaults to
+  //    upgraded_targeting=true, which moves location targeting to the ad group;
+  //    campaign-level geo is REJECTED (requestError.UNKNOWN). Resolved numeric ids
+  //    only (GR-37). upgradedTargeting is NOT set (not a settable field — default).
+  for (const criterionId of input.geoTargetCriterionIds) {
+    operations.push({
+      adGroupCriterionOperation: {
+        create: {
+          adGroup: adGroupResource,
+          location: { geoTargetConstant: `geoTargetConstants/${criterionId}` },
+        },
+      },
+    });
+  }
+
+  // 7. The Demand Gen video responsive ad — PAUSED; finalUrls = [canonical
+  //    dest_url]. #1303 RC-2: ad.name is REQUIRED (unlike Search RSA). #1303 RC-3:
+  //    logoImages references the square logo asset (>=1 required).
+  operations.push({
+    adGroupAdOperation: {
+      create: {
+        adGroup: adGroupResource,
+        status: "PAUSED",
+        ad: {
+          name: `${input.name} — ad`,
+          finalUrls: [input.finalUrl],
+          demandGenVideoResponsiveAd: {
+            businessName: { text: input.businessName.trim() },
+            headlines: input.headlines.map((text) => ({ text: text.trim() })),
+            longHeadlines: input.longHeadlines.map((text) => ({ text: text.trim() })),
+            descriptions: input.descriptions.map((text) => ({ text: text.trim() })),
+            videos: [{ asset: videoAssetResource }],
+            logoImages: [{ asset: logoAssetResource }],
+          },
+        },
+      },
+    },
+  });
+
+  return operations;
+}
+
+/** Demand Gen request envelope — `partialFailure:false` all-or-nothing. */
+export function buildGoogleDemandGenMutateRequest(
+  customerId: string,
+  input: GoogleDemandGenVideoInput,
+): Record<string, unknown> {
+  return {
+    mutateOperations: buildGoogleDemandGenMutateOperations(customerId, input),
+    partialFailure: false,
+    validateOnly: input.validateOnly === true,
+  };
+}
+
+export interface GoogleDemandGenVideoResult {
+  validated: boolean;
+  externalCampaignId: string;
+  externalAdSetId: string;
+  externalAdId: string;
+  budgetResourceName: string | null;
+  requestId: string | null;
+}
+
+/**
+ * The Google Demand Gen video create: ONE atomic `googleAds:mutate`
+ * (`partialFailure:false`). `validateOnly:true` passthrough validates the exact
+ * same body with ZERO objects created (native Google validate — the D de-risking
+ * lever). Mirrors googleCreateFullCampaign's result contract.
+ */
+export async function googleCreateDemandGenVideoCampaign(
+  conn: AdConnectionRow,
+  input: GoogleDemandGenVideoInput,
+): Promise<GoogleDemandGenVideoResult> {
+  const client = await resolveGoogleClient(conn);
+  const request = buildGoogleDemandGenMutateRequest(client.customerId, input);
+  const { payload, requestId } = await googleAdsRequest(
+    client,
+    `customers/${client.customerId}/googleAds:mutate`,
+    request,
+  );
+  if (input.validateOnly === true) {
+    return {
+      validated: true,
+      externalCampaignId: "",
+      externalAdSetId: "",
+      externalAdId: "",
+      budgetResourceName: null,
+      requestId,
+    };
+  }
+  const names = parseGoogleMutateResults(payload);
+  if (
+    !names.campaignResourceName || !names.adGroupResourceName || !names.adGroupAdResourceName
+  ) {
+    throw new AdApiError({
+      platform: "google",
+      code: "unexpected_mutate_response",
+      message:
+        "googleAds:mutate (Demand Gen) returned OK but the campaign/adGroup/adGroupAd resource names are missing — refusing to persist an unverifiable create.",
       traceId: requestId,
     });
   }
@@ -1100,6 +1623,86 @@ export async function googleFetchCustomer(client: GoogleClient): Promise<GoogleC
     timezone: typeof customer.timeZone === "string" ? customer.timeZone : null,
     testAccount: customer.testAccount === true,
   };
+}
+
+// ── ISSUE-992 (3b): affinity / in-market audience search (user_interest) ──────
+
+export interface GoogleUserInterest {
+  id: string;
+  name: string;
+  /** AFFINITY | IN_MARKET | … (Google user-interest taxonomy). */
+  taxonomyType: string | null;
+}
+
+/** Tolerant parser over a googleAds:search `user_interest` result page. */
+export function parseGoogleUserInterests(payload: unknown): GoogleUserInterest[] {
+  const results = Array.isArray((payload as Record<string, unknown> | null)?.results)
+    ? (payload as Record<string, unknown>).results as Record<string, unknown>[]
+    : [];
+  const out: GoogleUserInterest[] = [];
+  const seen = new Set<string>();
+  for (const row of results) {
+    const ui = (row.userInterest ?? row.user_interest ?? {}) as Record<string, unknown>;
+    const idRaw = ui.userInterestId ?? ui.user_interest_id;
+    const id = typeof idRaw === "string" ? idRaw : typeof idRaw === "number" ? String(idRaw) : "";
+    const name = typeof ui.name === "string" ? ui.name : "";
+    if (!id || !name || seen.has(id)) continue;
+    seen.add(id);
+    const taxonomy = ui.taxonomyType ?? ui.taxonomy_type;
+    out.push({ id, name, taxonomyType: typeof taxonomy === "string" ? taxonomy : null });
+  }
+  return out;
+}
+
+/**
+ * Case-insensitive substring filter, prefix matches first, capped — the
+ * fetch+filter fallback shape (mirrors filterTikTokInterestCategories) if a
+ * live probe shows `LIKE` is unsupported on user_interest.name. Pure.
+ */
+export function filterGoogleUserInterests(
+  interests: readonly GoogleUserInterest[],
+  opts: { q?: string; limit?: number } = {},
+): GoogleUserInterest[] {
+  const q = (opts.q ?? "").trim().toLowerCase();
+  const limit = opts.limit ?? 20;
+  const matched = interests.filter((i) => q.length === 0 || i.name.toLowerCase().includes(q));
+  matched.sort((a, b) => {
+    const ap = a.name.toLowerCase().startsWith(q) ? 0 : 1;
+    const bp = b.name.toLowerCase().startsWith(q) ? 0 : 1;
+    if (ap !== bp) return ap - bp;
+    return a.name.localeCompare(b.name);
+  });
+  return matched.slice(0, limit);
+}
+
+/**
+ * ISSUE-992 (3b): resolve affinity / in-market audiences by NAME via a
+ * googleAds:search over the `user_interest` resource (non-streaming — cleaner
+ * for a typeahead than searchStream; same POST client as googleFetchCustomer).
+ * [SUSPECTED GAQL — the `LIKE` operator on user_interest.name must be confirmed
+ * with a live read at BUILD; fallback = an unfiltered page + filterGoogle-
+ * UserInterests substring match.] Returns [] on an empty query.
+ */
+export async function searchGoogleUserInterests(
+  client: GoogleClient,
+  q: string,
+  opts: { limit?: number } = {},
+): Promise<GoogleUserInterest[]> {
+  const limit = opts.limit ?? 20;
+  const term = q.trim();
+  if (!term) return [];
+  // GAQL single-quoted string literal — escape backslash + quote (never inject).
+  const safe = term.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  const query =
+    "SELECT user_interest.user_interest_id, user_interest.name, user_interest.taxonomy_type " +
+    `FROM user_interest WHERE user_interest.name LIKE '%${safe}%' LIMIT ${limit}`;
+  const { payload } = await googleAdsRequest(
+    client,
+    `customers/${client.customerId}/googleAds:search`,
+    { query },
+  );
+  // Post-filter to keep the substring contract stable across the LIKE / fallback paths.
+  return filterGoogleUserInterests(parseGoogleUserInterests(payload), { q: term, limit });
 }
 
 // ── The adapter ───────────────────────────────────────────────────────────────

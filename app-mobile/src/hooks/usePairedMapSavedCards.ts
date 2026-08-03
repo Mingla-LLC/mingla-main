@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../services/supabase';
 import { useAppStore } from '../store/appStore';
 import type { Recommendation } from '../types/recommendation';
+import { canonicalDiscoveryPriceFields } from '../utils/priceTiers';
 
 interface SavedCardRow {
   id: string;
@@ -54,6 +55,7 @@ function toRecommendation(row: SavedCardRow): Recommendation | null {
     image,
     images,
     priceRange: typeof cardData.priceRange === 'string' ? cardData.priceRange : '',
+    ...canonicalDiscoveryPriceFields(cardData),
     distance: typeof cardData.distance === 'string' ? cardData.distance : '',
     travelTime: typeof cardData.travelTime === 'string' ? cardData.travelTime : '',
     experienceType: typeof cardData.experienceType === 'string' ? cardData.experienceType : ((typeof cardData.category === 'string' && cardData.category) ? cardData.category : 'Experience'),
@@ -69,7 +71,6 @@ function toRecommendation(row: SavedCardRow): Recommendation | null {
     website: typeof cardData.website === 'string' ? cardData.website : null,
     phone: typeof cardData.phone === 'string' ? cardData.phone : null,
     placeId: typeof cardData.placeId === 'string' ? cardData.placeId : undefined,
-    priceTier: typeof cardData.priceTier === 'string' ? cardData.priceTier : undefined,
     socialStats: (cardData.socialStats as Recommendation['socialStats']) ?? {
       views: 0,
       likes: 0,

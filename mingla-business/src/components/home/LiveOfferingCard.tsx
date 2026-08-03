@@ -41,6 +41,7 @@ import { Pill } from "../ui/Pill";
 
 /** Display metrics computed by the parent (one-owner-per-truth for sales). */
 export interface LiveCardMetrics {
+  mode?: "tickets" | "rsvp";
   /** Currency-aware revenue string (e.g. "$0" / "₦1,200" / "£40"). */
   revenueLabel: string;
   /** Tickets-sold value, already formatted (or "Unable" on a summary error). */
@@ -51,6 +52,7 @@ export interface LiveCardMetrics {
   capacity: number | null;
   /** 0..1 sold-vs-capacity fraction. */
   progress: number;
+  checkedInValue?: string;
 }
 
 export interface LiveOfferingCardProps {
@@ -93,6 +95,7 @@ export const LiveOfferingCard: React.FC<LiveOfferingCardProps> = ({
   const name = getEventName(displayEvent?.name ?? "", "Untitled");
   const dateLine =
     displayEvent !== null ? formatDraftDateLine(displayEvent) : "";
+  const isRsvp = metrics.mode === "rsvp";
 
   // ORCH-1143 §4.4-A (continuous-section fix): the hero content tree is the
   // same in both modes. In FLAT mode (single-live) it renders chrome-less so
@@ -109,10 +112,12 @@ export const LiveOfferingCard: React.FC<LiveOfferingCardProps> = ({
       <Text style={styles.offeringName}>{name}</Text>
       <Text style={styles.offeringDate}>{dateLine}</Text>
 
-      <View style={styles.amountRow}>
-        <Text style={styles.amountValue}>{metrics.revenueLabel}</Text>
-        <Text style={styles.amountSuffix}> revenue</Text>
-      </View>
+      {isRsvp ? null : (
+        <View style={styles.amountRow}>
+          <Text style={styles.amountValue}>{metrics.revenueLabel}</Text>
+          <Text style={styles.amountSuffix}> revenue</Text>
+        </View>
+      )}
 
       {metrics.capacity !== null ? (
         <View style={styles.progressTrack}>
@@ -128,7 +133,7 @@ export const LiveOfferingCard: React.FC<LiveOfferingCardProps> = ({
       <View style={styles.statRow}>
         <View style={styles.statCell}>
           <Text style={styles.statValue}>{metrics.soldValue}</Text>
-          <Text style={styles.statLabel}>Tickets sold</Text>
+          <Text style={styles.statLabel}>{isRsvp ? "Going" : "Tickets sold"}</Text>
         </View>
         <View style={styles.statCell}>
           <Text style={styles.statValue}>{metrics.capacityLabel}</Text>
@@ -137,8 +142,8 @@ export const LiveOfferingCard: React.FC<LiveOfferingCardProps> = ({
         <View style={styles.statCell}>
           {/* ORCH-1143 — honest-empty (Constitution #9): no per-offering
               scanned-count source exists. NEVER fabricate a number. */}
-          <Text style={styles.statValue}>—</Text>
-          <Text style={styles.statLabel}>Scanned</Text>
+          <Text style={styles.statValue}>{isRsvp ? metrics.checkedInValue ?? "—" : "—"}</Text>
+          <Text style={styles.statLabel}>{isRsvp ? "Checked in" : "Scanned"}</Text>
         </View>
       </View>
 
@@ -150,7 +155,7 @@ export const LiveOfferingCard: React.FC<LiveOfferingCardProps> = ({
       <Pressable
         onPress={() => onScanPress(item.id)}
         accessibilityRole="button"
-        accessibilityLabel={`Scan tickets for ${name}`}
+        accessibilityLabel={`${isRsvp ? "Scan guests" : "Scan tickets"} for ${name}`}
         style={({ pressed }) => [
           styles.scanButton,
           pressed && styles.scanButtonPressed,
@@ -158,7 +163,7 @@ export const LiveOfferingCard: React.FC<LiveOfferingCardProps> = ({
         testID="home-live-card-scan-button"
       >
         <Icon name="qr" size={18} color={accent.warm} />
-        <Text style={styles.scanButtonText}>Scan QR codes</Text>
+        <Text style={styles.scanButtonText}>{isRsvp ? "Scan guests" : "Scan QR codes"}</Text>
       </Pressable>
     </>
   );

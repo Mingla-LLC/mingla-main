@@ -41,6 +41,12 @@
  *   2 — script error
  *
  * Established by: B2a Path C SPEC + DEC-121 [confirmed at CLOSE].
+ *
+ * `--self-test` proves fail-on-revert (mirrors i-1272-identity-admin-read.mjs):
+ * the pure `check(fileEntries, failures)` is exercised with a GOOD fixture
+ * (import+call, plus allowlisted-file specificity) and ≥2 DISTINCT BAD fixtures
+ * (sensitivity). The disk-reading main path calls the SAME `check(...)`; the
+ * refactor is behavior-preserving (identical verdict on the real tree).
  */
 
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
@@ -62,10 +68,6 @@ const WRITE_AUDIT_IMPORT_REGEX =
   /import\s+\{[^}]*\bwriteAudit\b[^}]*\}\s+from\s+["'][^"']*\/audit(?:\.ts)?["']/;
 const WRITE_AUDIT_CALL_REGEX = /\bwriteAudit\s*\(/;
 
-let violations = 0;
-let filesScanned = 0;
-let readFailures = 0;
-
 function listStripeFnDirs() {
   let entries;
   try {
@@ -86,7 +88,28 @@ function listStripeFnDirs() {
   });
 }
 
-function reportViolation(filePath, problem) {
+/**
+ * Pure verdict. `fileEntries` = [{ path, content }] for each stripe-fn
+ * index.ts. Applies the file-level allowlist here so the self-test can prove an
+ * allowlisted file stays silent. Pushes one violation record per problem.
+ */
+function check(fileEntries, failures) {
+  for (const { path: filePath, content } of fileEntries) {
+    if (content.includes(ALLOWLIST_TAG)) continue;
+
+    const hasImport = WRITE_AUDIT_IMPORT_REGEX.test(content);
+    const hasCall = WRITE_AUDIT_CALL_REGEX.test(content);
+
+    if (!hasImport) {
+      failures.push({ filePath, problem: "Missing import of writeAudit from _shared/audit.ts" });
+    }
+    if (!hasCall) {
+      failures.push({ filePath, problem: "No call to writeAudit(...) found in this file" });
+    }
+  }
+}
+
+function reportViolation({ filePath, problem }) {
   const rel = relative(REPO_ROOT, filePath).split(sep).join("/");
   console.error(`ERROR: I-PROPOSED-S violation in ${rel}`);
   console.error(`  ${problem}`);
@@ -106,51 +129,102 @@ function reportViolation(filePath, problem) {
     `  See: Mingla_Artifacts/INVARIANT_REGISTRY.md I-PROPOSED-S`,
   );
   console.error("");
-  violations += 1;
 }
 
-function scanFunctionDir(dirName) {
-  const indexPath = join(FUNCTIONS_DIR, dirName, "index.ts");
-  if (!existsSync(indexPath)) {
-    // Some Stripe-named dirs may not have index.ts (e.g., a dir nuked by a phase 9
-    // cleanup). Skip silently — gate is concerned with shipped code, not absence.
-    return;
+// ─────────────────────────────────────────────────────────────── self-test
+if (process.argv.includes("--self-test")) {
+  const self = [];
+
+  // GOOD: a stripe-fn importing + calling writeAudit; plus an allowlisted file
+  // that stays silent (specificity).
+  const goodEntries = [
+    {
+      path: "supabase/functions/brand-stripe-onboard/index.ts",
+      content:
+        'import { writeAudit } from "../_shared/audit.ts";\n' +
+        'await writeAudit(supabase, { action: "stripe_connect.onboard" });\n',
+    },
+    {
+      path: "supabase/functions/stripe-balance-probe/index.ts",
+      content: "// orch-strict-grep-allow stripe-fn-no-audit — read-only balance probe\n",
+    },
+  ];
+  let f = [];
+  check(goodEntries, f);
+  if (f.length) {
+    self.push("GOOD fixture wrongly flagged: " + f.map((v) => `${v.filePath} (${v.problem})`).join("; "));
   }
 
-  filesScanned += 1;
+  // BAD1 (revert-style): remove the writeAudit( call but keep the import → the
+  // missing-call violation fires.
+  const bad1 = [
+    {
+      path: "supabase/functions/brand-stripe-onboard/index.ts",
+      content:
+        'import { writeAudit } from "../_shared/audit.ts";\n' +
+        "const x = 1;\n",
+    },
+  ];
+  f = [];
+  check(bad1, f);
+  if (f.length === 0) self.push("BAD1 (writeAudit call removed, import kept) not flagged");
 
-  let source;
-  try {
-    source = readFileSync(indexPath, "utf8");
-  } catch (err) {
-    const rel = relative(REPO_ROOT, indexPath).split(sep).join("/");
-    console.error(`READ-FAIL: ${rel} — ${err.message}`);
-    readFailures += 1;
-    return;
+  // BAD2 (regression, different angle): remove the writeAudit import entirely
+  // from a second stripe-fn file → the missing-import violation fires.
+  const bad2 = [
+    {
+      path: "supabase/functions/stripe-payout-run/index.ts",
+      content: 'await writeAudit(supabase, { action: "stripe_payout.run" });\n',
+    },
+  ];
+  f = [];
+  check(bad2, f);
+  if (f.length === 0) self.push("BAD2 (writeAudit import removed from a second fn) not flagged");
+
+  if (self.length) {
+    console.error("I-PROPOSED-S self-test FAIL:");
+    self.forEach((m) => console.error("  - " + m));
+    process.exit(1);
   }
-
-  if (source.includes(ALLOWLIST_TAG)) return;
-
-  const hasImport = WRITE_AUDIT_IMPORT_REGEX.test(source);
-  const hasCall = WRITE_AUDIT_CALL_REGEX.test(source);
-
-  if (!hasImport) {
-    reportViolation(indexPath, "Missing import of writeAudit from _shared/audit.ts");
-  }
-  if (!hasCall) {
-    reportViolation(indexPath, "No call to writeAudit(...) found in this file");
-  }
+  console.log("I-PROPOSED-S self-test PASS (3/3 cases).");
+  process.exit(0);
 }
+
+// ─────────────────────────────────────────────────────────────── main path
+let filesScanned = 0;
+let readFailures = 0;
+const fileEntries = [];
 
 try {
   const stripeFnDirs = listStripeFnDirs();
   for (const dir of stripeFnDirs) {
-    scanFunctionDir(dir);
+    const indexPath = join(FUNCTIONS_DIR, dir, "index.ts");
+    if (!existsSync(indexPath)) {
+      // Some Stripe-named dirs may not have index.ts (e.g., a dir nuked by a
+      // phase 9 cleanup). Skip silently — gate is concerned with shipped code.
+      continue;
+    }
+    filesScanned += 1;
+    let source;
+    try {
+      source = readFileSync(indexPath, "utf8");
+    } catch (err) {
+      const rel = relative(REPO_ROOT, indexPath).split(sep).join("/");
+      console.error(`READ-FAIL: ${rel} — ${err.message}`);
+      readFailures += 1;
+      continue;
+    }
+    fileEntries.push({ path: indexPath, content: source });
   }
 } catch (err) {
   console.error(`SCRIPT ERROR: ${err.message}`);
   process.exit(2);
 }
+
+const failures = [];
+check(fileEntries, failures);
+for (const v of failures) reportViolation(v);
+const violations = failures.length;
 
 console.error("");
 console.error(

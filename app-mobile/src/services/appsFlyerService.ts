@@ -3,6 +3,7 @@ import Constants from 'expo-constants'
 import { Platform } from 'react-native'
 import { supabase } from './supabase'
 import { resolveOneLinkDestination, OneLinkDestination } from './oneLinkResolver'
+import { captureNativeOneLinkAttribution } from './nativeAdAttributionService'
 
 // ORCH-1318 — the branded OneLink subdomain the SDK must treat as a OneLink
 // host at runtime (SPEC §C.1). EXACT constant, shared with oneLinkShare.ts.
@@ -164,6 +165,7 @@ function registerOneLinkDeepLink(): void {
           return
         }
         const data = (res.data ?? {}) as Record<string, any>
+        void captureNativeOneLinkAttribution(data)
         // Double-fire dedup (SPEC §A.4.1).
         const link = typeof data.link === 'string' ? data.link : ''
         const now = Date.now()

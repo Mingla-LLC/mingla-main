@@ -23,6 +23,7 @@ import { savedCardKeys } from "../hooks/queryKeys";
 import { useCalendarEntries } from "../hooks/useCalendarEntries";
 import { useFriends } from "../hooks/useFriends";
 import { performPrivateAuthCleanup } from "../utils/authCleanup";
+import { canonicalDiscoveryPriceFields } from "../utils/priceTiers";
 // Realtime hooks (useBoardRealtimeSync, useSavesRealtimeSync, useSocialRealtime)
 // moved to RealtimeSubscriptions.tsx component, mounted in index.tsx with
 // key={realtimeEpoch} for clean remount on resume. See ORCH-0336.
@@ -572,7 +573,8 @@ export function useAppState() {
           sourceDetails: cardData.sessionName
             ? `From ${cardData.sessionName}`
             : i18n.t('common:solo_experience'),
-          priceRange: cardData.priceRange || "TBD",
+          priceRange: cardData.priceRange || "",
+          ...canonicalDiscoveryPriceFields(cardData),
           description: cardData.description || "",
           fullDescription:
             cardData.fullDescription || cardData.description || "",

@@ -1,4 +1,8 @@
-import { useQuery, type UseQueryResult } from "@tanstack/react-query";
+import {
+  useQueries,
+  useQuery,
+  type UseQueryResult,
+} from "@tanstack/react-query";
 import {
   resolveTheme,
   isThemeAnimationSlug,
@@ -13,6 +17,7 @@ import type {
   PublicBrandExperience,
   PublicBrandTrip,
   PublicBrandUpcoming,
+  PublicBrandVenueSummary,
   PublicMenuGroup,
 } from "@mingla/brand-rendering";
 
@@ -21,6 +26,8 @@ import { supabase } from "../services/supabase";
 export const consumerBrandKeys = {
   all: ["consumerBrand"] as const,
   bySlug: (slug: string) => [...consumerBrandKeys.all, slug] as const,
+  venuesBySlug: (slug: string) =>
+    [...consumerBrandKeys.all, "venues", slug] as const,
 };
 
 interface PublicBrandRow {
@@ -140,48 +147,16 @@ export interface ConsumerBrandDetail {
   resolvedTheme: ResolvedTheme;
 }
 
-// ORCH-1186-C — flat row from the anon-safe security-definer public_menus_view.
-// app-mobile reads the view directly (it does not import mingla-business
-// services); this is byte-distinct from the snap-menu parser / experience_stops
-// (I-PROPOSED-1186C-MENU-NOT-EXPERIENCE-STOPS).
-interface PublicMenuRow {
+interface PublicVenueRow {
   id: string;
-  menu_id: string;
-  menu_name: string;
-  menu_description: string | null;
-  menu_sort_order: number;
-  item_name: string;
-  item_description: string | null;
-  price_cents: number | null;
-  currency: string;
-  item_sort_order: number;
+  slug: string;
+  name: string;
+  address: string | null;
+  city: string | null;
+  cover_media_url: string | null;
+  pool_photo_urls: string[] | null;
+  place_pool_id: string | null;
 }
-
-const groupPublicMenuRows = (rows: PublicMenuRow[]): PublicMenuGroup[] => {
-  const groups: PublicMenuGroup[] = [];
-  const byMenuId = new Map<string, PublicMenuGroup>();
-  for (const row of rows) {
-    let group = byMenuId.get(row.menu_id);
-    if (group === undefined) {
-      group = {
-        menuId: row.menu_id,
-        menuName: row.menu_name,
-        menuDescription: row.menu_description,
-        items: [],
-      };
-      byMenuId.set(row.menu_id, group);
-      groups.push(group);
-    }
-    group.items.push({
-      id: row.id,
-      name: row.item_name,
-      description: row.item_description,
-      priceCents: row.price_cents,
-      currency: row.currency,
-    });
-  }
-  return groups;
-};
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value)
@@ -282,9 +257,7 @@ const mapEvent = (
     venueName: row.location_text,
     format: row.is_online ? "online" : "in_person",
     coverHue:
-      typeof businessEvent.coverHue === "number"
-        ? businessEvent.coverHue
-        : 25,
+      typeof businessEvent.coverHue === "number" ? businessEvent.coverHue : 25,
     coverMediaUrl: row.cover_media_url,
     coverMediaType: row.cover_media_type,
     currency: row.currency,
@@ -366,7 +339,7 @@ const getBrandBySlug = async (
   if (brandData === null) return null;
 
   const brand = mapBrand(brandData as PublicBrandRow);
-  const [eventResult, tripResult, experienceResult, upcomingResult, menuResult] =
+  const [eventResult, tripResult, experienceResult, upcomingResult] =
     await Promise.all([
       supabase
         .from("business_public_events_view")
@@ -379,21 +352,11 @@ const getBrandBySlug = async (
         p_brand_slug: slug,
         p_limit: 30,
       }),
-      // ORCH-1186-C — DISPLAY-ONLY menu (verified venues only; [] otherwise).
-      supabase
-        .from("public_menus_view")
-        .select(
-          "id, menu_id, menu_name, menu_description, menu_sort_order, item_name, item_description, price_cents, currency, item_sort_order",
-        )
-        .eq("brand_slug", slug)
-        .order("menu_sort_order", { ascending: true })
-        .order("item_sort_order", { ascending: true }),
     ]);
   if (eventResult.error !== null) throw eventResult.error;
   if (tripResult.error !== null) throw tripResult.error;
   if (experienceResult.error !== null) throw experienceResult.error;
   if (upcomingResult.error !== null) throw upcomingResult.error;
-  if (menuResult.error !== null) throw menuResult.error;
 
   const allEventRows = ((eventResult.data ?? []) as PublicEventRow[]).filter(
     (row) => row.event_type === "event",
@@ -441,13 +404,14 @@ const getBrandBySlug = async (
   );
   const events = rows.map((row) => mapEvent(row, ticketMap.get(row.id) ?? []));
   const trips = ((tripResult.data ?? []) as PublicTripRow[]).map(mapTrip);
-  const experiences = ((experienceResult.data ?? []) as PublicExperienceRow[])
-    .map(mapExperience);
+  const experiences = (
+    (experienceResult.data ?? []) as PublicExperienceRow[]
+  ).map(mapExperience);
   const upcomingRows = (upcomingResult.data ?? []) as PublicUpcomingRow[];
   const upcomingHasMore = upcomingRows.length > 30;
-  const upcoming = (upcomingHasMore ? upcomingRows.slice(0, 30) : upcomingRows)
-    .map(mapUpcoming);
-  const menu = groupPublicMenuRows((menuResult.data ?? []) as PublicMenuRow[]);
+  const upcoming = (
+    upcomingHasMore ? upcomingRows.slice(0, 30) : upcomingRows
+  ).map(mapUpcoming);
   return {
     brand,
     events,
@@ -455,9 +419,38 @@ const getBrandBySlug = async (
     experiences,
     upcoming,
     upcomingHasMore,
-    menu,
+    // Issue #1365: public menus are fetched only after an exact venue resolves.
+    menu: [],
     resolvedTheme: resolveTheme(brand.theme, null),
   };
+};
+
+const getPublicBrandVenues = async (
+  slug: string,
+): Promise<PublicBrandVenueSummary[]> => {
+  const { data, error } = await supabase
+    .from("venue_public_view")
+    .select(
+      "id, slug, name, address, city, cover_media_url, pool_photo_urls, place_pool_id",
+    )
+    .eq("brand_slug", slug)
+    .order("created_at", { ascending: true });
+  if (error !== null) throw error;
+
+  return ((data ?? []) as PublicVenueRow[]).map((row) => ({
+    id: row.id,
+    slug: row.slug,
+    name: row.name,
+    address: row.address,
+    city: row.city,
+    photoUrl:
+      row.cover_media_url ??
+      (Array.isArray(row.pool_photo_urls)
+        ? (row.pool_photo_urls[0] ?? null)
+        : null),
+    placePoolId: row.place_pool_id,
+    reservationState: row.place_pool_id === null ? "unavailable" : "loading",
+  }));
 };
 
 export const useBrandBySlug = (
@@ -473,4 +466,75 @@ export const useBrandBySlug = (
       return getBrandBySlug(slug);
     },
   });
+};
+
+interface PublicBrandVenuesQuery {
+  data: PublicBrandVenueSummary[];
+  isLoading: boolean;
+  isFetching: boolean;
+  isError: boolean;
+  refetch: () => void;
+}
+
+export const usePublicBrandVenues = (
+  slug: string | null,
+): PublicBrandVenuesQuery => {
+  const enabled = slug !== null && slug.trim().length > 0;
+  const venuesQuery = useQuery({
+    queryKey: enabled
+      ? consumerBrandKeys.venuesBySlug(slug)
+      : consumerBrandKeys.all,
+    enabled,
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      if (!enabled || slug === null) return [];
+      return getPublicBrandVenues(slug);
+    },
+  });
+  const venues = venuesQuery.data ?? [];
+  const reservabilityQueries = useQueries({
+    queries: venues.map((venue) => ({
+      queryKey: [
+        ...consumerBrandKeys.venuesBySlug(slug ?? "none"),
+        "reservability",
+        venue.id,
+        venue.placePoolId,
+      ],
+      enabled: typeof venue.placePoolId === "string",
+      staleTime: 60 * 1000,
+      queryFn: async (): Promise<
+        PublicBrandVenueSummary["reservationState"]
+      > => {
+        if (typeof venue.placePoolId !== "string") return "unavailable";
+        const result = await supabase.rpc("pg_venue_reservable_for_place", {
+          p_place_pool_id: venue.placePoolId,
+        });
+        if (result.error !== null) return "error";
+        const resolved = (
+          Array.isArray(result.data) ? result.data[0] : result.data
+        ) as { reservable?: boolean } | undefined;
+        return resolved?.reservable === true ? "available" : "unavailable";
+      },
+    })),
+  });
+  const data: PublicBrandVenueSummary[] = venues.map((venue, index) => ({
+    ...venue,
+    reservationState:
+      typeof venue.placePoolId !== "string"
+        ? "unavailable"
+        : (reservabilityQueries[index]?.data ?? "loading"),
+  }));
+
+  return {
+    data,
+    isLoading: venuesQuery.isLoading,
+    isFetching:
+      venuesQuery.isFetching ||
+      reservabilityQueries.some((query) => query.isFetching),
+    isError: venuesQuery.isError,
+    refetch: () => {
+      void venuesQuery.refetch();
+      for (const query of reservabilityQueries) void query.refetch();
+    },
+  };
 };

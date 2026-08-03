@@ -1,0 +1,64 @@
+name: "Issue #1459 venue manager photo upload"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mingla-business/src/services/venueGalleryService.ts"
+      - "mingla-business/src/services/__tests__/venueGalleryUpload.issue1459.test.ts"
+      - "supabase/migrations/20270208001459_issue_1459_venue_manager_photo_upload.sql"
+      - "supabase/migrations/__tests__/issue_1459_venue_manager_photo_upload.*"
+      - ".github/workflows/issue-1459-venue-manager-photo-upload-tests.yml"
+  pull_request:
+    paths:
+      - "mingla-business/src/services/venueGalleryService.ts"
+      - "mingla-business/src/services/__tests__/venueGalleryUpload.issue1459.test.ts"
+      - "supabase/migrations/20270208001459_issue_1459_venue_manager_photo_upload.sql"
+      - "supabase/migrations/__tests__/issue_1459_venue_manager_photo_upload.*"
+      - ".github/workflows/issue-1459-venue-manager-photo-upload-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  storage-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: Prove policy, brand isolation, MIME, and size contracts
+        run: >
+          deno test --allow-read
+          supabase/migrations/__tests__/issue_1459_venue_manager_photo_upload.test.ts
+
+  business-client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      - name: Prove native HEIC and exact upload-size behavior
+        run: >
+          npx jest
+          src/services/__tests__/venueGalleryUpload.issue1459.test.ts
+          --runInBand
+      - name: Lint the changed client boundary
+        run: >
+          npx eslint
+          src/services/venueGalleryService.ts
+          src/services/__tests__/venueGalleryUpload.issue1459.test.ts

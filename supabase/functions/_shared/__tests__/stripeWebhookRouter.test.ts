@@ -113,7 +113,7 @@ class FakeDb {
   }
 }
 
-Deno.test("router exposes 27 subscribed events and excludes fake requirements event", () => {
+Deno.test("router exposes 28 subscribed events and excludes fake requirements event", () => {
   // ORCH-0787 added charge.refunded + refund.created + refund.updated (3 events) to the
   // existing 19, bringing total to 22. The legacy charge.refund.updated remains for
   // detached-account audit-only handling per stripeWebhookRouter.ts:28.
@@ -123,12 +123,18 @@ Deno.test("router exposes 27 subscribed events and excludes fake requirements ev
   // dispute persistence per SPEC §3.3, bringing total to 26.
   // ORCH-1054 added charge.succeeded (1 event) — it carries the application_fee.id
   // needed to fan-out partner splits via Stripe Transfer — bringing total to 27.
+  // ORCH-1221 added application_fee.refund.updated (1 event) so exact fee-leg
+  // reconciliation is routed through the typed source-refund handler: total 28.
   // This revises ORCH-0953 §3.4, which had explicitly excluded charge.succeeded.
-  assertEquals(STRIPE_ROUTED_EVENT_TYPES.length, 27);
+  assertEquals(STRIPE_ROUTED_EVENT_TYPES.length, 28);
   assertEquals(STRIPE_ROUTED_EVENT_TYPES.includes("account.updated"), true);
   assertEquals(STRIPE_ROUTED_EVENT_TYPES.includes("charge.succeeded"), true);
   assertEquals(
     STRIPE_ROUTED_EVENT_TYPES.includes("application_fee.refunded"),
+    true,
+  );
+  assertEquals(
+    STRIPE_ROUTED_EVENT_TYPES.includes("application_fee.refund.updated"),
     true,
   );
   assertEquals(

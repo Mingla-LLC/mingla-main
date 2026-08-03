@@ -5,7 +5,7 @@
  * Gate logic:
  *   For every .ts file in supabase/functions/:
  *     For each `stripe.<resource>.<method>(` call site, look at the immediate call
- *     arguments (within ~10 lines) for an `idempotencyKey:` property.
+ *     arguments (within ~40 lines) for an `idempotencyKey:` property.
  *     If absent → VIOLATION (exit 1)
  *     Unless allowlist comment within 5 lines above the call:
  *       // orch-strict-grep-allow stripe-no-idempotency-key — <reason>
@@ -49,6 +49,12 @@
  *   2 — script error
  *
  * Established by: B2a Path C SPEC + DEC-121 [confirmed at CLOSE].
+ *
+ * `--self-test` proves fail-on-revert (mirrors i-1272-identity-admin-read.mjs):
+ * the pure `check(fileEntries, failures)` is exercised with a GOOD fixture
+ * (incl. allowlist + exempt-file specificity) and ≥2 DISTINCT BAD fixtures
+ * (sensitivity). The disk-reading main path calls the SAME `check(...)`; the
+ * refactor is behavior-preserving (identical verdict on the real tree).
  */
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -80,10 +86,6 @@ const EXEMPT_FILE_PATTERNS = [
   /\/__tests__\//,
 ];
 
-let violations = 0;
-let filesScanned = 0;
-let readFailures = 0;
-
 function isExemptFile(filePath) {
   return EXEMPT_FILE_PATTERNS.some((p) => p.test(filePath));
 }
@@ -112,7 +114,54 @@ function* walkTs(dir) {
   }
 }
 
-function reportViolation(filePath, lineNumber, callText, methodName) {
+/**
+ * Pure verdict. `fileEntries` = [{ path, content }] (path may be absolute or
+ * repo-relative — the exemption regexes only look at the `/`-separated tail).
+ * Applies file-level exemption + the per-call allowlist comment here, so the
+ * self-test can prove both still silence a compliant call. Pushes one violation
+ * record per offending call site into `failures`.
+ */
+function check(fileEntries, failures) {
+  for (const { path: filePath, content } of fileEntries) {
+    if (isExemptFile(filePath)) continue;
+
+    const lines = content.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const m = line.match(STRIPE_API_CALL_REGEX);
+      if (!m) continue;
+
+      const methodName = `${m[1]}.${m[2]}`;
+
+      // Skip type-only or comment lines
+      const trimmed = line.trim();
+      if (
+        trimmed.startsWith("//") ||
+        trimmed.startsWith("*") ||
+        trimmed.startsWith("import ") ||
+        trimmed.startsWith("export type ")
+      ) {
+        continue;
+      }
+
+      // Allowlist within 5 lines above
+      const allowStart = Math.max(0, i - 5);
+      const allowContext = lines.slice(allowStart, i).join("\n");
+      if (allowContext.includes(ALLOWLIST_TAG)) continue;
+
+      // Look at the call's arguments — span up to ~40 lines for verbose Stripe v2
+      // controller-property objects.
+      const callEnd = Math.min(lines.length, i + 40);
+      const callContext = lines.slice(i, callEnd).join("\n");
+
+      if (IDEMPOTENCY_KEY_REGEX.test(callContext)) continue;
+
+      failures.push({ filePath, lineNumber: i + 1, callText: line, methodName });
+    }
+  }
+}
+
+function reportViolation({ filePath, lineNumber, callText, methodName }) {
   const rel = relative(REPO_ROOT, filePath).split(sep).join("/");
   console.error(`ERROR: I-PROPOSED-R violation in ${rel}:${lineNumber}`);
   console.error(`  ${callText.trim()}`);
@@ -129,70 +178,101 @@ function reportViolation(filePath, lineNumber, callText, methodName) {
     `  See: Mingla_Artifacts/INVARIANT_REGISTRY.md I-PROPOSED-R`,
   );
   console.error("");
-  violations += 1;
 }
 
-function scanFile(filePath) {
-  filesScanned += 1;
-  if (isExemptFile(filePath)) return;
+// ─────────────────────────────────────────────────────────────── self-test
+if (process.argv.includes("--self-test")) {
+  const self = [];
 
-  let source;
-  try {
-    source = readFileSync(filePath, "utf8");
-  } catch (err) {
-    const rel = relative(REPO_ROOT, filePath).split(sep).join("/");
-    console.error(`READ-FAIL: ${rel} — ${err.message}`);
-    readFailures += 1;
-    return;
+  // GOOD: a compliant paymentIntents.create with idempotencyKey; an
+  // allowlisted refunds.create; and an exempt _shared/stripe.ts file — all
+  // silent (specificity).
+  const goodEntries = [
+    {
+      path: "supabase/functions/pay/index.ts",
+      content: "const pi = await stripe.paymentIntents.create({ amount }, { idempotencyKey: key });\n",
+    },
+    {
+      path: "supabase/functions/refund/index.ts",
+      content:
+        "// orch-strict-grep-allow stripe-no-idempotency-key — one-shot admin action\n" +
+        "const r = await stripe.refunds.create({ payment_intent });\n",
+    },
+    {
+      path: "supabase/functions/_shared/stripe.ts",
+      content: "const acct = await stripe.accounts.create({ type: 'express' });\n",
+    },
+  ];
+  let f = [];
+  check(goodEntries, f);
+  if (f.length) {
+    self.push("GOOD fixture wrongly flagged: " + f.map((v) => `${v.filePath}:${v.lineNumber}`).join("; "));
   }
 
-  const lines = source.split("\n");
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const m = line.match(STRIPE_API_CALL_REGEX);
-    if (!m) continue;
+  // BAD1 (revert-style): strip idempotencyKey from a call site, no allowlist →
+  // fires.
+  const bad1 = [
+    {
+      path: "supabase/functions/pay/index.ts",
+      content: "const pi = await stripe.paymentIntents.create({ amount });\n",
+    },
+  ];
+  f = [];
+  check(bad1, f);
+  if (f.length === 0) self.push("BAD1 (idempotencyKey stripped from call site) not flagged");
 
-    const methodName = `${m[1]}.${m[2]}`;
+  // BAD2 (regression, different angle): a differently-named Stripe call
+  // (stripe.refunds.create) with no key and no allowlist → fires.
+  const bad2 = [
+    {
+      path: "supabase/functions/refund/index.ts",
+      content: "const r = await stripe.refunds.create({ payment_intent });\n",
+    },
+  ];
+  f = [];
+  check(bad2, f);
+  if (f.length === 0) self.push("BAD2 (stripe.refunds.create missing idempotencyKey) not flagged");
 
-    // Skip type-only or comment lines
-    const trimmed = line.trim();
-    if (
-      trimmed.startsWith("//") ||
-      trimmed.startsWith("*") ||
-      trimmed.startsWith("import ") ||
-      trimmed.startsWith("export type ")
-    ) {
-      continue;
-    }
-
-    // Allowlist within 5 lines above
-    const allowStart = Math.max(0, i - 5);
-    const allowContext = lines.slice(allowStart, i).join("\n");
-    if (allowContext.includes(ALLOWLIST_TAG)) continue;
-
-    // Look at the call's arguments — span up to ~40 lines for verbose Stripe v2
-    // controller-property objects (e.g., stripe.accounts.create with controller +
-    // capabilities + metadata can hit ~25 lines in the first arg before the second
-    // arg with idempotencyKey appears).
-    const callEnd = Math.min(lines.length, i + 40);
-    const callContext = lines.slice(i, callEnd).join("\n");
-
-    if (IDEMPOTENCY_KEY_REGEX.test(callContext)) continue;
-
-    reportViolation(filePath, i + 1, line, methodName);
+  if (self.length) {
+    console.error("I-PROPOSED-R self-test FAIL:");
+    self.forEach((m) => console.error("  - " + m));
+    process.exit(1);
   }
+  console.log("I-PROPOSED-R self-test PASS (3/3 cases).");
+  process.exit(0);
 }
+
+// ─────────────────────────────────────────────────────────────── main path
+let filesScanned = 0;
+let readFailures = 0;
+const fileEntries = [];
 
 try {
   for (const dir of SCAN_DIRS) {
     for (const file of walkTs(dir)) {
-      scanFile(file);
+      filesScanned += 1;
+      if (isExemptFile(file)) continue;
+      let source;
+      try {
+        source = readFileSync(file, "utf8");
+      } catch (err) {
+        const rel = relative(REPO_ROOT, file).split(sep).join("/");
+        console.error(`READ-FAIL: ${rel} — ${err.message}`);
+        readFailures += 1;
+        continue;
+      }
+      fileEntries.push({ path: file, content: source });
     }
   }
 } catch (err) {
   console.error(`SCRIPT ERROR: ${err.message}`);
   process.exit(2);
 }
+
+const failures = [];
+check(fileEntries, failures);
+for (const v of failures) reportViolation(v);
+const violations = failures.length;
 
 console.error("");
 console.error(

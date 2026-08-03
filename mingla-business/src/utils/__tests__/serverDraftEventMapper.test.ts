@@ -1,3 +1,12 @@
+// ORCH-0962 [pre-bank currency de-GBP] — the currency assertions in this file
+// were inverted (prior `.toBe("GBP")` → `.toBeNull()`) because they encoded the
+// BUG behavior: the draft write path used to fabricate "GBP" for a pre-bank brand
+// that genuinely has no currency (`brands.default_currency = NULL`, migration
+// 0769 "NULL means not set; do not imply GBP"). The mapper now persists NULL via
+// `currencyCodeOrNull`, so the correct expectation is null. The explicit
+// `draft({ currency: "usd" })` round-trip test is UNCHANGED — a SET currency must
+// still round-trip verbatim. Sanctioned test correction:
+// [TEST-MOD-APPROVED ORCH-0962]
 import { describe, expect, test } from "@jest/globals";
 
 import type { DraftEvent, TicketStub } from "../../store/draftEventStore";
@@ -120,7 +129,7 @@ const draft = (patch: Partial<DraftEvent> = {}): DraftEvent => ({
 const rowFromPayload = (
   source: DraftEvent,
   theme: Record<string, unknown>,
-  currency: string | null = source.currency ?? "GBP",
+  currency: string | null = source.currency ?? null,
 ): ServerDraftEventRow => ({
   id: source.id,
   brand_id: source.brandId,
@@ -174,7 +183,7 @@ describe("serverDraftEventMapper", () => {
     expect(payload.cover_media_credit).toBe("GIPHY");
     expect(payload.cover_media_credit_url).toBe("https://giphy.com");
     expect(payload.cover_media_alt).toBe("Dancing cover GIF");
-    expect(payload.currency).toBe("GBP");
+    expect(payload.currency).toBeNull();
     expect(hydrated.coverMediaUrl).toBe(source.coverMediaUrl);
     expect(hydrated.coverMediaType).toBe("gif");
     expect(hydrated.coverMediaProvider).toBe("giphy");
@@ -182,31 +191,38 @@ describe("serverDraftEventMapper", () => {
     expect(hydrated.coverMediaCredit).toBe("GIPHY");
     expect(hydrated.coverMediaCreditUrl).toBe("https://giphy.com");
     expect(hydrated.coverMediaAlt).toBe("Dancing cover GIF");
-    expect(hydrated.currency).toBe("GBP");
+    expect(hydrated.currency).toBeNull();
   });
 
-  test("normalizes null-currency inserts and server draft JSON to GBP", () => {
+  test("persists null-currency inserts and server draft JSON as null", () => {
     const source = draft({ currency: null });
     const payload = draftToServerInsert(source, "user-1", "draft-currency");
-    const businessDraft = payload.theme.business_draft as { currency: string };
+    const businessDraft = payload.theme.business_draft as {
+      currency: string | null;
+    };
 
-    expect(payload.currency).toBe("GBP");
-    expect(businessDraft.currency).toBe("GBP");
+    // #962 — a pre-bank brand has NO currency; the write path must persist
+    // NULL, never manufacture GBP (migration 0769 "NULL means not set").
+    expect(payload.currency).toBeNull();
+    expect(businessDraft.currency).toBeNull();
   });
 
-  test("normalizes null-currency updates while preserving uploaded cover media", () => {
+  test("persists null-currency updates as null while preserving uploaded cover media", () => {
     const source = draft({
       coverMediaType: "video",
       coverMediaUrl: "https://cdn.example.com/cover.mov",
       currency: null,
     });
     const payload = draftToServerUpdate(source, {});
-    const businessDraft = payload.theme.business_draft as { currency: string };
+    const businessDraft = payload.theme.business_draft as {
+      currency: string | null;
+    };
 
-    expect(payload.currency).toBe("GBP");
+    // #962 — null persists as null on the update leg too.
+    expect(payload.currency).toBeNull();
     expect(payload.cover_media_url).toBe("https://cdn.example.com/cover.mov");
     expect(payload.cover_media_type).toBe("video");
-    expect(businessDraft.currency).toBe("GBP");
+    expect(businessDraft.currency).toBeNull();
   });
 
   test("preserves explicit event currency through update and hydration", () => {
@@ -316,5 +332,182 @@ describe("serverDraftEventMapper", () => {
     expect(publishedVisibilityForDraft("public")).toBe("public");
     expect(publishedVisibilityForDraft("unlisted")).toBe("hidden");
     expect(publishedVisibilityForDraft("private")).toBe("private");
+  });
+
+  // ---------------------------------------------------------------------------
+  // #1026 [chip-in-draft-persist] — RSVP "chip in" host-controls must survive a
+  // draft round-trip. They are WRITTEN into theme.business_draft
+  // (buildBusinessDraftPayload `:378-380`) and MUST be READ BACK in
+  // serverRowToDraft. Before the fix, serverRowToDraft omitted the three reads
+  // and the `serverDraftEventMapper.ts:870` `as DraftEvent` cast hid the
+  // omission from the compiler — so the autosave echo overwrote chip-in with
+  // undefined ~700ms after the host set it, and a wiped draft published OFF
+  // (lost host revenue). Guards I-PROPOSED-1026-DRAFT-CHIPIN-ROUNDTRIP and
+  // I-PROPOSED-1026-DRAFT-MAPPER-COMPILE-COMPLETE. Append-only.
+  // ---------------------------------------------------------------------------
+
+  // T-1 (happy, fails-on-revert): chip-in-ON survives save → reload/autosave-echo
+  // through the REAL builders (draftToServerUpdate → serverRowToDraft).
+  test("#1026 — chip-in survives a real save→reload/autosave round-trip", () => {
+    const source = draft({
+      isRsvp: true,
+      rsvpContributionEnabled: true,
+      rsvpContributionSuggestedCents: 2500,
+      rsvpContributionMinCents: 500,
+    });
+    const payload = draftToServerUpdate(source, {});
+
+    // Write leg: the trio must land in theme.business_draft.
+    const businessDraft = payload.theme.business_draft as {
+      rsvpContributionEnabled: unknown;
+      rsvpContributionSuggestedCents: unknown;
+      rsvpContributionMinCents: unknown;
+    };
+    expect(businessDraft.rsvpContributionEnabled).toBe(true);
+    expect(businessDraft.rsvpContributionSuggestedCents).toBe(2500);
+    expect(businessDraft.rsvpContributionMinCents).toBe(500);
+
+    // Read leg (the fix): serverRowToDraft must read the trio back off the blob.
+    const hydrated = serverRowToDraft(rowFromPayload(source, payload.theme));
+    expect(hydrated.rsvpContributionEnabled).toBe(true);
+    expect(hydrated.rsvpContributionSuggestedCents).toBe(2500);
+    expect(hydrated.rsvpContributionMinCents).toBe(500);
+  });
+
+  // T-2 (edge/legacy): a pre-ORCH-1291 blob without the three chip-in keys must
+  // hydrate to false/null/null — NEVER undefined (undefined would be dropped by
+  // JSON.stringify on the next autosave and re-wipe the DB).
+  test("#1026 — legacy blob without chip-in keys hydrates to false/null (not undefined)", () => {
+    const source = draft({ isRsvp: true });
+    const payload = draftToServerUpdate(source, {});
+    const businessDraft = payload.theme.business_draft as Record<string, unknown>;
+    delete businessDraft.rsvpContributionEnabled;
+    delete businessDraft.rsvpContributionSuggestedCents;
+    delete businessDraft.rsvpContributionMinCents;
+
+    const hydrated = serverRowToDraft(rowFromPayload(source, payload.theme));
+
+    expect(hydrated.rsvpContributionEnabled).toBe(false);
+    expect(hydrated.rsvpContributionSuggestedCents).toBeNull();
+    expect(hydrated.rsvpContributionMinCents).toBeNull();
+    // Must be real values, present as own-properties — never undefined.
+    expect(hydrated.rsvpContributionEnabled).not.toBeUndefined();
+    expect(hydrated.rsvpContributionSuggestedCents).not.toBeUndefined();
+    expect(hydrated.rsvpContributionMinCents).not.toBeUndefined();
+    expect(
+      Object.prototype.hasOwnProperty.call(hydrated, "rsvpContributionEnabled"),
+    ).toBe(true);
+  });
+
+  // T-3 (insert/lazy-promote path): chip-in survives the draftToServerInsert leg
+  // (a fresh d_* draft promoted to a server row), not just the update leg.
+  test("#1026 — chip-in survives the lazy-promote/insert path", () => {
+    const source = draft({
+      isRsvp: true,
+      rsvpContributionEnabled: true,
+      rsvpContributionSuggestedCents: 3000,
+      rsvpContributionMinCents: 1000,
+    });
+    const payload = draftToServerInsert(source, "user-1", "draft-chipin");
+    const hydrated = serverRowToDraft(rowFromPayload(source, payload.theme));
+
+    expect(hydrated.rsvpContributionEnabled).toBe(true);
+    expect(hydrated.rsvpContributionSuggestedCents).toBe(3000);
+    expect(hydrated.rsvpContributionMinCents).toBe(1000);
+  });
+
+  // T-4 (type / compile-completeness gate for
+  // I-PROPOSED-1026-DRAFT-MAPPER-COMPILE-COMPLETE): serverRowToDraft closes with
+  // `} satisfies DraftEvent;` (was `as DraftEvent`). `satisfies` makes any
+  // omitted required DraftEvent field — including the chip-in trio — a hard
+  // `tsc` error (SC-4: `npm run typecheck` reddens if Edit A is reverted under
+  // `satisfies`). The type gate lives in `npm run typecheck`; this test adds a
+  // runtime completeness assertion so the whole trio must materialize as real
+  // values (undefined would slip through the OLD `as` cast but fails here too).
+  test("#1026 — serverRowToDraft returns a materially-complete chip-in trio", () => {
+    const source = draft({
+      isRsvp: true,
+      rsvpContributionEnabled: true,
+      rsvpContributionSuggestedCents: 2500,
+      rsvpContributionMinCents: 500,
+    });
+    const hydrated = serverRowToDraft(
+      rowFromPayload(source, draftToServerInsert(source, "user-1", "draft-t4").theme),
+    );
+
+    // Type-level: the mapper is annotated `: DraftEvent` and closed with
+    // `satisfies DraftEvent`; this assignment documents the completeness contract.
+    const complete: DraftEvent = hydrated;
+
+    const chipInKeys: (keyof DraftEvent)[] = [
+      "rsvpContributionEnabled",
+      "rsvpContributionSuggestedCents",
+      "rsvpContributionMinCents",
+    ];
+    for (const key of chipInKeys) {
+      expect(complete[key]).not.toBeUndefined();
+    }
+    expect(complete.rsvpContributionEnabled).toBe(true);
+    expect(complete.rsvpContributionSuggestedCents).toBe(2500);
+    expect(complete.rsvpContributionMinCents).toBe(500);
+  });
+
+  // ---------------------------------------------------------------------------
+  // #962 [pre-bank-currency-degbp] R1 — write-path round-trip persists NULL, not
+  // a fabricated "GBP". A pre-bank brand genuinely has default_currency = NULL
+  // (migration 0769 "NULL means not set; do not imply GBP"). The mapper is the
+  // ONLY thing that used to override eventDrafts.resolveDraftCurrencyForSave's
+  // correct null, stamping normalizeCurrency() → "GBP" onto both the top-level
+  // events.currency column AND theme.business_draft.currency — making the GBP
+  // sticky in the DB. This guards the fix at serverDraftEventMapper.ts:344/633/
+  // 673 (currencyCodeOrNull, not normalizeCurrency). Append-only.
+  //
+  // FAILS-ON-REVERT (true line-deletion, proven in the implementation report):
+  //   revert any of :344/:633/:673 to normalizeCurrency(draft.currency) →
+  //   the null assertions below become "GBP" and FAIL.
+  // ---------------------------------------------------------------------------
+  test("#962 R1 — a null-currency draft persists NULL on insert (column + theme.business_draft)", () => {
+    const source = draft({ currency: null });
+    const payload = draftToServerInsert(source, "user-1", "draft-962-insert");
+    const businessDraft = payload.theme.business_draft as {
+      currency: string | null;
+    };
+
+    // Top-level events.currency column → NULL.
+    expect(payload.currency).toBeNull();
+    // theme.business_draft.currency (the buildBusinessDraftPayload leg) → null.
+    expect(businessDraft.currency).toBeNull();
+    // Never the fabricated fallback.
+    expect(payload.currency).not.toBe("GBP");
+    expect(businessDraft.currency).not.toBe("GBP");
+  });
+
+  test("#962 R1 — a null-currency draft persists NULL on update (column + theme.business_draft)", () => {
+    const source = draft({ currency: null });
+    const payload = draftToServerUpdate(source, {});
+    const businessDraft = payload.theme.business_draft as {
+      currency: string | null;
+    };
+
+    expect(payload.currency).toBeNull();
+    expect(businessDraft.currency).toBeNull();
+    expect(payload.currency).not.toBe("GBP");
+    expect(businessDraft.currency).not.toBe("GBP");
+  });
+
+  test("#962 R1 — a REAL currency still round-trips unchanged through both write legs", () => {
+    // The other half of the contract: honoring a set currency is NOT weakened.
+    const source = draft({ currency: "usd" });
+    const insert = draftToServerInsert(source, "user-1", "draft-962-set");
+    const update = draftToServerUpdate(source, {});
+
+    expect(insert.currency).toBe("USD");
+    expect((insert.theme.business_draft as { currency: string | null }).currency).toBe(
+      "USD",
+    );
+    expect(update.currency).toBe("USD");
+    expect((update.theme.business_draft as { currency: string | null }).currency).toBe(
+      "USD",
+    );
   });
 });

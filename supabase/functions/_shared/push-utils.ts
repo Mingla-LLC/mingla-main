@@ -41,6 +41,11 @@ function resolveAppCredentials(
   };
 }
 
+export function hasOneSignalCredentials(appType: OneSignalAppType): boolean {
+  const { appId, restKey } = resolveAppCredentials(appType);
+  return appId.length > 0 && restKey.length > 0;
+}
+
 /**
  * META-ORCH-1074 Sub-A — routing decision: the OneSignal *application* a push
  * targets is a pure function of the notification `type` prefix. `business.*`
@@ -71,6 +76,7 @@ interface PushPayload {
   threadId?: string;              // iOS thread grouping / Android group key
   iosBadgeType?: string;          // "SetTo" | "Increase"
   iosBadgeCount?: number;         // Badge count value
+  beforeProviderIo?: () => Promise<void>;
 }
 
 interface OneSignalResponse {
@@ -141,6 +147,10 @@ export async function sendPush(payload: PushPayload): Promise<boolean> {
       ios_badgeCount: payload.iosBadgeCount ?? 0,
     }),
   };
+
+  // The durable caller-owned acceptance marker belongs after all local
+  // credential/payload preflight and immediately before external I/O.
+  await payload.beforeProviderIo?.();
 
   let response: Response;
   try {

@@ -73,6 +73,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import {
   boldFontFamily,
+  CoverGalleryPager,
+  CoverGalleryRow,
   createThemePalette,
   EventCoverMedia,
   resolveTheme,
@@ -357,6 +359,9 @@ export default function ConsumerTripDetailScreen({
   // META-ORCH-1174 — the OS reduce-motion preference, threaded into the shared
   // TripOfferingBody (it owns the About collapse animation + the countdown pill).
   const [reduceMotion, setReduceMotion] = useState<boolean>(false);
+  // issue #868 [cover-gallery], M.1b — single owner of the shown hero item (shared
+  // by the cover pager + the row). Before the early-returns to preserve hook order.
+  const [coverIndex, setCoverIndex] = useState<number>(0);
   useEffect(() => {
     let mounted = true;
     void AccessibilityInfo.isReduceMotionEnabled().then((value) => {
@@ -896,6 +901,40 @@ export default function ConsumerTripDetailScreen({
     );
   }
 
+  // issue #868 [cover-gallery], M.1b — the ADDITIONAL image/GIF items (plain const;
+  // detail is non-null past the early-returns). Empty ⇒ single cover, byte-identical.
+  const coverGallery = (detail.coverGallery ?? []).filter(
+    (g) => typeof g?.url === "string" && g.url.length > 0,
+  );
+  const galleryActive = coverGallery.length >= 1;
+  // issue #868 Pass 3 — the pager OWNS scrolling (settle-guard, BUG 1).
+  const selectCoverIndex = (index: number): void => {
+    setCoverIndex(index);
+  };
+  const coverMediaNode = (
+    <EventCoverMedia
+      mediaUrl={detail.coverMediaUrl}
+      mediaType={detail.coverMediaType}
+      hue={hueFromId(detail.tripId)}
+      autoplay
+      playbackActive
+      muted={muted}
+      loop
+      height="100%"
+      width="100%"
+    />
+  );
+  const galleryRow = galleryActive ? (
+    <CoverGalleryRow
+      cover={{ url: detail.coverMediaUrl, type: detail.coverMediaType }}
+      gallery={coverGallery}
+      activeIndex={coverIndex}
+      onSelect={selectCoverIndex}
+      palette={palette}
+      variant="phone"
+    />
+  ) : null;
+
   // META-ORCH-1174 — the shared body data + brand contract (one build), and the
   // bar/box buy-state (offeringState, computed above the early returns). The §10
   // box + the docked/floating bars all read offeringState — never diverge.
@@ -962,18 +1001,23 @@ export default function ConsumerTripDetailScreen({
         {/* (1) pinned cover — absolute sibling BEHIND the scroll (zIndex below
             the scrolling body). EventCoverMedia is gif/video/image-aware and
             renders the hue gradient when no cover (rule 9). */}
-        <View style={styles.nativeCover} pointerEvents="none">
-          <EventCoverMedia
-            mediaUrl={detail.coverMediaUrl}
-            mediaType={detail.coverMediaType}
-            hue={hueFromId(detail.tripId)}
-            autoplay
-            playbackActive
-            muted={muted}
-            loop
-            height="100%"
-            width="100%"
-          />
+        {/* issue #868 — gallery mode: swipeable pager over [cover] ++ gallery
+            (page 0 = the EXISTING cover node, UNCHANGED); nativeCover becomes
+            pointerEvents:"auto". Empty ⇒ single cover, byte-identical. */}
+        <View
+          style={styles.nativeCover}
+          pointerEvents={galleryActive ? "auto" : "none"}
+        >
+          {galleryActive ? (
+            <CoverGalleryPager
+              coverNode={coverMediaNode}
+              gallery={coverGallery}
+              activeIndex={coverIndex}
+              onActiveIndexChange={setCoverIndex}
+            />
+          ) : (
+            coverMediaNode
+          )}
           <View style={styles.coverScrim} pointerEvents="none" />
           <ThemeEntranceAnimation
             theme={theme}
@@ -999,14 +1043,22 @@ export default function ConsumerTripDetailScreen({
           onLayout={handleScrollLayout}
           testID="orch-1138-consumer-trip-scroll"
         >
-          {/* spacer holding the pinned-cover height (4:5) */}
-          <View style={styles.coverSpacer} />
+          {/* spacer holding the pinned-cover height (4:5). issue #868 —
+              pointerEvents:"none" in gallery mode so a swipe over the cover reaches
+              the pinned pager behind the body; default otherwise (byte-identical). */}
+          <View
+            style={styles.coverSpacer}
+            pointerEvents={galleryActive ? "none" : undefined}
+          />
           <View
             style={[
               styles.nativeBody,
               { backgroundColor: palette.page, borderColor: palette.panelBorder },
             ]}
           >
+            {/* issue #868 [cover-gallery] — the beneath-cover card row is the body's
+                FIRST child. Null when the gallery is empty. */}
+            {galleryRow}
             {/* META-ORCH-1174 Leg A — THE ONE shared TripOfferingBody (sections
                 2→11) renders inside this gorhom scroll. The eyebrow+title render
                 ONCE in the body's phone leadBlock; the DOCKED reserve CTA is passed

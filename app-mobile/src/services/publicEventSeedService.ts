@@ -21,11 +21,12 @@
  */
 
 import type { BusinessEventCard } from "../types/mergedDiscover";
+import type { OfferingGalleryImage } from "@mingla/offering-rendering";
 
 /** The explicit column set selected off business_public_events_view. */
 export const PUBLIC_EVENT_SEED_COLUMNS =
   "id, brand_id, brand_slug, brand_name, brand_profile_photo_url, slug, title, " +
-  "description, event_type, cover_media_url, cover_media_type, timezone, " +
+  "description, event_type, cover_media_url, cover_media_type, cover_media_gallery, timezone, " +
   "master_start_at, master_end_at, master_timezone, city, location_text, " +
   "is_online, public_theme, theme_color_override, theme_font_override, " +
   "theme_animation_override, currency, pricing_currency, display_price_cents, " +
@@ -46,6 +47,8 @@ export type PublicEventSeedViewRow = {
   event_type: string | null;
   cover_media_url: string | null;
   cover_media_type: string | null;
+  // issue #868 [cover-gallery] — additive; absent on legacy rows → mapped to [].
+  cover_media_gallery?: OfferingGalleryImage[] | null;
   timezone: string | null;
   master_start_at: string | null;
   master_end_at: string | null;
@@ -137,6 +140,8 @@ export function mapPublicEventSeedRow(
     description: row.description ?? null,
     coverMediaUrl: row.cover_media_url ?? null,
     coverMediaType: asCoverMediaType(row.cover_media_type),
+    // issue #868 [cover-gallery] — additive; [] on legacy/absent (rule 9).
+    coverGallery: Array.isArray(row.cover_media_gallery) ? row.cover_media_gallery : [],
     // coverHue 0 — the SAME neutral default the screen's own seedless
     // placeholder uses; hue is ONLY a no-media fallback tint (the real cover
     // renders whenever cover_media_url is present). PROTECTIVE: do not derive

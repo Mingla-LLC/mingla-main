@@ -176,7 +176,9 @@ describe("#948 W3 tester — production accept-route fork binding", () => {
     expect(mockAcceptAsync).toHaveBeenCalledWith("read-only-route-token");
     expect(mockRouter.replace).toHaveBeenCalledTimes(1);
     expect(mockRouter.replace).toHaveBeenCalledWith(
-      "/brand/brand%20%2F%20adversarial%20%23948/connect",
+      // #948 W4 [web-skip-download] — the invite→connect redirect now carries the
+      // funnel signal so the web bank screen hides Back + offers Skip.
+      "/brand/brand%20%2F%20adversarial%20%23948/connect?from=invite",
     );
     expect(tree.root.findAllByType("MockDownloadCta")).toHaveLength(0);
   });

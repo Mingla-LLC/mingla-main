@@ -47,6 +47,10 @@ const OWNER_FILE = join(
   "installments",
   "createInstallmentPI.ts",
 );
+// Repo-relative form of the owner file (POSIX) — the exemption lives inside the
+// pure check(...) so it is behavior-preserving AND self-testable.
+const OWNER_FILE_REL =
+  "supabase/functions/_shared/installments/createInstallmentPI.ts";
 
 const ALLOWLIST_TAG = "orch-strict-grep-allow tr3-installment-pi-via-cron-owner";
 const PI_CREATE_RE = /paymentIntents\.create\s*\(/;
@@ -80,44 +84,138 @@ function* walkTs(dir) {
   }
 }
 
-function checkFile(file) {
-  if (file === OWNER_FILE) return;
-  const source = readFileSync(file, "utf8");
-  const lines = source.split("\n");
-  for (let i = 0; i < lines.length; i += 1) {
-    if (!PI_CREATE_RE.test(lines[i])) continue;
-    // Check the surrounding context for the installment marker.
-    const start = Math.max(0, i - CONTEXT_LINES);
-    const end = Math.min(lines.length, i + CONTEXT_LINES);
-    const context = lines.slice(start, end).join("\n");
-    if (!INSTALLMENT_MARKER_RE.test(context)) continue;
-    // It's an installment-PI call site outside the owner file. Allowlist?
-    let allowlisted = false;
-    for (let k = i - 1; k >= Math.max(0, i - 5); k -= 1) {
-      if (lines[k].includes(ALLOWLIST_TAG)) {
-        allowlisted = true;
-        break;
+/**
+ * Pure verdict. `fileEntries` = [{ rel, content }] with `rel` the repo-relative
+ * POSIX path. Any file OTHER than the owner that creates a PaymentIntent whose
+ * ±CONTEXT_LINES context mentions `mingla_installment_id` is a violation unless
+ * an allowlist tag sits within 5 lines ABOVE the call. Pushes one
+ * { rel, line, lineText } record per offending call site into `failures`.
+ * Behavior-preserving refactor of the original checkFile logic.
+ */
+function check(fileEntries, failures) {
+  for (const { rel, content } of fileEntries) {
+    if (rel === OWNER_FILE_REL) continue;
+    const lines = content.split("\n");
+    for (let i = 0; i < lines.length; i += 1) {
+      if (!PI_CREATE_RE.test(lines[i])) continue;
+      // Check the surrounding context for the installment marker.
+      const start = Math.max(0, i - CONTEXT_LINES);
+      const end = Math.min(lines.length, i + CONTEXT_LINES);
+      const context = lines.slice(start, end).join("\n");
+      if (!INSTALLMENT_MARKER_RE.test(context)) continue;
+      // It's an installment-PI call site outside the owner file. Allowlist?
+      let allowlisted = false;
+      for (let k = i - 1; k >= Math.max(0, i - 5); k -= 1) {
+        if (lines[k].includes(ALLOWLIST_TAG)) {
+          allowlisted = true;
+          break;
+        }
       }
+      if (allowlisted) continue;
+      failures.push({ rel, line: i + 1, lineText: lines[i].trim() });
     }
-    if (allowlisted) continue;
-    violations += 1;
-    const rel = relative(REPO_ROOT, file);
-    console.error(
-      `✗ ${rel}:${i + 1} — installment PaymentIntent.create outside the owner file (_shared/installments/createInstallmentPI.ts)`,
-    );
-    console.error(`    > ${lines[i].trim()}`);
-    console.error(
-      `    fix: route through _shared/installments/createInstallmentPI.ts (the documented single owner per I-PROPOSED-MANUAL-INSTALLMENT-ACTION-VIA-SHARED-HELPER)`,
-    );
-    console.error(
-      `    OR add allowlist comment within 5 lines above: // ${ALLOWLIST_TAG} — <reason>`,
-    );
   }
 }
 
+// ─────────────────────────────────────────────────────────────── self-test
+if (process.argv.includes("--self-test")) {
+  const self = [];
+  const run = (entries) => {
+    const f = [];
+    check(entries, f);
+    return f;
+  };
+
+  // GOOD: the owner file creating an installment PI (exempt) + a non-owner file
+  // creating a NON-installment PI (no marker) → both silent.
+  let f = run([
+    {
+      rel: OWNER_FILE_REL,
+      content:
+        "const pi = await stripe.paymentIntents.create({\n" +
+        "  metadata: { mingla_installment_id: id },\n});\n",
+    },
+    {
+      rel: "supabase/functions/ticket-checkout-create/index.ts",
+      content: "const pi = await stripe.paymentIntents.create({ amount });\n",
+    },
+  ]);
+  if (f.length) self.push("GOOD (owner installment PI + non-owner plain PI) wrongly flagged");
+
+  // BAD1 (revert-style): a non-owner file with mingla_installment_id near a PI
+  // create and NO allowlist → fires.
+  f = run([
+    {
+      rel: "supabase/functions/charge-installment-now/index.ts",
+      content:
+        "const pi = await stripe.paymentIntents.create({\n" +
+        "  amount,\n  metadata: { mingla_installment_id: instId },\n});\n",
+    },
+  ]);
+  if (f.length === 0) self.push("BAD1 (non-owner installment PI, no allowlist) not flagged");
+
+  // BAD2 (regression, different angle): an allowlist comment placed TOO FAR (>5
+  // lines above the PI create) — must STILL fire.
+  f = run([
+    {
+      rel: "supabase/functions/manual-charge/index.ts",
+      content:
+        "// orch-strict-grep-allow tr3-installment-pi-via-cron-owner — reason\n" +
+        "// filler\n// filler\n// filler\n// filler\n// filler\n" +
+        "// mingla_installment_id\n" +
+        "const pi = await stripe.paymentIntents.create({ amount });\n",
+    },
+  ]);
+  if (f.length === 0) self.push("BAD2 (allowlist placed too far — >5 lines above) not flagged");
+
+  // SPECIFICITY: a correctly-placed allowlist (within 5 lines above) stays silent.
+  f = run([
+    {
+      rel: "supabase/functions/manual-charge/index.ts",
+      content:
+        "// mingla_installment_id\n" +
+        "// orch-strict-grep-allow tr3-installment-pi-via-cron-owner — sanctioned manual retry\n" +
+        "const pi = await stripe.paymentIntents.create({ amount });\n",
+    },
+  ]);
+  if (f.length) self.push("correctly-placed allowlist wrongly flagged");
+
+  if (self.length) {
+    console.error("I-PROPOSED-TR3-INSTALLMENT-PI-VIA-CRON-OWNER self-test FAIL:");
+    self.forEach((m) => console.error("  - " + m));
+    process.exit(1);
+  }
+  console.log(
+    "I-PROPOSED-TR3-INSTALLMENT-PI-VIA-CRON-OWNER self-test PASS (4/4 cases).",
+  );
+  process.exit(0);
+}
+
+// ─────────────────────────────────────────────────────────────── main path
+const fileEntries = [];
 for (const file of walkTs(SCAN_DIR)) {
   filesScanned += 1;
-  checkFile(file);
+  if (file === OWNER_FILE) continue;
+  fileEntries.push({
+    rel: relative(REPO_ROOT, file),
+    content: readFileSync(file, "utf8"),
+  });
+}
+
+const failures = [];
+check(fileEntries, failures);
+violations = failures.length;
+for (const v of failures) {
+  console.error(
+    `✗ ${v.rel}:${v.line} — installment PaymentIntent.create outside the owner file (_shared/installments/createInstallmentPI.ts)`,
+  );
+  console.error(`    > ${v.lineText}`);
+  console.error(
+    `    fix: route through _shared/installments/createInstallmentPI.ts (the documented single owner per I-PROPOSED-MANUAL-INSTALLMENT-ACTION-VIA-SHARED-HELPER)`,
+  );
+  console.error(
+    `    OR add allowlist comment within 5 lines above: // ${ALLOWLIST_TAG} — <reason>`,
+  );
 }
 
 console.log(

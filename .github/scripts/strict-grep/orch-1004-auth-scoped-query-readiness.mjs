@@ -117,6 +117,7 @@ const AUTH_SCOPED_HOOK_FILES = [
   "useVenueIntelligence.ts",
   "useVenueReservationSettings.ts",
   "useVenueReservations.ts",
+  "useRsvpContributionRefunds.ts",
   "useVenueTables.ts",
   "useVenueWaitlist.ts",
   // ── ORCH-1331 [partner Paystack payout rail] — reads the caller's OWN
@@ -124,6 +125,32 @@ const AUTH_SCOPED_HOOK_FILES = [
   //    edge fn); the status hook folds isAuthReady into enabled
   //    (usePartnerStripe mirror).
   "usePartnerPaystack.ts",
+  // ── #1180 [payout-ui-copy] — reads the brand's OWN payout ledger tables
+  //    (brand_payout_releases / payout_transfer_legs / payout_ledger_adjustments
+  //    / organiser_payout_debts), all RLS-gated at finance_manager rank
+  //    (auth.uid()-scoped). Folds isAuthReady into enabled.
+  "useBrandPayoutLedger.ts",
+  // #865 — brand's own ad-conversion rollup, auth.uid()-scoped RPC
+  // (brand_conversion_rollup self-authorizes via biz_is_brand_member_for_read_for_caller).
+  "useBrandConversionRollup.ts",
+  // #874 — all three brand Analytics RPCs are active-member/auth.uid()-scoped.
+  "useBrandAnalytics.ts",
+  // #1384 — both reads are brand-team/auth.uid()-scoped. A pre-auth request
+  // would cache an RLS-empty success and hide the canonical currency/range.
+  "useBrandDiscoveryCurrency.ts",
+  // Issue #1424: Stay authoring reads flags and inventory only after auth settles.
+  "useFeatureFlag.ts",
+  "useStayInventory.ts",
+  "usePlaceDiscoveryPriceRange.ts",
+  // #1390 — group/list reads are auth.uid()-owned Stay reservations.
+  "useStayGuest.ts",
+  // #1426 — staff queue/detail RPCs are accepted-brand/auth.uid()-scoped.
+  "useStayStaffReservations.ts",
+  // #1403 — private listing and exact-venue aggregate RPCs.
+  "useListingInsights.ts",
+  "useVenueReservationMetrics.ts",
+  // #1421 — exact-venue organic aggregate RPC is active-member/auth scoped.
+  "useVenueOrganicInsights.ts",
 ];
 
 // ── Public / dual-use hooks. These MUST NOT be gated — buyer-web anon reads
@@ -138,6 +165,8 @@ const PUBLIC_HOOK_ALLOWLIST = [
   ["useBrandStripeCountries.ts", "static 34-country list; no auth context, no auth.uid()-scoped read (anon-safe UI helper)"],
   ["useTripTierAllIn.ts", "fetchTierAllInCents → pg_public_event_tier_allin SECURITY DEFINER public RPC; anon buyer-web trip checkout route (ORCH-1147)"],
   ["usePublicExperience.ts", "anon-readable published experience via public read path; buyer-web experience page (no useAuth, no sign-in)"],
+  ["usePublicVenueAvailability.ts", "anon-safe availability read via the canonical self-authorizing venue edge function on public venue pages (#1365)"],
+  ["usePublicStayDetail.ts", "anon-safe verified Stay detail via the STAY_PUBLIC_PAGES-gated SECURITY DEFINER projection (#1390)"],
 ];
 const ALLOWLIST_SET = new Set(PUBLIC_HOOK_ALLOWLIST.map(([f]) => f));
 

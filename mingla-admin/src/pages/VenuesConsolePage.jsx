@@ -14,7 +14,7 @@ import { listVenues, listVenueBrands } from "../services/venuesService";
 import { VenueDetailView } from "./VenueDetailView";
 import { timeAgo } from "../lib/formatters";
 
-const CATEGORY_VARIANT = { restaurant: "info", play: "brand", creative_and_arts: "warning" };
+const CATEGORY_VARIANT = { restaurant: "info", play: "brand", creative_and_arts: "warning", stay: "success" };
 const CLAIM_VARIANT = {
   verified: "success",
   pending_review: "warning",
@@ -28,6 +28,7 @@ const CATEGORY_OPTIONS = [
   { value: "restaurant", label: "Restaurant" },
   { value: "play", label: "Play" },
   { value: "creative_and_arts", label: "Creative & arts" },
+  { value: "stay", label: "Stay" },
 ];
 const CLAIM_OPTIONS = [
   { value: "none", label: "None" },
@@ -165,7 +166,7 @@ export function VenuesConsolePage() {
           <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Venues</h1>
           <p className="text-sm text-[var(--color-text-secondary)] mt-0.5">
             Every venue across all brands. Open one for the full record — profile, claim state,
-            reservation config, tables, blackouts, waitlist, and reservations.
+            category-specific inventory, readiness, reservations, and support state.
           </p>
         </div>
       </div>

@@ -27,6 +27,11 @@ export interface DiscoverCacheParams {
   keywords?: string[];
   sort?: string;
   timezone: string;
+  // issue #1020 — browsed metro geo center/radius. Folded into the cache key so
+  // two same-name requests with different centers/radii key distinctly.
+  fallbackLat?: number | null;
+  fallbackLng?: number | null;
+  fallbackRadiusKm?: number | null;
 }
 
 export function buildDiscoverCacheKey(p: DiscoverCacheParams): string {
@@ -46,6 +51,17 @@ export function buildDiscoverCacheKey(p: DiscoverCacheParams): string {
     kw: [...(p.keywords ?? [])].sort(),
     sort: p.sort ?? null,
     tz: p.timezone,
+    // issue #1020 — geo center/radius folded in (Constitution #13). Round lat/lng
+    // to 4 dp (~11 m) to prevent float-jitter cache thrash; null when absent so
+    // city-only requests keep their prior key shape's geo slot empty.
+    geo: (p.fallbackLat != null && p.fallbackLng != null &&
+        p.fallbackRadiusKm != null)
+      ? {
+        lat: Number(p.fallbackLat.toFixed(4)),
+        lng: Number(p.fallbackLng.toFixed(4)),
+        r: p.fallbackRadiusKm,
+      }
+      : null,
   };
   return `discover:${JSON.stringify(normalized)}`;
 }

@@ -911,6 +911,23 @@ export const cancelBusinessEvent = async (
   if (response === null) {
     throw new Error("Cancel did not return a durable event.");
   }
+  // #1179 [cancel-refund-fanout] — best-effort kickoff of the buyer auto-refund
+  // fan-out once the event is durably cancelled. This is a LATENCY optimisation
+  // ONLY: correctness is guaranteed by the backstop pg_cron, which re-drives any
+  // run the kickoff missed. Strictly transparent to the cancel flow: the try/catch
+  // swallows any SYNCHRONOUS failure (e.g. an absent functions client) and the
+  // trailing .catch() swallows any ASYNC rejection, so neither a failure nor the
+  // absence of the fan-out endpoint can ever reject into cancelBusinessEvent's
+  // promise or alter the mapped event (the RPC already succeeded).
+  try {
+    void supabase.functions
+      .invoke("event-cancel-refund-fanout", { body: { event_id: eventId } })
+      .catch(() => {
+        /* backstop cron re-drives — see supabase/functions/event-cancel-refund-fanout */
+      });
+  } catch {
+    /* fan-out client unavailable — backstop cron re-drives */
+  }
   return eventFromPublishResponse(response);
 };
 
@@ -957,6 +974,15 @@ export interface PatchEventTaxonomyInput {
    * leaves location_text unchanged.
    */
   locationText: string | null;
+  /**
+   * Issue #1363 G2: legacy coordinates may be "exact"; selected-address
+   * hierarchy resolution is "approximate". Forwarded to the RPC's
+   * p_coordinate_precision; the RPC writes it to events.coordinate_precision
+   * ONLY when a new coordinate (locationGeo) is supplied, else preserves the
+   * existing value. Omit / null / undefined → "" → NULL ("unknown"), which
+   * renders exactly as today (no fabricated precision, rule 9).
+   */
+  coordinatePrecision?: "exact" | "approximate" | null;
 }
 
 interface PatchEventTaxonomyResponse {
@@ -986,6 +1012,10 @@ export const patchPublishedEventTaxonomy = async (
       p_location_lat: input.locationGeo?.lat ?? null,
       p_location_lng: input.locationGeo?.lng ?? null,
       p_location_text: input.locationText,
+      // Issue #1363 G2: forward coordinate precision (empty string → NULL in
+      // the RPC). Written to events.coordinate_precision only when a new
+      // coordinate is supplied.
+      p_coordinate_precision: input.coordinatePrecision ?? "",
     },
   );
 

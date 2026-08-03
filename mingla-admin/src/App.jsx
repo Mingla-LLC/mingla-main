@@ -22,6 +22,8 @@ import { DeckScoreTunerPage } from "./pages/DeckScoreTunerPage";
 import { PricingPage } from "./pages/PricingPage";
 import { LaunchCitiesPage } from "./pages/LaunchCitiesPage";
 import { BetaLeadsPage } from "./pages/BetaLeadsPage";
+// ISSUE-1354 — Tool Leads: all free-tool submissions + report detail (#/tool-leads).
+import { ToolLeadsPage } from "./pages/ToolLeadsPage";
 import { StripeModePage } from "./pages/StripeModePage";
 // META-ORCH-1104 Phase 2 — admin support desk (queue + thread + agents).
 import { SupportDeskPage } from "./pages/SupportDeskPage";
@@ -50,6 +52,7 @@ import { AdEnginePage } from "./pages/AdEnginePage";
 // surface with launch/pause/sync + review_detail cause→fix (#/campaigns).
 import { CampaignBuilderPage } from "./pages/CampaignBuilderPage";
 import { CampaignsPage } from "./pages/CampaignsPage";
+import { RefundOperationsPage } from "./pages/RefundOperationsPage";
 // ORCH-1008: 6 pages deleted (Seed, ContentModeration, Analytics, Reports,
 //   BetaFeedback, TableBrowser). Sidebar flattened; System dropdown removed.
 //   See SPEC_ORCH-1008_ADMIN_SHELL_PRUNE_INTELLIGENCE_OVERVIEW.md §2 + §3.
@@ -66,6 +69,8 @@ const PAGES = {
   placepool: PlacePoolManagementPage,
   "launch-cities": LaunchCitiesPage,
   "beta-leads": BetaLeadsPage,
+  // ISSUE-1354: all free-tool submissions + report detail (hash route #/tool-leads).
+  "tool-leads": ToolLeadsPage,
   claims: ClaimsPage,
   // META-ORCH-1104 Phase 2 — #/support support desk.
   support: SupportDeskPage,
@@ -103,6 +108,7 @@ const PAGES = {
   // on #/campaigns, never in the builder — I-PROPOSED-864-CREATE-PAUSED).
   "campaign-builder": CampaignBuilderPage,
   campaigns: CampaignsPage,
+  "refund-operations": RefundOperationsPage,
 };
 
 function getTabFromHash() {

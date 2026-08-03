@@ -25,6 +25,8 @@ export interface MenuItemPublicRow {
   menu_id: string;
   brand_id: string;
   brand_slug: string;
+  venue_id: string;
+  venue_slug: string;
   menu_name: string;
   menu_description: string | null;
   menu_sort_order: number;
@@ -36,7 +38,7 @@ export interface MenuItemPublicRow {
 }
 
 const PUBLIC_MENU_SELECT =
-  "id, menu_id, brand_id, brand_slug, menu_name, menu_description, menu_sort_order, item_name, item_description, price_cents, currency, item_sort_order";
+  "id, menu_id, brand_id, brand_slug, venue_id, venue_slug, menu_name, menu_description, menu_sort_order, item_name, item_description, price_cents, currency, item_sort_order";
 
 /**
  * Public read: all available items of a verified venue's active menus, grouped
@@ -46,11 +48,13 @@ const PUBLIC_MENU_SELECT =
  */
 export const fetchPublicMenus = async (
   brandSlug: string,
+  venueSlug: string,
 ): Promise<PublicMenuGroup[]> => {
   const { data, error } = await supabase
     .from("public_menus_view")
     .select(PUBLIC_MENU_SELECT)
     .eq("brand_slug", brandSlug)
+    .eq("venue_slug", venueSlug)
     .order("menu_sort_order", { ascending: true })
     .order("item_sort_order", { ascending: true });
   if (error !== null) throw error;

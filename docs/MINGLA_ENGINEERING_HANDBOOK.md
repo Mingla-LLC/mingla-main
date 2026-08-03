@@ -341,11 +341,23 @@ supabase functions serve <name>
 
 ### 7.6 EAS OTA
 
-Seth handles EAS Updates. After a milestone passes the smoke test:
+Production OTA is ENABLED for pure-JS / zero-native-module-delta changes (the old "business is
+native-build-only / OTA bricks" freeze is RETIRED — the brick was a native-module delta + a wrong-key
+handshake, both solved: #990 + ORCH-1384 on-device GO). The orchestrator (or Seth) publishes on close;
+only a change that adds/bumps a native module or edits native config needs a full `eas build`.
+
+Business — via the canonical script ONLY (never bare `eas update`; it inlines `pk_test_` -> #990 splash brick):
 
 ```bash
-cd mingla-business && eas update --branch production --platform ios --message "<Milestone>: <summary>"
-cd mingla-business && eas update --branch production --platform android --message "<Milestone>: <summary>"
+mingla-business/scripts/ota/publish-production-ota.sh ios     "<summary>"
+mingla-business/scripts/ota/publish-production-ota.sh android "<summary>"
+```
+
+Consumer (`app-mobile`) — via `npx -y eas-cli@latest` (the global eas-cli crashes app-mobile's config spawn):
+
+```bash
+cd app-mobile && npx -y eas-cli@latest update --branch production --platform ios     --message "<summary>"
+cd app-mobile && npx -y eas-cli@latest update --branch production --platform android  --message "<summary>"
 ```
 
 Two separate commands — `--platform ios,android` is invalid; `--platform all` fails on web bundle.

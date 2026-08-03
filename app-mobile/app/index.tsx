@@ -1903,7 +1903,9 @@ function AppContent() {
                 ? `/e/${b}/${e}`
                 : dest.entity === 'trip'
                   ? `/t/${b}/${e}`
-                  : `/exp/${b}/${e}`;
+                  : dest.entity === 'venue'
+                    ? `/b/${b}/v/${e}`
+                    : `/exp/${b}/${e}`;
             // ORCH-1342 [web-see-whos-going-funnel] — the landing rides INSIDE
             // the path string at this ONE composition point (SPEC §4.6), so the
             // authed router.push AND the unauthenticated deferral below carry it

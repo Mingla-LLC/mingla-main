@@ -346,7 +346,11 @@ export type BrandClaimStatus =
   | "suspended"
   | "revoked";
 
-export type VenueCategory = "restaurant" | "play" | "creative_and_arts";
+export type VenueCategory =
+  | "restaurant"
+  | "play"
+  | "creative_and_arts"
+  | "stay";
 
 /** Ve1 — one row in `brand_hours` (weekday 0 = Monday … 6 = Sunday). */
 export interface BrandHourEntry {

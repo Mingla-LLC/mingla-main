@@ -38,6 +38,7 @@ import React, {
 import {
   AccessibilityInfo,
   ActivityIndicator,
+  Keyboard,
   Platform,
   Pressable,
   ScrollView as RNScrollView,
@@ -45,6 +46,7 @@ import {
   Text,
   TextInput as RNTextInput,
   View,
+  type KeyboardEvent,
   type ScrollViewProps,
   type TextInputProps,
 } from "react-native";
@@ -63,8 +65,67 @@ import type {
   LocationInputIcon,
   LocationInputTokens,
 } from "./types";
+import {
+  computeShowFreeTextRow,
+  resolveFreeTextRowStyle,
+} from "./assistFooter";
 
 const AUTOCOMPLETE_DEBOUNCE_MS = 250;
+
+// ── Keyboard-aware dropdown cap (issue #1027 · Thread A) ──────────────────────
+// I-PROPOSED-1027-KEYBOARD-AWARE-DROPDOWN-CAP. The card-mode suggestion list
+// renders in normal flow directly below the field. Without a keyboard-aware cap,
+// a large/unbounded injected `dropdown.maxHeight` (9999 on every business host,
+// 280 consumer-light) lays the list out as one tall block that overflows BEHIND
+// the soft keyboard — rows past the keyboard's top edge are rendered but
+// physically unreachable while typing (proven on a physical Samsung A72). These
+// constants + the pure `computeDropdownMaxHeight` below cap the scroll viewport
+// to the measured space between the card's top and the keyboard's top, so the
+// list scrolls WITHIN the cap instead of overflowing.
+
+/** Breathing room between the last visible row and the keyboard's top edge. */
+export const DROPDOWN_SAFETY_MARGIN = 8;
+/**
+ * Extra reserved space on iOS for the keyboard accessory / Done bar that sits
+ * above the raw keyboard frame (mirrors SmartScrollView's DEFAULT_BOTTOM_OFFSET
+ * rationale). Subtracted from the available space only on iOS.
+ */
+export const DROPDOWN_KEYBOARD_ACCESSORY_ALLOWANCE = 44;
+/**
+ * Floor for the capped viewport (≈2 rows) so the dropdown is always a usable,
+ * scrollable window even in very tight layouts (iPhone SE, tall Android keyboard).
+ */
+export const MIN_DROPDOWN_HEIGHT = 96;
+
+/**
+ * Keyboard-aware effective `maxHeight` for the card-mode suggestion list.
+ *
+ * - `keyboardScreenY` — the keyboard's top edge in window coords (RN
+ *   `KeyboardEvent.endCoordinates.screenY`); `Infinity` when the keyboard is hidden.
+ * - `cardTopY` — the dropdown card's top edge in window coords (`measureInWindow`);
+ *   `null` before the card has measured.
+ * - `tokenMaxHeight` — the injected `dropdown.maxHeight` token, now an UPPER BOUND.
+ *
+ * When the keyboard is hidden (`keyboardScreenY` non-finite) or the card has not
+ * measured yet (`cardTopY === null`), returns the token unchanged — today's
+ * behavior, zero regression. Otherwise caps to the measured space above the
+ * keyboard, never below `MIN_DROPDOWN_HEIGHT`.
+ */
+export function computeDropdownMaxHeight(params: {
+  keyboardScreenY: number;
+  cardTopY: number | null;
+  tokenMaxHeight: number;
+  isIOS: boolean;
+}): number {
+  const { keyboardScreenY, cardTopY, tokenMaxHeight, isIOS } = params;
+  if (!Number.isFinite(keyboardScreenY) || cardTopY === null) {
+    return tokenMaxHeight;
+  }
+  const accessory = isIOS ? DROPDOWN_KEYBOARD_ACCESSORY_ALLOWANCE : 0;
+  const availableBelow =
+    keyboardScreenY - cardTopY - DROPDOWN_SAFETY_MARGIN - accessory;
+  return Math.max(MIN_DROPDOWN_HEIGHT, Math.min(tokenMaxHeight, availableBelow));
+}
 
 type HapticsLike = {
   selectionAsync?: () => Promise<void>;
@@ -78,7 +139,7 @@ export interface MapboxAddressInputProps {
   /** Fires on every keystroke so the parent can keep its address in sync. */
   onChangeText: (next: string) => void;
   /** Fires when the user picks a suggestion AND retrieve succeeds. */
-  onPick: (details: PlaceDetails) => void;
+  onPick: (details: PlaceDetails, selectedLabel?: string) => void;
   /** Fires when the user clears the field (X icon). Parent zeroes address+geo. */
   onClear: () => void;
   /** Inline error from parent-side validation (host-owned). */
@@ -135,7 +196,34 @@ export interface MapboxAddressInputProps {
   proximity?: string;
   /** suggest `limit` override (≤10). Default (omitted) → edge default 5. */
   suggestLimit?: number;
+
+  // ── Issue #1363 [pinless selected-address mode] ────────────────────────────
+  // All OPTIONAL + default-off. When every one is absent the assist footer is
+  // omitted entirely and the field renders BYTE-IDENTICALLY (every app-mobile
+  // consumer host passes none → consumer stays unchanged).
+  /**
+   * When true, the field renders a "Use '<typed text>'" affordance so the host
+   * can accept free text as the display address (Tier 2). Default false → today.
+   */
+  allowFreeText?: boolean;
+  /**
+   * Fires with the raw controlled value when the user commits free text.
+   */
+  onFreeText?: (text: string) => void;
+  /** Controlled business-only selected-address state. Omitted = legacy picker. */
+  selectionState?: LocationSelectionState;
+  /** Authoritative label shown in the selected-address pill. */
+  selectedLabel?: string | null;
+  /** X-to-change callback. The host clears committed location metadata. */
+  onChangeSelected?: () => void;
 }
+
+export type LocationSelectionState =
+  | "editing"
+  | "resolving"
+  | "selected"
+  | "needs_context"
+  | "error";
 
 type Status =
   | { kind: "idle" }
@@ -167,12 +255,39 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
   autoFocus = false,
   proximity,
   suggestLimit,
+  allowFreeText = false,
+  onFreeText,
+  selectionState = "editing",
+  selectedLabel = null,
+  onChangeSelected,
 }) => {
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const [focused, setFocused] = useState(false);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Issue #1363 SC-10 — every user action advances this monotonic generation.
+  // Async suggest/retrieve completions may mutate state only while still current.
+  const requestGeneration = useRef(0);
+  const [pendingSelectedLabel, setPendingSelectedLabel] = useState<string | null>(
+    null,
+  );
+  const [focusRevision, setFocusRevision] = useState(0);
+  // Issue #1363 — set true right after a successful pick, reset on the next
+  // keystroke. Used ONLY to hide the Tier-2 free-text row immediately after a
+  // pick (so the picked address doesn't re-offer "Use '<address>'").
+  const justPicked = useRef<boolean>(false);
   // One Mapbox session token per typing session; reused across suggest→retrieve.
   const sessionToken = useRef<string>(newMapboxSessionToken());
+
+  // issue #1027 (Thread A) — keyboard-aware card-mode dropdown cap. Track the
+  // soft keyboard's top edge (window coords) + the dropdown card's own top edge
+  // so the suggestion list caps its scroll viewport to the space above the
+  // keyboard instead of overflowing behind it. Infinity/null → no constraint
+  // (keyboard hidden / not yet measured), preserving today's token-driven height.
+  const [keyboardScreenY, setKeyboardScreenY] = useState<number>(
+    Number.POSITIVE_INFINITY,
+  );
+  const [cardTopY, setCardTopY] = useState<number | null>(null);
+  const cardRef = useRef<View>(null);
 
   const TextInput = TextInputComponent ?? RNTextInput;
 
@@ -185,9 +300,54 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
 
   useEffect((): (() => void) => {
     return (): void => {
+      requestGeneration.current += 1;
       clearDebounceTimer();
     };
   }, [clearDebounceTimer]);
+
+  // issue #1027 (Thread A) — subscribe to the soft keyboard's frame so the
+  // card-mode dropdown can cap to the space above it. `endCoordinates.screenY`
+  // is the keyboard's top in window coords; when hidden we treat it as Infinity
+  // (no constraint). Listeners are cleaned up on unmount.
+  useEffect((): (() => void) => {
+    const onFrame = (e: KeyboardEvent): void => {
+      const y = e?.endCoordinates?.screenY;
+      setKeyboardScreenY(
+        typeof y === "number" && Number.isFinite(y) && y > 0
+          ? y
+          : Number.POSITIVE_INFINITY,
+      );
+    };
+    const onHide = (): void => setKeyboardScreenY(Number.POSITIVE_INFINITY);
+    const subs = [
+      Keyboard.addListener("keyboardDidShow", onFrame),
+      Keyboard.addListener("keyboardDidChangeFrame", onFrame),
+      Keyboard.addListener("keyboardWillChangeFrame", onFrame),
+      Keyboard.addListener("keyboardDidHide", onHide),
+      Keyboard.addListener("keyboardWillHide", onHide),
+    ];
+    return (): void => {
+      subs.forEach((s) => s.remove());
+    };
+  }, []);
+
+  // issue #1027 (Thread A) — measure the dropdown card's top edge in window
+  // coords. Called on the card's onLayout AND re-invoked whenever the keyboard
+  // frame or the open/closed status changes (below), so the cap tracks reality.
+  const measureCard = useCallback((): void => {
+    const node = cardRef.current;
+    if (node && typeof node.measureInWindow === "function") {
+      node.measureInWindow((_x: number, y: number): void => {
+        if (typeof y === "number" && Number.isFinite(y)) {
+          setCardTopY(y);
+        }
+      });
+    }
+  }, []);
+
+  useEffect((): void => {
+    measureCard();
+  }, [measureCard, keyboardScreenY, status.kind]);
 
   const fireHaptic = useCallback(
     (kind: "selection" | "success" | "error"): void => {
@@ -221,6 +381,10 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
 
   const handleChangeText = useCallback(
     (next: string): void => {
+      const generation = ++requestGeneration.current;
+      // Issue #1363 — any keystroke means the value is no longer a just-picked
+      // address, so the Tier-2 free-text row may show again.
+      justPicked.current = false;
       onChangeText(next);
       clearDebounceTimer();
       if (next.trim().length < minQueryLength) {
@@ -250,6 +414,7 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
                   { invoke },
                   { proximity, limit: suggestLimit },
                 );
+          if (generation !== requestGeneration.current) return;
           if (results.length === 0) {
             setStatus({ kind: "no_results" });
             announce(copy.noResults);
@@ -257,6 +422,7 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
             setStatus({ kind: "suggestions_open", results });
           }
         } catch {
+          if (generation !== requestGeneration.current) return;
           // autocompleteMapbox itself swallows; this guards the unexpected.
           setStatus({ kind: "offline" });
           announce(copy.offline);
@@ -268,19 +434,29 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
 
   const handlePickSuggestion = useCallback(
     async (s: PlaceAutocompleteSuggestion): Promise<void> => {
+      const generation = ++requestGeneration.current;
       clearDebounceTimer();
       fireHaptic("selection");
+      const label =
+        s.fullAddress.trim().length > 0 ? s.fullAddress : s.displayName;
+      setPendingSelectedLabel(label);
       setStatus({ kind: "fetching_details" });
       try {
         const details = await retrieveMapboxPlace(s.placeId, sessionToken.current, {
           invoke,
         });
-        onPick(details);
+        if (generation !== requestGeneration.current) return;
+        onPick(details, label);
+        // Issue #1363 — a completed pick hides the Tier-2 free-text row until
+        // the next keystroke.
+        justPicked.current = true;
         setStatus({ kind: "idle" });
+        setPendingSelectedLabel(null);
         fireHaptic("success");
         // Rotate the session token AFTER a completed suggest→retrieve pair.
         sessionToken.current = newMapboxSessionToken();
       } catch (e: unknown) {
+        if (generation !== requestGeneration.current) return;
         const message = e instanceof Error ? e.message : "MAPBOX_UNKNOWN";
         console.warn("[MapboxAddressInput] pick failure:", message);
         fireHaptic("error");
@@ -291,12 +467,23 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
   );
 
   const handleClear = useCallback((): void => {
+    requestGeneration.current += 1;
     clearDebounceTimer();
     setStatus({ kind: "idle" });
     onClear();
   }, [clearDebounceTimer, onClear]);
 
+  const handleChangeSelected = useCallback((): void => {
+    requestGeneration.current += 1;
+    clearDebounceTimer();
+    setPendingSelectedLabel(null);
+    setStatus({ kind: "idle" });
+    onChangeSelected?.();
+    setFocusRevision((current) => current + 1);
+  }, [clearDebounceTimer, onChangeSelected]);
+
   const handleRetry = useCallback((): void => {
+    requestGeneration.current += 1;
     setStatus({ kind: "idle" });
   }, []);
 
@@ -492,6 +679,16 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
   // (radius clip). Status rows stay above the scroll (single-row).
   const Scroll = ScrollComponent ?? RNScrollView;
 
+  // issue #1027 (Thread A) — the injected `dropdown.maxHeight` token is now an
+  // UPPER BOUND; the effective viewport is capped to the space above the keyboard
+  // (falls back to the token unchanged when the keyboard is hidden / not measured).
+  const dropdownMaxHeight = computeDropdownMaxHeight({
+    keyboardScreenY,
+    cardTopY,
+    tokenMaxHeight: tokens.dropdown.maxHeight,
+    isIOS: Platform.OS === "ios",
+  });
+
   const wrappedList =
     tokens.dropdown.mode === "card" ? (
       status.kind === "suggestions_open" ||
@@ -499,6 +696,8 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
       status.kind === "no_results" ||
       status.kind === "offline" ? (
         <View
+          ref={cardRef}
+          onLayout={measureCard}
           style={[
             {
               marginTop: 4,
@@ -514,7 +713,7 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
           {statusContent}
           {rowsOpen ? (
             <Scroll
-              style={{ maxHeight: tokens.dropdown.maxHeight }}
+              style={{ maxHeight: dropdownMaxHeight }}
               keyboardShouldPersistTaps="handled"
               nestedScrollEnabled
               showsVerticalScrollIndicator
@@ -529,6 +728,182 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
       inlineContent
     );
 
+  // ── Issue #1363 — selected free-text assist footer ────────────────────────
+  // Rendered as a sibling BELOW the field/error (and the suggestion list), NOT
+  // inside the dropdown card — so it shows in both card + inline dropdown modes
+  // and regardless of whether the dropdown is open. When BOTH rows are hidden
+  // the whole footer is omitted → BYTE-IDENTICAL render for consumer hosts that
+  // do not opt into `allowFreeText`.
+  const trimmedValue = value.trim();
+  // Issue #1363 (device-UX F2) — TIMING: the action row must never compete with
+  // a live suggestion list. It shows on `no_results` (primary) + idle-after-typing
+  // with a full address; NEVER during loading_suggestions / suggestions_open /
+  // fetching_details. Pure rule in ./assistFooter (unit-tested, fails-on-revert).
+  const showFreeTextRow = computeShowFreeTextRow({
+    allowFreeText: allowFreeText === true,
+    hasOnFreeText: onFreeText !== undefined,
+    justPicked: justPicked.current,
+    statusKind: status.kind,
+    trimmedLength: trimmedValue.length,
+  });
+  // Issue #1363 (device-UX F2) — ACCENT: when the host injects `tokens.action`
+  // (business = brand orange) the row renders as an accent pill button; without
+  // it (consumer) → the exact muted fallback → byte-identical render.
+  const freeTextRowStyle = resolveFreeTextRowStyle(tokens.action, {
+    text: tokens.status.text,
+    icon: tokens.icon.leading,
+  });
+  const assistFooter =
+    showFreeTextRow ? (
+      <View style={{ marginTop: 4, gap: 2 }}>
+        {showFreeTextRow ? (
+          <Pressable
+            onPress={() => {
+              requestGeneration.current += 1;
+              clearDebounceTimer();
+              setStatus({ kind: "idle" });
+              onFreeText?.(value);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Can't find it in the list? Use what you typed."
+            hitSlop={8}
+            style={({ pressed }) => [
+              styles.assistRow,
+              freeTextRowStyle.pill,
+              pressed ? { opacity: 0.6 } : null,
+            ]}
+          >
+            <IconComponent
+              name="location-outline"
+              size={16}
+              color={freeTextRowStyle.iconColor}
+            />
+            <Text
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              style={{
+                flex: 1,
+                color: freeTextRowStyle.textColor,
+                fontSize: tokens.status.fontSize,
+                lineHeight: tokens.status.lineHeight,
+                fontWeight: freeTextRowStyle.fontWeight,
+              }}
+            >
+              {"Can't find it in the list? Use what you typed."}
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
+    ) : null;
+
+  const effectiveSelectionState: LocationSelectionState =
+    selectionState !== "editing"
+      ? selectionState
+      : status.kind === "fetching_details"
+        ? "resolving"
+        : status.kind === "pick_error" && pendingSelectedLabel !== null
+          ? "error"
+          : "editing";
+  const effectiveSelectedLabel =
+    selectedLabel ?? pendingSelectedLabel ?? (value.length > 0 ? value : null);
+
+  if (
+    effectiveSelectionState !== "editing" &&
+    effectiveSelectedLabel !== null
+  ) {
+    const stateMessage =
+      effectiveSelectionState === "resolving"
+        ? "Placing address…"
+        : effectiveSelectionState === "needs_context"
+          ? "Add a city or country so we can place this approximately."
+          : effectiveSelectionState === "error"
+            ? "We couldn't place this yet. Try again."
+            : null;
+    return (
+      <View>
+        <View
+          accessibilityLiveRegion="polite"
+          style={[fieldStyle, styles.selectedPill]}
+        >
+          {effectiveSelectionState === "resolving" ? (
+            <ActivityIndicator size="small" color={tokens.spinner} />
+          ) : (
+            <IconComponent
+              name="location-outline"
+              size={18}
+              color={tokens.icon.leading}
+            />
+          )}
+          <Text
+            accessibilityLabel={effectiveSelectedLabel}
+            numberOfLines={2}
+            style={[
+              styles.selectedLabel,
+              {
+                color: tokens.text.input,
+                fontSize: tokens.row.primaryFontSize,
+                lineHeight: tokens.row.primaryLineHeight,
+              },
+            ]}
+          >
+            {effectiveSelectedLabel}
+          </Text>
+          <Pressable
+            onPress={handleChangeSelected}
+            accessibilityRole="button"
+            accessibilityLabel="Change address"
+            accessibilityHint="Returns to address search."
+            hitSlop={8}
+            style={({ pressed }) => [
+              styles.changeAddressButton,
+              pressed ? { opacity: 0.6 } : null,
+            ]}
+          >
+            <IconComponent name="close" size={18} color={tokens.icon.clear} />
+          </Pressable>
+        </View>
+        {stateMessage !== null ? (
+          <View style={styles.selectedStatusRow}>
+            <Text
+              accessibilityLiveRegion="polite"
+              style={{
+                flex: 1,
+                color:
+                  effectiveSelectionState === "error"
+                    ? tokens.error.text
+                    : tokens.status.text,
+                fontSize: tokens.status.fontSize,
+                lineHeight: tokens.status.lineHeight,
+              }}
+            >
+              {stateMessage}
+            </Text>
+            {effectiveSelectionState === "error" ? (
+              <Pressable
+                onPress={() => onFreeText?.(effectiveSelectedLabel)}
+                accessibilityRole="button"
+                accessibilityLabel="Retry placing address"
+                style={({ pressed }) => [
+                  styles.retryButton,
+                  pressed ? { opacity: 0.6 } : null,
+                ]}
+              >
+                <Text
+                  style={{
+                    color: tokens.action?.text ?? tokens.text.input,
+                    fontWeight: "600",
+                  }}
+                >
+                  Retry
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
+      </View>
+    );
+  }
+
   return (
     <View>
       <View style={fieldStyle}>
@@ -538,6 +913,7 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
           color={tokens.icon.leading}
         />
         <TextInput
+          key={`location-input-${focusRevision}`}
           value={value}
           onChangeText={handleChangeText}
           onFocus={() => setFocused(true)}
@@ -546,7 +922,7 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
           placeholderTextColor={tokens.text.placeholder}
           autoCorrect={false}
           autoCapitalize="words"
-          autoFocus={autoFocus}
+          autoFocus={autoFocus || focusRevision > 0}
           // ORCH-1365 (F-6) — text-clip fix. Removed the forced `lineHeight:24`
           // (it capped the single-line box so descenders like g/y/p clipped at
           // the bottom); the platform now computes the line box and reserves
@@ -623,11 +999,45 @@ export const MapboxAddressInput: React.FC<MapboxAddressInputProps> = ({
       ) : null}
 
       {wrappedList}
+
+      {assistFooter}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
+  assistRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+  },
+  selectedPill: {
+    minHeight: 52,
+  },
+  selectedLabel: {
+    flex: 1,
+  },
+  changeAddressButton: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  selectedStatusRow: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginTop: 4,
+  },
+  retryButton: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   cardShadow: {
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },

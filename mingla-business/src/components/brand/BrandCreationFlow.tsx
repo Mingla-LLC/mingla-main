@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 // orch-strict-grep-allow orch-0892 — META-ORCH-0972 Sub-B BrandCreationFlow is a 4-step universal brand creation flow; keyboard-input fields (brand name, bio, address) sit at top of viewport and are not scroll-occluded by the on-screen keyboard. SmartScrollView migration deferred to a dedicated keyboard-hygiene follow-up ORCH.
 import {
   Pressable,
@@ -22,6 +22,7 @@ import {
   canvas,
   glass,
   radius,
+  semantic,
   spacing,
   text as textTokens,
   typography,
@@ -57,8 +58,15 @@ import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 // Mapbox Search Box /suggest returns POIs/businesses by name (no `types` filter):
 // https://docs.mapbox.com/api/search/search-box/#get-suggestions
 import { MapboxAddressInput } from "../location/MapboxAddressInput";
+import {
+  advanceLocationRequestGeneration,
+  isFreeTextResolveStale,
+  isLocationRequestGenerationCurrent,
+  resolveFreeTextLocation,
+} from "../../utils/resolveApproxLocation";
 import { parseVenuePlaceResult } from "../../utils/parseVenuePlaceResult";
 import type { PlaceDetails } from "../../services/mapboxGeocodeService";
+import type { LocationSelectionState } from "@mingla/location-input";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 
 export interface BrandCreationFlowProps {
@@ -337,13 +345,87 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
     retry: () => void;
   } | null>(null);
   const [coverPickerVisible, setCoverPickerVisible] = useState(false);
+  const [addressSelectionState, setAddressSelectionState] =
+    useState<LocationSelectionState>("editing");
+  // Issue #1363 P3-2 — latest-wins guard: the address text currently committed,
+  // so a superseded free-text geocode can't patch a stale prefill coordinate.
+  const committedAddrRef = useRef("");
+  const addressRequestGenerationRef = useRef(0);
+  const savedContextRef = useRef<{
+    city: string | null;
+    countryCode: string | null;
+  }>({ city: null, countryCode: null });
+  const resolveCommittedAddress = useCallback(
+    (rawLabel: string): void => {
+      const generation = advanceLocationRequestGeneration(
+        addressRequestGenerationRef,
+      );
+      committedAddrRef.current = rawLabel;
+      setAddress(rawLabel);
+      setAddressSelectionState("resolving");
+      setAddrMeta({
+        lat: null,
+        lng: null,
+        city: null,
+        countryCode: null,
+        googlePlaceId: null,
+      });
+      void (async () => {
+        try {
+          const resolution = await resolveFreeTextLocation(
+            rawLabel,
+            savedContextRef.current,
+          );
+          if (
+            !isLocationRequestGenerationCurrent(
+              addressRequestGenerationRef,
+              generation,
+            ) ||
+            isFreeTextResolveStale(rawLabel, committedAddrRef.current)
+          ) return;
+          if (resolution.status === "needs_context") {
+            setAddressSelectionState("needs_context");
+            return;
+          }
+          const approx = resolution.location;
+          setAddrMeta({
+            lat: approx.lat,
+            lng: approx.lng,
+            city: approx.city,
+            countryCode: approx.countryCode,
+            googlePlaceId: null,
+          });
+          savedContextRef.current = {
+            city: approx.city,
+            countryCode: approx.countryCode,
+          };
+          setAddressSelectionState("selected");
+        } catch {
+          if (
+            isLocationRequestGenerationCurrent(
+              addressRequestGenerationRef,
+              generation,
+            ) &&
+            !isFreeTextResolveStale(rawLabel, committedAddrRef.current)
+          ) {
+            setAddressSelectionState("error");
+          }
+        }
+      })();
+    },
+    [],
+  );
   // ORCH-1081 — partner-mode Step 5 form state.
   const [inviteeEmail, setInviteeEmail] = useState("");
   const [inviteeNote, setInviteeNote] = useState("");
   const [invitePending, setInvitePending] = useState(false);
 
-  const addressValidated =
-    address.trim().length > 0 && addrMeta.lat !== null && addrMeta.lng !== null;
+  // Issue #1363 [three-tier address] (OQ-4, Seth-approved) — brand address is
+  // OPTIONAL (a Skip escape exists) and its coordinate only PRE-FILLS venues, so
+  // Continue now accepts typed text WITHOUT coordinates. Coords stay best-effort:
+  // free-text forward-geocode / pin fill them when available (persistAddress
+  // already attaches geo only when present), but they never gate Continue.
+  const addressValidated = address.trim().length > 0;
 
   const accountId = user?.id ?? null;
   const trimmedName = name.trim();
@@ -465,7 +547,11 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   }, [address, addrMeta, persistAddress, updateState]);
 
   const handleSkipAddress = useCallback((): void => {
+    advanceLocationRequestGeneration(addressRequestGenerationRef);
+    savedContextRef.current = { city: null, countryCode: null };
     setAddress("");
+    committedAddrRef.current = "";
+    setAddressSelectionState("editing");
     setAddrMeta({ lat: null, lng: null, city: null, countryCode: null, googlePlaceId: null });
     updateState({ type: "setAddress", address: null });
   }, [updateState]);
@@ -724,7 +810,13 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
                 brands with no fixed address. */}
             <MapboxAddressInput
               value={address}
+              allowFreeText
+              selectionState={addressSelectionState}
+              selectedLabel={address}
               onChangeText={(t) => {
+                advanceLocationRequestGeneration(addressRequestGenerationRef);
+                savedContextRef.current = { city: null, countryCode: null };
+                committedAddrRef.current = t;
                 setAddress(t);
                 setAddrMeta({
                   lat: null,
@@ -734,9 +826,13 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
                   googlePlaceId: null,
                 });
               }}
-              onPick={(details: PlaceDetails): void => {
+              onFreeText={resolveCommittedAddress}
+              onPick={(details: PlaceDetails, selectedLabel?: string): void => {
+                advanceLocationRequestGeneration(addressRequestGenerationRef);
                 const p = parseVenuePlaceResult(details);
-                setAddress(p.formattedAddress);
+                const label = selectedLabel ?? p.formattedAddress;
+                committedAddrRef.current = label;
+                setAddress(label);
                 // ORCH-1079 LOCKED (§3.B): write geo identically but set
                 // googlePlaceId: null — the Mapbox mapbox_id (`p.placeId`) is
                 // IGNORED so it never pollutes `brands.google_place_id`.
@@ -747,8 +843,30 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
                   countryCode: p.countryCode,
                   googlePlaceId: null,
                 });
+                savedContextRef.current = {
+                  city: p.city,
+                  countryCode: p.countryCode,
+                };
+                setAddressSelectionState("selected");
+              }}
+              onChangeSelected={() => {
+                advanceLocationRequestGeneration(addressRequestGenerationRef);
+                savedContextRef.current = { city: null, countryCode: null };
+                committedAddrRef.current = address;
+                setAddressSelectionState("editing");
+                setAddrMeta({
+                  lat: null,
+                  lng: null,
+                  city: null,
+                  countryCode: null,
+                  googlePlaceId: null,
+                });
               }}
               onClear={(): void => {
+                advanceLocationRequestGeneration(addressRequestGenerationRef);
+                savedContextRef.current = { city: null, countryCode: null };
+                committedAddrRef.current = "";
+                setAddressSelectionState("editing");
                 setAddress("");
                 setAddrMeta({
                   lat: null,
@@ -1089,6 +1207,13 @@ const styles = StyleSheet.create({
     fontSize: typography.body.fontSize,
     lineHeight: typography.body.lineHeight,
     color: textTokens.secondary,
+  },
+  // Issue #1363 — inline hint under the address field (best-effort coords).
+  addressHint: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: semantic.warning,
+    marginTop: spacing.xs,
   },
   label: {
     fontSize: typography.bodySm.fontSize,

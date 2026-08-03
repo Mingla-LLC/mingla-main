@@ -8,9 +8,8 @@
  *     first offering, connect Stripe, finish draft) and replaces ALL the prior
  *     conditional cards (no-brand / choose-brand / loading / add-venue /
  *     deck-readiness / rule-ladder next-action / offering-chooser).
- *   - Analytics render ONLY when there is real data: the live hero, the 7-day
- *     revenue KPI (rev7d > 0), the Active-events KPI (total > 0), and the
- *     Upcoming list (items > 0). No zero/empty placeholder tiles.
+ *   - Last-7-days revenue remains data-gated; Analytics is always discoverable
+ *     for a current non-scanner brand; Live and Upcoming remain data-gated.
  *   - The live hero's scan-QR action still routes to /event/{id}/scanner.
  *
  * ORCH-0965 [tri-kind upcoming]: the Upcoming list covers events, experiences,
@@ -34,12 +33,13 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandDeleteSheet } from "../../src/components/brand/BrandDeleteSheet";
 import { BrandSwitcherSheet } from "../../src/components/brand/BrandSwitcherSheet";
 import { BusinessTodoToggle } from "../../src/components/home/BusinessTodoToggle";
+import { AnalyticsHomeTile } from "../../src/components/home/AnalyticsHomeTile";
 import { HomeTripRow } from "../../src/components/home/HomeTripRow";
 import {
   LiveOfferingCard,
@@ -83,6 +83,10 @@ import {
   upcomingKeys,
   useUpcomingForBrand,
 } from "../../src/hooks/useUpcomingForBrand";
+import {
+  brandAnalyticsKeys,
+  useBrandMinglaDroveRollup,
+} from "../../src/hooks/useBrandAnalytics";
 import { useLiveSectionCollapseStore } from "../../src/store/liveSectionCollapseStore";
 import type { DraftEvent } from "../../src/store/draftEventStore";
 import type { LiveEvent } from "../../src/store/liveEventStore";
@@ -92,9 +96,8 @@ import { routeForEventRowDefensive } from "../../src/utils/routeForEventRow";
 import { tripToLiveEvent } from "../../src/utils/tripToLiveEvent";
 import type { BusinessTodo } from "../../src/utils/businessTodos";
 
-import { formatCurrencyRound } from "../../src/utils/currency";
+import { formatCurrencyRound, currencyCodeOrNull } from "../../src/utils/currency";
 import { formatDraftDateLine } from "../../src/utils/eventDateDisplay";
-import { getActiveEventsKpiSub } from "../../src/utils/homeKpiPresentation";
 import { formatRelativeTime } from "../../src/utils/relativeTime";
 // ORCH-1055 (META-ORCH-1048 sub-F): rank-10 scanners see a stripped-down
 // door-list surface instead of the brand-owner KPI dashboard. Importing
@@ -166,7 +169,12 @@ export default function HomeTab(): React.ReactElement {
   // instead of the brand-owner KPI dashboard. Hook MUST be called every
   // render (rules-of-hooks); the early-return branches on the resolved
   // value below, after all sibling hooks have run.
-  const { rank: callerRank } = useCurrentBrandRole(currentBrand?.id ?? null);
+  const role = useCurrentBrandRole(currentBrand?.id ?? null);
+  const callerRank = role.rank;
+  const analyticsPreview = useBrandMinglaDroveRollup(
+    currentBrand?.id ?? null,
+    !role.isLoading && !isScannerOnlyRank(callerRank),
+  );
   const brandRecovery = useCurrentBrandRecovery();
   const upcoming = useUpcomingForBrand(currentBrand?.id ?? null);
   const [sheetVisible, setSheetVisible] = useState<boolean>(false);
@@ -197,11 +205,22 @@ export default function HomeTab(): React.ReactElement {
         queryClient.invalidateQueries({ queryKey: brandKeys.all }),
         queryClient.invalidateQueries({ queryKey: eventOrdersKeys.all }),
         queryClient.invalidateQueries({ queryKey: upcomingKeys.all }),
+        ...(currentBrand !== null
+          ? [
+              queryClient.invalidateQueries({
+                queryKey: brandAnalyticsKeys.minglaDrove(currentBrand.id),
+              }),
+            ]
+          : []),
       ]);
     } finally {
       setIsRefreshing(false);
     }
-  }, [queryClient]);
+  }, [currentBrand, queryClient]);
+
+  const handleOpenAnalytics = useCallback((): void => {
+    router.push("/analytics?entry=home_tile" as never);
+  }, [router]);
 
   const handleOpenSwitcher = useCallback((): void => {
     setSheetVisible(true);
@@ -348,6 +367,49 @@ export default function HomeTab(): React.ReactElement {
     summaryEvents,
     currentBrand?.defaultCurrency,
   );
+  const liveRsvpItems = liveItems.filter(
+    (item) => (item.source as LiveEvent).event_type === "rsvp",
+  );
+  const liveRsvpSummaryQueries = useQueries({
+    queries: liveRsvpItems.map((item) => {
+      const view = item.source as LiveEvent;
+      const eventId = view.serverEventId ?? item.id;
+      return {
+        queryKey: ["rsvpCheckinSummary", eventId],
+        queryFn: async () => {
+          const { fetchHomeRsvpCheckinSummary } = await import(
+            "../../src/services/homeRsvpSummaryService"
+          );
+          return fetchHomeRsvpCheckinSummary(eventId);
+        },
+        staleTime: 15_000,
+        refetchInterval: 30_000,
+      };
+    }),
+  });
+  const liveRsvpSummaryById = useMemo(() => {
+    const map: Record<string, {
+      going: number;
+      capacity: number | null;
+      checkedInValue: string;
+    }> = {};
+    liveRsvpItems.forEach((item, index) => {
+      const source = item.source as LiveEvent;
+      const query = liveRsvpSummaryQueries[index];
+      map[item.id] = query?.data
+        ? {
+          going: query.data.going,
+          capacity: query.data.capacity,
+          checkedInValue: query.data.checkedIn.toLocaleString("en-GB"),
+        }
+        : {
+          going: source.rsvpGoingCount ?? 0,
+          capacity: source.rsvpCapacity ?? null,
+          checkedInValue: query?.isError ? "Unavailable" : "—",
+        };
+    });
+    return map;
+  }, [liveRsvpItems, liveRsvpSummaryQueries]);
 
   // ORCH-1143 — per-live-card display metrics, keyed by offering id. Generalizes
   // the former single-item `liveHeroMetrics` over the live array. Currency stays
@@ -356,16 +418,36 @@ export default function HomeTab(): React.ReactElement {
   const liveMetricsById = useMemo<Record<string, LiveCardMetrics>>(() => {
     const map: Record<string, LiveCardMetrics> = {};
     for (const view of liveEventViews) {
+      if (view.event_type === "rsvp") {
+        const summary = liveRsvpSummaryById[view.id] ?? {
+          going: view.rsvpGoingCount ?? 0,
+          capacity: view.rsvpCapacity ?? null,
+          checkedInValue: "—",
+        };
+        map[view.id] = {
+          mode: "rsvp",
+          revenueLabel: "",
+          soldValue: summary.going.toLocaleString("en-GB"),
+          capacityLabel: summary.capacity === null ? "Unlimited" : summary.capacity.toLocaleString("en-GB"),
+          capacity: summary.capacity,
+          progress: summary.capacity !== null && summary.capacity > 0
+            ? Math.min(1, summary.going / summary.capacity) : 0,
+          checkedInValue: summary.checkedInValue,
+        };
+        continue;
+      }
       const capacity = finiteTicketCapacity(view);
       const salesSummary = eventSalesSummaries[view.id];
       const soldCount = salesSummary?.soldCount ?? 0;
+      // #962 G2 — never manufacture GBP; hide the revenue label ("—") when the
+      // brand has no established currency, else format the real code.
+      const fallbackCode = currencyCodeOrNull(
+        view.currency ?? currentBrand?.defaultCurrency,
+      );
       map[view.id] = {
         revenueLabel:
           salesSummary?.revenueLabel ??
-          formatCurrencyRound(
-            0,
-            view.currency ?? currentBrand?.defaultCurrency ?? "GBP",
-          ),
+          (fallbackCode === null ? "—" : formatCurrencyRound(0, fallbackCode)),
         soldValue:
           salesSummary?.hasError === true
             ? "Unable"
@@ -379,24 +461,7 @@ export default function HomeTab(): React.ReactElement {
       };
     }
     return map;
-  }, [liveEventViews, currentBrand?.defaultCurrency, eventSalesSummaries]);
-
-  // ORCH-0965 — counts shape for the existing getActiveEventsKpiSub helper.
-  // The helper consumes BrandEventSummaryCounts which has `all` + status
-  // buckets; we map our UpcomingCounts (which mirrors the same shape minus
-  // `all`) by aliasing `total` to `all` + the existing buckets and adding
-  // a zero `past` slot (past items are filtered before reaching here).
-  const kpiCountsForSub = useMemo(
-    () => ({
-      all: upcoming.counts.total,
-      active: upcoming.counts.active,
-      live: upcoming.counts.live,
-      upcoming: upcoming.counts.upcoming,
-      draft: upcoming.counts.draft,
-      past: 0,
-    }),
-    [upcoming.counts],
-  );
+  }, [liveEventViews, currentBrand?.defaultCurrency, eventSalesSummaries, liveRsvpSummaryById]);
 
   // ORCH-1038: the no-brand / choose-brand / add-venue / deck-readiness /
   // rule-ladder / offering-chooser logic now lives in the shared useBusinessTodos
@@ -411,9 +476,13 @@ export default function HomeTab(): React.ReactElement {
   // I-PROPOSED-ORCH1143-LIVE-SCAN-ALL-KINDS.
   const handleScanPress = useCallback(
     (id: string): void => {
-      router.push(`/event/${id}/scanner` as never);
+      const item = liveItems.find((candidate) => candidate.id === id);
+      const route = (item?.source as LiveEvent | undefined)?.event_type === "rsvp"
+        ? `/rsvp/${id}/scanner`
+        : `/event/${id}/scanner`;
+      router.push(route as never);
     },
-    [router],
+    [router, liveItems],
   );
 
   // ORCH-1143 — live-section accordion collapse, persisted + hydration-gated
@@ -452,14 +521,11 @@ export default function HomeTab(): React.ReactElement {
   // shows only when there is rev7d data (it no longer doubles as the live slot).
   const hasLiveItems = liveItems.length > 0;
   const showRevenueTile = hasRevenueData;
-  const hasActiveEvents = upcoming.counts.total > 0;
   // ORCH-1143 SC-7 — the "Upcoming" section header + list render the non-live
   // items only (live offerings are surfaced exclusively in the live carousel
   // above). When every active item is live, the Upcoming section hides cleanly
-  // instead of showing an empty list. `counts`/`hasActiveEvents` still count the
-  // full set (live included) so the KPI grid is unchanged.
+  // instead of showing an empty list.
   const hasUpcomingItems = upcoming.nonLiveItems.length > 0;
-  const showKpiGrid = showRevenueTile || hasActiveEvents;
 
   // ORCH-1038 — unified smart to-do list: derived from live state, ordered by
   // priority, auto-vanishing as conditions are met. Single source of truth shared
@@ -671,13 +737,6 @@ export default function HomeTab(): React.ReactElement {
         >
           {currentBrand === null ? null : (
             <>
-              {/* ORCH-1143 — the "Live now" accordion + carousel sits at the top
-                  of the dashboard, above the analytics grid. */}
-              {renderLiveSection()}
-
-              {/* ORCH-1038 — analytics only when there's real data; the to-do
-                  toggle above carries all guidance/empty-state actions. */}
-              {showKpiGrid ? (
               <View style={styles.desktopKpiGrid}>
                 {showRevenueTile ? (
                 <View style={styles.desktopKpiCell}>
@@ -696,18 +755,20 @@ export default function HomeTab(): React.ReactElement {
                   />
                 </View>
                 ) : null}
-
-                {hasActiveEvents ? (
                 <View style={styles.desktopKpiCell}>
-                  <KpiTile
-                    label="Active events"
-                    value={upcoming.counts.active}
-                    sub={getActiveEventsKpiSub(kpiCountsForSub, isWideDesktop)}
+                  <AnalyticsHomeTile
+                    data={analyticsPreview.data}
+                    isLoading={analyticsPreview.isLoading}
+                    isError={
+                      analyticsPreview.isError ||
+                      analyticsPreview.data?.authorized === false
+                    }
+                    onPress={handleOpenAnalytics}
                   />
                 </View>
-                ) : null}
               </View>
-              ) : null}
+
+              {renderLiveSection()}
 
               {hasUpcomingItems ? (
               <View style={styles.desktopUpcomingPane}>
@@ -806,12 +867,15 @@ export default function HomeTab(): React.ReactElement {
                       salesSummary?.finiteCapacity !== null && salesSummary !== undefined
                         ? `${soldLabel} sold`
                         : soldLabel;
+                    // #962 G2 — hide ("—") when no established currency; never GBP.
+                    const upcomingFallbackCode = currencyCodeOrNull(
+                      event.currency ?? currentBrand.defaultCurrency,
+                    );
                     const revenueLabel =
                       salesSummary?.revenueLabel ??
-                      formatCurrencyRound(
-                        0,
-                        event.currency ?? currentBrand.defaultCurrency ?? "GBP",
-                      );
+                      (upcomingFallbackCode === null
+                        ? "—"
+                        : formatCurrencyRound(0, upcomingFallbackCode));
                     const isLive = item.status === "live";
 
                     return (
@@ -874,18 +938,7 @@ export default function HomeTab(): React.ReactElement {
         </ScrollView>
       ) : currentBrand === null ? null : (
         <>
-          {/* ORCH-1143 — the "Live now" accordion + carousel sits ABOVE the
-              ORCH-0974 locked single-scroll pane, so the carousel's horizontal
-              ScrollView never violates that pane's one-scroll-surface lock. */}
-          {renderLiveSection()}
-          {
-            // orch-0974-lock-pane:begin-mobile-populated; ORCH-1038 — the to-do
-            // toggle above carries no-brand / no-venue / deck-readiness / offering
-            // guidance; this pane is now analytics-only (gated on real data).
-          }
-          <View style={styles.mobileBody}>
-          <View style={styles.lockedZone}>
-            {showKpiGrid ? (
+          <View style={styles.mobileKpiOuter}>
             <View style={styles.mobileKpiStack}>
               {showRevenueTile ? (
                 <KpiTile
@@ -893,8 +946,6 @@ export default function HomeTab(): React.ReactElement {
                   value={
                     currentBrand.defaultCurrency !== undefined
                       ? formatCurrencyRound(
-                          // ORCH-0816 — windowed 7-day GMV. Lifetime stays on
-                          // BrandProfileView's "GMV / all time" tile.
                           currentBrand.stats.rev7d,
                           currentBrand.defaultCurrency,
                         )
@@ -902,17 +953,26 @@ export default function HomeTab(): React.ReactElement {
                   }
                 />
               ) : null}
-
-              {hasActiveEvents ? (
-              <KpiTile
-                label="Active events"
-                value={upcoming.counts.active}
-                sub={getActiveEventsKpiSub(kpiCountsForSub, isWideDesktop)}
+              <AnalyticsHomeTile
+                data={analyticsPreview.data}
+                isLoading={analyticsPreview.isLoading}
+                isError={
+                  analyticsPreview.isError ||
+                  analyticsPreview.data?.authorized === false
+                }
+                onPress={handleOpenAnalytics}
               />
-              ) : null}
             </View>
-            ) : null}
+          </View>
 
+          {renderLiveSection()}
+          {
+            // orch-0974-lock-pane:begin-mobile-populated; ORCH-1038 — the to-do
+            // toggle above carries no-brand / no-venue / deck-readiness / offering
+            // guidance; this pane owns Upcoming only.
+          }
+          <View style={styles.mobileBody}>
+          <View style={styles.lockedZone}>
             {hasUpcomingItems ? (
             <View style={styles.mobileSectionHeaderRow}>
               <Text style={styles.sectionTitle}>Upcoming</Text>
@@ -928,6 +988,7 @@ export default function HomeTab(): React.ReactElement {
           </View>
 
           <FlatList
+            testID="home-upcoming-list"
             style={styles.mobileUpcomingList}
             // ORCH-1143 SC-7 — non-live items only; live offerings are in the
             // live carousel above (with the scan button), never duplicated here.
@@ -1072,6 +1133,11 @@ const styles = StyleSheet.create({
     minHeight: 0,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
+  },
+  mobileKpiOuter: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
   },
   mobileNoVenueBody: {
     flex: 1,

@@ -19,6 +19,12 @@
  * This gate scans only the two edge function bodies. Any appearance of
  * SUPABASE_SERVICE_ROLE_KEY, service_role, or createClient with service
  * credentials in those files is a violation.
+ *
+ * `--self-test` proves fail-on-revert (mirrors i-1272-identity-admin-read.mjs):
+ * the pure `check(fileEntries, failures)` is exercised with a GOOD fixture
+ * (specificity) and ≥2 DISTINCT BAD fixtures (sensitivity). The disk-reading
+ * main path calls the SAME `check(...)`; the refactor is behavior-preserving
+ * (identical verdict on the real tree).
  */
 
 import fs from "node:fs";
@@ -40,7 +46,94 @@ const FORBIDDEN_PATTERNS = [
   { name: "serviceRoleKey identifier", regex: /serviceRoleKey/ },
 ];
 
-const violations = [];
+/**
+ * Pure verdict. `fileEntries` = [{ file, content }] (file = repo-relative path
+ * for reporting). Pushes one violation record per offending line into
+ * `failures`. Behavior-preserving refactor of the original per-line scan.
+ */
+function check(fileEntries, failures) {
+  for (const { file, content } of fileEntries) {
+    const lines = content.split(/\r?\n/);
+    lines.forEach((line, index) => {
+      for (const { name, regex } of FORBIDDEN_PATTERNS) {
+        if (regex.test(line)) {
+          failures.push({
+            file,
+            line: index + 1,
+            pattern: name,
+            text: line.trim(),
+          });
+        }
+      }
+    });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────── self-test
+if (process.argv.includes("--self-test")) {
+  const self = [];
+
+  // GOOD: agent-chat imports the whitelisted buildServiceClient (no forbidden
+  // token) and both executors use a caller-JWT userClient → silent.
+  const goodEntries = [
+    {
+      file: "supabase/functions/agent-chat/index.ts",
+      content:
+        'import { buildServiceClient } from "../_shared/agentRateLimit.ts";\n' +
+        'const userClient = createClient(url, anonKey, { global: { headers: { Authorization: authHeader } } });\n' +
+        'await userClient.from("brands").select("id");\n',
+    },
+    {
+      file: "supabase/functions/agent-confirm-action/index.ts",
+      content:
+        'const userClient = createClient(url, anonKey, { global: { headers: { Authorization: authHeader } } });\n' +
+        'await userClient.rpc("apply_action");\n',
+    },
+  ];
+  let f = [];
+  check(goodEntries, f);
+  if (f.length) {
+    self.push(
+      "GOOD fixture wrongly flagged: " + f.map((v) => `${v.file}:${v.line}`).join("; "),
+    );
+  }
+
+  // BAD1 (revert-style): a direct SUPABASE_SERVICE_ROLE_KEY read re-added to the
+  // agent-chat body → fires.
+  const bad1 = [
+    {
+      file: "supabase/functions/agent-chat/index.ts",
+      content:
+        'const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"));\n',
+    },
+  ];
+  f = [];
+  check(bad1, f);
+  if (f.length === 0) self.push("BAD1 (SUPABASE_SERVICE_ROLE_KEY read in agent-chat) not flagged");
+
+  // BAD2 (regression, different angle): a createClient built with a
+  // serviceRoleKey identifier inside agent-confirm-action → fires.
+  const bad2 = [
+    {
+      file: "supabase/functions/agent-confirm-action/index.ts",
+      content: "const svc = createClient(url, serviceRoleKey);\n",
+    },
+  ];
+  f = [];
+  check(bad2, f);
+  if (f.length === 0) self.push("BAD2 (serviceRoleKey createClient in agent-confirm-action) not flagged");
+
+  if (self.length) {
+    console.error("I-ARI-USER-JWT-ONLY self-test FAIL:");
+    self.forEach((m) => console.error("  - " + m));
+    process.exit(1);
+  }
+  console.log("I-ARI-USER-JWT-ONLY self-test PASS (3/3 cases).");
+  process.exit(0);
+}
+
+// ─────────────────────────────────────────────────────────────── main path
+const fileEntries = [];
 let filesScanned = 0;
 
 for (const rel of TARGET_FILES) {
@@ -53,20 +146,11 @@ for (const rel of TARGET_FILES) {
     process.exit(2);
   }
   filesScanned++;
-  const lines = source.split(/\r?\n/);
-  lines.forEach((line, index) => {
-    for (const { name, regex } of FORBIDDEN_PATTERNS) {
-      if (regex.test(line)) {
-        violations.push({
-          file: rel,
-          line: index + 1,
-          pattern: name,
-          text: line.trim(),
-        });
-      }
-    }
-  });
+  fileEntries.push({ file: rel, content: source });
 }
+
+const violations = [];
+check(fileEntries, violations);
 
 if (violations.length > 0) {
   console.error(

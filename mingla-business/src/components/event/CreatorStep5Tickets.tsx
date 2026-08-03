@@ -245,7 +245,9 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
   const pricingLocked = Object.values(soldCountByTier).some(
     (n) => (n ?? 0) > 0,
   );
-  const switchesCurrency = hasDisplayCurrency ? displayCurrency : "GBP";
+  // #962 G12 — never fabricate GBP for the fee/tax preview; pass null when the
+  // brand has no established currency so WhoCoversCostsSection shows plain numbers.
+  const switchesCurrency = hasDisplayCurrency ? displayCurrency : null;
 
   const handleSwitchesChange = useCallback(
     (next: typeof pricingSwitches): void => {

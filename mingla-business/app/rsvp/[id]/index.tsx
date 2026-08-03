@@ -10,9 +10,9 @@
  * This is a SUBTRACTIVE clone of `app/event/[id]/index.tsx` tailored to RSVP:
  * KEEPS the hero (cover + status pill + title + date·venue), the "N going"
  * headcount, a Guests console link, Edit, Share, and the public-page link.
- * DROPS every ticket/money concept (revenue card, ticket types, scan/scanners/
- * orders/door/reconciliation/blasts/group-chat tiles, activity feed, end-sales/
- * cancel, the ticket-centric manage menu) — RSVP has no tickets and no money.
+ * DROPS every paid-ticket/money concept (revenue card, ticket types, orders,
+ * door sales, reconciliation, activity feed, end-sales/cancel, and the
+ * ticket-centric manage menu). RSVP admission keeps its own scan controls.
  *
  * Going-count data-hook (SPEC finding F-2): `fetchBusinessEventById` (behind
  * useManagedEventRoute) zeroes `rsvpGoingCount` and coerces `event_type` to
@@ -57,6 +57,8 @@ import { ActionTile } from "../../../src/components/event/ActionTile";
 import { EventDetailHeroStatusPill } from "../../../src/components/event/EventDetailHeroStatusPill";
 import { useManagedEventRoute } from "../../../src/hooks/useManagedEventRoute";
 import { useBusinessEventsForBrand } from "../../../src/hooks/useBusinessEvents";
+import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
+import { isScannerOnlyRank } from "../../../src/utils/navTabGate";
 
 // ----- Status derivation (mirrors event/[id]/index.tsx) ---------------
 type EventStatus = "live" | "upcoming" | "past";
@@ -90,6 +92,12 @@ export default function RsvpDetailScreen(): React.ReactElement {
   const resolvedLiveEvent = routeEvent.event;
   const draftEvent = useDraftById(id);
   const brand = routeEvent.brand;
+  const currentBrandRole = useCurrentBrandRole(brand?.id ?? null);
+  const canShowListingInsights =
+    !currentBrandRole.isLoading &&
+    !currentBrandRole.isError &&
+    currentBrandRole.role !== null &&
+    !isScannerOnlyRank(currentBrandRole.rank);
 
   // ----- Going-count source (SPEC F-2) -------------------------------
   // useManagedEventRoute → fetchBusinessEventById returns rsvpGoingCount: 0,
@@ -159,6 +167,14 @@ export default function RsvpDetailScreen(): React.ReactElement {
     if (id !== null) {
       router.push(`/rsvp/${id}/guests` as never);
     }
+  }, [id, router]);
+
+  const handleScanGuests = useCallback((): void => {
+    if (id !== null) router.push(`/rsvp/${id}/scanner` as never);
+  }, [id, router]);
+
+  const handleScanners = useCallback((): void => {
+    if (id !== null) router.push(`/rsvp/${id}/scanners` as never);
   }, [id, router]);
 
   // ORCH-1150 (D-8) — Group chat + Blasts are COMMS, not money: D-4 wrongly
@@ -332,15 +348,36 @@ export default function RsvpDetailScreen(): React.ReactElement {
           </Text>
         </GlassCard>
 
-        {/* Action grid — Guests / Edit / Public page / Brand page */}
+        {/* Founder-locked RSVP door order: Scan guests → Guests → Scanners. */}
         <View style={styles.actionGrid}>
+          <ActionTile
+            icon="qr"
+            label="Scan guests"
+            primary
+            onPress={handleScanGuests}
+          />
           <ActionTile
             icon="users"
             label="Guests"
-            primary
             sub={guestsSub}
             onPress={handleGuests}
           />
+          <ActionTile
+            icon="users"
+            label="Scanners"
+            onPress={handleScanners}
+          />
+          {canShowListingInsights ? (
+            <ActionTile
+              icon="chart"
+              label="Insights"
+              sub="Customers Mingla drove"
+              accessibilityLabel={`Open Insights for ${event.name}`}
+              onPress={() =>
+                router.push(`/insights/${event.id}?entry=detail_action` as never)
+              }
+            />
+          ) : null}
           <ActionTile icon="edit" label="Edit" onPress={handleEdit} />
           {/* ORCH-1150 (D-8) — Group chat + Blasts are comms (not money):
               re-added after D-4 dropped them. They reuse the event-scoped

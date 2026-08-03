@@ -1,18 +1,24 @@
-// META-ORCH-1161 Sub-A — notify-outbox-drain.
-//
-// The 1-min cron (20261110000003_orch_1161_outbox_drain_cron.sql) POSTs here.
-// Claims pending notification_outbox rows and forwards each to notify-dispatch v2
-// with the {category_key,...} contract. Service-role only.
-//
-// verify_jwt=false (config.toml): invoked by pg_cron with the service-role bearer.
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  constantTimeEqual,
+  deriveSourceRefundAttentionToken,
+  readSourceRefundAttentionKeyRing,
+} from "../_shared/sourceRefundAttentionToken.ts";
+import {
+  normalizeSourceRefundRecipient,
+  readSourceRefundRecipientKeys,
+  sourceRefundRecipientFingerprint,
+} from "../_shared/sourceRefundNotificationRecipient.ts";
+import { sourceRefundPayloadFingerprint } from "../_shared/sourceRefundNotifications.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
 };
+const GENERIC_RESERVE = 15;
+const SOURCE_RESERVE = 10;
 
 function json(body: object, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -21,109 +27,462 @@ function json(body: object, status = 200): Response {
   });
 }
 
-const BATCH_LIMIT = 25;
-
-serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader?.startsWith("Bearer ")) {
-    return json({ error: "missing_authorization" }, 401);
+export function interleave<T>(
+  generic: T[],
+  source: T[],
+): Array<{ kind: "generic" | "source"; row: T }> {
+  const result: Array<{ kind: "generic" | "source"; row: T }> = [];
+  const max = Math.max(generic.length, source.length);
+  for (let index = 0; index < max; index++) {
+    if (generic[index]) result.push({ kind: "generic", row: generic[index] });
+    if (source[index]) result.push({ kind: "source", row: source[index] });
   }
+  return result;
+}
 
-  const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
-  const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!SUPABASE_URL || !SERVICE_KEY) {
-    return json({ error: "server_misconfigured" }, 500);
+export function dualPoolBorrowLimits(
+  genericClaimed: number,
+  sourceClaimed: number,
+): { generic: number; source: number } {
+  return {
+    generic: Math.max(0, SOURCE_RESERVE - sourceClaimed),
+    source: Math.max(0, GENERIC_RESERVE - genericClaimed),
+  };
+}
+
+async function readBoundedSuccessEnvelope(
+  response: Response,
+): Promise<Record<string, unknown> | null> {
+  const declared = Number(response.headers.get("content-length") ?? "0");
+  if (Number.isFinite(declared) && declared > 1024) return null;
+  if (!response.body) return null;
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > 1024) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
   }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.length;
+  }
+  try {
+    const parsed = JSON.parse(
+      new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+    );
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null;
+  } catch {
+    return null;
+  }
+}
 
-  const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+// deno-lint-ignore no-explicit-any
+async function processGeneric(
+  admin: any,
+  row: Record<string, unknown>,
+  url: string,
+  key: string,
+) {
+  const id = row.id as string;
+  let brandName = "Mingla";
+  if (row.brand_id) {
+    const { data: brand } = await admin.from("brands").select("name")
+      .eq("id", row.brand_id).maybeSingle();
+    if (brand?.name && typeof brand.name === "string") brandName = brand.name;
+  }
+  const payload = {
+    ...((row.payload as Record<string, unknown>) ?? {}),
+    brand_name: brandName,
+  };
+  try {
+    const res = await fetch(`${url}/functions/v1/notify-dispatch`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify({
+        category_key: row.category_key,
+        user_id: row.user_id ?? null,
+        contact: row.contact ?? null,
+        payload,
+        idempotency_key: row.idempotency_key,
+        country_code: row.country_code ?? null,
+      }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`notify-dispatch ${res.status}: ${text}`);
+    }
+    await admin.from("notification_outbox").update({
+      status: "done",
+      processed_at: new Date().toISOString(),
+    }).eq("id", id);
+    return true;
+  } catch (err) {
+    const attempts = ((row.attempts as number) ?? 0) + 1;
+    await admin.from("notification_outbox").update({
+      status: attempts >= 3 ? "failed" : "pending",
+      attempts,
+      last_error: err instanceof Error ? err.message : String(err),
+    }).eq("id", id);
+    console.error("[notify-outbox-drain] dispatch failed for", id, err);
+    return false;
+  }
+}
+
+// deno-lint-ignore no-explicit-any
+async function completeSource(admin: any, input: {
+  deliveryId: string;
+  claimId: string;
+  outcome: string;
+  providerMessageId: string | null;
+  safeCode: string | null;
+}) {
+  await admin.rpc("complete_source_refund_notification_delivery", {
+    p_delivery_id: input.deliveryId,
+    p_claim_id: input.claimId,
+    p_outcome: input.outcome,
+    p_provider_message_id: input.providerMessageId,
+    p_safe_code: input.safeCode,
+    p_now: new Date().toISOString(),
   });
+}
 
-  // ATOMICALLY claim a batch of pending rows (P2-1). claim_notification_outbox
-  // flips status='pending'→'processing' inside a single UPDATE … FOR UPDATE SKIP
-  // LOCKED statement, so two overlapping cron runs can NEVER both claim the same
-  // row — the second invocation skips the row the first has locked. This is the
-  // primary double-send guard (incl. the guest/no-user_id path, which lacks the
-  // notifications UNIQUE backstop); the per-channel guest dedupe in dispatchAnon
-  // is the second line of defense.
-  const { data: rows, error: claimErr } = await admin.rpc("claim_notification_outbox", {
-    p_limit: BATCH_LIMIT,
-  });
-
-  if (claimErr) {
-    console.error("[notify-outbox-drain] claim failed:", claimErr.message);
-    return json({ error: "claim_failed" }, 500);
+// deno-lint-ignore no-explicit-any
+async function processSource(
+  admin: any,
+  row: Record<string, unknown>,
+  url: string,
+  key: string,
+) {
+  const claimId = crypto.randomUUID();
+  const { data: claim, error: claimError } = await admin.rpc(
+    "claim_source_refund_notification_delivery",
+    {
+      p_outbox_id: row.id,
+      p_claim_id: claimId,
+      p_contract_version: 9,
+      p_now: new Date().toISOString(),
+    },
+  );
+  if (claimError || claim?.outcome !== "claimed") {
+    if (claim?.outcome === "already_accepted") {
+      await admin.from("notification_outbox").update({
+        status: "done",
+        processed_at: new Date().toISOString(),
+      }).eq("id", row.id);
+    }
+    return false;
   }
-  if (!rows || rows.length === 0) {
-    return json({ ok: true, processed: 0 });
-  }
-
-  let processed = 0;
-  let failed = 0;
-
-  for (const row of rows as Array<Record<string, unknown>>) {
-    const id = row.id as string;
-    // The atomic claim already flipped this row to 'processing' — no separate
-    // mark-processing UPDATE (that was the non-atomic step that P2-1 removed).
-
-    // Resolve the brand display name for the copy (sender identity).
-    let brandName = "Mingla";
-    if (row.brand_id) {
-      const { data: brand } = await admin
-        .from("brands")
-        .select("name")
-        .eq("id", row.brand_id)
-        .maybeSingle();
-      if (brand?.name && typeof brand.name === "string") brandName = brand.name;
+  const deliveryId = String(claim.deliveryId);
+  try {
+    const actualPayloadFingerprint = await sourceRefundPayloadFingerprint({
+      payload: (row.payload as Record<string, unknown>) ?? {},
+      category: String(row.category_key ?? ""),
+      audience: String(claim.audience) as "buyer" | "brand" | "ops",
+      channel: String(claim.channel) as "inapp" | "push" | "email" | "sms",
+      serializerVersion: Number(claim.serializerVersion),
+    });
+    if (
+      !constantTimeEqual(
+        actualPayloadFingerprint,
+        String(claim.payloadFingerprint),
+      )
+    ) {
+      await completeSource(admin, {
+        deliveryId,
+        claimId,
+        outcome: "payload_changed",
+        providerMessageId: null,
+        safeCode: "payload_changed",
+      });
+      return false;
+    }
+    const { data: resolved, error: resolveError } = await admin.rpc(
+      "resolve_source_refund_notification_recipient",
+      { p_delivery_id: deliveryId, p_claim_id: claimId },
+    );
+    if (resolveError || !resolved) {
+      await completeSource(admin, {
+        deliveryId,
+        claimId,
+        outcome: "terminal_unsent",
+        providerMessageId: null,
+        safeCode: "invalid_recipient",
+      });
+      return false;
+    }
+    const channel = String(claim.channel) as "inapp" | "push" | "email" | "sms";
+    const contact = (channel === "email" || channel === "sms") &&
+        typeof resolved.recipient === "string"
+      ? normalizeSourceRefundRecipient(
+        channel === "sms" ? "sms" : "email",
+        resolved.recipient,
+      )
+      : null;
+    if ((channel === "email" || channel === "sms") && !contact) {
+      await completeSource(admin, {
+        deliveryId,
+        claimId,
+        outcome: "skipped",
+        providerMessageId: null,
+        safeCode: "no_contact",
+      });
+      return true;
+    }
+    if (contact) {
+      const recipientKeys = readSourceRefundRecipientKeys();
+      const recipientKey = [
+        recipientKeys.current,
+        recipientKeys.previous,
+      ].find((slot) => slot?.kid === claim.recipientKeyId);
+      if (!recipientKey) throw new Error("recipient_key_unavailable");
+      const actual = await sourceRefundRecipientFingerprint({
+        key: recipientKey,
+        channel: channel as "email" | "sms",
+        recipient: contact,
+      });
+      if (!constantTimeEqual(actual, String(claim.recipientFingerprint))) {
+        await completeSource(admin, {
+          deliveryId,
+          claimId,
+          outcome: "terminal_unsent",
+          providerMessageId: null,
+          safeCode: "invalid_recipient",
+        });
+        return false;
+      }
     }
 
-    const payload = {
-      ...((row.payload as Record<string, unknown>) ?? {}),
-      brand_name: brandName,
-    };
-
+    let attentionUrl: string | null = null;
+    if (
+      (row.payload as Record<string, unknown> | null)?.state ===
+        "needs_attention" &&
+      typeof resolved.keyId === "string"
+    ) {
+      const tokenKeys = readSourceRefundAttentionKeyRing();
+      const tokenKey = [tokenKeys.current, tokenKeys.previous].find((slot) =>
+        slot?.kid === resolved.keyId
+      );
+      if (!tokenKey) throw new Error("attention_key_unavailable");
+      const token = await deriveSourceRefundAttentionToken({
+        refundId: String(claim.refundId),
+        generation: Number(claim.generation),
+        key: tokenKey,
+      });
+      attentionUrl = `https://business.usemingla.com/refund/${
+        String(claim.refundId)
+      }/attention#attentionToken=${encodeURIComponent(token)}`;
+    }
+    let response: Response;
     try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/notify-dispatch`, {
+      response = await fetch(`${url}/functions/v1/notify-dispatch`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${SERVICE_KEY}`,
+          Authorization: `Bearer ${key}`,
         },
         body: JSON.stringify({
+          contract_version: 9,
           category_key: row.category_key,
           user_id: row.user_id ?? null,
-          contact: row.contact ?? null,
-          payload,
+          contact,
+          payload: {
+            ...((row.payload as Record<string, unknown>) ?? {}),
+            brand_name: row.brand_name_snapshot ?? "Mingla",
+          },
           idempotency_key: row.idempotency_key,
           country_code: row.country_code ?? null,
+          requested_channel: channel,
+          delivery_id: deliveryId,
+          delivery_claim_id: claimId,
+          attention_url: attentionUrl,
         }),
       });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`notify-dispatch ${res.status}: ${text}`);
-      }
-      await admin
-        .from("notification_outbox")
-        .update({ status: "done", processed_at: new Date().toISOString() })
-        .eq("id", id);
-      processed++;
-    } catch (err) {
-      failed++;
-      const attempts = ((row.attempts as number) ?? 0) + 1;
-      // Re-queue (pending) unless we've exhausted attempts → failed (no silent drop).
-      await admin
-        .from("notification_outbox")
-        .update({
-          status: attempts >= 3 ? "failed" : "pending",
-          attempts,
-          last_error: err instanceof Error ? err.message : String(err),
-        })
-        .eq("id", id);
-      console.error("[notify-outbox-drain] dispatch failed for", id, err);
+    } catch {
+      await admin.rpc("classify_source_refund_notification_failure", {
+        p_delivery_id: deliveryId,
+        p_claim_id: claimId,
+        p_safe_code: "dispatch_unavailable",
+        p_certainty: "derive",
+        p_now: new Date().toISOString(),
+      });
+      return false;
     }
+    if (response.status === 503) {
+      await completeSource(admin, {
+        deliveryId,
+        claimId,
+        outcome: "definitive_unsent_retryable",
+        providerMessageId: null,
+        safeCode: "dispatch_unavailable",
+      });
+      return false;
+    }
+    if (response.status === 422) {
+      await completeSource(admin, {
+        deliveryId,
+        claimId,
+        outcome: "terminal_unsent",
+        providerMessageId: null,
+        safeCode: "dispatch_rejected",
+      });
+      return false;
+    }
+    if (response.status === 409) {
+      await completeSource(admin, {
+        deliveryId,
+        claimId,
+        outcome: "definitive_unsent_retryable",
+        providerMessageId: null,
+        safeCode: "delivery_in_progress",
+      });
+      return false;
+    }
+    if (response.status === 500 || !response.ok) {
+      await admin.rpc("classify_source_refund_notification_failure", {
+        p_delivery_id: deliveryId,
+        p_claim_id: claimId,
+        p_safe_code: response.status === 500
+          ? "source_dispatch_failed"
+          : "dispatch_protocol_error",
+        p_certainty: "derive",
+        p_now: new Date().toISOString(),
+      });
+      return false;
+    }
+    const result = await readBoundedSuccessEnvelope(response);
+    const accepted = response.status === 200 &&
+      result?.success === true &&
+      (result?.outcome === "accepted" ||
+        result?.outcome === "already_accepted");
+    const ambiguous = response.status === 202 &&
+      result?.success === false &&
+      result?.outcome === "ambiguous_parked" &&
+      result?.reason === "delivery_ambiguous";
+    if (!accepted && !ambiguous) {
+      await admin.rpc("classify_source_refund_notification_failure", {
+        p_delivery_id: deliveryId,
+        p_claim_id: claimId,
+        p_safe_code: "dispatch_protocol_error",
+        p_certainty: "derive",
+        p_now: new Date().toISOString(),
+      });
+      return false;
+    }
+    await completeSource(admin, {
+      deliveryId,
+      claimId,
+      outcome: accepted ? "accepted" : "acceptance_unknown",
+      providerMessageId: accepted &&
+          typeof result?.providerMessageId === "string"
+        ? result.providerMessageId
+        : null,
+      safeCode: accepted ? null : "delivery_ambiguous",
+    });
+    return accepted;
+  } catch {
+    await admin.rpc("classify_source_refund_notification_failure", {
+      p_delivery_id: deliveryId,
+      p_claim_id: claimId,
+      p_safe_code: "source_dispatch_failed",
+      p_certainty: "derive",
+      p_now: new Date().toISOString(),
+    });
+    return false;
   }
+}
 
-  return json({ ok: true, processed, failed });
-});
+export async function handleNotifyOutboxDrain(req: Request): Promise<Response> {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!key) return json({ error: "server_misconfigured" }, 500);
+  const authHeader = req.headers.get("Authorization") ?? "";
+  if (!constantTimeEqual(authHeader, `Bearer ${key}`)) {
+    return json({ error: "unauthorized" }, 401);
+  }
+  const url = Deno.env.get("SUPABASE_URL");
+  if (!url) return json({ error: "server_misconfigured" }, 500);
+  const admin = createClient(url, key, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  });
+
+  const [{ data: firstGeneric, error: genericError }, {
+    data: firstSource,
+    error: sourceError,
+  }] = await Promise.all([
+    admin.rpc("claim_notification_outbox", { p_limit: GENERIC_RESERVE }),
+    admin.rpc("claim_source_refund_notification_outbox", {
+      p_limit: SOURCE_RESERVE,
+      p_contract_version: 9,
+      p_worker_id: crypto.randomUUID(),
+      p_now: new Date().toISOString(),
+    }),
+  ]);
+  const generic = genericError
+    ? []
+    : [...(firstGeneric ?? [])] as Array<Record<string, unknown>>;
+  const source = sourceError
+    ? []
+    : [...(firstSource ?? [])] as Array<Record<string, unknown>>;
+  const borrow = dualPoolBorrowLimits(generic.length, source.length);
+  if (borrow.source > 0 && !sourceError) {
+    const { data } = await admin.rpc(
+      "claim_source_refund_notification_outbox",
+      {
+        p_limit: borrow.source,
+        p_contract_version: 9,
+        p_worker_id: crypto.randomUUID(),
+        p_now: new Date().toISOString(),
+      },
+    );
+    source.push(...(data ?? []));
+  }
+  if (borrow.generic > 0 && !genericError) {
+    const { data } = await admin.rpc("claim_notification_outbox", {
+      p_limit: borrow.generic,
+    });
+    generic.push(...(data ?? []));
+  }
+  if (generic.length + source.length === 0) {
+    return json({ ok: true, processed: 0, failed: 0 });
+  }
+  let processed = 0;
+  let failed = 0;
+  for (const item of interleave(generic, source)) {
+    const ok = item.kind === "generic"
+      ? await processGeneric(admin, item.row, url, key)
+      : await processSource(admin, item.row, url, key);
+    if (ok) processed++;
+    else failed++;
+  }
+  return json({
+    ok: true,
+    processed,
+    failed,
+    generic_claimed: generic.length,
+    source_claimed: source.length,
+  });
+}
+
+if (import.meta.main) {
+  serve(handleNotifyOutboxDrain);
+}

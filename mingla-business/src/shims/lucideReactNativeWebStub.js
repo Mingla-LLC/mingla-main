@@ -74,16 +74,23 @@ const iconOf = (mod) => (mod && mod.__esModule ? mod.default : mod) || null;
 // if a `lucide-react-native` import names an icon missing from this map.
 //
 //   AlertTriangle    src/components/ari/ToolProposalCard.tsx
+//   Accessibility    src/components/stay/StaySuiteShell.tsx
 //   ArrowLeft        src/components/venue/* (ORCH-1196)
 //   ArrowUp          src/components/ari/InputBar.tsx
+//   BedDouble        src/components/stay/StaySuiteShell.tsx
 //   Calendar         src/components/venue/* (ORCH-1196)
+//   CalendarDays     src/components/stay/StaySuiteShell.tsx
 //   Check            src/components/ari/{QuickReplyChips,MessageList,ClarifyingCard}.tsx
 //   CheckSquare      src/components/ari/MultiSelectPrompt.tsx
 //   ChevronDown      src/components/venue/* (ORCH-1196)
 //   ChevronRight     src/components/venue/* (ORCH-1196)
 //   ChevronUp        src/components/venue/* (ORCH-1196)
+//   Circle           src/components/stay/StaySuiteShell.tsx
 //   Clock            src/components/venue/* (ORCH-1196)
+//   CreditCard       src/components/stay/StaySuiteShell.tsx
+//   FileCheck2       src/components/stay/StaySuiteShell.tsx
 //   Flag             src/components/venue/* (ORCH-1196)
+//   Home             src/components/stay/StaySuiteShell.tsx
 //   LayoutGrid       src/components/venue/* (ORCH-1196)
 //   List             src/components/venue/* (ORCH-1196)
 //   Menu             src/screens/ari/AriChatScreen.tsx
@@ -93,32 +100,49 @@ const iconOf = (mod) => (mod && mod.__esModule ? mod.default : mod) || null;
 //   Plus             src/components/ari/{ToolProposalCard,EmptyState}.tsx
 //   Settings         src/screens/ari/AriChatScreen.tsx
 //   Square           src/components/ari/MultiSelectPrompt.tsx
+//   Utensils         src/components/stay/StaySuiteShell.tsx
 //   UtensilsCrossed  src/components/venue/* (ORCH-1196)
 //   X                src/components/ari/ToolProposalCard.tsx
 //   HelpCircle       (fallback only — the always-real "unknown icon" affordance)
 const USED_ICONS = {
-  AlertTriangle: iconOf(require("lucide-react/dist/esm/icons/alert-triangle.js")),
+  Accessibility: iconOf(
+    require("lucide-react/dist/esm/icons/accessibility.js"),
+  ),
+  AlertTriangle: iconOf(
+    require("lucide-react/dist/esm/icons/alert-triangle.js"),
+  ),
   ArrowLeft: iconOf(require("lucide-react/dist/esm/icons/arrow-left.js")),
   ArrowUp: iconOf(require("lucide-react/dist/esm/icons/arrow-up.js")),
+  BedDouble: iconOf(require("lucide-react/dist/esm/icons/bed-double.js")),
   Calendar: iconOf(require("lucide-react/dist/esm/icons/calendar.js")),
+  CalendarDays: iconOf(require("lucide-react/dist/esm/icons/calendar-days.js")),
   Check: iconOf(require("lucide-react/dist/esm/icons/check.js")),
   CheckSquare: iconOf(require("lucide-react/dist/esm/icons/check-square.js")),
   ChevronDown: iconOf(require("lucide-react/dist/esm/icons/chevron-down.js")),
   ChevronRight: iconOf(require("lucide-react/dist/esm/icons/chevron-right.js")),
   ChevronUp: iconOf(require("lucide-react/dist/esm/icons/chevron-up.js")),
+  Circle: iconOf(require("lucide-react/dist/esm/icons/circle.js")),
   Clock: iconOf(require("lucide-react/dist/esm/icons/clock.js")),
+  CreditCard: iconOf(require("lucide-react/dist/esm/icons/credit-card.js")),
+  FileCheck2: iconOf(require("lucide-react/dist/esm/icons/file-check-2.js")),
   Flag: iconOf(require("lucide-react/dist/esm/icons/flag.js")),
+  Home: iconOf(require("lucide-react/dist/esm/icons/home.js")),
   LayoutGrid: iconOf(require("lucide-react/dist/esm/icons/layout-grid.js")),
   List: iconOf(require("lucide-react/dist/esm/icons/list.js")),
   Menu: iconOf(require("lucide-react/dist/esm/icons/menu.js")),
-  MessageSquare: iconOf(require("lucide-react/dist/esm/icons/message-square.js")),
+  MessageSquare: iconOf(
+    require("lucide-react/dist/esm/icons/message-square.js"),
+  ),
   Pencil: iconOf(require("lucide-react/dist/esm/icons/pencil.js")),
   Play: iconOf(require("lucide-react/dist/esm/icons/play.js")),
   Plus: iconOf(require("lucide-react/dist/esm/icons/plus.js")),
   Settings: iconOf(require("lucide-react/dist/esm/icons/settings.js")),
   Sparkles: iconOf(require("lucide-react/dist/esm/icons/sparkles.js")),
   Square: iconOf(require("lucide-react/dist/esm/icons/square.js")),
-  UtensilsCrossed: iconOf(require("lucide-react/dist/esm/icons/utensils-crossed.js")),
+  Utensils: iconOf(require("lucide-react/dist/esm/icons/utensils.js")),
+  UtensilsCrossed: iconOf(
+    require("lucide-react/dist/esm/icons/utensils-crossed.js"),
+  ),
   X: iconOf(require("lucide-react/dist/esm/icons/x.js")),
   HelpCircle: iconOf(require("lucide-react/dist/esm/icons/help-circle.js")),
 };

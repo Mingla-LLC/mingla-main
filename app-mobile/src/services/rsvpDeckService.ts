@@ -11,7 +11,11 @@
  * row, never an order. See SPEC §4.8 / §5.3.
  */
 
-import { supabase } from "./supabase";
+import { getSupabaseFunctionHeaders, supabase, supabaseUrl } from "./supabase";
+import type {
+  RsvpAnonymousRecovery,
+  RsvpPassCredential,
+} from "@mingla/offering-rendering";
 
 /**
  * ORCH-1157 [rsvp-public-redesign] OQ-1 (resolved = option a) — the consumer RSVP
@@ -93,6 +97,9 @@ export interface SubmitDeckRsvpResult {
   // consumer calendar pass) can reference the created row.
   rsvpId: string;
   confirmationToken: string | null;
+  acknowledgement: "accepted" | "pending_approval" | "waitlisted" | "maybe" | "not_going";
+  credentials: RsvpPassCredential[];
+  anonymousRecovery: RsvpAnonymousRecovery[];
 }
 
 /**
@@ -112,9 +119,18 @@ export const submitDeckRsvp = async (
   // Passed straight through to the edge fn body; omitted (empty) keeps the call
   // byte-identical to the prior no-guests path.
   guests?: Array<{ name: string; email: string; phone: string }>,
+  primary?: { name: string; email: string; phone: string },
 ): Promise<SubmitDeckRsvpResult> => {
   const { data, error } = await supabase.functions.invoke("public-submit-rsvp", {
-    body: { eventId, rsvpStatus, guests: guests ?? [] },
+    body: {
+      eventId,
+      rsvpStatus,
+      guests: guests ?? [],
+      plusCount: guests?.length ?? 0,
+      guestName: primary?.name,
+      guestEmail: primary?.email,
+      guestPhone: primary?.phone,
+    },
   });
   if (error !== null) {
     let code = error.message ?? "rsvp_write_failed";
@@ -139,11 +155,89 @@ export const submitDeckRsvp = async (
     approvalStatus?: "pending" | "approved";
     rsvpId?: string;
     confirmationToken?: string | null;
+    acknowledgement?: SubmitDeckRsvpResult["acknowledgement"];
+    credentials?: RsvpPassCredential[];
+    anonymousRecovery?: RsvpAnonymousRecovery[];
   };
   return {
     status: res.status ?? rsvpStatus,
     approvalStatus: res.approvalStatus ?? "approved",
     rsvpId: res.rsvpId ?? "",
     confirmationToken: res.confirmationToken ?? null,
+    acknowledgement: res.acknowledgement ??
+      (res.approvalStatus === "pending" ? "pending_approval" :
+        (res.status === "waitlisted" || res.status === "maybe" || res.status === "not_going")
+          ? res.status : "accepted"),
+    credentials: res.credentials ?? [],
+    anonymousRecovery: res.anonymousRecovery ?? [],
+  };
+};
+
+export interface RsvpPassFetchResult {
+  pdf: { filename: string; contentBase64: string };
+}
+
+interface RsvpPartyPassRow {
+  entity_type: "primary" | "guest";
+  entity_id: string;
+  display_name: string;
+  qr_code: string;
+}
+
+export const fetchRsvpPartyPasses = async (
+  rsvpId: string,
+): Promise<RsvpPassCredential[]> => {
+  const { data, error } = await supabase.rpc("fetch_user_rsvp_party_passes", {
+    p_rsvp_id: rsvpId,
+  });
+  if (error) throw error;
+  return ((data ?? []) as RsvpPartyPassRow[]).map((row) => ({
+    entityType: row.entity_type,
+    entityId: row.entity_id,
+    displayName: row.display_name,
+    qrCode: row.qr_code,
+    pdfFetchRef: row.entity_id,
+  }));
+};
+
+const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  return btoa(binary);
+};
+
+const pdfFilename = (disposition: string | null): string => {
+  const match = disposition?.match(/filename="?([^";]+)"?/i);
+  return match?.[1] ?? "rsvp-pass.pdf";
+};
+
+export const fetchRsvpPassPdf = async (
+  entityId: string,
+  recoveryToken?: string | null,
+  entityType: "primary" | "guest" = "primary",
+): Promise<RsvpPassFetchResult> => {
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  const response = await fetch(`${supabaseUrl}/functions/v1/rsvp-pass-fetch`, {
+    method: "POST",
+    headers: {
+      ...getSupabaseFunctionHeaders(sessionData.session?.access_token),
+      Accept: "application/pdf",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ entityType, entityId, recoveryToken: recoveryToken ?? null }),
+  });
+  if (!response.ok) throw new Error(`rsvp_pdf_${response.status}`);
+  if (!response.headers.get("content-type")?.startsWith("application/pdf")) {
+    throw new Error("rsvp_pdf_invalid_content_type");
+  }
+  return {
+    pdf: {
+      filename: pdfFilename(response.headers.get("content-disposition")),
+      contentBase64: arrayBufferToBase64(await response.arrayBuffer()),
+    },
   };
 };

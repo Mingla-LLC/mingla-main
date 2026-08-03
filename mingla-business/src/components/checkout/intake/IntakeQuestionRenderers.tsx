@@ -58,6 +58,10 @@ import {
 } from "../../../constants/designSystem";
 import { GlassCard } from "../../ui/GlassCard";
 import { Icon } from "../../ui/Icon";
+// issue #1027 Thread B — the ONE shared visible-native-input for web date/time.
+// Class 2 fix: @react-native-community/datetimepicker has NO web build, so the
+// buyer checkout date question rendered nothing on web (hard silent no-op).
+import { WebDateTimeInput } from "../../ui/WebDateTimeInput";
 import type {
   IntakeAnswerValue,
   IntakeFileAnswer,
@@ -456,34 +460,49 @@ export const IntakeQuestionDate: React.FC<IntakeQuestionDateProps> = ({
 
   return (
     <IntakeQuestionShell question={question} error={error}>
-      <Pressable
-        onPress={openPicker}
-        disabled={disabled}
-        accessibilityRole="button"
-        accessibilityLabel={`${question.label}, ${display.length > 0 ? `currently ${display}` : "tap to choose a date"}`}
-        hitSlop={4}
-        style={({ pressed }) => [
-          styles.dateInput,
-          error !== undefined && error.length > 0 && styles.textInputError,
-          disabled && styles.textInputDisabled,
-          pressed && !disabled && styles.choiceRowPressed,
-        ]}
-      >
-        <Text
-          style={[
-            styles.dateInputText,
-            display.length === 0 && styles.placeholderText,
+      {/* issue #1027 Thread B (Class 2) — web renders a visible native
+          <input type=date> (the native DateTimePicker has no web build).
+          iOS/Android keep the Pressable → spinner/dialog flow. */}
+      {Platform.OS === "web" ? (
+        <WebDateTimeInput
+          type="date"
+          value={value}
+          disabled={disabled}
+          ariaLabel={`${question.label}, ${display.length > 0 ? `currently ${display}` : "choose a date"}`}
+          hasError={error !== undefined && error.length > 0}
+          testID="intake-date-web"
+          onChangeValue={(v) => onChange(v)}
+        />
+      ) : (
+        <Pressable
+          onPress={openPicker}
+          disabled={disabled}
+          accessibilityRole="button"
+          accessibilityLabel={`${question.label}, ${display.length > 0 ? `currently ${display}` : "tap to choose a date"}`}
+          hitSlop={4}
+          style={({ pressed }) => [
+            styles.dateInput,
+            error !== undefined && error.length > 0 && styles.textInputError,
+            disabled && styles.textInputDisabled,
+            pressed && !disabled && styles.choiceRowPressed,
           ]}
         >
-          {display.length > 0 ? display : "Tap to choose date"}
-        </Text>
-        <Icon
-          name="calendar"
-          size={18}
-          color={textTokens.secondary}
-          strokeWidth={2}
-        />
-      </Pressable>
+          <Text
+            style={[
+              styles.dateInputText,
+              display.length === 0 && styles.placeholderText,
+            ]}
+          >
+            {display.length > 0 ? display : "Tap to choose date"}
+          </Text>
+          <Icon
+            name="calendar"
+            size={18}
+            color={textTokens.secondary}
+            strokeWidth={2}
+          />
+        </Pressable>
+      )}
       {pickerOpen && Platform.OS === "ios" ? (
         <View style={styles.iosPickerWrap}>
           <DateTimePicker

@@ -17,9 +17,13 @@ import {
   roundRobinInterleave,
 } from '../utils/cardConverters';
 import { getCategoryIcon } from '../utils/categoryUtils';
-import { PriceTierSlug, googleLevelToTierSlug, tierLabel } from '../constants/priceTiers';
 import type { Recommendation } from '../types/recommendation';
 import { FEATURE_FLAG_PROGRESSIVE_DELIVERY } from '../config/featureFlags';
+import {
+  canonicalDiscoveryPriceLabel,
+  type CanonicalDiscoveryPrice,
+} from '../utils/priceTiers';
+import type { PriceTierSlug } from '../constants/priceTiers';
 
 /**
  * ORCH-0490 Phase 2.2 — Source discriminant for progressive delivery.
@@ -87,6 +91,13 @@ export interface DeckParams {
   mode?: 'solo' | 'collab';
   /** ORCH-0909: participant cursor before requesting the next shared position. */
   currentPosition?: number;
+  /** Viewer display preference only. Source/payable currency is unchanged. */
+  displayCurrency?: string;
+  /** Snapshot returned by page one; continuation remains pinned to it. */
+  fxSnapshotId?: string;
+  priceFilterMinMinor?: number;
+  priceFilterMaxMinor?: number;
+  priceFilterCurrency?: string;
 }
 
 /**
@@ -131,6 +142,8 @@ export interface DeckResponse {
   activePills: string[];
   total: number;
   hasMore: boolean;
+  /** Server-selected FX snapshot for this page; continuation must echo it. */
+  fxSnapshotId: string | null;
   serverPath: DeckServerPath;
   // ORCH-0677 RC-2: when curated-only deck returns 0 cards, this carries the
   // server's verdict so RecommendationsContext can route to EMPTY UI state.
@@ -197,8 +210,23 @@ export function unifiedCardToRecommendation(card: any): Recommendation {
   const distanceKm: number | null = typeof card.distanceKm === 'number' ? card.distanceKm : null;
   const travelTimeMin: number | null = typeof card.travelTimeMin === 'number' ? card.travelTimeMin : null;
 
-  const priceTier: PriceTierSlug = card.priceTier ?? googleLevelToTierSlug(card.priceLevel);
-  const priceText = tierLabel(priceTier);
+  const discoveryPrice: CanonicalDiscoveryPrice = {
+    priceRangeStatus: card.priceRangeStatus ?? null,
+    sourceMinMinor: card.sourceMinMinor ?? null,
+    sourceMaxMinor: card.sourceMaxMinor ?? null,
+    sourceCurrencyCode: card.sourceCurrencyCode ?? null,
+    sourceMinorUnitExponent: card.sourceMinorUnitExponent ?? null,
+    displayMinMinor: card.displayMinMinor ?? null,
+    displayMaxMinor: card.displayMaxMinor ?? null,
+    displayCurrencyCode: card.displayCurrencyCode ?? null,
+    displayMinorUnitExponent: card.displayMinorUnitExponent ?? null,
+    priceIsApproximate: card.priceIsApproximate === true,
+    fxSnapshotId: card.fxSnapshotId ?? null,
+    fxProvider: card.fxProvider ?? null,
+    fxProviderUpdatedAt: card.fxProviderUpdatedAt ?? null,
+    fxFreshness: card.fxFreshness ?? null,
+  };
+  const priceText = canonicalDiscoveryPriceLabel(discoveryPrice) ?? '';
 
   const category = card.category || 'Nature';
   const experienceType = category.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/__+/g, '_');
@@ -236,7 +264,8 @@ export function unifiedCardToRecommendation(card: any): Recommendation {
     reviewCount: card.reviewCount ?? 0,
     website: card.website,
     placeId: card.placeId,
-    priceTier,
+    priceTier: undefined,
+    ...discoveryPrice,
     socialStats: { views: 0, likes: 0, saves: 0, shares: 0 },
     matchFactors: {
       location: 0.5,
@@ -454,7 +483,27 @@ export function discoverCardsPayloadToRecommendations(data: any): Recommendation
   });
 }
 
-class DeckService {
+export interface DeckServiceDependencies {
+  invoke?: typeof trackedInvoke;
+  curatedService?: Pick<
+    typeof curatedExperiencesService,
+    'generateCuratedExperiences'
+  >;
+}
+
+export class DeckService {
+  private readonly invoke: typeof trackedInvoke;
+  private readonly curatedService: Pick<
+    typeof curatedExperiencesService,
+    'generateCuratedExperiences'
+  >;
+
+  constructor(dependencies: DeckServiceDependencies = {}) {
+    this.invoke = dependencies.invoke ?? trackedInvoke;
+    this.curatedService =
+      dependencies.curatedService ?? curatedExperiencesService;
+  }
+
   private resolvePills(categories: string[], dedicatedIntents?: string[]): {
     pills: DeckPill[];
     categoryFilters: string[];
@@ -609,6 +658,7 @@ class DeckService {
     const { pills, categoryFilters } = this.resolvePills(params.categories, params.intents);
     const limit = params.limit ?? 20;
     let hasMoreFromEdge = true;
+    let selectedFxSnapshotId: string | null = params.fxSnapshotId ?? null;
     // ORCH-0474: Capture the server's path discriminant so the hook can route
     // UI on it. Category fetch wins over curated — curated-only decks end up
     // 'pipeline' (server didn't run for the deck-cards key).
@@ -656,7 +706,7 @@ class DeckService {
           });
 
           const { data, error } = await Promise.race([
-            trackedInvoke('discover-cards', {
+            this.invoke('discover-cards', {
               body: {
                 categories: categoryNames,
                 location: params.location,
@@ -670,6 +720,11 @@ class DeckService {
                 excludeCardIds: params.excludeCardIds,
                 dateWindows: params.dateWindows,  // ORCH-0446: AND date intersection (collab only)
                 sessionId: params.sessionId,       // ORCH-0446: analytics tracking (collab only)
+                displayCurrency: params.displayCurrency,
+                fxSnapshotId: params.fxSnapshotId,
+                priceFilterMinMinor: params.priceFilterMinMinor,
+                priceFilterMaxMinor: params.priceFilterMaxMinor,
+                priceFilterCurrency: params.priceFilterCurrency,
               },
             }),
             timeoutPromise,
@@ -678,6 +733,10 @@ class DeckService {
           if (!error && data?.cards) {
             const cards = discoverCardsPayloadToRecommendations(data);
             hasMoreFromEdge = data.metadata?.hasMore ?? true;
+            selectedFxSnapshotId =
+              typeof data.metadata?.fxSnapshotId === 'string'
+                ? data.metadata.fxSnapshotId
+                : selectedFxSnapshotId;
             // ORCH-0474: Capture serverPath discriminant from the response.
             const rawPath = data.sourceBreakdown?.path;
             if (
@@ -758,7 +817,7 @@ class DeckService {
             // ORCH-0677 RC-2: response is now { cards, summary? }. summary is
             // present only when cards is empty; carries the server's empty
             // verdict (pool_empty | no_viable_anchor | pipeline_error).
-            const response = await curatedExperiencesService.generateCuratedExperiences({
+            const response = await this.curatedService.generateCuratedExperiences({
               experienceType: pill.id as any,
               location: curatedLocation,
               travelMode: params.travelMode,
@@ -1015,6 +1074,7 @@ class DeckService {
       activePills: pills.map(p => p.id),
       total: interleaved.length,
       hasMore: hasMoreFromEdge,
+      fxSnapshotId: selectedFxSnapshotId,
       serverPath: finalServerPath,
       curatedEmptyReason,
     };
@@ -1055,7 +1115,7 @@ class DeckService {
       });
 
       const { data, error } = await Promise.race([
-        trackedInvoke('discover-cards', {
+        this.invoke('discover-cards', {
           body: {
             session_id: sessionId,
             current_position: params.currentPosition ?? 0,
@@ -1118,6 +1178,7 @@ class DeckService {
         total: cards.length,
         // Collab v2 returns the FULL deck in one shot; no pagination.
         hasMore: false,
+        fxSnapshotId: null,
         serverPath,
         curatedEmptyReason: deadEndReason as any,
         collabDeadEndPayload,

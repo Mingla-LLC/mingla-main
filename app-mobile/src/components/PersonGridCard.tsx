@@ -6,13 +6,7 @@ import { Icon } from "./ui/Icon";
 import { s, vs, SCREEN_WIDTH } from "../utils/responsive";
 import { colors, shadows } from "../constants/designSystem";
 import { getCategoryIcon, getReadableCategoryName } from "../utils/categoryUtils";
-import {
-  formatTierLabel,
-  googleLevelToTierSlug,
-  PriceTierSlug,
-} from "../constants/priceTiers";
-import { useLocalePreferences } from "../hooks/useLocalePreferences";
-import { getCurrencySymbol, getCurrencyRate } from "./utils/formatters";
+import { PriceTierSlug } from "../constants/priceTiers";
 
 export const PERSON_GRID_CARD_WIDTH = s(180);
 
@@ -23,6 +17,7 @@ export interface PersonGridCardProps {
   imageUrl: string | null;
   priceTier: PriceTierSlug | null;
   priceLevel: string | null;
+  priceRange?: string | null;
   onPress: () => void;
   width?: number;
 }
@@ -31,15 +26,10 @@ const PersonGridCard: React.FC<PersonGridCardProps> = ({
   title,
   category,
   imageUrl,
-  priceTier,
-  priceLevel,
+  priceRange,
   onPress,
   width,
 }) => {
-  const { currency } = useLocalePreferences();
-  const resolvedTier: PriceTierSlug =
-    priceTier ?? googleLevelToTierSlug(priceLevel);
-  const formattedPrice = formatTierLabel(resolvedTier, getCurrencySymbol(currency), getCurrencyRate(currency));
   const categoryIconName = getCategoryIcon(category);
 
   return (
@@ -81,9 +71,11 @@ const PersonGridCard: React.FC<PersonGridCardProps> = ({
           {getReadableCategoryName(category)}
         </Text>
         <View style={styles.footer}>
-          <Text style={styles.priceText} numberOfLines={1}>
-            {formattedPrice}
-          </Text>
+          {priceRange ? (
+            <Text style={styles.priceText} numberOfLines={1}>
+              {priceRange}
+            </Text>
+          ) : <View />}
           <View style={styles.arrowButton}>
             <Icon name="chevron-right" size={s(14)} color="#FFFFFF" />
           </View>

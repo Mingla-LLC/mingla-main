@@ -15,13 +15,27 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 430,
-  "selfTestWiredFloor": 199,
-  "unenforcedCap": 7,
+  "expectedStrictGrepMjsFiles": 471,
+  "selfTestWiredFloor": 283,
+  "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
-  "externalGateDirs": [],
+  "externalGateDirs": [
+    "app-mobile/scripts/ci"
+  ],
   "gates": [
+    {
+      "script": ".github/scripts/strict-grep/i-proposed-966-cover-video-provider-bunny-only.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
     {
       "script": ".github/scripts/strict-grep/__tests__/i-1272-identity-admin-read.test.mjs",
       "kind": "file",
@@ -282,9 +296,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-ari-user-jwt-only"
       ]
@@ -349,9 +364,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0852-checkout-own-confirm-path"
       ]
@@ -403,9 +419,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0852-consumer-payment-flow-frozen"
       ]
@@ -633,9 +650,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-1120-published-refund-via-gated-rpc"
       ]
@@ -1498,6 +1516,32 @@
       ]
     },
     {
+      "script": ".github/scripts/strict-grep/issue-890-web-sentry-lazy-only.mjs",
+      "kind": "file",
+      "enforcement": "job:issue-890-web-sentry-lazy-only",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-890-web-sentry-lazy-only"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-957-nul-hidden-orch-id-consistency.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
       "script": ".github/scripts/strict-grep/i-proposed-c-brand-crud-via-react-query.mjs",
       "kind": "file",
       "enforcement": "batch:A",
@@ -1529,9 +1573,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-proposed-finalize-callers-pass-installment-params"
       ]
@@ -1606,9 +1651,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-proposed-manual-installment-action-via-shared-helper"
       ]
@@ -1632,9 +1678,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-proposed-o-stripe-no-webview-wrap"
       ]
@@ -1783,9 +1830,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-proposed-p-stripe-state-canonical"
       ]
@@ -1818,9 +1866,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-proposed-q-stripe-api-version"
       ]
@@ -1831,9 +1880,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-proposed-r-stripe-idempotency-key"
       ]
@@ -1844,9 +1894,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-proposed-s-stripe-audit-log"
       ]
@@ -1857,9 +1908,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-proposed-t-stripe-country-allowlist"
       ]
@@ -1914,12 +1966,14 @@
     {
       "script": ".github/scripts/strict-grep/i-proposed-tr2-safearea-on-fullscreen-routes.mjs",
       "kind": "file",
-      "enforcement": "unenforced",
-      "invocation": null,
-      "modes": [],
-      "selfTest": "none",
-      "jobKeys": [],
-      "reason": "HELD unenforced by ORCH-1400 Phase 1: exits 1 live — 19 full-screen business routes lack SafeArea handling (ORCH-0864 operator-visible class). Routed as discovery D-1; reconciliation belongs to D-1's ORCH. Wire only once its live run is green."
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
     },
     {
       "script": ".github/scripts/strict-grep/i-proposed-tr3-installment-customer-durability.mjs",
@@ -1927,9 +1981,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-proposed-tr3-installment-customer-durability"
       ]
@@ -1940,9 +1995,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-proposed-tr3-installment-pi-via-cron-owner"
       ]
@@ -1966,9 +2022,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-proposed-tr3-schedule-currency-pinned-at-publish"
       ]
@@ -1979,9 +2036,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-proposed-tr4-booking-deadline-respected-at-checkout"
       ]
@@ -1992,9 +2050,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-proposed-tr4-cancelled-installment-never-charged"
       ]
@@ -2005,9 +2064,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-proposed-tr4-refund-cascade-monotonicity"
       ]
@@ -2018,9 +2078,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-proposed-tr5-file-rls-anon-write-planner-read"
       ]
@@ -2177,9 +2238,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-stripe-paymentsheet-parity"
       ]
@@ -2190,9 +2252,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-stripe-pm-method-allowlist"
       ]
@@ -2217,9 +2280,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-ticket-pdf-owner-check"
       ]
@@ -2243,9 +2307,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-ve5-parse-menu-user-jwt-only"
       ]
@@ -2256,9 +2321,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-ve6-parse-play-user-jwt-only"
       ]
@@ -2362,6 +2428,39 @@
       "jobKeys": []
     },
     {
+      "script": ".github/scripts/strict-grep/__tests__/issue-958-bracketed-worktree-spawn.regression.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/__tests__/issue-958-next-walker-and-unicode-path.adversarial.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/__tests__/issue-957-repo-wide-nul-walk.adversarial.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
       "script": ".github/scripts/strict-grep/issue-862-ad-token-env-server-only.mjs",
       "kind": "file",
       "enforcement": "batch:A",
@@ -2423,9 +2522,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "meta-orch-0827-no-web-stripe-in-consumer"
       ]
@@ -2540,12 +2640,16 @@
     {
       "script": ".github/scripts/strict-grep/orch-0756a-active-brand-recovery.mjs",
       "kind": "file",
-      "enforcement": "unenforced",
-      "invocation": null,
-      "modes": [],
-      "selfTest": "none",
-      "jobKeys": [],
-      "reason": "HELD unenforced by ORCH-1400 Phase 1: exits 1 live — BrandSwitcherSheet.tsx no longer carries the brand-create-persists-default-brand signature (possible live default-brand regression or blessed refactor drift). Routed as discovery D-2. Wire only once its live run is green."
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "orch-0756a-active-brand-recovery"
+      ]
     },
     {
       "script": ".github/scripts/strict-grep/orch-0766f-event-cover-quicktime-storage.mjs",
@@ -2582,12 +2686,30 @@
     {
       "script": ".github/scripts/strict-grep/orch-0770-event-cover-video-processing.mjs",
       "kind": "file",
-      "enforcement": "unenforced",
-      "invocation": null,
-      "modes": [],
-      "selfTest": "none",
-      "jobKeys": [],
-      "reason": "HELD unenforced by ORCH-1400 Phase 1 (D-4 + D-7): expectations pin the pre-META-1270 client pipeline while the guarded TUS/Bunny event-cover upload surface is LIVE — rewrite the expectations against eventCoverVideoTusPatch.ts + the event-cover-video-* function family; deletion prohibited. Wire only once the rewritten run is green."
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "orch-0770-event-cover-video-processing"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/orch-0770b-bunny-webhook-family.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "orch-0770b-bunny-webhook-family"
+      ]
     },
     {
       "script": ".github/scripts/strict-grep/orch-0776-video-processing-status-bridge.mjs",
@@ -2605,12 +2727,16 @@
     {
       "script": ".github/scripts/strict-grep/orch-0776a-video-upload-progress-honesty.mjs",
       "kind": "file",
-      "enforcement": "unenforced",
-      "invocation": null,
-      "modes": [],
-      "selfTest": "none",
-      "jobKeys": [],
-      "reason": "HELD unenforced by ORCH-1400 Phase 1 (D-4 + D-7): expectations pin the pre-META-1270 Expo createUploadTask path while real byte-progress honesty is live under TUS — rewrite the expectations against the TUS/Bunny pipeline (same target as orch-0770); deletion prohibited. Wire only once the rewritten run is green."
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "orch-0776a-video-upload-progress-honesty"
+      ]
     },
     {
       "script": ".github/scripts/strict-grep/orch-0776d-cancelled-at-schema.mjs",
@@ -2631,9 +2757,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0777-ticket-checkout-production"
       ]
@@ -2644,9 +2771,10 @@
       "enforcement": "job:orch-0778-web-stripe-native-import-gate",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0778-web-stripe-native-import-gate"
       ]
@@ -2761,9 +2889,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0787-refund-cancel-flow"
       ]
@@ -2800,9 +2929,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0791-checkout-session-never-reused-post-terminal"
       ]
@@ -2865,9 +2995,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0796-no-stub-payout-fee"
       ]
@@ -2878,9 +3009,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0802-stripe-embedded-components-routing"
       ]
@@ -2891,9 +3023,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0804-stripe-tax-enabled-on-checkout"
       ]
@@ -3074,9 +3207,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0829b-d1-checkout-expiry-tombstone"
       ]
@@ -3087,9 +3221,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0843-stripe-direct-charges-only"
       ]
@@ -3100,9 +3235,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0844-stripe-connect-account-id-per-pi"
       ]
@@ -3126,9 +3262,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0847-consumer-multi-line-checkout"
       ]
@@ -3348,12 +3485,13 @@
     {
       "script": ".github/scripts/strict-grep/orch-0910-chat-payload-curated-aware.mjs",
       "kind": "file",
-      "enforcement": "unenforced",
-      "invocation": null,
-      "modes": [],
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
       "selfTest": "none",
-      "jobKeys": [],
-      "reason": "HELD unenforced by ORCH-1400 Phase 1: exits 1 live — buildCardDataPayload no longer synthesizes top-level curated image/images from stops (1/8 checks fail; potential curated collab-card image regression). Routed as discovery D-5. Wire only once its live run is green."
+      "jobKeys": []
     },
     {
       "script": ".github/scripts/strict-grep/orch-0913-no-tabs-on-dashboards.mjs",
@@ -3413,9 +3551,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0954-rak-scope-pinned"
       ]
@@ -3426,9 +3565,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0955-native-stripe-tax"
       ]
@@ -3439,9 +3579,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0955-native-stripe-tax"
       ]
@@ -3452,9 +3593,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0955-native-stripe-tax"
       ]
@@ -3465,9 +3607,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0955-native-stripe-tax"
       ]
@@ -3478,9 +3621,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0955-native-stripe-tax"
       ]
@@ -4040,9 +4184,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-1138-experience-checkout-byte-identical"
       ]
@@ -5369,7 +5514,98 @@
       "jobKeys": []
     },
     {
+      "script": ".github/scripts/strict-grep/__tests__/issue-1221-source-refund-control-plane.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-1221-source-refund-control-plane"
+      ]
+    },
+    {
       "script": ".github/scripts/strict-grep/__tests__/orch-1400-ratchet-frontier.adversarial.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/__tests__/orch-964-tus-bunny-gate.tester.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/__tests__/orch-967-p11-external-totality.tester.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:B",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/__tests__/issue-955-p0-batch1-selftest-coupling.adversarial.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/__tests__/issue-955-p0-batch2-selftest-coupling.adversarial.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/__tests__/issue-955-p1-batch1-selftest-coupling.adversarial.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/__tests__/issue-955-p1-batch2-selftest-coupling.adversarial.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/__tests__/issue-955-p1-batch3-selftest-coupling.adversarial.test.mjs",
       "kind": "file",
       "enforcement": "batch:A",
       "invocation": "node --test",
@@ -5391,6 +5627,20 @@
       "selfTest": "wired",
       "jobKeys": [
         "orch-1385-workspace-deps-declared"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1221-source-refund-control-plane.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-1221-source-refund-control-plane"
       ]
     },
     {
@@ -5459,6 +5709,18 @@
       "jobKeys": [
         "orch-1387-wallet-config-threaded"
       ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/orch-1389-stay-commerce-rails.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
     },
     {
       "script": ".github/scripts/strict-grep/orch-1398-expo-pinned-54.mjs",
@@ -5967,9 +6229,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "i-1047-biz-payment-plan-editor-constraints"
       ]
@@ -6122,6 +6385,30 @@
       ]
     },
     {
+      "script": ".github/scripts/strict-grep/issue-1180-honest-payout-copy.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-0962-prebank-no-gbp.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
       "script": ".github/scripts/strict-grep/issue-1203-secret-capacity.mjs",
       "kind": "file",
       "enforcement": "batch:A",
@@ -6135,6 +6422,894 @@
     },
     {
       "script": ".github/scripts/strict-grep/issue-949-invite-onboarding-offering-agnostic.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/i-1026-mapper-no-error-suppressing-cast.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-906-links-nav-layout-guard.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/__tests__/issue-906-links-nav-layout-guard.adversarial.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-0751-revenuecat-logout-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-0751-revenuecat-logout-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-0897-a-regression-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-0897-a-regression-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-0901-adversarial-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-0901-adversarial-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-0904-adversarial-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-0904-adversarial-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-0904-regression-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-0904-regression-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-0906-client-hotfix-adversarial-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-0906-client-hotfix-adversarial-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-0906-client-hotfix-regression-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-0906-client-hotfix-regression-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-0908-chat-mention-card-tag-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-0908-chat-mention-card-tag-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-0908-combined-regression-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-0908-combined-regression-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-0943-regression-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-0943-regression-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-0964-logout-cache-regression-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-0964-logout-cache-regression-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/meta-orch-1002-android-glass-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "meta-orch-1002-android-glass-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/meta-orch-1002-android-glass-adversarial-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "meta-orch-1002-android-glass-adversarial-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1016-trips-discovery-service-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1016-trips-discovery-service-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1028-launch-city-gate-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:D",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1028-launch-city-gate-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1028-scroll-policy-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:D",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1028-scroll-policy-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1034-currency-de-gbp-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1034-currency-de-gbp-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1034-currency-de-gbp.tester-adversarial.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1034-currency-de-gbp.tester-adversarial"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/issue-0963-consumer-currency-no-gbp-fallback-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "issue-0963-consumer-currency-no-gbp-fallback-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/issue-0963-consumer-currency-no-gbp-fallback.tester-adversarial.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "issue-0963-consumer-currency-no-gbp-fallback.tester-adversarial"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1039-collab-gate-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:D",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1039-collab-gate-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1049-matches-sheet-bottom-inset-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1049-matches-sheet-bottom-inset-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1054-matches-expanded-card-parity-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1054-matches-expanded-card-parity-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1058-regression-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:B",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1058-regression-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1125-regression-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1125-regression-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1148-2-2b-reserve-teardown-swallow-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1148-2-2b-reserve-teardown-swallow-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1148-reserve-sheet-mount-on-open-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1148-reserve-sheet-mount-on-open-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1149-inapp-browser-bottom-anchored.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain",
+        "self-test"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "orch-1149-inapp-browser-bottom-anchored"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1161-notif-prefs-matrix-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:D",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1161-notif-prefs-matrix-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1171-keyboard-done-bar-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1171-keyboard-done-bar-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1163-rsvp-going-calendar-qr-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1163-rsvp-going-calendar-qr-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1163-rsvp-going-confirm-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1163-rsvp-going-confirm-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1163-rsvp-guest-notify-match-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1163-rsvp-guest-notify-match-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1163-rsvp-one-read-path-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1163-rsvp-one-read-path-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1163-rsvp-one-shared-body-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1163-rsvp-one-shared-body-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1163-rsvp-plus-one-per-guest-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1163-rsvp-plus-one-per-guest-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1163-rsvp-shell-agnostic-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1163-rsvp-shell-agnostic-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/check-active-tab-only.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain",
+        "self-test"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "i-only-active-tab-mounted"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/check-i18n-lazy-load.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain",
+        "self-test"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "i-locales-lazy-load"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/check-no-inline-map-in-appcontent.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain",
+        "self-test"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "i-no-inline-map-in-appcontent"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/check-no-native-driver-false.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain",
+        "self-test"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "i-animations-native-driver-default"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/check-render-counter-present.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain",
+        "self-test"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "orch-0679-render-counter-present"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/check-single-sentry-init.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain",
+        "self-test"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "i-sentry-single-init"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/check-tabs-memo-wrapped.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain",
+        "self-test"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "i-tab-screens-memoized"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/check-zustand-persist-debounced.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain",
+        "self-test"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "i-zustand-persist-debounced"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-0901-regression-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-0901-regression-check"
+      ]
+    },
+    {
+      "script": "app-mobile/scripts/ci/orch-1240-dual-account-deletion-check.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "orch-1240-dual-account-deletion-check"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-0868-cover-gallery.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1384-discovery-price-currency.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-1384-discovery-price-currency"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1397-fx-refresh-eol-cron.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1403-listing-insights-wiring.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-1403-listing-insights"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1421-venue-organic-insights-wiring.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-1421-venue-organic-insights"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1387-stay-inventory.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1387-stay-inventory.adversarial.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1388-stay-reservation.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1388-stay-reservation.adversarial.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1424-stay-business-authoring.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1424-stay-business-authoring.adversarial.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1430-refund-replay-safety.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1436-secret-capacity-exit.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1437-secret-bundle-compatibility.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1447-rsvp-admission.mjs",
+      "kind": "file",
+      "enforcement": "external:issue-1447-rsvp-admission-tests.yml",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-1447-rsvp-admission"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1423-stay-discovery.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1425-stay-rooms-places.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1426-stay-reservations.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1427-admin-stay-support.mjs",
       "kind": "file",
       "enforcement": "batch:A",
       "invocation": "node",

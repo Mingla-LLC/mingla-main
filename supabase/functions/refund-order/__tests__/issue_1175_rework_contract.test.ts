@@ -17,6 +17,17 @@ function response(body: unknown, status = 200): Response {
 
 const originalFetch = globalThis.fetch;
 
+function verifiedTransaction(
+  reference: string,
+  id: number,
+  amount: number,
+): Response {
+  return response({
+    status: true,
+    data: { id, reference, status: "success", currency: "NGN", amount },
+  });
+}
+
 Deno.test("issue #1175 rework: processed provider results stay processed for debt materialization", () => {
   assert(
     paystackRefundOutcomeStatus("processed") === "processed",
@@ -63,11 +74,33 @@ Deno.test("issue #1175 rework: exact-floor partial and sub-floor full refund kee
   Deno.env.set("PAYSTACK_MODE", "test");
   Deno.env.set("PAYSTACK_SECRET_KEY_TEST", "sk_test_issue1175fixture");
   const postBodies: Array<Record<string, unknown>> = [];
+  const calls: string[] = [];
   globalThis.fetch = ((
-    _input: string | URL | Request,
+    input: string | URL | Request,
     init?: RequestInit,
   ) => {
+    const url = String(input);
+    calls.push(`${init?.method ?? "GET"} ${url}`);
+    if (url.includes("/transaction/verify/txn-exact-floor")) {
+      return Promise.resolve(
+        verifiedTransaction(
+          "txn-exact-floor",
+          117550,
+          PAYSTACK_MIN_REFUND_SUBUNITS,
+        ),
+      );
+    }
+    if (url.includes("/transaction/verify/txn-full-below-floor")) {
+      return Promise.resolve(
+        verifiedTransaction("txn-full-below-floor", 117551, 4999),
+      );
+    }
     if ((init?.method ?? "GET") === "GET") {
+      assert(
+        url.includes("/refund?transaction=117550&perPage=100") ||
+          url.includes("/refund?transaction=117551&perPage=100"),
+        "reconciliation did not use the verified numeric transaction ID",
+      );
       return Promise.resolve(response({ status: true, data: [] }));
     }
     postBodies.push(JSON.parse(String(init?.body)));
@@ -94,18 +127,19 @@ Deno.test("issue #1175 rework: exact-floor partial and sub-floor full refund kee
       !("amount" in postBodies[1]),
       "true full refund must omit amount even when its local total is below NGN 50",
     );
+    assert(
+      calls.length === 6,
+      "each initiated refund must verify, reconcile, then POST exactly once",
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
 });
 
-Deno.test("issue #1175 rework: trip and venue retries preserve durable identity after cancellation", async () => {
+Deno.test("issue #1175 rework: trip retries preserve durable identity after cancellation", async () => {
   const functionsRoot = new URL("../../", import.meta.url);
   const trip = await Deno.readTextFile(
     new URL("cancel-trip-booking/index.ts", functionsRoot),
-  );
-  const venue = await Deno.readTextFile(
-    new URL("venue-reservation-cancel/index.ts", functionsRoot),
   );
   const migration = await Deno.readTextFile(
     new URL(
@@ -129,17 +163,5 @@ Deno.test("issue #1175 rework: trip and venue retries preserve durable identity 
     migration.includes("'paystack_retry',true") &&
       migration.includes("a.status IN ('pending','accepted','processed')"),
     "trip cancellation has no durable retry branch",
-  );
-  assert(
-    venue.includes('"pg_resume_my_paystack_reservation_refund"') &&
-      migration.includes(
-        "CREATE OR REPLACE FUNCTION public.pg_resume_my_paystack_reservation_refund",
-      ),
-    "venue cancellation has no authenticated retry branch",
-  );
-  assert(
-    venue.includes("p_source_id: paystackSourceId") &&
-      venue.includes('.select("id, paystack_reference")'),
-    "venue attempt does not use the checkout-session ledger identity",
   );
 });

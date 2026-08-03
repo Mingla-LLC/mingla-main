@@ -71,6 +71,9 @@ Deno.test("ORCH-1342 T-8: RSVP row maps the §4.7 field table exactly", () => {
     description: "A night up top.",
     coverMediaUrl: "https://cdn/cover.mp4",
     coverMediaType: "video",
+    // [TEST-MOD-APPROVED #868] cover-gallery [cover-gallery] adds an additive
+    // `coverGallery` to the §4.7 seed map; gallery-less rows map to [] (rule 9).
+    coverGallery: [],
     coverHue: 0,
     masterDateUtc: "2026-08-01T19:00:00Z",
     masterEndAtUtc: "2026-08-02T01:00:00Z",

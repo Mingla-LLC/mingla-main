@@ -4,8 +4,9 @@
 
 import { CuratedStop } from './curatedExperience';
 import { PriceTierSlug } from '../constants/priceTiers';
+import type { CanonicalDiscoveryPrice } from '../utils/priceTiers';
 
-export interface ExpandedCardData {
+export interface ExpandedCardData extends Partial<CanonicalDiscoveryPrice> {
   id: string;
   placeId?: string;
   title: string;

@@ -10,6 +10,7 @@
     "react": "*",
     "react-native": "*",
     "react-native-svg": "*",
+    "react-native-qrcode-svg": "*",
     "expo-video": "*",
     "expo-blur": "*",
     "expo-constants": "*",

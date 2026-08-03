@@ -1,0 +1,109 @@
+name: Issue 1406 customer patterns performance
+
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/20270131001875_issue_875_brand_customer_commitment_patterns.sql"
+      - "supabase/migrations/20270131002006_issue_1406_customer_patterns_timezone_performance.sql"
+      - "supabase/migrations/__tests__/issue_875_brand_customer_commitment_patterns.test.sql"
+      - "supabase/migrations/__tests__/issue_875_brand_customer_commitment_patterns.adversarial.test.sql"
+      - "supabase/migrations/__tests__/issue_1406_customer_patterns_timezone_performance*.test.sql"
+      - ".github/workflows/issue-1406-customer-patterns-performance-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/20270131001875_issue_875_brand_customer_commitment_patterns.sql"
+      - "supabase/migrations/20270131002006_issue_1406_customer_patterns_timezone_performance.sql"
+      - "supabase/migrations/__tests__/issue_875_brand_customer_commitment_patterns.test.sql"
+      - "supabase/migrations/__tests__/issue_875_brand_customer_commitment_patterns.adversarial.test.sql"
+      - "supabase/migrations/__tests__/issue_1406_customer_patterns_timezone_performance*.test.sql"
+      - ".github/workflows/issue-1406-customer-patterns-performance-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-1406-customer-patterns-performance-pg17:
+    name: "Issue #1406 customer patterns performance (PG17)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ format('issue-1406-ci-{0}', github.run_id) }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Wait for PostgreSQL 17
+        env:
+          PGPASSWORD: ${{ format('issue-1406-ci-{0}', github.run_id) }}
+        run: |
+          for attempt in {1..90}; do
+            if psql -h localhost -U postgres -d postgres -Atc \
+              "SELECT to_regnamespace('vault') IS NOT NULL AND to_regrole('supabase_admin') IS NOT NULL" \
+              2>/dev/null | grep -qx t; then
+              echo "postgres ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "postgres did not become ready in 90s"
+          exit 1
+
+      - name: Apply all migrations in lexical order
+        env:
+          PGPASSWORD: ${{ format('issue-1406-ci-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 \
+            | sort -z \
+            | while IFS= read -r -d '' migration_file; do
+                echo "::group::Applying $migration_file"
+                psql -h localhost -U postgres -d postgres \
+                  -v ON_ERROR_STOP=1 -f "$migration_file"
+                echo "::endgroup::"
+              done
+
+      - name: Run issue 875 and 1406 SQL suites in lexical order
+        env:
+          PGPASSWORD: ${{ format('issue-1406-ci-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          mapfile -d '' issue_875_test_files < <(
+            find supabase/migrations/__tests__ -maxdepth 1 -type f \
+              -name 'issue_875_brand_customer_commitment_patterns*.test.sql' \
+              -print0 | sort -z
+          )
+          mapfile -d '' issue_1406_test_files < <(
+            find supabase/migrations/__tests__ -maxdepth 1 -type f \
+              -name 'issue_1406_customer_patterns_timezone_performance*.test.sql' \
+              -print0 | sort -z
+          )
+          if [ "${#issue_875_test_files[@]}" -eq 0 ]; then
+            echo "No issue #875 SQL test suites found"
+            exit 1
+          fi
+          if [ "${#issue_1406_test_files[@]}" -eq 0 ]; then
+            echo "No issue #1406 SQL test suites found"
+            exit 1
+          fi
+          test_files=("${issue_875_test_files[@]}" "${issue_1406_test_files[@]}")
+          for test_file in "${test_files[@]}"; do
+            echo "::group::Running $test_file"
+            psql -h localhost -U postgres -d postgres \
+              -v ON_ERROR_STOP=1 -f "$test_file"
+            echo "::endgroup::"
+          done

@@ -78,10 +78,8 @@ const cartReducer = (state: CartLine[], action: CartAction): CartLine[] => {
   }
 };
 
-const DEFAULT_CURRENCY = "GBP";
-
 export const useTicketCart = (
-  fallbackCurrency: string = DEFAULT_CURRENCY,
+  fallbackCurrency: string,
 ): UseTicketCartResult => {
   const [lines, dispatch] = useReducer(cartReducer, []);
 

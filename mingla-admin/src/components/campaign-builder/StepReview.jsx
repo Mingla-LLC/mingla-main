@@ -23,6 +23,7 @@ export function StepReview({
   submitting,
   validatingShapes,
   createResults,
+  allExpectedPairsSucceeded,
   onCreate,
   onValidateShapes,
   onJumpToStep,
@@ -60,6 +61,9 @@ export function StepReview({
             >
               {line.objectiveLabel}
             </span>
+            {line.videoReadiness && (
+              <span className="text-xs text-[var(--color-text-secondary)]">{line.videoReadiness}</span>
+            )}
           </div>
         ))}
         {summary.blocked.map((line) => (
@@ -167,11 +171,15 @@ export function StepReview({
       )}
 
       <div className="flex flex-wrap gap-2">
+        <p className="basis-full text-xs text-[var(--color-text-secondary)]">
+          Preparation and previews created no ads. This action creates paused campaigns; nothing
+          spends until Launch on the Campaigns page.
+        </p>
         <Button
           variant="secondary"
           icon={ShieldCheck}
           loading={validatingShapes}
-          disabled={hardBlocked || submitting || anySuccess}
+          disabled={hardBlocked || submitting || allExpectedPairsSucceeded}
           onClick={onValidateShapes}
         >
           Validate shapes (nothing created)
@@ -179,10 +187,10 @@ export function StepReview({
         <Button
           icon={Megaphone}
           loading={submitting}
-          disabled={hardBlocked || anySuccess}
+          disabled={hardBlocked || allExpectedPairsSucceeded}
           onClick={onCreate}
         >
-          Create campaign (paused)
+          {summary.primaryActionLabel ?? "Create campaign (paused)"}
         </Button>
         {hardBlocked && (
           <Badge variant="error">No channel can run an ad right now. Fix at least one blocker to continue.</Badge>

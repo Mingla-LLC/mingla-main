@@ -1,5 +1,6 @@
 import { Component } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
+import { captureException } from "../diagnostics/sentry";
 
 export class ErrorBoundary extends Component {
   constructor(props) {
@@ -13,6 +14,11 @@ export class ErrorBoundary extends Component {
 
   componentDidCatch(error, errorInfo) {
     console.error("ErrorBoundary caught:", error, errorInfo);
+    // #1322 — forward React render crashes to Sentry with componentStack
+    // context. No-op until initSentry runs with a DSN (dev / preview).
+    captureException(error, {
+      contexts: { react: { componentStack: errorInfo?.componentStack } },
+    });
   }
 
   handleReset = () => {

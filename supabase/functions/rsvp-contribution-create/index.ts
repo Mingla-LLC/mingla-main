@@ -66,6 +66,9 @@ import {
 // (fixes BUG 1: brandSlug was omitted → dead page). Kept in a sibling module so
 // it is unit-testable without importing this serve()-on-load entry.
 import { buildContributionWebReturnUrls } from "./returnUrls.ts";
+// #1178 [ng-split-removal] — pure Paystack split-field gate (co-located so it is
+// unit-testable without importing this serve()-on-load entry).
+import { paystackContributionSplitFields } from "./ngPaystackSplit.ts";
 
 type ContributionSurface = "native" | "web" | "mobile-web";
 
@@ -151,6 +154,28 @@ serve(async (req: Request): Promise<Response> => {
 
   const brandId = String(eventRow.brand_id);
 
+  // #1178 [ng-split-removal] — read the payout-hold cut-over stamp BEFORE the
+  // readiness gate. A STAMPED brand (brands.payout_hold_cutover_at IS NOT NULL)
+  // settles chip-ins 100% to Mingla main for later event-anchored release
+  // (#1177) instead of splitting to the organiser subaccount at charge time, and
+  // is admitted through the readiness gates even without a subaccount. Read-only
+  // PK lookup; on ANY read error fail CLOSED to today's behaviour
+  // (isCutover=false) so a transient failure never changes an unstamped brand.
+  const { data: cutoverRow, error: cutoverErr } = await supabase
+    .from("brands")
+    .select("payout_hold_cutover_at")
+    .eq("id", brandId)
+    .maybeSingle();
+  if (cutoverErr) {
+    console.error(
+      "[rsvp-contribution-create] payout_hold_cutover_at read failed; treating as unstamped",
+      cutoverErr,
+    );
+  }
+  const isCutover =
+    ((cutoverRow as { payout_hold_cutover_at?: string | null } | null)
+      ?.payout_hold_cutover_at ?? null) !== null;
+
   // PROVIDER-AWARE readiness gate (fail-close). Reuses pg_brand_can_collect (the
   // same predicate the publish gate uses) — Stripe charges_enabled OR Paystack
   // subaccount. A Paystack brand is NOT blocked by the Stripe-only predicate.
@@ -162,7 +187,10 @@ serve(async (req: Request): Promise<Response> => {
     console.error("[rsvp-contribution-create] pg_brand_can_collect failed", canCollectErr);
     return jsonResponse({ error: "readiness_check_failed" }, 500);
   }
-  if (canCollect !== true) {
+  // #1178 — a STAMPED (cut-over) brand is admitted even if pg_brand_can_collect
+  // is false (e.g. no subaccount); it settles to Mingla main. The shared
+  // predicate itself is untouched (still governs the publish path).
+  if (canCollect !== true && !isCutover) {
     return jsonResponse({ error: "brand_cannot_collect" }, 409);
   }
 
@@ -233,7 +261,9 @@ serve(async (req: Request): Promise<Response> => {
     if (psCurrency !== "NGN") {
       return jsonResponse({ error: "paystack_currency_must_be_ngn" }, 409);
     }
-    if (!pricing.paystack_subaccount_code) {
+    // #1178 [ng-split-removal] — a STAMPED brand needs no subaccount (settles to
+    // Mingla main). An UNSTAMPED brand still requires one (byte-identical 409).
+    if (!isCutover && !pricing.paystack_subaccount_code) {
       return jsonResponse({ error: "brand_cannot_collect" }, 409);
     }
 
@@ -304,12 +334,18 @@ serve(async (req: Request): Promise<Response> => {
           contribution_id: contributionId,
           mingla_event_id: eventId,
         },
-        // Split to the brand's subaccount; Mingla's cut rides as the flat
-        // transaction_charge (kobo). bearer:'subaccount' → the organiser absorbs
-        // Paystack's processing fee (WYSIWYG gift — SPEC §10 Q-B).
-        subaccount: pricing.paystack_subaccount_code,
-        transactionChargeSubunits: applicationFeeCents,
-        bearer: "subaccount",
+        // #1178 [ng-split-removal] — split to the brand's subaccount ONLY for an
+        // UNSTAMPED brand; Mingla's cut rides as the flat transaction_charge
+        // (kobo) and bearer:'subaccount' → the organiser absorbs Paystack's fee
+        // (WYSIWYG gift — SPEC §10 Q-B). A STAMPED (cut-over) brand omits all
+        // split fields → full settle to Mingla main (Mingla's main balance then
+        // bears Paystack's fee; later organiser payout is owned by #1177). The
+        // buyer `amountSubunits` is unchanged either way.
+        ...paystackContributionSplitFields(
+          isCutover,
+          pricing.paystack_subaccount_code,
+          applicationFeeCents,
+        ),
       });
     } catch (err) {
       console.error(

@@ -10,6 +10,9 @@
  */
 
 import type { NightOutVenue } from "../services/nightOutExperiencesService";
+// issue #868 [cover-gallery] — ADDITIONAL image/GIF items on the cold-path seed
+// read; warm deck cards (thumbnail-only edge fn) omit it → default [].
+import type { OfferingGalleryImage } from "@mingla/offering-rendering";
 
 /**
  * First-party business event card (events table + brand join + tickets aggregates).
@@ -28,6 +31,13 @@ export interface BusinessEventCard {
   description: string | null;
   coverMediaUrl: string | null;
   coverMediaType: "image" | "video" | "gif" | null;
+  /**
+   * issue #868 [cover-gallery] — ADDITIONAL image/GIF gallery items (hero indices
+   * 1..N), INDEPENDENT of the cover fields. Optional: the cold-path seed read
+   * (business_public_events_view) populates it; the thumbnail-only Discover deck
+   * edge fn omits it → the detail defaults `[]` (single cover, no regression).
+   */
+  coverGallery?: OfferingGalleryImage[];
   coverHue: number;
   // Date / venue
   masterDateUtc: string | null;

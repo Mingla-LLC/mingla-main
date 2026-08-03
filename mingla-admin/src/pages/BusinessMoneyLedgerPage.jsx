@@ -14,6 +14,7 @@ import { HighRiskActionModal } from "../components/entity/HighRiskActionModal";
 import { Tabs } from "../components/ui/Tabs";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
+import { StayOperationsPanel } from "../components/stay/StayOperationsPanel";
 import { listRefunds, listDisputes, getDispute, listPayouts, listRevenueLog } from "../services/adminMoneyService";
 import { annotateDispute } from "../services/adminMoneyActService";
 import { timeAgo, formatDateTime, formatDate } from "../lib/formatters";
@@ -130,6 +131,7 @@ const TABS = [
   { id: "disputes", label: "Disputes" },
   { id: "payouts", label: "Payouts" },
   { id: "revenue", label: "Platform revenue" },
+  { id: "stay", label: "Stay reconciliation" },
 ];
 
 // ── Hash helpers ──────────────────────────────────────────────────────────────
@@ -423,6 +425,8 @@ export function BusinessMoneyLedgerPage() {
         emptyIcon={Landmark}
       />
     );
+  } else if (activeTab === "stay") {
+    listView = <StayOperationsPanel key="stay" />;
   } else {
     listView = (
       <EntityListView
@@ -447,7 +451,7 @@ export function BusinessMoneyLedgerPage() {
         <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">Money ledger</h1>
           <p className="text-sm text-[var(--color-text-secondary)] mt-0.5">
-            Refunds, disputes, payouts, and Mingla's platform-fee revenue across every brand. Read-only.
+            Refunds, disputes, payouts, platform-fee revenue, and provider-evidence Stay reconciliation across every brand.
           </p>
         </div>
       </div>

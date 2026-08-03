@@ -1,3 +1,4 @@
+// orch-strict-grep-allow safearea-on-fullscreen-routes — renders GroupChatPanel, which wraps in SafeScreen
 import React from "react";
 import { useLocalSearchParams } from "expo-router";
 

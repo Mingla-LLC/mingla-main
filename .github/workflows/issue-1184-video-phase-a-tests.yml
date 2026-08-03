@@ -1,0 +1,91 @@
+name: ISSUE-1184 Video Phase A Tests
+
+on:
+  push:
+    branches: [main, "1184-video-phase-a-design"]
+    paths:
+      - "supabase/functions/_shared/adCreative.ts"
+      - "supabase/functions/_shared/adCreativeProbe.ts"
+      - "supabase/functions/_shared/adCreativePrepare.ts"
+      - "supabase/functions/_shared/adDestination.ts"
+      - "supabase/functions/_shared/meta.ts"
+      - "supabase/config.toml"
+      - "supabase/functions/admin-ad-creative-upload/**"
+      - "supabase/functions/admin-ad-creative-prepare/**"
+      - "supabase/functions/admin-ad-preview/**"
+      - "supabase/functions/admin-ad-create-campaign/**"
+      - "supabase/migrations/20270111001184_issue_1184_video_prepare_lifecycle.sql"
+      - "supabase/functions/_shared/__tests__/issue1184_video_prepare*.test.ts"
+      - "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts"
+      - "mingla-admin/src/**"
+      - ".github/workflows/issue-1184-video-phase-a-tests.yml"
+  pull_request:
+    paths:
+      - "supabase/functions/**"
+      - "supabase/config.toml"
+      - "supabase/migrations/20270111001184_issue_1184_video_prepare_lifecycle.sql"
+      - "supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts"
+      - "mingla-admin/src/**"
+      - ".github/workflows/issue-1184-video-phase-a-tests.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  edge-and-schema:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: Format-check new Phase A Deno files (narrow gate — issue #1184 Option 1)
+        # Seth-approved Option 1 (NARROW), issue #1184 comment 5087287386.
+        # Scoped to ONLY the new Phase A Deno files this PR introduces — these already
+        # pass `deno fmt --check` (verified under Deno 1.46.3 and 2.7.14). Files are
+        # ENUMERATED explicitly and MUST NOT be globbed: a directory glob would pull in
+        # 5 pre-existing legacy files (supabase/functions/_shared/adCreative.ts,
+        # supabase/functions/_shared/adCreativeProbe.ts, supabase/functions/_shared/meta.ts,
+        # supabase/functions/admin-ad-creative-upload/index.ts,
+        # supabase/functions/admin-ad-create-campaign/index.ts) that would require
+        # ~+1469/-478 formatting-only churn and are intentionally NOT reformatted. Those
+        # legacy files stay protected by `deno check` (type-check) + the #1184 regression
+        # suites below + `git diff --check`.
+        run: |
+          deno fmt --check \
+            supabase/functions/_shared/adCreativePrepare.ts \
+            supabase/functions/_shared/adDestination.ts \
+            supabase/functions/admin-ad-creative-prepare/index.ts \
+            supabase/functions/admin-ad-preview/index.ts \
+            supabase/functions/_shared/__tests__/issue1184_video_prepare.test.ts \
+            supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts
+      - name: Run ISSUE-1184 edge and schema regressions
+        run: |
+          files=(
+            supabase/functions/_shared/__tests__/issue1184_video_prepare.test.ts
+            supabase/migrations/__tests__/issue1184_video_prepare_schema.test.ts
+          )
+          tester=supabase/functions/_shared/__tests__/issue1184_video_prepare_adversarial.tester.test.ts
+          if [[ -f "$tester" ]]; then files+=("$tester"); fi
+          deno test --allow-env --allow-read "${files[@]}"
+
+  admin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run ISSUE-1184 admin regressions
+        working-directory: mingla-admin
+        run: |
+          files=(
+            src/__tests__/issue995_creative_video_not_creatable.test.js
+            src/__tests__/issue1184_video_phase_a.test.js
+          )
+          tester=src/__tests__/issue1184_video_phase_a.adversarial.tester.test.js
+          if [[ -f "$tester" ]]; then files+=("$tester"); fi
+          node --test "${files[@]}"

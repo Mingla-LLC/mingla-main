@@ -141,6 +141,10 @@ export const NAV_GROUPS = [
       // ORCH-1045: read-only list of "Get Beta Access" leads from the organiser
       // marketing site. Operator growth tooling — sits next to Email.
       { id: "beta-leads",                label: "Beta Leads",         icon: "Inbox" },
+      // ISSUE-1354: all free-tool submissions (tool_leads) + report detail. The
+      // Wrench icon MUST be registered in Sidebar.jsx ICON_MAP or the nav item
+      // silently falls back to LayoutDashboard (the documented ICON_MAP footgun).
+      { id: "tool-leads",                label: "Tool Leads",         icon: "Wrench" },
       // META-ORCH-1222: careers applications + role manager. The Briefcase icon
       // MUST be registered in Sidebar.jsx ICON_MAP or the nav item silently
       // falls back to LayoutDashboard.

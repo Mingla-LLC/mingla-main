@@ -22,6 +22,7 @@ import { ChevronRight } from "lucide-react-native";
 import { GlassCard } from "../ui/GlassCard";
 import { STATUS_PRESENTATION } from "./reservationViews";
 import type { Reservation } from "../../types/venueReservation";
+import { SourceRefundStatusChip } from "../refunds/SourceRefundStatusChip";
 
 const SOURCE_LABEL: Record<Reservation["source"], string> = {
   mingla: "From Mingla",
@@ -98,6 +99,9 @@ export function ReservationCard({
             </Text>
           </View>
         </View>
+        {reservation.refund ? (
+          <SourceRefundStatusChip refund={reservation.refund} />
+        ) : null}
         <Text style={styles.subline} numberOfLines={1}>
           {subParts.join(" · ")}
         </Text>

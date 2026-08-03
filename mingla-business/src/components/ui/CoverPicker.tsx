@@ -29,6 +29,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ActivityIndicator,
   Image,
+  InteractionManager,
   Platform,
   Pressable,
   StyleSheet,
@@ -82,6 +83,7 @@ import {
   buildTrimmedVideoUploadFile,
   normalizePickerDurationMs,
   resolveRawClipUploadUri,
+  type VideoTrimFinishPayload,
 } from "./coverPickerVideoTrimUpload";
 import {
   searchGiphyEventCovers,
@@ -119,6 +121,9 @@ import { Icon } from "./Icon";
 import { EventCoverMedia, type EventCoverMediaErrorEvent } from "./EventCoverMedia";
 import { useAuth } from "../../context/AuthContext";
 import type { CoverTarget } from "./coverTarget";
+// issue #868 [cover-gallery] — the ADDITIONAL image/GIF gallery item type
+// (shared package is the single owner of the offering-render prop contract).
+import type { OfferingGalleryImage } from "@mingla/offering-rendering";
 
 export type { CoverTarget } from "./coverTarget";
 
@@ -154,6 +159,14 @@ export interface CoverPatch {
   coverMediaCredit: string | null;
   coverMediaCreditUrl: string | null;
   coverMediaAlt: string | null;
+  /**
+   * issue #868 [cover-gallery] — ADDITIONAL image/GIF cover-gallery items,
+   * ordered, hero indices 1..N. OPTIONAL + default-safe: absent/[] ⇒ single-cover
+   * behavior (every existing host that builds a CoverPatch is unchanged). The 7
+   * cover fields above are UNCHANGED and INDEPENDENT — no field of one is derived
+   * from the other (the ONE exception is the user-initiated "Make cover" action).
+   */
+  coverGallery?: OfferingGalleryImage[];
 }
 
 export interface CoverPickerProps {
@@ -168,6 +181,8 @@ export interface CoverPickerProps {
   initialCredit: string | null;
   initialCreditUrl: string | null;
   initialAlt: string | null;
+  /** issue #868 [cover-gallery] — the ADDITIONAL image/GIF items (default []). */
+  initialCoverGallery?: OfferingGalleryImage[];
   onCoverChange: (patch: CoverPatch) => void;
   onShowToast: (msg: string) => void;
   disabled?: boolean;
@@ -195,6 +210,55 @@ const warnHaptic = (): void => {
   void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
 };
 
+// issue #1348 — map a raw pick/trim failure to friendly in-sheet copy so the
+// scary system string (e.g. "PHPhotosErrorDomain error 3164") never reaches the
+// user. Defensive substring match on error.message; first match wins; non-Error
+// throws fall through to the generic clause. Cancel (Back) never reaches here —
+// it early-returns with an info notice upstream, so no cancel becomes an error.
+const friendlyVideoCoverError = (error: unknown): string => {
+  const raw = error instanceof Error ? error.message : "";
+  const message = raw.toLowerCase();
+  // A never-presented trim editor already throws friendly copy
+  // (presentationFailedError, "The trim screen didn't open…") — pass through.
+  if (message.includes("trim screen didn't open")) {
+    return raw;
+  }
+  // iCloud-only / network-required asset (expo PHPhotosErrorDomain 3164).
+  if (
+    message.includes("3164") ||
+    message.includes("phphotoserrordomain") ||
+    message.includes("networkaccessrequired") ||
+    message.includes("icloud")
+  ) {
+    return "This video is saved in iCloud. Open it in Photos to download it to your phone, then try again.";
+  }
+  // Trim / FFmpeg export failure (react-native-video-trim onError; rc 1).
+  if (
+    message.includes("video trim failed") ||
+    message.includes("video trim") ||
+    message.includes("trimming_failed") ||
+    message.includes("command failed") ||
+    message.includes("rc 1")
+  ) {
+    return "Couldn't trim this video. Try another clip.";
+  }
+  // Generic fallback (incl. non-Error throw) — never the raw system message.
+  return "Couldn't add this video. Try another clip.";
+};
+
+// issue #1338 — present-after-dismissal. expo-image-picker's
+// launchImageLibraryAsync promise can resolve BEFORE the picker's native
+// dismiss transition finishes on iOS; presenting the trim modal in that window
+// is refused by iOS New Arch ("already presenting"). Drain RN interactions,
+// then settle past the ~250ms iOS modal dismiss animation.
+const PICKER_DISMISS_SETTLE_MS = 350;
+const waitForPickerDismissal = (): Promise<void> =>
+  new Promise((resolve) => {
+    InteractionManager.runAfterInteractions(() => {
+      setTimeout(resolve, PICKER_DISMISS_SETTLE_MS);
+    });
+  });
+
 export const CoverPicker: React.FC<CoverPickerProps> = ({
   target,
   initialCoverHue = 0,
@@ -205,6 +269,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   initialCredit,
   initialCreditUrl,
   initialAlt,
+  initialCoverGallery,
   onCoverChange,
   onShowToast,
   disabled = false,
@@ -221,6 +286,13 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   const [activeTab, setActiveTab] = useState<CoverTabId>("library");
   const [uploading, setUploading] = useState(false);
   const [mediaDisplayError, setMediaDisplayError] = useState<string | null>(null);
+  // issue #1338 — in-sheet feedback channel for the cover-VIDEO flow. Rendered
+  // INSIDE LibraryTab (never a root-portal Toast, which iOS drops while the
+  // CoverPickerSheet modal is up). tone drives info (warm) vs error (semantic).
+  const [videoPickNotice, setVideoPickNotice] = useState<{
+    tone: "info" | "error";
+    text: string;
+  } | null>(null);
 
   // Video upload hook — event/trip writes events.cover_media_url; brand writes
   // brands.cover_media_url (via the apply step on ready). For brand, eventRowId
@@ -299,6 +371,35 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     setMediaDisplayError(null);
   }, [localCover.coverMediaUrl]);
 
+  // issue #868 [cover-gallery] — the ADDITIONAL image/GIF items, managed
+  // SEPARATELY from the primary cover. A ref mirrors the state so cover-only
+  // emits (emitChange) always carry the current gallery without stale closures.
+  const [gallery, setGallery] = useState<OfferingGalleryImage[]>(
+    initialCoverGallery ?? [],
+  );
+  const galleryRef = useRef<OfferingGalleryImage[]>(initialCoverGallery ?? []);
+  useEffect(() => {
+    const next = initialCoverGallery ?? [];
+    setGallery(next);
+    galleryRef.current = next;
+  }, [initialCoverGallery]);
+  const localCoverRef = useRef<CoverPatch>(localCover);
+  useEffect(() => {
+    localCoverRef.current = localCover;
+  }, [localCover]);
+  // Confirm state for the OQ-3 "replace video cover with this photo?" flow. Holds
+  // the gallery index awaiting confirmation (null = no pending confirm).
+  const [pendingMakeCoverIndex, setPendingMakeCoverIndex] = useState<number | null>(
+    null,
+  );
+  // issue #868 [cover-gallery], M.3 — GIF/Photos tab target: "cover" (default,
+  // today's behavior byte-identical) OR "gallery" (append the provider pick to the
+  // additional photos, never touch the cover fields).
+  const [providerAddTarget, setProviderAddTarget] = useState<"cover" | "gallery">(
+    "cover",
+  );
+  const GALLERY_MAX = 8;
+
   useEffect(() => {
     onCoverVideoProcessingChange?.(
       videoUpload.stage.phase === "compressing" ||
@@ -346,7 +447,9 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   const emitChange = useCallback(
     (patch: CoverPatch): void => {
       setLocalCover(patch);
-      onCoverChange(patch);
+      // issue #868 — always carry the current gallery so a cover change never
+      // drops the additional photos (they are INDEPENDENT of the cover).
+      onCoverChange({ ...patch, coverGallery: galleryRef.current });
     },
     [onCoverChange],
   );
@@ -371,8 +474,9 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       coverMediaCreditUrl: UPLOAD_EVENT_COVER_PROVIDER_METADATA.creditUrl,
       coverMediaAlt: "Uploaded video cover",
     });
-    onShowToast("Video cover updated.");
-  }, [emitChange, onShowToast, videoUpload.processedUrl, videoUpload.stage.phase]);
+    // issue #1338 — success feedback renders in-sheet, never via the root Toast.
+    setVideoPickNotice({ tone: "info", text: "Video cover added." });
+  }, [emitChange, videoUpload.processedUrl, videoUpload.stage.phase]);
 
   // ----- Device image/GIF + video pickers --------------------------------
 
@@ -431,6 +535,195 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     return true;
   }, [target, showUploadError]);
 
+  // issue #868 — commit a gallery mutation: update state + ref, re-emit the
+  // UNCHANGED cover fields plus the new gallery (the cover is never touched here).
+  const commitGallery = useCallback(
+    (next: OfferingGalleryImage[]): void => {
+      setGallery(next);
+      galleryRef.current = next;
+      onCoverChange({ ...localCoverRef.current, coverGallery: next });
+    },
+    [onCoverChange],
+  );
+
+  // issue #868 M.3 — append ONE image/GIF item to the gallery (clamp at max). The
+  // shared append path for BOTH the device "Add photo" and the provider (GIF/Photos)
+  // tiles when the target is "gallery". Never touches the cover fields.
+  const appendGalleryItem = useCallback(
+    (item: OfferingGalleryImage): void => {
+      if (galleryRef.current.length >= GALLERY_MAX) {
+        onShowToast(`Up to ${GALLERY_MAX} extra photos.`);
+        return;
+      }
+      commitGallery([...galleryRef.current, item]);
+      lightHaptic();
+      onShowToast("Photo added to gallery.");
+    },
+    [commitGallery, onShowToast],
+  );
+
+  // Add ONE image/GIF from the device library to the gallery (never a video).
+  // Clamps at GALLERY_MAX. Independent of the primary cover — does NOT touch it.
+  const addGalleryPhoto = useCallback(async (): Promise<void> => {
+    if (uploading || disabled || activeVideoUpload) return;
+    if (galleryRef.current.length >= GALLERY_MAX) {
+      onShowToast(`Up to ${GALLERY_MAX} extra photos.`);
+      return;
+    }
+    if (!isAuthReady) {
+      onShowToast("Finishing sign-in before upload. Try again in a moment.");
+      return;
+    }
+    if (!(await ensureMediaPermission())) return;
+    if (!validateEventRowId()) return;
+
+    setUploading(true);
+    let pickedAssets: Parameters<typeof revokeCoverPickedAssets>[0] = [];
+    try {
+      const result = await launchCoverImagePicker();
+      if (result.canceled || result.assets.length === 0) return;
+      pickedAssets = result.assets;
+      const asset = result.assets[0];
+      // Route through the same storage upload as the cover (event_covers /
+      // brand_covers bucket) so the gallery item is a durable public URL.
+      let publicUrl: string;
+      let mediaType: "image" | "gif";
+      if (target.kind === "brand" || target.kind === "venue") {
+        const uploaded = await uploadBrandCover(
+          target.brandId,
+          {
+            uri: asset.uri,
+            mimeType: asset.mimeType,
+            fileName: asset.fileName,
+            fileSize: asset.fileSize,
+          },
+          { previousPublicUrl: null },
+        );
+        publicUrl = uploaded.publicUrl;
+        mediaType = uploaded.mediaType === "gif" ? "gif" : "image";
+      } else {
+        const uploaded = await uploadEventCoverMedia({
+          uri: asset.uri,
+          brandId: target.brandId,
+          eventId: target.eventRowId,
+          mimeType: asset.mimeType,
+          fileName: asset.fileName,
+          fileSize: asset.fileSize,
+          durationMs: null,
+          pickerType: asset.type,
+        });
+        publicUrl = uploaded.publicUrl;
+        mediaType = uploaded.mediaType === "gif" ? "gif" : "image";
+      }
+      const item: OfferingGalleryImage = {
+        url: publicUrl,
+        type: mediaType,
+        alt: null,
+        credit: null,
+      };
+      commitGallery([...galleryRef.current, item]);
+      if (Platform.OS !== "web") {
+        void Haptics.notificationAsync(
+          Haptics.NotificationFeedbackType.Success,
+        ).catch(() => {});
+      }
+      onShowToast("Photo added.");
+    } catch (error) {
+      showUploadError(error);
+    } finally {
+      revokeCoverPickedAssets(pickedAssets);
+      setUploading(false);
+    }
+  }, [
+    activeVideoUpload,
+    commitGallery,
+    disabled,
+    ensureMediaPermission,
+    isAuthReady,
+    onShowToast,
+    showUploadError,
+    target,
+    uploading,
+    validateEventRowId,
+  ]);
+
+  const moveGalleryItem = useCallback(
+    (index: number, direction: -1 | 1): void => {
+      const next = [...galleryRef.current];
+      const target2 = index + direction;
+      if (target2 < 0 || target2 >= next.length) return;
+      [next[index], next[target2]] = [next[target2], next[index]];
+      commitGallery(next);
+      tickHaptic();
+    },
+    [commitGallery],
+  );
+
+  const removeGalleryItem = useCallback(
+    (index: number): void => {
+      const next = galleryRef.current.filter((_, i) => i !== index);
+      commitGallery(next);
+      onShowToast("Photo removed.");
+    },
+    [commitGallery, onShowToast],
+  );
+
+  // Promote a gallery image/GIF to the PRIMARY cover. The prior cover, when it is
+  // an image/GIF, is demoted into the gallery at the vacated slot; when it is a
+  // VIDEO it is REPLACED (discarded) — but only via the explicit OQ-3 confirm.
+  const applyMakeCover = useCallback(
+    (index: number): void => {
+      const item = galleryRef.current[index];
+      if (item === undefined) return;
+      const priorUrl = localCoverRef.current.coverMediaUrl;
+      const priorType = localCoverRef.current.coverMediaType;
+      const priorIsImageLike = priorUrl !== null && priorType !== "video";
+      const nextGallery = [...galleryRef.current];
+      if (priorIsImageLike) {
+        // Demote the prior image/GIF cover into the vacated slot.
+        nextGallery[index] = {
+          url: priorUrl,
+          type: priorType === "gif" ? "gif" : "image",
+          alt: localCoverRef.current.coverMediaAlt,
+          credit: localCoverRef.current.coverMediaCredit,
+        };
+      } else {
+        // Prior cover was a video (or none) → discard it; remove the promoted item.
+        nextGallery.splice(index, 1);
+      }
+      setGallery(nextGallery);
+      galleryRef.current = nextGallery;
+      const patch: CoverPatch = {
+        coverMediaUrl: item.url,
+        coverMediaType: item.type === "gif" ? "gif" : "image",
+        coverMediaProvider: null,
+        coverMediaSourceUrl: null,
+        coverMediaCredit: item.credit ?? null,
+        coverMediaCreditUrl: null,
+        coverMediaAlt: item.alt ?? null,
+        coverGallery: nextGallery,
+      };
+      setLocalCover(patch);
+      localCoverRef.current = patch;
+      onCoverChange(patch);
+      onShowToast("Cover updated.");
+    },
+    [onCoverChange, onShowToast],
+  );
+
+  const requestMakeCover = useCallback(
+    (index: number): void => {
+      if (disabled) return;
+      // OQ-3: replacing a VIDEO cover with a photo requires explicit confirm.
+      if (localCoverRef.current.coverMediaType === "video") {
+        setPendingMakeCoverIndex(index);
+        return;
+      }
+      applyMakeCover(index);
+    },
+    [applyMakeCover, disabled],
+  );
+
   const pickImageOrGifCover = useCallback(async (): Promise<void> => {
     if (uploading || disabled || activeVideoUpload) return;
     if (!isAuthReady) {
@@ -441,6 +734,8 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     if (!validateEventRowId()) return;
 
     setUploading(true);
+    // issue #1338 — an image/GIF pick clears any stale video-flow notice.
+    setVideoPickNotice(null);
     let pickedAssets: Parameters<typeof revokeCoverPickedAssets>[0] = [];
     try {
       const result = await launchCoverImagePicker();
@@ -566,13 +861,19 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     // straight to the duration guard below; clips within the ceiling upload
     // as-is on both desktop AND mobile web (Bunny TUS accepts browser uploads).
     if (!isAuthReady) {
-      onShowToast("Finishing sign-in before upload. Try again in a moment.");
+      // issue #1338 — in-sheet notice, never a root Toast (iOS drops it here).
+      setVideoPickNotice({
+        tone: "info",
+        text: "Finishing sign-in — try again in a moment.",
+      });
       return;
     }
     if (!(await ensureMediaPermission())) return;
     if (!validateEventRowId()) return;
 
     setUploading(true);
+    // issue #1338 — clear any stale notice from a prior attempt.
+    setVideoPickNotice(null);
     try {
       const result = await launchCoverVideoPicker();
       if (result.canceled || result.assets.length === 0) return;
@@ -582,13 +883,33 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       revokeCoverPickedAssets(pickedVideoAssetsRef.current);
       pickedVideoAssetsRef.current = result.assets;
       const asset = result.assets[0];
-      // Web has no native trimmer (SC-7-Web-4): use the raw asset, no crash.
-      // On web `trimVideoWithDedicatedEditor` resolves to a no-op stub, but we
-      // still gate on `isNative` so the raw clip flows straight to upload.
-      const trimResult = isNative
-        ? await trimVideoWithDedicatedEditor(asset.uri, EVENT_COVER_MAX_VIDEO_DURATION_MS)
-        : null;
-      if (isNative && trimResult === null) return;
+      // issue #1338 — trim ONLY when a native clip is over the source ceiling.
+      // Within-ceiling native clips and ALL web clips upload RAW (mirrors the
+      // ORCH-1307 web path), which keeps the flaky native trim modal out of the
+      // common short-clip path entirely.
+      const sourceDurationMs = normalizePickerDurationMs(asset.duration);
+      const needsNativeTrim =
+        isNative && sourceDurationMs > EVENT_COVER_SOURCE_CEILING_MS;
+
+      let trimResult: VideoTrimFinishPayload | null = null;
+      if (needsNativeTrim) {
+        // issue #1338 — present the trim editor ONLY after the OS photo picker
+        // has fully dismissed, so iOS New Arch never refuses a 2nd stacked modal.
+        await waitForPickerDismissal();
+        // The single-line trim call is pinned by the orch-0978 strict-grep C1
+        // gate (exact substring match); prettier-ignore stops printWidth (80)
+        // from re-wrapping it across lines and re-breaking the gate.
+        // prettier-ignore
+        trimResult = await trimVideoWithDedicatedEditor(asset.uri, EVENT_COVER_MAX_VIDEO_DURATION_MS);
+        if (trimResult === null) {
+          // Genuine user cancel (Back). NEVER silent (issue #1338).
+          setVideoPickNotice({
+            tone: "info",
+            text: "No video added — trim to 29 seconds or pick a shorter clip.",
+          });
+          return;
+        }
+      }
       const uploadFile =
         trimResult !== null
           ? await buildTrimmedVideoUploadFile({
@@ -612,7 +933,11 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
             };
       const { durationMs } = uploadFile;
       if (durationMs <= 0) {
-        onShowToast("Could not read this video's duration. Try another clip.");
+        // issue #1338 — in-sheet, never a root Toast.
+        setVideoPickNotice({
+          tone: "error",
+          text: "Could not read this video's duration. Try another clip.",
+        });
         return;
       }
       if (durationMs > EVENT_COVER_SOURCE_CEILING_MS) {
@@ -625,23 +950,32 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         // rare safety net ("trim to 29s"). On web there is NO trimmer — a raw
         // over-ceiling clip is a dead end, so give an actionable web message
         // instead of asking for a trim the browser can't do.
-        onShowToast(
-          isNative
+        // issue #1338 — in-sheet, never a root Toast; literals preserved verbatim.
+        setVideoPickNotice({
+          tone: "error",
+          text: isNative
             ? "Please trim to 29 seconds first."
             : "This video is over 30 seconds. Pick a shorter clip, or trim it in the Mingla Business app.",
-        );
+        });
         return;
       }
       if (uploadFile.bytes <= 0) {
-        onShowToast("Could not read this video's size. Try another clip.");
+        // issue #1338 — in-sheet, never a root Toast.
+        setVideoPickNotice({
+          tone: "error",
+          text: "Could not read this video's size. Try another clip.",
+        });
         return;
       }
       lastVideoUploadFileRef.current = uploadFile;
       await videoUpload.start(uploadFile);
     } catch (error) {
-      onShowToast(
-        error instanceof Error ? error.message : "Video cover upload failed. Try again.",
-      );
+      // issue #1338 — in-sheet, never a root Toast.
+      // issue #1348 — friendly copy, never the raw system message.
+      setVideoPickNotice({
+        tone: "error",
+        text: friendlyVideoCoverError(error),
+      });
     } finally {
       // ORCH-1308: do NOT revoke the picked blob here — the "try again" retry
       // re-reads it (web fetch(blob:uri)). It is retained via
@@ -654,7 +988,6 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     ensureMediaPermission,
     isAuthReady,
     isNative,
-    onShowToast,
     uploading,
     validateEventRowId,
     videoUpload,
@@ -897,6 +1230,8 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     }
     setMediaDisplayError(null);
+    // issue #1338 — removing the cover clears any lingering video-flow notice.
+    setVideoPickNotice(null);
     // Emit the null patch. For brand the parent (BrandEditView /
     // BrandCreationFlow) mirrors into its draft and persists the cleared
     // cover on Save (the brand save path already writes cover_media_url).
@@ -1019,6 +1354,46 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         </View>
       ) : null}
 
+      {/* issue #868 M.3 — "Add to: Cover · Gallery" for the GIF/Photos tabs. Default
+          Cover (byte-identical to today). Gallery appends the tapped provider item
+          to the additional photos (never touches the cover fields). */}
+      {(activeTab === "gif" || activeTab === "stock") ? (
+        <View style={styles.addTargetRow} accessibilityRole="tablist">
+          <Text style={styles.addTargetLabel}>Add to</Text>
+          {(["cover", "gallery"] as const).map((target) => {
+            const isActive = providerAddTarget === target;
+            return (
+              <Pressable
+                key={target}
+                onPress={() => {
+                  tickHaptic();
+                  setProviderAddTarget(target);
+                }}
+                disabled={disabled}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: isActive, disabled }}
+                accessibilityLabel={
+                  target === "cover" ? "Add to cover" : "Add to gallery"
+                }
+                style={[
+                  styles.addTargetChip,
+                  isActive && styles.addTargetChipActive,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.addTargetChipLabel,
+                    isActive && styles.addTargetChipLabelActive,
+                  ]}
+                >
+                  {target === "cover" ? "Cover" : "Gallery"}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+
       {/* Tab bodies */}
       {activeTab === "library" ? (
         <LibraryTab
@@ -1046,6 +1421,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           onRetryVideo={retryVideoCoverUpload}
           onMediaError={handleMediaRenderError}
           mediaDisplayError={mediaDisplayError}
+          videoPickNotice={videoPickNotice}
         />
       ) : null}
 
@@ -1060,7 +1436,17 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           selectedGiphyId={selectedGiphyId}
           selectedPexelsId={null}
           onSelectGiphy={(r) => {
-            void selectGiphy(r);
+            // issue #868 M.3 — Gallery mode appends; Cover mode = today's behavior.
+            if (providerAddTarget === "gallery") {
+              appendGalleryItem({
+                url: r.mediaUrl,
+                type: "gif",
+                alt: r.alt,
+                credit: r.credit,
+              });
+            } else {
+              void selectGiphy(r);
+            }
           }}
           onSelectPexels={() => {}}
           onRetry={() => {
@@ -1084,7 +1470,17 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           selectedPexelsId={selectedPexelsId}
           onSelectGiphy={() => {}}
           onSelectPexels={(r) => {
-            void selectPexels(r);
+            // issue #868 M.3 — Gallery mode appends; Cover mode = today's behavior.
+            if (providerAddTarget === "gallery") {
+              appendGalleryItem({
+                url: r.mediaUrl,
+                type: "image",
+                alt: r.alt,
+                credit: r.credit,
+              });
+            } else {
+              void selectPexels(r);
+            }
           }}
           onRetry={() => {
             if (query.trim().length >= 2) void runProviderSearch();
@@ -1094,6 +1490,29 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           searchActive={query.trim().length >= 2}
         />
       ) : null}
+
+      {/* issue #868 [cover-gallery] — SEPARATE "Additional photos" manager. Writes
+          ONLY the coverGallery (never the primary cover, except the explicit
+          "Make cover" action). Images + GIFs; never video. */}
+      <AdditionalPhotosSection
+        gallery={gallery}
+        max={GALLERY_MAX}
+        disabled={disabled || uploading || activeVideoUpload}
+        pendingMakeCoverIndex={pendingMakeCoverIndex}
+        onAdd={() => {
+          void addGalleryPhoto();
+        }}
+        onMakeCover={requestMakeCover}
+        onMoveEarlier={(i) => moveGalleryItem(i, -1)}
+        onMoveLater={(i) => moveGalleryItem(i, 1)}
+        onRemove={removeGalleryItem}
+        onConfirmMakeCover={() => {
+          const idx = pendingMakeCoverIndex;
+          setPendingMakeCoverIndex(null);
+          if (idx !== null) applyMakeCover(idx);
+        }}
+        onCancelMakeCover={() => setPendingMakeCoverIndex(null)}
+      />
     </View>
   );
 };
@@ -1121,6 +1540,8 @@ const LibraryTab: React.FC<{
   onRetryVideo: () => void;
   onMediaError: (e: EventCoverMediaErrorEvent) => void;
   mediaDisplayError: string | null;
+  // issue #1338 — in-sheet feedback for the cover-VIDEO flow (never a root Toast).
+  videoPickNotice: { tone: "info" | "error"; text: string } | null;
 }> = ({
   hasCover,
   hue,
@@ -1142,6 +1563,7 @@ const LibraryTab: React.FC<{
   onRetryVideo,
   onMediaError,
   mediaDisplayError,
+  videoPickNotice,
 }) => (
   <View>
     <View style={[styles.coverPreview, hasCover && !activeVideoUpload && styles.coverPreviewSelected]}>
@@ -1250,6 +1672,24 @@ const LibraryTab: React.FC<{
                 style={styles.retryButton}
               />
             ) : null}
+          </View>
+        ) : null}
+
+        {/* issue #1338 — in-sheet cover-VIDEO feedback (cancel/over-cap/failure/
+            added). Renders INSIDE CoverPickerSheet's Sheet — a plain View/Text,
+            NOT a native <Modal>, so iOS never drops it while the sheet is up. */}
+        {videoPickNotice !== null ? (
+          <View style={styles.videoNoticeRow}>
+            <Text
+              accessibilityRole="alert"
+              style={
+                videoPickNotice.tone === "error"
+                  ? styles.mediaErrorText
+                  : styles.videoNoticeInfoText
+              }
+            >
+              {videoPickNotice.text}
+            </Text>
           </View>
         ) : null}
 
@@ -1482,6 +1922,191 @@ const GridTile: React.FC<{
   </Pressable>
 );
 
+// ----- issue #868 [cover-gallery] — Additional-photos manager --------------
+
+const AdditionalPhotosSection: React.FC<{
+  gallery: OfferingGalleryImage[];
+  max: number;
+  disabled: boolean;
+  pendingMakeCoverIndex: number | null;
+  onAdd: () => void;
+  onMakeCover: (index: number) => void;
+  onMoveEarlier: (index: number) => void;
+  onMoveLater: (index: number) => void;
+  onRemove: (index: number) => void;
+  onConfirmMakeCover: () => void;
+  onCancelMakeCover: () => void;
+}> = ({
+  gallery,
+  max,
+  disabled,
+  pendingMakeCoverIndex,
+  onAdd,
+  onMakeCover,
+  onMoveEarlier,
+  onMoveLater,
+  onRemove,
+  onConfirmMakeCover,
+  onCancelMakeCover,
+}) => {
+  const [openMenuIndex, setOpenMenuIndex] = useState<number | null>(null);
+  const atCap = gallery.length >= max;
+
+  return (
+    <View style={styles.gallerySection} testID="cover-additional-photos">
+      <Text style={styles.galleryHeader}>Additional photos</Text>
+      <Text style={styles.gallerySub}>
+        Shown after your cover — swipe to flip through them. Up to {max}.
+      </Text>
+
+      {pendingMakeCoverIndex !== null ? (
+        <View
+          style={styles.confirmBanner}
+          accessibilityRole="alert"
+          testID="cover-make-cover-confirm"
+        >
+          <Text style={styles.confirmBannerText}>
+            Replace your video cover with this photo?
+          </Text>
+          <View style={styles.confirmBannerActions}>
+            <Button
+              label="Cancel"
+              variant="ghost"
+              size="sm"
+              shape="square"
+              onPress={onCancelMakeCover}
+            />
+            <Button
+              label="Replace"
+              variant="primary"
+              size="sm"
+              shape="square"
+              onPress={onConfirmMakeCover}
+              testID="cover-make-cover-confirm-replace"
+            />
+          </View>
+        </View>
+      ) : null}
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.galleryStrip}
+      >
+        {gallery.map((item, index) => {
+          const menuOpen = openMenuIndex === index;
+          return (
+            <View key={`gal-${index}-${item.url}`} style={styles.galleryTileWrap}>
+              <Image
+                source={{ uri: item.url }}
+                style={styles.galleryTile}
+                resizeMode="cover"
+                accessibilityIgnoresInvertColors
+                accessibilityLabel={`Extra photo ${index + 1} of ${gallery.length}`}
+              />
+              <Pressable
+                onPress={() => setOpenMenuIndex(menuOpen ? null : index)}
+                disabled={disabled}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={`Options for extra photo ${index + 1}`}
+                accessibilityState={{ expanded: menuOpen, disabled }}
+                style={styles.galleryTileMenuButton}
+              >
+                <Icon name="moreH" size={16} color={textTokens.inverse} />
+              </Pressable>
+              {menuOpen ? (
+                <View style={styles.galleryMenu} accessibilityRole="menu">
+                  <GalleryMenuItem
+                    label="Make cover"
+                    disabled={disabled}
+                    onPress={() => {
+                      setOpenMenuIndex(null);
+                      onMakeCover(index);
+                    }}
+                  />
+                  <GalleryMenuItem
+                    label="Move earlier"
+                    disabled={disabled || index === 0}
+                    onPress={() => {
+                      setOpenMenuIndex(null);
+                      onMoveEarlier(index);
+                    }}
+                  />
+                  <GalleryMenuItem
+                    label="Move later"
+                    disabled={disabled || index === gallery.length - 1}
+                    onPress={() => {
+                      setOpenMenuIndex(null);
+                      onMoveLater(index);
+                    }}
+                  />
+                  <GalleryMenuItem
+                    label="Remove"
+                    disabled={disabled}
+                    destructive
+                    onPress={() => {
+                      setOpenMenuIndex(null);
+                      onRemove(index);
+                    }}
+                  />
+                </View>
+              ) : null}
+            </View>
+          );
+        })}
+
+        {!atCap ? (
+          <Pressable
+            onPress={onAdd}
+            disabled={disabled}
+            accessibilityRole="button"
+            accessibilityLabel="Add photo"
+            accessibilityState={{ disabled }}
+            testID="cover-add-photo"
+            style={({ pressed }) => [
+              styles.galleryAddTile,
+              pressed && styles.tilePressed,
+            ]}
+          >
+            <Icon name="plus" size={22} color={accent.warm} />
+            <Text style={styles.galleryAddLabel}>Add photo</Text>
+          </Pressable>
+        ) : null}
+      </ScrollView>
+    </View>
+  );
+};
+
+const GalleryMenuItem: React.FC<{
+  label: string;
+  disabled: boolean;
+  destructive?: boolean;
+  onPress: () => void;
+}> = ({ label, disabled, destructive = false, onPress }) => (
+  <Pressable
+    onPress={onPress}
+    disabled={disabled}
+    accessibilityRole="menuitem"
+    accessibilityLabel={label}
+    accessibilityState={{ disabled }}
+    style={({ pressed }) => [
+      styles.galleryMenuItem,
+      pressed && !disabled && styles.galleryMenuItemPressed,
+    ]}
+  >
+    <Text
+      style={[
+        styles.galleryMenuItemLabel,
+        destructive && { color: semantic.error },
+        disabled && styles.galleryMenuItemDisabled,
+      ]}
+    >
+      {label}
+    </Text>
+  </Pressable>
+);
+
 const styles = StyleSheet.create({
   root: {
     flex: 1,
@@ -1587,6 +2212,19 @@ const styles = StyleSheet.create({
   videoErrorRow: {
     gap: spacing.xs,
     marginTop: spacing.xs,
+  },
+  // issue #1338 — in-sheet cover-video notice (info tone). Errors reuse
+  // styles.mediaErrorText (semantic.error); info uses the warm accent.
+  videoNoticeRow: {
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  videoNoticeInfoText: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: accent.warm,
+    marginTop: spacing.xs,
+    fontWeight: "600",
   },
   retryButton: {
     alignSelf: "flex-start",
@@ -1694,5 +2332,149 @@ const styles = StyleSheet.create({
     color: textTokens.tertiary,
     textAlign: "center",
     marginTop: spacing.sm,
+  },
+  // issue #868 [cover-gallery] M.3 — provider "Add to: Cover · Gallery" control.
+  addTargetRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    marginBottom: spacing.md,
+  },
+  addTargetLabel: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: textTokens.tertiary,
+    marginRight: spacing.xs,
+  },
+  addTargetChip: {
+    minHeight: 32,
+    paddingHorizontal: spacing.md,
+    justifyContent: "center",
+    borderRadius: radiusTokens.full,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    backgroundColor: glass.tint.profileBase,
+  },
+  addTargetChipActive: {
+    borderColor: accent.border,
+    backgroundColor: accent.tint,
+  },
+  addTargetChipLabel: {
+    fontSize: typography.buttonMd.fontSize,
+    lineHeight: typography.buttonMd.lineHeight,
+    fontWeight: "600",
+    color: textTokens.secondary,
+  },
+  addTargetChipLabelActive: {
+    color: accent.warm,
+  },
+  // issue #868 [cover-gallery] — Additional-photos manager.
+  gallerySection: {
+    marginTop: spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: glass.border.profileBase,
+    paddingTop: spacing.md,
+  },
+  galleryHeader: {
+    fontSize: typography.bodyLg.fontSize,
+    lineHeight: typography.bodyLg.lineHeight,
+    fontWeight: "600",
+    color: textTokens.primary,
+  },
+  gallerySub: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: textTokens.tertiary,
+    marginTop: 2,
+    marginBottom: spacing.sm,
+  },
+  confirmBanner: {
+    borderRadius: radiusTokens.md,
+    borderWidth: 1,
+    borderColor: accent.border,
+    backgroundColor: accent.tint,
+    padding: spacing.md,
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  confirmBannerText: {
+    fontSize: typography.body.fontSize,
+    lineHeight: typography.body.lineHeight,
+    fontWeight: "600",
+    color: textTokens.primary,
+  },
+  confirmBannerActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: spacing.sm,
+  },
+  galleryStrip: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    paddingVertical: 2,
+    alignItems: "flex-start",
+  },
+  galleryTileWrap: {
+    width: 96,
+  },
+  galleryTile: {
+    width: 96,
+    height: 72,
+    borderRadius: radiusTokens.md,
+    backgroundColor: glass.tint.profileElevated,
+  },
+  galleryTileMenuButton: {
+    position: "absolute",
+    top: spacing.xs,
+    right: spacing.xs,
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.55)",
+  },
+  galleryMenu: {
+    marginTop: spacing.xs,
+    borderRadius: radiusTokens.md,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    backgroundColor: glass.tint.profileElevated,
+    overflow: "hidden",
+  },
+  galleryMenuItem: {
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: spacing.sm,
+  },
+  galleryMenuItemPressed: {
+    backgroundColor: accent.tint,
+  },
+  galleryMenuItemLabel: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    color: textTokens.primary,
+  },
+  galleryMenuItemDisabled: {
+    color: textTokens.tertiary,
+    opacity: 0.5,
+  },
+  galleryAddTile: {
+    width: 96,
+    height: 72,
+    borderRadius: radiusTokens.md,
+    borderWidth: 1,
+    borderColor: accent.border,
+    borderStyle: "dashed",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 2,
+    backgroundColor: accent.tint,
+  },
+  galleryAddLabel: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    fontWeight: "600",
+    color: accent.warm,
   },
 });

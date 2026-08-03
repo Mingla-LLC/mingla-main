@@ -62,6 +62,7 @@ import { useAppStore } from "../store/appStore";
 // ORCH-1016 — Events/Trips pill + Trips feed content.
 import { mixpanelService } from "../services/mixpanelService";
 import { TripsContent } from "./discover/TripsContent";
+import { StaysContent } from "./discover/StaysContent";
 import type { DiscoverTripRow } from "../services/tripsDiscoveryService";
 import { useTabScrollRegistry } from "../hooks/useTabScrollRegistry";
 import { useUserLocation } from "../hooks/useUserLocation";
@@ -927,10 +928,10 @@ function DiscoverScreen({
 
   const useGlass = !reduceTransparency && !isAndroidPreBlur;
 
-  // ── ORCH-1016: Events/Trips spotlight-pill switcher (Likes pattern, exact) ──
+  // ── ORCH-1016 / #1423: Events/Trips/Stays spotlight capsule ──
   const discoverActiveTabSnapshot = useAppStore.getState().discoverActiveTab;
   const setDiscoverActiveTabRegistry = useAppStore((s) => s.setDiscoverActiveTab);
-  const [activeTab, setActiveTab] = useState<"events" | "trips">(
+  const [activeTab, setActiveTab] = useState<"events" | "trips" | "stays">(
     discoverActiveTabSnapshot,
   );
   useEffect(() => {
@@ -939,7 +940,7 @@ function DiscoverScreen({
 
   const cc = glass.chrome;
   const TAB_PILL_HEIGHT = 52;
-  const TABS_1016: Array<{ id: "events" | "trips"; label: string; icon: IconName }> = [
+  const TABS_1016: { id: "events" | "trips" | "stays"; label: string; icon: IconName }[] = [
     { id: "events", label: t("discover:events_tab", "Events"), icon: "sparkles-outline" },
     // ORCH-1016 REWORK (operator, 2026-05-30): the Trips tab reads as travel via a
     // paper-plane / send glyph (Lucide `Send`, mapped from `paper-plane-outline`)
@@ -947,14 +948,15 @@ function DiscoverScreen({
     // `sparkles-outline`; already bundled (also used for "Leaving from" in the
     // trip detail). No new asset, no emoji.
     { id: "trips", label: t("discover:trips_tab", "Trips"), icon: "paper-plane-outline" },
+    { id: "stays", label: "Stays", icon: "moon-outline" },
   ];
   const tab1016LayoutsRef = useRef<
-    Record<"events" | "trips", { x: number; width: number } | undefined>
-  >({ events: undefined, trips: undefined });
+    Record<"events" | "trips" | "stays", { x: number; width: number } | undefined>
+  >({ events: undefined, trips: undefined, stays: undefined });
   const [tab1016LayoutTick, setTab1016LayoutTick] = useState(0);
   const spotlight1016X = useRef(new RNAnimated.Value(0)).current;
   const spotlight1016Width = useRef(new RNAnimated.Value(0)).current;
-  const handleTab1016Layout = (id: "events" | "trips", x: number, width: number): void => {
+  const handleTab1016Layout = (id: "events" | "trips" | "stays", x: number, width: number): void => {
     tab1016LayoutsRef.current[id] = { x, width };
     setTab1016LayoutTick((v) => v + 1);
   };
@@ -997,7 +999,7 @@ function DiscoverScreen({
     cc.motion.springMass,
     cc.nav.spotlightInset,
   ]);
-  const handleTab1016Change = (tab: "events" | "trips"): void => {
+  const handleTab1016Change = (tab: "events" | "trips" | "stays"): void => {
     if (tab === activeTab) return;
     if (Platform.OS === "ios") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
@@ -2160,9 +2162,15 @@ function DiscoverScreen({
         ) : null}
       </View>
 
-      {/* ORCH-1016 — Trips tab content (own filter row + feed). Mounts in place of
-          the Events grid; the Events pipeline below is byte-for-byte unchanged. */}
-      {activeTab === "trips" ? (
+      {/* Trips and Stays own isolated filter/feed bodies. The Events pipeline
+          remains the fallback branch and is unchanged. */}
+      {activeTab === "stays" ? (
+        <StaysContent
+          headerHeight={HEADER_PANEL_HEIGHT}
+          reduceMotion={reduceMotion}
+          reduceTransparency={reduceTransparency}
+        />
+      ) : activeTab === "trips" ? (
         <TripsContent
           headerHeight={HEADER_PANEL_HEIGHT}
           onOpenTrip={handleOpenTripDetail}

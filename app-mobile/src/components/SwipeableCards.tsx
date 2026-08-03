@@ -38,8 +38,8 @@ import { glass } from "../constants/designSystem";
 import { throttledReverseGeocode } from '../utils/throttledGeocode';
 
 import { ImageWithFallback } from "./figma/ImageWithFallback";
-import { formatCurrency, formatDistance, parseAndFormatDistance, formatPriceRange, getCurrencySymbol, getCurrencyRate } from "./utils/formatters";
-import { PriceTierSlug, tierLabel, tierRangeLabel, googleLevelToTierSlug, TIER_BY_SLUG, formatTierLabel } from "../constants/priceTiers";
+import { formatCurrency, formatDistance, parseAndFormatDistance } from "./utils/formatters";
+import { PriceTierSlug, tierLabel, tierRangeLabel, googleLevelToTierSlug, TIER_BY_SLUG } from "../constants/priceTiers";
 // ORCH-0640 ch09: experiencesService + experienceGenerationService DELETED.
 // UserPreferences re-imported from canonical source. Legacy save calls
 // (ExperiencesService.saveExperience) redirected to savedCardsService.saveCard
@@ -1862,7 +1862,7 @@ export default function SwipeableCards({
       images: currentRec.images?.length ? currentRec.images : [currentRec.image].filter(Boolean),
       rating: currentRec.rating ?? 0,
       reviewCount: currentRec.reviewCount ?? 0,
-      priceRange: currentRec.priceRange || 'Free',
+      priceRange: currentRec.priceRange,
       distance: currentRec.distance || '',
       travelTime: currentRec.travelTime || '',
       address: currentRec.address,
@@ -2326,7 +2326,7 @@ export default function SwipeableCards({
       images: card.images?.length ? card.images : [card.image].filter(Boolean),
       rating: card.rating ?? 0,
       reviewCount: card.reviewCount ?? 0,
-      priceRange: card.priceRange || 'Free',
+      priceRange: card.priceRange,
       distance: card.distance || '',
       travelTime: card.travelTime || '',
       address: card.address,
@@ -2873,11 +2873,9 @@ export default function SwipeableCards({
                         {nextCard.rating != null && nextCard.rating > 0 && (
                           <GlassBadge iconName="star">{nextCard.rating.toFixed(1)}</GlassBadge>
                         )}
-                        <GlassBadge iconName="pricetag">
-                          {nextCard.priceTier && TIER_BY_SLUG[nextCard.priceTier as PriceTierSlug]
-                            ? formatTierLabel(nextCard.priceTier as PriceTierSlug, getCurrencySymbol(accountPreferences?.currency), getCurrencyRate(accountPreferences?.currency))
-                            : formatPriceRange(nextCard.priceRange || t('cards:swipeable.free'), accountPreferences?.currency) || t('cards:swipeable.free')}
-                        </GlassBadge>
+                        {nextCard.priceRange ? (
+                          <GlassBadge iconName="pricetag">{nextCard.priceRange}</GlassBadge>
+                        ) : null}
                         <GlassBadge iconName={NextCategoryIcon}>
                           {getReadableCategoryName(nextCard.category)}
                         </GlassBadge>
@@ -3071,11 +3069,9 @@ export default function SwipeableCards({
                             {currentRec.rating.toFixed(1)}
                           </GlassBadge>
                         )}
-                        <GlassBadge iconName="pricetag" entryIndex={3}>
-                          {currentRec.priceTier && TIER_BY_SLUG[currentRec.priceTier as PriceTierSlug]
-                            ? formatTierLabel(currentRec.priceTier as PriceTierSlug, getCurrencySymbol(accountPreferences?.currency), getCurrencyRate(accountPreferences?.currency))
-                            : formatPriceRange(currentRec.priceRange || t('cards:swipeable.free'), accountPreferences?.currency) || t('cards:swipeable.free')}
-                        </GlassBadge>
+                        {currentRec.priceRange ? (
+                          <GlassBadge iconName="pricetag" entryIndex={3}>{currentRec.priceRange}</GlassBadge>
+                        ) : null}
                         <GlassBadge iconName={CategoryIcon} entryIndex={4}>
                           {getReadableCategoryName(currentRec.category)}
                         </GlassBadge>

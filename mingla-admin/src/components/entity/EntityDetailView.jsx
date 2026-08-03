@@ -83,7 +83,7 @@ export function EntityDetailView({ header, sections = [], actions = [], loading,
         <SectionCard key={section.label || si} title={section.label}>
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
             {section.fields.map((field, fi) => (
-              <div key={field.label || fi} className="flex flex-col gap-0.5">
+              <div key={field.key || `${field.label || "field"}-${fi}`} className="flex flex-col gap-0.5">
                 <dt className="text-xs font-medium uppercase tracking-wide text-[var(--color-text-tertiary)]">
                   {field.label}
                 </dt>

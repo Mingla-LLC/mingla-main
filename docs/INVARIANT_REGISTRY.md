@@ -7,6 +7,353 @@
 
 ---
 
+## ACTIVE — issue #1221 (venue and RSVP refund control plane — CLOSED 2026-07-31, PR #1400)
+
+### I-PROPOSED-1221-ONE-TYPED-REFUND-TRUTH (ACTIVE)
+- **Rule:** `source_refunds.id` is the single venue-reservation/RSVP-contribution refund-operation truth across provider attempts, source projection, payout/debt effects, notifications, and Operations recovery. No source table, client, webhook, or provider adapter may independently mark a refund terminal.
+- **Enforcement:** `20270131001221_issue_1221_source_refund_control_plane.sql` owns the operation, attempt, event, allocation, and recovery topology; `.github/scripts/strict-grep/issue-1221-source-refund-control-plane.mjs` pins the sole migration and canonical control-plane path.
+- **Regression:** The paired `issue_1221_source_refund_control_plane` SQL and Edge happy/adversarial suites prove one operation identity through creation, claim, provider transition, projection, and replay.
+- **Established:** DRAFT in the binding #1221 SPEC; ACTIVE at CLOSE after PR #1400 all-green merge, production migration/function rollout, #1430 provider replay PASS, and #1436 final capacity PASS.
+
+### I-PROPOSED-1221-ORIGINAL-MONEY-ONLY (ACTIVE)
+- **Rule:** Refund amount and currency are derived under lock from the canonical paid source. Client, display, default, converted, or newly supplied money values never enter venue/RSVP refund creation.
+- **Enforcement:** The #1221 migration/RPC contract derives immutable paid subunits and currency; the strict gate rejects client-owned amount/currency authority and preserves server-owned provider inputs.
+- **Regression:** The paired SQL and shared Edge suites cover altered amount/currency, partial/full bounds, invalid source state, and cross-provider currency rejection.
+- **Established:** ACTIVE at #1221 CLOSE after independent SQL/Edge tester PASS and real TEST-provider amount verification.
+
+### I-PROPOSED-1221-INITIATED-IS-NOT-PROCESSED (ACTIVE)
+- **Rule:** Provider initiation, acknowledgement, pending, or unknown status is never treated as processed. Only verified Stripe success or Paystack processed truth may commit the terminal source projection, processed notification, or post-release liability.
+- **Enforcement:** The canonical Stripe/Paystack routers and provider-event RPC own transition mapping; source projection is downstream of the verified database `processed` transition.
+- **Regression:** The #1221 shared/webhook happy/adversarial suites and #1430 provider-state matrix prove pending, ambiguous, malformed, and permission-denied paths remain nonterminal.
+- **Established:** ACTIVE at #1221 CLOSE after both rails converged in TEST without a premature terminal projection.
+
+### I-PROPOSED-1221-RETRY-WITHOUT-DOUBLE-REFUND (ACTIVE)
+- **Rule:** Ambiguous retries reuse the same operation/attempt/provider identity. A new provider POST is permitted only after definitive failure and renewed authorization; a replay may never manufacture a second refund.
+- **Enforcement:** Attempt uniqueness, reconcile-before-POST ordering, canonical provider identity, and success-only POST authority are pinned by the #1221 and #1430 strict gates.
+- **Regression:** The #1221 control-plane suites plus #1430 implementor/tester runtime guards prove lost-response adoption, immediate replay, duplicate ambiguity, identity substitution rejection, and no-extra-POST behavior.
+- **Established:** ACTIVE at #1221 CLOSE after Stripe and Paystack TEST replays returned the same provider operations with exactly one POST per refund leg.
+
+### I-PROPOSED-1221-UNRESOLVED-REFUND-NEVER-RELEASES (ACTIVE)
+- **Rule:** Queued, pending, attention, ambiguous, and failed refund obligations block the affected payout amount; only processed refund subunits may reduce a release.
+- **Enforcement:** The migration's shared advisory-lock and ledger-allocation contracts coordinate refund and payout state so an unresolved obligation cannot race a release.
+- **Regression:** The paired SQL happy/adversarial suites exercise refund-versus-release concurrency, unresolved holds, processed reductions, and replay.
+- **Established:** ACTIVE at #1221 CLOSE after disposable PostgreSQL 17 concurrency proof and independent tester PASS.
+
+### I-PROPOSED-1221-POST-RELEASE-ONE-LIABILITY (ACTIVE)
+- **Rule:** A processed post-release venue/RSVP refund creates at most one bounded organiser adjustment/debt effect, never more than the organiser cash actually delivered and never once per replay.
+- **Enforcement:** `source_refund_ledger_allocations` and its unique operation allocation key own the bounded liability; clients and provider adapters cannot write it directly.
+- **Regression:** The #1221 SQL concurrency/replay suites prove one allocation, cash-delivered bounds, both provider rails, and repeated webhook/worker safety.
+- **Established:** ACTIVE at #1221 CLOSE after migration verification and independent allocation/debt regression PASS.
+
+### I-PROPOSED-1221-GUEST-REFUND-TOKEN-BOUND (ACTIVE)
+- **Rule:** Anonymous venue-refund cancellation, status, and attention recovery require the matching reservation token. Public callers receive no unscoped lookup and no distinguishable secret/state oracle; only a protected hash is stored.
+- **Enforcement:** `guestReservationToken.ts`, guest-facing Edge handlers, FORCE-RLS/grant boundaries, and the approved `/refund/` route classification preserve token-bound authority.
+- **Regression:** The venue-confirm guest-token suite, buyer-route tests, SQL grant tests, and adversarial wrong/missing/rotated-token cases execute in blocking CI.
+- **Established:** ACTIVE at #1221 CLOSE after guest-route reachability and negative-auth tester PASS.
+
+### I-PROPOSED-1221-NOTIFICATION-IS-NONAUTHORITATIVE (ACTIVE)
+- **Rule:** Push, email, and SMS reflect committed refund truth but can never advance, roll back, or fabricate money state. Delivery failure remains retryable/observable without changing the refund.
+- **Enforcement:** The source-refund outbox/delivery ledger and `sourceRefundNotifications.ts` consume committed events; `notify-dispatch`/`notify-outbox-drain` require their existing exact service authorization before claim or provider I/O.
+- **Regression:** The safe-boundary, dual-pool, service-role authorization, attention, and notification happy/adversarial suites prove ordering, idempotency, redaction, and nonauthoritative failure.
+- **Established:** ACTIVE at #1221 CLOSE after the P0 authorization rework, independent true-reversion proof, and exact production deployment.
+
+### I-PROPOSED-1221-REFUND-ACTIONS-TENANT-AUDITED (ACTIVE)
+- **Rule:** Brand staff may act only on their own brand with the required permission. Admin recovery actions are bounded, active-Admin authorized, state/generation/claim checked, and exactly audited; nobody may manually mark a refund processed.
+- **Enforcement:** Guard-first service-only Admin RPCs/Edge functions, immutable query snapshots/cursors, RLS/grants, and audit records own Operations access; browser Admin never holds service authority.
+- **Regression:** Admin SQL/Edge/UI happy/adversarial suites cover cross-tenant denial, stale generation, expired claim, protected guest override, concurrent unseen rows, and forbidden processed mutation.
+- **Established:** ACTIVE at #1221 CLOSE after SC-27 executable unseen-row proof and independent Admin authorization PASS.
+
+### I-PROPOSED-1221-STAY-ADAPTER-NO-INVENTORY-REUSE (ACTIVE)
+- **Rule:** Stay commerce may consume the typed paid-source refund adapter, but it may not reuse restaurant table/reservation inventory or create a second refund truth. Stay activation remains independently gated.
+- **Enforcement:** The source-type constraints and #1221 strict gate keep venue reservation, RSVP contribution, and future Stay paid-source adapters explicit while preserving their separate inventory owners.
+- **Regression:** The #1221 boundary suites and Stay commerce gates reject unsupported source types, cross-source identity substitution, and restaurant-inventory reuse.
+- **Established:** ACTIVE at #1221 CLOSE; Stay remains dark until #1392 independently proves its own end-to-end activation gates.
+
+### I-PROPOSED-1221-ORDERS-UNCHANGED (ACTIVE)
+- **Rule:** Existing order, ticket, and trip refund paths, provider markers, and payout behavior remain unchanged by the venue/RSVP control plane.
+- **Enforcement:** The #1221 strict gate pins the new source-refund boundary while existing #1175/#1179 order refund routers and tests remain the authority for orders.
+- **Regression:** Existing order/Paystack/Stripe refund suites run alongside the #1221 happy/adversarial tests in blocking CI and fail on cross-path semantic drift.
+- **Established:** ACTIVE at #1221 CLOSE after all legacy refund suites and both provider rails passed on the merged/deployed implementation.
+
+---
+
+## ACTIVE — issue #1436 (temporary secret-capacity exception retired at 85 names)
+
+### I-PROPOSED-1436-SECRET-CAPACITY-EXIT (ACTIVE)
+- **Rule:** Production has exactly 85 user-managed Supabase secret names under the enforced manifest and no #1430 capacity exception. `MINGLA_DELIVERY_FLAGS_JSON` schema v2 owns three independent strict payment-operation booleans; missing or invalid financial authority fails safe (no onboarding flip, no payout execution, source-refund provider POSTs disabled). `AD_CONVERSION_TOKENS.NOTIFICATION_RECIPIENT_HMAC_SECRET` owns the exact untransformed current notification-recipient HMAC material and missing/invalid material fails before provider HTTP. Historical fingerprint material must be preserved whenever dependent deliveries or pending intents exist; replacement without a previous key is allowed only after a value-blind production gate proves zero dependent deliveries and zero pending intents, followed by one operator-only send and identical retries proving one provider acceptance before and after direct-name removal. The retired direct names `SOURCE_REFUNDS_POST_DISABLED`, `PAYOUT_RELEASE_EXECUTE`, `PAYOUT_HOLD_ONBOARD_FLIP`, and `NOTIFICATION_RECIPIENT_HMAC_SECRET` remain absent unless a new approved bounded migration issue explicitly restores one.
+- **Enforcement:** `supabase/secrets.manifest.json` pins exact 85-name authority and zero exceptions; `.github/scripts/strict-grep/issue-1436-secret-capacity-exit.mjs`, the strengthened #1203 capacity gate, and the strengthened #1430 refund-replay gate pin bundle ownership, safe defaults, retired-name absence, and provider replay safety. The scheduled/manual names-only audit requires exact manifest parity without raw CLI output.
+- **Regression:** `scripts/secrets/issue_1436_secret_capacity_exit.test.mjs` proves exact set parity, both bundle owners, and fail-closed return of any retired name. The #1437 happy/adversarial runtime suite continues to prove all 64 payment combinations, strict schema handling, raw HMAC preservation, redacted diagnostics, and safe defaults. Every structural gate has controlled true-source reversions.
+- **Established:** ACTIVE at issue #1436 CLOSE after #1437 independent PASS and exact merged deployment, private bundle migration, four individually verified unsets, exact 85-name live audit, and independent #1436 tester PASS.
+
+---
+
+## ACTIVE — issue #1437 (temporary payment controls into existing bundles — CLOSED 2026-07-31, PR #1438)
+
+### I-PROPOSED-1437-BUNDLED-CONTROLS-PRESERVE-FAIL-SAFE-AUTHORITY (ACTIVE)
+- **Rule:** `MINGLA_DELIVERY_FLAGS_JSON` schema v1 remains readable unchanged; schema v2 adds exactly the three independent `payment_operations` booleans. During migration, valid schema-v2 fields win and every other bundle state falls back only to its exact direct name. Missing or invalid onboarding and payout-execution controls resolve false; missing or invalid source-refund disabled control resolves true. The notification-recipient HMAC resolves byte-for-byte from `AD_CONVERSION_TOKENS` first, then its exact direct name, and missing/invalid material fails before provider HTTP. No diagnostic may expose secret material, length, prefix, or digest.
+- **Enforcement:** `.github/scripts/strict-grep/issue-1437-secret-bundle-compatibility.mjs` pins the strict schemas, exact legacy mappings, four production call sites, safe defaults, unchanged Phase-A manifest, runtime proof, and blocking CI wiring; `--self-test` performs true-source reversions across each clause.
+- **Implementor happy-path proof:** `supabase/functions/_shared/issue_1437_secret_bundle_compatibility.test.ts` proves schema-v1 parity, all 64 independent schema-v2 combinations, bundle-first authority, exact direct fallback, safe defaults, HMAC byte preservation/fingerprint parity, fail-closed invalid material, and redacted diagnostics. Existing #1203 and #1221 suites run in the same blocking workflow.
+- **Established:** DRAFT at issue #1437 IMPLEMENT; ACTIVE at CLOSE after independent tester PASS, all-green merge `b17fb8f9f`, exact eight-function production deployment, downloaded-source parity, preserved JWT posture, and value-blind fail-safe runtime proof.
+
+---
+
+## ACTIVE — issue #1430 (test refund replay safety — CLOSED 2026-07-30, PR #1433)
+
+### I-PROPOSED-1430-REFUND-REPLAY-USES-PROVIDER-IDENTITY (ACTIVE)
+- **Rule:** A refund replay MUST prove and use the provider's canonical payment identity before it reconciles or posts money. For Paystack, the public transaction reference is verified first and must resolve to the exact reference, currency, safe positive numeric transaction ID, non-negative safe integer amount, and one approved transaction state. Exactly `success`, `reversal-pending`, and `reversed` may perform read-only numeric-ID refund reconciliation; adoption additionally requires the exact transaction identity, merchant note, amount, and any persisted provider refund ID. Only `success` plus no exact row may authorize a fresh refund POST. `reversal-pending` or `reversed` without an exact row remains retryable ambiguity with zero POSTs, and any unknown or malformed state fails before both list and POST. Duplicate recovery re-verifies under the same split. For Stripe, a missing application-fee ID must be proven through the exact PaymentIntent → Charge → Application Fee chain before either refund leg posts; a permission denial on those identity reads records a durable redacted `needs_attention` fee state and returns before any buyer refund POST.
+- **Enforcement:** `.github/scripts/strict-grep/issue-1430-refund-replay-safety.mjs` pins provider-identity-first ordering, the three-state read-only reconciliation allowlist, `success`-only POST authority, exact reconciliation, duplicate ambiguity, Stripe's no-money permission-denial path, both runtime guards' dedicated blocking workflow, and the associated exact secret-manifest contract; its `--self-test` performs true-source reversions for every pinned clause.
+- **Implementor happy-path proof:** `supabase/functions/_shared/__tests__/issue_1430_refund_replay_happy.test.ts` proves first-call `success` POST followed by immediate `reversal-pending` exact adoption with one total POST, exact lost-response adoption, retryable mismatch, pre-POST identity mismatch, Stripe PaymentIntent → Charge → Fee proof before both refund legs, processed replay without new provider calls, and durable Stripe permission denial with no refund POST.
+- **Tester-adversarial:** `supabase/functions/_shared/__tests__/issue_1430_refund_replay.tester.adversarial.test.ts` independently proves the approved-state authority matrix, fail-closed unknown/malformed identity, duplicate recovery after `reversal-pending`, transaction/refund-ID substitution resistance, and zero unauthorized POSTs; `.github/workflows/issue-1430-refund-replay-tests.yml` executes both implementor and tester runtime guards in blocking CI.
+- **Established:** DRAFT at issue #1430 SPEC and Binding Amendment 4; provider-state authority refined by Binding Amendment 5; ACTIVE at CLOSE after independent tester PASS, all-green PR #1433 merge, exact production deployment, and no-extra-POST runtime proof.
+
+---
+
+## ACTIVE — issue #1376 (RSVP guest console: the sheet's remove-confirm was dropped and its approve/deny error toast was dropped on iOS — Tier 2 of the #1342 modal-collision sweep, FINAL group — ratified at CLOSE 2026-07-30)
+
+> Registered DRAFT at issue #1376 [rsvp-console-modal-fix] IMPLEMENT and ratified ACTIVE at CLOSE after independent tester PASS. Two New-Arch native-modal collisions in `mingla-business` `RsvpGuestConsole`, whose full-screen `<View>` root renders three modal-family children as ROOT SIBLINGS (`RsvpGuestDetailSheet`'s `<Sheet>`, a `ConfirmDialog`, a `<Toast>`) that all present from the same screen-root VC — and iOS New-Arch allows ONE presented modal per VC. **Bug 1 (device-reproduced live-fire on `main`, the exact `Attempt to present … which is already presenting …` UIKit refusal logged):** `handleSheetRemove` did `setSelectedGuest(null); setRemoveTarget(g)` in the SAME tick, so the sibling remove `ConfirmDialog`'s `<Modal>` tried to present during the detail sheet's 280ms unmount window → dropped → the "Remove <name>?" confirm never appeared (un-completable dead-end). Fixed by **close-then-DEFER** (NOT nest): close the sheet first, then open the SHARED `ConfirmDialog` via the shipped `deferAfterDismiss` helper (#1360 — imported, not rebuilt) once the sheet's modal has dismissed, with an SC-1b re-open guard (`selectedGuestRef.current === null`) so a confirm never presents over a sheet re-opened within the ~340ms window. NOT nested because the `ConfirmDialog` is SHARED with the row-level Remove (no sheet open there) — nesting it would orphan the row path; only the sheet path's timing is fixed. **Bug 2 (code-proven; the identical VC collision was live-proven for Bug 1 in the same component + in #1338/#1356):** the sheet's approve/deny `onError` fired `showToast(...)` while the detail sheet STAYED OPEN, routing to the console-root sibling `<Toast>` → dropped → silent failure (the host sees nothing). Fixed by **NEST** (NOT defer — the sheet stays open on error by design so there is no dismissal to defer past): an error `<Toast>` is rendered INSIDE `RsvpGuestDetailSheet`'s `<Sheet>` subtree (the #1356 CoverPickerSheet template), driven by a new `notice` prop; the console routes the sheet approve/deny `onError` to `setSheetNotice(...)` instead of `showToast(...)`, and clears the notice whenever a guest is (re)selected. The console-root `<Toast>` + `showToast` remain for the row/bulk/confirm-error paths (no sheet open there — untouched). Cross-ref: VALIDATION, SPEC, IMPLEMENTATION, and TEST comments on issue #1376.
+
+### I-PROPOSED-1376-RSVP-GUEST-CONSOLE-SECOND-MODAL-NESTED-OR-DEFERRED (ACTIVE)
+- **Rule (Clause A — defer):** `RsvpGuestConsole` `handleSheetRemove` MUST `setSelectedGuest(null)` FIRST, then open the SHARED remove `ConfirmDialog` via `deferAfterDismiss(() => setRemoveTarget(g))` — never synchronously in the same tick — so the confirm's native `<Modal>` presents only AFTER the detail sheet's modal has fully dismissed, never contending for the screen-root VC (which iOS New-Arch drops as "already presenting" during the sheet's 280ms unmount window). A re-open guard (`selectedGuestRef.current === null`) MUST gate the deferred `setRemoveTarget` so a confirm cannot present over a sheet re-opened within the defer window. The row-level Going-row Remove stays IMMEDIATE (`setRemoveTarget(g)` — no sheet open there); the `ConfirmDialog` is NOT nested inside the sheet because it is shared with that row path.
+- **Rule (Clause B — nest):** any approve/deny error notice raised while `RsvpGuestDetailSheet` stays open MUST render via a `<Toast>` that is a JSX descendant of that sheet's `<Sheet>` (presenting from the sheet's own modal VC, which iOS stacks), driven by a `notice: string | null` prop — never forwarded to the console-root sibling `<Toast>`. The console's sheet approve/deny `onError` route to `setSheetNotice(...)`, NOT `showToast(...)`; the notice is cleared whenever a guest is (re)selected so a stale notice never re-appears. The console-root `<Toast>` + `showToast` remain for the row approve/deny, bulk approve, and confirm-remove error paths (no concurrent sheet). Tier-2 sibling of `I-PROPOSED-1356-COVER-FEEDBACK-NESTED-IN-SHEET` (Tier 1, nest) and `I-PROPOSED-1369-TEAM-MEMBER-CONFIRM-NESTED-IN-SHEET` (Tier 2, nest), and a Tier-2 instance of the audit's proposed `I-PROPOSED-1342-SECOND-MODAL-NESTED-OR-DEFERRED` — combining the #1360 DEFER specialization (Clause A) and the #1356/#1369 NEST specialization (Clause B) in one component.
+- **Enforcement:** the implementor append-only source-grep tests `mingla-business/src/components/rsvp/__tests__/RsvpGuestConsole.removeConfirmDeferred.issue1376.test.ts` (Clause A: `handleSheetRemove` closes first, `setRemoveTarget` wrapped in `deferAfterDismiss(() => …)` with the close call preceding the defer and no synchronous `setRemoveTarget` in the handler; the SC-1b `selectedGuestRef.current === null` guard present; the row-level Remove stays immediate; the console imports the shipped `deferAfterDismiss`) and `mingla-business/src/components/rsvp/__tests__/RsvpGuestDetailSheet.nestedNoticeToast.issue1376.test.tsx` (Clause B: a `<Toast testID="rsvp-guest-detail-notice">` is a descendant of `<Sheet>` driven by the `notice` prop; the sheet takes `notice`/`onNoticeDismiss`; the console's `handleSheetApprove`/`handleSheetDeny` route `onError` to `setSheetNotice` and NOT `showToast`; the console passes `notice`/`onNoticeDismiss` down; the console-root `<Toast>` + `showToast` survive for the row/bulk/confirm paths), both modeled on `paymentConfirmDefer.issue1360.test.ts` / `CoverPickerSheet.nestedToast.issue1356.test.tsx` (source-grep because `RsvpGuestConsole.tsx` / `RsvpGuestDetailSheet.tsx` pull native deps the ts-jest env cannot render). The independent tester adversarial regression `mingla-business/src/components/rsvp/__tests__/RsvpGuestConsole.staleNoticeClearAndGuardLiveness.tester.issue1376.adversarial.test.ts` proves a different angle: stale notices clear before a sheet reopens and the SC-1b guard reads a live ref synchronized by `useEffect`. All three run in the required business Jest CI lane. Fails-on-revert: reverting the two source files to `origin/main` makes all three suites RED; restoring the implementation makes all three suites PASS.
+- **Preserves:** `I-SUB-SHEET-INSIDE-PARENT` (the nested notice Toast is a JSX descendant of the `<Sheet>`); `I-PROPOSED-1356`/`1360`/`1369` (all untouched — Clause A reuses the #1360 `deferAfterDismiss` helper import-only, Clause B follows the #1356/#1369 nest template); ORCH-1150/1334 RSVP console wiring + copy; the row/bulk/confirm-error `showToast` paths + the console-root `<Toast>`; the mutations/RPC/edge; `RsvpCreatorWizard` (Tier-5 SAFE — its `ConfirmDialog`/`Toast` fire with no concurrent `<Sheet>`). No behavioral change to the Sheet/Modal/Toast/ConfirmDialog primitives or to `deferAfterDismiss.ts`.
+- **Established:** DRAFT at #1376 IMPLEMENT 2026-07-29; ACTIVE at CLOSE 2026-07-30 after independent tester PASS, iOS-simulator and physical-Samsung remove-confirm live-fire, zero post-fix UIKit `already presenting` refusals, and three append-only regression suites with fails-on-revert proof.
+
+---
+
+## ACTIVE — issue #1369 (business team "Remove member" / "Revoke invitation" / "Disconnect partner" confirmations never appeared — both ConfirmDialogs rendered as root siblings of the open sheet, and the disconnect success toast fired in the sheet's close tick; Tier 2 of the #1342 modal-collision sweep — CLOSED 2026-07-29, PR #1374, shipped via prod OTA iOS + Android)
+
+> Registered DRAFT at issue #1369 [team-confirm-nested] IMPLEMENT (root cause proven line-by-line; the New-Arch VC-collision mechanism was live-proven in #1338/#1356 and the close→toast race in #1360 — a device screenshot of THIS team surface is deferred to the tester on the fixed build, since an enabled remove/disconnect action is unreachable from the reviewer session). In the business app's React Native New Architecture every sheet/dialog/toast is a separate iOS modal, and iOS refuses to present a second modal on the screen-root VC while one is still up. `MemberDetailSheet`'s two `ConfirmDialog`s — remove/revoke (`confirmVisible`) and the ORCH-1384 owner "Disconnect partner" (`disconnectConfirmVisible`) — rendered as ROOT SIBLINGS of the component's own open `<Sheet>` (after `</Sheet>`, inside an outer fragment), and the opener buttons never closed the sheet; so each confirm's native `<Modal>` contended for the screen-root VC the sheet's modal already held and UIKit dropped it ("already presenting") — the confirm never appeared, an un-completable dead-end. Fix (b) NESTED (SPEC §4): BOTH `ConfirmDialog`s move INSIDE the `<Sheet>` subtree and the returned root becomes `<Sheet>` (not a fragment), so each presents from the sheet's own modal VC (which iOS stacks); Cancel returns to the still-open sheet and the disconnect confirm's inline `errorMessage` / `confirmLoading` / `closeDisabled` require the sheet to persist underneath (so the #1360 defer-until-dismissed specialization is deliberately NOT used for the confirms). Folded-in D-1 (Part B): the team screen's "Partner disconnected" success Toast (`app/brand/[id]/team.tsx`) fired in the SAME tick as `onClose()` — a #1360-class close→toast race — and is now routed through the shipped `deferAfterDismiss` helper (import only, not reimplemented). No prop/state/handler/copy change to either confirm; ORCH-1051 `handleRemove` no-op and ORCH-1384 disconnect wiring/copy untouched. The orchestrator flips DRAFT → ACTIVE at CLOSE after independent tester PASS. Cross-ref: VALIDATION + SPEC + IMPLEMENTATION + TEST comments on issue #1369.
+
+### I-PROPOSED-1369-TEAM-MEMBER-CONFIRM-NESTED-IN-SHEET (ACTIVE)
+- **Rule:** Both `MemberDetailSheet` `ConfirmDialog`s (remove/revoke `confirmVisible`; owner partner-disconnect `disconnectConfirmVisible`) MUST render as JSX descendants of the component's `<Sheet>` subtree (between `<Sheet …>` and `</Sheet>`), never as root siblings of that `<Sheet>` — so they present from the sheet's own modal VC (which iOS New-Arch stacks) rather than contending for the screen-root VC (which iOS drops as "already presenting" while the sheet modal is up). The returned root JSX MUST be `<Sheet>`, not an outer fragment `<>`. The opener buttons need not close the sheet; Cancel returns to the still-open sheet, and the disconnect confirm's inline `errorMessage` / `confirmLoading` / `closeDisabled` REQUIRE the sheet to persist underneath (so the defer-until-dismissed specialization of #1360 is NOT applied to these confirms). Tier-2 sibling of `I-PROPOSED-1356-COVER-FEEDBACK-NESTED-IN-SHEET` (Tier 1) and a Tier-2 instance of the audit's proposed `I-PROPOSED-1342-SECOND-MODAL-NESTED-OR-DEFERRED`. The folded-in D-1 "Partner disconnected" success toast is instead the DEFER specialization (`I-PROPOSED-1360-PAYMENT-CONFIRM-DEFERRED-PAST-DISMISSAL` class) applied to `app/brand/[id]/team.tsx` via `deferAfterDismiss`.
+- **Enforcement:** the implementor append-only source-grep test `mingla-business/src/components/team/__tests__/MemberDetailSheet.confirmNestedInSheet.issue1369.source.test.ts` (Part A: exactly two `<ConfirmDialog`, BOTH indices between `<Sheet ` and `</Sheet>`, ZERO after `</Sheet>`, root JSX matches `/return\s*\(\s*<Sheet\b/` and NOT `/return\s*\(\s*<>/`; Part B: the disconnect toast fires through `deferAfterDismiss(() => setToast("Partner disconnected"))` and NOT the synchronous `onPartnerDisconnected={() => setToast(...)}`), modeled on `CoverPickerSheet.nestedToast.issue1356.test.tsx`, PLUS the independent tester adversarial regression `mingla-business/src/components/team/__tests__/MemberDetailSheet.confirmDepthBalance.issue1369.tester.test.ts` — a DIFFERENT angle than the implementor's flat string-index scan: it interleaves every `<Sheet …>` / `</Sheet>` token in source order, tracks the running Sheet nesting depth, and asserts BOTH `<ConfirmDialog>`s open while depth ≥ 1 (strictly inside an OPEN Sheet, not merely textually before the first `</Sheet>`), that the tag stream is well-formed (depth never negative, ends at 0), and that the returned JSX is root-wrapped by a Sheet not a fragment; its Part B requires EVERY `setToast("Partner disconnected")` in `team.tsx` to be enclosed by a `deferAfterDismiss( … )` call (catching an un-deferred straggler the impl's single anchored regex would miss) and forbids the eager-eval `deferAfterDismiss(setToast(…))` anti-pattern. Both are source-grep because `MemberDetailSheet.tsx` and `team.tsx` pull native deps the ts-jest env cannot render. Route-level coverage of the `/brand/[id]/team` surface the D-1 toast fix lives on is additionally held by the ORCH-1309 `orch-1309-brand-deeplink-guard` and ORCH-1310 `orch-1310-brand-edit-draft-async-sync` strict-grep gates. Fails-on-revert: restoring either confirm to a root sibling after `</Sheet>` (or the fragment root) drops its walk-depth to 0 / turns the Part-A pins RED; reverting the toast to the synchronous form turns Part B / T-7 RED. Verified fails-on-revert on the shipped fix (PR #1374, squash `135a64a90`).
+- **Preserves:** `I-SUB-SHEET-INSIDE-PARENT` (correct descendant reading); `I-PROPOSED-1356-COVER-FEEDBACK-NESTED-IN-SHEET` (Tier-1 sibling, untouched); `I-PROPOSED-1360-PAYMENT-CONFIRM-DEFERRED-PAST-DISMISSAL` (the D-1 toast reuses its helper, unchanged); ORCH-1051 `handleRemove` no-op; ORCH-1384 disconnect wiring/copy. No behavioral change to the Sheet/Modal/ConfirmDialog/Toast primitives.
+- **Established:** DRAFT at #1369 SPEC; ACTIVE at #1369 CLOSE 2026-07-29.
+- **Disambiguation:** the "1369" in this ID is GitHub **issue #1369** (team-confirm-nested), DISTINCT from the pre-existing `## DRAFT — ORCH-1369` / `I-RELEASE-SUBMIT-CONFIG` (**ORCH-1369**, release-1.1.2 submit-config, 2026-07-14) lower in this file — same number prefix, two different numbering systems (GitHub issue# vs internal ORCH-ID). Neither ID is renamed; this note only records the distinction.
+
+---
+
+## ACTIVE — issue #1360 (business order refund/cancel/door-refund confirmation toasts silently dropped on iOS while the sheet was still dismissing — the close→toast race; Tier 3 of the #1342 modal-collision sweep — CLOSED 2026-07-29, PR #1366, shipped via prod OTA iOS + Android)
+
+> Registered DRAFT at issue #1360 SPEC (root cause proven line-by-line on both audited surfaces; the underlying New-Arch VC-collision mechanism was live-proven in #1338/#1356, but a device screenshot of THESE payment surfaces is blocked by the money guard — reproducing the drop would require submitting a real refund/cancel on the LIVE backend). In the business app's React Native New Architecture every sheet/dialog/toast is a separate iOS modal, and iOS refuses to present a second modal on the screen-root VC while one is still up. The refund/cancel/door-refund success handlers fired `showToast(...)` in the SAME synchronous tick that closed the sheet (`setRefundSheetMode(null)` / `setCancelDialogVisible(false)` / `setRefundOpen(false)`), so the closing sheet's native `<Modal>` still occupied the root VC during its ~200–280ms unmount window and UIKit dropped the toast's own native `<Modal>` — the "Refunded £X" / "Order cancelled" / "Refunded £X … stays checked in." confirmation never showed. The toast is already parent-owned and correct; only its firing MOMENT is wrong. Fix (SPEC §4): a new shared `deferAfterDismiss(fn)` helper schedules the toast just past the longer of the Sheet (280ms) and Modal (200ms) unmount windows (+60ms margin ≈340ms), imported from the primitives' own `UNMOUNT_DELAY_MS` consts (single source of truth, `export`-only additions — no behavior change); each payment `onSuccess` now closes FIRST, then defers the toast. Covers RefundSheet + CancelOrderDialog (`orders/[oid]/index.tsx`) and DoorRefundSheet via BOTH parents (`door/[saleId].tsx`, `guests/[guestId].tsx`) — the two door instances folded in per the orchestrator scope decision. The orchestrator flips DRAFT → ACTIVE at CLOSE after independent tester PASS. Cross-ref: VALIDATION + SPEC + IMPLEMENTATION + TEST comments on issue #1360.
+
+### I-PROPOSED-1360-PAYMENT-CONFIRM-DEFERRED-PAST-DISMISSAL (ACTIVE)
+- **Rule:** A success/confirmation toast raised as a business payment sheet (Refund / Cancel / DoorRefund) closes MUST be deferred until AFTER that sheet's native modal has fully dismissed — routed through `deferAfterDismiss(() => showToast(...))` (or an equivalent post-unmount callback), with the sheet/dialog close call executed FIRST — and MUST NEVER be fired synchronously in the same tick as the close call. Firing synchronously makes the toast's native `<Modal>` contend with the still-mounted closing sheet's `<Modal>` for the screen-root VC during its unmount window, and iOS New-Arch drops the second modal. The defer delay is imported from the Sheet/Modal primitives' own `UNMOUNT_DELAY_MS` (single source of truth — never hardcoded), so it stays in lockstep if either animation window changes. This is the "defer-until-dismissed" specialization of the audit's proposed `I-PROPOSED-1342-SECOND-MODAL-NESTED-OR-DEFERRED`, and the Tier-3 sibling of `I-PROPOSED-1356-COVER-FEEDBACK-NESTED-IN-SHEET` (Tier 1, nested-in-sheet) and the #1338 present-after-dismissal invariants. Applies to all four sites: RefundSheet + CancelOrderDialog in `orders/[oid]/index.tsx` and DoorRefundSheet via `door/[saleId].tsx` + `guests/[guestId].tsx`. No change to the toast's ownership (already parent-owned), the refund/cancel mutations, edge functions, copy, or the Sheet/Modal/Toast primitives beyond the `export`-only const additions.
+- **Enforcement:** `mingla-business/src/utils/__tests__/deferAfterDismiss.test.ts` (timing contract + adversarial magic-number regression: `DEFER_SETTLE_MS` MUST equal `340` DERIVED as `max(Sheet 280, Modal 200) + 60` — a hardcoded literal or a wrong derivation goes RED — and the deferred callback fires strictly AFTER the sheet unmount window, not synchronously, under fake timers) + `mingla-business/src/utils/__tests__/paymentConfirmDefer.issue1360.test.ts` (source-wiring pins over all four handlers: each closes-first and routes EVERY `showToast` through `deferAfterDismiss`, and the helper imports its delay from the Sheet/Modal primitives — never hardcoded — modeled on `CoverPickerSheet.nestedToast.issue1356.test.tsx`). Fails-on-revert: reverting any handler to the pre-fix `showToast(...) ; close()` shape turns its wiring pin RED (deferred count < showToast count); making `deferAfterDismiss` synchronous — or hardcoding the settle delay instead of deriving it from the primitives' `UNMOUNT_DELAY_MS` — turns the timing test RED. Verified at implementation commit `3df1b33a5`; CLOSED at squash `33453c217` (PR #1366). [Note: the magic-number-regression coverage the SPEC earmarked for a standalone `deferAfterDismiss.derivation.tester.adversarial.test.ts` shipped folded INTO `deferAfterDismiss.test.ts`'s `DEFER_SETTLE_MS` derivation assertion — no separate tester file was added in PR #1366.]
+- **Established:** DRAFT at #1360 SPEC; ACTIVE at #1360 CLOSE 2026-07-29.
+- **Preserves:** `I-SUB-SHEET-INSIDE-PARENT`; `I-PROPOSED-1356-COVER-FEEDBACK-NESTED-IN-SHEET` (Tier-1 sibling, untouched); the #1338 present-after-dismissal / in-sheet-notice invariants. No behavioral change to the Sheet/Modal primitives (`export`-only additions to `UNMOUNT_DELAY_MS`).
+- **Disambiguation:** the "1360" in this ID is GitHub **issue #1360** (payment-confirm-defer), which is DISTINCT from the pre-existing `I-PROPOSED-1360-FRIEND-REQUEST-CONFIRM-AND-CANCEL` (**ORCH-1360**, 2026-07-12) — same number prefix, two different numbering systems (GitHub issue# vs internal ORCH-ID). Neither ID is renamed (both are referenced elsewhere); this note only records the distinction.
+
+---
+
+## ACTIVE — issue #1354 (the marketing site's 4 free tools captured leads into a locked table with no admin surface and no notification — CLOSED 2026-07-29, PR #1357, admin web + backend; migration applied + edge fn deployed + admin site deployed, prod live-fire verified)
+
+> Registered from a program-state Q&A: the 4 marketing free tools (venues / events / trips / experiences) funnel every submission into `public.tool_leads` (service-role write, RLS deny-all), but no screen in `mingla-admin` listed them and no one was notified when a lead came through. Seth's two locked decisions: (1) an admin page showing ALL rows (anonymous runs + email-captured leads), filterable by tool and by has-email, with a per-row report detail view; (2) a founder email to `seth@usemingla.com` fired only on the email-unlock step (never on anonymous runs). Implemented as two guard-first admin read-RPCs + a best-effort notify hook in `growth-tools-gate`. Because `tool_leads` holds PII (lead emails + business context) and the repo is public, the SPEC-REVIEW added a DB-level `is_admin_user()` guard (defense-in-depth) beyond the app-layer allowlist. Independent tester CONDITIONAL PASS (zero defects); live-fire in prod dispatched a real founder email (gate v75), the list RPC returned correct filtered rows against 31 real leads, and anon/non-admin callers were denied. The orchestrator flips DRAFT → ACTIVE at CLOSE. Cross-ref: INVESTIGATE + SPEC + REVIEW + IMPLEMENTATION + TEST comments on issue #1354.
+
+### I-1354-TOOL-LEADS-ADMIN-RPC-GATED (ACTIVE)
+- **Rule:** The two admin read-RPCs over `public.tool_leads` — `admin_tool_leads_list` and `admin_tool_lead_get` — are `SECURITY DEFINER` with `search_path` pinned to `'public'`, `EXECUTE` revoked from `public` + `anon` and granted to `authenticated` only, and `public.is_admin_user()` is the FIRST executable statement in each (guard-first — a query before the guard opens a fail-open window). The list RPC NEVER returns `report`, `report_token`, or `ip_hash` (only a `has_report` boolean); the detail RPC NEVER returns `ip_hash`. `public.tool_leads` keeps RLS deny-all (no anon/authenticated policy). App-layer hiding (`ALLOWED_ADMIN_EMAILS`) is NOT the sole gate — the DB enforces admin-only access because the data is PII and the repo is public.
+- **Enforcement:** the migration's apply-time `DO`-block self-assert (anon cannot `EXECUTE`, authenticated can — apply FAILS otherwise); `admin_tool_leads_list` + `admin_tool_lead_get` appended to `GUARDED_DEFINER_FNS` in `.github/scripts/strict-grep/i-admin-gate-first-statement.mjs` (guard-first CI gate + self-test 4/4); `supabase/migrations/__tests__/issue_1354_tool_leads_admin_rpc.test.js` (structural: gate/params/no-`report`/no-`ip_hash`). Fails-on-revert: deleting the guard lines turns the migration guard test RED; reverting `20270119001354_issue_1354_tool_leads_admin_rpc.sql` removes the fns → the guard-first gate FAILS.
+- **Established:** DRAFT at #1354 SPEC; ACTIVE at #1354 CLOSE 2026-07-29.
+- **Preserves:** `I-1045-ANON-NO-SELECT` (tool_leads RLS deny-all unchanged), `I-PROPOSED-1271-ADMIN-GATE-FIRST-STATEMENT` (same guard-first primitive, registry extended).
+
+### I-1354-GATE-NOTIFY-ONCE-EMAIL-UNLOCK (ACTIVE)
+- **Rule:** `growth-tools-gate` emails the founder (`seth@usemingla.com`) EXACTLY ONCE per lead, ONLY on the `report_ready → gated_email` transition (email unlock). The notify fires only when the PRIOR lead status read was `report_ready`, so re-gates (`gated_email` / `emailed`) and anonymous runs (which never reach the gate) never notify. The notify is BEST-EFFORT: entirely wrapped in `try/catch` that only logs; a throw or non-ok Resend response NEVER changes the visitor's HTTP response or their report email. Recipient is a code const (no new Supabase secret); every interpolated value is HTML-escaped; the send carries no attachment.
+- **Enforcement:** `supabase/functions/growth-tools-gate/__tests__/issue_1354_admin_notify.test.ts` (builder content + guard/best-effort structure) + `supabase/functions/growth-tools-gate/__tests__/issue_1354_notify_idempotency_adversarial.test.ts` (runtime: no double-notify on re-gate, best-effort, HTML-escape injection defense) + the `orch-0785-resend-attachment-aware.mjs` gate (no-attachment opt-out). Fails-on-revert: deleting the notify block turns the structural test RED; the adversarial test's first-gate→one-notify assertion fails when the block is removed.
+- **Established:** DRAFT at #1354 SPEC; ACTIVE at #1354 CLOSE 2026-07-29 — live-fire verified in prod (real founder email dispatched end-to-end, function v75).
+- **Preserves:** the visitor gate response contract (unchanged in all states), `I-1045-ANON-NO-SELECT`.
+
+---
+
+## ACTIVE — issue #1356 (business cover-picker confirmation toasts silently dropped on iOS while the cover sheet was open — root-sibling Toast; Tier 1 of the #1342 modal-collision sweep — CLOSED 2026-07-29, PR #1358, shipped via prod OTA iOS + Android)
+
+> Registered DRAFT at issue #1356 SPEC (root cause proven live on the iOS sim: the exact `Attempt to present <RCTFabricModalHostViewController> … which is already presenting …` UIKit refusal logged the same second as a GIF-tap). In the business app's React Native New Architecture every sheet/toast/popup is a separate iOS modal, and iOS refuses to present a second modal on the screen-root VC while one is already up. `CoverPicker` is mounted only through `CoverPickerSheet`, whose `Sheet` is itself a modal on that root VC; so every `onShowToast(...)` confirmation/error (image / GIF / Pexels / gallery + all upload errors — ~20 call sites) was forwarded to the parent's ROOT-level sibling `<Toast>` (another modal on the same VC) and silently dropped whenever the sheet was open — across all 11 cover mounts (event/trip/experience create+edit, brand create+edit, venue cover/deck/claim). Fix (SPEC Option a): `CoverPickerSheet` renders its OWN `<Toast>` nested INSIDE the `<Sheet>` subtree and routes the picker's `onShowToast` into local state feeding that nested toast (with a pure `inferKind` preserving red error styling through the kind-less seam) — the nested toast presents from the Sheet's own modal VC, which iOS stacks. The parent `onShowToast` prop is retained on the interface for API compat but no longer drives any sibling Toast, so a double-toast is structurally impossible. The sealed video-feedback path (inline `videoPickNotice`, #1338/#1348/#1350) is byte-for-byte untouched. One file changed; all 11 surfaces inherit the fix through the single `CoverPickerSheet` seam. The orchestrator flips DRAFT → ACTIVE at CLOSE after independent tester PASS. Cross-ref: VALIDATION + SPEC + IMPLEMENTATION + TEST + CLOSE comments on issue #1356.
+
+### I-PROPOSED-1356-COVER-FEEDBACK-NESTED-IN-SHEET (ACTIVE)
+- **Rule:** All `CoverPicker` cover-flow feedback toasts raised while the `CoverPickerSheet` `Sheet` is open (image / GIF / Pexels / gallery confirmations and every upload error, all raised via `onShowToast`) MUST render via a `<Toast>` nested INSIDE `CoverPickerSheet`'s `<Sheet>` subtree — presenting from the sheet's own modal VC, which iOS stacks — and MUST NEVER be forwarded to a parent root-level sibling `<Toast>`, which iOS New-Arch drops as a second modal on the screen-root VC (`Attempt to present … which is already presenting …`) while the sheet modal is up. The parent `onShowToast` prop may remain on the interface for API compatibility but must not drive any sibling Toast (no double-toast). This is the Tier-1 instance of the #1342 rule that a modal raised while a sheet is open must be a descendant of that `<Sheet>` (or deferred until it dismisses). Preserves `I-SUB-SHEET-INSIDE-PARENT` (the nested Toast is a JSX descendant of the `<Sheet>`) and the #1338/#1348/#1350 video-feedback path (inline `videoPickNotice`, untouched).
+- **Enforcement:** `mingla-business/src/components/ui/__tests__/CoverPickerSheet.nestedToast.issue1356.test.tsx` (structural + behavioral: a `<Toast>` is a descendant of `<Sheet>`, and the picker's `onShowToast` routes to that nested toast — not a sibling root Toast) + the tester severance suite `mingla-business/src/components/ui/__tests__/CoverPickerSheet.parentToastSevered.tester.issue1356.test.tsx` (single-owner severance: the parent `onShowToast` no longer drives a Toast, so cover feedback can never double-fire) + the ORCH-0989 cover strict-grep gate. Fails-on-revert: restoring `onShowToast={onShowToast}` (forwarding to the parent) with no `<Toast>` inside `<Sheet>` turns the structural/routing assertions RED.
+- **Established:** DRAFT at #1356 SPEC; ACTIVE at #1356 CLOSE 2026-07-29.
+
+---
+
+## ACTIVE — issue #1350 (business video-cover trimming was far too slow — a full precise re-encode instead of a fast keyframe stream-copy — CLOSED 2026-07-29, PR #1351, shipped via prod OTA iOS + Android)
+
+> Registered DRAFT at the combined #1348 + #1350 SPEC (a cross-linked twin document posted to both issues, surfaced by Seth's real-iPhone test after the #1338 OTA). On a physical iPhone, trimming a video to set an event/trip/brand/venue cover took many seconds because the trim editor was invoked with `enablePreciseTrimming: true`, which forces a full frame-by-frame h264 re-encode of every clip; the same flag drove the `-c:v h264_mediacodec` path behind the Android "rc 1" export failure. Fix B (#1350): flip `enablePreciseTrimming` to `false` so the trim is a keyframe stream-copy (`-c copy`) — a decorative cover never needs sub-keyframe precision and the server (Bunny) re-compresses the clip anyway; the stream-copied output still uploads and renders as the cover, and dropping the mediacodec dependency resolves the Android export failure. Device-proven at ~0.34s on iOS and ~1.4s on a physical Samsung (down from a multi-second re-encode), with the trimmed cover still uploading and rendering. Fix C (twin #1348 — error copy): the cover-video flow no longer surfaces a raw system `error.message`; every failure is mapped to plain-English copy. The iCloud MATERIALIZATION fix (A1 `videoExportPreset` / A2 native `isNetworkAccessAllowed`) is deliberately NOT in this ship and REMAINS OPEN in #1348 (pending an on-device syslog capture + a native EAS build) — so the friendly-error invariant below covers ONLY the error-copy guarantee, NOT that iCloud-only videos succeed. The orchestrator flips DRAFT → ACTIVE at CLOSE after independent tester PASS. Cross-ref: INVESTIGATE + SPEC + IMPLEMENTATION + TEST + CLOSE comments on issues #1350 and #1348.
+
+### I-PROPOSED-1350-COVER-TRIM-KEYFRAME-COPY (ACTIVE)
+- **Rule:** The business cover trim editor (`coverPickerVideoTrimEditor.ts`) is invoked with `enablePreciseTrimming: false` and no crop/rotate/flip/speed transform, so the trim is a keyframe stream-copy (`-c copy`) — never a full re-encode. `saveToPhoto` stays unset (no write-back to Photos); `maxDuration: maxDurationMs` is still forwarded so the over-ceiling cap is unaffected. Precise re-encode is wasted (Bunny re-compresses the clip; keyframe drift is invisible for a decorative cover) and it drove the Android `h264_mediacodec` "rc 1" export failure.
+- **Enforcement:** `mingla-business/src/components/ui/__tests__/coverPickerVideoTrimEditor.keyframeCopy.issue1350.test.ts` (asserts `enablePreciseTrimming: false` present + `: true` absent, and `maxDuration` still forwarded) + the tester runtime assertion `mingla-business/src/components/ui/__tests__/coverPickerVideoTrimEditor.runtimeStreamCopy.tester.issue1350.test.ts` (a live stream-copy assertion a grep cannot fake) + `.github/scripts/strict-grep/orch-0978-video-cap-29s.mjs` (C1/C12 pin the trimmer wiring + the `maxDuration` forward; the `enablePreciseTrimming` value itself is not pinned by any gate). Fails-on-revert: restoring `enablePreciseTrimming: true` turns T-1350-01 RED.
+- **Established:** DRAFT at #1350 SPEC; ACTIVE at #1350 CLOSE 2026-07-29.
+
+### I-PROPOSED-1348-COVER-VIDEO-FRIENDLY-ERROR (ACTIVE)
+- **Rule:** The business cover-video pick/trim/upload flow (`CoverPicker.tsx`) NEVER surfaces a raw system `error.message` to the user; every failure is routed through `friendlyVideoCoverError(error)` and mapped to plain-English copy — iCloud/network errors (`3164` / `PHPhotosErrorDomain` / `networkAccessRequired` / `iCloud`) → "This video is saved in iCloud. Open it in Photos to download it to your phone, then try again."; trim/FFmpeg failures (`Video trim failed` / `TRIMMING_FAILED` / `Command failed` / `rc 1`) → "Couldn't trim this video. Try another clip."; the already-friendly never-presented-editor message ("The trim screen didn't open…") passes through unchanged; any other / non-Error throw → "Couldn't add this video. Try another clip." SCOPE: this invariant guarantees the ERROR COPY only — it does NOT assert that iCloud-only videos succeed; the underlying iCloud materialization fix (A1/A2) stays OPEN in #1348 (native build pending), so the iCloud copy is the honest instruction to download-then-retry, not a claim that iCloud clips now work.
+- **Enforcement:** `mingla-business/src/components/ui/__tests__/CoverPicker.friendlyVideoError.issue1348.test.ts` — asserts the video catch routes through `friendlyVideoCoverError` (not the raw `error.message`) and that each error class maps to its exact friendly string. Fails-on-revert: restoring the raw `error.message` catch turns the iCloud/no-raw-message assertion RED.
+- **Established:** DRAFT at the combined #1348/#1350 SPEC; ACTIVE at #1350 CLOSE 2026-07-29 (Fix C shipped in PR #1351) — for the error-copy guarantee ONLY; the iCloud materialization track (A1/A2, incl. I-PROPOSED-1348-COVER-VIDEO-ICLOUD-MATERIALIZED) stays DRAFT/OPEN in #1348.
+- **Preserves:** I-966-COVER-VIDEO-PROVIDER-BUNNY-ONLY (the stream-copy output still uploads to Bunny), I-1303-WEB-COVER-VIDEO-URI-UNMANGLED (web untouched — the trimmer resolves the `.web.ts` stub), I-SUB-SHEET-INSIDE-PARENT, and the #1338 present-after-dismissal / in-sheet-notice invariants (all cover-flow feedback stays in the sheet).
+
+---
+
+## ACTIVE — issue #1338 (business video cover picker silently failed on a real iPhone — trim-only-over-cap + present-after-dismissal + in-sheet feedback — CLOSED 2026-07-29, PR #1344, shipped via prod OTA iOS + Android)
+
+> Registered DRAFT at issue #1338 SPEC. On a physical iPhone, tapping a video to set an event/trip/brand/venue cover closed the OS photo picker and attached nothing, with no error. Root cause, proven live by capturing the phone's own system log during two production retries: the business app runs React Native's New Architecture where every sheet/toast/popup is a separate iOS modal, and iOS silently refuses to open a second modal while one is up — so after the picker closed, the follow-on step was dropped and even the error toast (itself a modal) could not show. Compounded by code that always routed every clip through a flaky native trim editor and then silently gave up when it returned nothing. Fix direction: within-ceiling native clips (≤33s) and all web clips upload raw with no trim screen (web-path parity); the trim editor opens only for over-ceiling native clips and only after the picker fully dismisses (bounded watchdog so it can never hang `uploading`); and every user-facing outcome renders inside the sheet where iOS cannot drop it. Device-verified on the iOS simulator + a physical Samsung across short/long/cancel with zero "already presenting" collisions, including the never-before-exercised direct-upload path proven byte-for-byte on both platforms. The broader app-wide modal-collision class (17 real spots across 15 surfaces) is tracked separately in #1342. The orchestrator flips DRAFT → ACTIVE at CLOSE after independent tester PASS. Cross-ref: INVESTIGATE + SPEC + IMPLEMENTATION + TEST + CLOSE comments on issue #1338.
+
+### I-PROPOSED-1338-COVER-VIDEO-TRIM-ONLY-OVER-CAP (ACTIVE)
+- **Rule:** The native trim editor is invoked ONLY for native clips whose measured duration exceeds `EVENT_COVER_SOURCE_CEILING_MS` (33000ms); within-ceiling native clips and all web clips upload raw via `resolveRawClipUploadUri`.
+- **Enforcement:** `.github/scripts/strict-grep/orch-0978-video-cap-29s.mjs` C1 + `CoverPicker.trimOnlyOverCap.issue1338.test.ts` (T-1338-01/02), fails-on-revert.
+- **Established:** DRAFT at #1338 SPEC; ACTIVE at #1338 CLOSE 2026-07-29.
+
+### I-PROPOSED-1338-COVER-FLOW-FEEDBACK-IN-SHEET (ACTIVE)
+- **Rule:** Every user-facing outcome of the cover-VIDEO pick/trim/upload flow renders inside `CoverPicker`/`CoverPickerSheet` via inline state (`videoPickNotice`/`mediaDisplayError`), never via a root-portal `Toast` or native-`<Modal>` sibling (which iOS drops while the sheet modal is up).
+- **Enforcement:** `CoverPicker.videoReadyIdempotency.test.ts` + source-grep in `CoverPicker.trimOnlyOverCap.issue1338.test.ts` (T-1338-03), fails-on-revert.
+- **Established:** DRAFT at #1338 SPEC; ACTIVE at #1338 CLOSE 2026-07-29. Note: preserves I-SUB-SHEET-INSIDE-PARENT.
+
+### I-PROPOSED-1338-COVER-TRIM-PRESENT-AFTER-DISMISSAL (ACTIVE)
+- **Rule:** The native trim editor is presented only after the OS photo picker has fully dismissed (`waitForPickerDismissal` = InteractionManager.runAfterInteractions + settle), and a bounded `onShow` watchdog guarantees the trim promise always settles (never hangs `uploading`).
+- **Enforcement:** `coverPickerVideoTrimEditor.presentWatchdog.issue1338.test.ts` + tester `coverPickerVideoTrimEditor.settleRace.adversarial.tester.issue1338.test.ts` (T-1338-04/05), fails-on-revert.
+- **Established:** DRAFT at #1338 SPEC; ACTIVE at #1338 CLOSE 2026-07-29.
+
+---
+
+## ACTIVE — issue #1020 (events vanished from metro city-browse when the venue's town label ≠ the browsed city — CLOSED 2026-07-28, PR #1334, tester PASS + live-fire verified on prod)
+
+> Registered DRAFT at issue #1020 [city-browse-geo-fallback] SPEC. Consumer event discovery (`pg_discover_business_events`, the single RPC behind the `discover-merged-events` edge fn read by consumer iOS + Android) filtered city membership by exact string equality `e.city = ANY(p_cities)` only — so a venue geocoded to a sub-municipality label ("Zaventem") never matched a greater-metro browse ("Brussels"), and a NULL-city event matched nothing anywhere. The Lagos landmine: venues geocoding as Lekki/Ikeja/Victoria Island/Yaba would vanish from a "Lagos" browse identically. Fix direction (b): widen the predicate to `e.city = ANY(p_cities) OR ST_DWithin(location_geo pin, browsed center, radius)`, threading the browsed center/radius the client already sends into the RPC, and fold the geo inputs into the discover cache key. Zero stored-data mutation; auto-covers every multi-municipality metro. The orchestrator flips DRAFT → ACTIVE at CLOSE after independent tester PASS. Cross-ref: INVESTIGATE + SPEC + IMPLEMENTATION + TEST + CLOSE comments on issue #1020.
+
+### I-1020-DISCOVER-GEO-RADIUS-FALLBACK (ACTIVE)
+- **Rule:** Consumer discovery city-membership in `public.pg_discover_business_events` MUST admit venues via a geo-radius fallback on the venue pin — `e.city = ANY(p_cities) OR public.ST_DWithin(public.ST_SetSRID(e.location_geo::public.geometry,4326)::public.geography, browsed_center::public.geography, p_radius_km*1000)` — so metro browsing surfaces sub-municipality venues whose `city` label differs from the browsed city, and NULL-city events that still carry a pin. All PostGIS symbols/types are `public.`-qualified because the function runs under `SET search_path=''`; the native `point` is explicitly `ST_SetSRID(...,4326)` before the geography cast. The three geo params are trailing `DEFAULT NULL` (absent coords → city-only behavior unchanged); the geo inputs are folded into the discover cache key (exclusion-consistency, Constitution #13). The DROP-old-8-arg-signature-then-CREATE guard prevents a silent overload.
+- **CI enforcement:** `.github/workflows/issue-1020-discover-geo-fallback-tests.yml` — a `supabase/postgres:17.4.1.075` service applies all migrations and runs the happy-path + adversarial `.test.sql` via psql `ON_ERROR_STOP=1`; a deno 1.46.x job runs the edge-fn threading + cache-key `.test.ts`. Explicit `paths:` registry (never a glob). Plus the live anon-definer ACL gate: the 11-arg signature is tracked in `supabase/security/anon_executable_definer_allowlist.txt` (INTENDED-PUBLIC, posture unchanged).
+- **Regression test:** `supabase/migrations/__tests__/issue_1020_discover_geo_fallback.test.sql` (happy-path: Zaventem pin ~9km surfaced at 50km, city-only misses it, exact-city unchanged — fails-on-revert sentinel) + `..._adversarial_pg17.test.sql` (90km-out excluded, NULL-pin NULL-safety, geo-only match proving the `public.`-qualified predicate resolves under `search_path=''`) + `issue_1020_geo_threading.test.ts` + `issue_1020_cache_key_geo.test.ts`. Fails-on-revert proven on a real pg17 harness (implementor + tester).
+- **Established:** ACTIVE 2026-07-28 at issue #1020 CLOSE (PR #1334, tester PASS; live-fire on the DEPLOYED prod 11-arg RPC — Brussels+center+50km surfaces the real Zaventem event (9.22km) that the city-only call misses, and a 1km radius correctly excludes it, proving real-metre distance not degrees); registered DRAFT at SPEC.
+
+## ACTIVE — issue #890 (crash reporting Sentry lit up on production business web — CLOSED 2026-07-28, PR #1324, tester CONDITIONAL PASS + live-fire verified in prod Sentry)
+
+> Registered DRAFT at issue #890 [sentry-web-dark] IMPLEMENT (branch `890-sentry-web-dark`). Business web shipped with crash reporting DARK: `mingla-business/src/diagnostics/sentry.ts` was a deliberate no-op stub (ORCH-0886, to stop `@sentry/browser`'s `window`-at-module-load from crashing the Expo Router static-SSR export), and no DSN reached the Vercel build env. Two gaps close together: (A) a real, EXPORT-SAFE web SDK behind the stub — `@sentry/browser@10.12.0` (the exact version `@sentry/react-native@7.2.0` already pins) loaded ONLY via a lazy dynamic `import("@sentry/browser")` inside `init()`, guarded by `typeof window !== "undefined"` and DSN-present, so nothing touches `window` at module-load and `expo export -p web` stays exit-0 (proven: the SDK/`/envelope/` transport lands in a code-split route chunk, NOT `_layout`); (B) the orchestrator provisions `EXPO_PUBLIC_SENTRY_DSN` in the `mingla-business` Vercel project (Production + Preview) at DEPLOY, and a build-time guard hard-fails a keyless PRODUCTION web build while allowing preview/local. Native iOS/Android (`sentry.native.ts` + `@sentry/react-native` + the `app.config.ts` expo plugin) and `app/_layout.tsx` are byte-identical. The orchestrator flips DRAFT → ACTIVE at CLOSE after independent tester PASS. Cross-ref: INVESTIGATION + SPEC + IMPLEMENTATION reports on issue #890.
+
+### I-PROPOSED-890-A WEB_SENTRY_LAZY_WINDOW_SAFE (ACTIVE)
+- **Rule:** A web Sentry SDK (`@sentry/browser`) may be loaded ONLY via a lazy dynamic `import("@sentry/browser")` inside `mingla-business/src/diagnostics/sentry.ts`, guarded by `typeof window !== "undefined"`. NO top-level/static import of a web Sentry SDK — `import … from "@sentry/browser"`, side-effect `import "@sentry/browser"`, or `require("@sentry/browser")` — anywhere in the web graph (`mingla-business/app` + `mingla-business/src`). This preserves the ORCH-0886 invariant that the web bundle never touches `window` at module-load, so the Expo Router static-render export pass (Node, no `window`) never crashes. Mirrors I-PROPOSED-AE (`@stripe/stripe-react-native` behind `.native` boundaries); gate precedent ORCH-0778 / ORCH-1296.
+- **CI enforcement:** `.github/scripts/strict-grep/issue-890-web-sentry-lazy-only.mjs` — scans the web graph, FAILS on any static `@sentry/browser` import, and positively asserts `sentry.ts` contains BOTH a dynamic `import("@sentry/browser")` and a `typeof window` guard (so a stub revert fails RED). Carve-out job `issue-890-web-sentry-lazy-only` in `.github/workflows/strict-grep-mingla-business.yml` runs it `--self-test` (1 GOOD + 2 BAD fixtures) then plain; registered `job:` in `MANIFEST.json` (P9-checked).
+- **Regression test:** the gate `--self-test` (static-import BAD fixture + stub-shape BAD fixture) + `mingla-business/src/diagnostics/__tests__/sentry.web.issue890.test.ts` (jsdom-free node env; `init` delegates to the mocked real SDK, `captureException` returns the event id). Fails-on-revert: restoring the no-op stub makes both the gate positive-assertion and the jest delegation/event-id assertions go RED.
+- **Established:** ACTIVE 2026-07-28 at issue #890 CLOSE (PR #1324, tester CONDITIONAL PASS; live-fire event `issue-890-livefire-1785257194918` received in prod Sentry `mingla-business`); registered DRAFT at IMPLEMENT.
+
+### I-PROPOSED-890-B PROD_WEB_SENTRY_DSN_PRESENT (ACTIVE)
+- **Rule:** A Vercel **production** web build of `mingla-business` MUST fail when `EXPO_PUBLIC_SENTRY_DSN` is absent — `EXPO_PUBLIC_*` is inlined at build time, so a keyless production build would bake out an empty DSN and ship crash reporting DARK. Preview / branch / local builds only warn (the DSN may legitimately be absent there — required carve-out; must not break local dev or Vercel preview).
+- **CI enforcement:** `mingla-business/scripts/ci/require-sentry-dsn-on-prod-web.mjs`, wired FIRST in `mingla-business/vercel.json` `buildCommand` (`node scripts/ci/require-sentry-dsn-on-prod-web.mjs && npx expo export -p web && …`). Exits 1 with a FATAL message when the DSN is absent AND `VERCEL==="1" && VERCEL_ENV==="production"`; warns + exits 0 otherwise.
+- **Regression test:** run the guard three ways — `VERCEL=1 VERCEL_ENV=production` no DSN → exit 1 + FATAL; `VERCEL=1 VERCEL_ENV=preview` no DSN → exit 0; DSN set → exit 0.
+- **Established:** ACTIVE 2026-07-28 at issue #890 CLOSE (PR #1324, tester CONDITIONAL PASS; live-fire event `issue-890-livefire-1785257194918` received in prod Sentry `mingla-business`); registered DRAFT at IMPLEMENT.
+
+---
+
+## ACTIVE — issue #1322 (crash reporting Sentry lit up on the admin console mingla-admin — CLOSED 2026-07-28, PR #1330, tester CONDITIONAL PASS + live-fire verified in prod Sentry)
+
+> Registered DRAFT at issue #1322 [admin-sentry] IMPLEMENT (branch `1322-admin-sentry`). Admin sibling of #890, but SIMPLER: `mingla-admin` is a client-only Vite 7 SPA (`vite build`, no SSR / static-export / prerender), so NONE of #890's lazy dynamic-import / `typeof window` guard / lazy-only strict-grep gate is needed (INVESTIGATION F-6) — a normal static `import * as Sentry from "@sentry/react"` (pinned `10.12.0`) + synchronous `Sentry.init()` at the client entry is correct. Admin shipped with crash reporting DARK: zero `@sentry/*` dependency, no `Sentry.init`, no DSN; the only handling was a `console.error` in `ErrorBoundary`. Two gaps close together: (A) real crash reporting — `@sentry/react@10.12.0` initialized once at `mingla-admin/src/main.jsx` reading `import.meta.env.VITE_SENTRY_DSN` (safe no-op when absent), with `ErrorBoundary.componentDidCatch` forwarding render crashes; (B) the orchestrator provisions `VITE_SENTRY_DSN` in the `mingla-admin` Vercel project at DEPLOY and a build-time guard hard-fails a keyless PRODUCTION build. Per OQ-1 the orchestrator chose **Option B**: reuse the shared `mingla-business` Sentry project (org `mingla-llc`); admin errors are distinguished by an `admin-*` `environment` tag (`admin-production` in prod, `admin-<mode>` otherwise), computed at the entry and passed into `initSentry` (kept out of `sentry.js` so the Node test runner can exercise it). Adds NO new strict-grep `.mjs` and NO `MANIFEST.json` bump (the guard lives at `mingla-admin/scripts/ci/`, outside the strict-grep totality sweep, mirroring #890's uncounted guard). The orchestrator flips DRAFT → ACTIVE at CLOSE after independent tester PASS. Cross-ref: INVESTIGATION + SPEC + IMPLEMENTATION on issue #1322.
+
+### I-PROPOSED-1322-A ADMIN_SENTRY_INIT_DSN_GATED (ACTIVE)
+- **Rule:** Admin crash reporting is initialized once at the client entry `mingla-admin/src/main.jsx` via `initSentry({ dsn: import.meta.env.VITE_SENTRY_DSN, environment: import.meta.env.PROD ? "admin-production" : \`admin-${import.meta.env.MODE}\` })`, before `createRoot(...)`. `initSentry` (in `mingla-admin/src/diagnostics/sentry.js`) is a safe no-op when the DSN is absent (dev / preview) and `captureException` returns `""` before any successful init. The single `ErrorBoundary.componentDidCatch` (the one render-error funnel, mounted 3×) forwards render crashes with a `react.componentStack` context. `sentry.js` does NOT read `import.meta.env` (kept Node-testable via dependency-injectable `sdk`). Admin analog of I-PROPOSED-890-A but WITHOUT the lazy / `window`-guard clause (client-only Vite SPA — no SSR module-load hazard).
+- **CI enforcement:** `.github/workflows/issue-1322-admin-sentry-tests.yml` (path-gated `push`/`pull_request`, `node-version: 20`, `npm ci` then `node --test`) runs the happy-path suite T-1..T-4 (and the tester's adversarial suite once present).
+- **Regression test:** `mingla-admin/src/__tests__/issue1322_admin_sentry.test.js` — init delegates to an injected fake sdk with dsn + `admin-production` environment (T-1), no-DSN init is a no-op (T-2), capture returns `""` before init and delegates after (T-3), and a source-grep proves `main.jsx`/`ErrorBoundary.jsx` are wired (T-4). Fails-on-revert: deleting the `initSentry(...)` call from `main.jsx` or reverting `componentDidCatch` to `console.error`-only makes T-4 go RED; making `initSentry` call `sdk.init` without a DSN makes T-2 go RED.
+- **Established:** ACTIVE 2026-07-28 at issue #1322 CLOSE (PR #1330, tester CONDITIONAL PASS; live-fire event `issue-1322-livefire-1785260383439` received in prod Sentry `mingla-business` env `admin-production`); registered DRAFT at IMPLEMENT (branch `1322-admin-sentry`).
+
+### I-PROPOSED-1322-B PROD_ADMIN_SENTRY_DSN_PRESENT (ACTIVE)
+- **Rule:** A Vercel **production** build of `mingla-admin` MUST fail when `VITE_SENTRY_DSN` is absent — `VITE_*` is inlined at build time, so a keyless production build would bake out an empty DSN and ship crash reporting DARK. Preview / branch / local builds only warn (the DSN may legitimately be absent there — required carve-out; must not break local dev or Vercel preview). Mirror of I-PROPOSED-890-B.
+- **CI enforcement:** `mingla-admin/scripts/ci/require-sentry-dsn-on-prod.mjs`, wired FIRST in `mingla-admin/vercel.json` `buildCommand` (`node scripts/ci/require-sentry-dsn-on-prod.mjs && vite build`). Exits 1 with a FATAL message when the DSN is absent AND `VERCEL==="1" && VERCEL_ENV==="production"`; warns + exits 0 otherwise.
+- **Regression test:** run the guard three ways — `VERCEL=1 VERCEL_ENV=production` no DSN → exit 1 + FATAL; no `VERCEL`/no DSN (local) → exit 0 + warn; DSN set → exit 0 + log. (Owned by the tester's adversarial subprocess suite T-5/T-6.)
+- **Established:** ACTIVE 2026-07-28 at issue #1322 CLOSE (PR #1330, tester CONDITIONAL PASS; live-fire event `issue-1322-livefire-1785260383439` received in prod Sentry `mingla-business` env `admin-production`); registered DRAFT at IMPLEMENT (branch `1322-admin-sentry`).
+
+---
+
+## ACTIVE — issue #967 (app-mobile/scripts/ci dark-gate continent eliminated + P11 totality enforced — CLOSED 2026-07-28, PR #1312)
+
+> ACTIVE at issue #967 [dark-gate-triage] CLOSE (ORCH-1400 Phase 1b; PR #1312 merged; independent tester PASS). `app-mobile/scripts/ci/` held 102 `.mjs` checks of which 90 ran in NO workflow — a second dark-gate continent outside strict-grep. All 90 `.mjs` + 11 `.sh` were triaged against live code (5 parallel forensic passes, each RAN every check): 35 `.mjs` + 8 converted `.sh` were live+unique → WIRED (enforced, run every PR via run-batch); 30 `.mjs` + 1 `.sh` duplicated an enforced gate → SUPERSEDED + deleted (each equivalent verified present+passing first); 25 `.mjs` + 1 `.sh` read deleted/renamed code → RETIRED + deleted. Zero dark gate was hiding a real regression. Cross-ref: TRIAGE + IMPLEMENTATION + TEST reports on issue #967; coverage gaps in follow-up #1306.
+
+### I-967-APP-MOBILE-CI-TOTALITY-ENFORCED (ACTIVE)
+- **Rule:** Every `.mjs` under `app-mobile/scripts/ci/` is registered in `.github/scripts/strict-grep/MANIFEST.json` `gates[]` exactly once and runs enforced via `run-batch.mjs` on every PR. No script in that directory may exist un-run — the second dark-gate continent stays eliminated. A new `.mjs` added there MUST be registered or CI fails.
+- **CI enforcement:** `"app-mobile/scripts/ci"` in `MANIFEST.externalGateDirs` → `meta-1383-manifest-parity.mjs` P11 sweeps the dir like P1 (unregistered `.mjs` → FAIL; dangling registration for a deleted file → FAIL). Gates run in run-batch classes A/B/D — class D on Node 22 for the `--experimental-strip-types` test-runner gates. `tests-append-only.yml` + the ORCH-1383 shrink guard block silent registry shrink.
+- **Regression test:** `.github/scripts/strict-grep/__tests__/orch-967-p11-external-totality.tester.test.mjs` (node --test) invokes meta-1383 via child_process and proves P11 rejects both an unregistered-add and a registered-file-delete; fails-on-revert proven — reverting `externalGateDirs → []` makes meta-1383 blind to the injected unregistered `.mjs` and the test fails. Append-only.
+- **Established:** ACTIVE 2026-07-28 at issue #967 CLOSE (PR #1312 merged; independent tester PASS).
+
+---
+
+## ACTIVE — issue #1027 (create-wizard keyboard reachability + web date/time pickers — CLOSED 2026-07-28, PR #1304)
+
+> Registered DRAFT at issue #1027 [keyboard-input-reachability] Thread A IMPLEMENT (branch `1027-keyboard-input-reachability`). Two native keyboard-reachability defects proven at runtime on a physical Samsung Galaxy A72: (1) the SHARED `packages/location-input/src/MapboxAddressInput.tsx` card-mode suggestion list rendered `<Scroll style={{ maxHeight: tokens.dropdown.maxHeight }}>` with the injected token = 9999 on every business host, so the list laid out as one tall block that overflowed BEHIND the soft keyboard — rows past the keyboard's top edge were rendered but physically unreachable while typing (9 Class-A consumer/business surfaces inherit the bug from this one file); (2) the event/RSVP wizard description `<TextInput>` (`mingla-business/src/components/event/CreatorStep1Basics.tsx`) was not wired to the wizard's `scrollToBottom` reveal, so a tall empty multiline sat ~60% behind the keyboard on focus (KeyboardAwareScrollView reveals only the caret/top line). Fixes: cap the shared dropdown's scroll viewport to the measured space above the keyboard via a pure `computeDropdownMaxHeight` (RN `Keyboard` API + `measureInWindow`, no new dependency — one shared fix covers all 9 surfaces); wire `onFocus={() => scrollToBottom?.()}` on the description field (the proven Step-3 online-URL pattern). Flip both to ACTIVE at CLOSE after independent tester PASS (orchestrator-owned, per SPEC §6). Cross-ref: INVESTIGATION + SPEC + IMPLEMENTATION reports on issue #1027 (Thread A).
+
+### I-PROPOSED-1027-KEYBOARD-AWARE-DROPDOWN-CAP (ACTIVE)
+- **Rule:** Any in-flow suggestion/autocomplete list rendered below a soft-keyboard-facing `TextInput` MUST cap its scroll viewport to the measured space between its top and the keyboard's top edge; it MUST NOT use a fixed/unbounded `maxHeight` as the EFFECTIVE height. The list scrolls within the cap. Canonical implementation: `packages/location-input/src/MapboxAddressInput.tsx` — the card-mode `<Scroll>` `maxHeight` is `computeDropdownMaxHeight({ keyboardScreenY, cardTopY, tokenMaxHeight: tokens.dropdown.maxHeight, isIOS })`, where `keyboardScreenY` comes from the RN `Keyboard` API (`endCoordinates.screenY`, `Infinity` when hidden), `cardTopY` from `measureInWindow`, floored at `MIN_DROPDOWN_HEIGHT` (96 ≈ 2 rows) and never above the injected token upper bound; iOS subtracts an extra `DROPDOWN_KEYBOARD_ACCESSORY_ALLOWANCE` (44) plus `DROPDOWN_SAFETY_MARGIN` (8). When the keyboard is hidden or the card has not measured, the effective height falls back to the token unchanged (zero regression). The injected `dropdown.maxHeight` token is now an UPPER BOUND, not the effective height. Inline mode (`dropdown.mode === "inline"`) is exempt (its host sheet scrolls). NO new dependency (`react-native-keyboard-controller` MUST NOT be added to this package).
+- **Enforcement:** `mingla-business/src/components/location/__tests__/mapboxAddressInputKeyboardCap.1027.test.ts` — behavioral cap-math contract (T-1..T-4 + iOS accessory + token upper bound) via the exported pure `computeDropdownMaxHeight`, plus source-characterization proving the card-mode `<Scroll>` applies the COMPUTED value (not `maxHeight: tokens.dropdown.maxHeight`), the `Keyboard` listeners are subscribed + cleaned up, and the card is measured (`measureInWindow` / `onLayout={measureCard}` / `ref={cardRef}`).
+- **Fails-on-revert:** revert the `<Scroll>` to `maxHeight: tokens.dropdown.maxHeight` (or delete the cap) → the wiring assertions go RED; drop the iOS accessory / MIN floor → the behavioral assertions go RED. Verified by true line change (see IMPLEMENTATION report on #1027).
+- **Files:** `packages/location-input/src/MapboxAddressInput.tsx`.
+- **Established:** ACTIVE 2026-07-28 at #1027 CLOSE (tester CONDITIONAL PASS, PR #1304); registered DRAFT at Thread A IMPLEMENT 2026-07-27.
+
+### I-PROPOSED-1027-WIZARD-MULTILINE-REVEALED-ON-FOCUS (ACTIVE)
+- **Rule:** Bottom-anchored multiline `TextInput`s in KeyboardAwareScrollView wizard bodies MUST scroll fully above the keyboard on focus (via the wizard's `scrollToBottom`/scroll-to-end reveal), not rely on KAS's caret-only reveal. Canonical implementation: the event/RSVP Basics description field (`mingla-business/src/components/event/CreatorStep1Basics.tsx`) reads `scrollToBottom` from `StepBodyProps` and wires `onFocus={() => scrollToBottom?.()}` (defensive optional-call), mirroring the Step-3 online-URL field (`CreatorStep3Where.tsx`).
+- **Enforcement:** `mingla-business/src/components/event/__tests__/creatorStep1DescriptionOnFocusReveal.1027.test.ts` — asserts `scrollToBottom` is destructured from props and the description `<TextInput>` (scoped by `value={draft.description}` / `accessibilityLabel="Event description"`) has an `onFocus` that calls `scrollToBottom`.
+- **Fails-on-revert:** delete the `onFocus={() => scrollToBottom?.()}` line on the description field → the "onFocus wired" assertion goes RED. Verified by true line deletion (see IMPLEMENTATION report on #1027).
+- **Amended (#1027 iOS regression fix, 2026-07-28, PR #1313):** the reveal now DEFERS `scrollToEnd` to the keyboard-shown moment via the `react-native-keyboard-controller` library (`useKeyboardIsVisible`-keyed effect + `pendingScrollToBottomRef`) across `EventCreatorWizard`/`RsvpCreatorWizard`/`EditPublishedScreen` — a bare-`requestAnimationFrame` `scrollToEnd` ran before the KAS `paddingBottom` spacer landed and over-scrolled the tall multiline OFF-SCREEN on iOS. Hardened enforcement: `creatorDescriptionRevealDeferred.1027.regression.test.ts` asserts the DEFERRED library mechanism (not mere `onFocus` wiring — the wiring test passed while iOS was broken); fails-on-revert on restoring the immediate scroll. No raw `Keyboard.addListener` (orch-0892 gate).
+- **Files:** `mingla-business/src/components/event/CreatorStep1Basics.tsx`.
+- **Established:** ACTIVE 2026-07-28 at #1027 CLOSE (tester CONDITIONAL PASS, PR #1304); registered DRAFT at Thread A IMPLEMENT 2026-07-27.
+
+> Thread B (business WEB date/time) registered DRAFT at issue #1027 IMPLEMENT (same branch). Seth confirmed the live symptom on desktop Chrome: "the date picker comes up, I can select a date but clicking out does not close it… and the times don't work — clicking the times does nothing." Two web bug classes: (1) the event/RSVP "When" step (`CreatorStep2When.tsx` + `MultiDateOverrideSheet.tsx`) drove date/time through a hidden 1×1 `opacity:0; pointer-events:none` `<input>` triggered by `showPicker()`/`.click()` from a Pressable → the calendar opened detached + un-dismissable, and the time rows were dead taps; (2) four surfaces (`checkout/intake/IntakeQuestionRenderers.tsx`, `trip/PaymentPlanEditor.tsx`, `trip/BookingDeadlinePicker.tsx`, `marketing/ComposerStepWhen.tsx`) rendered `@react-native-community/datetimepicker` (NO web build) on web → a hard silent no-op. Fix: ONE shared, visible, hit-testable native `<input>` (`mingla-business/src/components/ui/WebDateTimeInput.tsx`) rendered in place of the Pressable/native picker on web across every surface (the proven `TripCreatorStep1Basics`/`BrandHoursEditor` pattern). iOS/Android keep the `DateTimePicker` Sheet/dialog flow byte-identical. Flip ACTIVE at CLOSE after independent tester PASS (orchestrator-owned). Cross-ref: INVESTIGATION + SPEC + IMPLEMENTATION reports on issue #1027 (Thread B).
+
+### I-PROPOSED-1027-WEB-NATIVE-DATE-INPUT (ACTIVE)
+- **Rule:** On the WEB target, any business date/time selection MUST render a real, **visible, hit-testable** native `<input type=date|time|datetime-local>` the user clicks directly (so the browser opens its own picker anchored at the field and dismisses on click-out). It MUST NOT use a hidden (`opacity:0` / `pointer-events:none` / `display:none`) input driven by `showPicker()`/`.click()`, and MUST NOT render `@react-native-community/datetimepicker` on web (that package has no web build). Canonical implementation: the ONE shared `mingla-business/src/components/ui/WebDateTimeInput.tsx`, used under `Platform.OS === "web"` in place of the native Pressable/`DateTimePicker`. iOS/Android keep the `DateTimePicker` Sheet/dialog flow unchanged.
+- **Enforcement:** `mingla-business/src/components/event/__tests__/orch_1027_web_datetime_native_input.test.tsx` (render — mounts the REAL `CreatorStep2When` on web, asserts the Date row is a visible `<input type="date">` whose change commits `draft.date` + a recomputed `endsAtUtc`, and the Doors/Ends rows are `<input type="time">` whose change commits) + `orch_1027_web_datetime_structural.test.ts` (all 7 surfaces + the shared control carry no `showPicker`/`HIDDEN_WEB_INPUT_STYLE`/`pointerEvents:"none"`, each uses `WebDateTimeInput`, and every native `DateTimePicker` stays gated off web). The `orch_1089` wizard-parity marker migrated `showPicker` → `WebDateTimeInput` under `[TEST-MOD-APPROVED ORCH-1027]`. Wired into CI by `.github/workflows/issue-1027-keyboard-and-datetime-tests.yml` (installs `react-test-renderer --no-save`) and the required `mingla-business-jest-suite.yml`.
+- **Fails-on-revert:** restore the hidden-input + `showPicker` bridge (or drop a surface back to a web-unguarded `DateTimePicker`) → the render test's "visible input commits" assertions and the structural "no `showPicker`/`pointerEvents:none`, uses `WebDateTimeInput`" assertions go RED. Verified by true line deletion (see IMPLEMENTATION report on #1027 Thread B).
+- **Files:** `mingla-business/src/components/ui/WebDateTimeInput.tsx`, `mingla-business/src/components/event/CreatorStep2When.tsx`, `mingla-business/src/components/event/MultiDateOverrideSheet.tsx`, `mingla-business/src/components/checkout/intake/IntakeQuestionRenderers.tsx`, `mingla-business/src/components/trip/PaymentPlanEditor.tsx`, `mingla-business/src/components/trip/BookingDeadlinePicker.tsx`, `mingla-business/src/components/marketing/ComposerStepWhen.tsx`.
+- **Established:** ACTIVE 2026-07-28 at #1027 CLOSE (tester CONDITIONAL PASS, PR #1304); registered DRAFT at Thread B IMPLEMENT 2026-07-27.
+
+## ACTIVE — issue #962 (a pre-bank brand shows a fabricated GBP on money surfaces — CLOSED 2026-07-28, PR #1311; Phase 1 = PR #1299)
+
+> Registered DRAFT at issue #962 [prebank-currency-degbp-p2] Phase-2 IMPLEMENT. A pre-bank brand genuinely has NO currency (`brands.default_currency = NULL`, migration 0769 "NULL means not set; do not imply GBP"); currency is first materialized only when the partner adds a bank (picks a country in Stripe onboarding). Phase 1 (PR #1299) killed the leak SOURCES (the draft write path, the discover feed vs `/e/` seed split-brain, the RSVP preview literal, the shared QuantityRow default) and added the null-safe helper `currencyCodeOrNull` — the sibling of the byte-identical ORCH-1152 Intl crash-guard `normalizeCurrency`. Phase 2 converts the DISPLAY surfaces (home revenue, event/trip/experience KpiCards, reconciliation, door, brand GMV tile, pricing example, ticket sublines, create-wizard preview, activity feed, CSV export, venue-menu price) to resolve `currencyCodeOrNull` and HIDE the price ("—") / omit the symbol when the brand has no established currency — never manufacturing GBP and never swapping a business-display surface to a different literal; consumer structurally-required `currency` fields fall to the USD last-resort matching the `/e/` seed. The load-bearing `liveEventConverter` (G1) is made null-safe first so no *set* "GBP" re-enters downstream. The orchestrator flips DRAFT → ACTIVE at CLOSE. Cross-ref: consolidated SPEC + implementation report on issue #962.
+
+### I-PROPOSED-962-NO-GBP-IN-PREBANK-MONEY-SURFACES (ACTIVE)
+- **Rule:** the 28 converted pre-bank money surfaces (5 Phase-1 sources + 23 Phase-2 display/cache/export sites) MUST NOT manufacture a GBP currency literal. When a brand has no established currency, a DISPLAY site resolves `currencyCodeOrNull(...)` and HIDES the price ("—") / omits the symbol; a real currency is honored; a consumer structurally-required `currency` field uses the USD last-resort (matching the `/e/` seed). `normalizeCurrency`/`formatCurrency`/`formatCurrencyRound` (the ORCH-1152 Intl crash-guards) stay byte-identical and are the ONLY place GBP survives — unreachable by any pre-bank display path.
+- **CI enforcement:** `.github/scripts/strict-grep/issue-0962-prebank-no-gbp.mjs` (registered `batch:A`, `node`, self-test `wired`) bans the five GBP-manufacturing literals (`?? "GBP"`, `|| "GBP"`, `currency: "GBP"`, `currency = "GBP"`, `fallbackCurrency="GBP"`) in exactly those 28 files (full-line + block comments stripped). `--self-test` proves FAIL-on-each-planted-literal in every listed file + PASS-on-the-clean-tree. Deliberately NOT a repo-wide ban — charge-path/post-purchase GBP fallbacks are bank-gated and out of scope (residual data-purity sites tracked in #1305).
+- **Regression test:** the implementor happy-path R4 (`mingla-business/**/__tests__/issue_0962_prebank_display_no_gbp*`) proves a null-currency brand renders NO £/GBP on the converted surfaces (home revenue "—", event/trip KpiCards "—", reconciliation & door money "—", ticket subline "—", venue-menu price "—", CSV preamble no code) and that a brand WITH a currency still renders it; each assertion fails-on-revert of its site. The gate + R4 both fail if any converted file reintroduces a fabricated GBP. Append-only.
+- **Established:** ACTIVE 2026-07-28 at issue #962 CLOSE (tester PASS P0-P3:0, PR #1311); registered DRAFT at Phase-2 IMPLEMENT 2026-07-28.
+
+---
+
+## ACTIVE — issue #1030 (Paystack partner sweep loops forever on a lost transfer response — verify-by-reference reconcile — CLOSED 2026-07-27, PR #1279)
+
+> ACTIVE at issue #1030 [partner-verify-by-reference] CLOSE (lineage ORCH-1331; PR #1279 merged; independent tester PASS; retry-sweep edge function redeployed). The LIVE Paystack partner-split retry sweep re-initiated a transfer with the same deterministic reference `psplit_<id>_a<attempt>` whenever a pending row had a reference but NO stored transfer code (the initiate response was lost to a timeout/crash) — Paystack answers 400 `duplicate_transfer_reference` (classified retryable), so the row re-initiated every sweep forever and the ledger never reconciled (the money may already have moved). Fix (sweep-only, mirroring the merged organiser #1177 reconcile-first pattern): the sweep's code-less branch now calls `paystackVerifyTransferByReference(psplit_<id>_a<attempt>)` BEFORE any re-initiate and reconciles from the returned status; an initiate happens only on a DEFINITIVE not-found. No double-pay (reconcile strictly precedes initiate), no migration. Cross-ref: investigation + SPEC (+ amendment A1) + implementation + test reports on issue #1030.
+
+### I-PROPOSED-1030-PARTNER-VERIFY-BEFORE-INITIATE (ACTIVE)
+- **Rule:** the partner retry sweep MUST reconcile a code-less pending row BY REFERENCE (`paystackVerifyTransferByReference(psplit_<id>_a<attempt>)`) before any re-initiate. Verify `success`→transfer.success reconcile; `failed`→stamp the verified code then transfer.failed reconcile (bump/clear, cap→failed); `reversed`→bump+clear; in-flight (pending/otp/queued/processing)→skip; transient verify error→skip. An initiate happens ONLY on a DEFINITIVE not-found. Guarantees a lost initiate response can never double-pay or loop. Partner-rail (sweep-level) analog of I-PROPOSED-1177-VERIFY-BEFORE-INITIATE. Preserves I-PROPOSED-1331-PARTNER-SPLIT-FAIL-SOFT (reconcile stays inside the fail-soft wrapper; never touches the checkout ack) and I-PROPOSED-1331-PARTNER-SHARE-FROM-PLATFORM-FEE (share math / NGN zero-FX untouched).
+- **CI enforcement:** the append-only regression suites `supabase/functions/_shared/__tests__/partnerPaystackSplitRetry.verifyReconcile.orch1030.test.ts` (implementor happy-path) and `…partnerPaystackSplitRetry.verifyReconcile.tester.orch1030.test.ts` (tester adversarial) run in the Deno unit-test CI lane (ORCH-1331 partner Paystack payout rail suite); `classifyVerifyByReferenceError` is exported for the sweep.
+- **Regression test:** the happy-path proves a code-less lost-response row reconciles to transferred with ZERO initiate instead of looping on the duplicate-400; deleting the reconcile-first block flips it (and the tester's "verify strictly before initiate" assertion) RED — fails-on-revert proven both by the implementor and independently by the tester. The tester's adversarial angle attacks transient-must-not-initiate / in-flight-must-skip / definitive-not-found-initiates-exactly-once / no-double-pay. Append-only.
+- **Established:** ACTIVE 2026-07-27 at issue #1030 CLOSE (PR #1279 merged; independent tester PASS).
+
+---
+
+## ACTIVE — issue #958 (bracketed/spaced worktree paths break strict-grep wrappers + orch-0964 walks `.next/` — CLOSED 2026-07-27, PR #1273)
+
+> Registered DRAFT at issue #958 [bracketed-worktree-path-gates] IMPLEMENT. Two CI-only, backend-only defects, both proven from the bracketed worktree `958-[bracketed-worktree-path-gates]`: (1) four strict-grep `.test.mjs` wrappers spawned their sibling gate using `new URL(...).pathname`, which percent-encodes `[`→`%5B`, `]`→`%5D`, space→`%20`, so the child `node` received a non-existent path and every spawning subtest crashed with `MODULE_NOT_FOUND` from any bracketed/spaced worktree; (2) three `orch-0964` theme walkers recursed into a local `.next/` Next build and false-red on compiled bundle output. Fix: swap `.pathname` for `fileURLToPath(SCRIPT)` in the 4 wrappers, and add `".next"` to the 3 walker exclusion arrays. No detection/assertion logic changed. ACTIVE at CLOSE (PR #1273 merged; independent tester PASS — both regressions fails-on-revert, run-batch class A wired). Cross-ref: SPEC + implementation report on issue #958.
+
+### I-PROPOSED-958-STRICTGREP-SPAWN-VIA-FILEURLTOPATH (ACTIVE)
+- **Rule:** every strict-grep wrapper that spawns, execs, or imports a sibling gate MUST derive the child path via `fileURLToPath(...)`, never `URL.pathname`, so gates run correctly from ANY worktree path — brackets, spaces, or unicode. `URL.pathname` is a percent-encoded URL component and is not a valid filesystem path.
+- **CI enforcement:** the append-only regression `.github/scripts/strict-grep/__tests__/issue-958-bracketed-worktree-spawn.regression.mjs` (registered `batch:A`, `node --test`) copies each fixed wrapper into a throwaway directory whose absolute path carries `[`, `]`, and a space, runs it, and fails on any `%5B` or `MODULE_NOT_FOUND` in the output.
+- **Regression test:** the regression asserts exit 0 with neither `%5B` nor `MODULE_NOT_FOUND` for all four fixed wrappers; reverting any wrapper to `SCRIPT.pathname` reintroduces `Cannot find module '…%5B…%5D…/<gate>.mjs'` and flips that wrapper red (proven fails-on-revert at IMPLEMENT). The tester adds a distinct unicode+space-path angle. Append-only.
+- **Established:** ACTIVE 2026-07-27 at issue #958 CLOSE (PR #1273 merged; independent tester PASS).
+
+### I-PROPOSED-958-REPO-WALKER-EXCLUDES-NEXT (ACTIVE)
+- **Rule:** any strict-grep gate that walks a root which can contain a Next build MUST exclude `.next` alongside `node_modules`/`dist`/`build`/`.expo`, so the gate scans source, never compiled bundle output.
+- **CI enforcement:** the three whole-repo `orch-0964` theme walkers (`theme-foreground-computed`, `theme-resolver-canonical`, `theme-typed-columns`) now carry `.next` in their exclusion arrays; the tester's adversarial `.next` non-descent fixture guards the behavior.
+- **Regression test:** with a compiled `.next/` file matching each gate's regex present under `mingla-business/`, the three gates exit 0 (no descent); the identical content placed in a real source path still trips all three (detection preserved). Proven both directions at IMPLEMENT. Append-only.
+- **Established:** ACTIVE 2026-07-27 at issue #958 CLOSE (PR #1273 merged; independent tester PASS).
+
+---
+
+## ACTIVE — issue #885 (the scanner-invite route renders an actionable screen for a terminal auth state, never an infinite spinner — CLOSED 2026-07-27)
+
+> ACTIVE at issue #885 [scanner-invite-loader-guard] CLOSE (lineage ORCH-1374; PR #1233 merged). The infinite-loader FIX already shipped in `mingla-business/app/accept-scanner-invitation.tsx` (commit 26cd280bb, batched into the ORCH-1373 PR): the route branches on the five-state `authStatus` and renders an actionable "Sign in" screen for a logged-out visitor instead of the old dead `if (!isAuthReady) return;`-above-`router.replace('/auth?next=…')` clone that would have spun a logged-out scanner forever (a loaded landmine, not a live fire — production `scanner_invitations` = 0 rows). The GAP this issue closed is that the route's OWN render control flow had no fails-on-revert regression test: the shared `authReadiness` tests and the layout route-gate test (`orch_1373_auth_route_gate.test.ts`) protect the auth DERIVATION and the route MOUNT, but nothing pinned THIS component's branch structure. The implementor added a happy-path proof that MOUNTS the real shipped route via react-test-renderer (not a hand-rolled branch copy — the ORCH-1373 P2-2 disease) and asserts an actionable "Sign in" affordance + zero ActivityIndicator for `authStatus="signed_out"`; the tester added an adversarial suite on a different angle (`authStatus="error"` Try-again screen + C-1373-C precedence), both fails-on-revert. Cross-ref: implementation + test reports on issue #885.
+
+### I-PROPOSED-885-SCANNER-INVITE-NO-INFINITE-LOADER (ACTIVE)
+- **Rule:** On `/accept-scanner-invitation` (`mingla-business/app/accept-scanner-invitation.tsx`), a terminal-but-actionable auth state MUST render an actionable screen, never an infinite spinner. `authStatus === "signed_out"` → a working "Sign in" screen; `authStatus === "error"` → a "Try again" screen. A spinner is legitimate ONLY for transient states (`bootstrapping` / `refreshing`, or `signed_in_ready` while the accept mutation is in flight). `!isAuthReady` must NEVER be treated as "still loading" for a logged-out visitor — for a terminal `signed_out` state it is actionable, not transient. (Route-scoped sibling of `I-PROPOSED-1373-AUTH-TERMINAL-STATE-IS-ACTIONABLE`.)
+- **CI enforcement:** the `#885 BIZ` job (`.github/workflows/issue-885-scanner-invite-loader-tests.yml`) runs the append-only jest suite `issue_885_scanner_invite_signed_out_actionable.implementor.test.ts` under Node 20 with `react-test-renderer@19.1.0 --no-save`, path-gated on the route source, the test, and the workflow. It is also swept into the required full suite (`mingla-business-jest-suite.yml`, which installs the same renderer).
+- **Regression test:** the implementor suite (`issue_885_scanner_invite_signed_out_actionable.implementor.test.ts`) MOUNTS the real `AcceptScannerInvitationRoute` and, for `authStatus="signed_out"` with an unresolved phase, asserts (a) the accept mutation is not attempted, (b) exactly one actionable "Sign in" affordance renders with an onPress handler, (c) NO ActivityIndicator renders, and (d) the visible copy is the invite screen, not spinner copy. The tester adversarial suite (`issue_885_scanner_invite_actionable.adversarial.test.ts`) attacks a different angle: `authStatus="error"` renders the "Try again" screen (never a spinner, never the sign-in screen, accept never attempted), and a resolved error `phase` is NOT re-masked when auth flips to a transient state (C-1373-C precedence). Reverting the route to the dead-redirect / spinner-for-signed_out shape, or deleting the error arm, or reordering the auth-transient check ahead of `phase`, each flips a distinct suite red (proven fails-on-revert at IMPLEMENT + TEST). Append-only.
+- **Established:** ACTIVE 2026-07-27 at issue #885 CLOSE (PR #1233 merged; independent tester PASS — implementor happy-path + adversarial error-state/precedence, both fails-on-revert, runtime code byte-identical to origin/main).
+
+---
+
 ## ACTIVE — issues #948 + #949 (bank-first partner invites stay offering-agnostic — W3 CLOSED 2026-07-24)
 
 ### I-PROPOSED-949-INVITE-ONBOARDING-OFFERING-AGNOSTIC (ACTIVE)
@@ -14,6 +361,64 @@
 - **CI enforcement:** `.github/scripts/strict-grep/issue-949-invite-onboarding-offering-agnostic.mjs`, registered as a wired batch:A gate in `MANIFEST.json`, scans the exact eight funnel surfaces and fails closed if one disappears.
 - **Regression test:** the gate self-tests every banned phrase, comment stripping, and the one-line exception form; reverting any W3 replacement (for example restoring “sell tickets” on the payments banner) makes the plain gate fail. Append-only.
 - **Established:** ACTIVE at #948/#949 W3 CLOSE after independent tester PASS on PR #1205; merge and production verification are required before either master issue may be closed.
+
+### I-1401-INVITE-BANK-BACK-HIDE-SIGNAL-GATED (ACTIVE)
+- **Rule:** On the web bank-connect screen (`mingla-business/src/components/brand/BrandBankConnectBody.web.tsx`), the top "Back" button is hidden AND the "Skip for now" section (Download the app | Continue on web) is shown ONLY when the invite-funnel signal `?from=invite` is present, read via the exact-match `isInviteFunnelValue` (`src/utils/inviteFunnelSignal.ts`). With the signal absent, empty, or ANY other value (case variants, whitespace, CSV/array), the screen is byte-for-byte the pre-#1226 behavior: Back present, no Skip. This keeps the invite-only affordances from ever regressing the dashboard/direct/bookmark entry. "Download the app" uses the single attribution-safe biz OneLink (no `Platform.OS`/store branching); "Continue on web" routes to the top-level web-app home (`/(tabs)/home`, per PR #1228).
+- **CI enforcement:** the `#948 W4` job (`.github/workflows/issue-948-web-skip-download-tests.yml`) runs the append-only jest suites `issue_948_web_skip_download.{implementor.test.ts, render.tester.test.tsx, adversarial.tester.test.tsx}` under Node 20 (the Supabase client boundary is mocked so the render suites run). Offering-agnostic copy on this surface rides `I-PROPOSED-949-INVITE-ONBOARDING-OFFERING-AGNOSTIC` (the connect screen was added to its strict-grep surfaces).
+- **Regression test:** deleting the Back-hide gate flips the `bank-connect-back` count assertion red (Back reappears in invite mode); loosening `isInviteFunnelValue` to case-insensitive flips the adversarial `INVITE`/whitespace/CSV assertions red. Restore → green. Fails-on-revert proven at `f02e843f9` (implementor happy-path) + `662ceee1a` (tester adversarial), re-verified under Node 20 at `0cbda315a`. Append-only.
+- **Established:** ACTIVE 2026-07-27 at #948 CLOSE (tester VERDICT PASS, 0 P0/P1); PR #1226 merged `4b0446d`. Supersedes the original native Wave-4 (B-07) plan, which was dropped as redundant with the in-app to-do "connect your bank" nudge (`businessTodos.ts`).
+
+---
+
+## ACTIVE — issue #964 (TUS/Bunny event-cover upload pipeline gate coverage — CLOSED 2026-07-27, PR #1297)
+
+> Registered DRAFT at issue #964 [tus-gate-coverage] IMPLEMENT (ORCH-1400 Phase 1b). CI/gate-coverage only — NO product/edge-fn/migration/deploy change. The live event-cover video upload path is TUS → Bunny (post-META-1270 / #966, CLOSED); the two strict-grep gates that nominally guarded video upload (`orch-0770`, `orch-0776a`) pinned pre-Bunny (Cloudinary-era / Expo `createUploadTask`) shapes that matched 0 times in live code and were held `unenforced`, so the surface users exercise had no coverage. This work REWROTE both gates against the live Bunny invariants (upload-intent presign + `_shared` budgets + config + PublicEventPage in `orch-0770`; client byte-progress honesty in `orch-0776a`), ADDED a dedicated webhook-authenticity gate (`orch-0770b`), and WIRED all three into `MANIFEST.json` (`batch:A`, self-test `wired`). Gate deletion was prohibited (rewrite in place); every still-live assert was preserved and every dead Cloudinary assert dropped (its removal is D-7's domain, #966). ACTIVE at CLOSE (PR #1297 merged; independent tester PASS — implementor self-test fails-on-revert + adversarial reintroduction/secret-leak companion `orch-964-tus-bunny-gate.tester.test.mjs`). Cross-ref: SPEC + implementation + test-verdict reports on issue #964.
+
+### I-964-TUS-BUNNY-GATE-ENFORCED (ACTIVE)
+- **Rule:** The live TUS/Bunny event-cover upload pipeline (client byte-progress honesty, upload-intent Bunny presign + AccessKey-never-to-client, and webhook v1/hmac-sha256 signature verification + fail-closed finalize) is guarded by enforced, self-testing strict-grep gates `orch-0770` / `orch-0776a` / `orch-0770b`. These gates FAIL if a live Bunny invariant is dropped or a Cloudinary-era shape is reintroduced. Deletion is prohibited; wiring is ratcheted (`selfTestWiredFloor` ≥ 253, `unenforcedCap` ≤ 3).
+- **CI enforcement:** the three gates are registered in `.github/scripts/strict-grep/MANIFEST.json` as `enforcement: "batch:A"`, `selfTest: "wired"`, modes `["self-test","plain"]`, so `run-batch.mjs --class A` runs each in both live and self-test modes on every PR; `meta-1383-manifest-parity.mjs` (P3 count = 446, P6 selfTest matches source, P7 wired ≥ 253, P8 unenforced ≤ 3) keeps them wired and honest; `tests-append-only.yml` blocks any silent shrink of the registry.
+- **Regression test:** each gate's `--self-test` proves PASS on the live shape and FAIL on every dropped live invariant AND on a reintroduced Cloudinary/secret-leak shape; the named live fails-on-revert is proven by deleting `verifyBunnyWebhookSignature` from the webhook (`orch-0770b` → exit 1), `protocol: "tus"` from upload-intent (`orch-0770` → exit 1), and the `(bytesSent / bytesTotal) * 100` byte math from the service (`orch-0776a` → exit 1), each restoring to exit 0. The tester adds an independent adversarial companion (`__tests__/orch-964-tus-bunny-gate.tester.test.mjs`) that imports the exported `scan()` and feeds Cloudinary-reintroduction / AccessKey-leak fixtures. Append-only.
+- **Established:** ACTIVE 2026-07-27 at issue #964 CLOSE (PR #1297 merged; independent tester PASS).
+
+---
+
+## DRAFT — issue #1184 (Campaign Builder video Phase A — IN FLIGHT)
+
+### I-PROPOSED-1184-CREATIVE-PREPARE-RESUMABLE (DRAFT)
+- **Rule:** a video preparation attempt is server-owned, account-scoped, current-byte-hash-scoped, and resumable. Exactly one caller wins initiation; the provider ID is persisted before later upload/poster/check work; replacement after an ID exists requires same-attempt machine terminal proof. Client Stop stops waiting only.
+- **Enforcement:** lifecycle migration/RPC, attempt-ID CAS writes, exact action/state matrix in `admin-ad-creative-prepare`, and the dedicated #1184 workflow.
+- **Regression test:** implementor schema/Deno suites prove the lock/RPC shape, immediate ID persistence, stale-response rejection, and fixed sequential queue. Independent adversarial coverage is added before PR.
+
+### I-PROPOSED-1184-VIDEO-CREATE-READY-PAUSED (DRAFT)
+- **Rule:** Phase A video create is consumer-lane Meta and Snapchat only, and only from an exact current-hash READY ref for the same external account. TikTok, Google, and Reddit video create remain excluded. Every real create persists PAUSED; `validate_only` persists and creates zero objects.
+- **Enforcement:** exact ref predicates in `admin-ad-create-campaign`, platform-aware admin gate, and #1184 CI.
+- **Regression test:** Deno create-source regression plus admin READY-subset/destination×platform regression; existing image and multi-destination suites remain green.
+
+### I-PROPOSED-1184-PREVIEW-TRUTH-BOUNDARY (DRAFT)
+- **Rule:** Meta preview accepts only a trusted provider iframe URL and the UI never renders raw HTML; TikTok preview is one fresh response-only provider link per user action; Snapchat and Google are always labeled Mingla approximations. Preview and create share one canonical public/live destination resolver.
+- **Enforcement:** `_shared/adDestination.ts`, `admin-ad-preview`, iframe sandbox/referrer policy, response-only TikTok state, and source-aware preview labels.
+- **Regression test:** implementor destination/iframe/service-normalization suites plus independent malicious-preview and expiry testing before PR.
+
+---
+
+## ACTIVE — issue #903 (window.open one-owner hardening — CLOSED 2026-07-27)
+
+### I-PROPOSED-1381-OPEN-EXTERNAL-SINGLE-OWNER (ACTIVE — extended by #903 to a third owner + a repo-wide inline-re-roll ban)
+- **Rule:** Opening an external destination in a new tab has exactly ONE owner **per package** — a bare `openExternal(dest, w?)` that calls `window.open(dest, "_blank")` with NO `noopener`/`noreferrer` feature string (either token makes `open()` return `null` even on success, which fires a popup-block fallback unconditionally and double-navigates the page — the ORCH-1381 bug), severs `win.opener = null` on success to keep the noopener security property, and falls back to `location.assign(dest)` ONLY in the else-branch of a successful open. There are legitimately THREE owners, because none of these packages can import another's: `mingla-marketing/lib/open-external.ts`, `mingla-business/src/services/guestFunnelLink.ts`, and (added #903) `mingla-admin/src/lib/openExternal.js`. **No product file outside a registered owner may re-roll `window.open(…, noopener|noreferrer)` inline** — a call site opens an external tab ONLY by calling its package's `openExternal`.
+- **CI enforcement:** `.github/scripts/strict-grep/orch-1381-open-external-no-double-nav.mjs` (batch:A in `MANIFEST.json`, run by `run-batch.mjs`, triggered by `strict-grep-mingla-business.yml` on all product dirs). It (1) validates each of the three owners' internal shape under R1–R4, and (2) scans `mingla-admin/src`, `mingla-business/src`, `mingla-marketing`, `app-mobile/src`, `packages` and FAILS on any inline `window.open(…, noopener|noreferrer)` (case-insensitive, reusing the R1 regex) outside the three owners, comments, `__tests__`/`*.test.*` fixtures, and `.github/`. The `mingla-admin` runtime behavior is additionally proven by `.github/workflows/issue-903-open-external-admin-tests.yml`.
+- **Regression test:** the gate `--self-test` carries fixed-shape-passes / reverted-shape-fires cases for all three owners plus a `containsInlineReRoll` predicate suite (fires on `noopener,noreferrer`, `noreferrer`-only, `noopener`-only, and UPPERCASE re-rolls; passes on the routed call, on a bare `window.open(x,"_blank")`, and on the pattern inside a comment). `mingla-admin/src/lib/__tests__/openExternal.test.js` proves bare-open + opener-severance + SSR no-op + else-only fallback + both call sites routed; the adversarial suite attacks opener-severance/SSR-safety and guard liveness. Reverting either admin call site to an inline `noopener/noreferrer` open, or reverting the owner shape, fails the gate and/or the node tests. Append-only.
+- **Established:** ACTIVE 2026-07-27 at issue #903 CLOSE (independent tester VERDICT PASS, 0 P0/P1; PR #1245 merged). Lineage: the single-owner rule shipped in practice at ORCH-1381 (#892, marketing owner) and ORCH-1382 (#917, business owner) but was only ever tracked in the gate docblock; #903 adds the third (admin) owner and the repo-wide inline-re-roll ban, and registers the invariant in `docs/INVARIANT_REGISTRY.md` for the first time. The swept surfaces confirmed NO live double-nav bug (admin's two `window.open` calls were fire-and-forget); this close forecloses the latent reship risk structurally.
+
+---
+
+## ACTIVE — issue #966 (Cloudinary cover-video residue removed; cover-video is Bunny-only — CLOSED 2026-07-27)
+
+### I-966-COVER-VIDEO-PROVIDER-BUNNY-ONLY (ACTIVE)
+- **Rule:** The event/brand cover-video provider is Bunny-only. `coverVideoProvider()` (`supabase/functions/_shared/eventCoverVideo.ts`) resolves to `"bunny"` unconditionally and `CoverVideoProvider` is the singleton type `"bunny"`. No Cloudinary upload/webhook/signature/config branch may be reintroduced into the cover-video pipeline — specifically none of `cloudinarySignature`, `cloudinaryDestroy`, `verifyCloudinaryNotificationSignature`, `cloudinaryConfigured`, `cloudinaryUploadFailureDetail`, the Cloudinary XHR/chunked/multipart upload legs (`uploadEventCoverVideoSourceWithXhr` / `uploadEventCoverVideoSourceInChunks`), or a `"cloudinary"` member of `EventCoverVideoUploadProtocol` may exist in non-test production source. A missing/invalid runtime config can never route cover-video to the retired provider.
+- **Scope note:** the legacy Cloudinary `/video/upload/`→`so_0` sub-clauses in the Category-2 render path (`deriveCoverPosterUrl` / `isVideoUrl` / `posterFor`) are EXPLICITLY EXEMPT — they serve the live Bunny render path under I-1069-VIDEO-DETECTION-MATCHES-EDGE and are not part of the retired upload/webhook/config path this invariant governs. Legal/terms copy naming Cloudinary is out of scope (separate compliance follow-up).
+- **Enforcement:** strict-grep gate `.github/scripts/strict-grep/i-proposed-966-cover-video-provider-bunny-only.mjs` (batch:A, two-sided `--self-test`) — a symbol-targeted absence check over non-test source under `supabase/functions/**` and `mingla-business/src/**` (comment-stripped so retained narrative refs, e.g. bunnyStream.ts's "Replaces cloudinaryDestroy", never false-positive).
+- **Regression test:** implementor happy-path `supabase/functions/_shared/coverVideoProviderDefault.966.test.ts` (fails-on-revert: restoring the `resolveRuntimeString("event_cover_video_provider", …) ?? "cloudinary"` body turns T-1/T-2 RED). Independent adversarial coverage added before PR.
+- **Established:** ACTIVE 2026-07-27 at issue #966 CLOSE (independent tester VERDICT PASS, 0 P0/P1; PR #1251 merged, squash `d786ac7ab`). All 8 `event-cover-video-*` + `api-health-probe` edge functions were redeployed from merged `main` and first-call verified — the webhook now returns a Bunny-only validation response (`bunny_payload_invalid`), proving the Cloudinary arm is gone and the Bunny route is unconditional. The gate FILENAME keeps its on-disk `i-proposed-966-…` name (house style strips only the invariant-ID prefix on activation). Cross-session: 3 pre-existing gates (`orch-0776`, `orch-0978` C5/C6, `i-proposed-1201`) were re-pointed to the Bunny equivalents (protection-preserving, never-weaken proven) and one stale consumer entry was removed from the #1203-owned `issue-1203-secret-capacity.mjs` (coordinated via COMMS-0124).
 
 ---
 
@@ -544,7 +949,7 @@
 - **Established:** ACTIVE 2026-07-04 at META-ORCH-1290 CLOSE.
 
 ### I-1290-PITCH-WRITES-VIA-PIPELINE-ACTION (ACTIVE)
-- **Rule:** The listing pitch is written ONLY through the ownership-gated `update_pitch` pipeline action (B-2). The write is column-scoped server-side by `placeWriteMode` — apply-mode writes ONLY `generative_summary`; stage-mode writes ONLY `business_authoring_inputs.tier1.description` — and a client can NEVER force a live/serving-column write or perform a direct `place_pool` write for the pitch. Ownership is asserted upstream (`requireUser` → `loadOwnedBrand` → `loadOwnedVenue`).
+- **Rule:** The listing pitch is written ONLY through the permission-gated `update_pitch` pipeline action (B-2). The write is column-scoped server-side by `placeWriteMode` — apply-mode writes ONLY `generative_summary`; stage-mode writes ONLY `business_authoring_inputs.tier1.description` — and a client can NEVER force a live/serving-column write or perform a direct `place_pool` write for the pitch. Brand-management authority is asserted upstream (`requireUser` → `loadManagedBrand` at `event_manager`+ → `loadOwnedVenue`).
 - **Enforcement:** strict-grep gate `.github/scripts/strict-grep/i-proposed-1290-pitch-via-pipeline.mjs` (`--self-test`, same job) + the Deno suite `supabase/functions/run-business-place-authoring-pipeline/__tests__/meta_orch_1290_b2_update_pitch.test.ts` (5/5 — column-scoping + mode + ownership) + the jest suite `mingla-business/src/services/__tests__/updateVenuePitch.b2.test.ts`. Live-fired on prod: `update_pitch` anon → 401; staged pitch applied to `generative_summary` on approve.
 - **Fails-on-revert:** re-introducing a client-side `place_pool` pitch write (or un-scoping `update_pitch` so it can write a serving column in the wrong mode) → the gate exits 1 AND the deno/jest suites RED.
 - **Established:** ACTIVE 2026-07-04 at META-ORCH-1290 CLOSE.
@@ -1030,6 +1435,35 @@
 ---
 
 ## ACTIVE — ORCH-1155 (public brand page — Direction-A redesign + all-surface parity, 2026-06-17, PR #516)
+
+### I-PROPOSED-1365-BRAND-RESERVATIONS-RESOLVE-VENUE-FIRST (ACTIVE — issue #1365 CLOSE 2026-07-29, PR #1375)
+**Rule:** A Brand page may list verified public venues, but it never exposes
+ambiguous brand-level availability or booking. Availability and reservation
+actions activate only after one exact venue resolves.
+- **Enforcement:** shared Brand renderer/adapters plus append-only Brand-to-venue and tester state-isolation tests.
+- **Established:** ACTIVE after independent iOS, physical Samsung, and buyer-web verification on issue #1365.
+
+### I-PROPOSED-1365-PUBLIC-MENU-VENUE-ISOLATION (ACTIVE — issue #1365 CLOSE 2026-07-29, PR #1375)
+**Rule:** A public venue Menu returns only active menu items whose parent menu
+is assigned to that exact verified venue. Unassigned legacy menus stay private.
+- **Enforcement:** exact venue-keyed public view, write guards, and append-only PostgreSQL isolation regression.
+- **Established:** ACTIVE after the production menu mapped to its sole verified venue with zero pending-venue exposure.
+
+### I-PROPOSED-1365-PUBLIC-SAFE-AREA-CLEARANCE (ACTIVE — issue #1365 CLOSE 2026-07-29, PR #1375)
+**Rule:** Public Brand and venue final content plus sticky controls clear the
+measured browser/device bottom inset; no fixed zero-inset fallback is allowed.
+- **Enforcement:** shared runtime inset contract, public-route safe-area gates, and physical Samsung/browser visual proof.
+- **Established:** ACTIVE after the reservation action cleared Android navigation and mobile Safari safe areas.
+
+### I-PROPOSED-1380-PUBLIC-VENUE-RESERVE-CTA-SHEET (ACTIVE)
+**Rule:** On a reservable public venue page the Reserve CTA exists only off the Reservations tab; activating it atomically selects Reservations and opens one canonical responsive Sheet containing the existing guest reservation flow. Dismissal leaves Reservations active, returns focus to its tab, and never mounts a duplicate reservation engine.
+- **Enforcement:** issue #1380 implementor happy-path state/render/analytics suites plus the tester-owned adversarial interaction/accessibility suite; both require fails-on-revert proof in the CI-wired `mingla-business jest (full suite)` job.
+- **Established:** ACTIVE after independent tester PASS, all-green PR #1383, and production verification on desktop and phone-width Academy Street Bistro public pages.
+
+### I-PROPOSED-1386-PUBLIC-VENUE-REQUIRED-CONTACT (ACTIVE)
+**Rule:** The shared public-web venue reservation form must visibly and accessibly identify name and email as required, expose touched field-level errors that clear on correction, disable confirmation while either contact field is locally invalid, and retain a defensive pre-network guard. Phone validation, reservation availability, payment redirects, and the authoritative edge validation contract remain unchanged.
+- **Enforcement:** issue #1386 append-only happy-path and tester adversarial suites plus the existing issue #1380 reservation interaction and analytics suites, all run by the required Mingla Business Jest job; both #1386 guards have independent fails-on-revert/pass-on-restore proof.
+- **Established:** ACTIVE after independent tester PASS, all-green PR #1393, and production verification on desktop and phone-width Academy Street Bistro public pages with zero reservation requests.
 
 ### I-PROPOSED-1155-ABOUT-FIRST-DEFAULT (ACTIVE)
 - **Rule:** The public brand page's About tab is the FIRST tab and the DEFAULT-selected tab (never Upcoming).
@@ -1707,7 +2141,7 @@ Three new invariants introduced by ORCH-0866 + ORCH-0865 structural fix. All thr
 
 **Why.** RETEST 4 surfaced trip operator dashboard `Edit` button bleeding into the iPhone status bar, plus ~10 unaudited routes that could have the same bug. Without a CI gate, every new full-screen route is a potential bleed regression. The `<SafeScreen>` wrapper is the canonical fix; the allowlist exception lets design-intent full-bleed cover banners (operator-confirmed for `/e/`, `/t/`, `/b/`, 3 checkout screens during RETEST 5 pixel review) stay intentional without a CI false-positive.
 
-**Enforcement.** `.github/scripts/strict-grep/i-proposed-tr2-safearea-on-fullscreen-routes.mjs` (CI job wired in `.github/workflows/strict-grep-mingla-business.yml`). Scan 49 files, expect 0 violations on a clean tree. Adversarial test: removing any of the 13 inline allowlist comments without retrofitting `<SafeScreen>` MUST fail the gate at PR time.
+**Enforcement.** `.github/scripts/strict-grep/i-proposed-tr2-safearea-on-fullscreen-routes.mjs`, wired `batch:A` in `.github/scripts/strict-grep/MANIFEST.json` and executed via `run-batch.mjs --class A` (`.github/workflows/strict-grep-mingla-business.yml`). GENUINELY enforced as of #960 (D-1) CLOSE 2026-07-27: despite this section, the gate had been registered `enforcement: "unenforced"` (red, unwired) since 2026-05-17 — the ORCH-1400 Phase 1b gate-efficacy triage (#960) reconciled it. The walk now scans real `.tsx` screen routes only (excludes non-render `.ts` helpers, `.web.tsx` web variants with no notch, and the `+html.tsx` web shell): 93 files, 0 violations on a clean tree, with 14 documented allowlist comments on routes that delegate SafeArea to a child component / redirect / center all content (investigation proved ZERO genuine SafeArea defects — detector-vs-intent reconciliation). `--self-test` proves teeth (a top-anchored no-SafeArea route MUST flag), scan-set precision (real `.tsx` in, non-screens out), and tester adversarial cases (incomplete-inset signal must flag; allowlist-in-string gap marker); fails-on-revert proven by stripping `<SafeScreen>` from `app/trip/[id]/index.tsx` (exit 1).
 
 ### I-PROPOSED-TR2-ROUTE-BY-EVENT-TYPE
 
@@ -2490,7 +2924,7 @@ Full strategy reference: `Mingla_Artifacts/WORKTREE_STRATEGY.md`.
 
 **Test that catches a regression:** `cd mingla-business && npm run test:orch-0756a` runs the active-brand strict guard plus `currentBrandResolver.test`. The guard checks for the old false-empty Home condition, default-brand account wiring, app-wide recovery, default persistence on pick/create, failure-to-toast wiring, and ID-only persisted current-brand state.
 
-**Established:** 2026-05-08 by ORCH-0756A implementation. Tester/orchestrator close pending.
+**Established:** 2026-05-08 by ORCH-0756A implementation. Gate genuinely wired `batch:A` + `--self-test` at #961 (D-2) CLOSE 2026-07-27 (ORCH-1400 Phase 1b gate-efficacy triage): it had been registered `enforcement: "unenforced"` and red because META-ORCH-0972 (commit 2e018bdea, PR #219) relocated the create-persists-default behavior from `BrandSwitcherSheet.tsx` into the unified `BrandCreationFlow.tsx` and the gate was never re-pinned — a blessed refactor, not a regression. The create check now asserts all three legs at `BrandCreationFlow.tsx` (`default_brand_id: newBrand.id`, `setCurrentBrand(newBrand)`, `commitDefaultBrand(newBrand)`); the switcher brand-**pick** checks (`default_brand_id: brand.id` + `onDefaultBrandSaveError`) stay. `--self-test` GOOD + 4 revert fixtures + a tester file-pinning adversarial case (create legs relocated back to the switcher MUST still fire). Discovered-in-passing: the create-path default-write error is silently swallowed (`.catch(() => undefined)`), tracked as #1269.
 
 **Cross-references:** `Mingla_Artifacts/specs/SPEC_ORCH-0756A_BUSINESS_ACTIVE_BRAND_RECOVERY.md`, `Mingla_Artifacts/reports/INVESTIGATION_ORCH-0756_BUSINESS_DRAFT_AND_BRAND_PERSISTENCE.md`, `Mingla_Artifacts/reports/IMPLEMENTATION_ORCH-0756A_BUSINESS_ACTIVE_BRAND_RECOVERY.md`.
 
@@ -6115,26 +6549,263 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 
 ---
 
-## DRAFT — issue #1203 (Supabase secret capacity and bounded compatibility bundles)
+## ACTIVE — issue #1203 (Supabase secret capacity and bounded compatibility bundles)
 
-### I-PROPOSED-1203-SECRET-CAPACITY (DRAFT)
+### I-PROPOSED-1203-SECRET-CAPACITY (ACTIVE)
 
 - **Rule:** Production operates at no more than 85 user-managed Supabase secret names normally
   and never above 90 under an approved, unexpired exception. Every user-managed name has
   names-only manifest ownership, backup ownership, readers, secure source type, and review
   metadata. Values, digests, credential prefixes, and raw CLI metadata never enter the repository,
-  issues, chat, logs, audit artifacts, or CI output. The five compatibility bundles use strict
-  `schema_version: 1` allowlists and independent fields; provider credentials and Stripe RAK roles
-  remain separate.
+  issues, chat, logs, audit artifacts, or CI output. The bounded operational bundles use strict
+  schemas and independent fields: four remain schema v1 and `MINGLA_DELIVERY_FLAGS_JSON` uses
+  schema v2 for its three exact payment-operation booleans while retaining schema-v1 read
+  compatibility. Credential material remains in approved credential envelopes with field-level
+  ownership; provider credentials and Stripe RAK roles remain separate.
 - **Enforcement:** Daily/manual live names-only audit plus pull-request manifest audit in
   `.github/workflows/supabase-secret-budget.yml`; parser validation in
   `supabase/functions/_shared/secretBundle.ts` and `_shared/runtimeConfig.ts`; batch-A guard
   `.github/scripts/strict-grep/issue-1203-secret-capacity.mjs` prevents runtime-bundle field growth,
-  client exposure, raw CLI output, and manifest shrink/drift.
+  client exposure, raw CLI output, manifest shrink/drift, and payment-operation mapping drift;
+  `.github/scripts/strict-grep/issue-1436-secret-capacity-exit.mjs` pins the exact 85-name final
+  state and retired-direct-name absence.
 - **Regression:** Additive Deno happy-path/legacy-fallback tests and Node capacity tests, with
   strict-grep synthetic self-tests and implementor fail-on-revert/pass-on-restore proof. The
   independent tester adds malformed/smuggling/order/parity adversarial coverage before activation.
-- **Status:** DRAFT until the implementation is merged, the approved secret choreography reaches
-  exactly 85 user-managed names, independent tester PASS is recorded, and the required soak is
-  clean.
-- **Established:** DRAFT 2026-07-24 at issue #1203 implementation.
+- **Status:** ACTIVE. Production is enforced at exactly 85 user-managed names with 15 free slots
+  and no capacity exception; any future 86–90 state requires a new approved bounded issue.
+- **Established:** DRAFT 2026-07-24 at issue #1203 implementation; ACTIVE at issue #1436 CLOSE
+  after the temporary #1430 names were consolidated into existing authorities, removed one by
+  one, live-audited, and independently verified.
+
+---
+
+## ACTIVE — issue #1026 (RSVP "chip in" draft settings wiped on autosave — CLOSED 2026-07-27, PR #1247)
+
+> Registered DRAFT at issue #1026 [chip-in-draft-persist] SPEC. Forensics proved the same read/write-asymmetry class as `I-1022-DRAFT-THEME-ROUNDTRIP` and the ORCH-0841 taxonomy contract, now on the three chip-in fields: `mingla-business` draft autosave WRITES `rsvpContributionEnabled` / `rsvpContributionSuggestedCents` / `rsvpContributionMinCents` into `events.theme.business_draft` (`serverDraftEventMapper.ts:378-380`, exactly like the 7 sibling RSVP host-controls), but `serverRowToDraft` (`serverDraftEventMapper.ts:719-871`) reads the 7 siblings back (`:852-863`) and OMITS the three chip-in fields (0 reads). The mapper's object literal is closed `as DraftEvent` (`:870`) — a cast present since the file was first created (`a61edb515`) — which suppresses the compiler's missing-required-property error, so the omission shipped green. The autosave echo re-hydrates the store wholesale via `useServerDraftAutosave.onSuccess` → `upsertServerDraft` (`useServerDraftEvents.ts:227-228`; `draftEventStore.ts:951-954`) whose accept-guard passes (same `clientRevision`), replacing chip-in with `undefined` ~700ms after the toggle; the next autosave re-serializes `undefined`, which `JSON.stringify` drops, so the key vanishes from the DB theme JSON too — and because `business_publish_rsvp_draft` reads chip-in from that same `theme.business_draft` JSON (`20261220000000_orch_1291_rsvp_contributions.sql:444-446`), the event PUBLISHES with chip-in OFF. There is NO DB trigger syncing `theme` ↔ the `rsvp_contribution_*` columns (live `pg_trigger` probe), so for drafts the blob is the only store of the value; reading the columns back would read the `false/NULL` default, which is why the fix reads the BLOB (not the columns). Fixed in PR #1247 (`serverDraftEventMapper.ts` — 3 blob reads added + `as DraftEvent` → `satisfies DraftEvent`); independent tester PASS including an on-device Samsung walkthrough (chip-in $25/$5 survived the ~700ms echo, background/reopen, a fresh `serverRowToDraft` hydration, and publish → live DB columns populated). ACTIVE at CLOSE.
+
+### I-PROPOSED-1026-DRAFT-CHIPIN-ROUNDTRIP (ACTIVE)
+- **Rule:** the three RSVP chip-in fields `DraftEvent.rsvpContributionEnabled` / `rsvpContributionSuggestedCents` / `rsvpContributionMinCents` MUST survive a full server draft round-trip. They persist in `events.theme.business_draft` (written by `buildBusinessDraftPayload`, `serverDraftEventMapper.ts:378-380`), and `serverRowToDraft` MUST read all three back from `theme.business_draft` using the defensive coercers (`asBoolean(..., false)` for the flag; a `typeof === "number" && Number.isFinite` → else `null` read for each cents field, mirroring `rsvpCapacity` at `:853-857`), returning `false`/`null` (never `undefined`) when the key is absent (legacy / pre-ORCH-1291 blobs). This is the sibling contract already honored by the 7 RSVP host-controls (`isRsvp` … `rsvpDiscoverable`, `:852-863`); the chip-in trio joins them. The chip-in value is NOT read from / written to the top-level `events.rsvp_contribution_*` columns on the DRAFT path (those are populated only by `business_publish_rsvp_draft` / `biz_update_live_rsvp`); `EVENT_DRAFT_SELECT` is NOT modified (it already selects `theme`).
+- **Enforcement:** append-only jest round-trip test in `mingla-business/src/utils/__tests__/serverDraftEventMapper.test.ts` proving `serverRowToDraft(rowFromPayload(sourceWithChipInOn, draftToServerUpdate(sourceWithChipInOn, {}).theme))` returns `rsvpContributionEnabled === true` + the exact suggested/min cents, plus a legacy-blob case (blob missing the keys → `false`/`null`, not `undefined`), wired into the same PR-blocking workflow that guards `I-1022-DRAFT-THEME-ROUNDTRIP`.
+- **Regression test:** fails-on-revert — removing any of the three `serverRowToDraft` reads makes the chip-in-ON assertion red (the field comes back `false`/`null`). Tester adversarial `serverDraftEventMapper.storeEcho.tester.test.ts` drives the real `upsertServerDraft` wholesale-replace echo. Both suites append-only, wired into the PR-blocking `issue-1022-theme-control-tests.yml`.
+- **Established:** ACTIVE 2026-07-27 at issue #1026 CLOSE (PR #1247 merged; tester PASS + on-device Samsung proof).
+
+### I-PROPOSED-1026-DRAFT-MAPPER-COMPILE-COMPLETE (ACTIVE)
+- **Rule:** `serverRowToDraft` (`serverDraftEventMapper.ts`) MUST return a value checked against `DraftEvent` by the compiler with NO error-suppressing assertion — its object literal is closed `} satisfies DraftEvent;` (or the bare literal under the existing `: DraftEvent` return annotation), NEVER `} as DraftEvent;` / `as unknown as DraftEvent`. Consequence: any future required `DraftEvent` field the mapper forgets to read back is a compile-time error, not a silent runtime wipe. This structurally retires the read/write-asymmetry bug class that recurred three times behind the cast (ORCH-0841 taxonomy, #1022 theme overrides, #1026 chip-in). The `satisfies` change introduces ZERO new `tsc` errors (verified: the only `DraftEvent` fields the pre-fix literal omitted are the three chip-in fields fixed here; the sole extra property `legacyLocalDraftId` is added via a conditional spread and is exempt from excess-property checking).
+- **Enforcement (built + wired):** THREE layers. (1) the in-code `} satisfies DraftEvent;` closure of `serverRowToDraft` + the `tsc` typecheck in the full mingla-business suite + the T-4 compile-completeness test in `serverDraftEventMapper.test.ts` (PR-blocking `issue-1022-theme-control-tests.yml`) — these make dropping a required-field read a hard `tsc`/ts-jest error. (2) **batch:A strict-grep gate `.github/scripts/strict-grep/i-1026-mapper-no-error-suppressing-cast.mjs`** (issue #1254, PR #1256) — fails CI if `serverRowToDraft` contains `as DraftEvent` / `as unknown as DraftEvent` OR the `<DraftEvent>` angle-bracket assertion form OR lacks a `satisfies`/typed-return anchor; comment/string-stripped, whitespace-tolerant, self-test 12/12, MANIFEST-driven (class-A runner, not dark), live-revert proven RED for both cast spellings. This closes the `satisfies`→`as` revert-without-drop gap that layer (1) alone missed. Accepted residuals (grep cannot resolve without a typechecker, both backstopped by layer 1 if they drop a field): a local `type DE = DraftEvent; … as DE` alias and inline `as import('...').DraftEvent`.
+- **Regression test:** fails-on-revert — dropping any required-field read surfaces `error TS2739` at the `satisfies` line naming the missing field(s) and turns ts-jest RED (proven at PR #1247: removing the 3 chip-in reads named exactly `rsvpContributionEnabled`/`rsvpContributionSuggestedCents`/`rsvpContributionMinCents`). Append-only.
+- **Established:** ACTIVE 2026-07-27 at issue #1026 CLOSE (PR #1247 merged). Enforcement completed 2026-07-27 at issue #1254 CLOSE (PR #1256 merged) — strict-grep gate built + wired.
+
+---
+
+## ACTIVE — issue #957 (NUL-byte test fixture is grep-invisible: stale ORCH-1382 strings survived the 1383→1399 sweep — CLOSED 2026-07-27, PR #1270)
+
+> Registered DRAFT at issue #957 [nul-fixture-grep-invisible]. Forensics proved the 1383→1399 renumber sweep used plain `grep`, which classifies any file containing a NUL byte as *binary* and silently skips its contents. The adversarial fixture `mingla-marketing/lib/__tests__/links-src.tester.test.ts` (14,755 bytes, exactly 1 raw NUL at byte 3502/line 69 inside the deliberate `'a\x00b'` hostile-input fuzz row) hid 3 human-readable `ORCH-1382` strings (a header comment, a `describe()` label, and a pass-message `console.log`) from the sweep, so they stayed stale while every other file in the `[links-src-tracking-getapp-stack]` work item reads ORCH-1399 (the module, the strict-grep gate, and all siblings). The collision matters: after the renumber, "ORCH-1382" belongs to issue #917 (open-external double-nav over `open-external.ts`), so the stale fixture strings actively contradicted the canonical meaning. Fixed by a byte-safe replace (both tokens are 9 bytes → file stays byte-length-identical and the NUL is preserved), a binary-aware regression gate, and this invariant. ACTIVE at CLOSE (PR #1270 merged; independent tester PASS — fixture still runs with the NUL intact, gate + adversarial both fails-on-revert).
+
+### I-PROPOSED-957-LINKS-SRC-ORCH-ID-CONSISTENCY (ACTIVE)
+- **Rule:** every line pairing the literal substring `links-src` with an `ORCH-####` token MUST resolve to `ORCH-1399`. The `[links-src-tracking-getapp-stack]` work is ORCH-1399; a stale `ORCH-138x` (or any non-1399 id) on a `links-src` line is the #957 NUL-hidden-sweep-miss class. (ORCH-1382 belongs to issue #917 — open-external double-nav — and never appears on a `links-src` line, so the legitimate collision is excluded by construction.) Registry/sweep scans over this class MUST be binary-aware so NUL-byte fuzz fixtures are not silently skipped.
+- **CI enforcement:** batch:A strict-grep gate `.github/scripts/strict-grep/issue-957-nul-hidden-orch-id-consistency.mjs` (MANIFEST-driven, class-A runner, not dark; `selfTest:"wired"`). It walks `mingla-marketing/` reading each text-ish file's bytes into a JS string via `fs.readFileSync(f,"utf8")` — binary-aware BY CONSTRUCTION, so it sees the ORCH-ID even on the NUL line, the exact thing shell `grep` cannot do — and fails CI on any non-1399 `ORCH-####` on a `links-src` line. `--self-test` proves 4 cases: clean ORCH-1399 line stays clean, a stale ORCH-1382 line is flagged, a stale ORCH-1382 line with an embedded raw NUL is STILL flagged (the guard's own grep-immunity proof), and the legit `ORCH-1382 (#917)` open-external collision (no `links-src` on the line) is never flagged. The grep-invisibility hazard is also documented in `.github/scripts/strict-grep/README.md` ("NUL-byte files are grep-invisible").
+- **Regression test:** fails-on-revert — reverting any of the 3 fixture retitles (ORCH-1399→ORCH-1382 on a `links-src` line) makes the gate exit 1 and name the file:line; restoring makes it exit 0 (proven at IMPLEMENT: reverting line 2 named `links-src.tester.test.ts:2`, file byte-identical on restore — 14,755 bytes, 1 NUL at byte 3502). The `--self-test`'s NUL-hidden case proves the guard itself is immune to the grep-blindness that caused #957; a plain-grep gate would silently pass the reverted fixture.
+- **Established:** ACTIVE 2026-07-27 at issue #957 CLOSE (PR #1270 merged; independent tester PASS — relocated adversarial test wired into run-batch class A).
+- **Status:** DRAFT until the implementation is merged and independent tester PASS is recorded; flips ACTIVE at issue #957 CLOSE (orchestrator owns the flip).
+- **Established:** DRAFT 2026-07-27 at issue #957 IMPLEMENT.
+
+## ACTIVE — issue #905 (/links consent-banner suppression)
+
+### I-905-LINKS-CONSENT-BANNER-SUPPRESSED (ACTIVE)
+- **Rule:** On the `/links` no-scroll viewport route, the global marketing consent banner
+  (`mingla-marketing/components/marketing/consent-banner.tsx`) MUST render nothing, so the
+  fixed bottom banner can never obstruct the `/links` CTAs or socials
+  (`links-experience.tsx` `100dvh`+`overflow-hidden` snapshot). On every OTHER marketing
+  route the banner is byte-for-byte unchanged (storage key `mingla_consent_v1`, opt-in/opt-out,
+  GA4 Consent Mode calls, mount re-apply effect, animation). Suppression is decided by the pure
+  predicate `shouldRenderConsentBanner(pathname)` against the single-source-of-truth
+  `SUPPRESSED_CONSENT_ROUTES` list (`mingla-marketing/lib/consent-banner-visibility.ts`),
+  exact-match on the trailing-slash-normalized pathname (NEVER substring/prefix), with a
+  null/unknown/empty pathname defaulting to SHOW. Privacy-safe: analytics are opt-out /
+  GA-denied by default until Accept, so suppression leaves the safe denied default and
+  solicits nothing on `/links`.
+- **Enforcement:** the `#905` dedicated workflow
+  (`.github/workflows/issue-905-links-consent-suppression-tests.yml`) compiles + runs THREE
+  `tsc+node` suites (implementor happy-path, implementor edge-case, tester route-set-integrity
+  adversarial), path-gated on the module, the component, the tests, and the workflow. The gate
+  installs only `@types/node` in an isolated dir so a bare CI runner compiles cleanly without the
+  full marketing install. PLUS the shared structural batch gate
+  `.github/scripts/strict-grep/issue-906-links-nav-layout-guard.mjs` (issue #906) now ALSO enforces
+  this `/links` mechanism, as its assertion families A1 (the `links-experience.tsx`
+  `h-[100svh]`+inline `100dvh`+`overflow-hidden`+`min-h-0`/`flex-1` no-scroll snapshot) and A2 (the
+  `SUPPRESSED_CONSENT_ROUTES` `['/links']` SSOT membership + the `usePathname`/`shouldRenderConsentBanner(`
+  wiring site in `consent-banner.tsx`) — comment-stripped, assert-PRESENT, fails-on-revert, run inside
+  the class-A strict-grep batch. Belt-and-suspenders with the #905 decision-table workflow: a revert of
+  the `/links` membership or the wiring call trips BOTH gates.
+- **Regression test (CLOSE Step 0.5):** implementor happy-path
+  `consent-banner-links-suppression.test.ts` (predicate decision table `/links`->false,
+  `/`,`/business`,`/download`,`/privacy-policy`->true, single-source-of-truth const, +
+  component-wiring source-pin) and tester adversarial — on a distinct angle —
+  `consent-banner-links-suppression.adversarial.test.ts` (route-SET integrity / over-suppression:
+  pins `SUPPRESSED_CONSENT_ROUTES` to exactly `{/links}` and table-drives the full known route set,
+  so the list can never silently grow to swallow a scrolling page and kill consent solicitation).
+  Both fails-on-revert (implementor @ `3b9e0d43a`; adversarial proven RED when `/business` is
+  injected into the list, which the implementor suites did NOT catch). Append-only.
+- **Established:** ACTIVE 2026-07-27 at issue #905 CLOSE (PR `Fixes #905` merged) after independent
+  tester PASS with runtime SSR-HTML proof (banner marker count 0 on `/links`, 1 on six other
+  routes). Final production confirmation: banner absent on usemingla.com/links post-Vercel deploy.
+
+---
+
+## ACTIVE — issue #906 (links-nav-layout-guard — shared structural CI gate)
+
+### I-906-NAV-ONE-ACTION-BELOW-SM (ACTIVE)
+- **Rule:** on the marketing glass-nav organiser surface
+  (`mingla-marketing/components/marketing/glass-nav.tsx`), the second/overflow business action (the
+  "Use on web" pill) MUST retain its `hidden … sm:inline-flex` responsive gating, so at ≤412px (below
+  the `sm` 640px breakpoint) exactly ONE header action renders beside the logo. This is the geometric
+  fit proven at #892/ORCH-1381 (logo + BOTH pinned-copy pills cannot fit on any Android width).
+- **Enforcement:** this gate's assertion A3 — the shared structural gate
+  `.github/scripts/strict-grep/issue-906-links-nav-layout-guard.mjs`, bounded regex
+  `/hidden\b[^'"]*\bsm:inline-flex\b/` on the comment-stripped `glass-nav.tsx` (`:247`). The regex is
+  bounded (both tokens inside ONE class string) so the unrelated `:188` `hidden md:block` surface
+  toggle cannot satisfy it.
+- **Regression test:** the gate's `--self-test` A3 violated-source case seeds a reordered/reflowed pill
+  with `sm:inline-flex` dropped and proves it FLAGS (and that the bare `hidden md:block` does NOT
+  satisfy A3). Deleting `sm:inline-flex` (or `hidden`) from that pill → gate exit 1 naming the file.
+  Fails-on-revert; append-only. ACTIVE 2026-07-27 at #906 CLOSE (PR merged, tester PASS).
+
+### I-906-NAV-LOGO-DIMENSIONS-PINNED (ACTIVE)
+- **Rule:** the glass-nav logo wrapper MUST keep `shrink-0` (the load-bearing anti-squash guard); the
+  business lockup `<img>` keeps `h-20 w-20`; the explorer wordmark `<img>` keeps `h-7 w-auto`. "84px"
+  is HISTORICAL narrative from #892 prose only — the invariant locks the CURRENT literal `h-20` and
+  MUST NOT resurrect `h-[84px]`.
+- **Enforcement:** this gate's assertion A4 — `issue-906-links-nav-layout-guard.mjs` regexes
+  `/inline-flex[^'"]*\bshrink-0\b/` (`:168`), `/\bh-20\b[^'"]*\bw-20\b/` (`:174`),
+  `/\bh-7\b[^'"]*\bw-auto\b/` (`:181`) on the comment-stripped `glass-nav.tsx`.
+- **Regression test:** the gate's `--self-test` A4 violated-source case removes the logo `shrink-0` and
+  proves it FLAGS. Removing `shrink-0` or altering the size literals → gate exit 1. Fails-on-revert;
+  append-only. ACTIVE 2026-07-27 at #906 CLOSE (PR merged, tester PASS).
+
+## DRAFT — issue #868 (cover-gallery: ordered images-only additional-photos gallery on Event / RSVP / Trip / Experience)
+
+> Registered DRAFT at issue #868 [cover-gallery] IMPLEMENT (SPEC-868 §J). The feature adds an ADDITIVE
+> `public.events.cover_media_gallery jsonb '[]'` column of ADDITIONAL image/GIF items (hero indices 1..N),
+> INDEPENDENT of the primary cover (`cover_media_url`/`cover_media_type`, image OR video, at sequence index 0).
+> The hero pinned pager renders the sequence `[cover] ++ gallery` (page 0 = the existing cover, unchanged); a new
+> shared `CoverGalleryRow` renders card 0 = the cover (video poster + ▶ badge when the cover is a video) + cards
+> 1..N = the gallery, as the body's first row. Orchestrator owns the flip to ACTIVE at CLOSE.
+
+### I-868-GALLERY-ADDITIVE-INDEPENDENT (ACTIVE)
+- **Rule:** `events.cover_media_gallery` holds ADDITIONAL cover items and is INDEPENDENT of
+  `cover_media_url` / `cover_media_type` (the primary cover, image OR video, at sequence index 0). NO write path
+  syncs, derives, or clears one from the other: the additive writers (`setEventCoverGallery`,
+  `business_publish_event_draft`, `business_publish_rsvp_draft`, `biz_update_live_trip`, `tripsService.updateTripBasics`,
+  `serverDraftEventMapper.draftToServerUpdate/Insert`) write `cover_media_gallery` while the cover-field writes stay
+  BYTE-IDENTICAL; the cover-absent branch NEVER nulls the gallery. Every existing cover write is unchanged, so all
+  ~30 thumbnail/share/OG/email readers are unaffected. `event-cover-video-apply/index.ts` NEVER touches
+  `cover_media_gallery` (a video cover coexists with a photo gallery).
+- **Enforcement:** `.github/scripts/strict-grep/issue-0868-cover-gallery.mjs` (registered in MANIFEST.json, batch:A,
+  self-test wired) — incl. the NEGATIVE grep proving `event-cover-video-apply` never references
+  `cover_media_gallery`; plus `mingla-business/src/services/__tests__/coverGalleryPersist.test.ts`
+  (`draftToServerUpdate` leaves the cover fields unchanged when a gallery is set; a video cover + a photo gallery
+  coexist; `setEventCoverGallery` writes ONLY `cover_media_gallery`).
+- **Status:** ACTIVE (merged #868, PR #1333, 2026-07-28; Seth on-device PASS + adversarial tester PASS).
+- **Established:** DRAFT 2026-07-28 at issue #868 IMPLEMENT.
+
+### I-868-GALLERY-NO-VIDEO (ACTIVE)
+- **Rule:** `cover_media_gallery` items are `image` / `gif` ONLY (`type ∈ {image, gif}`, never `video`). A video lives
+  ONLY in the cover fields (index 0) and COEXISTS with a photo/GIF gallery. The authoring manager (CoverPicker
+  "Additional photos") appends only image/GIF items (the video picker only ever sets the primary cover); the shared
+  `CoverGalleryRow` renders gallery items via `item.type` and never passes `mediaType="video"` for a gallery card.
+- **Enforcement:** `coverGalleryRow.test.ts` T-7 (gallery typed image/GIF; no `mediaType="video"` in the row) + the
+  adversarial coexistence test (tester, at CLOSE) driving a video cover + a 3-photo gallery through publish→read-back.
+- **Status:** ACTIVE (merged #868, PR #1333, 2026-07-28).
+- **Established:** DRAFT 2026-07-28 at issue #868 IMPLEMENT.
+
+### I-868-HERO-SEQUENCE (ACTIVE)
+- **Rule:** the hero pinned pager + `CoverGalleryRow` render the sequence `[cover] ++ cover_media_gallery`; card/page 0
+  is the cover (a ▶ badge only when the cover is a video); the pager + row engage ONLY when
+  `cover_media_gallery.length ≥ 1` (empty ⇒ single-cover behavior BYTE-IDENTICAL, for BOTH image and video covers).
+  A single `activeIndex` owns the shown item; swipe (onScroll) and card-tap (scrollTo) both drive it. On buyer-web +
+  business the pager lives in `ParallaxCoverShell`; on the CONSUMER app (Pass 2 §M.1 — the 3 detail screens hand-roll
+  their own pinned cover, they do NOT mount `ParallaxCoverShell`) the SAME sequence is rendered by the shared
+  `CoverGalleryPager` (page 0 = the screen's EXISTING `<EventCoverMedia>` passed in as `coverNode`, UNCHANGED) +
+  `CoverGalleryRow` as the body's first child. `EventCoverMedia`, `coverMediaPresentation.ts` /
+  `eventCoverMediaRules.ts` resolve* helpers, the z-index / seam / aspect constants, and `CountAwareGallery` are
+  UNCHANGED on every surface.
+- **Enforcement:** `packages/offering-rendering/__tests__/parallaxCoverGallery.test.ts` (byte-identical guard:
+  `coverRender = sequenceActive ? coverPager : coverMedia`; row before `{children}`; single-owner activeIndex) +
+  `coverGalleryRow.test.ts` (null when empty; 1+N cards; card 0 = cover; ▶ only for a video cover; active ring+badge) +
+  Pass 2: `coverGalleryPager.test.ts` (page 0 = coverNode, pages 1..N, offset→index, empty ⇒ page-0-only) +
+  `pass2ConsumerAuthoringWiring.test.ts` (each consumer screen wires the pager + row in gallery mode, single cover
+  byte-identical when empty) + the strict-grep gate legs (7)/(8)/(9).
+- **Status:** ACTIVE (merged #868, PR #1333, 2026-07-28).
+- **Established:** DRAFT 2026-07-28 at issue #868 IMPLEMENT (Pass 1); consumer coverage added Pass 2 (2026-07-28).
+
+## ACTIVE — issue #1426 (permission-safe Stay reservation management)
+
+### I-1426-STAY-STAFF-RESERVATIONS (ACTIVE)
+- **Rule:** A Stay reservation is managed as one server-owned Room-and-Place group. Brand staff may
+  inspect, approve, decline, or cancel only when their accepted brand role grants that exact action
+  and a `stay.<action>` override has not denied it. Approval and decline are whole-group only;
+  payment, refund, retained amount, inventory release, payout impact, and reconciliation truth are
+  projected by server RPCs. Clients never mark a group paid/refunded and issue #1426 never enables a
+  Stay launch flag.
+- **Enforcement:** `.github/scripts/strict-grep/issue-1426-stay-reservations.mjs` (manifest batch A,
+  self-test wired), `supabase/migrations/__tests__/issue_1426_stay_staff_reservations.test.sql`, and
+  `supabase/functions/stay-reservations/businessManagement.issue1426.test.ts` plus the independent
+  `businessManagement.issue1426.tester.adversarial.test.ts` security/error-boundary suite.
+- **Regression test:** The executable SQL creates a real two-Room request through the existing cart,
+  proves exact queue/detail money and allocations, whole-group payment-gated approval, deny-only
+  permission overrides, cross-brand denial, authenticated-only RPC ACLs, and dark flags. The Deno
+  test proves the Edge boundary routes staff reads/actions/cancellation only through #1426 wrappers.
+- **Established:** ACTIVE 2026-07-31 at issue #1426 CLOSE after Android, iOS, SQL, Edge, strict-gate,
+  and independent adversarial verification; all Stay launch flags remain dark for #1392.
+
+## ACTIVE — issue #1427 (least-privilege Admin Stay support)
+
+### I-1427-ADMIN-STAY-SUPPORT (ACTIVE)
+- **Rule:** Mingla Admin supports Stay inside the existing Venues and Money ledger shells. Admin
+  inspection uses server-whitelisted projections: guest identity is masked; raw notification
+  contacts/payloads, event metadata, storage identifiers, checksums, and provider payloads are not
+  returned. Provider reconciliation accepts only a stored payment-attempt ID and Admin reason,
+  retrieves Stripe or Paystack truth server-side, verifies purpose/group/attempt/amount/currency/
+  settlement identity, and converges through the existing Stay payment and source-refund control
+  planes. Inventory/materialization failures are retained in forced-RLS, append-only alert tables.
+  All Admin writes are reason-gated and audited; issue #1427 never enables a Stay launch flag.
+- **Enforcement:** `.github/scripts/strict-grep/issue-1427-admin-stay-support.mjs` (manifest batch A,
+  self-test wired) plus `.github/workflows/issue-1427-admin-stay-support-tests.yml` running the
+  focused Admin source contracts, scoped lint/build, Edge type checks, and behavioral suites.
+- **Regression test:** `supabase/functions/admin-stay-operations/index.test.ts` proves Admin auth,
+  exact request shapes, matching provider evidence, single audit, and refusal of mismatched or
+  Paystack subaccount-settled charges. The two `issue1427.alert.test.ts` suites prove fail-soft,
+  replay-safe alert capture without guest/request/database-detail leakage. The Admin Node suite
+  proves the existing-shell entry points, Rooms/Places inspection, masked support detail, and
+  bounded actions. Independent tester suites `index.tester.adversarial.test.ts`,
+  `issue1427_admin_stay_support.tester.adversarial.test.js`, and the server-rendered
+  `issue1427_admin_stay_support.render.tester.test.mjs` prove cancelled-provider convergence,
+  audit-before-mutation fail-closed behavior, exact retained-metadata allowlists, safe restricted
+  errors, stale snapshot warnings, brand-currency rendering, and real Room/Place UI output.
+- **Established:** ACTIVE 2026-07-31 at issue #1427 CLOSE after independent tester PASS, all-green
+  PR #1450 merge, production migration and Edge deployment, and exact Admin production rollout;
+  all seven Stay launch flags remained dark for #1392.
+
+## DRAFT — issue #1423 (Stays in consumer Discover)
+
+### I-1423-STAY-DISCOVERY (DRAFT)
+- **Rule:** Stays is the third option inside the existing consumer Discover capsule, never a new
+  bottom tab or parallel discovery page. Its public RPC returns only verified Stay venues with
+  active settings and live overnight Rooms backed by current policy, source-brand-currency price,
+  ready cover, and future inventory. Date searches enforce every requested night, multi-room guest
+  capacity, minimum/maximum stay rules, stop-sell, and sellable quantity after active/reconciliation
+  holds and active commitments. Cards never invent ratings, scarcity, conversion, or availability;
+  the existing Stay quote remains the final authority. Events and Trips retain their existing
+  filters, scrolling, coach marks, analytics, and entry points. Issue #1423 never enables a Stay flag.
+- **Enforcement:** manifest batch-A gate
+  `.github/scripts/strict-grep/issue-1423-stay-discovery.mjs` with wired synthetic self-test;
+  `.github/workflows/issue-1423-stay-discovery-tests.yml` for scoped consumer tests, lint, and both
+  native bundles; and executable PostgreSQL happy/adversarial suites registered in
+  `.github/workflows/supabase-migrations-and-stripe-deno.yml`.
+- **Regression test:** the SQL suite proves dark behavior, verified-only NGN projection,
+  multi-room/night capacity and stop-sell, bounded hostile inputs, public ACLs, wildcard escaping,
+  and the no-USD/GBP/hold/commitment negative space. The append-only consumer Node pair proves the
+  exact capsule/filter/navigation/state/analytics contract and unchanged Events/Trips branches.
+- **Established:** DRAFT 2026-07-31 at issue #1423 IMPLEMENT. Flips ACTIVE only after independent
+  iOS/Android/runtime/database verification and CLOSE; production Stay flags remain owned by #1392.

@@ -19,7 +19,12 @@ function transactionReference(data: Record<string, unknown>): string {
 
 export async function handlePaystackRefundEvent(
   supabase: SupabaseClient,
-  eventName: "refund.processed" | "refund.failed",
+  eventName:
+    | "refund.pending"
+    | "refund.processing"
+    | "refund.needs-attention"
+    | "refund.processed"
+    | "refund.failed",
   data: Record<string, unknown>,
 ): Promise<void> {
   const providerRefundId = text(data.id);
@@ -45,6 +50,64 @@ export async function handlePaystackRefundEvent(
       "[paystack-refund-router] refund event lacks reconciliation identity",
       { eventName, providerRefundId },
     );
+    return;
+  }
+
+  // #1221 markers are resolved before every legacy order/trip/venue marker.
+  const typedMatch = merchantNote.match(
+    /^mingla_source_refund:([0-9a-f-]{36}):([1-9][0-9]*)$/i,
+  );
+  if (typedMatch) {
+    const refundId = typedMatch[1];
+    const attemptNo = Number(typedMatch[2]);
+    const { data: operation, error: operationError } = await supabase
+      .from("source_refunds")
+      .select(
+        "id,provider,currency,buyer_refund_requested_cents,provider_payment_reference,active_buyer_attempt_no",
+      )
+      .eq("id", refundId).eq("provider", "paystack").maybeSingle();
+    if (operationError || !operation) {
+      throw new Error("source_refund_exact_match_missing");
+    }
+    const observedAmount = Number(data.amount ?? data.deducted_amount ?? 0);
+    if (
+      transaction !== operation.provider_payment_reference ||
+      (observedAmount > 0 &&
+        observedAmount !== operation.buyer_refund_requested_cents) ||
+      attemptNo < Number(operation.active_buyer_attempt_no ?? 0)
+    ) {
+      throw new Error("source_refund_provider_evidence_mismatch");
+    }
+    const nextState = eventName === "refund.processed"
+      ? "processed"
+      : eventName === "refund.needs-attention"
+      ? "needs_attention"
+      : eventName === "refund.failed"
+      ? "failed_terminal"
+      : "provider_pending";
+    const eventId = `paystack-refund:${
+      providerRefundId || merchantNote
+    }:${eventName}`;
+    const { error } = await supabase.rpc(
+      "record_source_refund_provider_event",
+      {
+        p_refund_id: refundId,
+        p_leg_type: "buyer_refund",
+        p_attempt_no: attemptNo,
+        p_event_key: eventId,
+        p_provider_event_type: eventName,
+        p_provider_event_id: eventId,
+        p_next_state: nextState,
+        p_amount_observed_cents: Math.max(0, Math.trunc(observedAmount)),
+        p_provider_operation_id: providerRefundId || null,
+        p_safe_reason_code: eventName === "refund.failed"
+          ? "paystack_verified_failed"
+          : "paystack_verified_lifecycle",
+      },
+    );
+    if (error) {
+      throw new Error(`source_refund_event_commit_failed:${error.message}`);
+    }
     return;
   }
 

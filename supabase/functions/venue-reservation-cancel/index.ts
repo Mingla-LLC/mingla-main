@@ -38,13 +38,6 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { wrapEdgeHandler } from "../_shared/structuredLog.ts";
-import { stripeTicketRefund } from "../_shared/stripe.ts";
-import {
-  createPaystackRefund,
-  isRetryablePaystackRefundError,
-  paystackRefundOutcomeStatus,
-  persistPaystackRefundOutcome,
-} from "../_shared/paystackRefunds.ts";
 import {
   jsonResponse,
   serviceClient,
@@ -52,16 +45,10 @@ import {
   userClient,
   userIdFromAuthHeader,
 } from "../_shared/ticketCheckout.ts";
-
-interface CancelledReservation {
-  id: string;
-  brand_id: string;
-  status: string;
-  payment_status: string;
-  payment_intent_id: string | null;
-  fee_cents: number | null;
-  fee_currency: string | null;
-}
+import {
+  runSourceRefundOperation,
+  type SourceRefundOperation,
+} from "../_shared/sourceRefundControlPlane.ts";
 
 serve(
   wrapEdgeHandler("venue-reservation-cancel", async (req: Request) => {
@@ -73,7 +60,7 @@ serve(
     }
 
     // ── input ────────────────────────────────────────────────────────────
-    let body: { reservationId?: unknown };
+    let body: { reservationId?: unknown; guestToken?: unknown };
     try {
       body = await req.json();
     } catch {
@@ -88,296 +75,83 @@ serve(
 
     // ── auth (owner only) ─────────────────────────────────────────────────
     const userId = await userIdFromAuthHeader(req);
-    if (!userId) {
+    const guestToken = typeof body.guestToken === "string"
+      ? body.guestToken.trim()
+      : "";
+    if (!userId && !guestToken) {
       return jsonResponse({ error: "not_authenticated" }, 401);
     }
 
-    // ── 1. cancel (as the user → auth.uid() enforces ownership + transition) ─
-    const asUser = userClient(req);
-    let { data: cancelData, error: cancelErr } = await asUser.rpc(
-      "pg_cancel_my_reservation",
-      { p_reservation_id: reservationId },
-    );
-    if (cancelErr?.message?.includes("cancel_not_allowed")) {
-      const resume = await asUser.rpc(
-        "pg_resume_my_paystack_reservation_refund",
+    // #1221: cancellation + the exact refund obligation commit atomically in
+    // the database. Provider acceptance is best-effort; the returned state is
+    // always the durable control-plane truth, never an optimistic "refunded".
+    const prepared = userId
+      ? await userClient(req).rpc(
+        "pg_prepare_my_venue_cancellation_refund",
         { p_reservation_id: reservationId },
+      )
+      : await serviceClient().rpc(
+        "pg_prepare_guest_venue_cancellation_refund",
+        { p_reservation_id: reservationId, p_guest_token: guestToken },
       );
-      if (resume.error === null && resume.data) {
-        cancelData = resume.data;
-        cancelErr = null;
-      }
-    }
-    if (cancelErr !== null) {
-      const msg = cancelErr.message ?? "";
-      if (msg.includes("not_authenticated")) {
-        return jsonResponse({ error: "not_authenticated" }, 401);
-      }
-      if (msg.includes("reservation_not_found")) {
+    if (prepared.error) {
+      const message = prepared.error.message ?? "";
+      if (message.includes("reservation_not_found")) {
         return jsonResponse({ error: "reservation_not_found" }, 404);
       }
-      if (msg.includes("cancel_not_allowed")) {
-        return jsonResponse(
-          { error: "cancel_not_allowed", detail: msg },
-          409,
-        );
+      if (message.includes("cancel_not_allowed")) {
+        return jsonResponse({ error: "cancel_not_allowed" }, 409);
       }
-      console.error("[venue-reservation-cancel] cancel RPC failed", cancelErr);
-      return jsonResponse({ error: "cancel_failed", detail: msg }, 500);
-    }
-
-    const row = (Array.isArray(cancelData) ? cancelData[0] : cancelData) as
-      | { reservation?: CancelledReservation | null; refund_eligible?: boolean }
-      | null;
-    const reservation = row?.reservation ?? null;
-    const refundEligible = row?.refund_eligible === true;
-    if (!reservation) {
-      console.error("[venue-reservation-cancel] RPC returned no reservation");
+      console.error("venue_refund_prepare_failed", {
+        reservation_id: reservationId,
+      });
       return jsonResponse({ error: "cancel_failed" }, 500);
     }
-
-    const feeCents = Number(reservation.fee_cents ?? 0);
-    const paymentIntentId = reservation.payment_intent_id ?? null;
-
-    // ── 2. refund (only when eligible + a real charge exists) ─────────────
-    if (!refundEligible || feeCents <= 0) {
+    const durable = prepared.data as {
+      cancelled?: boolean;
+      refund?: { refund_id?: string; buyer_state?: string } | null;
+    };
+    if (!durable.refund?.refund_id) {
       return jsonResponse({
         status: "cancelled",
         cancelled: true,
-        refundEligible,
-        refunded: false,
-        refundAmountCents: 0,
-      });
+        refundEligible: false,
+        refund: null,
+      }, 200);
     }
-
-    // Resolve the connected account that owns the PI (direct-charge refund).
-    const svc = serviceClient();
-    const { data: brandRow, error: brandErr } = await svc
-      .from("brands")
-      .select("stripe_connect_id, payment_provider")
-      .eq("id", reservation.brand_id)
-      .maybeSingle();
-    const paymentProvider = brandRow?.payment_provider === "paystack"
-      ? "paystack"
-      : "stripe";
-    const connectedAccountId =
-      typeof brandRow?.stripe_connect_id === "string" &&
-        brandRow.stripe_connect_id.length > 0
-        ? brandRow.stripe_connect_id
-        : null;
-    if (brandErr || (paymentProvider === "stripe" && !connectedAccountId)) {
-      console.error(
-        "[venue-reservation-cancel] connected-account lookup failed",
-        brandErr,
-      );
-      // Cancelled, but we can't refund right now — surface for retry.
-      return jsonResponse(
-        {
-          status: "cancelled",
-          cancelled: true,
-          refundEligible: true,
-          refunded: false,
-          refundAmountCents: 0,
-          refundError: paymentProvider === "paystack"
-            ? "missing_paystack_transaction"
-            : "missing_connected_account",
-        },
-        200,
-      );
-    }
-
-    let providerRefundId = "";
-    let paystackTransaction: string | null = null;
-    let paystackSourceId: string | null = null;
-    let paystackRefundStatus: string | null = null;
-    try {
-      if (paymentProvider === "paystack") {
-        const { data: sessionRow, error: sessionError } = await svc
-          .from("reservation_checkout_sessions")
-          .select("id, paystack_reference")
-          .eq("reservation_id", reservation.id)
-          .eq("status", "completed")
-          .maybeSingle();
-        if (sessionError) {
-          throw new Error(
-            `paystack_reservation_reference_lookup_failed: ${sessionError.message}`,
-          );
-        }
-        paystackTransaction =
-          typeof sessionRow?.paystack_reference === "string" &&
-            sessionRow.paystack_reference.length > 0
-            ? sessionRow.paystack_reference
-            : paymentIntentId;
-        paystackSourceId = typeof sessionRow?.id === "string"
-          ? sessionRow.id
-          : null;
-        if (!paystackTransaction || !paystackSourceId) {
-          throw new Error("paystack_missing_transaction_ref");
-        }
-        const merchantNote = `mingla_venue_refund:${reservation.id}`;
-        const { error: attemptError } = await svc.rpc(
-          "record_paystack_refund_outcome",
-          {
-            p_source_type: "venue_reservation",
-            p_source_id: paystackSourceId,
-            p_local_refund_id: null,
-            p_transaction_reference: paystackTransaction,
-            p_merchant_note: merchantNote,
-            p_provider_refund_id: null,
-            p_amount_cents: feeCents,
-            p_status: "pending",
-          },
+    const svc1221 = serviceClient();
+    const { data: operation } = await svc1221.from("source_refunds")
+      .select("*").eq("id", durable.refund.refund_id).maybeSingle();
+    if (operation) {
+      try {
+        await runSourceRefundOperation(
+          svc1221,
+          operation as SourceRefundOperation,
         );
-        if (attemptError) {
-          throw new Error(
-            `paystack_refund_attempt_persist_failed: ${attemptError.message}`,
-          );
-        }
-        const created = await createPaystackRefund({
-          transaction: paystackTransaction,
-          merchantNote,
-          currency: "NGN",
+      } catch (caught) {
+        console.warn("venue_refund_runner_deferred", {
+          refund_id: durable.refund.refund_id,
+          error_code: caught instanceof Error
+            ? caught.message.split(":")[0]
+            : "runner_failed",
         });
-        providerRefundId = created.id;
-        paystackRefundStatus = created.status;
-        await persistPaystackRefundOutcome(
-          () =>
-            svc.rpc("record_paystack_refund_outcome", {
-              p_source_type: "venue_reservation",
-              p_source_id: paystackSourceId,
-              p_local_refund_id: null,
-              p_transaction_reference: paystackTransaction,
-              p_merchant_note: merchantNote,
-              p_provider_refund_id: providerRefundId,
-              p_amount_cents: feeCents,
-              p_status: paystackRefundOutcomeStatus(paystackRefundStatus),
-            }),
-          "venue-reservation-cancel",
-        );
-      } else {
-        if (!connectedAccountId) {
-          throw new Error("stripe_missing_connected_account");
-        }
-        if (!paymentIntentId) {
-          throw new Error("stripe_missing_payment_intent");
-        }
-        const stripe = stripeTicketRefund();
-        // @ts-ignore — Stripe SDK namespace is runtime-provided in Deno.
-        const created = await stripe.refunds.create(
-          {
-            payment_intent: paymentIntentId,
-            amount: feeCents,
-            reason: "requested_by_customer",
-            refund_application_fee: true,
-            metadata: {
-              mingla_reservation_id: reservation.id,
-              mingla_kind: "venue_reservation_deposit",
-            },
-          },
-          {
-            idempotencyKey: `venue_resv_refund:${reservation.id}`,
-            stripeAccount: connectedAccountId,
-          },
-        );
-        const status = String(created.status ?? "");
-        if (status === "failed" || status === "canceled") {
-          // Cancellation already succeeded (seat freed); only the money retry is
-          // pending → 200 so the client doesn't read a freed-seat cancel as a hard
-          // failure. refundError tells the guest the refund will follow.
-          return jsonResponse(
-            {
-              status: "cancelled",
-              cancelled: true,
-              refundEligible: true,
-              refunded: false,
-              refundAmountCents: 0,
-              refundError: `stripe refund status=${status}`,
-            },
-            200,
-          );
-        }
-        providerRefundId = String(created.id);
-      }
-    } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err);
-      console.error("[venue-reservation-cancel] refunds.create failed", detail);
-      const retryable = paymentProvider === "paystack" &&
-        isRetryablePaystackRefundError(err);
-      if (
-        paymentProvider === "paystack" && !retryable &&
-        paystackTransaction && paystackSourceId
-      ) {
-        const { error: outcomeError } = await svc.rpc(
-          "record_paystack_refund_outcome",
-          {
-            p_source_type: "venue_reservation",
-            p_source_id: paystackSourceId,
-            p_local_refund_id: null,
-            p_transaction_reference: paystackTransaction,
-            p_merchant_note: `mingla_venue_refund:${reservation.id}`,
-            p_provider_refund_id: null,
-            p_amount_cents: feeCents,
-            p_status: "failed",
-            p_error_message: detail,
-          },
-        );
-        if (outcomeError) {
-          console.error(
-            "[venue-reservation-cancel] definitive Paystack refund outcome persistence failed",
-            outcomeError.message,
-          );
-        }
-      }
-      return jsonResponse(
-        {
-          status: "cancelled",
-          cancelled: true,
-          refundEligible: true,
-          refunded: false,
-          refundAmountCents: 0,
-          refundError: retryable ? "paystack_refund_retryable" : detail,
-        },
-        200,
-      );
-    }
-
-    // Refund succeeded → reflect it on the row (service role; the guest already
-    // cancelled, this is the money-state bookkeeping).
-    const { error: updErr } = await svc
-      .from("reservations")
-      .update({
-        payment_status: "refunded",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", reservation.id);
-    if (updErr) {
-      console.error(
-        "[venue-reservation-cancel] payment_status update failed (refund DID succeed)",
-        updErr,
-      );
-      if (paymentProvider === "paystack") {
-        return jsonResponse(
-          {
-            status: "cancelled",
-            cancelled: true,
-            refundEligible: true,
-            refunded: false,
-            refundAmountCents: 0,
-            refundError: "refund_state_retryable",
-          },
-          200,
-        );
       }
     }
-
+    const { data: current } = await svc1221.rpc(
+      "pg_my_source_refund_summaries",
+      {
+        p_source_type: "venue_reservation",
+        p_subject_ids: [reservationId],
+      },
+    );
+    const summary = Array.isArray(current) ? current[0] : durable.refund;
+    const state = summary?.buyer_state ?? durable.refund.buyer_state ??
+      "queued";
     return jsonResponse({
       status: "cancelled",
       cancelled: true,
       refundEligible: true,
-      refunded: true,
-      refundAmountCents: feeCents,
-      paymentProvider,
-      providerRefundId,
-    });
+      refund: summary,
+    }, state === "processed" ? 200 : 202);
   }),
 );

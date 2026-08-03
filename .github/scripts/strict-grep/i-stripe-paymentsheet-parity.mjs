@@ -87,10 +87,7 @@ function nonCommentText(source) {
     .join("\n");
 }
 
-const failures = [];
-const passes = [];
-
-function checkProviderMount(source, file, merchantId, urlScheme, ruleId) {
+function checkProviderMount(failures, passes, source, file, merchantId, urlScheme, ruleId) {
   const nc = nonCommentText(source);
   const hasComp = /<StripeNativeProvider\b/.test(nc);
   const hasMerchant = new RegExp(
@@ -114,7 +111,7 @@ function checkProviderMount(source, file, merchantId, urlScheme, ruleId) {
   }
 }
 
-function checkFlowFile(source, file, ruleIdImport, ruleIdInitStripe, ruleIdCustomer) {
+function checkFlowFile(failures, passes, source, file, ruleIdImport, ruleIdInitStripe, ruleIdCustomer) {
   const nc = nonCommentText(source);
   if (
     /import\s+\{[^}]*\binitStripe\b[^}]*\}\s+from\s+["']@stripe\/stripe-react-native["']/
@@ -155,37 +152,101 @@ function checkFlowFile(source, file, ruleIdImport, ruleIdInitStripe, ruleIdCusto
   }
 }
 
-// ─── Consumer (app-mobile) ──────────────────────────────────────────────
+// Pure verdict (behavior-preserving refactor). `files` carries the four source
+// strings; the rule groups push into `failures` / `passes` in the same order as
+// before (R-1 consumer mount, R-2..R-4 consumer flow, R-5 business mount,
+// R-6..R-8 business flow). Never touches disk.
+function check(files, failures, passes) {
+  // ─── Consumer (app-mobile) ──────────────────────────────────────────────
+  checkProviderMount(
+    failures,
+    passes,
+    files.consumerLayout,
+    CONSUMER_LAYOUT,
+    "merchant.com.mingla.app.v2",
+    "com.mingla.app.v2",
+    "R-1",
+  );
+  checkFlowFile(failures, passes, files.consumerFlow, CONSUMER_FLOW, "R-2", "R-3", "R-4");
+
+  // ─── Business (mingla-business) ─────────────────────────────────────────
+  // ORCH-0849 round 4 (2026-05-16): merchant identifier corrected to match
+  // the actual Apple Developer registration + Stripe in-app cert. The prior
+  // `merchant.com.mingla.business.v2` was never registered with Apple and
+  // has no Stripe cert; it caused Apple Pay to stall at confirm on the
+  // business app. See StripeProviderWrapper.native.tsx + nativeCheckoutFlow.native.ts
+  // headers for full rationale.
+  checkProviderMount(
+    failures,
+    passes,
+    files.businessLayout,
+    BUSINESS_LAYOUT,
+    "merchant.com.sethogieva.minglabusiness",
+    "com.sethogieva.minglabusiness",
+    "R-5",
+  );
+  checkFlowFile(failures, passes, files.businessFlow, BUSINESS_FLOW, "R-6", "R-7", "R-8");
+}
+
+// ─────────────────────────────────────────────────────────────── self-test
+if (process.argv.includes("--self-test")) {
+  const self = [];
+  const run = (files) => {
+    const f = [];
+    check(files, f, []);
+    return f;
+  };
+
+  const goodFlow =
+    'import { initStripe, initPaymentSheet } from "@stripe/stripe-react-native";\n' +
+    "await initStripe({ publishableKey: pk, stripeAccountId: acct });\n" +
+    "await initPaymentSheet({ customerId: cust, customerEphemeralKeySecret: ek });\n";
+  const good = {
+    consumerLayout:
+      '<StripeNativeProvider merchantIdentifier="merchant.com.mingla.app.v2" urlScheme="com.mingla.app.v2">',
+    consumerFlow: goodFlow,
+    businessLayout:
+      '<StripeNativeProvider merchantIdentifier="merchant.com.sethogieva.minglabusiness" urlScheme="com.sethogieva.minglabusiness">',
+    businessFlow: goodFlow,
+  };
+
+  // GOOD: all 8 parity rules satisfied across the four fixture files → silent.
+  if (run(good).length) self.push("GOOD (all 8 PaymentSheet-parity rules satisfied) wrongly flagged");
+
+  // BAD1 (revert-style): the <StripeNativeProvider> mount is removed from the
+  // consumer _layout → R-1 fires.
+  const bad1 = { ...good, consumerLayout: "<View>app root, no provider</View>" };
+  if (run(bad1).length === 0) self.push("BAD1 (consumer <StripeNativeProvider> mount removed) not flagged");
+
+  // BAD2 (regression, different angle): the consumer flow stops passing
+  // customerEphemeralKeySecret to initPaymentSheet → R-4 fires.
+  const bad2 = {
+    ...good,
+    consumerFlow:
+      'import { initStripe, initPaymentSheet } from "@stripe/stripe-react-native";\n' +
+      "await initStripe({ publishableKey: pk, stripeAccountId: acct });\n" +
+      "await initPaymentSheet({ customerId: cust });\n",
+  };
+  if (run(bad2).length === 0) self.push("BAD2 (customerEphemeralKeySecret dropped from initPaymentSheet) not flagged");
+
+  if (self.length) {
+    console.error("I-PROPOSED-STRIPE-PAYMENTSHEET-PARITY self-test FAIL:");
+    self.forEach((m) => console.error("  - " + m));
+    process.exit(1);
+  }
+  console.log("I-PROPOSED-STRIPE-PAYMENTSHEET-PARITY self-test PASS (3/3 cases).");
+  process.exit(0);
+}
+
+// ─────────────────────────────────────────────────────────────── main path
+const failures = [];
+const passes = [];
+
 const consumerLayout = readOrFail(CONSUMER_LAYOUT);
-checkProviderMount(
-  consumerLayout,
-  CONSUMER_LAYOUT,
-  "merchant.com.mingla.app.v2",
-  "com.mingla.app.v2",
-  "R-1",
-);
-
 const consumerFlow = readOrFail(CONSUMER_FLOW);
-checkFlowFile(consumerFlow, CONSUMER_FLOW, "R-2", "R-3", "R-4");
-
-// ─── Business (mingla-business) ─────────────────────────────────────────
 const businessLayout = readOrFail(BUSINESS_LAYOUT);
-// ORCH-0849 round 4 (2026-05-16): merchant identifier corrected to match
-// the actual Apple Developer registration + Stripe in-app cert. The prior
-// `merchant.com.mingla.business.v2` was never registered with Apple and
-// has no Stripe cert; it caused Apple Pay to stall at confirm on the
-// business app. See StripeProviderWrapper.native.tsx + nativeCheckoutFlow.native.ts
-// headers for full rationale.
-checkProviderMount(
-  businessLayout,
-  BUSINESS_LAYOUT,
-  "merchant.com.sethogieva.minglabusiness",
-  "com.sethogieva.minglabusiness",
-  "R-5",
-);
-
 const businessFlow = readOrFail(BUSINESS_FLOW);
-checkFlowFile(businessFlow, BUSINESS_FLOW, "R-6", "R-7", "R-8");
+check({ consumerLayout, consumerFlow, businessLayout, businessFlow }, failures, passes);
 
 // ─── Report ─────────────────────────────────────────────────────────────
 

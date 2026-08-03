@@ -37,32 +37,58 @@ const read = (p) => fs.readFileSync(p, "utf8");
 const ALL = ["meta", "tiktok", "snapchat", "google", "reddit"];
 const allPassing = ALL.map((platform) => ({ platform, ok: true, needsTranscode: false }));
 
-// ── P1: video is preview-only — nothing builds, everything is excluded ───────
-describe("ISSUE-995 rework · video ad create is not available yet (preview-only)", () => {
-  it("the video-create flag is OFF until #997 wires it", () => {
-    assert.equal(VIDEO_CREATE_ENABLED, false);
+// ── P1: #1184 narrows the former blanket block to exact READY platforms ──────
+describe("ISSUE-995 rework · Phase A video create remains platform-honest", () => {
+  // [TEST-MOD-APPROVED ORCH-1185] #997 C/D2 wired TikTok + Google, and #1185 wired
+  // Reddit paused-video create — so the "reddit: false" assertion is now superseded
+  // too. Every platform is video-creatable.
+  it("video create is enabled for every platform (Meta/Snap/TikTok/Google + Reddit via #1185)", () => {
+    assert.deepEqual(VIDEO_CREATE_ENABLED, {
+      meta: true,
+      snapchat: true,
+      tiktok: true,
+      google: true,
+      reddit: true,
+    });
   });
 
-  it("a video creative excludes EVERY funded channel — buildable is empty", () => {
+  // [TEST-MOD-APPROVED ORCH-1185] Reddit is a NO-PREPARE video platform (#1185): it
+  // builds from its #866-hosted clip with no prep row, so a READY Meta/Snap/TikTok
+  // set now ALSO includes reddit as buildable; only Google (no ready prep here) stays
+  // excluded.
+  it("exact READY Meta/Snap/TikTok rows become buildable — reddit joins (no prep needed)", () => {
     const { buildable, excluded } = partitionFundedCreative({
       fundedPlatforms: ALL,
-      channels: allPassing, // even all-passing validation must not build a video
+      channels: allPassing,
       kind: "video",
+      preparationByPlatform: {
+        meta: { state: "ready" },
+        snapchat: { state: "ready" },
+        tiktok: { state: "ready" },
+      },
     });
-    assert.deepEqual(buildable, [], "no channel may build a video ad while create is unwired");
-    assert.deepEqual(excluded.map((e) => e.platform).sort(), [...ALL].sort());
-    for (const e of excluded) assert.equal(e.reason, "video_not_creatable");
+    assert.deepEqual(buildable.sort(), ["meta", "reddit", "snapchat", "tiktok"]);
+    assert.deepEqual(excluded.map((e) => e.platform).sort(), ["google"]);
   });
 
   it("the partition stays TOTAL for video (buildable ∪ excluded = funded)", () => {
-    const { buildable, excluded } = partitionFundedCreative({ fundedPlatforms: ALL, channels: allPassing, kind: "video" });
+    const { buildable, excluded } = partitionFundedCreative({
+      fundedPlatforms: ALL,
+      channels: allPassing,
+      kind: "video",
+      preparationByPlatform: { meta: { state: "ready" } },
+    });
     assert.equal(buildable.length + excluded.length, ALL.length);
   });
 });
 
-// ── P2: a video on Google never yields a "Created" success ───────────────────
+// ── P2: a video on Google never yields a "Created" success without a READY prep ─
 describe("ISSUE-995 rework · a video funded to Google is never a fabricated success", () => {
-  it("Google (ok:true) is EXCLUDED for a video, never buildable → runCreate skips it", () => {
+  // [TEST-MOD-APPROVED ORCH-0997] D2 wired Google Demand Gen video create, so a
+  // Google video is no longer excluded as approximation_only — but with NO ready
+  // preparation it is still EXCLUDED (preparation_not_started), never a fabricated
+  // "Created". The no-fake-success invariant holds via the readiness gate.
+  it("Google (ok:true) with NO ready prep is EXCLUDED for a video, never buildable → runCreate skips it", () => {
     const { buildable, excluded } = partitionFundedCreative({
       fundedPlatforms: ["google", "meta"],
       channels: [
@@ -71,9 +97,9 @@ describe("ISSUE-995 rework · a video funded to Google is never a fabricated suc
       ],
       kind: "video",
     });
-    assert.equal(buildable.includes("google"), false, "Google video must not be buildable (no fake text-ad 'Created')");
+    assert.equal(buildable.includes("google"), false, "Google video must not be buildable without a READY prep");
     const g = excluded.find((e) => e.platform === "google");
-    assert.equal(g.reason, "video_not_creatable");
+    assert.equal(g.reason, "preparation_not_started");
   });
 
   it("the youtube_hosted check copy is honest — no fabricated 'we'll upload it for you'", () => {
@@ -118,20 +144,20 @@ describe("ISSUE-995 rework · component + page honesty wiring", () => {
   const stepCreative = read(path.join(ADMIN_SRC, "components/campaign-builder/StepCreative.jsx"));
   const page = read(path.join(ADMIN_SRC, "pages/CampaignBuilderPage.jsx"));
 
-  it("StepCreative labels the video option preview-only", () => {
-    assert.match(stepCreative, /Video \(preview only\)/);
+  it("StepCreative labels Phase A truth and embeds preparation", () => {
+    assert.match(stepCreative, /Video Phase A/);
+    assert.match(stepCreative, /VideoPreparationPanel/);
   });
 
-  it("StepCreative shows an unmissable 'not available yet' banner for video", () => {
-    assert.match(stepCreative, /Video ad creation isn't available yet/);
-    assert.match(stepCreative, /isVideo &&/);
+  it("StepCreative names the create-capable platforms", () => {
+    assert.match(stepCreative, /Meta and Snapchat can build after/);
   });
 
   it("CampaignBuilderPage passes creative.kind into the build partition", () => {
     assert.match(page, /kind:\s*creative\.kind/);
   });
 
-  it("CampaignBuilderPage gives video its own preview-only disabled reason", () => {
-    assert.match(page, /Video ad creation isn't available yet/);
+  it("CampaignBuilderPage gives video its preparation gate reason", () => {
+    assert.match(page, /Prepare at least one video platform/);
   });
 });

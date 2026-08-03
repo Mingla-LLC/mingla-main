@@ -104,6 +104,14 @@ export interface DraftVenueState {
   lng: number | null;
   city: string | null;
   countryCode: string | null;
+  /**
+   * Issue #1363 — how lat/lng was captured. Legacy values may be "exact";
+   * selected-address resolution is "approximate"; null when unset. Rides
+   * the create RPC + drives honest map rendering (no fabricated precision, rule
+   * 9). Optional at the type level so a pre-1363 persisted v3 blob rehydrates via
+   * `?? null` (additive — no persist-version bump).
+   */
+  coordinatePrecision?: "exact" | "approximate" | null;
   hours: BrandHourEntry[];
   contactEmail: string;
   contactPhone: string;
@@ -123,6 +131,13 @@ export interface DraftVenueState {
   /** ORCH-1263 — claim c7 price tiers. META-ORCH-1290 Leg B — the folded create
    *  wizard (s7) now collects these too (no longer deck-readiness-owned). */
   priceTiers: string[];
+  /**
+   * Issue #1384 source-money input only. These are unsaved input strings, not
+   * server state; currency authority is fetched separately for every render
+   * and submit.
+   */
+  discoveryPriceMinInput?: string;
+  discoveryPriceMaxInput?: string;
   /** ORCH-1263 — claim c8 reservations intent (switch always starts OFF). */
   wantsReservations: boolean;
   /**
@@ -140,6 +155,13 @@ export interface DraftVenueState {
     type: "image" | "video" | "gif";
     isNew: boolean;
   } | null;
+  /**
+   * Issue #1467 — the own-brand pending venue row already created for this
+   * submission saga. Persisted immediately after the create RPC so a failed
+   * downstream Tier 1/gallery/currency step resumes this row instead of
+   * inserting a duplicate. Optional for backwards-compatible v3 hydration.
+   */
+  submissionVenueId?: string | null;
   /** ORCH-1263 — non-null ⇔ claim mode (10-step wizard variant). */
   claim: DraftVenueClaim | null;
   /**
@@ -162,6 +184,7 @@ const initial: DraftVenueState = {
   lng: null,
   city: null,
   countryCode: null,
+  coordinatePrecision: null,
   hours: defaultBrandHoursWeek(),
   contactEmail: "",
   contactPhone: "",
@@ -170,9 +193,12 @@ const initial: DraftVenueState = {
   description: "",
   website: "",
   priceTiers: [],
+  discoveryPriceMinInput: "",
+  discoveryPriceMaxInput: "",
   wantsReservations: false,
   galleryUrls: [],
   coverChoice: null,
+  submissionVenueId: null,
   claim: null,
   step: 0,
 };
@@ -194,6 +220,8 @@ const pickDraft = (s: DraftVenueState): DraftVenueState => ({
   lng: s.lng,
   city: s.city,
   countryCode: s.countryCode,
+  // Issue #1363 — `?? null` tolerates a pre-1363 persisted v3 blob (field absent).
+  coordinatePrecision: s.coordinatePrecision ?? null,
   hours: s.hours,
   contactEmail: s.contactEmail,
   contactPhone: s.contactPhone,
@@ -203,10 +231,13 @@ const pickDraft = (s: DraftVenueState): DraftVenueState => ({
   description: s.description,
   website: s.website,
   priceTiers: s.priceTiers,
+  discoveryPriceMinInput: s.discoveryPriceMinInput ?? "",
+  discoveryPriceMaxInput: s.discoveryPriceMaxInput ?? "",
   wantsReservations: s.wantsReservations,
   // META-ORCH-1290 — `?? []`/`?? null` tolerates a pre-1290 persisted blob.
   galleryUrls: s.galleryUrls ?? [],
   coverChoice: s.coverChoice ?? null,
+  submissionVenueId: s.submissionVenueId ?? null,
   // ORCH-1263 — the claim block must survive activateBrand stash/restore.
   claim: s.claim,
   step: s.step,
@@ -216,6 +247,7 @@ const pickDraft = (s: DraftVenueState): DraftVenueState => ({
 export const draftVenueInProgress = (d: DraftVenueState): boolean =>
   d.displayName.trim().length > 0 ||
   d.workingName.trim().length > 0 ||
+  (d.submissionVenueId ?? null) !== null ||
   d.step > 0;
 
 // ─── ORCH-1263 — computed provenance (DESIGN §3; never stored) ──────────────
@@ -237,7 +269,10 @@ const sameHours = (a: BrandHourEntry[], b: BrandHourEntry[]): boolean => {
   const key = (rows: BrandHourEntry[]): string =>
     [...rows]
       .sort((x, y) => x.weekday - y.weekday)
-      .map((r) => `${r.weekday}|${r.isClosed ? "c" : `${r.openTime ?? ""}-${r.closeTime ?? ""}`}`)
+      .map(
+        (r) =>
+          `${r.weekday}|${r.isClosed ? "c" : `${r.openTime ?? ""}-${r.closeTime ?? ""}`}`,
+      )
       .join(";");
   return key(a) === key(b);
 };
@@ -303,6 +338,13 @@ export const provenanceFor = (
     case "website":
       return textProvenance(d.website, a.website);
     case "price": {
+      const hasSourceMoney = (d.discoveryPriceMinInput ?? "").trim().length > 0;
+      if (hasSourceMoney) {
+        return a.priceTiers.length > 0 ? "edited" : "new";
+      }
+      // Pre-#1384 claim drafts can still carry the legacy tier selection.
+      // Preserve their review/provenance behavior until the operator replaces
+      // the tier with an exact source-money range.
       if (a.priceTiers.length === 0) {
         return d.priceTiers.length > 0 ? "new" : null;
       }
@@ -355,7 +397,13 @@ export const useDraftVenueStore = create<DraftVenueStore>()(
           if (s.activeBrandId !== null) {
             drafts[s.activeBrandId] = pickDraft(s);
           }
-          const next = drafts[brandId] ?? blankDraft();
+          // #1461 — current-brand resolution can legitimately happen after a
+          // persisted, formerly-unscoped draft has hydrated. Adopt those live
+          // top-level fields into the first arriving brand instead of replacing
+          // the operator's in-progress venue with a blank draft.
+          const next =
+            drafts[brandId] ??
+            (s.activeBrandId === null ? pickDraft(s) : blankDraft());
           delete drafts[brandId];
           return { ...next, activeBrandId: brandId, drafts };
         }),

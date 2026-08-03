@@ -26,7 +26,7 @@ import {
 } from "../../constants/designSystem";
 import type { Brand } from "../../store/currentBrandStore";
 import type { DraftEvent, TicketStub } from "../../store/draftEventStore";
-import { formatCurrencyRound } from "../../utils/currency";
+import { formatCurrencyRound, currencyCodeOrNull } from "../../utils/currency";
 import {
   formatDraftDateLine,
   formatDraftDateSubline,
@@ -81,14 +81,18 @@ const SectionEditPencil: React.FC<{
   </Pressable>
 );
 
-const PublicTicketRow: React.FC<{ ticket: TicketStub; isLast: boolean }> = ({
-  ticket,
-  isLast,
-}) => {
+const PublicTicketRow: React.FC<{
+  ticket: TicketStub;
+  isLast: boolean;
+  eventCurrency: string | null;
+}> = ({ ticket, isLast, eventCurrency }) => {
+  // #962 G13 — hide the price ("—") when neither the ticket nor the event has an
+  // established currency (pre-bank brand); never manufacture GBP.
+  const code = currencyCodeOrNull(ticket.currency ?? eventCurrency);
   const priceLabel = ticket.isFree
     ? "Free"
-    : ticket.priceGbp !== null
-      ? formatCurrencyRound(ticket.priceGbp, ticket.currency ?? "GBP")
+    : ticket.priceGbp !== null && code !== null
+      ? formatCurrencyRound(ticket.priceGbp, code)
       : "—";
   const subLine = formatTicketSubline(ticket);
   const badges = formatTicketBadges(ticket);
@@ -431,6 +435,7 @@ export const PreviewEventView: React.FC<PreviewEventViewProps> = ({
                   key={t.id}
                   ticket={t}
                   isLast={i === arr.length - 1}
+                  eventCurrency={draft.currency ?? null}
                 />
               ))}
             </View>

@@ -19,6 +19,9 @@ import { useQuery } from "@tanstack/react-query";
 
 import { supabase } from "../services/supabase";
 import type { DiscoverTripRow } from "../services/tripsDiscoveryService";
+// issue #868 [cover-gallery] — ADDITIONAL image/GIF items (pg_public_trip_by_slug
+// already returns coverGallery from Pass 1 §C.1).
+import type { OfferingGalleryImage } from "@mingla/offering-rendering";
 
 /**
  * ORCH-1119 — one item in a trip DAY's optional media gallery. Explicit `type`
@@ -183,6 +186,11 @@ export interface ConsumerTripDetail {
   coverMediaUrl: string | null;
   coverMediaType: "image" | "video" | "gif" | null;
   /**
+   * issue #868 [cover-gallery] — ADDITIONAL image/GIF gallery items (hero indices
+   * 1..N), INDEPENDENT of coverMediaUrl/coverMediaType. [] = single cover.
+   */
+  coverGallery: OfferingGalleryImage[];
+  /**
    * ORCH-1138 [trip-page-redesign] FIX-3 (device rework) — the BRAND's cover
    * media for the "Presented by" chip, sourced anon-safe from the
    * security-definer `business_public_brands_view` (🔒 COMMS-0009 /
@@ -327,6 +335,8 @@ interface RpcTripPayload {
   currency: string;
   coverMediaUrl: string | null;
   coverMediaType: string | null;
+  // issue #868 [cover-gallery] — RPC coverGallery json key (default []).
+  coverGallery?: OfferingGalleryImage[] | null;
   refundPolicy: unknown;
   bookingDeadline: string | null;
   bookingsClosed: boolean;
@@ -436,6 +446,8 @@ async function fetchTripDetail(
     destinationLng: numOrNull(p.destinationLng),
     coverMediaUrl: p.coverMediaUrl,
     coverMediaType: coerceCoverType(p.coverMediaType),
+    // issue #868 [cover-gallery] — additive; [] on legacy/absent (rule 9).
+    coverGallery: Array.isArray(p.coverGallery) ? p.coverGallery : [],
     // META-ORCH-1174 — the "Presented by" brand cover now rides the same RPC
     // payload (anon-safe via the definer owner — NEVER `.from('brands')`).
     brandCoverMediaUrl: p.brand.coverMediaUrl,

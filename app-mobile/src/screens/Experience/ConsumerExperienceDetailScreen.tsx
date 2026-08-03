@@ -53,6 +53,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   boldFontFamily,
   computeOfferingVariant,
+  CoverGalleryPager,
+  CoverGalleryRow,
   createThemePalette,
   EventCoverMedia,
   ExperienceOfferingBody,
@@ -248,6 +250,9 @@ export default function ConsumerExperienceDetailScreen({
   );
   const [checkoutInFlight, setCheckoutInFlight] = useState<boolean>(false);
   const [muted, setMuted] = useState<boolean>(true);
+  // issue #868 [cover-gallery], M.1b — single owner of the shown hero item (shared
+  // by the cover pager + the row). Before the early-returns to preserve hook order.
+  const [coverIndex, setCoverIndex] = useState<number>(0);
 
   // ORCH-1341 — "Who's going" guest-list sheet visibility (declared before the
   // loading/error early returns per the Rules of Hooks).
@@ -784,6 +789,40 @@ export default function ConsumerExperienceDetailScreen({
       ? seed.coverMediaType
       : null;
   const showMute = coverMediaType === "video";
+  // issue #868 [cover-gallery], M.1b — the ADDITIONAL image/GIF items come from the
+  // by-slug detail RPC (freshDetail); the deck seed is thumbnail-only. Plain const
+  // (seed non-null past the guard). Empty ⇒ single cover, byte-identical.
+  const coverGallery = (freshDetail?.coverGallery ?? []).filter(
+    (g) => typeof g?.url === "string" && g.url.length > 0,
+  );
+  const galleryActive = coverGallery.length >= 1;
+  // issue #868 Pass 3 — the pager OWNS scrolling (settle-guard, BUG 1).
+  const selectCoverIndex = (index: number): void => {
+    setCoverIndex(index);
+  };
+  const coverMediaNode = (
+    <EventCoverMedia
+      mediaUrl={seed.coverMediaUrl}
+      mediaType={coverMediaType}
+      hue={seed.coverHue}
+      autoplay
+      playbackActive
+      muted={muted}
+      loop
+      height="100%"
+      width="100%"
+    />
+  );
+  const galleryRow = galleryActive ? (
+    <CoverGalleryRow
+      cover={{ url: seed.coverMediaUrl, type: coverMediaType }}
+      gallery={coverGallery}
+      activeIndex={coverIndex}
+      onSelect={selectCoverIndex}
+      palette={palette}
+      variant="phone"
+    />
+  ) : null;
 
   // ORCH-1183 — build the SHARED ExperienceOfferingBody contract from the deck/venue
   // SEED (the existing discover→experience open). The ONE ticket's server all-in
@@ -927,19 +966,24 @@ export default function ConsumerExperienceDetailScreen({
         // the picker/cart open as normal siblings (no nested-modal cart failure).
         accessibilityLabel={seed.title}
       >
-        {/* (1) pinned cover — absolute sibling BEHIND the scroll. */}
-        <View style={styles.nativeCover} pointerEvents="none">
-          <EventCoverMedia
-            mediaUrl={seed.coverMediaUrl}
-            mediaType={coverMediaType}
-            hue={seed.coverHue}
-            autoplay
-            playbackActive
-            muted={muted}
-            loop
-            height="100%"
-            width="100%"
-          />
+        {/* (1) pinned cover — absolute sibling BEHIND the scroll. issue #868 —
+            gallery mode: swipeable pager over [cover] ++ gallery (page 0 = the
+            EXISTING cover node, UNCHANGED); nativeCover → pointerEvents:"auto".
+            Empty ⇒ single cover, byte-identical. */}
+        <View
+          style={styles.nativeCover}
+          pointerEvents={galleryActive ? "auto" : "none"}
+        >
+          {galleryActive ? (
+            <CoverGalleryPager
+              coverNode={coverMediaNode}
+              gallery={coverGallery}
+              activeIndex={coverIndex}
+              onActiveIndexChange={setCoverIndex}
+            />
+          ) : (
+            coverMediaNode
+          )}
           <View style={styles.coverScrim} pointerEvents="none" />
           <ThemeEntranceAnimation
             theme={theme}
@@ -960,13 +1004,21 @@ export default function ConsumerExperienceDetailScreen({
           onLayout={handleScrollLayout}
           testID="orch-1138-consumer-experience-scroll"
         >
-          <View style={styles.coverSpacer} />
+          {/* issue #868 — spacer pointerEvents:"none" in gallery mode so a swipe
+              over the cover reaches the pinned pager; default otherwise. */}
+          <View
+            style={styles.coverSpacer}
+            pointerEvents={galleryActive ? "none" : undefined}
+          />
           <View
             style={[
               styles.nativeBody,
               { backgroundColor: palette.page, borderColor: palette.panelBorder },
             ]}
           >
+            {/* issue #868 [cover-gallery] — the beneath-cover card row is the body's
+                FIRST child. Null when the gallery is empty. */}
+            {galleryRow}
             {/* ORCH-1183 — the ONE shared, shell-agnostic body. The deck/venue SEED
                 is mapped into the ExperienceOfferingData contract above; the body
                 renders the SAME sections on every surface (lead/meta/vibes/brand/

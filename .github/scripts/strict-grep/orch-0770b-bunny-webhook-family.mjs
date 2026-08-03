@@ -1,0 +1,243 @@
+#!/usr/bin/env node
+/**
+ * ORCH-0770b [bunny-webhook-family] — NEW strict-grep gate, issue #964 (D-4).
+ * The Bunny library webhook is the AUTHENTICITY boundary of the live event-cover
+ * pipeline: it verifies a v1/hmac-sha256 signature envelope, maps the numeric
+ * Bunny status, keys the owning job by `source_asset_id`, and finalizes
+ * fail-closed on a missing processed MP4. This slice is high-security enough to
+ * own its own gate (the sibling `orch-0770` pins upload-intent + shared; this
+ * pins webhook + presign-verify + source-uploaded Bunny-truth).
+ *
+ * NO product/edge-fn code changed by #964 — CI/gate-coverage only.
+ *
+ * RULE — the following must ALL hold, else the gate exits non-zero:
+ *   webhook (event-cover-video-webhook/index.ts, comment-stripped):
+ *     WH-1  `verifyBunnyWebhookSignature`           — signature verification invoked.
+ *     WH-2  reads all three v1 envelope headers: `x-bunnystream-signature`,
+ *           `-signature-version`, `-signature-algorithm`.
+ *     WH-3  `mapBunnyStatus`                        — numeric status → lifecycle.
+ *     WH-4  `assertProcessedDerivative`             — fail-closed derivative check.
+ *     WH-5  keys the job on `.eq("source_asset_id", …)` — the VideoGuid job key.
+ *     WH-6  `processed_mp4_unavailable`             — fail-closed finalize code.
+ *     WH-CLD  `x-cld-timestamp` / `verifyCloudinaryNotificationSignature` ABSENT
+ *             — Cloudinary webhook signing must not reappear (reintroduction guard).
+ *   _shared/bunnyStream.ts (comment-stripped):
+ *     BS-1  `verifyBunnyWebhookSignature` + BS-2 `"v1"` + BS-3 `"hmac-sha256"`
+ *           + BS-4 `constantTimeEqual` — the v1 HMAC envelope + constant-time compare.
+ *     BS-5  `mapBunnyStatus`.
+ *   source-uploaded (event-cover-video-source-uploaded/index.ts, comment-stripped):
+ *     SU-1  `bunnyGetVideo` + SU-2 `storageSize` + SU-3 `MAX_SOURCE_VIDEO_BYTES` —
+ *           source truth read from Bunny, cap enforced on the REAL stored bytes.
+ *
+ * Comment-stripped before scanning: prose naming Cloudinary / the headers must
+ * neither satisfy nor trip an assertion.
+ *
+ * Self-test: `node orch-0770b-bunny-webhook-family.mjs --self-test` proves PASS
+ * on the live shape and FAIL on each dropped authenticity invariant AND on a
+ * reintroduced Cloudinary webhook shape.
+ *
+ * Exit: 0 = clean / self-test pass, 1 = violation.
+ */
+import { readFileSync, existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const REPO_ROOT = join(__dirname, "..", "..", "..");
+
+const REL = {
+  webhook: "supabase/functions/event-cover-video-webhook/index.ts",
+  bunnyStream: "supabase/functions/_shared/bunnyStream.ts",
+  sourceUploaded: "supabase/functions/event-cover-video-source-uploaded/index.ts",
+};
+
+export function stripComments(src) {
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:])\/\/.*$/gm, "$1");
+}
+
+/**
+ * Pure checker. `sources` maps { webhook, bunnyStream, sourceUploaded } → raw
+ * source text; all comment-stripped internally. Returns violation messages.
+ */
+export function scan(sources) {
+  const failures = [];
+  const wh = stripComments(sources.webhook ?? "");
+  const bs = stripComments(sources.bunnyStream ?? "");
+  const su = stripComments(sources.sourceUploaded ?? "");
+
+  // ── webhook authenticity + finalize ────────────────────────────────────
+  if (!wh.includes("verifyBunnyWebhookSignature")) {
+    failures.push("WH-1: webhook no longer invokes `verifyBunnyWebhookSignature` — the signature authenticity check is gone.");
+  }
+  for (const header of [
+    '"x-bunnystream-signature"',
+    '"x-bunnystream-signature-version"',
+    '"x-bunnystream-signature-algorithm"',
+  ]) {
+    if (!wh.includes(header)) {
+      failures.push(`WH-2: webhook no longer reads the v1 envelope header ${header} — the signature envelope is incomplete.`);
+    }
+  }
+  if (!wh.includes("mapBunnyStatus")) {
+    failures.push("WH-3: webhook no longer maps the numeric Bunny status via `mapBunnyStatus`.");
+  }
+  if (!wh.includes("assertProcessedDerivative")) {
+    failures.push("WH-4: webhook no longer calls `assertProcessedDerivative` — the fail-closed derivative check is gone.");
+  }
+  if (!/\.eq\(\s*"source_asset_id"/.test(wh)) {
+    failures.push('WH-5: webhook no longer keys the owning job on `.eq("source_asset_id", …)` — the Bunny VideoGuid job key changed.');
+  }
+  if (!wh.includes("processed_mp4_unavailable")) {
+    failures.push("WH-6: webhook no longer fails closed with `processed_mp4_unavailable` on a missing processed MP4.");
+  }
+  for (const cld of ["x-cld-timestamp", "verifyCloudinaryNotificationSignature"]) {
+    if (wh.includes(cld)) {
+      failures.push(`WH-CLD: dead Cloudinary webhook signing token \`${cld}\` reappeared. The cover-video webhook is Bunny-only (#966).`);
+    }
+  }
+
+  // ── _shared/bunnyStream.ts signing envelope ────────────────────────────
+  if (!bs.includes("verifyBunnyWebhookSignature")) {
+    failures.push("BS-1: `_shared/bunnyStream.ts` no longer defines `verifyBunnyWebhookSignature`.");
+  }
+  if (!bs.includes('"v1"')) {
+    failures.push('BS-2: the signing envelope no longer pins the `"v1"` version.');
+  }
+  if (!bs.includes('"hmac-sha256"')) {
+    failures.push('BS-3: the signing envelope no longer pins the `"hmac-sha256"` algorithm.');
+  }
+  if (!bs.includes("constantTimeEqual")) {
+    failures.push("BS-4: signature comparison no longer uses `constantTimeEqual` — the constant-time HMAC compare is gone.");
+  }
+  if (!bs.includes("mapBunnyStatus")) {
+    failures.push("BS-5: `_shared/bunnyStream.ts` no longer defines `mapBunnyStatus`.");
+  }
+
+  // ── source-uploaded Bunny truth + cap ──────────────────────────────────
+  if (!su.includes("bunnyGetVideo")) {
+    failures.push("SU-1: source-uploaded no longer reads source truth from Bunny via `bunnyGetVideo`.");
+  }
+  if (!su.includes("storageSize")) {
+    failures.push("SU-2: source-uploaded no longer reads Bunny `storageSize` — it may trust the client-declared byte count.");
+  }
+  if (!su.includes("MAX_SOURCE_VIDEO_BYTES")) {
+    failures.push("SU-3: source-uploaded no longer enforces the `MAX_SOURCE_VIDEO_BYTES` source cap.");
+  }
+
+  return failures;
+}
+
+// ---- Self-test ----------------------------------------------------------
+if (process.argv.includes("--self-test")) {
+  const good = {
+    webhook: [
+      'import { assertProcessedDerivative } from "../_shared/eventCoverVideo.ts";',
+      'import { mapBunnyStatus, verifyBunnyWebhookSignature } from "../_shared/bunnyStream.ts";',
+      'const signatureHeader = req.headers.get("x-bunnystream-signature");',
+      'const signatureVersion = req.headers.get("x-bunnystream-signature-version");',
+      'const signatureAlgorithm = req.headers.get("x-bunnystream-signature-algorithm");',
+      "const verification = await verifyBunnyWebhookSignature({ rawBody, signatureHeader });",
+      "const mapped = mapBunnyStatus(status);",
+      '.eq("source_asset_id", videoGuid)',
+      'await failJob("processed_mp4_unavailable", "gone");',
+      "const derivative = assertProcessedDerivative({ url, mimeType });",
+    ].join("\n"),
+    bunnyStream: [
+      "export async function verifyBunnyWebhookSignature(input) {",
+      '  if (version !== "v1") return { ok: false };',
+      '  if (algorithm !== "hmac-sha256") return { ok: false };',
+      "  if (!constantTimeEqual(expected, provided)) return { ok: false };",
+      "}",
+      "export function mapBunnyStatus(status) { return 'ready'; }",
+    ].join("\n"),
+    sourceUploaded: [
+      'import { bunnyGetVideo } from "../_shared/bunnyStream.ts";',
+      "const video = await deps.bunnyGetVideo(guid);",
+      "const storageSize = video.video.storageSize;",
+      "if (storageSize > MAX_SOURCE_VIDEO_BYTES) { await fail(); }",
+    ].join("\n"),
+  };
+
+  const clone = (o) => JSON.parse(JSON.stringify(o));
+  const cases = [];
+  const good0 = scan(good);
+  cases.push({ name: "GOOD live shape passes (0 failures)", ok: good0.length === 0, detail: good0 });
+
+  const bad = (name, mutate, wantPrefix) => {
+    const s = clone(good);
+    mutate(s);
+    const f = scan(s);
+    cases.push({ name, ok: f.some((m) => m.startsWith(wantPrefix)), detail: f });
+  };
+
+  // The named revert demo from the SPEC: drop verifyBunnyWebhookSignature.
+  bad("drop verifyBunnyWebhookSignature (webhook) trips WH-1", (s) => { s.webhook = s.webhook.replaceAll("verifyBunnyWebhookSignature", "foo"); }, "WH-1:");
+  bad("drop x-bunnystream-signature-version trips WH-2", (s) => { s.webhook = s.webhook.replace('"x-bunnystream-signature-version"', '"x-foo"'); }, "WH-2:");
+  bad("drop mapBunnyStatus (webhook) trips WH-3", (s) => { s.webhook = s.webhook.replaceAll("mapBunnyStatus", "foo"); }, "WH-3:");
+  bad("drop assertProcessedDerivative trips WH-4", (s) => { s.webhook = s.webhook.replaceAll("assertProcessedDerivative", "foo"); }, "WH-4:");
+  bad("drop source_asset_id keying trips WH-5", (s) => { s.webhook = s.webhook.replace('.eq("source_asset_id", videoGuid)', '.eq("id", x)'); }, "WH-5:");
+  bad("drop processed_mp4_unavailable trips WH-6", (s) => { s.webhook = s.webhook.replace("processed_mp4_unavailable", "other_code"); }, "WH-6:");
+  bad("reintroduce x-cld-timestamp trips WH-CLD", (s) => { s.webhook += '\nconst t = req.headers.get("x-cld-timestamp");'; }, "WH-CLD:");
+  bad("reintroduce verifyCloudinaryNotificationSignature trips WH-CLD", (s) => { s.webhook += "\nverifyCloudinaryNotificationSignature(x);"; }, "WH-CLD:");
+  bad("drop \"v1\" envelope trips BS-2", (s) => { s.bunnyStream = s.bunnyStream.replace('"v1"', '"v9"'); }, "BS-2:");
+  bad("drop \"hmac-sha256\" trips BS-3", (s) => { s.bunnyStream = s.bunnyStream.replace('"hmac-sha256"', '"md5"'); }, "BS-3:");
+  bad("drop constantTimeEqual trips BS-4", (s) => { s.bunnyStream = s.bunnyStream.replaceAll("constantTimeEqual", "eq"); }, "BS-4:");
+  bad("drop mapBunnyStatus (shared) trips BS-5", (s) => { s.bunnyStream = s.bunnyStream.replaceAll("mapBunnyStatus", "foo"); }, "BS-5:");
+  bad("drop bunnyGetVideo trips SU-1", (s) => { s.sourceUploaded = s.sourceUploaded.replaceAll("bunnyGetVideo", "foo"); }, "SU-1:");
+  bad("drop storageSize trips SU-2", (s) => { s.sourceUploaded = s.sourceUploaded.replaceAll("storageSize", "bytes"); }, "SU-2:");
+  bad("drop MAX_SOURCE_VIDEO_BYTES trips SU-3", (s) => { s.sourceUploaded = s.sourceUploaded.replaceAll("MAX_SOURCE_VIDEO_BYTES", "0"); }, "SU-3:");
+
+  // Comment-only Cloudinary mention must NOT trip WH-CLD (strip proof).
+  const co = clone(good);
+  co.webhook += "\n// the Cloudinary x-cld-timestamp arm was removed as dead residue.";
+  const cor = scan(co);
+  cases.push({ name: "comment-only Cloudinary mention does NOT trip WH-CLD (strip proof)", ok: !cor.some((m) => m.startsWith("WH-CLD:")), detail: cor });
+
+  let bad_ = 0;
+  for (const c of cases) {
+    console.log(`${c.ok ? "ok  " : "FAIL"}  ${c.name}`);
+    if (!c.ok) { bad_++; console.log(`        failures: ${JSON.stringify(c.detail)}`); }
+  }
+  if (bad_) {
+    console.error(`\nORCH-0770b self-test FAILED: ${bad_}/${cases.length} cases.`);
+    process.exit(1);
+  }
+  console.log(`\nORCH-0770b gate self-test PASS (${cases.length}/${cases.length}).`);
+  process.exit(0);
+}
+
+// ---- Live mode ----------------------------------------------------------
+const missing = Object.values(REL).filter((p) => !existsSync(join(REPO_ROOT, p)));
+if (missing.length > 0) {
+  console.error("[orch-0770b] missing required file(s):\n  - " + missing.join("\n  - "));
+  process.exit(1);
+}
+
+let sources;
+try {
+  sources = {
+    webhook: readFileSync(join(REPO_ROOT, REL.webhook), "utf8"),
+    bunnyStream: readFileSync(join(REPO_ROOT, REL.bunnyStream), "utf8"),
+    sourceUploaded: readFileSync(join(REPO_ROOT, REL.sourceUploaded), "utf8"),
+  };
+} catch (err) {
+  console.error(`[orch-0770b] cannot read a target file: ${err.message}`);
+  process.exit(1);
+}
+
+const failures = scan(sources);
+if (failures.length > 0) {
+  console.error(
+    "[orch-0770b] Bunny webhook-family authenticity guard FAILED:\n\n  - " +
+      failures.join("\n  - ") +
+      "\n\nThe LIVE cover-video webhook verifies a v1/hmac-sha256 Bunny signature, keys the job " +
+      "by source_asset_id, and finalizes fail-closed; source-uploaded reads Bunny truth and caps " +
+      "real bytes. A dropped authenticity invariant or a reintroduced Cloudinary shape trips this " +
+      "gate. See issue #964.",
+  );
+  process.exit(1);
+}
+console.log("[orch-0770b] Bunny webhook-family authenticity guard passed");

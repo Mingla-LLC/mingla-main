@@ -39,6 +39,10 @@ import {
   text as textTokens,
 } from "../../constants/designSystem";
 import { GlassCard } from "../ui/GlassCard";
+// issue #1027 Thread B — the ONE shared visible-native-input for web date/time.
+// Class 2 fix: @react-native-community/datetimepicker has NO web build, so the
+// installment fixed-due-date picker was broken on web.
+import { WebDateTimeInput } from "../ui/WebDateTimeInput";
 
 // ---------- shape ----------
 
@@ -642,6 +646,20 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                 />
                 <Text style={styles.daysSuffix}>days after booking</Text>
               </View>
+            ) : Platform.OS === "web" ? (
+              /* issue #1027 Thread B (Class 2) — visible native <input type=date>
+                 on web (the DateTimePicker below has no web build). */
+              <WebDateTimeInput
+                type="date"
+                value={inst.fixed_date ?? ""}
+                min={todayPlusDays(1)}
+                ariaLabel={`Installment ${inst.ordinal} due date`}
+                testID={`payplan-date-web-${inst.ordinal}`}
+                onChangeValue={(v) => {
+                  if (v.length === 0) return;
+                  updateInstallmentDate(inst.ordinal, v);
+                }}
+              />
             ) : (
               <Pressable
                 onPress={() => setOpenDatePickerOrdinal(inst.ordinal)}
@@ -657,7 +675,9 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                 </Text>
               </Pressable>
             )}
-            {openDatePickerOrdinal === inst.ordinal && mode === "fixed" ? (
+            {openDatePickerOrdinal === inst.ordinal &&
+            mode === "fixed" &&
+            Platform.OS !== "web" ? (
               <DateTimePicker
                 value={
                   inst.fixed_date !== undefined && inst.fixed_date !== null

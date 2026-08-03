@@ -23,6 +23,12 @@ export interface DiscoverBusinessQueryParams {
   musicGenreSlugs: string[];
   offset: number;
   limit: number;
+  // issue #1020 — browsed metro center + radius for the geo-radius OR-fallback in
+  // pg_discover_business_events. Null coords flow to SQL NULL → the RPC's geo
+  // predicate guard is false → city-only behavior, unchanged.
+  centerLat: number | null;
+  centerLng: number | null;
+  radiusKm: number | null;
 }
 
 type RpcRow = Record<string, unknown>;
@@ -126,7 +132,11 @@ export function mapRpcRowToCard(row: RpcRow): BusinessEventCard {
     priceMax,
     displayPriceCents: (row.display_price_cents as number | null) ?? null,
     displayCurrency: (row.pricing_currency as string | null) ?? null,
-    currency: String(row.currency ?? "GBP"),
+    // issue #962 — a null-currency (pre-bank) row falls back to USD to
+    // byte-match the /e/ cold seed (publicEventSeedService.ts `row.currency ??
+    // "USD"`), so the SAME event shows the SAME symbol in the deck and via the
+    // shared link. Kills the GBP-vs-USD split-brain; GBP is never fabricated.
+    currency: String(row.currency ?? "USD"),
     publicBuyerUrl: `${BUSINESS_BUYER_DOMAIN}/e/${brandSlug}/${eventSlug}`,
     // ORCH-1150 — carry the offering discriminator so the consumer deck renders
     // Going/Not-going for an RSVP instead of Book. Only opted-in discoverable
@@ -148,6 +158,9 @@ export async function fetchDiscoverBusinessEvents(
     p_music_genres: params.musicGenreSlugs.length > 0 ? params.musicGenreSlugs : null,
     p_offset: params.offset,
     p_limit: params.limit,
+    p_center_lat: params.centerLat,
+    p_center_lng: params.centerLng,
+    p_radius_km: params.radiusKm,
   });
 
   if (error) {

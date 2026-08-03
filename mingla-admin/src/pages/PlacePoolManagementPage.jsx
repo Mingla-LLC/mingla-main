@@ -39,6 +39,10 @@ import { CATEGORY_LABELS, CATEGORY_COLORS, ALL_CATEGORIES } from "../constants/c
 import { SeedTab } from "../components/seeding/SeedTab";
 import { RefreshTab } from "../components/seeding/RefreshTab";
 import { HARD_CAP_USD, formatCost, TILE_RADIUS_OPTIONS } from "../lib/seedingFormat";
+import {
+  adminDiscoveryRangeErrorMessage,
+  buildAdminDiscoveryRangeUpdate,
+} from "../lib/deckCardPreviewRules";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -369,6 +373,8 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
   const [editForm, setEditForm] = useState({
     name: "", price_tiers: [], seeding_category: "", is_active: true,
     ai_categories: [],
+    discovery_min_minor: "", discovery_max_minor: "",
+    discovery_edit_reason: "",
   });
   const [saving, setSaving] = useState(false);
   // META-ORCH-1009 Sub-D — admin per-place re-evaluation. Pending state
@@ -398,6 +404,11 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
       seeding_category: place.seeding_category || "",
       is_active: place.is_active,
       ai_categories: place.ai_categories || [],
+      discovery_min_minor:
+        place.place_discovery_price_ranges?.source_min_minor?.toString() ?? "",
+      discovery_max_minor:
+        place.place_discovery_price_ranges?.source_max_minor?.toString() ?? "",
+      discovery_edit_reason: "",
     });
   }, [open, place]);
 
@@ -415,28 +426,38 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
   };
 
   const handleSave = async () => {
-    setSaving(true);
-    // Save basic fields via RPC (handles cascade to card_pool)
-    const { error: rpcErr } = await supabase.rpc("admin_edit_place", {
-      p_place_id: place.id,
-      p_name: editForm.name || null,
-      p_price_tier: editForm.price_tiers?.[0] || null,
-      p_price_tiers: editForm.price_tiers || [],
-      p_seeding_category: editForm.seeding_category || null,
-      p_is_active: editForm.is_active,
+    // buildAdminDiscoveryRangeUpdate owns p_expected_version and p_actor_reason
+    // so the page cannot split the reason/CAS contract across multiple writes.
+    const update = buildAdminDiscoveryRangeUpdate({
+      place,
+      editForm,
+      requestId: crypto.randomUUID(),
     });
-    if (rpcErr) { addToast({ variant: "error", title: "Save failed", description: rpcErr.message }); setSaving(false); return; }
+    if (!update.ok) {
+      addToast({
+        variant: "error",
+        title: update.code === "admin_reason_required"
+          ? "Reason required"
+          : "Invalid discovery range",
+        description: update.message,
+      });
+      return;
+    }
 
-    // ORCH-0640 ch08 + ORCH-0646: the servable-flag + validation-timestamp columns
-    // were dropped in ch13 (see migration 20260425000004). Three related AI-era
-    // columns (reason / primary_identity / confidence) STILL EXIST on place_pool
-    // but the pipeline that populated them was archived — they are now stale-data
-    // only. Only ai_categories is actively editable (admin-driven classification).
-    // Bouncer is the authoritative quality gate going forward.
-    const { error: aiErr } = await supabase.from("place_pool").update({
-      ai_categories: editForm.ai_categories.length > 0 ? editForm.ai_categories : null,
-    }).eq("id", place.id);
-    if (aiErr) { addToast({ variant: "error", title: "AI fields save failed", description: aiErr.message }); setSaving(false); return; }
+    setSaving(true);
+    const { error: saveError } = await supabase.rpc(
+      "issue_1384_admin_update_place_and_discovery_range",
+      update.params,
+    );
+    if (saveError) {
+      addToast({
+        variant: "error",
+        title: "Save failed",
+        description: adminDiscoveryRangeErrorMessage(saveError),
+      });
+      setSaving(false);
+      return;
+    }
 
     addToast({ variant: "success", title: "Place updated" }); onClose(); if (onSave) onSave();
     setSaving(false);
@@ -643,7 +664,17 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
             <h4 className="text-xs font-semibold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-2">Quality</h4>
             <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
               <div><span className="text-[var(--color-text-secondary)]">Rating:</span> {place.rating ? `★ ${place.rating}` : "—"} {place.review_count > 0 && `(${place.review_count} reviews)`}</div>
-              <div><span className="text-[var(--color-text-secondary)]">Price Tiers:</span> {(() => { const tiers = place.price_tiers?.length ? place.price_tiers : (place.price_tier ? [place.price_tier] : []); return tiers.length > 0 ? tiers.map((t) => <Badge key={t} variant="outline">{t}</Badge>) : "—"; })()}</div>
+              <div>
+                <span className="text-[var(--color-text-secondary)]">Discovery price:</span>{" "}
+                {place.place_discovery_price_ranges?.status === "active"
+                  ? `${place.place_discovery_price_ranges.source_min_minor}–${place.place_discovery_price_ranges.source_max_minor ?? "open"} minor · ${place.place_discovery_price_ranges.source_currency_code}`
+                  : place.place_discovery_price_ranges?.status === "legacy_unresolved"
+                    ? "Needs price range review"
+                    : "—"}
+              </div>
+              <div><span className="text-[var(--color-text-secondary)]">Source type:</span> {place.place_discovery_price_ranges?.source_type || "—"}</div>
+              <div><span className="text-[var(--color-text-secondary)]">Version:</span> {place.place_discovery_price_ranges?.version ?? "—"}</div>
+              <div><span className="text-[var(--color-text-secondary)]">Last actor:</span> {place.place_discovery_price_ranges?.updated_by || "—"}</div>
               <div><span className="text-[var(--color-text-secondary)]">Price Level:</span> {place.price_level || "—"}</div>
               {place.editorial_summary && <div className="col-span-2"><span className="text-[var(--color-text-secondary)]">Editorial:</span> {place.editorial_summary}</div>}
             </div>
@@ -668,6 +699,24 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
               </div>
             </div>
           </div>
+
+          {place.place_discovery_price_range_revisions?.length > 0 ? (
+            <div>
+              <h4 className="text-xs font-semibold text-[var(--color-text-tertiary)] uppercase tracking-wider mb-2">
+                Discovery price revision trail
+              </h4>
+              <ul className="space-y-1 text-xs">
+                {place.place_discovery_price_range_revisions.map((revision) => (
+                  <li key={`${revision.created_at}-${revision.action}`} className="flex justify-between gap-3">
+                    <span>{revision.action} · actor {revision.actor_id || "system"}</span>
+                    <span className="text-[var(--color-text-secondary)]">
+                      {new Date(revision.created_at).toLocaleString()}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
 
           {/* META-ORCH-1009 Sub-D — Admin re-evaluate this place.
               Forces a fresh Gemini Q2 read + rescore for one place; rate-
@@ -699,7 +748,7 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
             <div className="space-y-3">
               <Input label="Name" value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} />
               <div>
-                <label className="text-xs text-[var(--color-text-secondary)]">Price Tiers (select all that apply)</label>
+                <label className="text-xs text-[var(--color-text-secondary)]">Provider price ordinals (non-monetary)</label>
                 <div className="flex flex-wrap gap-2 mt-1">
                   {PRICE_TIERS.map((t) => (
                     <button key={t} type="button"
@@ -719,6 +768,26 @@ function PlaceDetailModal({ place, open, onClose, onSave }) {
                   ))}
                 </div>
               </div>
+              {place.place_discovery_price_ranges?.status === "active" ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    label={`Discovery min · ${place.place_discovery_price_ranges.source_currency_code} minor units`}
+                    value={editForm.discovery_min_minor}
+                    onChange={(e) => setEditForm((f) => ({ ...f, discovery_min_minor: e.target.value }))}
+                  />
+                  <Input
+                    label="Discovery max minor units (blank = open)"
+                    value={editForm.discovery_max_minor}
+                    onChange={(e) => setEditForm((f) => ({ ...f, discovery_max_minor: e.target.value }))}
+                  />
+                </div>
+              ) : null}
+              <Input
+                label="Audit reason (required)"
+                value={editForm.discovery_edit_reason}
+                onChange={(e) => setEditForm((f) => ({ ...f, discovery_edit_reason: e.target.value }))}
+                placeholder="Why are you changing this place?"
+              />
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-[var(--color-text-secondary)]">Seeding Category</label>
@@ -1441,7 +1510,10 @@ function BrowseTab({ scope, onRefresh }) {
       countryCityIds = (cityRows || []).map((r) => r.id);
     }
 
-    let q = supabase.from("place_pool").select("*", { count: "exact" });
+    let q = supabase.from("place_pool").select(
+      "*, place_discovery_price_ranges(brand_id,venue_id,status,source_min_minor,source_max_minor,source_currency_code,source_type,version,updated_by,updated_at), place_discovery_price_range_revisions(action,actor_id,created_at)",
+      { count: "exact" },
+    );
     if (selectedCity) q = q.eq("city_id", selectedCity);
     else if (countryCityIds && countryCityIds.length > 0) q = q.in("city_id", countryCityIds);
     if (filters.category) q = q.contains("ai_categories", [filters.category]);
@@ -1488,8 +1560,10 @@ function BrowseTab({ scope, onRefresh }) {
     { key: "rating", label: "Rating", sortable: true, render: (_, r) => r.rating ? `★ ${r.rating}` : "—" },
     { key: "review_count", label: "Reviews", sortable: true, render: (_, r) => r.review_count || "—" },
     { key: "price_tiers", label: "Price", render: (_, r) => {
-      const tiers = r.price_tiers?.length ? r.price_tiers : (r.price_tier ? [r.price_tier] : []);
-      return tiers.length > 0 ? <div className="flex gap-0.5">{tiers.map((t) => <Badge key={t} variant="outline">{t}</Badge>)}</div> : "—";
+      const range = r.place_discovery_price_ranges;
+      if (range?.status === "legacy_unresolved") return <Badge variant="warning">Needs review</Badge>;
+      if (range?.status !== "active") return "—";
+      return `${range.source_min_minor}–${range.source_max_minor ?? "open"} minor · ${range.source_currency_code}`;
     }},
     { key: "photos", label: "Photos", render: (_, r) => {
       const n = r.stored_photo_urls?.length || 0;

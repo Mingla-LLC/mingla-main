@@ -42,6 +42,10 @@ export interface RsvpGuest {
   email: string | null;
   phone: string | null;
   source: RsvpSourceValue;
+  checkedInAt: string | null;
+  checkedInBy: string | null;
+  plusCheckedInCount: number;
+  plusCheckins: Array<{ id: string; name: string; checkedInAt: string | null; checkedInBy: string | null }>;
 }
 
 interface RsvpGuestRow {
@@ -64,6 +68,12 @@ interface RsvpGuestRow {
   email: string | null;
   phone: string | null;
   source: RsvpSourceValue;
+  checked_in_at: string | null;
+  checked_in_by: string | null;
+  plus_checked_in_count: number | null;
+  plus_checkins: Array<{
+    id: string; name: string; checkedInAt: string | null; checkedInBy: string | null;
+  }> | null;
 }
 
 const rowToGuest = (r: RsvpGuestRow): RsvpGuest => ({
@@ -91,6 +101,10 @@ const rowToGuest = (r: RsvpGuestRow): RsvpGuest => ({
   email: r.email ?? r.guest_email ?? null,
   phone: r.phone ?? null,
   source: r.source ?? (r.user_id !== null ? "app" : "web"),
+  checkedInAt: r.checked_in_at ?? null,
+  checkedInBy: r.checked_in_by ?? null,
+  plusCheckedInCount: r.plus_checked_in_count ?? 0,
+  plusCheckins: r.plus_checkins ?? [],
 });
 
 export const listRsvpGuests = async (eventId: string): Promise<RsvpGuest[]> => {

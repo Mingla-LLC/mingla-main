@@ -14,7 +14,7 @@
  */
 
 import type { TicketStub } from "../store/draftEventStore";
-import { formatCurrencyRound, formatCount } from "./currency";
+import { formatCurrencyRound, formatCount, currencyCodeOrNull } from "./currency";
 
 export interface TicketBadge {
   label: string;
@@ -32,11 +32,14 @@ export const formatTicketSubline = (t: TicketStub): string => {
   const parts: string[] = [];
 
   // Price (always first)
+  // #962 G8 — hide the price ("—") when the ticket has no established currency
+  // (pre-bank brand); never manufacture GBP. "Free" and null-price unchanged.
+  const ticketCode = currencyCodeOrNull(t.currency);
   parts.push(
     t.isFree
       ? "Free"
-      : t.priceGbp !== null
-        ? formatCurrencyRound(t.priceGbp, t.currency ?? "GBP")
+      : t.priceGbp !== null && ticketCode !== null
+        ? formatCurrencyRound(t.priceGbp, ticketCode)
         : "—",
   );
 

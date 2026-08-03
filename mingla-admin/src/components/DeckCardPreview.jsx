@@ -13,7 +13,7 @@
 import { useState } from "react";
 import { Star, Tag, Sparkles, ImageOff, AlertTriangle, RotateCw } from "lucide-react";
 import { Button } from "./ui/Button";
-import { priceLabel, showRating as showRatingRule, hasRealHero } from "../lib/deckCardPreviewRules";
+import { canonicalVenuePriceLabel, showRating as showRatingRule, hasRealHero } from "../lib/deckCardPreviewRules";
 
 // Native-fidelity card constant (DESIGN §A.2). 340px within the 320–360 envelope.
 const CARD_W = 340;
@@ -113,7 +113,7 @@ export function DeckCardPreview({
       : null;
   const rating = typeof placeData.rating === "number" ? placeData.rating : null;
   const showRating = showRatingRule(rating);
-  const price = priceLabel(placeData);
+  const price = canonicalVenuePriceLabel(placeData);
 
   const photos = Array.isArray(placeData.stored_photo_urls) ? placeData.stored_photo_urls : [];
   const heroUrl = photos[0];

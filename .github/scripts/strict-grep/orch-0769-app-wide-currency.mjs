@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+// SCOPE NOTE (#963): despite the "app-wide" name, this gate is BUSINESS-scoped —
+// its scanRoots are mingla-business/{app,src} + supabase/functions, NOT the
+// consumer explorer app. app-mobile/{app,src} is covered by the consumer-scoped
+// twin app-mobile/scripts/ci/issue-0963-consumer-currency-no-gbp-fallback-check.mjs.
 
 import fs from "node:fs";
 import path from "node:path";

@@ -40,10 +40,8 @@ export default function PublicBrandRoute(): React.ReactElement {
   const publicBrandQuery = usePublicBrandBySlug(
     typeof brandSlug === "string" ? brandSlug : null,
   );
-  // META-ORCH-1255(C) — the brand page "Locations" section (SC-12). Fetched
-  // as a SIBLING query (the append-only ve4 suite pins getPublicBrandBySlug's
-  // exact call shape). Loading/error → [] → the section is simply omitted;
-  // the brand page never blocks on venues.
+  // Issue #1365 — Reservations venue list. A sibling query keeps its
+  // loading/error/retry state independent from established Brand content.
   const brandVenuesQuery = usePublicBrandVenues(
     typeof brandSlug === "string" ? brandSlug : null,
   );
@@ -83,7 +81,9 @@ export default function PublicBrandRoute(): React.ReactElement {
     return (
       <View style={styles.stateWrap}>
         <Text style={styles.stateTitle}>Brand could not load</Text>
-        <Text style={styles.stateText}>Refresh this page or try the link again.</Text>
+        <Text style={styles.stateText}>
+          Refresh this page or try the link again.
+        </Text>
       </View>
     );
   }
@@ -105,6 +105,16 @@ export default function PublicBrandRoute(): React.ReactElement {
       menu={publicBrandQuery.data.menu}
       venue={publicBrandQuery.data.venue}
       venues={brandVenuesQuery.data ?? []}
+      venuesLoadState={
+        brandVenuesQuery.isError
+          ? "error"
+          : brandVenuesQuery.isLoading || brandVenuesQuery.isFetching
+            ? "loading"
+            : "ready"
+      }
+      onRetryVenues={() => {
+        brandVenuesQuery.refetch();
+      }}
     />
   );
 }

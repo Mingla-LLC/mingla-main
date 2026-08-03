@@ -50,3 +50,30 @@ export function decideBankFirstInviteNext(
     href: `/brand/${encodeURIComponent(result.brandId)}/connect`,
   };
 }
+
+// ─── #948 W4 [web-skip-download] — invite-funnel WRITER (append-only) ─────────
+//
+// Appended HERE (not in a shared module) on purpose: the eager
+// accept-brand-invitation route already imports this module for
+// `decideBankFirstInviteNext`, so adding the writer costs the eager __common
+// chunk nothing (Metro keeps this module in the accept route's own chunk — it is
+// the sole eager importer). The invite-funnel READER (`isInviteFunnelValue`)
+// lives in the separate `inviteFunnelSignal.ts` so the LAZY /connect body can
+// read the signal WITHOUT pulling this module (which would hoist it into
+// __common — the ORCH-1083 leak). `decideBankFirstInviteNext` is untouched: the
+// signal is appended at the call site, not inside it.
+
+export const INVITE_FUNNEL_PARAM = "from";
+export const INVITE_FUNNEL_VALUE = "invite";
+
+/**
+ * Append the invite-funnel signal to a connect href. `?`/`&`-safe: adds `?` when
+ * the href has no query yet, otherwise `&`. Call sites pass the bare href
+ * returned by `decideBankFirstInviteNext` (no query), so in practice this yields
+ * `.../connect?from=invite`. (The legacy success route inlines the same literal
+ * to avoid importing this module into a second eager chunk.)
+ */
+export function withInviteFunnelParam(connectHref: string): string {
+  const separator = connectHref.includes("?") ? "&" : "?";
+  return `${connectHref}${separator}${INVITE_FUNNEL_PARAM}=${INVITE_FUNNEL_VALUE}`;
+}

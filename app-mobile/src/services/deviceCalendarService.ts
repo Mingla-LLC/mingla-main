@@ -1,6 +1,7 @@
 import * as Calendar from 'expo-calendar';
 import { Platform, Alert } from 'react-native';
-import { googleLevelToTierSlug, tierLabel, tierRangeLabel } from '../constants/priceTiers';
+import { tierLabel, tierRangeLabel } from '../constants/priceTiers';
+import { canonicalDiscoveryPriceDetail } from '../utils/priceTiers';
 
 export interface DeviceCalendarEvent {
   title: string;
@@ -182,11 +183,12 @@ export class DeviceCalendarService {
     if (card.highlights && card.highlights.length > 0) {
       notesParts.push(`\n\nHighlights:\n${card.highlights.join('\n• ')}`);
     }
-    if (card.priceTier || card.priceLevel != null) {
-      const tier = card.priceTier ?? googleLevelToTierSlug(card.priceLevel);
-      notesParts.push(`\n\nPrice: ${tierLabel(tier)} (${tierRangeLabel(tier)})`);
-    } else if (card.priceRange && card.priceRange !== 'TBD') {
-      notesParts.push(`\n\nPrice: ${card.priceRange}`);
+    const venuePrice = canonicalDiscoveryPriceDetail(card);
+    if (venuePrice) {
+      const approximation = venuePrice.approximate
+        ? `\nApprox. ${venuePrice.approximate}${venuePrice.ratesDate ? ` · rates from ${new Date(venuePrice.ratesDate).toLocaleDateString()}` : ''}\nRates by ExchangeRate-API: ${venuePrice.attributionUrl}`
+        : '';
+      notesParts.push(`\n\nPrice: ${venuePrice.source}${approximation}`);
     }
     if (card.rating) {
       notesParts.push(`\n\nRating: ${card.rating}/5 (${card.reviewCount || 0} reviews)`);
@@ -220,6 +222,8 @@ export class DeviceCalendarService {
     startDate: Date,
     totalDurationMinutes: number
   ): DeviceCalendarEvent {
+    // Curated itinerary estimates are a separate, non-venue money domain.
+    // Keep their legacy display isolated from createEventFromCard above.
     const stops = card.stops || [];
     const stopNames = stops.map((s: any) => s.placeName).join(' → ');
     const stopDetails = stops

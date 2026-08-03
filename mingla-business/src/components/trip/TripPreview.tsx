@@ -473,6 +473,8 @@ const FoundationTripPreview: React.FC<{
       theme={theme}
       coverMediaUrl={trip.coverMediaUrl}
       coverMediaType={coverType}
+      // issue #868 [cover-gallery] — ADDITIONAL image/GIF gallery items.
+      galleryImages={trip.coverGallery}
       entranceAnimationKey={`trip:${trip.id}`}
       muted={muted}
       onToggleMute={onToggleMute}

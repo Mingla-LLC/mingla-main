@@ -19,6 +19,7 @@ import { supabase } from "./supabase";
 export interface MenuRow {
   id: string;
   brand_id: string;
+  venue_id: string | null;
   name: string;
   description: string | null;
   sort_order: number;
@@ -53,6 +54,8 @@ export interface MenuItem {
 export interface Menu {
   id: string;
   brandId: string;
+  /** Optional only for legacy in-memory fixtures; persisted rows always set it. */
+  venueId?: string | null;
   name: string;
   description: string | null;
   sortOrder: number;
@@ -60,13 +63,15 @@ export interface Menu {
   items: MenuItem[];
 }
 
-const MENU_SELECT = "id, brand_id, name, description, sort_order, is_active";
+const MENU_SELECT =
+  "id, brand_id, venue_id, name, description, sort_order, is_active";
 const MENU_ITEM_SELECT =
   "id, menu_id, brand_id, name, description, price_cents, currency, is_available, sort_order";
 
 export const mapMenuRow = (row: MenuRow): Omit<Menu, "items"> => ({
   id: row.id,
   brandId: row.brand_id,
+  venueId: row.venue_id,
   name: row.name,
   description: row.description,
   sortOrder: row.sort_order,
@@ -89,13 +94,22 @@ export const mapMenuItemRow = (row: MenuItemRow): MenuItem => ({
  * Builder read: all of a brand's menus + items, assembled into nested Menu[]
  * ordered by sort_order. Includes INACTIVE menus + UNAVAILABLE items (the owner
  * manages them in the builder — only the public view filters those out).
+ * When a venue is selected, legacy unassigned rows are included so saving one
+ * assigns it to that venue; they remain absent from every public read.
  */
-export const fetchBrandMenus = async (brandId: string): Promise<Menu[]> => {
+export const fetchBrandMenus = async (
+  brandId: string,
+  venueId?: string | null,
+): Promise<Menu[]> => {
+  let menusQuery = supabase
+    .from("menus")
+    .select(MENU_SELECT)
+    .eq("brand_id", brandId);
+  if (venueId !== undefined && venueId !== null) {
+    menusQuery = menusQuery.or(`venue_id.eq.${venueId},venue_id.is.null`);
+  }
   const [menusRes, itemsRes] = await Promise.all([
-    supabase
-      .from("menus")
-      .select(MENU_SELECT)
-      .eq("brand_id", brandId)
+    menusQuery
       .order("sort_order", { ascending: true })
       .order("name", { ascending: true }),
     supabase

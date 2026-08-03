@@ -122,7 +122,9 @@ export default function TabsLayout(): React.ReactElement {
   // Focused authoring surfaces hide the mobile bottom capsule so the route's
   // own sticky footer is not covered. Desktop web keeps the left rail visible
   // as persistent app chrome.
-  const hideBottomNav = pathname.includes("/campaigns/compose") && !isWideDesktop;
+  const hideBottomNav =
+    (pathname.includes("/campaigns/compose") || pathname === "/analytics") &&
+    !isWideDesktop;
 
   const handleChange = (id: string): void => {
     // Expo Router resolves /(tabs)/<id> to /<id> at runtime.
