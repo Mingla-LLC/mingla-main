@@ -353,6 +353,13 @@ export function useDeckSwipeController(
 
   const onHandlerStateChange = useCallback((event: PanGestureHandlerStateChangeEvent): void => {
     const { state, oldState, translationX, translationY, velocityX } = event.nativeEvent;
+    console.info('[issue1481-probe]', JSON.stringify({
+      state,
+      oldState,
+      phase: phaseRef.current,
+      disposition: gestureDispositionRef.current,
+      dxBucket: Math.round(translationX / 50) * 50,
+    }));
     if (state === State.BEGAN) {
       gestureDispositionRef.current = null;
       if (phaseRef.current === 'EXITING' && !fastForwardPendingExit()) {
