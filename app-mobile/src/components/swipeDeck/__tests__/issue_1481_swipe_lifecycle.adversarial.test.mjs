@@ -26,6 +26,13 @@ function rng(seed) {
   };
 }
 
+function assertMemoizedBoundedHeroSource(source) {
+  assert.match(source, /const source = React\.useMemo\([\s\S]*width: decodeTarget\.width, height: decodeTarget\.height/);
+  assert.match(source, /\[decodeTarget\.height, decodeTarget\.width, src\]/);
+  assert.match(source, /<ExpoImage[\s\S]*source=\{source\}/);
+  assert.doesNotMatch(source, /source=\{\{[\s\S]*decodeTarget\.width/);
+}
+
 test('10,000 adversarial lifecycle sequences never validate stale, canceled, wrong-card, or replayed work', () => {
   const random = rng(0x1481cafe);
   const phases = ['IDLE', 'DRAGGING', 'SNAPPING', 'EXITING', 'COMMITTING'];
@@ -109,7 +116,7 @@ test('production source keeps the rejection, media, persistence, and teardown bo
   assert.match(preview, /importantForAccessibility="no-hide-descendants"/);
   assert.doesNotMatch(preview, /EventCoverMedia|TouchableOpacity|<CardHero\b/);
   assert.equal(DECK_VISIBLE_POSTER_CACHE_POLICY, 'memory-disk');
-  assert.match(swipeableSource, /source=\{\{ uri: src, width: decodeTarget\.width, height: decodeTarget\.height \}\}/);
+  assertMemoizedBoundedHeroSource(swipeableSource);
   assert.match(swipeableSource, /<CardHeroImage[\s\S]*decodeTarget=\{heroDecodeTarget\}/);
   assert.equal((swipeableSource.match(/ExpoImage\.prefetch\(/g) ?? []).length, 0);
   assert.equal((swipeableSource.match(/ExpoImage\.loadAsync\(/g) ?? []).length, 0);
@@ -119,4 +126,10 @@ test('production source keeps the rejection, media, persistence, and teardown bo
   assert.match(swipeableSource, /InteractionManager\.runAfterInteractions/);
   assert.match(swipeableSource, /pendingPaywallRef\.current = null/);
   assert.doesNotMatch(swipeableSource, /pendingPaywallRef = useRef\(false\)/);
+});
+
+test('bounded hero policy rejects the old inline non-memoized source shape', () => {
+  assert.throws(
+    () => assertMemoizedBoundedHeroSource('<ExpoImage source={{ uri: src, width: decodeTarget.width, height: decodeTarget.height }} />'),
+  );
 });
