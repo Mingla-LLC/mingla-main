@@ -50,6 +50,11 @@ module.exports = {
   testMatch: [
     "**/__tests__/stayDateRules.issue1503.test.ts",
     "**/__tests__/stayDateRangeField.issue1503.test.tsx",
+    // TESTER adversarial suite (#1503) — same web-resolved harness, opposite
+    // angle: an independent re-derivation of the SQL `stay_date_outside_horizon`
+    // guard, device-timezone rotation IN-PROCESS across UTC+14 … UTC-11 (incl.
+    // the 45- and 30-minute offsets), and venue-zone DST sweeps.
+    "**/__tests__/stayDateHostileZones.issue1503.adversarial.test.tsx",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|react-native-web|@react-native-community|react-native-svg|lucide-react-native|expo|@expo)",

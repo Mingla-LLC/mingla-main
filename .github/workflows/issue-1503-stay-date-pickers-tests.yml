@@ -48,6 +48,7 @@ on:
       # ---- tests + harness ----
       - "packages/brand-rendering/__tests__/stayDateRules.issue1503.test.ts"
       - "packages/brand-rendering/__tests__/stayDateRangeField.issue1503.test.tsx"
+      - "packages/brand-rendering/__tests__/stayDateHostileZones.issue1503.adversarial.test.tsx"
       - "mingla-business/src/components/ui/__tests__/dateField.issue1503.test.tsx"
       - "mingla-business/jest.issue1503.cfg.cjs"
       - ".github/workflows/issue-1503-stay-date-pickers-tests.yml"
@@ -62,6 +63,7 @@ on:
       - "mingla-business/src/components/venue/VenueBlackoutSheet.tsx"
       - "packages/brand-rendering/__tests__/stayDateRules.issue1503.test.ts"
       - "packages/brand-rendering/__tests__/stayDateRangeField.issue1503.test.tsx"
+      - "packages/brand-rendering/__tests__/stayDateHostileZones.issue1503.adversarial.test.tsx"
       - "mingla-business/src/components/ui/__tests__/dateField.issue1503.test.tsx"
       - "mingla-business/jest.issue1503.cfg.cjs"
       - ".github/workflows/issue-1503-stay-date-pickers-tests.yml"
@@ -112,6 +114,21 @@ jobs:
       - name: "Rules + render proof — TZ=Pacific/Auckland"
         env:
           TZ: Pacific/Auckland
+        run: npx jest --config jest.issue1503.cfg.cjs --runInBand
+
+      # TESTER (#1503 QA) — the two extremes of the inhabited offset range. UTC+14
+      # is a full calendar day ahead of UTC and UTC-11 a day behind, so a bound
+      # that leaks the DEVICE zone into a venue-local date shows up here and
+      # nowhere else. The three zones above are all whole-hour offsets; the
+      # adversarial suite additionally rotates 45- and 30-minute zones in-process.
+      - name: "Rules + render proof — TZ=Pacific/Kiritimati (UTC+14)"
+        env:
+          TZ: Pacific/Kiritimati
+        run: npx jest --config jest.issue1503.cfg.cjs --runInBand
+
+      - name: "Rules + render proof — TZ=Pacific/Niue (UTC-11)"
+        env:
+          TZ: Pacific/Niue
         run: npx jest --config jest.issue1503.cfg.cjs --runInBand
 
       # SC-1-iOS / SC-1-Android / SC-9 — the OTHER half of the Platform gate.
