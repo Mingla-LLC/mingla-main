@@ -35,9 +35,18 @@ export function stayOfferingReadinessErrors(
  *
  * The summary rail answers "before these can go live" while the operator is
  * still typing, so it cannot read a saved `StayOfferingRecord` — there isn't
- * one yet. It reads the FORM instead, and deliberately reuses the SAME label
- * strings as `stayOfferingReadinessErrors` above, so the rail and the saved
- * row never describe the same requirement in two different ways.
+ * one yet. It reads the FORM instead, and reuses `stayOfferingReadinessErrors`'
+ * label strings above so the rail and the saved row describe the same
+ * requirement the same way.
+ *
+ * ONE DELIBERATE DIVERGENCE (#1501 P3-1). The saved-row list still says "Name
+ * every private unit"; the rail says "Name each one". "Private unit" is RETIRED
+ * jargon from the pre-#1501 table, and the rail sits three inches from a form
+ * that correctly reads "Each one is named" / "Name each one" — a terminology
+ * contradiction inside the terminology issue. The LIST's string is pinned by
+ * `stayInventoryPresentation.issue1425.test.ts:81` and belongs to a different
+ * surface, so retiring it there is its own work item; the rail is fixed here
+ * because that is the copy #1501 authored.
  *
  * Satisfied and unsatisfied are both rendered, and NEITHER is red: an
  * unfinished draft is not an error. Red is for something that went wrong.
@@ -76,7 +85,8 @@ export function stayDraftReadiness(input: {
   if (input.namedUnits) {
     items.push({
       id: "units",
-      label: "Name every private unit",
+      // Matches `STAY_FIELD_COPY.unitNames.label` in the editor, verbatim.
+      label: "Name each one",
       done: input.unitNameCount > 0,
     });
   }

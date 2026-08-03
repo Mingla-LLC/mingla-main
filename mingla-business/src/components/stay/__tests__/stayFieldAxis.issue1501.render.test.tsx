@@ -188,7 +188,7 @@ jest.mock("../../../hooks/useBrandDiscoveryCurrency", () => ({
 
 import {
   spacing,
-  stayFieldNumBasis,
+  stayFieldNumMaxWidth,
   stayProseMaxWidth,
 } from "../../../constants/designSystem";
 import { StayInventoryManager } from "../StayInventoryManager";
@@ -305,16 +305,26 @@ describe("#1501 — field measures are axis-scoped (I-AXIS-SCOPED-FLEX)", () => 
     }
   });
 
-  it("A-3 — NUMERIC fields inside a row declare an EXPLICIT basis", async () => {
+  it("A-3 — NUMERIC fields inside a row declare an EXPLICIT measure", async () => {
     const tree = await openEditor();
     const numeric = ["stay-offering-quantity", "stay-offering-guests"];
     expect(numeric.length).toBeGreaterThan(0);
 
     for (const testID of numeric) {
       const flat = styleFor(tree, `${testID}-field`);
-      // `flex: 1` on every sibling is not a layout (SPEC AMENDMENT 1).
-      expect(flat.flexBasis).toBe(stayFieldNumBasis);
-      expect(flat.flexGrow).toBe(0);
+      // `flex: 1` on every sibling is not a layout (SPEC AMENDMENT 1): the
+      // measure is still EXPLICIT, it is just expressed as a CAP over a zero
+      // basis rather than as the basis itself.
+      //
+      // [TEST-MOD-APPROVED #1501] — retuned for the P2-2 phone-pair fix. A
+      // `flexBasis` of the desktop width made `flexWrap` break the line before
+      // any shrinking, so both numeric pairs stacked on every phone. The
+      // contract this pins genuinely changed; it was not weakened. The
+      // stricter call-site assertion lives in
+      // `stayFieldCallSites.issue1501.render.test.tsx` (C-3/C-4).
+      expect(flat.flexBasis).toBe(0);
+      expect(flat.maxWidth).toBe(stayFieldNumMaxWidth);
+      expect(flat.flexGrow).toBe(1);
       expect(has(flat, "flex")).toBe(false);
     }
   });

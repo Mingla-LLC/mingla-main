@@ -28,6 +28,7 @@ module.exports = {
   },
   testMatch: [
     "**/__tests__/stayFieldAxis.issue1501.render.test.tsx",
+    "**/__tests__/stayFieldCallSites.issue1501.render.test.tsx",
     "**/__tests__/stayTerminology.issue1501.render.test.tsx",
     "**/__tests__/stayOfferingEditor.issue1501.render.test.tsx",
     "**/__tests__/stayOfferingInputs.issue1501.render.test.tsx",

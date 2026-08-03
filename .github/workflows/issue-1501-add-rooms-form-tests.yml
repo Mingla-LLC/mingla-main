@@ -56,6 +56,10 @@ jobs:
       # `react-test-renderer` (a real devDependency), NOT
       # `@testing-library/react-native` — which is absent from package.json and
       # would add a TS2307 diagnostic to the issue-1403 typecheck-delta gate.
+      # `jest.issue1501.render.cjs` now also carries the CALL-SITE axis auditor
+      # (`stayFieldCallSites.issue1501.render.test.tsx`), which walks the tree
+      # carrying each node's inherited `flexDirection` — the assertion that
+      # catches a field choosing the WRONG axis, as opposed to choosing none.
       - name: Editor render proofs (react-test-renderer)
         run: npx jest --config jest.issue1501.render.cjs --runInBand
 

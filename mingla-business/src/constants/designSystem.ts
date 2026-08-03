@@ -136,8 +136,37 @@ export const stayProseMaxWidth = 620 as const;
 // four-digit room number needs ~96pt, a prefix like "Garden Suite" needs real
 // room).
 export const stayFieldPairMinWidth = 200 as const;
-export const stayFieldNumBasis = 220 as const;
-export const stayFieldNumMinWidth = 140 as const;
+
+// #1501 P2-2 — the numeric field's DESKTOP MEASURE, applied as `maxWidth` over
+// `flexBasis: 0`, NOT as a flex basis.
+//
+// It WAS a `flexBasis: 220`, and the tester measured what that actually did on a
+// phone: `flexWrap` breaks a line on the FLEX BASE SIZE, before any shrinking,
+// so 220 + 220 + 16 = 456 > 326 (a 390pt phone's content box after the page and
+// card gutters) put "How many you have" and "Guests per booking" on separate
+// rows with dead space beside them — and `flexShrink: 1` never engaged, because
+// a wrapped item owns its whole line. `origin/main`'s `flex: 1` is
+// `flexBasis: 0`, which is why the pair used to sit side by side.
+//
+// As a CAP over a zero basis the pair shares one line and grows into it (155pt
+// each at 390, 120pt at 320), while a desktop column still stops the box at 220
+// instead of stretching it across 760pt. The cap, not the basis, is what the
+// design ever wanted.
+export const stayFieldNumMaxWidth = 220 as const;
+
+// [TRANSITIONAL] `stayFieldNumBasis` — retained ONLY because #1501's tester
+// suite (`stayEditorAdversarial.issue1501.render.test.tsx`) imports this name,
+// and deleting the export would break that suite's COMPILE rather than just its
+// assertions. Exit condition: remove once that suite's axis/pair baselines are
+// updated for the P2-1/P2-2 fixes.
+export const stayFieldNumBasis = stayFieldNumMaxWidth;
+
+// Lowered 140 -> 112 with the P2-2 fix. `flexWrap` clamps the hypothetical main
+// size by `minWidth`, so a 140 floor would still have wrapped the pair on a
+// 320pt phone (140 + 140 + 16 = 296 > 256). 112 + 112 + 16 = 240 fits 256 with
+// room to spare, and the field still renders ~120pt wide there — plenty for a
+// number.
+export const stayFieldNumMinWidth = 112 as const;
 
 // #1501 SPEC AMENDMENT 1 — the NameBuilder pattern row ("Starts with" / "From"
 // / "To"). The prefix grows, the two numeric fields are fixed-basis.

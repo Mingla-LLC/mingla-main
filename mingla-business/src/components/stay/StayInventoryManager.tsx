@@ -23,7 +23,7 @@ import {
   stayEditorFormMaxWidth,
   stayEditorSummaryMinWidth,
   stayEditorSummaryWidth,
-  stayFieldNumBasis,
+  stayFieldNumMaxWidth,
   stayFieldNumMinWidth,
   stayFieldPairMinWidth,
   stayInventoryMaxWidth,
@@ -266,6 +266,13 @@ const STAY_FIELD_COPY = {
   quantity: {
     label: "How many you have",
     helper: "The number of identical ones you can sell for the same night.",
+    /**
+     * A cabana is not sold by the night. Kind-aware exactly like Price is
+     * ("Price per night" / "Price per booking") — the approved table carries one
+     * helper because it was written for Rooms, and reading it on a Place was
+     * simply wrong on screen.
+     */
+    placeHelper: "The number of identical ones you can sell at the same time.",
     /** D-5: when each one is named, the count is the name count. */
     derivedHelper: "Set by the names below.",
   },
@@ -1146,8 +1153,8 @@ export function OfferingEditor({
           style={styles.error}
           testID="stay-offering-currency-blocker"
         >
-          Choose the brand’s provisional currency or connect its bank before
-          adding prices.
+          Set this brand’s currency, or connect its bank account, before you add
+          prices.
         </Text>
       ) : null}
       {localValidation ? (
@@ -1195,7 +1202,8 @@ export function OfferingEditor({
             {existing ? `Edit ${existing.name}` : "Add Rooms or Places"}
           </Text>
           <Text style={styles.helper}>
-            Drafts stay private until every server readiness check passes.
+            Nothing here can be booked yet. Fill in the details, then make it
+            live from the list.
           </Text>
           {!canManageInventory && canManageFinance ? (
             <Text style={styles.warning}>
@@ -1407,7 +1415,9 @@ export function OfferingEditor({
                   helper={
                     namedUnitsActive
                       ? STAY_FIELD_COPY.quantity.derivedHelper
-                      : STAY_FIELD_COPY.quantity.helper
+                      : kind === "room"
+                        ? STAY_FIELD_COPY.quantity.helper
+                        : STAY_FIELD_COPY.quantity.placeHelper
                   }
                   value={derivedQuantity}
                   onChangeText={setQuantity}
@@ -1537,7 +1547,14 @@ export function OfferingEditor({
                   testID="stay-offering-policy"
                 />
                 <LabeledInput
-                  span="num"
+                  // #1501 P2-1 — STACK, not num. This field is NOT inside
+                  // `styles.row`; it sits directly in the money section's
+                  // column, after the policy box. `fieldNum` carries a WIDTH
+                  // measure, and in a column that resolves against the HEIGHT —
+                  // which rendered a 220pt-tall box with ~114pt of dead space
+                  // under it. That is the exact bug class this issue exists to
+                  // delete, and a live violation of I-AXIS-SCOPED-FLEX.
+                  span="stack"
                   label={STAY_FIELD_COPY.noShow.label}
                   helper={STAY_FIELD_COPY.noShow.helper}
                   value={noShowPercent}
@@ -2470,13 +2487,20 @@ const styles = StyleSheet.create({
     minWidth: stayFieldPairMinWidth,
     gap: spacing.xs,
   },
-  // NUM — a NUMERIC field inside `styles.row`. Fixed basis, never grows: a
-  // quantity box stretched across a desktop column is the defect, not the fix.
+  // NUM — a NUMERIC field inside `styles.row`. It shares the line and grows
+  // into it, CAPPED at the desktop measure — it does not demand that measure up
+  // front. A `flexBasis: 220` here read correctly on desktop and wrapped both
+  // numeric pairs onto separate rows on every phone (#1501 P2-2), because
+  // `flexWrap` decides on the flex BASE size before any shrinking and a wrapped
+  // item then owns its whole line, so `flexShrink` never engaged. Zero basis +
+  // `maxWidth` gives the same desktop box and keeps the pair side by side at
+  // 390pt and 320pt.
   fieldNum: {
-    flexGrow: 0,
+    flexGrow: 1,
     flexShrink: 1,
-    flexBasis: stayFieldNumBasis,
+    flexBasis: 0,
     minWidth: stayFieldNumMinWidth,
+    maxWidth: stayFieldNumMaxWidth,
     gap: spacing.xs,
   },
   input: {

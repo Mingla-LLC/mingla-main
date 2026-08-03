@@ -180,7 +180,7 @@ jest.mock("../../../hooks/useBrandDiscoveryCurrency", () => ({
 }));
 
 import {
-  stayFieldNumBasis,
+  stayFieldNumMaxWidth,
   stayProseMaxWidth,
 } from "../../../constants/designSystem";
 import { OfferingEditor } from "../StayInventoryManager";
@@ -305,16 +305,22 @@ describe("#1501 — axis-scoped field measures survive the RNW resolver", () => 
     }
   });
 
-  it("W-2 — the NUMERIC field in a row emits an EXPLICIT flex-basis", () => {
+  it("W-2 — the NUMERIC field in a row emits an EXPLICIT measure", () => {
     const { html, css } = renderWeb();
     const numeric = classesFor(html, "stay-offering-quantity-field");
 
+    // [TEST-MOD-APPROVED #1501] — retuned for the P2-2 phone-pair fix. The
+    // measure is still explicit and still emitted; it moved from `flex-basis`
+    // to `max-width` over a zero basis, because a basis of the desktop width
+    // made `flex-wrap` break the line before any shrinking and stacked both
+    // numeric pairs on every phone.
     expect(hasAtomic(numeric, "flex-basis")).toBe(true);
-    expect(declaration(css, numeric, "flex-basis")).toBe(
-      `${stayFieldNumBasis}px`,
+    expect(declaration(css, numeric, "flex-basis")).toBe("0px");
+    expect(declaration(css, numeric, "max-width")).toBe(
+      `${stayFieldNumMaxWidth}px`,
     );
-    // Fixed, never growing: the name field takes the remainder, not the number.
-    expect(declaration(css, numeric, "flex-grow")).toBe("0");
+    // It shares the line and grows into the cap — it never demands the cap.
+    expect(declaration(css, numeric, "flex-grow")).toBe("1");
   });
 
   it("W-3 — the row wrapper really wraps and top-aligns in the browser", () => {
