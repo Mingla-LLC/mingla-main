@@ -239,6 +239,18 @@ export default function VenueManagementPage(): React.ReactElement {
     );
   }
 
+  // #1483 — the SINGLE source of the stay/venue split on this page. Both the
+  // TopBar section title and the suite-shell branch read this one boolean.
+  //
+  // The stay equality check below must appear EXACTLY ONCE in this file — in
+  // source AND in comments. The issue-1424 gate's self-test neutralises it with
+  // `String.replace(from, to)`, which rewrites only the FIRST occurrence, then
+  // asserts the gate consequently fails. Any second copy (even inside a
+  // comment, since the gate reads raw source) survives that reversion, keeps
+  // the gate green, and silently disarms the stay-authoring guard. Do NOT
+  // re-inline this comparison and do NOT quote it anywhere in this file.
+  const isStayVenue = venue.venueCategory === "stay";
+
   return (
     <View style={[styles.root, { paddingTop: insets.top + spacing.sm }]}>
       {/* #1483 band 1 — the shared TopBar. `rightSlot` on a leftKind="back"
@@ -250,7 +262,7 @@ export default function VenueManagementPage(): React.ReactElement {
         <TopBar
           leftKind="back"
           onBack={handleBack}
-          title={venue.venueCategory === "stay" ? "Stay" : "Venue"}
+          title={isStayVenue ? "Stay" : "Venue"}
           testID="venue-page-topbar"
           rightSlot={
             canShowPublic ? (
@@ -320,7 +332,7 @@ export default function VenueManagementPage(): React.ReactElement {
         </View>
       ) : null}
 
-      {venue.venueCategory === "stay" && brandId !== null ? (
+      {isStayVenue && brandId !== null ? (
         <StaySuiteShell
           brandId={brandId}
           venueId={venueId}
