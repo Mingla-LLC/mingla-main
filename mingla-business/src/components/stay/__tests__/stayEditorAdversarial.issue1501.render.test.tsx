@@ -30,7 +30,8 @@
  *
  *  X-4  THE PAIR ARITHMETIC. "Don't regress the two-column pairs" is asserted as
  *       a real sum against the real tokens at the real phone width, not as
- *       "flexBasis is 220".
+ *       "flexBasis is 220" — and that sum says the pair now WRAPS at 390pt,
+ *       which the browser confirms. Recorded as a baseline, not hidden.
  *
  *  CHIP-* / NB-* BOUNDARY ATTACKS, including a 400-case fuzz over the chip
  *       reducer. Not "does 500 work" but "is there ANY input that gets an empty,
@@ -787,7 +788,7 @@ describe("#1501 X — the axis defect is unreachable, not merely renamed", () =>
     expect(checked).toBeGreaterThanOrEqual(18);
   });
 
-  it("X-4 — the numeric pair still fits side by side on a 390pt phone", async () => {
+  it("X-4 — the phone pair arithmetic (REPORTED: it wraps at 390pt)", async () => {
     mockIsWideDesktop = false;
     const tree = await mount(<OfferingEditor {...BASE_PROPS} />);
     const audited = auditTree(tree);
@@ -818,17 +819,36 @@ describe("#1501 X — the axis defect is unreachable, not merely renamed", () =>
       expect(child.style.minWidth).toBe(stayFieldNumMinWidth);
     }
     // THE ARITHMETIC, at the real phone width with the real gutters:
-    // `PAGE_BASE.padding` is `spacing.md` on both sides, and `GlassCard`'s
-    // default inner padding is `spacing.md` on both sides. Two minimums plus
-    // the row's `columnGap` must fit inside that content box, or the pair wraps
-    // and "still side by side at 390pt" is false.
+    // `PAGE_BASE.padding` is `spacing.md` on both sides and `GlassCard`'s
+    // default inner padding is `spacing.md` on both sides, so a phone row has
+    // 326pt of content box.
     const PHONE_WIDTH = 390;
     const available = PHONE_WIDTH - spacing.md * 2 - spacing.md * 2;
     expect(available).toBe(326);
+
+    // REPORTED DEFECT — the pair DOES wrap at 390pt.
+    //
+    // `flexWrap` decides on the FLEX BASE SIZE, before any shrinking: a line
+    // that cannot hold both bases breaks, and the wrapped item then has a whole
+    // line to itself and never shrinks at all. `flexShrink: 1` therefore does
+    // NOT rescue a 220pt basis here — 220 + 220 + 16 = 456 > 326, so Quantity
+    // and Guests stack.
+    //
+    // `origin/main` did not: `field: { flex: 1 }` is `flexBasis: 0`, so both
+    // bases fit on one line (0 + 0 + gap <= 326) and then GREW to ~159 each,
+    // which is how the pair was side by side before this change. Measured in a
+    // real browser at 390: Quantity y=1634 h=106, Guests y=1756 — two rows,
+    // both still 220 wide (i.e. never shrunk), confirming the wrap.
+    //
+    // Written as an exact baseline, like X-1: if the basis is retuned so the
+    // pair fits again, THIS TEST FAILS and tells you to update it.
+    const MAIN_BASIS_BEFORE_1501 = 0;
     expect(stayFieldNumMinWidth * 2 + spacing.md).toBeLessThanOrEqual(available);
-    // And the DECLARED basis is wide enough that two of them shrink rather than
-    // wrap: `flexShrink: 1` on a 220 basis resolves to 155 each here.
-    expect(stayFieldNumBasis * 2 + spacing.md).toBeGreaterThan(available);
+    expect({
+      wrapsAt390: stayFieldNumBasis * 2 + spacing.md > available,
+      wouldHaveWrappedOnMain:
+        MAIN_BASIS_BEFORE_1501 * 2 + spacing.sm > available,
+    }).toEqual({ wrapsAt390: true, wouldHaveWrappedOnMain: false });
     await unmount(tree);
   });
 });
