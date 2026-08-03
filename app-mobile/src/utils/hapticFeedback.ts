@@ -1,4 +1,5 @@
 import * as Haptics from 'expo-haptics';
+import { Platform } from 'react-native';
 
 // Haptic feedback utility for consistent user feedback
 export class HapticFeedback {
@@ -68,10 +69,22 @@ export class HapticFeedback {
   }
 
   static cardLike() {
+    if (Platform.OS === 'android') {
+      HapticFeedback.safeHaptic(() => {
+        void Haptics.performAndroidHapticsAsync(Haptics.AndroidHaptics.Confirm);
+      });
+      return;
+    }
     HapticFeedback.success();
   }
 
   static cardDislike() {
+    if (Platform.OS === 'android') {
+      HapticFeedback.safeHaptic(() => {
+        void Haptics.performAndroidHapticsAsync(Haptics.AndroidHaptics.Gesture_End);
+      });
+      return;
+    }
     HapticFeedback.light();
   }
 

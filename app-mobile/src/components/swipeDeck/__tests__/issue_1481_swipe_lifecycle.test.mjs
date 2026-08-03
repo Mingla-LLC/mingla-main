@@ -19,12 +19,14 @@ import {
 const swipeableUrl = new URL('../../SwipeableCards.tsx', import.meta.url);
 const controllerUrl = new URL('../useDeckSwipeController.ts', import.meta.url);
 const stageUrl = new URL('../DeckSwipeStage.tsx', import.meta.url);
+const hapticUrl = new URL('../../../utils/hapticFeedback.ts', import.meta.url);
 const workflowUrl = new URL('../../../../../.github/workflows/issue-1481-explorer-deck-tests.yml', import.meta.url);
 
-const [swipeableSource, controllerSource, stageSource, workflowSource] = await Promise.all([
+const [swipeableSource, controllerSource, stageSource, hapticSource, workflowSource] = await Promise.all([
   readFile(swipeableUrl, 'utf8'),
   readFile(controllerUrl, 'utf8'),
   readFile(stageUrl, 'utf8'),
+  readFile(hapticUrl, 'utf8'),
   readFile(workflowUrl, 'utf8'),
 ]);
 
@@ -152,7 +154,7 @@ test('paywall intent is exact-token, one-shot, and inert after cancellation', ()
 
 test('production deck has one native-driver owner and no forbidden competing primitive', () => {
   assertSingleOwnerSource(swipeableSource, controllerSource, stageSource);
-  assert.match(controllerSource, /DECK_EXIT_MS = 40/);
+  assert.match(controllerSource, /DECK_EXIT_MS = 200/);
   assert.match(controllerSource, /DECK_SNAP_MS = 240/);
   assert.match(controllerSource, /Easing\.bezier\(0\.22, 1, 0\.36, 1\)/);
   assert.match(controllerSource, /isCurrentDeckCompletion\(\{\s*finished,/);
@@ -187,6 +189,21 @@ test('production deck has one native-driver owner and no forbidden competing pri
     (controllerSource.match(/onInvalidated\(/g) ?? []).length >= 3,
     'watchdog/invalidate/unmount must all clear deferred intents',
   );
+});
+
+test('swipe haptics avoid the legacy Android vibrator bridge', () => {
+  const like = hapticSource.slice(
+    hapticSource.indexOf('static cardLike()'),
+    hapticSource.indexOf('static cardDislike()'),
+  );
+  const dislike = hapticSource.slice(
+    hapticSource.indexOf('static cardDislike()'),
+    hapticSource.indexOf('static buttonPress()'),
+  );
+  assert.match(like, /Platform\.OS === 'android'[\s\S]*performAndroidHapticsAsync\(Haptics\.AndroidHaptics\.Confirm\)/);
+  assert.match(dislike, /Platform\.OS === 'android'[\s\S]*performAndroidHapticsAsync\(Haptics\.AndroidHaptics\.Gesture_End\)/);
+  assert.match(like, /return;[\s\S]*HapticFeedback\.success\(\)/, 'iOS like feedback remains unchanged');
+  assert.match(dislike, /return;[\s\S]*HapticFeedback\.light\(\)/, 'iOS pass feedback remains unchanged');
 });
 
 test('single-owner source guard detects the reverted competing responder', () => {

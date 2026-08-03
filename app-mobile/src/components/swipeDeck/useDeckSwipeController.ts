@@ -25,7 +25,7 @@ import {
   nextDeckGestureEpoch,
 } from './deckSwipeLifecycle';
 
-export const DECK_EXIT_MS = 40;
+export const DECK_EXIT_MS = 200;
 export const DECK_SNAP_MS = 240;
 export const DECK_REDUCED_MS = 0;
 export const DECK_EASE_OUT = Easing.bezier(0.22, 1, 0.36, 1);
