@@ -33,6 +33,18 @@
 //   R-4  START-RACE HARDENING. A remount that happens BEFORE the start delay elapses
 //        must not restart the countdown — the per-user module-scope anchor carries the
 //        elapsed time across the remount so the tour still starts on schedule.
+//   R-5  A FAILED READ IS NOT A COMPLETED TOUR. Both read-failure paths used to run
+//        setCurrentStep(TOUR_COMPLETED), reproducing this issue's exact symptom from a
+//        different direction: the start-delay effect is gated on TOUR_NOT_STARTED, so a
+//        fresh user whose read blipped never got a tour at all — and the window this
+//        issue hardens is exactly when that read is most likely to fail.
+//        R-5a an ERRORING read still lets a step-0 user start the tour (bounded retry);
+//        R-5b a THROWING read still lets an in-progress user resume;
+//        R-5c a read that fails on EVERY attempt concludes NOTHING — it holds the
+//             local-only TOUR_UNAVAILABLE, never TOUR_COMPLETED, writes nothing, leaves
+//             the row untouched, does NOT lock the bottom tab bar (Constitution #1 — the
+//             nav gate locks on isCoachLoading || isCoachPending || isCoachActive), and
+//             the next launch still delivers the tour or the resume.
 //
 // Verification note (#1516): `coach_mark_step = 12` is unfalsifiable from the database —
 // the genuine-completion path and the silent-cancel path both write it — and coach-mark
@@ -238,17 +250,33 @@ function makeClock() {
   return { install, restore, advance, settle, nowRef: () => now };
 }
 
-// ── Supabase stub: one row, full write log ───────────────────────────────────
-function makeSupabase(initialStep) {
+// ── Supabase stub: one row, full write log, programmable read failures ───────
+// `fetchPlan` is consumed one entry per read: 'error' returns a Postgrest-style error
+// object, 'throw' throws (the network/JS failure path), anything else succeeds.
+function makeSupabase(initialStep, fetchPlan) {
   const db = { coach_mark_step: initialStep };
   const writes = [];
+  const plan = (fetchPlan || []).slice();
+  const reads = { count: 0 };
   const client = {
     from() {
       return {
         select() {
           return {
             eq() {
-              return { single: async () => ({ data: { coach_mark_step: db.coach_mark_step }, error: null }) };
+              return {
+                single: async () => {
+                  reads.count += 1;
+                  const mode = plan.shift();
+                  if (mode === 'error') {
+                    return { data: null, error: { message: 'simulated transient read failure' } };
+                  }
+                  if (mode === 'throw') {
+                    throw new Error('simulated transient read throw');
+                  }
+                  return { data: { coach_mark_step: db.coach_mark_step }, error: null };
+                },
+              };
             },
           };
         },
@@ -264,13 +292,13 @@ function makeSupabase(initialStep) {
       };
     },
   };
-  return { supabase: client, db, writes };
+  return { supabase: client, db, writes, reads };
 }
 
 // ── Harness: mount the REAL CoachMarkProvider ────────────────────────────────
-function makeHarness(initialStep, sharedRealSteps) {
+function makeHarness(initialStep, sharedRealSteps, fetchPlan) {
   const rt = makeReact();
-  const sb = makeSupabase(initialStep);
+  const sb = makeSupabase(initialStep, fetchPlan);
   const navigations = [];
   const stepsModule = sharedRealSteps || loadModule(STEPS_PATH, {});
 
@@ -440,6 +468,87 @@ async function run() {
       assert.deepEqual(h.sb.writes.map((w) => w.step), [1], 'R-4: step 1 persisted exactly once across the remount');
       h.unmount(b);
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // R-5 — a FAILED or THROWING read must never be read as "tour completed".
+    //
+    // Both read-failure paths used to run setCurrentStep(TOUR_COMPLETED), which
+    // reproduced this issue's exact symptom from a different direction: the start-delay
+    // effect is gated on TOUR_NOT_STARTED, so a fresh user whose read blipped never got
+    // a tour at all. The window this issue hardens — ATT prompt + refreshAllSessions
+    // showLoading + profile refetch — is precisely when that read is most likely to fail.
+    // ─────────────────────────────────────────────────────────────────────────
+    const TOUR_UNAVAILABLE = -3;
+
+    // R-5a — a step-0 user whose read ERRORS still gets their first-run tour: the
+    // bounded retry absorbs the blip inside the same session.
+    {
+      const h = makeHarness(0, realSteps, ['error']);
+      const a = h.mount();
+      await clock.advance(5000, a, h.flush);
+      const v = h.read(a);
+      assert.ok(h.sb.reads.count >= 2, `R-5a: the failed read must be RETRIED, saw ${h.sb.reads.count} read(s)`);
+      assert.notEqual(v.currentStep, TOUR_COMPLETED, 'R-5a: a failed read must NEVER be interpreted as TOUR_COMPLETED');
+      assert.equal(v.currentStep, 1, 'R-5a: the step-0 user must still start the tour after the retry succeeds');
+      assert.equal(v.isCoachActive, true, 'R-5a: the tour must be active');
+      assert.equal(v.overlayVisible, true, 'R-5a: step 1 must be visible');
+      assert.deepEqual(h.sb.writes.map((w) => w.step), [1], 'R-5a: exactly one write — step 1');
+      h.unmount(a);
+    }
+
+    // R-5b — an in-progress user whose read THROWS is still resumable.
+    {
+      const h = makeHarness(5, realSteps, ['throw']);
+      const a = h.mount();
+      await clock.advance(5000, a, h.flush);
+      const v = h.read(a);
+      assert.ok(h.sb.reads.count >= 2, `R-5b: the throwing read must be RETRIED, saw ${h.sb.reads.count} read(s)`);
+      assert.notEqual(v.currentStep, TOUR_COMPLETED, 'R-5b: a throwing read must NEVER be interpreted as TOUR_COMPLETED');
+      assert.equal(v.currentStep, 5, 'R-5b: the in-progress user must RESUME at step 5');
+      assert.equal(v.isCoachActive, true, 'R-5b: the resumed tour must be active');
+      assert.equal(v.overlayVisible, true, 'R-5b: step 5 must be re-shown');
+      assert.deepEqual(h.sb.writes, [], 'R-5b: a resume after a failed read must write NOTHING');
+      assert.equal(h.sb.db.coach_mark_step, 5, 'R-5b: the row must be untouched');
+      h.unmount(a);
+    }
+
+    // R-5c — a read that fails on EVERY attempt concludes NOTHING, and the user's tour
+    // is preserved for the next launch (both a step-0 start and an in-progress resume).
+    for (const [label, mode, storedStep] of [['error', 'error', 0], ['throw', 'throw', 7]]) {
+      // Exhaust EXACTLY the first mount's attempt budget (FETCH_MAX_ATTEMPTS = 3), so
+      // the next launch reads cleanly — the point is that nothing was concluded or
+      // written in between.
+      const h = makeHarness(storedStep, realSteps, [mode, mode, mode]);
+      const a = h.mount();
+      await clock.advance(5000, a, h.flush);
+      let v = h.read(a);
+      assert.notEqual(v.currentStep, TOUR_COMPLETED, `R-5c/${label}: a permanently failing read must NEVER become TOUR_COMPLETED`);
+      assert.equal(v.currentStep, TOUR_UNAVAILABLE, `R-5c/${label}: the state must hold TOUR_UNAVAILABLE, got ${v.currentStep}`);
+      assert.equal(v.isCoachActive, false, `R-5c/${label}: nothing may render`);
+      assert.equal(v.overlayVisible, false, `R-5c/${label}: no overlay`);
+      // The bottom tab bar is locked while isCoachLoading || isCoachPending ||
+      // isCoachActive (CoachMarkNavigationGate). A read failure must not dead-tap the nav.
+      assert.equal(v.isCoachLoading, false, `R-5c/${label}: TOUR_UNAVAILABLE must NOT lock the bottom nav (Constitution #1)`);
+      assert.equal(v.isCoachPending, false, `R-5c/${label}: TOUR_UNAVAILABLE must NOT lock the bottom nav (Constitution #1)`);
+      assert.deepEqual(h.sb.writes, [], `R-5c/${label}: a failed read must write NOTHING`);
+      assert.equal(h.sb.db.coach_mark_step, storedStep, `R-5c/${label}: the row must be left exactly as found`);
+      h.unmount(a);
+
+      // Next launch: the read works, and the user's tour is intact.
+      const b = h.mount();
+      await clock.advance(5000, b, h.flush);
+      v = h.read(b);
+      if (storedStep === 0) {
+        assert.equal(v.currentStep, 1, `R-5c/${label}: the step-0 user must still get their first-run tour on the next launch`);
+        assert.deepEqual(h.sb.writes.map((w) => w.step), [1], `R-5c/${label}: step 1 persisted on the recovering launch`);
+      } else {
+        assert.equal(v.currentStep, storedStep, `R-5c/${label}: the in-progress user must still RESUME at step ${storedStep}`);
+        assert.deepEqual(h.sb.writes, [], `R-5c/${label}: the resume must write nothing`);
+      }
+      assert.equal(v.isCoachActive, true, `R-5c/${label}: the tour must be live on the recovering launch`);
+      assert.equal(v.overlayVisible, true, `R-5c/${label}: the overlay must be visible on the recovering launch`);
+      h.unmount(b);
+    }
   } finally {
     console.warn = realWarn;
     clock.restore();
@@ -450,7 +559,7 @@ async function run() {
 
 if (require.main === module) {
   run().then(() => {
-    console.log('issue-1516 coach-mark single-process regression: PASS (R-1 x11 steps, R-2, R-3, R-4)');
+    console.log('issue-1516 coach-mark single-process regression: PASS (R-1 x11 steps, R-2, R-3, R-4, R-5a/b/c)');
   }).catch((e) => {
     console.error('issue-1516 coach-mark single-process regression: FAIL');
     console.error(e && e.message ? e.message : e);

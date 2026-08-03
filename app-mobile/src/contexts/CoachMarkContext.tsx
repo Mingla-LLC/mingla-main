@@ -70,6 +70,16 @@ const CoachMarkContext = createContext<CoachMarkContextType | undefined>(undefin
 // ── Constants ───────────────────────────────────────────────────────────────
 
 const LOADING_SENTINEL = -2;
+// #1516 (rework): LOCAL-ONLY, NEVER PERSISTED. The step read failed and we do not know
+// where this user is. Distinct from LOADING_SENTINEL because that one LOCKS THE BOTTOM
+// TAB BAR (`CoachMarkNavigationGate` in app/index.tsx sets pointerEvents='none' while
+// isCoachLoading), so parking there on a permanent read failure would leave the user
+// with a dead nav — Constitution #1. Distinct from TOUR_COMPLETED because a failed read
+// is NOT a completed tour. Distinct from TOUR_NOT_STARTED because starting the tour
+// would persist step 1 over an unknown stored value — possibly clobbering a user who is
+// mid-tour or long finished. It renders nothing, concludes nothing, writes nothing, and
+// leaves the row untouched so the next launch reads it cleanly.
+const TOUR_UNAVAILABLE = -3;
 const TOUR_NOT_STARTED = 0;
 // ORCH-1037/1035: tour is 11 steps. TOUR_COMPLETED is COACH_STEP_COUNT + 1 (now 12)
 // and derives automatically — no edit needed here when the count changes.
@@ -104,6 +114,10 @@ const SCROLL_STEPS = new Set([8, 9, 10, 11]);
 // were normalized ONCE in the data layer (migration
 // 20270210001516_issue_1516_normalize_coach_mark_step_grammar.sql) — there is no
 // second "legacy" tour and no runtime guess-what-this-number-means path left.
+//
+// LOCAL-ONLY states, never written to the column and never read back from it:
+//   -2  LOADING_SENTINEL  — the read is in flight (locks the bottom nav)
+//   -3  TOUR_UNAVAILABLE  — the read failed after every retry; we know nothing
 
 // #1516 start-race hardening: the first-run delay is anchored PER USER at MODULE
 // scope, so the post-onboarding remount storm (ATT prompt + refreshAllSessions
@@ -117,6 +131,14 @@ const startDelayAnchorByUserId = new Map<string, number>();
 // failure is always surfaced to logs, never swallowed).
 const PERSIST_MAX_ATTEMPTS = 2;
 const PERSIST_RETRY_MS = 800;
+
+// #1516 (rework): the step READ gets the same treatment. The window this issue hardens
+// — the ATT prompt plus refreshAllSessions({ showLoading: true }) plus the profile
+// refetch — is exactly when a transient Supabase read is most likely to fail, so a
+// bounded retry absorbs the blip inside the same session and the user still gets their
+// first-run tour. Only after every attempt fails do we conclude nothing (TOUR_UNAVAILABLE).
+const FETCH_MAX_ATTEMPTS = 3;
+const FETCH_RETRY_MS = 700;
 
 // ── Provider ────────────────────────────────────────────────────────────────
 
@@ -158,8 +180,31 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
   useEffect(() => {
     if (!user?.id) return;
     let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
-    async function fetchStep(): Promise<void> {
+    // #1516 (rework): BOTH read-failure paths used to run `setCurrentStep(TOUR_COMPLETED)`,
+    // which reproduced this issue's exact symptom from a different direction: a fresh user
+    // at step 0 whose read blipped got currentStep = 12, the start-delay effect is gated on
+    // TOUR_NOT_STARTED so it never fired, and they were dropped onto the Home deck with no
+    // coach mark and no record that it never ran. It also re-created in memory the
+    // "12 means two things" ambiguity this issue just removed from the database.
+    // A failed read is now RETRIED, and if it never succeeds it concludes NOTHING.
+    const retryOrGiveUp = (attempt: number, reason: string): void => {
+      console.warn(`[CoachMark] Failed to fetch step (attempt ${attempt}/${FETCH_MAX_ATTEMPTS}): ${reason}`);
+      if (attempt < FETCH_MAX_ATTEMPTS) {
+        retryTimer = setTimeout(() => {
+          if (!cancelled) void fetchStep(attempt + 1);
+        }, FETCH_RETRY_MS);
+        return;
+      }
+      console.warn(
+        '[CoachMark] Step read unavailable after all attempts — holding TOUR_UNAVAILABLE. ' +
+        'The tour is neither started nor cancelled, nothing is written, and the next launch retries.',
+      );
+      setCurrentStep(TOUR_UNAVAILABLE);
+    };
+
+    async function fetchStep(attempt: number): Promise<void> {
       try {
         const { data, error } = await supabase
           .from('profiles')
@@ -169,8 +214,7 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
 
         if (cancelled) return;
         if (error) {
-          console.warn('[CoachMark] Failed to fetch step:', error.message);
-          setCurrentStep(TOUR_COMPLETED);
+          retryOrGiveUp(attempt, error.message);
           return;
         }
         const fetchedStep = data?.coach_mark_step ?? TOUR_NOT_STARTED;
@@ -185,13 +229,16 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
         // this read never reinterprets, never writes, and never cancels a tour.
         setCurrentStep(fetchedStep);
       } catch (e) {
-        console.warn('[CoachMark] Unexpected error fetching step:', e);
-        if (!cancelled) setCurrentStep(TOUR_COMPLETED);
+        if (cancelled) return;
+        retryOrGiveUp(attempt, e instanceof Error ? e.message : String(e));
       }
     }
 
-    fetchStep();
-    return () => { cancelled = true; };
+    void fetchStep(1);
+    return () => {
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
   }, [user?.id]);
 
   // ── Persist step to DB (fire-and-forget, remount-durable) ───────────────
@@ -572,6 +619,10 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
   }, [currentStep, persistStep]);
 
   // ── Derived state ───────────────────────────────────────────────────────
+  // #1516 (rework): TOUR_UNAVAILABLE is deliberately false for ALL THREE of these.
+  // `CoachMarkNavigationGate` (app/index.tsx) locks the bottom tab bar whenever any one
+  // of them is true, so a read failure must not leave the user with a dead nav
+  // (Constitution #1 — no dead taps). It renders nothing and blocks nothing.
   const isCoachActive = currentStep >= 1 && currentStep <= COACH_STEP_COUNT;
   const isCoachPending = currentStep === TOUR_NOT_STARTED;
   const isCoachLoading = currentStep === LOADING_SENTINEL;
