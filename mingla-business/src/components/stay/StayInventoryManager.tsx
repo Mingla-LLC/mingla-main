@@ -521,7 +521,15 @@ function Section({
 }): React.ReactElement {
   return (
     <View style={styles.section} testID={testID}>
-      <Text style={styles.sectionTitle}>{title}</Text>
+      {/* A real heading, so a screen reader can jump between the six sections
+          instead of walking every field. */}
+      <Text
+        accessibilityRole="header"
+        accessibilityLabel={`${title}. ${caption}`}
+        style={styles.sectionTitle}
+      >
+        {title}
+      </Text>
       <Text style={styles.sectionCaption}>{caption}</Text>
       <GlassCard variant="base" style={styles.form}>
         {children}
@@ -1129,6 +1137,9 @@ export function OfferingEditor({
         {readiness.map((item) => (
           <Text
             key={item.id}
+            // The glyph is decoration: a screen reader announces "check mark"
+            // or "white circle", which says nothing. State it in words.
+            accessibilityLabel={`${item.label}: ${item.done ? "done" : "still to do"}`}
             // Never red: an unfinished draft is not an error.
             style={item.done ? styles.checkDone : styles.checkPending}
             testID={`stay-readiness-${item.id}`}
@@ -1138,15 +1149,36 @@ export function OfferingEditor({
         ))}
       </View>
       {canManageFinance && currencyCode === null ? (
-        <Text style={styles.error}>
+        <Text
+          accessibilityRole="alert"
+          accessibilityLiveRegion="polite"
+          style={styles.error}
+          testID="stay-offering-currency-blocker"
+        >
           Choose the brand’s provisional currency or connect its bank before
           adding prices.
         </Text>
       ) : null}
       {localValidation ? (
-        <Text style={styles.error}>{localValidation}</Text>
+        <Text
+          accessibilityRole="alert"
+          accessibilityLiveRegion="assertive"
+          style={styles.error}
+          testID="stay-offering-error"
+        >
+          {localValidation}
+        </Text>
       ) : null}
-      {resultCopy ? <Text style={styles.warning}>{resultCopy}</Text> : null}
+      {resultCopy ? (
+        <Text
+          accessibilityRole="alert"
+          accessibilityLiveRegion="polite"
+          style={styles.warning}
+          testID="stay-offering-result"
+        >
+          {resultCopy}
+        </Text>
+      ) : null}
       {/* EXACTLY ONE CTA renders at a time, so `stay-offering-save` is never
           ambiguous to an operator, a screen reader, or a test. */}
       <Button
