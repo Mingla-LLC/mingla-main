@@ -18,6 +18,22 @@
  *                                                range that modifies THIS file
  *                                                carries the override token
  *                                                [TEST-MOD-APPROVED #NNNN].
+ *   - Typechanged test files (status T)        → FAIL, no override (absolute).
+ *                                                A typechange (regular file <->
+ *                                                symlink <-> submodule gitlink)
+ *                                                annihilates every assertion in
+ *                                                the file exactly as a deletion
+ *                                                does, so it carries the status-D
+ *                                                disposition, not the status-M
+ *                                                one. Direction-agnostic.
+ *   - ANY other status                         → FAIL, no override. The dispatch
+ *                                                FAILS CLOSED: a status this gate
+ *                                                cannot reason about is refused,
+ *                                                never waved through. Its terminal
+ *                                                branch may never again be a pass.
+ * Both dispositions added by issue #1505 (2026-08-03), which found the terminal
+ * fall-through printing "unhandled status — treating as pass" and exiting 0 while
+ * a test file's every assertion was destroyed by a typechange.
  *
  * Per-file, whole-range attribution (#1058): the diff spans the whole PR range,
  * so the token is honored wherever its commit sits in that range — NOT only on
@@ -302,10 +318,17 @@ function main() {
       }
       continue;
     }
+    if (entry.status === "T") {
+      console.log(
+        `❌ TYPECHANGE ${entry.path} — this test file's git object TYPE changed (regular file <-> symlink <-> submodule gitlink). A typechange annihilates every assertion in the file exactly as a deletion does, so it is forbidden under the Pragmatic Append-Only policy (ORCH-0840 [Regression-test enforcement + append-only CI]). No override token bypasses a typechange. Restore the file as a regular file with its assertions intact.`,
+      );
+      failures += 1;
+      continue;
+    }
     console.log(
-      `ℹ️  ${entry.status.padEnd(10)} ${entry.path} (unhandled status — treating as pass)`,
+      `❌ ${entry.status.padEnd(10)} ${entry.path} — UNRECOGNISED git status for a test file. This gate fails CLOSED: a status it cannot reason about is refused rather than waved through, because an unhandled status is how a test file's assertions get emptied silently. No override token bypasses an unrecognised status. Reduce the change to an ordinary add / modify / rename, or amend this gate to handle the status explicitly and say why it is safe.`,
     );
-    passes += 1;
+    failures += 1;
   }
 
   console.log("");
@@ -331,7 +354,11 @@ function runGitIn(cwd, args) {
 // Spawn THIS script's main() inside `cwd` (a temp repo). The GitHub env is
 // stripped so resolveBaseRef() deterministically falls back to the local `main`
 // branch regardless of the CI context this self-test itself runs in.
-function runCheckIn(cwd) {
+//
+// `extraEnv` (#1505, default `{}` — every pre-existing caller is unchanged) is
+// merged LAST so a scenario can override a single variable for the child alone.
+// T11 uses it to prefix PATH with a `git` shim that emits an unmodelled status.
+function runCheckIn(cwd, extraEnv = {}) {
   const childEnv = { ...process.env };
   delete childEnv.GITHUB_BASE_REF;
   delete childEnv.GITHUB_EVENT_NAME;
@@ -340,7 +367,7 @@ function runCheckIn(cwd) {
   delete childEnv.GIT_WORK_TREE;
   const r = spawnSync(process.execPath, [__filename], {
     cwd,
-    env: childEnv,
+    env: { ...childEnv, ...extraEnv },
     encoding: "utf8",
   });
   return { status: r.status, out: `${r.stdout || ""}${r.stderr || ""}` };
@@ -655,6 +682,171 @@ function scenarioT8() {
   }
 }
 
+// --- #1505 (typechange bypass + fail-closed dispatch) — T9..T13 ---------------
+// T9 (#1505, the core repro) — a regular test file REPLACED BY A SYMLINK is git
+// status `T`, which the dispatch used to print as "unhandled status — treating as
+// pass" and exit 0 with every assertion in the file destroyed. It is the strongest
+// laundering route found in the #1495 adversarial sweep. `T` now carries the
+// status-D disposition: refused unconditionally. The commit here carries BOTH
+// valid new-form tokens at once, so this simultaneously pins that a typechange is
+// NOT MOD_TOKEN-overridable — routing it to the M arm would let a routine one-line
+// -fix attestation authorize a whole-file annihilation, exactly what the D arm
+// forbids. Fails-on-revert: restoring the `passes += 1` terminal branch exits 0.
+function scenarioT9() {
+  const { dir, g, write } = makeTempRepo();
+  try {
+    write("a.test.ts", "expect(a).toBe(1);\nexpect(b).toBe(2);\nexpect(c).toBe(3);\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "base");
+    g("branch", "-M", "main");
+    g("checkout", "-q", "-b", "feature");
+
+    // Replace the test file with a symlink — the tree loses all three assertions.
+    fs.unlinkSync(nodePath.join(dir, "a.test.ts"));
+    fs.symlinkSync("/dev/null", nodePath.join(dir, "a.test.ts"));
+    g("add", "-A");
+    g(
+      "commit",
+      "-q",
+      "-m",
+      "replace the test file with a symlink",
+      "-m",
+      "[TEST-MOD-APPROVED #1495] [TEST-RENAME-APPROVED #1495] #1495 [testmod marker grammar]",
+    );
+    return runCheckIn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// T10 (#1505) — the `T` arm is DIRECTION-AGNOSTIC. `--name-status` prints the
+// letter only; it never discloses which way the type flipped, and distinguishing
+// symlink→file from file→symlink would mean re-reading modes from `--raw` — new
+// parsing surface on a security gate, for a case with zero occurrences in this
+// repo's whole history. So symlink→regular-file is refused too, and this scenario
+// exists so a future maintainer cannot silently make the arm directional without
+// re-deciding that trade-off. Both tokens are present here as well.
+function scenarioT10() {
+  const { dir, g, write } = makeTempRepo();
+  try {
+    fs.symlinkSync("/dev/null", nodePath.join(dir, "a.test.ts"));
+    g("add", "-A");
+    g("commit", "-q", "-m", "base");
+    g("branch", "-M", "main");
+    g("checkout", "-q", "-b", "feature");
+
+    fs.unlinkSync(nodePath.join(dir, "a.test.ts"));
+    write("a.test.ts", "expect(a).toBe(1);\n");
+    g("add", "-A");
+    g(
+      "commit",
+      "-q",
+      "-m",
+      "turn the symlink back into a regular test file",
+      "-m",
+      "[TEST-MOD-APPROVED #1495] [TEST-RENAME-APPROVED #1495] #1495 [testmod marker grammar]",
+    );
+    return runCheckIn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// T11 (#1505) — THE DURABLE HALF. The defect class is not "`T` specifically", it is
+// that the dispatch's terminal branch used to be `passes += 1`: any future git
+// version, flag change (`-B` → `M100`, `-C` → `C100`) or unknown letter (`X`) would
+// silently disarm the sole guard for test-file integrity. A guard whose unknown-input
+// behaviour is "allow" is not a guard. Statuses that cannot be produced with today's
+// flags are simulated the only honest way — a `git` shim on the child's PATH that
+// answers `--name-status` with three unmodelled statuses and `exec`s the real git for
+// everything else (so base-ref resolution still works). All three must be refused.
+// Fails-on-revert: the old terminal branch prints "ℹ️ … treating as pass" ×3, exit 0.
+function scenarioT11() {
+  const repo = makeTempRepo();
+  const shimDir = fs.mkdtempSync(
+    nodePath.join(os.tmpdir(), "append-only-selftest-gitshim-"),
+  );
+  try {
+    const { dir, g, write } = repo;
+    // An ORDINARY additions-only repo: the fake statuses come from the shim, not
+    // from anything unusual in the tree.
+    write("a.test.ts", "expect(a).toBe(1);\n");
+    write("src.test.ts", "expect(s).toBe(1);\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "base");
+    g("branch", "-M", "main");
+    g("checkout", "-q", "-b", "feature");
+    write("a.test.ts", "expect(a).toBe(1);\nexpect(b).toBe(2);\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "additions only");
+
+    const realGit = execSync("command -v git", { encoding: "utf8" }).trim();
+    const shim = [
+      "#!/bin/sh",
+      'for arg in "$@"; do',
+      '  if [ "$arg" = "--name-status" ]; then',
+      "    printf 'X\\ta.test.ts\\nM100\\ta.test.ts\\nC100\\tsrc.test.ts\\tdst.test.ts\\n'",
+      "    exit 0",
+      "  fi",
+      "done",
+      `exec ${JSON.stringify(realGit)} "$@"`,
+      "",
+    ].join("\n");
+    const shimPath = nodePath.join(shimDir, "git");
+    fs.writeFileSync(shimPath, shim);
+    fs.chmodSync(shimPath, 0o755);
+
+    return runCheckIn(dir, {
+      PATH: `${shimDir}${nodePath.delimiter}${process.env.PATH || ""}`,
+    });
+  } finally {
+    fs.rmSync(repo.dir, { recursive: true, force: true });
+    fs.rmSync(shimDir, { recursive: true, force: true });
+  }
+}
+
+// T12 (#1505) — NEGATIVE CONTROL, and the reason failing closed is safe to ship.
+// Across this repo's whole history only A / M / D / R### have ever touched a test
+// path; there are no symlinks, no gitlinks and no .gitmodules on `main`. This pins
+// that ordinary work stays GREEN with NO token: a MODE-ONLY change (`chmod +x`, the
+// one plausible near-miss for a typechange) is status `M` with 0 deleted lines, an
+// additions-only edit passes, a brand-new test file passes, and a non-source fixture
+// under `__tests__/` passes. The `✅ … mode.test.ts` assertion makes this non-vacuous
+// — if the mode change ever stopped producing an entry, the check would go red rather
+// than pass on an empty diff. Green before AND after the fix, by design.
+function scenarioT12() {
+  const { dir, g, write } = makeTempRepo();
+  try {
+    fs.mkdirSync(nodePath.join(dir, "__tests__"));
+    write("mode.test.ts", "expect(m).toBe(1);\nexpect(n).toBe(2);\n");
+    write("grow.test.ts", "expect(g).toBe(1);\n");
+    write("__tests__/fixture.json", '{"case":1}\n');
+    g("add", "-A");
+    g("commit", "-q", "-m", "base");
+    g("branch", "-M", "main");
+    g("checkout", "-q", "-b", "feature");
+
+    // Mode-only: byte-identical content, executable bit set.
+    fs.chmodSync(nodePath.join(dir, "mode.test.ts"), 0o755);
+    write("grow.test.ts", "expect(g).toBe(1);\nexpect(h).toBe(2);\n");
+    write("fresh.test.ts", "expect(f).toBe(1);\n");
+    write("__tests__/fixture.json", '{"case":1}\n{"case":2}\n');
+    g("add", "-A");
+    // Force the index mode regardless of core.fileMode, so the scenario is
+    // deterministic on filesystems that do not honour the executable bit.
+    g("update-index", "--chmod=+x", "mode.test.ts");
+    g(
+      "commit",
+      "-q",
+      "-m",
+      "mode bit, additions-only edit, a new test file and a fixture append — NO token",
+    );
+    return runCheckIn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 function selfTest() {
   let failures = 0;
   let total = 0;
@@ -807,6 +999,63 @@ function selfTest() {
     t8.status === 1 && t8Blocks,
     "T8 (#1495 tester adversarial): a token present only in the DIFF (test-file comment + JSON fixture) authorizes nothing — attribution requires a commit body",
     `check exited ${t8.status} (expected 1); a.test.ts blocked=${t8Blocks}`,
+  );
+
+  // --- #1505 git scenarios (typechange bypass + fail-closed dispatch) ---
+  // T1..T8 all exercise arms that already existed. These four exercise the two
+  // NEW dispositions plus the negative control that proves nothing green went red,
+  // and T13 re-runs the #1495 SC-6 message-hygiene invariant over both new branches.
+  const t9 = scenarioT9();
+  const t9Refuses = /❌[^\n]*TYPECHANGE[^\n]*a\.test\.ts/.test(t9.out);
+  check(
+    t9.status === 1 && t9Refuses,
+    "T9 (#1505, core repro): a test file REPLACED BY A SYMLINK (git status T) is refused unconditionally — it annihilates every assertion, and BOTH new-form override tokens on the commit bypass nothing",
+    `check exited ${t9.status} (expected 1); TYPECHANGE a.test.ts refused=${t9Refuses}`,
+  );
+
+  const t10 = scenarioT10();
+  const t10Refuses = /❌[^\n]*TYPECHANGE[^\n]*a\.test\.ts/.test(t10.out);
+  check(
+    t10.status === 1 && t10Refuses,
+    "T10 (#1505): the T arm is DIRECTION-AGNOSTIC — symlink → regular test file is refused too, so the arm cannot be quietly made directional without re-deciding the --raw parsing trade-off",
+    `check exited ${t10.status} (expected 1); TYPECHANGE a.test.ts refused=${t10Refuses}`,
+  );
+
+  const t11 = scenarioT11();
+  const t11X = /❌[^\n]*X[^\n]*a\.test\.ts[^\n]*UNRECOGNISED/.test(t11.out);
+  const t11M100 = /❌[^\n]*M100[^\n]*a\.test\.ts[^\n]*UNRECOGNISED/.test(t11.out);
+  const t11C100 = /❌[^\n]*C100[^\n]*src\.test\.ts[^\n]*UNRECOGNISED/.test(t11.out);
+  check(
+    t11.status === 1 && t11X && t11M100 && t11C100,
+    "T11 (#1505, the durable half): the dispatch FAILS CLOSED — an unknown letter (X), a score-suffixed rewrite (M100) and a copy (C100) are each REFUSED, so the terminal branch can never again be `passes += 1`",
+    `check exited ${t11.status} (expected 1); X=${t11X} M100=${t11M100} C100=${t11C100}`,
+  );
+
+  const t12 = scenarioT12();
+  const t12PassesMode = /✅[^\n]*mode\.test\.ts/.test(t12.out);
+  check(
+    t12.status === 0 && t12PassesMode,
+    "T12 (#1505, blast-radius negative control): ordinary work stays GREEN with NO token — a mode-only chmod +x (status M, 0 deleted lines), an additions-only edit, a new test file and a __tests__/ fixture append all pass",
+    `check exited ${t12.status} (expected 0); mode.test.ts passes=${t12PassesMode}`,
+  );
+
+  // T13 (#1505) — SC-6 message hygiene EXTENDED to the two new branches. The #1495
+  // invariant is that nothing the gate PRINTS may match an override token, so CI
+  // output pasted into a commit body can never self-authorize a deletion. T5 covers
+  // the six pre-existing branches; it never reads these two. Reuses T9's and T11's
+  // real stdout rather than re-running them.
+  const t13Out = `${t9.out}\n${t11.out}`;
+  const t13Exercised = /❌[^\n]*TYPECHANGE/.test(t9.out) && /❌[^\n]*UNRECOGNISED/.test(t11.out);
+  const t13ModLeak = MOD_TOKEN.test(t13Out);
+  const t13RenameLeak = RENAME_TOKEN.test(t13Out);
+  const t13Offenders = t13Out
+    .split("\n")
+    .filter((l) => MOD_TOKEN.test(l) || RENAME_TOKEN.test(l))
+    .map((l) => l.trim().slice(0, 120));
+  check(
+    t13Exercised && !t13ModLeak && !t13RenameLeak,
+    "T13 (#1505, SC-6 extended): neither NEW branch (TYPECHANGE, UNRECOGNISED) prints anything matching MOD_TOKEN or RENAME_TOKEN — their placeholders stay non-digit, so pasting this gate's output into a commit body authorizes nothing",
+    `branches exercised=${t13Exercised}; MOD leak=${t13ModLeak}; RENAME leak=${t13RenameLeak}${t13Offenders.length ? `; offending output: ${JSON.stringify(t13Offenders)}` : ""}`,
   );
 
   console.log("");
