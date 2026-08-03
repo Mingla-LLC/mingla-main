@@ -45,6 +45,9 @@ import {
 } from "../_shared/marketingEmailRender.ts";
 import { generateTrackingId, signUnsubscribeToken } from "../_shared/marketingTokens.ts";
 import { computeSegments, isValidE164, smsAdapter } from "../_shared/adapters/smsAdapter.ts";
+// #1529 — the single source of truth for E.164 → ISO-2. Replaces the
+// module-private copy that used to sit next to the SMS dispatch below.
+import { countryFromE164 } from "../_shared/e164Country.ts";
 import { resolveDeliveryFlagValue } from "../_shared/secretBundle.ts";
 
 const BATCH_LIMIT = 10;
@@ -646,18 +649,22 @@ interface SmsContact {
   sms_marketing_ok: boolean;
 }
 
-/**
- * Derive a region (for quiet-hours + kill-switch routing) from the E.164 phone
- * prefix, since orders carry no buyer country column. +1 → US, +234 → NG. An
- * unrecognized prefix returns null → quiet-hours conservatively DENIES (defer)
- * and the kill-switch defaults to the US switch in the adapter (off by default).
- */
-function countryFromE164(phone: string): string | null {
-  const trimmed = phone.trim();
-  if (trimmed.startsWith("+234")) return "NG";
-  if (trimmed.startsWith("+1")) return "US";
-  return null;
-}
+// Region derivation (for quiet-hours + kill-switch routing) comes from the
+// E.164 phone prefix, since orders carry no buyer country column.
+//
+// #1529 — the module-private copy that used to live HERE has been DELETED in
+// favour of the shared `_shared/e164Country.ts` helper imported at the top of
+// this file. The repo carried THREE mutually inconsistent copies of this rule
+// (#1529 F-7) and no single source of truth, which is how the notification
+// pipeline ended up with a country column that no two layers agreed on.
+//
+// BEHAVIOUR IS PRESERVED, verified branch by branch: +1 → US and +234 → NG are
+// unchanged. +44/+32 previously returned null and now resolve to GB/BE, which
+// changes nothing downstream — `isWithinQuietHours` returns false for any
+// country that is neither US nor NG (identical to what null did), and the
+// adapter's `resolveMarketKillSwitch` maps every non-NG country to
+// SMS_LIVE_ENABLED_US, exactly as null did. An unmapped prefix still returns
+// null → quiet-hours conservatively DENIES (defer).
 
 /**
  * Branded short links (SPEC §6.7): rewrite every http(s) URL in the SMS body

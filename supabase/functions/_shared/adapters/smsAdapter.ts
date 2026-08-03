@@ -182,6 +182,47 @@ export function composeSmsBody(
 
 // Region routing seam (SPEC §8.4). Today only the US route is live; NG is phased.
 // Returns the env var name of the per-market kill-switch for the resolved route.
+//
+// ===========================================================================
+// #1529 — WHY THE `?? "US"` BELOW STILL EXISTS. DO NOT "TIDY" IT AWAY.
+// ===========================================================================
+// This default, and its twin in send() below, are what turned a MISSING
+// country into an AMERICAN one. `notification_outbox.country_code` was written
+// by NO producer (proven: 6/6 production rows NULL), so every notification
+// arrived here as null, became "US", and every Nigerian text went to Twilio
+// under the US kill-switch while `sms_live_enabled.ng` — the switch meant to
+// hold Nigeria back — governed nothing at all.
+//
+// #1529 FIXES THE CAUSE, NOT THIS LINE. Every producer now writes a real
+// country (migration 20270211001529_issue_1529_notification_country_code.sql),
+// and the Stay producers now enqueue a `+`-prefixed E.164 contact, so an
+// SMS-eligible row reaching this adapter carries its true country: a Nigerian
+// handset genuinely resolves NG → Termii → `sms_live_enabled.ng`. This
+// fallback is therefore no longer LOAD-BEARING for any populated row — it is
+// reachable only for a caller that passes no country at all.
+//
+// IT IS RETAINED DELIBERATELY, NOT OVERLOOKED. #1529's SPEC §4.5 asked for it
+// to be deleted, with routing derived from the destination number instead.
+// That change WAS implemented and then REVERTED, because it is mutually
+// exclusive with the shipped #1518 contract:
+// `smsAdapter.issue1518.adversarial.test.ts` ADV B-2 and ADV B-3 pin the
+// OPPOSITE rule — that the `countryCode` LABEL is the routing authority, so a
+// `+234` destination labelled "US" must be gated by the (dark) US switch
+// rather than routed to the (live) NG one. Deriving from `to` fails both of
+// those, plus `orch_1161_notify_dispatch_v2.test.ts`'s
+// `resolveMarketKillSwitch(null) === "SMS_LIVE_ENABLED_US"`. All three run in
+// the `notification-deno-tests` CI job and the #1518 suites are DO-NOT-TOUCH.
+// Proven by RUNNING them, not by reading them — see the #1529 implementation
+// report for the captured failure output.
+//
+// THE OPEN QUESTION FOR WHOEVER ADJUDICATES THIS: when the destination number
+// and the asserted country disagree, which wins? #1518 says the LABEL, so a
+// dark market can never be lit by a mislabelled row. #1529 says the NUMBER, so
+// a mislabelled row can never hand a Nigerian handset to Twilio. Both are
+// defensible safety postures; they cannot both hold. Pick one deliberately and
+// revert the other's test with it — do NOT let the two drift into an
+// accidental answer, which is precisely the class of bug that produced #1529.
+// ===========================================================================
 export function resolveMarketKillSwitch(countryCode?: string | null): string {
   const cc = (countryCode ?? "US").toUpperCase();
   if (cc === "NG") return "SMS_LIVE_ENABLED_NG";
@@ -376,6 +417,15 @@ export const smsAdapter = {
     // from Termii's documented guidance for transactional traffic. Full
     // rationale + revert condition (#1480) in the block at the top of this file.
     // Everything else → Twilio, unchanged.
+    //
+    // #1529 — SECOND COPY of the `?? "US"` default (the first is inside
+    // resolveMarketKillSwitch above, which has the full explanation). These two
+    // copies independently decide WHICH MARKET'S KILL SWITCH GOVERNS and WHICH
+    // PROVIDER RECEIVES THE MESSAGE, and they can drift apart — #1518's
+    // adversarial ADV B-3 exists specifically to catch that split-brain. Keep
+    // them normalising identically. #1529 makes this line non-load-bearing by
+    // populating country_code at every producer rather than by deleting the
+    // default; deleting it is blocked by the #1518 contract described above.
     const cc = (input.countryCode ?? "US").toUpperCase();
     await input.beforeProviderIo?.();
     const result = cc === "NG"
