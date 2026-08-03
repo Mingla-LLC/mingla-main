@@ -56,7 +56,8 @@
     "test:orch-1387": "node --test src/payments/__tests__/wallet_config_threading.orch1387.test.mjs",
     "test:orch-1130": "node ../.github/scripts/strict-grep/orch-1130-postcss-transitive-pin-check.mjs --self-test && node ../.github/scripts/strict-grep/orch-1130-postcss-transitive-pin-check.mjs",
     "test:issue-0963": "node ./scripts/ci/issue-0963-consumer-currency-no-gbp-fallback-check.mjs",
-    "test:issue-0963-adv": "node ./scripts/ci/issue-0963-consumer-currency-no-gbp-fallback.tester-adversarial.mjs"
+    "test:issue-0963-adv": "node ./scripts/ci/issue-0963-consumer-currency-no-gbp-fallback.tester-adversarial.mjs",
+    "test:issue-1516": "node ./src/contexts/__tests__/issue-1516-coach-mark-single-process.test.tsx"
   },
   "dependencies": {
     "@expo-google-fonts/anton": "^0.4.2",
