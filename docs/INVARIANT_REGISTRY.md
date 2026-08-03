@@ -7093,7 +7093,10 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   pan and transform/opacity animations use RN core Animated's native driver. Only a current
   epoch/card `finished:true` completion may commit. PanResponder, private Animated offsets/reads,
   Reanimated/Worklets/worklet directives, new Gesture auto-worklet callbacks, and competing
-  lifecycle state are forbidden. `[TRANSITIONAL: I-1481]` RNGH 2.x exits only through a separately
+  lifecycle state are forbidden. A delivered successor BEGAN during `EXITING` may fast-forward only
+  the exact mounted/card/epoch pending token: the controller must enter `COMMITTING` before stopping
+  the outgoing animation, settle through the same single commit path, and admit the successor only
+  after synchronous promotion under a fresh epoch. `[TRANSITIONAL: I-1481]` RNGH 2.x exits only through a separately
   approved Consumer gesture/dependency migration with native Fabric crash soak.
   Every finished exit synchronously resets presentation and settles from its immutable token to exactly one explicit
   `{nextCardId}` or `{exhausted:true}` result; COMMITTING may never wait for a passive render effect.
@@ -7104,7 +7107,8 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 - **Regression:** `issue_1481_swipe_lifecycle.test.mjs` proves nominal admission/current-token
   completion and production wiring; the independent tester guard adds 10,000-sequence adversarial
   lifecycle coverage before CLOSE.
-- **Established:** DRAFT 2026-08-02 at issue #1481 IMPLEMENT. Flips ACTIVE only after independent
+- **Established:** DRAFT 2026-08-02 at issue #1481 IMPLEMENT; amended 2026-08-03 by binding
+  Amendment 7 after exact physical-Android admission proof. Flips ACTIVE only after independent
   iOS/Android correctness, accessibility, performance, and physical Fabric stress PASS.
 
 ### I-PROPOSED-1481-DECK-PERFORMANCE-BOUND (DRAFT)
