@@ -76,6 +76,24 @@ if (!existsSync(adapterPath)) {
   // re-introduces a bare "dnd" literal outside those two sanctioned sites and
   // fails (c2).
   //
+  // QUOTE CLASS — every `dnd`/`generic` pattern below uses ["'`], NOT ["'].
+  // #1518 tester finding P2-1: TypeScript accepts a no-substitution TEMPLATE
+  // LITERAL as a string-literal type, so `termiiSend(to, body, \`dnd\`)` (with
+  // backticks) type-checks cleanly, restores exactly the behaviour this gate
+  // exists to block, and slipped past the original ["'] class while (c1) still
+  // matched a sibling quoted "generic" call in the other ternary arm. The
+  // backtick is in EVERY class — the two positive checks, the two scrub
+  // patterns, and the negative check — so a mixed-quote write-up (e.g. a
+  // backtick union type, or a backtick error classifier) cannot desync the
+  // scrub from the negative check and re-open the hole from the other side.
+  //
+  // KNOWN RESIDUAL, deliberately not chased here: a SUBSTITUTED template
+  // (`dn${x}`) or other runtime-computed channel string cannot be caught by any
+  // static text gate. That class is covered at runtime instead, by the tester's
+  // construction-agnostic C-1 assertion (no `dnd` anywhere in the serialized
+  // Termii payload) plus T-1/T-2b in the implementor suite. Static + runtime
+  // together are the defence; neither alone is claimed to be sufficient.
+  //
   // The channel checks below evaluate CODE, not prose — the #1518 rationale
   // comments quote the retired "dnd" mapping verbatim on purpose so a future
   // reader can see exactly what to restore. Mirrors the sibling 1282 gate's
@@ -85,7 +103,7 @@ if (!existsSync(adapterPath)) {
     .replace(/(^|[^:])\/\/.*$/gm, "$1");
 
   // (c1) the NG call site must pass the literal "generic" UNCONDITIONALLY.
-  if (!/termiiSend\(\s*to,\s*body,\s*["']generic["']\s*,?\s*\)/.test(code)) {
+  if (!/termiiSend\(\s*to,\s*body,\s*["'`]generic["'`]\s*,?\s*\)/.test(code)) {
     failures.push(
       `smsAdapter's NG branch must call termiiSend(to, body, "generic") unconditionally — #1518 interim, both NG message classes ride Termii's generic channel because dnd 400s "Country Inactive" (I-PROPOSED-1227-NG-SMS-VIA-TERMII).`,
     );
@@ -98,9 +116,9 @@ if (!existsSync(adapterPath)) {
   //     honest signal that a DND-registered recipient rejected the send and
   //     MUST stay (it classifies responses, never channel selection).
   const scrubbed = code
-    .replace(/channel:\s*["']dnd["']\s*\|\s*["']generic["']/g, "channel: <union>")
-    .replace(/includes\(\s*["']dnd["']\s*\)/g, "includes(<provider-error-token>)");
-  if (/["']dnd["']/.test(scrubbed)) {
+    .replace(/channel:\s*["'`]dnd["'`]\s*\|\s*["'`]generic["'`]/g, "channel: <union>")
+    .replace(/includes\(\s*["'`]dnd["'`]\s*\)/g, "includes(<provider-error-token>)");
+  if (/["'`]dnd["'`]/.test(scrubbed)) {
     failures.push(
       `smsAdapter must NOT emit the Termii "dnd" channel from any NG code path while the #1518 interim stands (dnd returns 400 "Country Inactive" — see #1480). Revert this gate together with the mapping when Termii activates DND — I-PROPOSED-1227-NG-SMS-VIA-TERMII.`,
     );
@@ -109,13 +127,13 @@ if (!existsSync(adapterPath)) {
   // (c3) the provider-error-string `blacklisted` classifier must survive — it is
   // the only honest signal that `generic` failed to reach a DND-registered
   // recipient (#1518 accepted trade-off b). Explicitly NOT channel selection.
-  if (!/includes\(\s*["']dnd["']\s*\)/.test(code)) {
+  if (!/includes\(\s*["'`]dnd["'`]\s*\)/.test(code)) {
     failures.push(
       `smsAdapter must keep the termiiSend blacklisted classifier reading provider error strings for "dnd" — it is the honest signal for the #1518 DND-register trade-off (I-PROPOSED-1227-NG-SMS-VIA-TERMII).`,
     );
   }
 
-  if (!/["']generic["']/.test(code)) {
+  if (!/["'`]generic["'`]/.test(code)) {
     failures.push(
       `smsAdapter must keep the Termii "generic" channel literal — I-PROPOSED-1227-NG-SMS-VIA-TERMII.`,
     );
