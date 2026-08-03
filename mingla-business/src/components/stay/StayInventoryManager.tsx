@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -8,6 +8,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import type { ViewStyle } from "react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { BedDouble, CalendarDays, Check, X } from "lucide-react-native";
 
@@ -17,7 +18,11 @@ import {
   radius,
   semantic,
   spacing,
+  stayFieldNumBasis,
+  stayFieldNumMinWidth,
+  stayFieldPairMinWidth,
   stayInventoryMaxWidth,
+  stayProseMaxWidth,
   suiteFormMaxWidth,
   text as textTokens,
   typography,
@@ -158,8 +163,33 @@ function Choice({
   );
 }
 
+/**
+ * #1501 §1 — the AXIS a field is laid out on. `styles.field` used to be ONE
+ * style (`{ flex: 1, minWidth: 140 }`) applied in BOTH a row context (where
+ * `flex: 1` shares the WIDTH — correct) and stacked in a column context (where
+ * the identical declaration shares the HEIGHT — the overlap bug). There is no
+ * single style that is right in both, so the axis is now a REQUIRED decision at
+ * every call site and each style names the one context it is legal in.
+ *
+ *   stack — stacked directly in a column; carries NO flex-axis key at all.
+ *   pair  — a TEXT field inside `styles.row`; grows into the leftover space.
+ *   num   — a NUMERIC field inside `styles.row`; fixed basis, never grows.
+ *
+ * See invariant I-AXIS-SCOPED-FLEX.
+ */
+type FieldSpan = "stack" | "pair" | "num";
+
+/** Complete, mutually exclusive measures — selected, never layered. */
+function fieldSpanStyle(span: FieldSpan): ViewStyle {
+  if (span === "pair") return styles.fieldPair;
+  if (span === "num") return styles.fieldNum;
+  return styles.fieldStack;
+}
+
 function LabeledInput({
   label,
+  helper,
+  span,
   value,
   onChangeText,
   placeholder,
@@ -169,6 +199,14 @@ function LabeledInput({
   editable = true,
 }: {
   label: string;
+  /**
+   * Always present (#1501 §1 field anatomy: label -> helper -> input -> error).
+   * The helper sits ABOVE the input so the operator reads the explanation
+   * before deciding what to type.
+   */
+  helper?: string;
+  /** REQUIRED — a new field cannot compile without choosing an axis. */
+  span: FieldSpan;
   value: string;
   onChangeText: (value: string) => void;
   placeholder: string;
@@ -178,10 +216,15 @@ function LabeledInput({
   editable?: boolean;
 }): React.ReactElement {
   return (
-    <View style={styles.field}>
+    // `-field` suffix: the WRAPPER carries the axis measure, and the axis
+    // regression proof has to read the wrapper, not the input (#1501 §1.4).
+    // Additive — every pre-existing testID is preserved verbatim on the input.
+    <View style={fieldSpanStyle(span)} testID={`${testID}-field`}>
       <Text style={styles.label}>{label}</Text>
+      {helper ? <Text style={styles.fieldHelper}>{helper}</Text> : null}
       <TextInput
         accessibilityLabel={label}
+        accessibilityHint={helper}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
@@ -209,7 +252,16 @@ interface OfferingEditorProps {
   onClose: () => void;
 }
 
-function OfferingEditor({
+/**
+ * EXPORTED for the #1501 web-resolver regression proof only. The editor is
+ * reached in the product exclusively through `StayInventoryManager`'s own
+ * state; a `ReactDOMServer.renderToStaticMarkup` pass cannot press "Add", and a
+ * react-test-renderer suite is structurally blind to react-native-web's class
+ * resolution — which is exactly how #1484 shipped broken. Rendering the editor
+ * directly through the REAL RNW style compiler is the only way to assert on the
+ * CSS the browser actually applies.
+ */
+export function OfferingEditor({
   brandId,
   venueId,
   existing = null,
@@ -280,8 +332,24 @@ function OfferingEditor({
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [resultCopy, setResultCopy] = useState<string | null>(null);
+  // #1501 — the partial-failure banner is mirrored in a ref so `onSuccess`
+  // reads THIS attempt's outcome instead of whatever the last render captured.
+  const resultCopyRef = useRef<string | null>(null);
+  const showResult = (copy: string | null): void => {
+    resultCopyRef.current = copy;
+    setResultCopy(copy);
+  };
 
   const save = useMutation({
+    // #1501 (spec §7 open question 2) — `resultCopy` was WRITE-ONCE. A bulk
+    // partial failure set it, `onSuccess` only closes the editor when it is
+    // null, and nothing ever cleared it — so every later successful save in
+    // that session silently refused to close, with no error to explain it.
+    // Clearing it at the START of each mutate makes the banner describe THIS
+    // attempt only.
+    onMutate: () => {
+      showResult(null);
+    },
     mutationFn: async (): Promise<StayInventorySnapshot> => {
       const names = bulk ? splitList(bulkNames) : [name.trim()];
       if (names.length === 0 || names.some((item) => item.length === 0)) {
@@ -463,7 +531,7 @@ function OfferingEditor({
           items: names.map(makeOffering),
         });
         if (response.job.failed_count > 0) {
-          setResultCopy(
+          showResult(
             `${response.job.succeeded_count} created; ${response.job.failed_count} need review. Nothing was auto-published.`,
           );
         }
@@ -482,7 +550,7 @@ function OfferingEditor({
     },
     onSuccess: (inventory) => {
       queryClient.setQueryData(stayInventoryKeys.detail(venueId), inventory);
-      if (resultCopy === null) onClose();
+      if (resultCopyRef.current === null) onClose();
     },
   });
   const removeMedia = useMutation({
@@ -615,6 +683,7 @@ function OfferingEditor({
       <GlassCard variant="base" style={styles.form}>
         {bulk ? (
           <LabeledInput
+            span="stack"
             label={`${kind === "room" ? "Room" : "Place"} names`}
             value={bulkNames}
             onChangeText={setBulkNames}
@@ -625,6 +694,7 @@ function OfferingEditor({
           />
         ) : (
           <LabeledInput
+            span="stack"
             label="Name"
             value={name}
             onChangeText={setName}
@@ -634,6 +704,7 @@ function OfferingEditor({
           />
         )}
         <LabeledInput
+          span="stack"
           label="Description"
           value={description}
           onChangeText={setDescription}
@@ -643,6 +714,7 @@ function OfferingEditor({
           testID="stay-offering-description"
         />
         <LabeledInput
+          span="stack"
           label="Amenities"
           value={amenities}
           onChangeText={setAmenities}
@@ -684,9 +756,10 @@ function OfferingEditor({
             />
           </View>
         ) : null}
-        <View style={styles.twoCol}>
+        <View style={styles.row} testID="stay-offering-count-row">
           {!sharedCapacity ? (
             <LabeledInput
+              span="num"
               label="Quantity"
               value={quantity}
               onChangeText={setQuantity}
@@ -697,6 +770,7 @@ function OfferingEditor({
             />
           ) : (
             <LabeledInput
+              span="num"
               label="Capacity"
               value={capacity}
               onChangeText={setCapacity}
@@ -707,6 +781,7 @@ function OfferingEditor({
             />
           )}
           <LabeledInput
+            span="num"
             label="Maximum guests"
             value={maxGuests}
             onChangeText={setMaxGuests}
@@ -736,6 +811,7 @@ function OfferingEditor({
             </View>
             {namedUnits ? (
               <LabeledInput
+                span="stack"
                 label="Private unit names"
                 value={unitNames}
                 onChangeText={setUnitNames}
@@ -767,8 +843,9 @@ function OfferingEditor({
         ) : null}
         {canManageFinance ? (
           <>
-            <View style={styles.twoCol}>
+            <View style={styles.row} testID="stay-offering-price-row">
               <LabeledInput
+                span="num"
                 label={`Base price${currencyCode ? ` (${currencyCode})` : ""}`}
                 value={price}
                 onChangeText={setPrice}
@@ -777,6 +854,7 @@ function OfferingEditor({
                 testID="stay-offering-price"
               />
               <LabeledInput
+                span="num"
                 label="Fee amount"
                 value={feeAmount}
                 onChangeText={setFeeAmount}
@@ -786,6 +864,7 @@ function OfferingEditor({
               />
             </View>
             <LabeledInput
+              span="stack"
               label="Optional fee name"
               value={feeLabel}
               onChangeText={setFeeLabel}
@@ -793,6 +872,7 @@ function OfferingEditor({
               testID="stay-offering-fee-label"
             />
             <LabeledInput
+              span="stack"
               label="Cancellation policy"
               value={policy}
               onChangeText={setPolicy}
@@ -801,6 +881,7 @@ function OfferingEditor({
               testID="stay-offering-policy"
             />
             <LabeledInput
+              span="num"
               label="No-show refund percent"
               value={noShowPercent}
               onChangeText={setNoShowPercent}
@@ -1189,8 +1270,9 @@ function AvailabilityManager({
           />
         ))}
       </View>
-      <View style={styles.twoCol}>
+      <View style={styles.row}>
         <LabeledInput
+          span="pair"
           label={selected.kind === "room" ? "First night" : "Start date"}
           value={fromDate}
           onChangeText={setFromDate}
@@ -1198,6 +1280,7 @@ function AvailabilityManager({
           testID="stay-availability-from"
         />
         <LabeledInput
+          span="pair"
           label={selected.kind === "room" ? "Last night" : "End date"}
           value={toDate}
           onChangeText={setToDate}
@@ -1206,8 +1289,9 @@ function AvailabilityManager({
         />
       </View>
       {selected.kind === "room" ? (
-        <View style={styles.twoCol}>
+        <View style={styles.row}>
           <LabeledInput
+            span="num"
             label="Sellable rooms"
             value={quantity}
             onChangeText={setQuantity}
@@ -1217,6 +1301,7 @@ function AvailabilityManager({
           />
           {canManageFinance ? (
             <LabeledInput
+              span="num"
               label={`Price override${currencyCode ? ` (${currencyCode})` : ""}`}
               value={overridePrice}
               onChangeText={setOverridePrice}
@@ -1248,8 +1333,9 @@ function AvailabilityManager({
               testID="stay-place-full-day"
             />
           </View>
-          <View style={styles.twoCol}>
+          <View style={styles.row}>
             <LabeledInput
+              span="num"
               label="Starts"
               value={startTime}
               onChangeText={setStartTime}
@@ -1257,6 +1343,7 @@ function AvailabilityManager({
               testID="stay-place-start-time"
             />
             <LabeledInput
+              span="num"
               label="Ends"
               value={endTime}
               onChangeText={setEndTime}
@@ -1265,6 +1352,7 @@ function AvailabilityManager({
             />
             {canManageFinance ? (
               <LabeledInput
+                span="num"
                 label={`Price override${currencyCode ? ` (${currencyCode})` : ""}`}
                 value={overridePrice}
                 onChangeText={setOverridePrice}
@@ -1610,9 +1698,48 @@ const styles = StyleSheet.create({
   cardTitle: { ...typography.h3, color: textTokens.primary },
   helper: { ...typography.bodySm, color: textTokens.secondary },
   label: { ...typography.bodySm, color: textTokens.primary, fontWeight: "700" },
+  // #1501 §1 field anatomy — the helper sits between the LABEL and the INPUT,
+  // never between an input and the next label (that ambiguity is what made the
+  // old stack read as chaos). Capped at the prose measure so it wraps like
+  // prose rather than running the width of a desktop column.
+  fieldHelper: {
+    ...typography.caption,
+    color: textTokens.secondary,
+    maxWidth: stayProseMaxWidth,
+  },
   flex: { flex: 1, minWidth: 0 },
   form: { gap: spacing.md },
-  field: { flex: 1, minWidth: 140, gap: spacing.xs },
+  // ── #1501 §1 — AXIS-SCOPED FIELD MEASURES (I-AXIS-SCOPED-FLEX) ───────────
+  // The deleted `field: { flex: 1, minWidth: 140, gap: spacing.xs }` carried a
+  // flex-axis key and was applied under TWO different `flexDirection` contexts.
+  // In `styles.form` (a column) `flex: 1` told every field to take an equal
+  // share of the container HEIGHT; a field whose input carries `minHeight: 96`
+  // then rendered taller than its allotted box, overflowed its own `View`, and
+  // the next field's label painted on top. Same bug class as #1484's
+  // `flexBasis: 320`. Each entry below is legal under exactly ONE
+  // `flexDirection`, and its NAME says which.
+  //
+  // STACK — column context. NO flex-axis key at all, so nothing can ever
+  // resolve against the cross axis again.
+  fieldStack: { width: "100%", minWidth: 0, gap: spacing.xs },
+  // PAIR — a TEXT field inside `styles.row`. Grows into whatever the numeric
+  // siblings leave behind (`flexBasis: 0` + `flexGrow: 1`).
+  fieldPair: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
+    minWidth: stayFieldPairMinWidth,
+    gap: spacing.xs,
+  },
+  // NUM — a NUMERIC field inside `styles.row`. Fixed basis, never grows: a
+  // quantity box stretched across a desktop column is the defect, not the fix.
+  fieldNum: {
+    flexGrow: 0,
+    flexShrink: 1,
+    flexBasis: stayFieldNumBasis,
+    minWidth: stayFieldNumMinWidth,
+    gap: spacing.xs,
+  },
   input: {
     minHeight: 46,
     borderRadius: radius.md,
@@ -1624,9 +1751,27 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: textTokens.primary,
   },
-  multiline: { minHeight: 92, textAlignVertical: "top" },
+  // PROSE inputs are capped at a readable measure. Without the cap a
+  // description box on a wide desktop column becomes a single unreadable line.
+  multiline: {
+    minHeight: 96,
+    maxWidth: stayProseMaxWidth,
+    textAlignVertical: "top",
+    paddingTop: spacing.sm,
+  },
   inputDisabled: { opacity: 0.55 },
-  twoCol: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  // #1501 §1 — `twoCol` renamed to `row` because it is not always two columns;
+  // it is THE row context, and it is the only place a `fieldPair`/`fieldNum`
+  // measure is legal. `alignItems: "flex-start"` is LOAD-BEARING: RN's default
+  // `stretch` makes every child as tall as the tallest sibling, which is the
+  // second-order version of the same overlap bug.
+  row: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    columnGap: spacing.md,
+    rowGap: spacing.md,
+    alignItems: "flex-start",
+  },
   choices: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   choice: {
     borderRadius: radius.full,

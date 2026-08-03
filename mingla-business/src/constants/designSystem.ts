@@ -105,6 +105,50 @@ export const stayOverviewRowMinWidth = 320 as const;
 // impossibility; that invariant is pinned by the #1484 web-render suite.
 export const stayOverviewGridBasis = "31%" as const;
 
+// ── Issue #1501 [add-rooms-form] — Stay offering EDITOR layout tokens ───────
+// The "Add Rooms or Places" editor gains a form column + a sticky summary rail
+// on wide desktop. Every width the editor and its new shared inputs depend on
+// resolves here so no raw layout number lives in a component (the #1484 /
+// #1501 lesson: an unnamed number is a number nobody can reason about).
+//
+// stayEditorFormMaxWidth — the readable measure of the FORM COLUMN itself.
+//   The page is uncapped once the rail fits; the measure discipline moves onto
+//   the column so "fill the space" never becomes a 1,400pt-wide text input.
+// stayEditorSummaryWidth — the fixed width of the summary rail.
+// stayEditorSummaryMinWidth — the CONTAINER width at or above which the rail
+//   renders. 760 + 32 (columnGap: spacing.xl) + 320 = 1112 needs 1040+ of
+//   container to be worth splitting; below it the summary collapses above the
+//   CTA and nothing is lost, only stacked. This is a CONTAINER query fed by
+//   `onLayout`, NOT a viewport query — the Stay workspace is ~252pt narrower
+//   than the viewport, so a viewport threshold would show a rail that does not
+//   fit.
+// stayProseMaxWidth — the cap on any multi-line PROSE input (description,
+//   cancellation policy). A textarea wider than this is unreadable.
+export const stayEditorFormMaxWidth = 760 as const;
+export const stayEditorSummaryWidth = 320 as const;
+export const stayEditorSummaryMinWidth = 1040 as const;
+export const stayProseMaxWidth = 620 as const;
+
+// #1501 — AXIS-SCOPED field measures (invariant I-AXIS-SCOPED-FLEX). A field
+// that sits inside a `flexDirection: "row"` MUST declare an explicit basis;
+// `flex: 1` on every sibling is not a layout. Numeric fields are FIXED and the
+// text field takes the remainder — never the reverse (SPEC AMENDMENT 1: a
+// four-digit room number needs ~96pt, a prefix like "Garden Suite" needs real
+// room).
+export const stayFieldPairMinWidth = 200 as const;
+export const stayFieldNumBasis = 220 as const;
+export const stayFieldNumMinWidth = 140 as const;
+
+// #1501 SPEC AMENDMENT 1 — the NameBuilder pattern row ("Starts with" / "From"
+// / "To"). The prefix grows, the two numeric fields are fixed-basis.
+export const namePatternPrefixMinWidth = 160 as const;
+export const namePatternNumBasis = 96 as const;
+
+// #1501 §3 — every toggle becomes an OPTION CARD (icon + label + helper +
+// example) rather than a bare pill, so the terminology explains itself.
+export const optionCardMinHeight = 72 as const;
+export const optionCardMinWidth = 240 as const;
+
 export const shadows = {
   sm: {
     shadowColor: "#000",
@@ -319,6 +363,15 @@ export const ariThread = {
 export const androidOpaque = {
   rowFill: ariThread.ariBubbleAndroid,
   rowBorder: "#1f2125",
+  /**
+   * #1501 §9 — the SELECTED option-card / chip fill. Android gets an opaque
+   * composite instead of the translucent `rgba(235,120,37,0.14)` accent tint
+   * (ANDROID_GLASS_USES_OPAQUE_FALLBACK), computed over canvas.discover
+   * #0c0e12 exactly like `rowFill`/`rowBorder` above:
+   *   0.14*(235,120,37) + 0.86*(12,14,18) = (43.2, 28.8, 20.7) -> #2b1d15
+   * The translucent value stays the iOS/web truth; only Android composites.
+   */
+  accentFill: "#2b1d15",
 } as const;
 
 
