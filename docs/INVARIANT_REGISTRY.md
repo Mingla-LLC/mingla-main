@@ -2227,7 +2227,7 @@ Both tests must be visible in `git diff origin/main...HEAD --name-only` for the 
 1. **Skill-layer mandate** in `.claude/skills/mingla-orchestrator/SKILL.md` Step 0.5 (CLOSE protocol) — REJECT CLOSE without both test citations.
 2. **Skill-layer mandate** in `.claude/skills/mingla-tester/SKILL.md` verdict gate — MAXIMUM CONDITIONAL PASS without all three sub-requirements.
 3. **Skill-layer mandate** in `.claude/skills/mingla-implementor/SKILL.md` Post-Flight — 6-step regression-test procedure including `fails-on-revert` verification.
-4. **CI gate (NEW):** `.github/workflows/tests-append-only.yml` runs `.github/scripts/test-append-only-check.js` on every PR. Blocks test-file deletions unconditionally. Blocks test-file modifications-with-deleted-lines unless commit body cites `[TEST-MOD-APPROVED ORCH-NNNN]`. Blocks renames unless commit body cites `[TEST-RENAME-APPROVED ORCH-NNNN]`. New test files always allowed. Additions-only modifications always allowed.
+4. **CI gate (NEW):** `.github/workflows/tests-append-only.yml` runs `.github/scripts/test-append-only-check.js` on every PR. Blocks test-file deletions unconditionally. Blocks test-file modifications-with-deleted-lines unless commit body cites `[TEST-MOD-APPROVED #NNNN]`. Blocks renames unless commit body cites `[TEST-RENAME-APPROVED #NNNN]`. The legacy `ORCH-NNNN` / `META-ORCH-NNNN` lineage forms remain permanently accepted for both tokens (#1495). New test files always allowed. Additions-only modifications always allowed.
 5. **CODEOWNERS (NEW):** `.github/CODEOWNERS` auto-requests Seth's review on every PR touching `**/*.test.*`, `**/*.spec.*`, or `**/__tests__/**`, AND on the append-only gate infrastructure itself.
 6. **Informational warning gate (NEW):** `.github/scripts/strict-grep/regression-test-backfill-warning.mjs` registered as `I-REGRESSION-TEST-BACKFILL-WARN` in the strict-grep workflow — prints a warning listing modified source files without sibling tests; always exits 0 (never blocks). Drives Forward + Opportunistic Backfill.
 
@@ -2239,11 +2239,11 @@ Both tests must be visible in `git diff origin/main...HEAD --name-only` for the 
 
 ### I-TESTS-APPEND-ONLY — test files are append-only at the CI layer (ACTIVE — ratified by ORCH-0840 CLOSE 2026-05-14)
 
-**Rule.** Once a test file lands in the repo, it is immutable. New test files may be added freely. Existing test files may be MODIFIED only if the modification adds lines without deleting any — OR if the latest commit body cites `[TEST-MOD-APPROVED ORCH-NNNN]` with a 4-digit ORCH-ID (optional `-[A-Z]` suffix). Existing test files may be RENAMED only if the latest commit body cites `[TEST-RENAME-APPROVED ORCH-NNNN]`. Existing test files may NEVER be DELETED — there is no override token for deletion.
+**Rule.** Once a test file lands in the repo, it is immutable. New test files may be added freely. Existing test files may be MODIFIED only if the modification adds lines without deleting any — OR if the latest commit body cites `[TEST-MOD-APPROVED #NNNN]` naming this work's GitHub issue number, or a legacy `[TEST-MOD-APPROVED ORCH-NNNN]` / `META-ORCH-NNNN` lineage id (both four or more digits, optional `-[A-Z]` leg suffix). The `#` sigil is REQUIRED on the issue form — a bare number is rejected (#1495). Existing test files may be RENAMED only if the latest commit body cites `[TEST-RENAME-APPROVED #NNNN]`, or the equivalent legacy `ORCH-NNNN` / `META-ORCH-NNNN` form. Existing test files may NEVER be DELETED — there is no override token for deletion.
 
 **Why.** Pragmatic Append-Only stance per operator directive 2026-05-14: a regression test once written is the codebase's proof that a class of bug can't recur. Allowing silent modification or deletion lets the proof evaporate. The override-token grammar exists for the legitimate case where a prior assertion turned out to be wrong — in which case it costs nothing to open a follow-up ORCH explaining why, satisfying audit trail requirements.
 
-**Enforcement.** `.github/workflows/tests-append-only.yml` (required check on PR to `main` and `Seth`). Implementation: `.github/scripts/test-append-only-check.js`. Override grammar (case-sensitive, must appear verbatim in the HEAD commit body): `[TEST-MOD-APPROVED ORCH-NNNN]` (modifications with deletions), `[TEST-RENAME-APPROVED ORCH-NNNN]` (renames). Adv 3 design behavior: tokens in EARLIER commits do not count — they must be in the HEAD commit body so they cannot be smuggled in via merge or rebase from an unreviewed source.
+**Enforcement.** `.github/workflows/tests-append-only.yml` (required check on PR to `main` and `Seth`). Implementation: `.github/scripts/test-append-only-check.js`. Override grammar (case-sensitive, must appear verbatim in the HEAD commit body): `[TEST-MOD-APPROVED #NNNN]` (modifications with deletions), `[TEST-RENAME-APPROVED #NNNN]` (renames), each citing this work's GitHub issue number with the REQUIRED `#` sigil — a bare number is rejected. The legacy `ORCH-NNNN` / `META-ORCH-NNNN` lineage forms (optional `-[A-Z]` suffix) are accepted permanently for both tokens (#1495). Adv 3 design behavior: tokens in EARLIER commits do not count — they must be in the HEAD commit body so they cannot be smuggled in via merge or rebase from an unreviewed source.
 
 **Source:** Operator directive 2026-05-14, ORCH-0840 dispatch + 11-scenario adversarial QA verification, DEC-153.
 
@@ -6884,3 +6884,29 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   legacy-key migration.
 - **Established:** DRAFT 2026-08-03 at issue #1485 IMPLEMENT (tester finding P2-1). Flips ACTIVE at
   CLOSE together with `I-1485-STATIC-ASSET-NEVER-HTML`.
+
+## DRAFT — issue #1495 (test-modification marker grammar accepts the issue number)
+
+### I-1495-TESTMOD-TOKEN-DUAL-GRAMMAR (DRAFT)
+- **Rule:** The append-only override tokens accept TWO permanently-valid citation
+  grammars and no others: the current `#NNNN` GitHub issue number, and the legacy
+  `ORCH-NNNN` / `META-ORCH-NNNN` lineage id (both four-or-more digits, optional
+  `-[A-Z]` leg suffix). The `#` sigil is REQUIRED on the issue form — a bare number
+  is rejected, because the ORCH and issue id spaces overlap in the 1000-1405 band
+  without corresponding, so an unsigilled number cannot be attributed. Legacy
+  acceptance may NEVER be removed: those tokens are embedded in historical commit
+  bodies and history replay must keep working. Every operator-facing message emitted
+  by the gate must spell its placeholder with NON-DIGIT characters (`NNNN`), so
+  pasting CI output into a commit body can never self-authorize a deletion. Whole-file
+  test deletion (status D) remains unconditionally unoverridable by either grammar.
+- **Enforcement:** `.github/workflows/tests-append-only.yml` step "Append-only gate
+  self-test (regression guard)" (no `paths:` filter — runs on every PR) executing
+  `node .github/scripts/test-append-only-check.js --self-test`. No strict-grep gate
+  and no `MANIFEST.json` change (COMMS-0125 / COMMS-0126 rebase hazard).
+- **Regression test:** the 14 grammar cases in `selfTest()` (6 pre-existing legacy
+  cases byte-unchanged + G-1..G-8) and git scenario T4. Reverting either regex to the
+  `ORCH-`-only form turns G-1/G-2/G-6 and T4's `✅ a.test.ts` assertion RED; accepting
+  the bare form turns G-3/G-7 RED; spelling a message placeholder with real digits
+  turns G-5 RED. T1/T2/T3 stay green throughout and prove the legacy grammar and the
+  #1058 whole-range per-file attribution are untouched.
+- **Established:** DRAFT at issue #1495 SPEC 2026-08-03. Flips ACTIVE at CLOSE.

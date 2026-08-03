@@ -11,13 +11,13 @@
  *   - Renamed test files (status R*)           → FAIL unless a commit in the PR
  *                                                range that renames THIS file
  *                                                carries the override token
- *                                                [TEST-RENAME-APPROVED ORCH-####].
+ *                                                [TEST-RENAME-APPROVED #NNNN].
  *   - Modified test files (status M):
  *       - zero deleted lines (additions only)  → ALLOWED.
  *       - any deleted line                     → FAIL unless a commit in the PR
  *                                                range that modifies THIS file
  *                                                carries the override token
- *                                                [TEST-MOD-APPROVED ORCH-####].
+ *                                                [TEST-MOD-APPROVED #NNNN].
  *
  * Per-file, whole-range attribution (#1058): the diff spans the whole PR range,
  * so the token is honored wherever its commit sits in that range — NOT only on
@@ -32,9 +32,15 @@
  *                       the SOLE guard for ordinary test-file integrity.
  * See `fileHasToken` for the mechanism and the accepted, bounded residual.
  *
- * Override tokens MUST cite an ORCH-#### (four or more digits, optional META-
- * prefix, optional -<letter> suffix) so any approved test mutation is traceable to
- * a follow-up ORCH that explains why the prior assertion was wrong.
+ * Override tokens MUST cite the work item — either the GitHub ISSUE number as
+ * #NNNN (Operating Model V2, 2026-07-19: the issue number is the work ID), or a
+ * legacy ORCH-NNNN / META-ORCH-NNNN lineage id (four or more digits, optional
+ * -<letter> suffix) — so any approved test mutation is traceable to a work item
+ * that explains why the prior assertion was wrong. The `#` is REQUIRED on the
+ * issue form; a bare number is REJECTED, because the ORCH and issue id spaces
+ * overlap without corresponding (ORCH-1404 is accept-invite error-parse; issue
+ * #1404 is analytics-warning acknowledgement), so an unsigilled number cannot be
+ * attributed to a work item at all.
  *
  * Scope of test files:
  *   - **\/*.test.* (any extension — ts, tsx, js, mjs, py)
@@ -48,13 +54,16 @@
  *
  * Override token grammar (case-sensitive, must appear verbatim in the body —
  * subject or full body — of a PR-range commit that touches the file):
- *   [TEST-MOD-APPROVED ORCH-NNNN]
- *   [TEST-MOD-APPROVED ORCH-NNNN-A]
- *   [TEST-RENAME-APPROVED ORCH-NNNN]
- * The ORCH cited must also have a bracketed feature/bug label somewhere in
- * the commit body (Rule 0 — ORCH citation rule), e.g.:
- *   [TEST-MOD-APPROVED ORCH-0840]
- *   ORCH-0840 [Regression-test enforcement + append-only CI]
+ *   [TEST-MOD-APPROVED #NNNN]            ← current: the GitHub issue number
+ *   [TEST-MOD-APPROVED ORCH-NNNN]        ← legacy lineage id (accepted forever)
+ *   [TEST-MOD-APPROVED META-ORCH-NNNN]   ← legacy lineage id (accepted forever)
+ *   [TEST-MOD-APPROVED ORCH-NNNN-A]      ← legacy leg suffix (accepted forever)
+ *   [TEST-RENAME-APPROVED #NNNN]         ← same alternation for renames
+ * REJECTED: a bare number — [TEST-MOD-APPROVED 1485]. The `#` is required.
+ * The work item cited must also carry a bracketed feature/bug label somewhere in
+ * the commit body (Rule 0 — citation rule), e.g.:
+ *   [TEST-MOD-APPROVED #1495]
+ *   #1495 [testmod marker grammar]
  *
  * Exit codes:
  *   0 — append-only rules satisfied.
@@ -77,10 +86,15 @@ const TEST_FILE_PATTERNS = [
   /(^|\/)__tests__\//,
 ];
 
-// #1058 (F-3 robustness): \d{4,} (not \d{4}) — issue ids will eventually exceed 4
-// digits; RENAME_TOKEN now carries the same (?:META-)? alternation as MOD_TOKEN.
-const MOD_TOKEN = /\[TEST-MOD-APPROVED (?:META-)?ORCH-\d{4,}(?:-[A-Z])?\]/;
-const RENAME_TOKEN = /\[TEST-RENAME-APPROVED (?:META-)?ORCH-\d{4,}(?:-[A-Z])?\]/;
+// #1058 (F-3 robustness): \d{4,} (not \d{4}) — ids will eventually exceed 4 digits.
+// #1495: the work ID is the GitHub ISSUE number under Operating Model V2 (2026-07-19).
+// Both grammars are permanently accepted: `#NNNN` (current) and the legacy
+// `ORCH-NNNN` / `META-ORCH-NNNN` lineage ids embedded in historical commit bodies.
+// The `#` sigil is REQUIRED on the issue form — a bare number is ambiguous because the
+// ORCH and issue id spaces OVERLAP without corresponding (ORCH-1404 is accept-invite
+// error-parse; issue #1404 is analytics-warning acknowledgement).
+const MOD_TOKEN    = /\[TEST-MOD-APPROVED (?:(?:META-)?ORCH-|#)\d{4,}(?:-[A-Z])?\]/;
+const RENAME_TOKEN = /\[TEST-RENAME-APPROVED (?:(?:META-)?ORCH-|#)\d{4,}(?:-[A-Z])?\]/;
 
 function isTestPath(path) {
   return TEST_FILE_PATTERNS.some((re) => re.test(path));
@@ -248,12 +262,12 @@ function main() {
     if (entry.status === "R") {
       if (fileHasToken(baseRef, [entry.oldPath, entry.path], RENAME_TOKEN)) {
         console.log(
-          `✅ RENAMED    ${entry.oldPath} → ${entry.path} (override token [TEST-RENAME-APPROVED ORCH-####] present in a PR commit that renames this file)`,
+          `✅ RENAMED    ${entry.oldPath} → ${entry.path} (override token [TEST-RENAME-APPROVED #NNNN] — or a legacy ORCH form — present in a PR commit that renames this file)`,
         );
         passes += 1;
       } else {
         console.log(
-          `❌ RENAMED    ${entry.oldPath} → ${entry.path} — test file rename requires override token [TEST-RENAME-APPROVED ORCH-NNNN] in a commit in this PR that renames this file. None found.`,
+          `❌ RENAMED    ${entry.oldPath} → ${entry.path} — test file rename requires override token [TEST-RENAME-APPROVED #NNNN] citing this work's GitHub issue number (the '#' is REQUIRED; a bare number is rejected). Legacy [TEST-RENAME-APPROVED ORCH-NNNN] / [TEST-RENAME-APPROVED META-ORCH-NNNN] remain accepted. The token must sit in a commit in this PR that renames this file. None found.`,
         );
         failures += 1;
       }
@@ -277,12 +291,12 @@ function main() {
         passes += 1;
       } else if (fileHasToken(baseRef, [entry.path], MOD_TOKEN)) {
         console.log(
-          `✅ MODIFIED  ${entry.path} (${deleted} deleted lines; override token [TEST-MOD-APPROVED ORCH-####] present in a PR commit that modifies this file)`,
+          `✅ MODIFIED  ${entry.path} (${deleted} deleted lines; override token [TEST-MOD-APPROVED #NNNN] — or a legacy ORCH form — present in a PR commit that modifies this file)`,
         );
         passes += 1;
       } else {
         console.log(
-          `❌ MODIFIED  ${entry.path} — ${deleted} deleted lines detected. Test file modifications with deletions require override token [TEST-MOD-APPROVED ORCH-NNNN] in a commit in this PR that modifies this file. None found. Either restore the deleted lines (additions are always allowed), or open a follow-up ORCH and cite it as [TEST-MOD-APPROVED ORCH-NNNN] in that commit's body explaining why the prior assertion was wrong.`,
+          `❌ MODIFIED  ${entry.path} — ${deleted} deleted lines detected. Test file modifications with deletions require an override token in a commit in this PR that modifies this file. None found. Write [TEST-MOD-APPROVED #NNNN] citing this work's GitHub issue number — the '#' is REQUIRED and a bare number is rejected, because ORCH-IDs and issue numbers share the 1000-1405 band without corresponding, so an unsigilled number is not traceable. Legacy [TEST-MOD-APPROVED ORCH-NNNN] and [TEST-MOD-APPROVED META-ORCH-NNNN] (optional -A suffix) are accepted forever. Either restore the deleted lines (additions are always allowed), or put the token in that commit's body and explain there why the prior assertion was wrong.`,
         );
         failures += 1;
       }
@@ -344,6 +358,12 @@ function makeTempRepo() {
 }
 
 const APPROVED = "[TEST-MOD-APPROVED ORCH-1058] ORCH-1058 [append-only token whole range]";
+
+// #1495 — the CURRENT grammar: the GitHub issue number is the work ID. Used only by
+// T4. `APPROVED` above stays on the LEGACY ORCH form on purpose: T1/T2/T3 continuing
+// to pass on it is the proof that legacy tokens still work at the git layer, which is
+// a permanent guarantee (they are embedded in historical commit bodies).
+const APPROVED_ISSUE_FORM = "[TEST-MOD-APPROVED #1495] #1495 [testmod marker grammar]";
 
 // T1 (SC-1, false-red fixed): the sanctioning commit (token + a.test.ts deletion)
 // is NOT the tip — a later docs-only commit is. The token must still be honored so
@@ -442,6 +462,39 @@ function scenarioT3() {
   }
 }
 
+// T4 (#1495): the ISSUE-NUMBER token honored end-to-end through git, not merely
+// against the regex. commit1 deletes a line from a.test.ts carrying
+// [TEST-MOD-APPROVED #NNNN]; commit2 (tip) guts b.test.ts with NO token anywhere.
+// a must PASS on the new grammar while b still FAILS — one scenario carrying the
+// whole contract: the new form works through fileHasToken, and widening the grammar
+// did not weaken the guard (a valid sibling token still launders nothing).
+// Fails-on-revert: restoring the ORCH-only regex turns `✅ a.test.ts` RED.
+function scenarioT4() {
+  const { dir, g, write } = makeTempRepo();
+  try {
+    write("a.test.ts", "expect(a).toBe(1);\nexpect(b).toBe(2);\nexpect(c).toBe(3);\n");
+    write("b.test.ts", "expect(x).toBe(1);\nexpect(y).toBe(2);\nexpect(z).toBe(3);\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "base");
+    g("branch", "-M", "main");
+    g("checkout", "-q", "-b", "feature");
+
+    // commit1: sanctioned deletion in a.test.ts, token cites the GitHub ISSUE number
+    write("a.test.ts", "expect(a).toBe(1);\nexpect(c).toBe(3);\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "sanctioned assertion fix", "-m", APPROVED_ISSUE_FORM);
+
+    // commit2 (tip): unsanctioned assertion gutting in b.test.ts, NO token
+    write("b.test.ts", "expect(x).toBe(1);\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "trim b assertions");
+
+    return runCheckIn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 function selfTest() {
   let failures = 0;
   let total = 0;
@@ -459,9 +512,18 @@ function selfTest() {
     { input: "[TEST-MOD-APPROVED META-ORCH-0001-A]", expect: true, label: "regex: META-ORCH with suffix" },
     { input: "[TEST-MOD-APPROVED FOO-0001]", expect: false, label: "regex: wrong prefix" },
     { input: "TEST-MOD-APPROVED ORCH-0840", expect: false, label: "regex: missing brackets" },
+    // --- #1495: the issue-number grammar, alongside the legacy forms above ---
+    { input: "[TEST-MOD-APPROVED #1485]", expect: true, label: "regex: #1495 issue form" },
+    { input: "[TEST-MOD-APPROVED #1485-A]", expect: true, label: "regex: issue form with leg suffix" },
+    { input: "[TEST-MOD-APPROVED 1485]", expect: false, label: "regex: bare number rejected — '#' required" },
+    { input: "[TEST-MOD-APPROVED #148]", expect: false, label: "regex: issue form under 4 digits rejected" },
+    { input: "[TEST-MOD-APPROVED #NNNN]", expect: false, label: "regex: operator-message placeholder is inert (no self-authorization by pasting CI output)" },
+    { input: "[TEST-RENAME-APPROVED #1485]", expect: true, re: RENAME_TOKEN, label: "regex: rename issue form" },
+    { input: "[TEST-RENAME-APPROVED 1485]", expect: false, re: RENAME_TOKEN, label: "regex: rename bare number rejected" },
+    { input: "[TEST-RENAME-APPROVED META-ORCH-0991]", expect: true, re: RENAME_TOKEN, label: "regex: rename legacy META-ORCH preserved" },
   ];
   for (const c of cases) {
-    const got = MOD_TOKEN.test(c.input);
+    const got = (c.re ?? MOD_TOKEN).test(c.input);
     check(got === c.expect, c.label, `input=${JSON.stringify(c.input)} got=${got} expected=${c.expect}`);
   }
 
@@ -492,6 +554,17 @@ function selfTest() {
     t3.status === 1 && t3NamesB && t3PassesA,
     "T3 (tester adversarial): b.test.ts deletions split across TWO commits, token on a THIRD commit touching only a.test.ts — b not laundered across the range",
     `check exited ${t3.status} (expected 1); names b.test.ts=${t3NamesB}; a.test.ts passes=${t3PassesA}`,
+  );
+
+  // T4 (#1495) — the issue-number grammar end-to-end through git + fileHasToken,
+  // proven simultaneously with the guard's protection holding on an untokened file.
+  const t4 = scenarioT4();
+  const t4NamesB = /❌[^\n]*b\.test\.ts/.test(t4.out);
+  const t4PassesA = /✅[^\n]*a\.test\.ts/.test(t4.out);
+  check(
+    t4.status === 1 && t4NamesB && t4PassesA,
+    "T4 (#1495): issue-number token [TEST-MOD-APPROVED #NNNN] honored end-to-end while an untokened b.test.ts deletion stays blocked",
+    `check exited ${t4.status} (expected 1); names b.test.ts=${t4NamesB}; a.test.ts passes=${t4PassesA}`,
   );
 
   console.log("");

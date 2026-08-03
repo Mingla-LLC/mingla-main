@@ -9,9 +9,13 @@ name: Tests Append-Only
 # commit touched; it is honored wherever that commit sits in the PR range,
 # not only on the tip.
 #
-# Override tokens (in a PR-range commit that touches the file):
-#   [TEST-MOD-APPROVED ORCH-NNNN]    — modifications with deleted lines
-#   [TEST-RENAME-APPROVED ORCH-NNNN] — renames
+# Override tokens (in a PR-range commit that touches the file), citing this work's
+# GitHub ISSUE number — the '#' is REQUIRED, a bare number is rejected:
+#   [TEST-MOD-APPROVED #NNNN]    — modifications with deleted lines
+#   [TEST-RENAME-APPROVED #NNNN] — renames
+# The legacy lineage forms [TEST-MOD-APPROVED ORCH-NNNN] / META-ORCH-NNNN (optional
+# -A suffix) are accepted PERMANENTLY — they are embedded in historical commit
+# bodies and history replay must keep working (#1495).
 # Deletions cannot be overridden.
 
 on:
@@ -40,8 +44,8 @@ jobs:
           fetch-depth: 0
           # On pull_request events GitHub Actions defaults to a synthetic
           # merge commit (refs/pull/N/merge) whose body is GitHub-generated
-          # ("Merge xxx into yyy") — that loses any [TEST-MOD-APPROVED
-          # ORCH-NNNN] / [TEST-RENAME-APPROVED ORCH-NNNN] override token the
+          # ("Merge xxx into yyy") — that loses any [TEST-MOD-APPROVED …] /
+          # [TEST-RENAME-APPROVED …] override token the
           # author placed in their real HEAD commit. Pin to the PR head SHA
           # so `git log -1 --pretty=%B` returns the author's commit body.
           # For push events `pull_request.head.sha` is empty and this is a
