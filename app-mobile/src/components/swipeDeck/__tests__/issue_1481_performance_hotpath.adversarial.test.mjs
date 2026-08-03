@@ -9,6 +9,7 @@ const files = Object.fromEntries(await Promise.all(Object.entries({
   historyStore: new URL('../../../store/deckSessionHistoryStore.ts', import.meta.url),
   appHandlers: new URL('../../AppHandlers.tsx', import.meta.url),
   heroPolicy: new URL('../deckHeroPolicy.ts', import.meta.url),
+  stage: new URL('../DeckSwipeStage.tsx', import.meta.url),
 }).map(async ([name, url]) => [name, await readFile(url, 'utf8')])));
 
 const CAP = 200;
@@ -191,7 +192,9 @@ test('the render hot path has a stable two-poster bound and no explicit speculat
   assert.match(swipeable, /recyclingKey=\{src\}/);
   assert.match(swipeable, /allowDownscaling/);
   const behind = swipeable.slice(swipeable.indexOf('Next card is a poster-only'), swipeable.indexOf('{\/\* Current Card \*\/}'));
-  assert.match(behind, /<CardHeroImage/);
+  assert.doesNotMatch(behind, /<CardHeroImage/);
+  assert.match(swipeable, /posterCards=\{\[[\s\S]*id: nextRec\.id[\s\S]*id: currentRec\.id/);
+  assert.match(files.stage, /props\.posterCards\.map\(\(card\)[\s\S]*key=\{card\.id\}[\s\S]*\{card\.poster\}/);
   assert.doesNotMatch(behind, /EventCoverMedia|<CardHero\b/);
   const current = swipeable.slice(swipeable.indexOf('{/* Current Card */}'), swipeable.indexOf('{/* Swipe Buttons */}'));
   assert.match(current, /<PanGestureHandler[\s\S]*key=\{currentRec\.id\}/);

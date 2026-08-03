@@ -6,7 +6,13 @@ import React, {
   useLayoutEffect,
   useRef,
 } from 'react';
-import { AccessibilityInfo } from 'react-native';
+import {
+  AccessibilityInfo,
+  Animated,
+  type StyleProp,
+  View,
+  type ViewStyle,
+} from 'react-native';
 import type { DeckSwipeDirection } from './deckSwipeLifecycle';
 import {
   useDeckSwipeController,
@@ -22,6 +28,15 @@ export interface DeckSwipeStageHandle {
 
 interface DeckSwipeStageProps extends UseDeckSwipeControllerOptions {
   transitionDelayAnnouncement: string;
+  posterCards: {
+    id: string;
+    role: 'current' | 'behind';
+    poster: React.ReactNode;
+  }[];
+  cardStyle: StyleProp<ViewStyle>;
+  nextCardStyle: StyleProp<ViewStyle>;
+  cardInnerStyle: StyleProp<ViewStyle>;
+  imageContainerStyle: StyleProp<ViewStyle>;
   children: (controller: DeckSwipeController) => React.ReactNode;
 }
 
@@ -57,6 +72,44 @@ export const DeckSwipeStage = memo(forwardRef<DeckSwipeStageHandle, DeckSwipeSta
       }
     }, [props.activeCardId, synchronizeActiveCardLayout]);
 
-    return props.children(controller);
+    return (
+      <>
+        {/* Same keyed host/image subtree survives behind -> current promotion. */}
+        {props.posterCards.map((card) => (
+          <Animated.View
+            key={card.id}
+            testID={`deck-poster-resource-${card.id}`}
+            style={[
+              props.cardStyle,
+              card.role === 'behind' ? props.nextCardStyle : null,
+              card.role === 'behind'
+                ? {
+                    zIndex: 0,
+                    elevation: 0,
+                    opacity: controller.previewOpacity,
+                    transform: [{ scale: controller.previewScale }],
+                  }
+                : {
+                    zIndex: 2,
+                    elevation: 2,
+                    transform: [
+                      { translateX: controller.positionX },
+                      { translateY: controller.positionY },
+                      { rotate: controller.rotate },
+                    ],
+                  },
+            ]}
+            pointerEvents="none"
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          >
+            <View style={props.cardInnerStyle}>
+              <View style={props.imageContainerStyle}>{card.poster}</View>
+            </View>
+          </Animated.View>
+        ))}
+        {props.children(controller)}
+      </>
+    );
   },
 ));

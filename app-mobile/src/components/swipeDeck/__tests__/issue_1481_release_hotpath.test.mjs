@@ -10,6 +10,79 @@ const source = Object.fromEntries(await Promise.all(Object.entries({
   history: new URL('../../../store/deckSessionHistoryStore.ts', import.meta.url),
 }).map(async ([key, url]) => [key, await readFile(url, 'utf8')])));
 
+function getCommitBoundary(swipeableSource) {
+  const start = swipeableSource.indexOf('onCommitRequested: (token:');
+  const end = swipeableSource.indexOf('onCommitSettled:', start);
+  assert.ok(start >= 0 && end > start, 'production commit boundary is missing');
+  return swipeableSource.slice(start, end);
+}
+
+function assertTerminalCommitOrdering(swipeableSource) {
+  const commit = getCommitBoundary(swipeableSource);
+  const historyAt = commit.indexOf('appendDeckSessionHistory(card)');
+  const nextAt = commit.indexOf('const nextCardId = availableCards[1]?.id ?? null');
+  const persistAt = commit.indexOf('enqueuePersistenceSnapshot(0, nextRemoved)');
+  const businessAt = commit.indexOf('enqueuePostSwipeWork(async () =>');
+  const visibleRemovalAt = commit.indexOf('setRemovedCards(nextRemoved)');
+  const settlementAt = commit.indexOf('return nextCardId ? { nextCardId } : { exhausted: true }');
+
+  assert.ok(
+    historyAt >= 0 &&
+      nextAt > historyAt &&
+      persistAt > nextAt &&
+      businessAt > persistAt &&
+      visibleRemovalAt > businessAt &&
+      settlementAt > visibleRemovalAt,
+    'terminal card must enqueue history, persistence, and business work before exhaustion',
+  );
+  assert.doesNotMatch(
+    commit.slice(nextAt, persistAt),
+    /if\s*\(\s*!nextCardId\s*\)[\s\S]*?return\s*\{\s*exhausted:\s*true\s*\}/,
+    'terminal early return bypasses persistence and business enqueue',
+  );
+
+  const settledStart = swipeableSource.indexOf('onCommitSettled:');
+  const settled = swipeableSource.slice(
+    settledStart,
+    swipeableSource.indexOf('onPhaseChanged:', settledStart),
+  );
+  assert.match(
+    settled,
+    /if \('exhausted' in settlement\) void flushDeckSessionHistory\(\)/,
+    'terminal settlement must force the durable history flush',
+  );
+}
+
+function assertStablePosterPromotion(swipeableSource, stageSource) {
+  const preview = swipeableSource.slice(
+    swipeableSource.indexOf('Next card is a poster-only'),
+    swipeableSource.indexOf('{/* Current Card */}'),
+  );
+  const current = swipeableSource.slice(
+    swipeableSource.indexOf('{/* Current Card */}'),
+    swipeableSource.indexOf('{/* Swipe Buttons */}'),
+  );
+  const cardHero = swipeableSource.slice(
+    swipeableSource.indexOf('function CardHero({'),
+    swipeableSource.indexOf('/** Map travel mode preference'),
+  );
+
+  assert.match(
+    swipeableSource,
+    /posterCards=\{\[[\s\S]*id: nextRec\.id,[\s\S]*role: 'behind'[\s\S]*id: currentRec\.id,[\s\S]*role: 'current'/,
+    'stage must receive the exact current and behind identities',
+  );
+  assert.match(
+    stageSource,
+    /props\.posterCards\.map\(\(card\)[\s\S]*key=\{card\.id\}[\s\S]*\{card\.poster\}/,
+    'poster host and image must remain below the same card-id key across role promotion',
+  );
+  assert.doesNotMatch(preview, /<CardHeroImage/, 'behind overlay mounted a duplicate poster');
+  assert.doesNotMatch(current, /<CardHeroImage/, 'current overlay mounted a second poster');
+  assert.doesNotMatch(cardHero, /<CardHeroImage/, 'video overlay remounted the stable poster');
+  assert.match(cardHero, /if \(!hasVideoCover\) return null/);
+}
+
 class ReleaseDeckHarness {
   constructor(count) {
     this.cards = Array.from({ length: count }, (_, index) => ({ id: `card-${index}` }));
@@ -18,6 +91,9 @@ class ReleaseDeckHarness {
   admissions = 0;
   commits = 0;
   business = [];
+  persistence = [];
+  history = [];
+  terminalFlushes = 0;
   removed = new Set();
 
   swipe() {
@@ -27,12 +103,15 @@ class ReleaseDeckHarness {
     this.admissions += 1;
     this.phase = 'EXITING';
     this.phase = 'COMMITTING';
+    this.history.push(card.id);
     this.removed.add(card.id);
+    this.persistence.push([...this.removed]);
     this.business.push(card.id);
     this.commits += 1;
     const next = this.cards.find(({ id }) => !this.removed.has(id));
     const settlement = next ? { nextCardId: next.id } : { exhausted: true };
     this.phase = 'IDLE';
+    if ('exhausted' in settlement) this.terminalFlushes += 1;
     return settlement;
   }
 }
@@ -58,10 +137,54 @@ test('terminal card 76 still queues its business work and produces explicit exha
   assert.deepEqual(final, { exhausted: true });
   assert.equal(deck.business.at(-1), 'card-75');
   assert.equal(deck.business.length, 76);
+  assert.equal(deck.history.length, 76);
+  assert.equal(deck.persistence.length, 76);
+  assert.equal(deck.persistence.at(-1).length, 76);
+  assert.equal(deck.terminalFlushes, 1);
   assert.equal(deck.phase, 'IDLE');
 });
 
+test('production terminal ordering guard fails the exact RC2 early-exhaustion mutant', () => {
+  assertTerminalCommitOrdering(source.swipeable);
+  const mutant = source.swipeable.replace(
+    'const nextCardId = availableCards[1]?.id ?? null;',
+    `const nextCardId = availableCards[1]?.id ?? null;
+      if (!nextCardId) return { exhausted: true };`,
+  );
+  assert.notEqual(mutant, source.swipeable, 'synthetic RC2 mutant was not applied');
+  assert.throws(
+    () => assertTerminalCommitOrdering(mutant),
+    /terminal early return bypasses persistence and business enqueue/,
+  );
+});
+
+test('keyed poster promotion preserves one native tree and rejects duplicate-current remount', () => {
+  assertStablePosterPromotion(source.swipeable, source.stage);
+
+  const duplicateCurrentMutant = source.swipeable
+    .replace('function CardHero({\n  images,', 'function CardHero({\n  image,\n  images,')
+    .replace('  style,\n}: {', '  style,\n  decodeTarget,\n}: {')
+    .replace(
+      'if (!hasVideoCover) return null;',
+      'if (!hasVideoCover) return <CardHeroImage uri={image} style={style} decodeTarget={decodeTarget} />;',
+    );
+  assert.notEqual(duplicateCurrentMutant, source.swipeable, 'poster remount mutant was not applied');
+  assert.throws(
+    () => assertStablePosterPromotion(duplicateCurrentMutant, source.stage),
+    /video overlay remounted the stable poster/,
+  );
+
+  const mounts = new Map();
+  const reconcile = (cards) => cards.forEach(({ id }) => {
+    if (!mounts.has(id)) mounts.set(id, 1);
+  });
+  reconcile([{ id: 'a', role: 'current' }, { id: 'b', role: 'behind' }]);
+  reconcile([{ id: 'b', role: 'current' }, { id: 'c', role: 'behind' }]);
+  assert.equal(mounts.get('b'), 1, 'behind-to-current promotion remounted the poster resource');
+});
+
 test('production commit owns an immutable settlement and never waits for successor render acknowledgement', () => {
+  assertTerminalCommitOrdering(source.swipeable);
   assert.match(source.swipeable, /const nextCardId = availableCards\[1\]\?\.id \?\? null/);
   assert.match(source.swipeable, /enqueuePostSwipeWork\([\s\S]*return nextCardId \? \{ nextCardId \} : \{ exhausted: true \}/);
   assert.doesNotMatch(source.swipeable, /acknowledgeActiveCard|pendingCommitRef/);

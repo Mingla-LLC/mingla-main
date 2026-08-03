@@ -176,7 +176,9 @@ test('behind layer is the sole bounded lookahead with zero explicit prefetch', (
     swipeableSource.indexOf('Next card is a poster-only'),
     swipeableSource.indexOf('{/* Current Card */}'),
   );
-  assert.match(preview, /<CardHeroImage/);
+  assert.doesNotMatch(preview, /<CardHeroImage/);
+  assert.match(swipeableSource, /posterCards=\{\[[\s\S]*id: nextRec\.id[\s\S]*id: currentRec\.id/);
+  assert.match(stageSource, /props\.posterCards\.map\(\(card\)[\s\S]*key=\{card\.id\}[\s\S]*\{card\.poster\}/);
   assert.match(preview, /pointerEvents="none"/);
   assert.match(preview, /accessibilityElementsHidden/);
   assert.doesNotMatch(preview, /<CardHero\b|EventCoverMedia|TouchableOpacity/);

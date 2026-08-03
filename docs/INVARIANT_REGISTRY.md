@@ -7107,7 +7107,9 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 ### I-PROPOSED-1481-DECK-PERFORMANCE-BOUND (DRAFT)
 - **Rule:** Explorer steady state is bounded to two raster posters and one active current-card video,
   with no explicit image prefetch/loadAsync; current and behind are the only bounded poster loads
-  using disk-only cache, and remote hero decode long edge is at most 1440 physical pixels. Exact ordered full-card history
+  using disk-only cache. The poster host and native image are keyed by card identity in the shared
+  stage, so behind-to-current promotion reuses that tree and the card overlays may not mount a
+  second poster. Remote hero decode long edge is at most 1440 physical pixels. Exact ordered full-card history
   is owned by its dedicated last-200 store, updates synchronously with card removal, never fans out
   through the persisted global app store or RecommendationsProvider, and persists through a
   generation-stamped 750ms trailing plus five-second maximum-age coalesced/serialized snapshot,

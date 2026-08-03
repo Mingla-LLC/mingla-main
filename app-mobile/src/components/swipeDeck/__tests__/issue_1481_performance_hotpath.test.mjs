@@ -401,7 +401,8 @@ test('current and behind are the only stable bounded poster loads', () => {
     source.swipeable.indexOf('Next card is a poster-only'),
     source.swipeable.indexOf('{/* Current Card */}'),
   );
-  assert.match(preview, /<CardHeroImage/);
+  assert.doesNotMatch(preview, /<CardHeroImage/);
+  assert.match(source.swipeable, /posterCards=\{\[[\s\S]*id: nextRec\.id[\s\S]*id: currentRec\.id/);
   assert.doesNotMatch(preview, /EventCoverMedia|<CardHero\b/);
 });
 

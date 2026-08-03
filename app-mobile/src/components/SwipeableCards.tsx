@@ -384,15 +384,9 @@ const CardHeroImage = React.memo(function CardHeroImage({
  *
  * Decides per card whether it has a cover VIDEO (a `.mp4`/Cloudinary-video URL
  * detected in `images` via `firstVideoUrl`, mirroring the edge `isVideoUrl`):
- *   - still-only venue (no video) → renders ONLY the existing `CardHeroImage`
- *     (ExpoImage) — byte-identical behavior to pre-ORCH-1069 for every still /
- *     event / TM / curated card. Zero regression.
- *   - venue with a `.mp4` cover → renders the still (`image`) as the POSTER layer
- *     behind, then `EventCoverMedia` (muted/looping ambient video) on top. The
- *     still poster prevents a bare hue-band flash before the first video frame
- *     (§4.1.b LOCKED). `EventCoverMedia` has no dedicated poster prop, hence the
- *     behind-layer pattern. If `image` is empty/null, `CardHeroImage` already
- *     falls back to CARD_FALLBACK_IMAGE — the video covers it (no crash, §4.1 edge case).
+ * The memoized DeckSwipeStage owns the stable current/behind poster resource.
+ * This component therefore renders only the optional current-card video layer;
+ * still-only cards return null so promotion cannot mount a second ExpoImage.
  *
  * Perf guard (I-1069-ONE-PLAYING-DECK-VIDEO, §5): only the TOP card plays.
  * `isTopCard` gates BOTH `autoplay` and `playbackActive`; the card behind mounts
@@ -406,12 +400,10 @@ const CardHeroImage = React.memo(function CardHeroImage({
  * swipe/tap gesture. Without this, video-cover cards would be un-swipeable.
  */
 function CardHero({
-  image,
   images,
   title,
   isTopCard,
   style,
-  decodeTarget,
 }: {
   image: string;
   images: string[];
@@ -423,15 +415,10 @@ function CardHero({
   const coverVideoUrl = firstVideoUrl(images);
   const hasVideoCover = coverVideoUrl !== null;
 
-  if (!hasVideoCover) {
-    // Still-only path — unchanged from pre-ORCH-1069.
-    return <CardHeroImage uri={image} style={style} decodeTarget={decodeTarget} />;
-  }
+  if (!hasVideoCover) return null;
 
   return (
     <View style={style}>
-      {/* Poster layer (still) — always behind, prevents bare-band flash. */}
-      <CardHeroImage uri={image} style={StyleSheet.absoluteFill} decodeTarget={decodeTarget} />
       {/* Video layer — pointerEvents="none" so the card stays swipeable/tappable. */}
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
         <EventCoverMedia
@@ -1253,6 +1240,7 @@ export default function SwipeableCards({
 
   // Always use currentCardIndex to track position in the deck
   const currentRec = availableRecommendations[currentCardIndex];
+  const nextRec = availableRecommendations.find((rec) => rec.id !== currentRec?.id) ?? null;
   const isCurrentCardSaved = currentRec ? savedCards.some(
     (s: any) => s?.id === currentRec.id || s === currentRec.id
   ) : false;
@@ -2948,6 +2936,34 @@ export default function SwipeableCards({
             ref={deckStageRef}
             {...deckSwipeStageOptions}
             transitionDelayAnnouncement={t('cards:swipeable.curating_lineup')}
+            posterCards={[
+              ...(nextRec ? [{
+                id: nextRec.id,
+                role: 'behind' as const,
+                poster: (
+                  <CardHeroImage
+                    uri={nextRec.image}
+                    style={styles.cardImage}
+                    decodeTarget={heroDecodeTarget}
+                  />
+                ),
+              }] : []),
+              {
+                id: currentRec.id,
+                role: 'current' as const,
+                poster: (
+                  <CardHeroImage
+                    uri={currentRec.image}
+                    style={styles.cardImage}
+                    decodeTarget={heroDecodeTarget}
+                  />
+                ),
+              },
+            ]}
+            cardStyle={styles.card}
+            nextCardStyle={styles.nextCard}
+            cardInnerStyle={styles.cardInner}
+            imageContainerStyle={[styles.imageContainer, styles.posterImageContainer]}
           >
           {(deckSwipe) => (
           <>
@@ -2962,6 +2978,8 @@ export default function SwipeableCards({
                   style={[
                     styles.card,
                     styles.nextCard,
+                    styles.cardOverlay,
+                    styles.behindCardOverlay,
                     {
                       opacity: deckSwipe.previewOpacity,
                       transform: [{ scale: deckSwipe.previewScale }],
@@ -2973,12 +2991,7 @@ export default function SwipeableCards({
                 >
                   <View style={styles.cardInner}>
                   {/* Hero Image Section */}
-                  <View style={[styles.imageContainer, { backgroundColor: '#1a1a2e' }]}>
-                    <CardHeroImage
-                      uri={nextCard.image}
-                      style={styles.cardImage}
-                      decodeTarget={heroDecodeTarget}
-                    />
+                  <View style={[styles.imageContainer, styles.transparentImageContainer]}>
 
                     {/* ORCH-0589 v2 (G4): premium bottom-fade gradient — darker canvas for title + chips */}
                     <LinearGradient
@@ -3057,6 +3070,7 @@ export default function SwipeableCards({
           <Animated.View
             style={[
               styles.card,
+              styles.cardOverlay,
               {
                 transform: [
                   { translateX: deckSwipe.positionX },
@@ -3196,7 +3210,7 @@ export default function SwipeableCards({
                 <>
                   {/* Hero Image Section - 60-65% of card */}
                   <View
-                    style={[styles.imageContainer, { backgroundColor: '#1a1a2e' }]}
+                    style={[styles.imageContainer, styles.transparentImageContainer]}
                     onLayout={({ nativeEvent }) => {
                       const { width, height } = nativeEvent.layout;
                       if (width !== heroLayout.width || height !== heroLayout.height) {
@@ -3514,6 +3528,17 @@ const styles = StyleSheet.create({
     elevation: 8,
     zIndex: 2,
   },
+  cardOverlay: {
+    backgroundColor: 'transparent',
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    zIndex: 3,
+    elevation: 3,
+  },
+  behindCardOverlay: {
+    zIndex: 1,
+    elevation: 1,
+  },
   // ORCH-0589 v4 (V1): borderRadius matches the outer card so overflow clips cleanly
   // against the bezel-matched corners. `overflow: hidden` needed so the hero photo +
   // cardDetails white strip both clip to the rounded silhouette.
@@ -3535,6 +3560,12 @@ const styles = StyleSheet.create({
   imageContainer: {
     flex: IMAGE_SECTION_RATIO,
     position: "relative",
+  },
+  posterImageContainer: {
+    backgroundColor: '#1a1a2e',
+  },
+  transparentImageContainer: {
+    backgroundColor: 'transparent',
   },
   // ORCH-0589 v3 (R4): full-bleed image, no corner radii.
   cardImage: {
