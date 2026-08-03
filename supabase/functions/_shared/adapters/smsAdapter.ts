@@ -15,13 +15,60 @@
 //
 // ORCH-1227 (DEC-192) — SUPERSEDES the original "DO NOT introduce a new provider
 // — hard guard". The adapter is now DUAL-PROVIDER, country-routed behind the
-// existing region seam: Twilio for US/RoW, Termii for NG. NG transactional sends
-// hit Termii's `dnd` channel (reaches DND-registered numbers, the NCC corporate
-// route); NG marketing sends hit Termii's `generic` channel. Every other country
+// existing region seam: Twilio for US/RoW, Termii for NG. Every other country
 // keeps Twilio unchanged. NG ships text-dark behind SMS_LIVE_ENABLED_NG.
 // Invariant: I-PROPOSED-1227-NG-SMS-VIA-TERMII. The Twilio path MUST keep its
 // MessagingServiceSid usage, the SMS_LIVE_ENABLED_ kill-switch, and the
 // no-raw-`From` discipline — the I-PROPOSED-1161 CI gate still enforces all three.
+//
+// ===========================================================================
+// #1518 (2026-08-03) — INTERIM NG CHANNEL ROUTING. READ BEFORE CHANGING IT.
+// ===========================================================================
+// DEC-192 originally mapped NG transactional → Termii `dnd` and NG marketing →
+// `generic`. THAT MAPPING IS DEAD. Live provider probe against the production
+// Termii account (#1480, 2026-08-03 19:19-19:20 WAT):
+//   - channel "dnd"     → HTTP 400 {"code":400,"message":"Country Inactive.
+//                         Contact Administrator to activate country.",
+//                         "status":"error"}. The DND route was NEVER activated
+//                         on this account; every Delivered row in provider
+//                         history is sms_type: generic.
+//   - channel "generic" → code "ok", message_id 3017857812138224517130997,
+//                         ₦5.00 balance debit, terminal provider status
+//                         "Delivered".
+// Because `messageType` defaults to "transactional", the old mapping sent 100%
+// of Nigerian booking confirmations to the channel that 400s.
+//
+// So BOTH NG message classes now send over `generic`, and NO NG code path emits
+// `dnd`. THIS IS NOT THE INTENDED DESIGN — it is an ACCEPTED OPERATOR DECISION
+// (Seth, 2026-08-03, issue #1518) and it is INTERIM. Three facts a future
+// reader MUST carry, because each is a real cost that was chosen knowingly:
+//
+//   (a) NIGHTLY MTN BLACKOUT. Termii restricts `generic` for Nigerian MTN
+//       numbers 20:00-08:00 WAT. Transactional SMS to MTN recipients WILL FAIL
+//       every night inside that window. Expected behaviour here, not a bug.
+//   (b) DND-REGISTERED RECIPIENTS MAY NEVER BE REACHED. `generic` is NOT the
+//       NCC Do-Not-Disturb corporate route. Recipients on the DND register may
+//       not receive transactional texts at all. Nothing in this file makes NG
+//       transactional reach DND-registered numbers; any comment claiming
+//       otherwise is stale. The honest signal is the `blacklisted` classifier
+//       in termiiSend — it reads provider ERROR STRINGS, never our channel.
+//   (c) THIS KNOWINGLY DEPARTS FROM TERMII'S DOCUMENTED GUIDANCE. Termii's
+//       Messaging API docs state `generic` is for promotional messages and
+//       numbers NOT on DND, and that it "should not be used for OTPs or
+//       transactional content". Mingla carries transactional traffic on it
+//       anyway. Two VERIFIED mitigations bound the blast radius: login /
+//       verification codes do NOT ride this path (`send-otp` uses Twilio
+//       Verify, never Termii), and SMS is never the sole confirmation — the
+//       guest confirmation EMAIL is an independent `notification_outbox`
+//       insert that does not depend on the SMS row succeeding.
+//
+// REVERT CONDITION: when Termii activates the DND route for Nigeria (tracked in
+// #1480 — country activation and DND sender-ID whitelisting are SEPARATE
+// provider steps; note Termii's DND corporate delivery still excludes 9mobile),
+// restore the messageType mapping (transactional → "dnd", marketing →
+// "generic") and revert the invariant + strict-grep gate with it. The DND route
+// remains the correct design; this interim exists only because it is unavailable.
+// ===========================================================================
 import { resolveDeliveryFlagValue } from "../secretBundle.ts";
 import { resolveRuntimeConfigValue } from "../runtimeConfig.ts";
 
@@ -45,10 +92,15 @@ export interface SmsSendInput {
   // approved transactional toll-free TWILIO_MESSAGING_SERVICE_SID. NEVER a raw
   // From number either way (I-PROPOSED-1161-SMS-FROM-APPROVED-SENDER-ONLY).
   messagingServiceSid?: string | null;
-  // ORCH-1227 (DEC-192) — message class for the NG/Termii route. "transactional"
-  // (default) → Termii `dnd` channel (reaches DND-registered NG numbers);
-  // "marketing" → Termii `generic` channel. The Twilio (US/RoW) path IGNORES
-  // this field; reputation isolation there is via `messagingServiceSid`.
+  // ORCH-1227 (DEC-192) — message class for the NG/Termii route.
+  // #1518 INTERIM: this field NO LONGER selects the NG channel. Both
+  // "transactional" (default) and "marketing" send over Termii's `generic`
+  // channel, because `dnd` returns 400 "Country Inactive" (see the #1518 block
+  // at the top of this file). It does NOT mean transactional reaches
+  // DND-registered numbers — it currently cannot. The field is retained because
+  // callers already thread it and because it is the exact attachment point the
+  // #1480 revert re-hangs the `dnd` mapping on. The Twilio (US/RoW) path
+  // IGNORES it; reputation isolation there is via `messagingServiceSid`.
   messageType?: "transactional" | "marketing";
   // ORCH-1282 — MMS media. Publicly-fetchable HTTPS URL(s) Twilio attaches via
   // the `MediaUrl` param (presence promotes the message to MMS). US/Twilio ONLY;
@@ -221,7 +273,11 @@ async function twilioSend(
 //   - POST {TERMII_BASE_URL}/api/sms/send  body { api_key, to, from, sms, type, channel }
 //   - `from` is the env sender id (TERMII_SENDER_ID, NCC-approved "Mingla") — a
 //     lowercase JSON key, NOT a Twilio raw `From` (the 1161 gate forbids that).
-//   - channel: "dnd" (transactional, reaches DND) | "generic" (marketing).
+//   - channel: ALWAYS "generic" for every NG send today. #1518 INTERIM — the
+//     `dnd` arm of this union is UNREACHABLE (no call site passes it) and is
+//     retained ONLY as the #1480 revert target; `dnd` currently returns 400
+//     "Country Inactive". See the #1518 block at the top of this file for the
+//     nightly-MTN, DND-register and provider-guidance trade-offs this carries.
 //   - Success = HTTP 200 with a JSON `message_id` (and/or code:"ok"); map
 //     message_id → sid (providerMessageId upstream). Non-200 or missing
 //     message_id → failed with the response text in `error`. `blacklisted` true
@@ -313,16 +369,18 @@ export const smsAdapter = {
     const segments = computeSegments(body);
 
     // ORCH-1227 (DEC-192) — country-routed dual provider behind the region seam.
-    // NG → Termii (transactional→dnd, marketing→generic); everything else → Twilio.
+    // #1518 INTERIM: NG → Termii on `generic` for BOTH transactional and
+    // marketing. No NG path emits `dnd` (it 400s "Country Inactive"). Accepted
+    // operator decision, NOT the intended design: nightly MTN 20:00-08:00 WAT
+    // blackout, DND-registered recipients may never be reached, and it departs
+    // from Termii's documented guidance for transactional traffic. Full
+    // rationale + revert condition (#1480) in the block at the top of this file.
+    // Everything else → Twilio, unchanged.
     const cc = (input.countryCode ?? "US").toUpperCase();
     await input.beforeProviderIo?.();
     const result = cc === "NG"
       // NG/Termii is SMS-only — media is intentionally NOT passed (ORCH-1282).
-      ? await termiiSend(
-        to,
-        body,
-        input.messageType === "marketing" ? "generic" : "dnd",
-      )
+      ? await termiiSend(to, body, "generic")
       : await twilioSend(to, body, input.messagingServiceSid, input.mediaUrls);
     if (!result.ok || !result.sid) {
       return {
