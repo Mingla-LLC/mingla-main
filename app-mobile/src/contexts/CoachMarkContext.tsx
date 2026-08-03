@@ -70,6 +70,16 @@ const CoachMarkContext = createContext<CoachMarkContextType | undefined>(undefin
 // ── Constants ───────────────────────────────────────────────────────────────
 
 const LOADING_SENTINEL = -2;
+// #1516 (rework): LOCAL-ONLY, NEVER PERSISTED. The step read failed and we do not know
+// where this user is. Distinct from LOADING_SENTINEL because that one LOCKS THE BOTTOM
+// TAB BAR (`CoachMarkNavigationGate` in app/index.tsx sets pointerEvents='none' while
+// isCoachLoading), so parking there on a permanent read failure would leave the user
+// with a dead nav — Constitution #1. Distinct from TOUR_COMPLETED because a failed read
+// is NOT a completed tour. Distinct from TOUR_NOT_STARTED because starting the tour
+// would persist step 1 over an unknown stored value — possibly clobbering a user who is
+// mid-tour or long finished. It renders nothing, concludes nothing, writes nothing, and
+// leaves the row untouched so the next launch reads it cleanly.
+const TOUR_UNAVAILABLE = -3;
 const TOUR_NOT_STARTED = 0;
 // ORCH-1037/1035: tour is 11 steps. TOUR_COMPLETED is COACH_STEP_COUNT + 1 (now 12)
 // and derives automatically — no edit needed here when the count changes.
@@ -93,11 +103,54 @@ const STABLE_TIMEOUT_MS = 1200;
 // self-adjust from COACH_STEP_COUNT — keep it in lockstep with coachMarkSteps.ts.
 const SCROLL_STEPS = new Set([8, 9, 10, 11]);
 
+// ── #1516 [coach mark single process] ───────────────────────────────────────
+// There is exactly ONE coach-mark process. The persisted `profiles.coach_mark_step`
+// grammar is EXACTLY:
+//    -1  TOUR_SKIPPED     — terminal
+//     0  TOUR_NOT_STARTED — pre-start
+//    12  TOUR_COMPLETED   — terminal (= COACH_STEP_COUNT + 1)
+//   1..COACH_STEP_COUNT   — IN PROGRESS; RESUMED verbatim on the next mount
+// No other value is reinterpreted at runtime. Rows written by older, shorter tours
+// were normalized ONCE in the data layer (migration
+// 20270210001516_issue_1516_normalize_coach_mark_step_grammar.sql) — there is no
+// second "legacy" tour and no runtime guess-what-this-number-means path left.
+//
+// LOCAL-ONLY states, never written to the column and never read back from it:
+//   -2  LOADING_SENTINEL  — the read is in flight (locks the bottom nav)
+//   -3  TOUR_UNAVAILABLE  — the read failed after every retry; we know nothing
+
+// #1516 start-race hardening: the first-run delay is anchored PER USER at MODULE
+// scope, so the post-onboarding remount storm (ATT prompt + refreshAllSessions
+// showLoading → the whole authed subtree unmounts and remounts) cannot restart the
+// countdown on every mount. Deliberately never cleared: one entry per signed-in user
+// id per JS runtime, and a surviving anchor only means the tour starts sooner.
+const startDelayAnchorByUserId = new Map<string, number>();
+
+// #1516: the step write must survive the post-onboarding churn. One bounded retry so
+// a transient failure cannot silently lose the user's progress (Constitution #3 — the
+// failure is always surfaced to logs, never swallowed).
+const PERSIST_MAX_ATTEMPTS = 2;
+const PERSIST_RETRY_MS = 800;
+
+// #1516 (rework): the step READ gets the same treatment. The window this issue hardens
+// — the ATT prompt plus refreshAllSessions({ showLoading: true }) plus the profile
+// refetch — is exactly when a transient Supabase read is most likely to fail, so a
+// bounded retry absorbs the blip inside the same session and the user still gets their
+// first-run tour. Only after every attempt fails do we conclude nothing (TOUR_UNAVAILABLE).
+const FETCH_MAX_ATTEMPTS = 3;
+const FETCH_RETRY_MS = 700;
+
 // ── Provider ────────────────────────────────────────────────────────────────
 
 export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, navigateToTab }) => {
   const { user } = useAppStore();
   const insets = useSafeAreaInsets();
+  // #1516: persistStep runs from async callbacks (the start timer, the cross-tab
+  // transition timeout, the retry). If the store's `user` blipped to null inside one of
+  // those windows the write used to early-return and the step was silently lost. This
+  // ref only ever moves forward to a non-empty id, so a queued write stays addressed.
+  const userIdRef = useRef<string | undefined>(user?.id);
+  if (user?.id) userIdRef.current = user.id;
   const [currentStep, setCurrentStep] = useState<number>(LOADING_SENTINEL);
   const [overlayVisible, setOverlayVisible] = useState(false);
   const [scrollLockActive, setScrollLockActive] = useState(false);
@@ -127,8 +180,31 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
   useEffect(() => {
     if (!user?.id) return;
     let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
-    async function fetchStep(): Promise<void> {
+    // #1516 (rework): BOTH read-failure paths used to run `setCurrentStep(TOUR_COMPLETED)`,
+    // which reproduced this issue's exact symptom from a different direction: a fresh user
+    // at step 0 whose read blipped got currentStep = 12, the start-delay effect is gated on
+    // TOUR_NOT_STARTED so it never fired, and they were dropped onto the Home deck with no
+    // coach mark and no record that it never ran. It also re-created in memory the
+    // "12 means two things" ambiguity this issue just removed from the database.
+    // A failed read is now RETRIED, and if it never succeeds it concludes NOTHING.
+    const retryOrGiveUp = (attempt: number, reason: string): void => {
+      console.warn(`[CoachMark] Failed to fetch step (attempt ${attempt}/${FETCH_MAX_ATTEMPTS}): ${reason}`);
+      if (attempt < FETCH_MAX_ATTEMPTS) {
+        retryTimer = setTimeout(() => {
+          if (!cancelled) void fetchStep(attempt + 1);
+        }, FETCH_RETRY_MS);
+        return;
+      }
+      console.warn(
+        '[CoachMark] Step read unavailable after all attempts — holding TOUR_UNAVAILABLE. ' +
+        'The tour is neither started nor cancelled, nothing is written, and the next launch retries.',
+      );
+      setCurrentStep(TOUR_UNAVAILABLE);
+    };
+
+    async function fetchStep(attempt: number): Promise<void> {
       try {
         const { data, error } = await supabase
           .from('profiles')
@@ -138,59 +214,81 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
 
         if (cancelled) return;
         if (error) {
-          console.warn('[CoachMark] Failed to fetch step:', error.message);
-          setCurrentStep(TOUR_COMPLETED);
+          retryOrGiveUp(attempt, error.message);
           return;
         }
         const fetchedStep = data?.coach_mark_step ?? TOUR_NOT_STARTED;
 
-        // ORCH-0635: normalize old-tour values (1..10, old sentinel 11) to new
-        // TOUR_COMPLETED (= COACH_STEP_COUNT + 1 = 9). Users mid-old-tour do NOT
-        // get re-run through the new tour — they already had their first-run moment.
-        // Idempotent: after the first write, fetchedStep === TOUR_COMPLETED and no
-        // further writes fire.
-        let normalizedStep: number;
-        if (
-          fetchedStep !== TOUR_NOT_STARTED &&
-          fetchedStep !== TOUR_SKIPPED &&
-          fetchedStep !== TOUR_COMPLETED &&
-          fetchedStep >= 1
-        ) {
-          normalizedStep = TOUR_COMPLETED;
-          supabase
-            .from('profiles')
-            .update({ coach_mark_step: TOUR_COMPLETED })
-            .eq('id', user!.id)
-            .then(({ error: updateError }) => {
-              if (updateError) {
-                console.warn('[CoachMark] Failed to normalize legacy step:', updateError.message);
-              }
-            });
-        } else {
-          normalizedStep = fetchedStep;
-        }
-
-        setCurrentStep(normalizedStep);
+        // #1516: RESUME the fetched step verbatim. The ORCH-0635 "legacy tour"
+        // normalization branch that used to live here rewrote EVERY value in
+        // 1..COACH_STEP_COUNT to TOUR_COMPLETED on EVERY provider mount — but that is
+        // exactly the range the LIVE tour occupies while in progress, so a real
+        // in-progress tour was indistinguishable from stale data and was destroyed by
+        // the post-onboarding remount. New users were stamped `coach_mark_step = 12`
+        // having never seen a single card. There is only ONE coach-mark process now:
+        // this read never reinterprets, never writes, and never cancels a tour.
+        setCurrentStep(fetchedStep);
       } catch (e) {
-        console.warn('[CoachMark] Unexpected error fetching step:', e);
-        if (!cancelled) setCurrentStep(TOUR_COMPLETED);
+        if (cancelled) return;
+        retryOrGiveUp(attempt, e instanceof Error ? e.message : String(e));
       }
     }
 
-    fetchStep();
-    return () => { cancelled = true; };
+    void fetchStep(1);
+    return () => {
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
   }, [user?.id]);
+
+  // ── Persist step to DB (fire-and-forget, remount-durable) ───────────────
+  // #1516: declared BEFORE the start-delay effect that calls it (the effect lists it in
+  // its dep array, so a later `const` would be a TDZ ReferenceError at render time).
+  // The write is deliberately NOT cancelled on unmount — losing it to the
+  // post-onboarding remount is the exact failure this issue fixes.
+  const persistStep = useCallback((step: number): void => {
+    const userId = userIdRef.current;
+    if (!userId) {
+      console.warn(`[CoachMark] Cannot persist step ${step} — no user id available`);
+      return;
+    }
+    const write = (attempt: number): void => {
+      supabase
+        .from('profiles')
+        .update({ coach_mark_step: step })
+        .eq('id', userId)
+        .then(({ error }) => {
+          if (!error) return;
+          console.warn(`[CoachMark] Failed to persist step ${step} (attempt ${attempt}):`, error.message);
+          if (attempt < PERSIST_MAX_ATTEMPTS) {
+            setTimeout(() => write(attempt + 1), PERSIST_RETRY_MS);
+          }
+        });
+    };
+    write(1);
+  }, []);
 
   // ── Start tour after delay if step is 0 ─────────────────────────────────
   useEffect(() => {
     if (currentStep !== TOUR_NOT_STARTED) return;
+    const userId = user?.id;
+    if (!userId) return;
+
+    // #1516: the delay is anchored the FIRST time this user is observed at
+    // TOUR_NOT_STARTED and survives provider remounts, so the post-onboarding
+    // unmount/remount cycle cannot reset the countdown and defer the tour forever.
+    // A remount after the delay has already elapsed starts the tour immediately.
+    const now = Date.now();
+    const anchor = startDelayAnchorByUserId.get(userId);
+    if (anchor === undefined) startDelayAnchorByUserId.set(userId, now);
+    const remainingMs = Math.max(0, START_DELAY_MS - (now - (anchor ?? now)));
 
     startTimerRef.current = setTimeout(() => {
       navigateToTabRef.current('home');
       setCurrentStep(1);
       persistStep(1);
       setOverlayVisible(true);
-    }, START_DELAY_MS);
+    }, remainingMs);
 
     return () => {
       if (startTimerRef.current) {
@@ -198,9 +296,14 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
         startTimerRef.current = null;
       }
     };
-  }, [currentStep]);
+  }, [currentStep, user?.id, persistStep]);
 
   // ── Show overlay when step becomes active ───────────────────────────────
+  // #1516: this is ALSO the resume path. On a remount, currentStep transitions
+  // LOADING_SENTINEL → the fetched in-progress step, which lands here and re-navigates
+  // to that step's tab and re-shows its overlay (scroll steps 8..11 surface the overlay
+  // via scrollToKnownPosition, including its centered fallback). A resumed in-progress
+  // step therefore always paints — the tour is never left invisible-but-active.
   useEffect(() => {
     if (currentStep >= 1 && currentStep <= COACH_STEP_COUNT) {
       // Navigate to the correct tab
@@ -411,18 +514,6 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
     };
   }, []);
 
-  // ── Persist step to DB (fire-and-forget) ────────────────────────────────
-  const persistStep = useCallback((step: number): void => {
-    if (!user?.id) return;
-    supabase
-      .from('profiles')
-      .update({ coach_mark_step: step })
-      .eq('id', user.id)
-      .then(({ error }) => {
-        if (error) console.warn('[CoachMark] Failed to persist step:', error.message);
-      });
-  }, [user?.id]);
-
   // ── Register scroll ref ─────────────────────────────────────────────────
   const registerScrollRef = useCallback((tabName: string, ref: React.RefObject<any>): void => {
     scrollRefsRef.current.set(tabName, ref);
@@ -528,6 +619,10 @@ export const CoachMarkProvider: React.FC<CoachMarkProviderProps> = ({ children, 
   }, [currentStep, persistStep]);
 
   // ── Derived state ───────────────────────────────────────────────────────
+  // #1516 (rework): TOUR_UNAVAILABLE is deliberately false for ALL THREE of these.
+  // `CoachMarkNavigationGate` (app/index.tsx) locks the bottom tab bar whenever any one
+  // of them is true, so a read failure must not leave the user with a dead nav
+  // (Constitution #1 — no dead taps). It renders nothing and blocks nothing.
   const isCoachActive = currentStep >= 1 && currentStep <= COACH_STEP_COUNT;
   const isCoachPending = currentStep === TOUR_NOT_STARTED;
   const isCoachLoading = currentStep === LOADING_SENTINEL;
