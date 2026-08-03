@@ -127,7 +127,18 @@ const mockState: {
   venue: MockVenue | null;
   brandSlug: string | null;
   isWideDesktop: boolean;
-} = { venue: null, brandSlug: "smokerhythm", isWideDesktop: false };
+  /**
+   * Viewport width. 0 is RN-web's documented "no window" value and is the
+   * default here, so every pre-existing case keeps the WIDE band layout and is
+   * unaffected by the narrow-stack branch.
+   */
+  width: number;
+} = {
+  venue: null,
+  brandSlug: "smokerhythm",
+  isWideDesktop: false,
+  width: 0,
+};
 
 jest.mock("../../../hooks/useVenueListings", () => ({
   __esModule: true,
@@ -156,7 +167,11 @@ jest.mock("../../../hooks/useVenueClaimFeedback", () => ({
 
 jest.mock("../../../hooks/useResponsiveLayout", () => ({
   __esModule: true,
-  useResponsiveLayout: () => ({ isWideDesktop: mockState.isWideDesktop }),
+  useResponsiveLayout: () => ({
+    isWideDesktop: mockState.isWideDesktop,
+    isWeb: true,
+    width: mockState.width,
+  }),
 }));
 
 // ---- external-open owner (ORCH-1381/1382 single owner) --------------------
@@ -262,15 +277,17 @@ jest.mock("../../brand/VenueClaimStatusBanner", () => ({
 import VenueManagementPage from "../../../../app/venue/[venueId]/index";
 
 // react-test-renderer ships no bundled types; CJS-require it the way the #976
-// suites do (proven under this stock config).
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+// suites do (proven under this stock config), against this local shape.
+interface TestNode {
+  type: unknown;
+  props: Record<string, unknown>;
+  parent: TestNode | null;
+  findAll: (predicate: (node: TestNode) => boolean) => TestNode[];
+}
+
 const TestRenderer = require("react-test-renderer") as {
   create: (el: React.ReactElement) => {
-    root: {
-      findAll: (
-        predicate: (node: { type: unknown; props: Record<string, unknown> }) => boolean,
-      ) => Array<{ type: unknown; props: Record<string, unknown> }>;
-    };
+    root: TestNode;
     unmount: () => void;
   };
   act: (cb: () => void | Promise<void>) => void;
@@ -313,13 +330,59 @@ const unmount = (tree: Tree): void => {
  * element and the host element it returns, so an unfiltered lookup double-counts
  * every stub.
  */
-const byTestID = (
-  tree: Tree,
-  testID: string,
-): Array<{ type: unknown; props: Record<string, unknown> }> =>
+const byTestID = (tree: Tree, testID: string): TestNode[] =>
   tree.root.findAll(
     (node) => typeof node.type === "string" && node.props?.testID === testID,
   );
+
+/**
+ * The venue-name Text is the only host node in the band carrying
+ * `numberOfLines={2}` — its PARENT is the text column whose measure the 320pt
+ * defect starved. Returning the column lets a test ask the one structural
+ * question that matters: is the status chip competing for this column's width,
+ * or does the name own the whole thing?
+ */
+const hostParent = (node: TestNode): TestNode => {
+  let cursor = node.parent;
+  // Composite (function-component) instances sit between host nodes; skip them.
+  while (cursor !== null && typeof cursor.type !== "string") {
+    cursor = cursor.parent;
+  }
+  if (cursor === null) throw new Error("no host parent");
+  return cursor;
+};
+
+const nameColumn = (tree: Tree): TestNode => {
+  const nameText = tree.root.findAll(
+    (node) => typeof node.type === "string" && node.props?.numberOfLines === 2,
+  );
+  if (nameText.length !== 1) {
+    throw new Error(`expected exactly one 2-line name, got ${nameText.length}`);
+  }
+  return hostParent(nameText[0]);
+};
+
+/**
+ * Status chips inside a subtree. Host-filtered for the same reason `byTestID`
+ * is: findAll matches the composite AND the host it returns, so an unfiltered
+ * count is always doubled.
+ */
+const chipsInside = (node: TestNode): number =>
+  node.findAll(
+    (n) =>
+      typeof n.type === "string" &&
+      n.props?.testID === "venue-page-status-chip",
+  ).length;
+
+/** The chip's immediate wrapper View — the thing whose flex behaviour decides
+ *  whether the chip can be squeezed into truncating. */
+const chipWrapper = (tree: Tree): TestNode => {
+  const chip = byTestID(tree, "venue-page-status-chip");
+  if (chip.length !== 1) {
+    throw new Error(`expected exactly one status chip, got ${chip.length}`);
+  }
+  return hostParent(chip[0]);
+};
 
 const allText = (tree: Tree): string =>
   tree.root
@@ -335,6 +398,7 @@ describe("#1483 — venue page header + public-page actions", () => {
     mockState.venue = { ...VERIFIED_VENUE };
     mockState.brandSlug = "smokerhythm";
     mockState.isWideDesktop = false;
+    mockState.width = 0;
   });
 
   test("verified venue + brand slug: BOTH controls render in the TopBar right slot", () => {
@@ -455,6 +519,88 @@ describe("#1483 — venue page header + public-page actions", () => {
     expect(text).toContain("Academy Street Bistro");
     expect(text).toContain("Restaurant · London");
     expect(text).toContain("Live on Mingla");
+
+    unmount(tree);
+  });
+
+  // ---------------------------------------------------------------------
+  // #1483 P2 — the 320pt narrow-stack fix.
+  //
+  // At 320pt the three-column band gave the name only 77.9pt (measured in
+  // headless Chromium through react-native-web), which broke "Academy Street
+  // Bistro" MID-WORD as "Academ / y Stre…". The row was never overflowing —
+  // `body` has flex-basis 0% so free space is always positive and flexShrink
+  // on the chip is a no-op — so the only lever is to stop the chip competing
+  // for the same row. Below 375 it stacks INSIDE the text column instead,
+  // which takes the name from 77.9pt to 220pt and leaves the chip at its
+  // natural, never-truncated width.
+  // ---------------------------------------------------------------------
+
+  test("at 320pt the chip stacks INSIDE the name column so the name owns the full measure", () => {
+    mockState.width = 320;
+    const tree = mount();
+
+    // Exactly one chip — stacked, not duplicated.
+    expect(byTestID(tree, "venue-page-status-chip")).toHaveLength(1);
+    // The structural fix: the chip is a DESCENDANT of the name's column, so it
+    // no longer takes width away from it.
+    expect(
+      chipsInside(nameColumn(tree)),
+    ).toBe(1);
+    // The name keeps its two-line clamp.
+    expect(
+      tree.root.findAll(
+        (n) => typeof n.type === "string" && n.props?.numberOfLines === 2,
+      ),
+    ).toHaveLength(1);
+
+    unmount(tree);
+  });
+
+  test("at 320pt the chip wrapper never shrinks, so the chip cannot truncate", () => {
+    mockState.width = 320;
+    const tree = mount();
+
+    // A shrinking wrapper is what would squeeze the single-line chip text into
+    // "Live on Min…" — a worse outcome than the name wrapping. The narrow
+    // wrapper is a plain row that takes the chip's natural width.
+    const wrapper = chipWrapper(tree).props.style as Record<string, unknown>;
+    expect(wrapper.flexShrink).not.toBe(1);
+    expect(wrapper.flexDirection).toBe("row");
+
+    unmount(tree);
+  });
+
+  test("the 375pt boundary is EXCLUSIVE: 374 stacks, 375 is byte-identical to before", () => {
+    mockState.width = 374;
+    const narrow = mount();
+    expect(
+      chipsInside(nameColumn(narrow)),
+    ).toBe(1);
+    unmount(narrow);
+
+    mockState.width = 375;
+    const wide = mount();
+    // Chip back in its own trailing column — NOT inside the name column.
+    expect(
+      chipsInside(nameColumn(wide)),
+    ).toBe(0);
+    expect(byTestID(wide, "venue-page-status-chip")).toHaveLength(1);
+    // And that trailing column is the non-shrinking one.
+    expect(
+      (chipWrapper(wide).props.style as Record<string, unknown>).flexShrink,
+    ).toBe(0);
+    unmount(wide);
+  });
+
+  test("width 0 (SSR / headless, RN-web's no-window value) renders the WIDE band", () => {
+    mockState.width = 0;
+    const tree = mount();
+
+    // A server render must match every shipping device, not the 320 fallback.
+    expect(
+      chipsInside(nameColumn(tree)),
+    ).toBe(0);
 
     unmount(tree);
   });

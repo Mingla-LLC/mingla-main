@@ -26,6 +26,7 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
 import type { VenueListing } from "../../services/venueListingsService";
 import type { VenueCategory } from "../../types/brand";
 import type { ListingStatusView } from "../../utils/listingStatus";
@@ -33,6 +34,32 @@ import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { ListingStatusChip } from "./ListingStatusChip";
 
 const COVER_SIZE = 52;
+
+/**
+ * Viewport width (exclusive) below which the chip drops out of the trailing
+ * column and stacks above the name inside the text column.
+ *
+ * MEASURED, not guessed — the real react-native-web flex layout in headless
+ * Chromium, `Academy Street Bistro` + a "Live on Mingla" chip:
+ *
+ *   viewport   name column   chip column
+ *      320        77.9pt        126.1pt   <- breaks mid-word: "Academ / y Stre…"
+ *      375       132.9pt        126.1pt   <- fits on two lines
+ *      414       171.9pt        126.1pt
+ *
+ * The row is NOT overflowing at 320 — `body` has `flex: 1` (flex-basis 0%), so
+ * free space is always POSITIVE and `flexShrink` on the chip never engages.
+ * (Verified: adding `flexShrink: 1` to `chipWrap` reproduces 77.9 / 132.9 /
+ * 171.9 byte-for-byte — it is a no-op, and it could only ever help by
+ * truncating the chip, which is a worse outcome than wrapping the name.) The
+ * name column is simply what remains after a fixed-content-width chip, so the
+ * only real lever is to stop competing for the same row.
+ *
+ * 375 is the narrowest current-generation phone, so this branch is dead on
+ * every shipping device and the common case is untouched. The boundary is
+ * EXCLUSIVE: at exactly 375 the layout is byte-identical to before.
+ */
+export const NARROW_STACK_MAX_WIDTH = 375;
 
 /** Deterministic no-media hue (the established app-wide treatment). */
 const hashHueFromString = (s: string): number => {
@@ -67,6 +94,12 @@ export function VenueIdentityBand({
   status,
   testID,
 }: VenueIdentityBandProps): React.ReactElement {
+  // SSR / headless safety mirrors useResponsiveLayout's own contract: RN-web
+  // reports width 0 when there is no window, and 0 must fall through to the
+  // WIDE layout so a server render matches every shipping device.
+  const { width } = useResponsiveLayout();
+  const isNarrow = width > 0 && width < NARROW_STACK_MAX_WIDTH;
+
   const categoryLabel = CATEGORY_LABEL[venue.venueCategory];
   const city = venue.city;
   // Constitution #9 — no fabricated data: a venue with no city shows the
@@ -91,6 +124,15 @@ export function VenueIdentityBand({
         />
       </View>
       <View style={styles.body}>
+        {/* Narrow: chip-first inside the text column, the same anatomy
+            VenueListCard uses (chip → title → address). It keeps its natural
+            width here, so it NEVER truncates, and the name gets the whole
+            column instead of ~78pt. */}
+        {isNarrow ? (
+          <View style={styles.chipRowNarrow}>
+            <ListingStatusChip status={status} testID="venue-page-status-chip" />
+          </View>
+        ) : null}
         <Text style={styles.name} numberOfLines={2}>
           {venue.name}
         </Text>
@@ -98,9 +140,11 @@ export function VenueIdentityBand({
           {secondaryLine}
         </Text>
       </View>
-      <View style={styles.chipWrap}>
-        <ListingStatusChip status={status} testID="venue-page-status-chip" />
-      </View>
+      {isNarrow ? null : (
+        <View style={styles.chipWrap}>
+          <ListingStatusChip status={status} testID="venue-page-status-chip" />
+        </View>
+      )}
     </View>
   );
 }
@@ -142,6 +186,12 @@ const styles = StyleSheet.create({
   },
   chipWrap: {
     flexShrink: 0,
+  },
+  // Token-for-token VenueListCard's `chipRow` (flexDirection row + a 4pt gap
+  // under the chip), so the narrow band reads as the same object as the card.
+  chipRowNarrow: {
+    flexDirection: "row",
+    marginBottom: spacing.xs,
   },
 });
 
