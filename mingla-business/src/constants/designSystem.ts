@@ -154,12 +154,6 @@ export const stayFieldPairMinWidth = 200 as const;
 // design ever wanted.
 export const stayFieldNumMaxWidth = 220 as const;
 
-// [TRANSITIONAL] `stayFieldNumBasis` — retained ONLY because #1501's tester
-// suite (`stayEditorAdversarial.issue1501.render.test.tsx`) imports this name,
-// and deleting the export would break that suite's COMPILE rather than just its
-// assertions. Exit condition: remove once that suite's axis/pair baselines are
-// updated for the P2-1/P2-2 fixes.
-export const stayFieldNumBasis = stayFieldNumMaxWidth;
 
 // Lowered 140 -> 112 with the P2-2 fix. `flexWrap` clamps the hypothetical main
 // size by `minWidth`, so a 140 floor would still have wrapped the pair on a
