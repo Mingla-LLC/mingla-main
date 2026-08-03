@@ -20,6 +20,7 @@ import {
   DeckSwipePhase,
   deckCommitTokenKey,
   isCurrentDeckCompletion,
+  nextDeckGestureEpoch,
 } from './deckSwipeLifecycle';
 
 export const DECK_EXIT_MS = 200;
@@ -43,7 +44,7 @@ interface UseDeckSwipeControllerOptions {
   activeCardId: string | null;
   screenWidth: number;
   reducedMotion: boolean;
-  onSwipeValidated: (direction: DeckSwipeDirection) => boolean;
+  onSwipeValidated: (token: DeckSwipeCommitToken) => boolean;
   onSwipeRejectedCentered: (direction: DeckSwipeDirection) => void;
   onCommitRequested: (token: DeckSwipeCommitToken) => void;
   onExpandValidated: () => boolean;
@@ -99,7 +100,9 @@ export function useDeckSwipeController(
   const transitionStartedAtRef = useRef(0);
   const pendingCommitRef = useRef<DeckSwipeCommitToken | null>(null);
   const latestEndYRef = useRef(0);
-  const requestedCommitKeysRef = useRef(new Set<string>());
+  // One slot is sufficient because every admission gets a fresh epoch and
+  // completion validity is checked before replay detection.
+  const lastRequestedCommitKeyRef = useRef<string | null>(null);
   const countersRef = useRef<DeckSwipeCounters>({
     admitted: 0,
     rejected: 0,
@@ -197,12 +200,12 @@ export function useDeckSwipeController(
   const beginExit = useCallback((direction: DeckSwipeDirection): boolean => {
     const cardId = activeCardIdRef.current;
     if (!cardId || phaseRef.current !== 'DRAGGING') return false;
-    if (!optionsRef.current.onSwipeValidated(direction)) {
+    const token: DeckSwipeCommitToken = { cardId, direction, epoch: epochRef.current };
+    if (!optionsRef.current.onSwipeValidated(token)) {
       animateToCenter(() => optionsRef.current.onSwipeRejectedCentered(direction));
       return false;
     }
 
-    const token: DeckSwipeCommitToken = { cardId, direction, epoch: epochRef.current };
     pendingCommitRef.current = token;
     setPhase('EXITING');
     startTransitionTimers();
@@ -235,7 +238,12 @@ export function useDeckSwipeController(
         currentCardId: activeCardIdRef.current,
       });
       if (!valid) {
-        if (mountedRef.current && token.epoch === epochRef.current) {
+        if (
+          mountedRef.current &&
+          token.epoch === epochRef.current &&
+          token.cardId === activeCardIdRef.current &&
+          phaseRef.current === 'EXITING'
+        ) {
           countersRef.current.stale += 1;
           optionsRef.current.onAnomaly({
             reason: 'stale_completion_ignored',
@@ -248,7 +256,7 @@ export function useDeckSwipeController(
       }
 
       const tokenKey = deckCommitTokenKey(token);
-      if (requestedCommitKeysRef.current.has(tokenKey)) {
+      if (lastRequestedCommitKeyRef.current === tokenKey) {
         optionsRef.current.onAnomaly({
           reason: 'duplicate_commit_blocked',
           phase: phaseRef.current,
@@ -256,7 +264,7 @@ export function useDeckSwipeController(
         });
         return;
       }
-      requestedCommitKeysRef.current.add(tokenKey);
+      lastRequestedCommitKeyRef.current = tokenKey;
       activeAnimationRef.current = null;
       setPhase('COMMITTING');
       countersRef.current.committed += 1;
@@ -286,6 +294,7 @@ export function useDeckSwipeController(
         return;
       }
       countersRef.current.admitted += 1;
+      epochRef.current = nextDeckGestureEpoch(epochRef.current);
       setPhase('DRAGGING');
       return;
     }
@@ -321,6 +330,7 @@ export function useDeckSwipeController(
       return false;
     }
     countersRef.current.admitted += 1;
+    epochRef.current = nextDeckGestureEpoch(epochRef.current);
     latestEndYRef.current = 0;
     setPhase('DRAGGING');
     return beginExit(direction);

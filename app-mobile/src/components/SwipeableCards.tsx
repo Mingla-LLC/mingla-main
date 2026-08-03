@@ -136,7 +136,6 @@ import {
 } from "../utils/swipeCommit";
 import {
   DeckSwipeCommitToken,
-  DeckSwipeDirection,
 } from './swipeDeck/deckSwipeLifecycle';
 import {
   DECK_PREFETCH_CACHE_POLICY,
@@ -1066,7 +1065,8 @@ export default function SwipeableCards({
     token: DeckSwipeCommitToken;
     card: Recommendation;
   } | null>(null);
-  const committedTokenKeysRef = useRef(new Set<string>());
+  const latestValidatedSwipeEpochRef = useRef(0);
+  const lastCommittedTokenKeyRef = useRef<string | null>(null);
   const pendingAccessibilityFocusRef = useRef(false);
   const promotedCardIdRef = useRef<string | null>(null);
   const cardAccessibilityRef = useRef<View | null>(null);
@@ -1397,16 +1397,20 @@ export default function SwipeableCards({
     activeCardId: currentRec?.id ?? null,
     screenWidth: SCREEN_WIDTH,
     reducedMotion,
-    onSwipeValidated: (direction: DeckSwipeDirection): boolean => {
+    onSwipeValidated: (token: DeckSwipeCommitToken): boolean => {
       const availableCards = recommendationsRef.current.filter(
         (rec) =>
           !removedCardsRef.current.has(rec.id) &&
           !removedCardIdsRef.current.includes(rec.id),
       );
       const card = availableCards[currentCardIndexRef.current];
-      if (!card) return false;
       if (
-        direction === 'right' &&
+        !card ||
+        card.id !== token.cardId ||
+        token.epoch <= latestValidatedSwipeEpochRef.current
+      ) return false;
+      if (
+        token.direction === 'right' &&
         (card as { cardType?: unknown }).cardType === 'curated' &&
         !canAccessRef.current('curated_cards')
       ) {
@@ -1414,6 +1418,9 @@ export default function SwipeableCards({
         HapticFeedback.medium();
         return false;
       }
+      latestValidatedSwipeEpochRef.current = token.epoch;
+      if (token.direction === 'right') HapticFeedback.cardLike();
+      else HapticFeedback.cardDislike();
       return true;
     },
     onSwipeRejectedCentered: (): void => {
@@ -1424,7 +1431,10 @@ export default function SwipeableCards({
     },
     onCommitRequested: (token: DeckSwipeCommitToken): void => {
       const tokenKey = `${token.epoch}:${token.cardId}:${token.direction}`;
-      if (committedTokenKeysRef.current.has(tokenKey)) {
+      if (
+        token.epoch !== latestValidatedSwipeEpochRef.current ||
+        lastCommittedTokenKeyRef.current === tokenKey
+      ) {
         reportDeckAnomaly('duplicate_commit_blocked', 'COMMITTING', 0);
         return;
       }
@@ -1438,9 +1448,7 @@ export default function SwipeableCards({
         reportDeckAnomaly('stale_completion_ignored', 'COMMITTING', 0);
         return;
       }
-      committedTokenKeysRef.current.add(tokenKey);
-      if (token.direction === 'right') HapticFeedback.cardLike();
-      else HapticFeedback.cardDislike();
+      lastCommittedTokenKeyRef.current = tokenKey;
       const nextRemoved = new Set(removedCardsRef.current);
       nextRemoved.add(card.id);
       removedCardsRef.current = nextRemoved;
@@ -3080,7 +3088,6 @@ export default function SwipeableCards({
                   );
                   if (!accepted) pendingAccessibilityFocusRef.current = false;
                 } else if (action === 'expand' && deckSwipe.phase === 'IDLE') {
-                  HapticFeedback.medium();
                   deckSwipe.requestTapExpand();
                 }
               }}

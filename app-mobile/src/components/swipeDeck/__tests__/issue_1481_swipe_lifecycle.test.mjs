@@ -6,6 +6,7 @@ import {
   canAdmitDeckInput,
   deckCommitTokenKey,
   isCurrentDeckCompletion,
+  nextDeckGestureEpoch,
 } from '../deckSwipeLifecycle.ts';
 import {
   DECK_HERO_MAX_LONG_EDGE_PX,
@@ -78,6 +79,35 @@ test('commit identity is stable and direction-specific', () => {
   assert.notEqual(right, deckCommitTokenKey({ cardId: 'card-a', direction: 'left', epoch: 5 }));
 });
 
+test('same-card same-direction rollback retry gets a fresh identity and old replay stays inert', () => {
+  const firstEpoch = nextDeckGestureEpoch(4);
+  const retryEpoch = nextDeckGestureEpoch(firstEpoch);
+  const first = { cardId: 'card-a', direction: 'right', epoch: firstEpoch };
+  const retry = { cardId: 'card-a', direction: 'right', epoch: retryEpoch };
+
+  assert.equal(firstEpoch, 5);
+  assert.equal(retryEpoch, 6);
+  assert.notEqual(deckCommitTokenKey(first), deckCommitTokenKey(retry));
+  assert.equal(isCurrentDeckCompletion({
+    finished: true,
+    mounted: true,
+    phase: 'EXITING',
+    expectedEpoch: first.epoch,
+    currentEpoch: retry.epoch,
+    expectedCardId: first.cardId,
+    currentCardId: retry.cardId,
+  }), false, 'replayed completion from the rolled-back attempt is stale');
+  assert.equal(isCurrentDeckCompletion({
+    finished: true,
+    mounted: true,
+    phase: 'EXITING',
+    expectedEpoch: retry.epoch,
+    currentEpoch: retry.epoch,
+    expectedCardId: retry.cardId,
+    currentCardId: retry.cardId,
+  }), true, 'new admitted retry remains valid');
+});
+
 test('production deck has one native-driver owner and no forbidden competing primitive', () => {
   assertSingleOwnerSource(swipeableSource, controllerSource);
   assert.match(controllerSource, /DECK_EXIT_MS = 200/);
@@ -85,6 +115,15 @@ test('production deck has one native-driver owner and no forbidden competing pri
   assert.match(controllerSource, /Easing\.bezier\(0\.22, 1, 0\.36, 1\)/);
   assert.match(controllerSource, /isCurrentDeckCompletion\(\{\s*finished,/);
   assert.match(controllerSource, /setPhase\('COMMITTING'\)[\s\S]*onCommitRequested/);
+  assert.equal(
+    (controllerSource.match(/epochRef\.current = nextDeckGestureEpoch\(epochRef\.current\)/g) ?? []).length,
+    2,
+    'native Pan and accessibility swipe admission must each allocate a generation',
+  );
+  assert.match(controllerSource, /lastRequestedCommitKeyRef = useRef<string \| null>\(null\)/);
+  assert.doesNotMatch(controllerSource, /requestedCommitKeysRef|new Set<string>\(\)/);
+  assert.match(swipeableSource, /lastCommittedTokenKeyRef = useRef<string \| null>\(null\)/);
+  assert.doesNotMatch(swipeableSource, /committedTokenKeysRef/);
 });
 
 test('single-owner source guard detects the reverted competing responder', () => {
@@ -133,15 +172,49 @@ test('commit acknowledgement precedes persistence and deferred business work', (
   assert.match(swipeableSource, /pendingPersistenceRef\.current = \{/);
   assert.match(swipeableSource, /InteractionManager\.runAfterInteractions/);
   assert.match(swipeableSource, /}, 250\);/);
+  const validationBoundary = swipeableSource.slice(
+    swipeableSource.indexOf('onSwipeValidated: (token:'),
+    swipeableSource.indexOf('onSwipeRejectedCentered:', swipeableSource.indexOf('onSwipeValidated: (token:')),
+  );
+  const epochCheckAt = validationBoundary.indexOf('token.epoch <= latestValidatedSwipeEpochRef.current');
+  const accessCheckAt = validationBoundary.indexOf("!canAccessRef.current('curated_cards')");
+  const rememberAt = validationBoundary.indexOf('latestValidatedSwipeEpochRef.current = token.epoch');
+  const hapticAt = validationBoundary.indexOf('HapticFeedback.cardLike()');
+  const acceptAt = validationBoundary.lastIndexOf('return true');
+  assert.ok(
+    epochCheckAt >= 0 && accessCheckAt > epochCheckAt && rememberAt > accessCheckAt &&
+      hapticAt > rememberAt && acceptAt > hapticAt,
+    'Save/Pass haptic follows card/access/epoch validation and immediately precedes exit admission',
+  );
+  assert.match(validationBoundary, /HapticFeedback\.medium\(\)[\s\S]*return false/);
+
+  const controllerExit = controllerSource.slice(
+    controllerSource.indexOf('const beginExit ='),
+    controllerSource.indexOf('const onGestureEvent ='),
+  );
+  assert.ok(
+    controllerExit.indexOf('onSwipeValidated(token)') <
+      controllerExit.indexOf("setPhase('EXITING')"),
+  );
+
   const commitBoundary = swipeableSource.slice(
     swipeableSource.indexOf('onCommitRequested: (token:'),
     swipeableSource.indexOf('onExpandValidated:', swipeableSource.indexOf('onCommitRequested: (token:')),
   );
-  assert.ok(
-    commitBoundary.indexOf('committedTokenKeysRef.current.add(tokenKey)') <
-      commitBoundary.indexOf('HapticFeedback.cardLike()'),
-    'commit haptic must occur only after the unique current token is accepted',
+  assert.doesNotMatch(commitBoundary, /HapticFeedback\.(cardLike|cardDislike|medium)/);
+  assert.match(commitBoundary, /token\.epoch !== latestValidatedSwipeEpochRef\.current/);
+
+  const accessibilityBoundary = swipeableSource.slice(
+    swipeableSource.indexOf('onAccessibilityAction={(event)'),
+    swipeableSource.indexOf('onLayout={() =>', swipeableSource.indexOf('onAccessibilityAction={(event)')),
   );
+  assert.match(accessibilityBoundary, /requestTapExpand\(\)/);
+  assert.doesNotMatch(accessibilityBoundary, /HapticFeedback\.medium/);
+  const expandValidation = swipeableSource.slice(
+    swipeableSource.indexOf('onExpandValidated:'),
+    swipeableSource.indexOf('onExpandRequested:', swipeableSource.indexOf('onExpandValidated:')),
+  );
+  assert.match(expandValidation, /HapticFeedback\.medium\(\)/);
 });
 
 test('issue workflow requires both exact append-only guards on Node 22', () => {

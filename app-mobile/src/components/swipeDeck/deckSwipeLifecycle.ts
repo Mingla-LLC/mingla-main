@@ -46,3 +46,8 @@ export function isCurrentDeckCompletion(guard: DeckSwipeCompletionGuard): boolea
 export function deckCommitTokenKey(token: DeckSwipeCommitToken): string {
   return `${token.epoch}:${token.cardId}:${token.direction}`;
 }
+
+/** Every admitted pan/swipe receives a fresh identity, even for the same card. */
+export function nextDeckGestureEpoch(currentEpoch: number): number {
+  return currentEpoch + 1;
+}
