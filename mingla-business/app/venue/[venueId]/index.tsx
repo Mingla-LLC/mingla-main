@@ -3,9 +3,19 @@
  * PAGE. Pushed from the Hub venue card list; everything on screen is scoped
  * to ONE `venue_listings` row.
  *
- * Header (DESIGN §5.2): back chevron ("Back to your venues") + venue name
- * (h3, truncates) + the shared ListingStatusChip (never truncates). No venue
- * switcher — back-only switching, zero wrong-venue writes.
+ * Header (#1483, superseding DESIGN §5.2's hand-rolled row): TWO bands, the
+ * same split every other detail page uses (`app/event/[id]/index.tsx`).
+ *   Band 1 — the shared `TopBar` (`leftKind="back"`), section title
+ *            "Stay"/"Venue", page actions in `rightSlot`.
+ *   Band 2 — `VenueIdentityBand`: cover + venue name (2 lines) + category·city
+ *            + the shared ListingStatusChip (never truncates).
+ * No venue switcher — back-only switching, zero wrong-venue writes.
+ *
+ * `rightSlot` actions (#1483) are HIDDEN, never disabled, unless the venue is
+ * publicly reachable: `venue_public_view` is defined `WHERE claim_status =
+ * 'verified'`, so every other claim state 404s on the public page. Same shape
+ * as `buildOfferingManageActions` dropping a row when its handler is
+ * undefined.
  *
  * LOCKED DECISION 5 consequence (DESIGN §5.4): `venueSuiteStore`
  * activate()/deactivate() lives HERE now (moved from the Hub tab). On native
@@ -23,35 +33,49 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Pressable,
+  Platform,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ArrowLeft } from "lucide-react-native";
 
 import { VenueClaimFeedbackSheet } from "../../../src/components/brand/VenueClaimFeedbackSheet";
 import { VenueClaimStatusBanner } from "../../../src/components/brand/VenueClaimStatusBanner";
 import { StaySuiteShell } from "../../../src/components/stay/StaySuiteShell";
-import { ListingStatusChip } from "../../../src/components/venue/ListingStatusChip";
+import { VenueIdentityBand } from "../../../src/components/venue/VenueIdentityBand";
 import { VenueModulePillRow } from "../../../src/components/venue/VenueModulePillRow";
 import { VenueSuiteShell } from "../../../src/components/venue/VenueSuiteShell";
 import { Button } from "../../../src/components/ui/Button";
+import { IconChrome } from "../../../src/components/ui/IconChrome";
+import { ShareModal } from "../../../src/components/ui/ShareModal";
 import { Toast } from "../../../src/components/ui/Toast";
+import { TopBar } from "../../../src/components/ui/TopBar";
 import {
   canvas,
   spacing,
   text as textTokens,
   typography,
 } from "../../../src/constants/designSystem";
+import {
+  venuePublicPath,
+  venuePublicUrl,
+} from "../../../src/constants/publicUrls";
 import { useAuth } from "../../../src/context/AuthContext";
 import { useVenuePipelineState } from "../../../src/hooks/useBrandPlacePipelineState";
 import { useBrand } from "../../../src/hooks/useBrands";
 import { useResponsiveLayout } from "../../../src/hooks/useResponsiveLayout";
 import { useVenueClaimOpenCount } from "../../../src/hooks/useVenueClaimFeedback";
 import { useVenueListing } from "../../../src/hooks/useVenueListings";
+// #1483 — THE ONE OWNER of "open an external destination" inside
+// mingla-business (I-PROPOSED-1381-OPEN-EXTERNAL-SINGLE-OWNER, gate
+// `.github/scripts/strict-grep/orch-1381-open-external-no-double-nav.mjs`).
+// It opens with a BARE `window.open(dest, "_blank")` then severs
+// `win.opener = null`: a `noopener`/`noreferrer` feature string makes open()
+// return null EVEN ON SUCCESS, so an inline re-roll would either double-
+// navigate or turn a genuinely blocked popup into a dead tap (Constitution #1).
+import { openExternal } from "../../../src/services/guestFunnelLink";
 import { useVenueSuiteStore } from "../../../src/store/venueSuiteStore";
 import { listingStatusView } from "../../../src/utils/listingStatus";
 
@@ -106,6 +130,33 @@ export default function VenueManagementPage(): React.ReactElement {
     else router.replace("/(tabs)/hub/listing" as never);
   }, [router]);
 
+  // ----- public-page actions (#1483) -----
+  // `venue_public_view` is defined `WHERE claim_status = 'verified'`, so any
+  // other claim state renders PublicVenueNotFound. The controls are therefore
+  // HIDDEN (never disabled) unless the page really exists. The slug clauses are
+  // the PublicUrlError guard — `venuePublicUrl`/`venuePublicPath` throw on an
+  // empty segment, which would white-screen this page at render time.
+  const brandSlug = brand?.slug ?? null;
+  const venueSlug = venue?.slug ?? null;
+  const canShowPublic =
+    venue?.claimStatus === "verified" &&
+    brandSlug !== null &&
+    brandSlug.length > 0 &&
+    venueSlug !== null &&
+    venueSlug.length > 0;
+  const [shareVisible, setShareVisible] = useState<boolean>(false);
+
+  // D1 — in-app on native (the public page is a route in this same app), new
+  // browser tab on desktop web (the operator keeps the manager open).
+  const handleViewPublic = useCallback((): void => {
+    if (brandSlug === null || venueSlug === null) return;
+    if (Platform.OS === "web") {
+      openExternal(venuePublicUrl({ brandSlug, venueSlug }));
+    } else {
+      router.push(venuePublicPath({ brandSlug, venueSlug }) as never);
+    }
+  }, [brandSlug, venueSlug, router]);
+
   // ----- claim-feedback loop (ORCH-1064, venue-keyed) -----
   const followUpAt = venue?.claimFollowUpAt ?? null;
   const hasFollowUp =
@@ -144,7 +195,15 @@ export default function VenueManagementPage(): React.ReactElement {
 
   if (venueQuery.isLoading) {
     return (
-      <View style={[styles.root, { paddingTop: insets.top }]}>
+      <View style={[styles.root, { paddingTop: insets.top + spacing.sm }]}>
+        <View style={styles.headerWrap}>
+          <TopBar
+            leftKind="back"
+            onBack={handleBack}
+            rightSlot={<View />}
+            testID="venue-page-topbar-loading"
+          />
+        </View>
         <View style={styles.center}>
           <ActivityIndicator />
           <Text style={styles.helper}>Loading venue…</Text>
@@ -155,16 +214,14 @@ export default function VenueManagementPage(): React.ReactElement {
 
   if (venue === null || venueId === null) {
     return (
-      <View style={[styles.root, { paddingTop: insets.top }]}>
-        <View style={styles.headerRow}>
-          <Pressable
-            onPress={handleBack}
-            accessibilityRole="button"
-            accessibilityLabel="Back to your venues"
-            hitSlop={10}
-          >
-            <ArrowLeft size={22} color={textTokens.primary} />
-          </Pressable>
+      <View style={[styles.root, { paddingTop: insets.top + spacing.sm }]}>
+        <View style={styles.headerWrap}>
+          <TopBar
+            leftKind="back"
+            onBack={handleBack}
+            rightSlot={<View />}
+            testID="venue-page-topbar-not-found"
+          />
         </View>
         <View style={styles.center}>
           <Text style={styles.notFoundTitle}>Venue not found</Text>
@@ -184,26 +241,61 @@ export default function VenueManagementPage(): React.ReactElement {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + spacing.sm }]}>
-      {/* DESIGN §5.2 — back + name (truncates) + chip (never truncates). */}
-      <View style={styles.headerRow}>
-        <Pressable
-          onPress={handleBack}
-          accessibilityRole="button"
-          accessibilityLabel="Back to your venues"
-          hitSlop={10}
-          testID="venue-page-back"
-        >
-          <ArrowLeft size={22} color={textTokens.primary} />
-        </Pressable>
-        <View style={styles.headerTitleWrap}>
-          <Text style={styles.headerTitle} numberOfLines={1}>
-            {venue.name}
-          </Text>
-        </View>
-        <View style={styles.headerChip}>
-          <ListingStatusChip status={status} testID="venue-page-status-chip" />
-        </View>
+      {/* #1483 band 1 — the shared TopBar. `rightSlot` on a leftKind="back"
+          consumer is the documented canonical replace mechanism (TopBar.tsx:
+          66-77); I-37 forbids it only on leftKind="brand". No `moreH` overflow
+          menu — there is nothing to put in it and an empty menu is a dead tap
+          (Constitution #1). */}
+      <View style={styles.headerWrap}>
+        <TopBar
+          leftKind="back"
+          onBack={handleBack}
+          title={venue.venueCategory === "stay" ? "Stay" : "Venue"}
+          testID="venue-page-topbar"
+          rightSlot={
+            canShowPublic ? (
+              <View style={styles.headerRightRow}>
+                {isWideDesktop ? (
+                  <Button
+                    label="View public page"
+                    variant="secondary"
+                    size="sm"
+                    leadingIcon="eye"
+                    onPress={handleViewPublic}
+                    testID="venue-page-view-public"
+                  />
+                ) : (
+                  <IconChrome
+                    icon="eye"
+                    size={36}
+                    accessibilityLabel="View public page"
+                    onPress={handleViewPublic}
+                    testID="venue-page-view-public"
+                  />
+                )}
+                <IconChrome
+                  icon="share"
+                  size={36}
+                  accessibilityLabel="Share venue"
+                  onPress={() => setShareVisible(true)}
+                  testID="venue-page-share"
+                />
+              </View>
+            ) : (
+              // Empty placeholder for layout balance (TopBar.tsx:71-73). The
+              // controls are HIDDEN, never disabled.
+              <View />
+            )
+          }
+        />
       </View>
+
+      {/* #1483 band 2 — venue identity (cover + name + category·city + chip). */}
+      <VenueIdentityBand
+        venue={venue}
+        status={status}
+        testID="venue-page-identity-band"
+      />
 
       {!isWideDesktop &&
       venue.venueCategory !== "stay" &&
@@ -255,6 +347,17 @@ export default function VenueManagementPage(): React.ReactElement {
         }
         onActionError={(message) => setToast({ kind: "error", message })}
       />
+      {/* #1483 — construction is gated: venuePublicUrl throws PublicUrlError
+          on an empty segment, so it is only ever called behind canShowPublic. */}
+      {canShowPublic && brandSlug !== null && venueSlug !== null ? (
+        <ShareModal
+          visible={shareVisible}
+          onClose={() => setShareVisible(false)}
+          url={venuePublicUrl({ brandSlug, venueSlug })}
+          title={venue.name}
+        />
+      ) : null}
+
       <Toast
         visible={toast !== null}
         kind={toast?.kind ?? "success"}
@@ -270,25 +373,15 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: canvas.discover,
   },
-  headerRow: {
+  // #1483 — the TopBar host. Matches app/event/[id]/index.tsx:993-995 and
+  // app/trip/[id]/index.tsx:741-743 exactly (the bar is inset, not full-bleed).
+  headerWrap: {
+    paddingHorizontal: spacing.md,
+  },
+  headerRightRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
     gap: spacing.sm,
-  },
-  headerTitleWrap: {
-    flex: 1,
-    minWidth: 0,
-  },
-  headerTitle: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    color: textTokens.primary,
-  },
-  headerChip: {
-    flexShrink: 0,
   },
   bannerHost: {
     marginBottom: -spacing.sm,
