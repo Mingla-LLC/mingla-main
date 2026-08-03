@@ -70,9 +70,6 @@ export class HapticFeedback {
 
   static cardLike() {
     if (Platform.OS === 'android') {
-      HapticFeedback.safeHaptic(() => {
-        void Haptics.performAndroidHapticsAsync(Haptics.AndroidHaptics.Confirm);
-      });
       return;
     }
     HapticFeedback.success();
@@ -80,9 +77,6 @@ export class HapticFeedback {
 
   static cardDislike() {
     if (Platform.OS === 'android') {
-      HapticFeedback.safeHaptic(() => {
-        void Haptics.performAndroidHapticsAsync(Haptics.AndroidHaptics.Gesture_End);
-      });
       return;
     }
     HapticFeedback.light();

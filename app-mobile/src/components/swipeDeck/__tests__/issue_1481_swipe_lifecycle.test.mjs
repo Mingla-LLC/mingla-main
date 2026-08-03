@@ -191,7 +191,7 @@ test('production deck has one native-driver owner and no forbidden competing pri
   );
 });
 
-test('swipe haptics avoid the legacy Android vibrator bridge', () => {
+test('Android swipe commits do not enter a haptics bridge', () => {
   const like = hapticSource.slice(
     hapticSource.indexOf('static cardLike()'),
     hapticSource.indexOf('static cardDislike()'),
@@ -200,8 +200,10 @@ test('swipe haptics avoid the legacy Android vibrator bridge', () => {
     hapticSource.indexOf('static cardDislike()'),
     hapticSource.indexOf('static buttonPress()'),
   );
-  assert.match(like, /Platform\.OS === 'android'[\s\S]*performAndroidHapticsAsync\(Haptics\.AndroidHaptics\.Confirm\)/);
-  assert.match(dislike, /Platform\.OS === 'android'[\s\S]*performAndroidHapticsAsync\(Haptics\.AndroidHaptics\.Gesture_End\)/);
+  assert.match(like, /Platform\.OS === 'android'\) \{\s*return;/);
+  assert.match(dislike, /Platform\.OS === 'android'\) \{\s*return;/);
+  assert.doesNotMatch(like, /performAndroidHapticsAsync|impactAsync|notificationAsync/);
+  assert.doesNotMatch(dislike, /performAndroidHapticsAsync|impactAsync|notificationAsync/);
   assert.match(like, /return;[\s\S]*HapticFeedback\.success\(\)/, 'iOS like feedback remains unchanged');
   assert.match(dislike, /return;[\s\S]*HapticFeedback\.light\(\)/, 'iOS pass feedback remains unchanged');
 });
