@@ -10,7 +10,23 @@ import {
 } from "react-native";
 import type { ViewStyle } from "react-native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { BedDouble, CalendarDays, Check, X } from "lucide-react-native";
+import {
+  BedDouble,
+  CalendarDays,
+  Check,
+  Copy,
+  Globe,
+  KeyRound,
+  Layers,
+  Lock,
+  Plus,
+  Tag,
+  Umbrella,
+  UserCheck,
+  Users,
+  X,
+  Zap,
+} from "lucide-react-native";
 
 import {
   accent,
@@ -73,7 +89,10 @@ import {
 import { randomId } from "../../utils/randomId";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { Button } from "../ui/Button";
+import { ChipInput } from "../ui/ChipInput";
 import { GlassCard } from "../ui/GlassCard";
+import { NameBuilder } from "../ui/NameBuilder";
+import { OptionCard } from "../ui/OptionCard";
 import {
   matchesStayInventoryFilter,
   stayOfferingReadinessErrors,
@@ -99,13 +118,19 @@ const asPositiveInteger = (value: string, fallback = 1): number => {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
 };
 
-const splitList = (value: string): string[] => [
-  ...new Set(
-    value
-      .split(/[\n,]/)
-      .map((item) => item.trim())
-      .filter(Boolean),
-  ),
+/**
+ * #1501 §9 — the list normaliser. `amenities` / `bulkNames` / `unitNames` are
+ * `string[]` in component state now (they used to be newline/comma strings
+ * parsed by `splitList`), but the SHAPE emitted to the server is unchanged:
+ * trimmed, de-duplicated, empties dropped, order preserved. `makeOffering`'s
+ * `CreateStayOfferingInput` is byte-identical for identical operator input.
+ *
+ * Side benefit: an amenity that CONTAINS a comma ("bed, sofa and desk") used to
+ * split into two on load, because `existing.amenities` was seeded with
+ * `.join(", ")` and re-split. Arrays never round-trip through a delimiter.
+ */
+const normalizeList = (values: readonly string[]): string[] => [
+  ...new Set(values.map((item) => item.trim()).filter(Boolean)),
 ];
 
 function mutationCopy(error: unknown): string {
@@ -252,6 +277,8 @@ const STAY_FIELD_COPY = {
   quantity: {
     label: "How many you have",
     helper: "The number of identical ones you can sell for the same night.",
+    /** D-5: when each one is named, the count is the name count. */
+    derivedHelper: "Set by the names below.",
   },
   capacity: {
     label: "Total spots",
@@ -291,44 +318,124 @@ const STAY_FIELD_COPY = {
 } as const;
 
 /**
+ * #1501 §4.1 — kind-aware quick adds for "What's included". A hotelier should
+ * be tapping, not typing, for the twenty things every room has.
+ */
+const ROOM_AMENITIES: readonly string[] = [
+  "Wi-Fi",
+  "Air conditioning",
+  "Ensuite",
+  "Balcony",
+  "Sea view",
+  "Accessible entrance",
+  "Kitchenette",
+  "TV",
+  "Safe",
+  "Workspace",
+];
+
+/** The same idea for a Place: no bed, so the vocabulary is different. */
+const PLACE_AMENITIES: readonly string[] = [
+  "Wi-Fi",
+  "Shade",
+  "Sun loungers",
+  "Towels",
+  "Outdoor shower",
+  "Accessible entrance",
+  "Private entrance",
+  "Sound system",
+  "Heating",
+  "Table service",
+];
+
+/**
  * "Every unit needs its own name. You have {n} to name." — the count is live,
  * so the operator always knows how far through the list they are.
  */
 const unitNamesHelper = (count: number): string =>
   `${STAY_FIELD_COPY.unitNames.helper} You have ${count} to name.`;
 
+/**
+ * One glyph per approved term. Icons carry no meaning on their own — they are
+ * a recognition aid on a form an operator fills 40 times in a row. Every name
+ * here is also registered in `src/shims/lucideReactNativeWebStub.js` so the
+ * business WEB build ships the real glyph (I-PROPOSED-1137-BIZ-WEB-LUCIDE-REAL
+ * INV-4 fails CI otherwise).
+ */
+const STAY_CHOICE_ICON: Record<
+  StayChoiceId,
+  React.ComponentType<{ size?: number; color?: string }>
+> = {
+  room: BedDouble,
+  place: Umbrella,
+  addOne: Plus,
+  addSeveral: Layers,
+  instant: Zap,
+  request: UserCheck,
+  bookedWhole: Lock,
+  sharedSpots: Users,
+  interchangeable: Copy,
+  named: Tag,
+  publicAccess: Globe,
+  overnightOnly: KeyRound,
+};
+
+/**
+ * #1501 §3 — an explained choice, rendered as the shared `OptionCard`. The copy
+ * comes from ONE contract table, so a term can never drift between the label,
+ * the helper and the screen-reader hint.
+ */
+function ChoiceCard({
+  id,
+  selected,
+  onPress,
+  testID,
+  disabled = false,
+}: {
+  id: StayChoiceId;
+  selected: boolean;
+  onPress: () => void;
+  testID: string;
+  disabled?: boolean;
+}): React.ReactElement {
+  const copy = STAY_CHOICE_COPY[id];
+  return (
+    <OptionCard
+      label={copy.label}
+      helper={copy.helper}
+      example={copy.example}
+      icon={STAY_CHOICE_ICON[id]}
+      selected={selected}
+      onPress={onPress}
+      disabled={disabled}
+      testID={testID}
+    />
+  );
+}
+
 function Choice({
   label,
-  helper,
-  example,
   selected,
   onPress,
   testID,
   disabled = false,
 }: {
   label: string;
-  /** #1501 §3 — the sentence that makes the label mean something. */
-  helper?: string;
-  /** #1501 §3 — a concrete instance, so the abstraction lands. */
-  example?: string;
   selected: boolean;
   onPress: () => void;
   testID: string;
   disabled?: boolean;
 }): React.ReactElement {
-  const described = example ? `${helper ?? ""} For example: ${example}` : helper;
   return (
     <Pressable
       accessibilityRole="radio"
       accessibilityState={{ checked: selected }}
       accessibilityLabel={label}
-      accessibilityHint={described}
       onPress={onPress}
       disabled={disabled}
       testID={testID}
       style={[
         styles.choice,
-        helper ? styles.choiceRowCard : null,
         selected && styles.choiceActive,
         disabled && styles.choiceDisabled,
       ]}
@@ -336,10 +443,6 @@ function Choice({
       <Text style={[styles.choiceText, selected && styles.choiceTextActive]}>
         {label}
       </Text>
-      {helper ? <Text style={styles.choiceHelper}>{helper}</Text> : null}
-      {example ? (
-        <Text style={styles.choiceExample}>{`e.g. ${example}`}</Text>
-      ) : null}
     </Pressable>
   );
 }
@@ -458,7 +561,7 @@ export function OfferingEditor({
   const [kind, setKind] = useState<StayOfferingKind>(existing?.kind ?? "room");
   const [bulk, setBulk] = useState(false);
   const [name, setName] = useState(existing?.name ?? "");
-  const [bulkNames, setBulkNames] = useState("");
+  const [bulkNames, setBulkNames] = useState<string[]>([]);
   const [description, setDescription] = useState(existing?.description ?? "");
   const [quantity, setQuantity] = useState(String(existing?.quantity ?? 1));
   const [capacity, setCapacity] = useState(String(existing?.capacity ?? 10));
@@ -490,11 +593,11 @@ export function OfferingEditor({
       ? String(existing.currentPolicy.no_show_refund_basis_points / 100)
       : "0",
   );
-  const [amenities, setAmenities] = useState(
-    (existing?.amenities ?? []).join(", "),
+  const [amenities, setAmenities] = useState<string[]>(
+    existing?.amenities ?? [],
   );
-  const [unitNames, setUnitNames] = useState(
-    (existing?.units ?? []).map((unit) => unit.name).join("\n"),
+  const [unitNames, setUnitNames] = useState<string[]>(
+    (existing?.units ?? []).map((unit) => unit.name),
   );
   const [confirmationMode, setConfirmationMode] = useState<StayBookingMode>(
     existing?.confirmation_mode ?? "request",
@@ -513,6 +616,21 @@ export function OfferingEditor({
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [resultCopy, setResultCopy] = useState<string | null>(null);
+
+  // ── D-4 (APPROVED) ────────────────────────────────────────────────────────
+  // "Add several" FORCES "Any one will do". Bulk + named units used to write
+  // the IDENTICAL unit-name list into every one of the N offerings, because
+  // `makeOffering` closes over one `parsedUnits`. That is a data trap, not a
+  // feature — so the identity group is hidden in bulk and the mode is derived,
+  // never read straight from state.
+  const namedUnitsActive = namedUnits && !bulk;
+  // ── D-5 (APPROVED) ────────────────────────────────────────────────────────
+  // "How many you have" is DERIVED from the name count when each one is named,
+  // and rendered read-only. The server already requires
+  // `quantity === units.length`; deriving it deletes that error class.
+  const derivedQuantity = namedUnitsActive
+    ? String(normalizeList(unitNames).length)
+    : quantity;
   // #1501 — the partial-failure banner is mirrored in a ref so `onSuccess`
   // reads THIS attempt's outcome instead of whatever the last render captured.
   const resultCopyRef = useRef<string | null>(null);
@@ -532,16 +650,23 @@ export function OfferingEditor({
       showResult(null);
     },
     mutationFn: async (): Promise<StayInventorySnapshot> => {
-      const names = bulk ? splitList(bulkNames) : [name.trim()];
+      const names = bulk ? normalizeList(bulkNames) : [name.trim()];
       if (names.length === 0 || names.some((item) => item.length === 0)) {
         throw new Error("name_required");
       }
       if (canManageFinance && Number(price) > 0 && currencyCode === null) {
         throw new Error("stay_currency_required");
       }
-      const count = asPositiveInteger(quantity);
-      const parsedUnits = splitList(unitNames);
-      if (canManageInventory && namedUnits && parsedUnits.length !== count) {
+      const parsedUnits = normalizeList(unitNames);
+      // D-5 (approved): "How many you have" is DERIVED from the named list, so
+      // the server's `quantity === units.length` requirement cannot be violated
+      // and the `named_units_incomplete` error class is deleted rather than
+      // explained. The only thing left to check is that a named offering has at
+      // least one name.
+      const count = namedUnitsActive
+        ? parsedUnits.length
+        : asPositiveInteger(quantity);
+      if (canManageInventory && namedUnitsActive && parsedUnits.length === 0) {
         throw new Error("named_units_incomplete");
       }
       const fees: CreateStayOfferingInput["fees"] =
@@ -595,7 +720,7 @@ export function OfferingEditor({
             : sharedCapacity
               ? "shared_capacity"
               : "exclusive_units",
-        unitNamingMode: namedUnits ? "named" : "interchangeable",
+        unitNamingMode: namedUnitsActive ? "named" : "interchangeable",
         quantity: sharedCapacity ? undefined : count,
         capacity: sharedCapacity ? asPositiveInteger(capacity) : undefined,
         minGuests: 1,
@@ -603,12 +728,12 @@ export function OfferingEditor({
         maxAdults: kind === "room" ? asPositiveInteger(maxGuests) : undefined,
         maxChildren: kind === "room" ? 0 : undefined,
         placePricingBasis: kind === "place" ? "per_booking" : undefined,
-        amenities: splitList(amenities),
+        amenities: normalizeList(amenities),
         accessScope:
           kind === "place" && overnightOnly
             ? "overnight_guests_only"
             : "public",
-        units: namedUnits
+        units: namedUnitsActive
           ? parsedUnits.map((unitName) => ({ name: unitName }))
           : undefined,
         media: canManageInventory ? media : [],
@@ -636,7 +761,7 @@ export function OfferingEditor({
                 name: names[0],
                 description: description.trim(),
                 confirmationMode,
-                amenities: splitList(amenities),
+                amenities: normalizeList(amenities),
                 accessScope:
                   kind === "place" && overnightOnly
                     ? "overnight_guests_only"
@@ -682,7 +807,7 @@ export function OfferingEditor({
             })
           ).inventory;
         }
-        if (canManageInventory && namedUnits) {
+        if (canManageInventory && namedUnitsActive) {
           inventory = (
             await replaceStayUnits({
               venueId,
@@ -796,7 +921,7 @@ export function OfferingEditor({
     ["name_required", "named_units_incomplete"].includes(save.error.message)
       ? save.error.message === "name_required"
         ? "Add a name for every Room or Place."
-        : "Add exactly one name for every private unit."
+        : "Each one is named, so add at least one name below."
       : save.isError
         ? mutationCopy(save.error)
         : null;
@@ -832,35 +957,28 @@ export function OfferingEditor({
       {!existing ? (
         <>
           <View style={styles.choices}>
-            <Choice
-              label={STAY_CHOICE_COPY.room.label}
-              helper={STAY_CHOICE_COPY.room.helper}
-              example={STAY_CHOICE_COPY.room.example}
+            <ChoiceCard
+              id="room"
               selected={kind === "room"}
               onPress={() => setKind("room")}
               testID="stay-add-room"
             />
-            <Choice
-              label={STAY_CHOICE_COPY.place.label}
-              helper={STAY_CHOICE_COPY.place.helper}
-              example={STAY_CHOICE_COPY.place.example}
+            <ChoiceCard
+              id="place"
               selected={kind === "place"}
               onPress={() => setKind("place")}
               testID="stay-add-place"
             />
           </View>
           <View style={styles.choices}>
-            <Choice
-              label={STAY_CHOICE_COPY.addOne.label}
-              helper={STAY_CHOICE_COPY.addOne.helper}
+            <ChoiceCard
+              id="addOne"
               selected={!bulk}
               onPress={() => setBulk(false)}
               testID="stay-add-single"
             />
-            <Choice
-              label={STAY_CHOICE_COPY.addSeveral.label}
-              helper={STAY_CHOICE_COPY.addSeveral.helper}
-              example={STAY_CHOICE_COPY.addSeveral.example}
+            <ChoiceCard
+              id="addSeveral"
               selected={bulk}
               onPress={() => setBulk(true)}
               testID="stay-add-bulk"
@@ -870,14 +988,13 @@ export function OfferingEditor({
       ) : null}
       <GlassCard variant="base" style={styles.form}>
         {bulk ? (
-          <LabeledInput
-            span="stack"
+          <NameBuilder
             label={STAY_FIELD_COPY.names.label}
             helper={STAY_FIELD_COPY.names.helper}
-            value={bulkNames}
-            onChangeText={setBulkNames}
-            placeholder={"One name per line"}
-            multiline
+            values={bulkNames}
+            onChange={setBulkNames}
+            placeholder={kind === "room" ? "Ocean-view double" : "Pool cabana"}
+            patternPlaceholder={kind === "room" ? "Room" : "Cabana"}
             editable={canManageInventory}
             testID="stay-bulk-names"
           />
@@ -906,28 +1023,28 @@ export function OfferingEditor({
           editable={canManageInventory}
           testID="stay-offering-description"
         />
-        <LabeledInput
-          span="stack"
+        <ChipInput
           label={STAY_FIELD_COPY.amenities.label}
           helper={STAY_FIELD_COPY.amenities.helper}
-          value={amenities}
-          onChangeText={setAmenities}
-          placeholder="Wi-Fi, air conditioning, accessible entrance"
+          values={amenities}
+          onChange={setAmenities}
+          suggestions={
+            kind === "room" ? ROOM_AMENITIES : PLACE_AMENITIES
+          }
+          placeholder="Anything else? Type it and press enter"
           editable={canManageInventory}
           testID="stay-offering-amenities"
         />
         <View style={styles.choices}>
-          <Choice
-            label={STAY_CHOICE_COPY.instant.label}
-            helper={STAY_CHOICE_COPY.instant.helper}
+          <ChoiceCard
+            id="instant"
             selected={confirmationMode === "instant"}
             onPress={() => setConfirmationMode("instant")}
             disabled={!canManageInventory}
             testID="stay-offering-instant"
           />
-          <Choice
-            label={STAY_CHOICE_COPY.request.label}
-            helper={STAY_CHOICE_COPY.request.helper}
+          <ChoiceCard
+            id="request"
             selected={confirmationMode === "request"}
             onPress={() => setConfirmationMode("request")}
             disabled={!canManageInventory}
@@ -936,19 +1053,15 @@ export function OfferingEditor({
         </View>
         {kind === "place" ? (
           <View style={styles.choices}>
-            <Choice
-              label={STAY_CHOICE_COPY.bookedWhole.label}
-              helper={STAY_CHOICE_COPY.bookedWhole.helper}
-              example={STAY_CHOICE_COPY.bookedWhole.example}
+            <ChoiceCard
+              id="bookedWhole"
               selected={!sharedCapacity}
               onPress={() => setSharedCapacity(false)}
               disabled={!canManageInventory}
               testID="stay-place-exclusive"
             />
-            <Choice
-              label={STAY_CHOICE_COPY.sharedSpots.label}
-              helper={STAY_CHOICE_COPY.sharedSpots.helper}
-              example={STAY_CHOICE_COPY.sharedSpots.example}
+            <ChoiceCard
+              id="sharedSpots"
               selected={sharedCapacity}
               onPress={() => setSharedCapacity(true)}
               disabled={!canManageInventory}
@@ -961,12 +1074,18 @@ export function OfferingEditor({
             <LabeledInput
               span="num"
               label={STAY_FIELD_COPY.quantity.label}
-              helper={STAY_FIELD_COPY.quantity.helper}
-              value={quantity}
+              // D-5 (APPROVED): derived from the named list, so the server's
+              // `quantity === units.length` rule can never be broken.
+              helper={
+                namedUnitsActive
+                  ? STAY_FIELD_COPY.quantity.derivedHelper
+                  : STAY_FIELD_COPY.quantity.helper
+              }
+              value={derivedQuantity}
               onChangeText={setQuantity}
               placeholder="1"
               keyboardType="numeric"
-              editable={canManageInventory}
+              editable={canManageInventory && !namedUnitsActive}
               testID="stay-offering-quantity"
             />
           ) : (
@@ -996,54 +1115,58 @@ export function OfferingEditor({
         </View>
         {!sharedCapacity ? (
           <>
-            <View style={styles.choices}>
-              <Choice
-                label={STAY_CHOICE_COPY.interchangeable.label}
-                helper={STAY_CHOICE_COPY.interchangeable.helper}
-                example={STAY_CHOICE_COPY.interchangeable.example}
-                selected={!namedUnits}
-                onPress={() => setNamedUnits(false)}
-                disabled={!canManageInventory}
-                testID="stay-units-pooled"
-              />
-              <Choice
-                label={STAY_CHOICE_COPY.named.label}
-                helper={STAY_CHOICE_COPY.named.helper}
-                example={STAY_CHOICE_COPY.named.example}
-                selected={namedUnits}
-                onPress={() => setNamedUnits(true)}
-                disabled={!canManageInventory}
-                testID="stay-units-named"
-              />
-            </View>
-            {namedUnits ? (
-              <LabeledInput
-                span="stack"
-                label={STAY_FIELD_COPY.unitNames.label}
-                helper={unitNamesHelper(splitList(unitNames).length)}
-                value={unitNames}
-                onChangeText={setUnitNames}
-                placeholder="Room 101\nRoom 102"
-                multiline
-                editable={canManageInventory}
-                testID="stay-unit-names"
-              />
-            ) : null}
+            {bulk ? (
+              // D-4 (APPROVED): naming individual units while adding several
+              // would write the SAME list into every offering. Hidden, not
+              // disabled — an option you cannot use is noise.
+              <Text style={styles.helper} testID="stay-units-bulk-note">
+                Naming individual units is available after you create them.
+              </Text>
+            ) : (
+              <>
+                <View style={styles.choices}>
+                  <ChoiceCard
+                    id="interchangeable"
+                    selected={!namedUnits}
+                    onPress={() => setNamedUnits(false)}
+                    disabled={!canManageInventory}
+                    testID="stay-units-pooled"
+                  />
+                  <ChoiceCard
+                    id="named"
+                    selected={namedUnits}
+                    onPress={() => setNamedUnits(true)}
+                    disabled={!canManageInventory}
+                    testID="stay-units-named"
+                  />
+                </View>
+                {namedUnitsActive ? (
+                  <NameBuilder
+                    label={STAY_FIELD_COPY.unitNames.label}
+                    helper={unitNamesHelper(unitNames.length)}
+                    values={unitNames}
+                    onChange={setUnitNames}
+                    placeholder={kind === "room" ? "Room 101" : "Cabana 1"}
+                    patternPlaceholder={kind === "room" ? "Room" : "Cabana"}
+                    editable={canManageInventory}
+                    testID="stay-unit-names"
+                  />
+                ) : null}
+              </>
+            )}
           </>
         ) : null}
         {kind === "place" ? (
           <View style={styles.choices}>
-            <Choice
-              label={STAY_CHOICE_COPY.publicAccess.label}
-              helper={STAY_CHOICE_COPY.publicAccess.helper}
+            <ChoiceCard
+              id="publicAccess"
               selected={!overnightOnly}
               onPress={() => setOvernightOnly(false)}
               disabled={!canManageInventory}
               testID="stay-place-public"
             />
-            <Choice
-              label={STAY_CHOICE_COPY.overnightOnly.label}
-              helper={STAY_CHOICE_COPY.overnightOnly.helper}
+            <ChoiceCard
+              id="overnightOnly"
               selected={overnightOnly}
               onPress={() => setOvernightOnly(true)}
               disabled={!canManageInventory}

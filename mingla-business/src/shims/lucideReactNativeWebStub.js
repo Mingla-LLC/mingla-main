@@ -81,6 +81,7 @@ const iconOf = (mod) => (mod && mod.__esModule ? mod.default : mod) || null;
 //   Calendar         src/components/venue/* (ORCH-1196)
 //   CalendarDays     src/components/stay/StaySuiteShell.tsx
 //   Check            src/components/ari/{QuickReplyChips,MessageList,ClarifyingCard}.tsx
+//   Copy             src/components/stay/StayInventoryManager.tsx (#1501)
 //   CheckSquare      src/components/ari/MultiSelectPrompt.tsx
 //   ChevronDown      src/components/venue/* (ORCH-1196)
 //   ChevronRight     src/components/venue/* (ORCH-1196)
@@ -90,9 +91,13 @@ const iconOf = (mod) => (mod && mod.__esModule ? mod.default : mod) || null;
 //   CreditCard       src/components/stay/StaySuiteShell.tsx
 //   FileCheck2       src/components/stay/StaySuiteShell.tsx
 //   Flag             src/components/venue/* (ORCH-1196)
+//   Globe            src/components/stay/StayInventoryManager.tsx (#1501)
 //   Home             src/components/stay/StaySuiteShell.tsx
+//   KeyRound         src/components/stay/StayInventoryManager.tsx (#1501)
+//   Layers           src/components/stay/StayInventoryManager.tsx (#1501)
 //   LayoutGrid       src/components/venue/* (ORCH-1196)
 //   List             src/components/venue/* (ORCH-1196)
+//   Lock             src/components/stay/StayInventoryManager.tsx (#1501)
 //   Menu             src/screens/ari/AriChatScreen.tsx
 //   MessageSquare    src/components/venue/* (ORCH-1196)
 //   Pencil           src/components/ari/ToolProposalCard.tsx
@@ -100,9 +105,14 @@ const iconOf = (mod) => (mod && mod.__esModule ? mod.default : mod) || null;
 //   Plus             src/components/ari/{ToolProposalCard,EmptyState}.tsx
 //   Settings         src/screens/ari/AriChatScreen.tsx
 //   Square           src/components/ari/MultiSelectPrompt.tsx
+//   Tag              src/components/stay/StayInventoryManager.tsx (#1501)
+//   Umbrella         src/components/stay/StayInventoryManager.tsx (#1501)
+//   UserCheck        src/components/stay/StayInventoryManager.tsx (#1501)
+//   Users            src/components/stay/StayInventoryManager.tsx (#1501)
 //   Utensils         src/components/stay/StaySuiteShell.tsx
 //   UtensilsCrossed  src/components/venue/* (ORCH-1196)
 //   X                src/components/ari/ToolProposalCard.tsx
+//   Zap              src/components/stay/StayInventoryManager.tsx (#1501)
 //   HelpCircle       (fallback only — the always-real "unknown icon" affordance)
 const USED_ICONS = {
   Accessibility: iconOf(
@@ -123,12 +133,17 @@ const USED_ICONS = {
   ChevronUp: iconOf(require("lucide-react/dist/esm/icons/chevron-up.js")),
   Circle: iconOf(require("lucide-react/dist/esm/icons/circle.js")),
   Clock: iconOf(require("lucide-react/dist/esm/icons/clock.js")),
+  Copy: iconOf(require("lucide-react/dist/esm/icons/copy.js")),
   CreditCard: iconOf(require("lucide-react/dist/esm/icons/credit-card.js")),
   FileCheck2: iconOf(require("lucide-react/dist/esm/icons/file-check-2.js")),
   Flag: iconOf(require("lucide-react/dist/esm/icons/flag.js")),
+  Globe: iconOf(require("lucide-react/dist/esm/icons/globe.js")),
   Home: iconOf(require("lucide-react/dist/esm/icons/home.js")),
+  KeyRound: iconOf(require("lucide-react/dist/esm/icons/key-round.js")),
+  Layers: iconOf(require("lucide-react/dist/esm/icons/layers.js")),
   LayoutGrid: iconOf(require("lucide-react/dist/esm/icons/layout-grid.js")),
   List: iconOf(require("lucide-react/dist/esm/icons/list.js")),
+  Lock: iconOf(require("lucide-react/dist/esm/icons/lock.js")),
   Menu: iconOf(require("lucide-react/dist/esm/icons/menu.js")),
   MessageSquare: iconOf(
     require("lucide-react/dist/esm/icons/message-square.js"),
@@ -139,11 +154,16 @@ const USED_ICONS = {
   Settings: iconOf(require("lucide-react/dist/esm/icons/settings.js")),
   Sparkles: iconOf(require("lucide-react/dist/esm/icons/sparkles.js")),
   Square: iconOf(require("lucide-react/dist/esm/icons/square.js")),
+  Tag: iconOf(require("lucide-react/dist/esm/icons/tag.js")),
+  Umbrella: iconOf(require("lucide-react/dist/esm/icons/umbrella.js")),
+  UserCheck: iconOf(require("lucide-react/dist/esm/icons/user-check.js")),
+  Users: iconOf(require("lucide-react/dist/esm/icons/users.js")),
   Utensils: iconOf(require("lucide-react/dist/esm/icons/utensils.js")),
   UtensilsCrossed: iconOf(
     require("lucide-react/dist/esm/icons/utensils-crossed.js"),
   ),
   X: iconOf(require("lucide-react/dist/esm/icons/x.js")),
+  Zap: iconOf(require("lucide-react/dist/esm/icons/zap.js")),
   HelpCircle: iconOf(require("lucide-react/dist/esm/icons/help-circle.js")),
 };
 
