@@ -44,7 +44,7 @@ function assertSingleOwnerSource(swipeable, controller, stage) {
   assert.doesNotMatch(swipeable, /useDeckSwipeController\(/);
   assert.match(stage, /useDeckSwipeController\(props\)/);
   assert.match(stage, /export const DeckSwipeStage = memo\(forwardRef/);
-  assert.match(swipeable, /<GestureDetector gesture=\{deckSwipe\.gesture\}>/);
+  assert.match(swipeable, /<GestureDetector key=\{currentRec\.id\} gesture=\{deckSwipe\.gesture\}>/);
   assert.doesNotMatch(swipeable, /<PanGestureHandler/);
   assert.match(controller, /Gesture\.Pan\(\)[\s\S]*\.runOnJS\(true\)[\s\S]*\.onBegin\(beginGesture\)[\s\S]*\.onUpdate[\s\S]*\.onFinalize/);
   assert.doesNotMatch(controller, /Animated\.event|onHandlerStateChange/);

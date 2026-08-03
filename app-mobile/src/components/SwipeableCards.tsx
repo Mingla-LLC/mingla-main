@@ -3114,10 +3114,9 @@ export default function SwipeableCards({
             })()}
 
           {/* Current Card */}
-          {/* One modern native recognizer survives card promotion. Unlike the
-              legacy component wrapper it resets natively between gestures and
-              keeps admission independent of the changing card face. */}
-          <GestureDetector gesture={deckSwipe.gesture}>
+          {/* Each promoted card receives a fresh modern recognizer. Android can
+              otherwise retain the completed recognizer against the old face. */}
+          <GestureDetector key={currentRec.id} gesture={deckSwipe.gesture}>
           <Animated.View
             style={[
               styles.card,
