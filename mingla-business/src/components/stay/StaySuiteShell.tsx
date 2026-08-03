@@ -56,6 +56,7 @@ import {
   radius,
   semantic,
   spacing,
+  stayOverviewGridBasis,
   stayOverviewRowMinWidth,
   stayPageMaxWidth,
   suiteFormMaxWidth,
@@ -1027,12 +1028,15 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: glass.border.profileBase,
   },
-  // #1484 — WIDE DESKTOP ONLY grid cell: two-up at typical laptop widths, more
-  // columns on very wide monitors, collapsing back to one column below
-  // `stayOverviewRowMinWidth`.
+  // #1484 — WIDE DESKTOP ONLY grid cell. The PERCENTAGE basis caps the grid at
+  // a MAXIMUM OF 3 COLUMNS at every width (the approved design says "2–3
+  // column grid"); the earlier fixed 320px basis let SIX columns pack in at
+  // 2560px, which squeezed the labels onto three lines. `minWidth` collapses
+  // the grid back to 2 columns as the workspace narrows. See
+  // `stayOverviewGridBasis` for the wrap arithmetic.
   checkRowDesktop: {
     flexGrow: 1,
-    flexBasis: stayOverviewRowMinWidth,
+    flexBasis: stayOverviewGridBasis,
     minWidth: stayOverviewRowMinWidth,
   },
   pressed: { opacity: 0.78 },

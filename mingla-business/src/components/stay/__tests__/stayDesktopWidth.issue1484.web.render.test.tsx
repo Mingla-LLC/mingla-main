@@ -254,6 +254,91 @@ function appliedMaxWidths({
   return [...applied].sort((a, b) => a - b);
 }
 
+/** Resolve the class list of the element carrying `data-testid="<id>"`. */
+function classesFor(html: string, testId: string): string[] {
+  const match = new RegExp(`class="([^"]*)"[^>]*data-testid="${testId}"`).exec(
+    html,
+  );
+  expect(match).not.toBeNull();
+  return (match as RegExpExecArray)[1].split(/\s+/);
+}
+
+/**
+ * Resolve a CSS declaration for an element.
+ *
+ * react-native-web names each ATOMIC override class after the property it sets
+ * (`flex-basis` -> `r-flexBasis-<hash>`), and those atomics are what actually
+ * apply; the element also carries a base `css-view-*` class that declares
+ * `flex-basis:auto`, so a naive "first/last class that mentions the property"
+ * lookup reports the BASE and silently masks the real value. Target the atomic
+ * class by name, and fall back to the base only when no atomic exists.
+ */
+function declaration(
+  css: string,
+  classes: string[],
+  property: string,
+): string | null {
+  const camel = property.replace(/-([a-z])/g, (_m, c: string) =>
+    c.toUpperCase(),
+  );
+  const read = (className: string): string | null => {
+    // `.<class>{ …; <property>:<value>; }` — the optional `[^}]*;` prefix covers
+    // multi-declaration rules without re-requiring the already-consumed `{`.
+    const rule = new RegExp(
+      `\\.${className}\\{(?:[^}]*;)?${property}:([^;}]+)[;}]`,
+    ).exec(css);
+    return rule === null ? null : rule[1].trim();
+  };
+  const atomic = classes.find((name) => name.startsWith(`r-${camel}-`));
+  if (atomic !== undefined) {
+    const value = read(atomic);
+    if (value !== null) return value;
+  }
+  for (const className of classes) {
+    const value = read(className);
+    if (value !== null) return value;
+  }
+  return null;
+}
+
+/** A flex-basis declaration (`31%` or `320px`) resolved against a container. */
+function basisPx(basisRaw: string, containerPx: number): number {
+  const value = Number.parseFloat(basisRaw);
+  return basisRaw.trim().endsWith("%") ? (value / 100) * containerPx : value;
+}
+
+/**
+ * How many readiness cards fit on ONE line in a container `containerPx` wide.
+ *
+ * This is the CSS flex-wrap rule applied to the REAL emitted declarations: an
+ * item's hypothetical main size is its `flex-basis` clamped by `min-width`, and
+ * a line accepts `n` items while `n*size + (n-1)*gap <= container`. (`flex-grow`
+ * only distributes leftover space AFTER wrapping, so it cannot change the
+ * count.) It handles a px basis as well as a percentage one on purpose — a
+ * revert to the old fixed `320px` basis must be MODELLED, not mis-modelled into
+ * a false pass.
+ *
+ * NOTE: arithmetic over the real stylesheet, not a painted measurement — the
+ * browser retest remains the final word on pixels.
+ */
+function columnsAt(
+  containerPx: number,
+  basisRaw: string,
+  minWidthPx: number,
+  gapPx: number,
+): number {
+  const size = Math.max(basisPx(basisRaw, containerPx), minWidthPx);
+  let n = 0;
+  while ((n + 1) * size + n * gapPx <= containerPx) n += 1;
+  return Math.max(n, 1);
+}
+
+// The Stay workspace is the viewport minus the rail + gutters. The tester
+// measured the Rooms & Places page at 2,284px inside a 2,560px viewport, i.e.
+// 276px of chrome; the same chrome applies to Overview.
+const CHROME_PX = 276;
+const workspaceFor = (viewportPx: number): number => viewportPx - CHROME_PX;
+
 describe("#1484 — the desktop uncap survives the react-native-web resolver", () => {
   it("W-1 — PHONE Overview really applies the 820px readable measure", () => {
     mockIsWideDesktop = false;
@@ -275,6 +360,74 @@ describe("#1484 — the desktop uncap survives the react-native-web resolver", (
   it("W-3 — DESKTOP Overview applies NO width cap at all", () => {
     mockIsWideDesktop = true;
     expect(appliedMaxWidths(renderWeb())).toEqual([]);
+  });
+
+  it("W-5 — the readiness grid is capped at a MAXIMUM of 3 columns", () => {
+    mockIsWideDesktop = true;
+    const { html, css } = renderWeb();
+
+    // Read the REAL emitted geometry off the rendered markup.
+    const rowClasses = classesFor(html, "stay-check-basics");
+    const gridClasses = classesFor(html, "stay-readiness-grid");
+    const basisRaw = declaration(css, rowClasses, "flex-basis");
+    const minWidthRaw = declaration(css, rowClasses, "min-width");
+    const gapRaw = declaration(css, gridClasses, "column-gap");
+
+    // Vacuity guard: if any of these stop resolving, every count below would be
+    // computed from defaults and the cap would go unproven.
+    expect(basisRaw).toMatch(/%$/);
+    expect(minWidthRaw).toMatch(/px$/);
+    expect(gapRaw).toMatch(/px$/);
+
+    const basis = basisRaw as string;
+    const minWidth = Number.parseFloat(minWidthRaw as string);
+    const gap = Number.parseFloat(gapRaw as string);
+
+    // THE STRUCTURAL INVARIANT: a 4th column can never fit at ANY width,
+    // because 4 * basis% alone already exceeds 100% of the container.
+    expect(Number.parseFloat(basis) * 4).toBeGreaterThan(100);
+
+    // The approved design: "Cards reflow into a 2–3 column grid, full width."
+    expect(columnsAt(workspaceFor(2560), basis, minWidth, gap)).toBe(3);
+    expect(columnsAt(workspaceFor(1440), basis, minWidth, gap)).toBe(3);
+    // ...and it degrades gracefully rather than crushing the cards.
+    expect(columnsAt(workspaceFor(1024), basis, minWidth, gap)).toBe(2);
+
+    // Nothing between a phone and an ultrawide may ever exceed 3.
+    for (let viewport = 1024; viewport <= 5120; viewport += 32) {
+      expect(
+        columnsAt(workspaceFor(viewport), basis, minWidth, gap),
+      ).toBeLessThanOrEqual(3);
+    }
+  });
+
+  it("W-6 — each card is wide enough that labels stop wrapping to 3 lines", () => {
+    mockIsWideDesktop = true;
+    const { html, css } = renderWeb();
+    const rowClasses = classesFor(html, "stay-check-basics");
+    const gridClasses = classesFor(html, "stay-readiness-grid");
+    const basis = declaration(css, rowClasses, "flex-basis") as string;
+    const minWidth = Number.parseFloat(
+      declaration(css, rowClasses, "min-width") as string,
+    );
+    const gap = Number.parseFloat(
+      declaration(css, gridClasses, "column-gap") as string,
+    );
+
+    // Derived from the ACTUAL column count, so packing more columns in shrinks
+    // the card and fails this test. At 2560 six columns gave ~360px cards,
+    // which forced "At least one offering has a cover, policy, price and open
+    // inventory" onto three lines; three columns give ~745px.
+    for (const viewport of [1440, 2560]) {
+      const workspace = workspaceFor(viewport);
+      const columns = columnsAt(workspace, basis, minWidth, gap);
+      const cardWidth = (workspace - (columns - 1) * gap) / columns;
+      expect(cardWidth).toBeGreaterThan(370);
+    }
+    // The regressed 6-up card width at 2560 must be impossible.
+    const wide = workspaceFor(2560);
+    const wideColumns = columnsAt(wide, basis, minWidth, gap);
+    expect((wide - (wideColumns - 1) * gap) / wideColumns).toBeGreaterThan(600);
   });
 
   it("W-4 — desktop is LEFT-anchored where phone is CENTRED", () => {

@@ -91,8 +91,19 @@ export const stayReservationsMaxWidth = 920 as const;
 
 // Minimum comfortable width for one Stay Overview readiness row when the rows
 // reflow into a multi-column grid on wide desktop. Below this the row falls
-// back to a single column (flexWrap handles it).
+// back to fewer columns (flexWrap handles it).
 export const stayOverviewRowMinWidth = 320 as const;
+
+// #1484 — the Stay Overview readiness grid is capped at a MAXIMUM OF 3 COLUMNS
+// (approved design: "Cards reflow into a 2–3 column grid, full width"). A
+// PERCENTAGE flex-basis makes that cap arithmetic rather than a guess: with
+// `columnGap: spacing.lg` (24) the wrap rule is `n*basis + (n-1)*gap <= C`, so
+//   3 columns: 0.93C + 48 <= C  → fits for C >= ~686
+//   4 columns: 1.24C + 72 <= C  → NEVER fits, at any container width
+// and `stayOverviewRowMinWidth` clamps the low end back to 2 (and then 1) as
+// the workspace narrows. Raising this above 33% would break the 4-column
+// impossibility; that invariant is pinned by the #1484 web-render suite.
+export const stayOverviewGridBasis = "31%" as const;
 
 export const shadows = {
   sm: {
