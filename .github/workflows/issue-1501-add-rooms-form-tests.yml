@@ -65,6 +65,17 @@ jobs:
       - name: Width + axis proofs (react-native-web resolver)
         run: npx jest --config jest.issue1501.web.render.cjs --runInBand
 
+      # TESTER ADVERSARIAL SUITE (#1501 QA). A second, independent angle on the
+      # same change: a whole-tree AXIS AUDITOR run across a sweep of 18 editor
+      # states (the shipped guard proves `fieldStack` is safe, but nothing
+      # proved a CALL SITE picked the right axis — and one had not), the
+      # multiline overflow proof, a fuzz over the chip reducer, the NameBuilder
+      # boundaries at the server's exact 500, and a generic permission audit
+      # that fails on any `stay-*` control left live outside the justified
+      # allow-list. Runs as its own step so a tester regression is attributable.
+      - name: Tester adversarial proofs (axis audit + boundaries)
+        run: npx jest --config jest.issue1501.tester.cjs --runInBand
+
       # testID contract + the `styles.field` / override-with-undefined guards.
       # Runs under the DEFAULT node/ts-jest config (it reads source, no mount).
       - name: testID contract + axis source guards
