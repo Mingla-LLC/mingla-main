@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-03 — Business web no longer goes blank after a deploy: a missing JavaScript file now returns a real 404 instead of the homepage, the reload guard recognises the HTML-served-as-JavaScript failure (ignoring the identical JSON.parse error), and the two previously-uncoordinated recovery paths share one cooldown and never navigate a buyer off their checkout URL. (#1485, PR #1491)
 - 2026-07-31 — Stay payment reconciliation now recognizes active Admins through the deployed email identity contract, restoring audited Stripe and Paystack provider-truth recovery without weakening the Admin gate. (#1478, PR #1479)
 - 2026-07-31 — Admin now keeps repeated Stay notification and timeline rows distinct, so complete support evidence renders reliably without browser identity collisions. (#1476, PR #1477)
 - 2026-07-31 — Edge Function deployment now treats only Supabase’s exact already-current response as an idempotent success, continues to later functions, and still stops on every other failure without changing JWT settings. (#1456, PR #1475)
