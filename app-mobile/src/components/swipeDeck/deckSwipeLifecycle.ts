@@ -51,3 +51,23 @@ export function deckCommitTokenKey(token: DeckSwipeCommitToken): string {
 export function nextDeckGestureEpoch(currentEpoch: number): number {
   return currentEpoch + 1;
 }
+
+export interface DeckTokenIntentResult {
+  shouldRun: boolean;
+  pending: null;
+}
+
+/** Consume a deferred action only for the exact card/direction/generation. */
+export function consumeDeckTokenIntent(
+  pending: DeckSwipeCommitToken | null,
+  completed: DeckSwipeCommitToken,
+): DeckTokenIntentResult {
+  return {
+    shouldRun:
+      pending !== null &&
+      pending.epoch === completed.epoch &&
+      pending.cardId === completed.cardId &&
+      pending.direction === completed.direction,
+    pending: null,
+  };
+}

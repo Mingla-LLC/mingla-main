@@ -4,6 +4,7 @@ import test from 'node:test';
 
 import {
   canAdmitDeckInput,
+  consumeDeckTokenIntent,
   deckCommitTokenKey,
   isCurrentDeckCompletion,
   nextDeckGestureEpoch,
@@ -108,6 +109,26 @@ test('same-card same-direction rollback retry gets a fresh identity and old repl
   }), true, 'new admitted retry remains valid');
 });
 
+test('paywall intent is exact-token, one-shot, and inert after cancellation', () => {
+  const paywall = { cardId: 'curated-a', direction: 'right', epoch: 12 };
+  const unrelated = { cardId: 'place-b', direction: 'left', epoch: 13 };
+
+  // A canceled snap/invalidation clears the pending intent. A later unrelated
+  // centered rejection therefore cannot open the old paywall.
+  let pending = paywall;
+  pending = null;
+  const afterCancel = consumeDeckTokenIntent(pending, unrelated);
+  assert.equal(afterCancel.shouldRun, false);
+  assert.equal(afterCancel.pending, null);
+
+  // The exact successful snap consumes once; replay cannot run it twice.
+  const exact = consumeDeckTokenIntent(paywall, paywall);
+  assert.equal(exact.shouldRun, true);
+  assert.equal(exact.pending, null);
+  const replay = consumeDeckTokenIntent(exact.pending, paywall);
+  assert.equal(replay.shouldRun, false);
+});
+
 test('production deck has one native-driver owner and no forbidden competing primitive', () => {
   assertSingleOwnerSource(swipeableSource, controllerSource);
   assert.match(controllerSource, /DECK_EXIT_MS = 200/);
@@ -124,6 +145,11 @@ test('production deck has one native-driver owner and no forbidden competing pri
   assert.doesNotMatch(controllerSource, /requestedCommitKeysRef|new Set<string>\(\)/);
   assert.match(swipeableSource, /lastCommittedTokenKeyRef = useRef<string \| null>\(null\)/);
   assert.doesNotMatch(swipeableSource, /committedTokenKeysRef/);
+  assert.match(controllerSource, /onSwipeRejectedCentered\(token\)/);
+  assert.ok(
+    (controllerSource.match(/onInvalidated\(/g) ?? []).length >= 3,
+    'watchdog/invalidate/unmount must all clear deferred intents',
+  );
 });
 
 test('single-owner source guard detects the reverted competing responder', () => {
@@ -187,6 +213,22 @@ test('commit acknowledgement precedes persistence and deferred business work', (
     'Save/Pass haptic follows card/access/epoch validation and immediately precedes exit admission',
   );
   assert.match(validationBoundary, /HapticFeedback\.medium\(\)[\s\S]*return false/);
+
+  const rejectedBoundary = swipeableSource.slice(
+    swipeableSource.indexOf('onSwipeRejectedCentered: (token:'),
+    swipeableSource.indexOf('onCommitRequested:', swipeableSource.indexOf('onSwipeRejectedCentered: (token:')),
+  );
+  assert.match(rejectedBoundary, /consumeDeckTokenIntent\(pendingPaywallRef\.current, token\)/);
+  assert.ok(
+    rejectedBoundary.indexOf('pendingPaywallRef.current = intent.pending') <
+      rejectedBoundary.indexOf('if (!intent.shouldRun) return'),
+    'paywall intent must be cleared before its exact one-shot action runs',
+  );
+  assert.match(swipeableSource, /onInvalidated: \(\): void => \{\s*pendingPaywallRef\.current = null/);
+  assert.match(
+    swipeableSource,
+    /pendingPaywallRef\.current = null;\s*\}, \[activeDeckContextKey, currentMode, refreshKey, user\?\.id\]\);/,
+  );
 
   const controllerExit = controllerSource.slice(
     controllerSource.indexOf('const beginExit ='),

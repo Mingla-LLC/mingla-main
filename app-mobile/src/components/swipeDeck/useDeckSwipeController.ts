@@ -45,12 +45,13 @@ interface UseDeckSwipeControllerOptions {
   screenWidth: number;
   reducedMotion: boolean;
   onSwipeValidated: (token: DeckSwipeCommitToken) => boolean;
-  onSwipeRejectedCentered: (direction: DeckSwipeDirection) => void;
+  onSwipeRejectedCentered: (token: DeckSwipeCommitToken) => void;
   onCommitRequested: (token: DeckSwipeCommitToken) => void;
   onExpandValidated: () => boolean;
   onExpandRequested: () => void;
   onTransitionRejected: (phase: DeckSwipePhase) => void;
   onAnomaly: (anomaly: DeckSwipeAnomaly) => void;
+  onInvalidated: (reason: string) => void;
 }
 
 interface DeckSwipeCounters {
@@ -142,6 +143,7 @@ export function useDeckSwipeController(
     resetPresentation();
     setPhase('IDLE');
     if (reason === 'watchdog_recovery') countersRef.current.watchdog += 1;
+    optionsRef.current.onInvalidated(reason);
     optionsRef.current.onAnomaly({ reason, phase: recoveryPhase, durationMs });
   }, [clearTransitionTimers, resetPresentation, setPhase]);
 
@@ -202,7 +204,7 @@ export function useDeckSwipeController(
     if (!cardId || phaseRef.current !== 'DRAGGING') return false;
     const token: DeckSwipeCommitToken = { cardId, direction, epoch: epochRef.current };
     if (!optionsRef.current.onSwipeValidated(token)) {
-      animateToCenter(() => optionsRef.current.onSwipeRejectedCentered(direction));
+      animateToCenter(() => optionsRef.current.onSwipeRejectedCentered(token));
       return false;
     }
 
@@ -372,7 +374,7 @@ export function useDeckSwipeController(
     return true;
   }, [clearTransitionTimers, resetPresentation, setPhase]);
 
-  const invalidate = useCallback((_reason: string): void => {
+  const invalidate = useCallback((reason: string): void => {
     epochRef.current += 1;
     activeAnimationRef.current?.stop();
     activeAnimationRef.current = null;
@@ -380,6 +382,7 @@ export function useDeckSwipeController(
     clearTransitionTimers();
     resetPresentation();
     setPhase('IDLE');
+    optionsRef.current.onInvalidated(reason);
   }, [clearTransitionTimers, resetPresentation, setPhase]);
 
   useEffect(() => {
@@ -398,6 +401,7 @@ export function useDeckSwipeController(
     epochRef.current += 1;
     activeAnimationRef.current?.stop();
     clearTransitionTimers();
+    optionsRef.current.onInvalidated('unmount');
   }, [clearTransitionTimers]);
 
   const rotate = useMemo(() => positionX.interpolate({

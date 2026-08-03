@@ -135,6 +135,7 @@ import {
   SWIPE_COMMIT_MIN_DX,
 } from "../utils/swipeCommit";
 import {
+  consumeDeckTokenIntent,
   DeckSwipeCommitToken,
 } from './swipeDeck/deckSwipeLifecycle';
 import {
@@ -1060,7 +1061,7 @@ export default function SwipeableCards({
   const handleSwipeRef = useRef<((direction: "left" | "right", card: Recommendation) => Promise<void>) | null>(null);
   const handleCardExpandRef = useRef<(() => Promise<void>) | null>(null);
   const removedCardIdsRef = useRef<string[]>(removedCardIds);
-  const pendingPaywallRef = useRef(false);
+  const pendingPaywallRef = useRef<DeckSwipeCommitToken | null>(null);
   const pendingCommitRef = useRef<{
     token: DeckSwipeCommitToken;
     card: Recommendation;
@@ -1092,6 +1093,10 @@ export default function SwipeableCards({
     generation: number;
   } | null>(null);
   const persistenceDrainRef = useRef<Promise<void> | null>(null);
+
+  useEffect(() => {
+    pendingPaywallRef.current = null;
+  }, [activeDeckContextKey, currentMode, refreshKey, user?.id]);
 
   // Update refs when state changes
   useEffect(() => {
@@ -1398,6 +1403,12 @@ export default function SwipeableCards({
     screenWidth: SCREEN_WIDTH,
     reducedMotion,
     onSwipeValidated: (token: DeckSwipeCommitToken): boolean => {
+      if (
+        pendingPaywallRef.current &&
+        pendingPaywallRef.current.epoch !== token.epoch
+      ) {
+        pendingPaywallRef.current = null;
+      }
       const availableCards = recommendationsRef.current.filter(
         (rec) =>
           !removedCardsRef.current.has(rec.id) &&
@@ -1414,7 +1425,7 @@ export default function SwipeableCards({
         (card as { cardType?: unknown }).cardType === 'curated' &&
         !canAccessRef.current('curated_cards')
       ) {
-        pendingPaywallRef.current = true;
+        pendingPaywallRef.current = token;
         HapticFeedback.medium();
         return false;
       }
@@ -1423,9 +1434,10 @@ export default function SwipeableCards({
       else HapticFeedback.cardDislike();
       return true;
     },
-    onSwipeRejectedCentered: (): void => {
-      if (!pendingPaywallRef.current) return;
-      pendingPaywallRef.current = false;
+    onSwipeRejectedCentered: (token: DeckSwipeCommitToken): void => {
+      const intent = consumeDeckTokenIntent(pendingPaywallRef.current, token);
+      pendingPaywallRef.current = intent.pending;
+      if (!intent.shouldRun) return;
       setPaywallFeature('curated_cards');
       setShowPaywall(true);
     },
@@ -1471,6 +1483,9 @@ export default function SwipeableCards({
     },
     onAnomaly: ({ reason, phase: anomalyPhase, durationMs }): void => {
       reportDeckAnomaly(reason, anomalyPhase, durationMs);
+    },
+    onInvalidated: (): void => {
+      pendingPaywallRef.current = null;
     },
   });
   const acknowledgeActiveCard = deckSwipe.acknowledgeActiveCard;
