@@ -134,3 +134,15 @@ jobs:
         run: >-
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
           -f supabase/migrations/__tests__/issue_1529_producer_catalog_audit.test.sql
+      - name: Prove the producers actually write the country, by firing them
+        env:
+          PGPASSWORD: ${{ format('issue-1529-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_1529_producer_country_code.test.sql
+      - name: Prove a policy skip never escalates a refund to needs_review
+        env:
+          PGPASSWORD: ${{ format('issue-1529-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_1529_policy_skip_not_failure.test.sql
