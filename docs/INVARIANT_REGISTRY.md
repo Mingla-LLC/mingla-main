@@ -6924,9 +6924,9 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   accepted — zero legacy regressions.
 - **Established:** DRAFT at issue #1495 SPEC 2026-08-03. Flips ACTIVE at CLOSE.
 
-## DRAFT — issue #1505 (append-only gate fails closed on typechange + unmodelled statuses)
+## ACTIVE — issue #1505 (append-only gate fails closed on typechange + unmodelled statuses)
 
-### I-PROPOSED-1505-APPEND-ONLY-FAILS-CLOSED (DRAFT)
+### I-1505-APPEND-ONLY-FAILS-CLOSED (ACTIVE)
 - **Rule:** the append-only gate's status dispatch FAILS CLOSED. Git status `T`
   (typechange: regular file ↔ symlink ↔ submodule gitlink) on a test path is refused
   **unconditionally and direction-agnostically** — no override token of any grammar
