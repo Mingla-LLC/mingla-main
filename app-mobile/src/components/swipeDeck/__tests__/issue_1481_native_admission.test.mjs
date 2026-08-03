@@ -68,6 +68,20 @@ function assertModernNativeAdmission(sources) {
     sources.swipeable,
     /const scheduleQuietPostSwipeDrain[\s\S]*localDeckInteractionPhaseRef\.current !== 'IDLE'[\s\S]*DECK_POST_SWIPE_QUIET_IDLE_MS - quietForMs/,
   );
+  assert.match(
+    sources.swipeable,
+    /await new Promise<void>\(\(resolve\) => setTimeout\(resolve, 0\)\);[\s\S]{0,160}localDeckInteractionPhaseRef\.current !== 'IDLE'/,
+    'a completed deck monopolizes the JS event loop across deferred FIFO items',
+  );
+  assert.match(
+    sources.swipeable,
+    /if \('exhausted' in settlement\) \{[\s\S]{0,100}scheduleQuietPostSwipeDrain\(\)/,
+    'terminal settlement force-drains the entire business queue',
+  );
+  assert.doesNotMatch(
+    sources.swipeable,
+    /if \('exhausted' in settlement\) \{[\s\S]{0,100}drainPostSwipeQueue\(true\)/,
+  );
   const postSwipeScheduler = sources.swipeable.slice(
     sources.swipeable.indexOf('const enqueuePostSwipeWork'),
     sources.swipeable.indexOf('const drainPersistence'),
@@ -292,6 +306,15 @@ test('source guard rejects every superseded native availability root independent
   assert.throws(
     () => assertModernNativeAdmission({ ...source, controller: jsFrameMutant }),
     /runOnJS/,
+  );
+
+  const noYieldMutant = source.swipeable.replace(
+    'await new Promise<void>((resolve) => setTimeout(resolve, 0));',
+    'await Promise.resolve();',
+  );
+  assert.throws(
+    () => assertModernNativeAdmission({ ...source, swipeable: noYieldMutant }),
+    /monopolizes/,
   );
 
 });

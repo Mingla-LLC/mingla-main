@@ -1300,6 +1300,7 @@ export default function SwipeableCards({
     try {
       while (postSwipeQueueRef.current.length > 0) {
         if (!force && !isQuietIdle()) break;
+        if (force && localDeckInteractionPhaseRef.current !== 'IDLE') break;
         const item = postSwipeQueueRef.current.shift();
         if (!item || item.epoch !== swipeQueueEpochRef.current) continue;
         try {
@@ -1307,6 +1308,11 @@ export default function SwipeableCards({
         } catch (error) {
           console.error('[SwipeableCards] Deferred post-swipe work failed:', error);
         }
+        // A large completed deck can enqueue dozens of saves, analytics calls,
+        // cache invalidations, and toasts. Yield a macrotask between exact FIFO
+        // items so a newly started deck can admit/finalize its native gestures.
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        if (localDeckInteractionPhaseRef.current !== 'IDLE') break;
       }
     } finally {
       postSwipeDrainRunningRef.current = false;
@@ -1517,7 +1523,7 @@ export default function SwipeableCards({
     },
     onCommitSettled: (_token: DeckSwipeCommitToken, settlement: DeckCommitSettlement): void => {
       if ('exhausted' in settlement) {
-        void drainPostSwipeQueue(true);
+        scheduleQuietPostSwipeDrain();
         void flushDeckSessionHistory();
         void drainPersistence(true);
       }
