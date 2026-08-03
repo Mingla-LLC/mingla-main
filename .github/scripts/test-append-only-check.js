@@ -847,6 +847,239 @@ function scenarioT12() {
   }
 }
 
+// --- #1505 TESTER ADVERSARIAL (T14..T18) -------------------------------------
+// A different angle from T9..T13. T9 proves the SYMLINK leg with the two CURRENT
+// token forms; T11 proves three plausible-future statuses; T12 proves one bundle of
+// ordinary work stays green. These attack what those leave open: the GITLINK leg the
+// docblock claims but no scenario ever produced, the LEGACY token grammars and the
+// #1058 §4a cross-commit same-file attribution route (the one route that genuinely
+// DOES launder M-arm deletions), the near-miss boundary immediately around the `T`
+// arm, whether a refusal poisons its innocent siblings, and whether the two new
+// messages keep telling the operator how to get unstuck.
+
+// T14 (#1505 tester adversarial) — the GITLINK leg + the full laundering matrix.
+// Two gaps in T9. (1) The header docblock and the T-arm message both claim the arm
+// covers "regular file <-> symlink <-> submodule gitlink", but every scenario builds
+// a SYMLINK; the mode-160000 half of that promise was never executed, and it is
+// reached by different plumbing (`update-index --cacheinfo`) that git also refuses to
+// produce via `submodule add`. (2) T9 puts both CURRENT-form tokens on the typechange
+// commit itself. The stronger laundering route is the #1058 §4a residual: a token in
+// a DIFFERENT PR-range commit that TOUCHED THE SAME FILE — that route really does
+// bless deletions on the M arm, so if `T` were ever quietly routed through
+// fileHasToken() this is the shape that would slip. Both LEGACY grammars are used
+// here (ORCH- and META-ORCH- with a leg suffix), which T9/T10 never exercise, so a
+// future edit cannot re-open the arm for the old forms alone.
+// Fails-on-revert: the `passes += 1` terminal branch prints "ℹ️ T …" and exits 0.
+function scenarioT14() {
+  const { dir, g, write } = makeTempRepo();
+  try {
+    write("a.test.ts", "expect(a).toBe(1);\nexpect(b).toBe(2);\nexpect(c).toBe(3);\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "base");
+    g("branch", "-M", "main");
+    g("checkout", "-q", "-b", "feature");
+
+    // commit1: an ordinary additions-only edit to THE SAME FILE, carrying both
+    // legacy-form tokens. This is the #1058 §4a same-file attribution route.
+    write("a.test.ts", "expect(a).toBe(1);\nexpect(b).toBe(2);\nexpect(c).toBe(3);\nexpect(d).toBe(4);\n");
+    g("add", "-A");
+    g(
+      "commit",
+      "-q",
+      "-m",
+      "additions to the same file, carrying both legacy tokens",
+      "-m",
+      "[TEST-MOD-APPROVED ORCH-1505] [TEST-RENAME-APPROVED META-ORCH-1505-A] ORCH-1505 [typechange bypass]",
+    );
+
+    // commit2: replace the test file with a SUBMODULE GITLINK (mode 160000). Only
+    // plumbing can do this at an occupied path — `submodule add` refuses and degrades
+    // to a status-D delete, which the D arm already blocks.
+    const head = runGitIn(dir, ["rev-parse", "HEAD"]).trim();
+    fs.unlinkSync(nodePath.join(dir, "a.test.ts"));
+    g("update-index", "--force-remove", "a.test.ts");
+    g("update-index", "--add", "--cacheinfo", `160000,${head},a.test.ts`);
+    g(
+      "commit",
+      "-q",
+      "-m",
+      "replace the test file with a submodule gitlink",
+      "-m",
+      "[TEST-MOD-APPROVED ORCH-1505] [TEST-RENAME-APPROVED META-ORCH-1505-A] ORCH-1505 [typechange bypass]",
+    );
+    return runCheckIn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// T15 (#1505 tester adversarial) — the fail-closed default at the BOUNDARY OF THE `T`
+// ARM ITSELF, which T11 never approaches. T11 picks three statuses that are plausible
+// future git output (X / M100 / C100); it says nothing about what happens one
+// character away from the arm the same commit added. `T100` (a score-suffixed
+// typechange) and `t` (lowercase) are exactly the shapes a future git, a future flag,
+// or a careless `.toLowerCase()` would produce, and `entry.status === "T"` is an EXACT
+// match that catches none of them. `U` is real git output in a live conflict, and an
+// EMPTY status is what a malformed record degrades to. All four must be REFUSED with
+// zero passes — the contract is that nothing outside the four modelled arms is ever
+// counted as a pass, not that any particular arm claims it. Each status is also
+// asserted to be echoed VERBATIM, because an operator who cannot see the offending
+// status has no way to act on the refusal.
+// Fails-on-revert: all four print "ℹ️ … treating as pass" and the run exits 0.
+function scenarioT15() {
+  const repo = makeTempRepo();
+  const shimDir = fs.mkdtempSync(
+    nodePath.join(os.tmpdir(), "append-only-selftest-gitshim2-"),
+  );
+  try {
+    const { dir, g, write } = repo;
+    write("a.test.ts", "expect(a).toBe(1);\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "base");
+    g("branch", "-M", "main");
+    g("checkout", "-q", "-b", "feature");
+    write("a.test.ts", "expect(a).toBe(1);\nexpect(b).toBe(2);\n");
+    g("add", "-A");
+    // Both current-form tokens on the tip: even a fully attested PR cannot buy a pass
+    // for a status the gate cannot reason about.
+    g(
+      "commit",
+      "-q",
+      "-m",
+      "additions only",
+      "-m",
+      "[TEST-MOD-APPROVED #1505] [TEST-RENAME-APPROVED #1505] #1505 [typechange bypass]",
+    );
+
+    const realGit = execSync("command -v git", { encoding: "utf8" }).trim();
+    // Distinct paths per status so each assertion is unambiguous.
+    const shim = [
+      "#!/bin/sh",
+      'for arg in "$@"; do',
+      '  if [ "$arg" = "--name-status" ]; then',
+      "    printf 'U\\tu.test.ts\\nT100\\tt100.test.ts\\nt\\tlower.test.ts\\n\\tblank.test.ts\\n'",
+      "    exit 0",
+      "  fi",
+      "done",
+      `exec ${JSON.stringify(realGit)} "$@"`,
+      "",
+    ].join("\n");
+    const shimPath = nodePath.join(shimDir, "git");
+    fs.writeFileSync(shimPath, shim);
+    fs.chmodSync(shimPath, 0o755);
+
+    return runCheckIn(dir, {
+      PATH: `${shimDir}${nodePath.delimiter}${process.env.PATH || ""}`,
+    });
+  } finally {
+    fs.rmSync(repo.dir, { recursive: true, force: true });
+    fs.rmSync(shimDir, { recursive: true, force: true });
+  }
+}
+
+// T16 (#1505 tester adversarial) — SECOND negative control, disjoint from T12. A gate
+// that fails closed is only worth shipping if it never red-lights ordinary work; if it
+// does, people switch it off, which is strictly worse than the hole it closes. T12
+// covers ONE direction of the mode flip (chmod +x) and a single linear commit. This
+// covers the shapes T12 cannot see: the mode flip in the OTHER direction
+// (100755 -> 100644), a MERGE COMMIT inside the PR range (three-dot diffs against a
+// merge base are the normal CI shape and were never exercised), a CRLF rewrite under
+// this repo's REAL `.gitattributes` (`* text=auto`, which normalises to LF so the
+// change is additions-only), a whole `__tests__/` directory relocated under a rename
+// token, and a brand-new `__tests__/` tree. Every one of these has occurred in this
+// repository's history; not one may go red. Green BEFORE and AFTER the fix by design.
+function scenarioT16() {
+  const { dir, g, write } = makeTempRepo();
+  try {
+    fs.mkdirSync(nodePath.join(dir, "src"));
+    fs.mkdirSync(nodePath.join(dir, "src", "__tests__"));
+    write(".gitattributes", "* text=auto\n");
+    write("unmode.test.ts", "expect(u).toBe(1);\n");
+    write("crlf.test.ts", "expect(c).toBe(1);\nexpect(d).toBe(2);\n");
+    write("merged.test.ts", "expect(m).toBe(1);\n");
+    fs.writeFileSync(nodePath.join(dir, "src", "__tests__", "moved.test.ts"), "expect(v).toBe(1);\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "base");
+    // Base carries the executable bit so the PR can clear it.
+    g("update-index", "--chmod=+x", "unmode.test.ts");
+    g("commit", "-q", "-m", "base is executable");
+    g("branch", "-M", "main");
+
+    // A side branch that will be merged INTO the PR branch, so the range contains a
+    // real merge commit.
+    g("checkout", "-q", "-b", "side");
+    write("side.test.ts", "expect(s).toBe(1);\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "a new test file on a side branch");
+
+    g("checkout", "-q", "main");
+    g("checkout", "-q", "-b", "feature");
+    // Mode flip in the direction T12 does not cover.
+    g("update-index", "--chmod=-x", "unmode.test.ts");
+    // CRLF rewrite + an appended assertion; `* text=auto` normalises to LF in the
+    // object store, so this is additions-only and needs NO token.
+    write("crlf.test.ts", "expect(c).toBe(1);\r\nexpect(d).toBe(2);\r\nexpect(e).toBe(3);\r\n");
+    // A brand-new __tests__ tree.
+    fs.mkdirSync(nodePath.join(dir, "src", "components"), { recursive: true });
+    fs.mkdirSync(nodePath.join(dir, "src", "components", "__tests__"));
+    fs.writeFileSync(
+      nodePath.join(dir, "src", "components", "__tests__", "fresh.test.ts"),
+      "expect(f).toBe(1);\n",
+    );
+    g("add", "-A");
+    g("commit", "-q", "-m", "clear the exec bit, normalise line endings, add a __tests__ tree — NO token");
+
+    // A whole __tests__ directory relocated, under a rename token.
+    fs.mkdirSync(nodePath.join(dir, "lib"), { recursive: true });
+    g("mv", "src/__tests__", "lib/__tests__");
+    g(
+      "commit",
+      "-q",
+      "-m",
+      "relocate the __tests__ directory",
+      "-m",
+      "[TEST-RENAME-APPROVED #1505] #1505 [typechange bypass]",
+    );
+
+    g("merge", "-q", "--no-ff", "--no-edit", "-m", "merge the side branch into the PR", "side");
+    return runCheckIn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// T17 (#1505 tester adversarial) — CONTAINMENT. Every #1505 scenario so far runs the
+// refusal ALONE in its repo, so none of them can tell whether the new arms behave like
+// a per-entry refusal or like a whole-run abort. That matters in both directions: a
+// typechange must not swallow its innocent siblings (the operator needs to see the
+// rest of the report in one CI run rather than fixing one file per red build), and it
+// must not be neutralised by them either. One commit carries all three shapes at once
+// — a typechange, an additions-only modification and a new file — with NO token
+// anywhere, and the exact tally is pinned: 2 passed, 1 failed.
+// Fails-on-revert: the typechange is counted as a pass, the tally becomes
+// "3 passed, 0 failed" and the run exits 0.
+function scenarioT17() {
+  const { dir, g, write } = makeTempRepo();
+  try {
+    write("a.test.ts", "expect(a).toBe(1);\nexpect(b).toBe(2);\nexpect(c).toBe(3);\n");
+    write("grow.test.ts", "expect(g).toBe(1);\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "base");
+    g("branch", "-M", "main");
+    g("checkout", "-q", "-b", "feature");
+
+    fs.unlinkSync(nodePath.join(dir, "a.test.ts"));
+    fs.symlinkSync("/dev/null", nodePath.join(dir, "a.test.ts"));
+    write("grow.test.ts", "expect(g).toBe(1);\nexpect(h).toBe(2);\n");
+    write("fresh.test.ts", "expect(f).toBe(1);\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "a typechange next to ordinary work — NO token");
+    return runCheckIn(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 function selfTest() {
   let failures = 0;
   let total = 0;
@@ -1056,6 +1289,81 @@ function selfTest() {
     t13Exercised && !t13ModLeak && !t13RenameLeak,
     "T13 (#1505, SC-6 extended): neither NEW branch (TYPECHANGE, UNRECOGNISED) prints anything matching MOD_TOKEN or RENAME_TOKEN — their placeholders stay non-digit, so pasting this gate's output into a commit body authorizes nothing",
     `branches exercised=${t13Exercised}; MOD leak=${t13ModLeak}; RENAME leak=${t13RenameLeak}${t13Offenders.length ? `; offending output: ${JSON.stringify(t13Offenders)}` : ""}`,
+  );
+
+  // --- #1505 TESTER ADVERSARIAL (T14..T18) ---
+  // T9..T13 prove the two new dispositions work. These prove they cannot be talked
+  // around: the gitlink leg the docblock promises (T14), the near-miss boundary of
+  // the `T` arm itself (T15), ordinary work on shapes T12 cannot see (T16), the
+  // refusal's blast radius on innocent siblings (T17), and whether the operator is
+  // still told how to get unstuck (T18).
+  const t14 = scenarioT14();
+  const t14Refuses = /❌[^\n]*TYPECHANGE[^\n]*a\.test\.ts/.test(t14.out);
+  const t14NoPass = /Append-only check: 0 passed, 1 failed\./.test(t14.out);
+  check(
+    t14.status === 1 && t14Refuses && t14NoPass,
+    "T14 (#1505 tester adversarial): the SUBMODULE GITLINK leg of the T arm is refused too — and neither LEGACY token grammar on the typechange commit, nor the #1058 §4a same-file token on an earlier PR-range commit that touched this very file, buys a pass",
+    `check exited ${t14.status} (expected 1); TYPECHANGE a.test.ts refused=${t14Refuses}; tally 0/1=${t14NoPass}`,
+  );
+
+  const t15 = scenarioT15();
+  const t15U = /❌ U\s+u\.test\.ts[^\n]*UNRECOGNISED/.test(t15.out);
+  const t15T100 = /❌ T100\s+t100\.test\.ts[^\n]*UNRECOGNISED/.test(t15.out);
+  const t15Lower = /❌ t\s+lower\.test\.ts[^\n]*UNRECOGNISED/.test(t15.out);
+  const t15Blank = /❌\s+blank\.test\.ts[^\n]*UNRECOGNISED/.test(t15.out);
+  const t15Tally = /Append-only check: 0 passed, 4 failed\./.test(t15.out);
+  check(
+    t15.status === 1 && t15U && t15T100 && t15Lower && t15Blank && t15Tally,
+    "T15 (#1505 tester adversarial): the fail-closed default holds at the BOUNDARY OF THE T ARM — an unmerged entry (U), a score-suffixed typechange (T100), a lowercased status (t) and an EMPTY status are each refused with the status echoed verbatim, zero passes, even with both current-form tokens on the tip",
+    `check exited ${t15.status} (expected 1); U=${t15U} T100=${t15T100} lowercase-t=${t15Lower} empty=${t15Blank}; tally 0/4=${t15Tally}`,
+  );
+
+  const t16 = scenarioT16();
+  const t16Unmode = /✅[^\n]*unmode\.test\.ts/.test(t16.out);
+  const t16Side = /✅[^\n]*side\.test\.ts/.test(t16.out);
+  const t16Moved = /✅[^\n]*RENAMED[^\n]*moved\.test\.ts/.test(t16.out);
+  check(
+    t16.status === 0 && t16Unmode && t16Side && t16Moved,
+    "T16 (#1505 tester adversarial, negative control #2): ordinary work T12 cannot see stays GREEN — the mode flip in the OTHER direction (100755 -> 100644), a MERGE COMMIT inside the PR range, a CRLF rewrite under this repo's real `* text=auto`, a relocated __tests__/ directory and a brand-new __tests__/ tree",
+    `check exited ${t16.status} (expected 0); unmode.test.ts=${t16Unmode} side.test.ts=${t16Side} relocated=${t16Moved}`,
+  );
+
+  const t17 = scenarioT17();
+  const t17Refuses = /❌[^\n]*TYPECHANGE[^\n]*a\.test\.ts/.test(t17.out);
+  const t17Grow = /✅[^\n]*MODIFIED[^\n]*grow\.test\.ts/.test(t17.out);
+  const t17Fresh = /✅[^\n]*ADDED[^\n]*fresh\.test\.ts/.test(t17.out);
+  const t17Tally = /Append-only check: 2 passed, 1 failed\./.test(t17.out);
+  check(
+    t17.status === 1 && t17Refuses && t17Grow && t17Fresh && t17Tally,
+    "T17 (#1505 tester adversarial): the refusal is PER ENTRY, not a whole-run abort — a typechange sitting beside an additions-only edit and a new test file reddens only itself, the siblings still report green, and the tally is exactly 2 passed / 1 failed",
+    `check exited ${t17.status} (expected 1); TYPECHANGE=${t17Refuses}; sibling MODIFIED=${t17Grow}; sibling ADDED=${t17Fresh}; tally 2/1=${t17Tally}`,
+  );
+
+  // T18 (#1505 tester adversarial) — extends T13 on BOTH axes. T13 checks two outputs
+  // for token leakage and nothing else. A red gate an author cannot act on gets
+  // switched off, so the remediation sentence is as load-bearing as the refusal: this
+  // asserts each new message still names a concrete way forward, over a wider output
+  // set (T14's gitlink refusal, T15's four unmodelled statuses, T17's mixed run), and
+  // re-runs the SC-6 leak check across all of it. A future "tidy up the wording" edit
+  // that strips the escape hatch, or that respells a placeholder with real digits,
+  // turns this red.
+  const t18Out = `${t14.out}\n${t15.out}\n${t17.out}`;
+  const t18Exercised =
+    /❌[^\n]*TYPECHANGE/.test(t14.out) &&
+    /❌[^\n]*UNRECOGNISED/.test(t15.out) &&
+    /❌[^\n]*TYPECHANGE/.test(t17.out);
+  const t18TypechangeWayOut = /Restore the file as a regular file with its assertions intact\./.test(t18Out);
+  const t18UnrecognisedWayOut = /Reduce the change to an ordinary add \/ modify \/ rename, or amend this gate to handle the status explicitly/.test(t18Out);
+  const t18ModLeak = MOD_TOKEN.test(t18Out);
+  const t18RenameLeak = RENAME_TOKEN.test(t18Out);
+  const t18Offenders = t18Out
+    .split("\n")
+    .filter((l) => MOD_TOKEN.test(l) || RENAME_TOKEN.test(l))
+    .map((l) => l.trim().slice(0, 120));
+  check(
+    t18Exercised && t18TypechangeWayOut && t18UnrecognisedWayOut && !t18ModLeak && !t18RenameLeak,
+    "T18 (#1505 tester adversarial, SC-6 + remediation): across the gitlink refusal, all four unmodelled statuses and a mixed run, both new messages still hand the operator a concrete way forward AND still leak no live override token — a red gate nobody can act on is a gate somebody disables",
+    `branches exercised=${t18Exercised}; TYPECHANGE remediation=${t18TypechangeWayOut}; UNRECOGNISED remediation=${t18UnrecognisedWayOut}; MOD leak=${t18ModLeak}; RENAME leak=${t18RenameLeak}${t18Offenders.length ? `; offending output: ${JSON.stringify(t18Offenders)}` : ""}`,
   );
 
   console.log("");
