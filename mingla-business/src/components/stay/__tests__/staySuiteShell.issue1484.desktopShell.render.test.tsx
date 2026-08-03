@@ -32,13 +32,45 @@
  *
  * Append-only: NEW file; modifies/deletes no existing test.
  *
+ * RENDERER: `react-test-renderer` via the repo's `require(...) as {…}` idiom
+ * (the ListingInsightsScreen.issue1403 render suites use the same form). This
+ * is deliberate and load-bearing for the issue-1403 typecheck-delta gate: a
+ * bare `import` of an untyped/absent renderer adds a TS7016/TS2307 diagnostic
+ * under a clean `npm ci`, and that gate fails on ANY added diagnostic.
+ * `@testing-library/react-native` in particular is NOT in package.json, so it
+ * is absent in every job that does not `npm install --no-save` it.
+ *
  * Run: cd mingla-business &&
  *   npx jest --config jest.issue1484.render.cjs --runInBand
  */
 
 import React from "react";
 import { StyleSheet, Text } from "react-native";
-import { fireEvent, render } from "@testing-library/react-native";
+
+interface RenderNode {
+  type: unknown;
+  props: Record<string, unknown>;
+  findAll: (predicate: (node: RenderNode) => boolean) => RenderNode[];
+  findAllByType: (component: unknown) => RenderNode[];
+}
+interface RenderTree {
+  root: RenderNode;
+  unmount: () => void;
+}
+const TestRenderer = require("react-test-renderer") as {
+  create: (element: React.ReactElement) => RenderTree;
+  act: (callback: () => Promise<void> | void) => Promise<void>;
+};
+
+/** Mount inside `act` so mount-time effects/state flush before we assert. */
+async function mount(element: React.ReactElement): Promise<RenderTree> {
+  let tree: RenderTree | null = null;
+  await TestRenderer.act(async () => {
+    tree = TestRenderer.create(element);
+  });
+  expect(tree).not.toBeNull();
+  return tree as unknown as RenderTree;
+}
 
 // ---------------------------------------------------------------------------
 // Desktop gate — flipped per test. Read at RENDER time, so the `let` is already
@@ -222,14 +254,57 @@ interface RenderNode {
   findAllByType: (component: unknown) => RenderNode[];
 }
 
-const nodes = (tree: ReturnType<typeof render>): RenderNode[] =>
-  tree.UNSAFE_root.findAll(() => true) as unknown as RenderNode[];
+const nodes = (tree: RenderTree): RenderNode[] => tree.root.findAll(() => true);
+
+/** First HOST node carrying `testID` (mirrors RTL's host-only getByTestId). */
+function hostWithTestId(tree: RenderTree, testID: string): RenderNode {
+  const node = nodes(tree).find(
+    (candidate) =>
+      typeof candidate.type === "string" && candidate.props?.testID === testID,
+  );
+  expect(node).toBeDefined();
+  return node as RenderNode;
+}
+
+/** First node carrying `testID` AND a real `onPress` (the Pressable/Button). */
+function pressableWithTestId(tree: RenderTree, testID: string): RenderNode {
+  const node = nodes(tree).find(
+    (candidate) =>
+      candidate.props?.testID === testID &&
+      typeof candidate.props?.onPress === "function",
+  );
+  expect(node).toBeDefined();
+  return node as RenderNode;
+}
+
+async function press(node: RenderNode): Promise<void> {
+  await TestRenderer.act(() => {
+    (node.props.onPress as () => void)();
+  });
+}
+
+/** Distinct testIDs in the tree matching `pattern` (deduped, render order). */
+function testIdsMatching(tree: RenderTree, pattern: RegExp): string[] {
+  const seen = new Set<string>();
+  for (const node of nodes(tree)) {
+    const id = node.props?.testID;
+    if (typeof id === "string" && pattern.test(id)) seen.add(id);
+  }
+  return [...seen];
+}
+
+function hasText(tree: RenderTree, value: string): boolean {
+  return nodes(tree).some((node) => {
+    const kids = node.props?.children;
+    return kids === value || (Array.isArray(kids) && kids.join("") === value);
+  });
+}
 
 /**
  * The REAL flattened `contentContainerStyle` of the module's page ScrollView —
  * identified by the page padding every Stay module page style carries.
  */
-function pageMeasure(tree: ReturnType<typeof render>): Flat | undefined {
+function pageMeasure(tree: RenderTree): Flat | undefined {
   return nodes(tree)
     .filter(
       (node) =>
@@ -262,11 +337,8 @@ const STAY_MODULE_IDS = [
 ] as const;
 
 /** Resolve the two-column block's REAL flattened style from a desktop host. */
-function centeredStyle(
-  tree: ReturnType<typeof render>,
-  hostTestId: string,
-): Flat {
-  const host = tree.getByTestId(hostTestId);
+function centeredStyle(tree: RenderTree, hostTestId: string): Flat {
+  const host = hostWithTestId(tree, hostTestId);
   const centered = host.props.children as React.ReactElement<{
     style?: unknown;
   }>;
@@ -274,10 +346,7 @@ function centeredStyle(
 }
 
 /** Rail row labels in render order, deduped by testID prefix. */
-function railLabels(
-  tree: ReturnType<typeof render>,
-  prefix: string,
-): string[] {
+function railLabels(tree: RenderTree, prefix: string): string[] {
   const seen = new Set<string>();
   const labels: string[] = [];
   nodes(tree)
@@ -302,12 +371,12 @@ beforeEach(() => {
 });
 
 describe("#1484 — Stay suite adopts the shared desktop shell", () => {
-  it("T-1 — at >=1024px the rail renders and the pill row does NOT", () => {
+  it("T-1 — at >=1024px the rail renders and the pill row does NOT", async () => {
     mockIsWideDesktop = true;
-    const r = render(<StaySuiteShell {...STAY_PROPS} />);
+    const r = await mount(<StaySuiteShell {...STAY_PROPS} />);
 
     // The shared desktop shell is mounted.
-    expect(r.getByTestId("stay-suite-shell-desktop")).toBeTruthy();
+    expect(hostWithTestId(r, "stay-suite-shell-desktop")).toBeTruthy();
 
     // Every module is a rail row, in the declared order.
     expect(railLabels(r, "stay-rail-")).toEqual([
@@ -319,19 +388,21 @@ describe("#1484 — Stay suite adopts the shared desktop shell", () => {
       "Settings",
     ]);
     for (const id of STAY_MODULE_IDS) {
-      expect(r.getByTestId(`stay-rail-${id}`)).toBeTruthy();
+      expect(hostWithTestId(r, `stay-rail-${id}`)).toBeTruthy();
     }
 
     // The horizontal pill row is GONE at this width — the rail replaces it.
     for (const id of STAY_MODULE_IDS) {
-      expect(r.queryByTestId(`stay-module-${id}`)).toBeNull();
+      expect(testIdsMatching(r, new RegExp(`^stay-module-${id}$`))).toHaveLength(
+        0,
+      );
     }
-    expect(r.queryAllByTestId(/^stay-module-/)).toHaveLength(0);
+    expect(testIdsMatching(r, /^stay-module-/)).toHaveLength(0);
   });
 
-  it("T-2 — desktopCentered has NO maxWidth, keeps the anchor + gutters", () => {
+  it("T-2 — desktopCentered has NO maxWidth, keeps the anchor + gutters", async () => {
     mockIsWideDesktop = true;
-    const r = render(<StaySuiteShell {...STAY_PROPS} />);
+    const r = await mount(<StaySuiteShell {...STAY_PROPS} />);
     const flat = centeredStyle(r, "stay-suite-shell-desktop");
 
     // ORCH-1184's decision, inherited: the workspace FILLS the page width.
@@ -348,14 +419,14 @@ describe("#1484 — Stay suite adopts the shared desktop shell", () => {
     expect(flat.flexDirection).toBe("row");
     expect(flat.width).toBe("100%");
 
-    const rail = r.getByTestId("stay-rail-overview");
+    const rail = hostWithTestId(r, "stay-rail-overview");
     expect(rail.props.accessibilityRole).toBe("tab");
   });
 
-  it("T-2b — the rail is a tablist of the canonical width", () => {
+  it("T-2b — the rail is a tablist of the canonical width", async () => {
     mockIsWideDesktop = true;
-    const r = render(<StaySuiteShell {...STAY_PROPS} />);
-    const host = r.getByTestId("stay-suite-shell-desktop");
+    const r = await mount(<StaySuiteShell {...STAY_PROPS} />);
+    const host = hostWithTestId(r, "stay-suite-shell-desktop");
     const centered = host.props.children as React.ReactElement<{
       children: React.ReactElement[];
     }>;
@@ -369,13 +440,13 @@ describe("#1484 — Stay suite adopts the shared desktop shell", () => {
     ).toBe("tablist");
   });
 
-  it("T-3 — per-module desktop widths: Overview uncapped, Settings capped", () => {
+  it("T-3 — per-module desktop widths: Overview uncapped, Settings capped", async () => {
     mockIsWideDesktop = true;
 
     // Overview (default module) — uncapped + left-anchored.
-    const overview = render(<StaySuiteShell {...STAY_PROPS} />);
+    const overview = await mount(<StaySuiteShell {...STAY_PROPS} />);
     // Sanity: the Overview body actually rendered before we read its measure.
-    expect(overview.getByText("Stay overview")).toBeTruthy();
+    expect(hasText(overview, "Stay overview")).toBe(true);
     const overviewScroll = pageMeasure(overview);
     expect(overviewScroll).toBeDefined();
     expect(overviewScroll?.maxWidth).toBeUndefined();
@@ -383,26 +454,26 @@ describe("#1484 — Stay suite adopts the shared desktop shell", () => {
 
     // Settings — an editable form keeps the readable measure, left-anchored.
     overview.unmount();
-    const settings = render(<StaySuiteShell {...STAY_PROPS} />);
-    fireEvent.press(settings.getByTestId("stay-rail-settings"));
+    const settings = await mount(<StaySuiteShell {...STAY_PROPS} />);
+    await press(pressableWithTestId(settings, "stay-rail-settings"));
     const settingsScroll = pageMeasure(settings);
     expect(settingsScroll?.maxWidth).toBe(suiteFormMaxWidth);
     expect(settingsScroll?.alignSelf).toBe("flex-start");
   });
 
-  it("T-4 — below 1024px the pill row renders and the rail does NOT", () => {
+  it("T-4 — below 1024px the pill row renders and the rail does NOT", async () => {
     mockIsWideDesktop = false;
-    const r = render(<StaySuiteShell {...STAY_PROPS} />);
+    const r = await mount(<StaySuiteShell {...STAY_PROPS} />);
 
     // The phone/native layout is untouched: pills on top of the workspace.
     for (const id of STAY_MODULE_IDS) {
-      expect(r.getByTestId(`stay-module-${id}`)).toBeTruthy();
+      expect(hostWithTestId(r, `stay-module-${id}`)).toBeTruthy();
     }
-    expect(r.getByTestId("stay-suite-shell")).toBeTruthy();
+    expect(hostWithTestId(r, "stay-suite-shell")).toBeTruthy();
 
     // No desktop shell, no rail.
-    expect(r.queryByTestId("stay-suite-shell-desktop")).toBeNull();
-    expect(r.queryAllByTestId(/^stay-rail-/)).toHaveLength(0);
+    expect(testIdsMatching(r, /^stay-suite-shell-desktop$/)).toHaveLength(0);
+    expect(testIdsMatching(r, /^stay-rail-/)).toHaveLength(0);
 
     // ...and the Overview page keeps today's exact centred readable measure.
     const page = pageMeasure(r);
@@ -412,13 +483,13 @@ describe("#1484 — Stay suite adopts the shared desktop shell", () => {
 });
 
 describe("#1484 — Venue suite is NOT regressed by the extraction", () => {
-  it("T-5 — venue desktop rail + full-width workspace are unchanged", () => {
+  it("T-5 — venue desktop rail + full-width workspace are unchanged", async () => {
     mockIsWideDesktop = true;
-    const r = render(
+    const r = await mount(
       <VenueSuiteShell brandId="brand-test" initialModule="settings" />,
     );
 
-    expect(r.getByTestId("venue-suite-shell-desktop")).toBeTruthy();
+    expect(hostWithTestId(r, "venue-suite-shell-desktop")).toBeTruthy();
     expect(railLabels(r, "venue-rail-")).toEqual([
       "Overview",
       "Tables",
@@ -438,13 +509,15 @@ describe("#1484 — Venue suite is NOT regressed by the extraction", () => {
     expect(flat.width).toBe("100%");
   });
 
-  it("T-6 — venue phone branch still renders the phone host, not the rail", () => {
+  it("T-6 — venue phone branch still renders the phone host, not the rail", async () => {
     mockIsWideDesktop = false;
-    const r = render(
+    const r = await mount(
       <VenueSuiteShell brandId="brand-test" initialModule="settings" />,
     );
-    expect(r.getByTestId("venue-suite-shell-phone")).toBeTruthy();
-    expect(r.queryByTestId("venue-suite-shell-desktop")).toBeNull();
-    expect(r.queryAllByTestId(/^venue-rail-/)).toHaveLength(0);
+    expect(hostWithTestId(r, "venue-suite-shell-phone")).toBeTruthy();
+    expect(testIdsMatching(r, /^venue-suite-shell-desktop$/)).toHaveLength(
+      0,
+    );
+    expect(testIdsMatching(r, /^venue-rail-/)).toHaveLength(0);
   });
 });

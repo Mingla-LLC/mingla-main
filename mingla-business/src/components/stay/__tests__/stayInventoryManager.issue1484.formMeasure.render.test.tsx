@@ -27,13 +27,42 @@
  *
  * Append-only: NEW file; modifies/deletes no existing test.
  *
+ * RENDERER: `react-test-renderer` via the repo's `require(...) as {…}` idiom
+ * (same form as the ListingInsightsScreen.issue1403 render suites). Load-
+ * bearing for the issue-1403 typecheck-delta gate — a bare `import` of an
+ * untyped/absent renderer adds a TS7016/TS2307 diagnostic under a clean
+ * `npm ci`, and that gate fails on ANY added diagnostic.
+ *
  * Run: cd mingla-business &&
  *   npx jest --config jest.issue1484.render.cjs --runInBand
  */
 
 import React from "react";
 import { StyleSheet } from "react-native";
-import { fireEvent, render } from "@testing-library/react-native";
+
+interface RenderTreeNode {
+  type: unknown;
+  props: Record<string, unknown>;
+  findAll: (predicate: (node: RenderTreeNode) => boolean) => RenderTreeNode[];
+}
+interface RenderTree {
+  root: RenderTreeNode;
+  unmount: () => void;
+}
+const TestRenderer = require("react-test-renderer") as {
+  create: (element: React.ReactElement) => RenderTree;
+  act: (callback: () => Promise<void> | void) => Promise<void>;
+};
+
+/** Mount inside `act` so mount-time effects/state flush before we assert. */
+async function mount(element: React.ReactElement): Promise<RenderTree> {
+  let tree: RenderTree | null = null;
+  await TestRenderer.act(async () => {
+    tree = TestRenderer.create(element);
+  });
+  expect(tree).not.toBeNull();
+  return tree as unknown as RenderTree;
+}
 
 // ---------------------------------------------------------------------------
 // Desktop gate — flipped per test; read at RENDER time.
@@ -164,15 +193,6 @@ import { StayInventoryManager } from "../StayInventoryManager";
 
 type Flat = Record<string, unknown>;
 
-/**
- * Minimal shape of a react-test-renderer instance. `@types/react-test-renderer`
- * is not installed (the renderer is a --no-save test-only dep), so annotate the
- * traversal callback explicitly rather than inherit `any`.
- */
-interface RenderNode {
-  type: unknown;
-  props: Record<string, unknown>;
-}
 
 const PROPS = {
   brandId: "brand-1484",
@@ -180,21 +200,43 @@ const PROPS = {
   mode: "inventory" as const,
 };
 
+const nodes = (tree: RenderTree): RenderTreeNode[] =>
+  tree.root.findAll(() => true);
+
 /** REAL flattened contentContainerStyle of a ScrollView, by testID. */
-function scrollMeasure(
-  tree: ReturnType<typeof render>,
-  testID: string,
-): Flat {
-  const all = tree.UNSAFE_root.findAll(() => true) as unknown as RenderNode[];
-  const node = all.filter(
+function scrollMeasure(tree: RenderTree, testID: string): Flat {
+  const node = nodes(tree).find(
     (candidate) =>
       candidate.props?.testID === testID &&
       candidate.props?.contentContainerStyle !== undefined,
-  )[0];
+  );
   expect(node).toBeDefined();
   return (StyleSheet.flatten(
-    node.props.contentContainerStyle as never,
+    (node as RenderTreeNode).props.contentContainerStyle as never,
   ) ?? {}) as Flat;
+}
+
+/** Distinct testIDs matching `pattern` (deduped). */
+function testIdsMatching(tree: RenderTree, pattern: RegExp): string[] {
+  const seen = new Set<string>();
+  for (const node of nodes(tree)) {
+    const id = node.props?.testID;
+    if (typeof id === "string" && pattern.test(id)) seen.add(id);
+  }
+  return [...seen];
+}
+
+/** Press the Pressable/Button carrying `testID`, flushing the state update. */
+async function pressByTestId(tree: RenderTree, testID: string): Promise<void> {
+  const node = nodes(tree).find(
+    (candidate) =>
+      candidate.props?.testID === testID &&
+      typeof candidate.props?.onPress === "function",
+  );
+  expect(node).toBeDefined();
+  await TestRenderer.act(() => {
+    ((node as RenderTreeNode).props.onPress as () => void)();
+  });
 }
 
 beforeEach(() => {
@@ -202,9 +244,9 @@ beforeEach(() => {
 });
 
 describe("#1484 — Stay inventory: list fills, embedded form keeps its measure", () => {
-  it("F-1 — desktop: the Rooms & Places LIST is UNCAPPED and left-anchored", () => {
+  it("F-1 — desktop: the Rooms & Places LIST is UNCAPPED and left-anchored", async () => {
     mockIsWideDesktop = true;
-    const r = render(<StayInventoryManager {...PROPS} />);
+    const r = await mount(<StayInventoryManager {...PROPS} />);
     const list = scrollMeasure(r, "stay-inventory-list-scroll");
 
     expect(list.maxWidth).toBeUndefined();
@@ -212,29 +254,31 @@ describe("#1484 — Stay inventory: list fills, embedded form keeps its measure"
     expect(list.alignSelf).toBe("flex-start");
   });
 
-  it("F-2 — desktop: the embedded OfferingEditor FORM is capped at suiteFormMaxWidth", () => {
+  it("F-2 — desktop: the embedded OfferingEditor FORM is capped at suiteFormMaxWidth", async () => {
     mockIsWideDesktop = true;
-    const r = render(<StayInventoryManager {...PROPS} />);
+    const r = await mount(<StayInventoryManager {...PROPS} />);
 
     // Enter the editor — the same path an operator takes from the list.
-    fireEvent.press(r.getByTestId("stay-inventory-add"));
+    await pressByTestId(r, "stay-inventory-add");
 
     const form = scrollMeasure(r, "stay-offering-editor-scroll");
     expect(form.maxWidth).toBe(suiteFormMaxWidth);
     expect(form.alignSelf).toBe("flex-start");
 
     // ...and the list is no longer mounted, so the two never disagree on screen.
-    expect(r.queryByTestId("stay-inventory-list-scroll")).toBeNull();
+    expect(
+      testIdsMatching(r, /^stay-inventory-list-scroll$/),
+    ).toHaveLength(0);
   });
 
-  it("F-3 — desktop: form and list measures are DIFFERENT (the distinction holds)", () => {
+  it("F-3 — desktop: form and list measures are DIFFERENT (the distinction holds)", async () => {
     mockIsWideDesktop = true;
-    const listTree = render(<StayInventoryManager {...PROPS} />);
+    const listTree = await mount(<StayInventoryManager {...PROPS} />);
     const list = scrollMeasure(listTree, "stay-inventory-list-scroll");
     listTree.unmount();
 
-    const formTree = render(<StayInventoryManager {...PROPS} />);
-    fireEvent.press(formTree.getByTestId("stay-inventory-add"));
+    const formTree = await mount(<StayInventoryManager {...PROPS} />);
+    await pressByTestId(formTree, "stay-inventory-add");
     const form = scrollMeasure(formTree, "stay-offering-editor-scroll");
 
     expect(form.maxWidth).not.toEqual(list.maxWidth);
@@ -245,17 +289,17 @@ describe("#1484 — Stay inventory: list fills, embedded form keeps its measure"
     expect(list.alignSelf).toBe("flex-start");
   });
 
-  it("F-4 — phone: BOTH keep today's centred measure (native unaffected)", () => {
+  it("F-4 — phone: BOTH keep today's centred measure (native unaffected)", async () => {
     mockIsWideDesktop = false;
 
-    const listTree = render(<StayInventoryManager {...PROPS} />);
+    const listTree = await mount(<StayInventoryManager {...PROPS} />);
     const list = scrollMeasure(listTree, "stay-inventory-list-scroll");
     expect(list.maxWidth).toBe(stayInventoryMaxWidth);
     expect(list.alignSelf).toBe("center");
     listTree.unmount();
 
-    const formTree = render(<StayInventoryManager {...PROPS} />);
-    fireEvent.press(formTree.getByTestId("stay-inventory-add"));
+    const formTree = await mount(<StayInventoryManager {...PROPS} />);
+    await pressByTestId(formTree, "stay-inventory-add");
     const form = scrollMeasure(formTree, "stay-offering-editor-scroll");
     expect(form.maxWidth).toBe(stayInventoryMaxWidth);
     expect(form.alignSelf).toBe("center");

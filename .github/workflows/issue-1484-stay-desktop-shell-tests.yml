@@ -44,11 +44,10 @@ jobs:
       - name: Install Business dependencies
         run: npm ci
 
-      # react-test-renderer + @testing-library/react-native are TEST-ONLY and
-      # deliberately not app dependencies; --no-save keeps them out of the lock.
-      - name: Install render-only test dependencies
-        run: npm install --no-save react-test-renderer@19.1.0 @testing-library/react-native
-
+      # NOTE: no `--no-save` test-dep overlay is needed. The #1484 render suites
+      # use `react-test-renderer` (a real devDependency), NOT
+      # `@testing-library/react-native` — which is absent from package.json and
+      # would add a TS2307 diagnostic to the issue-1403 typecheck-delta gate.
       - name: Stay/Venue desktop shell render proof
         run: npx jest --config jest.issue1484.render.cjs --runInBand
 
