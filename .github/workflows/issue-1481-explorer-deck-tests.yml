@@ -49,6 +49,12 @@ jobs:
           test -f app-mobile/src/components/swipeDeck/__tests__/issue_1481_release_hotpath.adversarial.test.mjs
           test -f app-mobile/src/components/swipeDeck/__tests__/issue_1481_native_admission.test.mjs
           test -f app-mobile/src/components/swipeDeck/__tests__/issue_1481_native_admission.adversarial.test.mjs
+      - name: Exercise the Android framestats parser entry point
+        run: >-
+          node app-mobile/scripts/ci/issue-1481-parse-framestats.mjs
+          app-mobile/src/components/swipeDeck/__tests__/fixtures/issue_1481_framestats_synthetic.txt
+          --refresh-rate-hz=120
+          --refresh-mode=adaptive
       - name: Run DRAFT invariants and their synthetic self-test controls
         run: >-
           node --test
