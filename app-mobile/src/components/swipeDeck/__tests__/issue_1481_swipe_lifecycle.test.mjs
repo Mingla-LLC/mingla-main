@@ -152,7 +152,7 @@ test('paywall intent is exact-token, one-shot, and inert after cancellation', ()
 
 test('production deck has one native-driver owner and no forbidden competing primitive', () => {
   assertSingleOwnerSource(swipeableSource, controllerSource, stageSource);
-  assert.match(controllerSource, /DECK_EXIT_MS = 200/);
+  assert.match(controllerSource, /DECK_EXIT_MS = 120/);
   assert.match(controllerSource, /DECK_SNAP_MS = 240/);
   assert.match(controllerSource, /Easing\.bezier\(0\.22, 1, 0\.36, 1\)/);
   assert.match(controllerSource, /isCurrentDeckCompletion\(\{\s*finished,/);
