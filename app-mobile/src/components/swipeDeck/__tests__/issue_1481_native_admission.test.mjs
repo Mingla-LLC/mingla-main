@@ -9,16 +9,19 @@ const source = Object.fromEntries(await Promise.all(Object.entries({
   history: new URL('../../../store/deckSessionHistoryStore.ts', import.meta.url),
 }).map(async ([key, url]) => [key, await readFile(url, 'utf8')])));
 
-function assertFreshNativeAdmission(sources) {
+function assertModernNativeAdmission(sources) {
   const handler = sources.swipeable.slice(
-    sources.swipeable.indexOf('<PanGestureHandler'),
-    sources.swipeable.indexOf('</PanGestureHandler>') + '</PanGestureHandler>'.length,
+    sources.swipeable.indexOf('<GestureDetector'),
+    sources.swipeable.indexOf('</GestureDetector>') + '</GestureDetector>'.length,
   );
-  assert.match(handler, /key=\{currentRec\.id\}/, 'successor card does not receive a fresh native handler');
+  assert.doesNotMatch(handler, /key=\{currentRec\.id\}/, 'card promotion remounts the modern recognizer');
   assert.doesNotMatch(handler, /enabled=\{deckSwipe\.handlerEnabled\}/, 'phase toggles native handler eligibility');
   assert.doesNotMatch(handler, /pointerEvents=\{deckSwipe\.phase/, 'phase toggles the gesture host pointer target');
   assert.doesNotMatch(handler, /deckSwipe\.phase/, 'rendered phase decisions reconcile the native handler subtree');
+  assert.match(handler, /<GestureDetector gesture=\{deckSwipe\.gesture\}>/);
   assert.doesNotMatch(sources.controller, /setRenderedPhase/, 'gesture phase is mirrored into React state');
+  assert.match(sources.controller, /Gesture\.Pan\(\)[\s\S]*\.runOnJS\(true\)[\s\S]*\.onBegin\(beginGesture\)[\s\S]*\.onUpdate[\s\S]*\.onFinalize/);
+  assert.doesNotMatch(sources.controller, /Animated\.event|PanGestureHandlerStateChangeEvent/);
   assert.match(sources.controller, /const isIdle = useCallback\(\(\): boolean => phaseRef\.current === 'IDLE'/);
   assert.match(sources.swipeable, /pendingAccessibilityFocusRef\.current \|\| !deckSwipe\.isIdle\(\)/);
   assert.match(sources.controller, /if \(!canAdmitDeckInput\(phaseRef\.current\)/);
@@ -117,7 +120,6 @@ class NativeCadenceModel {
     this.postSwipePending.push(id);
     this.commits += 1;
     this.activeCard += 1;
-    this.handlerMounts += 1;
     this.phase = 'IDLE';
     this.lastActivityAt = settledAt;
     this.settleDurations.push(settledAt - releaseAt);
@@ -165,14 +167,14 @@ function runContinuousLeg(seed) {
   return model;
 }
 
-test('production gives each promoted card a fresh always-eligible native handler', () => {
-  assertFreshNativeAdmission(source);
+test('production keeps one modern always-eligible native recognizer', () => {
+  assertModernNativeAdmission(source);
 });
 
 test('60 jittered release-cadence commands admit and commit exactly with zero active writes', () => {
   for (let seed = 1; seed <= 64; seed += 1) {
     const model = runContinuousLeg(seed);
-    assert.equal(model.handlerMounts, 61);
+    assert.equal(model.handlerMounts, 1);
     assert.equal(model.admissions, 60);
     assert.equal(model.commits, 60);
     assert.equal(model.rejected, 0);
@@ -243,33 +245,36 @@ test('60 delivered successor gestures fast-forward pending exits without loss or
 });
 
 test('source guard rejects every superseded native availability root independently', () => {
-  const handlerMutant = source.swipeable.replace('            key={currentRec.id}\n', '');
-  assert.throws(() => assertFreshNativeAdmission({ ...source, swipeable: handlerMutant }), /fresh native handler/);
+  const handlerMutant = source.swipeable.replace(
+    '<GestureDetector gesture={deckSwipe.gesture}>',
+    '<GestureDetector key={currentRec.id} gesture={deckSwipe.gesture}>',
+  );
+  assert.throws(() => assertModernNativeAdmission({ ...source, swipeable: handlerMutant }), /remounts/);
 
   const enabledMutant = source.swipeable.replace(
-    '<PanGestureHandler\n',
-    '<PanGestureHandler\n            enabled={deckSwipe.handlerEnabled}\n',
+    '<GestureDetector gesture={deckSwipe.gesture}>',
+    '<GestureDetector enabled={deckSwipe.handlerEnabled} gesture={deckSwipe.gesture}>',
   );
-  assert.throws(() => assertFreshNativeAdmission({ ...source, swipeable: enabledMutant }), /eligibility/);
+  assert.throws(() => assertModernNativeAdmission({ ...source, swipeable: enabledMutant }), /eligibility/);
 
   const renderedPhaseMutant = source.controller.replace(
     "const phaseRef = useRef<DeckSwipePhase>('IDLE');",
     "const [phase, setRenderedPhase] = useState<DeckSwipePhase>('IDLE');\n  const phaseRef = useRef<DeckSwipePhase>('IDLE');",
   );
   assert.throws(
-    () => assertFreshNativeAdmission({ ...source, controller: renderedPhaseMutant }),
+    () => assertModernNativeAdmission({ ...source, controller: renderedPhaseMutant }),
     /mirrored into React state/,
   );
 
   const layoutMutant = `${source.controller}\nconst pendingSettlementRef = useRef(null);`;
-  assert.throws(() => assertFreshNativeAdmission({ ...source, controller: layoutMutant }), /layout or timer/);
+  assert.throws(() => assertModernNativeAdmission({ ...source, controller: layoutMutant }), /layout or timer/);
 
   const droppedBeginMutant = source.controller.replaceAll(
     "phaseRef.current === 'EXITING' && !fastForwardPendingExit()",
     "phaseRef.current === 'EXITING'",
   );
   assert.throws(
-    () => assertFreshNativeAdmission({ ...source, controller: droppedBeginMutant }),
+    () => assertModernNativeAdmission({ ...source, controller: droppedBeginMutant }),
     /delivered successor BEGAN/,
   );
 
@@ -278,7 +283,7 @@ test('source guard rejects every superseded native availability root independent
     'const outgoingAnimation',
   );
   assert.throws(
-    () => assertFreshNativeAdmission({ ...source, controller: unsafeStopMutant }),
+    () => assertModernNativeAdmission({ ...source, controller: unsafeStopMutant }),
     /stopped native callback/,
   );
 

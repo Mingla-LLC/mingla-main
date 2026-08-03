@@ -32,10 +32,7 @@ const FORBIDDEN_CONTROLLER_PATTERNS = [
   'PanResponder',
   'react-native-reanimated',
   'react-native-worklets',
-  'GestureDetector',
-  'Gesture.Pan',
   'useSharedValue',
-  'runOnJS',
   'flattenOffset',
   'extractOffset',
   'setOffset',
@@ -47,10 +44,10 @@ function assertSingleOwnerSource(swipeable, controller, stage) {
   assert.doesNotMatch(swipeable, /useDeckSwipeController\(/);
   assert.match(stage, /useDeckSwipeController\(props\)/);
   assert.match(stage, /export const DeckSwipeStage = memo\(forwardRef/);
-  assert.match(swipeable, /<PanGestureHandler/);
-  assert.match(swipeable, /<PanGestureHandler\s+key=\{currentRec\.id\}/);
-  assert.match(controller, /Animated\.event<[\s\S]*translationX: positionX[\s\S]*useNativeDriver: true/);
-  assert.match(controller, /onHandlerStateChange/);
+  assert.match(swipeable, /<GestureDetector gesture=\{deckSwipe\.gesture\}>/);
+  assert.doesNotMatch(swipeable, /<PanGestureHandler/);
+  assert.match(controller, /Gesture\.Pan\(\)[\s\S]*\.runOnJS\(true\)[\s\S]*\.onBegin\(beginGesture\)[\s\S]*\.onUpdate[\s\S]*\.onFinalize/);
+  assert.doesNotMatch(controller, /Animated\.event|onHandlerStateChange/);
   for (const pattern of FORBIDDEN_CONTROLLER_PATTERNS) {
     assert.equal(swipeable.includes(pattern), false, `SwipeableCards contains forbidden ${pattern}`);
     assert.equal(controller.includes(pattern), false, `controller contains forbidden ${pattern}`);
@@ -151,7 +148,7 @@ test('paywall intent is exact-token, one-shot, and inert after cancellation', ()
   assert.equal(replay.shouldRun, false);
 });
 
-test('production deck has one native-driver owner and no forbidden competing primitive', () => {
+test('production deck has one modern native owner and no competing primitive', () => {
   assertSingleOwnerSource(swipeableSource, controllerSource, stageSource);
   assert.match(controllerSource, /DECK_EXIT_MS = 200/);
   assert.match(controllerSource, /DECK_SNAP_MS = 240/);

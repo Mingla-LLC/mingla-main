@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing } from 'react-native';
-// [TRANSITIONAL: I-1481] RNGH 2.x remains until a separately approved Consumer
-// gesture migration passes physical iOS/Android Fabric crash soak.
-import {
-  PanGestureHandlerGestureEvent,
-  PanGestureHandlerStateChangeEvent,
-  State,
-} from 'react-native-gesture-handler';
+import { Gesture } from 'react-native-gesture-handler';
 import { spacing } from '../../constants/designSystem';
 import {
   SWIPE_COMMIT_DISTANCE,
@@ -77,8 +71,7 @@ export interface DeckSwipeController {
   previewOpacity: Animated.AnimatedInterpolation<number>;
   previewScale: Animated.AnimatedInterpolation<number>;
   isTransitionDelayed: boolean;
-  onGestureEvent: (...args: unknown[]) => void;
-  onHandlerStateChange: (event: PanGestureHandlerStateChangeEvent) => void;
+  gesture: ReturnType<typeof Gesture.Pan>;
   requestSwipe: (direction: DeckSwipeDirection) => boolean;
   requestTapExpand: () => boolean;
   isIdle: () => boolean;
@@ -332,41 +325,41 @@ export function useDeckSwipeController(
     return settleCommit(token, true);
   }, [clearTransitionTimers, resetPresentation, setPhase, settleCommit]);
 
-  const onGestureEvent = useMemo(
-    () => Animated.event<PanGestureHandlerGestureEvent>(
-      [{ nativeEvent: { translationX: positionX, translationY: positionY } }],
-      { useNativeDriver: true },
-    ),
-    [positionX, positionY],
-  );
-
   const rejectInput = useCallback((): void => {
     countersRef.current.rejected += 1;
     optionsRef.current.onTransitionRejected(phaseRef.current);
   }, []);
 
-  const onHandlerStateChange = useCallback((event: PanGestureHandlerStateChangeEvent): void => {
-    const { state, translationX, translationY, velocityX } = event.nativeEvent;
-    if (state === State.BEGAN) {
-      if (phaseRef.current === 'EXITING' && !fastForwardPendingExit()) {
-        rejectInput();
-        return;
-      }
-      if (!canAdmitDeckInput(phaseRef.current) || !activeCardIdRef.current) {
-        rejectInput();
-        return;
-      }
-      countersRef.current.admitted += 1;
-      epochRef.current = nextDeckGestureEpoch(epochRef.current);
-      setPhase('DRAGGING');
+  const beginGesture = useCallback((): void => {
+    if (phaseRef.current === 'EXITING' && !fastForwardPendingExit()) {
+      rejectInput();
       return;
     }
+    if (!canAdmitDeckInput(phaseRef.current) || !activeCardIdRef.current) {
+      rejectInput();
+      return;
+    }
+    countersRef.current.admitted += 1;
+    epochRef.current = nextDeckGestureEpoch(epochRef.current);
+    setPhase('DRAGGING');
+  }, [fastForwardPendingExit, rejectInput, setPhase]);
 
-    if (state !== State.END && state !== State.CANCELLED && state !== State.FAILED) return;
+  const updateGesture = useCallback((translationX: number, translationY: number): void => {
+    if (phaseRef.current !== 'DRAGGING') return;
+    positionX.setValue(translationX);
+    positionY.setValue(translationY);
+  }, [positionX, positionY]);
+
+  const finalizeGesture = useCallback((
+    translationX: number,
+    translationY: number,
+    velocityX: number,
+    success: boolean,
+  ): void => {
     if (phaseRef.current !== 'DRAGGING') return;
     latestEndYRef.current = translationY;
 
-    if (state !== State.END) {
+    if (!success) {
       animateToCenter();
       return;
     }
@@ -385,7 +378,19 @@ export function useDeckSwipeController(
     } else {
       animateToCenter();
     }
-  }, [animateToCenter, beginExit, fastForwardPendingExit, rejectInput, setPhase]);
+  }, [animateToCenter, beginExit]);
+
+  const gesture = useMemo(() => Gesture.Pan()
+    .minDistance(10)
+    .maxPointers(1)
+    .runOnJS(true)
+    .onBegin(beginGesture)
+    .onUpdate((event) => {
+      updateGesture(event.translationX, event.translationY);
+    })
+    .onFinalize((event, success) => {
+      finalizeGesture(event.translationX, event.translationY, event.velocityX, success);
+    }), [beginGesture, finalizeGesture, updateGesture]);
 
   const requestSwipe = useCallback((direction: DeckSwipeDirection): boolean => {
     if (!canAdmitDeckInput(phaseRef.current) || !activeCardIdRef.current) {
@@ -488,8 +493,7 @@ export function useDeckSwipeController(
     previewOpacity,
     previewScale,
     isTransitionDelayed,
-    onGestureEvent,
-    onHandlerStateChange,
+    gesture,
     requestSwipe,
     requestTapExpand,
     isIdle,

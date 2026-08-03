@@ -16,7 +16,7 @@ import {
   PixelRatio,
   findNodeHandle,
 } from "react-native";
-import { PanGestureHandler } from 'react-native-gesture-handler';
+import { GestureDetector } from 'react-native-gesture-handler';
 // ORCH-1042: deck hero photos render via expo-image (NOT react-native <Image>).
 // expo-image gives us a placeholder + fade transition + a bounded disk-only
 // cache + recyclingKey so the per-card remount (`key={currentRec.id}`, ORCH-0694)
@@ -3114,16 +3114,10 @@ export default function SwipeableCards({
             })()}
 
           {/* Current Card */}
-          {/* Android can retain a just-ended legacy RNGH handler as the card face
-              is promoted. Key the owner to the logical card so the successor
-              receives a fresh native recognizer instead of a stale touch target. */}
-          <PanGestureHandler
-            key={currentRec.id}
-            minDist={10}
-            maxPointers={1}
-            onGestureEvent={deckSwipe.onGestureEvent}
-            onHandlerStateChange={deckSwipe.onHandlerStateChange}
-          >
+          {/* One modern native recognizer survives card promotion. Unlike the
+              legacy component wrapper it resets natively between gestures and
+              keeps admission independent of the changing card face. */}
+          <GestureDetector gesture={deckSwipe.gesture}>
           <Animated.View
             style={[
               styles.card,
@@ -3385,7 +3379,7 @@ export default function SwipeableCards({
             </TouchableOpacity>
             </View>
           </Animated.View>
-          </PanGestureHandler>
+          </GestureDetector>
           </>
           )}
           </DeckSwipeStage>

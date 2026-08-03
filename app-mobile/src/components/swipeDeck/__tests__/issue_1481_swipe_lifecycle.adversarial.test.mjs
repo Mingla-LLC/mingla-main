@@ -109,7 +109,8 @@ test('production source keeps the rejection, media, persistence, and teardown bo
   assert.doesNotMatch(controllerSource, /handlerEnabled/);
   assert.match(controllerSource, /activeAnimationRef\.current\?\.stop\(\)/);
   assert.ok((controllerSource.match(/onInvalidated\(/g) ?? []).length >= 3);
-  assert.doesNotMatch(controllerSource, /addListener\(|PanResponder|react-native-reanimated|runOnJS/);
+  assert.doesNotMatch(controllerSource, /addListener\(|PanResponder|react-native-reanimated|import[^;]*\brunOnJS\b/);
+  assert.match(controllerSource, /Gesture\.Pan\(\)[\s\S]*\.runOnJS\(true\)/);
 
   const preview = swipeableSource.slice(
     swipeableSource.indexOf('Next card is a poster-only'),
