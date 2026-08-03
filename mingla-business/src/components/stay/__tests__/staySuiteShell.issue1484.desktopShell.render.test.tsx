@@ -125,7 +125,11 @@ jest.mock("react-native-reanimated", () => {
 });
 jest.mock("../../../wrappers/SmartScrollView", () => {
   const RN = jest.requireActual("react-native");
-  return { __esModule: true, ScrollView: RN.ScrollView, default: RN.ScrollView };
+  return {
+    __esModule: true,
+    ScrollView: RN.ScrollView,
+    default: RN.ScrollView,
+  };
 });
 jest.mock("expo-router", () => ({ useRouter: () => ({ push: jest.fn() }) }));
 jest.mock("react-native-safe-area-context", () => ({
@@ -301,6 +305,59 @@ function hasText(tree: RenderTree, value: string): boolean {
 }
 
 /**
+ * The RAW `contentContainerStyle` prop of the module's page ScrollView, before
+ * flattening. Needed because the FLATTENED form cannot tell a released cap from
+ * a silently retained one (see `expectUncapped`).
+ */
+function pageStyleProp(tree: RenderTree): unknown {
+  const node = nodes(tree).find(
+    (candidate) =>
+      candidate.props?.contentContainerStyle !== undefined &&
+      typeof candidate.type !== "string" &&
+      (
+        StyleSheet.flatten(candidate.props.contentContainerStyle as never) as
+          Flat | undefined
+      )?.paddingBottom !== undefined,
+  );
+  return node?.props.contentContainerStyle;
+}
+
+/**
+ * ASSERT "this page runs UNCAPPED on desktop" — falsifiably.
+ *
+ * WHY NOT `expect(flat.maxWidth).toBeUndefined()`: that predicate is TRUE both
+ * when the cap was released AND when it was silently retained, so it is
+ * unfalsifiable. Proven under this exact RN resolver:
+ *
+ *   flatten([{maxWidth:820,…}, {maxWidth:undefined,…}])
+ *     -> {"width":"100%","alignSelf":"flex-start"}  hasOwnProperty("maxWidth") = TRUE
+ *   flatten({width:"100%",alignSelf:"flex-start"})
+ *     -> {"width":"100%","alignSelf":"flex-start"}  hasOwnProperty("maxWidth") = FALSE
+ *
+ * JSON-identical; only the KEY's presence separates them. And the key's
+ * presence is exactly what react-native-web keys off — with the override shape
+ * the base's atomic `r-maxWidth-*` class survives into the DOM and the cap
+ * still applies, which is how the desktop uncap shipped broken (#1484 P1-1).
+ *
+ * So we assert BOTH: (a) exactly ONE complete style object was SELECTED (not an
+ * override array), and (b) the resolved style carries NO `maxWidth` KEY at all.
+ */
+function expectUncapped(styleProp: unknown): void {
+  expect(Array.isArray(styleProp)).toBe(false);
+  const flat = (StyleSheet.flatten(styleProp as never) ?? {}) as Flat;
+  expect(Object.prototype.hasOwnProperty.call(flat, "maxWidth")).toBe(false);
+  expect(flat.alignSelf).toBe("flex-start");
+}
+
+/** ASSERT "this page keeps `expected` as a real, applied cap". */
+function expectCappedAt(styleProp: unknown, expected: number): void {
+  expect(Array.isArray(styleProp)).toBe(false);
+  const flat = (StyleSheet.flatten(styleProp as never) ?? {}) as Flat;
+  expect(flat.maxWidth).toBe(expected);
+  expect(flat.alignSelf).toBe("flex-start");
+}
+
+/**
  * The REAL flattened `contentContainerStyle` of the module's page ScrollView —
  * identified by the page padding every Stay module page style carries.
  */
@@ -313,9 +370,8 @@ function pageMeasure(tree: RenderTree): Flat | undefined {
     )
     .map(
       (node): Flat =>
-        (StyleSheet.flatten(
-          node.props.contentContainerStyle as never,
-        ) ?? {}) as Flat,
+        (StyleSheet.flatten(node.props.contentContainerStyle as never) ??
+          {}) as Flat,
     )
     .find((flat: Flat) => flat.paddingBottom !== undefined);
 }
@@ -393,9 +449,9 @@ describe("#1484 — Stay suite adopts the shared desktop shell", () => {
 
     // The horizontal pill row is GONE at this width — the rail replaces it.
     for (const id of STAY_MODULE_IDS) {
-      expect(testIdsMatching(r, new RegExp(`^stay-module-${id}$`))).toHaveLength(
-        0,
-      );
+      expect(
+        testIdsMatching(r, new RegExp(`^stay-module-${id}$`)),
+      ).toHaveLength(0);
     }
     expect(testIdsMatching(r, /^stay-module-/)).toHaveLength(0);
   });
@@ -447,18 +503,56 @@ describe("#1484 — Stay suite adopts the shared desktop shell", () => {
     const overview = await mount(<StaySuiteShell {...STAY_PROPS} />);
     // Sanity: the Overview body actually rendered before we read its measure.
     expect(hasText(overview, "Stay overview")).toBe(true);
-    const overviewScroll = pageMeasure(overview);
-    expect(overviewScroll).toBeDefined();
-    expect(overviewScroll?.maxWidth).toBeUndefined();
-    expect(overviewScroll?.alignSelf).toBe("flex-start");
+    expect(pageMeasure(overview)).toBeDefined();
+    // Falsifiable: fails if the cap is silently RETAINED via an override array.
+    expectUncapped(pageStyleProp(overview));
 
     // Settings — an editable form keeps the readable measure, left-anchored.
     overview.unmount();
     const settings = await mount(<StaySuiteShell {...STAY_PROPS} />);
     await press(pressableWithTestId(settings, "stay-rail-settings"));
-    const settingsScroll = pageMeasure(settings);
-    expect(settingsScroll?.maxWidth).toBe(suiteFormMaxWidth);
-    expect(settingsScroll?.alignSelf).toBe("flex-start");
+    expectCappedAt(pageStyleProp(settings), suiteFormMaxWidth);
+  });
+
+  it("T-3b — desktop: the readiness grid PARENTS the rows (real flex parent)", async () => {
+    mockIsWideDesktop = true;
+    const r = await mount(<StaySuiteShell {...STAY_PROPS} />);
+
+    // The grid wrapper exists and is a wrapping ROW...
+    const grid = nodes(r).find(
+      (node) =>
+        node.props?.testID === "stay-readiness-grid" &&
+        typeof node.type === "string",
+    );
+    expect(grid).toBeDefined();
+    const gridFlat = (StyleSheet.flatten(
+      (grid as RenderNode).props.style as never,
+    ) ?? {}) as Flat;
+    expect(gridFlat.flexDirection).toBe("row");
+    expect(gridFlat.flexWrap).toBe("wrap");
+
+    // ...and ALL SEVEN readiness rows are its DESCENDANTS. This is the part
+    // that was broken: the grid style used to sit on GlassCard, whose inner
+    // padding View (a COLUMN) actually parented the rows, so `flexBasis`
+    // resolved as a HEIGHT and every row became 320px tall.
+    const rowIds = new Set<string>();
+    (grid as RenderNode)
+      .findAll(() => true)
+      .forEach((node) => {
+        const id = node.props?.testID;
+        if (typeof id === "string" && id.startsWith("stay-check-")) {
+          rowIds.add(id);
+        }
+      });
+    expect(rowIds.size).toBe(7);
+  });
+
+  it("T-3c — phone: NO grid wrapper (host tree byte-identical to today)", async () => {
+    mockIsWideDesktop = false;
+    const r = await mount(<StaySuiteShell {...STAY_PROPS} />);
+    expect(testIdsMatching(r, /^stay-readiness-grid$/)).toHaveLength(0);
+    // The rows still render — they are just emitted as a bare fragment.
+    expect(testIdsMatching(r, /^stay-check-/)).toHaveLength(7);
   });
 
   it("T-4 — below 1024px the pill row renders and the rail does NOT", async () => {
@@ -476,6 +570,8 @@ describe("#1484 — Stay suite adopts the shared desktop shell", () => {
     expect(testIdsMatching(r, /^stay-rail-/)).toHaveLength(0);
 
     // ...and the Overview page keeps today's exact centred readable measure.
+    const phoneStyle = pageStyleProp(r);
+    expect(Array.isArray(phoneStyle)).toBe(false);
     const page = pageMeasure(r);
     expect(page?.maxWidth).toBe(stayPageMaxWidth);
     expect(page?.alignSelf).toBe("center");
@@ -515,9 +611,7 @@ describe("#1484 — Venue suite is NOT regressed by the extraction", () => {
       <VenueSuiteShell brandId="brand-test" initialModule="settings" />,
     );
     expect(hostWithTestId(r, "venue-suite-shell-phone")).toBeTruthy();
-    expect(testIdsMatching(r, /^venue-suite-shell-desktop$/)).toHaveLength(
-      0,
-    );
+    expect(testIdsMatching(r, /^venue-suite-shell-desktop$/)).toHaveLength(0);
     expect(testIdsMatching(r, /^venue-rail-/)).toHaveLength(0);
   });
 });

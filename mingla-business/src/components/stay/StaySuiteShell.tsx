@@ -299,12 +299,107 @@ function StayOverview({
     );
   }
 
+  // Declared ONCE and rendered by both branches, so the desktop grid and the
+  // phone column can never drift apart.
+  const readinessRows = (
+    <>
+      <ChecklistRow
+        title="Stay basics"
+        detail={
+          basicsReady
+            ? "Summary, local time and arrival times saved"
+            : "Add a summary, timezone and arrival times"
+        }
+        complete={basicsReady}
+        onPress={() => onSelect("settings")}
+        icon={Home}
+        testID="stay-check-basics"
+        wide={isWideDesktop}
+      />
+      <ChecklistRow
+        title="Amenities & accessibility"
+        detail={
+          detailsReady
+            ? "Property-level guest details added"
+            : "Describe amenities and accessibility"
+        }
+        complete={detailsReady}
+        optional
+        onPress={() => onSelect("settings")}
+        icon={Accessibility}
+        testID="stay-check-amenities"
+        wide={isWideDesktop}
+      />
+      <ChecklistRow
+        title="Rooms & Places"
+        detail={
+          supplyReady
+            ? `${offerings.length} offering${offerings.length === 1 ? "" : "s"} added`
+            : "Add at least one Room or reservable Place"
+        }
+        complete={supplyReady}
+        onPress={() => onSelect("rooms_places")}
+        icon={BedDouble}
+        testID="stay-check-inventory"
+        wide={isWideDesktop}
+      />
+      <ChecklistRow
+        title="Availability & pricing"
+        detail={
+          availabilityReady
+            ? "At least one offering has a cover, policy, price and open inventory"
+            : "Open dates or Place windows and finish pricing"
+        }
+        complete={availabilityReady}
+        onPress={() => onSelect("availability_pricing")}
+        icon={CalendarDays}
+        testID="stay-check-availability"
+        wide={isWideDesktop}
+      />
+      <ChecklistRow
+        title="Menus"
+        detail="Add display menus for dining and guest information"
+        complete={false}
+        optional
+        onPress={() => onSelect("menu")}
+        icon={Utensils}
+        testID="stay-check-menus"
+        wide={isWideDesktop}
+      />
+      <ChecklistRow
+        title="Bank & currency"
+        detail={
+          bankReady
+            ? `${currency.data?.currencyCode ?? ""} is fixed by the connected payout account`
+            : currency.data?.authority === "provisional"
+              ? `${currency.data.currencyCode ?? ""} is provisional · connect a bank to accept reservations`
+              : "Connect a compatible bank to accept paid reservations"
+        }
+        complete={bankReady}
+        onPress={() => router.push(`/brand/${brandId}/payments` as never)}
+        icon={CreditCard}
+        testID="stay-check-bank"
+        wide={isWideDesktop}
+      />
+      <ChecklistRow
+        title="Venue review"
+        detail={
+          venueApproved
+            ? "Mingla has approved this venue listing"
+            : "Venue verification is still pending"
+        }
+        complete={venueApproved}
+        onPress={() => onSelect("settings")}
+        icon={FileCheck2}
+        testID="stay-check-review"
+        wide={isWideDesktop}
+      />
+    </>
+  );
+
   return (
     <ScrollView
-      contentContainerStyle={[
-        styles.page,
-        isWideDesktop ? styles.pageWide : null,
-      ]}
+      contentContainerStyle={isWideDesktop ? styles.pageDesktop : styles.page}
     >
       <View style={styles.titleRow}>
         <View style={styles.titleCopy}>
@@ -324,23 +419,8 @@ function StayOverview({
         </View>
       </View>
 
-      {/* #1484 — on wide desktop the readiness card becomes a wrapping row so
-          the seven readiness rows reflow into a multi-column grid (the card is
-          now as wide as the workspace); the head + progress bar stay full
-          width. Phone/native keep the single stacked column exactly as-is. */}
-      <GlassCard
-        variant="elevated"
-        style={[
-          styles.readinessCard,
-          isWideDesktop ? styles.readinessCardDesktop : null,
-        ]}
-      >
-        <View
-          style={[
-            styles.readinessHead,
-            isWideDesktop ? styles.gridFullRow : null,
-          ]}
-        >
+      <GlassCard variant="elevated" style={styles.readinessCard}>
+        <View style={styles.readinessHead}>
           <View>
             <Text style={styles.cardTitle}>Ready to publish</Text>
             <Text style={styles.helper}>
@@ -352,12 +432,7 @@ function StayOverview({
             {Math.round((completeCount / mandatoryChecks.length) * 100)}%
           </Text>
         </View>
-        <View
-          style={[
-            styles.progressTrack,
-            isWideDesktop ? styles.gridFullRow : null,
-          ]}
-        >
+        <View style={styles.progressTrack}>
           <View
             style={[
               styles.progressFill,
@@ -366,97 +441,23 @@ function StayOverview({
           />
         </View>
 
-        <ChecklistRow
-          title="Stay basics"
-          detail={
-            basicsReady
-              ? "Summary, local time and arrival times saved"
-              : "Add a summary, timezone and arrival times"
-          }
-          complete={basicsReady}
-          onPress={() => onSelect("settings")}
-          icon={Home}
-          testID="stay-check-basics"
-          wide={isWideDesktop}
-        />
-        <ChecklistRow
-          title="Amenities & accessibility"
-          detail={
-            detailsReady
-              ? "Property-level guest details added"
-              : "Describe amenities and accessibility"
-          }
-          complete={detailsReady}
-          optional
-          onPress={() => onSelect("settings")}
-          icon={Accessibility}
-          testID="stay-check-amenities"
-          wide={isWideDesktop}
-        />
-        <ChecklistRow
-          title="Rooms & Places"
-          detail={
-            supplyReady
-              ? `${offerings.length} offering${offerings.length === 1 ? "" : "s"} added`
-              : "Add at least one Room or reservable Place"
-          }
-          complete={supplyReady}
-          onPress={() => onSelect("rooms_places")}
-          icon={BedDouble}
-          testID="stay-check-inventory"
-          wide={isWideDesktop}
-        />
-        <ChecklistRow
-          title="Availability & pricing"
-          detail={
-            availabilityReady
-              ? "At least one offering has a cover, policy, price and open inventory"
-              : "Open dates or Place windows and finish pricing"
-          }
-          complete={availabilityReady}
-          onPress={() => onSelect("availability_pricing")}
-          icon={CalendarDays}
-          testID="stay-check-availability"
-          wide={isWideDesktop}
-        />
-        <ChecklistRow
-          title="Menus"
-          detail="Add display menus for dining and guest information"
-          complete={false}
-          optional
-          onPress={() => onSelect("menu")}
-          icon={Utensils}
-          testID="stay-check-menus"
-          wide={isWideDesktop}
-        />
-        <ChecklistRow
-          title="Bank & currency"
-          detail={
-            bankReady
-              ? `${currency.data?.currencyCode ?? ""} is fixed by the connected payout account`
-              : currency.data?.authority === "provisional"
-                ? `${currency.data.currencyCode ?? ""} is provisional · connect a bank to accept reservations`
-                : "Connect a compatible bank to accept paid reservations"
-          }
-          complete={bankReady}
-          onPress={() => router.push(`/brand/${brandId}/payments` as never)}
-          icon={CreditCard}
-          testID="stay-check-bank"
-          wide={isWideDesktop}
-        />
-        <ChecklistRow
-          title="Venue review"
-          detail={
-            venueApproved
-              ? "Mingla has approved this venue listing"
-              : "Venue verification is still pending"
-          }
-          complete={venueApproved}
-          onPress={() => onSelect("settings")}
-          icon={FileCheck2}
-          testID="stay-check-review"
-          wide={isWideDesktop}
-        />
+        {/* #1484 P1-2 — the readiness rows reflow into a multi-column grid on
+            wide desktop. The grid style MUST sit on the element that directly
+            PARENTS the rows: `GlassCard` renders its children inside its own
+            inner padding View, so `flexDirection: "row"` passed as the card's
+            `style` lands on the OUTER card and never reaches the rows. That
+            left `flexBasis` resolving against a COLUMN main axis — i.e. as a
+            HEIGHT — stretching every row to 320px tall and the card to ~2,340px.
+            The wrapper below is the real parent. It renders ONLY on desktop;
+            the phone branch emits the rows as a bare fragment (no host node),
+            so the phone/native host tree stays byte-identical to today. */}
+        {isWideDesktop ? (
+          <View style={styles.readinessGrid} testID="stay-readiness-grid">
+            {readinessRows}
+          </View>
+        ) : (
+          readinessRows
+        )}
       </GlassCard>
 
       <Button
@@ -569,10 +570,7 @@ function StaySettings({ venueId }: StaySettingsProps): React.ReactElement {
     // readable-measure cap (`suiteFormMaxWidth`) instead of stretching to the
     // full workspace width — but LEFT-anchored, flush with the rail seam.
     <ScrollView
-      contentContainerStyle={[
-        styles.page,
-        isWideDesktop ? styles.pageForm : null,
-      ]}
+      contentContainerStyle={isWideDesktop ? styles.pageForm : styles.page}
     >
       <Text style={styles.pageTitle}>Stay settings</Text>
       <Text style={styles.helper}>
@@ -800,10 +798,9 @@ export function StaySuiteShell({
     if (activeModule === "menu") {
       return (
         <ScrollView
-          contentContainerStyle={[
-            styles.page,
-            isWideDesktop ? styles.pageWide : null,
-          ]}
+          contentContainerStyle={
+            isWideDesktop ? styles.pageDesktop : styles.page
+          }
         >
           <VenueMenuModule brandId={brandId} venueId={venueId} />
         </ScrollView>
@@ -888,6 +885,17 @@ export function StaySuiteShell({
   );
 }
 
+/**
+ * Geometry shared by every Stay page measure. Kept OUTSIDE `StyleSheet.create`
+ * so each measure below can be a COMPLETE object (see the note on `page`).
+ */
+const PAGE_BASE = {
+  padding: spacing.md,
+  paddingBottom: spacing.xxl * 3,
+  gap: spacing.md,
+  width: "100%",
+} as const;
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: canvas.discover },
   workspace: { flex: 1 },
@@ -921,28 +929,34 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   moduleLabelActive: { color: "#0c0e12" },
+  // #1484 — the three page measures are COMPLETE, MUTUALLY EXCLUSIVE objects
+  // and exactly ONE is selected (`isWideDesktop ? … : …`). They are NEVER
+  // layered as `[page, <override setting maxWidth to undefined>]`: on
+  // react-native-web such an override does NOT clear the base declaration — the
+  // base's atomic `r-maxWidth-*` class survives into the DOM and the cap
+  // silently persists, which is exactly how the desktop uncap shipped broken
+  // the first time (#1484 P1-1). Omitting the KEY is the only thing the web
+  // resolver honours, so `pageDesktop` simply does not declare `maxWidth` at
+  // all. (ORCH-1184 did the same for `desktopCentered` — it DELETED the
+  // property — which is why the venue suite was never affected.)
   page: {
-    padding: spacing.md,
-    paddingBottom: spacing.xxl * 3,
-    gap: spacing.md,
-    // Phone / web-phone readable measure (unchanged; now tokenised).
+    ...PAGE_BASE,
+    // Phone / web-phone readable measure (unchanged; tokenised).
     maxWidth: stayPageMaxWidth,
-    width: "100%",
     alignSelf: "center",
   },
-  // #1484 — WIDE DESKTOP ONLY. Applied AFTER `page` in a style array. The
-  // shared SuiteDesktopShell workspace already supplies the gutters and the
-  // left anchor, so the phone readable-measure cap is RELEASED and the content
-  // fills the workspace, flush with the rail seam. Re-introducing a numeric cap
-  // here would restore the dead right-side canvas ORCH-1184 removed.
-  pageWide: {
-    maxWidth: undefined,
+  // WIDE DESKTOP: no `maxWidth` key AT ALL — the shared SuiteDesktopShell
+  // workspace owns the gutters and the left anchor, so the content fills the
+  // workspace flush with the rail seam.
+  pageDesktop: {
+    ...PAGE_BASE,
     alignSelf: "flex-start",
   },
-  // #1484 — WIDE DESKTOP ONLY, for the Settings EDITABLE FORM. Uncapped form
-  // fields on a wide monitor stretch to an unreadable line length, so the form
-  // column keeps a readable measure — left-anchored, not centred.
+  // WIDE DESKTOP, Settings EDITABLE FORM: uncapped fields on a wide monitor
+  // stretch to an unreadable line length, so the form column keeps a readable
+  // measure — left-anchored, not centred.
   pageForm: {
+    ...PAGE_BASE,
     maxWidth: suiteFormMaxWidth,
     alignSelf: "flex-start",
   },
@@ -969,18 +983,17 @@ const styles = StyleSheet.create({
   },
   statePillTextLive: { color: semantic.success },
   readinessCard: { gap: spacing.sm },
-  // #1484 — WIDE DESKTOP ONLY. The readiness card is now as wide as the
-  // workspace, so its rows reflow into a multi-column grid (`flexWrap`) instead
-  // of one very wide, very tall single column. This reuses the EXISTING
-  // `checkRow` card-row pattern — no new grid system.
-  readinessCardDesktop: {
+  // #1484 P1-2 — WIDE DESKTOP ONLY, applied to the wrapper that DIRECTLY
+  // parents the readiness rows (see the comment at the call site). Because this
+  // element is the rows' real flex parent, `checkRowDesktop`'s `flexBasis`
+  // resolves against the ROW main axis (a width) and row height stays
+  // content-driven.
+  readinessGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "flex-start",
     columnGap: spacing.lg,
   },
-  // Children that must still span the whole card inside that wrapping row.
-  gridFullRow: { width: "100%" },
   readinessHead: {
     flexDirection: "row",
     alignItems: "center",

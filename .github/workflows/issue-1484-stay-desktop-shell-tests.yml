@@ -48,8 +48,17 @@ jobs:
       # use `react-test-renderer` (a real devDependency), NOT
       # `@testing-library/react-native` — which is absent from package.json and
       # would add a TS2307 diagnostic to the issue-1403 typecheck-delta gate.
-      - name: Stay/Venue desktop shell render proof
+      - name: Stay/Venue desktop shell render proof (react-test-renderer)
         run: npx jest --config jest.issue1484.render.cjs --runInBand
+
+      # THE #1484 P1-1 GUARD. The desktop uncap once shipped broken while every
+      # react-test-renderer suite was green, because `react-native`'s flatten
+      # keeps a `maxWidth` key set to undefined while react-native-web keeps the
+      # BASE style's atomic class in the DOM. This job renders through the REAL
+      # RNW style compiler and asserts on the emitted CSS, so a silently-retained
+      # cap cannot pass again.
+      - name: Stay desktop WIDTH proof (react-native-web resolver)
+        run: npx jest --config jest.issue1484.web.render.cjs --runInBand
 
       # The relocation amendment: the ORCH-1184 full-width contract now reads the
       # shared shell. The protected rule (no maxWidth cap, alignSelf flex-start,

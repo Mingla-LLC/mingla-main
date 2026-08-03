@@ -22,7 +22,7 @@
  *
  * FAILS-ON-REVERT: switching the `OfferingEditor` ScrollView's desktop style
  * from `styles.pageForm` back to `styles.pageWide` (a true line edit, not a
- * comment-out) flips F-2 — the editor resolves to `maxWidth: undefined` where
+ * comment-out) flips F-2 — the editor stops carrying the form measure where
  * `suiteFormMaxWidth` is required.
  *
  * Append-only: NEW file; modifies/deletes no existing test.
@@ -116,12 +116,19 @@ jest.mock("react-native-reanimated", () => {
 });
 jest.mock("../../../wrappers/SmartScrollView", () => {
   const RN = jest.requireActual("react-native");
-  return { __esModule: true, ScrollView: RN.ScrollView, default: RN.ScrollView };
+  return {
+    __esModule: true,
+    ScrollView: RN.ScrollView,
+    default: RN.ScrollView,
+  };
 });
 
 // react-query: the module only needs a client + mutation objects; no network.
 jest.mock("@tanstack/react-query", () => ({
-  useQueryClient: () => ({ invalidateQueries: jest.fn(), setQueryData: jest.fn() }),
+  useQueryClient: () => ({
+    invalidateQueries: jest.fn(),
+    setQueryData: jest.fn(),
+  }),
   useMutation: () => ({
     mutate: jest.fn(),
     mutateAsync: jest.fn(),
@@ -193,7 +200,6 @@ import { StayInventoryManager } from "../StayInventoryManager";
 
 type Flat = Record<string, unknown>;
 
-
 const PROPS = {
   brandId: "brand-1484",
   venueId: "venue-1484",
@@ -202,6 +208,40 @@ const PROPS = {
 
 const nodes = (tree: RenderTree): RenderTreeNode[] =>
   tree.root.findAll(() => true);
+
+/** RAW contentContainerStyle prop of a ScrollView, by testID (pre-flatten). */
+function scrollStyleProp(tree: RenderTree, testID: string): unknown {
+  const node = nodes(tree).find(
+    (candidate) =>
+      candidate.props?.testID === testID &&
+      candidate.props?.contentContainerStyle !== undefined,
+  );
+  expect(node).toBeDefined();
+  return (node as RenderTreeNode).props.contentContainerStyle;
+}
+
+/**
+ * ASSERT "uncapped" FALSIFIABLY. `expect(flat.maxWidth).toBeUndefined()` is
+ * TRUE both when the cap was released and when it was silently retained by an
+ * `[base, override]` array, so it proves nothing. Under this RN resolver the
+ * override form leaves the KEY present (value `undefined`) while the selected
+ * form omits it entirely — and react-native-web keys off exactly that, keeping
+ * the base's atomic `r-maxWidth-*` class in the DOM for the override form
+ * (#1484 P1-1). So assert the SELECTED-object shape plus key absence.
+ */
+function expectUncapped(styleProp: unknown): void {
+  expect(Array.isArray(styleProp)).toBe(false);
+  const flat = (StyleSheet.flatten(styleProp as never) ?? {}) as Flat;
+  expect(Object.prototype.hasOwnProperty.call(flat, "maxWidth")).toBe(false);
+  expect(flat.alignSelf).toBe("flex-start");
+}
+
+function expectCappedAt(styleProp: unknown, expected: number): void {
+  expect(Array.isArray(styleProp)).toBe(false);
+  const flat = (StyleSheet.flatten(styleProp as never) ?? {}) as Flat;
+  expect(flat.maxWidth).toBe(expected);
+  expect(flat.alignSelf).toBe("flex-start");
+}
 
 /** REAL flattened contentContainerStyle of a ScrollView, by testID. */
 function scrollMeasure(tree: RenderTree, testID: string): Flat {
@@ -247,11 +287,8 @@ describe("#1484 — Stay inventory: list fills, embedded form keeps its measure"
   it("F-1 — desktop: the Rooms & Places LIST is UNCAPPED and left-anchored", async () => {
     mockIsWideDesktop = true;
     const r = await mount(<StayInventoryManager {...PROPS} />);
-    const list = scrollMeasure(r, "stay-inventory-list-scroll");
-
-    expect(list.maxWidth).toBeUndefined();
-    expect(typeof list.maxWidth).not.toBe("number");
-    expect(list.alignSelf).toBe("flex-start");
+    // Falsifiable: fails if the cap is silently retained by an override array.
+    expectUncapped(scrollStyleProp(r, "stay-inventory-list-scroll"));
   });
 
   it("F-2 — desktop: the embedded OfferingEditor FORM is capped at suiteFormMaxWidth", async () => {
@@ -266,27 +303,26 @@ describe("#1484 — Stay inventory: list fills, embedded form keeps its measure"
     expect(form.alignSelf).toBe("flex-start");
 
     // ...and the list is no longer mounted, so the two never disagree on screen.
-    expect(
-      testIdsMatching(r, /^stay-inventory-list-scroll$/),
-    ).toHaveLength(0);
+    expect(testIdsMatching(r, /^stay-inventory-list-scroll$/)).toHaveLength(0);
   });
 
   it("F-3 — desktop: form and list measures are DIFFERENT (the distinction holds)", async () => {
     mockIsWideDesktop = true;
     const listTree = await mount(<StayInventoryManager {...PROPS} />);
+    const listProp = scrollStyleProp(listTree, "stay-inventory-list-scroll");
     const list = scrollMeasure(listTree, "stay-inventory-list-scroll");
     listTree.unmount();
 
     const formTree = await mount(<StayInventoryManager {...PROPS} />);
     await pressByTestId(formTree, "stay-inventory-add");
+    const formProp = scrollStyleProp(formTree, "stay-offering-editor-scroll");
     const form = scrollMeasure(formTree, "stay-offering-editor-scroll");
 
+    // The list is genuinely uncapped and the form genuinely capped — asserted
+    // on the SELECTED style objects, so a retained cap cannot pass as released.
+    expectUncapped(listProp);
+    expectCappedAt(formProp, suiteFormMaxWidth);
     expect(form.maxWidth).not.toEqual(list.maxWidth);
-    expect(form.maxWidth).toBe(suiteFormMaxWidth);
-    expect(list.maxWidth).toBeUndefined();
-    // Both stay left-anchored against the shared workspace's rail seam.
-    expect(form.alignSelf).toBe("flex-start");
-    expect(list.alignSelf).toBe("flex-start");
   });
 
   it("F-4 — phone: BOTH keep today's centred measure (native unaffected)", async () => {

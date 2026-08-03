@@ -207,10 +207,9 @@ export function StayReservationsModule({
   return (
     <View style={styles.root} testID="stay-reservations-module">
       <ScrollView
-        contentContainerStyle={[
-          styles.content,
-          isWideDesktop ? styles.contentWide : null,
-        ]}
+        contentContainerStyle={
+          isWideDesktop ? styles.contentDesktop : styles.content
+        }
       >
         <View style={styles.headerRow}>
           <View style={styles.flexOne}>
@@ -322,23 +321,32 @@ export function StayReservationsModule({
   );
 }
 
+/** Geometry shared by both content measures below (see the note on `content`). */
+const CONTENT_BASE = {
+  width: "100%",
+  padding: spacing.md,
+  paddingBottom: spacing.xxl * 3,
+  gap: spacing.md,
+} as const;
+
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  // #1484 — COMPLETE, MUTUALLY EXCLUSIVE measures; exactly ONE is selected.
+  // NEVER layered as `[content, <override setting maxWidth to undefined>]` —
+  // an `undefined` override does not clear the base declaration (the base's
+  // atomic `r-maxWidth-*` class survives into the DOM), so the cap silently
+  // persists. Omitting the KEY is the only form the web resolver honours.
   content: {
-    width: "100%",
-    // Phone / web-phone readable measure (unchanged; now tokenised).
+    ...CONTENT_BASE,
+    // Phone / web-phone readable measure (unchanged; tokenised).
     maxWidth: stayReservationsMaxWidth,
     alignSelf: "center",
-    padding: spacing.md,
-    paddingBottom: spacing.xxl * 3,
-    gap: spacing.md,
   },
-  // #1484 — WIDE DESKTOP ONLY. Inside the shared SuiteDesktopShell the
-  // workspace already owns the gutters and the left anchor, so the reservations
-  // list runs UNCAPPED and left-anchored instead of a centred 920 column with
-  // symmetric dead gutters.
-  contentWide: {
-    maxWidth: undefined,
+  // WIDE DESKTOP: no `maxWidth` key at all — the shared SuiteDesktopShell
+  // workspace owns the gutters and the left anchor, so the reservations list
+  // fills the workspace instead of leaving a dead gutter beside it.
+  contentDesktop: {
+    ...CONTENT_BASE,
     alignSelf: "flex-start",
   },
   headerRow: {

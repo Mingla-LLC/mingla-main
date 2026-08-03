@@ -554,10 +554,7 @@ function OfferingEditor({
 
   return (
     <ScrollView
-      contentContainerStyle={[
-        styles.page,
-        isWideDesktop ? styles.pageForm : null,
-      ]}
+      contentContainerStyle={isWideDesktop ? styles.pageForm : styles.page}
       testID="stay-offering-editor-scroll"
     >
       <View style={styles.titleRow}>
@@ -1434,10 +1431,7 @@ export function StayInventoryManager({
   }
   return (
     <ScrollView
-      contentContainerStyle={[
-        styles.page,
-        isWideDesktop ? styles.pageWide : null,
-      ]}
+      contentContainerStyle={isWideDesktop ? styles.pageDesktop : styles.page}
       testID="stay-inventory-list-scroll"
     >
       {inventory.isError ? (
@@ -1560,32 +1554,42 @@ export function StayInventoryManager({
   );
 }
 
+/** Geometry shared by every page measure below (see the note on `page`). */
+const PAGE_BASE = {
+  padding: spacing.md,
+  paddingBottom: spacing.xxl * 3,
+  gap: spacing.md,
+  width: "100%",
+} as const;
+
 const styles = StyleSheet.create({
+  // #1484 — COMPLETE, MUTUALLY EXCLUSIVE measures; exactly ONE is selected.
+  // NEVER layered as `[page, <override setting maxWidth to undefined>]` — on
+  // react-native-web such an override does not clear the base declaration (the
+  // base's atomic `r-maxWidth-*` class survives into the DOM), so the cap
+  // silently persists. Omitting the KEY is the only form the web resolver
+  // honours. (ORCH-1184 did exactly this for `desktopCentered`, which is why
+  // the venue suite was never affected.)
   page: {
-    padding: spacing.md,
-    paddingBottom: spacing.xxl * 3,
-    gap: spacing.md,
-    // Phone / web-phone readable measure (unchanged; now tokenised).
+    ...PAGE_BASE,
+    // Phone / web-phone readable measure (unchanged; tokenised).
     maxWidth: stayInventoryMaxWidth,
-    width: "100%",
     alignSelf: "center",
   },
-  // #1484 — WIDE DESKTOP ONLY. Inside the shared SuiteDesktopShell the
-  // workspace already owns the gutters and the left anchor, so Rooms & Places
-  // and Availability & pricing run UNCAPPED and left-anchored instead of a
-  // centred 900 column with symmetric dead gutters.
-  pageWide: {
-    maxWidth: undefined,
+  // WIDE DESKTOP, the Rooms & Places / Availability LIST: no `maxWidth` key at
+  // all — the shared SuiteDesktopShell workspace owns the gutters and the left
+  // anchor, so the list fills the workspace instead of leaving a dead gutter.
+  pageDesktop: {
+    ...PAGE_BASE,
     alignSelf: "flex-start",
   },
-  // #1484 (orchestrator REVIEW follow-up) — WIDE DESKTOP ONLY, for the
-  // `OfferingEditor` EDITABLE FORM embedded in this module. "Fill the screen"
-  // is right for tables and wrong for forms: a text field stretched across a
-  // 2,000px monitor is unusable. The editor therefore keeps the same readable
+  // WIDE DESKTOP, the embedded `OfferingEditor` EDITABLE FORM. "Fill the
+  // screen" is right for tables and wrong for forms: a text field stretched
+  // across a 2,000px monitor is unusable. The editor keeps the same readable
   // measure as Stay Settings (`suiteFormMaxWidth`), left-anchored — while the
-  // surrounding Rooms & Places / Availability LIST content stays uncapped
-  // (`pageWide` above). That distinction is the point; do not merge the two.
+  // surrounding LIST stays uncapped. That distinction is the point.
   pageForm: {
+    ...PAGE_BASE,
     maxWidth: suiteFormMaxWidth,
     alignSelf: "flex-start",
   },
