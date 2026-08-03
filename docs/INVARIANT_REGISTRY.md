@@ -6885,9 +6885,9 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 - **Established:** DRAFT 2026-08-03 at issue #1485 IMPLEMENT (tester finding P2-1). Flips ACTIVE at
   CLOSE together with `I-1485-STATIC-ASSET-NEVER-HTML`.
 
-## DRAFT — issue #1495 (test-modification marker grammar accepts the issue number)
+## ACTIVE — issue #1495 (test-modification marker grammar accepts the issue number)
 
-### I-1495-TESTMOD-TOKEN-DUAL-GRAMMAR (DRAFT)
+### I-1495-TESTMOD-TOKEN-DUAL-GRAMMAR (ACTIVE)
 - **Rule:** The append-only override tokens accept TWO permanently-valid citation
   grammars and no others: the current `#NNNN` GitHub issue number, and the legacy
   `ORCH-NNNN` / `META-ORCH-NNNN` lineage id (both four-or-more digits, optional
