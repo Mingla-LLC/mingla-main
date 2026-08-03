@@ -27,6 +27,7 @@
 // Pacific/Auckland in .github/workflows/issue-1503-stay-date-pickers-tests.yml —
 // a Stay date bug that only appears in one zone is the historical failure mode.
 
+/* global __dirname */
 const path = require("path");
 
 const businessRoot = __dirname;

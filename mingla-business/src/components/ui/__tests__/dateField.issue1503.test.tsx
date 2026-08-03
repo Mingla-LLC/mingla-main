@@ -304,7 +304,7 @@ describe("#1503 D-4…D-6 · venue blackouts are picked, and a single day still 
   });
 
   test("D-6 (T-18) a SINGLE-DAY blackout still saves — the Stay strict rule is NOT applied here", async () => {
-    const saved: Array<Record<string, unknown>> = [];
+    const saved: Record<string, unknown>[] = [];
     const tree = await renderSheet((input) => saved.push(input));
     const start = byTestID(tree, "venue-blackout-start")[0];
     expect(start).toBeDefined(); // vacuity guard
