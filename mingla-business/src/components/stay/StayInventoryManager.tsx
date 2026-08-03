@@ -16,6 +16,8 @@ import {
   accent,
   glass,
   radius,
+  optionCardMinHeight,
+  optionCardMinWidth,
   semantic,
   spacing,
   stayFieldNumBasis,
@@ -129,29 +131,204 @@ function mutationCopy(error: unknown): string {
   return "That change did not save. Check your connection and try again.";
 }
 
+/**
+ * #1501 §3 — THE TERMINOLOGY CONTRACT. Approved by Seth 2026-08-03, verbatim.
+ *
+ * Seth's report was blunt: "the terminology on the add form — don't know what
+ * it means. I need to understand it." Every toggle pair used to be bare jargon
+ * with zero helper text (Single/Bulk, Instant/Request, Interchangeable/Named
+ * units, Exclusive units/Shared capacity, Public/Overnight guests only), and
+ * the underlying meaning existed only in the source.
+ *
+ * These strings ARE the fix. They are a contract, not a suggestion — a silent
+ * revert to jargon fails `stayTerminology.issue1501.test.ts`. Nothing here
+ * changes what the server stores; the data contract is byte-identical.
+ */
+interface OptionCopy {
+  readonly label: string;
+  readonly helper: string;
+  /** Concrete instance of the abstraction. Omitted where it would be noise. */
+  readonly example?: string;
+}
+
+type StayChoiceId =
+  | "room"
+  | "place"
+  | "addOne"
+  | "addSeveral"
+  | "instant"
+  | "request"
+  | "bookedWhole"
+  | "sharedSpots"
+  | "interchangeable"
+  | "named"
+  | "publicAccess"
+  | "overnightOnly";
+
+const STAY_CHOICE_COPY: Record<StayChoiceId, OptionCopy> = {
+  room: {
+    label: "Room",
+    helper: "A space with a bed, booked by the night.",
+    example: "Ocean-view double, Suite 4",
+  },
+  place: {
+    label: "Place",
+    helper: "Any other space guests can reserve — no bed involved.",
+    example: "Pool cabana, spa room, private dining table",
+  },
+  addOne: {
+    label: "Add one",
+    helper: "Create a single Room or Place.",
+  },
+  addSeveral: {
+    label: "Add several",
+    helper:
+      "Create many at once. They share every setting below — only the names differ.",
+    example: "20 rooms in one go",
+  },
+  instant: {
+    label: "Confirmed instantly",
+    helper: "The guest books and it’s theirs straight away. You do nothing.",
+  },
+  request: {
+    label: "You approve first",
+    helper:
+      "The guest asks; it’s held for you until you say yes in Reservations.",
+  },
+  bookedWhole: {
+    label: "Booked whole",
+    helper: "One booking takes the entire space. Nobody else is in it.",
+    example: "a cabana one group has to themselves",
+  },
+  sharedSpots: {
+    label: "Shared by the spot",
+    helper: "You sell individual spots until the space is full.",
+    example: "10 yoga mats sold as 10 separate bookings",
+  },
+  interchangeable: {
+    label: "Any one will do",
+    helper:
+      "You have several identical ones. Mingla gives the guest whichever is free.",
+    example: "8 identical standard doubles",
+  },
+  named: {
+    label: "Each one is named",
+    helper:
+      "Every one has its own name or number, and Mingla tracks exactly which the guest gets.",
+    example: "Room 101, Room 102, Room 103",
+  },
+  publicAccess: {
+    label: "Anyone can book",
+    helper:
+      "Shows to everyone on Mingla, whether they’re staying with you or not.",
+  },
+  overnightOnly: {
+    label: "Only guests staying here",
+    helper:
+      "Hidden from the public. Bookable only by someone who already has a room here.",
+  },
+};
+
+/** Field labels + the helper sentence that explains each one (#1501 §3). */
+const STAY_FIELD_COPY = {
+  name: {
+    label: "Name",
+    helper: "What guests will see in search and on the booking page.",
+  },
+  names: {
+    label: "Names",
+    helper:
+      "One per name — build them with the pattern below, or type your own.",
+  },
+  description: {
+    label: "Description",
+    helper:
+      "What the guest is actually getting. Two or three lines is plenty.",
+  },
+  amenities: {
+    label: "What’s included",
+    helper: "Tap what this has. Type anything else and press enter.",
+  },
+  quantity: {
+    label: "How many you have",
+    helper: "The number of identical ones you can sell for the same night.",
+  },
+  capacity: {
+    label: "Total spots",
+    helper: "The most people who can share this space at the same time.",
+  },
+  maxGuests: {
+    label: "Guests per booking",
+    helper: "The most people allowed on one booking.",
+  },
+  unitNames: {
+    label: "Name each one",
+    helper: "Every unit needs its own name.",
+  },
+  price: {
+    label: "Price per night",
+    placeLabel: "Price per booking",
+    helper: "What one booking costs before extra charges and tax.",
+  },
+  feeLabel: {
+    label: "Extra charge name",
+    helper:
+      "One extra charge added to every booking. Leave both blank if you don’t have one.",
+  },
+  feeAmount: {
+    label: "Extra charge amount",
+    helper: "Added on top of the price, shown to the guest as its own line.",
+  },
+  policy: {
+    label: "Cancellation policy",
+    helper: "In your own words. Guests read this before they pay.",
+  },
+  noShow: {
+    label: "If a guest never turns up, refund",
+    helper:
+      "0 means you keep the full amount. 100 means they get everything back.",
+  },
+} as const;
+
+/**
+ * "Every unit needs its own name. You have {n} to name." — the count is live,
+ * so the operator always knows how far through the list they are.
+ */
+const unitNamesHelper = (count: number): string =>
+  `${STAY_FIELD_COPY.unitNames.helper} You have ${count} to name.`;
+
 function Choice({
   label,
+  helper,
+  example,
   selected,
   onPress,
   testID,
   disabled = false,
 }: {
   label: string;
+  /** #1501 §3 — the sentence that makes the label mean something. */
+  helper?: string;
+  /** #1501 §3 — a concrete instance, so the abstraction lands. */
+  example?: string;
   selected: boolean;
   onPress: () => void;
   testID: string;
   disabled?: boolean;
 }): React.ReactElement {
+  const described = example ? `${helper ?? ""} For example: ${example}` : helper;
   return (
     <Pressable
       accessibilityRole="radio"
       accessibilityState={{ checked: selected }}
       accessibilityLabel={label}
+      accessibilityHint={described}
       onPress={onPress}
       disabled={disabled}
       testID={testID}
       style={[
         styles.choice,
+        helper ? styles.choiceRowCard : null,
         selected && styles.choiceActive,
         disabled && styles.choiceDisabled,
       ]}
@@ -159,6 +336,10 @@ function Choice({
       <Text style={[styles.choiceText, selected && styles.choiceTextActive]}>
         {label}
       </Text>
+      {helper ? <Text style={styles.choiceHelper}>{helper}</Text> : null}
+      {example ? (
+        <Text style={styles.choiceExample}>{`e.g. ${example}`}</Text>
+      ) : null}
     </Pressable>
   );
 }
@@ -652,13 +833,17 @@ export function OfferingEditor({
         <>
           <View style={styles.choices}>
             <Choice
-              label="Room"
+              label={STAY_CHOICE_COPY.room.label}
+              helper={STAY_CHOICE_COPY.room.helper}
+              example={STAY_CHOICE_COPY.room.example}
               selected={kind === "room"}
               onPress={() => setKind("room")}
               testID="stay-add-room"
             />
             <Choice
-              label="Place"
+              label={STAY_CHOICE_COPY.place.label}
+              helper={STAY_CHOICE_COPY.place.helper}
+              example={STAY_CHOICE_COPY.place.example}
               selected={kind === "place"}
               onPress={() => setKind("place")}
               testID="stay-add-place"
@@ -666,13 +851,16 @@ export function OfferingEditor({
           </View>
           <View style={styles.choices}>
             <Choice
-              label="Single"
+              label={STAY_CHOICE_COPY.addOne.label}
+              helper={STAY_CHOICE_COPY.addOne.helper}
               selected={!bulk}
               onPress={() => setBulk(false)}
               testID="stay-add-single"
             />
             <Choice
-              label="Bulk"
+              label={STAY_CHOICE_COPY.addSeveral.label}
+              helper={STAY_CHOICE_COPY.addSeveral.helper}
+              example={STAY_CHOICE_COPY.addSeveral.example}
               selected={bulk}
               onPress={() => setBulk(true)}
               testID="stay-add-bulk"
@@ -684,7 +872,8 @@ export function OfferingEditor({
         {bulk ? (
           <LabeledInput
             span="stack"
-            label={`${kind === "room" ? "Room" : "Place"} names`}
+            label={STAY_FIELD_COPY.names.label}
+            helper={STAY_FIELD_COPY.names.helper}
             value={bulkNames}
             onChangeText={setBulkNames}
             placeholder={"One name per line"}
@@ -695,17 +884,21 @@ export function OfferingEditor({
         ) : (
           <LabeledInput
             span="stack"
-            label="Name"
+            label={STAY_FIELD_COPY.name.label}
+            helper={STAY_FIELD_COPY.name.helper}
             value={name}
             onChangeText={setName}
-            placeholder={kind === "room" ? "Ocean suite" : "Pool cabana"}
+            placeholder={
+              kind === "room" ? "Ocean-view double" : "Pool cabana"
+            }
             editable={canManageInventory}
             testID="stay-offering-name"
           />
         )}
         <LabeledInput
           span="stack"
-          label="Description"
+          label={STAY_FIELD_COPY.description.label}
+          helper={STAY_FIELD_COPY.description.helper}
           value={description}
           onChangeText={setDescription}
           placeholder="What guests are reserving"
@@ -715,7 +908,8 @@ export function OfferingEditor({
         />
         <LabeledInput
           span="stack"
-          label="Amenities"
+          label={STAY_FIELD_COPY.amenities.label}
+          helper={STAY_FIELD_COPY.amenities.helper}
           value={amenities}
           onChangeText={setAmenities}
           placeholder="Wi-Fi, air conditioning, accessible entrance"
@@ -724,14 +918,16 @@ export function OfferingEditor({
         />
         <View style={styles.choices}>
           <Choice
-            label="Instant"
+            label={STAY_CHOICE_COPY.instant.label}
+            helper={STAY_CHOICE_COPY.instant.helper}
             selected={confirmationMode === "instant"}
             onPress={() => setConfirmationMode("instant")}
             disabled={!canManageInventory}
             testID="stay-offering-instant"
           />
           <Choice
-            label="Request"
+            label={STAY_CHOICE_COPY.request.label}
+            helper={STAY_CHOICE_COPY.request.helper}
             selected={confirmationMode === "request"}
             onPress={() => setConfirmationMode("request")}
             disabled={!canManageInventory}
@@ -741,14 +937,18 @@ export function OfferingEditor({
         {kind === "place" ? (
           <View style={styles.choices}>
             <Choice
-              label="Exclusive units"
+              label={STAY_CHOICE_COPY.bookedWhole.label}
+              helper={STAY_CHOICE_COPY.bookedWhole.helper}
+              example={STAY_CHOICE_COPY.bookedWhole.example}
               selected={!sharedCapacity}
               onPress={() => setSharedCapacity(false)}
               disabled={!canManageInventory}
               testID="stay-place-exclusive"
             />
             <Choice
-              label="Shared capacity"
+              label={STAY_CHOICE_COPY.sharedSpots.label}
+              helper={STAY_CHOICE_COPY.sharedSpots.helper}
+              example={STAY_CHOICE_COPY.sharedSpots.example}
               selected={sharedCapacity}
               onPress={() => setSharedCapacity(true)}
               disabled={!canManageInventory}
@@ -760,7 +960,8 @@ export function OfferingEditor({
           {!sharedCapacity ? (
             <LabeledInput
               span="num"
-              label="Quantity"
+              label={STAY_FIELD_COPY.quantity.label}
+              helper={STAY_FIELD_COPY.quantity.helper}
               value={quantity}
               onChangeText={setQuantity}
               placeholder="1"
@@ -771,7 +972,8 @@ export function OfferingEditor({
           ) : (
             <LabeledInput
               span="num"
-              label="Capacity"
+              label={STAY_FIELD_COPY.capacity.label}
+              helper={STAY_FIELD_COPY.capacity.helper}
               value={capacity}
               onChangeText={setCapacity}
               placeholder="10"
@@ -782,7 +984,8 @@ export function OfferingEditor({
           )}
           <LabeledInput
             span="num"
-            label="Maximum guests"
+            label={STAY_FIELD_COPY.maxGuests.label}
+            helper={STAY_FIELD_COPY.maxGuests.helper}
             value={maxGuests}
             onChangeText={setMaxGuests}
             placeholder="2"
@@ -795,14 +998,18 @@ export function OfferingEditor({
           <>
             <View style={styles.choices}>
               <Choice
-                label="Interchangeable"
+                label={STAY_CHOICE_COPY.interchangeable.label}
+                helper={STAY_CHOICE_COPY.interchangeable.helper}
+                example={STAY_CHOICE_COPY.interchangeable.example}
                 selected={!namedUnits}
                 onPress={() => setNamedUnits(false)}
                 disabled={!canManageInventory}
                 testID="stay-units-pooled"
               />
               <Choice
-                label="Named units"
+                label={STAY_CHOICE_COPY.named.label}
+                helper={STAY_CHOICE_COPY.named.helper}
+                example={STAY_CHOICE_COPY.named.example}
                 selected={namedUnits}
                 onPress={() => setNamedUnits(true)}
                 disabled={!canManageInventory}
@@ -812,7 +1019,8 @@ export function OfferingEditor({
             {namedUnits ? (
               <LabeledInput
                 span="stack"
-                label="Private unit names"
+                label={STAY_FIELD_COPY.unitNames.label}
+                helper={unitNamesHelper(splitList(unitNames).length)}
                 value={unitNames}
                 onChangeText={setUnitNames}
                 placeholder="Room 101\nRoom 102"
@@ -826,14 +1034,16 @@ export function OfferingEditor({
         {kind === "place" ? (
           <View style={styles.choices}>
             <Choice
-              label="Public"
+              label={STAY_CHOICE_COPY.publicAccess.label}
+              helper={STAY_CHOICE_COPY.publicAccess.helper}
               selected={!overnightOnly}
               onPress={() => setOvernightOnly(false)}
               disabled={!canManageInventory}
               testID="stay-place-public"
             />
             <Choice
-              label="Overnight guests only"
+              label={STAY_CHOICE_COPY.overnightOnly.label}
+              helper={STAY_CHOICE_COPY.overnightOnly.helper}
               selected={overnightOnly}
               onPress={() => setOvernightOnly(true)}
               disabled={!canManageInventory}
@@ -846,7 +1056,12 @@ export function OfferingEditor({
             <View style={styles.row} testID="stay-offering-price-row">
               <LabeledInput
                 span="num"
-                label={`Base price${currencyCode ? ` (${currencyCode})` : ""}`}
+                label={`${
+                  kind === "room"
+                    ? STAY_FIELD_COPY.price.label
+                    : STAY_FIELD_COPY.price.placeLabel
+                }${currencyCode ? ` (${currencyCode})` : ""}`}
+                helper={STAY_FIELD_COPY.price.helper}
                 value={price}
                 onChangeText={setPrice}
                 placeholder="0.00"
@@ -855,7 +1070,8 @@ export function OfferingEditor({
               />
               <LabeledInput
                 span="num"
-                label="Fee amount"
+                label={STAY_FIELD_COPY.feeAmount.label}
+                helper={STAY_FIELD_COPY.feeAmount.helper}
                 value={feeAmount}
                 onChangeText={setFeeAmount}
                 placeholder="0.00"
@@ -865,7 +1081,8 @@ export function OfferingEditor({
             </View>
             <LabeledInput
               span="stack"
-              label="Optional fee name"
+              label={STAY_FIELD_COPY.feeLabel.label}
+              helper={STAY_FIELD_COPY.feeLabel.helper}
               value={feeLabel}
               onChangeText={setFeeLabel}
               placeholder="Resort fee"
@@ -873,7 +1090,8 @@ export function OfferingEditor({
             />
             <LabeledInput
               span="stack"
-              label="Cancellation policy"
+              label={STAY_FIELD_COPY.policy.label}
+              helper={STAY_FIELD_COPY.policy.helper}
               value={policy}
               onChangeText={setPolicy}
               placeholder="Free cancellation until 48 hours before arrival"
@@ -882,7 +1100,8 @@ export function OfferingEditor({
             />
             <LabeledInput
               span="num"
-              label="No-show refund percent"
+              label={STAY_FIELD_COPY.noShow.label}
+              helper={STAY_FIELD_COPY.noShow.helper}
               value={noShowPercent}
               onChangeText={setNoShowPercent}
               placeholder="0"
@@ -1788,6 +2007,23 @@ const styles = StyleSheet.create({
   choiceDisabled: { opacity: 0.55 },
   choiceText: { ...typography.bodySm, color: textTokens.secondary },
   choiceTextActive: { color: accent.warm, fontWeight: "700" },
+  // #1501 §3 — an EXPLAINED choice is a card, not a pill: it has to hold a
+  // label, a helper sentence and an example without truncating any of them.
+  // ROW-ONLY (I-AXIS-SCOPED-FLEX): the name says `Row` because the flex-axis
+  // keys below are only meaningful inside `styles.choices`
+  // (`flexDirection: "row"`). Never apply this in a column.
+  choiceRowCard: {
+    borderRadius: radius.lg,
+    minHeight: optionCardMinHeight,
+    minWidth: optionCardMinWidth,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
+    gap: spacing.xxs,
+    paddingVertical: spacing.md,
+  },
+  choiceHelper: { ...typography.caption, color: textTokens.secondary },
+  choiceExample: { ...typography.caption, color: textTokens.tertiary },
   photoBlock: { gap: spacing.sm },
   mediaStrip: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   mediaThumbWrap: { position: "relative" },
