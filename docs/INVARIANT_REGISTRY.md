@@ -7118,7 +7118,9 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   generation-stamped coalesced/serialized snapshot only after at least 750ms of quiet IDLE;
   active cadence has no maximum-age write escape hatch. Eligibility is rechecked immediately before
   serialization, with lossless legacy migration and
-  terminal/lifecycle/logout forced flush. Non-critical business work remains FIFO-deferred after interaction.
+  terminal/lifecycle/logout forced flush. Non-critical business work remains FIFO-deferred and may
+  begin only after at least 750ms of quiet IDLE; it pauses between FIFO items when interaction resumes,
+  with terminal/lifecycle teardown forced drain.
 - **Enforcement:** the issue workflow requires and runs independent lifecycle and performance guards
   over every scoped runtime/store/provider path. Static guards require selector isolation, a memoized
   provider value, exact history migration/reset/flush ordering, zero explicit deck image prefetch,

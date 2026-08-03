@@ -38,6 +38,26 @@ function assertStableNativeAdmission(sources) {
     'IDLE directly starts local persistence instead of waiting for quiet',
   );
   assert.match(sources.swipeable, /DECK_PERSISTENCE_QUIET_IDLE_MS = 750/);
+  assert.match(sources.swipeable, /DECK_POST_SWIPE_QUIET_IDLE_MS = 750/);
+  assert.match(
+    sources.swipeable,
+    /const scheduleQuietPostSwipeDrain[\s\S]*localDeckInteractionPhaseRef\.current !== 'IDLE'[\s\S]*DECK_POST_SWIPE_QUIET_IDLE_MS - quietForMs/,
+  );
+  const postSwipeScheduler = sources.swipeable.slice(
+    sources.swipeable.indexOf('const enqueuePostSwipeWork'),
+    sources.swipeable.indexOf('const drainPersistence'),
+  );
+  assert.doesNotMatch(postSwipeScheduler, /}, 250\)/, 'post-swipe work has an active-cadence fallback');
+  assert.doesNotMatch(
+    postSwipeScheduler,
+    /InteractionManager\.runAfterInteractions/,
+    'enqueue starts post-swipe work before the quiet-idle scheduler',
+  );
+  assert.match(
+    sources.swipeable,
+    /while \(postSwipeQueueRef\.current\.length > 0\) \{\s*if \(!force && !isQuietIdle\(\)\) break;/,
+    'a normal drain must pause between FIFO items when a new gesture starts',
+  );
   assert.match(sources.history, /DECK_SESSION_HISTORY_QUIET_IDLE_MS = 750/);
 }
 
@@ -52,6 +72,8 @@ class NativeCadenceModel {
   handlerMounts = 1;
   normalWrites = 0;
   checkpointPending = false;
+  postSwipePending = [];
+  postSwipeDrained = [];
   lastActivityAt = 0;
   settleDurations = [];
 
@@ -73,6 +95,7 @@ class NativeCadenceModel {
     const id = `card-${this.activeCard}`;
     this.history.push(id);
     this.business.push(id);
+    this.postSwipePending.push(id);
     this.commits += 1;
     this.activeCard += 1;
     this.phase = 'IDLE';
@@ -92,6 +115,10 @@ class NativeCadenceModel {
     if (this.checkpointPending && this.phase === 'IDLE' && at - this.lastActivityAt >= 750) {
       this.normalWrites += 1;
       this.checkpointPending = false;
+    }
+    if (this.phase === 'IDLE' && at - this.lastActivityAt >= 750) {
+      this.postSwipeDrained.push(...this.postSwipePending);
+      this.postSwipePending = [];
     }
   }
 }
@@ -132,6 +159,10 @@ test('60 jittered release-cadence commands admit and commit exactly with zero ac
     assert.equal(model.history.length, 60);
     assert.equal(model.business.length, 60);
     assert.equal(model.normalWrites, 0);
+    assert.equal(model.postSwipeDrained.length, 0);
+    assert.equal(model.postSwipePending.length, 60);
+    model.maybeDrain(model.lastActivityAt + 750);
+    assert.deepEqual(model.postSwipeDrained, model.business);
     assert.ok(Math.max(...model.settleDurations) <= 250);
   }
 });

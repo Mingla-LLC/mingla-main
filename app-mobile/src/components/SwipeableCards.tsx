@@ -162,6 +162,7 @@ import {
 export { shouldCommitSwipe, SWIPE_COMMIT_DISTANCE, SWIPE_COMMIT_VELOCITY, SWIPE_COMMIT_MIN_DX };
 
 const DECK_PERSISTENCE_QUIET_IDLE_MS = 750;
+const DECK_POST_SWIPE_QUIET_IDLE_MS = 750;
 
 function getTimeOfDay(): string {
   const hour = new Date().getHours();
@@ -1105,6 +1106,7 @@ export default function SwipeableCards({
   const lastDeckInteractionAtRef = useRef(0);
   const persistenceQuietTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const persistenceInteractionHandleRef = useRef<ReturnType<typeof InteractionManager.runAfterInteractions> | null>(null);
+  const postSwipeUserIdRef = useRef<string | undefined>(user?.id);
 
   useEffect(() => {
     pendingPaywallRef.current = null;
@@ -1279,16 +1281,24 @@ export default function SwipeableCards({
     });
   }, [currentMode, reducedMotion]);
 
-  const drainPostSwipeQueue = useCallback(async (): Promise<void> => {
-    if (postSwipeDrainRunningRef.current) return;
-    postSwipeDrainRunningRef.current = true;
+  const cancelPostSwipeSchedule = useCallback((): void => {
     postSwipeScheduleRef.current.interaction?.cancel();
     if (postSwipeScheduleRef.current.timeout) {
       clearTimeout(postSwipeScheduleRef.current.timeout);
     }
     postSwipeScheduleRef.current = { interaction: null, timeout: null };
+  }, []);
+
+  const drainPostSwipeQueue = useCallback(async (force = false): Promise<void> => {
+    const isQuietIdle = (): boolean => localDeckInteractionPhaseRef.current === 'IDLE' &&
+      Date.now() - lastDeckInteractionAtRef.current >= DECK_POST_SWIPE_QUIET_IDLE_MS;
+    if (!force && !isQuietIdle()) return;
+    if (postSwipeDrainRunningRef.current) return;
+    postSwipeDrainRunningRef.current = true;
+    cancelPostSwipeSchedule();
     try {
       while (postSwipeQueueRef.current.length > 0) {
+        if (!force && !isQuietIdle()) break;
         const item = postSwipeQueueRef.current.shift();
         if (!item || item.epoch !== swipeQueueEpochRef.current) continue;
         try {
@@ -1300,23 +1310,32 @@ export default function SwipeableCards({
     } finally {
       postSwipeDrainRunningRef.current = false;
     }
-  }, []);
+  }, [cancelPostSwipeSchedule]);
+
+  const scheduleQuietPostSwipeDrain = useCallback((): void => {
+    if (postSwipeQueueRef.current.length === 0 || localDeckInteractionPhaseRef.current !== 'IDLE') {
+      return;
+    }
+    cancelPostSwipeSchedule();
+    const quietForMs = Date.now() - lastDeckInteractionAtRef.current;
+    const remainingMs = Math.max(0, DECK_POST_SWIPE_QUIET_IDLE_MS - quietForMs);
+    postSwipeScheduleRef.current.timeout = setTimeout(() => {
+      postSwipeScheduleRef.current.timeout = null;
+      if (localDeckInteractionPhaseRef.current !== 'IDLE') return;
+      postSwipeScheduleRef.current.interaction = InteractionManager.runAfterInteractions(() => {
+        postSwipeScheduleRef.current.interaction = null;
+        void drainPostSwipeQueue();
+      });
+    }, remainingMs);
+  }, [cancelPostSwipeSchedule, drainPostSwipeQueue]);
 
   const enqueuePostSwipeWork = useCallback((run: () => Promise<void>): void => {
     postSwipeQueueRef.current.push({
       epoch: swipeQueueEpochRef.current,
       run,
     });
-    if (postSwipeScheduleRef.current.interaction || postSwipeScheduleRef.current.timeout) {
-      return;
-    }
-    postSwipeScheduleRef.current.interaction = InteractionManager.runAfterInteractions(() => {
-      void drainPostSwipeQueue();
-    });
-    postSwipeScheduleRef.current.timeout = setTimeout(() => {
-      void drainPostSwipeQueue();
-    }, 250);
-  }, [drainPostSwipeQueue]);
+    scheduleQuietPostSwipeDrain();
+  }, [scheduleQuietPostSwipeDrain]);
 
   const drainPersistence = useCallback((force = false): Promise<void> => {
     const isQuietIdle = (): boolean => localDeckInteractionPhaseRef.current === 'IDLE' &&
@@ -1384,33 +1403,31 @@ export default function SwipeableCards({
   }, [activeDeckContextKey, currentMode, getStorageKeys, refreshKey, scheduleQuietPersistenceDrain]);
 
   useEffect(() => {
-    swipeQueueEpochRef.current += 1;
-    postSwipeQueueRef.current = [];
-    postSwipeScheduleRef.current.interaction?.cancel();
-    if (postSwipeScheduleRef.current.timeout) {
-      clearTimeout(postSwipeScheduleRef.current.timeout);
-    }
-    postSwipeScheduleRef.current = { interaction: null, timeout: null };
-    return () => {
+    if (postSwipeUserIdRef.current !== user?.id) {
       swipeQueueEpochRef.current += 1;
       postSwipeQueueRef.current = [];
-      postSwipeScheduleRef.current.interaction?.cancel();
-      if (postSwipeScheduleRef.current.timeout) {
-        clearTimeout(postSwipeScheduleRef.current.timeout);
-      }
-      postSwipeScheduleRef.current = { interaction: null, timeout: null };
-    };
-  }, [user?.id]);
+      cancelPostSwipeSchedule();
+      postSwipeUserIdRef.current = user?.id;
+    }
+  }, [cancelPostSwipeSchedule, user?.id]);
+
+  useEffect(() => () => {
+    cancelPostSwipeSchedule();
+    void drainPostSwipeQueue(true);
+  }, [cancelPostSwipeSchedule, drainPostSwipeQueue]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState !== 'active') void drainPersistence(true);
+      if (nextState !== 'active') {
+        void drainPostSwipeQueue(true);
+        void drainPersistence(true);
+      }
     });
     return () => {
       subscription.remove();
       void drainPersistence(true);
     };
-  }, [drainPersistence]);
+  }, [drainPersistence, drainPostSwipeQueue]);
 
   useEffect(() => () => {
     if (persistenceQuietTimerRef.current) clearTimeout(persistenceQuietTimerRef.current);
@@ -1499,6 +1516,7 @@ export default function SwipeableCards({
     },
     onCommitSettled: (_token: DeckSwipeCommitToken, settlement: DeckCommitSettlement): void => {
       if ('exhausted' in settlement) {
+        void drainPostSwipeQueue(true);
         void flushDeckSessionHistory();
         void drainPersistence(true);
       }
@@ -1508,8 +1526,10 @@ export default function SwipeableCards({
       lastDeckInteractionAtRef.current = Date.now();
       setDeckSessionHistoryInteractionPhase(phase);
       if (phase === 'IDLE') {
+        scheduleQuietPostSwipeDrain();
         scheduleQuietPersistenceDrain();
       } else {
+        cancelPostSwipeSchedule();
         if (persistenceQuietTimerRef.current) clearTimeout(persistenceQuietTimerRef.current);
         persistenceQuietTimerRef.current = null;
         persistenceInteractionHandleRef.current?.cancel();
