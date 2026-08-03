@@ -82,6 +82,71 @@ async function migrateLegacyHistory(storage) {
   await storage.set('legacy', JSON.stringify(legacy));
 }
 
+class HydrationResetHarness {
+  cards = [];
+  generation = 0;
+  persistedGeneration = -1;
+  resetIntent = 0;
+  queuedResetIntent = 0;
+  pending = null;
+  errors = [];
+  legacyPresentOnFailure = false;
+
+  constructor(storage) {
+    this.storage = storage;
+  }
+
+  reset() {
+    this.resetIntent += 1;
+    this.cards = [];
+    this.generation += 1;
+  }
+
+  async hydrate(readDedicated) {
+    const snapshot = JSON.parse(await readDedicated());
+    this.persistedGeneration = snapshot.generation;
+    if (this.queuedResetIntent >= this.resetIntent) {
+      this.cards = snapshot.cards;
+      this.generation = snapshot.generation;
+      return;
+    }
+    this.queueResetAbove(snapshot.generation);
+    await this.flush();
+  }
+
+  queueResetAbove(durableGeneration) {
+    this.generation = Math.max(
+      this.generation,
+      durableGeneration,
+      this.persistedGeneration,
+    ) + 1;
+    this.cards = [];
+    this.queuedResetIntent = this.resetIntent;
+    this.pending = { version: 1, generation: this.generation, cards: [] };
+  }
+
+  async flush() {
+    if (!this.pending) return;
+    const snapshot = this.pending;
+    this.pending = null;
+    try {
+      await this.storage.writeDedicated(snapshot);
+      this.persistedGeneration = snapshot.generation;
+      await this.storage.removeLegacy();
+    } catch {
+      this.errors.push('persistence failed');
+      this.legacyPresentOnFailure = this.storage.hasLegacy();
+      this.pending = snapshot;
+    }
+  }
+
+  async resetAndFlush(hydration) {
+    this.reset();
+    await hydration;
+    await this.flush();
+  }
+}
+
 test('history is exact, ordered, rollback-safe, capped, and coalesced', () => {
   const history = new HistoryHarness();
   const acceptedTokens = new Set();
@@ -154,6 +219,20 @@ test('dedicated generation persistence is trailing, serialized, lifecycle-flushe
   assert.match(source.appHandlers, /resetDeckSessionHistory\(\);\s*resetDeckHistory\(newHashStr\)/);
   assert.match(source.context, /resetDeckSessionHistory\(\);\s*resetDeckHistory\(''\)/);
   assert.match(source.historyStore, /catch \{[\s\S]*pendingSnapshot = snapshot;[\s\S]*break;/);
+  assert.match(source.historyStore, /if \(hydrationSettled\)[\s\S]*scheduleSnapshot/);
+  assert.match(
+    source.historyStore,
+    /Math\.max\([\s\S]*current\.generation,[\s\S]*knownDurableGeneration,[\s\S]*lastPersistedGeneration/,
+  );
+  assert.match(
+    source.historyStore,
+    /if \(!hasPendingHydrationReset\(\)\)[\s\S]*cards: snapshot\.cards/,
+  );
+  assert.match(source.historyStore, /legacyCleanupAfterGeneration = generation/);
+  assert.match(
+    source.historyStore,
+    /await hydrateDeckSessionHistory\(\);\s*await flushDeckSessionHistory\(\)/,
+  );
 });
 
 test('a delayed generation N write completes before and cannot overwrite N+1', async () => {
@@ -176,6 +255,68 @@ test('a delayed generation N write completes before and cannot overwrite N+1', a
   assert.deepEqual(persistence.writes, [1, 2]);
   assert.equal(persistence.stored.generation, 2);
   assert.deepEqual(persistence.stored.cards.map((card) => card.id), ['a', 'b']);
+});
+
+test('mid-hydration reset rebases above durable history and cannot resurrect old cards', async () => {
+  let releaseRead;
+  const delayedDedicated = new Promise((resolve) => {
+    releaseRead = resolve;
+  });
+  const values = new Map([
+    ['dedicated', { version: 1, generation: 100, cards: [{ id: 'old' }] }],
+    ['legacy', [{ id: 'old' }]],
+  ]);
+  const storage = {
+    writeDedicated: async (snapshot) => values.set('dedicated', snapshot),
+    removeLegacy: async () => values.delete('legacy'),
+    hasLegacy: () => values.has('legacy'),
+  };
+  const history = new HydrationResetHarness(storage);
+  const hydration = history.hydrate(() => delayedDedicated);
+  const logout = history.resetAndFlush(hydration);
+  releaseRead(JSON.stringify(values.get('dedicated')));
+  await logout;
+
+  assert.deepEqual(history.cards, []);
+  assert.ok(history.generation > 100);
+  assert.deepEqual(values.get('dedicated').cards, []);
+  assert.equal(values.get('dedicated').generation, history.generation);
+  assert.equal(values.has('legacy'), false);
+});
+
+test('mid-hydration reset write failure retains legacy, reports no PII, and retries empty', async () => {
+  let releaseRead;
+  const delayedDedicated = new Promise((resolve) => {
+    releaseRead = resolve;
+  });
+  const values = new Map([
+    ['dedicated', { version: 1, generation: 500, cards: [{ id: 'private-card' }] }],
+    ['legacy', [{ id: 'private-card' }]],
+  ]);
+  let writes = 0;
+  const storage = {
+    writeDedicated: async (snapshot) => {
+      writes += 1;
+      if (writes === 1) throw new Error('synthetic write failure for private-card');
+      values.set('dedicated', snapshot);
+    },
+    removeLegacy: async () => values.delete('legacy'),
+    hasLegacy: () => values.has('legacy'),
+  };
+  const history = new HydrationResetHarness(storage);
+  const hydration = history.hydrate(() => delayedDedicated);
+  const logout = history.resetAndFlush(hydration);
+  releaseRead(JSON.stringify(values.get('dedicated')));
+  await logout;
+
+  assert.equal(writes, 2, 'logout flush retries the reset after hydration write failure');
+  assert.equal(history.legacyPresentOnFailure, true);
+  assert.deepEqual(history.cards, []);
+  assert.deepEqual(values.get('dedicated').cards, []);
+  assert.ok(values.get('dedicated').generation > 500);
+  assert.equal(values.has('legacy'), false);
+  assert.deepEqual(history.errors, ['persistence failed']);
+  assert.doesNotMatch(history.errors.join('\n'), /private-card/);
 });
 
 test('legacy migration writes exact dedicated history before removing the global copy', async () => {
