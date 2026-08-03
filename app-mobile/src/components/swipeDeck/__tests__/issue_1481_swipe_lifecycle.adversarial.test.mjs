@@ -11,8 +11,7 @@ import {
 } from '../deckSwipeLifecycle.ts';
 import {
   DECK_HERO_MAX_LONG_EDGE_PX,
-  DECK_PREFETCH_CACHE_POLICY,
-  deckPrefetchIndex,
+  DECK_VISIBLE_POSTER_CACHE_POLICY,
   getDeckHeroDecodeTarget,
 } from '../deckHeroPolicy.ts';
 
@@ -109,10 +108,11 @@ test('production source keeps the rejection, media, persistence, and teardown bo
   assert.match(preview, /pointerEvents="none"/);
   assert.match(preview, /importantForAccessibility="no-hide-descendants"/);
   assert.doesNotMatch(preview, /EventCoverMedia|TouchableOpacity|<CardHero\b/);
-  assert.equal((swipeableSource.match(/ExpoImage\.prefetch\(/g) ?? []).length, 1);
-  assert.match(swipeableSource, /availableRecommendations\[deckPrefetchIndex\(0\)\]/);
-  assert.equal(deckPrefetchIndex(37), 39);
-  assert.equal(DECK_PREFETCH_CACHE_POLICY, 'disk');
+  assert.equal(DECK_VISIBLE_POSTER_CACHE_POLICY, 'memory-disk');
+  assert.match(swipeableSource, /source=\{\{ uri: src, width: decodeTarget\.width, height: decodeTarget\.height \}\}/);
+  assert.match(swipeableSource, /<CardHeroImage[\s\S]*decodeTarget=\{heroDecodeTarget\}/);
+  assert.equal((swipeableSource.match(/ExpoImage\.prefetch\(/g) ?? []).length, 0);
+  assert.equal((swipeableSource.match(/ExpoImage\.loadAsync\(/g) ?? []).length, 0);
 
   assert.match(swipeableSource, /persistenceDrainRef/);
   assert.match(swipeableSource, /pendingPersistenceRef\.current = \{/);
