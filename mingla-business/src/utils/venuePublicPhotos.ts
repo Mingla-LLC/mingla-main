@@ -1,34 +1,14 @@
 /**
  * Ve4 — photo cascade for public verified venue pages.
  * Operator cover + profile first; fall back to place_pool URLs when absent.
+ *
+ * #1560 [consumer-adopts-shared] — the implementation MOVED to
+ * `packages/brand-rendering/venuePublicPhotos.ts` so the consumer app resolves
+ * the same gallery this app does (a package may be imported by both; this
+ * app's `src/` may not). This file is now a thin re-export: every existing
+ * import path and `__tests__/venuePublicPhotos.test.ts` are untouched.
  */
-
-export interface VenueGalleryPhotoInput {
-  coverMediaUrl?: string | null;
-  profilePhotoUrl?: string | null;
-  poolPhotoUrls?: string[] | null;
-}
-
-const isUsableUrl = (value: string | null | undefined): value is string =>
-  typeof value === "string" && value.trim().length > 0;
-
-/** Deduped gallery URLs in display priority order. */
-export const buildVenueGalleryPhotoUrls = (
-  input: VenueGalleryPhotoInput,
-): string[] => {
-  const urls: string[] = [];
-  const push = (value: string | null | undefined): void => {
-    if (!isUsableUrl(value)) return;
-    const trimmed = value.trim();
-    if (!urls.includes(trimmed)) urls.push(trimmed);
-  };
-
-  push(input.coverMediaUrl);
-  push(input.profilePhotoUrl);
-  if (urls.length > 0) return urls;
-
-  for (const poolUrl of input.poolPhotoUrls ?? []) {
-    push(poolUrl);
-  }
-  return urls;
-};
+export {
+  buildVenueGalleryPhotoUrls,
+  type VenueGalleryPhotoInput,
+} from "@mingla/brand-rendering/venuePublicPhotos";
