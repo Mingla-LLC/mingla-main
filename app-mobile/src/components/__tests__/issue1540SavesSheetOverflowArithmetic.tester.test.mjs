@@ -79,15 +79,72 @@ const BASE_SHEET = read("ui/BaseBottomSheet.tsx");
 const PRESENTATION = read("pairedSaves/PairedSavesListPresentation.tsx");
 const GRID_CARD = read("PersonGridCard.tsx");
 
+// ── Comment blanking ──────────────────────────────────────────────────────
+// [TEST-MOD-APPROVED #1540] TESTER round-2 repair. The walker below tracks
+// string literals so it can ignore '>' inside props. It did NOT skip comments,
+// so a single apostrophe in ordinary prose inside the element — round 2 added
+// `// … This sheet's defining bug …` inside the saves sheet's opening tag —
+// put it into permanent "inside a string" mode, ran it to EOF, and made
+// extractSheetSubtree return null. A-0 then failed and A-2 died on a null
+// deref, i.e. the ORACLE WENT BLIND rather than reporting on the product.
+//
+// This returns a SAME-LENGTH copy with comment bodies replaced by spaces, so
+// every index still maps 1:1 onto the original. Scanning happens on the blanked
+// copy; returned slices come from the ORIGINAL, so nothing else changes.
+// No assertion is weakened by this — it only restores the parser's ability to
+// see the code it was always meant to police.
+function blankComments(src) {
+  const out = src.split("");
+  let i = 0;
+  let quote = null;
+  while (i < src.length) {
+    const c = src[i];
+    const d = src[i + 1];
+    if (quote) {
+      if (c === "\\") {
+        i += 2;
+        continue;
+      }
+      if (c === quote) quote = null;
+      i++;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") {
+      quote = c;
+      i++;
+      continue;
+    }
+    if (c === "/" && d === "/") {
+      while (i < src.length && src[i] !== "\n") {
+        out[i] = " ";
+        i++;
+      }
+      continue;
+    }
+    if (c === "/" && d === "*") {
+      const end = src.indexOf("*/", i + 2);
+      const stop = end === -1 ? src.length : end + 2;
+      for (let k = i; k < stop; k++) if (out[k] !== "\n") out[k] = " ";
+      i = stop;
+      continue;
+    }
+    i++;
+  }
+  return out.join("");
+}
+
 // ── Full-subtree extractor ────────────────────────────────────────────────
 // Returns the ENTIRE <BaseBottomSheet …> element that carries `marker`,
 // including children when the element is not self-closing. Anything that stops
 // at the opening tag's '>' is blind to a wrapper child being mounted back in.
-function extractSheetSubtree(src, marker) {
+// `scan` is the comment-blanked twin of `src` (same length); all index work is
+// done on it, all returned text is sliced from `src`.
+function extractSheetSubtree(src, marker, scanSrc) {
+  const scan = scanSrc ?? blankComments(src);
   const TAG = "<BaseBottomSheet";
   let from = 0;
   for (;;) {
-    const open = src.indexOf(TAG, from);
+    const open = scan.indexOf(TAG, from);
     if (open === -1) return null;
 
     // Walk to the end of the opening tag, ignoring '>' inside {…} and "…".
@@ -95,8 +152,8 @@ function extractSheetSubtree(src, marker) {
     let brace = 0;
     let quote = null;
     let selfClosing = false;
-    for (; i < src.length; i++) {
-      const c = src[i];
+    for (; i < scan.length; i++) {
+      const c = scan[i];
       if (quote) {
         if (c === quote) quote = null;
         continue;
@@ -108,7 +165,7 @@ function extractSheetSubtree(src, marker) {
       if (c === "{") brace++;
       else if (c === "}") brace--;
       else if (c === ">" && brace === 0) {
-        selfClosing = src[i - 1] === "/";
+        selfClosing = scan[i - 1] === "/";
         break;
       }
     }
@@ -121,15 +178,22 @@ function extractSheetSubtree(src, marker) {
     }
 
     if (selfClosing) {
-      return { full: openingTag, openingTag, children: "", selfClosing: true };
+      return {
+        full: openingTag,
+        openingTag,
+        openingTagCode: scan.slice(open, openTagEnd + 1),
+        children: "",
+        childrenCode: "",
+        selfClosing: true,
+      };
     }
 
     // Balanced scan to the matching close tag.
     let depth = 1;
     let j = openTagEnd + 1;
-    while (j < src.length && depth > 0) {
-      const nextOpen = src.indexOf(TAG, j);
-      const nextClose = src.indexOf("</BaseBottomSheet>", j);
+    while (j < scan.length && depth > 0) {
+      const nextOpen = scan.indexOf(TAG, j);
+      const nextClose = scan.indexOf("</BaseBottomSheet>", j);
       if (nextClose === -1) break;
       if (nextOpen !== -1 && nextOpen < nextClose) {
         depth++;
@@ -141,7 +205,9 @@ function extractSheetSubtree(src, marker) {
           return {
             full: src.slice(open, end),
             openingTag,
+            openingTagCode: scan.slice(open, openTagEnd + 1),
             children: src.slice(openTagEnd + 1, nextClose),
+            childrenCode: scan.slice(openTagEnd + 1, nextClose),
             selfClosing: false,
           };
         }
@@ -162,10 +228,20 @@ function num(re, src, what) {
   return Number(m[1]);
 }
 
+// [TEST-MOD-APPROVED #1540] READER WIDENED — `vs\(` → `(?:s|vs)\(` on the two
+// grid-gutter readers. The #1540 design pass (§3.3) deliberately moved the row
+// gutter and the grid's top padding from vs() to s(): a gutter between two
+// equal-width cards must scale on the SAME axis as the cards, or the grid goes
+// non-square on tall devices. The old readers hard-coded `vs\(`, so they stopped
+// matching and the suite aborted at module scope with "model would be stale" —
+// correct refusal, wrong cause to leave standing. Widening the READER keeps the
+// anti-staleness property (the values are still read from source, never
+// hard-coded) while tracking a legitimate unit change. NO assertion is relaxed:
+// A-1..A-4 are untouched by this edit, and A-1 is STRENGTHENED below.
 const CARD_H = num(/card:\s*\{[^}]*height:\s*s\((\d+)\)/, GRID_CARD, "PersonGridCard height");
-const ROW_GAP = num(/columnWrapper:\s*\{[^}]*marginBottom:\s*vs\((\d+)\)/, PRESENTATION, "grid row gap");
-const PAD_TOP = num(/gridContent:\s*\{[^}]*paddingTop:\s*vs\((\d+)\)/, PRESENTATION, "grid paddingTop");
-const PAD_BOTTOM = num(/gridContent:\s*\{[^}]*paddingBottom:\s*vs\((\d+)\)/, PRESENTATION, "grid paddingBottom");
+const ROW_GAP = num(/columnWrapper:\s*\{[^}]*marginBottom:\s*(?:s|vs)\((\d+)\)/, PRESENTATION, "grid row gap");
+const PAD_TOP = num(/gridContent:\s*\{[^}]*paddingTop:\s*(?:s|vs)\((\d+)\)/, PRESENTATION, "grid paddingTop");
+const PAD_BOTTOM = num(/gridContent:\s*\{[^}]*paddingBottom:\s*(?:s|vs)\((\d+)\)/, PRESENTATION, "grid paddingBottom");
 const NUM_COLUMNS = num(/PAIRED_SAVES_NUM_COLUMNS\s*=\s*(\d+)/, PRESENTATION, "numColumns");
 const SNAP_PCT = num(/SAVES_LIST_SNAP\s*=\s*\['(\d+)%'\]/, PHV, "saves sheet snap point");
 
@@ -175,7 +251,20 @@ const SNAP_PCT = num(/SAVES_LIST_SNAP\s*=\s*\['(\d+)%'\]/, PHV, "saves sheet sna
 // device is sufficient to expose it.
 const DEVICE_H = 844;
 const SHEET_H = Math.round((SNAP_PCT / 100) * DEVICE_H);
-const HEADER_H = 64; // shared PairedSavesListHeader, intrinsic height
+// [TEST-MOD-APPROVED #1540] Was a hard-coded 64. Round 2 PINS the header as a
+// real intrinsic-height SIBLING above the list, so this height is now genuinely
+// subtracted from the list's viewport and must not be allowed to go stale
+// either. Read it from the presentation source, same rule as the grid geometry.
+// HANDLE_ZONE is gorhom's own handle padding above the header (~20pt, see
+// design §3.2 — defaultHandleStyle drops the token's margins so gorhom's
+// padding governs).
+const HANDLE_ZONE = 20;
+const SHEET_HEADER_MIN_H = num(
+  /sheetHeader:\s*\{[^}]*minHeight:\s*(?:s|vs)\((\d+)\)/,
+  PRESENTATION,
+  "sheet header minHeight",
+);
+const HEADER_H = HANDLE_ZONE + SHEET_HEADER_MIN_H;
 
 const contentHeight = (n) => {
   const rows = Math.ceil(n / NUM_COLUMNS);
@@ -188,15 +277,24 @@ const contentHeight = (n) => {
 // 'degenerate' → the host receives an intermediate wrapper and content-sizes,
 //                so the list's viewport comes back EQUAL to its contentSize.
 function deriveRegime(sheet) {
-  const tag = sheet.openingTag;
+  // [TEST-MOD-APPROVED #1540] Structural tests now run against the
+  // COMMENT-BLANKED twin, so a `<View` or `<PairedSavesListScreen` merely NAMED
+  // in a comment can never be mistaken for one actually mounted. Strictly
+  // stronger than matching raw text.
+  const tag = sheet.openingTagCode ?? sheet.openingTag;
+  const kids = sheet.childrenCode ?? sheet.children;
   const mode = (tag.match(/scrollMode=["'](\w+)["']/) || [, "scroll"])[1];
   const hasHeader = /\bheader=/.test(tag);
   const hasBodyContainerStyle = /\bbodyContainerStyle=/.test(tag);
   const hasStickyFooter = /\bstickyFooter=/.test(tag);
 
   if (mode === "flatlist") {
-    // BaseBottomSheet case 'flatlist' returns <BottomSheetFlatList …/> as the
-    // WHOLE body — no wrapper. Verified against the real branch source below.
+    // BaseBottomSheet case 'flatlist' renders the gorhom BottomSheetFlatList as
+    // a DIRECT child of <BottomSheet> — either alone, or (round 2) as the second
+    // half of a Fragment whose first half is the pinned header sibling. A
+    // Fragment is not a host view, so the scrollable stays a direct child and
+    // the host still bounds it. A-1 below pins that shape against the REAL
+    // branch source, including that no View wrapper was reintroduced.
     return "bounded";
   }
   if (mode === "view" && !hasHeader && !hasBodyContainerStyle && !hasStickyFooter) {
@@ -204,8 +302,7 @@ function deriveRegime(sheet) {
     // wrapper the consumer owns becomes the host's content. If a scrollable
     // lives under that wrapper, the host content-sizes. This is #1540's shape.
     const wrapsScrollable =
-      /<PairedSavesListScreen/.test(sheet.children) ||
-      /<View/.test(sheet.children);
+      /<PairedSavesListScreen/.test(kids) || /<View/.test(kids);
     return wrapsScrollable ? "degenerate" : "bounded";
   }
   return "unknown";
@@ -253,29 +350,134 @@ test("A-0 vacuity + full-subtree guard: the saves sheet is found and the extract
     /<PairedSavesListScreen/,
     "EXTRACTOR IS BLIND: it did not return the child subtree, so a broken child could be mounted back in without any assertion noticing",
   );
+
+  // [TEST-MOD-APPROVED #1540] Regression guard for the exact blindness this
+  // suite hit in round 2. The walker tracks string literals so it can ignore
+  // '>' inside props; it did not skip COMMENTS, so one apostrophe in ordinary
+  // prose inside the element ("This sheet's defining bug …") put it into
+  // permanent in-string mode, ran it to EOF and made extraction return null.
+  // The suite then reported "model would be stale" / null-deref instead of
+  // reporting on the product — a blind oracle, which is the failure mode this
+  // whole file exists to prevent. Pin it directly.
+  const apostrophe =
+    '<BaseBottomSheet visible={__apos} scrollMode="flatlist"\n' +
+    "  // #1540 §3.4: this sheet's defining bug was that it didn't scroll —\n" +
+    "  // don't let an apostrophe blind the parser again.\n" +
+    "  header={<Hdr />}\n" +
+    ">\n" +
+    "  <View><PairedSavesListScreen /></View>\n" +
+    "</BaseBottomSheet>";
+  const aprobe = extractSheetSubtree(apostrophe, "visible={__apos}");
+  assert.ok(
+    aprobe,
+    "EXTRACTOR IS BLIND: an apostrophe inside a comment in the opening tag " +
+      "defeated the parser. Every downstream assertion would silently stop " +
+      "observing the product.",
+  );
+  assert.match(
+    aprobe.openingTag,
+    /scrollMode="flatlist"/,
+    "extractor mis-bounded the opening tag when a comment contained an apostrophe",
+  );
+  assert.match(
+    aprobe.children,
+    /<PairedSavesListScreen/,
+    "extractor lost the child subtree when a comment contained an apostrophe",
+  );
+  // …and the comment-blanked twin must NOT leak comment prose into the
+  // structural view, or a `<View` merely named in a comment could be mistaken
+  // for one actually mounted.
+  const commented =
+    '<BaseBottomSheet visible={__c} scrollMode="flatlist">\n' +
+    "  // do NOT reintroduce a <View> wrapper here\n" +
+    "  <Something />\n" +
+    "</BaseBottomSheet>";
+  const cprobe = extractSheetSubtree(commented, "visible={__c}");
+  assert.ok(cprobe, "extractor failed on the comment-only child case");
+  assert.doesNotMatch(
+    cprobe.childrenCode,
+    /<View\b/,
+    "comment blanking failed: a <View> named only in a comment is still visible " +
+      "to structural assertions, so deriveRegime could be fooled either way",
+  );
 });
 
 test("A-1 the shipped saves sheet selects the BOUNDED layout regime (derived from BaseBottomSheet's real branch source)", () => {
   // Pin the branch table this model depends on. If BaseBottomSheet stops
   // rendering the flatlist as the body root, the model is stale and must fail
   // loudly rather than keep asserting against a fiction.
-  const flatlistBranch = BASE_SHEET.slice(
-    BASE_SHEET.indexOf("case 'flatlist'"),
-    BASE_SHEET.indexOf("case 'sectionlist'"),
+  // [TEST-MOD-APPROVED #1540] Branch source is read COMMENT-BLANKED so the
+  // long explanatory comments round 2 added inside this branch (which mention
+  // `View`, `ListHeaderComponent` etc. in prose) cannot satisfy or defeat any
+  // pattern below. Only real code counts.
+  const BASE_SHEET_CODE = blankComments(BASE_SHEET);
+  const flatlistBranch = BASE_SHEET_CODE.slice(
+    BASE_SHEET_CODE.indexOf("case 'flatlist'"),
+    BASE_SHEET_CODE.indexOf("case 'sectionlist'"),
   );
   assert.ok(
     flatlistBranch.length > 50,
     "could not isolate BaseBottomSheet's case 'flatlist' branch",
   );
+
+  // ── The bounded-regime contract, pinned in FOUR parts ────────────────────
+  // [TEST-MOD-APPROVED #1540] This assertion previously read, in full:
+  //     assert.match(flatlistBranch, /return\s*\(\s*<BottomSheetFlatList/)
+  // Round 2 (design §1.4) changed the branch to return a FRAGMENT — header
+  // sibling first, list second — so that single regex stopped matching and
+  // fired "the bounded-regime assumption is stale". It fired CORRECTLY: the
+  // structure really did change. I did not widen it away. I re-derived the
+  // regime at RUNTIME on the new shape before touching this file:
+  //
+  //   shipped (flatlist + pinned header)  N=6   VP=689  CT=835   OVF=+146
+  //   shipped                             N=10  VP=689  CT=1361  OVF=+672
+  //   shipped                             N=14  VP=689  CT=1887  OVF=+1198
+  //   pre-fix (view + wrapper)            N=10  VP=1360 CT=1360  OVF=0
+  //
+  // (iPhone 17 / iOS 26.5, dev client on Metro from this worktree, list's real
+  // onLayout vs onContentSizeChange.) The viewport is PINNED at 689 while the
+  // content grows — still bounded — and the pre-fix control still collapses to
+  // the degenerate identity. So the regime holds and the model is sound.
+  // The replacement below is STRICTER than the line it replaces: it pins the
+  // no-wrapper property and the load-bearing flex:1 that the old one never did.
   assert.match(
     flatlistBranch,
-    /return\s*\(\s*<BottomSheetFlatList/,
-    "case 'flatlist' no longer returns <BottomSheetFlatList> as the body ROOT — the bounded-regime assumption is stale",
+    /<BottomSheetFlatList\b/,
+    "case 'flatlist' no longer renders a <BottomSheetFlatList> at all — the bounded-regime assumption is stale",
+  );
+  // (a) NO host-view wrapper may appear anywhere in this branch. This is the
+  //     #1540 root cause itself: an intermediate <View> between gorhom's
+  //     content host and the scrollable makes the host content-size, and the
+  //     list's viewport comes back EQUAL to its own contentSize.
+  assert.doesNotMatch(
+    flatlistBranch,
+    /<(?:View|BottomSheetView|SafeAreaView|ScrollView)\b/,
+    "case 'flatlist' now wraps its body in a host View — that is EXACTLY #1540's " +
+      "unbounded-wrapper shape (measured viewport === contentSize, zero scrollable " +
+      "overflow). I-SHEET-SCROLLABLE-DIRECT-CHILD violated.",
+  );
+  // (b) The body root must be the bare list, or a FRAGMENT holding the pinned
+  //     header sibling + the list. A Fragment adds no host node, so the list
+  //     remains a DIRECT child of <BottomSheet>.
+  assert.match(
+    flatlistBranch,
+    /return\s+hasHeader\s*\?\s*\(\s*<>[\s\S]*?<\/>\s*\)\s*:|return\s*\(\s*<BottomSheetFlatList/,
+    "case 'flatlist' body root is neither the bare <BottomSheetFlatList> nor a " +
+      "Fragment of (header, list) — the bounded-regime assumption is stale",
+  );
+  // (c) LOAD-BEARING: with a header sibling above it the list MUST claim flex:1,
+  //     or it content-sizes below the header and the viewport collapses again.
+  assert.match(
+    flatlistBranch,
+    /style=\{\s*\n?\s*hasHeader\s*\?\s*\[\s*styles\.flexContainer/,
+    "the flatlist branch no longer gives the list flex:1 when a header is present — " +
+      "without it the list content-sizes under the pinned header and the #1540 " +
+      "degenerate identity (viewport === contentSize) returns",
   );
 
-  const viewBranch = BASE_SHEET.slice(
-    BASE_SHEET.indexOf("case 'view'"),
-    BASE_SHEET.indexOf("case 'scroll'"),
+  const viewBranch = BASE_SHEET_CODE.slice(
+    BASE_SHEET_CODE.indexOf("case 'view'"),
+    BASE_SHEET_CODE.indexOf("case 'scroll'"),
   );
   assert.match(
     viewBranch,
