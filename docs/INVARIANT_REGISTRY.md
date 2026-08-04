@@ -7424,3 +7424,49 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   proven independently by the tester.
 - **Established:** DRAFT at #1576 SPEC 2026-08-04. Flips ACTIVE at CLOSE after independent
   iOS + Android tester PASS.
+
+---
+
+## DRAFT — issue #1579 (tapping a settled card does not expand it)
+
+### I-PROPOSED-1579-GESTURE-LEASE-RELEASE-COMPLETENESS (DRAFT)
+- **Rule:** Any lifecycle lease claimed at **touch-down** — before the recogniser can know whether
+  the touch will become a drag — MUST have a release path for **every** way that touch can end,
+  including the ways the recogniser does not report through its activation-path callbacks.
+  Concretely for the Explorer deck: `beginGesture` claims the `DRAGGING` lease from
+  `Gesture.Pan().onBegin`; RNGH delivers **no** `onStart`/`onEnd`/`onFinalize` for a pan that never
+  activates, so the lease MUST also be released from `onTouchesUp` **and** `onTouchesCancelled`.
+  That release MUST be conditional on the pan **not** having activated.
+- **Corollary (the tap gate):** an input gate that must be satisfiable by a **tap** may not be
+  predicated on a phase that the tap's own touch-down has already left. Tap-expand is therefore
+  gated by `canAdmitDeckTapExpand(phase, panActivated)`, never by `canAdmitDeckInput(phase)`, which
+  stays `IDLE`-only for swipe and accessibility admission.
+- **Why:** an unreleased lease is not a cosmetic leak. It made `beginGesture` **reject** the next
+  swipe without allocating an epoch, while `finalizeGesture` — which requires only
+  `phase === 'DRAGGING'` — let that same swipe **commit anyway on the stale epoch**. The gesture was
+  *rejected by admission control and committed regardless*, bypassing the identity guard #1481
+  exists to provide. It also stalled deck-history persistence and deferred business work (both gated
+  on a quiet `IDLE` that never arrived) and disabled accessibility focus restore. Every symptom
+  except the dead tap was invisible to users, which is why only a test can hold this.
+- **Measured basis (RNGH 2.28.0 / RN 0.81.5 / Reanimated 4.1.5 / iOS 26.5):** non-activating pan →
+  `onTouchesDown`, `onBegin`, `onTouchesUp` fire; `onStart`, `onUpdate`, `onEnd`, `onFinalize` do
+  **not**. Activating pan → all fire, and **`onTouchesUp` arrives BEFORE `onEnd`/`onFinalize`**. That
+  ordering is why the release must be conditional: an unconditional release lands before
+  `finalizeGesture`, which early-returns on `phase !== 'DRAGGING'`, and **kills every swipe**.
+  Re-measure this table on an RNGH major bump.
+- **What the enforcement does and does NOT cover:** the gate executes the real exported predicates
+  and replays measured callback traces, and it structurally checks the wiring on comment- and
+  string-stripped source. It does **NOT** execute the React hook, mount a component, or verify
+  RNGH's own delivery behaviour — that remains a runtime/device claim, re-verified per platform per
+  release. It does not make the class impossible; it makes *this* lease provably releasable and
+  makes removing the release a loud CI failure instead of a silent product defect.
+- **Enforcement:** `.github/workflows/issue-1579-deck-tap-expand.yml` requires and executes
+  `issue_1579_tap_expand_admission.test.mjs` (implementor) and
+  `issue_1579_tap_expand_admission.adversarial.test.mjs` (tester). Separate from
+  `issue-1481-explorer-deck-tests.yml` so that job's "require all eight" step stays exactly eight.
+- **Regression:** fails-on-revert proven at SPEC time by runtime prototype (pre-fix: swipe-after-tap
+  `beginGesture ENTER phase=DRAGGING` with no `ADMITTED`, committing on the tap's epoch; post-fix:
+  `ADMITTED newEpoch=4`). Re-proven by the implementor via true line deletion, and independently by
+  the tester's 10,000-sequence fuzz against reverted source.
+- **Established:** DRAFT at #1579 SPEC 2026-08-04. Flips ACTIVE at CLOSE after independent
+  iOS **and Android** tester PASS plus the VoiceOver pass.
