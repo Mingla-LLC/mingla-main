@@ -106,15 +106,21 @@ describe("#1558 — the profile table is TOTAL, proven by compile error", () => 
   test("PROOF: an incomplete SECTION registry does not compile", () => {
     // The second total Record. Both pages type their registry exactly this way,
     // so a listed section id can never resolve to nothing.
-    // @ts-expect-error — `gallery` is missing; a section registry must be total.
+    //
+    // [TEST-MOD-APPROVED #1561] — the omitted id was `gallery`, which #1561
+    // DELETED from `VenueSectionId` along with the bottom photo strip it named
+    // (the venue's photographs are the hero now). Leaving it here would have
+    // made the directive below unused, i.e. a TS2578 the typecheck-delta gate
+    // rejects. The PROOF is unchanged in kind: one id is still omitted and the
+    // total Record still refuses to compile.
+    // @ts-expect-error — `stayPolicy` is missing; a section registry must be total.
     const missingRenderer: Record<VenueSectionId, string> = {
       priceLede: "x",
       about: "x",
       location: "x",
       hours: "x",
-      stayPolicy: "x",
     };
-    expect(Object.keys(missingRenderer)).toHaveLength(5);
+    expect(Object.keys(missingRenderer)).toHaveLength(4);
   });
 });
 
@@ -269,7 +275,10 @@ describe("#1558 — the gates that used to be hardcoded booleans", () => {
 
 describe("#1558 — no dead section ids, no unrenderable ones", () => {
   test("every VenueSectionId is used by at least one profile", () => {
-    expect(VENUE_SECTION_IDS.length).toBeGreaterThanOrEqual(6); // vacuity guard
+    // [TEST-MOD-APPROVED #1561] — was 6; `gallery` is deleted (see above), so
+    // the floor drops to the five ids that remain. Still a vacuity guard: it
+    // fails the moment the id list is emptied or truncated further.
+    expect(VENUE_SECTION_IDS.length).toBeGreaterThanOrEqual(5); // vacuity guard
     const used = new Set<VenueSectionId>();
     for (const key of ALL_KEYS) {
       for (const id of VENUE_CATEGORY_PROFILES[key].overview) used.add(id);
@@ -289,7 +298,8 @@ describe("#1558 — no dead section ids, no unrenderable ones", () => {
         checked += 1;
       }
     }
-    // Vacuity guard: five profiles × five sections each.
-    expect(checked).toBeGreaterThanOrEqual(25);
+    // [TEST-MOD-APPROVED #1561] — five profiles x FOUR sections each now that
+    // `gallery` has left every `overview` array with the strip it drew.
+    expect(checked).toBeGreaterThanOrEqual(20);
   });
 });

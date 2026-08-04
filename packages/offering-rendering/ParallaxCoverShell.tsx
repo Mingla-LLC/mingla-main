@@ -151,6 +151,24 @@ export interface ParallaxCoverShellProps {
    * image and video covers.
    */
   galleryImages?: OfferingGalleryImage[];
+  /**
+   * issue #1561 [first-screen-rebuild] — the word printed on the striped
+   * placeholder when there is NO cover media. `EventCover` defaults it to
+   * "Cover", which is authoring-console language: #1550 Leg C found a live
+   * PUBLIC venue page printing the literal word `COVER` at full hero size,
+   * which reads to a stranger as a broken page rather than a designed absence.
+   * A caller that renders to the public passes something a guest can use (the
+   * venue's category and city). ABSENT ⇒ `EventCoverMedia`'s own "Cover"
+   * default, i.e. byte-identical to today for every existing caller.
+   *
+   * `null` (the default) is the ABSENT sentinel, not the empty string: it is
+   * given a default so the destructure below infers a type. Every other
+   * defaultless binding in this signature costs one TS7031 under
+   * mingla-business's tsconfig (which cannot resolve this package's `react`),
+   * and issue #1403's typecheck-delta gate fails on ANY added diagnostic
+   * signature anywhere in the graph — not only inside its own targets.
+   */
+  coverPlaceholderLabel?: string | null;
   testID?: string;
 }
 
@@ -180,6 +198,7 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
   hideCloseOnWeb = false,
   coverAspectRatio = 4 / 5,
   galleryImages,
+  coverPlaceholderLabel = null,
   testID,
 }) => {
   const { isDesktop, isWeb } = useResponsiveLayout();
@@ -229,11 +248,22 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
     />
   );
 
+  // issue #1561 — SELECT between two complete prop objects rather than passing
+  // `label={undefined}`: an absent `coverPlaceholderLabel` must leave the prop
+  // OFF the element entirely, so every existing caller's rendered tree is
+  // byte-identical and `EventCover`'s own "Cover" default is what applies.
+  const placeholderLabel: string | null = coverPlaceholderLabel ?? null;
+  const coverPlaceholderLabelProps: { label?: string } =
+    placeholderLabel === null || placeholderLabel === ""
+      ? {}
+      : { label: placeholderLabel };
+
   const coverMedia = (
     <EventCoverMedia
       mediaUrl={coverMediaUrl}
       mediaType={coverMediaType}
       hue={coverHue ?? undefined}
+      {...coverPlaceholderLabelProps}
       // ORCH-1167-R4 — a VIDEO cover AUTOPLAYS (muted, inline) and LOOPS
       // continuously on every surface that mounts this shell (buyer-web +
       // business iOS/Android, both standard-event + trip/experience). Passed

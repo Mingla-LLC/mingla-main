@@ -69,14 +69,20 @@ export type VenueCategoryKey = VenueCategory | "uncategorised";
  * `amenities` and `contact` are named in the #1550 SPEC but have no renderer
  * and no data plumbing yet; adding the id before the renderer would create a
  * dead entry that the vacuity guards in the tests exist to catch.
+ *
+ * #1561 REMOVED `gallery`. The Overview pane's photo strip is deleted — the
+ * venue's photographs are the HERO now, through the shell's first-class cover
+ * pager, which is not an Overview section at all. Removing the id (rather than
+ * dropping it from the two `overview` arrays and leaving it in the union) is
+ * what keeps "every VenueSectionId is used by at least one profile" true, so
+ * the vacuity guard stays a guard.
  */
 export type VenueSectionId =
   | "priceLede"
   | "about"
   | "location"
   | "hours"
-  | "stayPolicy"
-  | "gallery";
+  | "stayPolicy";
 
 /** How a category expresses what it costs. */
 export type VenuePricingModel = "typicalSpend" | "nightlyFrom";
@@ -121,7 +127,6 @@ const SECTION_ID_PRESENCE: Record<VenueSectionId, true> = {
   location: true,
   hours: true,
   stayPolicy: true,
-  gallery: true,
 };
 
 /** Every section id, derived from the total witness above (never hand-listed). */
@@ -140,7 +145,7 @@ const NON_STAY_SHAPE = {
   timekeeping: "tradingHours",
   bookingBody: "table",
   tabs: ["overview", "menu", "reservations"],
-  overview: ["priceLede", "about", "location", "hours", "gallery"],
+  overview: ["priceLede", "about", "location", "hours"],
 } as const;
 
 /**
@@ -186,7 +191,7 @@ export const VENUE_CATEGORY_PROFILES: Record<
     // ONE array element in ONE file rather than a hardcoded boolean in two
     // forks.
     tabs: ["overview", "reservations"],
-    overview: ["priceLede", "about", "location", "stayPolicy", "gallery"],
+    overview: ["priceLede", "about", "location", "stayPolicy"],
   },
   /**
    * `venue_category IS NULL`. It gets a NAME rather than falling into the

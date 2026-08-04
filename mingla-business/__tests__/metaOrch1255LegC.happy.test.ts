@@ -129,10 +129,19 @@ describe("T-C1 service half — getPublicVenueBySlug reads ONLY venue_public_vie
       { weekday: 0, isClosed: false, openTime: "09:00", closeTime: "17:00" },
       { weekday: 6, isClosed: true, openTime: null, closeTime: null },
     ]);
-    // Gallery = the house Ve4 CASCADE (operator cover first; pool photos are
-    // the FALLBACK when no cover exists — never additive, no fabrication).
+    // [TEST-MOD-APPROVED #1561] — this asserted the pool photographs were
+    // DROPPED whenever a cover existed ("never additive"). That behaviour is
+    // the defect #1550 Leg C measured on live production: the operator's whole
+    // uploaded gallery was fetched by `venue_public_view` and thrown away one
+    // line before it was read, leaving a `PHOTOS` heading — plural — over a
+    // single 240x180 duplicate of the hero. #1561 deletes the early return.
+    //
+    // The ORDER is the contract and is what this now pins, and the assertion is
+    // strictly stronger: it names every element and its position rather than
+    // asserting a list of one.
     expect(venue?.galleryPhotoUrls).toEqual([
       "https://cdn.example.com/venue-cover.jpg",
+      "https://pool.example.com/a.jpg",
     ]);
   });
 

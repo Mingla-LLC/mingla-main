@@ -33,6 +33,31 @@
  *   - `expect.assertions` pins the count per case.
  *
  * APPEND-ONLY — new file; modifies/deletes no existing test.
+ *
+ * ---------------------------------------------------------------------------
+ * [TEST-MOD-APPROVED #1561] — WHAT THIS FILE MEANS AFTER #1561
+ * ---------------------------------------------------------------------------
+ * #1559's question was "did the MOVE change anything?" and the answer was no.
+ * #1561 is the step that changes it ON PURPOSE: the gallery becomes the hero,
+ * the answer bar appears, the hero is capped, the bottom `PHOTOS` strip is
+ * deleted and the `VERIFIED VENUE` eyebrow is replaced by the category chip.
+ * A baseline recorded from the PRE-MOVE tree therefore cannot keep passing —
+ * and it should not, because a redesign that left that tree intact would be a
+ * redesign that did nothing.
+ *
+ * So the baseline was REGENERATED against #1561's tree
+ * (`MINGLA_1561_WRITE_BASELINE=1 npx jest publicVenueRenderParity.issue1559`),
+ * and the anchors below were updated to name the things the first screen
+ * carries NOW. Everything that made this file worth having is untouched:
+ * the same seven cases, the same size floor, the same anchor guard, the same
+ * `expect.assertions` pin. Its job changes from "prove the move was clean" to
+ * "prove the redesigned page does not drift"; the deleted anchors (`VERIFIED
+ * VENUE`, `PHOTOS`) are replaced by anchors for the blocks that took their
+ * place, so the guard never gets weaker, only re-aimed.
+ *
+ * Lines were DELETED (anchor strings, the baseline JSON), which is why the
+ * token above is required and why it is stated here rather than only in the
+ * commit body.
  */
 import React from "react";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -57,7 +82,8 @@ const BASELINE_PATH = join(
   "__fixtures__",
   "publicVenueRenderParity.issue1559.baseline.json",
 );
-const WRITE_BASELINE = process.env.MINGLA_1559_WRITE_BASELINE === "1";
+const WRITE_BASELINE = process.env.MINGLA_1559_WRITE_BASELINE === "1" ||
+  process.env.MINGLA_1561_WRITE_BASELINE === "1";
 
 /** Viewport the mocked `useResponsiveLayout` reports for the current case. */
 const viewport: { isDesktop: boolean; width: number } = {
@@ -378,11 +404,16 @@ const CASES: ParityCase[] = [
     name: "restaurant-phone-full",
     desktop: false,
     anchors: [
-      "VERIFIED VENUE",
+      // #1561 — the category chip replaces the VERIFIED VENUE eyebrow, and the
+      // answer bar replaces the bottom PHOTOS strip as this case's proof that
+      // the first screen rendered.
+      "Restaurant",
+      "London",
+      "Typically",
+      "Booking",
       "Academy Street Bistro",
       "WHERE YOU'LL BE",
       "HOURS",
-      "PHOTOS",
       "Reserve a table",
       "Typical spend",
       "Read more",
@@ -424,10 +455,12 @@ const CASES: ParityCase[] = [
     name: "stay-phone-full",
     desktop: false,
     anchors: [
-      "VERIFIED VENUE",
+      // #1561 — "Hotel" is the category chip; "Check-in" is the answer bar's
+      // time cell, which on a Stay is what a guest is actually asking.
+      "Hotel",
+      "Check-in",
       "CHECK-IN",
       "Reserve this Stay",
-      "PHOTOS",
       "15:00",
       "11:00",
     ],
@@ -506,7 +539,11 @@ const CASES: ParityCase[] = [
     desktop: false,
     // A venue with almost no data: proves the omit-when-absent arms are
     // identical too, not just the fully-populated happy path.
-    anchors: ["VERIFIED VENUE", "Academy Street Bistro", "By"],
+    // #1561 — the ZERO-DATA case. No cover, no photographs, no address, no
+    // city, no hours, no pitch: the category chip is the ONLY chip (there is no
+    // place to name), and the hero placeholder must read "Venue", never the
+    // literal word `COVER` that #1550 Leg C photographed on a live public page.
+    anchors: ["Venue", "Academy Street Bistro", "By"],
     data: {
       venue: {
         ...baseVenue(null),

@@ -177,9 +177,15 @@ describe("Ve4 public brand lookup", () => {
       isVerifiedVenue: true,
       city: "London",
       venueCategory: "restaurant",
+      // [TEST-MOD-APPROVED #1561] — the place-pool photograph is now part of
+      // the same gallery instead of a fallback for the cover's absence (see
+      // `packages/brand-rendering/venuePublicPhotos.ts`). Cover, then the
+      // profile photo, then the pool set — the order is unchanged; what changed
+      // is that the list no longer stops at the first source that has anything.
       galleryPhotoUrls: [
         "https://cdn.example.com/cover.gif",
         "https://cdn.example.com/brand.png",
+        "https://pool.example.com/a.jpg",
       ],
     });
     expect(detail?.events).toEqual([]);
