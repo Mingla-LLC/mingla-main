@@ -175,11 +175,63 @@ export function venueClockLabel(minutes: number): string {
 }
 
 /**
+ * Is this string an IANA ZONE NAME — as opposed to something an individual
+ * engine's ICU merely tolerates in the `timeZone` slot?
+ *
+ * WHY THIS GATE EXISTS, and it is not belt-and-braces. Leaving the question to
+ * `Intl` alone makes the PRODUCT ENGINE-DEPENDENT. Measured, not theorised: the
+ * string `"-05:00"` is accepted by the ICU in the local Node build (the page
+ * renders "Open") and REJECTED by the ICU in CI's Node build (the page renders
+ * "unknown"). Offset time zones went into ICU late, so the answer tracks the
+ * runtime's ICU version — and Hermes on device is a third engine that may
+ * answer differently again. A venue whose stored zone is `"-05:00"` would then
+ * be open on a phone and unknown on the web, from one row of data.
+ *
+ * So the acceptance rule is OURS and is the same everywhere:
+ *
+ *   - `UTC` / `GMT` — the only legal single-token zones, and `UTC` is the
+ *     column's own `NOT NULL DEFAULT`, so rejecting it would blank the feature
+ *     for every venue that has never been configured;
+ *   - otherwise `Region/Location`, or `Region/Sub/Location`
+ *     (`America/Argentina/Buenos_Aires`), each segment starting with a letter.
+ *
+ * Everything else — `-05:00`, `+0500`, `05:00`, `Z`, a bare number — is NOT a
+ * timezone and resolves to `unknown` on every runtime.
+ *
+ * AND AN OFFSET IS THE RIGHT THING TO REFUSE ON ITS MERITS, not merely for
+ * determinism: an offset cannot express DST. `"-05:00"` is New York in January
+ * and WRONG in July. Accepting one would mean publishing "Open until 17:00" an
+ * hour off for half the year — a confident wrong answer, which is the entire
+ * failure class this file was written to end. Refusing to claim is correct.
+ *
+ * This gate does NOT replace `Intl`'s own check — it precedes it. A
+ * shape-valid zone that does not exist (`Mars/Olympus_Mons`) is still caught
+ * below, by the engine, which is the authority on which real zones exist.
+ *
+ * Constraint this places on data: `venue_availability_config.iana_timezone`
+ * must hold IANA ZONE NAMES, never offsets. The write-time trigger already
+ * validates against `pg_timezone_names`, and any backfill must produce names
+ * (see #1586).
+ */
+const IANA_ZONE_NAME =
+  /^[A-Za-z][A-Za-z0-9_+-]*(?:\/[A-Za-z][A-Za-z0-9_+-]*)+$/;
+const SINGLE_TOKEN_ZONES = new Set(["UTC", "GMT"]);
+
+export function isIanaZoneName(value: string): boolean {
+  const zone = value.trim();
+  if (zone.length === 0) return false;
+  if (SINGLE_TOKEN_ZONES.has(zone)) return true;
+  return IANA_ZONE_NAME.test(zone);
+}
+
+/**
  * The venue's own weekday and minute-of-day, resolved through `Intl` so DST is
  * the platform's problem and not ours.
  *
- * FAIL-CLOSED, three ways, all returning null rather than a guess:
+ * FAIL-CLOSED, four ways, all returning null rather than a guess:
  *   - a blank or missing zone;
+ *   - a value that is not an IANA zone NAME (see `isIanaZoneName` — this is the
+ *     arm that makes offset strings behave identically on every engine);
  *   - a zone `Intl` refuses (it throws `RangeError`);
  *   - a runtime whose `Intl` ignores or lacks `timeZone` support, which some
  *     Hermes builds have shipped — detected because the parts we require come
@@ -203,6 +255,10 @@ export function venueLocalClock(
   if (typeof timeZone !== "string") return null;
   const zone = timeZone.trim();
   if (zone.length === 0) return null;
+  // OUR rule, applied BEFORE the engine's, so that a value some ICUs tolerate
+  // and others refuse cannot make the page say different things on different
+  // runtimes. See `isIanaZoneName`.
+  if (!isIanaZoneName(zone)) return null;
   if (!(now instanceof Date) || Number.isNaN(now.getTime())) return null;
   let parts: Intl.DateTimeFormatPart[];
   try {

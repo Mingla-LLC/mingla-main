@@ -47,6 +47,7 @@
 import { describe, expect, test } from "@jest/globals";
 
 import {
+  isIanaZoneName,
   resolveVenueOpenState,
   venueClockLabel,
   venueClockMinutes,
@@ -400,6 +401,12 @@ describe("#1562 — absence is not closure", () => {
 describe("#1562 — fail-safe, never fail-loud", () => {
   const badZones: { label: string; zone: string | null | undefined }[] = [
     { label: "a zone Intl rejects", zone: "Mars/Olympus_Mons" },
+    { label: "an offset, colon form", zone: "-05:00" },
+    { label: "an offset, positive", zone: "+05:00" },
+    { label: "an offset, compact", zone: "-0500" },
+    { label: "an offset, hour only", zone: "+09" },
+    { label: "a bare clock", zone: "05:00" },
+    { label: "Z", zone: "Z" },
     { label: "blank", zone: "   " },
     { label: "empty", zone: "" },
     { label: "null", zone: null },
@@ -437,35 +444,151 @@ describe("#1562 — fail-safe, never fail-loud", () => {
   });
 
   /**
-   * MEASURED, NOT ASSUMED. `"-05:00"` was originally in the reject list above
-   * on the assumption that `Intl` refuses a numeric offset. It does not —
-   * ES2022 added offset time zones, and `Intl.DateTimeFormat` resolves them.
+   * THE PROPERTY, NOT ONE ENGINE'S OPINION.
    *
-   * That is the correct outcome and it is asserted rather than worked around:
-   * an offset zone gives a right answer for the instant it is applied to (it
-   * is only DST-blind, which is why ORCH-1148 chose IANA in the first place),
-   * and one cannot reach this code anyway — `tg_venue_availability_config_
-   * validate_tz` REJECTS at write time anything not in `pg_timezone_names`.
-   * A fail-safe that refused it would be inventing a failure the database has
-   * already made impossible.
+   * This test previously asserted that `"-05:00"` RESOLVES, because the local
+   * Node build's ICU accepts it. CI's ICU does not, and the suite went red —
+   * which was the correct outcome, because the red was not a bad expectation,
+   * it was a real defect showing through: with the question left to `Intl`, the
+   * SAME venue row rendered "Open" on one runtime and "unknown" on another.
+   * Offset time zones entered ICU late, so the answer tracks the runtime's ICU
+   * version, and Hermes on device is a third engine again.
+   *
+   * Pinning the assertion to `"unknown"` would have hidden that just as well as
+   * pinning it to `"open"` did — it would only have encoded whichever engine
+   * ran last. So this asserts the INVARIANT instead: whatever this engine's
+   * `Intl` happens to think of an offset string, the resolver's answer is the
+   * same one, and it is the same as its answer for a zone that plainly does not
+   * exist. That statement is true on a tolerant ICU and on a strict one, which
+   * is precisely what makes it worth asserting.
    */
-  test("an offset zone is accepted by Intl, and that is not a defect", () => {
-    expect.assertions(2);
-    const state = resolveVenueOpenState({
+  test("an offset is refused identically on EVERY engine, whatever Intl tolerates", () => {
+    expect.assertions(4);
+    // Probe what THIS runtime's ICU does. Recorded, never asserted — the point
+    // is that the product does not care.
+    let intlToleratesOffsets: boolean;
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: "-05:00" }).format(new Date());
+      intlToleratesOffsets = true;
+    } catch {
+      intlToleratesOffsets = false;
+    }
+    expect(typeof intlToleratesOffsets).toBe("boolean");
+
+    const forOffset = resolveVenueOpenState({
       hours: WEEKDAY_HOURS,
       timeZone: "-05:00",
-      now: utc("2026-08-05T17:00:00Z"), // 12:00 at UTC-5
+      now: utc("2026-08-05T17:00:00Z"),
     });
-    expect(state.status).toBe("open");
-    // And it differs from a zone with a different offset at the same instant,
-    // so this is a real resolution rather than a coincidence.
+    const forNonsense = resolveVenueOpenState({
+      hours: WEEKDAY_HOURS,
+      timeZone: "Mars/Olympus_Mons",
+      now: utc("2026-08-05T17:00:00Z"),
+    });
+    // An offset is treated exactly like a zone that does not exist, on both a
+    // tolerant ICU and a strict one.
+    expect(forOffset.status).toBe(forNonsense.status);
+    expect(forOffset.status).toBe("unknown");
+    // POSITIVE CONTROL on the same runtime: a real IANA NAME still resolves, so
+    // the two `unknown`s above are the offset rule and not a dead resolver.
     expect(
       resolveVenueOpenState({
         hours: WEEKDAY_HOURS,
-        timeZone: TOKYO,
-        now: utc("2026-08-05T17:00:00Z"), // 02:00 Thursday in Tokyo
+        timeZone: NY,
+        now: utc("2026-08-05T17:00:00Z"),
       }).status,
-    ).not.toBe(state.status);
+    ).not.toBe("unknown");
+  });
+
+  /**
+   * THE MECHANISM, asserted rather than inferred.
+   *
+   * The test above shows the ANSWER is the same on a tolerant and a strict ICU.
+   * This shows WHY it cannot differ: for an offset string the engine is never
+   * consulted at all. No ICU is asked, so no ICU version can have an opinion —
+   * which is a stronger guarantee than "every ICU we have tried agrees".
+   */
+  test("for an offset, Intl is never even constructed", () => {
+    expect.assertions(3);
+    const RealDateTimeFormat = Intl.DateTimeFormat;
+    const zonesAsked: unknown[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (Intl as any).DateTimeFormat = function (
+      locale?: string,
+      options?: Intl.DateTimeFormatOptions,
+    ) {
+      zonesAsked.push(options?.timeZone);
+      return new (RealDateTimeFormat as unknown as new (
+        l?: string,
+        o?: Intl.DateTimeFormatOptions,
+      ) => Intl.DateTimeFormat)(locale, options);
+    };
+    try {
+      resolveVenueOpenState({
+        hours: WEEKDAY_HOURS,
+        timeZone: "-05:00",
+        now: utc("2026-08-05T17:00:00Z"),
+      });
+      expect(zonesAsked).toEqual([]);
+      // POSITIVE CONTROL: the spy really is installed and really does record —
+      // otherwise the empty array above would be vacuously true.
+      resolveVenueOpenState({
+        hours: WEEKDAY_HOURS,
+        timeZone: NY,
+        now: utc("2026-08-05T17:00:00Z"),
+      });
+      expect(zonesAsked).toEqual([NY]);
+      expect(zonesAsked).toHaveLength(1);
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (Intl as any).DateTimeFormat = RealDateTimeFormat;
+    }
+  });
+
+  /**
+   * AND REFUSING IS RIGHT ON THE MERITS, not merely convenient for determinism.
+   * An offset cannot express DST: `-05:00` IS New York in January and is an
+   * hour WRONG in July. Accepting one would publish "Open until 17:00" an hour
+   * out for half the year — a confident wrong answer, which is the failure
+   * class this whole file exists to end.
+   */
+  test("the same zone as a NAME moves with DST; as an offset it could not", () => {
+    expect.assertions(3);
+    const summer = venueLocalClock(utc("2026-08-05T14:00:00Z"), NY);
+    const winter = venueLocalClock(utc("2026-01-07T14:00:00Z"), NY);
+    if (summer === null || winter === null) {
+      throw new Error("Intl refused America/New_York — nothing below is meaningful");
+    }
+    // One hour apart for the same wall instant: that difference is exactly what
+    // a fixed offset throws away.
+    expect(summer.minutes - winter.minutes).toBe(60);
+    // The name is accepted; the offset that equals it for HALF the year is not.
+    expect(isIanaZoneName("America/New_York")).toBe(true);
+    expect(isIanaZoneName("-05:00")).toBe(false);
+  });
+
+  /**
+   * The acceptance rule, stated directly. `UTC` matters most: it is the
+   * column's own `NOT NULL DEFAULT`, so a gate that rejected it would blank the
+   * feature for every venue nobody has configured yet — which today is all of
+   * them (#1586).
+   */
+  test("the zone-name rule accepts every shape the system actually produces", () => {
+    expect.assertions(2);
+    const accepted = [
+      "UTC",
+      "GMT",
+      "America/New_York",
+      "America/Los_Angeles",
+      "Europe/London",
+      "Africa/Lagos",
+      "Asia/Tokyo",
+      "America/Argentina/Buenos_Aires",
+      "Pacific/Honolulu",
+    ];
+    const refused = ["-05:00", "+05:00", "-0500", "+09", "05:00", "Z", "", "  ", "300"];
+    expect(accepted.filter((z) => !isIanaZoneName(z))).toEqual([]);
+    expect(refused.filter((z) => isIanaZoneName(z))).toEqual([]);
   });
 
   test("an invalid `now` yields unknown rather than NaN arithmetic", () => {
