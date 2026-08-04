@@ -241,7 +241,7 @@ test('immutable commit work is queued before explicit successor or terminal sett
   // [TEST-MOD-APPROVED #1481 AMENDMENT-6] Post-swipe work remains queued
   // before settlement but may start only after the same 750 ms quiet-IDLE seam.
   assert.match(swipeableSource, /scheduleQuietPostSwipeDrain/);
-  assert.match(swipeableSource, /DECK_POST_SWIPE_QUIET_IDLE_MS = 750/);
+  assert.match(swipeableSource, /DECK_POST_SWIPE_QUIET_IDLE_MS = 2500/);
   assert.doesNotMatch(swipeableSource, /}, 250\);/);
   const validationBoundary = swipeableSource.slice(
     swipeableSource.indexOf('onSwipeValidated: (token:'),

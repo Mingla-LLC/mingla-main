@@ -163,7 +163,7 @@ import {
 export { shouldCommitSwipe, SWIPE_COMMIT_DISTANCE, SWIPE_COMMIT_VELOCITY, SWIPE_COMMIT_MIN_DX };
 
 const DECK_PERSISTENCE_QUIET_IDLE_MS = 750;
-const DECK_POST_SWIPE_QUIET_IDLE_MS = 750;
+const DECK_POST_SWIPE_QUIET_IDLE_MS = 2500;
 
 function getTimeOfDay(): string {
   const hour = new Date().getHours();

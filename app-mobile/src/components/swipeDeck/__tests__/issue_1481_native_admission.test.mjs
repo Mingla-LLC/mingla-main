@@ -63,7 +63,7 @@ function assertModernNativeAdmission(sources) {
     'IDLE directly starts local persistence instead of waiting for quiet',
   );
   assert.match(sources.swipeable, /DECK_PERSISTENCE_QUIET_IDLE_MS = 750/);
-  assert.match(sources.swipeable, /DECK_POST_SWIPE_QUIET_IDLE_MS = 750/);
+  assert.match(sources.swipeable, /DECK_POST_SWIPE_QUIET_IDLE_MS = 2500/);
   assert.match(
     sources.swipeable,
     /const scheduleQuietPostSwipeDrain[\s\S]*localDeckInteractionPhaseRef\.current !== 'IDLE'[\s\S]*DECK_POST_SWIPE_QUIET_IDLE_MS - quietForMs/,
@@ -166,7 +166,7 @@ class NativeCadenceModel {
       this.normalWrites += 1;
       this.checkpointPending = false;
     }
-    if (this.phase === 'IDLE' && at - this.lastActivityAt >= 750) {
+    if (this.phase === 'IDLE' && at - this.lastActivityAt >= 2500) {
       this.postSwipeDrained.push(...this.postSwipePending);
       this.postSwipePending = [];
     }
@@ -211,7 +211,7 @@ test('60 jittered release-cadence commands admit and commit exactly with zero ac
     assert.equal(model.normalWrites, 0);
     assert.equal(model.postSwipeDrained.length, 0);
     assert.equal(model.postSwipePending.length, 60);
-    model.maybeDrain(model.lastActivityAt + 750);
+    model.maybeDrain(model.lastActivityAt + 2500);
     assert.deepEqual(model.postSwipeDrained, model.business);
     assert.ok(Math.max(...model.settleDurations) <= 250);
   }
