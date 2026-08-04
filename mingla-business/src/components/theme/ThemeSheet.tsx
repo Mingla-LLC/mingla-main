@@ -51,7 +51,9 @@ import {
   hexToHsv,
   hsvToHex,
   hueName,
+  themeResetLabel,
   type ThemeControlScope,
+  type ThemeSheetTab,
 } from "./themeColorModel";
 
 /**
@@ -83,7 +85,7 @@ const RAIL_HEIGHT = 28;
 const PLANE_THUMB = 28;
 const RAIL_THUMB = 32;
 
-type TabKey = "colour" | "font" | "motion";
+type TabKey = ThemeSheetTab;
 
 export interface ThemeSheetProps {
   visible: boolean;
@@ -294,8 +296,13 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
   const fontInherited = themeAxisIsInherited(value, "font");
   const motionInherited = themeAxisIsInherited(value, "animation");
 
-  const resetLabel =
-    tab === "colour" ? "Reset colour" : tab === "font" ? "Reset font" : "Reset motion";
+  // issue #1564 — at a VENUE the reset is not "undo an edit", it is "go back to
+  // wearing the brand's look", and the label has to say which of the two it is
+  // or the operator cannot tell what the button does. Approved copy for the
+  // colour tab is "Use the brand's colours"; font and motion take the same
+  // sentence with their own noun so all three tabs read as one control. Every
+  // other scope keeps the shipped "Reset …" wording byte-for-byte.
+  const resetLabel = themeResetLabel(scope, tab);
   const resetHidden =
     tab === "colour" ? colourInherited : tab === "font" ? fontInherited : motionInherited;
 
@@ -548,7 +555,11 @@ export const ThemeSheet: React.FC<ThemeSheetProps> = ({
               contentContainerStyle={styles.swatchStrip}
               keyboardShouldPersistTaps="handled"
             >
-              {scope === "offering" && brandTheme?.color ? (
+              {/* issue #1564 — `!== "brand"` rather than `=== "offering"`.
+                  A venue inherits from its brand exactly as an offering does,
+                  so it gets the "Use my brand colour" swatch too; only the
+                  BRAND scope (which has no parent) must not show it. */}
+              {scope !== "brand" && brandTheme?.color ? (
                 <>
                   <SwatchDot
                     hex={brandTheme.color}

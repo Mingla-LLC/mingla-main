@@ -20,11 +20,11 @@ import {
   type PhoneInputIconName,
   type PhoneInputTheme,
 } from "@mingla/phone-input";
+import type { ThemePalette } from "@mingla/offering-rendering";
 import {
   radius,
   semantic,
   spacing,
-  text as textTokens,
   typography,
 } from "../../constants/designSystem";
 import { usePublicVenueAvailability } from "../../hooks/usePublicVenueAvailability";
@@ -44,23 +44,24 @@ interface GuestVenueReservationProps {
   brandId: string;
   currency: string | null;
   analyticsSurface: "buyer_web" | "business_preview";
+  /**
+   * issue #1564 — the page's RESOLVED palette, handed down by the booking slot.
+   *
+   * THE BUG THIS CLOSES. Every other pixel of the public venue page is themed
+   * from this palette, and the Stay booking body (`BuyerStayGuestExperience`)
+   * has always received it — but the table-reservation body hardcoded Mingla
+   * orange `#eb7825` and the near-black `#0c0e12`. Restaurants therefore got
+   * the broken half of a themed page: a brand in blue opened a reservation
+   * form with an orange focus ring. Once a VENUE can pick its own colours that
+   * stops being a subtle mismatch and becomes a jarring one, so it is fixed
+   * here rather than left to be discovered.
+   *
+   * The `table` branch of `PublicVenueBookingSlotContext` already carried
+   * `palette` (via `PublicVenueThemedContext`) — nothing was plumbed, only
+   * ignored.
+   */
+  palette: ThemePalette;
 }
-
-const RESERVATION_PHONE_THEME: PhoneInputTheme = {
-  backgroundPrimary: "#0c0e12",
-  textPrimary: "rgba(255, 255, 255, 0.96)",
-  textTertiary: "rgba(255, 255, 255, 0.52)",
-  borderDefault: "rgba(255, 255, 255, 0.14)",
-  borderFocused: "#eb7825",
-  borderError: "#ef4444",
-  searchBackground: "rgba(255, 255, 255, 0.06)",
-  rowPressedBackground: "rgba(255, 255, 255, 0.04)",
-  divider: "rgba(255, 255, 255, 0.08)",
-  accessoryBackground: "rgba(12, 14, 18, 0.95)",
-  accessoryBorder: "rgba(255, 255, 255, 0.08)",
-  accent: "#eb7825",
-  errorText: "#ef4444",
-};
 const INVALID_PHONE_COPY = "Enter a valid phone number.";
 const INVALID_NAME_COPY = "Enter your name.";
 const INVALID_EMAIL_COPY = "Enter a valid email address.";
@@ -94,8 +95,46 @@ export function GuestVenueReservation({
   brandId,
   currency,
   analyticsSurface,
+  palette,
 }: GuestVenueReservationProps): React.ReactElement {
   const dates = useMemo(dateOptions, []);
+  // issue #1564 — derived from the page's palette, byte-for-byte the mapping
+  // `PublicEventPage.phoneFieldTheme` already uses, so the two themed phone
+  // fields in this app cannot drift. `#ef4444` stays literal on both error
+  // tokens: an error is a SEMANTIC colour, not a brand one, and tinting it
+  // with a red-accented venue's own hue would make an error indistinguishable
+  // from the rest of the form.
+  const phoneFieldTheme = useMemo<PhoneInputTheme>(
+    () => ({
+      backgroundPrimary: palette.page,
+      textPrimary: palette.primaryText,
+      textTertiary: palette.tertiaryText,
+      borderDefault: palette.panelBorder,
+      borderFocused: palette.accent,
+      borderError: "#ef4444",
+      searchBackground: palette.card,
+      rowPressedBackground: palette.accentWash,
+      divider: palette.panelBorder,
+      accessoryBackground: palette.page,
+      accessoryBorder: palette.panelBorder,
+      accent: palette.accent,
+      errorText: "#ef4444",
+    }),
+    [palette],
+  );
+  // The date/time chips. `chipSelected` was `borderColor:"#eb7825"` +
+  // `backgroundColor:"rgba(235,120,37,0.16)"` — the same orange, spelled twice.
+  // `accentWash` IS that 0.16-ish tint, derived from the resolved accent.
+  const chipTheme = useMemo(
+    () => ({
+      chip: { borderColor: palette.panelBorder },
+      chipSelected: {
+        borderColor: palette.accent,
+        backgroundColor: palette.accentWash,
+      },
+    }),
+    [palette],
+  );
   const [partySize, setPartySize] = useState(2);
   const [date, setDate] = useState<string | null>(dates[0]?.value ?? null);
   const [selectedUtc, setSelectedUtc] = useState<string | null>(null);
@@ -224,9 +263,11 @@ export function GuestVenueReservation({
 
   if (completedId !== null) {
     return (
-      <View style={styles.stateCard}>
-        <Text style={styles.title}>Your table is reserved</Text>
-        <Text style={styles.body}>
+      <View style={[styles.stateCard, { borderColor: palette.panelBorder }]}>
+        <Text style={[styles.title, { color: palette.primaryText }]}>
+          Your table is reserved
+        </Text>
+        <Text style={[styles.body, { color: palette.secondaryText }]}>
           Confirmation has been sent to your email.
         </Text>
       </View>
@@ -235,8 +276,8 @@ export function GuestVenueReservation({
 
   return (
     <View style={styles.host}>
-      <Text style={styles.title}>Find a table</Text>
-      <Text style={styles.label}>PARTY SIZE</Text>
+      <Text style={[styles.title, { color: palette.primaryText }]}>Find a table</Text>
+      <Text style={[styles.label, { color: palette.tertiaryText }]}>PARTY SIZE</Text>
       <View style={styles.stepper}>
         <Button
           label="−"
@@ -249,7 +290,7 @@ export function GuestVenueReservation({
           }}
           accessibilityLabel="Decrease party size"
         />
-        <Text style={styles.party}>{partySize}</Text>
+        <Text style={[styles.party, { color: palette.primaryText }]}>{partySize}</Text>
         <Button
           label="+"
           variant="secondary"
@@ -262,7 +303,7 @@ export function GuestVenueReservation({
           accessibilityLabel="Increase party size"
         />
       </View>
-      <Text style={styles.label}>DATE</Text>
+      <Text style={[styles.label, { color: palette.tertiaryText }]}>DATE</Text>
       <View style={styles.chips}>
         {dates.map((option) => (
           <Pressable
@@ -274,21 +315,31 @@ export function GuestVenueReservation({
             accessibilityRole="button"
             accessibilityLabel={`Select ${option.label}`}
             accessibilityState={{ selected: date === option.value }}
-            style={[styles.chip, date === option.value && styles.chipSelected]}
+            style={[
+              styles.chip,
+              chipTheme.chip,
+              date === option.value && chipTheme.chipSelected,
+            ]}
           >
-            <Text style={styles.chipText}>{option.label}</Text>
+            <Text style={[styles.chipText, { color: palette.primaryText }]}>
+              {option.label}
+            </Text>
           </Pressable>
         ))}
       </View>
-      <Text style={styles.label}>AVAILABLE TIMES</Text>
+      <Text style={[styles.label, { color: palette.tertiaryText }]}>AVAILABLE TIMES</Text>
       {availability.isLoading || availability.isFetching ? (
         <View style={styles.loading}>
-          <ActivityIndicator />
-          <Text style={styles.body}>Finding open tables…</Text>
+          <ActivityIndicator color={palette.accent} />
+          <Text style={[styles.body, { color: palette.secondaryText }]}>
+            Finding open tables…
+          </Text>
         </View>
       ) : availability.isError ? (
-        <View style={styles.stateCard}>
-          <Text style={styles.body}>We couldn’t load times.</Text>
+        <View style={[styles.stateCard, { borderColor: palette.panelBorder }]}>
+          <Text style={[styles.body, { color: palette.secondaryText }]}>
+            We couldn’t load times.
+          </Text>
           <Button
             label="Try again"
             variant="secondary"
@@ -298,9 +349,13 @@ export function GuestVenueReservation({
           />
         </View>
       ) : slots.filter((slot) => !slot.isFull).length === 0 ? (
-        <View style={styles.stateCard}>
-          <Text style={styles.body}>No tables for this day.</Text>
-          <Text style={styles.body}>Try another date.</Text>
+        <View style={[styles.stateCard, { borderColor: palette.panelBorder }]}>
+          <Text style={[styles.body, { color: palette.secondaryText }]}>
+            No tables for this day.
+          </Text>
+          <Text style={[styles.body, { color: palette.secondaryText }]}>
+            Try another date.
+          </Text>
         </View>
       ) : (
         <View style={styles.chips}>
@@ -326,11 +381,12 @@ export function GuestVenueReservation({
               }}
               style={[
                 styles.chip,
-                selectedUtc === slot.slotStartUtc && styles.chipSelected,
+                chipTheme.chip,
+                selectedUtc === slot.slotStartUtc && chipTheme.chipSelected,
                 slot.isFull && styles.disabled,
               ]}
             >
-              <Text style={styles.chipText}>
+              <Text style={[styles.chipText, { color: palette.primaryText }]}>
                 {slot.slotLocalLabel}
                 {slot.isFull ? " · Full" : ""}
               </Text>
@@ -340,7 +396,7 @@ export function GuestVenueReservation({
       )}
       {selectedSlot !== undefined ? (
         <View style={styles.form}>
-          <Text style={styles.label}>NAME · REQUIRED</Text>
+          <Text style={[styles.label, { color: palette.tertiaryText }]}>NAME · REQUIRED</Text>
           <Input
             value={name}
             onChangeText={(next: string) => {
@@ -361,7 +417,7 @@ export function GuestVenueReservation({
               {INVALID_NAME_COPY}
             </Text>
           ) : null}
-          <Text style={styles.label}>EMAIL · REQUIRED</Text>
+          <Text style={[styles.label, { color: palette.tertiaryText }]}>EMAIL · REQUIRED</Text>
           <Input
             value={email}
             onChangeText={(next: string) => {
@@ -430,7 +486,7 @@ export function GuestVenueReservation({
               pickerSearchPlaceholder: "Search country or dial code",
               pickerCloseAccessibilityLabel: "Close country picker",
             }}
-            theme={RESERVATION_PHONE_THEME}
+            theme={phoneFieldTheme}
           />
           <Input
             value={occasion}
@@ -445,7 +501,9 @@ export function GuestVenueReservation({
             accessibilityLabel="Notes for the venue"
           />
           <View style={styles.optIn}>
-            <Text style={styles.body}>Send me occasional Mingla updates</Text>
+            <Text style={[styles.body, { color: palette.secondaryText }]}>
+              Send me occasional Mingla updates
+            </Text>
             <Switch value={marketingOptIn} onValueChange={setMarketingOptIn} />
           </View>
           {error !== null ? (
@@ -455,6 +513,9 @@ export function GuestVenueReservation({
           ) : null}
           <Button
             label="Confirm reservation"
+            // ORCH-1162 Bug 3 — the primary fill takes the venue's accent, and
+            // Button's own WCAG helpers pick the readable label colour for it.
+            accentColor={palette.accent}
             size="lg"
             fullWidth
             loading={submitting}
@@ -469,41 +530,37 @@ export function GuestVenueReservation({
 
 const styles = StyleSheet.create({
   host: { gap: spacing.sm },
-  title: { ...typography.h3, color: textTokens.primary },
-  body: { ...typography.bodySm, color: textTokens.secondary },
+  title: { ...typography.h3 },
+  body: { ...typography.bodySm },
   label: {
     ...typography.caption,
-    color: textTokens.tertiary,
     letterSpacing: 1.2,
     marginTop: spacing.sm,
   },
   stepper: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   party: {
     ...typography.h2,
-    color: textTokens.primary,
     minWidth: 36,
     textAlign: "center",
   },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
+  // issue #1564 — geometry only. Every colour on the chips now arrives from the
+  // page's resolved palette (`chipTheme` above); the two orange literals that
+  // used to live here are gone, and nothing in this StyleSheet may name a
+  // brand colour again.
   chip: {
     minHeight: 44,
     justifyContent: "center",
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
     paddingHorizontal: spacing.md,
   },
-  chipSelected: {
-    borderColor: "#eb7825",
-    backgroundColor: "rgba(235,120,37,0.16)",
-  },
-  chipText: { ...typography.bodySm, color: textTokens.primary },
+  chipText: { ...typography.bodySm },
   loading: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   stateCard: {
     gap: spacing.sm,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
     padding: spacing.md,
   },
   disabled: { opacity: 0.4 },

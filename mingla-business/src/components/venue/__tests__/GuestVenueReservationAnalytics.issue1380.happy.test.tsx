@@ -93,6 +93,13 @@ jest.mock("../../ui/Icon", () => ({
 }));
 
 import { GuestVenueReservation } from "../GuestVenueReservation";
+import { createThemePalette, resolveTheme } from "@mingla/offering-rendering";
+
+// [TEST-MOD-APPROVED #1564] — GuestVenueReservation now REQUIRES the page's
+// resolved palette (it used to hardcode Mingla orange). Additive prop only:
+// no assertion in this file is changed, removed or weakened.
+const THEME_PALETTE_1564 = createThemePalette(resolveTheme(null, null));
+
 
 interface TestInstance {
   props: Record<string, unknown>;
@@ -134,6 +141,7 @@ describe("issue #1380 guest reservation analytics", () => {
           brandId="brand-1380"
           currency="USD"
           analyticsSurface="business_preview"
+          palette={THEME_PALETTE_1564}
         />,
       );
     });

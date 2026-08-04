@@ -353,6 +353,10 @@ export const VenueCreatorWizard: React.FC<VenueCreatorWizardProps> = ({
           coverMediaUrl: coverChoice?.url ?? null,
           coverMediaType: coverChoice?.type ?? null,
           hours: st.hours,
+          // issue #1564 — the venue's own colours/font/motion, authored at
+          // s4/s9 (create) or c4/c9 (claim) into the SAME top-level draft
+          // field, so one line serves both paths. `?? null` = inherit.
+          themeOverrides: st.themeOverrides ?? null,
         });
       };
 

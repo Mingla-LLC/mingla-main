@@ -16,7 +16,10 @@
  * `mingla_venue_listing_submitted`.
  */
 
+import type { ThemeInput } from "@mingla/offering-rendering";
+
 import type { BrandClaimStatus, BrandHourEntry, VenueCategory } from "../types/brand";
+import { normalizeThemeOverrides } from "./offeringTheme";
 import { brandHoursToRpcPayload } from "../utils/venueBrandHours";
 import { logAppsFlyerEvent } from "./appsFlyerService";
 import { SlugCollisionError } from "./brandsService";
@@ -160,6 +163,13 @@ export interface CreateVenueListingInput {
   coverMediaUrl: string | null;
   coverMediaType: "image" | "video" | "gif" | null;
   hours: BrandHourEntry[];
+  /**
+   * issue #1564 — the venue's OWN theme override. `null` (the default, and
+   * every venue in the pool today) means every axis inherits the brand's.
+   * Per-axis: `{ color: "#eb7825", font: null, animation: null }` overrides
+   * only the colour and keeps the brand's font and motion.
+   */
+  themeOverrides?: ThemeInput | null;
 }
 
 /**
@@ -173,6 +183,12 @@ export async function createVenueListing(
     .map((s) => s?.trim())
     .filter((s): s is string => s !== undefined && s.length > 0)
     .join("\n\n");
+  // issue #1564 — THE normaliser, shared with every offering
+  // (I-PROPOSED-1022-THEME-EMPTY-NORMALISED): `{null,null,null}` and any
+  // all-null permutation collapse to `null`, so "the operator opened the sheet
+  // and changed nothing" is indistinguishable from "never opened it" and both
+  // send three empty strings → three NULL columns → inherit.
+  const theme = normalizeThemeOverrides(input.themeOverrides);
   const { data, error } = await supabase.rpc("biz_create_venue_listing", {
     p_brand_id: input.brandId,
     p_name: input.name,
@@ -194,6 +210,12 @@ export async function createVenueListing(
     // Issue #1363 — empty string → NULL server-side (RPC default); an unknown
     // value is ignored server-side so a stale client never breaks venue create.
     p_coordinate_precision: input.coordinatePrecision ?? "",
+    // issue #1564 — one param per AXIS, because the axes inherit separately.
+    // "" is the RPC's own "not set" sentinel (same shape as every other
+    // optional text arg here) and lands as a NULL column = inherit the brand.
+    p_theme_color: theme?.color ?? "",
+    p_theme_font: theme?.font ?? "",
+    p_theme_animation: theme?.animation ?? "",
   });
 
   if (error !== null) {

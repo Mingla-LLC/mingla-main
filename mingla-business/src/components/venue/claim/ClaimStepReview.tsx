@@ -10,7 +10,7 @@
  *          submit, which now finds the own row and resumes).
  */
 
-import React from "react";
+import React, { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
@@ -22,6 +22,9 @@ import {
 import type { DraftVenueState } from "../../../store/draftVenueStore";
 import { provenanceFor, useDraftVenueStore } from "../../../store/draftVenueStore";
 import type { VenueCategory } from "../../../types/brand";
+import { ThemeControlRow } from "../../theme/ThemeControlRow";
+import { ThemeSheet } from "../../theme/ThemeSheet";
+import { useVenueThemeControl } from "../useVenueThemeControl";
 import { Button } from "../../ui/Button";
 import { EventCoverMedia } from "../../ui/EventCoverMedia";
 import { Icon } from "../../ui/Icon";
@@ -247,6 +250,9 @@ export const ClaimStepReview: React.FC<ClaimStepReviewProps> = ({
   onBackToVenues,
 }) => {
   const draft = useDraftVenueStore();
+  // issue #1564 — MOUNT 4 of 4, the claim twin of VenueStep7Review.
+  const theme = useVenueThemeControl();
+  const [themeSheetOpen, setThemeSheetOpen] = useState(false);
   const currencyState = useBrandDiscoveryCurrency(draft.activeBrandId);
   const rows = buildClaimReviewRows(
     draft,
@@ -307,6 +313,20 @@ export const ClaimStepReview: React.FC<ClaimStepReviewProps> = ({
           </View>
         );
       })}
+
+      {/* issue #1564 — after the provenance groups, before the submit edge
+          states: the last place the operator can change how the page looks. */}
+      <ThemeControlRow
+        value={theme.value}
+        onChange={theme.onChange}
+        scope="venue"
+        brandTheme={theme.brandTheme}
+        brandThemeStatus={theme.brandThemeStatus}
+        variant="review"
+        disabled={submitting}
+        onPress={() => setThemeSheetOpen(true)}
+        testID="claim-review-theme-control-row"
+      />
 
       {claimBlock?.kind === "foreign" ? (
         <View style={styles.warnCard}>
@@ -374,6 +394,17 @@ export const ClaimStepReview: React.FC<ClaimStepReviewProps> = ({
           testID="claim-review-submit"
         />
       ) : null}
+
+      {/* I-SUB-SHEET-INSIDE-PARENT — last JSX child of the root View. */}
+      <ThemeSheet
+        visible={themeSheetOpen}
+        onClose={() => setThemeSheetOpen(false)}
+        value={theme.value}
+        onChange={theme.onChange}
+        scope="venue"
+        brandTheme={theme.brandTheme}
+        testID="claim-review-theme-sheet"
+      />
     </View>
   );
 };
