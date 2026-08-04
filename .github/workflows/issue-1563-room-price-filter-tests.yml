@@ -1,0 +1,116 @@
+# Issue #1563 [room-price-filter] — a guest can narrow a hotel by price.
+# Step 7 of #1550. Seth's ask, verbatim: "No way to filter by price."
+#
+# WHY THIS WORKFLOW EXISTS — the dark-suite trap it closes:
+#
+#   `mingla-business/jest.config.cjs` has `rootDir` = mingla-business, so
+#   NOTHING under `packages/**/__tests__` is ever swept by the default suite.
+#   The render proof for the shared booking component lives there, so without
+#   this job it would be a dead letter — the #1038 / #1047 failure shape.
+#
+# The PURE band/sort/empty-answer suite is deliberately NOT run here: it lives
+# at `mingla-business/src/components/venue/__tests__/stayRoomPriceFilter
+# .issue1563.happy.test.ts`, inside the stock config's sweep, and therefore
+# already runs on every PR under the REQUIRED "mingla-business jest (full
+# suite)" check. Running it twice would buy nothing.
+#
+# WHY THE SOURCE PATHS ARE IN THE TRIGGER (not only the test paths): a PR that
+# REVERTS the fix touches the SOURCE file. If the trigger listed only test
+# files, a revert PR would not run this gate and would merge GREEN-by-omission
+# (the #1027 lesson).
+#
+# `packages/brand-rendering/venueStayRate.ts` is in the trigger because #1563
+# does not re-derive min/max — it CALLS #1562's reducer, and the parity guard
+# that keeps the two in step fails closed. A change there changes the bands.
+#
+# Invokes no `.mjs` under `.github/scripts/strict-grep/`, so MANIFEST.json
+# totality and parity counters are untouched (COMMS-0126).
+#
+# NOT a required check (not in ruleset 13549056 / 19508605) — it reports, it
+# does not gate.
+
+name: Issue #1563 Room price filter
+
+on:
+  push:
+    branches: [main]
+    paths:
+      # ---- source (a revert here MUST run the gate) ----
+      - "packages/brand-rendering/stayRoomPriceFilter.ts"
+      - "packages/brand-rendering/StayGuestBooking.tsx"
+      - "packages/brand-rendering/venueStayRate.ts"
+      - "packages/brand-rendering/stayGuestMoney.ts"
+      # ---- tests + harness ----
+      - "packages/brand-rendering/__tests__/stayRoomPriceFilter.issue1563.web.render.test.tsx"
+      - "mingla-business/src/components/venue/__tests__/stayRoomPriceFilter.issue1563.happy.test.ts"
+      - "mingla-business/jest.issue1563.cfg.cjs"
+      - ".github/workflows/issue-1563-room-price-filter-tests.yml"
+  pull_request:
+    paths:
+      - "packages/brand-rendering/stayRoomPriceFilter.ts"
+      - "packages/brand-rendering/StayGuestBooking.tsx"
+      - "packages/brand-rendering/venueStayRate.ts"
+      - "packages/brand-rendering/stayGuestMoney.ts"
+      - "packages/brand-rendering/__tests__/stayRoomPriceFilter.issue1563.web.render.test.tsx"
+      - "mingla-business/src/components/venue/__tests__/stayRoomPriceFilter.issue1563.happy.test.ts"
+      - "mingla-business/jest.issue1563.cfg.cjs"
+      - ".github/workflows/issue-1563-room-price-filter-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  room-price-filter:
+    name: Room price filter (web-resolved render proof)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+
+      - name: Install Business dependencies
+        run: npm ci
+
+      # The proof mounts the REAL StayGuestBooking through react-native-web via
+      # ReactDOMServer, and presses the real controls through react-test-renderer.
+      - name: "Render proof — the bands are visible, and pressing one filters"
+        run: npx jest --config jest.issue1563.cfg.cjs --runInBand
+
+      # The band boundaries are computed in MINOR units with no `Intl` in the
+      # maths precisely so they cannot vary by locale or ICU build. Prove it: a
+      # non-English, non-US locale must produce the identical bands.
+      - name: "Render proof — LANG=de_DE.UTF-8 (band maths is locale-free)"
+        env:
+          LANG: de_DE.UTF-8
+          LC_ALL: de_DE.UTF-8
+        run: npx jest --config jest.issue1563.cfg.cjs --runInBand
+
+      - name: Package isolation gate (brand-rendering imports no app src)
+        working-directory: .
+        run: node .github/scripts/strict-grep/orch-0964-brand-rendering-self-contained.mjs
+
+      # #1550 R-4: the shared venue module must stay out of the eager boot path,
+      # and StayGuestBooking is the 988-line body it keeps behind a lazy slot.
+      - name: "#1550 single-owner topology gate"
+        working-directory: .
+        run: node .github/scripts/strict-grep/issue-1550-venue-page-single-owner.mjs
+
+      - name: Web export
+        run: npx expo export -p web --output-dir /tmp/issue-1563-web --clear
+
+      # The eager __common chunk is capped (ORCH-1083). The price filter adds a
+      # pure module to a lazy chunk and must not move the eager boot budget.
+      - name: "Eager __common chunk stays within the ORCH-1083 cap"
+        run: ORCH_1083_WEB_BUILD=/tmp/issue-1563-web node scripts/ci/orch-1083-initial-bundle-budget.mjs

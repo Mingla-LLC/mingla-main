@@ -26,6 +26,20 @@ import {
   type StayQuote,
 } from "./stayGuest";
 import { formatStayMoney } from "./stayGuestMoney";
+// Issue #1563 [room-price-filter] — Seth: "No way to filter by price." The
+// bands, the ordering and the empty answer are all derived in one pure module
+// that CALLS #1562's `resolveVenueStayRate` rather than re-deriving min/max, so
+// the band list and the answer bar's from-rate can never disagree.
+import {
+  filterStayRoomsByBand,
+  resolveStayRoomPriceControl,
+  sortStayRoomsByPrice,
+  stayPriceEmptyStateLine,
+  stayRoomCountLine,
+  STAY_PRICE_BAND_ANY,
+  type StayPriceSort,
+  type StayRoomPriceControl,
+} from "./stayRoomPriceFilter";
 // Issue #1503 [stay-date-pickers] — dates are PICKED, never typed, and every
 // bound is venue-local. Metro swaps in StayDateRangeField.native.tsx on
 // iOS/Android; the bare module is the web-only twin.
@@ -109,10 +123,43 @@ export function StayGuestBooking({
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
+  // Issue #1563 — the band the guest is standing in, held as the band's own
+  // VALUE (`"lt:30000"`), never its index. A refetch can drop a room that has
+  // sold out, and an index-based selection would silently snap back to "show
+  // everything" and hide that; a value keeps filtering and lets the surface give
+  // a real empty answer instead.
+  const [priceBandId, setPriceBandId] = useState<string>(STAY_PRICE_BAND_ANY);
+  // #1550's approved decision: "Defaults to price, low to high." Today rooms
+  // arrive in an internal order the guest can neither see nor change.
+  const [priceSort, setPriceSort] = useState<StayPriceSort>("low_high");
 
-  const offerings = detail?.offerings ?? [];
-  const rooms = offerings.filter((item) => item.kind === "room");
-  const places = offerings.filter((item) => item.kind === "place");
+  // Memoised so the price control, the allocation plan and the cart lines are
+  // not rebuilt on every keystroke in the guest-details fields below.
+  const offerings = useMemo(() => detail?.offerings ?? [], [detail]);
+  const rooms = useMemo(
+    () => offerings.filter((item) => item.kind === "room"),
+    [offerings],
+  );
+  const places = useMemo(
+    () => offerings.filter((item) => item.kind === "place"),
+    [offerings],
+  );
+
+  // Null whenever there is no honest scale — mixed currencies, a room not priced
+  // per night, one room, or every room at the same price. The surface then
+  // renders exactly what it renders today. See stayRoomPriceFilter.ts.
+  const priceControl = useMemo(
+    () => resolveStayRoomPriceControl(rooms),
+    [rooms],
+  );
+  const shownRooms = useMemo(() => {
+    if (priceControl === null) return rooms;
+    return sortStayRoomsByPrice(
+      filterStayRoomsByBand(rooms, priceBandId, priceControl),
+      priceSort,
+      priceControl,
+    );
+  }, [priceBandId, priceControl, priceSort, rooms]);
 
   // SPEC §4.4.2 — the default range, derived rather than stored so it can be
   // seeded from `detail.timezone` the moment the read resolves without an
@@ -304,7 +351,17 @@ export function StayGuestBooking({
     );
   }
 
-  const visibleOfferings = activeKind === "room" ? rooms : places;
+  const visibleOfferings = activeKind === "room" ? shownRooms : places;
+  // Issue #1563 — rooms EXIST but the chosen band holds none of them. This is a
+  // distinct state from "this Stay has no Rooms", and it must never be allowed
+  // to borrow that copy: telling a guest no Rooms are available when eleven are
+  // sitting one tap away is a lie the filter told.
+  const priceFilterHidEverything =
+    activeKind === "room" &&
+    priceControl !== null &&
+    priceBandId !== STAY_PRICE_BAND_ANY &&
+    shownRooms.length === 0 &&
+    rooms.length > 0;
 
   // SPEC §4.4.6 — the server applies
   //   LEAST(booking_horizon_days, COALESCE(offering.max_advance_days, …))
@@ -476,7 +533,54 @@ export function StayGuestBooking({
         })}
       </View>
 
-      {visibleOfferings.length === 0 ? (
+      {activeKind === "room" && priceControl !== null ? (
+        <RoomPriceFilter
+          control={priceControl}
+          selectedBandId={priceBandId}
+          sort={priceSort}
+          shownCount={shownRooms.length}
+          palette={palette}
+          theme={theme}
+          onSelectBand={(bandId) => {
+            setPriceBandId(bandId);
+            onAnalytics?.("stay_search_changed", {
+              field: "price_band",
+              band: bandId,
+            });
+          }}
+          onToggleSort={() => {
+            const next: StayPriceSort =
+              priceSort === "low_high" ? "high_low" : "low_high";
+            setPriceSort(next);
+            onAnalytics?.("stay_search_changed", {
+              field: "price_sort",
+              sort: next,
+            });
+          }}
+        />
+      ) : null}
+
+      {priceFilterHidEverything && priceControl !== null ? (
+        <View style={[styles.state, surface.card]}>
+          <Text style={[styles.heading, { color: palette.primaryText }]}>
+            No Rooms in that price range
+          </Text>
+          <Text style={[styles.body, { color: palette.secondaryText }]}>
+            {stayPriceEmptyStateLine(priceControl)}
+          </Text>
+          <ActionButton
+            label={`Show all ${stayRoomCountLine(rooms.length, rooms.length)}`}
+            palette={palette}
+            onPress={() => {
+              setPriceBandId(STAY_PRICE_BAND_ANY);
+              onAnalytics?.("stay_search_changed", {
+                field: "price_band",
+                band: STAY_PRICE_BAND_ANY,
+              });
+            }}
+          />
+        </View>
+      ) : visibleOfferings.length === 0 ? (
         <View style={[styles.state, surface.card]}>
           <Text style={[styles.body, { color: palette.secondaryText }]}>
             No {activeKind === "room" ? "Rooms" : "Places"} are available yet.
@@ -578,6 +682,102 @@ export function StayGuestBooking({
           />
         </View>
       ) : null}
+    </View>
+  );
+}
+
+/**
+ * Issue #1563 — the price control. Bands, a live count, and an order.
+ *
+ * The QUALIFIER is not decoration and not a footnote: `control.qualifier` is
+ * the SAME sentence `venueStayRateQualifier` gives the answer bar, and it sits
+ * in this block because a band boundary is a price claim. Without it "Under
+ * $300" reads as a promise about what the guest will pay, and the base rate is
+ * not all-in — fees and taxes only resolve at quote. It also reads itself from
+ * the data, so a Stay that has marked its fees `included` says so here too.
+ *
+ * No icons. The sort affordance is a text chevron rather than a lucide import,
+ * because this module is reached from the eager `__common` web chunk and every
+ * eager icon is measured against the ORCH-1083 budget.
+ */
+function RoomPriceFilter({
+  control,
+  selectedBandId,
+  sort,
+  shownCount,
+  palette,
+  theme,
+  onSelectBand,
+  onToggleSort,
+}: {
+  control: StayRoomPriceControl;
+  selectedBandId: string;
+  sort: StayPriceSort;
+  shownCount: number;
+  palette: ThemePalette;
+  theme: ResolvedTheme;
+  onSelectBand: (bandId: string) => void;
+  onToggleSort: () => void;
+}): BrandRenderingReactElement {
+  const sortLabel =
+    sort === "low_high" ? "Price: low to high" : "Price: high to low";
+  return (
+    <View style={styles.priceFilter}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.bandRow}
+      >
+        {control.bands.map((band) => {
+          const selected = band.id === selectedBandId;
+          return (
+            <Pressable
+              key={band.id}
+              accessibilityRole="button"
+              accessibilityLabel={`${band.label}, ${stayRoomCountLine(band.count, control.offeringCount)}`}
+              accessibilityState={{ selected }}
+              onPress={() => onSelectBand(band.id)}
+              style={[
+                styles.band,
+                {
+                  borderColor: selected ? palette.accent : palette.panelBorder,
+                  backgroundColor: selected ? palette.accent : palette.card,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.bandText,
+                  {
+                    color: selected ? palette.accentText : palette.primaryText,
+                    fontFamily: theme.fontFamilyValue,
+                  },
+                ]}
+              >
+                {band.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+      <View style={styles.bandMeta}>
+        <Text style={[styles.meta, { color: palette.secondaryText }]}>
+          {stayRoomCountLine(shownCount, control.offeringCount)}
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Sort rooms. Currently ${sortLabel}. Tap to reverse.`}
+          onPress={onToggleSort}
+          style={styles.sortButton}
+        >
+          <Text style={[styles.sortText, { color: palette.accent }]}>
+            {sortLabel} {sort === "low_high" ? "↓" : "↑"}
+          </Text>
+        </Pressable>
+      </View>
+      <Text style={[styles.meta, { color: palette.tertiaryText }]}>
+        Bands use each Room's rate {control.qualifier}.
+      </Text>
     </View>
   );
 }
@@ -949,6 +1149,28 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   tabText: { fontSize: 13, fontWeight: "800" },
+  // Issue #1563 — the price control. 44pt minimum on every tappable thing
+  // (WCAG AA target size), which is why the band chips carry a minHeight rather
+  // than relying on padding alone.
+  priceFilter: { gap: 8 },
+  bandRow: { gap: 8, paddingRight: 8 },
+  band: {
+    minHeight: 44,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bandText: { fontSize: 13, fontWeight: "800" },
+  bandMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  sortButton: { minHeight: 44, justifyContent: "center" },
+  sortText: { fontSize: 13, fontWeight: "800" },
   offering: { overflow: "hidden" },
   cover: { width: "100%", aspectRatio: 16 / 9, backgroundColor: "#20242c" },
   galleryStrip: { padding: 10, gap: 8 },
