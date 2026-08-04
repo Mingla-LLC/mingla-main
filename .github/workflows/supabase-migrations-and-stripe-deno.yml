@@ -498,6 +498,25 @@ jobs:
             # send is delegated to smsAdapter and this fn holds no provider
             # credentials) and is wired here so it can never go dark again.
             supabase/functions/__tests__/send_venue_sms.test.ts
+            # Issue #1541 — TESTER ADVERSARIAL on message COMPOSITION and the
+            # OQ-1 release's write scope. The implementor's companion proves the
+            # ROUTE (captured provider HTTP); this attacks the BODY, which is
+            # where #1541 deliberately changes three delivered messages while
+            # promising byte-identity on the fourth. ADV-1 sweeps ten hostile
+            # venue names (empty, whitespace, a name that IS the footer, curly
+            # punctuation the GSM-7 sanitizer rewrites, an embedded newline, a
+            # 200-char name) and proves the locked copy never gains a second
+            # STOP footer; ADV-2 proves composition never truncates across both
+            # the GSM-7 160/153 and UCS-2 70/67 boundaries and that segmentation
+            # only counts; ADV-3 proves the other three bodies gain exactly one.
+            # ADV-4/5/6 PIN three known gaps so the ceiling is visible in CI
+            # rather than buried in a report: an incidental "reply stop" in user
+            # text suppresses the real footer; the waitlist release is scoped by
+            # entry id alone, so a duplicate dispatch can clobber an invitation
+            # it does not own; and the order rollup's default arm reports "sent"
+            # for an all-skipped or empty outcome set. Every group carries a
+            # vacuity guard — a lookup that located nothing FAILS.
+            supabase/functions/__tests__/issue1541_sole_send_path.tester.adversarial.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then
