@@ -236,6 +236,11 @@ jobs:
             -f supabase/migrations/__tests__/issue_1392_stay_activation_guards.tester_adversarial.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1459_venue_manager_photo_upload.test.sql
+          # issue #1564 — the venue's own colours: per-axis COALESCE resolution
+          # in venue_public_view, the anon scope, the CHECK vocabularies, the
+          # view's unchanged shape, and the RPC's per-axis fail-soft.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1564_venue_theme_overrides.test.sql
 
   deno-tests:
     name: "Deno unit tests for Stripe shared modules"

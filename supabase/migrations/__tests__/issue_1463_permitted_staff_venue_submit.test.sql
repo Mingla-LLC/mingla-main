@@ -1,3 +1,11 @@
+-- [TEST-MOD-APPROVED #1564] — SIGNATURE PIN ONLY. `biz_create_venue_listing`
+-- gained three APPENDED, DEFAULTED params (p_theme_color / p_theme_font /
+-- p_theme_animation) so a venue can carry its own colours; the 18-arg overload
+-- no longer exists, and `regprocedure` / `has_function_privilege` resolve by
+-- the EXACT argument list. Every assertion in this file is unchanged — only the
+-- signature string it looks the function up by. The grant expectations below
+-- (anon has NO execute, authenticated does) are asserted exactly as before, now
+-- against the real signature.
 \set ON_ERROR_STOP on
 BEGIN;
 
@@ -175,14 +183,14 @@ DO $grants$
 BEGIN
   IF has_function_privilege(
     'anon',
-    'public.biz_create_venue_listing(uuid,text,text,text,text,double precision,double precision,text,text,text,text,text,text,text,text,jsonb,uuid,text)',
+    'public.biz_create_venue_listing(uuid,text,text,text,text,double precision,double precision,text,text,text,text,text,text,text,text,jsonb,uuid,text,text,text,text)',
     'EXECUTE'
   ) THEN
     RAISE EXCEPTION 'issue_1463_anon_execute_was_granted';
   END IF;
   IF NOT has_function_privilege(
     'authenticated',
-    'public.biz_create_venue_listing(uuid,text,text,text,text,double precision,double precision,text,text,text,text,text,text,text,text,jsonb,uuid,text)',
+    'public.biz_create_venue_listing(uuid,text,text,text,text,double precision,double precision,text,text,text,text,text,text,text,text,jsonb,uuid,text,text,text,text)',
     'EXECUTE'
   ) THEN
     RAISE EXCEPTION 'issue_1463_authenticated_execute_missing';
