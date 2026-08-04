@@ -44,31 +44,53 @@
  *   ANCHOR             : smsAdapter.ts lost its Twilio or Termii → exit 2
  * The match-count assertion runs BEFORE any violation is evaluated (#1529).
  *
- * TWO DETECTORS:
+ * TWO DETECTORS, both CASE-INSENSITIVE (DNS is; `API.Twilio.Com` resolves and
+ * bills identically — #1541 tester T-10):
  *   1. per-line — the historical shapes, reported with a line number;
- *   2. literal-space correlation — the contents of every string/template
- *      literal in the file, concatenated, so a hoisted host constant, a URL
- *      split across lines, or a path assembled from fragments still reassembles
- *      and is caught (#1541 tester T-3/T-4/T-5).
+ *   2. literal-space correlation over a CORRELATION UNIT — the contents of
+ *      every string/template literal in every file of one edge-function
+ *      directory, concatenated and lowercased. A hoisted host constant, a URL
+ *      split across lines, a path assembled from fragments, and a host and path
+ *      living in SEPARATE FILES of the same function all reassemble here
+ *      (#1541 tester T-3/T-4/T-5, T-10, T-11). Allowlisted files and test
+ *      fixtures contribute NOTHING to the space, so the sanctioned adapter
+ *      cannot lend its host and path to a rogue sibling.
  *
  * ===========================================================================
  * WHAT THIS GATE DOES NOT CATCH. READ THIS BEFORE CITING IT AS PROOF.
  * ===========================================================================
- * This is STATIC TEXT ANALYSIS. It reads source; it does not execute it. It
- * therefore cannot see a provider URL that never exists as text in the file:
+ * PREVIOUS VERSIONS OF THIS BLOCK NAMED THE WRONG CATEGORY. They said the blind
+ * spot was a URL that "never exists as text" — but the evasions found in review
+ * existed ENTIRELY as static text and escaped for other reasons. A guard that
+ * documents the wrong limitation is worse than one documenting none, because
+ * the next reader trusts a boundary that is not where they think it is. That is
+ * the failure class catalogued in #1553, committed by this file's own header.
  *
- *   - a host or path read from configuration, an environment variable, a
- *     database row, or a remote response, and assembled at RUNTIME;
- *   - fragments transformed before use — base64/hex-decoded, reversed,
- *     `String.fromCharCode(...)`, built by a loop, or pulled from an imported
- *     module that itself holds no literal;
- *   - a request issued by a transitive dependency rather than by this source.
+ * The gate correlates LITERAL TEXT, WITHIN ONE CORRELATION UNIT. So the three
+ * real gaps are:
  *
- * The correlation detector closes the ACCIDENTAL routes — the ones ordinary
- * refactoring produces — and raises the cost of the deliberate ones. It does
- * not make direct egress impossible, and the invariant must not claim it does.
- * A guard documented as evadable is fine; a guard that claims completeness it
- * lacks is the failure class catalogued in #1553.
+ *   1. FRAGMENTS SPLIT ACROSS UNITS. Correlation is scoped to a single
+ *      edge-function directory. A host literal in `_shared/hosts.ts` with the
+ *      path in `some-fn/index.ts` is fully static, ordinary-looking text and is
+ *      NOT caught. Closing it needs module-graph resolution, or treating a bare
+ *      provider-host literal anywhere as a violation in its own right — which
+ *      would also flag `api-health-probe`, whose host mention is legitimate.
+ *      VERIFIED EVADING.
+ *   2. TEXT TRANSFORMED BEFORE USE. base64/hex decoding, reversal,
+ *      `String.fromCharCode(...)`, or a loop — the target string never appears
+ *      in the source in the form matched here. VERIFIED EVADING.
+ *   3. VALUES THAT ARE NEVER LITERALS. A host or path read from an environment
+ *      variable, runtime config, a database row or a remote response and
+ *      assembled at request time; or a request issued by a transitive
+ *      dependency rather than by this source. VERIFIED EVADING.
+ *
+ * All three were confirmed by running them against this gate, not reasoned
+ * about. (1) is the one to know: it is plain text and an ordinary refactor.
+ *
+ * The detectors close the ACCIDENTAL routes — the ones ordinary refactoring
+ * produces, which is how all four historical bypasses arose — and raise the
+ * cost of deliberate ones. They do NOT make direct egress impossible, and the
+ * invariant must not claim they do.
  *
  * The real-time control is not this gate: it is the adapter's kill switch,
  * which refuses to transmit with zero provider HTTP while a market is dark.
@@ -124,17 +146,17 @@ const ENDPOINTS = [
   {
     id: "twilio_messages",
     label: "Twilio Programmable Messaging (Messages.json)",
-    re: new RegExp(`${Q}[^\\n]*api\\.twilio\\.com[^\\n]*Messages\\.json`),
+    re: new RegExp(`${Q}[^\\n]*api\\.twilio\\.com[^\\n]*Messages\\.json`, "i"),
   },
   {
     id: "termii_send",
     label: "Termii message send (/api/sms/send)",
-    re: new RegExp(`${Q}[^\\n]*\\/api\\/sms\\/send`),
+    re: new RegExp(`${Q}[^\\n]*\\/api\\/sms\\/send`, "i"),
   },
   {
     id: "twilio_verify",
     label: "Twilio Verify (verify.twilio.com)",
-    re: new RegExp(`${Q}[^\\n]*verify\\.twilio\\.com`),
+    re: new RegExp(`${Q}[^\\n]*verify\\.twilio\\.com`, "i"),
   },
 ];
 
@@ -259,6 +281,19 @@ function stripComments(src) {
  * `Messages.json` in that space, so a file that merely names the host (the
  * health probe reads `Accounts/{sid}.json` and `Balance.json`) is not flagged.
  */
+/**
+ * The CORRELATION UNIT for a repo-relative path: the edge-function directory.
+ * `supabase/functions/rogue/constants.ts` and `supabase/functions/rogue/index.ts`
+ * share the unit `supabase/functions/rogue`, so a URL split between them still
+ * correlates. That directory is both the deployment unit and the unit an
+ * ordinary refactor moves code within.
+ */
+function correlationUnit(rel) {
+  const parts = rel.split("/");
+  // supabase / functions / <unit> / …
+  return parts.length >= 3 ? parts.slice(0, 3).join("/") : rel;
+}
+
 function literalSpace(strippedSrc) {
   const out = [];
   let state = "code"; // code | s | d | t
@@ -336,6 +371,8 @@ export function runGate(sources) {
   const violations = [];
   const sanctioned = Object.create(null);
   const anchorSeen = new Set();
+  // unit key -> { space, files[], flagged:Set<endpointId> }
+  const units = new Map();
   let matchCount = 0;
   let scannedFiles = 0;
 
@@ -354,26 +391,18 @@ export function runGate(sources) {
     // correlation pass (the per-line pass still honours the per-line marker).
     const fileMarkered = src.includes(ALLOW_MARKER);
 
-    // ---- Detector 2: literal-space correlation (T-3/T-4/T-5).
+    // ---- Detector 2 feed: accumulate this file's literal space into its
+    // CORRELATION UNIT (T-3/T-4/T-5, and T-11 across files). Evaluated after
+    // the whole sweep, below.
     if (permitted === null && fixturePermitted === null && !fileMarkered) {
-      const space = literalSpace(stripped);
-      for (const { id, label, all } of CORRELATIONS) {
-        if (!all.every((frag) => space.includes(frag))) continue;
-        // Only report if the per-line pass did NOT already flag this endpoint
-        // in this file — otherwise the same defect is reported twice.
-        const alreadyFlagged = violations.some(
-          (v) => v.startsWith(`${rel}:`) && v.includes(label),
-        );
-        if (alreadyFlagged) continue;
-        violations.push(
-          `${rel}: unsanctioned SMS-provider send endpoint assembled across the file — ${label}. ` +
-            `The host and path fragments [${all.join(" + ")}] all appear in this ` +
-            "file's string literals, so the URL is reachable even though no single " +
-            "line contains it. Every SMS must leave Mingla through " +
-            "supabase/functions/_shared/adapters/smsAdapter.ts " +
-            "(I-PROPOSED-1541-SMS-PROVIDER-EGRESS-ALLOWLIST).",
-        );
-      }
+      const unit = correlationUnit(rel);
+      const acc = units.get(unit) ??
+        { space: "", files: [], flagged: new Set() };
+      // Lowercased: DNS is case-insensitive, so `API.Twilio.Com` is the same
+      // host (#1541 tester T-10).
+      acc.space += literalSpace(stripped).toLowerCase();
+      acc.files.push(rel);
+      units.set(unit, acc);
     }
 
     for (let i = 0; i < codeLines.length; i++) {
@@ -398,6 +427,10 @@ export function runGate(sources) {
           continue;
         }
         if (markered) continue; // documented intentional exception
+        // Record it so the unit-level correlation does not report the same
+        // defect a second time.
+        const unitAcc = units.get(correlationUnit(rel));
+        if (unitAcc) unitAcc.flagged.add(id);
         violations.push(
           `${rel}:${i + 1}: unsanctioned SMS-provider send endpoint — ${label}. ` +
             "Every SMS must leave Mingla through supabase/functions/_shared/adapters/" +
@@ -406,6 +439,32 @@ export function runGate(sources) {
             "(I-PROPOSED-1541-SMS-PROVIDER-EGRESS-ALLOWLIST).",
         );
       }
+    }
+  }
+
+  // ---- Detector 2: CORRELATION OVER THE UNIT'S LITERAL SPACE.
+  // The unit is the edge-function directory, because that is the deployment
+  // unit AND the refactoring unit: splitting a URL into `constants.ts` beside
+  // `index.ts` is the single most ordinary refactor there is, and a per-FILE
+  // correlator sees two innocent halves (#1541 tester T-11). Allowlisted files
+  // and test fixtures contribute nothing to the space, so the sanctioned
+  // adapter cannot lend its host and path to a rogue sibling.
+  for (const [unit, acc] of units) {
+    for (const { id, label, all } of CORRELATIONS) {
+      if (acc.flagged.has(id)) continue; // already reported per-line
+      if (!all.every((frag) => acc.space.includes(frag.toLowerCase()))) continue;
+      const where = acc.files.length === 1
+        ? `${acc.files[0]}: assembled across the file`
+        : `${unit}/: assembled across ${acc.files.length} files in this function ` +
+          `(${acc.files.join(", ")})`;
+      violations.push(
+        `${where} — unsanctioned SMS-provider send endpoint: ${label}. ` +
+          `The fragments [${all.join(" + ")}] all appear in this unit's string ` +
+          "literals (case-insensitively), so the URL is reachable even though no " +
+          "single line contains it. Every SMS must leave Mingla through " +
+          "supabase/functions/_shared/adapters/smsAdapter.ts " +
+          "(I-PROPOSED-1541-SMS-PROVIDER-EGRESS-ALLOWLIST).",
+      );
     }
   }
 

@@ -7304,18 +7304,27 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   split across lines, and a path assembled from string fragments are all caught. Scanned extensions
   are `.ts/.tsx/.mts/.cts/.mjs/.cjs/.js/.jsx`, and a file counts as a test by **directory**, never by
   filename — a deployed module named `sender.spec.ts` is scanned like any other.
+  Both detectors are **case-insensitive**, because DNS is — `API.Twilio.Com` resolves and bills
+  identically (#1541 tester T-10).
   **IT DOES NOT MAKE DIRECT EGRESS IMPOSSIBLE, AND THIS INVARIANT DOES NOT CLAIM THAT IT DOES.**
-  A URL that never exists as text in the file is out of reach by construction: a host or path read
-  from configuration, an environment variable, a database row or a remote response and assembled at
-  runtime; fragments base64/hex-decoded, reversed, or built by `String.fromCharCode`; or a request
-  issued by a transitive dependency. All three shapes were verified to evade during #1541 rework, and
-  they are documented in the gate's own header. The gate closes the **accidental** routes — the ones
-  ordinary refactoring produces, which is how every one of the four historical bypasses arose — and
-  raises the cost of deliberate ones. **The real-time control is not this gate: it is the adapter's
-  kill switch, which refuses to transmit with zero provider HTTP while a market is dark.** This
-  invariant protects the DURABILITY of that arrangement, not the arrangement itself. A guard
-  documented as evadable is fine; a guard that claims completeness it lacks is the failure class
-  catalogued in #1553.
+  An earlier version of this entry described the blind spot as "a URL that never exists as text".
+  **That was wrong, and wrong in the way this issue exists to stop** — the evasions found in review
+  were fully static text and escaped for other reasons, so the stated boundary was not where the
+  boundary is. A guard documenting the wrong limitation is worse than one documenting none. The gate
+  correlates **literal text, within one correlation unit**, so the three real gaps are:
+  **(1) fragments split ACROSS units** — a host literal in `_shared/hosts.ts` with the path in
+  `some-fn/index.ts` is plain text and an ordinary refactor, and is NOT caught; closing it needs
+  module-graph resolution or a bare-host rule that would also flag `api-health-probe`'s legitimate
+  mention. **(2) text transformed before use** — base64/hex decoding, reversal, `String.fromCharCode`.
+  **(3) values that are never literals** — read from env, runtime config, a database row or a remote
+  response and assembled at request time, or issued by a transitive dependency. All three were
+  **verified evading by running them**, not reasoned about, and are enumerated in the gate's own
+  header. The gate closes the **accidental** routes — the ones ordinary refactoring produces, which is
+  how every one of the four historical bypasses arose — and raises the cost of deliberate ones.
+  **The real-time control is not this gate: it is the adapter's kill switch, which refuses to
+  transmit with zero provider HTTP while a market is dark.** This invariant protects the DURABILITY
+  of that arrangement, not the arrangement itself. A guard documented as evadable is fine; a guard
+  that claims completeness it lacks is the failure class catalogued in #1553.
 - **THE GATE CANNOT PASS VACUOUSLY, and that is a load-bearing property, not a nicety.** Three
   independent guards, all exercised for real by the self-test rather than described: a scan that
   discovers ZERO source files exits 2; a scan that finds ZERO sanctioned provider endpoints exits 2,

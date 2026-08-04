@@ -313,7 +313,19 @@ test("T-7 PROOF: a `.spec.ts` name inside a live function dir is SCANNED", () =>
 });
 
 // ===========================================================================
-// PINS T-10 … T-11 — tester RETEST finding T-1541-GATE-EVASION-RESIDUAL (P2).
+// PROOFS T-10 … T-11 — tester RETEST finding T-1541-GATE-EVASION-RESIDUAL (P2),
+// NOW CLOSED. Converted from pins; attack fixtures byte-identical, expectations
+// flipped. T-10 closed by adding the `i` flag to the ENDPOINTS regexes and
+// lowercasing the literal space. T-11 closed by widening the correlation unit
+// from the FILE to the edge-function DIRECTORY, which is both the deployment
+// unit and the unit an ordinary refactor moves code within.
+//
+// THE HEADER'S RESIDUAL LIST WAS ALSO CORRECTED, which was the more important
+// half of this finding. It claimed the blind spot was a URL that "never exists
+// as text"; both shapes below are fully static text. The gate now states its
+// real boundary: it correlates LITERAL TEXT WITHIN ONE UNIT, so what escapes is
+// (1) fragments split ACROSS units, (2) text transformed before use, and
+// (3) values that are never literals. All three verified by running them.
 // ===========================================================================
 // Found during the retest of the #1541 IMPLEMENT REWORK, AFTER T-3…T-7 were
 // closed. These matter more than their size suggests, because the gate's own
@@ -332,15 +344,17 @@ test("T-7 PROOF: a `.spec.ts` name inside a live function dir is SCANNED", () =>
 // stronger than `main`; the real-time control is the adapter kill switch, not
 // this gate. But the invariant text and the header must say THESE words.
 //
-// FIX FOR T-10: add the `i` flag to the ENDPOINTS regexes and lowercase the
-//   literal space before correlating. DNS is case-insensitive, so
-//   `API.Twilio.Com` resolves and bills identically — one character of gate.
-// FIX FOR T-11: correlate host against path across the MODULE GRAPH (or, more
-//   cheaply, treat a bare provider-host literal in any non-allowlisted file as
-//   a violation on its own — no edge function has an innocent reason to name
-//   `api.twilio.com` in code).
+// APPLIED FIX FOR T-10: the `i` flag on all three ENDPOINTS regexes, and the
+//   literal space is lowercased before correlating.
+// APPLIED FIX FOR T-11: the correlation unit is the edge-function DIRECTORY,
+//   not the file. The bare-host alternative was rejected: it would flag
+//   `api-health-probe`, whose host mention is legitimate (it reads
+//   Accounts/{sid}.json and Balance.json, never Messages.json).
+//   STILL OPEN by design: a split ACROSS units (host in `_shared/hosts.ts`,
+//   path in `some-fn/index.ts`) needs module-graph resolution. Verified
+//   evading, and stated as such in the gate header and the invariant.
 
-test("T-10 PIN: a mixed-case host evades the gate, fully as text (KNOWN GAP)", () => {
+test("T-10 PROOF: a mixed-case host is CAUGHT", () => {
   // The ENDPOINTS regexes carry no `i` flag. This URL is 100% static text and
   // works: hostnames are case-insensitive.
   const inline = violation({
@@ -349,9 +363,9 @@ test("T-10 PIN: a mixed-case host evades the gate, fully as text (KNOWN GAP)", (
   });
   assert.equal(
     inline.code,
-    0,
-    "PIN BROKEN (good news): the endpoint match is now case-insensitive. " +
-      "Delete this pin and close T-1541-GATE-EVASION-RESIDUAL.",
+    1,
+    "REGRESSION: the endpoint match lost its case-insensitivity. DNS does not " +
+      "care about case, so `API.Twilio.Com` sends and bills exactly the same.",
   );
 
   // Same root cause via a hoisted constant, which is what real code looks like.
@@ -363,12 +377,13 @@ test("T-10 PIN: a mixed-case host evades the gate, fully as text (KNOWN GAP)", (
   });
   assert.equal(
     hoisted.code,
-    0,
-    "PIN BROKEN (good news): case-insensitive matching reached the literal space too.",
+    1,
+    "REGRESSION: the literal space is no longer lowercased before correlating, " +
+      "so a mixed-case host in a hoisted constant walks past.",
   );
 });
 
-test("T-11 PIN: host and path in DIFFERENT FILES evade the gate (KNOWN GAP)", () => {
+test("T-11 PROOF: host and path in DIFFERENT FILES of one function are CAUGHT", () => {
   // `literalSpace` correlates host against path PER FILE. Split the two halves
   // across a constants module — the single most ordinary refactor there is —
   // and neither file correlates. Both halves are plain string literals.
@@ -382,8 +397,33 @@ test("T-11 PIN: host and path in DIFFERENT FILES evade the gate (KNOWN GAP)", ()
   });
   assert.equal(
     code,
+    1,
+    "REGRESSION: correlation narrowed back to a single file, so splitting a URL " +
+      "into a constants module — the most ordinary refactor there is — hides it.",
+  );
+});
+
+// The boundary of T-11's fix, asserted so nobody mistakes it for more than it
+// is: correlation spans files WITHIN one edge-function directory, not across
+// them. This shape is fully static text and still evades, exactly as the gate
+// header and the invariant now state. It is pinned so the disclosure and the
+// behaviour cannot drift apart.
+test("T-12 PIN: host and path in DIFFERENT UNITS still evade (DOCUMENTED LIMIT)", () => {
+  const { code } = violation({
+    "supabase/functions/_shared/hosts.ts":
+      'export const H = "api.twilio.com";',
+    "supabase/functions/rogue/index.ts": [
+      'import { H } from "../_shared/hosts.ts";',
+      "await fetch(`https://${H}/2010-04-01/Accounts/AC1/Messages.json`, { method: \"POST\" });",
+    ].join("\n"),
+  });
+  assert.equal(
+    code,
     0,
-    "PIN BROKEN (good news): correlation now spans files. Delete this pin.",
+    "DISCLOSURE STALE (good news): correlation now spans units. Update the " +
+      "residual list in the gate header AND in " +
+      "I-PROPOSED-1541-SMS-PROVIDER-EGRESS-ALLOWLIST, then delete this pin — " +
+      "a gate that under-claims its coverage is still a gate that misdescribes itself.",
   );
 });
 
