@@ -7083,3 +7083,58 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   maintenance of those three live files with no override, whereas measuring keeps them
   green and restores an accurate count.
 - **Established:** DRAFT at issue #1510 SPEC 2026-08-03. Flips ACTIVE at CLOSE.
+## DRAFT — issue #1481 (Explorer swipe lifecycle and deck performance)
+
+### I-PROPOSED-1481-DECK-NATIVE-DRIVER-SINGLE-OWNER (DRAFT)
+- **Rule:** Explorer has one lifecycle controller and one always-mounted/eligible RNGH 2.x
+  current-card handler whose identity survives card promotion. Native handler `key`, phase-driven
+  `enabled`, and phase-driven host `pointerEvents` toggles are forbidden; the synchronous
+  `phaseRef` is the sole overlap-admission gate. Per-frame
+  pan and transform/opacity animations use RN core Animated's native driver. Only a current
+  epoch/card `finished:true` completion may commit. PanResponder, private Animated offsets/reads,
+  Reanimated/Worklets/worklet directives, new Gesture auto-worklet callbacks, and competing
+  lifecycle state are forbidden. A delivered successor BEGAN during `EXITING` may fast-forward only
+  the exact mounted/card/epoch pending token: the controller must enter `COMMITTING` before stopping
+  the outgoing animation, settle through the same single commit path, and admit the successor only
+  after synchronous promotion under a fresh epoch. `[TRANSITIONAL: I-1481]` RNGH 2.x exits only through a separately
+  approved Consumer gesture/dependency migration with native Fabric crash soak.
+  Every finished exit synchronously resets presentation and settles from its immutable token to exactly one explicit
+  `{nextCardId}` or `{exhausted:true}` result; COMMITTING may never wait for a passive render effect.
+  Gesture phase is owned by the memoized `DeckSwipeStage`, outside the deck/provider/history owner.
+- **Enforcement:** `.github/workflows/issue-1481-explorer-deck-tests.yml` requires and executes the
+  exact eight implementor/tester Node guards; the guards source-check the sole controller and exercise a
+  synthetic reverted competing-owner control.
+- **Regression:** `issue_1481_swipe_lifecycle.test.mjs` proves nominal admission/current-token
+  completion and production wiring; the independent tester guard adds 10,000-sequence adversarial
+  lifecycle coverage before CLOSE.
+- **Established:** DRAFT 2026-08-02 at issue #1481 IMPLEMENT; amended 2026-08-03 by binding
+  Amendment 7 after exact physical-Android admission proof. Flips ACTIVE only after independent
+  iOS/Android correctness, accessibility, performance, and physical Fabric stress PASS.
+
+### I-PROPOSED-1481-DECK-PERFORMANCE-BOUND (DRAFT)
+- **Rule:** Explorer steady state is bounded to two raster posters and one active current-card video,
+  with no explicit image prefetch/loadAsync; current and behind are the only bounded poster loads
+  using disk-only cache. The poster host and native image are keyed by card identity in the shared
+  stage, so behind-to-current promotion reuses that tree and the card overlays may not mount a
+  second poster. Remote hero decode long edge is at most 1440 physical pixels. Exact ordered full-card history
+  is owned by its dedicated last-200 store, updates synchronously with card removal, never fans out
+  through the persisted global app store or RecommendationsProvider, and persists through a
+  generation-stamped coalesced/serialized snapshot only after at least 750ms of quiet IDLE;
+  active cadence has no maximum-age write escape hatch. Eligibility is rechecked immediately before
+  serialization, with lossless legacy migration and
+  terminal/lifecycle/logout forced flush. Non-critical business work remains FIFO-deferred and may
+  begin only after at least 750ms of quiet IDLE; it pauses between FIFO items when interaction resumes,
+  with terminal/lifecycle teardown forced drain.
+- **Enforcement:** the issue workflow requires and runs independent lifecycle and performance guards
+  over every scoped runtime/store/provider path. Static guards require selector isolation, a memoized
+  provider value, exact history migration/reset/flush ordering, zero explicit deck image prefetch,
+  stable memoized bounded poster sources, media cardinality, and Android framestats parsed by named
+  `Flags`, `IntendedVsync`, `FrameDeadline`, and `FrameCompleted` columns. Deadline jank is solely
+  `FrameCompleted > FrameDeadline`; raw durations supply distribution/frozen-frame metrics only.
+  Independent release-like evidence
+  must additionally satisfy the binding Samsung/iOS frame, hitch, memory, image, and crash budgets.
+- **Regression:** the performance guards prove exact order/rollback/last-200 behavior, 50-to-one
+  coalescing, global-store/provider isolation, migration safety, current/behind-only poster loading,
+  stable poster inputs, and production fails-on-revert independently of the lifecycle guards.
+- **Established:** DRAFT amended 2026-08-03 at issue #1481 IMPLEMENT REWORK. Flips ACTIVE only after
+  all binding release-like performance/media/device gates and the independent tester verdict pass.

@@ -1,0 +1,68 @@
+name: Issue 1481 Explorer Deck Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app-mobile/src/components/SwipeableCards.tsx"
+      - "app-mobile/src/components/AppHandlers.tsx"
+      - "app-mobile/src/contexts/RecommendationsContext.tsx"
+      - "app-mobile/src/store/appStore.ts"
+      - "app-mobile/src/store/deckSessionHistoryStore.ts"
+      - "app-mobile/src/components/swipeDeck/**"
+      - "app-mobile/scripts/ci/issue-1481-parse-framestats.mjs"
+      - "docs/INVARIANT_REGISTRY.md"
+      - ".github/workflows/issue-1481-explorer-deck-tests.yml"
+  pull_request:
+    paths:
+      - "app-mobile/src/components/SwipeableCards.tsx"
+      - "app-mobile/src/components/AppHandlers.tsx"
+      - "app-mobile/src/contexts/RecommendationsContext.tsx"
+      - "app-mobile/src/store/appStore.ts"
+      - "app-mobile/src/store/deckSessionHistoryStore.ts"
+      - "app-mobile/src/components/swipeDeck/**"
+      - "app-mobile/scripts/ci/issue-1481-parse-framestats.mjs"
+      - "docs/INVARIANT_REGISTRY.md"
+      - ".github/workflows/issue-1481-explorer-deck-tests.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-1481-deck-contract:
+    name: "Issue 1481: single-owner lifecycle and bounded deck work"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Require all eight independent append-only guards
+        run: |
+          test -f app-mobile/src/components/swipeDeck/__tests__/issue_1481_swipe_lifecycle.test.mjs
+          test -f app-mobile/src/components/swipeDeck/__tests__/issue_1481_swipe_lifecycle.adversarial.test.mjs
+          test -f app-mobile/src/components/swipeDeck/__tests__/issue_1481_performance_hotpath.test.mjs
+          test -f app-mobile/src/components/swipeDeck/__tests__/issue_1481_performance_hotpath.adversarial.test.mjs
+          test -f app-mobile/src/components/swipeDeck/__tests__/issue_1481_release_hotpath.test.mjs
+          test -f app-mobile/src/components/swipeDeck/__tests__/issue_1481_release_hotpath.adversarial.test.mjs
+          test -f app-mobile/src/components/swipeDeck/__tests__/issue_1481_native_admission.test.mjs
+          test -f app-mobile/src/components/swipeDeck/__tests__/issue_1481_native_admission.adversarial.test.mjs
+      - name: Exercise the Android framestats parser entry point
+        run: >-
+          node app-mobile/scripts/ci/issue-1481-parse-framestats.mjs
+          app-mobile/src/components/swipeDeck/__tests__/fixtures/issue_1481_framestats_synthetic.txt
+          --refresh-rate-hz=120
+          --refresh-mode=adaptive
+      - name: Run DRAFT invariants and their synthetic self-test controls
+        run: >-
+          node --test
+          app-mobile/src/components/swipeDeck/__tests__/issue_1481_swipe_lifecycle.test.mjs
+          app-mobile/src/components/swipeDeck/__tests__/issue_1481_swipe_lifecycle.adversarial.test.mjs
+          app-mobile/src/components/swipeDeck/__tests__/issue_1481_performance_hotpath.test.mjs
+          app-mobile/src/components/swipeDeck/__tests__/issue_1481_performance_hotpath.adversarial.test.mjs
+          app-mobile/src/components/swipeDeck/__tests__/issue_1481_release_hotpath.test.mjs
+          app-mobile/src/components/swipeDeck/__tests__/issue_1481_release_hotpath.adversarial.test.mjs
+          app-mobile/src/components/swipeDeck/__tests__/issue_1481_native_admission.test.mjs
+          app-mobile/src/components/swipeDeck/__tests__/issue_1481_native_admission.adversarial.test.mjs

@@ -7,13 +7,19 @@ import {
   StyleSheet,
   Animated,
   Easing,
-  PanResponder,
   StatusBar,
   Platform,
   Alert,
+  AccessibilityInfo,
+  AppState,
+  InteractionManager,
+  PixelRatio,
+  findNodeHandle,
 } from "react-native";
+import { GestureDetector } from 'react-native-gesture-handler';
+import Reanimated from 'react-native-reanimated';
 // ORCH-1042: deck hero photos render via expo-image (NOT react-native <Image>).
-// expo-image gives us a placeholder + fade transition + a managed memory-disk
+// expo-image gives us a placeholder + fade transition + a bounded disk-only
 // cache + recyclingKey so the per-card remount (`key={currentRec.id}`, ORCH-0694)
 // never flashes a bare dark `#1a1a2e` panel during async decode. Keep
 // `key={currentRec.id}` — the fix works WITH the remount, not by removing it.
@@ -34,7 +40,7 @@ import { HapticFeedback } from "../utils/hapticFeedback";
 import { Icon } from "./ui/Icon";
 import { GlassBadge } from "./ui/GlassBadge";
 import { LinearGradient } from "expo-linear-gradient";
-import { glass } from "../constants/designSystem";
+import { colors, fontWeights, glass, radius, typography } from "../constants/designSystem";
 import { throttledReverseGeocode } from '../utils/throttledGeocode';
 
 import { ImageWithFallback } from "./figma/ImageWithFallback";
@@ -129,8 +135,35 @@ import {
   SWIPE_COMMIT_VELOCITY,
   SWIPE_COMMIT_MIN_DX,
 } from "../utils/swipeCommit";
+import {
+  consumeDeckTokenIntent,
+  DeckCommitSettlement,
+  DeckSwipeCommitToken,
+  DeckSwipePhase,
+} from './swipeDeck/deckSwipeLifecycle';
+import {
+  DECK_VISIBLE_POSTER_CACHE_POLICY,
+  DeckHeroDecodeTarget,
+  getDeckHeroDecodeTarget,
+} from './swipeDeck/deckHeroPolicy';
+import {
+  DeckSwipeStage,
+  type DeckSwipeStageHandle,
+} from './swipeDeck/DeckSwipeStage';
+import type { UseDeckSwipeControllerOptions } from './swipeDeck/useDeckSwipeController';
+import {
+  appendDeckSessionHistory,
+  flushDeckSessionHistory,
+  hydrateDeckSessionHistory,
+  rollbackDeckSessionHistory,
+  setDeckSessionHistoryInteractionPhase,
+  useDeckSessionHistoryStore,
+} from '../store/deckSessionHistoryStore';
 // Re-export so existing import sites (if any) resolve from this module too.
 export { shouldCommitSwipe, SWIPE_COMMIT_DISTANCE, SWIPE_COMMIT_VELOCITY, SWIPE_COMMIT_MIN_DX };
+
+const DECK_PERSISTENCE_QUIET_IDLE_MS = 750;
+const DECK_POST_SWIPE_QUIET_IDLE_MS = 2500;
 
 function getTimeOfDay(): string {
   const hour = new Date().getHours();
@@ -315,17 +348,31 @@ const DECK_HERO_TRANSITION_MS = 220;
  * async decode window. The placeholder covers the decode gap; `CARD_FALLBACK_IMAGE`
  * is the hard-failure fallback (a real photo, distinct from the placeholder).
  */
-function CardHeroImage({ uri, style }: { uri: string; style: any }) {
+const CardHeroImage = React.memo(function CardHeroImage({
+  uri,
+  style,
+  decodeTarget,
+}: {
+  uri: string;
+  style: any;
+  decodeTarget: DeckHeroDecodeTarget;
+}) {
   const [src, setSrc] = React.useState(uri && uri.length > 0 ? uri : CARD_FALLBACK_IMAGE);
   React.useEffect(() => {
     setSrc(uri && uri.length > 0 ? uri : CARD_FALLBACK_IMAGE);
   }, [uri]);
+  const source = React.useMemo(
+    () => ({ uri: src, width: decodeTarget.width, height: decodeTarget.height }),
+    [decodeTarget.height, decodeTarget.width, src],
+  );
   return (
     <ExpoImage
-      source={{ uri: src }}
+      source={source}
       style={style}
       contentFit="cover"
-      cachePolicy="memory-disk"
+      cachePolicy={DECK_VISIBLE_POSTER_CACHE_POLICY}
+      allowDownscaling
+      enforceEarlyResizing={Platform.OS === 'ios'}
       recyclingKey={src}
       transition={DECK_HERO_TRANSITION_MS}
       placeholder={{ blurhash: DECK_HERO_PLACEHOLDER_BLURHASH }}
@@ -335,36 +382,29 @@ function CardHeroImage({ uri, style }: { uri: string; style: any }) {
       }}
     />
   );
-}
+});
 
 /**
  * ORCH-1069 — video-aware deck card hero.
  *
  * Decides per card whether it has a cover VIDEO (a `.mp4`/Cloudinary-video URL
  * detected in `images` via `firstVideoUrl`, mirroring the edge `isVideoUrl`):
- *   - still-only venue (no video) → renders ONLY the existing `CardHeroImage`
- *     (ExpoImage) — byte-identical behavior to pre-ORCH-1069 for every still /
- *     event / TM / curated card. Zero regression.
- *   - venue with a `.mp4` cover → renders the still (`image`) as the POSTER layer
- *     behind, then `EventCoverMedia` (muted/looping ambient video) on top. The
- *     still poster prevents a bare hue-band flash before the first video frame
- *     (§4.1.b LOCKED). `EventCoverMedia` has no dedicated poster prop, hence the
- *     behind-layer pattern. If `image` is empty/null, `CardHeroImage` already
- *     falls back to CARD_FALLBACK_IMAGE — the video covers it (no crash, §4.1 edge case).
+ * The memoized DeckSwipeStage owns the stable current/behind poster resource.
+ * This component therefore renders only the optional current-card video layer;
+ * still-only cards return null so promotion cannot mount a second ExpoImage.
  *
  * Perf guard (I-1069-ONE-PLAYING-DECK-VIDEO, §5): only the TOP card plays.
  * `isTopCard` gates BOTH `autoplay` and `playbackActive`; the card behind mounts
  * the player paused on its poster (`playbackActive=false`), ready to play the
  * instant it promotes to top. Cards deeper than index 1 are never rendered by the
  * swipe stack, so at most two players exist and at most one plays. No video is
- * prefetched (the still prefetch at ~L890 is unchanged).
+ * loaded only when mounted as the bounded current/behind poster.
  *
  * META-ORCH-0991 Bug 3a (LOCKED): the `EventCoverMedia` layer is wrapped in a
  * `pointerEvents="none"` View so the native VideoView never eats the card's
  * swipe/tap gesture. Without this, video-cover cards would be un-swipeable.
  */
 function CardHero({
-  image,
   images,
   title,
   isTopCard,
@@ -375,19 +415,15 @@ function CardHero({
   title: string;
   isTopCard: boolean;
   style: any;
+  decodeTarget: DeckHeroDecodeTarget;
 }) {
   const coverVideoUrl = firstVideoUrl(images);
   const hasVideoCover = coverVideoUrl !== null;
 
-  if (!hasVideoCover) {
-    // Still-only path — unchanged from pre-ORCH-1069.
-    return <CardHeroImage uri={image} style={style} />;
-  }
+  if (!hasVideoCover) return null;
 
   return (
     <View style={style}>
-      {/* Poster layer (still) — always behind, prevents bare-band flash. */}
-      <CardHeroImage uri={image} style={StyleSheet.absoluteFill} />
       {/* Video layer — pointerEvents="none" so the card stays swipeable/tappable. */}
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
         <EventCoverMedia
@@ -563,7 +599,15 @@ const getIconComponent = (iconName: string) => {
 };
 
 /** Shared pulsing-dots loading indicator */
-function PulseDots({ size = 8, speed = 600 }: { size?: number; speed?: number }) {
+function PulseDots({
+  size = 8,
+  speed = 600,
+  reducedMotion = false,
+}: {
+  size?: number;
+  speed?: number;
+  reducedMotion?: boolean;
+}) {
   const dots = useRef([
     new Animated.Value(0),
     new Animated.Value(0),
@@ -571,6 +615,10 @@ function PulseDots({ size = 8, speed = 600 }: { size?: number; speed?: number })
   ]).current;
 
   useEffect(() => {
+    if (reducedMotion) {
+      dots.forEach((dot) => dot.setValue(0.65));
+      return () => dots.forEach((dot) => dot.setValue(0));
+    }
     const stagger = Math.round(speed / 3);
     const halfSpeed = speed / 2;
     const handles: ReturnType<typeof setTimeout>[] = [];
@@ -605,7 +653,7 @@ function PulseDots({ size = 8, speed = 600 }: { size?: number; speed?: number })
       anims.forEach((a) => a.stop());
       dots.forEach((d) => d.setValue(0));
     };
-  }, [speed]);
+  }, [dots, reducedMotion, speed]);
 
   return (
     <View style={pulseDotsStyles.container}>
@@ -753,8 +801,6 @@ export default function SwipeableCards({
     addDismissedCard,
     removeDismissedCard,
     addCardToFront,
-    addSwipedCard,
-    sessionSwipedCards,
     isExhausted,
     deckUIState,
     collabTravelMode,
@@ -779,11 +825,24 @@ export default function SwipeableCards({
     deckStateRegistry,
     activeDeckContext,
   } = useRecommendations();
+  const sessionSwipedCards = useDeckSessionHistoryStore((state) => state.cards);
+
+  useEffect(() => {
+    void hydrateDeckSessionHistory();
+    return () => {
+      void flushDeckSessionHistory();
+    };
+  }, []);
 
   const isAnyLoading = loading || isModeTransitioning || isWaitingForSessionResolution;
 
   const [removedCards, setRemovedCards] = useState<Set<string>>(new Set());
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const [heroLayout, setHeroLayout] = useState({
+    width: Math.max(1, Math.min(SCREEN_WIDTH, 500)),
+    height: Math.max(1, (SCREEN_HEIGHT - 280) * IMAGE_SECTION_RATIO),
+  });
 
   // Card content entrance animation values
   const cardContentOpacity = useRef(new Animated.Value(0)).current;
@@ -858,18 +917,36 @@ export default function SwipeableCards({
     },
     [isInCollab, creatorLimits, userCanAccess],
   );
-  // Refs for PanResponder (created once) to read fresh values
+  // Gesture boundary callbacks read this ref so the controller never closes
+  // over stale entitlement state.
   const canAccessRef = useRef(canAccess);
   useEffect(() => { canAccessRef.current = canAccess; });
 
+  useEffect(() => {
+    let mounted = true;
+    AccessibilityInfo.isReduceMotionEnabled().then((enabled) => {
+      if (mounted) setReducedMotion(enabled);
+    }).catch((error) => {
+      console.error('[SwipeableCards] Reduce Motion read failed:', error);
+    });
+    const subscription = AccessibilityInfo.addEventListener(
+      'reduceMotionChanged',
+      setReducedMotion,
+    );
+    return () => {
+      mounted = false;
+      subscription.remove();
+    };
+  }, []);
+
   // Storage keys for persisting card state
-  const getStorageKeys = () => {
+  const getStorageKeys = useCallback(() => {
     const baseKey = `mingla_card_state_${currentMode}_${refreshKey || 0}`;
     return {
       index: `${baseKey}_index`,
       removedCards: `${baseKey}_removed`,
     };
-  };
+  }, [currentMode, refreshKey]);
 
   // Reverse geocode user location for "no matches" display
   useEffect(() => {
@@ -960,7 +1037,7 @@ export default function SwipeableCards({
     user?.id ?? null,
   );
 
-  // Use ref to store current recommendations for PanResponder
+  // Fresh deck refs used only at gesture state boundaries.
   const recommendationsRef = useRef<Recommendation[]>([]);
   const removedCardsRef = useRef<Set<string>>(new Set());
   const currentCardIndexRef = useRef(0);
@@ -997,6 +1074,44 @@ export default function SwipeableCards({
   const handleSwipeRef = useRef<((direction: "left" | "right", card: Recommendation) => Promise<void>) | null>(null);
   const handleCardExpandRef = useRef<(() => Promise<void>) | null>(null);
   const removedCardIdsRef = useRef<string[]>(removedCardIds);
+  const pendingPaywallRef = useRef<DeckSwipeCommitToken | null>(null);
+  const latestValidatedSwipeEpochRef = useRef(0);
+  const lastCommittedTokenKeyRef = useRef<string | null>(null);
+  const promotedCardIdRef = useRef<string | null>(null);
+  const deckStageRef = useRef<DeckSwipeStageHandle | null>(null);
+  const pendingAccessibilityFocusRef = useRef(false);
+  const cardAccessibilityRef = useRef<View | null>(null);
+  const anomalyReasonsRef = useRef(new Set<string>());
+  const swipeQueueEpochRef = useRef(0);
+  const postSwipeQueueRef = useRef<{
+    epoch: number;
+    run: () => Promise<void>;
+  }[]>([]);
+  const postSwipeDrainRunningRef = useRef(false);
+  const postSwipeScheduleRef = useRef<{
+    interaction: ReturnType<typeof InteractionManager.runAfterInteractions> | null;
+    timeout: ReturnType<typeof setTimeout> | null;
+  }>({ interaction: null, timeout: null });
+  const persistenceGenerationRef = useRef(0);
+  const lastEnqueuedPersistenceSignatureRef = useRef('');
+  const pendingPersistenceRef = useRef<{
+    contextKey: string;
+    indexKey: string;
+    removedKey: string;
+    index: number;
+    removedCardIds: string[];
+    generation: number;
+  } | null>(null);
+  const persistenceDrainRef = useRef<Promise<void> | null>(null);
+  const localDeckInteractionPhaseRef = useRef<DeckSwipePhase>('IDLE');
+  const lastDeckInteractionAtRef = useRef(0);
+  const persistenceQuietTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const persistenceInteractionHandleRef = useRef<ReturnType<typeof InteractionManager.runAfterInteractions> | null>(null);
+  const postSwipeUserIdRef = useRef<string | undefined>(user?.id);
+
+  useEffect(() => {
+    pendingPaywallRef.current = null;
+  }, [activeDeckContextKey, currentMode, refreshKey, user?.id]);
 
   // Update refs when state changes
   useEffect(() => {
@@ -1005,38 +1120,6 @@ export default function SwipeableCards({
     currentCardIndexRef.current = currentCardIndex;
     removedCardIdsRef.current = removedCardIds;
   }, [recommendations, removedCards, currentCardIndex, removedCardIds]);
-
-  // Swipe animation values
-  // ORCH-0675 Wave 1 RC-1 — split Animated.ValueXY into two Animated.Value to
-  // enable useNativeDriver: true on transform/opacity. (I-ANIMATIONS-NATIVE-DRIVER-DEFAULT)
-  // ValueXY does not support native driver; per-axis Animated.Value does.
-  // Pre-fix: every swipe frame interpolated on JS thread → mid-tier Android stutter.
-  // Post-fix: transform.translateX/Y delegated to UI thread; PanResponder still
-  // updates per-axis values imperatively (existing pattern preserved).
-  const positionX = useRef(new Animated.Value(0)).current;
-  const positionY = useRef(new Animated.Value(0)).current;
-  const rotate = positionX.interpolate({
-    inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
-    outputRange: ["-30deg", "0deg", "30deg"],
-  });
-  const likeOpacity = positionX.interpolate({
-    inputRange: [0, SCREEN_WIDTH / 4],
-    outputRange: [0, 1],
-  });
-  const nopeOpacity = positionX.interpolate({
-    inputRange: [-SCREEN_WIDTH / 4, 0],
-    outputRange: [1, 0],
-  });
-  const nextCardOpacity = positionX.interpolate({
-    inputRange: [-SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2],
-    outputRange: [1, 0, 1],
-    // ORCH-0694 0694-D: clamp prevents the next-card render from being
-    // "more visible than 1" during any future timing edge case. Without
-    // this, the default 'extend' extrapolation goes above 1 at positionX
-    // values beyond ±SCREEN_WIDTH/2 (e.g., end of swipe-out animation),
-    // contributing to the ghost-card visual artifact.
-    extrapolate: 'clamp',
-  });
 
   // Filter out removed cards (needed for shouldShowLoader calculation)
   // Note: removedCards is a state variable, so we need to use it carefully
@@ -1075,25 +1158,6 @@ export default function SwipeableCards({
     }
     return deckUIState;
   }, [deckUIState, availableRecommendations.length, isBoardSession, collabDeckDeadEndReason]);
-
-  // ── Prefetch next 2 card images for instant swipe transitions ──
-  // When the current card changes, prefetch the images for the next 2 cards.
-  // ORCH-1042: prefetch via ExpoImage.prefetch with cachePolicy:'memory-disk' so
-  // the warm-up populates the SAME expo-image managed cache the hero now reads
-  // from (the old react-native Image.prefetch warmed NSURLCache/OkHttp — a
-  // DIFFERENT store than expo-image's — leaving the warm-up wasted). Failures are
-  // silently ignored — the image will load normally when the card becomes visible.
-  const currentCardId = availableRecommendations[0]?.id;
-  useEffect(() => {
-    const nextCard = availableRecommendations[1];
-    if (nextCard?.image) {
-      ExpoImage.prefetch(nextCard.image, { cachePolicy: 'memory-disk' }).catch(() => {});
-    }
-    const cardAfterNext = availableRecommendations[2];
-    if (cardAfterNext?.image) {
-      ExpoImage.prefetch(cardAfterNext.image, { cachePolicy: 'memory-disk' }).catch(() => {});
-    }
-  }, [currentCardId]);
 
   // Auto-recovery: detect dead "Pulling up more for you" state.
   // When recommendations exist but ALL are filtered by removedCards (stale persistence),
@@ -1185,6 +1249,7 @@ export default function SwipeableCards({
 
   // Always use currentCardIndex to track position in the deck
   const currentRec = availableRecommendations[currentCardIndex];
+  const nextRec = availableRecommendations.find((rec) => rec.id !== currentRec?.id) ?? null;
   const isCurrentCardSaved = currentRec ? savedCards.some(
     (s: any) => s?.id === currentRec.id || s === currentRec.id
   ) : false;
@@ -1192,51 +1257,385 @@ export default function SwipeableCards({
     (e) => (e.status === 'pending' || e.status === 'confirmed') && e.card_id === currentRec.id
   ) : false;
 
+  const reportDeckAnomaly = useCallback((
+    reason: string,
+    phase: string,
+    durationMs: number,
+  ): void => {
+    if (anomalyReasonsRef.current.has(reason)) return;
+    anomalyReasonsRef.current.add(reason);
+    const card = recommendationsRef.current
+      .filter((rec) => !removedCardsRef.current.has(rec.id))[
+        currentCardIndexRef.current
+      ];
+    const cardType = (card as { cardType?: unknown } | undefined)?.cardType;
+    postHogService.capture('deck_swipe_lifecycle_anomaly', {
+      platform: Platform.OS,
+      phase,
+      reason,
+      duration_bucket:
+        durationMs <= 250 ? 'lte_250' : durationMs <= 400 ? '251_400' : 'gt_400',
+      reduced_motion: reducedMotion,
+      card_type:
+        cardType === 'curated' || cardType === 'experience' ? cardType : 'place',
+      deck_mode: currentMode === 'solo' ? 'solo' : 'collab',
+    });
+  }, [currentMode, reducedMotion]);
+
+  const cancelPostSwipeSchedule = useCallback((): void => {
+    postSwipeScheduleRef.current.interaction?.cancel();
+    if (postSwipeScheduleRef.current.timeout) {
+      clearTimeout(postSwipeScheduleRef.current.timeout);
+    }
+    postSwipeScheduleRef.current = { interaction: null, timeout: null };
+  }, []);
+
+  const drainPostSwipeQueue = useCallback(async (force = false): Promise<void> => {
+    const isQuietIdle = (): boolean => localDeckInteractionPhaseRef.current === 'IDLE' &&
+      Date.now() - lastDeckInteractionAtRef.current >= DECK_POST_SWIPE_QUIET_IDLE_MS;
+    if (!force && !isQuietIdle()) return;
+    if (postSwipeDrainRunningRef.current) return;
+    postSwipeDrainRunningRef.current = true;
+    cancelPostSwipeSchedule();
+    try {
+      while (postSwipeQueueRef.current.length > 0) {
+        if (!force && !isQuietIdle()) break;
+        if (force && localDeckInteractionPhaseRef.current !== 'IDLE') break;
+        const item = postSwipeQueueRef.current.shift();
+        if (!item || item.epoch !== swipeQueueEpochRef.current) continue;
+        try {
+          await item.run();
+        } catch (error) {
+          console.error('[SwipeableCards] Deferred post-swipe work failed:', error);
+        }
+        // A large completed deck can enqueue dozens of saves, analytics calls,
+        // cache invalidations, and toasts. Yield a macrotask between exact FIFO
+        // items so a newly started deck can admit/finalize its native gestures.
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        if (localDeckInteractionPhaseRef.current !== 'IDLE') break;
+        // Foreground work is intentionally one item per quiet window. Starting
+        // a second item here can starve the runOnJS boundary of the next deck.
+        if (!force) break;
+      }
+    } finally {
+      postSwipeDrainRunningRef.current = false;
+    }
+  }, [cancelPostSwipeSchedule]);
+
+  const scheduleQuietPostSwipeDrain = useCallback((): void => {
+    if (postSwipeQueueRef.current.length === 0 || localDeckInteractionPhaseRef.current !== 'IDLE') {
+      return;
+    }
+    cancelPostSwipeSchedule();
+    const quietForMs = Date.now() - lastDeckInteractionAtRef.current;
+    const remainingMs = Math.max(0, DECK_POST_SWIPE_QUIET_IDLE_MS - quietForMs);
+    postSwipeScheduleRef.current.timeout = setTimeout(() => {
+      postSwipeScheduleRef.current.timeout = null;
+      if (localDeckInteractionPhaseRef.current !== 'IDLE') return;
+      postSwipeScheduleRef.current.interaction = InteractionManager.runAfterInteractions(() => {
+        postSwipeScheduleRef.current.interaction = null;
+        void drainPostSwipeQueue().finally(() => {
+          if (
+            postSwipeQueueRef.current.length > 0 &&
+            localDeckInteractionPhaseRef.current === 'IDLE'
+          ) scheduleQuietPostSwipeDrain();
+        });
+      });
+    }, remainingMs);
+  }, [cancelPostSwipeSchedule, drainPostSwipeQueue]);
+
+  const enqueuePostSwipeWork = useCallback((run: () => Promise<void>): void => {
+    postSwipeQueueRef.current.push({
+      epoch: swipeQueueEpochRef.current,
+      run,
+    });
+    scheduleQuietPostSwipeDrain();
+  }, [scheduleQuietPostSwipeDrain]);
+
+  const drainPersistence = useCallback((force = false): Promise<void> => {
+    const isQuietIdle = (): boolean => localDeckInteractionPhaseRef.current === 'IDLE' &&
+      Date.now() - lastDeckInteractionAtRef.current >= DECK_PERSISTENCE_QUIET_IDLE_MS;
+    if (!force && !isQuietIdle()) return Promise.resolve();
+    if (persistenceDrainRef.current) return persistenceDrainRef.current;
+    const drain = async (): Promise<void> => {
+      while (pendingPersistenceRef.current) {
+        if (!force && !isQuietIdle()) break;
+        const snapshot = pendingPersistenceRef.current;
+        pendingPersistenceRef.current = null;
+        try {
+          await AsyncStorage.multiSet([
+            [snapshot.indexKey, snapshot.index.toString()],
+            [snapshot.removedKey, JSON.stringify(snapshot.removedCardIds)],
+          ]);
+        } catch (error) {
+          console.error('[SwipeableCards] Deck state persistence failed:', error);
+          reportDeckAnomaly('persistence_failure', 'COMMITTING', 0);
+        }
+      }
+    };
+    persistenceDrainRef.current = drain().finally(() => {
+      persistenceDrainRef.current = null;
+    });
+    return persistenceDrainRef.current;
+  }, [reportDeckAnomaly]);
+
+  const scheduleQuietPersistenceDrain = useCallback((): void => {
+    if (!pendingPersistenceRef.current || localDeckInteractionPhaseRef.current !== 'IDLE') return;
+    if (persistenceQuietTimerRef.current) clearTimeout(persistenceQuietTimerRef.current);
+    persistenceInteractionHandleRef.current?.cancel();
+    persistenceInteractionHandleRef.current = null;
+    const quietForMs = Date.now() - lastDeckInteractionAtRef.current;
+    const remainingMs = Math.max(0, DECK_PERSISTENCE_QUIET_IDLE_MS - quietForMs);
+    persistenceQuietTimerRef.current = setTimeout(() => {
+      persistenceQuietTimerRef.current = null;
+      persistenceInteractionHandleRef.current = InteractionManager.runAfterInteractions(() => {
+        persistenceInteractionHandleRef.current = null;
+        void drainPersistence();
+      });
+    }, remainingMs);
+  }, [drainPersistence]);
+
+  const enqueuePersistenceSnapshot = useCallback((
+    index: number,
+    nextRemovedCards: Set<string>,
+  ): void => {
+    if (!hasRestoredStateRef.current || !recommendationsRef.current.length) return;
+    const keys = getStorageKeys();
+    const removedCardIds = Array.from(nextRemovedCards);
+    const signature = `${keys.index}:${index}:${removedCardIds.join(',')}`;
+    if (signature === lastEnqueuedPersistenceSignatureRef.current) return;
+    lastEnqueuedPersistenceSignatureRef.current = signature;
+    persistenceGenerationRef.current += 1;
+    pendingPersistenceRef.current = {
+      contextKey: activeDeckContextKey ?? `${currentMode}:${String(refreshKey ?? 0)}`,
+      indexKey: keys.index,
+      removedKey: keys.removedCards,
+      index,
+      removedCardIds,
+      generation: persistenceGenerationRef.current,
+    };
+    scheduleQuietPersistenceDrain();
+  }, [activeDeckContextKey, currentMode, getStorageKeys, refreshKey, scheduleQuietPersistenceDrain]);
+
+  useEffect(() => {
+    if (postSwipeUserIdRef.current !== user?.id) {
+      swipeQueueEpochRef.current += 1;
+      postSwipeQueueRef.current = [];
+      cancelPostSwipeSchedule();
+      postSwipeUserIdRef.current = user?.id;
+    }
+  }, [cancelPostSwipeSchedule, user?.id]);
+
+  useEffect(() => () => {
+    cancelPostSwipeSchedule();
+    void drainPostSwipeQueue(true);
+  }, [cancelPostSwipeSchedule, drainPostSwipeQueue]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState !== 'active') {
+        void drainPostSwipeQueue(true);
+        void drainPersistence(true);
+      }
+    });
+    return () => {
+      subscription.remove();
+      void drainPersistence(true);
+    };
+  }, [drainPersistence, drainPostSwipeQueue]);
+
+  useEffect(() => () => {
+    if (persistenceQuietTimerRef.current) clearTimeout(persistenceQuietTimerRef.current);
+    persistenceInteractionHandleRef.current?.cancel();
+  }, []);
+
+  const deckSwipeStageOptions: UseDeckSwipeControllerOptions = {
+    activeCardId: currentRec?.id ?? null,
+    screenWidth: SCREEN_WIDTH,
+    reducedMotion,
+    onSwipeValidated: (token: DeckSwipeCommitToken): boolean => {
+      if (
+        pendingPaywallRef.current &&
+        pendingPaywallRef.current.epoch !== token.epoch
+      ) {
+        pendingPaywallRef.current = null;
+      }
+      const availableCards = recommendationsRef.current.filter(
+        (rec) =>
+          !removedCardsRef.current.has(rec.id) &&
+          !removedCardIdsRef.current.includes(rec.id),
+      );
+      const card = availableCards[currentCardIndexRef.current];
+      if (
+        !card ||
+        card.id !== token.cardId ||
+        token.epoch <= latestValidatedSwipeEpochRef.current
+      ) return false;
+      if (
+        token.direction === 'right' &&
+        (card as { cardType?: unknown }).cardType === 'curated' &&
+        !canAccessRef.current('curated_cards')
+      ) {
+        pendingPaywallRef.current = token;
+        HapticFeedback.medium();
+        return false;
+      }
+      latestValidatedSwipeEpochRef.current = token.epoch;
+      if (token.direction === 'right') HapticFeedback.cardLike();
+      else HapticFeedback.cardDislike();
+      return true;
+    },
+    onSwipeRejectedCentered: (token: DeckSwipeCommitToken): void => {
+      const intent = consumeDeckTokenIntent(pendingPaywallRef.current, token);
+      pendingPaywallRef.current = intent.pending;
+      if (!intent.shouldRun) return;
+      setPaywallFeature('curated_cards');
+      setShowPaywall(true);
+    },
+    onCommitRequested: (token: DeckSwipeCommitToken): DeckCommitSettlement | null => {
+      const tokenKey = `${token.epoch}:${token.cardId}:${token.direction}`;
+      if (
+        token.epoch !== latestValidatedSwipeEpochRef.current ||
+        lastCommittedTokenKeyRef.current === tokenKey
+      ) {
+        reportDeckAnomaly('duplicate_commit_blocked', 'COMMITTING', 0);
+        return null;
+      }
+      const availableCards = recommendationsRef.current.filter(
+        (rec) =>
+          !removedCardsRef.current.has(rec.id) &&
+          !removedCardIdsRef.current.includes(rec.id),
+      );
+      const card = availableCards[currentCardIndexRef.current];
+      if (!card || card.id !== token.cardId) {
+        reportDeckAnomaly('stale_completion_ignored', 'COMMITTING', 0);
+        return null;
+      }
+      lastCommittedTokenKeyRef.current = tokenKey;
+      // Exact full-card history is visible synchronously in the same local
+      // commit batch as promotion; only its serialization/I/O is deferred.
+      appendDeckSessionHistory(card);
+      const nextRemoved = new Set(removedCardsRef.current);
+      nextRemoved.add(card.id);
+      removedCardsRef.current = nextRemoved;
+      currentCardIndexRef.current = 0;
+      const nextCardId = availableCards[1]?.id ?? null;
+      if (nextCardId) promotedCardIdRef.current = nextCardId;
+      enqueuePersistenceSnapshot(0, nextRemoved);
+      enqueuePostSwipeWork(async () => {
+        await handleSwipeRef.current?.(token.direction, card);
+      });
+      setRemovedCards(nextRemoved);
+      setCurrentCardIndex(0);
+      return nextCardId ? { nextCardId } : { exhausted: true };
+    },
+    onCommitSettled: (_token: DeckSwipeCommitToken, settlement: DeckCommitSettlement): void => {
+      if ('exhausted' in settlement) {
+        scheduleQuietPostSwipeDrain();
+        void flushDeckSessionHistory();
+        void drainPersistence(true);
+      }
+    },
+    onPhaseChanged: (phase): void => {
+      localDeckInteractionPhaseRef.current = phase;
+      lastDeckInteractionAtRef.current = Date.now();
+      setDeckSessionHistoryInteractionPhase(phase);
+      if (phase === 'IDLE') {
+        scheduleQuietPostSwipeDrain();
+        scheduleQuietPersistenceDrain();
+      } else {
+        cancelPostSwipeSchedule();
+        if (persistenceQuietTimerRef.current) clearTimeout(persistenceQuietTimerRef.current);
+        persistenceQuietTimerRef.current = null;
+        persistenceInteractionHandleRef.current?.cancel();
+        persistenceInteractionHandleRef.current = null;
+      }
+    },
+    onExpandValidated: (): boolean => {
+      if (!currentRec) return false;
+      HapticFeedback.medium();
+      return true;
+    },
+    onExpandRequested: (): void => {
+      void handleCardExpandRef.current?.();
+    },
+    onTransitionRejected: (): void => {
+      // The uninterrupted native transition is the truthful feedback. Rejected
+      // touches intentionally produce no haptic, state mutation, or telemetry.
+    },
+    onAnomaly: ({ reason, phase: anomalyPhase, durationMs }): void => {
+      reportDeckAnomaly(reason, anomalyPhase, durationMs);
+    },
+    onInvalidated: (): void => {
+      pendingPaywallRef.current = null;
+    },
+  };
+  const invalidateDeckSwipe = useCallback((reason: string): void => {
+    deckStageRef.current?.invalidate(reason);
+  }, []);
+
+  const heroDecodeTarget = useMemo(
+    () => getDeckHeroDecodeTarget(heroLayout.width, heroLayout.height, PixelRatio.get()),
+    [heroLayout.height, heroLayout.width],
+  );
+
   // Track card viewed when the current card changes
   const lastViewedCardIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (currentRec && currentRec.id !== lastViewedCardIdRef.current) {
       lastViewedCardIdRef.current = currentRec.id;
-      mixpanelService.trackCardViewed({
+      const view = {
         card_id: currentRec.id,
         card_title: currentRec.title,
         category: currentRec.category,
         position_in_deck: currentCardIndex,
         is_curated: (currentRec as any).cardType === 'curated',
-      });
-      // META-ORCH-1187 — behavior event (mirror of the Mixpanel site above).
-      postHogService.capture("card_viewed", {
-        card_id: currentRec.id,
-        card_title: currentRec.title,
-        category: currentRec.category,
-        position_in_deck: currentCardIndex,
-        is_curated: (currentRec as any).cardType === 'curated',
-      });
+      };
+      const trackCardViewed = async (): Promise<void> => {
+        mixpanelService.trackCardViewed(view);
+        // META-ORCH-1187 — behavior event (mirror of the Mixpanel site above).
+        postHogService.capture("card_viewed", view);
+      };
+      if (promotedCardIdRef.current === currentRec.id) {
+        enqueuePostSwipeWork(trackCardViewed);
+      } else {
+        void trackCardViewed();
+      }
     }
-  }, [currentRec?.id, currentCardIndex]);
+  }, [currentRec, currentCardIndex, enqueuePostSwipeWork]);
 
-  // ORCH-0694 0694-G: belt-and-suspenders transform reset on card change.
-  // The swipe-completion .start() callback (lines ~1322) is the primary path
-  // that resets positionX/Y to 0 before state advance. This effect handles
-  // any OTHER path that advances currentRec (e.g., onCardRemoved from
-  // ExpandedCardModal at line ~2480, schedule-from-modal flow). Without this,
-  // those non-swipe-handler paths would inherit whatever transform values
-  // positionX/Y last held — same ghost-card class as the original bug.
-  // Cheap (one setValue per card change), safe (idempotent on first mount).
   useEffect(() => {
-    if (!currentRec) return;
-    positionX.setValue(0);
-    positionY.setValue(0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentRec?.id]);
+    if (
+      effectiveUIState.type !== 'LOADED' ||
+      isExpandedModalVisible ||
+      showPaywall
+    ) {
+      invalidateDeckSwipe('deck-surface-replacement');
+    }
+  }, [
+    activeDeckContextKey,
+    currentMode,
+    effectiveUIState.type,
+    isExpandedModalVisible,
+    refreshKey,
+    showPaywall,
+    invalidateDeckSwipe,
+  ]);
 
   // Trigger card content entrance animations when current card changes
   useEffect(() => {
     if (currentRec) {
-      // Reset animation values
-      cardContentOpacity.setValue(0);
-      matchBadgeSlide.setValue(-20);
-      titleOverlaySlide.setValue(30);
+      const promotedFromPreview = promotedCardIdRef.current === currentRec.id;
+      cardContentOpacity.setValue(promotedFromPreview ? 1 : 0);
+      matchBadgeSlide.setValue(promotedFromPreview ? 0 : -20);
+      titleOverlaySlide.setValue(promotedFromPreview ? 0 : 30);
+
+      if (promotedFromPreview || reducedMotion) {
+        cardContentOpacity.setValue(1);
+        matchBadgeSlide.setValue(0);
+        titleOverlaySlide.setValue(0);
+        return;
+      }
 
       // Run entrance animations
       Animated.parallel([
@@ -1257,7 +1656,7 @@ export default function SwipeableCards({
         }),
       ]).start();
     }
-  }, [currentRec?.id]);
+  }, [currentRec?.id, reducedMotion]);
 
   // Reset index if we're beyond the available cards
   useEffect(() => {
@@ -1300,7 +1699,7 @@ export default function SwipeableCards({
     const restoredRemoved = new Set(state.removedCards);
     setRemovedCards(restoredRemoved);
     setCurrentCardIndex(state.currentCardIndex);
-    // Mirror to PanResponder refs — those read fresh values on swipe and
+    // Mirror to gesture-boundary refs — those read fresh values on swipe and
     // would otherwise see stale state until the next component render.
     removedCardsRef.current = new Set(restoredRemoved);
     currentCardIndexRef.current = state.currentCardIndex;
@@ -1390,9 +1789,7 @@ export default function SwipeableCards({
         setIsExpandedModalVisible(false);
         setSelectedCardForExpansion(null);
         setDismissedSheetVisible(false);
-        // ORCH-0675 Wave 1 RC-1 — per-axis reset (Animated.ValueXY → 2× Animated.Value)
-        positionX.setValue(0);
-        positionY.setValue(0);
+        invalidateDeckSwipe('preferences-or-mode-change');
 
         // Clear old storage keys (from previous refreshKey/mode) before updating the refs
         if (
@@ -1477,34 +1874,28 @@ export default function SwipeableCards({
     };
 
     checkAndRestoreState();
-  }, [recommendations.length, refreshKey, currentMode, removedCardIds]);
+  }, [
+    recommendations,
+    recommendations.length,
+    refreshKey,
+    currentMode,
+    removedCardIds,
+    getStorageKeys,
+    invalidateDeckSwipe,
+  ]);
 
-  // Save state to AsyncStorage whenever it changes
+  // Persist through one serialized, coalescing writer. An older write can never
+  // finish after and overwrite the newest settled deck snapshot.
   useEffect(() => {
-    // Don't save until we've restored (to avoid saving default values)
     if (!hasRestoredStateRef.current || !recommendations.length) {
       return;
     }
-
-    const saveState = async () => {
-      try {
-        const keys = getStorageKeys();
-        await AsyncStorage.multiSet([
-          [keys.index, currentCardIndex.toString()],
-          [keys.removedCards, JSON.stringify(Array.from(removedCards))],
-        ]);
-      } catch (error) {
-        console.error("Error saving state to AsyncStorage:", error);
-      }
-    };
-
-    saveState();
+    enqueuePersistenceSnapshot(currentCardIndex, removedCards);
   }, [
     currentCardIndex,
     removedCards,
     recommendations.length,
-    currentMode,
-    refreshKey,
+    enqueuePersistenceSnapshot,
   ]);
 
   // ORCH-0490 Phase 2.3: deck replacement vs expansion signal.
@@ -1603,200 +1994,6 @@ export default function SwipeableCards({
 
     previousBatchIdsRef.current = newFirstIds;
   }, [recommendations, isDeckExpandingWithinContext, activeDeckContextKey]);
-
-  // PanResponder for swipe gestures
-  // CLOSURE INVARIANT: This PanResponder is created once and never recreated.
-  // All external values (functions, props, state) MUST be accessed via refs inside
-  // these handlers. Direct variable access will be stale (captured from initial render).
-  // Current refs: recommendationsRef, removedCardsRef, currentCardIndexRef,
-  // removedCardIdsRef, handleSwipeRef, handleCardExpandRef.
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gestureState) => {
-        return Math.abs(gestureState.dx) > 5 || Math.abs(gestureState.dy) > 5;
-      },
-      onPanResponderGrant: () => {
-        // ORCH-1241: baseline the offset from the TRUE on-screen position.
-        // The spring-back / fling animations are async; a fast re-swipe can
-        // grant mid-spring while positionX._value is a non-zero intermediate.
-        // stopAnimation halts the in-flight spring; flattenOffset collapses any
-        // stale offset into _value, so the new gesture offsets from the real
-        // current position instead of accumulating a stale offset (the
-        // "card starts the next swipe already partially translated" hang).
-        positionX.stopAnimation();
-        positionY.stopAnimation();
-        positionX.flattenOffset();
-        positionY.flattenOffset();
-        // ORCH-0675 Wave 1 RC-1 — per-axis offset (Animated.ValueXY → 2× Animated.Value)
-        positionX.setOffset((positionX as any)._value);
-        positionY.setOffset((positionY as any)._value);
-      },
-      onPanResponderMove: (_, gestureState) => {
-        // ORCH-0675 Wave 1 RC-1 — per-axis setValue
-        positionX.setValue(gestureState.dx);
-        positionY.setValue(gestureState.dy);
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        // ORCH-0675 Wave 1 RC-1 — per-axis flatten
-        positionX.flattenOffset();
-        positionY.flattenOffset();
-
-        // Get current card from refs (always fresh)
-        const availableCards = recommendationsRef.current.filter(
-          (rec) =>
-            !removedCardsRef.current.has(rec.id) &&
-            !removedCardIdsRef.current.includes(rec.id)
-        );
-        const cardToRemove = availableCards[currentCardIndexRef.current];
-
-        // Check for swipe up (expand card)
-        if (gestureState.dy < -50 && Math.abs(gestureState.dx) < 50) {
-          if (cardToRemove) {
-            HapticFeedback.medium();
-            handleCardExpandRef.current?.();
-          }
-          // ORCH-0675 Wave 1 RC-1 — useNativeDriver: true mandatory.
-          // (I-ANIMATIONS-NATIVE-DRIVER-DEFAULT) Mixing native+JS in Animated.parallel throws.
-          Animated.parallel([
-            Animated.spring(positionX, { toValue: 0, useNativeDriver: true }),
-            Animated.spring(positionY, { toValue: 0, useNativeDriver: true }),
-          ]).start();
-          return;
-        }
-
-        // Check for horizontal swipe.
-        // ORCH-1241: commit on translation OR velocity. A fast-but-short fling
-        // (high vx, dx < 120) now flings off like the deliberate recovery swipe
-        // does, instead of springing back ("card hangs"). A slow short drag
-        // (low vx AND dx < 120) still springs back — weak-swipe behavior preserved.
-        const committedDirection = shouldCommitSwipe(
-          gestureState.dx,
-          gestureState.vx
-        );
-        if (committedDirection) {
-          const direction = committedDirection;
-
-          // Haptic feedback — immediate tactile response before animation
-          if (direction === "right") {
-            HapticFeedback.cardLike();
-          } else {
-            HapticFeedback.cardDislike();
-          }
-
-          // Check if card exists
-          if (!cardToRemove) {
-            console.warn("No card to swipe");
-            // ORCH-0675 Wave 1 RC-1 — per-axis spring with native driver
-            Animated.parallel([
-              Animated.spring(positionX, { toValue: 0, useNativeDriver: true }),
-              Animated.spring(positionY, { toValue: 0, useNativeDriver: true }),
-            ]).start();
-            return;
-          }
-
-          // Gate: curated card right-swipe (save) requires Mingla+
-          if (
-            direction === 'right' &&
-            (cardToRemove as any).cardType === 'curated' &&
-            !canAccessRef.current('curated_cards')
-          ) {
-            HapticFeedback.medium();
-            setPaywallFeature('curated_cards');
-            setShowPaywall(true);
-            // ORCH-0675 Wave 1 RC-1 — per-axis spring with native driver
-            Animated.parallel([
-              Animated.spring(positionX, { toValue: 0, useNativeDriver: true }),
-              Animated.spring(positionY, { toValue: 0, useNativeDriver: true }),
-            ]).start();
-            return;
-          }
-
-          // Animate card off the screen edge.
-          // ORCH-0694: clamp dy to ±100 so diagonal swipes don't drift the exit
-          // animation off-screen-and-down (CF-2). Combined with key={currentRec.id}
-          // on the card Animated.View + reset-before-state-advance below, this
-          // structurally eliminates the ghost-card-after-swipe bug class.
-          //
-          // DO NOT re-introduce a 2-rAF reset chain here. The previous version
-          // reset transforms AFTER state advance via 2 requestAnimationFrame
-          // nesting; the gap created a window where the new top card briefly
-          // inherited the previous card's stale transform values, producing the
-          // bottom-left wedge artifact reported under ORCH-0694. The fix is
-          // per-card React key (line 2254 area) + reset-before-state-advance,
-          // NOT timing the reset around the React render cycle.
-          //
-          // ORCH-0675 Wave 1 RC-1 — per-axis timing with native driver.
-          // Animated.parallel start() callback fires when LAST animation resolves —
-          // equivalent semantics to single-call ValueXY .start() callback.
-          Animated.parallel([
-            Animated.timing(positionX, {
-              toValue: direction === "right" ? SCREEN_WIDTH : -SCREEN_WIDTH,
-              duration: 250,
-              useNativeDriver: true,
-            }),
-            Animated.timing(positionY, {
-              // ORCH-0694 0694-E: clamp dy magnitude so extreme diagonal swipes
-              // don't leave the exit animation in geometrically-extreme end states.
-              toValue: Math.max(-100, Math.min(100, gestureState.dy)),
-              duration: 250,
-              useNativeDriver: true,
-            }),
-          ]).start(() => {
-            // ORCH-0694 0694-B: reset transforms BEFORE state advance.
-            // The old Animated.View has key={oldCard.id} and unmounts in this
-            // same render pass; the new Animated.View mounts with key={newCard.id}
-            // and binds to positionX/Y already at 0. No 2-rAF dance needed.
-            positionX.setValue(0);
-            positionY.setValue(0);
-
-            // Advance state. React batches these into a single re-render that
-            // swaps the keyed Animated.View atomically.
-            setRemovedCards((prev) => new Set([...prev, cardToRemove.id]));
-            setCurrentCardIndex(0);
-
-            // RELIABILITY: .catch() on fire-and-forget handleSwipe. Without this,
-            // any error becomes an unhandled promise rejection.
-            handleSwipeRef.current?.(direction, cardToRemove)?.catch((err) => {
-              console.error('[SwipeableCards] Swipe handler error:', err);
-            });
-
-            // ORCH-0694 0694-C: 2-rAF chain DELETED. The "DO NOT remove this
-            // rAF chain" comment from prior author is obsoleted by the per-card
-            // key on the current Animated.View — see comment block above.
-          });
-        } else {
-          // Snap back to center
-          // ORCH-0675 Wave 1 RC-1 — per-axis spring with native driver
-          Animated.parallel([
-            Animated.spring(positionX, { toValue: 0, useNativeDriver: true }),
-            Animated.spring(positionY, { toValue: 0, useNativeDriver: true }),
-          ]).start();
-        }
-      },
-      // ORCH-1241: if the OS cancels the gesture (scroll/nav steals it), reset
-      // cleanly so no residual offset is left for the next onPanResponderGrant's
-      // setOffset. Mirrors the weak-swipe spring-back release.
-      onPanResponderTerminate: () => {
-        positionX.flattenOffset();
-        positionY.flattenOffset();
-        Animated.parallel([
-          Animated.spring(positionX, { toValue: 0, useNativeDriver: true }),
-          Animated.spring(positionY, { toValue: 0, useNativeDriver: true }),
-        ]).start();
-      },
-    })
-  ).current;
-
-  const handleCardTap = () => {
-    // Only handle tap if card is not being dragged
-    // ORCH-0675 Wave 1 RC-1 — per-axis read (Animated.ValueXY → 2× Animated.Value)
-    const currentX = (positionX as any)._value || 0;
-    const currentY = (positionY as any)._value || 0;
-    if (Math.abs(currentX) < 10 && Math.abs(currentY) < 10 && currentRec) {
-      handleCardExpand();
-    }
-  };
 
   const handleCardExpand = async () => {
     if (!currentRec) return;
@@ -1907,9 +2104,6 @@ export default function SwipeableCards({
   ) => {
     if (!card) return;
 
-    // Track swiped card in session history
-    addSwipedCard(card);
-
     // ORCH-0408 Phase 4: Record swipe — counter + user interaction log (fire-and-forget)
     recordCardSwipe(card.id, direction, {
       category: card.category,
@@ -2003,11 +2197,17 @@ export default function SwipeableCards({
         if (direction === 'right' && !isBoardSession) {
           const saveResult = await onCardLike(card);
           if (saveResult === false) {
-            setRemovedCards((prev) => {
-              const newSet = new Set(prev);
-              newSet.delete(card.id);
-              return newSet;
-            });
+            rollbackDeckSessionHistory(card.id);
+            // Preserve the existing save-failure rollback contract without
+            // leaving the synchronous gesture refs or persisted snapshot one
+            // render behind the visible deck.
+            const rolledBack = new Set(removedCardsRef.current);
+            rolledBack.delete(card.id);
+            removedCardsRef.current = rolledBack;
+            currentCardIndexRef.current = 0;
+            setRemovedCards(rolledBack);
+            setCurrentCardIndex(0);
+            enqueuePersistenceSnapshot(0, rolledBack);
             return;
           }
         }
@@ -2064,7 +2264,7 @@ export default function SwipeableCards({
     // The user explicitly chooses: review a previous deck, load a new deck, or change preferences.
   };
 
-  // Sync function refs for PanResponder (must be after function definitions)
+  // Sync gesture-boundary function refs after their definitions.
   useEffect(() => {
     handleSwipeRef.current = handleSwipe;
   });
@@ -2389,9 +2589,7 @@ export default function SwipeableCards({
     // Clear local state
     setRemovedCards(new Set());
     setCurrentCardIndex(0);
-    // ORCH-0675 Wave 1 RC-1 — per-axis reset
-    positionX.setValue(0);
-    positionY.setValue(0);
+    invalidateDeckSwipe('view-cards-again');
 
     // Clear AsyncStorage for current mode and refreshKey
     try {
@@ -2809,36 +3007,63 @@ export default function SwipeableCards({
             </View>
           )}
 
-          {/* Next Card (behind current) - fully rendered with all details */}
+          <DeckSwipeStage
+            ref={deckStageRef}
+            {...deckSwipeStageOptions}
+            transitionDelayAnnouncement={t('cards:swipeable.curating_lineup')}
+            posterCards={[
+              ...(nextRec ? [{
+                id: nextRec.id,
+                role: 'behind' as const,
+                poster: (
+                  <CardHeroImage
+                    uri={nextRec.image}
+                    style={styles.cardImage}
+                    decodeTarget={heroDecodeTarget}
+                  />
+                ),
+              }] : []),
+              {
+                id: currentRec.id,
+                role: 'current' as const,
+                poster: (
+                  <CardHeroImage
+                    uri={currentRec.image}
+                    style={styles.cardImage}
+                    decodeTarget={heroDecodeTarget}
+                  />
+                ),
+              },
+            ]}
+            cardStyle={styles.card}
+            nextCardStyle={styles.nextCard}
+            cardInnerStyle={styles.cardInner}
+            imageContainerStyle={[styles.imageContainer, styles.posterImageContainer]}
+          >
+          {(deckSwipe) => (
+          <>
+          {/* Next card is a poster-only, non-interactive continuity preview. */}
           {availableRecommendations.length > 1 &&
             (() => {
               const nextCard = availableRecommendations[1];
               const NextCategoryIcon = getIconComponent(nextCard.categoryIcon);
 
               return (
-                <Animated.View
+                <Reanimated.View
                   style={[
                     styles.card,
                     styles.nextCard,
-                    {
-                      opacity: nextCardOpacity,
-                      transform: [{ scale: 0.95 }],
-                    },
+                    styles.cardOverlay,
+                    styles.behindCardOverlay,
+                    deckSwipe.previewCardStyle,
                   ]}
+                  pointerEvents="none"
+                  accessibilityElementsHidden
+                  importantForAccessibility="no-hide-descendants"
                 >
                   <View style={styles.cardInner}>
                   {/* Hero Image Section */}
-                  <View style={[styles.imageContainer, { backgroundColor: '#1a1a2e' }]}>
-                    {/* ORCH-1069: video-aware hero. isTopCard={false} → the behind
-                        card does NOT play (poster + paused video), only the top
-                        card plays (perf guard I-1069-ONE-PLAYING-DECK-VIDEO). */}
-                    <CardHero
-                      image={nextCard.image}
-                      images={nextCard.images}
-                      title={nextCard.title}
-                      isTopCard={false}
-                      style={styles.cardImage}
-                    />
+                  <View style={[styles.imageContainer, styles.transparentImageContainer]}>
 
                     {/* ORCH-0589 v2 (G4): premium bottom-fade gradient — darker canvas for title + chips */}
                     <LinearGradient
@@ -2885,75 +3110,99 @@ export default function SwipeableCards({
                   </View>
 
                   {/* White Details Section */}
-                  <View style={styles.cardDetails}>
-                    {/* Share Button */}
-                    <TouchableOpacity
-                      style={styles.shareButton}
-                      onPress={() => {
-                        if (onShareCard) {
-                          onShareCard(nextCard);
-                        }
-                      }}
-                      activeOpacity={0.7}
+                  <View style={styles.cardDetails} />
+                  </View>
+                  {deckSwipe.isTransitionDelayed && (
+                    <View
+                      style={styles.transitionDelayOverlay}
+                      accessibilityRole="progressbar"
+                      accessibilityLabel={t('cards:swipeable.curating_lineup')}
                     >
-                      <Icon
-                        name="share-outline"
-                        size={18}
-                        color="#6b7280"
-                      />
-                      <Text style={styles.shareButtonText}>{t('cards:swipeable.share')}</Text>
-                    </TouchableOpacity>
-                  </View>
-                  </View>
-                </Animated.View>
+                      <PulseDots size={8} speed={400} reducedMotion={reducedMotion} />
+                    </View>
+                  )}
+                </Reanimated.View>
               );
             })()}
 
           {/* Current Card */}
-          {/* ORCH-0694 0694-A: per-card key forces React to mount a fresh
-              Animated.View whenever the active card changes. Combined with
-              the reset-before-state-advance pattern in the swipe-completion
-              callback below, this structurally eliminates the shared-Animated.Value
-              ghost-card bug class. */}
-          <Animated.View
-            key={currentRec.id}
+          {/* Each promoted face gets fresh native admission; all drag frames and
+              transforms stay on the UI thread until discrete JS settlement. */}
+          <GestureDetector key={currentRec.id} gesture={deckSwipe.gesture}>
+          <Reanimated.View
             style={[
               styles.card,
-              {
-                // ORCH-0675 Wave 1 RC-1 — per-axis transform (native-driver compatible)
-                transform: [
-                  { translateX: positionX },
-                  { translateY: positionY },
-                  { rotate: rotate },
-                ],
-              },
+              styles.cardOverlay,
+              deckSwipe.currentCardStyle,
             ]}
-            {...panResponder.panHandlers}
-            pointerEvents="auto"
           >
             <View style={styles.cardInner}>
+            <View
+              ref={cardAccessibilityRef}
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+              accessible
+              accessibilityRole="button"
+              accessibilityLabel={currentRec.title}
+              accessibilityHint={`${t('cards:expanded.save')}. ${t('cards:swipeable.pass')}. ${t('cards:expanded.more_details')}.`}
+              accessibilityActions={[
+                { name: 'save', label: t('cards:expanded.save') },
+                { name: 'pass', label: t('cards:swipeable.pass') },
+                { name: 'expand', label: t('cards:expanded.more_details') },
+              ]}
+              onAccessibilityAction={(event) => {
+                const action = event.nativeEvent.actionName;
+                if (action === 'save' || action === 'pass') {
+                  pendingAccessibilityFocusRef.current = true;
+                  const accepted = deckSwipe.requestSwipe(
+                    action === 'save' ? 'right' : 'left',
+                  );
+                  if (!accepted) pendingAccessibilityFocusRef.current = false;
+                } else if (action === 'expand') {
+                  deckSwipe.requestTapExpand();
+                }
+              }}
+              onLayout={() => {
+                if (!pendingAccessibilityFocusRef.current || !deckSwipe.isIdle()) return;
+                const node = findNodeHandle(cardAccessibilityRef.current);
+                if (node == null) return;
+                pendingAccessibilityFocusRef.current = false;
+                AccessibilityInfo.setAccessibilityFocus(node);
+              }}
+            />
             {/* Swipe Direction Overlays */}
-            <Animated.View
-              style={[styles.swipeOverlayRight, { opacity: likeOpacity }]}
+            <Reanimated.View
+              style={[
+                styles.swipeOverlayRight,
+                deckSwipe.likeIndicatorStyle,
+              ]}
               pointerEvents="none"
             >
               <View style={styles.likeIndicator}>
-                <Text style={styles.likeText}>{t('cards:swipeable.like')}</Text>
+                <Text style={styles.likeText} maxFontSizeMultiplier={1.3} numberOfLines={1}>
+                  {t('cards:swipeable.like')}
+                </Text>
               </View>
-            </Animated.View>
+            </Reanimated.View>
 
-            <Animated.View
-              style={[styles.swipeOverlayLeft, { opacity: nopeOpacity }]}
+            <Reanimated.View
+              style={[
+                styles.swipeOverlayLeft,
+                deckSwipe.passIndicatorStyle,
+              ]}
               pointerEvents="none"
             >
               <View style={styles.passIndicator}>
-                <Text style={styles.passText}>{t('cards:swipeable.pass')}</Text>
+                <Text style={styles.passText} maxFontSizeMultiplier={1.3} numberOfLines={1}>
+                  {t('cards:swipeable.pass')}
+                </Text>
               </View>
-            </Animated.View>
+            </Reanimated.View>
 
             <TouchableOpacity
               activeOpacity={1}
-              onPress={handleCardTap}
+              onPress={() => deckSwipe.requestTapExpand()}
+              accessible={false}
               style={StyleSheet.absoluteFill}
             >
               {(currentRec as any).cardType === 'experience' ? (
@@ -3007,7 +3256,15 @@ export default function SwipeableCards({
               ) : (
                 <>
                   {/* Hero Image Section - 60-65% of card */}
-                  <View style={[styles.imageContainer, { backgroundColor: '#1a1a2e' }]}>
+                  <View
+                    style={[styles.imageContainer, styles.transparentImageContainer]}
+                    onLayout={({ nativeEvent }) => {
+                      const { width, height } = nativeEvent.layout;
+                      if (width !== heroLayout.width || height !== heroLayout.height) {
+                        setHeroLayout({ width, height });
+                      }
+                    }}
+                  >
                     {/* ORCH-1069: video-aware hero. isTopCard={true} → the top card
                         plays its `.mp4` cover (muted/looping) with the still as
                         poster; still-only venues render the unchanged image hero. */}
@@ -3017,6 +3274,7 @@ export default function SwipeableCards({
                       title={currentRec.title || t('cards:swipeable.experience')}
                       isTopCard={true}
                       style={styles.cardImage}
+                      decodeTarget={heroDecodeTarget}
                     />
 
                     {/* ORCH-0589 v2 (G4): premium bottom-fade gradient — darker canvas for title + chips */}
@@ -3119,7 +3377,11 @@ export default function SwipeableCards({
               )}
             </TouchableOpacity>
             </View>
-          </Animated.View>
+          </Reanimated.View>
+          </GestureDetector>
+          </>
+          )}
+          </DeckSwipeStage>
         </View>
       </View>
       {/* ORCH-1063: ExpandedCardModal / DismissedCardsSheet / CustomPaywallScreen
@@ -3313,6 +3575,17 @@ const styles = StyleSheet.create({
     elevation: 8,
     zIndex: 2,
   },
+  cardOverlay: {
+    backgroundColor: 'transparent',
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    zIndex: 3,
+    elevation: 3,
+  },
+  behindCardOverlay: {
+    zIndex: 1,
+    elevation: 1,
+  },
   // ORCH-0589 v4 (V1): borderRadius matches the outer card so overflow clips cleanly
   // against the bezel-matched corners. `overflow: hidden` needed so the hero photo +
   // cardDetails white strip both clip to the rounded silhouette.
@@ -3324,9 +3597,22 @@ const styles = StyleSheet.create({
   nextCard: {
     zIndex: 1,
   },
+  transitionDelayOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.55)',
+  },
   imageContainer: {
     flex: IMAGE_SECTION_RATIO,
     position: "relative",
+  },
+  posterImageContainer: {
+    backgroundColor: '#1a1a2e',
+  },
+  transparentImageContainer: {
+    backgroundColor: 'transparent',
   },
   // ORCH-0589 v3 (R4): full-bleed image, no corner radii.
   cardImage: {
@@ -3736,30 +4022,34 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   likeIndicator: {
-    backgroundColor: "#f3f4f6",
+    backgroundColor: colors.gray[100],
     paddingHorizontal: 20,
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: radius.sm,
     borderWidth: 2,
-    borderColor: "#eb7825",
+    borderColor: colors.primary[700],
   },
   likeText: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#eb7825",
+    ...typography.lg,
+    fontWeight: fontWeights.bold,
+    color: colors.primary[700],
+    letterSpacing: 0,
+    textAlign: 'center',
   },
   passIndicator: {
-    backgroundColor: "#f3f4f6",
+    backgroundColor: colors.gray[100],
     paddingHorizontal: 20,
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: radius.sm,
     borderWidth: 2,
-    borderColor: "#6b7280",
+    borderColor: colors.gray[600],
   },
   passText: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#6b7280",
+    ...typography.lg,
+    fontWeight: fontWeights.bold,
+    color: colors.gray[600],
+    letterSpacing: 0,
+    textAlign: 'center',
   },
   swipeInstructions: {
     flexDirection: "row",
