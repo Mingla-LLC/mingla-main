@@ -828,7 +828,10 @@ async function handleInstallmentPaidInFull(
   });
 }
 
-serve(async (req) => {
+// #1541 §4.7 — EXPORTED so the runtime companion test can drive a real Request
+// through the real handler and assert on CAPTURED provider HTTP rather than on
+// source text. `serve(handler)` below is the same call this module always made.
+export const handler = async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: ticketCorsHeaders });
   }
@@ -1545,4 +1548,6 @@ serve(async (req) => {
   void EMAIL_SENDERS;
 
   return jsonResponse({ orderId, outcomes });
-});
+};
+
+serve(handler);
