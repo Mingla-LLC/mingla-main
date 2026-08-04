@@ -7377,3 +7377,50 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   orchestrator deploys the four edge functions and proves SC-14 live — one real NG-destination send
   on the ticket path recorded `skipped` with zero provider HTTP, evidenced with the actual ledger row.
   **#1541 ships, deploys and passes SC-14 BEFORE `sms_live_enabled.ng` is flipped.**
+
+---
+
+## DRAFT — issue #1576 (the promoted deck card renders black)
+
+### I-PROPOSED-1576-ANIMATED-STYLE-SWAP-KEY-PARITY (DRAFT)
+- **Rule:** Where one persistent host node — stable React `key`, deliberately **not** remounted —
+  can have its Reanimated animated style **swapped** between two or more `useAnimatedStyle` results,
+  every style in that swap set MUST return an **identical property key set**, and each style's key
+  set MUST be **invariant across all inputs** (no conditionally-spread properties). Concretely:
+  `DeckSwipeStage`'s poster node swaps `previewCardStyle` <-> `currentCardStyle` on behind ->
+  current promotion, so those two must write the same keys.
+- **Why:** Reanimated writes animated props **directly to the native node** and does **not** restore
+  properties written by a style that has been detached. React's static style diff *does* correctly
+  unset removed properties — but it cannot see Reanimated's writes at all. So any property written
+  by style A and absent from style B stays stamped at **A's last value for the life of the node**.
+  In #1576 that was `opacity: 0` on the promoted hero: a permanently black card on the app's primary
+  surface, shipped to production, on a node that #1481 made non-remounting **on purpose**. The
+  optimisation is correct; the missing property contract is what made it dangerous.
+- **Generalisation:** this is a property of Reanimated, not of the deck. Any future keyed node that
+  swaps animated styles by role inherits the same hazard.
+- **What the enforcement does and does NOT cover — stated plainly.** The gate is **static analysis
+  that evaluates extracted worklet bodies**. It covers the styles it can discover from the render of
+  the file it is pointed at. It does **NOT** cover: styles attached imperatively, animated props
+  written outside `useAnimatedStyle` (`setNativeProps`, direct `updateProps`), or a swap implemented
+  in a file the gate does not read. It does not make the class impossible — it makes *this* swap set
+  provably symmetric and makes re-introducing an asymmetry a loud CI failure rather than a silent
+  visual regression.
+- **The gate asserts the CAUSE, not the symptom, and cannot pass by token match.** The symptom oracle
+  is the mean luminance of the settled card's photo band on a running simulator, and there is no
+  simulator on a CI runner. So the guards extract each `useAnimatedStyle` object literal by
+  comment-aware brace matching, **evaluate** it in a sandbox with a real clamped `interpolate` and
+  the real `SWIPE_COMMIT_*` constants read from `swipeCommit.ts`, and compare key sets over the sweep
+  `[-500,-240,-120,-40,-16,-1,0,1,16,40,120,240,500]` — rest, both opacity knees, the `minDx` floor,
+  both commit distances, and beyond screen width (the exit range). A `/opacity/` regex would be the
+  unfalsifiable-test shape: `likeIndicatorStyle` and `passIndicatorStyle` both contain the token, and
+  so does a comment. T-6b pins this — a control carrying a commented-out `opacity: 1` satisfies a
+  naive token match and is still **rejected**, because the JS parser never sees it.
+- **Enforcement:** `.github/workflows/issue-1576-deck-promoted-card.yml` requires and executes
+  `issue_1576_promoted_card_opacity.test.mjs` (implementor) and
+  `issue_1576_promoted_card_opacity.adversarial.test.mjs` (tester). It is a **separate** workflow from
+  `issue-1481-explorer-deck-tests.yml` so that job's "require all eight" step remains exactly eight.
+- **Regression:** fails-on-revert proven at SPEC time by prototype (key-set mismatch +
+  `opacity=undefined`), re-proven by the implementor via true line deletion of `opacity: 1`, and to be
+  proven independently by the tester.
+- **Established:** DRAFT at #1576 SPEC 2026-08-04. Flips ACTIVE at CLOSE after independent
+  iOS + Android tester PASS.
