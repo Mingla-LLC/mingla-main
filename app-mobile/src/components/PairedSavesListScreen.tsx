@@ -57,6 +57,10 @@ interface PairedSavesListScreenProps {
    * the full-screen / page-sheet consumers (visits list) are unchanged.
    */
   inBottomSheet?: boolean;
+  /** [ORCH-1540-DIAG] temporary — apply an explicit flex:1 to the list. Remove before the fix PR. */
+  diagListFlex?: boolean;
+  /** [ORCH-1540-DIAG] temporary — label instrumentation lines per instance. Remove before the fix PR. */
+  diagLabel?: string;
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -114,6 +118,8 @@ const PairedSavesListScreen: React.FC<PairedSavesListScreenProps> = ({
   selectedCategory,
   onCategoryChange,
   inBottomSheet = false,
+  diagListFlex = false,
+  diagLabel = '?',
 }) => {
   const { t } = useTranslation(['social', 'common']);
   // gorhom-aware list inside a sheet; raw RN FlatList everywhere else.
@@ -243,7 +249,7 @@ const PairedSavesListScreen: React.FC<PairedSavesListScreenProps> = ({
       style={styles.container}
       // [ORCH-1540-DIAG] temporary — remove before the fix PR.
       onLayout={(e) =>
-        console.log(`[ORCH-1540-DIAG] container.onLayout h=${e.nativeEvent.layout.height}`)
+        console.log(`[ORCH-1540-DIAG][${diagLabel}] container.onLayout h=${e.nativeEvent.layout.height}`)
       }
     >
       {/* Header */}
@@ -274,15 +280,20 @@ const PairedSavesListScreen: React.FC<PairedSavesListScreenProps> = ({
           contentContainerStyle={styles.gridContent}
           columnWrapperStyle={styles.columnWrapper}
           showsVerticalScrollIndicator={false}
+          // [ORCH-1540-DIAG] candidate minimal fix under test: explicit flex:1
+          // (flexBasis:0) instead of RN ScrollView's default flexGrow/flexShrink:1
+          // with flexBasis:auto. Every WORKING nested scrollable in this repo sets
+          // this; this list is the only one that does not.
+          style={diagListFlex ? styles.diagListFlex : undefined}
           // [ORCH-1540-DIAG] temporary — remove before the fix PR.
           onLayout={(e: any) =>
-            console.log(`[ORCH-1540-DIAG] list.onLayout h=${e.nativeEvent.layout.height}`)
+            console.log(`[ORCH-1540-DIAG][${diagLabel}] list.onLayout h=${e.nativeEvent.layout.height}`)
           }
           onContentSizeChange={(_w: number, h: number) =>
-            console.log(`[ORCH-1540-DIAG] list.contentSize h=${h}`)
+            console.log(`[ORCH-1540-DIAG][${diagLabel}] list.contentSize h=${h}`)
           }
           onScroll={(e: any) =>
-            console.log(`[ORCH-1540-DIAG] list.scroll y=${e.nativeEvent.contentOffset.y}`)
+            console.log(`[ORCH-1540-DIAG][${diagLabel}] list.scroll y=${e.nativeEvent.contentOffset.y}`)
           }
           scrollEventThrottle={16}
         />
@@ -292,6 +303,8 @@ const PairedSavesListScreen: React.FC<PairedSavesListScreenProps> = ({
 };
 
 const styles = StyleSheet.create({
+  // [ORCH-1540-DIAG] temporary — remove before the fix PR.
+  diagListFlex: { flex: 1 },
   container: {
     flex: 1,
     backgroundColor: '#ffffff',
