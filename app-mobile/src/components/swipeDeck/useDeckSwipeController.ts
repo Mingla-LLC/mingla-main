@@ -432,6 +432,14 @@ export function useDeckSwipeController(
   }, [clearTransitionTimers, positionX, positionY]);
 
   const currentCardStyle = useAnimatedStyle(() => ({
+    // #1576 — MUST be written explicitly, and must stay key-symmetric with
+    // previewCardStyle. DeckSwipeStage swaps ONE keyed poster node from
+    // previewCardStyle to this style on behind->current promotion (#1481: the node
+    // is deliberately NOT remounted, to avoid re-decoding the hero). previewCardStyle
+    // writes opacity 0 at rest; Reanimated does not restore properties written by a
+    // detached style, so omitting opacity here leaves the promoted poster stamped at
+    // opacity 0 permanently — the black card. See I-PROPOSED-1576-ANIMATED-STYLE-SWAP-KEY-PARITY.
+    opacity: 1,
     transform: [
       { translateX: positionX.value },
       { translateY: positionY.value },
