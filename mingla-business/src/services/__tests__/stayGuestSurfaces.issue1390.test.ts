@@ -76,20 +76,33 @@ describe("Issue #1390 Stay guest surface contracts", () => {
   });
 
   test("Stay booking and Payment Element remain off the shared buyer-web boot path", () => {
-    const venuePage = read(
-      "mingla-business/src/components/venue/PublicVenuePage.tsx",
-    );
+    // [TEST-MOD-APPROVED #1559] — the buyer-web venue BODY moved to
+// `packages/brand-rendering/PublicVenueScreen.tsx` (a pure move: render parity
+// proven by publicVenueRenderParity.issue1559.happy.test.tsx). These assertions
+// follow the code; the contract each one pins is unchanged. The React.lazy boundary
+    // deliberately stayed app-side (#1550 R4) — the shared screen is forbidden
+    // from containing one, which is asserted below and in i-1047.
+    const venuePage = read("mingla-business/app/b/[brandSlug]/v/[venueSlug].tsx");
+    const sharedScreen = read("packages/brand-rendering/PublicVenueScreen.tsx");
     const buyerStay = read(
       "mingla-business/src/components/stay/BuyerStayGuestExperience.tsx",
     );
     const renderingBarrel = read("packages/brand-rendering/index.ts");
     expect(venuePage).toContain("React.lazy(() =>");
     expect(venuePage).toContain(
-      'import("../stay/BuyerStayGuestExperience")',
+      'import("../../../../src/components/stay/BuyerStayGuestExperience")',
     );
     expect(venuePage).not.toContain(
-      'import { BuyerStayGuestExperience } from "../stay/BuyerStayGuestExperience"',
+      'import { BuyerStayGuestExperience } from "../../../../src/components/stay/BuyerStayGuestExperience"',
     );
+    // Comments stripped: the screen's header EXPLAINS why it holds no lazy
+    // boundary, and that prose must not satisfy (or trip) the rule.
+    const sharedScreenCode = sharedScreen
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+    expect(sharedScreenCode.length).toBeGreaterThan(5000);
+    expect(sharedScreenCode).not.toContain("React.lazy");
+    expect(sharedScreenCode).not.toContain("StayGuestExperience");
     expect(renderingBarrel).not.toContain(
       'from "./StayGuestBooking"',
     );

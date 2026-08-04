@@ -699,7 +699,12 @@ const paths = {
   adminRules: "mingla-admin/src/lib/deckCardPreviewRules.js",
   adminPreview: "mingla-admin/src/components/DeckCardPreview.jsx",
   buyerService: "mingla-business/src/services/publicEventsService.ts",
-  buyerPage: "mingla-business/src/components/venue/PublicVenuePage.tsx",
+  // #1559 — the typical-spend lede moved into the shared venue screen so both
+  // surfaces format a spend band identically. The RANGE FORMATTER moved with
+  // it (packages/brand-rendering/venueMoney.ts, re-exported by
+  // currencyFormatter.ts), which is why `businessCurrency` below still finds
+  // `formatSourceRange` at its old import path.
+  buyerPage: "packages/brand-rendering/PublicVenueScreen.tsx",
   buyerRoute: "mingla-business/app/b/[brandSlug]/v/[venueSlug].tsx",
   businessCurrency: "mingla-business/src/utils/currencyFormatter.ts",
   businessAuthoring: "mingla-business/src/services/businessPlaceAuthoringService.ts",

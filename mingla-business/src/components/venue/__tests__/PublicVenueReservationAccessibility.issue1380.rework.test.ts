@@ -19,7 +19,11 @@ describe("issue #1380 accessibility and clean-install rework", () => {
   });
 
   test("focus returns only after the maximum Sheet unmount window and next frame", () => {
-    const page = readBusiness("src/components/venue/PublicVenuePage.tsx");
+    // [TEST-MOD-APPROVED #1559] — the buyer-web venue BODY moved to
+// `packages/brand-rendering/PublicVenueScreen.tsx` (a pure move: render parity
+// proven by publicVenueRenderParity.issue1559.happy.test.tsx). These assertions
+// follow the code; the contract each one pins is unchanged.
+    const page = readRepo("packages/brand-rendering/PublicVenueScreen.tsx");
     const wrapper = readBusiness(
       "src/components/venue/PublicVenueReservationSheet.tsx",
     );
@@ -29,9 +33,9 @@ describe("issue #1380 accessibility and clean-install rework", () => {
     expect(wrapper).toContain("}, FOCUS_RETURN_DELAY_MS);");
     expect(wrapper).toContain("requestAnimationFrame(() => onDismissed?.())");
     expect(wrapper).toContain("cancelAnimationFrame(frame)");
-    expect(page).toContain(
-      "onDismissed={handleReservationSheetDismissed}",
-    );
+    // The sheet is now an injected host slot, so the screen names the same
+    // callback on the slot context instead of as a JSX prop. Same wiring.
+    expect(page).toContain("onDismissed: handleReservationSheetDismissed");
     expect(page).not.toContain(
       'setTimeout(() => {\n      publicVenueTabsRef.current?.focusTab("reservations");',
     );

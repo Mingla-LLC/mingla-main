@@ -57,7 +57,14 @@ const repoRoot = path.resolve(
 
 const PATHS = {
   profile: "packages/brand-rendering/venueCategoryProfile.ts",
-  buyerPage: "mingla-business/src/components/venue/PublicVenuePage.tsx",
+  // #1559 — the buyer-web venue BODY moved from
+  // `mingla-business/src/components/venue/PublicVenuePage.tsx` into the shared
+  // package. `buyerPage` follows it, and `buyerRoute` is added so the CHAIN is
+  // still provable end to end: the route mounts the shared screen, and the
+  // shared screen resolves the profile. Repointing without adding the route
+  // would have left "does the buyer surface use the table?" unproven.
+  buyerPage: "packages/brand-rendering/PublicVenueScreen.tsx",
+  buyerRoute: "mingla-business/app/b/[brandSlug]/v/[venueSlug].tsx",
   consumerScreen: "app-mobile/src/screens/ConsumerPublicVenueScreen.tsx",
   readiness: "mingla-business/src/components/venue/VenueDeckReadinessSetup.tsx",
   reserveCopy: "mingla-business/src/components/venue/venueReserveCopy.ts",
@@ -99,8 +106,23 @@ const MUST_CONTAIN = {
   buyerPage: [
     ["venueCategoryProfile(venue.venueCategory)", "the profile resolution"],
     ["profile.overview.map(", "the order-is-data Overview render"],
-    ["Record<VenueSectionId,React.FC<", "the total section registry"],
+    // #1559 — same total Record. The renderer type is declared locally
+    // (`VenueSectionRenderer`) rather than as `React.FC`, because a file under
+    // packages/ cannot resolve the app's React peer and `React.FC` would widen
+    // every section's props to `any`. The consumer screen lives in
+    // app-mobile/src, where React resolves, and keeps `React.FC`.
+    [
+      "Record<VenueSectionId,VenueSectionRenderer>",
+      "the total section registry",
+    ],
     ["profile.reserveAction", "the single reserve string"],
+  ],
+  buyerRoute: [
+    ["<PublicVenueScreen", "the shared venue screen mount"],
+    [
+      'from"@mingla/brand-rendering/PublicVenueScreen"',
+      "the deep-specifier import of the shared screen",
+    ],
   ],
   consumerScreen: [
     ["venueCategoryProfile(venue?.venueCategory", "the profile resolution"],
@@ -123,6 +145,19 @@ const MUST_NOT_CONTAIN = {
   buyerPage: [
     ["constisStay", "a re-grown `const isStay` branch"],
     ['venue.venueCategory==="stay"', "a raw category compare"],
+  ],
+  // The route legitimately gates its QUERIES on the stay category (a Stay has
+  // no menu and no table-reservability round-trip); what it must not do is
+  // render venue body from that compare. So the forbidden tokens here are the
+  // BODY's, not the branch's.
+  buyerRoute: [
+    ["VERIFIED VENUE", "identity-block JSX that belongs to the shared screen"],
+    ["WHERE YOU&apos;LL BE", "address-card JSX that belongs to the shared screen"],
+    ["hoursLineFor", "the hours renderer that belongs to the shared screen"],
+    [
+      "Record<VenueSectionId,React.FC<",
+      "a second section registry — there is exactly one, in the shared screen",
+    ],
   ],
   consumerScreen: [
     ["constisStay", "a re-grown `const isStay` branch"],
@@ -262,9 +297,13 @@ if (process.argv.includes("--self-test")) {
     `),
     buyerPage: pad(`
       const profile = venueCategoryProfile(venue.venueCategory);
-      const VENUE_SECTIONS: Record<VenueSectionId, React.FC<VenueSectionProps>> = {};
+      const VENUE_SECTIONS: Record<VenueSectionId, VenueSectionRenderer> = {};
       {profile.overview.map((sectionId) => null)}
       title={profile.reserveAction}
+    `),
+    buyerRoute: pad(`
+      import { PublicVenueScreen } from "@mingla/brand-rendering/PublicVenueScreen";
+      return <PublicVenueScreen venue={venueViewModel} />;
     `),
     consumerScreen: pad(`
       const profile = venueCategoryProfile(venue?.venueCategory ?? null);

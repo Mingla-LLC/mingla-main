@@ -1,38 +1,65 @@
 /**
- * PublicVenuePage — META-ORCH-1255(C) [multi-venue first-class creation].
+ * PublicVenueScreen — the ONE public venue page.
  *
- * The ANON per-venue public page body for `/b/{brandSlug}/v/{venueSlug}`
- * (DESIGN_META-ORCH-1255_VENUE_SURFACES.md §6, binding). Same shell + theming
- * as the public brand page: ParallaxCoverShell + createThemePalette /
- * offeringSurfaceStyles + the brand theme font.
+ * #1559 [shared-venue-screen], step 3 of #1550. This module is
+ * `mingla-business/src/components/venue/PublicVenuePage.tsx` moved here
+ * VERBATIM: the shell mount, the identity block, the tab strip, every Overview
+ * section, the menu pane, the reserve affordance, the reservation state copy,
+ * the desktop hero and the desktop sticky panel, and the StyleSheet that sizes
+ * all of it. Nothing was redesigned, reworded, reordered or re-tuned. A guest
+ * sees exactly what they saw before — proven by
+ * `mingla-business/src/components/venue/__tests__/publicVenueRenderParity.
+ * issue1559.happy.test.tsx`, which compares seven rendered configurations
+ * against trees recorded from the pre-move code.
+ *
+ * WHY MOVE IT BEFORE REDESIGNING IT. There were two implementations of
+ * `/b/{brand}/v/{venue}` — this one and `ConsumerPublicVenueScreen.tsx` — and
+ * which one a guest got depended on which app they happened to have installed.
+ * #1550 Leg B counted 17 divergences, 13 of them accidental. Merging first
+ * means every later step lands ONCE, on both surfaces, instead of landing on a
+ * changed business page and afterwards being reconciled against an untouched
+ * consumer one. #1560 points the consumer app here and deletes its fork.
  *
  * ANON-SAFE BY CONSTRUCTION (I-PROPOSED-1255-PUBLIC-VENUE-PAGE-ANON-SAFE):
- *   - Data arrives via props from `venue_public_view` (SECURITY DEFINER,
- *     verified-only). This component NEVER queries `venue_listings` and NEVER
- *     calls useAuth (anon buyer route — the `/b/` prefix allowlist).
- *   - The reserve affordance is display-gated by the anon-safe
- *     `pg_venue_reservable_for_place` resolver; not-reservable / error →
- *     NO bar at all (fail closed, no dead CTA).
+ *   - data arrives as a `PublicVenueViewModel` prop, adapted by each host from
+ *     `venue_public_view` (SECURITY DEFINER, verified-only). This module has no
+ *     data layer at all: it cannot query `venue_listings`, cannot call
+ *     `useAuth`, and cannot reach a Supabase client. That is now a structural
+ *     property, not a review convention.
+ *   - the reserve affordance is display-gated by the host's anon-safe
+ *     `pg_venue_reservable_for_place` result; not-reservable / error → NO bar
+ *     at all (fail closed, no dead CTA).
  *
- * Real-data-only (Constitution #9): every element without data is OMITTED —
- * no fabricated placeholders, no "Address unknown" filler. The static map is
+ * WHAT THE HOST STILL OWNS, and why each one is genuinely app-specific:
+ *   - `headSlot` — `expo-router/head`. Web-only SEO; native has nothing to
+ *     emit. The strings come from `publicVenueMeta()` below so the page title a
+ *     crawler reads and the title a share sheet uses have one owner.
+ *   - `bookingBody` — a PAYMENT-RAIL fork, not a UX fork: Stripe.js Payment
+ *     Element on web vs the native PaymentSheet. The loading / error /
+ *     not-taking-reservations states around it stay HERE, because those are
+ *     pixels a guest reads.
+ *   - `reservationSheet` / `overlays` — modal chrome (`Sheet`, `ShareModal` on
+ *     business; the OS share sheet and a different sheet on consumer).
+ *   - `loadThemeFont` — font thunk registries are app-local and cannot cross
+ *     the package boundary. REQUIRED, so a host cannot quietly ship an
+ *     unthemed page the way the consumer screen did.
+ *   - `onAnalytics` — `captureWeb` has a `.web.ts`/native-stub split and the
+ *     consumer uses `postHogService`; a direct call here would fire nothing on
+ *     one surface and violate the split on the other.
+ *
+ * DELIBERATELY NOT HERE (#1550 R4): no `React.lazy`, and no import of either
+ * `*StayGuestExperience`. The host hands in an already-lazy component through
+ * `bookingBody`, which is what keeps `StayGuestBooking` (988 lines) and
+ * `@stripe/stripe-js` out of the eager web boot chunk.
+ *
+ * Real-data-only (Constitution #9): every element without data is OMITTED — no
+ * fabricated placeholders, no "Address unknown" filler. The static map is
  * fetched ONLY through the vendor-neutral `static-map` server proxy
  * (buildStaticMapUrl → null ⇒ map hidden; I-PROPOSED-1162-MAP-FAILSAFE-HIDES).
- * Menu prices are currency-aware incl. zero-decimal currencies via the shared
- * PublicMenuSections renderer (one owner — the brand page's Menu composition).
  */
 
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useReducer,
-  useRef,
-  useState,
-} from "react";
 import {
   Image,
-  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -40,33 +67,6 @@ import {
   Text,
   View,
 } from "react-native";
-import { useRouter } from "expo-router";
-import Head from "expo-router/head";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-// META-ORCH-1255(R2) — DEEP import, NOT the "@mingla/brand-rendering" barrel:
-// the barrel re-exports the whole PublicBrandPage module, and a barrel VALUE
-// import from this (venue-chunk) file would make Metro hoist that ~27 KB
-// module into the EAGER __common boot chunk (ORCH-1083 bundle-budget breach).
-// The type-only barrel import below is erased at compile time (safe).
-import { PublicMenuSections } from "@mingla/brand-rendering/PublicMenuSections";
-import { PublicVenueTabs } from "@mingla/brand-rendering/PublicVenueTabs";
-import type { PublicVenueTabsHandle } from "@mingla/brand-rendering/PublicVenueTabs";
-import type { PublicMenuGroup, PublicVenueTab } from "@mingla/brand-rendering";
-import type { PublicStayDetail } from "@mingla/brand-rendering/stayGuest";
-// #1558 — the venue category, as DATA. DEEP specifier for the same reason as
-// PublicMenuSections above; the module is pure data with one erased type import,
-// so it adds no runtime dependency to any chunk it lands in.
-import {
-  stayClockLabel,
-  typicalSpendVisible,
-  venueCategoryProfile,
-  venueMenuTabVisible,
-  venueNotTakingReservationsCopy,
-  venueShowsTradingHours,
-  type VenueBookingBody,
-  type VenueCategoryProfile,
-  type VenueSectionId,
-} from "@mingla/brand-rendering/venueCategoryProfile";
 import {
   ParallaxCoverShell,
   buildStaticMapUrl,
@@ -78,60 +78,197 @@ import {
   type ThemePalette,
 } from "@mingla/offering-rendering";
 
+import { PublicMenuSections } from "./PublicMenuSections";
+// The package-local React bridge (see PublicVenueTabs.tsx). Files under
+// packages/ cannot discover the app's React peer, so importing "react"
+// directly here would add ~50 unresolved-peer diagnostics to every consuming
+// app's typecheck — the exact delta issue-1403-typecheck-delta.mjs blocks.
+// StayGuestBooking.tsx (988 lines) uses the same bridge and typechecks clean.
 import {
-  brandOgImageUrl,
-  brandPublicPath,
-  venuePublicUrl,
-} from "../../constants/publicUrls";
-import type {
-  PublicVenue,
-  PublicVenueDiscoveryPrice,
-  PublicVenueReservable,
-} from "../../services/publicEventsService";
-import type { BrandHourEntry } from "../../types/brand";
-import { useThemeFont } from "../../theme/useThemeFont";
-import { ShareModal } from "../ui/ShareModal";
-import { GuestVenueReservation } from "./GuestVenueReservation";
+  BrandRenderingReact as React,
+  useBrandRenderingMemo as useMemo,
+  useBrandRenderingState as useState,
+  PublicVenueTabs,
+  type BrandRenderingReactElement,
+  type BrandRenderingReactNode,
+  type PublicVenueTabsHandle,
+} from "./PublicVenueTabs";
+import type { PublicMenuGroup } from "./types";
+import type { PublicVenueTab } from "./publicVenueTabState";
+import type { PublicStayDetail } from "./stayGuest";
 import {
-  captureVenueOrganicEvent,
-  settleVenueOrganicJourneyOnConsent,
-} from "../../services/venueOrganicCaptureService";
-import {
-  runBuyerVenueOrganicCapture,
-  settleBuyerVenueOrganicCapture,
-  type VenueOrganicAnalyticsSurface,
-} from "../../services/venueOrganicCapturePolicy";
-import { PublicVenueReservationSheet } from "./PublicVenueReservationSheet";
+  stayClockLabel,
+  typicalSpendVisible,
+  venueCategoryProfile,
+  venueMenuTabVisible,
+  venueNotTakingReservationsCopy,
+  venueShowsTradingHours,
+  type VenueBookingBody,
+  type VenueCategory,
+  type VenueCategoryProfile,
+  type VenueSectionId,
+} from "./venueCategoryProfile";
+import { formatSourceRange } from "./venueMoney";
 import {
   createPublicVenueReservationUiState,
   normalizePublicVenueReservationUiState,
   publicVenueReservationUiReducer,
 } from "./publicVenueReservationUiState";
-import { captureWeb } from "../../analytics/webAnalytics";
-import { formatSourceRange } from "../../utils/currencyFormatter";
 
-// #1390: Stay booking includes its own renderer and Stripe Payment Element.
-// Keep that product-specific bulk off the shared buyer-web boot path and load it
-// only after a verified Stay venue reaches its reservations surface.
-const BuyerStayGuestExperience = React.lazy(() =>
-  import("../stay/BuyerStayGuestExperience").then((module) => ({
-    default: module.BuyerStayGuestExperience,
-  })),
-);
+// ═══════════════════════════════════════════════════════════════════════════
+// The read model — ONE shape, both apps
+// ═══════════════════════════════════════════════════════════════════════════
 
-export interface PublicVenuePageProps {
-  venue: PublicVenue;
-  discoveryPrice: PublicVenueDiscoveryPrice | null;
+/** A single `brand_hours` row, 0 = Monday. */
+export interface PublicVenueHourEntry {
+  weekday: number;
+  /** "HH:MM" or "HH:MM:SS"; null when closed. */
+  openTime: string | null;
+  closeTime: string | null;
+  isClosed: boolean;
+}
+
+/** The stored brand/venue theme, before resolution. */
+export type PublicVenueThemeInput = Parameters<typeof resolveTheme>[0];
+
+/**
+ * Everything this screen renders, and nothing else. Each host adapts its own
+ * read model (`PublicVenue` on business, `ConsumerPublicVenue` on the app) into
+ * this one shape — that adapter is the ONLY place the two surfaces differ about
+ * what a venue is.
+ */
+export interface PublicVenueViewModel {
+  id: string;
+  brandId: string;
+  brandSlug: string;
+  brandName: string;
+  slug: string;
+  name: string;
+  address: string | null;
+  city: string | null;
+  lat: number;
+  lng: number;
+  venueCategory: VenueCategory | null;
+  coverMediaUrl: string | null;
+  coverMediaType: "image" | "video" | "gif" | null;
+  theme: PublicVenueThemeInput;
+  hours: PublicVenueHourEntry[];
+  galleryPhotoUrls: string[];
+  /** The owner-authored public pitch. Null/empty ⇒ the About section is omitted. */
+  pitch: string | null;
+}
+
+/** The place-discovery spend band, already currency-resolved by the host. */
+export interface PublicVenueDiscoveryPriceView {
+  minMinor: number;
+  maxMinor: number | null;
+  currencyCode: string;
+  minorUnitExponent: number;
+}
+
+/** The anon-safe reserve DISPLAY GATE result. Display fields only. */
+export interface PublicVenueReservableView {
+  reservable: boolean;
+  venueId: string | null;
+  currency: string | null;
+}
+
+export type PublicVenueReservabilityState = "loading" | "ready" | "error";
+export type PublicVenueStayState =
+  | "loading"
+  | "ready"
+  | "unavailable"
+  | "error";
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Host capabilities
+// ═══════════════════════════════════════════════════════════════════════════
+
+type VenueSurfaceStyles = ReturnType<typeof offeringSurfaceStyles>;
+
+/** Every slot receives the ONE resolved theme, so nothing can render unthemed. */
+export interface PublicVenueThemedContext {
+  palette: ThemePalette;
+  surface: VenueSurfaceStyles;
+  theme: ResolvedTheme;
+}
+
+/**
+ * The booking-body slot. Discriminated on the category profile's
+ * `bookingBody`, so the host switches on DATA rather than re-deriving
+ * "is this a hotel?" — the exact branch #1558 deleted.
+ */
+export type PublicVenueBookingSlotContext = PublicVenueThemedContext &
+  (
+    | {
+        kind: "stay";
+        venueId: string;
+        brandId: string;
+        stayDetail: PublicStayDetail | null;
+        stayState: PublicVenueStayState;
+      }
+    | {
+        kind: "table";
+        /** The RESOLVER's venue id — the gate's own id, never the page's. */
+        venueId: string;
+        brandId: string;
+        currency: string | null;
+      }
+  );
+
+/** The modal the Reserve CTA opens. Chrome is app-owned; its state is not. */
+export interface PublicVenueReservationSheetContext
+  extends PublicVenueThemedContext {
+  visible: boolean;
+  title: string;
+  onClose: () => void;
+  onDismissed: () => void;
+  children: BrandRenderingReactNode;
+}
+
+/** The three events this page emits. The host adds its own surface tag. */
+export type PublicVenueAnalyticsEvent =
+  | "public_venue_overview_viewed"
+  | "public_venue_menu_viewed"
+  | "public_venue_reservation_started";
+
+export interface PublicVenueScreenProps {
+  venue: PublicVenueViewModel;
+  discoveryPrice: PublicVenueDiscoveryPriceView | null;
   /** ORCH-1186-C shared shape — the BRAND's menu ([TRANSITIONAL-3]). */
   menu: PublicMenuGroup[];
   /** Anon display gate; not-reservable / unknown → NO reserve bar. */
-  reservable: PublicVenueReservable | null;
-  reservabilityState?: "loading" | "ready" | "error";
+  reservable: PublicVenueReservableView | null;
+  reservabilityState?: PublicVenueReservabilityState;
   initialTab?: PublicVenueTab;
   onRetryReservability?: () => void;
-  stayState?: "loading" | "ready" | "unavailable" | "error";
+  stayState?: PublicVenueStayState;
   stayDetail?: PublicStayDetail | null;
-  analyticsSurface?: VenueOrganicAnalyticsSurface;
+  /** Runtime safe-area insets. A package stays free of the insets provider. */
+  safeAreaInsets: { top: number; bottom: number };
+  /** Web-only `<Head>`; native hosts pass nothing. */
+  headSlot?: BrandRenderingReactNode;
+  /**
+   * REQUIRED and hook-shaped: called unconditionally on every render with the
+   * resolved family, so `useThemeFont` / `useConsumerThemeFont` can be handed
+   * straight in. Required is the point — the consumer venue page shipped for a
+   * month with no brand font at all because nothing forced the decision.
+   */
+  loadThemeFont: (family: string | null) => void;
+  bookingBody: (context: PublicVenueBookingSlotContext) => BrandRenderingReactNode;
+  reservationSheet: (
+    context: PublicVenueReservationSheetContext,
+  ) => BrandRenderingReactNode;
+  /** Host chrome rendered last, in the page frame (business: ShareModal). */
+  overlays?: BrandRenderingReactNode;
+  onAnalytics: (
+    event: PublicVenueAnalyticsEvent,
+    props: Record<string, unknown>,
+  ) => void;
+  onShare: () => void;
+  onClose: () => void;
+  onOpenBrand: () => void;
+  onOpenMaps: (query: string) => void;
 }
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -164,36 +301,78 @@ const hashHueFromString = (s: string): number => {
 /** Today's weekday in the page's 0=Mon..6=Sun convention. */
 const todayWeekday = (): number => (new Date().getDay() + 6) % 7;
 
-const hoursLineFor = (entry: BrandHourEntry): string =>
+const hoursLineFor = (entry: PublicVenueHourEntry): string =>
   entry.isClosed || entry.openTime === null || entry.closeTime === null
     ? "Closed"
     : `${entry.openTime}–${entry.closeTime}`;
 
+/**
+ * The page's derived strings, with ONE owner. The web host's `<Head>` and its
+ * share sheet both read these, so the title a crawler indexes and the title a
+ * guest forwards can never disagree.
+ */
+export interface PublicVenueMeta {
+  pageTitle: string;
+  metaDescription: string;
+  hasPitch: boolean;
+  pitchText: string;
+}
+
+export function publicVenueMeta(venue: {
+  name: string;
+  city: string | null;
+  brandName: string;
+  pitch: string | null;
+}): PublicVenueMeta {
+  // META-ORCH-1290(C) §6.1/§6.2 — the owner-authored pitch. Empty/whitespace →
+  // treated as absent so the About section, desktop clamp, and pitch-first meta
+  // all fall back honestly (no fabricated prose anywhere).
+  const pitchText = venue.pitch !== null ? venue.pitch.trim() : "";
+  const hasPitch = pitchText.length > 0;
+  return {
+    pitchText,
+    hasPitch,
+    metaDescription: hasPitch
+      ? clampPitchForMeta(pitchText)
+      : `${venue.name} — ${venue.brandName} on Mingla`,
+    pageTitle:
+      venue.city !== null
+        ? `${venue.name} · ${venue.city} on Mingla`
+        : `${venue.name} on Mingla`,
+  };
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // #1558 — the Overview pane, as a total section registry.
 //
-// Every block below used to be an inline `const …Block = …` in the component
-// body, rendered in a hardcoded order, with `isStay ?` deciding which of them
-// a guest saw. Now the ORDER AND MEMBERSHIP come from `profile.overview` and
-// the lookup is `Record<VenueSectionId, React.FC<VenueSectionProps>>` — total,
-// so a new section id does not compile until it has a renderer, and a listed id
-// can never miss.
+// The ORDER AND MEMBERSHIP come from `profile.overview` and the lookup is
+// `Record<VenueSectionId, VenueSectionRenderer>` — total, so a new
+// section id does not compile until it has a renderer, and a listed id can
+// never miss.
 //
 // Each section is pure: it takes one context and returns `null` when its data
 // is absent (Constitution #9 — missing is hidden, never faked). A section that
 // is LISTED but has no data renders nothing; a section that is NOT LISTED is
 // never mounted. Those are different states and both are honest.
 //
-// These renderers stay in this file on purpose. #1559 lifts them into
-// `packages/brand-rendering/venueSections/` so the consumer app renders the
-// same pixels; doing it here would build that shared module a step early.
+// #1559 moved these renderers out of the business app and into this package
+// unchanged, which is what lets #1560 delete the consumer's reduced copies of
+// the same blocks rather than bring them up to parity by hand.
 // ═══════════════════════════════════════════════════════════════════════════
 
-type VenueSurfaceStyles = ReturnType<typeof offeringSurfaceStyles>;
+/**
+ * One Overview section. Declared as an explicit function type rather than
+ * `React.FC` because the bridged React is untyped from inside `packages/`;
+ * naming the props concretely here is what keeps every renderer below fully
+ * type-checked instead of silently widening to `any`.
+ */
+export type VenueSectionRenderer = (
+  props: VenueSectionProps,
+) => BrandRenderingReactElement | null;
 
 export interface VenueSectionProps {
-  venue: PublicVenue;
-  discoveryPrice: PublicVenueDiscoveryPrice | null;
+  venue: PublicVenueViewModel;
+  discoveryPrice: PublicVenueDiscoveryPriceView | null;
   stayDetail: PublicStayDetail | null;
   profile: VenueCategoryProfile;
   palette: ThemePalette;
@@ -209,7 +388,7 @@ export interface VenueSectionProps {
 /** §6.1a typical-spend lede — gated by the profile's PRICING MODEL, not by
  *  `!isStay`. A Stay prices `nightlyFrom`; that rate is #1562, so until then a
  *  Stay's lede has a model and no data and renders nothing. */
-const VenuePriceLedeSection: React.FC<VenueSectionProps> = ({
+const VenuePriceLedeSection: VenueSectionRenderer = ({
   discoveryPrice,
   profile,
   palette,
@@ -236,14 +415,14 @@ const VenuePriceLedeSection: React.FC<VenueSectionProps> = ({
 // ── §6.1 About / pitch — the venue's voice, right under the identity ──────
 // Themed prose (palette + brand font), 4-line clamp + Read more. Hidden
 // entirely when the owner wrote no pitch (real-data-only, Constitution #9).
-const VenueAboutSection: React.FC<VenueSectionProps> = ({
+const VenueAboutSection: VenueSectionRenderer = ({
   venue,
   palette,
   themedFont,
 }) => {
   const [aboutExpanded, setAboutExpanded] = useState<boolean>(false);
-  const toggleAboutExpanded = useCallback((): void => {
-    setAboutExpanded((v) => !v);
+  const toggleAboutExpanded = React.useCallback((): void => {
+    setAboutExpanded((v: boolean) => !v);
   }, []);
   const pitchText = venue.pitch !== null ? venue.pitch.trim() : "";
   const hasPitch = pitchText.length > 0;
@@ -280,7 +459,7 @@ const VenueAboutSection: React.FC<VenueSectionProps> = ({
 };
 
 // ── §6.4 map + address card ───────────────────────────────────────────────
-const VenueLocationSection: React.FC<VenueSectionProps> = ({
+const VenueLocationSection: VenueSectionRenderer = ({
   venue,
   palette,
   isDesktop,
@@ -363,7 +542,7 @@ const VenueLocationSection: React.FC<VenueSectionProps> = ({
 // "tradingHours"`. A hotel's profile lists `stayPolicy` here instead, which is
 // why a Stay can no longer publish "Mon–Sat 09:00–17:00" one tap away from its
 // own "Check-in 15:00".
-const VenueHoursSection: React.FC<VenueSectionProps> = ({
+const VenueHoursSection: VenueSectionRenderer = ({
   venue,
   palette,
   surface,
@@ -418,7 +597,7 @@ const VenueHoursSection: React.FC<VenueSectionProps> = ({
 // The times are already on the wire: `PublicStayDetail.checkInTime` /
 // `.checkOutTime` (`packages/brand-rendering/stayGuest.ts`), the same detail the
 // Reservations tab renders. Null detail → the block is omitted, never faked.
-const VenueStayPolicySection: React.FC<VenueSectionProps> = ({
+const VenueStayPolicySection: VenueSectionRenderer = ({
   stayDetail,
   palette,
   surface,
@@ -461,7 +640,7 @@ const VenueStayPolicySection: React.FC<VenueSectionProps> = ({
 };
 
 // ── §6.6b gallery strip ───────────────────────────────────────────────────
-const VenueGallerySection: React.FC<VenueSectionProps> = ({
+const VenueGallerySection: VenueSectionRenderer = ({
   venue,
   palette,
 }) => {
@@ -499,7 +678,7 @@ const VenueGallerySection: React.FC<VenueSectionProps> = ({
  * to the union without a renderer does not compile, and `profile.overview` can
  * therefore never name a section that is not drawable.
  */
-const VENUE_SECTIONS: Record<VenueSectionId, React.FC<VenueSectionProps>> = {
+const VENUE_SECTIONS: Record<VenueSectionId, VenueSectionRenderer> = {
   priceLede: VenuePriceLedeSection,
   about: VenueAboutSection,
   location: VenueLocationSection,
@@ -509,9 +688,9 @@ const VENUE_SECTIONS: Record<VenueSectionId, React.FC<VenueSectionProps>> = {
 };
 
 interface ReserveGateInput {
-  stayState: "loading" | "ready" | "unavailable" | "error" | undefined;
-  reservabilityState: "loading" | "ready" | "error";
-  reservable: PublicVenueReservable | null;
+  stayState: PublicVenueStayState | undefined;
+  reservabilityState: PublicVenueReservabilityState;
+  reservable: PublicVenueReservableView | null;
 }
 
 /**
@@ -531,7 +710,7 @@ const RESERVATION_READY: Record<
     reservable.venueId !== null,
 };
 
-export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
+export const PublicVenueScreen = ({
   venue,
   discoveryPrice,
   menu,
@@ -541,12 +720,20 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
   onRetryReservability,
   stayState,
   stayDetail = null,
-  analyticsSurface = "business_preview",
-}) => {
-  const router = useRouter();
-  const insets = useSafeAreaInsets();
+  safeAreaInsets,
+  headSlot,
+  loadThemeFont,
+  bookingBody,
+  reservationSheet,
+  overlays,
+  onAnalytics,
+  onShare,
+  onClose,
+  onOpenBrand,
+  onOpenMaps,
+}: PublicVenueScreenProps): BrandRenderingReactElement => {
+  const insets = safeAreaInsets;
   const { isDesktop } = useResponsiveLayout();
-  const [shareModalVisible, setShareModalVisible] = useState(false);
   const [muted, setMuted] = useState<boolean>(true);
   // #1558 — the ONE category read on this page. Everything that used to branch
   // on `isStay` now reads a field of this profile, so `play`, `creative_and_arts`
@@ -565,10 +752,10 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
     () => ({ hasMenu, canOpenReservationSheet }),
     [canOpenReservationSheet, hasMenu],
   );
-  const [reservationUiState, dispatchReservationUi] = useReducer(
+  const [reservationUiState, dispatchReservationUi] = React.useReducer(
     publicVenueReservationUiReducer,
     initialTab,
-    (tab) =>
+    (tab: PublicVenueTab) =>
       createPublicVenueReservationUiState(tab, reservationUiContext),
   );
   const normalizedReservationUiState =
@@ -576,8 +763,8 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
       reservationUiState,
       reservationUiContext,
     );
-  const publicVenueTabsRef = useRef<PublicVenueTabsHandle | null>(null);
-  useEffect(() => {
+  const publicVenueTabsRef = React.useRef<PublicVenueTabsHandle | null>(null);
+  React.useEffect(() => {
     dispatchReservationUi({
       type: "INITIAL_TAB_CHANGED",
       tab: initialTab,
@@ -588,21 +775,12 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasMenu, initialTab]);
 
-  useEffect(() => {
+  React.useEffect(() => {
     dispatchReservationUi({
       type: "ENVIRONMENT_CHANGED",
       context: reservationUiContext,
     });
   }, [reservationUiContext]);
-
-  useEffect(() => {
-    return settleBuyerVenueOrganicCapture(analyticsSurface, () =>
-      settleVenueOrganicJourneyOnConsent({
-        brandId: venue.brandId,
-        venueId: venue.id,
-      })
-    );
-  }, [analyticsSurface, venue.brandId, venue.id]);
 
   const resolvedTheme = useMemo<ResolvedTheme>(
     () => resolveTheme(venue.theme, null),
@@ -613,20 +791,17 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
     [resolvedTheme],
   );
   const surface = useMemo(() => offeringSurfaceStyles(palette), [palette]);
-  useThemeFont(resolvedTheme.fontFamilyValue);
-  // Memoised because it is now threaded to every Overview section through
+  // Hook-shaped host capability — called unconditionally, once, every render,
+  // so `useThemeFont` can be passed straight in without breaking hook order.
+  loadThemeFont(resolvedTheme.fontFamilyValue);
+  // Memoised because it is threaded to every Overview section through
   // `sectionProps`; a fresh object each render would defeat that memo.
   const themedFont = useMemo(
     () => ({ fontFamily: resolvedTheme.fontFamilyValue }),
     [resolvedTheme.fontFamilyValue],
   );
 
-  const canonicalUrl = venuePublicUrl({
-    brandSlug: venue.brandSlug,
-    venueSlug: venue.slug,
-  });
-
-  // §6.4 — the static map itself now lives in VenueLocationSection (it is that
+  // §6.4 — the static map itself lives in VenueLocationSection (it is that
   // section's data, not the page's). The page keeps only the maps QUERY, which
   // the section receives, because the "Open in maps" handler is a host effect.
   const hasCoords = Number.isFinite(venue.lat) && Number.isFinite(venue.lng);
@@ -637,26 +812,12 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
         ? `${venue.lat},${venue.lng}`
         : null;
 
-  const handleOpenMaps = useCallback((): void => {
+  const handleOpenMaps = React.useCallback((): void => {
     if (mapsQuery === null) return;
-    void Linking.openURL(
-      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}`,
-    ).catch(() => undefined);
-  }, [mapsQuery]);
+    onOpenMaps(mapsQuery);
+  }, [mapsQuery, onOpenMaps]);
 
-  const handleOpenBrand = useCallback((): void => {
-    router.push(brandPublicPath(venue.brandSlug) as never);
-  }, [router, venue.brandSlug]);
-
-  const handleClose = useCallback((): void => {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace(brandPublicPath(venue.brandSlug) as never);
-    }
-  }, [router, venue.brandSlug]);
-
-  const handleReserve = useCallback((): void => {
+  const handleReserve = React.useCallback((): void => {
     if (
       !canOpenReservationSheet ||
       normalizedReservationUiState.reservationSheetOpen ||
@@ -668,40 +829,33 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
       type: "RESERVE_CTA_PRESSED",
       context: reservationUiContext,
     });
-    captureWeb("public_venue_reservation_started", {
-      surface: analyticsSurface,
+    onAnalytics("public_venue_reservation_started", {
       brand_id: venue.brandId,
       venue_id: venue.id,
       source_tab: "sticky_cta",
     });
-    runBuyerVenueOrganicCapture(analyticsSurface, () => {
-      void captureVenueOrganicEvent(
-        { brandId: venue.brandId, venueId: venue.id },
-        "reservation_start",
-      );
-    });
   }, [
-    analyticsSurface,
     canOpenReservationSheet,
     normalizedReservationUiState.activeTab,
     normalizedReservationUiState.reservationSheetOpen,
+    onAnalytics,
     reservationUiContext,
     venue.brandId,
     venue.id,
   ]);
 
-  const handleReservationSheetClose = useCallback((): void => {
+  const handleReservationSheetClose = React.useCallback((): void => {
     dispatchReservationUi({
       type: "RESERVATION_SHEET_CLOSED",
       context: reservationUiContext,
     });
   }, [reservationUiContext]);
 
-  const handleReservationSheetDismissed = useCallback((): void => {
+  const handleReservationSheetDismissed = React.useCallback((): void => {
     publicVenueTabsRef.current?.focusTab("reservations");
   }, []);
 
-  const handleVenueTabChange = useCallback(
+  const handleVenueTabChange = React.useCallback(
     (tab: PublicVenueTab): void => {
       dispatchReservationUi({
         type: "TAB_SELECTED",
@@ -730,19 +884,7 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
       ? `Open today · ${todayEntry.openTime}–${todayEntry.closeTime ?? ""}`
       : null;
 
-  // META-ORCH-1290(C) §6.1/§6.2 — the owner-authored pitch. Empty/whitespace →
-  // treated as absent so the About section, desktop clamp, and pitch-first meta
-  // all fall back honestly (no fabricated prose anywhere).
-  const pitchText = venue.pitch !== null ? venue.pitch.trim() : "";
-  const hasPitch = pitchText.length > 0;
-
-  const metaDescription = hasPitch
-    ? clampPitchForMeta(pitchText)
-    : `${venue.name} — ${venue.brandName} on Mingla`;
-  const pageTitle =
-    venue.city !== null
-      ? `${venue.name} · ${venue.city} on Mingla`
-      : `${venue.name} on Mingla`;
+  const { hasPitch, pitchText } = publicVenueMeta(venue);
 
   // ── §6.2 identity block ───────────────────────────────────────────────────
   const identityBlock = (
@@ -756,7 +898,7 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
         {venue.name}
       </Text>
       <Pressable
-        onPress={handleOpenBrand}
+        onPress={onOpenBrand}
         accessibilityRole="link"
         accessibilityLabel={`View ${venue.brandName} on Mingla`}
         style={styles.byBrandRow}
@@ -828,11 +970,16 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
     ) : null;
 
   // #1558 — which booking body the Reservations tab mounts is DATA
-  // (`profile.bookingBody`), resolved through a total record. The bodies stay
-  // app-side because the fork is a PAYMENT RAIL (Stripe.js Payment Element on
-  // web vs the native PaymentSheet), not a UX fork; #1559 turns this into the
-  // shared module's injected slot.
-  const reservationBodies: Record<VenueBookingBody, () => React.ReactNode> = {
+  // (`profile.bookingBody`), resolved through a total record. #1559 turns the
+  // body itself into the injected `bookingBody` slot, because the fork is a
+  // PAYMENT RAIL (Stripe.js Payment Element on web vs the native PaymentSheet),
+  // not a UX fork. Every state AROUND the body stays here: those are pixels.
+  const themedSlotContext: PublicVenueThemedContext = {
+    palette,
+    surface,
+    theme: resolvedTheme,
+  };
+  const reservationBodies: Record<VenueBookingBody, () => BrandRenderingReactNode> = {
     stay: () => (
       <React.Suspense
         fallback={
@@ -843,15 +990,14 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
           </View>
         }
       >
-        <BuyerStayGuestExperience
-          venueId={venue.id}
-          brandId={venue.brandId}
-          detail={stayDetail}
-          state={stayState ?? "unavailable"}
-          palette={palette}
-          surface={surface}
-          theme={resolvedTheme}
-        />
+        {bookingBody({
+          ...themedSlotContext,
+          kind: "stay",
+          venueId: venue.id,
+          brandId: venue.brandId,
+          stayDetail,
+          stayState: stayState ?? "unavailable",
+        })}
       </React.Suspense>
     ),
     table: () =>
@@ -878,12 +1024,13 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
           </Pressable>
         </View>
       ) : reservable?.reservable === true && reservable.venueId !== null ? (
-        <GuestVenueReservation
-          venueId={reservable.venueId}
-          brandId={venue.brandId}
-          currency={reservable.currency}
-          analyticsSurface={analyticsSurface}
-        />
+        bookingBody({
+          ...themedSlotContext,
+          kind: "table",
+          venueId: reservable.venueId,
+          brandId: venue.brandId,
+          currency: reservable.currency,
+        })
       ) : (
         <View style={styles.reservationState}>
           <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>
@@ -971,7 +1118,7 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
           </Text>
         ) : null}
         <Pressable
-          onPress={handleOpenBrand}
+          onPress={onOpenBrand}
           accessibilityRole="link"
           accessibilityLabel={`View ${venue.brandName} on Mingla`}
           style={styles.byBrandRow}
@@ -984,7 +1131,7 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
           </Text>
         </Pressable>
         <Pressable
-          onPress={() => setShareModalVisible(true)}
+          onPress={onShare}
           accessibilityRole="button"
           accessibilityLabel="Share this venue"
           style={({ pressed }) => [
@@ -1040,22 +1187,14 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
         onTabChange={handleVenueTabChange}
         onTabViewed={(tab: PublicVenueTab) => {
           if (tab === "overview") {
-            captureWeb("public_venue_overview_viewed", {
-              surface: analyticsSurface,
+            onAnalytics("public_venue_overview_viewed", {
               brand_id: venue.brandId,
               venue_id: venue.id,
             });
           } else if (tab === "menu") {
-            captureWeb("public_venue_menu_viewed", {
-              surface: analyticsSurface,
+            onAnalytics("public_venue_menu_viewed", {
               brand_id: venue.brandId,
               venue_id: venue.id,
-            });
-            runBuyerVenueOrganicCapture(analyticsSurface, () => {
-              void captureVenueOrganicEvent(
-                { brandId: venue.brandId, venueId: venue.id },
-                "menu_open",
-              );
             });
           }
         }}
@@ -1065,28 +1204,7 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
 
   return (
     <View style={styles.host}>
-      {Platform.OS === "web" ? (
-        <Head>
-          <title>{pageTitle}</title>
-          <meta name="description" content={metaDescription} />
-          <meta property="og:title" content={pageTitle} />
-          <meta property="og:description" content={metaDescription} />
-          <meta property="og:url" content={canonicalUrl} />
-          <meta
-            property="og:image"
-            content={
-              venue.coverMediaUrl !== null && venue.coverMediaType !== "video"
-                ? venue.coverMediaUrl
-                : brandOgImageUrl({ brandSlug: venue.brandSlug })
-            }
-          />
-          <meta property="og:type" content="place" />
-          <meta name="twitter:card" content="summary_large_image" />
-          <meta name="twitter:title" content={pageTitle} />
-          <meta name="twitter:description" content={metaDescription} />
-          <link rel="canonical" href={canonicalUrl} />
-        </Head>
-      ) : null}
+      {headSlot}
       <ParallaxCoverShell
         palette={palette}
         theme={resolvedTheme}
@@ -1095,10 +1213,10 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
         coverHue={hashHueFromString(venue.slug)}
         entranceAnimationKey={`venue:${venue.brandSlug}:${venue.slug}:${resolvedTheme.color}`}
         muted={muted}
-        onToggleMute={() => setMuted((v) => !v)}
+        onToggleMute={() => setMuted((v: boolean) => !v)}
         showMute={venue.coverMediaType === "video"}
-        onClose={handleClose}
-        onShare={() => setShareModalVisible(true)}
+        onClose={onClose}
+        onShare={onShare}
         hideCloseOnWeb
         heroEyebrow={heroEyebrow}
         heroTitle={heroTitle}
@@ -1110,24 +1228,18 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
         {bodyContent}
       </ParallaxCoverShell>
       {reserveBar}
-      <PublicVenueReservationSheet
-        visible={normalizedReservationUiState.reservationSheetOpen}
-        onClose={handleReservationSheetClose}
-        onDismissed={handleReservationSheetDismissed}
-        // #1532 defect 1 / #1558 — the heading now comes from the SAME profile
+      {reservationSheet({
+        ...themedSlotContext,
+        visible: normalizedReservationUiState.reservationSheetOpen,
+        onClose: handleReservationSheetClose,
+        onDismissed: handleReservationSheetDismissed,
+        // #1532 defect 1 / #1558 — the heading comes from the SAME profile
         // field as the CTA above, so a Stay guest can no longer tap "Reserve
         // this Stay" and land on a sheet headed "Reserve a table".
-        title={profile.reserveAction}
-      >
-        {reservationsBlock}
-      </PublicVenueReservationSheet>
-      <ShareModal
-        visible={shareModalVisible}
-        onClose={() => setShareModalVisible(false)}
-        url={canonicalUrl}
-        title={pageTitle}
-        description={metaDescription}
-      />
+        title: profile.reserveAction,
+        children: reservationsBlock,
+      })}
+      {overlays}
     </View>
   );
 };
@@ -1403,4 +1515,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default PublicVenuePage;
+export default PublicVenueScreen;

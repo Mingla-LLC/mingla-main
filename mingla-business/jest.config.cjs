@@ -160,6 +160,15 @@ module.exports = {
     // The @mingla/offering-rendering barrel eagerly re-exports RN component .tsx —
     // map to a mock that re-exports the REAL pure helpers + stubs the components.
     "^@mingla/offering-rendering$": "<rootDir>/__manual_mocks__/offering-rendering.js",
+    // #1559 — resolution repair, NOT a mock. `node_modules/@mingla/*` is a
+    // workspace symlink; inside a git worktree it points at the ANCHOR
+    // checkout, so a DEEP `@mingla/brand-rendering/<sub>` specifier resolved
+    // the anchor's copy of the file — i.e. a worktree run silently tested
+    // somebody else's branch, or failed outright on a module the anchor has not
+    // pulled yet. This maps the subpath form to THIS tree. In CI the symlink
+    // already points here, so the mapping is the identity. Anchored to the
+    // subpath form only: the bare barrel is untouched.
+    "^@mingla/brand-rendering/(.+)$": "<rootDir>/../packages/brand-rendering/$1",
     // ESM-native expo packages (reached via expo-image-picker / expo-file-system /
     // mapboxToken / config reads).
     "^expo-constants$": "<rootDir>/__manual_mocks__/expo-constants.js",

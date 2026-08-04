@@ -55,13 +55,18 @@ describe("issue #1365 Brand → venue reservation journey", () => {
   });
 
   test("buyer-web and consumer app both mount the shared venue tabs", () => {
-    const webPage = readBusiness("src/components/venue/PublicVenuePage.tsx");
+    // [TEST-MOD-APPROVED #1559] — the buyer-web venue BODY moved to
+// `packages/brand-rendering/PublicVenueScreen.tsx` (a pure move: render parity
+// proven by publicVenueRenderParity.issue1559.happy.test.tsx). These assertions
+// follow the code; the contract each one pins is unchanged.
+    const webPage = readRepo("packages/brand-rendering/PublicVenueScreen.tsx");
+    const webRoute = readBusiness("app/b/[brandSlug]/v/[venueSlug].tsx");
     const nativePage = readRepo(
       "app-mobile/src/screens/ConsumerPublicVenueScreen.tsx",
     );
     expect(webPage).toContain("<PublicVenueTabs");
     expect(nativePage).toContain("<PublicVenueTabs");
-    expect(webPage).toContain("<GuestVenueReservation");
+    expect(webRoute).toContain("<GuestVenueReservation");
     expect(nativePage).toContain("<VenueReserveSheet");
   });
 
