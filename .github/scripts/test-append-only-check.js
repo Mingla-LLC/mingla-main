@@ -91,7 +91,6 @@
  * wired into CI added by issue #1058 (2026-07-21).
  */
 
-const { execSync, execFileSync, spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const nodePath = require("node:path");
@@ -116,12 +115,12 @@ function isTestPath(path) {
   return TEST_FILE_PATTERNS.some((re) => re.test(path));
 }
 
-// #1510: there is deliberately NO shell-string git runner in this file any more. The
-// previous `runGit` assembled `git <args>` for a shell, and every one of its callers
-// has been converted to `runGitArgs`. It is removed rather than left unused, because an
-// available shell-string helper is how the next call site quietly reacquires both of
-// the properties this gate must not have: a path that can be interpreted, and a
-// pathspec that can glob-match a file other than the one being measured.
+// #1510: there is deliberately NO shell-string git runner in this file any more, and
+// since #1534 there is no git runner at this scope AT ALL — see "the only door to the
+// repository" below. An available runner is how the next call site quietly reacquires
+// the properties this gate must not have: a path that can be interpreted, a pathspec
+// that can glob-match a file other than the one being measured, and a reading of the
+// repository that nothing reconciled.
 
 // #1534 (R-3) — the gate's own output must never be a valid attestation. Any token
 // literal that reaches stdout is rewritten to its non-digit placeholder form, which
@@ -132,21 +131,6 @@ function redactTokens(text) {
     /(\[TEST-(?:MOD|RENAME)-APPROVED (?:(?:META-)?ORCH-|#))\d{4,}(-[A-Z])?\]/g,
     (m, head, leg) => `${head}NNNN${leg || ""}]`,
   );
-}
-
-// #1534 (R-2) — the BYTE form of git's output. `-z` makes git emit paths raw (no
-// C-quoting), and reading the result as a Buffer keeps bytes that are not valid UTF-8
-// intact. Paths are carried as latin1 strings: that mapping is byte-lossless and
-// reversible, and it leaves every ASCII character the test-file patterns care about
-// exactly where it was.
-function runGitBuf(args) {
-  const argv = ["--literal-pathspecs", ...args];
-  try {
-    return execFileSync("git", argv, { maxBuffer: 256 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
-  } catch (err) {
-    const stderr = err.stderr ? err.stderr.toString() : "";
-    throw new Error(`git ${argv.join(" ")} failed (exit ${err.status}):\n  stderr: ${stderr.trim()}`);
-  }
 }
 
 // NUL-delimited field split. A trailing NUL yields no empty tail field.
@@ -188,7 +172,7 @@ function displayPath(latin1Path) {
 // other than a name.
 //
 // (1) `runGit` builds a SHELL command string, so any caller that embeds a repository
-//     path in it hands the shell that path's characters to interpret. `runGitArgs`
+//     path in it hands the shell that path's characters to interpret. The argv runner
 //     passes each argument as a separate argv element via execFileSync, so the shell
 //     is not in the path at all.
 //
@@ -203,178 +187,13 @@ function displayPath(latin1Path) {
 // Together these make a path DATA in every sense — it cannot change which command
 // runs, and it cannot change which paths that command reports on. Same
 // throw-on-failure shape as `runGit`, which is unchanged and keeps its other callers.
-function runGitArgs(args) {
-  const argv = ["--literal-pathspecs", ...args];
-  try {
-    return execFileSync("git", argv, {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-  } catch (err) {
-    const stderr = err.stderr ? err.stderr.toString() : "";
-    const stdout = err.stdout ? err.stdout.toString() : "";
-    throw new Error(
-      `git ${argv.join(" ")} failed (exit ${err.status}):\n  stderr: ${stderr.trim()}\n  stdout: ${stdout.trim()}`,
-    );
-  }
-}
+// #1510 — the outcome of a FAILED measurement, distinct from a measured zero. Kept a
+// Symbol so it can never be confused with a count, coerced to one, or compared equal
+// to one by accident.
+const UNDIFFABLE = Symbol("undiffable");
 
-function resolveBaseRef() {
-  if (process.env.GITHUB_BASE_REF) {
-    const candidate = `origin/${process.env.GITHUB_BASE_REF}`;
-    try {
-      runGitArgs(["rev-parse", "--verify", candidate]);
-      return candidate;
-    } catch {
-      // fall through
-    }
-  }
-  if (process.env.GITHUB_EVENT_NAME === "push") {
-    try {
-      runGitArgs(["rev-parse", "--verify", "HEAD~1"]);
-      return "HEAD~1";
-    } catch {
-      // single-commit branch (HEAD~1 doesn't exist) — nothing to check
-      return null;
-    }
-  }
-  for (const candidate of ["origin/main", "main", "HEAD~1"]) {
-    try {
-      runGitArgs(["rev-parse", "--verify", candidate]);
-      return candidate;
-    } catch {
-      // try next
-    }
-  }
-  throw new Error(
-    "Could not resolve a base ref. Tried GITHUB_BASE_REF, HEAD~1, origin/main, main.",
-  );
-}
-
-// #1534 REWORK (R-2, structurally) — THE SINGLE READING.
-//
-// The first pass closed "detection, counting and attribution disagree about which bytes"
-// by giving each of them its own NUL-delimited parse. That is the SAME divergence with a
-// new spelling: two parallel parses of two DIFFERENT formats can still disagree, and one
-// of those formats packs its path column together with its count columns behind tab
-// separators — a shape a path is free to imitate, because a path may contain a tab and
-// may begin with one. Deciding a record's SHAPE by asking whether a cell between the tabs
-// came out empty is therefore not a test of the record at all; it is a test of the path's
-// first byte, and a path that starts with a separator makes an ordinary record look like a
-// paired one. The parser then consumes the two records that follow as if they were that
-// record's path fields, and from there the two readings are describing different files.
-// Downstream that is silent: an arm that fails closed on a missing key refuses innocent
-// files, and an arm where absence legitimately means "no difference" passes a gutted one.
-//
-// So identity is now read exactly ONCE, in the only format that puts every field behind
-// the record separator: `--raw -z` yields the status, both object ids and both paths as
-// their own fields, so nothing in it has to be split apart to find a path. Detection, the
-// dispositions and the metadata comparison all read THIS list and nothing else.
-//
-// Counts cannot come from that format — git will not emit them there — so a second read
-// stays unavoidable. What is avoidable is letting it contribute IDENTITY. It contributes
-// NUMBERS ONLY: it is walked in lockstep with the single reading, its shape is decided by
-// POSITION rather than by cell emptiness, and its path columns are used solely to CHECK
-// against the single reading, never as a key. Any disagreement of any kind — a shape that
-// does not match, a path that does not match, a read that is shorter or longer — marks the
-// whole index desynced, and a desynced index refuses every entry. The two readings can no
-// longer diverge silently, because agreeing is a precondition for the index existing.
-function readRecords(range) {
-  const f = nulFields(
-    runGitBuf(["diff", "--raw", "--no-abbrev", "--find-renames", "-z", ...range, "--"]),
-  );
-  const records = [];
-  for (let i = 0; i < f.length; ) {
-    const meta = f[i++];
-    if (!meta.startsWith(":")) return { records, truncated: true };
-    // ":<srcmode> <dstmode> <srcoid> <dstoid> <status>" — fixed-width fields separated by
-    // spaces, and NOT a place a path can appear, which is the whole reason to read here.
-    const cols = meta.slice(1).trim().split(/\s+/);
-    const status = cols[4] || "";
-    const twoPaths = status.startsWith("R") || status.startsWith("C");
-    const first = f[i++];
-    const second = twoPaths ? f[i++] : undefined;
-    if (first === undefined || (twoPaths && second === undefined)) {
-      return { records, truncated: true };
-    }
-    records.push({
-      status,
-      srcOid: cols[2],
-      dstOid: cols[3],
-      oldPath: twoPaths ? first : undefined,
-      path: twoPaths ? second : first,
-    });
-  }
-  return { records, truncated: false };
-}
-
-// Returns an array of counts positionally matching `records`, or a STRING naming the
-// disagreement. A rename or copy record ends AT its second tab and its two paths follow
-// as their own fields; every other record continues past that tab, and everything after
-// it is the path — tabs, leading separators and all. A path is never empty, so "the
-// second tab is the last byte of the field" is an exact test of the record's shape and
-// not an inference about its content.
-function attachCounts(records, range) {
-  const f = nulFields(
-    runGitBuf(["diff", "--numstat", "--find-renames", "-z", ...range, "--"]),
-  );
-  const counts = [];
-  let i = 0;
-  for (const rec of records) {
-    if (i >= f.length) return "the counting read ran out of records before the listing read did";
-    const field = f[i++];
-    const firstTab = field.indexOf("\t");
-    const secondTab = firstTab < 0 ? -1 : field.indexOf("\t", firstTab + 1);
-    if (secondTab < 0) return "a counting record did not carry both count columns";
-    const pairShaped = secondTab === field.length - 1;
-    const twoPaths = rec.oldPath !== undefined;
-    if (pairShaped !== twoPaths) return "the two readings disagree about which changes moved a file";
-    let oldPath;
-    let path;
-    if (pairShaped) {
-      oldPath = f[i++];
-      path = f[i++];
-      if (path === undefined) return "a counting record was truncated";
-    } else {
-      path = field.slice(secondTab + 1);
-    }
-    // Compared, never adopted. This is the reconciliation, and it is what fails closed.
-    if (path !== rec.path || (twoPaths && oldPath !== rec.oldPath)) {
-      return "the two readings disagree about which file a record describes";
-    }
-    const deletedColumn = field.slice(firstTab + 1, secondTab);
-    counts.push(/^\d+$/.test(deletedColumn) ? Number(deletedColumn) : null);
-  }
-  if (i !== f.length) return "the counting read carried more records than the listing read";
-  return counts;
-}
-
-// #1534 (R-1) — ONE measurement source, built ONCE per range, from the single reading.
-// Nothing here is scoped by a pathspec, so a path can neither miss its own record nor be
-// answered with a sibling's. `desync` is non-null when the two readings did not
-// reconcile; the maps are then left EMPTY on purpose, so every entry fails the presence
-// invariant in the dispatch and the run refuses rather than guessing.
-function buildLossIndex(range) {
-  const { records, truncated } = readRecords(range);
-  const numstat = new Map();
-  const oids = new Map();
-  let desync = truncated ? "the listing read was truncated" : null;
-  const counts = desync ? null : attachCounts(records, range);
-  if (typeof counts === "string") desync = counts;
-  for (let k = 0; k < records.length; k++) {
-    const rec = records[k];
-    const oid = { srcOid: rec.srcOid, dstOid: rec.dstOid };
-    oids.set(rec.path, oid);
-    if (rec.oldPath !== undefined && !oids.has(rec.oldPath)) oids.set(rec.oldPath, oid);
-    if (desync) continue;
-    numstat.set(rec.path, counts[k]);
-    if (rec.oldPath !== undefined && !numstat.has(rec.oldPath)) numstat.set(rec.oldPath, counts[k]);
-  }
-  return { range, records, numstat, oids, desync };
-}
-
-// Detection is now a FILTER over the single reading rather than a second parse of a
-// second format. `isTestPath` is unchanged and still runs against the real bytes.
+// Detection is a FILTER over the single reading rather than a second parse of a second
+// format. `isTestPath` is unchanged and still runs against the real bytes.
 function selectTestEntries(records) {
   const entries = [];
   for (const rec of records) {
@@ -393,83 +212,37 @@ function selectTestEntries(records) {
   return entries;
 }
 
-// #1527 asked a real question — "does the BASE BRANCH already hold this path?", which a
-// three-dot diff does not answer — and #1534 first answered it by LISTING THE BASE TREE.
-// That listing was a THIRD reading of the repository, reconciled against nothing, and it
-// gated the whole added arm: had it ever spelled a path differently from the reading the
-// entries came from, the arm would have concluded "new file, nothing to measure" for a
-// file that was being emptied. That is this issue's own defect class, surviving in the one
-// place the single-reading rule had not been applied. It is deliberately NOT replaced with
-// a reconciled second listing — the question is answered from the reading already taken,
-// by asking whether the record for this path carries a PRE-image at all. A path that
-// existed before has one; a genuinely new path does not. See the added arm.
+// #1534 — EVERY disposition that can hide content loss asks THIS ONE question. It has no
+// terminal that infers a count it did not take. It is pure: it is handed an already
+// reconciled reading and a way to re-read, and it reaches nothing on its own.
 //
-// The helper is REMOVED rather than left unused: an available "just list the tree" helper
-// is how the next call site quietly reacquires a reading that answers to nobody, exactly
-// as noted above for the shell-string git runner.
-
-// #1510 — the outcome of a FAILED measurement, distinct from a measured zero. Kept a
-// Symbol so it can never be confused with a count, coerced to one, or compared equal
-// to one by accident.
-const UNDIFFABLE = Symbol("undiffable");
-
-// #1510 — the deleted-line count is MEASURED, never inferred from an empty parse.
-//
-// Stage 1 (primary): `git diff --numstat` reports the deleted-line count for a path as
-// a NUMBER in its second column. It is a statistic git computes about the change, not
-// a rendering of it, so it is unaffected by how (or whether) the change is rendered as
-// text, and it never requires interpreting a diff line's leading characters — so no
-// deleted line whose own content begins with a dash can be mistaken for a file header.
-//
-// Stage 2 (recovery, and ONLY when stage 1 reports the count as `-`): re-read the diff
-// with `--text`, which renders a real line diff for a blob git would otherwise decline
-// to render, and count deletions INSIDE HUNKS ONLY — the `sawHunk` latch means the
-// leading file headers are excluded structurally rather than by prefix-matching, so
-// header text can never be counted as content and content can never be skipped as a
-// header.
-//
-// Stage 3 (did anything actually change?): a change can be reported for a path whose
-// CONTENT is byte-for-byte identical — only the file mode moved. Such a change removes
-// nothing, so refusing it would be a false refusal on ordinary work, and this refusal
-// is unoverridable by design, so a false one has no way out at all. Before refusing,
-// compare the pre-image and post-image blob object ids: identical ids mean the bytes
-// did not change, and the honest count is zero.
-//
-// Stage 4 (fail closed): otherwise the content DID change and the recovery still
-// produced nothing to count, so the measurement did not succeed. Return UNDIFFABLE, not
-// a number. A count that was never taken is not a count of zero.
-//
-// Every invocation passes the path as an argv element AND under literal pathspec
-// matching (see `runGitArgs`), so the measurement is scoped to this path and no other.
-// #1534 — EVERY disposition that can hide content loss asks THIS ONE question, over
-// whichever range that disposition is owed an answer for. It has no terminal that infers
-// a count it did not take.
-//
-// Stage 1 (primary): the range's numstat index. A path git reported as changed and then
-// gave NO record for was never measured — that is UNDIFFABLE, not zero. #1510 removed
-// two ways to infer a zero from an empty parse; this removes the third and last one.
+// Stage 1 (primary): the reading's counts. A path the reading listed and then gave no
+// record for was never measured — that is `absentMeans`, never a silent zero.
 // Stage 2 (metadata): identical pre- and post-image object ids mean the bytes did not
 // move, so the honest count is zero however the change is or is not rendered.
-// Stage 3 (recovery): re-read with --text and count deletions INSIDE HUNKS ONLY, scoped
-// to the same change the count is owed for — for a rename that is the renamed PAIR, not
-// the destination alone, or every surviving line reads as an addition.
+// Stage 3 (recovery): re-read and count removals, scoped to the same change the count is
+// owed for — for a rename that is the renamed PAIR, not the destination alone, or every
+// surviving line reads as an addition.
 // Stage 4 (fail closed): anything else is a measurement that did not succeed.
 //
-// `absentMeans` is the honest reading of "this range has no record for that path", and
-// it is NOT the same answer in both places this helper is used. Over the range the
-// ENTRY ITSELF came from, absence contradicts the record that produced the entry, so it
-// is a failed measurement. Over the independently-asked base-branch range it is a real
-// answer: no record means no difference, which is a loss of nothing. Conflating the two
-// either waves through an unmeasured path or reddens an identical one.
-function measureLoss(entry, index, absentMeans = UNDIFFABLE) {
+// `absentMeans` is the honest reading of "this range has no record for that path", and it
+// is NOT the same answer in both places. Over the range the ENTRY ITSELF came from,
+// absence contradicts the record that produced the entry, so it is a failed measurement.
+// Over the independently-asked base-branch range it is a real answer: no record means no
+// difference. Conflating the two either waves through an unmeasured path or reddens an
+// identical one. The DEFAULT is the fail-closed reading, so a caller that says nothing
+// gets the safe answer rather than the convenient one.
+// The fail-closed default lives HERE and in exactly one place, so it can be asserted
+// directly rather than only through whichever arm happens to reach it today.
+function measureFromIndex(entry, data, recover, absentMeans = UNDIFFABLE) {
   const miss = "\u0000\u0000no-such-key";
-  const recorded = index.numstat.has(entry.path)
-    ? index.numstat.get(entry.path)
-    : index.numstat.get(entry.oldPath ?? miss);
+  const recorded = data.numstat.has(entry.path)
+    ? data.numstat.get(entry.path)
+    : data.numstat.get(entry.oldPath ?? miss);
   if (recorded === undefined) return absentMeans;
   if (recorded !== null) return recorded;
 
-  const oid = index.oids.get(entry.path) ?? index.oids.get(entry.oldPath ?? miss);
+  const oid = data.oids.get(entry.path) ?? data.oids.get(entry.oldPath ?? miss);
   if (oid) {
     const absent = (o) => !o || /^0+$/.test(o);
     if (!absent(oid.srcOid) && !absent(oid.dstOid) && oid.srcOid === oid.dstOid) return 0;
@@ -477,64 +250,281 @@ function measureLoss(entry, index, absentMeans = UNDIFFABLE) {
 
   const specs = [entry.oldPath, entry.path].filter((x) => x !== undefined).map(pathspecFor);
   if (specs.length === 0 || specs.some((x) => x === null)) return UNDIFFABLE;
-  const rendered = runGitArgs([
-    "diff",
-    "--unified=0",
-    "--text",
-    "--find-renames",
-    ...index.range,
-    "--",
-    ...specs,
-  ]);
-  let deleted = 0;
-  let sawHunk = false;
-  for (const line of rendered.split("\n")) {
-    if (line.startsWith("@@")) {
-      sawHunk = true;
-      continue;
+  return recover(specs);
+}
+
+// =====================================================================================
+// THE ONLY DOOR TO THE REPOSITORY
+// =====================================================================================
+// Across four rounds, every failure in this file was a CONVENTION that held until someone
+// added one more caller: remember to pass the path as argv; remember the literal-pathspec
+// flag; remember that these two readings must agree; remember to check whether they did.
+// Each was true when written and each was broken by the next arm, because the guarantee
+// lived in the caller rather than in the thing being called.
+//
+// So the runners are gone from this file's scope. `execFileSync` is imported HERE and
+// nowhere else in the gate, and the two functions that actually invoke git are captured in
+// this closure. A new arm cannot ask the repository anything except through what is
+// returned below, and what is returned below cannot answer without a reconciled reading
+// behind it:
+//
+//   - `openRange` is the ONLY way to obtain a diff, and it ALWAYS reconciles the two reads
+//     it needs. There is no unreconciled variant to reach for, and no flag to skip it.
+//   - When reconciliation fails it does not return a flag for the caller to test — a flag
+//     is another convention, and forgetting to test it is exactly the defect this replaces.
+//     It returns a DIFFERENT OBJECT whose `measure` cannot produce a number at all, whose
+//     `hasRecordFor` is always false, and whose `existedBefore` always answers "assume it
+//     did", so every arm that consults it is driven to a refusal without knowing why.
+//   - Both readings are built by the same function, so both are reconciled and both are
+//     guarded. There is no longer a first-class reading and a second-class one.
+const repository = (() => {
+  const { execFileSync } = require("node:child_process");
+
+  // #1510 — the argv boundary, in BOTH of the two layers that read a path as something
+  // other than a name. (1) Nothing builds a shell command string, so no caller hands the
+  // shell a path's characters to interpret. (2) argv alone is NOT enough: everything after
+  // `--` is a PATHSPEC and git glob-matches one by default, so a path is still a pattern
+  // and a command scoped to one file can silently report on another. Every invocation runs
+  // under `--literal-pathspecs`, applied HERE rather than at each call site, because
+  // partial coverage of a boundary is the same as no coverage.
+  function runText(args) {
+    const argv = ["--literal-pathspecs", ...args];
+    try {
+      return execFileSync("git", argv, {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (err) {
+      const stderr = err.stderr ? err.stderr.toString() : "";
+      const stdout = err.stdout ? err.stdout.toString() : "";
+      throw new Error(
+        `git ${argv.join(" ")} failed (exit ${err.status}):\n  stderr: ${stderr.trim()}\n  stdout: ${stdout.trim()}`,
+      );
     }
-    if (!sawHunk) continue; // still in the per-file header block
-    if (line.startsWith("-")) deleted += 1;
   }
-  return sawHunk ? deleted : UNDIFFABLE;
+
+  // #1534 (R-2) — the BYTE form of git's output. `-z` makes git emit paths raw, and
+  // reading the result as a Buffer keeps bytes that are not valid UTF-8 intact.
+  function runBytes(args) {
+    const argv = ["--literal-pathspecs", ...args];
+    try {
+      return execFileSync("git", argv, { maxBuffer: 256 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
+    } catch (err) {
+      const stderr = err.stderr ? err.stderr.toString() : "";
+      throw new Error(`git ${argv.join(" ")} failed (exit ${err.status}):\n  stderr: ${stderr.trim()}`);
+    }
+  }
+
+  // THE SINGLE READING. The only format that puts every field behind the record
+  // separator, so nothing in it has to be taken apart to recover a path. Status, both
+  // object ids and both paths all come from here, and from nowhere else.
+  function readRecords(range) {
+    const f = nulFields(
+      runBytes(["diff", "--raw", "--no-abbrev", "--find-renames", "-z", ...range, "--"]),
+    );
+    const records = [];
+    for (let i = 0; i < f.length; ) {
+      const meta = f[i++];
+      if (!meta.startsWith(":")) return { records, truncated: true };
+      const cols = meta.slice(1).trim().split(/\s+/);
+      const status = cols[4] || "";
+      const twoPaths = status.startsWith("R") || status.startsWith("C");
+      const first = f[i++];
+      const second = twoPaths ? f[i++] : undefined;
+      if (first === undefined || (twoPaths && second === undefined)) {
+        return { records, truncated: true };
+      }
+      records.push({
+        status,
+        srcOid: cols[2],
+        dstOid: cols[3],
+        oldPath: twoPaths ? first : undefined,
+        path: twoPaths ? second : first,
+      });
+    }
+    return { records, truncated: false };
+  }
+
+  // Counts contribute NUMBERS ONLY. Returns counts positionally matching `records`, or a
+  // STRING naming the disagreement. A rename or copy record ends AT its second separator
+  // and its two paths follow as their own fields; every other record continues past it and
+  // everything after it is the path. A path is never empty, so "the second separator is
+  // the last byte of the field" is an exact test of the record's SHAPE and not an
+  // inference about its content. The path found there is COMPARED against the single
+  // reading and never adopted as a key.
+  function attachCounts(records, range) {
+    const f = nulFields(
+      runBytes(["diff", "--numstat", "--find-renames", "-z", ...range, "--"]),
+    );
+    const counts = [];
+    let i = 0;
+    for (const rec of records) {
+      if (i >= f.length) return "the counting read ran out of records before the listing read did";
+      const field = f[i++];
+      const firstTab = field.indexOf("\t");
+      const secondTab = firstTab < 0 ? -1 : field.indexOf("\t", firstTab + 1);
+      if (secondTab < 0) return "a counting record did not carry both count columns";
+      const pairShaped = secondTab === field.length - 1;
+      const twoPaths = rec.oldPath !== undefined;
+      if (pairShaped !== twoPaths) return "the two readings disagree about which changes moved a file";
+      let oldPath;
+      let path;
+      if (pairShaped) {
+        oldPath = f[i++];
+        path = f[i++];
+        if (path === undefined) return "a counting record was truncated";
+      } else {
+        path = field.slice(secondTab + 1);
+      }
+      if (path !== rec.path || (twoPaths && oldPath !== rec.oldPath)) {
+        return "the two readings disagree about which file a record describes";
+      }
+      const deletedColumn = field.slice(firstTab + 1, secondTab);
+      counts.push(/^\d+$/.test(deletedColumn) ? Number(deletedColumn) : null);
+    }
+    if (i !== f.length) return "the counting read carried more records than the listing read";
+    return counts;
+  }
+
+  // Stage 3's re-read. Scoped to the change the count is owed for, never wider.
+  function recoverRemovals(range, specs) {
+    const rendered = runText([
+      "diff",
+      "--unified=0",
+      "--text",
+      "--find-renames",
+      ...range,
+      "--",
+      ...specs,
+    ]);
+    let deleted = 0;
+    let sawHunk = false;
+    for (const line of rendered.split("\n")) {
+      if (line.startsWith("@@")) {
+        sawHunk = true;
+        continue;
+      }
+      if (!sawHunk) continue; // still in the per-file header block
+      if (line.startsWith("-")) deleted += 1;
+    }
+    return sawHunk ? deleted : UNDIFFABLE;
+  }
+
+  // The view returned when the two reads did NOT reconcile. Deliberately not "the normal
+  // view with a flag set": there is no number it can produce and no question it answers
+  // optimistically, so an arm written by someone who has never heard of reconciliation
+  // still refuses. `existedBefore` answers "assume it did" so the added arm is driven into
+  // a measurement rather than around it — that arm is the one where absence is a pass.
+  function refusingView(range, records, why) {
+    return {
+      range,
+      reconciled: false,
+      desyncReason: why,
+      records,
+      testEntries: () => selectTestEntries(records),
+      hasRecordFor: () => false,
+      existedBefore: () => true,
+      measure: () => UNDIFFABLE,
+    };
+  }
+
+  function reconciledView(range, records, counts) {
+    const numstat = new Map();
+    const oids = new Map();
+    for (let k = 0; k < records.length; k++) {
+      const rec = records[k];
+      const oid = { srcOid: rec.srcOid, dstOid: rec.dstOid };
+      oids.set(rec.path, oid);
+      if (rec.oldPath !== undefined && !oids.has(rec.oldPath)) oids.set(rec.oldPath, oid);
+      numstat.set(rec.path, counts[k]);
+      if (rec.oldPath !== undefined && !numstat.has(rec.oldPath)) numstat.set(rec.oldPath, counts[k]);
+    }
+    const data = { range, numstat, oids };
+    return {
+      range,
+      reconciled: true,
+      desyncReason: null,
+      records,
+      testEntries: () => selectTestEntries(records),
+      hasRecordFor: (entry) =>
+        numstat.has(entry.path) || (entry.oldPath !== undefined && numstat.has(entry.oldPath)),
+      existedBefore: (path) => {
+        const rec = oids.get(path);
+        return rec !== undefined && !/^0*$/.test(rec.srcOid || "");
+      },
+      // No default here: the fail-closed default belongs to the terminal and to nothing
+      // else, so there is one place to get it right and one place to assert it.
+      measure: (entry, absentMeans) =>
+        measureFromIndex(entry, data, (specs) => recoverRemovals(range, specs), absentMeans),
+    };
+  }
+
+  return {
+    verifyRef(ref) {
+      runText(["rev-parse", "--verify", ref]);
+    },
+    openRange(range) {
+      const { records, truncated } = readRecords(range);
+      if (truncated) return refusingView(range, records, "the listing read was truncated");
+      const counts = attachCounts(records, range);
+      if (typeof counts === "string") return refusingView(range, records, counts);
+      return reconciledView(range, records, counts);
+    },
+    bodiesTouching(rangeSpec, specs) {
+      return runText(["log", rangeSpec, "--pretty=%B", "--", ...specs]);
+    },
+  };
+})();
+
+function resolveBaseRef() {
+  if (process.env.GITHUB_BASE_REF) {
+    const candidate = `origin/${process.env.GITHUB_BASE_REF}`;
+    try {
+      repository.verifyRef(candidate);
+      return candidate;
+    } catch {
+      // fall through
+    }
+  }
+  if (process.env.GITHUB_EVENT_NAME === "push") {
+    try {
+      repository.verifyRef("HEAD~1");
+      return "HEAD~1";
+    } catch {
+      // single-commit branch (HEAD~1 doesn't exist) — nothing to check
+      return null;
+    }
+  }
+  for (const candidate of ["origin/main", "main", "HEAD~1"]) {
+    try {
+      repository.verifyRef(candidate);
+      return candidate;
+    } catch {
+      // try next
+    }
+  }
+  throw new Error(
+    "Could not resolve a base ref. Tried GITHUB_BASE_REF, HEAD~1, origin/main, main.",
+  );
 }
 
 // --- Per-file token attribution (#1058 — fixes F-1 false-red + F-2 false-green) ---
-// Answers "did any commit in the PR range that touched THESE path(s) carry the
-// token?" We scan `${baseRef}..HEAD` (TWO-dot: commits reachable from HEAD but not
-// from base = exactly the PR commits — the range whose diff the gate already
-// enforces via the three-dot merge-base). The pathspec after `--` limits the log
-// to commits that actually touched the file, so the token is attributed to the
-// specific change, never the whole branch. This is why the scan is per-file across
-// the range and NOT a single tip-only `git log -1` global boolean.
+// Answers "did any commit in the PR range that touched THESE path(s) carry the token?" We
+// scan `${baseRef}..HEAD` (TWO-dot: commits reachable from HEAD but not from base = exactly
+// the PR commits). The pathspec limits the log to commits that actually touched the file,
+// so the token is attributed to the specific change, never the whole branch.
 //
-// RESIDUAL (accepted, bounded, intentional — #1058 §4a): attribution is PER FILE
-// ACROSS THE WHOLE RANGE — a file's deletions are blessed if ANY PR-range commit
-// that TOUCHED that file carries the token, even a commit that itself deleted
-// nothing (e.g. an additions-only edit to the same file, or a commit that touched
-// the file alongside others). The token is a human attestation scoped to a FILE for
-// the whole PR, not to an individual deletion; the reviewer sees every change to
-// that file bundled in the PR diff. This is SAME-FILE ONLY — a token on one file
-// NEVER launders deletions in a DIFFERENT file (that cross-file hole, F-2, is
-// exactly what this gate closes; see selfTest T2/T3). Tightening even the same-file
-// residual would require the token to name the exact file/line (a grammar change) —
-// explicitly OUT of scope to avoid over-engineering. This fix must never do worse
-// than "token attributed to a commit that touched the file."
-// #1510: the paths are argv elements, not text spliced into a shell command. Behaviour
-// is otherwise identical — same range, same pathspec, same regex.
-// #1534: a path that cannot be expressed as a pathspec cannot scope an attribution
-// either. Answering "no token" is the only honest result — never "any token".
+// RESIDUAL (accepted, bounded, intentional — #1058 §4a): attribution is PER FILE ACROSS THE
+// WHOLE RANGE — a file's deletions are blessed if ANY PR-range commit that TOUCHED that
+// file carries the token. The token is a human attestation scoped to a FILE for the whole
+// PR, not to an individual deletion. This is SAME-FILE ONLY — a token on one file NEVER
+// launders deletions in a DIFFERENT file (see selfTest T2/T3).
+// #1534: a path that cannot be expressed as a pathspec cannot scope an attribution either.
+// Answering "no token" is the only honest result — never "any token".
 function fileHasToken(baseRef, paths, tokenRegex) {
   const specs = paths.filter(Boolean).map(pathspecFor);
-  if (specs.length === 0 || specs.some((s) => s === null)) return false;
-  const bodies = runGitArgs([
-    "log",
-    `${baseRef}..HEAD`,
-    "--pretty=%B",
-    "--",
-    ...specs,
-  ]);
-  return tokenRegex.test(bodies);
+  if (specs.length === 0 || specs.some((sp) => sp === null)) return false;
+  return tokenRegex.test(repository.bodiesTouching(`${baseRef}..HEAD`, specs));
 }
 
 function main() {
@@ -568,15 +558,29 @@ function main() {
     // be looking at a different set of records from the one the counts were attached to.
     // Exactly TWO readings are taken in total, one per range, and each is internally
     // reconciled. Nothing else in this gate asks git a question about a path.
-    index = buildLossIndex([`${baseRef}...HEAD`]);
-    entries = selectTestEntries(index.records);
-    tipIndex = buildLossIndex([baseRef, "HEAD"]);
+    index = repository.openRange([`${baseRef}...HEAD`]);
+    entries = index.testEntries();
+    tipIndex = repository.openRange([baseRef, "HEAD"]);
   } catch (err) {
     console.error(`❌ ${redactTokens(err.message)}`);
     process.exit(2);
   }
 
+  const DESYNC_TAIL =
+    "so the two readings of this change do not agree about it and no count for it can be trusted. A count that was never taken is not a count of zero, so this is refused and no override token bypasses it. Re-run the check; if it persists, this is a fault in how the gate reads git rather than something to work around in the pull request.";
+
   if (entries.length === 0) {
+    // A reading that did not reconcile cannot be trusted to say there was nothing to
+    // look at: "no test files changed" and "I could not agree with myself about what
+    // changed" are opposite verdicts, and only one of them is safe to print.
+    if (!index.reconciled) {
+      console.log(
+        `❌ UNDIFFABLE (whole run) — git's readings of this change do not agree with each other, ${DESYNC_TAIL}`,
+      );
+      console.log("");
+      console.log("Append-only check: 0 passed, 1 failed.");
+      process.exit(1);
+    }
     console.log("✅ No test files changed. Append-only check: clean.");
     process.exit(0);
   }
@@ -586,9 +590,6 @@ function main() {
 
   const UNMEASURED_TAIL =
     "so the number of deleted lines could not be measured. A count that was never taken is not a count of zero, so this is refused and no override token bypasses it. Restore the file to ordinary reviewable text content, or remove the attribute or diff-driver configuration that is suppressing its diff, so the gate can count the change.";
-
-  const DESYNC_TAIL =
-    "so the two readings of this change do not agree about it and no count for it can be trusted. A count that was never taken is not a count of zero, so this is refused and no override token bypasses it. Re-run the check; if it persists, this is a fault in how the gate reads git rather than something to work around in the pull request.";
 
   for (const entry of entries) {
     const shownPath = displayPath(entry.path);
@@ -602,12 +603,12 @@ function main() {
     // absent record is otherwise a legitimate answer meaning "no difference", which is
     // exactly where a desync would otherwise read as "nothing was removed".
     //
-    // This is deliberately redundant with the reconciliation inside buildLossIndex. The
-    // structural fix makes the desync unrepresentable; this makes it UNMISSABLE if some
-    // future reading reintroduces one. Redundancy is the point: every false green this
-    // file has shipped lived in the gap between two individually correct changes.
-    if (!index.numstat.has(entry.path) &&
-        !(entry.oldPath !== undefined && index.numstat.has(entry.oldPath))) {
+    // This is deliberately redundant with the accessor above, which already refuses to
+    // hand back a reading that did not reconcile. The accessor makes the disagreement
+    // unrepresentable; this makes it UNMISSABLE if some future reading reintroduces one.
+    // Redundancy is the point: every false green this file has shipped lived in the gap
+    // between two individually correct changes.
+    if (!index.hasRecordFor(entry)) {
       console.log(`❌ UNDIFFABLE ${shownPath} — git listed this test file as changed but the counting read does not account for it, ${DESYNC_TAIL}`);
       failures += 1;
       continue;
@@ -631,16 +632,25 @@ function main() {
       // reading that supplies the count, not from a separate listing of the base tree: a
       // record whose PRE-image object id is present is a path that existed before. A
       // genuinely new path has an absent pre-image and nothing that can have been lost.
-      const tipRec = tipIndex.oids.get(entry.path);
-      const existedOnBase = tipRec !== undefined && !/^0*$/.test(tipRec.srcOid || '');
-      const lost = existedOnBase ? guard(() => measureLoss(entry, tipIndex, 0), UNDIFFABLE) : 0;
+      // BOTH answers come from the same reading, and that reading is guarded. If it did
+      // not reconcile, `existedBefore` says "assume it did" and `measure` cannot return a
+      // number — so this arm is driven INTO a refusal rather than around one. That matters
+      // here more than anywhere else in the file: this is the one arm where an absent
+      // record legitimately means "no difference", so it is the one a disagreement could
+      // otherwise imitate.
+      const existedOnBase = tipIndex.existedBefore(entry.path);
+      const lost = existedOnBase ? guard(() => tipIndex.measure(entry, 0), UNDIFFABLE) : 0;
       if (lost === 0) {
         console.log(`✅ ADDED      ${shownPath}`);
         passes += 1;
         continue;
       }
       if (lost === UNDIFFABLE) {
-        console.log(`❌ UNDIFFABLE ${shownPath} — this test path already exists on the base branch and git produced no countable diff for it, ${UNMEASURED_TAIL}`);
+        console.log(
+          tipIndex.reconciled
+            ? `❌ UNDIFFABLE ${shownPath} — this test path already exists on the base branch and git produced no countable diff for it, ${UNMEASURED_TAIL}`
+            : `❌ UNDIFFABLE ${shownPath} — this test path is reported as new by this range and the base-branch comparison could not be read consistently, ${DESYNC_TAIL}`,
+        );
         failures += 1;
         continue;
       }
@@ -675,7 +685,7 @@ function main() {
       // so a rename would otherwise be a CHEAPER override than a modification, for a
       // strictly more destructive change. Content loss is measured on the renamed pair
       // and carries the modification arm's disposition.
-      const lost = guard(() => measureLoss(entry, index), UNDIFFABLE);
+      const lost = guard(() => index.measure(entry), UNDIFFABLE);
       if (lost === UNDIFFABLE) {
         console.log(`❌ UNDIFFABLE ${shownPath} — git reports this test file as RENAMED but produced no countable line diff for the renamed pair, ${UNMEASURED_TAIL}`);
         failures += 1;
@@ -700,7 +710,7 @@ function main() {
       continue;
     }
     if (entry.status === "M") {
-      const deleted = guard(() => measureLoss(entry, index), UNDIFFABLE);
+      const deleted = guard(() => index.measure(entry), UNDIFFABLE);
       if (deleted === UNDIFFABLE) {
         console.log(
           `❌ UNDIFFABLE ${shownPath} — git reports this test file as CHANGED but produced no line diff for it, ${UNMEASURED_TAIL}`,
@@ -750,39 +760,63 @@ function main() {
 // the CI runner: it builds throwaway git repos under os.tmpdir() with a local
 // `main` base and a pinned identity, and relies on no network and no Date.now().
 // ---------------------------------------------------------------------------
-
-// `input` (#1534, default undefined — every pre-existing caller is unchanged) lets a
-// scenario stage bytes that cannot be spelled as an argument.
-function runGitIn(cwd, args, input) {
-  return execFileSync("git", args, {
-    cwd,
-    encoding: "utf8",
-    input,
-    stdio: input === undefined ? ["ignore", "pipe", "pipe"] : ["pipe", "pipe", "pipe"],
-  });
-}
-
-// Spawn THIS script's main() inside `cwd` (a temp repo). The GitHub env is
-// stripped so resolveBaseRef() deterministically falls back to the local `main`
-// branch regardless of the CI context this self-test itself runs in.
 //
-// `extraEnv` (#1505, default `{}` — every pre-existing caller is unchanged) is
-// merged LAST so a scenario can override a single variable for the child alone.
-// T11 uses it to prefix PATH with a `git` shim that emits an unmodelled status.
-function runCheckIn(cwd, extraEnv = {}) {
-  const childEnv = { ...process.env };
-  delete childEnv.GITHUB_BASE_REF;
-  delete childEnv.GITHUB_EVENT_NAME;
-  delete childEnv.GITHUB_HEAD_REF;
-  delete childEnv.GIT_DIR;
-  delete childEnv.GIT_WORK_TREE;
-  const r = spawnSync(process.execPath, [__filename], {
-    cwd,
-    env: { ...childEnv, ...extraEnv },
-    encoding: "utf8",
-  });
-  return { status: r.status, out: `${r.stdout || ""}${r.stderr || ""}` };
-}
+// #1534: the self-test BUILDS repositories and SPAWNS this script against them, so it
+// genuinely needs to start processes — but it must not hand that ability back to the gate.
+// The import lives in this closure, below and outside everything above, so the gate's own
+// code has no process runner in scope under any name: the only way for a future arm to
+// read the repository is the accessor, and the only way to reach around it is to write a
+// fresh import, which is a visible and deliberate act rather than an available shortcut.
+const { runGitIn, runCheckIn, whichGit, stageIndexInfo } = (() => {
+  const { execSync, execFileSync, spawnSync } = require("node:child_process");
+
+  // `input` (#1534, default undefined — every pre-existing caller is unchanged) lets a
+  // scenario stage bytes that cannot be spelled as an argument.
+  function runGitIn(cwd, args, input) {
+    return execFileSync("git", args, {
+      cwd,
+      encoding: "utf8",
+      input,
+      stdio: input === undefined ? ["ignore", "pipe", "pipe"] : ["pipe", "pipe", "pipe"],
+    });
+  }
+
+  // Spawn THIS script's main() inside `cwd` (a temp repo). The GitHub env is
+  // stripped so resolveBaseRef() deterministically falls back to the local `main`
+  // branch regardless of the CI context this self-test itself runs in.
+  //
+  // `extraEnv` (#1505, default `{}` — every pre-existing caller is unchanged) is
+  // merged LAST so a scenario can override a single variable for the child alone.
+  // T11 uses it to prefix PATH with a `git` shim that emits an unmodelled status.
+  function runCheckIn(cwd, extraEnv = {}) {
+    const childEnv = { ...process.env };
+    delete childEnv.GITHUB_BASE_REF;
+    delete childEnv.GITHUB_EVENT_NAME;
+    delete childEnv.GITHUB_HEAD_REF;
+    delete childEnv.GIT_DIR;
+    delete childEnv.GIT_WORK_TREE;
+    const r = spawnSync(process.execPath, [__filename], {
+      cwd,
+      env: { ...childEnv, ...extraEnv },
+      encoding: "utf8",
+    });
+    return { status: r.status, out: `${r.stdout || ""}${r.stderr || ""}` };
+  }
+
+  // The absolute path of the real git, for the scenarios that put a stand-in in front of
+  // it. Named rather than open-coded so no scenario needs a general command runner.
+  function whichGit() {
+    return execSync("command -v git", { encoding: "utf8" }).trim();
+  }
+
+  // Stage a record straight into a temp repo's index, for names the filesystem will not
+  // accept as a file. Bytes, not text, so a path that is not text in any encoding survives.
+  function stageIndexInfo(cwd, input) {
+    return execFileSync("git", ["update-index", "--add", "--index-info"], { cwd, input });
+  }
+
+  return { runGitIn, runCheckIn, whichGit, stageIndexInfo };
+})();
 
 function makeTempRepo() {
   const dir = fs.mkdtempSync(nodePath.join(os.tmpdir(), "append-only-selftest-"));
@@ -1191,7 +1225,7 @@ function scenarioT11() {
     g("add", "-A");
     g("commit", "-q", "-m", "additions only");
 
-    const realGit = execSync("command -v git", { encoding: "utf8" }).trim();
+    const realGit = whichGit();
     const shim = [
       "#!/bin/sh",
       // The gate now takes identity from the RAW reading and counts from the counting
@@ -1380,7 +1414,7 @@ function scenarioT15() {
       "[TEST-MOD-APPROVED #1505] [TEST-RENAME-APPROVED #1505] #1505 [typechange bypass]",
     );
 
-    const realGit = execSync("command -v git", { encoding: "utf8" }).trim();
+    const realGit = whichGit();
     // Distinct paths per status so each assertion is unambiguous.
     const shim = [
       "#!/bin/sh",
@@ -1805,7 +1839,7 @@ function scenarioT27() {
       "[TEST-MOD-APPROVED #1510] [TEST-RENAME-APPROVED #1510] #1510 [append-only deletion count]",
     );
 
-    const realGit = execSync("command -v git", { encoding: "utf8" }).trim();
+    const realGit = whichGit();
     const shim = [
       "#!/bin/sh",
       "stats=0",
@@ -2116,10 +2150,7 @@ function scenarioT36() {
     const blob = (content) =>
       runGitIn(dir, ["hash-object", "-w", "--stdin"], content).trim();
     const stage = (oid) =>
-      execFileSync("git", ["update-index", "--add", "--index-info"], {
-        cwd: dir,
-        input: Buffer.concat([Buffer.from(`100644 ${oid}\t`), rawName, Buffer.from("\n")]),
-      });
+      stageIndexInfo(dir, Buffer.concat([Buffer.from(`100644 ${oid}\t`), rawName, Buffer.from("\n")]));
     write("seed.test.ts", ONE_ASSERTION);
     g("add", "-A");
     stage(blob(FOUR_ASSERTIONS));
@@ -2323,7 +2354,7 @@ function scenarioT42() {
     g("commit", "-q", "-m", "additions only", "-m",
       "[TEST-MOD-APPROVED #1534] [TEST-RENAME-APPROVED #1534] #1534 [gate hardening]");
 
-    const realGit = execSync("command -v git", { encoding: "utf8" }).trim();
+    const realGit = whichGit();
     const shim = [
       "#!/bin/sh",
       "stats=0",
@@ -2579,7 +2610,7 @@ function scenarioT47() {
     g("add", "-A");
     g("commit", "-q", "-m", "two ordinary added test files, nothing removed anywhere");
 
-    const realGit = execSync("command -v git", { encoding: "utf8" }).trim();
+    const realGit = whichGit();
     const shim = [
       "#!/bin/sh",
       "stats=0; z=0",
@@ -2638,7 +2669,7 @@ function scenarioT48() {
     g("add", "-A");
     g("commit", "-q", "-m", "introduce a shorter version of that same path — NO token");
 
-    const realGit = execSync("command -v git", { encoding: "utf8" }).trim();
+    const realGit = whichGit();
     const shim = [
       "#!/bin/sh",
       "stats=0; spanning=0",
@@ -3285,6 +3316,38 @@ function selfTest() {
     t47.status === 1 && t47A && t47B && t47Tally,
     "T47 (#1534 rework): the arm where an absent record legitimately means no difference is the one arm the reconciliation check is the SOLE guard for, and it is pinned there — a run whose two readings account for one changed test file and stay silent about the other cannot report on EITHER, because it cannot agree with itself about what it is reporting on. Once divergence is structurally prevented this assertion is unreachable everywhere else, which is the design and also the reason it needs a case of its own: an assertion nobody notices the loss of is one that rots",
     `check exited ${t47.status} (expected 1); accounted-for file refused=${t47A}; unaccounted-for file refused=${t47B}; tally 0/2=${t47Tally}`,
+  );
+
+  // T49 (#1534 retest) — THE FAIL-CLOSED DEFAULT, ASSERTED DIRECTLY. Every other case
+  // reaches this terminal through an arm, and each of those arms now has something in front
+  // of it that gets there first: the entry range is covered by the reconciliation check, and
+  // the base-branch range is answered with an explicit reading of what absence means there.
+  // So no whole-gate scenario can turn this default red, and a default nothing can turn red
+  // is one a future edit can quietly invert. It is asserted here on its own terms instead —
+  // the terminal is a pure function of a reading, so it can simply be handed one.
+  //
+  // The two meanings are the point. A reading that has no record for a path it was asked
+  // about has NOT measured it, and the safe answer is a refusal; a caller that knows absence
+  // is legitimate over ITS range says so explicitly. Getting these the wrong way round is
+  // this issue's entire subject, in both directions: silently zero waves through a gutted
+  // file, silently unmeasurable red-lights an identical one.
+  const t49Entry = { status: "M", path: "a.test.ts" };
+  const t49Absent = { range: ["base...HEAD"], numstat: new Map(), oids: new Map() };
+  const t49Present = {
+    range: ["base...HEAD"],
+    numstat: new Map([["a.test.ts", 7]]),
+    oids: new Map(),
+  };
+  const t49Boom = () => {
+    throw new Error("the recovery read must not be reached when there is no record at all");
+  };
+  const t49DefaultRefuses = measureFromIndex(t49Entry, t49Absent, t49Boom) === UNDIFFABLE;
+  const t49ExplicitZero = measureFromIndex(t49Entry, t49Absent, t49Boom, 0) === 0;
+  const t49CountsWhenKnown = measureFromIndex(t49Entry, t49Present, t49Boom) === 7;
+  check(
+    t49DefaultRefuses && t49ExplicitZero && t49CountsWhenKnown,
+    "T49 (#1534 retest): the measurement terminal REFUSES by default when the reading it was handed has no record for the path, and returns a real zero only when a caller states that absence is legitimate over its own range. Asserted on the terminal itself because every arm that reaches it now has a guard in front of it, and a default that no case can turn red is one a future edit can quietly invert",
+    `absent + no stated meaning refuses=${t49DefaultRefuses}; absent + stated zero returns zero=${t49ExplicitZero}; a known count is still returned=${t49CountsWhenKnown}`,
   );
 
   const t48 = scenarioT48();

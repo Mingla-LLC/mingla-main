@@ -7116,6 +7116,20 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   path columns are used solely to CHECK against the single reading, never as a key. Any
   disagreement — shape, path, length — is a parse fault: the index refuses to exist and every
   entry it was asked about fails closed.
+  **Enforced by construction, not by care.** There is exactly ONE way for this gate to ask the
+  repository anything about a change, it is the only thing in scope that can, and it ALWAYS
+  reconciles the reads it needs — there is no unreconciled variant to reach for and no flag to
+  skip it. Both readings are built by that one path, so both are reconciled and both are
+  guarded; there is no first-class reading and second-class one. When reconciliation fails it
+  does NOT hand back a flag for the caller to remember to test — a flag is another convention,
+  and forgetting to test it is the defect this replaces. It hands back an object that CANNOT
+  produce a count, whose presence answer is always negative and whose "did this exist before"
+  answer is always the pessimistic one, so an arm written by someone who has never heard of
+  reconciliation still refuses. The process runners are captured inside that accessor and are
+  not in scope anywhere else in the gate; the self-test's own runners live in a separate
+  closure of their own. This is the standing lesson of this file: every failure it has shipped
+  was a convention that was true until someone added one more caller, so the guarantee has to
+  live in the thing being called.
   **And redundantly, at runtime:** every entry the reading produced MUST resolve to a count in
   that same reading's index. A missing key is never a property of the file; it is proof the two
   readings came apart, and it fails closed in EVERY arm — including the arms where an absent
@@ -7129,7 +7143,7 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   inputs are token literals by construction. Redaction rewrites to the placeholder forms the
   grammar cases already pin as inert. Each entry occupies exactly one line of the report.
 - **Enforcement:** `.github/scripts/test-append-only-check.js --self-test`, wired into
-  `.github/workflows/tests-append-only.yml`. **82 cases.** Supersedes the case counts stated in
+  `.github/workflows/tests-append-only.yml`. **84 cases.** Supersedes the case counts stated in
   `I-1505-APPEND-ONLY-FAILS-CLOSED` (53) and `I-1510-DELETION-COUNT-IS-MEASURED` (67).
   Append-only. Fails-on-revert is proven PER FIX, not in aggregate: an aggregate number hides a
   mis-pinned case.
@@ -7171,6 +7185,16 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   green under the one-line correction; the correction was measured and leaves every other case
   green. Reproduction and correction are recorded out of band. This entry must not flip ACTIVE
   until T48 is green.
+- **REWORK 2 (2026-08-03) — addressed, awaiting re-verification.** T48 is green. The correction
+  was not taken as the one-line form: the finding was that the guarantee held on one of two
+  readings, and a one-line guard would have left it a convention on both. Both readings are now
+  built and guarded by one accessor that cannot answer without reconciling, an unreconciled
+  reading is a different object that cannot produce a count at all, and the gate has no process
+  runner in scope outside that accessor. The measurement terminal's fail-closed default is
+  asserted directly rather than through an arm, because every arm that reaches it now has a
+  guard in front of it and a default no case can turn red is one a future edit can quietly
+  invert. This note records the response only; the RETEST status above stands until an
+  independent pass re-verifies it.
 - **Established:** DRAFT at issue #1534 SPEC 2026-08-03. Flips ACTIVE at CLOSE.
 ## DRAFT — issue #1481 (Explorer swipe lifecycle and deck performance)
 
