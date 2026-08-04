@@ -23,9 +23,15 @@
 
 set -euo pipefail
 
-if [ "$#" -ne 2 ]; then
-  echo "Usage: $0 <ORCH_ID> <short-kebab-label>" >&2
+if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
+  echo "Usage: $0 <ORCH_ID> <short-kebab-label> [--install]" >&2
   echo "Example: $0 orch-0946 paywall-tier-copy-refresh" >&2
+  echo "  --install  real \`npm ci\` instead of node_modules symlinks, so the" >&2
+  echo "             worktree can actually RUN the app (#1544). ~1 min." >&2
+  exit 1
+fi
+if [ "$#" -eq 3 ] && [ "$3" != "--install" ]; then
+  echo "ERROR: unknown third argument '$3' (expected --install)." >&2
   exit 1
 fi
 
@@ -101,6 +107,21 @@ done
 # Symlink node_modules to avoid 5-min reinstalls per worktree.
 # Per the memory rule: if the ORCH touches package.json, the implementor must
 # remove the symlink and run a real `npm install` in the worktree.
+#
+# #1544 — THE SYMLINK BREAKS EVERY RUNTIME `import()` IN THIS WORKTREE.
+# It points at an ABSOLUTE path in the anchor, which escapes the project root,
+# so Metro emits async chunk paths like `../../../mingla-main/...` that flatten
+# to `./mingla-main/mingla-business/node_modules/...` and fail to resolve. The
+# app boots and then red-screens on the first lazy route.
+#
+# The trap that kept this unsolved for weeks: EVERY STATIC BUNDLE PROBE PASSES
+# ANYWAY. A clean `expo export`, a green `/index.bundle`, and Metro printing
+# `Bundled ... (N modules)` are all healthy in a broken worktree — only loading
+# a page that fires a dynamic `import()` reproduces it. Testers read the green
+# probe as proof the runtime worked and fell back to headless verification,
+# which is how #1484 shipped visibly-broken UI behind 29 green tests.
+#
+# Pass --install to spawn a runtime-capable worktree up front (~1 min total).
 echo "==> Symlinking node_modules from anchor..."
 SUB_PROJECTS=(app-mobile mingla-business mingla-admin mingla-marketing packages)
 for sub in "${SUB_PROJECTS[@]}"; do
@@ -111,6 +132,23 @@ for sub in "${SUB_PROJECTS[@]}"; do
     echo "    symlinked: $sub/node_modules"
   fi
 done
+
+# --install: replace the symlinks with real installs so the worktree can
+# actually run. Measured on this repo: mingla-business ~35s, app-mobile ~19s.
+REAL_INSTALL=0
+for arg in "$@"; do
+  [ "$arg" = "--install" ] && REAL_INSTALL=1
+done
+if [ "$REAL_INSTALL" = "1" ]; then
+  echo "==> --install: replacing symlinks with real installs (#1544)..."
+  for sub in mingla-business app-mobile; do
+    if [ -L "$WT/$sub/node_modules" ]; then
+      rm "$WT/$sub/node_modules"
+      echo "    npm ci in $sub ..."
+      (cd "$WT/$sub" && npm ci --silent) && echo "    installed: $sub"
+    fi
+  done
+fi
 
 # Pick the next available Metro port (8081 default, increment if active worktrees exist).
 ACTIVE_WORKTREE_COUNT=$(git -C "$ANCHOR" worktree list | wc -l | tr -d ' ')
@@ -126,6 +164,20 @@ echo "============================================================"
 echo "  Worktree:  $WT"
 echo "  Branch:    $BRANCH"
 echo "  Metro:     --port $METRO_PORT"
+echo ""
+if [ "$REAL_INSTALL" = "1" ]; then
+  echo "  Runtime:   READY — real npm ci, dynamic import() resolves (#1544)"
+else
+  echo "  Runtime:   *** NOT RUNNABLE AS SPAWNED (#1544) ***"
+  echo "    node_modules is an ABSOLUTE symlink into the anchor, so every"
+  echo "    runtime dynamic import() fails and the app red-screens on the"
+  echo "    first lazy route. A green expo export / index.bundle / \"Bundled"
+  echo "    (N modules)\" does NOT prove otherwise — only loading a page does."
+  echo "    Before ANY device or browser testing, run:"
+  echo "      rm \"$WT/mingla-business/node_modules\" && (cd \"$WT/mingla-business\" && npm ci)   # ~35s"
+  echo "      rm \"$WT/app-mobile/node_modules\"      && (cd \"$WT/app-mobile\" && npm ci)        # ~19s"
+  echo "    Or re-spawn with --install."
+fi
 echo ""
 echo "  Suggested sim (orchestrator chooses based on availability):"
 echo "    iPhone 17 Pro / iPhone 16 / Android emu / physical iPhone"
