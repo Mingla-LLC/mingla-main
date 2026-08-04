@@ -83,14 +83,14 @@ const organicEvents: string[] = [];
 
 // ---- module mocks: everything OUTSIDE the adapter + the shared screen ------
 
-// NOTE ON THE MOCK PATHS. This suite mounts an app-mobile route from a
-// mingla-business jest run, and the two apps have SEPARATE `node_modules`. A
-// bare `jest.mock("expo-router")` here registers mingla-business's copy, which
-// is a different resolved path from the one the route requires — the mock would
-// silently not apply and the real expo-router would be loaded (it fails to
-// parse under this config, so at least it fails loudly). The app-mobile copy is
-// therefore addressed by path.
-jest.mock("../../../../../app-mobile/node_modules/expo-router", () => ({
+// NOTE ON RESOLUTION. This suite mounts an app-mobile route from a
+// mingla-business jest run, and the two apps have SEPARATE `node_modules` — so
+// node resolution from the route reaches `app-mobile/node_modules/...`, which
+// CI never installs, and a bare `jest.mock("expo-router")` here would register
+// a DIFFERENT resolved path from the one the route requires. `jest.config.cjs`
+// anchors both specifiers at this app's copies (identity for every business
+// file), which makes the two resolutions converge and these bare mocks apply.
+jest.mock("expo-router", () => ({
   __esModule: true,
   useLocalSearchParams: () => ({
     brandSlug: "smokerhythm",
@@ -105,7 +105,7 @@ jest.mock("../../../../../app-mobile/node_modules/expo-router", () => ({
   }),
 }));
 
-jest.mock("../../../../../app-mobile/node_modules/react-native-safe-area-context", () => ({
+jest.mock("react-native-safe-area-context", () => ({
   __esModule: true,
   useSafeAreaInsets: () => ({ top: 47, bottom: 34, left: 0, right: 0 }),
 }));

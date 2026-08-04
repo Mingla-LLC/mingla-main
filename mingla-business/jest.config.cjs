@@ -169,6 +169,23 @@ module.exports = {
     // already points here, so the mapping is the identity. Anchored to the
     // subpath form only: the bare barrel is untouched.
     "^@mingla/brand-rendering/(.+)$": "<rootDir>/../packages/brand-rendering/$1",
+    // #1560 — resolution repair, NOT a mock, and the IDENTITY for every file in
+    // this app. `consumerVenueAdoption.issue1560.happy.test.tsx` mounts the REAL
+    // consumer venue route (`app-mobile/app/b/[brandSlug]/v/[venueSlug].tsx`) to
+    // prove what the consumer app gained when its fork was deleted. Node
+    // resolution walks up from THAT file, so these two specifiers resolve
+    // `app-mobile/node_modules/...` — which CI never installs (this job runs
+    // `npm ci` in mingla-business only). Two consequences, both bad: the route
+    // cannot load at all, and a bare `jest.mock("expo-router")` in a test here
+    // would register a DIFFERENT resolved path from the one the route requires,
+    // so the mock would silently not apply. Pointing both at the copies this app
+    // already owns makes the two resolutions converge. A business file's
+    // `expo-router` already resolved here (nearest node_modules), so nothing
+    // about the existing suite changes.
+    "^expo-router$": "<rootDir>/node_modules/expo-router",
+    "^expo-router/(.*)$": "<rootDir>/node_modules/expo-router/$1",
+    "^react-native-safe-area-context$":
+      "<rootDir>/node_modules/react-native-safe-area-context",
     // ESM-native expo packages (reached via expo-image-picker / expo-file-system /
     // mapboxToken / config reads).
     "^expo-constants$": "<rootDir>/__manual_mocks__/expo-constants.js",
