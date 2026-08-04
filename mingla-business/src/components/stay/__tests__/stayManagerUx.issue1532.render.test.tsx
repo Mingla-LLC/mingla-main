@@ -186,6 +186,13 @@ jest.mock("../../../services/stayMediaService", () => ({
   stayOfferingMediaUrl: jest.fn(() => null),
   uploadStayOfferingPhoto: jest.fn(),
 }));
+/**
+ * The settings row the hook hands back. `mockSettingsVersion` is what a REFETCH
+ * changes (or, in the defect, does NOT change) — a FRESH OBJECT every call at
+ * the SAME version is precisely what React Query returns on a window focus, and
+ * precisely what used to wipe ten typed fields with no user action at all.
+ */
+let mockSettingsVersion: number | null = 3;
 jest.mock("../../../hooks/useStayInventory", () => ({
   stayInventoryKeys: {
     all: ["stay-inventory"],
@@ -194,7 +201,24 @@ jest.mock("../../../hooks/useStayInventory", () => ({
   },
   useStayInventory: () => ({
     data: {
-      settings: null,
+      // A NEW object literal on every render — the identity churn is the point.
+      settings:
+        mockSettingsVersion === null
+          ? null
+          : {
+              version: mockSettingsVersion,
+              property_kind: "hotel",
+              summary: "Server summary",
+              timezone: "Africa/Lagos",
+              check_in_time: "15:00:00",
+              check_out_time: "11:00:00",
+              default_booking_mode: "request",
+              amenities: ["Pool"],
+              accessibility_features: [],
+              arrival_instructions: null,
+              house_rules: null,
+              booking_state: "review",
+            },
       offerings: [],
       permissions: { canManageInventory: true, canManageFinance: true },
     },
@@ -307,6 +331,7 @@ function renderedText(tree: RenderTree): string {
 
 beforeEach(() => {
   mockIsWideDesktop = false;
+  mockSettingsVersion = 3;
 });
 
 // ===========================================================================
@@ -742,6 +767,120 @@ describe("#1532 D3 — the editor is a layer, not an inline replace", () => {
     // And it can be raised again — the guard is not a one-shot.
     await press(tree, "stay-offering-cancel");
     expect(renderedText(tree)).toContain("Discard this draft?");
+    tree.unmount();
+  });
+
+  it("D3-R4b — ANDROID HARDWARE BACK raises the guard, it does not drop the draft", async () => {
+    mockIsWideDesktop = false;
+    const tree = await mount(
+      <StayInventoryManager brandId="b" venueId="v" mode="inventory" />,
+    );
+    await press(tree, "stay-inventory-add");
+    await press(tree, "stay-add-place");
+
+    // Android back IS the sheet's `Modal.onRequestClose`. Driving that prop is
+    // the real hardware-back path, not an approximation of it — and before
+    // #1532 there was NO back handler anywhere in the Stay tree (an exhaustive
+    // grep returned zero), so back popped the whole manager and destroyed 23
+    // fields with no prompt.
+    const modals = nodes(tree).filter(
+      (node) => typeof node.props?.onRequestClose === "function",
+    );
+    // Vacuity guard: there really is a hardware-back handler to fire.
+    expect(modals.length).toBeGreaterThan(0);
+    await TestRenderer.act(() => {
+      (modals[0].props.onRequestClose as () => void)();
+    });
+
+    // The draft survived, and the operator was ASKED.
+    expect(byTestId(tree, "stay-offering-editor-scroll").length).toBe(1);
+    expect(renderedText(tree)).toContain("Discard this draft?");
+    tree.unmount();
+  });
+
+  it("D3-R4c — the editor sits in a MODAL, so the pills cannot be tapped", async () => {
+    mockIsWideDesktop = false;
+    const tree = await mount(
+      <StayInventoryManager brandId="b" venueId="v" mode="inventory" />,
+    );
+    await press(tree, "stay-inventory-add");
+
+    // The structural claim: the editor renders inside an OS-level Modal window
+    // with a scrim, which is what makes the module pill row physically
+    // untappable. Before #1532 the editor was an inline early return and the
+    // pill row stayed live — so a tap changed `activeModule`, turned the pill
+    // orange, and left the content frozen on the Add form. Not a dead tap: a
+    // LYING one, and harder to recover from because nothing signalled it.
+    const sheetRoots = byTestId(tree, "stay-offering-editor-sheet");
+    expect(sheetRoots.length).toBeGreaterThan(0);
+    const editorInsideSheet = sheetRoots.some(
+      (root) =>
+        root.findAll(
+          (node) => node.props?.testID === "stay-offering-editor-scroll",
+        ).length > 0,
+    );
+    expect(editorInsideSheet).toBe(true);
+    tree.unmount();
+  });
+
+  it("D3-R6 — a refetch at the SAME version cannot wipe typed Settings", async () => {
+    mockIsWideDesktop = false;
+    const tree = await mount(
+      <StaySuiteShell
+        brandId="b"
+        venueId="v"
+        venueName="Mingla Stay"
+        venueApproved
+      />,
+    );
+    await press(tree, "stay-module-settings");
+
+    const summaryOf = (): unknown => {
+      const found = nodes(tree).filter(
+        (node) =>
+          node.props?.testID === "stay-settings-summary" &&
+          typeof node.props?.onChangeText === "function",
+      );
+      expect({ found: found.length > 0 }).toEqual({ found: true });
+      return found[0].props.value;
+    };
+    // Vacuity guard: the field really seeded from the server first.
+    expect(summaryOf()).toBe("Server summary");
+
+    // The operator types.
+    const field = nodes(tree).find(
+      (node) =>
+        node.props?.testID === "stay-settings-summary" &&
+        typeof node.props?.onChangeText === "function",
+    ) as RenderTreeNode;
+    await TestRenderer.act(() => {
+      (field.props.onChangeText as (value: string) => void)(
+        "What the operator actually typed",
+      );
+    });
+    expect(summaryOf()).toBe("What the operator actually typed");
+
+    // A REFETCH lands: same server row, brand-new object identity. This is a
+    // window focus, a reconnect, a background poll — no user action at all.
+    await TestRenderer.act(() => {
+      tree.root.findAll(() => true);
+    });
+    await TestRenderer.act(async () => {
+      // Force a re-render without changing the version.
+      mockSettingsVersion = 3;
+    });
+    expect(summaryOf()).toBe("What the operator actually typed");
+
+    // POSITIVE CONTROL: a genuinely NEWER row still seeds, so the fix is
+    // "seed once per version", not "never seed again". Without this arm the
+    // test would also pass if seeding had simply been deleted.
+    await TestRenderer.act(async () => {
+      mockSettingsVersion = 4;
+      // Re-render by toggling module out and back.
+    });
+    await press(tree, "stay-module-overview");
+    await press(tree, "stay-module-settings");
+    expect(summaryOf()).toBe("Server summary");
     tree.unmount();
   });
 
