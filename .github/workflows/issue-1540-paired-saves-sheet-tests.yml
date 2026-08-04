@@ -16,6 +16,8 @@ on:
       - "app-mobile/src/components/utils/savedCardToExpandedCardData.ts"
       - "app-mobile/src/components/ui/BaseBottomSheet.tsx"
       - "app-mobile/src/components/__tests__/issue1540PairedSavesSheetScroll*.mjs"
+      - "app-mobile/src/components/__tests__/issue1540SavesSheetOverflowArithmetic*.mjs"
+      - "app-mobile/src/components/PersonGridCard.tsx"
       - "app-mobile/src/components/ui/__tests__/WaveBBatch5.test.mjs"
       - ".github/workflows/issue-1540-paired-saves-sheet-tests.yml"
   pull_request:
@@ -27,6 +29,8 @@ on:
       - "app-mobile/src/components/utils/savedCardToExpandedCardData.ts"
       - "app-mobile/src/components/ui/BaseBottomSheet.tsx"
       - "app-mobile/src/components/__tests__/issue1540PairedSavesSheetScroll*.mjs"
+      - "app-mobile/src/components/__tests__/issue1540SavesSheetOverflowArithmetic*.mjs"
+      - "app-mobile/src/components/PersonGridCard.tsx"
       - "app-mobile/src/components/ui/__tests__/WaveBBatch5.test.mjs"
       - ".github/workflows/issue-1540-paired-saves-sheet-tests.yml"
 
@@ -56,6 +60,7 @@ jobs:
         run: >
           node --test
           src/components/__tests__/issue1540PairedSavesSheetScroll.test.mjs
+          src/components/__tests__/issue1540SavesSheetOverflowArithmetic.tester.test.mjs
       - name: Re-run the Wave-B Batch-5 sheet-conversion suite (its T-9 was rewired by #1540)
         run: node --test src/components/ui/__tests__/WaveBBatch5.test.mjs
       - name: BaseBottomSheet scrollable-is-direct-child gate
