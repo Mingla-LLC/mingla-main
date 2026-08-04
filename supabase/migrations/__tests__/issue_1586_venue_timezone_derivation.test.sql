@@ -591,4 +591,133 @@ BEGIN
 END
 $t12$;
 
+-- ── T-13 — the grant, pinned; and the callers, proven still working ────────
+-- I-PROPOSED-1392-NO-UNALLOWLISTED-ANON-DEFINER. The repo-level CI gate
+-- (`scripts/ci/security_definer_anon_gate.sh`) catches a re-widened grant by
+-- probing the live ACL, but it runs once over the whole schema and names no
+-- reason. This is the LOCAL guard, next to the function, and it also does the
+-- half the gate cannot: prove the REVOKE did not break what it protects.
+DO $t13$
+DECLARE
+  v_oid oid;
+  v_role text;
+  v_can boolean;
+  v_tz text;
+  v_src text;
+  v_probe_can boolean;
+BEGIN
+  SELECT p.oid INTO v_oid
+  FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+  WHERE n.nspname = 'public' AND p.proname = 'derive_venue_iana_timezone';
+  -- Vacuity guard: a renamed or dropped function would make every privilege
+  -- assertion below pass by returning NULL.
+  IF v_oid IS NULL THEN
+    RAISE EXCEPTION 'issue_1586_T13_function_missing: public.derive_venue_iana_timezone not found';
+  END IF;
+
+  -- It is SECURITY DEFINER, which is WHY the grant matters at all.
+  IF NOT (SELECT prosecdef FROM pg_proc WHERE oid = v_oid) THEN
+    RAISE EXCEPTION 'issue_1586_T13_not_security_definer';
+  END IF;
+
+  -- THE SETTLED GRANT. anon and authenticated: NO. service_role: YES.
+  FOREACH v_role IN ARRAY ARRAY['anon', 'authenticated'] LOOP
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v_role) THEN
+      RAISE EXCEPTION 'issue_1586_T13_role_missing: % — the checks below would be vacuous', v_role;
+    END IF;
+    SELECT has_function_privilege(v_role, v_oid, 'EXECUTE') INTO v_can;
+    IF v_can THEN
+      RAISE EXCEPTION 'issue_1586_T13_execute_regranted_to_%: an internal resolver is reachable by a role that has no reason to call it', v_role;
+    END IF;
+  END LOOP;
+  -- Positive control: the check is not "nobody can execute anything", which
+  -- would pass even if the function had been revoked into uselessness.
+  SELECT has_function_privilege('service_role', v_oid, 'EXECUTE') INTO v_can;
+  IF NOT v_can THEN
+    RAISE EXCEPTION 'issue_1586_T13_service_role_lost_execute';
+  END IF;
+
+  -- THE OTHER HALF: the REVOKE must not break the thing it protects.
+  -- A role that holds table access and explicitly NO execute on the resolver
+  -- must STILL get a derived zone, because the write path reaches the resolver
+  -- through the SECURITY DEFINER trigger rather than directly.
+  CREATE ROLE issue_1586_no_exec_probe BYPASSRLS;
+  -- `SET ROLE` needs the session user to be a MEMBER of the target role. The
+  -- `postgres` role in the Supabase image is not a superuser, so membership is
+  -- granted explicitly rather than assumed. (All of this is inside the
+  -- transaction and disappears on ROLLBACK.)
+  EXECUTE format('GRANT issue_1586_no_exec_probe TO %I', current_user);
+  GRANT USAGE ON SCHEMA public TO issue_1586_no_exec_probe;
+  GRANT SELECT, INSERT, UPDATE ON public.venue_availability_config TO issue_1586_no_exec_probe;
+  GRANT SELECT ON public.venue_listings TO issue_1586_no_exec_probe;
+  REVOKE ALL ON FUNCTION public.derive_venue_iana_timezone(double precision, double precision, text)
+    FROM issue_1586_no_exec_probe;
+  SELECT has_function_privilege('issue_1586_no_exec_probe', v_oid, 'EXECUTE') INTO v_probe_can;
+  IF v_probe_can THEN
+    RAISE EXCEPTION 'issue_1586_T13_probe_role_can_execute: the proof below would be meaningless';
+  END IF;
+
+  INSERT INTO public.venue_listings
+    (id, brand_id, slug, name, lat, lng, country_code, venue_category, claim_status)
+  VALUES ('00000000-1586-4000-8000-000000000041', '00000000-1586-4000-8000-000000000011',
+          'noexecprobe', 'Chicago venue written by a role with no EXECUTE',
+          41.8781, -87.6298, 'US', 'restaurant', 'verified');
+
+  SET LOCAL ROLE issue_1586_no_exec_probe;
+  INSERT INTO public.venue_availability_config (brand_id, venue_id)
+  VALUES ('00000000-1586-4000-8000-000000000011', '00000000-1586-4000-8000-000000000041');
+  RESET ROLE;
+
+  SELECT iana_timezone, iana_timezone_source INTO v_tz, v_src
+  FROM public.venue_availability_config
+  WHERE venue_id = '00000000-1586-4000-8000-000000000041';
+  IF v_tz IS DISTINCT FROM 'America/Chicago' OR v_src IS DISTINCT FROM 'derived' THEN
+    RAISE EXCEPTION 'issue_1586_T13_revoke_broke_the_write_path: got % / %',
+      coalesce(v_tz, '<null>'), coalesce(v_src, '<null>');
+  END IF;
+
+  -- And the operator correction path, from the same grant-less role: setting
+  -- the zone must still land and must still be recorded as a human choice.
+  SET LOCAL ROLE issue_1586_no_exec_probe;
+  UPDATE public.venue_availability_config
+  SET iana_timezone = 'America/Los_Angeles', iana_timezone_source = 'operator'
+  WHERE venue_id = '00000000-1586-4000-8000-000000000041';
+  RESET ROLE;
+
+  SELECT iana_timezone, iana_timezone_source INTO v_tz, v_src
+  FROM public.venue_availability_config
+  WHERE venue_id = '00000000-1586-4000-8000-000000000041';
+  IF v_tz IS DISTINCT FROM 'America/Los_Angeles' OR v_src IS DISTINCT FROM 'operator' THEN
+    RAISE EXCEPTION 'issue_1586_T13_revoke_broke_the_operator_path: got % / %',
+      coalesce(v_tz, '<null>'), coalesce(v_src, '<null>');
+  END IF;
+END
+$t13$;
+
+-- The reference table is not readable by a client either — it is derivation
+-- input, reached only through the SECURITY DEFINER resolver.
+DO $t13b$
+DECLARE v_role text; v_can boolean;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_class WHERE oid = 'public.venue_timezone_regions'::regclass) THEN
+    RAISE EXCEPTION 'issue_1586_T13b_regions_table_missing';
+  END IF;
+  IF NOT (SELECT relrowsecurity FROM pg_class WHERE oid = 'public.venue_timezone_regions'::regclass) THEN
+    RAISE EXCEPTION 'issue_1586_T13b_rls_disabled_on_regions';
+  END IF;
+  FOREACH v_role IN ARRAY ARRAY['anon', 'authenticated'] LOOP
+    SELECT has_table_privilege(v_role, 'public.venue_timezone_regions', 'SELECT') INTO v_can;
+    IF v_can THEN
+      RAISE EXCEPTION 'issue_1586_T13b_regions_readable_by_%', v_role;
+    END IF;
+  END LOOP;
+  -- Positive control: the table IS readable by its owner, so the two negatives
+  -- above are not "this table is unreadable by everyone including the engine".
+  SELECT has_table_privilege('postgres', 'public.venue_timezone_regions', 'SELECT') INTO v_can;
+  IF NOT v_can THEN
+    RAISE EXCEPTION 'issue_1586_T13b_owner_lost_select';
+  END IF;
+END
+$t13b$;
+
 ROLLBACK;

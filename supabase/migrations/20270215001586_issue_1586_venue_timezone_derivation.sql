@@ -605,9 +605,47 @@ BEGIN
 END
 $derive$;
 
-REVOKE ALL ON FUNCTION public.derive_venue_iana_timezone(double precision, double precision, text) FROM PUBLIC;
+-- ---------------------------------------------------------------------------
+-- GRANTS — I-PROPOSED-1392-NO-UNALLOWLISTED-ANON-DEFINER.
+-- ---------------------------------------------------------------------------
+-- `REVOKE ... FROM PUBLIC` alone is NOT enough on this database and the CI gate
+-- proved it. Supabase's `ALTER DEFAULT PRIVILEGES ... GRANT ALL ON FUNCTIONS TO
+-- anon, authenticated, service_role` writes an EXPLICIT per-role grant at
+-- CREATE time, so a newly created function's ACL reads
+-- `{postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,...}`.
+-- Revoking the PUBLIC pseudo-role leaves every one of those named grants
+-- standing. The named roles must be revoked by name.
+--
+-- THIS FUNCTION IS NOT PUBLIC AND MUST NOT BE. It is an internal resolver. An
+-- anonymous visitor has no reason to reach it, and allowlisting it would widen
+-- the anon surface for a convenience nobody needs.
+--
+-- `authenticated` is revoked too, and the operator write path still works —
+-- which is the property to check, because a REVOKE that breaks the thing it
+-- protects is worse than the exposure. Every real caller reaches this function
+-- through a SECURITY DEFINER boundary that is already owned by `postgres`:
+--
+--   * the backfill below runs as the migration role, which OWNS the function
+--     and therefore never consults the ACL at all;
+--   * `tg_venue_availability_config_validate_tz` is SECURITY DEFINER (made so
+--     by this migration), so when an operator INSERTs or UPDATEs a config row
+--     the nested call executes as the OWNER, not as `authenticated`.
+--
+-- Nothing in `mingla-business`, `app-mobile`, `mingla-admin` or any edge
+-- function calls it directly, and no `supabase.rpc()` name matches it.
+--
+-- `service_role` keeps EXECUTE: it is the server-only key, it already bypasses
+-- RLS, and a later re-derivation pass (after a country's rectangles are added,
+-- say) should be runnable without a schema change. That grant adds nothing to
+-- what `service_role` can already do.
+--
+-- Pinned by `issue_1586_venue_timezone_derivation.test.sql` T-13, which asserts
+-- the exact grant set AND proves a role holding no EXECUTE still gets a derived
+-- zone on INSERT.
+REVOKE ALL ON FUNCTION public.derive_venue_iana_timezone(double precision, double precision, text)
+  FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.derive_venue_iana_timezone(double precision, double precision, text)
-  TO authenticated, service_role;
+  TO service_role;
 
 COMMENT ON FUNCTION public.derive_venue_iana_timezone(double precision, double precision, text) IS
   'issue #1586: a venue''s IANA ZONE NAME from its coordinates, or NULL. NEVER '
