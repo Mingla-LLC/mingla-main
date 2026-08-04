@@ -94,10 +94,44 @@ function check(read, failures) {
     "RESEND_API_KEY",
     "buyer email confirmation must be wired through Resend",
   );
+  // ===========================================================================
+  // #1541 — RECONCILED. Read this before changing it back.
+  // ===========================================================================
+  // THIS USED TO ASSERT `TWILIO_MESSAGING_SERVICE_SID` APPEARED IN THE
+  // DISPATCHER — i.e. it required the money-path function to own a PRIVATE
+  // TWILIO CLIENT, which is precisely the defect #1541 removes. The credential
+  // literal was only ever a PROXY for the real property ("the buyer SMS
+  // confirmation is wired to an approved sender"), and a proxy assertion pins
+  // the implementation it was written against: when the architecture changed
+  // correctly, the gate broke. That is the same shape as #1518's `dnd` check
+  // and #1529's producer audit.
+  //
+  // So the property is asserted directly instead, as a PAIR. The positive alone
+  // would be another token; the negative is what makes the pair a property:
+  //   (a) the dispatcher demonstrably sends a buyer SMS through smsAdapter, AND
+  //   (b) it has NO other egress available to it — no provider endpoint, no
+  //       provider credential of its own.
+  // Together those mean the send can only be going through the sanctioned path.
+  //
+  // NO COVERAGE IS LOST. The approved-toll-free discipline this assertion cared
+  // about did not move — only the send did. It is enforced at the adapter by
+  // i-proposed-1161-sms-from-approved-sender-and-kill-switch.mjs
+  // (I-PROPOSED-1161-SMS-FROM-APPROVED-SENDER-ONLY), and the no-direct-egress
+  // rule repo-wide by issue-1541-sms-provider-sole-send-path.mjs.
   assertIncludes(
     "supabase/functions/ticket-confirmation-dispatch/index.ts",
-    "TWILIO_MESSAGING_SERVICE_SID",
-    "buyer SMS confirmation must be wired through Twilio messaging",
+    "smsAdapter.send(",
+    "buyer SMS confirmation must be sent through the sanctioned send path (smsAdapter)",
+  );
+  assertNotIncludes(
+    "supabase/functions/ticket-confirmation-dispatch/index.ts",
+    "api.twilio.com",
+    "buyer SMS confirmation must not reach a provider directly — that bypasses the market kill switches",
+  );
+  assertRegexAbsent(
+    "supabase/functions/ticket-confirmation-dispatch/index.ts",
+    /Deno\.env\.get\(\s*["']TWILIO_/,
+    "buyer SMS confirmation must not read provider credentials — they belong to smsAdapter alone",
   );
   assertNotIncludes(
     "supabase/functions/ticket-checkout-status/index.ts",
@@ -242,8 +276,10 @@ if (process.argv.includes("--self-test")) {
       "CREATE FUNCTION public.biz_ticket_checkout_finalize() RETURNS void AS $$ BEGIN END; $$;",
     "supabase/functions/_shared/stripeWebhookRouter.ts":
       "case 'payment_intent.succeeded': finalize({ p_qr_token_pepper: qrTokenPepper() });",
+    // #1541 — email still goes through Resend from here; the SMS goes through
+    // smsAdapter, and this file carries no provider endpoint or credential.
     "supabase/functions/ticket-confirmation-dispatch/index.ts":
-      "const r = RESEND_API_KEY; const t = TWILIO_MESSAGING_SERVICE_SID;",
+      "const r = RESEND_API_KEY; await smsAdapter.send({ to, brandName, message });",
     "supabase/functions/ticket-checkout-status/index.ts":
       "return { status };",
     "supabase/migrations/20260515000015_orch_0777_b2_ticket_qr_credential_rls.sql":
@@ -296,12 +332,40 @@ if (process.argv.includes("--self-test")) {
   };
   if (run(bad2).length === 0) self.push("BAD2 (brand_id selected directly from orders table) not flagged");
 
+  // #1541 — BAD3: the dispatcher reacquires a PRIVATE TWILIO CLIENT (the exact
+  // bypass this issue removed) → must fire. This is what makes the reconciled
+  // assertion a property rather than a token: a file could satisfy
+  // `smsAdapter.send(` and STILL smuggle a direct provider call beside it, and
+  // the negative half is the only thing that catches that.
+  const bad3 = {
+    ...GOOD,
+    "supabase/functions/ticket-confirmation-dispatch/index.ts":
+      "const r = RESEND_API_KEY; await smsAdapter.send({ to });\n" +
+      'const sid = Deno.env.get("TWILIO_ACCOUNT_SID");\n' +
+      "await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`);",
+  };
+  if (run(bad3).length === 0) {
+    self.push("BAD3 (dispatcher reacquired a private Twilio client alongside the adapter call) not flagged");
+  }
+
+  // #1541 — BAD4: the SMS send is removed entirely. The buyer confirmation must
+  // still HAPPEN, not merely avoid the provider — an absence check alone would
+  // bless a dispatcher that texts nobody.
+  const bad4 = {
+    ...GOOD,
+    "supabase/functions/ticket-confirmation-dispatch/index.ts":
+      "const r = RESEND_API_KEY; // sms removed",
+  };
+  if (run(bad4).length === 0) {
+    self.push("BAD4 (buyer SMS confirmation removed entirely) not flagged");
+  }
+
   if (self.length) {
     console.error("ORCH-0777-TICKET-CHECKOUT-PRODUCTION self-test FAIL:");
     self.forEach((m) => console.error("  - " + m));
     process.exit(1);
   }
-  console.log("ORCH-0777-TICKET-CHECKOUT-PRODUCTION self-test PASS (3/3 cases).");
+  console.log("ORCH-0777-TICKET-CHECKOUT-PRODUCTION self-test PASS (5/5 cases).");
   process.exit(0);
 }
 
