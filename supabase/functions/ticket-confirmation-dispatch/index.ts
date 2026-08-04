@@ -154,8 +154,8 @@ async function sendResendEmailWithAttachment(input: {
   return { id: typeof json.id === "string" ? json.id : null };
 }
 
-// #1541 — `sendTwilioMessage()` lived here. It POSTed straight to
-// api.twilio.com/.../Messages.json with its own TWILIO_* env reads, so
+// #1541 — `sendTwilioMessage()` lived here. It POSTed straight to the Twilio
+// Messages REST endpoint with its own TWILIO_* env reads, so
 // `sms_live_enabled.ng` gated nothing on this path and a Nigerian buyer's
 // confirmation was attempted (and geo-rejected by Twilio, 21408) on a money
 // path with no switch anyone could throw. Deleted, not wrapped — subtract

@@ -66,7 +66,7 @@ function json(status: number, body: Record<string, unknown>): Response {
 }
 
 // #1541 — `sendTwilioSms()` lived here: a private Twilio client with its own
-// TWILIO_* env reads and its own fetch to api.twilio.com/.../Messages.json.
+// TWILIO_* env reads and its own fetch to the Twilio Messages REST endpoint.
 // Deleted, not wrapped (subtract before adding). Its entire job — the approved
 // Messaging Service, the 21610 blacklist classifier, the StatusCallback, and now
 // country routing and the market kill switches it never had — belongs to

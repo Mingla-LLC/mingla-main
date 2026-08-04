@@ -477,6 +477,27 @@ jobs:
             # asserted against the exact 25 api_health_services keys read
             # read-only from production on 2026-08-04.
             supabase/functions/api-health-probe/issue1537_provider_tiles.tester.adversarial.test.ts
+            # Issue #1541 — RUNTIME COMPANION to the sole-send-path gate. Drives
+            # all FOUR migrated edge functions (ticket-confirmation-dispatch,
+            # send-venue-sms, send-phone-invite, send-pair-request) through their
+            # real exported handlers with globalThis.fetch stubbed, and asserts
+            # on CAPTURED provider HTTP: an NG destination under a dark
+            # MINGLA_DELIVERY_FLAGS_JSON makes ZERO provider calls; a US
+            # destination makes exactly one to api.twilio.com with the approved
+            # MessagingServiceSid and NO raw From. Also pins the OQ-1 contract —
+            # a gated waitlist_spot_open skip returns the seat to the pool, the
+            # release is observed BEFORE the skip is recorded, and under an
+            # errored / zero-row / unapplied release the notification is NEVER
+            # marked skipped. Every group carries a vacuity guard: a drive that
+            # never reached its send branch FAILS rather than passing on zero.
+            supabase/functions/__tests__/issue_1541_sms_sole_send_path.test.ts
+            # Issue #1541 — send-venue-sms source contract, RECONCILED. This file
+            # existed since META-ORCH-1148 and was wired into NO workflow, while
+            # asserting that send-venue-sms owned a private Twilio client — a
+            # dark test blessing a dark bypass. It now asserts the opposite (the
+            # send is delegated to smsAdapter and this fn holds no provider
+            # credentials) and is wired here so it can never go dark again.
+            supabase/functions/__tests__/send_venue_sms.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then

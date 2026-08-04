@@ -1332,6 +1332,9 @@
 - **Enforcement:** strict-grep (no direct Twilio/Expo-push/email sends outside the dispatcher) + dispatcher contract tests; CI green on #544–#553.
 - **Established:** ACTIVE at META-ORCH-1161 BUILD COMPLETE 2026-06-20.
 - **AMENDED (ORCH-1227, 2026-06-23):** still the SOLE send path — adding Termii as the NG provider does NOT introduce a new bypass. Termii is reached ONLY inside `smsAdapter.send()` (the dispatcher's single SMS chokepoint), behind the existing country seam; no edge fn / cron calls Termii directly. See `I-PROPOSED-1227-NG-SMS-VIA-TERMII`.
+- **AMENDED (#1541, 2026-08-04) — THIS INVARIANT WAS NEVER TRUE UNTIL NOW, AND ITS STATED ENFORCEMENT NAMED A GATE THAT WAS NEVER WRITTEN.** It was declared ACTIVE on 2026-06-20 over a tree in which **four** edge functions already sent SMS straight to Twilio — `ticket-confirmation-dispatch`, `send-venue-sms`, `send-phone-invite`, `send-pair-request`. Each predates the invariant by 4 to 106 days, and `git log -S` shows each shipped its direct Twilio call **in the very commit that created the file** (`send-venue-sms` merged four days earlier under a commit subject that literally says "Twilio SMS"). Nothing regressed; no sweep was ever performed before the claim was made. The Enforcement line above — *"strict-grep (no direct Twilio/Expo-push/email sends outside the dispatcher)"* — **described a gate that did not exist**: `grep -rn "twilio\.com" .github/` returned zero hits repo-wide, and the one gate referencing this ID (`i-proposed-1161-sms-from-approved-sender-and-kill-switch.mjs`) opens exactly one hardcoded file, `smsAdapter.ts` — the one file guaranteed to comply. A gate that reads only the compliant file can only ever confirm compliance. Compounding it, `supabase/functions/__tests__/send_venue_sms.test.ts` actively **asserted the bypass was correct** and was wired into no workflow: a dark test protecting a dark bypass.
+  **#1541 makes the rule true and gives it real enforcement.** All four functions now send through `smsAdapter.send()`; both raw-`From` senders are retired; the enforcing gate is `.github/scripts/strict-grep/issue-1541-sms-provider-sole-send-path.mjs`, a `supabase/functions/**` sweep that fails on any unallowlisted message-send endpoint **and fails when it matches nothing** (zero files or zero sanctioned endpoints → exit 2). Its runtime companion `supabase/functions/__tests__/issue_1541_sms_sole_send_path.test.ts` drives all four real handlers and asserts on captured provider HTTP; `send_venue_sms.test.ts` is reconciled and wired. See `I-PROPOSED-1541-SMS-PROVIDER-EGRESS-ALLOWLIST`.
+  **Documented exemptions (decisions, not oversights):** Twilio **Verify** (`send-otp`, `verify-otp`) — a provider-owned OTP product on a different host (`verify.twilio.com`) with no Mingla-authored message body, which also carries voice and WhatsApp. `api-health-probe` reads `Accounts/{sid}.json` and `/Balance.json` only and is not a send path at all, which is why the gate is scoped to **message-send endpoints rather than the Twilio hostname** — a hostname-scoped gate would have to carve the probe out and would be weaker for it.
 
 ### I-PROPOSED-1161-SMS-ONLY-FOR-POLICY-ELIGIBLE-CATEGORIES (ACTIVE)
 - **Rule:** SMS fires ONLY for categories whose curated `default_channels` policy includes `sms` (per DEC-190 matrix); no category sends SMS as an ad-hoc fallback for a failed push. Each channel in a category fires simultaneously, independently `can_send`-gated.
@@ -7269,3 +7272,51 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   stable poster inputs, and production fails-on-revert independently of the lifecycle guards.
 - **Established:** DRAFT amended 2026-08-03 at issue #1481 IMPLEMENT REWORK. Flips ACTIVE only after
   all binding release-like performance/media/device gates and the independent tester verdict pass.
+
+---
+
+## DRAFT — issue #1541 (every SMS leaves through the one sanctioned send path)
+
+### I-PROPOSED-1541-SMS-PROVIDER-EGRESS-ALLOWLIST (DRAFT)
+- **Rule:** No file under `supabase/functions/` may reach an SMS-provider **message-send** endpoint
+  — Twilio Programmable Messaging (`api.twilio.com` … `/Messages.json`), Termii (`/api/sms/send`),
+  or Twilio Verify (`verify.twilio.com`) — except `_shared/adapters/smsAdapter.ts` and the two
+  documented Verify exemptions (`send-otp`, `verify-otp`). Adding a new sender therefore requires
+  editing the gate's allowlist: a visible, reviewed act rather than an invisible new file. That
+  structural property is the point — between 2026-03-06 and 2026-08-04 nothing whatsoever prevented
+  a fifth bypass, and four accumulated unnoticed.
+- **Scope note (a decision, not an oversight):** the rule is scoped to **send endpoints, not to the
+  Twilio hostname**. `api-health-probe` reads `Accounts/{sid}.json` and `/Balance.json` and never
+  touches `Messages.json`; it is not a send path and needs no exemption. A hostname-scoped rule would
+  have to carve it out, which would weaken the rule for no benefit. Twilio **Verify** is exempt on
+  three independent grounds: a different product and host, no Mingla-authored message body for the
+  adapter to sanitize/footer/segment, and it is not SMS-exclusive (it also carries voice and
+  WhatsApp — routing a voice call through an SMS adapter is incoherent).
+- **Enforcement:** `.github/scripts/strict-grep/issue-1541-sms-provider-sole-send-path.mjs`
+  (`enforcement: batch:A`, `selfTest: "wired"`, 10 self-test cases) plus the runtime companion
+  `supabase/functions/__tests__/issue_1541_sms_sole_send_path.test.ts`, which drives all four
+  migrated handlers and asserts on **captured provider HTTP** rather than source text. Static and
+  runtime together are the defence; neither alone is claimed to be sufficient.
+- **THE GATE CANNOT PASS VACUOUSLY, and that is a load-bearing property, not a nicety.** Three
+  independent guards, all exercised for real by the self-test rather than described: a scan that
+  discovers ZERO source files exits 2; a scan that finds ZERO sanctioned provider endpoints exits 2,
+  and that match-count assertion runs **before any violation is evaluated** (#1529 — a lookup asserts
+  its match count first, or it passes by matching nothing); and an anchor assertion fails if
+  `smsAdapter.ts` stops containing both its Twilio and Termii calls, because "no violations" over a
+  dismantled chokepoint is meaningless. The endpoint patterns are anchored to a quote class that
+  **includes the backtick** (#1518 — a no-substitution template literal type-checks identically and
+  slips past a `["']`-only class; every real call site in this repo is a template literal), and
+  comments are stripped with a string-preserving state machine, never a regex, because the targets
+  live inside literals containing `//`.
+- **Regression / fails-on-revert:** restoring any one of the four direct Twilio calls fails the gate
+  (self-test cases 2/3/4) **and** fails the runtime companion, because an ungated direct client
+  performs provider HTTP that the adapter's kill switch would have prevented. Deleting the
+  match-count assertion and blanking the scan root must still FAIL (P-vacuous), never report success.
+- **Related, and now actually enforced on all four paths:** `I-PROPOSED-1161-SMS-MARKET-KILL-SWITCH`,
+  `I-PROPOSED-1161-SMS-FROM-APPROVED-SENDER-ONLY` (both raw-`From` senders removed),
+  `I-PROPOSED-1227-NG-SMS-VIA-TERMII` (NG traffic on these paths reaches Termii for the first time),
+  and `I-PROPOSED-1161-UNIFIED-DISPATCHER-SOLE-SEND-PATH` (amended above — true as of this issue).
+- **Established:** DRAFT at issue #1541 IMPLEMENT 2026-08-04. Flips ACTIVE at CLOSE, after the
+  orchestrator deploys the four edge functions and proves SC-14 live — one real NG-destination send
+  on the ticket path recorded `skipped` with zero provider HTTP, evidenced with the actual ledger row.
+  **#1541 ships, deploys and passes SC-14 BEFORE `sms_live_enabled.ng` is flipped.**
