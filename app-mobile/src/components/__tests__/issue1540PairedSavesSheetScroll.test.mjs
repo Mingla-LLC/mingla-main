@@ -112,6 +112,25 @@ function extractSavesSheetElement(source) {
 
 const SAVES_SHEET = extractSavesSheetElement(HOLIDAY);
 
+/**
+ * The saves sheet's FULL subtree: its opening tag plus, when it is not
+ * self-closing, everything up to the matching `</BaseBottomSheet>`. T-5 needs
+ * this because `extractSavesSheetElement` deliberately stops at the opening
+ * tag's `>` — scoping T-1…T-4 to props — which would make a children assertion
+ * vacuous (it could never see a child even if one were reintroduced).
+ */
+function extractSavesSheetSubtree(source, element) {
+  if (!element) return "";
+  const start = source.indexOf(element);
+  if (start < 0) return "";
+  if (element.trimEnd().endsWith("/>")) return element; // self-closing: no children
+  const closeIdx = source.indexOf("</BaseBottomSheet>", start);
+  if (closeIdx < 0) return element;
+  return source.slice(start, closeIdx + "</BaseBottomSheet>".length);
+}
+
+const SAVES_SHEET_SUBTREE = extractSavesSheetSubtree(HOLIDAY, SAVES_SHEET);
+
 // ── T-0: vacuity guard ──────────────────────────────────────────────────────
 test("T-0 vacuity: every source under test and the extracted saves sheet are non-empty", () => {
   for (const [rel, src] of [
@@ -190,9 +209,22 @@ test("T-4 snapPoints ['90%'] and wrapInRNModal are unchanged", () => {
 
 // ── T-5: the wrapper subtree is gone from the sheet ─────────────────────────
 test("T-5 the saves sheet no longer mounts <PairedSavesListScreen> (the wrapper that bounded the list to its own content)", () => {
+  // Scoped to the sheet's FULL subtree, not its opening tag — a props-only scope
+  // could never observe a child and would pass no matter what was mounted.
   assert.ok(
-    !SAVES_SHEET.includes("<PairedSavesListScreen"),
+    SAVES_SHEET_SUBTREE.length >= SAVES_SHEET.length,
+    "T-5 vacuity: the saves sheet subtree must be extractable",
+  );
+  assert.ok(
+    !SAVES_SHEET_SUBTREE.includes("<PairedSavesListScreen"),
     "T-5 the saves sheet must not mount PairedSavesListScreen — its root <View style={{flex:1}}> is the unbounded node",
+  );
+  // The file as a whole MUST still mount it once, for the visits list (T-7).
+  const mounts = HOLIDAY.split("<PairedSavesListScreen").length - 1;
+  assert.equal(
+    mounts,
+    1,
+    `T-5 PairedSavesListScreen must be mounted exactly once (the visits list); found ${mounts}`,
   );
 });
 
