@@ -957,3 +957,119 @@ describe("#1532 D1 — the reserve sheet says what the CTA said", () => {
     tree.unmount();
   });
 });
+
+// ===========================================================================
+// THE MOCK ITSELF — because this suite's own boundary stubs shipped broken.
+// ===========================================================================
+
+describe("#1532 M — the reanimated Easing mocks expose what consumers call", () => {
+  /**
+   * WHY THIS EXISTS, stated plainly: the FIRST pass of #1532 added `in` and
+   * `cubic` to twelve reanimated mocks and put the closing brace in the wrong
+   * place, which EVICTED the pre-existing `inOut` and `ease` out of `Easing`
+   * and into a dead object. Twelve suites stayed green — the evicted members
+   * simply happened not to be reached — while carrying a comment that said
+   * "Nothing existing is changed or removed". A landmine plus a lie, and
+   * exactly the green-CI-over-broken-code class this issue exists to close.
+   *
+   * `Easing.inOut(Easing.ease)` against that shape is `undefined(...)`, i.e. a
+   * `TypeError`, and the reachable consumers are real: `ui/Pill.tsx:114,120`,
+   * `ui/Spinner.tsx:51`, `ui/Skeleton.tsx:66`, `ari/StreamingText.tsx:38`,
+   * `offering/DraftSelectOverlay.tsx:88,94,100`,
+   * `event/SeeWhosGoingGate.tsx:200,209,219`.
+   *
+   * So the mock shape is now a CONTRACT rather than a convention.
+   */
+  const MOCK_FILES = [
+    "stay/__tests__/stayInventoryManager.issue1484.formMeasure.render.test.tsx",
+    "stay/__tests__/stayDesktopWidth.issue1484.web.render.test.tsx",
+    "stay/__tests__/staySuiteShell.issue1484.desktopShell.render.test.tsx",
+    "stay/__tests__/stayFieldAxis.issue1501.render.test.tsx",
+    "stay/__tests__/stayFieldAxis.issue1501.web.render.test.tsx",
+    "stay/__tests__/stayFieldCallSites.issue1501.render.test.tsx",
+    "stay/__tests__/stayTerminology.issue1501.render.test.tsx",
+    "stay/__tests__/stayOfferingEditor.issue1501.render.test.tsx",
+    "stay/__tests__/stayOfferingInputs.issue1501.render.test.tsx",
+    "stay/__tests__/stayEditorDesktop.issue1501.web.render.test.tsx",
+    "stay/__tests__/stayEditorAdversarial.issue1501.render.test.tsx",
+    "suite/__tests__/suiteDesktopShell.issue1484.boundary.adversarial.render.test.tsx",
+  ];
+
+  /** Members of the `Easing: { … }` literal in a mock file. */
+  function easingMembers(source: string): string[] {
+    const start = source.indexOf("    Easing: {");
+    if (start === -1) return [];
+    const end = source.indexOf("\n    },", start);
+    if (end === -1) return [];
+    const body = source.slice(start, end);
+    return [...body.matchAll(/^\s{6}([A-Za-z]+):/gm)].map((match) => match[1]);
+  }
+
+  // Every member reached from `SheetMobile` / `Modal` (which #1532 pulls into
+  // all twelve import graphs) PLUS the two that were already there and must
+  // stay there.
+  const REQUIRED = ["bezier", "linear", "out", "in", "inOut", "ease", "cubic"];
+
+  it("M-1 — POSITIVE CONTROL: the parser really finds members, and the shipped bug", () => {
+    // Proves the detector is not vacuous. Without this arm, "every file has
+    // every member" could mean "the parser matched nothing, twelve times".
+    const healthy = easingMembers(
+      ["    Easing: {", "      out: (fn) => fn,", "      ease: () => 0,", "    },"].join("\n"),
+    );
+    expect(healthy).toEqual(["out", "ease"]);
+
+    // …and it CATCHES the exact shape that shipped: the brace closing `Easing`
+    // early, leaving `inOut`/`ease` outside it.
+    const broken = easingMembers(
+      [
+        "    Easing: {",
+        "      out: (fn) => fn,",
+        "      cubic: () => 0,",
+        "    },",
+        "    cancelAnimation: () => undefined,",
+        "    __easingClose: {",
+        "      inOut: (fn) => fn,",
+        "      ease: () => 0,",
+        "    },",
+      ].join("\n"),
+    );
+    expect(broken).toEqual(["out", "cubic"]);
+    expect(broken).not.toContain("inOut");
+    expect(broken).not.toContain("ease");
+  });
+
+  it("M-2 — every Stay reanimated mock keeps the full Easing surface", () => {
+    const fs = require("fs") as typeof import("fs");
+    const path = require("path") as typeof import("path");
+    const componentsRoot = path.resolve(__dirname, "../..");
+
+    let filesChecked = 0;
+    for (const relative of MOCK_FILES) {
+      const source = fs.readFileSync(
+        path.join(componentsRoot, relative),
+        "utf8",
+      );
+      const members = easingMembers(source);
+      // Vacuity guard, PER FILE: the parser found a real Easing literal here.
+      expect({ relative, found: members.length > 0 }).toEqual({
+        relative,
+        found: true,
+      });
+      filesChecked += 1;
+      for (const member of REQUIRED) {
+        expect({ relative, member, present: members.includes(member) }).toEqual({
+          relative,
+          member,
+          present: true,
+        });
+      }
+      // And nothing was parked in a dead sibling object to make room.
+      expect({ relative, junk: source.includes("__easingClose") }).toEqual({
+        relative,
+        junk: false,
+      });
+    }
+    // Vacuity guard, OVERALL: all twelve were actually read.
+    expect(filesChecked).toBe(MOCK_FILES.length);
+  });
+});

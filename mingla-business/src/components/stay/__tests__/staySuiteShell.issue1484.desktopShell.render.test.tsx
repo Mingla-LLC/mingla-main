@@ -106,21 +106,21 @@ jest.mock("react-native-reanimated", () => {
       bezier: () => () => 0,
       linear: () => 0,
       out: (fn: unknown) => fn,
-      // #1532 — ADDITIVE: `Sheet` -> `SheetMobile` reads `Easing.in(Easing.cubic)`
-      // at module scope for its close timing, and this mock had no `in`, so the
-      // whole suite failed to LOAD once the Stay editor moved into the Sheet.
-      // Nothing existing is changed or removed.
+      inOut: (fn: unknown) => fn,
+      ease: () => 0,
+      // #1532 — TWO ADDED ENTRIES. `Sheet` -> `SheetMobile:207` reads
+      // `Easing.in(Easing.cubic)` at MODULE SCOPE for its close timing, and
+      // this mock had neither, so the suite failed to LOAD once the Stay
+      // editor moved into the Sheet. Everything above is the pre-#1532 mock,
+      // unchanged and in its original order.
       in: (fn: unknown) => fn,
       cubic: () => 0,
     },
-    // #1532 — ADDITIVE: `SheetMobile` and `Modal` both cancel their animations
-    // on unmount, and this mock had no `cancelAnimation`, so a Stay suite that
-    // mounts the editor sheet threw during commit. Additive only.
+    // #1532 — ONE ADDED SIBLING of `Easing` (NOT a member of it):
+    // `SheetMobile:306` and `Modal:155` both cancel their animations on
+    // unmount, and this mock had no `cancelAnimation`, so mounting the editor
+    // sheet threw during commit.
     cancelAnimation: () => undefined,
-    __easingClose: {
-      inOut: (fn: unknown) => fn,
-      ease: () => 0,
-    },
     runOnJS: (fn: unknown) => fn,
     useAnimatedStyle: (fn: () => unknown) => {
       try {
