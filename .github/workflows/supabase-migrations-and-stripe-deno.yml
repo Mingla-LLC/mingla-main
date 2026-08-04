@@ -406,6 +406,21 @@ jobs:
             # resolved. Every group carries a vacuity guard — a sweep that never
             # reached a provider FAILS instead of passing over an empty set.
             supabase/functions/_shared/adapters/smsAdapter.issue1529.tester.adversarial.test.ts
+            # Issue #1537 — DELIVERY LEDGER PROVIDER TRUTH. notifyV2 stamped
+            # `notification_deliveries.provider` from a per-channel constant
+            # (`sms: "twilio"`) at every SMS call site regardless of who sent,
+            # so every Nigerian text was recorded as Twilio and the table held
+            # ZERO `termii` rows — including the #1529 SC-11 kill-switch probe,
+            # whose +234 skip was attributed to the American provider. This
+            # suite drives the real dispatchV2 against a ledger-capturing fake
+            # client and asserts the ROW: an NG send lands `termii` (and only
+            # Termii is called), a US send lands `twilio`, the SC-11 skip is
+            # attributed to `termii` with zero HTTP, a no_contact skip records
+            # the rejected contact and claims no provider, and the returned
+            # provider always matches the host actually contacted — so a
+            # miswired country→sender branch fails rather than passing on a
+            # self-consistent label. Every lookup carries a vacuity guard.
+            supabase/functions/__tests__/issue1537_delivery_provider_truth.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then
