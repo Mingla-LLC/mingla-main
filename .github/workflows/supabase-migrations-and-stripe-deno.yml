@@ -241,6 +241,12 @@ jobs:
           # view's unchanged shape, and the RPC's per-axis fail-soft.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1564_venue_theme_overrides.test.sql
+          # issue #1586 — the venue's clock, derived from its coordinates: the
+          # Raleigh headline, IANA NAMES only (never offsets), an operator's
+          # choice surviving a re-derivation, silence for undrivable
+          # coordinates, and the ~100-city derivation grid.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1586_venue_timezone_derivation.test.sql
 
   deno-tests:
     name: "Deno unit tests for Stripe shared modules"
