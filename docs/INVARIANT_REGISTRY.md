@@ -7470,3 +7470,29 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   the tester's 10,000-sequence fuzz against reverted source.
 - **Established:** DRAFT at #1579 SPEC 2026-08-04. Flips ACTIVE at CLOSE after independent
   iOS **and Android** tester PASS plus the VoiceOver pass.
+
+### I-PROPOSED-1593-LAYER-GEOMETRY-SINGLE-SOURCE (DRAFT)
+- **Rule:** where one visual rectangle is composed from **two sibling layers** — a non-interactive
+  poster behind and an interactive face in front with a transparent hole — the two boxes MUST be the
+  same rectangle **by construction**: derived from ONE measurement or ONE layout computation, never
+  computed independently in each tree. **Sharing a named style constant does not satisfy this.** An
+  identical style under a different sibling set is a different computation.
+- **Why:** #1593 — `styles.imageContainer` (`flex: 0.88`) resolved to **689.00pt** in the poster tree
+  and **667.67pt** in the face tree. The 21.33pt overhang showed through the tray's 0.85 translucency
+  as a pale bar on the app's primary surface, in production. Both trees "used the same style", which
+  is exactly why it survived review. Compounding it: the face tree's measured split is **not
+  reproducible from its own styles** (SPEC section 2.2), so the shared-constant assumption was not
+  merely fragile, it was unverifiable.
+- **Generalisation:** this is a property of layered composition, not of the deck. Any future layer
+  pair — poster/face, blur/content, shadow/surface — inherits the hazard the moment one layer is
+  transparent and the other supplies the pixels.
+- **What the enforcement does and does NOT cover, stated plainly.** The gate **executes the real
+  geometry function** (`posterPhotoBoxOverride` in `app-mobile/src/components/swipeDeck/deckPosterGeometry.ts`)
+  and statically proves the dataflow (producer -> consumer) and the role scoping. It does **NOT** run
+  Yoga and therefore does **not** prove the resulting pixel geometry — that is the runtime oracle's
+  job (SC-1/SC-2), and both are required. It does not cover layer pairs in files the gate is not
+  pointed at, nor geometry applied imperatively.
+- **Enforcement:** `.github/workflows/issue-1593-deck-layer-geometry.yml` requires and executes
+  `issue_1593_poster_hole_geometry.test.mjs` (implementor) and
+  `issue_1593_poster_hole_geometry.adversarial.test.mjs` (tester).
+- **Established:** DRAFT at #1593 SPEC 2026-08-04. Flips ACTIVE at CLOSE after tester PASS.
