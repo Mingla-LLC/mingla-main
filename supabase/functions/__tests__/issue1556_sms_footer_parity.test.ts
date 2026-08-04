@@ -351,3 +351,57 @@ Deno.test("#1556 L8 — bodyWithFooter preserves the author's characters; only w
   // And the measured body is exactly what the adapter will transmit.
   assertEquals(measured, composeSmsBody(typed, true));
 });
+
+// ---------------------------------------------------------------------------
+// L9 — THE EMPTY DRAFT. Tester finding T-1556-EMPTY-DISPLAY (P2), now closed.
+//
+// `bodyWithFooter` mirrors `composeSmsBody`, which has NO empty-body guard —
+// both append the footer to an empty body. That parity is the contract this
+// issue exists to establish. The FIRST #1556 commit dropped the client's
+// `body.length === 0 ? body :` short-circuit to achieve it, which was correct
+// for the wire and wrong for the screen: `SmsPreviewPane` fell through its
+// media branch and rendered a bare "Reply STOP to opt out." into an otherwise
+// empty bubble for a brand who attached a photo before typing.
+//
+// The fix is at the DISPLAY call site, never inside `bodyWithFooter` —
+// restoring the guard there would re-open the very drift #1556 closed. This law
+// asserts BOTH halves at once, so neither can be satisfied at the other's
+// expense: the composer still appends to an empty body (wire parity intact) AND
+// the pane refuses to render body text when nothing has been typed.
+// ---------------------------------------------------------------------------
+Deno.test("#1556 L9 — an empty draft is a UI state, not a wire state", () => {
+  // (a) WIRE parity on the empty body is INTACT and byte-exact. If a future
+  //     edit reintroduces an empty-body short-circuit in `bodyWithFooter` to
+  //     "fix" the preview, this fails first.
+  assertEquals(bodyWithFooter(""), composeSmsBody("", true));
+  assertEquals(bodyWithFooter("   \n\t "), composeSmsBody("   \n\t ", true));
+  assert(
+    bodyWithFooter("") !== "",
+    "bodyWithFooter must still append the footer to an empty body — the adapter does",
+  );
+  assertEquals(wireBody(""), composeSmsBody("", true));
+
+  // (b) DISPLAY: the pane gates its body text on typed content. Source contract
+  //     is the honest ceiling here — mingla-business's default jest config has
+  //     no RN render libs, so this component cannot be mounted in CI (the same
+  //     ceiling metaOrch1281SmsPreview.test.tsx documents). The tester drives
+  //     the real runtime.
+  const paneSrc = Deno.readTextFileSync(
+    new URL("../../../mingla-business/src/components/marketing/SmsPreviewPane.tsx", import.meta.url),
+  );
+  // Vacuity: locate the render BEFORE asserting anything about it.
+  assert(paneSrc.length > 500, "vacuity: SmsPreviewPane.tsx did not load");
+  assert(
+    paneSrc.includes("styles.bubbleText"),
+    "vacuity: the bubble body Text is gone — re-derive this assertion",
+  );
+  assert(
+    /const hasTypedBody = body\.trim\(\)\.length > 0;/.test(paneSrc),
+    "SmsPreviewPane must compute a typed-body guard",
+  );
+  assert(
+    /\{hasTypedBody \? \(\s*<Text\s+style=\{styles\.bubbleText\}/.test(paneSrc),
+    "REGRESSION (T-1556-EMPTY-DISPLAY): the bubble body Text is no longer gated on " +
+      "hasTypedBody, so a photo-only draft renders a bare STOP footer",
+  );
+});

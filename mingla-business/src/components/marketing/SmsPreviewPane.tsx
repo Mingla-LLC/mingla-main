@@ -86,6 +86,25 @@ export const SmsPreviewPane: React.FC<SmsPreviewPaneProps> = ({
   const wire = bodyWithFooter(body);
   const isEmpty = body.trim().length === 0 && !hasMedia;
   const showCount = body.trim().length > 0 || hasMedia;
+  // =========================================================================
+  // #1556 — AN EMPTY DRAFT IS A UI STATE, NOT A WIRE STATE.
+  // =========================================================================
+  // `bodyWithFooter` deliberately mirrors the adapter's `composeSmsBody`, which
+  // has NO empty-body guard: it appends the footer to an empty body, so
+  // `bodyWithFooter("")` is "\n\nReply STOP to opt out." That byte-exact parity
+  // is the contract #1556 exists to establish and it must NOT be re-broken by
+  // reintroducing a short-circuit inside `bodyWithFooter`.
+  //
+  // But the parity is about the WIRE. On screen, a brand who attaches a photo
+  // before typing anything has nothing to preview, and rendering a bare legal
+  // footer into an otherwise empty bubble is noise — it is not what they are
+  // composing. (`isEmpty` above only covers the no-media case, so before this
+  // guard the media branch fell through and printed the footer alone.)
+  //
+  // So the empty-draft decision lives HERE, at the display call site, where it
+  // belongs. Pinned by #1556 L9 in
+  // supabase/functions/__tests__/issue1556_sms_footer_parity.test.ts.
+  const hasTypedBody = body.trim().length > 0;
   const avatarLetter = (brandName ?? "Y").trim().charAt(0).toUpperCase() || "Y";
 
   const est = estimateSmsCost(body, reachableSms ?? 0, undefined, hasMedia);
@@ -140,12 +159,17 @@ export const SmsPreviewPane: React.FC<SmsPreviewPaneProps> = ({
                   ) : null,
                 )
               : null}
-            <Text
-              style={styles.bubbleText}
-              accessibilityLabel={wire}
-            >
-              {renderWithLinks(wire)}
-            </Text>
+            {/* #1556 — nothing typed yet (photo-only draft): render the photos
+                and NO body text. Restores the pre-#1556 on-screen behaviour
+                without touching bodyWithFooter's wire parity. */}
+            {hasTypedBody ? (
+              <Text
+                style={styles.bubbleText}
+                accessibilityLabel={wire}
+              >
+                {renderWithLinks(wire)}
+              </Text>
+            ) : null}
           </View>
           <Text style={styles.linkCaption}>
             Links become trackable Mingla links.
