@@ -15,8 +15,10 @@
 //          implementor ships are well-formed. These are not — NANP shared by
 //          four sovereign states, a +44 crown dependency, the +234/+2348
 //          boundary, national format with a trunk zero, an extension suffix,
-//          a doubled '+', unicode digits, and the two REAL +33 handsets that
-//          exist in production today. The fixture block is read out of
+//          a doubled '+', unicode digits, a bare calling code, and the two
+//          REAL +33 handsets that exist in production today — the finding that
+//          got France mapped rather than permanently cut off. The fixture
+//          block is read out of
 //          `issue_1529_tester_adversarial.test.sql`, which asserts the SAME
 //          expectations against the Postgres twin, so a SQL/TS divergence on
 //          the hostile set fails one suite or the other. There is one fixture
@@ -148,8 +150,8 @@ Deno.test("#1529 ADV-A1: the hostile fixture set loads, is non-empty, and can de
     "ZERO hostile fixtures parsed — this parity check would be vacuous",
   );
   assert(
-    fixtures.length >= 36,
-    `hostile fixture set shrank: expected >= 36, got ${fixtures.length}`,
+    fixtures.length >= 38,
+    `hostile fixture set shrank: expected >= 38, got ${fixtures.length}`,
   );
   // If every expectation were NULL the comparisons below would pass against an
   // implementation that returns null for everything.
@@ -294,8 +296,12 @@ const DESTINATIONS = [
   "+16475550123", // Canada: NANP, must ride the same Twilio route as the US
   "+447700900000", // GB
   "+32460964460", // BE
-  "+4915112345678", // unmapped
-  "+33075123456", // unmapped — TWO of these exist in production auth.users
+  "+4915112345678", // genuinely unmapped — must fail closed to BOTH providers
+  // MAPPED to FR (orchestrator decision, 2026-08-03) precisely BECAUSE two of
+  // these exist in production auth.users. Kept in the sweep as a mapped
+  // destination so the France decision stays under continuous assertion: it
+  // must now ride the Twilio/US switch, never fail closed, never reach Termii.
+  "+33075123456",
 ] as const;
 
 /** Every label an outbox row could plausibly (or maliciously) carry. */

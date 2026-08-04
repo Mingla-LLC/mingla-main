@@ -163,43 +163,30 @@ jobs:
           PGPASSWORD: ${{ format('issue-1529-ci-{0}', github.run_id) }}
         run: |
           set -euo pipefail
-          CID="$(docker ps --filter "ancestor=supabase/postgres:17.4.1.075" \
-                 --format '{{.ID}}' | head -n 1)"
-          if [ -z "$CID" ]; then
-            echo "could not locate the postgres service container" >&2
-            docker ps >&2
-            exit 1
-          fi
-          echo "postgres service container: $CID"
-
           DDL="ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS phone text;"
 
-          # supabase_admin is the image's bootstrap superuser and owns the auth
-          # schema. Try it as the container's postgres OS user first (peer/trust
-          # over the local socket), then as root, then fall back to postgres
-          # itself in case a future image grants it ownership.
-          provisioned=0
-          for attempt in \
-            "docker exec -u postgres $CID psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -c" \
-            "docker exec $CID psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -c" \
-            "docker exec -u postgres $CID psql -U postgres -d postgres -v ON_ERROR_STOP=1 -c"
-          do
-            if $attempt "$DDL" 2>/dev/null; then
-              echo "provisioned via: $attempt"
-              provisioned=1
-              break
-            fi
-          done
-          if [ "$provisioned" -ne 1 ]; then
-            echo "every privileged route failed to add auth.users.phone" >&2
-            docker exec "$CID" psql -U supabase_admin -d postgres \
-              -c "\du" >&2 || true
-            exit 1
-          fi
+          # `supabase_admin` is the image's bootstrap SUPERUSER and its password
+          # is the same POSTGRES_PASSWORD this job already uses, so the DDL runs
+          # over the ordinary TCP connection — no `docker exec`, no dependence
+          # on `docker ps --filter ancestor`, and no dependence on an OS user
+          # inside the container.
+          #
+          # TESTER NOTE (#1529): the original form of this step shelled into the
+          # container and tried `psql -U supabase_admin` over the LOCAL SOCKET
+          # with no password. That fails on the stock image — pg_hba grants
+          # `trust` for local/127.0.0.1 but the connection still prompts
+          # ("fe_sendauth: no password supplied"), and the one route that does
+          # connect (`-U postgres`) is not the owner of auth.users, so its ALTER
+          # is refused. All three routes failed, `provisioned` stayed 0, and the
+          # step exited 1 BEFORE migrations were applied — which would have
+          # aborted postgres-17-runtime at step 1 of 6 and made the five SQL
+          # steps unreachable. Verified against supabase/postgres:17.4.1.075.
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -c "$DDL"
 
           # Verify through the UNPRIVILEGED connection the tests actually use.
-          # This is the assertion that matters: provisioning that the tests
-          # cannot see is not provisioning.
+          # This is the assertion that matters: provisioning the tests cannot
+          # see is not provisioning.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -Atc \
             "select 1 from information_schema.columns
               where table_schema='auth' and table_name='users'

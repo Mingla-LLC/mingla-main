@@ -8,26 +8,41 @@ BEGIN;
 -- the four #1529 producers write a country and that a policy skip does not
 -- escalate a refund. This file attacks the three things they do NOT cover:
 --
---   ADV-1  COMPLETENESS UNDER EXEMPTION. The implementor's catalog audit
---          (issue_1529_producer_catalog_audit.test.sql) lists FOUR audited
---          producers, but the live catalog contains FIVE — the fifth,
---          public.admin_request_source_refund_attention_recovery, enqueues
---          into notification_outbox and never mentions country_code. It is
---          legitimately exempt (its rows are source-refund-pool rows whose
---          country is derived at the DRAIN, because #1221 keeps recipient PII
---          out of the outbox), but "legitimately exempt" is a claim, and an
---          unproven claim is exactly how #1529 shipped. This section makes the
---          exemption EARNED: an exempt producer must be shown BEHAVIOURALLY to
---          emit rows that the generic claim RPC cannot see and the
---          source-refund claim RPC can. A producer that is neither populated
---          nor provably drain-derived FAILS.
+--   ADV-1  COMPLETENESS UNDER EXEMPTION. The live catalog contains FIVE
+--          notification_outbox producers. The fifth,
+--          public.admin_request_source_refund_attention_recovery, enqueues into
+--          the outbox and never mentions country_code. It is legitimately
+--          exempt — its rows are source-refund-pool rows whose country is
+--          derived at the DRAIN, because #1221 keeps recipient PII out of the
+--          outbox — but "legitimately exempt" is a CLAIM, and an unproven claim
+--          is exactly how #1529 shipped.
+--
+--          This section makes the exemption earned on three axes, because I
+--          broke the weaker forms on a live database and recorded how:
+--            - DISCOVERY is on any MENTION of notification_outbox, not on an
+--              `INSERT INTO public.notification_outbox` regex. Two evasions
+--              defeat that regex — `public . notification_outbox` and an
+--              unqualified `notification_outbox` — and both wrote real rows
+--              while staying invisible.
+--            - CLASSIFICATION is three-way (populating / drain_derived /
+--              reader) and a "reader" that actually inserts is rejected, so a
+--              discovered writer cannot be silenced by parking it.
+--            - THE EXEMPTION discriminates on the producer's CATEGORY LITERALS
+--              and on claim-pool behaviour. Qualifying it with loose words is
+--              not enough: I redefined the exempt name with a body that wrote
+--              an ordinary generic-pool row and kept the marker words in a
+--              comment, and a word-level check stayed green.
+--          A producer that is neither populating nor provably drain-derived
+--          FAILS.
 --
 --   ADV-2  HOSTILE DERIVATION INPUT. The implementor's parity fixtures are
 --          well-formed. These are not: NANP overlap (Canada, Caribbean), a
 --          +44 crown dependency, the +234/+2348 boundary, national format with
 --          a leading zero, an extension suffix, letters interleaved with
---          digits, a doubled '+', unicode digits, and the two REAL +33 handsets
---          that exist in production today. Same fixture block is read by the
+--          digits, a doubled '+', unicode digits, a bare calling code, and the
+--          two REAL +33 handsets that exist in production today — the finding
+--          that got France mapped rather than permanently cut off. Same
+--          fixture block is read by the
 --          TypeScript twin, so SQL and TS cannot drift on the hostile set
 --          either.
 --
@@ -79,11 +94,25 @@ INSERT INTO issue_1529_adv_fixtures (label, raw, expect_e164, expect_country) VA
   ('ng_prefix_fragment_2', '+2', NULL, NULL),
   -- Belgium, present in production data.
   ('be_mobile', '+32460964460', '+32460964460', 'BE'),
-  -- Unmapped calling codes MUST be NULL, never a guess. +33 is not
-  -- hypothetical: two production auth.users rows carry a +33 handset today.
-  ('unmapped_france_production', '+33075123456', '+33075123456', NULL),
+  -- France is MAPPED, and this fixture is the reason it is. It originally
+  -- asserted NULL, on the SPEC's stated basis that the unmapped population was
+  -- "zero in production today". That was false — two real auth.users rows carry
+  -- a +33 handset — so failing closed here would have cut those two people off
+  -- permanently, by construction. The orchestrator authorised mapping France
+  -- (2026-08-03) and this expectation moved with the decision.
+  ('mapped_france_2_production_users', '+33075123456', '+33075123456', 'FR'),
+  -- Genuinely unmapped calling codes MUST still be NULL, never a guess. These
+  -- two carry that half of the contract now that France no longer does.
   ('unmapped_germany', '+4915112345678', '+4915112345678', NULL),
   ('unmapped_russia_kazakh_shared', '+79001234567', '+79001234567', NULL),
+  -- The P3-1 minimum-length floor, pinned from the tester side. Both of these
+  -- resolved to a COUNTRY before that fix — '+234' derived NG, and a vanity
+  -- number truncated to '+1800' derived US — so a garbage contact selected a
+  -- real provider. They must still NORMALISE (the normaliser's contract is
+  -- deliberately unchanged, which is what keeps every hostile normalisation
+  -- fixture above honest) and then fail to DERIVE.
+  ('calling_code_only_ng', '+234', '+234', NULL),
+  ('vanity_truncated_us', '+1 (800) FLOWERS', '+1800', NULL),
   -- National format with the trunk zero is NOT E.164 and must be rejected
   -- outright rather than silently becoming a +0 number.
   ('national_format_ng_trunk_zero', '07084065203', NULL, NULL),
@@ -125,9 +154,9 @@ BEGIN
   IF v_count = 0 THEN
     RAISE EXCEPTION 'issue_1529_adv_fixture_table_is_empty__guard_is_vacuous';
   END IF;
-  IF v_count < 36 THEN
+  IF v_count < 38 THEN
     RAISE EXCEPTION
-      'issue_1529_adv_fixture_set_shrank_expected_at_least_36_got_%', v_count;
+      'issue_1529_adv_fixture_set_shrank_expected_at_least_38_got_%', v_count;
   END IF;
   -- A fixture set where EVERY expectation is NULL would pass the comparison
   -- below against a function that returns NULL unconditionally.
@@ -190,17 +219,42 @@ $adv_null_is_not_us$;
 
 
 -- ===========================================================================
--- ADV-1 — COMPLETENESS UNDER EXEMPTION.
+-- ADV-1 — COMPLETENESS UNDER EXEMPTION, WITH EVASION-RESISTANT DISCOVERY.
 --
--- Same discovery query as the implementor's audit, but the allowlist is split
--- into two buckets and the EXEMPT bucket has to earn its place behaviourally.
+-- The implementor's audit discovers producers with
+-- `prosrc ~* 'insert\s+into\s+public\.notification_outbox'`. I attacked that
+-- regex on a live database and got TWO unaudited producers past it:
+--
+--   INSERT INTO public . notification_outbox (...)   -- whitespace around the dot
+--   INSERT INTO notification_outbox (...)            -- unqualified + search_path
+--
+-- Both wrote a real row and neither was discovered, so neither had to decide a
+-- country. The guard's whole premise is that it derives its subject set from
+-- the live catalog and therefore "cannot pass by ignoring a producer nobody
+-- remembered to add" — a premise a single space defeats.
+--
+-- SO THIS FILE DISCOVERS DIFFERENTLY. The subject set is every public function
+-- that MENTIONS notification_outbox at all. Then each one is classified:
+--
+--   populating     writes the column at enqueue                (must mention it)
+--   drain_derived  source-refund pool, country derived at drain (capped, ghost-checked)
+--   readers        provably does NOT insert                     (explicit list)
+--
+-- A function can only escape by constructing the table name dynamically, which
+-- is a far louder thing to write than a stray space.
 -- ===========================================================================
 CREATE TEMP TABLE issue_1529_adv_producers AS
-SELECT p.proname::text AS proname, p.prosrc AS prosrc
+SELECT p.proname::text AS proname,
+       p.prosrc        AS prosrc,
+       -- PERMISSIVE insert detector: optional schema, optional quoting, any
+       -- whitespace around the dot. This is what the two evasions above defeat
+       -- in the narrow form.
+       (p.prosrc ~* 'insert\s+into\s+("?public"?\s*\.\s*)?"?notification_outbox"?')
+         AS writes_outbox
 FROM pg_proc p
 JOIN pg_namespace n ON n.oid = p.pronamespace
 WHERE n.nspname = 'public'
-  AND p.prosrc ~* 'insert\s+into\s+public\.notification_outbox';
+  AND p.prosrc ~* 'notification_outbox';
 
 DO $adv_producer_vacuity$
 DECLARE
@@ -211,8 +265,18 @@ BEGIN
     RAISE EXCEPTION
       'issue_1529_adv_producer_discovery_matched_zero__guard_is_vacuous';
   END IF;
-  -- FIVE, not four. The floor is the number that actually exists in the
-  -- catalog, so a producer silently disappearing is caught too.
+  -- Everything that TOUCHES the table, writers and readers alike.
+  IF v_count < 12 THEN
+    RAISE EXCEPTION
+      'issue_1529_adv_outbox_touching_function_floor_breached_expected_at_least_12_got_%',
+      v_count;
+  END IF;
+
+  -- And the WRITERS specifically. FIVE, not four: the floor is the number that
+  -- actually exists, so a producer disappearing is caught as well as one
+  -- appearing.
+  SELECT count(*) INTO v_count
+  FROM issue_1529_adv_producers WHERE writes_outbox;
   IF v_count < 5 THEN
     RAISE EXCEPTION
       'issue_1529_adv_producer_floor_breached_expected_at_least_5_got_%',
@@ -238,17 +302,48 @@ DECLARE
   drain_derived text[] := ARRAY[
     'admin_request_source_refund_attention_recovery'
   ];
+  -- Bucket 3: functions that touch the table but must NEVER insert into it.
+  -- Listing them explicitly is what lets discovery stay broad: a NEW function
+  -- mentioning notification_outbox is unclassified until a human looks at it,
+  -- and if it turns out to insert, the writes_outbox check below rejects it
+  -- from this bucket outright.
+  readers text[] := ARRAY[
+    'claim_notification_outbox',
+    'claim_source_refund_notification_delivery',
+    'claim_source_refund_notification_outbox',
+    'complete_source_refund_notification_delivery',
+    'issue_1427_admin_list_stay_operations',
+    'issue_1427_admin_retry_stay_notification',
+    'issue_1427_admin_stay_group_projection'
+  ];
   v_unclassified text;
   v_missing_cc text;
+  v_reader_writes text;
+  v_bad_exempt text;
 BEGIN
   SELECT string_agg(d.proname, ', ' ORDER BY d.proname) INTO v_unclassified
   FROM issue_1529_adv_producers d
   WHERE NOT (d.proname = ANY(populating))
-    AND NOT (d.proname = ANY(drain_derived));
+    AND NOT (d.proname = ANY(drain_derived))
+    AND NOT (d.proname = ANY(readers));
   IF v_unclassified IS NOT NULL THEN
     RAISE EXCEPTION
-      'issue_1529_adv_unclassified_outbox_producer__%__classify_it_as_populating_or_prove_it_is_drain_derived',
+      'issue_1529_adv_unclassified_outbox_touching_function__%__classify_it_as_populating_drain_derived_or_reader',
       v_unclassified;
+  END IF;
+
+  -- A "reader" that inserts is not a reader. This is the assertion that closes
+  -- the discovery-regex evasions: a producer written as
+  -- `INSERT INTO public . notification_outbox` or unqualified is DISCOVERED
+  -- here (discovery is on the mention, not the INSERT), and can only be
+  -- silenced by being parked in `readers` — where this check rejects it.
+  SELECT string_agg(d.proname, ', ' ORDER BY d.proname) INTO v_reader_writes
+  FROM issue_1529_adv_producers d
+  WHERE d.proname = ANY(readers) AND d.writes_outbox;
+  IF v_reader_writes IS NOT NULL THEN
+    RAISE EXCEPTION
+      'issue_1529_adv_function_classified_as_reader_actually_INSERTS__%__it_must_decide_a_country',
+      v_reader_writes;
   END IF;
 
   SELECT string_agg(d.proname, ', ' ORDER BY d.proname) INTO v_missing_cc
@@ -258,6 +353,66 @@ BEGIN
   IF v_missing_cc IS NOT NULL THEN
     RAISE EXCEPTION 'issue_1529_adv_populating_producer_omits_country_code__%',
       v_missing_cc;
+  END IF;
+
+  -- The exemption bucket must stay small and must not contain ghosts. A third
+  -- exemption is a deliberate human decision, not an append.
+  IF array_length(drain_derived, 1) > 2 THEN
+    RAISE EXCEPTION
+      'issue_1529_adv_exemption_bucket_grew_past_2__an_exemption_bucket_that_keeps_growing_IS_a_blanket_allowlist';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM unnest(drain_derived) AS x(name)
+    WHERE NOT EXISTS (
+      SELECT 1 FROM issue_1529_adv_producers d WHERE d.proname = x.name
+    )
+  ) THEN
+    RAISE EXCEPTION
+      'issue_1529_adv_exemption_names_a_function_that_no_longer_exists__remove_the_stale_exemption';
+  END IF;
+  -- An exempt producer that writes the column is a POPULATING producer that has
+  -- been mis-filed, and mis-filing is how a real omission gets hidden.
+  SELECT string_agg(d.proname, ', ' ORDER BY d.proname) INTO v_bad_exempt
+  FROM issue_1529_adv_producers d
+  WHERE d.proname = ANY(drain_derived) AND d.prosrc ~* 'country_code';
+  IF v_bad_exempt IS NOT NULL THEN
+    RAISE EXCEPTION
+      'issue_1529_adv_exempt_producer_writes_country_code__reclassify_as_populating__%',
+      v_bad_exempt;
+  END IF;
+
+  -- THE EXEMPTION IS ABOUT WHICH POOL THE PRODUCER WRITES INTO, so assert on
+  -- the CATEGORY LITERALS in its body, not on loose words.
+  --
+  -- I attacked the weaker form and it fell over: the implementor's audit
+  -- qualifies the exemption with `prosrc ~* 'contract_version' AND prosrc ~*
+  -- 'source_refund'`, and BOTH of those match a COMMENT. I redefined the exempt
+  -- name with a body whose only INSERT wrote an ordinary generic-pool row
+  -- ('buyer_reservation_changed') and kept the two words in a comment — the
+  -- audit stayed green, because its behavioural section proves pool separation
+  -- with its OWN canned row and never looks at what the exempt producer emits.
+  --
+  -- These two checks discriminate on the real signal. Verified against the live
+  -- catalog: the genuine exempt producer has a 'source_refund category literal
+  -- and NO generic one; all four populating producers are the exact inverse.
+  SELECT string_agg(d.proname, ', ' ORDER BY d.proname) INTO v_bad_exempt
+  FROM issue_1529_adv_producers d
+  WHERE d.proname = ANY(drain_derived)
+    AND d.prosrc !~ '''source_refund';
+  IF v_bad_exempt IS NOT NULL THEN
+    RAISE EXCEPTION
+      'issue_1529_adv_exempt_producer_has_no_source_refund_category_literal__it_does_not_write_to_that_pool__%',
+      v_bad_exempt;
+  END IF;
+
+  SELECT string_agg(d.proname, ', ' ORDER BY d.proname) INTO v_bad_exempt
+  FROM issue_1529_adv_producers d
+  WHERE d.proname = ANY(drain_derived)
+    AND d.prosrc ~ '''(buyer_|business\.|stay_)';
+  IF v_bad_exempt IS NOT NULL THEN
+    RAISE EXCEPTION
+      'issue_1529_adv_exempt_producer_writes_a_GENERIC_pool_category__the_drain_derived_exemption_does_not_cover_it__%',
+      v_bad_exempt;
   END IF;
 END;
 $adv_producer_partition$;
@@ -420,7 +575,9 @@ INSERT INTO public.reservations (
    '00000000-1529-4dd0-8000-000000000011',
    now() + interval '12 days', 2, 'confirmed', 'website', 'guest',
    'GB Guest', '+447700900000', 'adv-gb@example.test'),
-  -- A production-real unmapped handset: two +33 rows exist in auth.users today.
+  -- A production-real French handset. Two +33 rows exist in auth.users today,
+  -- which is why France is MAPPED rather than failing closed — under the
+  -- original bounded map these two users could never have been texted again.
   ('00000000-1529-4dd0-8000-000000000053',
    '00000000-1529-4dd0-8000-000000000010',
    '00000000-1529-4dd0-8000-000000000011',
@@ -430,7 +587,18 @@ INSERT INTO public.reservations (
    '00000000-1529-4dd0-8000-000000000010',
    '00000000-1529-4dd0-8000-000000000011',
    now() + interval '14 days', 2, 'confirmed', 'website', 'guest',
-   'Email Guest', NULL, 'adv-email@example.test');
+   'Email Guest', NULL, 'adv-email@example.test'),
+  -- A GENUINELY unmapped calling code, added when France was mapped. Without
+  -- it this matrix would no longer contain a single unmapped-handset case, and
+  -- would stop proving the property that matters most at the producer level:
+  -- an underivable country is written as NULL, never guessed as US. The
+  -- email-only row above is NULL for a DIFFERENT reason (no phone at all), so
+  -- it cannot stand in for this one.
+  ('00000000-1529-4dd0-8000-000000000055',
+   '00000000-1529-4dd0-8000-000000000010',
+   '00000000-1529-4dd0-8000-000000000011',
+   now() + interval '15 days', 2, 'confirmed', 'website', 'guest',
+   'DE Guest', '+4915112345678', 'adv-de@example.test');
 
 DO $adv_reservation_matrix$
 DECLARE
@@ -446,8 +614,12 @@ BEGIN
       ('00000000-1529-4dd0-8000-000000000050', 'NG'),
       ('00000000-1529-4dd0-8000-000000000051', 'US'),
       ('00000000-1529-4dd0-8000-000000000052', 'GB'),
-      ('00000000-1529-4dd0-8000-000000000053', NULL),
-      ('00000000-1529-4dd0-8000-000000000054', NULL)
+      -- France: MAPPED (orchestrator decision, 2026-08-03). This row asserted
+      -- NULL until the production probe found two real +33 users.
+      ('00000000-1529-4dd0-8000-000000000053', 'FR'),
+      ('00000000-1529-4dd0-8000-000000000054', NULL),
+      -- Germany: genuinely unmapped. NULL, never US.
+      ('00000000-1529-4dd0-8000-000000000055', NULL)
     ) AS t(rid, expected)
   LOOP
     -- The idempotency key asserted here is the PRE-#1529 format, verbatim:
@@ -471,10 +643,29 @@ BEGIN
     END IF;
   END LOOP;
 
-  IF v_seen <> 5 THEN
+  IF v_seen <> 6 THEN
     RAISE EXCEPTION
-      'issue_1529_adv_reservation_matrix_ran_over_%_rows_expected_5__vacuous',
+      'issue_1529_adv_reservation_matrix_ran_over_%_rows_expected_6__vacuous',
       v_seen;
+  END IF;
+
+  -- The matrix must keep BOTH halves of the contract, or flipping one country
+  -- to mapped could quietly hollow it out. Assert the shape directly: at least
+  -- one row derived a real country, and at least one PHONE-BEARING row derived
+  -- NULL. The email-only row is excluded because it is NULL for a different
+  -- reason and would let the unmapped case disappear unnoticed.
+  IF (SELECT count(*) FROM public.notification_outbox o
+        WHERE o.idempotency_key LIKE 'buyer_reservation_confirmed:00000000-1529-4dd0%'
+          AND o.country_code IS NOT NULL) = 0 THEN
+    RAISE EXCEPTION
+      'issue_1529_adv_matrix_has_no_derivable_country_case__would_pass_against_a_null_returning_impl';
+  END IF;
+  IF (SELECT count(*) FROM public.notification_outbox o
+        WHERE o.idempotency_key LIKE 'buyer_reservation_confirmed:00000000-1529-4dd0%'
+          AND o.contact IS NOT NULL AND o.contact NOT LIKE '%@%'
+          AND o.country_code IS NULL) = 0 THEN
+    RAISE EXCEPTION
+      'issue_1529_adv_matrix_lost_its_unmapped_handset_case__NULL_never_means_US_is_no_longer_proven';
   END IF;
 
   -- ON CONFLICT must still collapse a repeat enqueue. A changed key would
