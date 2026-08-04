@@ -7278,7 +7278,7 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 ## DRAFT — issue #1541 (every SMS leaves through the one sanctioned send path)
 
 ### I-PROPOSED-1541-SMS-PROVIDER-EGRESS-ALLOWLIST (DRAFT)
-- **Rule:** No file under `supabase/functions/` may reach an SMS-provider **message-send** endpoint
+- **Rule (the intent):** No file under `supabase/functions/` may reach an SMS-provider **message-send** endpoint
   — Twilio Programmable Messaging (`api.twilio.com` … `/Messages.json`), Termii (`/api/sms/send`),
   or Twilio Verify (`verify.twilio.com`) — except `_shared/adapters/smsAdapter.ts` and the two
   documented Verify exemptions (`send-otp`, `verify-otp`). Adding a new sender therefore requires
@@ -7297,6 +7297,25 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   `supabase/functions/__tests__/issue_1541_sms_sole_send_path.test.ts`, which drives all four
   migrated handlers and asserts on **captured provider HTTP** rather than source text. Static and
   runtime together are the defence; neither alone is claimed to be sufficient.
+- **WHAT THE ENFORCEMENT ACTUALLY COVERS — stated plainly, because the previous version of this
+  registry entry is what #1541 exists to correct.** The gate is STATIC TEXT ANALYSIS. It runs two
+  detectors: a per-line match, and a correlation over each file's **literal space** (the contents of
+  every string/template literal, concatenated in source order), so a hoisted host constant, a URL
+  split across lines, and a path assembled from string fragments are all caught. Scanned extensions
+  are `.ts/.tsx/.mts/.cts/.mjs/.cjs/.js/.jsx`, and a file counts as a test by **directory**, never by
+  filename — a deployed module named `sender.spec.ts` is scanned like any other.
+  **IT DOES NOT MAKE DIRECT EGRESS IMPOSSIBLE, AND THIS INVARIANT DOES NOT CLAIM THAT IT DOES.**
+  A URL that never exists as text in the file is out of reach by construction: a host or path read
+  from configuration, an environment variable, a database row or a remote response and assembled at
+  runtime; fragments base64/hex-decoded, reversed, or built by `String.fromCharCode`; or a request
+  issued by a transitive dependency. All three shapes were verified to evade during #1541 rework, and
+  they are documented in the gate's own header. The gate closes the **accidental** routes — the ones
+  ordinary refactoring produces, which is how every one of the four historical bypasses arose — and
+  raises the cost of deliberate ones. **The real-time control is not this gate: it is the adapter's
+  kill switch, which refuses to transmit with zero provider HTTP while a market is dark.** This
+  invariant protects the DURABILITY of that arrangement, not the arrangement itself. A guard
+  documented as evadable is fine; a guard that claims completeness it lacks is the failure class
+  catalogued in #1553.
 - **THE GATE CANNOT PASS VACUOUSLY, and that is a load-bearing property, not a nicety.** Three
   independent guards, all exercised for real by the self-test rather than described: a scan that
   discovers ZERO source files exits 2; a scan that finds ZERO sanctioned provider endpoints exits 2,

@@ -31,13 +31,32 @@
 //           the FAILS-ON-REVERT anchor: it runs the gate against the REAL repo
 //           tree, so reverting any of the four migrations turns this red.
 //
-//   PINS    (T-3 … T-7) — evasions the gate does NOT currently catch, pinned
-//           deliberately so the ceiling is visible in CI instead of buried in a
-//           report. Tester finding T-1541-GATE-EVASION (P2).
+//   PROOFS  (T-3 … T-7) — CONVERTED FROM PINS, #1541 IMPLEMENT REWORK.
+//           These were written as PINS: evasions the gate did NOT catch, held
+//           visible in CI so the ceiling could not be buried in a report.
+//           Tester finding T-1541-GATE-EVASION (P2). Every one of them is now
+//           CLOSED, so each has been flipped from "expect 0 (evades)" to
+//           "expect 1 (caught)". The attack shapes are UNCHANGED and stay in CI
+//           forever as guarantees rather than as known gaps — which is stronger
+//           than deleting them, and is what the pin's own instruction asked for
+//           ("IF A PIN STARTS FAILING, THE GATE GOT STRONGER... never weaken
+//           the gate to keep this file green").
 //
-//           *** IF A PIN STARTS FAILING, THE GATE GOT STRONGER. ***
-//           That is good news. Delete the pin — never weaken the gate to keep
-//           this file green. Each pin names the fix that would close it.
+//           What closed them: the gate now runs a SECOND detector over each
+//           file's LITERAL SPACE (the contents of every string/template literal,
+//           concatenated in source order), correlating host against path, so a
+//           hoisted constant, a two-line concatenation and a fragment-assembled
+//           path all reassemble and are caught. SCAN_EXT gained
+//           .mts/.cts/.cjs/.jsx, and test detection is now by DIRECTORY, never
+//           by filename.
+//
+//           STILL OPEN, and documented as such in the gate's own header and in
+//           I-PROPOSED-1541-SMS-PROVIDER-EGRESS-ALLOWLIST: static text analysis
+//           cannot see a URL that never exists as text — assembled at runtime
+//           from env/config/DB, base64-decoded, or built by String.fromCharCode.
+//           Verified evading: all three. The gate closes the ACCIDENTAL routes
+//           and raises the cost of the deliberate ones; it does not make direct
+//           egress impossible, and nothing may claim it does.
 //
 // Run: node --test .github/scripts/strict-grep/__tests__/issue-1541-sms-provider-sole-send-path.tester.adversarial.test.mjs
 
@@ -192,7 +211,9 @@ test("T-2 PROOF: a naive direct Twilio send is caught, in every quote class", ()
 });
 
 // ===========================================================================
-// PINS T-3 … T-7 — tester finding T-1541-GATE-EVASION (P2).
+// PROOFS T-3 … T-7 — tester finding T-1541-GATE-EVASION (P2), NOW CLOSED.
+// Converted from pins during #1541 IMPLEMENT REWORK. Shapes unchanged; only the
+// expectation flipped, because the gate now catches every one of them.
 // ===========================================================================
 // The detector is a PER-LINE regex requiring an opening quote and BOTH the host
 // and the path fragment on the SAME physical line:
@@ -211,7 +232,7 @@ test("T-2 PROOF: a naive direct Twilio send is caught, in every quote class", ()
 // FIX THAT CLOSES T-7: only treat a file as a test if it lives under a test
 // directory, not merely because its NAME contains `.spec.`/`.test.`.
 
-test("T-3 PIN: a hoisted host constant evades the gate (KNOWN GAP)", () => {
+test("T-3 PROOF: a hoisted host constant is CAUGHT", () => {
   const { code } = violation({
     "supabase/functions/rogue/index.ts": [
       'const TWILIO_HOST = "api.twilio.com";',
@@ -221,13 +242,13 @@ test("T-3 PIN: a hoisted host constant evades the gate (KNOWN GAP)", () => {
   });
   assert.equal(
     code,
-    0,
-    "PIN BROKEN (good news): the gate now catches a hoisted host constant. " +
-      "Delete this pin and close tester finding T-1541-GATE-EVASION.",
+    1,
+    "REGRESSION: a hoisted host constant evades the gate again. The literal-space " +
+      "correlation detector has been weakened or removed.",
   );
 });
 
-test("T-4 PIN: a URL concatenated across two lines evades the gate (KNOWN GAP)", () => {
+test("T-4 PROOF: a URL concatenated across two lines is CAUGHT", () => {
   const { code } = violation({
     "supabase/functions/rogue/index.ts": [
       'const url = "https://api.twilio.com/2010-04-01/Accounts/AC1" +',
@@ -237,13 +258,12 @@ test("T-4 PIN: a URL concatenated across two lines evades the gate (KNOWN GAP)",
   });
   assert.equal(
     code,
-    0,
-    "PIN BROKEN (good news): multi-line concatenation is now caught. " +
-      "Delete this pin.",
+    1,
+    "REGRESSION: multi-line concatenation evades the gate again.",
   );
 });
 
-test("T-5 PIN: a fragment-assembled Termii path evades the gate (KNOWN GAP)", () => {
+test("T-5 PROOF: a fragment-assembled Termii path is CAUGHT", () => {
   const { code } = violation({
     "supabase/functions/rogue/index.ts": [
       'const SEND_PATH = "/api" + "/sms" + "/send";',
@@ -252,12 +272,14 @@ test("T-5 PIN: a fragment-assembled Termii path evades the gate (KNOWN GAP)", ()
   });
   assert.equal(
     code,
-    0,
-    "PIN BROKEN (good news): fragment assembly is now caught. Delete this pin.",
+    1,
+    "REGRESSION: literal-fragment assembly evades the gate again. Note this " +
+      "closes only fragments that ARE string literals; runtime assembly from " +
+      "env/config/decoding remains out of reach of static analysis by design.",
   );
 });
 
-test("T-6 PIN: an unscanned file extension evades the gate (KNOWN GAP)", () => {
+test("T-6 PROOF: .mts/.cts/.jsx are SCANNED", () => {
   // SCAN_EXT is {.ts,.tsx,.mjs,.js}. Deno resolves .mts/.cts too, and a plain
   // single-line call inside one is never even read.
   for (const ext of ["mts", "cts", "jsx"]) {
@@ -267,13 +289,14 @@ test("T-6 PIN: an unscanned file extension evades the gate (KNOWN GAP)", () => {
     });
     assert.equal(
       code,
-      0,
-      `PIN BROKEN (good news): .${ext} is now scanned. Delete it from this pin.`,
+      1,
+      `REGRESSION: .${ext} is no longer scanned — SCAN_EXT lost an extension, ` +
+        "and a sender written in it would ship unguarded.",
     );
   }
 });
 
-test("T-7 PIN: a `.spec.ts` name inside a live function dir is skipped (KNOWN GAP)", () => {
+test("T-7 PROOF: a `.spec.ts` name inside a live function dir is SCANNED", () => {
   // isTestFile() skips on the FILENAME, so a deployed module named like a test
   // is never scanned even though it ships inside the function bundle.
   const { code } = violation({
@@ -282,8 +305,10 @@ test("T-7 PIN: a `.spec.ts` name inside a live function dir is skipped (KNOWN GA
   });
   assert.equal(
     code,
-    0,
-    "PIN BROKEN (good news): name-only test detection was tightened. Delete this pin.",
+    1,
+    "REGRESSION: test detection went back to matching on FILENAME, so a deployed " +
+      "module named like a test is unguarded again. A naming convention is not " +
+      "an access control.",
   );
 });
 

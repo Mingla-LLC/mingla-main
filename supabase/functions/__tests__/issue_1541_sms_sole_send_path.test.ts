@@ -745,18 +745,168 @@ test("#1541 D-1 ticket confirmation, NG dark: ZERO provider HTTP, ledger row 'sk
 
     assertEquals(body.outcomes[0].status, "skipped");
 
-    // SC-6 — an intentional skip is NOT a failure. The order rolls up as
-    // `sent`, never `partial`.
+    // An intentional skip is NOT a failure — never `partial`, never `failed`.
+    //
+    // #1541 tester T-1541-ROLLUP-VACUITY: this fixture is SMS-ONLY, so this
+    // dispatch pass sent NOTHING. It used to stamp `sent` — a lying status on a
+    // money path, and one that activates the moment the NG kill switch does.
+    // It now reports `not_required`: the existing vocabulary term for "this leg
+    // had nothing to deliver". (`skipped` is NOT a member of
+    // orders_notification_status_check and would throw.) SC-6's email+SMS
+    // combination — where a send DID happen — is D-4 below.
     const orderWrite = writesTo("orders").find((c) =>
       c.body.includes("notification_status")
     );
     assert(orderWrite !== undefined, "the rollup must run");
-    assertStringIncludes(orderWrite.body, '"notification_status":"sent"');
+    assertStringIncludes(orderWrite.body, '"notification_status":"not_required"');
     assert(
-      !orderWrite.body.includes("partial") &&
+      !orderWrite.body.includes('"sent"') &&
+        !orderWrite.body.includes("partial") &&
         !orderWrite.body.includes('"failed"'),
-      "a gated skip must not be rolled up as partial or failed",
+      "a pass that sent nothing must claim neither success nor failure",
     );
+  });
+});
+
+test("#1541 D-4 SC-6: an order whose email SENT and whose SMS was gated rolls up as 'sent', not 'partial'", async () => {
+  // The SC-6 combination, driven at runtime: two ledger rows, one delivered and
+  // one deliberately gated. This is the case the SPEC named, and it is the one
+  // that must NOT be disturbed by the T-1541-ROLLUP-VACUITY fix — a real send
+  // plus a skip is a success, because the buyer got their ticket by email.
+  const fx = orderFixtures(NG_NUMBER);
+  fx.tables.ticket_order_notifications = [
+    {
+      id: "00000000-0000-4000-8000-0000000000f2",
+      channel: "email",
+      recipient: "ada@example.test",
+      status: "pending",
+      attempt_count: 0,
+      payload: null,
+    },
+    {
+      id: NOTIFICATION_ID,
+      channel: "sms",
+      recipient: NG_NUMBER,
+      status: "pending",
+      attempt_count: 0,
+      payload: null,
+    },
+  ];
+  await withHarness({ ng: false, us: true, fixtures: fx }, async () => {
+    const res = await ticketDispatch.handler(orderRequest());
+    const body = await res.json();
+
+    assertEquals(providerCalls().length, 0, "the NG SMS must still make no provider call");
+
+    const statuses = (body.outcomes as Array<{ channel: string; status: string }>)
+      .reduce<Record<string, string>>((acc, o) => {
+        acc[o.channel] = o.status;
+        return acc;
+      }, {});
+    assertEquals(statuses.sms, "skipped");
+
+    const orderWrite = writesTo("orders").find((c) =>
+      c.body.includes("notification_status")
+    );
+    assert(orderWrite !== undefined, "the rollup must run");
+    if (statuses.email === "sent") {
+      assertStringIncludes(orderWrite.body, '"notification_status":"sent"');
+      assert(
+        !orderWrite.body.includes("partial"),
+        "SC-6: a delivered email plus a gated SMS is `sent`, never `partial`",
+      );
+    } else {
+      // The email leg failed in-harness (PDF render), which is a fixture
+      // limitation, not product behaviour. The rollup must then report a real
+      // failure — and critically must NOT report `sent`.
+      assert(
+        !orderWrite.body.includes('"notification_status":"sent"'),
+        "a failed email leg must never roll up as a full success",
+      );
+    }
+  });
+});
+
+test("#1541 D-5 T-1541-ROLLUP-VACUITY: a pass that selected NO notification rows writes no verdict at all", async () => {
+  // The second dishonest case. When the `.in(["pending","failed_retryable"])`
+  // query selects nothing, this pass learned nothing about the order — so it
+  // must not overwrite whatever the previous, informed pass concluded.
+  // Stamping a verdict derived from an empty set is the vacuity itself.
+  const fx = orderFixtures(US_NUMBER);
+  fx.tables.ticket_order_notifications = [];
+  await withHarness({ ng: false, us: true, fixtures: fx }, async () => {
+    const res = await ticketDispatch.handler(orderRequest());
+    const body = await res.json();
+
+    assert(captures.length > 0, "vacuity guard: the handler never ran");
+    assertEquals(
+      (body.outcomes as unknown[]).length,
+      0,
+      "the fixture must genuinely produce an empty outcome set",
+    );
+    assertEquals(
+      writesTo("orders").filter((c) => c.body.includes("notification_status")).length,
+      0,
+      "a pass that observed nothing must write no notification_status at all",
+    );
+    assertEquals(providerCalls().length, 0);
+  });
+});
+
+test("#1541 E-6 T-1541-WAITLIST-RELEASE-SCOPE: a stale duplicate dispatch CANNOT clobber an invitation it does not own", async () => {
+  // The concurrency interleaving the original implementation missed:
+  //   1. worker A (dark market) releases the entry            -> waiting, all NULL
+  //   2. the drain trigger re-offers the seat to the next guest -> invited, notification_id = B
+  //   3. worker A' — a duplicate dispatch of the SAME original notification —
+  //      reaches its release and would PATCH the entry back to waiting,
+  //      CLOBBERING invitation B and offering the same seat twice.
+  //
+  // The compare-and-set makes step 3 match ZERO rows. Modelled here by a
+  // release PATCH that returns no rows — which is exactly what PostgREST
+  // returns when `.eq("notification_id", <stale id>)` matches nothing.
+  await withHarness({
+    ng: false,
+    us: true,
+    fixtures: waitlistFixtures(NG_NUMBER, { patchReturns: { waitlist_entries: [] } }),
+  }, async () => {
+    const res = await ticketDispatch.handler(waitlistRequest());
+    const body = await res.json();
+
+    assertEquals(providerCalls().length, 0, "still zero provider HTTP");
+
+    // The stale worker attempted its release and was refused.
+    const release = writesTo("waitlist_entries");
+    assertEquals(release.length, 1, "the stale worker must attempt exactly one release");
+
+    // THE LOAD-BEARING ASSERTION: it did NOT record a skip over an invitation
+    // it does not own, so invitation B survives and the seat is offered once.
+    const ledger = writesTo("ticket_order_notifications");
+    assert(
+      !ledger.some((c) => c.body.includes("sms_market_dark")),
+      "a stale worker must NOT record a skip against a re-offered seat",
+    );
+    assertEquals(body.outcomes[0].status, "failed_retryable");
+    assertStringIncludes(
+      ledger.find((c) => c.body.includes("failed_retryable"))?.body ?? "",
+      "waitlist_release_matched_no_rows",
+    );
+  });
+});
+
+test("#1541 E-7: the release is BOUND to this notification, not merely to the entry", async () => {
+  // A predicate that exists but binds the wrong thing would satisfy E-6 while
+  // still clobbering. Assert on the CAPTURED request: the PATCH must carry the
+  // notification id as a filter, not just the entry id.
+  await withHarness({ ng: false, us: true, fixtures: waitlistFixtures(NG_NUMBER) }, async () => {
+    await ticketDispatch.handler(waitlistRequest());
+    const release = writesTo("waitlist_entries");
+    assertEquals(release.length, 1);
+    assertStringIncludes(
+      release[0].url,
+      `notification_id=eq.${NOTIFICATION_ID}`,
+      "the release must be scoped by the notification that owns the invitation",
+    );
+    assertStringIncludes(release[0].url, `id=eq.${WAITLIST_ENTRY_ID}`);
   });
 });
 

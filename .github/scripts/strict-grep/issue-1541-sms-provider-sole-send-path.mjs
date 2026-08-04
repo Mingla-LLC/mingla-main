@@ -44,8 +44,39 @@
  *   ANCHOR             : smsAdapter.ts lost its Twilio or Termii → exit 2
  * The match-count assertion runs BEFORE any violation is evaluated (#1529).
  *
- * `--self-test` runs 10 cases against the SAME runGate() the live mode uses, so
- * the vacuity guards are exercised for real rather than described.
+ * TWO DETECTORS:
+ *   1. per-line — the historical shapes, reported with a line number;
+ *   2. literal-space correlation — the contents of every string/template
+ *      literal in the file, concatenated, so a hoisted host constant, a URL
+ *      split across lines, or a path assembled from fragments still reassembles
+ *      and is caught (#1541 tester T-3/T-4/T-5).
+ *
+ * ===========================================================================
+ * WHAT THIS GATE DOES NOT CATCH. READ THIS BEFORE CITING IT AS PROOF.
+ * ===========================================================================
+ * This is STATIC TEXT ANALYSIS. It reads source; it does not execute it. It
+ * therefore cannot see a provider URL that never exists as text in the file:
+ *
+ *   - a host or path read from configuration, an environment variable, a
+ *     database row, or a remote response, and assembled at RUNTIME;
+ *   - fragments transformed before use — base64/hex-decoded, reversed,
+ *     `String.fromCharCode(...)`, built by a loop, or pulled from an imported
+ *     module that itself holds no literal;
+ *   - a request issued by a transitive dependency rather than by this source.
+ *
+ * The correlation detector closes the ACCIDENTAL routes — the ones ordinary
+ * refactoring produces — and raises the cost of the deliberate ones. It does
+ * not make direct egress impossible, and the invariant must not claim it does.
+ * A guard documented as evadable is fine; a guard that claims completeness it
+ * lacks is the failure class catalogued in #1553.
+ *
+ * The real-time control is not this gate: it is the adapter's kill switch,
+ * which refuses to transmit with zero provider HTTP while a market is dark.
+ * This gate protects the DURABILITY of that arrangement, not the arrangement.
+ * ===========================================================================
+ *
+ * `--self-test` runs its cases against the SAME runGate() the live mode uses,
+ * so the vacuity guards are exercised for real rather than described.
  *
  * Exit 0 clean / 1 violation / 2 script or vacuity error.
  *
@@ -60,7 +91,21 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "../../..");
 
 const SCAN_ROOT = "supabase/functions";
-const SCAN_EXT = new Set([".ts", ".tsx", ".mjs", ".js"]);
+// #1541 tester T-6 — Deno resolves .mts/.cts, and .jsx/.cjs are equally
+// deployable. A sender written in any of them used to be NEVER EVEN READ. That
+// is not an adversarial hole; it is what happens when someone adds a handler in
+// a new extension next quarter and the guard silently stops guarding — the exact
+// way the artifacts catalogued in #1553 came to exist.
+const SCAN_EXT = new Set([
+  ".ts",
+  ".tsx",
+  ".mts",
+  ".cts",
+  ".mjs",
+  ".cjs",
+  ".js",
+  ".jsx",
+]);
 const SKIP_DIR = new Set([
   "node_modules",
   "__tests__",
@@ -105,14 +150,58 @@ const ALLOWLIST = new Map([
   ["supabase/functions/verify-otp/index.ts", new Set(["twilio_verify"])],
 ]);
 
+// #1541 tester T-7 — TEST FIXTURES THAT LEGITIMATELY NAME A PROVIDER ENDPOINT.
+// These suites live BESIDE the adapter rather than under a `__tests__/`
+// directory, and they reference provider hosts to stub `fetch` and assert on
+// captured traffic. Now that test detection is directory-based, they must be
+// named explicitly — which is the point: a fixture is an exception to the rule,
+// and exceptions belong somewhere a reviewer sees them.
+//
+// These occurrences are deliberately NOT counted toward `matchCount`. A test
+// fixture must never be able to satisfy the non-vacuity assertion on behalf of
+// the real send path — that would let the adapter lose its provider calls while
+// the sweep still "observed something".
+const TEST_FIXTURE_ALLOWLIST = new Map([
+  [
+    "supabase/functions/_shared/adapters/smsAdapter.issue1518.test.ts",
+    new Set(["twilio_messages", "termii_send"]),
+  ],
+  [
+    "supabase/functions/_shared/adapters/smsAdapter.issue1518.adversarial.test.ts",
+    new Set(["twilio_messages", "termii_send"]),
+  ],
+  [
+    "supabase/functions/_shared/adapters/smsAdapter.issue1529.test.ts",
+    new Set(["twilio_messages", "termii_send"]),
+  ],
+  [
+    "supabase/functions/_shared/adapters/smsAdapter.issue1529.tester.adversarial.test.ts",
+    new Set(["twilio_messages", "termii_send"]),
+  ],
+  [
+    "supabase/functions/_shared/adapters/smsAdapter.termii.test.ts",
+    new Set(["twilio_messages", "termii_send"]),
+  ],
+]);
+
 // The anchor: the sanctioned path must still BE the sanctioned path. If
 // smsAdapter.ts stops containing both provider calls, the sole send path has
 // been dismantled and "0 violations" would be a lie.
 const ANCHOR_PATH = "supabase/functions/_shared/adapters/smsAdapter.ts";
 const ANCHOR_REQUIRED = ["twilio_messages", "termii_send"];
 
-const isTestFile = (rel) =>
-  /\.(test|spec)\.[cm]?[jt]sx?$/.test(rel) || rel.includes("/__tests__/");
+// #1541 tester T-7 — TEST DETECTION IS BY DIRECTORY, NEVER BY FILENAME.
+// This used to skip any file whose NAME matched `*.test.*` / `*.spec.*`, so a
+// deployed module called `sender.spec.ts` sitting inside a live function
+// directory was never scanned — while shipping inside the function bundle just
+// like every other file. A naming convention is not an access control.
+//
+// Test files that genuinely live beside production code (the adapter suites)
+// are handled by the ALLOWLIST below instead: an explicit, reviewed entry per
+// path. That is fail-CLOSED — a new endpoint-referencing test in that directory
+// turns the gate RED until someone adds it deliberately, which is the correct
+// direction to fail.
+const isTestFile = (rel) => rel.includes("/__tests__/") || rel.includes("/_test/");
 
 // Neutralize `//` and `/* */` comments to spaces (preserving newlines and line
 // numbers) so the gate asserts absence of CODE usage, not narrative mentions.
@@ -149,6 +238,70 @@ function stripComments(src) {
   }
   return out;
 }
+
+/**
+ * #1541 tester T-3/T-4/T-5 — THE LITERAL SPACE.
+ *
+ * The per-line detector below requires the host and the path fragment on the
+ * SAME physical line, so it only ever enforced "nobody wrote the URL the way
+ * the four historical bypasses wrote it" — strictly weaker than the invariant
+ * it is cited as enforcing. A hoisted `const TWILIO_HOST = "api.twilio.com"`,
+ * or a URL concatenated across two lines, is ORDINARY REFACTORING, not
+ * sabotage, and it walked straight past.
+ *
+ * So a second detector runs over the file's LITERAL SPACE: the contents of
+ * every string and template literal in the comment-stripped source,
+ * concatenated in source order. Concatenation is what makes it work — a URL
+ * split across `"/api" + "/sms" + "/send"` reassembles here, and a host
+ * declared far from its path still shares the space.
+ *
+ * Correlation, not presence: a Twilio hit requires BOTH `api.twilio.com` AND
+ * `Messages.json` in that space, so a file that merely names the host (the
+ * health probe reads `Accounts/{sid}.json` and `Balance.json`) is not flagged.
+ */
+function literalSpace(strippedSrc) {
+  const out = [];
+  let state = "code"; // code | s | d | t
+  for (let i = 0; i < strippedSrc.length; i++) {
+    const c = strippedSrc[i];
+    if (state === "code") {
+      if (c === "'") state = "s";
+      else if (c === '"') state = "d";
+      else if (c === "`") state = "t";
+      continue;
+    }
+    if (c === "\\") {
+      i++; // skip the escaped char; it cannot close the literal
+      continue;
+    }
+    const closer = state === "s" ? "'" : state === "d" ? '"' : "`";
+    if (c === closer) {
+      state = "code";
+      continue;
+    }
+    out.push(c);
+  }
+  return out.join("");
+}
+
+// Correlation rules over the literal space. `all` fragments must ALL be present.
+const CORRELATIONS = [
+  {
+    id: "twilio_messages",
+    label: "Twilio Programmable Messaging (Messages.json)",
+    all: ["api.twilio.com", "Messages.json"],
+  },
+  {
+    id: "termii_send",
+    label: "Termii message send (/api/sms/send)",
+    all: ["/api/sms/send"],
+  },
+  {
+    id: "twilio_verify",
+    label: "Twilio Verify (verify.twilio.com)",
+    all: ["verify.twilio.com"],
+  },
+];
 
 /**
  * The single evaluation core. Live mode feeds it the real tree; --self-test
@@ -190,8 +343,39 @@ export function runGate(sources) {
     if (isTestFile(rel)) continue;
     scannedFiles += 1;
     const rawLines = src.split("\n");
-    const codeLines = stripComments(src).split("\n");
+    const stripped = stripComments(src);
+    const codeLines = stripped.split("\n");
     const permitted = ALLOWLIST.get(rel) ?? null;
+    // A test fixture beside production code may NAME an endpoint, but its
+    // occurrences never count toward matchCount and never satisfy the anchor.
+    const fixturePermitted = TEST_FIXTURE_ALLOWLIST.get(rel) ?? null;
+    // Whole-file allow-marker: a file-level correlation hit has no single line
+    // to carry the marker, so an explicitly-marked file is exempt from the
+    // correlation pass (the per-line pass still honours the per-line marker).
+    const fileMarkered = src.includes(ALLOW_MARKER);
+
+    // ---- Detector 2: literal-space correlation (T-3/T-4/T-5).
+    if (permitted === null && fixturePermitted === null && !fileMarkered) {
+      const space = literalSpace(stripped);
+      for (const { id, label, all } of CORRELATIONS) {
+        if (!all.every((frag) => space.includes(frag))) continue;
+        // Only report if the per-line pass did NOT already flag this endpoint
+        // in this file — otherwise the same defect is reported twice.
+        const alreadyFlagged = violations.some(
+          (v) => v.startsWith(`${rel}:`) && v.includes(label),
+        );
+        if (alreadyFlagged) continue;
+        violations.push(
+          `${rel}: unsanctioned SMS-provider send endpoint assembled across the file — ${label}. ` +
+            `The host and path fragments [${all.join(" + ")}] all appear in this ` +
+            "file's string literals, so the URL is reachable even though no single " +
+            "line contains it. Every SMS must leave Mingla through " +
+            "supabase/functions/_shared/adapters/smsAdapter.ts " +
+            "(I-PROPOSED-1541-SMS-PROVIDER-EGRESS-ALLOWLIST).",
+        );
+      }
+    }
+
     for (let i = 0; i < codeLines.length; i++) {
       // The allow-marker lives in a comment, so it is read off the RAW line;
       // endpoint matching runs on the comment-STRIPPED line.
@@ -205,6 +389,12 @@ export function runGate(sources) {
           matchCount += 1;
           sanctioned[id] = (sanctioned[id] ?? 0) + 1;
           if (rel === ANCHOR_PATH) anchorSeen.add(id);
+          continue;
+        }
+        if (fixturePermitted !== null && fixturePermitted.has(id)) {
+          // A test fixture naming an endpoint. Permitted, but DELIBERATELY NOT
+          // counted: a fixture must never stand in for the real send path when
+          // the non-vacuity assertion is evaluated.
           continue;
         }
         if (markered) continue; // documented intentional exception

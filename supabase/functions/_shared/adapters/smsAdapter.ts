@@ -196,7 +196,29 @@ export function composeSmsBody(
   stopFooterOwnLine = false,
 ): string {
   let body = message.trim();
-  if (!/reply stop/i.test(body)) {
+  // ===========================================================================
+  // #1541 tester T-1541-FOOTER-SUPPRESSION (P3) — THE GUARD IS END-ANCHORED.
+  // ===========================================================================
+  // This used to be `/reply stop/i` over the WHOLE body, so a message whose own
+  // CONTENT happened to contain that phrase shipped with NO opt-out line at all:
+  //
+  //   "Mingla: your 2 tickets for Reply Stop (the band) are confirmed. Order ABC123."
+  //     -> footer suppressed. Footer count: 0.
+  //
+  // Before #1541 the transactional bodies were fixed strings, so the phrase
+  // could only appear deliberately. Post-#1541 these bodies interpolate
+  // USER-CONTROLLED text — an event title, a ticket-type name, a venue name —
+  // so an ordinary band, bar or event called "Reply Stop" silently strips the
+  // CTIA opt-out affordance from a real transactional send.
+  //
+  // The guard now asks the question it always meant: does this body ALREADY END
+  // with the footer? That is the only case where appending would duplicate it.
+  // A mid-body mention is content, not compliance.
+  //
+  // `\s*$` covers both footer forms — the transactional single-space tail and
+  // the ORCH-1289 marketing own-line (`\n\n`) tail — and `body` is already
+  // trimmed above.
+  if (!/reply stop to opt out\.\s*$/i.test(body)) {
     // ORCH-1289 — marketing sends put the STOP footer on its OWN line (blank
     // line + STOP line, `\n\n`) so the delivered SMS matches the composer
     // preview (bodyWithFooter). Transactional callers keep the single-space

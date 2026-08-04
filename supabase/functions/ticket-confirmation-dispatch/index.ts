@@ -290,9 +290,40 @@ async function markNotificationTerminal(
 // release. We assert the returned row count is > 0 AND re-read the four fields
 // off the returned row before believing it — a lookup that proves nothing by
 // matching nothing is the exact failure mode this chain of work exists to close.
+// ===========================================================================
+// #1541 tester T-1541-WAITLIST-RELEASE-SCOPE (P2) — THE COMPARE-AND-SET.
+// ===========================================================================
+// The release used to be scoped by ENTRY ID ALONE, with no predicate binding it
+// to the invitation this notification actually represents. `
+// handleWaitlistNotificationDispatch` claims the row with an UNCONDITIONAL
+// update, so two dispatches of the same notification both proceed — and then:
+//
+//   1. Worker A (dark market) releases the entry     -> waiting, all NULL
+//   2. The drain trigger re-offers the seat          -> invited, notification_id = B
+//   3. Worker A' (a duplicate/slow dispatch of the SAME original notification)
+//      reaches its release and PATCHes the entry back to waiting, CLOBBERING
+//      invitation B
+//
+// Net: the seat returns to the pool while a live notification for the NEXT
+// guest is already in flight — the same seat offered twice. That is the exact
+// inverse of the harm this release was built to prevent, and the reversal is
+// what makes it reachable.
+//
+// THE FIX IS THE PREDICATE. Scoping the UPDATE to `notification_id = <this
+// notification>` makes it a compare-and-set: a stale worker matches ZERO rows
+// and falls into the EXISTING `waitlist_release_matched_no_rows` throw, which
+// already refuses to record the skip. So a duplicate dispatch cannot clobber an
+// invitation it does not own, and — because the throw is retryable and the row
+// is never marked skipped — it also cannot silently lose one.
+//
+// Live exposure today is ZERO (`waitlist_entries.email` is NOT NULL, so an SMS
+// waitlist_spot_open row cannot be enqueued at all — see Discovery 1). That is a
+// data-shape accident, not a guarantee, and this is the guest-fairness path
+// Seth ruled on in OQ-1.
 async function releaseWaitlistEntryToPool(
   supabase: ReturnType<typeof serviceClient>,
   waitlistEntryId: string,
+  notificationId: string,
 ): Promise<void> {
   // NOTE: `waitlist_entries` has NO `updated_at` column (verified against
   // production information_schema, 2026-08-04). Do not add one here.
@@ -305,6 +336,8 @@ async function releaseWaitlistEntryToPool(
       notification_id: null,
     })
     .eq("id", waitlistEntryId)
+    // COMPARE-AND-SET: release ONLY the invitation this notification owns.
+    .eq("notification_id", notificationId)
     .select("id,status,invited_at,notified_at,notification_id");
 
   if (error !== null) {
@@ -321,6 +354,11 @@ async function releaseWaitlistEntryToPool(
     notification_id: string | null;
   }>;
   if (rows.length === 0) {
+    // Either the entry is gone, or — with the compare-and-set above — this
+    // notification no longer owns the invitation: another dispatch already
+    // released it and the drain trigger re-offered the seat to the next guest.
+    // Refusing here is correct in BOTH readings: we do not clobber an
+    // invitation we do not own, and we do not record a skip we did not perform.
     throw new ProviderSendError({
       retryable: true,
       detail: `waitlist_release_matched_no_rows:${waitlistEntryId}`,
@@ -463,7 +501,11 @@ async function deliverWaitlistSpotOpenNotification(
       // ORDER IS THE ATOMICITY MECHANISM — release the seat BEFORE recording
       // the skip. See the block above releaseWaitlistEntryToPool. This throws
       // on failure, so the row is never marked 'skipped' over a consumed spot.
-      await releaseWaitlistEntryToPool(supabase, waitlistEntryId);
+      await releaseWaitlistEntryToPool(
+        supabase,
+        waitlistEntryId,
+        notification.id,
+      );
       await supabase.from("ticket_order_notifications").update({
         status: "skipped",
         provider: providerForLedger(notification.recipient),
@@ -1531,18 +1573,58 @@ export const handler = async (req: Request): Promise<Response> => {
     }
   }
 
-  // #1541 — AN INTENTIONAL SKIP IS NOT A FAILURE. A market-gated "skipped"
-  // outcome must count as NEITHER `failed` NOR `sent`: an order whose email
-  // sent and whose SMS was deliberately gated is `sent`, not `partial`.
-  // `startsWith("failed")` already excludes "skipped" — this is stated
-  // explicitly, and covered by a test, so the exclusion cannot go back to being
-  // incidental. Real failures keep their existing failed/partial semantics.
+  // ===========================================================================
+  // #1541 — THE ROLLUP MUST NOT CLAIM A SUCCESS IT DID NOT EARN.
+  // (tester T-1541-ROLLUP-VACUITY)
+  // ===========================================================================
+  // AN INTENTIONAL SKIP IS NOT A FAILURE. A market-gated "skipped" outcome
+  // counts as NEITHER `failed` NOR `sent`: an order whose email sent and whose
+  // SMS was deliberately gated is `sent`, not `partial`. That part is SC-6 and
+  // is unchanged.
+  //
+  // WHAT WAS WRONG: the else-arm was an UNCONDITIONAL "sent", so an outcome set
+  // containing NO successful send still stamped the order a full success —
+  // every outcome `skipped`, or zero outcomes at all because the
+  // `.in(["pending","failed_retryable"])` query selected nothing. A dispatch
+  // pass that sent NOTHING reported success. With Nigeria about to go dark that
+  // is not latent: an NG ticket order whose only channel is a skipped SMS would
+  // read `sent` on a money path, and it activates the moment the kill switch
+  // does.
+  //
+  // This is the same shape as `?? "US"`, a hardcoded `provider`, and a lookup
+  // that passes by matching nothing — a value asserting success it never
+  // earned. Constitution rule 3.
+  //
+  // THE VOCABULARY IS FIXED AND NOT MINE TO EXTEND. `orders_notification_status_check`
+  // permits exactly: not_required | pending | sent | partial | failed (verified
+  // against production pg_constraint). `skipped` IS NOT A MEMBER — writing it
+  // would throw at runtime, so the tester's suggested literal is not available.
+  // `not_required` is the existing term for "this leg had nothing to deliver",
+  // which is precisely a fully-gated dispatch: nothing sent, nothing failed,
+  // nothing pending a retry (the sweeper never selects `skipped`).
   const failed = outcomes.some((row) => row.status.startsWith("failed"));
   const sent = outcomes.some((row) => row.status === "sent");
-  await supabase.from("orders").update({
-    notification_status: failed ? (sent ? "partial" : "failed") : "sent",
-    updated_at: new Date().toISOString(),
-  }).eq("id", orderId);
+
+  if (outcomes.length === 0) {
+    // OBSERVED NOTHING -> ASSERT NOTHING. There were no notification rows to
+    // process, so this pass learned nothing about the order and must not
+    // overwrite whatever the previous, informed pass concluded. Stamping a
+    // verdict derived from an empty set is the vacuity itself.
+    console.info(
+      JSON.stringify({
+        event: "ticket_notification_rollup_skipped",
+        orderId,
+        reason: "no_notification_rows_selected",
+      }),
+    );
+  } else {
+    await supabase.from("orders").update({
+      notification_status: failed
+        ? (sent ? "partial" : "failed")
+        : (sent ? "sent" : "not_required"),
+      updated_at: new Date().toISOString(),
+    }).eq("id", orderId);
+  }
 
   // EMAIL_SENDERS reference kept live so dead-code elimination can't drop it.
   void EMAIL_SENDERS;

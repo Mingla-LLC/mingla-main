@@ -199,36 +199,56 @@ test("ADV-3 PROOF: ticket / invite / pair bodies each gain exactly one footer", 
 });
 
 // ===========================================================================
-// PIN ADV-4 — tester finding T-1541-FOOTER-SUPPRESSION (P3).
+// PROOF ADV-4 — tester finding T-1541-FOOTER-SUPPRESSION (P3), NOW CLOSED.
 // ===========================================================================
-// The suppression guard is a substring test over the WHOLE body, so a message
-// whose own CONTENT happens to contain "reply stop" silently ships with NO
-// opt-out line. Post-#1541 this is reachable from user-controlled text: an
-// event title, a ticket-type name, or a venue name flows into these bodies.
-// Live exposure is negligible, and the fix belongs in smsAdapter.ts, which
-// #1541 is forbidden to touch (#1537 collision) — so it is pinned, not fixed.
+// Converted from a pin during #1541 IMPLEMENT REWORK; the attack is unchanged
+// and only the expectation flipped. The suppression guard used to be a
+// substring test over the WHOLE body, so a message whose own CONTENT happened
+// to contain "reply stop" shipped with NO opt-out line. Post-#1541 that is
+// reachable from user-controlled text: an event title, a ticket-type name or a
+// venue name flows into these bodies, so an ordinary band called "Reply Stop"
+// stripped the CTIA affordance off a real transactional send.
 //
-// WHAT WOULD CLOSE IT: anchor the guard to the END of the body
-// (/reply stop to opt out\.\s*$/i) instead of testing anywhere in it.
-test("ADV-4 PIN: an incidental 'reply stop' in user text suppresses the real footer (KNOWN GAP)", () => {
+// #1537 has merged, so smsAdapter.ts was no longer off-limits. The guard is now
+// end-anchored — /reply stop to opt out\.\s*$/i — which asks the question it
+// always meant: does this body ALREADY END with the footer? A mid-body mention
+// is content, not compliance. #1537 never touched composeSmsBody, so the fix is
+// self-contained and does not reach into its shipped behaviour.
+test("ADV-4 PROOF: an incidental 'reply stop' in user text still gets the real footer", () => {
   const hostile =
     "Mingla: your 2 tickets for Reply Stop (the band) are confirmed. Order ABC123.";
   const composed = composeSmsBody(hostile);
 
   assertEquals(
     countFooters(composed),
-    0,
-    "PIN BROKEN (good news): the footer guard is now end-anchored, so a body " +
-      "that merely mentions 'reply stop' still gets its opt-out line. " +
-      "Delete this pin and close tester finding T-1541-FOOTER-SUPPRESSION.",
+    1,
+    "REGRESSION: a body that merely MENTIONS 'reply stop' is being treated as " +
+      "already carrying the footer, so this transactional SMS ships with no " +
+      "opt-out affordance. The guard has lost its end-anchor.",
   );
-  // Recording the consequence explicitly: this transactional SMS ships with no
-  // opt-out affordance at all.
-  assert(!composed.endsWith(FOOTER));
+  assert(
+    composed.endsWith(FOOTER),
+    "the opt-out line must be at the tail of the delivered body",
+  );
+  // The user's own text is preserved verbatim — the fix appends, never rewrites.
+  assertStringIncludes(composed, "Reply Stop (the band)");
+
+  // And the genuine end-of-body case is still suppressed: no double footer.
+  const alreadyFootered = `Your table's ready at The Bar. ${FOOTER}`;
+  assertEquals(
+    countFooters(composeSmsBody(alreadyFootered)),
+    1,
+    "a body that ALREADY ends with the footer must not gain a second one",
+  );
 });
 
 // ===========================================================================
-// PIN ADV-5 — tester finding T-1541-WAITLIST-RELEASE-SCOPE (P2).
+// PROOF ADV-5 — tester finding T-1541-WAITLIST-RELEASE-SCOPE (P2), NOW CLOSED.
+// Converted from a pin during #1541 IMPLEMENT REWORK. The release now carries
+// `.eq("notification_id", notificationId)` — a compare-and-set — so a stale or
+// duplicate worker matches ZERO rows and takes the existing
+// `waitlist_release_matched_no_rows` throw instead of clobbering a live
+// invitation. The seat can no longer be offered twice.
 // ===========================================================================
 // The OQ-1 guarantee is "a gated skip consumes nothing". Its mechanism is
 // release-first-then-record in `releaseWaitlistEntryToPool`
@@ -254,7 +274,7 @@ test("ADV-4 PIN: an incidental 'reply stop' in user text suppresses the real foo
 // `.eq("status","invited")`) to the release UPDATE, so a stale worker matches
 // zero rows and takes the existing `waitlist_release_matched_no_rows` throw
 // instead of clobbering a live invitation.
-test("ADV-5 PIN: the waitlist release is scoped by entry id alone (KNOWN GAP)", async () => {
+test("ADV-5 PROOF: the waitlist release carries an ownership predicate", async () => {
   const src = await Deno.readTextFile(
     new URL("../ticket-confirmation-dispatch/index.ts", import.meta.url),
   );
@@ -284,15 +304,27 @@ test("ADV-5 PIN: the waitlist release is scoped by entry id alone (KNOWN GAP)", 
   const ownershipPredicate = /\.eq\(\s*"(notification_id|status)"/.test(body);
   assertEquals(
     ownershipPredicate,
-    false,
-    "PIN BROKEN (good news): the release now carries an ownership predicate, so " +
-      "a stale worker can no longer clobber a live invitation. Delete this pin " +
-      "and close tester finding T-1541-WAITLIST-RELEASE-SCOPE.",
+    true,
+    "REGRESSION: the release lost its ownership predicate. Scoped by entry id " +
+      "alone, a stale or duplicate dispatch will clobber an invitation it does " +
+      "not own and the same seat gets offered twice — the inverse of the harm " +
+      "the release exists to prevent.",
   );
+  // The predicate must bind to THIS notification, not merely to any column.
+  assertStringIncludes(
+    body,
+    '.eq("notification_id", notificationId)',
+    "the compare-and-set must bind the release to the invitation this " +
+      "notification represents",
+  );
+  // …and the zero-row path must still REFUSE rather than proceed — that is what
+  // turns a lost race into a retry instead of a clobber.
+  assertStringIncludes(body, "waitlist_release_matched_no_rows");
 });
 
 // ===========================================================================
-// PIN ADV-6 — tester finding T-1541-ROLLUP-VACUITY (P3).
+// PROOF ADV-6 — tester finding T-1541-ROLLUP-VACUITY (P3), NOW CLOSED.
+// Converted from a pin during #1541 IMPLEMENT REWORK.
 // ===========================================================================
 // The order rollup (ticket-confirmation-dispatch/index.ts:1540-1545) is
 //     failed ? (sent ? "partial" : "failed") : "sent"
@@ -306,10 +338,17 @@ test("ADV-5 PIN: the waitlist release is scoped by entry id alone (KNOWN GAP)", 
 //     :1196-1200 selected nothing → "sent" (pre-existing, widened here)
 // A dispatch that sent nothing reports full success. Constitution rule 3.
 //
-// WHAT WOULD CLOSE IT: require a positive send —
-//     outcomes.length === 0 ? <unchanged> : failed ? (sent ? "partial" : "failed")
-//       : sent ? "sent" : "skipped"
-test("ADV-6 PIN: an all-skipped or empty outcome set still reports 'sent' (KNOWN GAP)", async () => {
+// HOW IT WAS CLOSED: the else-arm now requires a positive send, and an EMPTY
+// outcome set writes nothing at all.
+//
+// NOTE ON VOCABULARY — the tester's suggested `"skipped"` literal is NOT
+// available: `orders_notification_status_check` permits exactly
+// not_required | pending | sent | partial | failed (verified against production
+// pg_constraint), so writing "skipped" would throw at runtime. `not_required`
+// is the existing term for "this leg had nothing to deliver", which is exactly
+// a fully-gated dispatch — nothing sent, nothing failed, nothing awaiting retry
+// (the sweeper never selects `skipped`).
+test("ADV-6 PROOF: an all-skipped pass reports honestly and an empty pass asserts nothing", async () => {
   const src = await Deno.readTextFile(
     new URL("../ticket-confirmation-dispatch/index.ts", import.meta.url),
   );
@@ -319,34 +358,64 @@ test("ADV-6 PIN: an all-skipped or empty outcome set still reports 'sent' (KNOWN
     idx > 0,
     "vacuity: the rollup expression was not found — this test is asserting nothing",
   );
-  const expr = src.slice(idx, idx + 120);
+  const expr = src.slice(idx, idx + 160);
 
-  // The shipped shape: the ternary's else-arm is an unconditional "sent".
-  assertStringIncludes(expr, 'failed ? (sent ? "partial" : "failed") : "sent"');
+  // The fixed shape: the else-arm is CONDITIONAL on a positive send.
+  assertStringIncludes(expr, '? (sent ? "partial" : "failed")');
+  assertStringIncludes(expr, ': (sent ? "sent" : "not_required")');
+  assert(
+    !/:\s*"sent",/.test(expr),
+    "REGRESSION: the rollup's else-arm is an unconditional \"sent\" again — a " +
+      "dispatch pass that sent nothing would report full success",
+  );
 
-  // Reproduce the exact predicate and show the two dishonest cases.
-  const rollup = (outcomes: Array<{ status: string }>) => {
+  // The empty set must not reach the write at all.
+  const guardIdx = src.indexOf("if (outcomes.length === 0) {");
+  assert(
+    guardIdx > 0 && guardIdx < idx,
+    "REGRESSION: the empty-outcome guard is gone or no longer precedes the " +
+      "rollup write — a pass that observed nothing would stamp a verdict",
+  );
+
+  // Reproduce the SHIPPED predicate and prove every case.
+  const rollup = (outcomes: Array<{ status: string }>): string | null => {
+    if (outcomes.length === 0) return null; // no write
     const failed = outcomes.some((r) => r.status.startsWith("failed"));
     const sent = outcomes.some((r) => r.status === "sent");
-    return failed ? (sent ? "partial" : "failed") : "sent";
+    return failed ? (sent ? "partial" : "failed") : (sent ? "sent" : "not_required");
   };
 
-  // Correct behaviours that must NOT regress (this is SC-6, re-derived).
+  // SC-6 and its neighbours must NOT regress.
   assertEquals(rollup([{ status: "sent" }, { status: "skipped" }]), "sent");
   assertEquals(rollup([{ status: "sent" }, { status: "failed_terminal" }]), "partial");
   assertEquals(rollup([{ status: "failed_terminal" }]), "failed");
 
-  // The gap, pinned.
+  // The two cases that used to lie.
   assertEquals(
     rollup([{ status: "skipped" }, { status: "skipped" }]),
-    "sent",
-    "PIN BROKEN (good news): an all-skipped pass no longer reports 'sent'. " +
-      "Delete this pin and close tester finding T-1541-ROLLUP-VACUITY.",
+    "not_required",
+    "an all-skipped pass must not claim a send it never made",
   );
   assertEquals(
     rollup([]),
-    "sent",
-    "PIN BROKEN (good news): an empty outcome set no longer reports 'sent'. " +
-      "Delete this pin.",
+    null,
+    "a pass that observed no notification rows must write no verdict at all",
   );
+
+  // Whatever it writes must be a member of the CHECK constraint's vocabulary.
+  const allowed = new Set(["not_required", "pending", "sent", "partial", "failed"]);
+  for (
+    const set of [
+      [{ status: "sent" }],
+      [{ status: "skipped" }],
+      [{ status: "failed_terminal" }],
+      [{ status: "sent" }, { status: "failed_terminal" }],
+    ]
+  ) {
+    const v = rollup(set);
+    assert(
+      v !== null && allowed.has(v),
+      `rollup produced ${JSON.stringify(v)}, which orders_notification_status_check would reject`,
+    );
+  }
 });
