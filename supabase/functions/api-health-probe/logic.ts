@@ -398,3 +398,138 @@ export function evaluateBalanceForSignal(
 export function buildCheckRows<T>(rows: T[]): T[] {
   return rows;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Issue #1537 — LAYER-C DELIVERY-LEDGER PROVIDER → TILE MAPPING.
+// ═══════════════════════════════════════════════════════════════════════════
+// EXTRACTED from index.ts, where it sat inline inside the request handler. That
+// file calls `serve()` unguarded at module scope, so nothing in it could be
+// imported by a test — the mapping was structurally untestable, which is why the
+// bug below shipped unnoticed. It lives here now so it can be executed by a test.
+//
+// WHAT WAS BROKEN: the ladder had `onesignal` / `resend` / `twilio` arms and a
+// bare `: []` fallback. #1537 made the delivery ledger record `termii` for
+// Nigerian SMS instead of the previously hardcoded `twilio` — and `termii` fell
+// straight through to `[]`, so the `for (const tile of tiles)` loop iterated
+// ZERO times and every Nigerian row was discarded from the health tally.
+//
+// The regression that created: BEFORE #1537 those rows were mislabelled `twilio`
+// and were still COUNTED (under the wrong tile). AFTER #1537 they are labelled
+// honestly and counted NOWHERE. Nigerian SMS health went from wrong-but-visible
+// to invisible, at exactly the moment Nigeria switches on.
+//
+// THE SHAPE OF THE BUG IS THE POINT. A silent `: []` default is the same
+// unfalsifiable-default family as #1529's `?? "US"` and #1537's own hardcoded
+// provider: a value nobody mapped disappears instead of raising. So this
+// function does NOT return an empty array for an unrecognised provider — it
+// returns `null`, a distinguishable "nobody mapped this" that the caller is
+// obliged to handle, and `tallyDeliveryRows` collects those provider names so
+// the handler can log them LOUDLY. A new provider must surface, never vanish.
+
+/** A row as selected by the Layer-C read: `select("provider,status")`. */
+export interface DeliveryLedgerRow {
+  provider: string | null;
+  status: string;
+}
+
+export interface DeliveryTallyEntry {
+  total: number;
+  failure: number;
+}
+
+export interface DeliveryTallyResult {
+  /** tile service_key → counts. */
+  tally: Map<string, DeliveryTallyEntry>;
+  /**
+   * Providers seen in the ledger that no arm maps, DISTINCT and sorted. Non-empty
+   * means the ledger is carrying traffic this probe cannot see — the caller MUST
+   * surface it. This is the loud replacement for the old silent `: []`.
+   */
+  unmappedProviders: string[];
+  /** Rows whose provider was null/blank — already skipped before #1537. */
+  nullProviderRows: number;
+}
+
+/**
+ * The ONE provider → health-tile mapping.
+ *
+ * Every value here MUST exist as an `api_health_services.service_key`, because
+ * `api_health_checks.service_key` is FK-constrained to that table and the probe
+ * inserts its rows in ONE batch — an unregistered key would fail the entire
+ * tick's insert, not just its own row. `termii` is registered by migration
+ * 20270212001538.
+ */
+export const DELIVERY_PROVIDER_TILES: Record<string, readonly string[]> = {
+  // No per-app split in deliveries → attribute to consumer (pre-existing limitation).
+  onesignal: ["onesignal_consumer"],
+  resend: ["resend"],
+  twilio: ["twilio"],
+  // #1537 — Nigerian SMS. Its OWN tile, deliberately not folded into `twilio`:
+  // merging them would recreate exactly the mislabelling #1537 removed, and a
+  // Termii outage would then read as a Twilio outage.
+  termii: ["termii"],
+};
+
+/** Delivery statuses that count as a failure for the tile's failure rate. */
+export const DELIVERY_FAIL_STATUSES: ReadonlySet<string> = new Set([
+  "failed",
+  "undelivered",
+]);
+
+/**
+ * Tiles for a ledger provider, or `null` when NOTHING maps it.
+ *
+ * `null` rather than `[]` is deliberate and load-bearing: `[]` is silently
+ * indistinguishable from "mapped to nothing on purpose", and iterating it drops
+ * the row without a trace. `null` forces the caller to decide, which is what
+ * makes the omission surfaceable.
+ */
+export function deliveryProviderTiles(
+  provider: string,
+): readonly string[] | null {
+  return Object.hasOwn(DELIVERY_PROVIDER_TILES, provider)
+    ? DELIVERY_PROVIDER_TILES[provider]
+    : null;
+}
+
+/**
+ * Fold Layer-C ledger rows into per-tile totals, reporting anything unmapped.
+ *
+ * Pure: no clock, no env, no I/O. The handler keeps ownership of the status
+ * thresholds and the DB write.
+ */
+export function tallyDeliveryRows(
+  rows: readonly DeliveryLedgerRow[],
+): DeliveryTallyResult {
+  const tally = new Map<string, DeliveryTallyEntry>();
+  const unmapped = new Set<string>();
+  let nullProviderRows = 0;
+
+  for (const row of rows) {
+    const provider = row.provider?.trim();
+    if (!provider) {
+      // Pre-#1537 behaviour, preserved: an inapp row carries no provider. This
+      // is a legitimate absence, not an unmapped provider, so it is counted
+      // separately and never reported as a gap.
+      nullProviderRows += 1;
+      continue;
+    }
+    const tiles = deliveryProviderTiles(provider);
+    if (tiles === null) {
+      unmapped.add(provider);
+      continue;
+    }
+    for (const tile of tiles) {
+      const entry = tally.get(tile) ?? { total: 0, failure: 0 };
+      entry.total += 1;
+      if (DELIVERY_FAIL_STATUSES.has(row.status)) entry.failure += 1;
+      tally.set(tile, entry);
+    }
+  }
+
+  return {
+    tally,
+    unmappedProviders: [...unmapped].sort(),
+    nullProviderRows,
+  };
+}
