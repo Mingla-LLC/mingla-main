@@ -369,9 +369,27 @@ interface Mounted {
 const mountRoute = (data: CaseData): Mounted => {
   caseData.current = data;
   jest.useFakeTimers().setSystemTime(new Date("2026-08-05T12:00:00.000Z"));
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const routeModule = require(CONSUMER_ROUTE);
-  const Route = (routeModule.default ?? routeModule) as React.ComponentType;
+  // Loading the route is the step most likely to fail for an ENVIRONMENT reason
+  // rather than a product reason (cross-app transform, a missing peer, a mock
+  // that did not apply). Whatever it throws must arrive with a readable
+  // message: ts-jest surfaces a transform failure as a throw whose `message`
+  // is EMPTY, which reaches the reporter as five blank lines under a `●`
+  // heading and tells a reader nothing at all.
+  let routeModule: { default?: React.ComponentType };
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    routeModule = require(CONSUMER_ROUTE);
+  } catch (err) {
+    const detail =
+      err instanceof Error
+        ? `${err.message || "(empty message)"}\n${err.stack ?? ""}`
+        : JSON.stringify(err);
+    throw new Error(
+      `could not load the consumer venue route (${CONSUMER_ROUTE}): ${detail}`,
+    );
+  }
+  const Route = (routeModule.default ??
+    routeModule) as unknown as React.ComponentType;
   let renderer: MountedTree | null = null;
   TestRenderer.act(() => {
     renderer = TestRenderer.create(React.createElement(Route));

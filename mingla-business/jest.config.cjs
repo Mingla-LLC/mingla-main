@@ -232,7 +232,19 @@ module.exports = {
       "ts-jest",
       {
         tsconfig: { jsx: "react-jsx" },
-        diagnostics: { exclude: ["**/packages/**"] },
+        // #1560 — `**/app-mobile/**` joins for the IDENTICAL reason, one app
+        // over. `consumerVenueAdoption.issue1560.happy.test.tsx` mounts the real
+        // consumer venue route to prove what that app gained when its fork was
+        // deleted, so ts-jest transpiles an app-mobile .tsx — and type-CHECKED
+        // it with THIS app's module resolution, which cannot see app-mobile's
+        // peers: TS2307 for `react` / `expo-router` /
+        // `react-native-safe-area-context` plus the TS2875 JSX-runtime cascade.
+        // ts-jest raises that as a throw whose `message` is EMPTY, so CI printed
+        // a `●` heading over five blank lines. app-mobile has its own `npx tsc`
+        // gate and is never typechecked by this job, exactly like packages/**.
+        // The file is still transpiled and EXECUTED — only type-checking is off.
+        // DO NOT broaden either glob to src/** — that would mask real drift.
+        diagnostics: { exclude: ["**/packages/**", "**/app-mobile/**"] },
       },
     ],
     // ORCH-1137 (rework) — the biz-web lucide shim deep-requires per-icon ESM
