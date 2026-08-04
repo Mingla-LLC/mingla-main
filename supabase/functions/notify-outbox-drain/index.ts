@@ -11,6 +11,9 @@ import {
   sourceRefundRecipientFingerprint,
 } from "../_shared/sourceRefundNotificationRecipient.ts";
 import { sourceRefundPayloadFingerprint } from "../_shared/sourceRefundNotifications.ts";
+// #1529 — the source-refund pool is the ONE path whose outbox row can never
+// carry a country (see the derivation comment in processSource below).
+import { countryFromE164 } from "../_shared/e164Country.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -161,7 +164,11 @@ async function completeSource(admin: any, input: {
 }
 
 // deno-lint-ignore no-explicit-any
-async function processSource(
+// #1529 — EXPORTED so the country-derivation and policy-skip behaviour can be
+// driven directly by a test with a fake client, instead of being asserted from
+// source text. A grep-style check on this file would pass vacuously; only
+// executing it proves the dispatch body actually carries the derived country.
+export async function processSource(
   admin: any,
   row: Record<string, unknown>,
   url: string,
@@ -304,7 +311,20 @@ async function processSource(
             brand_name: row.brand_name_snapshot ?? "Mingla",
           },
           idempotency_key: row.idempotency_key,
-          country_code: row.country_code ?? null,
+          // #1529 — DERIVE AT THE DRAIN, because this pool structurally cannot
+          // carry a country on the outbox row. #1221 deliberately writes
+          // `contact: null` for source-refund notifications and keeps the
+          // plaintext recipient out of the outbox entirely — only an HMAC
+          // fingerprint is persisted, and the real recipient is recovered here
+          // by `resolve_source_refund_notification_recipient` and normalised a
+          // few lines above. Writing a country at enqueue would mean putting
+          // recipient PII into a table that was built to hold none, which would
+          // regress #1221's privacy design. So `row.country_code` is ALWAYS
+          // NULL for this pool and deriving from the resolved contact is the
+          // only correct answer. Non-SMS channels keep the column as-is.
+          country_code: channel === "sms"
+            ? countryFromE164(contact)
+            : row.country_code ?? null,
           requested_channel: channel,
           delivery_id: deliveryId,
           delivery_claim_id: claimId,
@@ -364,6 +384,36 @@ async function processSource(
       return false;
     }
     const result = await readBoundedSuccessEnvelope(response);
+    // #1529 — a POLICY SKIP terminates cleanly and must NOT touch ops_status.
+    //
+    // notify-dispatch now answers 200 {success:true, outcome:"skipped"} when a
+    // market kill-switch (or a can_send suppression) deliberately stopped the
+    // send. Without this branch that envelope falls through to the
+    // `!accepted && !ambiguous` protocol-error path below and is recorded as a
+    // delivery failure, which escalates the refund to `needs_review`.
+    //
+    // No SQL change is needed to make this correct:
+    // `complete_source_refund_notification_delivery` already handles
+    // p_outcome='skipped' properly — it sets the delivery to `skipped` and the
+    // outbox row to `failed`, and crucially 'skipped' is NOT in the
+    // ('ambiguous','failed_terminal') set that triggers the
+    // `source_refunds.ops_status='needs_review'` update. The function was
+    // always right; it was simply never handed the right outcome.
+    const policySkipped = response.status === 200 &&
+      result?.success === true &&
+      result?.outcome === "skipped";
+    if (policySkipped) {
+      await completeSource(admin, {
+        deliveryId,
+        claimId,
+        outcome: "skipped",
+        providerMessageId: null,
+        safeCode: typeof result?.reason === "string"
+          ? result.reason
+          : "provider_kill_switch_off",
+      });
+      return true;
+    }
     const accepted = response.status === 200 &&
       result?.success === true &&
       (result?.outcome === "accepted" ||

@@ -180,10 +180,27 @@ Deno.test("smsAdapter: kill-switch OFF returns skipped WITHOUT an HTTP call", as
   }
 });
 
-Deno.test("smsAdapter: resolveMarketKillSwitch routes NG vs US", () => {
+// AMENDED BY #1529 [TEST-MOD-APPROVED #1529] — operator decision, Seth
+// 2026-08-03. The third assertion used to read
+// `resolveMarketKillSwitch(null) === "SMS_LIVE_ENABLED_US"`, i.e. "no country
+// means the US market". That default is the #1529 defect in miniature: every
+// production outbox row carried a NULL country, so every notification — Nigerian
+// handsets included — was gated by the US switch and sent over Twilio.
+//
+// A missing country now means NO MARKET, not the US market. The caller
+// (smsAdapter.send) never passes null anymore, because it derives the country
+// from the destination number itself and refuses to transmit when that cannot
+// be resolved; this function returning null is the belt-and-braces half of that
+// contract.
+Deno.test("smsAdapter: resolveMarketKillSwitch routes NG vs US, and NEVER defaults", () => {
   assertEquals(resolveMarketKillSwitch("US"), "SMS_LIVE_ENABLED_US");
   assertEquals(resolveMarketKillSwitch("NG"), "SMS_LIVE_ENABLED_NG");
-  assertEquals(resolveMarketKillSwitch(null), "SMS_LIVE_ENABLED_US");
+  // Every non-NG country still rides the Twilio/US switch — unchanged.
+  assertEquals(resolveMarketKillSwitch("GB"), "SMS_LIVE_ENABLED_US");
+  assertEquals(resolveMarketKillSwitch("ng"), "SMS_LIVE_ENABLED_NG");
+  // #1529: absent country resolves to NO market. It must NOT invent the US.
+  assertEquals(resolveMarketKillSwitch(null), null);
+  assertEquals(resolveMarketKillSwitch(undefined), null);
 });
 
 // ── 2. Templates carry the verbatim COPY §3.1 ────────────────────────────────

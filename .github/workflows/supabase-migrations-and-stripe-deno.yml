@@ -363,6 +363,49 @@ jobs:
             # messageType and provider, and the fail-closed response contract
             # against the verbatim #1480 provider envelopes.
             supabase/functions/_shared/adapters/smsAdapter.issue1518.adversarial.test.ts
+            # Issue #1529 T-5 — SQL/TypeScript parity for E.164 → ISO-2 country
+            # derivation. Reads its fixtures OUT OF the SQL test file
+            # (supabase/migrations/__tests__/issue_1529_e164_parity.test.sql) so
+            # both implementations share ONE fixture list and cannot drift.
+            # Carries a vacuity guard: zero parsed fixtures FAILS rather than
+            # passing over an empty set.
+            supabase/functions/_shared/e164Country.issue1529.test.ts
+            # Issue #1529 T-2b + T-4(drain) — the source-refund pool. Drives the
+            # real processSource with a fake client and REAL fingerprints, and
+            # asserts on the serialized notify-dispatch body: (a) an SMS dispatch
+            # carries the DERIVED country even though that pool's outbox row
+            # structurally cannot hold one (#1221 deliberately keeps recipient
+            # PII out of the outbox), and (b) a kill-switched send completes as
+            # `skipped`, never `terminal_unsent` — the latter escalates
+            # source_refunds.ops_status to needs_review, a false alarm on a live
+            # money path the day NG rows genuinely say NG.
+            supabase/functions/notify-outbox-drain/issue1529.sourceCountry.test.ts
+            # Issue #1529 T-3 — adapter routing and ZERO-HTTP under the operator
+            # decision that the DESTINATION NUMBER is the routing authority
+            # (Seth, 2026-08-03). Pins the production case nothing covered: a
+            # +234 handset carrying a NULL or an outright wrong "US" label
+            # resolves NG, is gated by sms_live_enabled.ng, and makes ZERO
+            # Twilio calls; a genuine +1 keeps the byte-identical Twilio path;
+            # an unmapped calling code fails closed with zero HTTP to either
+            # provider.
+            supabase/functions/_shared/adapters/smsAdapter.issue1529.test.ts
+            # Issue #1529 T-6 — TESTER ADVERSARIAL. A different angle from T-3:
+            # instead of walking the named success criteria one call at a time,
+            # it SWEEPS the routing property — 8 destinations x 11 labels x 4
+            # kill-switch combinations = 352 real adapter calls — and asserts
+            # invariants, not transcripts: a Nigerian destination NEVER produces
+            # Twilio traffic under any label or flag combination; a provider is
+            # contacted ONLY when its own market flag is true (the dark-market
+            # guarantee); the label is inert; an unmapped calling code fails
+            # closed to BOTH providers. It also runs the hostile derivation
+            # fixtures (NANP shared by four sovereign states, a +44 crown
+            # dependency, the +234/+2348 boundary, trunk zeros, unicode digits,
+            # and the two REAL +33 handsets in production) against the SQL
+            # twin's expectations, and proves a stale/wrong country on a
+            # source-refund row cannot override the recipient the drain
+            # resolved. Every group carries a vacuity guard — a sweep that never
+            # reached a provider FAILS instead of passing over an empty set.
+            supabase/functions/_shared/adapters/smsAdapter.issue1529.tester.adversarial.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then

@@ -71,6 +71,35 @@ function sourceDispatchResponse(
       reason: "delivery_ambiguous",
     }, 202);
   }
+  // #1529 — A DELIBERATE POLICY SKIP IS NOT A DELIVERY FAILURE.
+  //
+  // WHAT WAS BROKEN: this function carried branches for `accepted`,
+  // `definitive_unsent_retryable` and `acceptance_unknown` only, so `skipped`
+  // — which `adapterOutcome` correctly returns with success:true when a market
+  // kill-switch is off — fell through to the 422 `terminal_unsent` default
+  // below. `notify-outbox-drain` maps 422 to `terminal_unsent`,
+  // `complete_source_refund_notification_delivery` turns that into
+  // `failed_terminal`, and that in turn runs `UPDATE public.source_refunds SET
+  // ops_status='needs_review', last_error_code='attention_delivery_unavailable'`.
+  //
+  // WHY IT MATTERS NOW: this was latent while every outbox row presented as
+  // "US" and the US switch was live, so the adapter never returned `skipped`
+  // on this path. The moment #1529 makes Nigerian rows genuinely say NG
+  // against a dark `sms_live_enabled.ng`, EVERY Nigerian refund text would
+  // raise a false ops alarm on a live money path. `suppressed` is included
+  // because it reaches the identical fallthrough for the identical wrong
+  // reason (#1529 investigation discovery 4).
+  //
+  // WHAT BREAKS IF THIS IS UNDONE: turning Nigeria on — or shipping any future
+  // market dark — silently floods refund operations with `needs_review`
+  // refunds that have nothing whatsoever wrong with them.
+  if (result.outcome === "skipped" || result.outcome === "suppressed") {
+    return jsonResponse({
+      success: true,
+      outcome: "skipped",
+      reason: result.safeCode ?? "provider_kill_switch_off",
+    }, 200);
+  }
   return jsonResponse({
     success: false,
     outcome: "terminal_unsent",

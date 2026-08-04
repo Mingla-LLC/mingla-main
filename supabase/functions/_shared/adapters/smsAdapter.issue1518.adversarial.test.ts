@@ -377,8 +377,26 @@ Deno.test(
   },
 );
 
+// ---------------------------------------------------------------------------
+// AMENDED BY #1529 [TEST-MOD-APPROVED #1529] — operator decision, Seth
+// 2026-08-03: the DESTINATION NUMBER is the routing authority, not the label.
+//
+// WHAT THIS TEST USED TO SAY: "no non-'NG' country CODE may EVER reach Termii",
+// driving a fixed +234 destination and varying only the label. That encoded
+// LABEL-PRIMACY AS A PROXY for the real guarantee. The proxy is now provably
+// wrong: a missing label on a Nigerian handset is precisely the #1529
+// production defect (all 6 outbox rows carried NULL), and under the old proxy
+// such a row routed to Twilio under the LIVE US switch — a Nigerian number
+// sent as an American one.
+//
+// WHAT IT SAYS NOW: the same over-match protection, asserted on the axis that
+// actually decides routing. Only a genuine +234 DESTINATION may reach Termii;
+// neighbouring calling codes that would over-match a sloppy startsWith (+233,
+// +27) must not; and no label — however hostile — can move a destination onto
+// the wrong provider in either direction.
+// ---------------------------------------------------------------------------
 Deno.test(
-  "#1518 ADV B-2: no non-'NG' country code may EVER reach Termii (guards against startsWith/includes over-matching)",
+  "#1518 ADV B-2 (amended #1529): no non-NG DESTINATION may EVER reach Termii, and no label can force it",
   async () => {
     await withHarness(okResponder, () => {
       setTermiiCreds();
@@ -386,32 +404,57 @@ Deno.test(
       // Both markets live, so a leak would actually transmit rather than skip.
       Deno.env.set("MINGLA_DELIVERY_FLAGS_JSON", deliveryBundle(true, true));
     }, async () => {
-      const nonNg = [
-        "NGA", // ISO-3 for Nigeria — must NOT match the ISO-2 branch
+      // Destinations that are NOT Nigerian. Chosen to over-match a careless
+      // prefix test: +233 and +27 share leading digits with +234.
+      const nonNgDestinations = [
+        "+14155550123", // US
+        "+447700900000", // GB
+        "+32460964460", // BE
+        "+233201234567", // GH — shares "+23" with Nigeria
+        "+27831234567", // ZA — shares "+2" with Nigeria
+      ];
+      // Hostile labels, including the ones that used to force the route.
+      const hostileLabels = [
+        "NG",
+        "ng",
+        "NGA",
         "NGR",
-        "N",
-        "NG ", // trailing whitespace
-        " NG", // leading whitespace
-        "ANG",
-        "US",
-        "GB",
+        " NG",
+        "NG ",
         "",
         null,
         undefined,
       ];
-      for (const cc of nonNg) {
-        captures = [];
-        await smsAdapter.send({
-          ...baseInput,
-          countryCode: cc as string | null | undefined,
-          messageType: "transactional",
-        });
-        assertEquals(
-          termiiCalls().length,
-          0,
-          `countryCode=${JSON.stringify(cc)} leaked to Termii`,
-        );
+      for (const to of nonNgDestinations) {
+        for (const cc of hostileLabels) {
+          captures = [];
+          await smsAdapter.send({
+            ...baseInput,
+            to,
+            countryCode: cc as string | null | undefined,
+            messageType: "transactional",
+          });
+          assertEquals(
+            termiiCalls().length,
+            0,
+            `destination ${to} with label ${JSON.stringify(cc)} leaked to Termii`,
+          );
+        }
       }
+      // Positive control — without it every assertion above could pass simply
+      // because nothing ever reaches Termii at all.
+      captures = [];
+      await smsAdapter.send({
+        ...baseInput,
+        to: NG_NUMBER,
+        countryCode: null,
+        messageType: "transactional",
+      });
+      assertEquals(
+        termiiCalls().length,
+        1,
+        "a genuine +234 destination MUST still reach Termii",
+      );
     });
   },
 );
@@ -429,6 +472,9 @@ Deno.test(
       setTwilioCreds();
       Deno.env.set("MINGLA_DELIVERY_FLAGS_JSON", deliveryBundle(true, false));
     }, async () => {
+      // Loop 1 is UNCHANGED in intent: a Nigerian destination under a LIVE NG
+      // switch must send via Termii. The label variants are retained to prove
+      // they are now harmless — the destination decides, so all behave alike.
       const ngVariants = ["NG", "ng", "Ng", "nG"];
       for (const cc of ngVariants) {
         captures = [];
@@ -440,22 +486,149 @@ Deno.test(
         assertEquals(result.status, "sent", `NG variant ${cc} must send`);
         assertEquals(termiiCalls().length, 1, `NG variant ${cc}`);
       }
-      // Everything that does NOT normalize to NG falls under the DARK US
-      // switch, so it must be skipped with zero HTTP — never transmitted.
-      for (const cc of ["US", "GB", "NGA", " NG", "NG ", "", null, undefined]) {
-        captures = [];
+      // AMENDED BY #1529 [TEST-MOD-APPROVED #1529]. This loop previously kept
+      // the +234 destination FIXED and varied only the LABEL, asserting the
+      // non-NG labels were skipped. That is label-primacy as a proxy — the same
+      // proxy amended in B-2 above — and it cannot hold once the destination
+      // decides the route. Note this loop runs with NG **live** and US dark, so
+      // it was never asserting "a dark market is not sent to"; it was asserting
+      // "the label picks the provider".
+      //
+      // THE GUARANTEE THIS TEST EXISTS FOR IS UNCHANGED AND STILL ASSERTED:
+      // route selection and kill-switch selection share ONE normalization, so a
+      // split-brain cannot send to a dark market. It is now asserted on the
+      // destination axis, which is what actually feeds that normalization. With
+      // NG live and US DARK, a genuinely non-NG destination must be gated by
+      // the dark US switch and skipped with ZERO HTTP — regardless of the
+      // label, including a bogus "NG" label that under a split-brain would
+      // route to Termii while being gated as US, or vice versa.
+      for (const to of ["+14155550123", "+447700900000", "+32460964460"]) {
+        for (const cc of ["US", "GB", "NG", "NGA", "", null, undefined]) {
+          captures = [];
+          const result = await smsAdapter.send({
+            ...baseInput,
+            to,
+            countryCode: cc as string | null | undefined,
+            messageType: "transactional",
+          });
+          assertEquals(
+            result.status,
+            "skipped",
+            `non-NG destination ${to} (label ${JSON.stringify(cc)}) must be gated by the dark US switch`,
+          );
+          assertEquals(
+            captures.length,
+            0,
+            `non-NG destination ${to} (label ${JSON.stringify(cc)}) made an HTTP call`,
+          );
+        }
+      }
+    });
+  },
+);
+
+// ===========================================================================
+// GROUP B-4 — ADDED BY #1529 [TEST-MOD-APPROVED #1529]
+//
+// THE EXACT PRODUCTION CASE, WHICH NOTHING PREVIOUSLY COVERED.
+//
+// Every one of the 6 `notification_outbox` rows in production carries
+// `country_code = NULL`, because no producer ever wrote it. A Nigerian
+// recipient therefore arrived at this adapter with a NULL (or, via the RSVP
+// path's two-country ternary, an outright wrong "US") label on a `+234`
+// handset. Under the old label-primacy rule that resolved to the US market and
+// was TRANSMITTED over Twilio under the LIVE US switch — a real Nigerian
+// number, sent as an American one, bypassing the Nigerian kill switch entirely.
+// That is the whole of #1529 in one sentence, and no test in the repo caught it.
+//
+// This group pins the corrected behaviour and, critically, the SAFETY claim:
+// while `sms_live_enabled.ng` is false, such a send reaches the NG route and is
+// stopped there with **ZERO HTTP** — asserted on observed traffic via the
+// `forbiddenResponder`, which THROWS if any request escapes, plus an explicit
+// `captures.length === 0`. Belt and braces, because "no packet left the
+// process" is the claim that lets Nigeria stay genuinely dark.
+// ===========================================================================
+
+Deno.test(
+  "#1529 ADV B-4: a +234 handset with a NULL/absent/'US' label resolves NG, is gated by the NG switch, and is skipped with ZERO HTTP",
+  async () => {
+    // The production shape: NG DARK, US LIVE. Under the old rule this is the
+    // combination that transmitted; under the new rule it must stop dead.
+    for (const label of [null, undefined, "US", "us", ""]) {
+      await withHarness(forbiddenResponder, () => {
+        setTermiiCreds();
+        setTwilioCreds();
+        Deno.env.set("MINGLA_DELIVERY_FLAGS_JSON", deliveryBundle(false, true));
+      }, async () => {
         const result = await smsAdapter.send({
           ...baseInput,
-          countryCode: cc as string | null | undefined,
+          to: NG_NUMBER,
+          countryCode: label as string | null | undefined,
           messageType: "transactional",
         });
-        assertEquals(
-          result.status,
-          "skipped",
-          `non-NG variant ${JSON.stringify(cc)} must be gated by the dark US switch`,
-        );
-        assertEquals(captures.length, 0, `non-NG variant ${JSON.stringify(cc)}`);
-      }
+        const where = `label=${JSON.stringify(label)}`;
+        // Gated by the NG switch — NOT sent, and NOT re-routed to live Twilio.
+        assertEquals(result.status, "skipped", where);
+        assertEquals(result.ok, false, where);
+        assertEquals(result.error, "provider_kill_switch_off", where);
+        assertEquals(result.providerMessageId, null, where);
+        // THE SAFETY CLAIM: not one packet left the process, to either provider.
+        assertEquals(captures.length, 0, `${where}: HTTP escaped the kill switch`);
+        assertEquals(termiiCalls().length, 0, where);
+        assertEquals(twilioCalls().length, 0, where);
+      });
+    }
+  },
+);
+
+Deno.test(
+  "#1529 ADV B-4b: the SAME unlabelled +234 handset DOES reach Termii once NG is live — proving the skip was the flag, not a dead route",
+  async () => {
+    // Without this, B-4 could pass because the NG path is broken rather than
+    // because the kill switch held. This is the positive control for the whole
+    // group, and it is also the shape SC-11's live-fire will exercise.
+    await withHarness(okResponder, () => {
+      setTermiiCreds();
+      setTwilioCreds();
+      Deno.env.set("MINGLA_DELIVERY_FLAGS_JSON", deliveryBundle(true, true));
+    }, async () => {
+      const result = await smsAdapter.send({
+        ...baseInput,
+        to: NG_NUMBER,
+        countryCode: null, // the production NULL
+        messageType: "transactional",
+      });
+      assertEquals(result.status, "sent");
+      assertEquals(termiiCalls().length, 1);
+      assertEquals(twilioCalls().length, 0, "a +234 handset must NEVER reach Twilio");
+      // #1518's channel contract is untouched by #1529.
+      assertEquals(termiiPayload().channel, "generic");
+      assertEquals(termiiPayload().to, NG_NUMBER);
+    });
+  },
+);
+
+Deno.test(
+  "#1529 ADV B-4c: an unmapped calling code FAILS CLOSED — zero HTTP to either provider, even with both markets live",
+  async () => {
+    // A well-formed E.164 whose calling code is not in the derivation table.
+    // On a money-adjacent path the honest answer to "we do not know which
+    // market governs this handset" is to not send at all.
+    await withHarness(forbiddenResponder, () => {
+      setTermiiCreds();
+      setTwilioCreds();
+      Deno.env.set("MINGLA_DELIVERY_FLAGS_JSON", deliveryBundle(true, true));
+    }, async () => {
+      const result = await smsAdapter.send({
+        ...baseInput,
+        to: "+4915112345678", // DE — deliberately unmapped
+        countryCode: "US", // a label that would previously have sent it
+        messageType: "transactional",
+      });
+      assertEquals(result.status, "skipped");
+      assertEquals(result.error, "country_unresolved");
+      assertEquals(result.providerMessageId, null);
+      assertEquals(captures.length, 0, "an unresolved market must make no HTTP call");
     });
   },
 );

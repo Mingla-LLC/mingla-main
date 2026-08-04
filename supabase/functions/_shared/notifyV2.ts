@@ -13,6 +13,9 @@ import { emailAdapter } from "./adapters/emailAdapter.ts";
 import { smsAdapter } from "./adapters/smsAdapter.ts";
 import { renderCategoryMessage } from "./notifyTemplates.ts";
 import { notificationSafeError } from "./notificationSafeError.ts";
+// #1529 — the single source of truth for E.164 → ISO-2, replacing the
+// two-country ternary that used to sit at the RSVP SMS call site below.
+import { countryFromE164 } from "./e164Country.ts";
 
 // Minimal subset of the supabase-js client surface the v2 core uses, so the core
 // is unit-testable with a fake client.
@@ -430,7 +433,13 @@ export async function dispatchRsvpChannel(
       to: input.contact,
       brandName: String(input.payload.brandName ?? "Mingla"),
       message: input.sms_body,
-      countryCode: input.contact.startsWith("+234") ? "NG" : "US",
+      // #1529 — was `contact.startsWith("+234") ? "NG" : "US"`, a private
+      // two-country guess that labelled EVERY other market as US (production
+      // holds +44 and +32 handsets). Routing is unchanged — the adapter sends
+      // every non-NG country over Twilio under SMS_LIVE_ENABLED_US, which is
+      // where a null or a wrong "US" landed anyway — but the country is now
+      // honest, which matters because it is what reaches the consent audit.
+      countryCode: countryFromE164(input.contact),
       beforeProviderIo: async () => {
         await markRsvpProviderIo(client, input);
       },
