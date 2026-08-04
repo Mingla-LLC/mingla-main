@@ -106,7 +106,15 @@ const MUST_CONTAIN = {
   buyerPage: [
     ["venueCategoryProfile(venue.venueCategory)", "the profile resolution"],
     ["profile.overview.map(", "the order-is-data Overview render"],
-    ["Record<VenueSectionId,React.FC<", "the total section registry"],
+    // #1559 — same total Record. The renderer type is declared locally
+    // (`VenueSectionRenderer`) rather than as `React.FC`, because a file under
+    // packages/ cannot resolve the app's React peer and `React.FC` would widen
+    // every section's props to `any`. The consumer screen lives in
+    // app-mobile/src, where React resolves, and keeps `React.FC`.
+    [
+      "Record<VenueSectionId,VenueSectionRenderer>",
+      "the total section registry",
+    ],
     ["profile.reserveAction", "the single reserve string"],
   ],
   buyerRoute: [
@@ -289,7 +297,7 @@ if (process.argv.includes("--self-test")) {
     `),
     buyerPage: pad(`
       const profile = venueCategoryProfile(venue.venueCategory);
-      const VENUE_SECTIONS: Record<VenueSectionId, React.FC<VenueSectionProps>> = {};
+      const VENUE_SECTIONS: Record<VenueSectionId, VenueSectionRenderer> = {};
       {profile.overview.map((sectionId) => null)}
       title={profile.reserveAction}
     `),

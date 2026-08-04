@@ -179,7 +179,7 @@ describe("META-ORCH-1290 Leg C — public page 'About' pitch (§6)", () => {
     );
     // The toggle is a real Pressable wired to the state setter — NOT a dead tap.
     expect(pageSrc).toContain("onPress={toggleAboutExpanded}");
-    expect(pageSrc).toContain("setAboutExpanded((v) => !v)");
+    expect(pageSrc).toContain("setAboutExpanded((v: boolean) => !v)");
     expect(pageSrc).toContain('aboutExpanded ? "Show less" : "Read more"');
   });
 
@@ -201,7 +201,7 @@ describe("META-ORCH-1290 Leg C — public page 'About' pitch (§6)", () => {
     // The pane is driven by the profile's ordered section list.
     expect(pageSrc).toContain("profile.overview.map((sectionId)");
     expect(pageSrc).toContain(
-      "Record<VenueSectionId, React.FC<VenueSectionProps>>",
+      "Record<VenueSectionId, VenueSectionRenderer>",
     );
 
     const keys = Object.keys(

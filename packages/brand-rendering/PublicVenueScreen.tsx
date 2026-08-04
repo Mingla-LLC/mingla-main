@@ -58,14 +58,6 @@
  * (buildStaticMapUrl → null ⇒ map hidden; I-PROPOSED-1162-MAP-FAILSAFE-HIDES).
  */
 
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useReducer,
-  useRef,
-  useState,
-} from "react";
 import {
   Image,
   Platform,
@@ -87,8 +79,20 @@ import {
 } from "@mingla/offering-rendering";
 
 import { PublicMenuSections } from "./PublicMenuSections";
-import { PublicVenueTabs } from "./PublicVenueTabs";
-import type { PublicVenueTabsHandle } from "./PublicVenueTabs";
+// The package-local React bridge (see PublicVenueTabs.tsx). Files under
+// packages/ cannot discover the app's React peer, so importing "react"
+// directly here would add ~50 unresolved-peer diagnostics to every consuming
+// app's typecheck — the exact delta issue-1403-typecheck-delta.mjs blocks.
+// StayGuestBooking.tsx (988 lines) uses the same bridge and typechecks clean.
+import {
+  BrandRenderingReact as React,
+  useBrandRenderingMemo as useMemo,
+  useBrandRenderingState as useState,
+  PublicVenueTabs,
+  type BrandRenderingReactElement,
+  type BrandRenderingReactNode,
+  type PublicVenueTabsHandle,
+} from "./PublicVenueTabs";
 import type { PublicMenuGroup } from "./types";
 import type { PublicVenueTab } from "./publicVenueTabState";
 import type { PublicStayDetail } from "./stayGuest";
@@ -219,7 +223,7 @@ export interface PublicVenueReservationSheetContext
   title: string;
   onClose: () => void;
   onDismissed: () => void;
-  children: React.ReactNode;
+  children: BrandRenderingReactNode;
 }
 
 /** The three events this page emits. The host adds its own surface tag. */
@@ -243,7 +247,7 @@ export interface PublicVenueScreenProps {
   /** Runtime safe-area insets. A package stays free of the insets provider. */
   safeAreaInsets: { top: number; bottom: number };
   /** Web-only `<Head>`; native hosts pass nothing. */
-  headSlot?: React.ReactNode;
+  headSlot?: BrandRenderingReactNode;
   /**
    * REQUIRED and hook-shaped: called unconditionally on every render with the
    * resolved family, so `useThemeFont` / `useConsumerThemeFont` can be handed
@@ -251,12 +255,12 @@ export interface PublicVenueScreenProps {
    * month with no brand font at all because nothing forced the decision.
    */
   loadThemeFont: (family: string | null) => void;
-  bookingBody: (context: PublicVenueBookingSlotContext) => React.ReactNode;
+  bookingBody: (context: PublicVenueBookingSlotContext) => BrandRenderingReactNode;
   reservationSheet: (
     context: PublicVenueReservationSheetContext,
-  ) => React.ReactNode;
+  ) => BrandRenderingReactNode;
   /** Host chrome rendered last, in the page frame (business: ShareModal). */
-  overlays?: React.ReactNode;
+  overlays?: BrandRenderingReactNode;
   onAnalytics: (
     event: PublicVenueAnalyticsEvent,
     props: Record<string, unknown>,
@@ -342,7 +346,7 @@ export function publicVenueMeta(venue: {
 // #1558 — the Overview pane, as a total section registry.
 //
 // The ORDER AND MEMBERSHIP come from `profile.overview` and the lookup is
-// `Record<VenueSectionId, React.FC<VenueSectionProps>>` — total, so a new
+// `Record<VenueSectionId, VenueSectionRenderer>` — total, so a new
 // section id does not compile until it has a renderer, and a listed id can
 // never miss.
 //
@@ -355,6 +359,16 @@ export function publicVenueMeta(venue: {
 // unchanged, which is what lets #1560 delete the consumer's reduced copies of
 // the same blocks rather than bring them up to parity by hand.
 // ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * One Overview section. Declared as an explicit function type rather than
+ * `React.FC` because the bridged React is untyped from inside `packages/`;
+ * naming the props concretely here is what keeps every renderer below fully
+ * type-checked instead of silently widening to `any`.
+ */
+export type VenueSectionRenderer = (
+  props: VenueSectionProps,
+) => BrandRenderingReactElement | null;
 
 export interface VenueSectionProps {
   venue: PublicVenueViewModel;
@@ -374,7 +388,7 @@ export interface VenueSectionProps {
 /** §6.1a typical-spend lede — gated by the profile's PRICING MODEL, not by
  *  `!isStay`. A Stay prices `nightlyFrom`; that rate is #1562, so until then a
  *  Stay's lede has a model and no data and renders nothing. */
-const VenuePriceLedeSection: React.FC<VenueSectionProps> = ({
+const VenuePriceLedeSection: VenueSectionRenderer = ({
   discoveryPrice,
   profile,
   palette,
@@ -401,14 +415,14 @@ const VenuePriceLedeSection: React.FC<VenueSectionProps> = ({
 // ── §6.1 About / pitch — the venue's voice, right under the identity ──────
 // Themed prose (palette + brand font), 4-line clamp + Read more. Hidden
 // entirely when the owner wrote no pitch (real-data-only, Constitution #9).
-const VenueAboutSection: React.FC<VenueSectionProps> = ({
+const VenueAboutSection: VenueSectionRenderer = ({
   venue,
   palette,
   themedFont,
 }) => {
   const [aboutExpanded, setAboutExpanded] = useState<boolean>(false);
-  const toggleAboutExpanded = useCallback((): void => {
-    setAboutExpanded((v) => !v);
+  const toggleAboutExpanded = React.useCallback((): void => {
+    setAboutExpanded((v: boolean) => !v);
   }, []);
   const pitchText = venue.pitch !== null ? venue.pitch.trim() : "";
   const hasPitch = pitchText.length > 0;
@@ -445,7 +459,7 @@ const VenueAboutSection: React.FC<VenueSectionProps> = ({
 };
 
 // ── §6.4 map + address card ───────────────────────────────────────────────
-const VenueLocationSection: React.FC<VenueSectionProps> = ({
+const VenueLocationSection: VenueSectionRenderer = ({
   venue,
   palette,
   isDesktop,
@@ -528,7 +542,7 @@ const VenueLocationSection: React.FC<VenueSectionProps> = ({
 // "tradingHours"`. A hotel's profile lists `stayPolicy` here instead, which is
 // why a Stay can no longer publish "Mon–Sat 09:00–17:00" one tap away from its
 // own "Check-in 15:00".
-const VenueHoursSection: React.FC<VenueSectionProps> = ({
+const VenueHoursSection: VenueSectionRenderer = ({
   venue,
   palette,
   surface,
@@ -583,7 +597,7 @@ const VenueHoursSection: React.FC<VenueSectionProps> = ({
 // The times are already on the wire: `PublicStayDetail.checkInTime` /
 // `.checkOutTime` (`packages/brand-rendering/stayGuest.ts`), the same detail the
 // Reservations tab renders. Null detail → the block is omitted, never faked.
-const VenueStayPolicySection: React.FC<VenueSectionProps> = ({
+const VenueStayPolicySection: VenueSectionRenderer = ({
   stayDetail,
   palette,
   surface,
@@ -626,7 +640,7 @@ const VenueStayPolicySection: React.FC<VenueSectionProps> = ({
 };
 
 // ── §6.6b gallery strip ───────────────────────────────────────────────────
-const VenueGallerySection: React.FC<VenueSectionProps> = ({
+const VenueGallerySection: VenueSectionRenderer = ({
   venue,
   palette,
 }) => {
@@ -664,7 +678,7 @@ const VenueGallerySection: React.FC<VenueSectionProps> = ({
  * to the union without a renderer does not compile, and `profile.overview` can
  * therefore never name a section that is not drawable.
  */
-const VENUE_SECTIONS: Record<VenueSectionId, React.FC<VenueSectionProps>> = {
+const VENUE_SECTIONS: Record<VenueSectionId, VenueSectionRenderer> = {
   priceLede: VenuePriceLedeSection,
   about: VenueAboutSection,
   location: VenueLocationSection,
@@ -696,7 +710,7 @@ const RESERVATION_READY: Record<
     reservable.venueId !== null,
 };
 
-export const PublicVenueScreen: React.FC<PublicVenueScreenProps> = ({
+export const PublicVenueScreen = ({
   venue,
   discoveryPrice,
   menu,
@@ -717,7 +731,7 @@ export const PublicVenueScreen: React.FC<PublicVenueScreenProps> = ({
   onClose,
   onOpenBrand,
   onOpenMaps,
-}) => {
+}: PublicVenueScreenProps): BrandRenderingReactElement => {
   const insets = safeAreaInsets;
   const { isDesktop } = useResponsiveLayout();
   const [muted, setMuted] = useState<boolean>(true);
@@ -738,10 +752,10 @@ export const PublicVenueScreen: React.FC<PublicVenueScreenProps> = ({
     () => ({ hasMenu, canOpenReservationSheet }),
     [canOpenReservationSheet, hasMenu],
   );
-  const [reservationUiState, dispatchReservationUi] = useReducer(
+  const [reservationUiState, dispatchReservationUi] = React.useReducer(
     publicVenueReservationUiReducer,
     initialTab,
-    (tab) =>
+    (tab: PublicVenueTab) =>
       createPublicVenueReservationUiState(tab, reservationUiContext),
   );
   const normalizedReservationUiState =
@@ -749,8 +763,8 @@ export const PublicVenueScreen: React.FC<PublicVenueScreenProps> = ({
       reservationUiState,
       reservationUiContext,
     );
-  const publicVenueTabsRef = useRef<PublicVenueTabsHandle | null>(null);
-  useEffect(() => {
+  const publicVenueTabsRef = React.useRef<PublicVenueTabsHandle | null>(null);
+  React.useEffect(() => {
     dispatchReservationUi({
       type: "INITIAL_TAB_CHANGED",
       tab: initialTab,
@@ -761,7 +775,7 @@ export const PublicVenueScreen: React.FC<PublicVenueScreenProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasMenu, initialTab]);
 
-  useEffect(() => {
+  React.useEffect(() => {
     dispatchReservationUi({
       type: "ENVIRONMENT_CHANGED",
       context: reservationUiContext,
@@ -798,12 +812,12 @@ export const PublicVenueScreen: React.FC<PublicVenueScreenProps> = ({
         ? `${venue.lat},${venue.lng}`
         : null;
 
-  const handleOpenMaps = useCallback((): void => {
+  const handleOpenMaps = React.useCallback((): void => {
     if (mapsQuery === null) return;
     onOpenMaps(mapsQuery);
   }, [mapsQuery, onOpenMaps]);
 
-  const handleReserve = useCallback((): void => {
+  const handleReserve = React.useCallback((): void => {
     if (
       !canOpenReservationSheet ||
       normalizedReservationUiState.reservationSheetOpen ||
@@ -830,18 +844,18 @@ export const PublicVenueScreen: React.FC<PublicVenueScreenProps> = ({
     venue.id,
   ]);
 
-  const handleReservationSheetClose = useCallback((): void => {
+  const handleReservationSheetClose = React.useCallback((): void => {
     dispatchReservationUi({
       type: "RESERVATION_SHEET_CLOSED",
       context: reservationUiContext,
     });
   }, [reservationUiContext]);
 
-  const handleReservationSheetDismissed = useCallback((): void => {
+  const handleReservationSheetDismissed = React.useCallback((): void => {
     publicVenueTabsRef.current?.focusTab("reservations");
   }, []);
 
-  const handleVenueTabChange = useCallback(
+  const handleVenueTabChange = React.useCallback(
     (tab: PublicVenueTab): void => {
       dispatchReservationUi({
         type: "TAB_SELECTED",
@@ -965,7 +979,7 @@ export const PublicVenueScreen: React.FC<PublicVenueScreenProps> = ({
     surface,
     theme: resolvedTheme,
   };
-  const reservationBodies: Record<VenueBookingBody, () => React.ReactNode> = {
+  const reservationBodies: Record<VenueBookingBody, () => BrandRenderingReactNode> = {
     stay: () => (
       <React.Suspense
         fallback={
@@ -1199,7 +1213,7 @@ export const PublicVenueScreen: React.FC<PublicVenueScreenProps> = ({
         coverHue={hashHueFromString(venue.slug)}
         entranceAnimationKey={`venue:${venue.brandSlug}:${venue.slug}:${resolvedTheme.color}`}
         muted={muted}
-        onToggleMute={() => setMuted((v) => !v)}
+        onToggleMute={() => setMuted((v: boolean) => !v)}
         showMute={venue.coverMediaType === "video"}
         onClose={onClose}
         onShare={onShare}
