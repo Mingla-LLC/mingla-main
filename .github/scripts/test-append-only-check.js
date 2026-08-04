@@ -393,13 +393,20 @@ function selectTestEntries(records) {
   return entries;
 }
 
-// #1527 — the set of paths the BASE BRANCH actually holds. A three-dot diff answers
-// "what changed since the branches parted", which is a different question from "what
-// will this path look like after the merge". A path the base branch already carries is
-// not new, however this range chooses to describe it.
-function baseTipPaths(baseRef) {
-  return new Set(nulFields(runGitBuf(["ls-tree", "-r", "-z", "--name-only", baseRef])));
-}
+// #1527 asked a real question — "does the BASE BRANCH already hold this path?", which a
+// three-dot diff does not answer — and #1534 first answered it by LISTING THE BASE TREE.
+// That listing was a THIRD reading of the repository, reconciled against nothing, and it
+// gated the whole added arm: had it ever spelled a path differently from the reading the
+// entries came from, the arm would have concluded "new file, nothing to measure" for a
+// file that was being emptied. That is this issue's own defect class, surviving in the one
+// place the single-reading rule had not been applied. It is deliberately NOT replaced with
+// a reconciled second listing — the question is answered from the reading already taken,
+// by asking whether the record for this path carries a PRE-image at all. A path that
+// existed before has one; a genuinely new path does not. See the added arm.
+//
+// The helper is REMOVED rather than left unused: an available "just list the tree" helper
+// is how the next call site quietly reacquires a reading that answers to nobody, exactly
+// as noted above for the shell-string git runner.
 
 // #1510 — the outcome of a FAILED measurement, distinct from a measured zero. Kept a
 // Symbol so it can never be confused with a count, coerced to one, or compared equal
@@ -556,13 +563,13 @@ function main() {
   let entries;
   let index;
   let tipIndex;
-  let tipPaths;
   try {
     // ONE reading of this range. The entry list is a filter over it, so detection cannot
     // be looking at a different set of records from the one the counts were attached to.
+    // Exactly TWO readings are taken in total, one per range, and each is internally
+    // reconciled. Nothing else in this gate asks git a question about a path.
     index = buildLossIndex([`${baseRef}...HEAD`]);
     entries = selectTestEntries(index.records);
-    tipPaths = baseTipPaths(baseRef);
     tipIndex = buildLossIndex([baseRef, "HEAD"]);
   } catch (err) {
     console.error(`❌ ${redactTokens(err.message)}`);
@@ -620,7 +627,13 @@ function main() {
       // #1527: a status of "added" is a statement about this RANGE, not about the base
       // branch. If the base branch already carries this path, the change is a rewrite of
       // an existing test file and its content loss must be measured like any other.
-      const lost = tipPaths.has(entry.path) ? guard(() => measureLoss(entry, tipIndex, 0), UNDIFFABLE) : 0;
+      // Did the BASE BRANCH already hold this path? Answered from the same reconciled
+      // reading that supplies the count, not from a separate listing of the base tree: a
+      // record whose PRE-image object id is present is a path that existed before. A
+      // genuinely new path has an absent pre-image and nothing that can have been lost.
+      const tipRec = tipIndex.oids.get(entry.path);
+      const existedOnBase = tipRec !== undefined && !/^0*$/.test(tipRec.srcOid || '');
+      const lost = existedOnBase ? guard(() => measureLoss(entry, tipIndex, 0), UNDIFFABLE) : 0;
       if (lost === 0) {
         console.log(`✅ ADDED      ${shownPath}`);
         passes += 1;
