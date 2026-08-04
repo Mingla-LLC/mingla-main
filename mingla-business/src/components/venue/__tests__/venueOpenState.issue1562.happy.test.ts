@@ -591,6 +591,38 @@ describe("#1562 — fail-safe, never fail-loud", () => {
     expect(refused.filter((z) => isIanaZoneName(z))).toEqual([]);
   });
 
+  /**
+   * THE RULE COSTS NOTHING REAL, tied to the product's own zone source rather
+   * than to a list written here.
+   *
+   * `getAllTimezones()` is what the operator's timezone picker offers, and it
+   * is `Intl.supportedValuesOf("timeZone")` — the runtime's CANONICAL IANA set
+   * — with a curated fallback. So this asserts that every zone an operator can
+   * actually choose survives the gate, on whatever engine runs the suite.
+   *
+   * What the gate does refuse, beyond offsets, is the ~43 legacy single-token
+   * aliases Postgres still carries (`EST`, `CET`, `Japan`, `Zulu`, `Navajo`…).
+   * None is reachable: the picker cannot offer them (canonical set), and the
+   * ORCH-1148 backfill produces only `America/*`, `Africa/*`, `Europe/London`
+   * and `UTC`. Several are fixed-offset and DST-blind (`EST` is UTC-5 all
+   * year), which is the same defect offsets have. Refusing them renders no
+   * time cell — honest — rather than a wrong one.
+   */
+  test("every zone the operator picker can offer is accepted", () => {
+    expect.assertions(3);
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { getAllTimezones } = require("../../../utils/timezones") as {
+      getAllTimezones: () => string[];
+    };
+    const offered = getAllTimezones();
+    // Vacuity guard: an empty or tiny list would make the filter below
+    // trivially true. The curated fallback alone is ~70 entries.
+    expect(offered.length).toBeGreaterThan(50);
+    expect(offered.filter((zone) => !isIanaZoneName(zone))).toEqual([]);
+    // …and the gate is not simply returning true for everything.
+    expect(isIanaZoneName("-05:00")).toBe(false);
+  });
+
   test("an invalid `now` yields unknown rather than NaN arithmetic", () => {
     expect.assertions(1);
     expect(venueLocalClock(new Date("not a date"), NY)).toBeNull();
