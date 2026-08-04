@@ -647,9 +647,19 @@ describe("#1560 the consumer app adopts the shared venue page", () => {
       tab: undefined,
     });
     assertRealRender(mounted, "one-owner");
-    // The identity block, hours table and gallery label all come from the
-    // shared module; the route contributes none of them.
-    expect(mounted.json).toContain("VERIFIED VENUE");
+    // The identity block, hours table and address card all come from the shared
+    // module; the route contributes none of them.
+    //
+    // [TEST-MOD-APPROVED #1561] — this anchor was "VERIFIED VENUE", the
+    // identity-block eyebrow. #1561 DELETED that eyebrow: the view only ever
+    // serves `claim_status='verified'` rows, so 100% of pages carried the badge
+    // and it distinguished nothing, while "what is this place" scored 0/4. The
+    // category chip took its position. The anchor moves with it — same claim
+    // (the shared identity block rendered, not a route-local one), same
+    // strength: it is still a string ONLY the shared module can emit, and the
+    // gate `issue-1550-venue-page-single-owner.mjs` still forbids the route
+    // from containing venue-body JSX.
+    expect(mounted.json).toContain('"testID":"issue-1561-answer-bar"');
     // ...and the route still mirrors the shared screen's analytics into the
     // organic-engagement capture, which is the wiring the deleted screen owned.
     expect(organicEvents).toContain("page_view");

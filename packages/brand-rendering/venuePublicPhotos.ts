@@ -15,12 +15,29 @@
  * boundary, which I-MOR-0827-PACKAGE-ISOLATION forbids. It is pure, has no
  * React and no platform surface, so the package is where it belongs.
  *
- * Behaviour is UNCHANGED, deliberately: operator cover + profile first, and
- * ONLY when neither exists does the place-pool set stand in. The early return
- * at `if (urls.length > 0)` is the documented Ve4 cascade, not a bug — see
- * #1550 SPEC Step 2 for the separate question of whether a venue with a cover
- * should ALSO publish its pool photographs. That is not this step's call to
- * make: changing it here would silently change the buyer-web page too.
+ * #1561 [first-screen-rebuild], step 5 of #1550 — THE EARLY RETURN IS DELETED.
+ *
+ * What it did. `push(cover); push(profile); if (urls.length > 0) return urls;`
+ * — so ANY venue with a cover returned a ONE-item list containing the cover and
+ * nothing else, and `pool_photo_urls` (the operator's actual uploaded
+ * photographs, already fetched by `venue_public_view`) was read only by venues
+ * that had no cover at all. #1550 Leg C measured the consequence on live
+ * production: a `PHOTOS` heading — plural — over a single 240x180 tile that was
+ * a shrunken duplicate of the hero, at every width from 360 to 2560, with the
+ * page ending underneath it.
+ *
+ * It was never a cascade in the sense the old comment claimed. A cascade picks
+ * ONE source; this list is a GALLERY, and a gallery that stops at its first
+ * item is not a fallback policy, it is a truncation. The cover is the FIRST
+ * photograph, not the ONLY one — which is exactly how every sibling page
+ * (`ExperiencePreview`, `TripPreview`, the two Foundation previews) already
+ * feeds `ParallaxCoverShell.galleryImages`.
+ *
+ * Order is the contract, and it is the operator's: their chosen cover first,
+ * then their profile photo, then the place-pool set in its stored order.
+ * Duplicates collapse (`push` is set-like), so a cover that is also the first
+ * pool photo appears once — the de-duplication that #1550's design names as
+ * "the actual bug behind the bottom strip".
  */
 
 export interface VenueGalleryPhotoInput {
@@ -45,8 +62,8 @@ export const buildVenueGalleryPhotoUrls = (
 
   push(input.coverMediaUrl);
   push(input.profilePhotoUrl);
-  if (urls.length > 0) return urls;
-
+  // #1561 — NO early return here. The operator's pool photographs are part of
+  // the same gallery, not a fallback for the cover's absence.
   for (const poolUrl of input.poolPhotoUrls ?? []) {
     push(poolUrl);
   }

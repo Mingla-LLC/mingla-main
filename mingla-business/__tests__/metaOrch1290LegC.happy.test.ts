@@ -197,7 +197,20 @@ describe("META-ORCH-1290 Leg C — public page 'About' pitch (§6)", () => {
   // order, and the page renders that array rather than a fixed sequence.
   test("About sits under the identity, before the map — in the ORDER DATA", () => {
     // The identity block is still page chrome above the tab pane.
-    expect(pageSrc).toContain("{!isDesktop ? identityBlock : null}");
+    //
+    // [TEST-MOD-APPROVED #1561] — it was `{!isDesktop ? identityBlock : null}`.
+    // #1561 renders that block at EVERY width: it now carries the category and
+    // city chips and the answer bar, which are three of the four things #1550
+    // Leg C found unanswerable above the fold, and suppressing them on desktop
+    // would have left 1440 and 2560 scoring what they scored before. The
+    // desktop hero caption (which printed the venue name a second time, over
+    // the photograph) is what was removed instead, so the name is printed once.
+    // The invariant this line guards — identity ABOVE the tab pane — is
+    // unchanged and is asserted more strongly below, by source position.
+    expect(pageSrc).toContain("{identityBlock}");
+    expect(pageSrc.indexOf("{identityBlock}")).toBeLessThan(
+      pageSrc.indexOf("profile.overview.map((sectionId)"),
+    );
     // The pane is driven by the profile's ordered section list.
     expect(pageSrc).toContain("profile.overview.map((sectionId)");
     expect(pageSrc).toContain(

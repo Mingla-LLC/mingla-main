@@ -62,7 +62,6 @@ import {
   Image,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -74,6 +73,7 @@ import {
   offeringSurfaceStyles,
   resolveTheme,
   useResponsiveLayout,
+  type OfferingGalleryImage,
   type ResolvedTheme,
   type ThemePalette,
 } from "@mingla/offering-rendering";
@@ -109,6 +109,14 @@ import {
   type VenueSectionId,
 } from "./venueCategoryProfile";
 import { formatSourceRange } from "./venueMoney";
+import {
+  buildVenueAnswerBar,
+  venueCategoryChip,
+  venueCoverPlaceholderLabel,
+  venueHeroAspectRatio,
+  venuePlaceChip,
+  type VenueAnswerCell,
+} from "./venueFirstScreen";
 import {
   createPublicVenueReservationUiState,
   normalizePublicVenueReservationUiState,
@@ -663,39 +671,33 @@ const VenueStayPolicySection: VenueSectionRenderer = ({
   );
 };
 
-// ── §6.6b gallery strip ───────────────────────────────────────────────────
-const VenueGallerySection: VenueSectionRenderer = ({
-  venue,
-  palette,
-}) => {
-  const gallery = venue.galleryPhotoUrls;
-  if (gallery.length === 0) return null;
-  return (
-    <View style={styles.galleryWrap}>
-      <Text style={[styles.sectionLabel, { color: palette.tertiaryText }]}>
-        PHOTOS
-      </Text>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        snapToInterval={248}
-        decelerationRate="fast"
-        contentContainerStyle={styles.galleryContent}
-      >
-        {gallery.map((url, i) => (
-          <Image
-            key={url}
-            source={{ uri: url }}
-            resizeMode="cover"
-            style={styles.galleryTile}
-            accessibilityLabel={`${venue.name} photo ${i + 1} of ${gallery.length}`}
-            accessibilityIgnoresInvertColors
-          />
-        ))}
-      </ScrollView>
-    </View>
-  );
-};
+// ── §6.6b gallery strip — DELETED by #1561 ────────────────────────────────
+//
+// It was the last element of the Overview pane, and in the normal case it held
+// exactly ONE 240x180 tile that was a shrunken duplicate of the hero, under a
+// heading reading `PHOTOS` — plural — with the page ending underneath it.
+// #1550 Leg C measured that tile at 240x180 at EVERY width from 360 to 2560:
+// it never responded to anything, and at 1440 it sat left-aligned in an 800pt
+// column with ~560pt of empty page beside it.
+//
+// It is REMOVED, not repaired. Two reasons, both structural:
+//
+//   1. Even repaired, a second gallery at the foot of the page argues with the
+//      hero at the top of it. `ParallaxCoverShell` has had a first-class cover
+//      pager since #868 (`galleryImages`, the `CoverGalleryRow` beneath it),
+//      and EVERY sibling public page already passes it — `ExperiencePreview`,
+//      `TripPreview`, `FoundationEventPreview`, `FoundationRsvpPreview`. The
+//      venue page was the only caller with photographs that did not.
+//   2. It rendered `venue.galleryPhotoUrls` straight into `<Image>` tiles with
+//      NO media-type check, and index 0 of that list is `coverMediaUrl` — so a
+//      venue with a VIDEO cover put a video URL in an `<Image>`. On the hero
+//      path that cannot happen: index 0 goes through `EventCoverMedia` WITH the
+//      venue's `coverMediaType`, and only non-cover photographs are handed to
+//      `galleryImages` (whose type excludes video by construction).
+//
+// `gallery` is gone from `VenueSectionId` too, so this is not a listed section
+// with no renderer — the registry below stays total and the vacuity guards in
+// `venueCategoryProfile.issue1558.happy.test.ts` stay meaningful.
 
 /**
  * THE SECOND TOTAL RECORD. Every `VenueSectionId` resolves here; adding an id
@@ -708,7 +710,6 @@ const VENUE_SECTIONS: Record<VenueSectionId, VenueSectionRenderer> = {
   location: VenueLocationSection,
   hours: VenueHoursSection,
   stayPolicy: VenueStayPolicySection,
-  gallery: VenueGallerySection,
 };
 
 interface ReserveGateInput {
@@ -757,7 +758,7 @@ export const PublicVenueScreen = ({
   onOpenMaps,
 }: PublicVenueScreenProps): BrandRenderingReactElement => {
   const insets = safeAreaInsets;
-  const { isDesktop } = useResponsiveLayout();
+  const { isDesktop, width: viewportWidth } = useResponsiveLayout();
   const [muted, setMuted] = useState<boolean>(true);
   // #1558 — the ONE category read on this page. Everything that used to branch
   // on `isStay` now reads a field of this profile, so `play`, `creative_and_arts`
@@ -943,12 +944,98 @@ export const PublicVenueScreen = ({
 
   const { hasPitch, pitchText } = publicVenueMeta(venue);
 
-  // ── §6.2 identity block ───────────────────────────────────────────────────
+  // ── #1561 §6.2 the first screen: chips → name → brand → answer bar ────────
+  //
+  // THE MEASUREMENT THIS EXISTS TO MOVE. #1550 Leg C scored the live page on
+  // the first viewport only, at 360 / 390 / 820 / 1440 / 2560, on three real
+  // venues: **0 of 4**. Price was unanswerable at every width on every venue on
+  // every surface, and on a hotel "what is this place" failed too — the only
+  // descriptor above the fold was `VERIFIED VENUE`, which describes Mingla's
+  // process, not the venue.
+  //
+  // So the eyebrow is DELETED and the category chip takes its position. The
+  // view only ever serves `claim_status='verified'` rows, so 100% of pages
+  // carried that badge and it distinguished nothing; "Hotel" distinguishes a
+  // great deal. The separate address LINE is deleted with it: the place chip
+  // already answers "where", and Leg C counted the location stated three times
+  // in a row (this line, the static map, and the WHERE YOU'LL BE card).
+  const categoryChip = venueCategoryChip(profile);
+  const placeChip = venuePlaceChip(venue);
+  const answerCells = buildVenueAnswerBar({
+    profile,
+    discoveryPrice,
+    stay:
+      stayDetail === null
+        ? null
+        : {
+            checkInTime: stayDetail.checkInTime,
+            checkOutTime: stayDetail.checkOutTime,
+          },
+    todayHours: todayEntry,
+    canBook: canOpenReservationSheet,
+  });
+
+  const renderAnswerCell = (cell: VenueAnswerCell): BrandRenderingReactElement => (
+    <View
+      key={cell.id}
+      style={[styles.answerCell, { borderColor: palette.cutoutBorder }]}
+      accessibilityRole="text"
+      accessibilityLabel={
+        cell.note === null
+          ? `${cell.label}: ${cell.value}`
+          : `${cell.label}: ${cell.value}, ${cell.note}`
+      }
+    >
+      <Text
+        numberOfLines={1}
+        style={[styles.answerLabel, { color: palette.tertiaryText }]}
+      >
+        {cell.label}
+      </Text>
+      <Text
+        numberOfLines={1}
+        style={[styles.answerValue, themedFont, { color: palette.primaryText }]}
+      >
+        {cell.value}
+      </Text>
+      {cell.note !== null ? (
+        <Text
+          numberOfLines={2}
+          style={[styles.answerNote, { color: palette.secondaryText }]}
+        >
+          {cell.note}
+        </Text>
+      ) : null}
+    </View>
+  );
+
   const identityBlock = (
     <View style={styles.identityWrap}>
-      <Text style={[styles.eyebrow, { color: palette.accent }]}>
-        VERIFIED VENUE
-      </Text>
+      <View style={styles.chipRow}>
+        {categoryChip.length > 0 ? (
+          <View
+            style={[styles.chip, { backgroundColor: palette.card }]}
+            testID="issue-1561-category-chip"
+          >
+            <Text style={[styles.chipText, { color: palette.accent }]}>
+              {categoryChip}
+            </Text>
+          </View>
+        ) : null}
+        {placeChip !== null ? (
+          <View
+            style={[styles.chip, { backgroundColor: palette.card }]}
+            testID="issue-1561-place-chip"
+          >
+            <Text
+              numberOfLines={1}
+              style={[styles.chipText, { color: palette.secondaryText }]}
+            >
+              {placeChip}
+            </Text>
+          </View>
+        ) : null}
+      </View>
       <Text
         style={[styles.venueName, themedFont, { color: palette.primaryText }]}
       >
@@ -967,10 +1054,10 @@ export const PublicVenueScreen = ({
           </Text>
         </Text>
       </Pressable>
-      {venue.address !== null ? (
-        <Text style={[styles.addrLine, { color: palette.tertiaryText }]}>
-          {venue.address}
-        </Text>
+      {answerCells.length > 0 ? (
+        <View style={styles.answerBar} testID="issue-1561-answer-bar">
+          {answerCells.map(renderAnswerCell)}
+        </View>
       ) : null}
     </View>
   );
@@ -1213,19 +1300,65 @@ export const PublicVenueScreen = ({
     </View>
   ) : null;
 
-  const heroEyebrow = <Text style={styles.heroEyebrow}>Verified venue</Text>;
-  const heroTitle = isDesktop ? (
-    <>
-      <Text style={[styles.heroTitle, themedFont]}>{venue.name}</Text>
-      {venue.address !== null ? (
-        <Text style={styles.heroAddr}>{venue.address}</Text>
-      ) : null}
-    </>
-  ) : undefined;
+  // ── #1561 the gallery becomes the hero ────────────────────────────────────
+  //
+  // `ParallaxCoverShell` treats hero index 0 as the COVER and `galleryImages`
+  // as indices 1..N, so the operator's cover stays first and their photographs
+  // follow in their own stored order — which is exactly the order
+  // `buildVenueGalleryPhotoUrls` already returns now that its early return is
+  // gone. Duplicates were collapsed by that builder, so the cover never appears
+  // twice; the filter below is belt-and-braces against an untrimmed cover URL.
+  //
+  // A venue with NO operator cover but WITH pool photographs promotes its first
+  // photograph to the hero rather than showing a placeholder over a page that
+  // has pictures. A venue with neither keeps the striped placeholder — but
+  // labelled with what it IS, never the word `COVER` (see below).
+  const heroCover = useMemo<{
+    url: string | null;
+    type: "image" | "video" | "gif" | null;
+    additional: OfferingGalleryImage[];
+  }>(() => {
+    const photos = venue.galleryPhotoUrls.filter(
+      (url) => typeof url === "string" && url.trim().length > 0,
+    );
+    const cover =
+      venue.coverMediaUrl !== null && venue.coverMediaUrl.trim().length > 0
+        ? venue.coverMediaUrl.trim()
+        : null;
+    if (cover !== null) {
+      return {
+        url: venue.coverMediaUrl,
+        type: venue.coverMediaType,
+        additional: photos
+          .filter((url) => url.trim() !== cover)
+          .map((url) => ({ url, type: "image" as const })),
+      };
+    }
+    if (photos.length > 0) {
+      return {
+        url: photos[0],
+        // No operator cover ⇒ this is a place-pool PHOTOGRAPH, never a video.
+        type: "image",
+        additional: photos
+          .slice(1)
+          .map((url) => ({ url, type: "image" as const })),
+      };
+    }
+    return { url: null, type: null, additional: [] };
+  }, [venue.coverMediaType, venue.coverMediaUrl, venue.galleryPhotoUrls]);
+
+  // #1550 R9 — the hero stops eating the page. No ratio was passed before, so
+  // the shell's 4/5 portrait default held from 0-1023px: 57.8% of an iPhone
+  // and **86.9%** of an 820pt tablet, both measured on live production.
+  const heroAspectRatio = venueHeroAspectRatio(viewportWidth);
 
   const bodyContent = (
     <View style={styles.body}>
-      {!isDesktop ? identityBlock : null}
+      {/* #1561 — the identity + answer block now renders at EVERY width. On
+          desktop it replaces the hero caption (which printed the name a second
+          time over the photograph); the name is now printed once, at the top of
+          the reading column, where the answer bar can sit directly under it. */}
+      {identityBlock}
       <PublicVenueTabs
         ref={publicVenueTabsRef}
         initialTab={initialTab}
@@ -1272,18 +1405,28 @@ export const PublicVenueScreen = ({
       <ParallaxCoverShell
         palette={palette}
         theme={resolvedTheme}
-        coverMediaUrl={venue.coverMediaUrl}
-        coverMediaType={venue.coverMediaType}
+        coverMediaUrl={heroCover.url}
+        coverMediaType={heroCover.type}
         coverHue={hashHueFromString(venue.slug)}
         entranceAnimationKey={`venue:${venue.brandSlug}:${venue.slug}:${resolvedTheme.color}`}
         muted={muted}
         onToggleMute={() => setMuted((v: boolean) => !v)}
-        showMute={venue.coverMediaType === "video"}
+        showMute={heroCover.type === "video"}
         onClose={onClose}
         onShare={onShare}
         hideCloseOnWeb
-        heroEyebrow={heroEyebrow}
-        heroTitle={heroTitle}
+        // #1561 — the venue's actual photographs, as the shell's first-class
+        // cover pager. Empty ⇒ single cover, byte-identical to the old mount.
+        galleryImages={heroCover.additional}
+        coverAspectRatio={heroAspectRatio}
+        // #1561 — a coverless PUBLIC page printed the literal word `COVER` at
+        // full hero size (#1550 Leg C, plate P12). It now reads as what the
+        // place is: "Hotel · Lagos".
+        coverPlaceholderLabel={venueCoverPlaceholderLabel(profile, venue)}
+        // #1561 — no hero caption: `heroEyebrow`/`heroTitle` printed
+        // "VERIFIED VENUE" and the venue name OVER the photograph on desktop,
+        // which is the second of the two places the name appeared and the only
+        // place the redundant badge did. Both now live in `identityBlock`.
         stickyPanel={stickyPanel}
         safeAreaTop={insets.top + 8}
         contentBottomInset={reserveBarClearance}
@@ -1319,15 +1462,31 @@ const styles = StyleSheet.create({
   tabPane: {
     gap: 20,
   },
-  // ---- identity (§6.2) ----
+  // ---- identity + the answer bar (§6.2, rebuilt by #1561) ----
   identityWrap: {
     marginBottom: 4,
   },
-  eyebrow: {
+  // I-AXIS-SCOPED-FLEX: `chipRow` is the ONLY flexDirection:"row" context these
+  // three objects are used in. `chip` is a row CHILD (it never sets a direction
+  // of its own); `chipText` is a leaf. No object below is shared across two
+  // axes, so none can be released by an axis change somewhere else.
+  chipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 6,
+  },
+  chip: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    maxWidth: "70%",
+  },
+  chipText: {
     fontSize: 12,
     lineHeight: 16,
-    fontWeight: "700",
-    letterSpacing: 1.2,
+    fontWeight: "800",
+    letterSpacing: 0.4,
   },
   venueName: {
     fontSize: 30,
@@ -1335,6 +1494,41 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: -0.5,
     marginTop: 6,
+  },
+  // I-AXIS-SCOPED-FLEX: `answerBar` is a row; `answerCell` is only ever its
+  // child, so its `flex: 1` is scoped to that one direction. The cell's own
+  // three lines stack on the default column axis and carry no flex key at all.
+  answerBar: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    gap: 8,
+    marginTop: 4,
+  },
+  answerCell: {
+    flex: 1,
+    minWidth: 0,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  answerLabel: {
+    fontSize: 10,
+    lineHeight: 14,
+    fontWeight: "800",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+  },
+  answerValue: {
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: "900",
+    marginTop: 2,
+  },
+  answerNote: {
+    fontSize: 11,
+    lineHeight: 15,
+    marginTop: 2,
   },
   byBrandRow: {
     paddingVertical: 12,
@@ -1451,22 +1645,12 @@ const styles = StyleSheet.create({
   hoursToday: {
     fontWeight: "700",
   },
-  // ---- menu + gallery (§6.6) ----
+  // ---- menu (§6.6) ----
+  // #1561 deleted `galleryWrap` / `galleryContent` / `galleryTile` with the
+  // bottom photo strip they sized. `galleryTile`'s literal `width: 240,
+  // height: 180` is the "240x180 at every width" Leg C measured.
   menuWrap: {
     gap: 0,
-  },
-  galleryWrap: {
-    gap: 0,
-  },
-  galleryContent: {
-    gap: 8,
-    paddingRight: 16,
-  },
-  galleryTile: {
-    width: 240,
-    height: 180,
-    borderRadius: 12,
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
   },
   // ---- reserve (§6.7) ----
   reserveBarWrap: {
@@ -1518,27 +1702,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "800",
   },
-  // ---- desktop hero + panel (§6.10) ----
-  heroEyebrow: {
-    color: "rgba(255, 255, 255, 0.92)",
-    fontSize: 12,
-    fontWeight: "900",
-    letterSpacing: 1.4,
-    textTransform: "uppercase",
-  },
-  heroTitle: {
-    color: "#ffffff",
-    fontSize: 44,
-    lineHeight: 48,
-    fontWeight: "900",
-    letterSpacing: -0.8,
-  },
-  heroAddr: {
-    color: "rgba(255, 255, 255, 0.82)",
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: 6,
-  },
+  // ---- desktop panel (§6.10) ----
+  // #1561 deleted `heroEyebrow` / `heroTitle` / `heroAddr`: the desktop hero no
+  // longer carries a caption, so the venue name is printed once, in the reading
+  // column, instead of once over the photograph and once in the panel.
   deskPanel: {
     borderRadius: 22,
     overflow: "hidden",
