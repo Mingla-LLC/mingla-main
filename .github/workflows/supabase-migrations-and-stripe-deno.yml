@@ -421,6 +421,26 @@ jobs:
             # miswired country→sender branch fails rather than passing on a
             # self-consistent label. Every lookup carries a vacuity guard.
             supabase/functions/__tests__/issue1537_delivery_provider_truth.test.ts
+            # Issue #1537 — TESTER ADVERSARIAL. Attacks the three angles the
+            # implementor's file explicitly did not cover. (1) REAL DDL: every
+            # write is validated against the production schema of
+            # notification_deliveries read read-only from gqnoajqerqhnvulmnyvv
+            # (the 18-column set, both CHECK constraints, owner_chk, and the
+            # partial UNIQUE guest index), so a row Postgres would reject fails
+            # here instead of being recorded by a permissive fake. (2) RACE: two
+            # guest dispatches are interleaved through a suspended provider call
+            # and the audit order proves the competing claim landed INSIDE the
+            # send window — one claim, one send, one correctly-labelled row.
+            # (3) WEBHOOK: an NG send is driven through the real dispatchV2, and
+            # the real handleTermiiStatus is then called with a genuine
+            # HMAC-SHA512 callback for the message id the adapter returned —
+            # the first time a Termii callback has ever met a `termii`-labelled
+            # row, since all 31 production rows say twilio. Also sweeps
+            # attribution across all 13 outcomes incl. fail-closed and
+            # opted-out, re-proves #1518 (generic, read off the POSTed body)
+            # and #1529 (a lying country_code moves neither route nor label),
+            # and ADV-17 proves the vacuity guard itself fires on zero matches.
+            supabase/functions/__tests__/issue1537_provider_truth.tester.adversarial.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then
