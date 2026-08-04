@@ -13,18 +13,23 @@
  * return and nothing else, so a test can score the page without a browser and
  * a browser can confirm the same score without a second source of truth.
  *
- * NO RUNTIME IMPORTS beyond the two pure formatters. No React, no
+ * NO RUNTIME IMPORTS beyond the pure resolvers and formatters. No React, no
  * react-native, no platform surface — this module is data.
  *
- * WHAT IS DELIBERATELY NOT HERE — #1562 owns both, and implementing either
- * early would be building another step's work:
- *   - the Stay "from" rate (min of `offerings[].price.amountMinor`);
- *   - "open now" against the venue's own timezone.
- * The price cell is therefore a SLOT with a total resolver per pricing model:
- * `typicalSpend` resolves TODAY from `discoveryPrice` (already loaded, already
- * rendered by the price lede); `nightlyFrom` resolves to null until #1562
- * fills it in. See `VENUE_PRICE_CELL` below — that one function is #1562's
- * whole surface area on this bar.
+ * #1562 CLOSED BOTH SLOTS THIS FILE LEFT OPEN. It shipped with two named gaps,
+ * each a total `Record<…>` arm rather than a branch, so that filling them in
+ * was an edit to one arrow function rather than a hunt through a renderer:
+ *   - the Stay "from" rate — `VENUE_PRICE_CELL.nightlyFrom`, which returned
+ *     null behind a `[TRANSITIONAL]` marker. It now resolves through
+ *     `resolveVenueStayRate` over the offerings already on the wire, and the
+ *     quoted total replaces it in the SAME slot the moment dates are chosen.
+ *   - "open now" against the venue's own timezone — `VENUE_TIME_CELL.
+ *     tradingHours`, which stated only what the venue's row said for today and
+ *     made no claim. It now reads a `VenueOpenState` resolved in the venue's
+ *     zone, and falls back to exactly the old behaviour when that zone is
+ *     unusable, so an unknown timezone can never manufacture a claim.
+ * Both arms are still arms: a fifth pricing model or a third timekeeping model
+ * does not compile until it says how it prices and how it keeps time.
  */
 import {
   stayClockLabel,
@@ -33,6 +38,17 @@ import {
   type VenueTimekeeping,
 } from "./venueCategoryProfile";
 import { formatSourceRange } from "./venueMoney";
+import {
+  VENUE_WEEKDAY_LABELS,
+  type VenueOpenState,
+} from "./venueOpenState";
+import {
+  venueStayQuoteValue,
+  venueStayRateQualifier,
+  venueStayRateValue,
+  type VenueStayQuoteView,
+  type VenueStayRate,
+} from "./venueStayRate";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // The hero cap (#1550 R9 — the 768-1023 band nobody had looked at)
@@ -121,6 +137,22 @@ export interface VenueAnswerBarInput {
   } | null;
   stay: { checkInTime: string; checkOutTime: string } | null;
   todayHours: { openTime: string | null; closeTime: string | null; isClosed: boolean } | null;
+  /**
+   * #1562 — the venue's OWN clock, resolved in its OWN zone by
+   * `resolveVenueOpenState`. Null (or `status: "unknown"`) means no open-now
+   * claim can be made, and the time cell falls back to stating the published
+   * row. The screen resolves this once and hands the SAME object to the bar
+   * and to the desktop sticky panel, so the two cannot disagree.
+   */
+  openState: VenueOpenState | null;
+  /** #1562 — the Stay nightly from-rate, resolved from the loaded offerings. */
+  stayRate: VenueStayRate | null;
+  /**
+   * #1562 — the guest's REAL quoted total, once dates are chosen. When present
+   * it replaces the from-rate in this same cell rather than appearing anywhere
+   * else on the page.
+   */
+  stayQuote: VenueStayQuoteView | null;
   /** The page's own fail-closed reserve gate. Never re-derived here. */
   canBook: boolean;
 }
@@ -130,13 +162,29 @@ export interface VenueAnswerBarInput {
  * not compile until it says how it prices — the same antidote the category
  * table itself is built on.
  *
- * `nightlyFrom` is [TRANSITIONAL] — it returns null until #1562 lands the Stay
- * from-rate. EXIT CONDITION: #1562 replaces that one arrow function with the
- * min over `stayDetail.offerings[].price`, and every surface gains the cell on
- * the same day. Returning null here is not a placeholder and not a fabrication:
- * the cell simply is not rendered, which is the design's own stated rule for
- * absent data ("it disappears silently; the answer bar shrinks from three cells
- * to two rather than showing a blank").
+ * #1562 CLOSED THE `nightlyFrom` ARM. It is no longer `[TRANSITIONAL]`.
+ *
+ * THE TENSION THIS ARM CARRIES, AND THE THREE THINGS THAT HOLD IT. Mingla
+ * prices all-in; a from-rate is not all-in. #1550 approved showing one anyway,
+ * on three conditions, and all three live in this one function rather than
+ * being scattered where any of them could be dropped independently:
+ *
+ *   1. THE QUALIFIER IS IN THE SAME BLOCK AS THE NUMBER. `note` is a line of
+ *      the SAME cell as `value` — one `<View>`, one accessibility label built
+ *      from both. There is no arrangement of this page on any surface at any
+ *      width in which a guest reads "$275" without reading "before taxes and
+ *      fees", because the two are not separable elements.
+ *   2. THE HONEST NUMBER TAKES OVER. `stayQuote` is checked FIRST. The instant
+ *      the guest picks dates and the server quotes a real total, that total
+ *      occupies this slot — same cell, same `answerValue` style, same size —
+ *      and the from-rate is gone. The guest is not shown a small number here
+ *      and a bigger one at checkout; the number in front of them becomes the
+ *      true one as soon as it can be known.
+ *   3. THE QUALIFIER READS ITSELF FROM THE DATA. `venueStayRateQualifier` is
+ *      driven by `rate.allIn`, which `resolveVenueStayRate` computes from
+ *      `fees[].displayMode` on the rows themselves. A hotel that has marked
+ *      its fees included gets "all-in, taxes and fees included" without anyone
+ *      editing this file.
  */
 const VENUE_PRICE_CELL: Record<
   VenuePricingModel,
@@ -156,21 +204,57 @@ const VENUE_PRICE_CELL: Record<
           }),
           note: "a head",
         },
-  // [TRANSITIONAL] #1561 — the Stay from-rate is #1562's. Exit condition:
-  // #1562 implements this arm from `stayDetail.offerings[].price`.
-  nightlyFrom: () => null,
+  nightlyFrom: ({ stayRate, stayQuote }) => {
+    // (2) The quoted total wins the slot the moment it exists.
+    const quoted = venueStayQuoteValue(stayQuote);
+    if (quoted !== null) {
+      return {
+        id: "price",
+        label: "Your dates",
+        value: quoted,
+        note: "total · taxes and fees included",
+      };
+    }
+    if (stayRate === null) return null;
+    const value = venueStayRateValue(stayRate);
+    // `formatStayRate` fails loud rather than inventing a number; a cell
+    // reading "Price unavailable" in the largest type on the first screen is
+    // worse than no cell, and the design's rule for absent data is that the
+    // bar shrinks rather than showing a blank.
+    if (value === "Price unavailable") return null;
+    return {
+      id: "price",
+      label: "From",
+      value,
+      // (1) + (3): the qualifier is this cell's own third line, and it is read
+      // from `fees[].displayMode` rather than hardcoded.
+      note: venueStayRateQualifier(stayRate),
+    };
+  },
 };
 
 /**
  * THE TIME SLOT. Total over `VenueTimekeeping`.
  *
- * Both arms render data ALREADY on the page and already drawn further down it
- * (`VenueStayPolicySection` renders check-in/check-out; `VenueHoursSection`
- * renders the week). Neither arm makes an open-now CLAIM: "Today" states what
- * the venue's own row says for today's weekday, which is strictly weaker than
- * the "Open today" line #1550 Leg C found firing at 03:00 against the VISITOR's
- * device weekday. Turning that into a real open-now against the venue's
- * timezone is #1562.
+ * `checkInOut` is what a HOTEL has instead of trading hours (#1558's category
+ * profile). A hotel does not open and close; its front desk is the whole point.
+ * Publishing "09:00–17:00" beside its own "Check-in 15:00" was the self-
+ * contradiction #1550 Leg C photographed on a live Miami property, and the
+ * profile table is what makes that unrepresentable rather than merely fixed.
+ *
+ * `tradingHours` is where #1562's open-now lands, and it is layered so the
+ * claim is never stronger than the evidence:
+ *
+ *   openState.status = "open"       → "Right now · Open · until 22:30"
+ *                    = "opensLater" → "Right now · Closed · opens 18:00"
+ *                                     (or "opens Tue 09:00" on another day)
+ *                    = "closed"     → "Right now · Closed"
+ *                    = "unknown"    → EXACTLY #1561's behaviour: state the
+ *                                     published row for today and claim
+ *                                     nothing. This is the arm a venue with no
+ *                                     usable timezone lands in, and it is the
+ *                                     reason exposing the timezone can only
+ *                                     ever ADD certainty to this page.
  */
 const VENUE_TIME_CELL: Record<
   VenueTimekeeping,
@@ -185,7 +269,33 @@ const VENUE_TIME_CELL: Record<
           value: stayClockLabel(stay.checkInTime),
           note: `check-out ${stayClockLabel(stay.checkOutTime)}`,
         },
-  tradingHours: ({ todayHours }) => {
+  tradingHours: ({ openState, todayHours }) => {
+    if (openState !== null && openState.status === "open") {
+      return {
+        id: "time",
+        label: "Right now",
+        value: "Open",
+        note:
+          openState.closesAt === null ? null : `until ${openState.closesAt}`,
+      };
+    }
+    if (openState !== null && openState.status === "opensLater") {
+      const day =
+        openState.opensWeekday === null
+          ? ""
+          : `${VENUE_WEEKDAY_LABELS[openState.opensWeekday] ?? ""} `;
+      return {
+        id: "time",
+        label: "Right now",
+        value: "Closed",
+        note: openState.opensAt === null ? null : `opens ${day}${openState.opensAt}`,
+      };
+    }
+    if (openState !== null && openState.status === "closed") {
+      return { id: "time", label: "Right now", value: "Closed", note: null };
+    }
+    // UNKNOWN — no timezone, an unusable one, or no published hours. Claim
+    // nothing beyond what the venue itself stated for today.
     if (todayHours === null) return null;
     if (todayHours.isClosed) {
       return { id: "time", label: "Today", value: "Closed", note: null };

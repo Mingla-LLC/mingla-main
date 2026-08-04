@@ -118,6 +118,18 @@ import {
   type VenueAnswerCell,
 } from "./venueFirstScreen";
 import {
+  resolveVenueOpenState,
+  venueOpenStateLine,
+  VENUE_WEEKDAY_LABELS,
+  type VenueOpenState,
+} from "./venueOpenState";
+import {
+  resolveVenueStayRate,
+  venueStayRateRangeLine,
+  type VenueStayQuoteView,
+  type VenueStayRate,
+} from "./venueStayRate";
+import {
   createPublicVenueReservationUiState,
   normalizePublicVenueReservationUiState,
   publicVenueReservationUiReducer,
@@ -161,6 +173,15 @@ export interface PublicVenueViewModel {
   coverMediaType: "image" | "video" | "gif" | null;
   theme: PublicVenueThemeInput;
   hours: PublicVenueHourEntry[];
+  /**
+   * #1562 — the venue's OWN IANA zone (`venue_availability_config.
+   * iana_timezone`, exposed on `venue_public_view` by this issue's migration).
+   * NULL when the venue has no availability config row, or when the page is
+   * served by a deployment whose view predates the migration. Null is honest
+   * and safe: `resolveVenueOpenState` returns `unknown` and the page states the
+   * published row without claiming to know whether the doors are open.
+   */
+  timezone: string | null;
   galleryPhotoUrls: string[];
   /** The owner-authored public pitch. Null/empty ⇒ the About section is omitted. */
   pitch: string | null;
@@ -276,6 +297,13 @@ export interface PublicVenueScreenProps {
   onRetryReservability?: () => void;
   stayState?: PublicVenueStayState;
   stayDetail?: PublicStayDetail | null;
+  /**
+   * #1562 mitigation 2 — the guest's REAL quoted total, lifted from the
+   * Reservations tab's booking body so the first screen can replace the
+   * from-rate with it IN THE SAME SLOT. Null until dates are chosen. The host
+   * owns the quote (it owns the service call); this screen only reads it.
+   */
+  stayQuote?: VenueStayQuoteView | null;
   /** Runtime safe-area insets. A package stays free of the insets provider. */
   safeAreaInsets: { top: number; bottom: number };
   /** Web-only `<Head>`; native hosts pass nothing. */
@@ -303,7 +331,10 @@ export interface PublicVenueScreenProps {
   onOpenMaps: (query: string) => void;
 }
 
-const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+// #1562 — the week's labels have ONE owner now (`venueOpenState.ts`), because
+// the open-now line and the week table name the same days and a second array
+// is how they come to disagree.
+const WEEKDAY_LABELS = VENUE_WEEKDAY_LABELS;
 
 // META-ORCH-1290(C) §6.2 — pitch-first meta description: one line, all
 // whitespace/newlines collapsed to single spaces, clamped to the ≤155-char SEO
@@ -330,8 +361,24 @@ const hashHueFromString = (s: string): number => {
   return h % 360;
 };
 
-/** Today's weekday in the page's 0=Mon..6=Sun convention. */
-const todayWeekday = (): number => (new Date().getDay() + 6) % 7;
+/**
+ * #1562 DELETED `todayWeekday()`.
+ *
+ * It was `(new Date().getDay() + 6) % 7` — the VISITOR's device weekday — and
+ * one call at line 932 fed all three of this page's hours surfaces: the desktop
+ * "Open today" claim, the week table's today bar, and the answer bar's time
+ * cell. A guest in Lagos looking at a Miami restaurant at 01:00 read Saturday's
+ * row on a venue for which it was still Friday evening.
+ *
+ * The weekday now comes from `resolveVenueOpenState(...).weekday`, resolved in
+ * the venue's own IANA zone. It is `null` when that zone is unusable, and
+ * `venueTodayWeekday` below turns that into `-1` — an index no `brand_hours`
+ * row can carry, so NOTHING is highlighted rather than the wrong thing being
+ * highlighted. Subtracting the old helper (rather than leaving it beside the
+ * new one) is what makes the device clock unreachable from this file.
+ */
+const venueTodayWeekday = (state: VenueOpenState): number =>
+  state.weekday ?? -1;
 
 const hoursLineFor = (entry: PublicVenueHourEntry): string =>
   entry.isClosed || entry.openTime === null || entry.closeTime === null
@@ -412,20 +459,47 @@ export interface VenueSectionProps {
   theme: ResolvedTheme;
   themedFont: { fontFamily: ResolvedTheme["fontFamilyValue"] };
   isDesktop: boolean;
+  /**
+   * #1562 — the VENUE's weekday, not the device's. `-1` when the venue's zone
+   * is unusable, which highlights no row rather than the wrong one.
+   */
   todayWeekday: number;
+  /** #1562 — resolved once per render, shared by every hours surface. */
+  openState: VenueOpenState;
+  /** #1562 — the Stay nightly rate, or null when there is no honest one. */
+  stayRate: VenueStayRate | null;
   mapsQuery: string | null;
   onOpenMaps: () => void;
 }
 
-/** §6.1a typical-spend lede — gated by the profile's PRICING MODEL, not by
- *  `!isStay`. A Stay prices `nightlyFrom`; that rate is #1562, so until then a
- *  Stay's lede has a model and no data and renders nothing. */
+/** §6.1a the price lede — gated by the profile's PRICING MODEL, not by
+ *  `!isStay`.
+ *
+ *  #1562 gave the `nightlyFrom` model its data. A Stay's lede now carries the
+ *  full nightly RANGE, which the one-number answer cell above cannot: "Rooms
+ *  $275–$350 · per night · before taxes and fees". The range answers #1550's
+ *  named pain point #1 ("a hotel with a range of rooms gives a guest no way to
+ *  narrow by what they can afford") at the only place on the first screen where
+ *  a second number fits, and it carries the SAME qualifier as the answer cell
+ *  because both call `venueStayRateQualifier` — they cannot drift. */
 const VenuePriceLedeSection: VenueSectionRenderer = ({
   discoveryPrice,
   profile,
   palette,
+  stayRate,
   themedFont,
 }) => {
+  if (profile.pricing === "nightlyFrom") {
+    if (stayRate === null) return null;
+    return (
+      <Text
+        style={[styles.aboutBody, themedFont, { color: palette.secondaryText }]}
+        testID="issue-1562-stay-rate-lede"
+      >
+        {venueStayRateRangeLine(stayRate)}
+      </Text>
+    );
+  }
   if (
     discoveryPrice === null ||
     !typicalSpendVisible(profile, discoveryPrice !== null)
@@ -576,17 +650,42 @@ const VenueLocationSection: VenueSectionRenderer = ({
 // own "Check-in 15:00".
 const VenueHoursSection: VenueSectionRenderer = ({
   venue,
+  openState,
   palette,
   surface,
   todayWeekday: today,
 }) => {
   const hours = venue.hours;
   if (hours.length === 0) return null;
+  // #1562 — the same resolved state the answer bar and the desktop panel draw,
+  // repeated at the head of the week so a guest who has scrolled to the table
+  // is not made to work out for themselves whether "Fri 09:00–17:00" means the
+  // doors are open at this moment. Null (unknown zone) renders nothing.
+  const stateLine = venueOpenStateLine(
+    openState,
+    hours.find((entry) => entry.weekday === today) ?? null,
+  );
   return (
     <View style={[styles.hoursCard, surface.card]}>
       <Text style={[styles.sectionLabel, { color: palette.tertiaryText }]}>
         HOURS
       </Text>
+      {stateLine !== null ? (
+        <Text
+          style={[
+            styles.hoursStateLine,
+            {
+              color:
+                openState.status === "open"
+                  ? palette.accent
+                  : palette.secondaryText,
+            },
+          ]}
+          testID="issue-1562-hours-state"
+        >
+          {stateLine}
+        </Text>
+      ) : null}
       {hours.map((entry) => {
         const isToday = entry.weekday === today;
         return (
@@ -745,6 +844,7 @@ export const PublicVenueScreen = ({
   onRetryReservability,
   stayState,
   stayDetail = null,
+  stayQuote = null,
   safeAreaInsets,
   headSlot,
   loadThemeFont,
@@ -929,18 +1029,70 @@ export const PublicVenueScreen = ({
     canOpenReservationSheet &&
     normalizedReservationUiState.activeTab !== "reservations";
 
-  const today = todayWeekday();
+  // ── #1562 §6.5 the venue's own clock, resolved ONCE ──────────────────────
+  //
+  // ONE OWNER for three surfaces. The desktop sticky line, the week table's
+  // today bar and the answer bar's time cell all read THIS object. Before this
+  // step each derived its own answer from `new Date()` on the visitor's device,
+  // which is how the panel could claim "Open today" at 03:00 on a venue whose
+  // own date had not yet rolled over.
+  //
+  // `nowTick` re-resolves the state on a schedule rather than only on mount:
+  // "Open now" is a claim about a moment, and a tab left open across 17:00 that
+  // still says Open is the same lie in slower motion. The interval is a whole
+  // minute (the finest granularity the copy can express), and it is torn down
+  // on unmount so a backgrounded page holds no timer.
+  const [nowTick, setNowTick] = useState<number>(() => Date.now());
+  React.useEffect((): (() => void) => {
+    const handle = setInterval(() => setNowTick(Date.now()), 60_000);
+    // `unref()` — Node only, and load-bearing there. Under Node this timer is a
+    // handle on the event loop, so a jest suite that mounts this screen and
+    // then throws before unmounting (an assertion failure, which is the NORMAL
+    // way a test ends) leaves the interval live and the RUNNER NEVER EXITS: one
+    // red assertion becomes a hung CI job with no output at all. Measured on
+    // this very file. `unref` says "never be the reason a process stays alive"
+    // without changing what the timer does while the page is mounted.
+    //
+    // React Native and browsers return a number from `setInterval` and have no
+    // `unref`, hence the shape check rather than a platform check — the
+    // teardown below is what disposes of it on every surface.
+    const unrefable = handle as unknown as { unref?: () => void };
+    if (typeof unrefable.unref === "function") unrefable.unref();
+    return () => clearInterval(handle);
+  }, []);
+  const openState = useMemo<VenueOpenState>(
+    () =>
+      // A Stay does not trade hours; asking whether a hotel is "open" is the
+      // category confusion #1558 removed. The resolver is still called with an
+      // empty week so the venue's weekday is available to anything that wants
+      // it, and it returns `unknown`, which claims nothing.
+      resolveVenueOpenState({
+        hours: venueShowsTradingHours(profile) ? venue.hours : [],
+        timeZone: venue.timezone,
+        now: new Date(nowTick),
+      }),
+    [profile, venue.hours, venue.timezone, nowTick],
+  );
+  const today = venueTodayWeekday(openState);
   const todayEntry = venue.hours.find((h) => h.weekday === today) ?? null;
-  // #1558 — the desktop panel's "Open today · …" line had NO category guard, so
-  // it was the SECOND place a hotel advertised a closing time. It is now gated
-  // on the profile's timekeeping model, exactly like the hours section.
-  const todayLine =
-    venueShowsTradingHours(profile) &&
-    todayEntry !== null &&
-    !todayEntry.isClosed &&
-    todayEntry.openTime !== null
-      ? `Open today · ${todayEntry.openTime}–${todayEntry.closeTime ?? ""}`
-      : null;
+  // #1558 gated this on the profile's timekeeping model (it was the SECOND
+  // place a hotel advertised a closing time). #1562 replaces the string itself:
+  // "Open today · 09:00–17:00" was a weekday match dressed as an open-now
+  // claim; `venueOpenStateLine` states what is actually true at this minute in
+  // the venue's own zone, and returns null when nothing can be claimed.
+  const todayLine = venueShowsTradingHours(profile)
+    ? venueOpenStateLine(openState, todayEntry)
+    : null;
+
+  // ── #1562 §6.1 the Stay's nightly rate ───────────────────────────────────
+  // A pure reduction over offerings ALREADY loaded by `usePublicStayDetail` —
+  // no query, no column, no RPC. Null whenever there is no honest single answer
+  // (no room-night offering, or offerings that disagree on currency).
+  const stayRate = useMemo<VenueStayRate | null>(
+    () =>
+      stayDetail === null ? null : resolveVenueStayRate(stayDetail.offerings),
+    [stayDetail],
+  );
 
   const { hasPitch, pitchText } = publicVenueMeta(venue);
 
@@ -972,6 +1124,9 @@ export const PublicVenueScreen = ({
             checkOutTime: stayDetail.checkOutTime,
           },
     todayHours: todayEntry,
+    openState,
+    stayRate,
+    stayQuote,
     canBook: canOpenReservationSheet,
   });
 
@@ -1078,6 +1233,8 @@ export const PublicVenueScreen = ({
       themedFont,
       isDesktop,
       todayWeekday: today,
+      openState,
+      stayRate,
       mapsQuery,
       onOpenMaps: handleOpenMaps,
     }),
@@ -1086,10 +1243,12 @@ export const PublicVenueScreen = ({
       handleOpenMaps,
       isDesktop,
       mapsQuery,
+      openState,
       palette,
       profile,
       resolvedTheme,
       stayDetail,
+      stayRate,
       surface,
       themedFont,
       today,
@@ -1619,6 +1778,14 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: 1.4,
     marginBottom: 8,
+  },
+  // #1562 — the open-now line at the head of the week table. Heavier than the
+  // rows beneath it because it is the answer; the table is the evidence.
+  hoursStateLine: {
+    fontSize: 15,
+    lineHeight: 22,
+    fontWeight: "700",
+    marginBottom: 6,
   },
   hoursRow: {
     flexDirection: "row",

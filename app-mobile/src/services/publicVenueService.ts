@@ -62,6 +62,13 @@ export interface ConsumerPublicVenue {
     closeTime: string | null;
     isClosed: boolean;
   }>;
+  /**
+   * issue #1562 — the IANA zone the `hours` above are expressed in, from
+   * `venue_public_view.iana_timezone`. Null when the venue has no availability
+   * config row, or when the deployed view predates the #1562 migration; the
+   * shared screen reads null as "make no open-now claim".
+   */
+  timezone: string | null;
   galleryPhotoUrls: string[];
   menu: PublicMenuGroup[];
   /** Null when unpriced, unknown, or not applicable — never a fabricated band. */
@@ -96,6 +103,10 @@ interface VenueRow {
   theme_font: string | null;
   theme_animation: string | null;
   hours: unknown;
+  // issue #1562 — OPTIONAL as well as nullable: a deployment whose view
+  // predates the migration returns no such key, and that must read as "no
+  // timezone" rather than throw.
+  iana_timezone?: string | null;
   pool_photo_urls: string[] | null;
   place_pool_id: string | null;
 }
@@ -299,6 +310,12 @@ export async function fetchConsumerPublicVenue(
     pitch: row.pitch,
     theme: Object.keys(theme).length > 0 ? theme : null,
     hours: asHours(row.hours),
+    // issue #1562 — the clock those hours belong to. Blank folds to null so an
+    // empty string can never reach `Intl` and raise where "unknown" belongs.
+    timezone:
+      typeof row.iana_timezone === "string" && row.iana_timezone.trim().length > 0
+        ? row.iana_timezone
+        : null,
     // #1560 — the SHARED cascade (operator cover + profile first, place-pool
     // photos only when neither exists). Was `row.pool_photo_urls ?? []`, which
     // is a different set of photographs from the one buyer web publishes.
