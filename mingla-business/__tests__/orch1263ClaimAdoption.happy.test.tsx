@@ -109,7 +109,14 @@ import {
   removedAdoptedUrls,
   reorderGalleryUrls,
 } from "../src/components/venue/claim/ClaimStepPhotos";
-import { buildClaimReviewRows } from "../src/components/venue/claim/ClaimStepReview";
+// [TEST-MOD-APPROVED #1564] — IMPORT PATH ONLY. `buildClaimReviewRows` moved
+// verbatim from `ClaimStepReview.tsx` to the new pure `claimReviewRows.ts`
+// (ClaimStepReview.tsx re-exports it, so nothing else changed). This file wants
+// the builder and renders nothing; pointing it at the pure module keeps it out
+// of the RN import graph the step now carries. No assertion below is changed,
+// removed or weakened — the source-text assertions still read
+// `ClaimStepReview.tsx`, which still owns the component.
+import { buildClaimReviewRows } from "../src/components/venue/claim/claimReviewRows";
 import { adoptionBannerBody } from "../src/components/venue/claim/ClaimAdoptionBanner";
 import type { PoolAdoptionDetail, PoolMatch } from "../src/types/poolMatch";
 import type { BrandHourEntry } from "../src/types/brand";

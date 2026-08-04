@@ -42,8 +42,10 @@
 -- constraints below admit exactly the values `isThemeColor` / `isThemeFontSlug`
 -- / `isThemeAnimationSlug` accept — an override can never be a value the client
 -- would then reject and silently fall through to the MINGLA default, skipping
--- the brand. (`issue1564VenueThemeResolution.happy.test.ts` asserts the two
--- agree over the whole matrix rather than trusting that sentence.)
+-- the brand. (`mingla-business/src/components/venue/__tests__/
+-- venueThemeResolution.issue1564.happy.test.ts` pushes all eight per-axis
+-- combinations through both and asserts they agree, rather than trusting this
+-- sentence.)
 --
 -- NOT SET IS THE DEFAULT PATH. Every venue in the pool today has three NULLs,
 -- so every venue keeps rendering its brand's theme byte-for-byte. The feature
