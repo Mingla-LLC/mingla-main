@@ -7158,6 +7158,19 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   finding — the destructive one and the innocent-refusal one — are pinned by their own cases,
   each independently shown to close the class on its own. This note records the response only;
   the TEST status above stands until an independent pass re-verifies it.
+- **RETEST (2026-08-03) — the reported finding is CLOSED; one new finding, still NOT
+  satisfied.** The previous finding no longer reproduces, and the layered defence behind it
+  was confirmed genuine rather than asserted: each layer refuses it alone and only removing
+  both reproduces it. The replay, the ordinary-work battery, the rename surface, the
+  redaction properties and paths whose bytes are not text were all re-verified independently
+  and are clean. What remains is rule (a) still being satisfied on only one of the two
+  readings this gate takes: the arm answered from the second reading can be brought to report
+  a count it never took, which is the behaviour this invariant exists to forbid, stated in its
+  own words. The redundant runtime assertion added at REWORK checks the first reading only,
+  so it does not see it. Pinned by case **T48**, which is RED at this commit by design and
+  green under the one-line correction; the correction was measured and leaves every other case
+  green. Reproduction and correction are recorded out of band. This entry must not flip ACTIVE
+  until T48 is green.
 - **Established:** DRAFT at issue #1534 SPEC 2026-08-03. Flips ACTIVE at CLOSE.
 ## DRAFT — issue #1481 (Explorer swipe lifecycle and deck performance)
 

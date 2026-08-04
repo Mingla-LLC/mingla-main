@@ -2606,6 +2606,67 @@ function scenarioT47() {
   }
 }
 
+// T48 (#1534 retest, TESTER ADVERSARIAL — THE OTHER READING) — T47 pins the reconciliation
+// check on the arm it alone guards, but it can only reach that check through the reading the
+// ENTRIES came from. This gate takes TWO readings, one per range, and the added arm is
+// answered from the OTHER one — the base-branch comparison. That is the reading whose absent
+// record legitimately means "no difference", which is exactly the reading a disagreement must
+// never be allowed to imitate. T47 and this case are the same property asked of each reading
+// in turn; a guard that covers one of two readings is a guard over half the surface, and the
+// half it misses here is the half where absence is a pass.
+// Fails-on-revert: the file prints an added pass and the run exits clean while the base
+// branch's version of it is being replaced by a shorter one.
+function scenarioT48() {
+  const repo = makeTempRepo();
+  const shimDir = fs.mkdtempSync(
+    nodePath.join(os.tmpdir(), "append-only-selftest-gitshim6-"),
+  );
+  try {
+    const { dir, g, write } = repo;
+    write("seed.md", "x\n");
+    g("add", "-A");
+    g("commit", "-q", "-m", "root");
+    g("branch", "-M", "main");
+    // Branch BEFORE the maintained file exists, so this range calls it new.
+    g("checkout", "-q", "-b", "feature");
+    g("checkout", "-q", "main");
+    write("a.test.ts", FOUR_ASSERTIONS);
+    g("add", "-A");
+    g("commit", "-q", "-m", "the maintained file lands on the base branch");
+    g("checkout", "-q", "feature");
+    write("a.test.ts", ONE_ASSERTION);
+    g("add", "-A");
+    g("commit", "-q", "-m", "introduce a shorter version of that same path — NO token");
+
+    const realGit = execSync("command -v git", { encoding: "utf8" }).trim();
+    const shim = [
+      "#!/bin/sh",
+      "stats=0; spanning=0",
+      'for arg in "$@"; do',
+      '  case "$arg" in --numstat) stats=1 ;; *...*) spanning=1 ;; esac',
+      "done",
+      // Disagree ONLY on the base-branch comparison — the reading the added arm is
+      // answered from — and leave the one the entries came from entirely alone.
+      'if [ "$stats" = 1 ] && [ "$spanning" = 0 ]; then',
+      `  ${JSON.stringify(realGit)} "$@"`,
+      "  printf '%b' '1\\t1\\tzz-phantom.test.ts\\000'",
+      "  exit 0",
+      "fi",
+      `exec ${JSON.stringify(realGit)} "$@"`,
+      "",
+    ].join("\n");
+    const shimPath = nodePath.join(shimDir, "git");
+    fs.writeFileSync(shimPath, shim);
+    fs.chmodSync(shimPath, 0o755);
+    return runCheckIn(dir, {
+      PATH: `${shimDir}${nodePath.delimiter}${process.env.PATH || ""}`,
+    });
+  } finally {
+    fs.rmSync(repo.dir, { recursive: true, force: true });
+    fs.rmSync(shimDir, { recursive: true, force: true });
+  }
+}
+
 function selfTest() {
   let failures = 0;
   let total = 0;
@@ -3224,6 +3285,15 @@ function selfTest() {
     t47.status === 1 && t47A && t47B && t47Tally,
     "T47 (#1534 rework): the arm where an absent record legitimately means no difference is the one arm the reconciliation check is the SOLE guard for, and it is pinned there — a run whose two readings account for one changed test file and stay silent about the other cannot report on EITHER, because it cannot agree with itself about what it is reporting on. Once divergence is structurally prevented this assertion is unreachable everywhere else, which is the design and also the reason it needs a case of its own: an assertion nobody notices the loss of is one that rots",
     `check exited ${t47.status} (expected 1); accounted-for file refused=${t47A}; unaccounted-for file refused=${t47B}; tally 0/2=${t47Tally}`,
+  );
+
+  const t48 = scenarioT48();
+  const t48Passed = /✅ ADDED\s+a\.test\.ts/.test(t48.out);
+  const t48Refused = /❌[^\n]*a\.test\.ts/.test(t48.out);
+  check(
+    t48.status === 1 && t48Refused && !t48Passed,
+    "T48 (#1534 retest, tester adversarial): the SAME property T47 pins, asked of the OTHER reading. This gate takes two readings, one per range, and the arm whose absent record legitimately means no difference is answered from the second one — so that is the reading a disagreement must never be able to imitate. When the two readings of the base-branch comparison do not account for the same changes, the arm must refuse rather than conclude that a path being replaced by a shorter version lost nothing",
+    `check exited ${t48.status} (expected 1); refused=${t48Refused}; reported as an unmeasured pass=${t48Passed} (expected false)`,
   );
 
   const t46 = scenarioT46();
