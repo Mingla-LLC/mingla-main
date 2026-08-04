@@ -1,6 +1,6 @@
 // NOTE: Visually mirrors DiscoverScreen's inline GridCard. If For You tab design changes, update both.
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { View, Text, Image, TouchableOpacity, StyleSheet } from "react-native";
 import { Icon } from "./ui/Icon";
 import { s, vs, SCREEN_WIDTH } from "../utils/responsive";
@@ -31,28 +31,44 @@ const PersonGridCard: React.FC<PersonGridCardProps> = ({
   width,
 }) => {
   const categoryIconName = getCategoryIcon(category);
+  const readableCategory = getReadableCategoryName(category);
+  // Issue #1540 §3.6: the placeholder was gated on `imageUrl` being FALSY, so a
+  // present-but-dead URL (404, expired signed URL, offline) rendered a blank
+  // white band and no placeholder ever appeared. On a grid of remote,
+  // user-saved images that happens routinely.
+  const [imageFailed, setImageFailed] = useState(false);
+  useEffect(() => {
+    setImageFailed(false);
+  }, [imageUrl]);
 
   return (
     <TouchableOpacity
       style={[styles.card, width != null && { width }]}
       onPress={onPress}
       activeOpacity={0.85}
+      accessibilityRole="button"
+      // Issue #1540 §3.6: without these VoiceOver read three loose text
+      // fragments beside an unlabelled control.
+      accessibilityLabel={`${title}, ${readableCategory}`}
     >
       <View style={styles.imageContainer}>
-        {imageUrl ? (
-          <Image
-            source={{ uri: imageUrl }}
-            style={styles.image}
-            resizeMode="cover"
-          />
-        ) : (
+        {!imageUrl || imageFailed ? (
           <View style={styles.imagePlaceholder}>
             <Icon
               name={categoryIconName}
               size={s(28)}
-              color="rgba(255,255,255,0.6)"
+              // Issue #1540 §3.6: was rgba(255,255,255,0.6) on gray[200] —
+              // 1.09:1, effectively invisible. gray[600] on gray[100] is 6.87:1.
+              color={colors.gray[600]}
             />
           </View>
+        ) : (
+          <Image
+            source={{ uri: imageUrl }}
+            style={styles.image}
+            resizeMode="cover"
+            onError={() => setImageFailed(true)}
+          />
         )}
         <View style={styles.categoryBadge}>
           <Icon
@@ -68,7 +84,7 @@ const PersonGridCard: React.FC<PersonGridCardProps> = ({
           {title}
         </Text>
         <Text style={styles.categoryLabel} numberOfLines={1}>
-          {getReadableCategoryName(category)}
+          {readableCategory}
         </Text>
         <View style={styles.footer}>
           {priceRange ? (
@@ -110,7 +126,8 @@ const styles = StyleSheet.create({
   imagePlaceholder: {
     width: "100%",
     height: "100%",
-    backgroundColor: colors.gray[200],
+    // Issue #1540 §3.6: gray[100] pairs with the gray[600] glyph for 6.87:1.
+    backgroundColor: colors.gray[100],
     alignItems: "center",
     justifyContent: "center",
   },

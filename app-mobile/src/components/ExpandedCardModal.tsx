@@ -32,7 +32,7 @@ import { weatherService, WeatherData } from "../services/weatherService";
 import { busynessService, BusynessData } from "../services/busynessService";
 import { bookingService, BookingOption } from "../services/bookingService";
 import { stopReplacementService } from "../services/stopReplacementService"; // ORCH-0640 ch09: experienceGenerationService DELETED; methods moved to stopReplacementService
-import { useRecommendations } from "../contexts/RecommendationsContext";
+import { useRecommendationsOptional } from "../contexts/RecommendationsContext";
 import ExpandedCardHeader from "./expandedCard/ExpandedCardHeader";
 import { getUserLocale } from "../utils/localeUtils";
 import ImageGallery from "./expandedCard/ImageGallery";
@@ -1444,7 +1444,24 @@ export default function ExpandedCardModal({
   const { user } = useAppStore();
   const viewerLocationQuery = useUserLocation(user?.id, currentMode);
   const viewerLoc = viewerLocationQuery.data;
-  const { updateCardStrollData, collabTravelMode } = useRecommendations();
+  // Issue #1540 P1-1 — this modal is mounted BOTH on the deck (where
+  // RecommendationsProvider exists) and from ViewFriendProfileScreen, which also
+  // renders under the `/exp/`, `/t/` and `/e/` detail routes where it does NOT.
+  // Those routes have no provider and no ErrorBoundary, so the throwing
+  // `useRecommendations()` red-screened them. The optional accessor returns null
+  // off-deck; both values below degrade to exactly what the provider itself would
+  // have supplied there — see each fallback.
+  const deck = useRecommendationsOptional();
+  // The provider hardcodes `collabTravelMode: null` (ORCH-0902 CR-7 — travel mode
+  // is per-participant now and computed server-side), so `null` here is not a
+  // degraded value, it is the SAME value. The fallback chain below is unchanged.
+  const collabTravelMode = deck?.collabTravelMode ?? null;
+  // Patches the deck's `recommendations` array and the deck cards cache for the
+  // card with this id. Off-deck there is no deck array and no deck cache, so
+  // there is nothing to patch and skipping it is correct, not lossy: the modal's
+  // own display was already updated by `setStrollData` at the call site, and DB
+  // persistence runs through the separate `onStrollDataFetched` prop.
+  const updateCardStrollData = deck?.updateCardStrollData;
   // In collaboration mode, use the group's aggregated travel mode (majority vote).
   // In solo mode, fall back to the user's own preference.
   const effectiveTravelMode = collabTravelMode ?? userPreferences?.travel_mode ?? 'driving';
@@ -1725,7 +1742,9 @@ export default function ExpandedCardModal({
         setStrollData(fetchedStrollData);
         // Update the card's strollData in the context and cache
         if (card) {
-          updateCardStrollData(card.id, fetchedStrollData);
+          // Optional-chained: undefined off-deck (issue #1540 P1-1). See the
+          // useRecommendationsOptional() block near the top of this component.
+          updateCardStrollData?.(card.id, fetchedStrollData);
           // Persist to database if callback is provided (for saved cards)
           if (onStrollDataFetched) {
             await onStrollDataFetched(card, fetchedStrollData);

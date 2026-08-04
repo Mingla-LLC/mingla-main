@@ -707,18 +707,52 @@ function BaseBottomSheetComponent(props: BaseBottomSheetProps): React.ReactEleme
         const flatProps = scrollProps as React.ComponentProps<
           typeof BottomSheetFlatList
         >;
-        return (
+        // Issue #1540: `flatlist` was the ONE branch that broke the `header`
+        // prop's documented contract (see the prop's doc-comment above: "Fixed
+        // (non-scrolling) content rendered ABOVE the scroll/list body as an
+        // intrinsic-height SIBLING direct child"). It routed `header` into
+        // `ListHeaderComponent`, which is list CONTENT — so the header scrolled
+        // away with the list, the exact opposite of what the prop promises. The
+        // `scroll`, `sectionlist` and stickyFooter branches have all honoured
+        // that contract since ORCH-1043; this branch now matches them.
+        const list = (
           <BottomSheetFlatList
             {...flatProps}
+            // 🔒 LOAD-BEARING (ORCH-1043 / #1540): with a pinned header sibling
+            // above it, the list MUST claim flex:1 so it receives a BOUNDED
+            // viewport below that header. Mirrors the `scroll` branch exactly.
+            // Do NOT remove — without it the list content-sizes and the viewport
+            // collapses to equal its own content (zero scrollable overflow).
+            style={
+              hasHeader ? [styles.flexContainer, flatProps?.style] : flatProps?.style
+            }
             contentContainerStyle={withBottomInset(
               flatProps?.contentContainerStyle,
             )}
+            // With a header sibling the consumer's own ListHeaderComponent is
+            // respected (previously it was unconditionally clobbered). Without a
+            // header, `children` still becomes the list header — the pre-#1540
+            // fallback path, so header-less flatlist consumers are untouched.
             ListHeaderComponent={
-              (header ?? children) as React.ComponentProps<
-                typeof BottomSheetFlatList
-              >['ListHeaderComponent']
+              hasHeader
+                ? flatProps?.ListHeaderComponent
+                : (children as React.ComponentProps<
+                    typeof BottomSheetFlatList
+                  >['ListHeaderComponent'])
             }
           />
+        );
+        // ORCH-1043 shape: header = intrinsic-height sibling, FIRST → pinned top.
+        // list = flex:1 scrollable, STILL a direct child of <BottomSheet>. No
+        // intermediate View is introduced at any point — I-SHEET-SCROLLABLE-DIRECT-CHILD
+        // is satisfied more strongly than before, not less.
+        return hasHeader ? (
+          <>
+            {header}
+            {list}
+          </>
+        ) : (
+          list
         );
       }
       case 'sectionlist': {

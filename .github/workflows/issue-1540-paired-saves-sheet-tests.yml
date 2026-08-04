@@ -19,6 +19,11 @@ on:
       - "app-mobile/src/components/__tests__/issue1540SavesSheetOverflowArithmetic*.mjs"
       - "app-mobile/src/components/PersonGridCard.tsx"
       - "app-mobile/src/components/ui/__tests__/WaveBBatch5.test.mjs"
+      - "app-mobile/src/components/__tests__/issue1540ProviderGapAndPinnedHeader*.mjs"
+      - "app-mobile/src/components/ExpandedCardModal.tsx"
+      - "app-mobile/src/contexts/RecommendationsContext.tsx"
+      - "app-mobile/src/components/connections/FriendPickerSheet.tsx"
+      - "app-mobile/src/components/FeedbackHistorySheet.tsx"
       - ".github/workflows/issue-1540-paired-saves-sheet-tests.yml"
   pull_request:
     paths:
@@ -32,6 +37,11 @@ on:
       - "app-mobile/src/components/__tests__/issue1540SavesSheetOverflowArithmetic*.mjs"
       - "app-mobile/src/components/PersonGridCard.tsx"
       - "app-mobile/src/components/ui/__tests__/WaveBBatch5.test.mjs"
+      - "app-mobile/src/components/__tests__/issue1540ProviderGapAndPinnedHeader*.mjs"
+      - "app-mobile/src/components/ExpandedCardModal.tsx"
+      - "app-mobile/src/contexts/RecommendationsContext.tsx"
+      - "app-mobile/src/components/connections/FriendPickerSheet.tsx"
+      - "app-mobile/src/components/FeedbackHistorySheet.tsx"
       - ".github/workflows/issue-1540-paired-saves-sheet-tests.yml"
 
 permissions:
@@ -61,8 +71,16 @@ jobs:
           node --test
           src/components/__tests__/issue1540PairedSavesSheetScroll.test.mjs
           src/components/__tests__/issue1540SavesSheetOverflowArithmetic.tester.test.mjs
+          src/components/__tests__/issue1540ProviderGapAndPinnedHeader.test.mjs
       - name: Re-run the Wave-B Batch-5 sheet-conversion suite (its T-9 was rewired by #1540)
         run: node --test src/components/ui/__tests__/WaveBBatch5.test.mjs
+      - name: Re-run the sibling suites for the other flatlist consumers
+        # BaseBottomSheet is a SHARED primitive. #1540 changed its `flatlist`
+        # branch, which pins the header for FriendPickerSheet (WaveCBatch1 T-7)
+        # and FeedbackHistorySheet (WaveCBatch3 FH-3) as well.
+        run: >
+          node --test
+          src/components/ui/__tests__/WaveCBatch3.test.mjs
       - name: BaseBottomSheet scrollable-is-direct-child gate
         working-directory: .
         run: node .github/scripts/strict-grep/i-bottomsheet-inline-scroll-binding.mjs

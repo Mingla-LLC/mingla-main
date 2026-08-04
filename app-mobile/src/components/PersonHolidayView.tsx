@@ -57,6 +57,7 @@ import {
   PairedSavesListHeader,
   PairedSavesSkeletonGrid,
   PairedSavesEmptyState,
+  PairedSavesErrorState,
   pairedSavesGridStyles,
   renderPairedSaveItem,
   PAIRED_SAVES_NUM_COLUMNS,
@@ -794,7 +795,17 @@ export default function PersonHolidayView({
   }, [pairedUserId]);
 
   // Paired saves & visits
-  const { data: savesData, isLoading: savesLoading } = usePairedSaves(pairedUserId);
+  // Issue #1540 §2.2: `isError` / `isFetching` / `refetch` were always returned by
+  // usePairedSaves and simply never destructured, so a FAILED fetch fell through
+  // to the empty state and told the viewer their friend had saved nothing —
+  // Constitution #3 (no silent failures) and #9 (no fabricated data).
+  const {
+    data: savesData,
+    isLoading: savesLoading,
+    isError: savesIsError,
+    isFetching: savesIsFetching,
+    refetch: refetchSaves,
+  } = usePairedSaves(pairedUserId);
   const { data: visitsData, isLoading: visitsLoading } = usePairedUserVisits(userId, pairedUserId);
   // Issue #1540: memoised so the derived sheet rows and the FlatList's
   // renderItem keep a stable identity between renders. A fresh `[]` on every
@@ -1147,6 +1158,11 @@ export default function PersonHolidayView({
           <PairedSavesListHeader
             title={t('social:holiday.saves_title', { name: firstName })}
             onBack={() => setShowSavesList(false)}
+            // #1540 §1.6: sheet chrome — dismiss ✕ instead of a back chevron
+            // (there is no previous screen inside a sheet), no status-bar offset,
+            // and a hairline rule now that the header is PINNED rather than
+            // scrolling away with the grid.
+            variant="sheet"
           />
         }
         scrollProps={{
@@ -1156,11 +1172,37 @@ export default function PersonHolidayView({
           numColumns: PAIRED_SAVES_NUM_COLUMNS,
           columnWrapperStyle: pairedSavesGridStyles.columnWrapper,
           contentContainerStyle: pairedSavesGridStyles.gridContent,
-          showsVerticalScrollIndicator: false,
+          // #1540 §3.4: was false. This sheet's defining bug was that users could
+          // not tell whether it scrolled; hiding the one free, universally
+          // understood scroll signal on that exact surface is indefensible.
+          showsVerticalScrollIndicator: true,
+          // #1540 §2.2 state precedence. ListEmptyComponent mounts ONLY when
+          // `data` is empty, so the "&& items.length === 0" half of the error
+          // gate is structural: when rows are present the grid renders and this
+          // never mounts. That is deliberate — React Query keeps `data` when a
+          // BACKGROUND refetch fails, and a naive `isError → error wall` would
+          // blow away a perfectly good grid because a silent revalidation timed
+          // out. Stale cards beat an error wall.
+          //   1. isLoading                  → skeleton
+          //   2. isError (and no rows)      → error state
+          //   3. otherwise (and no rows)    → empty state
           ListEmptyComponent: savesLoading ? (
             <PairedSavesSkeletonGrid />
+          ) : savesIsError ? (
+            <PairedSavesErrorState
+              title={t('social:holiday.saves_error_title', { name: firstName })}
+              subtitle={t('social:holiday.saves_error_subtitle')}
+              onRetry={() => {
+                refetchSaves();
+              }}
+              isRetrying={savesIsFetching}
+            />
           ) : (
-            <PairedSavesEmptyState />
+            <PairedSavesEmptyState
+              icon="heart-outline"
+              title={t('social:holiday.saves_empty_title', { name: firstName })}
+              subtitle={t('social:holiday.saves_empty_subtitle')}
+            />
           ),
         }}
       />
