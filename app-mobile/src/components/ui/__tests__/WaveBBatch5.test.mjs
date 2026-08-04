@@ -238,19 +238,48 @@ function run() {
     "T-8 PersonHolidayView: visits-list pageSheet <Modal> must remain (only saves list converted)",
   );
 
-  // ── T-9: saves grid uses gorhom-aware list inside the sheet ────────────────
+  // ── T-9: the saves grid scrolls inside the sheet ──────────────────────────
+  //
+  // SUPERSEDED BY ISSUE #1540 [TEST-MOD-APPROVED #1540]. The Batch-5 intent —
+  // "the saves grid must be a gorhom-aware list that scrolls inside the sheet
+  // rather than fighting the pan" — is PRESERVED and, in fact, strengthened.
+  // What changed is the mechanism, because the Batch-5 mechanism did not work.
+  //
+  // Batch 5 gave PairedSavesListScreen an `inBottomSheet` opt-in that swapped
+  // its RN FlatList for a gorhom BottomSheetFlatList, but left that list nested
+  // under the screen's own root <View style={{flex:1}}>. In `scrollMode="view"`
+  // with no header/bodyContainerStyle, BaseBottomSheet returns children verbatim,
+  // so the wrapper — not the list — was handed to gorhom's content host, and the
+  // host content-sized to it. Measured on an iPhone 17 / iOS 26.5: the list's
+  // onLayout height came back EQUAL to its own contentSize (1336 = 1336), i.e.
+  // zero scrollable overflow, and a friend's cards past the first four were
+  // unreachable. Adding flex:1 to the list changed nothing (measured no-op).
+  //
+  // #1540 therefore moves the sheet to `scrollMode="flatlist"`, where
+  // BaseBottomSheet renders the gorhom list as a DIRECT child of <BottomSheet>
+  // (the shape FriendPickerSheet already shipped), and DELETES the now-dead
+  // `inBottomSheet` prop and the BottomSheetFlatList import from
+  // PairedSavesListScreen. The two assertions that pinned the old mechanism are
+  // replaced by assertions on the working one; the BaseBottomSheet re-export
+  // assertion is unchanged because BaseBottomSheet still owns that list.
   assert.match(
     base,
     /export\s*\{\s*BottomSheetFlatList\s*\}/,
     "T-9 BaseBottomSheet: must re-export BottomSheetFlatList",
   );
   assert.match(
-    savesScreen,
-    /import\s*\{\s*BottomSheetFlatList\s*\}\s*from\s+['"][^'"]*ui\/BaseBottomSheet['"]/,
-    "T-9 PairedSavesListScreen: must import BottomSheetFlatList from BaseBottomSheet",
+    code(holiday),
+    /scrollMode="flatlist"/,
+    "T-9 PersonHolidayView: the saves sheet must route its grid through BaseBottomSheet's flatlist body branch (#1540)",
   );
-  assert.match(code(savesScreen), /inBottomSheet/, "T-9 PairedSavesListScreen: must expose inBottomSheet opt-in");
-  assert.match(code(holiday), /inBottomSheet/, "T-9 PersonHolidayView: saves list must pass inBottomSheet");
+  assert.ok(
+    !/inBottomSheet/.test(code(savesScreen)),
+    "T-9 PairedSavesListScreen: the dead inBottomSheet opt-in must be gone (#1540, Constitution #8)",
+  );
+  assert.ok(
+    !/inBottomSheet/.test(code(holiday)),
+    "T-9 PersonHolidayView: must no longer pass inBottomSheet (#1540)",
+  );
 
   // ── T-A1 ADVERSARIAL: old scrim / overlay / hand-rolled card / handle gone ──
   // DismissedCardsSheet shed overlay/backdrop/sheet/handleBar.

@@ -1,0 +1,72 @@
+name: Issue #1540 Paired liked-cards sheet
+
+# Guards the #1540 fix: the paired-saves bottom sheet must keep mounting its
+# gorhom list as a DIRECT child of <BottomSheet> (scrollMode="flatlist"), and
+# tapping a friend's liked card must OPEN it rather than save it to the viewer.
+# See docs/INVARIANT_REGISTRY.md → I-SHEET-SCROLLABLE-DIRECT-CHILD.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app-mobile/src/components/PersonHolidayView.tsx"
+      - "app-mobile/src/components/PairedSavesListScreen.tsx"
+      - "app-mobile/src/components/pairedSaves/**"
+      - "app-mobile/src/components/profile/ViewFriendProfileScreen.tsx"
+      - "app-mobile/src/components/utils/savedCardToExpandedCardData.ts"
+      - "app-mobile/src/components/ui/BaseBottomSheet.tsx"
+      - "app-mobile/src/components/__tests__/issue1540PairedSavesSheetScroll*.mjs"
+      - "app-mobile/src/components/ui/__tests__/WaveBBatch5.test.mjs"
+      - ".github/workflows/issue-1540-paired-saves-sheet-tests.yml"
+  pull_request:
+    paths:
+      - "app-mobile/src/components/PersonHolidayView.tsx"
+      - "app-mobile/src/components/PairedSavesListScreen.tsx"
+      - "app-mobile/src/components/pairedSaves/**"
+      - "app-mobile/src/components/profile/ViewFriendProfileScreen.tsx"
+      - "app-mobile/src/components/utils/savedCardToExpandedCardData.ts"
+      - "app-mobile/src/components/ui/BaseBottomSheet.tsx"
+      - "app-mobile/src/components/__tests__/issue1540PairedSavesSheetScroll*.mjs"
+      - "app-mobile/src/components/ui/__tests__/WaveBBatch5.test.mjs"
+      - ".github/workflows/issue-1540-paired-saves-sheet-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  paired-saves-sheet:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: app-mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: app-mobile/package-lock.json
+      - run: npm ci
+      - name: Run the #1540 saves-sheet contracts
+        run: >
+          node --test
+          src/components/__tests__/issue1540PairedSavesSheetScroll.test.mjs
+      - name: Re-run the Wave-B Batch-5 sheet-conversion suite (its T-9 was rewired by #1540)
+        run: node --test src/components/ui/__tests__/WaveBBatch5.test.mjs
+      - name: BaseBottomSheet scrollable-is-direct-child gate
+        working-directory: .
+        run: node .github/scripts/strict-grep/i-bottomsheet-inline-scroll-binding.mjs
+      - name: Lint the paired-saves slice
+        run: >
+          npx eslint
+          src/components/PersonHolidayView.tsx
+          src/components/PairedSavesListScreen.tsx
+          src/components/pairedSaves/PairedSavesListPresentation.tsx
+          src/components/profile/ViewFriendProfileScreen.tsx
+      - name: Bundle iOS consumer app
+        run: npx expo export --platform ios --output-dir /tmp/issue-1540-ios

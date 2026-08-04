@@ -31,6 +31,7 @@ import { useAppStore } from '../../store/appStore';
 import PersonHolidayView from '../PersonHolidayView';
 import ExpandedCardModal from '../ExpandedCardModal';
 import type { ExpandedCardData } from '../../types/expandedCardTypes';
+import { savedCardToExpandedCardData } from '../utils/savedCardToExpandedCardData';
 import CustomHolidayModal from '../CustomHolidayModal';
 import FriendActionsSheet from '../friends/FriendActionsSheet';
 import { getSharedCustomHolidaysByPairing, createCustomHolidayForPairing, deleteCustomHoliday as deleteCustomHolidayFromDb } from '../../services/customHolidayService';
@@ -790,7 +791,21 @@ const ViewFriendProfileScreen: React.FC<ViewFriendProfileScreenProps> = ({
                 onArchiveHoliday={handleArchiveHoliday}
                 onUnarchiveHoliday={handleUnarchiveHoliday}
                 onCardPress={handleCardPress}
-                onSaveCardPress={handleSaveCard}
+                // Issue #1540 defect 2: this callback means "the viewer TAPPED
+                // one of their friend's liked cards — OPEN it". It was wired to
+                // `handleSaveCard`, which calls
+                // `savedCardsService.saveCard(currentUserId, …)` — so every tap
+                // silently wrote the friend's card into the VIEWER's own likes
+                // and nothing opened. TypeScript accepted it because the 1-param
+                // handler is assignable to the 3-param callback type. It now
+                // opens the card through the existing canonical converter (the
+                // same single producer CollabSessionChatBanners uses); the
+                // legitimate save path is ExpandedCardModal's own `onSave`
+                // below, which still calls `handleSaveCard`.
+                onSaveCardPress={(cardData) => {
+                  const expanded = savedCardToExpandedCardData(cardData);
+                  if (expanded) setExpandedCard(expanded);
+                }}
                 onDeleteCustomDay={handleDeleteCustomHoliday}
               />
             </View>

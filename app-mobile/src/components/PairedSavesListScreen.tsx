@@ -5,41 +5,34 @@ import {
   FlatList,
   TouchableOpacity,
   StyleSheet,
-  ActivityIndicator,
-  Animated,
   ScrollView,
 } from 'react-native';
-import { BottomSheetFlatList } from './ui/BaseBottomSheet';
 import { useTranslation } from 'react-i18next';
-import { Icon } from './ui/Icon';
-import { s, vs, SCREEN_WIDTH } from '../utils/responsive';
-import { colors, shadows } from '../constants/designSystem';
-import PersonGridCard from './PersonGridCard';
-import VisitBadge from './VisitBadge';
-import { PriceTierSlug } from '../constants/priceTiers';
+import { s, vs } from '../utils/responsive';
+import { colors } from '../constants/designSystem';
+import {
+  PairedSavesListHeader,
+  PairedSavesSkeletonGrid,
+  PairedSavesEmptyState,
+  PairedSavesErrorState,
+  pairedSavesGridStyles,
+  renderPairedSaveItem,
+  PAIRED_SAVES_NUM_COLUMNS,
+  type PairedSavesListItem,
+} from './pairedSaves/PairedSavesListPresentation';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-const VALID_PRICE_TIERS: Set<string> = new Set(['chill', 'comfy', 'bougie', 'lavish']);
-function asPriceTier(val: string | null | undefined): PriceTierSlug | null {
-  return val && VALID_PRICE_TIERS.has(val) ? (val as PriceTierSlug) : null;
-}
-
-interface ListItem {
-  id: string;
-  title: string;
-  category: string;
-  imageUrl: string;
-  priceTier?: PriceTierSlug | null;
-  rating?: number;
-  timestamp?: string;
-  timestampLabel?: string;
-  isVisited?: boolean;
-}
+// Issue #1540: the item shape, the grid geometry, the header, the cell renderer
+// and the skeleton/empty/error states now live in the shared presentation owner
+// (`pairedSaves/PairedSavesListPresentation`) so PersonHolidayView's saves SHEET
+// can compose them directly under gorhom's content host. Re-exported here so the
+// existing type name keeps resolving for any consumer that imports it.
+export type ListItem = PairedSavesListItem;
 
 interface PairedSavesListScreenProps {
   title: string;
-  items: ListItem[];
+  items: PairedSavesListItem[];
   isLoading?: boolean;
   isError?: boolean;
   onRetry?: () => void;
@@ -49,62 +42,19 @@ interface PairedSavesListScreenProps {
   categories?: string[];
   selectedCategory?: string;
   onCategoryChange?: (category: string | undefined) => void;
-  /**
-   * META-ORCH-0991 Wave B Batch 5: when this screen is rendered INSIDE a
-   * BaseBottomSheet (PersonHolidayView's saves list), the vertical grid must
-   * use gorhom's BottomSheetFlatList so its scroll coordinates with the sheet
-   * pan gesture instead of fighting it. Defaults to false (raw RN FlatList) so
-   * the full-screen / page-sheet consumers (visits list) are unchanged.
-   */
-  inBottomSheet?: boolean;
-  /** [ORCH-1540-DIAG] temporary — apply an explicit flex:1 to the list. Remove before the fix PR. */
-  diagListFlex?: boolean;
-  /** [ORCH-1540-DIAG] temporary — label instrumentation lines per instance. Remove before the fix PR. */
-  diagLabel?: string;
 }
-
-// ── Constants ──────────────────────────────────────────────────────────────
-
-const CARD_WIDTH = (SCREEN_WIDTH - s(48)) / 2;
-const NUM_COLUMNS = 2;
-
-// ── Skeleton Card ──────────────────────────────────────────────────────────
-
-const SkeletonCard: React.FC = () => {
-  const opacity = React.useRef(new Animated.Value(0.3)).current;
-
-  React.useEffect(() => {
-    const anim = Animated.loop(
-      Animated.sequence([
-        Animated.timing(opacity, {
-          toValue: 0.7,
-          duration: 800,
-          useNativeDriver: true,
-        }),
-        Animated.timing(opacity, {
-          toValue: 0.3,
-          duration: 800,
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    anim.start();
-    return () => anim.stop();
-  }, [opacity]);
-
-  return (
-    <Animated.View style={[styles.skeletonCard, { opacity }]}>
-      <View style={styles.skeletonImage} />
-      <View style={styles.skeletonContent}>
-        <View style={styles.skeletonTitle} />
-        <View style={styles.skeletonSubtitle} />
-      </View>
-    </Animated.View>
-  );
-};
 
 // ── Main Component ─────────────────────────────────────────────────────────
 
+// Issue #1540: this screen is now the FULL-SCREEN consumer only (the visits
+// pageSheet `<Modal>`). Its raw RN `FlatList` is correct inside a full-screen
+// host, which bounds it. The previous in-a-sheet opt-in prop — which swapped in
+// the gorhom sheet list while leaving it nested under this component's own
+// `<View style={{flex:1}}>` wrapper — is DELETED: a gorhom scrollable under an
+// intermediate wrapper never receives a bounded viewport (its onLayout height
+// equalled its contentSize, i.e. zero scrollable overflow), which is exactly the
+// #1540 defect. The saves sheet now mounts the gorhom list as a DIRECT child of
+// `<BottomSheet>` via BaseBottomSheet's own `scrollMode="flatlist"` branch.
 const PairedSavesListScreen: React.FC<PairedSavesListScreenProps> = ({
   title,
   items,
@@ -117,31 +67,11 @@ const PairedSavesListScreen: React.FC<PairedSavesListScreenProps> = ({
   categories,
   selectedCategory,
   onCategoryChange,
-  inBottomSheet = false,
-  diagListFlex = false,
-  diagLabel = '?',
 }) => {
   const { t } = useTranslation(['social', 'common']);
-  // gorhom-aware list inside a sheet; raw RN FlatList everywhere else.
-  const ListComponent = inBottomSheet ? BottomSheetFlatList : FlatList;
   const renderItem = useCallback(
-    ({ item }: { item: ListItem }) => (
-      <View style={styles.cardWrapper}>
-        <View style={styles.cardContainer}>
-          <PersonGridCard
-            id={item.id}
-            title={item.title}
-            category={item.category}
-            imageUrl={item.imageUrl}
-            priceTier={asPriceTier(item.priceTier)}
-            priceLevel={null}
-            onPress={() => onCardPress(item.id)}
-            width={CARD_WIDTH}
-          />
-          {item.isVisited && <VisitBadge />}
-        </View>
-      </View>
-    ),
+    (info: { item: PairedSavesListItem }) =>
+      renderPairedSaveItem(info, onCardPress),
     [onCardPress],
   );
 
@@ -198,21 +128,8 @@ const PairedSavesListScreen: React.FC<PairedSavesListScreenProps> = ({
   if (isLoading) {
     return (
       <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={onBack}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Icon name="arrow-back" size={24} color={colors.gray[900]} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>{title}</Text>
-          <View style={styles.headerSpacer} />
-        </View>
-        <View style={styles.skeletonGrid}>
-          {[1, 2, 3, 4, 5, 6].map((i) => (
-            <SkeletonCard key={i} />
-          ))}
-        </View>
+        <PairedSavesListHeader title={title} onBack={onBack} />
+        <PairedSavesSkeletonGrid />
       </View>
     );
   }
@@ -221,81 +138,29 @@ const PairedSavesListScreen: React.FC<PairedSavesListScreenProps> = ({
   if (isError) {
     return (
       <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={onBack}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Icon name="arrow-back" size={24} color={colors.gray[900]} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>{title}</Text>
-          <View style={styles.headerSpacer} />
-        </View>
-        <View style={styles.centered}>
-          <Icon name="alert-circle-outline" size={s(48)} color={colors.gray[400]} />
-          <Text style={styles.errorText}>{t('social:somethingWentWrongError')}</Text>
-          {onRetry && (
-            <TouchableOpacity style={styles.retryButton} onPress={onRetry}>
-              <Text style={styles.retryText}>{t('social:tryAgain')}</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+        <PairedSavesListHeader title={title} onBack={onBack} />
+        <PairedSavesErrorState onRetry={onRetry} />
       </View>
     );
   }
 
   return (
-    <View
-      style={styles.container}
-      // [ORCH-1540-DIAG] temporary — remove before the fix PR.
-      onLayout={(e) =>
-        console.log(`[ORCH-1540-DIAG][${diagLabel}] container.onLayout h=${e.nativeEvent.layout.height}`)
-      }
-    >
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={onBack}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Icon name="arrow-back" size={24} color={colors.gray[900]} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>{title}</Text>
-        <View style={styles.headerSpacer} />
-      </View>
+    <View style={styles.container}>
+      <PairedSavesListHeader title={title} onBack={onBack} />
 
       {renderCategoryFilter()}
 
       {items.length === 0 ? (
-        <View style={styles.centered}>
-          <Icon name="albums-outline" size={s(48)} color={colors.gray[300]} />
-          <Text style={styles.emptyTitle}>{t('social:nothingHereYet')}</Text>
-        </View>
+        <PairedSavesEmptyState />
       ) : (
-        <ListComponent
+        <FlatList
           data={items}
-          keyExtractor={(item: ListItem) => item.id}
+          keyExtractor={(item: PairedSavesListItem) => item.id}
           renderItem={renderItem}
-          numColumns={NUM_COLUMNS}
-          contentContainerStyle={styles.gridContent}
-          columnWrapperStyle={styles.columnWrapper}
+          numColumns={PAIRED_SAVES_NUM_COLUMNS}
+          contentContainerStyle={pairedSavesGridStyles.gridContent}
+          columnWrapperStyle={pairedSavesGridStyles.columnWrapper}
           showsVerticalScrollIndicator={false}
-          // [ORCH-1540-DIAG] candidate minimal fix under test: explicit flex:1
-          // (flexBasis:0) instead of RN ScrollView's default flexGrow/flexShrink:1
-          // with flexBasis:auto. Every WORKING nested scrollable in this repo sets
-          // this; this list is the only one that does not.
-          style={diagListFlex ? styles.diagListFlex : undefined}
-          // [ORCH-1540-DIAG] temporary — remove before the fix PR.
-          onLayout={(e: any) =>
-            console.log(`[ORCH-1540-DIAG][${diagLabel}] list.onLayout h=${e.nativeEvent.layout.height}`)
-          }
-          onContentSizeChange={(_w: number, h: number) =>
-            console.log(`[ORCH-1540-DIAG][${diagLabel}] list.contentSize h=${h}`)
-          }
-          onScroll={(e: any) =>
-            console.log(`[ORCH-1540-DIAG][${diagLabel}] list.scroll y=${e.nativeEvent.contentOffset.y}`)
-          }
-          scrollEventThrottle={16}
         />
       )}
     </View>
@@ -303,29 +168,9 @@ const PairedSavesListScreen: React.FC<PairedSavesListScreenProps> = ({
 };
 
 const styles = StyleSheet.create({
-  // [ORCH-1540-DIAG] temporary — remove before the fix PR.
-  diagListFlex: { flex: 1 },
   container: {
     flex: 1,
     backgroundColor: '#ffffff',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingTop: vs(48),
-    paddingHorizontal: s(24),
-    paddingBottom: vs(12),
-    backgroundColor: '#ffffff',
-  },
-  headerTitle: {
-    flex: 1,
-    fontSize: s(18),
-    fontWeight: '700',
-    color: colors.gray[900],
-    textAlign: 'center',
-  },
-  headerSpacer: {
-    width: 24,
   },
   // Filter
   filterScroll: {
@@ -353,95 +198,6 @@ const styles = StyleSheet.create({
   filterPillTextActive: {
     color: '#ffffff',
     fontWeight: '600',
-  },
-  // Grid
-  gridContent: {
-    paddingHorizontal: s(16),
-    paddingTop: vs(8),
-    paddingBottom: vs(32),
-  },
-  columnWrapper: {
-    justifyContent: 'space-between',
-    marginBottom: vs(12),
-    gap: s(12),
-  },
-  cardWrapper: {
-    width: CARD_WIDTH,
-    overflow: 'hidden',
-  },
-  cardContainer: {
-    position: 'relative',
-    borderRadius: s(16),
-    overflow: 'hidden',
-  },
-  // Skeleton
-  skeletonGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    paddingHorizontal: s(16),
-    paddingTop: vs(16),
-  },
-  skeletonCard: {
-    width: CARD_WIDTH,
-    height: s(240),
-    borderRadius: s(16),
-    backgroundColor: colors.gray[100],
-    overflow: 'hidden',
-    marginBottom: vs(16),
-  },
-  skeletonImage: {
-    width: '100%',
-    height: s(130),
-    backgroundColor: colors.gray[200],
-  },
-  skeletonContent: {
-    padding: s(12),
-    gap: s(8),
-  },
-  skeletonTitle: {
-    width: '80%',
-    height: s(14),
-    borderRadius: s(4),
-    backgroundColor: colors.gray[200],
-  },
-  skeletonSubtitle: {
-    width: '50%',
-    height: s(12),
-    borderRadius: s(4),
-    backgroundColor: colors.gray[200],
-  },
-  // States
-  centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: s(32),
-  },
-  errorText: {
-    fontSize: s(16),
-    fontWeight: '600',
-    color: colors.gray[600],
-    marginTop: vs(12),
-    textAlign: 'center',
-  },
-  retryButton: {
-    backgroundColor: colors.primary[500],
-    borderRadius: s(12),
-    paddingVertical: vs(12),
-    paddingHorizontal: s(32),
-    marginTop: vs(16),
-  },
-  retryText: {
-    fontSize: s(15),
-    fontWeight: '700',
-    color: '#ffffff',
-  },
-  emptyTitle: {
-    fontSize: s(16),
-    fontWeight: '600',
-    color: colors.gray[500],
-    marginTop: vs(12),
   },
 });
 
