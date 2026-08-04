@@ -389,6 +389,23 @@ jobs:
             # an unmapped calling code fails closed with zero HTTP to either
             # provider.
             supabase/functions/_shared/adapters/smsAdapter.issue1529.test.ts
+            # Issue #1529 T-6 — TESTER ADVERSARIAL. A different angle from T-3:
+            # instead of walking the named success criteria one call at a time,
+            # it SWEEPS the routing property — 8 destinations x 11 labels x 4
+            # kill-switch combinations = 352 real adapter calls — and asserts
+            # invariants, not transcripts: a Nigerian destination NEVER produces
+            # Twilio traffic under any label or flag combination; a provider is
+            # contacted ONLY when its own market flag is true (the dark-market
+            # guarantee); the label is inert; an unmapped calling code fails
+            # closed to BOTH providers. It also runs the hostile derivation
+            # fixtures (NANP shared by four sovereign states, a +44 crown
+            # dependency, the +234/+2348 boundary, trunk zeros, unicode digits,
+            # and the two REAL +33 handsets in production) against the SQL
+            # twin's expectations, and proves a stale/wrong country on a
+            # source-refund row cannot override the recipient the drain
+            # resolved. Every group carries a vacuity guard — a sweep that never
+            # reached a provider FAILS instead of passing over an empty set.
+            supabase/functions/_shared/adapters/smsAdapter.issue1529.tester.adversarial.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then

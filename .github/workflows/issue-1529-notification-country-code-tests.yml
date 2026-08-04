@@ -8,6 +8,11 @@ on:
       - "supabase/migrations/20270211001529_issue_1529_notification_country_code.sql"
       - "supabase/migrations/__tests__/issue_1529_e164_parity.test.sql"
       - "supabase/migrations/__tests__/issue_1529_producer_catalog_audit.test.sql"
+      - "supabase/migrations/__tests__/issue_1529_producer_country_code.test.sql"
+      - "supabase/migrations/__tests__/issue_1529_policy_skip_not_failure.test.sql"
+      - "supabase/migrations/__tests__/issue_1529_tester_adversarial.test.sql"
+      - "supabase/functions/_shared/adapters/smsAdapter.issue1529.test.ts"
+      - "supabase/functions/_shared/adapters/smsAdapter.issue1529.tester.adversarial.test.ts"
       - "supabase/functions/_shared/e164Country.ts"
       - "supabase/functions/_shared/e164Country.issue1529.test.ts"
       - "supabase/functions/_shared/adapters/smsAdapter.ts"
@@ -22,6 +27,11 @@ on:
       - "supabase/migrations/20270211001529_issue_1529_notification_country_code.sql"
       - "supabase/migrations/__tests__/issue_1529_e164_parity.test.sql"
       - "supabase/migrations/__tests__/issue_1529_producer_catalog_audit.test.sql"
+      - "supabase/migrations/__tests__/issue_1529_producer_country_code.test.sql"
+      - "supabase/migrations/__tests__/issue_1529_policy_skip_not_failure.test.sql"
+      - "supabase/migrations/__tests__/issue_1529_tester_adversarial.test.sql"
+      - "supabase/functions/_shared/adapters/smsAdapter.issue1529.test.ts"
+      - "supabase/functions/_shared/adapters/smsAdapter.issue1529.tester.adversarial.test.ts"
       - "supabase/functions/_shared/e164Country.ts"
       - "supabase/functions/_shared/e164Country.issue1529.test.ts"
       - "supabase/functions/_shared/adapters/smsAdapter.ts"
@@ -69,6 +79,15 @@ jobs:
             supabase/functions/_shared/e164Country.issue1529.test.ts \
             supabase/functions/_shared/adapters/smsAdapter.issue1529.test.ts \
             supabase/functions/notify-outbox-drain/issue1529.sourceCountry.test.ts
+      # TESTER ADVERSARIAL (T-6). Sweeps the routing PROPERTY rather than the
+      # named examples, runs the hostile derivation fixtures against the SQL
+      # twin's expectations, and attacks the money path with a stale country
+      # label. Kept as its own step so a failure here is unambiguously the
+      # adversarial contract and not the implementor's happy path.
+      - name: Prove the routing invariants adversarially (tester T-6)
+        run: |
+          deno test --allow-env --allow-net --allow-read --no-check \
+            supabase/functions/_shared/adapters/smsAdapter.issue1529.tester.adversarial.test.ts
       # #1518's channel contract is NOT relaxed by #1529. The routing INPUT
       # changed (destination number, not label); the NG channel, the Twilio
       # parameter shape, and the fail-closed contract are untouched.
@@ -150,3 +169,17 @@ jobs:
         run: >-
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
           -f supabase/migrations/__tests__/issue_1529_policy_skip_not_failure.test.sql
+      # TESTER ADVERSARIAL (T-6), SQL half. Completeness UNDER EXEMPTION (the
+      # source-refund producer that legitimately derives its country at the
+      # drain must EARN that exemption by being provably invisible to the
+      # generic claim RPC), hostile derivation fixtures shared with the
+      # TypeScript twin, idempotency-key invariance under the column addition,
+      # and the two money-path negative controls the implementor's suite does
+      # not carry (an ambiguous acceptance must STILL escalate; a policy skip
+      # must not CLEAR a standing alarm).
+      - name: Prove producer completeness, idempotency and the money path adversarially (tester T-6)
+        env:
+          PGPASSWORD: ${{ format('issue-1529-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_1529_tester_adversarial.test.sql
