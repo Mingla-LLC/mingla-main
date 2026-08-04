@@ -7083,6 +7083,137 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   maintenance of those three live files with no override, whereas measuring keeps them
   green and restores an accurate count.
 - **Established:** DRAFT at issue #1510 SPEC 2026-08-03. Flips ACTIVE at CLOSE.
+
+## DRAFT — issue #1534 (append-only gate hardened end to end)
+
+### I-PROPOSED-1534-GATE-ANSWERS-ABOUT-THE-SAME-BYTES (DRAFT)
+- **Rule (a) — every disposition that can hide content loss MEASURES it, through one shared
+  helper with one fail-closed terminal.** A count that was not taken is never reported as
+  zero. Over the range an entry came from, an absent record CONTRADICTS the record that
+  produced the entry and is a failed measurement; over an independently-asked range it means
+  no difference and is an honest zero. The two readings are never conflated — conflating them
+  either waves through an unmeasured path or red-lights an identical one. Content loss on a
+  renamed file is measured on the renamed PAIR, never on the destination alone, because the
+  destination did not exist before and every surviving line would read as an addition. The
+  rename attestation authorises the MOVE only; removing lines while renaming needs the
+  modification attestation as well, or the weaker token would buy the more destructive change.
+  A path this range reports as new but that the BASE BRANCH already holds is a modification
+  and is measured as one.
+- **Rule (b) — detection, counting and attribution answer about the SAME BYTES, taken from ONE
+  READING.** Records are read NUL-delimited and carried as bytes, so no arm is ever handed a
+  rendered spelling of a path in place of the path. Counting is taken from the SAME diff that
+  produced the entry, keyed by those bytes and scoped by no pathspec at all. A path that cannot
+  be expressed back to git produces a refusal, never a substituted spelling and never an
+  unattributed pass.
+  **Structurally, and not merely by convention:** identity — the entry list, the disposition and
+  the object ids — comes from exactly ONE reading of the change, in the format that puts every
+  field behind the record separator, so nothing has to be split apart to find a path. Two
+  parallel parses of two different formats are the same divergence this rule exists to forbid,
+  wearing a new spelling. Where a second read is unavoidable because git will not emit counts in
+  that format, it contributes NUMBERS ONLY: it is walked in lockstep with the single reading,
+  its record shape is decided by POSITION rather than by whether a column came out empty (a path
+  may be empty of nothing — it may begin with, contain, and consist of separator bytes), and its
+  path columns are used solely to CHECK against the single reading, never as a key. Any
+  disagreement — shape, path, length — is a parse fault: the index refuses to exist and every
+  entry it was asked about fails closed.
+  **Enforced by construction, not by care.** There is exactly ONE way for this gate to ask the
+  repository anything about a change, it is the only thing in scope that can, and it ALWAYS
+  reconciles the reads it needs — there is no unreconciled variant to reach for and no flag to
+  skip it. Both readings are built by that one path, so both are reconciled and both are
+  guarded; there is no first-class reading and second-class one. When reconciliation fails it
+  does NOT hand back a flag for the caller to remember to test — a flag is another convention,
+  and forgetting to test it is the defect this replaces. It hands back an object that CANNOT
+  produce a count, whose presence answer is always negative and whose "did this exist before"
+  answer is always the pessimistic one, so an arm written by someone who has never heard of
+  reconciliation still refuses. The process runners are captured inside that accessor and are
+  not in scope anywhere else in the gate; the self-test's own runners live in a separate
+  closure of their own. This is the standing lesson of this file: every failure it has shipped
+  was a convention that was true until someone added one more caller, so the guarantee has to
+  live in the thing being called.
+  **And redundantly, at runtime:** every entry the reading produced MUST resolve to a count in
+  that same reading's index. A missing key is never a property of the file; it is proof the two
+  readings came apart, and it fails closed in EVERY arm — including the arms where an absent
+  record is otherwise a legitimate answer meaning "no difference", which is precisely where a
+  desync would otherwise read as "nothing was removed". This assertion is deliberately redundant
+  with the structural rule above. Redundancy is the point: every false green this gate has
+  shipped lived in the gap between two individually correct, individually tested changes, so the
+  class is closed by making the disagreement both unrepresentable AND unmissable.
+- **Rule (c) — nothing this gate PRINTS is a working attestation.** On EITHER stream, including
+  author-controlled path text echoed into a message, and including the self-test stream whose
+  inputs are token literals by construction. Redaction rewrites to the placeholder forms the
+  grammar cases already pin as inert. Each entry occupies exactly one line of the report.
+- **Enforcement:** `.github/scripts/test-append-only-check.js --self-test`, wired into
+  `.github/workflows/tests-append-only.yml`. **84 cases.** Supersedes the case counts stated in
+  `I-1505-APPEND-ONLY-FAILS-CLOSED` (53) and `I-1510-DELETION-COUNT-IS-MEASURED` (67).
+  Append-only. Fails-on-revert is proven PER FIX, not in aggregate: an aggregate number hides a
+  mis-pinned case.
+- **Ship-decider:** 717 real merged commit ranges from this repository's history replay against
+  the change with zero false positives and zero weakenings. The three test sources git declines
+  to render as text are pinned against their ACTUAL BYTES, not a stand-in, across additions-only,
+  metadata-only, attested and unattested edits. A refusal that is unoverridable is correct only
+  where content is genuinely annihilated or a measurement genuinely did not succeed.
+- **TEST status (2026-08-03) — NOT yet satisfied.** Independent adversarial verification
+  returned FAIL on one CRITICAL finding. It is an INTERACTION between two changes introduced
+  by this pass, each correct in isolation and each covered by its own passing case, which
+  together let a pull request destroy the contents of a test file the base branch already
+  holds while the gate reports a pass. The same underlying defect also refuses unrelated,
+  innocent entries in the same run with a message that does not describe their problem. Both
+  faces are one defect in one helper; the reproduction and the fix direction are recorded out
+  of band under the disclosure handling for this issue. The 717-range replay, the ordinary-work
+  battery, the rename cross-product and the redaction properties were all re-verified
+  independently and are clean — the finding is not in any of those. This entry must not flip
+  ACTIVE until the finding is closed and the suite is all-green with a case pinning it.
+- **REWORK (2026-08-03) — addressed, awaiting re-verification.** The finding was accepted in
+  full and traced to the rule above being satisfied by CONVENTION rather than STRUCTURALLY:
+  the pass took its readings of one change from two parallel parses of two different record
+  formats, which is the divergence the rule forbids wearing a new spelling. The rework makes
+  identity come from a single reading, reduces the second read to numbers reconciled against
+  it, and adds the redundant runtime assertion described in rule (b). Both faces of the
+  finding — the destructive one and the innocent-refusal one — are pinned by their own cases,
+  each independently shown to close the class on its own. This note records the response only;
+  the TEST status above stands until an independent pass re-verifies it.
+- **RETEST (2026-08-03) — the reported finding is CLOSED; one new finding, still NOT
+  satisfied.** The previous finding no longer reproduces, and the layered defence behind it
+  was confirmed genuine rather than asserted: each layer refuses it alone and only removing
+  both reproduces it. The replay, the ordinary-work battery, the rename surface, the
+  redaction properties and paths whose bytes are not text were all re-verified independently
+  and are clean. What remains is rule (a) still being satisfied on only one of the two
+  readings this gate takes: the arm answered from the second reading can be brought to report
+  a count it never took, which is the behaviour this invariant exists to forbid, stated in its
+  own words. The redundant runtime assertion added at REWORK checks the first reading only,
+  so it does not see it. Pinned by case **T48**, which is RED at this commit by design and
+  green under the one-line correction; the correction was measured and leaves every other case
+  green. Reproduction and correction are recorded out of band. This entry must not flip ACTIVE
+  until T48 is green.
+- **REWORK 2 (2026-08-03) — addressed, awaiting re-verification.** T48 is green. The correction
+  was not taken as the one-line form: the finding was that the guarantee held on one of two
+  readings, and a one-line guard would have left it a convention on both. Both readings are now
+  built and guarded by one accessor that cannot answer without reconciling, an unreconciled
+  reading is a different object that cannot produce a count at all, and the gate has no process
+  runner in scope outside that accessor. The measurement terminal's fail-closed default is
+  asserted directly rather than through an arm, because every arm that reaches it now has a
+  guard in front of it and a default no case can turn red is one a future edit can quietly
+  invert. This note records the response only; the RETEST status above stands until an
+  independent pass re-verifies it.
+- **FINAL TEST (2026-08-04) — SATISFIED. Ready to flip ACTIVE at CLOSE.** Independent
+  adversarial verification returned PASS with zero critical and zero high findings. The
+  previously reported finding is closed at the layer, not the instance: the guarantee now
+  lives in the thing being called rather than in each caller, and it was attacked as a
+  guarantee rather than as an instance. A reading that did not reconcile yields no number
+  through any access route tried — direct, destructured, rebound, copied, or re-prototyped —
+  and four new arms written as a hurried author would write them each refuse under it. The
+  reconciliation property was verified in BOTH directions: a disagreement in a reading an arm
+  consults refuses that arm, and a disagreement in a reading it does not consult leaves its
+  verdict byte-identical, which is what keeps unrelated files in the same run from being
+  red-lighted. Replay of every test-touching range in this repository's history is identical
+  with zero false positives, and the three sources git will not render as text stay green on
+  additions and metadata while an unattested removal is still refused. **Case count 84 → 86**:
+  two assertions were appended at TEST, one pinning a load-bearing guard that no case reached,
+  and one asserting over the file's own source that reaching outside this process stays
+  confined to the two closures that own it. Each is red only for its own target. Two residuals
+  are recorded out of band, both requiring deliberate action rather than accident; neither is a
+  route an ordinary change can take.
+- **Established:** DRAFT at issue #1534 SPEC 2026-08-03. Flips ACTIVE at CLOSE.
 ## DRAFT — issue #1481 (Explorer swipe lifecycle and deck performance)
 
 ### I-PROPOSED-1481-DECK-NATIVE-DRIVER-SINGLE-OWNER (DRAFT)
