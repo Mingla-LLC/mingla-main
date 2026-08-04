@@ -7429,7 +7429,7 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 
 ## DRAFT — issue #1579 (tapping a settled card does not expand it)
 
-### I-PROPOSED-1579-GESTURE-LEASE-RELEASE-COMPLETENESS (DRAFT)
+### I-PROPOSED-1579-GESTURE-LEASE-RELEASE-COMPLETENESS (ACTIVE)
 - **Rule:** Any lifecycle lease claimed at **touch-down** — before the recogniser can know whether
   the touch will become a drag — MUST have a release path for **every** way that touch can end,
   including the ways the recogniser does not report through its activation-path callbacks.
