@@ -177,6 +177,17 @@ export interface ServicePeriod {
   type?: string;
 }
 
+/**
+ * issue #1586 — WHO established the venue's clock.
+ *
+ * `iana_timezone` is `NOT NULL DEFAULT 'UTC'`, and `'UTC'` is a legitimate zone
+ * (London in winter), so the VALUE alone can never say whether anyone ever set
+ * it. This does. `'default'` means nobody has: the public view publishes NULL
+ * for those rows and the venue page claims nothing about whether the doors are
+ * open. `'operator'` is a human choice and derivation never overwrites it.
+ */
+export type VenueTimezoneSource = "default" | "derived" | "operator";
+
 /** `venue_availability_config` row, camelCased (META-ORCH-1255: one row per venue). */
 export interface VenueAvailabilityConfig {
   brandId: string;
@@ -189,6 +200,9 @@ export interface VenueAvailabilityConfig {
   slotGranularityMinutes: number;
   advanceWindowDays: number;
   minNoticeMinutes: number;
+  /** issue #1586 — the venue's IANA zone NAME. Never an offset. */
+  ianaTimezone: string;
+  ianaTimezoneSource: VenueTimezoneSource;
 }
 
 /** The patch payload for the availability config upsert (all optional). */
@@ -200,6 +214,12 @@ export interface VenueAvailabilityConfigPatch {
   slotGranularityMinutes?: number;
   advanceWindowDays?: number;
   minNoticeMinutes?: number;
+  /**
+   * issue #1586 — setting this IS the human choice, so the mutation writes
+   * `iana_timezone_source = 'operator'` alongside it and the server-side
+   * derivation stops touching the row from that moment on.
+   */
+  ianaTimezone?: string;
 }
 
 /** Which scope a blackout applies to (matches venue_blackouts.applies_to). */

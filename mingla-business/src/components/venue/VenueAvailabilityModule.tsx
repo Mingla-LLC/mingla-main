@@ -10,7 +10,7 @@
  */
 
 import React, { useCallback, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import {
   spacing,
@@ -28,6 +28,7 @@ import {
 import { useVenueTables } from "../../hooks/useVenueTables";
 import { useVenueSuiteStore } from "../../store/venueSuiteStore";
 import { BRAND_ROLE_RANK } from "../../utils/brandRole";
+import { formatTimezoneLabel, getAllTimezones } from "../../utils/timezones";
 import { ChevronRight } from "lucide-react-native";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
@@ -97,6 +98,41 @@ export function VenueAvailabilityModule({
 
   const [blackoutSheetOpen, setBlackoutSheetOpen] = useState<boolean>(false);
   const [editBlackout, setEditBlackout] = useState<VenueBlackout | null>(null);
+
+  /* ----- timezone (issue #1586) -----
+   * The clock every published trading hour is expressed in, and the clock the
+   * public venue page resolves "open now" against. It is DERIVED from the
+   * venue's coordinates the moment the venue is provisioned — nobody is asked —
+   * but the operator is the authority the instant they touch it: choosing here
+   * writes `iana_timezone_source = 'operator'` and the derivation never returns
+   * to this row.
+   *
+   * The list only mounts when the picker is opened, so the ~400-entry
+   * `Intl.supportedValuesOf("timeZone")` enumeration and its per-row offset
+   * formatting stay off the module's first render.
+   */
+  const [tzPickerOpen, setTzPickerOpen] = useState<boolean>(false);
+  const [tzQuery, setTzQuery] = useState<string>("");
+  const tzSource = config?.ianaTimezoneSource ?? "default";
+  const tzValue = config?.ianaTimezone ?? null;
+  const tzOptions = useMemo<string[]>(
+    () => (tzPickerOpen ? getAllTimezones() : []),
+    [tzPickerOpen],
+  );
+  const tzFiltered = useMemo<string[]>(() => {
+    const q = tzQuery.trim().toLowerCase();
+    if (q.length === 0) return tzOptions.slice(0, 60);
+    return tzOptions.filter((z) => z.toLowerCase().includes(q)).slice(0, 60);
+  }, [tzOptions, tzQuery]);
+  const handleChooseTimezone = useCallback(
+    (zone: string): void => {
+      if (!canMutate) return;
+      upsertConfig.mutate({ ianaTimezone: zone });
+      setTzPickerOpen(false);
+      setTzQuery("");
+    },
+    [canMutate, upsertConfig],
+  );
 
   /* ----- service periods (ORCH-1190 #2: READ-ONLY here) -----
    * Service periods are DERIVED from the venue's opening hours (ORCH-1186 Leg 1,
@@ -232,6 +268,89 @@ export function VenueAvailabilityModule({
           Set when guests can book, how long a table turns, and any closures.
         </Text>
       </View>
+
+      {/* Timezone — issue #1586. Derived automatically; correctable here. */}
+      <GlassCard variant="base" style={styles.section}>
+        <View style={styles.sectionHead}>
+          <Text style={styles.sectionTitle}>Timezone</Text>
+          {canMutate ? (
+            <Button
+              label={tzPickerOpen ? "Cancel" : "Change"}
+              onPress={() => {
+                setTzPickerOpen(!tzPickerOpen);
+                setTzQuery("");
+              }}
+              variant="secondary"
+              size="sm"
+              accessibilityLabel={
+                tzPickerOpen ? "Cancel changing timezone" : "Change venue timezone"
+              }
+              testID="venue-avail-tz-toggle"
+            />
+          ) : null}
+        </View>
+        {/* NO CLAIM WHEN THERE IS NOTHING TO CLAIM. A venue whose zone could not
+            be worked out from its location shows the absence plainly rather
+            than showing "UTC", which is a real zone and would read as a
+            deliberate setting. */}
+        {tzSource === "default" || tzValue === null ? (
+          <Text style={styles.emptyLine} testID="venue-avail-tz-unset">
+            Not set. We could not work out this venue's timezone from its
+            location, so your opening hours are shown without an "open now"
+            answer. Pick one and guests see whether you're open right now.
+          </Text>
+        ) : (
+          <>
+            <Text style={styles.periodName} testID="venue-avail-tz-value">
+              {formatTimezoneLabel(tzValue)}
+            </Text>
+            <Text style={styles.sectionHint} testID="venue-avail-tz-source">
+              {tzSource === "operator"
+                ? "You set this. It stays exactly as you left it."
+                : "Set automatically from this venue's location. Change it any time and yours wins."}
+            </Text>
+          </>
+        )}
+        {tzPickerOpen && canMutate ? (
+          <View style={styles.tzPicker}>
+            <Input
+              value={tzQuery}
+              onChangeText={setTzQuery}
+              placeholder="Search timezones…"
+              accessibilityLabel="Search timezones"
+              testID="venue-avail-tz-search"
+            />
+            <ScrollView
+              style={styles.tzList}
+              keyboardShouldPersistTaps="handled"
+              nestedScrollEnabled
+            >
+              {tzFiltered.length === 0 ? (
+                <Text style={styles.emptyLine}>
+                  No timezones match that search.
+                </Text>
+              ) : (
+                tzFiltered.map((zone) => (
+                  <Pressable
+                    key={zone}
+                    onPress={() => handleChooseTimezone(zone)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Use timezone ${zone}`}
+                    style={styles.tzRow}
+                    testID={`venue-avail-tz-option-${zone}`}
+                  >
+                    <Text
+                      style={zone === tzValue ? styles.tzRowActive : styles.tzRowText}
+                    >
+                      {formatTimezoneLabel(zone)}
+                    </Text>
+                  </Pressable>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        ) : null}
+      </GlassCard>
 
       {/* Service periods — ORCH-1190 #2: READ-ONLY, derived from opening hours.
           No inline add/edit (that would create a second hours owner). The only
@@ -473,6 +592,25 @@ const styles = StyleSheet.create({
   },
   turnInput: {
     width: 96,
+  },
+  tzPicker: {
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  tzList: {
+    maxHeight: 220,
+  },
+  tzRow: {
+    paddingVertical: spacing.sm,
+  },
+  tzRowText: {
+    ...typography.bodySm,
+    color: textTokens.primary,
+  },
+  tzRowActive: {
+    ...typography.bodySm,
+    color: textTokens.primary,
+    fontWeight: "700",
   },
   readOnlyNote: {
     ...typography.caption,

@@ -26,6 +26,7 @@ import type {
   VenueAvailabilityConfigPatch,
   VenueBlackout,
   VenueBlackoutUpsert,
+  VenueTimezoneSource,
 } from "../types/venueReservation";
 
 /* ----------------------------- config ----------------------------------- */
@@ -40,10 +41,24 @@ interface VenueAvailabilityConfigRow {
   slot_granularity_minutes: number;
   advance_window_days: number;
   min_notice_minutes: number;
+  // issue #1586 — the venue's clock, and who established it.
+  iana_timezone: string | null;
+  iana_timezone_source: string | null;
 }
 
 const CONFIG_COLUMNS =
-  "brand_id, venue_id, service_periods, turn_times, buffer_minutes, max_reservations_per_slot, slot_granularity_minutes, advance_window_days, min_notice_minutes";
+  "brand_id, venue_id, service_periods, turn_times, buffer_minutes, max_reservations_per_slot, slot_granularity_minutes, advance_window_days, min_notice_minutes, iana_timezone, iana_timezone_source";
+
+/**
+ * issue #1586 — narrow the wire value rather than cast it. An unrecognised
+ * source is read as 'default', which is the arm that says "nobody established
+ * this" — the safe reading, because it is the one that makes the public page
+ * claim nothing.
+ */
+export const readVenueTimezoneSource = (
+  raw: string | null,
+): VenueTimezoneSource =>
+  raw === "derived" || raw === "operator" ? raw : "default";
 
 const mapConfigRow = (
   row: VenueAvailabilityConfigRow,
@@ -57,6 +72,11 @@ const mapConfigRow = (
   slotGranularityMinutes: row.slot_granularity_minutes,
   advanceWindowDays: row.advance_window_days,
   minNoticeMinutes: row.min_notice_minutes,
+  ianaTimezone:
+    row.iana_timezone === null || row.iana_timezone.trim().length === 0
+      ? "UTC"
+      : row.iana_timezone,
+  ianaTimezoneSource: readVenueTimezoneSource(row.iana_timezone_source),
 });
 
 // META-ORCH-1255 — keys are venue-scoped, brandId-FIRST so existing
@@ -124,6 +144,54 @@ export function useVenueAvailabilityConfig(
   });
 }
 
+/**
+ * The upsert payload, built as a PURE function so the one rule that matters can
+ * be asserted directly instead of inferred from a mutation's side effects.
+ *
+ * THE RULE (issue #1586): the zone and its provenance move TOGETHER. A patch
+ * that carries `ianaTimezone` is a HUMAN choosing, so it writes
+ * `iana_timezone_source = 'operator'` in the same statement and the
+ * coordinate-based derivation never returns to that row. A patch that does NOT
+ * carry it omits BOTH keys, so editing a buffer time cannot silently re-stamp
+ * provenance and cannot hand a derived value an operator's authority.
+ */
+export const buildVenueAvailabilityConfigRow = (
+  brandId: string,
+  venueId: string,
+  patch: VenueAvailabilityConfigPatch,
+  now: Date = new Date(),
+): Record<string, unknown> => {
+  const row: Record<string, unknown> = {
+    brand_id: brandId,
+    venue_id: venueId,
+    updated_at: now.toISOString(),
+  };
+  if (patch.servicePeriods !== undefined) {
+    row.service_periods = patch.servicePeriods;
+  }
+  if (patch.turnTimes !== undefined) row.turn_times = patch.turnTimes;
+  if (patch.bufferMinutes !== undefined) {
+    row.buffer_minutes = patch.bufferMinutes;
+  }
+  if (patch.maxReservationsPerSlot !== undefined) {
+    row.max_reservations_per_slot = patch.maxReservationsPerSlot;
+  }
+  if (patch.slotGranularityMinutes !== undefined) {
+    row.slot_granularity_minutes = patch.slotGranularityMinutes;
+  }
+  if (patch.advanceWindowDays !== undefined) {
+    row.advance_window_days = patch.advanceWindowDays;
+  }
+  if (patch.minNoticeMinutes !== undefined) {
+    row.min_notice_minutes = patch.minNoticeMinutes;
+  }
+  if (patch.ianaTimezone !== undefined) {
+    row.iana_timezone = patch.ianaTimezone;
+    row.iana_timezone_source = "operator";
+  }
+  return row;
+};
+
 export function useUpsertVenueAvailabilityConfig(
   brandId: string | null,
   venueId: string | null,
@@ -133,30 +201,7 @@ export function useUpsertVenueAvailabilityConfig(
     mutationFn: async (patch: VenueAvailabilityConfigPatch): Promise<void> => {
       if (brandId === null) throw new Error("brand_required");
       if (venueId === null) throw new Error("venue_required");
-      const row: Record<string, unknown> = {
-        brand_id: brandId,
-        venue_id: venueId,
-        updated_at: new Date().toISOString(),
-      };
-      if (patch.servicePeriods !== undefined) {
-        row.service_periods = patch.servicePeriods;
-      }
-      if (patch.turnTimes !== undefined) row.turn_times = patch.turnTimes;
-      if (patch.bufferMinutes !== undefined) {
-        row.buffer_minutes = patch.bufferMinutes;
-      }
-      if (patch.maxReservationsPerSlot !== undefined) {
-        row.max_reservations_per_slot = patch.maxReservationsPerSlot;
-      }
-      if (patch.slotGranularityMinutes !== undefined) {
-        row.slot_granularity_minutes = patch.slotGranularityMinutes;
-      }
-      if (patch.advanceWindowDays !== undefined) {
-        row.advance_window_days = patch.advanceWindowDays;
-      }
-      if (patch.minNoticeMinutes !== undefined) {
-        row.min_notice_minutes = patch.minNoticeMinutes;
-      }
+      const row = buildVenueAvailabilityConfigRow(brandId, venueId, patch);
       const { error } = await supabase
         .from("venue_availability_config")
         // META-ORCH-1255 — the UNIQUE moved brand→venue (M3).
