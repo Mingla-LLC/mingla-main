@@ -94,6 +94,14 @@ jobs:
       - name: "ORCH-1355 — RSVP wizard focus + toggle snapback render proofs"
         if: always()
         run: npx jest --config jest.orch1355.render.cjs --runInBand --ci
+      # ORCH-1331 guards the LIVE Nigeria partner Paystack onboarding form. Its
+      # only other coverage (orch_1331_partner_paystack_ui.test.ts, 21 green) is a
+      # SOURCE-TEXT pin — `expect(form).toContain('testID="…"')` — which proves the
+      # string is in the file, not that the confirm-name state is reachable. This
+      # is the only runtime proof of that state machine, on a money path.
+      - name: "ORCH-1331 — NG partner Paystack onboarding state machine"
+        if: always()
+        run: npx jest --config jest.orch1331.render.cjs --runInBand --ci
 
       # ---- WEB render proofs -------------------------------------------------
       # react-test-renderer is structurally blind to react-native-web's atomic
