@@ -299,6 +299,14 @@ export default function HubTabLayout(): React.ReactElement {
             events: visibleTabs.counts?.events,
             trips: visibleTabs.counts?.trips,
             experiences: visibleTabs.counts?.experiences,
+            // #1565 — the Venues pill carries its count too. `venueCount` is
+            // EVERY venue_listings row the brand has, in ANY state (including
+            // one still in review) — exactly as wide as the pill's own
+            // existence gate in deriveHubVisibleTabs, which is why
+            // "Venues · 0" is unreachable. HubSubNav's `hubPillLabel` renders
+            // the bare label if a legacy visibility arm ever shows the pill
+            // at zero.
+            venue: venueCount,
           }}
           loading={visibleTabs.isLoading}
           onTabPress={handleHubTabPress}
