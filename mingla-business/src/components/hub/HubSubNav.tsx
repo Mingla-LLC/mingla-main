@@ -1,9 +1,12 @@
 /**
  * HubSubNav (ORCH-0826) — sticky sub-navigation bar for the Hub tab.
  *
- * Three pills: Events / Experiences / Trips. Active pill resolved from
- * `usePathname()` against the `/hub/{events|experiences|trips}` route
+ * Pills: Events / Experiences / Trips / Venues. Active pill resolved from
+ * `usePathname()` against the `/hub/{events|experiences|trips|listing}` route
  * structure. Tapping a pill navigates to the corresponding sub-route.
+ *
+ * #1565 — every data-driven pill carries its count ("Venues · 3"); see
+ * `hubPillLabel` for the one case that renders a bare label instead.
  *
  * Mirrors the MarketingSubNav pattern at
  * `mingla-business/src/components/marketing/MarketingSubNav.tsx` for visual
@@ -43,7 +46,9 @@ const SUB_TABS: readonly HubSubTab[] = [
   { id: "trips", label: "Trips", route: "/(tabs)/hub/trips" },
   // ORCH-1145 — conditional Venue pill (rightmost peer; visibility gated in
   // deriveHubVisibleTabs on hasPhysicalLocation || placePoolId).
-  { id: "venue", label: "Venue", route: "/(tabs)/hub/listing" },
+  // #1565 — label pluralised to "Venues": every pill names the COLLECTION its
+  // count belongs to, and the pill can legitimately carry more than one venue.
+  { id: "venue", label: "Venues", route: "/(tabs)/hub/listing" },
 ] as const;
 
 const LABELS: Record<HubDataDrivenTabId, string> = {
@@ -51,7 +56,7 @@ const LABELS: Record<HubDataDrivenTabId, string> = {
   events: "Events",
   trips: "Trips",
   experiences: "Experiences",
-  venue: "Venue",
+  venue: "Venues",
 };
 
 // ORCH-1145 — single source of truth for tab-name → real route. The Hub
@@ -78,6 +83,40 @@ export const detectActiveSubTab = (pathname: string): HubDataDrivenTabId => {
   // ORCH-1145 — Venue tab route file is `listing.tsx` → URL `/(tabs)/hub/listing`.
   if (lower.includes("/hub/listing")) return "venue";
   return "events"; // default: Events sub-route is the Hub landing
+};
+
+/**
+ * #1565 — the visible text of one Hub pill.
+ *
+ * A data-driven pill reads `"<Label> · <count>"`. Two ids never take a count:
+ *
+ *  - `getstarted` is an action, not a collection (pre-existing rule).
+ *  - `venue` at ZERO. `deriveHubVisibleTabs` (useHubTabs.ts) shows the Venue
+ *    pill when `venueCount > 0` OR one of the legacy `hasPhysicalLocation` /
+ *    `hasPlacePool` arms fires. In that second case the tab exists for a
+ *    reason that has nothing to do with how many venues the brand has, so
+ *    "Venues · 0" would be a lie about a tab that is standing there for
+ *    another purpose. Rendering the bare label instead makes
+ *    **"Venues · 0" unreachable by construction** — the invariant #1565 tests.
+ *
+ * The count itself is EVERY venue the brand has, in any state, including one
+ * still in review: it is exactly as wide as the pill's own existence gate.
+ * Claim status lives on each venue's row and in the to-do list, not on a tab.
+ *
+ * Scoped to `venue` deliberately. Events/Trips/Experiences keep today's
+ * behaviour verbatim (their count is the PUBLISHED count while their gate also
+ * ORs the draft count, so a legitimate "Events · 0" exists for a draft-only
+ * brand — out of scope here, do not fold it in).
+ */
+export const hubPillLabel = (
+  id: HubDataDrivenTabId,
+  label: string,
+  count: number | undefined,
+): string => {
+  if (count === undefined) return label;
+  if (id === "getstarted") return label;
+  if (id === "venue" && count <= 0) return label;
+  return `${label} · ${count}`;
 };
 
 export interface HubSubNavProps {
@@ -148,9 +187,7 @@ export const HubSubNav: React.FC<HubSubNavProps> = ({
                   isActive ? styles.pillLabelActive : styles.pillLabelInactive,
                 ]}
               >
-                {count !== undefined && tab.id !== "getstarted"
-                  ? `${tab.label} · ${count}`
-                  : tab.label}
+                {hubPillLabel(tab.id, tab.label, count)}
               </Text>
             </Pressable>
           );

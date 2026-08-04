@@ -77,11 +77,19 @@ describe("ORCH-1145 — Venue Hub tab visibility gate (useHubTabs)", () => {
 
 describe("ORCH-1145 — Venue pill definition (HubSubNav)", () => {
   // T-5 — pill defined.
+  // [TEST-MOD-APPROVED #1565] The pill LABEL moved "Venue" → "Venues" (approved
+  // Hub design, #1565): every pill names the collection its count belongs to, and
+  // the Venues pill now renders "Venues · 3". The contract intent is unchanged —
+  // the pill's id/route/union membership are pinned exactly as before; only the
+  // human-readable string was pluralised. The old `toContain('venue: "Venue"')`
+  // assertion is REPLACED (not merely loosened) with the exact new literal, so it
+  // still fails on any drift. Behavioural coverage of the new label + count:
+  // src/components/hub/__tests__/hubVenueCount.issue1565.test.tsx.
   test("T-5 — SUB_TABS contains the venue pill (id, label, route)", () => {
     expect(SUB_NAV).toMatch(
-      /\{\s*id:\s*["']venue["'],\s*label:\s*["']Venue["'],\s*route:\s*["']\/\(tabs\)\/hub\/listing["']\s*\}/,
+      /\{\s*id:\s*["']venue["'],\s*label:\s*["']Venues["'],\s*route:\s*["']\/\(tabs\)\/hub\/listing["']\s*\}/,
     );
-    expect(SUB_NAV).toContain('venue: "Venue"'); // LABELS map
+    expect(SUB_NAV).toContain('venue: "Venues"'); // LABELS map
     expect(SUB_NAV).toContain('venue: "/(tabs)/hub/listing"'); // ROUTES map
     expect(SUB_NAV).toMatch(/HubSubTabId\s*=\s*[^;]*["']venue["']/);
   });
