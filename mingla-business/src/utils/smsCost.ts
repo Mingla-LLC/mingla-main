@@ -28,9 +28,9 @@ export function isGsm7(text: string): boolean {
 const STOP_FOOTER = "Reply STOP to opt out.";
 
 /**
- * The marketing wire body: exactly what `composeSmsBody(message, true)` in
- * `supabase/functions/_shared/adapters/smsAdapter.ts` produces, modulo that
- * function's trailing `sanitizeGsm7()` pass (see KNOWN GAP below).
+ * The marketing body as COMPOSED — what `composeSmsBody(message, true)` in
+ * `supabase/functions/_shared/adapters/smsAdapter.ts` produces before its
+ * trailing `sanitizeGsm7()` pass. For the transmitted bytes, use `wireBody()`.
  *
  * =============================================================================
  * #1556 — THE SUPPRESSION GUARD IS END-ANCHORED, BECAUSE THE ADAPTER'S IS.
@@ -62,12 +62,11 @@ const STOP_FOOTER = "Reply STOP to opt out.";
  * A comment claiming parity is exactly what was true when written and silently
  * stopped being true. Do not re-state parity here — extend the corpus instead.
  *
- * KNOWN GAP (NOT this issue, reported on #1556): the adapter also runs
- * `sanitizeGsm7()` over the composed body, folding curly quotes / dashes /
- * ellipsis / NBSP down to GSM-7. This module does not, so a body typed with an
- * iOS smart apostrophe is scored UCS-2 (70/seg) here while the wire ships
- * GSM-7 (160/seg) — the INVERSE error, an OVER-report. The parity suites assert
- * the equality modulo that sanitizer so the gap is visible, not papered over.
+ * This function returns the body as COMPOSED, not as TRANSMITTED: the adapter
+ * runs `sanitizeGsm7()` over it before it hits the wire. Anything MEASURING the
+ * body must therefore measure `wireBody()` below, never this. Display surfaces
+ * (SmsPreviewPane's bubble, the review sheet's MESSAGE row) render this one —
+ * see the note on `wireBody`.
  */
 export function bodyWithFooter(message: string): string {
   const body = message.trim();
@@ -76,6 +75,61 @@ export function bodyWithFooter(message: string): string {
   // STOP line) so this preview matches the wire body the adapter composes
   // (composeSmsBody with stopFooterOwnLine=true on the marketing route).
   return `${body}\n\n${STOP_FOOTER}`;
+}
+
+/**
+ * GSM-7 sanitizer — behaviourally identical to `sanitizeGsm7` in the adapter
+ * (`supabase/functions/_shared/adapters/smsAdapter.ts`).
+ *
+ * =============================================================================
+ * #1556 — WHY THE PREVIEW HAS TO RUN THIS TOO.
+ * =============================================================================
+ * The adapter sanitizes the composed body before transmitting, folding the
+ * UTF-8 punctuation that would force UCS-2 down to GSM-7-safe ASCII. This
+ * module did not, so it measured characters the recipient never receives:
+ *
+ *   "Don’t miss it"   (iOS auto-substitutes the CURLY apostrophe, U+2019)
+ *     preview: sees U+2019 -> "not GSM-7" -> UCS-2 -> 70 chars/segment
+ *     wire:    sanitized to U+0027 -> GSM-7 -> 160 chars/segment
+ *
+ * so the composer OVER-reported segments and campaign cost by ~2.3x on
+ * ordinary copy — the inverse of the footer defect this issue was opened for,
+ * and far more common, because almost every phone inserts a smart apostrophe
+ * without being asked. Over-quoting is the worse commercial direction: a brand
+ * reads an inflated price and does not run the campaign at all.
+ *
+ * The character classes are written as explicit \u escapes rather than pasted
+ * glyphs — three of the adapter's are invisible (U+00A0, U+2007, U+202F) and a
+ * mistyped one would be undetectable by eye. Identity with the adapter is not
+ * asserted by this comment: the parity suites sweep every codepoint the
+ * adapter's sanitizer touches, plus its neighbours, and fail on any divergence.
+ */
+export function sanitizeGsm7(input: string): string {
+  return input
+    .replace(/[\u2018\u2019\u201A\u201B\u2032]/g, "'") // curly/prime single quotes
+    .replace(/[\u201C\u201D\u201E\u201F\u2033]/g, '"') // curly/prime double quotes
+    .replace(/[\u2013\u2014\u2015]/g, "-") // en/em dash, horizontal bar
+    .replace(/\u2026/g, "...") // ellipsis
+    .replace(/[\u00A0\u2007\u202F]/g, " ") // non-breaking spaces
+    .replace(/[\u2022]/g, "-"); // bullet
+}
+
+/**
+ * The exact bytes the adapter puts on the wire: `composeSmsBody(message, true)`.
+ * MEASURE THIS — never `bodyWithFooter` — for anything that counts characters,
+ * segments or money.
+ *
+ * #1556 — this is deliberately NOT what the composer DISPLAYS. `bodyWithFooter`
+ * still backs SmsPreviewPane's bubble and the review sheet's MESSAGE row, so a
+ * brand's typed apostrophe is never silently rewritten in their own draft.
+ * Rewriting what someone sees themselves typing is a product decision, not a
+ * correctness one, and it is Seth's to make (#1556). The consequence, stated so
+ * the next reader is not surprised: for copy containing an ellipsis the bubble
+ * shows "…" (1 char) while the count reports the 3 characters that actually
+ * ship. The count is the truthful one — it is what bills.
+ */
+export function wireBody(message: string): string {
+  return sanitizeGsm7(bodyWithFooter(message));
 }
 
 /** Segment count for a body. GSM-7 = 160 single / 153 concat; UCS-2 = 70 / 67. */
@@ -139,7 +193,11 @@ export function estimateSmsCost(
   // EXACTLY — 0 chars / 0 segments / 0 cost, and the MMS branch below still
   // bills one message per recipient. An empty body is unreachable at send time
   // anyway: compose.tsx requires `smsBody.trim().length > 0` to continue.
-  const wire = message.trim().length === 0 ? "" : bodyWithFooter(message);
+  // #1556 — MEASURE THE TRANSMITTED BYTES. `wireBody` applies the adapter's
+  // GSM-7 sanitizer, so an iOS smart apostrophe is counted as the ASCII one the
+  // recipient actually gets (GSM-7, 160/seg) instead of forcing this estimate
+  // into UCS-2 (70/seg) and over-quoting the campaign by ~2.3x.
+  const wire = message.trim().length === 0 ? "" : wireBody(message);
   const safeReach = reachableSms > 0 ? reachableSms : 0;
   if (hasMedia) {
     // MMS — one message per recipient, billed at the MMS per-message rate.

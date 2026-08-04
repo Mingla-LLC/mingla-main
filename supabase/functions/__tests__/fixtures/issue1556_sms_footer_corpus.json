@@ -132,8 +132,62 @@
     {
       "id": "smart-punctuation-mention",
       "body": "Reply Stop’s last show — don’t miss it…",
-      "why": "iOS smart apostrophe + em dash + ellipsis. Footer suppression must still agree; byte equality only holds MODULO the adapter's sanitizeGsm7 (the KNOWN GAP reported on #1556).",
-      "sanitizerSensitive": true
+      "why": "iOS smart apostrophe + em dash + ellipsis. Footer suppression must still agree; byte equality only holds MODULO the adapter's sanitizeGsm7 (the KNOWN GAP reported on #1556)."
+    },
+    {
+      "id": "smart-apostrophe-boundary",
+      "body": "Don’t miss it - doors 8pm at Lantern and Vine, live music all night. xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "why": "#1556 D1 CORE: an iOS smart apostrophe (U+2019). Sanitized it is GSM-7 at 160 chars = ONE segment; unsanitized the preview called it UCS-2 and quoted THREE. The 2.3x over-report, made numeric.",
+      "expect": {
+        "clientAppends": true,
+        "wireLength": 160,
+        "wireSegments": 1
+      }
+    },
+    {
+      "id": "ellipsis-grows-body",
+      "body": "Doors 8pm… tickets at the bar, first come first served. xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "why": "an ellipsis (U+2026) expands to three characters, so sanitizing can make the wire LONGER and cross a boundary upward: 161 chars = TWO segments.",
+      "expect": {
+        "clientAppends": true,
+        "wireLength": 161,
+        "wireSegments": 2
+      }
+    },
+    {
+      "id": "curly-double-quotes",
+      "body": "The “best rooftop in town” - come see for yourself.",
+      "why": "curly/prime double quotes fold to ASCII \" (U+201C U+201D)."
+    },
+    {
+      "id": "dashes-and-bar",
+      "body": "Doors 8pm – midnight — last entry 11pm ― be early.",
+      "why": "en dash, em dash and horizontal bar all fold to '-'."
+    },
+    {
+      "id": "nbsp-variants",
+      "body": "Doors 8pm, tables from 6.",
+      "why": "the three invisible space codepoints the adapter folds (U+00A0, U+2007, U+202F). Typing these by eye is exactly how a mirrored sanitizer drifts."
+    },
+    {
+      "id": "bullet-list",
+      "body": "Tonight:\n• live music\n• 2-for-1 cocktails\n• rooftop open late",
+      "why": "bullets fold to '-'."
+    },
+    {
+      "id": "prime-marks",
+      "body": "Set times: 9′ warmup, then a 45″ headline set.",
+      "why": "prime and double-prime (U+2032 U+2033) fold to ' and \"."
+    },
+    {
+      "id": "every-sanitized-class",
+      "body": "‘a’‚b‛′ “c”„d‟″ e–f—g―h i…j k l m n o•p",
+      "why": "one body carrying EVERY character class the adapter's sanitizer maps. If either side drops a class, this diverges."
+    },
+    {
+      "id": "smart-punctuation-already-footered",
+      "body": "Don’t miss it — tonight.\n\nReply STOP to opt out.",
+      "why": "sanitizer classes AND end-anchored suppression in one body: the footer must be suppressed and the punctuation still folded."
     }
   ]
 }
