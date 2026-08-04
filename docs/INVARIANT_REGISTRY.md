@@ -7083,6 +7083,42 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   maintenance of those three live files with no override, whereas measuring keeps them
   green and restores an accurate count.
 - **Established:** DRAFT at issue #1510 SPEC 2026-08-03. Flips ACTIVE at CLOSE.
+
+## DRAFT — issue #1534 (append-only gate hardened end to end)
+
+### I-PROPOSED-1534-GATE-ANSWERS-ABOUT-THE-SAME-BYTES (DRAFT)
+- **Rule (a) — every disposition that can hide content loss MEASURES it, through one shared
+  helper with one fail-closed terminal.** A count that was not taken is never reported as
+  zero. Over the range an entry came from, an absent record CONTRADICTS the record that
+  produced the entry and is a failed measurement; over an independently-asked range it means
+  no difference and is an honest zero. The two readings are never conflated — conflating them
+  either waves through an unmeasured path or red-lights an identical one. Content loss on a
+  renamed file is measured on the renamed PAIR, never on the destination alone, because the
+  destination did not exist before and every surviving line would read as an addition. The
+  rename attestation authorises the MOVE only; removing lines while renaming needs the
+  modification attestation as well, or the weaker token would buy the more destructive change.
+  A path this range reports as new but that the BASE BRANCH already holds is a modification
+  and is measured as one.
+- **Rule (b) — detection, counting and attribution answer about the SAME BYTES.** Records are
+  read NUL-delimited and carried as bytes, so no arm is ever handed a rendered spelling of a
+  path in place of the path. Counting is taken from the SAME diff that produced the entry,
+  keyed by those bytes and scoped by no pathspec at all. A path that cannot be expressed back
+  to git produces a refusal, never a substituted spelling and never an unattributed pass.
+- **Rule (c) — nothing this gate PRINTS is a working attestation.** On EITHER stream, including
+  author-controlled path text echoed into a message, and including the self-test stream whose
+  inputs are token literals by construction. Redaction rewrites to the placeholder forms the
+  grammar cases already pin as inert. Each entry occupies exactly one line of the report.
+- **Enforcement:** `.github/scripts/test-append-only-check.js --self-test`, wired into
+  `.github/workflows/tests-append-only.yml`. **79 cases.** Supersedes the case counts stated in
+  `I-1505-APPEND-ONLY-FAILS-CLOSED` (53) and `I-1510-DELETION-COUNT-IS-MEASURED` (67).
+  Append-only. Fails-on-revert is proven PER FIX, not in aggregate: an aggregate number hides a
+  mis-pinned case.
+- **Ship-decider:** 717 real merged commit ranges from this repository's history replay against
+  the change with zero false positives and zero weakenings. The three test sources git declines
+  to render as text are pinned against their ACTUAL BYTES, not a stand-in, across additions-only,
+  metadata-only, attested and unattested edits. A refusal that is unoverridable is correct only
+  where content is genuinely annihilated or a measurement genuinely did not succeed.
+- **Established:** DRAFT at issue #1534 SPEC 2026-08-03. Flips ACTIVE at CLOSE.
 ## DRAFT — issue #1481 (Explorer swipe lifecycle and deck performance)
 
 ### I-PROPOSED-1481-DECK-NATIVE-DRIVER-SINGLE-OWNER (DRAFT)
