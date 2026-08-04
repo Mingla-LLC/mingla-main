@@ -7319,6 +7319,19 @@
       ],
       "selfTest": "wired",
       "jobKeys": []
+    },
+    {
+      "script": "app-mobile/scripts/ci/issue-1481-parse-framestats.mjs",
+      "kind": "file",
+      "enforcement": "external:issue-1481-explorer-deck-tests.yml",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "issue-1481-deck-contract"
+      ]
     }
   ]
 }
