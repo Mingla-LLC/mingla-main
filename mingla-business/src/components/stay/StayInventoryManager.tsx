@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -77,10 +77,23 @@ import { randomId } from "../../utils/randomId";
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import { Button } from "../ui/Button";
 import { ChipInput } from "../ui/ChipInput";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
 import type { IconName } from "../ui/Icon";
 import { GlassCard } from "../ui/GlassCard";
 import { NameBuilder } from "../ui/NameBuilder";
 import { OptionCard } from "../ui/OptionCard";
+import { Sheet } from "../ui/Sheet";
+import { StayActionBar } from "./StayActionBar";
+import { StayChipRow } from "./StayChipRow";
+import {
+  STAY_EDITOR_DISCARD_COPY,
+  STAY_PAGE_BOTTOM_PAD,
+  STAY_SPACING,
+  resolveStayEditorClose,
+  stayEditorReadinessLabel,
+  stayEditorTitle,
+  type StayEditorCloseSource,
+} from "./stayLayoutContracts";
 import {
   matchesStayInventoryFilter,
   stayDraftReadiness,
@@ -314,6 +327,38 @@ const STAY_FIELD_COPY = {
 } as const;
 
 /**
+ * #1532 §5 — THE AVAILABILITY SCREEN'S VOCABULARY.
+ *
+ * This screen was the one place #1501's terminology contract never reached, and
+ * it showed: "Sellable rooms", "Stop sell / blackout" and "Price override" are
+ * hotel-trade jargon that this product defines nowhere, sitting one tap away
+ * from a form that had just explained everything in plain English. It also
+ * ended with a sentence describing the SERVER's validation order to a hotelier.
+ *
+ * Same contract shape as `STAY_FIELD_COPY` / `STAY_CHOICE_COPY`: one table, so
+ * a term cannot drift between the label, the helper and the hint.
+ */
+const STAY_AVAILABILITY_COPY = {
+  openRooms: {
+    label: "Rooms open that night",
+    helper: "How many of this Room a guest can book for each night in the range.",
+  },
+  price: {
+    label: "Price for these nights",
+    helper: "Overrides the saved price, for this date range only. Leave blank to keep it.",
+  },
+  open: {
+    label: "Open for booking",
+    helper: "Guests can book these dates at the price above.",
+  },
+  closed: {
+    label: "Closed",
+    helper:
+      "Nobody new can book these nights. Bookings you already have are not affected.",
+  },
+} as const;
+
+/**
  * #1501 §4.1 — kind-aware quick adds for "What's included". A hotelier should
  * be tapping, not typing, for the twenty things every room has.
  */
@@ -519,17 +564,25 @@ function Section({
 }): React.ReactElement {
   return (
     <View style={styles.section} testID={testID}>
-      {/* A real heading, so a screen reader can jump between the six sections
-          instead of walking every field. */}
-      <Text
-        accessibilityRole="header"
-        accessibilityLabel={`${title}. ${caption}`}
-        style={styles.sectionTitle}
-      >
-        {title}
-      </Text>
-      <Text style={styles.sectionCaption}>{caption}</Text>
-      <GlassCard variant="base" style={styles.form}>
+      {/* #1532 §4 — title and caption are ONE unit at 2pt; the 8pt below the
+          block is what separates them from the card. */}
+      <View style={styles.sectionHead}>
+        {/* A real heading, so a screen reader can jump between the six sections
+            instead of walking every field. */}
+        <Text
+          accessibilityRole="header"
+          accessibilityLabel={`${title}. ${caption}`}
+          style={styles.sectionTitle}
+        >
+          {title}
+        </Text>
+        <Text style={styles.sectionCaption}>{caption}</Text>
+      </View>
+      {/* #1532 §4 — `contentStyle`, NOT `style`. On `style` this gap landed on
+          `GlassChrome`'s outer node, whose only in-flow child is the clip view
+          (L1-L4 are absoluteFill), so a gap with one child spaced NOTHING and
+          two stacked fields rendered 0.0pt apart on a real device. */}
+      <GlassCard variant="base" contentStyle={styles.form}>
         {children}
       </GlassCard>
     </View>
@@ -627,8 +680,14 @@ function LabeledInput({
     // regression proof has to read the wrapper, not the input (#1501 §1.4).
     // Additive — every pre-existing testID is preserved verbatim on the input.
     <View style={fieldSpanStyle(span)} testID={`${testID}-field`}>
-      <Text style={styles.label}>{label}</Text>
-      {helper ? <Text style={styles.fieldHelper}>{helper}</Text> : null}
+      {/* #1532 §4 — label + helper are ONE unit at 2pt. Before this the field
+          used a single 4pt gap for BOTH label->helper and helper->input, so a
+          field had no internal hierarchy: three lines, evenly spaced, none of
+          them visibly belonging to another. */}
+      <View style={styles.fieldLabelBlock}>
+        <Text style={styles.label}>{label}</Text>
+        {helper ? <Text style={styles.fieldHelper}>{helper}</Text> : null}
+      </View>
       <TextInput
         accessibilityLabel={label}
         accessibilityHint={helper}
@@ -656,7 +715,18 @@ interface OfferingEditorProps {
   existing?: StayOfferingRecord | null;
   canManageInventory: boolean;
   canManageFinance: boolean;
+  /** The editor is DONE — a save landed. Never a user-initiated exit. */
   onClose: () => void;
+  /**
+   * #1532 §3 — a user-initiated exit. Routed through the parent's ONE dismissal
+   * funnel (`resolveStayEditorClose`) rather than closing directly, because a
+   * dirty draft has to raise the discard guard no matter which affordance the
+   * operator reached for. Optional so the #1501 web-resolver proofs, which
+   * mount `OfferingEditor` directly, keep compiling unchanged.
+   */
+  onRequestClose?: (source: StayEditorCloseSource) => void;
+  /** Reports whether the draft holds unsaved work, for the same funnel. */
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 /**
@@ -675,6 +745,8 @@ export function OfferingEditor({
   canManageInventory,
   canManageFinance,
   onClose,
+  onRequestClose,
+  onDirtyChange,
 }: OfferingEditorProps): React.ReactElement {
   // #1484 — desktop gate ONLY via the canonical hook (I-DESKTOP-GATE-VIA-HOOK).
   const { isWideDesktop } = useResponsiveLayout();
@@ -1075,6 +1147,59 @@ export function OfferingEditor({
       ? "Create drafts"
       : "Create draft";
 
+  /**
+   * #1532 §3 — IS THERE UNSAVED WORK?
+   *
+   * The shipped editor had no idea. Its only exit was a bare `X`, and pressing
+   * it — or tapping another module pill, or the TopBar chevron, or Android back
+   * — destroyed 23 fields with no prompt, including `media`, whose files are
+   * uploaded to storage the moment they are picked.
+   *
+   * A SIGNATURE, not a field-by-field diff: the baseline is captured once at
+   * mount from `existing`, and any later divergence means the operator typed,
+   * tapped or uploaded something. Comparing strings keeps this cheap enough to
+   * run every render and impossible to get subtly wrong per field.
+   */
+  const draftSignature = JSON.stringify([
+    kind,
+    bulk,
+    name.trim(),
+    normalizeList(bulkNames),
+    description.trim(),
+    quantity,
+    capacity,
+    maxGuests,
+    price,
+    feeLabel.trim(),
+    feeAmount,
+    policy.trim(),
+    noShowPercent,
+    normalizeList(amenities),
+    normalizeList(unitNames),
+    confirmationMode,
+    namedUnits,
+    sharedCapacity,
+    overnightOnly,
+    media.length,
+    removedMediaIds.length,
+  ]);
+  const baselineSignatureRef = useRef<string | null>(null);
+  if (baselineSignatureRef.current === null) {
+    baselineSignatureRef.current = draftSignature;
+  }
+  const dirty = draftSignature !== baselineSignatureRef.current;
+
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+
+  const headerTitle = stayEditorTitle({
+    existingName: existing?.name ?? null,
+    kind,
+    bulk,
+  });
+  const pendingReadiness = readiness.filter((item) => !item.done).length;
+
   // The rail renders only when the CONTAINER can actually hold
   // form column + gap + rail. Below the threshold the same summary stacks above
   // the CTA — nothing is lost, only reflowed.
@@ -1083,6 +1208,17 @@ export function OfferingEditor({
     containerWidth: editorWidth,
   });
   const showRail = layout.showRail;
+
+  const saveCta = (
+    <Button
+      label={ctaLabel}
+      onPress={() => save.mutate()}
+      loading={save.isPending}
+      disabled={uploading || (!canManageInventory && !canManageFinance)}
+      fullWidth
+      testID="stay-offering-save"
+    />
+  );
 
   const summary = (
     <View style={styles.summaryBody} testID="stay-offering-summary">
@@ -1178,48 +1314,90 @@ export function OfferingEditor({
         </Text>
       ) : null}
       {/* EXACTLY ONE CTA renders at a time, so `stay-offering-save` is never
-          ambiguous to an operator, a screen reader, or a test. */}
-      <Button
-        label={ctaLabel}
-        onPress={() => save.mutate()}
-        loading={save.isPending}
-        disabled={uploading || (!canManageInventory && !canManageFinance)}
-        fullWidth
-        testID="stay-offering-save"
-      />
+          ambiguous to an operator, a screen reader, or a test.
+          #1532 D5 — on a PHONE it moves into the pinned `StayActionBar` below
+          (the whole point: the primary action stops living at the bottom of a
+          long scroll). On WIDE DESKTOP it stays exactly where #1501 put it, at
+          the foot of the summary rail, which is already always visible. One
+          branch or the other, never both. */}
+      {isWideDesktop ? saveCta : null}
     </View>
   );
 
-  return (
+  const editorScroll = (
     <ScrollView
       contentContainerStyle={layout.page}
       onLayout={(event) => setEditorWidth(event.nativeEvent.layout.width)}
+      // #1532 §2 — without this the FIRST tap on Save or a chip while typing
+      // only dismisses the keyboard. A dead tap in the busiest form in the app.
+      keyboardShouldPersistTaps="handled"
       testID="stay-offering-editor-scroll"
     >
-      <View style={styles.titleRow}>
-        <View style={styles.flex}>
-          <Text style={styles.title}>
-            {existing ? `Edit ${existing.name}` : "Add Rooms or Places"}
-          </Text>
-          <Text style={styles.helper}>
-            Nothing here can be booked yet. Fill in the details, then make it
-            live from the list.
-          </Text>
-          {!canManageInventory && canManageFinance ? (
-            <Text style={styles.warning}>
-              Your role can manage prices, fees and policies, but not Room or
-              Place details.
-            </Text>
-          ) : null}
-        </View>
+      {/*
+        #1532 §3 — THE EDITOR HEADER, which is where the "unlabelled level"
+        died.
+
+        Before: a constant title ("Add Rooms or Places") whatever the operator
+        had chosen, a TopBar above it that always said "Stay", and a bare `X`
+        glyph as the only way out — no Cancel, no Discard, no confirm, and no
+        hint that leaving would destroy 23 fields and orphan uploaded photos.
+
+        Now: a real Cancel that routes through the ONE dismissal funnel, a title
+        that says what is actually being created, and a readiness pill so the
+        operator can see how far off "live" they are without scrolling to the
+        summary.
+      */}
+      <View style={styles.editorHeaderTop}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Close editor"
-          onPress={onClose}
+          accessibilityLabel="Cancel and close this draft"
+          onPress={() =>
+            onRequestClose === undefined
+              ? onClose()
+              : onRequestClose("cancel")
+          }
+          style={({ pressed }) => [
+            styles.headerCancel,
+            pressed && styles.pressedChrome,
+          ]}
+          testID="stay-offering-cancel"
         >
-          <X size={22} color={textTokens.secondary} />
+          <Text style={styles.headerCancelText}>Cancel</Text>
         </Pressable>
+        <View
+          style={pendingReadiness === 0 ? styles.pillReady : styles.pillPending}
+          testID="stay-offering-readiness-pill"
+        >
+          <Text
+            style={
+              pendingReadiness === 0
+                ? styles.pillReadyText
+                : styles.pillPendingText
+            }
+          >
+            {stayEditorReadinessLabel(pendingReadiness)}
+          </Text>
+        </View>
       </View>
+      <View style={styles.sectionHead}>
+        <Text
+          accessibilityRole="header"
+          style={styles.title}
+          testID="stay-offering-title"
+        >
+          {headerTitle}
+        </Text>
+        <Text style={styles.helper}>
+          Nothing here can be booked yet. Fill in the details, then make it live
+          from the list.
+        </Text>
+      </View>
+      {!canManageInventory && canManageFinance ? (
+        <Text style={styles.warning}>
+          Your role can manage prices, fees and policies, but not Room or Place
+          details.
+        </Text>
+      ) : null}
       <View
         style={layout.body}
         testID="stay-offering-layout"
@@ -1652,6 +1830,38 @@ export function OfferingEditor({
       </View>
     </ScrollView>
   );
+
+  // WIDE DESKTOP: unchanged from #1501 — the scroller IS the editor, and the
+  // summary rail already keeps the CTA in permanent view, so there is no bar to
+  // host and no positioning wrapper to add.
+  if (isWideDesktop) return editorScroll;
+
+  /**
+   * PHONE — the scroller plus a pinned bar, inside an ABSOLUTELY-FILLED host.
+   *
+   * The host measure is deliberate and was arrived at by elimination, because
+   * three obvious alternatives are each a live bug in this codebase:
+   *   - `flex: 1`      — a node sharing a COLUMN's main axis, the exact shape
+   *                      `I-AXIS-SCOPED-FLEX` forbids (#1501 adversarial X-1);
+   *   - `height:"100%"`— a fixed-height ANCESTOR of a multiline box, i.e. the
+   *                      shape that clips a description field (X-3);
+   *   - a bare Fragment— `react-test-renderer`'s `toJSON()` returns an ARRAY
+   *                      for a fragment root, so the whole axis audit silently
+   *                      walks NOTHING and passes vacuously. That is the
+   *                      unfalsifiable-test trap, not a fix.
+   *
+   * Absolute inset-0 fills the sheet body's content box with no flex key, no
+   * height and a single root node. All three guards stay honest.
+   */
+  return (
+    <View style={styles.editorRoot}>
+      {editorScroll}
+      {/* #1532 D5 — the save used to sit at the bottom of a six-section scroll;
+          now it is pinned, and hidden while the keyboard is up so it never
+          stacks on top of the `KeyboardToolbar`. */}
+      <StayActionBar testID="stay-offering-action-bar">{saveCta}</StayActionBar>
+    </View>
+  );
 }
 
 function OfferingRow({
@@ -1690,7 +1900,7 @@ function OfferingRow({
         ? `${offering.quantity ?? 0} named units`
         : `${offering.quantity ?? 0} interchangeable`;
   return (
-    <GlassCard variant="base" style={styles.rowCard}>
+    <GlassCard variant="base" contentStyle={styles.rowCard}>
       <View style={styles.rowTop}>
         {cover ? (
           <Image
@@ -1971,7 +2181,12 @@ function AvailabilityManager({
         <View style={styles.row}>
           <LabeledInput
             span="num"
-            label="Sellable rooms"
+            // #1532 §5 — "Sellable rooms" is trade jargon, and it arrived on
+            // the screen an operator reaches straight after learning #1501's
+            // plain-English vocabulary. It also had NO helper, on a form where
+            // every other field has one.
+            label={STAY_AVAILABILITY_COPY.openRooms.label}
+            helper={STAY_AVAILABILITY_COPY.openRooms.helper}
             value={quantity}
             onChangeText={setQuantity}
             placeholder="1"
@@ -1981,7 +2196,8 @@ function AvailabilityManager({
           {canManageFinance ? (
             <LabeledInput
               span="num"
-              label={`Price override${currencyCode ? ` (${currencyCode})` : ""}`}
+              label={`${STAY_AVAILABILITY_COPY.price.label}${currencyCode ? ` (${currencyCode})` : ""}`}
+              helper={STAY_AVAILABILITY_COPY.price.helper}
               value={overridePrice}
               onChangeText={setOverridePrice}
               placeholder="Optional"
@@ -2032,7 +2248,8 @@ function AvailabilityManager({
             {canManageFinance ? (
               <LabeledInput
                 span="num"
-                label={`Price override${currencyCode ? ` (${currencyCode})` : ""}`}
+                label={`${STAY_AVAILABILITY_COPY.price.label}${currencyCode ? ` (${currencyCode})` : ""}`}
+                helper={STAY_AVAILABILITY_COPY.price.helper}
                 value={overridePrice}
                 onChangeText={setOverridePrice}
                 placeholder="Optional"
@@ -2043,26 +2260,45 @@ function AvailabilityManager({
           </View>
         </>
       )}
-      <Choice
-        label="Stop sell / blackout"
-        selected={stopSell}
-        onPress={() => setStopSell((value) => !value)}
-        testID="stay-stop-sell"
-      />
+      {/* #1532 §5 — "Stop sell / blackout" was a single unexplained toggle
+          using two terms this product defines NOWHERE. It is now the same
+          explained-choice grammar as the rest of the manager: two cards, one
+          selected, each saying what it does to a guest. */}
+      <View style={styles.choices}>
+        <OptionCard
+          label={STAY_AVAILABILITY_COPY.open.label}
+          helper={STAY_AVAILABILITY_COPY.open.helper}
+          icon="globe"
+          selected={!stopSell}
+          onPress={() => setStopSell(false)}
+          testID="stay-availability-open"
+        />
+        <OptionCard
+          label={STAY_AVAILABILITY_COPY.closed.label}
+          // The second sentence is the one an operator actually needs BEFORE
+          // tapping, and it is VERIFIED rather than assumed: `upsert_room_nights`
+          // and `upsert_place_windows` contain zero references to
+          // `stay_reservations`, `stay_reservation_lines`,
+          // `stay_inventory_commitments`, `cancel`, `refund` or `DELETE`, and
+          // `stop_sell` is read ONLY as a precondition on CREATING a booking
+          // (`20270131013808_issue_1387_stay_inventory_management.sql:792-804`).
+          helper={STAY_AVAILABILITY_COPY.closed.helper}
+          icon="shield"
+          selected={stopSell}
+          onPress={() => setStopSell(true)}
+          testID="stay-stop-sell"
+        />
+      </View>
       {save.isError ? (
         <Text style={styles.error}>{mutationCopy(save.error)}</Text>
       ) : null}
       <Button
-        label={stopSell ? "Save blackout" : "Open availability"}
+        label={stopSell ? "Close these dates" : "Open these dates"}
         onPress={() => save.mutate()}
         loading={save.isPending}
         fullWidth
         testID="stay-availability-save"
       />
-      <Text style={styles.helper}>
-        The server checks dates, quantities, permissions, currency and edit
-        versions before saving.
-      </Text>
       {!canManageFinance ? (
         <Text style={styles.warning} testID="stay-availability-finance-copy">
           Your inventory changes will use the saved base price. Price overrides
@@ -2081,7 +2317,7 @@ function AvailabilityManager({
                 <Text style={styles.calendarDate}>{night.local_date}</Text>
                 <Text style={styles.helper}>
                   {night.stop_sell
-                    ? "Blackout"
+                    ? "Closed"
                     : `${night.sellable_quantity} room${night.sellable_quantity === 1 ? "" : "s"}`}
                   {night.price_override_minor && night.currency_code
                     ? ` · ${formatCurrency(
@@ -2102,7 +2338,7 @@ function AvailabilityManager({
               <Text style={styles.calendarDate}>{windowRow.local_date}</Text>
               <Text style={styles.helper}>
                 {windowRow.stop_sell
-                  ? "Blackout"
+                  ? "Closed"
                   : `${new Date(windowRow.starts_at).toLocaleTimeString([], {
                       hour: "2-digit",
                       minute: "2-digit",
@@ -2143,6 +2379,9 @@ export function StayInventoryManager({
   const [filter, setFilter] = useState<StayInventoryFilter>("all");
   const [search, setSearch] = useState("");
   const [editor, setEditor] = useState<StayOfferingRecord | "new" | null>(null);
+  // #1532 §3 — the two halves of the ONE dismissal funnel.
+  const [editorDirty, setEditorDirty] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
   const offerings = useMemo(
     () => inventory.data?.offerings ?? [],
     [inventory.data?.offerings],
@@ -2184,21 +2423,80 @@ export function StayInventoryManager({
       </View>
     );
   }
-  if (editor !== null) {
-    return (
+  /**
+   * #1532 §3 — THE EDITOR IS A COMMITTED TASK, AND THIS IS ITS ONE EXIT.
+   *
+   * Every affordance — the header Cancel, a scrim tap, a drag-dismiss, Android
+   * hardware back — lands here. A clean draft leaves at once; a dirty one
+   * raises `ConfirmDialog`. `Alert.alert` was NOT used and must not be: it is a
+   * documented no-op on web, which is exactly how a guard becomes a dead Back
+   * button on the surface that has no second chance.
+   */
+  const closeEditor = (): void => {
+    setEditor(null);
+    setEditorDirty(false);
+    setDiscardOpen(false);
+  };
+  const requestClose = (source: StayEditorCloseSource): void => {
+    if (resolveStayEditorClose({ dirty: editorDirty, source }) === "close") {
+      closeEditor();
+      return;
+    }
+    setDiscardOpen(true);
+  };
+
+  const editorElement =
+    editor === null ? null : (
       <OfferingEditor
         brandId={brandId}
         venueId={venueId}
         existing={editor === "new" ? null : editor}
         canManageInventory={canManageInventory}
         canManageFinance={canManageFinance}
-        onClose={() => setEditor(null)}
+        onClose={() => requestClose("saved")}
+        onRequestClose={requestClose}
+        onDirtyChange={setEditorDirty}
       />
+    );
+
+  const discardDialog = (
+    <ConfirmDialog
+      visible={discardOpen}
+      onClose={() => setDiscardOpen(false)}
+      onConfirm={closeEditor}
+      title={STAY_EDITOR_DISCARD_COPY.title}
+      // The photo sentence is HONEST, not soft: photos upload to storage the
+      // moment they are picked and `stayMediaService` has no delete path for an
+      // unattached upload, so a discarded draft really does leave objects
+      // behind. Cleaning them up is #1539; saying so is this issue's job.
+      description={STAY_EDITOR_DISCARD_COPY.description}
+      cancelLabel={STAY_EDITOR_DISCARD_COPY.cancelLabel}
+      confirmLabel={STAY_EDITOR_DISCARD_COPY.confirmLabel}
+      destructive
+      cancelTestID="stay-offering-discard-cancel"
+      confirmTestID="stay-offering-discard-confirm"
+      testID="stay-offering-discard-dialog"
+    />
+  );
+
+  /**
+   * WIDE DESKTOP keeps #1501's in-workspace split column: the editor REPLACES
+   * the list in place, beside its summary rail. Same behaviour, different
+   * container — a bottom sheet on a 1440px monitor would be theatre.
+   */
+  if (isWideDesktop && editorElement !== null) {
+    return (
+      <>
+        {editorElement}
+        {discardDialog}
+      </>
     );
   }
   return (
+    <>
     <ScrollView
       contentContainerStyle={isWideDesktop ? styles.pageDesktop : styles.page}
+      keyboardShouldPersistTaps="handled"
       testID="stay-inventory-list-scroll"
     >
       {inventory.isError ? (
@@ -2250,11 +2548,12 @@ export function StayInventoryManager({
             style={styles.input}
             testID="stay-inventory-search"
           />
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.choices}
-          >
+          {/* #1532 defect 4 — was a `SmartScrollView`, i.e. a
+              KeyboardAwareScrollView, so tapping the search box above injected
+              a keyboard-height spacer as a ROW ITEM and stretched every filter
+              chip to ~324pt tall. `StayChipRow` is a bare RN scroller with no
+              keyboard plumbing at all. */}
+          <StayChipRow testID="stay-inventory-filters">
             {FILTERS.map((item) => (
               <Choice
                 key={item.id}
@@ -2264,9 +2563,9 @@ export function StayInventoryManager({
                 testID={`stay-filter-${item.id}`}
               />
             ))}
-          </ScrollView>
+          </StayChipRow>
           {filtered.length === 0 ? (
-            <GlassCard variant="base" style={styles.empty}>
+            <GlassCard variant="base" contentStyle={styles.empty}>
               <BedDouble size={30} color={accent.warm} />
               <Text style={styles.cardTitle}>
                 {offerings.length === 0
@@ -2297,7 +2596,7 @@ export function StayInventoryManager({
           )}
         </>
       ) : (
-        <GlassCard variant="base" style={styles.form}>
+        <GlassCard variant="base" contentStyle={styles.form}>
           <CalendarDays size={26} color={accent.warm} />
           {canManageInventory ? (
             <AvailabilityManager
@@ -2318,14 +2617,63 @@ export function StayInventoryManager({
         </GlassCard>
       )}
     </ScrollView>
+    {/* #1532 §3 — PHONE / WEB-PHONE: the editor is a committed task in a
+        full-height sheet. Behind its scrim the module pill row is PHYSICALLY
+        untappable, so defect 3 — the tab that turns orange while the content
+        stays on the Add form — becomes impossible rather than unlikely. The
+        sheet's own `onRequestClose` IS Android hardware back, so back finally
+        means "leave the editor" instead of "pop the whole manager and destroy
+        23 fields with no prompt". */}
+    <Sheet
+      visible={editorElement !== null}
+      onClose={() => requestClose("sheet-dismiss")}
+      snapPoint="full"
+      testID="stay-offering-editor-sheet"
+    >
+      {editorElement}
+      {/*
+        #1532 P0 — THE GUARD LIVES INSIDE THE SHEET, AND THAT IS NOT A STYLE
+        CHOICE.
+
+        `Sheet` and `ConfirmDialog` are both React Native `Modal`s. On iOS a
+        `Modal` is a presented UIKit view controller, and a view controller
+        presents exactly ONE thing at a time — so a dialog rendered as a SIBLING
+        of an already-presented sheet never gets a window. It mounts, it renders,
+        it is simply never on screen.
+
+        Shipped as a sibling, that made the discard guard unreachable on iOS:
+        a dirty Cancel did nothing, a scrim tap did nothing, and a drag parked
+        the sheet off-screen behind a still-live full-screen scrim that swallowed
+        every tap — the operator's only exit was force-quitting the app and
+        losing all 23 fields. Android was unaffected, because RN `Modal` is a
+        Dialog there and Dialogs stack, which is exactly why the Android leg
+        passed and hid it.
+
+        Nesting is also the established pattern, not a workaround:
+        `VenueTableSheet.tsx` and `MenuItemSheet.tsx:134/220/239` both close
+        `</Sheet>` AFTER their `ConfirmDialog`. This was the only Sheet +
+        ConfirmDialog pair in the codebase that was not nested.
+
+        `stayGuardReachability.issue1532.tester.render.test.tsx` A-1b/A-1c own
+        this contract: every visible `Modal` beyond the outermost must be
+        CONTAINED by it. Do not hoist this back out.
+      */}
+      {discardDialog}
+    </Sheet>
+    </>
   );
 }
 
 /** Geometry shared by every page measure below (see the note on `page`). */
 const PAGE_BASE = {
   padding: spacing.md,
-  paddingBottom: spacing.xxl * 3,
-  gap: spacing.md,
+  // #1532 §4 — was `spacing.xxl * 3` (144pt) of dead scroll sized for a bottom
+  // nav that this route does not render. Now exactly the pinned action bar plus
+  // one gutter: +44pt of real workspace back. (It does NOT offset the wrapped
+  // module band, which MEASURED 142.0pt against a designed 96 — see
+  // `STAY_PAGE_BOTTOM_PAD`.)
+  paddingBottom: STAY_PAGE_BOTTOM_PAD,
+  gap: STAY_SPACING.sectionToSection,
   width: "100%",
 } as const;
 
@@ -2378,9 +2726,18 @@ const styles = StyleSheet.create({
     columnGap: spacing.xl,
     width: "100%",
   },
-  editorStack: { width: "100%", minWidth: 0, gap: spacing.lg },
+  // #1532 §4 — section -> section is 32pt, the widest boundary on the page.
+  editorStack: {
+    width: "100%",
+    minWidth: 0,
+    gap: STAY_SPACING.sectionToSection,
+  },
   // STACK measure — no flex-axis key (I-AXIS-SCOPED-FLEX).
-  formColumn: { width: "100%", minWidth: 0, gap: spacing.lg },
+  formColumn: {
+    width: "100%",
+    minWidth: 0,
+    gap: STAY_SPACING.sectionToSection,
+  },
   // ROW-ONLY: the readable measure of the form column itself. `flexShrink: 1`
   // + `flexBasis: 0` + `flexGrow: 1` means it takes everything the rail leaves,
   // up to its own cap.
@@ -2390,7 +2747,7 @@ const styles = StyleSheet.create({
     flexBasis: 0,
     minWidth: 0,
     maxWidth: stayEditorFormMaxWidth,
-    gap: spacing.lg,
+    gap: STAY_SPACING.sectionToSection,
   },
   // ROW-ONLY: fixed rail. `position: "sticky"` is deliberately NOT used — RN
   // has no such value and RN-web support is unverified; a non-sticky rail is
@@ -2401,13 +2758,67 @@ const styles = StyleSheet.create({
     flexBasis: stayEditorSummaryWidth,
     width: stayEditorSummaryWidth,
   },
-  section: { gap: spacing.xs },
+  // #1532 §4 — caption -> card is 8pt; title -> caption is 2pt and lives on
+  // `sectionHead`. The `marginBottom` the caption used to carry is deleted: it
+  // was a second, competing spacing source for the same boundary.
+  // #1532 D5 — see the note at the phone return: absolute inset-0, so the host
+  // carries NO flex-axis key and NO height while still filling the sheet body.
+  editorRoot: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  section: { gap: STAY_SPACING.captionToCard },
+  sectionHead: { gap: STAY_SPACING.sectionTitleToCaption },
   sectionTitle: { ...typography.h3, color: textTokens.primary },
   sectionCaption: {
     ...typography.bodySm,
     color: textTokens.secondary,
-    marginBottom: spacing.xs,
     maxWidth: stayProseMaxWidth,
+  },
+  // ROW-ONLY (I-AXIS-SCOPED-FLEX) — the editor's Cancel / readiness strip.
+  editorHeaderTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    columnGap: STAY_SPACING.fieldToFieldInRow,
+  },
+  headerCancel: {
+    minHeight: 44,
+    justifyContent: "center",
+    paddingRight: spacing.md,
+  },
+  headerCancelText: {
+    ...typography.body,
+    color: accent.warm,
+    fontWeight: "600",
+  },
+  pressedChrome: { opacity: 0.6 },
+  // COMPLETE, MUTUALLY EXCLUSIVE pill measures — selected, never layered with
+  // an override, so neither can silently keep the other's colour on web.
+  pillReady: {
+    borderRadius: radius.full,
+    backgroundColor: semantic.successTint,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  pillPending: {
+    borderRadius: radius.full,
+    backgroundColor: glass.tint.profileBase,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  pillReadyText: {
+    ...typography.caption,
+    color: semantic.success,
+    fontWeight: "700",
+  },
+  pillPendingText: {
+    ...typography.caption,
+    color: textTokens.secondary,
+    fontWeight: "700",
   },
   summaryBody: { gap: spacing.sm },
   summaryEyebrow: {
@@ -2464,7 +2875,12 @@ const styles = StyleSheet.create({
     maxWidth: stayProseMaxWidth,
   },
   flex: { flex: 1, minWidth: 0 },
-  form: { gap: spacing.md },
+  // #1532 §4 — CONTENT-node measure, passed as `contentStyle`. 24pt is the
+  // stacked field-to-field boundary; on the card's `style` prop this rendered
+  // as 0.0pt on a real device.
+  form: { gap: STAY_SPACING.fieldToFieldStacked },
+  /** label + helper are ONE unit at 2pt. */
+  fieldLabelBlock: { gap: STAY_SPACING.labelToHelper },
   // ── #1501 §1 — AXIS-SCOPED FIELD MEASURES (I-AXIS-SCOPED-FLEX) ───────────
   // The deleted `field: { flex: 1, minWidth: 140, gap: spacing.xs }` carried a
   // flex-axis key and was applied under TWO different `flexDirection` contexts.
@@ -2477,7 +2893,11 @@ const styles = StyleSheet.create({
   //
   // STACK — column context. NO flex-axis key at all, so nothing can ever
   // resolve against the cross axis again.
-  fieldStack: { width: "100%", minWidth: 0, gap: spacing.xs },
+  fieldStack: {
+    width: "100%",
+    minWidth: 0,
+    gap: STAY_SPACING.helperToInput,
+  },
   // PAIR — a TEXT field inside `styles.row`. Grows into whatever the numeric
   // siblings leave behind (`flexBasis: 0` + `flexGrow: 1`).
   fieldPair: {
@@ -2485,7 +2905,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     flexBasis: 0,
     minWidth: stayFieldPairMinWidth,
-    gap: spacing.xs,
+    gap: STAY_SPACING.helperToInput,
   },
   // NUM — a NUMERIC field inside `styles.row`. It shares the line and grows
   // into it, CAPPED at the desktop measure — it does not demand that measure up
@@ -2501,7 +2921,7 @@ const styles = StyleSheet.create({
     flexBasis: 0,
     minWidth: stayFieldNumMinWidth,
     maxWidth: stayFieldNumMaxWidth,
-    gap: spacing.xs,
+    gap: STAY_SPACING.helperToInput,
   },
   input: {
     minHeight: 46,
@@ -2531,8 +2951,8 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     flexWrap: "wrap",
-    columnGap: spacing.md,
-    rowGap: spacing.md,
+    columnGap: STAY_SPACING.fieldToFieldInRow,
+    rowGap: STAY_SPACING.fieldToFieldInRow,
     alignItems: "flex-start",
   },
   choices: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
@@ -2602,6 +3022,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: spacing.md,
   },
+  // CONTENT-node measure (#1532 §4) — passed as `contentStyle`.
   rowCard: { gap: spacing.md },
   rowTop: { flexDirection: "row", gap: spacing.md },
   rowTitleLine: {

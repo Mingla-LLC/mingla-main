@@ -278,7 +278,18 @@ describe("issue #1380 public venue Reserve CTA", () => {
     );
     expect(sheet).toContain('snapPoint="full"');
     expect(sheet).toContain("{visible ? children : null}");
-    expect(sheet).toContain('accessibilityLabel="Reserve a table"');
+    // [TEST-MOD-APPROVED #1532] — the hardcoded heading WAS the defect.
+    // A hotel guest tapped "Reserve this Stay" and landed on a sheet headed
+    // "Reserve a table", because this component took no category prop at all
+    // and was structurally incapable of saying anything else (#1532 defect 1).
+    // What #1380 actually cares about — that the sheet's screen-reader header
+    // names the action — is now pinned on the REQUIRED `title` prop, which is
+    // a strictly stronger contract: a caller cannot omit it, and
+    // `venueReserveCopy.reserveSheetTitle()` is the one place that decides, so
+    // the heading and the CTA that opens it can no longer drift apart.
+    expect(sheet).toContain("accessibilityLabel={title}");
+    expect(sheet).toContain("title: string;");
+    expect(sheet).not.toContain('"Reserve a table"');
     expect(tabs).toContain("activeTab?: PublicVenueTab");
     expect(tabs).toContain("onTabChange?: (tab: PublicVenueTab) => void");
     expect(tabs).toContain("focusTab: (tab: PublicVenueTab) => void");

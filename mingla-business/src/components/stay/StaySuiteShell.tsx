@@ -23,7 +23,13 @@
  * readable-measure cap (`suiteFormMaxWidth`), left-anchored.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -33,20 +39,6 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import {
-  Accessibility,
-  BedDouble,
-  CalendarDays,
-  Check,
-  ChevronRight,
-  Circle,
-  CreditCard,
-  FileCheck2,
-  Home,
-  Settings,
-  Utensils,
-} from "lucide-react-native";
-import type { LucideIcon } from "lucide-react-native";
 
 import { ScrollView } from "../../wrappers/SmartScrollView";
 import {
@@ -79,9 +71,16 @@ import type { SuiteDesktopModule } from "../suite/SuiteDesktopShell";
 import { SuiteDesktopShell } from "../suite/SuiteDesktopShell";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
+import { Icon } from "../ui/Icon";
+import type { IconName } from "../ui/Icon";
 import { VenueMenuModule } from "../venue/VenueMenuModule";
+import { StayActionBar } from "./StayActionBar";
 import { StayInventoryManager } from "./StayInventoryManager";
 import { StayReservationsModule } from "./StayReservationsModule";
+import {
+  STAY_PAGE_BOTTOM_PAD,
+  STAY_SPACING,
+} from "./stayLayoutContracts";
 import {
   isStaySettingsComplete,
   isStaySettingsFormValid,
@@ -95,21 +94,40 @@ export type StayModule =
   | "menu"
   | "settings";
 
+/**
+ * #1532 §6 — every glyph here comes from the IN-APP `Icon` roster, NOT from
+ * `lucide-react-native`, and that is a BUNDLE requirement rather than a taste.
+ *
+ * On web the lucide shim's `USED_ICONS` (`src/shims/lucideReactNativeWebStub.js`)
+ * is a GLOBAL EAGER registry: it deep-`require`s every registered glyph at
+ * module scope and lands in Metro's eager `__common` chunk. So a glyph
+ * registered for THIS screen is downloaded by every business-web visitor before
+ * anything renders, even though the Stay manager is behind a lazy route.
+ * #1501 measured that at +8,746 B for ten glyphs and it breached the ORCH-1083
+ * budget. `Icon`'s SVG roster is already in `__common` (Button depends on it),
+ * so these cost zero — and moving this file off lucide entirely DELETES six
+ * registrations, because `Accessibility`, `Circle`, `CreditCard`, `FileCheck2`,
+ * `Home` and `Utensils` were imported by no other file in the app.
+ *
+ * `Utensils` -> `list` is also a category fix, not just a bundle one: a cutlery
+ * glyph on a hotel's Menus tab is the same restaurant-blindness as "Reserve a
+ * table" on a Stay. A menu is a list whatever the venue serves.
+ */
 const MODULES: readonly {
   id: StayModule;
   label: string;
-  icon: LucideIcon;
+  icon: IconName;
 }[] = [
-  { id: "overview", label: "Overview", icon: Home },
-  { id: "rooms_places", label: "Rooms & Places", icon: BedDouble },
+  { id: "overview", label: "Overview", icon: "home" },
+  { id: "rooms_places", label: "Rooms & Places", icon: "grid" },
   {
     id: "availability_pricing",
     label: "Availability & pricing",
-    icon: CalendarDays,
+    icon: "calendar",
   },
-  { id: "reservations", label: "Reservations", icon: FileCheck2 },
-  { id: "menu", label: "Menus", icon: Utensils },
-  { id: "settings", label: "Settings", icon: Settings },
+  { id: "reservations", label: "Reservations", icon: "notebook" },
+  { id: "menu", label: "Menus", icon: "list" },
+  { id: "settings", label: "Settings", icon: "settings" },
 ];
 
 const PROPERTY_KINDS: readonly {
@@ -161,7 +179,7 @@ interface ChecklistRowProps {
   complete: boolean;
   optional?: boolean;
   onPress: () => void;
-  icon: LucideIcon;
+  icon: IconName;
   testID: string;
   /** #1484 — wide-desktop grid cell (multi-column reflow). */
   wide?: boolean;
@@ -173,14 +191,19 @@ function ChecklistRow({
   complete,
   optional = false,
   onPress,
-  icon: RowIcon,
+  icon,
   testID,
   wide = false,
 }: ChecklistRowProps): React.ReactElement {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${title}. ${detail}`}
+      // #1532 — the state was carried ONLY by a tick-or-circle glyph, which a
+      // screen reader announces as "check mark" / "white circle", i.e. as
+      // nothing. Say it in words.
+      accessibilityLabel={`${title}. ${detail}. ${
+        optional ? "Optional" : complete ? "Done" : "Still to do"
+      }`}
       onPress={onPress}
       style={({ pressed }) => [
         styles.checkRow,
@@ -192,7 +215,7 @@ function ChecklistRow({
       testID={testID}
     >
       <View style={styles.rowIcon}>
-        <RowIcon size={18} color={textTokens.secondary} />
+        <Icon name={icon} size={18} color={textTokens.secondary} />
       </View>
       <View style={styles.rowCopy}>
         <Text style={styles.rowTitle}>{title}</Text>
@@ -201,11 +224,14 @@ function ChecklistRow({
       {optional ? (
         <Text style={styles.optional}>Optional</Text>
       ) : complete ? (
-        <Check size={19} color={semantic.success} />
+        <Icon name="check" size={19} color={semantic.success} />
       ) : (
-        <Circle size={18} color={textTokens.tertiary} />
+        // The incomplete marker is a plain outline ring. `Icon` has no bare
+        // circle and registering a lucide `Circle` for it would put an eager
+        // glyph back in `__common` for one decorative dot.
+        <View style={styles.pendingDot} accessibilityElementsHidden />
       )}
-      <ChevronRight size={18} color={textTokens.tertiary} />
+      <Icon name="chevR" size={18} color={textTokens.tertiary} />
     </Pressable>
   );
 }
@@ -313,7 +339,7 @@ function StayOverview({
         }
         complete={basicsReady}
         onPress={() => onSelect("settings")}
-        icon={Home}
+        icon="home"
         testID="stay-check-basics"
         wide={isWideDesktop}
       />
@@ -327,7 +353,7 @@ function StayOverview({
         complete={detailsReady}
         optional
         onPress={() => onSelect("settings")}
-        icon={Accessibility}
+        icon="sparkle"
         testID="stay-check-amenities"
         wide={isWideDesktop}
       />
@@ -340,7 +366,7 @@ function StayOverview({
         }
         complete={supplyReady}
         onPress={() => onSelect("rooms_places")}
-        icon={BedDouble}
+        icon="grid"
         testID="stay-check-inventory"
         wide={isWideDesktop}
       />
@@ -353,7 +379,7 @@ function StayOverview({
         }
         complete={availabilityReady}
         onPress={() => onSelect("availability_pricing")}
-        icon={CalendarDays}
+        icon="calendar"
         testID="stay-check-availability"
         wide={isWideDesktop}
       />
@@ -363,7 +389,7 @@ function StayOverview({
         complete={false}
         optional
         onPress={() => onSelect("menu")}
-        icon={Utensils}
+        icon="list"
         testID="stay-check-menus"
         wide={isWideDesktop}
       />
@@ -378,7 +404,7 @@ function StayOverview({
         }
         complete={bankReady}
         onPress={() => router.push(`/brand/${brandId}/payments` as never)}
-        icon={CreditCard}
+        icon="bank"
         testID="stay-check-bank"
         wide={isWideDesktop}
       />
@@ -391,7 +417,7 @@ function StayOverview({
         }
         complete={venueApproved}
         onPress={() => onSelect("settings")}
-        icon={FileCheck2}
+        icon="shield"
         testID="stay-check-review"
         wide={isWideDesktop}
       />
@@ -399,8 +425,14 @@ function StayOverview({
   );
 
   return (
+    <View style={styles.moduleRoot}>
     <ScrollView
       contentContainerStyle={isWideDesktop ? styles.pageDesktop : styles.page}
+      // #1532 §2 — missing from EVERY Stay scroller. Without it the FIRST tap
+      // on any control while a keyboard is open only dismisses the keyboard
+      // (Constitution #1 dead tap).
+      keyboardShouldPersistTaps="handled"
+      testID="stay-overview-scroll"
     >
       <View style={styles.titleRow}>
         <View style={styles.titleCopy}>
@@ -420,7 +452,10 @@ function StayOverview({
         </View>
       </View>
 
-      <GlassCard variant="elevated" style={styles.readinessCard}>
+      {/* #1532 §4 — `contentStyle`, not `style`. The gap was declared on the
+          card's CHROME node, whose only in-flow child is the clip view, so it
+          spaced nothing. See `GlassCard.contentStyle`. */}
+      <GlassCard variant="elevated" contentStyle={styles.readinessCard}>
         <View style={styles.readinessHead}>
           <View>
             <Text style={styles.cardTitle}>Ready to publish</Text>
@@ -461,19 +496,6 @@ function StayOverview({
         )}
       </GlassCard>
 
-      <Button
-        label={isActive ? "Stay is live" : "Publish Stay"}
-        onPress={() => {
-          if (settings !== null) {
-            publish.mutate({ expectedVersion: settings.version });
-          }
-        }}
-        disabled={isActive || publishBlocked}
-        loading={publish.isPending}
-        fullWidth
-        size="lg"
-        testID="stay-publish"
-      />
       {publishBlocked && !isActive ? (
         <View style={styles.blocker}>
           <Text style={styles.blockerTitle}>Publishing is safely blocked</Text>
@@ -487,6 +509,25 @@ function StayOverview({
         <Text style={styles.error}>{publishErrorCopy(publish.error)}</Text>
       ) : null}
     </ScrollView>
+    {/* #1532 D5 — the module's primary action is PINNED, not buried at the
+        bottom of a scroll under 144pt of dead padding. Hidden while the
+        keyboard is up (Overview has no fields, but the rule is one rule). */}
+    <StayActionBar testID="stay-overview-action-bar">
+      <Button
+        label={isActive ? "Stay is live" : "Publish Stay"}
+        onPress={() => {
+          if (settings !== null) {
+            publish.mutate({ expectedVersion: settings.version });
+          }
+        }}
+        disabled={isActive || publishBlocked}
+        loading={publish.isPending}
+        fullWidth
+        size="lg"
+        testID="stay-publish"
+      />
+    </StayActionBar>
+    </View>
   );
 }
 
@@ -500,6 +541,21 @@ function StaySettings({ venueId }: StaySettingsProps): React.ReactElement {
   const inventory = useStayInventory(venueId);
   const save = useSaveStaySettings(venueId);
   const settings = inventory.data?.settings ?? null;
+  /**
+   * #1532 §3 — THE SILENT OVERWRITE, and the sharpest of the seven state-loss
+   * paths because it needs NO user action at all.
+   *
+   * The seeding effect below used to depend on the `settings` OBJECT. React
+   * Query hands back a NEW object identity on every refetch — a window focus, a
+   * reconnect, a background poll — so an operator typing into these ten fields
+   * had their work replaced by the server snapshot mid-sentence, with nothing
+   * on screen to explain it.
+   *
+   * The row carries a monotonic `version`, which is the actual identity of "the
+   * server state changed". Seeding once per version means a refetch that
+   * returns the SAME row is a no-op, while a genuinely newer row still seeds.
+   */
+  const seededVersionRef = useRef<number | null>(null);
   const [propertyKind, setPropertyKind] = useState<StayPropertyKind | null>(
     null,
   );
@@ -516,6 +572,8 @@ function StaySettings({ venueId }: StaySettingsProps): React.ReactElement {
 
   useEffect(() => {
     if (settings === null) return;
+    if (seededVersionRef.current === settings.version) return;
+    seededVersionRef.current = settings.version;
     setPropertyKind(settings.property_kind);
     setSummary(settings.summary ?? "");
     setTimezone(settings.timezone);
@@ -567,56 +625,71 @@ function StaySettings({ venueId }: StaySettingsProps): React.ReactElement {
   }
 
   return (
-    // #1484 — Settings is an EDITABLE FORM, so on wide desktop it keeps a
-    // readable-measure cap (`suiteFormMaxWidth`) instead of stretching to the
-    // full workspace width — but LEFT-anchored, flush with the rail seam.
+    <View style={styles.moduleRoot}>
+    {/* #1484 — Settings is an EDITABLE FORM, so on wide desktop it keeps a
+        readable-measure cap (`suiteFormMaxWidth`) instead of stretching to the
+        full workspace width — but LEFT-anchored, flush with the rail seam. */}
     <ScrollView
       contentContainerStyle={isWideDesktop ? styles.pageForm : styles.page}
+      keyboardShouldPersistTaps="handled"
+      testID="stay-settings-scroll"
     >
-      <Text style={styles.pageTitle}>Stay settings</Text>
-      <Text style={styles.helper}>
-        These are property-level details. Each Room and Place keeps its own
-        description, photos, amenities, price, fees and policy.
-      </Text>
+      <View style={styles.sectionHead}>
+        <Text style={styles.pageTitle}>Stay settings</Text>
+        <Text style={styles.helper}>
+          These are property-level details. Each Room and Place keeps its own
+          description, photos, amenities, price, fees and policy.
+        </Text>
+      </View>
 
-      <GlassCard variant="base" style={styles.formCard}>
-        <Text style={styles.fieldLabel}>Property type (optional)</Text>
-        <View style={styles.chipWrap}>
-          {PROPERTY_KINDS.map((kind) => (
-            <Pressable
-              key={kind.id}
-              accessibilityRole="radio"
-              accessibilityLabel={kind.label}
-              accessibilityState={{ checked: propertyKind === kind.id }}
-              onPress={() => setPropertyKind(kind.id)}
-              style={[
-                styles.choiceChip,
-                propertyKind === kind.id && styles.choiceChipActive,
-              ]}
-            >
-              <Text
+      {/* #1532 §4 — `contentStyle`. On `style` this 16pt gap reached a node
+          with one in-flow child and rendered as 0, which is why every field
+          here needed a `marginTop` hack to look separated at all. */}
+      <GlassCard variant="base" contentStyle={styles.formCard}>
+        <View style={styles.field}>
+          <Text style={styles.fieldLabel}>Property type (optional)</Text>
+          <View style={styles.chipWrap}>
+            {PROPERTY_KINDS.map((kind) => (
+              <Pressable
+                key={kind.id}
+                accessibilityRole="radio"
+                accessibilityLabel={kind.label}
+                accessibilityState={{ checked: propertyKind === kind.id }}
+                onPress={() => setPropertyKind(kind.id)}
                 style={[
-                  styles.choiceText,
-                  propertyKind === kind.id && styles.choiceTextActive,
+                  styles.choiceChip,
+                  propertyKind === kind.id && styles.choiceChipActive,
                 ]}
               >
-                {kind.label}
-              </Text>
-            </Pressable>
-          ))}
+                <Text
+                  style={[
+                    styles.choiceText,
+                    propertyKind === kind.id && styles.choiceTextActive,
+                  ]}
+                >
+                  {kind.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
         </View>
 
         <Field
           label="Stay summary"
+          // #1532 §4 — the hint used to be a SIBLING rendered AFTER the input,
+          // so it sat between one field's box and the next field's label and
+          // read as belonging to either. Helpers go between the label and the
+          // input, always (the #1501 field anatomy, now applied here too).
+          helper="At least 20 characters. Guests read this first."
           value={summary}
           onChangeText={setSummary}
           placeholder="What makes this property worth staying at?"
           multiline
           testID="stay-settings-summary"
         />
-        <Text style={styles.fieldHint}>Minimum 20 characters.</Text>
         <Field
-          label="IANA timezone"
+          label="Local time zone"
+          helper="The zone your front desk works in — arrival times are read against it."
           value={timezone}
           onChangeText={setTimezone}
           placeholder="Africa/Lagos"
@@ -643,43 +716,49 @@ function StaySettings({ venueId }: StaySettingsProps): React.ReactElement {
           </View>
         </View>
 
-        <Text style={styles.fieldLabel}>Default confirmation</Text>
-        <View style={styles.twoCol}>
-          {(["instant", "request"] as const).map((value) => (
-            <Pressable
-              key={value}
-              accessibilityRole="radio"
-              accessibilityLabel={
-                value === "instant"
-                  ? "Instant confirmation"
-                  : "Request confirmation"
-              }
-              accessibilityState={{ checked: mode === value }}
-              onPress={() => setMode(value)}
-              style={[styles.modeCard, mode === value && styles.modeCardActive]}
-            >
-              <Text style={styles.rowTitle}>
-                {value === "instant" ? "Instant" : "Request"}
-              </Text>
-              <Text style={styles.rowDetail}>
-                {value === "instant"
-                  ? "Confirm after payment"
-                  : "Staff approves before payment"}
-              </Text>
-            </Pressable>
-          ))}
+        <View style={styles.field}>
+          <Text style={styles.fieldLabel}>Default confirmation</Text>
+          <View style={styles.twoCol}>
+            {(["instant", "request"] as const).map((value) => (
+              <Pressable
+                key={value}
+                accessibilityRole="radio"
+                accessibilityLabel={
+                  value === "instant"
+                    ? "Instant confirmation"
+                    : "Request confirmation"
+                }
+                accessibilityState={{ checked: mode === value }}
+                onPress={() => setMode(value)}
+                style={[
+                  styles.modeCard,
+                  mode === value && styles.modeCardActive,
+                ]}
+              >
+                <Text style={styles.rowTitle}>
+                  {value === "instant" ? "Instant" : "Request"}
+                </Text>
+                <Text style={styles.rowDetail}>
+                  {value === "instant"
+                    ? "Confirm after payment"
+                    : "Staff approves before payment"}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
         </View>
 
         <Field
           label="Property amenities"
+          helper="Separate each one with a comma."
           value={amenities}
           onChangeText={setAmenities}
           placeholder="Pool, Wi-Fi, breakfast, gym"
           testID="stay-settings-amenities"
         />
-        <Text style={styles.fieldHint}>Separate items with commas.</Text>
         <Field
           label="Accessibility"
+          helper="Separate each one with a comma."
           value={accessibility}
           onChangeText={setAccessibility}
           placeholder="Step-free entrance, lift, accessible bathroom"
@@ -703,6 +782,16 @@ function StaySettings({ venueId }: StaySettingsProps): React.ReactElement {
         />
       </GlassCard>
 
+      {save.isError ? (
+        <Text style={styles.error}>
+          We couldn’t save these settings. Reload and try again.
+        </Text>
+      ) : null}
+    </ScrollView>
+    {/* #1532 D5 — pinned, and HIDDEN while the keyboard is up: the
+        `KeyboardToolbar` already owns the band above the keyboard, and two
+        stacked bars would eat ~160pt of a ~470pt visible band. */}
+    <StayActionBar testID="stay-settings-action-bar">
       <Button
         label={saved ? "Saved" : "Save Stay settings"}
         onPress={submit}
@@ -712,17 +801,14 @@ function StaySettings({ venueId }: StaySettingsProps): React.ReactElement {
         size="lg"
         testID="stay-settings-save"
       />
-      {save.isError ? (
-        <Text style={styles.error}>
-          We couldn’t save these settings. Reload and try again.
-        </Text>
-      ) : null}
-    </ScrollView>
+    </StayActionBar>
+    </View>
   );
 }
 
 function Field({
   label,
+  helper,
   value,
   onChangeText,
   placeholder,
@@ -730,6 +816,8 @@ function Field({
   testID,
 }: {
   label: string;
+  /** #1532 §4 — sits between the label and the input, never after it. */
+  helper?: string;
   value: string;
   onChangeText: (value: string) => void;
   placeholder: string;
@@ -737,8 +825,16 @@ function Field({
   testID: string;
 }): React.ReactElement {
   return (
-    <View style={styles.field}>
-      <Text style={styles.fieldLabel}>{label}</Text>
+    <View style={styles.field} testID={`${testID}-field`}>
+      {/* #1532 §4 — label and helper are ONE unit at 2pt; the 8pt below this
+          block is what separates them from the input. That difference is the
+          whole grouping: the eye reads two things, not three. */}
+      <View style={styles.fieldLabelBlock}>
+        <Text style={styles.fieldLabel}>{label}</Text>
+        {helper !== undefined ? (
+          <Text style={styles.fieldHint}>{helper}</Text>
+        ) : null}
+      </View>
       <TextInput
         value={value}
         onChangeText={onChangeText}
@@ -746,6 +842,7 @@ function Field({
         placeholderTextColor={textTokens.tertiary}
         multiline={multiline}
         accessibilityLabel={label}
+        accessibilityHint={helper}
         style={[styles.input, multiline && styles.inputMultiline]}
         testID={testID}
       />
@@ -802,8 +899,20 @@ export function StaySuiteShell({
           contentContainerStyle={
             isWideDesktop ? styles.pageDesktop : styles.page
           }
+          keyboardShouldPersistTaps="handled"
+          testID="stay-menu-scroll"
         >
-          <VenueMenuModule brandId={brandId} venueId={venueId} />
+          {/* #1532 §5.6 — the module promised "Guests see your menu on your
+              public page" while `PublicVenuePage.tsx:179` hard-codes
+              `hasMenu = !isStay`, so for a hotel that promise was simply
+              false. Seth's decision is that Stays get a menu of their own
+              (#1536); until it exists, the operator gets the truth instead of
+              a promise nothing can keep. */}
+          <VenueMenuModule
+            brandId={brandId}
+            venueId={venueId}
+            publicVisibility="not_yet"
+          />
         </ScrollView>
       );
     }
@@ -811,7 +920,24 @@ export function StaySuiteShell({
       return <StayReservationsModule venueId={venueId} />;
     }
     return (
+      /**
+       * #1532 defect 3 — `key` is the whole fix for the LYING TAB.
+       *
+       * Rooms & Places and Availability & pricing render the SAME component
+       * type at the SAME tree position, distinguished only by `mode`. With no
+       * key React reconciled them as one element and PRESERVED the instance —
+       * so switching tab turned the pill orange while the open editor kept
+       * rendering (its `if (editor !== null)` early-return fires before the
+       * `mode` branch is ever read). The operator was told they were on
+       * Availability & pricing while looking at the Add form: not a dead tap,
+       * a lying one, and harder to recover from because nothing signals it.
+       *
+       * Keying on the module also stops scroll offset, `filter` and `search`
+       * bleeding between the two — which is why Availability used to open
+       * mid-form with its heading already scrolled off screen.
+       */
       <StayInventoryManager
+        key={activeModule}
         brandId={brandId}
         venueId={venueId}
         mode={activeModule === "rooms_places" ? "inventory" : "availability"}
@@ -842,18 +968,52 @@ export function StaySuiteShell({
     );
   }
 
-  // ----- Web-phone + native: UNCHANGED single column (pills above workspace).
+  // ----- Web-phone + native: single column, WRAPPED pills above the workspace.
   return (
     <View style={styles.root} testID="stay-suite-shell">
-      <View style={styles.moduleNav}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.moduleNavContent}
-        >
+      {/*
+        #1532 D3 + defect 4 — THE PILL ROW IS NO LONGER A SCROLLER.
+
+        Two separate defects died here.
+
+        (1) THE KEYBOARD COLLAPSE. This row used to be a `ScrollView` from the
+        `SmartScrollView` wrapper, which on native IS `KeyboardAwareScrollView`.
+        That component appends a spacer sibling whose padding animates to the
+        keyboard height. In a vertical scroller that is bottom padding and it is
+        the entire point of the wrapper; in a HORIZONTAL one it is a row item,
+        so it became a ~324pt-TALL child — and with no cross-axis alignment
+        declared, RN's default `stretch` dragged every pill up to match it. The
+        active pill measured 36.7pt closed and 323.7pt open, an 8.8x inflation
+        that squeezed the workspace to ~0pt. A plain `View` receives no
+        keyboard frames at all, so there is nothing left to inflate.
+
+        (2) THE HIDDEN DESTINATIONS. Only 3 of the 6 pills were reachable at
+        rest at 440pt, and a horizontal scroller offers no affordance that more
+        exists — Menus and Settings were simply undiscoverable. Wrapping shows
+        ALL SIX at every width, which was the requirement and is met.
+
+        WHAT IT COSTS — measured on device (#1532 tester, iPhone 17 Pro Max),
+        NOT the design's arithmetic, which was wrong:
+
+          designed  2 rows /  96pt   <- assumed a pill width the labels do not
+                                        have
+          MEASURED  3 rows / 142.0pt <- the pills are content-sized and total
+                                        ~813pt, so they wrap to THREE rows at
+                                        440, 402, 390 AND 360
+
+        So the band goes 53pt -> 142.0pt (+89pt), and the 144 -> 100pt page
+        padding gives back 44pt: NET -45pt of workspace, not the "fully repaid"
+        this comment used to claim. That claim never rendered.
+
+        Deliberately NOT redesigned here: shrinking the pills would either
+        truncate approved labels or push touch targets under the accessibility
+        floor. The band cost is Seth's call, routed separately. See
+        `STAY_PAGE_BOTTOM_PAD`.
+      */}
+      <View style={styles.moduleNav} testID="stay-modules-band">
+        <View style={styles.moduleNavContent}>
           {MODULES.map((module) => {
             const selected = activeModule === module.id;
-            const ModuleIcon = module.icon;
             return (
               <Pressable
                 key={module.id}
@@ -864,7 +1024,8 @@ export function StaySuiteShell({
                 style={[styles.modulePill, selected && styles.modulePillActive]}
                 testID={`stay-module-${module.id}`}
               >
-                <ModuleIcon
+                <Icon
+                  name={module.icon}
                   size={16}
                   color={selected ? "#0c0e12" : textTokens.secondary}
                 />
@@ -879,7 +1040,7 @@ export function StaySuiteShell({
               </Pressable>
             );
           })}
-        </ScrollView>
+        </View>
       </View>
       <View style={styles.workspace}>{renderWorkspace()}</View>
     </View>
@@ -892,22 +1053,43 @@ export function StaySuiteShell({
  */
 const PAGE_BASE = {
   padding: spacing.md,
-  paddingBottom: spacing.xxl * 3,
-  gap: spacing.md,
+  // #1532 §4 — was `spacing.xxl * 3` (144pt) of dead scroll sized for a bottom
+  // nav that `/venue/[venueId]` does not render (it lives OUTSIDE `app/(tabs)/`).
+  // Now exactly what the PINNED action bar occupies, plus one gutter.
+  paddingBottom: STAY_PAGE_BOTTOM_PAD,
+  // #1532 §4 — section -> section is the widest boundary on the page (32),
+  // so the six sections read as six things rather than one wall.
+  gap: STAY_SPACING.sectionToSection,
   width: "100%",
 } as const;
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: canvas.discover },
   workspace: { flex: 1 },
+  // #1532 D5 — a module is a scroller PLUS a pinned bar, so it needs a
+  // positioning host. `flex: 1` so the scroller still fills the workspace.
+  moduleRoot: { flex: 1 },
   moduleNav: {
+    // #1532 defect 4 — chrome does not react to the keyboard. `flexShrink: 0`
+    // is belt-and-braces (a bare RN View already defaults to it); what actually
+    // fixed the collapse is that this band no longer contains a ScrollView at
+    // all, so no keyboard spacer can be injected into it.
+    flexShrink: 0,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: glass.border.profileBase,
   },
+  // ROW-ONLY (I-AXIS-SCOPED-FLEX): declares its own `flexDirection`, so every
+  // other key here is read against that one axis. `alignItems: "flex-start"` is
+  // LOAD-BEARING — RN's default `stretch` is what let one tall sibling drag
+  // every pill to its height, which is exactly how 36.7pt became 323.7pt.
   moduleNavContent: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "flex-start",
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    gap: spacing.sm,
+    columnGap: spacing.sm,
+    rowGap: spacing.sm,
   },
   modulePill: {
     flexDirection: "row",
@@ -983,6 +1165,9 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   statePillTextLive: { color: semantic.success },
+  // CONTENT-node measures (#1532 §4). These are passed as `contentStyle`, so
+  // they land on the View that actually parents the children. On `style` they
+  // reached `GlassChrome`'s outer node — one in-flow child — and rendered 0.
   readinessCard: { gap: spacing.sm },
   // #1484 P1-2 — WIDE DESKTOP ONLY, applied to the wrapper that DIRECTLY
   // parents the readiness rows (see the comment at the call site). Because this
@@ -1079,8 +1264,24 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   stateTitle: { ...typography.h3, color: textTokens.primary },
-  formCard: { gap: spacing.md },
-  field: { gap: spacing.xs, marginTop: spacing.md },
+  formCard: { gap: STAY_SPACING.fieldToFieldStacked },
+  // STACK measure (I-AXIS-SCOPED-FLEX): no flex-axis key at all. The
+  // `marginTop: spacing.md` this used to carry was a WORKAROUND for the dead
+  // card gap — with `contentStyle` live, the card owns field-to-field spacing
+  // and the field owns only its own internals.
+  field: { gap: STAY_SPACING.helperToInput },
+  /** label + its helper are ONE unit; 2pt is what makes them read as one. */
+  fieldLabelBlock: { gap: STAY_SPACING.labelToHelper },
+  /** section title + its caption, same 2pt rule. */
+  sectionHead: { gap: STAY_SPACING.sectionTitleToCaption },
+  /** The incomplete-checklist marker: an outline ring, no eager glyph. */
+  pendingDot: {
+    width: 18,
+    height: 18,
+    borderRadius: radius.full,
+    borderWidth: 1.75,
+    borderColor: textTokens.tertiary,
+  },
   fieldLabel: {
     ...typography.bodySm,
     color: textTokens.primary,
@@ -1113,7 +1314,14 @@ const styles = StyleSheet.create({
   },
   choiceText: { ...typography.bodySm, color: textTokens.secondary },
   choiceTextActive: { color: "#0c0e12", fontWeight: "700" },
-  twoCol: { flexDirection: "row", gap: spacing.sm },
+  // ROW-ONLY (I-AXIS-SCOPED-FLEX). 16pt is the side-by-side field boundary.
+  twoCol: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    columnGap: STAY_SPACING.fieldToFieldInRow,
+    rowGap: STAY_SPACING.fieldToFieldInRow,
+    flexWrap: "wrap",
+  },
   flexOne: { flex: 1 },
   modeCard: {
     flex: 1,

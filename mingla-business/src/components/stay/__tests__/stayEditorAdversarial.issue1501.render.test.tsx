@@ -153,7 +153,19 @@ jest.mock("react-native-reanimated", () => {
       out: (fn: unknown) => fn,
       inOut: (fn: unknown) => fn,
       ease: () => 0,
+      // #1532 — TWO ADDED ENTRIES. `Sheet` -> `SheetMobile:207` reads
+      // `Easing.in(Easing.cubic)` at MODULE SCOPE for its close timing, and
+      // this mock had neither, so the suite failed to LOAD once the Stay
+      // editor moved into the Sheet. Everything above is the pre-#1532 mock,
+      // unchanged and in its original order.
+      in: (fn: unknown) => fn,
+      cubic: () => 0,
     },
+    // #1532 — ONE ADDED SIBLING of `Easing` (NOT a member of it):
+    // `SheetMobile:306` and `Modal:155` both cancel their animations on
+    // unmount, and this mock had no `cancelAnimation`, so mounting the editor
+    // sheet threw during commit.
+    cancelAnimation: () => undefined,
     runOnJS: (fn: unknown) => fn,
     useAnimatedStyle: (fn: () => unknown) => {
       try {
@@ -1380,6 +1392,11 @@ describe("#1501 PERM — a role that cannot edit cannot edit ANYTHING", () => {
    */
   const FINANCE_ONLY_ALLOWED = new Set<string>([
     "stay-offering-save",
+    // #1532 — ADDITIVE. `stay-offering-cancel` is CHROME, not an edit: it is
+    // the exit affordance the editor never had, and a role that cannot edit
+    // still has to be able to leave. Trapping a view-only operator behind a
+    // form is a worse permission bug than the one this audit guards.
+    "stay-offering-cancel",
     "stay-offering-price",
     "stay-offering-fee-amount",
     "stay-offering-fee-label",

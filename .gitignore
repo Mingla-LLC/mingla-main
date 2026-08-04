@@ -125,3 +125,11 @@ TokensNeeded.md
 # (ads consolidated to ~/Desktop/Mingla Ads/).
 .agents/
 skills-lock.json
+
+# ORCH-1383 strict-grep batch runner output. `run-batch.mjs:147` hard-codes
+# `<repo root>/gate-results-<class>.json` — there is no output-path flag — and
+# the workflow uploads it as a CI ARTIFACT (strict-grep-mingla-business.yml:619
+# etc.), which reads the filesystem and is unaffected by this ignore. So the
+# file must exist at that path when the batch runs, and must never be committed:
+# it is a 7,000-line run log of one machine's local sweep.
+gate-results-*.json

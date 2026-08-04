@@ -1,0 +1,128 @@
+# Issue #1532 [stay-manager-ux] — the Stay manager UX pass: the spacing scale
+# that never rendered, the keyboard collapsing the chrome, the editor becoming a
+# committed task, and the restaurant wording on a hotel.
+#
+# WHY A DEDICATED WORKFLOW: the proofs MOUNT the manager, so they are
+# `*.render.test.tsx`, and `mingla-business/jest.config.cjs` deliberately
+# excludes every `*.render.test.tsx` from the default node/ts-jest suite. Without
+# this job those proofs would be DARK. Mirrors issue-1484 / issue-1501.
+#
+# NOTE the split, because it matters: the CONTRACT proofs
+# (`stayLayoutContracts.issue1532.test.ts` — the proximity ratio, the dismissal
+# funnel, the chip-row ceiling) run under the DEFAULT config, i.e. inside the
+# REQUIRED `mingla-business jest suite` check, so the load-bearing arithmetic is
+# gated even if this workflow's paths filter never fires. This job proves the
+# rendered TREE applies that contract, which is the half the last four
+# regressions in this workstream all failed.
+#
+# NOT a required check (not in ruleset 13549056 / 19508605) — it reports.
+
+name: Issue #1532 Stay manager UX
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: issue-1532-stay-manager-ux-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  issue-1532-stay-manager-ux:
+    name: Stay manager UX (render proofs + gates)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+
+      - name: Install Business dependencies
+        run: npm ci
+
+      # THE FOUR DEFECTS, each proved against a MOUNTED tree: the card gap that
+      # measured 0.0pt, the chip row that inflated 36.7 -> 323.7pt, the tab that
+      # turned orange while the content did not change, and the sheet headed
+      # "Reserve a table" above `YOUR STAY · Check-in 15:00`.
+      - name: Stay manager UX render proofs
+        run: npx jest --config jest.issue1532.render.cjs --runInBand
+
+      # The contract half, run explicitly here too so a failure is attributable
+      # to #1532 rather than buried in the whole-suite run.
+      - name: Layout + dismissal contracts
+        run: >-
+          npx jest --runInBand
+          src/components/stay/__tests__/stayLayoutContracts.issue1532.test.ts
+
+      # #1484 and #1501 must stay green: #1532 re-scales the spacing they pinned
+      # and moves the editor into a Sheet, so their measures are the regression
+      # surface most likely to move.
+      - name: Issue #1484 Stay desktop measures still hold
+        run: |
+          npx jest --config jest.issue1484.render.cjs --runInBand
+          npx jest --config jest.issue1484.web.render.cjs --runInBand
+
+      - name: Issue #1501 editor proofs still hold
+        run: |
+          npx jest --config jest.issue1501.render.cjs --runInBand
+          npx jest --config jest.issue1501.web.render.cjs --runInBand
+          npx jest --config jest.issue1501.tester.cjs --runInBand
+
+      # I-PROPOSED-SMART-SCROLLVIEW-WRAPPER-ONLY. `StayChipRow` imports a BARE
+      # `react-native` ScrollView and holds zero text inputs, which is legal
+      # exactly as this gate is written — no allowlist entry, no amendment. This
+      # job proves that claim rather than asserting it.
+      - name: Keyboard-plumbing gate (no amendment needed)
+        working-directory: .
+        run: |
+          node .github/scripts/strict-grep/orch-0892-no-bespoke-keyboard-plumbing.mjs --self-test
+          node .github/scripts/strict-grep/orch-0892-no-bespoke-keyboard-plumbing.mjs
+
+      # #1532 moves `StaySuiteShell` entirely off lucide onto the in-app `Icon`
+      # roster, DELETING six entries from the shim's used-set. INV-4 fails if a
+      # still-imported icon is missing from it.
+      - name: Business-web lucide shim drift guard
+        working-directory: .
+        run: |
+          node .github/scripts/strict-grep/i-proposed-1137-biz-web-lucide-real.mjs --self-test
+          node .github/scripts/strict-grep/i-proposed-1137-biz-web-lucide-real.mjs
+
+      - name: Desktop-gate-via-hook gate
+        working-directory: .
+        run: |
+          node .github/scripts/strict-grep/orch-0885-a-no-bottomnav-on-wide-desktop.mjs --self-test
+          node .github/scripts/strict-grep/orch-0885-a-no-bottomnav-on-wide-desktop.mjs
+
+      - name: Source-pin partition audit
+        run: node scripts/ci/select-source-text-pins.mjs --check
+
+      - name: Scoped lint
+        run: >-
+          npx eslint
+          src/components/stay/StaySuiteShell.tsx
+          src/components/stay/StayInventoryManager.tsx
+          src/components/stay/StayReservationsModule.tsx
+          src/components/stay/StayChipRow.tsx
+          src/components/stay/StayActionBar.tsx
+          src/components/stay/stayLayoutContracts.ts
+          src/components/ui/GlassCard.tsx
+          src/components/venue/venueReserveCopy.ts
+          src/components/venue/PublicVenueReservationSheet.tsx
+
+      # The Stay manager is behind a LAZY route, so nothing it adds may reach the
+      # eager `__common` boot chunk. #1532 is designed to be net NEGATIVE here
+      # (-6 lucide registrations, +0 new), against #1509's 2,372 B of headroom.
+      - name: Buyer web export + ORCH-1083 boot-payload budget
+        run: |
+          npx expo export -p web --output-dir /tmp/issue-1532-web --clear
+          ORCH_1083_WEB_BUILD=/tmp/issue-1532-web \
+            node scripts/ci/orch-1083-initial-bundle-budget.mjs

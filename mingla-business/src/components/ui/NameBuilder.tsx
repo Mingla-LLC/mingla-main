@@ -58,6 +58,7 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import { STAY_SPACING } from "../stay/stayLayoutContracts";
 
 import { Button } from "./Button";
 
@@ -201,8 +202,13 @@ export const NameBuilder: React.FC<NameBuilderProps> = ({
 
   return (
     <View style={styles.field} testID={`${testID}-field`}>
-      <Text style={styles.label}>{label}</Text>
-      <Text style={styles.helper}>{helper}</Text>
+      {/* #1532 §4 — label + helper are ONE unit at 2pt; the 8pt below the
+          block separates them from the control. Before this all three sat on
+          one 4pt gap, so a field had no internal hierarchy. */}
+      <View style={styles.labelBlock}>
+        <Text style={styles.label}>{label}</Text>
+        <Text style={styles.helper}>{helper}</Text>
+      </View>
 
       {/* AMENDMENT 1: explicit widths. Numbers fixed, prefix takes the rest. */}
       <View style={styles.patternRow} testID={`${testID}-pattern-row`}>
@@ -339,7 +345,10 @@ const CHIP_MIN_HEIGHT = Platform.OS === "web" ? 32 : 48;
 
 const styles = StyleSheet.create({
   // STACK measure — no flex-axis key (I-AXIS-SCOPED-FLEX).
-  field: { width: "100%", minWidth: 0, gap: spacing.xs },
+  // #1532 §4 — the shared field rhythm, sourced from the ONE scale so this kit
+  // input and the editor's own `LabeledInput` cannot drift apart.
+  field: { width: "100%", minWidth: 0, gap: STAY_SPACING.helperToInput },
+  labelBlock: { gap: STAY_SPACING.labelToHelper },
   label: { ...typography.bodySm, color: textTokens.primary, fontWeight: "700" },
   subLabel: { ...typography.caption, color: textTokens.secondary },
   helper: {

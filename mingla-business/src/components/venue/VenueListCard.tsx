@@ -81,7 +81,13 @@ export function VenueListCard({
         warning: true,
       };
     }
-    if (menuItemCount > 0) {
+    // #1532 §5 (audit item O9) — a Stay's brand-level menu is not reachable by
+    // a guest: `PublicVenuePage.tsx:179` hard-codes `hasMenu = !isStay`. So
+    // "12 menu items" on a hotel row is a count of something nobody can see,
+    // and it reinforced the same false promise the Menus module used to make.
+    // Suppressing it here falls through to the honest reservations slot.
+    // Re-enable for Stays when #1536 ships a Stay menu that actually renders.
+    if (menuItemCount > 0 && venue.venueCategory !== "stay") {
       return {
         label:
           menuItemCount === 1 ? "1 menu item" : `${menuItemCount} menu items`,
@@ -92,7 +98,7 @@ export function VenueListCard({
       return { label: "Reservations on", warning: false };
     }
     return null;
-  }, [openFixCount, menuItemCount, reservationsEnabled]);
+  }, [openFixCount, menuItemCount, reservationsEnabled, venue.venueCategory]);
 
   return (
     <Pressable

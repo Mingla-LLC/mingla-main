@@ -97,7 +97,19 @@ jest.mock("react-native-reanimated", () => {
       out: (fn: unknown) => fn,
       inOut: (fn: unknown) => fn,
       ease: () => 0,
+      // #1532 — TWO ADDED ENTRIES. `Sheet` -> `SheetMobile:207` reads
+      // `Easing.in(Easing.cubic)` at MODULE SCOPE for its close timing, and
+      // this mock had neither, so the suite failed to LOAD once the Stay
+      // editor moved into the Sheet. Everything above is the pre-#1532 mock,
+      // unchanged and in its original order.
+      in: (fn: unknown) => fn,
+      cubic: () => 0,
     },
+    // #1532 — ONE ADDED SIBLING of `Easing` (NOT a member of it):
+    // `SheetMobile:306` and `Modal:155` both cancel their animations on
+    // unmount, and this mock had no `cancelAnimation`, so mounting the editor
+    // sheet threw during commit.
+    cancelAnimation: () => undefined,
     runOnJS: (fn: unknown) => fn,
     useAnimatedStyle: (fn: () => unknown) => {
       try {
@@ -191,6 +203,7 @@ import {
   stayFieldNumMaxWidth,
   stayProseMaxWidth,
 } from "../../../constants/designSystem";
+import { STAY_SPACING } from "../stayLayoutContracts";
 import { StayInventoryManager } from "../StayInventoryManager";
 
 type Flat = Record<string, unknown>;
@@ -266,7 +279,13 @@ describe("#1501 — field measures are axis-scoped (I-AXIS-SCOPED-FLEX)", () => 
     for (const testID of stacked) {
       const flat = styleFor(tree, `${testID}-field`);
       // The wrapper really is the field wrapper, not some unrelated View.
-      expect(flat.gap).toBe(spacing.xs);
+      // [TEST-MOD-APPROVED #1532] — the CONTRACT moved (4 -> 8), not the rule.
+      // #1532 §4 re-scales helper->input from `spacing.xs` to
+      // `STAY_SPACING.helperToInput`, so this vacuity guard now reads the same
+      // exported contract the component does instead of re-typing the token.
+      // What A-1 actually proves — that a STACKED field carries NO flex-axis
+      // key — is untouched below and still fails on any revert.
+      expect(flat.gap).toBe(STAY_SPACING.helperToInput);
       for (const key of FLEX_AXIS_KEYS) {
         expect({ testID, key, present: has(flat, key) }).toEqual({
           testID,

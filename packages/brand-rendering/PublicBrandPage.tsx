@@ -1469,7 +1469,7 @@ const ReservationsPane = ({
       <Text
         style={[styles.reservationsSupport, { color: palette.tertiaryText }]}
       >
-        Pick a location to see its menu and available times.
+        Pick a location to see what it offers and when it’s available.
       </Text>
       {venues.map((v: PublicBrandVenueSummary) => {
         const addrLine = v.address ?? v.city;

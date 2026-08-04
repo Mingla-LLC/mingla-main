@@ -55,14 +55,49 @@ const MANAGER_PLUS_RANK = BRAND_ROLE_RANK.event_manager; // 40
 export interface VenueMenuModuleProps {
   brandId: string | null;
   venueId?: string | null;
+  /**
+   * #1532 §5.6 — whether a guest can ACTUALLY see this menu on the public page.
+   *
+   * `"public"` (default, restaurants): the shipped promise is true.
+   * `"not_yet"` (a Stay): it is NOT. `PublicVenuePage.tsx:179` hard-codes
+   * `hasMenu = !isStay && …`, so a hotelier was told "Guests see your menu on
+   * your public page" by a module whose output no guest could ever reach — a
+   * write-only hole, and the single largest category leak in the Stay manager.
+   *
+   * Seth's decision was NOT to remove the module: "Stays get its own menu."
+   * Building that menu — what a hotel menu contains, where it renders for a
+   * guest, how it diverges from the restaurant tables — is #1536. What #1532
+   * owes an operator in the meantime is the truth, so this flag replaces the
+   * false promise with an honest interim state and leaves the authoring alone.
+   */
+  publicVisibility?: "public" | "not_yet";
   testID?: string;
 }
+
+/**
+ * #1532 §5.6 — the promise, told honestly. One table so the empty state and
+ * the populated intro can never claim different things about the same menu.
+ */
+const MENU_VISIBILITY_COPY = {
+  public: {
+    emptyBody: "Add categories and priced items. Guests see your menu on your public page.",
+    intro: "Your menu shows on your public venue page. Build it by category.",
+  },
+  not_yet: {
+    emptyBody:
+      "Add categories and priced items here. Guests can’t see a Stay menu on your public page yet — we’re building one made for hotels, and everything you add now will be waiting for it.",
+    intro:
+      "Guests can’t see a Stay menu on your public page yet — we’re building one made for hotels. Anything you add here is saved and will be waiting for it.",
+  },
+} as const;
 
 export function VenueMenuModule({
   brandId,
   venueId = null,
+  publicVisibility = "public",
   testID,
 }: VenueMenuModuleProps): React.ReactElement {
+  const visibilityCopy = MENU_VISIBILITY_COPY[publicVisibility];
   const brand = useCurrentBrand();
   const { rank } = useCurrentBrandRole(brandId);
   const canMutate = rank >= MANAGER_PLUS_RANK;
@@ -293,9 +328,9 @@ export function VenueMenuModule({
               <UtensilsCrossed size={34} color={textTokens.primary} />
             </View>
             <Text style={styles.emptyTitle}>Build your menu</Text>
-            <Text style={styles.emptyBody}>
+            <Text style={styles.emptyBody} testID="venue-menu-empty-body">
               {canMutate
-                ? "Add categories and priced items. Guests see your menu on your public page."
+                ? visibilityCopy.emptyBody
                 : "No menu yet. Ask a manager or owner to add one."}
             </Text>
             {canMutate ? (
@@ -329,8 +364,8 @@ export function VenueMenuModule({
   // ---- render: populated ----
   return (
     <View style={styles.host} testID={testID ?? "venue-menu-module"}>
-      <Text style={styles.intro}>
-        Your menu shows on your public venue page. Build it by category.
+      <Text style={styles.intro} testID="venue-menu-intro">
+        {visibilityCopy.intro}
       </Text>
 
       {saveError ? (

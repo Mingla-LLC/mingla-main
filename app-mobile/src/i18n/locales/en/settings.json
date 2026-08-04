@@ -75,7 +75,7 @@
         "waitlist_spot_open": "Waitlist spot open",
         "waitlist_spot_open_hint": "When a spot opens up on a waitlist you joined.",
         "buyer_reservation_confirmed": "Reservation confirmed",
-        "buyer_reservation_confirmed_hint": "When your table reservation is confirmed.",
+        "buyer_reservation_confirmed_hint": "When your reservation is confirmed.",
         "buyer_reservation_changed": "Reservation changed",
         "buyer_reservation_changed_hint": "When the time or details of your reservation change.",
         "buyer_reservation_cancelled": "Reservation cancelled",
