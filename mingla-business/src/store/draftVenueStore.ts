@@ -41,6 +41,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
+import type { ThemeInput } from "@mingla/offering-rendering";
+
 import type { BrandHourEntry, VenueCategory } from "../types/brand";
 import { defaultBrandHoursWeek } from "../utils/venueBrandHours";
 
@@ -162,6 +164,21 @@ export interface DraftVenueState {
    * inserting a duplicate. Optional for backwards-compatible v3 hydration.
    */
   submissionVenueId?: string | null;
+  /**
+   * issue #1564 — the venue's OWN theme override. `null` (and `undefined`, for
+   * a pre-1564 persisted blob) means every axis is inherited from the brand,
+   * which is what every venue in the pool is today.
+   *
+   * Held at the TOP level, not inside `claim`, because both wizards author it:
+   * create at s4/s9 and claim at c4/c9. That mirrors `website` / `priceTiers` /
+   * `wantsReservations`, which are also collected by both paths.
+   *
+   * Optional at the type level so a persisted v3 blob written before this
+   * change rehydrates through `pickDraft`'s `?? null` — additive, exactly like
+   * #1363's `coordinatePrecision` and META-ORCH-1290's `galleryUrls`, so no
+   * persist-version bump is needed and no operator loses an in-progress draft.
+   */
+  themeOverrides?: ThemeInput | null;
   /** ORCH-1263 — non-null ⇔ claim mode (10-step wizard variant). */
   claim: DraftVenueClaim | null;
   /**
@@ -199,6 +216,8 @@ const initial: DraftVenueState = {
   galleryUrls: [],
   coverChoice: null,
   submissionVenueId: null,
+  // issue #1564 — NOT SET is the default path: inherit the brand.
+  themeOverrides: null,
   claim: null,
   step: 0,
 };
@@ -238,6 +257,10 @@ const pickDraft = (s: DraftVenueState): DraftVenueState => ({
   galleryUrls: s.galleryUrls ?? [],
   coverChoice: s.coverChoice ?? null,
   submissionVenueId: s.submissionVenueId ?? null,
+  // issue #1564 — `?? null` tolerates a pre-1564 persisted v3 blob (field
+  // absent), and carries the venue's theme through the per-brand stash/restore
+  // so switching brands mid-draft cannot silently drop a chosen colour.
+  themeOverrides: s.themeOverrides ?? null,
   // ORCH-1263 — the claim block must survive activateBrand stash/restore.
   claim: s.claim,
   step: s.step,

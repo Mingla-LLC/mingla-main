@@ -23,12 +23,15 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { useDraftVenueStore } from "../../store/draftVenueStore";
+import { ThemeControlRow } from "../theme/ThemeControlRow";
+import { ThemeSheet } from "../theme/ThemeSheet";
 import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 import type { CoverPatch } from "../ui/CoverPicker";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
 import { Icon } from "../ui/Icon";
 import { coverGridColumns } from "./claim/ClaimStepCover";
 import { CLAIM_GALLERY_MAX } from "./claim/ClaimStepPhotos";
+import { useVenueThemeControl } from "./useVenueThemeControl";
 
 const EMPTY_COVER: CoverPatch = {
   coverMediaUrl: null,
@@ -48,9 +51,16 @@ export const VenueCoverStep: React.FC<VenueCoverStepProps> = ({ brandId }) => {
   const gallery = useDraftVenueStore((s) => s.galleryUrls ?? []);
   const choice = useDraftVenueStore((s) => s.coverChoice ?? null);
   const patch = useDraftVenueStore((s) => s.patch);
-  const [pickerVisible, setPickerVisible] = useState(false);
+  // #1022 A/F-13 — ONE discriminated sheet state, never two booleans, so the
+  // cover picker and the theme sheet cannot both be open at once.
+  const [activeSheet, setActiveSheet] = useState<"none" | "cover" | "theme">(
+    "none",
+  );
+  const pickerVisible = activeSheet === "cover";
   const [colWidth, setColWidth] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
+  // issue #1564 — this was the ONLY cover step in the product without colour.
+  const theme = useVenueThemeControl();
 
   const extraTile = choice !== null && !gallery.includes(choice.url) ? choice : null;
 
@@ -92,14 +102,14 @@ export const VenueCoverStep: React.FC<VenueCoverStepProps> = ({ brandId }) => {
         galleryUrls: nextGallery,
         coverChoice: { url: p.coverMediaUrl, type, isNew: true },
       });
-      setPickerVisible(false);
+      setActiveSheet("none");
     },
     [patch],
   );
 
   const uploadTile = (fullWidth: boolean): React.ReactElement => (
     <Pressable
-      onPress={() => setPickerVisible(true)}
+      onPress={() => setActiveSheet("cover")}
       accessibilityRole="button"
       accessibilityLabel="Upload a new cover photo or video"
       style={[
@@ -198,16 +208,41 @@ export const VenueCoverStep: React.FC<VenueCoverStepProps> = ({ brandId }) => {
 
       {toast !== null ? <Text style={styles.toast}>{toast}</Text> : null}
 
+      {/* issue #1564 — MOUNT 1 of 4. Beside the cover, on the way to
+          publishing, exactly where CreatorStep4Cover / ExperienceCoverStep /
+          TripCreatorStep1Basics / RsvpStep7Preview / BrandEditView already put
+          it. `host: { gap: spacing.md }` gives the 16pt gap free. */}
+      <ThemeControlRow
+        value={theme.value}
+        onChange={theme.onChange}
+        scope="venue"
+        brandTheme={theme.brandTheme}
+        brandThemeStatus={theme.brandThemeStatus}
+        onPress={() => setActiveSheet("theme")}
+        testID="venue-cover-theme-control-row"
+      />
+
       {brandId !== null ? (
         <CoverPickerSheet
           visible={pickerVisible}
-          onClose={() => setPickerVisible(false)}
+          onClose={() => setActiveSheet("none")}
           target={{ kind: "venue", brandId, venueId: "" }}
           initial={EMPTY_COVER}
           onCoverChange={handleCoverPatch}
           onShowToast={setToast}
         />
       ) : null}
+
+      {/* I-SUB-SHEET-INSIDE-PARENT — last JSX child of the root View. */}
+      <ThemeSheet
+        visible={activeSheet === "theme"}
+        onClose={() => setActiveSheet("none")}
+        value={theme.value}
+        onChange={theme.onChange}
+        scope="venue"
+        brandTheme={theme.brandTheme}
+        testID="venue-cover-theme-sheet"
+      />
     </View>
   );
 };

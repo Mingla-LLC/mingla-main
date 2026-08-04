@@ -8,7 +8,7 @@
  * "In review". Used by the create path only (claim has ClaimStepReview).
  */
 
-import React from "react";
+import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import {
@@ -20,8 +20,11 @@ import {
 import type { VenueCategory } from "../../types/brand";
 import { useBrandDiscoveryCurrency } from "../../hooks/useBrandDiscoveryCurrency";
 import { useDraftVenueStore } from "../../store/draftVenueStore";
+import { ThemeControlRow } from "../theme/ThemeControlRow";
+import { ThemeSheet } from "../theme/ThemeSheet";
 import { Button } from "../ui/Button";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
+import { useVenueThemeControl } from "./useVenueThemeControl";
 
 const CAT_LABEL: Record<VenueCategory, string> = {
   restaurant: "Restaurant",
@@ -42,6 +45,11 @@ export const VenueStep7Review: React.FC<VenueStep7ReviewProps> = ({
   onSubmit,
 }) => {
   const d = useDraftVenueStore();
+  // issue #1564 — MOUNT 2 of 4. Last chance to change the look before it goes
+  // to review, matching CreatorStep7Preview / TripCreatorStep5Review /
+  // RsvpStep7Preview, which all carry the row on their review step too.
+  const theme = useVenueThemeControl();
+  const [themeSheetOpen, setThemeSheetOpen] = useState(false);
   const currencyState = useBrandDiscoveryCurrency(d.activeBrandId);
   const currencyCode = currencyState.data?.currencyCode ?? null;
   const cover = d.coverChoice ?? null;
@@ -110,6 +118,17 @@ export const VenueStep7Review: React.FC<VenueStep7ReviewProps> = ({
           v={d.wantsReservations ? "Reservations on" : "Reservations off"}
         />
       </View>
+      <ThemeControlRow
+        value={theme.value}
+        onChange={theme.onChange}
+        scope="venue"
+        brandTheme={theme.brandTheme}
+        brandThemeStatus={theme.brandThemeStatus}
+        variant="review"
+        disabled={submitting}
+        onPress={() => setThemeSheetOpen(true)}
+        testID="venue-review-theme-control-row"
+      />
       {submitError !== null ? (
         <Text style={styles.err}>{submitError}</Text>
       ) : null}
@@ -120,6 +139,16 @@ export const VenueStep7Review: React.FC<VenueStep7ReviewProps> = ({
         size="lg"
         loading={submitting}
         disabled={submitting}
+      />
+      {/* I-SUB-SHEET-INSIDE-PARENT — last JSX child of the root View. */}
+      <ThemeSheet
+        visible={themeSheetOpen}
+        onClose={() => setThemeSheetOpen(false)}
+        value={theme.value}
+        onChange={theme.onChange}
+        scope="venue"
+        brandTheme={theme.brandTheme}
+        testID="venue-review-theme-sheet"
       />
     </View>
   );

@@ -27,6 +27,9 @@ import {
   typography,
 } from "../../../constants/designSystem";
 import { useDraftVenueStore } from "../../../store/draftVenueStore";
+import { ThemeControlRow } from "../../theme/ThemeControlRow";
+import { ThemeSheet } from "../../theme/ThemeSheet";
+import { useVenueThemeControl } from "../useVenueThemeControl";
 import { CoverPickerSheet } from "../../ui/CoverPickerSheet";
 import type { CoverPatch } from "../../ui/CoverPicker";
 
@@ -57,9 +60,17 @@ export interface ClaimStepCoverProps {
 export const ClaimStepCover: React.FC<ClaimStepCoverProps> = ({ brandId }) => {
   const claim = useDraftVenueStore((s) => s.claim);
   const patch = useDraftVenueStore((s) => s.patch);
-  const [pickerVisible, setPickerVisible] = useState(false);
+  // #1022 A/F-13 — ONE discriminated sheet state, never two booleans, so the
+  // cover picker and the theme sheet cannot both be open at once.
+  const [activeSheet, setActiveSheet] = useState<"none" | "cover" | "theme">(
+    "none",
+  );
+  const pickerVisible = activeSheet === "cover";
   const [colWidth, setColWidth] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
+  // issue #1564 — MOUNT 3 of 4, the claim twin of VenueCoverStep. A claimed
+  // place gets its own colours on the same terms a created one does.
+  const theme = useVenueThemeControl();
 
   const kept = claim?.keptGalleryUrls ?? [];
   const added = new Set(claim?.addedGalleryUrls ?? []);
@@ -121,14 +132,14 @@ export const ClaimStepCover: React.FC<ClaimStepCoverProps> = ({ brandId }) => {
           coverChoice: { url: p.coverMediaUrl, type, isNew: true },
         },
       });
-      setPickerVisible(false);
+      setActiveSheet("none");
     },
     [patch],
   );
 
   const uploadTile = (fullWidth: boolean): React.ReactElement => (
     <Pressable
-      onPress={() => setPickerVisible(true)}
+      onPress={() => setActiveSheet("cover")}
       accessibilityRole="button"
       accessibilityLabel="Upload a new cover photo or video"
       style={[
@@ -245,10 +256,20 @@ export const ClaimStepCover: React.FC<ClaimStepCoverProps> = ({ brandId }) => {
 
       {toast !== null ? <Text style={styles.toast}>{toast}</Text> : null}
 
+      <ThemeControlRow
+        value={theme.value}
+        onChange={theme.onChange}
+        scope="venue"
+        brandTheme={theme.brandTheme}
+        brandThemeStatus={theme.brandThemeStatus}
+        onPress={() => setActiveSheet("theme")}
+        testID="claim-cover-theme-control-row"
+      />
+
       {brandId !== null ? (
         <CoverPickerSheet
           visible={pickerVisible}
-          onClose={() => setPickerVisible(false)}
+          onClose={() => setActiveSheet("none")}
           target={{
             kind: "venue",
             brandId,
@@ -262,6 +283,17 @@ export const ClaimStepCover: React.FC<ClaimStepCoverProps> = ({ brandId }) => {
           onShowToast={setToast}
         />
       ) : null}
+
+      {/* I-SUB-SHEET-INSIDE-PARENT — last JSX child of the root View. */}
+      <ThemeSheet
+        visible={activeSheet === "theme"}
+        onClose={() => setActiveSheet("none")}
+        value={theme.value}
+        onChange={theme.onChange}
+        scope="venue"
+        brandTheme={theme.brandTheme}
+        testID="claim-cover-theme-sheet"
+      />
     </View>
   );
 };

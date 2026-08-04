@@ -58,6 +58,23 @@
  * Lines were DELETED (anchor strings, the baseline JSON), which is why the
  * token above is required and why it is stated here rather than only in the
  * commit body.
+ *
+ * ---------------------------------------------------------------------------
+ * [TEST-MOD-APPROVED #1564] — WHAT THIS FILE MEANS AFTER #1564
+ * ---------------------------------------------------------------------------
+ * #1564 hands the resolved palette to the table-reservation booking body, which
+ * had been painting itself Mingla orange (`#eb7825`) and near-black
+ * (`#0c0e12`) regardless of the page behind it — while the Stay body beside it
+ * had received the palette all along. The `GuestVenueReservationStub` below
+ * echoes its props, so the baseline necessarily gains a `palette` object on the
+ * three RESTAURANT cases. That is the fix arriving, not drift.
+ *
+ * The regenerated baseline (`MINGLA_1559_WRITE_BASELINE=1 npx jest
+ * publicVenueRenderParity.issue1559`) is a diff of **+48 lines, -0**: 16 lines
+ * of palette on each of `restaurant-phone-full`, `restaurant-desktop-full` and
+ * `restaurant-phone-menu-tab`, and NOTHING removed. The four Stay cases are
+ * byte-identical. No case, anchor, size floor or `expect.assertions` pin
+ * changed — this file's guard is not re-aimed here, only re-recorded.
  */
 import React from "react";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";

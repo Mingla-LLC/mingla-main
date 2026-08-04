@@ -320,6 +320,10 @@ export default function PublicVenueRoute(): React.ReactElement {
           brandId={context.brandId}
           currency={context.currency}
           analyticsSurface={analyticsSurface}
+          // issue #1564 — the slot has always carried the resolved palette (the
+          // Stay branch two lines up already used it); the table branch simply
+          // never read it, and painted Mingla orange on every brand's page.
+          palette={context.palette}
         />
       ),
     [],

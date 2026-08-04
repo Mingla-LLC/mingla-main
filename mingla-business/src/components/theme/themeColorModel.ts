@@ -211,7 +211,58 @@ export const FONT_GROUPS: readonly {
 export const ALL_FONT_SLUGS = THEME_FONT_SLUGS;
 export const ALL_ANIMATION_SLUGS = THEME_ANIMATION_SLUGS;
 
-export type ThemeControlScope = "offering" | "brand";
+/**
+ * issue #1564 — `"venue"` joins `"offering"` and `"brand"`.
+ *
+ * A venue inherits from its brand on exactly the same terms an offering does,
+ * so it shares the offering BRANCH everywhere (`resolveTheme(brandTheme,
+ * override)`, "Brand default", the brand swatch). It is a distinct SCOPE only
+ * because the copy differs in one place — the reset control, which says
+ * "Use the brand's colours" rather than "Reset colour" — and because a value
+ * that reads `"offering"` at a venue mount would be a lie a future reader
+ * would have to decode.
+ *
+ * Every `scope === "brand"` test in this codebase is therefore correct
+ * unchanged for a venue, and every `scope === "offering"` test had to be
+ * examined; the two that were exclusive equality checks (the brand swatch in
+ * ThemeSheet, and the row/sheet resolve order) are now written as
+ * `scope !== "brand"`.
+ */
+export type ThemeControlScope = "offering" | "brand" | "venue";
+
+/** The three tabs of the expanded sheet, in render order. */
+export type ThemeSheetTab = "colour" | "font" | "motion";
+
+/**
+ * issue #1564 — the footer control that returns ONE axis to inheriting.
+ *
+ * PURE and here rather than inside ThemeSheet.tsx so the wording is assertable
+ * without mounting react-native (the same reason `themeValueLine` lives here).
+ *
+ * At an offering or a brand the button undoes an edit — "Reset colour". At a
+ * VENUE the same tap means something the operator needs stated: this venue
+ * stops carrying its own look and goes back to wearing its brand's. The colour
+ * tab uses the approved string verbatim; font and motion take the identical
+ * sentence with their own noun, because a single control whose three tabs
+ * switched grammar would read as three different controls.
+ */
+export const themeResetLabel = (
+  scope: ThemeControlScope,
+  tab: ThemeSheetTab,
+): string => {
+  if (scope === "venue") {
+    return tab === "colour"
+      ? "Use the brand's colours"
+      : tab === "font"
+        ? "Use the brand's font"
+        : "Use the brand's motion";
+  }
+  return tab === "colour"
+    ? "Reset colour"
+    : tab === "font"
+      ? "Reset font"
+      : "Reset motion";
+};
 
 /**
  * The collapsed row's value line, e.g. "Brand default · Poppins · Confetti".
