@@ -7118,6 +7118,17 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   to render as text are pinned against their ACTUAL BYTES, not a stand-in, across additions-only,
   metadata-only, attested and unattested edits. A refusal that is unoverridable is correct only
   where content is genuinely annihilated or a measurement genuinely did not succeed.
+- **TEST status (2026-08-03) — NOT yet satisfied.** Independent adversarial verification
+  returned FAIL on one CRITICAL finding. It is an INTERACTION between two changes introduced
+  by this pass, each correct in isolation and each covered by its own passing case, which
+  together let a pull request destroy the contents of a test file the base branch already
+  holds while the gate reports a pass. The same underlying defect also refuses unrelated,
+  innocent entries in the same run with a message that does not describe their problem. Both
+  faces are one defect in one helper; the reproduction and the fix direction are recorded out
+  of band under the disclosure handling for this issue. The 717-range replay, the ordinary-work
+  battery, the rename cross-product and the redaction properties were all re-verified
+  independently and are clean — the finding is not in any of those. This entry must not flip
+  ACTIVE until the finding is closed and the suite is all-green with a case pinning it.
 - **Established:** DRAFT at issue #1534 SPEC 2026-08-03. Flips ACTIVE at CLOSE.
 ## DRAFT — issue #1481 (Explorer swipe lifecycle and deck performance)
 
