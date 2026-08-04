@@ -64,8 +64,36 @@ import {
 // wordmark when the secret was unset; PDFs now always embed the logo
 // (ticketPdf.ts still degrades to text if the fetch itself fails).
 import { minglaLogoUrl } from "../_shared/brandAssets.ts";
+// #1541 — THE SOLE SMS SEND PATH. This function used to own a private Twilio
+// client (`sendTwilioMessage`), which meant no market kill switch and no country
+// routing stood between a paid order and the provider. Every SMS now leaves
+// through smsAdapter, which owns SMS_LIVE_ENABLED_*, the Twilio/Termii routing
+// decision, the fail-closed contract and the STOP footer.
+// I-PROPOSED-1541-SMS-PROVIDER-EGRESS-ALLOWLIST.
+import { smsAdapter } from "../_shared/adapters/smsAdapter.ts";
+// #1541 (F-6) — LEDGER ATTRIBUTION ONLY, NEVER ROUTING. Routing belongs to the
+// adapter and to it alone; this import exists so the `provider` column stops
+// lying.
+import { countryFromE164 } from "../_shared/e164Country.ts";
 
 const MINGLA_LOGO_URL = minglaLogoUrl();
+
+// #1541 (F-6) — `ticket_order_notifications.provider` was a hardcoded "twilio"
+// literal at both SMS write sites, so a Twilio->Termii cutover was unauditable
+// on the money-path ledger: a Termii send and a Twilio send were indistinguishable
+// in the exact table that carries buyer notifications.
+//
+// This shares `countryFromE164` with the adapter, so the two CANNOT disagree
+// about the COUNTRY; only the one-line country->provider mapping is duplicated,
+// and that duplication is pinned by a test (SC-9) that drives real destinations
+// through both this helper and the adapter and asserts they agree.
+//
+// [TRANSITIONAL] — superseded when #1537 lands an adapter-RETURNED provider on
+// AdapterResult. Exit condition: `result.provider` exists on AdapterResult ->
+// delete this helper and stamp the returned value. #1541 must not edit
+// smsAdapter.ts (#1537 is in flight against that exact file).
+const providerForLedger = (to: string): string =>
+  countryFromE164(to) === "NG" ? "termii" : "twilio";
 
 function icsToBase64(ics: string): string {
   const bytes = new TextEncoder().encode(ics);
@@ -126,51 +154,13 @@ async function sendResendEmailWithAttachment(input: {
   return { id: typeof json.id === "string" ? json.id : null };
 }
 
-async function sendTwilioMessage(
-  input: { to: string; body: string },
-): Promise<{ sid: string | null }> {
-  const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
-  const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
-  const messagingServiceSid = Deno.env.get("TWILIO_MESSAGING_SERVICE_SID");
-  if (!accountSid || !authToken || !messagingServiceSid) {
-    throw new Error("twilio_env_missing");
-  }
-  const statusSecret = Deno.env.get("TWILIO_STATUS_CALLBACK_SECRET");
-  const statusCallback = statusSecret && Deno.env.get("SUPABASE_URL")
-    ? `${
-      Deno.env.get("SUPABASE_URL")
-    }/functions/v1/twilio-message-status?secret=${
-      encodeURIComponent(statusSecret)
-    }`
-    : undefined;
-  const params = new URLSearchParams({
-    To: input.to,
-    MessagingServiceSid: messagingServiceSid,
-    Body: input.body,
-  });
-  if (statusCallback) params.set("StatusCallback", statusCallback);
-  const response = await fetch(
-    `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
-    {
-      method: "POST",
-      headers: {
-        authorization: `Basic ${btoa(`${accountSid}:${authToken}`)}`,
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      body: params,
-    },
-  );
-  const json = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const failure = classifyNotificationProviderFailure(
-      "twilio",
-      response.status,
-      json,
-    );
-    throw new ProviderSendError(failure);
-  }
-  return { sid: typeof json.sid === "string" ? json.sid : null };
-}
+// #1541 — `sendTwilioMessage()` lived here. It POSTed straight to
+// api.twilio.com/.../Messages.json with its own TWILIO_* env reads, so
+// `sms_live_enabled.ng` gated nothing on this path and a Nigerian buyer's
+// confirmation was attempted (and geo-rejected by Twilio, 21408) on a money
+// path with no switch anyone could throw. Deleted, not wrapped — subtract
+// before adding. Its replacement is `smsAdapter.send()` at the two call sites
+// below, which is the ONLY sanctioned egress.
 
 interface OrderJoin {
   id: string;
@@ -254,6 +244,100 @@ async function markNotificationTerminal(
     last_error: lastError,
     updated_at: new Date().toISOString(),
   }).eq("id", notificationId);
+}
+
+// ===========================================================================
+// #1541 §4.2 — OQ-1 OPERATOR DECISION (Seth, 2026-08-04).
+// RETURN A GATED GUEST'S SPOT TO THE POOL. READ BEFORE CHANGING THE ORDER.
+// ===========================================================================
+// `waitlist_spot_open` enqueues EITHER an email row OR an SMS row, never both
+// (fn_waitlist_drain_on_capacity_freed: IF email ... ELSIF phone ... ELSE
+// CONTINUE). So an SMS row on this template exists ONLY for a guest with a
+// phone and no email — for that guest SMS is the SOLE channel, and its body
+// carries a claim URL that expires in 24 hours. The trigger has ALREADY flipped
+// the entry to 'invited' before this dispatcher runs, so a plain gated skip
+// would burn both the guest's claim window and the freed seat, in silence.
+//
+// The decision: if we cannot tell someone their spot is open, we have not
+// offered it. The entry returns to 'waiting' and the spot flows to the next
+// eligible guest on the next trigger pass.
+//
+// ATOMICITY — the release must not be separable from the skip.
+// There is no cross-table transaction available from an edge function (and
+// #1541 authors no migration, so there is no RPC to lean on). Atomicity is
+// therefore achieved by ORDERING plus a fail-closed throw, and the ordering is
+// the whole mechanism:
+//
+//   RELEASE FIRST, THEN RECORD THE SKIP.
+//
+//   - The release is ONE statement (a single PATCH setting all four fields), so
+//     it cannot itself half-apply.
+//   - If the release fails or matches nothing, this THROWS before the
+//     notification is touched. Nothing has changed: the entry is exactly as the
+//     trigger left it and the row is not 'skipped', so the sweeper retries.
+//   - If the release succeeds and the notification write then fails, the spot is
+//     ALREADY back in the pool — the guest keeps their place and the next guest
+//     is offered the seat. The bookkeeping row is retried; the release is
+//     idempotent.
+//
+// The state the reverse order would permit — notification 'skipped' (the system
+// believes it is finished) while the entry is still 'invited' (the seat is
+// consumed and the guest was never told) — IS UNREACHABLE, because the skip is
+// only ever written after the release has been verified. That is the property,
+// and it holds under failure, not merely on the happy path.
+//
+// VACUITY GUARD (#1529 discipline): an UPDATE that matched ZERO rows is not a
+// release. We assert the returned row count is > 0 AND re-read the four fields
+// off the returned row before believing it — a lookup that proves nothing by
+// matching nothing is the exact failure mode this chain of work exists to close.
+async function releaseWaitlistEntryToPool(
+  supabase: ReturnType<typeof serviceClient>,
+  waitlistEntryId: string,
+): Promise<void> {
+  // NOTE: `waitlist_entries` has NO `updated_at` column (verified against
+  // production information_schema, 2026-08-04). Do not add one here.
+  const { data, error } = await supabase
+    .from("waitlist_entries")
+    .update({
+      status: "waiting",
+      invited_at: null,
+      notified_at: null,
+      notification_id: null,
+    })
+    .eq("id", waitlistEntryId)
+    .select("id,status,invited_at,notified_at,notification_id");
+
+  if (error !== null) {
+    throw new ProviderSendError({
+      retryable: true,
+      detail: `waitlist_release_failed:${error.message}`,
+      status: 0,
+    });
+  }
+  const rows = (Array.isArray(data) ? data : []) as Array<{
+    status: string | null;
+    invited_at: string | null;
+    notified_at: string | null;
+    notification_id: string | null;
+  }>;
+  if (rows.length === 0) {
+    throw new ProviderSendError({
+      retryable: true,
+      detail: `waitlist_release_matched_no_rows:${waitlistEntryId}`,
+      status: 0,
+    });
+  }
+  const row = rows[0];
+  if (
+    row.status !== "waiting" || row.invited_at !== null ||
+    row.notified_at !== null || row.notification_id !== null
+  ) {
+    throw new ProviderSendError({
+      retryable: true,
+      detail: `waitlist_release_unverified:${waitlistEntryId}`,
+      status: 0,
+    });
+  }
 }
 
 async function deliverWaitlistSpotOpenNotification(
@@ -348,20 +432,56 @@ async function deliverWaitlistSpotOpenNotification(
   }
 
   if (notification.channel === "sms") {
-    const sent = await sendTwilioMessage({
+    // #1541 §4.0 — the ONE call shape. countryCode, messagingServiceSid,
+    // messageType, stopFooterOwnLine, mediaUrls and beforeProviderIo are all
+    // OMITTED deliberately: this path has no authoritative country label (per
+    // #1529 the destination number is the routing authority, and a guessed
+    // label would only emit spurious sms_country_assertion_mismatch warnings),
+    // and omitting the SID selects the approved transactional toll-free.
+    const result = await smsAdapter.send({
       to: notification.recipient,
-      body: renderWaitlistSpotOpenSms({
+      brandName: event.brands.name ?? "Mingla",
+      message: renderWaitlistSpotOpenSms({
         eventTitle: event.title ?? "your event",
         ticketTypeName: ticketType.name ?? "ticket",
         claimUrl,
       }),
     });
+
+    // `ok` is false for BOTH skipped and failed — branch on `status`, never on
+    // `ok`. A market-gated skip is not an error.
+    if (result.status === "failed") {
+      throw new ProviderSendError({
+        retryable: true,
+        detail: result.error ?? "sms_send_failed",
+        status: 0,
+      });
+    }
+
+    const nowIso = new Date().toISOString();
+    if (result.status === "skipped") {
+      // ORDER IS THE ATOMICITY MECHANISM — release the seat BEFORE recording
+      // the skip. See the block above releaseWaitlistEntryToPool. This throws
+      // on failure, so the row is never marked 'skipped' over a consumed spot.
+      await releaseWaitlistEntryToPool(supabase, waitlistEntryId);
+      await supabase.from("ticket_order_notifications").update({
+        status: "skipped",
+        provider: providerForLedger(notification.recipient),
+        provider_message_id: null,
+        last_error: `sms_market_dark:${
+          result.error ?? "provider_kill_switch_off"
+        }`,
+        updated_at: nowIso,
+      }).eq("id", notification.id);
+      return "skipped";
+    }
+
     await supabase.from("ticket_order_notifications").update({
       status: "sent",
-      provider: "twilio",
-      provider_message_id: sent.sid,
-      sent_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      provider: providerForLedger(notification.recipient),
+      provider_message_id: result.providerMessageId,
+      sent_at: nowIso,
+      updated_at: nowIso,
     }).eq("id", notification.id);
     return "sent";
   }
@@ -1122,6 +1242,10 @@ serve(async (req) => {
 
     try {
       if (templateKey === "buyer_ticket_confirmation") {
+        // #1541 — the outcome is no longer hardcoded "sent": an SMS row can now
+        // legitimately come back "skipped" when its market is dark, and that is
+        // NOT a failure and NOT a send.
+        let outcomeStatus = "sent";
         // Legacy path — preserved exactly as ORCH-0785 baseline.
         if (notification.channel === "email") {
           if (!renderedEmail || !renderedPdf) {
@@ -1171,21 +1295,52 @@ serve(async (req) => {
             updated_at: new Date().toISOString(),
           }).eq("id", notification.id);
         } else {
-          const sent = await sendTwilioMessage({
+          // #1541 §4.0 — the ONE call shape (see the waitlist branch for why
+          // every optional field is deliberately omitted). The buyer's TICKET
+          // rides the sibling EMAIL row — PDF + QR + .ics — which is
+          // structurally guaranteed by ticket_checkout_sessions.buyer_email
+          // being NOT NULL. This SMS is text-only: no link, no QR, no claim.
+          // Gating it cannot cost a paying customer their ticket.
+          const result = await smsAdapter.send({
             to: notification.recipient,
-            body: smsBody,
+            brandName: context.bodyInput.brand.name,
+            message: smsBody,
           });
-          await supabase.from("ticket_order_notifications").update({
-            status: "sent",
-            provider: "twilio",
-            provider_message_id: sent.sid,
-            sent_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          }).eq("id", notification.id);
+          if (result.status === "failed") {
+            // Preserve today's retry/backoff semantics EXACTLY — a real
+            // provider failure is still a retryable ProviderSendError handled
+            // by the catch below.
+            throw new ProviderSendError({
+              retryable: true,
+              detail: result.error ?? "sms_send_failed",
+              status: 0,
+            });
+          }
+          const nowIso = new Date().toISOString();
+          if (result.status === "skipped") {
+            // An honest skip, with ZERO provider HTTP. `sent_at` is left
+            // untouched — nothing was sent.
+            await supabase.from("ticket_order_notifications").update({
+              status: "skipped",
+              provider: providerForLedger(notification.recipient),
+              provider_message_id: null,
+              last_error: result.error ?? "provider_kill_switch_off",
+              updated_at: nowIso,
+            }).eq("id", notification.id);
+            outcomeStatus = "skipped";
+          } else {
+            await supabase.from("ticket_order_notifications").update({
+              status: "sent",
+              provider: providerForLedger(notification.recipient),
+              provider_message_id: result.providerMessageId,
+              sent_at: nowIso,
+              updated_at: nowIso,
+            }).eq("id", notification.id);
+          }
         }
         outcomes.push({
           channel: notification.channel,
-          status: "sent",
+          status: outcomeStatus,
           templateKey,
         });
       } else if (templateKey === "buyer_refund_issued") {
@@ -1373,6 +1528,12 @@ serve(async (req) => {
     }
   }
 
+  // #1541 — AN INTENTIONAL SKIP IS NOT A FAILURE. A market-gated "skipped"
+  // outcome must count as NEITHER `failed` NOR `sent`: an order whose email
+  // sent and whose SMS was deliberately gated is `sent`, not `partial`.
+  // `startsWith("failed")` already excludes "skipped" — this is stated
+  // explicitly, and covered by a test, so the exclusion cannot go back to being
+  // incidental. Real failures keep their existing failed/partial semantics.
   const failed = outcomes.some((row) => row.status.startsWith("failed"));
   const sent = outcomes.some((row) => row.status === "sent");
   await supabase.from("orders").update({
