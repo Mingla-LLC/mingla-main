@@ -17,13 +17,33 @@
  */
 
 /**
- * The reserve action, in the guest's words.
+ * #1558 SUPERSEDES THE BOOLEAN. The wording is no longer decided here — it is
+ * `profile.reserveAction`, one string per venue category, read straight off the
+ * total `VENUE_CATEGORY_PROFILES` table. That is what stopped a gallery and a
+ * climbing gym being invited to "Reserve a table": a boolean has two arms and
+ * there are five categories, so the third, fourth and fifth silently inherited
+ * the restaurant's words.
  *
- * Restaurants keep "Reserve a table" verbatim — it is correct there and it is
- * what the whole restaurant surface already says.
+ * `PublicVenuePage` now reads `profile.reserveAction` directly. What remains
+ * below is a boolean-shaped ADAPTER that resolves through the same table, so
+ * the two can never disagree.
+ *
+ * [TRANSITIONAL] boolean adapter — its only remaining caller is the #1532
+ * render suite (`stayManagerUx.issue1532.render.test.tsx`), which pins the two
+ * strings this file used to own. EXIT CONDITION: delete this module when #1559
+ * moves the venue page into `packages/brand-rendering` and that suite is
+ * repointed at `VENUE_CATEGORY_PROFILES`.
+ */
+import {
+  VENUE_CATEGORY_PROFILES,
+} from "@mingla/brand-rendering/venueCategoryProfile";
+
+/**
+ * The reserve action, in the guest's words, for the two categories a boolean
+ * can express. Reads the profile table — it does not hold copy of its own.
  */
 export function reserveActionLabel(isStay: boolean): string {
-  return isStay ? "Reserve this Stay" : "Reserve a table";
+  return VENUE_CATEGORY_PROFILES[isStay ? "stay" : "restaurant"].reserveAction;
 }
 
 /**

@@ -16,6 +16,14 @@
  */
 
 import type { ThemeInput } from "@mingla/offering-rendering";
+// #1558 — the venue-category union has ONE owner: the profile module that also
+// holds the total `Record<VenueCategoryKey, VenueCategoryProfile>` table. This
+// file re-exports it (below) instead of declaring a second copy, so a fifth
+// category cannot exist in one list and not the other. Both the import and the
+// re-export are type-only and erased — no runtime import is added.
+import type { VenueCategory } from "@mingla/brand-rendering/venueCategoryProfile";
+
+export type { VenueCategory };
 
 // BrandRole: from the brand list, what role does the CURRENT USER hold on
 // this brand? Used for permission gating in the founder-facing UI (top-nav
@@ -346,11 +354,8 @@ export type BrandClaimStatus =
   | "suspended"
   | "revoked";
 
-export type VenueCategory =
-  | "restaurant"
-  | "play"
-  | "creative_and_arts"
-  | "stay";
+/* #1558 — `VenueCategory` moved to its ONE owner and is re-exported from the
+   import block at the top of this file. Nothing else changed here. */
 
 /** Ve1 — one row in `brand_hours` (weekday 0 = Monday … 6 = Sunday). */
 export interface BrandHourEntry {
