@@ -23,14 +23,20 @@ const stripComments = (s: string): string =>
   s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
 
 describe("R2-1 — venue public page must NOT value-import the brand-rendering barrel", () => {
-  const pageSrc = stripComments(
-    read("mingla-business/src/components/venue/PublicVenuePage.tsx"),
-  );
+  // [TEST-MOD-APPROVED #1559] — the buyer-web venue BODY moved to
+// `packages/brand-rendering/PublicVenueScreen.tsx` (a pure move: render parity
+// proven by publicVenueRenderParity.issue1559.happy.test.tsx). These assertions
+// follow the code; the contract each one pins is unchanged.
+  // The route is the barrel-sensitive file now; the screen reaches its sibling
+  // renderer relatively. Live enforcement is i-1047-biz-bundle-budget-deferral.
+  const pageSrc = stripComments(read("mingla-business/app/b/[brandSlug]/v/[venueSlug].tsx"));
+  const screenSrc = stripComments(read("packages/brand-rendering/PublicVenueScreen.tsx"));
 
   test("PublicMenuSections comes from the DEEP specifier (own module)", () => {
     expect(pageSrc).toContain(
-      'from "@mingla/brand-rendering/PublicMenuSections"',
+      'from "@mingla/brand-rendering/PublicVenueScreen"',
     );
+    expect(screenSrc).toContain('from "./PublicMenuSections"');
   });
 
   test("any barrel import is type-only (erased — cannot drag PublicBrandPage into __common)", () => {

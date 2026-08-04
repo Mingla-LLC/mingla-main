@@ -1,3 +1,19 @@
+/**
+ * #1559 [shared-venue-screen] — `formatMinorCurrency` and `formatSourceRange`
+ * MOVED to `packages/brand-rendering/venueMoney.ts` and are re-exported here.
+ *
+ * WHY: the public venue page's typical-spend lede formats a range, and that
+ * renderer now lives in `packages/brand-rendering` so both surfaces draw it.
+ * A package may not import app `src/` (I-MOR-0827-PACKAGE-ISOLATION), so the
+ * owner moved and this file re-exports — one implementation, every existing
+ * import path unchanged, no fork. `parseMajorToMinor` / `minorToMajorInput` are
+ * authoring-side (business-only) and stay here.
+ */
+export {
+  formatMinorCurrency,
+  formatSourceRange,
+} from "@mingla/brand-rendering/venueMoney";
+
 export interface CurrencyMetadata {
   code: string;
   minorUnitExponent: number;
@@ -20,21 +36,6 @@ export function parseMajorToMinor(
   return Number.isSafeInteger(minor) && minor >= 0 ? minor : null;
 }
 
-export function formatMinorCurrency(
-  amountMinor: number,
-  currencyCode: string,
-  exponent: number,
-  locale?: string,
-): string {
-  if (!Number.isSafeInteger(amountMinor) || amountMinor < 0) return "—";
-  return new Intl.NumberFormat(locale, {
-    style: "currency",
-    currency: currencyCode,
-    minimumFractionDigits: exponent,
-    maximumFractionDigits: exponent,
-  }).format(amountMinor / 10 ** exponent);
-}
-
 export function minorToMajorInput(
   amountMinor: number,
   exponent: number,
@@ -45,27 +46,4 @@ export function minorToMajorInput(
   const whole = padded.slice(0, -exponent);
   const fraction = padded.slice(-exponent).replace(/0+$/, "");
   return fraction.length > 0 ? `${whole}.${fraction}` : whole;
-}
-
-export function formatSourceRange(input: {
-  minMinor: number;
-  maxMinor: number | null;
-  currencyCode: string;
-  exponent: number;
-  locale?: string;
-}): string {
-  const min = formatMinorCurrency(
-    input.minMinor,
-    input.currencyCode,
-    input.exponent,
-    input.locale,
-  );
-  if (input.maxMinor === null) return `${min}+ · ${input.currencyCode}`;
-  const max = formatMinorCurrency(
-    input.maxMinor,
-    input.currencyCode,
-    input.exponent,
-    input.locale,
-  );
-  return `${min}–${max} · ${input.currencyCode}`;
 }

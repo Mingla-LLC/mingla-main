@@ -251,7 +251,15 @@ describe("issue #1380 public venue Reserve CTA", () => {
   });
 
   test("production page wiring keeps one content instance and one CTA-derived visibility contract", () => {
-    const page = readBusiness("src/components/venue/PublicVenuePage.tsx");
+    // [TEST-MOD-APPROVED #1559] — the buyer-web venue BODY moved to
+// `packages/brand-rendering/PublicVenueScreen.tsx` (a pure move: render parity
+// proven by publicVenueRenderParity.issue1559.happy.test.tsx). These assertions
+// follow the code; the contract each one pins is unchanged.
+    const page = readFileSync(
+      join(BUSINESS_ROOT, "..", "packages/brand-rendering/PublicVenueScreen.tsx"),
+      "utf8",
+    );
+    const route = readBusiness("app/b/[brandSlug]/v/[venueSlug].tsx");
     const sheet = readBusiness(
       "src/components/venue/PublicVenueReservationSheet.tsx",
     );
@@ -271,8 +279,12 @@ describe("issue #1380 public venue Reserve CTA", () => {
     expect(page).toContain(
       "normalizedReservationUiState.reservationSheetOpen\n            ? null\n            : reservationsBlock",
     );
-    expect(page).toContain("<PublicVenueReservationSheet");
-    expect(page).toContain("{reservationsBlock}");
+    // The sheet is an injected host slot: the screen drives it, the route
+    // renders it. Both halves are pinned so neither can quietly disappear.
+    expect(page).toContain("reservationSheet({");
+    expect(page).toContain("children: reservationsBlock,");
+    expect(route).toContain("<PublicVenueReservationSheet");
+    expect(route).toContain("{context.children}");
     expect(page).toContain(
       "activeTab={normalizedReservationUiState.activeTab}",
     );

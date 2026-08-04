@@ -188,11 +188,15 @@ describe("SC-12 — fetchPublicBrandVenues feeds the Locations section", () => {
 
 describe("T-C1 route half — /b/[brandSlug]/v/[venueSlug] anon route", () => {
   const routeSrc = read("mingla-business/app/b/[brandSlug]/v/[venueSlug].tsx");
-  const pageSrc = read("mingla-business/src/components/venue/PublicVenuePage.tsx");
+  // [TEST-MOD-APPROVED #1559] — the buyer-web venue BODY moved to
+// `packages/brand-rendering/PublicVenueScreen.tsx` (a pure move: render parity
+// proven by publicVenueRenderParity.issue1559.happy.test.tsx). These assertions
+// follow the code; the contract each one pins is unchanged.
+  const pageSrc = read("packages/brand-rendering/PublicVenueScreen.tsx");
 
   test("route mounts the venue page + single not-found state, venue-keyed", () => {
     expect(routeSrc).toContain("usePublicVenueBySlug");
-    expect(routeSrc).toContain("PublicVenuePage");
+    expect(routeSrc).toContain("PublicVenueScreen");
     expect(routeSrc).toContain("PublicVenueNotFound");
     expect(routeSrc).toContain('offering_type: "venue"');
   });

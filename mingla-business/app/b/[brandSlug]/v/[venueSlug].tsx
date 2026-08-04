@@ -1,9 +1,25 @@
 /**
- * /b/{brandSlug}/v/{venueSlug} — META-ORCH-1255(C) per-venue PUBLIC page (D-2).
+ * /b/{brandSlug}/v/{venueSlug} — the buyer-web PUBLIC venue route.
+ *
+ * #1559 [shared-venue-screen] — this file is now an ADAPTER. Every pixel a
+ * guest sees is rendered by `@mingla/brand-rendering/PublicVenueScreen`, the
+ * one module #1560 also points the consumer app at. What stays here is only
+ * what is genuinely this app's:
+ *
+ *   1. DATA — params → the five public queries → one `PublicVenueViewModel`.
+ *   2. PLATFORM EFFECTS — `<Head>` (web-only SEO), `captureWeb`,
+ *      `captureAdClickIds`, and the buyer-web organic-capture policy.
+ *   3. THE PAYMENT RAIL — `GuestVenueReservation` (Stripe.js) and the lazily
+ *      loaded `BuyerStayGuestExperience` (Payment Element), handed to the
+ *      screen through its `bookingBody` slot. The `React.lazy` boundary stays
+ *      HERE on purpose (#1550 R4): it is what keeps `StayGuestBooking` and
+ *      `@stripe/stripe-js` out of the eager `__common` boot chunk, and the
+ *      shared module is forbidden from containing one.
+ *   4. HOST CHROME — the reservation `Sheet` and `ShareModal`.
  *
  * House nested-slug pattern of app/e/[brandSlug]/[eventSlug].tsx and
  * app/b/[brandSlug]/index.tsx: params → query → loading / error / not-found /
- * page. Renders PublicVenuePage (DESIGN §6).
+ * page.
  *
  * ANON ROUTE — lives under the `/b/` PUBLIC_BUYER_ROUTE_PREFIXES allowlist
  * (segment-safe prefix match covers /b/{slug}/v/{slug}), so the root-layout
@@ -13,10 +29,25 @@
  * indistinguishable not-found state (no state leak).
  */
 
-// orch-strict-grep-allow safearea-on-fullscreen-routes — anon public route; PublicVenuePage/PublicVenueNotFound apply insets.top; state views center-anchored
-import React, { useEffect, useRef } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+// orch-strict-grep-allow safearea-on-fullscreen-routes — anon public route; PublicVenueScreen/PublicVenueNotFound apply insets.top; state views center-anchored
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
+import { ActivityIndicator, Linking, Platform, StyleSheet, Text, View } from "react-native";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import Head from "expo-router/head";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+// #1559 — DEEP specifier, NOT the "@mingla/brand-rendering" barrel: the barrel
+// re-exports the whole PublicBrandPage module, and a barrel VALUE import from
+// this (venue-chunk) file would make Metro hoist that ~27 KB module plus the
+// lucide shim's module-scope icon requires into the EAGER __common boot chunk
+// (ORCH-1083 bundle-budget breach). Enforced by i-1047-biz-bundle-budget-deferral.
+import { PublicVenueScreen } from "@mingla/brand-rendering/PublicVenueScreen";
+import {
+  publicVenueMeta,
+  type PublicVenueAnalyticsEvent,
+  type PublicVenueBookingSlotContext,
+  type PublicVenueReservationSheetContext,
+  type PublicVenueViewModel,
+} from "@mingla/brand-rendering/PublicVenueScreen";
 
 import {
   spacing,
@@ -35,10 +66,71 @@ import {
 } from "../../../../src/hooks/usePublicEvents";
 import { usePublicMenus } from "../../../../src/hooks/useMenus";
 import { usePublicStayDetail } from "../../../../src/hooks/usePublicStayDetail";
-import { PublicVenuePage } from "../../../../src/components/venue/PublicVenuePage";
 import { PublicVenueNotFound } from "../../../../src/components/venue/PublicVenueNotFound";
+import { PublicVenueReservationSheet } from "../../../../src/components/venue/PublicVenueReservationSheet";
+import { GuestVenueReservation } from "../../../../src/components/venue/GuestVenueReservation";
+import { ShareModal } from "../../../../src/components/ui/ShareModal";
+import { useThemeFont } from "../../../../src/theme/useThemeFont";
+import {
+  brandOgImageUrl,
+  brandPublicPath,
+  venuePublicUrl,
+} from "../../../../src/constants/publicUrls";
+import type { PublicVenue } from "../../../../src/services/publicEventsService";
+import {
+  captureVenueOrganicEvent,
+  settleVenueOrganicJourneyOnConsent,
+} from "../../../../src/services/venueOrganicCaptureService";
+import {
+  runBuyerVenueOrganicCapture,
+  settleBuyerVenueOrganicCapture,
+  type VenueOrganicAnalyticsSurface,
+} from "../../../../src/services/venueOrganicCapturePolicy";
+
+// #1390: Stay booking includes its own renderer and Stripe Payment Element.
+// Keep that product-specific bulk off the shared buyer-web boot path and load it
+// only after a verified Stay venue reaches its reservations surface.
+const BuyerStayGuestExperience = React.lazy(() =>
+  import("../../../../src/components/stay/BuyerStayGuestExperience").then(
+    (module) => ({ default: module.BuyerStayGuestExperience }),
+  ),
+);
+
+/**
+ * #1421 — this route is the ONLY mount of the public venue page in this app,
+ * and it is always the real buyer web. Naming the surface here (rather than
+ * defaulting it inside a component that several callers might reach) is what
+ * keeps organic capture fail-closed: `venueOrganicCapturePolicy` drops
+ * everything that is not `buyer_web`, and the shared render module has no
+ * analytics import at all, so nothing downstream can bypass that policy.
+ */
+const analyticsSurface: VenueOrganicAnalyticsSurface = "buyer_web";
+
+/** `PublicVenue` (this app's read model) → the shared screen's view model. */
+const toVenueViewModel = (venue: PublicVenue): PublicVenueViewModel => ({
+  id: venue.id,
+  brandId: venue.brandId,
+  brandSlug: venue.brandSlug,
+  brandName: venue.brandName,
+  slug: venue.slug,
+  name: venue.name,
+  address: venue.address,
+  city: venue.city,
+  lat: venue.lat,
+  lng: venue.lng,
+  venueCategory: venue.venueCategory,
+  coverMediaUrl: venue.coverMediaUrl,
+  coverMediaType: venue.coverMediaType,
+  theme: venue.theme,
+  hours: venue.hours,
+  galleryPhotoUrls: venue.galleryPhotoUrls,
+  pitch: venue.pitch,
+});
 
 export default function PublicVenueRoute(): React.ReactElement {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const [shareModalVisible, setShareModalVisible] = React.useState(false);
   const params = useLocalSearchParams<{
     brandSlug: string | string[];
     venueSlug: string | string[];
@@ -129,6 +221,112 @@ export default function PublicVenueRoute(): React.ReactElement {
     });
   }, [venue?.brandId, venue?.id, venue?.venueCategory]);
 
+  // #1421 — settle the organic page journey once consent lands. Fail-closed for
+  // the Business preview surface; a no-op until a venue actually resolves.
+  const settleBrandId = venue?.brandId ?? null;
+  const settleVenueId = venue?.id ?? null;
+  useEffect(() => {
+    if (settleBrandId === null || settleVenueId === null) return;
+    return settleBuyerVenueOrganicCapture(analyticsSurface, () =>
+      settleVenueOrganicJourneyOnConsent({
+        brandId: settleBrandId,
+        venueId: settleVenueId,
+      })
+    );
+  }, [settleBrandId, settleVenueId]);
+
+  const venueViewModel = useMemo<PublicVenueViewModel | null>(
+    () => (venue === null ? null : toVenueViewModel(venue)),
+    [venue],
+  );
+
+  const handleAnalytics = useCallback(
+    (
+      event: PublicVenueAnalyticsEvent,
+      props: Record<string, unknown>,
+    ): void => {
+      captureWeb(event, { surface: analyticsSurface, ...props });
+      if (settleBrandId === null || settleVenueId === null) return;
+      if (event === "public_venue_menu_viewed") {
+        runBuyerVenueOrganicCapture(analyticsSurface, () => {
+          void captureVenueOrganicEvent(
+            { brandId: settleBrandId, venueId: settleVenueId },
+            "menu_open",
+          );
+        });
+      } else if (event === "public_venue_reservation_started") {
+        runBuyerVenueOrganicCapture(analyticsSurface, () => {
+          void captureVenueOrganicEvent(
+            { brandId: settleBrandId, venueId: settleVenueId },
+            "reservation_start",
+          );
+        });
+      }
+    },
+    [settleBrandId, settleVenueId],
+  );
+
+  const handleOpenMaps = useCallback((query: string): void => {
+    void Linking.openURL(
+      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`,
+    ).catch(() => undefined);
+  }, []);
+
+  const handleOpenBrand = useCallback((): void => {
+    if (typeof brandSlug !== "string") return;
+    router.push(brandPublicPath(brandSlug) as never);
+  }, [brandSlug, router]);
+
+  const handleClose = useCallback((): void => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    if (typeof brandSlug !== "string") return;
+    router.replace(brandPublicPath(brandSlug) as never);
+  }, [brandSlug, router]);
+
+  const handleShare = useCallback((): void => {
+    setShareModalVisible(true);
+  }, []);
+
+  const renderBookingBody = useCallback(
+    (context: PublicVenueBookingSlotContext): React.ReactNode =>
+      context.kind === "stay" ? (
+        <BuyerStayGuestExperience
+          venueId={context.venueId}
+          brandId={context.brandId}
+          detail={context.stayDetail}
+          state={context.stayState}
+          palette={context.palette}
+          surface={context.surface}
+          theme={context.theme}
+        />
+      ) : (
+        <GuestVenueReservation
+          venueId={context.venueId}
+          brandId={context.brandId}
+          currency={context.currency}
+          analyticsSurface={analyticsSurface}
+        />
+      ),
+    [],
+  );
+
+  const renderReservationSheet = useCallback(
+    (context: PublicVenueReservationSheetContext): React.ReactNode => (
+      <PublicVenueReservationSheet
+        visible={context.visible}
+        onClose={context.onClose}
+        onDismissed={context.onDismissed}
+        title={context.title}
+      >
+        {context.children}
+      </PublicVenueReservationSheet>
+    ),
+    [],
+  );
+
   if (venueQuery.isLoading || venueQuery.isFetching) {
     return (
       <View style={styles.stateWrap}>
@@ -149,7 +347,7 @@ export default function PublicVenueRoute(): React.ReactElement {
     );
   }
 
-  if (venue === null) {
+  if (venue === null || venueViewModel === null) {
     return (
       <PublicVenueNotFound
         brandSlug={typeof brandSlug === "string" ? brandSlug : null}
@@ -158,10 +356,15 @@ export default function PublicVenueRoute(): React.ReactElement {
     );
   }
 
+  const { pageTitle, metaDescription } = publicVenueMeta(venue);
+  const canonicalUrl = venuePublicUrl({
+    brandSlug: venue.brandSlug,
+    venueSlug: venue.slug,
+  });
+
   return (
-    <PublicVenuePage
-      analyticsSurface="buyer_web"
-      venue={venue}
+    <PublicVenueScreen
+      venue={venueViewModel}
       discoveryPrice={discoveryPriceQuery.data ?? null}
       menu={menusQuery.data ?? []}
       reservable={reservableQuery.data ?? null}
@@ -188,6 +391,48 @@ export default function PublicVenueRoute(): React.ReactElement {
                 : "ready"
       }
       stayDetail={stayQuery.data ?? null}
+      safeAreaInsets={insets}
+      loadThemeFont={useThemeFont}
+      headSlot={
+        Platform.OS === "web" ? (
+          <Head>
+            <title>{pageTitle}</title>
+            <meta name="description" content={metaDescription} />
+            <meta property="og:title" content={pageTitle} />
+            <meta property="og:description" content={metaDescription} />
+            <meta property="og:url" content={canonicalUrl} />
+            <meta
+              property="og:image"
+              content={
+                venue.coverMediaUrl !== null && venue.coverMediaType !== "video"
+                  ? venue.coverMediaUrl
+                  : brandOgImageUrl({ brandSlug: venue.brandSlug })
+              }
+            />
+            <meta property="og:type" content="place" />
+            <meta name="twitter:card" content="summary_large_image" />
+            <meta name="twitter:title" content={pageTitle} />
+            <meta name="twitter:description" content={metaDescription} />
+            <link rel="canonical" href={canonicalUrl} />
+          </Head>
+        ) : null
+      }
+      bookingBody={renderBookingBody}
+      reservationSheet={renderReservationSheet}
+      overlays={
+        <ShareModal
+          visible={shareModalVisible}
+          onClose={() => setShareModalVisible(false)}
+          url={canonicalUrl}
+          title={pageTitle}
+          description={metaDescription}
+        />
+      }
+      onAnalytics={handleAnalytics}
+      onShare={handleShare}
+      onClose={handleClose}
+      onOpenBrand={handleOpenBrand}
+      onOpenMaps={handleOpenMaps}
     />
   );
 }

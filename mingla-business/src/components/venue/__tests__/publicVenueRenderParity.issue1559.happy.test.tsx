@@ -89,34 +89,6 @@ const caseData: { current: CaseData } = {
   },
 };
 
-// ---- workspace-package resolution repair ----------------------------------
-// `mingla-business/node_modules` is a symlink into the ANCHOR checkout, so a
-// bare `@mingla/brand-rendering/<sub>` specifier resolves to the anchor's copy
-// of the package — not this worktree's. That is how a worktree run can silently
-// test someone else's code. Each deep specifier below is redirected to THIS
-// tree's file (in CI the two are the same path, so the redirect is a no-op).
-// `virtual: true` is required because the specifier may not resolve at all here.
-jest.mock(
-  "@mingla/brand-rendering/venueCategoryProfile",
-  () => require("../../../../../packages/brand-rendering/venueCategoryProfile"),
-  { virtual: true },
-);
-jest.mock(
-  "@mingla/brand-rendering/PublicMenuSections",
-  () => require("../../../../../packages/brand-rendering/PublicMenuSections"),
-  { virtual: true },
-);
-jest.mock(
-  "@mingla/brand-rendering/PublicVenueTabs",
-  () => require("../../../../../packages/brand-rendering/PublicVenueTabs"),
-  { virtual: true },
-);
-jest.mock(
-  "@mingla/brand-rendering/publicVenueTabState",
-  () => require("../../../../../packages/brand-rendering/publicVenueTabState"),
-  { virtual: true },
-);
-
 // ---- module mocks: everything OUTSIDE the moved code ----------------------
 
 jest.mock("expo-router", () => ({

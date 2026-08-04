@@ -19,7 +19,12 @@ const PATHS = {
   reservation: "supabase/functions/venue-reservation-create/index.ts",
   migration:
     "supabase/migrations/20270202001421_issue_1421_venue_organic_engagement.sql",
-  buyer: "mingla-business/src/components/venue/PublicVenuePage.tsx",
+  // #1559 — the buyer venue BODY moved to packages/brand-rendering; the ROUTE
+  // is now the adapter that owns every analytics effect. `buyer` therefore
+  // points at the shared screen (which must stay analytics-free, so nothing can
+  // bypass the buyer_web policy from inside a package both apps render) and the
+  // capture wiring is asserted on `buyerRoute`.
+  buyer: "packages/brand-rendering/PublicVenueScreen.tsx",
   buyerRoute:
     "mingla-business/app/b/[brandSlug]/v/[venueSlug].tsx",
   buyerAvailability:
@@ -92,6 +97,7 @@ function validate(files) {
     }
   }
   const buyer = get(PATHS.buyer);
+  const buyerRoute = get(PATHS.buyerRoute);
   const buyerPolicy = get(PATHS.buyerPolicy);
   const eventPolicyBody = functionBody(
     buyerPolicy,
@@ -101,16 +107,44 @@ function validate(files) {
     buyerPolicy,
     "settleBuyerVenueOrganicCapture",
   );
+  // #1559 — the buyer venue page has exactly ONE mount, and it is this route,
+  // so the surface is NAMED here instead of defaulting inside a component.
+  // Both capture entry points must still go through the policy, by surface.
   if (
-    !buyer.includes('analyticsSurface = "business_preview"') ||
-    !buyer.includes("runBuyerVenueOrganicCapture(analyticsSurface") ||
-    !buyer.includes("settleBuyerVenueOrganicCapture(analyticsSurface") ||
-    !get(PATHS.buyerRoute).includes('analyticsSurface="buyer_web"') ||
+    !buyerRoute.includes(
+      'const analyticsSurface: VenueOrganicAnalyticsSurface = "buyer_web"',
+    ) ||
+    !buyerRoute.includes("runBuyerVenueOrganicCapture(analyticsSurface") ||
+    !buyerRoute.includes("settleBuyerVenueOrganicCapture(analyticsSurface") ||
     !get(PATHS.buyerAvailability).includes(
       "runBuyerVenueOrganicCapture(analyticsSurface",
     )
   ) {
     failures.push("buyer organic capture is not fail-closed for Business preview");
+  }
+  // The shared screen is rendered by BOTH apps (#1560). If it reached the
+  // buyer-web analytics modules directly it would fire nothing on consumer AND
+  // route around `venueOrganicCapturePolicy` on web — the policy would still
+  // exist and simply stop being on the path. It emits through an injected
+  // callback instead, and this asserts that structurally.
+  // Comments stripped first: the rule is about what the module CALLS, and the
+  // module's own header explains why it must not call these by name.
+  const buyerCode = buyer
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+  for (const forbidden of [
+    "captureWeb",
+    "captureVenueOrganicEvent",
+    "runBuyerVenueOrganicCapture",
+    "analyticsSurface",
+  ]) {
+    if (buyerCode.includes(forbidden)) {
+      failures.push(
+        `${PATHS.buyer} references ${forbidden} — the shared venue screen must emit ` +
+          "through its injected onAnalytics callback so every surface keeps its own " +
+          "fail-closed capture policy.",
+      );
+    }
   }
   if (!eventPolicyBody.includes('surface !== "buyer_web"')) {
     failures.push("buyer event capture function lost its preview guard");
@@ -207,7 +241,7 @@ function validate(files) {
     failures.push("reservation journey token is not threaded to checkout sessions");
   }
   const interactionSources = [
-    buyer,
+    buyerRoute,
     get(PATHS.buyerAvailability),
     get(PATHS.buyerCapture),
     get(PATHS.consumer),
@@ -237,11 +271,12 @@ if (process.argv.includes("--self-test")) {
     PATHS.section,
     "Venue page activity When people browse online Organic reservation journey Unpaid activity on this venue&apos;s Mingla page.",
   );
+  // The shared screen carries NO analytics tokens at all — that is the rule.
+  good.set(PATHS.buyer, "onAnalytics(\"public_venue_menu_viewed\"");
   good.set(
-    PATHS.buyer,
-    'analyticsSurface = "business_preview" runBuyerVenueOrganicCapture(analyticsSurface settleBuyerVenueOrganicCapture(analyticsSurface "page_view" "menu_open" "reservation_start"',
+    PATHS.buyerRoute,
+    'const analyticsSurface: VenueOrganicAnalyticsSurface = "buyer_web" runBuyerVenueOrganicCapture(analyticsSurface settleBuyerVenueOrganicCapture(analyticsSurface "page_view" "menu_open" "reservation_start"',
   );
-  good.set(PATHS.buyerRoute, 'analyticsSurface="buyer_web"');
   good.set(
     PATHS.buyerAvailability,
     'runBuyerVenueOrganicCapture(analyticsSurface "availability_shown"',
@@ -315,6 +350,30 @@ if (process.argv.includes("--self-test")) {
     )
   ) {
     throw new Error("settlement preview guard revert escaped");
+  }
+  // #1559 — the shared screen reaching analytics directly must FAIL.
+  const leakyScreen = new Map(good);
+  leakyScreen.set(
+    PATHS.buyer,
+    'captureWeb("public_venue_menu_viewed", { surface: analyticsSurface })',
+  );
+  if (
+    !validate(leakyScreen).some((f) => f.includes("must emit"))
+  ) {
+    throw new Error("shared-screen analytics leak escaped");
+  }
+  // #1559 — dropping the route's named surface must FAIL.
+  const unnamedSurface = new Map(good);
+  unnamedSurface.set(
+    PATHS.buyerRoute,
+    'runBuyerVenueOrganicCapture(analyticsSurface settleBuyerVenueOrganicCapture(analyticsSurface "page_view" "menu_open" "reservation_start"',
+  );
+  if (
+    !validate(unnamedSurface).includes(
+      "buyer organic capture is not fail-closed for Business preview",
+    )
+  ) {
+    throw new Error("unnamed analytics surface escaped");
   }
   console.log("issue-1421 venue organic insights self-test: PASS");
   process.exit(0);
