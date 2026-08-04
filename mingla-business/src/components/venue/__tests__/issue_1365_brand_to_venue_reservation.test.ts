@@ -61,13 +61,20 @@ describe("issue #1365 Brand → venue reservation journey", () => {
 // follow the code; the contract each one pins is unchanged.
     const webPage = readRepo("packages/brand-rendering/PublicVenueScreen.tsx");
     const webRoute = readBusiness("app/b/[brandSlug]/v/[venueSlug].tsx");
-    const nativePage = readRepo(
-      "app-mobile/src/screens/ConsumerPublicVenueScreen.tsx",
+    // [TEST-MOD-APPROVED #1560] — the native FORK
+    // (`app-mobile/src/screens/ConsumerPublicVenueScreen.tsx`) was DELETED. The
+    // contract this test pins — both surfaces mount the shared venue tabs, and
+    // each keeps its own payment rail — is UNCHANGED and now STRONGER: the tabs
+    // are literally the same module for both, so `nativeRoute` is asserted to
+    // mount that module rather than to contain its own <PublicVenueTabs>.
+    const nativeRoute = readRepo(
+      "app-mobile/app/b/[brandSlug]/v/[venueSlug].tsx",
     );
     expect(webPage).toContain("<PublicVenueTabs");
-    expect(nativePage).toContain("<PublicVenueTabs");
+    expect(webRoute).toContain("<PublicVenueScreen");
+    expect(nativeRoute).toContain("<PublicVenueScreen");
     expect(webRoute).toContain("<GuestVenueReservation");
-    expect(nativePage).toContain("<VenueReserveSheet");
+    expect(nativeRoute).toContain("<VenueReserveSheet");
   });
 
   test("consumer venue failures stay isolated and expose retry/progressive state", () => {
@@ -111,8 +118,10 @@ describe("issue #1365 Brand → venue reservation journey", () => {
     const sheet = readRepo(
       "app-mobile/src/components/expandedCard/VenueReserveSheet.tsx",
     );
+    // [TEST-MOD-APPROVED #1560] — the deleted screen's callback seam is now the
+    // route's; same assertion, same no-PII contract, at its new home.
     const screen = readRepo(
-      "app-mobile/src/screens/ConsumerPublicVenueScreen.tsx",
+      "app-mobile/app/b/[brandSlug]/v/[venueSlug].tsx",
     );
     expect(sheet).toContain("onAvailabilityResultViewed?.()");
     expect(sheet).toContain("onSlotSelected?.()");

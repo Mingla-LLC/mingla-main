@@ -197,9 +197,33 @@ export interface PublicVenueThemedContext {
  * The booking-body slot. Discriminated on the category profile's
  * `bookingBody`, so the host switches on DATA rather than re-deriving
  * "is this a hotel?" — the exact branch #1558 deleted.
+ *
+ * #1560 — every context also carries `openReservationSheet`. A host whose
+ * booking rail is a MODAL rather than an inline form (the consumer app: the
+ * native `VenueReserveSheet` cannot be rendered as a pane) needs a way to raise
+ * the sheet from inside the Reservations pane, where the sticky CTA is
+ * deliberately hidden. Routing that through this callback keeps the reducer
+ * below the SINGLE owner of `reservationSheetOpen`; the alternative — the host
+ * holding its own `visible` flag — is two owners of one truth (Constitution
+ * #2) and is exactly how a sheet gets stuck open. The buyer-web host ignores
+ * it: its body IS the form.
  */
-export type PublicVenueBookingSlotContext = PublicVenueThemedContext &
-  (
+export type PublicVenueBookingSlotContext = PublicVenueThemedContext & {
+  /**
+   * Raise the reservation sheet from inside the booking body. No-op when the
+   * page is not reservable or the sheet is already open — the same fail-closed
+   * gate the sticky CTA passes through, so this can never open a sheet the
+   * page itself would refuse to open.
+   */
+  openReservationSheet: () => void;
+  /**
+   * The category's ONE reserve verb, already resolved from the profile here.
+   * Handed to the slot rather than re-resolved by the host so a host-rendered
+   * button and this page's sticky CTA cannot drift into two wordings — which is
+   * precisely how "Find a table" survived as a fourth string.
+   */
+  reserveAction: string;
+} & (
     | {
         kind: "stay";
         venueId: string;
@@ -844,6 +868,39 @@ export const PublicVenueScreen = ({
     venue.id,
   ]);
 
+  /**
+   * #1560 — the booking BODY's request to raise the sheet. Same fail-closed
+   * gate as `handleReserve`, minus its `activeTab === "reservations"` clause:
+   * that clause exists because on buyer web the Reservations pane already
+   * contains the whole form, so re-opening it over itself would be noise. On a
+   * host whose rail is modal-only, the pane is a prompt and this IS the tap
+   * that books. The reducer stays the one owner of `reservationSheetOpen`.
+   */
+  const handleOpenReservationSheetFromBody = React.useCallback((): void => {
+    if (
+      !canOpenReservationSheet ||
+      normalizedReservationUiState.reservationSheetOpen
+    ) {
+      return;
+    }
+    dispatchReservationUi({
+      type: "RESERVE_CTA_PRESSED",
+      context: reservationUiContext,
+    });
+    onAnalytics("public_venue_reservation_started", {
+      brand_id: venue.brandId,
+      venue_id: venue.id,
+      source_tab: "reservations_pane",
+    });
+  }, [
+    canOpenReservationSheet,
+    normalizedReservationUiState.reservationSheetOpen,
+    onAnalytics,
+    reservationUiContext,
+    venue.brandId,
+    venue.id,
+  ]);
+
   const handleReservationSheetClose = React.useCallback((): void => {
     dispatchReservationUi({
       type: "RESERVATION_SHEET_CLOSED",
@@ -979,6 +1036,13 @@ export const PublicVenueScreen = ({
     surface,
     theme: resolvedTheme,
   };
+  // #1560 — the modal-rail escape hatch + the one reserve verb, threaded into
+  // every booking context.
+  const bookingSlotBase = {
+    ...themedSlotContext,
+    openReservationSheet: handleOpenReservationSheetFromBody,
+    reserveAction: profile.reserveAction,
+  };
   const reservationBodies: Record<VenueBookingBody, () => BrandRenderingReactNode> = {
     stay: () => (
       <React.Suspense
@@ -991,7 +1055,7 @@ export const PublicVenueScreen = ({
         }
       >
         {bookingBody({
-          ...themedSlotContext,
+          ...bookingSlotBase,
           kind: "stay",
           venueId: venue.id,
           brandId: venue.brandId,
@@ -1025,7 +1089,7 @@ export const PublicVenueScreen = ({
         </View>
       ) : reservable?.reservable === true && reservable.venueId !== null ? (
         bookingBody({
-          ...themedSlotContext,
+          ...bookingSlotBase,
           kind: "table",
           venueId: reservable.venueId,
           brandId: venue.brandId,

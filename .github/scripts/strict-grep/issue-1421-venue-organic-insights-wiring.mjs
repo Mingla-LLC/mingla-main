@@ -39,7 +39,10 @@ const PATHS = {
     "supabase/functions/venue-organic-capture/__tests__/issue1421_source_contract.test.ts",
   sqlTest:
     "supabase/migrations/__tests__/issue_1421_venue_organic_engagement.test.sql",
-  consumer: "app-mobile/src/screens/ConsumerPublicVenueScreen.tsx",
+  // #1560 — the consumer venue FORK was deleted; its route is now an adapter
+  // over the shared screen and owns every consumer-side capture point, the
+  // same way `buyerRoute` owns the buyer-web ones.
+  consumer: "app-mobile/app/b/[brandSlug]/v/[venueSlug].tsx",
 };
 
 function load() {

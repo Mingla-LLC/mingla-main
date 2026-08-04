@@ -47,18 +47,24 @@ const SELF_TEST = process.argv.includes("--self-test");
 /**
  * Every file on the anon public-venue read path.
  *
- * `sharedScreen` is where the buyer-web venue body lives after #1559; the two
- * ROUTE entries are the mounts that reach it, and they are listed because a
- * route file is the one path in this chain that cannot move without the
- * router noticing. `consumerScreen` is the native fork that #1560 deletes —
- * until then it is a second anon reader of the same data and belongs here.
+ * `sharedScreen` is where the venue body lives after #1559 — BOTH apps render
+ * it now. The two ROUTE entries are the mounts that reach it, and they are
+ * listed because a route file is the one path in this chain that cannot move
+ * without the router noticing.
+ *
+ * #1560 — `app-mobile/src/screens/ConsumerPublicVenueScreen.tsx` was the native
+ * FORK, a second anon reader of the same data. It is DELETED; the consumer
+ * ROUTE replaces it here. Note that this repoint is exactly the situation the
+ * rewrite above was written for: had the old `continue` survived, deleting that
+ * file would have silently dropped a target from the anon-safety scan and this
+ * gate would still have printed green.
  */
 const FILES = [
   "mingla-business/src/services/publicEventsService.ts",
   "packages/brand-rendering/PublicVenueScreen.tsx",
   "mingla-business/app/b/[brandSlug]/v/[venueSlug].tsx",
   "app-mobile/src/services/publicVenueService.ts",
-  "app-mobile/src/screens/ConsumerPublicVenueScreen.tsx",
+  "app-mobile/app/b/[brandSlug]/v/[venueSlug].tsx",
 ];
 
 const DIRECT_TABLE = /\.from\(\s*["'`]venue_listings["'`]\s*\)/;

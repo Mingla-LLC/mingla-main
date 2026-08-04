@@ -169,6 +169,23 @@ module.exports = {
     // already points here, so the mapping is the identity. Anchored to the
     // subpath form only: the bare barrel is untouched.
     "^@mingla/brand-rendering/(.+)$": "<rootDir>/../packages/brand-rendering/$1",
+    // #1560 — resolution repair, NOT a mock, and the IDENTITY for every file in
+    // this app. `consumerVenueAdoption.issue1560.happy.test.tsx` mounts the REAL
+    // consumer venue route (`app-mobile/app/b/[brandSlug]/v/[venueSlug].tsx`) to
+    // prove what the consumer app gained when its fork was deleted. Node
+    // resolution walks up from THAT file, so these two specifiers resolve
+    // `app-mobile/node_modules/...` — which CI never installs (this job runs
+    // `npm ci` in mingla-business only). Two consequences, both bad: the route
+    // cannot load at all, and a bare `jest.mock("expo-router")` in a test here
+    // would register a DIFFERENT resolved path from the one the route requires,
+    // so the mock would silently not apply. Pointing both at the copies this app
+    // already owns makes the two resolutions converge. A business file's
+    // `expo-router` already resolved here (nearest node_modules), so nothing
+    // about the existing suite changes.
+    "^expo-router$": "<rootDir>/node_modules/expo-router",
+    "^expo-router/(.*)$": "<rootDir>/node_modules/expo-router/$1",
+    "^react-native-safe-area-context$":
+      "<rootDir>/node_modules/react-native-safe-area-context",
     // ESM-native expo packages (reached via expo-image-picker / expo-file-system /
     // mapboxToken / config reads).
     "^expo-constants$": "<rootDir>/__manual_mocks__/expo-constants.js",
@@ -215,7 +232,19 @@ module.exports = {
       "ts-jest",
       {
         tsconfig: { jsx: "react-jsx" },
-        diagnostics: { exclude: ["**/packages/**"] },
+        // #1560 — `**/app-mobile/**` joins for the IDENTICAL reason, one app
+        // over. `consumerVenueAdoption.issue1560.happy.test.tsx` mounts the real
+        // consumer venue route to prove what that app gained when its fork was
+        // deleted, so ts-jest transpiles an app-mobile .tsx — and type-CHECKED
+        // it with THIS app's module resolution, which cannot see app-mobile's
+        // peers: TS2307 for `react` / `expo-router` /
+        // `react-native-safe-area-context` plus the TS2875 JSX-runtime cascade.
+        // ts-jest raises that as a throw whose `message` is EMPTY, so CI printed
+        // a `●` heading over five blank lines. app-mobile has its own `npx tsc`
+        // gate and is never typechecked by this job, exactly like packages/**.
+        // The file is still transpiled and EXECUTED — only type-checking is off.
+        // DO NOT broaden either glob to src/** — that would mask real drift.
+        diagnostics: { exclude: ["**/packages/**", "**/app-mobile/**"] },
       },
     ],
     // ORCH-1137 (rework) — the biz-web lucide shim deep-requires per-icon ESM

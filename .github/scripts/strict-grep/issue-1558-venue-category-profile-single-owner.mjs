@@ -65,7 +65,14 @@ const PATHS = {
   // would have left "does the buyer surface use the table?" unproven.
   buyerPage: "packages/brand-rendering/PublicVenueScreen.tsx",
   buyerRoute: "mingla-business/app/b/[brandSlug]/v/[venueSlug].tsx",
-  consumerScreen: "app-mobile/src/screens/ConsumerPublicVenueScreen.tsx",
+  // #1560 — `app-mobile/src/screens/ConsumerPublicVenueScreen.tsx` was DELETED.
+  // The consumer surface now mounts the SAME `buyerPage` module, so "does the
+  // consumer resolve the category table?" is answered by `buyerPage` for both
+  // apps, and what remains consumer-specific is that its ROUTE is an adapter:
+  // it mounts the shared screen through the deep specifier and draws no venue
+  // body of its own. That is what these needles assert — the same shape
+  // `buyerRoute` has carried since #1559.
+  consumerRoute: "app-mobile/app/b/[brandSlug]/v/[venueSlug].tsx",
   readiness: "mingla-business/src/components/venue/VenueDeckReadinessSetup.tsx",
   reserveCopy: "mingla-business/src/components/venue/venueReserveCopy.ts",
 };
@@ -124,11 +131,16 @@ const MUST_CONTAIN = {
       "the deep-specifier import of the shared screen",
     ],
   ],
-  consumerScreen: [
-    ["venueCategoryProfile(venue?.venueCategory", "the profile resolution"],
-    ["profile.overview.map(", "the order-is-data Overview render"],
-    ["Record<VenueSectionId,React.FC<", "the total section registry"],
-    ["profile.reserveAction", "the single reserve string"],
+  consumerRoute: [
+    ["<PublicVenueScreen", "the shared venue screen mount"],
+    [
+      'from"@mingla/brand-rendering/PublicVenueScreen"',
+      "the deep-specifier import of the shared screen",
+    ],
+    [
+      "context.reserveAction",
+      "the reserve string read off the profile-resolved slot context",
+    ],
   ],
   readiness: [
     ["FACET_QUESTIONS_BY_CATEGORY", "the total facet lookup"],
@@ -159,9 +171,18 @@ const MUST_NOT_CONTAIN = {
       "a second section registry — there is exactly one, in the shared screen",
     ],
   ],
-  consumerScreen: [
-    ["constisStay", "a re-grown `const isStay` branch"],
-    ['venue.venueCategory==="stay"', "a raw category compare"],
+  // The route legitimately gates its Stay QUERY on the category (a Stay has no
+  // menu and no table-reservability round-trip); what it must not do is render
+  // venue body from that compare, or grow a second section registry.
+  consumerRoute: [
+    ["VERIFIEDVENUE", "identity-block JSX that belongs to the shared screen"],
+    ["WHEREYOU", "address-card JSX that belongs to the shared screen"],
+    ["hoursLineFor", "the hours renderer that belongs to the shared screen"],
+    [
+      "Record<VenueSectionId,",
+      "a second section registry — there is exactly one, in the shared screen",
+    ],
+    ["profile.overview.map(", "a second order-is-data Overview render"],
   ],
   readiness: [
     ["//restaurant/default", "the restaurant fall-through"],
@@ -305,11 +326,10 @@ if (process.argv.includes("--self-test")) {
       import { PublicVenueScreen } from "@mingla/brand-rendering/PublicVenueScreen";
       return <PublicVenueScreen venue={venueViewModel} />;
     `),
-    consumerScreen: pad(`
-      const profile = venueCategoryProfile(venue?.venueCategory ?? null);
-      const CONSUMER_VENUE_SECTIONS: Record<VenueSectionId, React.FC<P>> = {};
-      {profile.overview.map((sectionId) => null)}
-      {profile.reserveAction}
+    consumerRoute: pad(`
+      import { PublicVenueScreen } from "@mingla/brand-rendering/PublicVenueScreen";
+      accessibilityLabel={context.reserveAction}
+      return <PublicVenueScreen venue={venueViewModel} />;
     `),
     readiness: pad(`
       const FACET_QUESTIONS_BY_CATEGORY: Record<VenueCategoryKey, X> = { uncategorised: [] };
@@ -345,11 +365,11 @@ if (process.argv.includes("--self-test")) {
     f.buyerPage += '\nconst isStay = venue.venueCategory === "stay";';
     expect("buyer isStay", runGate(f).code, 1);
   }
-  // 5 — the consumer re-grows a raw category compare.
+  // 5 — #1560: the consumer ROUTE re-grows venue body instead of adapting.
   {
     const f = clean();
-    f.consumerScreen += '\nif (venue.venueCategory === "stay") {}';
-    expect("consumer raw compare", runGate(f).code, 1);
+    f.consumerRoute += "\nconst eyebrow = \"VERIFIED VENUE\";";
+    expect("consumer route re-grows body", runGate(f).code, 1);
   }
   // 6 — a surface stops rendering from the order data.
   {
@@ -360,16 +380,23 @@ if (process.argv.includes("--self-test")) {
   // 7 — a section registry stops being total.
   {
     const f = clean();
-    f.consumerScreen = f.consumerScreen.replace(
-      "Record<VenueSectionId, React.FC<P>>",
+    f.buyerPage = f.buyerPage.replace(
+      "Record<VenueSectionId, VenueSectionRenderer>",
       "Partial<Record<VenueSectionId, unknown>>",
     );
-    expect("consumer partial registry", runGate(f).code, 1);
+    expect("buyer partial registry", runGate(f).code, 1);
   }
-  // 8 — a surface hardcodes a reserve string again.
+  // 7b — #1560: the consumer route stops mounting the shared screen (which is
+  //      how it would grow a second implementation again).
   {
     const f = clean();
-    f.consumerScreen += '\naccessibilityLabel="Find a table"';
+    f.consumerRoute = f.consumerRoute.replace("<PublicVenueScreen", "<MyOwnVenuePage");
+    expect("consumer route dropped the shared mount", runGate(f).code, 1);
+  }
+  // 8 — a surface revives the RETIRED fourth reserve string.
+  {
+    const f = clean();
+    f.consumerRoute += '\naccessibilityLabel="Find a table"';
     expect("consumer hardcoded copy", runGate(f).code, 1);
   }
   // 9 — the operator fall-through returns.
