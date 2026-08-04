@@ -116,8 +116,22 @@ export function FriendPickerSheet({
   };
 
   // Header (handle is owned by the primitive's gorhom handle): title + close +
-  // search field. Rendered as the FlatList ListHeaderComponent so it scrolls
-  // with the list / stays above the keyboard via keyboardBehavior interactive.
+  // search field.
+  //
+  // Issue #1540: this comment used to say the header was "rendered as the
+  // FlatList ListHeaderComponent so it scrolls with the list". That was true and
+  // it was a BUG — BaseBottomSheet's `header` prop documents itself as a fixed,
+  // non-scrolling, intrinsic-height SIBLING (ORCH-1043), and `flatlist` was the
+  // only branch that silently routed it into list content instead. It now
+  // renders as a PINNED sibling above the list, like every other branch, so the
+  // search field stays on screen while the user filters a long friend list —
+  // which is what the comment 30 lines below always claimed ("the
+  // (always-visible) search header"). The two comments disagreed; this is the
+  // behaviour they were both written for.
+  //
+  // `keyboardBehavior="interactive"` still coordinates the keyboard: the pinned
+  // header is a direct child of gorhom's DraggableView, which is what the
+  // keyboard-aware host resizes, so the BottomSheetTextInput stays reachable.
   const header = (
     <View>
       <View style={styles.header}>

@@ -2016,3 +2016,33 @@ export const useRecommendations = (): RecommendationsContextType => {
   }
   return context;
 };
+
+/**
+ * Issue #1540 P1-1 — NON-THROWING accessor for components that are legitimately
+ * mountable BOTH inside and outside the deck.
+ *
+ * `RecommendationsProvider` (and `CardsCacheProvider`, which it consumes
+ * internally) are mounted in exactly two places: `app/index.tsx` (the deck tab)
+ * and `CollabDeckSheet`. They are deliberately SCOPED, not global — the provider
+ * runs deck fetching, collab-session resolution and realtime subscriptions, so
+ * hoisting it to `app/_layout.tsx` would start that machinery on every route in
+ * the app, including the anon-tolerant `/exp/`, `/t/` and `/e/` detail routes.
+ *
+ * But `ExpandedCardModal` is reachable from those very routes:
+ * `ViewFriendProfileScreen` (→ `PersonHolidayView` → the paired liked-cards
+ * sheet) renders under `ConsumerExperienceDetailScreen` / `ConsumerTripDetailScreen`
+ * / `ConsumerEventDetailScreen`, none of which has a provider above it and none of
+ * which has an ErrorBoundary. Calling the throwing `useRecommendations()` there
+ * red-screens the app.
+ *
+ * This hook returns `null` in that case, so the caller can degrade explicitly.
+ * That is NOT an error being swallowed — it is an OPTIONAL integration declared
+ * at the type level: off the deck there is no deck state to read or write, and
+ * `null` is the correct answer rather than a missing one.
+ *
+ * Deck-only consumers (e.g. `SwipeableCards`) must keep using the THROWING
+ * `useRecommendations()` above — for them a missing provider really is a bug and
+ * the loud failure is the guard.
+ */
+export const useRecommendationsOptional = (): RecommendationsContextType | null =>
+  useContext(RecommendationsContext) ?? null;

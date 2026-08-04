@@ -50,6 +50,19 @@ import BilateralToggle from "./BilateralToggle";
 import VisitBadge from "./VisitBadge";
 import PairedProfileSection from "./profile/PairedProfileSection";
 import PairedSavesListScreen from "./PairedSavesListScreen";
+// Issue #1540: the saves SHEET composes these directly so its gorhom
+// BottomSheetFlatList is a DIRECT child of <BottomSheet>. The visits list keeps
+// mounting the full-screen PairedSavesListScreen above.
+import {
+  PairedSavesListHeader,
+  PairedSavesSkeletonGrid,
+  PairedSavesEmptyState,
+  PairedSavesErrorState,
+  pairedSavesGridStyles,
+  renderPairedSaveItem,
+  PAIRED_SAVES_NUM_COLUMNS,
+  type PairedSavesListItem,
+} from "./pairedSaves/PairedSavesListPresentation";
 import { useTranslation } from 'react-i18next';
 import i18n from '../i18n';
 
@@ -782,10 +795,70 @@ export default function PersonHolidayView({
   }, [pairedUserId]);
 
   // Paired saves & visits
-  const { data: savesData, isLoading: savesLoading } = usePairedSaves(pairedUserId);
+  // Issue #1540 §2.2: `isError` / `isFetching` / `refetch` were always returned by
+  // usePairedSaves and simply never destructured, so a FAILED fetch fell through
+  // to the empty state and told the viewer their friend had saved nothing —
+  // Constitution #3 (no silent failures) and #9 (no fabricated data).
+  const {
+    data: savesData,
+    isLoading: savesLoading,
+    isError: savesIsError,
+    isFetching: savesIsFetching,
+    refetch: refetchSaves,
+  } = usePairedSaves(pairedUserId);
   const { data: visitsData, isLoading: visitsLoading } = usePairedUserVisits(userId, pairedUserId);
-  const saves = savesData?.saves ?? [];
+  // Issue #1540: memoised so the derived sheet rows and the FlatList's
+  // renderItem keep a stable identity between renders. A fresh `[]` on every
+  // render would change `scrollProps` every time, re-running BaseBottomSheet's
+  // body memo and re-rendering the whole grid.
+  const saves = useMemo(() => savesData?.saves ?? [], [savesData]);
   const visits = visitsData ?? [];
+
+  // ── Saves sheet body (issue #1540) ──────────────────────────────────────
+  // The sheet hands these to BaseBottomSheet's `scrollProps` so the gorhom
+  // BottomSheetFlatList is a DIRECT child of <BottomSheet>. Same rows, same
+  // geometry, same cell as the full-screen PairedSavesListScreen — the shared
+  // presentation owner guarantees that.
+  const savesListItems = useMemo<PairedSavesListItem[]>(
+    () =>
+      saves.map((sv) => ({
+        id: sv.id,
+        title: sv.title,
+        category: sv.category,
+        imageUrl: sv.imageUrl,
+        priceTier: asPriceTier(sv.priceTier),
+        rating: sv.rating,
+        timestamp: sv.savedAt,
+        timestampLabel: t('social:holiday.saved'),
+      })),
+    [saves, t],
+  );
+
+  const handleSavesCardPress = useCallback(
+    (id: string) => {
+      const idx = saves.findIndex((sv) => sv.id === id);
+      const sv = idx >= 0 ? saves[idx] : undefined;
+      if (!sv) return;
+      // Close the saves sheet first, then open the expanded card (avoids stacked
+      // modal issues on iOS).
+      setShowSavesList(false);
+      const cd = (sv.cardData ?? {}) as Record<string, unknown>;
+      if (onSaveCardPress) {
+        const allCd = saves.map(
+          (item) => (item.cardData ?? {}) as Record<string, unknown>,
+        );
+        // Small delay to let the sheet dismiss before opening the expanded modal.
+        setTimeout(() => onSaveCardPress(cd, idx, allCd), 300);
+      }
+    },
+    [saves, onSaveCardPress],
+  );
+
+  const renderSaveItem = useCallback(
+    (info: { item: PairedSavesListItem }) =>
+      renderPairedSaveItem(info, handleSavesCardPress),
+    [handleSavesCardPress],
+  );
 
   // Auto-open saves modal when triggered from map "cards" button
   useEffect(() => {
@@ -1054,50 +1127,85 @@ export default function PersonHolidayView({
           )}
         </View>
       )}
-      {/* Saves list — META-ORCH-0991 Wave B Batch 5: was a full-screen pageSheet
-          Modal; now a tall ['90%'] BaseBottomSheet (roll-up + swipe-down-close).
-          scrollMode="view" — PairedSavesListScreen owns its body tree; its 2-col
-          vertical grid renders via BottomSheetFlatList (inBottomSheet) so it
-          scrolls inside the sheet instead of fighting the pan. wrapInRNModal:
-          mounted from ViewFriendProfileScreen over the floating tab bar. */}
+      {/* Saves list — META-ORCH-0991 Wave B Batch 5 made this a tall ['90%']
+          BaseBottomSheet (roll-up + swipe-down-close); issue #1540 fixed HOW its
+          list is mounted.
+
+          🔒 LOAD-BEARING (#1540, I-SHEET-SCROLLABLE-DIRECT-CHILD): scrollMode
+          MUST stay "flatlist" so BaseBottomSheet renders the gorhom
+          BottomSheetFlatList as a DIRECT child of <BottomSheet> — the same shape
+          FriendPickerSheet ships. Under the previous scrollMode="view" the list
+          sat inside PairedSavesListScreen's own <View style={{flex:1}}> wrapper;
+          when the usePairedSaves cache was warm the list was already mounted at
+          gorhom's FIRST layout pass, the content host content-sized to 1422px
+          instead of the sheet's real 895px, and the list's viewport came back
+          EQUAL to its own contentSize (1336 = 1336) — zero scrollable overflow,
+          so cards past the first four were permanently unreachable. Adding
+          flex:1 to the list is a MEASURED no-op (1422/1336/1336, unchanged): the
+          unbounded node is the wrapper, one level up. Do NOT reintroduce a
+          wrapper here, and do NOT change snapPoints/wrapInRNModal.
+
+          wrapInRNModal: mounted from ViewFriendProfileScreen over the floating
+          tab bar. */}
       <BaseBottomSheet
         visible={showSavesList}
         onClose={() => setShowSavesList(false)}
         snapPoints={SAVES_LIST_SNAP as unknown as string[]}
         wrapInRNModal
-        scrollMode="view"
+        scrollMode="flatlist"
         accessibilityLabel={t('social:holiday.saves_title', { name: firstName })}
-      >
-        <PairedSavesListScreen
-          title={t('social:holiday.saves_title', { name: firstName })}
-          inBottomSheet
-          items={saves.map((sv) => ({
-            id: sv.id,
-            title: sv.title,
-            category: sv.category,
-            imageUrl: sv.imageUrl,
-            priceTier: asPriceTier(sv.priceTier),
-            rating: sv.rating,
-            timestamp: sv.savedAt,
-            timestampLabel: t('social:holiday.saved'),
-          }))}
-          isLoading={savesLoading}
-          onBack={() => setShowSavesList(false)}
-          onCardPress={(id) => {
-            const idx = saves.findIndex((s) => s.id === id);
-            const sv = idx >= 0 ? saves[idx] : undefined;
-            if (!sv) return;
-            // Close saves modal first, then open expanded card (avoids stacked Modal issues on iOS)
-            setShowSavesList(false);
-            const cd = (sv.cardData ?? {}) as Record<string, unknown>;
-            if (onSaveCardPress) {
-              const allCd = saves.map((s) => ((s.cardData ?? {}) as Record<string, unknown>));
-              // Small delay to let pageSheet dismiss before opening expanded modal
-              setTimeout(() => onSaveCardPress(cd, idx, allCd), 300);
-            }
-          }}
-        />
-      </BaseBottomSheet>
+        header={
+          <PairedSavesListHeader
+            title={t('social:holiday.saves_title', { name: firstName })}
+            onBack={() => setShowSavesList(false)}
+            // #1540 §1.6: sheet chrome — dismiss ✕ instead of a back chevron
+            // (there is no previous screen inside a sheet), no status-bar offset,
+            // and a hairline rule now that the header is PINNED rather than
+            // scrolling away with the grid.
+            variant="sheet"
+          />
+        }
+        scrollProps={{
+          data: savesListItems,
+          keyExtractor: (item: PairedSavesListItem) => item.id,
+          renderItem: renderSaveItem,
+          numColumns: PAIRED_SAVES_NUM_COLUMNS,
+          columnWrapperStyle: pairedSavesGridStyles.columnWrapper,
+          contentContainerStyle: pairedSavesGridStyles.gridContent,
+          // #1540 §3.4: was false. This sheet's defining bug was that users could
+          // not tell whether it scrolled; hiding the one free, universally
+          // understood scroll signal on that exact surface is indefensible.
+          showsVerticalScrollIndicator: true,
+          // #1540 §2.2 state precedence. ListEmptyComponent mounts ONLY when
+          // `data` is empty, so the "&& items.length === 0" half of the error
+          // gate is structural: when rows are present the grid renders and this
+          // never mounts. That is deliberate — React Query keeps `data` when a
+          // BACKGROUND refetch fails, and a naive `isError → error wall` would
+          // blow away a perfectly good grid because a silent revalidation timed
+          // out. Stale cards beat an error wall.
+          //   1. isLoading                  → skeleton
+          //   2. isError (and no rows)      → error state
+          //   3. otherwise (and no rows)    → empty state
+          ListEmptyComponent: savesLoading ? (
+            <PairedSavesSkeletonGrid />
+          ) : savesIsError ? (
+            <PairedSavesErrorState
+              title={t('social:holiday.saves_error_title', { name: firstName })}
+              subtitle={t('social:holiday.saves_error_subtitle')}
+              onRetry={() => {
+                refetchSaves();
+              }}
+              isRetrying={savesIsFetching}
+            />
+          ) : (
+            <PairedSavesEmptyState
+              icon="heart-outline"
+              title={t('social:holiday.saves_empty_title', { name: firstName })}
+              subtitle={t('social:holiday.saves_empty_subtitle')}
+            />
+          ),
+        }}
+      />
 
       {/* Visits list — rendered as Modal */}
       <Modal visible={showVisitsList} animationType="slide" presentationStyle="pageSheet">
