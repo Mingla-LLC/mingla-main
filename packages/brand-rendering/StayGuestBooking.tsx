@@ -133,33 +133,32 @@ export function StayGuestBooking({
   // arrive in an internal order the guest can neither see nor change.
   const [priceSort, setPriceSort] = useState<StayPriceSort>("low_high");
 
-  // Memoised so the price control, the allocation plan and the cart lines are
-  // not rebuilt on every keystroke in the guest-details fields below.
-  const offerings = useMemo(() => detail?.offerings ?? [], [detail]);
-  const rooms = useMemo(
-    () => offerings.filter((item) => item.kind === "room"),
-    [offerings],
-  );
-  const places = useMemo(
-    () => offerings.filter((item) => item.kind === "place"),
-    [offerings],
-  );
+  const offerings = detail?.offerings ?? [];
+  const rooms = offerings.filter((item) => item.kind === "room");
+  const places = offerings.filter((item) => item.kind === "place");
 
-  // Null whenever there is no honest scale — mixed currencies, a room not priced
-  // per night, one room, or every room at the same price. The surface then
-  // renders exactly what it renders today. See stayRoomPriceFilter.ts.
-  const priceControl = useMemo(
-    () => resolveStayRoomPriceControl(rooms),
-    [rooms],
-  );
-  const shownRooms = useMemo(() => {
-    if (priceControl === null) return rooms;
-    return sortStayRoomsByPrice(
-      filterStayRoomsByBand(rooms, priceBandId, priceControl),
-      priceSort,
-      priceControl,
-    );
-  }, [priceBandId, priceControl, priceSort, rooms]);
+  // Issue #1563 — derived per render, exactly like `rooms` and `places` above,
+  // and deliberately NOT wrapped in `useMemo`. `useBrandRenderingMemo` is typed
+  // `any` in this package's compilation (which is why every existing memo in
+  // this file annotates its own callback parameters), so wrapping these would
+  // erase `PublicStayOffering` from `rooms` and silently push nine TS7006
+  // "implicitly any" diagnostics onto lines that pre-date this issue. The work
+  // is one pass over a handful of rooms; the type safety is worth more.
+  //
+  // `priceControl` is null whenever there is no honest scale — mixed
+  // currencies, a room not priced per night, one room, or every room at the
+  // same price. The surface then renders exactly what it renders today.
+  // See stayRoomPriceFilter.ts for why each of those is a refusal, not a guess.
+  const priceControl: StayRoomPriceControl | null =
+    resolveStayRoomPriceControl(rooms);
+  const shownRooms: PublicStayOffering[] =
+    priceControl === null
+      ? rooms
+      : sortStayRoomsByPrice(
+          filterStayRoomsByBand(rooms, priceBandId, priceControl),
+          priceSort,
+          priceControl,
+        );
 
   // SPEC §4.4.2 — the default range, derived rather than stored so it can be
   // seeded from `detail.timezone` the moment the read resolves without an
