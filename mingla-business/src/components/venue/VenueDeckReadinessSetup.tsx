@@ -50,6 +50,12 @@ import {
   VenueGalleryError,
 } from "../../services/venueGalleryService";
 import type { VenueCategory } from "../../types/brand";
+// #1558 — the total category key space, so the facet lookup below cannot have a
+// `default` arm. Pure-data module, one erased type import; no runtime weight.
+import {
+  venueCategoryKey,
+  type VenueCategoryKey,
+} from "@mingla/brand-rendering/venueCategoryProfile";
 import { VENUE_SIGNALS } from "../../constants/venueSignals";
 import type { DeckReadinessFocus } from "../../utils/deckReadinessRoutes";
 import { sanitizeAuthoringError } from "../../utils/sanitizeAuthoringError";
@@ -146,13 +152,37 @@ const FACET_ARTS: ReadonlyArray<{ id: string; q: string }> = [
   { id: "serves_wine", q: "Serves wine?" },
   { id: "serves_dessert", q: "Serves snacks/dessert?" },
 ];
-function facetQuestionsForCategory(
-  cat: string,
-): ReadonlyArray<{ id: string; q: string }> {
-  if (cat === "play") return [...FACET_CORE, ...FACET_PLAY];
-  if (cat === "creative_and_arts") return [...FACET_CORE, ...FACET_ARTS];
-  return [...FACET_CORE, ...FACET_RESTAURANT]; // restaurant / default
-}
+/**
+ * #1558 — THE FALL-THROUGH IS GONE. This used to be
+ * `function facetQuestionsForCategory(cat: string)` ending in
+ * `return [...FACET_CORE, ...FACET_RESTAURANT]; // restaurant / default`,
+ * which is why a hotel operator was asked whether they do curbside pickup:
+ * `stay` matched neither `if`, so it silently inherited the restaurant's
+ * questions — and a `null` category was coerced to "restaurant" one line above
+ * the call site before it even got here.
+ *
+ * It is now a TOTAL `Record<VenueCategoryKey, …>`: no `default` arm, an
+ * explicit `uncategorised` arm, and a fifth venue category becomes a COMPILE
+ * ERROR here instead of quietly becoming a restaurant.
+ *
+ * The question SETS are unchanged for every category that exists today,
+ * including `stay` — whether a hotel should be asked restaurant facets is a
+ * product call that belongs to its own issue, not to this refactor. What
+ * changed is that it is now a decision written down, not a fall-through.
+ */
+const FACET_QUESTIONS_BY_CATEGORY: Record<
+  VenueCategoryKey,
+  ReadonlyArray<{ id: string; q: string }>
+> = {
+  restaurant: [...FACET_CORE, ...FACET_RESTAURANT],
+  play: [...FACET_CORE, ...FACET_PLAY],
+  creative_and_arts: [...FACET_CORE, ...FACET_ARTS],
+  // [TRANSITIONAL] a Stay inherits the restaurant facet set verbatim, exactly
+  // as it does on `main`. EXIT CONDITION: a product decision on which facets a
+  // Stay should carry — tracked as a discovery on #1558, not fixed here.
+  stay: [...FACET_CORE, ...FACET_RESTAURANT],
+  uncategorised: [...FACET_CORE, ...FACET_RESTAURANT],
+};
 
 const EMPTY_COVER: CoverPatch = {
   coverMediaUrl: null,
@@ -193,8 +223,10 @@ export function VenueDeckReadinessSetup({
   initialGallery = EMPTY_GALLERY,
 }: VenueDeckReadinessSetupProps): React.ReactElement {
   const insets = useSafeAreaInsets();
-  const venueCategory = venueCategoryProp ?? "restaurant";
-  const facetQuestions = facetQuestionsForCategory(venueCategory);
+  // #1558 — a NULL category is `uncategorised`, a named key with its own row in
+  // the table above. It is no longer coerced into "restaurant" here.
+  const facetQuestions =
+    FACET_QUESTIONS_BY_CATEGORY[venueCategoryKey(venueCategoryProp)];
   const [coverVisible, setCoverVisible] = useState(false);
   const [gallery, setGallery] = useState<string[]>(initialGallery);
   const [galleryBusy, setGalleryBusy] = useState(false);

@@ -35,6 +35,11 @@
 import { describe, expect, jest, test } from "@jest/globals";
 import { readFileSync } from "fs";
 import { join } from "path";
+// [TEST-MOD-APPROVED #1558] — the Overview order moved from JSX layout into
+// data; the ordering assertion below now reads the data. Relative, not the
+// "@mingla/…" specifier: node_modules/@mingla is a workspace symlink, which
+// under a git worktree would resolve the anchor checkout's copy.
+import { VENUE_CATEGORY_PROFILES } from "../../packages/brand-rendering/venueCategoryProfile";
 
 const BIZ = join(__dirname, "..");
 const REPO = join(BIZ, "..");
@@ -176,13 +181,41 @@ describe("META-ORCH-1290 Leg C — public page 'About' pitch (§6)", () => {
     expect(pageSrc).toContain('aboutExpanded ? "Show less" : "Read more"');
   });
 
-  test("About block sits under the identity, before the map", () => {
-    const identityIdx = pageSrc.indexOf("{!isDesktop ? identityBlock : null}");
-    const aboutIdx = pageSrc.indexOf("{aboutBlock}");
-    const mapIdx = pageSrc.indexOf("{mapBlock}");
-    expect(identityIdx).toBeGreaterThan(-1);
-    expect(aboutIdx).toBeGreaterThan(identityIdx);
-    expect(mapIdx).toBeGreaterThan(aboutIdx);
+  // [TEST-MOD-APPROVED #1558] — this test used to compare the SOURCE INDEXES of
+  // the literals `{aboutBlock}` and `{mapBlock}` inside one JSX pane. #1558
+  // deleted that hardcoded pane: the Overview order is now DATA
+  // (`profile.overview`, an ordered `VenueSectionId[]`), rendered through a
+  // total registry. Keeping the old assertion would have meant keeping the JSX
+  // literals purely so a grep could find them — a test that passes on source
+  // layout while the real order lives elsewhere is exactly the unfalsifiable
+  // class this repo keeps getting bitten by.
+  //
+  // The invariant is UNCHANGED and now asserted where it actually lives: About
+  // sits under the identity block and before Location, in every category's
+  // order, and the page renders that array rather than a fixed sequence.
+  test("About sits under the identity, before the map — in the ORDER DATA", () => {
+    // The identity block is still page chrome above the tab pane.
+    expect(pageSrc).toContain("{!isDesktop ? identityBlock : null}");
+    // The pane is driven by the profile's ordered section list.
+    expect(pageSrc).toContain("profile.overview.map((sectionId)");
+    expect(pageSrc).toContain(
+      "Record<VenueSectionId, React.FC<VenueSectionProps>>",
+    );
+
+    const keys = Object.keys(
+      VENUE_CATEGORY_PROFILES,
+    ) as Array<keyof typeof VENUE_CATEGORY_PROFILES>;
+    expect(keys.length).toBeGreaterThanOrEqual(5); // vacuity guard
+    let checked = 0;
+    for (const key of keys) {
+      const order = VENUE_CATEGORY_PROFILES[key].overview;
+      const aboutAt = order.indexOf("about");
+      const locationAt = order.indexOf("location");
+      expect(aboutAt).toBeGreaterThan(-1);
+      expect(locationAt).toBeGreaterThan(aboutAt);
+      checked += 1;
+    }
+    expect(checked).toBe(keys.length); // vacuity guard
   });
 
   test("meta description is pitch-first, clamped ≤155, mechanical fallback kept", () => {

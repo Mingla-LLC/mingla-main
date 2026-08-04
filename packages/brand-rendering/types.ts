@@ -1,4 +1,9 @@
 import type { ResolvedTheme, ThemeInput } from "@mingla/offering-rendering";
+// #1558 — ONE owner for the venue-category union. It used to be inlined here
+// AND declared again in mingla-business/src/types/brand.ts; both now read the
+// profile module, so a fifth category cannot exist in one list and not the
+// other. `import type` is erased, so this costs nothing at runtime.
+import type { VenueCategory } from "./venueCategoryProfile";
 
 export type PublicMediaType = "image" | "video" | "gif";
 
@@ -129,7 +134,7 @@ export interface PublicBrandUpcoming {
 export interface PublicVenueDetail {
   isVerifiedVenue: true;
   city: string | null;
-  venueCategory: "restaurant" | "play" | "creative_and_arts" | "stay" | null;
+  venueCategory: VenueCategory | null;
 }
 
 // Issue #1365 — one row of the Brand page Reservations venue list.

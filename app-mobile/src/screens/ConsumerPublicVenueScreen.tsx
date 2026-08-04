@@ -21,21 +21,199 @@ import {
   PublicVenueTabs,
   type PublicVenueTab,
 } from "@mingla/brand-rendering";
+// #1558 — the venue category, as DATA. Same total profile table the buyer-web
+// page reads, so the two surfaces cannot disagree about what a hotel is.
+import {
+  stayClockLabel,
+  typicalSpendVisible,
+  venueCategoryProfile,
+  venueMenuTabVisible,
+  venueNotTakingReservationsCopy,
+  type VenueBookingBody,
+  type VenueCategoryProfile,
+  type VenueSectionId,
+} from "@mingla/brand-rendering/venueCategoryProfile";
+import type { PublicStayDetail } from "@mingla/brand-rendering/stayGuest";
 import {
   ParallaxCoverShell,
   createThemePalette,
   offeringSurfaceStyles,
   resolveTheme,
+  type ResolvedTheme,
+  type ThemePalette,
 } from "@mingla/offering-rendering";
 
 import { VenueReserveSheet } from "../components/expandedCard/VenueReserveSheet";
 import { usePublicVenue } from "../hooks/usePublicVenue";
+import { usePublicStayDetail } from "../hooks/useStayGuest";
+import type { ConsumerPublicVenue } from "../services/publicVenueService";
 import { postHogService } from "../services/postHogService";
 import { captureVenueOrganicEvent } from "../services/venueOrganicCaptureService";
 import { ConsumerStayGuestExperience } from "../components/stay/ConsumerStayGuestExperience";
 import { captureNativeStayRouteAttribution } from "../services/nativeAdAttributionService";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// #1558 — the Overview pane, resolved from `profile.overview` through a total
+// registry, exactly as the buyer-web page does. Same section ids, same order
+// data, one shared profile table — which is what stops this screen and
+// PublicVenuePage.tsx disagreeing about what a hotel is while #1559 is still
+// pending. The RENDERERS are still per-app (this screen has no map, no
+// discovery price and its own gallery grid); #1559 collapses them into one.
+// ═══════════════════════════════════════════════════════════════════════════
+
+type Surface = ReturnType<typeof offeringSurfaceStyles>;
+
+interface ConsumerVenueSectionProps {
+  venue: ConsumerPublicVenue;
+  stayDetail: PublicStayDetail | null;
+  profile: VenueCategoryProfile;
+  palette: ThemePalette;
+  surface: Surface;
+  theme: ResolvedTheme;
+}
+
+/**
+ * The consumer read model (`ConsumerPublicVenue`) carries no discovery price —
+ * `publicVenueService.ts` drops nine columns the very same view already serves.
+ * So this surface's price lede has a MODEL (`profile.pricing`) and no data, and
+ * renders nothing rather than inventing a number (Constitution #9).
+ * #1559/#1560 give this screen the buyer-web view model; #1562 owns the Stay
+ * "from" rate. Until then this is honestly empty, not silently missing.
+ */
+const ConsumerVenuePriceLedeSection: React.FC<ConsumerVenueSectionProps> = ({
+  profile,
+}) => {
+  if (!typicalSpendVisible(profile, false)) return null;
+  return null;
+};
+
+const ConsumerVenueAboutSection: React.FC<ConsumerVenueSectionProps> = ({
+  venue,
+  palette,
+}) => {
+  const pitch = venue.pitch !== null ? venue.pitch.trim() : "";
+  if (pitch.length === 0) return null;
+  return (
+    <Text style={[styles.body, { color: palette.secondaryText }]}>{pitch}</Text>
+  );
+};
+
+const ConsumerVenueLocationSection: React.FC<ConsumerVenueSectionProps> = ({
+  venue,
+  palette,
+  surface,
+}) => {
+  if (venue.address === null) return null;
+  return (
+    <View style={[styles.card, surface.card]}>
+      <Text style={[styles.label, { color: palette.tertiaryText }]}>
+        WHERE YOU’LL BE
+      </Text>
+      <Text style={[styles.body, { color: palette.primaryText }]}>
+        {venue.address}
+      </Text>
+    </View>
+  );
+};
+
+/**
+ * Only ever mounted for a category whose profile says
+ * `timekeeping: "tradingHours"`. A Stay lists `stayPolicy` in its place, which
+ * is why a hotel on this screen no longer publishes a weekly closing time.
+ */
+const ConsumerVenueHoursSection: React.FC<ConsumerVenueSectionProps> = ({
+  venue,
+  palette,
+  surface,
+}) => {
+  if (venue.hours.length === 0) return null;
+  return (
+    <View style={[styles.card, surface.card]}>
+      <Text style={[styles.label, { color: palette.tertiaryText }]}>HOURS</Text>
+      {venue.hours.map((hour) => (
+        <View key={hour.weekday} style={styles.hourRow}>
+          <Text style={[styles.body, { color: palette.secondaryText }]}>
+            {WEEKDAYS[hour.weekday] ?? hour.weekday}
+          </Text>
+          <Text style={[styles.body, { color: palette.primaryText }]}>
+            {hour.isClosed || hour.openTime === null
+              ? "Closed"
+              : `${hour.openTime}–${hour.closeTime ?? ""}`}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+};
+
+/** #1558 — what a Stay has INSTEAD of trading hours, on this surface too. */
+const ConsumerVenueStayPolicySection: React.FC<ConsumerVenueSectionProps> = ({
+  stayDetail,
+  palette,
+  surface,
+}) => {
+  if (stayDetail === null) return null;
+  const houseRules =
+    stayDetail.houseRules !== null && stayDetail.houseRules.trim().length > 0
+      ? stayDetail.houseRules.trim()
+      : null;
+  return (
+    <View style={[styles.card, surface.card]}>
+      <Text style={[styles.label, { color: palette.tertiaryText }]}>
+        CHECK-IN &amp; CHECK-OUT
+      </Text>
+      <View style={styles.hourRow}>
+        <Text style={[styles.body, { color: palette.secondaryText }]}>
+          Check-in
+        </Text>
+        <Text style={[styles.body, { color: palette.primaryText }]}>
+          {stayClockLabel(stayDetail.checkInTime)}
+        </Text>
+      </View>
+      <View style={styles.hourRow}>
+        <Text style={[styles.body, { color: palette.secondaryText }]}>
+          Check-out
+        </Text>
+        <Text style={[styles.body, { color: palette.primaryText }]}>
+          {stayClockLabel(stayDetail.checkOutTime)}
+        </Text>
+      </View>
+      {houseRules !== null ? (
+        <Text style={[styles.body, { color: palette.secondaryText }]}>
+          {houseRules}
+        </Text>
+      ) : null}
+    </View>
+  );
+};
+
+const ConsumerVenueGallerySection: React.FC<ConsumerVenueSectionProps> = ({
+  venue,
+}) => {
+  if (venue.galleryPhotoUrls.length === 0) return null;
+  return (
+    <View style={styles.gallery}>
+      {venue.galleryPhotoUrls.slice(0, 4).map((url) => (
+        <Image key={url} source={{ uri: url }} style={styles.photo} />
+      ))}
+    </View>
+  );
+};
+
+/** Total registry — a section id without a renderer does not compile. */
+const CONSUMER_VENUE_SECTIONS: Record<
+  VenueSectionId,
+  React.FC<ConsumerVenueSectionProps>
+> = {
+  priceLede: ConsumerVenuePriceLedeSection,
+  about: ConsumerVenueAboutSection,
+  location: ConsumerVenueLocationSection,
+  hours: ConsumerVenueHoursSection,
+  stayPolicy: ConsumerVenueStayPolicySection,
+  gallery: ConsumerVenueGallerySection,
+};
 
 type VenueRouteParams = {
   [key: string]: string | string[] | undefined;
@@ -73,15 +251,32 @@ export default function ConsumerPublicVenueScreen(): React.ReactElement {
   }, [brandSlug, params, venueSlug]);
 
   const venue = query.data ?? null;
+  // #1558 — the ONE category read on this screen. Everything that branched on
+  // `isStay` now reads a field of this profile, and a NULL category gets the
+  // named `uncategorised` arm instead of silently becoming a restaurant.
+  const profile = venueCategoryProfile(venue?.venueCategory ?? null);
+  // The check-in / check-out times a Stay shows INSTEAD of trading hours. Same
+  // query key the Reservations tab already uses (`stayGuestKeys.detail`), so
+  // React Query serves both from one fetch; disabled for every other category.
+  const stayDetailQuery = usePublicStayDetail(
+    venue?.id ?? null,
+    profile.bookingBody === "stay",
+  );
   useEffect(() => {
-    if (venue?.venueCategory !== "stay" || stayViewFired.current) return;
+    if (
+      venue === null ||
+      profile.bookingBody !== "stay" ||
+      stayViewFired.current
+    ) {
+      return;
+    }
     stayViewFired.current = true;
     postHogService.capture("stay_viewed", {
       surface: "consumer_native",
       brand_id: venue.brandId,
       venue_id: venue.id,
     });
-  }, [venue]);
+  }, [profile, venue]);
   const captureVenueFunnel = useCallback(
     (
       event:
@@ -147,7 +342,7 @@ export default function ConsumerPublicVenueScreen(): React.ReactElement {
 
   const initialTab: PublicVenueTab =
     requested === "reservations" &&
-      (venue.venueCategory === "stay" ||
+      (profile.bookingBody === "stay" ||
         venue.reservability.state === "available")
       ? "reservations"
       : "overview";
@@ -155,128 +350,113 @@ export default function ConsumerPublicVenueScreen(): React.ReactElement {
     (sum, group) => sum + group.items.length,
     0,
   );
-  const isStay = venue.venueCategory === "stay";
 
+  const sectionProps: ConsumerVenueSectionProps = {
+    venue,
+    stayDetail: stayDetailQuery.data ?? null,
+    profile,
+    palette,
+    surface,
+    theme,
+  };
+
+  // #1558 — `profile.overview` IS the layout. A restaurant lists `hours`; a
+  // hotel lists `stayPolicy`, so this screen stops publishing a hotel's weekly
+  // closing time next to a booking tab that says check-in is at three.
   const overview = (
     <View style={styles.pane}>
-      {venue.pitch !== null && venue.pitch.trim().length > 0 ? (
-        <Text style={[styles.body, { color: palette.secondaryText }]}>
-          {venue.pitch.trim()}
-        </Text>
-      ) : null}
-      {venue.address !== null ? (
-        <View style={[styles.card, surface.card]}>
-          <Text style={[styles.label, { color: palette.tertiaryText }]}>
-            WHERE YOU’LL BE
-          </Text>
-          <Text style={[styles.body, { color: palette.primaryText }]}>
-            {venue.address}
-          </Text>
-        </View>
-      ) : null}
-      {venue.hours.length > 0 ? (
-        <View style={[styles.card, surface.card]}>
-          <Text style={[styles.label, { color: palette.tertiaryText }]}>
-            HOURS
-          </Text>
-          {venue.hours.map((hour) => (
-            <View key={hour.weekday} style={styles.hourRow}>
-              <Text style={[styles.body, { color: palette.secondaryText }]}>
-                {WEEKDAYS[hour.weekday] ?? hour.weekday}
-              </Text>
-              <Text style={[styles.body, { color: palette.primaryText }]}>
-                {hour.isClosed || hour.openTime === null
-                  ? "Closed"
-                  : `${hour.openTime}–${hour.closeTime ?? ""}`}
-              </Text>
-            </View>
-          ))}
-        </View>
-      ) : null}
-      {venue.galleryPhotoUrls.length > 0 ? (
-        <View style={styles.gallery}>
-          {venue.galleryPhotoUrls.slice(0, 4).map((url) => (
-            <Image key={url} source={{ uri: url }} style={styles.photo} />
-          ))}
-        </View>
-      ) : null}
+      {profile.overview.map((sectionId) => {
+        const Section = CONSUMER_VENUE_SECTIONS[sectionId];
+        return <Section key={sectionId} {...sectionProps} />;
+      })}
     </View>
   );
 
-  const reservations = isStay ? (
-    <View style={styles.pane}>
-      <ConsumerStayGuestExperience
-        venueId={venue.id}
-        venueName={venue.name}
-        brandId={venue.brandId}
-        palette={palette}
-        surface={surface}
-        theme={theme}
-      />
-    </View>
-  ) : venue.reservability.state === "available" ? (
+  // #1558 — which booking body mounts is DATA, through a total record. The
+  // bodies stay app-side because the fork is a payment rail (native
+  // PaymentSheet here, Stripe.js Payment Element on web).
+  const reservationBodies: Record<VenueBookingBody, () => React.ReactNode> = {
+    stay: () => (
       <View style={styles.pane}>
-        {reserved ? (
-          <Text style={[styles.title, { color: palette.primaryText }]}>
-            Your table is reserved
-          </Text>
-        ) : (
-          <>
-            <Text style={[styles.body, { color: palette.secondaryText }]}>
-              Choose your party, date, and a real available time.
+        <ConsumerStayGuestExperience
+          venueId={venue.id}
+          venueName={venue.name}
+          brandId={venue.brandId}
+          palette={palette}
+          surface={surface}
+          theme={theme}
+        />
+      </View>
+    ),
+    table: () =>
+      venue.reservability.state === "available" ? (
+        <View style={styles.pane}>
+          {reserved ? (
+            <Text style={[styles.title, { color: palette.primaryText }]}>
+              Your table is reserved
             </Text>
-            <Pressable
-              onPress={() => {
-                setReserveOpen(true);
-                postHogService.capture("public_venue_reservation_started", {
-                  surface: "consumer_native",
-                  brand_id: venue.brandId,
-                  venue_id: venue.id,
-                });
-                void captureVenueOrganicEvent(
-                  { brandId: venue.brandId, venueId: venue.id },
-                  "reservation_start",
-                );
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="Find a table"
-              style={[
-                styles.reserveButton,
-                { backgroundColor: palette.accent },
-              ]}
-            >
-              <Text
-                style={[styles.reserveLabel, { color: palette.accentText }]}
-              >
-                Find a table
+          ) : (
+            <>
+              <Text style={[styles.body, { color: palette.secondaryText }]}>
+                Choose your party, date, and a real available time.
               </Text>
-            </Pressable>
-          </>
-        )}
-      </View>
-    ) : venue.reservability.state === "error" ? (
-      <View style={styles.pane}>
-        <Text style={[styles.body, { color: palette.secondaryText }]}>
-          We couldn’t check reservations right now.
-        </Text>
-        <Pressable
-          onPress={() => {
-            void query.refetch();
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Try checking reservations again"
-          style={[styles.retryButton, { backgroundColor: palette.accent }]}
-        >
-          <Text style={[styles.reserveLabel, { color: palette.accentText }]}>
-            Try again
+              <Pressable
+                onPress={() => {
+                  setReserveOpen(true);
+                  postHogService.capture("public_venue_reservation_started", {
+                    surface: "consumer_native",
+                    brand_id: venue.brandId,
+                    venue_id: venue.id,
+                  });
+                  void captureVenueOrganicEvent(
+                    { brandId: venue.brandId, venueId: venue.id },
+                    "reservation_start",
+                  );
+                }}
+                accessibilityRole="button"
+                // #1558 — was the hardcoded "Find a table", a fourth competing
+                // reserve string. One string per category now, shared with the
+                // buyer-web CTA and the sheet heading.
+                accessibilityLabel={profile.reserveAction}
+                style={[
+                  styles.reserveButton,
+                  { backgroundColor: palette.accent },
+                ]}
+              >
+                <Text
+                  style={[styles.reserveLabel, { color: palette.accentText }]}
+                >
+                  {profile.reserveAction}
+                </Text>
+              </Pressable>
+            </>
+          )}
+        </View>
+      ) : venue.reservability.state === "error" ? (
+        <View style={styles.pane}>
+          <Text style={[styles.body, { color: palette.secondaryText }]}>
+            We couldn’t check reservations right now.
           </Text>
-        </Pressable>
-      </View>
-    ) : (
-      <Text style={[styles.body, { color: palette.secondaryText }]}>
-        This venue isn’t taking reservations right now.
-      </Text>
-    );
+          <Pressable
+            onPress={() => {
+              void query.refetch();
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Try checking reservations again"
+            style={[styles.retryButton, { backgroundColor: palette.accent }]}
+          >
+            <Text style={[styles.reserveLabel, { color: palette.accentText }]}>
+              Try again
+            </Text>
+          </Pressable>
+        </View>
+      ) : (
+        <Text style={[styles.body, { color: palette.secondaryText }]}>
+          {venueNotTakingReservationsCopy(profile)}
+        </Text>
+      ),
+  };
+  const reservations = reservationBodies[profile.bookingBody]();
 
   return (
     <View style={styles.host}>
@@ -311,7 +491,10 @@ export default function ConsumerPublicVenueScreen(): React.ReactElement {
           </Text>
           <PublicVenueTabs
             initialTab={initialTab}
-            hasMenu={!isStay && menuCount > 0}
+            // #1558 — the twin of PublicVenuePage.tsx's gate, now ONE function
+            // over the profile's `tabs` array. #1536 flips it by editing that
+            // array, in one file, for all five surfaces at once.
+            hasMenu={venueMenuTabVisible(profile, menuCount)}
             overview={overview}
             menu={
               <PublicMenuSections
@@ -346,7 +529,8 @@ export default function ConsumerPublicVenueScreen(): React.ReactElement {
           />
         </View>
       </ParallaxCoverShell>
-      {!isStay && venue.reservability.state === "available" ? (
+      {profile.bookingBody === "table" &&
+      venue.reservability.state === "available" ? (
         <VenueReserveSheet
           visible={reserveOpen}
           onClose={() => setReserveOpen(false)}

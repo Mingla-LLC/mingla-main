@@ -12,7 +12,18 @@ describe("Issue #1390 Stay guest surface contracts", () => {
       "app-mobile/src/screens/ConsumerPublicVenueScreen.tsx",
     );
     expect(buyerRoute).toContain('venue?.venueCategory === "stay"');
-    expect(consumerRoute).toContain('venue.venueCategory === "stay"');
+    // [TEST-MOD-APPROVED #1558] — was `venue.venueCategory === "stay"`. The
+    // consumer screen no longer compares the raw category anywhere: it resolves
+    // the ONE total category profile and branches on `profile.bookingBody`, so
+    // `play`, `creative_and_arts` and a NULL category stop silently inheriting
+    // the restaurant's screen. Same invariant — the Stay branch is still driven
+    // by `venueCategory` off the same view, with no invented Hotel route —
+    // asserted at the seam where it now lives.
+    expect(consumerRoute).toContain(
+      "venueCategoryProfile(venue?.venueCategory",
+    );
+    expect(consumerRoute).toContain('profile.bookingBody === "stay"');
+    expect(consumerRoute).not.toContain('const isStay = venue.venueCategory');
     expect(
       fs.existsSync(path.join(ROOT, "mingla-business/app/hotel")),
     ).toBe(false);

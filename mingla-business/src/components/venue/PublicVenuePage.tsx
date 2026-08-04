@@ -53,6 +53,20 @@ import { PublicVenueTabs } from "@mingla/brand-rendering/PublicVenueTabs";
 import type { PublicVenueTabsHandle } from "@mingla/brand-rendering/PublicVenueTabs";
 import type { PublicMenuGroup, PublicVenueTab } from "@mingla/brand-rendering";
 import type { PublicStayDetail } from "@mingla/brand-rendering/stayGuest";
+// #1558 — the venue category, as DATA. DEEP specifier for the same reason as
+// PublicMenuSections above; the module is pure data with one erased type import,
+// so it adds no runtime dependency to any chunk it lands in.
+import {
+  stayClockLabel,
+  typicalSpendVisible,
+  venueCategoryProfile,
+  venueMenuTabVisible,
+  venueNotTakingReservationsCopy,
+  venueShowsTradingHours,
+  type VenueBookingBody,
+  type VenueCategoryProfile,
+  type VenueSectionId,
+} from "@mingla/brand-rendering/venueCategoryProfile";
 import {
   ParallaxCoverShell,
   buildStaticMapUrl,
@@ -88,7 +102,6 @@ import {
   type VenueOrganicAnalyticsSurface,
 } from "../../services/venueOrganicCapturePolicy";
 import { PublicVenueReservationSheet } from "./PublicVenueReservationSheet";
-import { reserveActionLabel, reserveSheetTitle } from "./venueReserveCopy";
 import {
   createPublicVenueReservationUiState,
   normalizePublicVenueReservationUiState,
@@ -156,6 +169,368 @@ const hoursLineFor = (entry: BrandHourEntry): string =>
     ? "Closed"
     : `${entry.openTime}–${entry.closeTime}`;
 
+// ═══════════════════════════════════════════════════════════════════════════
+// #1558 — the Overview pane, as a total section registry.
+//
+// Every block below used to be an inline `const …Block = …` in the component
+// body, rendered in a hardcoded order, with `isStay ?` deciding which of them
+// a guest saw. Now the ORDER AND MEMBERSHIP come from `profile.overview` and
+// the lookup is `Record<VenueSectionId, React.FC<VenueSectionProps>>` — total,
+// so a new section id does not compile until it has a renderer, and a listed id
+// can never miss.
+//
+// Each section is pure: it takes one context and returns `null` when its data
+// is absent (Constitution #9 — missing is hidden, never faked). A section that
+// is LISTED but has no data renders nothing; a section that is NOT LISTED is
+// never mounted. Those are different states and both are honest.
+//
+// These renderers stay in this file on purpose. #1559 lifts them into
+// `packages/brand-rendering/venueSections/` so the consumer app renders the
+// same pixels; doing it here would build that shared module a step early.
+// ═══════════════════════════════════════════════════════════════════════════
+
+type VenueSurfaceStyles = ReturnType<typeof offeringSurfaceStyles>;
+
+export interface VenueSectionProps {
+  venue: PublicVenue;
+  discoveryPrice: PublicVenueDiscoveryPrice | null;
+  stayDetail: PublicStayDetail | null;
+  profile: VenueCategoryProfile;
+  palette: ThemePalette;
+  surface: VenueSurfaceStyles;
+  theme: ResolvedTheme;
+  themedFont: { fontFamily: ResolvedTheme["fontFamilyValue"] };
+  isDesktop: boolean;
+  todayWeekday: number;
+  mapsQuery: string | null;
+  onOpenMaps: () => void;
+}
+
+/** §6.1a typical-spend lede — gated by the profile's PRICING MODEL, not by
+ *  `!isStay`. A Stay prices `nightlyFrom`; that rate is #1562, so until then a
+ *  Stay's lede has a model and no data and renders nothing. */
+const VenuePriceLedeSection: React.FC<VenueSectionProps> = ({
+  discoveryPrice,
+  profile,
+  palette,
+  themedFont,
+}) => {
+  if (
+    discoveryPrice === null ||
+    !typicalSpendVisible(profile, discoveryPrice !== null)
+  ) {
+    return null;
+  }
+  return (
+    <Text style={[styles.aboutBody, themedFont, { color: palette.secondaryText }]}>
+      Typical spend · {formatSourceRange({
+        minMinor: discoveryPrice.minMinor,
+        maxMinor: discoveryPrice.maxMinor,
+        currencyCode: discoveryPrice.currencyCode,
+        exponent: discoveryPrice.minorUnitExponent,
+      })}
+    </Text>
+  );
+};
+
+// ── §6.1 About / pitch — the venue's voice, right under the identity ──────
+// Themed prose (palette + brand font), 4-line clamp + Read more. Hidden
+// entirely when the owner wrote no pitch (real-data-only, Constitution #9).
+const VenueAboutSection: React.FC<VenueSectionProps> = ({
+  venue,
+  palette,
+  themedFont,
+}) => {
+  const [aboutExpanded, setAboutExpanded] = useState<boolean>(false);
+  const toggleAboutExpanded = useCallback((): void => {
+    setAboutExpanded((v) => !v);
+  }, []);
+  const pitchText = venue.pitch !== null ? venue.pitch.trim() : "";
+  const hasPitch = pitchText.length > 0;
+  const pitchIsLong = hasPitch && pitchText.length > PITCH_CLAMP_CHARS;
+
+  const aboutBlock = hasPitch ? (
+    <View>
+      <Text
+        style={[styles.aboutBody, themedFont, { color: palette.secondaryText }]}
+        numberOfLines={aboutExpanded ? undefined : 4}
+      >
+        {pitchText}
+      </Text>
+      {pitchIsLong ? (
+        <Pressable
+          onPress={toggleAboutExpanded}
+          accessibilityRole="button"
+          accessibilityLabel={aboutExpanded ? "Show less" : "Read more"}
+          hitSlop={8}
+          style={({ pressed }) => [
+            styles.aboutToggle,
+            pressed && styles.pressed,
+          ]}
+        >
+          <Text style={[styles.aboutToggleText, { color: palette.accent }]}>
+            {aboutExpanded ? "Show less" : "Read more"}
+          </Text>
+        </Pressable>
+      ) : null}
+    </View>
+  ) : null;
+
+  return aboutBlock;
+};
+
+// ── §6.4 map + address card ───────────────────────────────────────────────
+const VenueLocationSection: React.FC<VenueSectionProps> = ({
+  venue,
+  palette,
+  isDesktop,
+  mapsQuery,
+  onOpenMaps,
+}) => {
+  // §6.4 static map — server proxy ONLY; null → map hidden (fail-safe).
+  const staticMapUrl = useMemo<string | null>(
+    () =>
+      buildStaticMapUrl({
+        lat: venue.lat,
+        lng: venue.lng,
+        accentHex: palette.accent,
+        height: 300,
+      }),
+    [palette.accent, venue.lat, venue.lng],
+  );
+
+  const mapBlock =
+    staticMapUrl !== null ? (
+      <View style={[styles.mapCard, { backgroundColor: palette.card }]}>
+        <Image
+          source={{ uri: staticMapUrl }}
+          resizeMode="cover"
+          style={[styles.mapImage, isDesktop && styles.mapImageDesktop]}
+          accessibilityLabel={`Map of ${venue.name}`}
+          accessibilityIgnoresInvertColors
+        />
+        <View style={[styles.mapPill, { backgroundColor: palette.page }]}>
+          <Text
+            numberOfLines={1}
+            style={[styles.mapPillLabel, { color: palette.primaryText }]}
+          >
+            {venue.name}
+          </Text>
+        </View>
+      </View>
+    ) : null;
+
+  const addressCard =
+    mapsQuery !== null ? (
+      <Pressable
+        onPress={onOpenMaps}
+        accessibilityRole="button"
+        accessibilityLabel={`Open ${venue.name} in maps`}
+        style={({ pressed }) => [
+          styles.addressCard,
+          {
+            backgroundColor: palette.card,
+            borderColor: palette.cutoutBorder,
+          },
+          pressed && styles.pressed,
+        ]}
+      >
+        <Text
+          style={[styles.addressCardLabel, { color: palette.tertiaryText }]}
+        >
+          WHERE YOU&apos;LL BE
+        </Text>
+        <Text style={[styles.addressCardValue, { color: palette.primaryText }]}>
+          {venue.address ?? `${venue.lat}, ${venue.lng}`}
+        </Text>
+        <Text style={[styles.addressCardHint, { color: palette.accent }]}>
+          Open in maps →
+        </Text>
+      </Pressable>
+    ) : null;
+
+  if (mapBlock === null && addressCard === null) return null;
+  return (
+    <>
+      {mapBlock}
+      {addressCard}
+    </>
+  );
+};
+
+// ── §6.5 hours card ───────────────────────────────────────────────────────
+// Only ever mounted for a category whose profile says `timekeeping:
+// "tradingHours"`. A hotel's profile lists `stayPolicy` here instead, which is
+// why a Stay can no longer publish "Mon–Sat 09:00–17:00" one tap away from its
+// own "Check-in 15:00".
+const VenueHoursSection: React.FC<VenueSectionProps> = ({
+  venue,
+  palette,
+  surface,
+  todayWeekday: today,
+}) => {
+  const hours = venue.hours;
+  if (hours.length === 0) return null;
+  return (
+    <View style={[styles.hoursCard, surface.card]}>
+      <Text style={[styles.sectionLabel, { color: palette.tertiaryText }]}>
+        HOURS
+      </Text>
+      {hours.map((entry) => {
+        const isToday = entry.weekday === today;
+        return (
+          <View key={entry.weekday} style={styles.hoursRow}>
+            {isToday ? (
+              <View
+                style={[styles.todayBar, { backgroundColor: palette.accent }]}
+              />
+            ) : null}
+            <Text
+              style={[
+                styles.hoursDay,
+                { color: palette.secondaryText },
+                isToday && styles.hoursToday,
+              ]}
+            >
+              {WEEKDAY_LABELS[entry.weekday] ?? String(entry.weekday)}
+            </Text>
+            <Text
+              style={[
+                styles.hoursTimes,
+                {
+                  color: entry.isClosed
+                    ? palette.tertiaryText
+                    : palette.primaryText,
+                },
+                isToday && styles.hoursToday,
+              ]}
+            >
+              {hoursLineFor(entry)}
+            </Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+};
+
+// ── #1558 §6.5b check-in / check-out — what a Stay has INSTEAD of hours ───
+// The times are already on the wire: `PublicStayDetail.checkInTime` /
+// `.checkOutTime` (`packages/brand-rendering/stayGuest.ts`), the same detail the
+// Reservations tab renders. Null detail → the block is omitted, never faked.
+const VenueStayPolicySection: React.FC<VenueSectionProps> = ({
+  stayDetail,
+  palette,
+  surface,
+}) => {
+  if (stayDetail === null) return null;
+  const houseRules =
+    stayDetail.houseRules !== null && stayDetail.houseRules.trim().length > 0
+      ? stayDetail.houseRules.trim()
+      : null;
+  return (
+    <View style={[styles.hoursCard, surface.card]}>
+      <Text style={[styles.sectionLabel, { color: palette.tertiaryText }]}>
+        CHECK-IN &amp; CHECK-OUT
+      </Text>
+      <View style={styles.hoursRow}>
+        <Text style={[styles.hoursDay, { color: palette.secondaryText }]}>
+          Check-in
+        </Text>
+        <Text style={[styles.hoursTimes, { color: palette.primaryText }]}>
+          {stayClockLabel(stayDetail.checkInTime)}
+        </Text>
+      </View>
+      <View style={styles.hoursRow}>
+        <Text style={[styles.hoursDay, { color: palette.secondaryText }]}>
+          Check-out
+        </Text>
+        <Text style={[styles.hoursTimes, { color: palette.primaryText }]}>
+          {stayClockLabel(stayDetail.checkOutTime)}
+        </Text>
+      </View>
+      {houseRules !== null ? (
+        <Text
+          style={[styles.aboutBody, { color: palette.secondaryText }]}
+        >
+          {houseRules}
+        </Text>
+      ) : null}
+    </View>
+  );
+};
+
+// ── §6.6b gallery strip ───────────────────────────────────────────────────
+const VenueGallerySection: React.FC<VenueSectionProps> = ({
+  venue,
+  palette,
+}) => {
+  const gallery = venue.galleryPhotoUrls;
+  if (gallery.length === 0) return null;
+  return (
+    <View style={styles.galleryWrap}>
+      <Text style={[styles.sectionLabel, { color: palette.tertiaryText }]}>
+        PHOTOS
+      </Text>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        snapToInterval={248}
+        decelerationRate="fast"
+        contentContainerStyle={styles.galleryContent}
+      >
+        {gallery.map((url, i) => (
+          <Image
+            key={url}
+            source={{ uri: url }}
+            resizeMode="cover"
+            style={styles.galleryTile}
+            accessibilityLabel={`${venue.name} photo ${i + 1} of ${gallery.length}`}
+            accessibilityIgnoresInvertColors
+          />
+        ))}
+      </ScrollView>
+    </View>
+  );
+};
+
+/**
+ * THE SECOND TOTAL RECORD. Every `VenueSectionId` resolves here; adding an id
+ * to the union without a renderer does not compile, and `profile.overview` can
+ * therefore never name a section that is not drawable.
+ */
+const VENUE_SECTIONS: Record<VenueSectionId, React.FC<VenueSectionProps>> = {
+  priceLede: VenuePriceLedeSection,
+  about: VenueAboutSection,
+  location: VenueLocationSection,
+  hours: VenueHoursSection,
+  stayPolicy: VenueStayPolicySection,
+  gallery: VenueGallerySection,
+};
+
+interface ReserveGateInput {
+  stayState: "loading" | "ready" | "unavailable" | "error" | undefined;
+  reservabilityState: "loading" | "ready" | "error";
+  reservable: PublicVenueReservable | null;
+}
+
+/**
+ * §6.7 reserve display gate — fail closed, keyed on the profile's booking body
+ * rather than on `isStay ? … : …`. A fifth category picks a body and inherits
+ * its gate; it cannot silently inherit the restaurant's.
+ */
+const RESERVATION_READY: Record<
+  VenueBookingBody,
+  (input: ReserveGateInput) => boolean
+> = {
+  stay: ({ stayState }) => stayState === "ready",
+  table: ({ reservabilityState, reservable }) =>
+    reservabilityState === "ready" &&
+    reservable !== null &&
+    reservable.reservable === true &&
+    reservable.venueId !== null,
+};
+
 export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
   venue,
   discoveryPrice,
@@ -173,18 +548,19 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
   const { isDesktop } = useResponsiveLayout();
   const [shareModalVisible, setShareModalVisible] = useState(false);
   const [muted, setMuted] = useState<boolean>(true);
-  // META-ORCH-1290(C) §6.1 — About pitch clamp/expand state.
-  const [aboutExpanded, setAboutExpanded] = useState<boolean>(false);
-  const isStay = venue.venueCategory === "stay";
+  // #1558 — the ONE category read on this page. Everything that used to branch
+  // on `isStay` now reads a field of this profile, so `play`, `creative_and_arts`
+  // and a NULL category stop inheriting the restaurant's page by accident.
+  const profile = venueCategoryProfile(venue.venueCategory);
   const menuItemCount = menu.reduce((sum, group) => sum + group.items.length, 0);
-  const hasMenu = !isStay && menuItemCount > 0;
-  const canOpenReservationSheet =
-    isStay
-      ? stayState === "ready"
-      : reservabilityState === "ready" &&
-        reservable !== null &&
-        reservable.reservable === true &&
-        reservable.venueId !== null;
+  // #1536 flips this by editing `tabs` in VENUE_CATEGORY_PROFILES — one array
+  // element, one file, all five surfaces.
+  const hasMenu = venueMenuTabVisible(profile, menuItemCount);
+  const canOpenReservationSheet = RESERVATION_READY[profile.bookingBody]({
+    stayState,
+    reservabilityState,
+    reservable,
+  });
   const reservationUiContext = useMemo(
     () => ({ hasMenu, canOpenReservationSheet }),
     [canOpenReservationSheet, hasMenu],
@@ -228,10 +604,6 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
     );
   }, [analyticsSurface, venue.brandId, venue.id]);
 
-  const toggleAboutExpanded = useCallback((): void => {
-    setAboutExpanded((v) => !v);
-  }, []);
-
   const resolvedTheme = useMemo<ResolvedTheme>(
     () => resolveTheme(venue.theme, null),
     [venue.theme],
@@ -242,24 +614,21 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
   );
   const surface = useMemo(() => offeringSurfaceStyles(palette), [palette]);
   useThemeFont(resolvedTheme.fontFamilyValue);
-  const themedFont = { fontFamily: resolvedTheme.fontFamilyValue };
+  // Memoised because it is now threaded to every Overview section through
+  // `sectionProps`; a fresh object each render would defeat that memo.
+  const themedFont = useMemo(
+    () => ({ fontFamily: resolvedTheme.fontFamilyValue }),
+    [resolvedTheme.fontFamilyValue],
+  );
 
   const canonicalUrl = venuePublicUrl({
     brandSlug: venue.brandSlug,
     venueSlug: venue.slug,
   });
 
-  // ── §6.4 static map — server proxy ONLY; null → map hidden (fail-safe). ──
-  const staticMapUrl = useMemo<string | null>(
-    () =>
-      buildStaticMapUrl({
-        lat: venue.lat,
-        lng: venue.lng,
-        accentHex: palette.accent,
-        height: 300,
-      }),
-    [palette.accent, venue.lat, venue.lng],
-  );
+  // §6.4 — the static map itself now lives in VenueLocationSection (it is that
+  // section's data, not the page's). The page keeps only the maps QUERY, which
+  // the section receives, because the "Open in maps" handler is a host effect.
   const hasCoords = Number.isFinite(venue.lat) && Number.isFinite(venue.lng);
   const mapsQuery =
     venue.address !== null && venue.address.trim().length > 0
@@ -348,21 +717,24 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
     canOpenReservationSheet &&
     normalizedReservationUiState.activeTab !== "reservations";
 
-  const hours = venue.hours;
   const today = todayWeekday();
-  const todayEntry = hours.find((h) => h.weekday === today) ?? null;
+  const todayEntry = venue.hours.find((h) => h.weekday === today) ?? null;
+  // #1558 — the desktop panel's "Open today · …" line had NO category guard, so
+  // it was the SECOND place a hotel advertised a closing time. It is now gated
+  // on the profile's timekeeping model, exactly like the hours section.
   const todayLine =
-    todayEntry !== null && !todayEntry.isClosed && todayEntry.openTime !== null
+    venueShowsTradingHours(profile) &&
+    todayEntry !== null &&
+    !todayEntry.isClosed &&
+    todayEntry.openTime !== null
       ? `Open today · ${todayEntry.openTime}–${todayEntry.closeTime ?? ""}`
       : null;
 
-  const gallery = venue.galleryPhotoUrls;
   // META-ORCH-1290(C) §6.1/§6.2 — the owner-authored pitch. Empty/whitespace →
   // treated as absent so the About section, desktop clamp, and pitch-first meta
   // all fall back honestly (no fabricated prose anywhere).
   const pitchText = venue.pitch !== null ? venue.pitch.trim() : "";
   const hasPitch = pitchText.length > 0;
-  const pitchIsLong = hasPitch && pitchText.length > PITCH_CLAMP_CHARS;
 
   const metaDescription = hasPitch
     ? clampPitchForMeta(pitchText)
@@ -403,143 +775,43 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
       ) : null}
     </View>
   );
-  const discoveryPriceBlock = !isStay && discoveryPrice !== null ? (
-    <Text style={[styles.aboutBody, themedFont, { color: palette.secondaryText }]}>
-      Typical spend · {formatSourceRange({
-        minMinor: discoveryPrice.minMinor,
-        maxMinor: discoveryPrice.maxMinor,
-        currencyCode: discoveryPrice.currencyCode,
-        exponent: discoveryPrice.minorUnitExponent,
-      })}
-    </Text>
-  ) : null;
+  // ── #1558 the Overview pane, resolved from data ───────────────────────────
+  // `profile.overview` IS the layout: an ordered list of section ids, each
+  // resolved through the total VENUE_SECTIONS registry above. A restaurant
+  // lists `hours`; a hotel lists `stayPolicy`. Reordering the page, or giving a
+  // new category its own order, is an edit to that array — not a new branch.
+  const sectionProps = useMemo<VenueSectionProps>(
+    () => ({
+      venue,
+      discoveryPrice,
+      stayDetail,
+      profile,
+      palette,
+      surface,
+      theme: resolvedTheme,
+      themedFont,
+      isDesktop,
+      todayWeekday: today,
+      mapsQuery,
+      onOpenMaps: handleOpenMaps,
+    }),
+    [
+      discoveryPrice,
+      handleOpenMaps,
+      isDesktop,
+      mapsQuery,
+      palette,
+      profile,
+      resolvedTheme,
+      stayDetail,
+      surface,
+      themedFont,
+      today,
+      venue,
+    ],
+  );
 
-  // ── §6.1 About / pitch — the venue's voice, right under the identity ──────
-  // Themed prose (palette + brand font), 4-line clamp + Read more. Hidden
-  // entirely when the owner wrote no pitch (real-data-only, Constitution #9).
-  const aboutBlock = hasPitch ? (
-    <View>
-      <Text
-        style={[styles.aboutBody, themedFont, { color: palette.secondaryText }]}
-        numberOfLines={aboutExpanded ? undefined : 4}
-      >
-        {pitchText}
-      </Text>
-      {pitchIsLong ? (
-        <Pressable
-          onPress={toggleAboutExpanded}
-          accessibilityRole="button"
-          accessibilityLabel={aboutExpanded ? "Show less" : "Read more"}
-          hitSlop={8}
-          style={({ pressed }) => [
-            styles.aboutToggle,
-            pressed && styles.pressed,
-          ]}
-        >
-          <Text style={[styles.aboutToggleText, { color: palette.accent }]}>
-            {aboutExpanded ? "Show less" : "Read more"}
-          </Text>
-        </Pressable>
-      ) : null}
-    </View>
-  ) : null;
-
-  // ── §6.4 map + address card ───────────────────────────────────────────────
-  const mapBlock =
-    staticMapUrl !== null ? (
-      <View style={[styles.mapCard, { backgroundColor: palette.card }]}>
-        <Image
-          source={{ uri: staticMapUrl }}
-          resizeMode="cover"
-          style={[styles.mapImage, isDesktop && styles.mapImageDesktop]}
-          accessibilityLabel={`Map of ${venue.name}`}
-          accessibilityIgnoresInvertColors
-        />
-        <View style={[styles.mapPill, { backgroundColor: palette.page }]}>
-          <Text
-            numberOfLines={1}
-            style={[styles.mapPillLabel, { color: palette.primaryText }]}
-          >
-            {venue.name}
-          </Text>
-        </View>
-      </View>
-    ) : null;
-
-  const addressCard =
-    mapsQuery !== null ? (
-      <Pressable
-        onPress={handleOpenMaps}
-        accessibilityRole="button"
-        accessibilityLabel={`Open ${venue.name} in maps`}
-        style={({ pressed }) => [
-          styles.addressCard,
-          {
-            backgroundColor: palette.card,
-            borderColor: palette.cutoutBorder,
-          },
-          pressed && styles.pressed,
-        ]}
-      >
-        <Text
-          style={[styles.addressCardLabel, { color: palette.tertiaryText }]}
-        >
-          WHERE YOU&apos;LL BE
-        </Text>
-        <Text style={[styles.addressCardValue, { color: palette.primaryText }]}>
-          {venue.address ?? `${venue.lat}, ${venue.lng}`}
-        </Text>
-        <Text style={[styles.addressCardHint, { color: palette.accent }]}>
-          Open in maps →
-        </Text>
-      </Pressable>
-    ) : null;
-
-  // ── §6.5 hours card ───────────────────────────────────────────────────────
-  const hoursBlock =
-    hours.length > 0 ? (
-      <View style={[styles.hoursCard, surface.card]}>
-        <Text style={[styles.sectionLabel, { color: palette.tertiaryText }]}>
-          HOURS
-        </Text>
-        {hours.map((entry) => {
-          const isToday = entry.weekday === today;
-          return (
-            <View key={entry.weekday} style={styles.hoursRow}>
-              {isToday ? (
-                <View
-                  style={[styles.todayBar, { backgroundColor: palette.accent }]}
-                />
-              ) : null}
-              <Text
-                style={[
-                  styles.hoursDay,
-                  { color: palette.secondaryText },
-                  isToday && styles.hoursToday,
-                ]}
-              >
-                {WEEKDAY_LABELS[entry.weekday] ?? String(entry.weekday)}
-              </Text>
-              <Text
-                style={[
-                  styles.hoursTimes,
-                  {
-                    color: entry.isClosed
-                      ? palette.tertiaryText
-                      : palette.primaryText,
-                  },
-                  isToday && styles.hoursToday,
-                ]}
-              >
-                {hoursLineFor(entry)}
-              </Text>
-            </View>
-          );
-        })}
-      </View>
-    ) : null;
-
-  // ── §6.6 menu (shared renderer) + gallery strip ───────────────────────────
+  // ── §6.6 menu (shared renderer) ───────────────────────────────────────────
   const menuBlock =
     menuItemCount > 0 ? (
       <View style={styles.menuWrap}>
@@ -555,98 +827,82 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
       </View>
     ) : null;
 
-  const reservationsBlock = isStay ? (
-    <React.Suspense
-      fallback={
+  // #1558 — which booking body the Reservations tab mounts is DATA
+  // (`profile.bookingBody`), resolved through a total record. The bodies stay
+  // app-side because the fork is a PAYMENT RAIL (Stripe.js Payment Element on
+  // web vs the native PaymentSheet), not a UX fork; #1559 turns this into the
+  // shared module's injected slot.
+  const reservationBodies: Record<VenueBookingBody, () => React.ReactNode> = {
+    stay: () => (
+      <React.Suspense
+        fallback={
+          <View style={styles.reservationState}>
+            <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>
+              Loading Stay availability…
+            </Text>
+          </View>
+        }
+      >
+        <BuyerStayGuestExperience
+          venueId={venue.id}
+          brandId={venue.brandId}
+          detail={stayDetail}
+          state={stayState ?? "unavailable"}
+          palette={palette}
+          surface={surface}
+          theme={resolvedTheme}
+        />
+      </React.Suspense>
+    ),
+    table: () =>
+      reservabilityState === "loading" ? (
         <View style={styles.reservationState}>
           <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>
-            Loading Stay availability…
+            Finding open tables…
           </Text>
         </View>
-      }
-    >
-      <BuyerStayGuestExperience
-        venueId={venue.id}
-        brandId={venue.brandId}
-        detail={stayDetail}
-        state={stayState ?? "unavailable"}
-        palette={palette}
-        surface={surface}
-        theme={resolvedTheme}
-      />
-    </React.Suspense>
-  ) : reservabilityState === "loading" ? (
-      <View style={styles.reservationState}>
-        <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>
-          Finding open tables…
-        </Text>
-      </View>
-    ) : reservabilityState === "error" ? (
-      <View style={styles.reservationState}>
-        <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>
-          We couldn’t check reservations right now.
-        </Text>
-        <Pressable
-          onPress={onRetryReservability}
-          accessibilityRole="button"
-          accessibilityLabel="Try checking reservations again"
-          style={[styles.stateRetry, { backgroundColor: palette.accent }]}
-        >
-          <Text style={[styles.stateRetryText, { color: palette.accentText }]}>
-            Try again
+      ) : reservabilityState === "error" ? (
+        <View style={styles.reservationState}>
+          <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>
+            We couldn’t check reservations right now.
           </Text>
-        </Pressable>
-      </View>
-    ) : reservable?.reservable === true && reservable.venueId !== null ? (
-      <GuestVenueReservation
-        venueId={reservable.venueId}
-        brandId={venue.brandId}
-        currency={reservable.currency}
-        analyticsSurface={analyticsSurface}
-      />
-    ) : (
-      <View style={styles.reservationState}>
-        <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>
-          This venue isn’t taking reservations right now.
-        </Text>
-      </View>
-    );
-
-  const galleryBlock =
-    gallery.length > 0 ? (
-      <View style={styles.galleryWrap}>
-        <Text style={[styles.sectionLabel, { color: palette.tertiaryText }]}>
-          PHOTOS
-        </Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          snapToInterval={248}
-          decelerationRate="fast"
-          contentContainerStyle={styles.galleryContent}
-        >
-          {gallery.map((url, i) => (
-            <Image
-              key={url}
-              source={{ uri: url }}
-              resizeMode="cover"
-              style={styles.galleryTile}
-              accessibilityLabel={`${venue.name} photo ${i + 1} of ${gallery.length}`}
-              accessibilityIgnoresInvertColors
-            />
-          ))}
-        </ScrollView>
-      </View>
-    ) : null;
+          <Pressable
+            onPress={onRetryReservability}
+            accessibilityRole="button"
+            accessibilityLabel="Try checking reservations again"
+            style={[styles.stateRetry, { backgroundColor: palette.accent }]}
+          >
+            <Text style={[styles.stateRetryText, { color: palette.accentText }]}>
+              Try again
+            </Text>
+          </Pressable>
+        </View>
+      ) : reservable?.reservable === true && reservable.venueId !== null ? (
+        <GuestVenueReservation
+          venueId={reservable.venueId}
+          brandId={venue.brandId}
+          currency={reservable.currency}
+          analyticsSurface={analyticsSurface}
+        />
+      ) : (
+        <View style={styles.reservationState}>
+          <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>
+            {venueNotTakingReservationsCopy(profile)}
+          </Text>
+        </View>
+      ),
+  };
+  const reservationsBlock = reservationBodies[profile.bookingBody]();
 
   // ── §6.7 sticky reserve bar (phone) / §6.10 panel CTA (desktop) ──────────
   const reserveCta = (
     <Pressable
       onPress={handleReserve}
       accessibilityRole="button"
-      // #1532 D7 — the CTA and the sheet heading now read ONE function, so the
-      // two can no longer disagree about what the guest just chose to do.
-      accessibilityLabel={reserveActionLabel(isStay)}
+      // #1532 D7 / #1558 — the CTA, the accessibility label and the sheet
+      // heading all read ONE string off the category profile, so the three can
+      // no longer disagree, and a gallery or a gym is never offered a table.
+      accessibilityLabel={profile.reserveAction}
       style={({ pressed }) => [
         styles.reserveCta,
         { backgroundColor: palette.accent },
@@ -654,7 +910,7 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
       ]}
     >
       <Text style={[styles.reserveCtaLabel, { color: palette.accentText }]}>
-        {reserveActionLabel(isStay)}
+        {profile.reserveAction}
       </Text>
     </Pressable>
   );
@@ -769,12 +1025,10 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
         theme={resolvedTheme}
         overview={
           <View style={styles.tabPane}>
-            {discoveryPriceBlock}
-            {aboutBlock}
-            {mapBlock}
-            {addressCard}
-            {hoursBlock}
-            {galleryBlock}
+            {profile.overview.map((sectionId) => {
+              const Section = VENUE_SECTIONS[sectionId];
+              return <Section key={sectionId} {...sectionProps} />;
+            })}
           </View>
         }
         menu={menuBlock}
@@ -860,10 +1114,10 @@ export const PublicVenuePage: React.FC<PublicVenuePageProps> = ({
         visible={normalizedReservationUiState.reservationSheetOpen}
         onClose={handleReservationSheetClose}
         onDismissed={handleReservationSheetDismissed}
-        // #1532 defect 1 — the heading now comes from the SAME function as the
-        // CTA above, so a Stay guest can no longer tap "Reserve this Stay" and
-        // land on a sheet headed "Reserve a table".
-        title={reserveSheetTitle(isStay)}
+        // #1532 defect 1 / #1558 — the heading now comes from the SAME profile
+        // field as the CTA above, so a Stay guest can no longer tap "Reserve
+        // this Stay" and land on a sheet headed "Reserve a table".
+        title={profile.reserveAction}
       >
         {reservationsBlock}
       </PublicVenueReservationSheet>
