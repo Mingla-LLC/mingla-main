@@ -168,10 +168,7 @@
         "npm:react@19.1.0",
         "npm:typescript@~5.9.2",
         "npm:zustand@^5.0.8"
-      ],
-      "overrides": {
-        "postcss": "^8.5.21"
-      }
+      ]
     }
   }
 }
