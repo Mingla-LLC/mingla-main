@@ -7149,6 +7149,15 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   battery, the rename cross-product and the redaction properties were all re-verified
   independently and are clean — the finding is not in any of those. This entry must not flip
   ACTIVE until the finding is closed and the suite is all-green with a case pinning it.
+- **REWORK (2026-08-03) — addressed, awaiting re-verification.** The finding was accepted in
+  full and traced to the rule above being satisfied by CONVENTION rather than STRUCTURALLY:
+  the pass took its readings of one change from two parallel parses of two different record
+  formats, which is the divergence the rule forbids wearing a new spelling. The rework makes
+  identity come from a single reading, reduces the second read to numbers reconciled against
+  it, and adds the redundant runtime assertion described in rule (b). Both faces of the
+  finding — the destructive one and the innocent-refusal one — are pinned by their own cases,
+  each independently shown to close the class on its own. This note records the response only;
+  the TEST status above stands until an independent pass re-verifies it.
 - **Established:** DRAFT at issue #1534 SPEC 2026-08-03. Flips ACTIVE at CLOSE.
 ## DRAFT — issue #1481 (Explorer swipe lifecycle and deck performance)
 
