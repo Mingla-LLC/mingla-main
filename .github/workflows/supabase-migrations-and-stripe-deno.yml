@@ -539,6 +539,19 @@ jobs:
             # footer. L0 is a vacuity guard — a corpus that shrank or lost a named
             # case FAILS rather than passing quietly.
             supabase/functions/__tests__/issue1556_sms_footer_parity.test.ts
+            # Issue #1556 TESTER ADVERSARIAL — attacks the same rule from the
+            # angle the corpus cannot reach. It never reads that corpus. It
+            # checks both shipped segment counters against an INDEPENDENT GSM
+            # 03.38 encoder written from the standard (so the two can be wrong
+            # together and still be caught), sweeps all 63,488 non-surrogate BMP
+            # codepoints for sanitizer drift with the expected fold set DERIVED
+            # BY RUNNING THE SERVER rather than hardcoded, and runs a seeded
+            # 3,000-body differential fuzz — which catches both #1556 defects
+            # within the first two generated bodies. Also pins two KNOWN GAPS
+            # (T-1556-EXT-SEPTETS, T-1556-EMPTY-DISPLAY) and proves send() still
+            # composes via the function these suites test. Every group carries a
+            # vacuity guard.
+            supabase/functions/__tests__/issue1556_sms_cost_preview.tester.adversarial.test.ts
             # ORCH-1289 fix #3 — the OTHER wire/preview parity suite, executing
             # both modules for the own-line-vs-single-space SEPARATOR. Registered
             # by #1556: it was wired into NO workflow, so when #1541 end-anchored
