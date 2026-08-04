@@ -419,3 +419,75 @@ test("ADV-6 PROOF: an all-skipped pass reports honestly and an empty pass assert
     );
   }
 });
+
+// ===========================================================================
+// PIN ADV-7 — tester RETEST finding T-1541-FOOTER-PREVIEW-DRIFT (P3).
+// ===========================================================================
+// Found during the retest of the #1541 IMPLEMENT REWORK. Closing ADV-4 changed
+// the server guard from `/reply stop/i` to the end-anchored form — but the
+// CLIENT-SIDE MIRROR of that same rule was not moved with it:
+//
+//   server: supabase/functions/_shared/adapters/smsAdapter.ts  composeSmsBody()
+//             if (!/reply stop to opt out\.\s*$/i.test(body))     <- anchored
+//   client: mingla-business/src/utils/smsCost.ts                bodyWithFooter()
+//             if (/reply stop/i.test(body)) return body;          <- NOT anchored
+//
+// `bodyWithFooter` exists specifically so the marketing composer's segment and
+// cost estimate reflects the wire body — its own docstring says "so this
+// preview matches the wire body the adapter composes" (ORCH-1289). The two now
+// disagree for any blast whose text MENTIONS "reply stop" mid-body:
+//
+//   "Flash sale! Reply STOP to opt out of promos — or just come by tonight."
+//     preview: no footer appended  -> N segments quoted to the brand
+//     wire:    footer IS appended  -> "\n\nReply STOP to opt out." added,
+//              which can cross a segment boundary and bill MORE than quoted.
+//
+// Before the ADV-4 fix both were unanchored and agreed. This is drift the fix
+// introduced, and it is the mirrored-constant class: one rule, two copies, one
+// of them updated. The estimate is documented as an estimate, and the brand
+// must type the phrase mid-body, so it is P3 — but it under-reports cost, which
+// is the one direction a cost guard must never be wrong in.
+//
+// WHAT WOULD CLOSE IT: end-anchor `bodyWithFooter` to match, i.e.
+//   if (/reply stop to opt out\.\s*$/i.test(body)) return body;
+test("ADV-7 PIN: the client cost-preview footer guard has drifted from the server (KNOWN GAP)", async () => {
+  const serverSrc = await Deno.readTextFile(
+    new URL("../_shared/adapters/smsAdapter.ts", import.meta.url),
+  );
+  const clientSrc = await Deno.readTextFile(
+    new URL("../../../mingla-business/src/utils/smsCost.ts", import.meta.url),
+  );
+
+  // Vacuity guards: locate BOTH guards before asserting anything about either.
+  const serverGuard = /if \(!(\/[^\n]*?\/i)\.test\(body\)\)/.exec(serverSrc);
+  const clientGuard = /if \((\/[^\n]*?\/i)\.test\(body\)\) return body;/.exec(clientSrc);
+  assert(
+    serverGuard,
+    "vacuity: composeSmsBody's footer guard not found — asserting nothing",
+  );
+  assert(
+    clientGuard,
+    "vacuity: bodyWithFooter's footer guard not found — asserting nothing",
+  );
+
+  // The server IS anchored (this half must never regress).
+  assertEquals(
+    serverGuard[1],
+    "/reply stop to opt out\\.\\s*$/i",
+    "REGRESSION: the server footer guard lost its end-anchor — see ADV-4.",
+  );
+
+  // The client is NOT. Pinned.
+  assertEquals(
+    clientGuard[1],
+    "/reply stop/i",
+    "PIN BROKEN (good news): the client cost-preview guard changed. If it now " +
+      "matches the server's end-anchored form, delete this pin and close " +
+      "T-1541-FOOTER-PREVIEW-DRIFT. If it changed to something ELSE, the two " +
+      "have drifted further and this is now worse than when it was filed.",
+  );
+  assert(
+    serverGuard[1] !== clientGuard[1],
+    "the two guards agree — delete this pin",
+  );
+});

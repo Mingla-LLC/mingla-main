@@ -313,6 +313,81 @@ test("T-7 PROOF: a `.spec.ts` name inside a live function dir is SCANNED", () =>
 });
 
 // ===========================================================================
+// PINS T-10 … T-11 — tester RETEST finding T-1541-GATE-EVASION-RESIDUAL (P2).
+// ===========================================================================
+// Found during the retest of the #1541 IMPLEMENT REWORK, AFTER T-3…T-7 were
+// closed. These matter more than their size suggests, because the gate's own
+// header now enumerates what it cannot catch — and enumerates it too narrowly.
+// It says the blind spot is a URL that "never exists as text": runtime
+// assembly from env/config/DB, base64/hex decoding, `String.fromCharCode`.
+//
+// In BOTH shapes below the URL exists ENTIRELY as static text. Neither is
+// runtime-assembled, neither is transformed, and both are shapes an ordinary
+// engineer produces without any intent to evade. So the disclosure is not
+// merely incomplete — it points at the wrong category, which is the specific
+// hazard the header warns about two paragraphs earlier: "a guard that claims
+// completeness it lacks is the failure class catalogued in #1553."
+//
+// NOT A MERGE BLOCKER. The gate is strictly stronger than it was and far
+// stronger than `main`; the real-time control is the adapter kill switch, not
+// this gate. But the invariant text and the header must say THESE words.
+//
+// FIX FOR T-10: add the `i` flag to the ENDPOINTS regexes and lowercase the
+//   literal space before correlating. DNS is case-insensitive, so
+//   `API.Twilio.Com` resolves and bills identically — one character of gate.
+// FIX FOR T-11: correlate host against path across the MODULE GRAPH (or, more
+//   cheaply, treat a bare provider-host literal in any non-allowlisted file as
+//   a violation on its own — no edge function has an innocent reason to name
+//   `api.twilio.com` in code).
+
+test("T-10 PIN: a mixed-case host evades the gate, fully as text (KNOWN GAP)", () => {
+  // The ENDPOINTS regexes carry no `i` flag. This URL is 100% static text and
+  // works: hostnames are case-insensitive.
+  const inline = violation({
+    "supabase/functions/rogue/index.ts":
+      'await fetch("https://API.Twilio.Com/2010-04-01/Accounts/AC1/Messages.json", { method: "POST" });',
+  });
+  assert.equal(
+    inline.code,
+    0,
+    "PIN BROKEN (good news): the endpoint match is now case-insensitive. " +
+      "Delete this pin and close T-1541-GATE-EVASION-RESIDUAL.",
+  );
+
+  // Same root cause via a hoisted constant, which is what real code looks like.
+  const hoisted = violation({
+    "supabase/functions/rogue/index.ts": [
+      'const H = "API.TWILIO.COM";',
+      "await fetch(`https://${H}/2010-04-01/Accounts/AC1/Messages.json`, { method: \"POST\" });",
+    ].join("\n"),
+  });
+  assert.equal(
+    hoisted.code,
+    0,
+    "PIN BROKEN (good news): case-insensitive matching reached the literal space too.",
+  );
+});
+
+test("T-11 PIN: host and path in DIFFERENT FILES evade the gate (KNOWN GAP)", () => {
+  // `literalSpace` correlates host against path PER FILE. Split the two halves
+  // across a constants module — the single most ordinary refactor there is —
+  // and neither file correlates. Both halves are plain string literals.
+  const { code } = violation({
+    "supabase/functions/rogue/constants.ts":
+      'export const TWILIO_HOST = "api.twilio.com";',
+    "supabase/functions/rogue/index.ts": [
+      'import { TWILIO_HOST } from "./constants.ts";',
+      "await fetch(`https://${TWILIO_HOST}/2010-04-01/Accounts/AC1/Messages.json`, { method: \"POST\" });",
+    ].join("\n"),
+  });
+  assert.equal(
+    code,
+    0,
+    "PIN BROKEN (good news): correlation now spans files. Delete this pin.",
+  );
+});
+
+// ===========================================================================
 // PROOF T-8 — the vacuity guards CANNOT be defeated.
 // ===========================================================================
 // The dispatch asked directly: can the scan be made to match nothing and still
