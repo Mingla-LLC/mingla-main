@@ -8,21 +8,20 @@ const read = (relativePath: string): string =>
 describe("Issue #1390 Stay guest surface contracts", () => {
   test("canonical venue routes branch Stay without inventing a Hotel route", () => {
     const buyerRoute = read("mingla-business/app/b/[brandSlug]/v/[venueSlug].tsx");
+    // [TEST-MOD-APPROVED #1560] — `app-mobile/src/screens/
+    // ConsumerPublicVenueScreen.tsx` was DELETED; the consumer venue page is the
+    // route below, an adapter over the shared `PublicVenueScreen`. The invariant
+    // is unchanged and now holds by construction: the Stay branch is still
+    // driven by `venueCategory` off the SAME view, WHICH booking body mounts is
+    // decided by the one category profile inside the shared screen, and there is
+    // still no invented Hotel route on either surface.
     const consumerRoute = read(
-      "app-mobile/src/screens/ConsumerPublicVenueScreen.tsx",
+      "app-mobile/app/b/[brandSlug]/v/[venueSlug].tsx",
     );
     expect(buyerRoute).toContain('venue?.venueCategory === "stay"');
-    // [TEST-MOD-APPROVED #1558] — was `venue.venueCategory === "stay"`. The
-    // consumer screen no longer compares the raw category anywhere: it resolves
-    // the ONE total category profile and branches on `profile.bookingBody`, so
-    // `play`, `creative_and_arts` and a NULL category stop silently inheriting
-    // the restaurant's screen. Same invariant — the Stay branch is still driven
-    // by `venueCategory` off the same view, with no invented Hotel route —
-    // asserted at the seam where it now lives.
-    expect(consumerRoute).toContain(
-      "venueCategoryProfile(venue?.venueCategory",
-    );
-    expect(consumerRoute).toContain('profile.bookingBody === "stay"');
+    expect(consumerRoute).toContain('venue?.venueCategory === "stay"');
+    expect(consumerRoute).toContain("<PublicVenueScreen");
+    expect(consumerRoute).toContain('kind === "stay"');
     expect(consumerRoute).not.toContain('const isStay = venue.venueCategory');
     expect(
       fs.existsSync(path.join(ROOT, "mingla-business/app/hotel")),

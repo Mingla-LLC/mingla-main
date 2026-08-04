@@ -126,7 +126,7 @@ jobs:
       - run: npm ci
       - run: >
           npx eslint
-          src/screens/ConsumerPublicVenueScreen.tsx
+          app/b/[brandSlug]/v/[venueSlug].tsx
           src/services/nativeAdAttributionService.ts
           src/services/stayGuestService.ts
           src/services/oneLinkResolver.ts
