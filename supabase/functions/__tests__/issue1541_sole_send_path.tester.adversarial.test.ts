@@ -421,7 +421,18 @@ test("ADV-6 PROOF: an all-skipped pass reports honestly and an empty pass assert
 });
 
 // ===========================================================================
-// PIN ADV-7 — tester RETEST finding T-1541-FOOTER-PREVIEW-DRIFT (P3).
+// PROOF ADV-7 — tester RETEST finding T-1541-FOOTER-PREVIEW-DRIFT (P3),
+// NOW CLOSED by issue #1556 [sms cost preview]. Converted from a PIN; the
+// attack is unchanged and only the expectation flipped, exactly as this pin's
+// own failure message instructed ("If it now matches the server's end-anchored
+// form, delete this pin and close T-1541-FOOTER-PREVIEW-DRIFT" — kept as a live
+// assertion instead of deleted, so the two guards can never silently re-drift).
+//
+// This source-level equality is now the WEAKEST of three guards. The behavioural
+// ones, which execute both implementations over one shared adversarial corpus,
+// are:
+//   supabase/functions/__tests__/issue1556_sms_footer_parity.test.ts (Deno)
+//   mingla-business/src/utils/__tests__/smsCost.issue1556.test.ts    (Jest)
 // ===========================================================================
 // Found during the retest of the #1541 IMPLEMENT REWORK. Closing ADV-4 changed
 // the server guard from `/reply stop/i` to the end-anchored form — but the
@@ -448,9 +459,9 @@ test("ADV-6 PROOF: an all-skipped pass reports honestly and an empty pass assert
 // must type the phrase mid-body, so it is P3 — but it under-reports cost, which
 // is the one direction a cost guard must never be wrong in.
 //
-// WHAT WOULD CLOSE IT: end-anchor `bodyWithFooter` to match, i.e.
+// WHAT CLOSED IT (#1556): `bodyWithFooter` is end-anchored to match, i.e.
 //   if (/reply stop to opt out\.\s*$/i.test(body)) return body;
-test("ADV-7 PIN: the client cost-preview footer guard has drifted from the server (KNOWN GAP)", async () => {
+test("ADV-7 PROOF: the client cost-preview footer guard matches the server's, character for character", async () => {
   const serverSrc = await Deno.readTextFile(
     new URL("../_shared/adapters/smsAdapter.ts", import.meta.url),
   );
@@ -477,17 +488,18 @@ test("ADV-7 PIN: the client cost-preview footer guard has drifted from the serve
     "REGRESSION: the server footer guard lost its end-anchor — see ADV-4.",
   );
 
-  // The client is NOT. Pinned.
+  // And so is the client, since #1556. Any future edit to EITHER side that does
+  // not move the other re-opens T-1541-FOOTER-PREVIEW-DRIFT and fails here.
   assertEquals(
     clientGuard[1],
-    "/reply stop/i",
-    "PIN BROKEN (good news): the client cost-preview guard changed. If it now " +
-      "matches the server's end-anchored form, delete this pin and close " +
-      "T-1541-FOOTER-PREVIEW-DRIFT. If it changed to something ELSE, the two " +
-      "have drifted further and this is now worse than when it was filed.",
+    "/reply stop to opt out\\.\\s*$/i",
+    "REGRESSION: the client cost-preview guard no longer matches the server's " +
+      "end-anchored form. The composer's segment + cost estimate is being " +
+      "computed on a body the adapter will not send — see #1556.",
   );
-  assert(
-    serverGuard[1] !== clientGuard[1],
-    "the two guards agree — delete this pin",
+  assertEquals(
+    serverGuard[1],
+    clientGuard[1],
+    "the client mirror and the server guard have drifted apart again (#1556)",
   );
 });

@@ -1,0 +1,193 @@
+{
+  "issue": 1556,
+  "footer": "Reply STOP to opt out.",
+  "marketingSeparator": "\n\n",
+  "transactionalSeparator": " ",
+  "entries": [
+    {
+      "id": "mid-body-mention",
+      "body": "Reply Stop plays the rooftop tonight. Doors 8pm.",
+      "why": "#1556 CORE: mentions the phrase mid-body but does NOT end in the footer. The loose client guard suppressed; the adapter appends."
+    },
+    {
+      "id": "mid-body-mention-prose",
+      "body": "To leave this list at any time just reply STOP - we will never text you again.",
+      "why": "prose explaining the opt-out mid-message. Same class, different shape."
+    },
+    {
+      "id": "mid-body-mention-uppercase",
+      "body": "REPLY STOP IS THE NAME OF THE BAND. TICKETS AT THE DOOR.",
+      "why": "case-insensitivity of the loose guard is what made it fire here."
+    },
+    {
+      "id": "ends-with-footer",
+      "body": "Doors 8pm tonight.\n\nReply STOP to opt out.",
+      "why": "the ONLY case where appending would duplicate. Both sides suppress."
+    },
+    {
+      "id": "ends-with-footer-trailing-space",
+      "body": "Doors 8pm tonight.\n\nReply STOP to opt out.   ",
+      "why": "trailing whitespace: both sides .trim() first, so suppression still fires."
+    },
+    {
+      "id": "ends-with-footer-trailing-newlines",
+      "body": "Doors 8pm tonight.\n\nReply STOP to opt out.\n\n",
+      "why": "trailing newlines: the adapter's `\\s*$` tail plus the shared .trim()."
+    },
+    {
+      "id": "ends-with-footer-lowercase",
+      "body": "doors 8pm tonight. reply stop to opt out.",
+      "why": "differing case, end-anchored: suppression must still fire on both sides."
+    },
+    {
+      "id": "ends-with-footer-mixed-case",
+      "body": "Doors 8pm tonight. RePlY sToP tO oPt OuT.",
+      "why": "adversarial casing."
+    },
+    {
+      "id": "ends-with-footer-single-space-form",
+      "body": "Doors 8pm tonight. Reply STOP to opt out.",
+      "why": "the TRANSACTIONAL footer form already present: `\\s*$` covers it, so no second footer."
+    },
+    {
+      "id": "footer-without-period",
+      "body": "Doors 8pm tonight. Reply STOP to opt out",
+      "why": "no trailing period -> not the footer -> BOTH sides must append."
+    },
+    {
+      "id": "footer-then-more-text",
+      "body": "Reply STOP to opt out. Come see us Friday.",
+      "why": "footer at the START, text after: not end-anchored -> BOTH sides append. This is the exact input the pre-#1541 contract got wrong."
+    },
+    {
+      "id": "empty",
+      "body": "",
+      "why": "an empty body does not end with the footer, so the adapter appends one. Unreachable at send time (compose.tsx blocks it) but it is a contract, not a coincidence."
+    },
+    {
+      "id": "whitespace-only",
+      "body": "   \n\t  ",
+      "why": "trims to empty; same contract as `empty`."
+    },
+    {
+      "id": "gsm7-boundary-136-mention",
+      "body": "Reply Stop plays the rooftop tonight - doors 8pm, tickets at the bar. xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "why": "GSM-7: 136 chars + 24 footer = 160 = exactly 1 segment. Mentions the phrase mid-body.",
+      "expect": {
+        "clientAppends": true,
+        "wireLength": 160,
+        "wireSegments": 1
+      }
+    },
+    {
+      "id": "gsm7-boundary-137-mention",
+      "body": "Reply Stop plays the rooftop tonight - doors 8pm, tickets at the bar. xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "why": "GSM-7: 137 + 24 = 161 -> 2 segments. Under the loose guard the preview scored the bare 137-char body as 1 segment: a WHOLE SEGMENT under-reported, per recipient.",
+      "expect": {
+        "clientAppends": true,
+        "wireLength": 161,
+        "wireSegments": 2
+      }
+    },
+    {
+      "id": "gsm7-boundary-160-already-footered",
+      "body": "Doors 8pm at Lantern and Vine tonight. xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n\nReply STOP to opt out.",
+      "why": "already ends with the footer at exactly 160 -> suppressed, 1 segment.",
+      "expect": {
+        "clientAppends": false,
+        "wireLength": 160,
+        "wireSegments": 1
+      }
+    },
+    {
+      "id": "gsm7-boundary-161-already-footered",
+      "body": "Doors 8pm at Lantern and Vine tonight. xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n\nReply STOP to opt out.",
+      "why": "already ends with the footer at 161 -> suppressed, 2 segments.",
+      "expect": {
+        "clientAppends": false,
+        "wireLength": 161,
+        "wireSegments": 2
+      }
+    },
+    {
+      "id": "ucs2-boundary-46-mention",
+      "body": "Reply Stop live 🎉 xxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "why": "emoji forces UCS-2: 46 + 24 = 70 = exactly 1 segment.",
+      "expect": {
+        "clientAppends": true,
+        "wireLength": 70,
+        "wireSegments": 1
+      }
+    },
+    {
+      "id": "ucs2-boundary-47-mention",
+      "body": "Reply Stop live 🎉 xxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "why": "UCS-2: 47 + 24 = 71 -> 2 segments. The 67/70 crossing the loose guard hid.",
+      "expect": {
+        "clientAppends": true,
+        "wireLength": 71,
+        "wireSegments": 2
+      }
+    },
+    {
+      "id": "smart-punctuation-mention",
+      "body": "Reply Stop’s last show — don’t miss it…",
+      "why": "iOS smart apostrophe + em dash + ellipsis. Footer suppression must still agree; byte equality only holds MODULO the adapter's sanitizeGsm7 (the KNOWN GAP reported on #1556)."
+    },
+    {
+      "id": "smart-apostrophe-boundary",
+      "body": "Don’t miss it - doors 8pm at Lantern and Vine, live music all night. xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "why": "#1556 D1 CORE: an iOS smart apostrophe (U+2019). Sanitized it is GSM-7 at 160 chars = ONE segment; unsanitized the preview called it UCS-2 and quoted THREE. The 2.3x over-report, made numeric.",
+      "expect": {
+        "clientAppends": true,
+        "wireLength": 160,
+        "wireSegments": 1
+      }
+    },
+    {
+      "id": "ellipsis-grows-body",
+      "body": "Doors 8pm… tickets at the bar, first come first served. xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "why": "an ellipsis (U+2026) expands to three characters, so sanitizing can make the wire LONGER and cross a boundary upward: 161 chars = TWO segments.",
+      "expect": {
+        "clientAppends": true,
+        "wireLength": 161,
+        "wireSegments": 2
+      }
+    },
+    {
+      "id": "curly-double-quotes",
+      "body": "The “best rooftop in town” - come see for yourself.",
+      "why": "curly/prime double quotes fold to ASCII \" (U+201C U+201D)."
+    },
+    {
+      "id": "dashes-and-bar",
+      "body": "Doors 8pm – midnight — last entry 11pm ― be early.",
+      "why": "en dash, em dash and horizontal bar all fold to '-'."
+    },
+    {
+      "id": "nbsp-variants",
+      "body": "Doors 8pm, tables from 6.",
+      "why": "the three invisible space codepoints the adapter folds (U+00A0, U+2007, U+202F). Typing these by eye is exactly how a mirrored sanitizer drifts."
+    },
+    {
+      "id": "bullet-list",
+      "body": "Tonight:\n• live music\n• 2-for-1 cocktails\n• rooftop open late",
+      "why": "bullets fold to '-'."
+    },
+    {
+      "id": "prime-marks",
+      "body": "Set times: 9′ warmup, then a 45″ headline set.",
+      "why": "prime and double-prime (U+2032 U+2033) fold to ' and \"."
+    },
+    {
+      "id": "every-sanitized-class",
+      "body": "‘a’‚b‛′ “c”„d‟″ e–f—g―h i…j k l m n o•p",
+      "why": "one body carrying EVERY character class the adapter's sanitizer maps. If either side drops a class, this diverges."
+    },
+    {
+      "id": "smart-punctuation-already-footered",
+      "body": "Don’t miss it — tonight.\n\nReply STOP to opt out.",
+      "why": "sanitizer classes AND end-anchored suppression in one body: the footer must be suppressed and the punctuation still folded."
+    }
+  ]
+}
